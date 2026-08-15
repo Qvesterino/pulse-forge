@@ -12,8 +12,8 @@ export function TopBar({
 }: {
   onToggleDiagnostics: () => void;
   diagnosticsOpen: boolean;
-  onSetBottomPanel: (panel: "mixer" | "fx") => void;
-  bottomPanel: "mixer" | "fx" | null;
+  onSetBottomPanel: (panel: "mixer" | "fx" | "arr" | "mod") => void;
+  bottomPanel: "mixer" | "fx" | "arr" | "mod" | null;
 }) {
   const services = useServices();
   const doc = useDoc();
@@ -31,6 +31,16 @@ export function TopBar({
       </div>
 
       <div className="transport-cluster">
+        <button
+          type="button"
+          className={`btn btn-mode${services.playback.mode === "song" ? " active-song" : ""}`}
+          onClick={() =>
+            services.playback.setMode(services.playback.mode === "pattern" ? "song" : "pattern")
+          }
+          title="Toggle play mode: pattern loop or arrangement song"
+        >
+          {services.playback.mode === "pattern" ? "PATTERN" : "SONG"}
+        </button>
         <button
           type="button"
           className={`btn btn-play${playing ? " active" : ""}`}
@@ -98,6 +108,22 @@ export function TopBar({
           title="Toggle effect rack"
         >
           FX
+        </button>
+        <button
+          type="button"
+          className={`btn btn-ghost${bottomPanel === "arr" ? " active" : ""}`}
+          onClick={() => onSetBottomPanel("arr")}
+          title="Toggle arrangement and scenes"
+        >
+          ARR
+        </button>
+        <button
+          type="button"
+          className={`btn btn-ghost${bottomPanel === "mod" ? " active" : ""}`}
+          onClick={() => onSetBottomPanel("mod")}
+          title="Toggle automation, LFOs and macros"
+        >
+          MOD
         </button>
         <button
           type="button"

@@ -45,6 +45,12 @@ npm run build        # production build
 - **Piano roll** — per-instrument-track editor in the sequencer: click to add notes, drag to move, drag right edge to resize, right-click or `Delete` to remove; playable keyboard column (click keys to audition); playhead column; pitch range C1–C6.
 - **Event-window scheduler** — the scheduler now plans a lookahead window in tick space and schedules both drum steps and arbitrary note events, enabling future microtiming/swing/ratchets without step-grid coupling.
 - **Default project ships a bass line** — new projects include an 808 track with a playable bass pattern so the first play is already a beat with sub.
+- **Scenes** — named launches referencing patterns (no data duplication). Click a scene chip to launch (sets the active pattern); scenes survive pattern edits by reference. Create/rename/delete from the `ARR` panel.
+- **Arrangement + song mode** — linear timeline of clips (scene + start bar + length). `PATTERN/SONG` toggle in the transport: song mode plays the arrangement, switching patterns at clip boundaries, looping short patterns inside longer clips and staying silent in gaps. Timeline UI: click to place, drag to move, drag right edge to resize, right-click to delete; overlap-safe with undo.
+- **Automation** — project lanes targeting track volume/pan (exact audio-rate ramps), effect params and instrument params (window-resolution). Point editor in the `MOD` panel: click to add, drag to move, right-click to delete; linear interpolation; loops in pattern space. Resets on stop.
+- **LFO** — per-track audio-rate modulation of volume or pan: sine/tri/square/saw up/down, free Hz or tempo-synced (1/1–1/16), amount; re-syncs on BPM change.
+- **Macros** — four project macros (A–D) with bipolar value (center = neutral) mapping to track volume/pan offsets. Mapping editor per macro.
+- **Modulation routing in engine** — each track chain ends with dedicated automation/macro gain+pan stages, so mute/solo, manual volume, automation, LFO and macros never fight over the same AudioParam.
 - **Factory sound bank** — 16 procedurally synthesized drum sounds (seeded, deterministic, license-clean) rendered via `OfflineAudioContext` at startup.
 - **Audio engine** — per-voice gain/pan/pitch, choke groups, voice cleanup, panic (guaranteed stop), track chains with smoothing.
 - **Persistence** — IndexedDB, debounced autosave (800 ms), manual `Ctrl+S`, reload restores the exact project (incl. after refresh).
@@ -55,8 +61,8 @@ npm run build        # production build
 
 - Texture Synth (instrument family complete otherwise)
 - Buses/returns, send effects
-- Scenes, arrangement
-- Automation, LFO/modulation, macros
+- Arrangement loop regions, song-mode seek UI
+- Automation recording, per-scene automation
 - Offline render / WAV + stem export
 - AudioWorklet + Rust/WASM DSP path
 

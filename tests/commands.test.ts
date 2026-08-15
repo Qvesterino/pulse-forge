@@ -1,31 +1,49 @@
 import { describe, expect, it } from "vitest";
 import { createDefaultProject } from "../src/project-model/schema";
 import {
+  addArrangementClip,
+  addAutomationLane,
+  addAutomationPoint,
+  addLfo,
+  addMacroMapping,
   addEffect,
   addNote,
   clearPattern,
   createDrumTrack,
   createInstrumentTrack,
   createPattern,
+  createScene,
+  deleteArrangementClip,
   deleteNote,
   deletePattern,
+  deleteScene,
   deleteTrack,
+  duplicateArrangementClip,
   duplicatePattern,
+  moveArrangementClip,
+  moveAutomationPoint,
   moveEffect,
   moveNote,
   pastePattern,
   removeEffect,
+  removeLfo,
   renamePattern,
+  renameScene,
+  resizeArrangementClip,
   resizeNote,
   setActivePattern,
   setBpm,
   setEffectParam,
   setInstrumentParam,
   setInstrumentSample,
+  setLfoParams,
+  setMacroMappingAmount,
+  setMacroValue,
   setNoteVelocity,
   setPadParams,
   setPatternLength,
   setProjectName,
+  setScenePattern,
   setStepVelocityCommand,
   setTrackParams,
   toggleEffectBypass,
@@ -430,6 +448,135 @@ describe("instrument tracks and notes", () => {
     const copy = store.doc.patterns[1];
     expect(copy.notes[bassId]).toHaveLength(4);
     expect(copy.notes[bassId]).not.toBe(store.doc.patterns[0].notes[bassId]);
+  });
+});
+
+describe("scenes and arrangement", () => {
+  it("createScene references the active pattern without duplicating data", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    store.execute(createScene(store.doc, "Drop"));
+    expect(store.doc.scenes).toHaveLength(2);
+    expect(store.doc.scenes[1].name).toBe("Drop");
+    expect(store.doc.scenes[1].patternId).toBe(doc.activePatternId);
+    store.undo();
+    expect(store.doc.scenes).toHaveLength(1);
+  });
+
+  it("deleteScene also removes its clips; setScenePattern and renameScene round-trip", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    store.execute(createScene(store.doc, "Fill"));
+    const fillScene = store.doc.scenes[1];
+    store.execute(addArrangementClip(store.doc, fillScene.id, 4, 2));
+    expect(store.doc.arrangement.clips).toHaveLength(2);
+    store.execute(deleteScene(store.doc, fillScene.id));
+    expect(store.doc.scenes).toHaveLength(1);
+    expect(store.doc.arrangement.clips).toHaveLength(1);
+    store.undo();
+    expect(store.doc.arrangement.clips).toHaveLength(2);
+
+    store.execute(renameScene(store.doc, fillScene.id, "Break"));
+    expect(store.doc.scenes[1].name).toBe("Break");
+    store.execute(setScenePattern(store.doc, fillScene.id, store.doc.patterns[0].id));
+    expect(store.doc.scenes[1].patternId).toBe(store.doc.patterns[0].id);
+  });
+
+  it("clip placement rejects overlaps and allows undo of moves and resizes", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    const sceneId = doc.scenes[0].id;
+    expect(() => addArrangementClip(store.doc, sceneId, 1, 4)).toThrow();
+    store.execute(addArrangementClip(store.doc, sceneId, 4, 4));
+    expect(store.doc.arrangement.clips).toHaveLength(2);
+    store.execute(moveArrangementClip(store.doc, store.doc.arrangement.clips[1].id, 8));
+    expect(store.doc.arrangement.clips[1].startBar).toBe(8);
+    expect(() => moveArrangementClip(store.doc, store.doc.arrangement.clips[1].id, 2)).toThrow();
+    store.execute(resizeArrangementClip(store.doc, store.doc.arrangement.clips[1].id, 2));
+    expect(store.doc.arrangement.clips[1].lengthBars).toBe(2);
+    store.undo();
+    store.undo();
+    expect(store.doc.arrangement.clips[1].startBar).toBe(4);
+    expect(store.doc.arrangement.clips[1].lengthBars).toBe(4);
+  });
+
+  it("duplicateArrangementClip places the copy after the original at first free space", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    const clipId = doc.arrangement.clips[0].id;
+    store.execute(duplicateArrangementClip(store.doc, clipId));
+    expect(store.doc.arrangement.clips).toHaveLength(2);
+    expect(store.doc.arrangement.clips[1].startBar).toBe(4);
+    store.execute(duplicateArrangementClip(store.doc, clipId));
+    expect(store.doc.arrangement.clips[2].startBar).toBe(8);
+    store.execute(deleteArrangementClip(store.doc, clipId));
+    expect(store.doc.arrangement.clips).toHaveLength(2);
+    store.undo();
+    expect(store.doc.arrangement.clips).toHaveLength(3);
+  });
+});
+
+describe("automation, lfo and macros", () => {
+  it("addAutomationLane rejects duplicate targets and points round-trip", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    const trackId = doc.tracks[0].id;
+    store.execute(addAutomationLane(store.doc, { kind: "trackGain", trackId }));
+    expect(() => addAutomationLane(store.doc, { kind: "trackGain", trackId })).toThrow();
+    const lane = store.doc.automation[0];
+    store.execute(addAutomationPoint(store.doc, lane.id, 0, 1));
+    store.execute(addAutomationPoint(store.doc, lane.id, 480, 0));
+    expect(store.doc.automation[0].points.map((p) => p.tick)).toEqual([0, 480]);
+    store.execute(moveAutomationPoint(store.doc, lane.id, 1, { tick: 240, value: 0.5 }));
+    expect(store.doc.automation[0].points[1]).toEqual({ tick: 240, value: 0.5 });
+    store.undo();
+    store.undo();
+    expect(store.doc.automation[0].points).toHaveLength(1);
+  });
+
+  it("lfo commands add, edit and remove", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    const trackId = doc.tracks[0].id;
+    store.execute(addLfo(store.doc, trackId));
+    const lfo = store.doc.lfos[0];
+    expect(lfo.param).toBe("gain");
+    expect(lfo.rateMode).toBe("sync");
+    store.execute(setLfoParams(store.doc, lfo.id, { param: "pan", wave: "square", amount: 0.8 }));
+    expect(store.doc.lfos[0]).toMatchObject({ param: "pan", wave: "square", amount: 0.8 });
+    store.execute(removeLfo(store.doc, lfo.id));
+    expect(store.doc.lfos).toHaveLength(0);
+    store.undo();
+    expect(store.doc.lfos).toHaveLength(1);
+  });
+
+  it("macros start at neutral and mappings apply bipolar offsets", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    const trackId = doc.tracks[0].id;
+    expect(store.doc.macros).toHaveLength(4);
+    expect(store.doc.macros.every((m) => m.value === 0.5)).toBe(true);
+    const macro = store.doc.macros[0];
+    store.execute(addMacroMapping(store.doc, macro.id, trackId, "gain"));
+    const mappingId = store.doc.macros[0].mappings[0].id;
+    store.execute(setMacroMappingAmount(store.doc, macro.id, mappingId, 1));
+    store.execute(setMacroValue(store.doc, macro.id, 1));
+    expect(store.doc.macros[0].value).toBe(1);
+    store.undo();
+    expect(store.doc.macros[0].value).toBe(0.5);
+    store.execute(setMacroValue(store.doc, macro.id, 5));
+    expect(store.doc.macros[0].value).toBe(1);
+  });
+
+  it("default project ships a scene, an arrangement clip and neutral macros", () => {
+    const doc = createDefaultProject();
+    expect(doc.scenes).toHaveLength(1);
+    expect(doc.scenes[0].patternId).toBe(doc.activePatternId);
+    expect(doc.arrangement.clips).toHaveLength(1);
+    expect(doc.arrangement.clips[0].startBar).toBe(0);
+    expect(doc.macros).toHaveLength(4);
+    expect(doc.automation).toHaveLength(0);
+    expect(doc.lfos).toHaveLength(0);
   });
 });
 

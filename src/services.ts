@@ -6,7 +6,7 @@ import { ProjectRepository } from "./persistence/ProjectRepository";
 import { generateFactoryBank } from "./sample-library/factory";
 import { createDefaultProject, migrateProject, validateProjectShape } from "./project-model/schema";
 import { PPQ } from "./project-model/types";
-import type { ProjectDocument } from "./project-model/types";
+import type { PlayMode, ProjectDocument } from "./project-model/types";
 
 export interface Services {
   store: ProjectStore;
@@ -24,7 +24,16 @@ export class PlaybackController {
     private engine: AudioEngine,
     private transport: Transport,
     private scheduler: Scheduler,
+    private modeRef: { mode: PlayMode },
   ) {}
+
+  setMode(mode: PlayMode): void {
+    this.modeRef.mode = mode;
+  }
+
+  get mode(): PlayMode {
+    return this.modeRef.mode;
+  }
 
   playPause(): void {
     this.engine.ensureContext();
@@ -44,6 +53,7 @@ export class PlaybackController {
   stop(): void {
     this.scheduler.stop();
     this.engine.panic();
+    this.engine.automationReset();
     this.transport.stop();
   }
 }
@@ -65,15 +75,19 @@ export async function createServices(): Promise<Services> {
 
   const store = new ProjectStore(initial);
   const transport = new Transport({ now: () => engine.currentTime }, initial.bpm);
+  const modeRef: { mode: PlayMode } = { mode: "pattern" };
   const scheduler = new Scheduler({
     getProject: () => store.doc,
     getTransport: () => transport,
     getAudioTime: () => engine.currentTime,
+    getMode: () => modeRef.mode,
     trigger: (trackId, pad, when, velocity) => engine.trigger(trackId, pad, when, velocity),
     noteOn: (trackId, pitch, velocity, when, durationSec) =>
       engine.noteOn(trackId, pitch, velocity, when, durationSec),
+    applyAutomation: (fromTick, toTick, relOf) => engine.applyAutomation(fromTick, toTick, relOf),
   });
   engine.setProject(store.doc);
+  const playback = new PlaybackController(engine, transport, scheduler, modeRef);
 
   const repo = new ProjectRepository();
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -101,12 +115,11 @@ export async function createServices(): Promise<Services> {
     saveTimer = setTimeout(() => void flushSave(), 800);
   };
 
-  const playback = new PlaybackController(engine, transport, scheduler);
-
   const getDiagnostics = (): Record<string, string | number | boolean> => {
     const engineDiag = engine.getDiagnostics();
     return {
       ...engineDiag,
+      playMode: playback.mode,
       bpm: transport.bpm,
       transportPlaying: transport.playing,
       transportTick: Math.round(transport.position),

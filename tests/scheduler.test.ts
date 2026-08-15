@@ -75,23 +75,28 @@ describe("schema migration", () => {
 });
 
 describe("scheduler", () => {
-  function makeHarness(doc: ProjectDocument) {
+  function makeHarness(doc: ProjectDocument, mode: "pattern" | "song" = "pattern") {
     const events: { trackId: string; padId: string; when: number; velocity: number }[] = [];
     const noteEvents: { trackId: string; pitch: number; velocity: number; when: number; durationSec: number }[] = [];
+    const automationCalls: { from: number; to: number }[] = [];
     let audioTime = 10;
     const transport = new Transport({ now: () => audioTime }, doc.bpm);
     const scheduler = new Scheduler({
       getProject: () => doc,
       getTransport: () => transport,
       getAudioTime: () => audioTime,
+      getMode: () => mode,
       trigger: (trackId: string, pad: DrumPad, when: number, velocity: number) => {
         events.push({ trackId, padId: pad.id, when, velocity });
       },
       noteOn: (trackId: string, pitch: number, velocity: number, when: number, durationSec: number) => {
         noteEvents.push({ trackId, pitch, velocity, when, durationSec });
       },
+      applyAutomation: (from: number, to: number) => {
+        automationCalls.push({ from, to });
+      },
     });
-    return { events, noteEvents, transport, scheduler, advance: (seconds: number) => (audioTime += seconds) };
+    return { events, noteEvents, automationCalls, transport, scheduler, advance: (seconds: number) => (audioTime += seconds) };
   }
 
   it("schedules the starter groove ahead of the playhead", () => {
@@ -237,6 +242,129 @@ describe("scheduler", () => {
     expect(noteEvents.length).toBeGreaterThanOrEqual(7);
     const wrapped = noteEvents[4];
     expect(wrapped.when).toBeGreaterThan(10 + beats - 0.1);
+    scheduler.stop();
+  });
+
+  it("song mode plays the arrangement: clips switch patterns at their boundaries", () => {
+    const closeToGrid = (value: number, unit: number) => {
+      const remainder = ((value % unit) + unit) % unit;
+      const distance = Math.min(remainder, unit - remainder);
+      expect(distance).toBeLessThan(0.001);
+    };
+    const doc = createDefaultProject();
+    const grooveScene = doc.scenes[0];
+    const patternB = {
+      ...doc.patterns[0],
+      id: "pattern-b",
+      name: "Pattern B",
+      rows: { ...doc.patterns[0].rows },
+      notes: {},
+    };
+    const kick = getDrumTrack(doc).pads[0];
+    patternB.rows[kick.id] = new Array(16).fill(0).map((_, i) => (i === 0 || i === 8 ? 0.9 : 0));
+    const sceneB = { id: "scene-b", name: "Break", patternId: patternB.id };
+    const withSong: ProjectDocument = {
+      ...doc,
+      patterns: [...doc.patterns, patternB],
+      scenes: [...doc.scenes, sceneB],
+      arrangement: {
+        clips: [
+          { id: "clip-1", sceneId: grooveScene.id, startBar: 0, lengthBars: 2 },
+          { id: "clip-2", sceneId: sceneB.id, startBar: 2, lengthBars: 2 },
+        ],
+      },
+    };
+    const { events, transport, scheduler, advance } = makeHarness(withSong, "song");
+    transport.play(0);
+    scheduler.start();
+    for (let i = 0; i < 200; i++) {
+      advance(0.025);
+      scheduler["tick"]();
+    }
+    const kickTimes = events.filter((e) => e.padId === kick.id).map((e) => e.when);
+    expect(kickTimes.length).toBeGreaterThanOrEqual(6);
+    const beatSec = 60 / withSong.bpm;
+    const barSec = beatSec * 4;
+    const boundary = 10 + 2 * barSec;
+    const beforeBoundary = kickTimes.filter((t) => t < boundary - 0.01);
+    const afterBoundary = kickTimes.filter((t) => t >= boundary - 0.01);
+    expect(beforeBoundary.length).toBeGreaterThanOrEqual(4);
+    expect(afterBoundary.length).toBeGreaterThanOrEqual(2);
+    for (const t of beforeBoundary) {
+      closeToGrid(t - 10, beatSec);
+    }
+    for (const t of afterBoundary) {
+      closeToGrid(t - boundary, beatSec * 2);
+    }
+    scheduler.stop();
+  });
+
+  it("song mode is silent in gaps between clips", () => {
+    const doc = createDefaultProject();
+    const scene = doc.scenes[0];
+    const withGap: ProjectDocument = {
+      ...doc,
+      arrangement: {
+        clips: [
+          { id: "clip-1", sceneId: scene.id, startBar: 0, lengthBars: 1 },
+          { id: "clip-2", sceneId: scene.id, startBar: 3, lengthBars: 1 },
+        ],
+      },
+    };
+    const { events, transport, scheduler, advance } = makeHarness(withGap, "song");
+    transport.play(0);
+    scheduler.start();
+    for (let i = 0; i < 140; i++) {
+      advance(0.025);
+      scheduler["tick"]();
+    }
+    const beatSec = 60 / withGap.bpm;
+    const barSec = beatSec * 4;
+    const gapStart = 10 + barSec;
+    const gapEnd = 10 + 3 * barSec;
+    const inGap = events.filter((e) => e.when >= gapStart + 0.01 && e.when < gapEnd - 0.01);
+    expect(inGap).toHaveLength(0);
+    scheduler.stop();
+  });
+
+  it("song mode loops a short pattern inside a longer clip", () => {
+    const doc = createDefaultProject();
+    const scene = doc.scenes[0];
+    const withLongClip: ProjectDocument = {
+      ...doc,
+      arrangement: { clips: [{ id: "clip-1", sceneId: scene.id, startBar: 0, lengthBars: 3 }] },
+    };
+    const { events, transport, scheduler, advance } = makeHarness(withLongClip, "song");
+    transport.play(0);
+    scheduler.start();
+    for (let i = 0; i < 300; i++) {
+      advance(0.025);
+      scheduler["tick"]();
+    }
+    const kick = getDrumTrack(doc).pads[0];
+    const kickTimes = events.filter((e) => e.padId === kick.id).map((e) => e.when);
+    const beatSec = 60 / withLongClip.bpm;
+    const patternSec = beatSec * 4;
+    expect(kickTimes.length).toBeGreaterThanOrEqual(10);
+    const secondLoop = kickTimes.find((t) => t > 10 + patternSec + 0.01);
+    expect(secondLoop).toBeDefined();
+    expect(secondLoop! - (10 + patternSec)).toBeLessThan(beatSec + 0.001);
+    scheduler.stop();
+  });
+
+  it("automation hook is called once per window in pattern mode", () => {
+    const doc = createDefaultProject();
+    const { automationCalls, transport, scheduler, advance } = makeHarness(doc);
+    transport.play(0);
+    scheduler.start();
+    for (let i = 0; i < 8; i++) {
+      advance(0.025);
+      scheduler["tick"]();
+    }
+    expect(automationCalls.length).toBeGreaterThanOrEqual(6);
+    for (const call of automationCalls) {
+      expect(call.to).toBeGreaterThan(call.from);
+    }
     scheduler.stop();
   });
 

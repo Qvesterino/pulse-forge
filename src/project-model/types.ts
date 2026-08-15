@@ -78,6 +78,72 @@ export interface Pattern {
   notes: Record<ID, NoteEvent[]>;
 }
 
+export type PlayMode = "pattern" | "song";
+
+export interface Scene {
+  id: ID;
+  name: string;
+  patternId: ID;
+}
+
+export interface ArrangementClip {
+  id: ID;
+  sceneId: ID;
+  startBar: number;
+  lengthBars: number;
+}
+
+export interface Arrangement {
+  clips: ArrangementClip[];
+}
+
+export type AutomationParamKind = "trackGain" | "trackPan" | "fxParam" | "instParam";
+
+export interface AutomationTarget {
+  kind: AutomationParamKind;
+  trackId: ID;
+  fxId?: ID;
+  paramId?: string;
+}
+
+export interface AutomationPoint {
+  tick: number;
+  value: number;
+}
+
+export interface AutomationLane {
+  id: ID;
+  target: AutomationTarget;
+  points: AutomationPoint[];
+}
+
+export type LfoWave = "sine" | "triangle" | "square" | "sawUp" | "sawDown";
+
+export interface Lfo {
+  id: ID;
+  trackId: ID;
+  param: "gain" | "pan";
+  wave: LfoWave;
+  rateMode: "hz" | "sync";
+  rateHz: number;
+  division: number;
+  amount: number;
+}
+
+export interface MacroMapping {
+  id: ID;
+  trackId: ID;
+  param: "gain" | "pan";
+  amount: number;
+}
+
+export interface Macro {
+  id: ID;
+  name: string;
+  value: number;
+  mappings: MacroMapping[];
+}
+
 export interface ProjectDocument {
   schemaVersion: number;
   id: ID;
@@ -87,6 +153,11 @@ export interface ProjectDocument {
   tracks: Track[];
   patterns: Pattern[];
   activePatternId: ID;
+  scenes: Scene[];
+  arrangement: Arrangement;
+  automation: AutomationLane[];
+  lfos: Lfo[];
+  macros: Macro[];
   createdAt: string;
   updatedAt: string;
 }

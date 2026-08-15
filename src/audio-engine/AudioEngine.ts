@@ -1,4 +1,6 @@
 import type { DrumPad, InstrumentTrack, ProjectDocument } from "../project-model/types";
+import type { Lfo } from "../project-model/types";
+import { valueAt } from "../project-model/automation";
 import type { SampleBank } from "../sample-library/factory";
 import { EFFECT_DEFS } from "../effects/registry";
 import type { EffectRuntime } from "../effects/types";
@@ -9,6 +11,10 @@ interface TrackNodes {
   input: GainNode;
   panner: StereoPannerNode;
   gain: GainNode;
+  modAutoGain: GainNode;
+  modAutoPan: StereoPannerNode;
+  modMacroGain: GainNode;
+  modMacroPan: StereoPannerNode;
   analyser: AnalyserNode;
   fx: FxChainState;
 }
@@ -23,6 +29,18 @@ interface InstrumentState {
   runtime: InstrumentRuntime;
   params: Record<string, number>;
   sampleId: string | null;
+}
+
+interface LfoRuntimeState {
+  osc: OscillatorNode;
+  depth: GainNode;
+  signature: string;
+}
+
+const LFO_DIVISION_MULTS = [1 / 4, 1 / 2, 1, 2, 4];
+
+function lfoSignature(lfo: Lfo): string {
+  return [lfo.trackId, lfo.param, lfo.wave, lfo.rateMode, lfo.rateHz, lfo.division, lfo.amount].join("|");
 }
 
 interface Voice {
@@ -40,6 +58,8 @@ export class AudioEngine {
   private doc: ProjectDocument | null = null;
   private trackNodes = new Map<string, TrackNodes>();
   private instruments = new Map<string, InstrumentState>();
+  private lfos = new Map<string, LfoRuntimeState>();
+  private macroCache = new Map<string, { gain: number; pan: number }>();
   private voices = new Set<Voice>();
   private missedAssets = new Set<string>();
   private levelBuf = new Float32Array(1024);
@@ -165,13 +185,33 @@ export class AudioEngine {
         const input = ctx.createGain();
         const panner = ctx.createStereoPanner();
         const gain = ctx.createGain();
+        const modAutoGain = ctx.createGain();
+        modAutoGain.gain.value = 1;
+        const modAutoPan = ctx.createStereoPanner();
+        const modMacroGain = ctx.createGain();
+        modMacroGain.gain.value = 1;
+        const modMacroPan = ctx.createStereoPanner();
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 2048;
         input.connect(panner);
         panner.connect(gain);
-        gain.connect(this.master);
-        gain.connect(analyser);
-        nodes = { input, panner, gain, analyser, fx: { runtimes: new Map(), params: new Map(), signature: "" } };
+        gain.connect(modAutoGain);
+        modAutoGain.connect(modAutoPan);
+        modAutoPan.connect(modMacroGain);
+        modMacroGain.connect(modMacroPan);
+        modMacroPan.connect(this.master);
+        modMacroPan.connect(analyser);
+        nodes = {
+          input,
+          panner,
+          gain,
+          modAutoGain,
+          modAutoPan,
+          modMacroGain,
+          modMacroPan,
+          analyser,
+          fx: { runtimes: new Map(), params: new Map(), signature: "" },
+        };
         this.trackNodes.set(track.id, nodes);
       }
       const sig = this.fxSignature(track);
@@ -189,6 +229,9 @@ export class AudioEngine {
       const audible = !track.mute && (!anySolo || track.solo);
       nodes.gain.gain.setTargetAtTime(audible ? track.gain : 0, now, 0.01);
     }
+
+    this.syncLfos(doc);
+    this.syncMacros(doc);
 
     if (this.syncedBpm !== doc.bpm) {
       this.syncedBpm = doc.bpm;
@@ -230,6 +273,136 @@ export class AudioEngine {
   previewNote(trackId: string, pitch: number): void {
     const ctx = this.ensureContext();
     this.noteOn(trackId, pitch, 1, ctx.currentTime + 0.005, 0.25);
+  }
+
+  private lfoFrequency(lfo: Lfo): number {
+    if (lfo.rateMode === "hz") return Math.max(0.01, lfo.rateHz);
+    const bpm = this.doc?.bpm ?? 124;
+    const mult = LFO_DIVISION_MULTS[Math.max(0, Math.min(LFO_DIVISION_MULTS.length - 1, Math.round(lfo.division)))];
+    return Math.max(0.01, (bpm / 60) * mult);
+  }
+
+  private syncLfos(doc: ProjectDocument): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const liveIds = new Set(doc.lfos.map((l) => l.id));
+    for (const [id, state] of [...this.lfos]) {
+      if (!liveIds.has(id)) {
+        try {
+          state.osc.stop();
+        } catch {
+          // not started
+        }
+        state.osc.disconnect();
+        state.depth.disconnect();
+        this.lfos.delete(id);
+      }
+    }
+    for (const lfo of doc.lfos) {
+      const nodes = this.trackNodes.get(lfo.trackId);
+      if (!nodes) continue;
+      const sig = lfoSignature(lfo);
+      const existing = this.lfos.get(lfo.id);
+      if (existing && existing.signature === sig) continue;
+      if (existing) {
+        try {
+          existing.osc.stop();
+        } catch {
+          // not started
+        }
+        existing.osc.disconnect();
+        existing.depth.disconnect();
+      }
+      const osc = ctx.createOscillator();
+      osc.type = lfo.wave === "sawUp" || lfo.wave === "sawDown" ? "sawtooth" : lfo.wave;
+      osc.frequency.value = this.lfoFrequency(lfo);
+      const depth = ctx.createGain();
+      const sign = lfo.wave === "sawDown" ? -1 : 1;
+      depth.gain.value = sign * lfo.amount * (lfo.param === "gain" ? 1 : 1);
+      const targetParam = lfo.param === "gain" ? nodes.modAutoGain.gain : nodes.modAutoPan.pan;
+      osc.connect(depth).connect(targetParam);
+      osc.start();
+      this.lfos.set(lfo.id, { osc, depth, signature: sig });
+    }
+  }
+
+  private syncMacros(doc: ProjectDocument): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const next = new Map<string, { gain: number; pan: number }>();
+    for (const track of doc.tracks) {
+      next.set(track.id, { gain: 1, pan: 0 });
+    }
+    for (const macro of doc.macros) {
+      const bipolar = macro.value * 2 - 1;
+      for (const mapping of macro.mappings) {
+        const acc = next.get(mapping.trackId);
+        if (!acc) continue;
+        if (mapping.param === "gain") acc.gain += mapping.amount * bipolar;
+        else acc.pan += mapping.amount * bipolar;
+      }
+    }
+    for (const [trackId, offsets] of next) {
+      const gain = Math.max(0, offsets.gain);
+      const pan = Math.min(1, Math.max(-1, offsets.pan));
+      const cached = this.macroCache.get(trackId);
+      if (cached && cached.gain === gain && cached.pan === pan) continue;
+      const nodes = this.trackNodes.get(trackId);
+      if (nodes) {
+        nodes.modMacroGain.gain.setTargetAtTime(gain, ctx.currentTime, 0.01);
+        nodes.modMacroPan.pan.setTargetAtTime(pan, ctx.currentTime, 0.01);
+      }
+      this.macroCache.set(trackId, { gain, pan });
+    }
+    for (const trackId of [...this.macroCache.keys()]) {
+      if (!next.has(trackId)) this.macroCache.delete(trackId);
+    }
+  }
+
+  applyAutomation(fromTick: number, toTick: number, relOf: (tick: number) => number): void {
+    const ctx = this.ctx;
+    const doc = this.doc;
+    if (!ctx || !doc || doc.automation.length === 0) return;
+    const t0 = ctx.currentTime;
+    const t1 = Math.max(t0, this.currentTime + 0.1);
+    for (const lane of doc.automation) {
+      if (lane.points.length === 0) continue;
+      const v0 = valueAt(lane.points, relOf(fromTick), 1);
+      const v1 = valueAt(lane.points, relOf(toTick), 1);
+      const nodes = this.trackNodes.get(lane.target.trackId);
+      if (!nodes) continue;
+      switch (lane.target.kind) {
+        case "trackGain":
+          nodes.modAutoGain.gain.setTargetAtTime(Math.max(0, Math.min(2, v0)), t0, 0.008);
+          nodes.modAutoGain.gain.setTargetAtTime(Math.max(0, Math.min(2, v1)), t1, 0.008);
+          break;
+        case "trackPan":
+          nodes.modAutoPan.pan.setTargetAtTime(Math.min(1, Math.max(-1, v0)), t0, 0.008);
+          nodes.modAutoPan.pan.setTargetAtTime(Math.min(1, Math.max(-1, v1)), t1, 0.008);
+          break;
+        case "fxParam": {
+          if (!lane.target.fxId || !lane.target.paramId) break;
+          const rt = nodes.fx.runtimes.get(lane.target.fxId);
+          rt?.setParameter(lane.target.paramId, v0);
+          break;
+        }
+        case "instParam": {
+          if (!lane.target.paramId) break;
+          this.instruments.get(lane.target.trackId)?.runtime.setParameter(lane.target.paramId, v0);
+          break;
+        }
+      }
+    }
+  }
+
+  automationReset(): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    for (const nodes of this.trackNodes.values()) {
+      nodes.modAutoGain.gain.setTargetAtTime(1, now, 0.01);
+      nodes.modAutoPan.pan.setTargetAtTime(0, now, 0.01);
+    }
   }
 
   trigger(trackId: string, pad: DrumPad, when: number, velocity: number): void {
@@ -329,6 +502,8 @@ export class AudioEngine {
       loadedSamples: this.bank?.size ?? 0,
       activeEffects: effectCount,
       activeInstruments: this.instruments.size,
+      activeLfos: this.lfos.size,
+      automationLanes: this.doc?.automation.length ?? 0,
       missingAssets: this.missingAssets.join(", ") || "none",
     };
   }

@@ -188,5 +188,70 @@ export async function runChecks(): Promise<CheckResult[]> {
     check("sampler plays transposed sample from C4 root", false, String(error));
   }
 
+  try {
+    const ctx = new OfflineAudioContext(1, SR * 2, SR);
+    const source = ctx.createOscillator();
+    source.type = "sine";
+    source.frequency.value = 220;
+    const modGain = ctx.createGain();
+    modGain.gain.value = 1;
+    const lfo = ctx.createOscillator();
+    lfo.type = "sine";
+    lfo.frequency.value = 2;
+    const depth = ctx.createGain();
+    depth.gain.value = 0.8;
+    lfo.connect(depth).connect(modGain.gain);
+    source.connect(modGain).connect(ctx.destination);
+    source.start(0);
+    lfo.start(0);
+    const buffer = await ctx.startRendering();
+    const data = buffer.getChannelData(0);
+    const rmsBlocks: number[] = [];
+    for (let i = 0; i + 2048 <= data.length; i += 2048) {
+      let sum = 0;
+      for (let j = 0; j < 2048; j++) sum += data[i + j] * data[i + j];
+      rmsBlocks.push(Math.sqrt(sum / 2048));
+    }
+    const maxRms = Math.max(...rmsBlocks);
+    const minRms = Math.min(...rmsBlocks);
+    check(
+      "LFO modulates gain at audio rate",
+      maxRms / Math.max(minRms, 1e-9) > 2,
+      `max=${maxRms.toFixed(3)} min=${minRms.toFixed(3)} ratio=${(maxRms / Math.max(minRms, 1e-9)).toFixed(2)}`,
+    );
+  } catch (error) {
+    check("LFO modulates gain at audio rate", false, String(error));
+  }
+
+  try {
+    const ctx = new OfflineAudioContext(1, SR * 2, SR);
+    const source = ctx.createOscillator();
+    source.type = "sine";
+    source.frequency.value = 220;
+    const autoGain = ctx.createGain();
+    autoGain.gain.setValueAtTime(1, 0);
+    for (let t = 0; t <= 1.0; t += 0.025) {
+      autoGain.gain.setTargetAtTime(Math.max(0, 1 - t), t, 0.008);
+    }
+    source.connect(autoGain).connect(ctx.destination);
+    source.start(0);
+    const buffer = await ctx.startRendering();
+    const data = buffer.getChannelData(0);
+    const rms = (from: number, to: number) => {
+      let sum = 0;
+      for (let i = from; i < to; i++) sum += data[i] * data[i];
+      return Math.sqrt(sum / Math.max(1, to - from));
+    };
+    const early = rms(Math.floor(SR * 0.05), Math.floor(SR * 0.2));
+    const late = rms(Math.floor(SR * 1.5), Math.floor(SR * 1.95));
+    check(
+      "automation ramps track level over time",
+      early / Math.max(late, 1e-9) > 8,
+      `early=${early.toFixed(3)} late=${late.toFixed(3)} ratio=${(early / Math.max(late, 1e-9)).toFixed(1)}`,
+    );
+  } catch (error) {
+    check("automation ramps track level over time", false, String(error));
+  }
+
   return results;
 }

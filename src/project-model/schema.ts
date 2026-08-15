@@ -1,4 +1,4 @@
-import type { DrumPad, DrumTrack, InstrumentKind, InstrumentTrack, Pattern, ProjectDocument } from "./types";
+import type { DrumPad, DrumTrack, InstrumentKind, InstrumentTrack, Macro, Pattern, ProjectDocument, Scene } from "./types";
 import { PPQ, STEPS_PER_PATTERN } from "./types";
 import { uid } from "../shared/ids";
 import { defaultInstrumentParams } from "../instruments/registry";
@@ -157,6 +157,7 @@ export function createDefaultProject(): ProjectDocument {
     track.pads,
   );
   const now = new Date().toISOString();
+  const scene: Scene = { id: uid("scene"), name: "Groove", patternId: pattern.id };
   return {
     schemaVersion: SCHEMA_VERSION,
     id: uid("project"),
@@ -166,9 +167,23 @@ export function createDefaultProject(): ProjectDocument {
     tracks: [track, bass],
     patterns: [pattern],
     activePatternId: pattern.id,
+    scenes: [scene],
+    arrangement: { clips: [{ id: uid("clip"), sceneId: scene.id, startBar: 0, lengthBars: 4 }] },
+    automation: [],
+    lfos: [],
+    macros: defaultMacros(),
     createdAt: now,
     updatedAt: now,
   };
+}
+
+export function defaultMacros(): Macro[] {
+  return ["A", "B", "C", "D"].map((letter) => ({
+    id: uid("macro"),
+    name: `MACRO ${letter}`,
+    value: 0.5,
+    mappings: [],
+  }));
 }
 
 export function normalizeProject(doc: ProjectDocument): ProjectDocument {
@@ -203,7 +218,68 @@ export function normalizeProject(doc: ProjectDocument): ProjectDocument {
   });
   const withTracks = changed ? { ...doc, tracks } : doc;
 
-  const patterns = withTracks.patterns.map((pattern) => {
+  const patternIds = new Set(withTracks.patterns.map((p) => p.id));
+  const trackIds = new Set(withTracks.tracks.map((t) => t.id));
+  let scenes: Scene[] = withTracks.scenes ?? [];
+  if (scenes === undefined) {
+    scenes = [{ id: uid("scene"), name: "Scene A", patternId: withTracks.activePatternId }];
+    changed = true;
+  }
+  let validScenes = scenes;
+  const filteredScenes = scenes.filter((s) => patternIds.has(s.patternId));
+  if (filteredScenes.length !== scenes.length) {
+    validScenes = filteredScenes;
+    changed = true;
+  }
+  const sceneIds = new Set(validScenes.map((s) => s.id));
+
+  let arrangement = withTracks.arrangement;
+  if (arrangement === undefined) {
+    arrangement = { clips: [] };
+    changed = true;
+  }
+  const sortedClips = [...arrangement.clips]
+    .filter((c) => sceneIds.has(c.sceneId) && c.startBar >= 0 && c.lengthBars >= 1)
+    .sort((a, b) => a.startBar - b.startBar);
+  if (
+    sortedClips.length !== arrangement.clips.length ||
+    sortedClips.some((c, i) => c !== arrangement.clips[i])
+  ) {
+    arrangement = { clips: sortedClips };
+    changed = true;
+  }
+
+  let automation = withTracks.automation ?? [];
+  if (withTracks.automation === undefined) changed = true;
+  const filteredAutomation = automation.filter((lane) => trackIds.has(lane.target.trackId));
+  if (filteredAutomation.length !== automation.length) {
+    automation = filteredAutomation;
+    changed = true;
+  }
+  let lfos = withTracks.lfos ?? [];
+  if (withTracks.lfos === undefined) changed = true;
+  const filteredLfos = lfos.filter((lfo) => trackIds.has(lfo.trackId));
+  if (filteredLfos.length !== lfos.length) {
+    lfos = filteredLfos;
+    changed = true;
+  }
+
+  let macros = withTracks.macros;
+  if (!Array.isArray(macros) || macros.length === 0) {
+    macros = defaultMacros();
+    changed = true;
+  }
+
+  const withComposition: ProjectDocument =
+    scenes !== withTracks.scenes ||
+    arrangement !== withTracks.arrangement ||
+    automation !== withTracks.automation ||
+    lfos !== withTracks.lfos ||
+    macros !== withTracks.macros
+      ? { ...withTracks, scenes, arrangement, automation, lfos, macros }
+      : withTracks;
+
+  const patterns = withComposition.patterns.map((pattern) => {
     let next = pattern;
     if (next.notes === undefined) {
       next = { ...next, notes: {} };
@@ -224,7 +300,7 @@ export function normalizeProject(doc: ProjectDocument): ProjectDocument {
     if (rows !== next.rows) next = { ...next, rows };
     return next;
   });
-  return changed ? { ...withTracks, patterns } : withTracks;
+  return changed ? { ...withComposition, patterns } : withComposition;
 }
 
 export const ensurePatternRows = normalizeProject;

@@ -1,7 +1,23 @@
 import type { Command } from "./types";
-import type { DrumPad, DrumTrack, EffectInstance, EffectType, InstrumentKind, InstrumentTrack, NoteEvent, ProjectDocument } from "../project-model/types";
+import type {
+  ArrangementClip,
+  AutomationLane,
+  AutomationTarget,
+  DrumPad,
+  DrumTrack,
+  EffectInstance,
+  EffectType,
+  InstrumentKind,
+  InstrumentTrack,
+  Lfo,
+  Macro,
+  NoteEvent,
+  ProjectDocument,
+  Scene,
+} from "../project-model/types";
 import { STEP_TICKS } from "../project-model/types";
 import { setStepVelocity, withPad, withDrumTrack } from "../project-model/transform";
+import { insertPointSorted } from "../project-model/automation";
 import {
   createDrumTrackModel,
   createInstrumentTrackModel,
@@ -407,6 +423,326 @@ export function setInstrumentSample(doc: ProjectDocument, trackId: string, asset
     execute: (d) => apply(d, assetId),
     undo: (d) => apply(d, prev),
   };
+}
+
+/* ---------------- scenes ---------------- */
+
+export function createScene(doc: ProjectDocument, name?: string): Command {
+  const scene: Scene = {
+    id: uid("scene"),
+    name: name ?? `Scene ${patternLetter(doc.scenes.length)}`,
+    patternId: doc.activePatternId,
+  };
+  const next: ProjectDocument = { ...doc, scenes: [...doc.scenes, scene] };
+  return snapshot("createScene", `Add ${scene.name}`, doc, next);
+}
+
+export function renameScene(doc: ProjectDocument, sceneId: string, name: string): Command {
+  const prev = doc.scenes.find((s) => s.id === sceneId)?.name ?? "";
+  const next = { ...doc, scenes: doc.scenes.map((s) => (s.id === sceneId ? { ...s, name } : s)) };
+  return {
+    type: "renameScene",
+    label: `Rename scene to "${name}"`,
+    execute: () => next,
+    undo: (d) => ({ ...d, scenes: d.scenes.map((s) => (s.id === sceneId ? { ...s, name: prev } : s)) }),
+  };
+}
+
+export function setScenePattern(doc: ProjectDocument, sceneId: string, patternId: string): Command {
+  const prev = doc.scenes.find((s) => s.id === sceneId)?.patternId ?? "";
+  const apply = (d: ProjectDocument, v: string): ProjectDocument => ({
+    ...d,
+    scenes: d.scenes.map((s) => (s.id === sceneId ? { ...s, patternId: v } : s)),
+  });
+  return {
+    type: "setScenePattern",
+    label: "Set scene pattern",
+    execute: (d) => apply(d, patternId),
+    undo: (d) => apply(d, prev),
+  };
+}
+
+export function deleteScene(doc: ProjectDocument, sceneId: string): Command {
+  const target = doc.scenes.find((s) => s.id === sceneId);
+  if (!target) throw new Error(`Scene ${sceneId} not found`);
+  const next: ProjectDocument = {
+    ...doc,
+    scenes: doc.scenes.filter((s) => s.id !== sceneId),
+    arrangement: { clips: doc.arrangement.clips.filter((c) => c.sceneId !== sceneId) },
+  };
+  return snapshot("deleteScene", `Delete scene ${target.name}`, doc, next);
+}
+
+/* ---------------- arrangement ---------------- */
+
+function clipsOverlap(clips: ArrangementClip[], ignoreId: string | null, startBar: number, lengthBars: number): boolean {
+  const endBar = startBar + lengthBars;
+  return clips.some((c) => {
+    if (c.id === ignoreId) return false;
+    return startBar < c.startBar + c.lengthBars && c.startBar < endBar;
+  });
+}
+
+export function addArrangementClip(doc: ProjectDocument, sceneId: string, startBar: number, lengthBars = 4): Command {
+  const scene = doc.scenes.find((s) => s.id === sceneId);
+  if (!scene) throw new Error(`Scene ${sceneId} not found`);
+  if (clipsOverlap(doc.arrangement.clips, null, startBar, lengthBars)) {
+    throw new Error(`Clip overlaps an existing clip at bar ${startBar + 1}`);
+  }
+  const clip: ArrangementClip = { id: uid("clip"), sceneId, startBar, lengthBars };
+  const next: ProjectDocument = {
+    ...doc,
+    arrangement: { clips: [...doc.arrangement.clips, clip].sort((a, b) => a.startBar - b.startBar) },
+  };
+  return snapshot("addArrangementClip", `Place ${scene.name} at bar ${startBar + 1}`, doc, next);
+}
+
+export function moveArrangementClip(doc: ProjectDocument, clipId: string, startBar: number): Command {
+  const clip = doc.arrangement.clips.find((c) => c.id === clipId);
+  if (!clip) throw new Error(`Clip ${clipId} not found`);
+  const bar = Math.max(0, Math.round(startBar));
+  if (clipsOverlap(doc.arrangement.clips, clipId, bar, clip.lengthBars)) {
+    throw new Error(`Clip overlaps an existing clip at bar ${bar + 1}`);
+  }
+  const next: ProjectDocument = {
+    ...doc,
+    arrangement: {
+      clips: doc.arrangement.clips
+        .map((c) => (c.id === clipId ? { ...c, startBar: bar } : c))
+        .sort((a, b) => a.startBar - b.startBar),
+    },
+  };
+  return snapshot("moveArrangementClip", `Move clip to bar ${bar + 1}`, doc, next);
+}
+
+export function resizeArrangementClip(doc: ProjectDocument, clipId: string, lengthBars: number): Command {
+  const clip = doc.arrangement.clips.find((c) => c.id === clipId);
+  if (!clip) throw new Error(`Clip ${clipId} not found`);
+  const bars = Math.max(1, Math.round(lengthBars));
+  if (clipsOverlap(doc.arrangement.clips, clipId, clip.startBar, bars)) {
+    throw new Error(`Clip would overlap the next clip`);
+  }
+  const next: ProjectDocument = {
+    ...doc,
+    arrangement: { clips: doc.arrangement.clips.map((c) => (c.id === clipId ? { ...c, lengthBars: bars } : c)) },
+  };
+  return snapshot("resizeArrangementClip", `Resize clip to ${bars} bars`, doc, next);
+}
+
+export function deleteArrangementClip(doc: ProjectDocument, clipId: string): Command {
+  const next: ProjectDocument = {
+    ...doc,
+    arrangement: { clips: doc.arrangement.clips.filter((c) => c.id !== clipId) },
+  };
+  return snapshot("deleteArrangementClip", "Delete clip", doc, next);
+}
+
+export function duplicateArrangementClip(doc: ProjectDocument, clipId: string): Command {
+  const clip = doc.arrangement.clips.find((c) => c.id === clipId);
+  if (!clip) throw new Error(`Clip ${clipId} not found`);
+  let startBar = clip.startBar + clip.lengthBars;
+  while (clipsOverlap(doc.arrangement.clips, null, startBar, clip.lengthBars)) startBar += clip.lengthBars;
+  const copy: ArrangementClip = { id: uid("clip"), sceneId: clip.sceneId, startBar, lengthBars: clip.lengthBars };
+  const next: ProjectDocument = {
+    ...doc,
+    arrangement: { clips: [...doc.arrangement.clips, copy].sort((a, b) => a.startBar - b.startBar) },
+  };
+  return snapshot("duplicateArrangementClip", "Duplicate clip", doc, next);
+}
+
+/* ---------------- automation ---------------- */
+
+export function automationLaneOf(doc: ProjectDocument, laneId: string): AutomationLane | undefined {
+  return doc.automation.find((l) => l.id === laneId);
+}
+
+export function addAutomationLane(doc: ProjectDocument, target: AutomationTarget): Command {
+  const exists = doc.automation.some(
+    (l) =>
+      l.target.kind === target.kind &&
+      l.target.trackId === target.trackId &&
+      l.target.fxId === target.fxId &&
+      l.target.paramId === target.paramId,
+  );
+  if (exists) throw new Error("Automation lane for this target already exists");
+  const lane: AutomationLane = { id: uid("lane"), target, points: [] };
+  const next: ProjectDocument = { ...doc, automation: [...doc.automation, lane] };
+  return snapshot("addAutomationLane", "Add automation lane", doc, next);
+}
+
+export function removeAutomationLane(doc: ProjectDocument, laneId: string): Command {
+  const next: ProjectDocument = { ...doc, automation: doc.automation.filter((l) => l.id !== laneId) };
+  return snapshot("removeAutomationLane", "Remove automation lane", doc, next);
+}
+
+function withLane(doc: ProjectDocument, laneId: string, fn: (lane: AutomationLane) => AutomationLane): ProjectDocument {
+  return { ...doc, automation: doc.automation.map((l) => (l.id === laneId ? fn(l) : l)) };
+}
+
+export function addAutomationPoint(doc: ProjectDocument, laneId: string, tick: number, value: number): Command {
+  const lane = automationLaneOf(doc, laneId);
+  if (!lane) throw new Error(`Lane ${laneId} not found`);
+  const prev = lane.points;
+  const point = { tick: Math.max(0, Math.round(tick)), value };
+  const next = withLane(doc, laneId, (l) => ({ ...l, points: insertPointSorted(l.points, point) }));
+  return {
+    type: "addAutomationPoint",
+    label: "Add automation point",
+    execute: () => next,
+    undo: (d) => withLane(d, laneId, (l) => ({ ...l, points: prev })),
+  };
+}
+
+export function moveAutomationPoint(
+  doc: ProjectDocument,
+  laneId: string,
+  index: number,
+  delta: { tick?: number; value?: number },
+): Command {
+  const lane = automationLaneOf(doc, laneId);
+  if (!lane || index < 0 || index >= lane.points.length) throw new Error("Automation point not found");
+  const prev = lane.points;
+  const next = withLane(doc, laneId, (l) => {
+    const points = [...l.points];
+    const p = points[index];
+    points[index] = {
+      tick: Math.max(0, Math.round(delta.tick ?? p.tick)),
+      value: delta.value ?? p.value,
+    };
+    return { ...l, points: points.sort((a, b) => a.tick - b.tick) };
+  });
+  return {
+    type: "moveAutomationPoint",
+    label: "Move automation point",
+    execute: () => next,
+    undo: (d) => withLane(d, laneId, (l) => ({ ...l, points: prev })),
+  };
+}
+
+export function deleteAutomationPoint(doc: ProjectDocument, laneId: string, index: number): Command {
+  const lane = automationLaneOf(doc, laneId);
+  if (!lane || index < 0 || index >= lane.points.length) throw new Error("Automation point not found");
+  const prev = lane.points;
+  const next = withLane(doc, laneId, (l) => ({ ...l, points: l.points.filter((_, i) => i !== index) }));
+  return {
+    type: "deleteAutomationPoint",
+    label: "Delete automation point",
+    execute: () => next,
+    undo: (d) => withLane(d, laneId, (l) => ({ ...l, points: prev })),
+  };
+}
+
+/* ---------------- LFO ---------------- */
+
+export function addLfo(doc: ProjectDocument, trackId: string): Command {
+  const lfo: Lfo = {
+    id: uid("lfo"),
+    trackId,
+    param: "gain",
+    wave: "sine",
+    rateMode: "sync",
+    rateHz: 2,
+    division: 2,
+    amount: 0.3,
+  };
+  const next: ProjectDocument = { ...doc, lfos: [...doc.lfos, lfo] };
+  return snapshot("addLfo", "Add LFO", doc, next);
+}
+
+export function removeLfo(doc: ProjectDocument, lfoId: string): Command {
+  const next: ProjectDocument = { ...doc, lfos: doc.lfos.filter((l) => l.id !== lfoId) };
+  return snapshot("removeLfo", "Remove LFO", doc, next);
+}
+
+export function setLfoParams(doc: ProjectDocument, lfoId: string, patch: Partial<Omit<Lfo, "id" | "trackId">>): Command {
+  const prev: Partial<Omit<Lfo, "id" | "trackId">> = {};
+  const current = doc.lfos.find((l) => l.id === lfoId);
+  if (!current) throw new Error(`LFO ${lfoId} not found`);
+  for (const key of Object.keys(patch) as (keyof typeof patch)[]) {
+    (prev as Record<string, unknown>)[key] = current[key];
+  }
+  const apply = (d: ProjectDocument, values: Partial<Omit<Lfo, "id" | "trackId">>): ProjectDocument => ({
+    ...d,
+    lfos: d.lfos.map((l) => (l.id === lfoId ? { ...l, ...values } : l)),
+  });
+  return {
+    type: "setLfoParams",
+    label: "Edit LFO",
+    execute: (d) => apply(d, patch),
+    undo: (d) => apply(d, prev),
+  };
+}
+
+/* ---------------- macros ---------------- */
+
+export function setMacroValue(doc: ProjectDocument, macroId: string, value: number): Command {
+  const prev = doc.macros.find((m) => m.id === macroId)?.value ?? 0.5;
+  const clamped = clamp(value, 0, 1);
+  const apply = (d: ProjectDocument, v: number): ProjectDocument => ({
+    ...d,
+    macros: d.macros.map((m) => (m.id === macroId ? { ...m, value: v } : m)),
+  });
+  return {
+    type: "setMacroValue",
+    label: "Set macro",
+    execute: (d) => apply(d, clamped),
+    undo: (d) => apply(d, prev),
+  };
+}
+
+export function renameMacro(doc: ProjectDocument, macroId: string, name: string): Command {
+  const prev = doc.macros.find((m) => m.id === macroId)?.name ?? "";
+  const apply = (d: ProjectDocument, v: string): ProjectDocument => ({
+    ...d,
+    macros: d.macros.map((m) => (m.id === macroId ? { ...m, name: v } : m)),
+  });
+  return {
+    type: "renameMacro",
+    label: `Rename macro to "${name}"`,
+    execute: (d) => apply(d, name),
+    undo: (d) => apply(d, prev),
+  };
+}
+
+export function addMacroMapping(doc: ProjectDocument, macroId: string, trackId: string, param: "gain" | "pan"): Command {
+  const mapping = { id: uid("map"), trackId, param, amount: 0.5 };
+  const next: ProjectDocument = {
+    ...dMap(doc, macroId, (m) => ({ ...m, mappings: [...m.mappings, mapping] })),
+  };
+  return snapshot("addMacroMapping", "Add macro mapping", doc, next);
+}
+
+export function removeMacroMapping(doc: ProjectDocument, macroId: string, mappingId: string): Command {
+  const next: ProjectDocument = {
+    ...dMap(doc, macroId, (m) => ({ ...m, mappings: m.mappings.filter((x) => x.id !== mappingId) })),
+  };
+  return snapshot("removeMacroMapping", "Remove macro mapping", doc, next);
+}
+
+export function setMacroMappingAmount(doc: ProjectDocument, macroId: string, mappingId: string, amount: number): Command {
+  const prev = doc.macros
+    .find((m) => m.id === macroId)
+    ?.mappings.find((x) => x.id === mappingId)?.amount;
+  if (prev === undefined) throw new Error("Macro mapping not found");
+  const clamped = clamp(amount, -1, 1);
+  const apply = (d: ProjectDocument, v: number): ProjectDocument => ({
+    ...d,
+    macros: d.macros.map((m) =>
+      m.id === macroId
+        ? { ...m, mappings: m.mappings.map((x) => (x.id === mappingId ? { ...x, amount: v } : x)) }
+        : m,
+    ),
+  });
+  return {
+    type: "setMacroMappingAmount",
+    label: "Set macro amount",
+    execute: (d) => apply(d, clamped),
+    undo: (d) => apply(d, prev),
+  };
+}
+
+function dMap(doc: ProjectDocument, macroId: string, fn: (m: Macro) => Macro): ProjectDocument {
+  return { ...doc, macros: doc.macros.map((m) => (m.id === macroId ? fn(m) : m)) };
 }
 
 /* ---------------- effects ---------------- */

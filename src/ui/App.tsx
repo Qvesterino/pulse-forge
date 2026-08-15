@@ -10,6 +10,8 @@ import { Diagnostics } from "./Diagnostics";
 import { PatternBar } from "./PatternBar";
 import { Mixer } from "./Mixer";
 import { EffectRack } from "./EffectRack";
+import { ArrangementPanel } from "./ArrangementPanel";
+import { ModPanel } from "./ModPanel";
 import { deleteNote, duplicatePattern } from "../commands/commands";
 import type { PatternClipboard } from "../commands/commands";
 import type { SelectedNote } from "./PianoRoll";
@@ -21,7 +23,7 @@ export function App({ services }: { services: Services }) {
     doc.tracks[0]?.kind === "drum" ? doc.tracks[0].pads[0]?.id ?? "" : "",
   );
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
-  const [bottomPanel, setBottomPanel] = useState<"mixer" | "fx" | null>("mixer");
+  const [bottomPanel, setBottomPanel] = useState<"mixer" | "fx" | "arr" | "mod" | null>("mixer");
   const [clip, setClip] = useState<PatternClipboard | null>(null);
   const [selectedNote, setSelectedNote] = useState<SelectedNote | null>(null);
 
@@ -40,7 +42,7 @@ export function App({ services }: { services: Services }) {
     if (next?.kind === "drum") setSelectedPadId(next.pads[0]?.id ?? "");
   };
 
-  const setBottomPanelTab = (panel: "mixer" | "fx") =>
+  const setBottomPanelTab = (panel: "mixer" | "fx" | "arr" | "mod") =>
     setBottomPanel((current) => (current === panel ? null : panel));
 
   useEffect(() => {
@@ -117,10 +119,12 @@ export function App({ services }: { services: Services }) {
         </main>
         {bottomPanel === "mixer" && <Mixer />}
         {bottomPanel === "fx" && <EffectRack track={track} />}
+        {bottomPanel === "arr" && <ArrangementPanel />}
+        {bottomPanel === "mod" && <ModPanel />}
         {diagnosticsOpen && <Diagnostics />}
         <footer className="statusbar">
           <span>
-            SPACE play · CTRL+D duplicate pattern · click piano roll to add notes · right-click note to delete · CTRL+Z undo
+            SPACE play · PATTERN/SONG mode in transport · CTRL+D duplicate pattern · ARR = scenes + arrangement · MOD = automation + LFO + macros
           </span>
         </footer>
       </div>
