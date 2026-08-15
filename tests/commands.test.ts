@@ -1,0 +1,466 @@
+import { describe, expect, it } from "vitest";
+import { createDefaultProject } from "../src/project-model/schema";
+import {
+  addEffect,
+  addNote,
+  clearPattern,
+  createDrumTrack,
+  createInstrumentTrack,
+  createPattern,
+  deleteNote,
+  deletePattern,
+  deleteTrack,
+  duplicatePattern,
+  moveEffect,
+  moveNote,
+  pastePattern,
+  removeEffect,
+  renamePattern,
+  resizeNote,
+  setActivePattern,
+  setBpm,
+  setEffectParam,
+  setInstrumentParam,
+  setInstrumentSample,
+  setNoteVelocity,
+  setPadParams,
+  setPatternLength,
+  setProjectName,
+  setStepVelocityCommand,
+  setTrackParams,
+  toggleEffectBypass,
+  toggleStep,
+} from "../src/commands/commands";
+import { ProjectStore } from "../src/store/ProjectStore";
+import { getDrumTrack } from "../src/project-model/types";
+
+describe("commands", () => {
+  it("toggleStep adds and removes a step, with undo", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    const pad = getDrumTrack(doc).pads[0];
+    const before = store.doc.patterns[0].rows[pad.id][0];
+
+    store.execute(toggleStep(store.doc, pad.id, 0, 0.8));
+    expect(store.doc.patterns[0].rows[pad.id][0]).toBe(before > 0 ? 0 : 0.8);
+
+    store.undo();
+    expect(store.doc.patterns[0].rows[pad.id][0]).toBe(before);
+
+    store.redo();
+    expect(store.doc.patterns[0].rows[pad.id][0]).toBe(before > 0 ? 0 : 0.8);
+  });
+
+  it("toggleStep inverts the current velocity state", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    const pad = getDrumTrack(doc).pads[0];
+    store.execute(toggleStep(store.doc, pad.id, 1, 0.5));
+    expect(store.doc.patterns[0].rows[pad.id][1]).toBe(0.5);
+    store.execute(toggleStep(store.doc, pad.id, 1));
+    expect(store.doc.patterns[0].rows[pad.id][1]).toBe(0);
+  });
+
+  it("setStepVelocityCommand clamps and undoes", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    const pad = getDrumTrack(doc).pads[0];
+    store.execute(setStepVelocityCommand(store.doc, pad.id, 3, 2));
+    expect(store.doc.patterns[0].rows[pad.id][3]).toBe(1);
+    store.undo();
+    expect(store.doc.patterns[0].rows[pad.id][3]).toBe(0);
+  });
+
+  it("setBpm and setProjectName round-trip through undo", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    store.execute(setBpm(store.doc, 140));
+    store.execute(setProjectName(store.doc, "Night Drive"));
+    expect(store.doc.bpm).toBe(140);
+    expect(store.doc.name).toBe("Night Drive");
+    store.undo();
+    store.undo();
+    expect(store.doc.bpm).toBe(doc.bpm);
+    expect(store.doc.name).toBe(doc.name);
+  });
+
+  it("setPadParams restores the exact previous pad", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    const pad = getDrumTrack(doc).pads[6];
+    store.execute(setPadParams(store.doc, pad.id, { gain: 1.4, pan: -0.3, pitch: 3 }));
+    const edited = getDrumTrack(store.doc).pads.find((p) => p.id === pad.id)!;
+    expect(edited.gain).toBe(1.4);
+    expect(edited.pan).toBe(-0.3);
+    expect(edited.pitch).toBe(3);
+    store.undo();
+    const restored = getDrumTrack(store.doc).pads.find((p) => p.id === pad.id)!;
+    expect(restored).toEqual(pad);
+  });
+
+  it("setTrackParams restores previous track state", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    const track = getDrumTrack(doc);
+    store.execute(setTrackParams(store.doc, track.id, { gain: 0.5, mute: true }));
+    expect(getDrumTrack(store.doc).gain).toBe(0.5);
+    expect(getDrumTrack(store.doc).mute).toBe(true);
+    store.undo();
+    expect(getDrumTrack(store.doc)).toEqual(track);
+  });
+});
+
+describe("pattern commands", () => {
+  it("createPattern adds an empty pattern and selects it; undo restores", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    store.execute(createPattern(store.doc));
+    expect(store.doc.patterns).toHaveLength(2);
+    expect(store.doc.activePatternId).toBe(store.doc.patterns[1].id);
+    const rows = Object.values(store.doc.patterns[1].rows);
+    for (const row of rows) expect(row.every((v) => v === 0)).toBe(true);
+    store.undo();
+    expect(store.doc.patterns).toHaveLength(1);
+    expect(store.doc.activePatternId).toBe(doc.activePatternId);
+  });
+
+  it("createPattern covers pads of all tracks", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    store.execute(createDrumTrack(store.doc));
+    store.execute(createPattern(store.doc));
+    const pattern = store.doc.patterns[1];
+    for (const track of store.doc.tracks) {
+      if (track.kind !== "drum") continue;
+      for (const pad of track.pads) {
+        expect(pattern.rows[pad.id]).toBeDefined();
+      }
+    }
+  });
+
+  it("duplicatePattern deep-copies rows; editing the copy leaves the source intact", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    const sourceId = store.doc.activePatternId;
+    store.execute(duplicatePattern(store.doc, sourceId));
+    const copy = store.doc.patterns[1];
+    expect(copy.rows).toEqual(store.doc.patterns[0].rows);
+    expect(copy.rows).not.toBe(store.doc.patterns[0].rows);
+    const firstPadId = getDrumTrack(store.doc).pads[0].id;
+    store.execute(setStepVelocityCommand(store.doc, firstPadId, 1, 1));
+    expect(store.doc.patterns[1].rows[firstPadId][1]).toBe(1);
+    expect(store.doc.patterns[0].rows[firstPadId][1]).toBe(doc.patterns[0].rows[firstPadId][1]);
+  });
+
+  it("deletePattern switches active pattern and refuses the last one", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    expect(() => deletePattern(store.doc, store.doc.activePatternId)).toThrow();
+    store.execute(createPattern(store.doc));
+    const firstId = store.doc.patterns[0].id;
+    store.execute(deletePattern(store.doc, firstId));
+    expect(store.doc.patterns).toHaveLength(1);
+    expect(store.doc.activePatternId).not.toBe(firstId);
+    store.undo();
+    expect(store.doc.patterns).toHaveLength(2);
+  });
+
+  it("renamePattern and setActivePattern round-trip", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    store.execute(createPattern(store.doc));
+    const second = store.doc.patterns[1];
+    store.execute(renamePattern(store.doc, second.id, "Fill"));
+    expect(store.doc.patterns[1].name).toBe("Fill");
+    store.execute(setActivePattern(store.doc, store.doc.patterns[0].id));
+    expect(store.doc.activePatternId).toBe(store.doc.patterns[0].id);
+    store.undo();
+    expect(store.doc.activePatternId).toBe(second.id);
+    store.undo();
+    expect(store.doc.patterns[1].name).toBe("Pattern B");
+  });
+
+  it("setPatternLength resizes rows preserving content", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    store.execute(setPatternLength(store.doc, store.doc.activePatternId, 32));
+    const pattern = store.doc.patterns[0];
+    expect(pattern.stepCount).toBe(32);
+    const kick = getDrumTrack(store.doc).pads[0];
+    expect(pattern.rows[kick.id]).toHaveLength(32);
+    expect(pattern.rows[kick.id][0]).toBeGreaterThan(0);
+    store.execute(setPatternLength(store.doc, store.doc.activePatternId, 16));
+    expect(store.doc.patterns[0].rows[kick.id]).toHaveLength(16);
+  });
+
+  it("clearPattern zeroes every row; undo restores the groove", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    store.execute(clearPattern(store.doc, store.doc.activePatternId));
+    const pattern = store.doc.patterns[0];
+    for (const row of Object.values(pattern.rows)) expect(row.every((v) => v === 0)).toBe(true);
+    store.undo();
+    expect(store.doc.patterns[0].rows).toEqual(doc.patterns[0].rows);
+  });
+
+  it("pastePattern replaces active pattern content", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    store.execute(duplicatePattern(store.doc, store.doc.activePatternId));
+    const source = store.doc.patterns[0];
+    store.execute(clearPattern(store.doc, store.doc.activePatternId));
+    store.execute(pastePattern(store.doc, { stepCount: source.stepCount, rows: source.rows, notes: source.notes ?? {} }));
+    expect(store.doc.patterns.find((p) => p.id === store.doc.activePatternId)!.rows).toEqual(source.rows);
+    store.undo();
+    const cleared = store.doc.patterns.find((p) => p.id === store.doc.activePatternId)!;
+    for (const row of Object.values(cleared.rows)) expect(row.every((v) => v === 0)).toBe(true);
+  });
+});
+
+describe("track commands", () => {
+  it("createDrumTrack adds a track with a full kit and pattern rows; undo restores exactly", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    store.execute(createDrumTrack(store.doc));
+    expect(store.doc.tracks).toHaveLength(doc.tracks.length + 1);
+    const newTrack = store.doc.tracks[store.doc.tracks.length - 1];
+    if (newTrack.kind !== "drum") throw new Error("expected drum track");
+    expect(newTrack.pads).toHaveLength(16);
+    const padIds = new Set(newTrack.pads.map((p) => p.id));
+    const firstTrackPadIds = new Set(getDrumTrack(store.doc).pads.map((p) => p.id));
+    for (const id of padIds) expect(firstTrackPadIds.has(id)).toBe(false);
+    for (const pattern of store.doc.patterns) {
+      for (const padId of padIds) expect(pattern.rows[padId]).toBeDefined();
+    }
+    store.undo();
+    expect(store.doc).toEqual(doc);
+  });
+
+  it("deleteTrack removes the track and its pad rows", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    store.execute(createDrumTrack(store.doc));
+    const second = store.doc.tracks[store.doc.tracks.length - 1];
+    const secondId = second.id;
+    const secondPads = second.kind === "drum" ? second.pads.map((p) => p.id) : [];
+    store.execute(deleteTrack(store.doc, secondId));
+    expect(store.doc.tracks).toHaveLength(doc.tracks.length);
+    for (const pattern of store.doc.patterns) {
+      for (const padId of secondPads) expect(pattern.rows[padId]).toBeUndefined();
+    }
+    store.undo();
+    expect(store.doc.tracks).toHaveLength(doc.tracks.length + 1);
+  });
+
+  it("deleteTrack refuses when it is the last remaining track", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    store.execute(deleteTrack(store.doc, doc.tracks[0].id));
+    expect(store.doc.tracks).toHaveLength(1);
+    expect(() => deleteTrack(store.doc, store.doc.tracks[0].id)).toThrow();
+  });
+});
+
+describe("effect commands", () => {
+  it("addEffect appends an instance with default params; undo removes it", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    const trackId = doc.tracks[0].id;
+    store.execute(addEffect(store.doc, trackId, "reverb"));
+    const track = getDrumTrack(store.doc);
+    expect(track.effects).toHaveLength(1);
+    expect(track.effects[0].type).toBe("reverb");
+    expect(track.effects[0].bypassed).toBe(false);
+    expect(track.effects[0].params.decay).toBeCloseTo(1.8, 5);
+    store.undo();
+    expect(getDrumTrack(store.doc).effects).toHaveLength(0);
+  });
+
+  it("setEffectParam clamps to the parameter range and undoes exactly", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    const trackId = doc.tracks[0].id;
+    store.execute(addEffect(store.doc, trackId, "eq"));
+    const fx = getDrumTrack(store.doc).effects[0];
+    store.execute(setEffectParam(store.doc, trackId, fx.id, "lowGain", 99));
+    expect(getDrumTrack(store.doc).effects[0].params.lowGain).toBe(15);
+    store.undo();
+    expect(getDrumTrack(store.doc).effects[0].params.lowGain).toBe(0);
+  });
+
+  it("toggleEffectBypass flips and restores", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    const trackId = doc.tracks[0].id;
+    store.execute(addEffect(store.doc, trackId, "delay"));
+    const fx = getDrumTrack(store.doc).effects[0];
+    store.execute(toggleEffectBypass(store.doc, trackId, fx.id));
+    expect(getDrumTrack(store.doc).effects[0].bypassed).toBe(true);
+    store.undo();
+    expect(getDrumTrack(store.doc).effects[0].bypassed).toBe(false);
+  });
+
+  it("moveEffect reorders the chain and refuses out-of-range moves", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    const trackId = doc.tracks[0].id;
+    store.execute(addEffect(store.doc, trackId, "eq"));
+    store.execute(addEffect(store.doc, trackId, "reverb"));
+    store.execute(addEffect(store.doc, trackId, "pump"));
+    const [eq, reverb, pump] = getDrumTrack(store.doc).effects;
+    expect(() => moveEffect(store.doc, trackId, eq.id, -1)).toThrow();
+    expect(() => moveEffect(store.doc, trackId, pump.id, 1)).toThrow();
+    store.execute(moveEffect(store.doc, trackId, pump.id, -1));
+    expect(getDrumTrack(store.doc).effects.map((f) => f.type)).toEqual(["eq", "pump", "reverb"]);
+    store.undo();
+    expect(getDrumTrack(store.doc).effects.map((f) => f.id)).toEqual([eq.id, reverb.id, pump.id]);
+  });
+
+  it("removeEffect deletes only the targeted instance", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    const trackId = doc.tracks[0].id;
+    store.execute(addEffect(store.doc, trackId, "eq"));
+    store.execute(addEffect(store.doc, trackId, "saturation"));
+    const eqFx = getDrumTrack(store.doc).effects[0];
+    store.execute(removeEffect(store.doc, trackId, eqFx.id));
+    expect(getDrumTrack(store.doc).effects.map((f) => f.type)).toEqual(["saturation"]);
+    store.undo();
+    expect(getDrumTrack(store.doc).effects.map((f) => f.type)).toEqual(["eq", "saturation"]);
+  });
+
+  it("effects travel with track duplication flow (create/delete track keeps effects on survivors)", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    const drumsId = getDrumTrack(doc).id;
+    store.execute(addEffect(store.doc, drumsId, "compressor"));
+    store.execute(createDrumTrack(store.doc));
+    const added = store.doc.tracks[store.doc.tracks.length - 1];
+    store.execute(addEffect(store.doc, added.id, "delay"));
+    store.execute(deleteTrack(store.doc, drumsId));
+    const survivor = getDrumTrack(store.doc);
+    expect(survivor.id).toBe(added.id);
+    expect(survivor.effects.map((f) => f.type)).toEqual(["delay"]);
+  });
+});
+
+describe("instrument tracks and notes", () => {
+  it("createInstrumentTrack adds a configured track; undo restores", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    store.execute(createInstrumentTrack(store.doc, "analog"));
+    expect(store.doc.tracks).toHaveLength(3);
+    const added = store.doc.tracks[2];
+    if (added.kind !== "instrument") throw new Error("expected instrument track");
+    expect(added.instrument).toBe("analog");
+    expect(added.params.cutoff).toBeCloseTo(9000, 3);
+    store.undo();
+    expect(store.doc).toEqual(doc);
+  });
+
+  it("addNote/moveNote/resizeNote/setNoteVelocity/deleteNote round-trip with undo", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    const bass = store.doc.tracks.find((t): t is import("../src/project-model/types").InstrumentTrack => t.kind === "instrument")!;
+    store.execute(addNote(store.doc, bass.id, { pitch: 36, start: 480, duration: 240, velocity: 0.8 }));
+    let notes = store.doc.patterns[0].notes[bass.id];
+    expect(notes).toHaveLength(5);
+    const noteId = notes[4].id;
+    expect(notes[4].pitch).toBe(36);
+
+    store.execute(moveNote(store.doc, bass.id, noteId, { pitch: 40, start: 720 }));
+    notes = store.doc.patterns[0].notes[bass.id];
+    expect(notes.find((n) => n.id === noteId)).toMatchObject({ pitch: 40, start: 720 });
+
+    store.execute(resizeNote(store.doc, bass.id, noteId, 960));
+    expect(store.doc.patterns[0].notes[bass.id].find((n) => n.id === noteId)?.duration).toBe(960);
+
+    store.execute(setNoteVelocity(store.doc, bass.id, noteId, 5));
+    expect(store.doc.patterns[0].notes[bass.id].find((n) => n.id === noteId)?.velocity).toBe(1);
+
+    store.execute(deleteNote(store.doc, bass.id, noteId));
+    expect(store.doc.patterns[0].notes[bass.id]).toHaveLength(4);
+
+    store.undo();
+    store.undo();
+    store.undo();
+    store.undo();
+    store.undo();
+    expect(store.doc.patterns[0].notes[bass.id]).toHaveLength(4);
+  });
+
+  it("setInstrumentParam clamps and undoes; setInstrumentSample round-trips", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    const track = store.doc.tracks.find((t): t is import("../src/project-model/types").InstrumentTrack => t.kind === "instrument")!;
+    store.execute(setInstrumentParam(store.doc, track.id, "decay", 99));
+    const edited = store.doc.tracks.find((t): t is import("../src/project-model/types").InstrumentTrack => t.kind === "instrument")!;
+    expect(edited.params.decay).toBe(4);
+    store.undo();
+    const restored = store.doc.tracks.find((t): t is import("../src/project-model/types").InstrumentTrack => t.kind === "instrument")!;
+    expect(restored.params.decay).toBeCloseTo(0.9, 5);
+
+    store.execute(setInstrumentSample(store.doc, track.id, "factory.tonal.stab"));
+    expect(store.doc.tracks.find((t): t is import("../src/project-model/types").InstrumentTrack => t.kind === "instrument")!.sampleId).toBe("factory.tonal.stab");
+    store.undo();
+    expect(store.doc.tracks.find((t): t is import("../src/project-model/types").InstrumentTrack => t.kind === "instrument")!.sampleId).toBe(track.sampleId);
+  });
+
+  it("deleteTrack removes notes of the deleted instrument track", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    const bassId = doc.tracks.find((t) => t.kind === "instrument")!.id;
+    store.execute(deleteTrack(store.doc, bassId));
+    expect(store.doc.tracks).toHaveLength(1);
+    expect(store.doc.patterns[0].notes[bassId]).toBeUndefined();
+    store.undo();
+    expect(store.doc.patterns[0].notes[bassId]).toHaveLength(4);
+  });
+
+  it("clearPattern removes notes too; duplicatePattern deep-copies notes", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    store.execute(clearPattern(store.doc, store.doc.activePatternId));
+    expect(Object.keys(store.doc.patterns[0].notes)).toHaveLength(0);
+    store.undo();
+    const bassId = doc.tracks.find((t) => t.kind === "instrument")!.id;
+    expect(store.doc.patterns[0].notes[bassId]).toHaveLength(4);
+
+    store.execute(duplicatePattern(store.doc, store.doc.activePatternId));
+    const copy = store.doc.patterns[1];
+    expect(copy.notes[bassId]).toHaveLength(4);
+    expect(copy.notes[bassId]).not.toBe(store.doc.patterns[0].notes[bassId]);
+  });
+});
+
+describe("ProjectStore history", () => {
+  it("clears redo stack on a new command", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    store.execute(setBpm(store.doc, 130));
+    store.undo();
+    expect(store.canRedo).toBe(true);
+    store.execute(setBpm(store.doc, 150));
+    expect(store.canRedo).toBe(false);
+  });
+
+  it("notifies subscribers on mutation", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    let notified = 0;
+    const unsubscribe = store.subscribe(() => notified++);
+    store.execute(setBpm(store.doc, 128));
+    expect(notified).toBe(1);
+    unsubscribe();
+    store.execute(setBpm(store.doc, 100));
+    expect(notified).toBe(1);
+  });
+
+  it("marks document dirty after execution", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    expect(store.saveStatus).toBe("saved");
+    store.execute(setBpm(store.doc, 128));
+    expect(store.saveStatus).toBe("dirty");
+  });
+});

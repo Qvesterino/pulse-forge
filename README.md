@@ -1,0 +1,94 @@
+# Pulse Forge
+
+A focused, browser-first electronic music production workstation.
+
+This repository currently contains the **first vertical slice** (Phase 0 + Phase 1 + minimal Phase 2 of the build order defined in `Pulse Forge — Master Build Prompt.md`).
+
+## Run
+
+```bash
+npm install
+npm run dev          # development
+npm run test         # unit tests (vitest, node)
+npm run test:browser # audio verification in real headless Chromium
+npm run typecheck    # strict TypeScript
+npm run build        # production build
+```
+
+## What works (verified)
+
+- **Project model** — versioned schema (`schemaVersion: 1`), pure serializable data, JSON round-trip tested. Loading auto-normalizes pattern rows (missing pads, wrong lengths).
+- **Command system** — all mutations flow through commands with full undo/redo (`Ctrl+Z` / `Ctrl+Y`).
+- **Transport** — musical time in ticks (PPQ 480), BPM 20–300, play/pause/stop, BPM change rebases the anchor during playback. Unit-tested.
+- **Lookahead scheduler** — 25 ms interval, 120 ms horizon against `AudioContext.currentTime`; loop wrap, multi-track triggering, track/pad mute + solo gating (track solo is global, pad solo is per-track), live project reads. Unit-tested with a controlled clock.
+- **Drum Rack** — 16 pads per track, per-pad gain/pan/pitch/mute/solo/choke groups, sample assignment.
+- **Multiple drum tracks** — add/remove tracks (`+ TRACK` in the rack header or mixer), each with a full kit; unique pad IDs across tracks; pattern rows cover all tracks automatically.
+- **Pattern management** — create (ADD), duplicate (DUP / `Ctrl+D`), rename (double-click chip), delete, copy/paste, clear, 16/32-step length switching with content preservation; pattern chips with inline rename.
+- **16/32-step sequencer** — click toggles steps, vertical drag edits velocity, playhead indication, beat grouping, rows grouped per track with track headers.
+- **Mixer** — channel strips per track: rename, volume, pan, mute, solo, delete, **real peak meters** (AnalyserNode per track + master, ~30 Hz throttled UI), master strip with meter. Toggle via `MIX`.
+- **Effect rack** — common device shell per track (`FX` panel): add/remove/reorder/bypass, compact parameter controls driven by shared parameter metadata. Inserted between track input and pan in the audio graph.
+- **Native effects (7)** — all Web Audio based, verified in real Chromium via offline rendering:
+  - **EQ** — 3-band (low shelf / peaking / high shelf), gain+freq+Q.
+  - **Compressor** — threshold/ratio/attack/release/knee + makeup + parallel mix.
+  - **Saturation** — tanh waveshaper (2× oversampled), drive/tone/mix/output.
+  - **Clipper** — hard/soft clip (4× oversampled), drive/ceiling/softness/output; ceiling verified sample-accurate.
+  - **Reverb** — convolution reverb with procedurally generated seeded stereo IR, decay/pre-delay/tone/mix.
+  - **Delay** — feedback delay with damped feedback path, time/feedback/tone/mix.
+  - **Pump** — tempo-synced volume shaping (1/1…1/16), amount/rate/release; beat-aligned on transport start, re-syncs on BPM change (duck-curve oscillator modulating track gain).
+- **Effect engine integration** — structural chain changes rebuild runtimes; parameter tweaks are diffed and applied smoothly; track deletion disposes nodes+runtimes; BPM changes propagate `syncBpm` to runtimes.
+- **Instrument tracks** — Sampler / Analog Synth / Bass Synth / 808 Synth as a second track kind, created from the `+ TRACK` menu; per-instrument parameter panels in the Inspector; instruments feed the same track chain (inserts, pan, gain, meters) as drums.
+- **Native instruments (4)** — Web Audio voices with polyphony management and voice stealing, verified in real Chromium:
+  - **Sampler** — plays tonal factory samples (pluck/stab/keys/bell), root-note transposition, attack/release, filter, gain.
+  - **Analog Synth** — subtractive: 2 oscillators (waveform select) + sub + noise → lowpass with envelope → ADSR amp; cutoff/resonance update live on sounding voices.
+  - **Bass Synth** — semantic macro controls (SUB/BODY/PUNCH/GRIT/MOVEMENT/WIDTH) mapped to a real saw/square/sub voice with drive, filter envelope, LFO movement and stereo width.
+  - **808 Synth** — sine body with pitch-drop envelope, decay, transient click, drive, tone; monophonic (retriggers cleanly).
+- **Piano roll** — per-instrument-track editor in the sequencer: click to add notes, drag to move, drag right edge to resize, right-click or `Delete` to remove; playable keyboard column (click keys to audition); playhead column; pitch range C1–C6.
+- **Event-window scheduler** — the scheduler now plans a lookahead window in tick space and schedules both drum steps and arbitrary note events, enabling future microtiming/swing/ratchets without step-grid coupling.
+- **Default project ships a bass line** — new projects include an 808 track with a playable bass pattern so the first play is already a beat with sub.
+- **Factory sound bank** — 16 procedurally synthesized drum sounds (seeded, deterministic, license-clean) rendered via `OfflineAudioContext` at startup.
+- **Audio engine** — per-voice gain/pan/pitch, choke groups, voice cleanup, panic (guaranteed stop), track chains with smoothing.
+- **Persistence** — IndexedDB, debounced autosave (800 ms), manual `Ctrl+S`, reload restores the exact project (incl. after refresh).
+- **Diagnostics panel** — context state, sample rate, voices, scheduled events, scheduler state, track/pattern counts, save status (toggle `DIAG` in the top bar).
+- **Starter groove** — a new project opens with a house groove (4-on-the-floor kick, clap on 2/4, offbeat hats) so the first play already sounds musical.
+
+## Not implemented yet (planned, in build order)
+
+- Texture Synth (instrument family complete otherwise)
+- Buses/returns, send effects
+- Scenes, arrangement
+- Automation, LFO/modulation, macros
+- Offline render / WAV + stem export
+- AudioWorklet + Rust/WASM DSP path
+
+## Architecture
+
+```
+React UI  →  Commands  →  Project Model (truth)
+                              ↓
+                    Transport (musical time)
+                              ↓
+                    Scheduler (lookahead)
+                              ↓
+                    Audio Engine → Web Audio
+```
+
+Source layout mirrors the responsibilities from `ARCHITECTURE.md`:
+
+```
+src/
+├─ project-model/   # schema, types, pure transforms
+├─ commands/        # command system (undo/redo)
+├─ store/           # ProjectStore (doc + history + subscribers)
+├─ transport/       # musical time
+├─ scheduler/       # lookahead event-window scheduling
+├─ audio-engine/    # graph ownership, voices, routing, fx chains, instruments
+├─ effects/         # effect definitions + runtime registry
+├─ instruments/     # instrument definitions + runtime registry
+├─ sample-library/  # manifest + procedural factory bank
+├─ persistence/     # IndexedDB repository
+└─ ui/              # React shell and editors
+scripts/
+└─ verify-browser.mjs  # real-Chromium audio verification (playwright + vite)
+```
+
+See `docs/adr/` for architectural decision records.
