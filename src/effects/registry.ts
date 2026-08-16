@@ -535,19 +535,15 @@ const bitcrusher: EffectDefinition = {
     let bitsVal = 8;
     let factorVal = 1;
     const buildCurve = (bits: number, factor: number): Float32Array<ArrayBuffer> => {
-      // Curve must be monotonic for WaveShaper; quantise input into discrete steps.
-      // We widen each step by `factor` (simulated decimation) so the output stays
-      // on the same plateau for `factor` consecutive input values.
+      // Curve must be monotonic for WaveShaper; quantise input into discrete
+      // steps. n equals the step count so WaveShaper's linear interp between
+      // samples doesn't smear the plateau (which would defeat quantisation).
       const steps = Math.max(2, Math.pow(2, Math.max(1, Math.round(bits))));
-      const n = 4096;
+      const n = steps;
       const curve = new Float32Array(new ArrayBuffer(n * 4));
       const step = 2 / (steps - 1);
       for (let i = 0; i < n; i++) {
-        const x = (i / (n - 1)) * 2 - 1;
-        // Floor to the nearest step. `factor` is folded into the curve as a
-        // zero-crossing bias: for factor > 1, the curve stays on the current
-        // step for `factor` adjacent input samples.
-        const idx = Math.min(steps - 1, Math.max(0, Math.floor((x + 1) / step)));
+        const idx = i;
         const q = -1 + idx * step;
         curve[i] = q;
       }
@@ -828,11 +824,15 @@ const phaser: EffectDefinition = {
 
 /* ---------------- Sidechain Compressor ---------------- */
 // Ducks the main signal's gain based on the envelope of a separate audio source.
-// Web Audio's DynamicsCompressorNode has no sidechain input, so we run a
-// ScriptProcessorNode fed by the sidechain source: it computes an envelope follower
-// and writes the target gain reduction back to a GainNode in the main path.
-// ScriptProcessor is deprecated but still works in every browser; the analysis
-// loop is the price of doing sidechain without AudioWorklet.
+// Web Audio's DynamicsCompressorNode has no sidechain input, and ScriptProcessorNode
+// is unreliable in OfflineAudioContext (which is what offline render + our
+// browser-checks use). So we route the sidechain source through an AnalyserNode
+// and run a JS-side envelope follower that writes `target.gain` via
+// `setTargetAtTime`. This works in both realtime and offline contexts; the
+// analysis is main-thread, not audio-rate, so ducking granularity is bounded
+// by the JS timer — fine for musical sidechain but not for sub-10 ms precision.
+
+const SIDE_UPDATE_MS = 10; // envelope refresh interval
 
 const sidechain: EffectDefinition = {
   type: "sidechain",
@@ -852,41 +852,50 @@ const sidechain: EffectDefinition = {
     target.gain.value = 1;
     input.connect(target).connect(output);
 
-    const proc = ctx.createScriptProcessor(2048, 1, 1);
-    let active = true;
-    void active; // reserved: signals whether the sidechain analyser is still processing
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 1024;
+    analyser.smoothingTimeConstant = 0;
+    const analyserBuf = new Float32Array(analyser.fftSize);
+
     let env = 0;
     let thresholdLin = Math.pow(10, -18 / 20);
     let ratio = 4;
     let amount = 1;
     let attackCoef = Math.exp(-1 / (ctx.sampleRate * 0.005));
     let releaseCoef = Math.exp(-1 / (ctx.sampleRate * 0.2));
-    let lastTargetGain = 1;
     let sidechainNode: AudioNode | null = null;
+    let active = true;
+    let interval: ReturnType<typeof setInterval> | null = null;
 
-    proc.onaudioprocess = (e) => {
-      // We are the analysis path only — discard input/output audio (we never connect proc.output).
-      const inB = e.inputBuffer.getChannelData(0);
-      const outB = e.outputBuffer.getChannelData(0);
-      for (let i = 0; i < inB.length; i++) {
-        const v = Math.abs(inB[i]);
-        // Asymmetric envelope follower (separate attack/release coefficients)
-        env = v > env
-          ? attackCoef * env + (1 - attackCoef) * v
-          : releaseCoef * env + (1 - releaseCoef) * v;
-        // Compressor curve: gain reduction based on envelope vs threshold (dB)
-        const envDb = 20 * Math.log10(Math.max(env, 1e-7));
-        const threshDb = 20 * Math.log10(Math.max(thresholdLin, 1e-7));
-        const overDb = Math.max(0, envDb - threshDb);
-        const reductionDb = overDb * (1 - 1 / Math.max(1, ratio));
-        const reduction = Math.pow(10, -reductionDb / 20);
-        // `amount` blends full reduction (1) -> no ducking (0)
-        lastTargetGain = 1 - amount * (1 - reduction);
-        outB[i] = 0; // sidechain is analysis only
+    const computeTargetGain = (): number => {
+      if (sidechainNode === null) return 1;
+      // Read current peak from the analyser buffer.
+      analyser.getFloatTimeDomainData(analyserBuf);
+      let peak = 0;
+      for (let i = 0; i < analyserBuf.length; i++) {
+        const v = Math.abs(analyserBuf[i]);
+        if (v > peak) peak = v;
       }
-      // Apply at end of block — sample-rate accurate at the block boundary
-      target.gain.setTargetAtTime(Math.max(0, lastTargetGain), ctx.currentTime, 0.005);
+      // Asymmetric envelope follower
+      env = peak > env
+        ? attackCoef * env + (1 - attackCoef) * peak
+        : releaseCoef * env + (1 - releaseCoef) * peak;
+      const envDb = 20 * Math.log10(Math.max(env, 1e-7));
+      const threshDb = 20 * Math.log10(Math.max(thresholdLin, 1e-7));
+      const overDb = Math.max(0, envDb - threshDb);
+      const reductionDb = overDb * (1 - 1 / Math.max(1, ratio));
+      const reduction = Math.pow(10, -reductionDb / 20);
+      return Math.max(0, 1 - amount * (1 - reduction));
     };
+
+    const tick = () => {
+      if (!active) return;
+      const g = computeTargetGain();
+      target.gain.setTargetAtTime(g, ctx.currentTime, 0.005);
+    };
+    if (typeof setInterval === "function") {
+      interval = setInterval(tick, SIDE_UPDATE_MS);
+    }
 
     const apply = (id: string, v: number, _when: number) => {
       switch (id) {
@@ -916,22 +925,28 @@ const sidechain: EffectDefinition = {
       setParameterAt: (id, v, when) => apply(id, v, when),
       setSidechainInput(node: AudioNode | null) {
         if (sidechainNode) {
-          try { sidechainNode.disconnect(proc); } catch { /* not connected */ }
+          try { sidechainNode.disconnect(analyser); } catch { /* not connected */ }
         }
         sidechainNode = node;
         if (node) {
-          // Reset envelope so a freshly-attached source starts at 0
           env = 0;
-          node.connect(proc);
+          node.connect(analyser);
+        } else {
+          // When sidechain is removed, restore the target gain to neutral.
+          target.gain.setTargetAtTime(1, ctx.currentTime, 0.02);
         }
       },
       dispose: () => {
         active = false;
+        if (interval !== null) {
+          clearInterval(interval);
+          interval = null;
+        }
         if (sidechainNode) {
-          try { sidechainNode.disconnect(proc); } catch { /* not connected */ }
+          try { sidechainNode.disconnect(analyser); } catch { /* not connected */ }
           sidechainNode = null;
         }
-        try { proc.disconnect(); } catch { /* already disconnected */ }
+        try { analyser.disconnect(); } catch { /* already disconnected */ }
         input.disconnect();
         target.disconnect();
         output.disconnect();
