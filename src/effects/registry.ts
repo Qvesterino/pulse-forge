@@ -3,14 +3,14 @@ import type { EffectType } from "../project-model/types";
 import { hashString, mulberry32 } from "../shared/rng";
 
 const dbToLin = (db: number) => Math.pow(10, db / 20);
-const smooth = (param: AudioParam, value: number, ctx: BaseAudioContext, tc = 0.02) =>
-  param.setTargetAtTime(value, ctx.currentTime, tc);
+const smooth = (param: AudioParam, value: number, when: number, tc = 0.02) =>
+  param.setTargetAtTime(value, when, tc);
 
 interface MixBus {
   input: GainNode;
   output: GainNode;
   wet: GainNode;
-  setMix(m: number): void;
+  setMix(m: number, when: number): void;
 }
 
 function mixBus(ctx: BaseAudioContext): MixBus {
@@ -20,9 +20,9 @@ function mixBus(ctx: BaseAudioContext): MixBus {
   const wet = ctx.createGain();
   input.connect(dry).connect(output);
   input.connect(wet);
-  const setMix = (m: number) => {
-    smooth(wet.gain, m, ctx);
-    smooth(dry.gain, 1 - m, ctx);
+  const setMix = (m: number, when: number) => {
+    smooth(wet.gain, m, when);
+    smooth(dry.gain, 1 - m, when);
   };
   return { input, output, wet, setMix };
 }
@@ -56,22 +56,23 @@ const eq: EffectDefinition = {
     const high = ctx.createBiquadFilter();
     high.type = "highshelf";
     low.connect(mid).connect(high);
-    const set = (id: string, v: number) => {
+    const apply = (id: string, v: number, when: number) => {
       switch (id) {
-        case "lowGain": smooth(low.gain, v, ctx); break;
-        case "lowFreq": smooth(low.frequency, v, ctx); break;
-        case "midGain": smooth(mid.gain, v, ctx); break;
-        case "midFreq": smooth(mid.frequency, v, ctx); break;
-        case "midQ": smooth(mid.Q, v, ctx); break;
-        case "highGain": smooth(high.gain, v, ctx); break;
-        case "highFreq": smooth(high.frequency, v, ctx); break;
+        case "lowGain": smooth(low.gain, v, when); break;
+        case "lowFreq": smooth(low.frequency, v, when); break;
+        case "midGain": smooth(mid.gain, v, when); break;
+        case "midFreq": smooth(mid.frequency, v, when); break;
+        case "midQ": smooth(mid.Q, v, when); break;
+        case "highGain": smooth(high.gain, v, when); break;
+        case "highFreq": smooth(high.frequency, v, when); break;
       }
     };
-    for (const [k, v] of Object.entries(instance.params)) set(k, v);
+    for (const [k, v] of Object.entries(instance.params)) apply(k, v, ctx.currentTime);
     return {
       input: low,
       output: high,
-      setParameter: set,
+      setParameter: (id, v) => apply(id, v, ctx.currentTime),
+      setParameterAt: (id, v, when) => apply(id, v, when),
       dispose: () => { low.disconnect(); mid.disconnect(); high.disconnect(); },
     };
   },
@@ -86,8 +87,8 @@ const compressor: EffectDefinition = {
   params: [
     { id: "threshold", label: "THRESH", min: -60, max: 0, default: -18, unit: "dB", format: formatDb },
     { id: "ratio", label: "RATIO", min: 1, max: 20, default: 3, format: (v) => `${v.toFixed(1)}:1` },
-    { id: "attack", label: "ATTACK", min: 0.001, max: 0.5, default: 0.01, unit: "s", format: (v) => `${Math.round(v * 1000)} ms` },
-    { id: "release", label: "RELEASE", min: 0.02, max: 1, default: 0.2, unit: "s", format: (v) => `${Math.round(v * 1000)} ms` },
+    { id: "attack", label: "ATTACK", min: 0.001, max: 0.5, default: 0.01, unit: "s", format: formatMs },
+    { id: "release", label: "RELEASE", min: 0.02, max: 1, default: 0.2, unit: "s", format: formatMs },
     { id: "knee", label: "KNEE", min: 0, max: 40, default: 6, unit: "dB", format: formatDb },
     { id: "makeup", label: "MAKEUP", min: 0, max: 24, default: 0, unit: "dB", format: formatDb },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
@@ -97,22 +98,23 @@ const compressor: EffectDefinition = {
     const comp = ctx.createDynamicsCompressor();
     const makeup = ctx.createGain();
     mix.wet.connect(comp).connect(makeup).connect(mix.output);
-    const set = (id: string, v: number) => {
+    const apply = (id: string, v: number, when: number) => {
       switch (id) {
-        case "threshold": smooth(comp.threshold, v, ctx); break;
-        case "ratio": smooth(comp.ratio, v, ctx); break;
-        case "attack": smooth(comp.attack, v, ctx); break;
-        case "release": smooth(comp.release, v, ctx); break;
-        case "knee": smooth(comp.knee, v, ctx); break;
-        case "makeup": smooth(makeup.gain, dbToLin(v), ctx); break;
-        case "mix": mix.setMix(v); break;
+        case "threshold": smooth(comp.threshold, v, when); break;
+        case "ratio": smooth(comp.ratio, v, when); break;
+        case "attack": smooth(comp.attack, v, when); break;
+        case "release": smooth(comp.release, v, when); break;
+        case "knee": smooth(comp.knee, v, when); break;
+        case "makeup": smooth(makeup.gain, dbToLin(v), when); break;
+        case "mix": mix.setMix(v, when); break;
       }
     };
-    for (const [k, v] of Object.entries(instance.params)) set(k, v);
+    for (const [k, v] of Object.entries(instance.params)) apply(k, v, ctx.currentTime);
     return {
       input: mix.input,
       output: mix.output,
-      setParameter: set,
+      setParameter: (id, v) => apply(id, v, ctx.currentTime),
+      setParameterAt: (id, v, when) => apply(id, v, when),
       dispose: () => { mix.input.disconnect(); mix.output.disconnect(); comp.disconnect(); makeup.disconnect(); },
     };
   },
@@ -148,19 +150,20 @@ const saturation: EffectDefinition = {
       }
       return curve;
     };
-    const set = (id: string, v: number) => {
+    const apply = (id: string, v: number, when: number) => {
       switch (id) {
         case "drive": shaper.curve = curveOf(v); break;
-        case "tone": smooth(tone.frequency, v, ctx); break;
-        case "mix": mix.setMix(v); break;
-        case "output": smooth(out.gain, dbToLin(v), ctx); break;
+        case "tone": smooth(tone.frequency, v, when); break;
+        case "mix": mix.setMix(v, when); break;
+        case "output": smooth(out.gain, dbToLin(v), when); break;
       }
     };
-    for (const [k, v] of Object.entries(instance.params)) set(k, v);
+    for (const [k, v] of Object.entries(instance.params)) apply(k, v, ctx.currentTime);
     return {
       input: mix.input,
       output: mix.output,
-      setParameter: set,
+      setParameter: (id, v) => apply(id, v, ctx.currentTime),
+      setParameterAt: (id, v, when) => apply(id, v, when),
       dispose: () => { mix.input.disconnect(); mix.output.disconnect(); shaper.disconnect(); tone.disconnect(); out.disconnect(); },
     };
   },
@@ -186,10 +189,12 @@ const clipper: EffectDefinition = {
     shaper.oversample = "4x";
     const post = ctx.createGain();
     input.connect(pre).connect(shaper).connect(post).connect(output);
-    const curveOf = (ceilingDb: number, softness: number) => {
-      const c = dbToLin(ceilingDb);
+    let ceiling = instance.params.ceiling ?? -1;
+    let softness = instance.params.softness ?? 0.2;
+    const curveOf = () => {
+      const c = dbToLin(ceiling);
       const n = 2048;
-      const curve = new Float32Array(n);
+      const curve = new Float32Array(new ArrayBuffer(n * 4));
       for (let i = 0; i < n; i++) {
         const u = (i / (n - 1)) * 2 - 1;
         let shaped: number;
@@ -203,24 +208,26 @@ const clipper: EffectDefinition = {
       }
       return curve;
     };
-    const set = (id: string, v: number) => {
+    const apply = (id: string, v: number, when: number) => {
       switch (id) {
-        case "drive": smooth(pre.gain, 1 + v * 8, ctx); break;
+        case "drive": smooth(pre.gain, 1 + v * 8, when); break;
         case "ceiling":
-        case "softness":
-          shaper.curve = curveOf(
-            id === "ceiling" ? v : (instance.params.ceiling ?? -1),
-            id === "softness" ? v : (instance.params.softness ?? 0.2),
-          );
+          ceiling = v;
+          shaper.curve = curveOf();
           break;
-        case "output": smooth(post.gain, dbToLin(v), ctx); break;
+        case "softness":
+          softness = v;
+          shaper.curve = curveOf();
+          break;
+        case "output": smooth(post.gain, dbToLin(v), when); break;
       }
     };
-    for (const [k, v] of Object.entries(instance.params)) set(k, v);
+    for (const [k, v] of Object.entries(instance.params)) apply(k, v, ctx.currentTime);
     return {
       input,
       output,
-      setParameter: set,
+      setParameter: (id, v) => apply(id, v, ctx.currentTime),
+      setParameterAt: (id, v, when) => apply(id, v, when),
       dispose: () => { input.disconnect(); output.disconnect(); pre.disconnect(); shaper.disconnect(); post.disconnect(); },
     };
   },
@@ -253,26 +260,27 @@ const reverb: EffectDefinition = {
   ],
   factory(ctx, instance) {
     const mix = mixBus(ctx);
-    mix.setMix(instance.params.mix ?? 0.3);
+    mix.setMix(instance.params.mix ?? 0.3, ctx.currentTime);
     const preDelay = ctx.createDelay(0.5);
     const conv = ctx.createConvolver();
     const tone = ctx.createBiquadFilter();
     tone.type = "lowpass";
     mix.wet.connect(preDelay).connect(conv).connect(tone).connect(mix.output);
     const seed = hashString(instance.id);
-    const set = (id: string, v: number) => {
+    const apply = (id: string, v: number, when: number) => {
       switch (id) {
         case "decay": conv.buffer = makeImpulseResponse(ctx, v, seed); break;
-        case "predelay": smooth(preDelay.delayTime, v / 1000, ctx, 0.05); break;
-        case "tone": smooth(tone.frequency, v, ctx); break;
-        case "mix": mix.setMix(v); break;
+        case "predelay": smooth(preDelay.delayTime, v / 1000, when, 0.05); break;
+        case "tone": smooth(tone.frequency, v, when); break;
+        case "mix": mix.setMix(v, when); break;
       }
     };
-    for (const [k, v] of Object.entries(instance.params)) set(k, v);
+    for (const [k, v] of Object.entries(instance.params)) apply(k, v, ctx.currentTime);
     return {
       input: mix.input,
       output: mix.output,
-      setParameter: set,
+      setParameter: (id, v) => apply(id, v, ctx.currentTime),
+      setParameterAt: (id, v, when) => apply(id, v, when),
       dispose: () => { mix.input.disconnect(); mix.output.disconnect(); preDelay.disconnect(); conv.disconnect(); tone.disconnect(); },
     };
   },
@@ -299,19 +307,20 @@ const delay: EffectDefinition = {
     mix.wet.connect(delayNode);
     delayNode.connect(damp).connect(feedback).connect(delayNode);
     delayNode.connect(mix.output);
-    const set = (id: string, v: number) => {
+    const apply = (id: string, v: number, when: number) => {
       switch (id) {
-        case "time": smooth(delayNode.delayTime, v / 1000, ctx, 0.05); break;
-        case "feedback": smooth(feedback.gain, v, ctx); break;
-        case "tone": smooth(damp.frequency, v, ctx); break;
-        case "mix": mix.setMix(v); break;
+        case "time": smooth(delayNode.delayTime, v / 1000, when, 0.05); break;
+        case "feedback": smooth(feedback.gain, v, when); break;
+        case "tone": smooth(damp.frequency, v, when); break;
+        case "mix": mix.setMix(v, when); break;
       }
     };
-    for (const [k, v] of Object.entries(instance.params)) set(k, v);
+    for (const [k, v] of Object.entries(instance.params)) apply(k, v, ctx.currentTime);
     return {
       input: mix.input,
       output: mix.output,
-      setParameter: set,
+      setParameter: (id, v) => apply(id, v, ctx.currentTime),
+      setParameterAt: (id, v, when) => apply(id, v, when),
       dispose: () => { mix.input.disconnect(); mix.output.disconnect(); delayNode.disconnect(); damp.disconnect(); feedback.disconnect(); },
     };
   },
@@ -382,12 +391,12 @@ const pump: EffectDefinition = {
     applyCurve();
     startOsc(0);
 
-    const set = (id: string, v: number) => {
+    const apply = (id: string, v: number, when: number) => {
       switch (id) {
-        case "amount": smooth(amt.gain, v, ctx); break;
+        case "amount": smooth(amt.gain, v, when); break;
         case "rate":
           rateIndex = Math.max(0, Math.min(PUMP_DIVISIONS.length - 1, Math.round(v)));
-          if (osc) smooth(osc.frequency, freqOf(), ctx, 0.05);
+          if (osc) smooth(osc.frequency, freqOf(), when, 0.05);
           break;
         case "release":
           release = v;
@@ -395,15 +404,16 @@ const pump: EffectDefinition = {
           break;
       }
     };
-    for (const [k, v] of Object.entries(instance.params)) set(k, v);
+    for (const [k, v] of Object.entries(instance.params)) apply(k, v, ctx.currentTime);
 
     return {
       input,
       output,
-      setParameter: set,
+      setParameter: (id, v) => apply(id, v, ctx.currentTime),
+      setParameterAt: (id, v, when) => apply(id, v, when),
       syncBpm(next) {
         bpm = next;
-        if (osc) smooth(osc.frequency, freqOf(), ctx, 0.05);
+        if (osc) smooth(osc.frequency, freqOf(), ctx.currentTime, 0.05);
       },
       onTransportStarted(time, beatPhase) {
         const beatSec = 60 / bpm;
@@ -441,7 +451,7 @@ export function defaultParamsOf(type: EffectType): Record<string, number> {
 }
 
 export function clampEffectParam(type: EffectType, paramId: string, value: number): number {
-  const def = EFFECT_DEFS[type].params.find((p: ParamDef) => p.id === paramId);
+  const def: ParamDef | undefined = EFFECT_DEFS[type].params.find((p) => p.id === paramId);
   if (!def) return value;
   return Math.min(def.max, Math.max(def.min, value));
 }

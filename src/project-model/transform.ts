@@ -1,4 +1,4 @@
-import type { DrumPad, DrumTrack, ProjectDocument } from "./types";
+import type { DrumPad, DrumTrack, ProjectDocument, Track } from "./types";
 import { getActivePattern } from "./types";
 import { clamp } from "../shared/ids";
 
@@ -8,6 +8,13 @@ export function withDrumTrack(doc: ProjectDocument, fn: DocMutator<DrumTrack>): 
   return {
     ...doc,
     tracks: doc.tracks.map((t) => (t.kind === "drum" ? fn(t) : t)),
+  };
+}
+
+export function withTrack(doc: ProjectDocument, trackId: string, fn: DocMutator<Track>): ProjectDocument {
+  return {
+    ...doc,
+    tracks: doc.tracks.map((t) => (t.id === trackId ? fn(t) : t)),
   };
 }
 

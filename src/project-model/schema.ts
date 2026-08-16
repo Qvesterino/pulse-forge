@@ -1,9 +1,11 @@
-import type { DrumPad, DrumTrack, InstrumentKind, InstrumentTrack, Macro, Pattern, ProjectDocument, Scene } from "./types";
+import type { DrumPad, DrumTrack, EffectInstance, InstrumentKind, InstrumentTrack, Macro, MasterConfig, Pattern, ProjectDocument, ReturnTrack, Scene } from "./types";
 import { PPQ, STEPS_PER_PATTERN } from "./types";
-import { uid } from "../shared/ids";
+import { clamp, uid } from "../shared/ids";
 import { defaultInstrumentParams } from "../instruments/registry";
 
 export const SCHEMA_VERSION = 1;
+export const MIN_BPM = 20;
+export const MAX_BPM = 300;
 
 function makePad(index: number, name: string, assetId: string, idPrefix: string, opts: Partial<DrumPad> = {}): DrumPad {
   return {
@@ -53,6 +55,7 @@ export function createDrumTrackModel(name: string): DrumTrack {
     solo: false,
     pads: makeKit(`${id}-`),
     effects: [],
+    sends: {},
   };
 }
 
@@ -76,7 +79,31 @@ export function createInstrumentTrackModel(kind: InstrumentKind, index: number):
     sampleId: kind === "sampler" ? "factory.tonal.pluck" : null,
     params: defaultInstrumentParams(kind),
     effects: [],
+    sends: {},
   };
+}
+
+export function createDefaultReturns(): ReturnTrack[] {
+  const reverbFx: EffectInstance = {
+    id: uid("fx"),
+    type: "reverb",
+    bypassed: false,
+    params: { decay: 2.2, predelay: 20, tone: 6000, mix: 1 },
+  };
+  const delayFx: EffectInstance = {
+    id: uid("fx"),
+    type: "delay",
+    bypassed: false,
+    params: { time: 375, feedback: 0.4, tone: 4000, mix: 1 },
+  };
+  return [
+    { id: uid("return"), kind: "return", name: "Reverb", gain: 0.9, effects: [reverbFx] },
+    { id: uid("return"), kind: "return", name: "Delay", gain: 0.85, effects: [delayFx] },
+  ];
+}
+
+export function defaultMasterConfig(): MasterConfig {
+  return { limiterEnabled: true, clipperEnabled: false };
 }
 
 export function drumTracksOf(doc: ProjectDocument): DrumTrack[] {
@@ -137,6 +164,7 @@ export function createDefaultProject(): ProjectDocument {
     solo: false,
     pads: makeKit(),
     effects: [],
+    sends: {},
   };
   const bass = createInstrumentTrackModel("808", 1);
   const pattern = starterGroove(
@@ -172,6 +200,8 @@ export function createDefaultProject(): ProjectDocument {
     automation: [],
     lfos: [],
     macros: defaultMacros(),
+    returns: createDefaultReturns(),
+    master: defaultMasterConfig(),
     createdAt: now,
     updatedAt: now,
   };
@@ -220,16 +250,23 @@ export function normalizeProject(doc: ProjectDocument): ProjectDocument {
 
   const patternIds = new Set(withTracks.patterns.map((p) => p.id));
   const trackIds = new Set(withTracks.tracks.map((t) => t.id));
-  let scenes: Scene[] = withTracks.scenes ?? [];
-  if (scenes === undefined) {
-    scenes = [{ id: uid("scene"), name: "Scene A", patternId: withTracks.activePatternId }];
-    changed = true;
-  }
-  let validScenes = scenes;
+  const hadScenes = Array.isArray(withTracks.scenes);
+  let scenes: Scene[] = hadScenes ? withTracks.scenes : [];
+  if (!hadScenes) changed = true;
+  let validScenes: Scene[] = scenes;
   const filteredScenes = scenes.filter((s) => patternIds.has(s.patternId));
   if (filteredScenes.length !== scenes.length) {
     validScenes = filteredScenes;
     changed = true;
+  }
+  if (validScenes.length === 0 && withTracks.patterns.length > 0) {
+    const fallbackPattern =
+      withTracks.patterns.find((p) => p.id === withTracks.activePatternId) ?? withTracks.patterns[0];
+    validScenes = [{ id: uid("scene"), name: "Scene A", patternId: fallbackPattern.id }];
+    changed = true;
+  }
+  if (validScenes !== scenes) {
+    scenes = validScenes;
   }
   const sceneIds = new Set(validScenes.map((s) => s.id));
 
@@ -270,22 +307,116 @@ export function normalizeProject(doc: ProjectDocument): ProjectDocument {
     changed = true;
   }
 
-  const withComposition: ProjectDocument =
+  let returns = withTracks.returns;
+  if (!Array.isArray(returns)) {
+    returns = createDefaultReturns();
+    changed = true;
+  }
+
+  let master = withTracks.master;
+  if (master === undefined || typeof master !== "object") {
+    master = defaultMasterConfig();
+    changed = true;
+  }
+
+  let sendsChanged = false;
+  const tracksWithSends = withTracks.tracks.map((track) => {
+    if (track.sends !== undefined) return track;
+    sendsChanged = true;
+    return { ...track, sends: {} };
+  });
+  if (sendsChanged) changed = true;
+
+  let bpm = withTracks.bpm;
+  if (typeof bpm !== "number" || !Number.isFinite(bpm)) {
+    bpm = 120;
+    changed = true;
+  } else if (bpm < MIN_BPM || bpm > MAX_BPM) {
+    bpm = clamp(bpm, MIN_BPM, MAX_BPM);
+    changed = true;
+  }
+
+  let activePatternId = withTracks.activePatternId;
+  if (!patternIds.has(activePatternId)) {
+    activePatternId = withTracks.patterns[0]?.id ?? activePatternId;
+    if (activePatternId !== withTracks.activePatternId) changed = true;
+  }
+
+  const fallbackTimestamp = new Date().toISOString();
+  let createdAt = withTracks.createdAt;
+  if (typeof createdAt !== "string" || createdAt.length === 0) {
+    createdAt = fallbackTimestamp;
+    changed = true;
+  }
+  let updatedAt = withTracks.updatedAt;
+  if (typeof updatedAt !== "string" || updatedAt.length === 0) {
+    updatedAt = fallbackTimestamp;
+    changed = true;
+  }
+
+  const withCompositionBase: ProjectDocument =
     scenes !== withTracks.scenes ||
     arrangement !== withTracks.arrangement ||
     automation !== withTracks.automation ||
     lfos !== withTracks.lfos ||
-    macros !== withTracks.macros
-      ? { ...withTracks, scenes, arrangement, automation, lfos, macros }
+    macros !== withTracks.macros ||
+    returns !== withTracks.returns ||
+    master !== withTracks.master ||
+    sendsChanged ||
+    bpm !== withTracks.bpm ||
+    activePatternId !== withTracks.activePatternId ||
+    createdAt !== withTracks.createdAt ||
+    updatedAt !== withTracks.updatedAt
+      ? {
+          ...withTracks,
+          tracks: tracksWithSends,
+          scenes,
+          arrangement,
+          automation,
+          lfos,
+          macros,
+          returns,
+          master,
+          bpm,
+          activePatternId,
+          createdAt,
+          updatedAt,
+        }
       : withTracks;
 
-  const patterns = withComposition.patterns.map((pattern) => {
+  const patterns = withCompositionBase.patterns.map((pattern) => {
     let next = pattern;
     if (next.notes === undefined) {
       next = { ...next, notes: {} };
       changed = true;
     }
+    if (!Number.isFinite(next.stepCount) || next.stepCount <= 0) {
+      next = { ...next, stepCount: STEPS_PER_PATTERN };
+      changed = true;
+    }
+
+    let notes = next.notes ?? {};
+    let notesChanged = false;
+    for (const trackId of Object.keys(notes)) {
+      if (trackIds.has(trackId)) continue;
+      if (notes === next.notes) notes = { ...notes };
+      delete notes[trackId];
+      notesChanged = true;
+      changed = true;
+    }
+    if (notesChanged) next = { ...next, notes };
+
     let rows = next.rows;
+    let rowsFiltered = false;
+    for (const padId of Object.keys(rows)) {
+      if (padIds.has(padId)) continue;
+      if (rows === next.rows) rows = { ...rows };
+      delete rows[padId];
+      rowsFiltered = true;
+      changed = true;
+    }
+    if (rowsFiltered) next = { ...next, rows };
+
     for (const padId of padIds) {
       const row = rows[padId];
       const invalid = !row || row.length !== next.stepCount;
@@ -300,7 +431,7 @@ export function normalizeProject(doc: ProjectDocument): ProjectDocument {
     if (rows !== next.rows) next = { ...next, rows };
     return next;
   });
-  return changed ? { ...withComposition, patterns } : withComposition;
+  return changed ? { ...withCompositionBase, patterns } : withCompositionBase;
 }
 
 export const ensurePatternRows = normalizeProject;

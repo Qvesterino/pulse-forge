@@ -5,6 +5,7 @@ export interface InstrumentRuntime {
   output: AudioNode;
   noteOn(pitch: number, velocity: number, when: number, durationSec: number): void;
   setParameter(id: string, value: number): void;
+  setParameterAt?(id: string, value: number, when: number): void;
   setSample?(id: string | null): void;
   panic(): void;
   dispose(): void;

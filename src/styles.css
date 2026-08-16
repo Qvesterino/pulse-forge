@@ -179,7 +179,14 @@ button {
 .slider-track:focus-visible,
 .row-pad:focus-visible,
 .step:focus-visible,
-.pad:focus-visible {
+.pad:focus-visible,
+.track-tab:focus-visible,
+.track-tab.active:focus-visible,
+.pattern-chip:focus-visible,
+.pattern-chip.active:focus-visible,
+.scene-chip:focus-visible,
+.scene-chip.selected:focus-visible,
+.btn:focus-visible {
   outline: 1px solid var(--accent);
   outline-offset: 1px;
 }
@@ -570,6 +577,30 @@ button {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
 }
 
+.step.playhead {
+  box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.55), 0 0 6px rgba(245, 158, 11, 0.35);
+}
+
+.step.active.playhead {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5), 0 0 8px rgba(245, 158, 11, 0.45);
+}
+
+/* Pulsing playhead indicator for the active step */
+@keyframes step-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.04); }
+}
+
+.step.playhead:not(.active) {
+  animation: step-pulse 0.18s ease-out;
+}
+
+/* Track header hint: highlight when a step on that track is currently playing */
+.track-header-row.playing .track-header-name {
+  border-color: rgba(74, 222, 128, 0.4);
+  color: var(--play);
+}
+
 /* ---------- Inspector ---------- */
 
 .inspector {
@@ -939,13 +970,15 @@ button {
   justify-content: center;
 }
 
-.master-strip .channel-body {
-  min-height: 76px;
-}
-
 .master-strip .channel-controls {
   align-items: center;
   justify-content: center;
+  gap: 6px;
+}
+
+.master-strip .meter {
+  height: 56px;
+  align-self: center;
 }
 
 .channel-buttons {
@@ -1504,6 +1537,103 @@ button {
   color: #38bdf8;
 }
 
+/* ---------- Export panel ---------- */
+
+.export-panel {
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.export-options {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.export-options .fx-param-select {
+  min-width: 180px;
+}
+
+.export-options select {
+  height: 26px;
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 11px;
+  padding: 0 6px;
+}
+
+.export-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-export {
+  height: 30px;
+  padding: 0 16px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--accent);
+  border-color: rgba(245, 158, 11, 0.4);
+}
+
+.btn-export:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+
+.btn-export-toggle.active {
+  background: var(--accent-soft);
+  border-color: rgba(245, 158, 11, 0.5);
+  color: var(--accent);
+}
+
+.export-status {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.export-busy {
+  color: var(--accent);
+}
+
+.export-done {
+  color: var(--play);
+}
+
+.export-error {
+  color: var(--stop);
+}
+
+.return-strip {
+  border-style: dashed;
+}
+
+.return-fx-names {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.return-fx-name {
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  background: var(--bg);
+  border-radius: 2px;
+  padding: 1px 4px;
+}
+
 /* ---------- Diagnostics ---------- */
 
 .diagnostics {
@@ -1547,6 +1677,17 @@ button {
   font-size: 10px;
   color: var(--text-faint);
   letter-spacing: 0.4px;
+  gap: 8px;
+}
+
+.statusbar kbd {
+  font-family: var(--mono);
+  font-size: 9px;
+  padding: 0 4px;
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  color: var(--text-dim);
 }
 
 .boot {
@@ -1560,6 +1701,152 @@ button {
 
 .boot-error {
   color: var(--stop);
+}
+
+/* ---------- Command toast ---------- */
+
+.command-toast {
+  position: fixed;
+  left: 16px;
+  bottom: 36px;
+  max-width: 360px;
+  padding: 6px 10px;
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--accent);
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text);
+  letter-spacing: 0.4px;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.18s ease-out, transform 0.18s ease-out;
+  z-index: 30;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.command-toast.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ---------- Help overlay ---------- */
+
+.help-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 9, 12, 0.6);
+  display: grid;
+  place-items: center;
+  z-index: 50;
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+.help-card {
+  width: min(720px, 92vw);
+  max-height: 80vh;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.help-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.help-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px 18px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.help-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.help-group-title {
+  margin: 0 0 2px;
+  font-size: 9px;
+  letter-spacing: 1.6px;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.help-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.help-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+.help-row:hover {
+  background: var(--bg-panel-2);
+}
+
+.help-label {
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.help-kbd {
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 1px 6px;
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.help-footer {
+  display: flex;
+  justify-content: flex-end;
+  font-size: 10px;
+  color: var(--text-faint);
+  border-top: 1px solid var(--border-soft);
+  padding-top: 6px;
+}
+
+.help-footer kbd {
+  font-family: var(--mono);
+  font-size: 9px;
+  padding: 0 4px;
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  color: var(--text-dim);
+  margin: 0 2px;
 }
 
 ::-webkit-scrollbar {

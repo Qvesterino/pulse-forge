@@ -11,12 +11,14 @@ import type {
   InstrumentTrack,
   Lfo,
   Macro,
+  MasterConfig,
   NoteEvent,
   ProjectDocument,
   Scene,
+  Track,
 } from "../project-model/types";
 import { STEP_TICKS } from "../project-model/types";
-import { setStepVelocity, withPad, withDrumTrack } from "../project-model/transform";
+import { setStepVelocity, withPad, withTrack } from "../project-model/transform";
 import { insertPointSorted } from "../project-model/automation";
 import {
   createDrumTrackModel,
@@ -108,7 +110,7 @@ export function setPadParams(doc: ProjectDocument, padId: string, params: PadPar
   };
 }
 
-type TrackParams = Partial<Pick<DrumTrack, "name" | "gain" | "pan" | "mute" | "solo">>;
+type TrackParams = Partial<Pick<Track, "name" | "gain" | "pan" | "mute" | "solo">>;
 
 export function setTrackParams(doc: ProjectDocument, trackId: string, params: TrackParams): Command {
   const track = doc.tracks.find((t) => t.id === trackId);
@@ -116,7 +118,7 @@ export function setTrackParams(doc: ProjectDocument, trackId: string, params: Tr
     ? { name: track.name, gain: track.gain, pan: track.pan, mute: track.mute, solo: track.solo }
     : {};
   const apply = (d: ProjectDocument, values: TrackParams): ProjectDocument =>
-    withDrumTrack(d, (t) => (t.id === trackId ? { ...t, ...values } : t));
+    withTrack(d, trackId, (t) => ({ ...t, ...values }));
   return {
     type: "setTrackParams",
     label: `Edit track ${trackId}`,
@@ -141,11 +143,11 @@ export function duplicatePattern(doc: ProjectDocument, patternId: string): Comma
   const source = doc.patterns.find((p) => p.id === patternId);
   if (!source) throw new Error(`Pattern ${patternId} not found`);
   const copy: Pattern = {
-    id: `pattern-${crypto.randomUUID()}`,
+    id: uid("pattern"),
     name: `${source.name} 2`,
     stepCount: source.stepCount,
     rows: Object.fromEntries(Object.entries(source.rows).map(([padId, row]) => [padId, [...row]])),
-    notes: Object.fromEntries(Object.entries(source.notes ?? {}).map(([trackId, notes]) => [trackId, notes.map((n) => ({ ...n }))])),
+    notes: Object.fromEntries(Object.entries(source.notes ?? {}).map(([trackId, notes]) => [trackId, notes.map((n) => ({ ...n, id: uid("note") }))])),
   };
   const next: ProjectDocument = {
     ...doc,
@@ -557,6 +559,21 @@ export function automationLaneOf(doc: ProjectDocument, laneId: string): Automati
 }
 
 export function addAutomationLane(doc: ProjectDocument, target: AutomationTarget): Command {
+  const track = doc.tracks.find((t) => t.id === target.trackId);
+  if (!track) throw new Error(`Track ${target.trackId} not found`);
+  if (target.kind === "fxParam") {
+    if (!target.fxId) throw new Error("fxParam target requires fxId");
+    if (!("effects" in track) || !track.effects.some((f) => f.id === target.fxId)) {
+      throw new Error(`Effect ${target.fxId} not found on track ${target.trackId}`);
+    }
+    if (!target.paramId) throw new Error("fxParam target requires paramId");
+  }
+  if ((target.kind === "fxParam" || target.kind === "instParam") && !target.paramId) {
+    throw new Error(`${target.kind} target requires paramId`);
+  }
+  if (target.kind === "instParam" && track.kind !== "instrument") {
+    throw new Error(`instParam target requires an instrument track`);
+  }
   const exists = doc.automation.some(
     (l) =>
       l.target.kind === target.kind &&
@@ -705,6 +722,8 @@ export function renameMacro(doc: ProjectDocument, macroId: string, name: string)
 }
 
 export function addMacroMapping(doc: ProjectDocument, macroId: string, trackId: string, param: "gain" | "pan"): Command {
+  if (!doc.tracks.some((t) => t.id === trackId)) throw new Error(`Track ${trackId} not found`);
+  if (!doc.macros.some((m) => m.id === macroId)) throw new Error(`Macro ${macroId} not found`);
   const mapping = { id: uid("map"), trackId, param, amount: 0.5 };
   const next: ProjectDocument = {
     ...dMap(doc, macroId, (m) => ({ ...m, mappings: [...m.mappings, mapping] })),
@@ -743,6 +762,45 @@ export function setMacroMappingAmount(doc: ProjectDocument, macroId: string, map
 
 function dMap(doc: ProjectDocument, macroId: string, fn: (m: Macro) => Macro): ProjectDocument {
   return { ...doc, macros: doc.macros.map((m) => (m.id === macroId ? fn(m) : m)) };
+}
+
+/* ---------------- master / sends / returns ---------------- */
+
+export function setMasterConfig(doc: ProjectDocument, patch: Partial<MasterConfig>): Command {
+  const next: ProjectDocument = { ...doc, master: { ...doc.master, ...patch } };
+  return snapshot("setMasterConfig", "Edit master chain", doc, next);
+}
+
+export function setTrackSend(doc: ProjectDocument, trackId: string, returnId: string, level: number): Command {
+  const track = doc.tracks.find((t) => t.id === trackId);
+  if (!track) throw new Error(`Track ${trackId} not found`);
+  const prev = track.sends[returnId] ?? 0;
+  const clamped = clamp(level, 0, 1.5);
+  const apply = (d: ProjectDocument, v: number): ProjectDocument => ({
+    ...d,
+    tracks: d.tracks.map((t) => (t.id === trackId ? { ...t, sends: { ...t.sends, [returnId]: v } } : t)),
+  });
+  return {
+    type: "setTrackSend",
+    label: "Set send level",
+    execute: (d) => apply(d, clamped),
+    undo: (d) => apply(d, prev),
+  };
+}
+
+export function setReturnGain(doc: ProjectDocument, returnId: string, gain: number): Command {
+  const prev = doc.returns.find((r) => r.id === returnId)?.gain ?? 0.9;
+  const clamped = clamp(gain, 0, 1.5);
+  const apply = (d: ProjectDocument, v: number): ProjectDocument => ({
+    ...d,
+    returns: d.returns.map((r) => (r.id === returnId ? { ...r, gain: v } : r)),
+  });
+  return {
+    type: "setReturnGain",
+    label: "Set return gain",
+    execute: (d) => apply(d, clamped),
+    undo: (d) => apply(d, prev),
+  };
 }
 
 /* ---------------- effects ---------------- */

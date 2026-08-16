@@ -9,11 +9,13 @@ export function TopBar({
   diagnosticsOpen,
   onSetBottomPanel,
   bottomPanel,
+  onToggleHelp,
 }: {
   onToggleDiagnostics: () => void;
   diagnosticsOpen: boolean;
-  onSetBottomPanel: (panel: "mixer" | "fx" | "arr" | "mod") => void;
-  bottomPanel: "mixer" | "fx" | "arr" | "mod" | null;
+  onSetBottomPanel: (panel: "mixer" | "fx" | "arr" | "mod" | "exp") => void;
+  bottomPanel: "mixer" | "fx" | "arr" | "mod" | "exp" | null;
+  onToggleHelp: () => void;
 }) {
   const services = useServices();
   const doc = useDoc();
@@ -97,7 +99,9 @@ export function TopBar({
           type="button"
           className={`btn btn-ghost${bottomPanel === "mixer" ? " active" : ""}`}
           onClick={() => onSetBottomPanel("mixer")}
-          title="Toggle mixer panel"
+          title="Toggle mixer panel (1)"
+          aria-label="Toggle mixer panel"
+          aria-pressed={bottomPanel === "mixer"}
         >
           MIX
         </button>
@@ -105,7 +109,9 @@ export function TopBar({
           type="button"
           className={`btn btn-ghost${bottomPanel === "fx" ? " active" : ""}`}
           onClick={() => onSetBottomPanel("fx")}
-          title="Toggle effect rack"
+          title="Toggle effect rack (2)"
+          aria-label="Toggle effect rack"
+          aria-pressed={bottomPanel === "fx"}
         >
           FX
         </button>
@@ -113,7 +119,9 @@ export function TopBar({
           type="button"
           className={`btn btn-ghost${bottomPanel === "arr" ? " active" : ""}`}
           onClick={() => onSetBottomPanel("arr")}
-          title="Toggle arrangement and scenes"
+          title="Toggle arrangement and scenes (3)"
+          aria-label="Toggle arrangement and scenes"
+          aria-pressed={bottomPanel === "arr"}
         >
           ARR
         </button>
@@ -121,15 +129,38 @@ export function TopBar({
           type="button"
           className={`btn btn-ghost${bottomPanel === "mod" ? " active" : ""}`}
           onClick={() => onSetBottomPanel("mod")}
-          title="Toggle automation, LFOs and macros"
+          title="Toggle automation, LFOs and macros (4)"
+          aria-label="Toggle modulation panel"
+          aria-pressed={bottomPanel === "mod"}
         >
           MOD
+        </button>
+        <button
+          type="button"
+          className={`btn btn-ghost btn-export-toggle${bottomPanel === "exp" ? " active" : ""}`}
+          onClick={() => onSetBottomPanel("exp")}
+          title="Toggle export panel (5)"
+          aria-label="Toggle export panel"
+          aria-pressed={bottomPanel === "exp"}
+        >
+          EXPORT
+        </button>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={onToggleHelp}
+          title="Show keyboard shortcuts (?)"
+          aria-label="Show keyboard shortcuts"
+        >
+          ?
         </button>
         <button
           type="button"
           className={`btn btn-ghost${diagnosticsOpen ? " active" : ""}`}
           onClick={onToggleDiagnostics}
           title="Toggle diagnostics panel"
+          aria-label="Toggle diagnostics panel"
+          aria-pressed={diagnosticsOpen}
         >
           DIAG
         </button>

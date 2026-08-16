@@ -2,7 +2,7 @@
 
 A focused, browser-first electronic music production workstation.
 
-This repository currently contains the **first vertical slice** (Phase 0 + Phase 1 + minimal Phase 2 of the build order defined in `Pulse Forge — Master Build Prompt.md`).
+This repository implements **Phases 0–6** of the build order defined in `Pulse Forge — Master Build Prompt.md`, through the production milestone (offline render + WAV/stem export).
 
 ## Run
 
@@ -25,7 +25,12 @@ npm run build        # production build
 - **Multiple drum tracks** — add/remove tracks (`+ TRACK` in the rack header or mixer), each with a full kit; unique pad IDs across tracks; pattern rows cover all tracks automatically.
 - **Pattern management** — create (ADD), duplicate (DUP / `Ctrl+D`), rename (double-click chip), delete, copy/paste, clear, 16/32-step length switching with content preservation; pattern chips with inline rename.
 - **16/32-step sequencer** — click toggles steps, vertical drag edits velocity, playhead indication, beat grouping, rows grouped per track with track headers.
-- **Mixer** — channel strips per track: rename, volume, pan, mute, solo, delete, **real peak meters** (AnalyserNode per track + master, ~30 Hz throttled UI), master strip with meter. Toggle via `MIX`.
+- **Mixer** — channel strips per track: rename, volume, pan, mute, solo, delete, **real peak meters** (AnalyserNode per track + return + master, ~30 Hz throttled UI), per-track **send knobs to returns**, return strips, and a master strip. Toggle via `MIX`.
+- **Returns (send/return buses)** — two factory returns (Reverb, Delay) with real insert effect chains; each track sends a configurable post-fader level; return outputs sum into the master. Return gain editable in the mixer.
+- **Master processing** — master chain `gain → soft-clipper → limiter → analyser`. `LIMIT` (glue limiter, transparent safety) and `CLIP` (brick-wall soft clipper, character + loudness) toggles in the master strip. No fake one-button mastering — both are honest, bypassable processors. Verified: limiter reduces a hot mix, clipper brick-walls it below 0 dBFS.
+- **Offline rendering** — deterministic, sample-accurate render of the exact same engine, instruments, effects, sends, automation, LFOs and macros used in playback, via `OfflineAudioContext`. Pattern mode renders one pattern pass; song mode renders the full arrangement; a configurable tail (default 2 s) preserves reverb/delay tails.
+- **WAV export** — 16-bit PCM, 24-bit PCM, or 32-bit float at 44.1/48 kHz, encoded by a hand-written RIFF/WAVE writer (header + interleaving verified in tests).
+- **Stem export** — grouped stems (Drums / Bass / Music) rendered from filtered project copies (solo is disabled in stems for predictable summation), plus a one-stem-per-track export. Master + stems + all-tracks are one-click each in the `EXPORT` panel.
 - **Effect rack** — common device shell per track (`FX` panel): add/remove/reorder/bypass, compact parameter controls driven by shared parameter metadata. Inserted between track input and pan in the audio graph.
 - **Native effects (7)** — all Web Audio based, verified in real Chromium via offline rendering:
   - **EQ** — 3-band (low shelf / peaking / high shelf), gain+freq+Q.
@@ -51,7 +56,7 @@ npm run build        # production build
 - **LFO** — per-track audio-rate modulation of volume or pan: sine/tri/square/saw up/down, free Hz or tempo-synced (1/1–1/16), amount; re-syncs on BPM change.
 - **Macros** — four project macros (A–D) with bipolar value (center = neutral) mapping to track volume/pan offsets. Mapping editor per macro.
 - **Modulation routing in engine** — each track chain ends with dedicated automation/macro gain+pan stages, so mute/solo, manual volume, automation, LFO and macros never fight over the same AudioParam.
-- **Factory sound bank** — 16 procedurally synthesized drum sounds (seeded, deterministic, license-clean) rendered via `OfflineAudioContext` at startup.
+- **Factory sound bank** — 20 procedurally synthesized sounds (16 drums + 4 tonal: pluck/stab/keys/bell), seeded, deterministic, license-clean, rendered via `OfflineAudioContext` at startup.
 - **Audio engine** — per-voice gain/pan/pitch, choke groups, voice cleanup, panic (guaranteed stop), track chains with smoothing.
 - **Persistence** — IndexedDB, debounced autosave (800 ms), manual `Ctrl+S`, reload restores the exact project (incl. after refresh).
 - **Diagnostics panel** — context state, sample rate, voices, scheduled events, scheduler state, track/pattern counts, save status (toggle `DIAG` in the top bar).
@@ -60,10 +65,9 @@ npm run build        # production build
 ## Not implemented yet (planned, in build order)
 
 - Texture Synth (instrument family complete otherwise)
-- Buses/returns, send effects
+- User-defined buses (returns cover send/return routing today)
 - Arrangement loop regions, song-mode seek UI
 - Automation recording, per-scene automation
-- Offline render / WAV + stem export
 - AudioWorklet + Rust/WASM DSP path
 
 ## Architecture
@@ -73,10 +77,14 @@ React UI  →  Commands  →  Project Model (truth)
                               ↓
                     Transport (musical time)
                               ↓
-                    Scheduler (lookahead)
+                    Scheduler (lookahead)          [realtime]
                               ↓
                     Audio Engine → Web Audio
+                              ↑
+                    Renderer (OfflineAudioContext)  [export]
 ```
+
+The **same** `AudioEngine` drives both realtime playback and offline export — only the surrounding context (`AudioContext` vs `OfflineAudioContext`) and the event driver (lookahead scheduler vs pre-scheduled deterministic events) differ. This is what guarantees that exports sound exactly like the project.
 
 Source layout mirrors the responsibilities from `ARCHITECTURE.md`:
 
@@ -87,10 +95,11 @@ src/
 ├─ store/           # ProjectStore (doc + history + subscribers)
 ├─ transport/       # musical time
 ├─ scheduler/       # lookahead event-window scheduling
-├─ audio-engine/    # graph ownership, voices, routing, fx chains, instruments
+├─ audio-engine/    # graph ownership, voices, routing, fx chains, instruments, returns, master
 ├─ effects/         # effect definitions + runtime registry
 ├─ instruments/     # instrument definitions + runtime registry
 ├─ sample-library/  # manifest + procedural factory bank
+├─ rendering/       # offline renderer, WAV encoder, stem builder
 ├─ persistence/     # IndexedDB repository
 └─ ui/              # React shell and editors
 scripts/

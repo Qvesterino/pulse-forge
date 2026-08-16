@@ -182,6 +182,11 @@ const analog: InstrumentDefinition = {
         if (id === "cutoff") applyFilterLive((f) => f.frequency.setTargetAtTime(value, ctx.currentTime, 0.02));
         if (id === "resonance") applyFilterLive((f) => f.Q.setTargetAtTime(value, ctx.currentTime, 0.02));
       },
+      setParameterAt(id, value, when) {
+        p[id] = value;
+        if (id === "cutoff") applyFilterLive((f) => f.frequency.setTargetAtTime(value, when, 0.02));
+        if (id === "resonance") applyFilterLive((f) => f.Q.setTargetAtTime(value, when, 0.02));
+      },
       panic() {
         for (const voice of [...voices]) voice.silence(ctx.currentTime);
         voices.length = 0;
@@ -316,6 +321,12 @@ const bass: InstrumentDefinition = {
         if (id === "resonance") for (const f of liveFilters) f.Q.setTargetAtTime(value, ctx.currentTime, 0.02);
         if (id === "grit") applyGrit();
       },
+      setParameterAt(id, value, when) {
+        p[id] = value;
+        if (id === "cutoff") for (const f of liveFilters) f.frequency.setTargetAtTime(value, when, 0.02);
+        if (id === "resonance") for (const f of liveFilters) f.Q.setTargetAtTime(value, when, 0.02);
+        if (id === "grit") applyGrit();
+      },
       panic() {
         for (const voice of [...voices]) voice.silence(ctx.currentTime);
         voices.length = 0;
@@ -434,6 +445,9 @@ const bass808: InstrumentDefinition = {
       setParameter(id, value) {
         p[id] = value;
       },
+      setParameterAt(id, value) {
+        p[id] = value;
+      },
       panic() {
         current?.silence(ctx.currentTime);
         current = null;
@@ -526,6 +540,11 @@ const sampler: InstrumentDefinition = {
         p[id] = value;
         if (id === "cutoff") for (const f of liveFilters) f.frequency.setTargetAtTime(value, ctx.currentTime, 0.02);
         if (id === "resonance") for (const f of liveFilters) f.Q.setTargetAtTime(value, ctx.currentTime, 0.02);
+      },
+      setParameterAt(id, value, when) {
+        p[id] = value;
+        if (id === "cutoff") for (const f of liveFilters) f.frequency.setTargetAtTime(value, when, 0.02);
+        if (id === "resonance") for (const f of liveFilters) f.Q.setTargetAtTime(value, when, 0.02);
       },
       setSample(id) {
         sampleId = id;

@@ -15,6 +15,7 @@ export interface EffectRuntime {
   input: AudioNode;
   output: AudioNode;
   setParameter(id: string, value: number): void;
+  setParameterAt?(id: string, value: number, when: number): void;
   syncBpm?(bpm: number): void;
   onTransportStarted?(time: number, beatPhase: number): void;
   dispose(): void;

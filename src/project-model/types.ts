@@ -44,6 +44,7 @@ export interface DrumTrack {
   solo: boolean;
   pads: DrumPad[];
   effects: EffectInstance[];
+  sends: Record<ID, number>;
 }
 
 export interface InstrumentTrack {
@@ -58,9 +59,23 @@ export interface InstrumentTrack {
   sampleId: string | null;
   params: Record<string, number>;
   effects: EffectInstance[];
+  sends: Record<ID, number>;
 }
 
 export type Track = DrumTrack | InstrumentTrack;
+
+export interface ReturnTrack {
+  id: ID;
+  kind: "return";
+  name: string;
+  gain: number;
+  effects: EffectInstance[];
+}
+
+export interface MasterConfig {
+  limiterEnabled: boolean;
+  clipperEnabled: boolean;
+}
 
 export interface NoteEvent {
   id: ID;
@@ -158,6 +173,8 @@ export interface ProjectDocument {
   automation: AutomationLane[];
   lfos: Lfo[];
   macros: Macro[];
+  returns: ReturnTrack[];
+  master: MasterConfig;
   createdAt: string;
   updatedAt: string;
 }

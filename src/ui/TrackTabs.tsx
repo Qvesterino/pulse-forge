@@ -26,14 +26,15 @@ export function TrackTabs({
 
   return (
     <div className="track-tabs" role="tablist" aria-label="Tracks">
-      {doc.tracks.map((track) => (
+      {doc.tracks.map((track, idx) => (
         <button
           key={track.id}
           type="button"
           role="tab"
           aria-selected={track.id === selectedTrackId}
+          aria-label={`${track.name} (${track.kind === "drum" ? "Drum track" : `${track.instrument} track`})${track.mute ? ", muted" : ""}${track.solo ? ", soloed" : ""}`}
           className={`track-tab${track.id === selectedTrackId ? " active" : ""}`}
-          title={`${track.name} — select track`}
+          title={`${track.name} — select track (Alt+${idx + 1})`}
           onClick={() => onSelectTrack(track.id)}
         >
           <span className="track-tab-badge">{trackBadge(track)}</span>

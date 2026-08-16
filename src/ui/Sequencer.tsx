@@ -81,44 +81,62 @@ export function Sequencer({
 
   return (
     <section className="sequencer" aria-label="Step Sequencer">
-      <div className="sequencer-ruler" style={{ gridTemplateColumns: `168px repeat(${pattern.stepCount}, minmax(22px, 1fr))` }}>
+      <div
+        className="sequencer-ruler"
+        style={{ gridTemplateColumns: `168px repeat(${pattern.stepCount}, minmax(22px, 1fr))` }}
+        role="row"
+        aria-label="Step ruler"
+      >
         <span className="row-label-spacer" />
         {Array.from({ length: pattern.stepCount }, (_, i) => (
-          <span key={i} className={`ruler-tick${playheadStep === i ? " current" : ""}${i % 4 === 0 ? " beat-start" : ""}`}>
+          <span
+            key={i}
+            className={`ruler-tick${playheadStep === i ? " current" : ""}${i % 4 === 0 ? " beat-start" : ""}`}
+            aria-label={`Step ${i + 1}${i % 4 === 0 ? `, beat ${i / 4 + 1}` : ""}`}
+          >
             {i % 4 === 0 ? i / 4 + 1 : "·"}
           </span>
         ))}
       </div>
-      {doc.tracks.map((track) => (
-        <Fragment key={track.id}>
-          <TrackHeaderRow track={track} isSelected={track.id === selectedTrackId} onSelect={() => onSelectTrack(track.id)} />
-          {track.kind === "drum" ? (
-            track.pads.map((pad) => (
-              <PadRow
-                key={pad.id}
-                pad={pad}
-                trackId={track.id}
+      {doc.tracks.map((track) => {
+        const trackHasHit =
+          playheadStep >= 0 && track.kind === "drum" && track.pads.some((p) => (pattern.rows[p.id]?.[playheadStep] ?? 0) > 0);
+        return (
+          <Fragment key={track.id}>
+            <TrackHeaderRow
+              track={track}
+              isSelected={track.id === selectedTrackId}
+              isPlaying={trackHasHit}
+              onSelect={() => onSelectTrack(track.id)}
+            />
+            {track.kind === "drum" ? (
+              track.pads.map((pad) => (
+                <PadRow
+                  key={pad.id}
+                  pad={pad}
+                  trackId={track.id}
+                  pattern={pattern}
+                  playheadStep={playheadStep}
+                  selected={pad.id === selectedPadId}
+                  dragPreview={dragPreview}
+                  onBegin={beginStepInteraction}
+                  onMove={moveStepInteraction}
+                  onEnd={endStepInteraction}
+                  onSelectPad={onSelectPad}
+                />
+              ))
+            ) : (
+              <PianoRollTrack
+                track={track}
                 pattern={pattern}
                 playheadStep={playheadStep}
-                selected={pad.id === selectedPadId}
-                dragPreview={dragPreview}
-                onBegin={beginStepInteraction}
-                onMove={moveStepInteraction}
-                onEnd={endStepInteraction}
-                onSelectPad={onSelectPad}
+                selectedNote={selectedNote}
+                onSelectNote={onSelectNote}
               />
-            ))
-          ) : (
-            <PianoRollTrack
-              track={track}
-              pattern={pattern}
-              playheadStep={playheadStep}
-              selectedNote={selectedNote}
-              onSelectNote={onSelectNote}
-            />
-          )}
-        </Fragment>
-      ))}
+            )}
+          </Fragment>
+        );
+      })}
     </section>
   );
 }
@@ -126,18 +144,27 @@ export function Sequencer({
 function TrackHeaderRow({
   track,
   isSelected,
+  isPlaying,
   onSelect,
 }: {
   track: Track;
   isSelected: boolean;
+  isPlaying: boolean;
   onSelect: () => void;
 }) {
   const services = useServices();
   const doc = useDoc();
   return (
-    <div className={`track-header-row${isSelected ? " selected" : ""}`}>
+    <div className={`track-header-row${isSelected ? " selected" : ""}${isPlaying ? " playing" : ""}`}>
       <div className="track-header">
-        <button type="button" className="track-header-name" title={`${track.name} — select track`} onClick={onSelect}>
+        <button
+          type="button"
+          className="track-header-name"
+          title={`${track.name} — select track`}
+          aria-label={`${track.name} track${track.mute ? " (muted)" : ""}${track.solo ? " (soloed)" : ""}`}
+          aria-pressed={isSelected}
+          onClick={onSelect}
+        >
           <span className="track-header-badge">{trackBadge(track)}</span>
           {track.name}
         </button>
@@ -145,6 +172,8 @@ function TrackHeaderRow({
           type="button"
           className={`row-toggle${track.mute ? " active-mute" : ""}`}
           title="Mute track"
+          aria-label={`Mute ${track.name}`}
+          aria-pressed={track.mute}
           onClick={() => services.store.execute(setTrackParams(doc, track.id, { mute: !track.mute }))}
         >
           M
@@ -153,6 +182,8 @@ function TrackHeaderRow({
           type="button"
           className={`row-toggle${track.solo ? " active-solo" : ""}`}
           title="Solo track"
+          aria-label={`Solo ${track.name}`}
+          aria-pressed={track.solo}
           onClick={() => services.store.execute(setTrackParams(doc, track.id, { solo: !track.solo }))}
         >
           S
@@ -228,13 +259,17 @@ function PadRow({
             ? dragPreview.velocity
             : row[stepIndex] ?? 0;
           const active = velocity > 0;
+          const stepNumber = stepIndex + 1;
+          const stepLabel = `Step ${stepNumber}${active ? `, velocity ${Math.round(velocity * 100)}%` : ", empty"}`;
           return (
             <button
               key={stepIndex}
               type="button"
               className={`step${active ? " active" : ""}${stepIndex % 4 === 0 ? " beat-start" : ""}${playheadStep === stepIndex ? " playhead" : ""}`}
               style={active ? ({ "--step-velocity": velocity } as React.CSSProperties) : undefined}
-              title={`Step ${stepIndex + 1}${active ? ` — velocity ${(velocity * 100).toFixed(0)}%` : ""} — click to toggle, drag vertically to set velocity`}
+              title={`${stepLabel} — click to toggle, drag vertically to set velocity`}
+              aria-label={stepLabel}
+              aria-pressed={active}
               onPointerDown={(event) => onBegin(event, pad.id, stepIndex)}
               onPointerMove={onMove}
               onPointerUp={onEnd}

@@ -4,6 +4,7 @@ import { Transport } from "./transport/Transport";
 import { ProjectStore } from "./store/ProjectStore";
 import { ProjectRepository } from "./persistence/ProjectRepository";
 import { generateFactoryBank } from "./sample-library/factory";
+import type { SampleBank } from "./sample-library/factory";
 import { createDefaultProject, migrateProject, validateProjectShape } from "./project-model/schema";
 import { PPQ } from "./project-model/types";
 import type { PlayMode, ProjectDocument } from "./project-model/types";
@@ -14,6 +15,7 @@ export interface Services {
   transport: Transport;
   scheduler: Scheduler;
   repo: ProjectRepository;
+  bank: SampleBank;
   playback: PlaybackController;
   flushSave(): Promise<void>;
   getDiagnostics(): Record<string, string | number | boolean>;
@@ -134,5 +136,5 @@ export async function createServices(): Promise<Services> {
     };
   };
 
-  return { store, engine, transport, scheduler, repo, playback, flushSave, getDiagnostics };
+  return { store, engine, transport, scheduler, repo, bank, playback, flushSave, getDiagnostics };
 }

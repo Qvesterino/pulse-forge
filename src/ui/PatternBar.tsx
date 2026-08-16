@@ -36,7 +36,7 @@ export function PatternBar({ clip, onCopy }: { clip: PatternClipboard | null; on
 
   return (
     <section className="pattern-bar" aria-label="Patterns">
-      <div className="pattern-chips">
+      <div className="pattern-chips" role="tablist" aria-label="Pattern selector">
         {doc.patterns.map((pattern) => {
           const isActive = pattern.id === doc.activePatternId;
           if (editingId === pattern.id) {
@@ -60,6 +60,8 @@ export function PatternBar({ clip, onCopy }: { clip: PatternClipboard | null; on
             <button
               key={pattern.id}
               type="button"
+              role="tab"
+              aria-selected={isActive}
               className={`pattern-chip${isActive ? " active" : ""}`}
               title={`${pattern.name} (${pattern.stepCount} steps) — click to select, double-click to rename`}
               onClick={() => services.store.execute(setActivePattern(doc, pattern.id))}

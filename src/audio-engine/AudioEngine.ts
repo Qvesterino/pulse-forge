@@ -1,11 +1,17 @@
-import type { DrumPad, InstrumentTrack, ProjectDocument } from "../project-model/types";
-import type { Lfo } from "../project-model/types";
+import type { DrumPad, EffectInstance, InstrumentTrack, ProjectDocument } from "../project-model/types";
+import type { AutomationPoint, Lfo } from "../project-model/types";
 import { valueAt } from "../project-model/automation";
 import type { SampleBank } from "../sample-library/factory";
 import { EFFECT_DEFS } from "../effects/registry";
 import type { EffectRuntime } from "../effects/types";
 import { INSTRUMENT_DEFS } from "../instruments/registry";
 import type { InstrumentRuntime } from "../instruments/types";
+
+interface FxChainState {
+  runtimes: Map<string, EffectRuntime>;
+  params: Map<string, Record<string, number>>;
+  signature: string;
+}
 
 interface TrackNodes {
   input: GainNode;
@@ -17,12 +23,14 @@ interface TrackNodes {
   modMacroPan: StereoPannerNode;
   analyser: AnalyserNode;
   fx: FxChainState;
+  sends: Map<string, GainNode>;
 }
 
-interface FxChainState {
-  runtimes: Map<string, EffectRuntime>;
-  params: Map<string, Record<string, number>>;
-  signature: string;
+interface ReturnNodes {
+  input: GainNode;
+  gain: GainNode;
+  analyser: AnalyserNode;
+  fx: FxChainState;
 }
 
 interface InstrumentState {
@@ -51,12 +59,15 @@ interface Voice {
 }
 
 export class AudioEngine {
-  private ctx: AudioContext | null = null;
+  private ctx: BaseAudioContext | null = null;
   private master: GainNode | null = null;
+  private masterClipper: WaveShaperNode | null = null;
+  private masterLimiter: DynamicsCompressorNode | null = null;
   private masterAnalyser: AnalyserNode | null = null;
   private bank: SampleBank | null = null;
   private doc: ProjectDocument | null = null;
   private trackNodes = new Map<string, TrackNodes>();
+  private returnNodes = new Map<string, ReturnNodes>();
   private instruments = new Map<string, InstrumentState>();
   private lfos = new Map<string, LfoRuntimeState>();
   private macroCache = new Map<string, { gain: number; pan: number }>();
@@ -69,7 +80,7 @@ export class AudioEngine {
     this.bank = bank;
   }
 
-  get context(): AudioContext | null {
+  get context(): BaseAudioContext | null {
     return this.ctx;
   }
 
@@ -85,19 +96,69 @@ export class AudioEngine {
     return [...this.missedAssets];
   }
 
-  ensureContext(): AudioContext {
+  useContext(ctx: BaseAudioContext): void {
+    this.ctx = ctx;
+    this.buildMaster();
+    if (this.doc) this.syncProject(this.doc);
+  }
+
+  ensureContext(): BaseAudioContext {
     if (!this.ctx) {
-      this.ctx = new AudioContext();
-      this.master = this.ctx.createGain();
-      this.master.gain.value = 1;
-      this.masterAnalyser = this.ctx.createAnalyser();
-      this.masterAnalyser.fftSize = 2048;
-      this.master.connect(this.masterAnalyser);
-      this.master.connect(this.ctx.destination);
+      const ctx = new AudioContext();
+      this.ctx = ctx;
+      this.buildMaster();
       if (this.doc) this.syncProject(this.doc);
     }
-    if (this.ctx.state === "suspended") void this.ctx.resume();
-    return this.ctx;
+    const ctx = this.ctx;
+    if (ctx instanceof AudioContext && ctx.state === "suspended") void ctx.resume();
+    return ctx;
+  }
+
+  private buildMaster(): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    this.master = ctx.createGain();
+    this.master.gain.value = 1;
+    this.masterClipper = ctx.createWaveShaper();
+    this.masterClipper.oversample = "4x";
+    this.masterClipper.curve = null;
+    this.masterLimiter = ctx.createDynamicsCompressor();
+    this.applyMasterConfig(this.doc?.master ?? { limiterEnabled: true, clipperEnabled: false });
+    this.masterAnalyser = ctx.createAnalyser();
+    this.masterAnalyser.fftSize = 2048;
+    this.master.connect(this.masterClipper);
+    this.masterClipper.connect(this.masterLimiter);
+    this.masterLimiter.connect(this.masterAnalyser);
+    this.masterAnalyser.connect(ctx.destination);
+  }
+
+  private applyMasterConfig(config: { limiterEnabled: boolean; clipperEnabled: boolean }): void {
+    if (!this.masterClipper || !this.masterLimiter) return;
+    if (config.clipperEnabled) {
+      const n = 2048;
+      const curve = new Float32Array(new ArrayBuffer(n * 4));
+      const ceiling = Math.pow(10, -0.3 / 20);
+      for (let i = 0; i < n; i++) {
+        const x = (i / (n - 1)) * 2 - 1;
+        curve[i] = ceiling * Math.tanh(x * 3) / Math.tanh(3);
+      }
+      this.masterClipper.curve = curve;
+    } else {
+      this.masterClipper.curve = null;
+    }
+    if (config.limiterEnabled) {
+      this.masterLimiter.threshold.value = -1;
+      this.masterLimiter.knee.value = 0;
+      this.masterLimiter.ratio.value = 20;
+      this.masterLimiter.attack.value = 0.002;
+      this.masterLimiter.release.value = 0.1;
+    } else {
+      this.masterLimiter.threshold.value = 0;
+      this.masterLimiter.knee.value = 0;
+      this.masterLimiter.ratio.value = 1;
+      this.masterLimiter.attack.value = 0.001;
+      this.masterLimiter.release.value = 0.01;
+    }
   }
 
   setProject(doc: ProjectDocument): void {
@@ -113,43 +174,48 @@ export class AudioEngine {
     }
   }
 
-  private fxSignature(track: ProjectDocument["tracks"][number]): string {
-    return track.effects.filter((e) => !e.bypassed).map((e) => `${e.id}:${e.type}`).join("|");
+  private fxSignature(effects: EffectInstance[]): string {
+    return effects.filter((e) => !e.bypassed).map((e) => `${e.id}:${e.type}`).join("|");
   }
 
-  private rebuildFxChain(track: ProjectDocument["tracks"][number], nodes: TrackNodes): void {
+  private rebuildFxChain(
+    effects: EffectInstance[],
+    input: AudioNode,
+    output: AudioNode,
+    state: FxChainState,
+  ): void {
     const ctx = this.ctx;
     if (!ctx) return;
-    for (const rt of nodes.fx.runtimes.values()) rt.dispose();
-    nodes.fx.runtimes.clear();
-    nodes.fx.params.clear();
-    nodes.input.disconnect();
+    for (const rt of state.runtimes.values()) rt.dispose();
+    state.runtimes.clear();
+    state.params.clear();
+    input.disconnect();
     const bpm = this.doc?.bpm ?? 124;
-    let head: AudioNode = nodes.input;
-    for (const fx of track.effects) {
+    let head: AudioNode = input;
+    for (const fx of effects) {
       if (fx.bypassed) continue;
       const def = EFFECT_DEFS[fx.type];
       if (!def) continue;
       const rt = def.factory(ctx, fx, { bpm });
       head.connect(rt.input);
       head = rt.output;
-      nodes.fx.runtimes.set(fx.id, rt);
-      nodes.fx.params.set(fx.id, { ...fx.params });
+      state.runtimes.set(fx.id, rt);
+      state.params.set(fx.id, { ...fx.params });
     }
-    head.connect(nodes.panner);
-    nodes.fx.signature = this.fxSignature(track);
+    head.connect(output);
+    state.signature = this.fxSignature(effects);
   }
 
-  private syncFxParams(track: ProjectDocument["tracks"][number], nodes: TrackNodes): void {
-    for (const fx of track.effects) {
+  private syncFxParams(effects: EffectInstance[], state: FxChainState): void {
+    for (const fx of effects) {
       if (fx.bypassed) continue;
-      const rt = nodes.fx.runtimes.get(fx.id);
-      const cached = nodes.fx.params.get(fx.id);
+      const rt = state.runtimes.get(fx.id);
+      const cached = state.params.get(fx.id);
       if (!rt || !cached) continue;
       for (const [k, v] of Object.entries(fx.params)) {
         if (cached[k] !== v) rt.setParameter(k, v);
       }
-      nodes.fx.params.set(fx.id, { ...fx.params });
+      state.params.set(fx.id, { ...fx.params });
     }
   }
 
@@ -157,26 +223,74 @@ export class AudioEngine {
     for (const rt of nodes.fx.runtimes.values()) rt.dispose();
     nodes.fx.runtimes.clear();
     nodes.fx.params.clear();
+    for (const send of nodes.sends.values()) send.disconnect();
+    nodes.sends.clear();
     nodes.input.disconnect();
     nodes.panner.disconnect();
     nodes.gain.disconnect();
+    nodes.modAutoGain.disconnect();
+    nodes.modAutoPan.disconnect();
+    nodes.modMacroGain.disconnect();
+    nodes.modMacroPan.disconnect();
     nodes.analyser.disconnect();
     this.trackNodes.delete(id);
+  }
+
+  private disposeReturnNodes(id: string, nodes: ReturnNodes): void {
+    for (const rt of nodes.fx.runtimes.values()) rt.dispose();
+    nodes.fx.runtimes.clear();
+    nodes.fx.params.clear();
+    nodes.input.disconnect();
+    nodes.gain.disconnect();
+    nodes.analyser.disconnect();
+    this.returnNodes.delete(id);
   }
 
   private syncProject(doc: ProjectDocument): void {
     const ctx = this.ctx;
     if (!ctx || !this.master) return;
 
-    const liveIds = new Set(doc.tracks.map((t) => t.id));
-    for (const [id, nodes] of this.trackNodes) {
-      if (!liveIds.has(id)) this.disposeTrackNodes(id, nodes);
+    this.applyMasterConfig(doc.master);
+
+    const liveTrackIds = new Set(doc.tracks.map((t) => t.id));
+    for (const [id, nodes] of [...this.trackNodes]) {
+      if (!liveTrackIds.has(id)) this.disposeTrackNodes(id, nodes);
     }
     for (const [id, state] of [...this.instruments]) {
-      if (!liveIds.has(id)) {
+      if (!liveTrackIds.has(id)) {
         state.runtime.dispose();
         this.instruments.delete(id);
       }
+    }
+    const liveReturnIds = new Set(doc.returns.map((r) => r.id));
+    for (const [id, nodes] of [...this.returnNodes]) {
+      if (!liveReturnIds.has(id)) this.disposeReturnNodes(id, nodes);
+    }
+
+    for (const ret of doc.returns) {
+      let nodes = this.returnNodes.get(ret.id);
+      if (!nodes) {
+        const input = ctx.createGain();
+        const gain = ctx.createGain();
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 2048;
+        gain.connect(analyser);
+        analyser.connect(this.master);
+        nodes = {
+          input,
+          gain,
+          analyser,
+          fx: { runtimes: new Map(), params: new Map(), signature: "" },
+        };
+        this.returnNodes.set(ret.id, nodes);
+      }
+      const sig = this.fxSignature(ret.effects);
+      if (nodes.fx.signature !== sig) {
+        this.rebuildFxChain(ret.effects, nodes.input, nodes.gain, nodes.fx);
+      } else {
+        this.syncFxParams(ret.effects, nodes.fx);
+      }
+      nodes.gain.gain.setTargetAtTime(ret.gain, ctx.currentTime, 0.01);
     }
 
     for (const track of doc.tracks) {
@@ -211,18 +325,20 @@ export class AudioEngine {
           modMacroPan,
           analyser,
           fx: { runtimes: new Map(), params: new Map(), signature: "" },
+          sends: new Map(),
         };
         this.trackNodes.set(track.id, nodes);
       }
-      const sig = this.fxSignature(track);
+      const sig = this.fxSignature(track.effects);
       if (nodes.fx.signature !== sig) {
-        this.rebuildFxChain(track, nodes);
+        this.rebuildFxChain(track.effects, nodes.input, nodes.panner, nodes.fx);
       } else {
-        this.syncFxParams(track, nodes);
+        this.syncFxParams(track.effects, nodes.fx);
       }
       if (track.kind === "instrument") {
         this.syncInstrument(track, nodes);
       }
+      this.syncSends(track.sends, nodes);
       const now = ctx.currentTime;
       nodes.panner.pan.setTargetAtTime(track.pan, now, 0.01);
       const anySolo = doc.tracks.some((t) => t.solo);
@@ -238,6 +354,28 @@ export class AudioEngine {
       for (const nodes of this.trackNodes.values()) {
         for (const rt of nodes.fx.runtimes.values()) rt.syncBpm?.(doc.bpm);
       }
+    }
+  }
+
+  private syncSends(sends: Record<string, number>, nodes: TrackNodes): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const live = new Set(Object.keys(sends).filter((returnId) => this.returnNodes.has(returnId)));
+    for (const [returnId, sendGain] of [...nodes.sends]) {
+      if (!live.has(returnId)) {
+        sendGain.disconnect();
+        nodes.sends.delete(returnId);
+      }
+    }
+    for (const returnId of live) {
+      let sendGain = nodes.sends.get(returnId);
+      if (!sendGain) {
+        sendGain = ctx.createGain();
+        sendGain.connect(this.returnNodes.get(returnId)!.input);
+        nodes.sends.set(returnId, sendGain);
+        nodes.modMacroPan.connect(sendGain);
+      }
+      sendGain.gain.setTargetAtTime(sends[returnId] ?? 0, ctx.currentTime, 0.01);
     }
   }
 
@@ -271,8 +409,8 @@ export class AudioEngine {
   }
 
   previewNote(trackId: string, pitch: number): void {
-    const ctx = this.ensureContext();
-    this.noteOn(trackId, pitch, 1, ctx.currentTime + 0.005, 0.25);
+    this.ensureContext();
+    this.noteOn(trackId, pitch, 1, this.currentTime + 0.005, 0.25);
   }
 
   private lfoFrequency(lfo: Lfo): number {
@@ -318,7 +456,7 @@ export class AudioEngine {
       osc.frequency.value = this.lfoFrequency(lfo);
       const depth = ctx.createGain();
       const sign = lfo.wave === "sawDown" ? -1 : 1;
-      depth.gain.value = sign * lfo.amount * (lfo.param === "gain" ? 1 : 1);
+      depth.gain.value = sign * lfo.amount;
       const targetParam = lfo.param === "gain" ? nodes.modAutoGain.gain : nodes.modAutoPan.pan;
       osc.connect(depth).connect(targetParam);
       osc.start();
@@ -395,6 +533,45 @@ export class AudioEngine {
     }
   }
 
+  scheduleTrackAutomation(trackId: string, param: "gain" | "pan", points: AutomationPoint[], timeAt: (tick: number) => number): void {
+    const nodes = this.trackNodes.get(trackId);
+    if (!nodes || points.length === 0) return;
+    const target = param === "gain" ? nodes.modAutoGain.gain : nodes.modAutoPan.pan;
+    const clampValue = param === "gain"
+      ? (v: number) => Math.max(0, Math.min(2, v))
+      : (v: number) => Math.max(-1, Math.min(1, v));
+    target.setValueAtTime(clampValue(valueAt(points, 0, param === "gain" ? 1 : 0)), 0);
+    for (const point of points) {
+      target.linearRampToValueAtTime(clampValue(point.value), Math.max(0, timeAt(point.tick)));
+    }
+  }
+
+  scheduleDeviceAutomation(
+    trackId: string,
+    kind: "fx" | "inst",
+    deviceId: string | undefined,
+    paramId: string | undefined,
+    points: AutomationPoint[],
+    timeAt: (tick: number) => number,
+  ): void {
+    if (!paramId) return;
+    const nodes = this.trackNodes.get(trackId);
+    if (!nodes) return;
+    for (const point of points) {
+      const when = Math.max(0, timeAt(point.tick));
+      if (kind === "fx") {
+        if (!deviceId) return;
+        const rt = nodes.fx.runtimes.get(deviceId);
+        if (rt?.setParameterAt) rt.setParameterAt(paramId, point.value, when);
+        else rt?.setParameter(paramId, point.value);
+      } else {
+        const rt = this.instruments.get(trackId)?.runtime;
+        if (rt?.setParameterAt) rt.setParameterAt(paramId, point.value, when);
+        else rt?.setParameter(paramId, point.value);
+      }
+    }
+  }
+
   automationReset(): void {
     const ctx = this.ctx;
     if (!ctx) return;
@@ -437,8 +614,8 @@ export class AudioEngine {
   }
 
   preview(pad: DrumPad, trackId: string): void {
-    const ctx = this.ensureContext();
-    this.trigger(trackId, pad, ctx.currentTime + 0.005, 1);
+    this.ensureContext();
+    this.trigger(trackId, pad, this.currentTime + 0.005, 1);
   }
 
   private choke(trackId: string, chokeGroup: number, when: number): void {
@@ -489,6 +666,10 @@ export class AudioEngine {
     return this.peakOf(this.trackNodes.get(trackId)?.analyser ?? null);
   }
 
+  getReturnLevel(returnId: string): number {
+    return this.peakOf(this.returnNodes.get(returnId)?.analyser ?? null);
+  }
+
   getMasterLevel(): number {
     return this.peakOf(this.masterAnalyser);
   }
@@ -503,6 +684,7 @@ export class AudioEngine {
       activeEffects: effectCount,
       activeInstruments: this.instruments.size,
       activeLfos: this.lfos.size,
+      returns: this.returnNodes.size,
       automationLanes: this.doc?.automation.length ?? 0,
       missingAssets: this.missingAssets.join(", ") || "none",
     };

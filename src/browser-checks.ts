@@ -1,6 +1,11 @@
 import { EFFECT_DEFS, EFFECT_ORDER, defaultParamsOf } from "./effects/registry";
 import { INSTRUMENT_DEFS, INSTRUMENT_ORDER, defaultInstrumentParams } from "./instruments/registry";
 import { generateFactoryBank } from "./sample-library/factory";
+import { renderProject } from "./rendering/renderer";
+import { buildStemProject, STEM_GROUPS } from "./rendering/stems";
+import { encodeWav } from "./rendering/wav";
+import { createDefaultProject } from "./project-model/schema";
+import { PPQ } from "./project-model/types";
 import type { EffectType, InstrumentTrack } from "./project-model/types";
 
 export interface CheckResult {
@@ -108,6 +113,7 @@ export async function runChecks(): Promise<CheckResult[]> {
         sampleId: "factory.tonal.pluck",
         params: defaultInstrumentParams(kind),
         effects: [],
+        sends: {},
       };
       const rt = def.factory(ctx, track, { bpm: 124, getSample: (id) => bank.get(id) });
       rt.output.connect(ctx.destination);
@@ -135,6 +141,7 @@ export async function runChecks(): Promise<CheckResult[]> {
       sampleId: null,
       params: { ...defaultInstrumentParams("808"), decay: 0.5 },
       effects: [],
+      sends: {},
     };
     const rt = INSTRUMENT_DEFS["808"].factory(ctx, track, { bpm: 124, getSample: () => undefined });
     rt.output.connect(ctx.destination);
@@ -168,6 +175,7 @@ export async function runChecks(): Promise<CheckResult[]> {
       sampleId: "factory.tonal.pluck",
       params: defaultInstrumentParams("sampler"),
       effects: [],
+      sends: {},
     };
     const rt = INSTRUMENT_DEFS.sampler.factory(ctx, track, { bpm: 124, getSample: (id) => bank.get(id) });
     rt.output.connect(ctx.destination);
@@ -251,6 +259,96 @@ export async function runChecks(): Promise<CheckResult[]> {
     );
   } catch (error) {
     check("automation ramps track level over time", false, String(error));
+  }
+
+  try {
+    const project = createDefaultProject();
+    const patternBuffer = await renderProject(project, bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0.5 });
+    const patternPeak = peakOf(patternBuffer.getChannelData(0));
+    const expectedPatternSec = (16 * (PPQ / 4)) * (60 / (project.bpm * PPQ)) + 0.5;
+    check(
+      "offline render: pattern mode produces audio of correct length",
+      patternPeak > 0.05 && Math.abs(patternBuffer.duration - expectedPatternSec) < 0.05,
+      `peak=${patternPeak.toFixed(3)} dur=${patternBuffer.duration.toFixed(2)}s expected=${expectedPatternSec.toFixed(2)}s`,
+    );
+  } catch (error) {
+    check("offline render: pattern mode produces audio of correct length", false, String(error));
+  }
+
+  try {
+    const project = createDefaultProject();
+    const songBuffer = await renderProject(project, bank, { mode: "song", sampleRate: SR, tailSeconds: 0.5 });
+    const patternBuffer = await renderProject(project, bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0.5 });
+    check(
+      "offline render: song mode (4-bar arrangement) is longer than one pattern pass",
+      songBuffer.duration > patternBuffer.duration && peakOf(songBuffer.getChannelData(0)) > 0.05,
+      `song=${songBuffer.duration.toFixed(2)}s pattern=${patternBuffer.duration.toFixed(2)}s`,
+    );
+  } catch (error) {
+    check("offline render: song mode (4-bar arrangement) is longer than one pattern pass", false, String(error));
+  }
+
+  try {
+    const project = createDefaultProject();
+    const drumStem = await renderProject(buildStemProject(project, STEM_GROUPS[0].filter), bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0.2 });
+    const bassStem = await renderProject(buildStemProject(project, STEM_GROUPS[1].filter), bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0.2 });
+    const drumPeak = peakOf(drumStem.getChannelData(0));
+    const bassPeak = peakOf(bassStem.getChannelData(0));
+    check(
+      "offline render: drum and bass stems are independently audible",
+      drumPeak > 0.05 && bassPeak > 0.01,
+      `drum=${drumPeak.toFixed(3)} bass=${bassPeak.toFixed(3)}`,
+    );
+  } catch (error) {
+    check("offline render: drum and bass stems are independently audible", false, String(error));
+  }
+
+  try {
+    const project = createDefaultProject();
+    const buffer = await renderProject(project, bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0.2 });
+    const wav16 = encodeWav(buffer, 16);
+    const header = new DataView(wav16);
+    const riff = String.fromCharCode(header.getUint8(0), header.getUint8(1), header.getUint8(2), header.getUint8(3));
+    const wave = String.fromCharCode(header.getUint8(8), header.getUint8(9), header.getUint8(10), header.getUint8(11));
+    check(
+      "offline render encodes to a valid WAV file",
+      riff === "RIFF" && wave === "WAVE" && wav16.byteLength >= 44 + buffer.length * 2 * 2,
+      `bytes=${wav16.byteLength}`,
+    );
+  } catch (error) {
+    check("offline render encodes to a valid WAV file", false, String(error));
+  }
+
+  try {
+    const project = createDefaultProject();
+    for (const track of project.tracks) track.gain = 1.5;
+    const drumTrack = project.tracks.find((t) => t.kind === "drum");
+    if (drumTrack && drumTrack.kind === "drum") {
+      for (const pad of drumTrack.pads) pad.gain = 2;
+    }
+
+    project.master.limiterEnabled = false;
+    project.master.clipperEnabled = false;
+    const unlimited = await renderProject(project, bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0.2 });
+
+    project.master.limiterEnabled = true;
+    project.master.clipperEnabled = false;
+    const limited = await renderProject(project, bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0.2 });
+
+    project.master.limiterEnabled = true;
+    project.master.clipperEnabled = true;
+    const clipped = await renderProject(project, bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0.2 });
+
+    const unlimitedPeak = peakOf(unlimited.getChannelData(0));
+    const limitedPeak = peakOf(limited.getChannelData(0));
+    const clippedPeak = peakOf(clipped.getChannelData(0));
+    check(
+      "master chain tames a hot mix (limiter reduces, clipper brick-walls)",
+      unlimitedPeak > 1.5 && limitedPeak < unlimitedPeak * 0.6 && clippedPeak <= 1.0,
+      `unlimited=${unlimitedPeak.toFixed(3)} limited=${limitedPeak.toFixed(3)} clipped=${clippedPeak.toFixed(3)}`,
+    );
+  } catch (error) {
+    check("master chain tames a hot mix (limiter reduces, clipper brick-walls)", false, String(error));
   }
 
   return results;
