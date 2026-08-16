@@ -7,7 +7,7 @@ import {
   normalizeProject,
   validateProjectShape,
 } from "../src/project-model/schema";
-import { getDrumTrack, STEP_TICKS } from "../src/project-model/types";
+import { getDrumTrack, BAR_TICKS, STEP_TICKS } from "../src/project-model/types";
 import { Scheduler } from "../src/scheduler/Scheduler";
 import { Transport } from "../src/transport/Transport";
 import type { DrumPad, Pattern, ProjectDocument } from "../src/project-model/types";
@@ -74,31 +74,31 @@ describe("schema migration", () => {
   });
 });
 
-describe("scheduler", () => {
-  function makeHarness(doc: ProjectDocument, mode: "pattern" | "song" = "pattern") {
-    const events: { trackId: string; padId: string; when: number; velocity: number }[] = [];
-    const noteEvents: { trackId: string; pitch: number; velocity: number; when: number; durationSec: number }[] = [];
-    const automationCalls: { from: number; to: number; relOf: (tick: number) => number }[] = [];
-    let audioTime = 10;
-    const transport = new Transport({ now: () => audioTime }, doc.bpm);
-    const scheduler = new Scheduler({
-      getProject: () => doc,
-      getTransport: () => transport,
-      getAudioTime: () => audioTime,
-      getMode: () => mode,
-      trigger: (trackId: string, pad: DrumPad, when: number, velocity: number) => {
-        events.push({ trackId, padId: pad.id, when, velocity });
-      },
-      noteOn: (trackId: string, pitch: number, velocity: number, when: number, durationSec: number) => {
-        noteEvents.push({ trackId, pitch, velocity, when, durationSec });
-      },
-      applyAutomation: (from: number, to: number, relOf: (tick: number) => number) => {
-        automationCalls.push({ from, to, relOf });
-      },
-    });
-    return { events, noteEvents, automationCalls, transport, scheduler, advance: (seconds: number) => (audioTime += seconds) };
-  }
+function makeHarness(doc: ProjectDocument, mode: "pattern" | "song" = "pattern") {
+  const events: { trackId: string; padId: string; when: number; velocity: number }[] = [];
+  const noteEvents: { trackId: string; pitch: number; velocity: number; when: number; durationSec: number }[] = [];
+  const automationCalls: { from: number; to: number; relOf: (tick: number) => number }[] = [];
+  let audioTime = 10;
+  const transport = new Transport({ now: () => audioTime }, doc.bpm);
+  const scheduler = new Scheduler({
+    getProject: () => doc,
+    getTransport: () => transport,
+    getAudioTime: () => audioTime,
+    getMode: () => mode,
+    trigger: (trackId: string, pad: DrumPad, when: number, velocity: number) => {
+      events.push({ trackId, padId: pad.id, when, velocity });
+    },
+    noteOn: (trackId: string, pitch: number, velocity: number, when: number, durationSec: number) => {
+      noteEvents.push({ trackId, pitch, velocity, when, durationSec });
+    },
+    applyAutomation: (from: number, to: number, relOf: (tick: number) => number) => {
+      automationCalls.push({ from, to, relOf });
+    },
+  });
+  return { events, noteEvents, automationCalls, transport, scheduler, advance: (seconds: number) => (audioTime += seconds) };
+}
 
+describe("scheduler", () => {
   it("schedules the starter groove ahead of the playhead", () => {
     const doc = createDefaultProject();
     const { events, transport, scheduler, advance } = makeHarness(doc);
@@ -462,5 +462,66 @@ describe("scheduler", () => {
     expect(relOf(clipStart)).toBe(0);
     expect(relOf(clipStart + stepCount * STEP_TICKS)).toBe(0);
     expect(relOf(clipStart + stepCount * STEP_TICKS * 2)).toBe(0);
+  });
+});
+
+describe("scheduler realtime loop wrap", () => {
+  it("pattern mode: scheduler rebases to loopStart when position reaches loopEnd", () => {
+    // 16-step default pattern is 16 * STEP_TICKS = 1920 ticks. Loop over the
+    // first 8 steps (0..960) so position wraps to 0 after a long advance.
+    const doc = createDefaultProject();
+    const h = makeHarness(doc, "pattern");
+    h.transport.setLoop(true, 0, 8 * STEP_TICKS);
+    h.transport.play(0);
+    h.advance(2);
+    h.scheduler["tick"]();
+    expect(h.transport.position).toBeLessThan(8 * STEP_TICKS);
+    h.scheduler.stop();
+  });
+
+  it("pattern mode: loopEnd === 0 resolves to the full pattern (no wrap)", () => {
+    const doc = createDefaultProject();
+    const h = makeHarness(doc, "pattern");
+    h.transport.setLoop(true, 0, 0); // sentinel → patternTicks
+    h.transport.play(0);
+    h.advance(1);
+    h.scheduler["tick"]();
+    // Position should be well past the 8-step mark but inside the full pattern.
+    expect(h.transport.position).toBeGreaterThan(8 * STEP_TICKS);
+    expect(h.transport.position).toBeLessThan(16 * STEP_TICKS);
+    h.scheduler.stop();
+  });
+
+  it("song mode: scheduler rebases to loopStart when position reaches loopEnd (1 bar loop)", () => {
+    const doc = createDefaultProject();
+    const h = makeHarness(doc, "song");
+    h.transport.setLoop(true, 0, BAR_TICKS);
+    h.transport.play(0);
+    h.advance(2);
+    h.scheduler["tick"]();
+    expect(h.transport.position).toBeLessThan(BAR_TICKS);
+    h.scheduler.stop();
+  });
+
+  it("scheduler does not rebase when loop is disabled (existing behavior preserved)", () => {
+    const doc = createDefaultProject();
+    const h = makeHarness(doc, "pattern");
+    h.transport.play(0);
+    h.advance(2);
+    h.scheduler["tick"]();
+    expect(h.transport.position).toBeGreaterThan(8 * STEP_TICKS);
+    h.scheduler.stop();
+  });
+
+  it("play() snaps to loopStart when pauseTick is before the loop (Transport contract)", () => {
+    // Transport.play() handles the "before-loop" snap. The scheduler's
+    // position < loopStart branch is a defensive no-op for already-snapped
+    // playback, so we just verify the play-side contract.
+    const doc = createDefaultProject();
+    const h = makeHarness(doc, "pattern");
+    h.transport.setLoop(true, 4 * STEP_TICKS, 12 * STEP_TICKS);
+    h.transport.play(0);
+    expect(h.transport.position).toBe(4 * STEP_TICKS);
+    h.scheduler.stop();
   });
 });

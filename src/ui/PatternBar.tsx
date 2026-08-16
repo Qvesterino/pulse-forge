@@ -63,9 +63,15 @@ export function PatternBar({ clip, onCopy }: { clip: PatternClipboard | null; on
               role="tab"
               aria-selected={isActive}
               className={`pattern-chip${isActive ? " active" : ""}`}
-              title={`${pattern.name} (${pattern.stepCount} steps) — click to select, double-click to rename`}
+              title={`${pattern.name} (${pattern.stepCount} steps) — click to select, double-click or F2 to rename`}
               onClick={() => services.store.execute(setActivePattern(doc, pattern.id))}
               onDoubleClick={() => beginRename(pattern.id, pattern.name)}
+              onKeyDown={(event) => {
+                if (event.key === "F2") {
+                  event.preventDefault();
+                  beginRename(pattern.id, pattern.name);
+                }
+              }}
             >
               {pattern.name}
             </button>

@@ -128,6 +128,25 @@ button {
   color: var(--stop);
 }
 
+.btn-history {
+  min-width: 28px;
+  width: 28px;
+  height: 26px;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--text-dim);
+}
+
+.btn-history:hover:not(:disabled) {
+  color: var(--text);
+  border-color: #343945;
+}
+
+.btn-history:disabled {
+  opacity: 0.3;
+}
+
 .btn-ghost.active {
   background: var(--accent-soft);
   border-color: rgba(245, 158, 11, 0.45);
@@ -308,6 +327,21 @@ button {
   background: var(--accent-soft);
   border-color: rgba(245, 158, 11, 0.5);
   color: var(--accent);
+}
+
+.track-tab-rename {
+  height: 26px;
+  padding: 0 10px;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: var(--text);
+  outline: none;
+  min-width: 120px;
 }
 
 .track-add {

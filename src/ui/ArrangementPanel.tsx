@@ -160,7 +160,7 @@ export function ArrangementPanel() {
                 <button
                   type="button"
                   className={`scene-chip${isSelected ? " selected" : ""}${isActive ? " active-pattern" : ""}`}
-                  title={`${scene.name} → ${pattern?.name ?? "?"} — click to launch (sets active pattern)`}
+                  title={`${scene.name} → ${pattern?.name ?? "?"} — click to launch (sets active pattern), double-click or F2 to rename`}
                   onClick={() => {
                     setSelectedSceneId(scene.id);
                     services.store.execute(setActivePattern(services.store.doc, scene.patternId));
@@ -168,6 +168,13 @@ export function ArrangementPanel() {
                   onDoubleClick={() => {
                     setEditingSceneId(scene.id);
                     setDraft(scene.name);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "F2") {
+                      event.preventDefault();
+                      setEditingSceneId(scene.id);
+                      setDraft(scene.name);
+                    }
                   }}
                 >
                   {scene.name}

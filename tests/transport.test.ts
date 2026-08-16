@@ -86,6 +86,83 @@ describe("Transport", () => {
     transport.seek(4 * PPQ);
     expect(transport.position).toBeCloseTo(4 * PPQ, 5);
   });
+
+  it("loop state defaults to disabled with zero range", () => {
+    const { clock } = controlledClock();
+    const transport = new Transport(clock, 120);
+    expect(transport.loopEnabled).toBe(false);
+    expect(transport.loopStart).toBe(0);
+    expect(transport.loopEnd).toBe(0);
+  });
+
+  it("setLoop stores start and end and flips the enabled flag", () => {
+    const { clock } = controlledClock();
+    const transport = new Transport(clock, 120);
+    transport.setLoop(true, PPQ, 3 * PPQ);
+    expect(transport.loopEnabled).toBe(true);
+    expect(transport.loopStart).toBe(PPQ);
+    expect(transport.loopEnd).toBe(3 * PPQ);
+  });
+
+  it("setLoop clamps start to zero and end to be >= start", () => {
+    const { clock } = controlledClock();
+    const transport = new Transport(clock, 120);
+    // Negative start clamps to 0; degenerate range (end < start) collapses.
+    transport.setLoop(true, -50, -10);
+    expect(transport.loopStart).toBe(0);
+    expect(transport.loopEnd).toBe(0);
+    // Below-start end clamps to start so a zero-width loop is well-defined.
+    transport.setLoop(true, 200, 100);
+    expect(transport.loopStart).toBe(200);
+    expect(transport.loopEnd).toBe(200);
+  });
+
+  it("setLoop keeps end === 0 as the 'to end of content' sentinel", () => {
+    const { clock } = controlledClock();
+    const transport = new Transport(clock, 120);
+    transport.setLoop(true, PPQ, 0);
+    expect(transport.loopStart).toBe(PPQ);
+    expect(transport.loopEnd).toBe(0);
+  });
+
+  it("clearLoop resets state but does not move transport position", () => {
+    const { clock, advance } = controlledClock();
+    const transport = new Transport(clock, 120);
+    transport.setLoop(true, PPQ, 3 * PPQ);
+    transport.play(PPQ);
+    advance(0.5);
+    transport.clearLoop();
+    expect(transport.loopEnabled).toBe(false);
+    expect(transport.loopStart).toBe(0);
+    expect(transport.loopEnd).toBe(0);
+    // Position should still be the in-progress tick, not snapped to 0.
+    expect(transport.position).toBeGreaterThan(PPQ);
+  });
+
+  it("play snaps to loopStart when the pause position is before the loop", () => {
+    const { clock } = controlledClock();
+    const transport = new Transport(clock, 120);
+    transport.setLoop(true, 2 * PPQ, 4 * PPQ);
+    transport.play(0);
+    expect(transport.position).toBe(2 * PPQ);
+  });
+
+  it("play keeps the pause position when it is inside (or past) the loop", () => {
+    const { clock } = controlledClock();
+    const transport = new Transport(clock, 120);
+    transport.setLoop(true, PPQ, 4 * PPQ);
+    transport.play(3 * PPQ);
+    expect(transport.position).toBe(3 * PPQ);
+  });
+
+  it("play ignores the loop when loop is disabled", () => {
+    const { clock } = controlledClock();
+    const transport = new Transport(clock, 120);
+    // Even with a range configured, disabled loop means "play from pauseTick".
+    transport.setLoop(false, 2 * PPQ, 4 * PPQ);
+    transport.play(0);
+    expect(transport.position).toBe(0);
+  });
 });
 
 describe("systemClock", () => {

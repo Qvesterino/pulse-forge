@@ -52,6 +52,25 @@ export class Scheduler {
       this.stop();
       return;
     }
+    if (transport.loopEnabled) {
+      const doc = this.deps.getProject();
+      const mode = this.deps.getMode();
+      const loopStart = transport.loopStart;
+      const loopEnd =
+        transport.loopEnd > 0
+          ? transport.loopEnd
+          : mode === "pattern"
+            ? STEP_TICKS * getActivePattern(doc).stepCount
+            : Math.max(
+                0,
+                ...doc.arrangement.clips.map((c) => (c.startBar + c.lengthBars) * BAR_TICKS),
+              );
+      const position = transport.position;
+      if (position >= loopEnd || position < loopStart) {
+        transport.seek(loopStart);
+        this.windowStartTick = loopStart;
+      }
+    }
     const now = this.deps.getAudioTime();
     const horizon = now + HORIZON_SECONDS;
     const windowEnd = transport.tickAt(horizon);

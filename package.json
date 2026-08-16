@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
+    "typecheck:clean": "node -e \"try{require('fs').unlinkSync('tsconfig.tsbuildinfo')}catch{try{require('fs').unlinkSync('./tsconfig.tsbuildinfo')}catch{}}\" && tsc --noEmit --incremental false",
     "test": "vitest run",
     "test:browser": "node scripts/verify-browser.mjs",
     "preview": "vite preview"

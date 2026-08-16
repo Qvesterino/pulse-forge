@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  typecheck:
+    name: Typecheck (clean)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # Always run the clean variant so the local incremental cache (or
+      # a stale `.tsbuildinfo` left in the workspace) can never mask a
+      # cross-agent typecheck regression.
+      - run: npm run typecheck:clean
+
+  test:
+    name: Unit tests (vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  test-browser:
+    name: Browser audio checks (Chromium)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # verify-browser.mjs spins up Vite + Playwright Chromium. Playwright
+      # auto-installs the browser on first run.
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser

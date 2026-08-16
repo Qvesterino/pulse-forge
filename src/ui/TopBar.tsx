@@ -1,8 +1,10 @@
 import { useState } from "react";
-import { useDoc, useSaveStatus, useServices } from "./context";
+import { useCanRedo, useCanUndo, useDoc, useSaveStatus, useServices } from "./context";
 import { useTransportPosition } from "./playhead";
 import { DragNumber } from "./controls";
 import { setBpm, setProjectName } from "../commands/commands";
+import { barAtTick, beatAtTick } from "../project-model/schema";
+import { STEP_TICKS } from "../project-model/types";
 import type { PlayMode } from "../project-model/types";
 
 export function TopBar({
@@ -25,10 +27,39 @@ export function TopBar({
   const services = useServices();
   const doc = useDoc();
   const saveStatus = useSaveStatus();
+  const canUndo = useCanUndo();
+  const canRedo = useCanRedo();
   const position = useTransportPosition(services.transport, doc);
   const [nameDraft, setNameDraft] = useState<string | null>(null);
+  const [loopEnabled, setLoopEnabled] = useState(services.transport.loopEnabled);
+  const [loopStart, setLoopStart] = useState(services.transport.loopStart);
+  const [loopEnd, setLoopEnd] = useState(services.transport.loopEnd);
 
   const playing = services.transport.playing;
+
+  const toggleLoop = () => {
+    const next = !loopEnabled;
+    services.transport.setLoop(next, loopStart, loopEnd);
+    setLoopEnabled(next);
+  };
+
+  const commitLoopStart = (v: number) => {
+    const next = Math.max(0, Math.floor(v));
+    services.transport.setLoop(loopEnabled, next, loopEnd);
+    setLoopStart(next);
+  };
+
+  const commitLoopEnd = (v: number) => {
+    const next = Math.floor(v);
+    services.transport.setLoop(loopEnabled, loopStart, next);
+    setLoopEnd(next);
+  };
+
+  const formatBarBeat = (v: number) => {
+    const bar = barAtTick(v, doc);
+    const beat = beatAtTick(v, doc);
+    return `${bar}.${beat}`;
+  };
 
   return (
     <header className="topbar">
@@ -62,7 +93,63 @@ export function TopBar({
         >
           ■
         </button>
+        <button
+          type="button"
+          className="btn btn-history"
+          disabled={!canUndo}
+          onClick={() => services.store.undo()}
+          title="Undo (Ctrl+Z)"
+          aria-label="Undo"
+          aria-keyshortcuts="Control+Z"
+        >
+          ↶
+        </button>
+        <button
+          type="button"
+          className="btn btn-history"
+          disabled={!canRedo}
+          onClick={() => services.store.redo()}
+          title="Redo (Ctrl+Shift+Z)"
+          aria-label="Redo"
+          aria-keyshortcuts="Control+Shift+Z"
+        >
+          ↷
+        </button>
         <span className="position-display">{position}</span>
+        <button
+          type="button"
+          className={`btn btn-loop${loopEnabled ? " active" : ""}`}
+          onClick={toggleLoop}
+          title="Toggle loop region (L)"
+          aria-label="Toggle loop region"
+          aria-pressed={loopEnabled}
+        >
+          LOOP
+        </button>
+        {loopEnabled && (
+          <>
+            <DragNumber
+              label="IN"
+              value={loopStart}
+              min={0}
+              max={loopEnd > 0 ? loopEnd : Number.MAX_SAFE_INTEGER}
+              defaultValue={0}
+              sensitivity={STEP_TICKS}
+              format={formatBarBeat}
+              onCommit={commitLoopStart}
+            />
+            <DragNumber
+              label="OUT"
+              value={loopEnd}
+              min={loopStart}
+              max={Number.MAX_SAFE_INTEGER}
+              defaultValue={0}
+              sensitivity={STEP_TICKS}
+              format={formatBarBeat}
+              onCommit={commitLoopEnd}
+            />
+          </>
+        )}
         <DragNumber
           label="BPM"
           value={doc.bpm}

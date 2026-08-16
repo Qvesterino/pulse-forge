@@ -12,6 +12,9 @@ export class Transport {
   private anchorTick = 0;
   private anchorTime = 0;
   private pauseTick = 0;
+  private loopEnabled_ = false;
+  private loopStart_ = 0;
+  private loopEnd_ = 0;
 
   constructor(
     private clock: Clock,
@@ -32,9 +35,30 @@ export class Transport {
     return this.playing_ ? this.tickAt(this.clock.now()) : this.pauseTick;
   }
 
+  get loopEnabled(): boolean {
+    return this.loopEnabled_;
+  }
+
+  get loopStart(): number {
+    return this.loopStart_;
+  }
+
+  /**
+   * Loop end in absolute ticks. `0` means "to the end of the current content"
+   * (the active pattern in pattern mode, or the arrangement end in song mode);
+   * the scheduler resolves the concrete value based on the project model.
+   */
+  get loopEnd(): number {
+    return this.loopEnd_;
+  }
+
   play(fromTick = this.pauseTick): void {
     const now = this.clock.now();
-    this.anchorTick = fromTick;
+    // When loop is enabled, snap the play start to loopStart so a manual
+    // play from a position before the loop doesn't immediately wrap.
+    const startTick =
+      this.loopEnabled_ && fromTick < this.loopStart_ ? this.loopStart_ : fromTick;
+    this.anchorTick = startTick;
     this.anchorTime = now;
     this.playing_ = true;
   }
@@ -66,6 +90,26 @@ export class Transport {
       this.anchorTime = this.clock.now();
     }
     this.bpm_ = bpm;
+  }
+
+  /**
+   * Configure the loop region. `end` is clamped to be `>= start` so a
+   * degenerate range collapses to a single tick rather than wrapping
+   * backwards. `end === 0` keeps the "to end of content" sentinel and is
+   * resolved by the scheduler based on the project model.
+   */
+  setLoop(enabled: boolean, start: number, end: number): void {
+    const safeStart = Math.max(0, Math.floor(start));
+    const safeEnd = end > 0 ? Math.max(safeStart, Math.floor(end)) : 0;
+    this.loopStart_ = safeStart;
+    this.loopEnd_ = safeEnd;
+    this.loopEnabled_ = enabled;
+  }
+
+  clearLoop(): void {
+    this.loopEnabled_ = false;
+    this.loopStart_ = 0;
+    this.loopEnd_ = 0;
   }
 
   get secondsPerTick(): number {

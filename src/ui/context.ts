@@ -20,3 +20,23 @@ export function useSaveStatus(): SaveStatus {
   const { store } = useServices();
   return useSyncExternalStore(store.subscribe, store.getSaveStatus, store.getSaveStatus);
 }
+
+/** True iff the project has at least one command in its undo stack. */
+export function useCanUndo(): boolean {
+  const { store } = useServices();
+  return useSyncExternalStore(
+    store.subscribe,
+    () => store.canUndo,
+    () => false,
+  );
+}
+
+/** True iff the project has at least one command in its redo stack. */
+export function useCanRedo(): boolean {
+  const { store } = useServices();
+  return useSyncExternalStore(
+    store.subscribe,
+    () => store.canRedo,
+    () => false,
+  );
+}

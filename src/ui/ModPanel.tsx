@@ -461,7 +461,22 @@ function MacroCard({ macro }: { macro: ReturnType<typeof useDoc>["macros"][numbe
           }}
         />
       ) : (
-        <button type="button" className="macro-name" title="Click to rename" onDoubleClick={() => { setEditing(true); setDraft(macro.name); }}>
+        <button
+          type="button"
+          className="macro-name"
+          title="Double-click or F2 to rename"
+          onDoubleClick={() => {
+            setEditing(true);
+            setDraft(macro.name);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "F2") {
+              event.preventDefault();
+              setEditing(true);
+              setDraft(macro.name);
+            }
+          }}
+        >
           {macro.name}
         </button>
       )}
