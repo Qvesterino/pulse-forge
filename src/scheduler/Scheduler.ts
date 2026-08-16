@@ -93,7 +93,12 @@ export class Scheduler {
           const cs = c.startBar * BAR_TICKS;
           return windowStart >= cs && windowStart < cs + c.lengthBars * BAR_TICKS;
         });
-        if (covering) automationCtx = { base: covering.startBar * BAR_TICKS, patternTicks: STEP_TICKS * 4 * 4 };
+        if (covering) {
+          const scene = doc.scenes.find((sc) => sc.id === covering.sceneId);
+          const pattern = scene ? doc.patterns.find((p) => p.id === scene.patternId) : undefined;
+          const patternTicks = pattern ? STEP_TICKS * pattern.stepCount : STEP_TICKS * 16;
+          automationCtx = { base: covering.startBar * BAR_TICKS, patternTicks };
+        }
       }
     }
 

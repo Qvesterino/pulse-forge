@@ -277,6 +277,41 @@ describe("track commands", () => {
     expect(store.doc.tracks).toHaveLength(1);
     expect(() => deleteTrack(store.doc, store.doc.tracks[0].id)).toThrow();
   });
+
+  it("setTrackParams mutates drum tracks", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    const drum = getDrumTrack(doc);
+    store.execute(setTrackParams(store.doc, drum.id, { name: "Big Drums", gain: 0.6, pan: -0.2, mute: true }));
+    const updated = getDrumTrack(store.doc);
+    expect(updated.name).toBe("Big Drums");
+    expect(updated.gain).toBe(0.6);
+    expect(updated.pan).toBe(-0.2);
+    expect(updated.mute).toBe(true);
+    store.undo();
+    expect(getDrumTrack(store.doc).name).toBe(drum.name);
+    expect(getDrumTrack(store.doc).gain).toBe(drum.gain);
+  });
+
+  it("setTrackParams mutates instrument tracks", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    const bass = doc.tracks.find((t) => t.kind === "instrument")!;
+    store.execute(setTrackParams(store.doc, bass.id, { name: "Sub Bass", gain: 0.4, pan: 0.3, mute: true }));
+    const updated = store.doc.tracks.find((t) => t.id === bass.id);
+    if (!updated || updated.kind !== "instrument") throw new Error("expected instrument track");
+    expect(updated.name).toBe("Sub Bass");
+    expect(updated.gain).toBe(0.4);
+    expect(updated.pan).toBe(0.3);
+    expect(updated.mute).toBe(true);
+    store.undo();
+    const restored = store.doc.tracks.find((t) => t.id === bass.id);
+    if (!restored || restored.kind !== "instrument") throw new Error("expected instrument track");
+    expect(restored.name).toBe(bass.name);
+    expect(restored.gain).toBe(bass.gain);
+    expect(restored.pan).toBe(bass.pan);
+    expect(restored.mute).toBe(bass.mute);
+  });
 });
 
 describe("effect commands", () => {
@@ -577,6 +612,38 @@ describe("automation, lfo and macros", () => {
     expect(doc.macros).toHaveLength(4);
     expect(doc.automation).toHaveLength(0);
     expect(doc.lfos).toHaveLength(0);
+  });
+
+  it("addAutomationLane validates the target track and effect references", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    const trackId = doc.tracks[0].id;
+    expect(() =>
+      addAutomationLane(store.doc, { kind: "trackGain", trackId: "track-missing" }),
+    ).toThrow(/Track/);
+    expect(() =>
+      addAutomationLane(store.doc, { kind: "fxParam", trackId, fxId: "fx-missing", paramId: "lowGain" }),
+    ).toThrow(/Effect/);
+    expect(() =>
+      addAutomationLane(store.doc, { kind: "fxParam", trackId }),
+    ).toThrow(/fxParam target requires fxId/);
+    store.execute(addEffect(store.doc, trackId, "eq"));
+    const fxId = getDrumTrack(store.doc).effects[0].id;
+    expect(() =>
+      addAutomationLane(store.doc, { kind: "fxParam", trackId, fxId }),
+    ).toThrow(/fxParam target requires paramId/);
+    const instrument = doc.tracks.find((t) => t.kind === "instrument")!;
+    expect(() =>
+      addAutomationLane(store.doc, { kind: "instParam", trackId: instrument.id, paramId: "decay" }),
+    ).not.toThrow();
+  });
+
+  it("addMacroMapping validates the target track and macro", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    const macro = doc.macros[0];
+    expect(() => addMacroMapping(store.doc, macro.id, "track-missing", "gain")).toThrow(/Track/);
+    expect(() => addMacroMapping(store.doc, "macro-missing", doc.tracks[0].id, "gain")).toThrow(/Macro/);
   });
 });
 

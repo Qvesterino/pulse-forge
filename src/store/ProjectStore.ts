@@ -1,5 +1,6 @@
 import type { Command } from "../commands/types";
 import type { ProjectDocument } from "../project-model/types";
+import { normalizeProject } from "../project-model/schema";
 
 export type SaveStatus = "saved" | "dirty" | "saving" | "error";
 
@@ -74,7 +75,7 @@ export class ProjectStore {
   }
 
   replaceDoc(doc: ProjectDocument): void {
-    this.doc_ = doc;
+    this.doc_ = normalizeProject(doc);
     this.undoStack = [];
     this.redoStack = [];
     this.afterMutation();

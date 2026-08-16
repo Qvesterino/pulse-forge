@@ -566,13 +566,12 @@ export function addAutomationLane(doc: ProjectDocument, target: AutomationTarget
     if (!("effects" in track) || !track.effects.some((f) => f.id === target.fxId)) {
       throw new Error(`Effect ${target.fxId} not found on track ${target.trackId}`);
     }
-    if (!target.paramId) throw new Error("fxParam target requires paramId");
-  }
-  if ((target.kind === "fxParam" || target.kind === "instParam") && !target.paramId) {
-    throw new Error(`${target.kind} target requires paramId`);
   }
   if (target.kind === "instParam" && track.kind !== "instrument") {
     throw new Error(`instParam target requires an instrument track`);
+  }
+  if ((target.kind === "fxParam" || target.kind === "instParam") && !target.paramId) {
+    throw new Error(`${target.kind} target requires paramId`);
   }
   const exists = doc.automation.some(
     (l) =>

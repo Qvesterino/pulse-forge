@@ -563,6 +563,220 @@ const sampler: InstrumentDefinition = {
   },
 };
 
+/* ---------------- Texture Synth ---------------- */
+// Polyphonic pad/drone/atmosphere instrument.
+// Signal path per voice:
+//   OSC1 (sine/saw) + OSC2 (sine/saw, detuned) + filtered noise
+//     -> bandpass (color/Q, LFO1-modulated)
+//     -> voice amp (tremolo LFO3)
+//     -> sum (shared)
+//   sum -> output (dry) + delay (space) -> feedback -> output
+// Shared LFOs (LFO1, LFO2) modulate filter cutoff and oscillator detune; per-voice
+// LFO3 adds a subtle amp tremolo. All audio-rate, no worklets. Polyphony 4, oldest steal.
+
+const texture: InstrumentDefinition = {
+  kind: "texture",
+  name: "Texture Synth",
+  params: [
+    { id: "color", label: "COLOR", min: 0, max: 1, default: 0.5, format: formatPct },
+    { id: "motion", label: "MOTION", min: 0, max: 1, default: 0.4, format: formatPct },
+    { id: "space", label: "SPACE", min: 0, max: 1, default: 0.35, format: formatPct },
+    { id: "density", label: "DENSITY", min: 0, max: 1, default: 0.7, format: formatPct },
+    { id: "texture", label: "TEXTURE", min: 0, max: 1, default: 0.4, format: formatPct },
+    { id: "chaos", label: "CHAOS", min: 0, max: 1, default: 0.2, format: formatPct },
+    { id: "level", label: "LEVEL", min: -24, max: 6, default: -10, unit: "dB", format: formatDb },
+  ],
+  factory(ctx, track) {
+    const output = ctx.createGain();
+    output.gain.value = 1;
+    const p = { ...track.params };
+    const { voices, register, cleanup } = makeVoiceManager(4);
+
+    // Shared LFO1: filter cutoff modulation
+    const lfo1 = ctx.createOscillator();
+    lfo1.type = "sine";
+    lfo1.frequency.value = 0.13;
+    const lfo1Depth = ctx.createGain();
+    lfo1Depth.gain.value = 0;
+    lfo1.connect(lfo1Depth);
+    lfo1.start();
+
+    // Shared LFO2: oscillator detune modulation
+    const lfo2 = ctx.createOscillator();
+    lfo2.type = "sine";
+    lfo2.frequency.value = 0.27;
+    const lfo2Depth = ctx.createGain();
+    lfo2Depth.gain.value = 0;
+    lfo2.connect(lfo2Depth);
+    lfo2.start();
+
+    // Shared delay feedback for "space"
+    const delay = ctx.createDelay(2);
+    delay.delayTime.value = 0.42;
+    const delayFeedback = ctx.createGain();
+    delayFeedback.gain.value = 0;
+    const delayTone = ctx.createBiquadFilter();
+    delayTone.type = "lowpass";
+    delayTone.frequency.value = 4000;
+    delay.connect(delayTone);
+    delayTone.connect(delayFeedback);
+    delayFeedback.connect(delay);
+    delayTone.connect(output);
+
+    // Per-instrument sum gain (all voices -> sum -> dry + delay)
+    const sum = ctx.createGain();
+    sum.gain.value = 1;
+    sum.connect(output);
+    sum.connect(delay);
+
+    const chaosSeed = hashString(track.id) >>> 0;
+
+    const applyParams = () => {
+      const motion = p.motion ?? 0.4;
+      const space = p.space ?? 0.35;
+      const chaos = p.chaos ?? 0.2;
+      const now = ctx.currentTime;
+      lfo1Depth.gain.setTargetAtTime(800 * motion, now, 0.05);
+      lfo2Depth.gain.setTargetAtTime(12 * motion, now, 0.05);
+      delayFeedback.gain.setTargetAtTime(space * 0.7, now, 0.05);
+      // Chaos shifts LFO rates by up to ±3x of base, deterministically from chaosSeed
+      const chaos1 = 1 + (((chaosSeed % 1000) / 1000) - 0.5) * 2 * chaos;
+      const chaos2 = 1 + (((chaosSeed >>> 8) % 1000) / 1000) * chaos * 0.6;
+      lfo1.frequency.setTargetAtTime(0.13 * chaos1, now, 0.1);
+      lfo2.frequency.setTargetAtTime(0.27 * chaos2, now, 0.1);
+    };
+    applyParams();
+
+    const runtime: InstrumentRuntime = {
+      output,
+      noteOn(pitch, velocity, when, durationSec) {
+        const freq = midiToFreq(pitch);
+        const color = p.color ?? 0.5;
+        const density = p.density ?? 0.7;
+        const textureVal = p.texture ?? 0.4;
+        const motion = p.motion ?? 0.4;
+        const level = velocity * dbToLin(p.level ?? -10);
+        const filterFreq = 200 * Math.pow(15, color);
+        const filterQ = 0.5 + textureVal * 7.5;
+        const useSaw = textureVal > 0.5;
+        const hold = Math.max(durationSec, 1.5);
+        const stopTime = when + hold + 1.2;
+
+        // Voice amp -> sum
+        const voiceGain = ctx.createGain();
+        voiceGain.gain.setValueAtTime(0.0001, when);
+        voiceGain.gain.exponentialRampToValueAtTime(Math.max(level, 0.0002), when + 0.5);
+        voiceGain.gain.setTargetAtTime(Math.max(level * 0.75, 0.0002), when + 0.5, 0.5);
+        voiceGain.gain.setTargetAtTime(0.0001, when + hold + 0.05, 0.6);
+        voiceGain.connect(sum);
+
+        // Per-voice LFO3 amp tremolo (subtle breathing)
+        const lfo3 = ctx.createOscillator();
+        lfo3.type = "sine";
+        lfo3.frequency.value = 0.31 + (Math.abs(Math.sin((chaosSeed + pitch) * 0.13)) * 0.4);
+        const lfo3Depth = ctx.createGain();
+        lfo3Depth.gain.value = 0.25 * (0.3 + motion * 0.7);
+        lfo3.connect(lfo3Depth).connect(voiceGain.gain);
+        lfo3.start(when);
+        lfo3.stop(stopTime + 0.1);
+
+        // Bandpass for the noise stream, modulated by shared LFO1
+        const bandpass = ctx.createBiquadFilter();
+        bandpass.type = "bandpass";
+        bandpass.frequency.setValueAtTime(filterFreq, when);
+        bandpass.Q.value = filterQ;
+        lfo1Depth.connect(bandpass.frequency);
+        bandpass.connect(voiceGain);
+
+        // Filtered noise
+        const noise = ctx.createBufferSource();
+        noise.buffer = noiseBuffer(ctx, (hashString(`${track.id}:${pitch}`) >>> 0) ^ 0xa5a5);
+        noise.loop = true;
+        const noiseGain = ctx.createGain();
+        noiseGain.gain.value = Math.max(0, 1 - density);
+        noise.connect(noiseGain).connect(bandpass);
+        noise.start(when);
+        noise.stop(stopTime + 0.1);
+
+        // OSC1 (sine or saw depending on texture)
+        const osc1 = ctx.createOscillator();
+        osc1.type = useSaw ? "sawtooth" : "sine";
+        osc1.frequency.value = freq;
+        lfo2Depth.connect(osc1.detune);
+        const osc1Gain = ctx.createGain();
+        osc1Gain.gain.value = density * 0.6;
+        osc1.connect(osc1Gain).connect(voiceGain);
+        osc1.start(when);
+        osc1.stop(stopTime + 0.1);
+
+        // OSC2 (detuned copy, opposite waveform blending for richness)
+        const osc2 = ctx.createOscillator();
+        osc2.type = useSaw ? "sawtooth" : "sine";
+        osc2.frequency.value = freq;
+        osc2.detune.value = 7;
+        lfo2Depth.connect(osc2.detune);
+        const osc2Gain = ctx.createGain();
+        osc2Gain.gain.value = density * 0.5;
+        osc2.connect(osc2Gain).connect(voiceGain);
+        osc2.start(when);
+        osc2.stop(stopTime + 0.1);
+
+        const voice = register(
+          stopTime,
+          (whenStop) => {
+            const t = Math.max(whenStop, 0);
+            voiceGain.gain.cancelScheduledValues(t);
+            voiceGain.gain.setTargetAtTime(0.0001, t, 0.3);
+            for (const osc of [osc1, osc2, lfo3, noise]) {
+              try { osc.stop(t + 0.1); } catch { /* already stopped */ }
+            }
+          },
+          (silenceNow) => {
+            voiceGain.gain.cancelScheduledValues(silenceNow);
+            voiceGain.gain.setTargetAtTime(0.0001, silenceNow, 0.1);
+            for (const osc of [osc1, osc2, lfo3, noise]) {
+              try { osc.stop(silenceNow + 0.05); } catch { /* already stopped */ }
+            }
+          },
+        );
+        const last = noise;
+        last.onended = () => {
+          try { bandpass.disconnect(); } catch { /* already disconnected */ }
+          try { voiceGain.disconnect(); } catch { /* already disconnected */ }
+          cleanup(voice);
+        };
+      },
+      setParameter(id, value) {
+        p[id] = value;
+        if (id === "motion" || id === "space" || id === "chaos") applyParams();
+      },
+      setParameterAt(id, value, _when) {
+        p[id] = value;
+        if (id === "motion" || id === "space" || id === "chaos") applyParams();
+      },
+      panic() {
+        for (const voice of [...voices]) voice.silence(ctx.currentTime);
+        voices.length = 0;
+      },
+      dispose() {
+        this.panic();
+        try { lfo1.stop(); } catch { /* not started */ }
+        try { lfo2.stop(); } catch { /* not started */ }
+        lfo1.disconnect();
+        lfo2.disconnect();
+        lfo1Depth.disconnect();
+        lfo2Depth.disconnect();
+        sum.disconnect();
+        delay.disconnect();
+        delayFeedback.disconnect();
+        delayTone.disconnect();
+        output.disconnect();
+      },
+    };
+    return runtime;
+  },
+};
+
 /* ---------------- registry ---------------- */
 
 export const INSTRUMENT_DEFS: Record<InstrumentKind, InstrumentDefinition> = {
@@ -570,9 +784,10 @@ export const INSTRUMENT_DEFS: Record<InstrumentKind, InstrumentDefinition> = {
   analog,
   bass,
   "808": bass808,
+  texture,
 };
 
-export const INSTRUMENT_ORDER: InstrumentKind[] = ["sampler", "analog", "bass", "808"];
+export const INSTRUMENT_ORDER: InstrumentKind[] = ["sampler", "analog", "bass", "808", "texture"];
 
 export function defaultInstrumentParams(kind: InstrumentKind): Record<string, number> {
   return Object.fromEntries(INSTRUMENT_DEFS[kind].params.map((p) => [p.id, p.default]));

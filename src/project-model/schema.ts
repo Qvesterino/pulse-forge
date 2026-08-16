@@ -1,11 +1,17 @@
 import type { DrumPad, DrumTrack, EffectInstance, InstrumentKind, InstrumentTrack, Macro, MasterConfig, Pattern, ProjectDocument, ReturnTrack, Scene } from "./types";
 import { PPQ, STEPS_PER_PATTERN } from "./types";
-import { clamp, uid } from "../shared/ids";
+import { uid } from "../shared/ids";
 import { defaultInstrumentParams } from "../instruments/registry";
 
 export const SCHEMA_VERSION = 1;
+/** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
 export const MIN_BPM = 20;
+/** Maximum BPM accepted by the transport. Matches the `setBpm` command clamp. */
 export const MAX_BPM = 300;
+/** BPM used when an invalid (NaN/non-finite) value reaches the normalizer. */
+export const FALLBACK_BPM = 120;
+/** stepCount used when a pattern's stepCount is invalid (0/negative/NaN). */
+export const FALLBACK_STEP_COUNT = STEPS_PER_PATTERN;
 
 function makePad(index: number, name: string, assetId: string, idPrefix: string, opts: Partial<DrumPad> = {}): DrumPad {
   return {
@@ -64,6 +70,7 @@ const INSTRUMENT_NAMES: Record<InstrumentKind, string> = {
   analog: "Analog",
   bass: "Bass",
   "808": "808",
+  texture: "Texture",
 };
 
 export function createInstrumentTrackModel(kind: InstrumentKind, index: number): InstrumentTrack {
@@ -216,222 +223,287 @@ export function defaultMacros(): Macro[] {
   }));
 }
 
-export function normalizeProject(doc: ProjectDocument): ProjectDocument {
-  const padIds = new Set(allPadIds(doc));
-  let changed = false;
+/** Clamp a BPM value to the supported range. NaN/non-finite → FALLBACK_BPM. */
+export function clampBpm(bpm: number): number {
+  if (!Number.isFinite(bpm)) return FALLBACK_BPM;
+  if (bpm < MIN_BPM) return MIN_BPM;
+  if (bpm > MAX_BPM) return MAX_BPM;
+  return bpm;
+}
 
-  const tracks = doc.tracks.map((track) => {
-    if (track.kind !== "instrument") {
-      if (track.kind === "drum" && track.effects === undefined) {
-        changed = true;
-        return { ...track, effects: [] };
-      }
-      return track;
-    }
-    let next = track;
-    if (next.effects === undefined) {
-      next = { ...next, effects: [] };
-      changed = true;
-    }
-    if (next.params === undefined) {
-      next = { ...next, params: defaultInstrumentParams(next.instrument) };
+/** Validate a stepCount. Returns a safe positive integer or the fallback. */
+export function normalizeStepCount(stepCount: number): number {
+  if (!Number.isFinite(stepCount) || stepCount <= 0 || !Number.isInteger(stepCount)) {
+    return FALLBACK_STEP_COUNT;
+  }
+  return stepCount;
+}
+
+function defaultSceneFor(doc: ProjectDocument): Scene {
+  return { id: uid("scene"), name: "Scene A", patternId: doc.activePatternId };
+}
+
+/**
+ * Bring a project document (possibly loaded from disk, possibly mutated by an
+ * outdated client) to a state the current engine can use without errors.
+ *
+ * Normalization is idempotent and never throws — it always returns a valid
+ * `ProjectDocument`. Callers should treat the return value as the new truth
+ * and discard the input.
+ */
+export function normalizeProject(doc: ProjectDocument): ProjectDocument {
+  let changed = false;
+  let next: ProjectDocument = doc;
+
+  // bpm
+  const clampedBpm = clampBpm(next.bpm);
+  if (clampedBpm !== next.bpm) {
+    next = { ...next, bpm: clampedBpm };
+    changed = true;
+  }
+
+  // activePatternId
+  const patternIds = new Set(next.patterns.map((p) => p.id));
+  if (next.patterns.length === 0 || !patternIds.has(next.activePatternId)) {
+    if (next.patterns.length === 0) {
+      // Should be impossible (createDefaultProject always seeds a pattern),
+      // but synthesize a placeholder so the schema stays valid.
+      const seed = createPatternForDoc(next, "Pattern A");
+      next = {
+        ...next,
+        patterns: [seed],
+        activePatternId: seed.id,
+        scenes: [],
+        arrangement: { clips: [] },
+      };
       changed = true;
     } else {
-      const defaults = defaultInstrumentParams(next.instrument);
-      const merged = { ...defaults, ...next.params };
-      for (const key of Object.keys(defaults)) {
-        if (next.params[key] === undefined) changed = true;
-      }
-      next = { ...next, params: merged };
+      next = { ...next, activePatternId: next.patterns[0].id };
+      changed = true;
     }
-    return next;
+  }
+
+  // tracks: ensure drum effects/instrument params/sends, strip dangling
+  const trackIds = new Set(next.tracks.map((t) => t.id));
+  let tracksChanged = false;
+  const tracks = next.tracks.map((track): DrumTrack | InstrumentTrack => {
+    if (track.kind === "drum") {
+      let t: DrumTrack = track;
+      if (t.effects === undefined) {
+        t = { ...t, effects: [] as EffectInstance[] } as DrumTrack;
+        tracksChanged = true;
+      }
+      if (t.sends === undefined) {
+        t = { ...t, sends: {} } as DrumTrack;
+        tracksChanged = true;
+      }
+      return t;
+    }
+    // instrument: merge params with defaults only when keys are missing or values differ
+    const defaults = defaultInstrumentParams(track.instrument);
+    let t: InstrumentTrack = track;
+    let paramsChanged = false;
+    const merged: Record<string, number> = { ...defaults };
+    const paramsRecord: Record<string, number> = track.params ?? {};
+    for (const k of Object.keys(defaults)) {
+      const v = paramsRecord[k];
+      if (v === undefined) {
+        paramsChanged = true;
+      } else if (v !== defaults[k]) {
+        paramsChanged = true;
+        merged[k] = v;
+      }
+    }
+    // Backfill any keys present in the track params but missing from defaults
+    for (const k of Object.keys(paramsRecord)) {
+      if (merged[k] === undefined) {
+        merged[k] = paramsRecord[k];
+        paramsChanged = true;
+      }
+    }
+    if (paramsChanged) {
+      t = { ...track, params: merged };
+      tracksChanged = true;
+    }
+    if (t.effects === undefined) {
+      t = { ...t, effects: [] as EffectInstance[] };
+      tracksChanged = true;
+    }
+    if (t.sends === undefined) {
+      t = { ...t, sends: {} };
+      tracksChanged = true;
+    }
+    return t;
   });
-  const withTracks = changed ? { ...doc, tracks } : doc;
-
-  const patternIds = new Set(withTracks.patterns.map((p) => p.id));
-  const trackIds = new Set(withTracks.tracks.map((t) => t.id));
-  const hadScenes = Array.isArray(withTracks.scenes);
-  let scenes: Scene[] = hadScenes ? withTracks.scenes : [];
-  if (!hadScenes) changed = true;
-  let validScenes: Scene[] = scenes;
-  const filteredScenes = scenes.filter((s) => patternIds.has(s.patternId));
-  if (filteredScenes.length !== scenes.length) {
-    validScenes = filteredScenes;
+  if (tracksChanged) {
+    next = { ...next, tracks: tracks as ProjectDocument["tracks"] };
     changed = true;
   }
-  if (validScenes.length === 0 && withTracks.patterns.length > 0) {
-    const fallbackPattern =
-      withTracks.patterns.find((p) => p.id === withTracks.activePatternId) ?? withTracks.patterns[0];
-    validScenes = [{ id: uid("scene"), name: "Scene A", patternId: fallbackPattern.id }];
-    changed = true;
-  }
-  if (validScenes !== scenes) {
-    scenes = validScenes;
-  }
-  const sceneIds = new Set(validScenes.map((s) => s.id));
 
-  let arrangement = withTracks.arrangement;
-  if (arrangement === undefined) {
+  // scenes
+  let scenes: Scene[] | undefined = next.scenes;
+  if (!Array.isArray(scenes) || scenes.length === 0) {
+    scenes = [defaultSceneFor(next)];
+    changed = true;
+  } else {
+    const filtered = scenes.filter((s) => patternIds.has(s.patternId));
+    if (filtered.length !== scenes.length) {
+      scenes = filtered.length > 0 ? filtered : [defaultSceneFor(next)];
+      changed = true;
+    }
+  }
+  if (scenes !== next.scenes) {
+    next = { ...next, scenes: scenes! };
+  }
+  const sceneIds = new Set(next.scenes.map((s) => s.id));
+
+  // arrangement
+  let arrangement = next.arrangement;
+  if (arrangement === undefined || arrangement === null) {
     arrangement = { clips: [] };
     changed = true;
-  }
-  const sortedClips = [...arrangement.clips]
-    .filter((c) => sceneIds.has(c.sceneId) && c.startBar >= 0 && c.lengthBars >= 1)
-    .sort((a, b) => a.startBar - b.startBar);
-  if (
-    sortedClips.length !== arrangement.clips.length ||
-    sortedClips.some((c, i) => c !== arrangement.clips[i])
-  ) {
-    arrangement = { clips: sortedClips };
-    changed = true;
-  }
-
-  let automation = withTracks.automation ?? [];
-  if (withTracks.automation === undefined) changed = true;
-  const filteredAutomation = automation.filter((lane) => trackIds.has(lane.target.trackId));
-  if (filteredAutomation.length !== automation.length) {
-    automation = filteredAutomation;
-    changed = true;
-  }
-  let lfos = withTracks.lfos ?? [];
-  if (withTracks.lfos === undefined) changed = true;
-  const filteredLfos = lfos.filter((lfo) => trackIds.has(lfo.trackId));
-  if (filteredLfos.length !== lfos.length) {
-    lfos = filteredLfos;
-    changed = true;
-  }
-
-  let macros = withTracks.macros;
-  if (!Array.isArray(macros) || macros.length === 0) {
-    macros = defaultMacros();
-    changed = true;
-  }
-
-  let returns = withTracks.returns;
-  if (!Array.isArray(returns)) {
-    returns = createDefaultReturns();
-    changed = true;
-  }
-
-  let master = withTracks.master;
-  if (master === undefined || typeof master !== "object") {
-    master = defaultMasterConfig();
-    changed = true;
-  }
-
-  let sendsChanged = false;
-  const tracksWithSends = withTracks.tracks.map((track) => {
-    if (track.sends !== undefined) return track;
-    sendsChanged = true;
-    return { ...track, sends: {} };
-  });
-  if (sendsChanged) changed = true;
-
-  let bpm = withTracks.bpm;
-  if (typeof bpm !== "number" || !Number.isFinite(bpm)) {
-    bpm = 120;
-    changed = true;
-  } else if (bpm < MIN_BPM || bpm > MAX_BPM) {
-    bpm = clamp(bpm, MIN_BPM, MAX_BPM);
-    changed = true;
-  }
-
-  let activePatternId = withTracks.activePatternId;
-  if (!patternIds.has(activePatternId)) {
-    activePatternId = withTracks.patterns[0]?.id ?? activePatternId;
-    if (activePatternId !== withTracks.activePatternId) changed = true;
-  }
-
-  const fallbackTimestamp = new Date().toISOString();
-  let createdAt = withTracks.createdAt;
-  if (typeof createdAt !== "string" || createdAt.length === 0) {
-    createdAt = fallbackTimestamp;
-    changed = true;
-  }
-  let updatedAt = withTracks.updatedAt;
-  if (typeof updatedAt !== "string" || updatedAt.length === 0) {
-    updatedAt = fallbackTimestamp;
-    changed = true;
-  }
-
-  const withCompositionBase: ProjectDocument =
-    scenes !== withTracks.scenes ||
-    arrangement !== withTracks.arrangement ||
-    automation !== withTracks.automation ||
-    lfos !== withTracks.lfos ||
-    macros !== withTracks.macros ||
-    returns !== withTracks.returns ||
-    master !== withTracks.master ||
-    sendsChanged ||
-    bpm !== withTracks.bpm ||
-    activePatternId !== withTracks.activePatternId ||
-    createdAt !== withTracks.createdAt ||
-    updatedAt !== withTracks.updatedAt
-      ? {
-          ...withTracks,
-          tracks: tracksWithSends,
-          scenes,
-          arrangement,
-          automation,
-          lfos,
-          macros,
-          returns,
-          master,
-          bpm,
-          activePatternId,
-          createdAt,
-          updatedAt,
+  } else {
+    const sorted = [...arrangement.clips]
+      .filter((c) => sceneIds.has(c.sceneId) && Number.isFinite(c.startBar) && c.startBar >= 0 && c.lengthBars >= 1)
+      .sort((a, b) => a.startBar - b.startBar);
+    if (sorted.length !== arrangement.clips.length) {
+      arrangement = { clips: sorted };
+      changed = true;
+    } else {
+      for (let i = 0; i < sorted.length; i++) {
+        if (sorted[i] !== arrangement.clips[i]) {
+          arrangement = { clips: sorted };
+          changed = true;
+          break;
         }
-      : withTracks;
+      }
+    }
+  }
+  if (arrangement !== next.arrangement) {
+    next = { ...next, arrangement };
+  }
 
-  const patterns = withCompositionBase.patterns.map((pattern) => {
-    let next = pattern;
-    if (next.notes === undefined) {
-      next = { ...next, notes: {} };
+  // automation / lfos — ensure arrays, filter dangling
+  let automation = next.automation;
+  if (!Array.isArray(automation)) {
+    automation = [];
+    changed = true;
+  } else {
+    const filtered = automation.filter((lane) => trackIds.has(lane.target.trackId));
+    if (filtered.length !== automation.length) {
+      automation = filtered;
       changed = true;
     }
-    if (!Number.isFinite(next.stepCount) || next.stepCount <= 0) {
-      next = { ...next, stepCount: STEPS_PER_PATTERN };
+  }
+  let lfos = next.lfos;
+  if (!Array.isArray(lfos)) {
+    lfos = [];
+    changed = true;
+  } else {
+    const filtered = lfos.filter((lfo) => trackIds.has(lfo.trackId));
+    if (filtered.length !== lfos.length) {
+      lfos = filtered;
       changed = true;
     }
+  }
+  if (automation !== next.automation) next = { ...next, automation };
+  if (lfos !== next.lfos) next = { ...next, lfos };
 
-    let notes = next.notes ?? {};
+  // macros
+  if (!Array.isArray(next.macros) || next.macros.length === 0) {
+    next = { ...next, macros: defaultMacros() };
+    changed = true;
+  }
+  // returns
+  if (!Array.isArray(next.returns)) {
+    next = { ...next, returns: createDefaultReturns() };
+    changed = true;
+  }
+  // master
+  if (next.master === undefined || next.master === null || typeof next.master !== "object") {
+    next = { ...next, master: defaultMasterConfig() };
+    changed = true;
+  }
+
+  // createdAt / updatedAt
+  if (typeof next.createdAt !== "string" || !Number.isFinite(Date.parse(next.createdAt))) {
+    next = { ...next, createdAt: new Date().toISOString() };
+    changed = true;
+  }
+  if (typeof next.updatedAt !== "string" || !Number.isFinite(Date.parse(next.updatedAt))) {
+    next = { ...next, updatedAt: new Date().toISOString() };
+    changed = true;
+  }
+
+  // patterns: stepCount, rows, notes
+  const padIds = new Set(allPadIds(next));
+  let patternsChanged = false;
+  const patterns = next.patterns.map((pattern) => {
+    let p = pattern;
+    const safeStepCount = normalizeStepCount(p.stepCount);
+    if (safeStepCount !== p.stepCount) {
+      p = { ...p, stepCount: safeStepCount };
+      patternsChanged = true;
+    }
+    if (p.notes === undefined) {
+      p = { ...p, notes: {} };
+      patternsChanged = true;
+    }
+    // Filter notes to existing tracks and adjust to safe stepCount
+    const notesByTrack: Record<string, typeof p.notes extends Record<string, infer V> ? V : never> = {};
     let notesChanged = false;
-    for (const trackId of Object.keys(notes)) {
-      if (trackIds.has(trackId)) continue;
-      if (notes === next.notes) notes = { ...notes };
-      delete notes[trackId];
-      notesChanged = true;
-      changed = true;
+    for (const [trackId, noteList] of Object.entries(p.notes ?? {})) {
+      if (!trackIds.has(trackId)) {
+        notesChanged = true;
+        continue;
+      }
+      const patternTicks = safeStepCount * (PPQ / 4);
+      const filtered = noteList.filter((n) => n.start + n.duration <= patternTicks);
+      if (filtered.length !== noteList.length) notesChanged = true;
+      notesByTrack[trackId] = filtered as never;
     }
-    if (notesChanged) next = { ...next, notes };
-
-    let rows = next.rows;
-    let rowsFiltered = false;
-    for (const padId of Object.keys(rows)) {
-      if (padIds.has(padId)) continue;
-      if (rows === next.rows) rows = { ...rows };
-      delete rows[padId];
-      rowsFiltered = true;
-      changed = true;
+    if (notesChanged) {
+      p = { ...p, notes: notesByTrack as typeof p.notes };
+      patternsChanged = true;
     }
-    if (rowsFiltered) next = { ...next, rows };
-
+    // Rows: drop unknown pad rows, fill missing pad rows, fix wrong length
+    let rows = p.rows;
+    const validPadIds: string[] = [];
+    for (const [padId, row] of Object.entries(rows)) {
+      if (!padIds.has(padId)) {
+        if (rows === p.rows) rows = { ...rows };
+        delete rows[padId];
+        patternsChanged = true;
+        continue;
+      }
+      if (!Array.isArray(row) || row.length !== safeStepCount) {
+        if (rows === p.rows) rows = { ...rows };
+        rows[padId] = new Array<number>(safeStepCount)
+          .fill(0)
+          .map((_, i) => (Array.isArray(row) ? (row[i] ?? 0) : 0));
+        patternsChanged = true;
+      }
+      validPadIds.push(padId);
+    }
     for (const padId of padIds) {
-      const row = rows[padId];
-      const invalid = !row || row.length !== next.stepCount;
-      if (!invalid) continue;
-      if (rows === next.rows) rows = { ...next.rows };
-      const base = row ?? [];
-      rows[padId] = new Array<number>(next.stepCount)
-        .fill(0)
-        .map((_, i) => base[i] ?? 0);
-      changed = true;
+      if (!validPadIds.includes(padId)) {
+        if (rows === p.rows) rows = { ...rows };
+        rows[padId] = new Array<number>(safeStepCount).fill(0);
+        patternsChanged = true;
+      }
     }
-    if (rows !== next.rows) next = { ...next, rows };
-    return next;
+    if (rows !== p.rows) {
+      p = { ...p, rows };
+      patternsChanged = true;
+    }
+    return p;
   });
-  return changed ? { ...withCompositionBase, patterns } : withCompositionBase;
+  if (patternsChanged) {
+    next = { ...next, patterns };
+    changed = true;
+  }
+
+  return changed ? next : doc;
 }
 
 export const ensurePatternRows = normalizeProject;

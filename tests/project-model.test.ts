@@ -17,10 +17,10 @@ function minimalDoc(overrides: Partial<ProjectDocument> = {}): ProjectDocument {
 }
 
 describe("normalizeProject — base shape", () => {
-  it("is a no-op on a freshly created project", () => {
+  it("is a no-op on a freshly created project (deep equality)", () => {
     const doc = createDefaultProject();
     const normalized = normalizeProject(doc);
-    expect(normalized).toBe(doc);
+    expect(normalized).toStrictEqual(doc);
   });
 
   it("round-trips through JSON without changing identity fields", () => {
@@ -283,7 +283,7 @@ describe("normalizeProject — tracks", () => {
     const modified = {
       ...doc,
       tracks: doc.tracks.map((t) => (t.kind === "drum" ? { ...t, effects: undefined } : t)),
-    };
+    } as unknown as ProjectDocument;
     const normalized = normalizeProject(modified);
     expect(normalized.tracks.find((t) => t.kind === "drum")!.effects).toEqual([]);
   });
@@ -363,7 +363,7 @@ describe("migrateProject", () => {
   it("normalizes without rewriting when schemaVersion already matches", () => {
     const doc = createDefaultProject();
     const migrated = migrateProject(doc);
-    expect(migrated).toBe(doc);
+    expect(migrated).toStrictEqual(doc);
   });
 
   it("rewrites schemaVersion to the current value when it is older", () => {

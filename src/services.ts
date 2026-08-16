@@ -22,6 +22,8 @@ export interface Services {
 }
 
 export class PlaybackController {
+  private listeners = new Set<() => void>();
+
   constructor(
     private engine: AudioEngine,
     private transport: Transport,
@@ -29,15 +31,30 @@ export class PlaybackController {
     private modeRef: { mode: PlayMode },
   ) {}
 
-  setMode(mode: PlayMode): void {
+  setMode = (mode: PlayMode): void => {
+    if (this.modeRef.mode === mode) return;
     this.modeRef.mode = mode;
-  }
+    this.notify();
+  };
 
   get mode(): PlayMode {
     return this.modeRef.mode;
   }
 
-  playPause(): void {
+  subscribe = (listener: () => void): (() => void) => {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  };
+
+  getSnapshot = (): PlayMode => this.modeRef.mode;
+
+  private notify(): void {
+    for (const listener of this.listeners) listener();
+  }
+
+  playPause = (): void => {
     this.engine.ensureContext();
     if (this.transport.playing) {
       this.scheduler.stop();
@@ -50,14 +67,14 @@ export class PlaybackController {
       this.engine.transportStarted(this.engine.currentTime, beatPhase);
       this.scheduler.start();
     }
-  }
+  };
 
-  stop(): void {
+  stop = (): void => {
     this.scheduler.stop();
     this.engine.panic();
     this.engine.automationReset();
     this.transport.stop();
-  }
+  };
 }
 
 export async function createServices(): Promise<Services> {

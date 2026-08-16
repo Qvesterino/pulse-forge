@@ -6,15 +6,33 @@ export const PATTERN_TICKS = BAR_TICKS;
 
 export type ID = string;
 
-export type EffectType = "eq" | "compressor" | "saturation" | "clipper" | "reverb" | "delay" | "pump";
+export type EffectType =
+  | "eq"
+  | "compressor"
+  | "saturation"
+  | "clipper"
+  | "reverb"
+  | "delay"
+  | "pump"
+  | "distortion"
+  | "bitcrusher"
+  | "chorus"
+  | "phaser"
+  | "sidechain";
 
-export type InstrumentKind = "sampler" | "analog" | "bass" | "808";
+export type InstrumentKind = "sampler" | "analog" | "bass" | "808" | "texture";
 
 export interface EffectInstance {
   id: ID;
   type: EffectType;
   bypassed: boolean;
   params: Record<string, number>;
+  /**
+   * Optional source track id for sidechain-style effects (e.g. Sidechain Compressor).
+   * When set, the audio engine wires the source track's input node as sidechain feed
+   * to the effect runtime via `setSidechainInput`. Null = no sidechain feed.
+   */
+  sidechainTrackId?: ID | null;
 }
 
 export interface TimeSignature {

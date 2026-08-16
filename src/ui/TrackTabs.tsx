@@ -8,6 +8,7 @@ const KIND_BADGE: Record<"drum" | InstrumentKind, string> = {
   analog: "AN",
   bass: "BSS",
   "808": "808",
+  texture: "TEX",
 };
 
 export function trackBadge(track: Track): string {
@@ -61,6 +62,7 @@ export function TrackTabs({
         <option value="analog">Analog Synth</option>
         <option value="bass">Bass Synth</option>
         <option value="808">808 Synth</option>
+        <option value="texture">Texture Synth</option>
       </select>
     </div>
   );

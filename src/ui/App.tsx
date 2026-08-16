@@ -31,6 +31,7 @@ type BottomPanel = (typeof PANEL_KEYS)[number];
 
 export function App({ services }: { services: Services }) {
   const doc = useSyncExternalStore(services.store.subscribe, services.store.getDoc, services.store.getDoc);
+  const playMode = useSyncExternalStore(services.playback.subscribe, services.playback.getSnapshot, services.playback.getSnapshot);
   const [selectedTrackId, setSelectedTrackId] = useState(doc.tracks[0]?.id ?? "");
   const [selectedPadId, setSelectedPadId] = useState(
     doc.tracks[0]?.kind === "drum" ? doc.tracks[0].pads[0]?.id ?? "" : "",
@@ -240,6 +241,8 @@ export function App({ services }: { services: Services }) {
         <TopBar
           diagnosticsOpen={diagnosticsOpen}
           bottomPanel={bottomPanel}
+          playMode={playMode}
+          onSetPlayMode={services.playback.setMode}
           onToggleDiagnostics={() => setDiagnosticsOpen((open) => !open)}
           onSetBottomPanel={setBottomPanelTab}
           onToggleHelp={() => setHelpOpen((v) => !v)}

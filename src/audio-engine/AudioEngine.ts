@@ -197,6 +197,16 @@ export class AudioEngine {
       const def = EFFECT_DEFS[fx.type];
       if (!def) continue;
       const rt = def.factory(ctx, fx, { bpm });
+      // Sidechain routing: wire the source track's input node as the effect's
+      // sidechain feed (if the effect supports it and the source track is live).
+      if (fx.sidechainTrackId && rt.setSidechainInput) {
+        const sourceNodes = this.trackNodes.get(fx.sidechainTrackId);
+        if (sourceNodes) {
+          rt.setSidechainInput(sourceNodes.input);
+        } else {
+          rt.setSidechainInput(null);
+        }
+      }
       head.connect(rt.input);
       head = rt.output;
       state.runtimes.set(fx.id, rt);

@@ -3,6 +3,7 @@ import { useDoc, useSaveStatus, useServices } from "./context";
 import { useTransportPosition } from "./playhead";
 import { DragNumber } from "./controls";
 import { setBpm, setProjectName } from "../commands/commands";
+import type { PlayMode } from "../project-model/types";
 
 export function TopBar({
   onToggleDiagnostics,
@@ -10,12 +11,16 @@ export function TopBar({
   onSetBottomPanel,
   bottomPanel,
   onToggleHelp,
+  playMode,
+  onSetPlayMode,
 }: {
   onToggleDiagnostics: () => void;
   diagnosticsOpen: boolean;
   onSetBottomPanel: (panel: "mixer" | "fx" | "arr" | "mod" | "exp") => void;
   bottomPanel: "mixer" | "fx" | "arr" | "mod" | "exp" | null;
   onToggleHelp: () => void;
+  playMode: PlayMode;
+  onSetPlayMode: (mode: PlayMode) => void;
 }) {
   const services = useServices();
   const doc = useDoc();
@@ -35,13 +40,11 @@ export function TopBar({
       <div className="transport-cluster">
         <button
           type="button"
-          className={`btn btn-mode${services.playback.mode === "song" ? " active-song" : ""}`}
-          onClick={() =>
-            services.playback.setMode(services.playback.mode === "pattern" ? "song" : "pattern")
-          }
+          className={`btn btn-mode${playMode === "song" ? " active-song" : ""}`}
+          onClick={() => onSetPlayMode(playMode === "pattern" ? "song" : "pattern")}
           title="Toggle play mode: pattern loop or arrangement song"
         >
-          {services.playback.mode === "pattern" ? "PATTERN" : "SONG"}
+          {playMode === "pattern" ? "PATTERN" : "SONG"}
         </button>
         <button
           type="button"

@@ -47,8 +47,8 @@
     },
     {
       "name": "PATTERN button toggles to SONG mode",
-      "ok": false,
-      "msg": "PATTERN"
+      "ok": true,
+      "msg": "SONG"
     },
     {
       "name": "MIX panel renders channel strips",
@@ -112,6 +112,6 @@
     }
   ],
   "errs": [],
-  "passed": 16,
-  "failed": 6
+  "passed": 17,
+  "failed": 5
 }

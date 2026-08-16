@@ -10,7 +10,7 @@ import {
 import { getDrumTrack, STEP_TICKS } from "../src/project-model/types";
 import { Scheduler } from "../src/scheduler/Scheduler";
 import { Transport } from "../src/transport/Transport";
-import type { DrumPad, ProjectDocument } from "../src/project-model/types";
+import type { DrumPad, Pattern, ProjectDocument } from "../src/project-model/types";
 import { setStepVelocity } from "../src/project-model/transform";
 
 describe("default project", () => {
@@ -44,7 +44,7 @@ describe("default project", () => {
 describe("schema migration", () => {
   it("accepts current version unchanged", () => {
     const doc = createDefaultProject();
-    expect(migrateProject(doc)).toBe(doc);
+    expect(migrateProject(doc)).toStrictEqual(doc);
   });
 
   it("rejects future schema versions", () => {
@@ -78,7 +78,7 @@ describe("scheduler", () => {
   function makeHarness(doc: ProjectDocument, mode: "pattern" | "song" = "pattern") {
     const events: { trackId: string; padId: string; when: number; velocity: number }[] = [];
     const noteEvents: { trackId: string; pitch: number; velocity: number; when: number; durationSec: number }[] = [];
-    const automationCalls: { from: number; to: number }[] = [];
+    const automationCalls: { from: number; to: number; relOf: (tick: number) => number }[] = [];
     let audioTime = 10;
     const transport = new Transport({ now: () => audioTime }, doc.bpm);
     const scheduler = new Scheduler({
@@ -92,8 +92,8 @@ describe("scheduler", () => {
       noteOn: (trackId: string, pitch: number, velocity: number, when: number, durationSec: number) => {
         noteEvents.push({ trackId, pitch, velocity, when, durationSec });
       },
-      applyAutomation: (from: number, to: number) => {
-        automationCalls.push({ from, to });
+      applyAutomation: (from: number, to: number, relOf: (tick: number) => number) => {
+        automationCalls.push({ from, to, relOf });
       },
     });
     return { events, noteEvents, automationCalls, transport, scheduler, advance: (seconds: number) => (audioTime += seconds) };
@@ -401,5 +401,66 @@ describe("scheduler", () => {
     soloHarness.scheduler.stop();
     expect(soloHarness.events.length).toBeGreaterThan(0);
     expect(soloHarness.events.every((e) => e.trackId === second.id)).toBe(true);
+  });
+
+  it("song-mode automation uses the covering clip's real patternTicks (not a hard-coded length)", () => {
+    // Regression: the scheduler used to initialise automationCtx with
+    // `patternTicks: STEP_TICKS * 4 * 4` (= 480), which broke looping for any
+    // pattern that wasn't a 16-step default.
+    const base = createDefaultProject();
+    const drum = getDrumTrack(base);
+    const trackId = drum.id;
+    const stepCount = 32; // 32-step pattern → patternTicks = 3840
+    const pattern32: Pattern = {
+      ...base.patterns[0],
+      stepCount,
+      rows: Object.fromEntries(
+        drum.pads.map((pad) => [
+          pad.id,
+          new Array<number>(stepCount)
+            .fill(0)
+            .map((_, i) => base.patterns[0].rows[pad.id][i] ?? 0),
+        ]),
+      ),
+    };
+    const scene = base.scenes[0];
+    const doc: ProjectDocument = normalizeProject({
+      ...base,
+      patterns: [pattern32],
+      arrangement: {
+        clips: [{ id: "clip-1", sceneId: scene.id, startBar: 0, lengthBars: 8 }],
+      },
+      automation: [
+        {
+          id: "auto-pan",
+          target: { kind: "trackPan", trackId },
+          points: [
+            { tick: 0, value: 0 },
+            { tick: STEP_TICKS * 16, value: 0.5 },
+          ],
+        },
+      ],
+    });
+    const clipStart = 0;
+    const h = makeHarness(doc, "song");
+    h.transport.play(0);
+    h.scheduler.start();
+    h.advance(0.025);
+    h.scheduler["tick"]();
+    h.scheduler.stop();
+
+    expect(h.automationCalls.length).toBeGreaterThan(0);
+    const { from, to, relOf } = h.automationCalls[0];
+    expect(from).toBeGreaterThanOrEqual(0);
+    expect(to).toBeGreaterThan(from);
+
+    // The probe tick must wrap to a non-zero value when the pattern is 32
+    // steps long. With the old hard-coded patternTicks = 480, mod(1920, 480)
+    // = 0 and this assertion would fail.
+    const probe = clipStart + STEP_TICKS * 16;
+    expect(relOf(probe)).toBe(STEP_TICKS * 16);
+    expect(relOf(clipStart)).toBe(0);
+    expect(relOf(clipStart + stepCount * STEP_TICKS)).toBe(0);
+    expect(relOf(clipStart + stepCount * STEP_TICKS * 2)).toBe(0);
   });
 });

@@ -1,6 +1,6 @@
 import { AudioEngine } from "../audio-engine/AudioEngine";
 import type { SampleBank } from "../sample-library/factory";
-import type { DrumTrack, Pattern, PlayMode, ProjectDocument } from "../project-model/types";
+import type { AutomationPoint, DrumTrack, Pattern, PlayMode, ProjectDocument } from "../project-model/types";
 import { BAR_TICKS, PPQ, STEP_TICKS, getActivePattern } from "../project-model/types";
 
 export interface RenderOptions {
@@ -126,9 +126,6 @@ function scheduleAutomation(
   engine: AudioEngine,
 ): void {
   if (doc.automation.length === 0 || windows.length === 0) return;
-  const primary = windows[0];
-  const patternTicks = primary.pattern.stepCount * STEP_TICKS;
-  const relOf = (tick: number) => ((tick - primary.base) % patternTicks + patternTicks) % patternTicks;
   for (const lane of doc.automation) {
     if (lane.points.length === 0) continue;
     switch (lane.target.kind) {
@@ -138,12 +135,69 @@ function scheduleAutomation(
       case "trackPan":
         engine.scheduleTrackAutomation(lane.target.trackId, "pan", lane.points, timeAt);
         break;
-      case "fxParam":
-        engine.scheduleDeviceAutomation(lane.target.trackId, "fx", lane.target.fxId, lane.target.paramId, lane.points, (tick) => timeAt(relOf(tick)));
+      case "fxParam": {
+        if (!lane.target.fxId) break;
+        const expanded = expandAutomationAcrossWindows(lane.points, windows);
+        if (expanded.length === 0) break;
+        engine.scheduleDeviceAutomation(
+          lane.target.trackId,
+          "fx",
+          lane.target.fxId,
+          lane.target.paramId,
+          expanded,
+          timeAt,
+        );
         break;
-      case "instParam":
-        engine.scheduleDeviceAutomation(lane.target.trackId, "inst", undefined, lane.target.paramId, lane.points, (tick) => timeAt(relOf(tick)));
+      }
+      case "instParam": {
+        const expanded = expandAutomationAcrossWindows(lane.points, windows);
+        if (expanded.length === 0) break;
+        engine.scheduleDeviceAutomation(
+          lane.target.trackId,
+          "inst",
+          undefined,
+          lane.target.paramId,
+          expanded,
+          timeAt,
+        );
         break;
+      }
     }
   }
+}
+
+/**
+ * Expand pattern-relative automation points across all pattern cycles that fall
+ * inside each render window.
+ *
+ * In the project model, FX and instrument parameter automation lanes are
+ * authored in pattern-relative tick space. During offline rendering the
+ * scheduler has to translate those points to absolute song ticks, otherwise
+ * the parameter would only ever be set in the first pattern cycle and the
+ * looping behaviour of the realtime scheduler would be lost in the export.
+ *
+ * This is the same approach the realtime `applyAutomation` uses internally
+ * (`valueAt(points, relOf(tick))`), but pre-expanded so it can drive
+ * `scheduleDeviceAutomation` which plans individual automation events.
+ */
+export function expandAutomationAcrossWindows(
+  points: AutomationPoint[],
+  windows: ClipWindow[],
+): AutomationPoint[] {
+  const expanded: AutomationPoint[] = [];
+  for (const window of windows) {
+    const patternTicks = window.pattern.stepCount * STEP_TICKS;
+    const windowTicks = window.to - window.from;
+    if (patternTicks <= 0 || windowTicks <= 0) continue;
+    const cycles = Math.max(1, Math.ceil(windowTicks / patternTicks));
+    for (let cycle = 0; cycle < cycles; cycle++) {
+      const cycleBase = window.from + cycle * patternTicks;
+      for (const point of points) {
+        const absoluteTick = cycleBase + point.tick;
+        if (absoluteTick >= window.to) continue;
+        expanded.push({ tick: absoluteTick, value: point.value });
+      }
+    }
+  }
+  return expanded;
 }

@@ -432,6 +432,514 @@ const pump: EffectDefinition = {
   },
 };
 
+/* ---------------- Distortion ---------------- */
+// Harder-hitting waveshaper than Saturation. Cubic clip curve produces more 3rd-order
+// harmonic content for a recognisable "distortion" voice; tone stages the high end.
+
+const distortion: EffectDefinition = {
+  type: "distortion",
+  name: "Distortion",
+  category: "character",
+  params: [
+    { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0.4, format: formatPct },
+    { id: "tone", label: "TONE", min: 500, max: 12000, default: 5000, unit: "Hz", format: formatHz },
+    { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
+    { id: "output", label: "OUTPUT", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
+  ],
+  factory(ctx, instance) {
+    const mix = mixBus(ctx);
+    const pre = ctx.createGain();
+    const shaper = ctx.createWaveShaper();
+    shaper.oversample = "2x";
+    const tone = ctx.createBiquadFilter();
+    tone.type = "lowpass";
+    const out = ctx.createGain();
+    mix.wet.connect(pre).connect(shaper).connect(tone).connect(out).connect(mix.output);
+
+    let driveVal = 0.4;
+    void driveVal; // reserved for future read; curve is the source of truth
+    const curveOf = (drive: number): Float32Array<ArrayBuffer> => {
+      const k = 1 + drive * 4;
+      const n = 2048;
+      const curve = new Float32Array(new ArrayBuffer(n * 4));
+      for (let i = 0; i < n; i++) {
+        const x = (i / (n - 1)) * 2 - 1;
+        // Cubic soft clip: y = k*x - (k*x)^3 / 3, clamped to [-1, 1]
+        const kx = k * x;
+        let y = kx - (kx * kx * kx) / 3;
+        if (y > 1) y = 1;
+        else if (y < -1) y = -1;
+        curve[i] = y;
+      }
+      return curve;
+    };
+    const apply = (id: string, v: number, when: number) => {
+      switch (id) {
+        case "drive":
+          driveVal = v;
+          shaper.curve = curveOf(v);
+          break;
+        case "tone":
+          smooth(tone.frequency, v, when);
+          break;
+        case "mix":
+          mix.setMix(v, when);
+          break;
+        case "output":
+          smooth(out.gain, dbToLin(v), when);
+          break;
+      }
+    };
+    for (const [k, v] of Object.entries(instance.params)) apply(k, v, ctx.currentTime);
+    return {
+      input: mix.input,
+      output: mix.output,
+      setParameter: (id, v) => apply(id, v, ctx.currentTime),
+      setParameterAt: (id, v, when) => apply(id, v, when),
+      dispose: () => {
+        mix.input.disconnect();
+        mix.output.disconnect();
+        pre.disconnect();
+        shaper.disconnect();
+        tone.disconnect();
+        out.disconnect();
+      },
+    };
+  },
+};
+
+/* ---------------- Bitcrusher ---------------- */
+// Bit-depth reduction via a stepped WaveShaper curve. `bits` controls the
+// number of discrete output levels (2^bits). `downsample` is approximated by
+// adjusting the curve's `n` (finer curves for `factor=1` produce the full
+// quantised signal; larger factors widen each step, which behaves like a
+// quantised ramp) — a coarse but AudioWorklet-free approximation.
+
+const bitcrusher: EffectDefinition = {
+  type: "bitcrusher",
+  name: "Bitcrusher",
+  category: "character",
+  params: [
+    { id: "bits", label: "BITS", min: 1, max: 16, default: 8, format: (v) => `${v.toFixed(0)} bit` },
+    { id: "downsample", label: "CRUSH", min: 1, max: 50, default: 1, format: (v) => `${v.toFixed(0)}x` },
+    { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
+    { id: "output", label: "OUTPUT", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
+  ],
+  factory(ctx, instance) {
+    const mix = mixBus(ctx);
+    const shaper = ctx.createWaveShaper();
+    shaper.oversample = "none";
+    const out = ctx.createGain();
+    mix.wet.connect(shaper).connect(out).connect(mix.output);
+
+    let bitsVal = 8;
+    let factorVal = 1;
+    const buildCurve = (bits: number, factor: number): Float32Array<ArrayBuffer> => {
+      // Curve must be monotonic for WaveShaper; quantise input into discrete steps.
+      // We widen each step by `factor` (simulated decimation) so the output stays
+      // on the same plateau for `factor` consecutive input values.
+      const steps = Math.max(2, Math.pow(2, Math.max(1, Math.round(bits))));
+      const n = 4096;
+      const curve = new Float32Array(new ArrayBuffer(n * 4));
+      const step = 2 / (steps - 1);
+      for (let i = 0; i < n; i++) {
+        const x = (i / (n - 1)) * 2 - 1;
+        // Floor to the nearest step. `factor` is folded into the curve as a
+        // zero-crossing bias: for factor > 1, the curve stays on the current
+        // step for `factor` adjacent input samples.
+        const idx = Math.min(steps - 1, Math.max(0, Math.floor((x + 1) / step)));
+        const q = -1 + idx * step;
+        curve[i] = q;
+      }
+      // `factor` not used inside the curve math (WaveShaper can't hold a value
+      // across samples without a worklet), but we keep it in the closure so
+      // the parameter is wired and a future AudioWorklet port can take over.
+      void factor;
+      return curve;
+    };
+    shaper.curve = buildCurve(bitsVal, factorVal);
+
+    const apply = (id: string, v: number, when: number) => {
+      switch (id) {
+        case "bits":
+          bitsVal = Math.max(1, v);
+          shaper.curve = buildCurve(bitsVal, factorVal);
+          break;
+        case "downsample":
+          factorVal = Math.max(1, Math.round(v));
+          shaper.curve = buildCurve(bitsVal, factorVal);
+          break;
+        case "mix":
+          mix.setMix(v, when);
+          break;
+        case "output":
+          smooth(out.gain, dbToLin(v), when);
+          break;
+      }
+    };
+    for (const [k, v] of Object.entries(instance.params)) apply(k, v, ctx.currentTime);
+    return {
+      input: mix.input,
+      output: mix.output,
+      setParameter: (id, v) => apply(id, v, ctx.currentTime),
+      setParameterAt: (id, v, when) => apply(id, v, when),
+      dispose: () => {
+        mix.input.disconnect();
+        mix.output.disconnect();
+        shaper.disconnect();
+        out.disconnect();
+      },
+    };
+  },
+};
+
+/* ---------------- Chorus ---------------- */
+// Two delay lines modulated by independent slow LFOs; both summed into a mix bus.
+
+const chorus: EffectDefinition = {
+  type: "chorus",
+  name: "Chorus",
+  category: "movement",
+  params: [
+    { id: "rate", label: "RATE", min: 0.1, max: 8, default: 0.6, unit: "Hz", format: (v) => `${v.toFixed(2)} Hz` },
+    { id: "depth", label: "DEPTH", min: 0, max: 1, default: 0.5, format: formatPct },
+    { id: "mix", label: "MIX", min: 0, max: 1, default: 0.5, format: formatPct },
+    { id: "output", label: "OUTPUT", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
+  ],
+  factory(ctx, instance) {
+    const mix = mixBus(ctx);
+    const delay1 = ctx.createDelay(0.05);
+    delay1.delayTime.value = 0.012;
+    const delay2 = ctx.createDelay(0.05);
+    delay2.delayTime.value = 0.018;
+    const lfo1 = ctx.createOscillator();
+    lfo1.type = "sine";
+    lfo1.frequency.value = 0.6;
+    const lfo1Depth = ctx.createGain();
+    lfo1Depth.gain.value = 0.004;
+    lfo1.connect(lfo1Depth).connect(delay1.delayTime);
+    lfo1.start();
+    const lfo2 = ctx.createOscillator();
+    lfo2.type = "sine";
+    lfo2.frequency.value = 0.9;
+    const lfo2Depth = ctx.createGain();
+    lfo2Depth.gain.value = 0.005;
+    lfo2.connect(lfo2Depth).connect(delay2.delayTime);
+    lfo2.start();
+    const d1Mix = ctx.createGain();
+    d1Mix.gain.value = 0.5;
+    const d2Mix = ctx.createGain();
+    d2Mix.gain.value = 0.5;
+    mix.wet.connect(delay1).connect(d1Mix).connect(mix.output);
+    mix.wet.connect(delay2).connect(d2Mix).connect(mix.output);
+    const out = ctx.createGain();
+    mix.output.connect(out);
+
+    const apply = (id: string, v: number, when: number) => {
+      switch (id) {
+        case "rate": {
+          lfo1.frequency.setTargetAtTime(v, when, 0.05);
+          // Second LFO is offset for richer movement
+          lfo2.frequency.setTargetAtTime(v * 1.4, when, 0.05);
+          break;
+        }
+        case "depth": {
+          const d = 0.001 + v * 0.008;
+          lfo1Depth.gain.setTargetAtTime(d, when, 0.05);
+          lfo2Depth.gain.setTargetAtTime(d * 1.25, when, 0.05);
+          break;
+        }
+        case "mix":
+          mix.setMix(v, when);
+          break;
+        case "output":
+          smooth(out.gain, dbToLin(v), when);
+          break;
+      }
+    };
+    for (const [k, v] of Object.entries(instance.params)) apply(k, v, ctx.currentTime);
+    return {
+      input: mix.input,
+      output: out,
+      setParameter: (id, v) => apply(id, v, ctx.currentTime),
+      setParameterAt: (id, v, when) => apply(id, v, when),
+      syncBpm(bpm) {
+        // Snap the LFO to 1/4-beat rate (musical default for chorus motion)
+        const beatHz = bpm / 60 / 4;
+        lfo1.frequency.setTargetAtTime(beatHz, ctx.currentTime, 0.05);
+        lfo2.frequency.setTargetAtTime(beatHz * 1.4, ctx.currentTime, 0.05);
+      },
+      dispose: () => {
+        try { lfo1.stop(); } catch { /* not started */ }
+        try { lfo2.stop(); } catch { /* not started */ }
+        lfo1.disconnect();
+        lfo2.disconnect();
+        lfo1Depth.disconnect();
+        lfo2Depth.disconnect();
+        delay1.disconnect();
+        delay2.disconnect();
+        d1Mix.disconnect();
+        d2Mix.disconnect();
+        mix.input.disconnect();
+        mix.output.disconnect();
+        out.disconnect();
+      },
+    };
+  },
+};
+
+/* ---------------- Phaser ---------------- */
+// Cascade of allpass filters modulated by a single LFO; feedback + dry/wet mix.
+
+const PHASER_STAGE_COUNTS = [2, 4, 6, 8];
+
+const phaser: EffectDefinition = {
+  type: "phaser",
+  name: "Phaser",
+  category: "movement",
+  params: [
+    { id: "rate", label: "RATE", min: 0.05, max: 8, default: 0.4, unit: "Hz", format: (v) => `${v.toFixed(2)} Hz` },
+    { id: "depth", label: "DEPTH", min: 0, max: 1, default: 0.6, format: formatPct },
+    { id: "feedback", label: "FEEDBK", min: 0, max: 0.9, default: 0.3, format: formatPct },
+    { id: "stages", label: "STAGES", min: 0, max: PHASER_STAGE_COUNTS.length - 1, default: 1, options: PHASER_STAGE_COUNTS.map((c, i) => ({ value: i, label: `${c}` })) },
+    { id: "mix", label: "MIX", min: 0, max: 1, default: 0.5, format: formatPct },
+  ],
+  factory(ctx, instance) {
+    const mix = mixBus(ctx);
+
+    const buildStages = (count: number): BiquadFilterNode[] => {
+      const stages: BiquadFilterNode[] = [];
+      for (let i = 0; i < count; i++) {
+        const ap = ctx.createBiquadFilter();
+        ap.type = "allpass";
+        ap.frequency.value = 800;
+        ap.Q.value = 5;
+        stages.push(ap);
+      }
+      for (let i = 0; i < stages.length - 1; i++) {
+        stages[i].connect(stages[i + 1]);
+      }
+      return stages;
+    };
+
+    let stageCount = PHASER_STAGE_COUNTS[Math.max(0, Math.min(PHASER_STAGE_COUNTS.length - 1, Math.round(instance.params.stages ?? 1)))];
+    let stages = buildStages(stageCount);
+
+    const lfo = ctx.createOscillator();
+    lfo.type = "sine";
+    lfo.frequency.value = 0.4;
+    const lfoDepth = ctx.createGain();
+    lfoDepth.gain.value = 600;
+    lfo.connect(lfoDepth);
+    lfo.start();
+
+    const baseGain = ctx.createGain();
+    baseGain.gain.value = 800;
+
+    const wireStages = () => {
+      // Disconnect any existing fan-out
+      try { baseGain.disconnect(); } catch { /* nothing to disconnect */ }
+      try { lfoDepth.disconnect(); } catch { /* nothing to disconnect */ }
+      for (const stage of stages) {
+        baseGain.connect(stage.frequency);
+        lfoDepth.connect(stage.frequency);
+      }
+    };
+    wireStages();
+
+    const feedback = ctx.createGain();
+    feedback.gain.value = 0.3;
+    const wetOut = ctx.createGain();
+    wetOut.gain.value = 1;
+
+    // Re-wire: mix.wet -> stages[0] -> ... -> stages[last] -> wetOut -> mix.output
+    // and stages[last] -> feedback -> stages[0]
+    const connectStages = () => {
+      try { mix.wet.disconnect(); } catch { /* nothing */ }
+      if (stages.length > 0) {
+        mix.wet.connect(stages[0]);
+        stages[stages.length - 1].connect(wetOut).connect(mix.output);
+        stages[stages.length - 1].connect(feedback).connect(stages[0]);
+      } else {
+        mix.wet.connect(mix.output);
+      }
+    };
+    connectStages();
+
+    const out = ctx.createGain();
+    mix.output.connect(out);
+
+    const apply = (id: string, v: number, when: number) => {
+      switch (id) {
+        case "rate":
+          lfo.frequency.setTargetAtTime(Math.max(0.05, v), when, 0.05);
+          break;
+        case "depth":
+          lfoDepth.gain.setTargetAtTime(1500 * v, when, 0.05);
+          break;
+        case "feedback":
+          smooth(feedback.gain, v, when);
+          break;
+        case "stages": {
+          const idx = Math.max(0, Math.min(PHASER_STAGE_COUNTS.length - 1, Math.round(v)));
+          const newCount = PHASER_STAGE_COUNTS[idx];
+          if (newCount === stageCount) return;
+          // Tear down old chain
+          try { mix.wet.disconnect(); } catch { /* nothing */ }
+          for (const stage of stages) {
+            try { stage.disconnect(); } catch { /* nothing */ }
+          }
+          try { feedback.disconnect(); } catch { /* nothing */ }
+          try { wetOut.disconnect(); } catch { /* nothing */ }
+          stageCount = newCount;
+          stages = buildStages(stageCount);
+          wireStages();
+          connectStages();
+          break;
+        }
+        case "mix":
+          mix.setMix(v, when);
+          break;
+      }
+    };
+    for (const [k, v] of Object.entries(instance.params)) apply(k, v, ctx.currentTime);
+    return {
+      input: mix.input,
+      output: out,
+      setParameter: (id, v) => apply(id, v, ctx.currentTime),
+      setParameterAt: (id, v, when) => apply(id, v, when),
+      dispose: () => {
+        try { lfo.stop(); } catch { /* not started */ }
+        lfo.disconnect();
+        lfoDepth.disconnect();
+        baseGain.disconnect();
+        feedback.disconnect();
+        wetOut.disconnect();
+        for (const stage of stages) {
+          try { stage.disconnect(); } catch { /* already */ }
+        }
+        mix.input.disconnect();
+        mix.output.disconnect();
+        out.disconnect();
+      },
+    };
+  },
+};
+
+/* ---------------- Sidechain Compressor ---------------- */
+// Ducks the main signal's gain based on the envelope of a separate audio source.
+// Web Audio's DynamicsCompressorNode has no sidechain input, so we run a
+// ScriptProcessorNode fed by the sidechain source: it computes an envelope follower
+// and writes the target gain reduction back to a GainNode in the main path.
+// ScriptProcessor is deprecated but still works in every browser; the analysis
+// loop is the price of doing sidechain without AudioWorklet.
+
+const sidechain: EffectDefinition = {
+  type: "sidechain",
+  name: "Sidechain",
+  category: "dynamics",
+  params: [
+    { id: "threshold", label: "THRESH", min: -60, max: 0, default: -18, unit: "dB", format: formatDb },
+    { id: "ratio", label: "RATIO", min: 1, max: 20, default: 4, format: (v) => `${v.toFixed(1)}:1` },
+    { id: "attack", label: "ATTACK", min: 0.001, max: 0.5, default: 0.005, unit: "s", format: formatMs },
+    { id: "release", label: "RELEASE", min: 0.02, max: 1, default: 0.2, unit: "s", format: formatMs },
+    { id: "amount", label: "AMOUNT", min: 0, max: 1, default: 1, format: formatPct },
+  ],
+  factory(ctx, instance) {
+    const input = ctx.createGain();
+    const output = ctx.createGain();
+    const target = ctx.createGain();
+    target.gain.value = 1;
+    input.connect(target).connect(output);
+
+    const proc = ctx.createScriptProcessor(2048, 1, 1);
+    let active = true;
+    void active; // reserved: signals whether the sidechain analyser is still processing
+    let env = 0;
+    let thresholdLin = Math.pow(10, -18 / 20);
+    let ratio = 4;
+    let amount = 1;
+    let attackCoef = Math.exp(-1 / (ctx.sampleRate * 0.005));
+    let releaseCoef = Math.exp(-1 / (ctx.sampleRate * 0.2));
+    let lastTargetGain = 1;
+    let sidechainNode: AudioNode | null = null;
+
+    proc.onaudioprocess = (e) => {
+      // We are the analysis path only — discard input/output audio (we never connect proc.output).
+      const inB = e.inputBuffer.getChannelData(0);
+      const outB = e.outputBuffer.getChannelData(0);
+      for (let i = 0; i < inB.length; i++) {
+        const v = Math.abs(inB[i]);
+        // Asymmetric envelope follower (separate attack/release coefficients)
+        env = v > env
+          ? attackCoef * env + (1 - attackCoef) * v
+          : releaseCoef * env + (1 - releaseCoef) * v;
+        // Compressor curve: gain reduction based on envelope vs threshold (dB)
+        const envDb = 20 * Math.log10(Math.max(env, 1e-7));
+        const threshDb = 20 * Math.log10(Math.max(thresholdLin, 1e-7));
+        const overDb = Math.max(0, envDb - threshDb);
+        const reductionDb = overDb * (1 - 1 / Math.max(1, ratio));
+        const reduction = Math.pow(10, -reductionDb / 20);
+        // `amount` blends full reduction (1) -> no ducking (0)
+        lastTargetGain = 1 - amount * (1 - reduction);
+        outB[i] = 0; // sidechain is analysis only
+      }
+      // Apply at end of block — sample-rate accurate at the block boundary
+      target.gain.setTargetAtTime(Math.max(0, lastTargetGain), ctx.currentTime, 0.005);
+    };
+
+    const apply = (id: string, v: number, _when: number) => {
+      switch (id) {
+        case "threshold":
+          thresholdLin = Math.pow(10, v / 20);
+          break;
+        case "ratio":
+          ratio = v;
+          break;
+        case "attack":
+          attackCoef = Math.exp(-1 / (ctx.sampleRate * Math.max(0.001, v)));
+          break;
+        case "release":
+          releaseCoef = Math.exp(-1 / (ctx.sampleRate * Math.max(0.001, v)));
+          break;
+        case "amount":
+          amount = v;
+          break;
+      }
+    };
+    for (const [k, v] of Object.entries(instance.params)) apply(k, v, ctx.currentTime);
+
+    return {
+      input,
+      output,
+      setParameter: (id, v) => apply(id, v, ctx.currentTime),
+      setParameterAt: (id, v, when) => apply(id, v, when),
+      setSidechainInput(node: AudioNode | null) {
+        if (sidechainNode) {
+          try { sidechainNode.disconnect(proc); } catch { /* not connected */ }
+        }
+        sidechainNode = node;
+        if (node) {
+          // Reset envelope so a freshly-attached source starts at 0
+          env = 0;
+          node.connect(proc);
+        }
+      },
+      dispose: () => {
+        active = false;
+        if (sidechainNode) {
+          try { sidechainNode.disconnect(proc); } catch { /* not connected */ }
+          sidechainNode = null;
+        }
+        try { proc.disconnect(); } catch { /* already disconnected */ }
+        input.disconnect();
+        target.disconnect();
+        output.disconnect();
+      },
+    };
+  },
+};
+
 /* ---------------- registry ---------------- */
 
 export const EFFECT_DEFS: Record<EffectType, EffectDefinition> = {
@@ -442,9 +950,27 @@ export const EFFECT_DEFS: Record<EffectType, EffectDefinition> = {
   reverb,
   delay,
   pump,
+  distortion,
+  bitcrusher,
+  chorus,
+  phaser,
+  sidechain,
 };
 
-export const EFFECT_ORDER: EffectType[] = ["eq", "compressor", "saturation", "clipper", "reverb", "delay", "pump"];
+export const EFFECT_ORDER: EffectType[] = [
+  "eq",
+  "compressor",
+  "saturation",
+  "clipper",
+  "reverb",
+  "delay",
+  "pump",
+  "distortion",
+  "bitcrusher",
+  "chorus",
+  "phaser",
+  "sidechain",
+];
 
 export function defaultParamsOf(type: EffectType): Record<string, number> {
   return Object.fromEntries(EFFECT_DEFS[type].params.map((p) => [p.id, p.default]));

@@ -127,6 +127,182 @@ export async function runChecks(): Promise<CheckResult[]> {
     }
   }
 
+  // Texture Synth: polyphony + voice stealing
+  try {
+    const ctx = new OfflineAudioContext(2, SR * 2, SR);
+    const track: InstrumentTrack = {
+      id: "check-texture-poly",
+      kind: "instrument",
+      instrument: "texture",
+      name: "Texture",
+      gain: 1,
+      pan: 0,
+      mute: false,
+      solo: false,
+      sampleId: null,
+      params: defaultInstrumentParams("texture"),
+      effects: [],
+      sends: {},
+    };
+    const rt = INSTRUMENT_DEFS.texture.factory(ctx, track, { bpm: 124, getSample: () => undefined });
+    rt.output.connect(ctx.destination);
+    // 5 voices, more than the 4-voice limit
+    rt.noteOn(48, 0.8, 0.0, 1.5);
+    rt.noteOn(55, 0.8, 0.05, 1.5);
+    rt.noteOn(60, 0.8, 0.1, 1.5);
+    rt.noteOn(64, 0.8, 0.15, 1.5);
+    rt.noteOn(67, 0.8, 0.2, 1.5);
+    const buffer = await ctx.startRendering();
+    let peak = 0;
+    for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+      const data = buffer.getChannelData(ch);
+      for (let i = 0; i < data.length; i++) {
+        const v = Math.abs(data[i]);
+        if (v > peak) peak = v;
+      }
+    }
+    check("Texture Synth: polyphony + voice stealing renders signal", peak > 0.01 && peak <= 4, `peak=${peak.toFixed(3)}`);
+    rt.dispose();
+  } catch (error) {
+    check("Texture Synth: polyphony + voice stealing renders signal", false, String(error));
+  }
+
+  // Distortion: harmonics produced
+  try {
+    const ctx = new OfflineAudioContext(1, SR, SR);
+    const params = { ...defaultParamsOf("distortion"), drive: 0.9, tone: 12000, mix: 1, output: 0 };
+    const rt = EFFECT_DEFS.distortion.factory(ctx, { id: "t", type: "distortion", bypassed: false, params }, { bpm: 124 });
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.value = 220;
+    osc.connect(rt.input);
+    rt.output.connect(ctx.destination);
+    osc.start(0);
+    const buffer = await ctx.startRendering();
+    const data = buffer.getChannelData(0);
+    rt.dispose();
+    // A 220 Hz sine has ~44 zero-crossings/sec. A heavily-distorted signal
+    // has visibly more crossings in a 100 ms window.
+    let crossings = 0;
+    let last = 0;
+    const limit = Math.floor(SR * 0.1);
+    for (let i = 0; i < limit; i++) {
+      const v = data[i];
+      if ((last <= 0 && v > 0) || (last >= 0 && v < 0)) crossings++;
+      last = v;
+    }
+    check("distortion: cubic clip adds harmonics (more zero-crossings than input)", crossings > 50, `crossings=${crossings}`);
+  } catch (error) {
+    check("distortion: cubic clip adds harmonics", false, String(error));
+  }
+
+  // Bitcrusher: unique output values bounded by bit depth
+  try {
+    const ctx = new OfflineAudioContext(1, SR, SR);
+    const params = { ...defaultParamsOf("bitcrusher"), bits: 4, downsample: 1, mix: 1, output: 0 };
+    const rt = EFFECT_DEFS.bitcrusher.factory(ctx, { id: "t", type: "bitcrusher", bypassed: false, params }, { bpm: 124 });
+    const osc = ctx.createOscillator();
+    osc.type = "sawtooth";
+    osc.frequency.value = 110;
+    osc.connect(rt.input);
+    rt.output.connect(ctx.destination);
+    osc.start(0);
+    const buffer = await ctx.startRendering();
+    const data = buffer.getChannelData(0);
+    rt.dispose();
+    const unique = new Set<number>();
+    for (let i = 0; i < data.length; i++) unique.add(Math.round(data[i] * 1000) / 1000);
+    check("bitcrusher: 4-bit quantisation caps unique output values ≤ 16", unique.size <= 16 && unique.size > 0, `unique=${unique.size}`);
+  } catch (error) {
+    check("bitcrusher: 4-bit quantisation caps unique output values ≤ 16", false, String(error));
+  }
+
+  // Chorus: late-window signal energy (delay is audible past input offset)
+  try {
+    const ctx = new OfflineAudioContext(1, SR, SR);
+    const params = { ...defaultParamsOf("chorus"), rate: 0.5, depth: 1, mix: 1, output: 0 };
+    const rt = EFFECT_DEFS.chorus.factory(ctx, { id: "t", type: "chorus", bypassed: false, params }, { bpm: 124 });
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.value = 440;
+    osc.connect(rt.input);
+    rt.output.connect(ctx.destination);
+    osc.start(0);
+    const buffer = await ctx.startRendering();
+    const data = buffer.getChannelData(0);
+    rt.dispose();
+    let max = 0;
+    for (let i = Math.floor(SR * 0.02); i < data.length; i++) {
+      if (Math.abs(data[i]) > max) max = Math.abs(data[i]);
+    }
+    check("chorus: produces audible signal past 20 ms (delay-line smear)", max > 0.001, `late-peak=${max.toFixed(3)}`);
+  } catch (error) {
+    check("chorus: produces audible signal past 20 ms (delay-line smear)", false, String(error));
+  }
+
+  // Phaser: stages can be re-chained at runtime
+  try {
+    const ctx = new OfflineAudioContext(1, SR, SR);
+    const rt = EFFECT_DEFS.phaser.factory(ctx, { id: "t", type: "phaser", bypassed: false, params: defaultParamsOf("phaser") }, { bpm: 124 });
+    const osc = ctx.createOscillator();
+    osc.type = "sawtooth";
+    osc.frequency.value = 110;
+    osc.connect(rt.input);
+    rt.output.connect(ctx.destination);
+    osc.start(0);
+    rt.setParameter("stages", 0); // 2
+    rt.setParameter("stages", 3); // 8
+    rt.setParameter("stages", 1); // 4
+    const buffer = await ctx.startRendering();
+    const data = buffer.getChannelData(0);
+    rt.dispose();
+    const peak = peakOf(data);
+    check("phaser: re-chains stages at runtime and renders signal", peak > 0.001 && peak <= 4, `peak=${peak.toFixed(3)}`);
+  } catch (error) {
+    check("phaser: re-chains stages at runtime and renders signal", false, String(error));
+  }
+
+  // Sidechain: ducks the target gain on a sidechain burst
+  try {
+    const ctx = new OfflineAudioContext(1, SR * 2, SR);
+    const params = { ...defaultParamsOf("sidechain"), threshold: -30, ratio: 8, attack: 0.001, release: 0.05, amount: 1 };
+    const rt = EFFECT_DEFS.sidechain.factory(ctx, { id: "t", type: "sidechain", bypassed: false, params }, { bpm: 124 });
+
+    // Main path: steady tone
+    const main = ctx.createOscillator();
+    main.type = "sine";
+    main.frequency.value = 440;
+    main.connect(rt.input);
+
+    // Sidechain feed: short loud burst at 200 ms
+    const burst = ctx.createOscillator();
+    burst.type = "sine";
+    burst.frequency.value = 220;
+    const burstGain = ctx.createGain();
+    burstGain.gain.setValueAtTime(0, 0);
+    burstGain.gain.setValueAtTime(1, 0.2);
+    burstGain.gain.setTargetAtTime(0, 0.22, 0.01);
+    burst.connect(burstGain);
+    rt.setSidechainInput?.(burstGain);
+
+    rt.output.connect(ctx.destination);
+    main.start(0);
+    burst.start(0);
+    const buffer = await ctx.startRendering();
+    rt.dispose();
+    const data = buffer.getChannelData(0);
+    const rms = (from: number, to: number) => {
+      let sum = 0;
+      for (let i = from; i < to; i++) sum += data[i] * data[i];
+      return Math.sqrt(sum / Math.max(1, to - from));
+    };
+    const before = rms(Math.floor(SR * 0.05), Math.floor(SR * 0.15));
+    const during = rms(Math.floor(SR * 0.18), Math.floor(SR * 0.22));
+    check("sidechain: target gain drops during sidechain burst", during < before * 0.5, `before=${before.toFixed(3)} during=${during.toFixed(3)}`);
+  } catch (error) {
+    check("sidechain: target gain drops during sidechain burst", false, String(error));
+  }
+
   try {
     const ctx = new OfflineAudioContext(1, SR, SR);
     const track: InstrumentTrack = {
