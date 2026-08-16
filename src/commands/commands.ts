@@ -829,9 +829,12 @@ export function removeEffect(doc: ProjectDocument, trackId: string, fxId: string
 }
 
 export function setEffectParam(doc: ProjectDocument, trackId: string, fxId: string, paramId: string, value: number): Command {
-  const prev = trackEffectsOf(doc, trackId).find((f) => f.id === fxId)?.params[paramId];
-  const type = trackEffectsOf(doc, trackId).find((f) => f.id === fxId)?.type;
-  if (!type) throw new Error(`Effect ${fxId} not found`);
+  const target = trackEffectsOf(doc, trackId).find((f) => f.id === fxId);
+  if (!target) throw new Error(`Effect ${fxId} not found`);
+  const { type, params } = target;
+  const def = EFFECT_DEFS[type].params.find((p) => p.id === paramId);
+  if (!def) throw new Error(`Effect param ${paramId} not defined for ${type}`);
+  const prev = params[paramId] ?? def.default;
   const clamped = clampEffectParam(type, paramId, value);
   const apply = (d: ProjectDocument, v: number): ProjectDocument =>
     withTrackEffects(d, trackId, (effects) =>
@@ -841,7 +844,7 @@ export function setEffectParam(doc: ProjectDocument, trackId: string, fxId: stri
     type: "setEffectParam",
     label: `Set ${EFFECT_DEFS[type].name} ${paramId}`,
     execute: (d) => apply(d, clamped),
-    undo: (d) => apply(d, prev ?? EFFECT_DEFS[type].params.find((p) => p.id === paramId)?.default ?? clamped),
+    undo: (d) => apply(d, prev),
   };
 }
 

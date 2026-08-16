@@ -1,15 +1,21 @@
 import { useEffect, useRef, useState } from "react";
-import { BAR_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
+import { STEP_TICKS } from "../project-model/types";
 import type { Transport } from "../transport/Transport";
 import type { ProjectDocument } from "../project-model/types";
 import { getActivePattern } from "../project-model/types";
+import { ticksPerBar, ticksPerBeat } from "../project-model/schema";
 
-export function transportPosition(transport: Transport): { bar: number; beat: number; step: number } {
+export function transportPosition(
+  transport: Transport,
+  doc: ProjectDocument,
+): { bar: number; beat: number; step: number } {
   const tick = Math.max(0, transport.position);
+  const tpb = ticksPerBar(doc);
+  const tpbBeat = ticksPerBeat(doc);
   return {
-    bar: Math.floor(tick / BAR_TICKS) + 1,
-    beat: Math.floor((tick % BAR_TICKS) / PPQ) + 1,
-    step: Math.floor((tick % PPQ) / STEP_TICKS) + 1,
+    bar: Math.floor(tick / tpb) + 1,
+    beat: Math.floor((tick % tpb) / tpbBeat) + 1,
+    step: Math.floor((tick % tpbBeat) / STEP_TICKS) + 1,
   };
 }
 
@@ -17,13 +23,13 @@ export function formatPosition(pos: { bar: number; beat: number; step: number })
   return `${pos.bar}.${pos.beat}.${pos.step}`;
 }
 
-export function useTransportPosition(transport: Transport): string {
+export function useTransportPosition(transport: Transport, doc: ProjectDocument): string {
   const [display, setDisplay] = useState("1.1.1");
   const rafRef = useRef(0);
   useEffect(() => {
     let last = "";
     const loop = () => {
-      const next = formatPosition(transportPosition(transport));
+      const next = formatPosition(transportPosition(transport, doc));
       if (next !== last) {
         last = next;
         setDisplay(next);
@@ -32,7 +38,7 @@ export function useTransportPosition(transport: Transport): string {
     };
     rafRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [transport]);
+  }, [transport, doc.timeSignature.numerator, doc.timeSignature.denominator]);
   return display;
 }
 

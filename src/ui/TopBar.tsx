@@ -25,7 +25,7 @@ export function TopBar({
   const services = useServices();
   const doc = useDoc();
   const saveStatus = useSaveStatus();
-  const position = useTransportPosition(services.transport);
+  const position = useTransportPosition(services.transport, doc);
   const [nameDraft, setNameDraft] = useState<string | null>(null);
 
   const playing = services.transport.playing;

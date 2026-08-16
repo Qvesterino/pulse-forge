@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { Transport, systemClock } from "../src/transport/Transport";
 import { PPQ } from "../src/project-model/types";
+import type { ProjectDocument, TimeSignature } from "../src/project-model/types";
+import {
+  barAtTick,
+  beatAtTick,
+  beatsPerBar,
+  tickAtBar,
+  tickAtBarBeat,
+  ticksPerBar,
+  ticksPerBeat,
+} from "../src/project-model/schema";
 
 function controlledClock(start = 100) {
   let time = start;
@@ -83,5 +93,105 @@ describe("systemClock", () => {
     const a = systemClock.now();
     const b = systemClock.now();
     expect(b).toBeGreaterThanOrEqual(a);
+  });
+});
+
+describe("bar/beat conversions", () => {
+  function docWith(signature: TimeSignature): ProjectDocument {
+    return {
+      schemaVersion: 1,
+      id: "test",
+      name: "test",
+      bpm: 124,
+      timeSignature: signature,
+      tracks: [],
+      patterns: [],
+      activePatternId: "",
+      scenes: [],
+      arrangement: { clips: [] },
+      automation: [],
+      lfos: [],
+      macros: [],
+      returns: [],
+      master: { limiterEnabled: true, clipperEnabled: false },
+      createdAt: "",
+      updatedAt: "",
+    };
+  }
+
+  it("ticksPerBar / beatsPerBar / ticksPerBeat are correct for common signatures", () => {
+    const fourFour = docWith({ numerator: 4, denominator: 4 });
+    expect(beatsPerBar(fourFour)).toBe(4);
+    expect(ticksPerBar(fourFour)).toBe(4 * PPQ);
+    expect(ticksPerBeat(fourFour)).toBe(PPQ);
+
+    const threeFour = docWith({ numerator: 3, denominator: 4 });
+    expect(beatsPerBar(threeFour)).toBe(3);
+    expect(ticksPerBar(threeFour)).toBe(3 * PPQ);
+    expect(ticksPerBeat(threeFour)).toBe(PPQ);
+
+    const sixEight = docWith({ numerator: 6, denominator: 8 });
+    expect(beatsPerBar(sixEight)).toBe(6);
+    expect(ticksPerBar(sixEight)).toBe(3 * PPQ);
+    // In 6/8 the beat is an eighth note, so two beats per quarter.
+    expect(ticksPerBeat(sixEight)).toBe(PPQ / 2);
+  });
+
+  it("barAtTick returns 1-indexed bar numbers and clamps negative ticks to 0", () => {
+    const fourFour = docWith({ numerator: 4, denominator: 4 });
+    const tpb = ticksPerBar(fourFour);
+    expect(barAtTick(0, fourFour)).toBe(1);
+    expect(barAtTick(tpb - 1, fourFour)).toBe(1);
+    expect(barAtTick(tpb, fourFour)).toBe(2);
+    expect(barAtTick(2 * tpb + 100, fourFour)).toBe(3);
+    expect(barAtTick(-50, fourFour)).toBe(0);
+  });
+
+  it("beatAtTick returns 1-indexed beat within the current bar", () => {
+    const fourFour = docWith({ numerator: 4, denominator: 4 });
+    const tpbBeat = ticksPerBeat(fourFour);
+    expect(beatAtTick(0, fourFour)).toBe(1);
+    expect(beatAtTick(tpbBeat - 1, fourFour)).toBe(1);
+    expect(beatAtTick(tpbBeat, fourFour)).toBe(2);
+    expect(beatAtTick(2 * tpbBeat, fourFour)).toBe(3);
+    expect(beatAtTick(3 * tpbBeat, fourFour)).toBe(4);
+    // Crossing into bar 2 resets the beat counter to 1.
+    const tpb = ticksPerBar(fourFour);
+    expect(beatAtTick(tpb, fourFour)).toBe(1);
+    expect(beatAtTick(tpb + tpbBeat, fourFour)).toBe(2);
+  });
+
+  it("tickAtBar and tickAtBarBeat round-trip with bar/beat helpers at beat granularity", () => {
+    const fourFour = docWith({ numerator: 4, denominator: 4 });
+    expect(tickAtBar(1, fourFour)).toBe(0);
+    expect(tickAtBar(2, fourFour)).toBe(ticksPerBar(fourFour));
+    expect(tickAtBar(0, fourFour)).toBe(0);
+
+    const tpbBeat = ticksPerBeat(fourFour);
+    expect(tickAtBarBeat(1, 1, fourFour)).toBe(0);
+    expect(tickAtBarBeat(1, 2, fourFour)).toBe(tpbBeat);
+    expect(tickAtBarBeat(2, 1, fourFour)).toBe(ticksPerBar(fourFour));
+    expect(tickAtBarBeat(2, 4, fourFour)).toBe(ticksPerBar(fourFour) + 3 * tpbBeat);
+    expect(tickAtBarBeat(0, 0, fourFour)).toBe(0);
+  });
+
+  it("bar/beat helpers are consistent under time-signature changes (3/4 and 6/8)", () => {
+    const threeFour = docWith({ numerator: 3, denominator: 4 });
+    const tpb3 = ticksPerBar(threeFour);
+    const tpbBeat3 = ticksPerBeat(threeFour);
+    expect(barAtTick(0, threeFour)).toBe(1);
+    expect(barAtTick(tpb3 - 1, threeFour)).toBe(1);
+    expect(barAtTick(tpb3, threeFour)).toBe(2);
+    expect(beatAtTick(0, threeFour)).toBe(1);
+    expect(beatAtTick(tpbBeat3, threeFour)).toBe(2);
+    expect(beatAtTick(2 * tpbBeat3, threeFour)).toBe(3);
+    expect(beatAtTick(3 * tpbBeat3, threeFour)).toBe(1); // wraps to next bar
+
+    const sixEight = docWith({ numerator: 6, denominator: 8 });
+    const tpbBeat6 = ticksPerBeat(sixEight);
+    expect(beatAtTick(0, sixEight)).toBe(1);
+    expect(beatAtTick(tpbBeat6, sixEight)).toBe(2);
+    expect(beatAtTick(5 * tpbBeat6, sixEight)).toBe(6);
+    expect(beatAtTick(6 * tpbBeat6, sixEight)).toBe(1); // wraps to next bar
   });
 });

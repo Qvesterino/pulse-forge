@@ -255,6 +255,12 @@ export function normalizeProject(doc: ProjectDocument): ProjectDocument {
   let changed = false;
   let next: ProjectDocument = doc;
 
+  // timeSignature
+  if (!isValidTimeSignature(next.timeSignature)) {
+    next = { ...next, timeSignature: { numerator: 4, denominator: 4 } };
+    changed = true;
+  }
+
   // bpm
   const clampedBpm = clampBpm(next.bpm);
   if (clampedBpm !== next.bpm) {
@@ -518,18 +524,46 @@ export function migrateProject(doc: ProjectDocument): ProjectDocument {
   return normalizeProject(migrated);
 }
 
+function isValidTimeSignature(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) return false;
+  const ts = value as Record<string, unknown>;
+  const num = ts.numerator;
+  const den = ts.denominator;
+  if (typeof num !== "number" || typeof den !== "number") return false;
+  if (!Number.isInteger(num) || !Number.isInteger(den)) return false;
+  return num > 0 && den > 0;
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 export function validateProjectShape(doc: unknown): doc is ProjectDocument {
-  if (typeof doc !== "object" || doc === null) return false;
-  const d = doc as Record<string, unknown>;
-  return (
-    typeof d.schemaVersion === "number" &&
-    typeof d.id === "string" &&
-    typeof d.name === "string" &&
-    typeof d.bpm === "number" &&
-    Array.isArray(d.tracks) &&
-    Array.isArray(d.patterns) &&
-    typeof d.activePatternId === "string"
-  );
+  if (!isObject(doc)) return false;
+  if (
+    typeof doc.schemaVersion !== "number" ||
+    typeof doc.id !== "string" ||
+    typeof doc.name !== "string" ||
+    typeof doc.bpm !== "number" ||
+    !Array.isArray(doc.tracks) ||
+    !Array.isArray(doc.patterns) ||
+    typeof doc.activePatternId !== "string"
+  ) {
+    return false;
+  }
+  if (doc.timeSignature !== undefined && !isValidTimeSignature(doc.timeSignature)) return false;
+  if (doc.scenes !== undefined && !Array.isArray(doc.scenes)) return false;
+  if (doc.automation !== undefined && !Array.isArray(doc.automation)) return false;
+  if (doc.lfos !== undefined && !Array.isArray(doc.lfos)) return false;
+  if (doc.macros !== undefined && !Array.isArray(doc.macros)) return false;
+  if (doc.returns !== undefined && !Array.isArray(doc.returns)) return false;
+  if (doc.master !== undefined && !isObject(doc.master)) return false;
+  if (doc.arrangement !== undefined) {
+    if (!isObject(doc.arrangement) || !Array.isArray(doc.arrangement.clips)) return false;
+  }
+  if (doc.createdAt !== undefined && typeof doc.createdAt !== "string") return false;
+  if (doc.updatedAt !== undefined && typeof doc.updatedAt !== "string") return false;
+  return true;
 }
 
 export function beatsPerBar(doc: ProjectDocument): number {
@@ -538,4 +572,48 @@ export function beatsPerBar(doc: ProjectDocument): number {
 
 export function ticksPerBar(doc: ProjectDocument): number {
   return PPQ * (4 / doc.timeSignature.denominator) * doc.timeSignature.numerator;
+}
+
+/** Ticks per beat (one quarter note in 4/4, one eighth note in 6/8). */
+export function ticksPerBeat(doc: ProjectDocument): number {
+  return PPQ * (4 / doc.timeSignature.denominator);
+}
+
+/**
+ * 1-indexed bar number for an absolute musical tick.
+ *
+ * Negative ticks clamp to bar 0 (a virtual "pre-roll" zone — useful for
+ * arrangements that start after the transport has been running for a while).
+ */
+export function barAtTick(tick: number, doc: ProjectDocument): number {
+  const tpb = ticksPerBar(doc);
+  if (tpb <= 0) return 1;
+  return Math.floor(tick / tpb) + 1;
+}
+
+/**
+ * 1-indexed beat-within-bar number for an absolute musical tick. Beat 1
+ * is the first beat of the bar.
+ */
+export function beatAtTick(tick: number, doc: ProjectDocument): number {
+  const tpb = ticksPerBar(doc);
+  if (tpb <= 0) return 1;
+  const tpbBeat = ticksPerBeat(doc);
+  if (tpbBeat <= 0) return 1;
+  return Math.floor(mod(tick, tpb) / tpbBeat) + 1;
+}
+
+/** Absolute tick at the start of a given 1-indexed bar. */
+export function tickAtBar(bar: number, doc: ProjectDocument): number {
+  return Math.max(0, bar - 1) * ticksPerBar(doc);
+}
+
+/** Absolute tick at a given 1-indexed bar/beat position. */
+export function tickAtBarBeat(bar: number, beat: number, doc: ProjectDocument): number {
+  return Math.max(0, bar - 1) * ticksPerBar(doc) + Math.max(0, beat - 1) * ticksPerBeat(doc);
+}
+
+function mod(value: number, m: number): number {
+  if (m <= 0) return value;
+  return ((value % m) + m) % m;
 }

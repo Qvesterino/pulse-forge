@@ -128,17 +128,17 @@ function scheduleAutomation(
   if (doc.automation.length === 0 || windows.length === 0) return;
   for (const lane of doc.automation) {
     if (lane.points.length === 0) continue;
+    const expanded = expandAutomationAcrossWindows(lane.points, windows);
+    if (expanded.length === 0) continue;
     switch (lane.target.kind) {
       case "trackGain":
-        engine.scheduleTrackAutomation(lane.target.trackId, "gain", lane.points, timeAt);
+        engine.scheduleTrackAutomation(lane.target.trackId, "gain", expanded, timeAt);
         break;
       case "trackPan":
-        engine.scheduleTrackAutomation(lane.target.trackId, "pan", lane.points, timeAt);
+        engine.scheduleTrackAutomation(lane.target.trackId, "pan", expanded, timeAt);
         break;
       case "fxParam": {
         if (!lane.target.fxId) break;
-        const expanded = expandAutomationAcrossWindows(lane.points, windows);
-        if (expanded.length === 0) break;
         engine.scheduleDeviceAutomation(
           lane.target.trackId,
           "fx",
@@ -150,8 +150,6 @@ function scheduleAutomation(
         break;
       }
       case "instParam": {
-        const expanded = expandAutomationAcrossWindows(lane.points, windows);
-        if (expanded.length === 0) break;
         engine.scheduleDeviceAutomation(
           lane.target.trackId,
           "inst",

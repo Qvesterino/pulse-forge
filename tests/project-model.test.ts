@@ -36,6 +36,45 @@ describe("normalizeProject — base shape", () => {
   });
 });
 
+describe("normalizeProject — timeSignature", () => {
+  it("repairs a missing timeSignature to 4/4", () => {
+    const doc = { ...createDefaultProject(), timeSignature: undefined } as unknown as ProjectDocument;
+    const normalized = normalizeProject(doc);
+    expect(normalized.timeSignature).toEqual({ numerator: 4, denominator: 4 });
+  });
+
+  it("repairs a timeSignature with non-positive numerator or denominator", () => {
+    const doc = createDefaultProject();
+    for (const broken of [
+      { numerator: 0, denominator: 4 },
+      { numerator: 4, denominator: 0 },
+      { numerator: -2, denominator: 4 },
+      { numerator: 4, denominator: -4 },
+      { numerator: 4.5, denominator: 4 },
+    ]) {
+      const modified = { ...doc, timeSignature: broken } as ProjectDocument;
+      const normalized = normalizeProject(modified);
+      expect(normalized.timeSignature).toEqual({ numerator: 4, denominator: 4 });
+    }
+  });
+
+  it("repairs a non-object timeSignature", () => {
+    const doc = createDefaultProject();
+    for (const broken of [null, 4, "4/4", true]) {
+      const modified = { ...doc, timeSignature: broken } as unknown as ProjectDocument;
+      const normalized = normalizeProject(modified);
+      expect(normalized.timeSignature).toEqual({ numerator: 4, denominator: 4 });
+    }
+  });
+
+  it("keeps a valid timeSignature", () => {
+    const doc = createDefaultProject();
+    const modified = { ...doc, timeSignature: { numerator: 3, denominator: 4 } } as ProjectDocument;
+    const normalized = normalizeProject(modified);
+    expect(normalized.timeSignature).toEqual({ numerator: 3, denominator: 4 });
+  });
+});
+
 describe("normalizeProject — bpm", () => {
   it("clamps bpm below the minimum to MIN_BPM", () => {
     const doc = minimalDoc({ bpm: 5 });
@@ -414,5 +453,46 @@ describe("validateProjectShape", () => {
     expect(validateProjectShape({ ...doc, bpm: undefined })).toBe(false);
     expect(validateProjectShape({ ...doc, tracks: undefined })).toBe(false);
     expect(validateProjectShape({ ...doc, activePatternId: undefined })).toBe(false);
+  });
+
+  it("rejects a non-integer or non-positive timeSignature", () => {
+    const doc = createDefaultProject() as unknown as Record<string, unknown>;
+    for (const broken of [
+      { numerator: 0, denominator: 4 },
+      { numerator: 4, denominator: 0 },
+      { numerator: -2, denominator: 4 },
+      { numerator: 4.5, denominator: 4 },
+      { numerator: "4", denominator: 4 },
+    ]) {
+      expect(validateProjectShape({ ...doc, timeSignature: broken })).toBe(false);
+    }
+  });
+
+  it("accepts a valid timeSignature", () => {
+    const doc = createDefaultProject() as unknown as Record<string, unknown>;
+    expect(validateProjectShape({ ...doc, timeSignature: { numerator: 3, denominator: 4 } })).toBe(true);
+  });
+
+  it("rejects non-array optional collections when present", () => {
+    const doc = createDefaultProject() as unknown as Record<string, unknown>;
+    expect(validateProjectShape({ ...doc, scenes: "not-array" })).toBe(false);
+    expect(validateProjectShape({ ...doc, automation: { 0: "x" } })).toBe(false);
+    expect(validateProjectShape({ ...doc, lfos: 42 })).toBe(false);
+    expect(validateProjectShape({ ...doc, macros: null })).toBe(false);
+    expect(validateProjectShape({ ...doc, returns: true })).toBe(false);
+  });
+
+  it("rejects a non-object master or arrangement", () => {
+    const doc = createDefaultProject() as unknown as Record<string, unknown>;
+    expect(validateProjectShape({ ...doc, master: "off" })).toBe(false);
+    expect(validateProjectShape({ ...doc, arrangement: null })).toBe(false);
+    expect(validateProjectShape({ ...doc, arrangement: { clips: "x" } })).toBe(false);
+    expect(validateProjectShape({ ...doc, arrangement: { clips: [] } })).toBe(true);
+  });
+
+  it("rejects non-string timestamps when present", () => {
+    const doc = createDefaultProject() as unknown as Record<string, unknown>;
+    expect(validateProjectShape({ ...doc, createdAt: 12345 })).toBe(false);
+    expect(validateProjectShape({ ...doc, updatedAt: null })).toBe(false);
   });
 });

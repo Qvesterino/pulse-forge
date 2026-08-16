@@ -341,6 +341,29 @@ describe("effect commands", () => {
     expect(getDrumTrack(store.doc).effects[0].params.lowGain).toBe(0);
   });
 
+  it("setEffectParam throws for an unknown paramId (no silent default injection)", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    const trackId = doc.tracks[0].id;
+    store.execute(addEffect(store.doc, trackId, "eq"));
+    const fx = getDrumTrack(store.doc).effects[0];
+    expect(() => setEffectParam(store.doc, trackId, fx.id, "nonexistent", 0.5)).toThrow(/not defined/);
+  });
+
+  it("setEffectParam undo restores the default when the param was never set before", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    const trackId = doc.tracks[0].id;
+    store.execute(addEffect(store.doc, trackId, "saturation"));
+    const fx = getDrumTrack(store.doc).effects[0];
+    const before = getDrumTrack(store.doc).effects[0].params.drive;
+    expect(before).toBeGreaterThanOrEqual(0);
+    store.execute(setEffectParam(store.doc, trackId, fx.id, "drive", 0.9));
+    expect(getDrumTrack(store.doc).effects[0].params.drive).toBe(0.9);
+    store.undo();
+    expect(getDrumTrack(store.doc).effects[0].params.drive).toBe(before);
+  });
+
   it("toggleEffectBypass flips and restores", () => {
     const doc = createDefaultProject();
     const store = new ProjectStore(doc);
