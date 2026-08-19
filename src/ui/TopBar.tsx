@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useCanRedo, useCanUndo, useDoc, useLastSavedAt, useSaveStatus, useServices } from "./context";
 import { useTransportPosition } from "./playhead";
 import { DragNumber } from "./controls";
@@ -6,6 +6,7 @@ import { setBpm, setProjectName } from "../commands/commands";
 import { barAtTick, beatAtTick } from "../project-model/schema";
 import { STEP_TICKS } from "../project-model/types";
 import type { PlayMode } from "../project-model/types";
+import { matchShortcut } from "./shortcuts";
 
 function formatClock(iso: string | null): string {
   if (!iso) return "";
@@ -70,6 +71,24 @@ export function TopBar({
     const beat = beatAtTick(v, doc);
     return `${bar}.${beat}`;
   };
+
+  // "L" toggles the loop region. Handled here because loop state lives here.
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const typing =
+        target &&
+        (target.tagName === "INPUT" || target.tagName === "SELECT" || target.tagName === "TEXTAREA" || target.isContentEditable);
+      if (typing) return;
+      if (matchShortcut(event) === "toggleLoop") {
+        event.preventDefault();
+        toggleLoop();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loopEnabled, loopStart, loopEnd]);
 
   return (
     <header className="topbar">

@@ -12,6 +12,7 @@ export type ShortcutKey =
   | "undo"
   | "redo"
   | "save"
+  | "toggleLoop"
   | "duplicatePattern"
   | "deleteNote"
   | "nextTrack"
@@ -73,6 +74,7 @@ export const SHORTCUTS: Shortcut[] = [
   { key: "seekBack", label: "Nudge −1 bar", group: "Transport", keyHint: "," },
   { key: "seekForward", label: "Nudge +1 bar", group: "Transport", keyHint: "." },
   { key: "save", label: "Force save", group: "Transport", keyHint: "S", ctrl: true, altHints: [{ key: "s", ctrl: true }] },
+  { key: "toggleLoop", label: "Toggle loop region", group: "Transport", keyHint: "L" },
   { key: "undo", label: "Undo", group: "Transport", keyHint: "Z", ctrl: true, altHints: [{ key: "z", ctrl: true }] },
   { key: "redo", label: "Redo", group: "Transport", keyHint: "Y", ctrl: true, altHints: [{ key: "y", ctrl: true }, { key: "z", ctrl: true, shift: true }] },
 
@@ -107,7 +109,7 @@ export const SHORTCUTS: Shortcut[] = [
   { key: "panelMod", label: "Toggle modulation", group: "Panels", keyHint: "4" },
   { key: "panelExport", label: "Toggle export", group: "Panels", keyHint: "5" },
 
-  { key: "deleteNote", label: "Delete selected note", group: "Sequencer", keyHint: "Delete" },
+  { key: "deleteNote", label: "Delete selected note / clear selected steps", group: "Sequencer", keyHint: "Delete" },
   { key: "clearSelection", label: "Clear selection", group: "Sequencer", keyHint: "Esc" },
 
   { key: "toggleHelp", label: "Show / hide this help", group: "Help", keyHint: "?" },

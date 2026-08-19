@@ -524,6 +524,35 @@ export async function runChecks(): Promise<CheckResult[]> {
     check("scene-score template: song arrangement renders longer than one pattern", false, String(error));
   }
 
+  try {
+    const straight = createProjectFromTemplate("house");
+    const grooved: typeof straight = {
+      ...straight,
+      groove: { swing: 0.6, humanizeTiming: 0.5, humanizeVelocity: 0.4 },
+      patterns: straight.patterns.map((p) => ({
+        ...p,
+        stepMeta: {
+          ...p.stepMeta,
+          [Object.keys(p.rows)[0]]: { 14: { ratchet: 4 }, 10: { probability: 0.6 } },
+        },
+      })),
+    };
+    const straightBuf = await renderProject(straight, bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0.2 });
+    const groovedBuf = await renderProject(grooved, bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0.2 });
+    const a = straightBuf.getChannelData(0);
+    const b = groovedBuf.getChannelData(0);
+    let diff = 0;
+    const limit = Math.min(a.length, b.length);
+    for (let i = 0; i < limit; i += 37) diff += Math.abs(a[i] - b[i]);
+    check(
+      "groove: swing/humanize/ratchet change the exported audio",
+      peakOf(b) > 0.05 && diff > 1,
+      `peak=${peakOf(b).toFixed(3)} sample-diff=${diff.toFixed(1)}`,
+    );
+  } catch (error) {
+    check("groove: swing/humanize/ratchet change the exported audio", false, String(error));
+  }
+
   check("presets: factory bank covers all five instruments", new Set(FACTORY_PRESETS.map((p) => p.instrument)).size === 5, `count=${FACTORY_PRESETS.length}`);
 
   try {

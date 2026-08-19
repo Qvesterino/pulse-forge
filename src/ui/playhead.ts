@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { STEP_TICKS } from "../project-model/types";
+import { BAR_TICKS, STEP_TICKS } from "../project-model/types";
 import type { Transport } from "../transport/Transport";
 import type { ProjectDocument } from "../project-model/types";
 import { getActivePattern } from "../project-model/types";
@@ -65,4 +65,29 @@ export function usePlayheadStep(transport: Transport, doc: ProjectDocument): num
     return () => cancelAnimationFrame(rafRef.current);
   }, [transport, pattern.stepCount]);
   return step;
+}
+
+/**
+ * Fractional bar position of the transport (0 = bar 1). Throttled to bar
+ * resolution changes so the arrangement ruler playhead stays cheap.
+ */
+export function usePlayheadBar(transport: Transport): number {
+  const [bar, setBar] = useState(0);
+  const rafRef = useRef(0);
+  useEffect(() => {
+    let last = -1;
+    const loop = () => {
+      const next = Math.max(0, transport.position) / BAR_TICKS;
+      // Quantize to a fraction of a bar to avoid re-render every frame.
+      const quantized = Math.floor(next * 8) / 8;
+      if (quantized !== last) {
+        last = quantized;
+        setBar(quantized);
+      }
+      rafRef.current = requestAnimationFrame(loop);
+    };
+    rafRef.current = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [transport]);
+  return bar;
 }

@@ -1,7 +1,8 @@
 import { AudioEngine } from "../audio-engine/AudioEngine";
 import type { SampleBank } from "../sample-library/factory";
-import type { AutomationPoint, DrumTrack, Pattern, PlayMode, ProjectDocument } from "../project-model/types";
+import type { AutomationPoint, Pattern, PlayMode, ProjectDocument } from "../project-model/types";
 import { BAR_TICKS, PPQ, STEP_TICKS, getActivePattern } from "../project-model/types";
+import { drumHitsInWindow } from "../project-model/groove";
 
 export interface RenderOptions {
   mode: PlayMode;
@@ -77,23 +78,9 @@ function scheduleDrums(
   timeAt: (tick: number) => number,
   engine: AudioEngine,
 ): void {
-  const { pattern, base, from, to } = window;
-  const patternTicks = pattern.stepCount * STEP_TICKS;
-  const tracks = doc.tracks.filter((t): t is DrumTrack => t.kind === "drum");
-  const anyTrackSolo = doc.tracks.some((t) => t.solo);
-  const first = base + Math.ceil((from - base) / STEP_TICKS - 1e-9) * STEP_TICKS;
-  for (let t = first; t < to; t += STEP_TICKS) {
-    const stepIndex = Math.floor(((t - base) % patternTicks) / STEP_TICKS) % pattern.stepCount;
-    const when = timeAt(t);
-    for (const track of tracks) {
-      if (track.mute || (anyTrackSolo && !track.solo)) continue;
-      const anyPadSolo = track.pads.some((p) => p.solo);
-      for (const pad of track.pads) {
-        const velocity = pattern.rows[pad.id]?.[stepIndex] ?? 0;
-        if (velocity <= 0 || pad.mute || (anyPadSolo && !pad.solo)) continue;
-        engine.trigger(track.id, pad, when, velocity);
-      }
-    }
+  // Shared groove engine — export swings/humanizes/rolls exactly like playback.
+  for (const hit of drumHitsInWindow(doc, window.pattern, window.base, window.from, window.to)) {
+    engine.trigger(hit.trackId, hit.pad, timeAt(hit.tick), hit.velocity);
   }
 }
 

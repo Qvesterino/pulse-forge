@@ -583,6 +583,7 @@ button {
 }
 
 .step {
+  position: relative;
   height: 30px;
   background: var(--bg);
   border: 1px solid var(--border-soft);
@@ -1895,6 +1896,201 @@ button {
 
 ::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* ---------- Groove controls in pattern bar ---------- */
+
+.pattern-groove {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 5px;
+  background: var(--bg-panel);
+}
+
+/* ---------- Scene launch strip ---------- */
+
+.scene-strip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.scene-launch {
+  height: 24px;
+  padding: 0 10px;
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.scene-launch:hover {
+  color: var(--text);
+  border-color: #343945;
+}
+
+.scene-launch.active {
+  background: rgba(74, 222, 128, 0.12);
+  border-color: rgba(74, 222, 128, 0.45);
+  color: var(--play);
+}
+
+.scene-launch.queued {
+  background: var(--accent-soft);
+  border-color: rgba(245, 158, 11, 0.5);
+  color: var(--accent);
+  animation: queued-pulse 0.6s ease-in-out infinite alternate;
+}
+
+@keyframes queued-pulse {
+  from {
+    opacity: 0.65;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ---------- Step editor (probability / ratchet / microtiming) ---------- */
+
+.step-editor {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 12px;
+  margin-bottom: 6px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 5px;
+}
+
+.step-editor-title {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.step-editor-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 150px;
+}
+
+.step-editor-field select {
+  height: 24px;
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 11px;
+  padding: 0 6px;
+}
+
+.step-editor-close {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 4px;
+}
+
+.step-editor-close:hover {
+  color: var(--text);
+}
+
+/* ---------- Step selection & performance markers ---------- */
+
+.step.in-selection {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.step.has-probability {
+  border-style: dashed;
+  border-width: 1px;
+  border-color: rgba(245, 158, 11, 0.55);
+}
+
+.step.micro-early::before {
+  content: "";
+  position: absolute;
+  left: 1px;
+  top: 20%;
+  bottom: 20%;
+  width: 2px;
+  background: rgba(125, 211, 252, 0.8);
+  border-radius: 1px;
+}
+
+.step.micro-late::before {
+  content: "";
+  position: absolute;
+  right: 1px;
+  top: 20%;
+  bottom: 20%;
+  width: 2px;
+  background: rgba(125, 211, 252, 0.8);
+  border-radius: 1px;
+}
+
+.step-badge {
+  position: absolute;
+  right: 1px;
+  top: 0;
+  font-family: var(--mono);
+  font-size: 8px;
+  color: var(--accent);
+  pointer-events: none;
+}
+
+/* ---------- Arrangement ruler (song-mode seek) ---------- */
+
+.arr-ruler {
+  position: relative;
+  height: 18px;
+  margin-bottom: 2px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-soft);
+  border-radius: 3px;
+  cursor: ew-resize;
+}
+
+.arr-ruler-mark {
+  position: absolute;
+  top: 2px;
+  font-family: var(--mono);
+  font-size: 8px;
+  color: var(--text-faint);
+  padding-left: 3px;
+  border-left: 1px solid var(--border);
+  height: 12px;
+  pointer-events: none;
+}
+
+.arr-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--play);
+  pointer-events: none;
+}
+
+.arr-playhead-lane {
+  z-index: 5;
 }
 
 /* ---------- Project browser ---------- */

@@ -5,6 +5,7 @@ import { TopBar } from "./TopBar";
 import { TrackTabs } from "./TrackTabs";
 import { RackStrip } from "./RackStrip";
 import { Sequencer } from "./Sequencer";
+import type { StepSelection } from "./Sequencer";
 import { Inspector } from "./Inspector";
 import { Diagnostics } from "./Diagnostics";
 import { PatternBar } from "./PatternBar";
@@ -14,6 +15,7 @@ import { ArrangementPanel } from "./ArrangementPanel";
 import { ModPanel } from "./ModPanel";
 import { ExportPanel } from "./ExportPanel";
 import {
+  clearSteps,
   deleteNote,
   duplicatePattern,
   setActivePattern,
@@ -42,6 +44,7 @@ export function App({ services, onOpenBrowser }: { services: Services; onOpenBro
   const [clip, setClip] = useState<PatternClipboard | null>(null);
   const [selectedNote, setSelectedNote] = useState<SelectedNote | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [stepSelection, setStepSelection] = useState<StepSelection | null>(null);
 
   const track = doc.tracks.find((t) => t.id === selectedTrackId) ?? doc.tracks[0];
   const padId =
@@ -61,6 +64,11 @@ export function App({ services, onOpenBrowser }: { services: Services; onOpenBro
   const setBottomPanelTab = (panel: BottomPanel) =>
     setBottomPanel((current) => (current === panel ? null : panel));
 
+  // A step selection belongs to the pattern it was made in.
+  useEffect(() => {
+    setStepSelection(null);
+  }, [doc.activePatternId]);
+
   // Global keyboard shortcuts
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -77,6 +85,11 @@ export function App({ services, onOpenBrowser }: { services: Services; onOpenBro
         }
         if (selectedNote) {
           setSelectedNote(null);
+          event.preventDefault();
+          return;
+        }
+        if (stepSelection) {
+          setStepSelection(null);
           event.preventDefault();
           return;
         }
@@ -126,15 +139,15 @@ export function App({ services, onOpenBrowser }: { services: Services; onOpenBro
           return;
         case "seekHome":
           event.preventDefault();
-          services.transport.seek(0);
+          services.playback.seek(0);
           return;
         case "seekBack":
           event.preventDefault();
-          services.transport.seek(Math.max(0, services.transport.position - BAR_TICKS));
+          services.playback.seek(Math.max(0, services.transport.position - BAR_TICKS));
           return;
         case "seekForward":
           event.preventDefault();
-          services.transport.seek(services.transport.position + BAR_TICKS);
+          services.playback.seek(services.transport.position + BAR_TICKS);
           return;
         case "save":
           event.preventDefault();
@@ -218,12 +231,21 @@ export function App({ services, onOpenBrowser }: { services: Services; onOpenBro
             event.preventDefault();
             services.store.execute(deleteNote(doc, selectedNote.trackId, selectedNote.noteId));
             setSelectedNote(null);
+          } else if (stepSelection) {
+            event.preventDefault();
+            services.store.execute(
+              clearSteps(doc, doc.activePatternId, stepSelection.padIds, stepSelection.from, stepSelection.to),
+            );
+            setStepSelection(null);
           }
           return;
         case "clearSelection":
           if (selectedNote) {
             event.preventDefault();
             setSelectedNote(null);
+          } else if (stepSelection) {
+            event.preventDefault();
+            setStepSelection(null);
           }
           return;
         case "toggleHelp":
@@ -234,7 +256,7 @@ export function App({ services, onOpenBrowser }: { services: Services; onOpenBro
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [services, doc, track, selectedNote, helpOpen]);
+  }, [services, doc, track, selectedNote, helpOpen, stepSelection]);
 
   return (
     <ServicesContext.Provider value={services}>
@@ -263,6 +285,8 @@ export function App({ services, onOpenBrowser }: { services: Services; onOpenBro
               onSelectPad={setSelectedPadId}
               selectedNote={selectedNote}
               onSelectNote={setSelectedNote}
+              stepSelection={stepSelection}
+              onSelectSteps={setStepSelection}
             />
           </div>
           <Inspector track={track} selectedPadId={padId} />

@@ -78,10 +78,12 @@ function makeHarness(doc: ProjectDocument, mode: "pattern" | "song" = "pattern")
   const events: { trackId: string; padId: string; when: number; velocity: number }[] = [];
   const noteEvents: { trackId: string; pitch: number; velocity: number; when: number; durationSec: number }[] = [];
   const automationCalls: { from: number; to: number; relOf: (tick: number) => number }[] = [];
+  const launches: string[] = [];
+  let currentDoc = doc;
   let audioTime = 10;
   const transport = new Transport({ now: () => audioTime }, doc.bpm);
   const scheduler = new Scheduler({
-    getProject: () => doc,
+    getProject: () => currentDoc,
     getTransport: () => transport,
     getAudioTime: () => audioTime,
     getMode: () => mode,
@@ -94,8 +96,23 @@ function makeHarness(doc: ProjectDocument, mode: "pattern" | "song" = "pattern")
     applyAutomation: (from: number, to: number, relOf: (tick: number) => number) => {
       automationCalls.push({ from, to, relOf });
     },
+    applyPatternLaunch: (patternId: string) => {
+      launches.push(patternId);
+      const next = currentDoc.patterns.find((p) => p.id === patternId);
+      if (next) currentDoc = { ...currentDoc, activePatternId: patternId };
+    },
   });
-  return { events, noteEvents, automationCalls, transport, scheduler, advance: (seconds: number) => (audioTime += seconds) };
+  return {
+    events,
+    noteEvents,
+    automationCalls,
+    launches,
+    transport,
+    scheduler,
+    setDoc: (next: ProjectDocument) => (currentDoc = next),
+    getDoc: () => currentDoc,
+    advance: (seconds: number) => (audioTime += seconds),
+  };
 }
 
 describe("scheduler", () => {
@@ -526,6 +543,92 @@ describe("scheduler realtime loop wrap", () => {
     h.transport.setLoop(true, 4 * STEP_TICKS, 12 * STEP_TICKS);
     h.transport.play(0);
     expect(h.transport.position).toBe(4 * STEP_TICKS);
+    h.scheduler.stop();
+  });
+});
+
+describe("scheduler — quantized pattern launch", () => {
+  function docWithEmptySecondPattern(): { doc: ProjectDocument; secondId: string } {
+    const base = createDefaultProject();
+    const first = base.patterns[0];
+    // A second, completely silent pattern — after a launch, drum events must stop.
+    const second: Pattern = {
+      id: "pattern-silent",
+      name: "Silent",
+      stepCount: first.stepCount,
+      rows: Object.fromEntries(Object.keys(first.rows).map((padId) => [padId, new Array<number>(first.stepCount).fill(0)])),
+      notes: {},
+    };
+    return {
+      doc: { ...base, patterns: [first, second], activePatternId: first.id },
+      secondId: second.id,
+    };
+  }
+
+  it("launches the queued pattern exactly at the boundary tick", () => {
+    const { doc, secondId } = docWithEmptySecondPattern();
+    const h = makeHarness(doc, "pattern");
+    h.transport.play(0);
+    h.scheduler.start();
+    h.scheduler.queuePatternLaunch(secondId, BAR_TICKS);
+    expect(h.scheduler.pendingPatternId).toBe(secondId);
+    for (let i = 0; i < 120; i++) {
+      h.advance(0.025);
+      h.scheduler["tick"]();
+      if (h.launches.length > 0) break;
+    }
+    expect(h.launches).toEqual([secondId]);
+    expect(h.getDoc().activePatternId).toBe(secondId);
+    expect(h.scheduler.pendingPatternId).toBeNull();
+    // After the boundary the wiped pattern schedules no drum hits.
+    const boundarySeconds = h.transport.timeAtTick(BAR_TICKS);
+    const lateDrumEvents = h.events.filter((e) => e.when >= boundarySeconds + 0.02);
+    expect(lateDrumEvents).toHaveLength(0);
+    // But events before the boundary came from the original groove.
+    expect(h.events.filter((e) => e.when < boundarySeconds).length).toBeGreaterThan(0);
+    h.scheduler.stop();
+  });
+
+  it("stop() commits a pending launch immediately", () => {
+    const { doc, secondId } = docWithEmptySecondPattern();
+    const h = makeHarness(doc, "pattern");
+    h.scheduler.queuePatternLaunch(secondId, 4 * BAR_TICKS);
+    h.scheduler.stop();
+    expect(h.launches).toEqual([secondId]);
+    expect(h.getDoc().activePatternId).toBe(secondId);
+  });
+
+  it("a launch whose boundary was passed (e.g. after seek) commits on the next tick", () => {
+    const { doc, secondId } = docWithEmptySecondPattern();
+    const h = makeHarness(doc, "pattern");
+    h.transport.play(0);
+    h.scheduler.start();
+    h.advance(3); // position now ~3s in ≈ well past bar 1
+    h.scheduler.resync();
+    h.scheduler.queuePatternLaunch(secondId, BAR_TICKS); // boundary already behind us
+    h.scheduler["tick"]();
+    expect(h.launches).toEqual([secondId]);
+    expect(h.getDoc().activePatternId).toBe(secondId);
+    h.scheduler.stop();
+  });
+});
+
+describe("scheduler — seek resync", () => {
+  it("resync re-aligns the window after a seek while playing", () => {
+    const doc = createDefaultProject();
+    const h = makeHarness(doc, "pattern");
+    h.transport.play(0);
+    h.scheduler.start();
+    h.advance(2);
+    h.scheduler["tick"]();
+    const horizonBefore = h.scheduler.stats.lastHorizonTick;
+    expect(horizonBefore).toBeGreaterThan(4 * STEP_TICKS);
+    // Seek back to the start while playing and resync.
+    h.transport.seek(0);
+    h.scheduler.resync();
+    h.scheduler["tick"]();
+    expect(h.scheduler.stats.lastHorizonTick).toBeLessThan(horizonBefore);
+    expect(h.scheduler.stats.lastHorizonTick).toBeLessThan(2 * STEP_TICKS);
     h.scheduler.stop();
   });
 });

@@ -61,6 +61,37 @@ try {
       await btn.click();
       await appPage.waitForTimeout(100);
     }
+    // Groove workflow: controls visible, right-click step editor, scene strip.
+    await appPage.waitForSelector(".pattern-groove", { timeout: 5000 });
+    await appPage.waitForSelector(".scene-strip .scene-launch", { timeout: 5000 });
+    const step = appPage.locator(".step").first();
+    await step.click({ button: "right" });
+    await appPage.waitForSelector(".step-editor", { timeout: 5000 });
+    await appPage.locator(".step-editor-close").click();
+    await appPage.waitForSelector(".step-editor", { state: "detached", timeout: 5000 });
+    // Multi-select: shift+drag across steps selects the range.
+    const firstStep = await appPage.locator(".step").nth(0).boundingBox();
+    const fourthStep = await appPage.locator(".step").nth(3).boundingBox();
+    if (firstStep && fourthStep) {
+      await appPage.mouse.move(firstStep.x + 5, firstStep.y + firstStep.height / 2);
+      await appPage.keyboard.down("Shift");
+      await appPage.mouse.down();
+      await appPage.mouse.move(fourthStep.x + fourthStep.width - 5, fourthStep.y + fourthStep.height / 2, { steps: 6 });
+      await appPage.mouse.up();
+      await appPage.keyboard.up("Shift");
+    }
+    const selectedSteps = await appPage.locator(".step.in-selection").count();
+    if (selectedSteps < 2) throw new Error(`multi-select expected >=2 selected steps, got ${selectedSteps}`);
+    await appPage.keyboard.press("Escape");
+    // Arrangement ruler seeks the transport.
+    await appPage.locator('.topbar button:has-text("ARR")').first().click();
+    await appPage.waitForSelector(".arr-ruler", { timeout: 5000 });
+    const ruler = appPage.locator(".arr-ruler").first();
+    const box = await ruler.boundingBox();
+    if (box) {
+      await appPage.mouse.click(box.x + box.width * 0.6, box.y + box.height / 2);
+    }
+    await appPage.locator('.topbar button:has-text("ARR")').first().click();
     // Return to the browser — the freshly created project must be listed.
     await appPage.locator('.topbar button:has-text("PROJECTS")').first().click();
     await appPage.waitForSelector(".project-browser", { timeout: 15000 });

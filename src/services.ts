@@ -6,8 +6,9 @@ import { ProjectRepository } from "./persistence/ProjectRepository";
 import { PresetRepository } from "./persistence/PresetRepository";
 import { generateFactoryBank } from "./sample-library/factory";
 import type { SampleBank } from "./sample-library/factory";
-import type { PlayMode, ProjectDocument } from "./project-model/types";
-import { PPQ } from "./project-model/types";
+import type { PlayMode, ProjectDocument, Scene } from "./project-model/types";
+import { BAR_TICKS, PPQ } from "./project-model/types";
+import { setActivePattern } from "./commands/commands";
 
 /**
  * Long-lived services shared across projects: the audio engine (one shared
@@ -44,6 +45,8 @@ export class PlaybackController {
     private transport: Transport,
     private scheduler: Scheduler,
     private modeRef: { mode: PlayMode },
+    private projectRef: () => ProjectDocument,
+    private applyPattern: (patternId: string) => void,
   ) {}
 
   setMode = (mode: PlayMode): void => {
@@ -92,6 +95,41 @@ export class PlaybackController {
     this.transport.stop();
     this.notify();
   };
+
+  /** Seek the transport and re-align the scheduler (safe while playing). */
+  seek = (tick: number): void => {
+    this.transport.seek(Math.max(0, tick));
+    if (this.transport.playing) {
+      this.engine.panic();
+      this.scheduler.resync();
+    }
+    this.notify();
+  };
+
+  /**
+   * Launch a scene: while stopped it activates the scene's pattern right away;
+   * while playing it queues the switch for the next bar boundary (quantized).
+   */
+  launchScene = (scene: Scene): void => {
+    if (this.modeRef.mode === "song") {
+      // In song mode the arrangement owns pattern selection — jump to the
+      // first clip that uses this scene instead of fighting the timeline.
+      const doc = this.projectRef();
+      const clip = [...doc.arrangement.clips]
+        .sort((a, b) => a.startBar - b.startBar)
+        .find((c) => c.sceneId === scene.id);
+      if (clip) this.seek(clip.startBar * BAR_TICKS);
+      return;
+    }
+    if (!this.transport.playing) {
+      this.applyPattern(scene.patternId);
+      this.notify();
+      return;
+    }
+    const nextBar = (Math.floor(this.transport.position / BAR_TICKS) + 1) * BAR_TICKS;
+    this.scheduler.queuePatternLaunch(scene.patternId, nextBar);
+    this.notify();
+  };
 }
 
 export async function createCoreServices(): Promise<CoreServices> {
@@ -121,10 +159,13 @@ export function openProject(core: CoreServices, initial: ProjectDocument): Servi
     noteOn: (trackId, pitch, velocity, when, durationSec) =>
       engine.noteOn(trackId, pitch, velocity, when, durationSec),
     applyAutomation: (fromTick, toTick, relOf) => engine.applyAutomation(fromTick, toTick, relOf),
+    applyPatternLaunch: (patternId) => store.execute(setActivePattern(store.doc, patternId)),
   });
   engine.setProject(store.doc);
   transport.seek(0);
-  const playback = new PlaybackController(engine, transport, scheduler, modeRef);
+  const playback = new PlaybackController(engine, transport, scheduler, modeRef, () => store.doc, (patternId) =>
+    store.execute(setActivePattern(store.doc, patternId)),
+  );
 
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
   let saving: Promise<void> | null = null;

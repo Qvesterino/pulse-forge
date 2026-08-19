@@ -105,12 +105,35 @@ export interface NoteEvent {
   velocity: number;
 }
 
+/**
+ * Per-step performance metadata (probability / ratchet / microtiming).
+ * All fields are optional — an absent entry means "straight": probability 1,
+ * ratchet 1, microtiming 0.
+ */
+export interface StepMeta {
+  /** 0..1 — chance the hit plays on each pass (deterministic seeded roll). */
+  probability?: number;
+  /** 1..8 — how many times the step retriggers within its slot. */
+  ratchet?: number;
+  /** -1..1 — timing shift, early ← 0 → late (a fraction of a step). */
+  microtiming?: number;
+}
+
 export interface Pattern {
   id: ID;
   name: string;
   stepCount: number;
   rows: Record<ID, number[]>;
   notes: Record<ID, NoteEvent[]>;
+  /** padId → stepIndex → performance metadata. Optional (schema v1 addendum). */
+  stepMeta?: Record<ID, Record<number, StepMeta>>;
+}
+
+/** Project-level groove: 0..1 swing delays off-grid 16ths toward a triplet feel. */
+export interface GrooveSettings {
+  swing: number;
+  humanizeTiming: number;
+  humanizeVelocity: number;
 }
 
 export type PlayMode = "pattern" | "song";
@@ -195,8 +218,18 @@ export interface ProjectDocument {
   macros: Macro[];
   returns: ReturnTrack[];
   master: MasterConfig;
+  /** Global groove (swing + humanize). Optional; absent = straight and dry. */
+  groove?: Partial<GrooveSettings>;
   createdAt: string;
   updatedAt: string;
+}
+
+export function grooveOf(doc: ProjectDocument): GrooveSettings {
+  return {
+    swing: doc.groove?.swing ?? 0,
+    humanizeTiming: doc.groove?.humanizeTiming ?? 0,
+    humanizeVelocity: doc.groove?.humanizeVelocity ?? 0,
+  };
 }
 
 export function getActivePattern(doc: ProjectDocument): Pattern {

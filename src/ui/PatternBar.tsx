@@ -1,16 +1,21 @@
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { useDoc, useServices } from "./context";
 import {
   clearPattern,
+  createFill,
   createPattern,
   deletePattern,
   duplicatePattern,
+  mutatePattern,
   pastePattern,
   renamePattern,
   setActivePattern,
+  setGroove,
   setPatternLength,
 } from "../commands/commands";
 import type { PatternClipboard } from "../commands/commands";
+import { grooveOf } from "../project-model/types";
+import { DragNumber } from "./controls";
 
 export function PatternBar({ clip, onCopy }: { clip: PatternClipboard | null; onCopy: (clip: PatternClipboard) => void }) {
   const services = useServices();
@@ -18,6 +23,12 @@ export function PatternBar({ clip, onCopy }: { clip: PatternClipboard | null; on
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const active = doc.patterns.find((p) => p.id === doc.activePatternId)!;
+  const groove = grooveOf(doc);
+  const pendingPatternId = useSyncExternalStore(
+    services.playback.subscribe,
+    () => services.scheduler.pendingPatternId ?? "",
+    () => "",
+  );
 
   const beginRename = (id: string, name: string) => {
     setEditingId(id);
@@ -78,12 +89,62 @@ export function PatternBar({ clip, onCopy }: { clip: PatternClipboard | null; on
           );
         })}
       </div>
+
+      <div className="pattern-groove" aria-label="Groove">
+        <DragNumber
+          label="SWING"
+          value={groove.swing}
+          min={0}
+          max={1}
+          defaultValue={0}
+          sensitivity={0.005}
+          format={(v) => `${Math.round(v * 100)}%`}
+          onCommit={(swing) => services.store.execute(setGroove(doc, { swing }))}
+        />
+        <DragNumber
+          label="HUM·T"
+          value={groove.humanizeTiming}
+          min={0}
+          max={1}
+          defaultValue={0}
+          sensitivity={0.005}
+          format={(v) => `${Math.round(v * 100)}%`}
+          onCommit={(humanizeTiming) => services.store.execute(setGroove(doc, { humanizeTiming }))}
+        />
+        <DragNumber
+          label="HUM·V"
+          value={groove.humanizeVelocity}
+          min={0}
+          max={1}
+          defaultValue={0}
+          sensitivity={0.005}
+          format={(v) => `${Math.round(v * 100)}%`}
+          onCommit={(humanizeVelocity) => services.store.execute(setGroove(doc, { humanizeVelocity }))}
+        />
+      </div>
+
       <div className="pattern-actions">
         <button type="button" className="btn btn-small" title="New pattern" onClick={() => services.store.execute(createPattern(doc))}>
           ADD
         </button>
         <button type="button" className="btn btn-small" title="Duplicate active pattern (Ctrl+D)" onClick={() => services.store.execute(duplicatePattern(doc, doc.activePatternId))}>
           DUP
+        </button>
+        <button
+          type="button"
+          className="btn btn-small"
+          title="Mutate active pattern into a seeded variation (velocities, ghosts, microtiming)"
+          onClick={() => services.store.execute(mutatePattern(doc, doc.activePatternId))}
+        >
+          MUT
+        </button>
+        <button
+          type="button"
+          className="btn btn-small"
+          title="Duplicate active pattern as a fill (snare roll over the last beat)"
+          onClick={() => services.store.execute(createFill(doc, doc.activePatternId))}
+        >
+          FILL
         </button>
         <button
           type="button"
@@ -124,6 +185,25 @@ export function PatternBar({ clip, onCopy }: { clip: PatternClipboard | null; on
           <option value={16}>16</option>
           <option value={32}>32</option>
         </select>
+      </div>
+
+      <div className="scene-strip" aria-label="Scene launch">
+        {doc.scenes.map((scene) => {
+          const pattern = doc.patterns.find((p) => p.id === scene.patternId);
+          const isActive = pattern?.id === doc.activePatternId;
+          const isQueued = pendingPatternId === scene.patternId;
+          return (
+            <button
+              key={scene.id}
+              type="button"
+              className={`scene-launch${isActive ? " active" : ""}${isQueued ? " queued" : ""}`}
+              title={`${scene.name} → ${pattern?.name ?? "?"} — launch${isQueued ? " (queued for next bar)" : ""}`}
+              onClick={() => services.playback.launchScene(scene)}
+            >
+              {scene.name}
+            </button>
+          );
+        })}
       </div>
     </section>
   );

@@ -7,6 +7,7 @@ import type {
   DrumTrack,
   EffectInstance,
   EffectType,
+  GrooveSettings,
   InstrumentKind,
   InstrumentTrack,
   Lfo,
@@ -15,12 +16,14 @@ import type {
   NoteEvent,
   ProjectDocument,
   Scene,
+  StepMeta,
   Track,
 } from "../project-model/types";
 import { STEP_TICKS } from "../project-model/types";
 import { setStepVelocity, withPad, withTrack } from "../project-model/transform";
 import { insertPointSorted } from "../project-model/automation";
 import {
+  clampUnit,
   createDrumTrackModel,
   createInstrumentTrackModel,
   createPatternForDoc,
@@ -34,6 +37,7 @@ import { EFFECT_DEFS, clampEffectParam, defaultParamsOf } from "../effects/regis
 import { INSTRUMENT_DEFS, clampInstrumentParam, defaultInstrumentParams } from "../instruments/registry";
 import type { InstrumentPreset } from "../presets/types";
 import { clamp, uid } from "../shared/ids";
+import { hashString, mulberry32 } from "../shared/rng";
 
 function snapshot(type: string, label: string, prev: ProjectDocument, next: ProjectDocument): Command {
   return {
@@ -149,6 +153,7 @@ export function duplicatePattern(doc: ProjectDocument, patternId: string): Comma
     stepCount: source.stepCount,
     rows: Object.fromEntries(Object.entries(source.rows).map(([padId, row]) => [padId, [...row]])),
     notes: Object.fromEntries(Object.entries(source.notes ?? {}).map(([trackId, notes]) => [trackId, notes.map((n) => ({ ...n, id: uid("note") }))])),
+    stepMeta: cloneStepMeta(source.stepMeta),
   };
   const next: ProjectDocument = {
     ...doc,
@@ -156,6 +161,16 @@ export function duplicatePattern(doc: ProjectDocument, patternId: string): Comma
     activePatternId: copy.id,
   };
   return snapshot("duplicatePattern", `Duplicate ${source.name}`, doc, next);
+}
+
+function cloneStepMeta(meta: Pattern["stepMeta"]): Pattern["stepMeta"] {
+  if (!meta) return undefined;
+  return Object.fromEntries(
+    Object.entries(meta).map(([padId, steps]) => [
+      padId,
+      Object.fromEntries(Object.entries(steps).map(([step, m]) => [step, { ...m }])),
+    ]),
+  );
 }
 
 export function deletePattern(doc: ProjectDocument, patternId: string): Command {
@@ -262,6 +277,237 @@ export function pastePattern(doc: ProjectDocument, clip: PatternClipboard): Comm
     ),
   };
   return snapshot("pastePattern", `Paste into ${target.name}`, doc, normalizeProject(pasted));
+}
+
+/* ---------------- groove & step performance ---------------- */
+
+export function setGroove(doc: ProjectDocument, groove: Partial<GrooveSettings>): Command {
+  const prev = doc.groove ?? {};
+  const nextGroove: Partial<GrooveSettings> = { ...prev, ...groove };
+  const describe = (g: Partial<GrooveSettings>) =>
+    `swing ${Math.round((g.swing ?? 0) * 100)}% · humanize ${Math.round((g.humanizeTiming ?? 0) * 100)}/${Math.round((g.humanizeVelocity ?? 0) * 100)}`;
+  return {
+    type: "setGroove",
+    label: `Groove → ${describe(nextGroove)}`,
+    execute: (d) => ({ ...d, groove: nextGroove }),
+    undo: (d) => ({ ...d, groove: prev }),
+  };
+}
+
+/**
+ * Merge per-step performance metadata (probability / ratchet / microtiming).
+ * Values that land on the defaults (1 / 1 / 0) are pruned so the model stays
+ * clean; an entry with nothing left is removed entirely.
+ */
+export function setStepMeta(
+  doc: ProjectDocument,
+  patternId: string,
+  padId: string,
+  stepIndex: number,
+  meta: StepMeta,
+): Command {
+  const pattern = doc.patterns.find((p) => p.id === patternId);
+  if (!pattern) throw new Error(`Pattern ${patternId} not found`);
+  const prevEntry = pattern.stepMeta?.[padId]?.[stepIndex];
+
+  const apply = (d: ProjectDocument, entry: StepMeta | undefined): ProjectDocument => ({
+    ...d,
+    patterns: d.patterns.map((p) => {
+      if (p.id !== patternId) return p;
+      const padMeta = { ...(p.stepMeta?.[padId] ?? {}) };
+      if (entry && Object.keys(entry).length > 0) padMeta[stepIndex] = entry;
+      else delete padMeta[stepIndex];
+      const stepMeta = { ...(p.stepMeta ?? {}) };
+      if (Object.keys(padMeta).length > 0) stepMeta[padId] = padMeta;
+      else delete stepMeta[padId];
+      return { ...p, stepMeta: Object.keys(stepMeta).length > 0 ? stepMeta : undefined };
+    }),
+  });
+
+  const merged: StepMeta = { ...prevEntry, ...meta };
+  const cleaned: StepMeta = {};
+  if (merged.probability !== undefined && merged.probability < 1) cleaned.probability = clampUnit(merged.probability);
+  if (merged.ratchet !== undefined && merged.ratchet > 1) cleaned.ratchet = Math.max(1, Math.min(8, Math.round(merged.ratchet)));
+  if (merged.microtiming !== undefined && merged.microtiming !== 0) cleaned.microtiming = Math.max(-1, Math.min(1, merged.microtiming));
+
+  return {
+    type: "setStepMeta",
+    label: "Edit step performance",
+    execute: (d) => apply(d, cleaned),
+    undo: (d) => apply(d, prevEntry),
+  };
+}
+
+/** Clear velocities (and step meta) for a range of steps across pad rows. */
+export function clearSteps(
+  doc: ProjectDocument,
+  patternId: string,
+  padIds: string[],
+  fromStep: number,
+  toStep: number,
+): Command {
+  const pattern = doc.patterns.find((p) => p.id === patternId);
+  if (!pattern) throw new Error(`Pattern ${patternId} not found`);
+  const prevRows: Record<string, number[]> = {};
+  for (const padId of padIds) prevRows[padId] = [...(pattern.rows[padId] ?? [])];
+  const prevMeta = cloneStepMeta(pattern.stepMeta);
+
+  const apply = (d: ProjectDocument, rows: Record<string, number[]>, meta: Pattern["stepMeta"]): ProjectDocument => ({
+    ...d,
+    patterns: d.patterns.map((p) =>
+      p.id === patternId
+        ? { ...p, rows: { ...p.rows, ...rows }, stepMeta: cloneStepMeta(meta) }
+        : p,
+    ),
+  });
+
+  const clearedRows: Record<string, number[]> = {};
+  for (const padId of padIds) {
+    const row = [...(pattern.rows[padId] ?? [])];
+    for (let i = fromStep; i <= toStep && i < row.length; i++) row[i] = 0;
+    clearedRows[padId] = row;
+  }
+  const clearedMeta = cloneStepMeta(pattern.stepMeta) ?? {};
+  for (const padId of padIds) {
+    const padMeta = clearedMeta[padId];
+    if (!padMeta) continue;
+    for (const key of Object.keys(padMeta)) {
+      const idx = Number(key);
+      if (idx >= fromStep && idx <= toStep) delete padMeta[idx];
+    }
+    if (Object.keys(padMeta).length === 0) delete clearedMeta[padId];
+  }
+
+  return {
+    type: "clearSteps",
+    label: `Clear steps ${fromStep + 1}–${toStep + 1}`,
+    execute: (d) => apply(d, clearedRows, Object.keys(clearedMeta).length > 0 ? clearedMeta : undefined),
+    undo: (d) => apply(d, prevRows, prevMeta),
+  };
+}
+
+/** Batch-set velocities for a set of steps (multi-select velocity drag). */
+export function setStepsVelocity(
+  doc: ProjectDocument,
+  patternId: string,
+  entries: { padId: string; stepIndex: number; velocity: number }[],
+): Command {
+  const pattern = doc.patterns.find((p) => p.id === patternId);
+  if (!pattern) throw new Error(`Pattern ${patternId} not found`);
+  const prev: { padId: string; stepIndex: number; velocity: number }[] = entries.map((e) => ({
+    ...e,
+    velocity: pattern.rows[e.padId]?.[e.stepIndex] ?? 0,
+  }));
+
+  const apply = (d: ProjectDocument, list: { padId: string; stepIndex: number; velocity: number }[]): ProjectDocument => ({
+    ...d,
+    patterns: d.patterns.map((p) => {
+      if (p.id !== patternId) return p;
+      const rows = { ...p.rows };
+      for (const entry of list) {
+        const row = [...(rows[entry.padId] ?? [])];
+        if (entry.stepIndex < row.length) row[entry.stepIndex] = entry.velocity;
+        rows[entry.padId] = row;
+      }
+      return { ...p, rows };
+    }),
+  });
+
+  return {
+    type: "setStepsVelocity",
+    label: `Set velocity for ${entries.length} steps`,
+    execute: (d) => apply(d, entries),
+    undo: (d) => apply(d, prev),
+  };
+}
+
+/**
+ * Mutate the active pattern into a variation: seeded velocity jitter, sparse
+ * ghost notes next to existing hits, occasional dropped weak hits and a touch
+ * of microtiming. One undo step returns the original.
+ */
+export function mutatePattern(doc: ProjectDocument, patternId: string): Command {
+  const source = doc.patterns.find((p) => p.id === patternId);
+  if (!source) throw new Error(`Pattern ${patternId} not found`);
+  const rand = mulberry32(hashString(`${source.id}|${uid("mut")}`));
+
+  const rows: Record<string, number[]> = {};
+  const meta: NonNullable<Pattern["stepMeta"]> = cloneStepMeta(source.stepMeta) ?? {};
+  for (const [padId, row] of Object.entries(source.rows)) {
+    const next = [...row];
+    for (let i = 0; i < next.length; i++) {
+      const velocity = next[i];
+      if (velocity > 0) {
+        if (velocity < 0.5 && rand() < 0.12) {
+          next[i] = 0;
+          continue;
+        }
+        next[i] = Math.min(1, Math.max(0.1, velocity + (rand() - 0.5) * 0.35));
+        if (rand() < 0.25) {
+          const padMeta = meta[padId] ?? (meta[padId] = {});
+          const jitter = (rand() - 0.5) * 0.6;
+          if (Math.abs(jitter) > 0.05) padMeta[i] = { ...padMeta[i], microtiming: jitter };
+        }
+      } else {
+        const neighbor = row[i - 1] > 0 || row[i + 1] > 0;
+        if (neighbor && i % 2 === 1 && rand() < 0.08) {
+          next[i] = 0.22 + rand() * 0.15;
+        }
+      }
+    }
+    rows[padId] = next;
+  }
+
+  const next: ProjectDocument = {
+    ...doc,
+    patterns: doc.patterns.map((p) =>
+      p.id === patternId ? { ...p, rows, stepMeta: Object.keys(meta).length > 0 ? meta : undefined } : p,
+    ),
+  };
+  return snapshot("mutatePattern", `Mutate ${source.name}`, doc, next);
+}
+
+/**
+ * Duplicate the pattern as an explicit fill: a snare roll with rising velocity
+ * over the last beat, capped by a ratcheted final hit. The fill becomes active.
+ */
+export function createFill(doc: ProjectDocument, patternId: string): Command {
+  const source = doc.patterns.find((p) => p.id === patternId);
+  if (!source) throw new Error(`Pattern ${patternId} not found`);
+  const drumTrack = drumTracksOf(doc)[0];
+  if (!drumTrack) throw new Error("No drum track for fill");
+  const snarePad =
+    drumTrack.pads.find((p) => /snare/i.test(p.name)) ?? drumTrack.pads[4] ?? drumTrack.pads[0];
+
+  const rows = Object.fromEntries(Object.entries(source.rows).map(([padId, row]) => [padId, [...row]]));
+  const rollVelocities = [0.45, 0.6, 0.78, 0.95];
+  const snareRow = [...(rows[snarePad.id] ?? new Array<number>(source.stepCount).fill(0))];
+  for (let k = 0; k < 4; k++) {
+    const idx = source.stepCount - 4 + k;
+    if (idx >= 0) snareRow[idx] = rollVelocities[k];
+  }
+  rows[snarePad.id] = snareRow;
+
+  const stepMeta = cloneStepMeta(source.stepMeta) ?? {};
+  const lastStep = source.stepCount - 1;
+  stepMeta[snarePad.id] = { ...(stepMeta[snarePad.id] ?? {}), [lastStep]: { ratchet: 2 } };
+
+  const copy: Pattern = {
+    id: uid("pattern"),
+    name: `${source.name} Fill`,
+    stepCount: source.stepCount,
+    rows,
+    notes: Object.fromEntries(
+      Object.entries(source.notes ?? {}).map(([trackId, notes]) => [trackId, notes.map((n) => ({ ...n, id: uid("note") }))]),
+    ),
+    stepMeta,
+  };
+  const next: ProjectDocument = {
+    ...doc,
+    patterns: [...doc.patterns, copy],
+    activePatternId: copy.id,
+  };
+  return snapshot("createFill", `Fill from ${source.name}`, doc, next);
 }
 
 /* ---------------- tracks ---------------- */

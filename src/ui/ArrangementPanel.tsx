@@ -9,8 +9,9 @@ import {
   moveArrangementClip,
   renameScene,
   resizeArrangementClip,
-  setActivePattern,
 } from "../commands/commands";
+import { BAR_TICKS } from "../project-model/types";
+import { usePlayheadBar } from "./playhead";
 
 const BAR_WIDTH = 30;
 const LANE_HEIGHT = 56;
@@ -34,6 +35,7 @@ export function ArrangementPanel() {
   const laneRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const [drag, setDrag] = useState<{ startBar: number; lengthBars: number } | null>(null);
+  const playheadBar = usePlayheadBar(services.transport);
 
   const totalBars = Math.max(
     16,
@@ -46,6 +48,14 @@ export function ArrangementPanel() {
     if (!lane) return 0;
     const rect = lane.getBoundingClientRect();
     return Math.max(0, Math.floor((event.clientX - rect.left) / BAR_WIDTH));
+  };
+
+  const seekFromRulerEvent = (event: React.PointerEvent) => {
+    const lane = laneRef.current;
+    if (!lane) return;
+    const rect = lane.getBoundingClientRect();
+    const bar = Math.max(0, (event.clientX - rect.left) / BAR_WIDTH);
+    services.playback.seek(bar * BAR_TICKS);
   };
 
   const beginClipDrag = (event: React.PointerEvent, clipId: string, mode: "move" | "resize") => {
@@ -160,10 +170,10 @@ export function ArrangementPanel() {
                 <button
                   type="button"
                   className={`scene-chip${isSelected ? " selected" : ""}${isActive ? " active-pattern" : ""}`}
-                  title={`${scene.name} → ${pattern?.name ?? "?"} — click to launch (sets active pattern), double-click or F2 to rename`}
+                  title={`${scene.name} → ${pattern?.name ?? "?"} — click to launch (quantized to the next bar while playing), double-click or F2 to rename`}
                   onClick={() => {
                     setSelectedSceneId(scene.id);
-                    services.store.execute(setActivePattern(services.store.doc, scene.patternId));
+                    services.playback.launchScene(scene);
                   }}
                   onDoubleClick={() => {
                     setEditingSceneId(scene.id);
@@ -232,6 +242,26 @@ export function ArrangementPanel() {
         </div>
         <div className="arr-lane-scroll">
           <div
+            className="arr-ruler"
+            style={{ width: totalBars * BAR_WIDTH }}
+            title="Click or drag to seek"
+            onPointerDown={(event) => {
+              if (event.button !== 0) return;
+              event.currentTarget.setPointerCapture(event.pointerId);
+              seekFromRulerEvent(event);
+            }}
+            onPointerMove={(event) => {
+              if (event.buttons === 1) seekFromRulerEvent(event);
+            }}
+          >
+            {Array.from({ length: Math.ceil(totalBars / 4) }, (_, i) => (
+              <span key={i} className="arr-ruler-mark" style={{ left: i * 4 * BAR_WIDTH }}>
+                {i * 4 + 1}
+              </span>
+            ))}
+            <div className="arr-playhead" style={{ left: playheadBar * BAR_WIDTH }} />
+          </div>
+          <div
             className="arr-lane"
             ref={laneRef}
             style={{ width: totalBars * BAR_WIDTH, height: LANE_HEIGHT }}
@@ -241,6 +271,7 @@ export function ArrangementPanel() {
               setSelectedClipId(null);
             }}
           >
+            <div className="arr-playhead arr-playhead-lane" style={{ left: playheadBar * BAR_WIDTH }} />
             {Array.from({ length: totalBars }, (_, i) => (
               <div key={i} className={`arr-bar-grid${i % 4 === 0 ? " bar-strong" : ""}`} style={{ left: i * BAR_WIDTH }} />
             ))}
@@ -278,7 +309,8 @@ export function ArrangementPanel() {
           </div>
         </div>
         <div className="arr-hint">
-          click empty lane to place <b>{selectedScene?.name ?? "scene"}</b> (4 bars) · clips play in SONG mode
+          click empty lane to place <b>{selectedScene?.name ?? "scene"}</b> (4 bars) · clips play in SONG mode · drag the
+          ruler to seek · scene chips launch on the next bar while playing
         </div>
       </div>
     </section>

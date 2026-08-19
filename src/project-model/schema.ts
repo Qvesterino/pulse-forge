@@ -1,4 +1,4 @@
-import type { DrumPad, DrumTrack, EffectInstance, InstrumentKind, InstrumentTrack, Macro, MasterConfig, Pattern, ProjectDocument, ReturnTrack, Scene } from "./types";
+import type { DrumPad, DrumTrack, EffectInstance, InstrumentKind, InstrumentTrack, Macro, MasterConfig, Pattern, ProjectDocument, ReturnTrack, Scene, StepMeta } from "./types";
 import { PPQ, STEPS_PER_PATTERN } from "./types";
 import { uid } from "../shared/ids";
 import { defaultInstrumentParams } from "../instruments/registry";
@@ -169,6 +169,12 @@ export function clampBpm(bpm: number): number {
   if (bpm < MIN_BPM) return MIN_BPM;
   if (bpm > MAX_BPM) return MAX_BPM;
   return bpm;
+}
+
+/** Clamp a 0..1 unit value. NaN/non-finite → 0. */
+export function clampUnit(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return 0;
+  return Math.min(1, Math.max(0, value));
 }
 
 /** Validate a stepCount. Returns a safe positive integer or the fallback. */
@@ -380,7 +386,24 @@ export function normalizeProject(doc: ProjectDocument): ProjectDocument {
     changed = true;
   }
 
-  // patterns: stepCount, rows, notes
+  // groove — clamp optional swing/humanize settings
+  if (next.groove !== undefined) {
+    if (!isObject(next.groove)) {
+      next = { ...next, groove: undefined };
+      changed = true;
+    } else {
+      const g = next.groove;
+      const swing = clampUnit(g.swing);
+      const humanizeTiming = clampUnit(g.humanizeTiming);
+      const humanizeVelocity = clampUnit(g.humanizeVelocity);
+      if (swing !== g.swing || humanizeTiming !== g.humanizeTiming || humanizeVelocity !== g.humanizeVelocity) {
+        next = { ...next, groove: { swing, humanizeTiming, humanizeVelocity } };
+        changed = true;
+      }
+    }
+  }
+
+  // patterns: stepCount, rows, notes, stepMeta
   const padIds = new Set(allPadIds(next));
   let patternsChanged = false;
   const patterns = next.patterns.map((pattern) => {
@@ -393,6 +416,54 @@ export function normalizeProject(doc: ProjectDocument): ProjectDocument {
     if (p.notes === undefined) {
       p = { ...p, notes: {} };
       patternsChanged = true;
+    }
+    // stepMeta: drop dangling pads/steps, clamp values, prune default entries
+    if (p.stepMeta !== undefined) {
+      const cleaned: Record<string, Record<number, StepMeta>> = {};
+      let metaChanged = false;
+      for (const [padId, steps] of Object.entries(p.stepMeta)) {
+        if (!padIds.has(padId)) {
+          metaChanged = true;
+          continue;
+        }
+        const cleanSteps: Record<number, StepMeta> = {};
+        for (const [key, rawEntry] of Object.entries(steps) as [string, StepMeta][]) {
+          const stepIndex = Number(key);
+          if (!Number.isInteger(stepIndex) || stepIndex < 0 || stepIndex >= safeStepCount || !isObject(rawEntry)) {
+            metaChanged = true;
+            continue;
+          }
+          const raw: StepMeta = rawEntry;
+          const meta: StepMeta = {};
+          const probability = raw.probability;
+          if (probability !== undefined) {
+            const clamped = clampUnit(probability);
+            if (clamped < 1) meta.probability = clamped;
+            if (clamped !== probability) metaChanged = true;
+          }
+          const ratchet = raw.ratchet;
+          if (ratchet !== undefined) {
+            const clamped = Math.min(8, Math.max(1, Math.round(Number.isFinite(ratchet) ? ratchet : 1)));
+            if (clamped > 1) meta.ratchet = clamped;
+            if (clamped !== ratchet) metaChanged = true;
+          }
+          const microtiming = raw.microtiming;
+          if (microtiming !== undefined) {
+            const clamped = Math.min(1, Math.max(-1, Number.isFinite(microtiming) ? microtiming : 0));
+            if (clamped !== 0) meta.microtiming = clamped;
+            if (clamped !== microtiming) metaChanged = true;
+          }
+          if (Object.keys(meta).length > 0) cleanSteps[stepIndex] = meta;
+          else metaChanged = true;
+        }
+        if (Object.keys(cleanSteps).length > 0) cleaned[padId] = cleanSteps;
+        else metaChanged = true;
+      }
+      const nextMeta = Object.keys(cleaned).length > 0 ? cleaned : undefined;
+      if (metaChanged || nextMeta !== p.stepMeta) {
+        p = { ...p, stepMeta: nextMeta };
+        patternsChanged = true;
+      }
     }
     // Filter notes to existing tracks and adjust to safe stepCount
     const notesByTrack: Record<string, typeof p.notes extends Record<string, infer V> ? V : never> = {};
@@ -497,6 +568,7 @@ export function validateProjectShape(doc: unknown): doc is ProjectDocument {
   if (doc.macros !== undefined && !Array.isArray(doc.macros)) return false;
   if (doc.returns !== undefined && !Array.isArray(doc.returns)) return false;
   if (doc.master !== undefined && !isObject(doc.master)) return false;
+  if (doc.groove !== undefined && !isObject(doc.groove)) return false;
   if (doc.arrangement !== undefined) {
     if (!isObject(doc.arrangement) || !Array.isArray(doc.arrangement.clips)) return false;
   }

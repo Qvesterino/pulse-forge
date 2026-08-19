@@ -1,5 +1,6 @@
 import type { DrumTrack, Pattern, PlayMode, ProjectDocument } from "../project-model/types";
 import { BAR_TICKS, getActivePattern, STEP_TICKS } from "../project-model/types";
+import { drumHitsInWindow } from "../project-model/groove";
 import type { Transport } from "../transport/Transport";
 
 export interface SchedulerDeps {
@@ -10,6 +11,8 @@ export interface SchedulerDeps {
   trigger(trackId: string, pad: DrumTrack["pads"][number], when: number, velocity: number): void;
   noteOn(trackId: string, pitch: number, velocity: number, when: number, durationSec: number): void;
   applyAutomation(fromTick: number, toTick: number, relOf: (tick: number) => number): void;
+  /** Commit a queued (quantized) pattern launch into the project model. */
+  applyPatternLaunch(patternId: string): void;
 }
 
 const INTERVAL_MS = 25;
@@ -21,12 +24,18 @@ export class Scheduler {
   private timer: ReturnType<typeof setInterval> | null = null;
   private windowStartTick = 0;
   private stopped = true;
+  private pendingLaunch: { patternId: string; atTick: number } | null = null;
   stats = { scheduledEvents: 0, lastHorizonTick: 0, windows: 0 };
 
   constructor(private deps: SchedulerDeps) {}
 
   get isRunning(): boolean {
     return !this.stopped;
+  }
+
+  /** Pattern id waiting for a quantized launch, if any (for UI indication). */
+  get pendingPatternId(): string | null {
+    return this.pendingLaunch?.patternId ?? null;
   }
 
   start(): void {
@@ -43,7 +52,28 @@ export class Scheduler {
       clearInterval(this.timer);
       this.timer = null;
     }
+    // A queued scene launch survives a stop as an immediate switch — the user
+    // asked for that pattern; stopping should not silently discard the choice.
+    if (this.pendingLaunch) {
+      this.deps.applyPatternLaunch(this.pendingLaunch.patternId);
+      this.pendingLaunch = null;
+    }
     this.stopped = true;
+  }
+
+  /** Re-align the scheduling window to the transport (after a seek while playing). */
+  resync(): void {
+    const transport = this.deps.getTransport();
+    this.windowStartTick = Math.max(0, transport.position);
+  }
+
+  /** Queue a pattern switch at an absolute tick (next bar boundary for scene launches). */
+  queuePatternLaunch(patternId: string, atTick: number): void {
+    this.pendingLaunch = { patternId, atTick };
+  }
+
+  cancelPatternLaunch(): void {
+    this.pendingLaunch = null;
   }
 
   private tick(): void {
@@ -85,10 +115,32 @@ export class Scheduler {
     let automationCtx: { base: number; patternTicks: number } | null = null;
 
     if (mode === "pattern") {
-      const pattern = getActivePattern(doc);
+      let currentDoc = doc;
+      // A queued launch whose boundary we already passed (e.g. after a seek)
+      // commits immediately.
+      if (this.pendingLaunch && this.pendingLaunch.atTick <= windowStart) {
+        this.deps.applyPatternLaunch(this.pendingLaunch.patternId);
+        this.pendingLaunch = null;
+        currentDoc = this.deps.getProject();
+      }
+      const pattern = getActivePattern(currentDoc);
       const patternTicks = STEP_TICKS * pattern.stepCount;
-      this.schedulePatternWindow(pattern, 0, patternTicks, windowStart, windowEnd);
+      const pending = this.pendingLaunch;
+      const boundary =
+        pending && pending.atTick > windowStart && pending.atTick <= windowEnd ? pending.atTick : null;
+
+      this.schedulePatternWindow(pattern, 0, patternTicks, windowStart, boundary ?? windowEnd);
       automationCtx = { base: 0, patternTicks };
+
+      if (boundary !== null && pending) {
+        // Split the window at the launch boundary: old pattern before it,
+        // new pattern after — the switch lands exactly on the quantized tick.
+        this.deps.applyPatternLaunch(pending.patternId);
+        this.pendingLaunch = null;
+        const nextPattern = getActivePattern(this.deps.getProject());
+        const nextTicks = STEP_TICKS * nextPattern.stepCount;
+        this.schedulePatternWindow(nextPattern, 0, nextTicks, boundary, windowEnd);
+      }
     } else {
       const clips = [...doc.arrangement.clips].sort((a, b) => a.startBar - b.startBar);
       for (const clip of clips) {
@@ -144,15 +196,14 @@ export class Scheduler {
     const timeAt = (tick: number) => transport.timeAtTick(tick);
     const audible = (when: number) => when >= now - 0.002;
 
-    const relStart = mod(windowStart - base, patternTicks);
-    const firstStep = Math.ceil(windowStart / STEP_TICKS - 1e-9) * STEP_TICKS;
-    for (let t = firstStep; t < windowEnd; t += STEP_TICKS) {
-      const when = timeAt(t);
+    for (const hit of drumHitsInWindow(doc, pattern, base, windowStart, windowEnd)) {
+      const when = timeAt(hit.tick);
       if (!audible(when)) continue;
-      const stepIndex = Math.floor(mod(t - base, patternTicks) / STEP_TICKS) % pattern.stepCount;
-      this.scheduleDrums(doc, pattern, stepIndex, when);
+      this.deps.trigger(hit.trackId, hit.pad, when, hit.velocity);
+      this.stats.scheduledEvents += 1;
     }
 
+    const relStart = mod(windowStart - base, patternTicks);
     for (const track of doc.tracks) {
       if (track.kind !== "instrument") continue;
       const notes = pattern.notes?.[track.id];
@@ -165,23 +216,6 @@ export class Scheduler {
           this.deps.noteOn(track.id, note.pitch, note.velocity, when, note.duration * transport.secondsPerTick);
           this.stats.scheduledEvents += 1;
         }
-      }
-    }
-  }
-
-  private scheduleDrums(doc: ProjectDocument, pattern: Pattern, stepIndex: number, when: number): void {
-    const tracks = doc.tracks.filter((t): t is DrumTrack => t.kind === "drum");
-    const anyTrackSolo = doc.tracks.some((t) => t.solo);
-    for (const track of tracks) {
-      if (track.mute || (anyTrackSolo && !track.solo)) continue;
-      const anyPadSolo = track.pads.some((p) => p.solo);
-      for (const pad of track.pads) {
-        const velocity = pattern.rows[pad.id]?.[stepIndex] ?? 0;
-        if (velocity <= 0) continue;
-        if (pad.mute) continue;
-        if (anyPadSolo && !pad.solo) continue;
-        this.deps.trigger(track.id, pad, when, velocity);
-        this.stats.scheduledEvents += 1;
       }
     }
   }
