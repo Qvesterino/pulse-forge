@@ -11,7 +11,7 @@ export class PresetRepository {
     const all = await tx<InstrumentPreset[]>(db, STORE_PRESETS, "readonly", (store) => store.getAll());
     return all
       .filter((p) => p && typeof p.id === "string" && typeof p.name === "string" && typeof p.instrument === "string")
-      .map((p) => ({ ...p, user: true }))
+      .map((p) => ({ ...p, mood: p.mood ?? [], user: true }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 

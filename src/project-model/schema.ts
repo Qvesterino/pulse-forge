@@ -155,12 +155,12 @@ export function createDefaultProject(): ProjectDocument {
 }
 
 export function defaultMacros(): Macro[] {
-  return ["A", "B", "C", "D"].map((letter) => ({
-    id: uid("macro"),
-    name: `MACRO ${letter}`,
-    value: 0.5,
-    mappings: [],
-  }));
+  return [
+    { id: uid("macro"), name: "DRUMS", value: 0.5, mappings: [] },
+    { id: uid("macro"), name: "BASS", value: 0.5, mappings: [] },
+    { id: uid("macro"), name: "MUSIC", value: 0.5, mappings: [] },
+    { id: uid("macro"), name: "WIDTH", value: 0.5, mappings: [] },
+  ];
 }
 
 /** Clamp a BPM value to the supported range. NaN/non-finite → FALLBACK_BPM. */

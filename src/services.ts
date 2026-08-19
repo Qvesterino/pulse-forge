@@ -4,6 +4,7 @@ import { Transport } from "./transport/Transport";
 import { ProjectStore } from "./store/ProjectStore";
 import { ProjectRepository } from "./persistence/ProjectRepository";
 import { PresetRepository } from "./persistence/PresetRepository";
+import { LibraryRepository } from "./persistence/LibraryRepository";
 import { generateFactoryBank } from "./sample-library/factory";
 import type { SampleBank } from "./sample-library/factory";
 import type { PlayMode, ProjectDocument, Scene } from "./project-model/types";
@@ -20,6 +21,7 @@ export interface CoreServices {
   bank: SampleBank;
   repo: ProjectRepository;
   presets: PresetRepository;
+  library: LibraryRepository;
 }
 
 export interface Services {
@@ -30,6 +32,7 @@ export interface Services {
   scheduler: Scheduler;
   repo: ProjectRepository;
   bank: SampleBank;
+  library: LibraryRepository;
   playback: PlaybackController;
   flushSave(): Promise<void>;
   /** Stop playback, flush autosave and detach page listeners. */
@@ -136,7 +139,9 @@ export async function createCoreServices(): Promise<CoreServices> {
   const bank = await generateFactoryBank();
   const engine = new AudioEngine();
   engine.attachBank(bank);
-  return { engine, bank, repo: new ProjectRepository(), presets: new PresetRepository() };
+  const library = new LibraryRepository();
+  void library.load();
+  return { engine, bank, repo: new ProjectRepository(), presets: new PresetRepository(), library };
 }
 
 /**
@@ -145,7 +150,7 @@ export async function createCoreServices(): Promise<CoreServices> {
  * switching projects never re-creates the AudioContext.
  */
 export function openProject(core: CoreServices, initial: ProjectDocument): Services {
-  const { engine, repo, bank } = core;
+  const { engine, repo, bank, library } = core;
 
   const store = new ProjectStore(initial);
   const transport = new Transport({ now: () => engine.currentTime }, initial.bpm);
@@ -237,5 +242,5 @@ export function openProject(core: CoreServices, initial: ProjectDocument): Servi
     };
   };
 
-  return { core, store, engine, transport, scheduler, repo, bank, playback, flushSave, closeProject, getDiagnostics };
+  return { core, store, engine, transport, scheduler, repo, bank, library, playback, flushSave, closeProject, getDiagnostics };
 }

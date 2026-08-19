@@ -1,18 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useDoc, useServices } from "./context";
+import { useDoc, useLibrary, useServices } from "./context";
 import { applyInstrumentPreset } from "../commands/commands";
 import { FACTORY_PRESETS } from "../presets/factory";
-import { PRESET_GENRES } from "../presets/types";
-import type { InstrumentPreset, PresetGenre } from "../presets/types";
+import { PRESET_GENRES, PRESET_MOODS } from "../presets/types";
+import type { InstrumentPreset, PresetGenre, PresetMood } from "../presets/types";
 import type { InstrumentTrack } from "../project-model/types";
 import { uid } from "../shared/ids";
 
 type GenreFilter = PresetGenre | "all";
+type MoodFilter = PresetMood | "all";
+type ScopeFilter = "all" | "fav" | "recent";
 
 export function PresetBrowser({ track }: { track: InstrumentTrack }) {
   const services = useServices();
   const doc = useDoc();
+  const library = useLibrary();
   const [genre, setGenre] = useState<GenreFilter>("all");
+  const [mood, setMood] = useState<MoodFilter>("all");
+  const [scope, setScope] = useState<ScopeFilter>("all");
   const [query, setQuery] = useState("");
   const [userPresets, setUserPresets] = useState<InstrumentPreset[]>([]);
   const [saveOpen, setSaveOpen] = useState(false);
@@ -36,9 +41,12 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
 
   const filtered = all.filter((preset) => {
     if (genre !== "all" && preset.genre !== genre) return false;
+    if (mood !== "all" && !preset.mood.includes(mood)) return false;
+    if (scope === "fav" && !library.favoritePresets.includes(preset.id)) return false;
+    if (scope === "recent" && !library.recentPresets.includes(preset.id)) return false;
     if (query.trim().length > 0) {
       const q = query.trim().toLowerCase();
-      const haystack = `${preset.name} ${preset.tags.join(" ")}`.toLowerCase();
+      const haystack = `${preset.name} ${preset.tags.join(" ")} ${preset.mood.join(" ")}`.toLowerCase();
       if (!haystack.includes(q)) return false;
     }
     return true;
@@ -48,6 +56,7 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
 
   const apply = (preset: InstrumentPreset) => {
     services.store.execute(applyInstrumentPreset(doc, track.id, preset));
+    void services.library.recordPreset(preset.id);
   };
 
   const saveCurrent = async () => {
@@ -58,6 +67,7 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
       name,
       instrument: track.instrument,
       genre: null,
+      mood: [],
       tags: ["user"],
       params: { ...track.params },
       sampleId: track.sampleId,
@@ -113,6 +123,19 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
       )}
 
       <div className="preset-chips">
+        {(["all", "fav", "recent"] as ScopeFilter[]).map((s) => (
+          <button
+            key={s}
+            type="button"
+            className={`preset-chip${scope === s ? " active" : ""}`}
+            onClick={() => setScope(s)}
+          >
+            {s.toUpperCase()}
+          </button>
+        ))}
+      </div>
+
+      <div className="preset-chips">
         <button
           type="button"
           className={`preset-chip${genre === "all" ? " active" : ""}`}
@@ -128,6 +151,19 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
             onClick={() => setGenre(g)}
           >
             {g.toUpperCase()}
+          </button>
+        ))}
+      </div>
+
+      <div className="preset-chips">
+        {PRESET_MOODS.map((m) => (
+          <button
+            key={m}
+            type="button"
+            className={`preset-chip${mood === m ? " active" : ""}`}
+            onClick={() => setMood(mood === m ? "all" : m)}
+          >
+            {m.toUpperCase()}
           </button>
         ))}
       </div>
@@ -158,8 +194,20 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
           >
             <span className="preset-name">{preset.name}</span>
             <span className="preset-tags">
-              {preset.genre ? preset.genre : "user"} · {preset.tags.slice(0, 2).join(", ")}
+              {preset.genre ? preset.genre : "user"} · {preset.mood.slice(0, 2).join(", ") || preset.tags[0]}
             </span>
+            <button
+              type="button"
+              className={`preset-fav${library.favoritePresets.includes(preset.id) ? " active" : ""}`}
+              aria-label={library.favoritePresets.includes(preset.id) ? `Unfavorite ${preset.name}` : `Favorite ${preset.name}`}
+              aria-pressed={library.favoritePresets.includes(preset.id)}
+              onClick={(event) => {
+                event.stopPropagation();
+                void services.library.togglePresetFavorite(preset.id);
+              }}
+            >
+              {library.favoritePresets.includes(preset.id) ? "♥" : "♡"}
+            </button>
             {preset.user && (
               <button
                 type="button"

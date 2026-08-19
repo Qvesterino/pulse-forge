@@ -6,8 +6,10 @@ import { INSTRUMENT_DEFS } from "../instruments/registry";
 import { pitchName } from "../project-model/types";
 import { Slider } from "./controls";
 import { PresetBrowser } from "./PresetBrowser";
+import { SampleBrowser } from "./SampleBrowser";
 
 const TONAL_ASSETS = FACTORY_ASSETS.filter((a) => a.category === "Tonal");
+const DRUM_ASSETS = FACTORY_ASSETS.filter((a) => a.category !== "Tonal");
 
 export function Inspector({ track, selectedPadId }: { track: Track; selectedPadId: string }) {
   const services = useServices();
@@ -46,22 +48,14 @@ export function Inspector({ track, selectedPadId }: { track: Track; selectedPadI
         <PresetBrowser track={track} />
 
         {track.instrument === "sampler" && (
-          <label className="field">
-            <span className="field-label">Sample</span>
-            <select
-              value={track.sampleId ?? ""}
-              onChange={(event) =>
-                services.store.execute(setInstrumentSample(doc, track.id, event.target.value || null))
-              }
-            >
-              <option value="">— none —</option>
-              {TONAL_ASSETS.map((asset) => (
-                <option key={asset.id} value={asset.id}>
-                  {asset.name} ({asset.character})
-                </option>
-              ))}
-            </select>
-          </label>
+          <>
+            <h3 className="inspector-subtitle">SAMPLE</h3>
+            <SampleBrowser
+              assets={TONAL_ASSETS}
+              currentId={track.sampleId}
+              onSelect={(assetId) => services.store.execute(setInstrumentSample(doc, track.id, assetId))}
+            />
+          </>
         )}
 
         {def.params.map((p) =>
@@ -108,22 +102,12 @@ export function Inspector({ track, selectedPadId }: { track: Track; selectedPadI
     <aside className="inspector" aria-label="Inspector">
       <h2 className="panel-title">PAD — {pad.name}</h2>
 
-      <label className="field">
-        <span className="field-label">Sample</span>
-        <select
-          value={pad.assetId ?? ""}
-          onChange={(event) =>
-            services.store.execute(setPadParams(doc, pad.id, { assetId: event.target.value || null }))
-          }
-        >
-          <option value="">— none —</option>
-          {FACTORY_ASSETS.filter((a) => a.category !== "Tonal").map((asset) => (
-            <option key={asset.id} value={asset.id}>
-              {asset.category} · {asset.name}
-            </option>
-          ))}
-        </select>
-      </label>
+      <h3 className="inspector-subtitle">SAMPLE</h3>
+      <SampleBrowser
+        assets={DRUM_ASSETS}
+        currentId={pad.assetId}
+        onSelect={(assetId) => services.store.execute(setPadParams(doc, pad.id, { assetId }))}
+      />
 
       <Slider
         label="Gain"

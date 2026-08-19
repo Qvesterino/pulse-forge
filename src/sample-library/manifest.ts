@@ -4,10 +4,15 @@ export type AssetCategory =
   | "Clap"
   | "Hat"
   | "Cymbal"
+  | "Crash"
   | "Tom"
   | "Rim"
   | "Percussion"
-  | "Tonal";
+  | "Tonal"
+  | "FX";
+
+/** Mood/usage descriptors for curated browsing (FEATURES.md §23 character tags). */
+export type AssetMood = "dark" | "bright" | "warm" | "aggressive" | "clean" | "deep" | "atmosphere";
 
 export interface FactoryAsset {
   id: string;
@@ -15,27 +20,72 @@ export interface FactoryAsset {
   category: AssetCategory;
   character: string;
   tags: string[];
+  mood: AssetMood[];
 }
 
+export const ASSET_MOODS: AssetMood[] = ["dark", "bright", "warm", "aggressive", "clean", "deep", "atmosphere"];
+
 export const FACTORY_ASSETS: FactoryAsset[] = [
-  { id: "factory.kick.deep", name: "Kick Deep", category: "Kick", character: "Deep, Punchy", tags: ["house", "deep", "sub"] },
-  { id: "factory.kick.punch", name: "Kick Punch", category: "Kick", character: "Punchy, Bright", tags: ["house", "punchy"] },
-  { id: "factory.kick.techno", name: "Kick Techno", category: "Kick", character: "Driving, Distorted", tags: ["techno", "drive"] },
-  { id: "factory.rim.chip", name: "Rim Chip", category: "Rim", character: "Dry, Tight", tags: ["rim", "tight"] },
-  { id: "factory.snare.main", name: "Snare Main", category: "Snare", character: "Fat, Classic", tags: ["snare", "house"] },
-  { id: "factory.snare.tight", name: "Snare Tight", category: "Snare", character: "Short, Dry", tags: ["snare", "tight"] },
-  { id: "factory.clap.main", name: "Clap Main", category: "Clap", character: "Wide, Punchy", tags: ["clap", "house"] },
-  { id: "factory.shaker.soft", name: "Shaker Soft", category: "Percussion", character: "Soft, Airy", tags: ["shaker", "groove"] },
-  { id: "factory.hat.closed", name: "Hat Closed", category: "Hat", character: "Crisp, Bright", tags: ["hat", "closed"] },
-  { id: "factory.hat.closed.soft", name: "Hat Closed Soft", category: "Hat", character: "Soft, Low", tags: ["hat", "closed", "soft"] },
-  { id: "factory.hat.open", name: "Hat Open", category: "Hat", character: "Open, Bright", tags: ["hat", "open"] },
-  { id: "factory.ride.ping", name: "Ride Ping", category: "Cymbal", character: "Metallic, Sustained", tags: ["ride", "cymbal"] },
-  { id: "factory.tom.low", name: "Tom Low", category: "Tom", character: "Deep, Round", tags: ["tom", "low"] },
-  { id: "factory.tom.high", name: "Tom High", category: "Tom", character: "Bright, Round", tags: ["tom", "high"] },
-  { id: "factory.perc.tick", name: "Perc Tick", category: "Percussion", character: "Clicky, Tight", tags: ["perc", "click"] },
-  { id: "factory.perc.blip", name: "Perc Blip", category: "Percussion", character: "Tonal, Short", tags: ["perc", "blip"] },
-  { id: "factory.tonal.pluck", name: "Pluck C4", category: "Tonal", character: "Bright, Short", tags: ["pluck", "lead"] },
-  { id: "factory.tonal.stab", name: "Stab C4", category: "Tonal", character: "Saw, Chord", tags: ["stab", "chord"] },
-  { id: "factory.tonal.keys", name: "Keys C4", category: "Tonal", character: "Soft, Clean", tags: ["keys", "piano"] },
-  { id: "factory.tonal.bell", name: "Bell C5", category: "Tonal", character: "Clear, Long", tags: ["bell", "lead"] },
+  /* ---------------- Kicks ---------------- */
+  { id: "factory.kick.deep", name: "Kick Deep", category: "Kick", character: "Deep, Punchy", tags: ["house", "deep", "sub"], mood: ["deep", "dark"] },
+  { id: "factory.kick.punch", name: "Kick Punch", category: "Kick", character: "Punchy, Bright", tags: ["house", "punchy"], mood: ["aggressive", "bright"] },
+  { id: "factory.kick.techno", name: "Kick Techno", category: "Kick", character: "Driving, Distorted", tags: ["techno", "drive"], mood: ["aggressive", "dark"] },
+  { id: "factory.kick.sub808", name: "Kick Sub 808", category: "Kick", character: "Long, Sub-heavy", tags: ["trap", "808", "sub"], mood: ["deep", "warm"] },
+  { id: "factory.kick.trap", name: "Kick Trap", category: "Kick", character: "Tight, Pitch-drop", tags: ["trap", "punchy"], mood: ["aggressive", "clean"] },
+  { id: "factory.kick.soft", name: "Kick Soft", category: "Kick", character: "Round, Gentle", tags: ["deep", "soft", "ambient"], mood: ["warm", "deep"] },
+
+  /* ---------------- Snares ---------------- */
+  { id: "factory.snare.main", name: "Snare Main", category: "Snare", character: "Fat, Classic", tags: ["snare", "house"], mood: ["warm", "clean"] },
+  { id: "factory.snare.tight", name: "Snare Tight", category: "Snare", character: "Short, Dry", tags: ["snare", "tight"], mood: ["clean", "aggressive"] },
+  { id: "factory.snare.punch", name: "Snare Punch", category: "Snare", character: "Layered, Snappy", tags: ["snare", "punchy"], mood: ["aggressive", "bright"] },
+  { id: "factory.snare.trap", name: "Snare Trap", category: "Snare", character: "Crisp, Pitched", tags: ["trap", "snare"], mood: ["bright", "aggressive"] },
+
+  /* ---------------- Claps ---------------- */
+  { id: "factory.clap.main", name: "Clap Main", category: "Clap", character: "Wide, Punchy", tags: ["clap", "house"], mood: ["bright", "clean"] },
+  { id: "factory.clap.soft", name: "Clap Soft", category: "Clap", character: "Diffused, Airy", tags: ["clap", "soft"], mood: ["warm", "atmosphere"] },
+
+  /* ---------------- Hats ---------------- */
+  { id: "factory.hat.closed", name: "Hat Closed", category: "Hat", character: "Crisp, Bright", tags: ["hat", "closed"], mood: ["bright", "clean"] },
+  { id: "factory.hat.closed.soft", name: "Hat Closed Soft", category: "Hat", character: "Soft, Low", tags: ["hat", "closed", "soft"], mood: ["warm", "clean"] },
+  { id: "factory.hat.open", name: "Hat Open", category: "Hat", character: "Open, Bright", tags: ["hat", "open"], mood: ["bright", "clean"] },
+  { id: "factory.hat.open.short", name: "Hat Open Short", category: "Hat", character: "Quick, Lush", tags: ["hat", "open", "short"], mood: ["clean", "warm"] },
+  { id: "factory.hat.pedal", name: "Hat Pedal", category: "Hat", character: "Minimal, Muffled", tags: ["hat", "pedal"], mood: ["clean", "dark"] },
+
+  /* ---------------- Cymbals / Crashes ---------------- */
+  { id: "factory.ride.ping", name: "Ride Ping", category: "Cymbal", character: "Metallic, Sustained", tags: ["ride", "cymbal"], mood: ["bright", "clean"] },
+  { id: "factory.ride.bell", name: "Ride Bell", category: "Cymbal", character: "Clear, Bell-like", tags: ["ride", "bell"], mood: ["bright", "clean"] },
+  { id: "factory.crash.main", name: "Crash", category: "Crash", character: "Bright, Sustained", tags: ["crash", "cymbal"], mood: ["bright", "aggressive"] },
+  { id: "factory.crash.dark", name: "Crash Dark", category: "Crash", character: "Dark, Washy", tags: ["crash", "dark"], mood: ["dark", "atmosphere"] },
+
+  /* ---------------- Toms ---------------- */
+  { id: "factory.tom.low", name: "Tom Low", category: "Tom", character: "Deep, Round", tags: ["tom", "low"], mood: ["deep", "warm"] },
+  { id: "factory.tom.mid", name: "Tom Mid", category: "Tom", character: "Balanced, Punchy", tags: ["tom", "mid"], mood: ["warm", "clean"] },
+  { id: "factory.tom.high", name: "Tom High", category: "Tom", character: "Bright, Round", tags: ["tom", "high"], mood: ["bright", "clean"] },
+
+  /* ---------------- Percussion ---------------- */
+  { id: "factory.rim.chip", name: "Rim Chip", category: "Rim", character: "Dry, Tight", tags: ["rim", "tight"], mood: ["clean", "bright"] },
+  { id: "factory.shaker.soft", name: "Shaker Soft", category: "Percussion", character: "Soft, Airy", tags: ["shaker", "groove"], mood: ["warm", "atmosphere"] },
+  { id: "factory.perc.tick", name: "Perc Tick", category: "Percussion", character: "Clicky, Tight", tags: ["perc", "click"], mood: ["clean", "bright"] },
+  { id: "factory.perc.blip", name: "Perc Blip", category: "Percussion", character: "Tonal, Short", tags: ["perc", "blip"], mood: ["bright", "clean"] },
+  { id: "factory.perc.cowbell", name: "Cowbell", category: "Percussion", character: "Classic, Metallic", tags: ["perc", "cowbell"], mood: ["bright", "clean"] },
+  { id: "factory.perc.conga", name: "Conga", category: "Percussion", character: "Low, Wooden", tags: ["perc", "conga"], mood: ["warm", "deep"] },
+  { id: "factory.perc.tambourine", name: "Tambourine", category: "Percussion", character: "Jingly, Airy", tags: ["perc", "tambourine"], mood: ["bright", "atmosphere"] },
+
+  /* ---------------- FX & transitions ---------------- */
+  { id: "factory.fx.riser", name: "Riser", category: "FX", character: "Tension build, 1 bar", tags: ["fx", "riser", "sweep"], mood: ["aggressive", "atmosphere"] },
+  { id: "factory.fx.downlifter", name: "Downlifter", category: "FX", character: "Release sweep, 1 bar", tags: ["fx", "down", "sweep"], mood: ["dark", "atmosphere"] },
+  { id: "factory.fx.impact", name: "Impact", category: "FX", character: "Low thump + punch", tags: ["fx", "impact", "hit"], mood: ["aggressive", "deep"] },
+  { id: "factory.fx.sweep", name: "Sweep", category: "FX", character: "Clean filter sweep", tags: ["fx", "sweep"], mood: ["clean", "atmosphere"] },
+  { id: "factory.fx.reverse", name: "Reverse Rise", category: "FX", character: "Reverse-cymbal swell", tags: ["fx", "reverse", "swell"], mood: ["atmosphere", "dark"] },
+  { id: "factory.fx.noise", name: "White Noise", category: "FX", character: "Short noise burst", tags: ["fx", "noise", "hit"], mood: ["aggressive", "bright"] },
+
+  /* ---------------- Tonal ---------------- */
+  { id: "factory.tonal.pluck", name: "Pluck C4", category: "Tonal", character: "Bright, Short", tags: ["pluck", "lead"], mood: ["bright", "clean"] },
+  { id: "factory.tonal.stab", name: "Stab C4", category: "Tonal", character: "Saw, Chord", tags: ["stab", "chord"], mood: ["aggressive", "bright"] },
+  { id: "factory.tonal.keys", name: "Keys C4", category: "Tonal", character: "Soft, Clean", tags: ["keys", "piano"], mood: ["warm", "clean"] },
+  { id: "factory.tonal.bell", name: "Bell C5", category: "Tonal", character: "Clear, Long", tags: ["bell", "lead"], mood: ["bright", "atmosphere"] },
 ];
+
+export function assetById(id: string): FactoryAsset | undefined {
+  return FACTORY_ASSETS.find((a) => a.id === id);
+}

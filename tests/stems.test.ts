@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createDefaultProject } from "../src/project-model/schema";
+import { createProjectFromTemplate } from "../src/project-model/templates";
 import {
   addArrangementClip,
   setMasterConfig,
@@ -12,10 +13,10 @@ import { computeRenderTicks } from "../src/rendering/renderer";
 import { BAR_TICKS, STEP_TICKS } from "../src/project-model/types";
 
 describe("stem groups", () => {
-  it("default project has drums and bass groups", () => {
+  it("default project has drums, bass and music groups", () => {
     const doc = createDefaultProject();
     const groups = nonEmptyStemGroups(doc);
-    expect(groups.map((g) => g.id)).toEqual(["drums", "bass"]);
+    expect(groups.map((g) => g.id)).toEqual(["drums", "bass", "music"]);
   });
 
   it("buildStemProject keeps only matching tracks and clears solo", () => {
@@ -30,7 +31,7 @@ describe("stem groups", () => {
   });
 
   it("music group is empty until a melodic instrument exists", () => {
-    const doc = createDefaultProject();
+    const doc = createProjectFromTemplate("empty");
     const music = buildStemProject(doc, STEM_GROUPS[2].filter);
     expect(music.tracks).toHaveLength(0);
   });

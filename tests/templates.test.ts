@@ -139,6 +139,27 @@ describe("templates", () => {
     expect((pattern.notes[bassTrack!.id] ?? []).length).toBeGreaterThan(0);
   });
 
+  it("templates ship four named performance macros mapped to mix bus roles", () => {
+    for (const template of TEMPLATES) {
+      const doc = createProjectFromTemplate(template.id);
+      expect(doc.macros.map((m) => m.name)).toEqual(["DRUMS", "BASS", "MUSIC", "WIDTH"]);
+      expect(doc.macros.every((m) => m.value === 0.5)).toBe(true);
+      // DRUMS always maps to the drum track's gain.
+      const drums = doc.tracks.find((t) => t.kind === "drum")!;
+      expect(doc.macros[0].mappings).toEqual([expect.objectContaining({ trackId: drums.id, param: "gain" })]);
+    }
+  });
+
+  it("house template adds a melodic chords track (drums + bass + music)", () => {
+    const doc = createProjectFromTemplate("house");
+    expect(doc.tracks.filter((t) => t.kind === "instrument")).toHaveLength(2);
+    const music = doc.tracks.find((t) => t.kind === "instrument" && t.instrument === "analog");
+    expect(music).toBeDefined();
+    expect(doc.patterns[0].notes[music!.id]?.length).toBeGreaterThan(0);
+    // MUSIC macro targets that track.
+    expect(doc.macros[2].mappings[0].trackId).toBe(music!.id);
+  });
+
   it("scene-score template spans a long arrangement with named sections", () => {
     const doc = createProjectFromTemplate("scene-score");
     const names = doc.scenes.map((s) => s.name);

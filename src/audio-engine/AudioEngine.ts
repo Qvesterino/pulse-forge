@@ -628,6 +628,28 @@ export class AudioEngine {
     this.trigger(trackId, pad, this.currentTime + 0.005, 1);
   }
 
+  /** Preview a factory sample directly through the master bus (no track needed). */
+  previewAsset(assetId: string): void {
+    this.ensureContext();
+    const ctx = this.ctx;
+    const buffer = this.bank?.get(assetId);
+    if (!ctx || !this.master) return;
+    if (!buffer) {
+      if (assetId) this.missedAssets.add(assetId);
+      return;
+    }
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    const gain = ctx.createGain();
+    gain.gain.value = 0.9;
+    source.connect(gain).connect(this.master);
+    source.start(ctx.currentTime + 0.005);
+    source.onended = () => {
+      gain.disconnect();
+      source.disconnect();
+    };
+  }
+
   private choke(trackId: string, chokeGroup: number, when: number): void {
     const ctx = this.ctx;
     if (!ctx) return;

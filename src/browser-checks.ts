@@ -7,6 +7,7 @@ import { encodeWav } from "./rendering/wav";
 import { createDefaultProject, normalizeProject, validateProjectShape } from "./project-model/schema";
 import { TEMPLATES, createProjectFromTemplate } from "./project-model/templates";
 import { FACTORY_PRESETS } from "./presets/factory";
+import { FACTORY_ASSETS } from "./sample-library/manifest";
 import { applyInstrumentPreset } from "./commands/commands";
 import { PPQ } from "./project-model/types";
 import type { EffectType, InstrumentTrack } from "./project-model/types";
@@ -48,7 +49,7 @@ export async function runChecks(): Promise<CheckResult[]> {
   const check = (name: string, ok: boolean, message = "") => results.push({ name, ok, message: message || (ok ? "ok" : "failed") });
 
   const bank = await generateFactoryBank();
-  check("factory bank generates 20 buffers", bank.size === 20, `size=${bank.size}`);
+  check("factory bank generates a buffer for every manifest asset", bank.size === FACTORY_ASSETS.length, `size=${bank.size}/${FACTORY_ASSETS.length}`);
   const silentAssets = bank.entries().filter(([, buf]) => peakOf(buf.getChannelData(0)) < 0.001);
   check("factory buffers are audible", silentAssets.length === 0, silentAssets.map(([id]) => id).join(","));
 

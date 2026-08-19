@@ -115,6 +115,7 @@ describe("PresetRepository", () => {
     name: "My Bass",
     instrument: "bass",
     genre: null,
+    mood: [],
     tags: ["user"],
     params: { sub: 0.5, body: 0.5 },
     user: true,

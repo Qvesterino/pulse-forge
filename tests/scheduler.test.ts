@@ -236,22 +236,24 @@ describe("scheduler", () => {
       advance(0.025);
       scheduler["tick"]();
     }
-    expect(noteEvents.length).toBeGreaterThanOrEqual(4);
+    const bassEvents = noteEvents.filter((e) => e.trackId === bass.id);
+    expect(bassEvents.length).toBeGreaterThanOrEqual(4);
     const stepSec = (60 / doc.bpm) / 4;
-    for (const event of noteEvents) {
+    for (const event of bassEvents) {
       expect(event.trackId).toBe(bass.id);
       expect(event.velocity).toBeGreaterThan(0);
       expect(event.durationSec).toBeCloseTo(stepSec * 2, 3);
     }
-    const first = noteEvents[0];
+    const first = bassEvents[0];
     expect(first.pitch).toBe(28);
     expect(first.when).toBeCloseTo(10, 3);
-    expect(noteEvents.map((e) => e.pitch)).toContain(31);
+    expect(bassEvents.map((e) => e.pitch)).toContain(31);
     scheduler.stop();
   });
 
   it("wraps note scheduling across the pattern boundary", () => {
     const doc = createDefaultProject();
+    const bass = doc.tracks.find((t): t is import("../src/project-model/types").InstrumentTrack => t.kind === "instrument")!;
     const { noteEvents, transport, scheduler, advance } = makeHarness(doc);
     transport.play(0);
     scheduler.start();
@@ -260,8 +262,9 @@ describe("scheduler", () => {
       scheduler["tick"]();
     }
     const beats = (60 / doc.bpm) * 4;
-    expect(noteEvents.length).toBeGreaterThanOrEqual(7);
-    const wrapped = noteEvents[4];
+    const bassEvents = noteEvents.filter((e) => e.trackId === bass.id);
+    expect(bassEvents.length).toBeGreaterThanOrEqual(7);
+    const wrapped = bassEvents[4];
     expect(wrapped.when).toBeGreaterThan(10 + beats - 0.1);
     scheduler.stop();
   });

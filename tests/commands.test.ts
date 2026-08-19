@@ -273,7 +273,9 @@ describe("track commands", () => {
   it("deleteTrack refuses when it is the last remaining track", () => {
     const doc = createDefaultProject();
     const store = new ProjectStore(doc);
-    store.execute(deleteTrack(store.doc, doc.tracks[0].id));
+    while (store.doc.tracks.length > 1) {
+      store.execute(deleteTrack(store.doc, store.doc.tracks[0].id));
+    }
     expect(store.doc.tracks).toHaveLength(1);
     expect(() => deleteTrack(store.doc, store.doc.tracks[0].id)).toThrow();
   });
@@ -425,8 +427,8 @@ describe("instrument tracks and notes", () => {
     const doc = createDefaultProject();
     const store = new ProjectStore(doc);
     store.execute(createInstrumentTrack(store.doc, "analog"));
-    expect(store.doc.tracks).toHaveLength(3);
-    const added = store.doc.tracks[2];
+    expect(store.doc.tracks).toHaveLength(doc.tracks.length + 1);
+    const added = store.doc.tracks[store.doc.tracks.length - 1];
     if (added.kind !== "instrument") throw new Error("expected instrument track");
     expect(added.instrument).toBe("analog");
     expect(added.params.cutoff).toBeCloseTo(9000, 3);
@@ -487,7 +489,7 @@ describe("instrument tracks and notes", () => {
     const store = new ProjectStore(doc);
     const bassId = doc.tracks.find((t) => t.kind === "instrument")!.id;
     store.execute(deleteTrack(store.doc, bassId));
-    expect(store.doc.tracks).toHaveLength(1);
+    expect(store.doc.tracks).toHaveLength(doc.tracks.length - 1);
     expect(store.doc.patterns[0].notes[bassId]).toBeUndefined();
     store.undo();
     expect(store.doc.patterns[0].notes[bassId]).toHaveLength(4);

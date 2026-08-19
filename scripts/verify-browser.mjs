@@ -83,6 +83,17 @@ try {
     const selectedSteps = await appPage.locator(".step.in-selection").count();
     if (selectedSteps < 2) throw new Error(`multi-select expected >=2 selected steps, got ${selectedSteps}`);
     await appPage.keyboard.press("Escape");
+    // Curated content: sample browser (search/category/mood/preview/favorite).
+    await appPage.waitForSelector(".sample-browser", { timeout: 5000 });
+    await appPage.waitForSelector(".sample-fav", { timeout: 5000 });
+    await appPage.locator("button.sample-preview").first().click();
+    await appPage.locator(".sample-fav").first().click();
+    // Switch to the 808 instrument track → preset browser with mood/favorite/recent filters.
+    const instrTab = appPage.locator(".track-tab").filter({ hasText: "808" }).first();
+    await instrTab.click();
+    await appPage.waitForSelector(".preset-browser", { timeout: 5000 });
+    await appPage.waitForSelector(".preset-fav", { timeout: 5000 });
+    await appPage.locator(".preset-fav").first().click();
     // Arrangement ruler seeks the transport.
     await appPage.locator('.topbar button:has-text("ARR")').first().click();
     await appPage.waitForSelector(".arr-ruler", { timeout: 5000 });

@@ -70,6 +70,14 @@ describe("factory presets", () => {
       expect(genres.has(preset.genre)).toBe(true);
     }
   });
+
+  it("every factory preset declares mood tags within the known set", () => {
+    const moods = new Set(["dark", "bright", "warm", "aggressive", "clean", "deep", "atmosphere"]);
+    for (const preset of FACTORY_PRESETS) {
+      expect(preset.mood.length).toBeGreaterThan(0);
+      for (const m of preset.mood) expect(moods.has(m)).toBe(true);
+    }
+  });
 });
 
 describe("applyInstrumentPreset command", () => {
@@ -117,6 +125,7 @@ describe("applyInstrumentPreset command", () => {
       name: "Wild",
       instrument: "808",
       genre: null,
+      mood: [],
       tags: [],
       params: { decay: 999, pitchDrop: -5, gain: 0.5 },
     };

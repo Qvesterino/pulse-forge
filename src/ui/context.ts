@@ -2,6 +2,7 @@ import { createContext, useContext, useSyncExternalStore } from "react";
 import type { Services } from "../services";
 import type { ProjectDocument } from "../project-model/types";
 import type { SaveStatus } from "../store/ProjectStore";
+import type { LibraryState } from "../persistence/LibraryRepository";
 
 export const ServicesContext = createContext<Services | null>(null);
 
@@ -43,5 +44,15 @@ export function useCanRedo(): boolean {
     store.subscribe,
     () => store.canRedo,
     () => false,
+  );
+}
+
+/** Reactive favorites/recent state for the sample & preset browsers. */
+export function useLibrary(): LibraryState {
+  const { core } = useServices();
+  return useSyncExternalStore(
+    (cb) => core.library.subscribe(() => cb()),
+    () => core.library.get(),
+    () => core.library.get(),
   );
 }

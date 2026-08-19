@@ -3,6 +3,8 @@ import type {
   DrumPad,
   DrumTrack,
   Lfo,
+  Macro,
+  MacroMapping,
   NoteEvent,
   Pattern,
   ProjectDocument,
@@ -139,6 +141,27 @@ function finish(doc: ProjectDocument, activePatternIndex = 0): ProjectDocument {
   return { ...doc, activePatternId: doc.patterns[activePatternIndex]?.id ?? "" };
 }
 
+/** Four performance macros mapped to the classic mix bus roles of the template. */
+function performanceMacros(
+  drumsId: string,
+  bassId: string | null,
+  musicId: string | null,
+): Macro[] {
+  const mappings = (trackId: string | null, param: MacroMapping["param"], amount: number): MacroMapping[] =>
+    trackId ? [{ id: uid("map"), trackId, param, amount }] : [];
+  return [
+    { id: uid("macro"), name: "DRUMS", value: 0.5, mappings: mappings(drumsId, "gain", 0.6) },
+    { id: uid("macro"), name: "BASS", value: 0.5, mappings: mappings(bassId, "gain", 0.6) },
+    { id: uid("macro"), name: "MUSIC", value: 0.5, mappings: mappings(musicId, "gain", 0.6) },
+    {
+      id: uid("macro"),
+      name: "WIDTH",
+      value: 0.5,
+      mappings: musicId ? mappings(musicId, "pan", 0.35) : mappings(drumsId, "pan", 0.3),
+    },
+  ];
+}
+
 /* ---------------- templates ---------------- */
 
 function buildEmpty(): ProjectDocument {
@@ -150,6 +173,7 @@ function buildEmpty(): ProjectDocument {
   doc.patterns = [pattern];
   doc.scenes = [sc];
   doc.arrangement = { clips: [clip(sc.id, 0, 4)] };
+  doc.macros = performanceMacros(drums.id, null, null);
   return finish(doc);
 }
 
@@ -157,6 +181,9 @@ function buildHouse(): ProjectDocument {
   const doc = baseDocument("House Beat", 124);
   const drums = createDrumTrackModel("Drums");
   const bass = createInstrumentTrackModel("808", 1);
+  const chords = createInstrumentTrackModel("analog", 1);
+  chords.name = "Chords";
+  chords.params = { ...chords.params, oscA: 2, oscB: 1, oscBDetune: 9, subLevel: 0.2, cutoff: 5200, resonance: 1.3, filterEnv: 0.4, attack: 0.004, decay: 0.24, sustain: 0.3, release: 0.2, level: -10 };
 
   let pattern = emptyPattern("Pattern A", [drums]);
   pattern = setSteps(pattern, drums.pads, 0, [[0, 0.95], [4, 0.95], [8, 0.95], [12, 0.95]]);
@@ -169,12 +196,21 @@ function buildHouse(): ProjectDocument {
     note(31, 2 * PPQ, PPQ / 2, 0.9),
     note(28, 3 * PPQ, PPQ / 2, 0.8),
   ]);
+  pattern = withNotes(pattern, chords.id, [
+    note(60, 0, PPQ / 2, 0.5),
+    note(63, 0, PPQ / 2, 0.42),
+    note(67, 0, PPQ / 2, 0.4),
+    note(60, 2 * PPQ, PPQ / 2, 0.5),
+    note(63, 2 * PPQ, PPQ / 2, 0.42),
+    note(67, 2 * PPQ, PPQ / 2, 0.4),
+  ]);
 
   const sc = scene("Groove", pattern.id);
-  doc.tracks = [drums, bass];
+  doc.tracks = [drums, bass, chords];
   doc.patterns = [pattern];
   doc.scenes = [sc];
   doc.arrangement = { clips: [clip(sc.id, 0, 4)] };
+  doc.macros = performanceMacros(drums.id, bass.id, chords.id);
   return finish(doc);
 }
 
@@ -184,6 +220,9 @@ function buildTechno(): ProjectDocument {
   const rumble = createInstrumentTrackModel("bass", 1);
   rumble.name = "Rumble";
   rumble.params = { ...rumble.params, sub: 0.8, body: 0.45, punch: 0.3, grit: 0.55, movement: 0.25, width: 0.1, cutoff: 420, resonance: 2.5 };
+  const stab = createInstrumentTrackModel("analog", 1);
+  stab.name = "Stab";
+  stab.params = { ...stab.params, oscA: 2, oscB: 3, oscBDetune: 14, subLevel: 0.3, noiseLevel: 0.05, cutoff: 4200, resonance: 2.2, filterEnv: 0.5, attack: 0.003, decay: 0.2, sustain: 0.3, release: 0.12, level: -9 };
 
   const bassline = (pattern: Pattern): Pattern =>
     withNotes(pattern, rumble.id, [
@@ -193,12 +232,20 @@ function buildTechno(): ProjectDocument {
       note(28, 1680, 180, 0.7),
     ]);
 
+  const stabline = (pattern: Pattern, root: number): Pattern =>
+    withNotes(pattern, stab.id, [
+      note(root, 0, 180, 0.55),
+      note(root + 3, 0, 180, 0.45),
+      note(root + 7, 0, 180, 0.42),
+    ]);
+
   let loopA = emptyPattern("Loop A", [drums]);
   loopA = setSteps(loopA, drums.pads, 2, [[0, 0.95], [4, 0.95], [8, 0.95], [12, 0.95]]);
   loopA = setSteps(loopA, drums.pads, 6, [[4, 0.55], [12, 0.6]]);
   loopA = setSteps(loopA, drums.pads, 10, [[2, 0.4], [6, 0.4], [10, 0.4], [14, 0.42]]);
   loopA = setSteps(loopA, drums.pads, 8, [[1, 0.3], [3, 0.3], [5, 0.3], [7, 0.32], [9, 0.3], [11, 0.3], [13, 0.3], [15, 0.34]]);
   loopA = bassline(loopA);
+  loopA = stabline(loopA, 48);
 
   let loopB = emptyPattern("Loop B", [drums]);
   loopB = setSteps(loopB, drums.pads, 2, [[0, 0.95], [4, 0.95], [8, 0.95], [12, 0.95]]);
@@ -208,13 +255,15 @@ function buildTechno(): ProjectDocument {
   loopB = setSteps(loopB, drums.pads, 12, [[14, 0.45]]);
   loopB = setSteps(loopB, drums.pads, 3, [[7, 0.4], [15, 0.42]]);
   loopB = bassline(loopB);
+  loopB = stabline(loopB, 51);
 
   const scA = scene("Loop A", loopA.id);
   const scB = scene("Loop B", loopB.id);
-  doc.tracks = [drums, rumble];
+  doc.tracks = [drums, rumble, stab];
   doc.patterns = [loopA, loopB];
   doc.scenes = [scA, scB];
   doc.arrangement = { clips: [clip(scA.id, 0, 4), clip(scB.id, 4, 4)] };
+  doc.macros = performanceMacros(drums.id, rumble.id, stab.id);
   return finish(doc);
 }
 
@@ -258,6 +307,7 @@ function buildTrap(): ProjectDocument {
   doc.patterns = [pattern];
   doc.scenes = [sc];
   doc.arrangement = { clips: [clip(sc.id, 0, 4)] };
+  doc.macros = performanceMacros(drums.id, sub.id, lead.id);
   return finish(doc);
 }
 
@@ -296,6 +346,7 @@ function buildAmbient(): ProjectDocument {
   doc.arrangement = { clips: [clip(sc.id, 0, 8)] };
   doc.lfos = lfos;
   doc.returns[0].effects[0].params = { ...doc.returns[0].effects[0].params, decay: 4.5 };
+  doc.macros = performanceMacros(drums.id, texture.id, pad.id);
   return finish(doc);
 }
 
@@ -364,6 +415,7 @@ function buildSceneScore(): ProjectDocument {
       clip(scOutro.id, 20, 4),
     ],
   };
+  doc.macros = performanceMacros(drums.id, bass.id, texture.id);
   return finish(doc, 2);
 }
 
