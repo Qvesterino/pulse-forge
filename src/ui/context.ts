@@ -21,6 +21,11 @@ export function useSaveStatus(): SaveStatus {
   return useSyncExternalStore(store.subscribe, store.getSaveStatus, store.getSaveStatus);
 }
 
+export function useLastSavedAt(): string | null {
+  const { store } = useServices();
+  return useSyncExternalStore(store.subscribe, store.getLastSavedAt, store.getLastSavedAt);
+}
+
 /** True iff the project has at least one command in its undo stack. */
 export function useCanUndo(): boolean {
   const { store } = useServices();

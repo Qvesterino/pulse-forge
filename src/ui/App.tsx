@@ -25,11 +25,12 @@ import { matchShortcut } from "./shortcuts";
 import { BAR_TICKS } from "../project-model/types";
 import { CommandToast } from "./CommandToast";
 import { HelpOverlay } from "./HelpOverlay";
+import { OnboardingHint } from "./OnboardingHint";
 
 const PANEL_KEYS = ["mixer", "fx", "arr", "mod", "exp"] as const;
 type BottomPanel = (typeof PANEL_KEYS)[number];
 
-export function App({ services }: { services: Services }) {
+export function App({ services, onOpenBrowser }: { services: Services; onOpenBrowser: () => void }) {
   const doc = useSyncExternalStore(services.store.subscribe, services.store.getDoc, services.store.getDoc);
   const playMode = useSyncExternalStore(services.playback.subscribe, services.playback.getSnapshot, services.playback.getSnapshot);
   const [selectedTrackId, setSelectedTrackId] = useState(doc.tracks[0]?.id ?? "");
@@ -246,6 +247,7 @@ export function App({ services }: { services: Services }) {
           onToggleDiagnostics={() => setDiagnosticsOpen((open) => !open)}
           onSetBottomPanel={setBottomPanelTab}
           onToggleHelp={() => setHelpOpen((v) => !v)}
+          onOpenBrowser={onOpenBrowser}
         />
         <main className="workspace">
           <div className="workspace-main">
@@ -279,6 +281,7 @@ export function App({ services }: { services: Services }) {
         </footer>
         <CommandToast />
         <HelpOverlay open={helpOpen} onClose={() => setHelpOpen(false)} />
+        <OnboardingHint />
       </div>
     </ServicesContext.Provider>
   );

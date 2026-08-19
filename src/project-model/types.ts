@@ -76,6 +76,8 @@ export interface InstrumentTrack {
   solo: boolean;
   sampleId: string | null;
   params: Record<string, number>;
+  /** Id of the last applied preset (factory or user). Dangling/absent = "Custom". */
+  presetId?: string | null;
   effects: EffectInstance[];
   sends: Record<ID, number>;
 }

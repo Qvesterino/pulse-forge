@@ -17,6 +17,11 @@ npm run build        # production build
 
 ## What works (verified)
 
+- **Project browser** — the app always boots into a project browser: a one-click "Continue last project" card, the project list (open / duplicate / inline rename / delete with confirm, sorted by last update), and a template grid for new projects. Everything is persisted in IndexedDB; new projects are saved the moment they are created.
+- **Templates (6)** — House (starter groove), Techno (driving kick + rumble bass, two loop variations), Trap (half-time snare, rolling hats, long-decay 808 + sparse lead), Ambient (evolving texture pads + soft analog chords, no drums in your way), Scene Score (arrangement-first: INTRO/BUILD/DROP/BREAK/OUTRO scenes pre-placed on a 24-bar timeline) and Empty. Every template is schema-valid by construction and renders audio (verified in real Chromium).
+- **Preset system** — 28 factory presets across all five instruments, tagged by genre (House/Techno/Trap/Ambient/Score) and character; preset browser in the Inspector with genre filter chips, search, one-click apply (single undo step) and "save as user preset" (persisted to IndexedDB, deletable).
+- **Autosave & recovery state** — debounced autosave (800 ms) with a live status indicator (`SAVED hh:mm` / `UNSAVED` / `SAVING…` / `SAVE ERROR — RETRY`, click to retry), flush on tab-hide and page close, and "saved X ago" freshness on every project card.
+- **Onboarding** — three interactive hints that advance as you actually do things (press SPACE → edit a step → discover the panels), shown once per browser profile. First run highlights the House template so the first sound is under a minute away.
 - **Project model** — versioned schema (`schemaVersion: 1`), pure serializable data, JSON round-trip tested. Loading auto-normalizes pattern rows (missing pads, wrong lengths).
 - **Command system** — all mutations flow through commands with full undo/redo (`Ctrl+Z` / `Ctrl+Y`).
 - **Transport** — musical time in ticks (PPQ 480), BPM 20–300, play/pause/stop, BPM change rebases the anchor during playback. Unit-tested.
@@ -49,7 +54,7 @@ npm run build        # production build
   - **808 Synth** — sine body with pitch-drop envelope, decay, transient click, drive, tone; monophonic (retriggers cleanly).
 - **Piano roll** — per-instrument-track editor in the sequencer: click to add notes, drag to move, drag right edge to resize, right-click or `Delete` to remove; playable keyboard column (click keys to audition); playhead column; pitch range C1–C6.
 - **Event-window scheduler** — the scheduler now plans a lookahead window in tick space and schedules both drum steps and arbitrary note events, enabling future microtiming/swing/ratchets without step-grid coupling.
-- **Default project ships a bass line** — new projects include an 808 track with a playable bass pattern so the first play is already a beat with sub.
+- **House template ships a bass line** — the House starter project includes an 808 track with a playable bass pattern so the first play is already a beat with sub.
 - **Scenes** — named launches referencing patterns (no data duplication). Click a scene chip to launch (sets the active pattern); scenes survive pattern edits by reference. Create/rename/delete from the `ARR` panel.
 - **Arrangement + song mode** — linear timeline of clips (scene + start bar + length). `PATTERN/SONG` toggle in the transport: song mode plays the arrangement, switching patterns at clip boundaries, looping short patterns inside longer clips and staying silent in gaps. Timeline UI: click to place, drag to move, drag right edge to resize, right-click to delete; overlap-safe with undo.
 - **Automation** — project lanes targeting track volume/pan (exact audio-rate ramps), effect params and instrument params (window-resolution). Point editor in the `MOD` panel: click to add, drag to move, right-click to delete; linear interpolation; loops in pattern space. Resets on stop.
@@ -58,9 +63,9 @@ npm run build        # production build
 - **Modulation routing in engine** — each track chain ends with dedicated automation/macro gain+pan stages, so mute/solo, manual volume, automation, LFO and macros never fight over the same AudioParam.
 - **Factory sound bank** — 20 procedurally synthesized sounds (16 drums + 4 tonal: pluck/stab/keys/bell), seeded, deterministic, license-clean, rendered via `OfflineAudioContext` at startup.
 - **Audio engine** — per-voice gain/pan/pitch, choke groups, voice cleanup, panic (guaranteed stop), track chains with smoothing.
-- **Persistence** — IndexedDB, debounced autosave (800 ms), manual `Ctrl+S`, reload restores the exact project (incl. after refresh).
+- **Persistence** — IndexedDB multi-project store (projects + user presets), debounced autosave (800 ms), manual `Ctrl+S`, reload restores the exact project (incl. after refresh); the browser lists every saved project with freshness and one-click resume.
 - **Diagnostics panel** — context state, sample rate, voices, scheduled events, scheduler state, track/pattern counts, save status (toggle `DIAG` in the top bar).
-- **Starter groove** — a new project opens with a house groove (4-on-the-floor kick, clap on 2/4, offbeat hats) so the first play already sounds musical.
+- **Starter groove** — the House template opens with a house groove (4-on-the-floor kick, clap on 2/4, offbeat hats) so the first play already sounds musical.
 
 ## Not implemented yet (planned, in build order)
 

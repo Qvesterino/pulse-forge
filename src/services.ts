@@ -3,13 +3,26 @@ import { Scheduler } from "./scheduler/Scheduler";
 import { Transport } from "./transport/Transport";
 import { ProjectStore } from "./store/ProjectStore";
 import { ProjectRepository } from "./persistence/ProjectRepository";
+import { PresetRepository } from "./persistence/PresetRepository";
 import { generateFactoryBank } from "./sample-library/factory";
 import type { SampleBank } from "./sample-library/factory";
-import { createDefaultProject, migrateProject, validateProjectShape } from "./project-model/schema";
-import { PPQ } from "./project-model/types";
 import type { PlayMode, ProjectDocument } from "./project-model/types";
+import { PPQ } from "./project-model/types";
+
+/**
+ * Long-lived services shared across projects: the audio engine (one shared
+ * AudioContext — no re-unlock needed when switching projects), the factory
+ * sample bank, and persistence repositories.
+ */
+export interface CoreServices {
+  engine: AudioEngine;
+  bank: SampleBank;
+  repo: ProjectRepository;
+  presets: PresetRepository;
+}
 
 export interface Services {
+  core: CoreServices;
   store: ProjectStore;
   engine: AudioEngine;
   transport: Transport;
@@ -18,6 +31,8 @@ export interface Services {
   bank: SampleBank;
   playback: PlaybackController;
   flushSave(): Promise<void>;
+  /** Stop playback, flush autosave and detach page listeners. */
+  closeProject(): Promise<void>;
   getDiagnostics(): Record<string, string | number | boolean>;
 }
 
@@ -67,6 +82,7 @@ export class PlaybackController {
       this.engine.transportStarted(this.engine.currentTime, beatPhase);
       this.scheduler.start();
     }
+    this.notify();
   };
 
   stop = (): void => {
@@ -74,23 +90,24 @@ export class PlaybackController {
     this.engine.panic();
     this.engine.automationReset();
     this.transport.stop();
+    this.notify();
   };
 }
 
-export async function createServices(): Promise<Services> {
+export async function createCoreServices(): Promise<CoreServices> {
   const bank = await generateFactoryBank();
   const engine = new AudioEngine();
   engine.attachBank(bank);
+  return { engine, bank, repo: new ProjectRepository(), presets: new PresetRepository() };
+}
 
-  let initial: ProjectDocument | null = null;
-  try {
-    const repo = new ProjectRepository();
-    const loaded = await repo.loadMostRecent();
-    if (loaded && validateProjectShape(loaded)) initial = migrateProject(loaded);
-  } catch {
-    initial = null;
-  }
-  initial ??= createDefaultProject();
+/**
+ * Build per-project services around the shared core. The engine is reused
+ * across projects (its `setProject` diff handles full project swaps), so
+ * switching projects never re-creates the AudioContext.
+ */
+export function openProject(core: CoreServices, initial: ProjectDocument): Services {
+  const { engine, repo, bank } = core;
 
   const store = new ProjectStore(initial);
   const transport = new Transport({ now: () => engine.currentTime }, initial.bpm);
@@ -106,23 +123,33 @@ export async function createServices(): Promise<Services> {
     applyAutomation: (fromTick, toTick, relOf) => engine.applyAutomation(fromTick, toTick, relOf),
   });
   engine.setProject(store.doc);
+  transport.seek(0);
   const playback = new PlaybackController(engine, transport, scheduler, modeRef);
 
-  const repo = new ProjectRepository();
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
-  let saving = false;
+  let saving: Promise<void> | null = null;
 
-  const flushSave = async () => {
-    if (saving) return;
-    saving = true;
+  const doSave = async (): Promise<void> => {
     store.setSaveStatus("saving");
     try {
       await repo.save(store.doc);
       store.setSaveStatus("saved");
     } catch {
       store.setSaveStatus("error");
-    } finally {
-      saving = false;
+    }
+  };
+
+  const flushSave = async (): Promise<void> => {
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
+    }
+    if (saving) await saving;
+    if (store.saveStatus === "dirty" || store.saveStatus === "error") {
+      saving = doSave().finally(() => {
+        saving = null;
+      });
+      await saving;
     }
   };
 
@@ -132,6 +159,22 @@ export async function createServices(): Promise<Services> {
     store.setSaveStatus("dirty");
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = setTimeout(() => void flushSave(), 800);
+  };
+
+  const onVisibility = (): void => {
+    if (document.visibilityState === "hidden") void flushSave();
+  };
+  const onUnload = (): void => {
+    void flushSave();
+  };
+  document.addEventListener("visibilitychange", onVisibility);
+  window.addEventListener("beforeunload", onUnload);
+
+  const closeProject = async (): Promise<void> => {
+    playback.stop();
+    document.removeEventListener("visibilitychange", onVisibility);
+    window.removeEventListener("beforeunload", onUnload);
+    await flushSave();
   };
 
   const getDiagnostics = (): Record<string, string | number | boolean> => {
@@ -153,5 +196,5 @@ export async function createServices(): Promise<Services> {
     };
   };
 
-  return { store, engine, transport, scheduler, repo, bank, playback, flushSave, getDiagnostics };
+  return { core, store, engine, transport, scheduler, repo, bank, playback, flushSave, closeProject, getDiagnostics };
 }

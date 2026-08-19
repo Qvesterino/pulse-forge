@@ -4,7 +4,10 @@ import { generateFactoryBank } from "./sample-library/factory";
 import { renderProject } from "./rendering/renderer";
 import { buildStemProject, STEM_GROUPS } from "./rendering/stems";
 import { encodeWav } from "./rendering/wav";
-import { createDefaultProject } from "./project-model/schema";
+import { createDefaultProject, normalizeProject, validateProjectShape } from "./project-model/schema";
+import { TEMPLATES, createProjectFromTemplate } from "./project-model/templates";
+import { FACTORY_PRESETS } from "./presets/factory";
+import { applyInstrumentPreset } from "./commands/commands";
 import { PPQ } from "./project-model/types";
 import type { EffectType, InstrumentTrack } from "./project-model/types";
 
@@ -486,6 +489,56 @@ export async function runChecks(): Promise<CheckResult[]> {
     );
   } catch (error) {
     check("offline render encodes to a valid WAV file", false, String(error));
+  }
+
+  check("templates: six factory templates are registered", TEMPLATES.length === 6, TEMPLATES.map((t) => t.id).join(","));
+
+  for (const template of TEMPLATES) {
+    try {
+      const project = createProjectFromTemplate(template.id);
+      const valid = validateProjectShape(project) && normalizeProject(project) === project;
+      const buffer = await renderProject(project, bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0.2 });
+      const peak = peakOf(buffer.getChannelData(0));
+      // The Empty template is deliberately silent — it only has to be valid.
+      const audible = template.id === "empty" ? peak <= 4 : peak > 0.01 && peak <= 4;
+      check(
+        `template ${template.id}: valid project and renders audio`,
+        valid && audible,
+        `valid=${valid} peak=${peak.toFixed(3)}`,
+      );
+    } catch (error) {
+      check(`template ${template.id}: valid project and renders audio`, false, String(error));
+    }
+  }
+
+  try {
+    const sceneScore = createProjectFromTemplate("scene-score");
+    const songBuffer = await renderProject(sceneScore, bank, { mode: "song", sampleRate: SR, tailSeconds: 0.2 });
+    const patternBuffer = await renderProject(sceneScore, bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0.2 });
+    check(
+      "scene-score template: song arrangement renders longer than one pattern",
+      songBuffer.duration > patternBuffer.duration * 2 && peakOf(songBuffer.getChannelData(0)) > 0.01,
+      `song=${songBuffer.duration.toFixed(2)}s pattern=${patternBuffer.duration.toFixed(2)}s`,
+    );
+  } catch (error) {
+    check("scene-score template: song arrangement renders longer than one pattern", false, String(error));
+  }
+
+  check("presets: factory bank covers all five instruments", new Set(FACTORY_PRESETS.map((p) => p.instrument)).size === 5, `count=${FACTORY_PRESETS.length}`);
+
+  try {
+    const project = createProjectFromTemplate("house");
+    const bassTrack = project.tracks.find((t): t is InstrumentTrack => t.kind === "instrument" && t.instrument === "808");
+    const preset = FACTORY_PRESETS.find((p) => p.instrument === "808");
+    if (!bassTrack || !preset) throw new Error("808 track or preset missing");
+    const applied = applyInstrumentPreset(project, bassTrack.id, preset).execute(project);
+    const appliedTrack = applied.tracks.find((t) => t.id === bassTrack.id) as InstrumentTrack;
+    const presetApplied = appliedTrack.presetId === preset.id && appliedTrack.params.decay === preset.params.decay;
+    const buffer = await renderProject(applied, bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0.2 });
+    const peak = peakOf(buffer.getChannelData(0));
+    check("presets: apply command sticks and project still renders", presetApplied && peak > 0.01, `applied=${presetApplied} peak=${peak.toFixed(3)}`);
+  } catch (error) {
+    check("presets: apply command sticks and project still renders", false, String(error));
   }
 
   try {

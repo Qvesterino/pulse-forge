@@ -37,7 +37,7 @@ describe("ProjectStore — history shape", () => {
     expect(store.doc.bpm).toBe(130);
     expect(store.doc.name).toBe("Two");
     store.undo();
-    expect(store.doc.name).toBe("Untitled Beat");
+    expect(store.doc.name).toBe("House Beat");
     expect(store.doc.bpm).toBe(130);
     store.undo();
     expect(store.doc.bpm).toBe(124);
@@ -50,10 +50,10 @@ describe("ProjectStore — history shape", () => {
     store.undo();
     store.undo();
     expect(store.doc.bpm).toBe(124);
-    expect(store.doc.name).toBe("Untitled Beat");
+    expect(store.doc.name).toBe("House Beat");
     store.redo();
     expect(store.doc.bpm).toBe(130);
-    expect(store.doc.name).toBe("Untitled Beat");
+    expect(store.doc.name).toBe("House Beat");
     store.redo();
     expect(store.doc.name).toBe("Two");
   });

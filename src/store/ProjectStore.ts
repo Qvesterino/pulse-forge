@@ -10,6 +10,7 @@ export class ProjectStore {
   private undoStack: Command[] = [];
   private redoStack: Command[] = [];
   private saveStatus_: SaveStatus = "saved";
+  private lastSavedAt_: string | null = null;
   onDocChanged: ((doc: ProjectDocument) => void) | null = null;
 
   constructor(initial: ProjectDocument) {
@@ -36,8 +37,13 @@ export class ProjectStore {
     return this.saveStatus_;
   }
 
+  get lastSavedAt(): string | null {
+    return this.lastSavedAt_;
+  }
+
   setSaveStatus(status: SaveStatus): void {
     this.saveStatus_ = status;
+    if (status === "saved") this.lastSavedAt_ = new Date().toISOString();
     this.emit();
   }
 
@@ -49,6 +55,8 @@ export class ProjectStore {
   getDoc = (): ProjectDocument => this.doc_;
 
   getSaveStatus = (): SaveStatus => this.saveStatus_;
+
+  getLastSavedAt = (): string | null => this.lastSavedAt_;
 
   execute(command: Command): void {
     this.doc_ = command.execute(this.doc_);

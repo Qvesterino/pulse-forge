@@ -1,11 +1,18 @@
 import { useState } from "react";
-import { useCanRedo, useCanUndo, useDoc, useSaveStatus, useServices } from "./context";
+import { useCanRedo, useCanUndo, useDoc, useLastSavedAt, useSaveStatus, useServices } from "./context";
 import { useTransportPosition } from "./playhead";
 import { DragNumber } from "./controls";
 import { setBpm, setProjectName } from "../commands/commands";
 import { barAtTick, beatAtTick } from "../project-model/schema";
 import { STEP_TICKS } from "../project-model/types";
 import type { PlayMode } from "../project-model/types";
+
+function formatClock(iso: string | null): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (!Number.isFinite(date.getTime())) return "";
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
 
 export function TopBar({
   onToggleDiagnostics,
@@ -15,6 +22,7 @@ export function TopBar({
   onToggleHelp,
   playMode,
   onSetPlayMode,
+  onOpenBrowser,
 }: {
   onToggleDiagnostics: () => void;
   diagnosticsOpen: boolean;
@@ -23,10 +31,12 @@ export function TopBar({
   onToggleHelp: () => void;
   playMode: PlayMode;
   onSetPlayMode: (mode: PlayMode) => void;
+  onOpenBrowser: () => void;
 }) {
   const services = useServices();
   const doc = useDoc();
   const saveStatus = useSaveStatus();
+  const lastSavedAt = useLastSavedAt();
   const canUndo = useCanUndo();
   const canRedo = useCanRedo();
   const position = useTransportPosition(services.transport, doc);
@@ -67,6 +77,16 @@ export function TopBar({
         <span className="brand-mark">PF</span>
         <span className="brand-name">PULSE FORGE</span>
       </div>
+
+      <button
+        type="button"
+        className="btn btn-ghost btn-projects"
+        onClick={onOpenBrowser}
+        title="Back to project browser"
+        aria-label="Back to project browser"
+      >
+        PROJECTS
+      </button>
 
       <div className="transport-cluster">
         <button
@@ -179,11 +199,24 @@ export function TopBar({
       />
 
       <div className="topbar-right">
-        <span className={`save-status save-${saveStatus}`} title={`Save status: ${saveStatus}`}>
-          {saveStatus === "saved" && "SAVED"}
+        <span
+          className={`save-status save-${saveStatus}`}
+          title={
+            saveStatus === "saved"
+              ? `All changes saved${lastSavedAt ? ` at ${formatClock(lastSavedAt)}` : ""}. Autosave is on.`
+              : saveStatus === "dirty"
+                ? "Unsaved changes — autosave runs in a moment (Ctrl+S to save now)"
+                : saveStatus === "saving"
+                  ? "Saving…"
+                  : "Save failed — click to retry"
+          }
+          role={saveStatus === "error" ? "button" : undefined}
+          onClick={saveStatus === "error" ? () => void services.flushSave() : undefined}
+        >
+          {saveStatus === "saved" && `SAVED${lastSavedAt ? ` ${formatClock(lastSavedAt)}` : ""}`}
           {saveStatus === "dirty" && "UNSAVED"}
           {saveStatus === "saving" && "SAVING…"}
-          {saveStatus === "error" && "SAVE ERROR"}
+          {saveStatus === "error" && "SAVE ERROR — RETRY"}
         </span>
         <button
           type="button"

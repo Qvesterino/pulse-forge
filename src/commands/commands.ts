@@ -32,6 +32,7 @@ import {
 import type { Pattern } from "../project-model/types";
 import { EFFECT_DEFS, clampEffectParam, defaultParamsOf } from "../effects/registry";
 import { INSTRUMENT_DEFS, clampInstrumentParam, defaultInstrumentParams } from "../instruments/registry";
+import type { InstrumentPreset } from "../presets/types";
 import { clamp, uid } from "../shared/ids";
 
 function snapshot(type: string, label: string, prev: ProjectDocument, next: ProjectDocument): Command {
@@ -424,6 +425,38 @@ export function setInstrumentSample(doc: ProjectDocument, trackId: string, asset
     label: `Set sample`,
     execute: (d) => apply(d, assetId),
     undo: (d) => apply(d, prev),
+  };
+}
+
+/**
+ * Apply an instrument preset as a single undoable step: replaces the track's
+ * parameters (clamped to the instrument's ranges), sampler sample, and records
+ * the preset id. Params not present in the preset keep their current value.
+ */
+export function applyInstrumentPreset(doc: ProjectDocument, trackId: string, preset: InstrumentPreset): Command {
+  const track = doc.tracks.find((t): t is InstrumentTrack => t.kind === "instrument" && t.id === trackId);
+  if (!track) throw new Error(`Instrument track ${trackId} not found`);
+  const prevParams = { ...track.params };
+  const prevSample = track.sampleId;
+  const prevPresetId = track.presetId ?? null;
+
+  const nextParams: Record<string, number> = { ...track.params };
+  for (const [key, value] of Object.entries(preset.params)) {
+    nextParams[key] = clampInstrumentParam(track.instrument, key, value);
+  }
+  const nextSample = preset.sampleId !== undefined ? preset.sampleId : track.sampleId;
+
+  const apply = (d: ProjectDocument, params: Record<string, number>, sampleId: string | null, presetId: string | null): ProjectDocument => ({
+    ...d,
+    tracks: d.tracks.map((t) =>
+      t.kind === "instrument" && t.id === trackId ? { ...t, params, sampleId, presetId } : t,
+    ),
+  });
+  return {
+    type: "applyInstrumentPreset",
+    label: `Apply preset "${preset.name}"`,
+    execute: (d) => apply(d, nextParams, nextSample, preset.id),
+    undo: (d) => apply(d, prevParams, prevSample, prevPresetId),
   };
 }
 

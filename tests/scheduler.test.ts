@@ -101,6 +101,7 @@ function makeHarness(doc: ProjectDocument, mode: "pattern" | "song" = "pattern")
 describe("scheduler", () => {
   it("schedules the starter groove ahead of the playhead", () => {
     const doc = createDefaultProject();
+    const kickPadId = getDrumTrack(doc).pads[0].id;
     const { events, transport, scheduler, advance } = makeHarness(doc);
     transport.play(0);
     scheduler.start();
@@ -108,7 +109,7 @@ describe("scheduler", () => {
       advance(0.025);
       scheduler["tick"]();
     }
-    const kickEvents = events.filter((e) => e.padId === "pad-01");
+    const kickEvents = events.filter((e) => e.padId === kickPadId);
     expect(kickEvents.length).toBeGreaterThanOrEqual(2);
     for (const event of events) {
       expect(event.when).toBeGreaterThanOrEqual(10);
@@ -118,6 +119,7 @@ describe("scheduler", () => {
 
   it("wraps around the pattern boundary without losing the downbeat", () => {
     const doc = createDefaultProject();
+    const kickPadId = getDrumTrack(doc).pads[0].id;
     const { events, transport, scheduler, advance } = makeHarness(doc);
     transport.play(0);
     scheduler.start();
@@ -125,7 +127,7 @@ describe("scheduler", () => {
       advance(0.025);
       scheduler["tick"]();
     }
-    const kickTimes = events.filter((e) => e.padId === "pad-01").map((e) => e.when);
+    const kickTimes = events.filter((e) => e.padId === kickPadId).map((e) => e.when);
     const beatSeconds = 60 / doc.bpm;
     for (let i = 1; i < kickTimes.length; i++) {
       expect(kickTimes[i] - kickTimes[i - 1]).toBeCloseTo(beatSeconds, 3);
@@ -135,6 +137,7 @@ describe("scheduler", () => {
 
   it("skips muted pads", () => {
     const doc = createDefaultProject();
+    const kickPadId = getDrumTrack(doc).pads[0].id;
     doc.tracks[0].kind === "drum" && (doc.tracks[0].pads[0].mute = true);
     const { events, transport, scheduler, advance } = makeHarness(doc);
     transport.play(0);
@@ -143,7 +146,7 @@ describe("scheduler", () => {
       advance(0.025);
       scheduler["tick"]();
     }
-    expect(events.find((e) => e.padId === "pad-01")).toBeUndefined();
+    expect(events.find((e) => e.padId === kickPadId)).toBeUndefined();
     scheduler.stop();
   });
 
@@ -165,6 +168,7 @@ describe("scheduler", () => {
 
   it("keeps step grid aligned to 16th notes", () => {
     const doc = createDefaultProject();
+    const kickPadId = getDrumTrack(doc).pads[0].id;
     const { events, transport, scheduler, advance } = makeHarness(doc);
     transport.play(0);
     scheduler.start();
@@ -173,7 +177,7 @@ describe("scheduler", () => {
       scheduler["tick"]();
     }
     const stepSeconds = (60 / doc.bpm) / 4;
-    const kickTimes = events.filter((e) => e.padId === "pad-01").map((e) => e.when);
+    const kickTimes = events.filter((e) => e.padId === kickPadId).map((e) => e.when);
     expect(kickTimes[0]).toBeCloseTo(10, 5);
     for (let i = 1; i < kickTimes.length; i++) {
       expect((kickTimes[i] - kickTimes[i - 1]) % stepSeconds).toBeCloseTo(0, 3);

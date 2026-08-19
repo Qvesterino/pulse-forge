@@ -5,6 +5,7 @@ import { FACTORY_ASSETS } from "../sample-library/manifest";
 import { INSTRUMENT_DEFS } from "../instruments/registry";
 import { pitchName } from "../project-model/types";
 import { Slider } from "./controls";
+import { PresetBrowser } from "./PresetBrowser";
 
 const TONAL_ASSETS = FACTORY_ASSETS.filter((a) => a.category === "Tonal");
 
@@ -41,6 +42,8 @@ export function Inspector({ track, selectedPadId }: { track: Track; selectedPadI
     return (
       <aside className="inspector" aria-label="Inspector">
         <h2 className="panel-title">{def.name.toUpperCase()} — {track.name}</h2>
+
+        <PresetBrowser track={track} />
 
         {track.instrument === "sampler" && (
           <label className="field">

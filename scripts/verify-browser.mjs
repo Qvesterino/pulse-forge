@@ -47,6 +47,10 @@ try {
   appPage.on("pageerror", (err) => appErrors.push(String(err)));
   await appPage.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded" });
   try {
+    // New boot flow: the app always starts in the project browser.
+    await appPage.waitForSelector(".project-browser", { timeout: 15000 });
+    // Create a project from the House template — one click from browser to sound.
+    await appPage.locator('.pb-template:has-text("HOUSE")').first().click();
     await appPage.waitForSelector(".topbar", { timeout: 15000 });
     await appPage.waitForSelector(".sequencer", { timeout: 15000 });
     const panels = ["MIX", "FX", "ARR", "MOD", "EXPORT"];
@@ -57,10 +61,14 @@ try {
       await btn.click();
       await appPage.waitForTimeout(100);
     }
+    // Return to the browser — the freshly created project must be listed.
+    await appPage.locator('.topbar button:has-text("PROJECTS")').first().click();
+    await appPage.waitForSelector(".project-browser", { timeout: 15000 });
+    await appPage.waitForSelector(".pb-row", { timeout: 15000 });
     const fatal = appErrors.filter((e) => !/AudioContext|autoplay|user gesture/i.test(e));
     if (fatal.length === 0) {
       appBootOk = true;
-      console.log("[PASS] app boots and all bottom panels mount without console errors");
+      console.log("[PASS] app boots into browser, opens a template, panels mount, project listed on return");
     } else {
       console.log("[FAIL] app boot — console errors:", fatal.slice(0, 5));
     }

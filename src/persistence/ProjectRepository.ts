@@ -1,38 +1,28 @@
 import type { ProjectDocument } from "../project-model/types";
 import { migrateProject, validateProjectShape } from "../project-model/schema";
+import { uid } from "../shared/ids";
+import { STORE_META, STORE_PROJECTS, openDb, tx } from "./db";
 
-const DB_NAME = "pulse-forge";
-const DB_VERSION = 1;
-const STORE_PROJECTS = "projects";
-const STORE_META = "meta";
 const KEY_RECENT = "recentProjectId";
-
-function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains(STORE_PROJECTS)) db.createObjectStore(STORE_PROJECTS, { keyPath: "id" });
-      if (!db.objectStoreNames.contains(STORE_META)) db.createObjectStore(STORE_META);
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
-
-function tx<T>(db: IDBDatabase, store: string, mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(store, mode);
-    const request = run(transaction.objectStore(store));
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
 
 export interface SavedProjectMeta {
   id: string;
   name: string;
+  bpm: number;
+  trackCount: number;
+  createdAt: string;
   updatedAt: string;
+}
+
+function metaOf(doc: ProjectDocument): SavedProjectMeta {
+  return {
+    id: doc.id,
+    name: doc.name,
+    bpm: doc.bpm,
+    trackCount: doc.tracks.length,
+    createdAt: doc.createdAt,
+    updatedAt: doc.updatedAt,
+  };
 }
 
 export class ProjectRepository {
@@ -55,6 +45,56 @@ export class ProjectRepository {
     const result = await tx<ProjectDocument | undefined>(db, STORE_PROJECTS, "readonly", (store) => store.get(id));
     if (!result || !validateProjectShape(result)) return null;
     return migrateProject(result);
+  }
+
+  /** All saved projects as lightweight metadata, most recently updated first. */
+  async listAll(): Promise<SavedProjectMeta[]> {
+    const db = await this.db();
+    const all = await tx<ProjectDocument[]>(db, STORE_PROJECTS, "readonly", (store) => store.getAll());
+    return all
+      .filter(validateProjectShape)
+      .map((doc) => migrateProject(doc))
+      .map(metaOf)
+      .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+  }
+
+  async delete(id: string): Promise<void> {
+    const db = await this.db();
+    await tx(db, STORE_PROJECTS, "readwrite", (store) => store.delete(id) as unknown as IDBRequest<undefined>);
+    const recentId = await tx<string | undefined>(db, STORE_META, "readonly", (store) => store.get(KEY_RECENT));
+    if (recentId === id) {
+      await tx(db, STORE_META, "readwrite", (store) => store.delete(KEY_RECENT) as unknown as IDBRequest<undefined>);
+    }
+  }
+
+  /** Rename a saved project in place. Returns the updated document, or null if missing/invalid. */
+  async rename(id: string, name: string): Promise<ProjectDocument | null> {
+    const doc = await this.load(id);
+    if (!doc) return null;
+    const trimmed = name.trim();
+    const next = { ...doc, name: trimmed.length > 0 ? trimmed : doc.name };
+    await this.save(next);
+    return next;
+  }
+
+  /**
+   * Duplicate a saved project under a new id. The copy does not take over the
+   * "most recent" pointer — the original stays the quick-resume project.
+   */
+  async duplicate(id: string): Promise<ProjectDocument | null> {
+    const db = await this.db();
+    const doc = await this.load(id);
+    if (!doc) return null;
+    const now = new Date().toISOString();
+    const copy: ProjectDocument = {
+      ...doc,
+      id: uid("project"),
+      name: `${doc.name} (copy)`,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await tx(db, STORE_PROJECTS, "readwrite", (store) => store.put(copy) as IDBRequest<IDBValidKey>);
+    return copy;
   }
 
   async loadMostRecent(): Promise<ProjectDocument | null> {

@@ -1,0 +1,31 @@
+export const DB_NAME = "pulse-forge";
+export const DB_VERSION = 2;
+export const STORE_PROJECTS = "projects";
+export const STORE_META = "meta";
+export const STORE_PRESETS = "presets";
+
+let dbPromise: Promise<IDBDatabase> | null = null;
+
+export function openDb(): Promise<IDBDatabase> {
+  dbPromise ??= new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(STORE_PROJECTS)) db.createObjectStore(STORE_PROJECTS, { keyPath: "id" });
+      if (!db.objectStoreNames.contains(STORE_META)) db.createObjectStore(STORE_META);
+      if (!db.objectStoreNames.contains(STORE_PRESETS)) db.createObjectStore(STORE_PRESETS, { keyPath: "id" });
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  return dbPromise;
+}
+
+export function tx<T>(db: IDBDatabase, store: string, mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(store, mode);
+    const request = run(transaction.objectStore(store));
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}

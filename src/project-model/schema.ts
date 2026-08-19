@@ -2,6 +2,7 @@ import type { DrumPad, DrumTrack, EffectInstance, InstrumentKind, InstrumentTrac
 import { PPQ, STEPS_PER_PATTERN } from "./types";
 import { uid } from "../shared/ids";
 import { defaultInstrumentParams } from "../instruments/registry";
+import { createProjectFromTemplate } from "./templates";
 
 export const SCHEMA_VERSION = 1;
 /** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
@@ -145,73 +146,12 @@ export function patternLetter(index: number): string {
   return String.fromCharCode(65 + (index % 26));
 }
 
-function starterGroove(pattern: Pattern, pads: DrumPad[]): Pattern {
-  const rows = { ...pattern.rows };
-  const set = (padIndex: number, steps: [number, number][]) => {
-    const pad = pads[padIndex];
-    const row = [...rows[pad.id]];
-    for (const [step, velocity] of steps) row[step] = velocity;
-    rows[pad.id] = row;
-  };
-  set(0, [[0, 0.95], [4, 0.95], [8, 0.95], [12, 0.95]]);
-  set(6, [[4, 0.7], [12, 0.75]]);
-  set(8, [[2, 0.5], [6, 0.5], [10, 0.5], [14, 0.55]]);
-  set(10, [[14, 0.4]]);
-  return { ...pattern, rows };
-}
-
+/**
+ * The default project is the House template — a starter groove that already
+ * sounds musical on first play.
+ */
 export function createDefaultProject(): ProjectDocument {
-  const track: DrumTrack = {
-    id: uid("track"),
-    kind: "drum",
-    name: "Drums",
-    gain: 0.9,
-    pan: 0,
-    mute: false,
-    solo: false,
-    pads: makeKit(),
-    effects: [],
-    sends: {},
-  };
-  const bass = createInstrumentTrackModel("808", 1);
-  const pattern = starterGroove(
-    {
-      id: uid("pattern"),
-      name: "Pattern A",
-      stepCount: STEPS_PER_PATTERN,
-      rows: emptyRows(track.pads.map((p) => p.id), STEPS_PER_PATTERN),
-      notes: {
-        [bass.id]: [
-          { id: uid("note"), pitch: 28, start: 0, duration: PPQ / 2, velocity: 0.9 },
-          { id: uid("note"), pitch: 28, start: 3 * (PPQ / 4), duration: PPQ / 2, velocity: 0.7 },
-          { id: uid("note"), pitch: 31, start: 2 * PPQ, duration: PPQ / 2, velocity: 0.9 },
-          { id: uid("note"), pitch: 28, start: 3 * PPQ, duration: PPQ / 2, velocity: 0.8 },
-        ],
-      },
-    },
-    track.pads,
-  );
-  const now = new Date().toISOString();
-  const scene: Scene = { id: uid("scene"), name: "Groove", patternId: pattern.id };
-  return {
-    schemaVersion: SCHEMA_VERSION,
-    id: uid("project"),
-    name: "Untitled Beat",
-    bpm: 124,
-    timeSignature: { numerator: 4, denominator: 4 },
-    tracks: [track, bass],
-    patterns: [pattern],
-    activePatternId: pattern.id,
-    scenes: [scene],
-    arrangement: { clips: [{ id: uid("clip"), sceneId: scene.id, startBar: 0, lengthBars: 4 }] },
-    automation: [],
-    lfos: [],
-    macros: defaultMacros(),
-    returns: createDefaultReturns(),
-    master: defaultMasterConfig(),
-    createdAt: now,
-    updatedAt: now,
-  };
+  return createProjectFromTemplate("house");
 }
 
 export function defaultMacros(): Macro[] {
@@ -305,7 +245,7 @@ export function normalizeProject(doc: ProjectDocument): ProjectDocument {
       }
       return t;
     }
-    // instrument: merge params with defaults only when keys are missing or values differ
+    // instrument: merge params with defaults only when keys are missing
     const defaults = defaultInstrumentParams(track.instrument);
     let t: InstrumentTrack = track;
     let paramsChanged = false;
@@ -315,8 +255,7 @@ export function normalizeProject(doc: ProjectDocument): ProjectDocument {
       const v = paramsRecord[k];
       if (v === undefined) {
         paramsChanged = true;
-      } else if (v !== defaults[k]) {
-        paramsChanged = true;
+      } else {
         merged[k] = v;
       }
     }
