@@ -29,6 +29,11 @@ export class ProjectStore {
     return this.redoStack.length > 0;
   }
 
+  /** Number of commands currently on the undo stack (used by the toast). */
+  get undoStackLength(): number {
+    return this.undoStack.length;
+  }
+
   get lastCommandLabel(): string | null {
     return this.undoStack.length > 0 ? this.undoStack[this.undoStack.length - 1].label : null;
   }

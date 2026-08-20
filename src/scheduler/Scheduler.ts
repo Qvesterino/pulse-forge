@@ -26,8 +26,18 @@ export class Scheduler {
   private stopped = true;
   private pendingLaunch: { patternId: string; atTick: number } | null = null;
   stats = { scheduledEvents: 0, lastHorizonTick: 0, windows: 0 };
+  private listeners = new Set<() => void>();
 
   constructor(private deps: SchedulerDeps) {}
+
+  subscribe = (listener: () => void): (() => void) => {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  };
+
+  private notify(): void {
+    for (const listener of this.listeners) listener();
+  }
 
   get isRunning(): boolean {
     return !this.stopped;
@@ -57,6 +67,7 @@ export class Scheduler {
     if (this.pendingLaunch) {
       this.deps.applyPatternLaunch(this.pendingLaunch.patternId);
       this.pendingLaunch = null;
+      this.notify();
     }
     this.stopped = true;
   }
@@ -70,10 +81,14 @@ export class Scheduler {
   /** Queue a pattern switch at an absolute tick (next bar boundary for scene launches). */
   queuePatternLaunch(patternId: string, atTick: number): void {
     this.pendingLaunch = { patternId, atTick };
+    this.notify();
   }
 
   cancelPatternLaunch(): void {
-    this.pendingLaunch = null;
+    if (this.pendingLaunch) {
+      this.pendingLaunch = null;
+      this.notify();
+    }
   }
 
   private tick(): void {
@@ -121,6 +136,7 @@ export class Scheduler {
       if (this.pendingLaunch && this.pendingLaunch.atTick <= windowStart) {
         this.deps.applyPatternLaunch(this.pendingLaunch.patternId);
         this.pendingLaunch = null;
+        this.notify();
         currentDoc = this.deps.getProject();
       }
       const pattern = getActivePattern(currentDoc);
@@ -137,9 +153,7 @@ export class Scheduler {
         // new pattern after — the switch lands exactly on the quantized tick.
         this.deps.applyPatternLaunch(pending.patternId);
         this.pendingLaunch = null;
-        const nextPattern = getActivePattern(this.deps.getProject());
-        const nextTicks = STEP_TICKS * nextPattern.stepCount;
-        this.schedulePatternWindow(nextPattern, 0, nextTicks, boundary, windowEnd);
+        this.notify();
       }
     } else {
       const clips = [...doc.arrangement.clips].sort((a, b) => a.startBar - b.startBar);

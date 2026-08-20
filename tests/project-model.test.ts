@@ -231,7 +231,12 @@ describe("normalizeProject — macros, returns, master", () => {
   it("creates default master when missing", () => {
     const doc = { ...createDefaultProject(), master: undefined } as unknown as ProjectDocument;
     const normalized = normalizeProject(doc);
-    expect(normalized.master).toEqual({ limiterEnabled: true, clipperEnabled: false });
+    expect(normalized.master).toEqual({
+      masterGain: 1,
+      ceilingDb: -1,
+      limiterEnabled: true,
+      clipperEnabled: false,
+    });
   });
 });
 

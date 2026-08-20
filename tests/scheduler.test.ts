@@ -635,3 +635,37 @@ describe("scheduler — seek resync", () => {
     h.scheduler.stop();
   });
 });
+
+describe("scheduler — pending launch notifications", () => {
+  it("notifies subscribers when a pending launch is queued, fires, and clears", () => {
+    const base = createDefaultProject();
+    const first = base.patterns[0];
+    const second: Pattern = {
+      id: "pattern-silent-2",
+      name: "Silent",
+      stepCount: first.stepCount,
+      rows: Object.fromEntries(Object.keys(first.rows).map((padId) => [padId, new Array<number>(first.stepCount).fill(0)])),
+      notes: {},
+    };
+    const doc: ProjectDocument = { ...base, patterns: [first, second], activePatternId: first.id };
+
+    const h = makeHarness(doc, "pattern");
+    let notifies = 0;
+    const unsub = h.scheduler.subscribe(() => notifies++);
+    h.scheduler.queuePatternLaunch(second.id, BAR_TICKS);
+    expect(notifies).toBe(1);
+    expect(h.scheduler.pendingPatternId).toBe(second.id);
+
+    h.transport.play(0);
+    h.scheduler.start();
+    for (let i = 0; i < 120; i++) {
+      h.advance(0.025);
+      h.scheduler["tick"]();
+      if (h.scheduler.pendingPatternId === null) break;
+    }
+    expect(notifies).toBeGreaterThanOrEqual(2);
+    expect(h.scheduler.pendingPatternId).toBeNull();
+    unsub();
+    h.scheduler.stop();
+  });
+});

@@ -53,6 +53,26 @@ try {
     await appPage.locator('.pb-template:has-text("HOUSE")').first().click();
     await appPage.waitForSelector(".topbar", { timeout: 15000 });
     await appPage.waitForSelector(".sequencer", { timeout: 15000 });
+    // MIX panel — the default is "mixer" open, so explicit toggle semantics:
+    // ensure it's open, verify the master meter, toggle LIMIT/CLIP, then close.
+    {
+      const mixBtn = appPage.locator('.topbar button:has-text("MIX")').first();
+      const mixOpen = await mixBtn.evaluate((el) => el.getAttribute("aria-pressed"));
+      if (mixOpen !== "true") await mixBtn.click();
+      await appPage.waitForSelector(".master-meter", { timeout: 5000 });
+      await appPage.waitForSelector(".master-headroom", { timeout: 5000 });
+      const limit = appPage.locator('.master-toggles button:has-text("LIMIT")').first();
+      const clip = appPage.locator('.master-toggles button:has-text("CLIP")').first();
+      const beforeLimit = await limit.getAttribute("aria-pressed");
+      await limit.click();
+      await appPage.waitForTimeout(120);
+      const afterLimit = await limit.getAttribute("aria-pressed");
+      if (beforeLimit === afterLimit) throw new Error("LIMIT toggle did not change aria-pressed");
+      await clip.click();
+      await appPage.waitForTimeout(120);
+      await limit.click();
+      await clip.click();
+    }
     const panels = ["MIX", "FX", "ARR", "MOD", "EXPORT"];
     for (const label of panels) {
       const btn = appPage.locator(`.topbar button:has-text("${label}")`).first();

@@ -111,7 +111,19 @@ export function createDefaultReturns(): ReturnTrack[] {
 }
 
 export function defaultMasterConfig(): MasterConfig {
-  return { limiterEnabled: true, clipperEnabled: false };
+  return { masterGain: 1, ceilingDb: -1, limiterEnabled: true, clipperEnabled: false };
+}
+
+/** Clamp a dB value to the master ceiling range (-12..0 dBFS). */
+export function clampCeilingDb(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return -1;
+  return Math.min(0, Math.max(-12, value));
+}
+
+/** Clamp a master gain to 0..2 (≈ -∞..+6 dB). */
+export function clampMasterGain(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return 1;
+  return Math.min(2, Math.max(0, value));
 }
 
 export function drumTracksOf(doc: ProjectDocument): DrumTrack[] {
@@ -364,6 +376,23 @@ export function normalizeProject(doc: ProjectDocument): ProjectDocument {
   if (!Array.isArray(next.macros) || next.macros.length === 0) {
     next = { ...next, macros: defaultMacros() };
     changed = true;
+  }
+  // master — clamp gain + ceiling; backfill missing fields from defaults
+  if (isObject(next.master)) {
+    const m = next.master as Record<string, unknown>;
+    const dg = clampMasterGain(m.masterGain);
+    const dc = clampCeilingDb(m.ceilingDb);
+    const dl = typeof m.limiterEnabled === "boolean" ? m.limiterEnabled : true;
+    const dcl = typeof m.clipperEnabled === "boolean" ? m.clipperEnabled : false;
+    if (
+      dg !== m.masterGain ||
+      dc !== m.ceilingDb ||
+      dl !== m.limiterEnabled ||
+      dcl !== m.clipperEnabled
+    ) {
+      next = { ...next, master: { masterGain: dg, ceilingDb: dc, limiterEnabled: dl, clipperEnabled: dcl } };
+      changed = true;
+    }
   }
   // returns
   if (!Array.isArray(next.returns)) {

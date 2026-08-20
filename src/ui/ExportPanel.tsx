@@ -5,8 +5,13 @@ import { buildStemProject, nonEmptyStemGroups } from "../rendering/stems";
 import { downloadWav, encodeWav, sanitizeFilename } from "../rendering/wav";
 import type { WavBitDepth } from "../rendering/wav";
 import type { PlayMode } from "../project-model/types";
+import { summarizeBuffer, type BufferSummary } from "../audio-engine/metering";
 
-type Status = { kind: "idle" } | { kind: "busy"; label: string } | { kind: "done"; label: string } | { kind: "error"; label: string };
+type Status =
+  | { kind: "idle" }
+  | { kind: "busy"; label: string }
+  | { kind: "done"; label: string; summary: BufferSummary }
+  | { kind: "error"; label: string };
 
 export function ExportPanel() {
   const services = useServices();
@@ -24,8 +29,13 @@ export function ExportPanel() {
     setStatus({ kind: "busy", label: "Rendering master…" });
     try {
       const buffer = await renderProject(doc, services.bank, { mode, sampleRate });
+      const summary = summarizeBuffer(buffer);
       downloadWav(encodeWav(buffer, bitDepth), `${baseName}-master.wav`);
-      setStatus({ kind: "done", label: `Master exported (${(buffer.duration).toFixed(1)}s, ${sampleRate} Hz, ${bitDepth}-bit)` });
+      setStatus({
+        kind: "done",
+        label: `Master exported (${buffer.duration.toFixed(1)}s, ${sampleRate} Hz, ${bitDepth}-bit)`,
+        summary,
+      });
     } catch (error) {
       setStatus({ kind: "error", label: `Export failed: ${String(error)}` });
     }
@@ -33,14 +43,20 @@ export function ExportPanel() {
 
   const exportStems = async () => {
     try {
+      let lastSummary: BufferSummary | null = null;
       for (let i = 0; i < groups.length; i++) {
         const group = groups[i];
         setStatus({ kind: "busy", label: `Rendering stem ${i + 1}/${groups.length}: ${group.label}…` });
         const stemDoc = buildStemProject(doc, group.filter);
         const buffer = await renderProject(stemDoc, services.bank, { mode, sampleRate });
+        lastSummary = summarizeBuffer(buffer);
         downloadWav(encodeWav(buffer, bitDepth), `${baseName}-${group.id}.wav`);
       }
-      setStatus({ kind: "done", label: `${groups.length} stems exported (${groups.map((g) => g.label).join(", ")})` });
+      setStatus({
+        kind: "done",
+        label: `${groups.length} stems exported (${groups.map((g) => g.label).join(", ")})`,
+        summary: lastSummary ?? { peak: 0, peakDb: -120, truePeakDb: -120, rms: 0, rmsDb: -120, correlation: 1 },
+      });
     } catch (error) {
       setStatus({ kind: "error", label: `Stem export failed: ${String(error)}` });
     }
@@ -48,14 +64,20 @@ export function ExportPanel() {
 
   const exportTracks = async () => {
     try {
+      let lastSummary: BufferSummary | null = null;
       for (let i = 0; i < doc.tracks.length; i++) {
         const track = doc.tracks[i];
         setStatus({ kind: "busy", label: `Rendering track ${i + 1}/${doc.tracks.length}: ${track.name}…` });
         const trackDoc = buildStemProject(doc, (t) => t.id === track.id);
         const buffer = await renderProject(trackDoc, services.bank, { mode, sampleRate });
+        lastSummary = summarizeBuffer(buffer);
         downloadWav(encodeWav(buffer, bitDepth), `${baseName}-track-${sanitizeFilename(track.name)}.wav`);
       }
-      setStatus({ kind: "done", label: `${doc.tracks.length} track stems exported` });
+      setStatus({
+        kind: "done",
+        label: `${doc.tracks.length} track stems exported`,
+        summary: lastSummary ?? { peak: 0, peakDb: -120, truePeakDb: -120, rms: 0, rmsDb: -120, correlation: 1 },
+      });
     } catch (error) {
       setStatus({ kind: "error", label: `Track export failed: ${String(error)}` });
     }
@@ -108,6 +130,36 @@ export function ExportPanel() {
         {status.kind === "idle" && "Offline render uses the exact same engine, instruments and effects as playback — plus a 2 s tail for reverb/delay."}
         {status.kind !== "idle" && status.label}
       </div>
+      {status.kind === "done" && <ExportSummary summary={status.summary} />}
     </section>
+  );
+}
+
+function ExportSummary({ summary }: { summary: BufferSummary }) {
+  const corr = summary.correlation;
+  const corrLabel = corr > 0.5 ? "Mono OK" : corr < 0 ? "Phase" : "Wide";
+  const clipped = summary.peakDb > -0.3 || summary.truePeakDb > -0.3;
+  return (
+    <div className="export-summary" aria-label="Export summary">
+      <div className="export-summary-row">
+        <span className="export-summary-label">PEAK</span>
+        <span className="export-summary-value">{summary.peakDb.toFixed(1)} dB</span>
+      </div>
+      <div className="export-summary-row">
+        <span className="export-summary-label">TRUE PEAK</span>
+        <span className={`export-summary-value${clipped ? " export-summary-clipped" : ""}`}>
+          {summary.truePeakDb.toFixed(1)} dB
+          {clipped && " ⚠"}
+        </span>
+      </div>
+      <div className="export-summary-row">
+        <span className="export-summary-label">RMS</span>
+        <span className="export-summary-value">{summary.rmsDb.toFixed(1)} dB</span>
+      </div>
+      <div className="export-summary-row">
+        <span className="export-summary-label">×CORR</span>
+        <span className="export-summary-value">{corr.toFixed(2)} {corrLabel}</span>
+      </div>
+    </div>
   );
 }

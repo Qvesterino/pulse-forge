@@ -2646,3 +2646,252 @@ button {
 .preset-fav.active {
   color: #fb7185;
 }
+
+/* ---------- Master meter (stereo + RMS + correlation + headroom) ---------- */
+
+.master-strip {
+  border-left: 1px solid var(--accent);
+}
+
+.master-toggles {
+  display: flex;
+  gap: 4px;
+  padding: 2px 0 4px;
+}
+
+.master-toggles .btn {
+  flex: 1;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+}
+
+.master-meter {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  padding: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  margin-top: 6px;
+  min-height: 132px;
+  position: relative;
+}
+
+.master-channel {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: stretch;
+  min-height: 100%;
+}
+
+.master-channel-label {
+  font-family: var(--mono);
+  font-size: 8px;
+  color: var(--text-faint);
+  letter-spacing: 1px;
+}
+
+.master-channel-bar {
+  position: relative;
+  flex: 1;
+  background: var(--bg-panel);
+  border-radius: 2px;
+  overflow: hidden;
+  min-height: 90px;
+  border: 1px solid var(--border-soft);
+}
+
+.master-channel-rms {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(125, 211, 252, 0.45);
+  transition: height 0.04s linear;
+}
+
+.master-channel-peak {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(180deg, #4ade80 0%, #4ade80 70%, #fbbf24 85%, #f87171 100%);
+  opacity: 0.85;
+  transition: height 0.04s linear;
+}
+
+.master-channel-hold {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: #fffbe6;
+  opacity: 0.9;
+  transition: bottom 0.18s ease-out;
+}
+
+.master-channel-tick {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.master-channel-tick-warn {
+  background: rgba(248, 113, 113, 0.55);
+}
+
+.master-channel-tick-dim {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.master-channel-peak-readout {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-dim);
+  text-align: right;
+}
+
+.master-correlation,
+.master-headroom {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: stretch;
+}
+
+.master-correlation-bar {
+  position: relative;
+  flex: 1;
+  background: var(--bg-panel);
+  border-radius: 2px;
+  border: 1px solid var(--border-soft);
+  min-height: 90px;
+  overflow: hidden;
+}
+
+.master-correlation-track {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(248, 113, 113, 0.18) 0%, rgba(125, 211, 252, 0.18) 50%, rgba(74, 222, 128, 0.18) 100%);
+}
+
+.master-correlation-center {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.master-correlation-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  transition: width 0.05s linear;
+}
+
+.master-correlation-label {
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 1px;
+  text-align: center;
+}
+
+.master-headroom-strip {
+  position: relative;
+  flex: 1;
+  background: var(--bg-panel);
+  border-radius: 2px;
+  border: 1px solid var(--border-soft);
+  min-height: 90px;
+  overflow: hidden;
+}
+
+.master-headroom-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  opacity: 0.35;
+  transition: height 0.1s linear;
+}
+
+.master-headroom-ceiling {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent);
+  opacity: 0.9;
+  transition: bottom 0.1s ease-out;
+}
+
+.master-headroom-readout {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-dim);
+  text-align: right;
+}
+
+.master-clip-warning {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: #f87171;
+  color: #161616;
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  box-shadow: 0 0 0 2px var(--bg-panel);
+  animation: master-clip-pulse 0.4s ease-in-out infinite alternate;
+}
+
+@keyframes master-clip-pulse {
+  from { opacity: 0.7; }
+  to   { opacity: 1; }
+}
+
+/* ---------- Export master summary ---------- */
+
+.export-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  padding: 10px 12px;
+  margin-top: 10px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.export-summary-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.export-summary-label {
+  color: var(--text-faint);
+  letter-spacing: 1px;
+  font-size: 9px;
+}
+
+.export-summary-value {
+  color: var(--text);
+}
+
+.export-summary-clipped {
+  color: var(--stop);
+  font-weight: 700;
+}

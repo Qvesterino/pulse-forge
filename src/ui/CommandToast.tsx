@@ -13,15 +13,18 @@ export function CommandToast() {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    let lastSeen: string | null = null;
+    // Use the undo stack length as the dedupe key so consecutive identical
+    // commands (e.g. two "+1 step" presses) still trigger the toast.
+    let lastSeen = -1;
     const unsubscribe = services.store.subscribe(() => {
       const current = services.store.lastCommandLabel;
-      if (current && current !== lastSeen) {
-        lastSeen = current;
+      const count = services.store.undoStackLength;
+      if (current && count !== lastSeen) {
+        lastSeen = count;
         setLabel(current);
         setVisible(true);
       } else if (!current) {
-        lastSeen = null;
+        lastSeen = -1;
       }
     });
     return unsubscribe;

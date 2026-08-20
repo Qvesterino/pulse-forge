@@ -1,12 +1,19 @@
 import { useEffect, useRef, useState } from "react";
+import type { AudioEngine } from "../audio-engine/AudioEngine";
 
-export function Meter({ read }: { read: () => number }) {
+/**
+ * Mono peak meter for a track or return. Uses a ref-based `read` so the rAF
+ * loop is only started once per tracked id — the meter survives parent
+ * re-renders without tearing down its frame loop.
+ */
+export function Meter({ engine, kind, id }: { engine: AudioEngine; kind: "track" | "return"; id: string }) {
   const [level, setLevel] = useState(0);
   const smoothed = useRef(0);
 
   useEffect(() => {
     let raf = 0;
     let last = 0;
+    const read = () => (kind === "track" ? engine.getTrackLevel(id) : engine.getReturnLevel(id));
     const loop = (t: number) => {
       if (t - last >= 33) {
         last = t;
@@ -18,7 +25,7 @@ export function Meter({ read }: { read: () => number }) {
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [read]);
+  }, [engine, kind, id]);
 
   const color = level > 0.92 ? "#f87171" : level > 0.75 ? "#f59e0b" : "#4ade80";
   return (

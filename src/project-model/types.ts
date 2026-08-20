@@ -93,6 +93,10 @@ export interface ReturnTrack {
 }
 
 export interface MasterConfig {
+  /** Master input trim (0..2 → -∞..+6 dB). Pull this down before the limiter if the mix peaks. */
+  masterGain: number;
+  /** Limiter ceiling in dBFS (e.g. -1.0 = -1 dBFS). */
+  ceilingDb: number;
   limiterEnabled: boolean;
   clipperEnabled: boolean;
 }

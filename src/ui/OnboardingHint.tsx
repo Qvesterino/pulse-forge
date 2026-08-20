@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useServices } from "./context";
 
-const STORAGE_KEY = "***";
+const STORAGE_KEY = "pulse-forge.onboarding.done.v1";
 
 const STEPS = [
   "Press SPACE — this template already makes sound.",

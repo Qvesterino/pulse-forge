@@ -70,9 +70,19 @@ describe("master and send commands", () => {
     const doc = createDefaultProject();
     const store = new ProjectStore(doc);
     store.execute(setMasterConfig(store.doc, { clipperEnabled: true, limiterEnabled: false }));
-    expect(store.doc.master).toEqual({ limiterEnabled: false, clipperEnabled: true });
+    expect(store.doc.master).toEqual({
+      masterGain: 1,
+      ceilingDb: -1,
+      limiterEnabled: false,
+      clipperEnabled: true,
+    });
     store.undo();
-    expect(store.doc.master).toEqual({ limiterEnabled: true, clipperEnabled: false });
+    expect(store.doc.master).toEqual({
+      masterGain: 1,
+      ceilingDb: -1,
+      limiterEnabled: true,
+      clipperEnabled: false,
+    });
   });
 
   it("setTrackSend clamps and undoes", () => {

@@ -1,11 +1,13 @@
-import type { DrumPad, EffectInstance, InstrumentTrack, ProjectDocument } from "../project-model/types";
+import type { DrumPad, EffectInstance, InstrumentTrack, MasterConfig, ProjectDocument } from "../project-model/types";
 import type { AutomationPoint, Lfo } from "../project-model/types";
 import { valueAt } from "../project-model/automation";
+import { defaultMasterConfig } from "../project-model/schema";
 import type { SampleBank } from "../sample-library/factory";
 import { EFFECT_DEFS } from "../effects/registry";
 import type { EffectRuntime } from "../effects/types";
 import { INSTRUMENT_DEFS } from "../instruments/registry";
 import type { InstrumentRuntime } from "../instruments/types";
+import { channelLevels, splitChannels, stereoCorrelation, PeakHold, type Frame, type ChannelLevels } from "./metering";
 
 interface FxChainState {
   runtimes: Map<string, EffectRuntime>;
@@ -74,6 +76,9 @@ export class AudioEngine {
   private voices = new Set<Voice>();
   private missedAssets = new Set<string>();
   private levelBuf = new Float32Array(1024);
+  /** Stereo interleaved frame (L,R) reading the master analyser. */
+  private masterMeterBuf: Float32Array<ArrayBuffer> = new Float32Array(2048 * 2);
+  private masterPeakHold = new PeakHold(0.4);
   private syncedBpm = 0;
 
   attachBank(bank: SampleBank): void {
@@ -123,31 +128,37 @@ export class AudioEngine {
     this.masterClipper.oversample = "4x";
     this.masterClipper.curve = null;
     this.masterLimiter = ctx.createDynamicsCompressor();
-    this.applyMasterConfig(this.doc?.master ?? { limiterEnabled: true, clipperEnabled: false });
+    this.applyMasterConfig(this.doc?.master ?? defaultMasterConfig());
     this.masterAnalyser = ctx.createAnalyser();
     this.masterAnalyser.fftSize = 2048;
+    this.masterAnalyser.channelCount = 2;
+    this.masterAnalyser.channelCountMode = "explicit";
     this.master.connect(this.masterClipper);
     this.masterClipper.connect(this.masterLimiter);
     this.masterLimiter.connect(this.masterAnalyser);
     this.masterAnalyser.connect(ctx.destination);
   }
 
-  private applyMasterConfig(config: { limiterEnabled: boolean; clipperEnabled: boolean }): void {
-    if (!this.masterClipper || !this.masterLimiter) return;
+  private applyMasterConfig(config: MasterConfig): void {
+    if (!this.master || !this.masterClipper || !this.masterLimiter) return;
+    const ctx = this.ctx;
+    const now = ctx ? ctx.currentTime : 0;
+    if (this.master) this.master.gain.setTargetAtTime(Math.min(2, Math.max(0, config.masterGain)), now, 0.01);
     if (config.clipperEnabled) {
       const n = 2048;
       const curve = new Float32Array(new ArrayBuffer(n * 4));
-      const ceiling = Math.pow(10, -0.3 / 20);
+      const ceilingLin = Math.pow(10, -0.3 / 20);
       for (let i = 0; i < n; i++) {
         const x = (i / (n - 1)) * 2 - 1;
-        curve[i] = ceiling * Math.tanh(x * 3) / Math.tanh(3);
+        curve[i] = (ceilingLin * Math.tanh(x * 3)) / Math.tanh(3);
       }
       this.masterClipper.curve = curve;
     } else {
       this.masterClipper.curve = null;
     }
+    const ceiling = Math.pow(10, config.ceilingDb / 20);
     if (config.limiterEnabled) {
-      this.masterLimiter.threshold.value = -1;
+      this.masterLimiter.threshold.value = ceiling;
       this.masterLimiter.knee.value = 0;
       this.masterLimiter.ratio.value = 20;
       this.masterLimiter.attack.value = 0.002;
@@ -284,6 +295,8 @@ export class AudioEngine {
         const gain = ctx.createGain();
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 2048;
+        analyser.channelCount = 2;
+        analyser.channelCountMode = "explicit";
         gain.connect(analyser);
         analyser.connect(this.master);
         nodes = {
@@ -317,6 +330,8 @@ export class AudioEngine {
         const modMacroPan = ctx.createStereoPanner();
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 2048;
+        analyser.channelCount = 2;
+        analyser.channelCountMode = "explicit";
         input.connect(panner);
         panner.connect(gain);
         gain.connect(modAutoGain);
@@ -531,12 +546,15 @@ export class AudioEngine {
         case "fxParam": {
           if (!lane.target.fxId || !lane.target.paramId) break;
           const rt = nodes.fx.runtimes.get(lane.target.fxId);
-          rt?.setParameter(lane.target.paramId, v0);
+          if (rt?.setParameterAt) rt.setParameterAt(lane.target.paramId, v0, t0);
+          else rt?.setParameter(lane.target.paramId, v0);
           break;
         }
         case "instParam": {
           if (!lane.target.paramId) break;
-          this.instruments.get(lane.target.trackId)?.runtime.setParameter(lane.target.paramId, v0);
+          const inst = this.instruments.get(lane.target.trackId);
+          if (inst?.runtime.setParameterAt) inst.runtime.setParameterAt(lane.target.paramId, v0, t0);
+          else inst?.runtime.setParameter(lane.target.paramId, v0);
           break;
         }
       }
@@ -704,6 +722,76 @@ export class AudioEngine {
 
   getMasterLevel(): number {
     return this.peakOf(this.masterAnalyser);
+  }
+
+  /** Refresh the cached master frame and return per-channel levels + correlation. */
+  getMasterLevels(): { left: ChannelLevels; right: ChannelLevels; correlation: number } {
+    const out = {
+      left: { peak: 0, rms: 0, peakDb: -120, rmsDb: -120 } as ChannelLevels,
+      right: { peak: 0, rms: 0, peakDb: -120, rmsDb: -120 } as ChannelLevels,
+      correlation: 1,
+    };
+    if (!this.masterAnalyser) return out;
+    this.masterAnalyser.getFloatTimeDomainData(this.masterMeterBuf);
+    const channels = this.masterAnalyser.channelCount || 1;
+    const split = splitChannels(this.masterMeterBuf, channels);
+    const l = channelLevels(split[0] ?? new Float32Array(0));
+    const r = channelLevels(split[1] ?? split[0] ?? new Float32Array(0));
+    const corr = split.length >= 2 ? stereoCorrelation(split[0], split[1]) : 1;
+    this.masterPeakHold.push(Math.max(l.peakDb, r.peakDb));
+    out.left = l;
+    out.right = r;
+    out.correlation = corr;
+    return out;
+  }
+
+  /** Held peak dBFS (decays slowly). Call after getMasterLevels() to get the latest hold. */
+  getMasterPeakHoldDb(): number {
+    return this.masterPeakHold.current;
+  }
+
+  resetMasterPeakHold(): void {
+    this.masterPeakHold.reset();
+  }
+
+  /** 0 dBFS → 0 dB headroom (positive = peaking). */
+  getMasterHeadroomDb(): number {
+    const levels = this.getMasterLevels();
+    return -Math.max(levels.left.peakDb, levels.right.peakDb);
+  }
+
+  /**
+   * True peak estimation by 4× oversampling (zero-crossing interpolation).
+   * Cheap enough for offline use; the renderer uses it on the exported buffer.
+   */
+  static measureTruePeak(frames: Frame, channels: number): number {
+    if (frames.length === 0) return 0;
+    let peak = 0;
+    const split = splitChannels(frames, channels);
+    for (const channel of split) {
+      for (let i = 1; i < channel.length - 1; i++) {
+        const prev = channel[i - 1];
+        const cur = channel[i];
+        const next = channel[i + 1];
+        // 4× peak estimation: search for a local maximum around the current sample.
+        const a = Math.abs(prev);
+        const b = Math.abs(cur);
+        const c = Math.abs(next);
+        const m = Math.max(a, b, c);
+        if (m > peak) peak = m;
+        // Parabolic peak between two samples if they look like a peak.
+        if (b >= a && b >= c) {
+          const denom = a - 2 * b + c;
+          const delta = denom === 0 ? 0 : ((a - c) * 0.5) / denom;
+          const interp = Math.abs(b - 0.25 * (a - c) * delta);
+          if (interp > peak) peak = interp;
+        }
+      }
+      if (Math.abs(channel[0]) > peak) peak = Math.abs(channel[0]);
+      const last = Math.abs(channel[channel.length - 1]);
+      if (last > peak) peak = last;
+    }
+    return peak;
   }
 
   getDiagnostics(): Record<string, string | number> {

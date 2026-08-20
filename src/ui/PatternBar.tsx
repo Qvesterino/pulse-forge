@@ -25,7 +25,14 @@ export function PatternBar({ clip, onCopy }: { clip: PatternClipboard | null; on
   const active = doc.patterns.find((p) => p.id === doc.activePatternId)!;
   const groove = grooveOf(doc);
   const pendingPatternId = useSyncExternalStore(
-    services.playback.subscribe,
+    (cb) => {
+      const unsubPlayback = services.playback.subscribe(cb);
+      const unsubScheduler = services.scheduler.subscribe(cb);
+      return () => {
+        unsubPlayback();
+        unsubScheduler();
+      };
+    },
     () => services.scheduler.pendingPatternId ?? "",
     () => "",
   );

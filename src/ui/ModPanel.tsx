@@ -334,7 +334,11 @@ function PointEditor({
 }) {
   const services = useServices();
   const canvasRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{ index: number; mode: "move" } | null>(null);
+  // Drag state: index of the point being dragged plus its live position. We
+  // commit a single command on pointer-up so a drag doesn't pile up dozens
+  // of undo steps (or push older history off the 256-entry cap).
+  const dragRef = useRef<{ index: number; tick: number; value: number } | null>(null);
+  const [livePos, setLivePos] = useState<{ index: number; tick: number; value: number } | null>(null);
 
   const posFromEvent = (event: React.PointerEvent): { tick: number; value: number } => {
     const canvas = canvasRef.current;
@@ -367,7 +371,8 @@ function PointEditor({
     if (event.target !== canvasRef.current) return;
     const index = findPoint(event);
     if (index >= 0) {
-      dragRef.current = { index, mode: "move" };
+      dragRef.current = { index, tick: points[index].tick, value: points[index].value };
+      setLivePos({ index, tick: points[index].tick, value: points[index].value });
       event.currentTarget.setPointerCapture(event.pointerId);
     } else {
       const { tick, value } = posFromEvent(event);
@@ -379,12 +384,27 @@ function PointEditor({
     const drag = dragRef.current;
     if (!drag) return;
     const { tick, value } = posFromEvent(event);
-    services.store.execute(moveAutomationPoint(services.store.doc, laneId, drag.index, { tick, value: clamp(value, range.min, range.max) }));
+    const clampedValue = clamp(value, range.min, range.max);
+    drag.tick = tick;
+    drag.value = clampedValue;
+    setLivePos({ index: drag.index, tick, value: clampedValue });
   };
 
   const onCanvasPointerUp = () => {
+    const drag = dragRef.current;
     dragRef.current = null;
+    if (!drag) return;
+    const start = points[drag.index];
+    // Only commit if the user actually moved the point.
+    if (start && (start.tick !== drag.tick || start.value !== drag.value)) {
+      services.store.execute(moveAutomationPoint(services.store.doc, laneId, drag.index, { tick: drag.tick, value: drag.value }));
+    }
+    setLivePos(null);
   };
+
+  const renderPoints = livePos
+    ? points.map((p, i) => (i === livePos.index ? { tick: livePos.tick, value: livePos.value } : p))
+    : points;
 
   return (
     <div
@@ -407,12 +427,12 @@ function PointEditor({
         {Array.from({ length: Math.floor(patternTicks / STEP_TICKS / 4) + 1 }, (_, i) => (
           <line key={i} x1={(i * 4 * STEP_TICKS * 100) / patternTicks} y1="0" x2={(i * 4 * STEP_TICKS * 100) / patternTicks} y2="100" stroke="#2c313c" strokeWidth="0.4" />
         ))}
-        {points.length > 0 && (
+        {renderPoints.length > 0 && (
           <polyline
             fill="none"
             stroke="var(--accent)"
             strokeWidth="0.8"
-            points={points
+            points={renderPoints
               .map((p) => {
                 const x = (p.tick / patternTicks) * 100;
                 const y = 100 - ((p.value - range.min) / (range.max - range.min)) * 100;
@@ -422,7 +442,7 @@ function PointEditor({
           />
         )}
       </svg>
-      {points.map((p, i) => {
+      {renderPoints.map((p, i) => {
         const x = (p.tick / patternTicks) * 100;
         const y = 100 - ((p.value - range.min) / (range.max - range.min)) * 100;
         return (

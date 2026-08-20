@@ -4,6 +4,7 @@ import { deleteTrack, setMasterConfig, setReturnGain, setTrackParams, setTrackSe
 import type { Track } from "../project-model/types";
 import { Slider } from "./controls";
 import { Meter } from "./Meter";
+import { MasterMeter } from "./MasterMeter";
 import { trackBadge } from "./TrackTabs";
 
 export function Mixer() {
@@ -42,7 +43,7 @@ export function Mixer() {
                   ))}
                 </div>
               </div>
-              <Meter read={() => services.engine.getReturnLevel(ret.id)} />
+              <Meter engine={services.engine} kind="return" id={ret.id} />
             </div>
           </div>
         ))}
@@ -55,6 +56,12 @@ export function Mixer() {
 function MasterStrip() {
   const services = useServices();
   const doc = useDoc();
+  const limiterTitle =
+    "Master limiter — transparent brick-wall ceiling that prevents clipping above the ceiling (default −1 dBFS). " +
+    "Always safe to leave on.";
+  const clipperTitle =
+    "Master soft clipper — sat­urating curve above the ceiling, adds character and perceived loudness. " +
+    "Engage it for a coloured master, leave it off for a clean mastered feel.";
   return (
     <div className="channel-strip master-strip" aria-label="Master channel">
       <div className="channel-name">
@@ -62,24 +69,50 @@ function MasterStrip() {
       </div>
       <div className="channel-body">
         <div className="channel-controls">
-          <button
-            type="button"
-            className={`btn btn-small${doc.master.limiterEnabled ? " active-solo" : ""}`}
-            title="Master limiter (transparent safety ceiling)"
-            onClick={() => services.store.execute(setMasterConfig(doc, { limiterEnabled: !doc.master.limiterEnabled }))}
-          >
-            LIMIT
-          </button>
-          <button
-            type="button"
-            className={`btn btn-small${doc.master.clipperEnabled ? " active-solo" : ""}`}
-            title="Master soft clipper (character + loudness)"
-            onClick={() => services.store.execute(setMasterConfig(doc, { clipperEnabled: !doc.master.clipperEnabled }))}
-          >
-            CLIP
-          </button>
-          <Meter read={() => services.engine.getMasterLevel()} />
+          <Slider
+            compact
+            label="IN"
+            value={doc.master.masterGain}
+            min={0}
+            max={1.5}
+            defaultValue={1}
+            format={(v) => `${(20 * Math.log10(Math.max(v, 0.001))).toFixed(1)} dB`}
+            onCommit={(masterGain) => services.store.execute(setMasterConfig(doc, { masterGain }))}
+          />
+          <Slider
+            compact
+            label="CEIL"
+            value={doc.master.ceilingDb}
+            min={-12}
+            max={0}
+            defaultValue={-1}
+            format={(v) => `${v.toFixed(1)} dB`}
+            onCommit={(ceilingDb) => services.store.execute(setMasterConfig(doc, { ceilingDb }))}
+          />
+          <div className="master-toggles">
+            <button
+              type="button"
+              className={`btn btn-small${doc.master.limiterEnabled ? " active-solo" : ""}`}
+              title={limiterTitle}
+              aria-label="Master limiter"
+              aria-pressed={doc.master.limiterEnabled}
+              onClick={() => services.store.execute(setMasterConfig(doc, { limiterEnabled: !doc.master.limiterEnabled }))}
+            >
+              LIMIT
+            </button>
+            <button
+              type="button"
+              className={`btn btn-small${doc.master.clipperEnabled ? " active-solo" : ""}`}
+              title={clipperTitle}
+              aria-label="Master soft clipper"
+              aria-pressed={doc.master.clipperEnabled}
+              onClick={() => services.store.execute(setMasterConfig(doc, { clipperEnabled: !doc.master.clipperEnabled }))}
+            >
+              CLIP
+            </button>
+          </div>
         </div>
+        <MasterMeter />
       </div>
     </div>
   );
@@ -144,7 +177,7 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
             />
           ))}
         </div>
-        <Meter read={() => services.engine.getTrackLevel(track.id)} />
+        <Meter engine={services.engine} kind="track" id={track.id} />
       </div>
       <div className="channel-buttons">
         <button

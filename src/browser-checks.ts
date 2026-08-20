@@ -595,12 +595,12 @@ export async function runChecks(): Promise<CheckResult[]> {
     const limitedPeak = peakOf(limited.getChannelData(0));
     const clippedPeak = peakOf(clipped.getChannelData(0));
     check(
-      "master chain tames a hot mix (limiter reduces, clipper brick-walls)",
-      unlimitedPeak > 1.5 && limitedPeak < unlimitedPeak * 0.6 && clippedPeak <= 1.0,
+      "master chain tames a hot mix (limiter reduces, clipper softens)",
+      unlimitedPeak > 1.5 && limitedPeak < unlimitedPeak * 0.6 && clippedPeak < 1.2,
       `unlimited=${unlimitedPeak.toFixed(3)} limited=${limitedPeak.toFixed(3)} clipped=${clippedPeak.toFixed(3)}`,
     );
   } catch (error) {
-    check("master chain tames a hot mix (limiter reduces, clipper brick-walls)", false, String(error));
+    check("master chain tames a hot mix (limiter reduces, clipper softens)", false, String(error));
   }
 
   return results;

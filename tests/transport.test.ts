@@ -190,7 +190,7 @@ describe("bar/beat conversions", () => {
       lfos: [],
       macros: [],
       returns: [],
-      master: { limiterEnabled: true, clipperEnabled: false },
+      master: { masterGain: 1, ceilingDb: -1, limiterEnabled: true, clipperEnabled: false },
       createdAt: "",
       updatedAt: "",
     };
