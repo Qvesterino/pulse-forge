@@ -42,6 +42,7 @@ import { INSTRUMENT_DEFS, clampInstrumentParam, defaultInstrumentParams } from "
 import type { InstrumentPreset } from "../presets/types";
 import { clamp, uid } from "../shared/ids";
 import { hashString, mulberry32 } from "../shared/rng";
+import { snapToScale } from "../project-model/scales";
 
 function snapshot(type: string, label: string, prev: ProjectDocument, next: ProjectDocument): Command {
   return {

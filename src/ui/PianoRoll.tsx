@@ -1,9 +1,10 @@
 import { useRef, useState } from "react";
-import { useServices } from "./context";
+import { useDoc, useServices } from "./context";
 import type { InstrumentTrack, NoteEvent, Pattern } from "../project-model/types";
 import { STEP_TICKS, pitchName } from "../project-model/types";
 import { addNote, deleteNote, moveNote, resizeNote } from "../commands/commands";
 import { clamp } from "../shared/ids";
+import { getScalePitchesInRange, isInScale, snapToScale, scaleDegreeLabel } from "../project-model/scales";
 
 const PITCH_MIN = 24;
 const PITCH_MAX = 84;
@@ -26,14 +27,17 @@ export function PianoRollTrack({
   playheadStep,
   selectedNote,
   onSelectNote,
+  scaleSnap,
 }: {
   track: InstrumentTrack;
   pattern: Pattern;
   playheadStep: number;
   selectedNote: SelectedNote | null;
   onSelectNote: (selection: SelectedNote | null) => void;
+  scaleSnap: boolean;
 }) {
   const services = useServices();
+  const doc = useDoc();
   const gridRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
@@ -41,15 +45,23 @@ export function PianoRollTrack({
   const notes = pattern.notes?.[track.id] ?? [];
   const patternTicks = STEP_TICKS * pattern.stepCount;
 
+  // Scale awareness
+  const projectKey = doc.key;
+  const scalePitches = projectKey ? getScalePitchesInRange(projectKey, PITCH_MIN, PITCH_MAX) : null;
+
   const posFromEvent = (event: React.PointerEvent): { stepF: number; pitch: number } => {
     const grid = gridRef.current;
     if (!grid) return { stepF: 0, pitch: PITCH_MIN };
     const rect = grid.getBoundingClientRect();
     const x = clamp(event.clientX - rect.left, 0, rect.width);
     const y = clamp(event.clientY - rect.top, 0, rect.height);
+    let pitch = PITCH_MAX - Math.floor(y / ROW_HEIGHT);
+    if (scaleSnap && projectKey) {
+      pitch = snapToScale(pitch, projectKey);
+    }
     return {
       stepF: (x / rect.width) * pattern.stepCount,
-      pitch: PITCH_MAX - Math.floor(y / ROW_HEIGHT),
+      pitch,
     };
   };
 
@@ -116,7 +128,10 @@ export function PianoRollTrack({
     if (!current) return;
     if (current.mode === "move" && (current.dSteps !== 0 || current.dPitch !== 0)) {
       const newStart = clamp(current.baseStart + current.dSteps * STEP_TICKS, 0, patternTicks - STEP_TICKS);
-      const newPitch = clamp(current.basePitch + current.dPitch, PITCH_MIN, PITCH_MAX);
+      let newPitch = clamp(current.basePitch + current.dPitch, PITCH_MIN, PITCH_MAX);
+      if (scaleSnap && projectKey) {
+        newPitch = snapToScale(newPitch, projectKey);
+      }
       services.store.execute(
         moveNote(services.store.doc, track.id, current.noteId, { start: newStart, pitch: newPitch }),
       );
@@ -144,21 +159,27 @@ export function PianoRollTrack({
 
   const stepPct = (step: number) => (step / pattern.stepCount) * 100;
 
+  // Compute in-scale pitch set for visual highlighting
+  const isScaleActive = scalePitches !== null && scalePitches.size > 0;
+
   return (
     <div className="pianoroll">
       <div className="pianoroll-keys">
         {Array.from({ length: PITCH_COUNT }, (_, i) => {
           const pitch = PITCH_MAX - i;
+          const inScale = isScaleActive && scalePitches!.has(pitch);
+          const isRoot = inScale && projectKey && scaleDegreeLabel(pitch, projectKey) === "1";
           return (
             <button
               key={pitch}
               type="button"
-              className={`pr-key${BLACK_KEYS.has(pitch % 12) ? " black" : ""}${pitch % 12 === 0 ? " c-key" : ""}`}
+              className={`pr-key${BLACK_KEYS.has(pitch % 12) ? " black" : ""}${pitch % 12 === 0 ? " c-key" : ""}${isScaleActive && !inScale ? " out-scale" : ""}${isRoot ? " root" : ""}`}
               style={{ height: ROW_HEIGHT }}
-              title={`Preview ${pitchName(pitch)}`}
+              title={`Preview ${pitchName(pitch)}${inScale ? " (in scale)" : ""}`}
               onPointerDown={() => previewKey(pitch)}
             >
               {pitch % 12 === 0 ? pitchName(pitch) : ""}
+              {isScaleActive && inScale && <span className="pr-scale-deg">{scaleDegreeLabel(pitch, projectKey!)}</span>}
             </button>
           );
         })}
@@ -176,6 +197,21 @@ export function PianoRollTrack({
           style={{ height: PITCH_COUNT * ROW_HEIGHT }}
           onPointerDown={onGridPointerDown}
         >
+          {/* Scale row highlights (background tint on in-scale rows) */}
+          {isScaleActive &&
+            Array.from({ length: PITCH_COUNT }, (_, i) => {
+              const pitch = PITCH_MAX - i;
+              const inScale = scalePitches!.has(pitch);
+              if (!inScale) return null;
+              const isRoot = scaleDegreeLabel(pitch, projectKey!) === "1";
+              return (
+                <div
+                  key={`scale-${pitch}`}
+                  className={`pr-scale-row${isRoot ? " root" : ""}`}
+                  style={{ top: i * ROW_HEIGHT, height: ROW_HEIGHT }}
+                />
+              );
+            })}
           {Array.from({ length: pattern.stepCount }, (_, i) =>
             i % 4 === 0 ? (
               <div key={i} className="pr-beatline" style={{ left: `${stepPct(i)}%` }} />
@@ -203,7 +239,7 @@ export function PianoRollTrack({
             return (
               <div
                 key={note.id}
-                className={`pr-note${selected ? " selected" : ""}`}
+                className={`pr-note${selected ? " selected" : ""}${isScaleActive && !isInScale(note.pitch, projectKey!) ? " out-of-scale" : ""}`}
                 style={{
                   left: `${(startSteps / pattern.stepCount) * 100}%`,
                   width: `${(durSteps / pattern.stepCount) * 100}%`,

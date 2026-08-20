@@ -245,34 +245,33 @@ export interface Macro {
 }
 
 /** All 24 major + minor keys (display strings). */
-export type MusicalKey =
-  | "C major" | "C minor"
-  | "C# major" | "C# minor"
-  | "D major" | "D minor"
-  | "D# major" | "D# minor"
-  | "E major" | "E minor"
-  | "F major" | "F minor"
-  | "F# major" | "F# minor"
-  | "G major" | "G minor"
-  | "G# major" | "G# minor"
-  | "A major" | "A minor"
-  | "A# major" | "A# minor"
-  | "B major" | "B minor";
+const SCALE_LABELS = ["Major", "Natural Minor", "Harmonic Minor", "Melodic Minor", "Dorian", "Phrygian", "Mixolydian", "Pentatonic Major", "Pentatonic Minor"] as const;
+const ROOT_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"] as const;
 
-export const MUSICAL_KEYS: MusicalKey[] = [
-  "C major", "C minor",
-  "C# major", "C# minor",
-  "D major", "D minor",
-  "D# major", "D# minor",
-  "E major", "E minor",
-  "F major", "F minor",
-  "F# major", "F# minor",
-  "G major", "G minor",
-  "G# major", "G# minor",
-  "A major", "A minor",
-  "A# major", "A# minor",
-  "B major", "B minor",
-];
+/** All 108 combinations: 12 root notes × 9 scale types. */
+export type MusicalKey =
+  | "C Major" | "C Natural Minor" | "C Harmonic Minor" | "C Melodic Minor" | "C Dorian" | "C Phrygian" | "C Mixolydian" | "C Pentatonic Major" | "C Pentatonic Minor"
+  | "C# Major" | "C# Natural Minor" | "C# Harmonic Minor" | "C# Melodic Minor" | "C# Dorian" | "C# Phrygian" | "C# Mixolydian" | "C# Pentatonic Major" | "C# Pentatonic Minor"
+  | "D Major" | "D Natural Minor" | "D Harmonic Minor" | "D Melodic Minor" | "D Dorian" | "D Phrygian" | "D Mixolydian" | "D Pentatonic Major" | "D Pentatonic Minor"
+  | "D# Major" | "D# Natural Minor" | "D# Harmonic Minor" | "D# Melodic Minor" | "D# Dorian" | "D# Phrygian" | "D# Mixolydian" | "D# Pentatonic Major" | "D# Pentatonic Minor"
+  | "E Major" | "E Natural Minor" | "E Harmonic Minor" | "E Melodic Minor" | "E Dorian" | "E Phrygian" | "E Mixolydian" | "E Pentatonic Major" | "E Pentatonic Minor"
+  | "F Major" | "F Natural Minor" | "F Harmonic Minor" | "F Melodic Minor" | "F Dorian" | "F Phrygian" | "F Mixolydian" | "F Pentatonic Major" | "F Pentatonic Minor"
+  | "F# Major" | "F# Natural Minor" | "F# Harmonic Minor" | "F# Melodic Minor" | "F# Dorian" | "F# Phrygian" | "F# Mixolydian" | "F# Pentatonic Major" | "F# Pentatonic Minor"
+  | "G Major" | "G Natural Minor" | "G Harmonic Minor" | "G Melodic Minor" | "G Dorian" | "G Phrygian" | "G Mixolydian" | "G Pentatonic Major" | "G Pentatonic Minor"
+  | "G# Major" | "G# Natural Minor" | "G# Harmonic Minor" | "G# Melodic Minor" | "G# Dorian" | "G# Phrygian" | "G# Mixolydian" | "G# Pentatonic Major" | "G# Pentatonic Minor"
+  | "A Major" | "A Natural Minor" | "A Harmonic Minor" | "A Melodic Minor" | "A Dorian" | "A Phrygian" | "A Mixolydian" | "A Pentatonic Major" | "A Pentatonic Minor"
+  | "A# Major" | "A# Natural Minor" | "A# Harmonic Minor" | "A# Melodic Minor" | "A# Dorian" | "A# Phrygian" | "A# Mixolydian" | "A# Pentatonic Major" | "A# Pentatonic Minor"
+  | "B Major" | "B Natural Minor" | "B Harmonic Minor" | "B Melodic Minor" | "B Dorian" | "B Phrygian" | "B Mixolydian" | "B Pentatonic Major" | "B Pentatonic Minor";
+
+export const MUSICAL_KEYS: MusicalKey[] = (() => {
+  const keys: MusicalKey[] = [];
+  for (const root of ROOT_NAMES) {
+    for (const scale of SCALE_LABELS) {
+      keys.push(`${root} ${scale}` as MusicalKey);
+    }
+  }
+  return keys;
+})();
 
 export function isMusicalKey(value: unknown): value is MusicalKey {
   return typeof value === "string" && (MUSICAL_KEYS as string[]).includes(value);
