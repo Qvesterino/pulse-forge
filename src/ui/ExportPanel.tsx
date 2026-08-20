@@ -3,6 +3,7 @@ import { useDoc, useServices } from "./context";
 import { renderProject } from "../rendering/renderer";
 import { buildStemProject, nonEmptyStemGroups } from "../rendering/stems";
 import { downloadWav, encodeWav, sanitizeFilename } from "../rendering/wav";
+import { buildScorepack } from "../export/scorepack";
 import type { WavBitDepth } from "../rendering/wav";
 import type { PlayMode } from "../project-model/types";
 import { summarizeBuffer, type BufferSummary } from "../audio-engine/metering";
@@ -83,6 +84,28 @@ export function ExportPanel() {
     }
   };
 
+  const exportScorepack = async () => {
+    setStatus({ kind: "busy", label: "Building scorepack…" });
+    try {
+      const { blob, filename } = await buildScorepack(doc, services.bank, (p) => {
+        setStatus({ kind: "busy", label: `Scorepack: ${p.phase}…` });
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      setStatus({
+        kind: "done",
+        label: `Scorepack exported (${filename})`,
+        summary: { peak: 0, peakDb: -120, truePeakDb: -120, rms: 0, rmsDb: -120, correlation: 1 },
+      });
+    } catch (error) {
+      setStatus({ kind: "error", label: `Scorepack failed: ${String(error)}` });
+    }
+  };
+
   return (
     <section className="export-panel" aria-label="Export">
       <div className="export-options">
@@ -124,6 +147,15 @@ export function ExportPanel() {
         </button>
         <button type="button" className="btn btn-export" disabled={busy} onClick={() => void exportTracks()}>
           EXPORT ALL TRACKS ({doc.tracks.length})
+        </button>
+        <button
+          type="button"
+          className="btn btn-export btn-export-scorepack"
+          disabled={busy}
+          title="Export a .scorepack ZIP: master + stems + cues + JSON manifests"
+          onClick={() => void exportScorepack()}
+        >
+          EXPORT SCOREPACK
         </button>
       </div>
       <div className={`export-status export-${status.kind}`}>

@@ -1,5 +1,22 @@
-import type { DrumPad, DrumTrack, EffectInstance, InstrumentKind, InstrumentTrack, Macro, MasterConfig, Pattern, ProjectDocument, ReturnTrack, Scene, StepMeta } from "./types";
-import { PPQ, STEPS_PER_PATTERN } from "./types";
+import type {
+  DrumPad,
+  DrumTrack,
+  EffectInstance,
+  InstrumentKind,
+  InstrumentTrack,
+  IntensityPoint,
+  Macro,
+  MacroMapping,
+  Marker,
+  MasterConfig,
+  Pattern,
+  ProjectDocument,
+  ReturnTrack,
+  Scene,
+  SceneAutomation,
+  StepMeta,
+} from "./types";
+import { BAR_TICKS, PPQ, STEP_TICKS, STEPS_PER_PATTERN, isMusicalKey } from "./types";
 import { uid } from "../shared/ids";
 import { defaultInstrumentParams } from "../instruments/registry";
 import { createProjectFromTemplate } from "./templates";
@@ -175,6 +192,90 @@ export function defaultMacros(): Macro[] {
   ];
 }
 
+/** Clamp intensity to 0..1. NaN/non-finite → 0.7 (the "normal" preset). */
+export function clampIntensity(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return 0.7;
+  return Math.min(1, Math.max(0, value));
+}
+
+/** Validate a Marker.type field. Falls back to "cue" for unknown values. */
+const MARKER_TYPES: ReadonlyArray<Marker["type"]> = ["drop", "buildup", "riser", "impact", "cue", "custom"];
+export function clampMarkerType(value: unknown): Marker["type"] {
+  return (MARKER_TYPES as string[]).includes(value as string) ? (value as Marker["type"]) : "cue";
+}
+
+/** Filter + clamp marker points (drop empty, dedupe by id, sort by tick). */
+export function sanitizeMarkers(input: unknown, projectTicks: number): Marker[] {
+  if (!Array.isArray(input)) return [];
+  const out: Marker[] = [];
+  for (const raw of input) {
+    if (!isObject(raw)) continue;
+    const id = typeof raw.id === "string" ? raw.id : uid("marker");
+    const name = typeof raw.name === "string" && raw.name.trim() !== "" ? raw.name : "Marker";
+    const type = clampMarkerType(raw.type);
+    const tick = Math.max(0, Math.min(projectTicks, Math.floor(Number(raw.tick) || 0)));
+    const linkedClipId = typeof raw.linkedClipId === "string" ? raw.linkedClipId : undefined;
+    const customId = typeof raw.customId === "string" ? raw.customId : undefined;
+    out.push({ id, name, type, tick, linkedClipId, customId });
+  }
+  out.sort((a, b) => a.tick - b.tick);
+  return out;
+}
+
+/** Validate a single intensity curve point (offset ≥ 0, value ∈ 0..1). */
+function sanitizeIntensityPoint(raw: unknown): IntensityPoint | null {
+  if (!isObject(raw)) return null;
+  const offset = Math.max(0, Math.floor(Number(raw.offset) || 0));
+  const value = clampIntensity(raw.value);
+  return { offset, value };
+}
+
+/** Filter scene automation: drop lanes with no scene or no points. */
+export function sanitizeSceneAutomation(
+  input: unknown,
+  sceneIds: Set<string>,
+): SceneAutomation[] {
+  if (!Array.isArray(input)) return [];
+  const out: SceneAutomation[] = [];
+  for (const raw of input) {
+    if (!isObject(raw)) continue;
+    if (typeof raw.sceneId !== "string" || !sceneIds.has(raw.sceneId)) continue;
+    if (!isObject(raw.target)) continue;
+    if (!Array.isArray(raw.points)) continue;
+    const id = typeof raw.id === "string" ? raw.id : uid("sceneAuto");
+    const points = raw.points
+      .map((p: unknown) => {
+        if (!isObject(p)) return null;
+        const tick = Math.max(0, Math.floor(Number(p.tick) || 0));
+        const value = Number(p.value);
+        if (!Number.isFinite(value)) return null;
+        return { tick, value };
+      })
+      .filter((p: unknown): p is { tick: number; value: number } => p !== null)
+      .sort((a: { tick: number }, b: { tick: number }) => a.tick - b.tick);
+    if (points.length === 0) continue;
+    out.push({
+      id,
+      sceneId: raw.sceneId,
+      target: raw.target as unknown as SceneAutomation["target"],
+      points,
+    });
+  }
+  return out;
+}
+
+/** Clamp a single MacroMapping's parameters (forward-compat: unknown source → "macro"). */
+function sanitizeMacroMapping(raw: unknown): MacroMapping | null {
+  if (!isObject(raw)) return null;
+  const id = typeof raw.id === "string" ? raw.id : uid("map");
+  const trackId = typeof raw.trackId === "string" ? raw.trackId : null;
+  if (!trackId) return null;
+  const param = raw.param === "pan" ? "pan" : "gain";
+  const amount = Math.max(-1, Math.min(1, Number(raw.amount) || 0));
+  const source = raw.source === "intensity" ? "intensity" : "macro";
+  return { id, trackId, param, amount, source };
+}
+
 /** Clamp a BPM value to the supported range. NaN/non-finite → FALLBACK_BPM. */
 export function clampBpm(bpm: number): number {
   if (!Number.isFinite(bpm)) return FALLBACK_BPM;
@@ -198,7 +299,7 @@ export function normalizeStepCount(stepCount: number): number {
 }
 
 function defaultSceneFor(doc: ProjectDocument): Scene {
-  return { id: uid("scene"), name: "Scene A", patternId: doc.activePatternId };
+  return { id: uid("scene"), name: "Scene A", patternId: doc.activePatternId, intensity: 0.7 };
 }
 
 /**
@@ -375,6 +476,118 @@ export function normalizeProject(doc: ProjectDocument): ProjectDocument {
   // macros
   if (!Array.isArray(next.macros) || next.macros.length === 0) {
     next = { ...next, macros: defaultMacros() };
+    changed = true;
+  } else {
+    // Update existing macros: forward-fill default source "macro" on mappings.
+    let macrosChanged = false;
+    const cleanedMacros: Macro[] = [];
+    for (const macro of next.macros) {
+      let macroChanged = false;
+      const cleanedMappings: MacroMapping[] = [];
+      for (const mapping of macro.mappings) {
+        const sanitized = sanitizeMacroMapping(mapping);
+        if (!sanitized) continue;
+        if (
+          sanitized.id !== mapping.id ||
+          sanitized.trackId !== mapping.trackId ||
+          sanitized.param !== mapping.param ||
+          sanitized.amount !== mapping.amount ||
+          sanitized.source !== (mapping.source ?? "macro")
+        ) {
+          macroChanged = true;
+        }
+        cleanedMappings.push(sanitized);
+      }
+      const validValue = Math.max(0, Math.min(1, Number(macro.value) || 0.5));
+      if (validValue !== macro.value) macroChanged = true;
+      if (cleanedMappings.length !== macro.mappings.length) macroChanged = true;
+      if (macroChanged) macrosChanged = true;
+      cleanedMacros.push({ ...macro, value: validValue, mappings: cleanedMappings });
+    }
+    if (macrosChanged) {
+      next = { ...next, macros: cleanedMacros };
+      changed = true;
+    }
+  }
+
+  // scenes — backfill intensity (default 0.7) on older scenes.
+  let scenesChanged = false;
+  const cleanedScenes: Scene[] = next.scenes.map((scene) => {
+    let sceneChanged = false;
+    const intensity = clampIntensity(scene.intensity);
+    if (intensity !== scene.intensity) {
+      sceneChanged = true;
+    }
+    let curve: IntensityPoint[] | undefined;
+    if (Array.isArray(scene.intensityCurve)) {
+      const points = scene.intensityCurve
+        .map((p) => sanitizeIntensityPoint(p))
+        .filter((p): p is IntensityPoint => p !== null)
+        .sort((a, b) => a.offset - b.offset);
+      // Drop curves that contain no valid points.
+      curve = points.length > 0 ? points : undefined;
+      if (JSON.stringify(curve) !== JSON.stringify(scene.intensityCurve)) {
+        sceneChanged = true;
+      }
+    } else if (scene.intensityCurve !== undefined) {
+      sceneChanged = true;
+    }
+    const loop = typeof scene.loop === "boolean" ? scene.loop : undefined;
+    if (loop !== scene.loop) sceneChanged = true;
+    if (!sceneChanged) return scene;
+    return { ...scene, intensity, intensityCurve: curve, loop };
+  });
+  if (scenesChanged) {
+    next = { ...next, scenes: cleanedScenes };
+    changed = true;
+  }
+
+  // project.key — clamp to valid MUSICAL_KEYS.
+  if (next.key !== undefined && !isMusicalKey(next.key)) {
+    next = { ...next, key: undefined };
+    changed = true;
+  }
+
+  // project.tags — clamp to string[] (non-empty strings).
+  if (next.tags !== undefined) {
+    if (!Array.isArray(next.tags)) {
+      next = { ...next, tags: [] };
+      changed = true;
+    } else {
+      const cleanedTags = next.tags.filter((t): t is string => typeof t === "string" && t.trim() !== "");
+      if (cleanedTags.length !== next.tags.length) {
+        next = { ...next, tags: cleanedTags };
+        changed = true;
+      }
+    }
+  }
+
+  // markers — backfill array, clamp each.
+  const totalProjectTicks = Math.max(
+    0,
+    ...next.scenes.map((s) => (next.patterns.find((p) => p.id === s.patternId)?.stepCount ?? 0) * STEP_TICKS),
+    ...next.arrangement?.clips?.map((c) => (c.startBar + c.lengthBars) * BAR_TICKS) ?? [],
+  );
+  const cleanedMarkers = sanitizeMarkers(next.markers, totalProjectTicks);
+  const markersChanged =
+    !Array.isArray(next.markers) ||
+    JSON.stringify(cleanedMarkers) !== JSON.stringify(next.markers);
+  if (markersChanged) {
+    next = { ...next, markers: cleanedMarkers };
+    changed = true;
+  }
+
+  // scene automation — clamp to valid scenes + non-empty lanes.
+  const liveSceneIds = new Set(next.scenes.map((s) => s.id));
+  const cleanedSceneAuto = sanitizeSceneAutomation(next.sceneAutomation, liveSceneIds);
+  // Only replace if the content actually changed (sanitize rebuilds objects,
+  // so a reference equality check would always fail). JSON.stringify is fine
+  // here — the structures are small and we run this on save/commit only.
+  const sceneAutoChanged =
+    !Array.isArray(next.sceneAutomation) ||
+    JSON.stringify(cleanedSceneAuto) !== JSON.stringify(next.sceneAutomation);
+  if (sceneAutoChanged) {
+    next = { ...next, sceneAutomation: cleanedSceneAuto };
     changed = true;
   }
   // master — clamp gain + ceiling; backfill missing fields from defaults

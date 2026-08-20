@@ -2093,6 +2093,64 @@ button {
   z-index: 5;
 }
 
+/* ---------- Arrangement markers ---------- */
+
+.arr-marker {
+  position: absolute;
+  top: -2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--text-dim);
+  pointer-events: auto;
+  z-index: 10;
+  cursor: pointer;
+}
+
+.arr-marker:hover {
+  background: var(--text);
+}
+
+.arr-marker-drop {
+  background: #f59e0b;
+  border-radius: 50%;
+}
+
+.arr-marker-buildup {
+  background: #f97316;
+}
+
+.arr-marker-riser {
+  background: #8b5cf6;
+}
+
+.arr-marker-impact {
+  background: #f87171;
+  border-radius: 50%;
+}
+
+.arr-marker-cue {
+  background: #38bdf8;
+}
+
+.arr-marker-custom {
+  background: var(--text-faint);
+}
+
+/* ---------- Arrangement seconds display ---------- */
+
+.arr-ruler-mark {
+  position: absolute;
+  top: 2px;
+  font-family: var(--mono);
+  font-size: 8px;
+  color: var(--text-faint);
+  padding-left: 3px;
+  border-left: 1px solid var(--border);
+  height: 12px;
+  pointer-events: none;
+}
+
 /* ---------- Project browser ---------- */
 
 .project-browser {
@@ -2894,4 +2952,30 @@ button {
 .export-summary-clipped {
   color: var(--stop);
   font-weight: 700;
+}
+
+/* ---------- Scene panel (ModPanel) ---------- */
+
+.scene-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.scene-panel .mod-section {
+  padding-top: 8px;
+  border-top: 1px solid var(--border-soft);
+}
+
+/* ---------- Scorepack export button ---------- */
+
+.btn-export-scorepack {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(234, 88, 12, 0.12));
+  border-color: rgba(245, 158, 11, 0.4);
+}
+
+.btn-export-scorepack:hover {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.25), rgba(234, 88, 12, 0.25));
+  border-color: rgba(245, 158, 11, 0.6);
+  color: var(--accent);
 }

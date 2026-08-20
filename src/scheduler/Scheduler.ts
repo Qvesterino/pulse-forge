@@ -11,8 +11,21 @@ export interface SchedulerDeps {
   trigger(trackId: string, pad: DrumTrack["pads"][number], when: number, velocity: number): void;
   noteOn(trackId: string, pitch: number, velocity: number, when: number, durationSec: number): void;
   applyAutomation(fromTick: number, toTick: number, relOf: (tick: number) => number): void;
+  /** Apply a single per-scene automation lane within a song window. */
+  applySceneAutomationLane?(
+    lane: import("../project-model/types").SceneAutomation,
+    fromTick: number,
+    toTick: number,
+    sceneStartTick: number,
+  ): void;
   /** Commit a queued (quantized) pattern launch into the project model. */
   applyPatternLaunch(patternId: string): void;
+  /** Called once per scheduler window with the absolute tick window. */
+  onSongWindow?(fromTick: number, toTick: number, mode: PlayMode): void;
+  /** Trigger a marker cue at the absolute project tick (asset id may be null). */
+  triggerMarker?(assetId: string | null, when: number, trackId?: string): void;
+  /** Update the live scene intensity signal (0..1). */
+  setSceneIntensity?(intensity: number): void;
 }
 
 const INTERVAL_MS = 25;
@@ -25,6 +38,10 @@ export class Scheduler {
   private windowStartTick = 0;
   private stopped = true;
   private pendingLaunch: { patternId: string; atTick: number } | null = null;
+  /** Marker ids that have already fired in this playback session. Cleared on stop. */
+  private firedMarkerIds = new Set<string>();
+  /** Marker ids scheduled to fire in the current window (deferred trigger). */
+  private pendingMarkers: { assetId: string | null; when: number; trackId?: string }[] = [];
   stats = { scheduledEvents: 0, lastHorizonTick: 0, windows: 0 };
   private listeners = new Set<() => void>();
 
@@ -69,6 +86,9 @@ export class Scheduler {
       this.pendingLaunch = null;
       this.notify();
     }
+    // Markers re-arm on stop so a future play replays them.
+    this.firedMarkerIds.clear();
+    this.pendingMarkers.length = 0;
     this.stopped = true;
   }
 
@@ -155,8 +175,60 @@ export class Scheduler {
         this.pendingLaunch = null;
         this.notify();
       }
+      // In pattern mode, the active scene's intensity is fed from the static
+      // value (no curve is meaningful inside a one-bar loop).
+      const activeScene = currentDoc.scenes.find((s) => s.id === currentDoc.activePatternId) ??
+        currentDoc.scenes.find((s) => s.patternId === currentDoc.activePatternId);
+      this.deps.setSceneIntensity?.(activeScene ? Math.max(0, Math.min(1, activeScene.intensity)) : 0.7);
     } else {
       const clips = [...doc.arrangement.clips].sort((a, b) => a.startBar - b.startBar);
+      // Find the active scene (whose clip contains the playhead) for intensity
+      // computation and the marker-firing loop.
+      let activeScene: typeof doc.scenes[number] | null = null;
+      let activeClipStart = 0;
+      for (const clip of clips) {
+        const clipStart = clip.startBar * BAR_TICKS;
+        const clipEnd = clipStart + clip.lengthBars * BAR_TICKS;
+        if (windowStart >= clipStart && windowStart < clipEnd) {
+          const scene = doc.scenes.find((sc) => sc.id === clip.sceneId);
+          if (scene) {
+            activeScene = scene;
+            activeClipStart = clipStart;
+          }
+          break;
+        }
+      }
+      if (this.deps.setSceneIntensity) {
+        if (activeScene) {
+          const offset = Math.max(0, windowStart - activeClipStart);
+          const v = activeScene.intensity;
+          const curve = activeScene.intensityCurve;
+          let intensity = v;
+          if (curve && curve.length > 0) {
+            if (offset <= curve[0].offset) intensity = curve[0].value;
+            else if (offset >= curve[curve.length - 1].offset) intensity = curve[curve.length - 1].value;
+            else {
+              for (let i = 0; i < curve.length - 1; i++) {
+                const a = curve[i];
+                const b = curve[i + 1];
+                if (offset >= a.offset && offset <= b.offset) {
+                  const span = b.offset - a.offset;
+                  if (span > 0) {
+                    const t = (offset - a.offset) / span;
+                    intensity = a.value + (b.value - a.value) * t;
+                  } else {
+                    intensity = a.value;
+                  }
+                  break;
+                }
+              }
+            }
+          }
+          this.deps.setSceneIntensity(Math.max(0, Math.min(1, intensity)));
+        } else {
+          this.deps.setSceneIntensity(0.7);
+        }
+      }
       for (const clip of clips) {
         const clipStart = clip.startBar * BAR_TICKS;
         const clipEnd = clipStart + clip.lengthBars * BAR_TICKS;
@@ -183,6 +255,24 @@ export class Scheduler {
           const pattern = scene ? doc.patterns.find((p) => p.id === scene.patternId) : undefined;
           const patternTicks = pattern ? STEP_TICKS * pattern.stepCount : STEP_TICKS * 16;
           automationCtx = { base: covering.startBar * BAR_TICKS, patternTicks };
+        }
+      }
+      // Marker firing: queue cues for any marker whose tick falls within the
+      // current window. Dedupe via firedMarkerIds so each marker triggers once
+      // per playback session.
+      for (const marker of doc.markers) {
+        if (marker.tick < windowStart || marker.tick > windowEnd) continue;
+        if (this.firedMarkerIds.has(marker.id)) continue;
+        this.firedMarkerIds.add(marker.id);
+        const assetId = mapMarkerTypeToAsset(marker.type);
+        const when = transport.timeAtTick(marker.tick) + 0.005;
+        this.deps.triggerMarker?.(assetId, when, marker.linkedClipId);
+      }
+      // Scene automation: invoke applySceneAutomation per active clip window.
+      if (activeScene) {
+        for (const lane of doc.sceneAutomation) {
+          if (lane.sceneId !== activeScene.id) continue;
+          this.applySceneAutomation(lane, windowStart, windowEnd, activeClipStart, transport);
         }
       }
     }
@@ -232,5 +322,37 @@ export class Scheduler {
         }
       }
     }
+  }
+
+  /**
+   * Apply a per-scene automation lane within the current scheduler window. The
+   * scene's start is the offset origin (0 ticks). Forwards to the engine's
+   * `applySceneAutomationLane` (which handles track gain / FX / instrument
+   * params and smooths with setTargetAtTime).
+   */
+  private applySceneAutomation(
+    lane: import("../project-model/types").SceneAutomation,
+    windowStart: number,
+    windowEnd: number,
+    sceneStartTick: number,
+    _transport: Transport,
+  ): void {
+    if (lane.points.length === 0) return;
+    this.deps.applySceneAutomationLane?.(lane, windowStart, windowEnd, sceneStartTick);
+  }
+}
+
+/** Map a marker type to its auto-trigger asset (or null for no cue). */
+function mapMarkerTypeToAsset(type: import("../project-model/types").Marker["type"]): string | null {
+  switch (type) {
+    case "drop":
+    case "impact":
+      return "factory.fx.impact";
+    case "buildup":
+    case "riser":
+      return "factory.fx.riser";
+    case "cue":
+    case "custom":
+      return null;
   }
 }

@@ -164,7 +164,11 @@ export function openProject(core: CoreServices, initial: ProjectDocument): Servi
     noteOn: (trackId, pitch, velocity, when, durationSec) =>
       engine.noteOn(trackId, pitch, velocity, when, durationSec),
     applyAutomation: (fromTick, toTick, relOf) => engine.applyAutomation(fromTick, toTick, relOf),
+    applySceneAutomationLane: (lane, fromTick, toTick, sceneStartTick) =>
+      engine.applySceneAutomationLane(lane, fromTick, toTick, sceneStartTick),
     applyPatternLaunch: (patternId) => store.execute(setActivePattern(store.doc, patternId)),
+    triggerMarker: (assetId, when, trackId) => engine.triggerMarker(assetId, when, trackId),
+    setSceneIntensity: (value) => engine.setSceneIntensity(value),
   });
   engine.setProject(store.doc);
   transport.seek(0);

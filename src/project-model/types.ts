@@ -146,6 +146,40 @@ export interface Scene {
   id: ID;
   name: string;
   patternId: ID;
+  /** Static 0..1 intensity. Drives any modulation target bound via `source: "intensity"`. */
+  intensity: number;
+  /** Optional time-varying intensity curve (ticks relative to scene start). Drawn over the static `intensity`. */
+  intensityCurve?: IntensityPoint[];
+  /** When true, a clip referencing this scene loops its tail indefinitely. */
+  loop?: boolean;
+}
+
+export interface IntensityPoint {
+  /** Ticks offset from the scene's start. */
+  offset: number;
+  /** 0..1 — instantaneous intensity at this offset. */
+  value: number;
+}
+
+export interface Marker {
+  id: ID;
+  /** Human-readable label (shown in the timeline and exported as the cue filename). */
+  name: string;
+  type: "drop" | "buildup" | "riser" | "impact" | "cue" | "custom";
+  /** Absolute project tick. */
+  tick: number;
+  /** Optional clip the marker is tied to (moves when the clip is moved). */
+  linkedClipId?: ID;
+  /** Optional custom payload id echoed in the exported scorepack. */
+  customId?: string;
+}
+
+export interface SceneAutomation {
+  id: ID;
+  sceneId: ID;
+  target: AutomationTarget;
+  /** Automation points — ticks are relative to the scene's start. */
+  points: AutomationPoint[];
 }
 
 export interface ArrangementClip {
@@ -153,6 +187,8 @@ export interface ArrangementClip {
   sceneId: ID;
   startBar: number;
   lengthBars: number;
+  /** Per-clip loop flag. Falls back to the referenced scene's `loop` if absent. */
+  loop?: boolean;
 }
 
 export interface Arrangement {
@@ -197,6 +233,8 @@ export interface MacroMapping {
   trackId: ID;
   param: "gain" | "pan";
   amount: number;
+  /** Modulation source. Default "macro" for backwards compatibility. */
+  source?: "macro" | "intensity";
 }
 
 export interface Macro {
@@ -206,17 +244,59 @@ export interface Macro {
   mappings: MacroMapping[];
 }
 
+/** All 24 major + minor keys (display strings). */
+export type MusicalKey =
+  | "C major" | "C minor"
+  | "C# major" | "C# minor"
+  | "D major" | "D minor"
+  | "D# major" | "D# minor"
+  | "E major" | "E minor"
+  | "F major" | "F minor"
+  | "F# major" | "F# minor"
+  | "G major" | "G minor"
+  | "G# major" | "G# minor"
+  | "A major" | "A minor"
+  | "A# major" | "A# minor"
+  | "B major" | "B minor";
+
+export const MUSICAL_KEYS: MusicalKey[] = [
+  "C major", "C minor",
+  "C# major", "C# minor",
+  "D major", "D minor",
+  "D# major", "D# minor",
+  "E major", "E minor",
+  "F major", "F minor",
+  "F# major", "F# minor",
+  "G major", "G minor",
+  "G# major", "G# minor",
+  "A major", "A minor",
+  "A# major", "A# minor",
+  "B major", "B minor",
+];
+
+export function isMusicalKey(value: unknown): value is MusicalKey {
+  return typeof value === "string" && (MUSICAL_KEYS as string[]).includes(value);
+}
+
 export interface ProjectDocument {
   schemaVersion: number;
   id: ID;
   name: string;
   bpm: number;
   timeSignature: TimeSignature;
+  /** Optional musical key (display + scorepack). */
+  key?: MusicalKey;
+  /** Optional project-level tags (display + scorepack). */
+  tags?: string[];
   tracks: Track[];
   patterns: Pattern[];
   activePatternId: ID;
   scenes: Scene[];
   arrangement: Arrangement;
+  /** Persistent timeline markers (drop / buildup / etc.). */
+  markers: Marker[];
+  /** Per-scene automation curves (ticks relative to scene start). */
+  sceneAutomation: SceneAutomation[];
   automation: AutomationLane[];
   lfos: Lfo[];
   macros: Macro[];

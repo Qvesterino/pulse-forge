@@ -1,4 +1,4 @@
-import type { DrumPad, EffectInstance, InstrumentTrack, MasterConfig, ProjectDocument } from "../project-model/types";
+import type { DrumPad, EffectInstance, InstrumentTrack, MasterConfig, ProjectDocument, SceneAutomation } from "../project-model/types";
 import type { AutomationPoint, Lfo } from "../project-model/types";
 import { valueAt } from "../project-model/automation";
 import { defaultMasterConfig } from "../project-model/schema";
@@ -73,6 +73,7 @@ export class AudioEngine {
   private instruments = new Map<string, InstrumentState>();
   private lfos = new Map<string, LfoRuntimeState>();
   private macroCache = new Map<string, { gain: number; pan: number }>();
+  private currentSceneIntensity = 0.7;
   private voices = new Set<Voice>();
   private missedAssets = new Set<string>();
   private levelBuf = new Float32Array(1024);
@@ -499,10 +500,22 @@ export class AudioEngine {
     for (const macro of doc.macros) {
       const bipolar = macro.value * 2 - 1;
       for (const mapping of macro.mappings) {
+        if (mapping.source === "intensity") continue; // routed through setSceneIntensity
         const acc = next.get(mapping.trackId);
         if (!acc) continue;
         if (mapping.param === "gain") acc.gain += mapping.amount * bipolar;
         else acc.pan += mapping.amount * bipolar;
+      }
+    }
+    // Intensity bindings: gain-only, scaled to ±amount from the live scene
+    // intensity (0..1). We treat intensity 0.5 as neutral (gain × 1).
+    const intensityBipolar = Math.max(-1, Math.min(1, this.currentSceneIntensity * 2 - 1));
+    for (const macro of doc.macros) {
+      for (const mapping of macro.mappings) {
+        if (mapping.source !== "intensity" || mapping.param !== "gain") continue;
+        const acc = next.get(mapping.trackId);
+        if (!acc) continue;
+        acc.gain += mapping.amount * intensityBipolar;
       }
     }
     for (const [trackId, offsets] of next) {
@@ -520,6 +533,139 @@ export class AudioEngine {
     for (const trackId of [...this.macroCache.keys()]) {
       if (!next.has(trackId)) this.macroCache.delete(trackId);
     }
+  }
+
+  /** Update the live scene intensity signal. Idempotent. */
+  setSceneIntensity(value: number): void {
+    this.currentSceneIntensity = Math.max(0, Math.min(1, value));
+  }
+
+  /**
+   * Apply a scene automation lane within an absolute tick window. The lane
+   * is scene-relative, so we interpolate scene-local ticks and dispatch the
+   * resulting target/value to the existing track / FX / instrument pipeline.
+   */
+  applySceneAutomationLane(
+    lane: SceneAutomation,
+    fromTick: number,
+    toTick: number,
+    sceneStartTick: number,
+  ): void {
+    if (lane.points.length === 0 || fromTick >= toTick) return;
+    const t0Local = Math.max(0, fromTick - sceneStartTick);
+    const t1Local = Math.max(0, toTick - sceneStartTick);
+    const valueAt = (tick: number) => {
+      if (tick <= lane.points[0].tick) return lane.points[0].value;
+      if (tick >= lane.points[lane.points.length - 1].tick) return lane.points[lane.points.length - 1].value;
+      for (let i = 0; i < lane.points.length - 1; i++) {
+        const a = lane.points[i];
+        const b = lane.points[i + 1];
+        if (tick >= a.tick && tick <= b.tick) {
+          const span = b.tick - a.tick;
+          if (span <= 0) return a.value;
+          const t = (tick - a.tick) / span;
+          return a.value + (b.value - a.value) * t;
+        }
+      }
+      return lane.points[lane.points.length - 1].value;
+    };
+    const v0 = valueAt(t0Local);
+    const v1 = valueAt(t1Local);
+    this.applyLane(lane, v0, v1, fromTick, toTick);
+  }
+
+  /** Apply a single automation lane directly (not via doc.automation). */
+  private applyLane(
+    lane: { id: string; target: import("../project-model/types").AutomationTarget; points: AutomationPoint[] },
+    v0: number,
+    v1: number,
+    fromTick: number,
+    toTick: number,
+  ): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const t0 = ctx.currentTime;
+    const t1 = Math.max(t0, this.currentTime + 0.1);
+    const nodes = this.trackNodes.get(lane.target.trackId);
+    if (!nodes) return;
+    switch (lane.target.kind) {
+      case "trackGain":
+        nodes.modAutoGain.gain.setTargetAtTime(Math.max(0, Math.min(2, v0)), t0, 0.008);
+        nodes.modAutoGain.gain.setTargetAtTime(Math.max(0, Math.min(2, v1)), t1, 0.008);
+        break;
+      case "trackPan":
+        nodes.modAutoPan.pan.setTargetAtTime(Math.min(1, Math.max(-1, v0)), t0, 0.008);
+        nodes.modAutoPan.pan.setTargetAtTime(Math.min(1, Math.max(-1, v1)), t1, 0.008);
+        break;
+      case "fxParam": {
+        if (!lane.target.fxId || !lane.target.paramId) break;
+        const rt = nodes.fx.runtimes.get(lane.target.fxId);
+        if (rt?.setParameterAt) rt.setParameterAt(lane.target.paramId, v0, t0);
+        else rt?.setParameter(lane.target.paramId, v0);
+        break;
+      }
+      case "instParam": {
+        if (!lane.target.paramId) break;
+        const inst = this.instruments.get(lane.target.trackId);
+        if (inst?.runtime.setParameterAt) inst.runtime.setParameterAt(lane.target.paramId, v0, t0);
+        else inst?.runtime.setParameter(lane.target.paramId, v0);
+        break;
+      }
+    }
+    void fromTick;
+    void toTick;
+  }
+
+  /**
+   * Trigger a marker cue by routing the asset through `previewAsset`, optionally
+   * limited to a specific track. For `linkedClipId`, we preview against the
+   * track's analyser so the marker is heard in context.
+   */
+  triggerMarker(assetId: string | null, when: number, trackId?: string): void {
+    if (!assetId) return;
+    if (trackId) {
+      this.previewMarkerOnTrack(assetId, when, trackId);
+    } else {
+      this.previewAssetAt(assetId, when);
+    }
+  }
+
+  private previewMarkerOnTrack(assetId: string, when: number, trackId: string): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const buffer = this.bank?.get(assetId);
+    const trackNodes = this.trackNodes.get(trackId);
+    if (!buffer || !trackNodes) {
+      this.previewAssetAt(assetId, when);
+      return;
+    }
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    const gain = ctx.createGain();
+    gain.gain.value = 0.85;
+    source.connect(gain).connect(trackNodes.input);
+    source.start(when);
+    source.onended = () => {
+      gain.disconnect();
+      source.disconnect();
+    };
+  }
+
+  private previewAssetAt(assetId: string, when: number): void {
+    this.ensureContext();
+    const ctx = this.ctx;
+    const buffer = this.bank?.get(assetId);
+    if (!ctx || !buffer || !this.master) return;
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    const gain = ctx.createGain();
+    gain.gain.value = 0.9;
+    source.connect(gain).connect(this.master);
+    source.start(when);
+    source.onended = () => {
+      gain.disconnect();
+      source.disconnect();
+    };
   }
 
   applyAutomation(fromTick: number, toTick: number, relOf: (tick: number) => number): void {

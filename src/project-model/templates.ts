@@ -10,7 +10,7 @@ import type {
   ProjectDocument,
   Scene,
 } from "./types";
-import { PPQ, STEPS_PER_PATTERN } from "./types";
+import { BAR_TICKS, PPQ, STEPS_PER_PATTERN } from "./types";
 import { uid } from "../shared/ids";
 import {
   SCHEMA_VERSION,
@@ -106,8 +106,8 @@ function withNotes(pattern: Pattern, trackId: string, notes: NoteEvent[]): Patte
   return { ...pattern, notes: { ...pattern.notes, [trackId]: notes } };
 }
 
-function scene(name: string, patternId: string): Scene {
-  return { id: uid("scene"), name, patternId };
+function scene(name: string, patternId: string, intensity: number = 0.7): Scene {
+  return { id: uid("scene"), name, patternId, intensity };
 }
 
 function clip(sceneId: string, startBar: number, lengthBars: number): ArrangementClip {
@@ -127,6 +127,8 @@ function baseDocument(name: string, bpm: number): ProjectDocument {
     activePatternId: "",
     scenes: [],
     arrangement: { clips: [] },
+    markers: [],
+    sceneAutomation: [],
     automation: [],
     lfos: [],
     macros: defaultMacros(),
@@ -397,11 +399,11 @@ function buildSceneScore(): ProjectDocument {
   outro = setSteps(outro, drums.pads, 9, [[2, 0.3], [6, 0.28], [10, 0.26], [14, 0.24]]);
   outro = withNotes(outro, texture.id, textureChord(0, 1920, 0.45));
 
-  const scIntro = scene("INTRO", intro.id);
-  const scBuild = scene("BUILD", build.id);
-  const scDrop = scene("DROP", drop.id);
-  const scBreak = scene("BREAK", breakP.id);
-  const scOutro = scene("OUTRO", outro.id);
+  const scIntro = scene("INTRO", intro.id, 0.4);
+  const scBuild = scene("BUILD", build.id, 0.7);
+  const scDrop = scene("DROP", drop.id, 1.0);
+  const scBreak = scene("BREAK", breakP.id, 0.6);
+  const scOutro = scene("OUTRO", outro.id, 0.5);
 
   doc.tracks = [drums, bass, texture];
   doc.patterns = [intro, build, drop, breakP, outro];
@@ -416,6 +418,32 @@ function buildSceneScore(): ProjectDocument {
     ],
   };
   doc.macros = performanceMacros(drums.id, bass.id, texture.id);
+  // Named timeline markers — auto-trigger their typed FX cue during playback.
+  // Bar 1 (BUILD), bar 9 (DROP), bar 21 (OUTRO) align 1 tick AT each clip start.
+  doc.markers = [
+    { id: uid("marker"), name: "Lift", type: "buildup", tick: 4 * BAR_TICKS, linkedClipId: doc.arrangement.clips[1].id },
+    { id: uid("marker"), name: "Hit", type: "drop", tick: 8 * BAR_TICKS, linkedClipId: doc.arrangement.clips[2].id },
+    { id: uid("marker"), name: "Outro", type: "riser", tick: 20 * BAR_TICKS, linkedClipId: doc.arrangement.clips[4].id },
+  ];
+  // Per-scene intensity curves: BUILD ramps up, DROP holds at 1.0, BREAK eases back.
+  doc.scenes = doc.scenes.map((s, i) => {
+    if (i === 1) return { ...s, intensityCurve: [{ offset: 0, value: 0.4 }, { offset: 1920, value: 0.95 }] };
+    if (i === 2) return { ...s, intensityCurve: [{ offset: 0, value: 1.0 }, { offset: 3840, value: 1.0 }] };
+    if (i === 3) return { ...s, intensityCurve: [{ offset: 0, value: 0.95 }, { offset: 1920, value: 0.5 }] };
+    return s;
+  });
+  // Sample scene automation: texture filter-style gain ride into the DROP.
+  doc.sceneAutomation = [
+    {
+      id: uid("sceneAuto"),
+      sceneId: scBuild.id,
+      target: { kind: "trackGain", trackId: texture.id },
+      points: [
+        { tick: 0, value: 0.7 },
+        { tick: 1920, value: 1.0 },
+      ],
+    },
+  ];
   return finish(doc, 2);
 }
 

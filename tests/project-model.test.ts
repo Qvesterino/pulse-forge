@@ -132,7 +132,7 @@ describe("normalizeProject — scenes", () => {
 
   it("drops scenes that reference missing patterns and falls back if empty", () => {
     const doc = minimalDoc();
-    const dangling = { ...doc, scenes: [{ id: "scene-orphan", name: "Orphan", patternId: "pattern-gone" }] };
+    const dangling = { ...doc, scenes: [{ id: "scene-orphan", name: "Orphan", patternId: "pattern-gone", intensity: 0.7 }] };
     const normalized = normalizeProject(dangling);
     expect(normalized.scenes.find((s) => s.id === "scene-orphan")).toBeUndefined();
     expect(normalized.scenes.length).toBeGreaterThan(0);

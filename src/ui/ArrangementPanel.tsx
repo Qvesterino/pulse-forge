@@ -2,15 +2,17 @@ import { useRef, useState } from "react";
 import { useDoc, useServices } from "./context";
 import {
   addArrangementClip,
+  addMarker,
   createScene,
   deleteArrangementClip,
   deleteScene,
   duplicateArrangementClip,
   moveArrangementClip,
+  removeMarker,
   renameScene,
   resizeArrangementClip,
 } from "../commands/commands";
-import { BAR_TICKS } from "../project-model/types";
+import { BAR_TICKS, PPQ } from "../project-model/types";
 import { usePlayheadBar } from "./playhead";
 
 const BAR_WIDTH = 30;
@@ -32,6 +34,7 @@ export function ArrangementPanel() {
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [editingSceneId, setEditingSceneId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  const [rulerMode, setRulerMode] = useState<"bars" | "seconds">("bars");
   const laneRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const [drag, setDrag] = useState<{ startBar: number; lengthBars: number } | null>(null);
@@ -41,6 +44,11 @@ export function ArrangementPanel() {
     16,
     ...doc.arrangement.clips.map((c) => c.startBar + c.lengthBars + 4),
   );
+
+  const formatBarAsSeconds = (bar: number): string => {
+    const sec = (bar * BAR_TICKS * 60) / (doc.bpm * PPQ);
+    return `${sec.toFixed(1)}s`;
+  };
   const selectedScene = doc.scenes.find((s) => s.id === selectedSceneId) ?? doc.scenes[0];
 
   const barFromEvent = (event: React.PointerEvent): number => {
@@ -208,6 +216,14 @@ export function ArrangementPanel() {
           <div className="arr-timeline-actions">
             <button
               type="button"
+              className={`btn btn-small${rulerMode === "seconds" ? " active-solo" : ""}`}
+              title="Toggle time format on the ruler"
+              onClick={() => setRulerMode(rulerMode === "bars" ? "seconds" : "bars")}
+            >
+              {rulerMode === "bars" ? "BARS" : "SECS"}
+            </button>
+            <button
+              type="button"
               className="btn btn-small"
               disabled={!selectedScene}
               onClick={() => {
@@ -244,21 +260,62 @@ export function ArrangementPanel() {
           <div
             className="arr-ruler"
             style={{ width: totalBars * BAR_WIDTH }}
-            title="Click or drag to seek"
+            title="Click or drag to seek · shift+click adds a marker"
             onPointerDown={(event) => {
               if (event.button !== 0) return;
               event.currentTarget.setPointerCapture(event.pointerId);
+              if (event.shiftKey) {
+                const bar = Math.max(0, (event.clientX - laneRef.current!.getBoundingClientRect().left) / BAR_WIDTH);
+                const tick = Math.floor(bar * BAR_TICKS);
+                services.store.execute(addMarker(services.store.doc, { tick, type: "cue" }));
+                return;
+              }
               seekFromRulerEvent(event);
             }}
             onPointerMove={(event) => {
               if (event.buttons === 1) seekFromRulerEvent(event);
             }}
+            onContextMenu={(event) => {
+              // Right-click on the ruler at a marker deletes that marker (closest within 8 px).
+              event.preventDefault();
+              const x = event.clientX - laneRef.current!.getBoundingClientRect().left;
+              let closest: { id: string; dist: number } | null = null;
+              for (const marker of doc.markers) {
+                const mx = (marker.tick / BAR_TICKS) * BAR_WIDTH;
+                const dist = Math.abs(mx - x);
+                if (dist < 8 && (!closest || dist < closest.dist)) {
+                  closest = { id: marker.id, dist };
+                }
+              }
+              if (closest) {
+                services.store.execute(removeMarker(services.store.doc, closest.id));
+              }
+            }}
           >
-            {Array.from({ length: Math.ceil(totalBars / 4) }, (_, i) => (
-              <span key={i} className="arr-ruler-mark" style={{ left: i * 4 * BAR_WIDTH }}>
-                {i * 4 + 1}
-              </span>
-            ))}
+            {Array.from({ length: Math.ceil(totalBars / 4) }, (_, i) => {
+              const barNum = i * 4 + 1;
+              return (
+                <span key={i} className="arr-ruler-mark" style={{ left: i * 4 * BAR_WIDTH }}>
+                  {rulerMode === "seconds" ? formatBarAsSeconds(barNum - 1) : barNum}
+                </span>
+              );
+            })}
+            {doc.markers.map((marker) => {
+              const left = (marker.tick / BAR_TICKS) * BAR_WIDTH;
+              return (
+                <div
+                  key={marker.id}
+                  className={`arr-marker arr-marker-${marker.type}`}
+                  style={{ left: left - 6 }}
+                  title={`${marker.name} (${marker.type})`}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    services.store.execute(removeMarker(services.store.doc, marker.id));
+                  }}
+                />
+              );
+            })}
             <div className="arr-playhead" style={{ left: playheadBar * BAR_WIDTH }} />
           </div>
           <div

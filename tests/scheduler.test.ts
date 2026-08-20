@@ -286,7 +286,7 @@ describe("scheduler", () => {
     };
     const kick = getDrumTrack(doc).pads[0];
     patternB.rows[kick.id] = new Array(16).fill(0).map((_, i) => (i === 0 || i === 8 ? 0.9 : 0));
-    const sceneB = { id: "scene-b", name: "Break", patternId: patternB.id };
+    const sceneB = { id: "scene-b", name: "Break", patternId: patternB.id, intensity: 0.7 };
     const withSong: ProjectDocument = {
       ...doc,
       patterns: [...doc.patterns, patternB],

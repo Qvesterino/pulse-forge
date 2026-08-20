@@ -14,6 +14,8 @@ function baseDoc(): ProjectDocument {
     activePatternId: "",
     scenes: [],
     arrangement: { clips: [] },
+    markers: [],
+    sceneAutomation: [],
     automation: [],
     lfos: [],
     macros: [],
