@@ -123,6 +123,27 @@ export class AudioEngine {
   private buildMaster(): void {
     const ctx = this.ctx;
     if (!ctx) return;
+    // Disconnect old master chain if re-invoked (e.g. useContext with new context).
+    try {
+      this.masterAnalyser?.disconnect();
+    } catch {
+      /* already disconnected */
+    }
+    try {
+      this.masterLimiter?.disconnect();
+    } catch {
+      /* already disconnected */
+    }
+    try {
+      this.masterClipper?.disconnect();
+    } catch {
+      /* already disconnected */
+    }
+    try {
+      this.master?.disconnect();
+    } catch {
+      /* already disconnected */
+    }
     this.master = ctx.createGain();
     this.master.gain.value = 1;
     this.masterClipper = ctx.createWaveShaper();

@@ -214,18 +214,19 @@ export function setActivePattern(doc: ProjectDocument, patternId: string): Comma
 export function setPatternLength(doc: ProjectDocument, patternId: string, stepCount: number): Command {
   const target = doc.patterns.find((p) => p.id === patternId);
   if (!target) throw new Error(`Pattern ${patternId} not found`);
-  const patternTicks = stepCount * STEP_TICKS;
+  const safeCount = Math.max(1, Math.floor(stepCount));
+  const patternTicks = safeCount * STEP_TICKS;
   const next: ProjectDocument = {
     ...doc,
     patterns: doc.patterns.map((p) =>
       p.id === patternId
         ? {
             ...p,
-            stepCount,
+            stepCount: safeCount,
             rows: Object.fromEntries(
               Object.entries(p.rows).map(([padId, row]) => [
                 padId,
-                new Array<number>(stepCount).fill(0).map((_, i) => row[i] ?? 0),
+                new Array<number>(safeCount).fill(0).map((_, i) => row[i] ?? 0),
               ]),
             ),
             notes: Object.fromEntries(
@@ -238,7 +239,7 @@ export function setPatternLength(doc: ProjectDocument, patternId: string, stepCo
         : p,
     ),
   };
-  return snapshot("setPatternLength", `Set pattern length to ${stepCount}`, doc, next);
+  return snapshot("setPatternLength", `Set pattern length to ${safeCount}`, doc, next);
 }
 
 export function clearPattern(doc: ProjectDocument, patternId: string): Command {
@@ -749,6 +750,7 @@ export function setScenePattern(doc: ProjectDocument, sceneId: string, patternId
 }
 
 export function deleteScene(doc: ProjectDocument, sceneId: string): Command {
+  if (doc.scenes.length <= 1) throw new Error("Cannot delete the last scene");
   const target = doc.scenes.find((s) => s.id === sceneId);
   if (!target) throw new Error(`Scene ${sceneId} not found`);
   const next: ProjectDocument = {

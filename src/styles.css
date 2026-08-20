@@ -2979,3 +2979,46 @@ button {
   border-color: rgba(245, 158, 11, 0.6);
   color: var(--accent);
 }
+
+/* ---------- Diagnostics tabs ---------- */
+
+.diag-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.diag-tabs .btn {
+  font-size: 9px;
+  letter-spacing: 0.5px;
+  padding: 4px 8px;
+}
+
+.diag-subsection {
+  display: flex;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-soft);
+  margin-top: 8px;
+}
+
+.diag-issues {
+  padding-top: 10px;
+  border-top: 1px solid var(--border-soft);
+  margin-top: 8px;
+}
+
+.diag-issue-title {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--stop);
+  letter-spacing: 1px;
+  margin-bottom: 6px;
+}
+
+.diag-issue {
+  font-size: 10px;
+  color: var(--text-dim);
+  line-height: 1.4;
+  margin-bottom: 3px;
+}

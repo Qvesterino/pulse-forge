@@ -191,6 +191,7 @@ export function PatternBar({ clip, onCopy }: { clip: PatternClipboard | null; on
         >
           <option value={16}>16</option>
           <option value={32}>32</option>
+          <option value={64}>64</option>
         </select>
       </div>
 

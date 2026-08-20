@@ -178,6 +178,7 @@ export function openProject(core: CoreServices, initial: ProjectDocument): Servi
 
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
   let saving: Promise<void> | null = null;
+  let saveQueued = false;
 
   const doSave = async (): Promise<void> => {
     store.setSaveStatus("saving");
@@ -194,10 +195,19 @@ export function openProject(core: CoreServices, initial: ProjectDocument): Servi
       clearTimeout(saveTimer);
       saveTimer = null;
     }
-    if (saving) await saving;
+    if (saving) {
+      // A save is in progress — mark that another one is needed once
+      // it finishes, so rapid Ctrl+S / visibility changes don't lose data.
+      saveQueued = true;
+      await saving;
+    }
     if (store.saveStatus === "dirty" || store.saveStatus === "error") {
-      saving = doSave().finally(() => {
+      saving = doSave().then(() => {
         saving = null;
+        if (saveQueued) {
+          saveQueued = false;
+          void flushSave();
+        }
       });
       await saving;
     }

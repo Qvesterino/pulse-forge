@@ -534,6 +534,7 @@ export function normalizeProject(doc: ProjectDocument): ProjectDocument {
     }
     const loop = typeof scene.loop === "boolean" ? scene.loop : undefined;
     if (loop !== scene.loop) sceneChanged = true;
+    if (sceneChanged) scenesChanged = true;
     if (!sceneChanged) return scene;
     return { ...scene, intensity, intensityCurve: curve, loop };
   });

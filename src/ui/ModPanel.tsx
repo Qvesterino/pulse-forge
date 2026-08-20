@@ -594,8 +594,9 @@ function ScenePanel() {
   const [selectedSceneLaneId, setSelectedSceneLaneId] = useState<string | null>(sceneLanes[0]?.id ?? null);
   const selectedLane = sceneLanes.find((l) => l.id === selectedSceneLaneId) ?? null;
 
-  // Scene intensity curve: map scene-local ticks to 0..1
-  const maxSceneTicks = 2 * 1920; // 2 bars max curve range
+  // Scene intensity curve: max range is the scene's pattern length in ticks
+  const scenePattern = scene ? doc.patterns.find((p) => p.id === scene.patternId) : null;
+  const maxSceneTicks = scenePattern ? scenePattern.stepCount * STEP_TICKS : 2 * 1920;
   const sceneRange = { min: 0, max: 1, format: (v: number) => v.toFixed(2) };
 
   return (

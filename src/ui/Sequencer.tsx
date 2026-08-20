@@ -53,7 +53,7 @@ export function Sequencer({
 }) {
   const services = useServices();
   const doc = useDoc();
-  const pattern = doc.patterns.find((p) => p.id === doc.activePatternId)!;
+  const pattern = doc.patterns.find((p) => p.id === doc.activePatternId) ?? doc.patterns[0];
   const playheadStep = usePlayheadStep(services.transport, doc);
   const dragRef = useRef<DragState | null>(null);
   const [dragPreview, setDragPreview] = useState<{ padId: string; stepIndex: number; velocity: number } | null>(null);
@@ -231,7 +231,7 @@ export function Sequencer({
 function StepEditor({ padId, stepIndex, onClose }: { padId: string; stepIndex: number; onClose: () => void }) {
   const services = useServices();
   const doc = useDoc();
-  const pattern = doc.patterns.find((p) => p.id === doc.activePatternId)!;
+  const pattern = doc.patterns.find((p) => p.id === doc.activePatternId) ?? doc.patterns[0];
   const meta: StepMeta = pattern.stepMeta?.[padId]?.[stepIndex] ?? {};
   const pad = doc.tracks
     .filter((t): t is DrumTrack => t.kind === "drum")
@@ -448,6 +448,12 @@ function PadRow({
               onPointerDown={(event) => onBegin(event, pad.id, stepIndex)}
               onPointerMove={onMove}
               onPointerUp={onEnd}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  services.store.execute(toggleStep(doc, pad.id, stepIndex));
+                }
+              }}
               onContextMenu={(event) => {
                 event.preventDefault();
                 onEditStep(stepIndex);
