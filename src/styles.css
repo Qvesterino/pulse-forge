@@ -893,6 +893,25 @@ button {
   color: var(--accent);
 }
 
+.pattern-chip.dragging {
+  opacity: 0.4;
+}
+
+.pattern-chips {
+  position: relative;
+}
+
+.pattern-drop-indicator {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
+  border-radius: 1px;
+  pointer-events: none;
+  z-index: 1;
+}
+
 .pattern-rename {
   height: 26px;
   padding: 0 12px;
@@ -1350,6 +1369,107 @@ button {
   gap: 16px;
 }
 
+/* ---------- MIDI panel ---------- */
+
+.midi-panel {
+  max-height: 230px;
+  overflow: auto;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.midi-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.midi-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+  min-width: 52px;
+  text-align: right;
+}
+
+.midi-select {
+  height: 22px;
+  padding: 0 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 10px;
+}
+
+.midi-select-small {
+  min-width: 80px;
+}
+
+.midi-select-tiny {
+  min-width: 50px;
+}
+
+.midi-empty {
+  font-size: 10px;
+  color: var(--text-dim);
+  padding: 4px 0;
+}
+
+.midi-cc-section,
+.midi-drum-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.midi-cc-row,
+.midi-drum-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+}
+
+.midi-cc-num {
+  font-weight: 600;
+  color: var(--accent);
+  min-width: 32px;
+}
+
+.midi-cc-target {
+  flex: 1;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.midi-drum-note {
+  font-weight: 600;
+  min-width: 48px;
+  color: var(--text-dim);
+}
+
+.midi-add-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.midi-drum-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .mod-section {
   display: flex;
   flex-direction: column;
@@ -1736,6 +1856,33 @@ button {
 
 .boot-error {
   color: var(--stop);
+}
+
+.crash-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  gap: 12px;
+  font-family: var(--mono);
+  color: var(--text);
+  background: var(--bg);
+  padding: 32px;
+  text-align: center;
+}
+
+.crash-screen h1 {
+  color: var(--stop);
+  font-size: 18px;
+  letter-spacing: 1px;
+}
+
+.crash-detail {
+  font-size: 11px;
+  color: var(--text-dim);
+  max-width: 600px;
+  word-break: break-word;
 }
 
 /* ---------- Command toast ---------- */

@@ -39,7 +39,7 @@ export function mockServices(doc?: ProjectDocument): Services {
       bank: { size: 0, get: vi.fn(() => null), names: vi.fn(() => []) } as any,
       repo: { save: vi.fn(), load: vi.fn(), list: vi.fn() } as any,
       presets: { save: vi.fn(), load: vi.fn(), list: vi.fn() } as any,
-      library: { get: vi.fn(() => ({ favorites: [], recent: [] })), subscribe: vi.fn(() => () => {}), addFavorite: vi.fn(), removeFavorite: vi.fn(), addRecent: vi.fn() } as any,
+      library: { get: vi.fn(() => ({ favoriteAssets: [], recentAssets: [], favoritePresets: [], recentPresets: [] })), subscribe: vi.fn(() => () => {}), toggleAssetFavorite: vi.fn(), togglePresetFavorite: vi.fn(), recordAsset: vi.fn(), recordPreset: vi.fn() } as any,
     } as any,
     store: {
       getDoc: () => project,
@@ -92,11 +92,13 @@ export function mockServices(doc?: ProjectDocument): Services {
       resync: vi.fn(),
       queuePatternLaunch: vi.fn(),
       isRunning: false,
+      pendingPatternId: null,
+      subscribe: vi.fn(() => () => {}),
       stats: { scheduledEvents: 0, lastHorizonTick: 0, windows: 0 },
     } as any,
     repo: { save: vi.fn(), load: vi.fn(), list: vi.fn() } as any,
     bank: { size: 0, get: vi.fn(() => null), names: vi.fn(() => []) } as any,
-    library: { get: vi.fn(() => ({ favorites: [], recent: [] })), subscribe: vi.fn(() => () => {}), addFavorite: vi.fn(), removeFavorite: vi.fn(), addRecent: vi.fn() } as any,
+    library: { get: vi.fn(() => ({ favoriteAssets: [], recentAssets: [], favoritePresets: [], recentPresets: [] })), subscribe: vi.fn(() => () => {}), toggleAssetFavorite: vi.fn(), togglePresetFavorite: vi.fn(), recordAsset: vi.fn(), recordPreset: vi.fn() } as any,
     playback: {
       mode: "pattern" as const,
       subscribe: vi.fn(() => () => {}),

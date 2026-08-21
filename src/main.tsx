@@ -4,6 +4,7 @@ import { createCoreServices, openProject } from "./services";
 import type { CoreServices, Services } from "./services";
 import type { ProjectDocument } from "./project-model/types";
 import { App } from "./ui/App";
+import { ErrorBoundary } from "./ui/ErrorBoundary";
 import { ProjectBrowser } from "./ui/ProjectBrowser";
 import "./styles.css";
 
@@ -59,5 +60,9 @@ function Boot() {
   if (screen.kind === "browser") {
     return <ProjectBrowser core={screen.core} onOpen={(doc) => openDoc(screen.core, doc)} />;
   }
-  return <App services={screen.services} onOpenBrowser={() => backToBrowser(screen.services)} />;
+  return (
+    <ErrorBoundary onCrashSave={() => screen.kind === "studio" && void screen.services.flushSave()}>
+      <App services={screen.services} onOpenBrowser={() => backToBrowser(screen.services)} />
+    </ErrorBoundary>
+  );
 }

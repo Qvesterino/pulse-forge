@@ -236,10 +236,17 @@ export interface Lfo {
 export interface MacroMapping {
   id: ID;
   trackId: ID;
-  param: "gain" | "pan";
+  param: "gain" | "pan" | string;
   amount: number;
   /** Modulation source. Default "macro" for backwards compatibility. */
-  source?: "macro" | "intensity";
+  source?: "macro" | "intensity" | "midiCC";
+  /** Direct CC number mapping (when source === "midiCC"). */
+  ccNumber?: number;
+  /** MIDI channel filter for CC mapping (undefined = all channels). */
+  channel?: number;
+  /** Target range for CC → param scaling. */
+  min?: number;
+  max?: number;
 }
 
 export interface Macro {
@@ -248,6 +255,56 @@ export interface Macro {
   value: number;
   mappings: MacroMapping[];
 }
+
+// ---------------------------------------------------------------------------
+// MIDI
+// ---------------------------------------------------------------------------
+
+export interface MidiCcMapping {
+  id: ID;
+  ccNumber: number;
+  channel?: number;
+  target: AutomationTarget;
+  min: number;
+  max: number;
+}
+
+export interface DrumNoteMapping {
+  midiNote: number;
+  padId: ID;
+}
+
+export interface MidiConfig {
+  enabled: boolean;
+  deviceId: string;
+  drumChannel: number;
+  instrumentChannel: number;
+  ccMappings: MidiCcMapping[];
+  drumNoteMap: DrumNoteMapping[];
+  pitchBendRange: number;
+}
+
+/** Standard GM percussion note numbers (subset). */
+export const GM_DRUM_MAP: ReadonlyArray<{ note: number; name: string }> = [
+  { note: 35, name: "Acoustic Bass Drum" },
+  { note: 36, name: "Bass Drum 1" },
+  { note: 37, name: "Side Stick" },
+  { note: 38, name: "Acoustic Snare" },
+  { note: 39, name: "Hand Clap" },
+  { note: 40, name: "Electric Snare" },
+  { note: 42, name: "Closed Hi-Hat" },
+  { note: 44, name: "Pedal Hi-Hat" },
+  { note: 46, name: "Open Hi-Hat" },
+  { note: 49, name: "Crash Cymbal 1" },
+  { note: 51, name: "Ride Cymbal 1" },
+  { note: 54, name: "Tambourine" },
+  { note: 56, name: "Cowbell" },
+  { note: 63, name: "Open Hi Conga" },
+  { note: 64, name: "Low Conga" },
+  { note: 70, name: "Maracas" },
+  { note: 76, name: "Hi Timbale" },
+  { note: 77, name: "Low Timbale" },
+];
 
 /** All 24 major + minor keys (display strings). */
 const SCALE_LABELS = ["Major", "Natural Minor", "Harmonic Minor", "Melodic Minor", "Dorian", "Phrygian", "Mixolydian", "Pentatonic Major", "Pentatonic Minor"] as const;
@@ -308,6 +365,8 @@ export interface ProjectDocument {
   master: MasterConfig;
   /** Global groove (swing + humanize). Optional; absent = straight and dry. */
   groove?: Partial<GrooveSettings>;
+  /** MIDI input configuration. Optional for backwards compatibility. */
+  midi?: MidiConfig;
   createdAt: string;
   updatedAt: string;
 }

@@ -30,8 +30,8 @@ export function TopBar({
 }: {
   onToggleDiagnostics: () => void;
   diagnosticsOpen: boolean;
-  onSetBottomPanel: (panel: "mixer" | "fx" | "arr" | "mod" | "exp") => void;
-  bottomPanel: "mixer" | "fx" | "arr" | "mod" | "exp" | null;
+  onSetBottomPanel: (panel: "mixer" | "fx" | "arr" | "mod" | "exp" | "midi") => void;
+  bottomPanel: "mixer" | "fx" | "arr" | "mod" | "exp" | "midi" | null;
   onToggleHelp: () => void;
   playMode: PlayMode;
   onSetPlayMode: (mode: PlayMode) => void;
@@ -293,6 +293,16 @@ export function TopBar({
           aria-pressed={bottomPanel === "exp"}
         >
           EXPORT
+        </button>
+        <button
+          type="button"
+          className={`btn btn-ghost${bottomPanel === "midi" ? " active" : ""}`}
+          onClick={() => onSetBottomPanel("midi")}
+          title="Toggle MIDI input panel"
+          aria-label="Toggle MIDI input panel"
+          aria-pressed={bottomPanel === "midi"}
+        >
+          MIDI
         </button>
         <button
           type="button"

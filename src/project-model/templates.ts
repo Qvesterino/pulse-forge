@@ -134,6 +134,7 @@ function baseDocument(name: string, bpm: number): ProjectDocument {
     macros: defaultMacros(),
     returns: createDefaultReturns(),
     master: defaultMasterConfig(),
+    midi: { enabled: false, deviceId: "", drumChannel: 0, instrumentChannel: 0, ccMappings: [], drumNoteMap: [], pitchBendRange: 2 },
     createdAt: now,
     updatedAt: now,
   };

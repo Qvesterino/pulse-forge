@@ -1211,3 +1211,55 @@ export function quantizePatternToGrid(doc: ProjectDocument, patternId: string, g
   };
   return snapshot("quantizePatternToGrid", `Quantize to grid`, doc, next);
 }
+
+// ---------------------------------------------------------------------------
+// MIDI
+// ---------------------------------------------------------------------------
+
+function ensureMidi(doc: ProjectDocument): NonNullable<ProjectDocument["midi"]> {
+  return doc.midi ?? { enabled: false, deviceId: "", drumChannel: 0, instrumentChannel: 0, ccMappings: [], drumNoteMap: [], pitchBendRange: 2 };
+}
+
+export function setMidiConfig(doc: ProjectDocument, changes: Partial<import("../project-model/types").MidiConfig>): Command {
+  const prev = ensureMidi(doc);
+  const next: ProjectDocument = { ...doc, midi: { ...prev, ...changes } };
+  return snapshot("setMidiConfig", `MIDI settings`, doc, next);
+}
+
+export function addMidiCcMapping(
+  doc: ProjectDocument,
+  ccNumber: number,
+  target: import("../project-model/types").AutomationTarget,
+  min: number,
+  max: number,
+): Command {
+  const midi = ensureMidi(doc);
+  const mapping: import("../project-model/types").MidiCcMapping = { id: uid("midiMap"), ccNumber, target, min, max };
+  const next: ProjectDocument = { ...doc, midi: { ...midi, ccMappings: [...midi.ccMappings, mapping] } };
+  return snapshot("addMidiCcMapping", `Map CC${ccNumber}`, doc, next);
+}
+
+export function removeMidiCcMapping(doc: ProjectDocument, mappingId: string): Command {
+  const midi = ensureMidi(doc);
+  const next: ProjectDocument = {
+    ...doc,
+    midi: { ...midi, ccMappings: midi.ccMappings.filter((m) => m.id !== mappingId) },
+  };
+  return snapshot("removeMidiCcMapping", `Remove CC mapping`, doc, next);
+}
+
+export function setDrumNoteMapping(doc: ProjectDocument, midiNote: number, padId: string): Command {
+  const midi = ensureMidi(doc);
+  const existing = midi.drumNoteMap.filter((m) => m.midiNote !== midiNote);
+  const next: ProjectDocument = {
+    ...doc,
+    midi: { ...midi, drumNoteMap: [...existing, { midiNote, padId }] },
+  };
+  return snapshot("setDrumNoteMapping", `Map note ${midiNote}`, doc, next);
+}
+
+export function resetDrumNoteMapping(doc: ProjectDocument): Command {
+  const midi = ensureMidi(doc);
+  const next: ProjectDocument = { ...doc, midi: { ...midi, drumNoteMap: [] } };
+  return snapshot("resetDrumNoteMapping", `Reset drum map`, doc, next);
+}

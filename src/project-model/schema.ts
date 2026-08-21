@@ -646,6 +646,34 @@ export function normalizeProject(doc: ProjectDocument): ProjectDocument {
     }
   }
 
+  // midi — sanitize optional MIDI config
+  if (next.midi !== undefined) {
+    if (!isObject(next.midi)) {
+      next = { ...next, midi: undefined };
+      changed = true;
+    } else {
+      const m = next.midi as Record<string, unknown>;
+      const enabled = m.enabled === true;
+      const deviceId = typeof m.deviceId === "string" ? m.deviceId : "";
+      const drumChannel = typeof m.drumChannel === "number" ? Math.max(0, Math.min(16, m.drumChannel)) : 0;
+      const instrumentChannel = typeof m.instrumentChannel === "number" ? Math.max(0, Math.min(16, m.instrumentChannel)) : 0;
+      const pitchBendRange = typeof m.pitchBendRange === "number" ? Math.max(1, Math.min(24, m.pitchBendRange)) : 2;
+      const ccMappings = Array.isArray(m.ccMappings) ? m.ccMappings : [];
+      const drumNoteMap = Array.isArray(m.drumNoteMap) ? m.drumNoteMap : [];
+      // Only create new object if something actually changed
+      if (
+        enabled !== (m.enabled === true) ||
+        deviceId !== (typeof m.deviceId === "string" ? m.deviceId : "") ||
+        drumChannel !== (typeof m.drumChannel === "number" ? m.drumChannel : 0) ||
+        instrumentChannel !== (typeof m.instrumentChannel === "number" ? m.instrumentChannel : 0) ||
+        pitchBendRange !== (typeof m.pitchBendRange === "number" ? m.pitchBendRange : 2)
+      ) {
+        next = { ...next, midi: { enabled, deviceId, drumChannel, instrumentChannel, ccMappings, drumNoteMap, pitchBendRange } };
+        changed = true;
+      }
+    }
+  }
+
   // patterns: stepCount, rows, notes, stepMeta
   const padIds = new Set(allPadIds(next));
   let patternsChanged = false;
@@ -812,6 +840,7 @@ export function validateProjectShape(doc: unknown): doc is ProjectDocument {
   if (doc.returns !== undefined && !Array.isArray(doc.returns)) return false;
   if (doc.master !== undefined && !isObject(doc.master)) return false;
   if (doc.groove !== undefined && !isObject(doc.groove)) return false;
+  if (doc.midi !== undefined && !isObject(doc.midi)) return false;
   if (doc.arrangement !== undefined) {
     if (!isObject(doc.arrangement) || !Array.isArray(doc.arrangement.clips)) return false;
   }

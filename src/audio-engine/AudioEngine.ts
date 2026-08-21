@@ -1,4 +1,4 @@
-import type { DrumPad, EffectInstance, InstrumentTrack, MasterConfig, ProjectDocument, SceneAutomation } from "../project-model/types";
+import type { AutomationTarget, DrumPad, EffectInstance, InstrumentTrack, MasterConfig, ProjectDocument, SceneAutomation } from "../project-model/types";
 import type { AutomationPoint, Lfo } from "../project-model/types";
 import { valueAt } from "../project-model/automation";
 import { defaultMasterConfig } from "../project-model/schema";
@@ -39,6 +39,7 @@ interface InstrumentState {
   runtime: InstrumentRuntime;
   params: Record<string, number>;
   sampleId: string | null;
+  pitchBend: number; // semitones offset from MIDI pitch bend
 }
 
 interface LfoRuntimeState {
@@ -437,7 +438,7 @@ export class AudioEngine {
         { bpm: this.doc?.bpm ?? 124, getSample: (id) => this.bank?.get(id) },
       );
       runtime.output.connect(nodes.input);
-      state = { runtime, params: { ...track.params }, sampleId: track.sampleId };
+      state = { runtime, params: { ...track.params }, sampleId: track.sampleId, pitchBend: 0 };
       this.instruments.set(track.id, state);
       return;
     }
@@ -452,7 +453,11 @@ export class AudioEngine {
   }
 
   noteOn(trackId: string, pitch: number, velocity: number, when: number, durationSec: number): void {
-    this.instruments.get(trackId)?.runtime.noteOn(pitch, velocity, when, durationSec);
+    const inst = this.instruments.get(trackId);
+    if (!inst) return;
+    const bendSemitones = inst.pitchBend ?? 0;
+    const adjustedPitch = bendSemitones !== 0 ? pitch + bendSemitones : pitch;
+    inst.runtime.noteOn(adjustedPitch, velocity, when, durationSec);
   }
 
   previewNote(trackId: string, pitch: number): void {
@@ -866,6 +871,44 @@ export class AudioEngine {
     }
     this.voices.clear();
     for (const state of this.instruments.values()) state.runtime.panic();
+  }
+
+  /** Apply a MIDI CC value directly to a target parameter. */
+  applyMidiCc(target: AutomationTarget, value: number): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    switch (target.kind) {
+      case "trackGain": {
+        const nodes = this.trackNodes.get(target.trackId);
+        if (nodes) nodes.modMacroGain.gain.setTargetAtTime(Math.max(0, Math.min(2, value)), now, 0.005);
+        break;
+      }
+      case "trackPan": {
+        const nodes = this.trackNodes.get(target.trackId);
+        if (nodes) nodes.modMacroPan.pan.setTargetAtTime(Math.max(-1, Math.min(1, value)), now, 0.005);
+        break;
+      }
+      case "fxParam": {
+        const nodes = this.trackNodes.get(target.trackId);
+        const rt = nodes?.fx.runtimes.get(target.fxId!);
+        if (rt) rt.setParameter(target.paramId!, value);
+        break;
+      }
+      case "instParam": {
+        const inst = this.instruments.get(target.trackId);
+        if (inst) inst.runtime.setParameter(target.paramId!, value);
+        break;
+      }
+    }
+  }
+
+  /** Apply a pitch bend offset (in semitones) to an instrument track. */
+  setMidiPitchBend(trackId: string, semitones: number): void {
+    const inst = this.instruments.get(trackId);
+    if (!inst) return;
+    // Apply as a frequency multiplier to the next noteOn — store for later use
+    inst.pitchBend = semitones;
   }
 
   private peakOf(analyser: AnalyserNode | null): number {

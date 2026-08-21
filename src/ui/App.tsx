@@ -13,6 +13,7 @@ import { Mixer } from "./Mixer";
 import { EffectRack } from "./EffectRack";
 import { ArrangementPanel } from "./ArrangementPanel";
 import { ModPanel } from "./ModPanel";
+import { MidiPanel } from "./MidiPanel";
 import { ExportPanel } from "./ExportPanel";
 import {
   clearSteps,
@@ -29,7 +30,7 @@ import { CommandToast } from "./CommandToast";
 import { HelpOverlay } from "./HelpOverlay";
 import { OnboardingHint } from "./OnboardingHint";
 
-const PANEL_KEYS = ["mixer", "fx", "arr", "mod", "exp"] as const;
+const PANEL_KEYS = ["mixer", "fx", "arr", "mod", "exp", "midi"] as const;
 type BottomPanel = (typeof PANEL_KEYS)[number];
 
 export function App({ services, onOpenBrowser }: { services: Services; onOpenBrowser: () => void }) {
@@ -300,6 +301,7 @@ export function App({ services, onOpenBrowser }: { services: Services; onOpenBro
         {bottomPanel === "arr" && <ArrangementPanel />}
         {bottomPanel === "mod" && <ModPanel />}
         {bottomPanel === "exp" && <ExportPanel />}
+        {bottomPanel === "midi" && <MidiPanel devices={services.midi.getDevices()} />}
         {diagnosticsOpen && <Diagnostics />}
         <footer className="statusbar">
           <span>

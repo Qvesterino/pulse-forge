@@ -10,6 +10,7 @@ import type { SampleBank } from "./sample-library/factory";
 import type { PlayMode, ProjectDocument, Scene } from "./project-model/types";
 import { BAR_TICKS, PPQ } from "./project-model/types";
 import { setActivePattern } from "./commands/commands";
+import { MidiInput } from "./midi/MidiInput";
 
 /**
  * Long-lived services shared across projects: the audio engine (one shared
@@ -34,6 +35,7 @@ export interface Services {
   bank: SampleBank;
   library: LibraryRepository;
   playback: PlaybackController;
+  midi: MidiInput;
   flushSave(): Promise<void>;
   /** Stop playback, flush autosave and detach page listeners. */
   closeProject(): Promise<void>;
@@ -176,6 +178,19 @@ export function openProject(core: CoreServices, initial: ProjectDocument): Servi
     store.execute(setActivePattern(store.doc, patternId)),
   );
 
+  const midi = new MidiInput();
+  void midi.requestAccess().then((ok) => {
+    if (ok) {
+      midi.start(
+        engine,
+        store,
+        transport,
+        () => store.doc.midi ?? { enabled: false, deviceId: "", drumChannel: 0, instrumentChannel: 0, ccMappings: [], drumNoteMap: [], pitchBendRange: 2 },
+        () => store.doc,
+      );
+    }
+  });
+
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
   let saving: Promise<void> | null = null;
   let saveQueued = false;
@@ -232,6 +247,7 @@ export function openProject(core: CoreServices, initial: ProjectDocument): Servi
 
   const closeProject = async (): Promise<void> => {
     playback.stop();
+    midi.stop();
     document.removeEventListener("visibilitychange", onVisibility);
     window.removeEventListener("beforeunload", onUnload);
     await flushSave();
@@ -256,5 +272,5 @@ export function openProject(core: CoreServices, initial: ProjectDocument): Servi
     };
   };
 
-  return { core, store, engine, transport, scheduler, repo, bank, library, playback, flushSave, closeProject, getDiagnostics };
+  return { core, store, engine, transport, scheduler, repo, bank, library, playback, midi, flushSave, closeProject, getDiagnostics };
 }
