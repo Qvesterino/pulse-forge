@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { CoreServices } from "../services";
 import type { SavedProjectMeta } from "../persistence/ProjectRepository";
 import type { ProjectDocument } from "../project-model/types";
 import { TEMPLATES, createProjectFromTemplate } from "../project-model/templates";
 import type { TemplateId } from "../project-model/templates";
+import { importProject } from "../export/project-io";
 
 function formatRelative(iso: string): string {
   const then = Date.parse(iso);
@@ -26,6 +27,8 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
   const [renameValue, setRenameValue] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(() => {
     core.repo
@@ -65,9 +68,24 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
     setBusy(true);
     try {
       const doc = createProjectFromTemplate(id);
-      // Persist immediately — a brand-new project must never be one refresh away from oblivion.
       await core.repo.save(doc);
       onOpen(doc);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleImportFile = async (file: File) => {
+    if (busy) return;
+    setBusy(true);
+    setImportError(null);
+    try {
+      const doc = await importProject(file);
+      // Save with new ID to avoid overwriting existing projects
+      await core.repo.save(doc);
+      onOpen(doc);
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : "Import failed");
     } finally {
       setBusy(false);
     }
@@ -121,6 +139,30 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
             </button>
           </section>
         )}
+
+        <section className="pb-section">
+          <h2 className="pb-title">IMPORT PROJECT</h2>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json,.pulseforge.json"
+            style={{ display: "none" }}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void handleImportFile(file);
+              e.target.value = "";
+            }}
+          />
+          <button
+            type="button"
+            className="btn btn-small"
+            disabled={busy}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            IMPORT FROM FILE
+          </button>
+          {importError && <span className="pb-import-error">{importError}</span>}
+        </section>
 
         <section className="pb-section">
           <h2 className="pb-title">NEW PROJECT</h2>

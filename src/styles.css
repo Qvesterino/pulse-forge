@@ -1884,6 +1884,97 @@ button {
   color: var(--text-dim);
 }
 
+/* ---------- Undo History Panel ---------- */
+
+.undo-history-panel {
+  position: fixed;
+  top: 36px;
+  right: 14px;
+  width: 260px;
+  max-height: 340px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.undo-history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.undo-history-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+}
+
+.undo-history-count {
+  font-size: 9px;
+  color: var(--text-faint);
+}
+
+.undo-history-empty {
+  padding: 12px;
+  font-size: 11px;
+  color: var(--text-faint);
+  text-align: center;
+}
+
+.undo-history-list {
+  overflow-y: auto;
+  flex: 1;
+  padding: 4px 0;
+}
+
+.undo-history-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.undo-history-entry.current {
+  color: var(--text);
+  background: var(--accent-soft);
+}
+
+.undo-history-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.undo-history-entry.current .undo-history-dot {
+  background: var(--accent);
+}
+
+.undo-history-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.undo-history-time {
+  font-size: 9px;
+  color: var(--text-faint);
+  font-family: var(--mono);
+  flex-shrink: 0;
+}
+
 .boot {
   height: 100%;
   display: grid;
@@ -2560,6 +2651,12 @@ button {
   margin: 0;
   font-size: 12px;
   color: var(--text-faint);
+}
+
+.pb-import-error {
+  margin-left: 8px;
+  font-size: 11px;
+  color: var(--stop);
 }
 
 /* ---------- Projects button in top bar ---------- */

@@ -4,6 +4,7 @@ import { renderProject } from "../rendering/renderer";
 import { buildStemProject, nonEmptyStemGroups } from "../rendering/stems";
 import { downloadWav, encodeWav, sanitizeFilename } from "../rendering/wav";
 import { buildScorepack } from "../export/scorepack";
+import { exportProject } from "../export/project-io";
 import type { WavBitDepth } from "../rendering/wav";
 import type { PlayMode } from "../project-model/types";
 import { summarizeBuffer, type BufferSummary } from "../audio-engine/metering";
@@ -156,6 +157,15 @@ export function ExportPanel() {
           onClick={() => void exportScorepack()}
         >
           EXPORT SCOREPACK
+        </button>
+        <button
+          type="button"
+          className="btn btn-export"
+          disabled={busy}
+          title="Download project as JSON file for backup or sharing"
+          onClick={() => exportProject(doc)}
+        >
+          EXPORT JSON
         </button>
       </div>
       <div className={`export-status export-${status.kind}`}>

@@ -9,13 +9,15 @@ function topBarProps(overrides?: Partial<React.ComponentProps<typeof TopBar>>) {
     onToggleDiagnostics: vi.fn(),
     diagnosticsOpen: false,
     onSetBottomPanel: vi.fn(),
-    bottomPanel: null as "mixer" | "fx" | "arr" | "mod" | "exp" | null,
+    bottomPanel: null as "mixer" | "fx" | "arr" | "mod" | "exp" | "midi" | null,
     onToggleHelp: vi.fn(),
     playMode: "pattern" as const,
     onSetPlayMode: vi.fn(),
     onOpenBrowser: vi.fn(),
     scaleSnap: false,
     onToggleScaleSnap: vi.fn(),
+    historyOpen: false,
+    onToggleHistory: vi.fn(),
     ...overrides,
   };
 }

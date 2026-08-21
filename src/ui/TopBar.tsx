@@ -27,6 +27,8 @@ export function TopBar({
   onOpenBrowser,
   scaleSnap,
   onToggleScaleSnap,
+  historyOpen,
+  onToggleHistory,
 }: {
   onToggleDiagnostics: () => void;
   diagnosticsOpen: boolean;
@@ -38,6 +40,8 @@ export function TopBar({
   onOpenBrowser: () => void;
   scaleSnap: boolean;
   onToggleScaleSnap: () => void;
+  historyOpen: boolean;
+  onToggleHistory: () => void;
 }) {
   const services = useServices();
   const doc = useDoc();
@@ -312,6 +316,16 @@ export function TopBar({
           aria-label="Show keyboard shortcuts"
         >
           ?
+        </button>
+        <button
+          type="button"
+          className={`btn btn-ghost${historyOpen ? " active" : ""}`}
+          onClick={onToggleHistory}
+          title="Toggle undo history"
+          aria-label="Toggle undo history"
+          aria-pressed={historyOpen}
+        >
+          ↶
         </button>
         <button
           type="button"

@@ -15,6 +15,7 @@ import { ArrangementPanel } from "./ArrangementPanel";
 import { ModPanel } from "./ModPanel";
 import { MidiPanel } from "./MidiPanel";
 import { ExportPanel } from "./ExportPanel";
+import { UndoHistoryPanel } from "./UndoHistoryPanel";
 import {
   clearSteps,
   deleteNote,
@@ -47,6 +48,7 @@ export function App({ services, onOpenBrowser }: { services: Services; onOpenBro
   const [helpOpen, setHelpOpen] = useState(false);
   const [stepSelection, setStepSelection] = useState<StepSelection | null>(null);
   const [scaleSnap, setScaleSnap] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const track = doc.tracks.find((t) => t.id === selectedTrackId) ?? doc.tracks[0];
   const padId =
@@ -274,6 +276,8 @@ export function App({ services, onOpenBrowser }: { services: Services; onOpenBro
           onOpenBrowser={onOpenBrowser}
           scaleSnap={scaleSnap}
           onToggleScaleSnap={() => setScaleSnap((s) => !s)}
+          historyOpen={historyOpen}
+          onToggleHistory={() => setHistoryOpen((v) => !v)}
         />
         <main className="workspace">
           <div className="workspace-main">
@@ -310,6 +314,7 @@ export function App({ services, onOpenBrowser }: { services: Services; onOpenBro
           </span>
         </footer>
         <CommandToast />
+        <UndoHistoryPanel open={historyOpen} />
         <HelpOverlay open={helpOpen} onClose={() => setHelpOpen(false)} />
         <OnboardingHint />
       </div>

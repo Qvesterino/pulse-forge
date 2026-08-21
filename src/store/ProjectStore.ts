@@ -4,11 +4,18 @@ import { normalizeProject } from "../project-model/schema";
 
 export type SaveStatus = "saved" | "dirty" | "saving" | "error";
 
+export interface HistoryEntry {
+  label: string;
+  type: string;
+  timestamp: number;
+}
+
 export class ProjectStore {
   private doc_: ProjectDocument;
   private listeners = new Set<() => void>();
   private undoStack: Command[] = [];
   private redoStack: Command[] = [];
+  private timestamps: number[] = [];
   private saveStatus_: SaveStatus = "saved";
   private lastSavedAt_: string | null = null;
   onDocChanged: ((doc: ProjectDocument) => void) | null = null;
@@ -36,6 +43,21 @@ export class ProjectStore {
 
   get lastCommandLabel(): string | null {
     return this.undoStack.length > 0 ? this.undoStack[this.undoStack.length - 1].label : null;
+  }
+
+  /** Last N history entries (most recent last). For the undo history panel. */
+  get history(): HistoryEntry[] {
+    const n = Math.min(this.undoStack.length, 20);
+    const start = this.undoStack.length - n;
+    const entries: HistoryEntry[] = [];
+    for (let i = start; i < this.undoStack.length; i++) {
+      entries.push({
+        label: this.undoStack[i].label,
+        type: this.undoStack[i].type,
+        timestamp: this.timestamps[i] ?? 0,
+      });
+    }
+    return entries;
   }
 
   get saveStatus(): SaveStatus {
@@ -66,13 +88,18 @@ export class ProjectStore {
   execute(command: Command): void {
     this.doc_ = command.execute(this.doc_);
     this.undoStack.push(command);
-    if (this.undoStack.length > 256) this.undoStack.shift();
+    this.timestamps.push(Date.now());
+    if (this.undoStack.length > 256) {
+      this.undoStack.shift();
+      this.timestamps.shift();
+    }
     this.redoStack = [];
     this.afterMutation();
   }
 
   undo(): void {
     const command = this.undoStack.pop();
+    this.timestamps.pop();
     if (!command) return;
     this.doc_ = command.undo(this.doc_);
     this.redoStack.push(command);
@@ -84,6 +111,7 @@ export class ProjectStore {
     if (!command) return;
     this.doc_ = command.execute(this.doc_);
     this.undoStack.push(command);
+    this.timestamps.push(Date.now());
     this.afterMutation();
   }
 
