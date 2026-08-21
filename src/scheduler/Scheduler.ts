@@ -26,6 +26,12 @@ export interface SchedulerDeps {
   triggerMarker?(assetId: string | null, when: number, trackId?: string): void;
   /** Update the live scene intensity signal (0..1). */
   setSceneIntensity?(intensity: number): void;
+  /** MIDI output: send a note on to external hardware. */
+  midiNoteOn?(trackId: string, channel: number, note: number, velocity: number, when: number): void;
+  /** MIDI output: send a note off to external hardware. */
+  midiNoteOff?(trackId: string, channel: number, note: number, when: number): void;
+  /** MIDI output: send a CC message. */
+  midiCC?(channel: number, cc: number, value: number): void;
 }
 
 const INTERVAL_MS = 25;
@@ -304,6 +310,19 @@ export class Scheduler {
       const when = timeAt(hit.tick);
       if (!audible(when)) continue;
       this.deps.trigger(hit.trackId, hit.pad, when, hit.velocity);
+      // MIDI output for drum tracks
+      if (this.deps.midiNoteOn) {
+        const track = doc.tracks.find((t) => t.id === hit.trackId);
+        if (track?.kind === "instrument" && track.midiOutput?.enabled) {
+          const ch = (track.midiOutput.channel || 1) - 1;
+          const padIndex = 0; // GM map would need pad→note lookup
+          this.deps.midiNoteOn(hit.trackId, ch, 36 + padIndex, Math.round(hit.velocity * 127), when);
+          if (this.deps.midiNoteOff) {
+            const noteOffWhen = when + 0.1;
+            this.deps.midiNoteOff(hit.trackId, ch, 36 + padIndex, noteOffWhen);
+          }
+        }
+      }
       this.stats.scheduledEvents += 1;
     }
 
@@ -318,6 +337,15 @@ export class Scheduler {
           const when = timeAt(occ);
           if (!audible(when)) continue;
           this.deps.noteOn(track.id, note.pitch, note.velocity, when, note.duration * transport.secondsPerTick);
+          // MIDI output for instrument tracks
+          if (this.deps.midiNoteOn && track.midiOutput?.enabled) {
+            const ch = (track.midiOutput.channel || 1) - 1;
+            this.deps.midiNoteOn(track.id, ch, note.pitch, Math.round(note.velocity * 127), when);
+            if (this.deps.midiNoteOff) {
+              const noteOffWhen = when + note.duration * transport.secondsPerTick;
+              this.deps.midiNoteOff(track.id, ch, note.pitch, noteOffWhen);
+            }
+          }
           this.stats.scheduledEvents += 1;
         }
       }

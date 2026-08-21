@@ -1263,3 +1263,72 @@ export function resetDrumNoteMapping(doc: ProjectDocument): Command {
   const next: ProjectDocument = { ...doc, midi: { ...midi, drumNoteMap: [] } };
   return snapshot("resetDrumNoteMapping", `Reset drum map`, doc, next);
 }
+
+// ---------------------------------------------------------------------------
+// Program Change & Bank Select
+// ---------------------------------------------------------------------------
+
+export function setTrackPreset(doc: ProjectDocument, trackId: string, presetId: string): Command {
+  const track = doc.tracks.find((t) => t.id === trackId && t.kind === "instrument");
+  if (!track || track.kind !== "instrument") throw new Error(`Instrument track ${trackId} not found`);
+  const next: ProjectDocument = {
+    ...doc,
+    tracks: doc.tracks.map((t) =>
+      t.id === trackId && t.kind === "instrument" ? { ...t, presetId } : t,
+    ),
+  };
+  return snapshot("setTrackPreset", `Program Change → ${presetId}`, doc, next);
+}
+
+export function setMidiProgramMap(doc: ProjectDocument, programMap: { program: number; presetId: string }[]): Command {
+  const midi = ensureMidi(doc);
+  const next: ProjectDocument = { ...doc, midi: { ...midi, programMap } };
+  return snapshot("setMidiProgramMap", `Set program map`, doc, next);
+}
+
+// ---------------------------------------------------------------------------
+// Note-Off (lifecycle extension)
+// ---------------------------------------------------------------------------
+
+// Note-off is handled at the AudioEngine level, not as a document command.
+// See AudioEngine.noteOff() and MidiInput.handleNoteOff().
+
+// ---------------------------------------------------------------------------
+// Aftertouch
+// ---------------------------------------------------------------------------
+
+export function setMidiAftertouch(doc: ProjectDocument, target: import("../project-model/types").AutomationTarget, range: number): Command {
+  const midi = ensureMidi(doc);
+  const next: ProjectDocument = { ...doc, midi: { ...midi, aftertouchTarget: target, aftertouchRange: range } };
+  return snapshot("setMidiAftertouch", `Aftertouch config`, doc, next);
+}
+
+// ---------------------------------------------------------------------------
+// MIDI Output
+// ---------------------------------------------------------------------------
+
+export function setTrackMidiOutput(
+  doc: ProjectDocument,
+  trackId: string,
+  output: { enabled: boolean; channel: number; deviceId?: string },
+): Command {
+  const prev = doc.tracks.find((t) => t.id === trackId);
+  if (!prev) throw new Error(`Track ${trackId} not found`);
+  const next: ProjectDocument = {
+    ...doc,
+    tracks: doc.tracks.map((t) =>
+      t.id === trackId ? { ...t, midiOutput: output } : t,
+    ),
+  };
+  return snapshot("setTrackMidiOutput", `MIDI output config`, doc, next);
+}
+
+// ---------------------------------------------------------------------------
+// MIDI Clock
+// ---------------------------------------------------------------------------
+
+export function setMidiClockMode(doc: ProjectDocument, clockMode: "off" | "master" | "slave"): Command {
+  const midi = ensureMidi(doc);
+  const next: ProjectDocument = { ...doc, midi: { ...midi, clockMode } };
+  return snapshot("setMidiClockMode", `Clock mode: ${clockMode}`, doc, next);
+}

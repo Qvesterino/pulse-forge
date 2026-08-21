@@ -907,8 +907,21 @@ export class AudioEngine {
   setMidiPitchBend(trackId: string, semitones: number): void {
     const inst = this.instruments.get(trackId);
     if (!inst) return;
-    // Apply as a frequency multiplier to the next noteOn — store for later use
     inst.pitchBend = semitones;
+  }
+
+  /** Apply polyphonic aftertouch to a specific note on an instrument track. */
+  polyPressure(trackId: string, pitch: number, pressure: number): void {
+    const inst = this.instruments.get(trackId);
+    if (!inst?.runtime.polyPressure) return;
+    inst.runtime.polyPressure(pitch, pressure, this.ctx?.currentTime ?? 0);
+  }
+
+  /** Release a specific voice by pitch. */
+  noteOff(trackId: string, pitch: number, when: number): void {
+    const inst = this.instruments.get(trackId);
+    if (!inst?.runtime.noteOff) return;
+    inst.runtime.noteOff(pitch, when);
   }
 
   private peakOf(analyser: AnalyserNode | null): number {

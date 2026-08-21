@@ -4,6 +4,8 @@ import type { ParamDef } from "../effects/types";
 export interface InstrumentRuntime {
   output: AudioNode;
   noteOn(pitch: number, velocity: number, when: number, durationSec: number): void;
+  noteOff?(pitch: number, when: number): void;
+  polyPressure?(pitch: number, pressure: number, when: number): void;
   setParameter(id: string, value: number): void;
   setParameterAt?(id: string, value: number, when: number): void;
   setSample?(id: string | null): void;

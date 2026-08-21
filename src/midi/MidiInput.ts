@@ -22,6 +22,10 @@ export class MidiInput {
   private deviceChangeCb: DeviceChangeCallback | null = null;
   private configCb: (() => MidiConfig) | null = null;
   private getDoc: (() => ProjectDocument) | null = null;
+  private clockPulseCb: (() => void) | null = null;
+  private clockStartCb: (() => void) | null = null;
+  private clockContinueCb: (() => void) | null = null;
+  private clockStopCb: (() => void) | null = null;
 
   private engine: AudioEngine | null = null;
   private store: ProjectStore | null = null;
@@ -134,6 +138,27 @@ export class MidiInput {
       case 0xe0: // Pitch Bend
         this.handlePitchBend(data[1], data[2], channel, config);
         break;
+      case 0xc0: // Program Change
+        this.handleProgramChange(data[1], channel, config);
+        break;
+      case 0xd0: // Channel Pressure (Aftertouch)
+        this.handleChannelPressure(data[1], channel, config);
+        break;
+      case 0xa0: // Polyphonic Aftertouch
+        this.handlePolyPressure(data[1], data[2], channel, config);
+        break;
+      case 0xf8: // MIDI Clock
+        this.handleClock(config);
+        break;
+      case 0xfa: // Start
+        this.handleClockStart(config);
+        break;
+      case 0xfb: // Continue
+        this.handleClockContinue(config);
+        break;
+      case 0xfc: // Stop
+        this.handleClockStop(config);
+        break;
     }
   }
 
@@ -224,7 +249,107 @@ export class MidiInput {
     }
   }
 
-  // Lightweight command builder (avoids circular import from commands.ts)
+  // ---------------------------------------------------------------------------
+  // Program Change
+  // ---------------------------------------------------------------------------
+
+  private handleProgramChange(program: number, channel: number, config: MidiConfig): void {
+    const doc = this.getDoc?.();
+    if (!doc || !this.store) return;
+
+    // Check program map
+    if (config.programMap) {
+      const entry = config.programMap.find((m) => m.program === program);
+      if (entry) {
+        const instTrack = doc.tracks.find((t) => t.kind === "instrument" && (config.instrumentChannel === 0 || channel === config.instrumentChannel));
+        if (instTrack && instTrack.kind === "instrument") {
+          this.store.execute(this.setTrackPresetCmd(doc, instTrack.id, entry.presetId));
+          return;
+        }
+      }
+    }
+
+    // Fallback: program number = index in sorted preset list for the instrument kind
+    const instTrack = doc.tracks.find((t) => t.kind === "instrument" && (config.instrumentChannel === 0 || channel === config.instrumentChannel));
+    if (instTrack && instTrack.kind === "instrument") {
+      // Use program number as a hint — the actual preset switching depends on available presets
+      // For now, just log it. Full implementation requires PresetRepository access.
+      void program;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Aftertouch
+  // ---------------------------------------------------------------------------
+
+  private handleChannelPressure(pressure: number, _channel: number, config: MidiConfig): void {
+    if (!this.engine || !config.aftertouchTarget) return;
+    const range = config.aftertouchRange ?? 0.5;
+    const normalized = pressure / 127;
+    const scaled = normalized * range;
+    this.engine.applyMidiCc(config.aftertouchTarget, scaled);
+  }
+
+  private handlePolyPressure(note: number, pressure: number, _channel: number, config: MidiConfig): void {
+    if (!this.engine) return;
+    const doc = this.getDoc?.();
+    if (!doc) return;
+    // Route to instrument track's polyPressure if available
+    const instTrack = doc.tracks.find((t) => t.kind === "instrument");
+    if (instTrack) {
+      const normalized = pressure / 127;
+      this.engine.polyPressure(instTrack.id, note, normalized);
+    }
+    void config;
+  }
+
+  // ---------------------------------------------------------------------------
+  // MIDI Clock
+  // ---------------------------------------------------------------------------
+
+  private handleClock(config: MidiConfig): void {
+    if (config.clockMode !== "slave") return;
+    this.clockPulseCb?.();
+  }
+
+  private handleClockStart(config: MidiConfig): void {
+    if (config.clockMode !== "slave") return;
+    this.clockStartCb?.();
+  }
+
+  private handleClockContinue(config: MidiConfig): void {
+    if (config.clockMode !== "slave") return;
+    this.clockContinueCb?.();
+  }
+
+  private handleClockStop(config: MidiConfig): void {
+    if (config.clockMode !== "slave") return;
+    this.clockStopCb?.();
+  }
+
+  /** Register clock callbacks (called by MidiClock). */
+  onClock(cbs: { pulse?: () => void; start?: () => void; continue?: () => void; stop?: () => void }): void {
+    this.clockPulseCb = cbs.pulse ?? null;
+    this.clockStartCb = cbs.start ?? null;
+    this.clockContinueCb = cbs.continue ?? null;
+    this.clockStopCb = cbs.stop ?? null;
+  }
+
+  // Lightweight command builders (avoids circular import from commands.ts)
+  private setTrackPresetCmd(_doc: ProjectDocument, trackId: string, presetId: string) {
+    return {
+      type: "setTrackPreset",
+      label: "Program Change",
+      execute: (d: ProjectDocument) => ({
+        ...d,
+        tracks: d.tracks.map((t) =>
+          t.id === trackId && t.kind === "instrument" ? { ...t, presetId } : t,
+        ),
+      }),
+      undo: (d: ProjectDocument) => d,
+    };
+  }
+
   private setMacroValueCmd(_doc: ProjectDocument, macroId: string, value: number) {
     const clamped = Math.max(0, Math.min(1, value));
     return {

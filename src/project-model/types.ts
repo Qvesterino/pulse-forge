@@ -85,6 +85,8 @@ export interface InstrumentTrack {
   presetId?: string | null;
   effects: EffectInstance[];
   sends: Record<ID, number>;
+  /** MIDI output routing for this track. */
+  midiOutput?: { enabled: boolean; channel: number; deviceId?: string };
 }
 
 export type Track = DrumTrack | InstrumentTrack;
@@ -282,6 +284,16 @@ export interface MidiConfig {
   ccMappings: MidiCcMapping[];
   drumNoteMap: DrumNoteMapping[];
   pitchBendRange: number;
+  /** Program Change mapping: MIDI program number → preset id. */
+  programMap?: { program: number; presetId: string }[];
+  /** Bank select: MSB (CC0) and LSB (CC32) → bank number. */
+  bankSelect?: boolean;
+  /** Aftertouch routing target. */
+  aftertouchTarget?: AutomationTarget;
+  /** Aftertouch modulation depth (0..1). */
+  aftertouchRange?: number;
+  /** MIDI clock mode. */
+  clockMode?: "off" | "master" | "slave";
 }
 
 /** Standard GM percussion note numbers (subset). */

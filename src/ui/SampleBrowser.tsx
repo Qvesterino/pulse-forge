@@ -1,47 +1,70 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLibrary, useServices } from "./context";
 import type { FactoryAsset } from "../sample-library/manifest";
 import { ASSET_MOODS } from "../sample-library/manifest";
+import type { UserSampleAsset } from "../persistence/UserSampleRepository";
 import { categoryColor } from "./kitColors";
+import { DropZone } from "./DropZone";
 
-type CategoryFilter = "all" | FactoryAsset["category"];
+/** Unified asset type — factory or user-imported. */
+export type SampleAsset = FactoryAsset | UserSampleAsset;
+
+type CategoryFilter = "all" | string;
 type MoodFilter = "all" | (typeof ASSET_MOODS)[number];
+
+function isFactoryAsset(a: SampleAsset): a is FactoryAsset {
+  return "character" in a;
+}
 
 export function SampleBrowser({
   assets,
+  userAssets = [],
   currentId,
   onSelect,
   allowNone = true,
+  showDropZone = false,
 }: {
   assets: FactoryAsset[];
+  userAssets?: UserSampleAsset[];
   currentId: string | null;
   onSelect: (assetId: string | null) => void;
   allowNone?: boolean;
+  showDropZone?: boolean;
 }) {
   const services = useServices();
   const library = useLibrary();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<CategoryFilter>("all");
   const [mood, setMood] = useState<MoodFilter>("all");
+  const [allUserAssets, setAllUserAssets] = useState<UserSampleAsset[]>(userAssets);
+
+  // Load user samples from repo on mount
+  useEffect(() => {
+    void services.userSamples.list().then(setAllUserAssets);
+  }, [services]);
+
+  const allAssets: SampleAsset[] = useMemo(() => [...assets, ...allUserAssets], [assets, allUserAssets]);
 
   const categories = useMemo(() => {
-    const seen = new Set<FactoryAsset["category"]>();
-    for (const asset of assets) seen.add(asset.category);
+    const seen = new Set<string>();
+    for (const asset of allAssets) seen.add(asset.category);
     return [...seen];
-  }, [assets]);
+  }, [allAssets]);
 
   const filtered = useMemo(() => {
-    return assets.filter((asset) => {
+    return allAssets.filter((asset) => {
       if (category !== "all" && asset.category !== category) return false;
-      if (mood !== "all" && !asset.mood.includes(mood)) return false;
+      if (mood !== "all" && isFactoryAsset(asset) && !asset.mood.includes(mood)) return false;
       if (query.trim().length > 0) {
         const q = query.trim().toLowerCase();
-        const haystack = `${asset.name} ${asset.character} ${asset.tags.join(" ")} ${asset.category}`.toLowerCase();
+        const haystack = isFactoryAsset(asset)
+          ? `${asset.name} ${asset.character} ${asset.tags.join(" ")} ${asset.category}`.toLowerCase()
+          : `${asset.name} ${asset.fileName} ${asset.category}`.toLowerCase();
         if (!haystack.includes(q)) return false;
       }
       return true;
     });
-  }, [assets, category, mood, query]);
+  }, [allAssets, category, mood, query]);
 
   const filteredIds = new Set(filtered.map((a) => a.id));
   const recent = library.recentAssets.filter((id) => filteredIds.has(id));
@@ -56,7 +79,12 @@ export function SampleBrowser({
     }
   };
 
-  const Row = ({ asset, fav }: { asset: FactoryAsset; fav: boolean }) => (
+  const handleImport = (asset: UserSampleAsset) => {
+    setAllUserAssets((prev) => [...prev, asset]);
+    apply(asset.id);
+  };
+
+  const Row = ({ asset, fav }: { asset: SampleAsset; fav: boolean }) => (
     <div className={`sample-row${asset.id === currentId ? " active" : ""}`}>
       <button
         type="button"
@@ -67,24 +95,40 @@ export function SampleBrowser({
       >
         ▶
       </button>
-      <button type="button" className="sample-name" title={`${asset.character} — click to assign`} onClick={() => apply(asset.id)}>
+      <button type="button" className="sample-name" title={isFactoryAsset(asset) ? `${asset.character} — click to assign` : `${asset.fileName} — click to assign`} onClick={() => apply(asset.id)}>
         {asset.name}
       </button>
-      <button
-        type="button"
-        className={`sample-fav${fav ? " active" : ""}`}
-        title={fav ? "Remove from favorites" : "Add to favorites"}
-        aria-label={fav ? `Unfavorite ${asset.name}` : `Favorite ${asset.name}`}
-        aria-pressed={fav}
-        onClick={() => void services.library.toggleAssetFavorite(asset.id)}
-      >
-        {fav ? "♥" : "♡"}
-      </button>
+      {isFactoryAsset(asset) ? (
+        <button
+          type="button"
+          className={`sample-fav${fav ? " active" : ""}`}
+          title={fav ? "Remove from favorites" : "Add to favorites"}
+          aria-label={fav ? `Unfavorite ${asset.name}` : `Favorite ${asset.name}`}
+          aria-pressed={fav}
+          onClick={() => void services.library.toggleAssetFavorite(asset.id)}
+        >
+          {fav ? "♥" : "♡"}
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="sample-delete"
+          title="Remove user sample"
+          aria-label={`Remove ${asset.name}`}
+          onClick={() => {
+            void services.userSamples.remove(asset.id);
+            setAllUserAssets((prev) => prev.filter((a) => a.id !== asset.id));
+          }}
+        >
+          ×
+        </button>
+      )}
     </div>
   );
 
   return (
     <div className="sample-browser">
+      {showDropZone && <DropZone onImport={handleImport} />}
       <input
         className="preset-search"
         value={query}
@@ -101,7 +145,7 @@ export function SampleBrowser({
             key={cat}
             type="button"
             className={`preset-chip${category === cat ? " active" : ""}`}
-            style={category === cat ? { borderColor: categoryColor(cat), color: categoryColor(cat) } : undefined}
+            style={category === cat ? { borderColor: categoryColor(cat as any), color: categoryColor(cat as any) } : undefined}
             onClick={() => setCategory(cat)}
           >
             {cat.toUpperCase()}
@@ -129,7 +173,7 @@ export function SampleBrowser({
           <>
             <div className="sample-group-label">RECENT</div>
             {recent.map((id) => {
-              const asset = assets.find((a) => a.id === id);
+              const asset = allAssets.find((a) => a.id === id);
               return asset ? <Row key={id} asset={asset} fav={library.favoriteAssets.includes(id)} /> : null;
             })}
           </>
@@ -138,7 +182,7 @@ export function SampleBrowser({
           <>
             <div className="sample-group-label">FAVORITES</div>
             {favorites.map((id) => {
-              const asset = assets.find((a) => a.id === id);
+              const asset = allAssets.find((a) => a.id === id);
               return asset ? <Row key={id} asset={asset} fav /> : null;
             })}
           </>

@@ -11,6 +11,9 @@ import type { PlayMode, ProjectDocument, Scene } from "./project-model/types";
 import { BAR_TICKS, PPQ } from "./project-model/types";
 import { setActivePattern } from "./commands/commands";
 import { MidiInput } from "./midi/MidiInput";
+import { MidiOutput } from "./midi/MidiOutput";
+import { MidiClock } from "./midi/MidiClock";
+import { UserSampleRepository } from "./persistence/UserSampleRepository";
 
 /**
  * Long-lived services shared across projects: the audio engine (one shared
@@ -36,6 +39,9 @@ export interface Services {
   library: LibraryRepository;
   playback: PlaybackController;
   midi: MidiInput;
+  midiOutput: MidiOutput;
+  midiClock: MidiClock;
+  userSamples: UserSampleRepository;
   flushSave(): Promise<void>;
   /** Stop playback, flush autosave and detach page listeners. */
   closeProject(): Promise<void>;
@@ -157,6 +163,8 @@ export function openProject(core: CoreServices, initial: ProjectDocument): Servi
   const store = new ProjectStore(initial);
   const transport = new Transport({ now: () => engine.currentTime }, initial.bpm);
   const modeRef: { mode: PlayMode } = { mode: "pattern" };
+  const midiOutput = new MidiOutput();
+  const midiClock = new MidiClock();
   const scheduler = new Scheduler({
     getProject: () => store.doc,
     getTransport: () => transport,
@@ -171,6 +179,23 @@ export function openProject(core: CoreServices, initial: ProjectDocument): Servi
     applyPatternLaunch: (patternId) => store.execute(setActivePattern(store.doc, patternId)),
     triggerMarker: (assetId, when, trackId) => engine.triggerMarker(assetId, when, trackId),
     setSceneIntensity: (value) => engine.setSceneIntensity(value),
+    midiNoteOn: (_trackId, channel, note, velocity, when) => {
+      const doc = store.doc;
+      const instTrack = doc.tracks.find((t) => t.id === _trackId && t.kind === "instrument");
+      if (instTrack?.kind === "instrument" && instTrack.midiOutput?.enabled) {
+        const ch = instTrack.midiOutput.channel || channel + 1;
+        midiOutput.sendNoteOn(ch - 1, note, velocity);
+        void when;
+      }
+    },
+    midiNoteOff: (_trackId, channel, note, _when) => {
+      const doc = store.doc;
+      const instTrack = doc.tracks.find((t) => t.id === _trackId && t.kind === "instrument");
+      if (instTrack?.kind === "instrument" && instTrack.midiOutput?.enabled) {
+        const ch = instTrack.midiOutput.channel || channel + 1;
+        midiOutput.sendNoteOff(ch - 1, note);
+      }
+    },
   });
   engine.setProject(store.doc);
   transport.seek(0);
@@ -179,6 +204,8 @@ export function openProject(core: CoreServices, initial: ProjectDocument): Servi
   );
 
   const midi = new MidiInput();
+  const userSamples = new UserSampleRepository();
+
   void midi.requestAccess().then((ok) => {
     if (ok) {
       midi.start(
@@ -188,8 +215,16 @@ export function openProject(core: CoreServices, initial: ProjectDocument): Servi
         () => store.doc.midi ?? { enabled: false, deviceId: "", drumChannel: 0, instrumentChannel: 0, ccMappings: [], drumNoteMap: [], pitchBendRange: 2 },
         () => store.doc,
       );
+      // Wire MIDI clock callbacks
+      midi.onClock({
+        pulse: () => midiClock.handleSlavePulse(transport),
+        start: () => midiClock.handleSlaveStart(transport),
+        continue: () => midiClock.handleSlaveContinue(transport),
+        stop: () => midiClock.handleSlaveStop(transport),
+      });
     }
   });
+  void midiOutput.requestAccess();
 
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
   let saving: Promise<void> | null = null;
@@ -248,6 +283,8 @@ export function openProject(core: CoreServices, initial: ProjectDocument): Servi
   const closeProject = async (): Promise<void> => {
     playback.stop();
     midi.stop();
+    midiClock.dispose();
+    midiOutput.dispose();
     document.removeEventListener("visibilitychange", onVisibility);
     window.removeEventListener("beforeunload", onUnload);
     await flushSave();
@@ -272,5 +309,5 @@ export function openProject(core: CoreServices, initial: ProjectDocument): Servi
     };
   };
 
-  return { core, store, engine, transport, scheduler, repo, bank, library, playback, midi, flushSave, closeProject, getDiagnostics };
+  return { core, store, engine, transport, scheduler, repo, bank, library, playback, midi, midiOutput, midiClock, userSamples, flushSave, closeProject, getDiagnostics };
 }

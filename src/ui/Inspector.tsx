@@ -54,6 +54,7 @@ export function Inspector({ track, selectedPadId }: { track: Track; selectedPadI
               assets={TONAL_ASSETS}
               currentId={track.sampleId}
               onSelect={(assetId) => services.store.execute(setInstrumentSample(doc, track.id, assetId))}
+              showDropZone
             />
           </>
         )}
@@ -107,6 +108,7 @@ export function Inspector({ track, selectedPadId }: { track: Track; selectedPadI
         assets={DRUM_ASSETS}
         currentId={pad.assetId}
         onSelect={(assetId) => services.store.execute(setPadParams(doc, pad.id, { assetId }))}
+        showDropZone
       />
 
       <Slider

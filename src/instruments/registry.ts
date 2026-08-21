@@ -41,6 +41,7 @@ function dbToLin(db: number): number {
 }
 
 interface Voice {
+  pitch: number;
   stopAt: number;
   stop(when: number): void;
   silence(now: number): void;
@@ -48,8 +49,8 @@ interface Voice {
 
 function makeVoiceManager(limit: number) {
   const voices: Voice[] = [];
-  const register = (stopAt: number, stop: (when: number) => void, silence: (now: number) => void): Voice => {
-    const voice: Voice = { stopAt, stop, silence };
+  const register = (pitch: number, stopAt: number, stop: (when: number) => void, silence: (now: number) => void): Voice => {
+    const voice: Voice = { pitch, stopAt, stop, silence };
     voices.push(voice);
     if (voices.length > limit) {
       const oldest = voices.shift();
@@ -61,7 +62,8 @@ function makeVoiceManager(limit: number) {
     const index = voices.indexOf(voice);
     if (index >= 0) voices.splice(index, 1);
   };
-  return { voices, register, cleanup };
+  const findByPitch = (pitch: number): Voice[] => voices.filter((v) => v.pitch === pitch);
+  return { voices, register, cleanup, findByPitch };
 }
 
 /* ---------------- Analog Synth ---------------- */
@@ -89,7 +91,7 @@ const analog: InstrumentDefinition = {
     output.gain.value = 1;
     const noise = noiseBuffer(ctx, hashString(track.id));
     const p = { ...track.params };
-    const { voices, register, cleanup } = makeVoiceManager(12);
+    const { voices, register, cleanup, findByPitch } = makeVoiceManager(12);
 
     const liveFilters = new Set<BiquadFilterNode>();
     const applyFilterLive = (fn: (f: BiquadFilterNode) => void) => {
@@ -155,6 +157,7 @@ const analog: InstrumentDefinition = {
         }
 
         const voice = register(
+          pitch,
           stopTime,
           (whenStop) => {
             const t = Math.max(whenStop, 0);
@@ -186,6 +189,19 @@ const analog: InstrumentDefinition = {
         p[id] = value;
         if (id === "cutoff") applyFilterLive((f) => f.frequency.setTargetAtTime(value, when, 0.02));
         if (id === "resonance") applyFilterLive((f) => f.Q.setTargetAtTime(value, when, 0.02));
+      },
+      noteOff(pitch, when) {
+        for (const v of findByPitch(pitch)) v.stop(when);
+      },
+      polyPressure(pitch, pressure, when) {
+        const cutoffBase = p.cutoff ?? 9000;
+        const target = cutoffBase * (1 + pressure * 0.5);
+        for (const v of findByPitch(pitch)) {
+          void v; void when; void target;
+          // Per-voice filter modulation would require tracking filter per voice
+          // For now, modulate globally via applyFilterLive
+        }
+        applyFilterLive((f) => f.frequency.setTargetAtTime(target, when, 0.01));
       },
       panic() {
         for (const voice of [...voices]) voice.silence(ctx.currentTime);
@@ -221,7 +237,9 @@ const bass: InstrumentDefinition = {
     const output = ctx.createGain();
     output.gain.value = 1;
     const p = { ...track.params };
-    const { voices, register, cleanup } = makeVoiceManager(4);
+    const { voices, register, cleanup, findByPitch } = makeVoiceManager(4);
+
+
     const shaper = ctx.createWaveShaper();
     shaper.oversample = "2x";
     const applyGrit = () => {
@@ -293,6 +311,7 @@ const bass: InstrumentDefinition = {
         mkVoiceOsc(0, (p.sub ?? 0.6) * 1.0, 0, "sine", -12);
 
         const voice = register(
+          pitch,
           stopTime,
           (whenStop) => {
             const t = Math.max(whenStop, 0);
@@ -326,6 +345,9 @@ const bass: InstrumentDefinition = {
         if (id === "cutoff") for (const f of liveFilters) f.frequency.setTargetAtTime(value, when, 0.02);
         if (id === "resonance") for (const f of liveFilters) f.Q.setTargetAtTime(value, when, 0.02);
         if (id === "grit") applyGrit();
+      },
+      noteOff(pitch, when) {
+        for (const v of findByPitch(pitch)) v.stop(when);
       },
       panic() {
         for (const voice of [...voices]) voice.silence(ctx.currentTime);
@@ -421,6 +443,7 @@ const bass808: InstrumentDefinition = {
         }
 
         const voice: Voice = {
+          pitch,
           stopAt: stopTime,
           stop: (whenStop) => {
             const t = Math.max(whenStop, 0);
@@ -447,6 +470,10 @@ const bass808: InstrumentDefinition = {
       },
       setParameterAt(id, value) {
         p[id] = value;
+      },
+      noteOff(_pitch, when) {
+        current?.stop(when);
+        current = null;
       },
       panic() {
         current?.silence(ctx.currentTime);
@@ -480,7 +507,7 @@ const sampler: InstrumentDefinition = {
     output.gain.value = 1;
     const p = { ...track.params };
     let sampleId: string | null = track.sampleId;
-    const { voices, register, cleanup } = makeVoiceManager(16);
+    const { voices, register, cleanup, findByPitch } = makeVoiceManager(16);
     const liveFilters = new Set<BiquadFilterNode>();
 
     const runtime: InstrumentRuntime = {
@@ -517,6 +544,7 @@ const sampler: InstrumentDefinition = {
         src.stop(stopTime);
 
         const voice = register(
+          pitch,
           stopTime,
           (whenStop) => {
             const t = Math.max(whenStop, 0);
@@ -548,6 +576,9 @@ const sampler: InstrumentDefinition = {
       },
       setSample(id) {
         sampleId = id;
+      },
+      noteOff(pitch, when) {
+        for (const v of findByPitch(pitch)) v.stop(when);
       },
       panic() {
         for (const voice of [...voices]) voice.silence(ctx.currentTime);
@@ -590,7 +621,7 @@ const texture: InstrumentDefinition = {
     const output = ctx.createGain();
     output.gain.value = 1;
     const p = { ...track.params };
-    const { voices, register, cleanup } = makeVoiceManager(4);
+    const { voices, register, cleanup, findByPitch } = makeVoiceManager(4);
 
     // Shared LFO1: filter cutoff modulation
     const lfo1 = ctx.createOscillator();
@@ -722,6 +753,7 @@ const texture: InstrumentDefinition = {
         osc2.stop(stopTime + 0.1);
 
         const voice = register(
+          pitch,
           stopTime,
           (whenStop) => {
             const t = Math.max(whenStop, 0);
@@ -753,6 +785,9 @@ const texture: InstrumentDefinition = {
       setParameterAt(id, value, _when) {
         p[id] = value;
         if (id === "motion" || id === "space" || id === "chaos") applyParams();
+      },
+      noteOff(pitch, when) {
+        for (const v of findByPitch(pitch)) v.stop(when);
       },
       panic() {
         for (const voice of [...voices]) voice.silence(ctx.currentTime);
