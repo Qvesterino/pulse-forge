@@ -1,8 +1,13 @@
 export const PPQ = 480;
 export const STEPS_PER_PATTERN = 16;
-export const STEP_TICKS = PPQ / 4;
+export const STEP_TICKS = PPQ / 4;        // 120 ticks = 1/16 note
 export const BAR_TICKS = PPQ * 4;
 export const PATTERN_TICKS = BAR_TICKS;
+
+/** Quantize grid resolutions (ticks per grid division). */
+export const GRID_8TH = 2 * STEP_TICKS;   // 240 ticks = 1/8 note
+export const GRID_16TH = STEP_TICKS;      // 120 ticks = 1/16 note (default)
+export const GRID_32ND = STEP_TICKS / 2;  // 60 ticks = 1/32 note
 
 export type ID = string;
 

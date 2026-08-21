@@ -3022,3 +3022,95 @@ button {
   line-height: 1.4;
   margin-bottom: 3px;
 }
+
+/* ---------- Piano roll scale highlighting ---------- */
+
+.pr-key.out-scale {
+  opacity: 0.55;
+}
+
+.pr-key.root {
+  border-left: 3px solid var(--accent);
+}
+
+.pr-scale-deg {
+  font-family: var(--mono);
+  font-size: 8px;
+  color: var(--text-faint);
+  margin-left: 2px;
+  position: absolute;
+  right: 1px;
+  top: 2px;
+}
+
+.pr-scale-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  background: rgba(74, 222, 128, 0.05);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.pr-scale-row.root {
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.pr-note.out-of-scale {
+  opacity: 0.3;
+  filter: saturate(0.5);
+}
+
+/* ---------- Scale panel popover ---------- */
+
+.scale-popover {
+  position: absolute;
+  top: 48px;
+  right: 0;
+  z-index: 50;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  padding: 10px 12px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+}
+
+.scale-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 260px;
+}
+
+.scale-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.scale-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 1px;
+  color: var(--text-faint);
+  width: 40px;
+  flex-shrink: 0;
+}
+
+.scale-select {
+  flex: 1;
+  height: 26px;
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  padding: 0 8px;
+}
+
+.scale-select:focus {
+  outline: none;
+  border-color: var(--accent);
+}

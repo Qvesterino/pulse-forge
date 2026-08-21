@@ -8,13 +8,15 @@ import {
   duplicatePattern,
   mutatePattern,
   pastePattern,
+  quantizePatternToGrid,
+  quantizePatternToScale,
   renamePattern,
   setActivePattern,
   setGroove,
   setPatternLength,
 } from "../commands/commands";
 import type { PatternClipboard } from "../commands/commands";
-import { grooveOf } from "../project-model/types";
+import { grooveOf, GRID_8TH, GRID_16TH, GRID_32ND } from "../project-model/types";
 import { DragNumber } from "./controls";
 
 export function PatternBar({ clip, onCopy }: { clip: PatternClipboard | null; onCopy: (clip: PatternClipboard) => void }) {
@@ -192,6 +194,21 @@ export function PatternBar({ clip, onCopy }: { clip: PatternClipboard | null; on
           <option value={16}>16</option>
           <option value={32}>32</option>
           <option value={64}>64</option>
+        </select>
+        <select
+          className="pattern-length"
+          aria-label="Quantize grid"
+          title="Quantize note positions to grid"
+          value={GRID_16TH}
+          onChange={(event) => {
+            const gridTicks = Number(event.target.value);
+            services.store.execute(quantizePatternToGrid(doc, doc.activePatternId, gridTicks));
+            if (doc.key) services.store.execute(quantizePatternToScale(doc, doc.activePatternId, doc.key));
+          }}
+        >
+          <option value={GRID_8TH}>1/8</option>
+          <option value={GRID_16TH}>1/16</option>
+          <option value={GRID_32ND}>1/32</option>
         </select>
       </div>
 

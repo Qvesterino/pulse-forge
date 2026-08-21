@@ -7,6 +7,7 @@ import { barAtTick, beatAtTick } from "../project-model/schema";
 import { STEP_TICKS } from "../project-model/types";
 import type { PlayMode } from "../project-model/types";
 import { matchShortcut } from "./shortcuts";
+import { ScalePanel } from "./ScalePanel";
 
 function formatClock(iso: string | null): string {
   if (!iso) return "";
@@ -24,6 +25,8 @@ export function TopBar({
   playMode,
   onSetPlayMode,
   onOpenBrowser,
+  scaleSnap,
+  onToggleScaleSnap,
 }: {
   onToggleDiagnostics: () => void;
   diagnosticsOpen: boolean;
@@ -33,6 +36,8 @@ export function TopBar({
   playMode: PlayMode;
   onSetPlayMode: (mode: PlayMode) => void;
   onOpenBrowser: () => void;
+  scaleSnap: boolean;
+  onToggleScaleSnap: () => void;
 }) {
   const services = useServices();
   const doc = useDoc();
@@ -45,6 +50,7 @@ export function TopBar({
   const [loopEnabled, setLoopEnabled] = useState(services.transport.loopEnabled);
   const [loopStart, setLoopStart] = useState(services.transport.loopStart);
   const [loopEnd, setLoopEnd] = useState(services.transport.loopEnd);
+  const [scalePanelOpen, setScalePanelOpen] = useState(false);
 
   const playing = services.transport.playing;
 
@@ -91,7 +97,8 @@ export function TopBar({
   }, [loopEnabled, loopStart, loopEnd]);
 
   return (
-    <header className="topbar">
+    <>
+      <header className="topbar">
       <div className="brand">
         <span className="brand-mark">PF</span>
         <span className="brand-name">PULSE FORGE</span>
@@ -298,6 +305,16 @@ export function TopBar({
         </button>
         <button
           type="button"
+          className={`btn btn-ghost${scalePanelOpen ? " active" : ""}`}
+          onClick={() => setScalePanelOpen((open) => !open)}
+          title="Toggle scale panel (key + scale + snap)"
+          aria-label="Toggle scale panel"
+          aria-pressed={scalePanelOpen}
+        >
+          SCALE
+        </button>
+        <button
+          type="button"
           className={`btn btn-ghost${diagnosticsOpen ? " active" : ""}`}
           onClick={onToggleDiagnostics}
           title="Toggle diagnostics panel"
@@ -308,5 +325,11 @@ export function TopBar({
         </button>
       </div>
     </header>
+      {scalePanelOpen && (
+        <div className="scale-popover">
+          <ScalePanel scaleSnap={scaleSnap} onToggleSnap={onToggleScaleSnap} />
+        </div>
+      )}
+    </>
   );
 }

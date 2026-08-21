@@ -58,15 +58,17 @@ const ROOT_OFFSETS: Record<string, number> = {};
 ROOT_NAMES.forEach((name, i) => (ROOT_OFFSETS[name] = i));
 
 export function parseKey(key: MusicalKey): { root: number; scaleType: ScaleType } | null {
-  const parts = key.split(" ");
-  if (parts.length !== 2) return null;
-  const rootName = parts[0];
-  const scaleName = parts[1];
-  const root = ROOT_OFFSETS[rootName];
-  if (root === undefined) return null;
-  const scaleType = SCALE_TYPES.find((s) => SCALE_LABELS[s].toLowerCase() === scaleName.toLowerCase());
-  if (!scaleType) return null;
-  return { root, scaleType };
+  if (!key || typeof key !== "string") return null;
+  // Try to match from the end: scale types are the longest matching suffix.
+  for (const scale of SCALE_TYPES) {
+    const label = SCALE_LABELS[scale];
+    if (key.endsWith(label)) {
+      const rootName = key.slice(0, key.length - label.length - 1).trim();
+      const root = ROOT_OFFSETS[rootName];
+      if (root !== undefined) return { root, scaleType: scale };
+    }
+  }
+  return null;
 }
 
 export function formatKey(root: number, scaleType: ScaleType): MusicalKey {

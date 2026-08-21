@@ -1,8 +1,5 @@
-import { useState } from "react";
 import { useDoc, useServices } from "./context";
 import { setProjectKey } from "../commands/commands";
-import type { MusicalKey } from "../project-model/types";
-import { MUSICAL_KEYS } from "../project-model/types";
 import { ROOT_NAMES, SCALE_TYPES, SCALE_LABELS, formatKey, parseKey } from "../project-model/scales";
 
 export function ScalePanel({

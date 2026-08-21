@@ -45,6 +45,7 @@ export function App({ services, onOpenBrowser }: { services: Services; onOpenBro
   const [selectedNote, setSelectedNote] = useState<SelectedNote | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [stepSelection, setStepSelection] = useState<StepSelection | null>(null);
+  const [scaleSnap, setScaleSnap] = useState(false);
 
   const track = doc.tracks.find((t) => t.id === selectedTrackId) ?? doc.tracks[0];
   const padId =
@@ -270,6 +271,8 @@ export function App({ services, onOpenBrowser }: { services: Services; onOpenBro
           onSetBottomPanel={setBottomPanelTab}
           onToggleHelp={() => setHelpOpen((v) => !v)}
           onOpenBrowser={onOpenBrowser}
+          scaleSnap={scaleSnap}
+          onToggleScaleSnap={() => setScaleSnap((s) => !s)}
         />
         <main className="workspace">
           <div className="workspace-main">
@@ -287,6 +290,7 @@ export function App({ services, onOpenBrowser }: { services: Services; onOpenBro
               onSelectNote={setSelectedNote}
               stepSelection={stepSelection}
               onSelectSteps={setStepSelection}
+              scaleSnap={scaleSnap}
             />
           </div>
           <Inspector track={track} selectedPadId={padId} />

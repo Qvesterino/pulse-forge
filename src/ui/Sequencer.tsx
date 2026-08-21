@@ -41,6 +41,7 @@ export function Sequencer({
   onSelectNote,
   stepSelection,
   onSelectSteps,
+  scaleSnap,
 }: {
   selectedPadId: string;
   selectedTrackId: string;
@@ -50,6 +51,7 @@ export function Sequencer({
   onSelectNote: (selection: SelectedNote | null) => void;
   stepSelection: StepSelection | null;
   onSelectSteps: (selection: StepSelection | null) => void;
+  scaleSnap: boolean;
 }) {
   const services = useServices();
   const doc = useDoc();
@@ -137,12 +139,18 @@ export function Sequencer({
         : drag.startVelocity;
       const delta = velocity - drag.startVelocity;
       if (selectionContains(drag.padId, drag.stepIndex) && stepSelection && Math.abs(delta) > 1e-6) {
-        // Multi-select velocity drag: apply the same delta to every selected hit.
+        // Velocity ramp: interpolate from the leftmost step's velocity to the
+        // dragged velocity at the rightmost step. A crescendo when dragging up,
+        // a decrescendo when dragging down.
+        const span = stepSelection.to - stepSelection.from;
         const entries: { padId: string; stepIndex: number; velocity: number }[] = [];
         for (const pad of stepSelection.padIds) {
           const row = pattern.rows[pad] ?? [];
           for (let i = stepSelection.from; i <= stepSelection.to && i < row.length; i++) {
-            if (row[i] > 0) entries.push({ padId: pad, stepIndex: i, velocity: clamp(row[i] + delta, 0.05, 1) });
+            if (row[i] <= 0) continue;
+            const progress = span > 0 ? (i - stepSelection.from) / span : 0;
+            const ramped = clamp(drag.startVelocity + delta * progress, 0.05, 1);
+            entries.push({ padId: pad, stepIndex: i, velocity: ramped });
           }
         }
         if (entries.length > 0) services.store.execute(setStepsVelocity(doc, pattern.id, entries));
@@ -218,6 +226,7 @@ export function Sequencer({
                 playheadStep={playheadStep}
                 selectedNote={selectedNote}
                 onSelectNote={onSelectNote}
+                scaleSnap={scaleSnap}
               />
             )}
           </Fragment>
