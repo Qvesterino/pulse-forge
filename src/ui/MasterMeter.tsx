@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useDoc, useServices } from "./context";
 import type { ChannelLevels } from "../audio-engine/metering";
+import { registerRaf, unregisterRaf } from "../services/rafLoop";
 
 interface ReadState {
   left: ChannelLevels;
@@ -28,15 +29,14 @@ export function MasterMeter() {
     peakHoldDb: -120,
     clipping: false,
   });
-  const lastReadRef = useRef(0);
   const lastStateRef = useRef(state);
   const clipHoldRef = useRef(0);
 
   useEffect(() => {
-    let raf = 0;
-    const tick = (t: number) => {
-      if (t - lastReadRef.current >= 33) {
-        lastReadRef.current = t;
+    let lastRead = 0;
+    registerRaf("master-meter", (t) => {
+      if (t - lastRead >= 33) {
+        lastRead = t;
         const levels = services.engine.getMasterLevels();
         const peakHoldDb = services.engine.getMasterPeakHoldDb();
         const left = levels.left;
@@ -62,10 +62,8 @@ export function MasterMeter() {
           setState(next);
         }
       }
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    });
+    return () => unregisterRaf("master-meter");
   }, [services]);
 
   return (

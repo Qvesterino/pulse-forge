@@ -191,6 +191,18 @@ export function deletePattern(doc: ProjectDocument, patternId: string): Command 
   return snapshot("deletePattern", `Delete ${target.name}`, doc, next);
 }
 
+export function reorderPattern(doc: ProjectDocument, fromIndex: number, toIndex: number): Command {
+  if (fromIndex < 0 || fromIndex >= doc.patterns.length) throw new Error("fromIndex out of range");
+  if (toIndex < 0 || toIndex >= doc.patterns.length) throw new Error("toIndex out of range");
+  if (fromIndex === toIndex) {
+    return { type: "reorderPattern", label: "Reorder pattern", execute: (d) => d, undo: (d) => d };
+  }
+  const patterns = [...doc.patterns];
+  const [moved] = patterns.splice(fromIndex, 1);
+  patterns.splice(toIndex, 0, moved);
+  return snapshot("reorderPattern", `Reorder ${moved.name}`, doc, { ...doc, patterns });
+}
+
 export function renamePattern(doc: ProjectDocument, patternId: string, name: string): Command {
   const prev = doc.patterns.find((p) => p.id === patternId)?.name ?? "";
   const next = { ...doc, patterns: doc.patterns.map((p) => (p.id === patternId ? { ...p, name } : p)) };
