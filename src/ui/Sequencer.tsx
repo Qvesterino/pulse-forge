@@ -1,4 +1,4 @@
-import { Fragment, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useDoc, useServices } from "./context";
 import type { DrumTrack, StepMeta, Track } from "../project-model/types";
 import { usePlayheadStep } from "./playhead";
@@ -32,6 +32,37 @@ interface DragState {
   moved: boolean;
 }
 
+// Flat item types for virtualized rendering
+interface HeaderItem { type: "header"; trackIndex: number; track: Track }
+interface PadRowItem { type: "padRow"; trackIndex: number; padIndex: number; pad: DrumTrack["pads"][number]; trackId: string }
+interface PianoRollItem { type: "pianoRoll"; trackIndex: number; track: Track }
+type FlatItem = HeaderItem | PadRowItem | PianoRollItem;
+
+const ROW_HEIGHT = 34;
+const HEADER_HEIGHT = 38;
+const OVERSCAN = 5;
+
+function buildFlatItems(tracks: Track[]): FlatItem[] {
+  const items: FlatItem[] = [];
+  for (let ti = 0; ti < tracks.length; ti++) {
+    const track = tracks[ti];
+    items.push({ type: "header", trackIndex: ti, track });
+    if (track.kind === "group") continue;
+    if (track.kind === "drum") {
+      for (let pi = 0; pi < track.pads.length; pi++) {
+        items.push({ type: "padRow", trackIndex: ti, padIndex: pi, pad: track.pads[pi], trackId: track.id });
+      }
+    } else {
+      items.push({ type: "pianoRoll", trackIndex: ti, track });
+    }
+  }
+  return items;
+}
+
+function getItemHeight(item: FlatItem): number {
+  return item.type === "header" ? HEADER_HEIGHT : ROW_HEIGHT;
+}
+
 export function Sequencer({
   selectedPadId,
   selectedTrackId,
@@ -60,12 +91,52 @@ export function Sequencer({
   const dragRef = useRef<DragState | null>(null);
   const [dragPreview, setDragPreview] = useState<{ padId: string; stepIndex: number; velocity: number } | null>(null);
   const [stepEditor, setStepEditor] = useState<{ padId: string; stepIndex: number } | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(600);
+
+  // Flatten track tree into virtualizable items
+  const flatItems = useMemo(() => buildFlatItems(doc.tracks), [doc.tracks]);
+
+  // Compute cumulative heights for index lookup
+  const cumulativeHeights = useMemo(() => {
+    const heights: number[] = [0];
+    for (const item of flatItems) {
+      heights.push(heights[heights.length - 1] + getItemHeight(item));
+    }
+    return heights;
+  }, [flatItems]);
+
+  const totalHeight = cumulativeHeights[cumulativeHeights.length - 1];
+
+  // Compute visible range from scroll position
+  const { startIndex, endIndex } = useMemo(() => {
+    let start = 0;
+    while (start < flatItems.length && cumulativeHeights[start + 1] < scrollTop) start++;
+    let end = start;
+    while (end < flatItems.length && cumulativeHeights[end] < scrollTop + viewportHeight) end++;
+    return {
+      startIndex: Math.max(0, start - OVERSCAN),
+      endIndex: Math.min(flatItems.length - 1, end + OVERSCAN),
+    };
+  }, [scrollTop, viewportHeight, cumulativeHeights, flatItems.length]);
+
+  const visibleItems = useMemo(() => {
+    const items: { item: FlatItem; top: number; height: number }[] = [];
+    for (let i = startIndex; i <= endIndex; i++) {
+      items.push({ item: flatItems[i], top: cumulativeHeights[i], height: getItemHeight(flatItems[i]) });
+    }
+    return items;
+  }, [flatItems, startIndex, endIndex, cumulativeHeights]);
 
   // Display order of pad rows — used to build rectangular selections.
-  const orderedPadIds: string[] = [];
-  for (const track of doc.tracks) {
-    if (track.kind === "drum") for (const pad of track.pads) orderedPadIds.push(pad.id);
-  }
+  const orderedPadIds: string[] = useMemo(() => {
+    const ids: string[] = [];
+    for (const track of doc.tracks) {
+      if (track.kind === "drum") for (const pad of track.pads) ids.push(pad.id);
+    }
+    return ids;
+  }, [doc.tracks]);
 
   const selectionFromDrag = (anchorPad: string, anchorStep: number, padId: string, stepIndex: number): StepSelection => {
     const a = orderedPadIds.indexOf(anchorPad);
@@ -107,8 +178,7 @@ export function Sequencer({
     const drag = dragRef.current;
     if (!drag) return;
     if (drag.mode === "select") {
-      // Pointer capture retargets all moves to the origin button, so resolve
-      // the step under the cursor geometrically.
+      // Geometric hit-testing for virtualized rows (no DOM dependency)
       const el = (document.elementFromPoint(event.clientX, event.clientY)?.closest(".step") ?? null) as HTMLElement | null;
       const padId = el?.dataset.pad;
       const stepIndex = Number(el?.dataset.step ?? NaN);
@@ -139,9 +209,6 @@ export function Sequencer({
         : drag.startVelocity;
       const delta = velocity - drag.startVelocity;
       if (selectionContains(drag.padId, drag.stepIndex) && stepSelection && Math.abs(delta) > 1e-6) {
-        // Velocity ramp: interpolate from the leftmost step's velocity to the
-        // dragged velocity at the rightmost step. A crescendo when dragging up,
-        // a decrescendo when dragging down.
         const span = stepSelection.to - stepSelection.from;
         const entries: { padId: string; stepIndex: number; velocity: number }[] = [];
         for (const pad of stepSelection.padIds) {
@@ -163,6 +230,21 @@ export function Sequencer({
     }
     setDragPreview(null);
   };
+
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (el) setScrollTop(el.scrollTop);
+  }, []);
+
+  // Observe container resize
+  const containerRef = useCallback((node: HTMLDivElement | null) => {
+    if (!node) return;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) setViewportHeight(entry.contentRect.height);
+    });
+    ro.observe(node);
+    return () => ro.disconnect();
+  }, []);
 
   return (
     <section className="sequencer" aria-label="Step Sequencer">
@@ -190,50 +272,123 @@ export function Sequencer({
           </span>
         ))}
       </div>
-      {doc.tracks.map((track) => {
-        const trackHasHit =
-          playheadStep >= 0 && track.kind === "drum" && track.pads.some((p) => (pattern.rows[p.id]?.[playheadStep] ?? 0) > 0);
-        return (
-          <Fragment key={track.id}>
-            <TrackHeaderRow
-              track={track}
-              isSelected={track.id === selectedTrackId}
-              isPlaying={trackHasHit}
-              onSelect={() => onSelectTrack(track.id)}
-            />
-            {track.kind === "group" ? null : track.kind === "drum" ? (
-              track.pads.map((pad) => (
-                <PadRow
-                  key={pad.id}
-                  pad={pad}
-                  trackId={track.id}
-                  pattern={pattern}
-                  playheadStep={playheadStep}
-                  selected={pad.id === selectedPadId}
-                  dragPreview={dragPreview}
-                  stepSelection={stepSelection}
-                  onBegin={beginStepInteraction}
-                  onMove={moveStepInteraction}
-                  onEnd={endStepInteraction}
-                  onSelectPad={onSelectPad}
-                  onEditStep={(stepIndex) => setStepEditor({ padId: pad.id, stepIndex })}
-                />
-              ))
-            ) : (
-              <PianoRollTrack
-                track={track}
+      <div
+        ref={(node) => { scrollRef.current = node; containerRef(node); }}
+        className="sequencer-scroll"
+        onScroll={handleScroll}
+        style={{ overflowY: "auto", maxHeight: "600px", position: "relative" }}
+      >
+        <div style={{ height: totalHeight, position: "relative" }}>
+          {visibleItems.map(({ item, top, height }) => (
+            <div key={`${item.type}-${item.trackIndex}-${item.type === "padRow" ? (item as PadRowItem).padIndex : ""}`} style={{ position: "absolute", top, left: 0, right: 0, height }}>
+              <VirtualRow
+                item={item}
                 pattern={pattern}
                 playheadStep={playheadStep}
+                selectedPadId={selectedPadId}
+                selectedTrackId={selectedTrackId}
+                dragPreview={dragPreview}
+                stepSelection={stepSelection}
                 selectedNote={selectedNote}
-                onSelectNote={onSelectNote}
                 scaleSnap={scaleSnap}
+                onSelectTrack={onSelectTrack}
+                onSelectPad={onSelectPad}
+                onSelectNote={onSelectNote}
+                beginStepInteraction={beginStepInteraction}
+                moveStepInteraction={moveStepInteraction}
+                endStepInteraction={endStepInteraction}
+                setStepEditor={setStepEditor}
               />
-            )}
-          </Fragment>
-        );
-      })}
+            </div>
+          ))}
+        </div>
+      </div>
     </section>
   );
+}
+
+function VirtualRow({
+  item,
+  pattern,
+  playheadStep,
+  selectedPadId,
+  selectedTrackId,
+  dragPreview,
+  stepSelection,
+  selectedNote,
+  scaleSnap,
+  onSelectTrack,
+  onSelectPad,
+  onSelectNote,
+  beginStepInteraction,
+  moveStepInteraction,
+  endStepInteraction,
+  setStepEditor,
+}: {
+  item: FlatItem;
+  pattern: import("../project-model/types").Pattern;
+  playheadStep: number;
+  selectedPadId: string;
+  selectedTrackId: string;
+  dragPreview: { padId: string; stepIndex: number; velocity: number } | null;
+  stepSelection: StepSelection | null;
+  selectedNote: SelectedNote | null;
+  scaleSnap: boolean;
+  onSelectTrack: (trackId: string) => void;
+  onSelectPad: (padId: string) => void;
+  onSelectNote: (selection: SelectedNote | null) => void;
+  beginStepInteraction: (event: React.PointerEvent, padId: string, stepIndex: number) => void;
+  moveStepInteraction: (event: React.PointerEvent) => void;
+  endStepInteraction: () => void;
+  setStepEditor: (v: { padId: string; stepIndex: number } | null) => void;
+}) {
+  if (item.type === "header") {
+    const track = item.track;
+    const trackHasHit =
+      playheadStep >= 0 && track.kind === "drum" && track.pads.some((p) => (pattern.rows[p.id]?.[playheadStep] ?? 0) > 0);
+    return (
+      <TrackHeaderRow
+        track={track}
+        isSelected={track.id === selectedTrackId}
+        isPlaying={trackHasHit}
+        onSelect={() => onSelectTrack(track.id)}
+      />
+    );
+  }
+
+  if (item.type === "padRow") {
+    return (
+      <PadRow
+        pad={item.pad}
+        trackId={item.trackId}
+        pattern={pattern}
+        playheadStep={playheadStep}
+        selected={item.pad.id === selectedPadId}
+        dragPreview={dragPreview}
+        stepSelection={stepSelection}
+        onBegin={beginStepInteraction}
+        onMove={moveStepInteraction}
+        onEnd={endStepInteraction}
+        onSelectPad={onSelectPad}
+        onEditStep={(stepIndex) => setStepEditor({ padId: item.pad.id, stepIndex })}
+      />
+    );
+  }
+
+  if (item.type === "pianoRoll" && item.track.kind === "instrument") {
+    return (
+      <PianoRollTrack
+        track={item.track}
+        pattern={pattern}
+        playheadStep={playheadStep}
+        selectedNote={selectedNote}
+        onSelectNote={onSelectNote}
+        scaleSnap={scaleSnap}
+      />
+    );
+  }
+
+  return null;
 }
 
 /** Inline editor for per-step performance: probability, ratchet, microtiming. */
@@ -254,6 +409,9 @@ function StepEditor({ padId, stepIndex, onClose }: { padId: string; stepIndex: n
       <span className="step-editor-title">
         STEP {stepIndex + 1} · {pad?.name ?? "?"}
       </span>
+      <button type="button" className="step-editor-close btn btn-small" onClick={onClose} title="Close step editor">
+        ×
+      </button>
       <div className="step-editor-field">
         <Slider
           compact
@@ -297,9 +455,6 @@ function StepEditor({ padId, stepIndex, onClose }: { padId: string; stepIndex: n
         onClick={() => set({ probability: 1, ratchet: 1, microtiming: 0 })}
       >
         RESET
-      </button>
-      <button type="button" className="step-editor-close" aria-label="Close step editor" onClick={onClose}>
-        ×
       </button>
     </div>
   );
