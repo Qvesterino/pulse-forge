@@ -1044,6 +1044,20 @@ button {
   min-width: 30px;
 }
 
+/* ---------- Freeze controls ---------- */
+
+.freeze-controls {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.freeze-controls .btn-small {
+  font-size: 8px;
+  padding: 1px 4px;
+  min-width: auto;
+}
+
 .meter {
   width: 10px;
   align-self: stretch;

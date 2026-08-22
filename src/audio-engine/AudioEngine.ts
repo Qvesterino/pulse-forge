@@ -86,6 +86,7 @@ export class AudioEngine {
   private returnNodes = new Map<string, ReturnNodes>();
   private groupNodes = new Map<string, GroupNodes>();
   private instruments = new Map<string, InstrumentState>();
+  private frozenBuffers = new Map<string, AudioBufferSourceNode>();
   private lfos = new Map<string, LfoRuntimeState>();
   private macroCache = new Map<string, { gain: number; pan: number }>();
   private currentSceneIntensity = 0.7;
@@ -121,6 +122,19 @@ export class AudioEngine {
     this.ctx = ctx;
     this.buildMaster();
     if (this.doc) this.syncProject(this.doc);
+  }
+
+  /**
+   * Pre-load AudioWorklet processor modules. Must be called before any
+   * effects are created (before `setProject`/`syncProject`). Safe to call
+   * multiple times — modules are only loaded once per context.
+   */
+  async loadWorklets(ctx: BaseAudioContext): Promise<void> {
+    const modules = [
+      new URL("../audio-worklets/bitcrusher-processor.js", import.meta.url).href,
+      new URL("../audio-worklets/sidechain-processor.js", import.meta.url).href,
+    ];
+    await Promise.all(modules.map((url) => ctx.audioWorklet.addModule(url)));
   }
 
   ensureContext(): BaseAudioContext {
@@ -468,6 +482,45 @@ export class AudioEngine {
         };
         this.trackNodes.set(track.id, nodes);
       }
+
+      // Frozen track: play back the pre-rendered buffer instead of instrument/FX
+      if (track.frozen && "frozen" in track && track.frozen) {
+        // Stop old buffer source if it exists
+        const oldSource = this.frozenBuffers.get(track.id);
+        if (oldSource) {
+          try { oldSource.stop(); } catch { /* already stopped */ }
+          try { oldSource.disconnect(); } catch { /* already disconnected */ }
+          this.frozenBuffers.delete(track.id);
+        }
+        // Create new buffer source if not already playing
+        if (!this.frozenBuffers.has(track.id)) {
+          const buffer = this.bank?.get(track.frozen.bufferId);
+          if (buffer) {
+            const source = ctx.createBufferSource();
+            source.buffer = buffer;
+            source.loop = true;
+            source.connect(nodes.input);
+            source.start(0);
+            this.frozenBuffers.set(track.id, source);
+          }
+        }
+        // Still allow live gain/pan adjustments
+        const now = ctx.currentTime;
+        nodes.panner.pan.setTargetAtTime(track.pan, now, 0.01);
+        const anySolo = doc.tracks.some((t) => t.solo);
+        const audible = !track.mute && (!anySolo || track.solo);
+        nodes.gain.gain.setTargetAtTime(audible ? track.gain : 0, now, 0.01);
+        continue; // Skip FX/instrument sync for frozen tracks
+      }
+
+      // Clean up frozen buffer if track was unfrozen
+      const frozenSource = this.frozenBuffers.get(track.id);
+      if (frozenSource) {
+        try { frozenSource.stop(); } catch { /* already stopped */ }
+        try { frozenSource.disconnect(); } catch { /* already disconnected */ }
+        this.frozenBuffers.delete(track.id);
+      }
+
       const sig = this.fxSignature(track.effects);
       if (nodes.fx.signature !== sig) {
         this.rebuildFxChain(track.effects, nodes.input, nodes.panner, nodes.fx);
@@ -563,6 +616,8 @@ export class AudioEngine {
   }
 
   noteOn(trackId: string, pitch: number, velocity: number, when: number, durationSec: number): void {
+    // Frozen tracks play back a pre-rendered buffer — skip individual noteOn
+    if (this.frozenBuffers.has(trackId)) return;
     const inst = this.instruments.get(trackId);
     if (!inst) return;
     const bendSemitones = inst.pitchBend ?? 0;
@@ -895,8 +950,10 @@ export class AudioEngine {
   trigger(trackId: string, pad: DrumPad, when: number, velocity: number): void {
     const ctx = this.ctx;
     const trackNodes = this.trackNodes.get(trackId);
-    const buffer = this.bank?.get(pad.assetId);
     if (!ctx || !trackNodes) return;
+    // Frozen tracks play back a pre-rendered buffer — skip individual triggers
+    if (this.frozenBuffers.has(trackId)) return;
+    const buffer = this.bank?.get(pad.assetId);
     if (!buffer) {
       if (pad.assetId) this.missedAssets.add(pad.assetId);
       return;
@@ -980,6 +1037,11 @@ export class AudioEngine {
       }
     }
     this.voices.clear();
+    for (const source of this.frozenBuffers.values()) {
+      try { source.stop(now); } catch { /* already stopped */ }
+      try { source.disconnect(); } catch { /* already disconnected */ }
+    }
+    this.frozenBuffers.clear();
     for (const state of this.instruments.values()) state.runtime.panic();
   }
 

@@ -6,6 +6,7 @@ import { Slider } from "./controls";
 import { Meter } from "./Meter";
 import { MasterMeter } from "./MasterMeter";
 import { trackBadge } from "./TrackTabs";
+import { FreezeButton } from "./FreezeButton";
 
 export function Mixer() {
   const services = useServices();
@@ -205,6 +206,7 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
         >
           ×
         </button>
+        <FreezeButton track={track} />
       </div>
     </div>
   );

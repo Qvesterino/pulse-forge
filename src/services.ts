@@ -14,6 +14,7 @@ import { MidiInput } from "./midi/MidiInput";
 import { MidiOutput } from "./midi/MidiOutput";
 import { MidiClock } from "./midi/MidiClock";
 import { UserSampleRepository } from "./persistence/UserSampleRepository";
+import { loadWorkletModules } from "./audio-worklets/loader";
 
 /**
  * Long-lived services shared across projects: the audio engine (one shared
@@ -198,6 +199,10 @@ export function openProject(core: CoreServices, initial: ProjectDocument): Servi
     },
   });
   engine.setProject(store.doc);
+  // Pre-load AudioWorklet modules (fire-and-forget — factories fall back
+  // to old implementation until modules are ready, then pick up worklet
+  // on the next syncProject cycle).
+  void loadWorkletModules(engine.ensureContext());
   transport.seek(0);
   const playback = new PlaybackController(engine, transport, scheduler, modeRef, () => store.doc, (patternId) =>
     store.execute(setActivePattern(store.doc, patternId)),

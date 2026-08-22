@@ -1,6 +1,7 @@
 import type { EffectDefinition, ParamDef } from "./types";
 import type { EffectType } from "../project-model/types";
 import { hashString, mulberry32 } from "../shared/rng";
+import { isWorkletReady } from "../audio-worklets/loader";
 
 const dbToLin = (db: number) => Math.pow(10, db / 20);
 const smooth = (param: AudioParam, value: number, when: number, tc = 0.02) =>
@@ -267,9 +268,31 @@ const reverb: EffectDefinition = {
     tone.type = "lowpass";
     mix.wet.connect(preDelay).connect(conv).connect(tone).connect(mix.output);
     const seed = hashString(instance.id);
+
+    // Web Worker for IR generation (avoids main-thread glitch on decay change)
+    let worker: Worker | null = null;
+    try {
+      worker = new Worker(new URL("../audio-workers/ir-generator.ts", import.meta.url), { type: "module" });
+      worker.onmessage = (e: MessageEvent<{ left: Float32Array; right: Float32Array; length: number }>) => {
+        const { left, right, length } = e.data;
+        const buffer = ctx.createBuffer(2, length, ctx.sampleRate);
+        buffer.copyToChannel(left as Float32Array<ArrayBuffer>, 0);
+        buffer.copyToChannel(right as Float32Array<ArrayBuffer>, 1);
+        conv.buffer = buffer;
+      };
+    } catch {
+      // Worker not available (e.g. in test environment) — use synchronous fallback
+    }
+
     const apply = (id: string, v: number, when: number) => {
       switch (id) {
-        case "decay": conv.buffer = makeImpulseResponse(ctx, v, seed); break;
+        case "decay":
+          if (worker) {
+            worker.postMessage({ decay: v, sampleRate: ctx.sampleRate, seed });
+          } else {
+            conv.buffer = makeImpulseResponse(ctx, v, seed);
+          }
+          break;
         case "predelay": smooth(preDelay.delayTime, v / 1000, when, 0.05); break;
         case "tone": smooth(tone.frequency, v, when); break;
         case "mix": mix.setMix(v, when); break;
@@ -281,7 +304,10 @@ const reverb: EffectDefinition = {
       output: mix.output,
       setParameter: (id, v) => apply(id, v, ctx.currentTime),
       setParameterAt: (id, v, when) => apply(id, v, when),
-      dispose: () => { mix.input.disconnect(); mix.output.disconnect(); preDelay.disconnect(); conv.disconnect(); tone.disconnect(); },
+      dispose: () => {
+        worker?.terminate();
+        mix.input.disconnect(); mix.output.disconnect(); preDelay.disconnect(); conv.disconnect(); tone.disconnect();
+      },
     };
   },
 };
@@ -526,6 +552,12 @@ const bitcrusher: EffectDefinition = {
     { id: "output", label: "OUTPUT", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
   ],
   factory(ctx, instance) {
+    // Use AudioWorklet when modules are loaded (fixes broken downsample)
+    if (isWorkletReady("bitcrusher")) {
+      const { createBitcrusherNode } = require("../audio-worklets/bitcrusher-node");
+      return createBitcrusherNode(ctx, instance);
+    }
+    // Fallback: old WaveShaperNode implementation
     const mix = mixBus(ctx);
     const shaper = ctx.createWaveShaper();
     shaper.oversample = "none";
@@ -846,6 +878,12 @@ const sidechain: EffectDefinition = {
     { id: "amount", label: "AMOUNT", min: 0, max: 1, default: 1, format: formatPct },
   ],
   factory(ctx, instance) {
+    // Use AudioWorklet when modules are loaded (audio-rate envelope, offline-safe)
+    if (isWorkletReady("sidechain")) {
+      const { createSidechainNode } = require("../audio-worklets/sidechain-node");
+      return createSidechainNode(ctx, instance);
+    }
+    // Fallback: old setInterval + AnalyserNode implementation
     const input = ctx.createGain();
     const output = ctx.createGain();
     const target = ctx.createGain();

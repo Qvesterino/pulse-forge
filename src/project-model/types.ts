@@ -57,6 +57,13 @@ export interface DrumPad {
   chokeGroup: number | null;
 }
 
+export interface FrozenState {
+  /** Bank ID where the frozen AudioBuffer is stored (e.g. "frozen-{trackId}") */
+  bufferId: string;
+  durationSec: number;
+  sampleRate: number;
+}
+
 export interface DrumTrack {
   id: ID;
   kind: "drum";
@@ -70,6 +77,8 @@ export interface DrumTrack {
   sends: Record<ID, number>;
   /** Optional group membership — track routes through a GroupTrack instead of master. */
   groupId?: ID;
+  /** When set, the track is frozen — rendered to an AudioBuffer, saving CPU. */
+  frozen?: FrozenState;
 }
 
 export interface InstrumentTrack {
@@ -91,6 +100,8 @@ export interface InstrumentTrack {
   midiOutput?: { enabled: boolean; channel: number; deviceId?: string };
   /** Optional group membership — track routes through a GroupTrack instead of master. */
   groupId?: ID;
+  /** When set, the track is frozen — rendered to an AudioBuffer, saving CPU. */
+  frozen?: FrozenState;
 }
 
 export interface GroupTrack {
@@ -103,6 +114,8 @@ export interface GroupTrack {
   solo: boolean;
   effects: EffectInstance[];
   sends: Record<ID, number>;
+  /** When set, the track is frozen — rendered to an AudioBuffer, saving CPU. */
+  frozen?: FrozenState;
 }
 
 export type Track = DrumTrack | InstrumentTrack | GroupTrack;

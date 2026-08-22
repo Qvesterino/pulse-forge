@@ -1394,3 +1394,34 @@ export function setMidiClockMode(doc: ProjectDocument, clockMode: "off" | "maste
   const next: ProjectDocument = { ...doc, midi: { ...midi, clockMode } };
   return snapshot("setMidiClockMode", `Clock mode: ${clockMode}`, doc, next);
 }
+
+// ---------------------------------------------------------------------------
+// Freeze / Unfreeze
+// ---------------------------------------------------------------------------
+
+export function freezeTrack(
+  doc: ProjectDocument,
+  trackId: string,
+  bufferId: string,
+  durationSec: number,
+  sampleRate: number,
+): Command {
+  const track = doc.tracks.find((t) => t.id === trackId);
+  if (!track) throw new Error(`Track ${trackId} not found`);
+  const frozen = { bufferId, durationSec, sampleRate };
+  const next: ProjectDocument = {
+    ...doc,
+    tracks: doc.tracks.map((t) => (t.id === trackId ? { ...t, frozen } : t)),
+  };
+  return snapshot("freezeTrack", `Freeze ${track.name}`, doc, next);
+}
+
+export function unfreezeTrack(doc: ProjectDocument, trackId: string): Command {
+  const track = doc.tracks.find((t) => t.id === trackId);
+  if (!track) throw new Error(`Track ${trackId} not found`);
+  const next: ProjectDocument = {
+    ...doc,
+    tracks: doc.tracks.map((t) => (t.id === trackId ? { ...t, frozen: undefined } : t)),
+  };
+  return snapshot("unfreezeTrack", `Unfreeze ${track.name}`, doc, next);
+}
