@@ -29,6 +29,7 @@ import { insertPointSorted } from "../project-model/automation";
 import {
   clampUnit,
   createDrumTrackModel,
+  createGroupTrackModel,
   createInstrumentTrackModel,
   createPatternForDoc,
   drumTracksOf,
@@ -545,14 +546,75 @@ export function createInstrumentTrack(doc: ProjectDocument, kind: InstrumentKind
   return snapshot("createInstrumentTrack", `Add track ${track.name}`, doc, next);
 }
 
+export function createGroupTrack(doc: ProjectDocument): Command {
+  const count = doc.tracks.filter((t) => t.kind === "group").length;
+  const track = createGroupTrackModel(`Group ${count + 1}`);
+  const next: ProjectDocument = { ...doc, tracks: [...doc.tracks, track] };
+  return snapshot("createGroupTrack", `Add group ${track.name}`, doc, next);
+}
+
+export function addToGroup(doc: ProjectDocument, trackId: string, groupId: string): Command {
+  const track = doc.tracks.find((t) => t.id === trackId);
+  if (!track || track.kind === "group") throw new Error(`Cannot add group to group`);
+  if (!doc.tracks.some((t) => t.id === groupId && t.kind === "group")) throw new Error(`Group ${groupId} not found`);
+  const prevGroupId = "groupId" in track ? track.groupId : undefined;
+  const next: ProjectDocument = {
+    ...doc,
+    tracks: doc.tracks.map((t) =>
+      t.id === trackId && t.kind !== "group" ? { ...t, groupId } : t,
+    ),
+  };
+  return {
+    type: "addToGroup",
+    label: `Add ${track.name} to group`,
+    execute: () => next,
+    undo: (d) => ({
+      ...d,
+      tracks: d.tracks.map((t) =>
+        t.id === trackId && t.kind !== "group" ? { ...t, groupId: prevGroupId } : t,
+      ),
+    }),
+  };
+}
+
+export function removeFromGroup(doc: ProjectDocument, trackId: string): Command {
+  const track = doc.tracks.find((t) => t.id === trackId);
+  if (!track || track.kind === "group") throw new Error(`Cannot remove group from group`);
+  const prevGroupId = "groupId" in track ? track.groupId : undefined;
+  if (prevGroupId === undefined) {
+    return { type: "removeFromGroup", label: "Remove from group", execute: (d) => d, undo: (d) => d };
+  }
+  const next: ProjectDocument = {
+    ...doc,
+    tracks: doc.tracks.map((t) =>
+      t.id === trackId && t.kind !== "group" ? { ...t, groupId: undefined } : t,
+    ),
+  };
+  return {
+    type: "removeFromGroup",
+    label: `Remove ${track.name} from group`,
+    execute: () => next,
+    undo: (d) => ({
+      ...d,
+      tracks: d.tracks.map((t) =>
+        t.id === trackId && t.kind !== "group" ? { ...t, groupId: prevGroupId } : t,
+      ),
+    }),
+  };
+}
+
 export function deleteTrack(doc: ProjectDocument, trackId: string): Command {
   if (doc.tracks.length <= 1) throw new Error("Cannot delete the last track");
   const target = doc.tracks.find((t) => t.id === trackId);
   if (!target) throw new Error(`Track ${trackId} not found`);
   const removedPadIds = new Set(target.kind === "drum" ? target.pads.map((p) => p.id) : []);
+  // When deleting a group, orphan its children (remove groupId)
+  const isGroup = target.kind === "group";
   const next: ProjectDocument = {
     ...doc,
-    tracks: doc.tracks.filter((t) => t.id !== trackId),
+    tracks: doc.tracks
+      .filter((t) => t.id !== trackId)
+      .map((t) => (isGroup && t.kind !== "group" && t.groupId === trackId ? { ...t, groupId: undefined } : t)),
     patterns: doc.patterns.map((pattern) => ({
       ...pattern,
       rows: Object.fromEntries(Object.entries(pattern.rows).filter(([padId]) => !removedPadIds.has(padId))),

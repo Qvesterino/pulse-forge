@@ -124,7 +124,7 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
   const [nameDraft, setNameDraft] = useState<string | null>(null);
 
   return (
-    <div className="channel-strip">
+    <div className={`channel-strip${track.kind === "group" ? " group-strip" : ""}`}>
       <div className="channel-name">
         <span className="track-tab-badge">{trackBadge(track)}</span>
         <input

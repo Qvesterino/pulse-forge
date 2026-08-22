@@ -42,6 +42,19 @@ interface InstrumentState {
   pitchBend: number; // semitones offset from MIDI pitch bend
 }
 
+interface GroupNodes {
+  input: GainNode;
+  panner: StereoPannerNode;
+  gain: GainNode;
+  modAutoGain: GainNode;
+  modAutoPan: StereoPannerNode;
+  modMacroGain: GainNode;
+  modMacroPan: StereoPannerNode;
+  analyser: AnalyserNode;
+  fx: FxChainState;
+  sends: Map<string, GainNode>;
+}
+
 interface LfoRuntimeState {
   osc: OscillatorNode;
   depth: GainNode;
@@ -71,6 +84,7 @@ export class AudioEngine {
   private doc: ProjectDocument | null = null;
   private trackNodes = new Map<string, TrackNodes>();
   private returnNodes = new Map<string, ReturnNodes>();
+  private groupNodes = new Map<string, GroupNodes>();
   private instruments = new Map<string, InstrumentState>();
   private lfos = new Map<string, LfoRuntimeState>();
   private macroCache = new Map<string, { gain: number; pan: number }>();
@@ -234,7 +248,7 @@ export class AudioEngine {
       // Sidechain routing: wire the source track's input node as the effect's
       // sidechain feed (if the effect supports it and the source track is live).
       if (fx.sidechainTrackId && rt.setSidechainInput) {
-        const sourceNodes = this.trackNodes.get(fx.sidechainTrackId);
+        const sourceNodes = this.trackNodes.get(fx.sidechainTrackId) ?? this.groupNodes.get(fx.sidechainTrackId);
         if (sourceNodes) {
           rt.setSidechainInput(sourceNodes.input);
         } else {
@@ -290,6 +304,23 @@ export class AudioEngine {
     this.returnNodes.delete(id);
   }
 
+  private disposeGroupNodes(id: string, nodes: GroupNodes): void {
+    for (const rt of nodes.fx.runtimes.values()) rt.dispose();
+    nodes.fx.runtimes.clear();
+    nodes.fx.params.clear();
+    nodes.input.disconnect();
+    nodes.panner.disconnect();
+    nodes.gain.disconnect();
+    nodes.modAutoGain.disconnect();
+    nodes.modAutoPan.disconnect();
+    nodes.modMacroGain.disconnect();
+    nodes.modMacroPan.disconnect();
+    nodes.analyser.disconnect();
+    for (const send of nodes.sends.values()) send.disconnect();
+    nodes.sends.clear();
+    this.groupNodes.delete(id);
+  }
+
   private syncProject(doc: ProjectDocument): void {
     const ctx = this.ctx;
     if (!ctx || !this.master) return;
@@ -309,6 +340,66 @@ export class AudioEngine {
     const liveReturnIds = new Set(doc.returns.map((r) => r.id));
     for (const [id, nodes] of [...this.returnNodes]) {
       if (!liveReturnIds.has(id)) this.disposeReturnNodes(id, nodes);
+    }
+
+    // Create/update group nodes
+    const liveGroupIds = new Set(doc.tracks.filter((t) => t.kind === "group").map((t) => t.id));
+    for (const [id, nodes] of [...this.groupNodes]) {
+      if (!liveGroupIds.has(id)) this.disposeGroupNodes(id, nodes);
+    }
+    for (const track of doc.tracks) {
+      if (track.kind !== "group") continue;
+      let nodes = this.groupNodes.get(track.id);
+      if (!nodes) {
+        const input = ctx.createGain();
+        const panner = ctx.createStereoPanner();
+        const gain = ctx.createGain();
+        const modAutoGain = ctx.createGain();
+        modAutoGain.gain.value = 1;
+        const modAutoPan = ctx.createStereoPanner();
+        const modMacroGain = ctx.createGain();
+        modMacroGain.gain.value = 1;
+        const modMacroPan = ctx.createStereoPanner();
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 2048;
+        analyser.channelCount = 2;
+        analyser.channelCountMode = "explicit";
+        input.connect(panner);
+        panner.connect(gain);
+        gain.connect(modAutoGain);
+        modAutoGain.connect(modAutoPan);
+        modAutoPan.connect(modMacroGain);
+        modMacroGain.connect(modMacroPan);
+        modMacroPan.connect(this.master);
+        modMacroPan.connect(analyser);
+        nodes = {
+          input,
+          panner,
+          gain,
+          modAutoGain,
+          modAutoPan,
+          modMacroGain,
+          modMacroPan,
+          analyser,
+          fx: { runtimes: new Map(), params: new Map(), signature: "" },
+          sends: new Map(),
+        };
+        this.groupNodes.set(track.id, nodes);
+      }
+      const sig = this.fxSignature(track.effects);
+      if (nodes.fx.signature !== sig) {
+        this.rebuildFxChain(track.effects, nodes.input, nodes.panner, nodes.fx);
+      } else {
+        this.syncFxParams(track.effects, nodes.fx);
+      }
+      this.syncSends(track.sends, nodes);
+      const now = ctx.currentTime;
+      nodes.panner.pan.setTargetAtTime(track.pan, now, 0.01);
+      // Group mute/solo: check if any group member is soloed
+      const anySolo = doc.tracks.some((t) => t.kind !== "group" && t.solo);
+      const groupMuted = track.mute;
+      const groupAudible = !groupMuted && (!anySolo || track.solo);
+      nodes.gain.gain.setTargetAtTime(groupAudible ? track.gain : 0, now, 0.01);
     }
 
     for (const ret of doc.returns) {
@@ -394,6 +485,25 @@ export class AudioEngine {
       nodes.gain.gain.setTargetAtTime(audible ? track.gain : 0, now, 0.01);
     }
 
+    // Route child tracks through their group instead of master
+    for (const track of doc.tracks) {
+      if (track.kind === "group") continue;
+      const nodes = this.trackNodes.get(track.id);
+      if (!nodes) continue;
+      const groupDest = track.groupId ? this.groupNodes.get(track.groupId) : null;
+      if (groupDest) {
+        // Ensure connection is to group input, not master
+        try { nodes.modMacroPan.disconnect(this.master); } catch { /* not connected */ }
+        nodes.modMacroPan.connect(groupDest.input);
+      } else {
+        // Ensure connection is to master, not a group
+        for (const gn of this.groupNodes.values()) {
+          try { nodes.modMacroPan.disconnect(gn.input); } catch { /* not connected */ }
+        }
+        nodes.modMacroPan.connect(this.master);
+      }
+    }
+
     this.syncLfos(doc);
     this.syncMacros(doc);
 
@@ -405,7 +515,7 @@ export class AudioEngine {
     }
   }
 
-  private syncSends(sends: Record<string, number>, nodes: TrackNodes): void {
+  private syncSends(sends: Record<string, number>, nodes: TrackNodes | GroupNodes): void {
     const ctx = this.ctx;
     if (!ctx) return;
     const live = new Set(Object.keys(sends).filter((returnId) => this.returnNodes.has(returnId)));
@@ -489,7 +599,7 @@ export class AudioEngine {
       }
     }
     for (const lfo of doc.lfos) {
-      const nodes = this.trackNodes.get(lfo.trackId);
+      const nodes = this.trackNodes.get(lfo.trackId) ?? this.groupNodes.get(lfo.trackId);
       if (!nodes) continue;
       const sig = lfoSignature(lfo);
       const existing = this.lfos.get(lfo.id);
@@ -549,7 +659,7 @@ export class AudioEngine {
       const pan = Math.min(1, Math.max(-1, offsets.pan));
       const cached = this.macroCache.get(trackId);
       if (cached && cached.gain === gain && cached.pan === pan) continue;
-      const nodes = this.trackNodes.get(trackId);
+      const nodes = this.trackNodes.get(trackId) ?? this.groupNodes.get(trackId);
       if (nodes) {
         nodes.modMacroGain.gain.setTargetAtTime(gain, ctx.currentTime, 0.01);
         nodes.modMacroPan.pan.setTargetAtTime(pan, ctx.currentTime, 0.01);

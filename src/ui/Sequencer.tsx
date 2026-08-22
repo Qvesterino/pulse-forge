@@ -201,7 +201,7 @@ export function Sequencer({
               isPlaying={trackHasHit}
               onSelect={() => onSelectTrack(track.id)}
             />
-            {track.kind === "drum" ? (
+            {track.kind === "group" ? null : track.kind === "drum" ? (
               track.pads.map((pad) => (
                 <PadRow
                   key={pad.id}

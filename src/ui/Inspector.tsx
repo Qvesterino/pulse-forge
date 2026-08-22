@@ -96,6 +96,15 @@ export function Inspector({ track, selectedPadId }: { track: Track; selectedPadI
     );
   }
 
+  // GroupTrack: show volume/pan controls only
+  if (track.kind === "group") {
+    return (
+      <aside className="inspector" aria-label="Inspector">
+        {trackSection}
+      </aside>
+    );
+  }
+
   const pad = track.pads.find((p) => p.id === selectedPadId) ?? track.pads[0];
   if (!pad) return null;
 

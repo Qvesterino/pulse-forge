@@ -68,6 +68,8 @@ export interface DrumTrack {
   pads: DrumPad[];
   effects: EffectInstance[];
   sends: Record<ID, number>;
+  /** Optional group membership — track routes through a GroupTrack instead of master. */
+  groupId?: ID;
 }
 
 export interface InstrumentTrack {
@@ -87,9 +89,23 @@ export interface InstrumentTrack {
   sends: Record<ID, number>;
   /** MIDI output routing for this track. */
   midiOutput?: { enabled: boolean; channel: number; deviceId?: string };
+  /** Optional group membership — track routes through a GroupTrack instead of master. */
+  groupId?: ID;
 }
 
-export type Track = DrumTrack | InstrumentTrack;
+export interface GroupTrack {
+  id: ID;
+  kind: "group";
+  name: string;
+  gain: number;
+  pan: number;
+  mute: boolean;
+  solo: boolean;
+  effects: EffectInstance[];
+  sends: Record<ID, number>;
+}
+
+export type Track = DrumTrack | InstrumentTrack | GroupTrack;
 
 export interface ReturnTrack {
   id: ID;

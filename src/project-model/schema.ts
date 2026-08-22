@@ -83,6 +83,20 @@ export function createDrumTrackModel(name: string): DrumTrack {
   };
 }
 
+export function createGroupTrackModel(name: string): import("../project-model/types").GroupTrack {
+  return {
+    id: uid("group"),
+    kind: "group",
+    name,
+    gain: 0.9,
+    pan: 0,
+    mute: false,
+    solo: false,
+    effects: [],
+    sends: {},
+  };
+}
+
 const INSTRUMENT_NAMES: Record<InstrumentKind, string> = {
   sampler: "Sampler",
   analog: "Analog",
@@ -351,7 +365,7 @@ export function normalizeProject(doc: ProjectDocument): ProjectDocument {
   // tracks: ensure drum effects/instrument params/sends, strip dangling
   const trackIds = new Set(next.tracks.map((t) => t.id));
   let tracksChanged = false;
-  const tracks = next.tracks.map((track): DrumTrack | InstrumentTrack => {
+  const tracks = next.tracks.map((track): DrumTrack | InstrumentTrack | import("../project-model/types").GroupTrack => {
     if (track.kind === "drum") {
       let t: DrumTrack = track;
       if (t.effects === undefined) {
@@ -360,6 +374,23 @@ export function normalizeProject(doc: ProjectDocument): ProjectDocument {
       }
       if (t.sends === undefined) {
         t = { ...t, sends: {} } as DrumTrack;
+        tracksChanged = true;
+      }
+      // Validate groupId reference
+      if (t.groupId !== undefined && !trackIds.has(t.groupId)) {
+        t = { ...t, groupId: undefined } as DrumTrack;
+        tracksChanged = true;
+      }
+      return t;
+    }
+    if (track.kind === "group") {
+      let t = track;
+      if (t.effects === undefined) {
+        t = { ...t, effects: [] as EffectInstance[] };
+        tracksChanged = true;
+      }
+      if (t.sends === undefined) {
+        t = { ...t, sends: {} };
         tracksChanged = true;
       }
       return t;
@@ -395,6 +426,11 @@ export function normalizeProject(doc: ProjectDocument): ProjectDocument {
     }
     if (t.sends === undefined) {
       t = { ...t, sends: {} };
+      tracksChanged = true;
+    }
+    // Validate groupId reference
+    if (t.groupId !== undefined && !trackIds.has(t.groupId)) {
+      t = { ...t, groupId: undefined };
       tracksChanged = true;
     }
     return t;

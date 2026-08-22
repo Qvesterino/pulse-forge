@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useDoc, useServices } from "./context";
-import { createDrumTrack, createInstrumentTrack, setTrackParams } from "../commands/commands";
+import { createDrumTrack, createGroupTrack, createInstrumentTrack, setTrackParams } from "../commands/commands";
 import type { InstrumentKind, Track } from "../project-model/types";
 
-const KIND_BADGE: Record<"drum" | InstrumentKind, string> = {
+const KIND_BADGE: Record<"drum" | "group" | InstrumentKind, string> = {
   drum: "DR",
+  group: "GRP",
   sampler: "SMP",
   analog: "AN",
   bass: "BSS",
@@ -13,7 +14,9 @@ const KIND_BADGE: Record<"drum" | InstrumentKind, string> = {
 };
 
 export function trackBadge(track: Track): string {
-  return track.kind === "drum" ? KIND_BADGE.drum : KIND_BADGE[track.instrument];
+  if (track.kind === "drum") return KIND_BADGE.drum;
+  if (track.kind === "group") return KIND_BADGE.group;
+  return KIND_BADGE[track.instrument];
 }
 
 export function TrackTabs({
@@ -70,7 +73,7 @@ export function TrackTabs({
             type="button"
             role="tab"
             aria-selected={isSelected}
-            aria-label={`${track.name} (${track.kind === "drum" ? "Drum track" : `${track.instrument} track`})${track.mute ? ", muted" : ""}${track.solo ? ", soloed" : ""}`}
+            aria-label={`${track.name} (${track.kind === "drum" ? "Drum track" : track.kind === "group" ? "Group track" : `${track.instrument} track`})${track.mute ? ", muted" : ""}${track.solo ? ", soloed" : ""}`}
             className={`track-tab${isSelected ? " active" : ""}`}
             title={`${track.name} — select track (Alt+${idx + 1}), F2 to rename`}
             onClick={() => onSelectTrack(track.id)}
@@ -96,6 +99,8 @@ export function TrackTabs({
           if (!value) return;
           if (value === "drum") {
             services.store.execute(createDrumTrack(doc));
+          } else if (value === "group") {
+            services.store.execute(createGroupTrack(doc));
           } else {
             services.store.execute(createInstrumentTrack(doc, value as InstrumentKind));
           }
@@ -108,6 +113,7 @@ export function TrackTabs({
         <option value="bass">Bass Synth</option>
         <option value="808">808 Synth</option>
         <option value="texture">Texture Synth</option>
+        <option value="group">Group</option>
       </select>
     </div>
   );

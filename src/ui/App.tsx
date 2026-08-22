@@ -16,6 +16,7 @@ import { ModPanel } from "./ModPanel";
 import { MidiPanel } from "./MidiPanel";
 import { ExportPanel } from "./ExportPanel";
 import { UndoHistoryPanel } from "./UndoHistoryPanel";
+import { InstallPrompt } from "./InstallPrompt";
 import {
   clearSteps,
   deleteNote,
@@ -315,6 +316,7 @@ export function App({ services, onOpenBrowser }: { services: Services; onOpenBro
         </footer>
         <CommandToast />
         <UndoHistoryPanel open={historyOpen} />
+        <InstallPrompt />
         <HelpOverlay open={helpOpen} onClose={() => setHelpOpen(false)} />
         <OnboardingHint />
       </div>
