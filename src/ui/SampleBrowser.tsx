@@ -5,6 +5,7 @@ import { ASSET_MOODS } from "../sample-library/manifest";
 import type { UserSampleAsset } from "../persistence/UserSampleRepository";
 import { categoryColor } from "./kitColors";
 import { DropZone } from "./DropZone";
+import { FreesoundSection } from "./FreesoundSection";
 
 /** Unified asset type — factory or user-imported. */
 export type SampleAsset = FactoryAsset | UserSampleAsset;
@@ -129,6 +130,7 @@ export function SampleBrowser({
   return (
     <div className="sample-browser">
       {showDropZone && <DropZone onImport={handleImport} />}
+      {showDropZone && <FreesoundSection onImport={handleImport} />}
       <input
         className="preset-search"
         value={query}

@@ -4085,3 +4085,71 @@ button {
 .assist-op-row .collab-field {
   flex: 1;
 }
+
+/* ── Freesound section (CC0 imports) ────────────────────────────────────── */
+
+.freesound-section {
+  margin-bottom: 6px;
+}
+
+.freesound-toggle {
+  width: 100%;
+}
+
+.freesound-body {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.freesound-search {
+  display: flex;
+  gap: 6px;
+}
+
+.freesound-search input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  padding: 6px 8px;
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.freesound-error {
+  font-size: 11px;
+  color: #ef4444;
+  line-height: 1.4;
+}
+
+.freesound-results {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.freesound-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  text-align: left;
+}
+
+.freesound-name em {
+  color: var(--text-dim, #8a8f98);
+  font-style: normal;
+  font-size: 10px;
+}
+
+.freesound-token a {
+  color: var(--accent);
+}

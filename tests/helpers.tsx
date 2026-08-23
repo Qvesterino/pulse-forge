@@ -34,9 +34,10 @@ export function mockServices(doc?: ProjectDocument): Services {
         getReturnLevel: vi.fn(() => 0),
         getDiagnostics: vi.fn(() => ({})),
         get currentTime() { return 0; },
+        get context() { return { decodeAudioData: vi.fn(async (_bytes) => ({ duration: 1, sampleRate: 44100, numberOfChannels: 1, getChannelData: () => new Float32Array(44100) })) }; },
         attachBank: vi.fn(),
       } as any,
-      bank: { size: 0, get: vi.fn(() => null), names: vi.fn(() => []) } as any,
+      bank: (() => { const m = new Map(); return { get size() { return m.size; }, get: vi.fn((id: string) => m.get(id)), has: vi.fn((id: string) => m.has(id)), add: vi.fn((id: string, b: unknown) => m.set(id, b)), remove: vi.fn((id: string) => m.delete(id)), names: vi.fn(() => []), entries: vi.fn(() => []) } as any; })(),
       repo: { save: vi.fn(), load: vi.fn(), list: vi.fn() } as any,
       presets: { save: vi.fn(), load: vi.fn(), list: vi.fn() } as any,
       library: { get: vi.fn(() => ({ favoriteAssets: [], recentAssets: [], favoritePresets: [], recentPresets: [] })), subscribe: vi.fn(() => () => {}), toggleAssetFavorite: vi.fn(), togglePresetFavorite: vi.fn(), recordAsset: vi.fn(), recordPreset: vi.fn() } as any,
@@ -61,6 +62,9 @@ export function mockServices(doc?: ProjectDocument): Services {
       ensureContext: vi.fn(),
       panic: vi.fn(),
       preview: vi.fn(),
+      get context() {
+        return { decodeAudioData: async (_b: ArrayBuffer) => ({ duration: 1, sampleRate: 44100, numberOfChannels: 1, getChannelData: () => new Float32Array(44100), length: 44100 }) };
+      },
       setProject: vi.fn(),
       trigger: vi.fn(),
       noteOn: vi.fn(),
@@ -97,7 +101,7 @@ export function mockServices(doc?: ProjectDocument): Services {
       stats: { scheduledEvents: 0, lastHorizonTick: 0, windows: 0 },
     } as any,
     repo: { save: vi.fn(), load: vi.fn(), list: vi.fn() } as any,
-    bank: { size: 0, get: vi.fn(() => null), names: vi.fn(() => []) } as any,
+    bank: (() => { const m = new Map(); return { get size() { return m.size; }, get: vi.fn((id: string) => m.get(id)), has: vi.fn((id: string) => m.has(id)), add: vi.fn((id: string, b: unknown) => m.set(id, b)), remove: vi.fn((id: string) => m.delete(id)), names: vi.fn(() => []), entries: vi.fn(() => []) } as any; })(),
     library: { get: vi.fn(() => ({ favoriteAssets: [], recentAssets: [], favoritePresets: [], recentPresets: [] })), subscribe: vi.fn(() => () => {}), toggleAssetFavorite: vi.fn(), togglePresetFavorite: vi.fn(), recordAsset: vi.fn(), recordPreset: vi.fn() } as any,
     playback: {
       mode: "pattern" as const,
