@@ -98,6 +98,12 @@ export class YDocStore {
     this.emit();
   }
 
+  /** Force re-read of the snapshot from Y.Doc. Call after external sync. */
+  refreshSnapshot(): void {
+    this.doc_ = yDocToProject(this.yMap);
+    this.emit();
+  }
+
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);

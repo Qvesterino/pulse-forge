@@ -19,6 +19,7 @@ import {
 import type { PatternClipboard } from "../commands/commands";
 import { grooveOf, GRID_8TH, GRID_16TH, GRID_32ND } from "../project-model/types";
 import { DragNumber } from "./controls";
+import { GenerateDialog } from "./GenerateDialog";
 
 interface DragState {
   patternId: string;
@@ -37,6 +38,7 @@ export function PatternBar({ clip, onCopy }: { clip: PatternClipboard | null; on
   const chipsRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
+  const [generateOpen, setGenerateOpen] = useState(false);
   const pendingPatternId = useSyncExternalStore(
     (cb) => {
       const unsubPlayback = services.playback.subscribe(cb);
@@ -234,6 +236,14 @@ export function PatternBar({ clip, onCopy }: { clip: PatternClipboard | null; on
         <button
           type="button"
           className="btn btn-small"
+          title="Generate a new pattern from genre groove (Markov chain)"
+          onClick={() => setGenerateOpen(true)}
+        >
+          GEN
+        </button>
+        <button
+          type="button"
+          className="btn btn-small"
           title="Copy active pattern"
           onClick={() => onCopy({ stepCount: active.stepCount, rows: active.rows, notes: active.notes ?? {} })}
         >
@@ -306,6 +316,8 @@ export function PatternBar({ clip, onCopy }: { clip: PatternClipboard | null; on
           );
         })}
       </div>
+
+      <GenerateDialog open={generateOpen} onClose={() => setGenerateOpen(false)} />
     </section>
   );
 }

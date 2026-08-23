@@ -44,6 +44,8 @@ import type { InstrumentPreset } from "../presets/types";
 import { clamp, uid } from "../shared/ids";
 import { hashString, mulberry32 } from "../shared/rng";
 import { snapToScale } from "../project-model/scales";
+import { generatePattern } from "../ai/generator";
+import type { GenerateOptions } from "../ai/types";
 
 function snapshot(type: string, label: string, prev: ProjectDocument, next: ProjectDocument): Command {
   return {
@@ -61,6 +63,8 @@ export function setProjectName(doc: ProjectDocument, name: string): Command {
     label: `Rename project to "${name}"`,
     execute: (d) => ({ ...d, name }),
     undo: (d) => ({ ...d, name: prev }),
+    applyToYDoc: (yMap) => { yMap.set("name", name); },
+    undoYDoc: (yMap) => { yMap.set("name", prev); },
   };
 }
 
@@ -138,6 +142,38 @@ export function setPadParams(doc: ProjectDocument, padId: string, params: PadPar
     label: `Edit pad ${padId}`,
     execute: (d) => apply(d, params),
     undo: (d) => apply(d, prev),
+    applyToYDoc: (yMap) => {
+      const tracks = yMap.get("tracks") as any;
+      for (let i = 0; i < tracks.length; i++) {
+        const t = tracks.get(i);
+        if (t.get("kind") === "drum") {
+          const pads = t.get("pads") as any;
+          for (let j = 0; j < pads.length; j++) {
+            if (pads.get(j).get("id") === padId) {
+              for (const [k, v] of Object.entries(params)) { if (v !== undefined) pads.get(j).set(k, v); }
+              break;
+            }
+          }
+          break;
+        }
+      }
+    },
+    undoYDoc: (yMap) => {
+      const tracks = yMap.get("tracks") as any;
+      for (let i = 0; i < tracks.length; i++) {
+        const t = tracks.get(i);
+        if (t.get("kind") === "drum") {
+          const pads = t.get("pads") as any;
+          for (let j = 0; j < pads.length; j++) {
+            if (pads.get(j).get("id") === padId) {
+              for (const [k, v] of Object.entries(prev)) { if (v !== undefined) pads.get(j).set(k, v); }
+              break;
+            }
+          }
+          break;
+        }
+      }
+    },
   };
 }
 
@@ -256,6 +292,18 @@ export function renamePattern(doc: ProjectDocument, patternId: string, name: str
     label: `Rename pattern to "${name}"`,
     execute: () => next,
     undo: (d) => ({ ...d, patterns: d.patterns.map((p) => (p.id === patternId ? { ...p, name: prev } : p)) }),
+    applyToYDoc: (yMap) => {
+      const patterns = yMap.get("patterns") as any;
+      for (let i = 0; i < patterns.length; i++) {
+        if (patterns.get(i).get("id") === patternId) { patterns.get(i).set("name", name); break; }
+      }
+    },
+    undoYDoc: (yMap) => {
+      const patterns = yMap.get("patterns") as any;
+      for (let i = 0; i < patterns.length; i++) {
+        if (patterns.get(i).get("id") === patternId) { patterns.get(i).set("name", prev); break; }
+      }
+    },
   };
 }
 
@@ -356,6 +404,21 @@ export function setGroove(doc: ProjectDocument, groove: Partial<GrooveSettings>)
     label: `Groove → ${describe(nextGroove)}`,
     execute: (d) => ({ ...d, groove: nextGroove }),
     undo: (d) => ({ ...d, groove: prev }),
+    applyToYDoc: (yMap) => {
+      let g = yMap.get("groove") as any;
+      if (!g) { g = new (require("yjs").Map)(); yMap.set("groove", g); }
+      for (const [k, v] of Object.entries(nextGroove)) {
+        if (v !== undefined) g.set(k, v);
+      }
+    },
+    undoYDoc: (yMap) => {
+      const g = yMap.get("groove") as any;
+      if (g) {
+        for (const [k, v] of Object.entries(prev)) {
+          if (v !== undefined) g.set(k, v);
+        }
+      }
+    },
   };
 }
 
@@ -781,6 +844,20 @@ export function setInstrumentParam(doc: ProjectDocument, trackId: string, paramI
     label: `Set ${INSTRUMENT_DEFS[track.instrument].name} ${paramId}`,
     execute: (d) => apply(d, clamped),
     undo: (d) => apply(d, prev),
+    applyToYDoc: (yMap) => {
+      const tracks = yMap.get("tracks") as any;
+      for (let i = 0; i < tracks.length; i++) {
+        const t = tracks.get(i);
+        if (t.get("id") === trackId) { (t.get("params") as any).set(paramId, clamped); break; }
+      }
+    },
+    undoYDoc: (yMap) => {
+      const tracks = yMap.get("tracks") as any;
+      for (let i = 0; i < tracks.length; i++) {
+        const t = tracks.get(i);
+        if (t.get("id") === trackId) { (t.get("params") as any).set(paramId, prev); break; }
+      }
+    },
   };
 }
 
@@ -797,6 +874,20 @@ export function setInstrumentSample(doc: ProjectDocument, trackId: string, asset
     label: `Set sample`,
     execute: (d) => apply(d, assetId),
     undo: (d) => apply(d, prev),
+    applyToYDoc: (yMap) => {
+      const tracks = yMap.get("tracks") as any;
+      for (let i = 0; i < tracks.length; i++) {
+        const t = tracks.get(i);
+        if (t.get("id") === trackId) { t.set("sampleId", assetId); break; }
+      }
+    },
+    undoYDoc: (yMap) => {
+      const tracks = yMap.get("tracks") as any;
+      for (let i = 0; i < tracks.length; i++) {
+        const t = tracks.get(i);
+        if (t.get("id") === trackId) { t.set("sampleId", prev); break; }
+      }
+    },
   };
 }
 
@@ -1110,6 +1201,20 @@ export function setMacroValue(doc: ProjectDocument, macroId: string, value: numb
     label: "Set macro",
     execute: (d) => apply(d, clamped),
     undo: (d) => apply(d, prev),
+    applyToYDoc: (yMap) => {
+      const macros = yMap.get("macros") as any;
+      for (let i = 0; i < macros.length; i++) {
+        const m = macros.get(i);
+        if (m.get("id") === macroId) { m.set("value", clamped); break; }
+      }
+    },
+    undoYDoc: (yMap) => {
+      const macros = yMap.get("macros") as any;
+      for (let i = 0; i < macros.length; i++) {
+        const m = macros.get(i);
+        if (m.get("id") === macroId) { m.set("value", prev); break; }
+      }
+    },
   };
 }
 
@@ -1124,6 +1229,20 @@ export function renameMacro(doc: ProjectDocument, macroId: string, name: string)
     label: `Rename macro to "${name}"`,
     execute: (d) => apply(d, name),
     undo: (d) => apply(d, prev),
+    applyToYDoc: (yMap) => {
+      const macros = yMap.get("macros") as any;
+      for (let i = 0; i < macros.length; i++) {
+        const m = macros.get(i);
+        if (m.get("id") === macroId) { m.set("name", name); break; }
+      }
+    },
+    undoYDoc: (yMap) => {
+      const macros = yMap.get("macros") as any;
+      for (let i = 0; i < macros.length; i++) {
+        const m = macros.get(i);
+        if (m.get("id") === macroId) { m.set("name", prev); break; }
+      }
+    },
   };
 }
 
@@ -1174,7 +1293,21 @@ function dMap(doc: ProjectDocument, macroId: string, fn: (m: Macro) => Macro): P
 
 export function setMasterConfig(doc: ProjectDocument, patch: Partial<MasterConfig>): Command {
   const next: ProjectDocument = { ...doc, master: { ...doc.master, ...patch } };
-  return snapshot("setMasterConfig", "Edit master chain", doc, next);
+  const prev = { ...doc.master };
+  return {
+    type: "setMasterConfig",
+    label: "Edit master chain",
+    execute: () => next,
+    undo: () => ({ ...doc, master: prev }),
+    applyToYDoc: (yMap) => {
+      const master = yMap.get("master") as any;
+      if (master) for (const [k, v] of Object.entries(patch)) { if (v !== undefined) master.set(k, v); }
+    },
+    undoYDoc: (yMap) => {
+      const master = yMap.get("master") as any;
+      if (master) for (const [k, v] of Object.entries(prev)) { if (v !== undefined) master.set(k, v); }
+    },
+  };
 }
 
 export function setTrackSend(doc: ProjectDocument, trackId: string, returnId: string, level: number): Command {
@@ -1191,6 +1324,20 @@ export function setTrackSend(doc: ProjectDocument, trackId: string, returnId: st
     label: "Set send level",
     execute: (d) => apply(d, clamped),
     undo: (d) => apply(d, prev),
+    applyToYDoc: (yMap) => {
+      const tracks = yMap.get("tracks") as any;
+      for (let i = 0; i < tracks.length; i++) {
+        const t = tracks.get(i);
+        if (t.get("id") === trackId) { (t.get("sends") as any).set(returnId, clamped); break; }
+      }
+    },
+    undoYDoc: (yMap) => {
+      const tracks = yMap.get("tracks") as any;
+      for (let i = 0; i < tracks.length; i++) {
+        const t = tracks.get(i);
+        if (t.get("id") === trackId) { (t.get("sends") as any).set(returnId, prev); break; }
+      }
+    },
   };
 }
 
@@ -1206,6 +1353,20 @@ export function setReturnGain(doc: ProjectDocument, returnId: string, gain: numb
     label: "Set return gain",
     execute: (d) => apply(d, clamped),
     undo: (d) => apply(d, prev),
+    applyToYDoc: (yMap) => {
+      const returns = yMap.get("returns") as any;
+      for (let i = 0; i < returns.length; i++) {
+        const r = returns.get(i);
+        if (r.get("id") === returnId) { r.set("gain", clamped); break; }
+      }
+    },
+    undoYDoc: (yMap) => {
+      const returns = yMap.get("returns") as any;
+      for (let i = 0; i < returns.length; i++) {
+        const r = returns.get(i);
+        if (r.get("id") === returnId) { r.set("gain", prev); break; }
+      }
+    },
   };
 }
 
@@ -1365,6 +1526,32 @@ export function toggleEffectBypass(doc: ProjectDocument, trackId: string, fxId: 
     label: `${prev ? "Enable" : "Bypass"} effect`,
     execute: (d) => apply(d, !prev),
     undo: (d) => apply(d, prev),
+    applyToYDoc: (yMap) => {
+      const tracks = yMap.get("tracks") as any;
+      for (let i = 0; i < tracks.length; i++) {
+        const t = tracks.get(i);
+        if (t.get("id") === trackId) {
+          const effects = t.get("effects") as any;
+          for (let j = 0; j < effects.length; j++) {
+            if (effects.get(j).get("id") === fxId) { effects.get(j).set("bypassed", !prev); break; }
+          }
+          break;
+        }
+      }
+    },
+    undoYDoc: (yMap) => {
+      const tracks = yMap.get("tracks") as any;
+      for (let i = 0; i < tracks.length; i++) {
+        const t = tracks.get(i);
+        if (t.get("id") === trackId) {
+          const effects = t.get("effects") as any;
+          for (let j = 0; j < effects.length; j++) {
+            if (effects.get(j).get("id") === fxId) { effects.get(j).set("bypassed", prev); break; }
+          }
+          break;
+        }
+      }
+    },
   };
 }
 
@@ -1480,13 +1667,33 @@ export function resetDrumNoteMapping(doc: ProjectDocument): Command {
 export function setTrackPreset(doc: ProjectDocument, trackId: string, presetId: string): Command {
   const track = doc.tracks.find((t) => t.id === trackId && t.kind === "instrument");
   if (!track || track.kind !== "instrument") throw new Error(`Instrument track ${trackId} not found`);
+  const prev = track.presetId;
   const next: ProjectDocument = {
     ...doc,
     tracks: doc.tracks.map((t) =>
       t.id === trackId && t.kind === "instrument" ? { ...t, presetId } : t,
     ),
   };
-  return snapshot("setTrackPreset", `Program Change → ${presetId}`, doc, next);
+  return {
+    type: "setTrackPreset",
+    label: `Program Change → ${presetId}`,
+    execute: () => next,
+    undo: () => ({ ...doc, tracks: doc.tracks.map((t) => (t.id === trackId && t.kind === "instrument" ? { ...t, presetId: prev } : t)) }),
+    applyToYDoc: (yMap) => {
+      const tracks = yMap.get("tracks") as any;
+      for (let i = 0; i < tracks.length; i++) {
+        const t = tracks.get(i);
+        if (t.get("id") === trackId) { t.set("presetId", presetId); break; }
+      }
+    },
+    undoYDoc: (yMap) => {
+      const tracks = yMap.get("tracks") as any;
+      for (let i = 0; i < tracks.length; i++) {
+        const t = tracks.get(i);
+        if (t.get("id") === trackId) { t.set("presetId", prev); break; }
+      }
+    },
+  };
 }
 
 export function setMidiProgramMap(doc: ProjectDocument, programMap: { program: number; presetId: string }[]): Command {
@@ -1571,4 +1778,31 @@ export function unfreezeTrack(doc: ProjectDocument, trackId: string): Command {
     tracks: doc.tracks.map((t) => (t.id === trackId ? { ...t, frozen: undefined } : t)),
   };
   return snapshot("unfreezeTrack", `Unfreeze ${track.name}`, doc, next);
+}
+
+/* ---------------- AI pattern generation ---------------- */
+
+export function generatePatternCommand(
+  doc: ProjectDocument,
+  options: GenerateOptions,
+  patternName?: string,
+): Command {
+  const pattern = generatePattern(doc, options);
+  if (patternName) pattern.name = patternName;
+  if (!pattern.name) pattern.name = `${options.genre} ${options.seed.slice(0, 4)}`.trim();
+
+  const scene: Scene = {
+    id: uid("scene"),
+    name: pattern.name,
+    patternId: pattern.id,
+    intensity: 0.7,
+  };
+
+  const next: ProjectDocument = {
+    ...doc,
+    patterns: [...doc.patterns, pattern],
+    scenes: [...doc.scenes, scene],
+    activePatternId: pattern.id,
+  };
+  return snapshot("generatePattern", `Generate ${pattern.name}`, doc, next);
 }
