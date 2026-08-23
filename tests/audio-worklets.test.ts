@@ -1,16 +1,57 @@
-import { describe, expect, it } from "vitest";
-import { isWorkletReady } from "../src/audio-worklets/loader";
+import { describe, expect, it, vi } from "vitest";
+import { isWorkletReady, loadWorkletModules } from "../src/audio-worklets/loader";
+
+function mockCtx(addModule: (url: string) => Promise<void>): BaseAudioContext {
+  return { audioWorklet: { addModule } } as unknown as BaseAudioContext;
+}
 
 describe("AudioWorklet loader", () => {
-  it("isWorkletReady returns false before loading", () => {
-    expect(isWorkletReady("bitcrusher")).toBe(false);
-    expect(isWorkletReady("sidechain")).toBe(false);
+  it("reports not ready for contexts that have not loaded modules", () => {
+    expect(isWorkletReady("bitcrusher", {} as BaseAudioContext)).toBe(false);
+    expect(isWorkletReady("sidechain", {} as BaseAudioContext)).toBe(false);
+    expect(isWorkletReady("bitcrusher", null)).toBe(false);
+    expect(isWorkletReady("sidechain", undefined)).toBe(false);
   });
 
-  it("isWorkletReady returns correct type", () => {
-    // Even before loading, the function should not throw
-    expect(typeof isWorkletReady("bitcrusher")).toBe("boolean");
-    expect(typeof isWorkletReady("sidechain")).toBe("boolean");
+  it("marks a context ready after modules load (both processors)", async () => {
+    const addModule = vi.fn(async () => {});
+    const ctx = mockCtx(addModule);
+    await loadWorkletModules(ctx);
+    expect(addModule).toHaveBeenCalledTimes(2); // bitcrusher + sidechain
+    expect(isWorkletReady("bitcrusher", ctx)).toBe(true);
+    expect(isWorkletReady("sidechain", ctx)).toBe(true);
+  });
+
+  it("tracks readiness per context — offline renders are separate contexts", async () => {
+    // Regression: a global ready flag made factories construct
+    // AudioWorkletNodes in OfflineAudioContexts where the processor was
+    // never registered, which throws during freeze/bounce/export.
+    const live = mockCtx(async () => {});
+    await loadWorkletModules(live);
+    const offline = mockCtx(async () => {});
+    expect(isWorkletReady("bitcrusher", live)).toBe(true);
+    expect(isWorkletReady("bitcrusher", offline)).toBe(false);
+  });
+
+  it("loads each context only once", async () => {
+    const addModule = vi.fn(async () => {});
+    const ctx = mockCtx(addModule);
+    await loadWorkletModules(ctx);
+    await loadWorkletModules(ctx);
+    expect(addModule).toHaveBeenCalledTimes(2);
+  });
+
+  it("never rejects and keeps fallback on addModule failure", async () => {
+    const ctx = mockCtx(async () => {
+      throw new Error("404 module not found");
+    });
+    await expect(loadWorkletModules(ctx)).resolves.toBeUndefined();
+    expect(isWorkletReady("bitcrusher", ctx)).toBe(false);
+    expect(isWorkletReady("sidechain", ctx)).toBe(false);
+  });
+
+  it("resolves silently without audioWorklet (jsdom)", async () => {
+    await expect(loadWorkletModules({} as BaseAudioContext)).resolves.toBeUndefined();
   });
 });
 

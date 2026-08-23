@@ -111,6 +111,7 @@ export function mockServices(doc?: ProjectDocument): Services {
     } as any,
     flushSave: vi.fn(),
     closeProject: vi.fn(),
+    frozenAudio: { save: vi.fn(async () => {}), load: vi.fn(async () => undefined), remove: vi.fn(async () => {}), list: vi.fn(async () => []) } as any,
     getDiagnostics: vi.fn(() => ({
       playMode: "pattern",
       bpm: 120,

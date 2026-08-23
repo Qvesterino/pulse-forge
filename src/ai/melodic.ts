@@ -186,7 +186,7 @@ function generateMelodicSequence(
 
 /**
  * Generate melodic patterns for a given genre.
- * Returns NoteEvents for the first instrument track found in the project.
+ * Generates content for ALL roles (bass, chord, lead) and returns combined NoteEvents.
  */
 export function generateMelodicPattern(
   options: GenerateOptions,
@@ -195,21 +195,6 @@ export function generateMelodicPattern(
 ): NoteEvent[] {
   const patterns = MELODIC_BY_GENRE[options.genre];
   if (!patterns || patterns.length === 0) return [];
-
-  // Pick a pattern role (deterministic from rand)
-  const patternIdx = Math.floor(rand() * patterns.length);
-  const pattern = patterns[patternIdx];
-
-  // Build Markov model from reference sequences
-  const model = buildMelodicModel(pattern.sequences);
-
-  // Estimate notes needed to fill the pattern
-  const notesPerBar = pattern.role === 'chord' ? 2 : pattern.role === 'bass' ? 4 : 3;
-  const bars = options.stepCount / 16;
-  const targetNotes = Math.ceil(notesPerBar * bars);
-  const maxSteps = options.stepCount;
-
-  const sequence = generateMelodicSequence(model, targetNotes, rand);
 
   // Parse the project key for scale snapping
   let root = 0;
@@ -222,49 +207,64 @@ export function generateMelodicPattern(
     }
   }
 
-  // Convert to NoteEvents with tick-based timing
-  const notes: NoteEvent[] = [];
-  let currentTick = 0;
-  const isChord = pattern.role === 'chord';
+  const allNotes: NoteEvent[] = [];
+  const maxSteps = options.stepCount;
+  const bars = options.stepCount / 16;
 
-  for (const note of sequence) {
-    if (currentTick >= maxSteps * STEP_TICKS) break;
+  // Generate for each role in the genre
+  for (const pattern of patterns) {
+    // Build Markov model from reference sequences for this role
+    const model = buildMelodicModel(pattern.sequences);
 
-    const durationTicks = note.duration * STEP_TICKS;
+    // Role-specific note density
+    const notesPerBar = pattern.role === 'chord' ? 2 : pattern.role === 'bass' ? 4 : 3;
+    const targetNotes = Math.ceil(notesPerBar * bars);
 
-    if (note.degree >= 0) {
-      if (isChord) {
-        // Expand degree into chord voicing (2-4 simultaneous notes)
-        const chordNotes = expandChord(note.degree, pattern.octaveOffset, root, intervals, note.velocity, rand);
-        for (const cn of chordNotes) {
-          let pitch = degreeToPitch(cn.degree, pattern.octaveOffset, root, intervals);
+    const sequence = generateMelodicSequence(model, targetNotes, rand);
+
+    // Convert to NoteEvents with tick-based timing
+    let currentTick = 0;
+    const isChord = pattern.role === 'chord';
+
+    for (const note of sequence) {
+      if (currentTick >= maxSteps * STEP_TICKS) break;
+
+      const durationTicks = note.duration * STEP_TICKS;
+
+      if (note.degree >= 0) {
+        if (isChord) {
+          // Expand degree into chord voicing (2-4 simultaneous notes)
+          const chordNotes = expandChord(note.degree, pattern.octaveOffset, root, intervals, note.velocity, rand);
+          for (const cn of chordNotes) {
+            let pitch = degreeToPitch(cn.degree, pattern.octaveOffset, root, intervals);
+            if (key) pitch = snapToScale(pitch, key);
+            pitch = Math.max(0, Math.min(127, pitch));
+            allNotes.push({
+              id: uid('note'),
+              pitch,
+              start: currentTick,
+              duration: durationTicks,
+              velocity: cn.velocity,
+            });
+          }
+        } else {
+          // Single note (bass/lead)
+          let pitch = degreeToPitch(note.degree, pattern.octaveOffset, root, intervals);
           if (key) pitch = snapToScale(pitch, key);
           pitch = Math.max(0, Math.min(127, pitch));
-          notes.push({
+          allNotes.push({
             id: uid('note'),
             pitch,
             start: currentTick,
             duration: durationTicks,
-            velocity: cn.velocity,
+            velocity: note.velocity,
           });
         }
-      } else {
-        // Single note (bass/lead)
-        let pitch = degreeToPitch(note.degree, pattern.octaveOffset, root, intervals);
-        if (key) pitch = snapToScale(pitch, key);
-        pitch = Math.max(0, Math.min(127, pitch));
-        notes.push({
-          id: uid('note'),
-          pitch,
-          start: currentTick,
-          duration: durationTicks,
-          velocity: note.velocity,
-        });
       }
-    }
 
-    currentTick += durationTicks;
+      currentTick += durationTicks;
+    }
   }
 
-  return notes;
+  return allNotes;
 }

@@ -2,6 +2,8 @@ import type { EffectDefinition, ParamDef } from "./types";
 import type { EffectType } from "../project-model/types";
 import { hashString, mulberry32 } from "../shared/rng";
 import { isWorkletReady } from "../audio-worklets/loader";
+import { createBitcrusherNode } from "../audio-worklets/bitcrusher-node";
+import { createSidechainNode } from "../audio-worklets/sidechain-node";
 
 const dbToLin = (db: number) => Math.pow(10, db / 20);
 const smooth = (param: AudioParam, value: number, when: number, tc = 0.02) =>
@@ -552,9 +554,10 @@ const bitcrusher: EffectDefinition = {
     { id: "output", label: "OUTPUT", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
   ],
   factory(ctx, instance) {
-    // Use AudioWorklet when modules are loaded (fixes broken downsample)
-    if (isWorkletReady("bitcrusher")) {
-      const { createBitcrusherNode } = require("../audio-worklets/bitcrusher-node");
+    // Use AudioWorklet when modules are loaded for THIS context (fixes broken
+    // downsample). OfflineAudioContexts must load their own modules first —
+    // see loadWorkletModules().
+    if (isWorkletReady("bitcrusher", ctx)) {
       return createBitcrusherNode(ctx, instance);
     }
     // Fallback: old WaveShaperNode implementation
@@ -878,9 +881,9 @@ const sidechain: EffectDefinition = {
     { id: "amount", label: "AMOUNT", min: 0, max: 1, default: 1, format: formatPct },
   ],
   factory(ctx, instance) {
-    // Use AudioWorklet when modules are loaded (audio-rate envelope, offline-safe)
-    if (isWorkletReady("sidechain")) {
-      const { createSidechainNode } = require("../audio-worklets/sidechain-node");
+    // Use AudioWorklet when modules are loaded for THIS context (audio-rate
+    // envelope, offline-safe)
+    if (isWorkletReady("sidechain", ctx)) {
       return createSidechainNode(ctx, instance);
     }
     // Fallback: old setInterval + AnalyserNode implementation

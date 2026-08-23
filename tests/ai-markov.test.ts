@@ -716,59 +716,47 @@ describe("melodic velocity from reference data", () => {
   });
 
   describe("chord polyphony", () => {
-    it("house chord generation produces multiple simultaneous notes", () => {
-      // House has both bass and chord roles. Chord role generates 2-4 voices per step.
+    it("house generates multiple simultaneous notes (bass + chord overlap)", () => {
       const options = makeOptions({ genre: "house" });
-      let foundChord = false;
-      for (let seed = 0; seed < 100; seed++) {
-        const rand = mulberry32(seed);
-        const notes = generateMelodicPattern(options, rand);
-        if (notes.length < 2) continue;
+      const rand = mulberry32(42);
+      const notes = generateMelodicPattern(options, rand);
+      // With all roles generating, there should be many notes
+      expect(notes.length).toBeGreaterThan(5);
 
-        // Check if multiple notes share the same start tick (simultaneous = chord)
-        const byStart = new Map<number, number>();
-        for (const n of notes) {
-          byStart.set(n.start, (byStart.get(n.start) ?? 0) + 1);
-        }
-        const maxSimultaneous = Math.max(...byStart.values());
-        if (maxSimultaneous >= 2) {
-          foundChord = true;
-          expect(maxSimultaneous).toBeGreaterThanOrEqual(2);
-          expect(maxSimultaneous).toBeLessThanOrEqual(4);
-          break;
-        }
+      // Check that multiple notes share the same start tick (simultaneous)
+      const byStart = new Map<number, number>();
+      for (const n of notes) {
+        byStart.set(n.start, (byStart.get(n.start) ?? 0) + 1);
       }
-      expect(foundChord).toBe(true);
+      const maxSimultaneous = Math.max(...byStart.values());
+      // Bass + chord can overlap → expect >= 2 simultaneous notes
+      expect(maxSimultaneous).toBeGreaterThanOrEqual(2);
     });
 
     it("chord notes have layered velocities (root loudest)", () => {
       const options = makeOptions({ genre: "house" });
-      for (let seed = 0; seed < 100; seed++) {
-        const rand = mulberry32(seed);
-        const notes = generateMelodicPattern(options, rand);
-        if (notes.length < 4) continue;
+      const rand = mulberry32(42);
+      const notes = generateMelodicPattern(options, rand);
+      if (notes.length < 4) return;
 
-        // Find groups of simultaneous notes
-        const byStart = new Map<number, typeof notes>();
-        for (const n of notes) {
-          const group = byStart.get(n.start) ?? [];
-          group.push(n);
-          byStart.set(n.start, group);
-        }
+      // Find groups of simultaneous notes
+      const byStart = new Map<number, typeof notes>();
+      for (const n of notes) {
+        const group = byStart.get(n.start) ?? [];
+        group.push(n);
+        byStart.set(n.start, group);
+      }
 
-        for (const [, group] of byStart) {
-          if (group.length >= 2) {
-            // Root (first/loudest) should have velocity >= upper voices
-            const sorted = [...group].sort((a, b) => b.velocity - a.velocity);
-            expect(sorted[0].velocity).toBeGreaterThanOrEqual(sorted[sorted.length - 1].velocity);
-            return; // test passed
-          }
+      for (const [, group] of byStart) {
+        if (group.length >= 2) {
+          const sorted = [...group].sort((a, b) => b.velocity - a.velocity);
+          expect(sorted[0].velocity).toBeGreaterThanOrEqual(sorted[sorted.length - 1].velocity);
+          return;
         }
       }
-      // If no chord found in 100 seeds, test still passes (role selection is random)
     });
 
-    it("chord notes are within valid MIDI range", () => {
+    it("all notes are within valid MIDI range", () => {
       const options = makeOptions({ genre: "house" });
       const rand = mulberry32(42);
       const notes = generateMelodicPattern(options, rand);
@@ -776,5 +764,21 @@ describe("melodic velocity from reference data", () => {
         expect(n.pitch).toBeGreaterThanOrEqual(0);
         expect(n.pitch).toBeLessThanOrEqual(127);
       }
+    });
+
+    it("generates notes for multiple roles (bass + chord/lead)", () => {
+      const options = makeOptions({ genre: "house" });
+      const rand = mulberry32(42);
+      const notes = generateMelodicPattern(options, rand);
+      // House has 2 roles (bass + chord), should produce significantly more notes than before
+      expect(notes.length).toBeGreaterThan(8);
+    });
+
+    it("techno generates bass + lead together", () => {
+      const options = makeOptions({ genre: "techno" });
+      const rand = mulberry32(42);
+      const notes = generateMelodicPattern(options, rand);
+      // Techno has 2 roles (bass + lead)
+      expect(notes.length).toBeGreaterThan(6);
     });
   });

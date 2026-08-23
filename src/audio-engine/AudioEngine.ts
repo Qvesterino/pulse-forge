@@ -2,12 +2,21 @@ import type { AutomationTarget, DrumPad, EffectInstance, InstrumentTrack, Master
 import type { AutomationPoint, Lfo } from "../project-model/types";
 import { valueAt } from "../project-model/automation";
 import { defaultMasterConfig } from "../project-model/schema";
+import { PPQ } from "../project-model/types";
 import type { SampleBank } from "../sample-library/factory";
 import { EFFECT_DEFS } from "../effects/registry";
 import type { EffectRuntime } from "../effects/types";
 import { INSTRUMENT_DEFS } from "../instruments/registry";
 import type { InstrumentRuntime } from "../instruments/types";
+import { loadWorkletModules } from "../audio-worklets/loader";
 import { channelLevels, splitChannels, stereoCorrelation, PeakHold, type Frame, type ChannelLevels } from "./metering";
+
+/** Tick position → seconds inside a frozen loop (mod buffer duration). */
+export function frozenPlaybackOffset(positionTick: number, bpm: number, durationSec: number): number {
+  if (!Number.isFinite(durationSec) || durationSec <= 0) return 0;
+  const seconds = (Math.max(0, positionTick) / PPQ) * (60 / Math.max(1, bpm));
+  return seconds % durationSec;
+}
 
 interface FxChainState {
   runtimes: Map<string, EffectRuntime>;
@@ -87,6 +96,12 @@ export class AudioEngine {
   private groupNodes = new Map<string, GroupNodes>();
   private instruments = new Map<string, InstrumentState>();
   private frozenBuffers = new Map<string, AudioBufferSourceNode>();
+  /** bufferId each frozen source is currently playing (detect re-freezes). */
+  private frozenBufferIds = new Map<string, string>();
+  /** Frozen playback is transport-aware — sources only run while rolling. */
+  private frozenPlaying = false;
+  /** Transport tick + ctx time at the last frozen restart, for alignment. */
+  private frozenAlign: { tick: number; ctxTime: number } | null = null;
   private lfos = new Map<string, LfoRuntimeState>();
   private macroCache = new Map<string, { gain: number; pan: number }>();
   private currentSceneIntensity = 0.7;
@@ -130,11 +145,9 @@ export class AudioEngine {
    * multiple times — modules are only loaded once per context.
    */
   async loadWorklets(ctx: BaseAudioContext): Promise<void> {
-    const modules = [
-      new URL("../audio-worklets/bitcrusher-processor.js", import.meta.url).href,
-      new URL("../audio-worklets/sidechain-processor.js", import.meta.url).href,
-    ];
-    await Promise.all(modules.map((url) => ctx.audioWorklet.addModule(url)));
+    // Delegates to the shared per-context loader (graceful no-op on
+    // platforms without AudioWorklet, e.g. jsdom tests).
+    await loadWorkletModules(ctx);
   }
 
   ensureContext(): BaseAudioContext {
@@ -234,6 +247,48 @@ export class AudioEngine {
         rt.onTransportStarted?.(time, beatPhase);
       }
     }
+  }
+
+  /**
+   * (Re)start frozen-track buffer sources aligned to the transport position.
+   * Called when playback starts, on seek while playing, and right after a
+   * fresh freeze during playback. This is the single creation path for frozen
+   * sources — panic() (pause/stop/seek) tears them down, this resurrects them,
+   * so frozen tracks can never end up permanently silent.
+   */
+  restartFrozenSources(positionTick: number): void {
+    const ctx = this.ctx;
+    const doc = this.doc;
+    if (!ctx || !doc) return;
+    this.frozenPlaying = true;
+    this.frozenAlign = { tick: Math.max(0, positionTick), ctxTime: ctx.currentTime };
+    for (const track of doc.tracks) {
+      if (!("frozen" in track) || !track.frozen) continue;
+      const existing = this.frozenBuffers.get(track.id);
+      if (existing) {
+        try { existing.stop(); } catch { /* already stopped */ }
+        try { existing.disconnect(); } catch { /* already disconnected */ }
+        this.frozenBuffers.delete(track.id);
+        this.frozenBufferIds.delete(track.id);
+      }
+      const buffer = this.bank?.get(track.frozen.bufferId);
+      const nodes = this.trackNodes.get(track.id);
+      if (!buffer || !nodes) continue; // restore pending — next sync picks it up
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.loop = true;
+      source.connect(nodes.input);
+      source.start(ctx.currentTime + 0.005, frozenPlaybackOffset(positionTick, doc.bpm, buffer.duration));
+      this.frozenBuffers.set(track.id, source);
+      this.frozenBufferIds.set(track.id, track.frozen.bufferId);
+    }
+  }
+
+  /** Current transport tick estimate for frozen-loop alignment. */
+  private frozenPositionTickNow(): number {
+    if (!this.frozenAlign || !this.ctx || !this.doc) return 0;
+    const elapsed = Math.max(0, this.ctx.currentTime - this.frozenAlign.ctxTime);
+    return this.frozenAlign.tick + elapsed * (this.doc.bpm / 60) * PPQ;
   }
 
   private fxSignature(effects: EffectInstance[]): string {
@@ -483,25 +538,34 @@ export class AudioEngine {
         this.trackNodes.set(track.id, nodes);
       }
 
-      // Frozen track: play back the pre-rendered buffer instead of instrument/FX
+      // Frozen track: play back the pre-rendered buffer instead of instrument/FX.
+      // Sources are transport-aware: they run only while playback is rolling
+      // (see restartFrozenSources) and are NOT restarted on doc edits as long
+      // as the buffer is unchanged — editing another track must not audibly
+      // restart a frozen loop from its beginning.
       if (track.frozen && "frozen" in track && track.frozen) {
-        // Stop old buffer source if it exists
-        const oldSource = this.frozenBuffers.get(track.id);
-        if (oldSource) {
-          try { oldSource.stop(); } catch { /* already stopped */ }
-          try { oldSource.disconnect(); } catch { /* already disconnected */ }
-          this.frozenBuffers.delete(track.id);
-        }
-        // Create new buffer source if not already playing
-        if (!this.frozenBuffers.has(track.id)) {
-          const buffer = this.bank?.get(track.frozen.bufferId);
-          if (buffer) {
-            const source = ctx.createBufferSource();
-            source.buffer = buffer;
-            source.loop = true;
-            source.connect(nodes.input);
-            source.start(0);
-            this.frozenBuffers.set(track.id, source);
+        const bufferId = track.frozen.bufferId;
+        const existing = this.frozenBuffers.get(track.id);
+        if (existing && this.frozenBufferIds.get(track.id) === bufferId) {
+          // Same buffer — keep the source running untouched.
+        } else {
+          if (existing) {
+            try { existing.stop(); } catch { /* already stopped */ }
+            try { existing.disconnect(); } catch { /* already disconnected */ }
+            this.frozenBuffers.delete(track.id);
+            this.frozenBufferIds.delete(track.id);
+          }
+          if (this.frozenPlaying) {
+            const buffer = this.bank?.get(bufferId);
+            if (buffer) {
+              const source = ctx.createBufferSource();
+              source.buffer = buffer;
+              source.loop = true;
+              source.connect(nodes.input);
+              source.start(ctx.currentTime + 0.005, frozenPlaybackOffset(this.frozenPositionTickNow(), doc.bpm, buffer.duration));
+              this.frozenBuffers.set(track.id, source);
+              this.frozenBufferIds.set(track.id, bufferId);
+            }
           }
         }
         // Still allow live gain/pan adjustments
@@ -519,6 +583,7 @@ export class AudioEngine {
         try { frozenSource.stop(); } catch { /* already stopped */ }
         try { frozenSource.disconnect(); } catch { /* already disconnected */ }
         this.frozenBuffers.delete(track.id);
+        this.frozenBufferIds.delete(track.id);
       }
 
       const sig = this.fxSignature(track.effects);
@@ -1042,6 +1107,9 @@ export class AudioEngine {
       try { source.disconnect(); } catch { /* already disconnected */ }
     }
     this.frozenBuffers.clear();
+    this.frozenBufferIds.clear();
+    this.frozenPlaying = false;
+    this.frozenAlign = null;
     for (const state of this.instruments.values()) state.runtime.panic();
   }
 

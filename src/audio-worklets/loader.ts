@@ -1,37 +1,55 @@
 /**
- * AudioWorklet module loader. Pre-loads processor modules and provides
- * a readiness flag for synchronous factory fallback.
+ * AudioWorklet module loader. Pre-loads processor modules per context and
+ * reports readiness synchronously so effect factories can fall back.
  *
- * Strategy: fire-and-forget load in openProject(). If a factory runs before
- * modules are loaded, it falls back to the old (WaveShaperNode / setInterval)
- * implementation. On the next syncProject cycle, modules will be ready and
- * the worklet implementation is used.
+ * Readiness is tracked PER CONTEXT: addModule() registers processors on one
+ * BaseAudioContext only. The live engine context and every OfflineAudioContext
+ * (freeze/bounce/export renders) each need their own load. A global flag would
+ * make factories construct AudioWorkletNodes in contexts where the processor
+ * was never registered — which throws.
+ *
+ * All failures are swallowed: `loadWorkletModules()` never rejects, callers
+ * fire-and-forget, and factories simply keep the fallback implementation
+ * (WaveShaperNode / setInterval) for contexts that could not load modules.
  */
 
-let bitcrusherReady = false;
-let sidechainReady = false;
-let loadingPromise: Promise<void> | null = null;
+const readyContexts = new WeakSet<BaseAudioContext>();
+const failedContexts = new WeakSet<BaseAudioContext>();
+const inflight = new Map<BaseAudioContext, Promise<void>>();
 
-export function isWorkletReady(type: "bitcrusher" | "sidechain"): boolean {
-  return type === "bitcrusher" ? bitcrusherReady : sidechainReady;
+export function isWorkletReady(type: "bitcrusher" | "sidechain", ctx: BaseAudioContext | null | undefined): boolean {
+  if (!ctx || !readyContexts.has(ctx)) return false;
+  // Both processors load together per context; the type is kept in the
+  // signature so call sites read naturally.
+  return type === "bitcrusher" || type === "sidechain";
 }
 
 /**
  * Pre-load all AudioWorklet processor modules for the given context.
- * Safe to call multiple times — modules are only loaded once per context.
- * Call this after `engine.useContext(ctx)` but before `engine.setProject()`.
+ * Safe to call multiple times per context; resolves immediately (without
+ * loading) when the platform has no AudioWorklet (jsdom) or when a previous
+ * load for this context already failed.
  */
 export async function loadWorkletModules(ctx: BaseAudioContext): Promise<void> {
-  if (bitcrusherReady && sidechainReady) return;
-  if (!loadingPromise) {
-    loadingPromise = Promise.all([
-      ctx.audioWorklet
-        .addModule(new URL("../audio-worklets/bitcrusher-processor.js", import.meta.url).href)
-        .then(() => { bitcrusherReady = true; }),
-      ctx.audioWorklet
-        .addModule(new URL("../audio-worklets/sidechain-processor.js", import.meta.url).href)
-        .then(() => { sidechainReady = true; }),
-    ]).then(() => {});
-  }
-  await loadingPromise;
+  if (!ctx?.audioWorklet) return; // jsdom and other non-Web-Audio environments
+  if (readyContexts.has(ctx) || failedContexts.has(ctx)) return;
+  const pending = inflight.get(ctx);
+  if (pending) return pending;
+
+  const load = Promise.all([
+    ctx.audioWorklet.addModule(new URL("./bitcrusher-processor.js", import.meta.url).href),
+    ctx.audioWorklet.addModule(new URL("./sidechain-processor.js", import.meta.url).href),
+  ])
+    .then(() => {
+      readyContexts.add(ctx);
+    })
+    .catch((err) => {
+      failedContexts.add(ctx);
+      console.warn("[audio-worklets] module load failed, using fallback implementations:", err);
+    })
+    .finally(() => {
+      inflight.delete(ctx);
+    });
+  inflight.set(ctx, load);
+  return load;
 }

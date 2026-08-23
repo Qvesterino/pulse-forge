@@ -10,6 +10,8 @@ import { FACTORY_PRESETS } from "./presets/factory";
 import { FACTORY_ASSETS } from "./sample-library/manifest";
 import { applyInstrumentPreset } from "./commands/commands";
 import { PPQ } from "./project-model/types";
+import { loadWorkletModules, isWorkletReady } from "./audio-worklets/loader";
+import { createBitcrusherNode } from "./audio-worklets/bitcrusher-node";
 import type { EffectType, InstrumentTrack } from "./project-model/types";
 
 export interface CheckResult {
@@ -24,6 +26,15 @@ function peakOf(data: Float32Array): number {
   let peak = 0;
   for (let i = 0; i < data.length; i++) peak = Math.max(peak, Math.abs(data[i]));
   return peak;
+}
+
+/** How often the value changes when sampled every `step` frames. */
+function countChanges(data: Float32Array, step: number): number {
+  let changes = 0;
+  for (let i = step; i < data.length; i += step) {
+    if (Math.abs(data[i] - data[i - step]) > 1e-6) changes++;
+  }
+  return changes;
 }
 
 async function renderThrough(type: EffectType, paramsOverride: Record<string, number> = {}): Promise<Float32Array> {
@@ -399,6 +410,39 @@ export async function runChecks(): Promise<CheckResult[]> {
     check("sidechain: setSidechainInput attaches/detaches safely and renders signal", peak > 0.001 && peak <= 4, `peak=${peak.toFixed(3)}`);
   } catch (error) {
     check("sidechain: setSidechainInput attaches/detaches safely and renders signal", false, String(error));
+  }
+
+  // AudioWorklet processors load per context and the bitcrusher actually
+  // sample-and-holds (downsample) — impossible with the WaveShaper fallback.
+  try {
+    const ctx = new OfflineAudioContext(1, SR, SR);
+    await loadWorkletModules(ctx);
+    if (!isWorkletReady("bitcrusher", ctx) || !isWorkletReady("sidechain", ctx)) {
+      check("audio-worklet: processors load and bitcrusher downsamples", false, "modules not ready after loadWorkletModules");
+    } else {
+      const rt = createBitcrusherNode(ctx, { params: { bits: 8, downsample: 4, mix: 1, output: 0 } });
+      const buf = ctx.createBuffer(1, 512, SR);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < 512; i++) d[i] = Math.sin((i / 64) * Math.PI * 2);
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(rt.input);
+      rt.output.connect(ctx.destination);
+      src.start(0);
+      const out = await ctx.startRendering();
+      rt.dispose();
+      const o = out.getChannelData(0);
+      let holds = true;
+      for (let i = 1; i < 4; i++) if (Math.abs(o[i] - o[0]) > 1e-6) holds = false;
+      const changes = countChanges(o, 4);
+      check(
+        "audio-worklet: processors load and bitcrusher downsamples",
+        holds && changes > 8,
+        `plateau=${holds} changes=${changes} (fallback would give ~0)`,
+      );
+    }
+  } catch (error) {
+    check("audio-worklet: processors load and bitcrusher downsamples", false, String(error));
   }
 
   try {

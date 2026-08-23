@@ -9,11 +9,12 @@ import { generateFactoryBank } from "./sample-library/factory";
 import type { SampleBank } from "./sample-library/factory";
 import type { PlayMode, ProjectDocument, Scene } from "./project-model/types";
 import { BAR_TICKS, PPQ } from "./project-model/types";
-import { setActivePattern } from "./commands/commands";
+import { setActivePattern, unfreezeTrack } from "./commands/commands";
 import { MidiInput } from "./midi/MidiInput";
 import { MidiOutput } from "./midi/MidiOutput";
 import { MidiClock } from "./midi/MidiClock";
 import { UserSampleRepository, restoreUserSampleAudio } from "./persistence/UserSampleRepository";
+import { FrozenBufferRepository, restoreFrozenTracks } from "./persistence/FrozenBufferRepository";
 import { loadWorkletModules } from "./audio-worklets/loader";
 
 /**
@@ -43,6 +44,7 @@ export interface Services {
   midiOutput: MidiOutput;
   midiClock: MidiClock;
   userSamples: UserSampleRepository;
+  frozenAudio: FrozenBufferRepository;
   flushSave(): Promise<void>;
   /** Stop playback, flush autosave and detach page listeners. */
   closeProject(): Promise<void>;
@@ -95,6 +97,9 @@ export class PlaybackController {
       const pos = ((this.transport.position % PPQ) + PPQ) % PPQ;
       const beatPhase = pos / PPQ;
       this.engine.transportStarted(this.engine.currentTime, beatPhase);
+      // Frozen playback is transport-aware: sources are torn down by
+      // panic() on pause/stop and resurrected here on every play.
+      this.engine.restartFrozenSources(this.transport.position);
       this.scheduler.start();
     }
     this.notify();
@@ -113,6 +118,7 @@ export class PlaybackController {
     this.transport.seek(Math.max(0, tick));
     if (this.transport.playing) {
       this.engine.panic();
+      this.engine.restartFrozenSources(this.transport.position);
       this.scheduler.resync();
     }
     this.notify();
@@ -213,6 +219,28 @@ export function openProject(core: CoreServices, initial: ProjectDocument): Servi
 
   const midi = new MidiInput();
   const userSamples = new UserSampleRepository();
+  const frozenAudio = new FrozenBufferRepository();
+
+  // Restore frozen-track audio (IndexedDB → bank) so frozen tracks survive
+  // reloads. Tracks whose buffer is gone (cleared site data, other browser)
+  // are auto-unfrozen — they play live instead of staying permanently silent.
+  // Unreferenced stored buffers are GC'd here: the undo history is empty at
+  // open, so "referenced" is exactly the current doc's frozen bufferIds.
+  void (async () => {
+    const missing = await restoreFrozenTracks(store.doc, bank, frozenAudio);
+    for (const track of store.doc.tracks) {
+      if (track.frozen && missing.includes(track.frozen.bufferId)) {
+        store.execute(unfreezeTrack(store.doc, track.id));
+      }
+    }
+    const referenced = new Set(
+      store.doc.tracks.filter((t) => t.frozen).map((t) => t.frozen!.bufferId),
+    );
+    for (const entry of await frozenAudio.list()) {
+      if (!referenced.has(entry.id)) await frozenAudio.remove(entry.id);
+    }
+    engine.setProject(store.doc);
+  })();
 
   void midi.requestAccess().then((ok) => {
     if (ok) {
@@ -317,5 +345,5 @@ export function openProject(core: CoreServices, initial: ProjectDocument): Servi
     };
   };
 
-  return { core, store, engine, transport, scheduler, repo, bank, library, playback, midi, midiOutput, midiClock, userSamples, flushSave, closeProject, getDiagnostics };
+  return { core, store, engine, transport, scheduler, repo, bank, library, playback, midi, midiOutput, midiClock, userSamples, frozenAudio, flushSave, closeProject, getDiagnostics };
 }

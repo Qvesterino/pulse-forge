@@ -20,18 +20,28 @@ export function FreezeButton({ track }: { track: Track }) {
     if (rendering) return;
     setRendering(true);
     try {
+      const prevBufferId = track.frozen?.bufferId ?? null;
       const bufferId = `frozen-${track.id}-${Date.now().toString(36)}`;
       const buffer = await renderTrack(doc, track.id, services.bank, {
         mode: "song",
         sampleRate: 44100,
         tailSeconds: 3,
       });
-      // Store in bank
+      // Store in bank + persist to IndexedDB so the freeze survives reloads.
       services.bank.add(bufferId, buffer);
+      await services.frozenAudio.save(bufferId, encodeWav(buffer, 16));
+      if (prevBufferId && prevBufferId !== bufferId) {
+        services.bank.remove(prevBufferId);
+        await services.frozenAudio.remove(prevBufferId);
+      }
       // Set frozen flag
       services.store.execute(
         freezeTrack(doc, track.id, bufferId, buffer.duration, buffer.sampleRate),
       );
+      // Align the fresh buffer to the transport when freezing mid-playback.
+      if (services.transport.playing) {
+        services.engine.restartFrozenSources(services.transport.position);
+      }
     } catch (err) {
       console.error("[FreezeButton] freeze failed:", err);
     } finally {
@@ -41,6 +51,9 @@ export function FreezeButton({ track }: { track: Track }) {
 
   const handleUnfreeze = () => {
     if (!isFrozen) return;
+    // The buffer (bank + IndexedDB) is intentionally kept: unfreeze is
+    // undoable and the restored doc would reference this bufferId again.
+    // Orphans are GC'd the next time the project opens.
     services.store.execute(unfreezeTrack(doc, track.id));
   };
 

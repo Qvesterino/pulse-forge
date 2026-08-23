@@ -14,6 +14,14 @@ export class SampleBank {
     return id ? this.buffers.get(id) : undefined;
   }
 
+  has(id: string | null): boolean {
+    return id ? this.buffers.has(id) : false;
+  }
+
+  remove(id: string): void {
+    this.buffers.delete(id);
+  }
+
   get size(): number {
     return this.buffers.size;
   }

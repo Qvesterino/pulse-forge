@@ -2,6 +2,34 @@ import { describe, expect, it } from "vitest";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { createGroupTrackModel, normalizeProject } from "../src/project-model/schema";
 import { freezeTrack, unfreezeTrack } from "../src/commands/commands";
+import { frozenPlaybackOffset } from "../src/audio-engine/AudioEngine";
+import { PPQ } from "../src/project-model/types";
+
+describe("frozenPlaybackOffset (transport alignment)", () => {
+  it("maps a tick position to seconds inside the loop", () => {
+    // 120 bpm, PPQ 480 → 960 ticks = 1 second.
+    expect(frozenPlaybackOffset(0, 120, 10)).toBe(0);
+    expect(frozenPlaybackOffset(960, 120, 10)).toBeCloseTo(1, 6);
+  });
+
+  it("wraps around the loop duration", () => {
+    // 11 seconds into a 10 s loop → offset 1 s.
+    expect(frozenPlaybackOffset(960 * 11, 120, 10)).toBeCloseTo(1, 6);
+  });
+
+  it("accounts for tempo", () => {
+    // 60 bpm is half the speed of 120 bpm → same offset for half the ticks.
+    expect(frozenPlaybackOffset(960, 60, 10)).toBeCloseTo(2, 6);
+  });
+
+  it("clamps degenerate inputs", () => {
+    expect(frozenPlaybackOffset(-960, 120, 10)).toBe(0);
+    expect(frozenPlaybackOffset(960, 120, 0)).toBe(0);
+    expect(frozenPlaybackOffset(960, 120, Number.NaN)).toBe(0);
+    expect(frozenPlaybackOffset(960, 0, 10)).toBeCloseTo(0, 6);
+    expect(frozenPlaybackOffset(PPQ, 120, 10)).toBeCloseTo(0.5, 6);
+  });
+});
 
 describe("freezeTrack / unfreezeTrack", () => {
   const doc = createProjectFromTemplate("house");

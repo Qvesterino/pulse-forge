@@ -3,6 +3,7 @@ import type { SampleBank } from "../sample-library/factory";
 import type { AutomationPoint, Pattern, PlayMode, ProjectDocument } from "../project-model/types";
 import { BAR_TICKS, PPQ, STEP_TICKS, getActivePattern } from "../project-model/types";
 import { drumHitsInWindow } from "../project-model/groove";
+import { loadWorkletModules } from "../audio-worklets/loader";
 
 export interface RenderOptions {
   mode: PlayMode;
@@ -54,6 +55,11 @@ export async function renderProject(
   const duration = totalTicks * secondsPerTick + tail;
   const sampleRate = options.sampleRate;
   const ctx = new OfflineAudioContext(2, Math.max(1, Math.ceil(duration * sampleRate)), sampleRate);
+  // Load AudioWorklet processors into THIS offline context so bitcrusher
+  // downsample and sidechain ducking render correctly (the fallbacks are
+  // broken offline: WaveShaper has no state, setInterval never fires).
+  // Never rejects — factories fall back gracefully when unavailable.
+  await loadWorkletModules(ctx);
 
   const engine = new AudioEngine();
   engine.attachBank(bank);

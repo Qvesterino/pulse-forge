@@ -15,18 +15,31 @@
  * AudioParams:
  *   threshold — dB threshold for envelope detection (-60..0, default -18)
  *   ratio     — compression ratio (1..20, default 4)
- *   attack    — attack time coefficient (0.001..0.5, default 0.005)
- *   release   — release time coefficient (0.02..1, default 0.2)
+ *   attack    — attack time in seconds (0.001..0.5, default 0.005)
+ *   release   — release time in seconds (0.02..1, default 0.2)
  *   amount    — ducking depth (0..1, default 1)
+ *
+ * NOTE: this file is served RAW to AudioWorklet.addModule() via
+ * `new URL("./sidechain-processor.js", import.meta.url)` — it must stay
+ * plain JavaScript with no imports and no TypeScript syntax.
  */
 class SidechainProcessor extends AudioWorkletProcessor {
-  env = 0;
+  constructor() {
+    super();
+    this.env = 0;
+  }
 
-  process(
-    inputs: Float32Array[][],
-    outputs: Float32Array[][],
-    parameters: Record<string, Float32Array>,
-  ): boolean {
+  static get parameterDescriptors() {
+    return [
+      { name: "threshold", defaultValue: -18, minValue: -60, maxValue: 0, automationRate: "k-rate" },
+      { name: "ratio", defaultValue: 4, minValue: 1, maxValue: 20, automationRate: "k-rate" },
+      { name: "attack", defaultValue: 0.005, minValue: 0.001, maxValue: 0.5, automationRate: "k-rate" },
+      { name: "release", defaultValue: 0.2, minValue: 0.02, maxValue: 1, automationRate: "k-rate" },
+      { name: "amount", defaultValue: 1, minValue: 0, maxValue: 1, automationRate: "k-rate" },
+    ];
+  }
+
+  process(inputs, outputs, parameters) {
     const main = inputs[0];
     const sidechain = inputs[1];
     const output = outputs[0];
@@ -52,7 +65,7 @@ class SidechainProcessor extends AudioWorkletProcessor {
     const sidechainLen = sidechain[0].length;
     const mainLen = main[0].length;
     const len = Math.min(mainLen, sidechainLen);
-    const sr = (globalThis as any).sampleRate ?? 44100;
+    const sr = globalThis.sampleRate ?? 44100;
 
     for (let i = 0; i < len; i++) {
       // Read sidechain peak (use channel 0)
