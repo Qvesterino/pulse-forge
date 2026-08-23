@@ -5,6 +5,9 @@ import { buildStemProject, nonEmptyStemGroups } from "../rendering/stems";
 import { downloadWav, encodeWav, sanitizeFilename } from "../rendering/wav";
 import { buildScorepack } from "../export/scorepack";
 import { exportProject } from "../export/project-io";
+import { encodeMp3 } from "../export/mp3";
+import { canExportVideo, recordVideo } from "../export/video";
+import { encodeShareCode, shareAppUrl, embedUrl, embedSnippet } from "../export/shareCode";
 import type { WavBitDepth } from "../rendering/wav";
 import type { PlayMode } from "../project-model/types";
 import { summarizeBuffer, type BufferSummary } from "../audio-engine/metering";
@@ -15,23 +18,70 @@ type Status =
   | { kind: "done"; label: string; summary: BufferSummary }
   | { kind: "error"; label: string };
 
+type MasterFormat = "wav" | "mp3-192" | "mp3-320" | "video";
+
+function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
 export function ExportPanel() {
   const services = useServices();
   const doc = useDoc();
   const [mode, setMode] = useState<PlayMode>(services.playback.mode);
   const [sampleRate, setSampleRate] = useState(44100);
   const [bitDepth, setBitDepth] = useState<WavBitDepth>(16);
+  const [format, setFormat] = useState<MasterFormat>("wav");
+  const [clipSeconds, setClipSeconds] = useState(15);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
 
   const busy = status.kind === "busy";
   const baseName = sanitizeFilename(doc.name);
   const groups = nonEmptyStemGroups(doc);
+  const videoSupported = canExportVideo();
 
   const exportMaster = async () => {
     setStatus({ kind: "busy", label: "Rendering master…" });
     try {
       const buffer = await renderProject(doc, services.bank, { mode, sampleRate });
       const summary = summarizeBuffer(buffer);
+
+      if (format === "video") {
+        const seconds = Math.min(clipSeconds, buffer.duration);
+        const result = await recordVideo(buffer, {
+          title: doc.name,
+          bpm: doc.bpm,
+          seconds,
+          onProgress: (f) => setStatus({ kind: "busy", label: `Recording video… ${Math.round(f * 100)}%` }),
+        });
+        downloadBlob(result.blob, `${baseName}-clip.${result.ext}`);
+        setStatus({
+          kind: "done",
+          label: `Video exported — ${seconds}s ${result.ext.toUpperCase()}, ${(result.bytes / 1e6).toFixed(1)} MB, ready for Reels/Shorts/TikTok`,
+          summary,
+        });
+        return;
+      }
+
+      if (format.startsWith("mp3")) {
+        const kbps = format === "mp3-320" ? 320 : 192;
+        const blob = await encodeMp3(buffer, {
+          kbps,
+          onProgress: (f) => setStatus({ kind: "busy", label: `Encoding MP3 ${kbps}… ${Math.round(f * 100)}%` }),
+        });
+        downloadBlob(blob, `${baseName}-${kbps}.mp3`);
+        setStatus({
+          kind: "done",
+          label: `MP3 exported (${buffer.duration.toFixed(1)}s, ${kbps} kbps, ${(blob.size / 1e6).toFixed(2)} MB)`,
+          summary,
+        });
+        return;
+      }
+
       downloadWav(encodeWav(buffer, bitDepth), `${baseName}-master.wav`);
       setStatus({
         kind: "done",
@@ -85,6 +135,30 @@ export function ExportPanel() {
     }
   };
 
+  const copyText = async (text: string, doneLabel: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setStatus({ kind: "done", label: doneLabel, summary: { peak: 0, peakDb: -120, truePeakDb: -120, rms: 0, rmsDb: -120, correlation: 1 } });
+    } catch {
+      setStatus({ kind: "error", label: "Clipboard blocked by the browser — copy failed" });
+    }
+  };
+
+  /** Share link: the whole project compressed into the URL (?import=…). */
+  const copyShareLink = () => {
+    const code = encodeShareCode(doc);
+    const url = shareAppUrl(code, location.origin);
+    const approxKb = Math.round(url.length / 1024);
+    return copyText(url, `Share link copied (${approxKb} kB URL) — opens this project in the studio`);
+  };
+
+  /** Embed snippet: self-contained player iframe for Discord/Reddit/websites. */
+  const copyEmbedCode = () => {
+    const code = encodeShareCode(doc);
+    const snippet = embedSnippet(embedUrl(code, location.origin));
+    return copyText(snippet, "Embed iframe copied — paste it into a website");
+  };
+
   const exportScorepack = async () => {
     setStatus({ kind: "busy", label: "Building scorepack…" });
     try {
@@ -125,8 +199,35 @@ export function ExportPanel() {
           </select>
         </label>
         <label className="fx-param-select">
+          <span className="slider-label">FORMAT</span>
+          <select value={format} onChange={(event) => setFormat(event.target.value as MasterFormat)}>
+            <option value="wav">WAV (studio)</option>
+            <option value="mp3-192">MP3 192 (share)</option>
+            <option value="mp3-320">MP3 320 (hq share)</option>
+            <option value="video" disabled={!videoSupported}>
+              VIDEO {videoSupported ? "(Reels/TikTok)" : "(unsupported)"}
+            </option>
+          </select>
+        </label>
+        {format === "video" && (
+          <label className="fx-param-select">
+            <span className="slider-label">LENGTH</span>
+            <select value={clipSeconds} onChange={(event) => setClipSeconds(Number(event.target.value))}>
+              <option value={5}>5 s</option>
+              <option value={10}>10 s</option>
+              <option value={15}>15 s</option>
+              <option value={30}>30 s</option>
+            </select>
+          </label>
+        )}
+        <label className="fx-param-select">
           <span className="slider-label">DEPTH</span>
-          <select value={bitDepth} onChange={(event) => setBitDepth(Number(event.target.value) as WavBitDepth)}>
+          <select
+            value={bitDepth}
+            disabled={format !== "wav"}
+            title={format !== "wav" ? "Depth applies to WAV only" : undefined}
+            onChange={(event) => setBitDepth(Number(event.target.value) as WavBitDepth)}
+          >
             <option value={16}>16-bit PCM</option>
             <option value={24}>24-bit PCM</option>
             <option value={32}>32-bit float</option>
@@ -134,8 +235,8 @@ export function ExportPanel() {
         </label>
       </div>
       <div className="export-buttons">
-        <button type="button" className="btn btn-export" disabled={busy} onClick={() => void exportMaster()}>
-          EXPORT MASTER
+        <button type="button" className="btn btn-export" disabled={busy || (format === "video" && !videoSupported)} onClick={() => void exportMaster()}>
+          {format === "video" ? "EXPORT VIDEO" : `EXPORT MASTER${format.startsWith("mp3") ? " (MP3)" : ""}`}
         </button>
         <button
           type="button"
@@ -148,6 +249,24 @@ export function ExportPanel() {
         </button>
         <button type="button" className="btn btn-export" disabled={busy} onClick={() => void exportTracks()}>
           EXPORT ALL TRACKS ({doc.tracks.length})
+        </button>
+        <button
+          type="button"
+          className="btn btn-export"
+          disabled={busy}
+          title="Copy a link that opens this project in the full studio"
+          onClick={() => void copyShareLink()}
+        >
+          COPY SHARE LINK
+        </button>
+        <button
+          type="button"
+          className="btn btn-export"
+          disabled={busy}
+          title="Copy an iframe embed with a playable beat player"
+          onClick={() => void copyEmbedCode()}
+        >
+          COPY EMBED CODE
         </button>
         <button
           type="button"

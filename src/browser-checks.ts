@@ -13,7 +13,10 @@ import { PPQ } from "./project-model/types";
 import { loadWorkletModules, isWorkletReady } from "./audio-worklets/loader";
 import { createBitcrusherNode } from "./audio-worklets/bitcrusher-node";
 import { AudioEngine } from "./audio-engine/AudioEngine";
+import { detectTransients } from "./audio-engine/transients";
 import { createGroupTrackModel } from "./project-model/schema";
+import { encodeMp3 } from "./export/mp3";
+import { pickVideoMimeType, recordVideo } from "./export/video";
 import type { EffectType, InstrumentTrack } from "./project-model/types";
 
 export interface CheckResult {
@@ -613,6 +616,102 @@ export async function runChecks(): Promise<CheckResult[]> {
     );
   } catch (error) {
     check("wavetable: late-arriving user sample replaces the cached factory fallback", false, String(error));
+  }
+
+  // MP3 export round-trip: encode the rendered pattern, then decode it back
+  // through the browser's own decoder — a successful decode proves the MP3
+  // stream is valid, not just non-empty bytes.
+  try {
+    const doc = createProjectFromTemplate("house");
+    const buffer = await renderProject(doc, bank, { mode: "pattern", sampleRate: 44100 });
+    const mp3 = await encodeMp3(buffer, { kbps: 192 });
+    const wavBytes = encodeWav(buffer, 16).byteLength;
+    const decodeCtx = new OfflineAudioContext(1, 1, 44100);
+    const decoded = await decodeCtx.decodeAudioData(await mp3.arrayBuffer());
+    check(
+      "export: MP3 encodes small and decodes back to the same duration",
+      mp3.size < wavBytes / 4 && Math.abs(decoded.duration - buffer.duration) < 0.15,
+      `mp3=${(mp3.size / 1024).toFixed(0)}kB vs wav=${(wavBytes / 1024).toFixed(0)}kB dur=${decoded.duration.toFixed(2)}s/${buffer.duration.toFixed(2)}s`,
+    );
+  } catch (error) {
+    check("export: MP3 encodes small and decodes back to the same duration", false, String(error));
+  }
+
+  // Video export: MediaRecorder over the branded canvas + offline-rendered
+  // audio muxed via MediaStreamAudioDestinationNode.
+  try {
+    const mime = pickVideoMimeType();
+    if (!mime) {
+      check("export: video records canvas + audio via MediaRecorder", true, "skipped — MediaRecorder unavailable");
+    } else {
+      const ctx = new OfflineAudioContext(1, 44100 * 2, 44100);
+      const osc = ctx.createOscillator();
+      osc.frequency.value = 220;
+      const g = ctx.createGain();
+      g.gain.value = 0.5;
+      osc.connect(g).connect(ctx.destination);
+      osc.start(0);
+      const buffer = await ctx.startRendering();
+      const result = await recordVideo(buffer, {
+        title: "Browser Check",
+        bpm: 120,
+        seconds: 2,
+        width: 270,
+        height: 480,
+        fps: 24,
+      });
+      check(
+        "export: video records canvas + audio via MediaRecorder",
+        result.blob.size > 15_000 && result.blob.type.startsWith("video/"),
+        `${result.ext} ${(result.blob.size / 1024).toFixed(0)}kB type=${result.blob.type || mime.split(";")[0]}`,
+      );
+    }
+  } catch (error) {
+    check("export: video records canvas + audio via MediaRecorder", false, String(error));
+  }
+
+  // Chop beats: engine slicing plays ONLY the pad's [start, end) region of
+  // the source (native offset+duration), and transient detection finds hits.
+  try {
+    const ctx = new OfflineAudioContext(1, SR, SR);
+    // Source: burst A [0.05, 0.15), silence, burst B [0.5, 0.65).
+    const srcBuffer = ctx.createBuffer(1, SR, SR);
+    const d = srcBuffer.getChannelData(0);
+    for (let i = Math.floor(0.05 * SR); i < Math.floor(0.15 * SR); i++) d[i] = 0.7 * Math.sin((2 * Math.PI * 220 * i) / SR);
+    for (let i = Math.floor(0.5 * SR); i < Math.floor(0.65 * SR); i++) d[i] = 0.7 * Math.sin((2 * Math.PI * 440 * i) / SR);
+    bank.add("check-slice-src", srcBuffer);
+
+    const doc = createProjectFromTemplate("house");
+    const drum = doc.tracks.find((t) => t.kind === "drum")!;
+    const engine = new AudioEngine();
+    engine.attachBank(bank);
+    engine.useContext(ctx);
+    // Slice pointing ONLY at burst B; triggered at t=0.1.
+    engine.setProject(doc);
+    engine.trigger(drum.id, { ...drum.pads[0], assetId: "check-slice-src", sliceStart: 0.5, sliceEnd: 0.65 }, 0.1, 1);
+    const out = await ctx.startRendering();
+    const data = out.getChannelData(0);
+    const rms = (a: number, b: number) => {
+      let sum = 0;
+      for (let i = Math.floor(a * SR); i < Math.floor(b * SR); i++) sum += data[i] * data[i];
+      return Math.sqrt(sum / Math.max(1, Math.floor(b * SR) - Math.floor(a * SR)));
+    };
+    const before = rms(0, 0.09); // before trigger — must be silent
+    const during = rms(0.11, 0.25); // burst B playing through the slice
+    const after = rms(0.3, 0.5); // after slice end — must be silent again
+
+    // Transient detection over the same source must find both bursts.
+    const onsets = detectTransients(d, SR);
+    const foundA = onsets.some((t: number) => Math.abs(t - 0.05) < 0.05);
+    const foundB = onsets.some((t: number) => Math.abs(t - 0.5) < 0.05);
+
+    check(
+      "chop beats: pads play only their slice region + transients detected",
+      before < 0.005 && during > 0.05 && after < 0.005 && foundA && foundB && onsets.length === 2,
+      `before=${before.toFixed(4)} during=${during.toFixed(3)} after=${after.toFixed(4)} onsets=[${onsets.map((t) => t.toFixed(2)).join(",")}]`,
+    );
+  } catch (error) {
+    check("chop beats: pads play only their slice region + transients detected", false, String(error));
   }
 
   try {

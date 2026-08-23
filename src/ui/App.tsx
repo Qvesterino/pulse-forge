@@ -35,7 +35,15 @@ import { OnboardingHint } from "./OnboardingHint";
 const PANEL_KEYS = ["mixer", "fx", "arr", "mod", "exp", "midi"] as const;
 type BottomPanel = (typeof PANEL_KEYS)[number];
 
-export function App({ services, onOpenBrowser }: { services: Services; onOpenBrowser: () => void }) {
+export function App({
+  services,
+  onOpenBrowser,
+  onReplaceServices,
+}: {
+  services: Services;
+  onOpenBrowser: () => void;
+  onReplaceServices: (services: Services) => void;
+}) {
   const doc = useSyncExternalStore(services.store.subscribe, services.store.getDoc, services.store.getDoc);
   const playMode = useSyncExternalStore(services.playback.subscribe, services.playback.getSnapshot, services.playback.getSnapshot);
   const [selectedTrackId, setSelectedTrackId] = useState(doc.tracks[0]?.id ?? "");
@@ -247,6 +255,7 @@ export function App({ services, onOpenBrowser }: { services: Services; onOpenBro
           onSetBottomPanel={setBottomPanelTab}
           onToggleHelp={() => setHelpOpen((v) => !v)}
           onOpenBrowser={onOpenBrowser}
+          onReplaceServices={onReplaceServices}
           scaleSnap={scaleSnap}
           onToggleScaleSnap={() => setScaleSnap((s) => !s)}
           historyOpen={historyOpen}

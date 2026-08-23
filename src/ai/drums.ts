@@ -55,35 +55,52 @@ export function generateDrumPattern(
 ): { rows: number[][]; meta: Map<number, Map<number, StepMeta>> } {
   const rows: number[][] = [];
   const meta = new Map<number, Map<number, StepMeta>>();
+  const bars = Math.ceil(options.stepCount / 16);
 
   for (const padIndex of groove.activePads) {
-    // Extract this pad's patterns from the groove data
     const padPatterns: number[][] = groove.patterns.map(p => (p[padIndex] as number[] | undefined) ?? new Array(16).fill(0) as number[]);
-
-    // Build Markov model for this pad
     const model = buildPadModel(padIndex, padPatterns);
 
-    // Generate the sequence with temperature control
-    const sequence = generatePadSequence(model, options.stepCount, rand, options.temperature);
+    // Generate base 16-step sequence
+    const baseSequence = generatePadSequence(model, 16, rand, options.temperature);
 
-    // Convert quantized levels to musical velocities
-    const velocities = sequence.map((level) => {
+    // Extend to full stepCount with bar-level variation
+    const fullSequence: number[] = [];
+    for (let bar = 0; bar < bars; bar++) {
+      for (let step = 0; step < 16 && fullSequence.length < options.stepCount; step++) {
+        let level = baseSequence[step];
+        // Bar 2+: slight velocity variation to create evolution
+        if (bar > 0 && level > 0 && rand() < 0.15) {
+          // 15% chance of velocity shift on later bars
+          level = Math.max(0, Math.min(3, level + (rand() < 0.5 ? 1 : -1)));
+        }
+        fullSequence.push(level);
+      }
+    }
+
+    // Convert to velocities
+    const velocities = fullSequence.map((level) => {
       if (level === 0) return 0;
       let velocity = dequantizeVelocity(level as VelocityLevel, rand);
-      // Apply velocity variation
       velocity += (rand() - 0.5) * options.velocityVariation * 0.3;
       return Math.max(0.1, Math.min(1, velocity));
     });
 
     rows[padIndex] = velocities;
 
-    // Add ghost notes on empty steps adjacent to hits
+    // Add ghost notes
     addGhostNotes(rows, padIndex, options, rand);
 
-    // Add microtiming and probability metadata
+    // Add fill variation at phrase boundaries (every 4 bars)
+    addFillVariation(rows[padIndex], padIndex, options.ghostWeight, rand, 4);
+
+    // Apply phrase-level velocity contour (2-bar sine envelope)
+    applyPhraseContour(rows[padIndex], 0.15);
+
+    // Add step meta
     const padMeta = addStepMeta(rows[padIndex], padIndex, options, rand);
 
-    // Apply groove swing to odd-numbered active steps
+    // Apply swing
     applySwingToMeta(rows[padIndex], padMeta, groove.swing);
 
     if (padMeta.size > 0) {
@@ -173,4 +190,46 @@ function addStepMeta(
   }
 
   return padMeta;
+}
+
+/**
+ * Apply phrase-level velocity contour: a sine wave envelope over each 2-bar
+ * phrase that peaks at the midpoint, creating natural dynamic shaping.
+ */
+function applyPhraseContour(row: number[], depth: number): void {
+  if (depth <= 0) return;
+  const phraseLen = 32; // 2 bars
+  for (let i = 0; i < row.length; i++) {
+    if (row[i] <= 0) continue;
+    const posInPhrase = (i % phraseLen) / phraseLen;
+    const envelope = Math.sin(posInPhrase * Math.PI); // peaks at midpoint
+    const scale = 1 - depth * (1 - envelope);
+    row[i] = Math.max(0.1, Math.min(1, row[i] * scale));
+  }
+}
+
+/**
+ * Add fill variation at phrase boundaries: every fillBars bars, boost
+ * velocities and add ghost notes in the last 4 steps to simulate a fill.
+ */
+function addFillVariation(
+  row: number[],
+  _padIndex: number,
+  ghostWeight: number,
+  rand: () => number,
+  fillBars: number,
+): void {
+  if (!row) return;
+  for (let bar = fillBars - 1; bar * 16 < row.length; bar += fillBars) {
+    const fillStart = bar * 16;
+    const fillEnd = Math.min(fillStart + 16, row.length);
+    // Last 4 steps of each fill phrase
+    for (let i = Math.max(fillStart, fillEnd - 4); i < fillEnd; i++) {
+      if (row[i] > 0) {
+        row[i] = Math.min(1, row[i] + 0.1 + rand() * 0.1); // boost existing hits
+      } else if (rand() < ghostWeight * 0.6) {
+        row[i] = 0.2 + rand() * 0.15; // add ghost notes
+      }
+    }
+  }
 }

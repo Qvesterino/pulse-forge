@@ -16,6 +16,7 @@ function topBarProps(overrides?: Partial<React.ComponentProps<typeof TopBar>>) {
     playMode: "pattern" as const,
     onSetPlayMode: vi.fn(),
     onOpenBrowser: vi.fn(),
+    onReplaceServices: vi.fn(),
     scaleSnap: false,
     onToggleScaleSnap: vi.fn(),
     historyOpen: false,

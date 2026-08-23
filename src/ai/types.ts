@@ -40,8 +40,14 @@ export interface GenerateOptions {
   ghostWeight: number;
   microWeight: number;
   velocityVariation: number;
-  /** Temperature controls randomness: 1.0 = normal, >1.0 = more random, <1.0 = more faithful to training data */
   temperature: number;
+  replaceMode: 'new' | 'replace';
+  drumTrackId?: string;
+  instrumentTrackIds?: string[];
+  /** If set, hash this pattern's rows to derive the seed for variation */
+  sourcePatternId?: string;
+  /** If true, set project groove (swing/humanize) from the resolved groove */
+  applyGrooveSettings?: boolean;
 }
 
 export const DEFAULT_GENERATE_OPTIONS: GenerateOptions = {
@@ -52,6 +58,7 @@ export const DEFAULT_GENERATE_OPTIONS: GenerateOptions = {
   microWeight: 0.2,
   velocityVariation: 0.3,
   temperature: 1.0,
+  replaceMode: 'new',
 };
 
 /** All available genres */

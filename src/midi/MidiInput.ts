@@ -1,8 +1,13 @@
 import type { AudioEngine } from "../audio-engine/AudioEngine";
-import type { ProjectStore } from "../store/ProjectStore";
+import type { Command } from "../commands/types";
 import type { Transport } from "../transport/Transport";
 import type { DrumTrack, MidiConfig, ProjectDocument } from "../project-model/types";
 import { GM_DRUM_MAP } from "../project-model/types";
+
+/** Store surface MidiInput needs — implemented by ProjectStore and YDocStore. */
+export interface MidiStoreSurface {
+  execute(command: Command): void;
+}
 
 export interface MidiDevice {
   id: string;
@@ -29,7 +34,7 @@ export class MidiInput {
   private clockStopCb: (() => void) | null = null;
 
   private engine: AudioEngine | null = null;
-  private store: ProjectStore | null = null;
+  private store: MidiStoreSurface | null = null;
   private transport: Transport | null = null;
 
   async requestAccess(): Promise<boolean> {
@@ -71,7 +76,7 @@ export class MidiInput {
 
   start(
     engine: AudioEngine,
-    store: ProjectStore,
+    store: MidiStoreSurface,
     transport: Transport,
     getConfig: () => MidiConfig,
     getDoc: () => ProjectDocument,

@@ -6,20 +6,31 @@ import type { ProjectDocument } from "./project-model/types";
 import { App } from "./ui/App";
 import { ErrorBoundary } from "./ui/ErrorBoundary";
 import { ProjectBrowser } from "./ui/ProjectBrowser";
+import { EmbedApp } from "./embed/EmbedApp";
+import { decodeShareCode } from "./export/shareCode";
 import "./styles.css";
 
 const container = document.getElementById("root");
 if (!container) throw new Error("Root element not found");
 
-createRoot(container).render(
-  <StrictMode>
-    <Boot />
-  </StrictMode>,
-);
+// /embed — a standalone share player; skip the whole studio boot.
+if (typeof location !== "undefined" && /^\/embed(\/|$)/.test(location.pathname)) {
+  createRoot(container).render(
+    <StrictMode>
+      <EmbedApp />
+    </StrictMode>,
+  );
+} else {
+  createRoot(container).render(
+    <StrictMode>
+      <Boot />
+    </StrictMode>,
+  );
+}
 
 type Screen =
   | { kind: "booting" }
-  | { kind: "browser"; core: CoreServices }
+  | { kind: "browser"; core: CoreServices; importDoc?: ProjectDocument }
   | { kind: "studio"; services: Services }
   | { kind: "error"; message: string };
 
@@ -30,7 +41,16 @@ function Boot() {
     let cancelled = false;
     createCoreServices().then(
       (core) => {
-        if (!cancelled) setScreen({ kind: "browser", core });
+        if (cancelled) return;
+        // ?import=<share code> — a shared link drops the project straight
+        // into the studio, skipping the browser.
+        const code = new URLSearchParams(location.search).get("import");
+        const imported = code ? decodeShareCode(code) : null;
+        if (imported) {
+          setScreen({ kind: "studio", services: openProject(core, imported) });
+        } else {
+          setScreen({ kind: "browser", core });
+        }
       },
       (error) => {
         if (!cancelled) setScreen({ kind: "error", message: String(error) });
@@ -43,6 +63,11 @@ function Boot() {
 
   const openDoc = useCallback((core: CoreServices, doc: ProjectDocument) => {
     setScreen({ kind: "studio", services: openProject(core, doc) });
+  }, []);
+
+  /** Swap the studio's services in place (collab session start/leave). */
+  const replaceServices = useCallback((services: Services) => {
+    setScreen({ kind: "studio", services });
   }, []);
 
   const backToBrowser = useCallback((services: Services) => {
@@ -62,7 +87,11 @@ function Boot() {
   }
   return (
     <ErrorBoundary onCrashSave={() => screen.kind === "studio" && void screen.services.flushSave()}>
-      <App services={screen.services} onOpenBrowser={() => backToBrowser(screen.services)} />
+      <App
+        services={screen.services}
+        onOpenBrowser={() => backToBrowser(screen.services)}
+        onReplaceServices={replaceServices}
+      />
     </ErrorBoundary>
   );
 }

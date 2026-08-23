@@ -1,3 +1,4 @@
+import * as assistOps from "../assist/patternOps";
 import type { Command } from "./types";
 import type {
   ArrangementClip,
@@ -44,7 +45,7 @@ import type { InstrumentPreset } from "../presets/types";
 import { clamp, uid } from "../shared/ids";
 import { hashString, mulberry32 } from "../shared/rng";
 import { snapToScale } from "../project-model/scales";
-import { generatePattern } from "../ai/generator";
+import { generatePattern, resolveGroove } from "../ai/generator";
 import type { GenerateOptions } from "../ai/types";
 
 function snapshot(type: string, label: string, prev: ProjectDocument, next: ProjectDocument): Command {
@@ -131,6 +132,48 @@ export function setStepVelocityCommand(
 }
 
 type PadParams = Partial<Pick<DrumPad, "name" | "assetId" | "gain" | "pan" | "pitch" | "mute" | "solo" | "chokeGroup">>;
+
+export interface PadSlice {
+  start: number;
+  end: number;
+}
+
+/**
+ * Chop a sample onto the drum track's pads (chop-beats). Each slice becomes
+ * one pad referencing the source asset with a [start, end) region — no
+ * buffer copies, reload-safe, and undoable as one gesture.
+ */
+export function sliceToPads(
+  doc: ProjectDocument,
+  trackId: string,
+  assetId: string,
+  slices: PadSlice[],
+  sourceName = "Chop",
+): Command {
+  const track = doc.tracks.find((t) => t.id === trackId);
+  if (!track || track.kind !== "drum") throw new Error(`Drum track ${trackId} not found`);
+  const next: ProjectDocument = {
+    ...doc,
+    tracks: doc.tracks.map((t) => {
+      if (t.id !== trackId || t.kind !== "drum") return t;
+      return {
+        ...t,
+        pads: t.pads.map((pad, index) => {
+          const slice = slices[index];
+          if (!slice) return pad;
+          return {
+            ...pad,
+            assetId,
+            sliceStart: slice.start,
+            sliceEnd: slice.end,
+            name: `${sourceName} ${String(index + 1).padStart(2, "0")}`,
+          };
+        }),
+      };
+    }),
+  };
+  return snapshot("sliceToPads", `Chop ${slices.length} slices to pads`, doc, next);
+}
 
 export function setPadParams(doc: ProjectDocument, padId: string, params: PadParams): Command {
   const track = doc.tracks.find((t): t is DrumTrack => t.kind === "drum");
@@ -1791,6 +1834,30 @@ export function generatePatternCommand(
   if (patternName) pattern.name = patternName;
   if (!pattern.name) pattern.name = `${options.genre} ${options.seed.slice(0, 4)}`.trim();
 
+  // Apply groove settings from the resolved groove if requested
+  let grooveUpdate: Partial<GrooveSettings> | undefined;
+  if (options.applyGrooveSettings) {
+    // Re-resolve the groove to get its swing value
+    const preSeed = hashString(`${options.genre}|${options.seed}`);
+    const preRand = mulberry32(preSeed);
+    const groove = resolveGroove(options.genre, options.style, preRand);
+    grooveUpdate = { swing: groove.swing };
+  }
+
+  if (options.replaceMode === 'replace') {
+    const activeId = doc.activePatternId;
+    const next: ProjectDocument = {
+      ...doc,
+      patterns: doc.patterns.map(p =>
+        p.id === activeId
+          ? { ...p, rows: pattern.rows, notes: pattern.notes, stepMeta: pattern.stepMeta, stepCount: pattern.stepCount, name: pattern.name || p.name }
+          : p
+      ),
+      ...(grooveUpdate ? { groove: { ...doc.groove, ...grooveUpdate } } : {}),
+    };
+    return snapshot("generatePattern", `Replace with ${pattern.name}`, doc, next);
+  }
+
   const scene: Scene = {
     id: uid("scene"),
     name: pattern.name,
@@ -1803,6 +1870,76 @@ export function generatePatternCommand(
     patterns: [...doc.patterns, pattern],
     scenes: [...doc.scenes, scene],
     activePatternId: pattern.id,
+    ...(grooveUpdate ? { groove: { ...doc.groove, ...grooveUpdate } } : {}),
   };
   return snapshot("generatePattern", `Generate ${pattern.name}`, doc, next);
+}
+
+/* ---------------- Pattern assist (iteration on your idea) ---------------- */
+
+function drumPadsOf(doc: ProjectDocument): DrumPad[] {
+  const track = doc.tracks.find((t): t is DrumTrack => t.kind === "drum");
+  return track ? track.pads : [];
+}
+
+function applyRowsPatch(doc: ProjectDocument, patternId: string, patch: import("../assist/patternOps").RowsPatch): ProjectDocument {
+  return {
+    ...doc,
+    patterns: doc.patterns.map((p) => {
+      if (p.id !== patternId) return p;
+      const rows = { ...p.rows };
+      for (const [padId, row] of Object.entries(patch.rows)) rows[padId] = row;
+      const stepMeta = patch.stepMeta
+        ? (() => {
+            const merged: NonNullable<Pattern["stepMeta"]> = { ...(p.stepMeta ?? {}) };
+            for (const [padId, padMeta] of Object.entries(patch.stepMeta)) {
+              merged[padId] = { ...(merged[padId] ?? {}), ...padMeta };
+            }
+            return merged;
+          })()
+        : p.stepMeta;
+      return {
+        ...p,
+        rows,
+        stepCount: patch.stepCount ?? p.stepCount,
+        stepMeta,
+      };
+    }),
+  };
+}
+
+function assistCommand(type: string, label: string, doc: ProjectDocument, patternId: string, patch: import("../assist/patternOps").RowsPatch): Command {
+  return snapshot(type, label, doc, applyRowsPatch(doc, patternId, patch));
+}
+
+/** Vary the active pattern: velocity humanization + ghost notes + micro feel. */
+export function assistVary(doc: ProjectDocument, patternId: string, seed: string, amount: number): Command {
+  const pattern = doc.patterns.find((p) => p.id === patternId);
+  if (!pattern) throw new Error(`Pattern ${patternId} not found`);
+  const ops = assistOps;
+  return assistCommand("assistVary", `Vary ${pattern.name} (${seed})`, doc, patternId, ops.varyPattern(pattern, drumPadsOf(doc), seed, amount));
+}
+
+/** Expand the pattern to `bars` with a progressive element + energy build. */
+export function assistBuild(doc: ProjectDocument, patternId: string, bars: number, seed: string): Command {
+  const pattern = doc.patterns.find((p) => p.id === patternId);
+  if (!pattern) throw new Error(`Pattern ${patternId} not found`);
+  const ops = assistOps;
+  return assistCommand("assistBuild", `Build ${pattern.name} to ${bars} bars`, doc, patternId, ops.expandWithBuild(pattern, drumPadsOf(doc), bars, seed));
+}
+
+/** Replace one pad family's groove with a style (hats → house, kicks → trap…). */
+export function assistReplace(doc: ProjectDocument, patternId: string, target: import("../assist/patternOps").ReplaceTarget, style: string, seed: string): Command {
+  const pattern = doc.patterns.find((p) => p.id === patternId);
+  if (!pattern) throw new Error(`Pattern ${patternId} not found`);
+  const ops = assistOps;
+  return assistCommand("assistReplace", `${target} → ${style}`, doc, patternId, ops.replaceRows(pattern, drumPadsOf(doc), target, style, seed));
+}
+
+/** Crescendo snare fill over the pattern's last bar. */
+export function assistFill(doc: ProjectDocument, patternId: string, seed: string): Command {
+  const pattern = doc.patterns.find((p) => p.id === patternId);
+  if (!pattern) throw new Error(`Pattern ${patternId} not found`);
+  const ops = assistOps;
+  return assistCommand("assistFill", `Fill ${pattern.name} (${seed})`, doc, patternId, ops.makeFill(pattern, drumPadsOf(doc), seed));
 }

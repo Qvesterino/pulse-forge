@@ -1,6 +1,8 @@
 import type { PadMarkovModel, VelocityLevel, StateIndex } from './types';
 
 const STEPS_PER_BAR = 16;
+const NUM_LEVELS = 4;
+const NUM_STATES = NUM_LEVELS * NUM_LEVELS * STEPS_PER_BAR; // 256 states
 
 /** Quantize a velocity value (0-1) to a discrete level (0-3) */
 export function quantizeVelocity(v: number): VelocityLevel {
@@ -10,15 +12,23 @@ export function quantizeVelocity(v: number): VelocityLevel {
   return 3;
 }
 
-/** Encode (level, position) into a single state index */
-export function encodeState(level: VelocityLevel, position: number): StateIndex {
-  return level * STEPS_PER_BAR + (position % STEPS_PER_BAR);
+/**
+ * Encode (levelPrev, levelCurr, position) into a single state index.
+ * Second-order: state captures the velocity trend + position.
+ * Encoding: levelPrev * 64 + levelCurr * 16 + position
+ */
+export function encodeState(levelPrev: VelocityLevel, levelCurr: VelocityLevel, position: number): StateIndex {
+  return levelPrev * NUM_LEVELS * STEPS_PER_BAR + levelCurr * STEPS_PER_BAR + (position % STEPS_PER_BAR);
 }
 
-/** Decode state index back to level */
-export function decodeLevel(index: StateIndex): VelocityLevel {
-  const level = Math.floor(index / STEPS_PER_BAR) % 4;
-  return level as VelocityLevel;
+/** Decode state index back to levelPrev */
+export function decodeLevelPrev(index: StateIndex): VelocityLevel {
+  return (Math.floor(index / (NUM_LEVELS * STEPS_PER_BAR)) % NUM_LEVELS) as VelocityLevel;
+}
+
+/** Decode state index back to levelCurr */
+export function decodeLevelCurr(index: StateIndex): VelocityLevel {
+  return (Math.floor(index / STEPS_PER_BAR) % NUM_LEVELS) as VelocityLevel;
 }
 
 /** Decode state index back to position */
@@ -26,9 +36,7 @@ export function decodePosition(index: StateIndex): number {
   return index % STEPS_PER_BAR;
 }
 
-const NUM_STATES = 4 * STEPS_PER_BAR; // 64 states
-
-/** Build a Markov model for one pad from reference patterns */
+/** Build a second-order Markov model for one pad from reference patterns */
 export function buildPadModel(padIndex: number, patterns: number[][]): PadMarkovModel {
   const transitions = new Uint32Array(NUM_STATES * NUM_STATES);
   const initial = new Uint32Array(NUM_STATES);
@@ -36,17 +44,18 @@ export function buildPadModel(padIndex: number, patterns: number[][]): PadMarkov
   for (const pattern of patterns) {
     if (pattern.length < 2) continue;
 
-    // Seed state from first step
-    const firstLevel = quantizeVelocity(pattern[0]);
-    const firstState = encodeState(firstLevel, 0);
-    initial[firstState]++;
+    const levels: VelocityLevel[] = pattern.map(quantizeVelocity);
 
-    // Walk the pattern and count transitions
-    for (let i = 0; i < pattern.length - 1; i++) {
-      const fromLevel = quantizeVelocity(pattern[i]);
-      const toLevel = quantizeVelocity(pattern[i + 1]);
-      const fromState = encodeState(fromLevel, i);
-      const toState = encodeState(toLevel, i + 1);
+    // Seed: first two steps form the initial state
+    if (levels.length >= 2) {
+      const initState = encodeState(levels[0], levels[1], 1);
+      initial[initState]++;
+    }
+
+    // Walk and count bigram transitions
+    for (let i = 0; i < levels.length - 2; i++) {
+      const fromState = encodeState(levels[i], levels[i + 1], i + 1);
+      const toState = encodeState(levels[i + 1], levels[i + 2], i + 2);
       transitions[fromState * NUM_STATES + toState]++;
     }
   }
@@ -54,14 +63,12 @@ export function buildPadModel(padIndex: number, patterns: number[][]): PadMarkov
   return { padIndex, states: NUM_STATES, transitions, initial };
 }
 
-/** Sample a state from a distribution vector using a PRNG, with optional temperature control */
+/** Sample a state from a distribution vector using a PRNG, with optional temperature */
 function sampleFromDistribution(dist: Uint32Array, rand: () => number, temperature: number = 1): number {
-  // Apply temperature: raise each count to power (1/temperature)
-  // T=1 → normal, T>1 → flatten (more random), T<1 → sharpen (more faithful)
   const invT = 1 / Math.max(0.01, temperature);
   let total = 0;
   for (let i = 0; i < dist.length; i++) {
-    total += Math.pow(dist[i] + 0.1, invT); // +0.1 to avoid 0^anything = 0
+    total += Math.pow(dist[i] + 0.1, invT);
   }
   if (total === 0) return 0;
 
@@ -78,25 +85,20 @@ export function sampleTransition(model: PadMarkovModel, currentState: StateIndex
   const rowStart = currentState * model.states;
   const row = model.transitions.subarray(rowStart, rowStart + model.states);
 
-  // Check if there are any transitions from this state
   let hasTransitions = false;
   for (let i = 0; i < row.length; i++) {
     if (row[i] > 0) { hasTransitions = true; break; }
   }
 
   if (!hasTransitions) {
-    // Fallback: use initial distribution weighted by same level
-    const level = decodeLevel(currentState);
-    const fallback = new Uint32Array(model.states);
-    for (let pos = 0; pos < STEPS_PER_BAR; pos++) {
-      const s = encodeState(level, pos);
-      fallback[s] = model.initial[s] + 1;
+    // Fallback: use initial distribution
+    const smoothed = new Uint32Array(model.initial.length);
+    for (let i = 0; i < model.initial.length; i++) {
+      smoothed[i] = model.initial[i] + 1;
     }
-    return sampleFromDistribution(fallback, rand, temperature);
+    return sampleFromDistribution(smoothed, rand, temperature);
   }
 
-  // Laplace smoothing: add 1 to every transition count to avoid zero-probability
-  // transitions and improve generalization from small training sets
   const smoothed = new Uint32Array(row.length);
   for (let i = 0; i < row.length; i++) {
     smoothed[i] = row[i] + 1;
@@ -104,22 +106,30 @@ export function sampleTransition(model: PadMarkovModel, currentState: StateIndex
   return sampleFromDistribution(smoothed, rand, temperature);
 }
 
-/** Generate a full velocity sequence for one pad */
+/** Generate a full velocity sequence for one pad using second-order Markov */
 export function generatePadSequence(model: PadMarkovModel, length: number, rand: () => number, temperature: number = 1): number[] {
   const sequence: number[] = new Array(length);
 
-  // Sample initial state with Laplace smoothing
+  if (length === 0) return sequence;
+
+  // Sample initial two-step state
   const smoothedInitial = new Uint32Array(model.initial.length);
   for (let i = 0; i < model.initial.length; i++) {
     smoothedInitial[i] = model.initial[i] + 1;
   }
   let currentState = sampleFromDistribution(smoothedInitial, rand, temperature);
 
-  for (let i = 0; i < length; i++) {
-    const level = decodeLevel(currentState);
-    sequence[i] = level;
-    if (i < length - 1) {
+  // First step
+  sequence[0] = decodeLevelPrev(currentState);
+
+  if (length >= 2) {
+    // Second step
+    sequence[1] = decodeLevelCurr(currentState);
+
+    // Remaining steps via transitions
+    for (let i = 2; i < length; i++) {
       currentState = sampleTransition(model, currentState, rand, temperature);
+      sequence[i] = decodeLevelCurr(currentState);
     }
   }
 
@@ -130,8 +140,8 @@ export function generatePadSequence(model: PadMarkovModel, length: number, rand:
 export function dequantizeVelocity(level: VelocityLevel, rand: () => number): number {
   switch (level) {
     case 0: return 0;
-    case 1: return 0.2 + rand() * 0.15;   // 0.20 - 0.35
-    case 2: return 0.5 + rand() * 0.2;    // 0.50 - 0.70
-    case 3: return 0.8 + rand() * 0.2;    // 0.80 - 1.00
+    case 1: return 0.2 + rand() * 0.15;
+    case 2: return 0.5 + rand() * 0.2;
+    case 3: return 0.8 + rand() * 0.2;
   }
 }

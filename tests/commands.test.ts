@@ -10,6 +10,7 @@ import {
   addNote,
   clearPattern,
   createDrumTrack,
+  sliceToPads,
   createInstrumentTrack,
   createPattern,
   createScene,
@@ -701,5 +702,39 @@ describe("ProjectStore history", () => {
     expect(store.saveStatus).toBe("saved");
     store.execute(setBpm(store.doc, 128));
     expect(store.saveStatus).toBe("dirty");
+  });
+});
+
+describe("sliceToPads (chop beats)", () => {
+  const doc = createDefaultProject();
+  const drum = doc.tracks.find((t) => t.kind === "drum")!;
+
+  it("chops slices onto pads as [start, end) regions with names", () => {
+    const cmd = sliceToPads(doc, drum.id, "user.break", [
+      { start: 0, end: 0.25 },
+      { start: 0.25, end: 0.5 },
+    ], "Break");
+    const next = cmd.execute(doc);
+    const pads = (next.tracks.find((t) => t.id === drum.id) as typeof drum).pads;
+    expect(pads[0]).toMatchObject({ assetId: "user.break", sliceStart: 0, sliceEnd: 0.25, name: "Break 01" });
+    expect(pads[1]).toMatchObject({ assetId: "user.break", sliceStart: 0.25, sliceEnd: 0.5, name: "Break 02" });
+    // Pads beyond the slice count keep their previous content.
+    expect(pads[2].sliceStart).toBeUndefined();
+    expect(pads[2].assetId).toBe(drum.pads[2].assetId);
+  });
+
+  it("undo restores the previous kit", () => {
+    const cmd = sliceToPads(doc, drum.id, "user.break", [{ start: 0, end: 1 }], "Break");
+    const next = cmd.execute(doc);
+    const undone = cmd.undo(next);
+    const pads = (undone.tracks.find((t) => t.id === drum.id) as typeof drum).pads;
+    expect(pads[0].assetId).toBe(drum.pads[0].assetId);
+    expect(pads[0].sliceStart).toBeUndefined();
+    expect(pads[0].name).toBe(drum.pads[0].name);
+  });
+
+  it("throws for a non-drum track", () => {
+    const inst = doc.tracks.find((t) => t.kind === "instrument")!;
+    expect(() => sliceToPads(doc, inst.id, "x", [{ start: 0, end: 1 }])).toThrow();
   });
 });

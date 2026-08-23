@@ -1,8 +1,10 @@
 import { createContext, useContext, useSyncExternalStore } from "react";
 import type { Services } from "../services";
 import type { ProjectDocument } from "../project-model/types";
-import type { SaveStatus } from "../store/ProjectStore";
 import type { LibraryState } from "../persistence/LibraryRepository";
+
+/** Save status across both stores (YDocStore adds "syncing"). */
+export type AppSaveStatus = "saved" | "dirty" | "saving" | "error" | "syncing";
 
 export const ServicesContext = createContext<Services | null>(null);
 
@@ -17,7 +19,7 @@ export function useDoc(): ProjectDocument {
   return useSyncExternalStore(store.subscribe, store.getDoc, store.getDoc);
 }
 
-export function useSaveStatus(): SaveStatus {
+export function useSaveStatus(): AppSaveStatus {
   const { store } = useServices();
   return useSyncExternalStore(store.subscribe, store.getSaveStatus, store.getSaveStatus);
 }

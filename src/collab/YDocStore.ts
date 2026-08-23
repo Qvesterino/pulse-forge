@@ -13,16 +13,22 @@ import { yDocToProject, projectToYDoc, applyProjectToYMap } from "./YDocAdapter"
 
 export type SaveStatus = "saved" | "dirty" | "saving" | "error" | "syncing";
 
+export interface HistoryEntry {
+  label: string;
+  type: string;
+  timestamp: number;
+}
+
 /**
  * YDocStore — CRDT-backed project store.
  *
  * Exposes the same public interface as ProjectStore so the rest of the
- * codebase works without changes. Under the hood, all mutations go to
- * the Y.Doc, which handles:
+ * codebase works without changes. Under the hood, all mutations go to the
+ * Y.Doc, which handles:
  * - Conflict-free concurrent edits
- * - Undo/redo scoped to local user
+ * - Undo/redo scoped to the local user only (remote collaborators' edits
+ *   are never tracked, so undoing never roll back someone else's work)
  * - Binary sync over y-websocket
- * - Persistence via y-indexeddb
  */
 export class YDocStore {
   private yDoc: Y.Doc;
@@ -31,6 +37,8 @@ export class YDocStore {
   private saveStatus_: SaveStatus = "saved";
   private lastSavedAt_: string | null = null;
   private undoManager: Y.UndoManager;
+  private pendingLabel: string | null = null;
+  private lastCoalesce: { key: string; at: number } | null = null;
   private doc_: ProjectDocument;
   onDocChanged: ((doc: ProjectDocument) => void) | null = null;
 
@@ -38,7 +46,17 @@ export class YDocStore {
     this.yDoc = yDoc;
     this.yMap = yDoc.getMap("project");
     this.doc_ = yDocToProject(this.yMap);
-    this.undoManager = new Y.UndoManager(this.yMap);
+    const undoManager = new Y.UndoManager(this.yMap, { trackedOrigins: new Set([this]) });
+    this.undoManager = undoManager;
+
+    // Stash the command label on each undo stack item so the history panel
+    // can show real labels.
+    undoManager.on("stack-item-added", ({ stackItem }) => {
+      const label = this.pendingLabel ?? "Edit";
+      stackItem.meta.set("label", label);
+      stackItem.meta.set("timestamp", Date.now());
+      stackItem.meta.set("type", "collab");
+    });
 
     // Subscribe to Y.Doc changes and re-read the snapshot
     this.yDoc.on("update", () => {
@@ -81,7 +99,23 @@ export class YDocStore {
   }
 
   get lastCommandLabel(): string | null {
-    return this.canUndo ? "Last action" : null;
+    const top = this.undoManager.undoStack[this.undoManager.undoStack.length - 1];
+    return (top?.meta.get("label") as string | undefined) ?? null;
+  }
+
+  /** Last N undo entries (for the history panel), matching ProjectStore. */
+  get history(): HistoryEntry[] {
+    const stack = this.undoManager.undoStack;
+    const n = Math.min(stack.length, 20);
+    const entries: HistoryEntry[] = [];
+    for (let i = stack.length - n; i < stack.length; i++) {
+      entries.push({
+        label: (stack[i].meta.get("label") as string | undefined) ?? "Edit",
+        type: (stack[i].meta.get("type") as string | undefined) ?? "collab",
+        timestamp: (stack[i].meta.get("timestamp") as number | undefined) ?? 0,
+      });
+    }
+    return entries;
   }
 
   get saveStatus(): SaveStatus {
@@ -119,17 +153,39 @@ export class YDocStore {
    * Execute a command. If the command has applyToYDoc, use it for efficient
    * Y.Doc mutations. Otherwise, apply a targeted diff that updates existing
    * Y.js items in place (critical for correct cross-doc CRDT sync).
+   *
+   * Transactions run with the UndoManager as origin, so undo tracks local
+   * edits only — remote collaborators' changes arrive with a different
+   * origin and never enter the local undo stack.
    */
   execute(command: Command): void {
-    this.yDoc.transact(() => {
-      if (command.applyToYDoc) {
-        command.applyToYDoc(this.yMap);
-      } else {
-        // Fallback: compute new doc and apply targeted diff
-        const newDoc = command.execute(this.doc_);
-        applyProjectToYMap(this.doc_, newDoc, this.yMap);
-      }
-    });
+    this.pendingLabel = command.label;
+    try {
+      // `this` (the store) is the tracked origin — only local commands land
+      // in the undo stack; remote updates arrive with foreign origins.
+      this.yDoc.transact(() => {
+        if (command.applyToYDoc) {
+          command.applyToYDoc(this.yMap);
+        } else {
+          // Fallback: compute new doc and apply targeted diff
+          const newDoc = command.execute(this.doc_);
+          applyProjectToYMap(this.doc_, newDoc, this.yMap);
+        }
+      }, this);
+    } finally {
+      this.pendingLabel = null;
+    }
+    // One undo step per command (matching ProjectStore), except for
+    // continuous gestures marked with a coalesceKey (MIDI CC sweeps) which
+    // merge within a short window — the UndoManager merges stack items
+    // created inside captureTimeout.
+    const now = Date.now();
+    const sameGesture =
+      command.coalesceKey != null &&
+      this.lastCoalesce?.key === command.coalesceKey &&
+      now - this.lastCoalesce.at <= 1000;
+    if (!sameGesture) this.undoManager.stopCapturing();
+    this.lastCoalesce = command.coalesceKey != null ? { key: command.coalesceKey, at: now } : null;
     this.afterMutation();
   }
 

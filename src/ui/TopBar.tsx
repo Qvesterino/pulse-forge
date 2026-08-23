@@ -6,8 +6,11 @@ import { setBpm, setProjectName } from "../commands/commands";
 import { barAtTick, beatAtTick } from "../project-model/schema";
 import { STEP_TICKS } from "../project-model/types";
 import type { PlayMode } from "../project-model/types";
+import type { Services } from "../services";
 import { matchShortcut } from "./shortcuts";
 import { ScalePanel } from "./ScalePanel";
+import { CollabPanel } from "./CollabPanel";
+import { AssistPanel } from "./AssistPanel";
 
 function formatClock(iso: string | null): string {
   if (!iso) return "";
@@ -25,6 +28,7 @@ export function TopBar({
   playMode,
   onSetPlayMode,
   onOpenBrowser,
+  onReplaceServices,
   scaleSnap,
   onToggleScaleSnap,
   historyOpen,
@@ -38,6 +42,7 @@ export function TopBar({
   playMode: PlayMode;
   onSetPlayMode: (mode: PlayMode) => void;
   onOpenBrowser: () => void;
+  onReplaceServices: (services: Services) => void;
   scaleSnap: boolean;
   onToggleScaleSnap: () => void;
   historyOpen: boolean;
@@ -55,6 +60,8 @@ export function TopBar({
   const [loopStart, setLoopStart] = useState(services.transport.loopStart);
   const [loopEnd, setLoopEnd] = useState(services.transport.loopEnd);
   const [scalePanelOpen, setScalePanelOpen] = useState(false);
+  const [collabOpen, setCollabOpen] = useState(false);
+  const [assistOpen, setAssistOpen] = useState(false);
 
   // Transport is not reactive — reading `playing` at render time goes stale
   // when playback is toggled from elsewhere (Space shortcut, Esc stop…).
@@ -337,8 +344,39 @@ export function TopBar({
         </button>
         <button
           type="button"
+          className={`btn btn-ghost${assistOpen ? " active" : ""}`}
+          onClick={() => {
+            setAssistOpen((open) => !open);
+            setCollabOpen(false);
+            setScalePanelOpen(false);
+          }}
+          title="Iterate on the active pattern (vary / build / replace / fill)"
+          aria-label="Toggle pattern assist panel"
+          aria-pressed={assistOpen}
+        >
+          ASSIST
+        </button>
+        <button
+          type="button"
+          className={`btn btn-ghost${collabOpen ? " active" : ""}`}
+          onClick={() => {
+            setCollabOpen((open) => !open);
+            setScalePanelOpen(false);
+            setAssistOpen(false);
+          }}
+          title="Start or join a live jam session"
+          aria-label="Toggle collaboration panel"
+          aria-pressed={collabOpen}
+        >
+          JAM
+        </button>
+        <button
+          type="button"
           className={`btn btn-ghost${scalePanelOpen ? " active" : ""}`}
-          onClick={() => setScalePanelOpen((open) => !open)}
+          onClick={() => {
+            setScalePanelOpen((open) => !open);
+            setCollabOpen(false);
+          }}
           title="Toggle scale panel (key + scale + snap)"
           aria-label="Toggle scale panel"
           aria-pressed={scalePanelOpen}
@@ -360,6 +398,16 @@ export function TopBar({
       {scalePanelOpen && (
         <div className="scale-popover">
           <ScalePanel scaleSnap={scaleSnap} onToggleSnap={onToggleScaleSnap} />
+        </div>
+      )}
+      {collabOpen && (
+        <div className="scale-popover">
+          <CollabPanel onReplaceServices={onReplaceServices} />
+        </div>
+      )}
+      {assistOpen && (
+        <div className="scale-popover">
+          <AssistPanel onClose={() => setAssistOpen(false)} />
         </div>
       )}
     </>

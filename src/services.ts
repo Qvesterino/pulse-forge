@@ -16,6 +16,9 @@ import { MidiClock } from "./midi/MidiClock";
 import { UserSampleRepository, restoreUserSampleAudio } from "./persistence/UserSampleRepository";
 import { FrozenBufferRepository, restoreFrozenTracks } from "./persistence/FrozenBufferRepository";
 import { loadWorkletModules } from "./audio-worklets/loader";
+import { YDocStore } from "./collab/YDocStore";
+import { CollabSession, collabParamsFromSearch, type CollabStatus } from "./collab/CollabSession";
+import type { CollaboratorInfo } from "./collab/CollaborationProvider";
 
 /**
  * Long-lived services shared across projects: the audio engine (one shared
@@ -32,7 +35,8 @@ export interface CoreServices {
 
 export interface Services {
   core: CoreServices;
-  store: ProjectStore;
+  /** Plain local store, or a CRDT store while a collab session is active. */
+  store: ProjectStore | YDocStore;
   engine: AudioEngine;
   transport: Transport;
   scheduler: Scheduler;
@@ -45,6 +49,8 @@ export interface Services {
   midiClock: MidiClock;
   userSamples: UserSampleRepository;
   frozenAudio: FrozenBufferRepository;
+  /** Live when a collab session is active, null otherwise. */
+  collab: CollabSession | null;
   flushSave(): Promise<void>;
   /** Stop playback, flush autosave and detach page listeners. */
   closeProject(): Promise<void>;
@@ -162,15 +168,35 @@ export async function createCoreServices(): Promise<CoreServices> {
   return { engine, bank, repo: new ProjectRepository(), presets: new PresetRepository(), library };
 }
 
+export interface OpenProjectOptions {
+  /** Start a collab session (explicit) — otherwise ?collab= in the URL is used. */
+  collab?: { roomId: string; serverUrl: string };
+}
+
+export function collabSessionInfo(services: Services): { roomId: string; status: CollabStatus; participants: CollaboratorInfo[] } | null {
+  return services.collab
+    ? { roomId: services.collab.roomId, status: services.collab.status, participants: services.collab.participants }
+    : null;
+}
+
 /**
  * Build per-project services around the shared core. The engine is reused
  * across projects (its `setProject` diff handles full project swaps), so
  * switching projects never re-creates the AudioContext.
+ *
+ * With `collab` (or a ?collab=<room> URL param) the store is a CRDT-backed
+ * YDocStore synced over y-websocket; remote edits flow back through the
+ * same onDocChanged path as local ones.
  */
-export function openProject(core: CoreServices, initial: ProjectDocument): Services {
+export function openProject(core: CoreServices, initial: ProjectDocument, options: OpenProjectOptions = {}): Services {
   const { engine, repo, bank, library } = core;
 
-  const store = new ProjectStore(initial);
+  const collabConfig = options.collab ?? (typeof location !== "undefined" ? collabParamsFromSearch(location.search) : null);
+  const store: ProjectStore | YDocStore = collabConfig ? YDocStore.fromDocument(initial) : new ProjectStore(initial);
+  const collab = collabConfig
+    ? new CollabSession((store as YDocStore).yDocRef, collabConfig.roomId, collabConfig.serverUrl)
+    : null;
+  collab?.connect();
   const transport = new Transport({ now: () => engine.currentTime }, initial.bpm);
   const modeRef: { mode: PlayMode } = { mode: "pattern" };
   const midiOutput = new MidiOutput();
@@ -318,6 +344,7 @@ export function openProject(core: CoreServices, initial: ProjectDocument): Servi
 
   const closeProject = async (): Promise<void> => {
     playback.stop();
+    collab?.dispose();
     midi.stop();
     midiClock.dispose();
     midiOutput.dispose();
@@ -345,5 +372,5 @@ export function openProject(core: CoreServices, initial: ProjectDocument): Servi
     };
   };
 
-  return { core, store, engine, transport, scheduler, repo, bank, library, playback, midi, midiOutput, midiClock, userSamples, frozenAudio, flushSave, closeProject, getDiagnostics };
+  return { core, store, engine, transport, scheduler, repo, bank, library, playback, midi, midiOutput, midiClock, userSamples, frozenAudio, collab, flushSave, closeProject, getDiagnostics };
 }

@@ -10,9 +10,12 @@
     "typecheck:clean": "node -e \"try{require('fs').unlinkSync('tsconfig.tsbuildinfo')}catch{try{require('fs').unlinkSync('./tsconfig.tsbuildinfo')}catch{}}\" && tsc --noEmit --incremental false",
     "test": "vitest run",
     "test:browser": "node scripts/verify-browser.mjs",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "collab": "node server/collab-server.mjs"
   },
   "dependencies": {
+    "@breezystack/lamejs": "^1.2.7",
+    "lz-string": "^1.5.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-window": "^2.3.0",
@@ -25,10 +28,12 @@
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.5",
+    "@types/lz-string": "^1.3.34",
     "@types/node": "^26.2.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@types/react-window": "^1.8.8",
+    "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^4.3.4",
     "fake-indexeddb": "^6.2.5",
     "jsdom": "^29.1.1",
@@ -36,6 +41,7 @@
     "typescript": "^5.6.3",
     "vite": "^6.0.3",
     "vite-plugin-pwa": "^1.3.0",
-    "vitest": "^2.1.8"
+    "vitest": "^2.1.8",
+    "ws": "^8.21.3"
   }
 }

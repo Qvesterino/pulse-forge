@@ -4,7 +4,7 @@ import { generatePatternCommand } from "../src/commands/commands";
 import { generatePattern, resolveGroove } from "../src/ai/generator";
 import { generateDrumPattern } from "../src/ai/drums";
 import { generateMelodicPattern } from "../src/ai/melodic";
-import { buildPadModel, generatePadSequence, quantizeVelocity, dequantizeVelocity, encodeState, decodeLevel, decodePosition } from "../src/ai/markov";
+import { buildPadModel, generatePadSequence, quantizeVelocity, dequantizeVelocity, encodeState, decodeLevelPrev, decodeLevelCurr, decodePosition } from "../src/ai/markov";
 import { getGroovesForGenre, getGrooveById, getStyleNamesForGenre } from "../src/ai/grooves/index";
 import { HOUSE_GROOVES } from "../src/ai/grooves/house";
 import { TECHNO_GROOVES } from "../src/ai/grooves/techno";
@@ -22,6 +22,7 @@ function makeOptions(overrides: Partial<GenerateOptions> = {}): GenerateOptions 
     microWeight: 0.2,
     velocityVariation: 0.3,
     temperature: 1.0,
+    replaceMode: "new",
     ...overrides,
   };
 }
@@ -67,12 +68,15 @@ describe("markov engine", () => {
     }
   });
 
-  it("encodeState / decodeLevel / decodePosition round-trip", () => {
-    for (const level of [0, 1, 2, 3] as VelocityLevel[]) {
-      for (let pos = 0; pos < 16; pos++) {
-        const encoded = encodeState(level, pos);
-        expect(decodeLevel(encoded)).toBe(level);
-        expect(decodePosition(encoded)).toBe(pos);
+  it("encodeState / decodeLevelPrev / decodeLevelCurr / decodePosition round-trip", () => {
+    for (const lv of [0, 1, 2, 3] as VelocityLevel[]) {
+      for (const lc of [0, 1, 2, 3] as VelocityLevel[]) {
+        for (let pos = 0; pos < 16; pos++) {
+          const encoded = encodeState(lv, lc, pos);
+          expect(decodeLevelPrev(encoded)).toBe(lv);
+          expect(decodeLevelCurr(encoded)).toBe(lc);
+          expect(decodePosition(encoded)).toBe(pos);
+        }
       }
     }
   });
@@ -83,7 +87,7 @@ describe("markov engine", () => {
       [0.85, 0, 0, 0, 0.85, 0, 0, 0, 0.85, 0, 0, 0, 0.85, 0, 0, 0],
     ];
     const model = buildPadModel(0, patterns);
-    expect(model.states).toBe(64); // 4 levels * 16 positions
+    expect(model.states).toBe(256); // 4 levels * 4 levels * 16 positions (second-order)
     expect(model.padIndex).toBe(0);
     // Should have some non-zero transitions
     let hasTransitions = false;

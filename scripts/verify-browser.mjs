@@ -140,13 +140,134 @@ try {
   }
   await appPage.close();
 
-  const total = results.length + 1;
-  const passed = results.length - failed + (appBootOk ? 1 : 0);
+  // ── Collab E2E: two pages, one room, real server, real websockets ──────
+  let collabOk = false;
+  let collabServer;
+  try {
+    const { spawn } = await import("node:child_process");
+    const COLLAB_PORT = 1247;
+    collabServer = spawn(process.execPath, ["server/collab-server.mjs"], {
+      env: { ...process.env, PORT: String(COLLAB_PORT) },
+      stdio: "ignore",
+    });
+    await new Promise((r) => setTimeout(r, 1200));
+
+    const setup = async (page, room, name) =>
+      page.evaluate(
+        async ({ room, name, port }) => {
+          const { YDocStore } = await import("/src/collab/YDocStore.ts");
+          const { CollabSession } = await import("/src/collab/CollabSession.ts");
+          const { createProjectFromTemplate } = await import("/src/project-model/templates.ts");
+          const store = YDocStore.fromDocument(createProjectFromTemplate("house"));
+          const session = new CollabSession(store.yDocRef, room, `ws://127.0.0.1:${port}`, {
+            id: name,
+            name,
+            color: "#f59e0b",
+          });
+          session.connect();
+          window.__collab = { store, session };
+          return true;
+        },
+        { room, name, port: COLLAB_PORT },
+      );
+
+    const ROOM = `e2e-${Date.now().toString(36)}`;
+    const pageA = await browser.newPage();
+    const pageB = await browser.newPage();
+    await pageA.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded" });
+    await pageB.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded" });
+    await setup(pageA, ROOM, "Producer A");
+    await setup(pageB, ROOM, "Producer B");
+    await new Promise((r) => setTimeout(r, 1000));
+
+    // A edits; B must receive it through the server.
+    await pageA.evaluate(async () => {
+      const { setBpm } = await import("/src/commands/commands.ts");
+      window.__collab.store.execute(setBpm(window.__collab.store.doc, 141));
+    });
+    await pageB.waitForFunction(() => window.__collab?.store.doc.bpm === 141, null, { timeout: 8000 });
+
+    // Presence: each page sees the other producer.
+    await pageA.waitForFunction(() => window.__collab?.session.participants.some((p) => p.name === "Producer B"), null, {
+      timeout: 8000,
+    });
+    await pageB.waitForFunction(() => window.__collab?.session.participants.some((p) => p.name === "Producer A"), null, {
+      timeout: 8000,
+    });
+
+    // Local undo must NOT revert the remote-synced base (still user-scoped).
+    const undoScope = await pageB.evaluate(() => {
+      window.__collab.store.undo(); // nothing local to undo
+      return window.__collab.store.doc.bpm;
+    });
+    if (undoScope !== 141) throw new Error(`undo scope broken: bpm=${undoScope}`);
+
+    await pageA.evaluate(() => window.__collab.session.dispose());
+    await pageB.evaluate(() => window.__collab.session.dispose());
+    await pageA.close();
+    await pageB.close();
+    collabOk = true;
+    console.log("[PASS] collab: two pages sync edits + presence over the real server");
+  } catch (error) {
+    console.log("[FAIL] collab E2E:", String(error).split("\n")[0]);
+  } finally {
+    collabServer?.kill();
+  }
+
+  // ── Embed widget + share link E2E ───────────────────────────────────────
+  let embedOk = false;
+  let importOk = false;
+  try {
+    const code = await page.evaluate(async () => {
+      const { encodeShareCode } = await import("/src/export/shareCode.ts");
+      const { createProjectFromTemplate } = await import("/src/project-model/templates.ts");
+      return encodeShareCode(createProjectFromTemplate("house"));
+    });
+
+    // 1. The /embed player: renders the shared project, plays, links back.
+    const embedPage = await browser.newPage();
+    const embedErrors = [];
+    embedPage.on("pageerror", (err) => embedErrors.push(String(err)));
+    await embedPage.goto(`http://127.0.0.1:${PORT}/embed/#p=${code}`, { waitUntil: "domcontentloaded" });
+    await embedPage.waitForSelector(".embed-play:not([disabled])", { timeout: 20_000 });
+    await embedPage.click(".embed-play");
+    await embedPage.waitForFunction(
+      () => document.querySelector(".embed-play")?.textContent?.includes("❚❚"),
+      null,
+      { timeout: 5_000 },
+    );
+    await new Promise((r) => setTimeout(r, 1_100)); // cross the 1 s display granularity + headless clock startup
+    const time1 = await embedPage.textContent(".embed-time");
+    await new Promise((r) => setTimeout(r, 1_400));
+    const time2 = await embedPage.textContent(".embed-time");
+    const cta = await embedPage.locator(".embed-cta").getAttribute("href");
+    if (time1 === time2) throw new Error("embed playback time is frozen");
+    if (!cta || !cta.includes("?import=")) throw new Error("CTA link missing ?import=");
+    if (embedErrors.length > 0) throw new Error(`page errors: ${embedErrors[0]}`);
+    await embedPage.close();
+    embedOk = true;
+    console.log("[PASS] embed: /embed player renders, plays and links back into the studio");
+
+    // 2. The share link: ?import= opens the project straight into the studio.
+    const importPage = await browser.newPage();
+    await importPage.goto(`http://127.0.0.1:${PORT}/?import=${code}`, { waitUntil: "domcontentloaded" });
+    await importPage.waitForSelector(".topbar", { timeout: 20_000 });
+    await importPage.waitForSelector(".sequencer", { timeout: 15_000 });
+    if (await importPage.$(".project-browser")) throw new Error("project browser shown — import was skipped");
+    await importPage.close();
+    importOk = true;
+    console.log("[PASS] share link: ?import= opens the project straight into the studio");
+  } catch (error) {
+    console.log("[FAIL] embed/share E2E:", String(error).split("\n")[0]);
+  }
+
+  const total = results.length + 4;
+  const passed = results.length - failed + (appBootOk ? 1 : 0) + (collabOk ? 1 : 0) + (embedOk ? 1 : 0) + (importOk ? 1 : 0);
   console.log(`\n${passed}/${total} checks passed`);
   if (consoleErrors.length > 0) {
     console.log("console errors during audio checks:", consoleErrors.slice(0, 5));
   }
-  exitCode = failed > 0 || !appBootOk ? 1 : 0;
+  exitCode = failed > 0 || !appBootOk || !collabOk || !embedOk || !importOk ? 1 : 0;
 } catch (error) {
   console.error("browser verification failed:", error);
   exitCode = 1;

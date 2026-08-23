@@ -55,6 +55,13 @@ export interface DrumPad {
   mute: boolean;
   solo: boolean;
   chokeGroup: number | null;
+  /**
+   * Slice region into the asset (seconds) — chop-beats support. The source
+   * buffer is played natively from sliceStart to sliceEnd, so slicing costs
+   * no extra memory and survives reloads as plain numbers in the doc.
+   */
+  sliceStart?: number;
+  sliceEnd?: number;
 }
 
 export interface FrozenState {

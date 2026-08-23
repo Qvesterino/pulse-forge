@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { useDoc, useServices } from "./context";
+import { SliceLab } from "./SliceLab";
 import { setPadParams, setTrackParams, setInstrumentParam, setInstrumentSample } from "../commands/commands";
 import type { InstrumentKind, Track } from "../project-model/types";
 import { FACTORY_ASSETS } from "../sample-library/manifest";
@@ -22,6 +24,7 @@ const SAMPLE_BROWSER_KINDS: Partial<Record<InstrumentKind, string>> = {
 export function Inspector({ track, selectedPadId }: { track: Track; selectedPadId: string }) {
   const services = useServices();
   const doc = useDoc();
+  const [sliceLabOpen, setSliceLabOpen] = useState(false);
 
   const trackSection = (
     <>
@@ -122,6 +125,21 @@ export function Inspector({ track, selectedPadId }: { track: Track; selectedPadI
 
   return (
     <aside className="inspector" aria-label="Inspector">
+      <div className="slice-lab-toggle">
+        <button
+          type="button"
+          className={`btn btn-small${sliceLabOpen ? " active" : ""}`}
+          aria-pressed={sliceLabOpen}
+          title="Chop a loop onto this track's pads"
+          onClick={() => setSliceLabOpen((v) => !v)}
+        >
+          SLICE LAB
+        </button>
+      </div>
+      {sliceLabOpen && track.kind === "drum" && (
+        <SliceLab track={track} onClose={() => setSliceLabOpen(false)} />
+      )}
+
       <h2 className="panel-title">PAD — {pad.name}</h2>
 
       <h3 className="inspector-subtitle">SAMPLE</h3>

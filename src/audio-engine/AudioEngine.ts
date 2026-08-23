@@ -1108,7 +1108,11 @@ export class AudioEngine {
       panner.disconnect();
       source.disconnect();
     };
-    source.start(when);
+    // Chop-beats: play only the pad's slice region (native offset+duration,
+    // zero copies). Values are clamped defensively against tampered docs.
+    const sliceStart = pad.sliceStart != null ? Math.max(0, Math.min(pad.sliceStart, buffer.duration)) : 0;
+    const sliceEnd = pad.sliceEnd != null ? Math.max(sliceStart, Math.min(pad.sliceEnd, buffer.duration)) : undefined;
+    source.start(when, sliceStart, sliceEnd != null ? Math.max(0.001, sliceEnd - sliceStart) : undefined);
   }
 
   preview(pad: DrumPad, trackId: string): void {

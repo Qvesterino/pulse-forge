@@ -28,23 +28,42 @@ export function generatePattern(
   doc: ProjectDocument,
   options: GenerateOptions,
 ): Pattern {
+  // Resolve seed: if sourcePatternId is set, hash the pattern's rows for variation
+  let effectiveSeed = options.seed;
+  if (options.sourcePatternId) {
+    const sourcePattern = doc.patterns.find(p => p.id === options.sourcePatternId);
+    if (sourcePattern) {
+      // Hash the pattern's velocity data to create a deterministic seed
+      const rowHash = Object.values(sourcePattern.rows)
+        .flat()
+        .map(v => Math.round(v * 100))
+        .join(',');
+      effectiveSeed = hashString(`${options.seed}|${rowHash}`).toString(36);
+    }
+  }
+
   // Phase 1: create a temp PRNG to pick the groove
-  const preSeed = hashString(`${options.genre}|${options.seed}`);
+  const preSeed = hashString(`${options.genre}|${effectiveSeed}`);
   const preRand = mulberry32(preSeed);
   const groove = resolveGroove(options.genre, options.style, preRand);
 
   // Phase 2: re-seed with groove ID for deterministic generation
-  const mainSeed = hashString(`${options.genre}|${options.seed}|${groove.id}`);
+  const mainSeed = hashString(`${options.genre}|${effectiveSeed}|${groove.id}`);
   const rand = mulberry32(mainSeed);
 
   // Generate drum pattern
   const { rows: rawRows, meta } = generateDrumPattern(groove, options, rand);
 
-  // Map pad indices to actual pad IDs from the project's drum track(s)
-  const drumTrack = doc.tracks.find(t => t.kind === 'drum');
-  const padIdMap = new Map<number, string>(); // index → padId
-  if (drumTrack && drumTrack.kind === 'drum') {
-    drumTrack.pads.forEach((pad, i) => {
+  // Resolve target drum track(s)
+  const drumTracks = doc.tracks.filter(t => t.kind === 'drum');
+  const targetDrumTrack = options.drumTrackId
+    ? drumTracks.find(t => t.id === options.drumTrackId) ?? drumTracks[0]
+    : drumTracks[0];
+
+  // Map pad indices to actual pad IDs from the target drum track
+  const padIdMap = new Map<number, string>();
+  if (targetDrumTrack && targetDrumTrack.kind === 'drum') {
+    targetDrumTrack.pads.forEach((pad, i) => {
       padIdMap.set(i, pad.id);
     });
   }
@@ -71,15 +90,22 @@ export function generatePattern(
     }
   }
 
-  // Generate melodic content with scale constraints
-  const notes = generateMelodicPattern(options, rand, doc.key);
+  // Generate melodic content with scale constraints and drum-aware placement
+  const notes = generateMelodicPattern(options, rand, doc.key, rawRows);
 
   // Build notes Record<ID, NoteEvent[]>
   const notesRecord: Record<string, NoteEvent[]> = {};
   if (notes.length > 0) {
-    const instrumentTrack = doc.tracks.find(t => t.kind === 'instrument');
-    if (instrumentTrack) {
-      notesRecord[instrumentTrack.id] = notes;
+    // Resolve target instrument track(s)
+    const instrumentTracks = doc.tracks.filter(t => t.kind === 'instrument');
+    const targetTracks = options.instrumentTrackIds && options.instrumentTrackIds.length > 0
+      ? instrumentTracks.filter(t => options.instrumentTrackIds!.includes(t.id))
+      : instrumentTracks.length > 0
+        ? [instrumentTracks[0]]
+        : [];
+
+    for (const track of targetTracks) {
+      notesRecord[track.id] = notes;
     }
   }
 

@@ -191,11 +191,13 @@ function generateMelodicSequence(
 /**
  * Generate melodic patterns for a given genre.
  * Generates content for ALL roles (bass, chord, lead) and returns combined NoteEvents.
+ * kickRows: optional array of kick velocities per step — used for sidechain-aware bass placement.
  */
 export function generateMelodicPattern(
   options: GenerateOptions,
   rand: () => number,
   key?: MusicalKey,
+  kickRows?: number[][],
 ): NoteEvent[] {
   const patterns = MELODIC_BY_GENRE[options.genre];
   if (!patterns || patterns.length === 0) return [];
@@ -229,15 +231,27 @@ export function generateMelodicPattern(
     // Convert to NoteEvents with tick-based timing
     let currentTick = 0;
     const isChord = pattern.role === 'chord';
+    const isBass = pattern.role === 'bass';
+
+    // Pre-compute kick activity for sidechain awareness
+    const kickActive = new Set<number>();
+    if (isBass && kickRows && kickRows.length > 0) {
+      const kickRow = kickRows[0]; // first kick pad
+      if (kickRow) {
+        for (let s = 0; s < Math.min(kickRow.length, maxSteps); s++) {
+          if (kickRow[s] > 0.3) kickActive.add(s);
+        }
+      }
+    }
 
     for (const note of sequence) {
       if (currentTick >= maxSteps * STEP_TICKS) break;
 
       const durationTicks = note.duration * STEP_TICKS;
+      const stepIndex = Math.floor(currentTick / STEP_TICKS);
 
       if (note.degree >= 0) {
         if (isChord) {
-          // Expand degree into chord voicing (2-4 simultaneous notes)
           const chordNotes = expandChord(note.degree, pattern.octaveOffset, root, intervals, note.velocity, rand);
           for (const cn of chordNotes) {
             let pitch = degreeToPitch(cn.degree, pattern.octaveOffset, root, intervals);
@@ -252,16 +266,24 @@ export function generateMelodicPattern(
             });
           }
         } else {
-          // Single note (bass/lead)
+          // Sidechain-aware bass: if kick is active at this step, duck the velocity
+          let velocity = note.velocity;
+          let startTick = currentTick;
+          if (isBass && kickActive.has(stepIndex)) {
+            // Duck: reduce velocity and shift note slightly later
+            velocity = Math.max(0.15, velocity * 0.5);
+            startTick = currentTick + STEP_TICKS * 0.25; // shift by 1/4 of a step
+          }
+
           let pitch = degreeToPitch(note.degree, pattern.octaveOffset, root, intervals);
           if (key) pitch = snapToScale(pitch, key);
           pitch = Math.max(0, Math.min(127, pitch));
           allNotes.push({
             id: uid('note'),
             pitch,
-            start: currentTick,
+            start: startTick,
             duration: durationTicks,
-            velocity: note.velocity,
+            velocity,
           });
         }
       }
