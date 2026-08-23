@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useDoc, useServices } from "./context";
 import {
   addMidiCcMapping,
@@ -14,9 +14,13 @@ import { INSTRUMENT_DEFS } from "../instruments/registry";
 import { DragNumber } from "./controls";
 import type { MidiDevice } from "../midi/MidiInput";
 
-export function MidiPanel({ devices }: { devices: MidiDevice[] }) {
+export function MidiPanel() {
   const services = useServices();
   const doc = useDoc();
+  // Device list is subscription-driven — a snapshot taken once at render
+  // time went stale on plug/unplug until the next unrelated re-render.
+  const [devices, setDevices] = useState<MidiDevice[]>(() => services.midi.getDevices());
+  useEffect(() => services.midi.subscribeDevices(setDevices), [services.midi]);
   const midi = doc.midi ?? { enabled: false, deviceId: "", drumChannel: 0, instrumentChannel: 0, ccMappings: [], drumNoteMap: [], pitchBendRange: 2 };
 
   const [addTrackId, setAddTrackId] = useState(doc.tracks[0]?.id ?? "");

@@ -125,3 +125,41 @@ describe("MidiInput — system realtime messages and arity", () => {
     expect(noteOn).toHaveBeenCalledWith(60, 100, 1, expect.anything());
   });
 });
+
+describe("MidiInput — device subscriptions", () => {
+  function makeStartedMidi() {
+    const midi = new MidiInput();
+    const inputs = new Map<string, unknown>();
+    (midi as unknown as { access: unknown }).access = { inputs, onstatechange: null as null | (() => void) };
+    midi.start({} as never, {} as never, {} as never, () => ({} as never), () => ({} as never));
+    return { midi, inputs };
+  }
+
+  it("notifies device subscribers when device state changes", () => {
+    const { midi, inputs } = makeStartedMidi();
+    const seen: { id: string }[][] = [];
+    const unsubscribe = midi.subscribeDevices((devices) => seen.push(devices));
+
+    const handler = (midi as unknown as { access: { onstatechange: (() => void) | null } }).access.onstatechange;
+    expect(typeof handler).toBe("function");
+    inputs.set("in-1", { id: "in-1", name: "Test Knob", manufacturer: "Test", addEventListener: vi.fn(), removeEventListener: vi.fn() });
+    handler!();
+
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen[seen.length - 1].some((d) => d.id === "in-1")).toBe(true);
+    unsubscribe();
+  });
+
+  it("stops notifying after unsubscribe", () => {
+    const { midi, inputs } = makeStartedMidi();
+    const seen: unknown[][] = [];
+    const unsubscribe = midi.subscribeDevices((devices) => seen.push(devices));
+    const handler = (midi as unknown as { access: { onstatechange: (() => void) | null } }).access.onstatechange;
+    inputs.set("in-2", { id: "in-2", name: "X", manufacturer: "", addEventListener: vi.fn(), removeEventListener: vi.fn() });
+    handler!();
+    const count = seen.length;
+    unsubscribe();
+    handler!();
+    expect(seen.length).toBe(count);
+  });
+});

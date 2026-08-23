@@ -293,8 +293,23 @@ function sanitizeMacroMapping(raw: unknown): MacroMapping | null {
   if (!trackId) return null;
   const param = raw.param === "pan" ? "pan" : "gain";
   const amount = Math.max(-1, Math.min(1, Number(raw.amount) || 0));
-  const source = raw.source === "intensity" ? "intensity" : "macro";
-  return { id, trackId, param, amount, source };
+  const source = raw.source === "intensity" ? "intensity" : raw.source === "midiCC" ? "midiCC" : "macro";
+  const mapping: MacroMapping = { id, trackId, param, amount, source };
+  if (source === "midiCC") {
+    // Preserve the CC routing fields — rewriting the source (or dropping
+    // ccNumber/channel) silently broke every MIDI CC macro mapping on
+    // load/import.
+    if (typeof raw.ccNumber !== "number" || !Number.isFinite(raw.ccNumber) || raw.ccNumber < 0 || raw.ccNumber > 127) {
+      return null; // a midiCC mapping without a valid CC number is unusable
+    }
+    mapping.ccNumber = Math.floor(raw.ccNumber);
+    if (typeof raw.channel === "number" && Number.isFinite(raw.channel) && raw.channel >= 1 && raw.channel <= 16) {
+      mapping.channel = Math.floor(raw.channel);
+    }
+    if (typeof raw.min === "number" && Number.isFinite(raw.min)) mapping.min = raw.min;
+    if (typeof raw.max === "number" && Number.isFinite(raw.max)) mapping.max = raw.max;
+  }
+  return mapping;
 }
 
 /** Clamp a BPM value to the supported range. NaN/non-finite → FALLBACK_BPM. */

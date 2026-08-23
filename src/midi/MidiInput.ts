@@ -20,6 +20,7 @@ export class MidiInput {
   private access: MIDIAccess | null = null;
   private listeners = new Map<MIDIInput, (e: MIDIMessageEvent) => void>();
   private deviceChangeCb: DeviceChangeCallback | null = null;
+  private deviceListeners = new Set<DeviceChangeCallback>();
   private configCb: (() => MidiConfig) | null = null;
   private getDoc: (() => ProjectDocument) | null = null;
   private clockPulseCb: (() => void) | null = null;
@@ -50,6 +51,24 @@ export class MidiInput {
     return devices;
   }
 
+  /**
+   * Subscribe to device-list changes (plug/unplug, permission granted).
+   * UI consumers use this to stay in sync — reading getDevices() once at
+   * render time went stale until the next unrelated re-render.
+   */
+  subscribeDevices(listener: DeviceChangeCallback): () => void {
+    this.deviceListeners.add(listener);
+    return () => {
+      this.deviceListeners.delete(listener);
+    };
+  }
+
+  private notifyDevices(): void {
+    const devices = this.getDevices();
+    this.deviceChangeCb?.(devices);
+    for (const listener of this.deviceListeners) listener(devices);
+  }
+
   start(
     engine: AudioEngine,
     store: ProjectStore,
@@ -71,9 +90,9 @@ export class MidiInput {
     }
     this.access.onstatechange = () => {
       this.reconnectAll();
-      this.deviceChangeCb?.(this.getDevices());
+      this.notifyDevices();
     };
-    this.deviceChangeCb?.(this.getDevices());
+    this.notifyDevices();
   }
 
   stop(): void {

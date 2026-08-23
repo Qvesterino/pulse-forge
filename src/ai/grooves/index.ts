@@ -3,12 +3,14 @@ import { HOUSE_GROOVES } from './house';
 import { TECHNO_GROOVES } from './techno';
 import { TRAP_GROOVES } from './trap';
 import { AMBIENT_GROOVES } from './ambient';
+import { HYBRID_GROOVES } from './hybrid';
 
 export const GROOVE_LIBRARY: readonly GrooveData[] = [
   ...HOUSE_GROOVES,
   ...TECHNO_GROOVES,
   ...TRAP_GROOVES,
   ...AMBIENT_GROOVES,
+  ...HYBRID_GROOVES,
 ];
 
 /** Get all groove styles for a genre */

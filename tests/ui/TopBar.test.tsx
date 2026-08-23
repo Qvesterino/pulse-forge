@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { act } from "react";
+import { mockServices } from "../helpers";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TopBar } from "../../src/ui/TopBar";
@@ -117,5 +119,33 @@ describe("TopBar", () => {
     expect(undoBtn).toBeDisabled(); // nothing to undo
     // Manually enable undo
     (services.store as any).canUndo = true;
+  });
+});
+
+describe("TopBar — play button freshness", () => {
+  it("updates the play button when playback is toggled from elsewhere (Space / Esc paths)", async () => {
+    const services = mockServices();
+    let notify: () => void = () => {};
+    (services as unknown as { playback: unknown }).playback = {
+      ...(services as unknown as { playback: Record<string, unknown> }).playback,
+      subscribe: (cb: () => void) => {
+        notify = cb;
+        return () => {};
+      },
+    };
+    renderWithContext(<TopBar {...topBarProps()} />, { services });
+
+    // Stopped — button offers play.
+    expect(screen.getByTitle("Play / Pause (Space)").textContent).toBe("▶");
+
+    // Playback started elsewhere (keyboard shortcut, not this button) —
+    // the button must flip without any doc mutation forcing a re-render.
+    (services.transport as { playing: boolean }).playing = true;
+    act(() => notify());
+    expect(screen.getByTitle("Play / Pause (Space)").textContent).toBe("❚❚");
+
+    (services.transport as { playing: boolean }).playing = false;
+    act(() => notify());
+    expect(screen.getByTitle("Play / Pause (Space)").textContent).toBe("▶");
   });
 });

@@ -528,3 +528,51 @@ describe("normalizeProject — macro values", () => {
     expect(normalized.macros[2].value).toBe(0);
   });
 });
+
+describe("normalizeProject — macro mapping sources", () => {
+  it("preserves midiCC mappings (regression: source was rewritten to 'macro' and CC fields dropped)", () => {
+    const doc = minimalDoc();
+    doc.macros[0].mappings = [
+      {
+        id: "map-cc",
+        trackId: doc.tracks[0].id,
+        param: "gain",
+        amount: 0.5,
+        source: "midiCC",
+        ccNumber: 74,
+        channel: 1,
+        min: 0,
+        max: 1,
+      },
+    ];
+    const normalized = normalizeProject(doc);
+    const m = normalized.macros[0].mappings[0];
+    expect(m.source).toBe("midiCC");
+    expect(m.ccNumber).toBe(74);
+    expect(m.channel).toBe(1);
+    expect(m.min).toBe(0);
+    expect(m.max).toBe(1);
+  });
+
+  it("drops a midiCC mapping without a valid CC number", () => {
+    const doc = minimalDoc();
+    doc.macros[0].mappings = [
+      { id: "map-bad", trackId: doc.tracks[0].id, param: "gain", amount: 0.5, source: "midiCC" },
+    ];
+    const normalized = normalizeProject(doc);
+    expect(normalized.macros[0].mappings.length).toBe(0);
+  });
+
+  it("keeps intensity and default macro sources untouched", () => {
+    const doc = minimalDoc();
+    doc.macros[0].mappings = [
+      { id: "map-i", trackId: doc.tracks[0].id, param: "pan", amount: 0.2, source: "intensity" },
+      { id: "map-m", trackId: doc.tracks[0].id, param: "gain", amount: 0.3 },
+    ];
+    const normalized = normalizeProject(doc);
+    expect(normalized.macros[0].mappings[0].source).toBe("intensity");
+    // Absent source ≡ "macro" (normalize keeps unchanged originals as-is).
+    const m = normalized.macros[0].mappings[1];
+    expect(m.source ?? "macro").toBe("macro");
+  });
+});

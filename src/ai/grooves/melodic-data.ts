@@ -75,6 +75,33 @@ const HOUSE_CHORD: MelodicPatternData = {
   ],
 };
 
+const HOUSE_LEAD: MelodicPatternData = {
+  role: 'lead',
+  octaveOffset: 2,
+  sequences: [
+    // Simple house motif
+    [
+      { degree: 0, duration: 2, velocity: 0.6 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 2, velocity: 0.55 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 3, duration: 2, velocity: 0.5 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 2, duration: 2, velocity: 0.55 },
+      { degree: -1, duration: 2, velocity: 0 },
+    ],
+    // Call and response
+    [
+      { degree: 0, duration: 4, velocity: 0.6 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 2, velocity: 0.55 },
+      { degree: -1, duration: 4, velocity: 0 },
+      { degree: 2, duration: 2, velocity: 0.5 },
+      { degree: -1, duration: 2, velocity: 0 },
+    ],
+  ],
+};
+
 // ── Techno ─────────────────────────────────────────────
 
 const TECHNO_BASS: MelodicPatternData = {
@@ -143,6 +170,30 @@ const TECHNO_LEAD: MelodicPatternData = {
   ],
 };
 
+const TECHNO_CHORD: MelodicPatternData = {
+  role: 'chord',
+  octaveOffset: 1,
+  sequences: [
+    // Minimal stab chords
+    [
+      { degree: 0, duration: 4, velocity: 0.55 },
+      { degree: -1, duration: 4, velocity: 0 },
+      { degree: 4, duration: 4, velocity: 0.5 },
+      { degree: -1, duration: 4, velocity: 0 },
+    ],
+    // Industrial stab pattern
+    [
+      { degree: 0, duration: 2, velocity: 0.6 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 2, velocity: 0.55 },
+      { degree: -1, duration: 4, velocity: 0 },
+      { degree: 3, duration: 2, velocity: 0.5 },
+      { degree: -1, duration: 2, velocity: 0 },
+    ],
+  ],
+};
+
 // ── Trap ───────────────────────────────────────────────
 
 const TRAP_BASS: MelodicPatternData = {
@@ -205,6 +256,27 @@ const TRAP_LEAD: MelodicPatternData = {
   ],
 };
 
+const TRAP_CHORD: MelodicPatternData = {
+  role: 'chord',
+  octaveOffset: 1,
+  sequences: [
+    // Trap pad stabs
+    [
+      { degree: 0, duration: 4, velocity: 0.5 },
+      { degree: -1, duration: 4, velocity: 0 },
+      { degree: 4, duration: 4, velocity: 0.45 },
+      { degree: -1, duration: 4, velocity: 0 },
+    ],
+    // Dark chord hits
+    [
+      { degree: 0, duration: 2, velocity: 0.55 },
+      { degree: -1, duration: 6, velocity: 0 },
+      { degree: 3, duration: 2, velocity: 0.5 },
+      { degree: -1, duration: 6, velocity: 0 },
+    ],
+  ],
+};
+
 // ── Ambient ────────────────────────────────────────────
 
 const AMBIENT_BASS: MelodicPatternData = {
@@ -251,11 +323,32 @@ const AMBIENT_LEAD: MelodicPatternData = {
   ],
 };
 
+const AMBIENT_CHORD: MelodicPatternData = {
+  role: 'chord',
+  octaveOffset: 1,
+  sequences: [
+    // Evolving pad drones
+    [
+      { degree: 0, duration: 8, velocity: 0.4 },
+      { degree: 4, duration: 8, velocity: 0.35 },
+    ],
+    // Sparse chord tones
+    [
+      { degree: 0, duration: 4, velocity: 0.35 },
+      { degree: -1, duration: 4, velocity: 0 },
+      { degree: 2, duration: 4, velocity: 0.3 },
+      { degree: -1, duration: 4, velocity: 0 },
+      { degree: 4, duration: 4, velocity: 0.32 },
+      { degree: -1, duration: 4, velocity: 0 },
+    ],
+  ],
+};
+
 // ── Registry ───────────────────────────────────────────
 
 export const MELODIC_BY_GENRE: Record<string, MelodicPatternData[]> = {
-  house: [HOUSE_BASS, HOUSE_CHORD],
-  techno: [TECHNO_BASS, TECHNO_LEAD],
-  trap: [TRAP_BASS, TRAP_LEAD],
-  ambient: [AMBIENT_BASS, AMBIENT_LEAD],
+  house: [HOUSE_BASS, HOUSE_CHORD, HOUSE_LEAD],
+  techno: [TECHNO_BASS, TECHNO_CHORD, TECHNO_LEAD],
+  trap: [TRAP_BASS, TRAP_CHORD, TRAP_LEAD],
+  ambient: [AMBIENT_BASS, AMBIENT_CHORD, AMBIENT_LEAD],
 };

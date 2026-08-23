@@ -56,7 +56,15 @@ export function TopBar({
   const [loopEnd, setLoopEnd] = useState(services.transport.loopEnd);
   const [scalePanelOpen, setScalePanelOpen] = useState(false);
 
-  const playing = services.transport.playing;
+  // Transport is not reactive — reading `playing` at render time goes stale
+  // when playback is toggled from elsewhere (Space shortcut, Esc stop…).
+  // PlaybackController.notify() fires on every play/pause/stop/seek.
+  const [playing, setPlaying] = useState(services.transport.playing);
+  useEffect(() => {
+    const unsubscribe = services.playback.subscribe(() => setPlaying(services.transport.playing));
+    setPlaying(services.transport.playing);
+    return unsubscribe;
+  }, [services.playback, services.transport]);
 
   const toggleLoop = () => {
     const next = !loopEnabled;

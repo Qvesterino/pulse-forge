@@ -278,7 +278,7 @@ export function App({ services, onOpenBrowser }: { services: Services; onOpenBro
         {bottomPanel === "arr" && <ArrangementPanel />}
         {bottomPanel === "mod" && <ModPanel />}
         {bottomPanel === "exp" && <ExportPanel />}
-        {bottomPanel === "midi" && <MidiPanel devices={services.midi.getDevices()} />}
+        {bottomPanel === "midi" && <MidiPanel />}
         {diagnosticsOpen && <Diagnostics />}
         <footer className="statusbar">
           <span>
