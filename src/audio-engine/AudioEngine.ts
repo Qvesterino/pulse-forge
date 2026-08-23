@@ -18,6 +18,41 @@ export function frozenPlaybackOffset(positionTick: number, bpm: number, duration
   return seconds % durationSec;
 }
 
+/**
+ * Solo-bus semantics for a project. Any solo anywhere mutes unsoloed
+ * material; a group is audible when it — or any of its members — is soloed;
+ * a member is audible when it — or the group it feeds — is soloed. (Before
+ * this rule, soloing a child inside a group muted the group itself, so the
+ * soloed child was inaudible too.)
+ */
+export interface SoloAudibility {
+  anySolo: boolean;
+  audible(trackId: string): boolean;
+}
+
+export function soloAudibility(doc: ProjectDocument): SoloAudibility {
+  const tracks = doc.tracks;
+  const anySolo = tracks.some((t) => t.solo);
+  const soloedGroups = new Set(
+    tracks.filter((t) => t.kind === "group" && t.solo).map((t) => t.id),
+  );
+  const groupsWithSoloedChild = new Set<string>();
+  for (const t of tracks) {
+    if (t.kind !== "group" && t.solo && t.groupId) groupsWithSoloedChild.add(t.groupId);
+  }
+  return {
+    anySolo,
+    audible(trackId: string): boolean {
+      const t = tracks.find((x) => x.id === trackId);
+      if (!t) return false;
+      if (t.kind === "group") {
+        return !t.mute && (!anySolo || t.solo || groupsWithSoloedChild.has(t.id));
+      }
+      return !t.mute && (!anySolo || t.solo || (t.groupId != null && soloedGroups.has(t.groupId)));
+    },
+  };
+}
+
 interface FxChainState {
   runtimes: Map<string, EffectRuntime>;
   params: Map<string, Record<string, number>>;
@@ -108,8 +143,17 @@ export class AudioEngine {
   private voices = new Set<Voice>();
   private missedAssets = new Set<string>();
   private levelBuf = new Float32Array(1024);
-  /** Stereo interleaved frame (L,R) reading the master analyser. */
-  private masterMeterBuf: Float32Array<ArrayBuffer> = new Float32Array(2048 * 2);
+  /**
+   * True per-channel master metering. A single AnalyserNode downmixes to
+   * mono regardless of channelCount/channelCountMode (verified in Chromium),
+   * so stereo levels/correlation require a ChannelSplitter feeding two
+   * single-channel analysers.
+   */
+  private masterSplitter: ChannelSplitterNode | null = null;
+  private masterAnalyserL: AnalyserNode | null = null;
+  private masterAnalyserR: AnalyserNode | null = null;
+  private masterChBufL: Float32Array<ArrayBuffer> = new Float32Array(2048);
+  private masterChBufR: Float32Array<ArrayBuffer> = new Float32Array(2048);
   private masterPeakHold = new PeakHold(0.4);
   private syncedBpm = 0;
 
@@ -172,6 +216,21 @@ export class AudioEngine {
       /* already disconnected */
     }
     try {
+      this.masterSplitter?.disconnect();
+    } catch {
+      /* already disconnected */
+    }
+    try {
+      this.masterAnalyserL?.disconnect();
+    } catch {
+      /* already disconnected */
+    }
+    try {
+      this.masterAnalyserR?.disconnect();
+    } catch {
+      /* already disconnected */
+    }
+    try {
       this.masterLimiter?.disconnect();
     } catch {
       /* already disconnected */
@@ -201,6 +260,19 @@ export class AudioEngine {
     this.masterClipper.connect(this.masterLimiter);
     this.masterLimiter.connect(this.masterAnalyser);
     this.masterAnalyser.connect(ctx.destination);
+    // Stereo tap: limiter → splitter → per-channel analysers (metering sinks).
+    this.masterSplitter = ctx.createChannelSplitter(2);
+    this.masterAnalyserL = ctx.createAnalyser();
+    this.masterAnalyserL.fftSize = 2048;
+    this.masterAnalyserL.channelCount = 1;
+    this.masterAnalyserL.channelCountMode = "explicit";
+    this.masterAnalyserR = ctx.createAnalyser();
+    this.masterAnalyserR.fftSize = 2048;
+    this.masterAnalyserR.channelCount = 1;
+    this.masterAnalyserR.channelCountMode = "explicit";
+    this.masterLimiter.connect(this.masterSplitter);
+    this.masterSplitter.connect(this.masterAnalyserL, 0);
+    this.masterSplitter.connect(this.masterAnalyserR, 1);
   }
 
   private applyMasterConfig(config: MasterConfig): void {
@@ -416,6 +488,7 @@ export class AudioEngine {
     for (const [id, nodes] of [...this.groupNodes]) {
       if (!liveGroupIds.has(id)) this.disposeGroupNodes(id, nodes);
     }
+    const solo = soloAudibility(doc);
     for (const track of doc.tracks) {
       if (track.kind !== "group") continue;
       let nodes = this.groupNodes.get(track.id);
@@ -464,11 +537,8 @@ export class AudioEngine {
       this.syncSends(track.sends, nodes);
       const now = ctx.currentTime;
       nodes.panner.pan.setTargetAtTime(track.pan, now, 0.01);
-      // Group mute/solo: check if any group member is soloed
-      const anySolo = doc.tracks.some((t) => t.kind !== "group" && t.solo);
-      const groupMuted = track.mute;
-      const groupAudible = !groupMuted && (!anySolo || track.solo);
-      nodes.gain.gain.setTargetAtTime(groupAudible ? track.gain : 0, now, 0.01);
+      // Group audible when it — or any of its members — is soloed.
+      nodes.gain.gain.setTargetAtTime(solo.audible(track.id) ? track.gain : 0, now, 0.01);
     }
 
     for (const ret of doc.returns) {
@@ -571,9 +641,8 @@ export class AudioEngine {
         // Still allow live gain/pan adjustments
         const now = ctx.currentTime;
         nodes.panner.pan.setTargetAtTime(track.pan, now, 0.01);
-        const anySolo = doc.tracks.some((t) => t.solo);
-        const audible = !track.mute && (!anySolo || track.solo);
-        nodes.gain.gain.setTargetAtTime(audible ? track.gain : 0, now, 0.01);
+        // Member audible when it — or the group it feeds — is soloed.
+        nodes.gain.gain.setTargetAtTime(solo.audible(track.id) ? track.gain : 0, now, 0.01);
         continue; // Skip FX/instrument sync for frozen tracks
       }
 
@@ -598,28 +667,25 @@ export class AudioEngine {
       this.syncSends(track.sends, nodes);
       const now = ctx.currentTime;
       nodes.panner.pan.setTargetAtTime(track.pan, now, 0.01);
-      const anySolo = doc.tracks.some((t) => t.solo);
-      const audible = !track.mute && (!anySolo || track.solo);
-      nodes.gain.gain.setTargetAtTime(audible ? track.gain : 0, now, 0.01);
+      nodes.gain.gain.setTargetAtTime(solo.audible(track.id) ? track.gain : 0, now, 0.01);
     }
 
-    // Route child tracks through their group instead of master
+    // Route child tracks through their group instead of master. Disconnect
+    // every previous destination first — a track moved between groups used
+    // to keep feeding the old group's input (doubled audio). The track
+    // analyser tap must survive, so disconnect selectively instead of a
+    // bare disconnect().
     for (const track of doc.tracks) {
       if (track.kind === "group") continue;
       const nodes = this.trackNodes.get(track.id);
       if (!nodes) continue;
       const groupDest = track.groupId ? this.groupNodes.get(track.groupId) : null;
-      if (groupDest) {
-        // Ensure connection is to group input, not master
-        try { nodes.modMacroPan.disconnect(this.master); } catch { /* not connected */ }
-        nodes.modMacroPan.connect(groupDest.input);
-      } else {
-        // Ensure connection is to master, not a group
-        for (const gn of this.groupNodes.values()) {
-          try { nodes.modMacroPan.disconnect(gn.input); } catch { /* not connected */ }
-        }
-        nodes.modMacroPan.connect(this.master);
+      try { nodes.modMacroPan.disconnect(this.master); } catch { /* not connected */ }
+      for (const gn of this.groupNodes.values()) {
+        try { nodes.modMacroPan.disconnect(gn.input); } catch { /* not connected */ }
       }
+      if (groupDest) nodes.modMacroPan.connect(groupDest.input);
+      else nodes.modMacroPan.connect(this.master);
     }
 
     this.syncLfos(doc);
@@ -1194,13 +1260,12 @@ export class AudioEngine {
       right: { peak: 0, rms: 0, peakDb: -120, rmsDb: -120 } as ChannelLevels,
       correlation: 1,
     };
-    if (!this.masterAnalyser) return out;
-    this.masterAnalyser.getFloatTimeDomainData(this.masterMeterBuf);
-    const channels = this.masterAnalyser.channelCount || 1;
-    const split = splitChannels(this.masterMeterBuf, channels);
-    const l = channelLevels(split[0] ?? new Float32Array(0));
-    const r = channelLevels(split[1] ?? split[0] ?? new Float32Array(0));
-    const corr = split.length >= 2 ? stereoCorrelation(split[0], split[1]) : 1;
+    if (!this.masterAnalyserL || !this.masterAnalyserR) return out;
+    this.masterAnalyserL.getFloatTimeDomainData(this.masterChBufL);
+    this.masterAnalyserR.getFloatTimeDomainData(this.masterChBufR);
+    const l = channelLevels(this.masterChBufL);
+    const r = channelLevels(this.masterChBufR);
+    const corr = stereoCorrelation(this.masterChBufL, this.masterChBufR);
     this.masterPeakHold.push(Math.max(l.peakDb, r.peakDb));
     out.left = l;
     out.right = r;

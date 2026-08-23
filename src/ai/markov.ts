@@ -54,22 +54,27 @@ export function buildPadModel(padIndex: number, patterns: number[][]): PadMarkov
   return { padIndex, states: NUM_STATES, transitions, initial };
 }
 
-/** Sample a state from a distribution vector using a PRNG */
-function sampleFromDistribution(dist: Uint32Array, rand: () => number): number {
+/** Sample a state from a distribution vector using a PRNG, with optional temperature control */
+function sampleFromDistribution(dist: Uint32Array, rand: () => number, temperature: number = 1): number {
+  // Apply temperature: raise each count to power (1/temperature)
+  // T=1 → normal, T>1 → flatten (more random), T<1 → sharpen (more faithful)
+  const invT = 1 / Math.max(0.01, temperature);
   let total = 0;
-  for (let i = 0; i < dist.length; i++) total += dist[i];
+  for (let i = 0; i < dist.length; i++) {
+    total += Math.pow(dist[i] + 0.1, invT); // +0.1 to avoid 0^anything = 0
+  }
   if (total === 0) return 0;
 
   let r = rand() * total;
   for (let i = 0; i < dist.length; i++) {
-    r -= dist[i];
+    r -= Math.pow(dist[i] + 0.1, invT);
     if (r <= 0) return i;
   }
   return dist.length - 1;
 }
 
 /** Sample the next state given the current state */
-export function sampleTransition(model: PadMarkovModel, currentState: StateIndex, rand: () => number): StateIndex {
+export function sampleTransition(model: PadMarkovModel, currentState: StateIndex, rand: () => number, temperature: number = 1): StateIndex {
   const rowStart = currentState * model.states;
   const row = model.transitions.subarray(rowStart, rowStart + model.states);
 
@@ -87,7 +92,7 @@ export function sampleTransition(model: PadMarkovModel, currentState: StateIndex
       const s = encodeState(level, pos);
       fallback[s] = model.initial[s] + 1;
     }
-    return sampleFromDistribution(fallback, rand);
+    return sampleFromDistribution(fallback, rand, temperature);
   }
 
   // Laplace smoothing: add 1 to every transition count to avoid zero-probability
@@ -96,11 +101,11 @@ export function sampleTransition(model: PadMarkovModel, currentState: StateIndex
   for (let i = 0; i < row.length; i++) {
     smoothed[i] = row[i] + 1;
   }
-  return sampleFromDistribution(smoothed, rand);
+  return sampleFromDistribution(smoothed, rand, temperature);
 }
 
 /** Generate a full velocity sequence for one pad */
-export function generatePadSequence(model: PadMarkovModel, length: number, rand: () => number): number[] {
+export function generatePadSequence(model: PadMarkovModel, length: number, rand: () => number, temperature: number = 1): number[] {
   const sequence: number[] = new Array(length);
 
   // Sample initial state with Laplace smoothing
@@ -108,13 +113,13 @@ export function generatePadSequence(model: PadMarkovModel, length: number, rand:
   for (let i = 0; i < model.initial.length; i++) {
     smoothedInitial[i] = model.initial[i] + 1;
   }
-  let currentState = sampleFromDistribution(smoothedInitial, rand);
+  let currentState = sampleFromDistribution(smoothedInitial, rand, temperature);
 
   for (let i = 0; i < length; i++) {
     const level = decodeLevel(currentState);
     sequence[i] = level;
     if (i < length - 1) {
-      currentState = sampleTransition(model, currentState, rand);
+      currentState = sampleTransition(model, currentState, rand, temperature);
     }
   }
 

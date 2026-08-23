@@ -3,6 +3,18 @@ import type { GenerateOptions, GrooveData, VelocityLevel } from './types';
 import { buildPadModel, generatePadSequence, dequantizeVelocity } from './markov';
 
 /**
+ * Box-Muller transform: convert uniform random to Gaussian (normal distribution).
+ * Returns a value centered at 0 with stddev=1, clamped to [-3, 3].
+ */
+function gaussianRand(rand: () => number): number {
+  let u = 0, v = 0;
+  while (u === 0) u = rand();
+  while (v === 0) v = rand();
+  const z = Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  return Math.max(-3, Math.min(3, z)); // clamp to ±3σ
+}
+
+/**
  * Apply groove swing to step meta: odd-numbered active steps get a positive
  * microtiming offset (delayed) proportional to groove.swing. This bakes the
  * swing feel into the pattern itself so it sounds correct even if the project
@@ -51,8 +63,8 @@ export function generateDrumPattern(
     // Build Markov model for this pad
     const model = buildPadModel(padIndex, padPatterns);
 
-    // Generate the sequence
-    const sequence = generatePadSequence(model, options.stepCount, rand);
+    // Generate the sequence with temperature control
+    const sequence = generatePadSequence(model, options.stepCount, rand, options.temperature);
 
     // Convert quantized levels to musical velocities
     const velocities = sequence.map((level) => {
@@ -82,7 +94,7 @@ export function generateDrumPattern(
   return { rows, meta };
 }
 
-/** Add ghost notes (low-velocity hits) on empty steps next to active hits */
+/** Add ghost notes (low-velocity hits) on empty steps near active hits */
 function addGhostNotes(
   rows: number[][],
   padIndex: number,
@@ -95,12 +107,26 @@ function addGhostNotes(
   for (let i = 0; i < row.length; i++) {
     if (row[i] > 0) continue;
 
-    // Check if adjacent to an active hit
-    const prevActive = i > 0 && row[i - 1] > 0;
-    const nextActive = i < row.length - 1 && row[i + 1] > 0;
+    // Check neighbors within ±2 steps
+    const prev1 = i > 0 && row[i - 1] > 0;
+    const next1 = i < row.length - 1 && row[i + 1] > 0;
+    const prev2 = i > 1 && row[i - 2] > 0;
+    const next2 = i < row.length - 2 && row[i + 2] > 0;
 
-    if ((prevActive || nextActive) && rand() < options.ghostWeight * 0.3) {
-      row[i] = 0.15 + rand() * 0.15; // 0.15 - 0.30 velocity
+    const adjacentCount = (prev1 ? 1 : 0) + (next1 ? 1 : 0) + (prev2 ? 1 : 0) + (next2 ? 1 : 0);
+
+    if (adjacentCount === 0) continue;
+
+    // Probability scales with number of active neighbors
+    // 1 neighbor: base chance, 2+: higher chance
+    const probability = adjacentCount >= 2
+      ? options.ghostWeight * 0.5   // both sides or multiple neighbors → higher chance
+      : options.ghostWeight * 0.2;  // single neighbor → lower chance
+
+    if (rand() < probability) {
+      // Velocity slightly higher when more neighbors are active
+      const baseVelocity = 0.15 + rand() * 0.15; // 0.15 - 0.30
+      row[i] = Math.min(0.35, baseVelocity + adjacentCount * 0.03);
     }
   }
 }
@@ -120,10 +146,10 @@ function addStepMeta(
     const meta: StepMeta = {};
     let hasChanges = false;
 
-    // Microtiming jitter
+    // Microtiming jitter — Gaussian distribution for natural human feel
     if (rand() < options.microWeight) {
-      const jitter = (rand() - 0.5) * 0.4;
-      if (Math.abs(jitter) > 0.05) {
+      const jitter = gaussianRand(rand) * 0.12; // stddev=0.12 → most hits within ±0.12, rare outliers up to ±0.36
+      if (Math.abs(jitter) > 0.03) {
         meta.microtiming = Math.round(jitter * 100) / 100;
         hasChanges = true;
       }
@@ -135,9 +161,9 @@ function addStepMeta(
       hasChanges = true;
     }
 
-    // Occasional ratchet on hat/percussion
+    // Occasional ratchet on hat/percussion (2-4 retriggers)
     if ((padIndex === 8 || padIndex === 7 || padIndex === 14) && rand() < 0.04) {
-      meta.ratchet = 2;
+      meta.ratchet = 2 + Math.floor(rand() * 3); // 2, 3, or 4
       hasChanges = true;
     }
 

@@ -358,16 +358,25 @@ export class MidiInput {
     };
   }
 
-  private setMacroValueCmd(_doc: ProjectDocument, macroId: string, value: number) {
+  private setMacroValueCmd(doc: ProjectDocument, macroId: string, value: number) {
     const clamped = Math.max(0, Math.min(1, value));
+    const prev = doc.macros.find((m) => m.id === macroId)?.value ?? 0.5;
     return {
       type: "setMacroValue",
       label: "MIDI CC",
+      // A knob sweep emits dozens of CC messages per gesture — coalesce them
+      // into one undo entry so the history is not flooded (and real edits
+      // are not evicted from the capped undo stack). Undo restores the
+      // pre-gesture value.
+      coalesceKey: `midi:macro:${macroId}`,
       execute: (d: ProjectDocument) => ({
         ...d,
         macros: d.macros.map((m) => (m.id === macroId ? { ...m, value: clamped } : m)),
       }),
-      undo: (d: ProjectDocument) => d,
+      undo: (d: ProjectDocument) => ({
+        ...d,
+        macros: d.macros.map((m) => (m.id === macroId ? { ...m, value: prev } : m)),
+      }),
     };
   }
 }

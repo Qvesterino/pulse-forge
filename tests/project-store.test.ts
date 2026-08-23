@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createDefaultProject, normalizeProject } from "../src/project-model/schema";
 import { setBpm, setProjectName, createPattern, setStepVelocityCommand } from "../src/commands/commands";
 import { getDrumTrack } from "../src/project-model/types";
+import type { ProjectDocument } from "../src/project-model/types";
 import { ProjectStore } from "../src/store/ProjectStore";
 
 describe("ProjectStore — history shape", () => {
@@ -159,5 +160,83 @@ describe("ProjectStore — fast in-place operations", () => {
     store.undo();
     store.undo();
     expect(store.doc.patterns[0].rows[pad.id][0]).toBe(initial);
+  });
+});
+
+describe("ProjectStore — coalesced commands (continuous gestures)", () => {
+  function macroCmd(doc: ProjectDocument, macroId: string, value: number, coalesceKey?: string) {
+    const prev = doc.macros.find((m) => m.id === macroId)?.value ?? 0.5;
+    return {
+      type: "setMacroValue",
+      label: "MIDI CC",
+      ...(coalesceKey ? { coalesceKey } : {}),
+      execute: (d: ProjectDocument) => ({
+        ...d,
+        macros: d.macros.map((m) => (m.id === macroId ? { ...m, value } : m)),
+      }),
+      undo: (d: ProjectDocument) => ({
+        ...d,
+        macros: d.macros.map((m) => (m.id === macroId ? { ...m, value: prev } : m)),
+      }),
+    };
+  }
+
+  it("collapses a same-key stream into ONE undo entry and undoes to the pre-gesture value", () => {
+    const store = new ProjectStore(createDefaultProject());
+    const macro = store.doc.macros[0];
+    const before = macro.value;
+    // A MIDI knob sweep: dozens of near-identical commands in quick succession.
+    for (const v of [0.1, 0.2, 0.3, 0.42]) {
+      store.execute(macroCmd(store.doc, macro.id, v, `midi:macro:${macro.id}`));
+    }
+    expect(store.undoStackLength).toBe(1); // regression: used to flood as 4 entries
+    expect(store.doc.macros[0].value).toBe(0.42);
+    store.undo();
+    expect(store.doc.macros[0].value).toBe(before);
+    store.redo();
+    expect(store.doc.macros[0].value).toBe(0.42);
+  });
+
+  it("does not merge commands without a coalesceKey", () => {
+    const store = new ProjectStore(createDefaultProject());
+    const macro = store.doc.macros[0];
+    for (const v of [0.1, 0.2, 0.3]) {
+      store.execute(macroCmd(store.doc, macro.id, v));
+    }
+    expect(store.undoStackLength).toBe(3);
+  });
+
+  it("does not merge different coalesce keys", () => {
+    const store = new ProjectStore(createDefaultProject());
+    const a = store.doc.macros[0];
+    const b = store.doc.macros[1];
+    store.execute(macroCmd(store.doc, a.id, 0.2, `midi:macro:${a.id}`));
+    store.execute(macroCmd(store.doc, b.id, 0.8, `midi:macro:${b.id}`));
+    store.execute(macroCmd(store.doc, a.id, 0.4, `midi:macro:${a.id}`));
+    expect(store.undoStackLength).toBe(3);
+  });
+
+  it("starts a new entry once the time window has passed", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000_000);
+    try {
+      const store = new ProjectStore(createDefaultProject());
+      const macro = store.doc.macros[0];
+      store.execute(macroCmd(store.doc, macro.id, 0.2, `midi:macro:${macro.id}`));
+      vi.setSystemTime(1_000_000 + 5_000); // way past the 1 s window
+      store.execute(macroCmd(store.doc, macro.id, 0.9, `midi:macro:${macro.id}`));
+      expect(store.undoStackLength).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not merge across an unrelated command in between", () => {
+    const store = new ProjectStore(createDefaultProject());
+    const macro = store.doc.macros[0];
+    store.execute(macroCmd(store.doc, macro.id, 0.2, `midi:macro:${macro.id}`));
+    store.execute(setBpm(store.doc, 140));
+    store.execute(macroCmd(store.doc, macro.id, 0.4, `midi:macro:${macro.id}`));
+    expect(store.undoStackLength).toBe(3);
   });
 });

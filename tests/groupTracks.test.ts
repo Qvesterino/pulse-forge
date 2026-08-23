@@ -9,6 +9,7 @@ import {
 import { createGroupTrackModel } from "../src/project-model/schema";
 import { normalizeProject } from "../src/project-model/schema";
 import { trackBadge } from "../src/ui/TrackTabs";
+import { soloAudibility } from "../src/audio-engine/AudioEngine";
 
 describe("GroupTrack", () => {
   it("createGroupTrackModel creates a group with correct defaults", () => {
@@ -133,5 +134,87 @@ describe("GroupTrack", () => {
   it("group track badge is GRP", () => {
     const g = createGroupTrackModel("Test");
     expect(trackBadge(g)).toBe("GRP");
+  });
+});
+
+describe("soloAudibility (group solo semantics)", () => {
+  function soloProjectDoc() {
+    const base = createProjectFromTemplate("house");
+    const groupA = { ...createGroupTrackModel("A"), id: "grp-a" };
+    const groupB = { ...createGroupTrackModel("B"), id: "grp-b" };
+    const drum = base.tracks.find((t) => t.kind === "drum")!;
+    const inst = base.tracks.find((t) => t.kind === "instrument")!;
+    return {
+      ...base,
+      tracks: [
+        groupA,
+        groupB,
+        { ...drum, id: "t-drum", groupId: "grp-a" },
+        { ...inst, id: "t-inst", groupId: "grp-a" },
+        { ...inst, id: "t-inst-b", groupId: "grp-b" },
+      ],
+    };
+  }
+
+  it("everything is audible when nothing is soloed", () => {
+    const solo = soloAudibility(soloProjectDoc());
+    expect(solo.anySolo).toBe(false);
+    for (const id of ["grp-a", "grp-b", "t-drum", "t-inst", "t-inst-b"]) {
+      expect(solo.audible(id)).toBe(true);
+    }
+  });
+
+  it("soloing a child keeps it audible THROUGH its group (regression: the group used to mute itself)", () => {
+    const doc = soloProjectDoc();
+    const soloed = { ...doc, tracks: doc.tracks.map((t) => (t.id === "t-drum" ? { ...t, solo: true } : t)) };
+    const solo = soloAudibility(soloed);
+    expect(solo.anySolo).toBe(true);
+    expect(solo.audible("t-drum")).toBe(true);
+    expect(solo.audible("grp-a")).toBe(true); // group must pass the soloed child through
+    expect(solo.audible("t-inst")).toBe(false); // sibling muted
+    expect(solo.audible("grp-b")).toBe(false);
+    expect(solo.audible("t-inst-b")).toBe(false);
+  });
+
+  it("soloing a group keeps its members audible and mutes the rest", () => {
+    const doc = soloProjectDoc();
+    const soloed = { ...doc, tracks: doc.tracks.map((t) => (t.id === "grp-a" ? { ...t, solo: true } : t)) };
+    const solo = soloAudibility(soloed);
+    expect(solo.audible("grp-a")).toBe(true);
+    expect(solo.audible("t-drum")).toBe(true); // member of the soloed group
+    expect(solo.audible("t-inst")).toBe(true);
+    expect(solo.audible("grp-b")).toBe(false);
+    expect(solo.audible("t-inst-b")).toBe(false);
+  });
+
+  it("a group solo does not leak into ungrouped tracks", () => {
+    const base = soloProjectDoc();
+    const doc = {
+      ...base,
+      tracks: [...base.tracks, { ...base.tracks.find((t) => t.id === "t-inst")!, id: "t-ungrouped", groupId: undefined }],
+    };
+    const soloed = { ...doc, tracks: doc.tracks.map((t) => (t.id === "grp-a" ? { ...t, solo: true } : t)) };
+    const solo = soloAudibility(soloed);
+    expect(solo.audible("t-ungrouped")).toBe(false);
+  });
+
+  it("mute wins over solo at the same node", () => {
+    const doc = soloProjectDoc();
+    const muted = {
+      ...doc,
+      tracks: doc.tracks.map((t) => {
+        if (t.id === "t-drum") return { ...t, solo: true };
+        if (t.id === "grp-a") return { ...t, mute: true };
+        return t;
+      }),
+    };
+    const solo = soloAudibility(muted);
+    expect(solo.audible("t-drum")).toBe(true); // its own gate is open
+    expect(solo.audible("grp-a")).toBe(false); // but the muted group gate is closed
+  });
+
+  it("unknown track ids report not audible", () => {
+    const solo = soloAudibility(soloProjectDoc());
+    expect(solo.audible("nope")).toBe(false);
   });
 });

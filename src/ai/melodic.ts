@@ -63,15 +63,18 @@ function buildMelodicModel(sequences: MelodicNote[][]): {
   return { transitions, initial, velocities };
 }
 
-/** Sample from a distribution vector */
-function sampleDist(dist: Uint32Array, rand: () => number): number {
+/** Sample from a distribution vector with optional temperature control */
+function sampleDist(dist: Uint32Array, rand: () => number, temperature: number = 1): number {
+  const invT = 1 / Math.max(0.01, temperature);
   let total = 0;
-  for (let i = 0; i < dist.length; i++) total += dist[i];
+  for (let i = 0; i < dist.length; i++) {
+    total += Math.pow(dist[i] + 0.1, invT);
+  }
   if (total === 0) return 0;
 
   let r = rand() * total;
   for (let i = 0; i < dist.length; i++) {
-    r -= dist[i];
+    r -= Math.pow(dist[i] + 0.1, invT);
     if (r <= 0) return i;
   }
   return dist.length - 1;
@@ -140,6 +143,7 @@ function generateMelodicSequence(
   model: { transitions: Uint32Array; initial: Uint32Array; velocities: Map<number, number[]> },
   length: number,
   rand: () => number,
+  temperature: number = 1,
 ): MelodicNote[] {
   const notes: MelodicNote[] = [];
 
@@ -148,7 +152,7 @@ function generateMelodicSequence(
   for (let i = 0; i < model.initial.length; i++) {
     smoothedInitial[i] = model.initial[i] + 1;
   }
-  let currentState = sampleDist(smoothedInitial, rand);
+  let currentState = sampleDist(smoothedInitial, rand, temperature);
 
   for (let i = 0; i < length; i++) {
     const { degree, duration } = decodeMelodicState(currentState);
@@ -160,7 +164,7 @@ function generateMelodicSequence(
         const d = decodeMelodicState(s);
         if (d.degree >= 0) nonRest[s] = smoothedInitial[s];
       }
-      currentState = sampleDist(nonRest, rand);
+      currentState = sampleDist(nonRest, rand, temperature);
       const forced = decodeMelodicState(currentState);
       notes.push({ degree: forced.degree, duration: forced.duration, velocity: sampleVelocity(model.velocities, currentState, rand) });
       continue;
@@ -177,7 +181,7 @@ function generateMelodicSequence(
       for (let s = 0; s < row.length; s++) {
         smoothed[s] = row[s] + 1;
       }
-      currentState = sampleDist(smoothed, rand);
+      currentState = sampleDist(smoothed, rand, temperature);
     }
   }
 
@@ -220,7 +224,7 @@ export function generateMelodicPattern(
     const notesPerBar = pattern.role === 'chord' ? 2 : pattern.role === 'bass' ? 4 : 3;
     const targetNotes = Math.ceil(notesPerBar * bars);
 
-    const sequence = generateMelodicSequence(model, targetNotes, rand);
+    const sequence = generateMelodicSequence(model, targetNotes, rand, options.temperature);
 
     // Convert to NoteEvents with tick-based timing
     let currentTick = 0;

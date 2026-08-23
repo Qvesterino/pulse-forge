@@ -12,6 +12,8 @@ import { applyInstrumentPreset } from "./commands/commands";
 import { PPQ } from "./project-model/types";
 import { loadWorkletModules, isWorkletReady } from "./audio-worklets/loader";
 import { createBitcrusherNode } from "./audio-worklets/bitcrusher-node";
+import { AudioEngine } from "./audio-engine/AudioEngine";
+import { createGroupTrackModel } from "./project-model/schema";
 import type { EffectType, InstrumentTrack } from "./project-model/types";
 
 export interface CheckResult {
@@ -443,6 +445,174 @@ export async function runChecks(): Promise<CheckResult[]> {
     }
   } catch (error) {
     check("audio-worklet: processors load and bitcrusher downsamples", false, String(error));
+  }
+
+  // Groups: a track moved between groups must feed ONLY the new group.
+  // Regression: the old rerouting left the edge to the previous group's
+  // input connected, so the track played through both groups at once.
+  try {
+    const doc = createProjectFromTemplate("house");
+    const groupA = { ...createGroupTrackModel("A"), pan: -1 };
+    const groupB = { ...createGroupTrackModel("B"), pan: 1 };
+    const drum = doc.tracks.find((t) => t.kind === "drum")!;
+    const withGroups = {
+      ...doc,
+      tracks: [
+        ...doc.tracks.map((t) => (t.id === drum.id ? { ...t, groupId: groupA.id } : t)),
+        groupA,
+        groupB,
+      ],
+    };
+    const moved = {
+      ...withGroups,
+      tracks: withGroups.tracks.map((t) => (t.id === drum.id ? { ...t, groupId: groupB.id } : t)),
+    };
+    const ctx = new OfflineAudioContext(2, SR, SR);
+    const engine = new AudioEngine();
+    engine.attachBank(bank);
+    engine.useContext(ctx);
+    engine.setProject(withGroups);
+    engine.setProject(moved); // same engine → exercises the syncProject re-route
+    engine.trigger(drum.id, drum.pads[0], 0.02, 1);
+    const out = await ctx.startRendering();
+    const l = peakOf(out.getChannelData(0));
+    const r = peakOf(out.getChannelData(1));
+    check("groups: moved track feeds only the new group", r > 0.05 && l < r * 0.15, `L=${l.toFixed(3)} R=${r.toFixed(3)} (leak would make L≈R)`);
+  } catch (error) {
+    check("groups: moved track feeds only the new group", false, String(error));
+  }
+
+  // Master meter must read TRUE stereo (splitter + per-channel analysers).
+  // Regression: a single AnalyserNode downmixes to mono even with
+  // channelCount=2/explicit, so L/R read the same mono signal.
+  try {
+    const ctx = new AudioContext();
+    try {
+      if (ctx.state === "suspended") await ctx.resume();
+    } catch { /* autoplay may block resume — handled below */ }
+    if (ctx.state !== "running") {
+      check("master meter: reads true stereo (hard-left stays out of R)", true, "skipped — autoplay blocked in this environment");
+    } else {
+      // Headless audio devices take a moment to start rendering — wait until
+      // the audio clock actually advances, otherwise the scheduled note has
+      // not sounded yet when the meter is read and the check sees silence.
+      const t0 = ctx.currentTime;
+      for (let i = 0; i < 40 && ctx.currentTime < t0 + 0.05; i++) {
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      if (ctx.currentTime < t0 + 0.05) {
+        check("master meter: reads true stereo (hard-left stays out of R)", true, "skipped — audio clock not advancing");
+      } else {
+        const engine = new AudioEngine();
+        engine.useContext(ctx);
+        const doc = createProjectFromTemplate("house");
+        const inst = doc.tracks.find((t) => t.kind === "instrument")!;
+        const panned = {
+          ...doc,
+          tracks: doc.tracks.map((t) => (t.id === inst.id ? { ...t, pan: -1 } : t)),
+        };
+        engine.setProject(panned);
+        engine.noteOn(inst.id, 48, 0.9, ctx.currentTime + 0.02, 0.4);
+        await new Promise((r) => setTimeout(r, 220));
+        const lv = engine.getMasterLevels();
+        check(
+          "master meter: reads true stereo (hard-left stays out of R)",
+          lv.left.peak > 0.02 && lv.right.peak < lv.left.peak * 0.25,
+          `L=${lv.left.peakDb.toFixed(1)}dB R=${lv.right.peakDb.toFixed(1)}dB corr=${lv.correlation.toFixed(2)}`,
+        );
+      }
+    }
+    await ctx.close();
+  } catch (error) {
+    check("master meter: reads true stereo (hard-left stays out of R)", false, String(error));
+  }
+
+  // 808: rapid retrigger must keep rendering after the voice-cleanup fix
+  // (per-voice post + click chain teardown, shared shaper without rewiring).
+  try {
+    const ctx = new OfflineAudioContext(1, SR, SR);
+    const track: InstrumentTrack = {
+      id: "check-808-retrigger",
+      kind: "instrument",
+      instrument: "808",
+      name: "808",
+      gain: 1,
+      pan: 0,
+      mute: false,
+      solo: false,
+      sampleId: null,
+      params: { ...defaultInstrumentParams("808"), decay: 0.4 },
+      effects: [],
+      sends: {},
+    };
+    const rt = INSTRUMENT_DEFS["808"].factory(ctx, track, { bpm: 124, getSample: () => undefined });
+    rt.output.connect(ctx.destination);
+    rt.noteOn(33, 1, 0.05, 0);
+    rt.noteOn(33, 1, 0.25, 0);
+    rt.noteOn(33, 1, 0.45, 0);
+    const buffer = await ctx.startRendering();
+    rt.dispose();
+    const data = buffer.getChannelData(0);
+    const first = peakOf(data.subarray(Math.floor(0.05 * SR), Math.floor(0.2 * SR)));
+    const third = peakOf(data.subarray(Math.floor(0.45 * SR), Math.floor(0.7 * SR)));
+    check("808: rapid retrigger renders every note (voice cleanup wiring)", first > 0.3 && third > 0.3, `first=${first.toFixed(3)} third=${third.toFixed(3)}`);
+  } catch (error) {
+    check("808: rapid retrigger renders every note (voice cleanup wiring)", false, String(error));
+  }
+
+  // Wavetable: a user sample assigned but not yet in the bank (async restore
+  // after a reload) plays the factory fallback WITHOUT caching it forever —
+  // the next note after the sample arrives must use the real sample.
+  try {
+    const ctx = new OfflineAudioContext(1, SR, SR);
+    let sample: AudioBuffer | null = null;
+    const track: InstrumentTrack = {
+      id: "check-wt-reload",
+      kind: "instrument",
+      instrument: "wavetable",
+      name: "WT",
+      gain: 1,
+      pan: 0,
+      mute: false,
+      solo: false,
+      sampleId: "user-late-arriving",
+      // detune 0 + open filter keeps the voice spectrum faithful to the
+      // table — the default ±7 ct unison beating smears edge energy and
+      // makes any two tables measure alike.
+      params: { ...defaultInstrumentParams("wavetable"), detune: 0, cutoff: 16000, morph: 0 },
+      effects: [],
+      sends: {},
+    };
+    const rt = INSTRUMENT_DEFS["wavetable"].factory(ctx, track, { bpm: 124, getSample: () => sample ?? undefined });
+    rt.output.connect(ctx.destination);
+    rt.noteOn(48, 1, 0.05, 0.15); // fallback (sample not restored yet)
+    const buf = ctx.createBuffer(1, Math.floor(SR * 0.1), SR);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = i % 64 < 32 ? 0.7 : -0.7; // 690 Hz square (inside extractWavetable's period range) → bright
+    sample = buf; // the async restore lands between the two notes
+    rt.noteOn(48, 1, 0.45, 0.15); // must now use the extracted user table
+    const buffer = await ctx.startRendering();
+    rt.dispose();
+    const data = buffer.getChannelData(0);
+    const hfRatio = (w: Float32Array) => {
+      let sum = 0;
+      let diff = 0;
+      for (let i = 1; i < w.length; i++) {
+        sum += w[i] * w[i];
+        const dd = w[i] - w[i - 1];
+        diff += dd * dd;
+      }
+      return Math.sqrt(diff / Math.max(sum, 1e-12));
+    };
+    const fallbackHf = hfRatio(data.subarray(Math.floor(0.06 * SR), Math.floor(0.3 * SR)));
+    const sampleHf = hfRatio(data.subarray(Math.floor(0.46 * SR), Math.floor(0.7 * SR)));
+    check(
+      "wavetable: late-arriving user sample replaces the cached factory fallback",
+      sampleHf > fallbackHf * 1.5,
+      `fallbackHF=${fallbackHf.toFixed(3)} sampleHF=${sampleHf.toFixed(3)}`,
+    );
+  } catch (error) {
+    check("wavetable: late-arriving user sample replaces the cached factory fallback", false, String(error));
   }
 
   try {

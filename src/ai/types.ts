@@ -40,6 +40,8 @@ export interface GenerateOptions {
   ghostWeight: number;
   microWeight: number;
   velocityVariation: number;
+  /** Temperature controls randomness: 1.0 = normal, >1.0 = more random, <1.0 = more faithful to training data */
+  temperature: number;
 }
 
 export const DEFAULT_GENERATE_OPTIONS: GenerateOptions = {
@@ -49,6 +51,7 @@ export const DEFAULT_GENERATE_OPTIONS: GenerateOptions = {
   ghostWeight: 0.3,
   microWeight: 0.2,
   velocityVariation: 0.3,
+  temperature: 1.0,
 };
 
 /** All available genres */

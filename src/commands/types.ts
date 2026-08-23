@@ -7,6 +7,15 @@ export interface Command {
   undo(doc: ProjectDocument): ProjectDocument;
   applyToYDoc?(yMap: any): void;
   undoYDoc?(yMap: any): void;
+  /**
+   * Continuous-gesture grouping key (e.g. `midi:macro:<id>`). Successive
+   * commands with the same key executed within a short time window collapse
+   * into ONE undo entry: redo lands on the newest state, undo returns to
+   * the state before the gesture began. Used by high-frequency streams like
+   * MIDI CC sweeps, which would otherwise flood the capped undo stack and
+   * evict real edits.
+   */
+  readonly coalesceKey?: string;
 }
 
 export function ySet(yMap: any, key: string, value: unknown): void {

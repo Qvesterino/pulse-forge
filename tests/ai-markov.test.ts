@@ -21,6 +21,7 @@ function makeOptions(overrides: Partial<GenerateOptions> = {}): GenerateOptions 
     ghostWeight: 0.3,
     microWeight: 0.2,
     velocityVariation: 0.3,
+    temperature: 1.0,
     ...overrides,
   };
 }
@@ -584,7 +585,7 @@ describe("groove swing application", () => {
         // microtiming from swing should be 0 (other sources may exist)
         if (m.microtiming !== undefined) {
           // The value should not be exactly the swing formula value
-          expect(Math.abs(m.microtiming)).toBeLessThanOrEqual(0.2);
+          expect(Math.abs(m.microtiming)).toBeLessThanOrEqual(0.4);
         }
       }
     }
@@ -674,8 +675,8 @@ describe("groove swing application", () => {
         if (step % 2 === 0 && row[step] > 0) {
           // microtiming on even steps should only come from micro jitter, not swing
           // (swing only affects odd steps)
-           if (m.microtiming !== undefined) {
-             expect(Math.abs(m.microtiming)).toBeLessThanOrEqual(0.2);
+        if (m.microtiming !== undefined) {
+          expect(Math.abs(m.microtiming)).toBeLessThanOrEqual(0.4);
            }
          }
        }

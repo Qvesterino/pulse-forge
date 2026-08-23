@@ -10,6 +10,9 @@ export interface HistoryEntry {
   timestamp: number;
 }
 
+/** Window in which same-key commands merge into one undo entry. */
+const COALESCE_WINDOW_MS = 1000;
+
 export class ProjectStore {
   private doc_: ProjectDocument;
   private listeners = new Set<() => void>();
@@ -86,6 +89,24 @@ export class ProjectStore {
   getLastSavedAt = (): string | null => this.lastSavedAt_;
 
   execute(command: Command): void {
+    const topIdx = this.undoStack.length - 1;
+    const top = this.undoStack[topIdx];
+    if (
+      command.coalesceKey != null &&
+      top?.coalesceKey === command.coalesceKey &&
+      Date.now() - (this.timestamps[topIdx] ?? 0) <= COALESCE_WINDOW_MS
+    ) {
+      // Continuous gesture (e.g. a MIDI CC sweep): collapse into the top
+      // entry — redo lands on the newest state, undo returns to the state
+      // before the whole gesture began.
+      const merged: Command = { ...command, undo: (doc) => top.undo(doc) };
+      this.doc_ = merged.execute(this.doc_);
+      this.undoStack[topIdx] = merged;
+      this.timestamps[topIdx] = Date.now();
+      this.redoStack = [];
+      this.afterMutation();
+      return;
+    }
     this.doc_ = command.execute(this.doc_);
     this.undoStack.push(command);
     this.timestamps.push(Date.now());

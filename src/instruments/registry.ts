@@ -386,7 +386,6 @@ const bass808: InstrumentDefinition = {
     const shaper = ctx.createWaveShaper();
     shaper.oversample = "2x";
     shaper.curve = tanhCurve(2.5);
-    shaper.connect(output);
     let current: Voice | null = null;
 
     const runtime: InstrumentRuntime = {
@@ -411,9 +410,12 @@ const bass808: InstrumentDefinition = {
         toneFilter.frequency.value = Math.max(120, toneHz);
         toneFilter.Q.value = 0.7;
         toneFilter.connect(pre);
-        post.connect(output);
-        shaper.disconnect();
+        // The shared shaper feeds every live voice's post — no rewiring here.
+        // (It used to disconnect() the shaper per note, hard-cutting the
+        // previous voice's release tail; each voice now removes its own post
+        // in onended instead of accumulating connections on `output` forever.)
         shaper.connect(post);
+        post.connect(output);
 
         const amp = ctx.createGain();
         amp.gain.setValueAtTime(Math.max(gainVal, 0.0002), when);
@@ -441,6 +443,13 @@ const bass808: InstrumentDefinition = {
           src.connect(hp).connect(g).connect(post);
           src.start(when);
           src.stop(when + 0.05);
+          // The click chain is short-lived — tear it down explicitly so it
+          // does not linger on `post` after the voice is gone.
+          src.onended = () => {
+            try { src.disconnect(); } catch { /* already disconnected */ }
+            try { hp.disconnect(); } catch { /* already disconnected */ }
+            try { g.disconnect(); } catch { /* already disconnected */ }
+          };
         }
 
         const voice: Voice = {
@@ -463,6 +472,8 @@ const bass808: InstrumentDefinition = {
           amp.disconnect();
           toneFilter.disconnect();
           pre.disconnect();
+          post.disconnect();
+          try { shaper.disconnect(post); } catch { /* already disconnected */ }
           if (current === voice) current = null;
         };
       },
@@ -871,7 +882,11 @@ const wavetable: InstrumentDefinition = {
           b.getChannelData(0).set(f);
           return b;
         });
-        tableDirty = false;
+        // A user sample that is assigned but not yet in the bank (async
+        // restore after a reload) must not cache the factory fallback
+        // forever — keep the table dirty so the next noteOn retries with
+        // the real sample as soon as it finishes decoding.
+        tableDirty = sampleId != null && !env.getSample(sampleId);
       }
       return frameBuffers;
     };

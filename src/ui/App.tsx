@@ -77,11 +77,16 @@ export function App({ services, onOpenBrowser }: { services: Services; onOpenBro
   // Global keyboard shortcuts
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
+      // Another window-level listener already consumed this event (e.g. a
+      // dialog closing itself on Escape) — never double-act on it.
+      if (event.defaultPrevented) return;
       const target = event.target as HTMLElement | null;
       const typing =
         target &&
         (target.tagName === "INPUT" || target.tagName === "SELECT" || target.tagName === "TEXTAREA" || target.isContentEditable);
-      // Escape always works — close help or clear selection, even from inputs.
+      // Escape is contextual: close help → clear note selection → clear step
+      // selection → blur inputs; only when nothing applies does it stop the
+      // transport (matched as the "stop" shortcut below).
       if (event.key === "Escape") {
         if (helpOpen) {
           setHelpOpen(false);
@@ -105,30 +110,6 @@ export function App({ services, onOpenBrowser }: { services: Services; onOpenBro
         }
       }
       if (typing) return;
-      if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
-        // Track shortcut: digit 1–9 selects track by index
-        if (/^[1-9]$/.test(event.key)) {
-          const idx = Number(event.key) - 1;
-          const next = doc.tracks[idx];
-          if (next) {
-            event.preventDefault();
-            selectTrack(next.id);
-          }
-          return;
-        }
-        // Panel toggle: 1–5
-        if (event.key === "1" || event.key === "2" || event.key === "3" || event.key === "4" || event.key === "5") {
-          // Already handled by the digit branch above if it's also a track index
-          // But tracks can be ≥5; this re-routes to panel only if there are fewer than 5 tracks.
-          // To keep both shortcuts independent, we route 1–5 to panels here ONLY when shift held.
-          if (event.shiftKey) {
-            event.preventDefault();
-            setBottomPanelTab(PANEL_KEYS[Number(event.key) - 1]);
-            return;
-          }
-          return;
-        }
-      }
 
       const matched = matchShortcut(event);
       if (!matched) return;
@@ -241,15 +222,6 @@ export function App({ services, onOpenBrowser }: { services: Services; onOpenBro
             services.store.execute(
               clearSteps(doc, doc.activePatternId, stepSelection.padIds, stepSelection.from, stepSelection.to),
             );
-            setStepSelection(null);
-          }
-          return;
-        case "clearSelection":
-          if (selectedNote) {
-            event.preventDefault();
-            setSelectedNote(null);
-          } else if (stepSelection) {
-            event.preventDefault();
             setStepSelection(null);
           }
           return;

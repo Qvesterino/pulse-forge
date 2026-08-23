@@ -23,6 +23,7 @@ export function GenerateDialog({ open, onClose }: { open: boolean; onClose: () =
   const [ghostWeight, setGhostWeight] = useState(DEFAULT_GENERATE_OPTIONS.ghostWeight);
   const [microWeight, setMicroWeight] = useState(DEFAULT_GENERATE_OPTIONS.microWeight);
   const [velocityVariation, setVelocityVariation] = useState(DEFAULT_GENERATE_OPTIONS.velocityVariation);
+  const [temperature, setTemperature] = useState(DEFAULT_GENERATE_OPTIONS.temperature);
   const [patternName, setPatternName] = useState("");
 
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -42,7 +43,12 @@ export function GenerateDialog({ open, onClose }: { open: boolean; onClose: () =
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        // Consume the event so the app-level shortcut handler does not also
+        // act on it (e.g. stopping the transport).
+        e.preventDefault();
+        onClose();
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -69,10 +75,11 @@ export function GenerateDialog({ open, onClose }: { open: boolean; onClose: () =
       ghostWeight,
       microWeight,
       velocityVariation,
+      temperature,
     };
     services.store.execute(generatePatternCommand(doc, options, patternName || undefined));
     onClose();
-  }, [genre, style, seed, stepCount, ghostWeight, microWeight, velocityVariation, patternName, doc, services, onClose]);
+  }, [genre, style, seed, stepCount, ghostWeight, microWeight, velocityVariation, temperature, patternName, doc, services, onClose]);
 
   const handleRandomSeed = useCallback(() => {
     setSeed(randomSeed());
@@ -224,6 +231,20 @@ export function GenerateDialog({ open, onClose }: { open: boolean; onClose: () =
               onChange={(e) => setVelocityVariation(Number(e.target.value))}
             />
             <span className="generate-value">{Math.round(velocityVariation * 100)}%</span>
+          </div>
+
+          <div className="generate-slider-row">
+            <label className="generate-label">TEMP</label>
+            <input
+              type="range"
+              className="generate-slider"
+              min={0.2}
+              max={2}
+              step={0.1}
+              value={temperature}
+              onChange={(e) => setTemperature(Number(e.target.value))}
+            />
+            <span className="generate-value">{temperature.toFixed(1)}</span>
           </div>
         </div>
 
