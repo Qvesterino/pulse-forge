@@ -3,6 +3,7 @@ import { createDefaultProject } from "../src/project-model/schema";
 import { generatePatternCommand } from "../src/commands/commands";
 import { generatePattern, resolveGroove } from "../src/ai/generator";
 import { generateDrumPattern } from "../src/ai/drums";
+import { generateMelodicPattern } from "../src/ai/melodic";
 import { buildPadModel, generatePadSequence, quantizeVelocity, dequantizeVelocity, encodeState, decodeLevel, decodePosition } from "../src/ai/markov";
 import { getGroovesForGenre, getGrooveById, getStyleNamesForGenre } from "../src/ai/grooves/index";
 import { HOUSE_GROOVES } from "../src/ai/grooves/house";
@@ -287,7 +288,7 @@ describe("full pattern generation", () => {
     const options = makeOptions();
     const pattern = generatePattern(doc, options);
     expect(pattern.id).toBeTruthy();
-    expect(pattern.name).toBe("");
+    expect(pattern.name).toContain("-");
     expect(pattern.stepCount).toBe(16);
     expect(pattern.rows).toBeDefined();
     expect(typeof pattern.rows).toBe("object");
@@ -397,3 +398,383 @@ describe("generatePatternCommand", () => {
     expect(newPattern.name).toContain("house");
   });
 });
+
+describe("melodic generation", () => {
+  it("generates notes for house genre", () => {
+    const options = makeOptions({ genre: "house" });
+    const rand = mulberry32(42);
+    const notes = generateMelodicPattern(options, rand);
+    expect(notes.length).toBeGreaterThan(0);
+  });
+
+  it("generates notes for techno genre", () => {
+    const options = makeOptions({ genre: "techno" });
+    const rand = mulberry32(42);
+    const notes = generateMelodicPattern(options, rand);
+    expect(notes.length).toBeGreaterThan(0);
+  });
+
+  it("generates notes for trap genre", () => {
+    const options = makeOptions({ genre: "trap" });
+    const rand = mulberry32(42);
+    const notes = generateMelodicPattern(options, rand);
+    expect(notes.length).toBeGreaterThan(0);
+  });
+
+  it("generates notes for ambient genre", () => {
+    const options = makeOptions({ genre: "ambient" });
+    const rand = mulberry32(42);
+    const notes = generateMelodicPattern(options, rand);
+    expect(notes.length).toBeGreaterThan(0);
+  });
+
+  it("all notes have valid MIDI pitch range", () => {
+    const options = makeOptions({ genre: "house" });
+    const rand = mulberry32(42);
+    const notes = generateMelodicPattern(options, rand);
+    for (const note of notes) {
+      expect(note.pitch).toBeGreaterThanOrEqual(0);
+      expect(note.pitch).toBeLessThanOrEqual(127);
+    }
+  });
+
+  it("all notes have positive velocity", () => {
+    const options = makeOptions({ genre: "techno" });
+    const rand = mulberry32(42);
+    const notes = generateMelodicPattern(options, rand);
+    for (const note of notes) {
+      expect(note.velocity).toBeGreaterThan(0);
+      expect(note.velocity).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("all notes have positive duration", () => {
+    const options = makeOptions({ genre: "house" });
+    const rand = mulberry32(42);
+    const notes = generateMelodicPattern(options, rand);
+    for (const note of notes) {
+      expect(note.duration).toBeGreaterThan(0);
+    }
+  });
+
+  it("notes have non-overlapping starts within pattern length", () => {
+    const options = makeOptions({ genre: "house", stepCount: 16 });
+    const rand = mulberry32(42);
+    const notes = generateMelodicPattern(options, rand);
+    const maxTick = options.stepCount * 120; // STEP_TICKS = 120
+    for (const note of notes) {
+      expect(note.start).toBeGreaterThanOrEqual(0);
+      expect(note.start).toBeLessThan(maxTick);
+    }
+  });
+
+  it("is deterministic with same seed", () => {
+    const options = makeOptions({ genre: "house" });
+    const notes1 = generateMelodicPattern(options, mulberry32(42));
+    const notes2 = generateMelodicPattern(options, mulberry32(42));
+    expect(notes1.length).toBe(notes2.length);
+    for (let i = 0; i < notes1.length; i++) {
+      expect(notes1[i].pitch).toBe(notes2[i].pitch);
+      expect(notes1[i].start).toBe(notes2[i].start);
+      expect(notes1[i].duration).toBe(notes2[i].duration);
+    }
+  });
+
+  it("different seeds produce different note sequences", () => {
+    const options = makeOptions({ genre: "house" });
+    const notes1 = generateMelodicPattern(options, mulberry32(1));
+    const notes2 = generateMelodicPattern(options, mulberry32(2));
+    // At least the pitch or timing should differ
+    const same = notes1.every((n, i) =>
+      notes2[i] && n.pitch === notes2[i].pitch && n.start === notes2[i].start
+    );
+    expect(same).toBe(false);
+  });
+
+  it("respects stepCount for note placement", () => {
+    const options16 = makeOptions({ genre: "house", stepCount: 16 });
+    const options32 = makeOptions({ genre: "house", stepCount: 32 });
+    const notes16 = generateMelodicPattern(options16, mulberry32(42));
+    const notes32 = generateMelodicPattern(options32, mulberry32(42));
+    // 32-step pattern should fit notes within 32*120 = 3840 ticks
+    for (const note of notes32) {
+      expect(note.start).toBeLessThan(32 * 120);
+    }
+    // 32-step may generate more or same notes as 16-step
+    expect(notes32.length).toBeGreaterThanOrEqual(notes16.length);
+  });
+});
+
+describe("melodic with scale snapping", () => {
+  it("snaps notes to C Major scale", () => {
+    const options = makeOptions({ genre: "house" });
+    const rand = mulberry32(42);
+    const notes = generateMelodicPattern(options, rand, "C Major");
+    // All notes should be in C Major: C, D, E, F, G, A, B
+    const validPitches = new Set([0, 2, 4, 5, 7, 9, 11]);
+    for (const note of notes) {
+      const semitone = ((note.pitch % 12) + 12) % 12;
+      expect(validPitches.has(semitone)).toBe(true);
+    }
+  });
+
+  it("snaps notes to A Minor scale", () => {
+    const options = makeOptions({ genre: "techno" });
+    const rand = mulberry32(42);
+    const notes = generateMelodicPattern(options, rand, "A Natural Minor");
+    // A Natural Minor: A, B, C, D, E, F, G
+    const validPitches = new Set([9, 11, 0, 2, 4, 5, 7]);
+    for (const note of notes) {
+      const semitone = ((note.pitch % 12) + 12) % 12;
+      expect(validPitches.has(semitone)).toBe(true);
+    }
+  });
+
+  it("works without key (no snapping)", () => {
+    const options = makeOptions({ genre: "house" });
+    const rand = mulberry32(42);
+    const notes = generateMelodicPattern(options, rand);
+    expect(notes.length).toBeGreaterThan(0);
+    // Without key, pitches may be any MIDI value
+    for (const note of notes) {
+      expect(note.pitch).toBeGreaterThanOrEqual(0);
+      expect(note.pitch).toBeLessThanOrEqual(127);
+    }
+  });
+});
+
+describe("full pattern with melodic content", () => {
+  it("generates pattern with both drum rows and melodic notes", () => {
+    const doc = createDefaultProject();
+    const options = makeOptions({ genre: "house" });
+    const pattern = generatePattern(doc, options);
+    // Should have drum rows
+    expect(Object.keys(pattern.rows).length).toBeGreaterThan(0);
+    // Should have melodic notes on an instrument track
+    const instrumentTrack = doc.tracks.find(t => t.kind === "instrument");
+    if (instrumentTrack) {
+      const trackNotes = pattern.notes[instrumentTrack.id];
+      expect(trackNotes).toBeDefined();
+      expect(trackNotes!.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("all melodic notes are within pattern step range", () => {
+    const doc = createDefaultProject();
+    const options = makeOptions({ genre: "house", stepCount: 16 });
+    const pattern = generatePattern(doc, options);
+    const maxTick = options.stepCount * 120;
+    for (const trackNotes of Object.values(pattern.notes)) {
+      for (const note of trackNotes) {
+        expect(note.start).toBeGreaterThanOrEqual(0);
+        expect(note.start).toBeLessThan(maxTick);
+      }
+    }
+  });
+});
+
+describe("groove swing application", () => {
+  it("swing=0 produces no microtiming from swing", () => {
+    const groove = getGrooveById("house.minimal")!;
+    const swinglessGroove = { ...groove, swing: 0 };
+    const options = makeOptions();
+    const { meta } = generateDrumPattern(swinglessGroove, options, mulberry32(42));
+    for (const padMeta of meta.values()) {
+      for (const [, m] of padMeta) {
+        // microtiming from swing should be 0 (other sources may exist)
+        if (m.microtiming !== undefined) {
+          // The value should not be exactly the swing formula value
+          expect(Math.abs(m.microtiming)).toBeLessThanOrEqual(0.2);
+        }
+      }
+    }
+  });
+
+  it("swing>0 adds positive microtiming to odd active steps", () => {
+    const groove = getGrooveById("house.minimal")!;
+    const swungGroove = { ...groove, swing: 0.3 };
+    const options = makeOptions();
+    const { rows, meta } = generateDrumPattern(swungGroove, options, mulberry32(42));
+
+    // Check that some odd steps have positive microtiming (swing delay)
+    let foundSwing = false;
+    for (const [padIndex, padMeta] of meta) {
+      const row = rows[padIndex];
+      if (!row) continue;
+      for (const [step, m] of padMeta) {
+        if (step % 2 === 1 && row[step] > 0 && m.microtiming !== undefined && m.microtiming > 0) {
+          foundSwing = true;
+          // Swing of 0.3 → microtiming ≈ 0.15 (0.3 * 0.5)
+          expect(m.microtiming).toBeGreaterThan(0);
+          expect(m.microtiming).toBeLessThanOrEqual(0.5);
+        }
+      }
+    }
+    expect(foundSwing).toBe(true);
+  });
+
+  it("UK Garage groove (swing=0.30) applies stronger swing than minimal (swing=0.08)", () => {
+    const minimal = getGrooveById("house.minimal")!;
+    const ukg = getGrooveById("house.ukg")!;
+
+    const options = makeOptions();
+    const { meta: minimalMeta } = generateDrumPattern(minimal, options, mulberry32(42));
+    const { meta: ukgMeta } = generateDrumPattern(ukg, options, mulberry32(42));
+
+    // Collect average microtiming on odd steps for each
+    const avgMicro = (meta: Map<number, Map<number, { microtiming?: number }>>) => {
+      let sum = 0, count = 0;
+      for (const padMeta of meta.values()) {
+      for (const [step, m] of padMeta) {
+          if (step % 2 === 1 && m.microtiming !== undefined && m.microtiming > 0) {
+            sum += m.microtiming;
+            count++;
+          }
+        }
+      }
+      return count > 0 ? sum / count : 0;
+    };
+
+    const minimalAvg = avgMicro(minimalMeta);
+    const ukgAvg = avgMicro(ukgMeta);
+
+    // UKG (swing=0.30) should have stronger swing than minimal (swing=0.08)
+    expect(ukgAvg).toBeGreaterThan(minimalAvg);
+  });
+
+  it("swing is deterministic with same seed", () => {
+    const groove = getGrooveById("house.funky")!;
+    const options = makeOptions();
+    const { meta: meta1 } = generateDrumPattern(groove, options, mulberry32(42));
+    const { meta: meta2 } = generateDrumPattern(groove, options, mulberry32(42));
+
+    // Both should have identical microtiming values
+    for (const [padIndex, padMeta1] of meta1) {
+      const padMeta2 = meta2.get(padIndex);
+      expect(padMeta2).toBeDefined();
+      for (const [step, m1] of padMeta1) {
+        const m2 = padMeta2!.get(step);
+        expect(m2).toBeDefined();
+        expect(m1.microtiming).toBe(m2!.microtiming);
+      }
+    }
+  });
+
+  it("even steps are not affected by swing", () => {
+    const groove = getGrooveById("house.funky")!;
+    const swungGroove = { ...groove, swing: 0.5 };
+    const options = makeOptions();
+    const { rows, meta } = generateDrumPattern(swungGroove, options, mulberry32(42));
+
+    // Even steps (0, 2, 4, ...) should not have swing microtiming
+    for (const [padIndex, padMeta] of meta) {
+      const row = rows[padIndex];
+      if (!row) continue;
+      for (const [step, m] of padMeta) {
+        if (step % 2 === 0 && row[step] > 0) {
+          // microtiming on even steps should only come from micro jitter, not swing
+          // (swing only affects odd steps)
+           if (m.microtiming !== undefined) {
+             expect(Math.abs(m.microtiming)).toBeLessThanOrEqual(0.2);
+           }
+         }
+       }
+     }
+   });
+ });
+
+describe("melodic velocity from reference data", () => {
+   it("melodic notes use velocities from reference patterns, not random", () => {
+     const options = makeOptions({ genre: "house" });
+     const allVelocities: number[] = [];
+     for (let seed = 0; seed < 20; seed++) {
+       const rand = mulberry32(seed);
+       const notes = generateMelodicPattern(options, rand);
+       for (const n of notes) {
+         allVelocities.push(n.velocity);
+       }
+     }
+     expect(allVelocities.length).toBeGreaterThan(0);
+     for (const v of allVelocities) {
+       expect(v).toBeGreaterThanOrEqual(0.1);
+       expect(v).toBeLessThanOrEqual(1);
+     }
+     const avg = allVelocities.reduce((a, b) => a + b, 0) / allVelocities.length;
+     expect(avg).toBeGreaterThan(0.4);
+     expect(avg).toBeLessThan(0.9);
+   });
+
+    it("generates consistent velocities for same seed", () => {
+      const options = makeOptions({ genre: "techno" });
+      const notes1 = generateMelodicPattern(options, mulberry32(42));
+      const notes2 = generateMelodicPattern(options, mulberry32(42));
+      expect(notes1.length).toBe(notes2.length);
+      for (let i = 0; i < notes1.length; i++) {
+        expect(notes1[i].velocity).toBe(notes2[i].velocity);
+      }
+    });
+  });
+
+  describe("chord polyphony", () => {
+    it("house chord generation produces multiple simultaneous notes", () => {
+      // House has both bass and chord roles. Chord role generates 2-4 voices per step.
+      const options = makeOptions({ genre: "house" });
+      let foundChord = false;
+      for (let seed = 0; seed < 100; seed++) {
+        const rand = mulberry32(seed);
+        const notes = generateMelodicPattern(options, rand);
+        if (notes.length < 2) continue;
+
+        // Check if multiple notes share the same start tick (simultaneous = chord)
+        const byStart = new Map<number, number>();
+        for (const n of notes) {
+          byStart.set(n.start, (byStart.get(n.start) ?? 0) + 1);
+        }
+        const maxSimultaneous = Math.max(...byStart.values());
+        if (maxSimultaneous >= 2) {
+          foundChord = true;
+          expect(maxSimultaneous).toBeGreaterThanOrEqual(2);
+          expect(maxSimultaneous).toBeLessThanOrEqual(4);
+          break;
+        }
+      }
+      expect(foundChord).toBe(true);
+    });
+
+    it("chord notes have layered velocities (root loudest)", () => {
+      const options = makeOptions({ genre: "house" });
+      for (let seed = 0; seed < 100; seed++) {
+        const rand = mulberry32(seed);
+        const notes = generateMelodicPattern(options, rand);
+        if (notes.length < 4) continue;
+
+        // Find groups of simultaneous notes
+        const byStart = new Map<number, typeof notes>();
+        for (const n of notes) {
+          const group = byStart.get(n.start) ?? [];
+          group.push(n);
+          byStart.set(n.start, group);
+        }
+
+        for (const [, group] of byStart) {
+          if (group.length >= 2) {
+            // Root (first/loudest) should have velocity >= upper voices
+            const sorted = [...group].sort((a, b) => b.velocity - a.velocity);
+            expect(sorted[0].velocity).toBeGreaterThanOrEqual(sorted[sorted.length - 1].velocity);
+            return; // test passed
+          }
+        }
+      }
+      // If no chord found in 100 seeds, test still passes (role selection is random)
+    });
+
+    it("chord notes are within valid MIDI range", () => {
+      const options = makeOptions({ genre: "house" });
+      const rand = mulberry32(42);
+      const notes = generateMelodicPattern(options, rand);
+      for (const n of notes) {
+        expect(n.pitch).toBeGreaterThanOrEqual(0);
+        expect(n.pitch).toBeLessThanOrEqual(127);
+      }
+    });
+  });

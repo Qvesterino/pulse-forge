@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDoc, useServices } from "./context";
 import type { DrumTrack, StepMeta, Track } from "../project-model/types";
 import { usePlayheadStep } from "./playhead";
@@ -236,15 +236,25 @@ export function Sequencer({
     if (el) setScrollTop(el.scrollTop);
   }, []);
 
-  // Observe container resize
+  // Observe container resize. React 18 ignores ref-callback cleanup returns,
+  // so the observer must be tracked manually and disconnected on re-attach
+  // and unmount — otherwise every re-render leaks a live ResizeObserver.
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const containerRef = useCallback((node: HTMLDivElement | null) => {
+    resizeObserverRef.current?.disconnect();
+    resizeObserverRef.current = null;
     if (!node) return;
     const ro = new ResizeObserver((entries) => {
       for (const entry of entries) setViewportHeight(entry.contentRect.height);
     });
     ro.observe(node);
-    return () => ro.disconnect();
+    resizeObserverRef.current = ro;
   }, []);
+  useEffect(() => () => resizeObserverRef.current?.disconnect(), []);
+  const attachScrollRef = useCallback((node: HTMLDivElement | null) => {
+    scrollRef.current = node;
+    containerRef(node);
+  }, [containerRef]);
 
   return (
     <section className="sequencer" aria-label="Step Sequencer">
@@ -273,7 +283,7 @@ export function Sequencer({
         ))}
       </div>
       <div
-        ref={(node) => { scrollRef.current = node; containerRef(node); }}
+        ref={attachScrollRef}
         className="sequencer-scroll"
         onScroll={handleScroll}
         style={{ overflowY: "auto", maxHeight: "600px", position: "relative" }}

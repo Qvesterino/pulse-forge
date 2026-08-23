@@ -9,7 +9,7 @@ import * as Y from "yjs";
 import type { Command } from "../commands/types";
 import type { ProjectDocument } from "../project-model/types";
 import { normalizeProject } from "../project-model/schema";
-import { yDocToProject, projectToYDoc } from "./YDocAdapter";
+import { yDocToProject, projectToYDoc, applyProjectToYMap } from "./YDocAdapter";
 
 export type SaveStatus = "saved" | "dirty" | "saving" | "error" | "syncing";
 
@@ -117,17 +117,17 @@ export class YDocStore {
 
   /**
    * Execute a command. If the command has applyToYDoc, use it for efficient
-   * Y.Doc mutations. Otherwise, fall back to snapshot-based approach.
+   * Y.Doc mutations. Otherwise, apply a targeted diff that updates existing
+   * Y.js items in place (critical for correct cross-doc CRDT sync).
    */
   execute(command: Command): void {
     this.yDoc.transact(() => {
       if (command.applyToYDoc) {
         command.applyToYDoc(this.yMap);
       } else {
-        // Fallback: apply full snapshot
+        // Fallback: compute new doc and apply targeted diff
         const newDoc = command.execute(this.doc_);
-        this.yMap.clear();
-        projectToYDoc(newDoc, this.yMap);
+        applyProjectToYMap(this.doc_, newDoc, this.yMap);
       }
     });
     this.afterMutation();

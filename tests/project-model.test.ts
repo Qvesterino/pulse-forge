@@ -501,3 +501,30 @@ describe("validateProjectShape", () => {
     expect(validateProjectShape({ ...doc, updatedAt: null })).toBe(false);
   });
 });
+
+describe("normalizeProject — macro values", () => {
+  it("keeps a legitimate macro value of 0 (regression: used to reset to 0.5)", () => {
+    const doc = minimalDoc();
+    doc.macros[0].value = 0;
+    const normalized = normalizeProject(doc);
+    expect(normalized.macros[0].value).toBe(0);
+  });
+
+  it("keeps a macro value of 1 at the upper edge", () => {
+    const doc = minimalDoc();
+    doc.macros[0].value = 1;
+    const normalized = normalizeProject(doc);
+    expect(normalized.macros[0].value).toBe(1);
+  });
+
+  it("falls back to 0.5 for non-finite values and clamps out-of-range values", () => {
+    const doc = minimalDoc();
+    doc.macros[0].value = Number.NaN;
+    doc.macros[1].value = 2;
+    doc.macros[2].value = -0.4;
+    const normalized = normalizeProject(doc);
+    expect(normalized.macros[0].value).toBe(0.5);
+    expect(normalized.macros[1].value).toBe(1);
+    expect(normalized.macros[2].value).toBe(0);
+  });
+});

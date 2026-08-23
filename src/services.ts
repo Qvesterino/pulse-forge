@@ -13,7 +13,7 @@ import { setActivePattern } from "./commands/commands";
 import { MidiInput } from "./midi/MidiInput";
 import { MidiOutput } from "./midi/MidiOutput";
 import { MidiClock } from "./midi/MidiClock";
-import { UserSampleRepository } from "./persistence/UserSampleRepository";
+import { UserSampleRepository, restoreUserSampleAudio } from "./persistence/UserSampleRepository";
 import { loadWorkletModules } from "./audio-worklets/loader";
 
 /**
@@ -148,6 +148,9 @@ export async function createCoreServices(): Promise<CoreServices> {
   const bank = await generateFactoryBank();
   const engine = new AudioEngine();
   engine.attachBank(bank);
+  // Re-decode persisted user-sample audio into the bank (fire-and-forget —
+  // the app is fully usable while imports stream back in).
+  void restoreUserSampleAudio(bank);
   const library = new LibraryRepository();
   void library.load();
   return { engine, bank, repo: new ProjectRepository(), presets: new PresetRepository(), library };

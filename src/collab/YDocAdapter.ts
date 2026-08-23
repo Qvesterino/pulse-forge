@@ -210,12 +210,19 @@ function yMapToMarker(m: unknown): Marker {
   };
 }
 
+// Points are written as Y.Maps (via objToYMap) — fields must be read with
+// .get(), plain property access on a Y.Map always yields undefined.
+function yPointToAutomation(p: unknown): AutomationPoint {
+  if (!(p instanceof Y.Map)) return { tick: 0, value: 0 };
+  return { tick: Number(p.get("tick")) || 0, value: Number(p.get("value")) || 0 };
+}
+
 function yMapToAutomation(m: unknown): AutomationLane {
   const map = m as Y.Map<unknown>;
   return {
     id: map.get("id") as string,
     target: yMapToObj(map.get("target") as Y.Map<unknown>) as unknown as AutomationLane["target"],
-    points: yArrToList(map.get("points") as Y.Array<unknown>).map((p) => ({ tick: (p as any).tick, value: (p as any).value })) as AutomationPoint[],
+    points: yArrToList(map.get("points") as Y.Array<unknown>).map(yPointToAutomation),
   };
 }
 
@@ -225,7 +232,7 @@ function yMapToSceneAutomation(m: unknown): SceneAutomation {
     id: map.get("id") as string,
     sceneId: map.get("sceneId") as string,
     target: yMapToObj(map.get("target") as Y.Map<unknown>) as unknown as SceneAutomation["target"],
-    points: yArrToList(map.get("points") as Y.Array<unknown>).map((p) => ({ tick: (p as any).tick, value: (p as any).value })) as AutomationPoint[],
+    points: yArrToList(map.get("points") as Y.Array<unknown>).map(yPointToAutomation),
   };
 }
 
@@ -256,6 +263,170 @@ function yMapToReturn(m: unknown): ReturnTrack {
 
 // ─── ProjectDocument → Y.Doc ────────────────────────────────────────────────
 
+/**
+ * Apply a new ProjectDocument to an existing Y.Map by updating scalar fields
+ * in place and recreating nested structures. Unlike projectToYDoc, this does
+ * NOT call yMap.clear() first, so existing Y.js items are overwritten with
+ * higher-clock items from the same client — critical for correct CRDT sync.
+ */
+export function applyProjectToYMap(
+  _oldDoc: ProjectDocument,
+  newDoc: ProjectDocument,
+  yMap: Y.Map<unknown>,
+): void {
+  // Scalar fields — overwrite in place (same client, higher clock wins LWW)
+  yMap.set("schemaVersion", newDoc.schemaVersion);
+  yMap.set("id", newDoc.id);
+  yMap.set("name", newDoc.name);
+  yMap.set("bpm", newDoc.bpm);
+  yMap.set("activePatternId", newDoc.activePatternId);
+  yMap.set("createdAt", newDoc.createdAt);
+  yMap.set("updatedAt", newDoc.updatedAt);
+  if (newDoc.key) yMap.set("key", newDoc.key);
+  else if (yMap.has("key")) yMap.delete("key");
+
+  // Tags — recreate array (plain strings; reader expects "tags" to exist)
+  const tags = new Y.Array<string>();
+  yMap.set("tags", tags);
+  if (newDoc.tags?.length) tags.push(newDoc.tags);
+
+  // timeSignature
+  let ts = yMap.get("timeSignature") as Y.Map<unknown>;
+  if (!ts) {
+    ts = new Y.Map<unknown>();
+    yMap.set("timeSignature", ts);
+  }
+  ts.set("numerator", newDoc.timeSignature.numerator);
+  ts.set("denominator", newDoc.timeSignature.denominator);
+
+  // Tracks — recreate array (complex nested structure)
+  const tracks = new Y.Array<unknown>();
+  yMap.set("tracks", tracks);
+  for (const track of newDoc.tracks) {
+    tracks.push([trackToYMap(track)]);
+  }
+
+  // Patterns — recreate array
+  const patterns = new Y.Array<unknown>();
+  yMap.set("patterns", patterns);
+  for (const pattern of newDoc.patterns) {
+    patterns.push([patternToYMap(pattern)]);
+  }
+
+  // Scenes — recreate array
+  const scenes = new Y.Array<unknown>();
+  yMap.set("scenes", scenes);
+  for (const scene of newDoc.scenes) {
+    scenes.push([sceneToYMap(scene)]);
+  }
+
+  // Arrangement
+  let arr = yMap.get("arrangement") as Y.Map<unknown>;
+  if (!arr) {
+    arr = new Y.Map<unknown>();
+    yMap.set("arrangement", arr);
+  }
+  const clips = new Y.Array<unknown>();
+  arr.set("clips", clips);
+  for (const clip of newDoc.arrangement.clips) {
+    clips.push([clipToYMap(clip)]);
+  }
+
+  // Markers
+  const markers = new Y.Array<unknown>();
+  yMap.set("markers", markers);
+  for (const mk of newDoc.markers) {
+    markers.push([markerToYMap(mk)]);
+  }
+
+  // Scene automation
+  const sa = new Y.Array<unknown>();
+  yMap.set("sceneAutomation", sa);
+  for (const s of newDoc.sceneAutomation) {
+    sa.push([sceneAutoToYMap(s)]);
+  }
+
+  // Automation
+  const auto = new Y.Array<unknown>();
+  yMap.set("automation", auto);
+  for (const lane of newDoc.automation) {
+    auto.push([automationToYMap(lane)]);
+  }
+
+  // LFOs
+  const lfos = new Y.Array<unknown>();
+  yMap.set("lfos", lfos);
+  for (const lfo of newDoc.lfos) {
+    const m = new Y.Map<unknown>();
+    lfos.push([m]);
+    for (const [k, v] of Object.entries(lfo)) {
+      m.set(k, v);
+    }
+  }
+
+  // Macros
+  const macros = new Y.Array<unknown>();
+  yMap.set("macros", macros);
+  for (const macro of newDoc.macros) {
+    macros.push([macroToYMap(macro)]);
+  }
+
+  // Returns
+  const returns = new Y.Array<unknown>();
+  yMap.set("returns", returns);
+  for (const r of newDoc.returns) {
+    returns.push([returnToYMap(r)]);
+  }
+
+  // Master
+  let master = yMap.get("master") as Y.Map<unknown>;
+  if (!master) {
+    master = new Y.Map<unknown>();
+    yMap.set("master", master);
+  }
+  master.set("masterGain", newDoc.master.masterGain);
+  master.set("ceilingDb", newDoc.master.ceilingDb);
+  master.set("limiterEnabled", newDoc.master.limiterEnabled);
+  master.set("clipperEnabled", newDoc.master.clipperEnabled);
+
+  // Groove
+  if (newDoc.groove) {
+    let g = yMap.get("groove") as Y.Map<unknown>;
+    if (!g) {
+      g = new Y.Map<unknown>();
+      yMap.set("groove", g);
+    }
+    if (newDoc.groove.swing !== undefined) g.set("swing", newDoc.groove.swing);
+    if (newDoc.groove.humanizeTiming !== undefined) g.set("humanizeTiming", newDoc.groove.humanizeTiming);
+    if (newDoc.groove.humanizeVelocity !== undefined) g.set("humanizeVelocity", newDoc.groove.humanizeVelocity);
+  }
+
+  // MIDI
+  if (newDoc.midi) {
+    let mi = yMap.get("midi") as Y.Map<unknown>;
+    if (!mi) {
+      mi = new Y.Map<unknown>();
+      yMap.set("midi", mi);
+    }
+    mi.set("enabled", newDoc.midi.enabled);
+    mi.set("deviceId", newDoc.midi.deviceId);
+    mi.set("drumChannel", newDoc.midi.drumChannel);
+    mi.set("instrumentChannel", newDoc.midi.instrumentChannel);
+    mi.set("pitchBendRange", newDoc.midi.pitchBendRange);
+    if (newDoc.midi.clockMode) mi.set("clockMode", newDoc.midi.clockMode);
+    if (newDoc.midi.ccMappings) {
+      const cc = new Y.Array<unknown>();
+      mi.set("ccMappings", cc);
+      for (const m of newDoc.midi.ccMappings) cc.push([objToYMap(m as any)]);
+    }
+    if (newDoc.midi.drumNoteMap) {
+      const dn = new Y.Array<unknown>();
+      mi.set("drumNoteMap", dn);
+      for (const m of newDoc.midi.drumNoteMap) dn.push([objToYMap(m as any)]);
+    }
+  }
+}
+
 export function projectToYDoc(doc: ProjectDocument, yMap: Y.Map<unknown>): void {
   const yDoc = yMap.doc!;
   yDoc.transact(() => {
@@ -268,6 +439,11 @@ export function projectToYDoc(doc: ProjectDocument, yMap: Y.Map<unknown>): void 
     yMap.set("createdAt", doc.createdAt);
     yMap.set("updatedAt", doc.updatedAt);
     if (doc.key) yMap.set("key", doc.key);
+
+    // Tags — recreate array (plain strings)
+    const tags = new Y.Array<string>();
+    yMap.set("tags", tags);
+    if (doc.tags?.length) tags.push(doc.tags);
 
     // timeSignature
     const ts = new Y.Map<unknown>();

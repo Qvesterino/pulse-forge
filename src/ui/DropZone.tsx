@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { useServices } from "./context";
 import type { UserSampleAsset } from "../persistence/UserSampleRepository";
-import { decodeAudioFile, userSampleId } from "../persistence/UserSampleRepository";
+import { userSampleId } from "../persistence/UserSampleRepository";
 
 interface DropZoneProps {
   onImport: (asset: UserSampleAsset) => void;
@@ -44,13 +44,16 @@ export function DropZone({ onImport, className }: DropZoneProps) {
           setImporting(false);
           return;
         }
-        const buffer = await decodeAudioFile(file, ctx);
+        // Read the encoded bytes once: decodeAudioData detaches the buffer
+        // it receives, so hand it a copy and keep the original for IDB.
+        const raw = await file.arrayBuffer();
+        const buffer = await ctx.decodeAudioData(raw.slice(0));
         const id = userSampleId(file.name);
 
         // Add to audio bank (immediately playable)
         services.bank.add(id, buffer);
 
-        // Persist metadata
+        // Persist metadata + encoded bytes (survives reloads since DB v5)
         const asset: UserSampleAsset = {
           id,
           name: file.name.replace(/\.[^.]+$/, ""),
@@ -61,7 +64,7 @@ export function DropZone({ onImport, className }: DropZoneProps) {
           channels: buffer.numberOfChannels,
           createdAt: new Date().toISOString(),
         };
-        await services.userSamples.save(asset);
+        await services.userSamples.save(asset, raw);
 
         onImport(asset);
       } catch (err) {

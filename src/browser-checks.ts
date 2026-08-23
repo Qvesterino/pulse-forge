@@ -171,6 +171,107 @@ export async function runChecks(): Promise<CheckResult[]> {
     check("Texture Synth: polyphony + voice stealing renders signal", false, String(error));
   }
 
+  // Wavetable Synth: morphing from the sine frame to the saw frame brightens
+  // the spectrum — a saw carries far more high-frequency energy, measured
+  // here as the first-difference energy ratio of the render.
+  try {
+    const renderWt = async (morph: number) => {
+      const ctx = new OfflineAudioContext(1, SR, SR);
+      const track: InstrumentTrack = {
+        id: "check-wt-morph",
+        kind: "instrument",
+        instrument: "wavetable",
+        name: "Wavetable",
+        gain: 1,
+        pan: 0,
+        mute: false,
+        solo: false,
+        sampleId: null,
+        params: { ...defaultInstrumentParams("wavetable"), morph, detune: 0, sub: 0 },
+        effects: [],
+        sends: {},
+      };
+      const rt = INSTRUMENT_DEFS.wavetable.factory(ctx, track, { bpm: 124, getSample: () => undefined });
+      rt.output.connect(ctx.destination);
+      rt.noteOn(60, 0.9, 0.05, 0.4);
+      const buffer = await ctx.startRendering();
+      rt.dispose();
+      return { peak: peakOf(buffer.getChannelData(0)), data: buffer.getChannelData(0) };
+    };
+    const hfRatio = (data: Float32Array) => {
+      let sum = 0;
+      let diff = 0;
+      for (let i = 1; i < data.length; i++) {
+        sum += data[i] * data[i];
+        const d = data[i] - data[i - 1];
+        diff += d * d;
+      }
+      return Math.sqrt(diff / Math.max(sum, 1e-12));
+    };
+    const dark = await renderWt(0);
+    const bright = await renderWt(1);
+    check(
+      "Wavetable Synth: morph moves the timbre (sine -> saw HF energy)",
+      dark.peak > 0.01 && bright.peak > 0.01 && hfRatio(bright.data) > hfRatio(dark.data) * 2,
+      `darkHF=${hfRatio(dark.data).toFixed(3)} brightHF=${hfRatio(bright.data).toFixed(3)}`,
+    );
+  } catch (error) {
+    check("Wavetable Synth: morph moves the timbre (sine -> saw HF energy)", false, String(error));
+  }
+
+  // Granular Synth: deterministic grain clouds + noteOff cuts the tail.
+  try {
+    const renderGran = async (cut: boolean) => {
+      const ctx = new OfflineAudioContext(2, SR, SR);
+      const track: InstrumentTrack = {
+        id: "check-gran",
+        kind: "instrument",
+        instrument: "granular",
+        name: "Granular",
+        gain: 1,
+        pan: 0,
+        mute: false,
+        solo: false,
+        sampleId: "factory.tonal.keys",
+        params: { ...defaultInstrumentParams("granular"), release: 0.01, rate: 30 },
+        effects: [],
+        sends: {},
+      };
+      const rt = INSTRUMENT_DEFS.granular.factory(ctx, track, { bpm: 124, getSample: (id) => bank.get(id) });
+      rt.output.connect(ctx.destination);
+      rt.noteOn(60, 0.9, 0.05, 1.0);
+      if (cut) rt.noteOff?.(60, 0.4);
+      const buffer = await ctx.startRendering();
+      rt.dispose();
+      return Array.from(buffer.getChannelData(0));
+    };
+    const full = await renderGran(false);
+    const fullAgain = await renderGran(false);
+    const cut = await renderGran(true);
+    // Bit-identical renders can differ at ULP level in Chrome — treat
+    // max-sample-diff below 1e-4 as deterministic (random grain placement
+    // would diverge by orders of magnitude).
+    let maxDiff = 0;
+    const sameLength = full.length === fullAgain.length;
+    if (sameLength) {
+      for (let i = 0; i < full.length; i++) {
+        maxDiff = Math.max(maxDiff, Math.abs(full[i] - fullAgain[i]));
+      }
+    }
+    const peakAfter = (data: number[]) => {
+      let peak = 0;
+      for (let i = Math.floor(SR * 0.7); i < data.length; i++) peak = Math.max(peak, Math.abs(data[i]));
+      return peak;
+    };
+    check(
+      "Granular Synth: deterministic render + noteOff cuts the tail",
+      sameLength && maxDiff < 1e-4 && peakAfter(full) > 0.001 && peakAfter(cut) < 0.005,
+      `maxDiff=${maxDiff.toExponential(2)} fullTail=${peakAfter(full).toFixed(4)} cutTail=${peakAfter(cut).toFixed(4)}`,
+    );
+  } catch (error) {
+    check("Granular Synth: deterministic render + noteOff cuts the tail", false, String(error));
+  }
+
   // Distortion: harmonics produced
   try {
     const ctx = new OfflineAudioContext(1, SR, SR);
@@ -554,7 +655,7 @@ export async function runChecks(): Promise<CheckResult[]> {
     check("groove: swing/humanize/ratchet change the exported audio", false, String(error));
   }
 
-  check("presets: factory bank covers all five instruments", new Set(FACTORY_PRESETS.map((p) => p.instrument)).size === 5, `count=${FACTORY_PRESETS.length}`);
+  check("presets: factory bank covers all seven instruments", new Set(FACTORY_PRESETS.map((p) => p.instrument)).size === 7, `count=${FACTORY_PRESETS.length}`);
 
   try {
     const project = createProjectFromTemplate("house");

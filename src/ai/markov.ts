@@ -85,20 +85,30 @@ export function sampleTransition(model: PadMarkovModel, currentState: StateIndex
     const fallback = new Uint32Array(model.states);
     for (let pos = 0; pos < STEPS_PER_BAR; pos++) {
       const s = encodeState(level, pos);
-      fallback[s] = model.initial[s] + 1; // +1 to avoid all zeros
+      fallback[s] = model.initial[s] + 1;
     }
     return sampleFromDistribution(fallback, rand);
   }
 
-  return sampleFromDistribution(row, rand);
+  // Laplace smoothing: add 1 to every transition count to avoid zero-probability
+  // transitions and improve generalization from small training sets
+  const smoothed = new Uint32Array(row.length);
+  for (let i = 0; i < row.length; i++) {
+    smoothed[i] = row[i] + 1;
+  }
+  return sampleFromDistribution(smoothed, rand);
 }
 
 /** Generate a full velocity sequence for one pad */
 export function generatePadSequence(model: PadMarkovModel, length: number, rand: () => number): number[] {
   const sequence: number[] = new Array(length);
 
-  // Sample initial state
-  let currentState = sampleFromDistribution(model.initial, rand);
+  // Sample initial state with Laplace smoothing
+  const smoothedInitial = new Uint32Array(model.initial.length);
+  for (let i = 0; i < model.initial.length; i++) {
+    smoothedInitial[i] = model.initial[i] + 1;
+  }
+  let currentState = sampleFromDistribution(smoothedInitial, rand);
 
   for (let i = 0; i < length; i++) {
     const level = decodeLevel(currentState);

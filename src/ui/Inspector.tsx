@@ -1,15 +1,23 @@
 import { useDoc, useServices } from "./context";
 import { setPadParams, setTrackParams, setInstrumentParam, setInstrumentSample } from "../commands/commands";
-import type { Track } from "../project-model/types";
+import type { InstrumentKind, Track } from "../project-model/types";
 import { FACTORY_ASSETS } from "../sample-library/manifest";
 import { INSTRUMENT_DEFS } from "../instruments/registry";
 import { pitchName } from "../project-model/types";
 import { Slider } from "./controls";
 import { PresetBrowser } from "./PresetBrowser";
 import { SampleBrowser } from "./SampleBrowser";
+import { WavetablePreview } from "./WavetablePreview";
 
 const TONAL_ASSETS = FACTORY_ASSETS.filter((a) => a.category === "Tonal");
 const DRUM_ASSETS = FACTORY_ASSETS.filter((a) => a.category !== "Tonal");
+
+/** Instruments that play a sample/browser source, with their panel labels. */
+const SAMPLE_BROWSER_KINDS: Partial<Record<InstrumentKind, string>> = {
+  sampler: "SAMPLE",
+  wavetable: "WAVETABLE SOURCE",
+  granular: "GRAIN SOURCE",
+};
 
 export function Inspector({ track, selectedPadId }: { track: Track; selectedPadId: string }) {
   const services = useServices();
@@ -41,21 +49,25 @@ export function Inspector({ track, selectedPadId }: { track: Track; selectedPadI
 
   if (track.kind === "instrument") {
     const def = INSTRUMENT_DEFS[track.instrument];
+    const sampleLabel = SAMPLE_BROWSER_KINDS[track.instrument];
     return (
       <aside className="inspector" aria-label="Inspector">
         <h2 className="panel-title">{def.name.toUpperCase()} — {track.name}</h2>
 
         <PresetBrowser track={track} />
 
-        {track.instrument === "sampler" && (
+        {sampleLabel && (
           <>
-            <h3 className="inspector-subtitle">SAMPLE</h3>
+            <h3 className="inspector-subtitle">{sampleLabel}</h3>
             <SampleBrowser
               assets={TONAL_ASSETS}
               currentId={track.sampleId}
               onSelect={(assetId) => services.store.execute(setInstrumentSample(doc, track.id, assetId))}
               showDropZone
             />
+            {(track.instrument === "wavetable" || track.instrument === "granular") && (
+              <WavetablePreview track={track} />
+            )}
           </>
         )}
 

@@ -103,6 +103,8 @@ const INSTRUMENT_NAMES: Record<InstrumentKind, string> = {
   bass: "Bass",
   "808": "808",
   texture: "Texture",
+  wavetable: "Wavetable",
+  granular: "Granular",
 };
 
 export function createInstrumentTrackModel(kind: InstrumentKind, index: number): InstrumentTrack {
@@ -115,7 +117,12 @@ export function createInstrumentTrackModel(kind: InstrumentKind, index: number):
     pan: 0,
     mute: false,
     solo: false,
-    sampleId: kind === "sampler" ? "factory.tonal.pluck" : null,
+    sampleId:
+      kind === "sampler"
+        ? "factory.tonal.pluck"
+        : kind === "granular"
+          ? "factory.tonal.keys"
+          : null,
     params: defaultInstrumentParams(kind),
     effects: [],
     sends: {},
@@ -534,7 +541,10 @@ export function normalizeProject(doc: ProjectDocument): ProjectDocument {
         }
         cleanedMappings.push(sanitized);
       }
-      const validValue = Math.max(0, Math.min(1, Number(macro.value) || 0.5));
+      // A legitimate 0 must survive — `|| 0.5` would rewrite it, silently
+      // resetting user macros on every load/import/collab snapshot.
+      const macroNumber = Number(macro.value);
+      const validValue = Math.max(0, Math.min(1, Number.isFinite(macroNumber) ? macroNumber : 0.5));
       if (validValue !== macro.value) macroChanged = true;
       if (cleanedMappings.length !== macro.mappings.length) macroChanged = true;
       if (macroChanged) macrosChanged = true;

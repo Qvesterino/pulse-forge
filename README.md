@@ -20,7 +20,7 @@ npm run build        # production build
 - **Project browser** — the app always boots into a project browser: a one-click "Continue last project" card, the project list (open / duplicate / inline rename / delete with confirm, sorted by last update), and a template grid for new projects. Everything is persisted in IndexedDB; new projects are saved the moment they are created.
 - **Templates (6)** — House (starter groove), Techno (driving kick + rumble bass, two loop variations), Trap (half-time snare, rolling hats, long-decay 808 + sparse lead), Ambient (evolving texture pads + soft analog chords, no drums in your way), Scene Score (arrangement-first: INTRO/BUILD/DROP/BREAK/OUTRO scenes pre-placed on a 24-bar timeline) and Empty. Every template is schema-valid by construction and renders audio (verified in real Chromium).
 - **Factory sound bank** — 41 procedurally synthesized factory sounds (kicks, snares, claps, hats, cymbals / crashes, toms, percussion including cowbell / conga / tambourine, FX transitions like Riser / Downlifter / Impact / Sweep / Reverse Rise / Noise, plus tonal samples), each tagged by category and mood (dark / bright / warm / aggressive / clean / deep / atmosphere). The House starter groove ships with a chords track so the first play sounds full, and every template includes four named performance macros (DRUMS / BASS / MUSIC / WIDTH) mapped to mix-bus roles.
-- **Preset library** — 63 factory presets across all five instruments, tagged by genre (House/Techno/Trap/Ambient/Score) and mood, curated by sound-design intent (e.g. "Acid Line", "FM Growl", "Cinematic Strings", "Shimmer"). Browser in the Inspector with genre + mood chips, ALL / FAVORITES / RECENT scope, search, one-click apply (single undo step), hearts, and "save as user preset" (persisted to IndexedDB).
+- **Preset library** — 77 factory presets across all seven instruments, tagged by genre (House/Techno/Trap/Ambient/Score) and mood, curated by sound-design intent (e.g. "Acid Line", "FM Growl", "Cinematic Strings", "Shimmer"). Browser in the Inspector with genre + mood chips, ALL / FAVORITES / RECENT scope, search, one-click apply (single undo step), hearts, and "save as user preset" (persisted to IndexedDB).
 - **Sample browser & favorites** — both drum-pad and sampler sample slots use a curated browser with search, category filter, mood filter, click-to-preview, a RECENT section and a heart toggle, all backed by the persistent IndexedDB `library` store.
 - **Autosave & recovery state** — debounced autosave (800 ms) with a live status indicator (`SAVED hh:mm` / `UNSAVED` / `SAVING…` / `SAVE ERROR — RETRY`, click to retry), flush on tab-hide and page close, and "saved X ago" freshness on every project card.
 - **Onboarding** — three interactive hints that advance as you actually do things (press SPACE → edit a step → discover the panels), shown once per browser profile. First run highlights the House template so the first sound is under a minute away.
@@ -57,12 +57,15 @@ npm run build        # production build
   - **Delay** — feedback delay with damped feedback path, time/feedback/tone/mix.
   - **Pump** — tempo-synced volume shaping (1/1…1/16), amount/rate/release; beat-aligned on transport start, re-syncs on BPM change (duck-curve oscillator modulating track gain).
 - **Effect engine integration** — structural chain changes rebuild runtimes; parameter tweaks are diffed and applied smoothly; track deletion disposes nodes+runtimes; BPM changes propagate `syncBpm` to runtimes.
-- **Instrument tracks** — Sampler / Analog Synth / Bass Synth / 808 Synth as a second track kind, created from the `+ TRACK` menu; per-instrument parameter panels in the Inspector; instruments feed the same track chain (inserts, pan, gain, meters) as drums.
-- **Native instruments (4)** — Web Audio voices with polyphony management and voice stealing, verified in real Chromium:
+- **Instrument tracks** — Sampler / Analog Synth / Bass Synth / 808 Synth / Texture / Wavetable / Granular as a second track kind, created from the `+ TRACK` menu; per-instrument parameter panels in the Inspector; instruments feed the same track chain (inserts, pan, gain, meters) as drums.
+- **Native instruments (7)** — Web Audio voices with polyphony management and voice stealing, verified in real Chromium:
   - **Sampler** — plays tonal factory samples (pluck/stab/keys/bell), root-note transposition, attack/release, filter, gain.
   - **Analog Synth** — subtractive: 2 oscillators (waveform select) + sub + noise → lowpass with envelope → ADSR amp; cutoff/resonance update live on sounding voices.
   - **Bass Synth** — semantic macro controls (SUB/BODY/PUNCH/GRIT/MOVEMENT/WIDTH) mapped to a real saw/square/sub voice with drive, filter envelope, LFO movement and stereo width.
   - **808 Synth** — sine body with pitch-drop envelope, decay, transient click, drive, tone; monophonic (retriggers cleanly).
+  - **Texture Synth** — polyphonic pad/drone with shared LFOs, filtered noise, tremolo and a feedback delay space.
+  - **Wavetable Synth** — morphing wavetable voices: two crossfaded single-cycle frame loopers per oscillator with detuned unison + sub, lowpass, ADSR. Five factory tables (Sine Grow / PWM / Formant / Digital / FM Drive); drop any sample on the track's source browser and the table is extracted from it (autocorrelation period detection → seamless cycle slicing). MORPH sweeps the timbre; canvas preview shows the table + morph position.
+  - **Granular Synth** — deterministic granular sampler: every note schedules its full grain cloud upfront (position, grain size, rate, jitter, stereo spread, reverse probability, pitch, tone, envelope shape), so offline renders match playback exactly. Drop any sample (factory or user import) as the grain source; canvas preview shows the waveform with the grain window.
 - **Piano roll** — per-instrument-track editor in the sequencer: click to add notes, drag to move, drag right edge to resize, right-click or `Delete` to remove; playable keyboard column (click keys to audition); playhead column; pitch range C1–C6.
 - **Event-window scheduler** — the scheduler plans a lookahead window in tick space and schedules both drum steps (through the shared groove engine: swing/microtiming/humanize/probability/ratchets) and arbitrary note events. Quantized pattern launches split a window exactly at the launch tick; seeks re-align the window mid-playback.
 - **House template ships a bass line** — the House starter project includes an 808 track with a playable bass pattern so the first play is already a beat with sub.
@@ -74,13 +77,12 @@ npm run build        # production build
 - **Modulation routing in engine** — each track chain ends with dedicated automation/macro gain+pan stages, so mute/solo, manual volume, automation, LFO and macros never fight over the same AudioParam.
 - **Factory sound bank** — 20 procedurally synthesized sounds (16 drums + 4 tonal: pluck/stab/keys/bell), seeded, deterministic, license-clean, rendered via `OfflineAudioContext` at startup.
 - **Audio engine** — per-voice gain/pan/pitch, choke groups, voice cleanup, panic (guaranteed stop), track chains with smoothing.
-- **Persistence** — IndexedDB multi-project store (projects + user presets), debounced autosave (800 ms), manual `Ctrl+S`, reload restores the exact project (incl. after refresh); the browser lists every saved project with freshness and one-click resume.
+- **Persistence** — IndexedDB multi-project store (projects + user presets + user sample audio), debounced autosave (800 ms), manual `Ctrl+S`, reload restores the exact project (incl. after refresh); the browser lists every saved project with freshness and one-click resume. Imported user samples (WAV/MP3/OGG/FLAC/AIFF) keep their encoded bytes in IndexedDB and are decoded back into the sample bank on boot, so they survive reloads.
 - **Diagnostics panel** — context state, sample rate, voices, scheduled events, scheduler state, track/pattern counts, save status (toggle `DIAG` in the top bar).
 - **Starter groove** — the House template opens with a house groove (4-on-the-floor kick, clap on 2/4, offbeat hats) so the first play already sounds musical.
 
-## Not implemented yet (planned, in build order)
+## Not implemented yet (planned)
 
-- Texture Synth (instrument family complete otherwise)
 - User-defined buses (returns cover send/return routing today)
 - Arrangement loop regions, song-mode seek UI
 - Automation recording, per-scene automation

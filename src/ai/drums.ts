@@ -2,6 +2,39 @@ import type { StepMeta } from '../project-model/types';
 import type { GenerateOptions, GrooveData, VelocityLevel } from './types';
 import { buildPadModel, generatePadSequence, dequantizeVelocity } from './markov';
 
+/**
+ * Apply groove swing to step meta: odd-numbered active steps get a positive
+ * microtiming offset (delayed) proportional to groove.swing. This bakes the
+ * swing feel into the pattern itself so it sounds correct even if the project
+ * groove is set to 0.
+ */
+function applySwingToMeta(
+  row: number[],
+  padMeta: Map<number, StepMeta>,
+  swing: number,
+): void {
+  if (swing <= 0) return;
+  // Swing is expressed as a fraction of a step: 0..1 → 0..0.5 steps delay
+  // on odd 16th notes. We encode this as microtiming in range -1..1 where
+  // +1 = one full step late. So swing of 0.3 → microtiming = 0.3 * 0.5 = 0.15.
+  const swingMicro = swing * 0.5;
+  for (let i = 0; i < row.length; i++) {
+    if (row[i] <= 0) continue;
+    if (i % 2 !== 1) continue; // only odd steps
+
+    const existing = padMeta.get(i);
+    const existingMicro = existing?.microtiming ?? 0;
+    // Add swing on top of any existing microtiming (don't overwrite)
+    const newMicro = Math.max(-1, Math.min(1, existingMicro + swingMicro));
+    const rounded = Math.round(newMicro * 100) / 100;
+    if (rounded !== 0) {
+      padMeta.set(i, { ...existing, microtiming: rounded });
+    } else if (existing) {
+      padMeta.set(i, existing);
+    }
+  }
+}
+
 /** Generate drum rows and step meta from a groove */
 export function generateDrumPattern(
   groove: GrooveData,
@@ -37,6 +70,10 @@ export function generateDrumPattern(
 
     // Add microtiming and probability metadata
     const padMeta = addStepMeta(rows[padIndex], padIndex, options, rand);
+
+    // Apply groove swing to odd-numbered active steps
+    applySwingToMeta(rows[padIndex], padMeta, groove.swing);
+
     if (padMeta.size > 0) {
       meta.set(padIndex, padMeta);
     }

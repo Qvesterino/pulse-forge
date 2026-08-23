@@ -185,55 +185,68 @@ describe("YDocStore collaboration", () => {
     expect(restored.arrangement.clips.length).toBe(original.arrangement.clips.length);
   });
 
-  // TODO: YDocStore snapshot caching doesn't pick up sync changes — known limitation
-  // The raw Y.Doc sync tests above prove CRDT merge works correctly.
-  it.skip("concurrent edits merge via sync (raw Y.Doc)", () => {
+  it("two YDocStore instances on shared Y.Doc see each other's changes", () => {
     const doc = createProjectFromTemplate("house");
-    const yDoc1 = new Y.Doc();
-    projectToYDoc(doc, yDoc1.getMap("project"));
-    const store1 = new YDocStore(yDoc1);
+    const yDoc = new Y.Doc();
+    projectToYDoc(doc, yDoc.getMap("project"));
 
-    const yDoc2 = new Y.Doc();
-    projectToYDoc(doc, yDoc2.getMap("project"));
-    const store2 = new YDocStore(yDoc2);
+    const store1 = new YDocStore(yDoc);
+    const store2 = new YDocStore(yDoc);
 
+    // Store1 changes BPM
     store1.execute({ type: "setBpm", label: "BPM", execute: (d) => ({ ...d, bpm: 150 }), undo: (d) => d });
+    // Both stores read from the same Y.Doc — should see the change
+    expect(store1.doc.bpm).toBe(150);
+    store2.refreshSnapshot();
+    expect(store2.doc.bpm).toBe(150);
+
+    // Store2 changes name
     store2.execute({ type: "setProjectName", label: "Name", execute: (d) => ({ ...d, name: "Collab" }), undo: (d) => d });
-
-    syncDocs(yDoc1, yDoc2);
-    syncDocs(yDoc2, yDoc1);
-
-    const snap1 = yDocToProject(yDoc1.getMap("project"));
-    const snap2 = yDocToProject(yDoc2.getMap("project"));
-    expect(snap1.bpm).toBe(150);
-    expect(snap1.name).toBe("Collab");
-    expect(snap2.bpm).toBe(150);
-    expect(snap2.name).toBe("Collab");
+    expect(store2.doc.name).toBe("Collab");
+    store1.refreshSnapshot();
+    expect(store1.doc.name).toBe("Collab");
+    // BPM should still be 150
+    expect(store1.doc.bpm).toBe(150);
   });
 
-  it.skip("three stores sync correctly", () => {
+  it("three stores on shared Y.Doc merge concurrent edits", () => {
     const doc = createProjectFromTemplate("house");
-    const stores = [0, 1, 2].map(() => {
-      const yDoc = new Y.Doc();
-      projectToYDoc(doc, yDoc.getMap("project"));
-      return { yDoc, store: new YDocStore(yDoc) };
-    });
+    const yDoc = new Y.Doc();
+    projectToYDoc(doc, yDoc.getMap("project"));
 
-    stores[0].store.execute({ type: "setBpm", label: "BPM", execute: (d) => ({ ...d, bpm: 130 }), undo: (d) => d });
-    stores[1].store.execute({ type: "setProjectName", label: "Name", execute: (d) => ({ ...d, name: "Tab2" }), undo: (d) => d });
-    stores[2].store.execute({ type: "setMasterConfig", label: "Master", execute: (d) => ({ ...d, master: { ...d.master, masterGain: 0.5 } }), undo: (d) => d });
+    const stores = [0, 1, 2].map(() => new YDocStore(yDoc));
 
-    for (let i = 0; i < 3; i++) {
-      for (let j = 0; j < 3; j++) {
-        if (i !== j) syncDocs(stores[i].yDoc, stores[j].yDoc);
-      }
-    }
+    stores[0].execute({ type: "setBpm", label: "BPM", execute: (d) => ({ ...d, bpm: 130 }), undo: (d) => d });
+    stores[1].execute({ type: "setProjectName", label: "Name", execute: (d) => ({ ...d, name: "Tab2" }), undo: (d) => d });
+    stores[2].execute({ type: "setMasterConfig", label: "Master", execute: (d) => ({ ...d, master: { ...d.master, masterGain: 0.5 } }), undo: (d) => d });
 
+    // All three stores should see all changes after refreshSnapshot
     for (const s of stores) {
-      const snap = yDocToProject(s.yDoc.getMap("project"));
-      expect(snap.bpm).toBe(130);
-      expect(snap.name).toBe("Tab2");
-      expect(snap.master.masterGain).toBe(0.5);
+      s.refreshSnapshot();
+      expect(s.doc.bpm).toBe(130);
+      expect(s.doc.name).toBe("Tab2");
+      expect(s.doc.master.masterGain).toBe(0.5);
     }
+  });
+
+  it("refreshSnapshot picks up external Y.Doc mutations", () => {
+    const doc = createProjectFromTemplate("house");
+    const yDoc = new Y.Doc();
+    projectToYDoc(doc, yDoc.getMap("project"));
+    const store = new YDocStore(yDoc);
+
+    expect(store.doc.bpm).toBe(124);
+
+    // External mutation (simulates y-websocket sync)
+    yDoc.getMap("project").set("bpm", 200);
+    store.refreshSnapshot();
+    expect(store.doc.bpm).toBe(200);
+
+    // Multiple external mutations
+    yDoc.getMap("project").set("name", "Remote Edit");
+    yDoc.getMap("project").set("bpm", 999);
+    store.refreshSnapshot();
+    expect(store.doc.name).toBe("Remote Edit");
+    expect(store.doc.bpm).toBe(999);
   });
 });

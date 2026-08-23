@@ -1,10 +1,11 @@
 export const DB_NAME = "pulse-forge";
-export const DB_VERSION = 4;
+export const DB_VERSION = 5;
 export const STORE_PROJECTS = "projects";
 export const STORE_META = "meta";
 export const STORE_PRESETS = "presets";
 export const STORE_LIBRARY = "library";
 export const STORE_USER_SAMPLES = "user-samples";
+export const STORE_USER_SAMPLE_AUDIO = "user-sample-audio";
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -18,6 +19,7 @@ export function openDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(STORE_PRESETS)) db.createObjectStore(STORE_PRESETS, { keyPath: "id" });
       if (!db.objectStoreNames.contains(STORE_LIBRARY)) db.createObjectStore(STORE_LIBRARY, { keyPath: "id" });
       if (!db.objectStoreNames.contains(STORE_USER_SAMPLES)) db.createObjectStore(STORE_USER_SAMPLES, { keyPath: "id" });
+      if (!db.objectStoreNames.contains(STORE_USER_SAMPLE_AUDIO)) db.createObjectStore(STORE_USER_SAMPLE_AUDIO, { keyPath: "id" });
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);

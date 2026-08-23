@@ -3,6 +3,7 @@ import type { InstrumentKind, InstrumentTrack } from "../project-model/types";
 import { midiToFreq } from "../project-model/types";
 import type { ParamDef } from "../effects/types";
 import { hashString, mulberry32 } from "../shared/rng";
+import { extractWavetable, FACTORY_TABLE_OPTIONS, FACTORY_WAVETABLES, FRAME_SIZE } from "./wavetables";
 
 const WAVE_NAMES = ["sine", "triangle", "sawtooth", "square"] as const;
 
@@ -812,6 +813,400 @@ const texture: InstrumentDefinition = {
   },
 };
 
+/* ---------------- Wavetable Synth ---------------- */
+// Morphing wavetable instrument. Each voice plays two looped single-cycle
+// frame buffers crossfaded by the MORPH position, doubled as a detuned
+// unison pair plus optional sub oscillator. Factory tables are synthesized
+// additively; when the track has a sample assigned (sampleId), the table is
+// extracted from that sample via autocorrelation period detection. A voice
+// captures its frame pair at note start — live MORPH moves only the
+// crossfade within that pair. All envelopes are scheduled upfront in
+// noteOn, so offline rendering matches live playback.
+
+const wavetable: InstrumentDefinition = {
+  kind: "wavetable",
+  name: "Wavetable Synth",
+  params: [
+    { id: "table", label: "TABLE", min: 0, max: FACTORY_WAVETABLES.length - 1, default: 0, options: FACTORY_TABLE_OPTIONS },
+    { id: "morph", label: "MORPH", min: 0, max: 1, default: 0.3, format: formatPct },
+    { id: "detune", label: "DETUNE", min: -50, max: 50, default: 7, unit: "ct", format: (v) => `${v > 0 ? "+" : ""}${v.toFixed(0)} ct` },
+    { id: "sub", label: "SUB", min: 0, max: 1, default: 0.2, format: formatPct },
+    { id: "cutoff", label: "CUTOFF", min: 80, max: 16000, default: 12000, unit: "Hz", format: formatHz },
+    { id: "resonance", label: "RESO", min: 0.1, max: 12, default: 1, format: (v) => v.toFixed(2) },
+    { id: "attack", label: "ATTACK", min: 0.001, max: 2, default: 0.01, unit: "s", format: formatMs },
+    { id: "release", label: "RELEASE", min: 0.01, max: 4, default: 0.25, unit: "s", format: formatMs },
+    { id: "level", label: "LEVEL", min: -24, max: 6, default: -6, unit: "dB", format: formatDb },
+  ],
+  factory(ctx, track, env) {
+    const output = ctx.createGain();
+    output.gain.value = 1;
+    const p = { ...track.params };
+    let sampleId: string | null = track.sampleId;
+    const { voices, register, cleanup, findByPitch } = makeVoiceManager(8);
+    const liveFilters = new Set<BiquadFilterNode>();
+    // Crossfade pairs of sounding voices (with their fixed frame indices),
+    // so live MORPH updates can retune the blend. Frame buffers themselves
+    // are captured per voice — re-targeting frames mid-note isn't possible
+    // with looped buffer sources.
+    const livePairs = new Set<{ a: GainNode; b: GainNode; ia: number; ib: number; level: number }>();
+    let frameBuffers: AudioBuffer[] | null = null;
+    let tableDirty = true;
+
+    const resolveTable = () => {
+      if (sampleId) {
+        const buffer = env.getSample(sampleId);
+        if (buffer) {
+          const table = extractWavetable(buffer.getChannelData(0), buffer.sampleRate);
+          if (table && table.frames.length > 0) return table;
+        }
+      }
+      const count = FACTORY_WAVETABLES.length;
+      return FACTORY_WAVETABLES[((Math.round(p.table ?? 0) % count) + count) % count];
+    };
+    const ensureFrames = (): AudioBuffer[] | null => {
+      if (tableDirty || !frameBuffers) {
+        const table = resolveTable();
+        frameBuffers = table.frames.map((f) => {
+          const b = ctx.createBuffer(1, f.length, ctx.sampleRate);
+          b.getChannelData(0).set(f);
+          return b;
+        });
+        tableDirty = false;
+      }
+      return frameBuffers;
+    };
+    ensureFrames();
+
+    const runtime: InstrumentRuntime = {
+      output,
+      noteOn(pitch, velocity, when, durationSec) {
+        const frames = ensureFrames();
+        if (!frames) return;
+        const freq = midiToFreq(pitch);
+        const attack = Math.max(0.001, p.attack ?? 0.01);
+        const release = Math.max(0.01, p.release ?? 0.25);
+        const hold = Math.max(durationSec, attack + 0.01);
+        const off = when + hold;
+        const stopTime = off + release * 3 + 0.05;
+
+        const amp = ctx.createGain();
+        const peak = velocity * dbToLin(p.level ?? -6);
+        amp.gain.setValueAtTime(0.0001, when);
+        amp.gain.exponentialRampToValueAtTime(Math.max(peak, 0.0002), when + attack);
+        amp.gain.setTargetAtTime(0.0001, off, release / 3);
+        amp.connect(output);
+
+        const filter = ctx.createBiquadFilter();
+        filter.type = "lowpass";
+        filter.frequency.value = p.cutoff ?? 12000;
+        filter.Q.value = p.resonance ?? 1;
+        filter.connect(amp);
+        liveFilters.add(filter);
+
+        const sources: Array<AudioBufferSourceNode | OscillatorNode> = [];
+        const pairs: { a: GainNode; b: GainNode; ia: number; ib: number; level: number }[] = [];
+        const morph = Math.min(1, Math.max(0, p.morph ?? 0.3));
+        const pos = frames.length === 1 ? 0 : morph * (frames.length - 1);
+        const ia = Math.min(frames.length - 2, Math.floor(pos));
+        const ib = Math.min(frames.length - 1, ia + 1);
+        const blend = pos - ia;
+
+        const mkTableOsc = (detuneCents: number, level: number) => {
+          // Detune is folded into playbackRate (2^cents/1200) rather than
+          // AudioBufferSourceNode.detune for broader browser support.
+          const rate = (freq * Math.pow(2, detuneCents / 1200) * FRAME_SIZE) / ctx.sampleRate;
+          const mkFrameSource = (buffer: AudioBuffer) => {
+            const src = ctx.createBufferSource();
+            src.buffer = buffer;
+            src.loop = true;
+            src.playbackRate.value = rate;
+            src.start(when);
+            src.stop(stopTime);
+            sources.push(src);
+            return src;
+          };
+          const gA = ctx.createGain();
+          const gB = ctx.createGain();
+          gA.gain.value = (1 - blend) * level;
+          gB.gain.value = blend * level;
+          mkFrameSource(frames[ia]).connect(gA).connect(filter);
+          mkFrameSource(frames[ib]).connect(gB).connect(filter);
+          const pair = { a: gA, b: gB, ia, ib, level };
+          pairs.push(pair);
+          livePairs.add(pair);
+        };
+        mkTableOsc(0, 0.5);
+        mkTableOsc(p.detune ?? 7, 0.45);
+
+        if ((p.sub ?? 0.2) > 0.005) {
+          const osc = ctx.createOscillator();
+          osc.type = "sine";
+          osc.frequency.value = freq / 2;
+          const g = ctx.createGain();
+          g.gain.value = (p.sub ?? 0.2) * 0.7;
+          osc.connect(g).connect(filter);
+          osc.start(when);
+          osc.stop(stopTime);
+          sources.push(osc);
+        }
+
+        const voice = register(
+          pitch,
+          stopTime,
+          (whenStop) => {
+            const t = Math.max(whenStop, 0);
+            amp.gain.cancelScheduledValues(t);
+            amp.gain.setTargetAtTime(0.0001, t, 0.01);
+            for (const src of sources) {
+              try { src.stop(t + 0.05); } catch { /* already stopped */ }
+            }
+          },
+          (now) => {
+            amp.gain.cancelScheduledValues(now);
+            amp.gain.setTargetAtTime(0.0001, now, 0.008);
+            for (const src of sources) {
+              try { src.stop(now + 0.03); } catch { /* already stopped */ }
+            }
+          },
+        );
+        const last = sources[sources.length - 1];
+        if (last) last.onended = () => {
+          liveFilters.delete(filter);
+          for (const pair of pairs) livePairs.delete(pair);
+          amp.disconnect();
+          filter.disconnect();
+          cleanup(voice);
+        };
+      },
+      setParameter(id, value) {
+        p[id] = value;
+        const now = ctx.currentTime;
+        if (id === "cutoff") for (const f of liveFilters) f.frequency.setTargetAtTime(value, now, 0.02);
+        if (id === "resonance") for (const f of liveFilters) f.Q.setTargetAtTime(value, now, 0.02);
+        if (id === "morph") {
+          // Voices whose captured frame pair still contains the new morph
+          // position retune their crossfade; pairs further away keep theirs.
+          const frames = frameBuffers;
+          if (frames && frames.length > 1) {
+            const pos = Math.min(1, Math.max(0, value)) * (frames.length - 1);
+            const ia = Math.min(frames.length - 2, Math.floor(pos));
+            const blend = pos - ia;
+            for (const pair of livePairs) {
+              if (pair.ia !== ia) continue;
+              pair.a.gain.setTargetAtTime((1 - blend) * pair.level, now, 0.02);
+              pair.b.gain.setTargetAtTime(blend * pair.level, now, 0.02);
+            }
+          }
+        }
+        if (id === "table") tableDirty = true;
+      },
+      setParameterAt(id, value, when) {
+        this.setParameter(id, value);
+        void when;
+      },
+      setSample(id) {
+        sampleId = id;
+        tableDirty = true;
+        ensureFrames();
+      },
+      noteOff(pitch, when) {
+        for (const v of findByPitch(pitch)) v.stop(when);
+      },
+      panic() {
+        for (const voice of [...voices]) voice.silence(ctx.currentTime);
+        voices.length = 0;
+        liveFilters.clear();
+        livePairs.clear();
+      },
+      dispose() {
+        this.panic();
+        output.disconnect();
+      },
+    };
+    return runtime;
+  },
+};
+
+/* ---------------- Granular Synth ---------------- */
+// Granular sampler. Every note schedules its full grain cloud upfront with
+// a deterministic PRNG (seeded from track id + pitch), so offline renders
+// are identical to live playback. Each grain is a short AudioBufferSource
+// with a trapezoid envelope, random pan within SPREAD, and optional
+// reversal through a cached reversed copy of the source buffer.
+
+const MAX_GRAINS_PER_NOTE = 512;
+
+const granular: InstrumentDefinition = {
+  kind: "granular",
+  name: "Granular Synth",
+  params: [
+    { id: "position", label: "POSITION", min: 0, max: 1, default: 0.25, format: formatPct },
+    { id: "size", label: "GRAIN", min: 0.02, max: 0.4, default: 0.09, unit: "s", format: formatMs },
+    { id: "rate", label: "RATE", min: 1, max: 60, default: 14, unit: "/s", format: (v) => `${Math.round(v)}/s` },
+    { id: "jitter", label: "JITTER", min: 0, max: 1, default: 0.15, format: formatPct },
+    { id: "spread", label: "SPREAD", min: 0, max: 1, default: 0.5, format: formatPct },
+    { id: "pitch", label: "PITCH", min: -24, max: 24, default: 0, format: (v) => `${v > 0 ? "+" : ""}${v.toFixed(1)} st` },
+    { id: "reverse", label: "REVERSE", min: 0, max: 1, default: 0, format: formatPct },
+    { id: "tone", label: "TONE", min: 200, max: 16000, default: 9000, unit: "Hz", format: formatHz },
+    { id: "shape", label: "SHAPE", min: 0, max: 1, default: 0.5, format: formatPct },
+    { id: "attack", label: "ATTACK", min: 0.001, max: 2, default: 0.02, unit: "s", format: formatMs },
+    { id: "release", label: "RELEASE", min: 0.01, max: 3, default: 0.4, unit: "s", format: formatMs },
+    { id: "gain", label: "GAIN", min: 0, max: 1, default: 0.8, format: formatPct },
+  ],
+  factory(ctx, track, env) {
+    const output = ctx.createGain();
+    output.gain.value = 1;
+    const p = { ...track.params };
+    let sampleId: string | null = track.sampleId;
+    const { voices, register, cleanup, findByPitch } = makeVoiceManager(6);
+
+    const tone = ctx.createBiquadFilter();
+    tone.type = "lowpass";
+    tone.frequency.value = p.tone ?? 9000;
+    tone.Q.value = 0.7;
+    tone.connect(output);
+
+    const reversedCache = new Map<AudioBuffer, AudioBuffer>();
+    const reversedBuffer = (buffer: AudioBuffer): AudioBuffer => {
+      let rev = reversedCache.get(buffer);
+      if (!rev) {
+        rev = ctx.createBuffer(buffer.numberOfChannels, buffer.length, buffer.sampleRate);
+        for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+          const src = buffer.getChannelData(ch);
+          const dst = rev.getChannelData(ch);
+          for (let i = 0, n = src.length; i < n; i++) dst[i] = src[n - 1 - i];
+        }
+        reversedCache.set(buffer, rev);
+      }
+      return rev;
+    };
+
+    const runtime: InstrumentRuntime = {
+      output,
+      noteOn(pitch, velocity, when, durationSec) {
+        const buffer = env.getSample(sampleId);
+        if (!buffer) return;
+        const position = Math.min(1, Math.max(0, p.position ?? 0.25));
+        const size = Math.min(0.4, Math.max(0.02, p.size ?? 0.09));
+        const rate = Math.max(1, p.rate ?? 14);
+        const jitter = Math.max(0, p.jitter ?? 0.15);
+        const spread = Math.max(0, Math.min(1, p.spread ?? 0.5));
+        const reverseProb = Math.min(1, Math.max(0, p.reverse ?? 0));
+        const shape = Math.min(1, Math.max(0, p.shape ?? 0.5));
+        const attack = Math.max(0.001, p.attack ?? 0.02);
+        const release = Math.max(0.01, p.release ?? 0.4);
+        const rand = mulberry32(hashString(`${track.id}:${pitch}`));
+
+        const hold = Math.max(durationSec, size + 0.02);
+        const off = when + hold;
+        const stopTime = off + release * 3 + 0.1;
+
+        const amp = ctx.createGain();
+        const peak = velocity * (p.gain ?? 0.8);
+        amp.gain.setValueAtTime(0.0001, when);
+        amp.gain.exponentialRampToValueAtTime(Math.max(peak, 0.0002), when + attack);
+        amp.gain.setTargetAtTime(0.0001, off, release / 3);
+        amp.connect(tone);
+
+        const playRate = Math.pow(2, (pitch - 60 + (p.pitch ?? 0)) / 12);
+        // Overlapping grains sum — compensate so RATE×GRAIN presets stay level.
+        const overlap = Math.max(0.75, rate * size);
+        const grainPeak = (velocity * (p.gain ?? 0.8) * 0.7) / overlap;
+        const ramp = Math.max(0.004, (0.12 + 0.38 * shape) * size);
+        const plateau = Math.max(0, size - 2 * ramp);
+        const grainDur = size + 0.01;
+
+        const sources: AudioBufferSourceNode[] = [];
+        const grainNodes: Array<{ g: GainNode; pan: StereoPannerNode }> = [];
+        const grainCount = Math.min(MAX_GRAINS_PER_NOTE, Math.max(1, Math.ceil(hold * rate)));
+        for (let k = 0; k < grainCount; k++) {
+          const t0 = when + k / rate;
+          if (t0 >= off + 0.005) break;
+          const offsetFrac = Math.min(0.999, Math.max(0, position + (rand() * 2 - 1) * jitter * 0.5));
+          const reverse = rand() < reverseProb;
+          const grainBuffer = reverse ? reversedBuffer(buffer) : buffer;
+          let offset = offsetFrac * buffer.duration;
+          if (reverse) offset = buffer.duration - offset - grainDur;
+          offset = Math.min(Math.max(0, offset), Math.max(0, grainBuffer.duration - grainDur));
+
+          const src = ctx.createBufferSource();
+          src.buffer = grainBuffer;
+          src.playbackRate.value = playRate;
+
+          const g = ctx.createGain();
+          g.gain.setValueAtTime(0, t0);
+          g.gain.linearRampToValueAtTime(grainPeak, t0 + ramp);
+          g.gain.linearRampToValueAtTime(grainPeak, t0 + ramp + plateau);
+          g.gain.linearRampToValueAtTime(0, t0 + size);
+
+          const pan = ctx.createStereoPanner();
+          pan.pan.value = (rand() * 2 - 1) * spread;
+
+          src.connect(g).connect(pan).connect(amp);
+          src.start(t0, offset, grainDur);
+          src.stop(t0 + grainDur + 0.01);
+          sources.push(src);
+          grainNodes.push({ g, pan });
+        }
+
+        const voice = register(
+          pitch,
+          stopTime,
+          (whenStop) => {
+            const t = Math.max(whenStop, 0);
+            amp.gain.cancelScheduledValues(t);
+            amp.gain.setTargetAtTime(0.0001, t, 0.02);
+            for (const src of sources) {
+              try { src.stop(t + 0.05); } catch { /* already stopped */ }
+            }
+          },
+          (now) => {
+            amp.gain.cancelScheduledValues(now);
+            amp.gain.setTargetAtTime(0.0001, now, 0.012);
+            for (const src of sources) {
+              try { src.stop(now + 0.03); } catch { /* already stopped */ }
+            }
+          },
+        );
+        let ended = 0;
+        for (let i = 0; i < sources.length; i++) {
+          sources[i].onended = () => {
+            try { grainNodes[i].g.disconnect(); grainNodes[i].pan.disconnect(); } catch { /* already gone */ }
+            ended++;
+            if (ended >= sources.length) {
+              amp.disconnect();
+              cleanup(voice);
+            }
+          };
+        }
+      },
+      setParameter(id, value) {
+        p[id] = value;
+        if (id === "tone") tone.frequency.setTargetAtTime(value, ctx.currentTime, 0.02);
+      },
+      setParameterAt(id, value) {
+        this.setParameter(id, value);
+      },
+      setSample(id) {
+        sampleId = id;
+      },
+      noteOff(pitch, when) {
+        for (const v of findByPitch(pitch)) v.stop(when);
+      },
+      panic() {
+        for (const voice of [...voices]) voice.silence(ctx.currentTime);
+        voices.length = 0;
+      },
+      dispose() {
+        this.panic();
+        tone.disconnect();
+        output.disconnect();
+      },
+    };
+    return runtime;
+  },
+};
+
 /* ---------------- registry ---------------- */
 
 export const INSTRUMENT_DEFS: Record<InstrumentKind, InstrumentDefinition> = {
@@ -820,9 +1215,11 @@ export const INSTRUMENT_DEFS: Record<InstrumentKind, InstrumentDefinition> = {
   bass,
   "808": bass808,
   texture,
+  wavetable,
+  granular,
 };
 
-export const INSTRUMENT_ORDER: InstrumentKind[] = ["sampler", "analog", "bass", "808", "texture"];
+export const INSTRUMENT_ORDER: InstrumentKind[] = ["sampler", "analog", "bass", "808", "texture", "wavetable", "granular"];
 
 export function defaultInstrumentParams(kind: InstrumentKind): Record<string, number> {
   return Object.fromEntries(INSTRUMENT_DEFS[kind].params.map((p) => [p.id, p.default]));

@@ -71,8 +71,8 @@ export function generatePattern(
     }
   }
 
-  // Generate melodic content (Phase 2 stub)
-  const notes = generateMelodicPattern(options, rand);
+  // Generate melodic content with scale constraints
+  const notes = generateMelodicPattern(options, rand, doc.key);
 
   // Build notes Record<ID, NoteEvent[]>
   const notesRecord: Record<string, NoteEvent[]> = {};
@@ -85,7 +85,7 @@ export function generatePattern(
 
   return {
     id: uid('pattern'),
-    name: '',
+    name: `${groove.genre} - ${groove.name}`,
     stepCount: options.stepCount,
     rows,
     notes: notesRecord,

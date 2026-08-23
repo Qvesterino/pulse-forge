@@ -2962,6 +2962,17 @@ button {
   color: var(--text-faint);
 }
 
+/* Wavetable/granular canvas preview under the sample browser */
+.wt-preview {
+  display: block;
+  width: 100%;
+  height: 64px;
+  margin-top: 6px;
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+
 .sample-browser {
   display: flex;
   flex-direction: column;

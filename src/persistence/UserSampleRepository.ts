@@ -1,4 +1,5 @@
-import { openDb, tx, STORE_USER_SAMPLES } from "./db";
+import { openDb, tx, STORE_USER_SAMPLES, STORE_USER_SAMPLE_AUDIO } from "./db";
+import type { SampleBank } from "../sample-library/factory";
 
 export interface UserSampleAsset {
   id: string;
@@ -11,11 +12,18 @@ export interface UserSampleAsset {
   createdAt: string;
 }
 
+export interface UserSampleAudio {
+  id: string;
+  /** Original encoded file bytes (WAV/MP3/OGG/…) — decoded back into the SampleBank on boot. */
+  data: ArrayBuffer;
+}
+
 /**
- * Persistence for user-imported audio samples. Stores metadata in IndexedDB
- * alongside the existing project/preset/library stores. AudioBuffer data is
- * held in-memory via the SampleBank — this repo only handles the metadata
- * list so the SampleBrowser can show user samples without loading all buffers.
+ * Persistence for user-imported audio samples. Metadata lives in the
+ * `user-samples` store so the SampleBrowser can list user samples without
+ * loading any audio; the original encoded bytes live in `user-sample-audio`
+ * (added in DB v5) and are decoded back into the in-memory SampleBank at
+ * boot via `restoreUserSampleAudio` so imports survive reloads.
  */
 export class UserSampleRepository {
   private cache: UserSampleAsset[] | null = null;
@@ -33,13 +41,36 @@ export class UserSampleRepository {
     }
   }
 
-  async save(asset: UserSampleAsset): Promise<void> {
+  async save(asset: UserSampleAsset, data?: ArrayBuffer): Promise<void> {
     this.cache = null;
     try {
       const db = await openDb();
       await tx(db, STORE_USER_SAMPLES, "readwrite", (s) => s.put(asset));
+      if (data) {
+        await tx(db, STORE_USER_SAMPLE_AUDIO, "readwrite", (s) => s.put({ id: asset.id, data } satisfies UserSampleAudio));
+      }
     } catch {
       // best-effort
+    }
+  }
+
+  async loadAudio(id: string): Promise<ArrayBuffer | undefined> {
+    try {
+      const db = await openDb();
+      const entry = await tx<UserSampleAudio | undefined>(db, STORE_USER_SAMPLE_AUDIO, "readonly", (s) => s.get(id));
+      return entry?.data;
+    } catch {
+      return undefined;
+    }
+  }
+
+  async listAudio(): Promise<UserSampleAudio[]> {
+    try {
+      const db = await openDb();
+      const all = await tx(db, STORE_USER_SAMPLE_AUDIO, "readonly", (s) => s.getAll());
+      return (all as UserSampleAudio[]) ?? [];
+    } catch {
+      return [];
     }
   }
 
@@ -48,6 +79,7 @@ export class UserSampleRepository {
     try {
       const db = await openDb();
       await tx(db, STORE_USER_SAMPLES, "readwrite", (s) => s.delete(id));
+      await tx(db, STORE_USER_SAMPLE_AUDIO, "readwrite", (s) => s.delete(id));
     } catch {
       // best-effort
     }
@@ -66,4 +98,37 @@ export async function decodeAudioFile(file: File | Blob, ctx: BaseAudioContext):
 export function userSampleId(fileName: string): string {
   const slug = fileName.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase();
   return `user.${slug}-${Date.now().toString(36)}`;
+}
+
+/**
+ * Decode persisted user-sample audio back into the SampleBank after a reload.
+ * Fire-and-forget: the app runs fine before this completes — samples simply
+ * become playable as they finish decoding. Decoding runs on a throwaway
+ * OfflineAudioContext so no AudioContext unlock is needed; decoded buffers
+ * carry their own sample rate and play correctly from the live engine.
+ */
+export async function restoreUserSampleAudio(
+  bank: SampleBank,
+  decode: (data: ArrayBuffer) => Promise<AudioBuffer> = defaultDecodeAudioBytes,
+): Promise<void> {
+  const repo = new UserSampleRepository();
+  const entries = await repo.listAudio();
+  for (const { id, data } of entries) {
+    try {
+      bank.add(id, await decode(data));
+    } catch (err) {
+      console.warn(`[user-samples] failed to restore ${id}:`, err);
+    }
+  }
+}
+
+function defaultDecodeAudioBytes(data: ArrayBuffer): Promise<AudioBuffer> {
+  if (typeof OfflineAudioContext === "undefined") {
+    return Promise.reject(new Error("OfflineAudioContext unavailable"));
+  }
+  // decodeAudioData only needs the context's machinery, not a running one —
+  // a minimal OfflineAudioContext at 44.1 kHz keeps restore independent of
+  // the live engine (and of autoplay-gesture state).
+  const ctx = new OfflineAudioContext(1, 1, 44100);
+  return ctx.decodeAudioData(data);
 }

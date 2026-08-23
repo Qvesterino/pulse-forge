@@ -118,12 +118,32 @@ export class MidiInput {
 
   private onMidiMessage(e: MIDIMessageEvent): void {
     const data = e.data;
-    if (!data || data.length < 3) return;
+    if (!data || data.length < 1) return;
     const config = this.configCb?.();
     if (!config?.enabled) return;
 
+    // System realtime messages are single-byte and would be masked to 0xf0
+    // by the status nibble below — dispatch them on the raw byte first.
+    switch (data[0]) {
+      case 0xf8: // MIDI Clock
+        this.handleClock(config);
+        return;
+      case 0xfa: // Start
+        this.handleClockStart(config);
+        return;
+      case 0xfb: // Continue
+        this.handleClockContinue(config);
+        return;
+      case 0xfc: // Stop
+        this.handleClockStop(config);
+        return;
+    }
+
     const status = data[0] & 0xf0;
     const channel = (data[0] & 0x0f) + 1; // 1-16
+    // Program Change and Channel Pressure are 2-byte messages, the rest are 3.
+    const minLen = status === 0xc0 || status === 0xd0 ? 2 : 3;
+    if (data.length < minLen) return;
 
     switch (status) {
       case 0x90: // Note On
@@ -146,18 +166,6 @@ export class MidiInput {
         break;
       case 0xa0: // Polyphonic Aftertouch
         this.handlePolyPressure(data[1], data[2], channel, config);
-        break;
-      case 0xf8: // MIDI Clock
-        this.handleClock(config);
-        break;
-      case 0xfa: // Start
-        this.handleClockStart(config);
-        break;
-      case 0xfb: // Continue
-        this.handleClockContinue(config);
-        break;
-      case 0xfc: // Stop
-        this.handleClockStop(config);
         break;
     }
   }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { BAR_TICKS, STEP_TICKS } from "../project-model/types";
 import type { Transport } from "../transport/Transport";
 import type { ProjectDocument } from "../project-model/types";
@@ -26,26 +26,30 @@ export function formatPosition(pos: { bar: number; beat: number; step: number })
 
 export function useTransportPosition(transport: Transport, doc: ProjectDocument): string {
   const [display, setDisplay] = useState("1.1.1");
+  // registerRaf is a shared Map (last writer wins) — a fixed string id would
+  // make two mounted consumers overwrite/unregister each other's callback.
+  const rafId = useId();
   useEffect(() => {
     let last = "";
-    registerRaf("transport-position", () => {
+    registerRaf(rafId, () => {
       const next = formatPosition(transportPosition(transport, doc));
       if (next !== last) {
         last = next;
         setDisplay(next);
       }
     });
-    return () => unregisterRaf("transport-position");
-  }, [transport, doc.timeSignature.numerator, doc.timeSignature.denominator]);
+    return () => unregisterRaf(rafId);
+  }, [transport, doc.timeSignature.numerator, doc.timeSignature.denominator, rafId]);
   return display;
 }
 
 export function usePlayheadStep(transport: Transport, doc: ProjectDocument): number {
   const pattern = getActivePattern(doc);
   const [step, setStep] = useState(-1);
+  const rafId = useId();
   useEffect(() => {
     let last = -2;
-    registerRaf("playhead-step", () => {
+    registerRaf(rafId, () => {
       let next = -1;
       if (transport.playing) {
         const patternTicks = STEP_TICKS * pattern.stepCount;
@@ -57,8 +61,8 @@ export function usePlayheadStep(transport: Transport, doc: ProjectDocument): num
         setStep(next);
       }
     });
-    return () => unregisterRaf("playhead-step");
-  }, [transport, pattern.stepCount]);
+    return () => unregisterRaf(rafId);
+  }, [transport, pattern.stepCount, rafId]);
   return step;
 }
 
@@ -68,9 +72,10 @@ export function usePlayheadStep(transport: Transport, doc: ProjectDocument): num
  */
 export function usePlayheadBar(transport: Transport): number {
   const [bar, setBar] = useState(0);
+  const rafId = useId();
   useEffect(() => {
     let last = -1;
-    registerRaf("playhead-bar", () => {
+    registerRaf(rafId, () => {
       const next = Math.max(0, transport.position) / BAR_TICKS;
       const quantized = Math.floor(next * 8) / 8;
       if (quantized !== last) {
@@ -78,7 +83,7 @@ export function usePlayheadBar(transport: Transport): number {
         setBar(quantized);
       }
     });
-    return () => unregisterRaf("playhead-bar");
-  }, [transport]);
+    return () => unregisterRaf(rafId);
+  }, [transport, rafId]);
   return bar;
 }

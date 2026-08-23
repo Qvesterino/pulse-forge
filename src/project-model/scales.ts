@@ -41,7 +41,7 @@ export const SCALE_LABELS: Record<ScaleType, string> = {
   pentatonic_minor: "Pentatonic Minor",
 };
 
-const SCALE_INTERVALS: Record<ScaleType, number[]> = {
+export const SCALE_INTERVALS: Record<ScaleType, readonly number[]> = {
   major: [0, 2, 4, 5, 7, 9, 11],
   natural_minor: [0, 2, 3, 5, 7, 8, 10],
   harmonic_minor: [0, 2, 3, 5, 7, 8, 11],

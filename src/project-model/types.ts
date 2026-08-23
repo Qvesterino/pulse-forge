@@ -25,7 +25,7 @@ export type EffectType =
   | "phaser"
   | "sidechain";
 
-export type InstrumentKind = "sampler" | "analog" | "bass" | "808" | "texture";
+export type InstrumentKind = "sampler" | "analog" | "bass" | "808" | "texture" | "wavetable" | "granular";
 
 export interface EffectInstance {
   id: ID;
