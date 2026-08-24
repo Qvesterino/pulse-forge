@@ -31,4 +31,18 @@ describe("ArrangementPanel", () => {
     renderWithContext(<ArrangementPanel />);
     expect(screen.getByText("ARRANGEMENT")).toBeInTheDocument();
   });
+
+  it("exposes capture and skeleton controls", () => {
+    renderWithContext(<ArrangementPanel />);
+    expect(screen.getByText("CAPTURE")).toBeInTheDocument();
+    expect(screen.getByText("BUILD SKELETON")).toBeInTheDocument();
+    expect(screen.getByText("ROLE")).toBeInTheDocument();
+  });
+
+  it("starts capture from the arrangement toolbar", async () => {
+    const { services } = renderWithContext(<ArrangementPanel />);
+    const user = (await import("@testing-library/user-event")).default.setup();
+    await user.click(screen.getByText("CAPTURE"));
+    expect((services.capture as any).start).toHaveBeenCalledTimes(1);
+  });
 });

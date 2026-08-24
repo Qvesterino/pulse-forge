@@ -3,6 +3,13 @@ import type { Services } from "../services";
 import type { ProjectDocument } from "../project-model/types";
 import type { LibraryState } from "../persistence/LibraryRepository";
 import type { LatencyCalibrationSnapshot } from "../audio-engine/latencyCalibration";
+import type { ArrangementCaptureSnapshot } from "../arrangement/capture";
+
+const EMPTY_CAPTURE_SNAPSHOT: ArrangementCaptureSnapshot = { capturing: false, launchCount: 0, firstBar: null };
+const EMPTY_CAPTURE = {
+  subscribe: (_listener: () => void) => () => undefined,
+  getSnapshot: (): ArrangementCaptureSnapshot => EMPTY_CAPTURE_SNAPSHOT,
+};
 
 /** Save status across both stores (YDocStore adds "syncing"). */
 export type AppSaveStatus = "saved" | "dirty" | "saving" | "error" | "syncing";
@@ -58,6 +65,12 @@ export function useLatencyCalibration(): LatencyCalibrationSnapshot {
     latency.getSnapshot,
     latency.getSnapshot,
   );
+}
+
+export function useArrangementCapture(): ArrangementCaptureSnapshot {
+  const { capture } = useServices();
+  const source = capture ?? EMPTY_CAPTURE;
+  return useSyncExternalStore(source.subscribe, source.getSnapshot, source.getSnapshot);
 }
 
 /** Reactive favorites/recent state for the sample & preset browsers. */

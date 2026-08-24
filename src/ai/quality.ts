@@ -107,6 +107,18 @@ export interface MelodicQualityMetrics {
   pitchRange: number;
   scaleValidity: number;
   occupiedStepRatio: number;
+  restRatio: number;
+  durationDistribution: {
+    short: number;
+    medium: number;
+    long: number;
+  };
+  motifRepetition: number;
+  motifNovelty: number;
+}
+
+function rounded(value: number): number {
+  return Math.round(value * 1_000_000) / 1_000_000;
 }
 
 /** Measure melodic shape without introducing runtime randomness or state. */
@@ -118,7 +130,7 @@ export function measureMelodicQuality(
   const pitches = notes.map(note => note.pitch);
   const pitchRange = pitches.length > 0 ? Math.max(...pitches) - Math.min(...pitches) : 0;
   let validScaleNotes = 0;
-  let occupiedTicks = 0;
+  const occupiedSteps = new Set<number>();
   let intervals: readonly number[] | undefined;
   let root = 0;
   if (key) {
@@ -131,13 +143,46 @@ export function measureMelodicQuality(
 
   for (const note of notes) {
     if (!intervals || intervals.includes(((note.pitch - root) % 12 + 12) % 12)) validScaleNotes++;
-    occupiedTicks += Math.max(0, note.duration);
+    const startStep = Math.max(0, Math.floor(note.start / 120));
+    const endStep = Math.min(stepCount, Math.ceil((note.start + Math.max(0, note.duration)) / 120));
+    for (let step = startStep; step < endStep; step++) occupiedSteps.add(step);
   }
-  const patternTicks = Math.max(1, stepCount * 120);
+  const sortedNotes = [...notes].sort((a, b) => a.start - b.start || a.pitch - b.pitch);
+  const durationCounts = { short: 0, medium: 0, long: 0 };
+  for (const note of sortedNotes) {
+    const durationSteps = Math.max(0, note.duration) / 120;
+    if (durationSteps <= 1) durationCounts.short++;
+    else if (durationSteps <= 4) durationCounts.medium++;
+    else durationCounts.long++;
+  }
+  const durationDenominator = Math.max(1, sortedNotes.length);
+  const intervalMotifs = new Map<string, number>();
+  for (let index = 0; index + 3 < sortedNotes.length; index++) {
+    const key = [1, 2, 3].map(offset => {
+      const interval = sortedNotes[index + offset].pitch - sortedNotes[index + offset - 1].pitch;
+      const duration = Math.round(Math.max(0, sortedNotes[index + offset].duration) / 120);
+      return `${interval}:${duration}`;
+    }).join('|');
+    intervalMotifs.set(key, (intervalMotifs.get(key) ?? 0) + 1);
+  }
+  const motifTotal = [...intervalMotifs.values()].reduce((sum, count) => sum + count, 0);
+  const repeatedMotifs = [...intervalMotifs.values()]
+    .filter(count => count > 1)
+    .reduce((sum, count) => sum + count, 0);
+  const motifRepetition = motifTotal > 0 ? repeatedMotifs / motifTotal : 0;
+  const occupiedStepRatio = Math.min(1, occupiedSteps.size / Math.max(1, stepCount));
   return {
-    noteDensity: Math.round((stepCount > 0 ? notes.length / stepCount : 0) * 1_000_000) / 1_000_000,
+    noteDensity: rounded(stepCount > 0 ? notes.length / stepCount : 0),
     pitchRange,
-    scaleValidity: Math.round((notes.length > 0 ? validScaleNotes / notes.length : 1) * 1_000_000) / 1_000_000,
-    occupiedStepRatio: Math.round(Math.min(1, occupiedTicks / patternTicks) * 1_000_000) / 1_000_000,
+    scaleValidity: rounded(notes.length > 0 ? validScaleNotes / notes.length : 1),
+    occupiedStepRatio: rounded(occupiedStepRatio),
+    restRatio: rounded(1 - occupiedStepRatio),
+    durationDistribution: {
+      short: rounded(durationCounts.short / durationDenominator),
+      medium: rounded(durationCounts.medium / durationDenominator),
+      long: rounded(durationCounts.long / durationDenominator),
+    },
+    motifRepetition: rounded(motifRepetition),
+    motifNovelty: rounded(1 - motifRepetition),
   };
 }

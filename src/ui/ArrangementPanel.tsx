@@ -1,57 +1,107 @@
 import { useRef, useState } from "react";
-import { useDoc, useServices } from "./context";
+import { useArrangementCapture, useDoc, useServices } from "./context";
 import {
   addArrangementClip,
+  addArrangementTransition,
   addMarker,
+  createArrangementSkeleton,
   createScene,
+  createVariationAndPlaceClip,
   deleteArrangementClip,
   deleteScene,
   duplicateArrangementClip,
+  duplicateSceneAsVariation,
   moveArrangementClip,
+  removeArrangementTransition,
   removeMarker,
   renameScene,
+  reorderScenes,
   resizeArrangementClip,
+  setSceneRole,
+  updateArrangementTransition,
 } from "../commands/commands";
+import { sceneRoleOf } from "../project-model/schema";
+import type { ArrangementTransitionType, SceneRole } from "../project-model/types";
 import { BAR_TICKS, PPQ } from "../project-model/types";
 import { usePlayheadBar } from "./playhead";
 
 const BAR_WIDTH = 30;
 const LANE_HEIGHT = 56;
+const SCENE_ROLES: Array<{ value: SceneRole | ""; label: string }> = [
+  { value: "", label: "INFER FROM NAME" },
+  { value: "intro", label: "INTRO" },
+  { value: "build", label: "BUILD" },
+  { value: "drop", label: "DROP" },
+  { value: "break", label: "BREAK" },
+  { value: "outro", label: "OUTRO" },
+  { value: "fill", label: "FILL" },
+  { value: "custom", label: "CUSTOM" },
+];
+const TRANSITION_TYPES: ArrangementTransitionType[] = ["fill", "riser", "impact", "drop", "break", "custom"];
 
 interface DragState {
   mode: "move" | "resize";
   clipId: string;
-  startBar: number;
   origStart: number;
   origLength: number;
   grabBar: number;
 }
 
+interface TransitionBoundary {
+  fromClipId: string;
+  toClipId: string;
+}
+
+interface TransitionDraft {
+  type: ArrangementTransitionType;
+  lengthBars: number;
+  cueAssetId: string;
+}
+
 export function ArrangementPanel() {
   const services = useServices();
   const doc = useDoc();
+  const capture = useArrangementCapture();
   const [selectedSceneId, setSelectedSceneId] = useState(doc.scenes[0]?.id ?? "");
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [editingSceneId, setEditingSceneId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [rulerMode, setRulerMode] = useState<"bars" | "seconds">("bars");
+  const [draggedSceneIndex, setDraggedSceneIndex] = useState<number | null>(null);
+  const [showSkeletonPreview, setShowSkeletonPreview] = useState(false);
+  const [transitionBoundary, setTransitionBoundary] = useState<TransitionBoundary | null>(null);
+  const [transitionDraft, setTransitionDraft] = useState<TransitionDraft>({ type: "custom", lengthBars: 1, cueAssetId: "" });
+  const [actionError, setActionError] = useState<string | null>(null);
   const laneRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const [drag, setDrag] = useState<{ startBar: number; lengthBars: number } | null>(null);
   const playheadBar = usePlayheadBar(services.transport);
 
-  const totalBars = Math.max(
-    16,
-    ...doc.arrangement.clips.map((c) => c.startBar + c.lengthBars + 4),
-  );
+  const clips = [...doc.arrangement.clips].sort((a, b) => a.startBar - b.startBar);
+  const totalBars = Math.max(16, ...clips.map((clip) => clip.startBar + clip.lengthBars + 4));
+  const selectedScene = doc.scenes.find((scene) => scene.id === selectedSceneId) ?? doc.scenes[0];
+  const selectedClip = clips.find((clip) => clip.id === selectedClipId);
+  const selectedTransition = transitionBoundary
+    ? doc.arrangement.transitions?.find(
+        (transition) => transition.fromClipId === transitionBoundary.fromClipId && transition.toClipId === transitionBoundary.toClipId,
+      )
+    : undefined;
+
+  const execute = (command: Parameters<typeof services.store.execute>[0]): void => {
+    try {
+      setActionError(null);
+      services.store.execute(command);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Operation failed");
+    }
+  };
 
   const formatBarAsSeconds = (bar: number): string => {
     const sec = (bar * BAR_TICKS * 60) / (doc.bpm * PPQ);
     return `${sec.toFixed(1)}s`;
   };
-  const selectedScene = doc.scenes.find((s) => s.id === selectedSceneId) ?? doc.scenes[0];
 
-  const barFromEvent = (event: React.PointerEvent): number => {
+  const barFromEvent = (event: React.PointerEvent | React.DragEvent): number => {
     const lane = laneRef.current;
     if (!lane) return 0;
     const rect = lane.getBoundingClientRect();
@@ -69,19 +119,11 @@ export function ArrangementPanel() {
   const beginClipDrag = (event: React.PointerEvent, clipId: string, mode: "move" | "resize") => {
     if (event.button !== 0) return;
     event.stopPropagation();
-    const clip = doc.arrangement.clips.find((c) => c.id === clipId);
+    const clip = clips.find((candidate) => candidate.id === clipId);
     if (!clip) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     setSelectedClipId(clipId);
-    const state: DragState = {
-      mode,
-      clipId,
-      startBar: clip.startBar,
-      origStart: clip.startBar,
-      origLength: clip.lengthBars,
-      grabBar: barFromEvent(event),
-    };
-    dragRef.current = state;
+    dragRef.current = { mode, clipId, origStart: clip.startBar, origLength: clip.lengthBars, grabBar: barFromEvent(event) };
     setDrag({ startBar: clip.startBar, lengthBars: clip.lengthBars });
   };
 
@@ -90,45 +132,65 @@ export function ArrangementPanel() {
     if (!current) return;
     const bar = barFromEvent(event);
     if (current.mode === "move") {
-      setDrag({
-        startBar: Math.max(0, current.origStart + (bar - current.grabBar)),
-        lengthBars: current.origLength,
-      });
+      setDrag({ startBar: Math.max(0, current.origStart + bar - current.grabBar), lengthBars: current.origLength });
     } else {
-      setDrag({
-        startBar: current.origStart,
-        lengthBars: Math.max(1, bar - current.origStart + (bar > current.origStart ? 1 : 0) || 1),
-      });
+      setDrag({ startBar: current.origStart, lengthBars: Math.max(1, bar - current.origStart + 1) });
     }
   };
 
   const onClipPointerUp = () => {
     const current = dragRef.current;
+    const finalDrag = drag;
     dragRef.current = null;
     setDrag(null);
-    if (!current || !drag) return;
-    if (current.mode === "move" && drag.startBar !== current.origStart) {
-      try {
-        services.store.execute(moveArrangementClip(services.store.doc, current.clipId, drag.startBar));
-      } catch {
-        // overlap: dropped
-      }
+    if (!current || !finalDrag) return;
+    if (current.mode === "move" && finalDrag.startBar !== current.origStart) {
+      execute(moveArrangementClip(services.store.doc, current.clipId, finalDrag.startBar));
     }
-    if (current.mode === "resize" && drag.lengthBars !== current.origLength) {
-      try {
-        services.store.execute(resizeArrangementClip(services.store.doc, current.clipId, drag.lengthBars));
-      } catch {
-        // overlap: dropped
-      }
+    if (current.mode === "resize" && finalDrag.lengthBars !== current.origLength) {
+      execute(resizeArrangementClip(services.store.doc, current.clipId, finalDrag.lengthBars));
     }
   };
 
-  const addClipAt = (bar: number) => {
+  const placeScene = (sceneId: string, bar: number, lengthBars = 4) => {
+    execute(addArrangementClip(services.store.doc, sceneId, bar, lengthBars));
+  };
+
+  const appendBar = (): number => clips.reduce((max, clip) => Math.max(max, clip.startBar + clip.lengthBars), 0);
+
+  const createRoleVariation = (role: "fill" | "drop" | "break") => {
     if (!selectedScene) return;
-    try {
-      services.store.execute(addArrangementClip(services.store.doc, selectedScene.id, bar, 4));
-    } catch {
-      // overlap: ignore
+    const length = role === "fill" ? 1 : selectedClip?.lengthBars ?? 4;
+    execute(createVariationAndPlaceClip(services.store.doc, selectedScene.id, appendBar(), length, role));
+  };
+
+  const selectTransitionBoundary = (fromClipId: string, toClipId: string) => {
+    const existing = doc.arrangement.transitions?.find(
+      (transition) => transition.fromClipId === fromClipId && transition.toClipId === toClipId,
+    );
+    setTransitionBoundary({ fromClipId, toClipId });
+    setTransitionDraft({
+      type: existing?.type ?? "custom",
+      lengthBars: existing?.lengthBars ?? 1,
+      cueAssetId: existing?.cueAssetId ?? "",
+    });
+  };
+
+  const applyTransition = () => {
+    if (!transitionBoundary) return;
+    if (selectedTransition) {
+      execute(updateArrangementTransition(services.store.doc, selectedTransition.id, transitionDraft));
+    } else {
+      execute(
+        addArrangementTransition(
+          services.store.doc,
+          transitionBoundary.fromClipId,
+          transitionBoundary.toClipId,
+          transitionDraft.type,
+          transitionDraft.lengthBars,
+          transitionDraft.cueAssetId,
+        ),
+      );
     }
   };
 
@@ -137,18 +199,21 @@ export function ArrangementPanel() {
       <div className="arr-scenes">
         <div className="arr-scenes-header">
           <h2 className="panel-title">SCENES</h2>
-          <button
-            type="button"
-            className="btn btn-small"
-            title="Create scene from active pattern"
-            onClick={() => services.store.execute(createScene(services.store.doc))}
-          >
+          <button type="button" className="btn btn-small" title="Create scene from active pattern" onClick={() => execute(createScene(services.store.doc))}>
             + SCENE
           </button>
         </div>
-        <div className="scene-chips">
-          {doc.scenes.map((scene) => {
-            const pattern = doc.patterns.find((p) => p.id === scene.patternId);
+        <div className="scene-actions">
+          <button type="button" className="btn btn-small" disabled={!selectedScene} onClick={() => selectedScene && execute(duplicateSceneAsVariation(services.store.doc, selectedScene.id))}>
+            DUPLICATE
+          </button>
+          <button type="button" className="btn btn-small" disabled={!selectedScene} onClick={() => selectedScene && execute(duplicateSceneAsVariation(services.store.doc, selectedScene.id))}>
+            VARIATION
+          </button>
+        </div>
+        <div className="scene-chips" aria-label="Scene launcher">
+          {doc.scenes.map((scene, index) => {
+            const pattern = doc.patterns.find((patternItem) => patternItem.id === scene.patternId);
             if (editingSceneId === scene.id) {
               return (
                 <input
@@ -159,9 +224,7 @@ export function ArrangementPanel() {
                   aria-label="Scene name"
                   onChange={(event) => setDraft(event.target.value)}
                   onBlur={() => {
-                    if (draft.trim() !== "") {
-                      services.store.execute(renameScene(services.store.doc, scene.id, draft.trim()));
-                    }
+                    if (draft.trim() !== "") execute(renameScene(services.store.doc, scene.id, draft.trim()));
                     setEditingSceneId(null);
                   }}
                   onKeyDown={(event) => {
@@ -173,12 +236,28 @@ export function ArrangementPanel() {
             }
             const isSelected = selectedScene?.id === scene.id;
             const isActive = pattern?.id === doc.activePatternId;
+            const inferredRole = sceneRoleOf(scene);
             return (
-              <div key={scene.id} className="scene-chip-wrap">
+              <div
+                key={scene.id}
+                className="scene-chip-wrap"
+                draggable
+                onDragStart={(event) => {
+                  setDraggedSceneIndex(index);
+                  event.dataTransfer.setData("application/x-pulse-forge-scene", scene.id);
+                  event.dataTransfer.effectAllowed = "copyMove";
+                }}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={() => {
+                  if (draggedSceneIndex !== null) execute(reorderScenes(services.store.doc, draggedSceneIndex, index));
+                  setDraggedSceneIndex(null);
+                }}
+                onDragEnd={() => setDraggedSceneIndex(null)}
+              >
                 <button
                   type="button"
                   className={`scene-chip${isSelected ? " selected" : ""}${isActive ? " active-pattern" : ""}`}
-                  title={`${scene.name} → ${pattern?.name ?? "?"} — click to launch (quantized to the next bar while playing), double-click or F2 to rename`}
+                  title={`${scene.name} → ${pattern?.name ?? "?"} — click to launch, drag to reorder`}
                   onClick={() => {
                     setSelectedSceneId(scene.id);
                     services.playback.launchScene(scene);
@@ -196,66 +275,78 @@ export function ArrangementPanel() {
                   }}
                 >
                   {scene.name}
+                  {inferredRole && <small className="scene-role-badge">{inferredRole.toUpperCase()}</small>}
                 </button>
-                <button
-                  type="button"
-                  className="scene-delete"
-                  title="Delete scene (and its clips)"
-                  onClick={() => services.store.execute(deleteScene(services.store.doc, scene.id))}
-                >
+                <button type="button" className="scene-delete" title="Delete scene and its clips" onClick={() => execute(deleteScene(services.store.doc, scene.id))}>
                   ×
                 </button>
               </div>
             );
           })}
         </div>
+        {selectedScene && (
+          <label className="arr-scene-role">
+            ROLE
+            <select
+              value={selectedScene.role ?? sceneRoleOf(selectedScene) ?? ""}
+              onChange={(event) => execute(setSceneRole(services.store.doc, selectedScene.id, (event.target.value || null) as SceneRole | null))}
+            >
+              {SCENE_ROLES.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}
+            </select>
+          </label>
+        )}
+        <div className="arr-quick-actions">
+          <button type="button" className="btn btn-small" disabled={!selectedScene} onClick={() => createRoleVariation("fill")}>FILL</button>
+          <button type="button" className="btn btn-small" disabled={!selectedScene} onClick={() => createRoleVariation("drop")}>DROP</button>
+          <button type="button" className="btn btn-small" disabled={!selectedScene} onClick={() => createRoleVariation("break")}>BREAK</button>
+        </div>
       </div>
+
       <div className="arr-timeline">
         <div className="arr-timeline-header">
           <h2 className="panel-title">ARRANGEMENT</h2>
           <div className="arr-timeline-actions">
-            <button
-              type="button"
-              className={`btn btn-small${rulerMode === "seconds" ? " active-solo" : ""}`}
-              title="Toggle time format on the ruler"
-              onClick={() => setRulerMode(rulerMode === "bars" ? "seconds" : "bars")}
-            >
+            <button type="button" className={`btn btn-small${rulerMode === "seconds" ? " active-solo" : ""}`} onClick={() => setRulerMode(rulerMode === "bars" ? "seconds" : "bars")}>
               {rulerMode === "bars" ? "BARS" : "SECS"}
             </button>
-            <button
-              type="button"
-              className="btn btn-small"
-              disabled={!selectedScene}
-              onClick={() => {
-                if (!selectedScene) return;
-                const lastEnd = doc.arrangement.clips.reduce((max, c) => Math.max(max, c.startBar + c.lengthBars), 0);
-                addClipAt(lastEnd);
-              }}
-            >
-              + CLIP
-            </button>
-            <button
-              type="button"
-              className="btn btn-small"
-              disabled={selectedClipId === null}
-              onClick={() =>
-                selectedClipId && services.store.execute(duplicateArrangementClip(services.store.doc, selectedClipId))
-              }
-            >
-              DUP
-            </button>
-            <button
-              type="button"
-              className="btn btn-small btn-danger"
-              disabled={selectedClipId === null}
-              onClick={() =>
-                selectedClipId && services.store.execute(deleteArrangementClip(services.store.doc, selectedClipId))
-              }
-            >
-              DEL
-            </button>
+            <button type="button" className="btn btn-small" disabled={!selectedScene} onClick={() => selectedScene && placeScene(selectedScene.id, appendBar())}>+ CLIP</button>
+            <button type="button" className="btn btn-small" disabled={!selectedClipId} onClick={() => selectedClipId && execute(duplicateArrangementClip(services.store.doc, selectedClipId))}>DUP</button>
+            <button type="button" className="btn btn-small btn-danger" disabled={!selectedClipId} onClick={() => selectedClipId && execute(deleteArrangementClip(services.store.doc, selectedClipId))}>DEL</button>
+            {!capture.capturing ? (
+              <button type="button" className="btn btn-small" onClick={() => services.capture.start()}>CAPTURE</button>
+            ) : (
+              <>
+                <button type="button" className="btn btn-small active-solo" onClick={() => { try { services.capture.finish(); } catch (error) { setActionError(error instanceof Error ? error.message : "Capture failed"); } }}>FINISH {capture.launchCount}</button>
+                <button type="button" className="btn btn-small btn-danger" onClick={() => services.capture.cancel()}>CANCEL</button>
+              </>
+            )}
+            <button type="button" className="btn btn-small" onClick={() => setShowSkeletonPreview((value) => !value)}>BUILD SKELETON</button>
           </div>
         </div>
+
+        {showSkeletonPreview && (
+          <div className="arr-skeleton-preview">
+            <span className="arr-skeleton-title">{clips.length > 0 ? "REPLACE CURRENT ARRANGEMENT:" : "ARRANGEMENT PREVIEW:"}</span>
+            {(() => {
+              const roles = ["intro", "build", "drop", "break", "outro"] as const;
+              const preview = roles.flatMap((role) => {
+                const scene = doc.scenes.find((candidate) => sceneRoleOf(candidate) === role);
+                if (!scene) return [];
+                return [<span key={scene.id} className="arr-skeleton-item">{role.toUpperCase()} {role === "drop" ? 16 : 8}B</span>];
+              });
+              return preview.length > 0 ? preview : <span className="arr-skeleton-empty">No role scenes found</span>;
+            })()}
+            <button type="button" className="btn btn-small" onClick={() => {
+              try {
+                execute(createArrangementSkeleton(services.store.doc));
+                setShowSkeletonPreview(false);
+              } catch (error) {
+                setActionError(error instanceof Error ? error.message : "Cannot build skeleton");
+              }
+            }}>APPLY SKELETON</button>
+          </div>
+        )}
+
         <div className="arr-lane-scroll">
           <div
             className="arr-ruler"
@@ -266,56 +357,29 @@ export function ArrangementPanel() {
               event.currentTarget.setPointerCapture(event.pointerId);
               if (event.shiftKey) {
                 const bar = Math.max(0, (event.clientX - laneRef.current!.getBoundingClientRect().left) / BAR_WIDTH);
-                const tick = Math.floor(bar * BAR_TICKS);
-                services.store.execute(addMarker(services.store.doc, { tick, type: "cue" }));
+                execute(addMarker(services.store.doc, { tick: Math.floor(bar * BAR_TICKS), type: "cue" }));
                 return;
               }
               seekFromRulerEvent(event);
             }}
-            onPointerMove={(event) => {
-              if (event.buttons === 1) seekFromRulerEvent(event);
-            }}
+            onPointerMove={(event) => { if (event.buttons === 1) seekFromRulerEvent(event); }}
             onContextMenu={(event) => {
-              // Right-click on the ruler at a marker deletes that marker (closest within 8 px).
               event.preventDefault();
               const x = event.clientX - laneRef.current!.getBoundingClientRect().left;
-              let closest: { id: string; dist: number } | null = null;
-              for (const marker of doc.markers) {
-                const mx = (marker.tick / BAR_TICKS) * BAR_WIDTH;
-                const dist = Math.abs(mx - x);
-                if (dist < 8 && (!closest || dist < closest.dist)) {
-                  closest = { id: marker.id, dist };
-                }
-              }
-              if (closest) {
-                services.store.execute(removeMarker(services.store.doc, closest.id));
-              }
+              const closest = doc.markers
+                .map((marker) => ({ id: marker.id, dist: Math.abs((marker.tick / BAR_TICKS) * BAR_WIDTH - x) }))
+                .filter((marker) => marker.dist < 8)
+                .sort((a, b) => a.dist - b.dist)[0];
+              if (closest) execute(removeMarker(services.store.doc, closest.id));
             }}
           >
-            {Array.from({ length: Math.ceil(totalBars / 4) }, (_, i) => {
-              const barNum = i * 4 + 1;
-              return (
-                <span key={i} className="arr-ruler-mark" style={{ left: i * 4 * BAR_WIDTH }}>
-                  {rulerMode === "seconds" ? formatBarAsSeconds(barNum - 1) : barNum}
-                </span>
-              );
+            {Array.from({ length: Math.ceil(totalBars / 4) }, (_, index) => {
+              const barNum = index * 4 + 1;
+              return <span key={index} className="arr-ruler-mark" style={{ left: index * 4 * BAR_WIDTH }}>{rulerMode === "seconds" ? formatBarAsSeconds(barNum - 1) : barNum}</span>;
             })}
-            {doc.markers.map((marker) => {
-              const left = (marker.tick / BAR_TICKS) * BAR_WIDTH;
-              return (
-                <div
-                  key={marker.id}
-                  className={`arr-marker arr-marker-${marker.type}`}
-                  style={{ left: left - 6 }}
-                  title={`${marker.name} (${marker.type})`}
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    services.store.execute(removeMarker(services.store.doc, marker.id));
-                  }}
-                />
-              );
-            })}
+            {doc.markers.map((marker) => (
+              <div key={marker.id} className={`arr-marker arr-marker-${marker.type}`} style={{ left: (marker.tick / BAR_TICKS) * BAR_WIDTH - 6 }} title={`${marker.name} (${marker.type})`} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); execute(removeMarker(services.store.doc, marker.id)); }} />
+            ))}
             <div className="arr-playhead" style={{ left: playheadBar * BAR_WIDTH }} />
           </div>
           <div
@@ -324,51 +388,73 @@ export function ArrangementPanel() {
             style={{ width: totalBars * BAR_WIDTH, height: LANE_HEIGHT }}
             onPointerDown={(event) => {
               if (event.target !== laneRef.current || event.button !== 0) return;
-              addClipAt(barFromEvent(event));
+              if (selectedScene) placeScene(selectedScene.id, barFromEvent(event));
               setSelectedClipId(null);
+            }}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event) => {
+              event.preventDefault();
+              const sceneId = event.dataTransfer.getData("application/x-pulse-forge-scene");
+              if (sceneId) placeScene(sceneId, barFromEvent(event));
             }}
           >
             <div className="arr-playhead arr-playhead-lane" style={{ left: playheadBar * BAR_WIDTH }} />
-            {Array.from({ length: totalBars }, (_, i) => (
-              <div key={i} className={`arr-bar-grid${i % 4 === 0 ? " bar-strong" : ""}`} style={{ left: i * BAR_WIDTH }} />
-            ))}
-            {doc.arrangement.clips.map((clip) => {
-              const scene = doc.scenes.find((s) => s.id === clip.sceneId);
+            {Array.from({ length: totalBars }, (_, index) => <div key={index} className={`arr-bar-grid${index % 4 === 0 ? " bar-strong" : ""}`} style={{ left: index * BAR_WIDTH }} />)}
+            {clips.map((clip, index) => {
+              const scene = doc.scenes.find((candidate) => candidate.id === clip.sceneId);
               const isDragging = dragRef.current?.clipId === clip.id && drag !== null;
               const startBar = isDragging ? drag.startBar : clip.startBar;
               const lengthBars = isDragging ? drag.lengthBars : clip.lengthBars;
+              const nextClip = clips[index + 1];
               const selected = selectedClipId === clip.id;
               return (
-                <div
-                  key={clip.id}
-                  className={`arr-clip${selected ? " selected" : ""}`}
-                  style={{ left: startBar * BAR_WIDTH, width: lengthBars * BAR_WIDTH - 4 }}
-                  title={`${scene?.name ?? "?"} — bars ${startBar + 1}–${startBar + lengthBars} · drag to move, drag right edge to resize, right-click to delete`}
-                  onPointerDown={(event) => {
-                    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-                    const nearRightEdge = event.clientX > rect.right - 10;
-                    beginClipDrag(event, clip.id, nearRightEdge ? "resize" : "move");
-                  }}
-                  onPointerMove={onClipPointerMove}
-                  onPointerUp={onClipPointerUp}
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    services.store.execute(deleteArrangementClip(services.store.doc, clip.id));
-                    if (selectedClipId === clip.id) setSelectedClipId(null);
-                  }}
-                >
-                  <span className="arr-clip-name">{scene?.name ?? "?"}</span>
-                  <span className="arr-clip-bars">{lengthBars}b</span>
-                  <span className="arr-clip-resize" />
+                <div key={clip.id}>
+                  <div
+                    className={`arr-clip${selected ? " selected" : ""}`}
+                    style={{ left: startBar * BAR_WIDTH, width: lengthBars * BAR_WIDTH - 4 }}
+                    title={`${scene?.name ?? "?"} — bars ${startBar + 1}–${startBar + lengthBars}`}
+                    onPointerDown={(event) => beginClipDrag(event, clip.id, event.clientX > event.currentTarget.getBoundingClientRect().right - 10 ? "resize" : "move")}
+                    onPointerMove={onClipPointerMove}
+                    onPointerUp={onClipPointerUp}
+                    onClick={() => setSelectedClipId(clip.id)}
+                    onContextMenu={(event) => { event.preventDefault(); execute(deleteArrangementClip(services.store.doc, clip.id)); if (selectedClipId === clip.id) setSelectedClipId(null); }}
+                  >
+                    <span className="arr-clip-name">{scene?.name ?? "?"}</span>
+                    <span className="arr-clip-bars">{lengthBars}b</span>
+                    <span className="arr-clip-resize" />
+                  </div>
+                  {nextClip && (
+                    <button
+                      type="button"
+                      className={`arr-transition-mark${transitionBoundary?.fromClipId === clip.id && transitionBoundary.toClipId === nextClip.id ? " selected" : ""}`}
+                      style={{ left: (clip.startBar + clip.lengthBars) * BAR_WIDTH - 8 }}
+                      title="Edit transition to next clip"
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={() => selectTransitionBoundary(clip.id, nextClip.id)}
+                    >
+                      {doc.arrangement.transitions?.some((transition) => transition.fromClipId === clip.id && transition.toClipId === nextClip.id) ? "TR" : "+"}
+                    </button>
+                  )}
                 </div>
               );
             })}
           </div>
         </div>
-        <div className="arr-hint">
-          click empty lane to place <b>{selectedScene?.name ?? "scene"}</b> (4 bars) · clips play in SONG mode · drag the
-          ruler to seek · scene chips launch on the next bar while playing
-        </div>
+
+        {transitionBoundary && (
+          <div className="arr-transition-editor">
+            <span className="arr-transition-label">TRANSITION {doc.scenes.find((scene) => scene.id === clips.find((clip) => clip.id === transitionBoundary.fromClipId)?.sceneId)?.name ?? "?"} → {doc.scenes.find((scene) => scene.id === clips.find((clip) => clip.id === transitionBoundary.toClipId)?.sceneId)?.name ?? "?"}</span>
+            <select value={transitionDraft.type} onChange={(event) => setTransitionDraft((draftValue) => ({ ...draftValue, type: event.target.value as ArrangementTransitionType }))}>
+              {TRANSITION_TYPES.map((type) => <option key={type} value={type}>{type.toUpperCase()}</option>)}
+            </select>
+            <input type="number" min={1} max={4} step={1} value={transitionDraft.lengthBars} aria-label="Transition length in bars" onChange={(event) => setTransitionDraft((draftValue) => ({ ...draftValue, lengthBars: Math.min(4, Math.max(1, Number(event.target.value) || 1)) }))} />
+            <input value={transitionDraft.cueAssetId} placeholder="cue asset (optional)" aria-label="Transition cue asset" onChange={(event) => setTransitionDraft((draftValue) => ({ ...draftValue, cueAssetId: event.target.value }))} />
+            <button type="button" className="btn btn-small" onClick={applyTransition}>{selectedTransition ? "UPDATE" : "ADD"}</button>
+            {selectedTransition && <button type="button" className="btn btn-small btn-danger" onClick={() => { execute(removeArrangementTransition(services.store.doc, selectedTransition.id)); setTransitionBoundary(null); }}>DELETE</button>}
+          </div>
+        )}
+        {actionError && <div className="arr-error" role="status">{actionError}</div>}
+        <div className="arr-hint">drag scenes to reorder or into the timeline · clips play in SONG mode · capture records quantized scene launches · transitions are metadata only</div>
       </div>
     </section>
   );

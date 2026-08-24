@@ -195,6 +195,20 @@ export interface PatternGeneration {
   inputContentHash?: string | null;
   /** UUID-free hash of the generated musical content. */
   outputContentHash?: string;
+  /** Canonical hash of the normalized IntentSpec used to produce this pattern. */
+  intentHash?: string;
+  /** JSON-safe normalized IntentSpec snapshot for provenance and reloads. */
+  intent?: Record<string, unknown>;
+  /** Deterministic quality diagnostics captured alongside the recipe. */
+  quality?: {
+    styleDistance: number;
+    styleAccepted: boolean;
+    syncopation: number;
+    anchorCoverage: number;
+    melodicMotifRepetition: number;
+    melodicRestRatio: number;
+    melodicDurationLongRatio: number;
+  };
 }
 
 export interface Pattern {
@@ -218,6 +232,10 @@ export interface GrooveSettings {
 
 export type PlayMode = "pattern" | "song";
 
+export type SceneRole = "intro" | "build" | "drop" | "break" | "outro" | "fill" | "custom";
+
+export type ArrangementTransitionType = "fill" | "riser" | "impact" | "drop" | "break" | "custom";
+
 export interface Scene {
   id: ID;
   name: string;
@@ -228,6 +246,8 @@ export interface Scene {
   intensityCurve?: IntensityPoint[];
   /** When true, a clip referencing this scene loops its tail indefinitely. */
   loop?: boolean;
+  /** Optional arrangement role. Older scenes infer this from their name. */
+  role?: SceneRole;
 }
 
 export interface IntensityPoint {
@@ -267,8 +287,20 @@ export interface ArrangementClip {
   loop?: boolean;
 }
 
+export interface ArrangementTransition {
+  id: ID;
+  fromClipId: ID;
+  toClipId: ID;
+  type: ArrangementTransitionType;
+  /** Quantized transition length in bars, clamped to 1..4. */
+  lengthBars: number;
+  /** Optional factory/user cue asset id; metadata only in v1. */
+  cueAssetId?: string;
+}
+
 export interface Arrangement {
   clips: ArrangementClip[];
+  transitions?: ArrangementTransition[];
 }
 
 export type AutomationParamKind = "trackGain" | "trackPan" | "fxParam" | "instParam";

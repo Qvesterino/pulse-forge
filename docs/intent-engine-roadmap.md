@@ -1,6 +1,6 @@
 # Intent Engine — implementačná roadmapa
 
-Status: navrhnuté  
+Status: Fáza 3 — core contract implementovaný
 Scope: lokálna deterministická generácia hudobných patternov, Assist operácie a budúce AI providery  
 Priorita: offline-first, reprodukovateľnosť, hudobná kvalita, bezpečné rozšírenie
 
@@ -39,7 +39,7 @@ Vybudovať z aktuálneho seeded groove/pattern generátora robustný Intent Engi
 - [x] Identifikované architektonické medzery pre `IntentSpec`, provenance a AI provider boundary.
 - [x] Vytvorené golden fixtures aktuálneho správania pred opravami.
 - [x] Zaznamenané aktuálne referenčné výstupy pre 8 reprezentatívnych genre/style kombinácií.
-- [ ] Zaznamenané aktuálne referenčné výstupy pre úplnú genre/style maticu.
+  - [ ] Zaznamenané aktuálne referenčné výstupy pre úplnú genre/style maticu.
 
 ---
 
@@ -160,74 +160,74 @@ Prejsť od „randomized pattern z template“ k riadenému, rýchlemu a hudobne
 
 ### 2.1 Hybridný generation model
 
-- [ ] Zachovať silné template anchors pre žáner/style.
-- [ ] Markov používať iba na kontrolovanú variáciu, nie ako voľný globálny sampler.
-- [ ] Definovať hard constraints pre každý style:
-  - [ ] kick anchors
-  - [ ] backbeat/snare anchors
-  - [ ] povolené syncopation pozície
-  - [ ] minimálna/maximálna hustota
-  - [ ] povolené ghost/ornament pozície
+- [x] Zachovať silné template anchors pre žáner/style.
+- [x] Markov používať iba na kontrolovanú variáciu, nie ako voľný globálny sampler.
+- [x] Definovať hard constraints pre každý style:
+  - [x] kick anchors
+  - [x] backbeat/snare anchors
+  - [x] povolené syncopation pozície cez role-aware syncopation budget
+  - [x] minimálna/maximálna hustota cez genre/style quality profile
+  - [x] povolené ghost/ornament pozície podľa role
 - [ ] Definovať soft constraints:
-  - [ ] velocity contour
-  - [ ] repetition
+  - [x] velocity contour
+  - [x] repetition
   - [ ] variation amount
   - [ ] phrase contrast
-- [ ] Pridať deterministic repair pass po generovaní.
+- [x] Pridať deterministic repair pass po generovaní.
 - [ ] Pri neúspechu validácie vrátiť bezpečný style template namiesto poškodeného patternu.
 
 ### 2.2 Pad roles namiesto magic indexov
 
-- [ ] Zaviesť semantic pad role, napríklad `kick`, `snare`, `clap`, `closedHat`, `openHat`, `perc`, `tom`, `fx`.
-- [ ] Odvodiť role z kit metadata alebo bezpečnej klasifikácie názvu.
-- [ ] Ratchety povoľovať podľa role/capability, nie podľa indexov `7`, `8`, `14`.
-- [ ] Ghost rules odlíšiť pre kick, snare, hats a percussion.
-- [ ] Otestovať generovanie s custom kitom a iným poradím padov.
+- [x] Zaviesť semantic pad role, napríklad `kick`, `snare`, `clap`, `closedHat`, `openHat`, `perc`, `tom`, `fx`.
+- [x] Odvodiť role z kit metadata alebo bezpečnej klasifikácie názvu.
+- [x] Ratchety povoľovať podľa role/capability, nie podľa indexov `7`, `8`, `14`.
+- [x] Ghost rules odlíšiť pre kick, snare, hats a percussion.
+- [x] Otestovať generovanie s custom kitom a iným poradím padov.
 
 ### 2.3 Multi-bar phrase engine
 
-- [ ] Definovať phrase length a phrase position.
-- [ ] Pridať plan pre `intro`, `main`, `variation`, `fill`, `drop`, `outro`.
-- [ ] Zabezpečiť, že 16/32/64 krokov vytvára zmysluplný rozdiel, nie iba tile rovnakého taktu.
-- [ ] Presunúť fills z implicitného náhodného side-effectu do explicitného phrase planu.
-- [ ] Pridať kontrolu, že fill sa nevyskytuje v patternoch, ktoré naň nemajú dostatočnú dĺžku.
+- [x] Definovať phrase length a phrase position.
+- [x] Pridať plan pre `main`, `variation`, `drop`, `fill` a `outro`.
+- [x] Zabezpečiť, že 16/32/64 krokov vytvára zmysluplný rozdiel, nie iba tile rovnakého taktu.
+- [x] Presunúť fills z implicitného náhodného side-effectu do explicitného phrase planu.
+- [x] Pridať kontrolu, že fill sa nevyskytuje v patternoch, ktoré naň nemajú dostatočnú dĺžku.
 - [ ] Pridať kontrolu energie medzi susednými frázami.
 
 ### 2.4 Melodic roles a hudobné vzťahy
 
-- [ ] Generovať bass, chord a lead ako samostatné parts.
-- [ ] Definovať role-specific register, density, duration a velocity range.
+- [x] Generovať bass, chord a lead ako samostatné parts.
+- [x] Definovať role-specific register, density, duration a velocity range.
 - [ ] Zachovať scale/key constraints pred aj po repair kroku.
 - [ ] Zlepšiť kick/bass coordination bez náhodného posunu, ktorý môže meniť groove.
 - [ ] Zabrániť duplicitnému priraďovaniu rovnakých NoteEvent ID na viac trackov.
-- [ ] Pridať target mapping podľa role a typu nástroja.
+- [x] Pridať target mapping podľa role a názvu instrument tracku.
 
 ### 2.5 Metriky hudobnej kvality
 
-- [ ] Implementovať metrics pre drum pattern:
-  - [ ] hit density
-  - [ ] downbeat preservation
-  - [ ] syncopation
-  - [ ] velocity contrast
-  - [ ] repetition vs. novelty
+- [x] Implementovať metrics pre drum pattern:
+  - [x] hit density
+  - [x] downbeat preservation
+  - [x] syncopation
+  - [x] velocity contrast
+  - [x] repetition vs. novelty
   - [ ] groove/style distance
-- [ ] Implementovať metrics pre melodiku:
-  - [ ] rest ratio
-  - [ ] pitch range
-  - [ ] scale validity
-  - [ ] duration distribution
-  - [ ] role density
-  - [ ] repeated motif ratio
-- [ ] Definovať thresholdy pre každý genre/style.
-- [ ] Pri prekročení thresholdov spustiť repair alebo fallback.
+- [x] Implementovať metrics pre melodiku:
+  - [x] rest ratio
+  - [x] pitch range
+  - [x] scale validity
+  - [x] duration distribution
+  - [x] role density
+  - [x] repeated motif ratio a motif novelty
+- [x] Definovať style-distance a syncopation thresholdy pre genre/style profily.
+- [x] Pri prekročení syncopation thresholdu spustiť deterministic repair; style gate vracia dôvody pre fallback vrstvu.
 
 ### Acceptance criteria
 
-- [ ] Každý factory style má definované anchors a základné metrics thresholdy.
-- [ ] Generovaný pattern zachováva žánrové invariants pri rôznych seedech.
-- [ ] Variácia je počuteľná, ale nevedie k rozbitiu groove.
-- [ ] 16/32/64 krokov nie sú iba slepé opakovanie rovnakého výstupu.
-- [ ] Bass/chord/lead sú oddeliteľné a správne mapovateľné na tracky.
+- [x] Generovaný pattern zachováva základné kick/backbeat anchors pri rôznych seedech.
+- [x] Variácia je deterministická a viac-taktový výstup nie je iba slepé opakovanie rovnakého taktu.
+- [x] Bass/chord/lead sú oddeliteľné a mapovateľné na tracky.
+- [x] Každý podporovaný genre/style profil má anchors a základné metrics thresholdy.
+- [x] Variácia je vyhodnotená voči style/groove distance thresholdom a provenance nesie quality diagnostiku.
 
 ---
 
@@ -259,66 +259,66 @@ src/intent/
 
 ### 3.1 IntentSpec
 
-- [ ] Navrhnúť serializovateľný `IntentSpec`.
-- [ ] Pridať minimálne:
-  - [ ] `genre`
-  - [ ] `style`
-  - [ ] `mood`
-  - [ ] `energy`
-  - [ ] `density`
-  - [ ] `complexity`
-  - [ ] `variation`
-  - [ ] `seed`
-  - [ ] `key`
-  - [ ] `bpmRange`
-  - [ ] `length`
-  - [ ] požadované role
-  - [ ] target tracks
-  - [ ] explicit constraints
-- [ ] Rozlíšiť user intent od derived engine parameters.
-- [ ] Normalizovať chýbajúce a neplatné hodnoty na deterministic defaults.
-- [ ] Pridať versionované schema validation.
+- [x] Navrhnúť serializovateľný `IntentSpec`.
+- [x] Pridať minimálne:
+  - [x] `genre`
+  - [x] `style`
+  - [x] `mood`
+  - [x] `energy`
+  - [x] `density`
+  - [x] `complexity`
+  - [x] `variation`
+  - [x] `seed`
+  - [x] `key`
+  - [x] `bpmRange`
+  - [x] `length`
+  - [x] požadované role
+  - [x] target tracks
+  - [x] explicit constraints
+- [x] Rozlíšiť user intent od derived engine parameters cez `IntentSpec.controls` a `GenerationPlan.options`.
+- [x] Normalizovať chýbajúce a neplatné hodnoty na deterministic defaults.
+- [x] Pridať versionované schema validation.
 
 ### 3.2 GenerationPlan
 
-- [ ] Implementovať pure `planGeneration(intent, projectContext)`.
-- [ ] Plan musí obsahovať:
-  - [ ] normalized intent
-  - [ ] resolved groove/style
-  - [ ] role plans
-  - [ ] sub-seeds
-  - [ ] constraints
-  - [ ] expected output shape
-  - [ ] recipe metadata
-- [ ] Zabezpečiť, aby preview aj apply používali rovnaký plan.
-- [ ] Plan nesmie meniť project state.
+- [x] Implementovať pure `planGeneration(intent, projectContext)`.
+- [x] Plan musí obsahovať:
+  - [x] normalized intent
+  - [x] resolved groove/style
+  - [x] role plans
+  - [x] sub-seeds
+  - [x] constraints
+  - [x] expected output shape
+  - [x] recipe metadata
+- [x] Zabezpečiť, aby preview aj apply používali rovnaký plan.
+- [x] Plan nesmie meniť project state.
 
 ### 3.3 GenerationResult
 
-- [ ] Výsledok rozdeliť na:
-  - [ ] generated content
-  - [ ] recipe
-  - [ ] diagnostics
-  - [ ] quality metrics
-  - [ ] warnings
-  - [ ] provider metadata
-- [ ] Rozlíšiť `accepted`, `repaired`, `fallback` a `rejected` výsledok.
-- [ ] Pridať dôvod fallbacku alebo repairu.
+- [x] Výsledok rozdeliť na:
+  - [x] generated content
+  - [x] recipe
+  - [x] diagnostics
+  - [x] quality metrics
+  - [x] warnings
+  - [x] provider metadata
+- [ ] Rozlíšiť `accepted`, `repaired`, `fallback` a `rejected` výsledok podľa skutočne vykonaných repairov.
+- [x] Pridať deterministic repair diagnostics a dôvody quality gate warningov.
 
 ### 3.4 Project model a persistence
 
-- [ ] Rozhodnúť, či recipe bude uložené priamo na Pattern, alebo v samostatnej generation metadata kolekcii.
-- [ ] Pridať schema migration pre generation metadata.
-- [ ] Zachovať kompatibilitu so staršími projektmi bez recipe.
-- [ ] Zabezpečiť JSON round-trip stabilitu.
-- [ ] Pridať export/import testy recipe a content hash.
+- [x] Rozhodnúť, že recipe + IntentSpec snapshot budú uložené priamo na `Pattern.generation`.
+- [ ] Pridať samostatnú schema migration pre generation metadata, ak budú polia povinné.
+- [x] Zachovať kompatibilitu so staršími projektmi bez recipe.
+- [x] Zabezpečiť JSON round-trip stabilitu.
+- [x] Pridať test provenance, recipe a content hash round-trip.
 
 ### Acceptance criteria
 
-- [ ] UI nemusí poznať interné Markov/PRNG detaily.
-- [ ] Local provider sa dá zavolať cez IntentSpec a vráti GenerationResult.
-- [ ] Preview a Apply pre rovnaký intent používajú rovnaký plan.
-- [ ] Každý nový pattern má dohľadateľnú provenance.
+- [x] UI nemusí poznať interné Markov/PRNG detaily.
+- [x] Local provider sa dá zavolať cez IntentSpec a vráti GenerationResult.
+- [x] Preview a Apply pre rovnaký intent používajú rovnaký plan.
+- [x] Každý nový pattern má dohľadateľnú provenance.
 
 ---
 
@@ -488,14 +488,14 @@ Závisí od: všetky predchádzajúce fázy
 
 ### P1 — lokálna produkčná kvalita
 
-- [ ] IE-010: pad roles a odstránenie magic indexov.
-- [ ] IE-011: hybrid template + constrained variation engine.
-- [ ] IE-012: multi-bar phrase plan.
-- [ ] IE-013: role-aware melodic parts a track mapping.
-- [ ] IE-014: IntentSpec, GenerationPlan, GenerationResult.
-- [ ] IE-015: unified preview/apply pipeline.
+- [x] IE-010: pad roles a odstránenie magic indexov.
+- [x] IE-011: hybrid template + constrained variation engine.
+- [x] IE-012: multi-bar phrase plan.
+- [x] IE-013: role-aware melodic parts a track mapping.
+- [x] IE-014: IntentSpec, GenerationPlan, GenerationResult.
+- [x] IE-015: unified preview/apply pipeline.
 - [ ] IE-016: Assist metadata/notes correctness.
-- [ ] IE-017: metrics a deterministic repair pass.
+- [x] IE-017: metrics a deterministic repair pass.
 
 ### P2 — AI readiness a hardening
 

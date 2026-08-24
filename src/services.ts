@@ -20,6 +20,7 @@ import { YDocStore } from "./collab/YDocStore";
 import { CollabSession, collabParamsFromSearch, type CollabStatus } from "./collab/CollabSession";
 import type { CollaboratorInfo } from "./collab/CollaborationProvider";
 import { LatencyCalibrationController } from "./audio-engine/latencyCalibration";
+import { ArrangementCaptureController } from "./arrangement/capture";
 
 /**
  * Long-lived services shared across projects: the audio engine (one shared
@@ -52,6 +53,7 @@ export interface Services {
   userSamples: UserSampleRepository;
   frozenAudio: FrozenBufferRepository;
   latency: LatencyCalibrationController;
+  capture: ArrangementCaptureController;
   /** Live when a collab session is active, null otherwise. */
   collab: CollabSession | null;
   flushSave(): Promise<void>;
@@ -70,6 +72,8 @@ export class PlaybackController {
     private modeRef: { mode: PlayMode },
     private projectRef: () => ProjectDocument,
     private applyPattern: (patternId: string) => void,
+    private onSceneLaunch?: (sceneId: string, currentTick: number) => void,
+    private onTransportStop?: (currentTick: number) => void,
   ) {}
 
   setMode = (mode: PlayMode): void => {
@@ -115,6 +119,7 @@ export class PlaybackController {
   };
 
   stop = (): void => {
+    this.onTransportStop?.(this.transport.position);
     this.scheduler.stop();
     this.engine.panic();
     this.engine.automationReset();
@@ -149,11 +154,13 @@ export class PlaybackController {
       return;
     }
     if (!this.transport.playing) {
+      this.onSceneLaunch?.(scene.id, this.transport.position);
       this.applyPattern(scene.patternId);
       this.notify();
       return;
     }
     const nextBar = (Math.floor(this.transport.position / BAR_TICKS) + 1) * BAR_TICKS;
+    this.onSceneLaunch?.(scene.id, this.transport.position);
     this.scheduler.queuePatternLaunch(scene.patternId, nextBar);
     this.notify();
   };
@@ -211,6 +218,11 @@ export function openProject(core: CoreServices, initial: ProjectDocument, option
   const modeRef: { mode: PlayMode } = { mode: "pattern" };
   const midiOutput = new MidiOutput();
   const midiClock = new MidiClock();
+  const capture = new ArrangementCaptureController(
+    () => store.doc,
+    (command) => store.execute(command),
+    () => transport.position,
+  );
   const scheduler = new Scheduler({
     getProject: () => store.doc,
     getTransport: () => transport,
@@ -251,8 +263,18 @@ export function openProject(core: CoreServices, initial: ProjectDocument, option
   // on the next syncProject cycle).
   void loadWorkletModules(engine.ensureContext());
   transport.seek(0);
-  const playback = new PlaybackController(engine, transport, scheduler, modeRef, () => store.doc, (patternId) =>
-    store.execute(setActivePattern(store.doc, patternId)),
+  const playback = new PlaybackController(
+    engine,
+    transport,
+    scheduler,
+    modeRef,
+    () => store.doc,
+    (patternId) => store.execute(setActivePattern(store.doc, patternId)),
+    (sceneId, currentTick) => capture.recordSceneLaunch(sceneId, currentTick),
+    (currentTick) => {
+      void currentTick;
+      capture.finish();
+    },
   );
 
   const midi = new MidiInput();
@@ -355,6 +377,7 @@ export function openProject(core: CoreServices, initial: ProjectDocument, option
   window.addEventListener("beforeunload", onUnload);
 
   const closeProject = async (): Promise<void> => {
+    capture.cancel();
     playback.stop();
     collab?.dispose();
     midi.stop();
@@ -400,6 +423,7 @@ export function openProject(core: CoreServices, initial: ProjectDocument, option
     userSamples,
     frozenAudio,
     latency,
+    capture,
     collab,
     flushSave,
     closeProject,

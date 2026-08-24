@@ -22,7 +22,7 @@ export function inferPadRole(name: string | undefined, padIndex: number): PadRol
   const normalized = (name ?? '').trim().toLowerCase();
   if (normalized) {
     if (/kick|bass drum|bd/.test(normalized)) return 'kick';
-    if (/snare|rim|side stick/.test(normalized)) return 'snare';
+    if (/snare|side stick/.test(normalized)) return 'snare';
     if (/clap|拍/.test(normalized)) return 'clap';
     if (/open hat|openhat|ohat|ride|crash/.test(normalized)) return 'openHat';
     if (/hat|hihat|hi-hat|shaker|tambourine/.test(normalized)) return 'closedHat';

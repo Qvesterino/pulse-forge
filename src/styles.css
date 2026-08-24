@@ -1211,7 +1211,7 @@ button {
 /* ---------- Arrangement ---------- */
 
 .arr-panel {
-  max-height: 210px;
+  max-height: 300px;
   overflow: hidden;
   background: var(--bg-panel);
   border-top: 1px solid var(--border);
@@ -1234,6 +1234,38 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.scene-actions,
+.arr-quick-actions {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.arr-scene-role {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: 9px var(--mono);
+  color: var(--text-faint);
+}
+
+.arr-scene-role select,
+.arr-transition-editor select,
+.arr-transition-editor input {
+  min-width: 0;
+  height: 24px;
+  padding: 0 6px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text);
+  font: inherit;
+}
+
+.arr-scene-role select {
+  flex: 1;
 }
 
 .scene-chips {
@@ -1260,6 +1292,13 @@ button {
 
 .scene-chip:hover {
   color: var(--text);
+}
+
+.scene-role-badge {
+  margin-left: 5px;
+  color: var(--accent);
+  font-size: 8px;
+  font-family: var(--mono);
 }
 
 .scene-chip.selected {
@@ -1372,6 +1411,65 @@ button {
   bottom: 0;
   width: 8px;
   cursor: ew-resize;
+}
+
+.arr-transition-mark {
+  position: absolute;
+  top: 18px;
+  z-index: 4;
+  width: 16px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-panel-2);
+  color: var(--text-faint);
+  font: 8px var(--mono);
+  cursor: pointer;
+}
+
+.arr-transition-mark:hover,
+.arr-transition-mark.selected {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.arr-transition-editor,
+.arr-skeleton-preview {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 5px 0;
+  border-top: 1px solid var(--border-soft);
+}
+
+.arr-transition-label,
+.arr-skeleton-title {
+  font: 9px var(--mono);
+  color: var(--text-dim);
+}
+
+.arr-transition-editor input[type="number"] {
+  width: 48px;
+}
+
+.arr-transition-editor input:not([type="number"]) {
+  width: 150px;
+}
+
+.arr-skeleton-item {
+  padding: 3px 5px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-dim);
+  font: 9px var(--mono);
+}
+
+.arr-skeleton-empty,
+.arr-error {
+  color: var(--stop);
+  font: 10px var(--mono);
 }
 
 .arr-hint {

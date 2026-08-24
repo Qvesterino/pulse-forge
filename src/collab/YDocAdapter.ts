@@ -10,6 +10,7 @@
 import * as Y from "yjs";
 import type {
   ArrangementClip,
+  ArrangementTransition,
   AutomationLane,
   AutomationPoint,
   DrumPad,
@@ -51,9 +52,15 @@ function yMapToProject(m: Y.Map<unknown>): ProjectDocument {
     patterns: yArrToList(m.get("patterns") as Y.Array<unknown>).map(yMapToPattern),
     activePatternId: (m.get("activePatternId") as string) ?? "",
     scenes: yArrToList(m.get("scenes") as Y.Array<unknown>).map(yMapToScene),
-    arrangement: {
-      clips: yArrToList((m.get("arrangement") as Y.Map<unknown>)?.get("clips") as Y.Array<unknown>).map(yMapToClip),
-    },
+    arrangement: (() => {
+      const arrangement = m.get("arrangement") as Y.Map<unknown> | undefined;
+      return {
+        clips: yArrToList(arrangement?.get("clips") as Y.Array<unknown>).map(yMapToClip),
+        ...(arrangement?.has("transitions")
+          ? { transitions: yArrToList(arrangement.get("transitions") as Y.Array<unknown>).map(yMapToTransition) }
+          : {}),
+      };
+    })(),
     markers: yArrToList(m.get("markers") as Y.Array<unknown>).map(yMapToMarker),
     sceneAutomation: yArrToList(m.get("sceneAutomation") as Y.Array<unknown>).map(yMapToSceneAutomation),
     automation: yArrToList(m.get("automation") as Y.Array<unknown>).map(yMapToAutomation),
@@ -189,6 +196,7 @@ function yMapToScene(m: unknown): Scene {
     intensity: map.get("intensity") as number,
     intensityCurve: map.has("intensityCurve") ? yArrToList(map.get("intensityCurve") as Y.Array<unknown>).map((v) => yMapToObj(v as Y.Map<unknown>)) as any : undefined,
     loop: map.get("loop") as boolean | undefined,
+    role: map.get("role") as Scene["role"],
   };
 }
 
@@ -200,6 +208,18 @@ function yMapToClip(m: unknown): ArrangementClip {
     startBar: map.get("startBar") as number,
     lengthBars: map.get("lengthBars") as number,
     loop: map.get("loop") as boolean | undefined,
+  };
+}
+
+function yMapToTransition(m: unknown): ArrangementTransition {
+  const map = m as Y.Map<unknown>;
+  return {
+    id: map.get("id") as string,
+    fromClipId: map.get("fromClipId") as string,
+    toClipId: map.get("toClipId") as string,
+    type: map.get("type") as ArrangementTransition["type"],
+    lengthBars: map.get("lengthBars") as number,
+    cueAssetId: map.get("cueAssetId") as string | undefined,
   };
 }
 
@@ -335,6 +355,15 @@ export function applyProjectToYMap(
   arr.set("clips", clips);
   for (const clip of newDoc.arrangement.clips) {
     clips.push([clipToYMap(clip)]);
+  }
+  if (newDoc.arrangement.transitions !== undefined) {
+    const transitions = new Y.Array<unknown>();
+    arr.set("transitions", transitions);
+    for (const transition of newDoc.arrangement.transitions) {
+      transitions.push([transitionToYMap(transition)]);
+    }
+  } else if (arr.has("transitions")) {
+    arr.delete("transitions");
   }
 
   // Markers
@@ -485,6 +514,13 @@ export function projectToYDoc(doc: ProjectDocument, yMap: Y.Map<unknown>): void 
     arr.set("clips", clips);
     for (const clip of doc.arrangement.clips) {
       clips.push([clipToYMap(clip)]);
+    }
+    if (doc.arrangement.transitions !== undefined) {
+      const transitions = new Y.Array<unknown>();
+      arr.set("transitions", transitions);
+      for (const transition of doc.arrangement.transitions) {
+        transitions.push([transitionToYMap(transition)]);
+      }
     }
 
     // Markers
@@ -728,6 +764,7 @@ function sceneToYMap(s: Scene): Y.Map<unknown> {
     for (const pt of s.intensityCurve) ic.push([objToYMap(pt as unknown as Record<string, unknown>)]);
   }
   if (s.loop !== undefined) m.set("loop", s.loop);
+  if (s.role !== undefined) m.set("role", s.role);
   return m;
 }
 
@@ -738,6 +775,17 @@ function clipToYMap(c: ArrangementClip): Y.Map<unknown> {
   m.set("startBar", c.startBar);
   m.set("lengthBars", c.lengthBars);
   if (c.loop !== undefined) m.set("loop", c.loop);
+  return m;
+}
+
+function transitionToYMap(t: ArrangementTransition): Y.Map<unknown> {
+  const m = new Y.Map<unknown>();
+  m.set("id", t.id);
+  m.set("fromClipId", t.fromClipId);
+  m.set("toClipId", t.toClipId);
+  m.set("type", t.type);
+  m.set("lengthBars", t.lengthBars);
+  if (t.cueAssetId) m.set("cueAssetId", t.cueAssetId);
   return m;
 }
 

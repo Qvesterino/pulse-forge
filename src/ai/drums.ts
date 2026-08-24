@@ -4,6 +4,7 @@ import { buildPadModel, generatePadSequence, dequantizeVelocity } from './markov
 import { canRatchet, ghostMultiplier, inferPadRole, type PadRole } from './pad-roles';
 import { applyPhraseDynamics, buildPhrasePlan } from './phrase';
 import { enforceDrumAnchors, repairDrumRow } from './quality';
+import { enforceSyncopationBudget } from './style-quality';
 
 export interface DrumRandomStreams {
   /** Randomness for bar-level/ghost/fill variation. */
@@ -112,6 +113,7 @@ export function generateDrumPattern(
 
     // Keep genre/style anchors before phrase dynamics are applied.
     enforceDrumAnchors(rows[padIndex], padPatterns, role);
+    enforceSyncopationBudget(rows[padIndex], padPatterns, role);
     applyPhraseDynamics(rows[padIndex], role, phrasePlan, variationRand);
 
     // Apply phrase-level velocity contour (2-bar sine envelope)

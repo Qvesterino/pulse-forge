@@ -2,6 +2,8 @@ import * as assistOps from "../assist/patternOps";
 import type { Command } from "./types";
 import type {
   ArrangementClip,
+  ArrangementTransition,
+  ArrangementTransitionType,
   AutomationLane,
   AutomationTarget,
   DrumPad,
@@ -20,6 +22,7 @@ import type {
   NoteEvent,
   ProjectDocument,
   Scene,
+  SceneRole,
   SceneAutomation,
   StepMeta,
   Track,
@@ -37,6 +40,9 @@ import {
   instrumentTracksOf,
   normalizeProject,
   patternLetter,
+  sceneRoleOf,
+  clampArrangementTransitionType,
+  sanitizeArrangementTransitions,
 } from "../project-model/schema";
 import type { Pattern } from "../project-model/types";
 import { EFFECT_DEFS, clampEffectParam, defaultParamsOf } from "../effects/registry";
@@ -46,7 +52,8 @@ import type { EffectPreset } from "../effects/presets";
 import { clamp, uid } from "../shared/ids";
 import { hashString, mulberry32 } from "../shared/rng";
 import { snapToScale } from "../project-model/scales";
-import { generatePattern, resolveGrooveForGeneration } from "../ai/generator";
+import { resolveGrooveForGeneration } from "../ai/generator";
+import { generateLocalResultFromOptions } from "../intent/pipeline";
 import type { GenerateOptions } from "../ai/types";
 import {
   applyScaleOption,
@@ -1212,6 +1219,93 @@ export function createScene(doc: ProjectDocument, name?: string): Command {
   return snapshot("createScene", `Add ${scene.name}`, doc, next);
 }
 
+function uniqueVariationName(doc: ProjectDocument, sourceName: string): string {
+  const base = `${sourceName} VAR`;
+  let index = 1;
+  while (doc.scenes.some((scene) => scene.name.toLowerCase() === `${base} ${String(index).padStart(2, "0")}`.toLowerCase())) {
+    index += 1;
+  }
+  return `${base} ${String(index).padStart(2, "0")}`;
+}
+
+function clonePatternForVariation(source: Pattern, sourceName: string): Pattern {
+  return {
+    ...source,
+    id: uid("pattern"),
+    name: `${sourceName} Variation`,
+    rows: Object.fromEntries(Object.entries(source.rows).map(([id, row]) => [id, [...row]])),
+    notes: Object.fromEntries(
+      Object.entries(source.notes ?? {}).map(([id, notes]) => [id, notes.map((note) => ({ ...note }))]),
+    ),
+    stepMeta: source.stepMeta
+      ? Object.fromEntries(
+          Object.entries(source.stepMeta).map(([padId, meta]) => [padId, { ...meta }]),
+        )
+      : undefined,
+    generation: source.generation
+      ? { ...source.generation, sourcePatternId: source.id }
+      : undefined,
+  };
+}
+
+function makeSceneVariation(
+  doc: ProjectDocument,
+  source: Scene,
+  roleOverride?: SceneRole,
+): { scene: Scene; pattern: Pattern } {
+  const sourcePattern = doc.patterns.find((pattern) => pattern.id === source.patternId);
+  if (!sourcePattern) throw new Error(`Pattern ${source.patternId} not found`);
+  const name = uniqueVariationName(doc, source.name);
+  const pattern = clonePatternForVariation(sourcePattern, name);
+  const scene: Scene = {
+    ...source,
+    id: uid("scene"),
+    name,
+    patternId: pattern.id,
+    intensityCurve: source.intensityCurve?.map((point) => ({ ...point })),
+    role: roleOverride ?? source.role ?? sceneRoleOf(source),
+  };
+  return { scene, pattern };
+}
+
+export function duplicateSceneAsVariation(doc: ProjectDocument, sceneId: string, roleOverride?: SceneRole): Command {
+  const source = doc.scenes.find((scene) => scene.id === sceneId);
+  if (!source) throw new Error(`Scene ${sceneId} not found`);
+  const { scene, pattern } = makeSceneVariation(doc, source, roleOverride);
+  const next: ProjectDocument = {
+    ...doc,
+    patterns: [...doc.patterns, pattern],
+    scenes: [...doc.scenes, scene],
+  };
+  return snapshot("duplicateSceneAsVariation", `Create variation ${scene.name}`, doc, next);
+}
+
+export function setSceneRole(doc: ProjectDocument, sceneId: string, role: SceneRole | null): Command {
+  const target = doc.scenes.find((scene) => scene.id === sceneId);
+  if (!target) throw new Error(`Scene ${sceneId} not found`);
+  const next: ProjectDocument = {
+    ...doc,
+    scenes: doc.scenes.map((scene) => {
+      if (scene.id !== sceneId) return scene;
+      if (role) return { ...scene, role };
+      const { role: _role, ...withoutRole } = scene;
+      return withoutRole;
+    }),
+  };
+  return snapshot("setSceneRole", role ? `Set ${target.name} role to ${role}` : `Clear ${target.name} role`, doc, next);
+}
+
+export function reorderScenes(doc: ProjectDocument, fromIndex: number, toIndex: number): Command {
+  if (fromIndex < 0 || fromIndex >= doc.scenes.length || toIndex < 0 || toIndex >= doc.scenes.length) {
+    throw new Error("Scene reorder index out of range");
+  }
+  if (fromIndex === toIndex) return snapshot("reorderScenes", "Reorder scenes", doc, doc);
+  const scenes = [...doc.scenes];
+  const [moved] = scenes.splice(fromIndex, 1);
+  scenes.splice(toIndex, 0, moved);
+  return snapshot("reorderScenes", "Reorder scenes", doc, { ...doc, scenes });
+}
+
 export function renameScene(doc: ProjectDocument, sceneId: string, name: string): Command {
   const prev = doc.scenes.find((s) => s.id === sceneId)?.name ?? "";
   const next = { ...doc, scenes: doc.scenes.map((s) => (s.id === sceneId ? { ...s, name } : s)) };
@@ -1244,7 +1338,14 @@ export function deleteScene(doc: ProjectDocument, sceneId: string): Command {
   const next: ProjectDocument = {
     ...doc,
     scenes: doc.scenes.filter((s) => s.id !== sceneId),
-    arrangement: { clips: doc.arrangement.clips.filter((c) => c.sceneId !== sceneId) },
+    arrangement: {
+      ...doc.arrangement,
+      clips: doc.arrangement.clips.filter((c) => c.sceneId !== sceneId),
+      transitions: doc.arrangement.transitions?.filter((transition) => {
+        const clipIds = new Set(doc.arrangement.clips.filter((clip) => clip.sceneId !== sceneId).map((clip) => clip.id));
+        return clipIds.has(transition.fromClipId) && clipIds.has(transition.toClipId);
+      }),
+    },
   };
   return snapshot("deleteScene", `Delete scene ${target.name}`, doc, next);
 }
@@ -1268,9 +1369,38 @@ export function addArrangementClip(doc: ProjectDocument, sceneId: string, startB
   const clip: ArrangementClip = { id: uid("clip"), sceneId, startBar, lengthBars };
   const next: ProjectDocument = {
     ...doc,
-    arrangement: { clips: [...doc.arrangement.clips, clip].sort((a, b) => a.startBar - b.startBar) },
+    arrangement: { ...doc.arrangement, clips: [...doc.arrangement.clips, clip].sort((a, b) => a.startBar - b.startBar) },
   };
   return snapshot("addArrangementClip", `Place ${scene.name} at bar ${startBar + 1}`, doc, next);
+}
+
+function transitionsForClips(doc: ProjectDocument, clips: ArrangementClip[]): ArrangementTransition[] | undefined {
+  return sanitizeArrangementTransitions(doc.arrangement.transitions, clips);
+}
+
+export function createVariationAndPlaceClip(
+  doc: ProjectDocument,
+  sceneId: string,
+  startBar: number,
+  lengthBars = 4,
+  roleOverride?: SceneRole,
+): Command {
+  const source = doc.scenes.find((scene) => scene.id === sceneId);
+  if (!source) throw new Error(`Scene ${sceneId} not found`);
+  const bar = Math.max(0, Math.round(startBar));
+  const bars = Math.max(1, Math.round(lengthBars));
+  if (clipsOverlap(doc.arrangement.clips, null, bar, bars)) {
+    throw new Error(`Clip overlaps an existing clip at bar ${bar + 1}`);
+  }
+  const { scene, pattern } = makeSceneVariation(doc, source, roleOverride);
+  const clip: ArrangementClip = { id: uid("clip"), sceneId: scene.id, startBar: bar, lengthBars: bars };
+  const next: ProjectDocument = {
+    ...doc,
+    patterns: [...doc.patterns, pattern],
+    scenes: [...doc.scenes, scene],
+    arrangement: { ...doc.arrangement, clips: [...doc.arrangement.clips, clip].sort((a, b) => a.startBar - b.startBar) },
+  };
+  return snapshot("createVariationAndPlaceClip", `Place ${scene.name}`, doc, next);
 }
 
 export function moveArrangementClip(doc: ProjectDocument, clipId: string, startBar: number): Command {
@@ -1283,9 +1413,13 @@ export function moveArrangementClip(doc: ProjectDocument, clipId: string, startB
   const next: ProjectDocument = {
     ...doc,
     arrangement: {
+      ...doc.arrangement,
       clips: doc.arrangement.clips
         .map((c) => (c.id === clipId ? { ...c, startBar: bar } : c))
         .sort((a, b) => a.startBar - b.startBar),
+      transitions: transitionsForClips(doc, doc.arrangement.clips
+        .map((c) => (c.id === clipId ? { ...c, startBar: bar } : c))
+        .sort((a, b) => a.startBar - b.startBar)),
     },
   };
   return snapshot("moveArrangementClip", `Move clip to bar ${bar + 1}`, doc, next);
@@ -1298,9 +1432,10 @@ export function resizeArrangementClip(doc: ProjectDocument, clipId: string, leng
   if (clipsOverlap(doc.arrangement.clips, clipId, clip.startBar, bars)) {
     throw new Error(`Clip would overlap the next clip`);
   }
+  const nextClips = doc.arrangement.clips.map((c) => (c.id === clipId ? { ...c, lengthBars: bars } : c));
   const next: ProjectDocument = {
     ...doc,
-    arrangement: { clips: doc.arrangement.clips.map((c) => (c.id === clipId ? { ...c, lengthBars: bars } : c)) },
+    arrangement: { ...doc.arrangement, clips: nextClips, transitions: transitionsForClips(doc, nextClips) },
   };
   return snapshot("resizeArrangementClip", `Resize clip to ${bars} bars`, doc, next);
 }
@@ -1308,7 +1443,11 @@ export function resizeArrangementClip(doc: ProjectDocument, clipId: string, leng
 export function deleteArrangementClip(doc: ProjectDocument, clipId: string): Command {
   const next: ProjectDocument = {
     ...doc,
-    arrangement: { clips: doc.arrangement.clips.filter((c) => c.id !== clipId) },
+    arrangement: {
+      ...doc.arrangement,
+      clips: doc.arrangement.clips.filter((c) => c.id !== clipId),
+      transitions: doc.arrangement.transitions?.filter((transition) => transition.fromClipId !== clipId && transition.toClipId !== clipId),
+    },
   };
   return snapshot("deleteArrangementClip", "Delete clip", doc, next);
 }
@@ -1321,9 +1460,145 @@ export function duplicateArrangementClip(doc: ProjectDocument, clipId: string): 
   const copy: ArrangementClip = { id: uid("clip"), sceneId: clip.sceneId, startBar, lengthBars: clip.lengthBars };
   const next: ProjectDocument = {
     ...doc,
-    arrangement: { clips: [...doc.arrangement.clips, copy].sort((a, b) => a.startBar - b.startBar) },
+    arrangement: { ...doc.arrangement, clips: [...doc.arrangement.clips, copy].sort((a, b) => a.startBar - b.startBar) },
   };
   return snapshot("duplicateArrangementClip", "Duplicate clip", doc, next);
+}
+
+function transitionBetween(doc: ProjectDocument, fromClipId: string, toClipId: string): void {
+  const from = doc.arrangement.clips.find((clip) => clip.id === fromClipId);
+  const to = doc.arrangement.clips.find((clip) => clip.id === toClipId);
+  if (!from || !to) throw new Error("Transition clips not found");
+  if (fromClipId === toClipId || from.startBar >= to.startBar || from.startBar + from.lengthBars > to.startBar) {
+    throw new Error("Transition clips must be ordered and non-overlapping");
+  }
+}
+
+export function addArrangementTransition(
+  doc: ProjectDocument,
+  fromClipId: string,
+  toClipId: string,
+  type: ArrangementTransitionType = "custom",
+  lengthBars = 1,
+  cueAssetId?: string,
+): Command {
+  transitionBetween(doc, fromClipId, toClipId);
+  if (doc.arrangement.transitions?.some((transition) => transition.fromClipId === fromClipId && transition.toClipId === toClipId)) {
+    throw new Error("A transition already exists between these clips");
+  }
+  const transition: ArrangementTransition = {
+    id: uid("transition"),
+    fromClipId,
+    toClipId,
+    type,
+    lengthBars: Math.min(4, Math.max(1, Math.round(lengthBars))),
+    cueAssetId: cueAssetId?.trim() || undefined,
+  };
+  const next: ProjectDocument = {
+    ...doc,
+    arrangement: { ...doc.arrangement, transitions: [...(doc.arrangement.transitions ?? []), transition] },
+  };
+  return snapshot("addArrangementTransition", "Add arrangement transition", doc, next);
+}
+
+export function updateArrangementTransition(
+  doc: ProjectDocument,
+  transitionId: string,
+  changes: Partial<Pick<ArrangementTransition, "type" | "lengthBars" | "cueAssetId">>,
+): Command {
+  const target = doc.arrangement.transitions?.find((transition) => transition.id === transitionId);
+  if (!target) throw new Error(`Transition ${transitionId} not found`);
+  const next: ProjectDocument = {
+    ...doc,
+    arrangement: {
+      ...doc.arrangement,
+      transitions: doc.arrangement.transitions!.map((transition) => transition.id === transitionId ? {
+        ...transition,
+        ...(changes.type ? { type: clampArrangementTransitionType(changes.type) } : {}),
+        ...(changes.lengthBars !== undefined ? { lengthBars: Math.min(4, Math.max(1, Math.round(changes.lengthBars))) } : {}),
+        ...(changes.cueAssetId !== undefined ? { cueAssetId: changes.cueAssetId?.trim() || undefined } : {}),
+      } : transition),
+    },
+  };
+  return snapshot("updateArrangementTransition", "Edit arrangement transition", doc, next);
+}
+
+export function removeArrangementTransition(doc: ProjectDocument, transitionId: string): Command {
+  if (!doc.arrangement.transitions?.some((transition) => transition.id === transitionId)) {
+    throw new Error(`Transition ${transitionId} not found`);
+  }
+  const next: ProjectDocument = {
+    ...doc,
+    arrangement: { ...doc.arrangement, transitions: doc.arrangement.transitions!.filter((transition) => transition.id !== transitionId) },
+  };
+  return snapshot("removeArrangementTransition", "Remove arrangement transition", doc, next);
+}
+
+export interface ArrangementSkeletonStep {
+  role: Exclude<SceneRole, "fill" | "custom">;
+  sceneId: string;
+  startBar: number;
+  lengthBars: number;
+}
+
+const SKELETON_LAYOUT: ReadonlyArray<{ role: ArrangementSkeletonStep["role"], lengthBars: number }> = [
+  { role: "intro", lengthBars: 8 },
+  { role: "build", lengthBars: 8 },
+  { role: "drop", lengthBars: 16 },
+  { role: "break", lengthBars: 8 },
+  { role: "outro", lengthBars: 8 },
+];
+
+export function arrangementSkeletonPreview(doc: ProjectDocument): ArrangementSkeletonStep[] {
+  const used = new Set<string>();
+  let startBar = 0;
+  const steps: ArrangementSkeletonStep[] = [];
+  for (const item of SKELETON_LAYOUT) {
+    const scene = doc.scenes.find((candidate) => !used.has(candidate.id) && sceneRoleOf(candidate) === item.role);
+    if (!scene) continue;
+    used.add(scene.id);
+    steps.push({ role: item.role, sceneId: scene.id, startBar, lengthBars: item.lengthBars });
+    startBar += item.lengthBars;
+  }
+  return steps;
+}
+
+export function createArrangementSkeleton(doc: ProjectDocument): Command {
+  const steps = arrangementSkeletonPreview(doc);
+  if (steps.length === 0) throw new Error("No INTRO, BUILD, DROP, BREAK or OUTRO scenes found");
+  const clips = steps.map((step) => ({ id: uid("clip"), sceneId: step.sceneId, startBar: step.startBar, lengthBars: step.lengthBars }));
+  const next: ProjectDocument = { ...doc, arrangement: { ...doc.arrangement, clips, transitions: undefined } };
+  return snapshot("createArrangementSkeleton", "Build arrangement skeleton", doc, next);
+}
+
+export interface CapturedArrangementClip {
+  sceneId: string;
+  startBar: number;
+  lengthBars: number;
+}
+
+export function appendCapturedArrangement(doc: ProjectDocument, captured: CapturedArrangementClip[]): Command {
+  if (captured.length === 0) throw new Error("No captured scene launches");
+  for (const entry of captured) {
+    if (!doc.scenes.some((scene) => scene.id === entry.sceneId)) throw new Error(`Scene ${entry.sceneId} not found`);
+  }
+  const baseBar = doc.arrangement.clips.reduce((max, clip) => Math.max(max, clip.startBar + clip.lengthBars), 0);
+  const clips = captured.map((entry) => ({
+    id: uid("clip"),
+    sceneId: entry.sceneId,
+    startBar: baseBar + Math.max(0, Math.round(entry.startBar)),
+    lengthBars: Math.max(1, Math.round(entry.lengthBars)),
+  }));
+  const allClips = [...doc.arrangement.clips, ...clips].sort((a, b) => a.startBar - b.startBar);
+  if (allClips.some((clip, index) => index > 0 && clip.startBar < allClips[index - 1].startBar + allClips[index - 1].lengthBars)) {
+    throw new Error("Captured arrangement overlaps an existing clip");
+  }
+  return snapshot(
+    "appendCapturedArrangement",
+    `Capture ${clips.length} scene${clips.length === 1 ? "" : "s"}`,
+    doc,
+    { ...doc, arrangement: { ...doc.arrangement, clips: allClips } },
+  );
 }
 
 /* ---------------- automation ---------------- */
@@ -2070,7 +2345,9 @@ export function generatePatternCommand(
   options: GenerateOptions,
   patternName?: string,
 ): Command {
-  const pattern = generatePattern(doc, options);
+  const result = generateLocalResultFromOptions(doc, options, "apply");
+  const pattern = result.proposal?.pattern;
+  if (!pattern) throw new Error(result.diagnostics.errors.join(", ") || "Intent generation was rejected");
   if (patternName) pattern.name = patternName;
   if (!pattern.name) pattern.name = `${options.genre} ${options.seed.slice(0, 4)}`.trim();
 

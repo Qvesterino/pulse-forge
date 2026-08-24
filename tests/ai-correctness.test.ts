@@ -16,6 +16,7 @@ import { getGrooveById } from "../src/ai/grooves/index";
 import { canRatchet, inferPadRole } from "../src/ai/pad-roles";
 import { buildPhrasePlan } from "../src/ai/phrase";
 import { enforceDrumAnchors, measureDrumQuality, measureMelodicQuality } from "../src/ai/quality";
+import { enforceSyncopationBudget, evaluateStyleDistance, getStyleQualityProfile, syncopationWeight } from "../src/ai/style-quality";
 import type { GenerateOptions } from "../src/ai/types";
 
 function makeOptions(overrides: Partial<GenerateOptions> = {}): GenerateOptions {
@@ -119,7 +120,10 @@ describe("correctness-1 deterministic foundation", () => {
   it("creates distinct multi-bar phrase sections", () => {
     expect(buildPhrasePlan(16).map(section => section.section)).toEqual(["main"]);
     expect(buildPhrasePlan(64).map(section => section.section)).toEqual([
-      "main", "variation", "main", "fill",
+      "main", "variation", "drop", "outro",
+    ]);
+    expect(buildPhrasePlan(80).map(section => section.section)).toEqual([
+      "main", "variation", "drop", "fill", "outro",
     ]);
   });
 
@@ -134,7 +138,7 @@ describe("correctness-1 deterministic foundation", () => {
     expect(quality.velocityContrast).toBeGreaterThan(0);
   });
 
-  it("measures melodic density and scale validity", () => {
+  it("measures melodic density, rests, durations, and motif novelty", () => {
     const quality = measureMelodicQuality([
       { id: "a", pitch: 60, start: 0, duration: 120, velocity: 0.8 },
       { id: "b", pitch: 62, start: 120, duration: 120, velocity: 0.7 },
@@ -142,5 +146,34 @@ describe("correctness-1 deterministic foundation", () => {
     expect(quality.noteDensity).toBe(0.125);
     expect(quality.scaleValidity).toBe(1);
     expect(quality.pitchRange).toBe(2);
+    expect(quality.occupiedStepRatio).toBe(0.125);
+    expect(quality.restRatio).toBe(0.875);
+    expect(quality.durationDistribution).toEqual({ short: 1, medium: 0, long: 0 });
+    expect(quality.motifRepetition).toBe(0);
+    expect(quality.motifNovelty).toBe(1);
+  });
+
+  it("keeps generated rows inside the genre style envelope", () => {
+    const groove = getGrooveById("house.driving")!;
+    const rows = groove.activePads.map(pad => groove.patterns[0][pad] ?? new Array(16).fill(0));
+    const gate = evaluateStyleDistance(groove, rows, 16);
+    expect(gate.accepted).toBe(true);
+    expect(gate.distance).toBeLessThanOrEqual(getStyleQualityProfile("house").maxDistance);
+    expect(getStyleQualityProfile("house", "Minimal").densityRange[1]).toBeLessThan(
+      getStyleQualityProfile("house", "Driving").densityRange[1],
+    );
+  });
+
+  it("repairs excessive syncopation deterministically by role", () => {
+    const references = [new Array(16).fill(0).map((_, step) => step % 2 === 1 ? 0.9 : 0)];
+    const first = new Array(16).fill(0.8);
+    const second = [...first];
+    enforceSyncopationBudget(first, references, "kick");
+    enforceSyncopationBudget(second, references, "kick");
+    expect(first).toEqual(second);
+    expect(first[0]).toBeGreaterThan(0);
+    expect(first.filter(value => value > 0).length).toBeLessThan(16);
+    expect(syncopationWeight(0)).toBe(0);
+    expect(syncopationWeight(1)).toBe(1);
   });
 });

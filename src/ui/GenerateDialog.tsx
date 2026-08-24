@@ -3,9 +3,8 @@ import { useDoc, useServices } from "./context";
 import { generatePatternCommand } from "../commands/commands";
 import type { GenerateOptions } from "../ai/types";
 import { GENRES, DEFAULT_GENERATE_OPTIONS } from "../ai/types";
-import { getStyleNamesForGenre, getGroovesForGenre } from "../ai/grooves/index";
-import { generateDrumPattern } from "../ai/drums";
-import { mulberry32, hashString } from "../shared/rng";
+import { getStyleNamesForGenre } from "../ai/grooves/index";
+import { generateLocalResultFromOptions } from "../intent/pipeline";
 import { PAD_NAMES } from "../ai/types";
 
 function randomSeed(): string {
@@ -74,20 +73,39 @@ export function GenerateDialog({ open, onClose }: { open: boolean; onClose: () =
   const drumTracks = doc.tracks.filter(t => t.kind === 'drum');
   const instrumentTracks = doc.tracks.filter(t => t.kind === 'instrument');
 
+  // One normalized option object is shared by preview and Apply. The intent
+  // pipeline then creates one plan for either mode, so the preview cannot
+  // silently drift from the content eventually committed by the command.
+  const generationOptions = useMemo<GenerateOptions>(() => ({
+    genre,
+    style: style || undefined,
+    seed,
+    stepCount,
+    ghostWeight,
+    microWeight,
+    velocityVariation,
+    temperature,
+    replaceMode,
+    drumTrackId: drumTrackId || undefined,
+    instrumentTrackIds: instrumentTrackId ? [instrumentTrackId] : undefined,
+    sourcePatternId: sourcePatternId || undefined,
+    applyGrooveSettings,
+  }), [genre, style, seed, stepCount, ghostWeight, microWeight, velocityVariation, temperature, replaceMode, drumTrackId, instrumentTrackId, sourcePatternId, applyGrooveSettings]);
+
   // Live preview
   const preview = useMemo(() => {
-    const preSeed = hashString(`${genre}|${seed}`);
-    const preRand = mulberry32(preSeed);
-    const grooves = getGroovesForGenre(genre);
-    const groove = style
-      ? grooves.find(g => g.name.toLowerCase() === style.toLowerCase()) ?? grooves[0]
-      : grooves[Math.floor(preRand() * grooves.length)];
-    if (!groove) return { rows: [] as number[][], activePads: [] as number[] };
-    const mainSeed = hashString(`${genre}|${seed}|${groove.id}`);
-    const rand = mulberry32(mainSeed);
-    const { rows } = generateDrumPattern(groove, { ...DEFAULT_GENERATE_OPTIONS, genre, seed, stepCount: 16, ghostWeight, microWeight, velocityVariation, temperature }, rand);
-    return { rows, activePads: groove.activePads };
-  }, [genre, style, seed, ghostWeight, microWeight, velocityVariation, temperature]);
+    const result = generateLocalResultFromOptions(doc, generationOptions, "preview");
+    const pattern = result.proposal?.pattern;
+    const target = generationOptions.drumTrackId
+      ? drumTracks.find(track => track.id === generationOptions.drumTrackId) ?? drumTracks[0]
+      : drumTracks[0];
+    if (!pattern || !target) return { rows: [] as number[][], activePads: [] as number[] };
+    const rows = target.pads.map(pad => pattern.rows[pad.id] ?? []);
+    return {
+      rows,
+      activePads: rows.map((row, index) => row.some(value => value > 0) ? index : -1).filter(index => index >= 0),
+    };
+  }, [doc, generationOptions, drumTracks]);
 
   useEffect(() => {
     if (open && seedInputRef.current) {
@@ -115,24 +133,9 @@ export function GenerateDialog({ open, onClose }: { open: boolean; onClose: () =
   }, [open, onClose]);
 
   const handleGenerate = useCallback(() => {
-    const options: GenerateOptions = {
-      genre,
-      style: style || undefined,
-      seed,
-      stepCount,
-      ghostWeight,
-      microWeight,
-      velocityVariation,
-      temperature,
-      replaceMode,
-      drumTrackId: drumTrackId || undefined,
-      instrumentTrackIds: instrumentTrackId ? [instrumentTrackId] : undefined,
-      sourcePatternId: sourcePatternId || undefined,
-      applyGrooveSettings,
-    };
-    services.store.execute(generatePatternCommand(doc, options, patternName || undefined));
+    services.store.execute(generatePatternCommand(doc, generationOptions, patternName || undefined));
     onClose();
-  }, [genre, style, seed, stepCount, ghostWeight, microWeight, velocityVariation, temperature, replaceMode, drumTrackId, instrumentTrackId, patternName, doc, services, onClose]);
+  }, [generationOptions, patternName, doc, services, onClose]);
 
   const handleRandomSeed = useCallback(() => setSeed(randomSeed()), []);
 

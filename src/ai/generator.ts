@@ -5,7 +5,10 @@ import { uid } from '../shared/ids';
 import { getGroovesForGenre, getGrooveById } from './grooves/index';
 import { generateDrumPattern } from './drums';
 import { generateMelodicParts } from './melodic';
+import { inferPadRole } from './pad-roles';
 import { canonicalizePattern, contentHash, createGenerationRecipe } from './evaluation';
+import { measureDrumQuality, measureMelodicQuality } from './quality';
+import { evaluateStyleDistance } from './style-quality';
 
 /** Resolve which groove to use based on genre + optional style name */
 export function resolveGroove(genre: GenerateOptions['genre'], style?: string, rand?: () => number): GrooveData {
@@ -85,7 +88,7 @@ export function generatePattern(
     meta: drumMetaRand,
     // Existing project swing remains the owner unless the caller explicitly
     // asks generation to apply the resolved groove settings.
-    swing: options.applyGrooveSettings || doc.groove.swing > 0 ? 0 : groove.swing,
+    swing: options.applyGrooveSettings || (doc.groove?.swing ?? 0) > 0 ? 0 : groove.swing,
   }, padNames);
 
   // Map pad indices to actual pad IDs from the target drum track
@@ -134,7 +137,8 @@ export function generatePattern(
   const roleOrder = ['bass', 'chord', 'lead'] as const;
 
   if (targetTracks.length > 0) {
-    for (const [roleIndex, role] of roleOrder.entries()) {
+    for (let roleIndex = 0; roleIndex < roleOrder.length; roleIndex++) {
+      const role = roleOrder[roleIndex];
       const part = melodicParts[role];
       if (part.length === 0) continue;
       const namedTrack = targetTracks.find(track => {
@@ -156,11 +160,28 @@ export function generatePattern(
   };
 
   const outputContentHash = contentHash(canonicalizePattern(doc, pattern));
+  const roles = Array.from({ length: rawRows.length }, (_, index) => inferPadRole(padNames?.[index], index));
+  const drumQuality = measureDrumQuality(groove, rawRows, roles, options.stepCount);
+  const styleGate = evaluateStyleDistance(groove, rawRows, options.stepCount);
+  const melodicQuality = measureMelodicQuality(
+    Object.values(notesRecord).flat(),
+    options.stepCount,
+    doc.key,
+  );
   return {
     ...pattern,
     generation: {
       ...createGenerationRecipe(options, groove.id, inputContentHash),
       outputContentHash,
+      quality: {
+        styleDistance: styleGate.distance,
+        styleAccepted: styleGate.accepted,
+        syncopation: drumQuality.syncopation,
+        anchorCoverage: drumQuality.anchorCoverage,
+        melodicMotifRepetition: melodicQuality.motifRepetition,
+        melodicRestRatio: melodicQuality.restRatio,
+        melodicDurationLongRatio: melodicQuality.durationDistribution.long,
+      },
     },
   };
 }

@@ -13,6 +13,9 @@ import type {
   ProjectDocument,
   ReturnTrack,
   Scene,
+  SceneRole,
+  ArrangementTransition,
+  ArrangementTransitionType,
   SceneAutomation,
   StepMeta,
 } from "./types";
@@ -339,6 +342,78 @@ function defaultSceneFor(doc: ProjectDocument): Scene {
   return { id: uid("scene"), name: "Scene A", patternId: doc.activePatternId, intensity: 0.7 };
 }
 
+const SCENE_ROLES: ReadonlyArray<SceneRole> = ["intro", "build", "drop", "break", "outro", "fill", "custom"];
+const ARRANGEMENT_TRANSITION_TYPES: ReadonlyArray<ArrangementTransitionType> = [
+  "fill",
+  "riser",
+  "impact",
+  "drop",
+  "break",
+  "custom",
+];
+
+export function clampSceneRole(value: unknown): SceneRole | undefined {
+  return SCENE_ROLES.includes(value as SceneRole) ? (value as SceneRole) : undefined;
+}
+
+/** Infer a role for older scene documents without persisting a migration. */
+export function inferSceneRole(name: unknown): SceneRole | undefined {
+  if (typeof name !== "string") return undefined;
+  const normalized = name.trim().toLowerCase();
+  if (/^(intro|opening)\b/.test(normalized)) return "intro";
+  if (/^(build|buildup|lift)\b/.test(normalized)) return "build";
+  if (/^(drop|chorus|main)\b/.test(normalized)) return "drop";
+  if (/^(break|breakdown)\b/.test(normalized)) return "break";
+  if (/^(outro|ending|end)\b/.test(normalized)) return "outro";
+  if (/^(fill|transition)\b/.test(normalized)) return "fill";
+  return undefined;
+}
+
+export function sceneRoleOf(scene: Pick<Scene, "name" | "role">): SceneRole | undefined {
+  return clampSceneRole(scene.role) ?? inferSceneRole(scene.name);
+}
+
+export function clampArrangementTransitionType(value: unknown): ArrangementTransitionType {
+  return ARRANGEMENT_TRANSITION_TYPES.includes(value as ArrangementTransitionType)
+    ? (value as ArrangementTransitionType)
+    : "custom";
+}
+
+export function sanitizeArrangementTransitions(
+  input: unknown,
+  clips: readonly { id: string; startBar: number; lengthBars: number }[],
+): ArrangementTransition[] | undefined {
+  if (!Array.isArray(input)) return undefined;
+  const clipById = new Map(clips.map((clip) => [clip.id, clip]));
+  const seen = new Set<string>();
+  const out: ArrangementTransition[] = [];
+  for (const raw of input) {
+    if (!isObject(raw)) continue;
+    const id = typeof raw.id === "string" ? raw.id : uid("transition");
+    const fromClipId = typeof raw.fromClipId === "string" ? raw.fromClipId : "";
+    const toClipId = typeof raw.toClipId === "string" ? raw.toClipId : "";
+    if (!fromClipId || !toClipId || fromClipId === toClipId || seen.has(id)) continue;
+    const from = clipById.get(fromClipId);
+    const to = clipById.get(toClipId);
+    if (!from || !to) continue;
+    // A transition is a boundary annotation, so both clips must be ordered.
+    if (from.startBar >= to.startBar || from.startBar + from.lengthBars > to.startBar) continue;
+    const cueAssetId = typeof raw.cueAssetId === "string" && raw.cueAssetId.trim() !== ""
+      ? raw.cueAssetId
+      : undefined;
+    seen.add(id);
+    out.push({
+      id,
+      fromClipId,
+      toClipId,
+      type: clampArrangementTransitionType(raw.type),
+      lengthBars: Math.min(4, Math.max(1, Math.round(Number(raw.lengthBars) || 1))),
+      cueAssetId,
+    });
+  }
+  return out;
+}
+
 function normalizeEffects(raw: unknown, trackId: string, trackIds: Set<string>): EffectInstance[] {
   if (!Array.isArray(raw)) return [];
   return raw.filter((item): item is EffectInstance => {
@@ -566,20 +641,16 @@ export function normalizeProject(doc: ProjectDocument): ProjectDocument {
     arrangement = { clips: [] };
     changed = true;
   } else {
-    const sorted = [...arrangement.clips]
+    const rawClips = Array.isArray(arrangement.clips) ? arrangement.clips : [];
+    const sorted = [...rawClips]
       .filter((c) => sceneIds.has(c.sceneId) && Number.isFinite(c.startBar) && c.startBar >= 0 && c.lengthBars >= 1)
       .sort((a, b) => a.startBar - b.startBar);
-    if (sorted.length !== arrangement.clips.length) {
-      arrangement = { clips: sorted };
+    const transitions = sanitizeArrangementTransitions(arrangement.transitions, sorted);
+    const clipsChanged = sorted.length !== rawClips.length || sorted.some((clip, index) => clip !== rawClips[index]);
+    const transitionsChanged = JSON.stringify(transitions) !== JSON.stringify(arrangement.transitions);
+    if (clipsChanged || transitionsChanged) {
+      arrangement = { clips: sorted, ...(transitions !== undefined ? { transitions } : {}) };
       changed = true;
-    } else {
-      for (let i = 0; i < sorted.length; i++) {
-        if (sorted[i] !== arrangement.clips[i]) {
-          arrangement = { clips: sorted };
-          changed = true;
-          break;
-        }
-      }
     }
   }
   if (arrangement !== next.arrangement) {
@@ -676,9 +747,11 @@ export function normalizeProject(doc: ProjectDocument): ProjectDocument {
     }
     const loop = typeof scene.loop === "boolean" ? scene.loop : undefined;
     if (loop !== scene.loop) sceneChanged = true;
+    const role = clampSceneRole(scene.role);
+    if (role !== scene.role) sceneChanged = true;
     if (sceneChanged) scenesChanged = true;
     if (!sceneChanged) return scene;
-    return { ...scene, intensity, intensityCurve: curve, loop };
+    return { ...scene, intensity, intensityCurve: curve, loop, role };
   });
   if (scenesChanged) {
     next = { ...next, scenes: cleanedScenes };

@@ -12,6 +12,7 @@ export function mockServices(doc?: ProjectDocument): Services {
   const listeners = new Set<() => void>();
   const latency = new LatencyCalibrationController(null);
   const libraryState = { favoriteAssets: [], recentAssets: [], favoritePresets: [], recentPresets: [] };
+  const captureSnapshot = { capturing: false, launchCount: 0, firstBar: null };
 
   return {
     core: {
@@ -135,6 +136,13 @@ export function mockServices(doc?: ProjectDocument): Services {
     frozenAudio: { save: vi.fn(async () => {}), load: vi.fn(async () => undefined), remove: vi.fn(async () => {}), list: vi.fn(async () => []) } as any,
     userSamples: { list: vi.fn(async () => []), save: vi.fn(async () => {}), loadAudio: vi.fn(async () => undefined), remove: vi.fn(async () => {}), listAudio: vi.fn(async () => []) } as any,
     latency,
+    capture: {
+      subscribe: vi.fn(() => () => {}),
+      getSnapshot: vi.fn(() => captureSnapshot),
+      start: vi.fn(),
+      finish: vi.fn(() => false),
+      cancel: vi.fn(),
+    } as any,
     getDiagnostics: vi.fn(() => ({
       playMode: "pattern",
       bpm: 120,

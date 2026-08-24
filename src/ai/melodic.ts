@@ -205,7 +205,7 @@ export function generateMelodicParts(
   key?: MusicalKey,
   kickRows?: number[][],
   roleRandoms?: Partial<Record<MelodicPatternData['role'], () => number>>,
-): NoteEvent[] {
+): MelodicParts {
   const patterns = MELODIC_BY_GENRE[options.genre];
   if (!patterns || patterns.length === 0) return { bass: [], chord: [], lead: [] };
 
