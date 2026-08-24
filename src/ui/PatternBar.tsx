@@ -1,16 +1,18 @@
-import { useRef, useState, useSyncExternalStore } from "react";
+import { useRef, useState } from "react";
 import { useDoc, useServices } from "./context";
 import {
   clearPattern,
   createFill,
   createPattern,
   deletePattern,
+  duplicatePatternForScene,
   duplicatePattern,
   mutatePattern,
   pastePattern,
   quantizePatternToGrid,
   quantizePatternToScale,
   renamePattern,
+  renameScene,
   reorderPattern,
   setActivePattern,
   setGroove,
@@ -20,6 +22,8 @@ import type { PatternClipboard } from "../commands/commands";
 import { grooveOf, GRID_8TH, GRID_16TH, GRID_32ND } from "../project-model/types";
 import { DragNumber } from "./controls";
 import { GenerateDialog } from "./GenerateDialog";
+import { SceneLauncher } from "./SceneLauncher";
+import { usePlayheadBar } from "./playhead";
 
 interface DragState {
   patternId: string;
@@ -35,23 +39,11 @@ export function PatternBar({ clip, onCopy }: { clip: PatternClipboard | null; on
   const [draft, setDraft] = useState("");
   const active = doc.patterns.find((p) => p.id === doc.activePatternId)!;
   const groove = grooveOf(doc);
+  const playheadBar = usePlayheadBar(services.transport);
   const chipsRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [generateOpen, setGenerateOpen] = useState(false);
-  const pendingPatternId = useSyncExternalStore(
-    (cb) => {
-      const unsubPlayback = services.playback.subscribe(cb);
-      const unsubScheduler = services.scheduler.subscribe(cb);
-      return () => {
-        unsubPlayback();
-        unsubScheduler();
-      };
-    },
-    () => services.scheduler.pendingPatternId ?? "",
-    () => "",
-  );
-
   const beginRename = (id: string, name: string) => {
     setEditingId(id);
     setDraft(name);
@@ -298,24 +290,12 @@ export function PatternBar({ clip, onCopy }: { clip: PatternClipboard | null; on
         </select>
       </div>
 
-      <div className="scene-strip" aria-label="Scene launch">
-        {doc.scenes.map((scene) => {
-          const pattern = doc.patterns.find((p) => p.id === scene.patternId);
-          const isActive = pattern?.id === doc.activePatternId;
-          const isQueued = pendingPatternId === scene.patternId;
-          return (
-            <button
-              key={scene.id}
-              type="button"
-              className={`scene-launch${isActive ? " active" : ""}${isQueued ? " queued" : ""}`}
-              title={`${scene.name} → ${pattern?.name ?? "?"} — launch${isQueued ? " (queued for next bar)" : ""}`}
-              onClick={() => services.playback.launchScene(scene)}
-            >
-              {scene.name}
-            </button>
-          );
-        })}
-      </div>
+      <SceneLauncher
+        variant="bar"
+        playheadBar={playheadBar}
+        onRenameScene={(scene, name) => services.store.execute(renameScene(doc, scene.id, name))}
+        onDuplicatePattern={(scene) => services.store.execute(duplicatePatternForScene(doc, scene.id))}
+      />
 
       <GenerateDialog open={generateOpen} onClose={() => setGenerateOpen(false)} />
     </section>

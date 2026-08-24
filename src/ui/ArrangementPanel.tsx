@@ -10,6 +10,7 @@ import {
   deleteArrangementClip,
   deleteScene,
   duplicateArrangementClip,
+  duplicatePatternForScene,
   duplicateSceneAsVariation,
   moveArrangementClip,
   removeArrangementTransition,
@@ -24,6 +25,7 @@ import { sceneRoleOf } from "../project-model/schema";
 import type { ArrangementTransitionType, SceneRole } from "../project-model/types";
 import { BAR_TICKS, PPQ } from "../project-model/types";
 import { usePlayheadBar } from "./playhead";
+import { SceneLauncher } from "./SceneLauncher";
 
 const BAR_WIDTH = 30;
 const LANE_HEIGHT = 56;
@@ -64,10 +66,7 @@ export function ArrangementPanel() {
   const capture = useArrangementCapture();
   const [selectedSceneId, setSelectedSceneId] = useState(doc.scenes[0]?.id ?? "");
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
-  const [editingSceneId, setEditingSceneId] = useState<string | null>(null);
-  const [draft, setDraft] = useState("");
   const [rulerMode, setRulerMode] = useState<"bars" | "seconds">("bars");
-  const [draggedSceneIndex, setDraggedSceneIndex] = useState<number | null>(null);
   const [showSkeletonPreview, setShowSkeletonPreview] = useState(false);
   const [transitionBoundary, setTransitionBoundary] = useState<TransitionBoundary | null>(null);
   const [transitionDraft, setTransitionDraft] = useState<TransitionDraft>({ type: "custom", lengthBars: 1, cueAssetId: "" });
@@ -211,79 +210,16 @@ export function ArrangementPanel() {
             VARIATION
           </button>
         </div>
-        <div className="scene-chips" aria-label="Scene launcher">
-          {doc.scenes.map((scene, index) => {
-            const pattern = doc.patterns.find((patternItem) => patternItem.id === scene.patternId);
-            if (editingSceneId === scene.id) {
-              return (
-                <input
-                  key={scene.id}
-                  className="pattern-rename"
-                  value={draft}
-                  autoFocus
-                  aria-label="Scene name"
-                  onChange={(event) => setDraft(event.target.value)}
-                  onBlur={() => {
-                    if (draft.trim() !== "") execute(renameScene(services.store.doc, scene.id, draft.trim()));
-                    setEditingSceneId(null);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") event.currentTarget.blur();
-                    if (event.key === "Escape") setEditingSceneId(null);
-                  }}
-                />
-              );
-            }
-            const isSelected = selectedScene?.id === scene.id;
-            const isActive = pattern?.id === doc.activePatternId;
-            const inferredRole = sceneRoleOf(scene);
-            return (
-              <div
-                key={scene.id}
-                className="scene-chip-wrap"
-                draggable
-                onDragStart={(event) => {
-                  setDraggedSceneIndex(index);
-                  event.dataTransfer.setData("application/x-pulse-forge-scene", scene.id);
-                  event.dataTransfer.effectAllowed = "copyMove";
-                }}
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={() => {
-                  if (draggedSceneIndex !== null) execute(reorderScenes(services.store.doc, draggedSceneIndex, index));
-                  setDraggedSceneIndex(null);
-                }}
-                onDragEnd={() => setDraggedSceneIndex(null)}
-              >
-                <button
-                  type="button"
-                  className={`scene-chip${isSelected ? " selected" : ""}${isActive ? " active-pattern" : ""}`}
-                  title={`${scene.name} → ${pattern?.name ?? "?"} — click to launch, drag to reorder`}
-                  onClick={() => {
-                    setSelectedSceneId(scene.id);
-                    services.playback.launchScene(scene);
-                  }}
-                  onDoubleClick={() => {
-                    setEditingSceneId(scene.id);
-                    setDraft(scene.name);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "F2") {
-                      event.preventDefault();
-                      setEditingSceneId(scene.id);
-                      setDraft(scene.name);
-                    }
-                  }}
-                >
-                  {scene.name}
-                  {inferredRole && <small className="scene-role-badge">{inferredRole.toUpperCase()}</small>}
-                </button>
-                <button type="button" className="scene-delete" title="Delete scene and its clips" onClick={() => execute(deleteScene(services.store.doc, scene.id))}>
-                  ×
-                </button>
-              </div>
-            );
-          })}
-        </div>
+        <SceneLauncher
+          variant="panel"
+          playheadBar={playheadBar}
+          selectedSceneId={selectedScene?.id}
+          onSelectScene={(scene) => setSelectedSceneId(scene.id)}
+          onRenameScene={(scene, name) => execute(renameScene(services.store.doc, scene.id, name))}
+          onDeleteScene={(scene) => execute(deleteScene(services.store.doc, scene.id))}
+          onReorderScenes={(fromIndex, toIndex) => execute(reorderScenes(services.store.doc, fromIndex, toIndex))}
+          onDuplicatePattern={(scene) => execute(duplicatePatternForScene(services.store.doc, scene.id))}
+        />
         {selectedScene && (
           <label className="arr-scene-role">
             ROLE
@@ -449,6 +385,7 @@ export function ArrangementPanel() {
             </select>
             <input type="number" min={1} max={4} step={1} value={transitionDraft.lengthBars} aria-label="Transition length in bars" onChange={(event) => setTransitionDraft((draftValue) => ({ ...draftValue, lengthBars: Math.min(4, Math.max(1, Number(event.target.value) || 1)) }))} />
             <input value={transitionDraft.cueAssetId} placeholder="cue asset (optional)" aria-label="Transition cue asset" onChange={(event) => setTransitionDraft((draftValue) => ({ ...draftValue, cueAssetId: event.target.value }))} />
+            <button type="button" className="btn btn-small" disabled={!transitionDraft.cueAssetId.trim()} onClick={() => services.engine.previewAsset(transitionDraft.cueAssetId.trim())}>PREVIEW CUE</button>
             <button type="button" className="btn btn-small" onClick={applyTransition}>{selectedTransition ? "UPDATE" : "ADD"}</button>
             {selectedTransition && <button type="button" className="btn btn-small btn-danger" onClick={() => { execute(removeArrangementTransition(services.store.doc, selectedTransition.id)); setTransitionBoundary(null); }}>DELETE</button>}
           </div>

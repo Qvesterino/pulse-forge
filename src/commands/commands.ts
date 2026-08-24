@@ -339,23 +339,52 @@ export function createPattern(doc: ProjectDocument): Command {
   return snapshot("createPattern", `Add ${pattern.name}`, doc, next);
 }
 
+function clonePatternWithFreshNoteIds(source: Pattern, name: string): Pattern {
+  return {
+    ...source,
+    id: uid("pattern"),
+    name,
+    rows: Object.fromEntries(Object.entries(source.rows).map(([padId, row]) => [padId, [...row]])),
+    notes: Object.fromEntries(
+      Object.entries(source.notes ?? {}).map(([trackId, notes]) => [
+        trackId,
+        notes.map((note) => ({ ...note, id: uid("note") })),
+      ]),
+    ),
+    stepMeta: cloneStepMeta(source.stepMeta),
+    generation: source.generation ? { ...source.generation, sourcePatternId: source.id } : undefined,
+  };
+}
+
 export function duplicatePattern(doc: ProjectDocument, patternId: string): Command {
   const source = doc.patterns.find((p) => p.id === patternId);
   if (!source) throw new Error(`Pattern ${patternId} not found`);
-  const copy: Pattern = {
-    id: uid("pattern"),
-    name: `${source.name} 2`,
-    stepCount: source.stepCount,
-    rows: Object.fromEntries(Object.entries(source.rows).map(([padId, row]) => [padId, [...row]])),
-    notes: Object.fromEntries(Object.entries(source.notes ?? {}).map(([trackId, notes]) => [trackId, notes.map((n) => ({ ...n, id: uid("note") }))])),
-    stepMeta: cloneStepMeta(source.stepMeta),
-  };
+  const copy = clonePatternWithFreshNoteIds(source, `${source.name} 2`);
   const next: ProjectDocument = {
     ...doc,
     patterns: [...doc.patterns, copy],
     activePatternId: copy.id,
   };
   return snapshot("duplicatePattern", `Duplicate ${source.name}`, doc, next);
+}
+
+/**
+ * Give one scene an independent pattern without creating a second scene.
+ * This is the safe escape hatch when several scenes currently share a pattern.
+ */
+export function duplicatePatternForScene(doc: ProjectDocument, sceneId: string): Command {
+  const scene = doc.scenes.find((candidate) => candidate.id === sceneId);
+  if (!scene) throw new Error(`Scene ${sceneId} not found`);
+  const source = doc.patterns.find((pattern) => pattern.id === scene.patternId);
+  if (!source) throw new Error(`Pattern ${scene.patternId} not found`);
+  const copy = clonePatternWithFreshNoteIds(source, `${source.name} · ${scene.name}`);
+  const next: ProjectDocument = {
+    ...doc,
+    patterns: [...doc.patterns, copy],
+    scenes: doc.scenes.map((candidate) => candidate.id === sceneId ? { ...candidate, patternId: copy.id } : candidate),
+    activePatternId: copy.id,
+  };
+  return snapshot("duplicatePatternForScene", `Make ${scene.name} independent`, doc, next);
 }
 
 function cloneStepMeta(meta: Pattern["stepMeta"]): Pattern["stepMeta"] {

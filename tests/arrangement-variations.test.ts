@@ -5,6 +5,7 @@ import {
   arrangementSkeletonPreview,
   createArrangementSkeleton,
   createVariationAndPlaceClip,
+  duplicatePatternForScene,
   duplicateSceneAsVariation,
   reorderScenes,
 } from "../src/commands/commands";
@@ -48,6 +49,28 @@ describe("arrangement variations", () => {
     expect(store.doc.arrangement.clips.at(-1)?.lengthBars).toBe(1);
     expect(store.doc.scenes.at(-1)?.role).toBe("fill");
     expect(store.undoStackLength).toBe(1);
+  });
+
+  it("duplicates a shared pattern for one scene and leaves the other scene linked", () => {
+    const doc = createProjectFromTemplate("house");
+    const store = new ProjectStore(doc);
+    const source = store.doc.scenes[0];
+    const sibling = { ...store.doc.scenes[1], patternId: source.patternId };
+    store.execute({
+      type: "sharePatternForTest",
+      label: "Share pattern for test",
+      execute: (current) => ({ ...current, scenes: [current.scenes[0], sibling, ...current.scenes.slice(2)] }),
+      undo: (current) => current,
+    });
+    const sharedPatternId = store.doc.scenes[0].patternId;
+
+    store.execute(duplicatePatternForScene(store.doc, source.id));
+
+    expect(store.doc.scenes[0].patternId).not.toBe(sharedPatternId);
+    expect(store.doc.scenes[1].patternId).toBe(sharedPatternId);
+    expect(store.doc.patterns).toHaveLength(doc.patterns.length + 1);
+    expect(store.doc.activePatternId).toBe(store.doc.scenes[0].patternId);
+    expect(store.undoStackLength).toBe(2);
   });
 
   it("reorders scenes and infers roles for older names", () => {
