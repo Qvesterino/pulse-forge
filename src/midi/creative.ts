@@ -17,6 +17,7 @@ export type ChordQuality =
   | "add9";
 export type ChordVoicing = "close" | "open" | "drop2";
 export type StrumDirection = "up" | "down";
+export type ArpeggiatorMode = "up" | "down" | "up-down" | "random";
 
 export const CHORD_QUALITIES: readonly ChordQuality[] = [
   "major",
@@ -73,6 +74,36 @@ export interface StrumOptions {
   direction: StrumDirection;
 }
 
+export interface ArpeggiatorOptions {
+  mode: ArpeggiatorMode;
+  rateTicks: number;
+  octaveRange: number;
+  gate: number;
+  seed: string;
+}
+
+export interface NoteRepeatOptions {
+  rateTicks: number;
+  count: number;
+  velocityFalloff: number;
+}
+
+export interface EuclideanOptions {
+  pulses: number;
+  steps: number;
+  rotation: number;
+  pitch: number;
+  velocity: number;
+  gate: number;
+}
+
+export interface BasslineOptions {
+  octave: number;
+  gate: number;
+  scaleLock: boolean;
+  key?: MusicalKey;
+}
+
 export type MidiCreativeOperation =
   | { kind: "snap-scale"; key: MusicalKey }
   | { kind: "chord"; options: ChordOptions }
@@ -83,7 +114,11 @@ export type MidiCreativeOperation =
   | { kind: "strum"; options: StrumOptions; scaleLock: boolean; key?: MusicalKey }
   | { kind: "gate"; gate: number; scaleLock: boolean; key?: MusicalKey }
   | { kind: "humanize"; options: TimingPerformanceOptions; scaleLock: boolean; key?: MusicalKey }
-  | { kind: "velocity-randomize"; options: VelocityPerformanceOptions; scaleLock: boolean; key?: MusicalKey };
+  | { kind: "velocity-randomize"; options: VelocityPerformanceOptions; scaleLock: boolean; key?: MusicalKey }
+  | { kind: "arpeggiate"; options: ArpeggiatorOptions; scaleLock: boolean; key?: MusicalKey }
+  | { kind: "note-repeat"; options: NoteRepeatOptions; scaleLock: boolean; key?: MusicalKey }
+  | { kind: "euclidean"; options: EuclideanOptions; scaleLock: boolean; key?: MusicalKey }
+  | { kind: "bassline"; options: BasslineOptions };
 
 const MIN_VELOCITY = 0.05;
 
@@ -283,6 +318,187 @@ export function randomizeVelocity(
   }, patternTicks));
 }
 
+function arpeggioPitches(
+  notes: NoteEvent[],
+  mode: ArpeggiatorMode,
+  octaveRange: number,
+  random: () => number,
+): number[] {
+  const base = [...new Set(notes.map((note) => Math.round(note.pitch)))].sort((a, b) => a - b);
+  if (base.length === 0) return [];
+  const octaves = clamp(Math.round(octaveRange), 0, 4);
+  const expanded = Array.from({ length: octaves + 1 }, (_, octave) =>
+    base.map((pitch) => pitch + octave * 12),
+  ).flat();
+  if (mode === "up") return expanded;
+  if (mode === "down") return [...expanded].reverse();
+  if (mode === "up-down") {
+    if (expanded.length < 2) return expanded;
+    return [...expanded, ...expanded.slice(1, -1).reverse()];
+  }
+  return Array.from({ length: expanded.length }, () => expanded[Math.floor(random() * expanded.length)]);
+}
+
+function noteGroupsByStart(notes: NoteEvent[]): NoteEvent[][] {
+  const groups = groupedByStart(notes);
+  return [...groups.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([, group]) => group.sort((a, b) => a.pitch - b.pitch));
+}
+
+export function arpeggiateNotes(
+  notes: NoteEvent[],
+  options: ArpeggiatorOptions,
+  patternTicks: number,
+  makeId: (index: number) => string,
+): NoteEvent[] {
+  const rate = Math.max(1, Math.round(options.rateTicks));
+  const gate = clamp(Number.isFinite(options.gate) ? options.gate : 1, 0.01, 1);
+  const random = mulberry32(hashString(options.seed));
+  let idIndex = 0;
+  const result: NoteEvent[] = [];
+
+  for (const group of noteGroupsByStart(notes)) {
+    const start = Math.min(...group.map((note) => note.start));
+    const end = Math.max(...group.map((note) => note.start + note.duration));
+    const span = Math.max(rate, end - start);
+    const pitches = arpeggioPitches(group, options.mode, options.octaveRange, random);
+    const velocityByPitch = new Map(group.map((note) => [note.pitch, note.velocity]));
+    const count = Math.max(1, Math.ceil(span / rate));
+    for (let index = 0; index < count; index++) {
+      const noteStart = start + index * rate;
+      if (noteStart >= patternTicks) continue;
+      const remaining = Math.max(1, end - noteStart);
+      const pitch = pitches[index % pitches.length];
+      const duration = Math.min(remaining, Math.max(1, Math.round(rate * gate)));
+      const sourcePitch = group[index % group.length].pitch;
+      result.push(clampNote({
+        id: makeId(idIndex++),
+        pitch,
+        start: noteStart,
+        duration,
+        velocity: velocityByPitch.get(sourcePitch) ?? group[0].velocity,
+      }, patternTicks));
+    }
+  }
+  return result;
+}
+
+export function repeatNotes(
+  notes: NoteEvent[],
+  options: NoteRepeatOptions,
+  patternTicks: number,
+  makeId: (index: number) => string,
+): NoteEvent[] {
+  const rate = Math.max(1, Math.round(options.rateTicks));
+  const count = clamp(Math.round(options.count), 1, 32);
+  const falloff = clamp(Number.isFinite(options.velocityFalloff) ? options.velocityFalloff : 0, 0, 1);
+  let idIndex = 0;
+  const result: NoteEvent[] = [];
+  for (const note of notes) {
+    for (let index = 0; index < count; index++) {
+      const start = note.start + index * rate;
+      if (start >= patternTicks) continue;
+      result.push(clampNote({
+        ...note,
+        id: makeId(idIndex++),
+        start,
+        duration: Math.min(note.duration, rate),
+        velocity: note.velocity * Math.max(0, 1 - falloff * index),
+      }, patternTicks));
+    }
+  }
+  return result;
+}
+
+export function euclideanPattern(pulses: number, steps: number, rotation: number): boolean[] {
+  const safeSteps = clamp(Math.round(steps), 1, 128);
+  const safePulses = clamp(Math.round(pulses), 0, safeSteps);
+  const safeRotation = Math.round(rotation);
+  const base = Array.from({ length: safeSteps }, (_, index) =>
+    Math.floor(((index + 1) * safePulses) / safeSteps) > Math.floor((index * safePulses) / safeSteps),
+  );
+  return base.map((_, index) => base[mod(index - safeRotation, safeSteps)]);
+}
+
+export function euclideanNotes(
+  notes: NoteEvent[],
+  options: EuclideanOptions,
+  patternTicks: number,
+  makeId: (index: number) => string,
+): NoteEvent[] {
+  const first = notes[0];
+  const start = first ? Math.min(...notes.map((note) => note.start)) : 0;
+  const span = Math.max(1, patternTicks - start);
+  const steps = clamp(Math.round(options.steps), 1, 128);
+  const stepWidth = span / steps;
+  const gate = clamp(Number.isFinite(options.gate) ? options.gate : 1, 0.01, 1);
+  const velocity = clamp(Number.isFinite(options.velocity) ? options.velocity : first?.velocity ?? 0.8, MIN_VELOCITY, 1);
+  const hits = euclideanPattern(options.pulses, steps, options.rotation);
+  const result: NoteEvent[] = [];
+  hits.forEach((hit, index) => {
+    if (!hit) return;
+    const noteStart = start + Math.round(index * stepWidth);
+    if (noteStart >= patternTicks) return;
+    result.push(clampNote({
+      id: makeId(result.length),
+      pitch: options.pitch,
+      start: noteStart,
+      duration: Math.max(1, Math.round(stepWidth * gate)),
+      velocity,
+    }, patternTicks));
+  });
+  return result;
+}
+
+const ROOT_SHAPES: readonly number[][] = [
+  [0, 4, 7],
+  [0, 3, 7],
+  [0, 4, 7, 10],
+  [0, 3, 7, 10],
+  [0, 2, 7],
+  [0, 5, 7],
+];
+
+function inferRootClass(notes: NoteEvent[]): number {
+  const classes = [...new Set(notes.map((note) => mod(Math.round(note.pitch), 12)))];
+  let bestClass = classes[0] ?? 0;
+  let bestScore = -1;
+  for (const candidate of classes) {
+    const score = Math.max(
+      ...ROOT_SHAPES.map((shape) => shape.filter((interval) => classes.includes(mod(candidate + interval, 12))).length),
+    );
+    if (score > bestScore) {
+      bestClass = candidate;
+      bestScore = score;
+    }
+  }
+  return bestClass;
+}
+
+export function basslineNotes(
+  notes: NoteEvent[],
+  options: BasslineOptions,
+  patternTicks: number,
+  makeId: (index: number) => string,
+): NoteEvent[] {
+  const octave = clamp(Math.round(options.octave), -1, 8);
+  const gate = clamp(Number.isFinite(options.gate) ? options.gate : 1, 0.01, 1);
+  return noteGroupsByStart(notes).map((group, index) => {
+    const start = Math.min(...group.map((note) => note.start));
+    const end = Math.max(...group.map((note) => note.start + note.duration));
+    const rawPitch = (octave + 1) * 12 + inferRootClass(group);
+    const note: NoteEvent = {
+      id: makeId(index),
+      pitch: rawPitch,
+      start,
+      duration: Math.max(1, Math.round((end - start) * gate)),
+      velocity: group[0].velocity,
+    };
+    return clampNote(withScaleLock(note, options.key, options.scaleLock), patternTicks);
+  });
+}
+
 export function applyScaleOption(
   notes: NoteEvent[],
   key: MusicalKey | undefined,
@@ -291,4 +507,3 @@ export function applyScaleOption(
 ): NoteEvent[] {
   return scaleLock && key ? snapNotesToScale(notes, key, patternTicks) : notes.map((note) => clampNote(note, patternTicks));
 }
-

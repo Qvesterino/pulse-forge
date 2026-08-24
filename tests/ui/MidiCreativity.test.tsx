@@ -69,4 +69,32 @@ describe("MIDI creativity UI", () => {
     fireEvent.pointerDown(notes[1], { button: 0, shiftKey: true, clientX: 20, clientY: 10 });
     expect(onSelectNote).toHaveBeenLastCalledWith({ trackId: track.id, noteIds: ["ui-a", "ui-b"] });
   });
+
+  it("exposes phase-two generators and applies them through the command store", () => {
+    const doc = projectWithNotes();
+    const track = doc.tracks.find((value) => value.kind === "instrument")!;
+    const services = mockServices(doc);
+    renderWithContext(
+      <MidiPanel
+        selectedTrackId={track.id}
+        selectedNote={null}
+        scaleSnap={false}
+        onToggleScaleSnap={vi.fn()}
+        onClearSelection={vi.fn()}
+      />,
+      { services },
+    );
+    fireEvent.click(screen.getByRole("tab", { name: "CREATIVITY" }));
+    expect(screen.getByLabelText("Arpeggiator mode")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "APPLY ARP" })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "APPLY NOTE REPEAT" })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "APPLY EUCLIDEAN" })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "APPLY BASSLINE" })).not.toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "APPLY ARP" }));
+    fireEvent.click(screen.getByRole("button", { name: "APPLY NOTE REPEAT" }));
+    fireEvent.click(screen.getByRole("button", { name: "APPLY EUCLIDEAN" }));
+    fireEvent.click(screen.getByRole("button", { name: "APPLY BASSLINE" }));
+    expect(services.store.execute).toHaveBeenCalledTimes(4);
+  });
 });

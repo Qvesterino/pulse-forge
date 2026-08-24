@@ -87,5 +87,40 @@ describe("MIDI creativity command", () => {
       operation: { kind: "reverse", scaleLock: false },
     })).toThrow(/at least one note/i);
   });
-});
 
+  it("materializes every phase-two generator as one undoable command", () => {
+    const cases = [
+      {
+        kind: "arpeggiate" as const,
+        options: { mode: "up" as const, rateTicks: 60, octaveRange: 0, gate: 1, seed: "test" },
+        scaleLock: false,
+      },
+      {
+        kind: "note-repeat" as const,
+        options: { rateTicks: 60, count: 2, velocityFalloff: 0.1 },
+        scaleLock: false,
+      },
+      {
+        kind: "euclidean" as const,
+        options: { pulses: 2, steps: 4, rotation: 0, pitch: 36, velocity: 0.8, gate: 1 },
+        scaleLock: false,
+      },
+      {
+        kind: "bassline" as const,
+        options: { octave: 1, gate: 1, scaleLock: false },
+      },
+    ];
+
+    for (const operation of cases) {
+      const { doc, trackId } = documentWithNotes();
+      const store = new ProjectStore(doc);
+      store.execute(applyMidiCreativeTool(doc, { trackId, noteIds: ["a", "b"], operation }));
+      const result = store.doc.patterns.find((value) => value.id === store.doc.activePatternId)!.notes[trackId];
+      expect(result.some((value) => value.id === "keep")).toBe(true);
+      expect(result.every((value) => value.start >= 0 && value.start + value.duration <= 1920)).toBe(true);
+      expect(store.undoStackLength).toBe(1);
+      store.undo();
+      expect(store.doc).toEqual(doc);
+    }
+  });
+});

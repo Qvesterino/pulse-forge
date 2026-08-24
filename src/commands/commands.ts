@@ -49,12 +49,16 @@ import { generatePattern, resolveGroove } from "../ai/generator";
 import type { GenerateOptions } from "../ai/types";
 import {
   applyScaleOption,
+  arpeggiateNotes,
+  basslineNotes,
   createChordNotes,
   doubleNotes,
+  euclideanNotes,
   gateNotes,
   halveNotes,
   humanizeNotes,
   invertNotes,
+  repeatNotes,
   randomizeVelocity,
   reverseNotes,
   snapNotesToScale,
@@ -953,6 +957,10 @@ function midiCreativeLabel(operation: MidiCreativeOperation): string {
     case "gate": return "Set note gate";
     case "humanize": return "Humanize notes";
     case "velocity-randomize": return "Randomize note velocity";
+    case "arpeggiate": return "Arpeggiate notes";
+    case "note-repeat": return "Repeat notes";
+    case "euclidean": return "Generate Euclidean rhythm";
+    case "bassline": return "Generate bassline";
   }
 }
 
@@ -1045,9 +1053,37 @@ export function applyMidiCreativeTool(doc: ProjectDocument, options: ApplyMidiCr
         patternTicks,
       );
       break;
+    case "arpeggiate":
+      transformed = applyScaleOption(
+        arpeggiateNotes(target, operation.options, patternTicks, (index) => uid(`arp-${index}`)),
+        operation.key,
+        operation.scaleLock,
+        patternTicks,
+      );
+      break;
+    case "note-repeat":
+      transformed = applyScaleOption(
+        repeatNotes(target, operation.options, patternTicks, (index) => uid(`repeat-${index}`)),
+        operation.key,
+        operation.scaleLock,
+        patternTicks,
+      );
+      break;
+    case "euclidean":
+      transformed = applyScaleOption(
+        euclideanNotes(target, operation.options, patternTicks, (index) => uid(`euclidean-${index}`)),
+        operation.key,
+        operation.scaleLock,
+        patternTicks,
+      );
+      break;
+    case "bassline":
+      transformed = basslineNotes(target, operation.options, patternTicks, (index) => uid(`bass-${index}`));
+      break;
   }
 
-  const nextNotes = [...notes.filter((note) => !requestedIds || !requestedIds.has(note.id)), ...transformed]
+  const untouched = requestedIds ? notes.filter((note) => !requestedIds.has(note.id)) : [];
+  const nextNotes = [...untouched, ...transformed]
     .sort((a, b) => a.start - b.start || a.pitch - b.pitch || a.id.localeCompare(b.id));
   const next: ProjectDocument = {
     ...doc,

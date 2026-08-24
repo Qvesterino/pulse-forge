@@ -12,7 +12,13 @@ import type { AutomationTarget, MidiCcMapping } from "../project-model/types";
 import { GM_DRUM_MAP } from "../project-model/types";
 import type { SelectedNote } from "./PianoRoll";
 import { CHORD_QUALITIES } from "../midi/creative";
-import type { ChordQuality, ChordVoicing, MidiCreativeOperation, StrumDirection } from "../midi/creative";
+import type {
+  ArpeggiatorMode,
+  ChordQuality,
+  ChordVoicing,
+  MidiCreativeOperation,
+  StrumDirection,
+} from "../midi/creative";
 import { EFFECT_DEFS } from "../effects/registry";
 import { INSTRUMENT_DEFS } from "../instruments/registry";
 import { DragNumber } from "./controls";
@@ -329,6 +335,20 @@ function MidiCreativityPanel({
   const [humanizeVelocity, setHumanizeVelocity] = useState(0.1);
   const [velocityAmount, setVelocityAmount] = useState(0.15);
   const [seed, setSeed] = useState("midi-1");
+  const [arpMode, setArpMode] = useState<ArpeggiatorMode>("up");
+  const [arpRate, setArpRate] = useState(120);
+  const [arpOctaves, setArpOctaves] = useState(1);
+  const [arpGate, setArpGate] = useState(0.85);
+  const [repeatRate, setRepeatRate] = useState(60);
+  const [repeatCount, setRepeatCount] = useState(4);
+  const [repeatFalloff, setRepeatFalloff] = useState(0.12);
+  const [euclideanPulses, setEuclideanPulses] = useState(3);
+  const [euclideanSteps, setEuclideanSteps] = useState(8);
+  const [euclideanRotation, setEuclideanRotation] = useState(0);
+  const [euclideanPitch, setEuclideanPitch] = useState(36);
+  const [euclideanGate, setEuclideanGate] = useState(0.8);
+  const [bassOctave, setBassOctave] = useState(1);
+  const [bassGate, setBassGate] = useState(0.9);
   const [error, setError] = useState<string | null>(null);
 
   const track = doc.tracks.find((candidate) => candidate.id === selectedTrackId);
@@ -339,6 +359,9 @@ function MidiCreativityPanel({
   const hasTarget = targetCount > 0;
   const canUseScale = !!doc.key;
   const canUseDiatonic = chordMode === "explicit" || canUseScale;
+  const sourceVelocity = selectionIsForTrack
+    ? trackNotes.find((note) => selectedNote!.noteIds.includes(note.id))?.velocity ?? trackNotes[0]?.velocity ?? 0.8
+    : trackNotes[0]?.velocity ?? 0.8;
 
   const targetIds = selectionIsForTrack ? selectedNote!.noteIds : undefined;
   const run = (operation: MidiCreativeOperation) => {
@@ -469,6 +492,59 @@ function MidiCreativityPanel({
           <div className="midi-tool-buttons">
             <button type="button" className="btn btn-small" disabled={!hasTarget} onClick={() => run({ kind: "humanize", options: { timingTicks, velocityAmount: humanizeVelocity, seed }, ...scaleOptions })}>APPLY HUMANIZE</button>
             <button type="button" className="btn btn-small" disabled={!hasTarget} onClick={() => run({ kind: "velocity-randomize", options: { amount: velocityAmount, seed }, ...scaleOptions })}>APPLY VELOCITY</button>
+          </div>
+        </section>
+
+        <section className="midi-tool-section midi-generator-section">
+          <h3 className="panel-title">GENERATORS</h3>
+          <div className="midi-row midi-number-row">
+            <label className="midi-label">ARP</label>
+            <select
+              className="midi-select"
+              value={arpMode}
+              aria-label="Arpeggiator mode"
+              onChange={(event) => setArpMode(event.target.value as ArpeggiatorMode)}
+            >
+              <option value="up">Up</option>
+              <option value="down">Down</option>
+              <option value="up-down">Up / Down</option>
+              <option value="random">Random</option>
+            </select>
+            <DragNumber label="RATE" value={arpRate} min={1} max={960} defaultValue={120} sensitivity={1} format={(value) => `${Math.round(value)} tk`} onCommit={(value) => setArpRate(Math.round(value))} />
+          </div>
+          <div className="midi-row midi-number-row">
+            <DragNumber label="OCT" value={arpOctaves} min={0} max={4} defaultValue={1} sensitivity={0.05} format={(value) => `${Math.round(value)}`} onCommit={(value) => setArpOctaves(Math.round(value))} />
+            <DragNumber label="GATE" value={arpGate} min={0.01} max={1} defaultValue={0.85} sensitivity={0.005} format={(value) => `${Math.round(value * 100)}%`} onCommit={setArpGate} />
+            <button type="button" className="btn btn-small" disabled={!hasTarget} onClick={() => run({ kind: "arpeggiate", options: { mode: arpMode, rateTicks: arpRate, octaveRange: arpOctaves, gate: arpGate, seed }, ...scaleOptions })}>
+              APPLY ARP
+            </button>
+          </div>
+          <div className="midi-row midi-number-row">
+            <DragNumber label="REP·RATE" value={repeatRate} min={1} max={960} defaultValue={60} sensitivity={1} format={(value) => `${Math.round(value)} tk`} onCommit={(value) => setRepeatRate(Math.round(value))} />
+            <DragNumber label="COUNT" value={repeatCount} min={1} max={32} defaultValue={4} sensitivity={0.1} format={(value) => `${Math.round(value)}`} onCommit={(value) => setRepeatCount(Math.round(value))} />
+            <DragNumber label="FALL" value={repeatFalloff} min={0} max={1} defaultValue={0.12} sensitivity={0.005} format={(value) => `${Math.round(value * 100)}%`} onCommit={setRepeatFalloff} />
+          </div>
+          <button type="button" className="btn btn-small" disabled={!hasTarget} onClick={() => run({ kind: "note-repeat", options: { rateTicks: repeatRate, count: repeatCount, velocityFalloff: repeatFalloff }, ...scaleOptions })}>
+            APPLY NOTE REPEAT
+          </button>
+          <div className="midi-row midi-number-row">
+            <DragNumber label="PULSES" value={euclideanPulses} min={0} max={32} defaultValue={3} sensitivity={0.1} format={(value) => `${Math.round(value)}`} onCommit={(value) => setEuclideanPulses(Math.round(value))} />
+            <DragNumber label="STEPS" value={euclideanSteps} min={1} max={32} defaultValue={8} sensitivity={0.1} format={(value) => `${Math.round(value)}`} onCommit={(value) => setEuclideanSteps(Math.round(value))} />
+            <DragNumber label="ROT" value={euclideanRotation} min={-31} max={31} defaultValue={0} sensitivity={0.2} format={(value) => `${Math.round(value)}`} onCommit={(value) => setEuclideanRotation(Math.round(value))} />
+          </div>
+          <div className="midi-row midi-number-row">
+            <DragNumber label="PITCH" value={euclideanPitch} min={0} max={127} defaultValue={36} sensitivity={0.5} format={(value) => `${Math.round(value)}`} onCommit={(value) => setEuclideanPitch(Math.round(value))} />
+            <DragNumber label="GATE" value={euclideanGate} min={0.01} max={1} defaultValue={0.8} sensitivity={0.005} format={(value) => `${Math.round(value * 100)}%`} onCommit={setEuclideanGate} />
+            <button type="button" className="btn btn-small" disabled={!hasTarget} onClick={() => run({ kind: "euclidean", options: { pulses: euclideanPulses, steps: euclideanSteps, rotation: euclideanRotation, pitch: euclideanPitch, velocity: sourceVelocity, gate: euclideanGate }, ...scaleOptions })}>
+              APPLY EUCLIDEAN
+            </button>
+          </div>
+          <div className="midi-row midi-number-row">
+            <DragNumber label="BASS OCT" value={bassOctave} min={-1} max={8} defaultValue={1} sensitivity={0.1} format={(value) => `${Math.round(value)}`} onCommit={(value) => setBassOctave(Math.round(value))} />
+            <DragNumber label="GATE" value={bassGate} min={0.01} max={1} defaultValue={0.9} sensitivity={0.005} format={(value) => `${Math.round(value * 100)}%`} onCommit={setBassGate} />
+            <button type="button" className="btn btn-small" disabled={!hasTarget} onClick={() => run({ kind: "bassline", options: { octave: bassOctave, gate: bassGate, scaleLock: scaleSnap, key: doc.key } })}>
+              APPLY BASSLINE
+            </button>
           </div>
         </section>
       </div>
