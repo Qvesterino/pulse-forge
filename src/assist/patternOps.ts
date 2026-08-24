@@ -9,10 +9,13 @@
  *   REPLACE     — swap one pad family's row for a style groove (hats→house…)
  *   FILL        — crescendo snare fill over the last bar
  *
- * Pure functions over pattern data — no engine, no AI imports, unit-testable.
+ * Pure functions over pattern data — no audio engine or provider imports,
+ * unit-testable and safe to reuse from preview/apply workflows.
  */
 import { mulberry32, hashString } from "../shared/rng";
-import type { DrumPad, Pattern, StepMeta } from "../project-model/types";
+import { STEP_TICKS, type DrumPad, type NoteEvent, type Pattern, type PatternPhraseBar, type StepMeta } from "../project-model/types";
+import { buildPhrasePlan } from "../ai/phrase";
+import type { AssistTarget } from "./types";
 
 /** Pad families by name — factory kit and sensible user kits classify cleanly. */
 export interface PadFamilies {
@@ -56,7 +59,10 @@ const clampV = (v: number) => Math.max(0.08, Math.min(1, v));
 
 export type RowsPatch = {
   rows: Record<string, number[]>;
+  notes?: Record<string, NoteEvent[]>;
   stepMeta?: Record<string, Record<number, StepMeta>>;
+  clearStepMeta?: { from: number; to: number; padIds?: string[] };
+  phrasePlan?: PatternPhraseBar[];
   stepCount?: number;
 };
 
@@ -127,7 +133,42 @@ export function expandWithBuild(pattern: Pattern, pads: DrumPad[], bars: number,
     }
     rows[padId] = row;
   }
-  return { rows, stepCount };
+
+  const stepMeta: Record<string, Record<number, StepMeta>> = {};
+  for (const [padId, sourceMeta] of Object.entries(pattern.stepMeta ?? {})) {
+    const expanded: Record<number, StepMeta> = {};
+    for (let bar = 0; bar < bars; bar++) {
+      for (const [stepKey, meta] of Object.entries(sourceMeta)) {
+        const sourceStep = Number(stepKey);
+        const step = bar * 16 + (sourceStep % 16);
+        if ((rows[padId]?.[step] ?? 0) > 0) expanded[step] = { ...meta };
+      }
+    }
+    if (Object.keys(expanded).length > 0) stepMeta[padId] = expanded;
+  }
+
+  const notes: Record<string, NoteEvent[]> = {};
+  const sourceBarTicks = 16 * STEP_TICKS;
+  for (const [trackId, sourceNotes] of Object.entries(pattern.notes ?? {})) {
+    const expanded: NoteEvent[] = [];
+    for (let bar = 0; bar < bars; bar++) {
+      const sourceBar = bar % baseBars;
+      const sourceStart = sourceBar * sourceBarTicks;
+      const energy = 0.72 + 0.28 * (bar / Math.max(1, bars - 1));
+      for (const note of sourceNotes) {
+        if (note.start < sourceStart || note.start >= sourceStart + sourceBarTicks) continue;
+        expanded.push({
+          ...note,
+          id: `${note.id}:build:${seed}:${bar}`,
+          start: bar * sourceBarTicks + (note.start - sourceStart),
+          velocity: Math.max(0.1, Math.min(1, note.velocity * energy)),
+        });
+      }
+    }
+    notes[trackId] = expanded;
+  }
+
+  return { rows, notes, stepMeta, phrasePlan: buildPhrasePlan(stepCount), stepCount };
 }
 
 // ─── REPLACE (pad family → style groove) ──────────────────────────────────
@@ -168,7 +209,7 @@ const SNARE_STYLES: Record<string, StyleRow> = {
 
 const STYLE_TABLES = { hats: HAT_STYLES, kicks: KICK_STYLES, snares: SNARE_STYLES } as const;
 
-export type ReplaceTarget = keyof typeof STYLE_TABLES;
+export type ReplaceTarget = AssistTarget;
 
 export function styleNames(target: ReplaceTarget): string[] {
   return Object.keys(STYLE_TABLES[target]);
@@ -202,7 +243,7 @@ export function replaceRows(pattern: Pattern, pads: DrumPad[], target: ReplaceTa
     }
     rows[pad.id] = row;
   }
-  return { rows };
+  return { rows, clearStepMeta: { from: 0, to: pattern.stepCount, padIds: family.map((pad) => pad.id) } };
 }
 
 // ─── FILL (crescendo over the last bar) ───────────────────────────────────
@@ -242,5 +283,12 @@ export function makeFill(pattern: Pattern, pads: DrumPad[], seed: string): RowsP
       rows[second.id][start + 14] = 0.65;
     }
   }
-  return { rows };
+  const phrasePlan = buildPhrasePlan(pattern.stepCount);
+  if (phrasePlan.length > 0) {
+    phrasePlan[phrasePlan.length - 1] = {
+      ...phrasePlan[phrasePlan.length - 1],
+      section: "fill",
+    };
+  }
+  return { rows, clearStepMeta: { from: start, to: pattern.stepCount }, phrasePlan };
 }

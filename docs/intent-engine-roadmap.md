@@ -1,6 +1,6 @@
 # Intent Engine — implementačná roadmapa
 
-Status: Fáza 3 — core contract implementovaný
+Status: Fáza 5 — quality gates, golden tests a browser verification implementované; Worker boundary zostáva otvorený follow-up
 Scope: lokálna deterministická generácia hudobných patternov, Assist operácie a budúce AI providery  
 Priorita: offline-first, reprodukovateľnosť, hudobná kvalita, bezpečné rozšírenie
 
@@ -333,28 +333,29 @@ Zjednotiť full generation a chirurgické Assist operácie pod rovnaký determin
 
 ### Implementácia
 
-- [ ] Premigrovať `GenerateDialog` na `IntentSpec + GenerationPlan`.
-- [ ] Odstrániť duplicitné groove resolution z UI.
-- [ ] Preview musí zobrazovať rovnaký plán, ktorý sa následne aplikuje.
+- [x] Premigrovať `GenerateDialog` na `IntentSpec + GenerationPlan`.
+- [x] Odstrániť duplicitné groove resolution z UI.
+- [x] Preview musí zobrazovať rovnaký plán, ktorý sa následne aplikuje.
 - [ ] Rozšíriť preview o melodické parts alebo krátky offline audio preview.
-- [ ] Ukladať recipe pri vytvorení nového patternu.
-- [ ] Pri replace zachovať alebo explicitne nahradiť recipe podľa voľby používateľa.
-- [ ] `VARY` musí mať canonical input hash pôvodného patternu.
-- [ ] `BUILD` musí korektne rozšíriť:
-  - [ ] drum rows
-  - [ ] notes
-  - [ ] step metadata
-  - [ ] phrase metadata
-- [ ] `REPLACE` musí vyčistiť metadata cieľovej rodiny, ktoré už neplatia.
-- [ ] `FILL` musí aktualizovať step metadata konzistentne s novými hitmi.
-- [ ] Každá operácia musí byť jeden undo krok.
+- [x] Ukladať recipe pri vytvorení nového patternu.
+- [x] Pri replace zachovať recipe ako lineage, aktualizovať content hashes a zneplatniť staré quality diagnostics.
+- [x] `VARY` musí mať canonical input hash pôvodného patternu.
+- [x] `BUILD` musí korektne rozšíriť:
+  - [x] drum rows
+  - [x] notes
+  - [x] step metadata
+  - [x] phrase metadata
+- [x] `REPLACE` musí vyčistiť metadata cieľovej rodiny, ktoré už neplatia.
+- [x] `FILL` musí aktualizovať step metadata konzistentne s novými hitmi.
+- [x] Každá operácia musí byť jeden undo krok.
 
 ### Acceptance criteria
 
-- [ ] Preview a Apply nevytvárajú dva odlišné hudobné výsledky.
-- [ ] Assist operácie nemenia necielené role/families.
-- [ ] Undo/redo obnoví rows, notes, metadata aj recipe.
+- [x] Preview a Apply používajú rovnaký normalizovaný request a pure patch builder.
+- [x] Surgical `REPLACE` nemení necielené pad families; BUILD/FILL majú explicitne zdokumentovaný širší rozsah.
+- [x] Undo/redo obnoví rows, notes, metadata aj recipe ako jeden command snapshot.
 - [ ] UI zobrazuje seed, engine version a prípadné repair warnings.
+  - [x] Assist preview zobrazuje lokálnu Assist engine verziu; repair diagnostics čakajú na spoločný diagnostics panel.
 
 ---
 
@@ -365,37 +366,37 @@ Závisí od: Fáza 2, Fáza 3
 
 ### Test layers
 
-- [ ] Unit tests pre encoding, decoding, RNG streamy a normalization.
-- [ ] Property tests pre validné hodnoty a invarianty patternov.
-- [ ] Golden content fixtures pre hlavné genre/style kombinácie.
-- [ ] Regression tests pre každú opravu generator version.
-- [ ] Integration tests pre command, undo/redo a persistence.
-- [ ] Browser tests pre offline generation flow.
-- [ ] Offline audio render tests pre reprezentatívne generated patterns.
+- [x] Unit tests pre encoding, decoding, RNG streamy a normalization (`tests/ai-correctness.test.ts`, `tests/ai-markov.test.ts`, `tests/intent-pipeline.test.ts`).
+- [x] Property-style seed matrix tests pre validné hodnoty a invarianty patternov (`tests/quality-gates.test.ts`).
+- [x] Golden content fixtures pre hlavné genre/style kombinácie (`tests/fixtures/ai-baseline.*`, 8 kombinácií × 16/32/64 krokov).
+- [x] Regression tests pre generator version `correctness-1` (`tests/ai-baseline.test.ts`).
+- [x] Integration tests pre command, undo/redo a persistence (`tests/assist-pipeline.test.ts` + existujúce command/store/export testy).
+- [x] Browser tests pre offline generation flow (`scripts/verify-browser.mjs`, accept → undo/redo → export → reload).
+- [x] Offline audio render tests pre reprezentatívne generated patterns (`src/browser-checks.ts`, valid WAV gate).
 
 ### Povinné invariants
 
-- [ ] Žiadny note nemá neplatný pitch, duration, velocity alebo start.
-- [ ] Žiadny drum row nemá nesprávny počet krokov.
-- [ ] Žiadne metadata neodkazujú na neaktívny alebo neexistujúci hit.
-- [ ] Všetky generated melodic notes rešpektujú key/scale, ak je key zadaný.
-- [ ] Výstup má deterministický content hash.
-- [ ] Fallback je vždy validný a prehrateľný.
-- [ ] Offline render je konzistentný s realtime event plánom.
+- [x] Žiadny note nemá neplatný pitch, duration, velocity alebo start (`src/ai/invariants.ts`).
+- [x] Žiadny drum row nemá nesprávny počet krokov.
+- [x] Žiadne metadata neodkazujú na neaktívny alebo neexistujúci hit.
+- [x] Všetky generated melodic notes rešpektujú key/scale, ak je key zadaný.
+- [x] Výstup má deterministický content hash.
+- [x] Fallback je vždy validný a prehrateľný.
+- [x] Offline render je konzistentný s realtime event plánom (`src/project-model/events.ts`, `tests/render-event-parity.test.ts`).
 
 ### Performance gates
 
-- [ ] Zmerať generation latency pre 16/32/64 krokov.
-- [ ] Nastaviť maximálny synchronný čas pre UI preview.
+- [x] Zmerať generation latency pre 16/32/64 krokov (`scripts/ai-performance.mts`).
+- [x] Nastaviť maximálny synchronný čas pre UI preview na 250 ms.
 - [ ] Pri väčších generáciách presunúť výpočty do Worker boundary.
-- [ ] Zamedziť zbytočnej alokácii veľkých Markov matíc pri každom kliknutí.
-- [ ] Cacheovať immutable groove models a derived distributions.
+- [x] Zamedziť zbytočnej alokácii veľkých Markov matíc pri každom kliknutí (`src/ai/markov.ts` model cache).
+- [x] Cacheovať immutable groove models a derived distributions.
 
 ### Acceptance criteria
 
-- [ ] CI spúšťa correctness aj quality testy.
-- [ ] Zmena výsledku je buď očakávaná zmena engine version, alebo regresia.
-- [ ] Browser verification pokrýva accept, undo, export a reload.
+- [x] CI spúšťa correctness aj quality testy (`npm test` + `npm run ai:performance` + browser job).
+- [x] Zmena výsledku je buď očakávaná zmena engine version, alebo regresia (`correctness-1` golden hashes).
+- [x] Browser verification pokrýva accept, undo, export a reload.
 
 ---
 
@@ -494,7 +495,7 @@ Závisí od: všetky predchádzajúce fázy
 - [x] IE-013: role-aware melodic parts a track mapping.
 - [x] IE-014: IntentSpec, GenerationPlan, GenerationResult.
 - [x] IE-015: unified preview/apply pipeline.
-- [ ] IE-016: Assist metadata/notes correctness.
+- [x] IE-016: Assist metadata/notes correctness.
 - [x] IE-017: metrics a deterministic repair pass.
 
 ### P2 — AI readiness a hardening
@@ -528,12 +529,12 @@ Do ďalšej fázy sa ide až vtedy, keď platí:
 
 ## Odporúčané poradie implementácie
 
-1. [ ] Fáza 0 — baseline fixtures a hash harness.
-2. [ ] Fáza 1 — correctness, determinism a swing ownership.
-3. [ ] Fáza 2 — lokálna hudobná kvalita a role-aware generovanie.
-4. [ ] Fáza 3 — IntentSpec a provider-neutral pipeline.
-5. [ ] Fáza 4 — UI/Assist integrácia.
-6. [ ] Fáza 5 — quality gates a browser verification.
+1. [x] Fáza 0 — baseline fixtures a hash harness.
+2. [x] Fáza 1 — correctness, determinism a swing ownership.
+3. [x] Fáza 2 — lokálna hudobná kvalita a role-aware generovanie.
+4. [x] Fáza 3 — IntentSpec a provider-neutral pipeline.
+5. [x] Fáza 4 — UI/Assist integrácia.
+6. [x] Fáza 5 — quality gates a browser verification (Worker boundary zostáva follow-up).
 7. [ ] Fáza 6 — voliteľný AI provider.
 8. [ ] Fáza 7 — stabilizácia, migrácie a dokumentácia.
 

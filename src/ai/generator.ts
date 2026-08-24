@@ -9,6 +9,7 @@ import { inferPadRole } from './pad-roles';
 import { canonicalizePattern, contentHash, createGenerationRecipe } from './evaluation';
 import { measureDrumQuality, measureMelodicQuality } from './quality';
 import { evaluateStyleDistance } from './style-quality';
+import { buildPhrasePlan } from './phrase';
 
 /** Resolve which groove to use based on genre + optional style name */
 export function resolveGroove(genre: GenerateOptions['genre'], style?: string, rand?: () => number): GrooveData {
@@ -157,6 +158,7 @@ export function generatePattern(
     rows,
     notes: notesRecord,
     stepMeta: Object.keys(stepMeta).length > 0 ? stepMeta : undefined,
+    phrasePlan: buildPhrasePlan(options.stepCount),
   };
 
   const outputContentHash = contentHash(canonicalizePattern(doc, pattern));

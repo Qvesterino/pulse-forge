@@ -11,6 +11,7 @@
     "test": "vitest run",
     "ai:baseline": "vite-node scripts/ai-baseline.mts",
     "ai:baseline:browser": "node scripts/ai-baseline-browser.mjs",
+    "ai:performance": "vite-node scripts/ai-performance.mts",
     "test:browser": "node scripts/verify-browser.mjs",
     "preview": "vite preview",
     "collab": "node server/collab-server.mjs"

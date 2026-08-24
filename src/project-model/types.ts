@@ -163,6 +163,26 @@ export interface NoteEvent {
   velocity: number;
 }
 
+export interface PatternPhraseBar {
+  bar: number;
+  startStep: number;
+  endStep: number;
+  section: "main" | "variation" | "drop" | "fill" | "outro";
+}
+
+export interface PatternAssist {
+  engineId: string;
+  engineVersion: string;
+  operation: "vary" | "build" | "replace" | "fill";
+  seed: string;
+  sourceContentHash: string;
+  outputContentHash: string;
+  amount?: number;
+  bars?: number;
+  target?: string;
+  style?: string;
+}
+
 /**
  * Per-step performance metadata (probability / ratchet / microtiming).
  * All fields are optional — an absent entry means "straight": probability 1,
@@ -219,6 +239,10 @@ export interface Pattern {
   notes: Record<ID, NoteEvent[]>;
   /** padId → stepIndex → performance metadata. Optional (schema v1 addendum). */
   stepMeta?: Record<ID, Record<number, StepMeta>>;
+  /** Explicit multi-bar phrase sections used by Assist BUILD/FILL. */
+  phrasePlan?: PatternPhraseBar[];
+  /** Provenance for surgical Assist transformations. */
+  assist?: PatternAssist;
   /** Deterministic generation recipe and content hashes, when AI-generated. */
   generation?: PatternGeneration;
 }

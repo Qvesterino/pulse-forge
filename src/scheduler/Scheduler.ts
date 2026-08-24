@@ -1,6 +1,7 @@
 import type { DrumTrack, Pattern, PlayMode, ProjectDocument } from "../project-model/types";
 import { BAR_TICKS, getActivePattern, STEP_TICKS } from "../project-model/types";
 import { drumHitsInWindow } from "../project-model/groove";
+import { noteEventsInWindow } from "../project-model/events";
 import type { Transport } from "../transport/Transport";
 
 export interface SchedulerDeps {
@@ -179,7 +180,7 @@ export class Scheduler {
       const boundary =
         pending && pending.atTick > windowStart && pending.atTick <= windowEnd ? pending.atTick : null;
 
-      this.schedulePatternWindow(pattern, 0, patternTicks, windowStart, boundary ?? windowEnd);
+        this.schedulePatternWindow(pattern, 0, windowStart, boundary ?? windowEnd);
       automationCtx = { base: 0, patternTicks };
 
       if (boundary !== null && pending) {
@@ -254,7 +255,7 @@ export class Scheduler {
         const pattern = doc.patterns.find((p) => p.id === scene.patternId);
         if (!pattern) continue;
         const patternTicks = STEP_TICKS * pattern.stepCount;
-        this.schedulePatternWindow(pattern, clipStart, patternTicks, s, e);
+        this.schedulePatternWindow(pattern, clipStart, s, e);
         if (!automationCtx && windowStart >= clipStart) {
           automationCtx = { base: clipStart, patternTicks };
         }
@@ -304,7 +305,6 @@ export class Scheduler {
   private schedulePatternWindow(
     pattern: Pattern,
     base: number,
-    patternTicks: number,
     windowStart: number,
     windowEnd: number,
   ): void {
@@ -335,29 +335,22 @@ export class Scheduler {
       this.stats.scheduledEvents += 1;
     }
 
-    const relStart = mod(windowStart - base, patternTicks);
-    for (const track of doc.tracks) {
-      if (track.kind !== "instrument") continue;
-      const notes = pattern.notes?.[track.id];
-      if (!notes || notes.length === 0) continue;
-      for (const note of notes) {
-        let occ = windowStart + mod(note.start - relStart, patternTicks);
-        for (; occ < windowEnd; occ += patternTicks) {
-          const when = timeAt(occ) + scheduleOffsetSec;
-          if (!audible(when)) continue;
-          this.deps.noteOn(track.id, note.pitch, note.velocity, when, note.duration * transport.secondsPerTick);
-          // MIDI output for instrument tracks
-          if (this.deps.midiNoteOn && track.midiOutput?.enabled) {
-            const ch = (track.midiOutput.channel || 1) - 1;
-            this.deps.midiNoteOn(track.id, ch, note.pitch, Math.round(note.velocity * 127), when);
-            if (this.deps.midiNoteOff) {
-              const noteOffWhen = when + note.duration * transport.secondsPerTick;
-              this.deps.midiNoteOff(track.id, ch, note.pitch, noteOffWhen);
-            }
-          }
-          this.stats.scheduledEvents += 1;
+    for (const event of noteEventsInWindow(pattern, base, windowStart, windowEnd)) {
+      const track = doc.tracks.find((candidate) => candidate.id === event.trackId);
+      if (!track || track.kind !== "instrument") continue;
+      const when = timeAt(event.tick) + scheduleOffsetSec;
+      if (!audible(when)) continue;
+      this.deps.noteOn(track.id, event.note.pitch, event.note.velocity, when, event.note.duration * transport.secondsPerTick);
+      // MIDI output for instrument tracks
+      if (this.deps.midiNoteOn && track.midiOutput?.enabled) {
+        const ch = (track.midiOutput.channel || 1) - 1;
+        this.deps.midiNoteOn(track.id, ch, event.note.pitch, Math.round(event.note.velocity * 127), when);
+        if (this.deps.midiNoteOff) {
+          const noteOffWhen = when + event.note.duration * transport.secondsPerTick;
+          this.deps.midiNoteOff(track.id, ch, event.note.pitch, noteOffWhen);
         }
       }
+      this.stats.scheduledEvents += 1;
     }
   }
 

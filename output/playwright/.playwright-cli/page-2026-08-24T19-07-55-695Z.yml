@@ -1,0 +1,52 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: PF
+      - generic [ref=e7]: PULSE FORGE
+    - generic [ref=e8]: beat & scene-score workstation
+  - generic [ref=e9]:
+    - generic [ref=e10]:
+      - heading "IMPORT PROJECT" [level=2] [ref=e11]
+      - button "IMPORT FROM FILE" [ref=e12] [cursor=pointer]
+    - generic [ref=e13]:
+      - heading "NEW PROJECT" [level=2] [ref=e14]
+      - generic [ref=e15]:
+        - button "HOUSE 124 BPM 4-on-the-floor groove with offbeat hats and a sub bass line. Ready to play. groove · sub · starter" [ref=e16] [cursor=pointer]:
+          - generic [ref=e17]:
+            - generic [ref=e18]: HOUSE
+            - generic [ref=e19]: 124 BPM
+          - generic [ref=e20]: 4-on-the-floor groove with offbeat hats and a sub bass line. Ready to play.
+          - generic [ref=e21]: groove · sub · starter
+        - button "TECHNO 132 BPM Driving kick, offbeat open hats and a gritty rumble bass. Two loop variations. driving · dark · loop" [ref=e22] [cursor=pointer]:
+          - generic [ref=e23]:
+            - generic [ref=e24]: TECHNO
+            - generic [ref=e25]: 132 BPM
+          - generic [ref=e26]: Driving kick, offbeat open hats and a gritty rumble bass. Two loop variations.
+          - generic [ref=e27]: driving · dark · loop
+        - button "TRAP 140 BPM Half-time snare, rolling hats and a long-decay 808 with a sparse lead. 808 · half-time" [ref=e28] [cursor=pointer]:
+          - generic [ref=e29]:
+            - generic [ref=e30]: TRAP
+            - generic [ref=e31]: 140 BPM
+          - generic [ref=e32]: Half-time snare, rolling hats and a long-decay 808 with a sparse lead.
+          - generic [ref=e33]: 808 · half-time
+        - button "AMBIENT 80 BPM Slow evolving texture pads and soft analog chords. No drums in your way. pads · atmosphere · slow" [ref=e34] [cursor=pointer]:
+          - generic [ref=e35]:
+            - generic [ref=e36]: AMBIENT
+            - generic [ref=e37]: 80 BPM
+          - generic [ref=e38]: Slow evolving texture pads and soft analog chords. No drums in your way.
+          - generic [ref=e39]: pads · atmosphere · slow
+        - 'button "SCENE SCORE 120 BPM Arrangement-first: INTRO / BUILD / DROP / BREAK / OUTRO scenes pre-placed on a 24-bar timeline. arrangement · scenes · sync" [ref=e40] [cursor=pointer]':
+          - generic [ref=e41]:
+            - generic [ref=e42]: SCENE SCORE
+            - generic [ref=e43]: 120 BPM
+          - generic [ref=e44]: "Arrangement-first: INTRO / BUILD / DROP / BREAK / OUTRO scenes pre-placed on a 24-bar timeline."
+          - generic [ref=e45]: arrangement · scenes · sync
+        - button "EMPTY 120 BPM One drum track and a blank pattern. Nothing else. blank · advanced" [ref=e46] [cursor=pointer]:
+          - generic [ref=e47]:
+            - generic [ref=e48]: EMPTY
+            - generic [ref=e49]: 120 BPM
+          - generic [ref=e50]: One drum track and a blank pattern. Nothing else.
+          - generic [ref=e51]: blank · advanced
+    - generic [ref=e52]:
+      - heading "PROJECTS" [level=2] [ref=e53]
+      - paragraph [ref=e54]: Loading…

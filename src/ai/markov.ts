@@ -3,6 +3,8 @@ import type { PadMarkovModel, VelocityLevel, StateIndex } from './types';
 const STEPS_PER_BAR = 16;
 const NUM_LEVELS = 4;
 const NUM_STATES = NUM_LEVELS * NUM_LEVELS * STEPS_PER_BAR; // 256 states
+const MODEL_CACHE_LIMIT = 64;
+const modelCache = new Map<string, PadMarkovModel>();
 
 /** Quantize a velocity value (0-1) to a discrete level (0-3) */
 export function quantizeVelocity(v: number): VelocityLevel {
@@ -38,6 +40,10 @@ export function decodePosition(index: StateIndex): number {
 
 /** Build a second-order Markov model for one pad from reference patterns */
 export function buildPadModel(padIndex: number, patterns: number[][]): PadMarkovModel {
+  const cacheKey = `${padIndex}|${patterns.map((pattern) => pattern.map((value) => Number.isFinite(value) ? value : 0).join(",")).join(";")}`;
+  const cached = modelCache.get(cacheKey);
+  if (cached) return cached;
+
   const transitions = new Uint32Array(NUM_STATES * NUM_STATES);
   const initial = new Uint32Array(NUM_STATES);
 
@@ -60,7 +66,18 @@ export function buildPadModel(padIndex: number, patterns: number[][]): PadMarkov
     }
   }
 
-  return { padIndex, states: NUM_STATES, transitions, initial };
+  const model = { padIndex, states: NUM_STATES, transitions, initial };
+  modelCache.set(cacheKey, model);
+  if (modelCache.size > MODEL_CACHE_LIMIT) {
+    const oldest = modelCache.keys().next().value;
+    if (oldest !== undefined) modelCache.delete(oldest);
+  }
+  return model;
+}
+
+/** Test/diagnostics hook; generation never needs to clear immutable groove models. */
+export function clearPadModelCache(): void {
+  modelCache.clear();
 }
 
 /** Sample a state from a distribution vector using a PRNG, with optional temperature */

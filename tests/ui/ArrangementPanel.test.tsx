@@ -39,6 +39,13 @@ describe("ArrangementPanel", () => {
     expect(screen.getByText("ROLE")).toBeInTheDocument();
   });
 
+  it("exposes the source rail, quantize state and arrangement role flow", () => {
+    renderWithContext(<ArrangementPanel />);
+    expect(screen.getByText("SOURCE")).toBeInTheDocument();
+    expect(screen.getByText("QUANTIZE")).toBeInTheDocument();
+    expect(screen.getByLabelText("Arrangement role flow")).toBeInTheDocument();
+  });
+
   it("starts capture from the arrangement toolbar", async () => {
     const { services } = renderWithContext(<ArrangementPanel />);
     const user = (await import("@testing-library/user-event")).default.setup();

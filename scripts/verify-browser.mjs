@@ -81,9 +81,61 @@ try {
       await btn.click();
       await appPage.waitForTimeout(100);
     }
+    // Offline generation workflow: preview the local plan, accept it, undo,
+    // redo, export JSON, reload the app, and reopen the persisted project.
+    // This is intentionally exercised through the real UI rather than an
+    // internal store call so browser persistence and command history are both covered.
+    const patternsBeforeGenerate = await appPage.locator(".pattern-chip").count();
+    await appPage.locator('.pattern-actions button:has-text("GEN")').click();
+    await appPage.waitForSelector('.generate-dialog-backdrop[role="dialog"]', { timeout: 5000 });
+    const generateSeed = appPage.locator(".generate-dialog input.generate-seed-input").first();
+    await generateSeed.fill("browser-seed");
+    await appPage.locator(".generate-dialog select.generate-select").nth(2).selectOption("32");
+    await appPage.waitForSelector(".generate-dialog .preview-grid", { timeout: 5000 });
+    await appPage.locator('.generate-dialog button:has-text("GENERATE")').click();
+    await appPage.waitForSelector('.generate-dialog-backdrop[role="dialog"]', { state: "detached", timeout: 10000 });
+    const patternsAfterGenerate = await appPage.locator(".pattern-chip").count();
+    if (patternsAfterGenerate !== patternsBeforeGenerate + 1) {
+      throw new Error(`generation accept expected ${patternsBeforeGenerate + 1} patterns, got ${patternsAfterGenerate}`);
+    }
+    await appPage.locator('button[aria-label="Undo"]').click();
+    await appPage.waitForFunction(
+      (count) => document.querySelectorAll(".pattern-chip").length === count,
+      patternsBeforeGenerate,
+      { timeout: 5000 },
+    );
+    await appPage.locator('button[aria-label="Redo"]').click();
+    await appPage.waitForFunction(
+      (count) => document.querySelectorAll(".pattern-chip").length === count,
+      patternsAfterGenerate,
+      { timeout: 5000 },
+    );
+    await appPage.locator('.topbar button[aria-label="Toggle export panel"]').click();
+    await appPage.waitForSelector('.export-panel[aria-label="Export"]', { timeout: 5000 });
+    const projectDownload = appPage.waitForEvent("download");
+    await appPage.locator('.export-panel button:has-text("EXPORT JSON")').click();
+    const download = await projectDownload;
+    if (!download.suggestedFilename().endsWith(".pulseforge.json")) {
+      throw new Error(`unexpected project export filename: ${download.suggestedFilename()}`);
+    }
+    await appPage.waitForTimeout(1200); // allow autosave to settle before reload
+    await appPage.reload({ waitUntil: "domcontentloaded" });
+    await appPage.waitForSelector(".project-browser", { timeout: 15000 });
+    const continueCard = appPage.locator(".pb-continue-card").first();
+    if (await continueCard.count()) {
+      await continueCard.click();
+    } else {
+      await appPage.locator(".pb-row button:has-text(OPEN)").first().click();
+    }
+    await appPage.waitForSelector(".sequencer", { timeout: 15000 });
+    const patternsAfterReload = await appPage.locator(".pattern-chip").count();
+    if (patternsAfterReload !== patternsAfterGenerate) {
+      throw new Error(`reload lost generated pattern: ${patternsAfterReload}/${patternsAfterGenerate}`);
+    }
+    console.log("[PASS] offline generation: preview → accept → undo/redo → JSON export → reload preserved the pattern");
     // Groove workflow: controls visible, right-click step editor, scene strip.
     await appPage.waitForSelector(".pattern-groove", { timeout: 5000 });
-    await appPage.waitForSelector(".scene-strip .scene-launch", { timeout: 5000 });
+    await appPage.waitForSelector(".scene-launcher .scene-action-launch", { timeout: 5000 });
     const step = appPage.locator(".step").first();
     await step.click({ button: "right" });
     await appPage.waitForSelector(".step-editor", { timeout: 5000 });
@@ -135,7 +187,7 @@ try {
       console.log("[FAIL] app boot — console errors:", fatal.slice(0, 5));
     }
   } catch (error) {
-    console.log("[FAIL] app boot — UI did not mount:", String(error).split("\n")[0]);
+    console.log("[FAIL] app boot — UI did not mount:", error?.stack ?? String(error));
     if (appErrors.length > 0) console.log("  console errors:", appErrors.slice(0, 5));
   }
   await appPage.close();

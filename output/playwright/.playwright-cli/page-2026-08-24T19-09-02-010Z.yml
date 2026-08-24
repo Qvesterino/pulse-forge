@@ -1,0 +1,1205 @@
+- generic [ref=e59]:
+  - banner [ref=e60]:
+    - generic [ref=e61]:
+      - generic [ref=e62]: PF
+      - generic [ref=e63]: PULSE FORGE
+    - button "Back to project browser" [ref=e64] [cursor=pointer]: PROJECTS
+    - generic [ref=e65]:
+      - button "PATTERN" [ref=e66] [cursor=pointer]
+      - button "▶" [ref=e67] [cursor=pointer]
+      - button "■" [ref=e68] [cursor=pointer]
+      - button "Undo" [disabled] [ref=e69]: ↶
+      - button "Redo" [disabled] [ref=e70]: ↷
+      - generic [ref=e71]: 1.1.1
+      - button "Toggle loop region" [ref=e72] [cursor=pointer]: LOOP
+      - spinbutton "BPM" [ref=e73]:
+        - generic [ref=e75]: "124.0"
+    - textbox "Project name" [ref=e76]: House Beat
+    - generic [ref=e77]:
+      - generic "All changes saved. Autosave is on." [ref=e78]: SAVED
+      - button "Toggle mixer panel" [pressed] [ref=e79] [cursor=pointer]: MIX
+      - button "Toggle effect rack" [ref=e80] [cursor=pointer]: FX
+      - button "Toggle arrangement and scenes" [ref=e81] [cursor=pointer]: ARR
+      - button "Toggle modulation panel" [ref=e82] [cursor=pointer]: MOD
+      - button "Toggle export panel" [ref=e83] [cursor=pointer]: EXPORT
+      - button "Toggle MIDI input panel" [ref=e84] [cursor=pointer]: MIDI
+      - button "Show keyboard shortcuts" [ref=e85] [cursor=pointer]: "?"
+      - button "Toggle undo history" [ref=e86] [cursor=pointer]: ↶
+      - button "Toggle pattern assist panel" [ref=e87] [cursor=pointer]: ASSIST
+      - button "Toggle collaboration panel" [ref=e88] [cursor=pointer]: JAM
+      - button "Toggle scale panel" [ref=e89] [cursor=pointer]: SCALE
+      - button "Toggle diagnostics panel" [ref=e90] [cursor=pointer]: DIAG
+  - main [ref=e91]:
+    - generic [ref=e92]:
+      - tablist "Tracks" [ref=e93]:
+        - tab "Drums (Drum track)" [selected] [ref=e94] [cursor=pointer]:
+          - generic [ref=e95]: DR
+          - text: Drums
+        - tab "808 (808 track)" [ref=e96] [cursor=pointer]:
+          - generic [ref=e97]: "808"
+          - text: "808"
+        - tab "Chords (analog track)" [ref=e98] [cursor=pointer]:
+          - generic [ref=e99]: AN
+          - text: Chords
+        - combobox "Add track" [ref=e100]:
+          - option "+ TRACK" [selected]
+          - option "Drum Rack"
+          - option "Sampler"
+          - option "Analog Synth"
+          - option "Bass Synth"
+          - option "808 Synth"
+          - option "Texture Synth"
+          - option "Wavetable Synth"
+          - option "Granular Synth"
+          - option "Group"
+      - region "Drum Rack" [ref=e101]:
+        - button "1 Kick Deep" [ref=e102] [cursor=pointer]:
+          - generic [ref=e103]: "1"
+          - generic [ref=e104]: Kick Deep
+        - button "2 Kick Punch" [ref=e105] [cursor=pointer]:
+          - generic [ref=e106]: "2"
+          - generic [ref=e107]: Kick Punch
+        - button "3 Kick Techno" [ref=e108] [cursor=pointer]:
+          - generic [ref=e109]: "3"
+          - generic [ref=e110]: Kick Techno
+        - button "4 Rim" [ref=e111] [cursor=pointer]:
+          - generic [ref=e112]: "4"
+          - generic [ref=e113]: Rim
+        - button "5 Snare" [ref=e114] [cursor=pointer]:
+          - generic [ref=e115]: "5"
+          - generic [ref=e116]: Snare
+        - button "6 Snare Tight" [ref=e117] [cursor=pointer]:
+          - generic [ref=e118]: "6"
+          - generic [ref=e119]: Snare Tight
+        - button "7 Clap" [ref=e120] [cursor=pointer]:
+          - generic [ref=e121]: "7"
+          - generic [ref=e122]: Clap
+        - button "8 Shaker" [ref=e123] [cursor=pointer]:
+          - generic [ref=e124]: "8"
+          - generic [ref=e125]: Shaker
+        - button "9 Hat Closed" [ref=e126] [cursor=pointer]:
+          - generic [ref=e127]: "9"
+          - generic [ref=e128]: Hat Closed
+        - button "10 Hat Soft" [ref=e129] [cursor=pointer]:
+          - generic [ref=e130]: "10"
+          - generic [ref=e131]: Hat Soft
+        - button "11 Hat Open" [ref=e132] [cursor=pointer]:
+          - generic [ref=e133]: "11"
+          - generic [ref=e134]: Hat Open
+        - button "12 Ride" [ref=e135] [cursor=pointer]:
+          - generic [ref=e136]: "12"
+          - generic [ref=e137]: Ride
+        - button "13 Tom Low" [ref=e138] [cursor=pointer]:
+          - generic [ref=e139]: "13"
+          - generic [ref=e140]: Tom Low
+        - button "14 Tom High" [ref=e141] [cursor=pointer]:
+          - generic [ref=e142]: "14"
+          - generic [ref=e143]: Tom High
+        - button "15 Tick" [ref=e144] [cursor=pointer]:
+          - generic [ref=e145]: "15"
+          - generic [ref=e146]: Tick
+        - button "16 Blip" [ref=e147] [cursor=pointer]:
+          - generic [ref=e148]: "16"
+          - generic [ref=e149]: Blip
+      - region "Patterns" [ref=e150]:
+        - tablist "Pattern selector" [ref=e151]:
+          - tab "Pattern A" [selected] [ref=e152] [cursor=pointer]
+        - generic "Groove" [ref=e153]:
+          - spinbutton "SWING" [ref=e154]:
+            - generic [ref=e156]: 0%
+          - spinbutton "HUM·T" [ref=e157]:
+            - generic [ref=e159]: 0%
+          - spinbutton "HUM·V" [ref=e160]:
+            - generic [ref=e162]: 0%
+        - generic [ref=e163]:
+          - button "ADD" [ref=e164] [cursor=pointer]
+          - button "DUP" [ref=e165] [cursor=pointer]
+          - button "MUT" [ref=e166] [cursor=pointer]
+          - button "FILL" [ref=e167] [cursor=pointer]
+          - button "GEN" [ref=e168] [cursor=pointer]
+          - button "COPY" [ref=e169] [cursor=pointer]
+          - button "PASTE" [disabled] [ref=e170]
+          - button "CLEAR" [ref=e171] [cursor=pointer]
+          - button "DEL" [disabled] [ref=e172]
+          - combobox "Pattern length" [ref=e173]:
+            - option "16" [selected]
+            - option "32"
+            - option "64"
+          - combobox "Quantize grid" [ref=e174]:
+            - option "1/8"
+            - option "1/16" [selected]
+            - option "1/32"
+        - generic "Scene launcher" [ref=e175]:
+          - generic "Groove · Pattern A · click SELECT, use LAUNCH to play" [ref=e177]:
+            - button "Select scene Groove" [pressed] [ref=e178] [cursor=pointer]:
+              - generic [ref=e179]: Groove
+              - generic [ref=e181]:
+                - generic [ref=e182]: Pattern A
+                - generic [ref=e183]: 1 BAR · 16 STEP
+                - generic [ref=e184]: USE 1x
+            - generic [ref=e185]: CURRENT
+            - generic [ref=e187]:
+              - button "Launch scene Groove" [ref=e188] [cursor=pointer]: ▶
+              - button "Edit scene Groove" [ref=e189] [cursor=pointer]: ✎
+        - dialog "Generate pattern" [ref=e1200]:
+          - generic [ref=e1201]:
+            - generic [ref=e1202]:
+              - generic [ref=e1203]: GENERATE PATTERN
+              - button "✕" [ref=e1204] [cursor=pointer]
+            - generic [ref=e1205]:
+              - generic [ref=e1206]:
+                - generic [ref=e1207]: MODE
+                - generic [ref=e1208]:
+                  - button "NEW" [ref=e1209] [cursor=pointer]
+                  - button "REPLACE" [ref=e1210] [cursor=pointer]
+              - generic [ref=e1211]:
+                - generic [ref=e1212]: GENRE
+                - combobox [ref=e1213]:
+                  - option "House" [selected]
+                  - option "Techno"
+                  - option "Trap"
+                  - option "Ambient"
+              - generic [ref=e1214]:
+                - generic [ref=e1215]: STYLE
+                - combobox [ref=e1216]:
+                  - option "Random" [selected]
+                  - option "Driving"
+                  - option "Minimal"
+                  - option "Funky"
+                  - option "Deep"
+                  - option "UK Garage"
+                  - option "Afro House"
+                  - option "Tech House"
+              - generic [ref=e1217]:
+                - generic [ref=e1218]: SEED
+                - generic [ref=e1219]:
+                  - textbox [active] [ref=e1220]: browser-seed
+                  - button "🎲" [ref=e1221] [cursor=pointer]
+              - generic [ref=e1222]:
+                - generic [ref=e1223]: LENGTH
+                - combobox [ref=e1224]:
+                  - option "16 steps"
+                  - option "32 steps" [selected]
+                  - option "64 steps"
+              - generic [ref=e1225]:
+                - generic [ref=e1226]: NAME
+                - textbox "house brow" [ref=e1385]
+              - generic [ref=e1228]: TARGETS
+              - generic [ref=e1229]:
+                - generic [ref=e1230]: INSTRUMENT
+                - combobox [ref=e1231]:
+                  - option "First instrument" [selected]
+                  - option "808"
+                  - option "Chords"
+              - generic [ref=e1232]:
+                - generic [ref=e1233]: SOURCE PATTERN
+                - combobox [ref=e1234]:
+                  - option "None (use seed)" [selected]
+                  - option "Pattern A"
+              - generic [ref=e1235]:
+                - generic [ref=e1236]: APPLY GROOVE
+                - button "OFF" [ref=e1237] [cursor=pointer]
+              - generic [ref=e1238]: PREVIEW
+              - img "Pattern preview" [ref=e1239]:
+                - generic [ref=e1240]:
+                  - generic [ref=e1241]: "1"
+                  - generic [ref=e1242]: "2"
+                  - generic [ref=e1243]: "3"
+                  - generic [ref=e1244]: "4"
+                  - generic [ref=e1245]: "5"
+                  - generic [ref=e1246]: "6"
+                  - generic [ref=e1247]: "7"
+                  - generic [ref=e1248]: "8"
+                  - generic [ref=e1249]: "9"
+                  - generic [ref=e1250]: "10"
+                  - generic [ref=e1251]: "11"
+                  - generic [ref=e1252]: "12"
+                  - generic [ref=e1253]: "13"
+                  - generic [ref=e1254]: "14"
+                  - generic [ref=e1255]: "15"
+                  - generic [ref=e1256]: "16"
+                - generic [ref=e1257]:
+                  - generic "Kick Deep" [ref=e1258]: Kick
+                  - 'generic "Kick Deep step 1: 67%" [ref=e1259]'
+                  - 'generic "Kick Deep step 5: 75%" [ref=e1386]'
+                  - 'generic "Kick Deep step 9: 92%" [ref=e1387]'
+                  - 'generic "Kick Deep step 13: 89%" [ref=e1388]'
+                - generic [ref=e1389]:
+                  - generic "Rim" [ref=e1390]
+                  - 'generic "Rim step 3: 46%" [ref=e1393]'
+                  - 'generic "Rim step 7: 49%" [ref=e1397]'
+                  - 'generic "Rim step 11: 54%" [ref=e1401]'
+                  - 'generic "Rim step 13: 29%" [ref=e1403]'
+                  - 'generic "Rim step 15: 65%" [ref=e1405]'
+                - generic [ref=e1275]:
+                  - generic "Snare" [ref=e1276]: Snar
+                  - 'generic "Snare step 5: 73%" [ref=e1407]'
+                  - 'generic "Snare step 13: 92%" [ref=e1408]'
+                - generic [ref=e1293]:
+                  - generic "Clap" [ref=e1294]
+                  - 'generic "Clap step 12: 19%" [ref=e1410]'
+                  - 'generic "Clap step 13: 95%" [ref=e1411]'
+                - generic [ref=e1311]:
+                  - generic "Shaker" [ref=e1312]: Shak
+                  - 'generic "Shaker step 1: 56%" [ref=e1412]'
+                  - 'generic "Shaker step 3: 22%" [ref=e1413]'
+                  - 'generic "Shaker step 5: 44%" [ref=e1415]'
+                  - 'generic "Shaker step 7: 16%" [ref=e1416]'
+                  - 'generic "Shaker step 9: 64%" [ref=e1417]'
+                  - 'generic "Shaker step 11: 58%" [ref=e1418]'
+                  - 'generic "Shaker step 13: 51%" [ref=e1419]'
+                  - 'generic "Shaker step 15: 69%" [ref=e1420]'
+                - generic [ref=e1329]:
+                  - generic "Hat Closed" [ref=e1330]: Hat
+                  - 'generic "Hat Closed step 2: 24%" [ref=e1421]'
+                - generic [ref=e1422]:
+                  - generic "Tick" [ref=e1423]
+                  - 'generic "Tick step 1: 15%" [ref=e1424]'
+                  - 'generic "Tick step 7: 34%" [ref=e1430]'
+                  - 'generic "Tick step 8: 30%" [ref=e1431]'
+                  - 'generic "Tick step 9: 28%" [ref=e1432]'
+                  - 'generic "Tick step 12: 27%" [ref=e1435]'
+                  - 'generic "Tick step 15: 31%" [ref=e1438]'
+              - generic [ref=e1365]: ADVANCED
+              - generic [ref=e1366]:
+                - generic [ref=e1367]: GHOSTS
+                - slider [ref=e1368]: "0.3"
+                - generic [ref=e1369]: 30%
+              - generic [ref=e1370]:
+                - generic [ref=e1371]: MICRO
+                - slider [ref=e1372]: "0.2"
+                - generic [ref=e1373]: 20%
+              - generic [ref=e1374]:
+                - generic [ref=e1375]: VEL·VAR
+                - slider [ref=e1376]: "0.3"
+                - generic [ref=e1377]: 30%
+              - generic [ref=e1378]:
+                - generic [ref=e1379]: TEMP
+                - slider [ref=e1380]: "1"
+                - generic [ref=e1381]: "1.0"
+            - generic [ref=e1382]:
+              - button "CANCEL" [ref=e1383] [cursor=pointer]
+              - button "GENERATE" [ref=e1384] [cursor=pointer]
+      - region "Step Sequencer" [ref=e190]:
+        - row "Step ruler" [ref=e191]:
+          - generic "Step 1, beat 1" [ref=e193]: "1"
+          - generic "Step 2" [ref=e194]: ·
+          - generic "Step 3" [ref=e195]: ·
+          - generic "Step 4" [ref=e196]: ·
+          - generic "Step 5, beat 2" [ref=e197]: "2"
+          - generic "Step 6" [ref=e198]: ·
+          - generic "Step 7" [ref=e199]: ·
+          - generic "Step 8" [ref=e200]: ·
+          - generic "Step 9, beat 3" [ref=e201]: "3"
+          - generic "Step 10" [ref=e202]: ·
+          - generic "Step 11" [ref=e203]: ·
+          - generic "Step 12" [ref=e204]: ·
+          - generic "Step 13, beat 4" [ref=e205]: "4"
+          - generic "Step 14" [ref=e206]: ·
+          - generic "Step 15" [ref=e207]: ·
+          - generic "Step 16" [ref=e208]: ·
+        - generic [ref=e210]:
+          - generic [ref=e213]:
+            - button "Drums track" [pressed] [ref=e214] [cursor=pointer]:
+              - generic [ref=e215]: DR
+              - text: Drums
+            - button "Mute Drums" [ref=e216] [cursor=pointer]: M
+            - button "Solo Drums" [ref=e217] [cursor=pointer]: S
+          - generic [ref=e220]:
+            - generic [ref=e221]:
+              - button "Kick Deep" [ref=e222] [cursor=pointer]
+              - button "M" [ref=e223] [cursor=pointer]
+              - button "S" [ref=e224] [cursor=pointer]
+            - generic [ref=e225]:
+              - button "Step 1, velocity 95%" [pressed] [ref=e226] [cursor=pointer]
+              - button "Step 2, empty" [ref=e227] [cursor=pointer]
+              - button "Step 3, empty" [ref=e228] [cursor=pointer]
+              - button "Step 4, empty" [ref=e229] [cursor=pointer]
+              - button "Step 5, velocity 95%" [pressed] [ref=e230] [cursor=pointer]
+              - button "Step 6, empty" [ref=e231] [cursor=pointer]
+              - button "Step 7, empty" [ref=e232] [cursor=pointer]
+              - button "Step 8, empty" [ref=e233] [cursor=pointer]
+              - button "Step 9, velocity 95%" [pressed] [ref=e234] [cursor=pointer]
+              - button "Step 10, empty" [ref=e235] [cursor=pointer]
+              - button "Step 11, empty" [ref=e236] [cursor=pointer]
+              - button "Step 12, empty" [ref=e237] [cursor=pointer]
+              - button "Step 13, velocity 95%" [pressed] [ref=e238] [cursor=pointer]
+              - button "Step 14, empty" [ref=e239] [cursor=pointer]
+              - button "Step 15, empty" [ref=e240] [cursor=pointer]
+              - button "Step 16, empty" [ref=e241] [cursor=pointer]
+          - generic [ref=e243]:
+            - generic [ref=e244]:
+              - button "Kick Punch" [ref=e245] [cursor=pointer]
+              - button "M" [ref=e246] [cursor=pointer]
+              - button "S" [ref=e247] [cursor=pointer]
+            - generic [ref=e248]:
+              - button "Step 1, empty" [ref=e249] [cursor=pointer]
+              - button "Step 2, empty" [ref=e250] [cursor=pointer]
+              - button "Step 3, empty" [ref=e251] [cursor=pointer]
+              - button "Step 4, empty" [ref=e252] [cursor=pointer]
+              - button "Step 5, empty" [ref=e253] [cursor=pointer]
+              - button "Step 6, empty" [ref=e254] [cursor=pointer]
+              - button "Step 7, empty" [ref=e255] [cursor=pointer]
+              - button "Step 8, empty" [ref=e256] [cursor=pointer]
+              - button "Step 9, empty" [ref=e257] [cursor=pointer]
+              - button "Step 10, empty" [ref=e258] [cursor=pointer]
+              - button "Step 11, empty" [ref=e259] [cursor=pointer]
+              - button "Step 12, empty" [ref=e260] [cursor=pointer]
+              - button "Step 13, empty" [ref=e261] [cursor=pointer]
+              - button "Step 14, empty" [ref=e262] [cursor=pointer]
+              - button "Step 15, empty" [ref=e263] [cursor=pointer]
+              - button "Step 16, empty" [ref=e264] [cursor=pointer]
+          - generic [ref=e266]:
+            - generic [ref=e267]:
+              - button "Kick Techno" [ref=e268] [cursor=pointer]
+              - button "M" [ref=e269] [cursor=pointer]
+              - button "S" [ref=e270] [cursor=pointer]
+            - generic [ref=e271]:
+              - button "Step 1, empty" [ref=e272] [cursor=pointer]
+              - button "Step 2, empty" [ref=e273] [cursor=pointer]
+              - button "Step 3, empty" [ref=e274] [cursor=pointer]
+              - button "Step 4, empty" [ref=e275] [cursor=pointer]
+              - button "Step 5, empty" [ref=e276] [cursor=pointer]
+              - button "Step 6, empty" [ref=e277] [cursor=pointer]
+              - button "Step 7, empty" [ref=e278] [cursor=pointer]
+              - button "Step 8, empty" [ref=e279] [cursor=pointer]
+              - button "Step 9, empty" [ref=e280] [cursor=pointer]
+              - button "Step 10, empty" [ref=e281] [cursor=pointer]
+              - button "Step 11, empty" [ref=e282] [cursor=pointer]
+              - button "Step 12, empty" [ref=e283] [cursor=pointer]
+              - button "Step 13, empty" [ref=e284] [cursor=pointer]
+              - button "Step 14, empty" [ref=e285] [cursor=pointer]
+              - button "Step 15, empty" [ref=e286] [cursor=pointer]
+              - button "Step 16, empty" [ref=e287] [cursor=pointer]
+          - generic [ref=e289]:
+            - generic [ref=e290]:
+              - button "Rim" [ref=e291] [cursor=pointer]
+              - button "M" [ref=e292] [cursor=pointer]
+              - button "S" [ref=e293] [cursor=pointer]
+            - generic [ref=e294]:
+              - button "Step 1, empty" [ref=e295] [cursor=pointer]
+              - button "Step 2, empty" [ref=e296] [cursor=pointer]
+              - button "Step 3, empty" [ref=e297] [cursor=pointer]
+              - button "Step 4, empty" [ref=e298] [cursor=pointer]
+              - button "Step 5, empty" [ref=e299] [cursor=pointer]
+              - button "Step 6, empty" [ref=e300] [cursor=pointer]
+              - button "Step 7, empty" [ref=e301] [cursor=pointer]
+              - button "Step 8, empty" [ref=e302] [cursor=pointer]
+              - button "Step 9, empty" [ref=e303] [cursor=pointer]
+              - button "Step 10, empty" [ref=e304] [cursor=pointer]
+              - button "Step 11, empty" [ref=e305] [cursor=pointer]
+              - button "Step 12, empty" [ref=e306] [cursor=pointer]
+              - button "Step 13, empty" [ref=e307] [cursor=pointer]
+              - button "Step 14, empty" [ref=e308] [cursor=pointer]
+              - button "Step 15, empty" [ref=e309] [cursor=pointer]
+              - button "Step 16, empty" [ref=e310] [cursor=pointer]
+          - generic [ref=e312]:
+            - generic [ref=e313]:
+              - button "Snare" [ref=e314] [cursor=pointer]
+              - button "M" [ref=e315] [cursor=pointer]
+              - button "S" [ref=e316] [cursor=pointer]
+            - generic [ref=e317]:
+              - button "Step 1, empty" [ref=e318] [cursor=pointer]
+              - button "Step 2, empty" [ref=e319] [cursor=pointer]
+              - button "Step 3, empty" [ref=e320] [cursor=pointer]
+              - button "Step 4, empty" [ref=e321] [cursor=pointer]
+              - button "Step 5, empty" [ref=e322] [cursor=pointer]
+              - button "Step 6, empty" [ref=e323] [cursor=pointer]
+              - button "Step 7, empty" [ref=e324] [cursor=pointer]
+              - button "Step 8, empty" [ref=e325] [cursor=pointer]
+              - button "Step 9, empty" [ref=e326] [cursor=pointer]
+              - button "Step 10, empty" [ref=e327] [cursor=pointer]
+              - button "Step 11, empty" [ref=e328] [cursor=pointer]
+              - button "Step 12, empty" [ref=e329] [cursor=pointer]
+              - button "Step 13, empty" [ref=e330] [cursor=pointer]
+              - button "Step 14, empty" [ref=e331] [cursor=pointer]
+              - button "Step 15, empty" [ref=e332] [cursor=pointer]
+              - button "Step 16, empty" [ref=e333] [cursor=pointer]
+          - generic [ref=e335]:
+            - generic [ref=e336]:
+              - button "Snare Tight" [ref=e337] [cursor=pointer]
+              - button "M" [ref=e338] [cursor=pointer]
+              - button "S" [ref=e339] [cursor=pointer]
+            - generic [ref=e340]:
+              - button "Step 1, empty" [ref=e341] [cursor=pointer]
+              - button "Step 2, empty" [ref=e342] [cursor=pointer]
+              - button "Step 3, empty" [ref=e343] [cursor=pointer]
+              - button "Step 4, empty" [ref=e344] [cursor=pointer]
+              - button "Step 5, empty" [ref=e345] [cursor=pointer]
+              - button "Step 6, empty" [ref=e346] [cursor=pointer]
+              - button "Step 7, empty" [ref=e347] [cursor=pointer]
+              - button "Step 8, empty" [ref=e348] [cursor=pointer]
+              - button "Step 9, empty" [ref=e349] [cursor=pointer]
+              - button "Step 10, empty" [ref=e350] [cursor=pointer]
+              - button "Step 11, empty" [ref=e351] [cursor=pointer]
+              - button "Step 12, empty" [ref=e352] [cursor=pointer]
+              - button "Step 13, empty" [ref=e353] [cursor=pointer]
+              - button "Step 14, empty" [ref=e354] [cursor=pointer]
+              - button "Step 15, empty" [ref=e355] [cursor=pointer]
+              - button "Step 16, empty" [ref=e356] [cursor=pointer]
+          - generic [ref=e358]:
+            - generic [ref=e359]:
+              - button "Clap" [ref=e360] [cursor=pointer]
+              - button "M" [ref=e361] [cursor=pointer]
+              - button "S" [ref=e362] [cursor=pointer]
+            - generic [ref=e363]:
+              - button "Step 1, empty" [ref=e364] [cursor=pointer]
+              - button "Step 2, empty" [ref=e365] [cursor=pointer]
+              - button "Step 3, empty" [ref=e366] [cursor=pointer]
+              - button "Step 4, empty" [ref=e367] [cursor=pointer]
+              - button "Step 5, velocity 70%" [pressed] [ref=e368] [cursor=pointer]
+              - button "Step 6, empty" [ref=e369] [cursor=pointer]
+              - button "Step 7, empty" [ref=e370] [cursor=pointer]
+              - button "Step 8, empty" [ref=e371] [cursor=pointer]
+              - button "Step 9, empty" [ref=e372] [cursor=pointer]
+              - button "Step 10, empty" [ref=e373] [cursor=pointer]
+              - button "Step 11, empty" [ref=e374] [cursor=pointer]
+              - button "Step 12, empty" [ref=e375] [cursor=pointer]
+              - button "Step 13, velocity 75%" [pressed] [ref=e376] [cursor=pointer]
+              - button "Step 14, empty" [ref=e377] [cursor=pointer]
+              - button "Step 15, empty" [ref=e378] [cursor=pointer]
+              - button "Step 16, empty" [ref=e379] [cursor=pointer]
+          - generic [ref=e381]:
+            - generic [ref=e382]:
+              - button "Shaker" [ref=e383] [cursor=pointer]
+              - button "M" [ref=e384] [cursor=pointer]
+              - button "S" [ref=e385] [cursor=pointer]
+            - generic [ref=e386]:
+              - button "Step 1, empty" [ref=e387] [cursor=pointer]
+              - button "Step 2, empty" [ref=e388] [cursor=pointer]
+              - button "Step 3, empty" [ref=e389] [cursor=pointer]
+              - button "Step 4, empty" [ref=e390] [cursor=pointer]
+              - button "Step 5, empty" [ref=e391] [cursor=pointer]
+              - button "Step 6, empty" [ref=e392] [cursor=pointer]
+              - button "Step 7, empty" [ref=e393] [cursor=pointer]
+              - button "Step 8, empty" [ref=e394] [cursor=pointer]
+              - button "Step 9, empty" [ref=e395] [cursor=pointer]
+              - button "Step 10, empty" [ref=e396] [cursor=pointer]
+              - button "Step 11, empty" [ref=e397] [cursor=pointer]
+              - button "Step 12, empty" [ref=e398] [cursor=pointer]
+              - button "Step 13, empty" [ref=e399] [cursor=pointer]
+              - button "Step 14, empty" [ref=e400] [cursor=pointer]
+              - button "Step 15, empty" [ref=e401] [cursor=pointer]
+              - button "Step 16, empty" [ref=e402] [cursor=pointer]
+          - generic [ref=e404]:
+            - generic [ref=e405]:
+              - button "Hat Closed" [ref=e406] [cursor=pointer]
+              - button "M" [ref=e407] [cursor=pointer]
+              - button "S" [ref=e408] [cursor=pointer]
+            - generic [ref=e409]:
+              - button "Step 1, empty" [ref=e410] [cursor=pointer]
+              - button "Step 2, empty" [ref=e411] [cursor=pointer]
+              - button "Step 3, velocity 50%" [pressed] [ref=e412] [cursor=pointer]
+              - button "Step 4, empty" [ref=e413] [cursor=pointer]
+              - button "Step 5, empty" [ref=e414] [cursor=pointer]
+              - button "Step 6, empty" [ref=e415] [cursor=pointer]
+              - button "Step 7, velocity 50%" [pressed] [ref=e416] [cursor=pointer]
+              - button "Step 8, empty" [ref=e417] [cursor=pointer]
+              - button "Step 9, empty" [ref=e418] [cursor=pointer]
+              - button "Step 10, empty" [ref=e419] [cursor=pointer]
+              - button "Step 11, velocity 50%" [pressed] [ref=e420] [cursor=pointer]
+              - button "Step 12, empty" [ref=e421] [cursor=pointer]
+              - button "Step 13, empty" [ref=e422] [cursor=pointer]
+              - button "Step 14, empty" [ref=e423] [cursor=pointer]
+              - button "Step 15, velocity 55%" [pressed] [ref=e424] [cursor=pointer]
+              - button "Step 16, empty" [ref=e425] [cursor=pointer]
+          - generic [ref=e427]:
+            - generic [ref=e428]:
+              - button "Hat Soft" [ref=e429] [cursor=pointer]
+              - button "M" [ref=e430] [cursor=pointer]
+              - button "S" [ref=e431] [cursor=pointer]
+            - generic [ref=e432]:
+              - button "Step 1, empty" [ref=e433] [cursor=pointer]
+              - button "Step 2, empty" [ref=e434] [cursor=pointer]
+              - button "Step 3, empty" [ref=e435] [cursor=pointer]
+              - button "Step 4, empty" [ref=e436] [cursor=pointer]
+              - button "Step 5, empty" [ref=e437] [cursor=pointer]
+              - button "Step 6, empty" [ref=e438] [cursor=pointer]
+              - button "Step 7, empty" [ref=e439] [cursor=pointer]
+              - button "Step 8, empty" [ref=e440] [cursor=pointer]
+              - button "Step 9, empty" [ref=e441] [cursor=pointer]
+              - button "Step 10, empty" [ref=e442] [cursor=pointer]
+              - button "Step 11, empty" [ref=e443] [cursor=pointer]
+              - button "Step 12, empty" [ref=e444] [cursor=pointer]
+              - button "Step 13, empty" [ref=e445] [cursor=pointer]
+              - button "Step 14, empty" [ref=e446] [cursor=pointer]
+              - button "Step 15, empty" [ref=e447] [cursor=pointer]
+              - button "Step 16, empty" [ref=e448] [cursor=pointer]
+          - generic [ref=e450]:
+            - generic [ref=e451]:
+              - button "Hat Open" [ref=e452] [cursor=pointer]
+              - button "M" [ref=e453] [cursor=pointer]
+              - button "S" [ref=e454] [cursor=pointer]
+            - generic [ref=e455]:
+              - button "Step 1, empty" [ref=e456] [cursor=pointer]
+              - button "Step 2, empty" [ref=e457] [cursor=pointer]
+              - button "Step 3, empty" [ref=e458] [cursor=pointer]
+              - button "Step 4, empty" [ref=e459] [cursor=pointer]
+              - button "Step 5, empty" [ref=e460] [cursor=pointer]
+              - button "Step 6, empty" [ref=e461] [cursor=pointer]
+              - button "Step 7, empty" [ref=e462] [cursor=pointer]
+              - button "Step 8, empty" [ref=e463] [cursor=pointer]
+              - button "Step 9, empty" [ref=e464] [cursor=pointer]
+              - button "Step 10, empty" [ref=e465] [cursor=pointer]
+              - button "Step 11, empty" [ref=e466] [cursor=pointer]
+              - button "Step 12, empty" [ref=e467] [cursor=pointer]
+              - button "Step 13, empty" [ref=e468] [cursor=pointer]
+              - button "Step 14, empty" [ref=e469] [cursor=pointer]
+              - button "Step 15, velocity 40%" [pressed] [ref=e470] [cursor=pointer]
+              - button "Step 16, empty" [ref=e471] [cursor=pointer]
+          - generic [ref=e473]:
+            - generic [ref=e474]:
+              - button "Ride" [ref=e475] [cursor=pointer]
+              - button "M" [ref=e476] [cursor=pointer]
+              - button "S" [ref=e477] [cursor=pointer]
+            - generic [ref=e478]:
+              - button "Step 1, empty" [ref=e479] [cursor=pointer]
+              - button "Step 2, empty" [ref=e480] [cursor=pointer]
+              - button "Step 3, empty" [ref=e481] [cursor=pointer]
+              - button "Step 4, empty" [ref=e482] [cursor=pointer]
+              - button "Step 5, empty" [ref=e483] [cursor=pointer]
+              - button "Step 6, empty" [ref=e484] [cursor=pointer]
+              - button "Step 7, empty" [ref=e485] [cursor=pointer]
+              - button "Step 8, empty" [ref=e486] [cursor=pointer]
+              - button "Step 9, empty" [ref=e487] [cursor=pointer]
+              - button "Step 10, empty" [ref=e488] [cursor=pointer]
+              - button "Step 11, empty" [ref=e489] [cursor=pointer]
+              - button "Step 12, empty" [ref=e490] [cursor=pointer]
+              - button "Step 13, empty" [ref=e491] [cursor=pointer]
+              - button "Step 14, empty" [ref=e492] [cursor=pointer]
+              - button "Step 15, empty" [ref=e493] [cursor=pointer]
+              - button "Step 16, empty" [ref=e494] [cursor=pointer]
+          - generic [ref=e496]:
+            - generic [ref=e497]:
+              - button "Tom Low" [ref=e498] [cursor=pointer]
+              - button "M" [ref=e499] [cursor=pointer]
+              - button "S" [ref=e500] [cursor=pointer]
+            - generic [ref=e501]:
+              - button "Step 1, empty" [ref=e502] [cursor=pointer]
+              - button "Step 2, empty" [ref=e503] [cursor=pointer]
+              - button "Step 3, empty" [ref=e504] [cursor=pointer]
+              - button "Step 4, empty" [ref=e505] [cursor=pointer]
+              - button "Step 5, empty" [ref=e506] [cursor=pointer]
+              - button "Step 6, empty" [ref=e507] [cursor=pointer]
+              - button "Step 7, empty" [ref=e508] [cursor=pointer]
+              - button "Step 8, empty" [ref=e509] [cursor=pointer]
+              - button "Step 9, empty" [ref=e510] [cursor=pointer]
+              - button "Step 10, empty" [ref=e511] [cursor=pointer]
+              - button "Step 11, empty" [ref=e512] [cursor=pointer]
+              - button "Step 12, empty" [ref=e513] [cursor=pointer]
+              - button "Step 13, empty" [ref=e514] [cursor=pointer]
+              - button "Step 14, empty" [ref=e515] [cursor=pointer]
+              - button "Step 15, empty" [ref=e516] [cursor=pointer]
+              - button "Step 16, empty" [ref=e517] [cursor=pointer]
+          - generic [ref=e519]:
+            - generic [ref=e520]:
+              - button "Tom High" [ref=e521] [cursor=pointer]
+              - button "M" [ref=e522] [cursor=pointer]
+              - button "S" [ref=e523] [cursor=pointer]
+            - generic [ref=e524]:
+              - button "Step 1, empty" [ref=e525] [cursor=pointer]
+              - button "Step 2, empty" [ref=e526] [cursor=pointer]
+              - button "Step 3, empty" [ref=e527] [cursor=pointer]
+              - button "Step 4, empty" [ref=e528] [cursor=pointer]
+              - button "Step 5, empty" [ref=e529] [cursor=pointer]
+              - button "Step 6, empty" [ref=e530] [cursor=pointer]
+              - button "Step 7, empty" [ref=e531] [cursor=pointer]
+              - button "Step 8, empty" [ref=e532] [cursor=pointer]
+              - button "Step 9, empty" [ref=e533] [cursor=pointer]
+              - button "Step 10, empty" [ref=e534] [cursor=pointer]
+              - button "Step 11, empty" [ref=e535] [cursor=pointer]
+              - button "Step 12, empty" [ref=e536] [cursor=pointer]
+              - button "Step 13, empty" [ref=e537] [cursor=pointer]
+              - button "Step 14, empty" [ref=e538] [cursor=pointer]
+              - button "Step 15, empty" [ref=e539] [cursor=pointer]
+              - button "Step 16, empty" [ref=e540] [cursor=pointer]
+          - generic [ref=e542]:
+            - generic [ref=e543]:
+              - button "Tick" [ref=e544] [cursor=pointer]
+              - button "M" [ref=e545] [cursor=pointer]
+              - button "S" [ref=e546] [cursor=pointer]
+            - generic [ref=e547]:
+              - button "Step 1, empty" [ref=e548] [cursor=pointer]
+              - button "Step 2, empty" [ref=e549] [cursor=pointer]
+              - button "Step 3, empty" [ref=e550] [cursor=pointer]
+              - button "Step 4, empty" [ref=e551] [cursor=pointer]
+              - button "Step 5, empty" [ref=e552] [cursor=pointer]
+              - button "Step 6, empty" [ref=e553] [cursor=pointer]
+              - button "Step 7, empty" [ref=e554] [cursor=pointer]
+              - button "Step 8, empty" [ref=e555] [cursor=pointer]
+              - button "Step 9, empty" [ref=e556] [cursor=pointer]
+              - button "Step 10, empty" [ref=e557] [cursor=pointer]
+              - button "Step 11, empty" [ref=e558] [cursor=pointer]
+              - button "Step 12, empty" [ref=e559] [cursor=pointer]
+              - button "Step 13, empty" [ref=e560] [cursor=pointer]
+              - button "Step 14, empty" [ref=e561] [cursor=pointer]
+              - button "Step 15, empty" [ref=e562] [cursor=pointer]
+              - button "Step 16, empty" [ref=e563] [cursor=pointer]
+          - generic [ref=e565]:
+            - generic [ref=e566]:
+              - button "Blip" [ref=e567] [cursor=pointer]
+              - button "M" [ref=e568] [cursor=pointer]
+              - button "S" [ref=e569] [cursor=pointer]
+            - generic [ref=e570]:
+              - button "Step 1, empty" [ref=e571] [cursor=pointer]
+              - button "Step 2, empty" [ref=e572] [cursor=pointer]
+              - button "Step 3, empty" [ref=e573] [cursor=pointer]
+              - button "Step 4, empty" [ref=e574] [cursor=pointer]
+              - button "Step 5, empty" [ref=e575] [cursor=pointer]
+              - button "Step 6, empty" [ref=e576] [cursor=pointer]
+              - button "Step 7, empty" [ref=e577] [cursor=pointer]
+              - button "Step 8, empty" [ref=e578] [cursor=pointer]
+              - button "Step 9, empty" [ref=e579] [cursor=pointer]
+              - button "Step 10, empty" [ref=e580] [cursor=pointer]
+              - button "Step 11, empty" [ref=e581] [cursor=pointer]
+              - button "Step 12, empty" [ref=e582] [cursor=pointer]
+              - button "Step 13, empty" [ref=e583] [cursor=pointer]
+              - button "Step 14, empty" [ref=e584] [cursor=pointer]
+              - button "Step 15, empty" [ref=e585] [cursor=pointer]
+              - button "Step 16, empty" [ref=e586] [cursor=pointer]
+          - generic [ref=e589]:
+            - button "808 track" [ref=e590] [cursor=pointer]:
+              - generic [ref=e591]: "808"
+              - text: "808"
+            - button "Mute 808" [ref=e592] [cursor=pointer]: M
+            - button "Solo 808" [ref=e593] [cursor=pointer]: S
+          - generic [ref=e596]:
+            - generic [ref=e597]:
+              - button "C6" [ref=e598] [cursor=pointer]
+              - button "Preview B5" [ref=e599] [cursor=pointer]
+              - button "Preview A#5" [ref=e600] [cursor=pointer]
+              - button "Preview A5" [ref=e601] [cursor=pointer]
+              - button "Preview G#5" [ref=e602] [cursor=pointer]
+              - button "Preview G5" [ref=e603] [cursor=pointer]
+              - button "Preview F#5" [ref=e604] [cursor=pointer]
+              - button "Preview F5" [ref=e605] [cursor=pointer]
+              - button "Preview E5" [ref=e606] [cursor=pointer]
+              - button "Preview D#5" [ref=e607] [cursor=pointer]
+              - button "Preview D5" [ref=e608] [cursor=pointer]
+              - button "Preview C#5" [ref=e609] [cursor=pointer]
+              - button "C5" [ref=e610] [cursor=pointer]
+              - button "Preview B4" [ref=e611] [cursor=pointer]
+              - button "Preview A#4" [ref=e612] [cursor=pointer]
+              - button "Preview A4" [ref=e613] [cursor=pointer]
+              - button "Preview G#4" [ref=e614] [cursor=pointer]
+              - button "Preview G4" [ref=e615] [cursor=pointer]
+              - button "Preview F#4" [ref=e616] [cursor=pointer]
+              - button "Preview F4" [ref=e617] [cursor=pointer]
+              - button "Preview E4" [ref=e618] [cursor=pointer]
+              - button "Preview D#4" [ref=e619] [cursor=pointer]
+              - button "Preview D4" [ref=e620] [cursor=pointer]
+              - button "Preview C#4" [ref=e621] [cursor=pointer]
+              - button "C4" [ref=e622] [cursor=pointer]
+              - button "Preview B3" [ref=e623] [cursor=pointer]
+              - button "Preview A#3" [ref=e624] [cursor=pointer]
+              - button "Preview A3" [ref=e625] [cursor=pointer]
+              - button "Preview G#3" [ref=e626] [cursor=pointer]
+              - button "Preview G3" [ref=e627] [cursor=pointer]
+              - button "Preview F#3" [ref=e628] [cursor=pointer]
+              - button "Preview F3" [ref=e629] [cursor=pointer]
+              - button "Preview E3" [ref=e630] [cursor=pointer]
+              - button "Preview D#3" [ref=e631] [cursor=pointer]
+              - button "Preview D3" [ref=e632] [cursor=pointer]
+              - button "Preview C#3" [ref=e633] [cursor=pointer]
+              - button "C3" [ref=e634] [cursor=pointer]
+              - button "Preview B2" [ref=e635] [cursor=pointer]
+              - button "Preview A#2" [ref=e636] [cursor=pointer]
+              - button "Preview A2" [ref=e637] [cursor=pointer]
+              - button "Preview G#2" [ref=e638] [cursor=pointer]
+              - button "Preview G2" [ref=e639] [cursor=pointer]
+              - button "Preview F#2" [ref=e640] [cursor=pointer]
+              - button "Preview F2" [ref=e641] [cursor=pointer]
+              - button "Preview E2" [ref=e642] [cursor=pointer]
+              - button "Preview D#2" [ref=e643] [cursor=pointer]
+              - button "Preview D2" [ref=e644] [cursor=pointer]
+              - button "Preview C#2" [ref=e645] [cursor=pointer]
+              - button "C2" [ref=e646] [cursor=pointer]
+              - button "Preview B1" [ref=e647] [cursor=pointer]
+              - button "Preview A#1" [ref=e648] [cursor=pointer]
+              - button "Preview A1" [ref=e649] [cursor=pointer]
+              - button "Preview G#1" [ref=e650] [cursor=pointer]
+              - button "Preview G1" [ref=e651] [cursor=pointer]
+              - button "Preview F#1" [ref=e652] [cursor=pointer]
+              - button "Preview F1" [ref=e653] [cursor=pointer]
+              - button "Preview E1" [ref=e654] [cursor=pointer]
+              - button "Preview D#1" [ref=e655] [cursor=pointer]
+              - button "Preview D1" [ref=e656] [cursor=pointer]
+              - button "Preview C#1" [ref=e657] [cursor=pointer]
+              - button "C1" [ref=e658] [cursor=pointer]
+            - generic [ref=e660]:
+              - generic "E1 — drag to move, drag right edge to resize, right-click to delete" [ref=e661]
+              - generic "E1 — drag to move, drag right edge to resize, right-click to delete" [ref=e662]
+              - generic "G1 — drag to move, drag right edge to resize, right-click to delete" [ref=e663]
+              - generic "E1 — drag to move, drag right edge to resize, right-click to delete" [ref=e664]
+          - generic [ref=e667]:
+            - button "Chords track" [ref=e668] [cursor=pointer]:
+              - generic [ref=e669]: AN
+              - text: Chords
+            - button "Mute Chords" [ref=e670] [cursor=pointer]: M
+            - button "Solo Chords" [ref=e671] [cursor=pointer]: S
+          - generic [ref=e674]:
+            - generic [ref=e675]:
+              - button "C6" [ref=e676] [cursor=pointer]
+              - button "Preview B5" [ref=e677] [cursor=pointer]
+              - button "Preview A#5" [ref=e678] [cursor=pointer]
+              - button "Preview A5" [ref=e679] [cursor=pointer]
+              - button "Preview G#5" [ref=e680] [cursor=pointer]
+              - button "Preview G5" [ref=e681] [cursor=pointer]
+              - button "Preview F#5" [ref=e682] [cursor=pointer]
+              - button "Preview F5" [ref=e683] [cursor=pointer]
+              - button "Preview E5" [ref=e684] [cursor=pointer]
+              - button "Preview D#5" [ref=e685] [cursor=pointer]
+              - button "Preview D5" [ref=e686] [cursor=pointer]
+              - button "Preview C#5" [ref=e687] [cursor=pointer]
+              - button "C5" [ref=e688] [cursor=pointer]
+              - button "Preview B4" [ref=e689] [cursor=pointer]
+              - button "Preview A#4" [ref=e690] [cursor=pointer]
+              - button "Preview A4" [ref=e691] [cursor=pointer]
+              - button "Preview G#4" [ref=e692] [cursor=pointer]
+              - button "Preview G4" [ref=e693] [cursor=pointer]
+              - button "Preview F#4" [ref=e694] [cursor=pointer]
+              - button "Preview F4" [ref=e695] [cursor=pointer]
+              - button "Preview E4" [ref=e696] [cursor=pointer]
+              - button "Preview D#4" [ref=e697] [cursor=pointer]
+              - button "Preview D4" [ref=e698] [cursor=pointer]
+              - button "Preview C#4" [ref=e699] [cursor=pointer]
+              - button "C4" [ref=e700] [cursor=pointer]
+              - button "Preview B3" [ref=e701] [cursor=pointer]
+              - button "Preview A#3" [ref=e702] [cursor=pointer]
+              - button "Preview A3" [ref=e703] [cursor=pointer]
+              - button "Preview G#3" [ref=e704] [cursor=pointer]
+              - button "Preview G3" [ref=e705] [cursor=pointer]
+              - button "Preview F#3" [ref=e706] [cursor=pointer]
+              - button "Preview F3" [ref=e707] [cursor=pointer]
+              - button "Preview E3" [ref=e708] [cursor=pointer]
+              - button "Preview D#3" [ref=e709] [cursor=pointer]
+              - button "Preview D3" [ref=e710] [cursor=pointer]
+              - button "Preview C#3" [ref=e711] [cursor=pointer]
+              - button "C3" [ref=e712] [cursor=pointer]
+              - button "Preview B2" [ref=e713] [cursor=pointer]
+              - button "Preview A#2" [ref=e714] [cursor=pointer]
+              - button "Preview A2" [ref=e715] [cursor=pointer]
+              - button "Preview G#2" [ref=e716] [cursor=pointer]
+              - button "Preview G2" [ref=e717] [cursor=pointer]
+              - button "Preview F#2" [ref=e718] [cursor=pointer]
+              - button "Preview F2" [ref=e719] [cursor=pointer]
+              - button "Preview E2" [ref=e720] [cursor=pointer]
+              - button "Preview D#2" [ref=e721] [cursor=pointer]
+              - button "Preview D2" [ref=e722] [cursor=pointer]
+              - button "Preview C#2" [ref=e723] [cursor=pointer]
+              - button "C2" [ref=e724] [cursor=pointer]
+              - button "Preview B1" [ref=e725] [cursor=pointer]
+              - button "Preview A#1" [ref=e726] [cursor=pointer]
+              - button "Preview A1" [ref=e727] [cursor=pointer]
+              - button "Preview G#1" [ref=e728] [cursor=pointer]
+              - button "Preview G1" [ref=e729] [cursor=pointer]
+              - button "Preview F#1" [ref=e730] [cursor=pointer]
+              - button "Preview F1" [ref=e731] [cursor=pointer]
+              - button "Preview E1" [ref=e732] [cursor=pointer]
+              - button "Preview D#1" [ref=e733] [cursor=pointer]
+              - button "Preview D1" [ref=e734] [cursor=pointer]
+              - button "Preview C#1" [ref=e735] [cursor=pointer]
+              - button "C1" [ref=e736] [cursor=pointer]
+            - generic [ref=e738]:
+              - generic "C4 — drag to move, drag right edge to resize, right-click to delete" [ref=e739]
+              - generic "D#4 — drag to move, drag right edge to resize, right-click to delete" [ref=e740]
+              - generic "G4 — drag to move, drag right edge to resize, right-click to delete" [ref=e741]
+              - generic "C4 — drag to move, drag right edge to resize, right-click to delete" [ref=e742]
+              - generic "D#4 — drag to move, drag right edge to resize, right-click to delete" [ref=e743]
+              - generic "G4 — drag to move, drag right edge to resize, right-click to delete" [ref=e744]
+    - complementary "Inspector" [ref=e745]:
+      - button "SLICE LAB" [ref=e747] [cursor=pointer]
+      - heading "PAD — Kick Deep" [level=2] [ref=e748]
+      - heading "SAMPLE" [level=3] [ref=e749]
+      - generic [ref=e750]:
+        - button "Drop audio files here or click to browse" [ref=e751] [cursor=pointer]:
+          - generic [ref=e752]: Drop audio or click
+          - generic [ref=e753]: WAV · MP3 · OGG · FLAC · AIFF
+        - button "FREESOUND · CC0" [ref=e755] [cursor=pointer]
+        - textbox "Search samples" [ref=e756]:
+          - /placeholder: Search sounds…
+        - generic [ref=e757]:
+          - button "ALL" [ref=e758] [cursor=pointer]
+          - button "KICK" [ref=e759] [cursor=pointer]
+          - button "SNARE" [ref=e760] [cursor=pointer]
+          - button "CLAP" [ref=e761] [cursor=pointer]
+          - button "HAT" [ref=e762] [cursor=pointer]
+          - button "CYMBAL" [ref=e763] [cursor=pointer]
+          - button "CRASH" [ref=e764] [cursor=pointer]
+          - button "TOM" [ref=e765] [cursor=pointer]
+          - button "RIM" [ref=e766] [cursor=pointer]
+          - button "PERCUSSION" [ref=e767] [cursor=pointer]
+          - button "FX" [ref=e768] [cursor=pointer]
+        - generic [ref=e769]:
+          - button "DARK" [ref=e770] [cursor=pointer]
+          - button "BRIGHT" [ref=e771] [cursor=pointer]
+          - button "WARM" [ref=e772] [cursor=pointer]
+          - button "AGGRESSIVE" [ref=e773] [cursor=pointer]
+          - button "CLEAN" [ref=e774] [cursor=pointer]
+          - button "DEEP" [ref=e775] [cursor=pointer]
+          - button "ATMOSPHERE" [ref=e776] [cursor=pointer]
+        - generic [ref=e777]:
+          - button "— none —" [ref=e779] [cursor=pointer]
+          - generic [ref=e780]: LIBRARY
+          - generic [ref=e781]:
+            - button "Preview Kick Deep" [ref=e782] [cursor=pointer]: ▶
+            - button "Kick Deep" [ref=e783] [cursor=pointer]
+            - button "Favorite Kick Deep" [ref=e784] [cursor=pointer]: ♡
+          - generic [ref=e785]:
+            - button "Preview Kick Punch" [ref=e786] [cursor=pointer]: ▶
+            - button "Kick Punch" [ref=e787] [cursor=pointer]
+            - button "Favorite Kick Punch" [ref=e788] [cursor=pointer]: ♡
+          - generic [ref=e789]:
+            - button "Preview Kick Techno" [ref=e790] [cursor=pointer]: ▶
+            - button "Kick Techno" [ref=e791] [cursor=pointer]
+            - button "Favorite Kick Techno" [ref=e792] [cursor=pointer]: ♡
+          - generic [ref=e793]:
+            - button "Preview Kick Sub 808" [ref=e794] [cursor=pointer]: ▶
+            - button "Kick Sub 808" [ref=e795] [cursor=pointer]
+            - button "Favorite Kick Sub 808" [ref=e796] [cursor=pointer]: ♡
+          - generic [ref=e797]:
+            - button "Preview Kick Trap" [ref=e798] [cursor=pointer]: ▶
+            - button "Kick Trap" [ref=e799] [cursor=pointer]
+            - button "Favorite Kick Trap" [ref=e800] [cursor=pointer]: ♡
+          - generic [ref=e801]:
+            - button "Preview Kick Soft" [ref=e802] [cursor=pointer]: ▶
+            - button "Kick Soft" [ref=e803] [cursor=pointer]
+            - button "Favorite Kick Soft" [ref=e804] [cursor=pointer]: ♡
+          - generic [ref=e805]:
+            - button "Preview Snare Main" [ref=e806] [cursor=pointer]: ▶
+            - button "Snare Main" [ref=e807] [cursor=pointer]
+            - button "Favorite Snare Main" [ref=e808] [cursor=pointer]: ♡
+          - generic [ref=e809]:
+            - button "Preview Snare Tight" [ref=e810] [cursor=pointer]: ▶
+            - button "Snare Tight" [ref=e811] [cursor=pointer]
+            - button "Favorite Snare Tight" [ref=e812] [cursor=pointer]: ♡
+          - generic [ref=e813]:
+            - button "Preview Snare Punch" [ref=e814] [cursor=pointer]: ▶
+            - button "Snare Punch" [ref=e815] [cursor=pointer]
+            - button "Favorite Snare Punch" [ref=e816] [cursor=pointer]: ♡
+          - generic [ref=e817]:
+            - button "Preview Snare Trap" [ref=e818] [cursor=pointer]: ▶
+            - button "Snare Trap" [ref=e819] [cursor=pointer]
+            - button "Favorite Snare Trap" [ref=e820] [cursor=pointer]: ♡
+          - generic [ref=e821]:
+            - button "Preview Clap Main" [ref=e822] [cursor=pointer]: ▶
+            - button "Clap Main" [ref=e823] [cursor=pointer]
+            - button "Favorite Clap Main" [ref=e824] [cursor=pointer]: ♡
+          - generic [ref=e825]:
+            - button "Preview Clap Soft" [ref=e826] [cursor=pointer]: ▶
+            - button "Clap Soft" [ref=e827] [cursor=pointer]
+            - button "Favorite Clap Soft" [ref=e828] [cursor=pointer]: ♡
+          - generic [ref=e829]:
+            - button "Preview Hat Closed" [ref=e830] [cursor=pointer]: ▶
+            - button "Hat Closed" [ref=e831] [cursor=pointer]
+            - button "Favorite Hat Closed" [ref=e832] [cursor=pointer]: ♡
+          - generic [ref=e833]:
+            - button "Preview Hat Closed Soft" [ref=e834] [cursor=pointer]: ▶
+            - button "Hat Closed Soft" [ref=e835] [cursor=pointer]
+            - button "Favorite Hat Closed Soft" [ref=e836] [cursor=pointer]: ♡
+          - generic [ref=e837]:
+            - button "Preview Hat Open" [ref=e838] [cursor=pointer]: ▶
+            - button "Hat Open" [ref=e839] [cursor=pointer]
+            - button "Favorite Hat Open" [ref=e840] [cursor=pointer]: ♡
+          - generic [ref=e841]:
+            - button "Preview Hat Open Short" [ref=e842] [cursor=pointer]: ▶
+            - button "Hat Open Short" [ref=e843] [cursor=pointer]
+            - button "Favorite Hat Open Short" [ref=e844] [cursor=pointer]: ♡
+          - generic [ref=e845]:
+            - button "Preview Hat Pedal" [ref=e846] [cursor=pointer]: ▶
+            - button "Hat Pedal" [ref=e847] [cursor=pointer]
+            - button "Favorite Hat Pedal" [ref=e848] [cursor=pointer]: ♡
+          - generic [ref=e849]:
+            - button "Preview Ride Ping" [ref=e850] [cursor=pointer]: ▶
+            - button "Ride Ping" [ref=e851] [cursor=pointer]
+            - button "Favorite Ride Ping" [ref=e852] [cursor=pointer]: ♡
+          - generic [ref=e853]:
+            - button "Preview Ride Bell" [ref=e854] [cursor=pointer]: ▶
+            - button "Ride Bell" [ref=e855] [cursor=pointer]
+            - button "Favorite Ride Bell" [ref=e856] [cursor=pointer]: ♡
+          - generic [ref=e857]:
+            - button "Preview Crash" [ref=e858] [cursor=pointer]: ▶
+            - button "Crash" [ref=e859] [cursor=pointer]
+            - button "Favorite Crash" [ref=e860] [cursor=pointer]: ♡
+          - generic [ref=e861]:
+            - button "Preview Crash Dark" [ref=e862] [cursor=pointer]: ▶
+            - button "Crash Dark" [ref=e863] [cursor=pointer]
+            - button "Favorite Crash Dark" [ref=e864] [cursor=pointer]: ♡
+          - generic [ref=e865]:
+            - button "Preview Tom Low" [ref=e866] [cursor=pointer]: ▶
+            - button "Tom Low" [ref=e867] [cursor=pointer]
+            - button "Favorite Tom Low" [ref=e868] [cursor=pointer]: ♡
+          - generic [ref=e869]:
+            - button "Preview Tom Mid" [ref=e870] [cursor=pointer]: ▶
+            - button "Tom Mid" [ref=e871] [cursor=pointer]
+            - button "Favorite Tom Mid" [ref=e872] [cursor=pointer]: ♡
+          - generic [ref=e873]:
+            - button "Preview Tom High" [ref=e874] [cursor=pointer]: ▶
+            - button "Tom High" [ref=e875] [cursor=pointer]
+            - button "Favorite Tom High" [ref=e876] [cursor=pointer]: ♡
+          - generic [ref=e877]:
+            - button "Preview Rim Chip" [ref=e878] [cursor=pointer]: ▶
+            - button "Rim Chip" [ref=e879] [cursor=pointer]
+            - button "Favorite Rim Chip" [ref=e880] [cursor=pointer]: ♡
+          - generic [ref=e881]:
+            - button "Preview Shaker Soft" [ref=e882] [cursor=pointer]: ▶
+            - button "Shaker Soft" [ref=e883] [cursor=pointer]
+            - button "Favorite Shaker Soft" [ref=e884] [cursor=pointer]: ♡
+          - generic [ref=e885]:
+            - button "Preview Perc Tick" [ref=e886] [cursor=pointer]: ▶
+            - button "Perc Tick" [ref=e887] [cursor=pointer]
+            - button "Favorite Perc Tick" [ref=e888] [cursor=pointer]: ♡
+          - generic [ref=e889]:
+            - button "Preview Perc Blip" [ref=e890] [cursor=pointer]: ▶
+            - button "Perc Blip" [ref=e891] [cursor=pointer]
+            - button "Favorite Perc Blip" [ref=e892] [cursor=pointer]: ♡
+          - generic [ref=e893]:
+            - button "Preview Cowbell" [ref=e894] [cursor=pointer]: ▶
+            - button "Cowbell" [ref=e895] [cursor=pointer]
+            - button "Favorite Cowbell" [ref=e896] [cursor=pointer]: ♡
+          - generic [ref=e897]:
+            - button "Preview Conga" [ref=e898] [cursor=pointer]: ▶
+            - button "Conga" [ref=e899] [cursor=pointer]
+            - button "Favorite Conga" [ref=e900] [cursor=pointer]: ♡
+          - generic [ref=e901]:
+            - button "Preview Tambourine" [ref=e902] [cursor=pointer]: ▶
+            - button "Tambourine" [ref=e903] [cursor=pointer]
+            - button "Favorite Tambourine" [ref=e904] [cursor=pointer]: ♡
+          - generic [ref=e905]:
+            - button "Preview Riser" [ref=e906] [cursor=pointer]: ▶
+            - button "Riser" [ref=e907] [cursor=pointer]
+            - button "Favorite Riser" [ref=e908] [cursor=pointer]: ♡
+          - generic [ref=e909]:
+            - button "Preview Downlifter" [ref=e910] [cursor=pointer]: ▶
+            - button "Downlifter" [ref=e911] [cursor=pointer]
+            - button "Favorite Downlifter" [ref=e912] [cursor=pointer]: ♡
+          - generic [ref=e913]:
+            - button "Preview Impact" [ref=e914] [cursor=pointer]: ▶
+            - button "Impact" [ref=e915] [cursor=pointer]
+            - button "Favorite Impact" [ref=e916] [cursor=pointer]: ♡
+          - generic [ref=e917]:
+            - button "Preview Sweep" [ref=e918] [cursor=pointer]: ▶
+            - button "Sweep" [ref=e919] [cursor=pointer]
+            - button "Favorite Sweep" [ref=e920] [cursor=pointer]: ♡
+          - generic [ref=e921]:
+            - button "Preview Reverse Rise" [ref=e922] [cursor=pointer]: ▶
+            - button "Reverse Rise" [ref=e923] [cursor=pointer]
+            - button "Favorite Reverse Rise" [ref=e924] [cursor=pointer]: ♡
+          - generic [ref=e925]:
+            - button "Preview White Noise" [ref=e926] [cursor=pointer]: ▶
+            - button "White Noise" [ref=e927] [cursor=pointer]
+            - button "Favorite White Noise" [ref=e928] [cursor=pointer]: ♡
+      - generic [ref=e929]:
+        - generic [ref=e930]:
+          - generic [ref=e931]: Gain
+          - generic [ref=e932]: 0.0 dB
+        - slider "Gain" [ref=e933]
+      - generic [ref=e936]:
+        - generic [ref=e937]:
+          - generic [ref=e938]: Pan
+          - generic [ref=e939]: C
+        - slider "Pan" [ref=e940]
+      - generic [ref=e943]:
+        - generic [ref=e944]:
+          - generic [ref=e945]: Pitch
+          - generic [ref=e946]: 0.0 st
+        - slider "Pitch" [ref=e947]
+      - generic [ref=e950]:
+        - button "MUTE" [ref=e951] [cursor=pointer]
+        - button "SOLO" [ref=e952] [cursor=pointer]
+      - heading "TRACK — Drums" [level=2] [ref=e953]
+      - generic [ref=e954]:
+        - generic [ref=e955]:
+          - generic [ref=e956]: Volume
+          - generic [ref=e957]: "-0.9 dB"
+        - slider "Volume" [ref=e958]
+      - generic [ref=e961]:
+        - generic [ref=e962]:
+          - generic [ref=e963]: Pan
+          - generic [ref=e964]: C
+        - slider "Pan" [ref=e965]
+  - region "Mixer" [ref=e968]:
+    - generic [ref=e969]:
+      - generic [ref=e970]:
+        - generic [ref=e971]:
+          - generic [ref=e972]: DR
+          - textbox "Track track-2831a5f7-43eb-4cf4-a40b-9a3d8d3d7386 name" [ref=e973]: Drums
+        - generic [ref=e974]:
+          - generic [ref=e975]:
+            - generic [ref=e976]:
+              - generic [ref=e977]: BUS
+              - combobox "Bus for Drums" [ref=e978]:
+                - option "UNGROUPED" [selected]
+            - generic [ref=e979]:
+              - generic [ref=e980]:
+                - generic [ref=e981]: VOL
+                - generic [ref=e982]: "-0.9"
+              - slider "VOL" [ref=e983]
+            - generic [ref=e986]:
+              - generic [ref=e987]:
+                - generic [ref=e988]: PAN
+                - generic [ref=e989]: C
+              - slider "PAN" [ref=e990]
+            - generic [ref=e993]:
+              - generic [ref=e994]:
+                - generic [ref=e995]: → REVERB
+                - generic [ref=e996]: "OFF"
+              - slider "→ REVERB" [ref=e997]
+            - generic [ref=e999]:
+              - generic [ref=e1000]:
+                - generic [ref=e1001]: → DELAY
+                - generic [ref=e1002]: "OFF"
+              - slider "→ DELAY" [ref=e1003]
+          - meter "Level meter" [ref=e1005]
+        - generic [ref=e1006]:
+          - button "M" [ref=e1007] [cursor=pointer]
+          - button "S" [ref=e1008] [cursor=pointer]
+          - button "×" [ref=e1009] [cursor=pointer]
+          - generic [ref=e1010]:
+            - button "FREEZE" [ref=e1011] [cursor=pointer]
+            - button "BOUNCE" [ref=e1012] [cursor=pointer]
+      - generic [ref=e1013]:
+        - generic [ref=e1014]:
+          - generic [ref=e1015]: "808"
+          - textbox "Track track-06484a97-13c3-41c0-9d7d-8a459b6a80c7 name" [ref=e1016]: "808"
+        - generic [ref=e1017]:
+          - generic [ref=e1018]:
+            - generic [ref=e1019]:
+              - generic [ref=e1020]: BUS
+              - combobox "Bus for 808" [ref=e1021]:
+                - option "UNGROUPED" [selected]
+            - generic [ref=e1022]:
+              - generic [ref=e1023]:
+                - generic [ref=e1024]: VOL
+                - generic [ref=e1025]: "-1.4"
+              - slider "VOL" [ref=e1026]
+            - generic [ref=e1029]:
+              - generic [ref=e1030]:
+                - generic [ref=e1031]: PAN
+                - generic [ref=e1032]: C
+              - slider "PAN" [ref=e1033]
+            - generic [ref=e1036]:
+              - generic [ref=e1037]:
+                - generic [ref=e1038]: → REVERB
+                - generic [ref=e1039]: "OFF"
+              - slider "→ REVERB" [ref=e1040]
+            - generic [ref=e1042]:
+              - generic [ref=e1043]:
+                - generic [ref=e1044]: → DELAY
+                - generic [ref=e1045]: "OFF"
+              - slider "→ DELAY" [ref=e1046]
+          - meter "Level meter" [ref=e1048]
+        - generic [ref=e1049]:
+          - button "M" [ref=e1050] [cursor=pointer]
+          - button "S" [ref=e1051] [cursor=pointer]
+          - button "×" [ref=e1052] [cursor=pointer]
+          - generic [ref=e1053]:
+            - button "FREEZE" [ref=e1054] [cursor=pointer]
+            - button "BOUNCE" [ref=e1055] [cursor=pointer]
+      - generic [ref=e1056]:
+        - generic [ref=e1057]:
+          - generic [ref=e1058]: AN
+          - textbox "Track track-e1c01e3e-d7d0-493d-bf8b-2270dc13fa7b name" [ref=e1059]: Chords
+        - generic [ref=e1060]:
+          - generic [ref=e1061]:
+            - generic [ref=e1062]:
+              - generic [ref=e1063]: BUS
+              - combobox "Bus for Chords" [ref=e1064]:
+                - option "UNGROUPED" [selected]
+            - generic [ref=e1065]:
+              - generic [ref=e1066]:
+                - generic [ref=e1067]: VOL
+                - generic [ref=e1068]: "-1.4"
+              - slider "VOL" [ref=e1069]
+            - generic [ref=e1072]:
+              - generic [ref=e1073]:
+                - generic [ref=e1074]: PAN
+                - generic [ref=e1075]: C
+              - slider "PAN" [ref=e1076]
+            - generic [ref=e1079]:
+              - generic [ref=e1080]:
+                - generic [ref=e1081]: → REVERB
+                - generic [ref=e1082]: "OFF"
+              - slider "→ REVERB" [ref=e1083]
+            - generic [ref=e1085]:
+              - generic [ref=e1086]:
+                - generic [ref=e1087]: → DELAY
+                - generic [ref=e1088]: "OFF"
+              - slider "→ DELAY" [ref=e1089]
+          - meter "Level meter" [ref=e1091]
+        - generic [ref=e1092]:
+          - button "M" [ref=e1093] [cursor=pointer]
+          - button "S" [ref=e1094] [cursor=pointer]
+          - button "×" [ref=e1095] [cursor=pointer]
+          - generic [ref=e1096]:
+            - button "FREEZE" [ref=e1097] [cursor=pointer]
+            - button "BOUNCE" [ref=e1098] [cursor=pointer]
+      - generic "Return Reverb" [ref=e1099]:
+        - generic [ref=e1100]:
+          - generic [ref=e1101]: RTN
+          - generic [ref=e1102]: Reverb
+        - generic [ref=e1103]:
+          - generic [ref=e1104]:
+            - generic [ref=e1105]:
+              - generic [ref=e1106]:
+                - generic [ref=e1107]: GAIN
+                - generic [ref=e1108]: "-0.9"
+              - slider "GAIN" [ref=e1109]
+            - generic [ref=e1112]: reverb
+          - meter "Level meter" [ref=e1114]
+      - generic "Return Delay" [ref=e1115]:
+        - generic [ref=e1116]:
+          - generic [ref=e1117]: RTN
+          - generic [ref=e1118]: Delay
+        - generic [ref=e1119]:
+          - generic [ref=e1120]:
+            - generic [ref=e1121]:
+              - generic [ref=e1122]:
+                - generic [ref=e1123]: GAIN
+                - generic [ref=e1124]: "-1.4"
+              - slider "GAIN" [ref=e1125]
+            - generic [ref=e1128]: delay
+          - meter "Level meter" [ref=e1130]
+      - generic "Master channel" [ref=e1131]:
+        - generic [ref=e1132]: MASTER
+        - generic [ref=e1134]:
+          - generic [ref=e1135]:
+            - generic [ref=e1136]:
+              - generic [ref=e1137]:
+                - generic [ref=e1138]: IN
+                - generic [ref=e1139]: 0.0 dB
+              - slider "IN" [ref=e1140]
+            - generic [ref=e1143]:
+              - generic [ref=e1144]:
+                - generic [ref=e1145]: CEIL
+                - generic [ref=e1146]: "-1.0 dB"
+              - slider "CEIL" [ref=e1147]
+            - generic [ref=e1150]:
+              - button "Master limiter" [pressed] [ref=e1151] [cursor=pointer]: LIMIT
+              - button "Master soft clipper" [ref=e1152] [cursor=pointer]: CLIP
+          - group "Master meter" [ref=e1153]:
+            - generic [ref=e1154]:
+              - generic [ref=e1155]: L
+              - generic "Peak" [ref=e1163]: −∞
+            - generic [ref=e1164]:
+              - generic [ref=e1165]: R
+              - generic "Peak" [ref=e1173]: −∞
+            - generic "Stereo correlation (1 = mono, -1 = out of phase)" [ref=e1174]:
+              - generic [ref=e1175]: ×CORR
+              - generic [ref=e1180]: MONO+OK
+            - generic "Headroom to the limiter ceiling" [ref=e1181]:
+              - generic [ref=e1182]: HEAD
+              - generic [ref=e1185]: "-1.0 dB"
+            - generic "Master loudness" [ref=e1186]:
+              - generic [ref=e1187]: LUFS-M -INF
+              - generic [ref=e1188]: LUFS-S -INF
+              - generic [ref=e1189]: LUFS-I -INF
+              - generic [ref=e1190]: TP -INF dBTP
+              - generic [ref=e1191]: MONO LOSS 0.0 dB
+              - button "RESET INTEGRATED" [ref=e1192] [cursor=pointer]
+  - contentinfo [ref=e1194]:
+    - generic [ref=e1195]: SPACE play · 1–5 panels · ? help · Ctrl+Z undo · 1–9 tracks
+  - status [ref=e1196]:
+    - generic [ref=e1197]: 1/3
+    - generic [ref=e1198]: Press SPACE — this template already makes sound.
+    - button "Dismiss onboarding" [ref=e1199] [cursor=pointer]: ×

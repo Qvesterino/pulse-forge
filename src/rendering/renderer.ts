@@ -3,6 +3,7 @@ import type { SampleBank } from "../sample-library/factory";
 import type { AutomationPoint, Pattern, PlayMode, ProjectDocument } from "../project-model/types";
 import { BAR_TICKS, PPQ, STEP_TICKS, getActivePattern } from "../project-model/types";
 import { drumHitsInWindow } from "../project-model/groove";
+import { noteEventsInWindow } from "../project-model/events";
 import { loadWorkletModules } from "../audio-worklets/loader";
 
 export interface RenderOptions {
@@ -71,7 +72,7 @@ export async function renderProject(
 
   for (const window of windows) {
     scheduleDrums(doc, window, timeAt, engine);
-    scheduleNotes(doc, window, timeAt, secondsPerTick, engine);
+    scheduleNotes(window, timeAt, secondsPerTick, engine);
   }
   scheduleAutomation(doc, windows, timeAt, engine);
 
@@ -91,24 +92,20 @@ function scheduleDrums(
 }
 
 function scheduleNotes(
-  doc: ProjectDocument,
   window: ClipWindow,
   timeAt: (tick: number) => number,
   secondsPerTick: number,
   engine: AudioEngine,
 ): void {
-  const { pattern, base, from, to } = window;
-  const patternTicks = pattern.stepCount * STEP_TICKS;
-  for (const track of doc.tracks) {
-    if (track.kind !== "instrument") continue;
-    const notes = pattern.notes?.[track.id];
-    if (!notes || notes.length === 0) continue;
-    for (const note of notes) {
-      for (let t = base + note.start; t < to; t += patternTicks) {
-        if (t < from) continue;
-        engine.noteOn(track.id, note.pitch, note.velocity, timeAt(t), note.duration * secondsPerTick);
-      }
-    }
+  const { base, from, to } = window;
+  for (const event of noteEventsInWindow(window.pattern, base, from, to)) {
+    engine.noteOn(
+      event.trackId,
+      event.note.pitch,
+      event.note.velocity,
+      timeAt(event.tick),
+      event.note.duration * secondsPerTick,
+    );
   }
 }
 

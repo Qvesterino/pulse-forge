@@ -21,7 +21,7 @@ interface SceneRuntimeState {
   pendingPatternId: string | null;
 }
 
-function useSceneRuntimeState(): SceneRuntimeState {
+export function useSceneRuntimeState(): SceneRuntimeState {
   const services = useServices();
   useSyncExternalStore(
     (listener) => {
@@ -138,6 +138,7 @@ export function SceneLauncher({
           const isEditing = editingSceneId === scene.id;
           const classes = [
             "scene-launch-card",
+            role ? `role-${role}` : "",
             isSelected ? "selected" : "",
             isCurrent ? "current" : "",
             isPlaying ? "playing" : "",

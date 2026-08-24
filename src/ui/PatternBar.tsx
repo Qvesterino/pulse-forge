@@ -5,7 +5,6 @@ import {
   createFill,
   createPattern,
   deletePattern,
-  duplicatePatternForScene,
   duplicatePattern,
   mutatePattern,
   pastePattern,
@@ -294,7 +293,6 @@ export function PatternBar({ clip, onCopy }: { clip: PatternClipboard | null; on
         variant="bar"
         playheadBar={playheadBar}
         onRenameScene={(scene, name) => services.store.execute(renameScene(doc, scene.id, name))}
-        onDuplicatePattern={(scene) => services.store.execute(duplicatePatternForScene(doc, scene.id))}
       />
 
       <GenerateDialog open={generateOpen} onClose={() => setGenerateOpen(false)} />

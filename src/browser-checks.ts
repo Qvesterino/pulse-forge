@@ -18,6 +18,9 @@ import { createGroupTrackModel } from "./project-model/schema";
 import { encodeMp3 } from "./export/mp3";
 import { pickVideoMimeType, recordVideo } from "./export/video";
 import type { EffectType, InstrumentTrack } from "./project-model/types";
+import { generatePattern } from "./ai/generator";
+import { canonicalizePattern, contentHash } from "./ai/evaluation";
+import { inspectPatternInvariants } from "./ai/invariants";
 
 export interface CheckResult {
   name: string;
@@ -635,6 +638,50 @@ export async function runChecks(): Promise<CheckResult[]> {
     );
   } catch (error) {
     check("export: MP3 encodes small and decodes back to the same duration", false, String(error));
+  }
+
+  // Generated-pattern quality gate: the browser must validate the same local
+  // output that the UI preview/command path uses, then render that exact
+  // pattern through the offline engine and encode a playable WAV.
+  try {
+    const project = createProjectFromTemplate("house");
+    const options = {
+      genre: "house" as const,
+      style: "deep",
+      seed: "browser-quality-gate",
+      stepCount: 64,
+      ghostWeight: 0.3,
+      microWeight: 0.2,
+      velocityVariation: 0.3,
+      temperature: 1,
+      replaceMode: "new" as const,
+    };
+    const generated = generatePattern(project, options);
+    const generatedAgain = generatePattern(project, options);
+    const report = inspectPatternInvariants(project, generated);
+    const hash = contentHash(canonicalizePattern(project, generated));
+    const hashAgain = contentHash(canonicalizePattern(project, generatedAgain));
+    check(
+      "quality: browser-generated pattern passes invariants and content hash is deterministic",
+      report.ok && hash === hashAgain && generated.generation?.outputContentHash === hash,
+      report.issues.map((item) => `${item.code}@${item.path}`).join(", ") || `${hash}/${hashAgain}`,
+    );
+
+    const generatedProject = {
+      ...project,
+      patterns: [...project.patterns, generated],
+      activePatternId: generated.id,
+    };
+    const buffer = await renderProject(generatedProject, bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0.2 });
+    const wav = encodeWav(buffer, 16);
+    check(
+      "quality: generated pattern renders offline audio and a valid WAV",
+      peakOf(buffer.getChannelData(0)) > 0.01 && wav.byteLength > 44,
+      `peak=${peakOf(buffer.getChannelData(0)).toFixed(3)} wav=${wav.byteLength}`,
+    );
+  } catch (error) {
+    check("quality: browser-generated pattern passes invariants and content hash is deterministic", false, String(error));
+    check("quality: generated pattern renders offline audio and a valid WAV", false, String(error));
   }
 
   // Video export: MediaRecorder over the branded canvas + offline-rendered

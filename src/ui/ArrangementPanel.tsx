@@ -25,7 +25,7 @@ import { sceneRoleOf } from "../project-model/schema";
 import type { ArrangementTransitionType, SceneRole } from "../project-model/types";
 import { BAR_TICKS, PPQ } from "../project-model/types";
 import { usePlayheadBar } from "./playhead";
-import { SceneLauncher } from "./SceneLauncher";
+import { SceneLauncher, useSceneRuntimeState } from "./SceneLauncher";
 
 const BAR_WIDTH = 30;
 const LANE_HEIGHT = 56;
@@ -75,11 +75,15 @@ export function ArrangementPanel() {
   const dragRef = useRef<DragState | null>(null);
   const [drag, setDrag] = useState<{ startBar: number; lengthBars: number } | null>(null);
   const playheadBar = usePlayheadBar(services.transport);
+  const runtime = useSceneRuntimeState();
 
   const clips = [...doc.arrangement.clips].sort((a, b) => a.startBar - b.startBar);
   const totalBars = Math.max(16, ...clips.map((clip) => clip.startBar + clip.lengthBars + 4));
   const selectedScene = doc.scenes.find((scene) => scene.id === selectedSceneId) ?? doc.scenes[0];
   const selectedClip = clips.find((clip) => clip.id === selectedClipId);
+  const queuedScene = runtime.pendingPatternId
+    ? doc.scenes.find((scene) => scene.patternId === runtime.pendingPatternId)
+    : undefined;
   const selectedTransition = transitionBoundary
     ? doc.arrangement.transitions?.find(
         (transition) => transition.fromClipId === transitionBoundary.fromClipId && transition.toClipId === transitionBoundary.toClipId,
@@ -197,7 +201,10 @@ export function ArrangementPanel() {
     <section className="arr-panel" aria-label="Arrangement and scenes">
       <div className="arr-scenes">
         <div className="arr-scenes-header">
-          <h2 className="panel-title">SCENES</h2>
+          <div className="arr-section-heading">
+            <h2 className="panel-title">SCENES</h2>
+            <span className="arr-section-label">SOURCE</span>
+          </div>
           <button type="button" className="btn btn-small" title="Create scene from active pattern" onClick={() => execute(createScene(services.store.doc))}>
             + SCENE
           </button>
@@ -240,7 +247,18 @@ export function ArrangementPanel() {
 
       <div className="arr-timeline">
         <div className="arr-timeline-header">
-          <h2 className="panel-title">ARRANGEMENT</h2>
+          <div className="arr-timeline-title-group">
+            <h2 className="panel-title">ARRANGEMENT</h2>
+            <div className="arr-status-strip" aria-live="polite">
+              <span className="arr-status-badge arr-status-mode">{runtime.mode.toUpperCase()}</span>
+              <span className="arr-status-badge arr-status-quantize">QUANTIZE <strong>1 BAR</strong></span>
+              {queuedScene ? (
+                <span className="arr-status-badge arr-status-queued">QUEUED <strong>{queuedScene.name}</strong> · NEXT BAR</span>
+              ) : (
+                <span className="arr-status-badge arr-status-ready">READY</span>
+              )}
+            </div>
+          </div>
           <div className="arr-timeline-actions">
             <button type="button" className={`btn btn-small${rulerMode === "seconds" ? " active-solo" : ""}`} onClick={() => setRulerMode(rulerMode === "bars" ? "seconds" : "bars")}>
               {rulerMode === "bars" ? "BARS" : "SECS"}
@@ -282,6 +300,22 @@ export function ArrangementPanel() {
             }}>APPLY SKELETON</button>
           </div>
         )}
+
+        <div className="arr-role-flow" aria-label="Arrangement role flow">
+          {clips.length === 0 ? (
+            <span className="arr-role-flow-empty">EMPTY ARRANGEMENT</span>
+          ) : clips.map((clip, index) => {
+            const scene = doc.scenes.find((candidate) => candidate.id === clip.sceneId);
+            const role = scene ? sceneRoleOf(scene) ?? "custom" : "custom";
+            return (
+              <span key={clip.id} className={`arr-role-flow-item role-${role}`}>
+                <span className="arr-role-flow-role">{role.toUpperCase()}</span>
+                <span className="arr-role-flow-length">{clip.lengthBars}B</span>
+                {index < clips.length - 1 && <span className="arr-role-flow-arrow" aria-hidden="true">→</span>}
+              </span>
+            );
+          })}
+        </div>
 
         <div className="arr-lane-scroll">
           <div
@@ -338,24 +372,29 @@ export function ArrangementPanel() {
             {Array.from({ length: totalBars }, (_, index) => <div key={index} className={`arr-bar-grid${index % 4 === 0 ? " bar-strong" : ""}`} style={{ left: index * BAR_WIDTH }} />)}
             {clips.map((clip, index) => {
               const scene = doc.scenes.find((candidate) => candidate.id === clip.sceneId);
+              const role = scene ? sceneRoleOf(scene) ?? "custom" : "custom";
               const isDragging = dragRef.current?.clipId === clip.id && drag !== null;
               const startBar = isDragging ? drag.startBar : clip.startBar;
               const lengthBars = isDragging ? drag.lengthBars : clip.lengthBars;
               const nextClip = clips[index + 1];
               const selected = selectedClipId === clip.id;
+              const isCurrentClip = playheadBar >= clip.startBar && playheadBar < clip.startBar + clip.lengthBars;
               return (
                 <div key={clip.id}>
                   <div
-                    className={`arr-clip${selected ? " selected" : ""}`}
+                    className={`arr-clip role-${role}${selected ? " selected" : ""}${isCurrentClip ? " current" : ""}${runtime.playing && isCurrentClip ? " playing" : ""}`}
                     style={{ left: startBar * BAR_WIDTH, width: lengthBars * BAR_WIDTH - 4 }}
-                    title={`${scene?.name ?? "?"} — bars ${startBar + 1}–${startBar + lengthBars}`}
+                    title={`${scene?.name ?? "?"} · ${role.toUpperCase()} · bars ${startBar + 1}–${startBar + lengthBars}`}
                     onPointerDown={(event) => beginClipDrag(event, clip.id, event.clientX > event.currentTarget.getBoundingClientRect().right - 10 ? "resize" : "move")}
                     onPointerMove={onClipPointerMove}
                     onPointerUp={onClipPointerUp}
                     onClick={() => setSelectedClipId(clip.id)}
                     onContextMenu={(event) => { event.preventDefault(); execute(deleteArrangementClip(services.store.doc, clip.id)); if (selectedClipId === clip.id) setSelectedClipId(null); }}
                   >
-                    <span className="arr-clip-name">{scene?.name ?? "?"}</span>
+                    <span className="arr-clip-copy">
+                      <span className="arr-clip-role">{role.toUpperCase()}</span>
+                      <span className="arr-clip-name">{scene?.name ?? "?"}</span>
+                    </span>
                     <span className="arr-clip-bars">{lengthBars}b</span>
                     <span className="arr-clip-resize" />
                   </div>
@@ -391,7 +430,6 @@ export function ArrangementPanel() {
           </div>
         )}
         {actionError && <div className="arr-error" role="status">{actionError}</div>}
-        <div className="arr-hint">drag scenes to reorder or into the timeline · clips play in SONG mode · capture records quantized scene launches · transitions are metadata only</div>
       </div>
     </section>
   );

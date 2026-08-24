@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useDoc, useServices } from "./context";
 import { assistBuild, assistFill, assistReplace, assistVary } from "../commands/commands";
 import { styleNames, type ReplaceTarget } from "../assist/patternOps";
-import { getActivePattern } from "../project-model/types";
+import { buildAssistPatch } from "../assist/pipeline";
+import { ASSIST_ENGINE_VERSION, type AssistOperation } from "../assist/types";
+import { getActivePattern, getDrumTrack } from "../project-model/types";
 
 function randomSeed(): string {
   return Math.random().toString(36).slice(2, 6);
@@ -24,6 +26,7 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
   const [bars, setBars] = useState(4);
   const [target, setTarget] = useState<ReplaceTarget>("hats");
   const [style, setStyle] = useState("house");
+  const [previewOperation, setPreviewOperation] = useState<AssistOperation>("vary");
   const [flash, setFlash] = useState<string | null>(null);
 
   const apply = (label: string, run: () => void) => {
@@ -34,6 +37,19 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
   };
 
   const stylesForTarget = styleNames(target);
+  const drumPads = getDrumTrack(doc).pads;
+  const previewPatch = useMemo(() => buildAssistPatch(pattern, drumPads, {
+    operation: previewOperation,
+    seed,
+    amount,
+    bars,
+    target,
+    style,
+  }), [pattern, drumPads, previewOperation, seed, amount, bars, target, style]);
+  const previewPad = drumPads.find((pad) => (previewPatch.rows[pad.id] ?? []).some((value) => value > 0)) ?? drumPads[0];
+  const previewRow = previewPad ? previewPatch.rows[previewPad.id] ?? [] : [];
+  const beforeHits = Object.values(pattern.rows).reduce((total, row) => total + row.filter((value) => value > 0).length, 0);
+  const afterHits = Object.values(previewPatch.rows).reduce((total, row) => total + row.filter((value) => value > 0).length, 0);
 
   return (
     <div className="collab-panel assist-panel" role="dialog" aria-label="Pattern assist">
@@ -56,6 +72,31 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
         <button type="button" className="btn btn-small" title="Re-roll seed" onClick={() => setSeed(randomSeed())}>
           ⚄
         </button>
+      </div>
+
+      <div className="assist-preview">
+        <div className="assist-preview-header">
+          <span>PREVIEW</span>
+          <span className="assist-engine">LOCAL ASSIST {ASSIST_ENGINE_VERSION}</span>
+          <select value={previewOperation} onChange={(e) => setPreviewOperation(e.target.value as AssistOperation)}>
+            <option value="vary">VARY</option>
+            <option value="build">BUILD</option>
+            <option value="replace">REPLACE</option>
+            <option value="fill">FILL</option>
+          </select>
+        </div>
+        <div className="assist-preview-meta">
+          {previewPad?.name ?? "No drum pad"} · {beforeHits} → {afterHits} hits · {previewPatch.stepCount ?? pattern.stepCount} steps
+        </div>
+        <div className="assist-preview-grid" role="img" aria-label={`${previewOperation} pattern preview`}>
+          {Array.from({ length: 16 }, (_, step) => (
+            <span
+              key={step}
+              className={`assist-preview-cell${(previewRow[step] ?? 0) > 0 ? " active" : ""}${step % 4 === 0 ? " beat" : ""}`}
+              style={(previewRow[step] ?? 0) > 0 ? { opacity: 0.3 + (previewRow[step] ?? 0) * 0.7 } : undefined}
+            />
+          ))}
+        </div>
       </div>
 
       <div className="assist-ops">
