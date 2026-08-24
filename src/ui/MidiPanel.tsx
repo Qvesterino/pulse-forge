@@ -13,6 +13,7 @@ import { EFFECT_DEFS } from "../effects/registry";
 import { INSTRUMENT_DEFS } from "../instruments/registry";
 import { DragNumber } from "./controls";
 import type { MidiDevice } from "../midi/MidiInput";
+import { LatencyCalibrationWizard } from "./LatencyCalibrationWizard";
 
 export function MidiPanel() {
   const services = useServices();
@@ -26,6 +27,7 @@ export function MidiPanel() {
   const [addTrackId, setAddTrackId] = useState(doc.tracks[0]?.id ?? "");
   const [addTarget, setAddTarget] = useState<{ kind: string; fxId?: string; paramId?: string }>({ kind: "trackGain" });
   const [addCc, setAddCc] = useState(1);
+  const [latencyOpen, setLatencyOpen] = useState(false);
 
   const toggle = () => services.store.execute(setMidiConfig(doc, { enabled: !midi.enabled }));
 
@@ -51,6 +53,9 @@ export function MidiPanel() {
           aria-pressed={midi.enabled}
         >
           {midi.enabled ? "MIDI ON" : "MIDI OFF"}
+        </button>
+        <button type="button" className="btn btn-small" onClick={() => setLatencyOpen(true)}>
+          CALIBRATE LATENCY
         </button>
       </div>
 
@@ -240,6 +245,7 @@ export function MidiPanel() {
           </div>
         </>
       )}
+      <LatencyCalibrationWizard open={latencyOpen} onClose={() => setLatencyOpen(false)} />
     </section>
   );
 }

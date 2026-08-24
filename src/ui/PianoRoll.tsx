@@ -68,7 +68,11 @@ export function PianoRollTrack({
   const beginNoteDrag = (event: React.PointerEvent, note: NoteEvent) => {
     if (event.button !== 0) return;
     event.stopPropagation();
-    event.currentTarget.setPointerCapture(event.pointerId);
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // no active pointer (synthetic dispatch) — drag continues without capture
+    }
     const { stepF } = posFromEvent(event);
     const noteStartSteps = note.start / STEP_TICKS;
     const noteDurSteps = note.duration / STEP_TICKS;

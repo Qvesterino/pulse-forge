@@ -27,7 +27,11 @@ export function Slider({ label, value, min, max, defaultValue, format, onCommit,
 
   const handlePointerDown = (event: React.PointerEvent) => {
     if (disabled || event.button !== 0) return;
-    event.currentTarget.setPointerCapture(event.pointerId);
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // no active pointer (synthetic dispatch) — drag continues without capture
+    }
     setDragValue(positionToValue(event.clientX));
   };
 
@@ -97,7 +101,11 @@ export function DragNumber({ value, min, max, defaultValue, sensitivity = 0.4, f
 
   const handlePointerDown = (event: React.PointerEvent) => {
     if (event.button !== 0) return;
-    event.currentTarget.setPointerCapture(event.pointerId);
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // no active pointer (synthetic dispatch) — drag continues without capture
+    }
     startY.current = event.clientY;
     startValue.current = shown;
     setEdit(shown);

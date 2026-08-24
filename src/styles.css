@@ -1488,6 +1488,177 @@ button {
   justify-content: space-between;
 }
 
+/* ---------- Latency calibration ---------- */
+
+.latency-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(5, 6, 8, 0.72);
+}
+
+.latency-card {
+  width: min(460px, 100%);
+  max-height: min(620px, calc(100vh - 36px));
+  overflow: auto;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 14px 50px rgba(0, 0, 0, 0.45);
+}
+
+.latency-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.latency-step {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-faint);
+  font-family: var(--mono);
+  font-size: 9px;
+}
+
+.latency-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+
+.latency-copy,
+.latency-hint {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.latency-hint {
+  color: var(--text-faint);
+  font-size: 10px;
+}
+
+.latency-actions,
+.latency-test-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.latency-result {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.latency-result div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.latency-result span {
+  color: var(--text-faint);
+  font-family: var(--mono);
+  font-size: 8px;
+}
+
+.latency-result strong {
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.latency-result p {
+  grid-column: 1 / -1;
+  margin: 2px 0 0;
+  color: var(--accent);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.latency-result-unstable {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+
+.latency-busy {
+  align-items: center;
+  justify-content: center;
+  min-height: 190px;
+  text-align: center;
+}
+
+.latency-pulse {
+  width: 34px;
+  height: 34px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: latency-spin 0.8s linear infinite;
+}
+
+@keyframes latency-spin {
+  to { transform: rotate(360deg); }
+}
+
+.latency-error {
+  padding: 10px;
+  color: var(--stop);
+  background: rgba(248, 113, 113, 0.08);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.latency-offset-control {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.latency-offset-control output {
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.latency-offset-control input {
+  grid-column: 1 / -1;
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+@media (max-width: 520px) {
+  .latency-overlay {
+    place-items: end center;
+    padding: 8px;
+  }
+
+  .latency-card {
+    max-height: calc(100vh - 16px);
+  }
+}
+
 /* ---------- Drop Zone ---------- */
 
 .drop-zone {
@@ -4152,4 +4323,77 @@ button {
 
 .freesound-token a {
   color: var(--accent);
+}
+
+/* ── Touch / tablet support ─────────────────────────────────────────────── */
+
+/* Kill the double-tap zoom delay everywhere; individual drag surfaces opt out below. */
+html {
+  touch-action: manipulation;
+}
+
+.audio-unlock {
+  position: fixed;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 200;
+  background: var(--accent);
+  color: #0e0f12;
+  border: none;
+  border-radius: 8px;
+  padding: 14px 22px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+}
+
+@media (pointer: coarse) {
+  /* 44px-class hit targets for the primary touch surfaces. */
+  .btn {
+    min-height: 42px;
+    min-width: 42px;
+  }
+
+  .btn-small {
+    min-height: 36px;
+    min-width: 36px;
+  }
+
+  .row-pad,
+  .row-toggle {
+    min-height: 42px;
+  }
+
+  .sample-row,
+  .preset-chip {
+    min-height: 40px;
+  }
+
+  .preset-chip {
+    padding: 6px 12px;
+  }
+
+  .sequencer-ruler .ruler-tick {
+    font-size: 13px;
+  }
+
+  .preset-search,
+  .collab-field input,
+  .freesound-search input {
+    min-height: 42px;
+  }
+}
+
+/* Drag surfaces: the browser must not steal touches for scrolling —
+   velocity drags and number scrubs are the interaction. */
+.step,
+.drag-number,
+.slider-track {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }

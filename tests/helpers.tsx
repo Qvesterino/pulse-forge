@@ -5,10 +5,12 @@ import { ServicesContext } from "../src/ui/context";
 import type { Services } from "../src/services";
 import type { ProjectDocument } from "../src/project-model/types";
 import { createProjectFromTemplate } from "../src/project-model/templates";
+import { LatencyCalibrationController } from "../src/audio-engine/latencyCalibration";
 
 export function mockServices(doc?: ProjectDocument): Services {
   const project = doc ?? createProjectFromTemplate("house");
   const listeners = new Set<() => void>();
+  const latency = new LatencyCalibrationController(null);
 
   return {
     core: {
@@ -41,6 +43,7 @@ export function mockServices(doc?: ProjectDocument): Services {
       repo: { save: vi.fn(), load: vi.fn(), list: vi.fn() } as any,
       presets: { save: vi.fn(), load: vi.fn(), list: vi.fn() } as any,
       library: { get: vi.fn(() => ({ favoriteAssets: [], recentAssets: [], favoritePresets: [], recentPresets: [] })), subscribe: vi.fn(() => () => {}), toggleAssetFavorite: vi.fn(), togglePresetFavorite: vi.fn(), recordAsset: vi.fn(), recordPreset: vi.fn() } as any,
+      latency,
     } as any,
     store: {
       getDoc: () => project,
@@ -117,6 +120,7 @@ export function mockServices(doc?: ProjectDocument): Services {
     closeProject: vi.fn(),
     frozenAudio: { save: vi.fn(async () => {}), load: vi.fn(async () => undefined), remove: vi.fn(async () => {}), list: vi.fn(async () => []) } as any,
     userSamples: { list: vi.fn(async () => []), save: vi.fn(async () => {}), loadAudio: vi.fn(async () => undefined), remove: vi.fn(async () => {}), listAudio: vi.fn(async () => []) } as any,
+    latency,
     getDiagnostics: vi.fn(() => ({
       playMode: "pattern",
       bpm: 120,

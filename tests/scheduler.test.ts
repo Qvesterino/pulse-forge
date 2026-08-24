@@ -74,10 +74,11 @@ describe("schema migration", () => {
   });
 });
 
-function makeHarness(doc: ProjectDocument, mode: "pattern" | "song" = "pattern") {
+function makeHarness(doc: ProjectDocument, mode: "pattern" | "song" = "pattern", scheduleOffsetSec = 0) {
   const events: { trackId: string; padId: string; when: number; velocity: number }[] = [];
   const noteEvents: { trackId: string; pitch: number; velocity: number; when: number; durationSec: number }[] = [];
   const automationCalls: { from: number; to: number; relOf: (tick: number) => number }[] = [];
+  const automationOffsets: number[] = [];
   const launches: string[] = [];
   let currentDoc = doc;
   let audioTime = 10;
@@ -86,6 +87,7 @@ function makeHarness(doc: ProjectDocument, mode: "pattern" | "song" = "pattern")
     getProject: () => currentDoc,
     getTransport: () => transport,
     getAudioTime: () => audioTime,
+    getScheduleOffsetSec: () => scheduleOffsetSec,
     getMode: () => mode,
     trigger: (trackId: string, pad: DrumPad, when: number, velocity: number) => {
       events.push({ trackId, padId: pad.id, when, velocity });
@@ -93,8 +95,9 @@ function makeHarness(doc: ProjectDocument, mode: "pattern" | "song" = "pattern")
     noteOn: (trackId: string, pitch: number, velocity: number, when: number, durationSec: number) => {
       noteEvents.push({ trackId, pitch, velocity, when, durationSec });
     },
-    applyAutomation: (from: number, to: number, relOf: (tick: number) => number) => {
+    applyAutomation: (from: number, to: number, relOf: (tick: number) => number, offset?: number) => {
       automationCalls.push({ from, to, relOf });
+      automationOffsets.push(offset ?? 0);
     },
     applyPatternLaunch: (patternId: string) => {
       launches.push(patternId);
@@ -106,6 +109,7 @@ function makeHarness(doc: ProjectDocument, mode: "pattern" | "song" = "pattern")
     events,
     noteEvents,
     automationCalls,
+    automationOffsets,
     launches,
     transport,
     scheduler,
@@ -116,6 +120,46 @@ function makeHarness(doc: ProjectDocument, mode: "pattern" | "song" = "pattern")
 }
 
 describe("scheduler", () => {
+  it("applies a runtime reference offset to project-generated events", () => {
+    const doc = createDefaultProject();
+    const baseline = makeHarness(doc);
+    const shifted = makeHarness(doc, "pattern", 0.025);
+    baseline.transport.play(0);
+    shifted.transport.play(0);
+    baseline.scheduler.start();
+    shifted.scheduler.start();
+
+    expect(shifted.events[0].when - baseline.events[0].when).toBeCloseTo(0.025, 6);
+    baseline.scheduler.stop();
+    shifted.scheduler.stop();
+  });
+
+  it("does not schedule negatively shifted events in the past", () => {
+    const doc = createDefaultProject();
+    const harness = makeHarness(doc, "pattern", -0.05);
+    harness.transport.play(0);
+    harness.scheduler.start();
+    for (const event of harness.events) expect(event.when).toBeGreaterThanOrEqual(9.998);
+    harness.scheduler.stop();
+  });
+
+  it("passes the runtime offset into automation scheduling", () => {
+    const baseDoc = createDefaultProject();
+    const doc = {
+      ...baseDoc,
+      automation: [{
+        id: "auto-test",
+        target: { kind: "trackGain" as const, trackId: baseDoc.tracks[0].id },
+        points: [{ tick: 0, value: 0.5 }, { tick: 1920, value: 1 }],
+      }],
+    };
+    const harness = makeHarness(doc, "pattern", 0.03);
+    harness.transport.play(0);
+    harness.scheduler.start();
+    expect(harness.automationOffsets.some((offset) => offset === 0.03)).toBe(true);
+    harness.scheduler.stop();
+  });
+
   it("schedules the starter groove ahead of the playhead", () => {
     const doc = createDefaultProject();
     const kickPadId = getDrumTrack(doc).pads[0].id;

@@ -14,6 +14,7 @@ import { assetCategoryOf, categoryColor } from "./kitColors";
 import { PianoRollTrack } from "./PianoRoll";
 import type { SelectedNote } from "./PianoRoll";
 import { trackBadge } from "./TrackTabs";
+import { useLongPress } from "./useLongPress";
 import { clamp } from "../shared/ids";
 import { DragNumber, Slider } from "./controls";
 
@@ -38,8 +39,10 @@ interface PadRowItem { type: "padRow"; trackIndex: number; padIndex: number; pad
 interface PianoRollItem { type: "pianoRoll"; trackIndex: number; track: Track }
 type FlatItem = HeaderItem | PadRowItem | PianoRollItem;
 
-const ROW_HEIGHT = 34;
-const HEADER_HEIGHT = 38;
+const COARSE_POINTER = typeof window !== "undefined" && !!window.matchMedia?.("(pointer: coarse)").matches;
+const ROW_HEIGHT = COARSE_POINTER ? 46 : 34;
+const HEADER_HEIGHT = COARSE_POINTER ? 44 : 38;
+const STEP_MIN_PX = COARSE_POINTER ? 34 : 22;
 const OVERSCAN = 5;
 
 function buildFlatItems(tracks: Track[]): FlatItem[] {
@@ -158,7 +161,12 @@ export function Sequencer({
 
   const beginStepInteraction = (event: React.PointerEvent, padId: string, stepIndex: number) => {
     if (event.button !== 0) return;
-    event.currentTarget.setPointerCapture(event.pointerId);
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Synthetic/test-dispatched pointers have no active pointer id —
+      // drag tracking simply continues without capture.
+    }
     if (event.shiftKey) {
       dragRef.current = { mode: "select", padId, stepIndex, startY: event.clientY, startVelocity: 0, moved: true };
       onSelectSteps(selectionFromDrag(padId, stepIndex, padId, stepIndex));
@@ -267,7 +275,7 @@ export function Sequencer({
       )}
       <div
         className="sequencer-ruler"
-        style={{ gridTemplateColumns: `168px repeat(${pattern.stepCount}, minmax(22px, 1fr))` }}
+        style={{ gridTemplateColumns: `168px repeat(${pattern.stepCount}, minmax(${STEP_MIN_PX}px, 1fr))` }}
         role="row"
         aria-label="Step ruler"
       >
@@ -587,7 +595,7 @@ function PadRow({
           S
         </button>
       </div>
-      <div className="row-steps" style={{ gridTemplateColumns: `repeat(${pattern.stepCount}, minmax(22px, 1fr))` }}>
+      <div className="row-steps" style={{ gridTemplateColumns: `repeat(${pattern.stepCount}, minmax(${STEP_MIN_PX}px, 1fr))` }}>
         {Array.from({ length: pattern.stepCount }, (_, stepIndex) => {
           const velocity = dragPreview && dragPreview.padId === pad.id && dragPreview.stepIndex === stepIndex
             ? dragPreview.velocity
@@ -609,35 +617,100 @@ function PadRow({
             metaHints.length > 0 ? ` (${metaHints.join(", ")})` : ""
           }`;
           return (
-            <button
+            <StepCell
               key={stepIndex}
-              type="button"
-              data-pad={pad.id}
-              data-step={stepIndex}
-              className={`step${active ? " active" : ""}${stepIndex % 4 === 0 ? " beat-start" : ""}${playheadStep === stepIndex ? " playhead" : ""}${inSelection ? " in-selection" : ""}${meta?.probability !== undefined && meta.probability < 1 ? " has-probability" : ""}${meta?.microtiming !== undefined && meta.microtiming !== 0 ? (meta.microtiming < 0 ? " micro-early" : " micro-late") : ""}`}
-              style={active ? ({ "--step-velocity": velocity } as React.CSSProperties) : undefined}
-              title={`${stepLabel} — click to toggle, drag vertically for velocity, shift+drag to multi-select, right-click for probability / ratchet / microtiming`}
-              aria-label={stepLabel}
-              aria-pressed={active}
-              onPointerDown={(event) => onBegin(event, pad.id, stepIndex)}
-              onPointerMove={onMove}
-              onPointerUp={onEnd}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  services.store.execute(toggleStep(doc, pad.id, stepIndex));
-                }
-              }}
-              onContextMenu={(event) => {
-                event.preventDefault();
-                onEditStep(stepIndex);
-              }}
-            >
-              {meta?.ratchet !== undefined && meta.ratchet > 1 && <span className="step-badge">{meta.ratchet}×</span>}
-            </button>
+              padId={pad.id}
+              stepIndex={stepIndex}
+              velocity={velocity}
+              active={active}
+              meta={meta}
+              inSelection={inSelection}
+              playhead={playheadStep === stepIndex}
+              stepLabel={stepLabel}
+              onBegin={onBegin}
+              onMove={onMove}
+              onEnd={onEnd}
+              onEditStep={() => onEditStep(stepIndex)}
+            />
           );
         })}
       </div>
     </div>
+  );
+}
+
+/**
+ * One sequencer step. Owns the long-press gesture (touch equivalent of
+ * right-click → step editor) — extracted into a component so the hook is
+ * not called inside the render loop.
+ */
+function StepCell({
+  padId,
+  stepIndex,
+  velocity,
+  active,
+  meta,
+  inSelection,
+  playhead,
+  stepLabel,
+  onBegin,
+  onMove,
+  onEnd,
+  onEditStep,
+}: {
+  padId: string;
+  stepIndex: number;
+  velocity: number;
+  active: boolean;
+  meta: StepMeta | undefined;
+  inSelection: boolean;
+  playhead: boolean;
+  stepLabel: string;
+  onBegin: (event: React.PointerEvent, padId: string, stepIndex: number) => void;
+  onMove: (event: React.PointerEvent) => void;
+  onEnd: (event: React.PointerEvent) => void;
+  onEditStep: () => void;
+}) {
+  const services = useServices();
+  const doc = useDoc();
+  const longPress = useLongPress(onEditStep);
+
+  return (
+    <button
+      type="button"
+      data-pad={padId}
+      data-step={stepIndex}
+      className={`step${active ? " active" : ""}${stepIndex % 4 === 0 ? " beat-start" : ""}${playhead ? " playhead" : ""}${inSelection ? " in-selection" : ""}${meta?.probability !== undefined && meta.probability < 1 ? " has-probability" : ""}${meta?.microtiming !== undefined && meta.microtiming !== 0 ? (meta.microtiming < 0 ? " micro-early" : " micro-late") : ""}`}
+      style={active ? ({ "--step-velocity": velocity } as React.CSSProperties) : undefined}
+      title={`${stepLabel} — click to toggle, drag vertically for velocity, shift+drag to multi-select, right-click (or long-press on touch) for probability / ratchet / microtiming`}
+      aria-label={stepLabel}
+      aria-pressed={active}
+      onPointerDown={(event) => {
+        longPress.onPointerDown(event);
+        onBegin(event, padId, stepIndex);
+      }}
+      onPointerMove={(event) => {
+        onMove(event);
+        longPress.onPointerMove();
+      }}
+      onPointerUp={(event) => {
+        onEnd(event);
+        longPress.onPointerUp();
+      }}
+      onPointerLeave={longPress.onPointerLeave}
+      onPointerCancel={longPress.onPointerCancel}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          services.store.execute(toggleStep(doc, padId, stepIndex));
+        }
+      }}
+      onContextMenu={longPress.wrapContextMenu((event) => {
+        event.preventDefault();
+        onEditStep();
+      })}
+    >
+      {meta?.ratchet !== undefined && meta.ratchet > 1 && <span className="step-badge">{meta.ratchet}×</span>}
+    </button>
   );
 }

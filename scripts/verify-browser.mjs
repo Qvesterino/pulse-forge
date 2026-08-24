@@ -261,13 +261,40 @@ try {
     console.log("[FAIL] embed/share E2E:", String(error).split("\n")[0]);
   }
 
-  const total = results.length + 4;
-  const passed = results.length - failed + (appBootOk ? 1 : 0) + (collabOk ? 1 : 0) + (embedOk ? 1 : 0) + (importOk ? 1 : 0);
+  // ── Touch E2E: long-press a step opens the step editor ─────────────────
+  let touchOk = false;
+  try {
+    const touchContext = await browser.newContext({ hasTouch: true, viewport: { width: 900, height: 800 } });
+    const touchPage = await touchContext.newPage();
+    await touchPage.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded" });
+    await touchPage.waitForSelector(".project-browser", { timeout: 15_000 });
+    await touchPage.locator('.pb-template:has-text("HOUSE")').first().click();
+    await touchPage.waitForSelector(".sequencer", { timeout: 15_000 });
+    const step = touchPage.locator(".row-steps .step").first();
+    await step.dispatchEvent("pointerdown", { pointerType: "touch", buttons: 1 });
+    await touchPage.waitForTimeout(700);
+    await touchPage.waitForSelector(".step-editor", { timeout: 3_000 });
+    await touchContext.close();
+    touchOk = true;
+    console.log("[PASS] touch: long-press on a step opens the step editor (no right-click needed)");
+  } catch (error) {
+    console.log("[FAIL] touch long-press E2E:", String(error).split("\n")[0]);
+  }
+
+  const total = results.length + 5;
+  const passed =
+    results.length -
+    failed +
+    (appBootOk ? 1 : 0) +
+    (collabOk ? 1 : 0) +
+    (embedOk ? 1 : 0) +
+    (importOk ? 1 : 0) +
+    (touchOk ? 1 : 0);
   console.log(`\n${passed}/${total} checks passed`);
   if (consoleErrors.length > 0) {
     console.log("console errors during audio checks:", consoleErrors.slice(0, 5));
   }
-  exitCode = failed > 0 || !appBootOk || !collabOk || !embedOk || !importOk ? 1 : 0;
+  exitCode = failed > 0 || !appBootOk || !collabOk || !embedOk || !importOk || !touchOk ? 1 : 0;
 } catch (error) {
   console.error("browser verification failed:", error);
   exitCode = 1;

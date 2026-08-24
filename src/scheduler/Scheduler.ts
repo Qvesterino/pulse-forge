@@ -7,16 +7,19 @@ export interface SchedulerDeps {
   getProject(): ProjectDocument;
   getTransport(): Transport;
   getAudioTime(): number;
+  /** Runtime-only delay applied to project-generated audio events. */
+  getScheduleOffsetSec?(): number;
   getMode(): PlayMode;
   trigger(trackId: string, pad: DrumTrack["pads"][number], when: number, velocity: number): void;
   noteOn(trackId: string, pitch: number, velocity: number, when: number, durationSec: number): void;
-  applyAutomation(fromTick: number, toTick: number, relOf: (tick: number) => number): void;
+  applyAutomation(fromTick: number, toTick: number, relOf: (tick: number) => number, scheduleOffsetSec?: number): void;
   /** Apply a single per-scene automation lane within a song window. */
   applySceneAutomationLane?(
     lane: import("../project-model/types").SceneAutomation,
     fromTick: number,
     toTick: number,
     sceneStartTick: number,
+    scheduleOffsetSec?: number,
   ): void;
   /** Commit a queued (quantized) pattern launch into the project model. */
   applyPatternLaunch(patternId: string): void;
@@ -60,6 +63,11 @@ export class Scheduler {
 
   private notify(): void {
     for (const listener of this.listeners) listener();
+  }
+
+  private scheduleOffsetSec(): number {
+    const value = this.deps.getScheduleOffsetSec?.() ?? 0;
+    return Number.isFinite(value) ? value : 0;
   }
 
   get isRunning(): boolean {
@@ -271,21 +279,21 @@ export class Scheduler {
         if (this.firedMarkerIds.has(marker.id)) continue;
         this.firedMarkerIds.add(marker.id);
         const assetId = mapMarkerTypeToAsset(marker.type);
-        const when = transport.timeAtTick(marker.tick) + 0.005;
+        const when = transport.timeAtTick(marker.tick) + this.scheduleOffsetSec() + 0.005;
         this.deps.triggerMarker?.(assetId, when, marker.linkedClipId);
       }
       // Scene automation: invoke applySceneAutomation per active clip window.
       if (activeScene) {
         for (const lane of doc.sceneAutomation) {
           if (lane.sceneId !== activeScene.id) continue;
-          this.applySceneAutomation(lane, windowStart, windowEnd, activeClipStart, transport);
+          this.applySceneAutomation(lane, windowStart, windowEnd, activeClipStart, transport, this.scheduleOffsetSec());
         }
       }
     }
 
     if (automationCtx) {
       const { base, patternTicks } = automationCtx;
-      this.deps.applyAutomation(windowStart, windowEnd, (tick) => mod(tick - base, patternTicks));
+      this.deps.applyAutomation(windowStart, windowEnd, (tick) => mod(tick - base, patternTicks), this.scheduleOffsetSec());
     }
 
     this.windowStartTick = windowEnd;
@@ -303,11 +311,12 @@ export class Scheduler {
     const transport = this.deps.getTransport();
     const doc = this.deps.getProject();
     const now = this.deps.getAudioTime();
+    const scheduleOffsetSec = this.scheduleOffsetSec();
     const timeAt = (tick: number) => transport.timeAtTick(tick);
     const audible = (when: number) => when >= now - 0.002;
 
     for (const hit of drumHitsInWindow(doc, pattern, base, windowStart, windowEnd)) {
-      const when = timeAt(hit.tick);
+      const when = timeAt(hit.tick) + scheduleOffsetSec;
       if (!audible(when)) continue;
       this.deps.trigger(hit.trackId, hit.pad, when, hit.velocity);
       // MIDI output for drum tracks
@@ -334,7 +343,7 @@ export class Scheduler {
       for (const note of notes) {
         let occ = windowStart + mod(note.start - relStart, patternTicks);
         for (; occ < windowEnd; occ += patternTicks) {
-          const when = timeAt(occ);
+          const when = timeAt(occ) + scheduleOffsetSec;
           if (!audible(when)) continue;
           this.deps.noteOn(track.id, note.pitch, note.velocity, when, note.duration * transport.secondsPerTick);
           // MIDI output for instrument tracks
@@ -364,9 +373,10 @@ export class Scheduler {
     windowEnd: number,
     sceneStartTick: number,
     _transport: Transport,
+    scheduleOffsetSec: number,
   ): void {
     if (lane.points.length === 0) return;
-    this.deps.applySceneAutomationLane?.(lane, windowStart, windowEnd, sceneStartTick);
+    this.deps.applySceneAutomationLane?.(lane, windowStart, windowEnd, sceneStartTick, scheduleOffsetSec);
   }
 }
 

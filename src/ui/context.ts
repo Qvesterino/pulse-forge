@@ -2,6 +2,7 @@ import { createContext, useContext, useSyncExternalStore } from "react";
 import type { Services } from "../services";
 import type { ProjectDocument } from "../project-model/types";
 import type { LibraryState } from "../persistence/LibraryRepository";
+import type { LatencyCalibrationSnapshot } from "../audio-engine/latencyCalibration";
 
 /** Save status across both stores (YDocStore adds "syncing"). */
 export type AppSaveStatus = "saved" | "dirty" | "saving" | "error" | "syncing";
@@ -46,6 +47,16 @@ export function useCanRedo(): boolean {
     store.subscribe,
     () => store.canRedo,
     () => false,
+  );
+}
+
+/** Reactive browser-local audio/MIDI timing preferences. */
+export function useLatencyCalibration(): LatencyCalibrationSnapshot {
+  const { latency } = useServices();
+  return useSyncExternalStore(
+    latency.subscribe,
+    latency.getSnapshot,
+    latency.getSnapshot,
   );
 }
 

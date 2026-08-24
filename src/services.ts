@@ -19,6 +19,7 @@ import { loadWorkletModules } from "./audio-worklets/loader";
 import { YDocStore } from "./collab/YDocStore";
 import { CollabSession, collabParamsFromSearch, type CollabStatus } from "./collab/CollabSession";
 import type { CollaboratorInfo } from "./collab/CollaborationProvider";
+import { LatencyCalibrationController } from "./audio-engine/latencyCalibration";
 
 /**
  * Long-lived services shared across projects: the audio engine (one shared
@@ -31,6 +32,7 @@ export interface CoreServices {
   repo: ProjectRepository;
   presets: PresetRepository;
   library: LibraryRepository;
+  latency: LatencyCalibrationController;
 }
 
 export interface Services {
@@ -49,6 +51,7 @@ export interface Services {
   midiClock: MidiClock;
   userSamples: UserSampleRepository;
   frozenAudio: FrozenBufferRepository;
+  latency: LatencyCalibrationController;
   /** Live when a collab session is active, null otherwise. */
   collab: CollabSession | null;
   flushSave(): Promise<void>;
@@ -165,7 +168,14 @@ export async function createCoreServices(): Promise<CoreServices> {
   void restoreUserSampleAudio(bank);
   const library = new LibraryRepository();
   void library.load();
-  return { engine, bank, repo: new ProjectRepository(), presets: new PresetRepository(), library };
+  return {
+    engine,
+    bank,
+    repo: new ProjectRepository(),
+    presets: new PresetRepository(),
+    library,
+    latency: new LatencyCalibrationController(),
+  };
 }
 
 export interface OpenProjectOptions {
@@ -189,7 +199,7 @@ export function collabSessionInfo(services: Services): { roomId: string; status:
  * same onDocChanged path as local ones.
  */
 export function openProject(core: CoreServices, initial: ProjectDocument, options: OpenProjectOptions = {}): Services {
-  const { engine, repo, bank, library } = core;
+  const { engine, repo, bank, library, latency } = core;
 
   const collabConfig = options.collab ?? (typeof location !== "undefined" ? collabParamsFromSearch(location.search) : null);
   const store: ProjectStore | YDocStore = collabConfig ? YDocStore.fromDocument(initial) : new ProjectStore(initial);
@@ -205,13 +215,15 @@ export function openProject(core: CoreServices, initial: ProjectDocument, option
     getProject: () => store.doc,
     getTransport: () => transport,
     getAudioTime: () => engine.currentTime,
+    getScheduleOffsetSec: () => latency.getSnapshot().midiReferenceOffsetMs / 1000,
     getMode: () => modeRef.mode,
     trigger: (trackId, pad, when, velocity) => engine.trigger(trackId, pad, when, velocity),
     noteOn: (trackId, pitch, velocity, when, durationSec) =>
       engine.noteOn(trackId, pitch, velocity, when, durationSec),
-    applyAutomation: (fromTick, toTick, relOf) => engine.applyAutomation(fromTick, toTick, relOf),
-    applySceneAutomationLane: (lane, fromTick, toTick, sceneStartTick) =>
-      engine.applySceneAutomationLane(lane, fromTick, toTick, sceneStartTick),
+    applyAutomation: (fromTick, toTick, relOf, scheduleOffsetSec) =>
+      engine.applyAutomation(fromTick, toTick, relOf, scheduleOffsetSec),
+    applySceneAutomationLane: (lane, fromTick, toTick, sceneStartTick, scheduleOffsetSec) =>
+      engine.applySceneAutomationLane(lane, fromTick, toTick, sceneStartTick, scheduleOffsetSec),
     applyPatternLaunch: (patternId) => store.execute(setActivePattern(store.doc, patternId)),
     triggerMarker: (assetId, when, trackId) => engine.triggerMarker(assetId, when, trackId),
     setSceneIntensity: (value) => engine.setSceneIntensity(value),
@@ -372,5 +384,25 @@ export function openProject(core: CoreServices, initial: ProjectDocument, option
     };
   };
 
-  return { core, store, engine, transport, scheduler, repo, bank, library, playback, midi, midiOutput, midiClock, userSamples, frozenAudio, collab, flushSave, closeProject, getDiagnostics };
+  return {
+    core,
+    store,
+    engine,
+    transport,
+    scheduler,
+    repo,
+    bank,
+    library,
+    playback,
+    midi,
+    midiOutput,
+    midiClock,
+    userSamples,
+    frozenAudio,
+    latency,
+    collab,
+    flushSave,
+    closeProject,
+    getDiagnostics,
+  };
 }

@@ -872,6 +872,7 @@ export class AudioEngine {
     fromTick: number,
     toTick: number,
     sceneStartTick: number,
+    scheduleOffsetSec = 0,
   ): void {
     if (lane.points.length === 0 || fromTick >= toTick) return;
     const t0Local = Math.max(0, fromTick - sceneStartTick);
@@ -893,7 +894,7 @@ export class AudioEngine {
     };
     const v0 = valueAt(t0Local);
     const v1 = valueAt(t1Local);
-    this.applyLane(lane, v0, v1, fromTick, toTick);
+    this.applyLane(lane, v0, v1, fromTick, toTick, scheduleOffsetSec);
   }
 
   /** Apply a single automation lane directly (not via doc.automation). */
@@ -903,11 +904,13 @@ export class AudioEngine {
     v1: number,
     fromTick: number,
     toTick: number,
+    scheduleOffsetSec = 0,
   ): void {
     const ctx = this.ctx;
     if (!ctx) return;
-    const t0 = ctx.currentTime;
-    const t1 = Math.max(t0, this.currentTime + 0.1);
+    const offset = Number.isFinite(scheduleOffsetSec) ? scheduleOffsetSec : 0;
+    const t0 = Math.max(ctx.currentTime, ctx.currentTime + offset);
+    const t1 = Math.max(t0, this.currentTime + 0.1 + offset);
     const nodes = this.trackNodes.get(lane.target.trackId);
     if (!nodes) return;
     switch (lane.target.kind) {
@@ -990,12 +993,13 @@ export class AudioEngine {
     };
   }
 
-  applyAutomation(fromTick: number, toTick: number, relOf: (tick: number) => number): void {
+  applyAutomation(fromTick: number, toTick: number, relOf: (tick: number) => number, scheduleOffsetSec = 0): void {
     const ctx = this.ctx;
     const doc = this.doc;
     if (!ctx || !doc || doc.automation.length === 0) return;
-    const t0 = ctx.currentTime;
-    const t1 = Math.max(t0, this.currentTime + 0.1);
+    const offset = Number.isFinite(scheduleOffsetSec) ? scheduleOffsetSec : 0;
+    const t0 = Math.max(ctx.currentTime, ctx.currentTime + offset);
+    const t1 = Math.max(t0, this.currentTime + 0.1 + offset);
     for (const lane of doc.automation) {
       if (lane.points.length === 0) continue;
       const v0 = valueAt(lane.points, relOf(fromTick), 1);

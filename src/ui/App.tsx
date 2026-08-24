@@ -5,6 +5,7 @@ import { TopBar } from "./TopBar";
 import { TrackTabs } from "./TrackTabs";
 import { RackStrip } from "./RackStrip";
 import { Sequencer } from "./Sequencer";
+import { AudioUnlock } from "./AudioUnlock";
 import type { StepSelection } from "./Sequencer";
 import { Inspector } from "./Inspector";
 import { Diagnostics } from "./Diagnostics";
@@ -245,6 +246,7 @@ export function App({
 
   return (
     <ServicesContext.Provider value={services}>
+      <AudioUnlock />
       <div className="app">
         <TopBar
           diagnosticsOpen={diagnosticsOpen}
