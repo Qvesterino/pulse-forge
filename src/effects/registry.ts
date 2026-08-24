@@ -1,5 +1,5 @@
-import type { EffectDefinition, ParamDef } from "./types";
-import type { EffectType } from "../project-model/types";
+import type { EffectDefinition, EffectRuntime, ParamDef } from "./types";
+import type { EffectInstance, EffectType } from "../project-model/types";
 import { hashString, mulberry32 } from "../shared/rng";
 import { isWorkletReady } from "../audio-worklets/loader";
 import { createBitcrusherNode } from "../audio-worklets/bitcrusher-node";
@@ -43,6 +43,19 @@ const eq: EffectDefinition = {
   name: "EQ",
   category: "tone",
   params: [
+    { id: "hpFreq", label: "HP FREQ", min: 20, max: 1000, default: 20, unit: "Hz", format: formatHz },
+    { id: "lpFreq", label: "LP FREQ", min: 2000, max: 20000, default: 20000, unit: "Hz", format: formatHz },
+    { id: "lowShelfFreq", label: "LOW SHELF FREQ", min: 40, max: 500, default: 120, unit: "Hz", format: formatHz },
+    { id: "lowShelfGain", label: "LOW SHELF", min: -15, max: 15, default: 0, unit: "dB", format: formatDb },
+    { id: "lowMidFreq", label: "LOW MID FREQ", min: 80, max: 2000, default: 400, unit: "Hz", format: formatHz },
+    { id: "lowMidGain", label: "LOW MID", min: -15, max: 15, default: 0, unit: "dB", format: formatDb },
+    { id: "lowMidQ", label: "LOW MID Q", min: 0.3, max: 8, default: 1, format: (v) => v.toFixed(2) },
+    { id: "highMidFreq", label: "HIGH MID FREQ", min: 500, max: 8000, default: 2500, unit: "Hz", format: formatHz },
+    { id: "highMidGain", label: "HIGH MID", min: -15, max: 15, default: 0, unit: "dB", format: formatDb },
+    { id: "highMidQ", label: "HIGH MID Q", min: 0.3, max: 8, default: 1, format: (v) => v.toFixed(2) },
+    { id: "highShelfFreq", label: "HIGH SHELF FREQ", min: 1500, max: 16000, default: 6000, unit: "Hz", format: formatHz },
+    { id: "highShelfGain", label: "HIGH SHELF", min: -15, max: 15, default: 0, unit: "dB", format: formatDb },
+    // Legacy aliases remain in the registry so old documents and commands keep working.
     { id: "lowGain", label: "LOW", min: -15, max: 15, default: 0, unit: "dB", format: formatDb },
     { id: "lowFreq", label: "LOW FREQ", min: 40, max: 400, default: 120, unit: "Hz", format: formatHz },
     { id: "midGain", label: "MID", min: -15, max: 15, default: 0, unit: "dB", format: formatDb },
@@ -52,31 +65,49 @@ const eq: EffectDefinition = {
     { id: "highFreq", label: "HIGH FREQ", min: 1500, max: 12000, default: 6000, unit: "Hz", format: formatHz },
   ],
   factory(ctx, instance) {
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
     const low = ctx.createBiquadFilter();
     low.type = "lowshelf";
-    const mid = ctx.createBiquadFilter();
-    mid.type = "peaking";
+    const lowMid = ctx.createBiquadFilter();
+    lowMid.type = "peaking";
+    const highMid = ctx.createBiquadFilter();
+    highMid.type = "peaking";
     const high = ctx.createBiquadFilter();
     high.type = "highshelf";
-    low.connect(mid).connect(high);
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    hp.connect(low).connect(lowMid).connect(highMid).connect(high).connect(lp);
     const apply = (id: string, v: number, when: number) => {
       switch (id) {
-        case "lowGain": smooth(low.gain, v, when); break;
-        case "lowFreq": smooth(low.frequency, v, when); break;
-        case "midGain": smooth(mid.gain, v, when); break;
-        case "midFreq": smooth(mid.frequency, v, when); break;
-        case "midQ": smooth(mid.Q, v, when); break;
-        case "highGain": smooth(high.gain, v, when); break;
-        case "highFreq": smooth(high.frequency, v, when); break;
+        case "hpFreq": smooth(hp.frequency, v, when); break;
+        case "lpFreq": smooth(lp.frequency, v, when); break;
+        case "lowShelfGain": smooth(low.gain, v, when); break;
+        case "lowShelfFreq": smooth(low.frequency, v, when); break;
+        case "lowMidGain": smooth(lowMid.gain, v, when); break;
+        case "lowMidFreq": smooth(lowMid.frequency, v, when); break;
+        case "lowMidQ": smooth(lowMid.Q, v, when); break;
+        case "highMidGain": smooth(highMid.gain, v, when); break;
+        case "highMidFreq": smooth(highMid.frequency, v, when); break;
+        case "highMidQ": smooth(highMid.Q, v, when); break;
+        case "highShelfGain": smooth(high.gain, v, when); break;
+        case "highShelfFreq": smooth(high.frequency, v, when); break;
+        case "lowGain": if (instance.params.lowShelfGain === undefined) smooth(low.gain, v, when); break;
+        case "lowFreq": if (instance.params.lowShelfFreq === undefined) smooth(low.frequency, v, when); break;
+        case "midGain": if (instance.params.lowMidGain === undefined) smooth(lowMid.gain, v, when); break;
+        case "midFreq": if (instance.params.lowMidFreq === undefined) smooth(lowMid.frequency, v, when); break;
+        case "midQ": if (instance.params.lowMidQ === undefined) smooth(lowMid.Q, v, when); break;
+        case "highGain": if (instance.params.highShelfGain === undefined) smooth(high.gain, v, when); break;
+        case "highFreq": if (instance.params.highShelfFreq === undefined) smooth(high.frequency, v, when); break;
       }
     };
     for (const [k, v] of Object.entries(instance.params)) apply(k, v, ctx.currentTime);
     return {
-      input: low,
-      output: high,
+      input: hp,
+      output: lp,
       setParameter: (id, v) => apply(id, v, ctx.currentTime),
       setParameterAt: (id, v, when) => apply(id, v, when),
-      dispose: () => { low.disconnect(); mid.disconnect(); high.disconnect(); },
+      dispose: () => { hp.disconnect(); low.disconnect(); lowMid.disconnect(); highMid.disconnect(); high.disconnect(); lp.disconnect(); },
     };
   },
 };
@@ -996,6 +1027,251 @@ const sidechain: EffectDefinition = {
   },
 };
 
+/* ---------------- Core dynamics and utility ---------------- */
+
+function createWorkletRuntime(
+  ctx: BaseAudioContext,
+  instance: EffectInstance,
+  processor: "transient-processor" | "gate-processor",
+  readyType: "transient" | "gate",
+): EffectRuntime | null {
+  if (!isWorkletReady(readyType, ctx)) return null;
+  const node = new AudioWorkletNode(ctx, processor, { numberOfInputs: 1, numberOfOutputs: 1, channelCount: 2 });
+  const input = ctx.createGain();
+  const output = ctx.createGain();
+  input.connect(node).connect(output);
+  const apply = (id: string, value: number, when: number) => {
+    const param = node.parameters.get(id);
+    if (param) param.setValueAtTime(value, when);
+  };
+  for (const [id, value] of Object.entries(instance.params)) apply(id, value, ctx.currentTime);
+  return {
+    input,
+    output,
+    setParameter: (id, value) => apply(id, value, ctx.currentTime),
+    setParameterAt: apply,
+    dispose: () => { node.disconnect(); input.disconnect(); output.disconnect(); },
+  };
+}
+
+const transient: EffectDefinition = {
+  type: "transient",
+  name: "Transient Shaper",
+  category: "dynamics",
+  params: [
+    { id: "attack", label: "ATTACK", min: -1, max: 1, default: 0.25, format: formatPct },
+    { id: "sustain", label: "SUSTAIN", min: -1, max: 1, default: 0, format: formatPct },
+    { id: "sensitivity", label: "SENSITIVITY", min: 0, max: 1, default: 0.5, format: formatPct },
+    { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
+    { id: "output", label: "OUTPUT", min: -24, max: 24, default: 0, unit: "dB", format: formatDb },
+  ],
+  factory(ctx, instance) {
+    const worklet = createWorkletRuntime(ctx, instance, "transient-processor", "transient");
+    if (worklet) return worklet;
+    // Transparent fallback is intentional when AudioWorklet is unavailable.
+    const input = ctx.createGain();
+    const output = ctx.createGain();
+    input.connect(output);
+    return { input, output, setParameter: () => undefined, dispose: () => { input.disconnect(); output.disconnect(); } };
+  },
+};
+
+const gate: EffectDefinition = {
+  type: "gate",
+  name: "Gate",
+  category: "dynamics",
+  params: [
+    { id: "threshold", label: "THRESH", min: -80, max: 0, default: -36, unit: "dB", format: formatDb },
+    { id: "attack", label: "ATTACK", min: 0.0001, max: 0.5, default: 0.002, unit: "s", format: formatMs },
+    { id: "hold", label: "HOLD", min: 0, max: 1, default: 0.02, unit: "s", format: formatMs },
+    { id: "release", label: "RELEASE", min: 0.001, max: 2, default: 0.08, unit: "s", format: formatMs },
+    { id: "range", label: "RANGE", min: -80, max: 0, default: -48, unit: "dB", format: formatDb },
+    { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
+  ],
+  factory(ctx, instance) {
+    const worklet = createWorkletRuntime(ctx, instance, "gate-processor", "gate");
+    if (worklet) return worklet;
+    const input = ctx.createGain();
+    const output = ctx.createGain();
+    input.connect(output);
+    return { input, output, setParameter: () => undefined, dispose: () => { input.disconnect(); output.disconnect(); } };
+  },
+};
+
+function bussCurve(drive: number): Float32Array<ArrayBuffer> {
+  const curve = new Float32Array(new ArrayBuffer(2048 * 4));
+  const k = 1 + drive * 18;
+  for (let i = 0; i < curve.length; i++) {
+    const x = (i / (curve.length - 1)) * 2 - 1;
+    curve[i] = Math.tanh(x * k);
+  }
+  return curve;
+}
+
+const drumBuss: EffectDefinition = {
+  type: "drumBuss",
+  name: "Drum Buss",
+  category: "character",
+  params: [
+    { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0.22, format: formatPct },
+    { id: "transient", label: "TRANSIENT", min: -1, max: 1, default: 0.15, format: formatPct },
+    { id: "compressor", label: "COMPRESSOR", min: 0, max: 1, default: 0.25, format: formatPct },
+    { id: "tone", label: "TONE", min: 300, max: 16000, default: 9000, unit: "Hz", format: formatHz },
+    { id: "boomFrequency", label: "BOOM FREQ", min: 30, max: 160, default: 60, unit: "Hz", format: formatHz },
+    { id: "boomAmount", label: "BOOM", min: 0, max: 1, default: 0.12, format: formatPct },
+    { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
+    { id: "output", label: "OUTPUT", min: -18, max: 18, default: 0, unit: "dB", format: formatDb },
+  ],
+  factory(ctx, instance) {
+    const mix = mixBus(ctx);
+    const shaper = ctx.createWaveShaper();
+    shaper.oversample = "2x";
+    const comp = ctx.createDynamicsCompressor();
+    const tone = ctx.createBiquadFilter();
+    tone.type = "lowpass";
+    const boom = ctx.createBiquadFilter();
+    boom.type = "lowshelf";
+    const out = ctx.createGain();
+    mix.wet.connect(shaper).connect(comp).connect(tone).connect(boom).connect(out).connect(mix.output);
+    const apply = (id: string, value: number, when: number) => {
+      switch (id) {
+        case "drive": shaper.curve = bussCurve(value); break;
+        case "transient": smooth(comp.attack, Math.max(0.001, 0.02 - value * 0.015), when); break;
+        case "compressor": smooth(comp.threshold, -6 - value * 34, when); smooth(comp.ratio, 1 + value * 9, when); break;
+        case "tone": smooth(tone.frequency, value, when); break;
+        case "boomFrequency": smooth(boom.frequency, value, when); break;
+        case "boomAmount": smooth(boom.gain, value * 8, when); break;
+        case "mix": mix.setMix(value, when); break;
+        case "output": smooth(out.gain, dbToLin(value), when); break;
+      }
+    };
+    for (const [id, value] of Object.entries(instance.params)) apply(id, value, ctx.currentTime);
+    return { input: mix.input, output: mix.output, setParameter: (id, value) => apply(id, value, ctx.currentTime), setParameterAt: (id, value, when) => apply(id, value, when), dispose: () => { mix.input.disconnect(); mix.output.disconnect(); shaper.disconnect(); comp.disconnect(); tone.disconnect(); boom.disconnect(); out.disconnect(); } };
+  },
+};
+
+const bassBuss: EffectDefinition = {
+  type: "bassBuss",
+  name: "Bass Buss",
+  category: "character",
+  params: [
+    { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0.16, format: formatPct },
+    { id: "subEnhance", label: "SUB", min: 0, max: 1, default: 0.2, format: formatPct },
+    { id: "subFrequency", label: "SUB FREQ", min: 20, max: 160, default: 70, unit: "Hz", format: formatHz },
+    { id: "compression", label: "COMPRESSION", min: 0, max: 1, default: 0.25, format: formatPct },
+    { id: "attack", label: "ATTACK", min: 0.001, max: 0.2, default: 0.01, unit: "s", format: formatMs },
+    { id: "release", label: "RELEASE", min: 0.02, max: 1, default: 0.18, unit: "s", format: formatMs },
+    { id: "monoBassFrequency", label: "MONO BASS", min: 0, max: 160, default: 100, unit: "Hz", format: (v) => v <= 0 ? "OFF" : formatHz(v) },
+    { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
+    { id: "output", label: "OUTPUT", min: -18, max: 18, default: 0, unit: "dB", format: formatDb },
+  ],
+  factory(ctx, instance) {
+    const mix = mixBus(ctx);
+    const shaper = ctx.createWaveShaper();
+    shaper.oversample = "2x";
+    const comp = ctx.createDynamicsCompressor();
+    const low = ctx.createBiquadFilter();
+    low.type = "lowshelf";
+    const out = ctx.createGain();
+    mix.wet.connect(shaper).connect(comp).connect(low).connect(out).connect(mix.output);
+    const apply = (id: string, value: number, when: number) => {
+      switch (id) {
+        case "drive": shaper.curve = bussCurve(value); break;
+        case "subEnhance": smooth(low.gain, value * 8, when); break;
+        case "subFrequency": smooth(low.frequency, value, when); break;
+        case "compression": smooth(comp.threshold, -8 - value * 32, when); smooth(comp.ratio, 1 + value * 7, when); break;
+        case "attack": smooth(comp.attack, value, when); break;
+        case "release": smooth(comp.release, value, when); break;
+        case "mix": mix.setMix(value, when); break;
+        case "output": smooth(out.gain, dbToLin(value), when); break;
+      }
+    };
+    for (const [id, value] of Object.entries(instance.params)) apply(id, value, ctx.currentTime);
+    return { input: mix.input, output: mix.output, setParameter: (id, value) => apply(id, value, ctx.currentTime), setParameterAt: (id, value, when) => apply(id, value, when), dispose: () => { mix.input.disconnect(); mix.output.disconnect(); shaper.disconnect(); comp.disconnect(); low.disconnect(); out.disconnect(); } };
+  },
+};
+
+const utility: EffectDefinition = {
+  type: "utility",
+  name: "Utility",
+  category: "tone",
+  params: [
+    { id: "gain", label: "GAIN", min: -24, max: 24, default: 0, unit: "dB", format: formatDb },
+    { id: "pan", label: "PAN", min: -1, max: 1, default: 0, format: (v) => Math.abs(v) < 0.02 ? "C" : `${v < 0 ? "L" : "R"}${Math.round(Math.abs(v) * 100)}` },
+    { id: "width", label: "WIDTH", min: 0, max: 2, default: 1, format: (v) => `${Math.round(v * 100)}%` },
+    { id: "monoBassFrequency", label: "MONO BASS", min: 0, max: 200, default: 0, unit: "Hz", format: (v) => v <= 0 ? "OFF" : formatHz(v) },
+    { id: "phaseLeft", label: "PHASE L", min: 0, max: 1, default: 0, options: [{ value: 0, label: "NORMAL" }, { value: 1, label: "INVERT" }] },
+    { id: "phaseRight", label: "PHASE R", min: 0, max: 1, default: 0, options: [{ value: 0, label: "NORMAL" }, { value: 1, label: "INVERT" }] },
+  ],
+  factory(ctx, instance) {
+    const input = ctx.createGain();
+    const output = ctx.createGain();
+    const splitter = ctx.createChannelSplitter(2);
+    const merger = ctx.createChannelMerger(2);
+    const left = ctx.createGain();
+    const right = ctx.createGain();
+    const crossLeft = ctx.createGain();
+    const crossRight = ctx.createGain();
+    const highLeft = ctx.createBiquadFilter();
+    const highRight = ctx.createBiquadFilter();
+    const lowLeft = ctx.createBiquadFilter();
+    const lowRight = ctx.createBiquadFilter();
+    highLeft.type = "highpass";
+    highRight.type = "highpass";
+    lowLeft.type = "lowpass";
+    lowRight.type = "lowpass";
+    const monoLeft = ctx.createGain();
+    const monoRight = ctx.createGain();
+    input.connect(splitter);
+    splitter.connect(highLeft, 0);
+    splitter.connect(highRight, 1);
+    highLeft.connect(left).connect(merger, 0, 0);
+    highRight.connect(right).connect(merger, 0, 1);
+    highLeft.connect(crossLeft).connect(merger, 0, 1);
+    highRight.connect(crossRight).connect(merger, 0, 0);
+    splitter.connect(lowLeft, 0).connect(monoLeft).connect(merger, 0, 0);
+    splitter.connect(lowRight, 1).connect(monoRight).connect(merger, 0, 1);
+    const pan = ctx.createStereoPanner();
+    merger.connect(pan).connect(output);
+    let widthValue = instance.params.width ?? 1;
+    let phaseLeft = instance.params.phaseLeft === 1;
+    let phaseRight = instance.params.phaseRight === 1;
+    const applyWidth = (when: number) => {
+      const width = Math.max(0, Math.min(2, widthValue));
+      smooth(left.gain, ((1 + width) / 2) * (phaseLeft ? -1 : 1), when);
+      smooth(right.gain, ((1 + width) / 2) * (phaseRight ? -1 : 1), when);
+      smooth(crossLeft.gain, (1 - width) / 2, when);
+      smooth(crossRight.gain, (1 - width) / 2, when);
+    };
+    const apply = (id: string, value: number, when: number) => {
+      switch (id) {
+        case "gain": smooth(output.gain, dbToLin(value), when); break;
+        case "pan": smooth(pan.pan, value, when); break;
+        case "width": {
+          widthValue = value;
+          applyWidth(when);
+          break;
+        }
+        case "phaseLeft": phaseLeft = value >= 0.5; applyWidth(when); break;
+        case "phaseRight": phaseRight = value >= 0.5; applyWidth(when); break;
+        case "monoBassFrequency": {
+          const frequency = Math.max(20, value || 20);
+          smooth(highLeft.frequency, frequency, when);
+          smooth(highRight.frequency, frequency, when);
+          smooth(lowLeft.frequency, frequency, when);
+          smooth(lowRight.frequency, frequency, when);
+          const active = value > 0 ? 0.5 : 0;
+          smooth(monoLeft.gain, active, when);
+          smooth(monoRight.gain, active, when);
+          break;
+        }
+      }
+    };
+    for (const [id, value] of Object.entries(instance.params)) apply(id, value, ctx.currentTime);
+    return { input, output, setParameter: (id, value) => apply(id, value, ctx.currentTime), setParameterAt: (id, value, when) => apply(id, value, when), dispose: () => { input.disconnect(); output.disconnect(); splitter.disconnect(); merger.disconnect(); left.disconnect(); right.disconnect(); crossLeft.disconnect(); crossRight.disconnect(); highLeft.disconnect(); highRight.disconnect(); lowLeft.disconnect(); lowRight.disconnect(); monoLeft.disconnect(); monoRight.disconnect(); pan.disconnect(); } };
+  },
+};
+
 /* ---------------- registry ---------------- */
 
 export const EFFECT_DEFS: Record<EffectType, EffectDefinition> = {
@@ -1011,6 +1287,11 @@ export const EFFECT_DEFS: Record<EffectType, EffectDefinition> = {
   chorus,
   phaser,
   sidechain,
+  transient,
+  drumBuss,
+  bassBuss,
+  utility,
+  gate,
 };
 
 export const EFFECT_ORDER: EffectType[] = [
@@ -1026,6 +1307,23 @@ export const EFFECT_ORDER: EffectType[] = [
   "chorus",
   "phaser",
   "sidechain",
+  "transient",
+  "drumBuss",
+  "bassBuss",
+  "utility",
+  "gate",
+];
+
+/** Effects intentionally exposed in the new mixer Add Effect menu. */
+export const CORE_EFFECT_ORDER: EffectType[] = [
+  "eq",
+  "transient",
+  "drumBuss",
+  "bassBuss",
+  "utility",
+  "gate",
+  "sidechain",
+  "chorus",
 ];
 
 export function defaultParamsOf(type: EffectType): Record<string, number> {

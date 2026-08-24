@@ -20,6 +20,7 @@ import { BAR_TICKS, PPQ, STEP_TICKS, STEPS_PER_PATTERN, isMusicalKey } from "./t
 import { uid } from "../shared/ids";
 import { defaultInstrumentParams } from "../instruments/registry";
 import { createProjectFromTemplate } from "./templates";
+import { EFFECT_DEFS, clampEffectParam, defaultParamsOf } from "../effects/registry";
 
 export const SCHEMA_VERSION = 1;
 /** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
@@ -338,6 +339,40 @@ function defaultSceneFor(doc: ProjectDocument): Scene {
   return { id: uid("scene"), name: "Scene A", patternId: doc.activePatternId, intensity: 0.7 };
 }
 
+function normalizeEffects(raw: unknown, trackId: string, trackIds: Set<string>): EffectInstance[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((item): item is EffectInstance => {
+    const fx = item as Partial<EffectInstance>;
+    return typeof fx?.id === "string" && typeof fx?.type === "string" && Boolean(EFFECT_DEFS[fx.type as keyof typeof EFFECT_DEFS]);
+  }).map((item) => {
+    const type = item.type;
+    const defaults = defaultParamsOf(type);
+    const source = item.params && typeof item.params === "object" ? item.params : {};
+    const params: Record<string, number> = { ...defaults };
+    for (const id of Object.keys(defaults)) {
+      const value = (source as Record<string, unknown>)[id];
+      if (typeof value === "number" && Number.isFinite(value)) params[id] = clampEffectParam(type, id, value);
+    }
+    // EQ compatibility: old three-band fields feed the new canonical bands.
+    if (type === "eq") {
+      const aliases: Array<[string, string]> = [
+        ["lowGain", "lowShelfGain"], ["lowFreq", "lowShelfFreq"],
+        ["midGain", "lowMidGain"], ["midFreq", "lowMidFreq"], ["midQ", "lowMidQ"],
+        ["highGain", "highShelfGain"], ["highFreq", "highShelfFreq"],
+      ];
+      for (const [legacy, canonical] of aliases) {
+        if ((source as Record<string, unknown>)[canonical] === undefined && typeof (source as Record<string, unknown>)[legacy] === "number") {
+          params[canonical] = clampEffectParam(type, canonical, Number((source as Record<string, unknown>)[legacy]));
+        }
+      }
+    }
+    const sidechainTrackId = item.sidechainTrackId && item.sidechainTrackId !== trackId && trackIds.has(item.sidechainTrackId)
+      ? item.sidechainTrackId
+      : undefined;
+    return { id: item.id, type, bypassed: item.bypassed === true, params, ...(sidechainTrackId ? { sidechainTrackId } : {}) };
+  });
+}
+
 /**
  * Bring a project document (possibly loaded from disk, possibly mutated by an
  * outdated client) to a state the current engine can use without errors.
@@ -433,8 +468,9 @@ export function normalizeProject(doc: ProjectDocument): ProjectDocument {
         t = { ...t, pads };
         tracksChanged = true;
       }
-      if (t.effects === undefined) {
-        t = { ...t, effects: [] as EffectInstance[] } as DrumTrack;
+      const normalizedEffects = normalizeEffects(t.effects, t.id, trackIds);
+      if (t.effects === undefined || JSON.stringify(normalizedEffects) !== JSON.stringify(t.effects)) {
+        t = { ...t, effects: normalizedEffects } as DrumTrack;
         tracksChanged = true;
       }
       if (t.sends === undefined) {
@@ -450,8 +486,9 @@ export function normalizeProject(doc: ProjectDocument): ProjectDocument {
     }
     if (track.kind === "group") {
       let t = track;
-      if (t.effects === undefined) {
-        t = { ...t, effects: [] as EffectInstance[] };
+      const normalizedEffects = normalizeEffects(t.effects, t.id, trackIds);
+      if (t.effects === undefined || JSON.stringify(normalizedEffects) !== JSON.stringify(t.effects)) {
+        t = { ...t, effects: normalizedEffects };
         tracksChanged = true;
       }
       if (t.sends === undefined) {
@@ -485,8 +522,9 @@ export function normalizeProject(doc: ProjectDocument): ProjectDocument {
       t = { ...track, params: merged };
       tracksChanged = true;
     }
-    if (t.effects === undefined) {
-      t = { ...t, effects: [] as EffectInstance[] };
+    const normalizedEffects = normalizeEffects(t.effects, t.id, trackIds);
+    if (t.effects === undefined || JSON.stringify(normalizedEffects) !== JSON.stringify(t.effects)) {
+      t = { ...t, effects: normalizedEffects };
       tracksChanged = true;
     }
     if (t.sends === undefined) {

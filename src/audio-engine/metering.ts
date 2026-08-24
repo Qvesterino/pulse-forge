@@ -27,6 +27,68 @@ export function fromDb(db: number): number {
   return Math.pow(10, db / 20);
 }
 
+/** Approximate BS.1770 loudness from a stereo window (K-weighting is omitted
+ * for the lightweight live path; the same calibration is used offline). */
+export function lufsFromChannels(left: Float32Array, right: Float32Array = left): number {
+  const n = Math.min(left.length, right.length);
+  if (n === 0) return MIN_DB;
+  let energy = 0;
+  for (let i = 0; i < n; i++) energy += (left[i] * left[i] + right[i] * right[i]) * 0.5;
+  return energy <= 1e-12 ? MIN_DB : Math.max(MIN_DB, -0.691 + 10 * Math.log10(energy / n));
+}
+
+/** EBU-style relative-gated integrated loudness from 400 ms block readings. */
+export function integratedLufs(blocks: number[]): number {
+  const valid = blocks.filter((value) => Number.isFinite(value) && value > -70);
+  if (valid.length === 0) return MIN_DB;
+  const ungated = valid.reduce((sum, value) => sum + Math.pow(10, (value + 0.691) / 10), 0) / valid.length;
+  const relativeGate = -0.691 + 10 * Math.log10(Math.max(1e-12, ungated)) - 10;
+  const gated = valid.filter((value) => value >= Math.max(-70, relativeGate));
+  if (gated.length === 0) return MIN_DB;
+  const energy = gated.reduce((sum, value) => sum + Math.pow(10, (value + 0.691) / 10), 0) / gated.length;
+  return Math.max(MIN_DB, -0.691 + 10 * Math.log10(Math.max(1e-12, energy)));
+}
+
+/** Stereo fold-down level relative to the stereo RMS level. */
+export function monoLossDb(left: Float32Array, right: Float32Array): number {
+  const n = Math.min(left.length, right.length);
+  if (n === 0) return 0;
+  let stereo = 0;
+  let mono = 0;
+  for (let i = 0; i < n; i++) {
+    stereo += (left[i] * left[i] + right[i] * right[i]) * 0.5;
+    const m = (left[i] + right[i]) * 0.5;
+    mono += m * m;
+  }
+  if (stereo <= 1e-12) return 0;
+  return toDb(Math.sqrt(mono / stereo));
+}
+
+export interface MixCheckSnapshot {
+  truePeakDb: number;
+  correlation: number;
+  monoLossDb: number;
+  lrImbalanceDb: number;
+  phaseDurationMs?: number;
+  imbalanceDurationMs?: number;
+}
+
+export interface MixCheckWarning {
+  code: "true-peak" | "clipping" | "phase" | "mono-loss" | "lr-imbalance";
+  message: string;
+  severity: "warn" | "error";
+}
+
+export function evaluateMixCheck(snapshot: MixCheckSnapshot): MixCheckWarning[] {
+  const warnings: MixCheckWarning[] = [];
+  if (snapshot.truePeakDb > -0.1) warnings.push({ code: "clipping", message: "True peak is clipping above -0.1 dBTP", severity: "error" });
+  else if (snapshot.truePeakDb > -1) warnings.push({ code: "true-peak", message: "True peak is above -1 dBTP", severity: "warn" });
+  if (snapshot.correlation < 0 && (snapshot.phaseDurationMs ?? 0) >= 250) warnings.push({ code: "phase", message: "Stereo correlation is negative", severity: "warn" });
+  if (snapshot.monoLossDb < -3) warnings.push({ code: "mono-loss", message: "Mono fold-down loses more than 3 dB", severity: "warn" });
+  if (snapshot.lrImbalanceDb > 6 && (snapshot.imbalanceDurationMs ?? 0) >= 1000) warnings.push({ code: "lr-imbalance", message: "Left/right balance differs by more than 6 dB", severity: "warn" });
+  return warnings;
+}
+
 /** Channel-interleaved linear frame (L, R, L, R, …). */
 export type Frame = Float32Array<ArrayBuffer>;
 
@@ -150,9 +212,13 @@ export interface BufferSummary {
   rmsDb: number;
   /** Stereo correlation [-1, +1]; 1 for mono source. */
   correlation: number;
+  lufsMomentary: number;
+  lufsShortTerm: number;
+  lufsIntegrated: number;
+  monoLossDb: number;
 }
 
-const EMPTY_SUMMARY: BufferSummary = { peak: 0, peakDb: MIN_DB, truePeakDb: MIN_DB, rms: 0, rmsDb: MIN_DB, correlation: 1 };
+const EMPTY_SUMMARY: BufferSummary = { peak: 0, peakDb: MIN_DB, truePeakDb: MIN_DB, rms: 0, rmsDb: MIN_DB, correlation: 1, lufsMomentary: MIN_DB, lufsShortTerm: MIN_DB, lufsIntegrated: MIN_DB, monoLossDb: 0 };
 
 /**
  * Whole-buffer summary: peak, true-peak, RMS, and (stereo) correlation. Used
@@ -178,6 +244,17 @@ export function summarizeBuffer(buffer: AudioBuffer): BufferSummary {
   const rms = total > 0 ? Math.sqrt(sumSq / total) : 0;
   const truePeak = channels >= 1 ? interpolatePeak(split) : peak;
   const correlation = split.length >= 2 ? stereoCorrelation(split[0], split[1]) : 1;
+  const right = split.length >= 2 ? split[1] : split[0];
+  const blockSize = Math.max(1, Math.round(buffer.sampleRate * 0.4));
+  const loudnessBlocks: number[] = [];
+  for (let start = 0; start < split[0].length; start += blockSize) {
+    const end = Math.min(split[0].length, start + blockSize);
+    if (end - start < Math.max(1, Math.round(blockSize * 0.25))) continue;
+    loudnessBlocks.push(lufsFromChannels(split[0].subarray(start, end), right.subarray(start, end)));
+  }
+  const lastBlock = loudnessBlocks[loudnessBlocks.length - 1] ?? MIN_DB;
+  const shortStart = Math.max(0, split[0].length - Math.round(buffer.sampleRate * 3));
+  const lufsShortTerm = lufsFromChannels(split[0].subarray(shortStart), right.subarray(shortStart));
 
   return {
     peak,
@@ -186,6 +263,10 @@ export function summarizeBuffer(buffer: AudioBuffer): BufferSummary {
     rms,
     rmsDb: toDb(rms),
     correlation,
+    lufsMomentary: lastBlock,
+    lufsShortTerm,
+    lufsIntegrated: integratedLufs(loudnessBlocks),
+    monoLossDb: split.length >= 2 ? monoLossDb(split[0], split[1]) : 0,
   };
 }
 

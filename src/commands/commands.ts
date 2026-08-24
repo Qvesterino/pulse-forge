@@ -42,10 +42,11 @@ import type { Pattern } from "../project-model/types";
 import { EFFECT_DEFS, clampEffectParam, defaultParamsOf } from "../effects/registry";
 import { INSTRUMENT_DEFS, clampInstrumentParam, defaultInstrumentParams } from "../instruments/registry";
 import type { InstrumentPreset } from "../presets/types";
+import type { EffectPreset } from "../effects/presets";
 import { clamp, uid } from "../shared/ids";
 import { hashString, mulberry32 } from "../shared/rng";
 import { snapToScale } from "../project-model/scales";
-import { generatePattern, resolveGroove } from "../ai/generator";
+import { generatePattern, resolveGrooveForGeneration } from "../ai/generator";
 import type { GenerateOptions } from "../ai/types";
 import {
   applyScaleOption,
@@ -1742,17 +1743,24 @@ export function setEffectParam(doc: ProjectDocument, trackId: string, fxId: stri
   const { type, params } = target;
   const def = EFFECT_DEFS[type].params.find((p) => p.id === paramId);
   if (!def) throw new Error(`Effect param ${paramId} not defined for ${type}`);
-  const prev = params[paramId] ?? def.default;
+  const eqLegacyMap: Record<string, string> = {
+    lowGain: "lowShelfGain", lowFreq: "lowShelfFreq", midGain: "lowMidGain", midFreq: "lowMidFreq", midQ: "lowMidQ", highGain: "highShelfGain", highFreq: "highShelfFreq",
+  };
+  const canonicalId = type === "eq" ? eqLegacyMap[paramId] : undefined;
   const clamped = clampEffectParam(type, paramId, value);
-  const apply = (d: ProjectDocument, v: number): ProjectDocument =>
+  const nextValues: Record<string, number> = { [paramId]: clamped };
+  if (canonicalId) nextValues[canonicalId] = clampEffectParam(type, canonicalId, value);
+  const previousValues: Record<string, number> = { [paramId]: params[paramId] ?? def.default };
+  if (canonicalId) previousValues[canonicalId] = params[canonicalId] ?? EFFECT_DEFS[type].params.find((p) => p.id === canonicalId)?.default ?? 0;
+  const apply = (d: ProjectDocument, values: Record<string, number>): ProjectDocument =>
     withTrackEffects(d, trackId, (effects) =>
-      effects.map((f) => (f.id === fxId ? { ...f, params: { ...f.params, [paramId]: v } } : f)),
+      effects.map((f) => (f.id === fxId ? { ...f, params: { ...f.params, ...values } } : f)),
     );
   return {
     type: "setEffectParam",
     label: `Set ${EFFECT_DEFS[type].name} ${paramId}`,
-    execute: (d) => apply(d, clamped),
-    undo: (d) => apply(d, prev),
+    execute: (d) => apply(d, nextValues),
+    undo: (d) => apply(d, previousValues),
     applyToYDoc: (yMap) => {
       const tracks = yMap.get("tracks") as any;
       for (let i = 0; i < tracks.length; i++) {
@@ -1763,7 +1771,7 @@ export function setEffectParam(doc: ProjectDocument, trackId: string, fxId: stri
             const fx = effects.get(j) as any;
             if (fx.get("id") === fxId) {
               const fxParams = fx.get("params") as any;
-              fxParams.set(paramId, clamped);
+              for (const [id, nextValue] of Object.entries(nextValues)) fxParams.set(id, nextValue);
               break;
             }
           }
@@ -1781,7 +1789,7 @@ export function setEffectParam(doc: ProjectDocument, trackId: string, fxId: stri
             const fx = effects.get(j) as any;
             if (fx.get("id") === fxId) {
               const fxParams = fx.get("params") as any;
-              fxParams.set(paramId, prev);
+              for (const [id, previousValue] of Object.entries(previousValues)) fxParams.set(id, previousValue);
               break;
             }
           }
@@ -2069,10 +2077,8 @@ export function generatePatternCommand(
   // Apply groove settings from the resolved groove if requested
   let grooveUpdate: Partial<GrooveSettings> | undefined;
   if (options.applyGrooveSettings) {
-    // Re-resolve the groove to get its swing value
-    const preSeed = hashString(`${options.genre}|${options.seed}`);
-    const preRand = mulberry32(preSeed);
-    const groove = resolveGroove(options.genre, options.style, preRand);
+    // Reuse the exact source-aware resolution path used by the generator.
+    const groove = resolveGrooveForGeneration(doc, options);
     grooveUpdate = { swing: groove.swing };
   }
 
@@ -2082,7 +2088,15 @@ export function generatePatternCommand(
       ...doc,
       patterns: doc.patterns.map(p =>
         p.id === activeId
-          ? { ...p, rows: pattern.rows, notes: pattern.notes, stepMeta: pattern.stepMeta, stepCount: pattern.stepCount, name: pattern.name || p.name }
+          ? {
+            ...p,
+            rows: pattern.rows,
+            notes: pattern.notes,
+            stepMeta: pattern.stepMeta,
+            stepCount: pattern.stepCount,
+            name: pattern.name || p.name,
+            generation: pattern.generation,
+          }
           : p
       ),
       ...(grooveUpdate ? { groove: { ...doc.groove, ...grooveUpdate } } : {}),
@@ -2112,6 +2126,47 @@ export function generatePatternCommand(
 function drumPadsOf(doc: ProjectDocument): DrumPad[] {
   const track = doc.tracks.find((t): t is DrumTrack => t.kind === "drum");
   return track ? track.pads : [];
+}
+
+export function setEffectSidechainSource(
+  doc: ProjectDocument,
+  trackId: string,
+  fxId: string,
+  sourceTrackId: string | null,
+): Command {
+  const targetTrack = doc.tracks.find((track) => track.id === trackId);
+  const target = trackEffectsOf(doc, trackId).find((fx) => fx.id === fxId);
+  if (!targetTrack || !target) throw new Error(`Effect ${fxId} not found`);
+  if (sourceTrackId !== null) {
+    if (sourceTrackId === trackId) throw new Error("A track cannot sidechain itself");
+    if (!doc.tracks.some((track) => track.id === sourceTrackId)) throw new Error(`Sidechain source ${sourceTrackId} not found`);
+  }
+  const previous = target.sidechainTrackId ?? null;
+  const apply = (d: ProjectDocument, source: string | null): ProjectDocument =>
+    withTrackEffects(d, trackId, (effects) => effects.map((fx) => fx.id === fxId ? { ...fx, sidechainTrackId: source } : fx));
+  return {
+    type: "setEffectSidechainSource",
+    label: sourceTrackId ? "Set sidechain source" : "Clear sidechain source",
+    execute: (d) => apply(d, sourceTrackId),
+    undo: (d) => apply(d, previous),
+  };
+}
+
+export function applyEffectPreset(doc: ProjectDocument, trackId: string, fxId: string, preset: EffectPreset): Command {
+  const target = trackEffectsOf(doc, trackId).find((fx) => fx.id === fxId);
+  if (!target) throw new Error(`Effect ${fxId} not found`);
+  if (target.type !== preset.type) throw new Error("Preset does not match effect type");
+  const previous = { ...target.params };
+  const nextParams = { ...target.params };
+  for (const [id, value] of Object.entries(preset.params)) nextParams[id] = clampEffectParam(target.type, id, value);
+  const apply = (d: ProjectDocument, params: Record<string, number>): ProjectDocument =>
+    withTrackEffects(d, trackId, (effects) => effects.map((fx) => fx.id === fxId ? { ...fx, params: { ...params } } : fx));
+  return {
+    type: "applyEffectPreset",
+    label: `Apply ${preset.name} preset`,
+    execute: (d) => apply(d, nextParams),
+    undo: (d) => apply(d, previous),
+  };
 }
 
 function applyRowsPatch(doc: ProjectDocument, patternId: string, patch: import("../assist/patternOps").RowsPatch): ProjectDocument {

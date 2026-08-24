@@ -20,6 +20,11 @@ type Status =
 
 type MasterFormat = "wav" | "mp3-192" | "mp3-320" | "video";
 
+const EMPTY_EXPORT_SUMMARY: BufferSummary = {
+  peak: 0, peakDb: -120, truePeakDb: -120, rms: 0, rmsDb: -120, correlation: 1,
+  lufsMomentary: -120, lufsShortTerm: -120, lufsIntegrated: -120, monoLossDb: 0,
+};
+
 function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -107,7 +112,7 @@ export function ExportPanel() {
       setStatus({
         kind: "done",
         label: `${groups.length} stems exported (${groups.map((g) => g.label).join(", ")})`,
-        summary: lastSummary ?? { peak: 0, peakDb: -120, truePeakDb: -120, rms: 0, rmsDb: -120, correlation: 1 },
+        summary: lastSummary ?? EMPTY_EXPORT_SUMMARY,
       });
     } catch (error) {
       setStatus({ kind: "error", label: `Stem export failed: ${String(error)}` });
@@ -128,7 +133,7 @@ export function ExportPanel() {
       setStatus({
         kind: "done",
         label: `${doc.tracks.length} track stems exported`,
-        summary: lastSummary ?? { peak: 0, peakDb: -120, truePeakDb: -120, rms: 0, rmsDb: -120, correlation: 1 },
+        summary: lastSummary ?? EMPTY_EXPORT_SUMMARY,
       });
     } catch (error) {
       setStatus({ kind: "error", label: `Track export failed: ${String(error)}` });
@@ -138,7 +143,7 @@ export function ExportPanel() {
   const copyText = async (text: string, doneLabel: string) => {
     try {
       await navigator.clipboard.writeText(text);
-      setStatus({ kind: "done", label: doneLabel, summary: { peak: 0, peakDb: -120, truePeakDb: -120, rms: 0, rmsDb: -120, correlation: 1 } });
+      setStatus({ kind: "done", label: doneLabel, summary: EMPTY_EXPORT_SUMMARY });
     } catch {
       setStatus({ kind: "error", label: "Clipboard blocked by the browser — copy failed" });
     }
@@ -174,7 +179,7 @@ export function ExportPanel() {
       setStatus({
         kind: "done",
         label: `Scorepack exported (${filename})`,
-        summary: { peak: 0, peakDb: -120, truePeakDb: -120, rms: 0, rmsDb: -120, correlation: 1 },
+        summary: EMPTY_EXPORT_SUMMARY,
       });
     } catch (error) {
       setStatus({ kind: "error", label: `Scorepack failed: ${String(error)}` });
@@ -320,6 +325,14 @@ function ExportSummary({ summary }: { summary: BufferSummary }) {
       <div className="export-summary-row">
         <span className="export-summary-label">×CORR</span>
         <span className="export-summary-value">{corr.toFixed(2)} {corrLabel}</span>
+      </div>
+      <div className="export-summary-row">
+        <span className="export-summary-label">LUFS-I</span>
+        <span className="export-summary-value">{summary.lufsIntegrated <= -119 ? "-INF" : summary.lufsIntegrated.toFixed(1)}</span>
+      </div>
+      <div className="export-summary-row">
+        <span className="export-summary-label">MONO LOSS</span>
+        <span className="export-summary-value">{summary.monoLossDb.toFixed(1)} dB</span>
       </div>
     </div>
   );

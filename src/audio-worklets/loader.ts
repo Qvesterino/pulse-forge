@@ -17,11 +17,14 @@ const readyContexts = new WeakSet<BaseAudioContext>();
 const failedContexts = new WeakSet<BaseAudioContext>();
 const inflight = new Map<BaseAudioContext, Promise<void>>();
 
-export function isWorkletReady(type: "bitcrusher" | "sidechain", ctx: BaseAudioContext | null | undefined): boolean {
+export function isWorkletReady(
+  type: "bitcrusher" | "sidechain" | "transient" | "gate",
+  ctx: BaseAudioContext | null | undefined,
+): boolean {
   if (!ctx || !readyContexts.has(ctx)) return false;
   // Both processors load together per context; the type is kept in the
   // signature so call sites read naturally.
-  return type === "bitcrusher" || type === "sidechain";
+  return type === "bitcrusher" || type === "sidechain" || type === "transient" || type === "gate";
 }
 
 /**
@@ -38,7 +41,9 @@ export async function loadWorkletModules(ctx: BaseAudioContext): Promise<void> {
 
   const load = Promise.all([
     ctx.audioWorklet.addModule(new URL("./bitcrusher-processor.js", import.meta.url).href),
-    ctx.audioWorklet.addModule(new URL("./sidechain-processor.js", import.meta.url).href),
+    // The core module imports sidechain, transient and gate processors. Keeping
+    // this as one addModule call preserves the existing two-module contract.
+    ctx.audioWorklet.addModule(new URL("./core-processor.js", import.meta.url).href),
   ])
     .then(() => {
       readyContexts.add(ctx);

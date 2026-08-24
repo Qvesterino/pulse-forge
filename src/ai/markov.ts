@@ -66,44 +66,50 @@ export function buildPadModel(padIndex: number, patterns: number[][]): PadMarkov
 /** Sample a state from a distribution vector using a PRNG, with optional temperature */
 function sampleFromDistribution(dist: Uint32Array, rand: () => number, temperature: number = 1): number {
   const invT = 1 / Math.max(0.01, temperature);
-  let total = 0;
+  const candidates: number[] = [];
   for (let i = 0; i < dist.length; i++) {
-    total += Math.pow(dist[i] + 0.1, invT);
+    if (dist[i] > 0) candidates.push(i);
   }
-  if (total === 0) return 0;
+  if (candidates.length === 0) return -1;
+
+  let total = 0;
+  for (const i of candidates) {
+    total += Math.pow(dist[i], invT);
+  }
 
   let r = rand() * total;
-  for (let i = 0; i < dist.length; i++) {
-    r -= Math.pow(dist[i] + 0.1, invT);
+  for (const i of candidates) {
+    r -= Math.pow(dist[i], invT);
     if (r <= 0) return i;
   }
-  return dist.length - 1;
+  return candidates[candidates.length - 1];
 }
 
 /** Sample the next state given the current state */
 export function sampleTransition(model: PadMarkovModel, currentState: StateIndex, rand: () => number, temperature: number = 1): StateIndex {
   const rowStart = currentState * model.states;
   const row = model.transitions.subarray(rowStart, rowStart + model.states);
+  const nextPosition = (decodePosition(currentState) + 1) % STEPS_PER_BAR;
 
-  let hasTransitions = false;
+  // Position is part of the state, but it is also a hard temporal invariant:
+  // a transition must advance exactly one step in the bar.
+  const positional = new Uint32Array(model.states);
   for (let i = 0; i < row.length; i++) {
-    if (row[i] > 0) { hasTransitions = true; break; }
-  }
-
-  if (!hasTransitions) {
-    // Fallback: use initial distribution
-    const smoothed = new Uint32Array(model.initial.length);
-    for (let i = 0; i < model.initial.length; i++) {
-      smoothed[i] = model.initial[i] + 1;
+    if (row[i] > 0 && decodePosition(i) === nextPosition) {
+      positional[i] = row[i];
     }
-    return sampleFromDistribution(smoothed, rand, temperature);
   }
 
-  const smoothed = new Uint32Array(row.length);
-  for (let i = 0; i < row.length; i++) {
-    smoothed[i] = row[i] + 1;
+  const sampled = sampleFromDistribution(positional, rand, temperature);
+  if (sampled >= 0) return sampled;
+
+  // A sparse model can legitimately have no row for a generated state. Keep
+  // the last level as a conservative fallback and preserve the time position.
+  const anyTransition = sampleFromDistribution(row, rand, temperature);
+  if (anyTransition >= 0) {
+    return encodeState(decodeLevelPrev(anyTransition), decodeLevelCurr(anyTransition), nextPosition);
   }
-  return sampleFromDistribution(smoothed, rand, temperature);
+  return encodeState(decodeLevelCurr(currentState), decodeLevelCurr(currentState), nextPosition);
 }
 
 /** Generate a full velocity sequence for one pad using second-order Markov */
@@ -112,12 +118,10 @@ export function generatePadSequence(model: PadMarkovModel, length: number, rand:
 
   if (length === 0) return sequence;
 
-  // Sample initial two-step state
-  const smoothedInitial = new Uint32Array(model.initial.length);
-  for (let i = 0; i < model.initial.length; i++) {
-    smoothedInitial[i] = model.initial[i] + 1;
-  }
-  let currentState = sampleFromDistribution(smoothedInitial, rand, temperature);
+  // Sample only states that were actually observed. Unobserved states are not
+  // meaningful musical evidence and must not receive implicit probability.
+  const sampledInitial = sampleFromDistribution(model.initial, rand, temperature);
+  let currentState = sampledInitial >= 0 ? sampledInitial : encodeState(0, 0, 1);
 
   // First step
   sequence[0] = decodeLevelPrev(currentState);

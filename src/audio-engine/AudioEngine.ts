@@ -9,7 +9,7 @@ import type { EffectRuntime } from "../effects/types";
 import { INSTRUMENT_DEFS } from "../instruments/registry";
 import type { InstrumentRuntime } from "../instruments/types";
 import { loadWorkletModules } from "../audio-worklets/loader";
-import { channelLevels, splitChannels, stereoCorrelation, PeakHold, type Frame, type ChannelLevels } from "./metering";
+import { channelLevels, integratedLufs, lufsFromChannels, monoLossDb, splitChannels, stereoCorrelation, PeakHold, toDb, type Frame, type ChannelLevels } from "./metering";
 
 /** Tick position → seconds inside a frozen loop (mod buffer duration). */
 export function frozenPlaybackOffset(positionTick: number, bpm: number, durationSec: number): number {
@@ -206,6 +206,10 @@ export class AudioEngine {
   private masterChBufL: Float32Array<ArrayBuffer> = new Float32Array(2048);
   private masterChBufR: Float32Array<ArrayBuffer> = new Float32Array(2048);
   private masterPeakHold = new PeakHold(0.4);
+  private meterProjectId: string | null = null;
+  private meterHistoryL: number[] = [];
+  private meterHistoryR: number[] = [];
+  private meterLoudnessBlocks: number[] = [];
   private syncedBpm = 0;
 
   attachBank(bank: SampleBank): void {
@@ -260,6 +264,7 @@ export class AudioEngine {
   private buildMaster(): void {
     const ctx = this.ctx;
     if (!ctx) return;
+    this.resetMeterHistory();
     // Disconnect old master chain if re-invoked (e.g. useContext with new context).
     try {
       this.masterAnalyser?.disconnect();
@@ -360,6 +365,8 @@ export class AudioEngine {
   }
 
   setProject(doc: ProjectDocument): void {
+    if (this.meterProjectId !== null && this.meterProjectId !== doc.id) this.resetMeterHistory();
+    this.meterProjectId = doc.id;
     this.doc = doc;
     if (this.ctx) this.syncProject(doc);
   }
@@ -1400,6 +1407,62 @@ export class AudioEngine {
 
   resetMasterPeakHold(): void {
     this.masterPeakHold.reset();
+  }
+
+  private resetMeterHistory(): void {
+    this.meterHistoryL = [];
+    this.meterHistoryR = [];
+    this.meterLoudnessBlocks = [];
+    this.masterPeakHold.reset();
+  }
+
+  resetMasterIntegratedLufs(): void {
+    this.meterLoudnessBlocks = [];
+  }
+
+  getMasterMeterSnapshot(): {
+    left: ChannelLevels;
+    right: ChannelLevels;
+    correlation: number;
+    peakHoldDb: number;
+    truePeakDb: number;
+    lufsMomentary: number;
+    lufsShortTerm: number;
+    lufsIntegrated: number;
+    monoLossDb: number;
+    lrImbalanceDb: number;
+  } {
+    const levels = this.getMasterLevels();
+    this.meterHistoryL.push(...this.masterChBufL);
+    this.meterHistoryR.push(...this.masterChBufR);
+    const sampleRate = this.ctx?.sampleRate ?? 44100;
+    const maxSamples = Math.ceil(sampleRate * 3.2);
+    if (this.meterHistoryL.length > maxSamples) {
+      this.meterHistoryL.splice(0, this.meterHistoryL.length - maxSamples);
+      this.meterHistoryR.splice(0, this.meterHistoryR.length - maxSamples);
+    }
+    const window = (seconds: number): [Float32Array<ArrayBuffer>, Float32Array<ArrayBuffer>] => {
+      const length = Math.min(this.meterHistoryL.length, Math.max(1, Math.round(seconds * sampleRate)));
+      return [Float32Array.from(this.meterHistoryL.slice(-length)), Float32Array.from(this.meterHistoryR.slice(-length))];
+    };
+    const [momentaryL, momentaryR] = window(0.4);
+    const [shortL, shortR] = window(3);
+    const momentary = lufsFromChannels(momentaryL, momentaryR);
+    this.meterLoudnessBlocks.push(momentary);
+    if (this.meterLoudnessBlocks.length > 900) this.meterLoudnessBlocks.shift();
+    const truePeak = Math.max(AudioEngine.measureTruePeak(this.masterChBufL, 1), AudioEngine.measureTruePeak(this.masterChBufR, 1));
+    return {
+      left: levels.left,
+      right: levels.right,
+      correlation: levels.correlation,
+      peakHoldDb: this.masterPeakHold.current,
+      truePeakDb: toDb(truePeak),
+      lufsMomentary: momentary,
+      lufsShortTerm: lufsFromChannels(shortL, shortR),
+      lufsIntegrated: integratedLufs(this.meterLoudnessBlocks),
+      monoLossDb: monoLossDb(momentaryL, momentaryR),
+      lrImbalanceDb: Math.abs(levels.left.rmsDb - levels.right.rmsDb),
+    };
   }
 
   /** 0 dBFS → 0 dB headroom (positive = peaking). */

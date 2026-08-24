@@ -16,3 +16,8 @@ export function hashString(value: string): number {
   }
   return h >>> 0;
 }
+
+/** Create an independent deterministic PRNG stream for a named subsystem. */
+export function forkRandom(seed: string, stream: string): () => number {
+  return mulberry32(hashString(`${seed}|${stream}`));
+}

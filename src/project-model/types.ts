@@ -23,7 +23,12 @@ export type EffectType =
   | "bitcrusher"
   | "chorus"
   | "phaser"
-  | "sidechain";
+  | "sidechain"
+  | "transient"
+  | "drumBuss"
+  | "bassBuss"
+  | "utility"
+  | "gate";
 
 export type InstrumentKind = "sampler" | "analog" | "bass" | "808" | "texture" | "wavetable" | "granular";
 
@@ -172,6 +177,26 @@ export interface StepMeta {
   microtiming?: number;
 }
 
+/** Reproducibility recipe attached to content produced by the local Intent Engine. */
+export interface PatternGeneration {
+  engineId: string;
+  engineVersion: string;
+  seed: string;
+  genre: string;
+  style: string | null;
+  grooveId: string;
+  stepCount: number;
+  ghostWeight: number;
+  microWeight: number;
+  velocityVariation: number;
+  temperature: number;
+  sourcePatternId: ID | null;
+  /** UUID-free hash of the source pattern used for variation, if any. */
+  inputContentHash?: string | null;
+  /** UUID-free hash of the generated musical content. */
+  outputContentHash?: string;
+}
+
 export interface Pattern {
   id: ID;
   name: string;
@@ -180,6 +205,8 @@ export interface Pattern {
   notes: Record<ID, NoteEvent[]>;
   /** padId → stepIndex → performance metadata. Optional (schema v1 addendum). */
   stepMeta?: Record<ID, Record<number, StepMeta>>;
+  /** Deterministic generation recipe and content hashes, when AI-generated. */
+  generation?: PatternGeneration;
 }
 
 /** Project-level groove: 0..1 swing delays off-grid 16ths toward a triplet feel. */

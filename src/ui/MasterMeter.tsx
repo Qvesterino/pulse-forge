@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useDoc, useServices } from "./context";
 import type { ChannelLevels } from "../audio-engine/metering";
 import { registerRaf, unregisterRaf } from "../services/rafLoop";
+import { evaluateMixCheck, MIN_DB } from "../audio-engine/metering";
 
 interface ReadState {
   left: ChannelLevels;
@@ -9,6 +10,12 @@ interface ReadState {
   correlation: number;
   peakHoldDb: number;
   clipping: boolean;
+  truePeakDb: number;
+  lufsMomentary: number;
+  lufsShortTerm: number;
+  lufsIntegrated: number;
+  monoLossDb: number;
+  warnings: ReturnType<typeof evaluateMixCheck>;
 }
 
 const EMPTY: ChannelLevels = { peak: 0, rms: 0, peakDb: -120, rmsDb: -120 };
@@ -28,17 +35,27 @@ export function MasterMeter() {
     correlation: 1,
     peakHoldDb: -120,
     clipping: false,
+    truePeakDb: MIN_DB,
+    lufsMomentary: MIN_DB,
+    lufsShortTerm: MIN_DB,
+    lufsIntegrated: MIN_DB,
+    monoLossDb: 0,
+    warnings: [],
   });
   const lastStateRef = useRef(state);
   const clipHoldRef = useRef(0);
+  const phaseSinceRef = useRef<number | null>(null);
+  const imbalanceSinceRef = useRef<number | null>(null);
 
   useEffect(() => {
     let lastRead = 0;
     registerRaf("master-meter", (t) => {
       if (t - lastRead >= 33) {
         lastRead = t;
-        const levels = services.engine.getMasterLevels();
-        const peakHoldDb = services.engine.getMasterPeakHoldDb();
+        const engineWithMeter = services.engine as typeof services.engine & { getMasterMeterSnapshot?: () => MasterSnapshot };
+        const snapshot = engineWithMeter.getMasterMeterSnapshot?.();
+        const levels = snapshot ?? services.engine.getMasterLevels();
+        const peakHoldDb = snapshot?.peakHoldDb ?? services.engine.getMasterPeakHoldDb();
         const left = levels.left;
         const right = levels.right;
         const peakDb = Math.max(left.peakDb, right.peakDb);
@@ -46,6 +63,19 @@ export function MasterMeter() {
         if (nowOver) clipHoldRef.current = 0;
         clipHoldRef.current += 0.033;
         const clipping = clipHoldRef.current < 0.6;
+        const phaseSince = levels.correlation < 0 ? (phaseSinceRef.current ?? t) : null;
+        const imbalance = snapshot?.lrImbalanceDb ?? Math.abs(left.rmsDb - right.rmsDb);
+        const imbalanceSince = imbalance > 6 ? (imbalanceSinceRef.current ?? t) : null;
+        phaseSinceRef.current = phaseSince;
+        imbalanceSinceRef.current = imbalanceSince;
+        const warnings = snapshot ? evaluateMixCheck({
+          truePeakDb: snapshot.truePeakDb,
+          correlation: snapshot.correlation,
+          monoLossDb: snapshot.monoLossDb,
+          lrImbalanceDb: imbalance,
+          phaseDurationMs: phaseSince === null ? 0 : t - phaseSince,
+          imbalanceDurationMs: imbalanceSince === null ? 0 : t - imbalanceSince,
+        }) : [];
 
         const prev = lastStateRef.current;
         const changed =
@@ -55,9 +85,23 @@ export function MasterMeter() {
           Math.abs(prev.right.rmsDb - right.rmsDb) > 0.4 ||
           Math.abs(prev.correlation - levels.correlation) > 0.02 ||
           Math.abs(prev.peakHoldDb - peakHoldDb) > 0.2 ||
+          Math.abs(prev.truePeakDb - (snapshot?.truePeakDb ?? peakDb)) > 0.2 ||
+          Math.abs(prev.lufsMomentary - (snapshot?.lufsMomentary ?? MIN_DB)) > 0.2 ||
+          Math.abs(prev.lufsShortTerm - (snapshot?.lufsShortTerm ?? MIN_DB)) > 0.2 ||
+          Math.abs(prev.lufsIntegrated - (snapshot?.lufsIntegrated ?? MIN_DB)) > 0.2 ||
+          Math.abs(prev.monoLossDb - (snapshot?.monoLossDb ?? 0)) > 0.2 ||
+          prev.warnings.length !== warnings.length ||
           prev.clipping !== clipping;
         if (changed) {
-          const next: ReadState = { left, right, correlation: levels.correlation, peakHoldDb, clipping };
+          const next: ReadState = {
+            left, right, correlation: levels.correlation, peakHoldDb, clipping,
+            truePeakDb: snapshot?.truePeakDb ?? peakDb,
+            lufsMomentary: snapshot?.lufsMomentary ?? MIN_DB,
+            lufsShortTerm: snapshot?.lufsShortTerm ?? MIN_DB,
+            lufsIntegrated: snapshot?.lufsIntegrated ?? MIN_DB,
+            monoLossDb: snapshot?.monoLossDb ?? 0,
+            warnings,
+          };
           lastStateRef.current = next;
           setState(next);
         }
@@ -72,6 +116,15 @@ export function MasterMeter() {
       <MeterChannel label="R" level={state.right} holdDb={state.peakHoldDb} />
       <CorrelationMeter value={state.correlation} />
       <HeadroomStrip ceilingDb={ceilingDb} clipping={state.clipping} />
+      <div className="master-loudness-readout" aria-label="Master loudness">
+        <span>LUFS-M {formatDb(state.lufsMomentary)}</span>
+        <span>LUFS-S {formatDb(state.lufsShortTerm)}</span>
+        <span>LUFS-I {formatDb(state.lufsIntegrated)}</span>
+        <span>TP {formatDb(state.truePeakDb)} dBTP</span>
+        <span>MONO LOSS {formatDb(state.monoLossDb)} dB</span>
+        <button type="button" className="btn btn-small" onClick={() => services.engine.resetMasterIntegratedLufs?.()}>RESET INTEGRATED</button>
+      </div>
+      {state.warnings.length > 0 && <div className="master-mix-check" role="status">{state.warnings.map((warning) => <span key={warning.code}>{warning.message}</span>)}</div>}
       {state.clipping && (
         <span className="master-clip-warning" role="alert" title="Master is clipping — pull down IN or engage LIMIT">
           CLIP
@@ -79,6 +132,23 @@ export function MasterMeter() {
       )}
     </div>
   );
+}
+
+interface MasterSnapshot {
+  left: ChannelLevels;
+  right: ChannelLevels;
+  correlation: number;
+  peakHoldDb: number;
+  truePeakDb: number;
+  lufsMomentary: number;
+  lufsShortTerm: number;
+  lufsIntegrated: number;
+  monoLossDb: number;
+  lrImbalanceDb: number;
+}
+
+function formatDb(value: number): string {
+  return value <= -119 ? "-INF" : value.toFixed(1);
 }
 
 function MeterChannel({ label, level, holdDb }: { label: string; level: ChannelLevels; holdDb: number }) {

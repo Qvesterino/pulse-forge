@@ -1,0 +1,551 @@
+# Intent Engine — implementačná roadmapa
+
+Status: navrhnuté  
+Scope: lokálna deterministická generácia hudobných patternov, Assist operácie a budúce AI providery  
+Priorita: offline-first, reprodukovateľnosť, hudobná kvalita, bezpečné rozšírenie
+
+## Cieľ
+
+Vybudovať z aktuálneho seeded groove/pattern generátora robustný Intent Engine, ktorý:
+
+- funguje kvalitne a rýchlo bez siete,
+- vytvára reprodukovateľné výsledky podľa seedu a verzie engine,
+- rozumie hudobnému zámeru, nie iba žánru a niekoľkým sliderom,
+- vie generovať drums, bass, chords, lead a viac-taktové frázy,
+- vracia validovaný návrh, ktorý sa aplikuje cez existujúci command/undo systém,
+- umožní neskôr pripojiť reálny AI provider bez rozbitia offline workflowu,
+- poskytuje diagnostiku, provenance a merateľné quality gates.
+
+## Zásady, ktoré platia počas celej implementácie
+
+- [ ] Lokálny provider musí fungovať bez network requestu a bez AI účtu.
+- [ ] Generovanie nesmie bežať v audio callbacku ani meniť audio engine priamo.
+- [ ] Každý hudobný random musí byť odvodený od explicitného seedu.
+- [ ] Rovnaký `engineVersion + recipe + seed + input` musí dať rovnaký hudobný obsah.
+- [ ] Projektové UUID môžu zostať unikátne; deterministický musí byť obsahový hash.
+- [ ] Každý výsledok musí prejsť validáciou a deterministic repair krokom.
+- [ ] AI provider môže vrátiť iba návrh/proposal, nikdy priamu mutáciu projektu.
+- [ ] Každá zmena generátora musí mať test, fixture alebo zdokumentovaný dôvod.
+- [ ] Realtime playback a offline export musia naďalej konzumovať rovnaký project model.
+- [ ] Vývoj sa nesmie opierať iba o to, že test prejde; musí existovať aj hudobná evaluácia.
+
+## Aktuálny baseline
+
+- [x] Zmapovaný súčasný Intent/AI kód pod `src/ai/` a `src/assist/`.
+- [x] Overený dátový tok cez `GenerateDialog`, command systém a project model.
+- [x] Overená deterministická PRNG infraštruktúra (`hashString`, `mulberry32`).
+- [x] Overený stav testov: typecheck prešiel, celý test suite prešiel.
+- [x] Identifikované kritické correctness riziká v Markov a melodic engine.
+- [x] Identifikované architektonické medzery pre `IntentSpec`, provenance a AI provider boundary.
+- [x] Vytvorené golden fixtures aktuálneho správania pred opravami.
+- [x] Zaznamenané aktuálne referenčné výstupy pre 8 reprezentatívnych genre/style kombinácií.
+- [ ] Zaznamenané aktuálne referenčné výstupy pre úplnú genre/style maticu.
+
+---
+
+## Fáza 0 — Freeze baseline a testovací harness
+
+### Cieľ
+
+Zachytiť súčasný stav tak, aby sa dali bezpečne porovnávať opravy kvality s regresiami.
+
+### Implementácia
+
+- [x] Pridať canonical serializer pre generovaný hudobný obsah bez UUID a timestampov.
+- [x] Pridať helper na výpočet `contentHash` pre drum rows, notes a step metadata.
+- [x] Vytvoriť fixtures pre každý žáner a reprezentatívne style:
+  - [x] House
+  - [x] Techno
+  - [x] Trap
+  - [x] Ambient
+  - [x] minimálne 2 style varianty na žáner
+- [x] Uložiť baseline metriky pre 16, 32 a 64 krokov.
+- [x] Pridať test, ktorý vie vypísať recipe, content hash a základné hudobné metriky.
+- [x] Zmerať čas generovania v Chromium pre 16/32/64 krokov.
+
+### Acceptance criteria
+
+- [x] Jeden seed sa dá reprodukovať cez test bez závislosti od UUID.
+- [x] Každý fixture má čitateľný názov, vstupné options a očakávaný hash/metrics.
+- [x] Pred ďalšou fázou existuje porovnanie „pred opravou“ vs. „po oprave“.
+
+Poznámka k overeniu: Intent Engine baseline a correctness testy prešli. Aktuálny pracovný strom má nezávislé rozpracované zmeny v audio/effect vrstve; ich audio-worklet regresie a prípadné integračné zlyhania sa v tejto fáze zámerne nemenia.
+
+---
+
+## Fáza 1 — Correctness a deterministický základ
+
+Priorita: P0  
+Závisí od: Fáza 0
+
+### Cieľ
+
+Odstrániť chyby, ktoré môžu meniť hudobnú logiku alebo znemožniť skutočnú reprodukovateľnosť.
+
+### 1.1 Drum Markov engine
+
+- [x] Opraviť smoothing tak, aby unseen transitions nedostávali neprimerane veľkú pravdepodobnosť.
+- [x] Použiť sparse distribution alebo backoff iba na validné transition candidates.
+- [x] Vynútiť konzistentný posun pozície `step → step + 1` modulo takt.
+- [ ] Oddeliť stav rytmickej aktivity od velocity trendu, ak je to potrebné pre čitateľnejší model.
+- [ ] Pridať fallback poradie:
+  1. [x] validné transition kandidáty z rovnakého position contextu,
+  2. [ ] štýlový referenčný pattern,
+  3. [x] bezpečný konzervatívny state anchor.
+- [x] Otestovať, že model nevytvára prechody mimo trénovaných alebo explicitne povolených kandidátov.
+- [ ] Otestovať, že temperature mení variáciu, nie základnú metriku a timing grid.
+
+### 1.2 Melodic state encoding
+
+- [x] Opraviť encoding/decoding pre `rest`, degree `0..6` a duration.
+- [x] Pridať round-trip property test pre všetky validné stavy.
+- [ ] Pridať test, že rest ostáva rest aj po generovaní.
+- [x] Pridať test, že degree 6 je reprezentovateľný a nikdy nepadá mimo buffer.
+- [x] Validovať duration pred vstupom do modelu.
+
+### 1.3 Seed streamy
+
+- [x] Zaviesť root seed pre jednu generation session.
+- [x] Odvodiť stabilné sub-seedy:
+  - [x] `groove`
+  - [x] `drums`
+  - [x] `drumMeta`
+  - [x] `bass`
+  - [x] `chords`
+  - [x] `lead`
+  - [x] `variation`
+- [x] Zabezpečiť, že pridaný random call v drum engine nemení melodický výsledok.
+- [x] Otestovať deterministické výsledky pri rovnakom recipe a rôznych execution orderoch.
+
+### 1.4 Content determinism a provenance minimum
+
+- [x] Oddeliť generované UUID od deterministického hudobného obsahu.
+- [x] Pridať interný `engineVersion` pre lokálny generator.
+- [x] Pridať `GenerationRecipe` s minimálne týmito poliami:
+  - [x] `engineId`
+  - [x] `engineVersion`
+  - [x] `seed`
+  - [x] canonical input hash
+  - [x] normalized options
+  - [x] resolved groove/style ID
+  - [x] output content hash
+- [x] Zabezpečiť, aby recipe neobsahoval runtime objekty, AudioNodes ani React state.
+- [x] Pridať test plného content hash porovnania.
+
+### 1.5 Single owner pre swing
+
+- [x] Rozhodnúť, či swing vlastní project-level groove alebo pattern-local metadata.
+- [x] Zamedziť dvojitému aplikovaniu swing offsetu.
+- [x] Ak sa používa `applyGrooveSettings`, nesmie sa rovnaký swing zároveň zapisovať do step metadata.
+- [x] Pridať correctness test pre kombináciu generated pattern + project groove ownership.
+
+### Acceptance criteria
+
+- [x] Opravené Markov a melodic correctness testy.
+- [x] Rovnaký recipe vytvára rovnaký content hash.
+- [x] Zmena drum random streamu nemení bass/chord/lead stream.
+- [x] Swing sa pri žiadnej kombinácii neaplikuje dvakrát.
+- [ ] Všetky existujúce testy naďalej prechádzajú.
+
+---
+
+## Fáza 2 — Lokálna hudobná kvalita
+
+Priorita: P0/P1  
+Závisí od: Fáza 1
+
+### Cieľ
+
+Prejsť od „randomized pattern z template“ k riadenému, rýchlemu a hudobne použiteľnému offline generátoru.
+
+### 2.1 Hybridný generation model
+
+- [ ] Zachovať silné template anchors pre žáner/style.
+- [ ] Markov používať iba na kontrolovanú variáciu, nie ako voľný globálny sampler.
+- [ ] Definovať hard constraints pre každý style:
+  - [ ] kick anchors
+  - [ ] backbeat/snare anchors
+  - [ ] povolené syncopation pozície
+  - [ ] minimálna/maximálna hustota
+  - [ ] povolené ghost/ornament pozície
+- [ ] Definovať soft constraints:
+  - [ ] velocity contour
+  - [ ] repetition
+  - [ ] variation amount
+  - [ ] phrase contrast
+- [ ] Pridať deterministic repair pass po generovaní.
+- [ ] Pri neúspechu validácie vrátiť bezpečný style template namiesto poškodeného patternu.
+
+### 2.2 Pad roles namiesto magic indexov
+
+- [ ] Zaviesť semantic pad role, napríklad `kick`, `snare`, `clap`, `closedHat`, `openHat`, `perc`, `tom`, `fx`.
+- [ ] Odvodiť role z kit metadata alebo bezpečnej klasifikácie názvu.
+- [ ] Ratchety povoľovať podľa role/capability, nie podľa indexov `7`, `8`, `14`.
+- [ ] Ghost rules odlíšiť pre kick, snare, hats a percussion.
+- [ ] Otestovať generovanie s custom kitom a iným poradím padov.
+
+### 2.3 Multi-bar phrase engine
+
+- [ ] Definovať phrase length a phrase position.
+- [ ] Pridať plan pre `intro`, `main`, `variation`, `fill`, `drop`, `outro`.
+- [ ] Zabezpečiť, že 16/32/64 krokov vytvára zmysluplný rozdiel, nie iba tile rovnakého taktu.
+- [ ] Presunúť fills z implicitného náhodného side-effectu do explicitného phrase planu.
+- [ ] Pridať kontrolu, že fill sa nevyskytuje v patternoch, ktoré naň nemajú dostatočnú dĺžku.
+- [ ] Pridať kontrolu energie medzi susednými frázami.
+
+### 2.4 Melodic roles a hudobné vzťahy
+
+- [ ] Generovať bass, chord a lead ako samostatné parts.
+- [ ] Definovať role-specific register, density, duration a velocity range.
+- [ ] Zachovať scale/key constraints pred aj po repair kroku.
+- [ ] Zlepšiť kick/bass coordination bez náhodného posunu, ktorý môže meniť groove.
+- [ ] Zabrániť duplicitnému priraďovaniu rovnakých NoteEvent ID na viac trackov.
+- [ ] Pridať target mapping podľa role a typu nástroja.
+
+### 2.5 Metriky hudobnej kvality
+
+- [ ] Implementovať metrics pre drum pattern:
+  - [ ] hit density
+  - [ ] downbeat preservation
+  - [ ] syncopation
+  - [ ] velocity contrast
+  - [ ] repetition vs. novelty
+  - [ ] groove/style distance
+- [ ] Implementovať metrics pre melodiku:
+  - [ ] rest ratio
+  - [ ] pitch range
+  - [ ] scale validity
+  - [ ] duration distribution
+  - [ ] role density
+  - [ ] repeated motif ratio
+- [ ] Definovať thresholdy pre každý genre/style.
+- [ ] Pri prekročení thresholdov spustiť repair alebo fallback.
+
+### Acceptance criteria
+
+- [ ] Každý factory style má definované anchors a základné metrics thresholdy.
+- [ ] Generovaný pattern zachováva žánrové invariants pri rôznych seedech.
+- [ ] Variácia je počuteľná, ale nevedie k rozbitiu groove.
+- [ ] 16/32/64 krokov nie sú iba slepé opakovanie rovnakého výstupu.
+- [ ] Bass/chord/lead sú oddeliteľné a správne mapovateľné na tracky.
+
+---
+
+## Fáza 3 — Intent contract a generation pipeline
+
+Priorita: P1  
+Závisí od: Fáza 1, základ z Fázy 2
+
+### Cieľ
+
+Zaviesť stabilnú doménovú vrstvu medzi UI, lokálnym generatorom a budúcimi AI providermi.
+
+### Navrhovaná štruktúra
+
+```text
+src/intent/
+  types.ts
+  schema.ts
+  normalize.ts
+  hash.ts
+  plan.ts
+  result.ts
+  repair.ts
+  evaluate.ts
+  providers/
+    local.ts
+    remote.ts
+```
+
+### 3.1 IntentSpec
+
+- [ ] Navrhnúť serializovateľný `IntentSpec`.
+- [ ] Pridať minimálne:
+  - [ ] `genre`
+  - [ ] `style`
+  - [ ] `mood`
+  - [ ] `energy`
+  - [ ] `density`
+  - [ ] `complexity`
+  - [ ] `variation`
+  - [ ] `seed`
+  - [ ] `key`
+  - [ ] `bpmRange`
+  - [ ] `length`
+  - [ ] požadované role
+  - [ ] target tracks
+  - [ ] explicit constraints
+- [ ] Rozlíšiť user intent od derived engine parameters.
+- [ ] Normalizovať chýbajúce a neplatné hodnoty na deterministic defaults.
+- [ ] Pridať versionované schema validation.
+
+### 3.2 GenerationPlan
+
+- [ ] Implementovať pure `planGeneration(intent, projectContext)`.
+- [ ] Plan musí obsahovať:
+  - [ ] normalized intent
+  - [ ] resolved groove/style
+  - [ ] role plans
+  - [ ] sub-seeds
+  - [ ] constraints
+  - [ ] expected output shape
+  - [ ] recipe metadata
+- [ ] Zabezpečiť, aby preview aj apply používali rovnaký plan.
+- [ ] Plan nesmie meniť project state.
+
+### 3.3 GenerationResult
+
+- [ ] Výsledok rozdeliť na:
+  - [ ] generated content
+  - [ ] recipe
+  - [ ] diagnostics
+  - [ ] quality metrics
+  - [ ] warnings
+  - [ ] provider metadata
+- [ ] Rozlíšiť `accepted`, `repaired`, `fallback` a `rejected` výsledok.
+- [ ] Pridať dôvod fallbacku alebo repairu.
+
+### 3.4 Project model a persistence
+
+- [ ] Rozhodnúť, či recipe bude uložené priamo na Pattern, alebo v samostatnej generation metadata kolekcii.
+- [ ] Pridať schema migration pre generation metadata.
+- [ ] Zachovať kompatibilitu so staršími projektmi bez recipe.
+- [ ] Zabezpečiť JSON round-trip stabilitu.
+- [ ] Pridať export/import testy recipe a content hash.
+
+### Acceptance criteria
+
+- [ ] UI nemusí poznať interné Markov/PRNG detaily.
+- [ ] Local provider sa dá zavolať cez IntentSpec a vráti GenerationResult.
+- [ ] Preview a Apply pre rovnaký intent používajú rovnaký plan.
+- [ ] Každý nový pattern má dohľadateľnú provenance.
+
+---
+
+## Fáza 4 — Assist workflow a UI integrácia
+
+Priorita: P1  
+Závisí od: Fáza 2, Fáza 3
+
+### Cieľ
+
+Zjednotiť full generation a chirurgické Assist operácie pod rovnaký deterministic contract.
+
+### Implementácia
+
+- [ ] Premigrovať `GenerateDialog` na `IntentSpec + GenerationPlan`.
+- [ ] Odstrániť duplicitné groove resolution z UI.
+- [ ] Preview musí zobrazovať rovnaký plán, ktorý sa následne aplikuje.
+- [ ] Rozšíriť preview o melodické parts alebo krátky offline audio preview.
+- [ ] Ukladať recipe pri vytvorení nového patternu.
+- [ ] Pri replace zachovať alebo explicitne nahradiť recipe podľa voľby používateľa.
+- [ ] `VARY` musí mať canonical input hash pôvodného patternu.
+- [ ] `BUILD` musí korektne rozšíriť:
+  - [ ] drum rows
+  - [ ] notes
+  - [ ] step metadata
+  - [ ] phrase metadata
+- [ ] `REPLACE` musí vyčistiť metadata cieľovej rodiny, ktoré už neplatia.
+- [ ] `FILL` musí aktualizovať step metadata konzistentne s novými hitmi.
+- [ ] Každá operácia musí byť jeden undo krok.
+
+### Acceptance criteria
+
+- [ ] Preview a Apply nevytvárajú dva odlišné hudobné výsledky.
+- [ ] Assist operácie nemenia necielené role/families.
+- [ ] Undo/redo obnoví rows, notes, metadata aj recipe.
+- [ ] UI zobrazuje seed, engine version a prípadné repair warnings.
+
+---
+
+## Fáza 5 — Quality gates, golden tests a browser verification
+
+Priorita: P1  
+Závisí od: Fáza 2, Fáza 3
+
+### Test layers
+
+- [ ] Unit tests pre encoding, decoding, RNG streamy a normalization.
+- [ ] Property tests pre validné hodnoty a invarianty patternov.
+- [ ] Golden content fixtures pre hlavné genre/style kombinácie.
+- [ ] Regression tests pre každú opravu generator version.
+- [ ] Integration tests pre command, undo/redo a persistence.
+- [ ] Browser tests pre offline generation flow.
+- [ ] Offline audio render tests pre reprezentatívne generated patterns.
+
+### Povinné invariants
+
+- [ ] Žiadny note nemá neplatný pitch, duration, velocity alebo start.
+- [ ] Žiadny drum row nemá nesprávny počet krokov.
+- [ ] Žiadne metadata neodkazujú na neaktívny alebo neexistujúci hit.
+- [ ] Všetky generated melodic notes rešpektujú key/scale, ak je key zadaný.
+- [ ] Výstup má deterministický content hash.
+- [ ] Fallback je vždy validný a prehrateľný.
+- [ ] Offline render je konzistentný s realtime event plánom.
+
+### Performance gates
+
+- [ ] Zmerať generation latency pre 16/32/64 krokov.
+- [ ] Nastaviť maximálny synchronný čas pre UI preview.
+- [ ] Pri väčších generáciách presunúť výpočty do Worker boundary.
+- [ ] Zamedziť zbytočnej alokácii veľkých Markov matíc pri každom kliknutí.
+- [ ] Cacheovať immutable groove models a derived distributions.
+
+### Acceptance criteria
+
+- [ ] CI spúšťa correctness aj quality testy.
+- [ ] Zmena výsledku je buď očakávaná zmena engine version, alebo regresia.
+- [ ] Browser verification pokrýva accept, undo, export a reload.
+
+---
+
+## Fáza 6 — Provider boundary a budúce AI requesty
+
+Priorita: P2  
+Závisí od: Fáza 3, Fáza 5
+
+### Cieľ
+
+Pridať AI ako voliteľný zdroj návrhov bez závislosti lokálneho workflowu od siete.
+
+### Provider interface
+
+- [ ] Definovať provider-neutral interface:
+
+```ts
+interface GenerationProvider {
+  id: string;
+  version: string;
+  capabilities: readonly string[];
+  generate(
+    intent: IntentSpec,
+    context: GenerationContext,
+    signal?: AbortSignal,
+  ): Promise<GenerationProposal>;
+}
+```
+
+- [ ] Implementovať `LocalDeterministicProvider` ako default.
+- [ ] Implementovať remote provider iba za explicitným feature/config flagom.
+- [ ] Pridať timeout, cancellation a retry policy.
+- [ ] Pridať cache podľa canonical intent/context hash.
+- [ ] Neprenášať celý project, ak provider potrebuje iba relevantný context.
+- [ ] Pridať privacy boundary a používateľské upozornenie pred network requestom.
+
+### AI output handling
+
+- [ ] AI odpoveď validovať proti strict schema.
+- [ ] Zamietnuť neplatné notes, roly, pitch, duration a timing.
+- [ ] Spustiť deterministic repair pass.
+- [ ] Po repairi znovu spustiť quality metrics.
+- [ ] Pri neúspechu použiť local provider fallback.
+- [ ] Výsledok aplikovať až po user accept alebo explicitnom auto-accept nastavení.
+- [ ] Uložiť provider ID, model ID, model version a request recipe.
+
+### Acceptance criteria
+
+- [ ] Aplikácia funguje úplne bez AI provideru.
+- [ ] Neúspešný request nezablokuje audio ani projekt.
+- [ ] Remote návrh sa dá undo-núť ako jeden command.
+- [ ] Rovnaký AI návrh je dohľadateľný cez provenance, aj keď samotný provider nie je dostupný.
+
+---
+
+## Fáza 7 — Stabilizácia, migrácie a dokumentácia
+
+Priorita: P2  
+Závisí od: všetky predchádzajúce fázy
+
+- [ ] Pridať ADR pre IntentSpec a GenerationProvider boundary.
+- [ ] Pridať ADR pre engine versioning a golden fixture policy.
+- [ ] Zdokumentovať local generation semantics.
+- [ ] Zdokumentovať rozdiel medzi pattern-local timing a project groove.
+- [ ] Pridať migration path pre staré patterns bez recipe.
+- [ ] Otestovať staršie projekty po reload/export/import.
+- [ ] Pridať diagnostics panel pre:
+  - [ ] provider
+  - [ ] engine version
+  - [ ] seed
+  - [ ] content hash
+  - [ ] repair warnings
+  - [ ] quality metrics
+  - [ ] generation latency
+- [ ] Aktualizovať README a feature dokumentáciu.
+- [ ] Pridať release checklist pre zmenu generation algorithm.
+
+---
+
+## Prioritizovaný backlog
+
+### P0 — pred ďalším rozširovaním
+
+- [x] IE-001: opraviť melodic state encoding.
+- [x] IE-002: opraviť Markov smoothing a position transition.
+- [x] IE-003: vyriešiť dvojité aplikovanie swing.
+- [x] IE-004: zaviesť content canonicalization a hash.
+- [x] IE-005: pridať golden fixtures a correctness invariants.
+- [x] IE-006: oddeliť PRNG streamy podľa role/subsystému.
+
+### P1 — lokálna produkčná kvalita
+
+- [ ] IE-010: pad roles a odstránenie magic indexov.
+- [ ] IE-011: hybrid template + constrained variation engine.
+- [ ] IE-012: multi-bar phrase plan.
+- [ ] IE-013: role-aware melodic parts a track mapping.
+- [ ] IE-014: IntentSpec, GenerationPlan, GenerationResult.
+- [ ] IE-015: unified preview/apply pipeline.
+- [ ] IE-016: Assist metadata/notes correctness.
+- [ ] IE-017: metrics a deterministic repair pass.
+
+### P2 — AI readiness a hardening
+
+- [ ] IE-020: provider interface.
+- [ ] IE-021: remote AI proposal adapter.
+- [ ] IE-022: AI schema validation, repair a fallback.
+- [ ] IE-023: provenance, privacy, cancellation a cache.
+- [ ] IE-024: project migration a diagnostics UI.
+- [ ] IE-025: ADR, README a release checklist.
+
+---
+
+## Gate medzi fázami
+
+Do ďalšej fázy sa ide až vtedy, keď platí:
+
+- [ ] všetky testy predchádzajúcej fázy prechádzajú,
+- [ ] existuje krátky manuálny listen-check reprezentatívnych výstupov,
+- [ ] content hash a recipe sú stabilné,
+- [ ] nie je otvorený P0 correctness bug,
+- [ ] zmena je zdokumentovaná v changelogu alebo ADR podľa rozsahu.
+
+## Mimo scope tejto roadmapy
+
+- [ ] Tréning vlastného veľkého hudobného modelu.
+- [ ] AI requesty v realtime audio callbacku.
+- [ ] Povinná cloudová závislosť pre základné generovanie.
+- [ ] Nahradenie lokálneho engine remote AI providerom.
+- [ ] Neobmedzené promptovanie bez schema a quality kontroly.
+
+## Odporúčané poradie implementácie
+
+1. [ ] Fáza 0 — baseline fixtures a hash harness.
+2. [ ] Fáza 1 — correctness, determinism a swing ownership.
+3. [ ] Fáza 2 — lokálna hudobná kvalita a role-aware generovanie.
+4. [ ] Fáza 3 — IntentSpec a provider-neutral pipeline.
+5. [ ] Fáza 4 — UI/Assist integrácia.
+6. [ ] Fáza 5 — quality gates a browser verification.
+7. [ ] Fáza 6 — voliteľný AI provider.
+8. [ ] Fáza 7 — stabilizácia, migrácie a dokumentácia.
+
+## Definition of Done
+
+Intent Engine je pripravený na produkčné prototypovanie vtedy, keď:
+
+- [ ] offline local provider vie vytvoriť kvalitný pattern podľa IntentSpec,
+- [ ] výsledok je reprodukovateľný cez recipe a content hash,
+- [ ] output prejde validáciou, repair krokom a quality gates,
+- [ ] drums, bass, chords a lead majú jasné role a target mapping,
+- [ ] preview, apply, undo, redo, save, reload a export fungujú konzistentne,
+- [ ] AI provider sa dá pripojiť ako proposal source bez zmeny audio engine,
+- [ ] sieťový request môže zlyhať bez straty lokálneho workflowu,
+- [ ] engine version a provenance umožnia spätne vysvetliť každý generated pattern.

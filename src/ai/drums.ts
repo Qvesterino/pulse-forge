@@ -1,6 +1,18 @@
 import type { StepMeta } from '../project-model/types';
 import type { GenerateOptions, GrooveData, VelocityLevel } from './types';
 import { buildPadModel, generatePadSequence, dequantizeVelocity } from './markov';
+import { canRatchet, ghostMultiplier, inferPadRole, type PadRole } from './pad-roles';
+import { applyPhraseDynamics, buildPhrasePlan } from './phrase';
+import { enforceDrumAnchors, repairDrumRow } from './quality';
+
+export interface DrumRandomStreams {
+  /** Randomness for bar-level/ghost/fill variation. */
+  variation?: () => number;
+  /** Randomness for per-step performance metadata. */
+  meta?: () => number;
+  /** Explicit local swing amount; zero means project-level swing owns timing. */
+  swing?: number;
+}
 
 /**
  * Box-Muller transform: convert uniform random to Gaussian (normal distribution).
@@ -16,9 +28,7 @@ function gaussianRand(rand: () => number): number {
 
 /**
  * Apply groove swing to step meta: odd-numbered active steps get a positive
- * microtiming offset (delayed) proportional to groove.swing. This bakes the
- * swing feel into the pattern itself so it sounds correct even if the project
- * groove is set to 0.
+ * microtiming offset (delayed) proportional to groove.swing.
  */
 function applySwingToMeta(
   row: number[],
@@ -52,12 +62,18 @@ export function generateDrumPattern(
   groove: GrooveData,
   options: GenerateOptions,
   rand: () => number,
+  streams: DrumRandomStreams = {},
+  padNames?: readonly string[],
 ): { rows: number[][]; meta: Map<number, Map<number, StepMeta>> } {
   const rows: number[][] = [];
   const meta = new Map<number, Map<number, StepMeta>>();
   const bars = Math.ceil(options.stepCount / 16);
+  const variationRand = streams.variation ?? rand;
+  const metaRand = streams.meta ?? rand;
+  const phrasePlan = buildPhrasePlan(options.stepCount);
 
   for (const padIndex of groove.activePads) {
+    const role = inferPadRole(padNames?.[padIndex], padIndex);
     const padPatterns: number[][] = groove.patterns.map(p => (p[padIndex] as number[] | undefined) ?? new Array(16).fill(0) as number[]);
     const model = buildPadModel(padIndex, padPatterns);
 
@@ -70,9 +86,9 @@ export function generateDrumPattern(
       for (let step = 0; step < 16 && fullSequence.length < options.stepCount; step++) {
         let level = baseSequence[step];
         // Bar 2+: slight velocity variation to create evolution
-        if (bar > 0 && level > 0 && rand() < 0.15) {
+        if (bar > 0 && level > 0 && variationRand() < 0.15) {
           // 15% chance of velocity shift on later bars
-          level = Math.max(0, Math.min(3, level + (rand() < 0.5 ? 1 : -1)));
+          level = Math.max(0, Math.min(3, level + (variationRand() < 0.5 ? 1 : -1)));
         }
         fullSequence.push(level);
       }
@@ -89,19 +105,29 @@ export function generateDrumPattern(
     rows[padIndex] = velocities;
 
     // Add ghost notes
-    addGhostNotes(rows, padIndex, options, rand);
+    addGhostNotes(rows, padIndex, role, options, variationRand);
 
     // Add fill variation at phrase boundaries (every 4 bars)
-    addFillVariation(rows[padIndex], padIndex, options.ghostWeight, rand, 4);
+    addFillVariation(rows[padIndex], padIndex, options.ghostWeight, variationRand, 4);
+
+    // Keep genre/style anchors before phrase dynamics are applied.
+    enforceDrumAnchors(rows[padIndex], padPatterns, role);
+    applyPhraseDynamics(rows[padIndex], role, phrasePlan, variationRand);
 
     // Apply phrase-level velocity contour (2-bar sine envelope)
     applyPhraseContour(rows[padIndex], 0.15);
+    rows[padIndex] = repairDrumRow(rows[padIndex], options.stepCount);
 
     // Add step meta
-    const padMeta = addStepMeta(rows[padIndex], padIndex, options, rand);
+    const padMeta = addStepMeta(rows[padIndex], role, options, metaRand);
 
-    // Apply swing
-    applySwingToMeta(rows[padIndex], padMeta, groove.swing);
+    // Swing has one owner: project-level groove settings when requested,
+    // otherwise pattern-local metadata carries the groove feel.
+    applySwingToMeta(
+      rows[padIndex],
+      padMeta,
+      streams.swing ?? (options.applyGrooveSettings ? 0 : groove.swing),
+    );
 
     if (padMeta.size > 0) {
       meta.set(padIndex, padMeta);
@@ -115,6 +141,7 @@ export function generateDrumPattern(
 function addGhostNotes(
   rows: number[][],
   padIndex: number,
+  role: PadRole,
   options: GenerateOptions,
   rand: () => number,
 ): void {
@@ -136,9 +163,9 @@ function addGhostNotes(
 
     // Probability scales with number of active neighbors
     // 1 neighbor: base chance, 2+: higher chance
-    const probability = adjacentCount >= 2
-      ? options.ghostWeight * 0.5   // both sides or multiple neighbors → higher chance
-      : options.ghostWeight * 0.2;  // single neighbor → lower chance
+    const probability = (adjacentCount >= 2
+      ? options.ghostWeight * 0.5
+      : options.ghostWeight * 0.2) * ghostMultiplier(role);
 
     if (rand() < probability) {
       // Velocity slightly higher when more neighbors are active
@@ -151,7 +178,7 @@ function addGhostNotes(
 /** Add microtiming jitter and probability to step meta */
 function addStepMeta(
   row: number[],
-  padIndex: number,
+  role: PadRole,
   options: GenerateOptions,
   rand: () => number,
 ): Map<number, StepMeta> {
@@ -179,7 +206,7 @@ function addStepMeta(
     }
 
     // Occasional ratchet on hat/percussion (2-4 retriggers)
-    if ((padIndex === 8 || padIndex === 7 || padIndex === 14) && rand() < 0.04) {
+    if (canRatchet(role) && rand() < 0.04) {
       meta.ratchet = 2 + Math.floor(rand() * 3); // 2, 3, or 4
       hasChanges = true;
     }

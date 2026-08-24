@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useDoc, useServices } from "./context";
-import { deleteTrack, setMasterConfig, setReturnGain, setTrackParams, setTrackSend } from "../commands/commands";
+import { addToGroup, deleteTrack, removeFromGroup, setMasterConfig, setReturnGain, setTrackParams, setTrackSend } from "../commands/commands";
 import type { Track } from "../project-model/types";
 import { Slider } from "./controls";
 import { Meter } from "./Meter";
@@ -146,6 +146,24 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
       </div>
       <div className="channel-body">
         <div className="channel-controls">
+          {track.kind !== "group" && (
+            <label className="channel-bus-select">
+              <span className="slider-label">BUS</span>
+              <select
+                value={track.groupId ?? ""}
+                aria-label={`Bus for ${track.name}`}
+                onChange={(event) => {
+                  if (event.target.value) services.store.execute(addToGroup(doc, track.id, event.target.value));
+                  else services.store.execute(removeFromGroup(doc, track.id));
+                }}
+              >
+                <option value="">UNGROUPED</option>
+                {doc.tracks.filter((candidate) => candidate.kind === "group").map((group) => (
+                  <option key={group.id} value={group.id}>{group.name}</option>
+                ))}
+              </select>
+            </label>
+          )}
           <Slider
             label="VOL"
             value={track.gain}

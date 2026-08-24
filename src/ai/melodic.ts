@@ -1,5 +1,5 @@
 import type { NoteEvent, MusicalKey } from '../project-model/types';
-import type { GenerateOptions, MelodicNote } from './types';
+import type { GenerateOptions, MelodicNote, MelodicPatternData } from './types';
 import { STEP_TICKS } from '../project-model/types';
 import { parseKey, snapToScale, SCALE_INTERVALS } from '../project-model/scales';
 import { uid } from '../shared/ids';
@@ -13,16 +13,20 @@ const DURATION_COUNT = DURATIONS.length;
 const NUM_STATES = DEGREE_COUNT * DURATION_COUNT; // 32
 
 /** Encode (degree, duration) into a flat state index */
-function encodeMelodicState(degree: number, duration: number): number {
+export function encodeMelodicState(degree: number, duration: number): number {
+  const safeDegree = Number.isFinite(degree)
+    ? Math.max(DEGREE_MIN, Math.min(DEGREE_MAX, Math.trunc(degree)))
+    : DEGREE_MIN;
   const dIdx = DURATIONS.indexOf(duration);
-  if (dIdx < 0) return 0;
-  return (degree - DEGREE_MIN + 1) * DURATION_COUNT + dIdx;
+  const safeDurationIndex = dIdx >= 0 ? dIdx : 0;
+  return (safeDegree - DEGREE_MIN) * DURATION_COUNT + safeDurationIndex;
 }
 
 /** Decode state index back to (degree, duration) */
-function decodeMelodicState(index: number): { degree: number; duration: number } {
-  const dIdx = index % DURATION_COUNT;
-  const degree = Math.floor(index / DURATION_COUNT) + DEGREE_MIN;
+export function decodeMelodicState(index: number): { degree: number; duration: number } {
+  const safeIndex = Math.max(0, Math.min(NUM_STATES - 1, Math.trunc(index)));
+  const dIdx = safeIndex % DURATION_COUNT;
+  const degree = Math.floor(safeIndex / DURATION_COUNT) + DEGREE_MIN;
   return { degree, duration: DURATIONS[dIdx] };
 }
 
@@ -66,18 +70,23 @@ function buildMelodicModel(sequences: MelodicNote[][]): {
 /** Sample from a distribution vector with optional temperature control */
 function sampleDist(dist: Uint32Array, rand: () => number, temperature: number = 1): number {
   const invT = 1 / Math.max(0.01, temperature);
-  let total = 0;
+  const candidates: number[] = [];
   for (let i = 0; i < dist.length; i++) {
-    total += Math.pow(dist[i] + 0.1, invT);
+    if (dist[i] > 0) candidates.push(i);
   }
-  if (total === 0) return 0;
+  if (candidates.length === 0) return -1;
+
+  let total = 0;
+  for (const i of candidates) {
+    total += Math.pow(dist[i], invT);
+  }
 
   let r = rand() * total;
-  for (let i = 0; i < dist.length; i++) {
-    r -= Math.pow(dist[i] + 0.1, invT);
+  for (const i of candidates) {
+    r -= Math.pow(dist[i], invT);
     if (r <= 0) return i;
   }
-  return dist.length - 1;
+  return candidates[candidates.length - 1];
 }
 
 /** Convert a scale degree to a MIDI pitch given root and scale intervals */
@@ -147,24 +156,24 @@ function generateMelodicSequence(
 ): MelodicNote[] {
   const notes: MelodicNote[] = [];
 
-  // Laplace smoothing on initial distribution
-  const smoothedInitial = new Uint32Array(model.initial.length);
-  for (let i = 0; i < model.initial.length; i++) {
-    smoothedInitial[i] = model.initial[i] + 1;
-  }
-  let currentState = sampleDist(smoothedInitial, rand, temperature);
+  // Sample only observed states. The reference corpus is intentionally the
+  // complete support of the offline model; inventing probability for all 32
+  // states made rests and impossible durations appear too often.
+  const sampledInitial = sampleDist(model.initial, rand, temperature);
+  let currentState = sampledInitial >= 0 ? sampledInitial : encodeMelodicState(0, 1);
 
   for (let i = 0; i < length; i++) {
     const { degree, duration } = decodeMelodicState(currentState);
 
     // Skip consecutive rests — force a note instead
     if (degree < 0 && notes.length > 0 && notes[notes.length - 1].degree < 0) {
-      const nonRest = new Uint32Array(smoothedInitial.length);
+      const nonRest = new Uint32Array(model.initial.length);
       for (let s = 0; s < nonRest.length; s++) {
         const d = decodeMelodicState(s);
-        if (d.degree >= 0) nonRest[s] = smoothedInitial[s];
+        if (d.degree >= 0) nonRest[s] = model.initial[s];
       }
-      currentState = sampleDist(nonRest, rand, temperature);
+      const sampledNonRest = sampleDist(nonRest, rand, temperature);
+      currentState = sampledNonRest >= 0 ? sampledNonRest : encodeMelodicState(0, 1);
       const forced = decodeMelodicState(currentState);
       notes.push({ degree: forced.degree, duration: forced.duration, velocity: sampleVelocity(model.velocities, currentState, rand) });
       continue;
@@ -175,13 +184,8 @@ function generateMelodicSequence(
     if (i < length - 1) {
       const rowStart = currentState * NUM_STATES;
       const row = model.transitions.subarray(rowStart, rowStart + NUM_STATES);
-
-      // Laplace smoothing on transition row
-      const smoothed = new Uint32Array(row.length);
-      for (let s = 0; s < row.length; s++) {
-        smoothed[s] = row[s] + 1;
-      }
-      currentState = sampleDist(smoothed, rand, temperature);
+      const sampledNext = sampleDist(row, rand, temperature);
+      currentState = sampledNext >= 0 ? sampledNext : encodeMelodicState(degree, duration);
     }
   }
 
@@ -193,14 +197,17 @@ function generateMelodicSequence(
  * Generates content for ALL roles (bass, chord, lead) and returns combined NoteEvents.
  * kickRows: optional array of kick velocities per step — used for sidechain-aware bass placement.
  */
-export function generateMelodicPattern(
+export type MelodicParts = Record<MelodicPatternData['role'], NoteEvent[]>;
+
+export function generateMelodicParts(
   options: GenerateOptions,
   rand: () => number,
   key?: MusicalKey,
   kickRows?: number[][],
+  roleRandoms?: Partial<Record<MelodicPatternData['role'], () => number>>,
 ): NoteEvent[] {
   const patterns = MELODIC_BY_GENRE[options.genre];
-  if (!patterns || patterns.length === 0) return [];
+  if (!patterns || patterns.length === 0) return { bass: [], chord: [], lead: [] };
 
   // Parse the project key for scale snapping
   let root = 0;
@@ -213,12 +220,13 @@ export function generateMelodicPattern(
     }
   }
 
-  const allNotes: NoteEvent[] = [];
+  const parts: MelodicParts = { bass: [], chord: [], lead: [] };
   const maxSteps = options.stepCount;
   const bars = options.stepCount / 16;
 
   // Generate for each role in the genre
   for (const pattern of patterns) {
+    const roleRand = roleRandoms?.[pattern.role] ?? rand;
     // Build Markov model from reference sequences for this role
     const model = buildMelodicModel(pattern.sequences);
 
@@ -226,7 +234,7 @@ export function generateMelodicPattern(
     const notesPerBar = pattern.role === 'chord' ? 2 : pattern.role === 'bass' ? 4 : 3;
     const targetNotes = Math.ceil(notesPerBar * bars);
 
-    const sequence = generateMelodicSequence(model, targetNotes, rand, options.temperature);
+    const sequence = generateMelodicSequence(model, targetNotes, roleRand, options.temperature);
 
     // Convert to NoteEvents with tick-based timing
     let currentTick = 0;
@@ -252,12 +260,12 @@ export function generateMelodicPattern(
 
       if (note.degree >= 0) {
         if (isChord) {
-          const chordNotes = expandChord(note.degree, pattern.octaveOffset, root, intervals, note.velocity, rand);
+          const chordNotes = expandChord(note.degree, pattern.octaveOffset, root, intervals, note.velocity, roleRand);
           for (const cn of chordNotes) {
             let pitch = degreeToPitch(cn.degree, pattern.octaveOffset, root, intervals);
             if (key) pitch = snapToScale(pitch, key);
             pitch = Math.max(0, Math.min(127, pitch));
-            allNotes.push({
+            parts[pattern.role].push({
               id: uid('note'),
               pitch,
               start: currentTick,
@@ -278,7 +286,7 @@ export function generateMelodicPattern(
           let pitch = degreeToPitch(note.degree, pattern.octaveOffset, root, intervals);
           if (key) pitch = snapToScale(pitch, key);
           pitch = Math.max(0, Math.min(127, pitch));
-          allNotes.push({
+          parts[pattern.role].push({
             id: uid('note'),
             pitch,
             start: startTick,
@@ -292,5 +300,17 @@ export function generateMelodicPattern(
     }
   }
 
-  return allNotes;
+  return parts;
+}
+
+/** Backward-compatible flattened melodic output for callers that use one track. */
+export function generateMelodicPattern(
+  options: GenerateOptions,
+  rand: () => number,
+  key?: MusicalKey,
+  kickRows?: number[][],
+  roleRandoms?: Partial<Record<MelodicPatternData['role'], () => number>>,
+): NoteEvent[] {
+  const parts = generateMelodicParts(options, rand, key, kickRows, roleRandoms);
+  return [parts.bass, parts.chord, parts.lead].flat();
 }
