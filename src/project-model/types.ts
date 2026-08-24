@@ -62,6 +62,12 @@ export interface DrumPad {
    */
   sliceStart?: number;
   sliceEnd?: number;
+  /** Output-time fade in for a sliced pad, in seconds. */
+  sliceFadeIn?: number;
+  /** Output-time fade out for a sliced pad, in seconds. */
+  sliceFadeOut?: number;
+  /** Play the slice backwards without changing its pitch offset. */
+  sliceReverse?: boolean;
 }
 
 export interface FrozenState {

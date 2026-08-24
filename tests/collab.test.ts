@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import * as Y from "yjs";
 import { createProjectFromTemplate } from "../src/project-model/templates";
+import type { DrumTrack } from "../src/project-model/types";
 import { yDocToProject, projectToYDoc } from "../src/collab/YDocAdapter";
 import { YDocStore } from "../src/collab/YDocStore";
+import { chopSampleToPads, setPadParams } from "../src/commands/commands";
 
 describe("YDocAdapter — round-trip conversion", () => {
   it("converts ProjectDocument → Y.Doc → ProjectDocument (house template)", () => {
@@ -45,6 +47,40 @@ describe("YDocAdapter — round-trip conversion", () => {
       expect(restDrum.pads.length).toBe(drumTrack.pads.length);
       expect(restDrum.pads[0].name).toBe(drumTrack.pads[0].name);
     }
+  });
+
+  it("preserves project-local slice editing fields", () => {
+    const doc = createProjectFromTemplate("house");
+    const drum = doc.tracks.find((track): track is DrumTrack => track.kind === "drum")!;
+    const sliced = chopSampleToPads(doc, {
+      trackId: drum.id,
+      assetId: "user.break",
+      sourceName: "Break",
+      createPattern: false,
+      slices: [{ start: 0.1, end: 0.4, fadeIn: 0.02, fadeOut: 0.03, reverse: true }],
+    }).execute(doc);
+    const yDoc = new Y.Doc();
+    const yMap = yDoc.getMap("project");
+    projectToYDoc(sliced, yMap);
+    const restored = yDocToProject(yMap);
+    const restoredDrum = restored.tracks.find((track): track is DrumTrack => track.id === drum.id && track.kind === "drum")!;
+    expect(restoredDrum.pads[0]).toMatchObject({ sliceStart: 0.1, sliceEnd: 0.4, sliceFadeIn: 0.02, sliceFadeOut: 0.03, sliceReverse: true });
+  });
+
+  it("syncs slice field edits and clears optional fields in YDoc", () => {
+    const doc = createProjectFromTemplate("house");
+    const store = YDocStore.fromDocument(doc);
+    const drum = doc.tracks.find((track): track is DrumTrack => track.kind === "drum")!;
+    const pad = drum.pads[0];
+    store.execute(setPadParams(store.doc, pad.id, { sliceStart: 0.2, sliceEnd: 0.5, sliceFadeOut: 0.01, sliceReverse: true }));
+    const changedDrum = store.doc.tracks.find((track): track is DrumTrack => track.id === drum.id && track.kind === "drum")!;
+    expect(changedDrum.pads[0]).toMatchObject({ sliceStart: 0.2, sliceEnd: 0.5, sliceFadeOut: 0.01, sliceReverse: true });
+    store.execute(setPadParams(store.doc, pad.id, { assetId: "factory.kick.punch" }));
+    const clearedDrum = store.doc.tracks.find((track): track is DrumTrack => track.id === drum.id && track.kind === "drum")!;
+    const cleared = clearedDrum.pads[0];
+    expect(cleared.sliceStart).toBeUndefined();
+    expect(cleared.sliceEnd).toBeUndefined();
+    expect(cleared.sliceReverse).toBeUndefined();
   });
 
   it("preserves pattern rows and notes", () => {

@@ -21,6 +21,7 @@ import { InstallPrompt } from "./InstallPrompt";
 import {
   clearSteps,
   deleteNote,
+  deleteNotes,
   duplicatePattern,
   setActivePattern,
   setTrackParams,
@@ -119,6 +120,16 @@ export function App({
         }
       }
       if (typing) return;
+
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
+        if (track.kind === "instrument") {
+          const pattern = doc.patterns.find((candidate) => candidate.id === doc.activePatternId);
+          const notes = pattern?.notes?.[track.id] ?? [];
+          setSelectedNote(notes.length > 0 ? { trackId: track.id, noteIds: notes.map((note) => note.id) } : null);
+          event.preventDefault();
+        }
+        return;
+      }
 
       const matched = matchShortcut(event);
       if (!matched) return;
@@ -224,7 +235,11 @@ export function App({
         case "deleteNote":
           if (selectedNote) {
             event.preventDefault();
-            services.store.execute(deleteNote(doc, selectedNote.trackId, selectedNote.noteId));
+            services.store.execute(
+              selectedNote.noteIds.length === 1
+                ? deleteNote(doc, selectedNote.trackId, selectedNote.noteIds[0])
+                : deleteNotes(doc, selectedNote.trackId, selectedNote.noteIds),
+            );
             setSelectedNote(null);
           } else if (stepSelection) {
             event.preventDefault();
@@ -289,7 +304,15 @@ export function App({
         {bottomPanel === "arr" && <ArrangementPanel />}
         {bottomPanel === "mod" && <ModPanel />}
         {bottomPanel === "exp" && <ExportPanel />}
-        {bottomPanel === "midi" && <MidiPanel />}
+        {bottomPanel === "midi" && (
+          <MidiPanel
+            selectedTrackId={track.id}
+            selectedNote={selectedNote}
+            scaleSnap={scaleSnap}
+            onToggleScaleSnap={() => setScaleSnap((value) => !value)}
+            onClearSelection={() => setSelectedNote(null)}
+          />
+        )}
         {diagnosticsOpen && <Diagnostics />}
         <footer className="statusbar">
           <span>

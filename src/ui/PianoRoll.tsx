@@ -12,10 +12,13 @@ const PITCH_COUNT = PITCH_MAX - PITCH_MIN + 1;
 const ROW_HEIGHT = 14;
 const BLACK_KEYS = new Set([1, 3, 6, 8, 10]);
 
-export interface SelectedNote {
+export interface SelectedNotes {
   trackId: string;
-  noteId: string;
+  noteIds: string[];
 }
+
+/** Backwards-compatible alias for callers that still use the singular name. */
+export type SelectedNote = SelectedNotes;
 
 type DragState =
   | { mode: "move"; noteId: string; grabStep: number; basePitch: number; baseStart: number; dSteps: number; dPitch: number }
@@ -68,6 +71,14 @@ export function PianoRollTrack({
   const beginNoteDrag = (event: React.PointerEvent, note: NoteEvent) => {
     if (event.button !== 0) return;
     event.stopPropagation();
+    if (event.shiftKey) {
+      const currentIds = selectedNote?.trackId === track.id ? selectedNote.noteIds : [];
+      const nextIds = currentIds.includes(note.id)
+        ? currentIds.filter((id) => id !== note.id)
+        : [...currentIds, note.id];
+      onSelectNote(nextIds.length > 0 ? { trackId: track.id, noteIds: nextIds } : null);
+      return;
+    }
     try {
       event.currentTarget.setPointerCapture(event.pointerId);
     } catch {
@@ -77,7 +88,7 @@ export function PianoRollTrack({
     const noteStartSteps = note.start / STEP_TICKS;
     const noteDurSteps = note.duration / STEP_TICKS;
     const isEdge = stepF - noteStartSteps > Math.max(noteDurSteps - 0.35, 0.65);
-    onSelectNote({ trackId: track.id, noteId: note.id });
+    onSelectNote({ trackId: track.id, noteIds: [note.id] });
     if (isEdge) {
       const state: DragState = {
         mode: "resize",
@@ -238,7 +249,7 @@ export function PianoRollTrack({
                 durSteps = Math.max(1, drag.durSteps);
               }
             }
-            const selected = selectedNote?.trackId === track.id && selectedNote.noteId === note.id;
+            const selected = selectedNote?.trackId === track.id && selectedNote.noteIds.includes(note.id);
             const top = (PITCH_MAX - note.pitch - (drag && drag.noteId === note.id && drag.mode === "move" ? drag.dPitch : 0)) * ROW_HEIGHT;
             return (
               <div
@@ -257,7 +268,7 @@ export function PianoRollTrack({
                 onContextMenu={(event) => {
                   event.preventDefault();
                   services.store.execute(deleteNote(services.store.doc, track.id, note.id));
-                  if (selectedNote?.noteId === note.id) onSelectNote(null);
+                  if (selectedNote?.trackId === track.id && selectedNote.noteIds.includes(note.id)) onSelectNote(null);
                 }}
               />
             );

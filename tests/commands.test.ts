@@ -9,6 +9,7 @@ import {
   addEffect,
   addNote,
   clearPattern,
+  chopSampleToPads,
   createDrumTrack,
   sliceToPads,
   createInstrumentTrack,
@@ -27,6 +28,7 @@ import {
   moveNote,
   pastePattern,
   removeEffect,
+  resetPadSlice,
   removeLfo,
   renamePattern,
   renameScene,
@@ -707,7 +709,7 @@ describe("ProjectStore history", () => {
 
 describe("sliceToPads (chop beats)", () => {
   const doc = createDefaultProject();
-  const drum = doc.tracks.find((t) => t.kind === "drum")!;
+  const drum = getDrumTrack(doc);
 
   it("chops slices onto pads as [start, end) regions with names", () => {
     const cmd = sliceToPads(doc, drum.id, "user.break", [
@@ -736,5 +738,59 @@ describe("sliceToPads (chop beats)", () => {
   it("throws for a non-drum track", () => {
     const inst = doc.tracks.find((t) => t.kind === "instrument")!;
     expect(() => sliceToPads(doc, inst.id, "x", [{ start: 0, end: 1 }])).toThrow();
+  });
+
+  it("maps slice edits and creates a sequential pattern atomically", () => {
+    const before = doc;
+    const cmd = chopSampleToPads(doc, {
+      trackId: drum.id,
+      assetId: "user.break",
+      sourceName: "Break",
+      createPattern: true,
+      slices: [
+        { start: 0, end: 0.25, fadeIn: 0.01, fadeOut: 0.02, reverse: true },
+        { start: 0.25, end: 0.5 },
+      ],
+    });
+    const next = cmd.execute(doc);
+    const nextDrum = next.tracks.find((t) => t.id === drum.id && t.kind === "drum") as typeof drum;
+    const pattern = next.patterns.find((p) => p.id === next.activePatternId)!;
+    expect(nextDrum.pads[0]).toMatchObject({
+      assetId: "user.break",
+      sliceStart: 0,
+      sliceEnd: 0.25,
+      sliceFadeIn: 0.01,
+      sliceFadeOut: 0.02,
+      sliceReverse: true,
+    });
+    expect(pattern.stepCount).toBe(16);
+    expect(pattern.rows[nextDrum.pads[0].id][0]).toBe(0.9);
+    expect(pattern.rows[nextDrum.pads[1].id][1]).toBe(0.9);
+    expect(pattern.rows[nextDrum.pads[0].id][1]).toBe(0);
+    expect(cmd.undo(next)).toEqual(before);
+  });
+
+  it("maps only the available pad slots and leaves the rest of the kit unchanged", () => {
+    const cmd = chopSampleToPads(doc, {
+      trackId: drum.id,
+      assetId: "user.long",
+      sourceName: "Long",
+      createPattern: false,
+      slices: Array.from({ length: 20 }, (_, i) => ({ start: i, end: i + 0.5 })),
+    });
+    const next = cmd.execute(doc);
+    const pads = (next.tracks.find((t) => t.id === drum.id) as typeof drum).pads;
+    expect(pads).toHaveLength(16);
+    expect(pads[15].sliceStart).toBe(15);
+    expect(pads[0].sliceEnd).toBe(0.5);
+  });
+
+  it("resets only project-local slice editing", () => {
+    const sliced = sliceToPads(doc, drum.id, "user.break", [{ start: 0.1, end: 0.4 }], "Break").execute(doc);
+    const next = resetPadSlice(sliced, drum.pads[0].id).execute(sliced);
+    const pad = (next.tracks.find((t) => t.id === drum.id) as typeof drum).pads[0];
+    expect(pad.assetId).toBe("user.break");
+    expect(pad.sliceStart).toBeUndefined();
+    expect(pad.sliceEnd).toBeUndefined();
   });
 });

@@ -11,6 +11,7 @@ export function mockServices(doc?: ProjectDocument): Services {
   const project = doc ?? createProjectFromTemplate("house");
   const listeners = new Set<() => void>();
   const latency = new LatencyCalibrationController(null);
+  const libraryState = { favoriteAssets: [], recentAssets: [], favoritePresets: [], recentPresets: [] };
 
   return {
     core: {
@@ -23,6 +24,9 @@ export function mockServices(doc?: ProjectDocument): Services {
         trigger: vi.fn(),
         noteOn: vi.fn(),
         preview: vi.fn(),
+        previewSlice: vi.fn(),
+        previewAsset: vi.fn(),
+        stopPreview: vi.fn(),
         applyAutomation: vi.fn(),
         applySceneAutomationLane: vi.fn(),
         setSceneIntensity: vi.fn(),
@@ -42,7 +46,7 @@ export function mockServices(doc?: ProjectDocument): Services {
       bank: (() => { const m = new Map(); return { get size() { return m.size; }, get: vi.fn((id: string) => m.get(id)), has: vi.fn((id: string) => m.has(id)), add: vi.fn((id: string, b: unknown) => m.set(id, b)), remove: vi.fn((id: string) => m.delete(id)), names: vi.fn(() => []), entries: vi.fn(() => []) } as any; })(),
       repo: { save: vi.fn(), load: vi.fn(), list: vi.fn() } as any,
       presets: { save: vi.fn(), load: vi.fn(), list: vi.fn() } as any,
-      library: { get: vi.fn(() => ({ favoriteAssets: [], recentAssets: [], favoritePresets: [], recentPresets: [] })), subscribe: vi.fn(() => () => {}), toggleAssetFavorite: vi.fn(), togglePresetFavorite: vi.fn(), recordAsset: vi.fn(), recordPreset: vi.fn() } as any,
+      library: { get: vi.fn(() => libraryState), subscribe: vi.fn(() => () => {}), toggleAssetFavorite: vi.fn(), togglePresetFavorite: vi.fn(), recordAsset: vi.fn(), recordPreset: vi.fn() } as any,
       latency,
     } as any,
     store: {
@@ -65,6 +69,9 @@ export function mockServices(doc?: ProjectDocument): Services {
       ensureContext: vi.fn(),
       panic: vi.fn(),
       preview: vi.fn(),
+      previewSlice: vi.fn(),
+      previewAsset: vi.fn(),
+      stopPreview: vi.fn(),
       get context() {
         return { decodeAudioData: async (_b: ArrayBuffer) => ({ duration: 1, sampleRate: 44100, numberOfChannels: 1, getChannelData: () => new Float32Array(44100), length: 44100 }) };
       },
@@ -105,7 +112,7 @@ export function mockServices(doc?: ProjectDocument): Services {
     } as any,
     repo: { save: vi.fn(), load: vi.fn(), list: vi.fn() } as any,
     bank: (() => { const m = new Map(); return { get size() { return m.size; }, get: vi.fn((id: string) => m.get(id)), has: vi.fn((id: string) => m.has(id)), add: vi.fn((id: string, b: unknown) => m.set(id, b)), remove: vi.fn((id: string) => m.delete(id)), names: vi.fn(() => []), entries: vi.fn(() => []) } as any; })(),
-    library: { get: vi.fn(() => ({ favoriteAssets: [], recentAssets: [], favoritePresets: [], recentPresets: [] })), subscribe: vi.fn(() => () => {}), toggleAssetFavorite: vi.fn(), togglePresetFavorite: vi.fn(), recordAsset: vi.fn(), recordPreset: vi.fn() } as any,
+    library: { get: vi.fn(() => libraryState), subscribe: vi.fn(() => () => {}), toggleAssetFavorite: vi.fn(), togglePresetFavorite: vi.fn(), recordAsset: vi.fn(), recordPreset: vi.fn() } as any,
     playback: {
       mode: "pattern" as const,
       subscribe: vi.fn(() => () => {}),
@@ -116,6 +123,13 @@ export function mockServices(doc?: ProjectDocument): Services {
       setMode: vi.fn(),
       launchScene: vi.fn(),
     } as any,
+    midi: {
+      getDevices: vi.fn(() => []),
+      subscribeDevices: vi.fn(() => () => {}),
+    } as any,
+    midiOutput: {} as any,
+    midiClock: {} as any,
+    collab: null,
     flushSave: vi.fn(),
     closeProject: vi.fn(),
     frozenAudio: { save: vi.fn(async () => {}), load: vi.fn(async () => undefined), remove: vi.fn(async () => {}), list: vi.fn(async () => []) } as any,

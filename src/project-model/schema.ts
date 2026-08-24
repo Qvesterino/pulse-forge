@@ -390,6 +390,49 @@ export function normalizeProject(doc: ProjectDocument): ProjectDocument {
   const tracks = next.tracks.map((track): DrumTrack | InstrumentTrack | import("../project-model/types").GroupTrack => {
     if (track.kind === "drum") {
       let t: DrumTrack = track;
+      const pads = t.pads.map((pad) => {
+        let nextPad = pad;
+        let padChanged = false;
+        const cleanNonNegative = (value: unknown): number | undefined =>
+          typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
+        const sliceStart = cleanNonNegative(pad.sliceStart);
+        const sliceEnd = cleanNonNegative(pad.sliceEnd);
+        const fadeIn = cleanNonNegative(pad.sliceFadeIn) ?? 0;
+        const fadeOut = cleanNonNegative(pad.sliceFadeOut) ?? 0;
+        const hasSliceConfig = pad.sliceStart !== undefined || pad.sliceEnd !== undefined ||
+          pad.sliceFadeIn !== undefined || pad.sliceFadeOut !== undefined || pad.sliceReverse !== undefined;
+        if (!hasSliceConfig) return pad;
+        if (sliceStart !== pad.sliceStart || sliceEnd !== pad.sliceEnd) padChanged = true;
+        if (fadeIn !== (pad.sliceFadeIn ?? 0) || fadeOut !== (pad.sliceFadeOut ?? 0)) padChanged = true;
+        if (pad.sliceReverse !== undefined && typeof pad.sliceReverse !== "boolean") padChanged = true;
+        const invalidBound = (pad.sliceStart !== undefined && sliceStart === undefined) ||
+          (pad.sliceEnd !== undefined && sliceEnd === undefined);
+        if (invalidBound || (sliceStart !== undefined && sliceEnd !== undefined && sliceEnd <= sliceStart)) {
+          nextPad = {
+            ...nextPad,
+            sliceFadeIn: fadeIn,
+            sliceFadeOut: fadeOut,
+            sliceReverse: typeof pad.sliceReverse === "boolean" ? pad.sliceReverse : false,
+          };
+          delete nextPad.sliceStart;
+          delete nextPad.sliceEnd;
+          padChanged = true;
+        } else if (padChanged) {
+          nextPad = {
+            ...nextPad,
+            sliceStart,
+            sliceEnd,
+            sliceFadeIn: fadeIn,
+            sliceFadeOut: fadeOut,
+            sliceReverse: typeof pad.sliceReverse === "boolean" ? pad.sliceReverse : false,
+          };
+        }
+        return padChanged ? nextPad : pad;
+      });
+      if (pads.some((pad, index) => pad !== t.pads[index])) {
+        t = { ...t, pads };
+        tracksChanged = true;
+      }
       if (t.effects === undefined) {
         t = { ...t, effects: [] as EffectInstance[] } as DrumTrack;
         tracksChanged = true;

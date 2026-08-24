@@ -47,6 +47,20 @@ import { hashString, mulberry32 } from "../shared/rng";
 import { snapToScale } from "../project-model/scales";
 import { generatePattern, resolveGroove } from "../ai/generator";
 import type { GenerateOptions } from "../ai/types";
+import {
+  applyScaleOption,
+  createChordNotes,
+  doubleNotes,
+  gateNotes,
+  halveNotes,
+  humanizeNotes,
+  invertNotes,
+  randomizeVelocity,
+  reverseNotes,
+  snapNotesToScale,
+  strumNotes,
+} from "../midi/creative";
+import type { MidiCreativeOperation } from "../midi/creative";
 
 function snapshot(type: string, label: string, prev: ProjectDocument, next: ProjectDocument): Command {
   return {
@@ -131,11 +145,28 @@ export function setStepVelocityCommand(
   };
 }
 
-type PadParams = Partial<Pick<DrumPad, "name" | "assetId" | "gain" | "pan" | "pitch" | "mute" | "solo" | "chokeGroup">>;
+type PadParams = Partial<Pick<DrumPad,
+  | "name"
+  | "assetId"
+  | "gain"
+  | "pan"
+  | "pitch"
+  | "mute"
+  | "solo"
+  | "chokeGroup"
+  | "sliceStart"
+  | "sliceEnd"
+  | "sliceFadeIn"
+  | "sliceFadeOut"
+  | "sliceReverse"
+>>;
 
 export interface PadSlice {
   start: number;
   end: number;
+  fadeIn?: number;
+  fadeOut?: number;
+  reverse?: boolean;
 }
 
 /**
@@ -166,6 +197,9 @@ export function sliceToPads(
             assetId,
             sliceStart: slice.start,
             sliceEnd: slice.end,
+            sliceFadeIn: slice.fadeIn ?? 0,
+            sliceFadeOut: slice.fadeOut ?? 0,
+            sliceReverse: slice.reverse ?? false,
             name: `${sourceName} ${String(index + 1).padStart(2, "0")}`,
           };
         }),
@@ -177,9 +211,22 @@ export function sliceToPads(
 
 export function setPadParams(doc: ProjectDocument, padId: string, params: PadParams): Command {
   const track = doc.tracks.find((t): t is DrumTrack => t.kind === "drum");
-  const prev = { ...track?.pads.find((p) => p.id === padId) } as PadParams;
+  const current = track?.pads.find((p) => p.id === padId);
+  const prev = { ...current } as PadParams;
   const apply = (d: ProjectDocument, values: PadParams): ProjectDocument =>
-    withPad(d, padId, (pad) => ({ ...pad, ...values }));
+    withPad(d, padId, (pad) => {
+      const next = { ...pad, ...values };
+      // Assigning a different source must not leave the old source's region
+      // attached to the new asset.
+      if (values.assetId !== undefined && values.assetId !== pad.assetId) {
+        delete next.sliceStart;
+        delete next.sliceEnd;
+        delete next.sliceFadeIn;
+        delete next.sliceFadeOut;
+        delete next.sliceReverse;
+      }
+      return next;
+    });
   return {
     type: "setPadParams",
     label: `Edit pad ${padId}`,
@@ -193,7 +240,12 @@ export function setPadParams(doc: ProjectDocument, padId: string, params: PadPar
           const pads = t.get("pads") as any;
           for (let j = 0; j < pads.length; j++) {
             if (pads.get(j).get("id") === padId) {
-              for (const [k, v] of Object.entries(params)) { if (v !== undefined) pads.get(j).set(k, v); }
+              const target = pads.get(j);
+              const sourceChanged = params.assetId !== undefined && params.assetId !== target.get("assetId");
+              for (const [k, v] of Object.entries(params)) { if (v !== undefined) target.set(k, v); }
+              if (sourceChanged) {
+                for (const key of ["sliceStart", "sliceEnd", "sliceFadeIn", "sliceFadeOut", "sliceReverse"]) target.delete(key);
+              }
               break;
             }
           }
@@ -209,7 +261,9 @@ export function setPadParams(doc: ProjectDocument, padId: string, params: PadPar
           const pads = t.get("pads") as any;
           for (let j = 0; j < pads.length; j++) {
             if (pads.get(j).get("id") === padId) {
-              for (const [k, v] of Object.entries(prev)) { if (v !== undefined) pads.get(j).set(k, v); }
+              const target = pads.get(j);
+              for (const key of ["sliceStart", "sliceEnd", "sliceFadeIn", "sliceFadeOut", "sliceReverse"]) target.delete(key);
+              for (const [k, v] of Object.entries(prev)) { if (v !== undefined) target.set(k, v); }
               break;
             }
           }
@@ -866,6 +920,148 @@ export function deleteNote(doc: ProjectDocument, trackId: string, noteId: string
     label: "Delete note",
     execute: () => next,
     undo: (d) => withTrackNotes(d, trackId, () => prev),
+  };
+}
+
+export function deleteNotes(doc: ProjectDocument, trackId: string, noteIds: string[]): Command {
+  const ids = new Set(noteIds);
+  const prev = activeTrackNotes(doc, trackId);
+  const next = withTrackNotes(doc, trackId, (notes) => notes.filter((note) => !ids.has(note.id)));
+  return {
+    type: "deleteNotes",
+    label: `Delete ${ids.size} notes`,
+    execute: () => next,
+    undo: (d) => withTrackNotes(d, trackId, () => prev),
+  };
+}
+
+export interface ApplyMidiCreativeOptions {
+  trackId: string;
+  noteIds?: string[];
+  operation: MidiCreativeOperation;
+}
+
+function midiCreativeLabel(operation: MidiCreativeOperation): string {
+  switch (operation.kind) {
+    case "snap-scale": return "Snap notes to scale";
+    case "chord": return "Generate chords";
+    case "reverse": return "Reverse notes";
+    case "invert": return "Invert notes";
+    case "halve": return "Halve note timing";
+    case "double": return "Double note timing";
+    case "strum": return "Strum notes";
+    case "gate": return "Set note gate";
+    case "humanize": return "Humanize notes";
+    case "velocity-randomize": return "Randomize note velocity";
+  }
+}
+
+/** Apply one materialized MIDI creativity operation as one undoable edit. */
+export function applyMidiCreativeTool(doc: ProjectDocument, options: ApplyMidiCreativeOptions): Command {
+  const track = doc.tracks.find((candidate): candidate is InstrumentTrack =>
+    candidate.kind === "instrument" && candidate.id === options.trackId,
+  );
+  if (!track) throw new Error(`Instrument track ${options.trackId} not found`);
+  const pattern = doc.patterns.find((candidate) => candidate.id === doc.activePatternId);
+  if (!pattern) throw new Error(`Active pattern ${doc.activePatternId} not found`);
+  const notes = pattern.notes?.[track.id] ?? [];
+  const requestedIds = options.noteIds && options.noteIds.length > 0 ? new Set(options.noteIds) : null;
+  const target = requestedIds ? notes.filter((note) => requestedIds.has(note.id)) : notes;
+  if (target.length === 0) throw new Error("Select at least one note first");
+
+  const patternTicks = pattern.stepCount * STEP_TICKS;
+  let transformed: NoteEvent[];
+  const operation = options.operation;
+  switch (operation.kind) {
+    case "snap-scale":
+      transformed = snapNotesToScale(target, operation.key, patternTicks);
+      break;
+    case "chord":
+      transformed = target.flatMap((note) =>
+        createChordNotes(note, operation.options, patternTicks, (index) => uid(`note-${index}`)),
+      );
+      break;
+    case "reverse":
+      transformed = applyScaleOption(
+        reverseNotes(target, patternTicks),
+        operation.key,
+        operation.scaleLock,
+        patternTicks,
+      );
+      break;
+    case "invert":
+      transformed = applyScaleOption(
+        invertNotes(target, patternTicks),
+        operation.key,
+        operation.scaleLock,
+        patternTicks,
+      );
+      break;
+    case "halve":
+      transformed = applyScaleOption(
+        halveNotes(target, patternTicks),
+        operation.key,
+        operation.scaleLock,
+        patternTicks,
+      );
+      break;
+    case "double":
+      transformed = applyScaleOption(
+        doubleNotes(target, patternTicks),
+        operation.key,
+        operation.scaleLock,
+        patternTicks,
+      );
+      break;
+    case "strum":
+      transformed = applyScaleOption(
+        strumNotes(target, operation.options, patternTicks),
+        operation.key,
+        operation.scaleLock,
+        patternTicks,
+      );
+      break;
+    case "gate":
+      transformed = applyScaleOption(
+        gateNotes(target, operation.gate, patternTicks),
+        operation.key,
+        operation.scaleLock,
+        patternTicks,
+      );
+      break;
+    case "humanize":
+      transformed = applyScaleOption(
+        humanizeNotes(target, operation.options, patternTicks),
+        operation.key,
+        operation.scaleLock,
+        patternTicks,
+      );
+      break;
+    case "velocity-randomize":
+      transformed = applyScaleOption(
+        randomizeVelocity(target, operation.options, patternTicks),
+        operation.key,
+        operation.scaleLock,
+        patternTicks,
+      );
+      break;
+  }
+
+  const nextNotes = [...notes.filter((note) => !requestedIds || !requestedIds.has(note.id)), ...transformed]
+    .sort((a, b) => a.start - b.start || a.pitch - b.pitch || a.id.localeCompare(b.id));
+  const next: ProjectDocument = {
+    ...doc,
+    patterns: doc.patterns.map((candidate) =>
+      candidate.id === pattern.id
+        ? { ...candidate, notes: { ...(candidate.notes ?? {}), [track.id]: nextNotes } }
+        : candidate,
+    ),
+  };
+  return {
+    type: `applyMidiCreativeTool:${operation.kind}`,
+    label: midiCreativeLabel(operation),
+    execute: () => next,
+    undo: () => doc,
   };
 }
 
@@ -1906,6 +2102,63 @@ function applyRowsPatch(doc: ProjectDocument, patternId: string, patch: import("
       };
     }),
   };
+}
+
+/** Remove the project-local slice edit from a pad while keeping its asset. */
+export function resetPadSlice(doc: ProjectDocument, padId: string): Command {
+  const pad = doc.tracks.flatMap((t) => t.kind === "drum" ? t.pads : []).find((p) => p.id === padId);
+  if (!pad) throw new Error(`Pad ${padId} not found`);
+  const next = withPad(doc, padId, (current) => {
+    const clean = { ...current };
+    delete clean.sliceStart;
+    delete clean.sliceEnd;
+    delete clean.sliceFadeIn;
+    delete clean.sliceFadeOut;
+    delete clean.sliceReverse;
+    return clean;
+  });
+  return snapshot("resetPadSlice", `Reset slice on ${pad.name}`, doc, next);
+}
+
+export interface ChopSampleOptions {
+  trackId: string;
+  assetId: string;
+  sourceName: string;
+  slices: PadSlice[];
+  createPattern: boolean;
+}
+
+/** Atomically map a source's first 16 slices and optionally create a pattern. */
+export function chopSampleToPads(doc: ProjectDocument, options: ChopSampleOptions): Command {
+  const track = doc.tracks.find((t): t is DrumTrack => t.id === options.trackId && t.kind === "drum");
+  if (!track) throw new Error(`Drum track ${options.trackId} not found`);
+  const fit = options.slices.slice(0, track.pads.length);
+  let next = sliceToPads(doc, options.trackId, options.assetId, fit, options.sourceName).execute(doc);
+
+  if (options.createPattern) {
+    const pattern = createPatternForDoc(next, `${options.sourceName} Chop`, 16);
+    const rows = { ...pattern.rows };
+    fit.forEach((_, index) => {
+      const pad = track.pads[index];
+      if (!pad) return;
+      const row = [...(rows[pad.id] ?? new Array<number>(16).fill(0))];
+      row[index] = 0.9;
+      rows[pad.id] = row;
+    });
+    const choppedPattern = { ...pattern, rows };
+    next = {
+      ...next,
+      patterns: [...next.patterns, choppedPattern],
+      activePatternId: choppedPattern.id,
+    };
+  }
+
+  return snapshot(
+    "chopSampleToPads",
+    options.createPattern ? `Chop ${fit.length} slices + create pattern` : `Chop ${fit.length} slices to pads`,
+    doc,
+    next,
+  );
 }
 
 function assistCommand(type: string, label: string, doc: ProjectDocument, patternId: string, patch: import("../assist/patternOps").RowsPatch): Command {

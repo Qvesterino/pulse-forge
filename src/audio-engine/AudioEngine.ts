@@ -118,6 +118,56 @@ interface Voice {
   chokeGroup: number | null;
 }
 
+interface PreviewVoice {
+  source: AudioBufferSourceNode;
+  gain: GainNode;
+}
+
+export interface ResolvedSlicePlayback {
+  start: number;
+  end: number;
+  duration: number;
+  offset: number;
+  rate: number;
+  fadeIn: number;
+  fadeOut: number;
+  reverse: boolean;
+}
+
+export function resolveSlicePlayback(pad: DrumPad, bufferDuration: number): ResolvedSlicePlayback {
+  const duration = Math.max(0.001, Number.isFinite(bufferDuration) ? bufferDuration : 0.001);
+  let start = Number.isFinite(pad.sliceStart) ? Math.max(0, Math.min(pad.sliceStart!, duration)) : 0;
+  let end = Number.isFinite(pad.sliceEnd) ? Math.max(0, Math.min(pad.sliceEnd!, duration)) : duration;
+  if (end <= start + 0.001) {
+    start = 0;
+    end = duration;
+  }
+  const reverse = pad.sliceReverse === true;
+  const pitch = Number.isFinite(pad.pitch) ? pad.pitch : 0;
+  const rateMagnitude = Math.pow(2, pitch / 12);
+  const rate = (reverse ? -1 : 1) * rateMagnitude;
+  const outputDuration = Math.max(0.001, end - start);
+  let fadeIn = Number.isFinite(pad.sliceFadeIn) ? Math.max(0, pad.sliceFadeIn!) : 0;
+  let fadeOut = Number.isFinite(pad.sliceFadeOut) ? Math.max(0, pad.sliceFadeOut!) : 0;
+  fadeIn = Math.min(fadeIn, outputDuration);
+  fadeOut = Math.min(fadeOut, outputDuration);
+  if (fadeIn + fadeOut > outputDuration) {
+    const scale = outputDuration / Math.max(0.001, fadeIn + fadeOut);
+    fadeIn *= scale;
+    fadeOut *= scale;
+  }
+  return {
+    start,
+    end,
+    duration: outputDuration,
+    offset: reverse ? end : start,
+    rate,
+    fadeIn,
+    fadeOut,
+    reverse,
+  };
+}
+
 export class AudioEngine {
   private ctx: BaseAudioContext | null = null;
   private master: GainNode | null = null;
@@ -141,6 +191,7 @@ export class AudioEngine {
   private macroCache = new Map<string, { gain: number; pan: number }>();
   private currentSceneIntensity = 0.7;
   private voices = new Set<Voice>();
+  private previewVoices = new Set<PreviewVoice>();
   private missedAssets = new Set<string>();
   private levelBuf = new Float32Array(1024);
   /**
@@ -1097,9 +1148,17 @@ export class AudioEngine {
 
     const source = ctx.createBufferSource();
     source.buffer = buffer;
-    source.playbackRate.value = Math.pow(2, pad.pitch / 12);
+    const slice = resolveSlicePlayback(pad, buffer.duration);
+    source.playbackRate.value = slice.rate;
     const gain = ctx.createGain();
-    gain.gain.value = velocity * pad.gain;
+    const peak = Math.max(0, velocity * pad.gain);
+    const endWhen = when + slice.duration;
+    gain.gain.setValueAtTime(slice.fadeIn > 0 ? 0 : peak, when);
+    if (slice.fadeIn > 0) gain.gain.linearRampToValueAtTime(peak, when + slice.fadeIn);
+    if (slice.fadeOut > 0) {
+      gain.gain.setValueAtTime(peak, Math.max(when + slice.fadeIn, endWhen - slice.fadeOut));
+      gain.gain.linearRampToValueAtTime(0, endWhen);
+    }
     const panner = ctx.createStereoPanner();
     panner.pan.value = pad.pan;
     source.connect(gain).connect(panner).connect(trackNodes.input);
@@ -1112,16 +1171,68 @@ export class AudioEngine {
       panner.disconnect();
       source.disconnect();
     };
-    // Chop-beats: play only the pad's slice region (native offset+duration,
-    // zero copies). Values are clamped defensively against tampered docs.
-    const sliceStart = pad.sliceStart != null ? Math.max(0, Math.min(pad.sliceStart, buffer.duration)) : 0;
-    const sliceEnd = pad.sliceEnd != null ? Math.max(sliceStart, Math.min(pad.sliceEnd, buffer.duration)) : undefined;
-    source.start(when, sliceStart, sliceEnd != null ? Math.max(0.001, sliceEnd - sliceStart) : undefined);
+    // Slices use the native buffer offset/duration path, so no decoded buffer
+    // copies are needed and realtime/export share the exact same playback.
+    source.start(when, slice.offset, slice.duration);
   }
 
   preview(pad: DrumPad, trackId: string): void {
     this.ensureContext();
     this.trigger(trackId, pad, this.currentTime + 0.005, 1);
+  }
+
+  /** Preview a source region directly through the master bus. */
+  previewSlice(pad: DrumPad, loop = false): void {
+    this.ensureContext();
+    this.stopPreview();
+    const ctx = this.ctx;
+    const buffer = this.bank?.get(pad.assetId);
+    if (!ctx || !this.master || !buffer) {
+      if (pad.assetId) this.missedAssets.add(pad.assetId);
+      return;
+    }
+    const slice = resolveSlicePlayback(pad, buffer.duration);
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.playbackRate.value = slice.rate;
+    if (loop) {
+      source.loop = true;
+      source.loopStart = slice.start;
+      source.loopEnd = slice.end;
+    }
+    const gain = ctx.createGain();
+    const peak = Math.max(0, pad.gain);
+    const when = ctx.currentTime + 0.005;
+    const endWhen = when + slice.duration;
+    gain.gain.setValueAtTime(slice.fadeIn > 0 ? 0 : peak, when);
+    if (slice.fadeIn > 0) gain.gain.linearRampToValueAtTime(peak, when + slice.fadeIn);
+    if (!loop && slice.fadeOut > 0) {
+      gain.gain.setValueAtTime(peak, Math.max(when + slice.fadeIn, endWhen - slice.fadeOut));
+      gain.gain.linearRampToValueAtTime(0, endWhen);
+    }
+    source.connect(gain).connect(this.master);
+    const voice: PreviewVoice = { source, gain };
+    this.previewVoices.add(voice);
+    source.onended = () => {
+      this.previewVoices.delete(voice);
+      gain.disconnect();
+      source.disconnect();
+    };
+    source.start(when, slice.offset, loop ? undefined : slice.duration);
+  }
+
+  stopPreview(): void {
+    const ctx = this.ctx;
+    for (const voice of this.previewVoices) {
+      try {
+        voice.source.stop(ctx ? ctx.currentTime + 0.005 : 0);
+      } catch {
+        // Already stopped.
+      }
+      try { voice.gain.disconnect(); } catch { /* already disconnected */ }
+      try { voice.source.disconnect(); } catch { /* already disconnected */ }
+    }
+    this.previewVoices.clear();
   }
 
   /** Preview a factory sample directly through the master bus (no track needed). */
@@ -1165,6 +1276,7 @@ export class AudioEngine {
   panic(): void {
     const ctx = this.ctx;
     if (!ctx) return;
+    this.stopPreview();
     const now = ctx.currentTime;
     for (const voice of this.voices) {
       voice.gain.gain.cancelScheduledValues(now);

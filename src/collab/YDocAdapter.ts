@@ -112,6 +112,11 @@ function yMapToPad(m: unknown): DrumPad {
     mute: map.get("mute") as boolean,
     solo: map.get("solo") as boolean,
     chokeGroup: map.get("chokeGroup") as number | null,
+    sliceStart: map.has("sliceStart") ? map.get("sliceStart") as number : undefined,
+    sliceEnd: map.has("sliceEnd") ? map.get("sliceEnd") as number : undefined,
+    sliceFadeIn: map.has("sliceFadeIn") ? map.get("sliceFadeIn") as number : undefined,
+    sliceFadeOut: map.has("sliceFadeOut") ? map.get("sliceFadeOut") as number : undefined,
+    sliceReverse: map.has("sliceReverse") ? map.get("sliceReverse") as boolean : undefined,
   };
 }
 
@@ -634,6 +639,11 @@ function padToYMap(pad: DrumPad): Y.Map<unknown> {
   m.set("mute", pad.mute);
   m.set("solo", pad.solo);
   m.set("chokeGroup", pad.chokeGroup);
+  if (pad.sliceStart !== undefined) m.set("sliceStart", pad.sliceStart);
+  if (pad.sliceEnd !== undefined) m.set("sliceEnd", pad.sliceEnd);
+  if (pad.sliceFadeIn !== undefined) m.set("sliceFadeIn", pad.sliceFadeIn);
+  if (pad.sliceFadeOut !== undefined) m.set("sliceFadeOut", pad.sliceFadeOut);
+  if (pad.sliceReverse !== undefined) m.set("sliceReverse", pad.sliceReverse);
   return m;
 }
 

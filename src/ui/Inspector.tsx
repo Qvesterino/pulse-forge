@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useDoc, useServices } from "./context";
 import { SliceLab } from "./SliceLab";
-import { setPadParams, setTrackParams, setInstrumentParam, setInstrumentSample } from "../commands/commands";
+import { resetPadSlice, setPadParams, setTrackParams, setInstrumentParam, setInstrumentSample } from "../commands/commands";
 import type { InstrumentKind, Track } from "../project-model/types";
 import { FACTORY_ASSETS } from "../sample-library/manifest";
 import { INSTRUMENT_DEFS } from "../instruments/registry";
@@ -149,6 +149,67 @@ export function Inspector({ track, selectedPadId }: { track: Track; selectedPadI
         onSelect={(assetId) => services.store.execute(setPadParams(doc, pad.id, { assetId }))}
         showDropZone
       />
+
+      {(pad.sliceStart !== undefined || pad.sliceEnd !== undefined) && (
+        <div className="pad-slice-controls">
+          <h3 className="inspector-subtitle">SLICE</h3>
+          <label className="slice-number">
+            <span>START</span>
+            <input
+              type="number"
+              min={0}
+              max={services.bank.get(pad.assetId)?.duration ?? 9999}
+              step={0.001}
+              value={(pad.sliceStart ?? 0).toFixed(3)}
+              onChange={(event) => services.store.execute(setPadParams(doc, pad.id, { sliceStart: Math.max(0, Number(event.target.value) || 0) }))}
+            />
+          </label>
+          <label className="slice-number">
+            <span>END</span>
+            <input
+              type="number"
+              min={(pad.sliceStart ?? 0) + 0.001}
+              max={services.bank.get(pad.assetId)?.duration ?? 9999}
+              step={0.001}
+              value={(pad.sliceEnd ?? services.bank.get(pad.assetId)?.duration ?? 0).toFixed(3)}
+              onChange={(event) => services.store.execute(setPadParams(doc, pad.id, { sliceEnd: Math.max((pad.sliceStart ?? 0) + 0.001, Number(event.target.value) || 0) }))}
+            />
+          </label>
+          <Slider
+            compact
+            label="Fade In"
+            value={pad.sliceFadeIn ?? 0}
+            min={0}
+            max={Math.max(0.001, (pad.sliceEnd ?? services.bank.get(pad.assetId)?.duration ?? 1) - (pad.sliceStart ?? 0))}
+            defaultValue={0}
+            format={(v) => `${v.toFixed(3)} s`}
+            onCommit={(value) => services.store.execute(setPadParams(doc, pad.id, { sliceFadeIn: value }))}
+          />
+          <Slider
+            compact
+            label="Fade Out"
+            value={pad.sliceFadeOut ?? 0}
+            min={0}
+            max={Math.max(0.001, (pad.sliceEnd ?? services.bank.get(pad.assetId)?.duration ?? 1) - (pad.sliceStart ?? 0))}
+            defaultValue={0}
+            format={(v) => `${v.toFixed(3)} s`}
+            onCommit={(value) => services.store.execute(setPadParams(doc, pad.id, { sliceFadeOut: value }))}
+          />
+          <div className="pad-toggles">
+            <button
+              type="button"
+              className={`btn btn-small${pad.sliceReverse ? " active" : ""}`}
+              aria-pressed={pad.sliceReverse === true}
+              onClick={() => services.store.execute(setPadParams(doc, pad.id, { sliceReverse: !pad.sliceReverse }))}
+            >
+              REVERSE
+            </button>
+            <button type="button" className="btn btn-small" onClick={() => services.store.execute(resetPadSlice(doc, pad.id))}>
+              RESET
+            </button>
+          </div>
+        </div>
+      )}
 
       <Slider
         label="Gain"
