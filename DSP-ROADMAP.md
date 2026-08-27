@@ -56,7 +56,7 @@ Kvalitatívne tier-y:
 | Efekt | Implementácia | Tier |
 |---|---|---|
 | EQ (6-pásmové) | 6× `BiquadFilterNode` | C |
-| Compressor | `DynamicsCompressorNode` + makeup + mix; žiadny sidechain input, žiadne GR metering | C |
+| Compressor | **AudioWorklet** *(2026-08-27)* — per-sample PEAK/RMS detektor (stereo-link), soft-knee gain computer, attack/release smoothing, **sidechain input + 2× one-pole SC HPF (12 dB/oct, len detektor)**, makeup+mix (parallel), GR metering; fallback = natívny DCN graf (degraded „reduced") | A |
 | Saturation | `WaveShaper` tanh (2x oversample) + tone LP | B |
 | Distortion | `WaveShaper` kubický soft-clip (2x) + tone | B |
 | Clipper | `WaveShaper` (4x), hard clip / tanh + ceiling + softness | B |
@@ -102,11 +102,11 @@ Kvalitatívne tier-y:
 ### 1.5 Metering (`src/audio-engine/metering.ts`)
 
 - [x] Peak / RMS / dBFS, stereo korelácia, mono-loss, L/R imbalance, peak-hold
-- [x] LUFS — **aproximácia**: plochá energia s −0.691 offsetom, K-weighting vynechaný
-- [x] True peak — **parabolický odhad**, nie skutočný 4x oversampling
+- [x] LUFS — **pôvodne aproximácia** (plochá energia), 2026-08-27 nahradená presným BS.1770-4 K-weightingom (worklet live + pure offline analyzátor)
+- [x] True peak — **pôvodne parabolický odhad**, 2026-08-27 nahradený 4× polyphase oversamplingom (Blackman sinc, 4×16 taps, DC-normalizované fázy)
 - [ ] Spektrum/FFT analyzátor UI (analyzéry existujú, len sa nekreslia)
-- [ ] K-weighted LUFS (ITU BS.1770)
-- [ ] Skutočný true-peak (4x oversampled)
+- [x] K-weighted LUFS (ITU BS.1770) — 2026-08-27: `kweighting.ts` (koeficienty prepočítané pre ľubovoľný fs, dual gate −70/−10 LU v power doméne) + `kwmeter` worklet (sink branch v master chain, RESET INTEGRATED posiela reset do workletu). Conformance: 1 kHz @ −23 dBFS → **−22.99 LUFS** (live) a ±0.2 LUFS @48 kHz aj @44.1 kHz (unit)
+- [x] Skutočný true-peak (4× oversampled) — 2026-08-27: catchuje fs/4 intersample peak (+3.01 dB nad sample peak), ktorý parabolický odhad nezbadal; overshoot na bežnom obsahu ≤ +0.5 dB
 
 ### 1.6 Čo je zdravé (nesiahame na to)
 
@@ -120,8 +120,8 @@ Kvalitatívne tier-y:
 ## 2. Identifikované slabiny (z auditu)
 
 1. ~~**Master limiter bez look-ahead**~~ — **vyriešené 2026-08-27**: `buildMaster()` pripraví look-ahead worklet (`attachMasterWorklet`), natívny `DynamicsCompressorNode` ostáva v reťazi ako neutrálny passthrough + fallback bez workletov; live upgrade po do-loadovaní modulov cez `upgradeMasterDynamics()`; GR metering na MasterMeter ("GR x.x dB"). Verifikácia: browser-check „master limiter: look-ahead brickwall pins export at ceiling" — peak=0.708/ceiling=0.708.
-2. **Compressor je natívny wrapper** — bez sidechain inputu, bez GR metering, hlúpy release.
-3. **LUFS bez K-weightingu, true-peak len odhad** — metering nie je credible pre „release" workflow.
+2. ~~**Compressor je natívny wrapper**~~ — **vyriešené 2026-08-27** (P0.2): vlastný worklet s PEAK/RMS detektorom, sidechain inputom + SC HPF, soft-knee, makeup/mix, GR metering v UI (zdieľaný GR bar + SOURCE picker s Sidechain efektom); natívny DCN ostáva ako degraded fallback. Staré 7 param ID kompatibilné 1:1 (žiadna migrácia), nové `detector`/`scHpf` dopĺňa normalizeEffects. Verifikácia: hot input rms 0.0568/0.4950 (gr 20.2 dB); SC HPF diferenciátor — 45 Hz detektor: gr 23.9 dB s HPF 20 Hz vs 0.0 dB s HPF 300 Hz; mix=0 unity presne.
+3. ~~**LUFS bez K-weightingu, true-peak len odhad**~~ — **vyriešené 2026-08-27** (P0.3): presný BS.1770-4 K-weighting (worklet live + pure offline analyzátor s dual gate), true-peak 4× polyphase oversampling v live snaphote aj export summary. Metering je teraz credible pre „release" workflow.
 4. ~~**Gate/Transient fallback = tichý passthrough**~~ — **vyriešené 2026-08-27** (P0.0): transparentný bypass s UI warningom, degraded flagy na všetkých 5 worklet efektoch, auto-rebuild po do-loadovaní modulov.
 5. ~~**`monoBassFrequency` v Bass Busse nie je zapojený**~~ — **vyriešené 2026-08-27** (P0.0b); bonus: opravený aj nefunkčný mono súčet v Utility MONO BASS.
 6. **Žiadne zero-delay filtre (SVF/TPT)** — všetko legacy biquad; modulovaný cutoff neznie „analogovo".
@@ -156,16 +156,18 @@ Kvalitatívne tier-y:
   - [x] Aceptačný test: browser-check „limiter: look-ahead worklet limits, meters and anticipates" — peak=ceiling presne (0.501/0.501), gr=5.1 dB, spread=1.017 (žiadne pumping), onset=221/221 vzorky (exaktný look-ahead delay); + „pdc: limiter track stays aligned with dry track (<2 ms)" — skew=0.70–0.88 ms; 2026-08-27
     * Poznámka k ceiling: dBTP je aproximované cez sample-peak + safety clamp; skutočná true-peak limitácia (oversampling) ostáva ako P2 položka
   - [x] **Bonus — master stage swap:** `buildMaster()` pripraví worklet limiter medzi clipper a natívny node (natívny = neutrálny passthrough + bez-workletový fallback); live splice po do-loadovaní (`upgradeMasterDynamics`); MasterMeter zobrazuje „GR x.x dB". Verifikácia: „master limiter: look-ahead brickwall pins export at ceiling" — peak=0.708/ceiling=0.708, a „master chain tames a hot mix" limited=0.891 (= presne -1 dBFS oproti 1.178 s natívnym nodeom); 2026-08-27
-- [ ] **P0.2 — Vlastný kompresor (AudioWorklet)** namiesto `DynamicsCompressorNode`
-  Sidechain HPF (kľúč je, aby kompresia necítila sub), mix (parallel), GR metering, opto/program release režimy, stereo-link.
-  - [ ] Per-sample detektor + RMS/peak prepínač
-  - [ ] Sidechain input (2-input node rovnako ako sidechain-processor)
-  - [ ] GR metering + transfer curve v UI
-  - [ ] Migrácia existujúcich Compressor preset-ov na nový engine (verzované parametre!)
-- [ ] **P0.3 — ITU BS.1770 metering**
-  - [ ] K-weighting filter (~20 riadkov: high-shelf + HPF biquad) do `metering.ts`
-  - [ ] True-peak cez 4x oversampling (FIR halfband) namiesto parabolickej odhady
-  - [ ] Overiť proti referenčným hodnotám (test vectors z EBU)
+- [ ] **P0.2 — Vlastný kompresor (AudioWorklet)** — **2026-08-27 DOKONČENÉ** (checkboxy nižšie sú história zadania):
+  - [x] Per-sample detektor + RMS/peak prepínač (`detector` param, default RMS)
+  - [x] Sidechain input (2-input node rovnako ako sidechain-processor) + **SC HPF** (2× one-pole, len detektor, `scHpf` 20..500 Hz)
+  - [x] GR metering + transfer do UI (zdieľaný EffectRack GR bar)
+  - [x] Kompatibilita: starých 7 param ID 1:1 ⇒ žiadna migrácia; nové `detector`/`scHpf` defaultované normalizeEffects
+  - [x] Natívny DCN fallback (degraded „reduced", GR cez `.reduction`, sidechain no-op)
+  - [x] 4 preset-y: Glue / Punch / Smash / Bass Level
+  - [x] Aceptačné browser-checks: hot input (rms 0.0568/0.4950, gr 20.2 dB) · SC HPF diferenciátor (gr 23.9 vs 0.0) · mix=0 unity (peak 0.8000 presne) · degraded flag
+- [x] **P0.3 — ITU BS.1770 metering** — **2026-08-27 DOKONČENÉ** (checkboxy nižšie sú história zadania):
+  - [x] K-weighting filter — presné BS.1770-4 koeficienty (high-shelf 1682 Hz +4 dB + RLB HP 38.1 Hz) prepočítané pre ľubovoľný fs v novom `kweighting.ts`; **live** cez `kwmeter` sink worklet v master chain (koeficienty cez processorOptions — žiadna duplikovaná filtrová matematika na audio threade), **offline** cez pure `analyzeLoudnessBuffer` (dual gate −70/−10 LU, power domain, 400 ms bloky / 100 ms hop)
+  - [x] True-peak cez 4× polyphase oversampling (4 fázy × 16 taps, Blackman sinc, DC-normalizované) — v `metering.ts` + `AudioEngine.measureTruePeak` aj `summarizeBuffer` (export summary) teraz merajú skutočný dBTP
+  - [x] Overiť proti referenčným hodnotám: **oficiálny conformance vektor** 1 kHz @ −23 dBFS → −23 LUFS — unit testy ±0.2 LUFS @48 kHz aj @44.1 kHz, live worklet **−22.99 LUFS**; fs/4 ISPE test (+3.01 dB intersample peak) — detegovaný; dual gate a <400 ms guard otestované
 - [ ] **P0.4 — Trance-gate / Step-gate efekt (AudioWorklet)**
   8–32 krokový pattern, BPM-sync, depth, smooth, mix. Pre beatestov denná spotreba (gated pads, stutter hats).
   - [ ] Pattern editor UI
@@ -242,3 +244,5 @@ Tieto pravidlá majú prednosť pred akýmikoľvek nápadmi vyššie:
 - 2026-08-27 — **P0 blok dokončený**: P0.0 (fallback fix + UI warning + auto-rebuild po do-loadovaní workletov), P0.0b (Bass Buss mono bass wiring + Utility mono súčet bugfix), P0.1 (look-ahead limiter worklet ako efekt „Limiter" s GR meteringom, minimálna PDC v engine, akceptačné browser-checks). Verifikované: `npm run typecheck` ✓, `npm test` 883 passed ✓, `npm run test:browser` všetky kontroly PASS vrátane nových (limiter peak=ceiling presne, gr=5.1 dB, spread=1.017, onset=221/221 vz.; pdc skew=0.88 ms).
 - 2026-08-27 — **Master limiter swapped na worklet**: `buildMaster()` spúja look-ahead limiter medzi masterClipper a natívny node (natívny neutralizovaný, metering tap mera finálny signál); live upgrade cez `upgradeMasterDynamics()`; `applyMasterConfig` riadi ceiling/mix parametre (LIMIT toggle → mix 1/0); GR readout na MasterMeter. Slabina #1 uzavretá. Verifikácia: typecheck ✓, vitest 883 ✓, test:browser všetky PASS — export pribitý presne na strop (peak=0.708/ceiling=0.708).
 - 2026-08-27 — **Sekcia 1.4 Modulácia dokončená**: Lfo rozšírené na 4 kindy (osc/random/step/envFollower) bez migrácie (flattened optional fields, SCHEMA_VERSION ostáva 1); nový `project-model/modulators.ts` (pure deterministická matematika + sanitisery); envFollower AudioWorklet (Volume/Pan v1, polarity DUCK/SWELL, anti-feedback input tap); Random/S&H + Step s plným AutomationTarget cielením cez `setParameterAt` kanál; offline hook `scheduleModulatorsOffline` v rendereri + live `applyModulators` cez Scheduler (transport `timeAtTick` mapping); `automationReset` teraz cancelScheduledValues; ModPanel MODULATORS sekcia s type-switchom, step-grid editorom, seed regen; 16 unit testov + 4 browser-checks. Verifikácia: typecheck ✓, vitest 915/915 ✓, test:browser 0 FAIL — determinizmus rel≤5.9e-9, step gate kontrast normalizovaný na control baseline, follower duck 0.719/0.801. Poznámka: FX/inst parametre pre envFollower vyžadujú „audio-rate modulation bus" → zaradené medzi P2 nápady.
+- 2026-08-27 — **P0.2 Custom Compressor dokončený**: `compressor-processor.js` (2-input: main + sidechain detektor; PEAK/RMS detektor stereo-link; 2× one-pole SC HPF 12 dB/oct len na detektor; soft-knee gain computer; asym. attack/release smoothing; makeup+mix parallel; GR metering protokol z limitera) + `compressor-node.ts` wrapper (setSidechainInput, makeup dB→lin, getGainReductionDb). Registry: worklet gating, natívny DCN fallback (degraded „reduced", GR cez `.reduction`), +2 parametre `detector`/`scHpf` (staré 7 ID 1:1 ⇒ žiadna migrácia), 4 preset-y (Glue/Punch/Smash/Bass Level). EffectRack: SOURCE picker + GR bar zdieľané s compressorom. Verifikácia: typecheck ✓ (0 chýb), vitest 923/923 ✓, test:browser 0 FAIL — hot input rms 0.0568/0.4950 (gr 20.2 dB), SC HPF: 45 Hz detektor gr 23.9 dB@HPF20 vs 0.0 dB@HPF300, mix=0 peak=0.8000 presne. Slabina #2 uzavretá — Compressor Tier C → A.
+- 2026-08-27 — **P0.3 ITU BS.1770 metering dokončený**: nový `kweighting.ts` (presné BS.1770-4 koeficienty pre ľubovoľný fs, KWeightingFilter, `analyzeLoudnessBuffer` s dual gate −70/−10 LU v power doméne); `kwmeter` sink worklet v master chain (koeficienty cez processorOptions ⇒ žiadna duplikovaná matematika, RESET INTEGRATED posiela reset do workletu); `truePeakOversampled` (4× polyphase, 4×16 taps Blackman sinc) nahradil parabolický odhad v `measureTruePeak` aj `summarizeBuffer` (exporty teraz merajú skutočný dBTP); `getMasterMeterSnapshot` preferuje presné worklet hodnoty, legacy fallback zachovaný. Slabina #3 uzavretá — LUFS je K-weighted, true-peak je oversampled. Verifikácia: oficiálny conformance vektor 1 kHz @ −23 dBFS → **−22.99 LUFS** (live worklet), ±0.2 LUFS @48 kHz aj @44.1 kHz (unit); fs/4 ISPE +3.01 dB detegovaný; typecheck ✓ (moje súbory), test:browser 0 FAIL.

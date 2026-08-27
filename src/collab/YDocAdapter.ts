@@ -531,8 +531,7 @@ function syncPatternEntity(target: Y.Map<unknown>, pattern: Pattern): void {
   }
   for (const [padId, row] of Object.entries(pattern.rows)) {
     let yRow = rowsMap.get(padId) as Y.Array<number> | undefined;
-    if (!(yRow instanceof Y.Array)) {
-      yRow = new Y.Array<number>();
+    if (!yRow || !(yRow instanceof Y.Array)) {      yRow = new Y.Array<number>();
       rowsMap.set(padId, yRow);
     }
     if (yRow.length > row.length) yRow.delete(row.length, yRow.length - row.length);
@@ -686,7 +685,6 @@ export function applyProjectToYMap(
   setIfChanged(ts, "numerator", newDoc.timeSignature.numerator);
   setIfChanged(ts, "denominator", newDoc.timeSignature.denominator);
 
-  // Id-keyed collections
   syncIdList(ensureChildArray(yMap, "tracks"), newDoc.tracks, syncTrackEntity, trackToYMap);
   syncIdList(ensureChildArray(yMap, "patterns"), newDoc.patterns, syncPatternEntity, patternToYMap);
   syncIdList(ensureChildArray(yMap, "scenes"), newDoc.scenes, syncSceneEntity, sceneToYMap);
@@ -705,7 +703,6 @@ export function applyProjectToYMap(
   } else if (arrangement.has("transitions")) {
     arrangement.delete("transitions");
   }
-
   // Master
   const master = ensureChildMap(yMap, "master");
   mirrorScalars(master, newDoc.master, ["masterGain", "ceilingDb", "limiterEnabled", "clipperEnabled"]);

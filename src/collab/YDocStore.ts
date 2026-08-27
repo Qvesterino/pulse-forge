@@ -47,7 +47,7 @@ export class YDocStore {
   constructor(yDoc: Y.Doc) {
     this.yDoc = yDoc;
     this.yMap = yDoc.getMap("project");
-    this.doc_ = this.readDoc();
+    this.doc_ = this.readDoc(true);
     const undoManager = new Y.UndoManager(this.yMap, { trackedOrigins: new Set([this]) });
     this.undoManager = undoManager;
 
@@ -65,23 +65,27 @@ export class YDocStore {
       void type;
     });
 
-    // Subscribe to Y.Doc changes and re-read the snapshot
-    this.yDoc.on("update", () => {
-      this.doc_ = this.readDoc();
+    // Subscribe to Y.Doc changes and re-read the snapshot. LOCAL commands
+    // (origin === this, same trust level as the plain ProjectStore) re-project
+    // without normalization — full normalization on every keystroke costs
+    // ~tens of ms on large documents. REMOTE merges (foreign origin) and
+    // undo/redo re-projections are sanitized: a peer or an offline merge can
+    // inject state the local code cannot use, e.g. a dangling activePatternId
+    // that made getActivePattern() throw on every scheduler tick.
+    this.yDoc.on("update", (_update, origin) => {
+      this.doc_ = this.readDoc(origin !== this);
       this.emit();
       this.onDocChanged?.(this.doc_);
     });
   }
 
   /**
-   * Project the Y.Doc into a ProjectDocument — ALWAYS through
-   * normalizeProject. A remote peer (or an offline merge of two divergent
-   * sessions) can inject state the local code cannot use, e.g. a dangling
-   * activePatternId that made getActivePattern() throw on every scheduler
-   * tick. Normalization is idempotent and keeps valid docs untouched.
+   * Project the Y.Doc into a ProjectDocument, optionally through
+   * normalizeProject (see the update-listener comment for the trade-off).
    */
-  private readDoc(): ProjectDocument {
-    return normalizeProject(yDocToProject(this.yMap));
+  private readDoc(normalize: boolean): ProjectDocument {
+    const projected = yDocToProject(this.yMap);
+    return normalize ? normalizeProject(projected) : projected;
   }
 
   /** Initialize from a plain ProjectDocument (used on first open). */
@@ -152,7 +156,7 @@ export class YDocStore {
 
   /** Force re-read of the snapshot from Y.Doc. Call after external sync. */
   refreshSnapshot(): void {
-    this.doc_ = this.readDoc();
+    this.doc_ = this.readDoc(true);
     this.emit();
   }
 

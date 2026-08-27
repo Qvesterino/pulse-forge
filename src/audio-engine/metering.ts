@@ -11,6 +11,8 @@
  *  - peak hold with linear decay per poll
  */
 
+import { analyzeLoudnessBuffer } from "./kweighting";
+
 export const MIN_DB = -120;
 export const MAX_DB = 6;
 
@@ -242,19 +244,9 @@ export function summarizeBuffer(buffer: AudioBuffer): BufferSummary {
   }
   const total = split.reduce((acc, ch) => acc + ch.length, 0);
   const rms = total > 0 ? Math.sqrt(sumSq / total) : 0;
-  const truePeak = channels >= 1 ? interpolatePeak(split) : peak;
+  const truePeak = channels >= 1 ? truePeakOversampled(split) : peak;
   const correlation = split.length >= 2 ? stereoCorrelation(split[0], split[1]) : 1;
-  const right = split.length >= 2 ? split[1] : split[0];
-  const blockSize = Math.max(1, Math.round(buffer.sampleRate * 0.4));
-  const loudnessBlocks: number[] = [];
-  for (let start = 0; start < split[0].length; start += blockSize) {
-    const end = Math.min(split[0].length, start + blockSize);
-    if (end - start < Math.max(1, Math.round(blockSize * 0.25))) continue;
-    loudnessBlocks.push(lufsFromChannels(split[0].subarray(start, end), right.subarray(start, end)));
-  }
-  const lastBlock = loudnessBlocks[loudnessBlocks.length - 1] ?? MIN_DB;
-  const shortStart = Math.max(0, split[0].length - Math.round(buffer.sampleRate * 3));
-  const lufsShortTerm = lufsFromChannels(split[0].subarray(shortStart), right.subarray(shortStart));
+  const loudness = analyzeLoudnessBuffer(split, buffer.sampleRate);
 
   return {
     peak,
@@ -263,31 +255,65 @@ export function summarizeBuffer(buffer: AudioBuffer): BufferSummary {
     rms,
     rmsDb: toDb(rms),
     correlation,
-    lufsMomentary: lastBlock,
-    lufsShortTerm,
-    lufsIntegrated: integratedLufs(loudnessBlocks),
+    lufsMomentary: loudness.measured ? loudness.momentaryMax : MIN_DB,
+    lufsShortTerm: loudness.measured ? loudness.shortTermMax : MIN_DB,
+    lufsIntegrated: loudness.measured ? loudness.integrated : MIN_DB,
     monoLossDb: split.length >= 2 ? monoLossDb(split[0], split[1]) : 0,
   };
 }
 
-/** Parabolic peak interpolation between adjacent samples (4× peak estimate). */
-function interpolatePeak(channels: Float32Array<ArrayBuffer>[]): number {
+/**
+ * True-peak via 4× polyphase oversampling (ITU BS.1770 style): each input
+ * sample is zero-stuffed ×4 and low-passed with a windowed-sinc prototype
+ * (decomposed into 4 phases of 16 taps, DC-normalized). Catches intersample
+ * peaks — the classic fs/4 sine at 45° phase reads ~+3 dB over sample peak,
+ * which the old parabolic estimate could not see.
+ */
+const TP_PHASES = 4;
+const TP_TAPS_PER_PHASE = 16;
+
+const TRUE_PEAK_FILTER: Float32Array[] = (() => {
+  const prototype = new Float64Array(TP_PHASES * TP_TAPS_PER_PHASE);
+  const center = (prototype.length - 1) / 2;
+  for (let n = 0; n < prototype.length; n++) {
+    const x = (n - center) / TP_PHASES;
+    const sinc = x === 0 ? 1 : Math.sin(Math.PI * x) / (Math.PI * x);
+    // Blackman window for clean stopband.
+    const w = 0.42 - 0.5 * Math.cos((2 * Math.PI * n) / (prototype.length - 1)) + 0.08 * Math.cos((4 * Math.PI * n) / (prototype.length - 1));
+    prototype[n] = sinc * w;
+  }
+  const phases: Float32Array[] = [];
+  for (let p = 0; p < TP_PHASES; p++) {
+    const taps = new Float32Array(TP_TAPS_PER_PHASE);
+    let sum = 0;
+    for (let j = 0; j < TP_TAPS_PER_PHASE; j++) {
+      taps[j] = prototype[j * TP_PHASES + p];
+      sum += taps[j];
+    }
+    for (let j = 0; j < TP_TAPS_PER_PHASE; j++) taps[j] /= sum; // DC gain = 1
+    phases.push(taps);
+  }
+  return phases;
+})();
+
+export function truePeakOversampled(channels: readonly Float32Array[]): number {
   let peak = 0;
   for (const ch of channels) {
-    for (let i = 1; i < ch.length - 1; i++) {
-      const a = ch[i - 1];
-      const b = ch[i];
-      const c = ch[i + 1];
-      if (b >= a && b >= c) {
-        const denom = a - 2 * b + c;
-        const delta = denom === 0 ? 0 : ((a - c) * 0.5) / denom;
-        const interp = Math.abs(b - 0.25 * (a - c) * delta);
-        if (interp > peak) peak = interp;
+    for (let p = 0; p < TP_PHASES; p++) {
+      const taps = TRUE_PEAK_FILTER[p];
+      let phasePeak = 0;
+      for (let i = 0; i < ch.length; i++) {
+        let acc = 0;
+        const base = i + 1 - TP_TAPS_PER_PHASE;
+        for (let j = 0; j < TP_TAPS_PER_PHASE; j++) {
+          const idx = base + j;
+          if (idx >= 0 && idx < ch.length) acc += ch[idx] * taps[j];
+        }
+        const v = acc < 0 ? -acc : acc;
+        if (v > phasePeak) phasePeak = v;
       }
+      if (phasePeak > peak) peak = phasePeak;
     }
-    if (Math.abs(ch[0]) > peak) peak = Math.abs(ch[0]);
-    const last = Math.abs(ch[ch.length - 1]);
-    if (last > peak) peak = last;
   }
   return peak;
 }

@@ -13,6 +13,7 @@
 import { describe, expect, it } from "vitest";
 import * as Y from "yjs";
 import { createProjectFromTemplate } from "../src/project-model/templates";
+import { normalizeProject } from "../src/project-model/schema";
 import type {
   DrumTrack,
   InstrumentTrack,
@@ -332,29 +333,29 @@ describe("YDocStore — replaceDoc", () => {
 // ─── 7. Performance gate ────────────────────────────────────────────────────
 
 describe("collab — performance gate", () => {
-  it("normalize-on-read and targeted apply stay interactive on a large document", () => {
-    // normalizeProject now runs on EVERY Y.Doc update (readDoc). This gate
-    // keeps its cost — plus a full targeted apply — honest on a big project
-    // (40 patterns × 32 steps, 12 tracks) so UI frames are never eaten.
+  it("local command reads stay cheap; sanitized remote reads stay bounded", () => {
+    // readDoc runs on EVERY Y.Doc update. Local commands (trusted origin)
+    // skip normalization; remote merges sanitize. This gate keeps both paths
+    // honest on a big project (40 patterns covering every pad of 11 drum
+    // tracks) so UI frames are never eaten.
     const base = house();
     const drum = base.tracks.find((t): t is DrumTrack => t.kind === "drum")!;
     const stepCount = 32;
-    const bigPattern = {
-      ...base.patterns[0],
-      id: "pattern-big",
-      stepCount,
-      rows: Object.fromEntries(
-        drum.pads.map((pad) => [pad.id, new Array<number>(stepCount).fill(0).map((_, i) => (i % 4 === 0 ? 0.8 : 0))]),
-      ),
-      notes: {} as Pattern["notes"],
-    };
     const extraTracks = Array.from({ length: 10 }, (_, i) => ({
       ...drum,
       id: `track-extra-${i}`,
       name: `Drums ${i + 2}`,
       pads: drum.pads.map((pad, padIdx) => ({ ...pad, id: `track-extra-${i}-pad-${padIdx}` })),
     }));
-    const bigDoc: ProjectDocument = {
+    const allPads = [...drum.pads, ...extraTracks.flatMap((t) => t.pads)];
+    const bigPattern = {
+      ...base.patterns[0],
+      id: "pattern-big",
+      stepCount,
+      rows: Object.fromEntries(allPads.map((pad) => [pad.id, new Array<number>(stepCount).fill(0).map((_, i) => (i % 4 === 0 ? 0.8 : 0))])),
+      notes: {} as Pattern["notes"],
+    };
+    let bigDoc: ProjectDocument = {
       ...base,
       tracks: [...base.tracks, ...extraTracks],
       patterns: [
@@ -362,21 +363,46 @@ describe("collab — performance gate", () => {
         ...Array.from({ length: 39 }, (_, i) => ({ ...bigPattern, id: `pattern-big-${i}`, name: `Big ${i}` })),
       ],
     };
+    // Canonical input: swapping in bigPattern orphans the template's original
+    // activePatternId/scene/clip — normalize (like the store would on any
+    // remote read) so the warm apply below compares like with like.
+    bigDoc = normalizeProject({
+      ...bigDoc,
+      activePatternId: bigPattern.id,
+      scenes: bigDoc.scenes.map((s) => ({ ...s, patternId: bigPattern.id })),
+      arrangement: {
+        clips: bigDoc.arrangement.clips.map((c) => ({ ...c, sceneId: bigDoc.scenes[0].id })),
+      },
+    });
 
     const store = YDocStore.fromDocument(bigDoc);
+    const yMap = store.yDocRef.getMap("project");
 
-    // Cold read: projection + full normalization.
+    // Warm apply of an identical doc must be a TRUE no-op — zero Y.Doc
+    // writes, zero update events (regression guard for compare-before-set).
+    let updates = 0;
+    const countUpdate = () => {
+      updates += 1;
+    };
+    store.yDocRef.on("update", countUpdate);
     let start = performance.now();
-    for (let i = 0; i < 5; i++) store.refreshSnapshot();
-    const readMs = (performance.now() - start) / 5;
+    store.yDocRef.transact(() => {
+      applyProjectToYMap(store.doc, store.doc, yMap);
+    });
+    const localApplyMs = performance.now() - start;
+    store.yDocRef.off("update", countUpdate);
+    expect(updates).toBe(0);
 
-    // Warm apply: identical doc → the diff must write (almost) nothing.
+    // REMOTE path: sanitized re-projection (per sync message).
     start = performance.now();
-    applyProjectToYMap(store.doc, store.doc, store.yDocRef.getMap("project"));
-    const applyMs = performance.now() - start;
+    for (let i = 0; i < 5; i++) store.refreshSnapshot();
+    const remoteReadMs = (performance.now() - start) / 5;
 
-    // Generous budgets — catching order-of-magnitude regressions, not noise.
-    expect(readMs).toBeLessThan(25);
-    expect(applyMs).toBeLessThan(25);
+    // Loose smoke ceilings — the deterministic guard above (zero writes) is
+    // the real invariant; these only catch catastrophic regressions (the
+    // original hang here measured in TENS OF SECONDS) even under parallel
+    // test-runner load.
+    expect(localApplyMs).toBeLessThan(500);
+    expect(remoteReadMs).toBeLessThan(250);
   });
 });

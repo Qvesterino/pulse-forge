@@ -14,6 +14,7 @@ import { loadWorkletModules, isWorkletReady } from "./audio-worklets/loader";
 import { createBitcrusherNode } from "./audio-worklets/bitcrusher-node";
 import { AudioEngine } from "./audio-engine/AudioEngine";
 import { detectTransients } from "./audio-engine/transients";
+import { createKwMeterNode } from "./audio-worklets/kwmeter-node";
 import { createDrumTrackModel, createGroupTrackModel } from "./project-model/schema";
 import { encodeMp3 } from "./export/mp3";
 import { pickVideoMimeType, recordVideo } from "./export/video";
@@ -1526,6 +1527,37 @@ export async function runChecks(): Promise<CheckResult[]> {
     check("compressor: mix = 0 passes unity (parallel blend)", Math.abs(peak - 0.8) < 0.02, `peak=${peak.toFixed(4)} expected≈0.8`);
   } catch (error) {
     check("compressor: mix = 0 passes unity (parallel blend)", false, String(error));
+  }
+
+  // K-weighted loudness meter (BS.1770): a 1 kHz sine at −23 dBFS must read
+  // ≈ −23 LUFS integrated — the official conformance target, live path.
+  try {
+    const ctx = new OfflineAudioContext(2, SR * 2.5, SR);
+    await loadWorkletModules(ctx);
+    if (!isWorkletReady("kwmeter", ctx)) {
+      check("kwmeter: BS.1770 conformance (1 kHz @ −23 dBFS → −23 LUFS)", false, "worklet modules not ready");
+    } else {
+      const meter = createKwMeterNode(ctx);
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = 1000;
+      const amplitude = Math.pow(10, -23 / 20);
+      const gain = ctx.createGain();
+      gain.gain.value = amplitude;
+      osc.connect(gain).connect(meter.input);
+      osc.start(0);
+      await ctx.startRendering();
+      meter.dispose();
+      await new Promise((resolve) => setTimeout(resolve, 150)); // loudness messages flush
+      const loudness = meter.getLoudness();
+      check(
+        "kwmeter: BS.1770 conformance (1 kHz @ −23 dBFS → −23 LUFS)",
+        loudness.i > -24 && loudness.i < -22,
+        `integrated=${loudness.i.toFixed(2)} LUFS (momentary=${loudness.m.toFixed(2)})`,
+      );
+    }
+  } catch (error) {
+    check("kwmeter: BS.1770 conformance (1 kHz @ −23 dBFS → −23 LUFS)", false, String(error));
   }
 
   return results;

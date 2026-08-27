@@ -11,8 +11,9 @@ import type { InstrumentRuntime } from "../instruments/types";
 import { loadWorkletModules, isWorkletReady } from "../audio-worklets/loader";
 import { createLimiterNode } from "../audio-worklets/limiter-node";
 import { createEnvFollowerNode, type EnvFollowerHandle } from "../audio-worklets/envfollower-node";
+import { createKwMeterNode, type KwMeterHandle } from "../audio-worklets/kwmeter-node";
 import { lfoKind, lfoWave, modulatorEventsInRange, modulatorPointValue, resolveLfoTarget } from "../project-model/modulators";
-import { channelLevels, integratedLufs, lufsFromChannels, monoLossDb, splitChannels, stereoCorrelation, PeakHold, toDb, type Frame, type ChannelLevels } from "./metering";
+import { channelLevels, integratedLufs, lufsFromChannels, monoLossDb, splitChannels, stereoCorrelation, PeakHold, toDb, truePeakOversampled, type Frame, type ChannelLevels } from "./metering";
 
 /** Tick position → seconds inside a frozen loop (mod buffer duration). */
 export function frozenPlaybackOffset(positionTick: number, bpm: number, durationSec: number): number {
@@ -235,6 +236,8 @@ export class AudioEngine {
    * stays a neutral pass-through and only takes over again without worklets.
    */
   private masterLimiterWorklet: EffectRuntime | null = null;
+  /** K-weighted loudness meter (BS.1770) — sink branch off the master limiter. */
+  private kwMeter: KwMeterHandle | null = null;
   private masterAnalyser: AnalyserNode | null = null;
   private bank: SampleBank | null = null;
   private doc: ProjectDocument | null = null;
@@ -336,6 +339,7 @@ export class AudioEngine {
         // The master chain was built before processors existed — splice the
         // look-ahead limiter in now that they are ready.
         this.upgradeMasterDynamics();
+        this.upgradeKwMeter();
       })
       .catch(() => {
         this.workletRefreshQueued = false;
@@ -399,6 +403,8 @@ export class AudioEngine {
     }
     this.masterLimiterWorklet?.dispose();
     this.masterLimiterWorklet = null;
+    this.kwMeter?.dispose();
+    this.kwMeter = null;
     this.master = ctx.createGain();
     this.master.gain.value = 1;
     this.masterClipper = ctx.createWaveShaper();
@@ -438,6 +444,26 @@ export class AudioEngine {
     this.masterLimiter.connect(this.masterSplitter);
     this.masterSplitter.connect(this.masterAnalyserL, 0);
     this.masterSplitter.connect(this.masterAnalyserR, 1);
+    // K-weighted loudness meter (BS.1770) — sink branch, no audio output.
+    if (isWorkletReady("kwmeter", ctx)) this.attachKwMeter(ctx);
+  }
+
+  /** Create + arm the K-weighted loudness meter sink (idempotent). */
+  private attachKwMeter(ctx: BaseAudioContext): void {
+    if (this.kwMeter || !this.masterLimiter || !isWorkletReady("kwmeter", ctx)) return;
+    this.kwMeter = createKwMeterNode(ctx);
+    this.masterLimiter.connect(this.kwMeter.input);
+  }
+
+  /**
+   * Splice the K-weight meter into an already-built live master chain —
+   * called once AudioWorklet modules finish loading on a live context.
+   */
+  private upgradeKwMeter(): void {
+    const ctx = this.ctx;
+    if (!ctx || !(ctx instanceof AudioContext)) return;
+    if (this.kwMeter || !this.masterLimiter || !isWorkletReady("kwmeter", ctx)) return;
+    this.attachKwMeter(ctx);
   }
 
   private applyMasterConfig(config: MasterConfig): void {
@@ -1836,6 +1862,7 @@ export class AudioEngine {
 
   resetMasterIntegratedLufs(): void {
     this.meterLoudnessBlocks = [];
+    this.kwMeter?.reset();
   }
 
   getMasterMeterSnapshot(): {
@@ -1860,6 +1887,26 @@ export class AudioEngine {
       this.meterHistoryL.splice(0, this.meterHistoryL.length - maxSamples);
       this.meterHistoryR.splice(0, this.meterHistoryR.length - maxSamples);
     }
+    // True peak: 4× polyphase oversampling (intersample peaks included).
+    const truePeak = Math.max(AudioEngine.measureTruePeak(this.masterChBufL, 1), AudioEngine.measureTruePeak(this.masterChBufR, 1));
+    // Loudness: exact BS.1770 K-weighting from the worklet when loaded;
+    // legacy flat-energy approximation otherwise.
+    if (this.kwMeter) {
+      const loudness = this.kwMeter.getLoudness();
+      return {
+        left: levels.left,
+        right: levels.right,
+        correlation: levels.correlation,
+        peakHoldDb: this.masterPeakHold.current,
+        truePeakDb: toDb(truePeak),
+        lufsMomentary: loudness.m,
+        lufsShortTerm: loudness.s,
+        lufsIntegrated: loudness.i,
+        monoLossDb: monoLossDb(this.masterChBufL, this.masterChBufR),
+        lrImbalanceDb: Math.abs(levels.left.rmsDb - levels.right.rmsDb),
+        gainReductionDb: this.getMasterGainReductionDb(),
+      };
+    }
     const window = (seconds: number): [Float32Array<ArrayBuffer>, Float32Array<ArrayBuffer>] => {
       const length = Math.min(this.meterHistoryL.length, Math.max(1, Math.round(seconds * sampleRate)));
       return [Float32Array.from(this.meterHistoryL.slice(-length)), Float32Array.from(this.meterHistoryR.slice(-length))];
@@ -1869,7 +1916,6 @@ export class AudioEngine {
     const momentary = lufsFromChannels(momentaryL, momentaryR);
     this.meterLoudnessBlocks.push(momentary);
     if (this.meterLoudnessBlocks.length > 900) this.meterLoudnessBlocks.shift();
-    const truePeak = Math.max(AudioEngine.measureTruePeak(this.masterChBufL, 1), AudioEngine.measureTruePeak(this.masterChBufR, 1));
     return {
       left: levels.left,
       right: levels.right,
@@ -1892,37 +1938,13 @@ export class AudioEngine {
   }
 
   /**
-   * True peak estimation by 4× oversampling (zero-crossing interpolation).
-   * Cheap enough for offline use; the renderer uses it on the exported buffer.
-   */
+   * True peak via 4× polyphase oversampling (ITU BS.1770 style) — catches
+    * intersample peaks that the old parabolic estimate missed. Delegates to
+    * the shared pure implementation in metering.ts.
+    */
   static measureTruePeak(frames: Frame, channels: number): number {
     if (frames.length === 0) return 0;
-    let peak = 0;
-    const split = splitChannels(frames, channels);
-    for (const channel of split) {
-      for (let i = 1; i < channel.length - 1; i++) {
-        const prev = channel[i - 1];
-        const cur = channel[i];
-        const next = channel[i + 1];
-        // 4× peak estimation: search for a local maximum around the current sample.
-        const a = Math.abs(prev);
-        const b = Math.abs(cur);
-        const c = Math.abs(next);
-        const m = Math.max(a, b, c);
-        if (m > peak) peak = m;
-        // Parabolic peak between two samples if they look like a peak.
-        if (b >= a && b >= c) {
-          const denom = a - 2 * b + c;
-          const delta = denom === 0 ? 0 : ((a - c) * 0.5) / denom;
-          const interp = Math.abs(b - 0.25 * (a - c) * delta);
-          if (interp > peak) peak = interp;
-        }
-      }
-      if (Math.abs(channel[0]) > peak) peak = Math.abs(channel[0]);
-      const last = Math.abs(channel[channel.length - 1]);
-      if (last > peak) peak = last;
-    }
-    return peak;
+    return truePeakOversampled(splitChannels(frames, channels));
   }
 
   getDiagnostics(): Record<string, string | number> {
