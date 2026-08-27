@@ -18,7 +18,7 @@ const failedContexts = new WeakSet<BaseAudioContext>();
 const inflight = new Map<BaseAudioContext, Promise<void>>();
 
 export function isWorkletReady(
-  type: "bitcrusher" | "sidechain" | "transient" | "gate" | "limiter" | "envFollower" | "compressor" | "kwmeter",
+  type: "bitcrusher" | "sidechain" | "transient" | "gate" | "limiter" | "envFollower" | "compressor" | "kwmeter" | "stepGate",
   ctx: BaseAudioContext | null | undefined,
 ): boolean {
   if (!ctx || !readyContexts.has(ctx)) return false;
@@ -32,7 +32,8 @@ export function isWorkletReady(
     type === "limiter" ||
     type === "envFollower" ||
     type === "compressor" ||
-    type === "kwmeter"
+    type === "kwmeter" ||
+    type === "stepGate"
   );
 }
 

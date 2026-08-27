@@ -281,3 +281,35 @@ export function sanitizeSteps(raw: unknown): number[] {
 export function fallbackSeed(id: string): string {
   return `auto-${hashString(id).toString(36)}`;
 }
+
+/* ---------------- step gate (effect) pattern ---------------- */
+
+/** Classic trance-gate starting pattern (16 steps, 0..1 open amounts). */
+export const DEFAULT_GATE_PATTERN: readonly number[] = [
+  1, 0.55, 0.85, 0.4, 1, 0.5, 0.8, 0.35, 1, 0.55, 0.85, 0.4, 1, 0.5, 0.8, 0.35,
+];
+
+/** Normalize a step-gate pattern: 8/16/32 length (ties snap up), 0..1 values. */
+export function sanitizeGateSteps(raw: unknown): number[] {
+  const source = Array.isArray(raw) ? raw : [];
+  if (source.length === 0) {
+    return [...DEFAULT_GATE_PATTERN];
+  }
+  let targetLength = STEP_MODULATOR_LENGTHS[0];
+  let bestDelta = Math.abs(targetLength - source.length);
+  for (const length of STEP_MODULATOR_LENGTHS) {
+    const delta = Math.abs(length - source.length);
+    if (delta < bestDelta || (delta === bestDelta && length > targetLength)) {
+      targetLength = length;
+      bestDelta = delta;
+    }
+  }
+  const steps: number[] = [];
+  for (let i = 0; i < targetLength; i++) {
+    const value = typeof source[i % source.length] === "number" && Number.isFinite(source[i % source.length])
+      ? (source[i % source.length] as number)
+      : 0;
+    steps.push(Math.round(Math.min(1, Math.max(0, value)) * 1000) / 1000);
+  }
+  return steps;
+}

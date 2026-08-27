@@ -5,3 +5,4 @@ import "./limiter-processor.js";
 import "./envfollower-processor.js";
 import "./compressor-processor.js";
 import "./kwmeter-processor.js";
+import "./stepgate-processor.js";

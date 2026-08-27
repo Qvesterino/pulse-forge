@@ -17,6 +17,7 @@ export type EffectType =
   | "saturation"
   | "clipper"
   | "limiter"
+  | "stepGate"
   | "reverb"
   | "delay"
   | "pump"
@@ -38,6 +39,11 @@ export interface EffectInstance {
   type: EffectType;
   bypassed: boolean;
   params: Record<string, number>;
+  /**
+   * Step pattern for step-sequenced effects (stepGate): 8/16/32 values in
+   * 0..1 (gate open amount). Sanitized by normalizeEffects.
+   */
+  steps?: number[];
   /**
    * Optional source track id for sidechain-style effects (e.g. Sidechain Compressor).
    * When set, the audio engine wires the source track's input node as sidechain feed

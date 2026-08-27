@@ -21,7 +21,7 @@ import type {
   StepMeta,
 } from "./types";
 import { BAR_TICKS, PPQ, STEP_TICKS, STEPS_PER_PATTERN, isMusicalKey } from "./types";
-import { sanitizeLfo } from "./modulators";
+import { sanitizeGateSteps, sanitizeLfo } from "./modulators";
 import { uid } from "../shared/ids";
 import { defaultInstrumentParams } from "../instruments/registry";
 import { createProjectFromTemplate } from "./templates";
@@ -446,7 +446,16 @@ function normalizeEffects(raw: unknown, trackId: string, trackIds: Set<string>):
     const sidechainTrackId = item.sidechainTrackId && item.sidechainTrackId !== trackId && trackIds.has(item.sidechainTrackId)
       ? item.sidechainTrackId
       : undefined;
-    return { id: item.id, type, bypassed: item.bypassed === true, params, ...(sidechainTrackId ? { sidechainTrackId } : {}) };
+    // Step-sequenced effects (stepGate) carry an editable pattern array.
+    const steps = type === "stepGate" ? sanitizeGateSteps((item as { steps?: unknown }).steps) : undefined;
+    return {
+      id: item.id,
+      type,
+      bypassed: item.bypassed === true,
+      params,
+      ...(steps ? { steps } : {}),
+      ...(sidechainTrackId ? { sidechainTrackId } : {}),
+    };
   });
 }
 
