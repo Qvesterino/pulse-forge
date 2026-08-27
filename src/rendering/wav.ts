@@ -7,6 +7,14 @@ export function encodeWav(buffer: AudioBuffer, bitDepth: WavBitDepth): ArrayBuff
   const bytesPerSample = bitDepth / 8;
   const blockAlign = numChannels * bytesPerSample;
   const dataSize = frames * blockAlign;
+  // RIFF chunk fields are unsigned 32-bit. Past ~4 GB they wrap and the file
+  // is silently corrupt — an explicit failure beats wasting a 20-minute
+  // render on a WAV no player will read.
+  if (dataSize > 0xffffffff - 44) {
+    throw new Error(
+      `Render too large for WAV export (${(dataSize / 1024 ** 3).toFixed(1)} GB data). Export in segments or lower the sample rate/bit depth.`,
+    );
+  }
   const arrayBuffer = new ArrayBuffer(44 + dataSize);
   const view = new DataView(arrayBuffer);
 

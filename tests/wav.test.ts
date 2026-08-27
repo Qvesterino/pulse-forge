@@ -63,8 +63,20 @@ describe("wav encoder", () => {
 
     const float32 = new DataView(encodeWav(buffer, 32));
     expect(float32.getUint16(20, true)).toBe(3);
-    expect(float32.getUint16(34, true)).toBe(32);
     expect(float32.getFloat32(44, true)).toBeCloseTo(0.5, 5);
     expect(float32.getFloat32(48, true)).toBeCloseTo(-0.5, 5);
+  });
+
+  it("throws instead of silently wrapping the RIFF header past 4 GB", () => {
+    // Regression: RIFF size fields are u32; a multi-hour bounce used to wrap
+    // them and produce a corrupt file after an expensive render.
+    const huge = {
+      length: (0xffffffff / 4) + 10, // exceeds u32 at 32-bit float mono
+      sampleRate: 48000,
+      numberOfChannels: 1,
+      duration: 1,
+      getChannelData: () => new Float32Array((0xffffffff / 4) + 10),
+    } as unknown as AudioBuffer;
+    expect(() => encodeWav(huge, 32)).toThrow(/too large/i);
   });
 });

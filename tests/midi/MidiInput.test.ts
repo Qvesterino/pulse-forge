@@ -124,6 +124,33 @@ describe("MidiInput — system realtime messages and arity", () => {
     send(midi, [0x90, 60, 100]);
     expect(noteOn).toHaveBeenCalledWith(60, 100, 1, expect.anything());
   });
+
+  it("supports running status: chord tails after a single status byte are parsed", () => {
+    // Regression: keyboards commonly send [0x90, n1, v1] then bare [n2, v2]
+    // pairs. Those tails were silently discarded (data byte masked to a
+    // status nibble matching nothing), so only the first chord note played.
+    const midi = makeMidi("off");
+    const noteOn = vi.spyOn(midi as never as { handleNoteOn: () => void }, "handleNoteOn").mockImplementation(() => {});
+    send(midi, [0x90, 60, 100]); // status established
+    send(midi, [62, 90]); // running-status tail
+    send(midi, [64, 80]); // and another
+    expect(noteOn).toHaveBeenCalledTimes(3);
+    expect(noteOn).toHaveBeenNthCalledWith(2, 62, 90, 1, expect.anything());
+    expect(noteOn).toHaveBeenNthCalledWith(3, 64, 80, 1, expect.anything());
+    // System Common (here: Song Select 0xF2) clears running status — a stray
+    // data-byte message afterwards must be dropped, not misparsed.
+    send(midi, [0xf2, 0, 0]);
+    send(midi, [65, 70]);
+    expect(noteOn).toHaveBeenCalledTimes(3);
+    // A fresh status byte re-establishes running status...
+    send(midi, [0x90, 72, 100]);
+    expect(noteOn).toHaveBeenCalledTimes(4);
+    // ...and interleaved realtime bytes do not disturb it (per MIDI spec,
+    // realtime can appear between the bytes of a message).
+    send(midi, [0xf8]);
+    send(midi, [74, 90]);
+    expect(noteOn).toHaveBeenCalledTimes(5);
+  });
 });
 
 describe("MidiInput — device subscriptions", () => {

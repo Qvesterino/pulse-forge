@@ -166,33 +166,53 @@ export class MidiInput {
         return;
     }
 
-    const status = data[0] & 0xf0;
-    const channel = (data[0] & 0x0f) + 1; // 1-16
+    // Running status: a message starting with a DATA byte (< 0x80) reuses the
+    // last channel-voice status byte — without this, chord tails from such
+    // keyboards were silently dropped.
+    let payload = data;
+    if (data[0] < 0x80) {
+      if (this.runningStatus === null) return;
+      const merged = new Uint8Array(data.length + 1);
+      merged[0] = this.runningStatus;
+      merged.set(data, 1);
+      payload = merged;
+    }
+
+    const status = payload[0] & 0xf0;
+    const channel = (payload[0] & 0x0f) + 1; // 1-16
     // Program Change and Channel Pressure are 2-byte messages, the rest are 3.
     const minLen = status === 0xc0 || status === 0xd0 ? 2 : 3;
-    if (data.length < minLen) return;
+    if (payload.length < minLen) return;
+    // Channel voice messages carry running status: many keyboards send the
+    // status byte once and then bare [note, velocity] pairs for the rest of
+    // a chord. Remember it — and clear it on System Common, per spec.
+    if (payload[0] >= 0x80 && payload[0] < 0xf0) {
+      this.runningStatus = payload[0];
+    } else if (payload[0] >= 0xf0 && payload[0] < 0xf8) {
+      this.runningStatus = null;
+    }
 
     switch (status) {
       case 0x90: // Note On
-        this.handleNoteOn(data[1], data[2], channel, config);
+        this.handleNoteOn(payload[1], payload[2], channel, config);
         break;
       case 0x80: // Note Off
-        this.handleNoteOff(data[1], channel, config);
+        this.handleNoteOff(payload[1], channel, config);
         break;
       case 0xb0: // CC
-        this.handleCC(data[1], data[2], channel, config);
+        this.handleCC(payload[1], payload[2], channel, config);
         break;
       case 0xe0: // Pitch Bend
-        this.handlePitchBend(data[1], data[2], channel, config);
+        this.handlePitchBend(payload[1], payload[2], channel, config);
         break;
       case 0xc0: // Program Change
-        this.handleProgramChange(data[1], channel, config);
+        this.handleProgramChange(payload[1], channel, config);
         break;
       case 0xd0: // Channel Pressure (Aftertouch)
-        this.handleChannelPressure(data[1], channel, config);
+        this.handleChannelPressure(payload[1], channel, config);
         break;
       case 0xa0: // Polyphonic Aftertouch
-        this.handlePolyPressure(data[1], data[2], channel, config);
+        this.handlePolyPressure(payload[1], payload[2], channel, config);
         break;
     }
   }

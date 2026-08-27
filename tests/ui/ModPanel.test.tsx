@@ -14,9 +14,17 @@ describe("ModPanel", () => {
     expect(screen.getByText("AUTOMATION")).toBeInTheDocument();
   });
 
-  it("renders LFO section", () => {
-    renderWithContext(<ModPanel />);
-    expect(screen.getByText("LFO")).toBeInTheDocument();
+  it("renders MODULATORS section (LFO / S&H / Step / Env Follower)", () => {
+    const { container } = renderWithContext(<ModPanel />);
+    expect(screen.getByText("MODULATORS")).toBeInTheDocument();
+    // Kind picker groups all four modulator families per track (value-encoded).
+    const picker = container.querySelector('select[aria-label="Add modulator"]');
+    expect(picker).not.toBeNull();
+    const values = [...(picker?.querySelectorAll("option") ?? [])].map((o) => o.value);
+    expect(values.some((v) => v.startsWith("osc:"))).toBe(true);
+    expect(values.some((v) => v.startsWith("random:"))).toBe(true);
+    expect(values.some((v) => v.startsWith("step:"))).toBe(true);
+    expect(values.some((v) => v.startsWith("envFollower:"))).toBe(true);
   });
 
   it("renders MACROS section", () => {

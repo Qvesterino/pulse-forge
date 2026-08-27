@@ -22,6 +22,18 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
   const [userPresets, setUserPresets] = useState<InstrumentPreset[]>([]);
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveName, setSaveName] = useState("");
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Quota/private-browsing failures must surface in the UI instead of dying
+  // as unhandled rejections behind a `void`ed promise.
+  const guard = useCallback(
+    (action: () => Promise<void>): Promise<void> =>
+      action().catch((err) => {
+        console.error("[PresetBrowser] operation failed:", err);
+        setSaveError(err instanceof Error ? err.message : "Storage operation failed");
+      }),
+    [],
+  );
 
   const refreshUserPresets = useCallback(() => {
     services.core.presets
@@ -60,6 +72,7 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
   };
 
   const saveCurrent = async () => {
+    setSaveError(null);
     const name = saveName.trim();
     if (name.length === 0) return;
     const preset: InstrumentPreset = {
@@ -112,13 +125,18 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
             aria-label="New preset name"
             onChange={(event) => setSaveName(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === "Enter") void saveCurrent();
+              if (event.key === "Enter") void guard(saveCurrent);
               if (event.key === "Escape") setSaveOpen(false);
             }}
           />
-          <button type="button" className="btn btn-small" onClick={() => void saveCurrent()}>
+          <button type="button" className="btn btn-small" onClick={() => void guard(saveCurrent)}>
             OK
           </button>
+          {saveError && (
+            <span className="preset-save-error" role="alert">
+              {saveError}
+            </span>
+          )}
         </div>
       )}
 
@@ -215,7 +233,7 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
                 aria-label={`Delete preset ${preset.name}`}
                 onClick={(event) => {
                   event.stopPropagation();
-                  void removeUserPreset(preset.id);
+                  void guard(async () => removeUserPreset(preset.id));
                 }}
               >
                 ×

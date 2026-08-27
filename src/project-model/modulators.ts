@@ -171,9 +171,28 @@ export function sanitizeLfo(raw: unknown, trackIds: Set<string>): Lfo | null {
     return null;
   }
   const kind = pickEnum<LfoKind>(input.kind, LFO_KINDS, "osc");
+  const id: string = input.id;
+  const trackId: string = input.trackId;
+  const sanitized = buildSanitizedLfo(input, kind, trackIds, id, trackId);
+  // Identity preservation: already-canonical entries must survive
+  // normalization BY REFERENCE so idempotent normalizeProject keeps `===`
+  // (templates test asserts normalize leaves canonical documents untouched).
+  if (lfoShallowEquals(sanitized as unknown as Record<string, unknown>, input)) {
+    return input as Lfo;
+  }
+  return sanitized;
+}
+
+function buildSanitizedLfo(
+  input: Partial<Lfo> & Record<string, unknown>,
+  kind: LfoKind,
+  trackIds: Set<string>,
+  id: string,
+  trackId: string,
+): Lfo {
   const sanitized: Lfo = {
-    id: input.id,
-    trackId: input.trackId,
+    id,
+    trackId,
     kind: kind === "osc" ? undefined : kind,
     param: pickEnum<"gain" | "pan">(input.param, LFO_PARAM_VALUES, "gain"),
     amount: clampRange(input.amount, 0, 1, 0.3),
@@ -181,7 +200,7 @@ export function sanitizeLfo(raw: unknown, trackIds: Set<string>): Lfo | null {
   if (kind === "envFollower") {
     const sourceTrackId = typeof input.sourceTrackId === "string" && trackIds.has(input.sourceTrackId)
       ? input.sourceTrackId
-      : input.trackId;
+      : trackId;
     sanitized.sourceTrackId = sourceTrackId;
     sanitized.attackMs = clampRange(input.attackMs, 1, 500, 12);
     sanitized.releaseMs = clampRange(input.releaseMs, 10, 2000, 180);
@@ -197,15 +216,38 @@ export function sanitizeLfo(raw: unknown, trackIds: Set<string>): Lfo | null {
   }
   if (kind === "random") {
     sanitized.snh = pickEnum<"hold" | "glide">(input.snh, new Set(["hold", "glide"]), "hold");
-    sanitized.seed = typeof input.seed === "string" && input.seed !== "" ? input.seed.slice(0, 64) : fallbackSeed(input.id);
-    sanitized.target = sanitizeTarget(input.target, input.trackId);
+    sanitized.seed = typeof input.seed === "string" && input.seed !== "" ? input.seed.slice(0, 64) : fallbackSeed(id);
+    sanitized.target = sanitizeTarget(input.target, trackId);
     return sanitized;
   }
   // step
   sanitized.steps = sanitizeSteps(input.steps);
   sanitized.glideSec = clampRange(input.glideSec, 0, 0.5, 0.02);
-  sanitized.target = sanitizeTarget(input.target, input.trackId);
+  sanitized.target = sanitizeTarget(input.target, trackId);
   return sanitized;
+}
+
+/** Compares sanitized vs original ignoring `undefined` slots; arrays by JSON. */
+function lfoShallowEquals(a: Record<string, unknown>, b: unknown): boolean {
+  if (!b || typeof b !== "object") return false;
+  const other = b as Record<string, unknown>;
+  const aKeys = Object.keys(a).filter((key) => a[key] !== undefined);
+  const bKeys = Object.keys(other).filter((key) => other[key] !== undefined);
+  if (aKeys.length !== bKeys.length) return false;
+  for (const key of aKeys) {
+    const av = a[key];
+    const bv = other[key];
+    if (Array.isArray(av) || Array.isArray(bv)) {
+      if (JSON.stringify(av) !== JSON.stringify(bv)) return false;
+      continue;
+    }
+    if (av && typeof av === "object") {
+      if (JSON.stringify(av) !== JSON.stringify(bv)) return false;
+      continue;
+    }
+    if (av !== bv) return false;
+  }
+  return true;
 }
 
 /** Normalize step arrays to the nearest supported length (ties snap up), clamped bipolar values. */
