@@ -31,9 +31,38 @@ export function openDb(): Promise<IDBDatabase> {
 
 export function tx<T>(db: IDBDatabase, store: string, mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction(store, mode);
-    const request = run(transaction.objectStore(store));
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    let settled = false;
+    const fail = (err: unknown): void => {
+      if (settled) return;
+      settled = true;
+      reject(err ?? new Error(`IndexedDB transaction on "${store}" was aborted`));
+    };
+    const succeed = (value: T): void => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    let transaction: IDBTransaction;
+    try {
+      transaction = db.transaction(store, mode);
+    } catch (err) {
+      fail(err);
+      return;
+    }
+    let request: IDBRequest<T>;
+    try {
+      request = run(transaction.objectStore(store));
+    } catch (err) {
+      fail(err);
+      return;
+    }
+    // A request's `success` fires BEFORE the commit — resolving there would
+    // report saves that were later rolled back (quota pressure, abort during
+    // page close). Only `transaction.oncomplete` proves durability.
+    request.onsuccess = () => { /* wait for commit */ };
+    request.onerror = () => fail(request.error);
+    transaction.onabort = () => fail(request.error ?? transaction.error);
+    transaction.onerror = () => fail(transaction.error ?? request.error);
+    transaction.oncomplete = () => succeed(request.result);
   });
 }

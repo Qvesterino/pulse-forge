@@ -14,6 +14,12 @@ export interface SchedulerDeps {
   trigger(trackId: string, pad: DrumTrack["pads"][number], when: number, velocity: number): void;
   noteOn(trackId: string, pitch: number, velocity: number, when: number, durationSec: number): void;
   applyAutomation(fromTick: number, toTick: number, relOf: (tick: number) => number, scheduleOffsetSec?: number): void;
+  /**
+   * Schedulable track modulators (random S&H / step) for the same window.
+   * `whenFor` maps an absolute tick to a precise AudioContext time so event
+   * boundaries land sample-aligned.
+   */
+  applyModulators?(fromTick: number, toTick: number, whenFor: (tick: number) => number): void;
   /** Apply a single per-scene automation lane within a song window. */
   applySceneAutomationLane?(
     lane: import("../project-model/types").SceneAutomation,
@@ -305,6 +311,14 @@ export class Scheduler {
     if (automationCtx) {
       const { base, patternTicks } = automationCtx;
       this.deps.applyAutomation(windowStart, windowEnd, (tick) => mod(tick - base, patternTicks), this.scheduleOffsetSec());
+    }
+
+    // Track modulators share the window — boundaries map through the transport
+    // clock the same way marker cues do, so live and offline grids agree.
+    if (this.deps.applyModulators) {
+      const transport = this.deps.getTransport();
+      const offsetSec = this.scheduleOffsetSec() + 0.005;
+      this.deps.applyModulators(windowStart, windowEnd, (tick) => transport.timeAtTick(tick) + offsetSec);
     }
 
     this.windowStartTick = windowEnd;

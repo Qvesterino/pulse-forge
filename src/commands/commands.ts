@@ -334,8 +334,8 @@ export function setTrackParams(doc: ProjectDocument, trackId: string, params: Tr
 
 /* ---------------- patterns ---------------- */
 
-export function createPattern(doc: ProjectDocument): Command {
-  const pattern = createPatternForDoc(doc, `Pattern ${patternLetter(doc.patterns.length)}`);
+export function createPattern(doc: ProjectDocument, name?: string): Command {
+  const pattern = createPatternForDoc(doc, name ?? `Pattern ${patternLetter(doc.patterns.length)}`);
   const next: ProjectDocument = {
     ...doc,
     patterns: [...doc.patterns, pattern],
@@ -2393,22 +2393,52 @@ export function freezeTrack(
 ): Command {
   const track = doc.tracks.find((t) => t.id === trackId);
   if (!track) throw new Error(`Track ${trackId} not found`);
-  const frozen = { bufferId, durationSec, sampleRate };
-  const next: ProjectDocument = {
-    ...doc,
-    tracks: doc.tracks.map((t) => (t.id === trackId ? { ...t, frozen } : t)),
+  const label = `Freeze ${track.name}`;
+  // Freeze is dispatched AFTER a seconds-long offline render — it must apply
+  // to whatever document is current at dispatch time, not the snapshot taken
+  // when rendering started (a snapshot silently reverts concurrent edits).
+  let prevFrozen: ProjectDocument["tracks"][number]["frozen"] = undefined;
+  return {
+    type: "freezeTrack",
+    label,
+    execute: (d) => {
+      if (!d.tracks.some((t) => t.id === trackId)) return d;
+      prevFrozen = d.tracks.find((t) => t.id === trackId)?.frozen;
+      return {
+        ...d,
+        tracks: d.tracks.map((t) =>
+          t.id === trackId ? { ...t, frozen: { bufferId, durationSec, sampleRate } } : t,
+        ),
+      };
+    },
+    undo: (d) =>
+      d.tracks.some((t) => t.id === trackId)
+        ? { ...d, tracks: d.tracks.map((t) => (t.id === trackId ? { ...t, frozen: prevFrozen } : t)) }
+        : d,
   };
-  return snapshot("freezeTrack", `Freeze ${track.name}`, doc, next);
 }
 
 export function unfreezeTrack(doc: ProjectDocument, trackId: string): Command {
   const track = doc.tracks.find((t) => t.id === trackId);
   if (!track) throw new Error(`Track ${trackId} not found`);
-  const next: ProjectDocument = {
-    ...doc,
-    tracks: doc.tracks.map((t) => (t.id === trackId ? { ...t, frozen: undefined } : t)),
+  const label = `Unfreeze ${track.name}`;
+  let prevFrozen: ProjectDocument["tracks"][number]["frozen"] = undefined;
+  return {
+    type: "unfreezeTrack",
+    label,
+    execute: (d) => {
+      if (!d.tracks.some((t) => t.id === trackId)) return d;
+      prevFrozen = d.tracks.find((t) => t.id === trackId)?.frozen;
+      return {
+        ...d,
+        tracks: d.tracks.map((t) => (t.id === trackId ? { ...t, frozen: undefined } : t)),
+      };
+    },
+    undo: (d) =>
+      d.tracks.some((t) => t.id === trackId)
+        ? { ...d, tracks: d.tracks.map((t) => (t.id === trackId ? { ...t, frozen: prevFrozen } : t)) }
+        : d,
   };
-  return snapshot("unfreezeTrack", `Unfreeze ${track.name}`, doc, next);
 }
 
 /* ---------------- AI pattern generation ---------------- */

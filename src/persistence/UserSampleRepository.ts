@@ -43,14 +43,22 @@ export class UserSampleRepository {
 
   async save(asset: UserSampleAsset, data?: ArrayBuffer): Promise<void> {
     this.cache = null;
+    const db = await openDb();
+    await tx(db, STORE_USER_SAMPLES, "readwrite", (s) => s.put(asset));
+    if (!data) return;
     try {
-      const db = await openDb();
-      await tx(db, STORE_USER_SAMPLES, "readwrite", (s) => s.put(asset));
-      if (data) {
-        await tx(db, STORE_USER_SAMPLE_AUDIO, "readwrite", (s) => s.put({ id: asset.id, data } satisfies UserSampleAudio));
+      await tx(db, STORE_USER_SAMPLE_AUDIO, "readwrite", (s) => s.put({ id: asset.id, data } satisfies UserSampleAudio));
+    } catch (err) {
+      // Metadata without audio is a PERMANENT ghost sample: listed forever,
+      // silently silent after reload. Roll the metadata row back and surface
+      // the failure so importers can show an error instead.
+      try {
+        await tx(db, STORE_USER_SAMPLES, "readwrite", (s) => s.delete(asset.id));
+      } catch {
+        // rollback best-effort
       }
-    } catch {
-      // best-effort
+      this.cache = null;
+      throw err instanceof Error ? err : new Error(`Failed to persist sample audio for ${asset.id}`);
     }
   }
 

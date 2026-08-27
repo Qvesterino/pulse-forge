@@ -75,6 +75,12 @@ export async function renderProject(
     scheduleNotes(window, timeAt, secondsPerTick, engine);
   }
   scheduleAutomation(doc, windows, timeAt, engine);
+  // Schedulable track modulators (random S&H / step) share the same window
+  // sweep so offline exports match live playback deterministically.
+  engine.scheduleModulatorsOffline(
+    windows.map((w) => ({ from: w.from, to: w.to })),
+    timeAt,
+  );
 
   return ctx.startRendering();
 }

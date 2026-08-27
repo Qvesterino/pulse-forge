@@ -1,8 +1,12 @@
 import type { Transport } from "../transport/Transport";
 import type { MidiOutput } from "./MidiOutput";
+import { MAX_BPM, MIN_BPM } from "../project-model/schema";
 
 const PPQ = 480; // pulses per quarter note (matching project PPQ)
 const CLOCKS_PER_BEAT = 24; // MIDI standard
+/** Pulse intervals outside this window are timing noise, not a musical clock. */
+const MIN_PULSE_INTERVAL_MS = 5;
+const MAX_PULSE_INTERVAL_MS = 2000;
 
 /**
  * MIDI Clock — handles sending and receiving MIDI timing messages.
@@ -48,15 +52,35 @@ export class MidiClock {
     }
   }
 
+  /** Reset slave-derived tempo tracking (call when the stream stalls). */
+  private resetSlaveTracking(): void {
+    this.slaveLastPulseTime = 0;
+    this.slaveBpmAccum = 0;
+    this.slaveBpmCount = 0;
+  }
+
   /** Handle incoming clock pulse (slave mode). */
   handleSlavePulse(transport: Transport): void {
+    // External gear streams 0xF8 clocks whenever ITS transport runs. Pulses
+    // must never move OUR playhead while ours is stopped — otherwise the
+    // position creeps forward and Play resumes from a random spot.
+    if (!transport.playing) {
+      this.resetSlaveTracking();
+      return;
+    }
     const now = performance.now();
     this.slavePulseCount++;
 
     // Calculate BPM from pulse interval (24 pulses = 1 beat)
     if (this.slaveLastPulseTime > 0) {
       const intervalMs = now - this.slaveLastPulseTime;
-      if (intervalMs > 0) {
+      if (intervalMs < MIN_PULSE_INTERVAL_MS || intervalMs > MAX_PULSE_INTERVAL_MS) {
+        // A gap or burst (device paused, cable pull, timer hiccup): discard the
+        // whole measurement window instead of letting one outlier drag the
+        // average toward 0 (or thousands) and wrenching the tempo.
+        this.slaveBpmAccum = 0;
+        this.slaveBpmCount = 0;
+      } else {
         const pulsesPerMs = 1 / intervalMs;
         const beatsPerMs = pulsesPerMs / CLOCKS_PER_BEAT;
         const bpm = beatsPerMs * 60000;
@@ -64,7 +88,7 @@ export class MidiClock {
         this.slaveBpmAccum += bpm;
         this.slaveBpmCount++;
         if (this.slaveBpmCount >= CLOCKS_PER_BEAT * 4) {
-          const avgBpm = this.slaveBpmAccum / this.slaveBpmCount;
+          const avgBpm = Math.min(MAX_BPM, Math.max(MIN_BPM, this.slaveBpmAccum / this.slaveBpmCount));
           transport.setBpm(Math.round(avgBpm * 10) / 10);
           this.slaveBpmAccum = 0;
           this.slaveBpmCount = 0;
@@ -80,10 +104,8 @@ export class MidiClock {
 
   /** Handle MIDI Start message (slave mode). */
   handleSlaveStart(transport: Transport): void {
-    this.slavePulseCount = 0;
-    this.slaveLastPulseTime = 0;
-    this.slaveBpmAccum = 0;
-    this.slaveBpmCount = 0;
+    this.resetSlaveTracking();
+    if (!transport.playing) return;
     transport.seek(0);
   }
 
@@ -94,7 +116,7 @@ export class MidiClock {
 
   /** Handle MIDI Stop message (slave mode). */
   handleSlaveStop(_transport: Transport): void {
-    this.slaveLastPulseTime = 0;
+    this.resetSlaveTracking();
   }
 
   dispose(): void {

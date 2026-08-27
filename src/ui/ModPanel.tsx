@@ -22,14 +22,16 @@ import {
   setSceneIntensity,
   setSceneIntensityCurve,
 } from "../commands/commands";
-import type { AutomationParamKind, AutomationTarget, LfoWave } from "../project-model/types";
+import type { AutomationParamKind, AutomationTarget, LfoKind, LfoWave } from "../project-model/types";
 import { STEP_TICKS } from "../project-model/types";
+import { DEFAULT_STEP_PATTERN } from "../project-model/modulators";
 import { laneLabel } from "../project-model/automation";
 import { EFFECT_DEFS } from "../effects/registry";
 import { INSTRUMENT_DEFS } from "../instruments/registry";
 import { Slider } from "./controls";
 import { trackBadge } from "./TrackTabs";
 import { clamp } from "../shared/ids";
+import { newModulatorSeed } from "../commands/commands";
 
 const LFO_WAVES: { value: LfoWave; label: string }[] = [
   { value: "sine", label: "Sine" },
@@ -46,6 +48,67 @@ const LFO_DIVISIONS = [
   { value: 3, label: "1/8" },
   { value: 4, label: "1/16" },
 ];
+
+const LFO_KINDS: { value: LfoKind; label: string }[] = [
+  { value: "osc", label: "LFO" },
+  { value: "random", label: "S&H Random" },
+  { value: "step", label: "Step Gate" },
+  { value: "envFollower", label: "Env Follower" },
+];
+
+function kindSwitchPatch(kind: LfoKind, hostTrackId: string): Parameters<typeof setLfoParams>[2] {
+  switch (kind) {
+    case "random":
+      return { kind, snh: "hold", rateMode: "sync", rateHz: 8, division: 3, seed: newModulatorSeed(), target: undefined };
+    case "step":
+      return { kind, division: 3, glideSec: 0.02, steps: [...DEFAULT_STEP_PATTERN], target: undefined };
+    case "envFollower":
+      return { kind, sourceTrackId: hostTrackId, attackMs: 12, releaseMs: 180, sensitivity: 1.5 };
+    default:
+      return { kind: undefined, wave: "sine", rateMode: "sync", rateHz: 2, division: 2, target: undefined };
+  }
+}
+
+/** Encoded automation-target options for schedulable modulators (host track scope). */
+function targetOptionsFor(doc: ReturnType<typeof useDoc>, hostTrackId: string): { value: string; label: string }[] {
+  const options = [
+    { value: "trackGain:", label: "Volume" },
+    { value: "trackPan:", label: "Pan" },
+  ];
+  const host = doc.tracks.find((t) => t.id === hostTrackId);
+  if (host?.kind === "instrument") {
+    for (const p of INSTRUMENT_DEFS[host.instrument].params) {
+      options.push({ value: `instParam::${p.id}`, label: p.label });
+    }
+  }
+  if (host && "effects" in host) {
+    for (const fx of host.effects) {
+      for (const p of EFFECT_DEFS[fx.type].params) {
+        options.push({ value: `fxParam:${fx.id}:${p.id}`, label: `${EFFECT_DEFS[fx.type].name} · ${p.label}` });
+      }
+    }
+  }
+  return options;
+}
+
+function parseEncodedTarget(hostTrackId: string, encoded: string): AutomationTarget {
+  const [kind, fxId, paramId] = encoded.split(":");
+  if (kind === "instParam") return { kind: "instParam", trackId: hostTrackId, paramId };
+  if (kind === "fxParam") return { kind: "fxParam", trackId: hostTrackId, fxId, paramId };
+  return { kind: kind === "trackPan" ? "trackPan" : "trackGain", trackId: hostTrackId };
+}
+
+function encodeTarget(target: AutomationTarget | undefined): string {
+  if (!target) return "trackGain:";
+  return `${target.kind}:${target.fxId ?? ""}:${target.paramId ?? ""}`;
+}
+
+const KIND_LABELS: Record<LfoKind, string> = {
+  osc: "LFO",
+  random: "S&H",
+  step: "STEP",
+  envFollower: "ENV",
+};
 
 interface ParamRange {
   min: number;
@@ -193,37 +256,49 @@ export function ModPanel() {
       </div>
 
       <div className="mod-section">
-        <h2 className="panel-title">LFO</h2>
+        <h2 className="panel-title">MODULATORS</h2>
         <div className="mod-lane-add">
           <select
-            aria-label="Add LFO to track"
+            aria-label="Add modulator"
             value=""
             onChange={(event) => {
-              if (event.target.value) services.store.execute(addLfo(services.store.doc, event.target.value));
+              const encoded = event.target.value;
+              const sep = encoded.indexOf(":");
+              if (sep > 0) {
+                const kind = encoded.slice(0, sep) as LfoKind;
+                services.store.execute(addLfo(services.store.doc, encoded.slice(sep + 1), kind));
+              }
             }}
           >
-            <option value="">+ LFO TO TRACK…</option>
-            {doc.tracks.map((track) => (
-              <option key={track.id} value={track.id}>
-                {trackBadge(track)} {track.name}
-              </option>
+            <option value="">+ ADD MODULATOR…</option>
+            {LFO_KINDS.map((kind) => (
+              <optgroup key={kind.value} label={kind.label}>
+                {doc.tracks.map((track) => (
+                  <option key={`${kind.value}:${track.id}`} value={`${kind.value}:${track.id}`}>
+                    {trackBadge(track)} {track.name}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </select>
         </div>
         <div className="lfo-list">
-          {doc.lfos.length === 0 && <div className="fx-empty">No LFOs yet. LFOs modulate track volume or pan at audio rate.</div>}
+          {doc.lfos.length === 0 && (
+            <div className="fx-empty">No modulators yet. Oscillators run at audio rate; S&amp;H and step patterns schedule per division; followers track dynamics.</div>
+          )}
           {doc.lfos.map((lfo) => {
             const track = doc.tracks.find((t) => t.id === lfo.trackId);
+            const kind: LfoKind = lfo.kind ?? "osc";
             return (
-              <div key={lfo.id} className="lfo-row">
+              <div key={lfo.id} className={`lfo-row${kind !== "osc" ? " lfo-row-sched" : ""}`}>
                 <div className="lfo-row-header">
                   <span className="lfo-row-name">
-                    {trackBadgeSafe(track)} {track?.name ?? "?"} · LFO
+                    {trackBadgeSafe(track)} {track?.name ?? "?"} · {KIND_LABELS[kind]}
                   </span>
                   <button
                     type="button"
                     className="btn btn-small btn-danger"
-                    title="Remove LFO"
+                    title="Remove modulator"
                     onClick={() => services.store.execute(removeLfo(services.store.doc, lfo.id))}
                   >
                     ×
@@ -231,74 +306,239 @@ export function ModPanel() {
                 </div>
                 <div className="lfo-row-controls">
                   <label className="fx-param-select">
-                    <span className="slider-label">TARGET</span>
+                    <span className="slider-label">TYPE</span>
                     <select
-                      value={lfo.param}
+                      value={kind}
                       onChange={(event) =>
-                        services.store.execute(setLfoParams(services.store.doc, lfo.id, { param: event.target.value as "gain" | "pan" }))
+                        services.store.execute(
+                          setLfoParams(services.store.doc, lfo.id, kindSwitchPatch(event.target.value as LfoKind, lfo.trackId)),
+                        )
                       }
                     >
-                      <option value="gain">Volume</option>
-                      <option value="pan">Pan</option>
-                    </select>
-                  </label>
-                  <label className="fx-param-select">
-                    <span className="slider-label">WAVE</span>
-                    <select
-                      value={lfo.wave}
-                      onChange={(event) =>
-                        services.store.execute(setLfoParams(services.store.doc, lfo.id, { wave: event.target.value as LfoWave }))
-                      }
-                    >
-                      {LFO_WAVES.map((w) => (
-                        <option key={w.value} value={w.value}>
-                          {w.label}
+                      {LFO_KINDS.map((k) => (
+                        <option key={k.value} value={k.value}>
+                          {k.label}
                         </option>
                       ))}
                     </select>
                   </label>
-                  <label className="fx-param-select">
-                    <span className="slider-label">SYNC</span>
-                    <select
-                      value={lfo.rateMode}
-                      onChange={(event) =>
-                        services.store.execute(
-                          setLfoParams(services.store.doc, lfo.id, { rateMode: event.target.value as "hz" | "sync" }),
-                        )
-                      }
-                    >
-                      <option value="sync">Tempo</option>
-                      <option value="hz">Hz</option>
-                    </select>
-                  </label>
-                  {lfo.rateMode === "sync" ? (
+
+                  {(kind === "osc" || kind === "envFollower") && (
                     <label className="fx-param-select">
-                      <span className="slider-label">RATE</span>
+                      <span className="slider-label">TARGET</span>
                       <select
-                        value={lfo.division}
+                        value={lfo.param}
                         onChange={(event) =>
-                          services.store.execute(setLfoParams(services.store.doc, lfo.id, { division: Number(event.target.value) }))
+                          services.store.execute(
+                            setLfoParams(services.store.doc, lfo.id, { param: event.target.value as "gain" | "pan", target: undefined }),
+                          )
                         }
                       >
-                        {LFO_DIVISIONS.map((d) => (
-                          <option key={d.value} value={d.value}>
-                            {d.label}
+                        <option value="gain">Volume</option>
+                        <option value="pan">Pan</option>
+                      </select>
+                    </label>
+                  )}
+
+                  {(kind === "random" || kind === "step") && (
+                    <label className="fx-param-select">
+                      <span className="slider-label">TARGET</span>
+                      <select
+                        value={encodeTarget(lfo.target)}
+                        onChange={(event) =>
+                          services.store.execute(
+                            setLfoParams(services.store.doc, lfo.id, {
+                              target: parseEncodedTarget(lfo.trackId, event.target.value),
+                              param: "gain",
+                            }),
+                          )}
+                      >
+                        {targetOptionsFor(doc, lfo.trackId).map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
                           </option>
                         ))}
                       </select>
                     </label>
-                  ) : (
-                    <Slider
-                      compact
-                      label="RATE"
-                      value={lfo.rateHz}
-                      min={0.1}
-                      max={20}
-                      defaultValue={2}
-                      format={(v) => `${v.toFixed(2)} Hz`}
-                      onCommit={(rateHz) => services.store.execute(setLfoParams(services.store.doc, lfo.id, { rateHz }))}
-                    />
                   )}
+
+                  {kind === "osc" && (
+                    <>
+                      <label className="fx-param-select">
+                        <span className="slider-label">WAVE</span>
+                        <select
+                          value={lfo.wave ?? "sine"}
+                          onChange={(event) =>
+                            services.store.execute(setLfoParams(services.store.doc, lfo.id, { wave: event.target.value as LfoWave }))
+                          }
+                        >
+                          {LFO_WAVES.map((w) => (
+                            <option key={w.value} value={w.value}>
+                              {w.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="fx-param-select">
+                        <span className="slider-label">SYNC</span>
+                        <select
+                          value={lfo.rateMode ?? "sync"}
+                          onChange={(event) =>
+                            services.store.execute(
+                              setLfoParams(services.store.doc, lfo.id, { rateMode: event.target.value as "hz" | "sync" }),
+                            )
+                          }
+                        >
+                          <option value="sync">Tempo</option>
+                          <option value="hz">Hz</option>
+                        </select>
+                      </label>
+                    </>
+                  )}
+
+                  {(kind === "osc" || kind === "random") && (
+                    <>
+                      {(lfo.rateMode ?? "sync") === "sync" ? (
+                        <label className="fx-param-select">
+                          <span className="slider-label">RATE</span>
+                          <select
+                            value={lfo.division ?? 2}
+                            onChange={(event) =>
+                              services.store.execute(setLfoParams(services.store.doc, lfo.id, { division: Number(event.target.value) }))
+                            }
+                          >
+                            {LFO_DIVISIONS.map((d) => (
+                              <option key={d.value} value={d.value}>
+                                {d.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : (
+                        <Slider
+                          compact
+                          label="RATE"
+                          value={lfo.rateHz ?? 2}
+                          min={0.1}
+                          max={20}
+                          defaultValue={2}
+                          format={(v) => `${v.toFixed(2)} Hz`}
+                          onCommit={(rateHz) => services.store.execute(setLfoParams(services.store.doc, lfo.id, { rateHz }))}
+                        />
+                      )}
+                    </>
+                  )}
+
+                  {kind === "random" && (
+                    <>
+                      <label className="fx-param-select">
+                        <span className="slider-label">MODE</span>
+                        <select
+                          value={lfo.snh ?? "hold"}
+                          onChange={(event) =>
+                            services.store.execute(setLfoParams(services.store.doc, lfo.id, { snh: event.target.value as "hold" | "glide" }))
+                          }
+                        >
+                          <option value="hold">Hold</option>
+                          <option value="glide">Glide</option>
+                        </select>
+                      </label>
+                      <button
+                        type="button"
+                        className="btn btn-small"
+                        title="Generate a new random seed (deterministic once stored)"
+                        onClick={() => services.store.execute(setLfoParams(services.store.doc, lfo.id, { seed: newModulatorSeed() }))}
+                      >
+                        🎲 SEED
+                      </button>
+                    </>
+                  )}
+
+                  {kind === "step" && (
+                    <>
+                      <label className="fx-param-select">
+                        <span className="slider-label">RATE</span>
+                        <select
+                          value={lfo.division ?? 3}
+                          onChange={(event) =>
+                            services.store.execute(setLfoParams(services.store.doc, lfo.id, { division: Number(event.target.value) }))
+                          }
+                        >
+                          {LFO_DIVISIONS.map((d) => (
+                            <option key={d.value} value={d.value}>
+                              {d.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <Slider
+                        compact
+                        label="GLIDE"
+                        value={lfo.glideSec ?? 0.02}
+                        min={0}
+                        max={0.3}
+                        defaultValue={0.02}
+                        format={(v) => `${Math.round(v * 1000)} ms`}
+                        onCommit={(glideSec) => services.store.execute(setLfoParams(services.store.doc, lfo.id, { glideSec }))}
+                      />
+                      <StepGridEditor
+                        steps={lfo.steps && lfo.steps.length > 0 ? lfo.steps : [...DEFAULT_STEP_PATTERN]}
+                        onCommit={(steps) => services.store.execute(setLfoParams(services.store.doc, lfo.id, { steps }))}
+                      />
+                    </>
+                  )}
+
+                  {kind === "envFollower" && (
+                    <>
+                      <label className="fx-param-select">
+                        <span className="slider-label">SOURCE</span>
+                        <select
+                          value={lfo.sourceTrackId ?? lfo.trackId}
+                          onChange={(event) =>
+                            services.store.execute(setLfoParams(services.store.doc, lfo.id, { sourceTrackId: event.target.value }))
+                          }
+                        >
+                          {doc.tracks.map((candidate) => (
+                            <option key={candidate.id} value={candidate.id}>
+                              {trackBadge(candidate)} {candidate.name}
+                              {candidate.id === lfo.trackId ? " (self)" : ""}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <Slider
+                        compact
+                        label="ATTACK"
+                        value={lfo.attackMs ?? 12}
+                        min={1}
+                        max={400}
+                        defaultValue={12}
+                        format={(v) => `${Math.round(v)} ms`}
+                        onCommit={(attackMs) => services.store.execute(setLfoParams(services.store.doc, lfo.id, { attackMs }))}
+                      />
+                      <Slider
+                        compact
+                        label="RELEASE"
+                        value={lfo.releaseMs ?? 180}
+                        min={20}
+                        max={2000}
+                        defaultValue={180}
+                        format={(v) => `${Math.round(v)} ms`}
+                        onCommit={(releaseMs) => services.store.execute(setLfoParams(services.store.doc, lfo.id, { releaseMs }))}
+                      />
+                      <Slider
+                        compact
+                        label="SENSITIVITY"
+                        value={lfo.sensitivity ?? 1.5}
+                        min={0.2}
+                        max={3}
+                        defaultValue={1.5}
+                        format={(v) => v.toFixed(2)}
+                        onCommit={(sensitivity) => services.store.execute(setLfoParams(services.store.doc, lfo.id, { sensitivity }))}
+                      />
+                    </>
+                  )}
+
                   <Slider
                     compact
                     label="AMOUNT"
@@ -1002,6 +1242,100 @@ function ScenePointEditor({
           />
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * Bipolar step-sequence grid for Step Modulators. Drag paints values across
+ * columns (top = +1, bottom = −1); a single command commits on pointer-up so
+ * a stroke stays one undo step.
+ */
+function StepGridEditor({ steps, onCommit }: { steps: readonly number[]; onCommit: (steps: number[]) => void }) {
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const [live, setLive] = useState<number[] | null>(null);
+  const dragRef = useRef<{ column: number; value: number } | null>(null);
+  const current = live ?? steps;
+
+  const paint = (event: React.PointerEvent): void => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = clamp(event.clientX - rect.left, 0, rect.width - 0.01);
+    const y = clamp(event.clientY - rect.top, 0, rect.height);
+    const column = Math.min(current.length - 1, Math.floor((x / rect.width) * current.length));
+    const value = Math.round((1 - 2 * (y / rect.height)) * 100) / 100;
+    dragRef.current = { column, value };
+    setLive((prev) => {
+      const next = [...(prev ?? steps)];
+      next[column] = value;
+      return next;
+    });
+  };
+
+  const commit = (): void => {
+    const finalSteps = current.slice();
+    dragRef.current = null;
+    setLive(null);
+    onCommit(finalSteps);
+  };
+
+  const height = 64;
+  return (
+    <div className="mod-step-grid-wrap">
+      <div
+        ref={canvasRef}
+        className="mod-step-grid"
+        style={{ height }}
+        role="slider"
+        aria-label={`Step sequence, ${current.length} steps`}
+        aria-valuenow={Math.round(((current.reduce((sum, v) => sum + v, 0) / current.length) + 1) * 50)}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        onPointerDown={(event) => {
+          event.currentTarget.setPointerCapture(event.pointerId);
+          paint(event);
+        }}
+        onPointerMove={(event) => {
+          if (event.buttons & 1) paint(event);
+        }}
+        onPointerUp={commit}
+        onPointerCancel={commit}
+      >
+        <svg viewBox={`0 0 ${current.length} 2`} preserveAspectRatio="none" role="img">
+          <line x1="0" y1="1" x2={current.length} y2="1" className="mod-step-grid-zero" />
+          {current.map((value, index) => {
+            const fromY = 1 - value;
+            return (
+              <rect
+                key={index}
+                x={index + 0.12}
+                y={Math.min(fromY, 1)}
+                width={0.76}
+                height={Math.max(0.04, Math.abs(value))}
+                className={dragRef.current?.column === index ? "mod-step-grid-bar active" : "mod-step-grid-bar"}
+              />
+            );
+          })}
+        </svg>
+      </div>
+      <div className="mod-step-grid-tools">
+        {[8, 16, 32].map((length) => (
+          <button
+            key={length}
+            type="button"
+            className={`btn btn-small${current.length === length ? " active" : ""}`}
+            onClick={() => {
+              const resized = Array.from({ length }, (_, i) => steps[i % steps.length] ?? 0);
+              setLive(resized);
+              onCommit(resized);
+              setLive(null);
+            }}
+          >
+            {length}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

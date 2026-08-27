@@ -1212,6 +1212,49 @@ button {
   text-align: right;
 }
 
+/* ---------- Modulator step grid ---------- */
+
+.mod-step-grid-wrap {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mod-step-grid {
+  width: 100%;
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  background: var(--bg);
+  cursor: crosshair;
+  touch-action: none;
+  overflow: hidden;
+}
+
+.mod-step-grid svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.mod-step-grid-zero {
+  stroke: var(--border);
+  stroke-width: 0.02;
+}
+
+.mod-step-grid-bar {
+  fill: rgba(245, 158, 11, 0.75);
+}
+
+.mod-step-grid-bar.active {
+  fill: #f59e0b;
+}
+
+.mod-step-grid-tools {
+  display: flex;
+  gap: 4px;
+}
+
 .fx-device-buttons {
   display: flex;
   gap: 4px;

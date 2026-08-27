@@ -19,9 +19,14 @@ export function yToggleStep(
   const rows = pattern.get("rows") as Y.Map<unknown>;
   let row = rows.get(padId) as Y.Array<number> | undefined;
   if (!row) {
+    if (stepIndex !== 0) return; // a fresh row can only hold index 0
     row = new Y.Array<number>();
     rows.set(padId, row);
   }
+  // A peer may have shrunk the pattern while this gesture was in flight —
+  // yjs transactions have no rollback, so an out-of-range write would throw
+  // straight through store.execute. Clamp to a no-op instead.
+  if (stepIndex >= row.length || stepIndex < 0) return;
   const current = row.get(stepIndex) ?? 0;
   row.delete(stepIndex, 1);
   row.insert(stepIndex, [current > 0 ? 0 : 0.8]);

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { ProjectRepository } from "../src/persistence/ProjectRepository";
 import { PresetRepository } from "../src/persistence/PresetRepository";
 import { createProjectFromTemplate } from "../src/project-model/templates";
+import { SCHEMA_VERSION } from "../src/project-model/schema";
 import type { InstrumentPreset } from "../src/presets/types";
 import type { ProjectDocument } from "../src/project-model/types";
 
@@ -104,6 +105,55 @@ describe("ProjectRepository", () => {
     await repo.delete(newer.id);
     const recent = await repo.loadMostRecent();
     expect(recent!.id).toBe(older.id);
+  });
+
+  it("rename does not steal the 'continue last project' pointer", async () => {
+    // Regression: rename() used to delegate to save(), which repoints the
+    // global KEY_RECENT at whatever project was renamed — "Continue last
+    // project" would then open the wrong project.
+    const working = freshProject("Working Project");
+    const other = freshProject("Other Project");
+    await repo.save(working);
+    await tick();
+    await repo.save(other);
+    // Pointer → `other`. Renaming the older project must keep pointing there.
+    await repo.rename(working.id, "Renamed Old Project");
+    const recent = await repo.loadMostRecent();
+    expect(recent!.id).toBe(other.id);
+    const renamed = await repo.load(working.id);
+    expect(renamed!.name).toBe("Renamed Old Project");
+  });
+
+  it("a record written by a NEWER schema version does not blank the library or crash loads", async () => {
+    // Regression: migrateProject throws for future schema versions; listAll()
+    // mapped it over every record, so one future-version row (e.g. after a
+    // version rollback) made the entire project browser show an empty list.
+    const good = freshProject("Good Project");
+    await repo.save(good);
+    const db = await import("../src/persistence/db").then((m) => m.openDb());
+    const poisoned = { ...freshProject("Future Project"), schemaVersion: SCHEMA_VERSION + 1 };
+    await new Promise<void>((resolve, reject) => {
+      const t = db.transaction("projects", "readwrite");
+      t.objectStore("projects").put(poisoned);
+      t.oncomplete = () => resolve();
+      t.onerror = () => reject(t.error);
+    });
+
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      const list = await repo.listAll();
+      expect(list.map((m) => m.name)).toContain("Good Project");
+      expect(list.map((m) => m.name)).not.toContain("Future Project");
+
+      expect(await repo.load(poisoned.id)).toBeNull(); // null, not throw
+
+      const recent = await repo.loadMostRecent();
+      expect(recent).not.toBeNull();
+      expect(recent!.schemaVersion).toBeLessThanOrEqual(SCHEMA_VERSION);
+    } finally {
+      console.warn = warn;
+    }
   });
 });
 

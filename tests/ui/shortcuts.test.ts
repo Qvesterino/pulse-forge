@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { matchShortcut, SHORTCUTS } from "../../src/ui/shortcuts";
+import { matchShortcut, panelIdOfShortcut, SHORTCUTS } from "../../src/ui/shortcuts";
 
 function key(k: string, mods: Partial<Pick<KeyboardEvent, "ctrlKey" | "shiftKey" | "altKey" | "metaKey">> = {}): KeyboardEvent {
   return {
@@ -51,5 +51,18 @@ describe("shortcut bindings", () => {
       expect(prev, `shortcut collision on ${sig}: ${prev} vs ${sc.key}`).toBeUndefined();
       seen.set(sig, sc.key);
     }
+  });
+
+  it("every panel shortcut maps to a real panel id", () => {
+    // Regression: Alt+5 derived its target by slicing the shortcut name
+    // ("panelExport" → "export"), but the app's panel id is "exp" — the key
+    // matched nothing and silently closed the dock instead of opening Export.
+    const panelShortcuts = SHORTCUTS.filter((sc) => sc.key.startsWith("panel"));
+    expect(panelShortcuts.length).toBeGreaterThanOrEqual(5);
+    for (const sc of panelShortcuts) {
+      expect(panelIdOfShortcut(sc.key as never), `${sc.key} must map to a panel id`).toBeTypeOf("string");
+    }
+    expect(panelIdOfShortcut("panelExport")).toBe("exp");
+    expect(panelIdOfShortcut("panelMix")).toBe("mixer");
   });
 });

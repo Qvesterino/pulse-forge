@@ -68,8 +68,15 @@ export function DropZone({ onImport, className }: DropZoneProps) {
 
         onImport(asset);
       } catch (err) {
-        setError(`Failed to decode: ${file.name}`);
-        console.error("[DropZone] decode error:", err);
+        // Persistence failures now propagate out of userSamples.save — show
+        // them distinctly from decode failures instead of leaving ghost
+        // samples that are silently silent after reload.
+        const message =
+          err instanceof Error && err.message && !/decode/i.test(err.message)
+            ? err.message
+            : `Failed to decode: ${file.name}`;
+        setError(message);
+        console.error("[DropZone] import error:", err);
       }
     }
     setImporting(false);

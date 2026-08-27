@@ -44,18 +44,56 @@ export class ProjectRepository {
     const db = await this.db();
     const result = await tx<ProjectDocument | undefined>(db, STORE_PROJECTS, "readonly", (store) => store.get(id));
     if (!result || !validateProjectShape(result)) return null;
-    return migrateProject(result);
+    try {
+      return migrateProject(result);
+    } catch (err) {
+      // Incompatible record (e.g. written by a newer app version). It must not
+      // take down callers that merely wanted "this project or nothing".
+      console.warn(`[repo] project ${id} could not be migrated:`, err);
+      return null;
+    }
+  }
+
+  /** Migrate one stored record; returns null instead of throwing on bad records. */
+  private safeMigrate(doc: ProjectDocument): SavedProjectMeta | null {
+    if (!validateProjectShape(doc)) return null;
+    try {
+      return metaOf(migrateProject(doc));
+    } catch (err) {
+      console.warn(`[repo] skipping unmigratable project ${doc.id}:`, err);
+      return null;
+    }
   }
 
   /** All saved projects as lightweight metadata, most recently updated first. */
   async listAll(): Promise<SavedProjectMeta[]> {
     const db = await this.db();
     const all = await tx<ProjectDocument[]>(db, STORE_PROJECTS, "readonly", (store) => store.getAll());
+    // One poisoned record (corrupted row, future schema version from a newer
+    // install) must never blank the whole library — skip it.
     return all
-      .filter(validateProjectShape)
-      .map((doc) => migrateProject(doc))
-      .map(metaOf)
+      .map((doc) => this.safeMigrate(doc))
+      .filter((meta): meta is SavedProjectMeta => meta !== null)
       .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+  }
+
+  /**
+   * Frozen-buffer ids referenced by ANY stored project. The `frozen-audio`
+   * store is shared across projects, so orphan GC must consider every
+   * document — deleting by the open project's references alone destroys the
+   * other projects' frozen audio irreversibly.
+   */
+  async referencedFrozenBufferIds(): Promise<Set<string>> {
+    const db = await this.db();
+    const all = await tx<ProjectDocument[]>(db, STORE_PROJECTS, "readonly", (store) => store.getAll());
+    const ids = new Set<string>();
+    for (const doc of all) {
+      for (const track of Array.isArray(doc?.tracks) ? doc.tracks : []) {
+        const frozen = (track as { frozen?: { bufferId?: unknown } }).frozen;
+        if (frozen && typeof frozen.bufferId === "string") ids.add(frozen.bufferId);
+      }
+    }
+    return ids;
   }
 
   async delete(id: string): Promise<void> {
@@ -67,13 +105,23 @@ export class ProjectRepository {
     }
   }
 
-  /** Rename a saved project in place. Returns the updated document, or null if missing/invalid. */
+  /**
+   * Rename a saved project in place. Returns the updated document, or null if
+   * missing/invalid. Deliberately bypasses `save()` — a rename must not
+   * repoint the global "most recent" resume pointer at whatever project
+   * happened to be renamed (same contract as `duplicate`).
+   */
   async rename(id: string, name: string): Promise<ProjectDocument | null> {
     const doc = await this.load(id);
     if (!doc) return null;
     const trimmed = name.trim();
-    const next = { ...doc, name: trimmed.length > 0 ? trimmed : doc.name };
-    await this.save(next);
+    const next: ProjectDocument = {
+      ...doc,
+      name: trimmed.length > 0 ? trimmed : doc.name,
+      updatedAt: new Date().toISOString(),
+    };
+    const db = await this.db();
+    await tx(db, STORE_PROJECTS, "readwrite", (store) => store.put(next) as IDBRequest<IDBValidKey>);
     return next;
   }
 
@@ -105,10 +153,17 @@ export class ProjectRepository {
       if (doc) return doc;
     }
     const all = await tx<ProjectDocument[]>(db, STORE_PROJECTS, "readonly", (store) => store.getAll());
-    if (all.length === 0) return null;
+    // Most recent VALID project — bad records are skipped, not fatal.
     const sorted = all
       .filter(validateProjectShape)
-      .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
-    return sorted.length > 0 ? migrateProject(sorted[0]) : null;
+      .sort((a, b) => ((a.updatedAt ?? "") < (b.updatedAt ?? "") ? 1 : -1));
+    for (const candidate of sorted) {
+      try {
+        return migrateProject(candidate);
+      } catch {
+        // skip incompatible record
+      }
+    }
+    return null;
   }
 }

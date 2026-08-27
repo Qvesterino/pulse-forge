@@ -234,6 +234,7 @@ export function openProject(core: CoreServices, initial: ProjectDocument, option
       engine.noteOn(trackId, pitch, velocity, when, durationSec),
     applyAutomation: (fromTick, toTick, relOf, scheduleOffsetSec) =>
       engine.applyAutomation(fromTick, toTick, relOf, scheduleOffsetSec),
+    applyModulators: (fromTick, toTick, whenFor) => engine.applyModulators(fromTick, toTick, whenFor),
     applySceneAutomationLane: (lane, fromTick, toTick, sceneStartTick, scheduleOffsetSec) =>
       engine.applySceneAutomationLane(lane, fromTick, toTick, sceneStartTick, scheduleOffsetSec),
     applyPatternLaunch: (patternId) => store.execute(setActivePattern(store.doc, patternId)),
@@ -284,22 +285,31 @@ export function openProject(core: CoreServices, initial: ProjectDocument, option
   // Restore frozen-track audio (IndexedDB → bank) so frozen tracks survive
   // reloads. Tracks whose buffer is gone (cleared site data, other browser)
   // are auto-unfrozen — they play live instead of staying permanently silent.
-  // Unreferenced stored buffers are GC'd here: the undo history is empty at
-  // open, so "referenced" is exactly the current doc's frozen bufferIds.
+  // Unreferenced stored buffers are GC'd here — but only buffers referenced
+  // by NO project: the store is shared across all projects, so GC-ing by the
+  // open document alone would delete every other project's frozen audio.
   void (async () => {
-    const missing = await restoreFrozenTracks(store.doc, bank, frozenAudio);
-    for (const track of store.doc.tracks) {
-      if (track.frozen && missing.includes(track.frozen.bufferId)) {
-        store.execute(unfreezeTrack(store.doc, track.id));
+    try {
+      const missing = await restoreFrozenTracks(store.doc, bank, frozenAudio);
+      for (const track of store.doc.tracks) {
+        if ("frozen" in track && track.frozen && missing.includes(track.frozen.bufferId)) {
+          // The track can disappear while we await above (collab peer edit,
+          // rapid startup interaction) — skip instead of letting unfreezeTrack
+          // throw and abort the whole restore path.
+          if (!store.doc.tracks.some((t) => t.id === track.id)) continue;
+          store.execute(unfreezeTrack(store.doc, track.id));
+        }
       }
+      const referenced = await repo.referencedFrozenBufferIds();
+      for (const entry of await frozenAudio.list()) {
+        if (!referenced.has(entry.id)) await frozenAudio.remove(entry.id);
+      }
+    } catch (err) {
+      // Restore is best-effort — never leave an unhandled rejection behind.
+      console.warn("[services] frozen-audio restore failed:", err);
+    } finally {
+      engine.setProject(store.doc);
     }
-    const referenced = new Set(
-      store.doc.tracks.filter((t) => t.frozen).map((t) => t.frozen!.bufferId),
-    );
-    for (const entry of await frozenAudio.list()) {
-      if (!referenced.has(entry.id)) await frozenAudio.remove(entry.id);
-    }
-    engine.setProject(store.doc);
   })();
 
   void midi.requestAccess().then((ok) => {

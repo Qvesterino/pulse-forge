@@ -28,6 +28,7 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(() => {
@@ -41,38 +42,53 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
     refresh();
   }, [refresh]);
 
-  const openById = async (id: string) => {
+  // IndexedDB failures (quota, private browsing, corrupted record) would
+  // otherwise surface only as unhandled rejections while the UI sits dead.
+  const guard = (action: () => Promise<void>): Promise<void> =>
+    action().catch((err) => {
+      console.error("[ProjectBrowser] action failed:", err);
+      setActionError(err instanceof Error ? err.message : "Storage operation failed");
+    });
+
+  const openById = (id: string) => {
     if (busy) return;
     setBusy(true);
-    try {
-      const doc = await core.repo.load(id);
-      if (doc) onOpen(doc);
-    } finally {
-      setBusy(false);
-    }
+    void guard(async () => {
+      try {
+        const doc = await core.repo.load(id);
+        if (doc) onOpen(doc);
+        else setActionError("This project could not be opened — its data may be from a newer app version.");
+      } finally {
+        setBusy(false);
+      }
+    });
   };
 
-  const openMostRecent = async () => {
+  const openMostRecent = () => {
     if (busy) return;
     setBusy(true);
-    try {
-      const doc = await core.repo.loadMostRecent();
-      if (doc) onOpen(doc);
-    } finally {
-      setBusy(false);
-    }
+    void guard(async () => {
+      try {
+        const doc = await core.repo.loadMostRecent();
+        if (doc) onOpen(doc);
+      } finally {
+        setBusy(false);
+      }
+    });
   };
 
-  const createFromTemplate = async (id: TemplateId) => {
+  const createFromTemplate = (id: TemplateId) => {
     if (busy) return;
     setBusy(true);
-    try {
-      const doc = createProjectFromTemplate(id);
-      await core.repo.save(doc);
-      onOpen(doc);
-    } finally {
-      setBusy(false);
-    }
+    void guard(async () => {
+      try {
+        const doc = createProjectFromTemplate(id);
+        await core.repo.save(doc);
+        onOpen(doc);
+      } finally {
+        setBusy(false);
+      }
+    });
   };
 
   const handleImportFile = async (file: File) => {
@@ -91,10 +107,11 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
     }
   };
 
-  const duplicate = async (id: string) => {
-    await core.repo.duplicate(id);
-    refresh();
-  };
+  const duplicate = (id: string) =>
+    guard(async () => {
+      await core.repo.duplicate(id);
+      refresh();
+    });
 
   const startRename = (meta: SavedProjectMeta) => {
     setRenamingId(meta.id);
@@ -102,17 +119,19 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
     setConfirmDeleteId(null);
   };
 
-  const commitRename = async (id: string) => {
-    await core.repo.rename(id, renameValue);
-    setRenamingId(null);
-    refresh();
-  };
+  const commitRename = (id: string) =>
+    guard(async () => {
+      await core.repo.rename(id, renameValue);
+      setRenamingId(null);
+      refresh();
+    });
 
-  const remove = async (id: string) => {
-    await core.repo.delete(id);
-    setConfirmDeleteId(null);
-    refresh();
-  };
+  const remove = (id: string) =>
+    guard(async () => {
+      await core.repo.delete(id);
+      setConfirmDeleteId(null);
+      refresh();
+    });
 
   const firstRun = projects !== null && projects.length === 0;
   const latest = projects !== null && projects.length > 0 ? projects[0] : null;
@@ -128,6 +147,11 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
       </header>
 
       <div className="pb-body">
+        {actionError && (
+          <p className="pb-import-error" role="alert">
+            {actionError}
+          </p>
+        )}
         {latest && (
           <section className="pb-continue">
             <button type="button" className="pb-continue-card" onClick={() => void openMostRecent()} disabled={busy}>
@@ -192,6 +216,11 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
 
         <section className="pb-section">
           <h2 className="pb-title">PROJECTS</h2>
+          {actionError && (
+            <p className="pb-import-error" role="alert">
+              {actionError}
+            </p>
+          )}
           {projects === null && <p className="pb-empty">Loading…</p>}
           {firstRun && <p className="pb-empty">No projects yet — everything you create is saved automatically.</p>}
           {projects !== null && projects.length > 0 && (

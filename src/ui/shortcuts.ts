@@ -40,6 +40,24 @@ export type ShortcutKey =
   | "seekForward"
   | "toggleHelp";
 
+/**
+ * Panel toggles → bottom-panel ids. Kept here (not derived by slicing the
+ * shortcut name): panel ids are app vocabulary ("exp" is the export panel)
+ * and a mechanical `slice(5).toLowerCase()` produced an id that matched
+ * nothing, making Alt+5 silently close the dock.
+ */
+export const PANEL_IDS_BY_SHORTCUT: Record<string, string> = {
+  panelMix: "mixer",
+  panelFx: "fx",
+  panelArr: "arr",
+  panelMod: "mod",
+  panelExport: "exp",
+};
+
+export function panelIdOfShortcut(key: ShortcutKey): string | null {
+  return PANEL_IDS_BY_SHORTCUT[key] ?? null;
+}
+
 export interface Shortcut {
   key: ShortcutKey;
   /** Human-readable label for the help overlay. */

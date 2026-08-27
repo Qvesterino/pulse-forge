@@ -4,9 +4,9 @@ import { valueAt } from "../project-model/automation";
 import { defaultMasterConfig } from "../project-model/schema";
 import { PPQ } from "../project-model/types";
 import type { SampleBank } from "../sample-library/factory";
-import { EFFECT_DEFS } from "../effects/registry";
+import { EFFECT_DEFS, clampEffectParam } from "../effects/registry";
 import type { EffectRuntime } from "../effects/types";
-import { INSTRUMENT_DEFS } from "../instruments/registry";
+import { INSTRUMENT_DEFS, clampInstrumentParam } from "../instruments/registry";
 import type { InstrumentRuntime } from "../instruments/types";
 import { loadWorkletModules, isWorkletReady } from "../audio-worklets/loader";
 import { createLimiterNode } from "../audio-worklets/limiter-node";
@@ -106,12 +106,6 @@ interface GroupNodes {
   analyser: AnalyserNode;
   fx: FxChainState;
   sends: Map<string, GainNode>;
-}
-
-interface LfoRuntimeState {
-  osc: OscillatorNode;
-  depth: GainNode;
-  signature: string;
 }
 
 const LFO_DIVISION_MULTS = [1 / 4, 1 / 2, 1, 2, 4];
@@ -1377,33 +1371,37 @@ export class AudioEngine {
       }
       case "fxParam":
       case "instParam": {
-        if (!target.paramId) return null;
+        const paramId = target.paramId;
+        if (!paramId) return null;
         return (value, _mode, when) => {
           try {
             let mapped = value;
             if (target.kind === "fxParam") {
-              if (!target.fxId) return;
+              const fxId = target.fxId;
+              if (!fxId) return;
               const nodes = this.trackNodes.get(target.trackId) ?? this.groupNodes.get(target.trackId);
-              const rt = nodes?.fx.runtimes.get(target.fxId);
+              const rt = nodes?.fx.runtimes.get(fxId);
               if (!rt) return;
               const owner = this.doc?.tracks.find((t) => t.id === target.trackId);
-              const instance = owner && "effects" in owner ? owner.effects.find((f) => f.id === target.fxId) : undefined;
+              const instance = owner && "effects" in owner ? owner.effects.find((f) => f.id === fxId) : undefined;
               if (!instance) return;
-              const def = EFFECT_DEFS[instance.type].params.find((p) => p.id === target.paramId);
+              const def = EFFECT_DEFS[instance.type].params.find((p) => p.id === paramId);
               if (def) mapped = def.min + ((def.max - def.min) / 2) * (1 + value);
+              const finalValue = clampEffectParam(instance.type, paramId, mapped);
               rt.setParameterAt
-                ? rt.setParameterAt(target.paramId, clampEffectParam(instance.type, target.paramId, mapped), when)
-                : rt.setParameter(target.paramId, clampEffectParam(instance.type, target.paramId, mapped));
+                ? rt.setParameterAt(paramId, finalValue, when)
+                : rt.setParameter(paramId, finalValue);
             } else {
               const state = this.instruments.get(target.trackId);
               if (!state) return;
               const track = this.doc?.tracks.find((t) => t.id === target.trackId);
               if (!track || track.kind !== "instrument") return;
-              const def = INSTRUMENT_DEFS[track.instrument].params.find((p) => p.id === target.paramId);
+              const def = INSTRUMENT_DEFS[track.instrument].params.find((p) => p.id === paramId);
               if (def) mapped = def.min + ((def.max - def.min) / 2) * (1 + value);
+              const finalValue = clampInstrumentParam(track.instrument, paramId, mapped);
               state.runtime.setParameterAt
-                ? state.runtime.setParameterAt(target.paramId, clampInstrumentParam(track.instrument, target.paramId, mapped), when)
-                : state.runtime.setParameter(target.paramId, clampInstrumentParam(track.instrument, target.paramId, mapped));
+                ? state.runtime.setParameterAt(paramId, finalValue, when)
+                : state.runtime.setParameter(paramId, finalValue);
             }
           } catch { /* best effort */ }
         };

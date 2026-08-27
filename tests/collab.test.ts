@@ -5,6 +5,31 @@ import type { DrumTrack } from "../src/project-model/types";
 import { yDocToProject, projectToYDoc } from "../src/collab/YDocAdapter";
 import { YDocStore } from "../src/collab/YDocStore";
 import { chopSampleToPads, setPadParams } from "../src/commands/commands";
+import { yToggleStep } from "../src/commands/yDocHelpers";
+
+describe("yToggleStep bounds safety", () => {
+  it("is a no-op (not a RangeError) when the step index is out of range", () => {
+    // Regression: a peer shrinking the pattern mid-gesture left stale grid
+    // clicks pointing past the end of the Y row; yjs transactions have no
+    // rollback, so `row.delete` threw straight through store.execute and the
+    // whole edit crashed.
+    const doc = createProjectFromTemplate("house");
+    const yDoc = new Y.Doc();
+    const yMap = yDoc.getMap("project");
+    projectToYDoc(doc, yMap);
+    const patternId = doc.patterns[0].id;
+    const padId = Object.keys(doc.patterns[0].rows)[0];
+    expect(() => {
+      yToggleStep(yMap, patternId, padId, 15); // in range → toggles on
+      yToggleStep(yMap, patternId, padId, 999); // out of range → no-op
+      yToggleStep(yMap, patternId, padId, -1); // invalid → no-op
+      yToggleStep(yMap, patternId, "missing-pad", 3); // missing row → no-op for non-zero index
+    }).not.toThrow();
+    const restored = yDocToProject(yMap);
+    expect(restored.patterns[0].rows[padId][15]).toBeGreaterThan(0);
+    expect(restored.patterns[0].rows[padId].length).toBe(16);
+  });
+});
 
 describe("YDocAdapter — round-trip conversion", () => {
   it("converts ProjectDocument → Y.Doc → ProjectDocument (house template)", () => {

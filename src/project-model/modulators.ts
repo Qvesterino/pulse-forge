@@ -102,13 +102,13 @@ export function modulatorEventsInRange(lfo: Lfo, fromTick: number, toTick: numbe
   const hold = divisionTicks(lfo.division);
   const glides = lfo.kind === "random" ? lfo.snh === "glide" : (lfo.glideSec ?? 0) > 0.0005;
 
-  const events: ModulatorEvent[] = [{ tick: from, value: round4(rawPointValueAt(lfo, from)), mode: "set" }];
+  const events: ModulatorEvent[] = [{ tick: from, value: round4(modulatorPointValue(lfo, from)), mode: "set" }];
   let firstBoundary = Math.floor(from / hold) * hold;
   if (firstBoundary <= from) firstBoundary += hold;
   let previous = events[0];
   for (let boundary = firstBoundary; boundary <= to; boundary += hold) {
     if (events.length >= EVENT_GUARD) break;
-    const value = round4(rawPointValueAt(lfo, boundary));
+    const value = round4(modulatorPointValue(lfo, boundary));
     // Identical consecutive holds/ramps are identity writes — collapse them.
     // A later real transition still ramps from the last emitted point, whose
     // value equals the skipped plateau, so the interpolation shape is exact.

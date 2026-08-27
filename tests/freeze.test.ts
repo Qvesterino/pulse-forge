@@ -103,7 +103,41 @@ describe("freezeTrack / unfreezeTrack", () => {
     expect(track).toBeDefined();
     expect("frozen" in track! && (track as any).frozen).toBeDefined();
   });
+
+  it("freeze applies to the CURRENT doc, not the snapshot taken before the render", () => {
+    // Regression: freeze is dispatched after a seconds-long offline render.
+    // A snapshot-style command (`execute: () => next`) silently reverted every
+    // edit the user made while waiting — BPM, notes, everything.
+    const drumTrack = doc.tracks.find((t) => t.kind === "drum")!;
+    const cmd = freezeTrack(doc, drumTrack.id, "frozen-late", 30.0, 44100);
+    // User edits arrive between command creation and dispatch:
+    const edited = setBpmOnDoc(doc, 98);
+    const next = cmd.execute(edited);
+    expect(next.bpm).toBe(98); // concurrent edit preserved
+    const track = next.tracks.find((t) => t.id === drumTrack.id)!;
+    expect("frozen" in track && (track as any).frozen?.bufferId).toBe("frozen-late");
+  });
+
+  it("unfreeze applies to the CURRENT doc and its undo restores that track's frozen state", () => {
+    const drumTrack = doc.tracks.find((t) => t.kind === "drum")!;
+    const frozen = freezeTrack(doc, drumTrack.id, "frozen-abc", 30.0, 44100).execute(doc);
+    const cmd = unfreezeTrack(frozen, drumTrack.id);
+    // User renames a pattern while... (unfreeze is sync, but the same contract
+    // holds: apply to whatever doc arrives).
+    const edited = setBpmOnDoc(frozen, 140);
+    const next = cmd.execute(edited);
+    expect(next.bpm).toBe(140);
+    const track = next.tracks.find((t) => t.id === drumTrack.id)!;
+    expect("frozen" in track && (track as any).frozen).toBeUndefined();
+    const undone = cmd.undo(next);
+    const restored = undone.tracks.find((t) => t.id === drumTrack.id)!;
+    expect((restored as any).frozen).toEqual({ bufferId: "frozen-abc", durationSec: 30.0, sampleRate: 44100 });
+  });
 });
+
+function setBpmOnDoc(doc: import("../src/project-model/types").ProjectDocument, bpm: number) {
+  return { ...doc, bpm };
+}
 
 describe("renderTrack filtering", () => {
   it("filtered doc includes only target track + its group", () => {

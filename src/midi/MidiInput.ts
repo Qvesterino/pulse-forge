@@ -36,6 +36,8 @@ export class MidiInput {
   private engine: AudioEngine | null = null;
   private store: MidiStoreSurface | null = null;
   private transport: Transport | null = null;
+  /** Last channel voice status byte (running status support). */
+  private runningStatus: number | null = null;
 
   async requestAccess(): Promise<boolean> {
     if (typeof navigator === "undefined" || !navigator.requestMIDIAccess) return false;
@@ -112,6 +114,7 @@ export class MidiInput {
     this.configCb = null;
     this.getDoc = null;
     this.deviceChangeCb = null;
+    this.runningStatus = null;
   }
 
   // ---------------------------------------------------------------------------

@@ -28,7 +28,7 @@ import {
 } from "../commands/commands";
 import type { PatternClipboard } from "../commands/commands";
 import type { SelectedNote } from "./PianoRoll";
-import { matchShortcut } from "./shortcuts";
+import { matchShortcut, panelIdOfShortcut } from "./shortcuts";
 import { BAR_TICKS } from "../project-model/types";
 import { CommandToast } from "./CommandToast";
 import { HelpOverlay } from "./HelpOverlay";
@@ -210,8 +210,8 @@ export function App({
         case "panelMod":
         case "panelExport": {
           event.preventDefault();
-          const panel = matched.slice(5).toLowerCase() as BottomPanel;
-          setBottomPanelTab(panel);
+          const panel = panelIdOfShortcut(matched);
+          if (panel) setBottomPanelTab(panel as BottomPanel);
           return;
         }
         case "nextPattern": {
