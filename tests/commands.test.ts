@@ -794,3 +794,68 @@ describe("sliceToPads (chop beats)", () => {
     expect(pad.sliceEnd).toBeUndefined();
   });
 });
+
+describe("deletePattern dangling-reference cleanup (regression)", () => {
+  function docWithSceneOnSecondPattern() {
+    const base = createDefaultProject();
+    let store = new ProjectStore(base);
+    store.execute(createPattern(store.doc, "Pattern B"));
+    const patternB = store.doc.patterns.find((p) => p.id !== base.activePatternId)!;
+    store.execute(createScene(store.doc, "Drop"));
+    const scene = store.doc.scenes[store.doc.scenes.length - 1];
+    store.execute(setScenePattern(store.doc, scene.id, patternB.id));
+    // A clip in the arrangement referencing the scene (bar 10 — the template
+    // already pre-places a clip near the start).
+    store.execute(addArrangementClip(store.doc, scene.id, 10, 2));
+    return { store, patternB, sceneId: scene.id };
+  }
+
+  it("deleting a pattern removes scenes that reference it and their arrangement clips", () => {
+    const { store, patternB } = docWithSceneOnSecondPattern();
+    const clipCountBefore = store.doc.arrangement.clips.length;
+    expect(clipCountBefore).toBeGreaterThan(0);
+
+    store.execute(deletePattern(store.doc, patternB.id));
+    const doc = store.doc;
+
+    // No dangling scene → no crash in UI/scheduler when reading the doc.
+    expect(doc.scenes.every((s) => doc.patterns.some((p) => p.id === s.patternId))).toBe(true);
+    // The clip pointing at the deleted scene must be gone too.
+    for (const clip of doc.arrangement.clips) {
+      expect(doc.scenes.some((s) => s.id === clip.sceneId)).toBe(true);
+    }
+  });
+
+  it("deleting a pattern is fully undoable", () => {
+    const { store, patternB } = docWithSceneOnSecondPattern();
+    const before = store.doc;
+    store.execute(deletePattern(store.doc, patternB.id));
+    store.undo();
+    expect(store.doc.patterns.some((p) => p.id === patternB.id)).toBe(true);
+    expect(store.doc.scenes.length).toBe(before.scenes.length);
+    expect(store.doc.arrangement.clips.length).toBe(before.arrangement.clips.length);
+  });
+
+  it("setActivePattern ignores a pattern id that no longer exists", () => {
+    const { store, patternB } = docWithSceneOnSecondPattern();
+    const before = store.doc;
+    // Simulate a stale launch racing a delete: the queued id may be gone.
+    const cmd = setActivePattern(before, patternB.id);
+    const afterDeleteDoc = deletePattern(before, patternB.id).execute(before);
+    const result = cmd.execute(afterDeleteDoc);
+    expect(result.activePatternId).toBe(afterDeleteDoc.activePatternId);
+    expect(result).toBe(afterDeleteDoc); // no-op — same document
+  });
+
+  it("setActivePattern still switches between existing patterns (and undoes)", () => {
+    const base = createDefaultProject();
+    const store = new ProjectStore(base);
+    store.execute(createPattern(store.doc, "Pattern B"));
+    const patternB = store.doc.patterns.find((p) => p.id !== base.activePatternId)!;
+    const prev = store.doc.activePatternId;
+    store.execute(setActivePattern(store.doc, patternB.id));
+    expect(store.doc.activePatternId).toBe(patternB.id);
+    store.undo();
+    expect(store.doc.activePatternId).toBe(prev);
+  });
+});

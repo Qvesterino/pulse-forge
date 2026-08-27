@@ -350,15 +350,58 @@ export interface AutomationLane {
 
 export type LfoWave = "sine" | "triangle" | "square" | "sawUp" | "sawDown";
 
+/** Modulator family. Missing kind on persisted docs reads as "osc". */
+export type LfoKind = "osc" | "random" | "step" | "envFollower";
+
+/**
+ * Unified track modulator (flattened optional-field shape mirroring the loose
+ * MacroMapping style — keeps legacy serialized projects valid without any
+ * migration and lets `setLfoParams` patches stay partial):
+ *
+ * - `kind: "osc"` (default)     — audio-rate oscillator, native targets only
+ *                                 (`param`: gain|pan)
+ * - `kind: "random"`            — seeded S&H / glide stream, full
+ *                                 `AutomationTarget` support via `target`
+ * - `kind: "step"`              — bar-aligned editable step sequence, full
+ *                                 `AutomationTarget` support via `target`
+ * - `kind: "envFollower"`       — audio-envelope detector driving native
+ *                                 targets (v1 scope: Volume/Pan)
+ *
+ * `amount` is a uniform depth scalar 0..1 across every kind.
+ */
 export interface Lfo {
   id: ID;
   trackId: ID;
+  kind?: LfoKind;
+  /**
+   * Native-parameter selector used by "osc" and "envFollower" (the only kinds
+   * whose output feeds real AudioParams). Kept non-optional for backwards
+   * compatibility with previously serialized documents.
+   */
   param: "gain" | "pan";
-  wave: LfoWave;
-  rateMode: "hz" | "sync";
-  rateHz: number;
-  division: number;
+  /**
+   * Generic target for schedulable kinds ("random" / "step"). When present it
+   * fully overrides `param`; when absent the native param selector applies.
+   */
+  target?: AutomationTarget;
+  /** Depth 0..1 — shared semantics across all kinds. */
   amount: number;
+  // ---- osc ----
+  wave?: LfoWave;
+  rateMode?: "hz" | "sync";
+  rateHz?: number;
+  division?: number;
+  // ---- random ----
+  snh?: "hold" | "glide";
+  seed?: string;
+  // ---- step ----
+  steps?: number[];
+  glideSec?: number;
+  // ---- envFollower ----
+  sourceTrackId?: ID;
+  attackMs?: number;
+  releaseMs?: number;
+  sensitivity?: number;
 }
 
 export interface MacroMapping {

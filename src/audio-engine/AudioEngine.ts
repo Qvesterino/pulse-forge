@@ -10,6 +10,8 @@ import { INSTRUMENT_DEFS } from "../instruments/registry";
 import type { InstrumentRuntime } from "../instruments/types";
 import { loadWorkletModules, isWorkletReady } from "../audio-worklets/loader";
 import { createLimiterNode } from "../audio-worklets/limiter-node";
+import { createEnvFollowerNode, type EnvFollowerHandle } from "../audio-worklets/envfollower-node";
+import { lfoKind, lfoWave, modulatorEventsInRange, modulatorPointValue, resolveLfoTarget } from "../project-model/modulators";
 import { channelLevels, integratedLufs, lufsFromChannels, monoLossDb, splitChannels, stereoCorrelation, PeakHold, toDb, type Frame, type ChannelLevels } from "./metering";
 
 /** Tick position → seconds inside a frozen loop (mod buffer duration). */
@@ -114,8 +116,61 @@ interface LfoRuntimeState {
 
 const LFO_DIVISION_MULTS = [1 / 4, 1 / 2, 1, 2, 4];
 
-function lfoSignature(lfo: Lfo): string {
-  return [lfo.trackId, lfo.param, lfo.wave, lfo.rateMode, lfo.rateHz, lfo.division, lfo.amount].join("|");
+interface OscModRuntime {
+  osc: OscillatorNode;
+  depth: GainNode;
+  signature: string;
+}
+
+interface FollowerModRuntime {
+  /** Null when AudioWorklet DSP is unavailable — surfaces as a degraded entry. */
+  follower: EnvFollowerHandle | null;
+  depth: GainNode | null;
+  signature: string;
+  degradedReason?: string;
+}
+
+type LfoRuntimeState = OscModRuntime | FollowerModRuntime;
+
+function isOscRuntime(state: LfoRuntimeState): state is OscModRuntime {
+  return "osc" in state;
+}
+
+function disposeLfoRuntime(state: LfoRuntimeState): void {
+  if (isOscRuntime(state)) {
+    try {
+      state.osc.stop();
+    } catch {
+      /* not started */
+    }
+    state.osc.disconnect();
+    state.depth.disconnect();
+  } else {
+    try {
+      state.follower?.dispose();
+    } catch {
+      /* already disposed */
+    }
+    if (state.depth) {
+      try {
+        state.depth.disconnect();
+      } catch {
+        /* already disconnected */
+      }
+    }
+  }
+}
+
+function lfoSignature(lfo: Lfo, workletAvailable?: boolean): string {
+  const kind = lfo.kind ?? "osc";
+  const parts: (string | number)[] = [kind, lfo.trackId, lfo.param, lfo.amount];
+  if (kind === "osc") {
+    parts.push(lfo.wave ?? "", lfo.rateMode ?? "", lfo.rateHz ?? 0, lfo.division ?? 0);
+  } else if (kind === "envFollower") {
+    parts.push(lfo.sourceTrackId ?? lfo.trackId, lfo.attackMs ?? 0, lfo.releaseMs ?? 0, lfo.sensitivity ?? 0);
+    if (workletAvailable !== undefined) parts.push(`ok:${workletAvailable ? 1 : 0}`);
+  }
+  return parts.join("|");
 }
 
 interface Voice {
@@ -980,53 +1035,82 @@ export class AudioEngine {
   }
 
   private lfoFrequency(lfo: Lfo): number {
-    if (lfo.rateMode === "hz") return Math.max(0.01, lfo.rateHz);
+    if (lfo.rateMode === "hz") return Math.max(0.01, lfo.rateHz ?? 2);
     const bpm = this.doc?.bpm ?? 124;
-    const mult = LFO_DIVISION_MULTS[Math.max(0, Math.min(LFO_DIVISION_MULTS.length - 1, Math.round(lfo.division)))];
+    const mult = LFO_DIVISION_MULTS[Math.max(0, Math.min(LFO_DIVISION_MULTS.length - 1, Math.round(lfo.division ?? 2)))];
     return Math.max(0.01, (bpm / 60) * mult);
   }
 
+  /**
+   * Runtime kinds only — oscillators (audio-rate) and envelope followers
+   * (worklet). Random / step modulators are event-scheduled in
+   * applyModulators/scheduleModulatorsOffline and need no graph node.
+   */
   private syncLfos(doc: ProjectDocument): void {
     const ctx = this.ctx;
     if (!ctx) return;
-    const liveIds = new Set(doc.lfos.map((l) => l.id));
+    const runtimeIds = new Set<string>();
+    for (const lfo of doc.lfos) {
+      const kind = lfoKind(lfo);
+      if (kind === "osc" || kind === "envFollower") runtimeIds.add(lfo.id);
+    }
     for (const [id, state] of [...this.lfos]) {
-      if (!liveIds.has(id)) {
-        try {
-          state.osc.stop();
-        } catch {
-          // not started
-        }
-        state.osc.disconnect();
-        state.depth.disconnect();
+      if (!runtimeIds.has(id)) {
+        disposeLfoRuntime(state);
         this.lfos.delete(id);
       }
     }
     for (const lfo of doc.lfos) {
       const nodes = this.trackNodes.get(lfo.trackId) ?? this.groupNodes.get(lfo.trackId);
       if (!nodes) continue;
-      const sig = lfoSignature(lfo);
-      const existing = this.lfos.get(lfo.id);
-      if (existing && existing.signature === sig) continue;
-      if (existing) {
-        try {
-          existing.osc.stop();
-        } catch {
-          // not started
-        }
-        existing.osc.disconnect();
-        existing.depth.disconnect();
+      const kind = lfoKind(lfo);
+      if (kind !== "osc" && kind !== "envFollower") continue;
+
+      if (kind === "osc") {
+        const sig = lfoSignature(lfo);
+        const existing = this.lfos.get(lfo.id);
+        if (existing && isOscRuntime(existing) && existing.signature === sig) continue;
+        if (existing) disposeLfoRuntime(existing);
+        const wave = lfoWave(lfo);
+        const osc = ctx.createOscillator();
+        osc.type = wave === "sawUp" || wave === "sawDown" ? "sawtooth" : wave;
+        osc.frequency.value = this.lfoFrequency(lfo);
+        const depth = ctx.createGain();
+        const sign = wave === "sawDown" ? -1 : 1;
+        depth.gain.value = sign * lfo.amount;
+        const targetParam = lfo.param === "gain" ? nodes.modAutoGain.gain : nodes.modAutoPan.pan;
+        osc.connect(depth).connect(targetParam);
+        osc.start();
+        this.lfos.set(lfo.id, { osc, depth, signature: sig });
+        continue;
       }
-      const osc = ctx.createOscillator();
-      osc.type = lfo.wave === "sawUp" || lfo.wave === "sawDown" ? "sawtooth" : lfo.wave;
-      osc.frequency.value = this.lfoFrequency(lfo);
+
+      // envFollower: detector taps the SOURCE track's input (pre-FX/pre-gain)
+      // so a follower listening to its own host can never form a feedback loop.
+      const available = isWorkletReady("envFollower", ctx);
+      const sourceTrackId = typeof lfo.sourceTrackId === "string" && lfo.sourceTrackId !== "" ? lfo.sourceTrackId : lfo.trackId;
+      const sourceNodes = this.trackNodes.get(sourceTrackId) ?? this.groupNodes.get(sourceTrackId) ?? nodes;
+      const sig = lfoSignature(lfo, available);
+      const existing = this.lfos.get(lfo.id);
+      if (existing && !isOscRuntime(existing) && existing.signature === sig) continue;
+      if (existing) disposeLfoRuntime(existing);
+      if (!available) {
+        this.lfos.set(lfo.id, { follower: null, depth: null, signature: sig, degradedReason: "AudioWorklet unavailable — envelope follower idle" });
+        continue;
+      }
+      const follower = createEnvFollowerNode(ctx, {
+        params: {
+          attackMs: lfo.attackMs ?? 12,
+          releaseMs: lfo.releaseMs ?? 180,
+          sensitivity: lfo.sensitivity ?? 1.5,
+        },
+      });
       const depth = ctx.createGain();
-      const sign = lfo.wave === "sawDown" ? -1 : 1;
-      depth.gain.value = sign * lfo.amount;
-      const targetParam = lfo.param === "gain" ? nodes.modAutoGain.gain : nodes.modAutoPan.pan;
-      osc.connect(depth).connect(targetParam);
-      osc.start();
-      this.lfos.set(lfo.id, { osc, depth, signature: sig });
+      depth.gain.value = lfo.amount;
+      sourceNodes.input.connect(follower.input);
+      follower.output.connect(depth);
+      depth.connect(lfo.param === "gain" ? nodes.modAutoGain.gain : nodes.modAutoPan.pan);
+      this.lfos.set(lfo.id, { follower, depth, signature: sig });
     }
   }
 
@@ -1211,6 +1295,127 @@ export class AudioEngine {
     };
   }
 
+  /**
+   * Deterministic schedulable-modulator pass (random S&H / step generators).
+   * Contributors sharing a target compose ADDITIVELY: corner values merge into
+   * a piecewise-linear chain written onto the destination, so natives read
+   * `base + Σ contributions` (audio-rate oscillators keep adding on top) and
+   * device params land mid-range relative to their ParamDef spans. The same
+   * routine serves live playback (whenFor anchored to the transport) and
+   * offline rendering (timeAt absolute), which keeps parity by construction.
+   */
+  applyModulators(fromTick: number, toTick: number, whenFor: (tick: number) => number): void {
+    const ctx = this.ctx;
+    const doc = this.doc;
+    if (!ctx || !doc) return;
+    const from = Math.max(0, fromTick);
+    const to = Math.max(from, toTick);
+
+    interface ModGroup { target: AutomationTarget; members: Lfo[] }
+    const groups = new Map<string, ModGroup>();
+    for (const lfo of doc.lfos) {
+      const kind = lfoKind(lfo);
+      if (kind !== "random" && kind !== "step") continue;
+      const target = resolveLfoTarget(lfo);
+      const key = `${target.kind}:${target.trackId}:${target.fxId ?? ""}:${target.paramId ?? ""}`;
+      let group = groups.get(key);
+      if (!group) {
+        group = { target, members: [] };
+        groups.set(key, group);
+      }
+      group.members.push(lfo);
+    }
+    if (groups.size === 0) return;
+
+    for (const [, group] of groups) {
+      const streams = group.members.map((member) => ({ member, events: modulatorEventsInRange(member, from, to) }));
+      const times = new Set<number>([from, to]);
+      for (const stream of streams) {
+        for (const event of stream.events) times.add(event.tick);
+      }
+      const sorted = [...times].sort((a, b) => a - b);
+
+      const compositeAt = (tick: number): number => {
+        let total = 0;
+        for (const stream of streams) total += modulatorPointValue(stream.member, tick) * stream.member.amount;
+        return total;
+      };
+
+      const write = this.makeModulatorWriter(group.target);
+      if (!write) continue;
+
+      let isFirst = true;
+      for (const tick of sorted) {
+        const when = Math.max(ctx.currentTime, whenFor(tick));
+        write(compositeAt(tick), isFirst ? "set" : "ramp", when);
+        isFirst = false;
+      }
+    }
+  }
+
+  /**
+   * Builds a clamped writer for one modulation target. Natives write absolute
+   * composited values; device params scale the contribution around the
+   * parameter's mid-point using its registry definition.
+   */
+  private makeModulatorWriter(target: AutomationTarget): ((value: number, mode: "set" | "ramp", when: number) => void) | null {
+    switch (target.kind) {
+      case "trackGain":
+      case "trackPan": {
+        const nodes = this.trackNodes.get(target.trackId) ?? this.groupNodes.get(target.trackId);
+        if (!nodes) return null;
+        const param = target.kind === "trackGain" ? nodes.modAutoGain.gain : nodes.modAutoPan.pan;
+        const clamp = target.kind === "trackGain"
+          ? (v: number) => Math.max(0, Math.min(2, 1 + v))
+          : (v: number) => Math.max(-1, Math.min(1, v));
+        return (value, mode, when) => {
+          try {
+            if (mode === "set") param.setValueAtTime(clamp(value), when);
+            else param.linearRampToValueAtTime(clamp(value), when);
+          } catch { /* overlapping automations — best effort */ }
+        };
+      }
+      case "fxParam":
+      case "instParam": {
+        if (!target.paramId) return null;
+        return (value, _mode, when) => {
+          try {
+            let mapped = value;
+            if (target.kind === "fxParam") {
+              if (!target.fxId) return;
+              const nodes = this.trackNodes.get(target.trackId) ?? this.groupNodes.get(target.trackId);
+              const rt = nodes?.fx.runtimes.get(target.fxId);
+              if (!rt) return;
+              const owner = this.doc?.tracks.find((t) => t.id === target.trackId);
+              const instance = owner && "effects" in owner ? owner.effects.find((f) => f.id === target.fxId) : undefined;
+              if (!instance) return;
+              const def = EFFECT_DEFS[instance.type].params.find((p) => p.id === target.paramId);
+              if (def) mapped = def.min + ((def.max - def.min) / 2) * (1 + value);
+              rt.setParameterAt
+                ? rt.setParameterAt(target.paramId, clampEffectParam(instance.type, target.paramId, mapped), when)
+                : rt.setParameter(target.paramId, clampEffectParam(instance.type, target.paramId, mapped));
+            } else {
+              const state = this.instruments.get(target.trackId);
+              if (!state) return;
+              const track = this.doc?.tracks.find((t) => t.id === target.trackId);
+              if (!track || track.kind !== "instrument") return;
+              const def = INSTRUMENT_DEFS[track.instrument].params.find((p) => p.id === target.paramId);
+              if (def) mapped = def.min + ((def.max - def.min) / 2) * (1 + value);
+              state.runtime.setParameterAt
+                ? state.runtime.setParameterAt(target.paramId, clampInstrumentParam(track.instrument, target.paramId, mapped), when)
+                : state.runtime.setParameter(target.paramId, clampInstrumentParam(track.instrument, target.paramId, mapped));
+            }
+          } catch { /* best effort */ }
+        };
+      }
+    }
+  }
+
+  /** Offline hook — renderer sweeps every window with absolute time mapping. */
+  scheduleModulatorsOffline(windows: { from: number; to: number }[], timeAt: (tick: number) => number): void {
+    for (const win of windows) this.applyModulators(win.from, win.to, timeAt);
+  }
+
   applyAutomation(fromTick: number, toTick: number, relOf: (tick: number) => number, scheduleOffsetSec = 0): void {
     const ctx = this.ctx;
     const doc = this.doc;
@@ -1294,7 +1499,15 @@ export class AudioEngine {
     const ctx = this.ctx;
     if (!ctx) return;
     const now = ctx.currentTime;
-    for (const nodes of this.trackNodes.values()) {
+    for (const nodes of [...this.trackNodes.values(), ...this.groupNodes.values()]) {
+      // Cancel pending modulator/automation writes before restoring — otherwise
+      // stale future events would snap parameters right back.
+      try {
+        nodes.modAutoGain.gain.cancelScheduledValues(now);
+      } catch { /* nothing scheduled */ }
+      try {
+        nodes.modAutoPan.pan.cancelScheduledValues(now);
+      } catch { /* nothing scheduled */ }
       nodes.modAutoGain.gain.setTargetAtTime(1, now, 0.01);
       nodes.modAutoPan.pan.setTargetAtTime(0, now, 0.01);
     }
@@ -1550,6 +1763,12 @@ export class AudioEngine {
     for (const [id, nodes] of this.trackNodes) collect(id, nodes.fx);
     for (const [id, nodes] of this.groupNodes) collect(id, nodes.fx);
     for (const [id, nodes] of this.returnNodes) collect(id, nodes.fx);
+    for (const [id, state] of this.lfos) {
+      if (!isOscRuntime(state) && state.degradedReason) {
+        const host = this.doc?.lfos.find((l) => l.id === id)?.trackId ?? "";
+        out.push({ trackId: host, fxId: id, reason: state.degradedReason });
+      }
+    }
     return out;
   }
 

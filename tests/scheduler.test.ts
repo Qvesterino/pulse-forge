@@ -658,6 +658,52 @@ describe("scheduler — quantized pattern launch", () => {
     expect(h.getDoc().activePatternId).toBe(secondId);
     h.scheduler.stop();
   });
+
+  it("launches a NON-empty pattern without dropping its first hits after the boundary", () => {
+    // Regression: the scheduler scheduled only [windowStart, boundary) and then
+    // advanced the window to the full windowEnd — so every event of the newly
+    // launched pattern inside (boundary, windowEnd] was silently skipped. The
+    // downbeat of a quantized scene/pattern launch landed inside that gap.
+    const base = createDefaultProject();
+    const first = base.patterns[0];
+    const kickPadId = getDrumTrack(base).pads[0].id;
+    const second: Pattern = {
+      id: "pattern-hit",
+      name: "Hit",
+      stepCount: first.stepCount,
+      rows: Object.fromEntries(
+        Object.keys(first.rows).map((padId) => [
+          padId,
+          new Array<number>(first.stepCount).fill(0).map((_, i) => (padId === kickPadId && i === 1 ? 0.9 : 0)),
+        ]),
+      ),
+      notes: {},
+    };
+    const doc: ProjectDocument = { ...base, patterns: [first, second], activePatternId: first.id };
+    const h = makeHarness(doc, "pattern");
+    h.transport.play(0);
+    h.scheduler.start();
+    h.scheduler.queuePatternLaunch(second.id, BAR_TICKS);
+    // Run well past the launch: the region [boundary, launchWindowEnd) must
+    // be covered either by the commit tick itself or the following windows —
+    // never skipped.
+    for (let i = 0; i < 200; i++) {
+      h.advance(0.025);
+      h.scheduler["tick"]();
+      if (h.launches.length > 0 && h.transport.position > BAR_TICKS + STEP_TICKS * 2) break;
+    }
+    expect(h.launches).toEqual([second.id]);
+    // The launched pattern hits step 1 (tick BAR_TICKS + STEP_TICKS).
+    const hitTick = BAR_TICKS + STEP_TICKS;
+    const boundarySeconds = h.transport.timeAtTick(BAR_TICKS);
+    const hitSeconds = h.transport.timeAtTick(hitTick);
+    const scheduled = h.events.filter(
+      (e) => e.padId === kickPadId && Math.abs(e.when - hitSeconds) < 0.002,
+    );
+    expect(scheduled.length).toBe(1);
+    expect(scheduled[0].when).toBeGreaterThanOrEqual(boundarySeconds);
+    h.scheduler.stop();
+  });
 });
 
 describe("scheduler — seek resync", () => {

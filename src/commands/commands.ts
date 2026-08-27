@@ -14,6 +14,7 @@ import type {
   InstrumentTrack,
   IntensityPoint,
   Lfo,
+  LfoKind,
   Macro,
   MasterConfig,
   Marker,
@@ -28,6 +29,7 @@ import type {
   Track,
 } from "../project-model/types";
 import { STEP_TICKS } from "../project-model/types";
+import { DEFAULT_STEP_PATTERN } from "../project-model/modulators";
 import { setStepVelocity, withPad, withTrack } from "../project-model/transform";
 import { insertPointSorted } from "../project-model/automation";
 import {
@@ -405,9 +407,26 @@ export function deletePattern(doc: ProjectDocument, patternId: string): Command 
   const target = doc.patterns.find((p) => p.id === patternId);
   if (!target) throw new Error(`Pattern ${patternId} not found`);
   const remaining = doc.patterns.filter((p) => p.id !== patternId);
+  // Scenes bound to the deleted pattern would dangle — launch one and
+  // activePatternId points at a nonexistent pattern, crashing the scheduler.
+  // Remove them (and any arrangement clips referencing them) with it.
+  const removedSceneIds = new Set(doc.scenes.filter((s) => s.patternId === patternId).map((s) => s.id));
+  const scenes = removedSceneIds.size > 0 ? doc.scenes.filter((s) => !removedSceneIds.has(s.id)) : doc.scenes;
+  const arrangement =
+    removedSceneIds.size > 0 && doc.arrangement.clips.some((c) => removedSceneIds.has(c.sceneId))
+      ? {
+          clips: doc.arrangement.clips.filter((c) => !removedSceneIds.has(c.sceneId)),
+          ...(sanitizeArrangementTransitions(
+            doc.arrangement.transitions,
+            doc.arrangement.clips.filter((c) => !removedSceneIds.has(c.sceneId)),
+          ) ?? {}),
+        }
+      : doc.arrangement;
   const next: ProjectDocument = {
     ...doc,
     patterns: remaining,
+    scenes,
+    arrangement,
     activePatternId: doc.activePatternId === patternId ? remaining[0].id : doc.activePatternId,
   };
   return snapshot("deletePattern", `Delete ${target.name}`, doc, next);
@@ -453,8 +472,17 @@ export function setActivePattern(doc: ProjectDocument, patternId: string): Comma
   return {
     type: "setActivePattern",
     label: `Select pattern ${doc.patterns.find((p) => p.id === patternId)?.name ?? patternId}`,
-    execute: (d) => ({ ...d, activePatternId: patternId }),
-    undo: (d) => ({ ...d, activePatternId: prev }),
+    // Validate at apply time, not factory time: a quantized launch or a
+    // scene chip can race a pattern deletion — activating a nonexistent
+    // pattern would crash the scheduler loop with every tick.
+    execute: (d) =>
+      d.patterns.some((p) => p.id === patternId) ? { ...d, activePatternId: patternId } : d,
+    undo: (d) =>
+      d.patterns.some((p) => p.id === prev)
+        ? { ...d, activePatternId: prev }
+        : d.patterns.length > 0
+          ? { ...d, activePatternId: d.patterns[0].id }
+          : d,
     applyToYDoc: (yMap) => { yMap.set("activePatternId", patternId); },
     undoYDoc: (yMap) => { yMap.set("activePatternId", prev); },
   };
@@ -1729,22 +1757,35 @@ export function deleteAutomationPoint(doc: ProjectDocument, laneId: string, inde
   };
 }
 
-/* ---------------- LFO ---------------- */
+/* ---------------- LFO / modulators ---------------- */
 
-export function addLfo(doc: ProjectDocument, trackId: string): Command {
-  const lfo: Lfo = {
-    id: uid("lfo"),
-    trackId,
-    param: "gain",
-    wave: "sine",
-    rateMode: "sync",
-    rateHz: 2,
-    division: 2,
-    amount: 0.3,
-  };
-  const next: ProjectDocument = { ...doc, lfos: [...doc.lfos, lfo] };
-  return snapshot("addLfo", "Add LFO", doc, next);
+/** Fresh seed for a random modulator. The seed itself is stored — streams are deterministic once created. */
+export function newModulatorSeed(): string {
+  return `${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
 }
+
+export function addLfo(doc: ProjectDocument, trackId: string, kind: LfoKind = "osc"): Command {
+  const id = uid("lfo");
+  let lfo: Lfo;
+  if (kind === "random") {
+    lfo = { id, trackId, kind, param: "gain", snh: "hold", rateMode: "sync", rateHz: 8, division: 3, amount: 0.4, seed: newModulatorSeed() };
+  } else if (kind === "step") {
+    lfo = { id, trackId, kind, param: "gain", division: 3, glideSec: 0.02, amount: 0.6, steps: [...DEFAULT_STEP_PATTERN] };
+  } else if (kind === "envFollower") {
+    lfo = { id, trackId, kind, param: "gain", sourceTrackId: trackId, attackMs: 12, releaseMs: 180, sensitivity: 1.5, amount: 0.5 };
+  } else {
+    lfo = { id, trackId, param: "gain", wave: "sine", rateMode: "sync", rateHz: 2, division: 2, amount: 0.3 };
+  }
+  const next: ProjectDocument = { ...doc, lfos: [...doc.lfos, lfo] };
+  return snapshot("addLfo", ADD_LFO_LABELS[kind], doc, next);
+}
+
+const ADD_LFO_LABELS: Record<LfoKind, string> = {
+  osc: "Add LFO",
+  random: "Add Random S&H",
+  step: "Add Step Modulator",
+  envFollower: "Add Envelope Follower",
+};
 
 export function removeLfo(doc: ProjectDocument, lfoId: string): Command {
   const next: ProjectDocument = { ...doc, lfos: doc.lfos.filter((l) => l.id !== lfoId) };

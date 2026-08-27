@@ -189,6 +189,16 @@ export class Scheduler {
         this.deps.applyPatternLaunch(pending.patternId);
         this.pendingLaunch = null;
         this.notify();
+        // Schedule the launched pattern for the remainder of this window.
+        // Without this, events between boundary and windowEnd would never be
+        // scheduled (the next tick resumes from windowEnd) and the first hits
+        // of the launch would be silently dropped.
+        const nextDoc = this.deps.getProject();
+        const nextPattern = nextDoc.patterns.find((p) => p.id === pending.patternId);
+        if (nextPattern) {
+          this.schedulePatternWindow(nextPattern, 0, boundary, windowEnd);
+          automationCtx = { base: 0, patternTicks: STEP_TICKS * nextPattern.stepCount };
+        }
       }
       // In pattern mode, the active scene's intensity is fed from the static
       // value (no curve is meaningful inside a one-bar loop).

@@ -5,6 +5,7 @@ import type {
   InstrumentKind,
   InstrumentTrack,
   IntensityPoint,
+  Lfo,
   Macro,
   MacroMapping,
   Marker,
@@ -20,6 +21,7 @@ import type {
   StepMeta,
 } from "./types";
 import { BAR_TICKS, PPQ, STEP_TICKS, STEPS_PER_PATTERN, isMusicalKey } from "./types";
+import { sanitizeLfo } from "./modulators";
 import { uid } from "../shared/ids";
 import { defaultInstrumentParams } from "../instruments/registry";
 import { createProjectFromTemplate } from "./templates";
@@ -674,9 +676,17 @@ export function normalizeProject(doc: ProjectDocument): ProjectDocument {
     lfos = [];
     changed = true;
   } else {
-    const filtered = lfos.filter((lfo) => trackIds.has(lfo.trackId));
-    if (filtered.length !== lfos.length) {
-      lfos = filtered;
+    // Full sanitizer pass: dangling refs, unknown kinds/waves, clamped ranges,
+    // step arrays normalized to 8/16/32 — see modulators.ts.
+    const sanitized: Lfo[] = [];
+    for (const lfo of lfos) {
+      const cleaned = sanitizeLfo(lfo, trackIds);
+      if (cleaned) sanitized.push(cleaned);
+    }
+    const shapeChanged = sanitized.length !== lfos.length
+      || sanitized.some((lfo, i) => lfo !== lfos[i]);
+    if (shapeChanged) {
+      lfos = sanitized;
       changed = true;
     }
   }
