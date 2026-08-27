@@ -1,13 +1,52 @@
+import { useEffect, useState } from "react";
 import { useDoc, useServices } from "./context";
 import type { EffectType, Track } from "../project-model/types";
 import { addEffect, applyEffectPreset, moveEffect, removeEffect, setEffectParam, setEffectSidechainSource, toggleEffectBypass } from "../commands/commands";
 import { CORE_EFFECT_ORDER, EFFECT_DEFS } from "../effects/registry";
 import { presetsForEffect } from "../effects/presets";
+import { registerRaf, unregisterRaf } from "../services/rafLoop";
 import { Slider } from "./controls";
 
 export function EffectRack({ track }: { track: Track }) {
   const services = useServices();
   const doc = useDoc();
+  const [fallbacks, setFallbacks] = useState<Record<string, string>>({});
+  const [gainReduction, setGainReduction] = useState<Record<string, number>>({});
+
+  // Observer-only poll: degraded fallbacks (worklet DSP unavailable) surface
+  // as warning badges; limiters report gain reduction for a live GR meter.
+  useEffect(() => {
+    let last = 0;
+    let fallbackSig = "";
+    let grSig = "";
+    registerRaf(`fx-status-${track.id}`, (t) => {
+      if (t - last < 60) return;
+      last = t;
+      const nextFallbacks: Record<string, string> = {};
+      const engineWithReport = services.engine as typeof services.engine & {
+        getDegradedFx?: () => { fxId: string; reason: string }[];
+        getFxGainReductionDb?: (trackId: string, fxId: string) => number | null;
+      };
+      for (const item of engineWithReport.getDegradedFx?.() ?? []) nextFallbacks[item.fxId] = item.reason;
+      const nextGr: Record<string, number> = {};
+      for (const fx of track.effects) {
+        if (fx.type !== "limiter" || fx.bypassed) continue;
+        const value = engineWithReport.getFxGainReductionDb?.(track.id, fx.id);
+        if (value != null && value > 0.05) nextGr[fx.id] = Math.round(value * 2) / 2;
+      }
+      const nextFallbackSig = Object.keys(nextFallbacks).sort().map((k) => `${k}:${nextFallbacks[k]}`).join("|");
+      const nextGrSig = Object.entries(nextGr).sort().map(([k, v]) => `${k}:${v}`).join("|");
+      if (nextFallbackSig !== fallbackSig) {
+        fallbackSig = nextFallbackSig;
+        setFallbacks(nextFallbacks);
+      }
+      if (nextGrSig !== grSig) {
+        grSig = nextGrSig;
+        setGainReduction(nextGr);
+      }
+    });
+    return () => unregisterRaf(`fx-status-${track.id}`);
+  }, [services, track]);
 
   return (
     <section className="fx-rack" aria-label={`Effect rack — ${track.name}`}>
@@ -35,7 +74,15 @@ export function EffectRack({ track }: { track: Track }) {
       ) : (
         <div className="fx-devices">
           {track.effects.map((fx, index) => (
-            <Device key={fx.id} track={track} fx={fx} index={index} count={track.effects.length} />
+            <Device
+              key={fx.id}
+              track={track}
+              fx={fx}
+              index={index}
+              count={track.effects.length}
+              fallbackReason={fallbacks[fx.id]}
+              gainReductionDb={gainReduction[fx.id]}
+            />
           ))}
         </div>
       )}
@@ -48,11 +95,15 @@ function Device({
   fx,
   index,
   count,
+  fallbackReason,
+  gainReductionDb,
 }: {
   track: Track;
   fx: TrackEffect;
   index: number;
   count: number;
+  fallbackReason?: string;
+  gainReductionDb?: number;
 }) {
   const services = useServices();
   const doc = useDoc();
@@ -61,7 +112,14 @@ function Device({
   return (
     <div className={`fx-device${fx.bypassed ? " bypassed" : ""}`}>
       <div className="fx-device-header">
-        <span className="fx-device-name">{def.name}</span>
+        <span className="fx-device-name">
+          {def.name}
+          {fallbackReason && (
+            <span className="fx-device-warn" role="status" title={fallbackReason}>
+              ⚠ FALLBACK
+            </span>
+          )}
+        </span>
         {presetsForEffect(fx.type).length > 0 && (
           <select
             className="fx-preset-select"
@@ -114,6 +172,14 @@ function Device({
         </div>
       </div>
       {fx.type === "eq" && <EqResponseCurve params={fx.params} />}
+      {fx.type === "limiter" && (
+        <div className="fx-gr" aria-label="Gain reduction">
+          <div className="fx-gr-track">
+            <div className="fx-gr-fill" style={{ width: `${Math.min(100, ((gainReductionDb ?? 0) / 12) * 100)}%` }} />
+          </div>
+          <span className="fx-gr-label">GR {(gainReductionDb ?? 0).toFixed(1)} dB</span>
+        </div>
+      )}
       {fx.type === "sidechain" && (
         <div className="fx-sidechain-picker">
           <label className="fx-param-select">

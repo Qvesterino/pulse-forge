@@ -9,6 +9,7 @@ describe("AudioWorklet loader", () => {
   it("reports not ready for contexts that have not loaded modules", () => {
     expect(isWorkletReady("bitcrusher", {} as BaseAudioContext)).toBe(false);
     expect(isWorkletReady("sidechain", {} as BaseAudioContext)).toBe(false);
+    expect(isWorkletReady("limiter", {} as BaseAudioContext)).toBe(false);
     expect(isWorkletReady("bitcrusher", null)).toBe(false);
     expect(isWorkletReady("sidechain", undefined)).toBe(false);
   });
@@ -17,9 +18,10 @@ describe("AudioWorklet loader", () => {
     const addModule = vi.fn(async () => {});
     const ctx = mockCtx(addModule);
     await loadWorkletModules(ctx);
-    expect(addModule).toHaveBeenCalledTimes(2); // bitcrusher + sidechain
+    expect(addModule).toHaveBeenCalledTimes(2); // bitcrusher + core (sidechain, transient, gate, limiter)
     expect(isWorkletReady("bitcrusher", ctx)).toBe(true);
     expect(isWorkletReady("sidechain", ctx)).toBe(true);
+    expect(isWorkletReady("limiter", ctx)).toBe(true);
   });
 
   it("tracks readiness per context — offline renders are separate contexts", async () => {

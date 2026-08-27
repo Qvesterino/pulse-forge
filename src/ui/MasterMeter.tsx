@@ -15,6 +15,7 @@ interface ReadState {
   lufsShortTerm: number;
   lufsIntegrated: number;
   monoLossDb: number;
+  gainReductionDb: number;
   warnings: ReturnType<typeof evaluateMixCheck>;
 }
 
@@ -40,6 +41,7 @@ export function MasterMeter() {
     lufsShortTerm: MIN_DB,
     lufsIntegrated: MIN_DB,
     monoLossDb: 0,
+    gainReductionDb: 0,
     warnings: [],
   });
   const lastStateRef = useRef(state);
@@ -68,6 +70,9 @@ export function MasterMeter() {
         const imbalanceSince = imbalance > 6 ? (imbalanceSinceRef.current ?? t) : null;
         phaseSinceRef.current = phaseSince;
         imbalanceSinceRef.current = imbalanceSince;
+        const gainReductionDb = Math.round(
+          (snapshot ? snapshot.gainReductionDb : services.engine.getMasterGainReductionDb()) * 10,
+        ) / 10;
         const warnings = snapshot ? evaluateMixCheck({
           truePeakDb: snapshot.truePeakDb,
           correlation: snapshot.correlation,
@@ -90,6 +95,7 @@ export function MasterMeter() {
           Math.abs(prev.lufsShortTerm - (snapshot?.lufsShortTerm ?? MIN_DB)) > 0.2 ||
           Math.abs(prev.lufsIntegrated - (snapshot?.lufsIntegrated ?? MIN_DB)) > 0.2 ||
           Math.abs(prev.monoLossDb - (snapshot?.monoLossDb ?? 0)) > 0.2 ||
+          Math.abs(prev.gainReductionDb - gainReductionDb) > 0.15 ||
           prev.warnings.length !== warnings.length ||
           prev.clipping !== clipping;
         if (changed) {
@@ -100,6 +106,7 @@ export function MasterMeter() {
             lufsShortTerm: snapshot?.lufsShortTerm ?? MIN_DB,
             lufsIntegrated: snapshot?.lufsIntegrated ?? MIN_DB,
             monoLossDb: snapshot?.monoLossDb ?? 0,
+            gainReductionDb,
             warnings,
           };
           lastStateRef.current = next;
@@ -122,6 +129,7 @@ export function MasterMeter() {
         <span>LUFS-I {formatDb(state.lufsIntegrated)}</span>
         <span>TP {formatDb(state.truePeakDb)} dBTP</span>
         <span>MONO LOSS {formatDb(state.monoLossDb)} dB</span>
+        <span title="Master-stage gain reduction">GR {state.gainReductionDb.toFixed(1)} dB</span>
         <button type="button" className="btn btn-small" onClick={() => services.engine.resetMasterIntegratedLufs?.()}>RESET INTEGRATED</button>
       </div>
       {state.warnings.length > 0 && <div className="master-mix-check" role="status">{state.warnings.map((warning) => <span key={warning.code}>{warning.message}</span>)}</div>}
@@ -145,6 +153,7 @@ interface MasterSnapshot {
   lufsIntegrated: number;
   monoLossDb: number;
   lrImbalanceDb: number;
+  gainReductionDb: number;
 }
 
 function formatDb(value: number): string {

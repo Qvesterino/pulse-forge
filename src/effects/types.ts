@@ -25,6 +25,22 @@ export interface EffectRuntime {
    * is responsible for safe (dis)connection of the feed node.
    */
   setSidechainInput?(node: AudioNode | null): void;
+  /**
+   * True when this runtime runs a reduced or bypassed fallback because the
+   * AudioWorklet DSP is unavailable in this context. The engine reports these
+   * (getDegradedFx) so the UI can show a warning badge — fallbacks must never
+   * degrade silently.
+   */
+  degraded?: boolean;
+  /** Human-readable explanation shown in the UI badge when `degraded`. */
+  degradedReason?: string;
+  /**
+   * Inherent latency introduced by the effect in seconds (look-ahead etc.).
+   * Polled every sync by the engine's minimal PDC (see AudioEngine.syncPdc).
+   */
+  getLatencySec?(): number;
+  /** Latest gain reduction in dB (dynamics processors), for metering. */
+  getGainReductionDb?(): number;
   dispose(): void;
 }
 

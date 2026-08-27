@@ -16,6 +16,7 @@ export type EffectType =
   | "compressor"
   | "saturation"
   | "clipper"
+  | "limiter"
   | "reverb"
   | "delay"
   | "pump"

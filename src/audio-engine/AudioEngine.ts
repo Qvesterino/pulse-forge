@@ -8,7 +8,8 @@ import { EFFECT_DEFS } from "../effects/registry";
 import type { EffectRuntime } from "../effects/types";
 import { INSTRUMENT_DEFS } from "../instruments/registry";
 import type { InstrumentRuntime } from "../instruments/types";
-import { loadWorkletModules } from "../audio-worklets/loader";
+import { loadWorkletModules, isWorkletReady } from "../audio-worklets/loader";
+import { createLimiterNode } from "../audio-worklets/limiter-node";
 import { channelLevels, integratedLufs, lufsFromChannels, monoLossDb, splitChannels, stereoCorrelation, PeakHold, toDb, type Frame, type ChannelLevels } from "./metering";
 
 /** Tick position → seconds inside a frozen loop (mod buffer duration). */
@@ -57,6 +58,12 @@ interface FxChainState {
   runtimes: Map<string, EffectRuntime>;
   params: Map<string, Record<string, number>>;
   signature: string;
+  /**
+   * Compensation delay (PDC): latency-introducing effects (look-ahead limiter)
+   * route through it; syncPdc() sizes it so every track reaches the master
+   * with identical total latency. delayTime 0 = fully transparent.
+   */
+  pdcDelay: DelayNode | null;
 }
 
 interface TrackNodes {
@@ -173,6 +180,12 @@ export class AudioEngine {
   private master: GainNode | null = null;
   private masterClipper: WaveShaperNode | null = null;
   private masterLimiter: DynamicsCompressorNode | null = null;
+  /**
+   * Look-ahead limiter runtime spliced between the master clipper and the
+   * native node whenever AudioWorklet DSP is available. The native node then
+   * stays a neutral pass-through and only takes over again without worklets.
+   */
+  private masterLimiterWorklet: EffectRuntime | null = null;
   private masterAnalyser: AnalyserNode | null = null;
   private bank: SampleBank | null = null;
   private doc: ProjectDocument | null = null;
@@ -236,6 +249,7 @@ export class AudioEngine {
     this.ctx = ctx;
     this.buildMaster();
     if (this.doc) this.syncProject(this.doc);
+    this.queueWorkletRefresh(ctx);
   }
 
   /**
@@ -249,12 +263,45 @@ export class AudioEngine {
     await loadWorkletModules(ctx);
   }
 
+  private workletRefreshQueued = false;
+
+  /**
+   * Rebuild all FX chains once AudioWorklet modules finish loading so the
+   * factories swap fallback runtimes for real processors. Only meaningful for
+   * the live realtime context — mutating an OfflineAudioContext graph mid-
+   * render is undefined behavior, so offline contexts never queue a refresh
+   * (they are expected to preload modules before useContext).
+   */
+  private queueWorkletRefresh(ctx: BaseAudioContext): void {
+    if (!(ctx instanceof AudioContext)) return;
+    if (this.workletRefreshQueued || isWorkletReady("bitcrusher", ctx)) return;
+    this.workletRefreshQueued = true;
+    void loadWorkletModules(ctx)
+      .then(() => {
+        this.workletRefreshQueued = false;
+        if (this.ctx !== ctx || !this.doc) return;
+        for (const nodes of this.trackNodes.values()) nodes.fx.signature = "";
+        for (const nodes of this.groupNodes.values()) nodes.fx.signature = "";
+        for (const nodes of this.returnNodes.values()) nodes.fx.signature = "";
+        this.syncProject(this.doc);
+        // The master chain was built before processors existed — splice the
+        // look-ahead limiter in now that they are ready.
+        this.upgradeMasterDynamics();
+      })
+      .catch(() => {
+        this.workletRefreshQueued = false;
+      });
+  }
+
   ensureContext(): BaseAudioContext {
     if (!this.ctx) {
       const ctx = new AudioContext();
       this.ctx = ctx;
       this.buildMaster();
       if (this.doc) this.syncProject(this.doc);
+      // Worklet modules load asynchronously — chains built just now may run
+      // reduced fallbacks; queue a rebuild once real processors are available.
+      this.queueWorkletRefresh(ctx);
     }
     const ctx = this.ctx;
     if (ctx instanceof AudioContext && ctx.state === "suspended") void ctx.resume();
@@ -301,19 +348,32 @@ export class AudioEngine {
     } catch {
       /* already disconnected */
     }
+    this.masterLimiterWorklet?.dispose();
+    this.masterLimiterWorklet = null;
     this.master = ctx.createGain();
     this.master.gain.value = 1;
     this.masterClipper = ctx.createWaveShaper();
     this.masterClipper.oversample = "4x";
     this.masterClipper.curve = null;
     this.masterLimiter = ctx.createDynamicsCompressor();
+    // Prefer the look-ahead worklet limiter; applyMasterConfig() (right below)
+    // then drives it and keeps the native node neutral while it is active.
+    if (isWorkletReady("limiter", ctx)) this.attachMasterWorklet(ctx);
     this.applyMasterConfig(this.doc?.master ?? defaultMasterConfig());
     this.masterAnalyser = ctx.createAnalyser();
     this.masterAnalyser.fftSize = 2048;
     this.masterAnalyser.channelCount = 2;
     this.masterAnalyser.channelCountMode = "explicit";
     this.master.connect(this.masterClipper);
-    this.masterClipper.connect(this.masterLimiter);
+    // Read through an assertion: the null-reset above narrows the property
+    // statically, but attachMasterWorklet() repopulates it at runtime.
+    const attached = this.masterLimiterWorklet as EffectRuntime | null;
+    if (attached) {
+      this.masterClipper.connect(attached.input);
+      attached.output.connect(this.masterLimiter);
+    } else {
+      this.masterClipper.connect(this.masterLimiter);
+    }
     this.masterLimiter.connect(this.masterAnalyser);
     this.masterAnalyser.connect(ctx.destination);
     // Stereo tap: limiter → splitter → per-channel analysers (metering sinks).
@@ -349,7 +409,25 @@ export class AudioEngine {
       this.masterClipper.curve = null;
     }
     const ceiling = Math.pow(10, config.ceilingDb / 20);
-    if (config.limiterEnabled) {
+    const worklet = this.masterLimiterWorklet;
+    if (worklet) {
+      // The look-ahead worklet drives limiting; the native node is held at a
+      // neutral pass-through so the post-native metering tap measures the
+      // true final signal. Master settings: threshold rides the ceiling
+      // (soft-knee onset right where peaks must stop) with musical defaults.
+      const ceilingParam = Math.min(0, Math.max(-12, config.ceilingDb));
+      worklet.setParameter("ceiling", ceilingParam);
+      worklet.setParameter("threshold", ceilingParam);
+      worklet.setParameter("release", 0.12);
+      worklet.setParameter("lookaheadMs", 5);
+      worklet.setParameter("link", 1);
+      worklet.setParameter("mix", config.limiterEnabled ? 1 : 0);
+      this.masterLimiter.threshold.value = 0;
+      this.masterLimiter.knee.value = 0;
+      this.masterLimiter.ratio.value = 1;
+      this.masterLimiter.attack.value = 0.001;
+      this.masterLimiter.release.value = 0.01;
+    } else if (config.limiterEnabled) {
       this.masterLimiter.threshold.value = ceiling;
       this.masterLimiter.knee.value = 0;
       this.masterLimiter.ratio.value = 20;
@@ -362,6 +440,35 @@ export class AudioEngine {
       this.masterLimiter.attack.value = 0.001;
       this.masterLimiter.release.value = 0.01;
     }
+  }
+
+  /** Create + arm the look-ahead master limiter runtime (idempotent). */
+  private attachMasterWorklet(ctx: BaseAudioContext): void {
+    if (this.masterLimiterWorklet || !isWorkletReady("limiter", ctx)) return;
+    this.masterLimiterWorklet = createLimiterNode(ctx, { params: {} });
+  }
+
+  /**
+   * Splice the look-ahead limiter into an ALREADY-BUILT live master chain —
+   * used once AudioWorklet modules finish loading on a context that started
+   * rendering before they were ready. Never touches OfflineAudioContexts:
+   * mutating their graph mid-render is undefined behavior.
+   */
+  private upgradeMasterDynamics(): void {
+    const ctx = this.ctx;
+    if (!ctx || !(ctx instanceof AudioContext)) return;
+    if (!this.master || !this.masterClipper || !this.masterLimiter) return;
+    if (isWorkletReady("limiter", ctx)) this.attachMasterWorklet(ctx);
+    const attached = this.masterLimiterWorklet;
+    if (!attached) return;
+    try {
+      this.masterClipper.disconnect();
+    } catch {
+      /* already disconnected */
+    }
+    this.masterClipper.connect(attached.input);
+    attached.output.connect(this.masterLimiter);
+    this.applyMasterConfig(this.doc?.master ?? defaultMasterConfig());
   }
 
   setProject(doc: ProjectDocument): void {
@@ -437,6 +544,9 @@ export class AudioEngine {
     state.runtimes.clear();
     state.params.clear();
     input.disconnect();
+    if (state.pdcDelay) {
+      try { state.pdcDelay.disconnect(); } catch { /* already disconnected */ }
+    }
     const bpm = this.doc?.bpm ?? 124;
     let head: AudioNode = input;
     for (const fx of effects) {
@@ -459,7 +569,12 @@ export class AudioEngine {
       state.runtimes.set(fx.id, rt);
       state.params.set(fx.id, { ...fx.params });
     }
-    head.connect(output);
+    // PDC tap: every chain routes through a compensation delay so syncPdc()
+    // can align latency-introducing effects (look-ahead limiter) across the
+    // graph. delayTime stays 0 when no compensation is needed.
+    if (!state.pdcDelay) state.pdcDelay = ctx.createDelay(0.2);
+    head.connect(state.pdcDelay);
+    state.pdcDelay.connect(output);
     state.signature = this.fxSignature(effects);
   }
 
@@ -480,6 +595,7 @@ export class AudioEngine {
     for (const rt of nodes.fx.runtimes.values()) rt.dispose();
     nodes.fx.runtimes.clear();
     nodes.fx.params.clear();
+    nodes.fx.pdcDelay?.disconnect();
     for (const send of nodes.sends.values()) send.disconnect();
     nodes.sends.clear();
     nodes.input.disconnect();
@@ -497,6 +613,7 @@ export class AudioEngine {
     for (const rt of nodes.fx.runtimes.values()) rt.dispose();
     nodes.fx.runtimes.clear();
     nodes.fx.params.clear();
+    nodes.fx.pdcDelay?.disconnect();
     nodes.input.disconnect();
     nodes.gain.disconnect();
     nodes.analyser.disconnect();
@@ -507,6 +624,7 @@ export class AudioEngine {
     for (const rt of nodes.fx.runtimes.values()) rt.dispose();
     nodes.fx.runtimes.clear();
     nodes.fx.params.clear();
+    nodes.fx.pdcDelay?.disconnect();
     nodes.input.disconnect();
     nodes.panner.disconnect();
     nodes.gain.disconnect();
@@ -581,7 +699,7 @@ export class AudioEngine {
           modMacroGain,
           modMacroPan,
           analyser,
-          fx: { runtimes: new Map(), params: new Map(), signature: "" },
+          fx: { runtimes: new Map(), params: new Map(), signature: "", pdcDelay: null },
           sends: new Map(),
         };
         this.groupNodes.set(track.id, nodes);
@@ -614,7 +732,7 @@ export class AudioEngine {
           input,
           gain,
           analyser,
-          fx: { runtimes: new Map(), params: new Map(), signature: "" },
+          fx: { runtimes: new Map(), params: new Map(), signature: "", pdcDelay: null },
         };
         this.returnNodes.set(ret.id, nodes);
       }
@@ -660,7 +778,7 @@ export class AudioEngine {
           modMacroGain,
           modMacroPan,
           analyser,
-          fx: { runtimes: new Map(), params: new Map(), signature: "" },
+          fx: { runtimes: new Map(), params: new Map(), signature: "", pdcDelay: null },
           sends: new Map(),
         };
         this.trackNodes.set(track.id, nodes);
@@ -748,12 +866,54 @@ export class AudioEngine {
 
     this.syncLfos(doc);
     this.syncMacros(doc);
+    this.syncPdc();
 
     if (this.syncedBpm !== doc.bpm) {
       this.syncedBpm = doc.bpm;
       for (const nodes of this.trackNodes.values()) {
         for (const rt of nodes.fx.runtimes.values()) rt.syncBpm?.(doc.bpm);
       }
+    }
+  }
+
+  /**
+   * Minimal plugin delay compensation (PDC) for latency-introducing effects
+   * (look-ahead limiter). Effective latency of a track = its own FX chain +
+   * the chain of the group it feeds; each track's compensation delay equals
+   * maxEffectiveLatency − own effective latency, so all material reaches the
+   * master sample-aligned. Group chains are compensated by their members'
+   * accounting (their own tap stays transparent); send/return paths are not
+   * compensated — a few milliseconds inside diffuse reverb/delay tails is
+   * inaudible.
+   */
+  private syncPdc(): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.doc) return;
+    const chainLatency = (state: FxChainState): number => {
+      let total = 0;
+      for (const rt of state.runtimes.values()) total += rt.getLatencySec?.() ?? 0;
+      return total;
+    };
+    const groupLatency = new Map<string, number>();
+    for (const [id, nodes] of this.groupNodes) groupLatency.set(id, chainLatency(nodes.fx));
+    let maxEffective = 0;
+    const effective = new Map<string, number>();
+    for (const [id, nodes] of this.trackNodes) {
+      const track = this.doc.tracks.find((t) => t.id === id);
+      const downstream = track && track.kind !== "group" && track.groupId ? groupLatency.get(track.groupId) ?? 0 : 0;
+      const total = chainLatency(nodes.fx) + downstream;
+      effective.set(id, total);
+      if (total > maxEffective) maxEffective = total;
+    }
+    for (const lat of groupLatency.values()) {
+      if (lat > maxEffective) maxEffective = lat;
+    }
+    const now = ctx.currentTime;
+    for (const [id, nodes] of this.trackNodes) {
+      nodes.fx.pdcDelay?.delayTime.setTargetAtTime(Math.max(0, maxEffective - (effective.get(id) ?? 0)), now, 0.02);
+    }
+    for (const nodes of this.groupNodes.values()) {
+      nodes.fx.pdcDelay?.delayTime.setTargetAtTime(0, now, 0.02);
     }
   }
 
@@ -1376,6 +1536,32 @@ export class AudioEngine {
     return this.peakOf(this.returnNodes.get(returnId)?.analyser ?? null);
   }
 
+  /**
+   * Effects currently running degraded fallbacks (worklet DSP unavailable).
+   * The UI shows a warning badge for each — fallbacks never degrade silently.
+   */
+  getDegradedFx(): { trackId: string; fxId: string; reason: string }[] {
+    const out: { trackId: string; fxId: string; reason: string }[] = [];
+    const collect = (trackId: string, state: FxChainState) => {
+      for (const [fxId, rt] of state.runtimes) {
+        if (rt.degraded) out.push({ trackId, fxId, reason: rt.degradedReason ?? "Fallback processing" });
+      }
+    };
+    for (const [id, nodes] of this.trackNodes) collect(id, nodes.fx);
+    for (const [id, nodes] of this.groupNodes) collect(id, nodes.fx);
+    for (const [id, nodes] of this.returnNodes) collect(id, nodes.fx);
+    return out;
+  }
+
+  /** Latest gain reduction in dB reported by an effect runtime (metering). */
+  getFxGainReductionDb(trackId: string, fxId: string): number | null {
+    const rt =
+      this.trackNodes.get(trackId)?.fx.runtimes.get(fxId) ??
+      this.groupNodes.get(trackId)?.fx.runtimes.get(fxId) ??
+      this.returnNodes.get(trackId)?.fx.runtimes.get(fxId);
+    return rt?.getGainReductionDb?.() ?? null;
+  }
+
   getMasterLevel(): number {
     return this.peakOf(this.masterAnalyser);
   }
@@ -1405,6 +1591,19 @@ export class AudioEngine {
     return this.masterPeakHold.current;
   }
 
+  /**
+   * Current master-stage gain reduction in dB (0 = untouched). Reads the
+   * look-ahead worklet meter when available, falling back to the native
+   * DynamicsCompressorNode's reduction attribute (negative dB → normalized
+   * to positive reduction).
+   */
+  getMasterGainReductionDb(): number {
+    if (this.masterLimiterWorklet) return Math.max(0, this.masterLimiterWorklet.getGainReductionDb?.() ?? 0);
+    const reduction = this.masterLimiter?.reduction ?? 0;
+    const value = typeof reduction === "number" && Number.isFinite(reduction) ? -reduction : 0;
+    return Math.max(0, value);
+  }
+
   resetMasterPeakHold(): void {
     this.masterPeakHold.reset();
   }
@@ -1431,6 +1630,7 @@ export class AudioEngine {
     lufsIntegrated: number;
     monoLossDb: number;
     lrImbalanceDb: number;
+    gainReductionDb: number;
   } {
     const levels = this.getMasterLevels();
     this.meterHistoryL.push(...this.masterChBufL);
@@ -1462,6 +1662,7 @@ export class AudioEngine {
       lufsIntegrated: integratedLufs(this.meterLoudnessBlocks),
       monoLossDb: monoLossDb(momentaryL, momentaryR),
       lrImbalanceDb: Math.abs(levels.left.rmsDb - levels.right.rmsDb),
+      gainReductionDb: this.getMasterGainReductionDb(),
     };
   }
 

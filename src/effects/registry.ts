@@ -4,6 +4,7 @@ import { hashString, mulberry32 } from "../shared/rng";
 import { isWorkletReady } from "../audio-worklets/loader";
 import { createBitcrusherNode } from "../audio-worklets/bitcrusher-node";
 import { createSidechainNode } from "../audio-worklets/sidechain-node";
+import { createLimiterNode } from "../audio-worklets/limiter-node";
 
 const dbToLin = (db: number) => Math.pow(10, db / 20);
 const smooth = (param: AudioParam, value: number, when: number, tc = 0.02) =>
@@ -35,6 +36,53 @@ const formatHz = (v: number) => `${Math.round(v)} Hz`;
 const formatMs = (v: number) => `${Math.round(v)} ms`;
 const formatPct = (v: number) => `${Math.round(v * 100)}%`;
 const formatSec = (v: number) => `${v.toFixed(2)} s`;
+
+/** Effects whose real DSP lives in an AudioWorklet processor. */
+export const WORKLET_EFFECTS: Partial<Record<EffectType, "critical" | "degraded">> = {
+  gate: "critical",
+  transient: "critical",
+  limiter: "critical",
+  bitcrusher: "degraded",
+  sidechain: "degraded",
+};
+
+export type EffectProcessorStatus = "ok" | "bypassed" | "fallback";
+
+/**
+ * Whether `type` runs its real AudioWorklet DSP in this context. "bypassed"
+ * means the effect cannot process at all right now (signal passes 1:1 — the
+ * UI warns loudly); "fallback" means a reduced native approximation runs.
+ */
+export function effectProcessorStatus(
+  type: EffectType,
+  ctx: BaseAudioContext | null | undefined,
+): EffectProcessorStatus {
+  const severity = WORKLET_EFFECTS[type];
+  if (!severity) return "ok";
+  return isWorkletReady(type as "bitcrusher" | "sidechain" | "transient" | "gate" | "limiter", ctx)
+    ? "ok"
+    : severity === "critical"
+      ? "bypassed"
+      : "fallback";
+}
+
+/** Transparent 1:1 passthrough for contexts where the worklet is unavailable. */
+function bypassRuntime(ctx: BaseAudioContext, reason: string): EffectRuntime {
+  const input = ctx.createGain();
+  const output = ctx.createGain();
+  input.connect(output);
+  return {
+    input,
+    output,
+    degraded: true,
+    degradedReason: reason,
+    setParameter: () => undefined,
+    dispose: () => {
+      input.disconnect();
+      output.disconnect();
+    },
+  };
+}
 
 /* ---------------- EQ ---------------- */
 
@@ -643,6 +691,8 @@ const bitcrusher: EffectDefinition = {
     return {
       input: mix.input,
       output: mix.output,
+      degraded: true,
+      degradedReason: "Fallback quality — sample-and-hold downsampling inactive",
       setParameter: (id, v) => apply(id, v, ctx.currentTime),
       setParameterAt: (id, v, when) => apply(id, v, when),
       dispose: () => {
@@ -993,6 +1043,8 @@ const sidechain: EffectDefinition = {
     return {
       input,
       output,
+      degraded: true,
+      degradedReason: "Fallback — 100 Hz envelope ducking (inactive in offline renders)",
       setParameter: (id, v) => apply(id, v, ctx.currentTime),
       setParameterAt: (id, v, when) => apply(id, v, when),
       setSidechainInput(node: AudioNode | null) {
@@ -1068,11 +1120,9 @@ const transient: EffectDefinition = {
   factory(ctx, instance) {
     const worklet = createWorkletRuntime(ctx, instance, "transient-processor", "transient");
     if (worklet) return worklet;
-    // Transparent fallback is intentional when AudioWorklet is unavailable.
-    const input = ctx.createGain();
-    const output = ctx.createGain();
-    input.connect(output);
-    return { input, output, setParameter: () => undefined, dispose: () => { input.disconnect(); output.disconnect(); } };
+    // Transparent 1:1 bypass when AudioWorklet is unavailable — never silence,
+    // always flagged so the UI can warn (see effectProcessorStatus).
+    return bypassRuntime(ctx, "AudioWorklet unavailable — transient shaper bypassed (1:1 signal)");
   },
 };
 
@@ -1091,10 +1141,9 @@ const gate: EffectDefinition = {
   factory(ctx, instance) {
     const worklet = createWorkletRuntime(ctx, instance, "gate-processor", "gate");
     if (worklet) return worklet;
-    const input = ctx.createGain();
-    const output = ctx.createGain();
-    input.connect(output);
-    return { input, output, setParameter: () => undefined, dispose: () => { input.disconnect(); output.disconnect(); } };
+    // Transparent 1:1 bypass fallback — the gate never silently stops gating
+    // without the UI knowing (degraded flag → warning badge).
+    return bypassRuntime(ctx, "AudioWorklet unavailable — gate bypassed (1:1 signal)");
   },
 };
 
@@ -1173,7 +1222,44 @@ const bassBuss: EffectDefinition = {
     const low = ctx.createBiquadFilter();
     low.type = "lowshelf";
     const out = ctx.createGain();
-    mix.wet.connect(shaper).connect(comp).connect(low).connect(out).connect(mix.output);
+    // Mono-bass crossover: below MONO BASS the summed (L+R)/2 lows feed BOTH
+    // outputs — a true mono sub — while highs keep their stereo placement.
+    // monoBassFrequency ≤ 0 routes everything through the untouched direct
+    // path (the crossover idles at 20 Hz).
+    const splitter = ctx.createChannelSplitter(2);
+    const merger = ctx.createChannelMerger(2);
+    const hpL = ctx.createBiquadFilter();
+    const hpR = ctx.createBiquadFilter();
+    const lpL = ctx.createBiquadFilter();
+    const lpR = ctx.createBiquadFilter();
+    hpL.type = "highpass";
+    hpR.type = "highpass";
+    lpL.type = "lowpass";
+    lpR.type = "lowpass";
+    hpL.frequency.value = 20;
+    hpR.frequency.value = 20;
+    lpL.frequency.value = 20;
+    lpR.frequency.value = 20;
+    const monoSum = ctx.createGain();
+    monoSum.gain.value = 0;
+    const crossoverGain = ctx.createGain();
+    crossoverGain.gain.value = 0;
+    const directGain = ctx.createGain();
+    directGain.gain.value = 1;
+    mix.wet.connect(shaper).connect(comp).connect(low).connect(out);
+    out.connect(directGain).connect(mix.output);
+    out.connect(splitter);
+    splitter.connect(hpL, 0);
+    splitter.connect(hpR, 1);
+    splitter.connect(lpL, 0);
+    splitter.connect(lpR, 1);
+    lpL.connect(monoSum);
+    lpR.connect(monoSum);
+    monoSum.connect(merger, 0, 0);
+    monoSum.connect(merger, 0, 1);
+    hpL.connect(merger, 0, 0);
+    hpR.connect(merger, 0, 1);
+    merger.connect(crossoverGain).connect(mix.output);
     const apply = (id: string, value: number, when: number) => {
       switch (id) {
         case "drive": shaper.curve = bussCurve(value); break;
@@ -1182,12 +1268,46 @@ const bassBuss: EffectDefinition = {
         case "compression": smooth(comp.threshold, -8 - value * 32, when); smooth(comp.ratio, 1 + value * 7, when); break;
         case "attack": smooth(comp.attack, value, when); break;
         case "release": smooth(comp.release, value, when); break;
+        case "monoBassFrequency": {
+          const active = value > 0;
+          const frequency = Math.max(20, value || 20);
+          smooth(hpL.frequency, frequency, when);
+          smooth(hpR.frequency, frequency, when);
+          smooth(lpL.frequency, frequency, when);
+          smooth(lpR.frequency, frequency, when);
+          smooth(monoSum.gain, active ? 0.5 : 0, when);
+          smooth(crossoverGain.gain, active ? 1 : 0, when);
+          smooth(directGain.gain, active ? 0 : 1, when);
+          break;
+        }
         case "mix": mix.setMix(value, when); break;
         case "output": smooth(out.gain, dbToLin(value), when); break;
       }
     };
     for (const [id, value] of Object.entries(instance.params)) apply(id, value, ctx.currentTime);
-    return { input: mix.input, output: mix.output, setParameter: (id, value) => apply(id, value, ctx.currentTime), setParameterAt: (id, value, when) => apply(id, value, when), dispose: () => { mix.input.disconnect(); mix.output.disconnect(); shaper.disconnect(); comp.disconnect(); low.disconnect(); out.disconnect(); } };
+    return {
+      input: mix.input,
+      output: mix.output,
+      setParameter: (id, value) => apply(id, value, ctx.currentTime),
+      setParameterAt: (id, value, when) => apply(id, value, when),
+      dispose: () => {
+        mix.input.disconnect();
+        mix.output.disconnect();
+        shaper.disconnect();
+        comp.disconnect();
+        low.disconnect();
+        out.disconnect();
+        splitter.disconnect();
+        merger.disconnect();
+        hpL.disconnect();
+        hpR.disconnect();
+        lpL.disconnect();
+        lpR.disconnect();
+        monoSum.disconnect();
+        crossoverGain.disconnect();
+        directGain.disconnect();
+      },
+    };
   },
 };
 
@@ -1229,8 +1349,15 @@ const utility: EffectDefinition = {
     highRight.connect(right).connect(merger, 0, 1);
     highLeft.connect(crossLeft).connect(merger, 0, 1);
     highRight.connect(crossRight).connect(merger, 0, 0);
-    splitter.connect(lowLeft, 0).connect(monoLeft).connect(merger, 0, 0);
-    splitter.connect(lowRight, 1).connect(monoRight).connect(merger, 0, 1);
+    // True mono low band: (L + R) × 0.5 feeds BOTH outputs. The previous
+    // wiring kept the lows per-channel (attenuated but still stereo), so the
+    // "MONO BASS" control never actually mono-ed anything.
+    splitter.connect(lowLeft, 0).connect(monoLeft);
+    splitter.connect(lowRight, 1).connect(monoRight);
+    monoLeft.connect(merger, 0, 0);
+    monoLeft.connect(merger, 0, 1);
+    monoRight.connect(merger, 0, 0);
+    monoRight.connect(merger, 0, 1);
     const pan = ctx.createStereoPanner();
     merger.connect(pan).connect(output);
     let widthValue = instance.params.width ?? 1;
@@ -1272,6 +1399,33 @@ const utility: EffectDefinition = {
   },
 };
 
+/* ---------------- Look-ahead Limiter ---------------- */
+// True brickwall limiting: a monotonic max-deque over the look-ahead window
+// lets gain changes precede transients, so peaks never exceed CEILING (unlike
+// the native master DynamicsCompressorNode with its 2 ms attack). Latency =
+// exactly LOOKAHEAD — reported via getLatencySec and compensated by the
+// engine's PDC. LOOKAHEAD defaults to 5 ms; drop it to 1 ms for insert use on
+// individual tracks where minimal latency matters more than anticipation.
+
+const limiter: EffectDefinition = {
+  type: "limiter",
+  name: "Limiter",
+  category: "dynamics",
+  params: [
+    { id: "ceiling", label: "CEILING", min: -12, max: 0, default: -1, unit: "dB", format: formatDb },
+    { id: "threshold", label: "THRESHOLD", min: -24, max: 0, default: -6, unit: "dB", format: formatDb },
+    { id: "release", label: "RELEASE", min: 0.01, max: 1, default: 0.12, unit: "s", format: formatMs },
+    { id: "lookaheadMs", label: "LOOKAHEAD", min: 1, max: 20, default: 5, unit: "ms", format: formatMs },
+    { id: "link", label: "LINK", min: 0, max: 1, default: 1, format: formatPct },
+    { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
+  ],
+  factory(ctx, instance) {
+    if (isWorkletReady("limiter", ctx)) return createLimiterNode(ctx, instance);
+    // Transparent 1:1 bypass fallback — never fake-limit, always warn.
+    return bypassRuntime(ctx, "AudioWorklet unavailable — limiter bypassed (1:1 signal)");
+  },
+};
+
 /* ---------------- registry ---------------- */
 
 export const EFFECT_DEFS: Record<EffectType, EffectDefinition> = {
@@ -1279,6 +1433,7 @@ export const EFFECT_DEFS: Record<EffectType, EffectDefinition> = {
   compressor,
   saturation,
   clipper,
+  limiter,
   reverb,
   delay,
   pump,
@@ -1299,6 +1454,7 @@ export const EFFECT_ORDER: EffectType[] = [
   "compressor",
   "saturation",
   "clipper",
+  "limiter",
   "reverb",
   "delay",
   "pump",
@@ -1318,6 +1474,7 @@ export const EFFECT_ORDER: EffectType[] = [
 export const CORE_EFFECT_ORDER: EffectType[] = [
   "eq",
   "transient",
+  "limiter",
   "drumBuss",
   "bassBuss",
   "utility",

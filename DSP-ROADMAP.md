@@ -60,6 +60,7 @@ Kvalitatívne tier-y:
 | Saturation | `WaveShaper` tanh (2x oversample) + tone LP | B |
 | Distortion | `WaveShaper` kubický soft-clip (2x) + tone | B |
 | Clipper | `WaveShaper` (4x), hard clip / tanh + ceiling + softness | B |
+| **Limiter** *(pridaný 2026-08-27)* | **AudioWorklet** — look-ahead max-deque, soft knee, program-dependent release, safety clamp, GR metering; fallback = transparentný bypass + warning | A |
 | Reverb | `ConvolverNode` + procedurálne IR (Web Worker, seeded), predelay + tone | B |
 | Delay | `DelayNode` + feedback + damping LP | C |
 | Pump | saw → duck-curve shaper → modulácia gainu, BPM-sync | B (clever hack, nie skutočný sidechain) |
@@ -117,17 +118,18 @@ Kvalitatívne tier-y:
 
 ## 2. Identifikované slabiny (z auditu)
 
-1. **Master limiter bez look-ahead** — `DynamicsCompressorNode` s 2 ms attack. Najväčšia diera medzi nami a „production-ready export".
+1. ~~**Master limiter bez look-ahead**~~ — **vyriešené 2026-08-27**: `buildMaster()` pripraví look-ahead worklet (`attachMasterWorklet`), natívny `DynamicsCompressorNode` ostáva v reťazi ako neutrálny passthrough + fallback bez workletov; live upgrade po do-loadovaní modulov cez `upgradeMasterDynamics()`; GR metering na MasterMeter ("GR x.x dB"). Verifikácia: browser-check „master limiter: look-ahead brickwall pins export at ceiling" — peak=0.708/ceiling=0.708.
 2. **Compressor je natívny wrapper** — bez sidechain inputu, bez GR metering, hlúpy release.
 3. **LUFS bez K-weightingu, true-peak len odhad** — metering nie je credible pre „release" workflow.
-4. **Gate/Transient fallback = tichý passthrough** — používateľ bez workletov dostane ticho bez varovania. Bug čakajúci na staťie.
-5. **`monoBassFrequency` v Bass Busse nie je zapojený** (mŕtvy parameter).
+4. ~~**Gate/Transient fallback = tichý passthrough**~~ — **vyriešené 2026-08-27** (P0.0): transparentný bypass s UI warningom, degraded flagy na všetkých 5 worklet efektoch, auto-rebuild po do-loadovaní modulov.
+5. ~~**`monoBassFrequency` v Bass Busse nie je zapojený**~~ — **vyriešené 2026-08-27** (P0.0b); bonus: opravený aj nefunkčný mono súčet v Utility MONO BASS.
 6. **Žiadne zero-delay filtre (SVF/TPT)** — všetko legacy biquad; modulovaný cutoff neznie „analogovo".
 7. **LFO moduluje len track gain/pan** — nie filtre, nie FX parametre.
-8. **Flanger v dokumentoch, v kóde nie je.** Tiež chýba: tremolo ako efekt, limiter ako insert efekt, autowah, multiband.
+8. **Flanger v dokumentoch, v kóde nie je.** Tiež chýba: tremolo ako efekt, autowah, multiband. *(limiter doplnený 2026-08-27)*
 9. **Žiadny spektrový analyzátor** — FFT dáta sú, UI nie je.
 10. **Žiadne denormal guards** vo workletoch (dlhé tails môžu stáť výkon).
 11. **Look-ahead limiter pridá latenciu** → treba PDC/kompenzáciu, inak stems vs. master frázovo nebudú sedieť (offline OK, live so sendami nie).
+    * *Update 2026-08-27:* minimálna PDC implementovaná (`syncPdc`) pre insert chainy (track+group); send/return cesty ostávajú nekompenzované (zdokumentované). *Poznámka: master worklet limiter pridáva uniformných ~5 ms latenciu celej mixovej zbernici aj keď je LIMIT vypnutý (mix=0 obchádza limiting, nie delay) — pre produkciu beatov irelevantné, pre live tracking mikrofónu v princípe neexistuje.*
 
 ---
 
@@ -135,18 +137,24 @@ Kvalitatívne tier-y:
 
 ### P0 — rozhoduje o „najlepšia kvalita v browsery"
 
-- [ ] **P0.0 — Fallback fix (bugfix)**
+- [x] **P0.0 — Fallback fix (bugfix)** — 2026-08-27
   Gate a Transient Shaper fallback nesmie byť tichý passthrough.
-  - [ ] Zmeniť fallback na transparentný bypass (1:1 signál)
-  - [ ] UI warning badge „processor unavailable — bypassed"
-  - [ ] Zobraziť v browser-checks (`src/browser-checks.ts`)
-- [ ] **P0.0b — Zapojiť `monoBassFrequency` v Bass Busse** (mŕtvy parameter → zapojiť crossover rovnako ako v Utility)
-- [ ] **P0.1 — Look-ahead limiter (AudioWorklet)**
+  - [x] Zmeniť fallback na transparentný bypass (1:1 signál) — `bypassRuntime()` v registry; 2026-08-27
+  - [x] UI warning badge „processor unavailable — bypassed" — `EffectRack` číta `engine.getDegradedFx()`, badge `.fx-device-warn`; flagy aj pre bitcrusher/sidechain fallbacky (reduced); 2026-08-27
+  - [x] Zobraziť v browser-checks (`src/browser-checks.ts`) — 3× „fallback reports degraded state" + „fallback passes signal 1:1" + kontrastný test „worklet path gates"; 2026-08-27
+  - [x] Bonus fix: keď sa worklety do-loadujú po otvorení projektu, engine vynúti rebuild FX chainov (`queueWorkletRefresh`), takže fallbacky sa automaticky upgradnú na worklety; 2026-08-27
+- [x] **P0.0b — Zapojiť `monoBassFrequency` v Bass Busse** — 2026-08-27
+  - [x] crossover rovnako ako v Utility (LP/HP split, súčet L/R × 0.5 do OBOCH výstupov = pravý mono sub, direct/crossover crossfade)
+  - [x] Bonus bugfix: Utility „MONO BASS" predtým lows iba tlmil (-6 dB, stále stereo) — opravené na skutočný mono súčet do oboch kanálov
+- [x] **P0.1 — Look-ahead limiter (AudioWorklet)** — 2026-08-27
   Ring buffer ~5 ms, stereo-link, soft-knee, program-dependent release, GR metering, ceiling v dBTP.
-  - [ ] Worklet processor + TS node wrapper + loader registrácia
-  - [ ] GR metering do UI
-  - [ ] Latencia zdokumentovaná + kompenzácia v live grafe (PDC minimálne pre tento efekt)
-  - [ ] Aceptančný test: export materiálu s beatmi dosiahne cieľovú hlasitosť bez audible pumping
+  - [x] Worklet processor (`limiter-processor.js`: max-deque sliding window, soft knee nad thresholdom, program-dependent release, hard safety clamp) + TS node wrapper (`limiter-node.ts`) + loader registrácia (cez core-processor.js); 2026-08-27
+  - [x] GR metering do UI — `EffectRack` zobrazuje live GR bar + hodnotu dB pri Limiter device; 2026-08-27
+  - [x] Latencia zdokumentovaná + kompenzácia v live grafe (PDC minimálne pre tento efekt) — `AudioEngine.syncPdc()`: track chainy sa alignujú na max effective latency (own chain + group chain); 2026-08-27
+    * Poznámka: send/return cesty nie sú kompenzované (difúzne tails, pár ms neaudibilné) — zdokumentované v kóde
+  - [x] Aceptačný test: browser-check „limiter: look-ahead worklet limits, meters and anticipates" — peak=ceiling presne (0.501/0.501), gr=5.1 dB, spread=1.017 (žiadne pumping), onset=221/221 vzorky (exaktný look-ahead delay); + „pdc: limiter track stays aligned with dry track (<2 ms)" — skew=0.70–0.88 ms; 2026-08-27
+    * Poznámka k ceiling: dBTP je aproximované cez sample-peak + safety clamp; skutočná true-peak limitácia (oversampling) ostáva ako P2 položka
+  - [x] **Bonus — master stage swap:** `buildMaster()` pripraví worklet limiter medzi clipper a natívny node (natívny = neutrálny passthrough + bez-workletový fallback); live splice po do-loadovaní (`upgradeMasterDynamics`); MasterMeter zobrazuje „GR x.x dB". Verifikácia: „master limiter: look-ahead brickwall pins export at ceiling" — peak=0.708/ceiling=0.708, a „master chain tames a hot mix" limited=0.891 (= presne -1 dBFS oproti 1.178 s natívnym nodeom); 2026-08-27
 - [ ] **P0.2 — Vlastný kompresor (AudioWorklet)** namiesto `DynamicsCompressorNode`
   Sidechain HPF (kľúč je, aby kompresia necítila sub), mix (parallel), GR metering, opto/program release režimy, stereo-link.
   - [ ] Per-sample detektor + RMS/peak prepínač
@@ -232,3 +240,5 @@ Tieto pravidlá majú prednosť pred akýmikoľvek nápadmi vyššie:
 ## Changelog
 
 - 2026-08-27 — Vytvorený dokument. Prvý audit engine (27 efektov/nástrojov inventarizovaných, 4 reálne worklety, 10 slabín identifikovaných).
+- 2026-08-27 — **P0 blok dokončený**: P0.0 (fallback fix + UI warning + auto-rebuild po do-loadovaní workletov), P0.0b (Bass Buss mono bass wiring + Utility mono súčet bugfix), P0.1 (look-ahead limiter worklet ako efekt „Limiter" s GR meteringom, minimálna PDC v engine, akceptačné browser-checks). Verifikované: `npm run typecheck` ✓, `npm test` 883 passed ✓, `npm run test:browser` všetky kontroly PASS vrátane nových (limiter peak=ceiling presne, gr=5.1 dB, spread=1.017, onset=221/221 vz.; pdc skew=0.88 ms).
+- 2026-08-27 — **Master limiter swapped na worklet**: `buildMaster()` spúja look-ahead limiter medzi masterClipper a natívny node (natívny neutralizovaný, metering tap mera finálny signál); live upgrade cez `upgradeMasterDynamics()`; `applyMasterConfig` riadi ceiling/mix parametre (LIMIT toggle → mix 1/0); GR readout na MasterMeter. Slabina #1 uzavretá. Verifikácia: typecheck ✓, vitest 883 ✓, test:browser všetky PASS — export pribitý presne na strop (peak=0.708/ceiling=0.708).

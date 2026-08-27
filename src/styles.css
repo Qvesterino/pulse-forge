@@ -1170,6 +1170,48 @@ button {
   color: var(--text-dim);
 }
 
+.fx-device-warn {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(245, 158, 11, 0.14);
+  border: 1px solid rgba(245, 158, 11, 0.55);
+  color: #f59e0b;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  cursor: help;
+}
+
+.fx-gr {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fx-gr-track {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.fx-gr-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #4ade80, #f59e0b 70%, #f87171);
+}
+
+.fx-gr-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  min-width: 58px;
+  text-align: right;
+}
+
 .fx-device-buttons {
   display: flex;
   gap: 4px;

@@ -14,7 +14,7 @@ import { loadWorkletModules, isWorkletReady } from "./audio-worklets/loader";
 import { createBitcrusherNode } from "./audio-worklets/bitcrusher-node";
 import { AudioEngine } from "./audio-engine/AudioEngine";
 import { detectTransients } from "./audio-engine/transients";
-import { createGroupTrackModel } from "./project-model/schema";
+import { createDrumTrackModel, createGroupTrackModel } from "./project-model/schema";
 import { encodeMp3 } from "./export/mp3";
 import { pickVideoMimeType, recordVideo } from "./export/video";
 import type { EffectType, InstrumentTrack } from "./project-model/types";
@@ -451,6 +451,150 @@ export async function runChecks(): Promise<CheckResult[]> {
     }
   } catch (error) {
     check("audio-worklet: processors load and bitcrusher downsamples", false, String(error));
+  }
+
+  // P0.0: worklet-dependent effects must degrade LOUDLY — flagged as degraded
+  // with a human-readable reason instead of silently pretending to process.
+  for (const type of ["gate", "transient", "limiter"] as EffectType[]) {
+    try {
+      const ctx = new OfflineAudioContext(1, Math.floor(SR / 2), SR);
+      const def = EFFECT_DEFS[type];
+      const rt = def.factory(ctx, { id: `fb-${type}`, type, bypassed: false, params: defaultParamsOf(type) }, { bpm: 124 });
+      const ok = rt.degraded === true && typeof rt.degradedReason === "string" && rt.degradedReason.length > 0;
+      check(`${def.name}: fallback reports degraded state`, ok, `degraded=${String(rt.degraded)} reason=${String(rt.degradedReason ?? "-")}`);
+      rt.dispose();
+    } catch (error) {
+      check(`${EFFECT_DEFS[type].name}: fallback reports degraded state`, false, String(error));
+    }
+  }
+
+  // Gate with an impossible threshold would silence everything IF the worklet
+  // ran — the worklet-unavailable fallback must pass the signal 1:1 instead.
+  try {
+    const bypassed = await renderThrough("gate", { threshold: 0, range: -80, mix: 1 });
+    const peak = peakOf(bypassed);
+    check("gate: fallback passes signal 1:1 (never silent)", Math.abs(peak - 0.5) < 0.02, `peak=${peak.toFixed(3)} expected≈0.500`);
+  } catch (error) {
+    check("gate: fallback passes signal 1:1 (never silent)", false, String(error));
+  }
+
+  // Contrast: once modules are loaded the same closed-gate config must actually
+  // gate — proves the chains upgraded from fallback onto real processors.
+  try {
+    const ctx = new OfflineAudioContext(1, Math.floor(SR / 2), SR);
+    await loadWorkletModules(ctx);
+    if (!isWorkletReady("gate", ctx)) {
+      check("gate: worklet path gates when modules are loaded", false, "modules not ready after loadWorkletModules");
+    } else {
+      const params = { ...defaultParamsOf("gate"), threshold: 0, range: -80, mix: 1 };
+      const rt = EFFECT_DEFS.gate.factory(ctx, { id: "gk", type: "gate", bypassed: false, params }, { bpm: 124 });
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = 220;
+      const gain = ctx.createGain();
+      gain.gain.value = 0.5;
+      osc.connect(gain).connect(rt.input);
+      rt.output.connect(ctx.destination);
+      osc.start(0);
+      const buffer = await ctx.startRendering();
+      rt.dispose();
+      const peak = peakOf(buffer.getChannelData(0));
+      check("gate: worklet path gates when modules are loaded", peak < 0.005, `peak=${peak.toFixed(4)} (fallback would be ≈0.5)`);
+    }
+  } catch (error) {
+    check("gate: worklet path gates when modules are loaded", false, String(error));
+  }
+
+  // P0.1 acceptance: the look-ahead limiter pins peaks at CEILING, reports GR,
+  // holds steady gain on sustained material (no pumping) and delays by exactly
+  // LOOKAHEAD — while without look-ahead those peaks would overshoot.
+  try {
+    const ctx = new OfflineAudioContext(2, SR * 2, SR);
+    await loadWorkletModules(ctx);
+    if (!isWorkletReady("limiter", ctx)) {
+      check("limiter: look-ahead worklet limits, meters and anticipates", false, "worklet modules not ready");
+    } else {
+      const limiterParams = { ...defaultParamsOf("limiter"), ceiling: -6, threshold: -18, release: 0.05, lookaheadMs: 5, mix: 1 };
+      const rt = EFFECT_DEFS.limiter.factory(ctx, { id: "lim", type: "limiter", bypassed: false, params: limiterParams }, { bpm: 124 });
+      const buf = ctx.createBuffer(1, SR * 2, SR);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = 0.9 * Math.sin((i / SR) * 200 * Math.PI * 2); // ~-0.9 dBFS sine
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(rt.input);
+      rt.output.connect(ctx.destination);
+      src.start(0);
+      const limited = await ctx.startRendering();
+      rt.dispose();
+      await new Promise((resolve) => setTimeout(resolve, 120)); // port messages flush after render
+      const data = limited.getChannelData(0);
+      const peak = peakOf(data);
+      const ceilingLin = Math.pow(10, -6 / 20);
+      const gr = rt.getGainReductionDb?.() ?? 0;
+      // Pumping proxy: steady-state window RMS spread must stay flat.
+      let minWin = Infinity;
+      let maxWin = 0;
+      for (let start = SR; start + 2048 <= data.length; start += 2048) {
+        let sum = 0;
+        for (let j = 0; j < 2048; j++) sum += data[start + j] * data[start + j];
+        const rms = Math.sqrt(sum / 2048);
+        minWin = Math.min(minWin, rms);
+        maxWin = Math.max(maxWin, rms);
+      }
+      const spread = maxWin / Math.max(minWin, 1e-9);
+      let onset = -1;
+      for (let i = 0; i < data.length; i++) {
+        if (Math.abs(data[i]) > 0.005) { onset = i; break; }
+      }
+      const expectedDelay = Math.round((limiterParams.lookaheadMs / 1000) * SR);
+      const onsetOk = onset >= Math.round(expectedDelay * 0.9) && onset <= expectedDelay + 512;
+      check(
+        "limiter: look-ahead worklet limits, meters and anticipates",
+        peak <= ceilingLin + 0.02 && gr >= 3 && spread < 1.15 && onsetOk,
+        `peak=${peak.toFixed(3)}/${ceilingLin.toFixed(3)} gr=${gr.toFixed(1)}dB spread=${spread.toFixed(3)} onset=${onset}/${expectedDelay}`,
+      );
+    }
+  } catch (error) {
+    check("limiter: look-ahead worklet limits, meters and anticipates", false, String(error));
+  }
+
+  // PDC: the track holding the look-ahead limiter must stay sample-aligned
+  // with a dry sibling — syncPdc() delays every other chain by the same
+  // latency. Hard panning isolates each track into its own master channel.
+  try {
+    const doc = createProjectFromTemplate("empty");
+    const limitedTrack = createDrumTrackModel("Drums B");
+    doc.tracks = [doc.tracks[0], limitedTrack];
+    const dryTrack = doc.tracks[0];
+    if (dryTrack.kind !== "drum") throw new Error("template drift: expected a drum track");
+    dryTrack.pan = -1;
+    limitedTrack.pan = 1;
+    limitedTrack.effects = [{ id: "pdc-lim", type: "limiter", bypassed: false, params: defaultParamsOf("limiter") }];
+    const ctx = new OfflineAudioContext(2, Math.floor(SR * 0.6), SR);
+    await loadWorkletModules(ctx);
+    const engine = new AudioEngine();
+    engine.attachBank(bank);
+    engine.useContext(ctx);
+    engine.setProject(doc);
+    engine.trigger(dryTrack.id, dryTrack.pads[0], 0.03, 1);
+    engine.trigger(limitedTrack.id, limitedTrack.pads[0], 0.03, 1);
+    const rendered = await ctx.startRendering();
+    const findOnset = (channel: Float32Array): number => {
+      for (let i = 0; i < channel.length; i++) {
+        if (Math.abs(channel[i]) > 0.02) return i;
+      }
+      return -1;
+    };
+    const onsetL = findOnset(rendered.getChannelData(0));
+    const onsetR = findOnset(rendered.getChannelData(1));
+    const skewSec = onsetL >= 0 && onsetR >= 0 ? Math.abs(onsetL - onsetR) / SR : Number.POSITIVE_INFINITY;
+    check(
+      "pdc: limiter track stays aligned with dry track (<2 ms)",
+      skewSec <= 0.002,
+      `skew=${Number.isFinite(skewSec) ? `${(skewSec * 1000).toFixed(2)}ms` : "no onset"} (≈5ms means PDC inactive)`,
+    );
+  } catch (error) {
+    check("pdc: limiter track stays aligned with dry track (<2 ms)", false, String(error));
   }
 
   // Groups: a track moved between groups must feed ONLY the new group.
@@ -1062,6 +1206,34 @@ export async function runChecks(): Promise<CheckResult[]> {
     );
   } catch (error) {
     check("master chain tames a hot mix (limiter reduces, clipper softens)", false, String(error));
+  }
+
+  // Master stage with AudioWorklets: renderProject preloads processors, so the
+  // export path runs through the look-ahead limiter — peaks must sit exactly
+  // AT ceiling (brickwall anticipation) rather than being loosely pulled down.
+  try {
+    const project = createDefaultProject();
+    for (const track of project.tracks) track.gain = 1.5;
+    const drumTrack = project.tracks.find((t) => t.kind === "drum");
+    if (drumTrack && drumTrack.kind === "drum") {
+      for (const pad of drumTrack.pads) pad.gain = 2;
+    }
+    project.master.ceilingDb = -3;
+    project.master.limiterEnabled = true;
+    project.master.clipperEnabled = false;
+    const mastered = await renderProject(project, bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0.2 });
+    let masteredPeak = 0;
+    for (let ch = 0; ch < mastered.numberOfChannels; ch++) {
+      masteredPeak = Math.max(masteredPeak, peakOf(mastered.getChannelData(ch)));
+    }
+    const ceilingLin = Math.pow(10, -3 / 20);
+    check(
+      "master limiter: look-ahead brickwall pins export at ceiling",
+      masteredPeak <= ceilingLin + 0.02 && masteredPeak >= ceilingLin * 0.6,
+      `peak=${masteredPeak.toFixed(3)} ceiling=${ceilingLin.toFixed(3)}`,
+    );
+  } catch (error) {
+    check("master limiter: look-ahead brickwall pins export at ceiling", false, String(error));
   }
 
   return results;
