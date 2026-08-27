@@ -94,9 +94,10 @@ Kvalitatívne tier-y:
 - [x] Scene intensity + krivky
 - [x] Automatizácie (trackGain/trackPan/fxParam/instParam), pattern- aj scene-relative
 - [x] MIDI CC / pitch bend / poly aftertouch
-- [ ] Envelope follower ako všeobecný modulátor (existuje len vnútri workletov)
-- [ ] Random / S&H LFO
-- [ ] Step Modulator (v dokumentoch, nie v kóde)
+- [x] MIDI CC / pitch bend / poly aftertouch
+- [x] Envelope follower ako všeobecný modulátor — 2026-08-27: **v1 rozsah podľa dohody** — worklet `envfollower-processor` (per-sample asym. peak detekcia, tanh sensitivity) → audio-rate signál do **natívnych cielení (Volume/Pan)**; plná determinizmus live==offline; `polarity` DUCK(−1, default)/SWELL(+1); detector vždy tapuje source `nodes.input` (anti-feedback). Generálnosť na FX/inst parametre odložená na „audio-rate modulation bus" (P2). Verifikácia: browser-check „envelope follower: source transients shape host gain (cross-track)" — ducked=0.719 vs plain=0.801
+- [x] Random / S&H LFO — 2026-08-27: stateless hash stream `mulberry32(hash(id|seed|k))` → ľubovoľný krok spočítateľný nezávisle ⇒ **bitovo deterministické rendery** (rel=5.9e-9); Hold/Glide režimy; plné AutomationTarget cielenie (Volume/Pan/FX/inst) cez zdieľaný `setParameterAt` kanál; seed 🎲 regen v UI
+- [x] Step Modulator — 2026-08-27: bar-aligned uniform grid (absolútne ticky, pattern aj song mód identicky), steps 8/16/32 (drag grid v UI, commit na pointer-up), glideSec, plné AutomationTarget; composícia viacerých zdrojov do rovnakého cieľa sčítava (base + Σ) a koexistuje s audio-rate osc LFO (AC pridávanie). Verifikácia: „step modulator: gain alternates on the division grid" — gate=0.0905/0.0364 vs ctrl=0.0870/0.1604 (normalizované na house backbeat baseline)
 
 ### 1.5 Metering (`src/audio-engine/metering.ts`)
 
@@ -185,10 +186,8 @@ Kvalitatívne tier-y:
   Modulated delay + feedback + inversion switch + stereo.
 - [ ] **P1.3 — Tremolo (efekt)** — stereo panning variant + amplitude variant, sync.
 - [ ] **P1.4 — Autowah** — envelope follower (kód už máme v workletoch) → filter cutoff.
-- [ ] **P1.5 — Envelope follower ako všeobecný modulátor** — audio signál → ľubovoľný param (FX aj inštrument).
-  Detekcia existuje, chýba len vystavenie + UI mapping.
-- [ ] **P1.6 — Random / S&H LFO (seeded)** — mulberry32, determinizmus máme v krvi.
-  Pre textúry, arpeggiá, movement.
+- [x] **P1.5 — Envelope follower ako všeobecný modulátor** — 2026-08-27 dokončené v rámci sekcie 1.4 (v1: natívne cieľe Volume/Pan, worklet, polarity; generálnosť FX/inst → P2 „audio-rate modulation bus"). Pozri §1.4 poznámky.
+- [x] **P1.6 — Random / S&H LFO (seeded)** — 2026-08-27 dokončené v rámci sekcie 1.4 (stateless hash stream, Hold/Glide, plné AutomationTarget). Pozri §1.4 poznámky.
 - [ ] **P1.7 — Stutter / Glitch (buffer-repeat) efekt** — granulár engine to zvládne s minimom kódu; repeat-rate synced na BPM.
 - [ ] **P1.8 — Spektrum analyzátor UI** — EQ + master; kreslenie existujúcich FFT dát, nesmie zasahovať do audio timing (observer-only, pozri VISION §28).
 - [ ] **P1.9 — Denormal guards vo workletoch** — FTZ/DAZ pattern (malý DC offset alebo flush pri < 1e-20) v envelope follower-och.
@@ -242,3 +241,4 @@ Tieto pravidlá majú prednosť pred akýmikoľvek nápadmi vyššie:
 - 2026-08-27 — Vytvorený dokument. Prvý audit engine (27 efektov/nástrojov inventarizovaných, 4 reálne worklety, 10 slabín identifikovaných).
 - 2026-08-27 — **P0 blok dokončený**: P0.0 (fallback fix + UI warning + auto-rebuild po do-loadovaní workletov), P0.0b (Bass Buss mono bass wiring + Utility mono súčet bugfix), P0.1 (look-ahead limiter worklet ako efekt „Limiter" s GR meteringom, minimálna PDC v engine, akceptačné browser-checks). Verifikované: `npm run typecheck` ✓, `npm test` 883 passed ✓, `npm run test:browser` všetky kontroly PASS vrátane nových (limiter peak=ceiling presne, gr=5.1 dB, spread=1.017, onset=221/221 vz.; pdc skew=0.88 ms).
 - 2026-08-27 — **Master limiter swapped na worklet**: `buildMaster()` spúja look-ahead limiter medzi masterClipper a natívny node (natívny neutralizovaný, metering tap mera finálny signál); live upgrade cez `upgradeMasterDynamics()`; `applyMasterConfig` riadi ceiling/mix parametre (LIMIT toggle → mix 1/0); GR readout na MasterMeter. Slabina #1 uzavretá. Verifikácia: typecheck ✓, vitest 883 ✓, test:browser všetky PASS — export pribitý presne na strop (peak=0.708/ceiling=0.708).
+- 2026-08-27 — **Sekcia 1.4 Modulácia dokončená**: Lfo rozšírené na 4 kindy (osc/random/step/envFollower) bez migrácie (flattened optional fields, SCHEMA_VERSION ostáva 1); nový `project-model/modulators.ts` (pure deterministická matematika + sanitisery); envFollower AudioWorklet (Volume/Pan v1, polarity DUCK/SWELL, anti-feedback input tap); Random/S&H + Step s plným AutomationTarget cielením cez `setParameterAt` kanál; offline hook `scheduleModulatorsOffline` v rendereri + live `applyModulators` cez Scheduler (transport `timeAtTick` mapping); `automationReset` teraz cancelScheduledValues; ModPanel MODULATORS sekcia s type-switchom, step-grid editorom, seed regen; 16 unit testov + 4 browser-checks. Verifikácia: typecheck ✓, vitest 915/915 ✓, test:browser 0 FAIL — determinizmus rel≤5.9e-9, step gate kontrast normalizovaný na control baseline, follower duck 0.719/0.801. Poznámka: FX/inst parametre pre envFollower vyžadujú „audio-rate modulation bus" → zaradené medzi P2 nápady.

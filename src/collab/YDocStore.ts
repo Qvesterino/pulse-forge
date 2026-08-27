@@ -38,6 +38,8 @@ export class YDocStore {
   private lastSavedAt_: string | null = null;
   private undoManager: Y.UndoManager;
   private pendingLabel: string | null = null;
+  /** Label of the item just moved to the opposite stack by undo()/redo(). */
+  private lastUndoneLabel: string | null = null;
   private lastCoalesce: { key: string; at: number } | null = null;
   private doc_: ProjectDocument;
   onDocChanged: ((doc: ProjectDocument) => void) | null = null;
@@ -45,25 +47,41 @@ export class YDocStore {
   constructor(yDoc: Y.Doc) {
     this.yDoc = yDoc;
     this.yMap = yDoc.getMap("project");
-    this.doc_ = yDocToProject(this.yMap);
+    this.doc_ = this.readDoc();
     const undoManager = new Y.UndoManager(this.yMap, { trackedOrigins: new Set([this]) });
     this.undoManager = undoManager;
 
     // Stash the command label on each undo stack item so the history panel
-    // can show real labels.
-    undoManager.on("stack-item-added", ({ stackItem }) => {
-      const label = this.pendingLabel ?? "Edit";
+    // can show real labels. yjs creates a NEW StackItem for the opposite
+    // stack on every undo()/redo() (the event `type` names the TARGET stack:
+    // 'undo' = pushed to undoStack, 'redo' = pushed to redoStack), so the
+    // label is carried across via lastUndoneLabel — otherwise every redo
+    // showed up as "Edit" in the history panel.
+    undoManager.on("stack-item-added", ({ stackItem, type }) => {
+      const label = this.pendingLabel ?? this.lastUndoneLabel ?? "Edit";
       stackItem.meta.set("label", label);
       stackItem.meta.set("timestamp", Date.now());
       stackItem.meta.set("type", "collab");
+      void type;
     });
 
     // Subscribe to Y.Doc changes and re-read the snapshot
     this.yDoc.on("update", () => {
-      this.doc_ = yDocToProject(this.yMap);
+      this.doc_ = this.readDoc();
       this.emit();
       this.onDocChanged?.(this.doc_);
     });
+  }
+
+  /**
+   * Project the Y.Doc into a ProjectDocument — ALWAYS through
+   * normalizeProject. A remote peer (or an offline merge of two divergent
+   * sessions) can inject state the local code cannot use, e.g. a dangling
+   * activePatternId that made getActivePattern() throw on every scheduler
+   * tick. Normalization is idempotent and keeps valid docs untouched.
+   */
+  private readDoc(): ProjectDocument {
+    return normalizeProject(yDocToProject(this.yMap));
   }
 
   /** Initialize from a plain ProjectDocument (used on first open). */
@@ -134,7 +152,7 @@ export class YDocStore {
 
   /** Force re-read of the snapshot from Y.Doc. Call after external sync. */
   refreshSnapshot(): void {
-    this.doc_ = yDocToProject(this.yMap);
+    this.doc_ = this.readDoc();
     this.emit();
   }
 
@@ -191,22 +209,30 @@ export class YDocStore {
 
   undo(): void {
     if (!this.undoManager.canUndo()) return;
+    const top = this.undoManager.undoStack[this.undoManager.undoStack.length - 1];
+    this.lastUndoneLabel = (top?.meta.get("label") as string | undefined) ?? null;
     this.undoManager.undo();
     this.afterMutation();
   }
 
   redo(): void {
     if (!this.undoManager.canRedo()) return;
+    const top = this.undoManager.redoStack[this.undoManager.redoStack.length - 1];
+    this.lastUndoneLabel = (top?.meta.get("label") as string | undefined) ?? null;
     this.undoManager.redo();
     this.afterMutation();
   }
 
   replaceDoc(doc: ProjectDocument): void {
     const normalized = normalizeProject(doc);
-    // Stop tracking, clear all data, re-populate
+    // Stop tracking, then clear + repopulate in ONE transaction — peers must
+    // never observe the intermediate empty-project frame (and record the
+    // wipe as two foreign edits).
     this.undoManager.stopCapturing();
-    this.yMap.clear();
-    projectToYDoc(normalized, this.yMap);
+    this.yDoc.transact(() => {
+      this.yMap.clear();
+      projectToYDoc(normalized, this.yMap);
+    });
     this.undoManager.clear();
     this.afterMutation();
   }

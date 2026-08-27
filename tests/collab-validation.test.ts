@@ -242,11 +242,13 @@ describe("YDocStore collaboration", () => {
     store.refreshSnapshot();
     expect(store.doc.bpm).toBe(200);
 
-    // Multiple external mutations
+    // Multiple external mutations. Out-of-range BPM is sanitized on read —
+    // every other ingest path (schema load, import, setBpm) clamps to
+    // 20..300, so collab reads must not smuggle in an unusable tempo.
     yDoc.getMap("project").set("name", "Remote Edit");
     yDoc.getMap("project").set("bpm", 999);
     store.refreshSnapshot();
     expect(store.doc.name).toBe("Remote Edit");
-    expect(store.doc.bpm).toBe(999);
+    expect(store.doc.bpm).toBe(300);
   });
 });

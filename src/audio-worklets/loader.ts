@@ -18,7 +18,7 @@ const failedContexts = new WeakSet<BaseAudioContext>();
 const inflight = new Map<BaseAudioContext, Promise<void>>();
 
 export function isWorkletReady(
-  type: "bitcrusher" | "sidechain" | "transient" | "gate" | "limiter" | "envFollower",
+  type: "bitcrusher" | "sidechain" | "transient" | "gate" | "limiter" | "envFollower" | "compressor",
   ctx: BaseAudioContext | null | undefined,
 ): boolean {
   if (!ctx || !readyContexts.has(ctx)) return false;
@@ -30,7 +30,8 @@ export function isWorkletReady(
     type === "transient" ||
     type === "gate" ||
     type === "limiter" ||
-    type === "envFollower"
+    type === "envFollower" ||
+    type === "compressor"
   );
 }
 
@@ -48,9 +49,9 @@ export async function loadWorkletModules(ctx: BaseAudioContext): Promise<void> {
 
   const load = Promise.all([
     ctx.audioWorklet.addModule(new URL("./bitcrusher-processor.js", import.meta.url).href),
-    // The core module imports sidechain, transient, gate and limiter
-    // processors. Keeping this as one addModule call preserves the existing
-    // two-module contract.
+    // The core module imports sidechain, transient, gate, limiter,
+    // envFollower and compressor processors. Keeping this as one addModule
+    // call preserves the existing two-module contract.
     ctx.audioWorklet.addModule(new URL("./core-processor.js", import.meta.url).href),
   ])
     .then(() => {

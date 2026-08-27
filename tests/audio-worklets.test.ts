@@ -10,6 +10,7 @@ describe("AudioWorklet loader", () => {
     expect(isWorkletReady("bitcrusher", {} as BaseAudioContext)).toBe(false);
     expect(isWorkletReady("sidechain", {} as BaseAudioContext)).toBe(false);
     expect(isWorkletReady("limiter", {} as BaseAudioContext)).toBe(false);
+    expect(isWorkletReady("compressor", {} as BaseAudioContext)).toBe(false);
     expect(isWorkletReady("bitcrusher", null)).toBe(false);
     expect(isWorkletReady("sidechain", undefined)).toBe(false);
   });
@@ -22,6 +23,7 @@ describe("AudioWorklet loader", () => {
     expect(isWorkletReady("bitcrusher", ctx)).toBe(true);
     expect(isWorkletReady("sidechain", ctx)).toBe(true);
     expect(isWorkletReady("limiter", ctx)).toBe(true);
+    expect(isWorkletReady("compressor", ctx)).toBe(true);
   });
 
   it("tracks readiness per context — offline renders are separate contexts", async () => {

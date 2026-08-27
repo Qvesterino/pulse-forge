@@ -455,7 +455,7 @@ export async function runChecks(): Promise<CheckResult[]> {
 
   // P0.0: worklet-dependent effects must degrade LOUDLY — flagged as degraded
   // with a human-readable reason instead of silently pretending to process.
-  for (const type of ["gate", "transient", "limiter"] as EffectType[]) {
+  for (const type of ["gate", "transient", "limiter", "compressor"] as EffectType[]) {
     try {
       const ctx = new OfflineAudioContext(1, Math.floor(SR / 2), SR);
       const def = EFFECT_DEFS[type];
@@ -1411,6 +1411,123 @@ export async function runChecks(): Promise<CheckResult[]> {
   } catch (error) {
     check("envelope follower: source transients shape host gain (cross-track)", false, String(error));
   }
+
+  // ---------------- Bus compressor (P0.2) ----------------
+
+  // Hot input: per-sample worklet compresses hard and reports GR.
+  try {
+    const ctx = new OfflineAudioContext(2, SR, SR);
+    await loadWorkletModules(ctx);
+    if (!isWorkletReady("compressor", ctx)) {
+      check("compressor: worklet compresses hot input and reports GR", false, "worklet modules not ready");
+    } else {
+      const params = { threshold: -30, ratio: 6, attack: 0.005, release: 0.1, knee: 6, makeup: 0, mix: 1, detector: 0, scHpf: 20 };
+      const rt = EFFECT_DEFS.compressor.factory(ctx, { id: "chk-comp", type: "compressor", bypassed: false, params }, { bpm: 124 });
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = 220;
+      const gain = ctx.createGain();
+      gain.gain.value = 0.7; // ≈ −6.1 dBFS RMS — far above THRESH −30
+      osc.connect(gain).connect(rt.input);
+      rt.output.connect(ctx.destination);
+      osc.start(0);
+      const out = (await ctx.startRendering()).getChannelData(0);
+      rt.dispose();
+      await new Promise((resolve) => setTimeout(resolve, 120)); // GR messages flush
+      let rmsOut = 0;
+      for (let i = 0; i < out.length; i++) rmsOut += out[i] * out[i];
+      rmsOut = Math.sqrt(rmsOut / out.length);
+      const baseline = 0.7 / Math.SQRT2;
+      const gr = rt.getGainReductionDb?.() ?? 0;
+      check(
+        "compressor: worklet compresses hot input and reports GR",
+        rmsOut < baseline * 0.4 && gr >= 8,
+        `rms=${rmsOut.toFixed(4)} baseline=${baseline.toFixed(4)} gr=${gr.toFixed(1)}dB`,
+      );
+    }
+  } catch (error) {
+    check("compressor: worklet compresses hot input and reports GR", false, String(error));
+  }
+
+  // Sidechain HPF: a sub-only detector drives compression when the HPF is off
+  // and is rejected once the HPF sits above the sub band — the reason this is
+  // a worklet and not the native node.
+  try {
+    const ctx = new OfflineAudioContext(2, SR, SR);
+    await loadWorkletModules(ctx);
+    if (!isWorkletReady("compressor", ctx)) {
+      check("compressor: sidechain HPF gates bass-only detector", false, "worklet modules not ready");
+    } else {
+    const renderWith = async (scHpf: number, withSidechain: boolean): Promise<{ rms: number; gr: number }> => {
+      // Each variant needs a FRESH context — startRendering closes it.
+      const ctx = new OfflineAudioContext(2, SR, SR);
+      await loadWorkletModules(ctx);
+      const params = { threshold: -30, ratio: 8, attack: 0.003, release: 0.05, knee: 3, makeup: 0, mix: 1, detector: 0, scHpf };
+      const rt = EFFECT_DEFS.compressor.factory(ctx, { id: `chk-sc${scHpf}`, type: "compressor", bypassed: false, params }, { bpm: 124 });
+        const carrier = ctx.createOscillator();
+        carrier.type = "sine";
+        carrier.frequency.value = 220;
+        const carrierGain = ctx.createGain();
+        carrierGain.gain.value = 0.4;
+        carrier.connect(carrierGain).connect(rt.input);
+        if (withSidechain) {
+          const sub = ctx.createOscillator();
+          sub.type = "sine";
+          sub.frequency.value = 45; // sub bass — must vanish through the HPF
+          const subGain = ctx.createGain();
+          subGain.gain.value = 0.9;
+          sub.connect(subGain);
+          rt.setSidechainInput?.(subGain);
+          sub.start(0);
+        }
+        carrier.start(0);
+        rt.output.connect(ctx.destination);
+        const buf = await ctx.startRendering();
+        rt.dispose();
+        const data = buf.getChannelData(0);
+        let rms = 0;
+        for (let i = Math.floor(data.length * 0.25); i < data.length; i++) rms += data[i] * data[i];
+        rms = Math.sqrt(rms / (data.length - Math.floor(data.length * 0.25)));
+        await new Promise((resolve) => setTimeout(resolve, 120));
+        return { rms, gr: rt.getGainReductionDb?.() ?? 0 };
+      };
+      const baseline = await renderWith(20, false);
+      const bassOn = await renderWith(20, true);
+      const filtered = await renderWith(300, true);
+      check(
+        "compressor: sidechain HPF gates bass-only detector",
+        bassOn.rms < baseline.rms * 0.5 && bassOn.gr >= 6
+          && filtered.rms > baseline.rms * 0.85 && filtered.gr <= 0.7,
+        `baseline=${baseline.rms.toFixed(4)} bassOn=${bassOn.rms.toFixed(4)}(gr ${bassOn.gr.toFixed(1)}) hpf300=${filtered.rms.toFixed(4)}(gr ${filtered.gr.toFixed(1)})`,
+      );
+    }
+  } catch (error) {
+    check("compressor: sidechain HPF gates bass-only detector", false, String(error));
+  }
+
+  // Parallel path: MIX = 0 must pass the signal untouched.
+  try {
+    const ctx = new OfflineAudioContext(1, SR, SR);
+    await loadWorkletModules(ctx);
+    const params = { threshold: -40, ratio: 20, attack: 0.001, release: 0.05, knee: 0, makeup: 0, mix: 0, detector: 1, scHpf: 20 };
+    const rt = EFFECT_DEFS.compressor.factory(ctx, { id: "chk-mix0", type: "compressor", bypassed: false, params }, { bpm: 124 });
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.value = 220;
+    const gain = ctx.createGain();
+    gain.gain.value = 0.8;
+    osc.connect(gain).connect(rt.input);
+    rt.output.connect(ctx.destination);
+    osc.start(0);
+    const data = (await ctx.startRendering()).getChannelData(0);
+    rt.dispose();
+    let peak = 0;
+    for (let i = 0; i < data.length; i++) peak = Math.max(peak, Math.abs(data[i]));
+    check("compressor: mix = 0 passes unity (parallel blend)", Math.abs(peak - 0.8) < 0.02, `peak=${peak.toFixed(4)} expected≈0.8`);
+  } catch (error) {
+    check("compressor: mix = 0 passes unity (parallel blend)", false, String(error));
+  }
+
   return results;
 }
 

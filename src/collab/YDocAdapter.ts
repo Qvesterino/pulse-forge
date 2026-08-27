@@ -25,6 +25,9 @@ import type {
   MidiConfig,
   NoteEvent,
   Pattern,
+  PatternAssist,
+  PatternGeneration,
+  PatternPhraseBar,
   ProjectDocument,
   ReturnTrack,
   Scene,
@@ -45,9 +48,9 @@ function yMapToProject(m: Y.Map<unknown>): ProjectDocument {
     id: (m.get("id") as string) ?? "",
     name: (m.get("name") as string) ?? "",
     bpm: (m.get("bpm") as number) ?? 120,
-    timeSignature: (yMapToObj(m.get("timeSignature") as Y.Map<unknown>) as unknown as { numerator: number; denominator: number }) ?? { numerator: 4, denominator: 4 },
+    timeSignature: (plainValue(m.get("timeSignature")) as unknown as { numerator: number; denominator: number }) ?? { numerator: 4, denominator: 4 },
     key: (m.get("key") as string | undefined) as any,
-    tags: (yArrToList(m.get("tags") as Y.Array<unknown>) as string[]),
+    tags: listValue(m.get("tags")) as string[],
     tracks: yArrToList(m.get("tracks") as Y.Array<unknown>).map(yMapToTrack),
     patterns: yArrToList(m.get("patterns") as Y.Array<unknown>).map(yMapToPattern),
     activePatternId: (m.get("activePatternId") as string) ?? "",
@@ -67,9 +70,9 @@ function yMapToProject(m: Y.Map<unknown>): ProjectDocument {
     lfos: yArrToList(m.get("lfos") as Y.Array<unknown>).map(yMapToLfo),
     macros: yArrToList(m.get("macros") as Y.Array<unknown>).map(yMapToMacro),
     returns: yArrToList(m.get("returns") as Y.Array<unknown>).map(yMapToReturn),
-    master: (yMapToObj(m.get("master") as Y.Map<unknown>) as unknown as MasterConfig) ?? { masterGain: 1, ceilingDb: -1, limiterEnabled: true, clipperEnabled: false },
-    groove: m.has("groove") ? yMapToObj(m.get("groove") as Y.Map<unknown>) as unknown as Partial<GrooveSettings> : undefined,
-    midi: m.has("midi") ? yMapToObj(m.get("midi") as Y.Map<unknown>) as unknown as MidiConfig : undefined,
+    master: (plainValue(m.get("master")) as unknown as MasterConfig) ?? { masterGain: 1, ceilingDb: -1, limiterEnabled: true, clipperEnabled: false },
+    groove: m.has("groove") ? plainValue(m.get("groove")) as unknown as Partial<GrooveSettings> : undefined,
+    midi: m.has("midi") ? plainValue(m.get("midi")) as unknown as MidiConfig : undefined,
     createdAt: (m.get("createdAt") as string) ?? "",
     updatedAt: (m.get("updatedAt") as string) ?? "",
   };
@@ -173,6 +176,12 @@ function yMapToPattern(m: unknown): Pattern {
     rows,
     notes,
     stepMeta: Object.keys(stepMeta).length > 0 ? stepMeta : undefined,
+    // AI provenance — plain JSON values written by the adapter. Dropped here
+    // once meant recipe-based variation and Assist hashes silently died after
+    // any collaborative edit.
+    generation: map.has("generation") ? (plainValue(map.get("generation")) as unknown as PatternGeneration) : undefined,
+    assist: map.has("assist") ? (plainValue(map.get("assist")) as unknown as PatternAssist) : undefined,
+    phrasePlan: map.has("phrasePlan") ? (plainValue(map.get("phrasePlan")) as unknown as PatternPhraseBar[]) : undefined,
   };
 }
 
@@ -288,326 +297,450 @@ function yMapToReturn(m: unknown): ReturnTrack {
 
 // ─── ProjectDocument → Y.Doc ────────────────────────────────────────────────
 
+// ─── Targeted-diff helpers ──────────────────────────────────────────────────
+//
+// The fallback path for commands without applyToYDoc used to RECREATE every
+// collection from the command's (possibly stale) `next` document — silently
+// erasing concurrent peer edits. The helpers below instead sync a ProjectDocument
+// into an existing Y.Map structurally:
+//   - entities are matched by id: updated IN PLACE, inserted, removed, moved
+//   - scalar fields are written only when the value actually differs (LWW)
+//   - blob fields are replaced only when their JSON content differs
+// so a command only ever writes what it actually changed.
+
+function plainValue(value: unknown): unknown {
+  if (value instanceof Y.Array) return value.toArray().map(plainValue);
+  if (value instanceof Y.Map) {
+    const out: Record<string, unknown> = {};
+    value.forEach((v, k) => { out[k] = plainValue(v); });
+    return out;
+  }
+  return value;
+}
+
+function listValue(value: unknown): unknown[] {
+  if (value instanceof Y.Array) return value.toArray();
+  if (Array.isArray(value)) return value;
+  return [];
+}
+
+function plainEquals(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a === "object" && typeof b === "object" && a !== null && b !== null) {
+    return JSON.stringify(a) === JSON.stringify(b);
+  }
+  return false;
+}
+
+function setIfChanged(map: Y.Map<unknown>, key: string, value: unknown): void {
+  if (plainEquals(map.get(key), value)) return;
+  map.set(key, value);
+}
+
+/** undefined removes the key; otherwise write only when the value differs. */
+function setOrDelete(map: Y.Map<unknown>, key: string, value: unknown): void {
+  if (value === undefined) {
+    if (map.has(key)) map.delete(key);
+    return;
+  }
+  setIfChanged(map, key, value);
+}
+
+/** Mirror ALL keys of a plain object into a Y.Map (absent keys are deleted). */
+function syncPlainFields(target: Y.Map<unknown>, source: Record<string, unknown>): void {
+  for (const key of Array.from(target.keys())) {
+    if (!(key in source)) target.delete(key);
+  }
+  for (const [key, value] of Object.entries(source)) {
+    setOrDelete(target, key, value);
+  }
+}
+
+/** Mirror a fixed list of scalar fields (undefined deletes). */
+function mirrorScalars(target: Y.Map<unknown>, source: unknown, keys: string[]): void {
+  const record = source as Record<string, unknown>;
+  for (const key of keys) setOrDelete(target, key, record[key]);
+}
+
+function ensureChildMap(parent: Y.Map<unknown>, key: string): Y.Map<unknown> {
+  let child = parent.get(key) as Y.Map<unknown> | undefined;
+  if (!(child instanceof Y.Map)) {
+    child = new Y.Map<unknown>();
+    parent.set(key, child);
+  }
+  return child;
+}
+
+function ensureChildArray(parent: Y.Map<unknown>, key: string): Y.Array<unknown> {
+  let child = parent.get(key) as Y.Array<unknown> | undefined;
+  if (!(child instanceof Y.Array)) {
+    child = new Y.Array<unknown>();
+    parent.set(key, child);
+  }
+  return child;
+}
+
 /**
- * Apply a new ProjectDocument to an existing Y.Map by updating scalar fields
- * in place and recreating nested structures. Unlike projectToYDoc, this does
- * NOT call yMap.clear() first, so existing Y.js items are overwritten with
- * higher-clock items from the same client — critical for correct CRDT sync.
+ * Sync an id-keyed entity list: remove stale ids, update survivors in place,
+ * insert new entities, and move misplaced ones (delete + insert of the SAME
+ * Y.Map keeps entity identity intact for concurrent merges).
+ */
+function syncIdList<T extends { id: string }>(
+  arr: Y.Array<unknown>,
+  items: T[],
+  syncEntity: (target: Y.Map<unknown>, item: T) => void,
+  createEntity: (item: T) => Y.Map<unknown>,
+): void {
+  const desiredIds = new Set(items.map((item) => item.id));
+
+  const indexIds = (): Map<string, number> => {
+    const positions = new Map<string, number>();
+    for (let i = 0; i < arr.length; i++) {
+      const id = (arr.get(i) as Y.Map<unknown>).get("id") as string | undefined;
+      positions.set(id ?? "", i);
+    }
+    return positions;
+  };
+
+  // 1. Removals — descending so indices stay valid.
+  for (let i = arr.length - 1; i >= 0; i--) {
+    const id = (arr.get(i) as Y.Map<unknown>).get("id") as string | undefined;
+    if (!desiredIds.has(id ?? "")) arr.delete(i, 1);
+  }
+
+  // 2. Updates / inserts / moves in desired order.
+  let positions = indexIds();
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    const at = positions.get(item.id);
+    if (at === undefined) {
+      arr.insert(i, [createEntity(item)]);
+      positions = indexIds();
+    } else if (at !== i) {
+      const ref = arr.get(at) as Y.Map<unknown>;
+      syncEntity(ref, item);
+      arr.delete(at, 1);
+      arr.insert(i, [ref]);
+      positions = indexIds();
+    } else {
+      syncEntity(arr.get(i) as Y.Map<unknown>, item);
+    }
+  }
+}
+
+/** Replace a plain-JSON blob field only when its content actually differs. */
+function syncPlainJsonField(map: Y.Map<unknown>, key: string, value: unknown): void {
+  if (value === undefined) {
+    if (map.has(key)) map.delete(key);
+    return;
+  }
+  setIfChanged(map, key, plainValue(value));
+}
+
+/**
+ * Replace a Y.Array of plain strings only when content differs.
+ */
+function syncStringArray(map: Y.Map<unknown>, key: string, values: string[]): void {
+  const current = map.get(key);
+  const currentJson = current instanceof Y.Array ? JSON.stringify(current.toArray()) : JSON.stringify(current ?? null);
+  if (currentJson === JSON.stringify(values)) return;
+  if (map.has(key)) map.delete(key);
+  const arr = new Y.Array<string>();
+  map.set(key, arr);
+  if (values.length) arr.push(values);
+}
+
+/**
+ * Replace a nested Y container (array of Y.Maps) only when its JSON content
+ * differs — preserves the representation readers expect without churning
+ * Y identities on every apply.
+ */
+function syncBlobContainer(
+  map: Y.Map<unknown>,
+  key: string,
+  items: unknown[],
+  createItem: (item: unknown) => Y.Map<unknown>,
+): void {
+  const current = map.get(key);
+  const currentJson = current instanceof Y.Array ? JSON.stringify(current.toArray().map((v) => plainValue(v))) : undefined;
+  if (currentJson !== undefined && currentJson === JSON.stringify(items)) return;
+  if (current !== undefined) map.delete(key);
+  const arr = new Y.Array<unknown>();
+  map.set(key, arr);
+  for (const item of items) arr.push([createItem(item)]);
+}
+
+// ─── Entity sync (targeted diff) ────────────────────────────────────────────
+
+const TRACK_SCALARS = ["kind", "name", "gain", "pan", "mute", "solo", "groupId", "instrument", "sampleId", "presetId"];
+const PAD_SCALARS = ["name", "assetId", "gain", "pan", "pitch", "mute", "solo", "chokeGroup", "sliceStart", "sliceEnd", "sliceFadeIn", "sliceFadeOut", "sliceReverse"];
+const EFFECT_SCALARS = ["type", "bypassed", "sidechainTrackId"];
+const NOTE_SCALARS = ["pitch", "start", "duration", "velocity"];
+const SCENE_SCALARS = ["name", "patternId", "intensity", "loop", "role"];
+const CLIP_SCALARS = ["sceneId", "startBar", "lengthBars", "loop"];
+const TRANSITION_SCALARS = ["fromClipId", "toClipId", "type", "lengthBars", "cueAssetId"];
+const MARKER_SCALARS = ["name", "type", "tick", "linkedClipId", "customId"];
+const MACRO_SCALARS = ["name", "value"];
+
+function syncTrackEntity(target: Y.Map<unknown>, track: Track): void {
+  mirrorScalars(target, track, TRACK_SCALARS);
+
+  syncIdList(ensureChildArray(target, "effects"), track.effects, syncEffectEntity, effectToYMap);
+  syncPlainFields(ensureChildMap(target, "sends"), track.sends);
+
+  if (track.kind === "drum") {
+    syncIdList(ensureChildArray(target, "pads"), track.pads, syncPadEntity, padToYMap);
+  } else if (track.kind === "instrument") {
+    syncPlainFields(ensureChildMap(target, "params"), track.params);
+    if (track.midiOutput) {
+      syncPlainFields(ensureChildMap(target, "midiOutput"), track.midiOutput as unknown as Record<string, unknown>);
+    } else if (target.has("midiOutput")) {
+      target.delete("midiOutput");
+    }
+  }
+
+  if (track.frozen) {
+    syncPlainFields(ensureChildMap(target, "frozen"), track.frozen as unknown as Record<string, unknown>);
+  } else if (target.has("frozen")) {
+    target.delete("frozen");
+  }
+}
+
+function syncPadEntity(target: Y.Map<unknown>, pad: DrumPad): void {
+  mirrorScalars(target, pad, PAD_SCALARS);
+}
+
+function syncEffectEntity(target: Y.Map<unknown>, fx: EffectInstance): void {
+  mirrorScalars(target, fx, EFFECT_SCALARS);
+  syncPlainFields(ensureChildMap(target, "params"), fx.params);
+}
+
+function syncPatternEntity(target: Y.Map<unknown>, pattern: Pattern): void {
+  setIfChanged(target, "name", pattern.name);
+  setIfChanged(target, "stepCount", pattern.stepCount);
+
+  // AI provenance — plain JSON blobs (recipe, assist hashes, phrase plan).
+  syncPlainJsonField(target, "generation", pattern.generation);
+  syncPlainJsonField(target, "assist", pattern.assist);
+  syncPlainJsonField(target, "phrasePlan", pattern.phrasePlan);
+
+  // Rows: padId → Y.Array<number>, per-cell granularity.
+  const rowsMap = ensureChildMap(target, "rows");
+  for (const key of Array.from(rowsMap.keys())) {
+    if (!(key in pattern.rows)) rowsMap.delete(key);
+  }
+  for (const [padId, row] of Object.entries(pattern.rows)) {
+    let yRow = rowsMap.get(padId) as Y.Array<number> | undefined;
+    if (!(yRow instanceof Y.Array)) {
+      yRow = new Y.Array<number>();
+      rowsMap.set(padId, yRow);
+    }
+    if (yRow.length > row.length) yRow.delete(row.length, yRow.length - row.length);
+    for (let i = 0; i < row.length; i++) {
+      const current = i < yRow.length ? yRow.get(i) : undefined;
+      if (current === undefined) yRow.insert(i, [row[i]]);
+      else if (current !== row[i]) {
+        yRow.delete(i, 1);
+        yRow.insert(i, [row[i]]);
+      }
+    }
+  }
+
+  // Notes: trackId → id-keyed note entities.
+  const notesMap = ensureChildMap(target, "notes");
+  for (const key of Array.from(notesMap.keys())) {
+    if (!(key in (pattern.notes ?? {}))) notesMap.delete(key);
+  }
+  for (const [trackId, list] of Object.entries(pattern.notes ?? {})) {
+    syncIdList(ensureChildArray(notesMap, trackId), list, syncNoteEntity, noteToYMap);
+  }
+
+  // StepMeta: padId → stepIndex → meta fields.
+  if (pattern.stepMeta && Object.keys(pattern.stepMeta).length > 0) {
+    const metaMap = ensureChildMap(target, "stepMeta");
+    for (const key of Array.from(metaMap.keys())) {
+      if (!(key in pattern.stepMeta)) metaMap.delete(key);
+    }
+    for (const [padId, steps] of Object.entries(pattern.stepMeta)) {
+      let inner = metaMap.get(padId) as Y.Map<unknown> | undefined;
+      if (!(inner instanceof Y.Map)) {
+        inner = new Y.Map<unknown>();
+        metaMap.set(padId, inner);
+      }
+      const stepKeys = new Set(Object.keys(steps));
+      for (const key of Array.from(inner.keys())) {
+        if (!stepKeys.has(key)) inner.delete(key);
+      }
+      for (const [stepKey, meta] of Object.entries(steps)) {
+        let stepMap = inner.get(stepKey) as Y.Map<unknown> | undefined;
+        if (!(stepMap instanceof Y.Map)) {
+          stepMap = new Y.Map<unknown>();
+          inner.set(stepKey, stepMap);
+        }
+        syncPlainFields(stepMap, meta as unknown as Record<string, unknown>);
+      }
+    }
+  } else if (target.has("stepMeta")) {
+    target.delete("stepMeta");
+  }
+}
+
+function syncNoteEntity(target: Y.Map<unknown>, note: NoteEvent): void {
+  mirrorScalars(target, note, NOTE_SCALARS);
+}
+
+function syncSceneEntity(target: Y.Map<unknown>, scene: Scene): void {
+  mirrorScalars(target, scene, SCENE_SCALARS);
+  if (scene.intensityCurve) {
+    syncBlobContainer(target, "intensityCurve", scene.intensityCurve, (pt) => objToYMap(pt as Record<string, unknown>));
+  } else if (target.has("intensityCurve")) {
+    target.delete("intensityCurve");
+  }
+}
+
+function syncClipEntity(target: Y.Map<unknown>, clip: ArrangementClip): void {
+  mirrorScalars(target, clip, CLIP_SCALARS);
+}
+
+function syncTransitionEntity(target: Y.Map<unknown>, transition: ArrangementTransition): void {
+  mirrorScalars(target, transition, TRANSITION_SCALARS);
+}
+
+function syncMarkerEntity(target: Y.Map<unknown>, marker: Marker): void {
+  mirrorScalars(target, marker, MARKER_SCALARS);
+}
+
+function syncAutomationEntity(target: Y.Map<unknown>, lane: AutomationLane): void {
+  syncPlainFields(ensureChildMap(target, "target"), lane.target as unknown as Record<string, unknown>);
+  syncPoints(ensureChildArray(target, "points"), lane.points);
+}
+
+function syncSceneAutomationEntity(target: Y.Map<unknown>, lane: SceneAutomation): void {
+  setIfChanged(target, "sceneId", lane.sceneId);
+  syncPlainFields(ensureChildMap(target, "target"), lane.target as unknown as Record<string, unknown>);
+  syncPoints(ensureChildArray(target, "points"), lane.points);
+}
+
+function syncPoints(pointsArr: Y.Array<unknown>, points: AutomationPoint[]): void {
+  if (pointsArr.length > points.length) pointsArr.delete(points.length, pointsArr.length - points.length);
+  for (let i = 0; i < points.length; i++) {
+    if (i >= pointsArr.length) {
+      pointsArr.insert(i, [objToYMap(points[i] as unknown as Record<string, unknown>)]);
+      continue;
+    }
+    const target = pointsArr.get(i) as Y.Map<unknown>;
+    setIfChanged(target, "tick", points[i].tick);
+    setIfChanged(target, "value", points[i].value);
+  }
+}
+
+function syncLfoEntity(target: Y.Map<unknown>, lfo: Lfo): void {
+  // LFOs are a loose flat shape (forward-compatible) — mirror every key.
+  syncPlainFields(target, lfo as unknown as Record<string, unknown>);
+}
+
+function syncMacroEntity(target: Y.Map<unknown>, macro: Macro): void {
+  mirrorScalars(target, macro, MACRO_SCALARS);
+  syncIdList(
+    ensureChildArray(target, "mappings"),
+    macro.mappings,
+    (map, mapping) => syncPlainFields(map, mapping as unknown as Record<string, unknown>),
+    (mapping) => objToYMap(mapping as unknown as Record<string, unknown>),
+  );
+}
+
+function syncReturnEntity(target: Y.Map<unknown>, ret: ReturnTrack): void {
+  mirrorScalars(target, ret, ["name", "gain"]);
+  syncIdList(ensureChildArray(target, "effects"), ret.effects, syncEffectEntity, effectToYMap);
+}
+
+/**
+ * Apply a new ProjectDocument to an existing Y.Map as a TARGETED DIFF:
+ * scalar fields are compared before writing, id-keyed collections are synced
+ * per entity (in-place updates, inserts, removals, moves), nested blobs are
+ * replaced only when their content changes. Unlike the previous whole-
+ * collection rebuild, a fallback command no longer erases concurrent peer
+ * edits to entities it did not touch — and applying an identical document is
+ * a no-op. Runs inside the caller's transaction.
  */
 export function applyProjectToYMap(
   _oldDoc: ProjectDocument,
   newDoc: ProjectDocument,
   yMap: Y.Map<unknown>,
 ): void {
-  // Scalar fields — overwrite in place (same client, higher clock wins LWW)
-  yMap.set("schemaVersion", newDoc.schemaVersion);
-  yMap.set("id", newDoc.id);
-  yMap.set("name", newDoc.name);
-  yMap.set("bpm", newDoc.bpm);
-  yMap.set("activePatternId", newDoc.activePatternId);
-  yMap.set("createdAt", newDoc.createdAt);
-  yMap.set("updatedAt", newDoc.updatedAt);
-  if (newDoc.key) yMap.set("key", newDoc.key);
-  else if (yMap.has("key")) yMap.delete("key");
+  // Scalar fields (compare-before-set — same client, higher clock wins LWW)
+  setIfChanged(yMap, "schemaVersion", newDoc.schemaVersion);
+  setIfChanged(yMap, "id", newDoc.id);
+  setIfChanged(yMap, "name", newDoc.name);
+  setIfChanged(yMap, "bpm", newDoc.bpm);
+  setIfChanged(yMap, "activePatternId", newDoc.activePatternId);
+  setIfChanged(yMap, "createdAt", newDoc.createdAt);
+  setIfChanged(yMap, "updatedAt", newDoc.updatedAt);
+  setOrDelete(yMap, "key", newDoc.key);
 
-  // Tags — recreate array (plain strings; reader expects "tags" to exist)
-  const tags = new Y.Array<string>();
-  yMap.set("tags", tags);
-  if (newDoc.tags?.length) tags.push(newDoc.tags);
+  // Tags — Y.Array of plain strings, replaced only when content differs.
+  syncStringArray(yMap, "tags", newDoc.tags ?? []);
 
   // timeSignature
-  let ts = yMap.get("timeSignature") as Y.Map<unknown>;
-  if (!ts) {
-    ts = new Y.Map<unknown>();
-    yMap.set("timeSignature", ts);
-  }
-  ts.set("numerator", newDoc.timeSignature.numerator);
-  ts.set("denominator", newDoc.timeSignature.denominator);
+  const ts = ensureChildMap(yMap, "timeSignature");
+  setIfChanged(ts, "numerator", newDoc.timeSignature.numerator);
+  setIfChanged(ts, "denominator", newDoc.timeSignature.denominator);
 
-  // Tracks — recreate array (complex nested structure)
-  const tracks = new Y.Array<unknown>();
-  yMap.set("tracks", tracks);
-  for (const track of newDoc.tracks) {
-    tracks.push([trackToYMap(track)]);
-  }
-
-  // Patterns — recreate array
-  const patterns = new Y.Array<unknown>();
-  yMap.set("patterns", patterns);
-  for (const pattern of newDoc.patterns) {
-    patterns.push([patternToYMap(pattern)]);
-  }
-
-  // Scenes — recreate array
-  const scenes = new Y.Array<unknown>();
-  yMap.set("scenes", scenes);
-  for (const scene of newDoc.scenes) {
-    scenes.push([sceneToYMap(scene)]);
-  }
+  // Id-keyed collections
+  syncIdList(ensureChildArray(yMap, "tracks"), newDoc.tracks, syncTrackEntity, trackToYMap);
+  syncIdList(ensureChildArray(yMap, "patterns"), newDoc.patterns, syncPatternEntity, patternToYMap);
+  syncIdList(ensureChildArray(yMap, "scenes"), newDoc.scenes, syncSceneEntity, sceneToYMap);
+  syncIdList(ensureChildArray(yMap, "markers"), newDoc.markers, syncMarkerEntity, markerToYMap);
+  syncIdList(ensureChildArray(yMap, "sceneAutomation"), newDoc.sceneAutomation, syncSceneAutomationEntity, sceneAutoToYMap);
+  syncIdList(ensureChildArray(yMap, "automation"), newDoc.automation, syncAutomationEntity, automationToYMap);
+  syncIdList(ensureChildArray(yMap, "lfos"), newDoc.lfos, syncLfoEntity, lfoToYMap);
+  syncIdList(ensureChildArray(yMap, "macros"), newDoc.macros, syncMacroEntity, macroToYMap);
+  syncIdList(ensureChildArray(yMap, "returns"), newDoc.returns, syncReturnEntity, returnToYMap);
 
   // Arrangement
-  let arr = yMap.get("arrangement") as Y.Map<unknown>;
-  if (!arr) {
-    arr = new Y.Map<unknown>();
-    yMap.set("arrangement", arr);
-  }
-  const clips = new Y.Array<unknown>();
-  arr.set("clips", clips);
-  for (const clip of newDoc.arrangement.clips) {
-    clips.push([clipToYMap(clip)]);
-  }
+  const arrangement = ensureChildMap(yMap, "arrangement");
+  syncIdList(ensureChildArray(arrangement, "clips"), newDoc.arrangement.clips, syncClipEntity, clipToYMap);
   if (newDoc.arrangement.transitions !== undefined) {
-    const transitions = new Y.Array<unknown>();
-    arr.set("transitions", transitions);
-    for (const transition of newDoc.arrangement.transitions) {
-      transitions.push([transitionToYMap(transition)]);
-    }
-  } else if (arr.has("transitions")) {
-    arr.delete("transitions");
-  }
-
-  // Markers
-  const markers = new Y.Array<unknown>();
-  yMap.set("markers", markers);
-  for (const mk of newDoc.markers) {
-    markers.push([markerToYMap(mk)]);
-  }
-
-  // Scene automation
-  const sa = new Y.Array<unknown>();
-  yMap.set("sceneAutomation", sa);
-  for (const s of newDoc.sceneAutomation) {
-    sa.push([sceneAutoToYMap(s)]);
-  }
-
-  // Automation
-  const auto = new Y.Array<unknown>();
-  yMap.set("automation", auto);
-  for (const lane of newDoc.automation) {
-    auto.push([automationToYMap(lane)]);
-  }
-
-  // LFOs
-  const lfos = new Y.Array<unknown>();
-  yMap.set("lfos", lfos);
-  for (const lfo of newDoc.lfos) {
-    const m = new Y.Map<unknown>();
-    lfos.push([m]);
-    for (const [k, v] of Object.entries(lfo)) {
-      m.set(k, v);
-    }
-  }
-
-  // Macros
-  const macros = new Y.Array<unknown>();
-  yMap.set("macros", macros);
-  for (const macro of newDoc.macros) {
-    macros.push([macroToYMap(macro)]);
-  }
-
-  // Returns
-  const returns = new Y.Array<unknown>();
-  yMap.set("returns", returns);
-  for (const r of newDoc.returns) {
-    returns.push([returnToYMap(r)]);
+    syncIdList(ensureChildArray(arrangement, "transitions"), newDoc.arrangement.transitions, syncTransitionEntity, transitionToYMap);
+  } else if (arrangement.has("transitions")) {
+    arrangement.delete("transitions");
   }
 
   // Master
-  let master = yMap.get("master") as Y.Map<unknown>;
-  if (!master) {
-    master = new Y.Map<unknown>();
-    yMap.set("master", master);
-  }
-  master.set("masterGain", newDoc.master.masterGain);
-  master.set("ceilingDb", newDoc.master.ceilingDb);
-  master.set("limiterEnabled", newDoc.master.limiterEnabled);
-  master.set("clipperEnabled", newDoc.master.clipperEnabled);
+  const master = ensureChildMap(yMap, "master");
+  mirrorScalars(master, newDoc.master, ["masterGain", "ceilingDb", "limiterEnabled", "clipperEnabled"]);
 
   // Groove
   if (newDoc.groove) {
-    let g = yMap.get("groove") as Y.Map<unknown>;
-    if (!g) {
-      g = new Y.Map<unknown>();
-      yMap.set("groove", g);
-    }
-    if (newDoc.groove.swing !== undefined) g.set("swing", newDoc.groove.swing);
-    if (newDoc.groove.humanizeTiming !== undefined) g.set("humanizeTiming", newDoc.groove.humanizeTiming);
-    if (newDoc.groove.humanizeVelocity !== undefined) g.set("humanizeVelocity", newDoc.groove.humanizeVelocity);
+    syncPlainFields(ensureChildMap(yMap, "groove"), newDoc.groove as unknown as Record<string, unknown>);
+  } else if (yMap.has("groove")) {
+    yMap.delete("groove");
   }
 
   // MIDI
   if (newDoc.midi) {
-    let mi = yMap.get("midi") as Y.Map<unknown>;
-    if (!mi) {
-      mi = new Y.Map<unknown>();
-      yMap.set("midi", mi);
-    }
-    mi.set("enabled", newDoc.midi.enabled);
-    mi.set("deviceId", newDoc.midi.deviceId);
-    mi.set("drumChannel", newDoc.midi.drumChannel);
-    mi.set("instrumentChannel", newDoc.midi.instrumentChannel);
-    mi.set("pitchBendRange", newDoc.midi.pitchBendRange);
-    if (newDoc.midi.clockMode) mi.set("clockMode", newDoc.midi.clockMode);
-    if (newDoc.midi.ccMappings) {
-      const cc = new Y.Array<unknown>();
-      mi.set("ccMappings", cc);
-      for (const m of newDoc.midi.ccMappings) cc.push([objToYMap(m as any)]);
-    }
-    if (newDoc.midi.drumNoteMap) {
-      const dn = new Y.Array<unknown>();
-      mi.set("drumNoteMap", dn);
-      for (const m of newDoc.midi.drumNoteMap) dn.push([objToYMap(m as any)]);
-    }
+    const midiMap = ensureChildMap(yMap, "midi");
+    mirrorScalars(midiMap, newDoc.midi, ["enabled", "deviceId", "drumChannel", "instrumentChannel", "pitchBendRange", "clockMode"]);
+    syncPlainJsonField(midiMap, "ccMappings", newDoc.midi.ccMappings);
+    syncPlainJsonField(midiMap, "drumNoteMap", newDoc.midi.drumNoteMap);
+  } else if (yMap.has("midi")) {
+    yMap.delete("midi");
   }
 }
 
 export function projectToYDoc(doc: ProjectDocument, yMap: Y.Map<unknown>): void {
   const yDoc = yMap.doc!;
   yDoc.transact(() => {
-    // Scalar fields
-    yMap.set("schemaVersion", doc.schemaVersion);
-    yMap.set("id", doc.id);
-    yMap.set("name", doc.name);
-    yMap.set("bpm", doc.bpm);
-    yMap.set("activePatternId", doc.activePatternId);
-    yMap.set("createdAt", doc.createdAt);
-    yMap.set("updatedAt", doc.updatedAt);
-    if (doc.key) yMap.set("key", doc.key);
-
-    // Tags — recreate array (plain strings)
-    const tags = new Y.Array<string>();
-    yMap.set("tags", tags);
-    if (doc.tags?.length) tags.push(doc.tags);
-
-    // timeSignature
-    const ts = new Y.Map<unknown>();
-    yMap.set("timeSignature", ts);
-    ts.set("numerator", doc.timeSignature.numerator);
-    ts.set("denominator", doc.timeSignature.denominator);
-
-    // Tracks
-    const tracks = new Y.Array<unknown>();
-    yMap.set("tracks", tracks);
-    for (const track of doc.tracks) {
-      const tm = trackToYMap(track);
-      tracks.push([tm]);
-    }
-
-    // Patterns
-    const patterns = new Y.Array<unknown>();
-    yMap.set("patterns", patterns);
-    for (const pattern of doc.patterns) {
-      patterns.push([patternToYMap(pattern)]);
-    }
-
-    // Scenes
-    const scenes = new Y.Array<unknown>();
-    yMap.set("scenes", scenes);
-    for (const scene of doc.scenes) {
-      scenes.push([sceneToYMap(scene)]);
-    }
-
-    // Arrangement
-    const arr = new Y.Map<unknown>();
-    yMap.set("arrangement", arr);
-    const clips = new Y.Array<unknown>();
-    arr.set("clips", clips);
-    for (const clip of doc.arrangement.clips) {
-      clips.push([clipToYMap(clip)]);
-    }
-    if (doc.arrangement.transitions !== undefined) {
-      const transitions = new Y.Array<unknown>();
-      arr.set("transitions", transitions);
-      for (const transition of doc.arrangement.transitions) {
-        transitions.push([transitionToYMap(transition)]);
-      }
-    }
-
-    // Markers
-    const markers = new Y.Array<unknown>();
-    yMap.set("markers", markers);
-    for (const mk of doc.markers) {
-      markers.push([markerToYMap(mk)]);
-    }
-
-    // Scene automation
-    const sa = new Y.Array<unknown>();
-    yMap.set("sceneAutomation", sa);
-    for (const s of doc.sceneAutomation) {
-      sa.push([sceneAutoToYMap(s)]);
-    }
-
-    // Automation
-    const auto = new Y.Array<unknown>();
-    yMap.set("automation", auto);
-    for (const lane of doc.automation) {
-      auto.push([automationToYMap(lane)]);
-    }
-
-    // LFOs
-    const lfos = new Y.Array<unknown>();
-    yMap.set("lfos", lfos);
-    for (const lfo of doc.lfos) {
-      const m = new Y.Map<unknown>();
-      lfos.push([m]);
-      for (const [k, v] of Object.entries(lfo)) {
-        m.set(k, v);
-      }
-    }
-
-    // Macros
-    const macros = new Y.Array<unknown>();
-    yMap.set("macros", macros);
-    for (const macro of doc.macros) {
-      macros.push([macroToYMap(macro)]);
-    }
-
-    // Returns
-    const returns = new Y.Array<unknown>();
-    yMap.set("returns", returns);
-    for (const r of doc.returns) {
-      returns.push([returnToYMap(r)]);
-    }
-
-    // Master
-    const master = new Y.Map<unknown>();
-    yMap.set("master", master);
-    master.set("masterGain", doc.master.masterGain);
-    master.set("ceilingDb", doc.master.ceilingDb);
-    master.set("limiterEnabled", doc.master.limiterEnabled);
-    master.set("clipperEnabled", doc.master.clipperEnabled);
-
-    // Groove
-    if (doc.groove) {
-      const g = new Y.Map<unknown>();
-      yMap.set("groove", g);
-      if (doc.groove.swing !== undefined) g.set("swing", doc.groove.swing);
-      if (doc.groove.humanizeTiming !== undefined) g.set("humanizeTiming", doc.groove.humanizeTiming);
-      if (doc.groove.humanizeVelocity !== undefined) g.set("humanizeVelocity", doc.groove.humanizeVelocity);
-    }
-
-    // MIDI
-    if (doc.midi) {
-      const mi = new Y.Map<unknown>();
-      yMap.set("midi", mi);
-      mi.set("enabled", doc.midi.enabled);
-      mi.set("deviceId", doc.midi.deviceId);
-      mi.set("drumChannel", doc.midi.drumChannel);
-      mi.set("instrumentChannel", doc.midi.instrumentChannel);
-      mi.set("pitchBendRange", doc.midi.pitchBendRange);
-      if (doc.midi.clockMode) mi.set("clockMode", doc.midi.clockMode);
-      if (doc.midi.ccMappings) {
-        const cc = new Y.Array<unknown>();
-        mi.set("ccMappings", cc);
-        for (const m of doc.midi.ccMappings) cc.push([objToYMap(m as any)]);
-      }
-      if (doc.midi.drumNoteMap) {
-        const dn = new Y.Array<unknown>();
-        mi.set("drumNoteMap", dn);
-        for (const m of doc.midi.drumNoteMap) dn.push([objToYMap(m as any)]);
-      }
-    }
+    applyProjectToYMap(doc, doc, yMap);
   });
+}
+
+function lfoToYMap(lfo: Lfo): Y.Map<unknown> {
+  const m = new Y.Map<unknown>();
+  for (const [k, v] of Object.entries(lfo)) {
+    m.set(k, v);
+  }
+  return m;
 }
 
 // ─── Entity converters (ProjectDocument → Y.Map) ───────────────────────────
@@ -739,6 +872,11 @@ function patternToYMap(p: Pattern): Y.Map<unknown> {
       }
     }
   }
+
+  // AI provenance — plain JSON values (round-trip via plainValue on read).
+  if (p.generation !== undefined) m.set("generation", p.generation);
+  if (p.assist !== undefined) m.set("assist", p.assist);
+  if (p.phrasePlan !== undefined) m.set("phrasePlan", p.phrasePlan);
   return m;
 }
 

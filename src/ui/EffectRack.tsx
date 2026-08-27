@@ -172,7 +172,7 @@ function Device({
         </div>
       </div>
       {fx.type === "eq" && <EqResponseCurve params={fx.params} />}
-      {fx.type === "limiter" && (
+      {(fx.type === "limiter" || fx.type === "compressor") && (
         <div className="fx-gr" aria-label="Gain reduction">
           <div className="fx-gr-track">
             <div className="fx-gr-fill" style={{ width: `${Math.min(100, ((gainReductionDb ?? 0) / 12) * 100)}%` }} />
@@ -180,7 +180,7 @@ function Device({
           <span className="fx-gr-label">GR {(gainReductionDb ?? 0).toFixed(1)} dB</span>
         </div>
       )}
-      {fx.type === "sidechain" && (
+      {(fx.type === "sidechain" || fx.type === "compressor") && (
         <div className="fx-sidechain-picker">
           <label className="fx-param-select">
             <span className="slider-label">SOURCE</span>

@@ -5,6 +5,7 @@ import { isWorkletReady } from "../audio-worklets/loader";
 import { createBitcrusherNode } from "../audio-worklets/bitcrusher-node";
 import { createSidechainNode } from "../audio-worklets/sidechain-node";
 import { createLimiterNode } from "../audio-worklets/limiter-node";
+import { createCompressorNode } from "../audio-worklets/compressor-node";
 
 const dbToLin = (db: number) => Math.pow(10, db / 20);
 const smooth = (param: AudioParam, value: number, when: number, tc = 0.02) =>
@@ -42,6 +43,7 @@ export const WORKLET_EFFECTS: Partial<Record<EffectType, "critical" | "degraded"
   gate: "critical",
   transient: "critical",
   limiter: "critical",
+  compressor: "degraded",
   bitcrusher: "degraded",
   sidechain: "degraded",
 };
@@ -59,7 +61,10 @@ export function effectProcessorStatus(
 ): EffectProcessorStatus {
   const severity = WORKLET_EFFECTS[type];
   if (!severity) return "ok";
-  return isWorkletReady(type as "bitcrusher" | "sidechain" | "transient" | "gate" | "limiter", ctx)
+  return isWorkletReady(
+    type as "bitcrusher" | "sidechain" | "transient" | "gate" | "limiter" | "compressor",
+    ctx,
+  )
     ? "ok"
     : severity === "critical"
       ? "bypassed"
@@ -172,10 +177,15 @@ const compressor: EffectDefinition = {
     { id: "attack", label: "ATTACK", min: 0.001, max: 0.5, default: 0.01, unit: "s", format: formatMs },
     { id: "release", label: "RELEASE", min: 0.02, max: 1, default: 0.2, unit: "s", format: formatMs },
     { id: "knee", label: "KNEE", min: 0, max: 40, default: 6, unit: "dB", format: formatDb },
+    { id: "detector", label: "DETECTOR", min: 0, max: 1, default: 0, options: [{ value: 0, label: "RMS" }, { value: 1, label: "PEAK" }] },
+    { id: "scHpf", label: "SC HPF", min: 20, max: 500, default: 20, unit: "Hz", format: formatHz },
     { id: "makeup", label: "MAKEUP", min: 0, max: 24, default: 0, unit: "dB", format: formatDb },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
   ],
   factory(ctx, instance) {
+    if (isWorkletReady("compressor", ctx)) return createCompressorNode(ctx, instance);
+    // Native fallback: DynamicsCompressorNode approximation — no sidechain,
+    // no detector HPF, coarse GR. Degraded so the UI warns (never silent).
     const mix = mixBus(ctx);
     const comp = ctx.createDynamicsCompressor();
     const makeup = ctx.createGain();
@@ -189,14 +199,25 @@ const compressor: EffectDefinition = {
         case "knee": smooth(comp.knee, v, when); break;
         case "makeup": smooth(makeup.gain, dbToLin(v), when); break;
         case "mix": mix.setMix(v, when); break;
+        case "detector":
+        case "scHpf": break; // no native equivalent — parameter stays stored
       }
     };
     for (const [k, v] of Object.entries(instance.params)) apply(k, v, ctx.currentTime);
+    const reduction = () => {
+      const raw = (comp as unknown as { reduction?: number | { value: number } }).reduction;
+      const value = typeof raw === "number" ? raw : typeof raw === "object" && raw && typeof raw.value === "number" ? raw.value : 0;
+      return Math.max(0, Number.isFinite(value) ? -value : 0);
+    };
     return {
       input: mix.input,
       output: mix.output,
+      degraded: true,
+      degradedReason: "Fallback — native approximation (sidechain & HPF inactive)",
       setParameter: (id, v) => apply(id, v, ctx.currentTime),
       setParameterAt: (id, v, when) => apply(id, v, when),
+      setSidechainInput: () => undefined, // accepted, inactive on the fallback path
+      getGainReductionDb: reduction,
       dispose: () => { mix.input.disconnect(); mix.output.disconnect(); comp.disconnect(); makeup.disconnect(); },
     };
   },

@@ -44,8 +44,9 @@ describe("YDocStore — command execution", () => {
     remoteMap.set("bpm", 999);
     Y.applyUpdate(local.yDocRef, Y.encodeStateAsUpdate(remote));
 
-    // The remote change arrived…
-    expect(local.doc.bpm).toBe(999);
+    // The remote change arrived (sanitized: out-of-range BPM clamps to the
+    // supported 20..300 range, matching every other ingest path)…
+    expect(local.doc.bpm).toBe(300);
     // …but never entered the local undo stack.
     expect(local.canUndo).toBe(false);
   });
