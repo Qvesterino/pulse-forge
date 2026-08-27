@@ -205,6 +205,7 @@ function buildSanitizedLfo(
     sanitized.attackMs = clampRange(input.attackMs, 1, 500, 12);
     sanitized.releaseMs = clampRange(input.releaseMs, 10, 2000, 180);
     sanitized.sensitivity = clampRange(input.sensitivity, 0.2, 3, 1.5);
+    sanitized.polarity = input.polarity === 1 ? 1 : -1;
     return sanitized;
   }
   sanitized.rateMode = pickEnum<"hz" | "sync">(input.rateMode, RATE_MODES, "sync");

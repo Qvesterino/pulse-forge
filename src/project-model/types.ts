@@ -402,6 +402,8 @@ export interface Lfo {
   attackMs?: number;
   releaseMs?: number;
   sensitivity?: number;
+  /** +1 = swell with the envelope, −1 (default) = duck against it. */
+  polarity?: number;
 }
 
 export interface MacroMapping {

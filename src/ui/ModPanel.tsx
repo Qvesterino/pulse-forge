@@ -536,6 +536,18 @@ export function ModPanel() {
                         format={(v) => v.toFixed(2)}
                         onCommit={(sensitivity) => services.store.execute(setLfoParams(services.store.doc, lfo.id, { sensitivity }))}
                       />
+                      <label className="fx-param-select">
+                        <span className="slider-label">POLARITY</span>
+                        <select
+                          value={(lfo.polarity ?? -1) === 1 ? "swell" : "duck"}
+                          onChange={(event) =>
+                            services.store.execute(setLfoParams(services.store.doc, lfo.id, { polarity: event.target.value === "swell" ? 1 : -1 }))
+                          }
+                        >
+                          <option value="duck">Duck</option>
+                          <option value="swell">Swell</option>
+                        </select>
+                      </label>
                     </>
                   )}
 

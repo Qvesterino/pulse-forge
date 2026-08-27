@@ -1100,7 +1100,9 @@ export class AudioEngine {
         },
       });
       const depth = ctx.createGain();
-      depth.gain.value = lfo.amount;
+      // Default polarity −1 ⇒ the host DUCKS against the source envelope
+      // (kick-triggered carving — the beatmaking default).
+      depth.gain.value = lfo.amount * (lfo.polarity === 1 ? 1 : -1);
       sourceNodes.input.connect(follower.input);
       follower.output.connect(depth);
       depth.connect(lfo.param === "gain" ? nodes.modAutoGain.gain : nodes.modAutoPan.pan);
