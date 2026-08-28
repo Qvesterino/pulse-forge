@@ -399,7 +399,12 @@ function cloneStepMeta(meta: Pattern["stepMeta"]): Pattern["stepMeta"] {
   return Object.fromEntries(
     Object.entries(meta).map(([padId, steps]) => [
       padId,
-      Object.fromEntries(Object.entries(steps).map(([step, m]) => [step, { ...m }])),
+      Object.fromEntries(
+        Object.entries(steps).map(([step, m]) => [
+          step,
+          { ...m, ...(m.locks ? { locks: { ...m.locks } } : {}) },
+        ]),
+      ),
     ]),
   );
 }
@@ -612,23 +617,66 @@ export function setStepMeta(
     }),
   });
 
-  const merged: StepMeta = { ...prevEntry, ...meta };
+  const hasLocksPatch = Object.prototype.hasOwnProperty.call(meta, "locks");
+  const merged: StepMeta = { ...(prevEntry ?? {}) };
+  for (const [k, v] of Object.entries(meta)) {
+    if (k === "locks") continue;
+    (merged as Record<string, unknown>)[k] = v;
+  }
+  if (hasLocksPatch) {
+    const patch = (meta as StepMeta).locks;
+    const baseLocks: Record<string, number> = { ...(prevEntry?.locks ?? {}) };
+    if (patch === undefined) {
+      // explicit locks: undefined → clear all
+      (merged as StepMeta).locks = undefined;
+    } else {
+      for (const [k, v] of Object.entries(patch as Record<string, number | undefined>)) {
+        if (v === undefined) delete baseLocks[k];
+        else baseLocks[k] = v;
+      }
+      (merged as StepMeta).locks = Object.keys(baseLocks).length > 0 ? (baseLocks as StepMeta["locks"]) : undefined;
+    }
+  }
   const cleaned: StepMeta = {};
   if (merged.probability !== undefined && merged.probability < 1) cleaned.probability = clampUnit(merged.probability);
   if (merged.ratchet !== undefined && merged.ratchet > 1)
     cleaned.ratchet = Math.max(1, Math.min(8, Math.round(merged.ratchet)));
   if (merged.microtiming !== undefined && merged.microtiming !== 0)
     cleaned.microtiming = Math.max(-1, Math.min(1, merged.microtiming));
+  if (merged.locks !== undefined && Object.keys(merged.locks).length > 0) {
+    const cleanedLocks: NonNullable<StepMeta["locks"]> = {};
+    for (const [k, v] of Object.entries(merged.locks)) {
+      if (k !== "pitch" && k !== "gain" && k !== "pan") continue;
+      if (typeof v !== "number" || !Number.isFinite(v)) continue;
+      const clampMap = { pitch: { min: -24, max: 24 }, gain: { min: 0, max: 2 }, pan: { min: -1, max: 1 } } as const;
+      const clamped = Math.min(clampMap[k as "pitch" | "gain" | "pan"].max, Math.max(clampMap[k as "pitch" | "gain" | "pan"].min, v));
+      const rounded = k === "pitch" ? Math.round(clamped * 10) / 10 : Math.round(clamped * 100) / 100;
+      cleanedLocks[k as keyof typeof cleanedLocks] = rounded;
+    }
+    if (Object.keys(cleanedLocks).length > 0) cleaned.locks = cleanedLocks;
+  }
 
   return {
     type: "setStepMeta",
     label: "Edit step performance",
-    execute: (d) => apply(d, cleaned),
+    execute: (d) => apply(d, Object.keys(cleaned).length > 0 ? cleaned : undefined),
     undo: (d) => apply(d, prevEntry),
   };
 }
 
-/** Clear velocities (and step meta) for a range of steps across pad rows. */
+/**
+ * Shorthand for p-locks: patch `locks` on one step without touching
+ * probability/ratchet/microtiming. `patch` keys with `undefined` delete.
+ */
+export function setStepLocks(
+  doc: ProjectDocument,
+  patternId: string,
+  padId: string,
+  stepIndex: number,
+  patch: Partial<Record<import("../project-model/types").StepLockKey, number | undefined>>,
+): Command {
+  return setStepMeta(doc, patternId, padId, stepIndex, { locks: patch } as StepMeta);
+}
 export function clearSteps(
   doc: ProjectDocument,
   patternId: string,

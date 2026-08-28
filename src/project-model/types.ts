@@ -24,6 +24,7 @@ export type EffectType =
   | "tremolo"
   | "autowah"
   | "stutter"
+  | "comb"
   | "msEq"
   | "haasWidener"
   | "multiband"
@@ -199,10 +200,29 @@ export interface PatternAssist {
   style?: string;
 }
 
+export type StepLockKey = "pitch" | "gain" | "pan" | "cutoff" | "sampleStart";
+
+/** Per-param clamp + UI metadata for p-locks (Elektron-style). */
+export const STEP_LOCK_DEFS: Record<StepLockKey, { label: string; min: number; max: number; default: number; unit?: string; format: (v: number) => string }> = {
+  pitch: { label: "PITCH", min: -24, max: 24, default: 0, unit: "st", format: (v) => `${v > 0 ? "+" : ""}${v.toFixed(1)} st` },
+  gain: { label: "GAIN", min: 0, max: 2, default: 1, format: (v) => `${(20 * Math.log10(Math.max(v, 0.001))).toFixed(1)} dB` },
+  pan: { label: "PAN", min: -1, max: 1, default: 0, format: (v) => (Math.abs(v) < 0.02 ? "C" : `${v < 0 ? "L" : "R"}${Math.round(Math.abs(v) * 100)}`) },
+  cutoff: { label: "CUTOFF", min: 80, max: 16000, default: 16000, unit: "Hz", format: (v) => `${Math.round(v)} Hz` },
+  sampleStart: { label: "START", min: 0, max: 1, default: 0, format: (v) => `${Math.round(v * 100)}%` },
+};
+
+export function clampStepLock(key: string, value: number): number {
+  const def = (STEP_LOCK_DEFS as Record<string, { min: number; max: number; default: number }>)[key];
+  if (!def) return value;
+  if (!Number.isFinite(value)) return def.default;
+  return Math.min(def.max, Math.max(def.min, value));
+}
+
 /**
  * Per-step performance metadata (probability / ratchet / microtiming).
  * All fields are optional — an absent entry means "straight": probability 1,
- * ratchet 1, microtiming 0.
+ * ratchet 1, microtiming 0. `locks` holds per-step parameter overrides
+ * (p-locks) — absolute values that replace the pad's base params for this hit.
  */
 export interface StepMeta {
   /** 0..1 — chance the hit plays on each pass (deterministic seeded roll). */
@@ -211,6 +231,8 @@ export interface StepMeta {
   ratchet?: number;
   /** -1..1 — timing shift, early ← 0 → late (a fraction of a step). */
   microtiming?: number;
+  /** Per-step param locks — absolute overrides for this hit. */
+  locks?: Partial<Record<StepLockKey, number>>;
 }
 
 /** Reproducibility recipe attached to content produced by the local Intent Engine. */

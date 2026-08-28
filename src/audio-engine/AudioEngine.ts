@@ -180,6 +180,7 @@ interface Voice {
   gain: GainNode;
   trackId: string;
   chokeGroup: number | null;
+  filter?: BiquadFilterNode;
 }
 
 interface PreviewVoice {
@@ -1697,7 +1698,7 @@ export class AudioEngine {
     }
   }
 
-  trigger(trackId: string, pad: DrumPad, when: number, velocity: number): void {
+  trigger(trackId: string, pad: DrumPad, when: number, velocity: number, locks?: Partial<Record<import("../project-model/types").StepLockKey, number>>): void {
     const ctx = this.ctx;
     const trackNodes = this.trackNodes.get(trackId);
     if (!ctx || !trackNodes) return;
@@ -1712,10 +1713,23 @@ export class AudioEngine {
 
     const source = ctx.createBufferSource();
     source.buffer = buffer;
-    const slice = resolveSlicePlayback(pad, buffer.duration);
-    source.playbackRate.value = slice.rate;
+    let slice = resolveSlicePlayback(pad, buffer.duration);
+    // Sample-start p-lock: normalized 0..1 → absolute start, preserve slice duration
+    if (locks?.sampleStart !== undefined) {
+      const frac = Math.min(1, Math.max(0, locks.sampleStart));
+      const originalDur = slice.duration;
+      const maxStart = Math.max(0, buffer.duration - originalDur - 0.001);
+      const newStart = frac * maxStart;
+      const newEnd = Math.min(buffer.duration, newStart + originalDur);
+      const newDur = Math.max(0.001, newEnd - newStart);
+      slice = { ...slice, start: newStart, end: newEnd, duration: newDur, offset: slice.reverse ? newEnd : newStart };
+    }
+    const effectivePitch = locks?.pitch !== undefined ? locks.pitch : pad.pitch;
+    const rateMagnitude = Math.pow(2, (Number.isFinite(effectivePitch) ? effectivePitch : 0) / 12);
+    source.playbackRate.value = (slice.reverse ? -1 : 1) * rateMagnitude;
     const gain = ctx.createGain();
-    const peak = Math.max(0, velocity * pad.gain);
+    const effectiveGain = locks?.gain !== undefined ? locks.gain : pad.gain;
+    const peak = Math.max(0, velocity * effectiveGain);
     const endWhen = when + slice.duration;
     gain.gain.setValueAtTime(slice.fadeIn > 0 ? 0 : peak, when);
     if (slice.fadeIn > 0) gain.gain.linearRampToValueAtTime(peak, when + slice.fadeIn);
@@ -1724,20 +1738,36 @@ export class AudioEngine {
       gain.gain.linearRampToValueAtTime(0, endWhen);
     }
     const panner = ctx.createStereoPanner();
-    panner.pan.value = pad.pan;
-    source.connect(gain).connect(panner).connect(trackNodes.input);
+    panner.pan.value = locks?.pan !== undefined ? locks.pan : pad.pan;
 
-    const voice: Voice = { source, gain, trackId, chokeGroup: pad.chokeGroup };
+    // Per-voice lowpass for cutoff p-lock (bypass when not locked)
+    let voiceFilter: BiquadFilterNode | null = null;
+    let voiceOutput: AudioNode = panner;
+    if (locks?.cutoff !== undefined) {
+      voiceFilter = ctx.createBiquadFilter();
+      voiceFilter.type = "lowpass";
+      voiceFilter.frequency.value = Math.min(16000, Math.max(80, locks.cutoff));
+      voiceFilter.Q.value = 0.7;
+      // Chain: source -> gain -> panner -> filter -> trackInput
+      source.connect(gain).connect(panner).connect(voiceFilter).connect(trackNodes.input);
+      voiceOutput = voiceFilter;
+    } else {
+      source.connect(gain).connect(panner).connect(trackNodes.input);
+    }
+
+    const voice: Voice = { source, gain, trackId, chokeGroup: pad.chokeGroup, filter: voiceFilter ?? undefined };
     this.voices.add(voice);
     source.onended = () => {
       this.voices.delete(voice);
       gain.disconnect();
       panner.disconnect();
+      if (voiceFilter) voiceFilter.disconnect();
       source.disconnect();
     };
     // Slices use the native buffer offset/duration path, so no decoded buffer
     // copies are needed and realtime/export share the exact same playback.
     source.start(when, slice.offset, slice.duration);
+    void voiceOutput;
   }
 
   preview(pad: DrumPad, trackId: string): void {

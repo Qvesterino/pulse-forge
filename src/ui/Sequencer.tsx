@@ -4,6 +4,7 @@ import type { DrumTrack, StepMeta, Track } from "../project-model/types";
 import { usePlayheadStep } from "./playhead";
 import {
   setPadParams,
+  setStepLocks,
   setStepMeta,
   setStepsVelocity,
   setStepVelocityCommand,
@@ -409,7 +410,7 @@ function VirtualRow({
   return null;
 }
 
-/** Inline editor for per-step performance: probability, ratchet, microtiming. */
+/** Inline editor for per-step performance: probability, ratchet, microtiming + p-locks. */
 function StepEditor({ padId, stepIndex, onClose }: { padId: string; stepIndex: number; onClose: () => void }) {
   const services = useServices();
   const doc = useDoc();
@@ -421,6 +422,9 @@ function StepEditor({ padId, stepIndex, onClose }: { padId: string; stepIndex: n
     .find((p) => p.id === padId);
 
   const set = (change: StepMeta) => services.store.execute(setStepMeta(doc, pattern.id, padId, stepIndex, change));
+  const setLock = (key: "pitch" | "gain" | "pan", value: number | undefined) =>
+    services.store.execute(setStepLocks(doc, pattern.id, padId, stepIndex, { [key]: value } as any));
+  const hasLocks = meta.locks && Object.keys(meta.locks).length > 0;
 
   return (
     <div className="step-editor" role="group" aria-label="Step performance editor">
@@ -466,11 +470,80 @@ function StepEditor({ padId, stepIndex, onClose }: { padId: string; stepIndex: n
         format={(v) => (Math.abs(v) < 0.02 ? "0" : v < 0 ? `${Math.round(v * 100)} EARLY` : `+${Math.round(v * 100)} LATE`)}
         onCommit={(microtiming) => set({ microtiming })}
       />
+      <div className="step-editor-locks" role="group" aria-label="Parameter locks">
+        <span className="slider-label">P-LOCKS {hasLocks ? "●" : ""}</span>
+        <div className="step-editor-lock-row">
+          <DragNumber
+            label="PITCH"
+            value={meta.locks?.pitch ?? pad?.pitch ?? 0}
+            min={-24}
+            max={24}
+            defaultValue={pad?.pitch ?? 0}
+            sensitivity={0.1}
+            format={(v) => `${v > 0 ? "+" : ""}${v.toFixed(1)} st${meta.locks?.pitch === undefined ? " · —" : ""}`}
+            onCommit={(pitch) => setLock("pitch", pitch)}
+          />
+          <button
+            type="button"
+            className="btn btn-small btn-lock-clear"
+            title={meta.locks?.pitch !== undefined ? "Clear pitch lock" : "No pitch lock"}
+            disabled={meta.locks?.pitch === undefined}
+            onClick={() => setLock("pitch", undefined)}
+          >
+            ✕
+          </button>
+        </div>
+        <div className="step-editor-lock-row">
+          <DragNumber
+            label="GAIN"
+            value={meta.locks?.gain ?? pad?.gain ?? 1}
+            min={0}
+            max={2}
+            defaultValue={pad?.gain ?? 1}
+            sensitivity={0.02}
+            format={(v) => `${(20 * Math.log10(Math.max(v, 0.001))).toFixed(1)} dB${meta.locks?.gain === undefined ? " · —" : ""}`}
+            onCommit={(gain) => setLock("gain", gain)}
+          />
+          <button
+            type="button"
+            className="btn btn-small btn-lock-clear"
+            title={meta.locks?.gain !== undefined ? "Clear gain lock" : "No gain lock"}
+            disabled={meta.locks?.gain === undefined}
+            onClick={() => setLock("gain", undefined)}
+          >
+            ✕
+          </button>
+        </div>
+        <div className="step-editor-lock-row">
+          <DragNumber
+            label="PAN"
+            value={meta.locks?.pan ?? pad?.pan ?? 0}
+            min={-1}
+            max={1}
+            defaultValue={pad?.pan ?? 0}
+            sensitivity={0.02}
+            format={(v) => `${Math.abs(v) < 0.02 ? "C" : `${v < 0 ? "L" : "R"}${Math.round(Math.abs(v) * 100)}`}${meta.locks?.pan === undefined ? " · —" : ""}`}
+            onCommit={(pan) => setLock("pan", pan)}
+          />
+          <button
+            type="button"
+            className="btn btn-small btn-lock-clear"
+            title={meta.locks?.pan !== undefined ? "Clear pan lock" : "No pan lock"}
+            disabled={meta.locks?.pan === undefined}
+            onClick={() => setLock("pan", undefined)}
+          >
+            ✕
+          </button>
+        </div>
+      </div>
       <button
         type="button"
         className="btn btn-small"
         title="Reset step performance to defaults"
-        onClick={() => set({ probability: 1, ratchet: 1, microtiming: 0 })}
+        onClick={() => {
+          set({ probability: 1, ratchet: 1, microtiming: 0, locks: undefined } as StepMeta);
+          if (hasLocks) for (const k of Object.keys(meta.locks!)) setLock(k as any, undefined);
+        }}
       >
         RESET
       </button>
@@ -675,15 +748,22 @@ function StepCell({
   const doc = useDoc();
   const longPress = useLongPress(onEditStep);
 
+  const hasLocks = meta?.locks && Object.keys(meta.locks).length > 0;
+  const lockHints: string[] = [];
+  if (meta?.locks?.pitch !== undefined) lockHints.push(`pitch ${meta.locks.pitch > 0 ? "+" : ""}${meta.locks.pitch.toFixed(1)} st`);
+  if (meta?.locks?.gain !== undefined) lockHints.push(`gain ${meta.locks.gain.toFixed(2)}`);
+  if (meta?.locks?.pan !== undefined) lockHints.push(`pan ${meta.locks.pan.toFixed(2)}`);
+  const fullLabel = `${stepLabel}${lockHints.length > 0 ? `, p-locks: ${lockHints.join(", ")}` : ""}`;
+
   return (
     <button
       type="button"
       data-pad={padId}
       data-step={stepIndex}
-      className={`step${active ? " active" : ""}${stepIndex % 4 === 0 ? " beat-start" : ""}${playhead ? " playhead" : ""}${inSelection ? " in-selection" : ""}${meta?.probability !== undefined && meta.probability < 1 ? " has-probability" : ""}${meta?.microtiming !== undefined && meta.microtiming !== 0 ? (meta.microtiming < 0 ? " micro-early" : " micro-late") : ""}`}
+      className={`step${active ? " active" : ""}${stepIndex % 4 === 0 ? " beat-start" : ""}${playhead ? " playhead" : ""}${inSelection ? " in-selection" : ""}${meta?.probability !== undefined && meta.probability < 1 ? " has-probability" : ""}${meta?.microtiming !== undefined && meta.microtiming !== 0 ? (meta.microtiming < 0 ? " micro-early" : " micro-late") : ""}${hasLocks ? " has-locks" : ""}`}
       style={active ? ({ "--step-velocity": velocity } as React.CSSProperties) : undefined}
-      title={`${stepLabel} — click to toggle, drag vertically for velocity, shift+drag to multi-select, right-click (or long-press on touch) for probability / ratchet / microtiming`}
-      aria-label={stepLabel}
+      title={`${fullLabel} — click to toggle, drag vertically for velocity, shift+drag to multi-select, right-click (or long-press on touch) for probability / ratchet / microtiming / p-locks`}
+      aria-label={fullLabel}
       aria-pressed={active}
       onPointerDown={(event) => {
         longPress.onPointerDown(event);
@@ -711,6 +791,7 @@ function StepCell({
       })}
     >
       {meta?.ratchet !== undefined && meta.ratchet > 1 && <span className="step-badge">{meta.ratchet}×</span>}
+      {hasLocks && <span className="step-lock-dot" aria-hidden="true">●</span>}
     </button>
   );
 }

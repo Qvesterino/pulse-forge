@@ -93,7 +93,7 @@ function scheduleDrums(
 ): void {
   // Shared groove engine — export swings/humanizes/rolls exactly like playback.
   for (const hit of drumHitsInWindow(doc, window.pattern, window.base, window.from, window.to)) {
-    engine.trigger(hit.trackId, hit.pad, timeAt(hit.tick), hit.velocity);
+    engine.trigger(hit.trackId, hit.pad, timeAt(hit.tick), hit.velocity, hit.locks);
   }
 }
 

@@ -34,6 +34,8 @@ export interface DrumHit {
   velocity: number;
   /** 0 for the main hit, 1..n for ratchet retriggers. */
   ratchetIndex: number;
+  /** Per-step p-lock overrides for this hit (absolute). */
+  locks?: Partial<Record<import("./types").StepLockKey, number>>;
 }
 
 const mod = (value: number, m: number): number => ((value % m) + m) % m;
@@ -135,6 +137,7 @@ export function drumHitsInWindow(
 
         const ratchet = Math.min(MAX_RATCHET, Math.max(1, Math.round(meta?.ratchet ?? 1)));
         const subdivision = STEP_TICKS / ratchet;
+        const locks = meta?.locks && Object.keys(meta.locks).length > 0 ? { ...meta.locks } : undefined;
         for (let k = 0; k < ratchet; k++) {
           const hitTick = tick + k * subdivision;
           if (hitTick < fromTick || hitTick >= toTick) continue;
@@ -144,6 +147,7 @@ export function drumHitsInWindow(
             tick: hitTick,
             velocity: k === 0 ? finalVelocity : clampRange(finalVelocity * Math.pow(RATCHET_DECAY, k), 0.05, 1),
             ratchetIndex: k,
+            ...(locks ? { locks } : {}),
           });
         }
       }

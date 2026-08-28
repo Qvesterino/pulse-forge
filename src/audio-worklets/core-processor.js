@@ -12,3 +12,4 @@ import "./tremolo-processor.js";
 import "./autowah-processor.js";
 import "./stutter-processor.js";
 import "./tape-processor.js";
+import "./comb-processor.js";

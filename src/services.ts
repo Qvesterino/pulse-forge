@@ -229,7 +229,7 @@ export function openProject(core: CoreServices, initial: ProjectDocument, option
     getAudioTime: () => engine.currentTime,
     getScheduleOffsetSec: () => latency.getSnapshot().midiReferenceOffsetMs / 1000,
     getMode: () => modeRef.mode,
-    trigger: (trackId, pad, when, velocity) => engine.trigger(trackId, pad, when, velocity),
+    trigger: (trackId, pad, when, velocity, locks) => engine.trigger(trackId, pad, when, velocity, locks),
     noteOn: (trackId, pitch, velocity, when, durationSec) =>
       engine.noteOn(trackId, pitch, velocity, when, durationSec),
     applyAutomation: (fromTick, toTick, relOf, scheduleOffsetSec) =>

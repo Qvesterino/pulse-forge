@@ -1001,28 +1001,69 @@ function normalizePatternsDomain(s: NormalizeState): void {
             metaChanged = true;
             continue;
           }
-          const raw: StepMeta = rawEntry;
-          const meta: StepMeta = {};
-          const probability = raw.probability;
-          if (probability !== undefined) {
-            const clamped = clampUnit(probability);
-            if (clamped < 1) meta.probability = clamped;
-            if (clamped !== probability) metaChanged = true;
-          }
-          const ratchet = raw.ratchet;
-          if (ratchet !== undefined) {
-            const clamped = Math.min(8, Math.max(1, Math.round(Number.isFinite(ratchet) ? ratchet : 1)));
-            if (clamped > 1) meta.ratchet = clamped;
-            if (clamped !== ratchet) metaChanged = true;
-          }
-          const microtiming = raw.microtiming;
-          if (microtiming !== undefined) {
-            const clamped = Math.min(1, Math.max(-1, Number.isFinite(microtiming) ? microtiming : 0));
-            if (clamped !== 0) meta.microtiming = clamped;
-            if (clamped !== microtiming) metaChanged = true;
-          }
-          if (Object.keys(meta).length > 0) cleanSteps[stepIndex] = meta;
-          else metaChanged = true;
+           const raw: StepMeta = rawEntry;
+           const meta: StepMeta = {};
+           const probability = raw.probability;
+           if (probability !== undefined) {
+             const clamped = clampUnit(probability);
+             if (clamped < 1) meta.probability = clamped;
+             if (clamped !== probability) metaChanged = true;
+           }
+           const ratchet = raw.ratchet;
+           if (ratchet !== undefined) {
+             const clamped = Math.min(8, Math.max(1, Math.round(Number.isFinite(ratchet) ? ratchet : 1)));
+             if (clamped > 1) meta.ratchet = clamped;
+             if (clamped !== ratchet) metaChanged = true;
+           }
+           const microtiming = raw.microtiming;
+           if (microtiming !== undefined) {
+             const clamped = Math.min(1, Math.max(-1, Number.isFinite(microtiming) ? microtiming : 0));
+             if (clamped !== 0) meta.microtiming = clamped;
+             if (clamped !== microtiming) metaChanged = true;
+           }
+            const rawLocks = raw.locks;
+            if (rawLocks !== undefined && isObject(rawLocks)) {
+              const cleanedLocks: NonNullable<StepMeta["locks"]> = {};
+              let locksChanged = false;
+              const ALLOWED_LOCKS = new Set(["pitch", "gain", "pan", "cutoff", "sampleStart"]);
+              const def = {
+                pitch: { min: -24, max: 24 },
+                gain: { min: 0, max: 2 },
+                pan: { min: -1, max: 1 },
+                cutoff: { min: 80, max: 16000 },
+                sampleStart: { min: 0, max: 1 },
+              } as const;
+              for (const [k, v] of Object.entries(rawLocks)) {
+                if (!ALLOWED_LOCKS.has(k)) {
+                  locksChanged = true;
+                  continue;
+                }
+                if (typeof v !== "number" || !Number.isFinite(v)) {
+                  locksChanged = true;
+                  continue;
+                }
+                const clamped = Math.min(
+                  def[k as keyof typeof def].max,
+                  Math.max(def[k as keyof typeof def].min, v),
+                );
+                let rounded: number;
+                if (k === "pitch") rounded = Math.round(clamped * 10) / 10;
+                else if (k === "cutoff") rounded = Math.round(clamped);
+                else rounded = Math.round(clamped * 100) / 100;
+                cleanedLocks[k as keyof typeof cleanedLocks] = rounded;
+                if (rounded !== v) locksChanged = true;
+              }
+              if (Object.keys(cleanedLocks).length > 0) {
+                meta.locks = cleanedLocks;
+                if (locksChanged) metaChanged = true;
+              } else if (rawLocks && Object.keys(rawLocks).length > 0) {
+                metaChanged = true;
+              }
+            } else if (rawLocks !== undefined) {
+              metaChanged = true;
+            }
+           if (Object.keys(meta).length > 0) cleanSteps[stepIndex] = meta;
+           else metaChanged = true;
         }
         if (Object.keys(cleanSteps).length > 0) cleaned[padId] = cleanSteps;
         else metaChanged = true;

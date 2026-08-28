@@ -11,7 +11,7 @@ export interface SchedulerDeps {
   /** Runtime-only delay applied to project-generated audio events. */
   getScheduleOffsetSec?(): number;
   getMode(): PlayMode;
-  trigger(trackId: string, pad: DrumTrack["pads"][number], when: number, velocity: number): void;
+  trigger(trackId: string, pad: DrumTrack["pads"][number], when: number, velocity: number, locks?: Partial<Record<import("../project-model/types").StepLockKey, number>>): void;
   noteOn(trackId: string, pitch: number, velocity: number, when: number, durationSec: number): void;
   applyAutomation(fromTick: number, toTick: number, relOf: (tick: number) => number, scheduleOffsetSec?: number): void;
   /**
@@ -347,7 +347,7 @@ export class Scheduler {
     for (const hit of drumHitsInWindow(doc, pattern, base, windowStart, windowEnd)) {
       const when = timeAt(hit.tick) + scheduleOffsetSec;
       if (!audible(when)) continue;
-      this.deps.trigger(hit.trackId, hit.pad, when, hit.velocity);
+      this.deps.trigger(hit.trackId, hit.pad, when, hit.velocity, hit.locks);
       // MIDI output for drum tracks
       if (this.deps.midiNoteOn) {
         const track = doc.tracks.find((t) => t.id === hit.trackId);
