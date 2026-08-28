@@ -72,6 +72,8 @@ class TremoloProcessor extends AudioWorkletProcessor {
 
       this.gainL += (gainL - this.gainL) * 0.5; // light smoothing for click-free param changes
       this.gainR += (gainR - this.gainR) * 0.5;
+      if (Math.abs(this.gainL) < 1e-20) this.gainL = 0;
+      if (Math.abs(this.gainR) < 1e-20) this.gainR = 0;
 
       outL[i] = l * (1 - mix) + l * this.gainL * mix;
       if (outR) outR[i] = r * (1 - mix) + r * this.gainR * mix;

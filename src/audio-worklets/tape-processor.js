@@ -64,6 +64,8 @@ class TapeProcessor extends AudioWorkletProcessor {
       // Tone: one-pole low-pass post-saturation.
       this.lpL += alpha * (wetL - this.lpL);
       this.lpR += alpha * (wetR - this.lpR);
+      if (Math.abs(this.lpL) < 1e-20) this.lpL = 0;
+      if (Math.abs(this.lpR) < 1e-20) this.lpR = 0;
 
       const tonedL = this.lpL;
       const tonedR = this.lpR;

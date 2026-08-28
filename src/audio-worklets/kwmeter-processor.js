@@ -83,9 +83,18 @@ class KwMeterProcessor extends AudioWorkletProcessor {
         const shelf = s1[0] * x + s1[1] * this.x1[ch] + s1[2] * this.x2[ch] - s1[3] * this.y1[ch] - s1[4] * this.y2[ch];
         this.x2[ch] = this.x1[ch]; this.x1[ch] = x;
         this.y2[ch] = this.y1[ch]; this.y1[ch] = shelf;
+        if (Math.abs(this.x1[ch]) < 1e-20) this.x1[ch] = 0;
+        if (Math.abs(this.x2[ch]) < 1e-20) this.x2[ch] = 0;
+        if (Math.abs(this.y1[ch]) < 1e-20) this.y1[ch] = 0;
+        if (Math.abs(this.y2[ch]) < 1e-20) this.y2[ch] = 0;
         const hp = s2[0] * shelf + s2[1] * this.u1[ch] + s2[2] * this.u2[ch] - s2[3] * this.w1[ch] - s2[4] * this.w2[ch];
         this.u2[ch] = this.u1[ch]; this.u1[ch] = shelf;
         this.w2[ch] = this.w1[ch]; this.w1[ch] = hp;
+        if (Math.abs(this.u1[ch]) < 1e-20) this.u1[ch] = 0;
+        if (Math.abs(this.u2[ch]) < 1e-20) this.u2[ch] = 0;
+        if (Math.abs(this.w1[ch]) < 1e-20) this.w1[ch] = 0;
+        if (Math.abs(this.w2[ch]) < 1e-20) this.w2[ch] = 0;
+        if (Math.abs(hp) < 1e-20) continue;
         this.subAccum[ch] += hp * hp;
       }
 

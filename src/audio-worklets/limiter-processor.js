@@ -162,6 +162,8 @@ class LimiterProcessor extends AudioWorkletProcessor {
       // so kick-driven material does not pump on every hit.
       this.gainL = this.smoothGain(this.gainL, targetL, sr, releaseSec, attackCoef);
       this.gainR = this.smoothGain(this.gainR, targetR, sr, releaseSec, attackCoef);
+      if (Math.abs(this.gainL) < 1e-20) this.gainL = 0;
+      if (Math.abs(this.gainR) < 1e-20) this.gainR = 0;
 
       const readIdx = (((s - laSamples) % this.cap) + this.cap) % this.cap;
       let wetL = this.delayL[readIdx] * this.gainL;

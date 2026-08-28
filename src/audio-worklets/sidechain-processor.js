@@ -83,6 +83,12 @@ class SidechainProcessor extends AudioWorkletProcessor {
     state.x1 = x;
     state.y2 = state.y1;
     state.y1 = y;
+    // FTZ: flush tiny filter state to avoid denormal penalty on long silence
+    if (Math.abs(state.x1) < 1e-20) state.x1 = 0;
+    if (Math.abs(state.x2) < 1e-20) state.x2 = 0;
+    if (Math.abs(state.y1) < 1e-20) state.y1 = 0;
+    if (Math.abs(state.y2) < 1e-20) state.y2 = 0;
+    if (Math.abs(y) < 1e-20) return 0;
     return y;
   }
 
@@ -136,6 +142,7 @@ class SidechainProcessor extends AudioWorkletProcessor {
       this.env = sidePeak > this.env
         ? attCoef * this.env + (1 - attCoef) * sidePeak
         : relCoef * this.env + (1 - relCoef) * sidePeak;
+      if (Math.abs(this.env) < 1e-20) this.env = 0;
 
       // Gain reduction.
       const envDb = 20 * Math.log10(Math.max(this.env, 1e-7));

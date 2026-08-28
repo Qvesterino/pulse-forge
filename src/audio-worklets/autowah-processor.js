@@ -81,6 +81,8 @@ class AutowahProcessor extends AudioWorkletProcessor {
       this.lpL += f * this.bpL;
       if (this.bpL > clampVal) this.bpL = clampVal; else if (this.bpL < -clampVal) this.bpL = -clampVal;
       if (this.lpL > clampVal) this.lpL = clampVal; else if (this.lpL < -clampVal) this.lpL = -clampVal;
+      if (Math.abs(this.bpL) < 1e-20) this.bpL = 0;
+      if (Math.abs(this.lpL) < 1e-20) this.lpL = 0;
 
       // Right
       const hpR = r - this.lpR - q * this.bpR;
@@ -88,6 +90,8 @@ class AutowahProcessor extends AudioWorkletProcessor {
       this.lpR += f * this.bpR;
       if (this.bpR > clampVal) this.bpR = clampVal; else if (this.bpR < -clampVal) this.bpR = -clampVal;
       if (this.lpR > clampVal) this.lpR = clampVal; else if (this.lpR < -clampVal) this.lpR = -clampVal;
+      if (Math.abs(this.bpR) < 1e-20) this.bpR = 0;
+      if (Math.abs(this.lpR) < 1e-20) this.lpR = 0;
 
       // Mode select
       let fL, fR;

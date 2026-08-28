@@ -73,6 +73,8 @@ class SvFilterProcessor extends AudioWorkletProcessor {
       // Clamp for stability at high resonance
       if (this.bpL > clampVal) this.bpL = clampVal; else if (this.bpL < -clampVal) this.bpL = -clampVal;
       if (this.lpL > clampVal) this.lpL = clampVal; else if (this.lpL < -clampVal) this.lpL = -clampVal;
+      if (Math.abs(this.bpL) < 1e-20) this.bpL = 0;
+      if (Math.abs(this.lpL) < 1e-20) this.lpL = 0;
 
       // Chamberlin SVF — right
       const hpR = r - this.lpR - this.q * this.bpR;
@@ -80,6 +82,8 @@ class SvFilterProcessor extends AudioWorkletProcessor {
       this.lpR += this.f * this.bpR;
       if (this.bpR > clampVal) this.bpR = clampVal; else if (this.bpR < -clampVal) this.bpR = -clampVal;
       if (this.lpR > clampVal) this.lpR = clampVal; else if (this.lpR < -clampVal) this.lpR = -clampVal;
+      if (Math.abs(this.bpR) < 1e-20) this.bpR = 0;
+      if (Math.abs(this.lpR) < 1e-20) this.lpR = 0;
 
       // Mode select
       let fL, fR;

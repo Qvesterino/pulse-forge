@@ -97,7 +97,17 @@ class CompressorProcessor extends AudioWorkletProcessor {
           this.prevL1 = y1l; this.prevR1 = y1r;
           this.postL1 = y1l; this.postR1 = y1r;
           this.postL2 = y2l; this.postR2 = y2r;
+          if (Math.abs(this.postL1) < 1e-20) this.postL1 = 0;
+          if (Math.abs(this.postR1) < 1e-20) this.postR1 = 0;
+          if (Math.abs(this.postL2) < 1e-20) this.postL2 = 0;
+          if (Math.abs(this.postR2) < 1e-20) this.postR2 = 0;
+          if (Math.abs(this.prevL1) < 1e-20) this.prevL1 = 0;
+          if (Math.abs(this.prevR1) < 1e-20) this.prevR1 = 0;
+          if (Math.abs(this.prevInL) < 1e-20) this.prevInL = 0;
+          if (Math.abs(this.prevInR) < 1e-20) this.prevInR = 0;
           dL = y2l; dR = y2r;
+          if (Math.abs(dL) < 1e-20) dL = 0;
+          if (Math.abs(dR) < 1e-20) dR = 0;
         } else {
           dL = sl; dR = sr2;
         }
@@ -139,7 +149,8 @@ class CompressorProcessor extends AudioWorkletProcessor {
       this.gain = target < this.gain
         ? this.gain + (target - this.gain) * attackBlend
         : this.gain + (target - this.gain) * releaseBlend;
-      if (this.gain < 1e-10) this.gain = 0;
+      if (Math.abs(this.gain) < 1e-20) this.gain = 0;
+      else if (this.gain < 1e-10) this.gain = 0;
 
       const gl = this.gain * makeupLin;
       const wetL = l * gl;
