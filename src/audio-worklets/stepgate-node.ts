@@ -50,6 +50,7 @@ export function createStepGateNode(
     setParameterAt(id, value, when) {
       apply(id, value, when);
     },
+    getAudioParam: (paramId: string) => node.parameters.get(paramId) ?? null,
     syncBpm(bpm: number) {
       node.port.postMessage({ type: "bpm", bpm });
     },

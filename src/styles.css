@@ -2666,6 +2666,32 @@ button {
   word-break: break-word;
 }
 
+.panel-error {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: color-mix(in srgb, var(--stop) 8%, var(--bg));
+  border: 1px solid var(--stop);
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.panel-error-title {
+  color: var(--stop);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.panel-error-detail {
+  color: var(--text-dim);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ---------- Command toast ---------- */
 
 .command-toast {

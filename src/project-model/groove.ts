@@ -42,8 +42,34 @@ export function metaOf(pattern: Pattern, padId: string, stepIndex: number): Step
   return pattern.stepMeta?.[padId]?.[stepIndex] ?? null;
 }
 
+// ── Seeded RNG without per-hit string allocation ──────────────────────────
+// The hot path (drumHitsInWindow) previously allocated a template string
+// `${pattern.id}|${padId}|${stepIndex}|${pass}` per (pad × step × pass).
+// We instead hash numeric ids and combine them — zero heap allocation per hit.
+// Pattern/pad string hashes are cached (bounded: evicted FIFO when large).
+const PATTERN_HASH_CACHE = new Map<string, number>();
+const PAD_HASH_CACHE = new Map<string, number>();
+const HASH_CACHE_LIMIT = 2048;
+
+function cachedHash(cache: Map<string, number>, key: string): number {
+  let h = cache.get(key);
+  if (h !== undefined) return h;
+  h = hashString(key);
+  if (cache.size >= HASH_CACHE_LIMIT) {
+    const first = cache.keys().next().value as string | undefined;
+    if (first !== undefined) cache.delete(first);
+  }
+  cache.set(key, h);
+  return h;
+}
+
+function hashCombine(a: number, b: number): number {
+  return Math.imul(a ^ b, 16777619) >>> 0;
+}
+
 function seededRand(pattern: Pattern, padId: string, stepIndex: number, pass: number): () => number {
-  return mulberry32(hashString(`${pattern.id}|${padId}|${stepIndex}|${pass}`));
+  const base = hashCombine(cachedHash(PATTERN_HASH_CACHE, pattern.id), cachedHash(PAD_HASH_CACHE, padId));
+  return mulberry32(hashCombine(hashCombine(base, stepIndex), pass));
 }
 
 /** Swing offset in ticks for a step index (odd 16ths are delayed). */

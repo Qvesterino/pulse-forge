@@ -115,6 +115,7 @@ interface OscModRuntime {
   osc: OscillatorNode;
   depth: GainNode;
   signature: string;
+  targetParam?: AudioParam | null;
 }
 
 interface FollowerModRuntime {
@@ -122,6 +123,7 @@ interface FollowerModRuntime {
   follower: EnvFollowerHandle | null;
   depth: GainNode | null;
   signature: string;
+  targetParam?: AudioParam | null;
   degradedReason?: string;
 }
 
@@ -159,11 +161,16 @@ function disposeLfoRuntime(state: LfoRuntimeState): void {
 function lfoSignature(lfo: Lfo, workletAvailable?: boolean): string {
   const kind = lfo.kind ?? "osc";
   const parts: (string | number)[] = [kind, lfo.trackId, lfo.param, lfo.amount];
+  if (lfo.target) {
+    parts.push(`t:${lfo.target.kind}:${lfo.target.trackId}:${lfo.target.fxId ?? ""}:${lfo.target.paramId ?? ""}`);
+  }
   if (kind === "osc") {
     parts.push(lfo.wave ?? "", lfo.rateMode ?? "", lfo.rateHz ?? 0, lfo.division ?? 0);
   } else if (kind === "envFollower") {
     parts.push(lfo.sourceTrackId ?? lfo.trackId, lfo.attackMs ?? 0, lfo.releaseMs ?? 0, lfo.sensitivity ?? 0);
     if (workletAvailable !== undefined) parts.push(`ok:${workletAvailable ? 1 : 0}`);
+    const pol = lfo.polarity === 1 ? "swell" : "duck";
+    parts.push(pol);
   }
   return parts.join("|");
 }
@@ -1061,10 +1068,90 @@ export class AudioEngine {
     return Math.max(0.01, (bpm / 60) * mult);
   }
 
+  private resolveModTargetParam(target: AutomationTarget): AudioParam | null {
+    switch (target.kind) {
+      case "trackGain":
+      case "trackPan": {
+        const nodes = this.trackNodes.get(target.trackId) ?? this.groupNodes.get(target.trackId);
+        if (!nodes) return null;
+        return target.kind === "trackGain" ? nodes.modAutoGain.gain : nodes.modAutoPan.pan;
+      }
+      case "fxParam": {
+        if (!target.fxId || !target.paramId) return null;
+        const candidates: FxChainState[] = [];
+        const t = this.trackNodes.get(target.trackId);
+        if (t) candidates.push(t.fx);
+        const g = this.groupNodes.get(target.trackId);
+        if (g) candidates.push(g.fx);
+        const r = this.returnNodes.get(target.trackId);
+        if (r) candidates.push(r.fx);
+        for (const state of candidates) {
+          const rt = state.runtimes.get(target.fxId);
+          if (rt?.getAudioParam) {
+            const p = rt.getAudioParam(target.paramId);
+            if (p) return p;
+          }
+        }
+        // Fallback: effect may live on a different track than the LFO host — search all
+        for (const nodes of [...this.trackNodes.values(), ...this.groupNodes.values(), ...this.returnNodes.values()]) {
+          const rt = nodes.fx.runtimes.get(target.fxId);
+          if (rt?.getAudioParam) {
+            const p = rt.getAudioParam(target.paramId);
+            if (p) return p;
+          }
+        }
+        return null;
+      }
+      case "instParam":
+        return null;
+    }
+  }
+
+  private modulationDepthForTarget(lfo: Lfo, target: AutomationTarget): number {
+    const amount = lfo.amount ?? 0.3;
+    if (target.kind === "trackGain" || target.kind === "trackPan") {
+      // Additive bipolar/unipolar around the native param (base 1 / 0). Keep range tight.
+      return amount;
+    }
+    // fxParam / instParam — scale to half the param's declared range so
+    // amount=1 sweeps roughly the full range. This matches the polling writer's
+    // `def.min + (range/2)*(1+value)` absolute mapping but keeps the user's
+    // base param as the centre for additive modulation.
+    let def: { min: number; max: number } | undefined;
+    if (target.kind === "fxParam" && target.fxId && target.paramId) {
+      const owner = this.doc?.tracks.find((t) => t.id === target.trackId) ?? this.doc?.returns.find((r) => r.id === target.trackId) as unknown as { effects?: EffectInstance[] } | undefined;
+      const inst = owner && "effects" in owner ? (owner as { effects: EffectInstance[] }).effects.find((f) => f.id === target.fxId) : undefined;
+      if (inst) {
+        def = EFFECT_DEFS[inst.type]?.params.find((p) => p.id === target.paramId);
+      }
+      if (!def) {
+        // Fallback search across all tracks/returns for the fxId (cross-track LFO)
+        for (const track of [...(this.doc?.tracks ?? []), ...(this.doc?.returns ?? [])] as unknown as { id: string; effects?: EffectInstance[] }[]) {
+          const fx = (track as { effects?: EffectInstance[] }).effects?.find((f) => f.id === target.fxId);
+          if (fx) {
+            def = EFFECT_DEFS[fx.type]?.params.find((p) => p.id === target.paramId);
+            if (def) break;
+          }
+        }
+      }
+    } else if (target.kind === "instParam" && target.paramId) {
+      const track = this.doc?.tracks.find((t) => t.id === target.trackId);
+      if (track && track.kind === "instrument") {
+        def = INSTRUMENT_DEFS[track.instrument]?.params.find((p) => p.id === target.paramId);
+      }
+    }
+    const range = def ? def.max - def.min : 1;
+    return (range / 2) * amount;
+  }
+
   /**
    * Runtime kinds only — oscillators (audio-rate) and envelope followers
    * (worklet). Random / step modulators are event-scheduled in
    * applyModulators/scheduleModulatorsOffline and need no graph node.
+   * P2 bus: oscillators and followers can now drive ANY AutomationTarget whose
+   * effect runtime exposes an AudioParam (see EffectRuntime.getAudioParam).
+   * Targets without an AudioParam (instruments, fallback Worklet) keep the
+   * polling path via applyEnvFollowersToParams.
    */
   private syncLfos(doc: ProjectDocument): void {
     const ctx = this.ctx;
@@ -1081,27 +1168,54 @@ export class AudioEngine {
       }
     }
     for (const lfo of doc.lfos) {
-      const nodes = this.trackNodes.get(lfo.trackId) ?? this.groupNodes.get(lfo.trackId);
-      if (!nodes) continue;
       const kind = lfoKind(lfo);
       if (kind !== "osc" && kind !== "envFollower") continue;
+      const hostNodes = this.trackNodes.get(lfo.trackId) ?? this.groupNodes.get(lfo.trackId);
+      // Host may be a return track (for return-targeted bus); allow any nodes.
+      if (!hostNodes && kind === "osc" && lfoKind(lfo) === "osc" && !lfo.target) continue;
+      if (!hostNodes && !resolveLfoTarget(lfo)) continue;
+      const target = resolveLfoTarget(lfo);
+      // Resolve the AudioParam for the bus connection. For trackGain/pan it is
+      // always present when the host track exists; for FX it is null until the
+      // effect runtime is built (or when the param has no AudioParam exposure).
+      const destParam = this.resolveModTargetParam(target);
 
       if (kind === "osc") {
         const sig = lfoSignature(lfo);
         const existing = this.lfos.get(lfo.id);
-        if (existing && isOscRuntime(existing) && existing.signature === sig) continue;
+        const paramMatches = existing && (existing as OscModRuntime).targetParam === destParam;
+        if (existing && isOscRuntime(existing) && existing.signature === sig && paramMatches) {
+          // BPM-synced rate may have drifted — keep frequency live.
+          const freq = this.lfoFrequency(lfo);
+          if (Math.abs(existing.osc.frequency.value - freq) > 1e-6) {
+            try { existing.osc.frequency.setTargetAtTime(freq, ctx.currentTime, 0.05); } catch { /* best effort */ }
+          }
+          continue;
+        }
         if (existing) disposeLfoRuntime(existing);
+        if (!destParam) {
+          (this.lfos as Map<string, LfoRuntimeState>).set(lfo.id, {
+            follower: null,
+            depth: null,
+            signature: sig,
+            targetParam: null,
+            degradedReason: "Modulation target has no audio-rate param — LFO idle",
+          } as unknown as FollowerModRuntime);
+          continue;
+        }
         const wave = lfoWave(lfo);
         const osc = ctx.createOscillator();
         osc.type = wave === "sawUp" || wave === "sawDown" ? "sawtooth" : wave;
         osc.frequency.value = this.lfoFrequency(lfo);
         const depth = ctx.createGain();
         const sign = wave === "sawDown" ? -1 : 1;
-        depth.gain.value = sign * lfo.amount;
-        const targetParam = lfo.param === "gain" ? nodes.modAutoGain.gain : nodes.modAutoPan.pan;
-        osc.connect(depth).connect(targetParam);
+        const scale = this.modulationDepthForTarget(lfo, target);
+        // For native track params scale is already 0..1 (amount); for FX it is range/2*amount
+        const isFx = target.kind === "fxParam" || target.kind === "instParam";
+        depth.gain.value = sign * (isFx ? scale : lfo.amount);
+        osc.connect(depth).connect(destParam);
         osc.start();
-        this.lfos.set(lfo.id, { osc, depth, signature: sig });
+        this.lfos.set(lfo.id, { osc, depth, signature: sig, targetParam: destParam });
         continue;
       }
 
@@ -1109,13 +1223,15 @@ export class AudioEngine {
       // so a follower listening to its own host can never form a feedback loop.
       const available = isWorkletReady("envFollower", ctx);
       const sourceTrackId = typeof lfo.sourceTrackId === "string" && lfo.sourceTrackId !== "" ? lfo.sourceTrackId : lfo.trackId;
-      const sourceNodes = this.trackNodes.get(sourceTrackId) ?? this.groupNodes.get(sourceTrackId) ?? nodes;
+      const sourceNodes = this.trackNodes.get(sourceTrackId) ?? this.groupNodes.get(sourceTrackId) ?? hostNodes as unknown as TrackNodes;
+      if (!sourceNodes) continue;
       const sig = lfoSignature(lfo, available);
       const existing = this.lfos.get(lfo.id);
-      if (existing && !isOscRuntime(existing) && existing.signature === sig) continue;
+      const paramMatches = existing && !isOscRuntime(existing) && (existing as FollowerModRuntime).targetParam === destParam;
+      if (existing && !isOscRuntime(existing) && existing.signature === sig && paramMatches) continue;
       if (existing) disposeLfoRuntime(existing);
       if (!available) {
-        this.lfos.set(lfo.id, { follower: null, depth: null, signature: sig, degradedReason: "AudioWorklet unavailable — envelope follower idle" });
+        this.lfos.set(lfo.id, { follower: null, depth: null, signature: sig, targetParam: destParam, degradedReason: "AudioWorklet unavailable — envelope follower idle" });
         continue;
       }
       const follower = createEnvFollowerNode(ctx, {
@@ -1125,14 +1241,23 @@ export class AudioEngine {
           sensitivity: lfo.sensitivity ?? 1.5,
         },
       });
-      const depth = ctx.createGain();
-      // Default polarity −1 ⇒ the host DUCKS against the source envelope
-      // (kick-triggered carving — the beatmaking default).
-      depth.gain.value = lfo.amount * (lfo.polarity === 1 ? 1 : -1);
       sourceNodes.input.connect(follower.input);
-      follower.output.connect(depth);
-      depth.connect(lfo.param === "gain" ? nodes.modAutoGain.gain : nodes.modAutoPan.pan);
-      this.lfos.set(lfo.id, { follower, depth, signature: sig });
+      // If the bus can drive an AudioParam, wire audio-rate path; otherwise
+      // keep the follower alive for the polling path (applyEnvFollowersToParams).
+      if (destParam) {
+        const depth = ctx.createGain();
+        const isFx = target.kind === "fxParam" || target.kind === "instParam";
+        const scale = this.modulationDepthForTarget(lfo, target);
+        const polarity = lfo.polarity === 1 ? 1 : -1;
+        depth.gain.value = polarity * (isFx ? scale : lfo.amount);
+        follower.output.connect(depth).connect(destParam);
+        this.lfos.set(lfo.id, { follower, depth, signature: sig, targetParam: destParam });
+      } else {
+        // No AudioParam — follower posts envelope via port, polling will apply to FX/inst params.
+        // Keep the depth null but preserve the follower for getEnvelope().
+        // A dummy gain keeps the type uniform; not connected anywhere.
+        this.lfos.set(lfo.id, { follower, depth: null, signature: sig, targetParam: null });
+      }
     }
   }
 
@@ -1444,9 +1569,10 @@ export class AudioEngine {
 
   /**
    * Poll envFollower modulators and apply their envelope to FX/inst param
-   * targets (the only non-AudioParam targets that can't receive audio-rate
-   * connections). Called from the scheduler's applyModulators hook (~25 ms
-   * refresh). Volume/Pan targets already work via audio-rate connections.
+   * targets that could not be wired at audio-rate (no AudioParam exposure).
+   * Called from the scheduler's applyModulators hook (~25 ms refresh).
+   * Volume/Pan and any FX with an AudioParam are driven by the audio graph
+   * in syncLfos and must NOT be double-driven here.
    */
   applyEnvFollowersToParams(): void {
     const ctx = this.ctx;
@@ -1458,7 +1584,11 @@ export class AudioEngine {
       if (target.kind === "trackGain" || target.kind === "trackPan") continue;
       const state = this.lfos.get(lfo.id);
       if (!state || isOscRuntime(state)) continue;
-      const follower = (state as FollowerModRuntime).follower;
+      const runtime = state as FollowerModRuntime;
+      // If this follower is already wired audio-rate to an FX AudioParam, the
+      // graph drives it — polling would double-modulate.
+      if (runtime.targetParam) continue;
+      const follower = runtime.follower;
       if (!follower || !follower.getEnvelope) continue;
       const env = (follower as EnvFollowerHandle).getEnvelope();
       if (!Number.isFinite(env) || env <= 0) continue;

@@ -11,3 +11,4 @@ import "./flanger-processor.js";
 import "./tremolo-processor.js";
 import "./autowah-processor.js";
 import "./stutter-processor.js";
+import "./tape-processor.js";

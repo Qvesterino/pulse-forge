@@ -54,6 +54,7 @@ export function createSidechainNode(
       const p = workletNode.parameters.get(id);
       if (p) p.setValueAtTime(v, when);
     },
+    getAudioParam: (paramId: string) => workletNode.parameters.get(paramId) ?? null,
     /**
      * Connect a sidechain source to the worklet's second input.
      * This replaces the old AnalyserNode + setInterval approach.

@@ -65,6 +65,7 @@ export function createLimiterNode(
       }
       apply(id, value, when);
     },
+    getAudioParam: (paramId: string) => node.parameters.get(paramId) ?? null,
     getLatencySec() {
       return Math.max(1, lookaheadMs) / 1000;
     },

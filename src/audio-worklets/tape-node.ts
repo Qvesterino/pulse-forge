@@ -1,15 +1,15 @@
 import type { EffectRuntime } from "../effects/types";
 
 /**
- * Create a Flanger AudioWorkletNode synchronously.
+ * Create a Tape Saturation AudioWorkletNode synchronously.
  * The processor module MUST be pre-loaded via `loadWorkletModules()` first —
- * callers gate construction behind `isWorkletReady("flanger", ctx)`.
+ * callers gate construction behind `isWorkletReady("tapeSat", ctx)`.
  */
-export function createFlangerNode(
+export function createTapeNode(
   ctx: BaseAudioContext,
   instance: { params: Record<string, number> },
 ): EffectRuntime {
-  const node = new AudioWorkletNode(ctx, "flanger-processor", {
+  const node = new AudioWorkletNode(ctx, "tape-processor", {
     numberOfInputs: 1,
     numberOfOutputs: 1,
     channelCount: 2,
@@ -26,12 +26,11 @@ export function createFlangerNode(
     if (when === undefined) p.value = v;
     else p.setValueAtTime(v, when);
   };
-  setParam("rate", instance.params.rate ?? 0.5);
-  setParam("depth", instance.params.depth ?? 3);
-  setParam("base", instance.params.base ?? 5);
-  setParam("feedback", instance.params.feedback ?? 0.4);
-  setParam("spread", instance.params.spread ?? 0.7);
-  setParam("mix", instance.params.mix ?? 0.5);
+  setParam("drive", instance.params.drive ?? 0.4);
+  setParam("hysteresis", instance.params.hysteresis ?? 0.3);
+  setParam("tone", instance.params.tone ?? 6500);
+  setParam("mix", instance.params.mix ?? 1);
+  setParam("output", instance.params.output ?? 0);
 
   return {
     input,

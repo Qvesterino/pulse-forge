@@ -15,7 +15,9 @@
     "test:browser": "node scripts/verify-browser.mjs",
     "preview": "vite preview",
     "collab": "node server/collab-server.mjs",
-    "format": "prettier --write src tests"
+    "format": "prettier --write src tests",
+    "format:check": "prettier --check src tests",
+    "prepare": "node scripts/setup-hooks.mjs"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",

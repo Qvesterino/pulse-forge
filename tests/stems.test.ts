@@ -3,6 +3,8 @@ import { createDefaultProject } from "../src/project-model/schema";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import {
   addArrangementClip,
+  addToGroup,
+  createGroupTrack,
   setMasterConfig,
   setReturnGain,
   setTrackSend,
@@ -34,6 +36,25 @@ describe("stem groups", () => {
     const doc = createProjectFromTemplate("empty");
     const music = buildStemProject(doc, STEM_GROUPS[2].filter);
     expect(music.tracks).toHaveLength(0);
+  });
+
+  it("buildStemProject includes parent GroupTracks so grouped stems sum to the mix", () => {
+    // Regression: stems filtered only by kind, so a grouped "Drums" stem
+    // bypassed the group's gain/pan/FX and didn't sum to the master mix.
+    // The offline renderer needs the group in the doc for correct routing
+    // (same pattern as track-renderer.ts for frozen tracks).
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    store.execute(createGroupTrack(store.doc));
+    const groupId = store.doc.tracks[store.doc.tracks.length - 1].id;
+    expect(store.doc.tracks[store.doc.tracks.length - 1].kind).toBe("group");
+    const drumId = store.doc.tracks.find((t) => t.kind === "drum")!.id;
+    store.execute(addToGroup(store.doc, drumId, groupId));
+    const stem = buildStemProject(store.doc, STEM_GROUPS[0].filter);
+    // The stem must contain BOTH the drum track and its parent group.
+    expect(stem.tracks.some((t) => t.id === drumId)).toBe(true);
+    expect(stem.tracks.some((t) => t.id === groupId)).toBe(true);
+    expect(stem.tracks.some((t) => t.kind === "group")).toBe(true);
   });
 });
 

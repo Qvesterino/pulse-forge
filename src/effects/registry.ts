@@ -12,6 +12,7 @@ import { createFlangerNode } from "../audio-worklets/flanger-node";
 import { createTremoloNode } from "../audio-worklets/tremolo-node";
 import { createAutowahNode } from "../audio-worklets/autowah-node";
 import { createStutterNode } from "../audio-worklets/stutter-node";
+import { createTapeNode } from "../audio-worklets/tape-node";
 
 const dbToLin = (db: number) => Math.pow(10, db / 20);
 const smooth = (param: AudioParam, value: number, when: number, tc = 0.02) =>
@@ -55,6 +56,7 @@ export const WORKLET_EFFECTS: Partial<Record<EffectType, "critical" | "degraded"
   tremolo: "critical",
   autowah: "critical",
   stutter: "critical",
+  tapeSat: "critical",
   compressor: "degraded",
   bitcrusher: "degraded",
   sidechain: "degraded",
@@ -74,7 +76,7 @@ export function effectProcessorStatus(
   const severity = WORKLET_EFFECTS[type];
   if (!severity) return "ok";
   return isWorkletReady(
-    type as "bitcrusher" | "sidechain" | "transient" | "gate" | "limiter" | "compressor" | "stepGate" | "svFilter" | "flanger" | "tremolo" | "autowah" | "stutter",
+    type as "bitcrusher" | "sidechain" | "transient" | "gate" | "limiter" | "compressor" | "stepGate" | "svFilter" | "flanger" | "tremolo" | "autowah" | "stutter" | "tapeSat",
     ctx,
   )
     ? "ok"
@@ -172,7 +174,266 @@ const eq: EffectDefinition = {
       output: lp,
       setParameter: (id, v) => apply(id, v, ctx.currentTime),
       setParameterAt: (id, v, when) => apply(id, v, when),
+      getAudioParam: (paramId: string) => {
+        switch (paramId) {
+          case "hpFreq": return hp.frequency;
+          case "lpFreq": return lp.frequency;
+          case "lowShelfFreq": case "lowFreq": return low.frequency;
+          case "lowShelfGain": case "lowGain": return low.gain;
+          case "lowMidFreq": case "midFreq": return lowMid.frequency;
+          case "lowMidGain": case "midGain": return lowMid.gain;
+          case "lowMidQ": case "midQ": return lowMid.Q;
+          case "highMidFreq": return highMid.frequency;
+          case "highMidGain": return highMid.gain;
+          case "highMidQ": return highMid.Q;
+          case "highShelfFreq": case "highFreq": return high.frequency;
+          case "highShelfGain": case "highGain": return high.gain;
+          default: return null;
+        }
+      },
       dispose: () => { hp.disconnect(); low.disconnect(); lowMid.disconnect(); highMid.disconnect(); high.disconnect(); lp.disconnect(); },
+    };
+  },
+};
+
+/* ---------------- M/S EQ — mid/side encode, 2×2-band  ---------------- */
+
+const msEq: EffectDefinition = {
+  type: "msEq",
+  name: "M/S EQ",
+  category: "tone",
+  params: [
+    { id: "midLowFreq", label: "M LOW FREQ", min: 40, max: 500, default: 120, unit: "Hz", format: formatHz },
+    { id: "midLowGain", label: "M LOW", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
+    { id: "midHighFreq", label: "M HIGH FREQ", min: 1500, max: 12000, default: 6000, unit: "Hz", format: formatHz },
+    { id: "midHighGain", label: "M HIGH", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
+    { id: "sideLowFreq", label: "S LOW FREQ", min: 40, max: 500, default: 120, unit: "Hz", format: formatHz },
+    { id: "sideLowGain", label: "S LOW", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
+    { id: "sideHighFreq", label: "S HIGH FREQ", min: 1500, max: 12000, default: 6000, unit: "Hz", format: formatHz },
+    { id: "sideHighGain", label: "S HIGH", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
+  ],
+  factory(ctx, instance) {
+    const input = ctx.createGain();
+    const output = ctx.createGain();
+    const splitterIn = ctx.createChannelSplitter(2);
+    const mergerMS = ctx.createChannelMerger(2);
+    const splitterMS = ctx.createChannelSplitter(2);
+    const mergerOut = ctx.createChannelMerger(2);
+
+    // Encode: Mid = 0.5*(L+R), Side = 0.5*(L-R)
+    const gMidL = ctx.createGain(); gMidL.gain.value = 0.5;
+    const gMidR = ctx.createGain(); gMidR.gain.value = 0.5;
+    const gSideL = ctx.createGain(); gSideL.gain.value = 0.5;
+    const gSideR = ctx.createGain(); gSideR.gain.value = -0.5;
+
+    // Mid EQ
+    const midLow = ctx.createBiquadFilter(); midLow.type = "lowshelf";
+    const midHigh = ctx.createBiquadFilter(); midHigh.type = "highshelf";
+    // Side EQ
+    const sideLow = ctx.createBiquadFilter(); sideLow.type = "lowshelf";
+    const sideHigh = ctx.createBiquadFilter(); sideHigh.type = "highshelf";
+
+    // Decode gains
+    const gLmid = ctx.createGain(); gLmid.gain.value = 1;
+    const gLside = ctx.createGain(); gLside.gain.value = 1;
+    const gRmid = ctx.createGain(); gRmid.gain.value = 1;
+    const gRside = ctx.createGain(); gRside.gain.value = -1;
+
+    input.connect(splitterIn);
+    splitterIn.connect(gMidL, 0); splitterIn.connect(gMidR, 1);
+    splitterIn.connect(gSideL, 0); splitterIn.connect(gSideR, 1);
+    gMidL.connect(mergerMS, 0, 0); gMidR.connect(mergerMS, 0, 0);
+    gSideL.connect(mergerMS, 0, 1); gSideR.connect(mergerMS, 0, 1);
+
+    mergerMS.connect(splitterMS);
+    // M -> EQ
+    splitterMS.connect(midLow, 0); midLow.connect(midHigh);
+    splitterMS.connect(sideLow, 1); sideLow.connect(sideHigh);
+
+    // Decode M/S -> L/R
+    midHigh.connect(gLmid); midHigh.connect(gRmid);
+    sideHigh.connect(gLside); sideHigh.connect(gRside);
+    gLmid.connect(mergerOut, 0, 0); gLside.connect(mergerOut, 0, 0);
+    gRmid.connect(mergerOut, 0, 1); gRside.connect(mergerOut, 0, 1);
+    mergerOut.connect(output);
+
+    const apply = (id: string, v: number, when: number) => {
+      switch (id) {
+        case "midLowFreq": smooth(midLow.frequency, v, when); break;
+        case "midLowGain": smooth(midLow.gain, v, when); break;
+        case "midHighFreq": smooth(midHigh.frequency, v, when); break;
+        case "midHighGain": smooth(midHigh.gain, v, when); break;
+        case "sideLowFreq": smooth(sideLow.frequency, v, when); break;
+        case "sideLowGain": smooth(sideLow.gain, v, when); break;
+        case "sideHighFreq": smooth(sideHigh.frequency, v, when); break;
+        case "sideHighGain": smooth(sideHigh.gain, v, when); break;
+      }
+    };
+    for (const [k, v] of Object.entries(instance.params)) apply(k, v, ctx.currentTime);
+    return {
+      input,
+      output,
+      setParameter: (id, v) => apply(id, v, ctx.currentTime),
+      setParameterAt: (id, v, when) => apply(id, v, when),
+      getAudioParam: (paramId: string) => {
+        switch (paramId) {
+          case "midLowFreq": return midLow.frequency;
+          case "midLowGain": return midLow.gain;
+          case "midHighFreq": return midHigh.frequency;
+          case "midHighGain": return midHigh.gain;
+          case "sideLowFreq": return sideLow.frequency;
+          case "sideLowGain": return sideLow.gain;
+          case "sideHighFreq": return sideHigh.frequency;
+          case "sideHighGain": return sideHigh.gain;
+          default: return null;
+        }
+      },
+      dispose: () => {
+        input.disconnect(); output.disconnect(); splitterIn.disconnect(); mergerMS.disconnect(); splitterMS.disconnect(); mergerOut.disconnect();
+        gMidL.disconnect(); gMidR.disconnect(); gSideL.disconnect(); gSideR.disconnect();
+        midLow.disconnect(); midHigh.disconnect(); sideLow.disconnect(); sideHigh.disconnect();
+        gLmid.disconnect(); gLside.disconnect(); gRmid.disconnect(); gRside.disconnect();
+      },
+    };
+  },
+};
+
+/* ---------------- Haas Widener ---------------- */
+
+const haasWidener: EffectDefinition = {
+  type: "haasWidener",
+  name: "Haas Widener",
+  category: "movement",
+  params: [
+    { id: "delayMs", label: "DELAY", min: 0.5, max: 40, default: 12, unit: "ms", format: formatMs },
+    { id: "width", label: "WIDTH", min: 0, max: 1, default: 0.7, format: formatPct },
+    { id: "feedback", label: "FEEDBACK", min: 0, max: 0.6, default: 0, format: formatPct },
+  ],
+  factory(ctx, instance) {
+    const input = ctx.createGain();
+    const output = ctx.createGain();
+    const splitter = ctx.createChannelSplitter(2);
+    const merger = ctx.createChannelMerger(2);
+    const delay = ctx.createDelay(0.05);
+    delay.delayTime.value = (instance.params.delayMs ?? 12) / 1000;
+    const wet = ctx.createGain(); wet.gain.value = instance.params.width ?? 0.7;
+    const dry = ctx.createGain(); dry.gain.value = 1 - (instance.params.width ?? 0.7);
+    const fb = ctx.createGain(); fb.gain.value = instance.params.feedback ?? 0;
+
+    // L channel Haas: dry + delayed via width blend
+    input.connect(splitter);
+    splitter.connect(delay, 0);
+    splitter.connect(dry, 0);
+    delay.connect(wet);
+    wet.connect(merger, 0, 0);
+    dry.connect(merger, 0, 0);
+    // R channel direct
+    splitter.connect(merger, 1, 1);
+    // Feedback: delayed L back into delay input (adds shimmer)
+    wet.connect(fb).connect(delay);
+    merger.connect(output);
+
+    const apply = (id: string, v: number, when: number) => {
+      switch (id) {
+        case "delayMs": smooth(delay.delayTime, v / 1000, when, 0.05); break;
+        case "width":
+          smooth(wet.gain, v, when);
+          smooth(dry.gain, 1 - v, when);
+          break;
+        case "feedback": smooth(fb.gain, v, when); break;
+      }
+    };
+    for (const [k, v] of Object.entries(instance.params)) apply(k, v, ctx.currentTime);
+    return {
+      input,
+      output,
+      setParameter: (id, v) => apply(id, v, ctx.currentTime),
+      setParameterAt: (id, v, when) => apply(id, v, when),
+      getAudioParam: (paramId: string) => {
+        switch (paramId) {
+          case "delayMs": return delay.delayTime;
+          case "width": return wet.gain;
+          case "feedback": return fb.gain;
+          default: return null;
+        }
+      },
+      dispose: () => { input.disconnect(); output.disconnect(); splitter.disconnect(); merger.disconnect(); delay.disconnect(); wet.disconnect(); dry.disconnect(); fb.disconnect(); },
+    };
+  },
+};
+
+/* ---------------- Multiband Processor (3-band crossover gains) ---------------- */
+
+const multiband: EffectDefinition = {
+  type: "multiband",
+  name: "Multiband",
+  category: "tone",
+  params: [
+    { id: "lowFreq", label: "LOW XOVER", min: 80, max: 800, default: 200, unit: "Hz", format: formatHz },
+    { id: "highFreq", label: "HIGH XOVER", min: 800, max: 8000, default: 2000, unit: "Hz", format: formatHz },
+    { id: "lowGain", label: "LOW", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
+    { id: "midGain", label: "MID", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
+    { id: "highGain", label: "HIGH", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
+    { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
+  ],
+  factory(ctx, instance) {
+    const mix = mixBus(ctx);
+    // Complementary 3-band crossover (unity-sum): low = LP(lowFreq, wet)
+    // midHigh = wet − low; mid = LP(highFreq, midHigh); high = midHigh − mid
+    // Each branch then feeds a gain stage (−12..+12 dB) and sums at mix.output.
+    const lowLP = ctx.createBiquadFilter(); lowLP.type = "lowpass";
+    const midLP = ctx.createBiquadFilter(); midLP.type = "lowpass";
+    const gLow = ctx.createGain(); const gMid = ctx.createGain(); const gHigh = ctx.createGain();
+    const invLow = ctx.createGain(); invLow.gain.value = -1;
+    const invMid = ctx.createGain(); invMid.gain.value = -1;
+    const midHighSum = ctx.createGain();
+    const highSum = ctx.createGain();
+
+    mix.wet.connect(lowLP);
+    lowLP.connect(gLow).connect(mix.output);
+    // wet − low → midHighSum
+    mix.wet.connect(midHighSum);
+    lowLP.connect(invLow).connect(midHighSum);
+    midHighSum.connect(midLP);
+    midLP.connect(gMid).connect(mix.output);
+    // midHighSum − mid → high branch
+    midHighSum.connect(highSum);
+    midLP.connect(invMid).connect(highSum);
+    highSum.connect(gHigh).connect(mix.output);
+
+    const apply = (id: string, v: number, when: number) => {
+      switch (id) {
+        case "lowFreq": smooth(lowLP.frequency, v, when); break;
+        case "highFreq": smooth(midLP.frequency, v, when); break;
+        case "lowGain": smooth(gLow.gain, dbToLin(v), when); break;
+        case "midGain": smooth(gMid.gain, dbToLin(v), when); break;
+        case "highGain": smooth(gHigh.gain, dbToLin(v), when); break;
+        case "mix": mix.setMix(v, when); break;
+      }
+    };
+    for (const [k, v] of Object.entries(instance.params)) apply(k, v, ctx.currentTime);
+    return {
+      input: mix.input,
+      output: mix.output,
+      setParameter: (id, v) => apply(id, v, ctx.currentTime),
+      setParameterAt: (id, v, when) => apply(id, v, when),
+      getAudioParam: (paramId: string) => {
+        switch (paramId) {
+          case "lowFreq": return lowLP.frequency;
+          case "highFreq": return midLP.frequency;
+          case "lowGain": return gLow.gain;
+          case "midGain": return gMid.gain;
+          case "highGain": return gHigh.gain;
+          case "mix": return mix.wet.gain;
+          default: return null;
+        }
+      },
+      dispose: () => {
+        mix.input.disconnect(); mix.output.disconnect();
+        lowLP.disconnect(); midLP.disconnect();
+        gLow.disconnect(); gMid.disconnect(); gHigh.disconnect();
+        invLow.disconnect(); invMid.disconnect(); midHighSum.disconnect(); highSum.disconnect();
+      },
     };
   },
 };
@@ -281,6 +542,25 @@ const saturation: EffectDefinition = {
       setParameterAt: (id, v, when) => apply(id, v, when),
       dispose: () => { mix.input.disconnect(); mix.output.disconnect(); shaper.disconnect(); tone.disconnect(); out.disconnect(); },
     };
+  },
+};
+
+/* ---------------- Tape Saturation (hysteresis) ---------------- */
+
+const tapeSat: EffectDefinition = {
+  type: "tapeSat",
+  name: "Tape Sat",
+  category: "character",
+  params: [
+    { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0.4, format: formatPct },
+    { id: "hysteresis", label: "HYST", min: 0, max: 0.95, default: 0.3, format: formatPct },
+    { id: "tone", label: "TONE", min: 500, max: 12000, default: 6500, unit: "Hz", format: formatHz },
+    { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
+    { id: "output", label: "OUTPUT", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
+  ],
+  factory(ctx, instance) {
+    if (isWorkletReady("tapeSat", ctx)) return createTapeNode(ctx, instance);
+    return bypassRuntime(ctx, "AudioWorklet unavailable — tape saturation bypassed (1:1 signal)");
   },
 };
 
@@ -1664,6 +1944,7 @@ export const EFFECT_DEFS: Record<EffectType, EffectDefinition> = {
   eq,
   compressor,
   saturation,
+  tapeSat,
   clipper,
   limiter,
   stepGate,
@@ -1683,14 +1964,20 @@ export const EFFECT_DEFS: Record<EffectType, EffectDefinition> = {
   transient,
   drumBuss,
   bassBuss,
+  msEq,
+  haasWidener,
+  multiband,
   utility,
   gate,
 };
 
 export const EFFECT_ORDER: EffectType[] = [
   "eq",
+  "msEq",
+  "multiband",
   "compressor",
   "saturation",
+  "tapeSat",
   "clipper",
   "limiter",
   "stepGate",
@@ -1706,6 +1993,7 @@ export const EFFECT_ORDER: EffectType[] = [
   "bitcrusher",
   "chorus",
   "phaser",
+  "haasWidener",
   "sidechain",
   "transient",
   "drumBuss",
@@ -1717,6 +2005,9 @@ export const EFFECT_ORDER: EffectType[] = [
 /** Effects intentionally exposed in the new mixer Add Effect menu. */
 export const CORE_EFFECT_ORDER: EffectType[] = [
   "eq",
+  "msEq",
+  "multiband",
+  "haasWidener",
   "transient",
   "limiter",
   "stepGate",
@@ -1725,6 +2016,7 @@ export const CORE_EFFECT_ORDER: EffectType[] = [
   "tremolo",
   "autowah",
   "stutter",
+  "tapeSat",
   "drumBuss",
   "bassBuss",
   "utility",
@@ -1742,3 +2034,4 @@ export function clampEffectParam(type: EffectType, paramId: string, value: numbe
   if (!def) return value;
   return Math.min(def.max, Math.max(def.min, value));
 }
+

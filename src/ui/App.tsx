@@ -18,6 +18,7 @@ import { MidiPanel } from "./MidiPanel";
 import { ExportPanel } from "./ExportPanel";
 import { UndoHistoryPanel } from "./UndoHistoryPanel";
 import { InstallPrompt } from "./InstallPrompt";
+import { ErrorBoundary } from "./ErrorBoundary";
 import {
   clearSteps,
   deleteNote,
@@ -299,21 +300,27 @@ export function App({
           </div>
           <Inspector track={track} selectedPadId={padId} />
         </main>
-        {bottomPanel === "mixer" && <Mixer />}
-        {bottomPanel === "fx" && <EffectRack track={track} />}
-        {bottomPanel === "arr" && <ArrangementPanel />}
-        {bottomPanel === "mod" && <ModPanel />}
-        {bottomPanel === "exp" && <ExportPanel />}
-        {bottomPanel === "midi" && (
-          <MidiPanel
-            selectedTrackId={track.id}
-            selectedNote={selectedNote}
-            scaleSnap={scaleSnap}
-            onToggleScaleSnap={() => setScaleSnap((value) => !value)}
-            onClearSelection={() => setSelectedNote(null)}
-          />
+        <ErrorBoundary panel="mixer">{bottomPanel === "mixer" && <Mixer />}</ErrorBoundary>
+        <ErrorBoundary panel="fx">{bottomPanel === "fx" && <EffectRack track={track} />}</ErrorBoundary>
+        <ErrorBoundary panel="arr">{bottomPanel === "arr" && <ArrangementPanel />}</ErrorBoundary>
+        <ErrorBoundary panel="mod">{bottomPanel === "mod" && <ModPanel />}</ErrorBoundary>
+        <ErrorBoundary panel="exp">{bottomPanel === "exp" && <ExportPanel />}</ErrorBoundary>
+        <ErrorBoundary panel="midi">
+          {bottomPanel === "midi" && (
+            <MidiPanel
+              selectedTrackId={track.id}
+              selectedNote={selectedNote}
+              scaleSnap={scaleSnap}
+              onToggleScaleSnap={() => setScaleSnap((value) => !value)}
+              onClearSelection={() => setSelectedNote(null)}
+            />
+          )}
+        </ErrorBoundary>
+        {diagnosticsOpen && (
+          <ErrorBoundary panel="diagnostics">
+            <Diagnostics />
+          </ErrorBoundary>
         )}
-        {diagnosticsOpen && <Diagnostics />}
         <footer className="statusbar">
           <span>
             SPACE play · 1–5 panels · ? help · Ctrl+Z undo · <kbd className="statusbar-kbd">1</kbd>–

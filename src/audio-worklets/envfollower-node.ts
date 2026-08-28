@@ -13,6 +13,7 @@ export interface EnvFollowerHandle {
   output: AudioNode;
   /** Latest envelope value 0..1 (from port message polling). */
   getEnvelope(): number;
+  getAudioParam?(paramId: string): AudioParam | null;
   dispose(): void;
 }
 
@@ -46,9 +47,10 @@ export function createEnvFollowerNode(
     input: node,
     output: node,
     getEnvelope: () => lastEnv,
+    getAudioParam: (paramId: string) => node.parameters.get(paramId) ?? null,
     dispose() {
       node.port.onmessage = null;
       node.disconnect();
     },
-  };
+  } as EnvFollowerHandle & { getAudioParam: (id: string) => AudioParam | null };
 }

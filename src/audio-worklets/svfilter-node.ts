@@ -37,6 +37,7 @@ export function createSvFilterNode(
     output,
     setParameter: (id, v) => setParam(id, v, ctx.currentTime),
     setParameterAt: (id, v, when) => setParam(id, v, when),
+    getAudioParam: (paramId: string) => node.parameters.get(paramId) ?? null,
     dispose() {
       node.disconnect();
       input.disconnect();

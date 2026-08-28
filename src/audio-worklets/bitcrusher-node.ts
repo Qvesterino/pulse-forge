@@ -77,6 +77,11 @@ export function createBitcrusherNode(
           break;
       }
     },
+    getAudioParam: (paramId: string) => {
+      if (paramId === "bits") return bitsParam ?? null;
+      if (paramId === "downsample") return dsParam ?? null;
+      return null;
+    },
     dispose() {
       node.disconnect();
       input.disconnect();

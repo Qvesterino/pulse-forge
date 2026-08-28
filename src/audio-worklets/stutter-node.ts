@@ -46,6 +46,7 @@ export function createStutterNode(
     setParameterAt(id, value, when) {
       setParam(id, value, when);
     },
+    getAudioParam: (paramId: string) => node.parameters.get(paramId) ?? null,
     syncBpm(bpm: number) {
       node.port.postMessage({ type: "bpm", bpm });
     },

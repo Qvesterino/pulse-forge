@@ -38,14 +38,12 @@ export function lfoRateHz(lfo: Lfo): number {
 }
 
 /**
- * Effective modulation target. Random/step honour the generic AutomationTarget;
- * every other kind is locked to native params (v1 scope — see roadmap §3 P1.5
- * note about an audio-rate modulation bus for full generality).
+ * Effective modulation target. Audio-rate bus (P2): any kind may carry a
+ * generic `target`; when present it overrides the legacy `param` selector.
+ * Legacy oscillators / followers without `target` keep driving Volume/Pan.
  */
 export function resolveLfoTarget(lfo: Lfo): AutomationTarget {
-  if ((lfo.kind === "random" || lfo.kind === "step") && lfo.target) {
-    return lfo.target;
-  }
+  if (lfo.target) return lfo.target;
   return { kind: lfo.param === "pan" ? "trackPan" : "trackGain", trackId: lfo.trackId };
 }
 
@@ -206,6 +204,8 @@ function buildSanitizedLfo(
     sanitized.releaseMs = clampRange(input.releaseMs, 10, 2000, 180);
     sanitized.sensitivity = clampRange(input.sensitivity, 0.2, 3, 1.5);
     sanitized.polarity = input.polarity === 1 ? 1 : -1;
+    const tgt = sanitizeTarget(input.target, trackId);
+    if (tgt) sanitized.target = tgt;
     return sanitized;
   }
   sanitized.rateMode = pickEnum<"hz" | "sync">(input.rateMode, RATE_MODES, "sync");
@@ -213,6 +213,8 @@ function buildSanitizedLfo(
   sanitized.division = clampRange(input.division, 0, 4, 2);
   if (kind === "osc") {
     sanitized.wave = pickEnum<NonNullable<Lfo["wave"]>>(input.wave, LFO_WAVE_VALUES, "sine");
+    const tgt = sanitizeTarget(input.target, trackId);
+    if (tgt) sanitized.target = tgt;
     return sanitized;
   }
   if (kind === "random") {

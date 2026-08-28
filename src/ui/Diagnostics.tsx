@@ -12,6 +12,7 @@ export function Diagnostics() {
   const [perfReport, setPerfReport] = useState<PerformanceReport | null>(null);
   const [renderStatus, setRenderStatus] = useState<string>("");
   const [issues, setIssues] = useState<string[]>([]);
+  const [storage, setStorage] = useState<{ usage: number; quota: number } | null>(null);
 
   useEffect(() => {
     const update = () => setRows(services.getDiagnostics());
@@ -26,6 +27,14 @@ export function Diagnostics() {
     setPerfReport(report);
     setIssues(evaluateReport({ performance: report, stressResults: [], timestamp: "", passed: 0, failed: 0 }));
   };
+
+  useEffect(() => {
+    if (tab !== "memory") return;
+    if (!navigator.storage?.estimate) return;
+    void navigator.storage.estimate().then((est) => {
+      setStorage({ usage: est.usage ?? 0, quota: est.quota ?? 0 });
+    });
+  }, [tab]);
 
   const measureRender = async (mode: "pattern" | "song") => {
     setRenderStatus("Measuring render...");
@@ -91,6 +100,20 @@ export function Diagnostics() {
               Load metrics
             </button>
           )}
+          {storage && storage.quota > 0 ? (
+            <>
+              <DiagRow label="Storage Used" value={`${(storage.usage / 1048576).toFixed(1)} MB`} />
+              <DiagRow label="Storage Quota" value={`${(storage.quota / 1048576).toFixed(0)} MB`} />
+              <DiagRow
+                label="Storage"
+                value={`${Math.round((storage.usage / storage.quota) * 100)}% full${
+                  storage.usage / storage.quota > 0.85 ? " — ⚠ low quota" : ""
+                }`}
+              />
+            </>
+          ) : storage ? (
+            <DiagRow label="Storage" value="Quota unavailable" />
+          ) : null}
         </div>
       )}
 
