@@ -3,6 +3,7 @@ import { useDoc, useServices } from "./context";
 import type { ChannelLevels } from "../audio-engine/metering";
 import { registerRaf, unregisterRaf } from "../services/rafLoop";
 import { evaluateMixCheck, MIN_DB } from "../audio-engine/metering";
+import { Goniometer } from "./Goniometer";
 import { SpectrumAnalyzer } from "./SpectrumAnalyzer";
 
 interface ReadState {
@@ -130,6 +131,17 @@ export function MasterMeter() {
       <MeterChannel label="L" level={state.left} holdDb={state.peakHoldDb} />
       <MeterChannel label="R" level={state.right} holdDb={state.peakHoldDb} />
       <CorrelationMeter value={state.correlation} />
+      <Goniometer
+        analysers={
+          (
+            services.engine as unknown as {
+              getMasterStereoAnalysers?: () => { l: AnalyserNode; r: AnalyserNode } | null;
+            }
+          ).getMasterStereoAnalysers?.() ?? null
+        }
+        size={72}
+        id="master"
+      />
       <HeadroomStrip ceilingDb={ceilingDb} clipping={state.clipping} />
       <div className="master-loudness-readout" aria-label="Master loudness">
         <span>LUFS-M {formatDb(state.lufsMomentary)}</span>

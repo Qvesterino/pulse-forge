@@ -36,7 +36,8 @@ export function isWorkletReady(
     | "tapeSat"
     | "comb"
     | "vowel"
-    | "duckDelay",
+    | "duckDelay"
+    | "reverb",
   ctx: BaseAudioContext | null | undefined,
 ): boolean {
   if (!ctx || !readyContexts.has(ctx)) return false;
@@ -58,7 +59,8 @@ export function isWorkletReady(
     type === "tapeSat" ||
     type === "comb" ||
     type === "vowel" ||
-    type === "duckDelay"
+    type === "duckDelay" ||
+    type === "reverb"
   );
 }
 

@@ -2275,6 +2275,12 @@ export class AudioEngine {
     return this.masterAnalyser;
   }
 
+  /** Expose per-channel analysers for goniometer (read-only observer). */
+  getMasterStereoAnalysers(): { l: AnalyserNode; r: AnalyserNode } | null {
+    if (!this.masterAnalyserL || !this.masterAnalyserR) return null;
+    return { l: this.masterAnalyserL, r: this.masterAnalyserR };
+  }
+
   /**
    * True peak via 4× polyphase oversampling (ITU BS.1770 style) — catches
    * intersample peaks that the old parabolic estimate missed. Delegates to

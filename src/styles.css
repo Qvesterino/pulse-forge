@@ -4221,7 +4221,7 @@ button {
 
 .master-meter {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr 72px 1fr;
   gap: 8px;
   padding: 8px;
   background: var(--bg);
@@ -4230,6 +4230,33 @@ button {
   margin-top: 6px;
   min-height: 132px;
   position: relative;
+}
+
+.goniometer {
+  border: 1px solid var(--border-soft);
+  background: var(--bg-panel);
+  border-radius: 4px;
+}
+
+.slice-dialog-hits-controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 6px 0 2px;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.slice-dialog-hits-controls .slice-hits-sensitivity {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.slice-hits-status {
+  color: var(--text-faint);
+  font-family: var(--mono);
 }
 
 .master-channel {
@@ -5269,7 +5296,26 @@ button {
 }
 
 .slice-dialog-mode-row {
-  margin: 12px 0;
+  margin: 12px 0 8px;
+}
+
+.slice-dialog-zoom-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 8px 0 12px;
+  padding: 6px 8px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+}
+
+.slice-zoom-hint {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-faint);
+  margin-left: 4px;
 }
 
 .slice-dialog-selection {

@@ -16,6 +16,7 @@ import { createTapeNode } from "../audio-worklets/tape-node";
 import { createCombNode } from "../audio-worklets/comb-node";
 import { createVowelNode } from "../audio-worklets/vowel-node";
 import { createDuckingDelayNode } from "../audio-worklets/ducking-delay-node";
+import { createReverbNode } from "../audio-worklets/reverb-node";
 
 const dbToLin = (db: number) => Math.pow(10, db / 20);
 const smooth = (param: AudioParam, value: number, when: number, tc = 0.02) => param.setTargetAtTime(value, when, tc);
@@ -62,6 +63,7 @@ export const WORKLET_EFFECTS: Partial<Record<EffectType, "critical" | "degraded"
   comb: "critical",
   vowel: "critical",
   duckDelay: "critical",
+  reverb: "degraded",
   compressor: "degraded",
   bitcrusher: "degraded",
   sidechain: "degraded",
@@ -913,9 +915,57 @@ const reverb: EffectDefinition = {
     { id: "decay", label: "DECAY", min: 0.1, max: 6, default: 1.8, unit: "s", format: formatSec },
     { id: "predelay", label: "PRE-DLY", min: 0, max: 120, default: 20, unit: "ms", format: formatMs },
     { id: "tone", label: "TONE", min: 500, max: 12000, default: 6000, unit: "Hz", format: formatHz },
+    { id: "diffusion", label: "DIFFUSION", min: 0, max: 1, default: 0.5, format: formatPct },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 0.3, format: formatPct },
   ],
   factory(ctx, instance) {
+    if (isWorkletReady("reverb", ctx)) {
+      const mix = mixBus(ctx);
+      mix.setMix(instance.params.mix ?? 0.3, ctx.currentTime);
+      const preDelay = ctx.createDelay(0.5);
+      const node = createReverbNode(ctx, instance);
+      mix.wet.connect(preDelay).connect(node.input);
+      node.output.connect(mix.output);
+      const apply = (id: string, v: number, when: number) => {
+        switch (id) {
+          case "decay":
+            node.setParameter("decay", v);
+            break;
+          case "predelay":
+            smooth(preDelay.delayTime, v / 1000, when, 0.05);
+            break;
+          case "tone":
+            node.setParameter("tone", v);
+            node.setParameter("damping", v);
+            break;
+          case "damping":
+            node.setParameter("damping", v);
+            node.setParameter("tone", v);
+            break;
+          case "diffusion":
+            node.setParameter("diffusion", v);
+            break;
+          case "mix":
+            mix.setMix(v, when);
+            break;
+        }
+      };
+      for (const [k, v] of Object.entries(instance.params)) apply(k, v, ctx.currentTime);
+      return {
+        input: mix.input,
+        output: mix.output,
+        setParameter: (id, v) => apply(id, v, ctx.currentTime),
+        setParameterAt: (id, v, when) => apply(id, v, when),
+        getAudioParam: (paramId: string) => node.getAudioParam?.(paramId) ?? null,
+        dispose: () => {
+          mix.input.disconnect();
+          mix.output.disconnect();
+          preDelay.disconnect();
+          node.dispose();
+        },
+      };
+    }
+    // Fallback: convolution IR (degraded — no FDN, CPU spikes on decay change)
     const mix = mixBus(ctx);
     mix.setMix(instance.params.mix ?? 0.3, ctx.currentTime);
     const preDelay = ctx.createDelay(0.5);
@@ -924,8 +974,6 @@ const reverb: EffectDefinition = {
     tone.type = "lowpass";
     mix.wet.connect(preDelay).connect(conv).connect(tone).connect(mix.output);
     const seed = hashString(instance.id);
-
-    // Web Worker for IR generation (avoids main-thread glitch on decay change)
     let worker: Worker | null = null;
     try {
       worker = new Worker(new URL("../audio-workers/ir-generator.ts", import.meta.url), { type: "module" });
@@ -937,23 +985,22 @@ const reverb: EffectDefinition = {
         conv.buffer = buffer;
       };
     } catch {
-      // Worker not available (e.g. in test environment) — use synchronous fallback
+      // Worker not available — sync fallback
     }
-
     const apply = (id: string, v: number, when: number) => {
       switch (id) {
         case "decay":
-          if (worker) {
-            worker.postMessage({ decay: v, sampleRate: ctx.sampleRate, seed });
-          } else {
-            conv.buffer = makeImpulseResponse(ctx, v, seed);
-          }
+          if (worker) worker.postMessage({ decay: v, sampleRate: ctx.sampleRate, seed });
+          else conv.buffer = makeImpulseResponse(ctx, v, seed);
           break;
         case "predelay":
           smooth(preDelay.delayTime, v / 1000, when, 0.05);
           break;
         case "tone":
+        case "damping":
           smooth(tone.frequency, v, when);
+          break;
+        case "diffusion":
           break;
         case "mix":
           mix.setMix(v, when);
@@ -964,8 +1011,21 @@ const reverb: EffectDefinition = {
     return {
       input: mix.input,
       output: mix.output,
+      degraded: true,
+      degradedReason: "Fallback convolution — FDN unavailable",
       setParameter: (id, v) => apply(id, v, ctx.currentTime),
       setParameterAt: (id, v, when) => apply(id, v, when),
+      getAudioParam: (paramId: string) => {
+        switch (paramId) {
+          case "predelay":
+            return preDelay.delayTime;
+          case "tone":
+          case "damping":
+            return tone.frequency;
+          default:
+            return null;
+        }
+      },
       dispose: () => {
         worker?.terminate();
         mix.input.disconnect();

@@ -11,6 +11,7 @@ import { matchShortcut } from "./shortcuts";
 import { ScalePanel } from "./ScalePanel";
 import { CollabPanel } from "./CollabPanel";
 import { AssistPanel } from "./AssistPanel";
+import { assistFill, assistVary } from "../commands/commands";
 
 function formatClock(iso: string | null): string {
   if (!iso) return "";
@@ -112,11 +113,22 @@ export function TopBar({
         event.preventDefault();
         toggleLoop();
       }
+      // 1-klik Assist shortcuts — deterministic, no panel
+      if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "v") {
+        event.preventDefault();
+        const seed = Math.random().toString(36).slice(2, 10);
+        services.store.execute(assistVary(doc, doc.activePatternId, seed, 0.6));
+      }
+      if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        const seed = Math.random().toString(36).slice(2, 10);
+        services.store.execute(assistFill(doc, doc.activePatternId, seed));
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loopEnabled, loopStart, loopEnd]);
+  }, [loopEnabled, loopStart, loopEnd, doc, services.store]);
 
   return (
     <>
@@ -339,6 +351,30 @@ export function TopBar({
             aria-pressed={historyOpen}
           >
             ↶
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => {
+              const seed = Math.random().toString(36).slice(2, 10);
+              services.store.execute(assistVary(doc, doc.activePatternId, seed, 0.6));
+            }}
+            title="One-click vary (Ctrl+Shift+V)"
+            aria-label="One-click vary"
+          >
+            ⚡VARY
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => {
+              const seed = Math.random().toString(36).slice(2, 10);
+              services.store.execute(assistFill(doc, doc.activePatternId, seed));
+            }}
+            title="One-click fill (Ctrl+Shift+F)"
+            aria-label="One-click fill"
+          >
+            FILL
           </button>
           <button
             type="button"

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointer
 import { useDoc, useServices } from "./context";
 import { SampleBrowser } from "./SampleBrowser";
 import { chopSampleToPads, type PadSlice } from "../commands/commands";
-import { detectTransients, gridSlicePoints, pointsToSlices } from "../audio-engine/transients";
+import { detectTransients, gridSlicePoints, pointsToSlices, snapToGrid } from "../audio-engine/transients";
 import type { DrumPad, DrumTrack } from "../project-model/types";
 import { FACTORY_ASSETS } from "../sample-library/manifest";
 import type { UserSampleAsset } from "../persistence/UserSampleRepository";
@@ -26,6 +26,34 @@ function makeDrafts(points: number[], duration: number): DraftSlice[] {
   }));
 }
 
+function zeroCrossSnap(data: Float32Array, sampleRate: number, seconds: number): number {
+  const idx = Math.floor(seconds * sampleRate);
+  const search = 256;
+  let bestIdx = idx;
+  let bestDist = Infinity;
+  const start = Math.max(1, idx - search);
+  const end = Math.min(data.length - 1, idx + search);
+  for (let i = start; i < end; i++) {
+    if (data[i] === 0) {
+      const dist = Math.abs(i - idx);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestIdx = i;
+      }
+    } else if (data[i] * data[i + 1] < 0 || data[i] * data[i + 1] === 0) {
+      // Linear interpolate zero crossing between i and i+1
+      const t = Math.abs(data[i]) / (Math.abs(data[i]) + Math.abs(data[i + 1]));
+      const interp = i + t;
+      const dist = Math.abs(interp - idx);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestIdx = Math.round(interp);
+      }
+    }
+  }
+  return bestDist === Infinity ? seconds : bestIdx / sampleRate;
+}
+
 function sourceLabel(id: string | null, userAssets: UserSampleAsset[]): string {
   if (!id) return "Sample";
   return (
@@ -46,6 +74,17 @@ export function SliceLab({ track, onClose }: { track: DrumTrack; onClose: () => 
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [loopPreview, setLoopPreview] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [sensitivity, setSensitivity] = useState(1);
+  const [snapGrid, setSnapGrid] = useState(false);
+  const [hitsPoints, setHitsPoints] = useState<number[]>([]);
+  const [hitsLoading, setHitsLoading] = useState(false);
+  const [zoom, setZoom] = useState({ from: 0, to: 1 });
+  const [snapZC, setSnapZC] = useState(false);
+  const [normalize, setNormalize] = useState(false);
+  const [bpmPreview, setBpmPreview] = useState(true);
+  const [playheadFrac, setPlayheadFrac] = useState<number | null>(null);
+  const previewStartRef = useRef<number | null>(null);
+  const panRef = useRef<{ startX: number; startFrom: number; startTo: number } | null>(null);
 
   const buffer = sourceId ? (services.bank.get(sourceId) ?? null) : null;
   const sourceName = sourceLabel(sourceId, userAssets);
@@ -60,13 +99,65 @@ export function SliceLab({ track, onClose }: { track: DrumTrack; onClose: () => 
     };
   }, [services]);
 
+  // Worker-offloaded onset detection for "hits" mode
+  useEffect(() => {
+    if (!buffer || mode !== "hits") {
+      setHitsPoints([]);
+      setHitsLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setHitsLoading(true);
+    const channelData = buffer.getChannelData(0);
+    // Try Worker, fallback to sync
+    try {
+      const worker = new Worker(new URL("../audio-workers/onset-detector.ts", import.meta.url), {
+        type: "module",
+      });
+      const copy = new Float32Array(channelData);
+      worker.onmessage = (e: MessageEvent<{ times: number[] }>) => {
+        if (cancelled) {
+          worker.terminate();
+          return;
+        }
+        setHitsPoints(e.data.times ?? []);
+        setHitsLoading(false);
+        worker.terminate();
+      };
+      worker.onerror = () => {
+        if (cancelled) {
+          worker.terminate();
+          return;
+        }
+        const times = detectTransients(channelData, buffer.sampleRate, { sensitivity });
+        setHitsPoints(times);
+        setHitsLoading(false);
+        worker.terminate();
+      };
+      worker.postMessage({ channelData: copy, sampleRate: buffer.sampleRate, sensitivity }, [
+        copy.buffer,
+      ] as unknown as Transferable[]);
+    } catch {
+      const times = detectTransients(channelData, buffer.sampleRate, { sensitivity });
+      if (!cancelled) {
+        setHitsPoints(times);
+        setHitsLoading(false);
+      }
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [buffer, mode, sensitivity]);
+
   const basePoints = useMemo(() => {
     if (!buffer) return [];
     if (mode === "hits") {
-      return withLeadingZero(detectTransients(buffer.getChannelData(0), buffer.sampleRate, { sensitivity: 1 }));
+      const raw = hitsPoints;
+      const points = snapGrid ? snapToGrid(raw, doc.bpm, DIVISIONS["1/16"]) : raw;
+      return withLeadingZero(points);
     }
     return gridSlicePoints(doc.bpm, DIVISIONS[mode], buffer.duration);
-  }, [buffer, mode, doc.bpm]);
+  }, [buffer, mode, doc.bpm, hitsPoints, snapGrid]);
   const basePointsKey = basePoints.map((point) => point.toFixed(6)).join(",");
 
   useEffect(() => {
@@ -75,6 +166,10 @@ export function SliceLab({ track, onClose }: { track: DrumTrack; onClose: () => 
     setLoopPreview(false);
     services.engine.stopPreview();
   }, [sourceId, mode, doc.bpm, buffer?.duration, basePointsKey, services.engine]);
+
+  useEffect(() => {
+    setZoom({ from: 0, to: 1 });
+  }, [sourceId]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -89,8 +184,21 @@ export function SliceLab({ track, onClose }: { track: DrumTrack; onClose: () => 
     const w = canvas.width;
     const h = canvas.height;
     const data = buffer.getChannelData(0);
+    const visibleFrom = zoom.from;
+    const visibleTo = zoom.to;
+    const visibleDur = buffer.duration * (visibleTo - visibleFrom);
+    const visibleStartSec = buffer.duration * visibleFrom;
+    const visibleStartSample = Math.floor(visibleFrom * data.length);
+    const visibleEndSample = Math.floor(visibleTo * data.length);
+    const visibleLength = Math.max(1, visibleEndSample - visibleStartSample);
     const columns = Math.max(80, Math.floor(w / 3));
-    const samplesPerColumn = Math.max(1, Math.floor(data.length / columns));
+    const samplesPerColumn = Math.max(1, Math.floor(visibleLength / columns));
+    let peak = 1;
+    if (normalize) {
+      let maxAbs = 0;
+      for (let i = 0; i < data.length; i++) maxAbs = Math.max(maxAbs, Math.abs(data[i]));
+      peak = Math.max(0.01, maxAbs);
+    }
 
     context.clearRect(0, 0, w, h);
     context.fillStyle = "#111318";
@@ -98,11 +206,12 @@ export function SliceLab({ track, onClose }: { track: DrumTrack; onClose: () => 
     for (let column = 0; column < columns; column++) {
       let min = 1;
       let max = -1;
-      const start = column * samplesPerColumn;
-      const end = Math.min(data.length, start + samplesPerColumn);
+      const start = visibleStartSample + column * samplesPerColumn;
+      const end = Math.min(visibleStartSample + (column + 1) * samplesPerColumn, visibleEndSample);
       for (let i = start; i < end; i++) {
-        min = Math.min(min, data[i]);
-        max = Math.max(max, data[i]);
+        const v = data[i] / peak;
+        min = Math.min(min, v);
+        max = Math.max(max, v);
       }
       const barHeight = Math.max(1, ((max - min) / 2) * h * 0.82);
       context.fillStyle = "#69707d";
@@ -110,20 +219,34 @@ export function SliceLab({ track, onClose }: { track: DrumTrack; onClose: () => 
     }
 
     drafts.forEach((slice, index) => {
-      const x = (slice.start / buffer.duration) * w;
-      if (index === selectedIndex) {
+      const x = ((slice.start - visibleStartSec) / visibleDur) * w;
+      const sliceW = ((slice.end - slice.start) / visibleDur) * w;
+      if (index === selectedIndex && sliceW > 1) {
         context.fillStyle = "rgba(245, 158, 11, 0.12)";
-        context.fillRect(x, 0, ((slice.end - slice.start) / buffer.duration) * w, h);
+        context.fillRect(Math.max(0, x), 0, Math.min(w - Math.max(0, x), sliceW), h);
       }
-      context.fillStyle = index === selectedIndex ? "#f59e0b" : "#b8c0cc";
-      context.fillRect(Math.max(0, x - dpr), 0, 2 * dpr, h);
+      if (x >= -4 && x <= w + 4) {
+        context.fillStyle = index === selectedIndex ? "#f59e0b" : "#b8c0cc";
+        context.fillRect(Math.max(0, x - dpr), 0, 2 * dpr, h);
+      }
     });
     const last = drafts[drafts.length - 1];
     if (last) {
-      context.fillStyle = "#b8c0cc";
-      context.fillRect((last.end / buffer.duration) * w - dpr, 0, 2 * dpr, h);
+      const xLast = ((last.end - visibleStartSec) / visibleDur) * w;
+      if (xLast >= -4 && xLast <= w + 4) {
+        context.fillStyle = "#b8c0cc";
+        context.fillRect(Math.max(0, xLast - dpr), 0, 2 * dpr, h);
+      }
     }
-  }, [buffer, drafts, selectedIndex]);
+    if (playheadFrac !== null && selected) {
+      const playSec = selected.start + playheadFrac * (selected.end - selected.start);
+      const xPlay = ((playSec - visibleStartSec) / visibleDur) * w;
+      if (xPlay >= 0 && xPlay <= w) {
+        context.fillStyle = "rgba(74, 222, 128, 0.9)";
+        context.fillRect(Math.max(0, xPlay - dpr), 0, 2 * dpr, h);
+      }
+    }
+  }, [buffer, drafts, selectedIndex, zoom, normalize, playheadFrac]);
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -155,14 +278,40 @@ export function SliceLab({ track, onClose }: { track: DrumTrack; onClose: () => 
     };
   }, [selected, sourceId, track.pads]);
 
+  // Playhead animation for loop preview (DAW-style) — after selected is defined
+  useEffect(() => {
+    if (!loopPreview || !buffer || !selected) {
+      setPlayheadFrac(null);
+      previewStartRef.current = null;
+      return;
+    }
+    previewStartRef.current = performance.now();
+    let raf = 0;
+    const tick = () => {
+      const start = previewStartRef.current;
+      if (start === null) return;
+      const dur = Math.max(0.05, selected.end - selected.start);
+      const elapsed = (performance.now() - start) / 1000;
+      const frac = (elapsed % dur) / dur;
+      setPlayheadFrac(frac);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [loopPreview, buffer, selected]);
+
   const updateBoundary = (boundaryIndex: number, rawValue: number) => {
+    let snapped = rawValue;
+    if (snapZC && buffer) {
+      snapped = zeroCrossSnap(buffer.getChannelData(0), buffer.sampleRate, rawValue);
+    }
     setDrafts((current) => {
       if (boundaryIndex <= 0 || boundaryIndex >= current.length) return current;
       const previous = current[boundaryIndex - 1];
       const nextSlice = current[boundaryIndex];
       const min = previous.start + 0.001;
       const max = nextSlice.end - 0.001;
-      const value = Math.max(min, Math.min(max, Number.isFinite(rawValue) ? rawValue : min));
+      const value = Math.max(min, Math.min(max, Number.isFinite(snapped) ? snapped : min));
       const next = current.map((slice) => ({ ...slice }));
       next[boundaryIndex - 1].end = value;
       next[boundaryIndex].start = value;
@@ -196,11 +345,15 @@ export function SliceLab({ track, onClose }: { track: DrumTrack; onClose: () => 
     if (!buffer || drafts.length === 0) return;
     const rect = event.currentTarget.getBoundingClientRect();
     const x = Math.max(0, Math.min(rect.width, event.clientX - rect.left));
-    const fraction = x / Math.max(1, rect.width);
-    const markerTolerance = 12 / Math.max(1, rect.width);
-    const markerIndex = drafts.findIndex(
-      (slice, index) => index > 0 && Math.abs(slice.start / buffer.duration - fraction) <= markerTolerance,
-    );
+    const w = Math.max(1, rect.width);
+    const visibleDur = buffer.duration * (zoom.to - zoom.from);
+    const visibleStart = buffer.duration * zoom.from;
+    // Marker hit-test in pixel space (12px tolerance)
+    const markerIndex = drafts.findIndex((slice, index) => {
+      if (index === 0) return false;
+      const mx = ((slice.start - visibleStart) / visibleDur) * w;
+      return Math.abs(mx - x) <= 12;
+    });
     if (markerIndex > 0) {
       dragBoundaryRef.current = markerIndex;
       try {
@@ -210,28 +363,121 @@ export function SliceLab({ track, onClose }: { track: DrumTrack; onClose: () => 
       }
       return;
     }
-    const index = drafts.findIndex(
-      (slice) => fraction * buffer.duration >= slice.start && fraction * buffer.duration < slice.end,
-    );
-    if (index >= 0) setSelectedIndex(index);
+    // Check if clicking on a slice to select
+    const absSec = visibleStart + (x / w) * visibleDur;
+    const index = drafts.findIndex((slice) => absSec >= slice.start && absSec < slice.end);
+    if (index >= 0) {
+      setSelectedIndex(index);
+      // If zoomed, also allow pan on drag — delay pan decision to move
+      panRef.current = { startX: event.clientX, startFrom: zoom.from, startTo: zoom.to };
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      } catch {
+        /* no capture */
+      }
+      return;
+    }
+    // Click on empty area when zoomed → start pan
+    if (zoom.to - zoom.from < 0.99) {
+      panRef.current = { startX: event.clientX, startFrom: zoom.from, startTo: zoom.to };
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      } catch {
+        /* no capture */
+      }
+    }
   };
 
   const handlePointerMove = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     const boundaryIndex = dragBoundaryRef.current;
-    if (boundaryIndex === null || !buffer) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    const fraction = Math.max(0, Math.min(1, (event.clientX - rect.left) / Math.max(1, rect.width)));
-    updateBoundary(boundaryIndex, fraction * buffer.duration);
+    if (boundaryIndex !== null && buffer) {
+      const rect = event.currentTarget.getBoundingClientRect();
+      const w = Math.max(1, rect.width);
+      const visibleDur = buffer.duration * (zoom.to - zoom.from);
+      const visibleStart = buffer.duration * zoom.from;
+      const fracVisible = Math.max(0, Math.min(1, (event.clientX - rect.left) / w));
+      const absSec = visibleStart + fracVisible * visibleDur;
+      updateBoundary(boundaryIndex, absSec);
+      return;
+    }
+    if (panRef.current) {
+      const rect = event.currentTarget.getBoundingClientRect();
+      const w = Math.max(1, rect.width);
+      const dx = panRef.current.startX - event.clientX;
+      const deltaFrac = (dx / w) * (panRef.current.startTo - panRef.current.startFrom);
+      const width = panRef.current.startTo - panRef.current.startFrom;
+      let newFrom = panRef.current.startFrom + deltaFrac;
+      let newTo = panRef.current.startTo + deltaFrac;
+      if (newFrom < 0) {
+        newTo -= newFrom;
+        newFrom = 0;
+      }
+      if (newTo > 1) {
+        newFrom -= newTo - 1;
+        newTo = 1;
+      }
+      newFrom = Math.max(0, Math.min(1 - width, newFrom));
+      newTo = newFrom + width;
+      setZoom({ from: newFrom, to: newTo });
+    }
   };
 
   const finishPointer = () => {
     dragBoundaryRef.current = null;
+    panRef.current = null;
+  };
+
+  const handleWheel = (event: React.WheelEvent<HTMLCanvasElement>) => {
+    if (!buffer) return;
+    event.preventDefault();
+    const rect = (event.currentTarget as HTMLCanvasElement).getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const w = Math.max(1, rect.width);
+    const fracVisible = x / w;
+    const visibleStart = buffer.duration * zoom.from;
+    const visibleDur = buffer.duration * (zoom.to - zoom.from);
+    const anchorSec = visibleStart + fracVisible * visibleDur;
+    const anchorFrac = anchorSec / buffer.duration;
+    const factor = event.deltaY < 0 ? 0.9 : 1.1;
+    const width = zoom.to - zoom.from;
+    const newWidth = Math.max(0.05, Math.min(1, width * factor));
+    let newFrom = anchorFrac - fracVisible * newWidth;
+    let newTo = newFrom + newWidth;
+    if (newFrom < 0) {
+      newTo -= newFrom;
+      newFrom = 0;
+    }
+    if (newTo > 1) {
+      newFrom -= newTo - 1;
+      newTo = 1;
+    }
+    setZoom({ from: newFrom, to: newTo });
   };
 
   const preview = (loop: boolean) => {
-    if (!previewPad) return;
+    if (!previewPad || !selected) return;
+    let padToPreview: DrumPad = previewPad;
+    if (bpmPreview && mode !== "hits") {
+      const divisions = DIVISIONS[mode as Exclude<ChopMode, "hits">];
+      if (divisions) {
+        const stepDur = 60 / doc.bpm / divisions;
+        const sliceDur = selected.end - selected.start;
+        if (sliceDur > 0.02 && stepDur > 0.01) {
+          const pitchShift = 12 * Math.log2(stepDur / sliceDur);
+          const clampedShift = Math.max(-24, Math.min(24, pitchShift));
+          padToPreview = { ...padToPreview, pitch: clampedShift };
+        }
+      }
+    }
+    if (normalize && buffer) {
+      const data = buffer.getChannelData(0);
+      let peak = 0.01;
+      for (let i = 0; i < data.length; i++) peak = Math.max(peak, Math.abs(data[i]));
+      const gainBoost = Math.min(4, 1 / peak);
+      padToPreview = { ...padToPreview, gain: (padToPreview.gain ?? 1) * gainBoost };
+    }
     setLoopPreview(loop);
-    services.engine.previewSlice(previewPad, loop);
+    services.engine.previewSlice(padToPreview, loop);
   };
 
   const updateSelected = (values: Partial<DraftSlice>) => {
@@ -321,8 +567,52 @@ export function SliceLab({ track, onClose }: { track: DrumTrack; onClose: () => 
                   onPointerUp={finishPointer}
                   onPointerCancel={finishPointer}
                   onPointerLeave={finishPointer}
-                  aria-label="Sample waveform with slice markers"
+                  onWheel={handleWheel}
+                  aria-label="Sample waveform with slice markers — drag to pan when zoomed, wheel to zoom, double-click to fit"
+                  onDoubleClick={() => setZoom({ from: 0, to: 1 })}
                 />
+
+                <div className="slice-dialog-zoom-row" role="group" aria-label="Zoom and tools">
+                  <button type="button" className="btn btn-small" title="Fit to view (double-click waveform)" onClick={() => setZoom({ from: 0, to: 1 })}>
+                    FIT
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-small"
+                    title="Zoom in"
+                    onClick={() => {
+                      const w = zoom.to - zoom.from;
+                      const nw = Math.max(0.05, w * 0.7);
+                      const c = (zoom.from + zoom.to) / 2;
+                      setZoom({ from: Math.max(0, c - nw / 2), to: Math.min(1, c + nw / 2) });
+                    }}
+                  >
+                    ZOOM IN
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-small"
+                    title="Zoom out"
+                    onClick={() => {
+                      const w = zoom.to - zoom.from;
+                      const nw = Math.min(1, w * 1.4);
+                      const c = (zoom.from + zoom.to) / 2;
+                      setZoom({ from: Math.max(0, c - nw / 2), to: Math.min(1, c + nw / 2) });
+                    }}
+                  >
+                    ZOOM OUT
+                  </button>
+                  <span className="slice-zoom-hint">drag waveform to pan · wheel to zoom · double-click FIT</span>
+                  <label className="slice-check">
+                    <input type="checkbox" checked={snapZC} onChange={(e) => setSnapZC(e.target.checked)} /> SNAP ZC
+                  </label>
+                  <label className="slice-check">
+                    <input type="checkbox" checked={normalize} onChange={(e) => setNormalize(e.target.checked)} /> NORM
+                  </label>
+                  <label className="slice-check">
+                    <input type="checkbox" checked={bpmPreview} onChange={(e) => setBpmPreview(e.target.checked)} /> BPM PREVIEW
+                  </label>
+                </div>
 
                 <div className="slice-dialog-mode-row" role="group" aria-label="Slice mode">
                   {(Object.keys(DIVISIONS) as Exclude<ChopMode, "hits">[]).map((division) => (
@@ -345,6 +635,29 @@ export function SliceLab({ track, onClose }: { track: DrumTrack; onClose: () => 
                     HITS
                   </button>
                 </div>
+
+                {mode === "hits" && (
+                  <div className="slice-dialog-hits-controls">
+                    <label className="slice-hits-sensitivity">
+                      <span>SENS {sensitivity.toFixed(1)}</span>
+                      <input
+                        type="range"
+                        min={0.5}
+                        max={2}
+                        step={0.1}
+                        value={sensitivity}
+                        onChange={(e) => setSensitivity(Number(e.target.value))}
+                      />
+                    </label>
+                    <label className="slice-check">
+                      <input type="checkbox" checked={snapGrid} onChange={(e) => setSnapGrid(e.target.checked)} /> SNAP
+                      TO GRID (1/16)
+                    </label>
+                    <span className="slice-hits-status">
+                      {hitsLoading ? "Detecting…" : `${hitsPoints.length} hits`}
+                    </span>
+                  </div>
+                )}
 
                 <div className="slice-dialog-selection">
                   <div className="slice-dialog-selection-head">
