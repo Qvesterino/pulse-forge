@@ -26,6 +26,7 @@ export type EffectType =
   | "stutter"
   | "comb"
   | "vowel"
+  | "duckDelay"
   | "msEq"
   | "haasWidener"
   | "multiband"

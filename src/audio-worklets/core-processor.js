@@ -14,3 +14,4 @@ import "./stutter-processor.js";
 import "./tape-processor.js";
 import "./comb-processor.js";
 import "./vowel-processor.js";
+import "./ducking-delay-processor.js";

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useDoc, useServices } from "./context";
 import type { InstrumentTrack, NoteEvent, Pattern } from "../project-model/types";
 import { STEP_TICKS, pitchName } from "../project-model/types";
@@ -9,7 +9,9 @@ import {
   deleteNotes,
   duplicateNotes,
   glueNotes,
+  nudgeNotes,
   quantizeNotes,
+  setNotesVelocities,
   setNotesVelocity,
   splitNotes,
   moveNote,
@@ -59,7 +61,7 @@ export function PianoRollTrack({
   const [drag, setDrag] = useState<DragState | null>(null);
   const notes = pattern.notes?.[track.id] ?? [];
   const patternTicks = STEP_TICKS * pattern.stepCount;
-  const [velDrag, setVelDrag] = useState<{ noteId: string; startY: number; startVel: number } | null>(null);
+  const [velDrag, setVelDrag] = useState<{ anchorId: string; startY: number; startVels: Record<string, number> } | null>(null);
   const [noteClipboard, setNoteClipboard] = useState<NoteEvent[] | null>(null);
 
   // Scale awareness
@@ -231,22 +233,38 @@ export function PianoRollTrack({
     } catch {
       /* no capture */
     }
-    setVelDrag({ noteId: note.id, startY: e.clientY, startVel: note.velocity });
-    onSelectNote({ trackId: track.id, noteIds: [note.id] });
+    const isInSel = selectedNote?.trackId === track.id && selectedNote.noteIds.includes(note.id);
+    if (isInSel && selectedNote!.noteIds.length > 1) {
+      const map: Record<string, number> = {};
+      for (const nid of selectedNote!.noteIds) {
+        const n = notes.find((x) => x.id === nid);
+        if (n) map[nid] = n.velocity;
+      }
+      setVelDrag({ anchorId: note.id, startY: e.clientY, startVels: map });
+    } else {
+      setVelDrag({ anchorId: note.id, startY: e.clientY, startVels: { [note.id]: note.velocity } });
+      onSelectNote({ trackId: track.id, noteIds: [note.id] });
+    }
   };
   const onVelPointerMove = (e: React.PointerEvent) => {
     if (!velDrag) return;
     const delta = velDrag.startY - e.clientY;
-    const v = clamp(velDrag.startVel + delta / 120, 0.05, 1);
-    // live preview: update drag visual only, commit on up
-    const el = document.querySelector(`[data-vel="${velDrag.noteId}"]`) as HTMLElement | null;
-    if (el) el.style.height = `${v * 100}%`;
+    for (const [nid, startVel] of Object.entries(velDrag.startVels)) {
+      const v = clamp(startVel + delta / 120, 0.05, 1);
+      const el = document.querySelector(`[data-vel="${nid}"]`) as HTMLElement | null;
+      if (el) el.style.height = `${v * 100}%`;
+    }
   };
   const onVelPointerUp = (e: React.PointerEvent) => {
     if (!velDrag) return;
     const delta = velDrag.startY - e.clientY;
-    const v = clamp(velDrag.startVel + delta / 120, 0.05, 1);
-    services.store.execute(setNotesVelocity(doc, track.id, [velDrag.noteId], v));
+    const velocities: Record<string, number> = {};
+    for (const [nid, startVel] of Object.entries(velDrag.startVels)) {
+      velocities[nid] = clamp(startVel + delta / 120, 0.05, 1);
+    }
+    const ids = Object.keys(velocities);
+    if (ids.length === 1) services.store.execute(setNotesVelocity(doc, track.id, ids, velocities[ids[0]]));
+    else services.store.execute(setNotesVelocities(doc, track.id, velocities));
     setVelDrag(null);
   };
 
@@ -293,6 +311,30 @@ export function PianoRollTrack({
       console.warn(e);
     }
   };
+
+  // Keyboard nudge for selected notes (arrow keys when not typing)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const typing = target && (target.tagName === "INPUT" || target.tagName === "SELECT" || target.tagName === "TEXTAREA" || target.isContentEditable);
+      if (typing) return;
+      if (!hasSelection) return;
+      if (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "ArrowUp" || e.key === "ArrowDown") {
+        // Only handle when piano roll is in viewport and user isn't holding ctrl/meta for other shortcuts
+        if (e.ctrlKey || e.metaKey) return;
+        e.preventDefault();
+        let dt = 0;
+        let dp = 0;
+        if (e.key === "ArrowLeft") dt = e.shiftKey ? -STEP_TICKS * 4 : -STEP_TICKS;
+        if (e.key === "ArrowRight") dt = e.shiftKey ? STEP_TICKS * 4 : STEP_TICKS;
+        if (e.key === "ArrowUp") dp = e.shiftKey ? 12 : 1;
+        if (e.key === "ArrowDown") dp = e.shiftKey ? -12 : -1;
+        services.store.execute(nudgeNotes(doc, track.id, selectedNote!.noteIds, dt, dp));
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [hasSelection, selectedNote, doc, track.id, services.store]);
 
   return (
     <div className="pianoroll-wrap">
@@ -396,6 +438,56 @@ export function PianoRollTrack({
             }}
           >
             V+
+          </button>
+        </div>
+        <div className="pr-toolbar-group">
+          <button type="button" className="btn btn-small" title="Nudge left 1/16" disabled={!hasSelection} onClick={() => hasSelection && services.store.execute(nudgeNotes(doc, track.id, selectedNote!.noteIds, -STEP_TICKS, 0))}>
+            ◀
+          </button>
+          <button type="button" className="btn btn-small" title="Nudge right 1/16" disabled={!hasSelection} onClick={() => hasSelection && services.store.execute(nudgeNotes(doc, track.id, selectedNote!.noteIds, STEP_TICKS, 0))}>
+            ▶
+          </button>
+          <button type="button" className="btn btn-small" title="Nudge up 1 semitone" disabled={!hasSelection} onClick={() => hasSelection && services.store.execute(nudgeNotes(doc, track.id, selectedNote!.noteIds, 0, 1))}>
+            ▲
+          </button>
+          <button type="button" className="btn btn-small" title="Nudge down 1 semitone" disabled={!hasSelection} onClick={() => hasSelection && services.store.execute(nudgeNotes(doc, track.id, selectedNote!.noteIds, 0, -1))}>
+            ▼
+          </button>
+          <button
+            type="button"
+            className="btn btn-small"
+            title="Arpeggiate Up 1/16"
+            onClick={() =>
+              runOnSelection((ids) =>
+                services.store.execute(
+                  applyMidiCreativeTool(doc, {
+                    trackId: track.id,
+                    noteIds: ids,
+                    operation: { kind: "arpeggiate", options: { mode: "up", rateTicks: STEP_TICKS, octaveRange: 1, gate: 0.9, seed: `arp-${Date.now()}` }, scaleLock: scaleSnap, key: doc.key },
+                  }),
+                ),
+              )
+            }
+          >
+            ARP
+          </button>
+          <button
+            type="button"
+            className="btn btn-small"
+            title="Note repeat x4 1/32"
+            onClick={() =>
+              runOnSelection((ids) =>
+                services.store.execute(
+                  applyMidiCreativeTool(doc, {
+                    trackId: track.id,
+                    noteIds: ids,
+                    operation: { kind: "note-repeat", options: { rateTicks: STEP_TICKS / 2, count: 4, velocityFalloff: 0.15 }, scaleLock: scaleSnap, key: doc.key },
+                  }),
+                ),
+              )
+            }
+          >
+            RPT
           </button>
         </div>
         <div className="pr-toolbar-group">

@@ -15,6 +15,7 @@ import { createStutterNode } from "../audio-worklets/stutter-node";
 import { createTapeNode } from "../audio-worklets/tape-node";
 import { createCombNode } from "../audio-worklets/comb-node";
 import { createVowelNode } from "../audio-worklets/vowel-node";
+import { createDuckingDelayNode } from "../audio-worklets/ducking-delay-node";
 
 const dbToLin = (db: number) => Math.pow(10, db / 20);
 const smooth = (param: AudioParam, value: number, when: number, tc = 0.02) =>
@@ -61,6 +62,7 @@ export const WORKLET_EFFECTS: Partial<Record<EffectType, "critical" | "degraded"
   tapeSat: "critical",
   comb: "critical",
   vowel: "critical",
+  duckDelay: "critical",
   compressor: "degraded",
   bitcrusher: "degraded",
   sidechain: "degraded",
@@ -80,7 +82,7 @@ export function effectProcessorStatus(
   const severity = WORKLET_EFFECTS[type];
   if (!severity) return "ok";
   return isWorkletReady(
-    type as "bitcrusher" | "sidechain" | "transient" | "gate" | "limiter" | "compressor" | "stepGate" | "svFilter" | "flanger" | "tremolo" | "autowah" | "stutter" | "tapeSat" | "comb" | "vowel",
+    type as "bitcrusher" | "sidechain" | "transient" | "gate" | "limiter" | "compressor" | "stepGate" | "svFilter" | "flanger" | "tremolo" | "autowah" | "stutter" | "tapeSat" | "comb" | "vowel" | "duckDelay",
     ctx,
   )
     ? "ok"
@@ -1990,6 +1992,31 @@ const vowel: EffectDefinition = {
   },
 };
 
+/* ---------------- Ducking Delay ---------------- */
+// Delay whose wet tail ducks under the dry signal so repeats bloom in gaps.
+// One envelope follower ducks the damp-filtered delay tap; feedback is not
+// ducked so the tail preserves its own decay when the dry comes back.
+
+const duckDelay: EffectDefinition = {
+  type: "duckDelay",
+  name: "Duck Delay",
+  category: "space",
+  params: [
+    { id: "time", label: "TIME", min: 30, max: 1000, default: 375, unit: "ms", format: formatMs },
+    { id: "feedback", label: "FEEDBK", min: 0, max: 0.9, default: 0.35, format: formatPct },
+    { id: "tone", label: "TONE", min: 500, max: 8000, default: 4000, unit: "Hz", format: formatHz },
+    { id: "duckAmount", label: "DUCK", min: 0, max: 1, default: 0.7, format: formatPct },
+    { id: "duckThresh", label: "THRESH", min: -60, max: 0, default: -24, unit: "dB", format: formatDb },
+    { id: "duckAttack", label: "DUCK ATK", min: 0.001, max: 0.5, default: 0.005, unit: "s", format: formatMs },
+    { id: "duckRelease", label: "DUCK REL", min: 0.02, max: 1, default: 0.18, unit: "s", format: formatMs },
+    { id: "mix", label: "MIX", min: 0, max: 1, default: 0.3, format: formatPct },
+  ],
+  factory(ctx, instance) {
+    if (isWorkletReady("duckDelay", ctx)) return createDuckingDelayNode(ctx, instance);
+    return bypassRuntime(ctx, "AudioWorklet unavailable — ducking delay bypassed (1:1 signal)");
+  },
+};
+
 /* ---------------- registry ---------------- */
 
 export const EFFECT_DEFS: Record<EffectType, EffectDefinition> = {
@@ -2007,6 +2034,7 @@ export const EFFECT_DEFS: Record<EffectType, EffectDefinition> = {
   stutter,
   comb,
   vowel,
+  duckDelay,
   reverb,
   delay,
   pump,
@@ -2042,6 +2070,7 @@ export const EFFECT_ORDER: EffectType[] = [
   "stutter",
   "comb",
   "vowel",
+  "duckDelay",
   "reverb",
   "delay",
   "pump",
@@ -2074,6 +2103,7 @@ export const CORE_EFFECT_ORDER: EffectType[] = [
   "stutter",
   "comb",
   "vowel",
+  "duckDelay",
   "tapeSat",
   "drumBuss",
   "bassBuss",

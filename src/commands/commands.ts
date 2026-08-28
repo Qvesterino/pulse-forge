@@ -1264,6 +1264,47 @@ export function setNotesVelocity(doc: ProjectDocument, trackId: string, noteIds:
   };
 }
 
+export function nudgeNotes(doc: ProjectDocument, trackId: string, noteIds: string[], deltaTicks: number, deltaPitch: number): Command {
+  const pattern = doc.patterns.find((p) => p.id === doc.activePatternId);
+  if (!pattern) throw new Error("Active pattern not found");
+  const patternTicks = pattern.stepCount * STEP_TICKS;
+  const all = activeTrackNotes(doc, trackId);
+  const targetIds = new Set(noteIds);
+  const before = all.filter((n) => targetIds.has(n.id));
+  if (before.length === 0) throw new Error("Select notes to nudge");
+  const after = all.map((n) => {
+    if (!targetIds.has(n.id)) return n;
+    const newStart = clamp(Math.round(n.start + deltaTicks), 0, Math.max(0, patternTicks - n.duration));
+    const newPitch = clamp(Math.round(n.pitch + deltaPitch), 0, 127);
+    return { ...n, start: newStart, pitch: newPitch };
+  });
+  // Keep sorted for deterministic order
+  const sortedAfter = [...after].sort((a, b) => a.start - b.start || a.pitch - b.pitch);
+  const sortedBefore = [...all].sort((a, b) => a.start - b.start || a.pitch - b.pitch);
+  return {
+    type: "nudgeNotes",
+    label: `Nudge ${before.length} notes`,
+    execute: (d) => withTrackNotes(d, trackId, () => sortedAfter),
+    undo: (d) => withTrackNotes(d, trackId, () => sortedBefore),
+  };
+}
+
+export function setNotesVelocities(doc: ProjectDocument, trackId: string, velocities: Record<string, number>): Command {
+  const all = activeTrackNotes(doc, trackId);
+  const prev = new Map(all.filter((n) => velocities[n.id] !== undefined).map((n) => [n.id, n.velocity]));
+  if (prev.size === 0) throw new Error("No matching notes for velocity update");
+  return {
+    type: "setNotesVelocities",
+    label: `Set velocity for ${prev.size} notes`,
+    execute: (d) =>
+      withTrackNotes(d, trackId, (notes) =>
+        notes.map((n) => (velocities[n.id] !== undefined ? { ...n, velocity: clamp(velocities[n.id], 0.05, 1) } : n)),
+      ),
+    undo: (d) =>
+      withTrackNotes(d, trackId, (notes) => notes.map((n) => (prev.has(n.id) ? { ...n, velocity: prev.get(n.id)! } : n))),
+  };
+}
+
 export interface ApplyMidiCreativeOptions {
   trackId: string;
   noteIds?: string[];
