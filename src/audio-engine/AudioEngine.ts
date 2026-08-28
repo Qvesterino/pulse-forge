@@ -1442,6 +1442,34 @@ export class AudioEngine {
     for (const win of windows) this.applyModulators(win.from, win.to, timeAt);
   }
 
+  /**
+   * Poll envFollower modulators and apply their envelope to FX/inst param
+   * targets (the only non-AudioParam targets that can't receive audio-rate
+   * connections). Called from the scheduler's applyModulators hook (~25 ms
+   * refresh). Volume/Pan targets already work via audio-rate connections.
+   */
+  applyEnvFollowersToParams(): void {
+    const ctx = this.ctx;
+    const doc = this.doc;
+    if (!ctx || !doc) return;
+    for (const lfo of doc.lfos) {
+      if (lfoKind(lfo) !== "envFollower") continue;
+      const target = resolveLfoTarget(lfo);
+      if (target.kind === "trackGain" || target.kind === "trackPan") continue;
+      const state = this.lfos.get(lfo.id);
+      if (!state || isOscRuntime(state)) continue;
+      const follower = (state as FollowerModRuntime).follower;
+      if (!follower || !follower.getEnvelope) continue;
+      const env = (follower as EnvFollowerHandle).getEnvelope();
+      if (!Number.isFinite(env) || env <= 0) continue;
+
+      // Map envelope 0..1 to bipolar −1..1 for the existing writer.
+      const bipolar = env * 2 - 1;
+      const writer = this.makeModulatorWriter(target);
+      if (writer) writer(bipolar * lfo.amount, "set", ctx.currentTime);
+    }
+  }
+
   applyAutomation(fromTick: number, toTick: number, relOf: (tick: number) => number, scheduleOffsetSec = 0): void {
     const ctx = this.ctx;
     const doc = this.doc;

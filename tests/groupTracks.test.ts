@@ -65,7 +65,7 @@ describe("GroupTrack", () => {
     const undone = cmd.undo(next);
     const restored = undone.tracks.find((t) => t.id === drumTrack.id);
     expect(restored).toBeDefined();
-    expect(restored!.groupId).toBeUndefined();
+    expect((restored! as { groupId?: string }).groupId).toBeUndefined();
   });
 
   it("removeFromGroup clears groupId", () => {

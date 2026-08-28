@@ -467,48 +467,75 @@ function normalizeEffects(raw: unknown, trackId: string, trackIds: Set<string>):
  * `ProjectDocument`. Callers should treat the return value as the new truth
  * and discard the input.
  */
-export function normalizeProject(doc: ProjectDocument): ProjectDocument {
-  let changed = false;
-  let next: ProjectDocument = doc;
+// ─── normalizeProject — per-domain sanitizers ───────────────────────────────
+//
+// normalizeProject used to be a single 550-line function that grew a new
+// section with every feature (markers, midi, LFO kinds, scene automation…).
+// It is now a composition of per-domain sanitizers. Each sanitizer receives
+// the evolving state and touches ONLY its own domain, deriving any id sets
+// it needs from the current state.doc.
+//
+// ORDER IS LOAD-BEARING — do not reorder without checking dependencies:
+//   activePatternId   ← patterns (ids)
+//   scenes            ← patterns (ids), activePatternId
+//   arrangement       ← scenes (ids)
+//   automation / lfos ← tracks (ids)
+//   markers           ← scenes + patterns + arrangement (tick budget)
+//   sceneAutomation   ← scenes (ids)
+//   patterns          ← tracks (padIds + trackIds) — must stay LAST
+//
+// Reference-stability contract: a sanitizer rewrites a domain ONLY when its
+// content actually changed, so `normalizeProject(canonicalDoc) === canonicalDoc`
+// (identity, not just deep equality) — templates.test.ts pins this.
 
-  // timeSignature
-  if (!isValidTimeSignature(next.timeSignature)) {
-    next = { ...next, timeSignature: { numerator: 4, denominator: 4 } };
-    changed = true;
+interface NormalizeState {
+  doc: ProjectDocument;
+  changed: boolean;
+}
+
+function normalizeTimeSignatureDomain(s: NormalizeState): void {
+  if (!isValidTimeSignature(s.doc.timeSignature)) {
+    s.doc = { ...s.doc, timeSignature: { numerator: 4, denominator: 4 } };
+    s.changed = true;
   }
+}
 
-  // bpm
-  const clampedBpm = clampBpm(next.bpm);
-  if (clampedBpm !== next.bpm) {
-    next = { ...next, bpm: clampedBpm };
-    changed = true;
+function normalizeBpmDomain(s: NormalizeState): void {
+  const clampedBpm = clampBpm(s.doc.bpm);
+  if (clampedBpm !== s.doc.bpm) {
+    s.doc = { ...s.doc, bpm: clampedBpm };
+    s.changed = true;
   }
+}
 
-  // activePatternId
-  const patternIds = new Set(next.patterns.map((p) => p.id));
-  if (next.patterns.length === 0 || !patternIds.has(next.activePatternId)) {
-    if (next.patterns.length === 0) {
+function normalizeActivePatternDomain(s: NormalizeState): void {
+  const doc = s.doc;
+  const patternIds = new Set(doc.patterns.map((p) => p.id));
+  if (doc.patterns.length === 0 || !patternIds.has(doc.activePatternId)) {
+    if (doc.patterns.length === 0) {
       // Should be impossible (createDefaultProject always seeds a pattern),
       // but synthesize a placeholder so the schema stays valid.
-      const seed = createPatternForDoc(next, "Pattern A");
-      next = {
-        ...next,
+      const seed = createPatternForDoc(doc, "Pattern A");
+      s.doc = {
+        ...doc,
         patterns: [seed],
         activePatternId: seed.id,
         scenes: [],
         arrangement: { clips: [] },
       };
-      changed = true;
+      s.changed = true;
     } else {
-      next = { ...next, activePatternId: next.patterns[0].id };
-      changed = true;
+      s.doc = { ...doc, activePatternId: doc.patterns[0].id };
+      s.changed = true;
     }
   }
+}
 
-  // tracks: ensure drum effects/instrument params/sends, strip dangling
-  const trackIds = new Set(next.tracks.map((t) => t.id));
+function normalizeTracksDomain(s: NormalizeState): void {
+  const doc = s.doc;
+  const trackIds = new Set(doc.tracks.map((t) => t.id));
   let tracksChanged = false;
-  const tracks = next.tracks.map((track): DrumTrack | InstrumentTrack | import("../project-model/types").GroupTrack => {
+  const tracks = doc.tracks.map((track): DrumTrack | InstrumentTrack | import("../project-model/types").GroupTrack => {
     if (track.kind === "drum") {
       let t: DrumTrack = track;
       const pads = t.pads.map((pad) => {
@@ -625,126 +652,135 @@ export function normalizeProject(doc: ProjectDocument): ProjectDocument {
     return t;
   });
   if (tracksChanged) {
-    next = { ...next, tracks: tracks as ProjectDocument["tracks"] };
-    changed = true;
+    s.doc = { ...doc, tracks: tracks as ProjectDocument["tracks"] };
+    s.changed = true;
   }
+}
 
-  // scenes
-  let scenes: Scene[] | undefined = next.scenes;
+function normalizeScenesDomain(s: NormalizeState): void {
+  const doc = s.doc;
+  const patternIds = new Set(doc.patterns.map((p) => p.id));
+  const scenes = doc.scenes;
   if (!Array.isArray(scenes) || scenes.length === 0) {
-    scenes = [defaultSceneFor(next)];
-    changed = true;
-  } else {
-    const filtered = scenes.filter((s) => patternIds.has(s.patternId));
-    if (filtered.length !== scenes.length) {
-      scenes = filtered.length > 0 ? filtered : [defaultSceneFor(next)];
-      changed = true;
-    }
+    s.doc = { ...doc, scenes: [defaultSceneFor(doc)] };
+    s.changed = true;
+    return;
   }
-  if (scenes !== next.scenes) {
-    next = { ...next, scenes: scenes! };
+  const filtered = scenes.filter((sc) => patternIds.has(sc.patternId));
+  if (filtered.length !== scenes.length) {
+    s.doc = { ...doc, scenes: filtered.length > 0 ? filtered : [defaultSceneFor(doc)] };
+    s.changed = true;
   }
-  const sceneIds = new Set(next.scenes.map((s) => s.id));
+}
 
-  // arrangement
-  let arrangement = next.arrangement;
+function normalizeArrangementDomain(s: NormalizeState): void {
+  const doc = s.doc;
+  const sceneIds = new Set(doc.scenes.map((sc) => sc.id));
+  let arrangement = doc.arrangement;
   if (arrangement === undefined || arrangement === null) {
-    arrangement = { clips: [] };
-    changed = true;
-  } else {
-    const rawClips = Array.isArray(arrangement.clips) ? arrangement.clips : [];
-    const sorted = [...rawClips]
-      .filter((c) => sceneIds.has(c.sceneId) && Number.isFinite(c.startBar) && c.startBar >= 0 && c.lengthBars >= 1)
-      .sort((a, b) => a.startBar - b.startBar);
-    const transitions = sanitizeArrangementTransitions(arrangement.transitions, sorted);
-    const clipsChanged = sorted.length !== rawClips.length || sorted.some((clip, index) => clip !== rawClips[index]);
-    const transitionsChanged = JSON.stringify(transitions) !== JSON.stringify(arrangement.transitions);
-    if (clipsChanged || transitionsChanged) {
-      arrangement = { clips: sorted, ...(transitions !== undefined ? { transitions } : {}) };
-      changed = true;
-    }
+    s.doc = { ...doc, arrangement: { clips: [] } };
+    s.changed = true;
+    return;
   }
-  if (arrangement !== next.arrangement) {
-    next = { ...next, arrangement };
+  const rawClips = Array.isArray(arrangement.clips) ? arrangement.clips : [];
+  const sorted = [...rawClips]
+    .filter((c) => sceneIds.has(c.sceneId) && Number.isFinite(c.startBar) && c.startBar >= 0 && c.lengthBars >= 1)
+    .sort((a, b) => a.startBar - b.startBar);
+  const transitions = sanitizeArrangementTransitions(arrangement.transitions, sorted);
+  const clipsChanged = sorted.length !== rawClips.length || sorted.some((clip, index) => clip !== rawClips[index]);
+  const transitionsChanged = JSON.stringify(transitions) !== JSON.stringify(arrangement.transitions);
+  if (clipsChanged || transitionsChanged) {
+    s.doc = { ...doc, arrangement: { clips: sorted, ...(transitions !== undefined ? { transitions } : {}) } };
+    s.changed = true;
   }
+}
 
-  // automation / lfos — ensure arrays, filter dangling
-  let automation = next.automation;
+function normalizeAutomationDomain(s: NormalizeState): void {
+  const doc = s.doc;
+  const trackIds = new Set(doc.tracks.map((t) => t.id));
+  const automation = doc.automation;
   if (!Array.isArray(automation)) {
-    automation = [];
-    changed = true;
-  } else {
-    const filtered = automation.filter((lane) => trackIds.has(lane.target.trackId));
-    if (filtered.length !== automation.length) {
-      automation = filtered;
-      changed = true;
-    }
+    s.doc = { ...doc, automation: [] };
+    s.changed = true;
+    return;
   }
-  let lfos = next.lfos;
+  const filtered = automation.filter((lane) => trackIds.has(lane.target.trackId));
+  if (filtered.length !== automation.length) {
+    s.doc = { ...doc, automation: filtered };
+    s.changed = true;
+  }
+}
+
+function normalizeLfosDomain(s: NormalizeState): void {
+  const doc = s.doc;
+  const trackIds = new Set(doc.tracks.map((t) => t.id));
+  const lfos = doc.lfos;
   if (!Array.isArray(lfos)) {
-    lfos = [];
-    changed = true;
-  } else {
-    // Full sanitizer pass: dangling refs, unknown kinds/waves, clamped ranges,
-    // step arrays normalized to 8/16/32 — see modulators.ts.
-    const sanitized: Lfo[] = [];
-    for (const lfo of lfos) {
-      const cleaned = sanitizeLfo(lfo, trackIds);
-      if (cleaned) sanitized.push(cleaned);
-    }
-    const shapeChanged = sanitized.length !== lfos.length
-      || sanitized.some((lfo, i) => lfo !== lfos[i]);
-    if (shapeChanged) {
-      lfos = sanitized;
-      changed = true;
-    }
+    s.doc = { ...doc, lfos: [] };
+    s.changed = true;
+    return;
   }
-  if (automation !== next.automation) next = { ...next, automation };
-  if (lfos !== next.lfos) next = { ...next, lfos };
+  // Full sanitizer pass: dangling refs, unknown kinds/waves, clamped ranges,
+  // step arrays normalized to 8/16/32 — see modulators.ts.
+  const sanitized: Lfo[] = [];
+  for (const lfo of lfos) {
+    const cleaned = sanitizeLfo(lfo, trackIds);
+    if (cleaned) sanitized.push(cleaned);
+  }
+  const shapeChanged = sanitized.length !== lfos.length
+    || sanitized.some((lfo, i) => lfo !== lfos[i]);
+  if (shapeChanged) {
+    s.doc = { ...doc, lfos: sanitized };
+    s.changed = true;
+  }
+}
 
-  // macros
-  if (!Array.isArray(next.macros) || next.macros.length === 0) {
-    next = { ...next, macros: defaultMacros() };
-    changed = true;
-  } else {
-    // Update existing macros: forward-fill default source "macro" on mappings.
-    let macrosChanged = false;
-    const cleanedMacros: Macro[] = [];
-    for (const macro of next.macros) {
-      let macroChanged = false;
-      const cleanedMappings: MacroMapping[] = [];
-      for (const mapping of macro.mappings) {
-        const sanitized = sanitizeMacroMapping(mapping);
-        if (!sanitized) continue;
-        if (
-          sanitized.id !== mapping.id ||
-          sanitized.trackId !== mapping.trackId ||
-          sanitized.param !== mapping.param ||
-          sanitized.amount !== mapping.amount ||
-          sanitized.source !== (mapping.source ?? "macro")
-        ) {
-          macroChanged = true;
-        }
-        cleanedMappings.push(sanitized);
+function normalizeMacrosDomain(s: NormalizeState): void {
+  const doc = s.doc;
+  if (!Array.isArray(doc.macros) || doc.macros.length === 0) {
+    s.doc = { ...doc, macros: defaultMacros() };
+    s.changed = true;
+    return;
+  }
+  // Update existing macros: forward-fill default source "macro" on mappings.
+  let macrosChanged = false;
+  const cleanedMacros: Macro[] = [];
+  for (const macro of doc.macros) {
+    let macroChanged = false;
+    const cleanedMappings: MacroMapping[] = [];
+    for (const mapping of macro.mappings) {
+      const sanitized = sanitizeMacroMapping(mapping);
+      if (!sanitized) continue;
+      if (
+        sanitized.id !== mapping.id ||
+        sanitized.trackId !== mapping.trackId ||
+        sanitized.param !== mapping.param ||
+        sanitized.amount !== mapping.amount ||
+        sanitized.source !== (mapping.source ?? "macro")
+      ) {
+        macroChanged = true;
       }
-      // A legitimate 0 must survive — `|| 0.5` would rewrite it, silently
-      // resetting user macros on every load/import/collab snapshot.
-      const macroNumber = Number(macro.value);
-      const validValue = Math.max(0, Math.min(1, Number.isFinite(macroNumber) ? macroNumber : 0.5));
-      if (validValue !== macro.value) macroChanged = true;
-      if (cleanedMappings.length !== macro.mappings.length) macroChanged = true;
-      if (macroChanged) macrosChanged = true;
-      cleanedMacros.push({ ...macro, value: validValue, mappings: cleanedMappings });
+      cleanedMappings.push(sanitized);
     }
-    if (macrosChanged) {
-      next = { ...next, macros: cleanedMacros };
-      changed = true;
-    }
+    // A legitimate 0 must survive — `|| 0.5` would rewrite it, silently
+    // resetting user macros on every load/import/collab snapshot.
+    const macroNumber = Number(macro.value);
+    const validValue = Math.max(0, Math.min(1, Number.isFinite(macroNumber) ? macroNumber : 0.5));
+    if (validValue !== macro.value) macroChanged = true;
+    if (cleanedMappings.length !== macro.mappings.length) macroChanged = true;
+    if (macroChanged) macrosChanged = true;
+    cleanedMacros.push({ ...macro, value: validValue, mappings: cleanedMappings });
   }
+  if (macrosChanged) {
+    s.doc = { ...doc, macros: cleanedMacros };
+    s.changed = true;
+  }
+}
 
-  // scenes — backfill intensity (default 0.7) on older scenes.
+function normalizeSceneDetailsDomain(s: NormalizeState): void {
+  // Backfill intensity (default 0.7) on older scenes; clamp curve/loop/role.
   let scenesChanged = false;
-  const cleanedScenes: Scene[] = next.scenes.map((scene) => {
+  const cleanedScenes: Scene[] = s.doc.scenes.map((scene) => {
     let sceneChanged = false;
     const intensity = clampIntensity(scene.intensity);
     if (intensity !== scene.intensity) {
@@ -773,61 +809,74 @@ export function normalizeProject(doc: ProjectDocument): ProjectDocument {
     return { ...scene, intensity, intensityCurve: curve, loop, role };
   });
   if (scenesChanged) {
-    next = { ...next, scenes: cleanedScenes };
-    changed = true;
+    s.doc = { ...s.doc, scenes: cleanedScenes };
+    s.changed = true;
   }
+}
 
+function normalizeKeyAndTagsDomain(s: NormalizeState): void {
+  let doc = s.doc;
   // project.key — clamp to valid MUSICAL_KEYS.
-  if (next.key !== undefined && !isMusicalKey(next.key)) {
-    next = { ...next, key: undefined };
-    changed = true;
+  if (doc.key !== undefined && !isMusicalKey(doc.key)) {
+    doc = { ...doc, key: undefined };
+    s.changed = true;
   }
-
   // project.tags — clamp to string[] (non-empty strings).
-  if (next.tags !== undefined) {
-    if (!Array.isArray(next.tags)) {
-      next = { ...next, tags: [] };
-      changed = true;
+  if (doc.tags !== undefined) {
+    if (!Array.isArray(doc.tags)) {
+      doc = { ...doc, tags: [] };
+      s.changed = true;
     } else {
-      const cleanedTags = next.tags.filter((t): t is string => typeof t === "string" && t.trim() !== "");
-      if (cleanedTags.length !== next.tags.length) {
-        next = { ...next, tags: cleanedTags };
-        changed = true;
+      const cleanedTags = doc.tags.filter((t): t is string => typeof t === "string" && t.trim() !== "");
+      if (cleanedTags.length !== doc.tags.length) {
+        doc = { ...doc, tags: cleanedTags };
+        s.changed = true;
       }
     }
   }
+  s.doc = doc;
+}
 
+function normalizeMarkersDomain(s: NormalizeState): void {
+  const doc = s.doc;
   // markers — backfill array, clamp each.
   const totalProjectTicks = Math.max(
     0,
-    ...next.scenes.map((s) => (next.patterns.find((p) => p.id === s.patternId)?.stepCount ?? 0) * STEP_TICKS),
-    ...next.arrangement?.clips?.map((c) => (c.startBar + c.lengthBars) * BAR_TICKS) ?? [],
+    ...doc.scenes.map((sc) => (doc.patterns.find((p) => p.id === sc.patternId)?.stepCount ?? 0) * STEP_TICKS),
+    ...doc.arrangement?.clips?.map((c) => (c.startBar + c.lengthBars) * BAR_TICKS) ?? [],
   );
-  const cleanedMarkers = sanitizeMarkers(next.markers, totalProjectTicks);
+  const cleanedMarkers = sanitizeMarkers(doc.markers, totalProjectTicks);
   const markersChanged =
-    !Array.isArray(next.markers) ||
-    JSON.stringify(cleanedMarkers) !== JSON.stringify(next.markers);
+    !Array.isArray(doc.markers) ||
+    JSON.stringify(cleanedMarkers) !== JSON.stringify(doc.markers);
   if (markersChanged) {
-    next = { ...next, markers: cleanedMarkers };
-    changed = true;
+    s.doc = { ...doc, markers: cleanedMarkers };
+    s.changed = true;
   }
+}
 
+function normalizeSceneAutomationDomain(s: NormalizeState): void {
+  const doc = s.doc;
   // scene automation — clamp to valid scenes + non-empty lanes.
-  const liveSceneIds = new Set(next.scenes.map((s) => s.id));
-  const cleanedSceneAuto = sanitizeSceneAutomation(next.sceneAutomation, liveSceneIds);
+  const liveSceneIds = new Set(doc.scenes.map((sc) => sc.id));
+  const cleanedSceneAuto = sanitizeSceneAutomation(doc.sceneAutomation, liveSceneIds);
   // Only replace if the content actually changed (sanitize rebuilds objects,
   // so a reference equality check would always fail). JSON.stringify is fine
   // here — the structures are small and we run this on save/commit only.
   const sceneAutoChanged =
-    !Array.isArray(next.sceneAutomation) ||
-    JSON.stringify(cleanedSceneAuto) !== JSON.stringify(next.sceneAutomation);
+    !Array.isArray(doc.sceneAutomation) ||
+    JSON.stringify(cleanedSceneAuto) !== JSON.stringify(doc.sceneAutomation);
   if (sceneAutoChanged) {
-    next = { ...next, sceneAutomation: cleanedSceneAuto };
-    changed = true;
+    s.doc = { ...doc, sceneAutomation: cleanedSceneAuto };
+    s.changed = true;
   }
+}
+
+function normalizeMasterAndReturnsDomain(s: NormalizeState): void {
+  let doc = s.doc;
   // master — clamp gain + ceiling; backfill missing fields from defaults
-  if (isObject(next.master)) {
-    const m = next.master as Record<string, unknown>;
+  if (isObject(doc.master)) {
+    const m = doc.master as Record<string, unknown>;
     const dg = clampMasterGain(m.masterGain);
     const dc = clampCeilingDb(m.ceilingDb);
     const dl = typeof m.limiterEnabled === "boolean" ? m.limiterEnabled : true;
@@ -838,55 +887,66 @@ export function normalizeProject(doc: ProjectDocument): ProjectDocument {
       dl !== m.limiterEnabled ||
       dcl !== m.clipperEnabled
     ) {
-      next = { ...next, master: { masterGain: dg, ceilingDb: dc, limiterEnabled: dl, clipperEnabled: dcl } };
-      changed = true;
+      doc = { ...doc, master: { masterGain: dg, ceilingDb: dc, limiterEnabled: dl, clipperEnabled: dcl } };
+      s.changed = true;
     }
   }
   // returns
-  if (!Array.isArray(next.returns)) {
-    next = { ...next, returns: createDefaultReturns() };
-    changed = true;
+  if (!Array.isArray(doc.returns)) {
+    doc = { ...doc, returns: createDefaultReturns() };
+    s.changed = true;
   }
   // master
-  if (next.master === undefined || next.master === null || typeof next.master !== "object") {
-    next = { ...next, master: defaultMasterConfig() };
-    changed = true;
+  if (doc.master === undefined || doc.master === null || typeof doc.master !== "object") {
+    doc = { ...doc, master: defaultMasterConfig() };
+    s.changed = true;
   }
+  s.doc = doc;
+}
 
+function normalizeTimestampsDomain(s: NormalizeState): void {
+  let doc = s.doc;
   // createdAt / updatedAt
-  if (typeof next.createdAt !== "string" || !Number.isFinite(Date.parse(next.createdAt))) {
-    next = { ...next, createdAt: new Date().toISOString() };
-    changed = true;
+  if (typeof doc.createdAt !== "string" || !Number.isFinite(Date.parse(doc.createdAt))) {
+    doc = { ...doc, createdAt: new Date().toISOString() };
+    s.changed = true;
   }
-  if (typeof next.updatedAt !== "string" || !Number.isFinite(Date.parse(next.updatedAt))) {
-    next = { ...next, updatedAt: new Date().toISOString() };
-    changed = true;
+  if (typeof doc.updatedAt !== "string" || !Number.isFinite(Date.parse(doc.updatedAt))) {
+    doc = { ...doc, updatedAt: new Date().toISOString() };
+    s.changed = true;
   }
+  s.doc = doc;
+}
 
+function normalizeGrooveDomain(s: NormalizeState): void {
+  const doc = s.doc;
   // groove — clamp optional swing/humanize settings
-  if (next.groove !== undefined) {
-    if (!isObject(next.groove)) {
-      next = { ...next, groove: undefined };
-      changed = true;
+  if (doc.groove !== undefined) {
+    if (!isObject(doc.groove)) {
+      s.doc = { ...doc, groove: undefined };
+      s.changed = true;
     } else {
-      const g = next.groove;
+      const g = doc.groove;
       const swing = clampUnit(g.swing);
       const humanizeTiming = clampUnit(g.humanizeTiming);
       const humanizeVelocity = clampUnit(g.humanizeVelocity);
       if (swing !== g.swing || humanizeTiming !== g.humanizeTiming || humanizeVelocity !== g.humanizeVelocity) {
-        next = { ...next, groove: { swing, humanizeTiming, humanizeVelocity } };
-        changed = true;
+        s.doc = { ...doc, groove: { swing, humanizeTiming, humanizeVelocity } };
+        s.changed = true;
       }
     }
   }
+}
 
+function normalizeMidiDomain(s: NormalizeState): void {
+  const doc = s.doc;
   // midi — sanitize optional MIDI config
-  if (next.midi !== undefined) {
-    if (!isObject(next.midi)) {
-      next = { ...next, midi: undefined };
-      changed = true;
+  if (doc.midi !== undefined) {
+    if (!isObject(doc.midi)) {
+      s.doc = { ...doc, midi: undefined };
+      s.changed = true;
     } else {
-      const m = next.midi as Record<string, unknown>;
+      const m = doc.midi as Record<string, unknown>;
       const enabled = m.enabled === true;
       const deviceId = typeof m.deviceId === "string" ? m.deviceId : "";
       const drumChannel = typeof m.drumChannel === "number" ? Math.max(0, Math.min(16, m.drumChannel)) : 0;
@@ -902,16 +962,19 @@ export function normalizeProject(doc: ProjectDocument): ProjectDocument {
         instrumentChannel !== (typeof m.instrumentChannel === "number" ? m.instrumentChannel : 0) ||
         pitchBendRange !== (typeof m.pitchBendRange === "number" ? m.pitchBendRange : 2)
       ) {
-        next = { ...next, midi: { enabled, deviceId, drumChannel, instrumentChannel, ccMappings, drumNoteMap, pitchBendRange } };
-        changed = true;
+        s.doc = { ...doc, midi: { enabled, deviceId, drumChannel, instrumentChannel, ccMappings, drumNoteMap, pitchBendRange } };
+        s.changed = true;
       }
     }
   }
+}
 
-  // patterns: stepCount, rows, notes, stepMeta
-  const padIds = new Set(allPadIds(next));
+function normalizePatternsDomain(s: NormalizeState): void {
+  const doc = s.doc;
+  const padIds = new Set(allPadIds(doc));
+  const trackIds = new Set(doc.tracks.map((t) => t.id));
   let patternsChanged = false;
-  const patterns = next.patterns.map((pattern) => {
+  const patterns = doc.patterns.map((pattern) => {
     let p = pattern;
     const safeStepCount = normalizeStepCount(p.stepCount);
     if (safeStepCount !== p.stepCount) {
@@ -1020,11 +1083,46 @@ export function normalizeProject(doc: ProjectDocument): ProjectDocument {
     return p;
   });
   if (patternsChanged) {
-    next = { ...next, patterns };
-    changed = true;
+    s.doc = { ...doc, patterns };
+    s.changed = true;
   }
+}
 
-  return changed ? next : doc;
+const NORMALIZE_DOMAINS: ((s: NormalizeState) => void)[] = [
+  normalizeTimeSignatureDomain,
+  normalizeBpmDomain,
+  normalizeActivePatternDomain,
+  normalizeTracksDomain,
+  normalizeScenesDomain,
+  normalizeArrangementDomain,
+  normalizeAutomationDomain,
+  normalizeLfosDomain,
+  normalizeMacrosDomain,
+  normalizeSceneDetailsDomain,
+  normalizeKeyAndTagsDomain,
+  normalizeMarkersDomain,
+  normalizeSceneAutomationDomain,
+  normalizeMasterAndReturnsDomain,
+  normalizeTimestampsDomain,
+  normalizeGrooveDomain,
+  normalizeMidiDomain,
+  normalizePatternsDomain,
+];
+
+/**
+ * Bring a project document (possibly loaded from disk, possibly mutated by an
+ * outdated client or a collab peer) to a state the current engine can use
+ * without errors. See the per-domain sanitizer block above for the domain
+ * breakdown and the load-bearing ordering contract.
+ *
+ * Normalization is idempotent and never throws — it always returns a valid
+ * `ProjectDocument`. Callers should treat the return value as the new truth
+ * and discard the input.
+ */
+export function normalizeProject(doc: ProjectDocument): ProjectDocument {
+  const state: NormalizeState = { doc, changed: false };
+  for (const domain of NORMALIZE_DOMAINS) domain(state);
+  return state.changed ? state.doc : doc;
 }
 
 export const ensurePatternRows = normalizeProject;

@@ -15,12 +15,6 @@ import {
   deepEqualRef,
 } from "../src/commands/docDelta";
 import {
-  createDefaultProject,
-  createDrumTrackModel,
-  createPatternForDoc,
-  normalizeProject,
-} from "../src/project-model/schema";
-import {
   createScene,
   createPattern,
   duplicatePattern,
@@ -52,8 +46,6 @@ import {
   setBpm,
   setProjectName,
   addNote,
-  deleteNote,
-  deleteNotes,
   addEffect,
   removeEffect,
   moveEffect,
@@ -61,29 +53,30 @@ import {
   setActivePattern,
   freezeTrack,
   unfreezeTrack,
-} from "../src/commands/commands";
-import type { Command } from "../src/commands/types";
-import type { ProjectDocument, DrumTrack, InstrumentTrack } from "../src/project-model/types";
-import { getActivePattern } from "../src/project-model/types";
+  __resetSnapshotVerificationFallbacks,
+  __snapshotVerificationFallbacks,
+} from "../src/commands/commands";import type { Command } from "../src/commands/types";
+import type { ProjectDocument } from "../src/project-model/types";
+import {
+  activePatternOf,
+  commandHarness,
+  deterministicTestDoc,
+  drumTrackOf,
+  instTrackOf,
+  testDoc,
+} from "./fixtures/doc";
 
 // ─── Harness ────────────────────────────────────────────────────────────────
 
-const house = (): ProjectDocument => createDefaultProject();
-const drum = (doc: ProjectDocument): DrumTrack =>
-  doc.tracks.find((t) => t.kind === "drum")!;
-const inst = (doc: ProjectDocument): InstrumentTrack =>
-  doc.tracks.find((t) => t.kind === "instrument")!;
+const house = testDoc;
+const drum = drumTrackOf;
+const inst = instTrackOf;
 
-function roundTrip(cmd: ReturnType<typeof house>, doc: ProjectDocument): void {
+function roundTrip(cmd: Command, doc: ProjectDocument): void {
   const result = cmd.execute(doc);
   const back = cmd.undo(result);
   expect(deepEqualRef(back, doc)).toBe(true);
   expect(deepEqualRef(result, doc)).toBe(false);
-}
-
-function cmdChangesDocument(cmd: ReturnType<typeof house>, doc: ProjectDocument): boolean {
-  const result = cmd.execute(doc);
-  return !deepEqualRef(result, doc);
 }
 
 // ─── 1. Engine correctness ──────────────────────────────────────────────────
@@ -122,7 +115,7 @@ describe("docDelta — primitive values", () => {
 describe("docDelta — entity arrays", () => {
   it("add entity to empty array", () => {
     const a = { ...house(), markers: [] as any[] };
-    const marker = { id: "m1", name: "X", type: "cue", tick: 0 };
+    const marker = { id: "m1", name: "X", type: "cue" as const, tick: 0 };
     const b = { ...a, markers: [marker] };
     const delta = computeDocDelta(a, b);
     expect(delta.ops.length).toBeGreaterThan(0);
@@ -161,7 +154,7 @@ describe("docDelta — nested arrays (rows, points, notes)", () => {
   it("number array cell change", () => {
     const a = house();
     const padId = drum(a).pads[0].id;
-    const pattern = getActivePattern(a);
+    const pattern = activePatternOf(a);
     const row = [...pattern.rows[padId]];
     row[3] = 0.9;
     const b = {
@@ -176,7 +169,7 @@ describe("docDelta — nested arrays (rows, points, notes)", () => {
   });
 
   it("automation points array change", () => {
-    const a = normalizeProject({ ...house(), automation: [] });
+    const a = { ...house(), automation: [] };
     const lane = { id: "lane-1", target: { kind: "trackGain" as const, trackId: drum(a).id }, points: [{ tick: 0, value: 0.5 }] };
     const b = { ...a, automation: [lane] };
     const delta = computeDocDelta(a, b);
@@ -385,7 +378,15 @@ describe("snapshot commands — execute/undo round-trip", () => {
 });
 
 describe("snapshot commands — every cmd actually changes the document", () => {
-  it("structural commands produce a new document", () => {
+  it("structural commands produce a new document AND use the delta path (no legacy fallbacks)", () => {
+    // Two invariants in one battery:
+    //   1. Every command changes the doc (catches vacuous-verification bugs —
+    //      a command that mutates prev in place would no-op here).
+    //   2. ZERO snapshot() calls fall back to the legacy whole-document
+    //      command — if the delta engine ever fails self-verification for a
+    //      real command shape, this assertion surfaces it immediately.
+    __resetSnapshotVerificationFallbacks();
+    const fallbacksBefore = __snapshotVerificationFallbacks();
     const doc = house();
     const withPat = createPattern(doc, "X").execute(doc);
     const withExtraDrum = createDrumTrack(withPat).execute(withPat);
@@ -430,6 +431,10 @@ describe("snapshot commands — every cmd actually changes the document", () => 
       const result = cmd.execute(d);
       expect(result, `${name}: execute should change the doc`).not.toBe(d);
     }
+    expect(
+      __snapshotVerificationFallbacks(),
+      "every snapshot command must pass delta self-verification (fallback counter must stay at zero)",
+    ).toBe(fallbacksBefore);
   });
 });
 
@@ -447,5 +452,40 @@ describe("snapshot commands — fallback safety", () => {
     expect(applyDocDelta(doc, delta.ops)).toBe(doc); // same reference
     // Clean up — reset the mutation.
     (mutated as any).bpm = 120;
+  });
+});
+
+describe("fixtures — testDoc / commandHarness / deterministic ids", () => {
+  it("testDoc has an empty arrangement (clips can be placed anywhere)", () => {
+    const doc = testDoc();
+    expect(doc.arrangement.clips).toHaveLength(0);
+    // Bar 0 placement works — the house template's bar-0 clip is gone.
+    const result = addArrangementClip(doc, doc.scenes[0].id, 0, 1).execute(doc);
+    expect(result.arrangement.clips).toHaveLength(1);
+  });
+
+  it("harness keeps build-from and execute-on the same doc by construction", () => {
+    // Regression for the whole class of "command created from instance A,
+    // executed on instance B" test bugs — the harness makes it impossible.
+    const h = commandHarness();
+    h.run(setBpm(h.doc, 140));
+    h.run(renamePattern(h.doc, h.doc.patterns[0].id, "Harness"));
+    expect(h.doc.bpm).toBe(140);
+    expect(h.doc.patterns[0].name).toBe("Harness");
+    h.undo();
+    expect(h.doc.patterns[0].name).not.toBe("Harness");
+    h.undo();
+    expect(h.doc.bpm).not.toBe(140);
+  });
+
+  it("deterministic ids align across instances — cross-instance commands work", () => {
+    const a = deterministicTestDoc();
+    const b = deterministicTestDoc();
+    // Same construction order → same ids → a command built from `a` applies
+    // cleanly to `b` (useful for snapshot-diff and round-trip fixtures).
+    expect(drumTrackOf(a).id).toBe(drumTrackOf(b).id);
+    expect(a.patterns[0].id).toBe(b.patterns[0].id);
+    const result = renamePattern(a, a.patterns[0].id, "Aligned").execute(b);
+    expect(result.patterns[0].name).toBe("Aligned");
   });
 });

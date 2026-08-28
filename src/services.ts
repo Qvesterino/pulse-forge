@@ -235,6 +235,7 @@ export function openProject(core: CoreServices, initial: ProjectDocument, option
     applyAutomation: (fromTick, toTick, relOf, scheduleOffsetSec) =>
       engine.applyAutomation(fromTick, toTick, relOf, scheduleOffsetSec),
     applyModulators: (fromTick, toTick, whenFor) => engine.applyModulators(fromTick, toTick, whenFor),
+    applyEnvFollowers: () => engine.applyEnvFollowersToParams(),
     applySceneAutomationLane: (lane, fromTick, toTick, sceneStartTick, scheduleOffsetSec) =>
       engine.applySceneAutomationLane(lane, fromTick, toTick, sceneStartTick, scheduleOffsetSec),
     applyPatternLaunch: (patternId) => store.execute(setActivePattern(store.doc, patternId)),

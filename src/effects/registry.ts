@@ -7,6 +7,9 @@ import { createSidechainNode } from "../audio-worklets/sidechain-node";
 import { createLimiterNode } from "../audio-worklets/limiter-node";
 import { createCompressorNode } from "../audio-worklets/compressor-node";
 import { createStepGateNode } from "../audio-worklets/stepgate-node";
+import { createSvFilterNode } from "../audio-worklets/svfilter-node";
+import { createFlangerNode } from "../audio-worklets/flanger-node";
+import { createTremoloNode } from "../audio-worklets/tremolo-node";
 
 const dbToLin = (db: number) => Math.pow(10, db / 20);
 const smooth = (param: AudioParam, value: number, when: number, tc = 0.02) =>
@@ -45,6 +48,9 @@ export const WORKLET_EFFECTS: Partial<Record<EffectType, "critical" | "degraded"
   transient: "critical",
   limiter: "critical",
   stepGate: "critical",
+  svFilter: "critical",
+  flanger: "critical",
+  tremolo: "critical",
   compressor: "degraded",
   bitcrusher: "degraded",
   sidechain: "degraded",
@@ -64,7 +70,7 @@ export function effectProcessorStatus(
   const severity = WORKLET_EFFECTS[type];
   if (!severity) return "ok";
   return isWorkletReady(
-    type as "bitcrusher" | "sidechain" | "transient" | "gate" | "limiter" | "compressor" | "stepGate",
+    type as "bitcrusher" | "sidechain" | "transient" | "gate" | "limiter" | "compressor" | "stepGate" | "svFilter" | "flanger" | "tremolo",
     ctx,
   )
     ? "ok"
@@ -1495,6 +1501,87 @@ const stepGate: EffectDefinition = {
   },
 };
 
+/* ---------------- SV Filter (TPT SVF) ---------------- */
+// Zero-delay topology-preserving state variable filter (Andy Simper).
+// LP/HP/BP/Notch modes, resonance up to self-oscillation, tanh drive.
+// Unlike BiquadFilterNode, the feedback path has NO one-sample delay —
+// modulated cutoff stays clean and the resonance behaviour is analog-like.
+
+const SVF_MODES = [
+  { value: 0, label: "LP" },
+  { value: 1, label: "HP" },
+  { value: 2, label: "BP" },
+  { value: 3, label: "Notch" },
+];
+
+const svFilter: EffectDefinition = {
+  type: "svFilter",
+  name: "SV Filter",
+  category: "tone",
+  params: [
+    { id: "cutoff", label: "CUTOFF", min: 20, max: 20000, default: 2000, unit: "Hz", format: formatHz },
+    { id: "resonance", label: "RESO", min: 0, max: 1, default: 0.3, format: formatPct },
+    { id: "mode", label: "MODE", min: 0, max: 3, default: 0, options: SVF_MODES },
+    { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0, format: formatPct },
+    { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
+  ],
+  factory(ctx, instance) {
+    if (isWorkletReady("svFilter", ctx)) return createSvFilterNode(ctx, instance);
+    // Transparent bypass fallback — the TPT resonance character can't be
+    // faked by a BiquadFilterNode; a degraded approximation would be misleading.
+    return bypassRuntime(ctx, "AudioWorklet unavailable — SV filter bypassed (1:1 signal)");
+  },
+};
+
+/* ---------------- Flanger ---------------- */
+// Per-sample modulated delay with ZERO-DELAY feedback (worklet feeds back
+// within the same sample, unlike native DelayNode loops which add one render
+// quantum). Stereo spread via L/R LFO phase offset.
+
+const flanger: EffectDefinition = {
+  type: "flanger",
+  name: "Flanger",
+  category: "movement",
+  params: [
+    { id: "rate", label: "RATE", min: 0.05, max: 10, default: 0.5, unit: "Hz", format: (v) => `${v.toFixed(2)} Hz` },
+    { id: "depth", label: "DEPTH", min: 0, max: 10, default: 3, unit: "ms", format: formatMs },
+    { id: "base", label: "BASE", min: 0.5, max: 20, default: 5, unit: "ms", format: formatMs },
+    { id: "feedback", label: "FEEDBACK", min: 0, max: 0.95, default: 0.4, format: formatPct },
+    { id: "spread", label: "SPREAD", min: 0, max: 1, default: 0.7, format: formatPct },
+    { id: "mix", label: "MIX", min: 0, max: 1, default: 0.5, format: formatPct },
+  ],
+  factory(ctx, instance) {
+    if (isWorkletReady("flanger", ctx)) return createFlangerNode(ctx, instance);
+    return bypassRuntime(ctx, "AudioWorklet unavailable — flanger bypassed (1:1 signal)");
+  },
+};
+
+/* ---------------- Tremolo ---------------- */
+// Amplitude modulation via LFO. AM mode = classic tremolo, Auto-Pan mode
+// pans between channels. Shape morphs sine→square for harder rhythmic feel.
+
+const TREMOLO_MODES = [
+  { value: 0, label: "AM" },
+  { value: 1, label: "Auto-Pan" },
+];
+
+const tremolo: EffectDefinition = {
+  type: "tremolo",
+  name: "Tremolo",
+  category: "movement",
+  params: [
+    { id: "rate", label: "RATE", min: 0.1, max: 20, default: 5, unit: "Hz", format: (v) => `${v.toFixed(1)} Hz` },
+    { id: "depth", label: "DEPTH", min: 0, max: 1, default: 0.7, format: formatPct },
+    { id: "shape", label: "SHAPE", min: 0, max: 1, default: 0, format: (v) => v < 0.3 ? "Sine" : v < 0.7 ? "Tri" : "Square" },
+    { id: "mode", label: "MODE", min: 0, max: 1, default: 0, options: TREMOLO_MODES },
+    { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
+  ],
+  factory(ctx, instance) {
+    if (isWorkletReady("tremolo", ctx)) return createTremoloNode(ctx, instance);
+    return bypassRuntime(ctx, "AudioWorklet unavailable — tremolo bypassed (1:1 signal)");
+  },
+};
+
 /* ---------------- registry ---------------- */
 
 export const EFFECT_DEFS: Record<EffectType, EffectDefinition> = {
@@ -1504,6 +1591,9 @@ export const EFFECT_DEFS: Record<EffectType, EffectDefinition> = {
   clipper,
   limiter,
   stepGate,
+  svFilter,
+  flanger,
+  tremolo,
   reverb,
   delay,
   pump,
@@ -1526,6 +1616,9 @@ export const EFFECT_ORDER: EffectType[] = [
   "clipper",
   "limiter",
   "stepGate",
+  "svFilter",
+  "flanger",
+  "tremolo",
   "reverb",
   "delay",
   "pump",
@@ -1547,6 +1640,9 @@ export const CORE_EFFECT_ORDER: EffectType[] = [
   "transient",
   "limiter",
   "stepGate",
+  "svFilter",
+  "flanger",
+  "tremolo",
   "drumBuss",
   "bassBuss",
   "utility",

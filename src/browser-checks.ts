@@ -1681,6 +1681,172 @@ export async function runChecks(): Promise<CheckResult[]> {
     check("sidechain: multiband split frees high frequencies from ducking", false, String(error));
   }
 
+  // ---------------- SV Filter (P1.1) ----------------
+  // LP mode passes low, blocks high: render two-tone (200 Hz + 8 kHz) through
+  // LP at 1000 Hz cutoff; assert the 8 kHz component is attenuated.
+  try {
+    const ctx = new OfflineAudioContext(1, SR, SR);
+    await loadWorkletModules(ctx);
+    if (!isWorkletReady("svFilter", ctx)) {
+      check("svFilter: LP attenuates high frequencies", false, "worklet modules not ready");
+    } else {
+      const params = { cutoff: 1000, resonance: 0, mode: 0, drive: 0, mix: 1 };
+      const rt = EFFECT_DEFS.svFilter.factory(ctx, { id: "svf-lp", type: "svFilter", bypassed: false, params }, { bpm: 124 });
+      // Two-tone: 200 Hz + 8 kHz
+      const osc1 = ctx.createOscillator();
+      osc1.type = "sine"; osc1.frequency.value = 200;
+      const osc2 = ctx.createOscillator();
+      osc2.type = "sine"; osc2.frequency.value = 8000;
+      const g1 = ctx.createGain(); g1.gain.value = 0.4;
+      const g2 = ctx.createGain(); g2.gain.value = 0.4;
+      osc1.connect(g1).connect(rt.input);
+      osc2.connect(g2).connect(rt.input);
+      rt.output.connect(ctx.destination);
+      osc1.start(0); osc2.start(0);
+      const out = (await ctx.startRendering()).getChannelData(0);
+      rt.dispose();
+      // Measure energy above 4 kHz by zero-crossing density (proxy for high freq content)
+      let crossings = 0;
+      for (let i = 1; i < out.length; i++) {
+        if (out[i - 1] >= 0 !== out[i] >= 0) crossings++;
+      }
+      const crossingDensity = crossings / out.length;
+      // With only 200 Hz the crossing rate would be ~400/s; with 8 kHz it would be ~16000/s
+      // LP at 1 kHz should keep it close to the 200 Hz rate
+      const densityPerSample = crossingDensity; // per sample
+      check(
+        "svFilter: LP attenuates high frequencies (zero-crossing proxy)",
+        densityPerSample < 0.035,
+        `crossingDensity=${densityPerSample.toFixed(4)} (bare two-tone would be ~0.36)`,
+      );
+    }
+  } catch (error) {
+    check("svFilter: LP attenuates high frequencies", false, String(error));
+  }
+
+  // SV Filter HP mode passes high, blocks low
+  try {
+    const ctx = new OfflineAudioContext(1, SR, SR);
+    await loadWorkletModules(ctx);
+    if (!isWorkletReady("svFilter", ctx)) {
+      check("svFilter: HP blocks low frequencies", false, "worklet modules not ready");
+    } else {
+      const params = { cutoff: 1000, resonance: 0, mode: 1, drive: 0, mix: 1 };
+      const rt = EFFECT_DEFS.svFilter.factory(ctx, { id: "svf-hp", type: "svFilter", bypassed: false, params }, { bpm: 124 });
+      const osc = ctx.createOscillator();
+      osc.type = "sine"; osc.frequency.value = 100; // 100 Hz — below cutoff
+      osc.connect(rt.input);
+      rt.output.connect(ctx.destination);
+      osc.start(0);
+      const out = (await ctx.startRendering()).getChannelData(0);
+      rt.dispose();
+      let rms = 0;
+      for (let i = Math.floor(out.length * 0.5); i < out.length; i++) rms += out[i] * out[i];
+      rms = Math.sqrt(rms / (out.length * 0.5));
+      // 100 Hz through 1 kHz HP should be heavily attenuated
+      check("svFilter: HP blocks low frequencies", rms < 0.05, `rms=${rms.toFixed(4)} (100 Hz through 1 kHz HP)`);
+    }
+  } catch (error) {
+    check("svFilter: HP blocks low frequencies", false, String(error));
+  }
+
+  // ---------------- Flanger (P1.2) ----------------
+  // Flanger creates time-varying comb filtering: RMS varies when compared to
+  // a passthrough render. Assert the wet signal is different from dry and
+  // has audible energy (not silence).
+  try {
+    const ctx = new OfflineAudioContext(1, SR, SR);
+    await loadWorkletModules(ctx);
+    if (!isWorkletReady("flanger", ctx)) {
+      check("flanger: wet signal differs from dry (comb filtering active)", false, "worklet modules not ready");
+    } else {
+      const params = { rate: 1, depth: 3, base: 5, feedback: 0.5, spread: 0, mix: 0.7 };
+      const rt = EFFECT_DEFS.flanger.factory(ctx, { id: "chk-flg", type: "flanger", bypassed: false, params }, { bpm: 124 });
+      const osc = ctx.createOscillator();
+      osc.type = "sawtooth"; // rich spectrum for flanging
+      osc.frequency.value = 220;
+      const gain = ctx.createGain();
+      gain.gain.value = 0.5;
+      osc.connect(gain).connect(rt.input);
+      rt.output.connect(ctx.destination);
+      osc.start(0);
+      const flanged = (await ctx.startRendering()).getChannelData(0);
+      rt.dispose();
+      // Render dry reference
+      const ctx2 = new OfflineAudioContext(1, SR, SR);
+      const osc2 = ctx2.createOscillator();
+      osc2.type = "sawtooth"; osc2.frequency.value = 220;
+      const gain2 = ctx2.createGain(); gain2.gain.value = 0.5;
+      osc2.connect(gain2).connect(ctx2.destination);
+      osc2.start(0);
+      const dry = (await ctx2.startRendering()).getChannelData(0);
+      // Measure difference between flanged and dry in the last half
+      let diff = 0;
+      let energy = 0;
+      for (let i = Math.floor(flanged.length / 2); i < flanged.length; i++) {
+        diff += Math.abs(flanged[i] - dry[i]);
+        energy += Math.abs(flanged[i]);
+      }
+      const relDiff = diff / Math.max(energy, 1e-9);
+      check(
+        "flanger: wet signal differs from dry (comb filtering active)",
+        relDiff > 0.1 && energy / (flanged.length / 2) > 0.001,
+        `relDiff=${relDiff.toFixed(3)} rmsFlanged=${(energy / (flanged.length / 2)).toFixed(4)}`,
+      );
+    }
+  } catch (error) {
+    check("flanger: wet signal differs from dry (comb filtering active)", false, String(error));
+  }
+
+  // ---------------- Tremolo (P1.3) ----------------
+  // Classic AM: gain oscillates between (1-depth) and 1 at the LFO rate.
+  // Assert: peak stays at input level (gain never exceeds 1), and RMS
+  // alternates between high/low halves of the LFO cycle.
+  try {
+    const ctx = new OfflineAudioContext(1, SR, SR);
+    await loadWorkletModules(ctx);
+    if (!isWorkletReady("tremolo", ctx)) {
+      check("tremolo: AM modulates gain rhythmically", false, "worklet modules not ready");
+    } else {
+      const params = { rate: 4, depth: 0.9, shape: 1, mode: 0, mix: 1 }; // 4 Hz, square, hard
+      const rt = EFFECT_DEFS.tremolo.factory(ctx, { id: "chk-trem", type: "tremolo", bypassed: false, params }, { bpm: 124 });
+      const osc = ctx.createOscillator();
+      osc.type = "sine"; osc.frequency.value = 2000;
+      const gain = ctx.createGain(); gain.gain.value = 0.5;
+      osc.connect(gain).connect(rt.input);
+      rt.output.connect(ctx.destination);
+      osc.start(0);
+      const data = (await ctx.startRendering()).getChannelData(0);
+      rt.dispose();
+      // LFO period = 1/4 = 0.25s. Measure RMS in high/low halves of each cycle.
+      const period = SR / 4;
+      const half = period / 2;
+      let peakAll = 0;
+      let hiRms = 0; let loRms = 0;
+      const cycles = 4;
+      for (let c = 0; c < cycles; c++) {
+        let hiSum = 0; let loSum = 0;
+        for (let i = 0; i < half; i++) {
+          const hv = data[Math.floor(c * period + i)];
+          const lv = data[Math.floor(c * period + half + i)];
+          hiSum += hv * hv; loSum += lv * lv;
+          peakAll = Math.max(peakAll, Math.abs(hv), Math.abs(lv));
+        }
+        hiRms += Math.sqrt(hiSum / half);
+        loRms += Math.sqrt(loSum / half);
+      }
+      hiRms /= cycles;
+      loRms /= cycles;
+      check(
+        "tremolo: AM modulates gain rhythmically",
+        hiRms > loRms * 3 && peakAll <= 0.55 && hiRms > 0.05,
+        `hi=${hiRms.toFixed(4)} lo=${loRms.toFixed(4)} ratio=${(hiRms / Math.max(loRms, 1e-6)).toFixed(1)} peak=${peakAll.toFixed(3)}`,
+      );
+    }
+  } catch (error) {
+    check("tremolo: AM modulates gain rhythmically", false, String(error));
+  }
+
   return results;
 }
 

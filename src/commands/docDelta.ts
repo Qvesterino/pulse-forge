@@ -74,6 +74,24 @@ export function deepEqualRef(a: unknown, b: unknown): boolean {
   return false;
 }
 
+/**
+ * Recursively freeze an object graph. The delta undo engine's correctness
+ * rests on the immutability contract: commands build `next` copy-on-write and
+ * NEVER mutate `prev`. In DEV/test, snapshot() deep-freezes `prev` so any
+ * violation becomes a loud TypeError at the violating write instead of a
+ * silently corrupt undo stack. Never call in production paths — freezing the
+ * whole document graph costs O(doc) and freezes shared subtrees.
+ */
+export function deepFreeze<T>(value: T): T {
+  if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    for (const key of Object.keys(value as Record<string, unknown>)) {
+      deepFreeze((value as Record<string, unknown>)[key]);
+    }
+  }
+  return value;
+}
+
 // ─── Delta computation ──────────────────────────────────────────────────────
 
 export function computeDocDelta(before: ProjectDocument, after: ProjectDocument): DocDelta {

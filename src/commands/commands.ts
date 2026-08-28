@@ -52,7 +52,7 @@ import { INSTRUMENT_DEFS, clampInstrumentParam, defaultInstrumentParams } from "
 import type { InstrumentPreset } from "../presets/types";
 import type { EffectPreset } from "../effects/presets";
 import { clamp, uid } from "../shared/ids";
-import { applyDocDelta, computeDocDelta, deepEqualRef } from "./docDelta";
+import { applyDocDelta, computeDocDelta, deepEqualRef, deepFreeze } from "./docDelta";
 import { hashString, mulberry32 } from "../shared/rng";
 import { snapToScale } from "../project-model/scales";
 import { resolveGrooveForGeneration } from "../ai/generator";
@@ -80,12 +80,30 @@ import {
 } from "../midi/creative";
 import type { MidiCreativeOperation } from "../midi/creative";
 
+// Immutability enforcement for the delta undo engine. In DEV/test, snapshot()
+// deep-freezes `prev`: any command factory (or later code holding the
+// reference) that mutates the previous document in place throws a loud
+// TypeError immediately, instead of silently corrupting the undo stack.
+// In production builds the check is dead-code-eliminated (NODE_ENV=production).
+const IS_DEV = process.env.NODE_ENV !== "production";
+
+let snapshotVerificationFallbacks = 0;
+/** TEST-ONLY: how many snapshot() calls failed delta self-verification and fell back to the legacy whole-document command. */
+export function __snapshotVerificationFallbacks(): number {
+  return snapshotVerificationFallbacks;
+}
+/** TEST-ONLY: reset the fallback counter (call at the start of a battery). */
+export function __resetSnapshotVerificationFallbacks(): void {
+  snapshotVerificationFallbacks = 0;
+}
+
 function snapshot(type: string, label: string, prev: ProjectDocument, next: ProjectDocument): Command {
   // Inverse-patch command: capture the CHANGE (id-anchored operations), not
   // the documents. Functional execute/undo apply the delta to whatever
   // document is current — an async dispatch (seconds-long freeze render,
   // collab merge) can no longer silently revert concurrent edits, and the
   // undo stack no longer pins whole document chains.
+  if (IS_DEV) deepFreeze(prev);
   const forward = computeDocDelta(prev, next);
   const backward = computeDocDelta(next, prev);
   // Self-verification: the delta must round-trip exactly, or we keep the
@@ -95,6 +113,7 @@ function snapshot(type: string, label: string, prev: ProjectDocument, next: Proj
     deepEqualRef(applyDocDelta(prev, forward.ops), next) &&
     deepEqualRef(applyDocDelta(next, backward.ops), prev);
   if (!verified) {
+    snapshotVerificationFallbacks++;
     return { type, label, execute: () => next, undo: () => prev };
   }
   return {

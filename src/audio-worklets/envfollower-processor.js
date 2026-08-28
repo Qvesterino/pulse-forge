@@ -16,6 +16,7 @@ class EnvFollowerProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
     this.env = 0;
+    this.lastEnvPost = 0;
   }
 
   static get parameterDescriptors() {
@@ -48,6 +49,14 @@ class EnvFollowerProcessor extends AudioWorkletProcessor {
         : this.env + (driven - this.env) * relBlend;
       if (this.env < 1e-20) this.env = 0; // denormal guard for long silences
       out[i] = this.env;
+    }
+
+    // Post envelope value ~25×/s for FX-param polling (main thread reads and
+    // applies to non-AudioParam targets via setParameter).
+    const now = typeof globalThis.currentTime === "number" ? globalThis.currentTime : 0;
+    if (now - this.lastEnvPost >= 0.04) {
+      this.lastEnvPost = now;
+      this.port.postMessage({ type: "env", value: this.env });
     }
     return true;
   }

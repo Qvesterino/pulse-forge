@@ -6,3 +6,6 @@ import "./envfollower-processor.js";
 import "./compressor-processor.js";
 import "./kwmeter-processor.js";
 import "./stepgate-processor.js";
+import "./svfilter-processor.js";
+import "./flanger-processor.js";
+import "./tremolo-processor.js";

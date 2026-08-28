@@ -4,6 +4,13 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+# A stale run for a superseded commit wastes runners and can race the newest
+# result — cancel it in favor of the latest push.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   typecheck:
@@ -33,6 +40,20 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run ai:performance
+
+  build:
+    name: Production build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # tsc --noEmit + vite build — catches bundler-level regressions that
+      # unit tests never see (dynamic imports, PWA precache, chunking).
+      - run: npm run build
 
   test-browser:
     name: Browser audio checks (Chromium)

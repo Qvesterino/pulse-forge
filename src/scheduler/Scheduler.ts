@@ -20,6 +20,8 @@ export interface SchedulerDeps {
    * boundaries land sample-aligned.
    */
   applyModulators?(fromTick: number, toTick: number, whenFor: (tick: number) => number): void;
+  /** Poll envFollower modulators targeting FX/inst params (control rate ~25 ms). */
+  applyEnvFollowers?(): void;
   /** Apply a single per-scene automation lane within a song window. */
   applySceneAutomationLane?(
     lane: import("../project-model/types").SceneAutomation,
@@ -320,6 +322,9 @@ export class Scheduler {
       const offsetSec = this.scheduleOffsetSec() + 0.005;
       this.deps.applyModulators(windowStart, windowEnd, (tick) => transport.timeAtTick(tick) + offsetSec);
     }
+
+    // Poll envFollower modulators targeting FX/inst params (control rate).
+    this.deps.applyEnvFollowers?.();
 
     this.windowStartTick = windowEnd;
     this.stats.lastHorizonTick = windowEnd;

@@ -67,11 +67,13 @@ export class YDocStore {
 
     // Subscribe to Y.Doc changes and re-read the snapshot. LOCAL commands
     // (origin === this, same trust level as the plain ProjectStore) re-project
-    // without normalization — full normalization on every keystroke costs
-    // ~tens of ms on large documents. REMOTE merges (foreign origin) and
-    // undo/redo re-projections are sanitized: a peer or an offline merge can
-    // inject state the local code cannot use, e.g. a dangling activePatternId
-    // that made getActivePattern() throw on every scheduler tick.
+    // without normalization — on large documents the Y.Doc→plain projection
+    // (not normalizeProject itself, which is ~2 ms even on huge docs) makes
+    // every-keystroke re-reads worth skipping where trust allows. REMOTE
+    // merges (foreign origin) and undo/redo re-projections are sanitized:
+    // a peer or an offline merge can inject state the local code cannot use,
+    // e.g. a dangling activePatternId that made getActivePattern() throw on
+    // every scheduler tick.
     this.yDoc.on("update", (_update, origin) => {
       this.doc_ = this.readDoc(origin !== this);
       this.emit();

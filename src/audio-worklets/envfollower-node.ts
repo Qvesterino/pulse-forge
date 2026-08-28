@@ -11,6 +11,8 @@
 export interface EnvFollowerHandle {
   input: AudioNode;
   output: AudioNode;
+  /** Latest envelope value 0..1 (from port message polling). */
+  getEnvelope(): number;
   dispose(): void;
 }
 
@@ -34,10 +36,18 @@ export function createEnvFollowerNode(
   setParam("release", Math.max(0.01, instance.params.releaseMs ?? 180) / 1000);
   setParam("sensitivity", instance.params.sensitivity ?? 1.5);
 
+  let lastEnv = 0;
+  node.port.onmessage = (event: MessageEvent) => {
+    const data = event.data as { type?: string; value?: number } | null;
+    if (data?.type === "env" && typeof data.value === "number") lastEnv = data.value;
+  };
+
   return {
     input: node,
     output: node,
+    getEnvelope: () => lastEnv,
     dispose() {
+      node.port.onmessage = null;
       node.disconnect();
     },
   };
