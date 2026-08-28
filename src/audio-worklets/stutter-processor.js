@@ -87,8 +87,12 @@ class StutterProcessor extends AudioWorkletProcessor {
       const gate = this.gateSteps[stepIdx] || 0;
 
       // Write with feedback
-      this.bufL[this.writeIdx] = l + delayedL * gate * feedback;
-      this.bufR[this.writeIdx] = r + delayedR * gate * feedback;
+      let wL = l + delayedL * gate * feedback;
+      let wR = r + delayedR * gate * feedback;
+      if (Math.abs(wL) < 1e-20) wL = 0;
+      if (Math.abs(wR) < 1e-20) wR = 0;
+      this.bufL[this.writeIdx] = wL;
+      this.bufR[this.writeIdx] = wR;
       this.writeIdx = (this.writeIdx + 1) & STUT_MASK;
 
       // Output: gated delayed signal
