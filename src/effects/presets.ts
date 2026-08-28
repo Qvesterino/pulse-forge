@@ -50,6 +50,18 @@ export const CORE_EFFECT_PRESETS: EffectPreset[] = [
   preset("tremolo-classic", "Classic", "tremolo", { rate: 5, depth: 0.7, shape: 0, mode: 0, mix: 1 }),
   preset("tremolo-hard", "Hard Gate", "tremolo", { rate: 8, depth: 0.95, shape: 0.9, mode: 0, mix: 1 }),
   preset("tremolo-pan", "Auto Pan", "tremolo", { rate: 2, depth: 0.85, shape: 0, mode: 1, mix: 1 }),
+  preset("autowah-classic", "Classic Wah", "autowah", { minFreq: 300, maxFreq: 2500, resonance: 0.7, attack: 0.01, release: 0.15, sensitivity: 1.5, mode: 0, mix: 1 }),
+  preset("autowah-bass", "Bass Wah", "autowah", { minFreq: 100, maxFreq: 800, resonance: 0.8, attack: 0.02, release: 0.3, sensitivity: 2, mode: 1, mix: 1 }),
+  preset("autowah-funky", "Funky", "autowah", { minFreq: 400, maxFreq: 4000, resonance: 0.9, attack: 0.005, release: 0.08, sensitivity: 2.5, mode: 0, mix: 0.85 }),
+  stepPreset("stutter-1-16", "1/16 Loop", "stutter", { division: 4, mix: 0.8, feedback: 0 }, [
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+  ]),
+  stepPreset("stutter-gate", "Gate Loop", "stutter", { division: 4, mix: 0.9, feedback: 0.2 }, [
+    1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0,
+  ]),
+  stepPreset("stutter-chop", "Chop", "stutter", { division: 3, mix: 0.85, feedback: 0.35 }, [
+    1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0,
+  ]),
   preset("drum-glue", "Glue", "drumBuss", { drive: 0.18, transient: 0.12, compressor: 0.32, boomAmount: 0.08 }),
   preset("drum-crush", "Crush", "drumBuss", { drive: 0.55, transient: 0.4, compressor: 0.7, mix: 0.7 }),
   preset("drum-punch", "Punch", "drumBuss", { drive: 0.2, transient: 0.55, compressor: 0.22, boomAmount: 0.1 }),

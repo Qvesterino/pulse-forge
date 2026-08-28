@@ -447,7 +447,7 @@ function normalizeEffects(raw: unknown, trackId: string, trackIds: Set<string>):
       ? item.sidechainTrackId
       : undefined;
     // Step-sequenced effects (stepGate) carry an editable pattern array.
-    const steps = type === "stepGate" ? sanitizeGateSteps((item as { steps?: unknown }).steps) : undefined;
+    const steps = type === "stepGate" || type === "stutter" ? sanitizeGateSteps((item as { steps?: unknown }).steps) : undefined;
     return {
       id: item.id,
       type,

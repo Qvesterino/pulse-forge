@@ -1847,6 +1847,80 @@ export async function runChecks(): Promise<CheckResult[]> {
     check("tremolo: AM modulates gain rhythmically", false, String(error));
   }
 
+  // ---------------- Autowah (P1.4) ----------------
+  // Envelope follower drives filter cutoff: loud input opens the filter,
+  // quiet input closes it. Assert: loud tone passes more energy than quiet tone.
+  try {
+    const ctx = new OfflineAudioContext(1, SR * 2, SR);
+    await loadWorkletModules(ctx);
+    if (!isWorkletReady("autowah", ctx)) {
+      check("autowah: envelope drives filter cutoff", false, "worklet modules not ready");
+    } else {
+      // LP mode: quiet → cutoff closes below carrier → attenuated
+    // loud → cutoff opens above carrier → passes
+    const params = { minFreq: 200, maxFreq: 4000, resonance: 0.5, attack: 0.01, release: 0.15, sensitivity: 2, mode: 1, mix: 1 };
+      const rt = EFFECT_DEFS.autowah.factory(ctx, { id: "chk-aw", type: "autowah", bypassed: false, params }, { bpm: 124 });
+      // First half: quiet tone (0.05) → cutoff ≈ 400 Hz → 2 kHz attenuated
+      // Second half: loud tone (0.8) → cutoff ≈ 3800 Hz → 2 kHz passes
+      const osc = ctx.createOscillator();
+      osc.type = "sine"; osc.frequency.value = 2000;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.05, 0);
+      gain.gain.setValueAtTime(0.05, 0.9);
+      gain.gain.setValueAtTime(0.8, 0.901);
+      osc.connect(gain).connect(rt.input);
+      rt.output.connect(ctx.destination);
+      osc.start(0);
+      const out = (await ctx.startRendering()).getChannelData(0);
+      rt.dispose();
+      const quietRms = rmsWindow(out, SR * 0.3, SR * 0.8);
+      const loudRms = rmsWindow(out, SR * 1.3, SR * 1.8);
+      check(
+        "autowah: envelope drives filter cutoff",
+        quietRms < loudRms * 0.7 && loudRms > 0.005,
+        `quiet=${quietRms.toFixed(4)} loud=${loudRms.toFixed(4)} ratio=${(loudRms / Math.max(quietRms, 1e-6)).toFixed(1)}`,
+      );
+    }
+  } catch (error) {
+    check("autowah: envelope drives filter cutoff", false, String(error));
+  }
+
+  // ---------------- Stutter (P1.7) ----------------
+  // Stutter reads from one loop behind — when the gate pattern is fully open,
+  // the output is a delayed copy of the input (one loop late). When gate has
+  // gaps, alternating 1/8-note windows show on/off contrast.
+  try {
+    const renderStutter = async (steps: number[] | undefined, mix: number): Promise<Float32Array> => {
+      const doc = createProjectFromTemplate("house");
+      const drums = doc.tracks.find((t): t is DrumTrack => t.kind === "drum")!;
+      drums.pan = -1;
+      for (const track of doc.tracks) { if (track.kind === "instrument") track.mute = true; }
+      doc.master.limiterEnabled = false;
+      doc.master.clipperEnabled = false;
+      drums.effects = [{
+        id: "stut-chk", type: "stutter", bypassed: false,
+        params: { division: 4, mix, feedback: 0 },
+        ...(steps ? { steps } : {}),
+      }];
+      const buf = await renderProject(doc, bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0 });
+      return buf.getChannelData(0);
+    };
+    // Gated: [1,0,1,0...] → alternating 1/8-note windows
+    const gated = await renderStutter([1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0], 1);
+    const beatSec = 60 / 124;
+    const stepSec = beatSec * 0.5; // 1/8 note
+    const wins = [...Array(8)].map((_, w) => rmsWindow(gated, w * stepSec * SR, (w + 0.9) * stepSec * SR));
+    const high = (wins[0] + wins[2] + wins[4] + wins[6]) / 4;
+    const low = (wins[1] + wins[3] + wins[5] + wins[7]) / 4;
+    check(
+      "stutter: gate pattern alternates delayed loop audibility",
+      high > low * 1.5 && high > 0.001,
+      `high=${high.toFixed(4)} low=${low.toFixed(4)} ratio=${(high / Math.max(low, 1e-6)).toFixed(1)}`,
+    );
+  } catch (error) {
+    check("stutter: gate pattern alternates delayed loop audibility", false, String(error));
+  }
+
   return results;
 }
 

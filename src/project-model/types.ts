@@ -21,6 +21,8 @@ export type EffectType =
   | "svFilter"
   | "flanger"
   | "tremolo"
+  | "autowah"
+  | "stutter"
   | "reverb"
   | "delay"
   | "pump"
@@ -571,6 +573,22 @@ export function grooveOf(doc: ProjectDocument): GrooveSettings {
   };
 }
 
+/**
+ * INVARIANT: `doc.activePatternId` must always resolve to an entry in
+ * `doc.patterns`. Violations throw here and crash the scheduler loop +
+ * sequencer render. The invariant is maintained by:
+ *   - `normalizeActivePatternDomain` (schema.ts)
+ *   - `deletePattern` scene + clip cleanup (commands.ts)
+ *   - `setActivePattern` validation (commands.ts)
+ *   - `YDocStore.readDoc` normalization on remote reads (YDocStore.ts)
+ *
+ * Any new code that can produce a dangling `activePatternId` (new commands,
+ * imports, collab adapters) MUST be covered by one of those guards or by
+ * routing the doc through `normalizeProject` before it reaches the engine.
+ * See `tests/project-invariants.test.ts` — that file is the pin for this
+ * invariant. If you add a feature that touches patterns/scenes, add a case
+ * there as well.
+ */
 export function getActivePattern(doc: ProjectDocument): Pattern {
   const pattern = doc.patterns.find((p) => p.id === doc.activePatternId);
   if (!pattern) throw new Error(`Active pattern ${doc.activePatternId} not found`);

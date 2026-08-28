@@ -1965,6 +1965,11 @@ export class AudioEngine {
     return -Math.max(levels.left.peakDb, levels.right.peakDb);
   }
 
+  /** Expose the master post-limiter AnalyserNode for spectrum UI (read-only observer). */
+  getMasterSpectrumAnalyser(): AnalyserNode | null {
+    return this.masterAnalyser;
+  }
+
   /**
    * True peak via 4× polyphase oversampling (ITU BS.1770 style) — catches
     * intersample peaks that the old parabolic estimate missed. Delegates to

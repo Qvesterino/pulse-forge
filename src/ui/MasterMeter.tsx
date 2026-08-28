@@ -3,6 +3,7 @@ import { useDoc, useServices } from "./context";
 import type { ChannelLevels } from "../audio-engine/metering";
 import { registerRaf, unregisterRaf } from "../services/rafLoop";
 import { evaluateMixCheck, MIN_DB } from "../audio-engine/metering";
+import { SpectrumAnalyzer } from "./SpectrumAnalyzer";
 
 interface ReadState {
   left: ChannelLevels;
@@ -132,6 +133,12 @@ export function MasterMeter() {
         <span title="Master-stage gain reduction">GR {state.gainReductionDb.toFixed(1)} dB</span>
         <button type="button" className="btn btn-small" onClick={() => services.engine.resetMasterIntegratedLufs?.()}>RESET INTEGRATED</button>
       </div>
+      <SpectrumAnalyzer
+        analyser={(services.engine as unknown as { getMasterSpectrumAnalyser?: () => AnalyserNode | null }).getMasterSpectrumAnalyser?.() ?? null}
+        height={64}
+        accent="#f59e0b"
+        id="master"
+      />
       {state.warnings.length > 0 && <div className="master-mix-check" role="status">{state.warnings.map((warning) => <span key={warning.code}>{warning.message}</span>)}</div>}
       {state.clipping && (
         <span className="master-clip-warning" role="alert" title="Master is clipping — pull down IN or engage LIMIT">

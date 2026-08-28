@@ -219,6 +219,15 @@ function Device({
           onCommit={(steps) => services.store.execute(setEffectSteps(doc, track.id, fx.id, steps))}
         />
       )}
+      {fx.type === "stutter" && (
+        <StepGridEditor
+          steps={fx.steps && fx.steps.length > 0 ? fx.steps : Array(16).fill(1)}
+          min={0}
+          max={1}
+          ariaLabel={`Stutter gate pattern for ${track?.name ?? "track"}`}
+          onCommit={(steps) => services.store.execute(setEffectSteps(doc, track.id, fx.id, steps))}
+        />
+      )}
       <div className="fx-device-params">
         {def.params.filter((p) => !((fx.type === "eq") && ["lowGain", "lowFreq", "midGain", "midFreq", "midQ", "highGain", "highFreq"].includes(p.id))).map((p) =>
           p.options ? (

@@ -9,3 +9,5 @@ import "./stepgate-processor.js";
 import "./svfilter-processor.js";
 import "./flanger-processor.js";
 import "./tremolo-processor.js";
+import "./autowah-processor.js";
+import "./stutter-processor.js";

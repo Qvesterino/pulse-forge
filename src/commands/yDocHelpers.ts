@@ -1,6 +1,6 @@
 /**
  * Y.Doc command utilities — helper functions for applying command mutations
- * directly to a Y.Doc. Used by commands that implement applyToYDoc/undoYDoc.
+ * directly to a Y.Doc. Used by commands that implement applyToYDoc.
  */
 import * as Y from "yjs";
 

@@ -13,10 +13,15 @@
  * Rules of the house:
  *   - `testDoc()` is house-based (musically rich) but with an EMPTY
  *     arrangement — place clips anywhere you like.
+ *   - `placeClipAt(doc, sceneId, bar, len)` finds the next non-overlapping
+ *     bar for you if you don't care about exact placement.
  *   - Build commands from the SAME doc instance you execute them on. The
  *     `Harness` helper makes that the path of least resistance.
  *   - For docs whose ids must align across instances (snapshot diffs,
  *     cross-instance round-trips), build them inside `deterministicIds()`.
+ *
+ * INVARIANT: `testDoc()` always satisfies `normalizeProject(doc) === doc`
+ * (reference identity) — it is canonical. See `project-invariants.test.ts`.
  */
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 import { resetDeterministicIds, useDeterministicIds } from "../../src/shared/ids";
@@ -28,6 +33,7 @@ import type {
   Scene,
 } from "../../src/project-model/types";
 import type { Command } from "../../src/commands/types";
+import { addArrangementClip } from "../../src/commands/commands";
 
 export { useDeterministicIds, resetDeterministicIds };
 
@@ -46,6 +52,38 @@ export function deterministicTestDoc(): ProjectDocument {
   } finally {
     restore();
   }
+}
+
+/**
+ * Safely place a clip for `sceneId` at the next free bar ≥ `startBar`.
+ * Never throws "Clip overlaps" — scans forward until a gap is found.
+ * Prefer this over raw `addArrangementClip` in tests when bar placement
+ * is not the thing under test.
+ */
+export function placeClipAt(
+  doc: ProjectDocument,
+  sceneId: string,
+  startBar = 0,
+  lengthBars = 2,
+): ProjectDocument {
+  let bar = startBar;
+  // Try up to 256 bars — more than enough for any test doc.
+  for (let attempt = 0; attempt < 256; attempt++) {
+    try {
+      return addArrangementClip(doc, sceneId, bar, lengthBars).execute(doc);
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("overlaps")) {
+        // Find the furthest end among overlapping clips and jump past it.
+        const ends = doc.arrangement.clips
+          .filter((c) => c.startBar < bar + lengthBars && c.startBar + c.lengthBars > bar)
+          .map((c) => c.startBar + c.lengthBars);
+        bar = ends.length > 0 ? Math.max(...ends) : bar + 1;
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error("placeClipAt: could not find a free bar after 256 attempts");
 }
 
 // ─── Accessors (throw with context instead of leaking undefined) ───────────

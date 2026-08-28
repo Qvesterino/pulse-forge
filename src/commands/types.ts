@@ -5,8 +5,13 @@ export interface Command {
   readonly label: string;
   execute(doc: ProjectDocument): ProjectDocument;
   undo(doc: ProjectDocument): ProjectDocument;
+  /**
+   * Direct Y.Doc mutation for collab mode — an efficient targeted path used
+   * by YDocStore.execute instead of the generic whole-document diff. Undo in
+   * collab does NOT use a counterpart: Y.UndoManager captures inverse
+   * operations from the applyToYDoc transaction automatically.
+   */
   applyToYDoc?(yMap: any): void;
-  undoYDoc?(yMap: any): void;
   /**
    * Continuous-gesture grouping key (e.g. `midi:macro:<id>`). Successive
    * commands with the same key executed within a short time window collapse

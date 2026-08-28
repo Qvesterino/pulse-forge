@@ -18,12 +18,10 @@ const failedContexts = new WeakSet<BaseAudioContext>();
 const inflight = new Map<BaseAudioContext, Promise<void>>();
 
 export function isWorkletReady(
-  type: "bitcrusher" | "sidechain" | "transient" | "gate" | "limiter" | "envFollower" | "compressor" | "kwmeter" | "stepGate" | "svFilter" | "flanger" | "tremolo",
+  type: "bitcrusher" | "sidechain" | "transient" | "gate" | "limiter" | "envFollower" | "compressor" | "kwmeter" | "stepGate" | "svFilter" | "flanger" | "tremolo" | "autowah" | "stutter",
   ctx: BaseAudioContext | null | undefined,
 ): boolean {
   if (!ctx || !readyContexts.has(ctx)) return false;
-  // Both processors load together per context; the type is kept in the
-  // signature so call sites read naturally.
   return (
     type === "bitcrusher" ||
     type === "sidechain" ||
@@ -36,7 +34,9 @@ export function isWorkletReady(
     type === "stepGate" ||
     type === "svFilter" ||
     type === "flanger" ||
-    type === "tremolo"
+    type === "tremolo" ||
+    type === "autowah" ||
+    type === "stutter"
   );
 }
 

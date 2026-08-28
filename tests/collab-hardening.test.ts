@@ -334,6 +334,14 @@ describe("YDocStore — replaceDoc", () => {
 
 describe("collab — performance gate", () => {
   it("local command reads stay cheap; sanitized remote reads stay bounded", () => {
+    // Rule: perf assertions are SMOKE CEILINGS, not tight budgets. Timing-
+    // sensitive tests that assert e.g. `expect(ms).toBeLessThan(15)` are
+    // flaky under parallel runner load (passed in isolation, failed in the
+    // full suite). The DETERMINISTIC invariant is the real guard — see the
+    // zero-writes assertion below. Smoke ceilings (500 ms / 250 ms) only
+    // catch catastrophic regressions (the original hang here measured in tens
+    // of seconds) even under parallel load.
+    //
     // readDoc runs on EVERY Y.Doc update. Local commands (trusted origin)
     // skip normalization; remote merges sanitize. This gate keeps both paths
     // honest on a big project (40 patterns covering every pad of 11 drum

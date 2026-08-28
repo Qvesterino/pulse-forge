@@ -110,8 +110,7 @@ function snapshot(type: string, label: string, prev: ProjectDocument, next: Proj
   // legacy whole-document command. Costs ~O(changes) thanks to structural
   // sharing — the reference-pruned walk skips untouched subtrees.
   const verified =
-    deepEqualRef(applyDocDelta(prev, forward.ops), next) &&
-    deepEqualRef(applyDocDelta(next, backward.ops), prev);
+    deepEqualRef(applyDocDelta(prev, forward.ops), next) && deepEqualRef(applyDocDelta(next, backward.ops), prev);
   if (!verified) {
     snapshotVerificationFallbacks++;
     return { type, label, execute: () => next, undo: () => prev };
@@ -131,8 +130,9 @@ export function setProjectName(doc: ProjectDocument, name: string): Command {
     label: `Rename project to "${name}"`,
     execute: (d) => ({ ...d, name }),
     undo: (d) => ({ ...d, name: prev }),
-    applyToYDoc: (yMap) => { yMap.set("name", name); },
-    undoYDoc: (yMap) => { yMap.set("name", prev); },
+    applyToYDoc: (yMap) => {
+      yMap.set("name", name);
+    },
   };
 }
 
@@ -144,17 +144,13 @@ export function setBpm(doc: ProjectDocument, bpm: number): Command {
     label: `Set BPM to ${value}`,
     execute: (d) => ({ ...d, bpm: value }),
     undo: (d) => ({ ...d, bpm: prev }),
-    applyToYDoc: (yMap) => { yMap.set("bpm", value); },
-    undoYDoc: (yMap) => { yMap.set("bpm", prev); },
+    applyToYDoc: (yMap) => {
+      yMap.set("bpm", value);
+    },
   };
 }
 
-export function toggleStep(
-  doc: ProjectDocument,
-  padId: string,
-  stepIndex: number,
-  defaultVelocity = 0.8,
-): Command {
+export function toggleStep(doc: ProjectDocument, padId: string, stepIndex: number, defaultVelocity = 0.8): Command {
   const prev = doc.patterns.find((p) => p.id === doc.activePatternId)?.rows[padId]?.[stepIndex] ?? 0;
   const next = prev > 0 ? 0 : defaultVelocity;
   const patternId = doc.activePatternId;
@@ -164,10 +160,6 @@ export function toggleStep(
     execute: (d) => setStepVelocity(d, padId, stepIndex, next),
     undo: (d) => setStepVelocity(d, padId, stepIndex, prev),
     applyToYDoc: (yMap) => {
-      const { yToggleStep } = require("./yDocHelpers");
-      yToggleStep(yMap, patternId, padId, stepIndex);
-    },
-    undoYDoc: (yMap) => {
       const { yToggleStep } = require("./yDocHelpers");
       yToggleStep(yMap, patternId, padId, stepIndex);
     },
@@ -191,28 +183,27 @@ export function setStepVelocityCommand(
       const { ySetStepVelocity } = require("./yDocHelpers");
       ySetStepVelocity(yMap, patternId, padId, stepIndex, velocity);
     },
-    undoYDoc: (yMap) => {
-      const { ySetStepVelocity } = require("./yDocHelpers");
-      ySetStepVelocity(yMap, patternId, padId, stepIndex, prev);
-    },
   };
 }
 
-type PadParams = Partial<Pick<DrumPad,
-  | "name"
-  | "assetId"
-  | "gain"
-  | "pan"
-  | "pitch"
-  | "mute"
-  | "solo"
-  | "chokeGroup"
-  | "sliceStart"
-  | "sliceEnd"
-  | "sliceFadeIn"
-  | "sliceFadeOut"
-  | "sliceReverse"
->>;
+type PadParams = Partial<
+  Pick<
+    DrumPad,
+    | "name"
+    | "assetId"
+    | "gain"
+    | "pan"
+    | "pitch"
+    | "mute"
+    | "solo"
+    | "chokeGroup"
+    | "sliceStart"
+    | "sliceEnd"
+    | "sliceFadeIn"
+    | "sliceFadeOut"
+    | "sliceReverse"
+  >
+>;
 
 export interface PadSlice {
   start: number;
@@ -295,28 +286,13 @@ export function setPadParams(doc: ProjectDocument, padId: string, params: PadPar
             if (pads.get(j).get("id") === padId) {
               const target = pads.get(j);
               const sourceChanged = params.assetId !== undefined && params.assetId !== target.get("assetId");
-              for (const [k, v] of Object.entries(params)) { if (v !== undefined) target.set(k, v); }
-              if (sourceChanged) {
-                for (const key of ["sliceStart", "sliceEnd", "sliceFadeIn", "sliceFadeOut", "sliceReverse"]) target.delete(key);
+              for (const [k, v] of Object.entries(params)) {
+                if (v !== undefined) target.set(k, v);
               }
-              break;
-            }
-          }
-          break;
-        }
-      }
-    },
-    undoYDoc: (yMap) => {
-      const tracks = yMap.get("tracks") as any;
-      for (let i = 0; i < tracks.length; i++) {
-        const t = tracks.get(i);
-        if (t.get("kind") === "drum") {
-          const pads = t.get("pads") as any;
-          for (let j = 0; j < pads.length; j++) {
-            if (pads.get(j).get("id") === padId) {
-              const target = pads.get(j);
-              for (const key of ["sliceStart", "sliceEnd", "sliceFadeIn", "sliceFadeOut", "sliceReverse"]) target.delete(key);
-              for (const [k, v] of Object.entries(prev)) { if (v !== undefined) target.set(k, v); }
+              if (sourceChanged) {
+                for (const key of ["sliceStart", "sliceEnd", "sliceFadeIn", "sliceFadeOut", "sliceReverse"])
+                  target.delete(key);
+              }
               break;
             }
           }
@@ -347,18 +323,6 @@ export function setTrackParams(doc: ProjectDocument, trackId: string, params: Tr
         const t = tracks.get(i) as any;
         if (t.get("id") === trackId) {
           for (const [k, v] of Object.entries(params)) {
-            if (v !== undefined) t.set(k, v);
-          }
-          break;
-        }
-      }
-    },
-    undoYDoc: (yMap) => {
-      const tracks = yMap.get("tracks") as any;
-      for (let i = 0; i < tracks.length; i++) {
-        const t = tracks.get(i) as any;
-        if (t.get("id") === trackId) {
-          for (const [k, v] of Object.entries(prev)) {
             if (v !== undefined) t.set(k, v);
           }
           break;
@@ -422,7 +386,9 @@ export function duplicatePatternForScene(doc: ProjectDocument, sceneId: string):
   const next: ProjectDocument = {
     ...doc,
     patterns: [...doc.patterns, copy],
-    scenes: doc.scenes.map((candidate) => candidate.id === sceneId ? { ...candidate, patternId: copy.id } : candidate),
+    scenes: doc.scenes.map((candidate) =>
+      candidate.id === sceneId ? { ...candidate, patternId: copy.id } : candidate,
+    ),
     activePatternId: copy.id,
   };
   return snapshot("duplicatePatternForScene", `Make ${scene.name} independent`, doc, next);
@@ -490,13 +456,10 @@ export function renamePattern(_doc: ProjectDocument, patternId: string, name: st
     applyToYDoc: (yMap) => {
       const patterns = yMap.get("patterns") as any;
       for (let i = 0; i < patterns.length; i++) {
-        if (patterns.get(i).get("id") === patternId) { patterns.get(i).set("name", name); break; }
-      }
-    },
-    undoYDoc: (yMap) => {
-      const patterns = yMap.get("patterns") as any;
-      for (let i = 0; i < patterns.length; i++) {
-        if (patterns.get(i).get("id") === patternId) { patterns.get(i).set("name", prev); break; }
+        if (patterns.get(i).get("id") === patternId) {
+          patterns.get(i).set("name", name);
+          break;
+        }
       }
     },
   };
@@ -510,16 +473,16 @@ export function setActivePattern(doc: ProjectDocument, patternId: string): Comma
     // Validate at apply time, not factory time: a quantized launch or a
     // scene chip can race a pattern deletion — activating a nonexistent
     // pattern would crash the scheduler loop with every tick.
-    execute: (d) =>
-      d.patterns.some((p) => p.id === patternId) ? { ...d, activePatternId: patternId } : d,
+    execute: (d) => (d.patterns.some((p) => p.id === patternId) ? { ...d, activePatternId: patternId } : d),
     undo: (d) =>
       d.patterns.some((p) => p.id === prev)
         ? { ...d, activePatternId: prev }
         : d.patterns.length > 0
           ? { ...d, activePatternId: d.patterns[0].id }
           : d,
-    applyToYDoc: (yMap) => { yMap.set("activePatternId", patternId); },
-    undoYDoc: (yMap) => { yMap.set("activePatternId", prev); },
+    applyToYDoc: (yMap) => {
+      yMap.set("activePatternId", patternId);
+    },
   };
 }
 
@@ -563,7 +526,9 @@ export function clearPattern(doc: ProjectDocument, patternId: string): Command {
       p.id === patternId
         ? {
             ...p,
-            rows: Object.fromEntries(Object.entries(p.rows).map(([padId, row]) => [padId, new Array<number>(row.length).fill(0)])),
+            rows: Object.fromEntries(
+              Object.entries(p.rows).map(([padId, row]) => [padId, new Array<number>(row.length).fill(0)]),
+            ),
             notes: {},
           }
         : p,
@@ -581,17 +546,13 @@ export interface PatternClipboard {
 export function pastePattern(doc: ProjectDocument, clip: PatternClipboard): Command {
   const target = doc.patterns.find((p) => p.id === doc.activePatternId);
   if (!target) throw new Error("No active pattern");
-  const rows = Object.fromEntries(
-    Object.entries(clip.rows).map(([padId, row]) => [padId, [...row]]),
-  );
+  const rows = Object.fromEntries(Object.entries(clip.rows).map(([padId, row]) => [padId, [...row]]));
   const notes = Object.fromEntries(
     Object.entries(clip.notes).map(([trackId, noteList]) => [trackId, noteList.map((n) => ({ ...n }))]),
   );
   const pasted: ProjectDocument = {
     ...doc,
-    patterns: doc.patterns.map((p) =>
-      p.id === target.id ? { ...p, stepCount: clip.stepCount, rows, notes } : p,
-    ),
+    patterns: doc.patterns.map((p) => (p.id === target.id ? { ...p, stepCount: clip.stepCount, rows, notes } : p)),
   };
   return snapshot("pastePattern", `Paste into ${target.name}`, doc, normalizeProject(pasted));
 }
@@ -610,17 +571,12 @@ export function setGroove(doc: ProjectDocument, groove: Partial<GrooveSettings>)
     undo: (d) => ({ ...d, groove: prev }),
     applyToYDoc: (yMap) => {
       let g = yMap.get("groove") as any;
-      if (!g) { g = new (require("yjs").Map)(); yMap.set("groove", g); }
+      if (!g) {
+        g = new (require("yjs").Map)();
+        yMap.set("groove", g);
+      }
       for (const [k, v] of Object.entries(nextGroove)) {
         if (v !== undefined) g.set(k, v);
-      }
-    },
-    undoYDoc: (yMap) => {
-      const g = yMap.get("groove") as any;
-      if (g) {
-        for (const [k, v] of Object.entries(prev)) {
-          if (v !== undefined) g.set(k, v);
-        }
       }
     },
   };
@@ -659,8 +615,10 @@ export function setStepMeta(
   const merged: StepMeta = { ...prevEntry, ...meta };
   const cleaned: StepMeta = {};
   if (merged.probability !== undefined && merged.probability < 1) cleaned.probability = clampUnit(merged.probability);
-  if (merged.ratchet !== undefined && merged.ratchet > 1) cleaned.ratchet = Math.max(1, Math.min(8, Math.round(merged.ratchet)));
-  if (merged.microtiming !== undefined && merged.microtiming !== 0) cleaned.microtiming = Math.max(-1, Math.min(1, merged.microtiming));
+  if (merged.ratchet !== undefined && merged.ratchet > 1)
+    cleaned.ratchet = Math.max(1, Math.min(8, Math.round(merged.ratchet)));
+  if (merged.microtiming !== undefined && merged.microtiming !== 0)
+    cleaned.microtiming = Math.max(-1, Math.min(1, merged.microtiming));
 
   return {
     type: "setStepMeta",
@@ -687,9 +645,7 @@ export function clearSteps(
   const apply = (d: ProjectDocument, rows: Record<string, number[]>, meta: Pattern["stepMeta"]): ProjectDocument => ({
     ...d,
     patterns: d.patterns.map((p) =>
-      p.id === patternId
-        ? { ...p, rows: { ...p.rows, ...rows }, stepMeta: cloneStepMeta(meta) }
-        : p,
+      p.id === patternId ? { ...p, rows: { ...p.rows, ...rows }, stepMeta: cloneStepMeta(meta) } : p,
     ),
   });
 
@@ -731,7 +687,10 @@ export function setStepsVelocity(
     velocity: pattern.rows[e.padId]?.[e.stepIndex] ?? 0,
   }));
 
-  const apply = (d: ProjectDocument, list: { padId: string; stepIndex: number; velocity: number }[]): ProjectDocument => ({
+  const apply = (
+    d: ProjectDocument,
+    list: { padId: string; stepIndex: number; velocity: number }[],
+  ): ProjectDocument => ({
     ...d,
     patterns: d.patterns.map((p) => {
       if (p.id !== patternId) return p;
@@ -808,8 +767,7 @@ export function createFill(doc: ProjectDocument, patternId: string): Command {
   if (!source) throw new Error(`Pattern ${patternId} not found`);
   const drumTrack = drumTracksOf(doc)[0];
   if (!drumTrack) throw new Error("No drum track for fill");
-  const snarePad =
-    drumTrack.pads.find((p) => /snare/i.test(p.name)) ?? drumTrack.pads[4] ?? drumTrack.pads[0];
+  const snarePad = drumTrack.pads.find((p) => /snare/i.test(p.name)) ?? drumTrack.pads[4] ?? drumTrack.pads[0];
 
   const rows = Object.fromEntries(Object.entries(source.rows).map(([padId, row]) => [padId, [...row]]));
   const rollVelocities = [0.45, 0.6, 0.78, 0.95];
@@ -830,7 +788,10 @@ export function createFill(doc: ProjectDocument, patternId: string): Command {
     stepCount: source.stepCount,
     rows,
     notes: Object.fromEntries(
-      Object.entries(source.notes ?? {}).map(([trackId, notes]) => [trackId, notes.map((n) => ({ ...n, id: uid("note") }))]),
+      Object.entries(source.notes ?? {}).map(([trackId, notes]) => [
+        trackId,
+        notes.map((n) => ({ ...n, id: uid("note") })),
+      ]),
     ),
     stepMeta,
   };
@@ -877,9 +838,7 @@ export function addToGroup(doc: ProjectDocument, trackId: string, groupId: strin
     label: `Add ${track.name} to group`,
     execute: (d) => ({
       ...d,
-      tracks: d.tracks.map((t) =>
-        t.id === trackId && t.kind !== "group" ? { ...t, groupId } : t,
-      ),
+      tracks: d.tracks.map((t) => (t.id === trackId && t.kind !== "group" ? { ...t, groupId } : t)),
     }),
     undo: (d) => ({
       ...d,
@@ -905,15 +864,11 @@ export function removeFromGroup(doc: ProjectDocument, trackId: string): Command 
     label: `Remove ${track.name} from group`,
     execute: (d) => ({
       ...d,
-      tracks: d.tracks.map((t) =>
-        t.id === trackId && t.kind !== "group" ? { ...t, groupId: undefined } : t,
-      ),
+      tracks: d.tracks.map((t) => (t.id === trackId && t.kind !== "group" ? { ...t, groupId: undefined } : t)),
     }),
     undo: (d) => ({
       ...d,
-      tracks: d.tracks.map((t) =>
-        t.id === trackId && t.kind !== "group" ? { ...t, groupId: prevGroupId } : t,
-      ),
+      tracks: d.tracks.map((t) => (t.id === trackId && t.kind !== "group" ? { ...t, groupId: prevGroupId } : t)),
     }),
   };
 }
@@ -941,7 +896,11 @@ export function deleteTrack(doc: ProjectDocument, trackId: string): Command {
 
 /* ---------------- notes ---------------- */
 
-function withTrackNotes(doc: ProjectDocument, trackId: string, fn: (notes: NoteEvent[]) => NoteEvent[]): ProjectDocument {
+function withTrackNotes(
+  doc: ProjectDocument,
+  trackId: string,
+  fn: (notes: NoteEvent[]) => NoteEvent[],
+): ProjectDocument {
   const pattern = doc.patterns.find((p) => p.id === doc.activePatternId);
   if (!pattern) throw new Error("No active pattern");
   const notes = fn(pattern.notes?.[trackId] ?? []);
@@ -981,9 +940,7 @@ export function moveNote(
   const prev = activeTrackNotes(doc, trackId).find((n) => n.id === noteId);
   if (!prev) throw new Error(`Note ${noteId} not found`);
   const apply = (d: ProjectDocument, patch: { pitch?: number; start?: number }) =>
-    withTrackNotes(d, trackId, (notes) =>
-      notes.map((n) => (n.id === noteId ? { ...n, ...patch } : n)),
-    );
+    withTrackNotes(d, trackId, (notes) => notes.map((n) => (n.id === noteId ? { ...n, ...patch } : n)));
   return {
     type: "moveNote",
     label: "Move note",
@@ -1027,9 +984,7 @@ export function deleteNote(doc: ProjectDocument, trackId: string, noteId: string
     undo: (d) => {
       const target = activeTrackNotes(doc, trackId).find((n) => n.id === noteId);
       if (!target) return d;
-      return withTrackNotes(d, trackId, (notes) =>
-        notes.some((n) => n.id === noteId) ? notes : [...notes, target],
-      );
+      return withTrackNotes(d, trackId, (notes) => (notes.some((n) => n.id === noteId) ? notes : [...notes, target]));
     },
   };
 }
@@ -1058,27 +1013,41 @@ export interface ApplyMidiCreativeOptions {
 
 function midiCreativeLabel(operation: MidiCreativeOperation): string {
   switch (operation.kind) {
-    case "snap-scale": return "Snap notes to scale";
-    case "chord": return "Generate chords";
-    case "reverse": return "Reverse notes";
-    case "invert": return "Invert notes";
-    case "halve": return "Halve note timing";
-    case "double": return "Double note timing";
-    case "strum": return "Strum notes";
-    case "gate": return "Set note gate";
-    case "humanize": return "Humanize notes";
-    case "velocity-randomize": return "Randomize note velocity";
-    case "arpeggiate": return "Arpeggiate notes";
-    case "note-repeat": return "Repeat notes";
-    case "euclidean": return "Generate Euclidean rhythm";
-    case "bassline": return "Generate bassline";
+    case "snap-scale":
+      return "Snap notes to scale";
+    case "chord":
+      return "Generate chords";
+    case "reverse":
+      return "Reverse notes";
+    case "invert":
+      return "Invert notes";
+    case "halve":
+      return "Halve note timing";
+    case "double":
+      return "Double note timing";
+    case "strum":
+      return "Strum notes";
+    case "gate":
+      return "Set note gate";
+    case "humanize":
+      return "Humanize notes";
+    case "velocity-randomize":
+      return "Randomize note velocity";
+    case "arpeggiate":
+      return "Arpeggiate notes";
+    case "note-repeat":
+      return "Repeat notes";
+    case "euclidean":
+      return "Generate Euclidean rhythm";
+    case "bassline":
+      return "Generate bassline";
   }
 }
 
 /** Apply one materialized MIDI creativity operation as one undoable edit. */
 export function applyMidiCreativeTool(doc: ProjectDocument, options: ApplyMidiCreativeOptions): Command {
-  const track = doc.tracks.find((candidate): candidate is InstrumentTrack =>
-    candidate.kind === "instrument" && candidate.id === options.trackId,
+  const track = doc.tracks.find(
+    (candidate): candidate is InstrumentTrack => candidate.kind === "instrument" && candidate.id === options.trackId,
   );
   if (!track) throw new Error(`Instrument track ${options.trackId} not found`);
   const pattern = doc.patterns.find((candidate) => candidate.id === doc.activePatternId);
@@ -1194,8 +1163,9 @@ export function applyMidiCreativeTool(doc: ProjectDocument, options: ApplyMidiCr
   }
 
   const untouched = requestedIds ? notes.filter((note) => !requestedIds.has(note.id)) : [];
-  const nextNotes = [...untouched, ...transformed]
-    .sort((a, b) => a.start - b.start || a.pitch - b.pitch || a.id.localeCompare(b.id));
+  const nextNotes = [...untouched, ...transformed].sort(
+    (a, b) => a.start - b.start || a.pitch - b.pitch || a.id.localeCompare(b.id),
+  );
   return {
     type: `applyMidiCreativeTool:${operation.kind}`,
     label: midiCreativeLabel(operation),
@@ -1240,14 +1210,10 @@ export function setInstrumentParam(doc: ProjectDocument, trackId: string, paramI
       const tracks = yMap.get("tracks") as any;
       for (let i = 0; i < tracks.length; i++) {
         const t = tracks.get(i);
-        if (t.get("id") === trackId) { (t.get("params") as any).set(paramId, clamped); break; }
-      }
-    },
-    undoYDoc: (yMap) => {
-      const tracks = yMap.get("tracks") as any;
-      for (let i = 0; i < tracks.length; i++) {
-        const t = tracks.get(i);
-        if (t.get("id") === trackId) { (t.get("params") as any).set(paramId, prev); break; }
+        if (t.get("id") === trackId) {
+          (t.get("params") as any).set(paramId, clamped);
+          break;
+        }
       }
     },
   };
@@ -1270,14 +1236,10 @@ export function setInstrumentSample(doc: ProjectDocument, trackId: string, asset
       const tracks = yMap.get("tracks") as any;
       for (let i = 0; i < tracks.length; i++) {
         const t = tracks.get(i);
-        if (t.get("id") === trackId) { t.set("sampleId", assetId); break; }
-      }
-    },
-    undoYDoc: (yMap) => {
-      const tracks = yMap.get("tracks") as any;
-      for (let i = 0; i < tracks.length; i++) {
-        const t = tracks.get(i);
-        if (t.get("id") === trackId) { t.set("sampleId", prev); break; }
+        if (t.get("id") === trackId) {
+          t.set("sampleId", assetId);
+          break;
+        }
       }
     },
   };
@@ -1301,7 +1263,12 @@ export function applyInstrumentPreset(doc: ProjectDocument, trackId: string, pre
   }
   const nextSample = preset.sampleId !== undefined ? preset.sampleId : track.sampleId;
 
-  const apply = (d: ProjectDocument, params: Record<string, number>, sampleId: string | null, presetId: string | null): ProjectDocument => ({
+  const apply = (
+    d: ProjectDocument,
+    params: Record<string, number>,
+    sampleId: string | null,
+    presetId: string | null,
+  ): ProjectDocument => ({
     ...d,
     tracks: d.tracks.map((t) =>
       t.kind === "instrument" && t.id === trackId ? { ...t, params, sampleId, presetId } : t,
@@ -1331,7 +1298,9 @@ export function createScene(doc: ProjectDocument, name?: string): Command {
 function uniqueVariationName(doc: ProjectDocument, sourceName: string): string {
   const base = `${sourceName} VAR`;
   let index = 1;
-  while (doc.scenes.some((scene) => scene.name.toLowerCase() === `${base} ${String(index).padStart(2, "0")}`.toLowerCase())) {
+  while (
+    doc.scenes.some((scene) => scene.name.toLowerCase() === `${base} ${String(index).padStart(2, "0")}`.toLowerCase())
+  ) {
     index += 1;
   }
   return `${base} ${String(index).padStart(2, "0")}`;
@@ -1347,13 +1316,9 @@ function clonePatternForVariation(source: Pattern, sourceName: string): Pattern 
       Object.entries(source.notes ?? {}).map(([id, notes]) => [id, notes.map((note) => ({ ...note }))]),
     ),
     stepMeta: source.stepMeta
-      ? Object.fromEntries(
-          Object.entries(source.stepMeta).map(([padId, meta]) => [padId, { ...meta }]),
-        )
+      ? Object.fromEntries(Object.entries(source.stepMeta).map(([padId, meta]) => [padId, { ...meta }]))
       : undefined,
-    generation: source.generation
-      ? { ...source.generation, sourcePatternId: source.id }
-      : undefined,
+    generation: source.generation ? { ...source.generation, sourcePatternId: source.id } : undefined,
   };
 }
 
@@ -1450,7 +1415,9 @@ export function deleteScene(doc: ProjectDocument, sceneId: string): Command {
       ...doc.arrangement,
       clips: doc.arrangement.clips.filter((c) => c.sceneId !== sceneId),
       transitions: doc.arrangement.transitions?.filter((transition) => {
-        const clipIds = new Set(doc.arrangement.clips.filter((clip) => clip.sceneId !== sceneId).map((clip) => clip.id));
+        const clipIds = new Set(
+          doc.arrangement.clips.filter((clip) => clip.sceneId !== sceneId).map((clip) => clip.id),
+        );
         return clipIds.has(transition.fromClipId) && clipIds.has(transition.toClipId);
       }),
     },
@@ -1460,7 +1427,12 @@ export function deleteScene(doc: ProjectDocument, sceneId: string): Command {
 
 /* ---------------- arrangement ---------------- */
 
-function clipsOverlap(clips: ArrangementClip[], ignoreId: string | null, startBar: number, lengthBars: number): boolean {
+function clipsOverlap(
+  clips: ArrangementClip[],
+  ignoreId: string | null,
+  startBar: number,
+  lengthBars: number,
+): boolean {
   const endBar = startBar + lengthBars;
   return clips.some((c) => {
     if (c.id === ignoreId) return false;
@@ -1477,7 +1449,10 @@ export function addArrangementClip(doc: ProjectDocument, sceneId: string, startB
   const clip: ArrangementClip = { id: uid("clip"), sceneId, startBar, lengthBars };
   const next: ProjectDocument = {
     ...doc,
-    arrangement: { ...doc.arrangement, clips: [...doc.arrangement.clips, clip].sort((a, b) => a.startBar - b.startBar) },
+    arrangement: {
+      ...doc.arrangement,
+      clips: [...doc.arrangement.clips, clip].sort((a, b) => a.startBar - b.startBar),
+    },
   };
   return snapshot("addArrangementClip", `Place ${scene.name} at bar ${startBar + 1}`, doc, next);
 }
@@ -1506,7 +1481,10 @@ export function createVariationAndPlaceClip(
     ...doc,
     patterns: [...doc.patterns, pattern],
     scenes: [...doc.scenes, scene],
-    arrangement: { ...doc.arrangement, clips: [...doc.arrangement.clips, clip].sort((a, b) => a.startBar - b.startBar) },
+    arrangement: {
+      ...doc.arrangement,
+      clips: [...doc.arrangement.clips, clip].sort((a, b) => a.startBar - b.startBar),
+    },
   };
   return snapshot("createVariationAndPlaceClip", `Place ${scene.name}`, doc, next);
 }
@@ -1525,9 +1503,12 @@ export function moveArrangementClip(doc: ProjectDocument, clipId: string, startB
       clips: doc.arrangement.clips
         .map((c) => (c.id === clipId ? { ...c, startBar: bar } : c))
         .sort((a, b) => a.startBar - b.startBar),
-      transitions: transitionsForClips(doc, doc.arrangement.clips
-        .map((c) => (c.id === clipId ? { ...c, startBar: bar } : c))
-        .sort((a, b) => a.startBar - b.startBar)),
+      transitions: transitionsForClips(
+        doc,
+        doc.arrangement.clips
+          .map((c) => (c.id === clipId ? { ...c, startBar: bar } : c))
+          .sort((a, b) => a.startBar - b.startBar),
+      ),
     },
   };
   return snapshot("moveArrangementClip", `Move clip to bar ${bar + 1}`, doc, next);
@@ -1554,7 +1535,9 @@ export function deleteArrangementClip(doc: ProjectDocument, clipId: string): Com
     arrangement: {
       ...doc.arrangement,
       clips: doc.arrangement.clips.filter((c) => c.id !== clipId),
-      transitions: doc.arrangement.transitions?.filter((transition) => transition.fromClipId !== clipId && transition.toClipId !== clipId),
+      transitions: doc.arrangement.transitions?.filter(
+        (transition) => transition.fromClipId !== clipId && transition.toClipId !== clipId,
+      ),
     },
   };
   return snapshot("deleteArrangementClip", "Delete clip", doc, next);
@@ -1568,7 +1551,10 @@ export function duplicateArrangementClip(doc: ProjectDocument, clipId: string): 
   const copy: ArrangementClip = { id: uid("clip"), sceneId: clip.sceneId, startBar, lengthBars: clip.lengthBars };
   const next: ProjectDocument = {
     ...doc,
-    arrangement: { ...doc.arrangement, clips: [...doc.arrangement.clips, copy].sort((a, b) => a.startBar - b.startBar) },
+    arrangement: {
+      ...doc.arrangement,
+      clips: [...doc.arrangement.clips, copy].sort((a, b) => a.startBar - b.startBar),
+    },
   };
   return snapshot("duplicateArrangementClip", "Duplicate clip", doc, next);
 }
@@ -1591,7 +1577,11 @@ export function addArrangementTransition(
   cueAssetId?: string,
 ): Command {
   transitionBetween(doc, fromClipId, toClipId);
-  if (doc.arrangement.transitions?.some((transition) => transition.fromClipId === fromClipId && transition.toClipId === toClipId)) {
+  if (
+    doc.arrangement.transitions?.some(
+      (transition) => transition.fromClipId === fromClipId && transition.toClipId === toClipId,
+    )
+  ) {
     throw new Error("A transition already exists between these clips");
   }
   const transition: ArrangementTransition = {
@@ -1620,12 +1610,18 @@ export function updateArrangementTransition(
     ...doc,
     arrangement: {
       ...doc.arrangement,
-      transitions: doc.arrangement.transitions!.map((transition) => transition.id === transitionId ? {
-        ...transition,
-        ...(changes.type ? { type: clampArrangementTransitionType(changes.type) } : {}),
-        ...(changes.lengthBars !== undefined ? { lengthBars: Math.min(4, Math.max(1, Math.round(changes.lengthBars))) } : {}),
-        ...(changes.cueAssetId !== undefined ? { cueAssetId: changes.cueAssetId?.trim() || undefined } : {}),
-      } : transition),
+      transitions: doc.arrangement.transitions!.map((transition) =>
+        transition.id === transitionId
+          ? {
+              ...transition,
+              ...(changes.type ? { type: clampArrangementTransitionType(changes.type) } : {}),
+              ...(changes.lengthBars !== undefined
+                ? { lengthBars: Math.min(4, Math.max(1, Math.round(changes.lengthBars))) }
+                : {}),
+              ...(changes.cueAssetId !== undefined ? { cueAssetId: changes.cueAssetId?.trim() || undefined } : {}),
+            }
+          : transition,
+      ),
     },
   };
   return snapshot("updateArrangementTransition", "Edit arrangement transition", doc, next);
@@ -1637,7 +1633,10 @@ export function removeArrangementTransition(doc: ProjectDocument, transitionId: 
   }
   const next: ProjectDocument = {
     ...doc,
-    arrangement: { ...doc.arrangement, transitions: doc.arrangement.transitions!.filter((transition) => transition.id !== transitionId) },
+    arrangement: {
+      ...doc.arrangement,
+      transitions: doc.arrangement.transitions!.filter((transition) => transition.id !== transitionId),
+    },
   };
   return snapshot("removeArrangementTransition", "Remove arrangement transition", doc, next);
 }
@@ -1649,7 +1648,7 @@ export interface ArrangementSkeletonStep {
   lengthBars: number;
 }
 
-const SKELETON_LAYOUT: ReadonlyArray<{ role: ArrangementSkeletonStep["role"], lengthBars: number }> = [
+const SKELETON_LAYOUT: ReadonlyArray<{ role: ArrangementSkeletonStep["role"]; lengthBars: number }> = [
   { role: "intro", lengthBars: 8 },
   { role: "build", lengthBars: 8 },
   { role: "drop", lengthBars: 16 },
@@ -1674,7 +1673,12 @@ export function arrangementSkeletonPreview(doc: ProjectDocument): ArrangementSke
 export function createArrangementSkeleton(doc: ProjectDocument): Command {
   const steps = arrangementSkeletonPreview(doc);
   if (steps.length === 0) throw new Error("No INTRO, BUILD, DROP, BREAK or OUTRO scenes found");
-  const clips = steps.map((step) => ({ id: uid("clip"), sceneId: step.sceneId, startBar: step.startBar, lengthBars: step.lengthBars }));
+  const clips = steps.map((step) => ({
+    id: uid("clip"),
+    sceneId: step.sceneId,
+    startBar: step.startBar,
+    lengthBars: step.lengthBars,
+  }));
   const next: ProjectDocument = { ...doc, arrangement: { ...doc.arrangement, clips, transitions: undefined } };
   return snapshot("createArrangementSkeleton", "Build arrangement skeleton", doc, next);
 }
@@ -1698,15 +1702,17 @@ export function appendCapturedArrangement(doc: ProjectDocument, captured: Captur
     lengthBars: Math.max(1, Math.round(entry.lengthBars)),
   }));
   const allClips = [...doc.arrangement.clips, ...clips].sort((a, b) => a.startBar - b.startBar);
-  if (allClips.some((clip, index) => index > 0 && clip.startBar < allClips[index - 1].startBar + allClips[index - 1].lengthBars)) {
+  if (
+    allClips.some(
+      (clip, index) => index > 0 && clip.startBar < allClips[index - 1].startBar + allClips[index - 1].lengthBars,
+    )
+  ) {
     throw new Error("Captured arrangement overlaps an existing clip");
   }
-  return snapshot(
-    "appendCapturedArrangement",
-    `Capture ${clips.length} scene${clips.length === 1 ? "" : "s"}`,
-    doc,
-    { ...doc, arrangement: { ...doc.arrangement, clips: allClips } },
-  );
+  return snapshot("appendCapturedArrangement", `Capture ${clips.length} scene${clips.length === 1 ? "" : "s"}`, doc, {
+    ...doc,
+    arrangement: { ...doc.arrangement, clips: allClips },
+  });
 }
 
 /* ---------------- automation ---------------- */
@@ -1760,14 +1766,15 @@ export function addAutomationPoint(doc: ProjectDocument, laneId: string, tick: n
     type: "addAutomationPoint",
     label: "Add automation point",
     execute: (d) => withLane(d, laneId, (l) => ({ ...l, points: insertPointSorted(l.points, point) })),
-    undo: (d) => withLane(d, laneId, (l) => {
-      // Inverse of the sorted insert: remove one instance of that (tick, value).
-      const idx = l.points.findIndex((p) => p.tick === point.tick && p.value === point.value);
-      if (idx === -1) return l;
-      const points = [...l.points];
-      points.splice(idx, 1);
-      return { ...l, points };
-    }),
+    undo: (d) =>
+      withLane(d, laneId, (l) => {
+        // Inverse of the sorted insert: remove one instance of that (tick, value).
+        const idx = l.points.findIndex((p) => p.tick === point.tick && p.value === point.value);
+        if (idx === -1) return l;
+        const points = [...l.points];
+        points.splice(idx, 1);
+        return { ...l, points };
+      }),
   };
 }
 
@@ -1783,15 +1790,16 @@ export function moveAutomationPoint(
   return {
     type: "moveAutomationPoint",
     label: "Move automation point",
-    execute: (d) => withLane(d, laneId, (l) => {
-      const points = [...l.points];
-      const p = points[index];
-      points[index] = {
-        tick: Math.max(0, Math.round(delta.tick ?? p.tick)),
-        value: delta.value ?? p.value,
-      };
-      return { ...l, points: points.sort((a, b) => a.tick - b.tick) };
-    }),
+    execute: (d) =>
+      withLane(d, laneId, (l) => {
+        const points = [...l.points];
+        const p = points[index];
+        points[index] = {
+          tick: Math.max(0, Math.round(delta.tick ?? p.tick)),
+          value: delta.value ?? p.value,
+        };
+        return { ...l, points: points.sort((a, b) => a.tick - b.tick) };
+      }),
     undo: (d) => withLane(d, laneId, (l) => ({ ...l, points: prev })),
   };
 }
@@ -1804,12 +1812,13 @@ export function deleteAutomationPoint(doc: ProjectDocument, laneId: string, inde
     type: "deleteAutomationPoint",
     label: "Delete automation point",
     execute: (d) => withLane(d, laneId, (l) => ({ ...l, points: l.points.filter((_, i) => i !== index) })),
-    undo: (d) => withLane(d, laneId, (l) => {
-      if (l.points.some((p) => p === removed)) return l;
-      const points = [...l.points];
-      points.splice(Math.min(index, points.length), 0, removed);
-      return { ...l, points };
-    }),
+    undo: (d) =>
+      withLane(d, laneId, (l) => {
+        if (l.points.some((p) => p === removed)) return l;
+        const points = [...l.points];
+        points.splice(Math.min(index, points.length), 0, removed);
+        return { ...l, points };
+      }),
   };
 }
 
@@ -1824,11 +1833,41 @@ export function addLfo(doc: ProjectDocument, trackId: string, kind: LfoKind = "o
   const id = uid("lfo");
   let lfo: Lfo;
   if (kind === "random") {
-    lfo = { id, trackId, kind, param: "gain", snh: "hold", rateMode: "sync", rateHz: 8, division: 3, amount: 0.4, seed: newModulatorSeed() };
+    lfo = {
+      id,
+      trackId,
+      kind,
+      param: "gain",
+      snh: "hold",
+      rateMode: "sync",
+      rateHz: 8,
+      division: 3,
+      amount: 0.4,
+      seed: newModulatorSeed(),
+    };
   } else if (kind === "step") {
-    lfo = { id, trackId, kind, param: "gain", division: 3, glideSec: 0.02, amount: 0.6, steps: [...DEFAULT_STEP_PATTERN] };
+    lfo = {
+      id,
+      trackId,
+      kind,
+      param: "gain",
+      division: 3,
+      glideSec: 0.02,
+      amount: 0.6,
+      steps: [...DEFAULT_STEP_PATTERN],
+    };
   } else if (kind === "envFollower") {
-    lfo = { id, trackId, kind, param: "gain", sourceTrackId: trackId, attackMs: 12, releaseMs: 180, sensitivity: 1.5, amount: 0.5 };
+    lfo = {
+      id,
+      trackId,
+      kind,
+      param: "gain",
+      sourceTrackId: trackId,
+      attackMs: 12,
+      releaseMs: 180,
+      sensitivity: 1.5,
+      amount: 0.5,
+    };
   } else {
     lfo = { id, trackId, param: "gain", wave: "sine", rateMode: "sync", rateHz: 2, division: 2, amount: 0.3 };
   }
@@ -1848,7 +1887,11 @@ export function removeLfo(doc: ProjectDocument, lfoId: string): Command {
   return snapshot("removeLfo", "Remove LFO", doc, next);
 }
 
-export function setLfoParams(doc: ProjectDocument, lfoId: string, patch: Partial<Omit<Lfo, "id" | "trackId">>): Command {
+export function setLfoParams(
+  doc: ProjectDocument,
+  lfoId: string,
+  patch: Partial<Omit<Lfo, "id" | "trackId">>,
+): Command {
   const prev: Partial<Omit<Lfo, "id" | "trackId">> = {};
   const current = doc.lfos.find((l) => l.id === lfoId);
   if (!current) throw new Error(`LFO ${lfoId} not found`);
@@ -1885,14 +1928,10 @@ export function setMacroValue(doc: ProjectDocument, macroId: string, value: numb
       const macros = yMap.get("macros") as any;
       for (let i = 0; i < macros.length; i++) {
         const m = macros.get(i);
-        if (m.get("id") === macroId) { m.set("value", clamped); break; }
-      }
-    },
-    undoYDoc: (yMap) => {
-      const macros = yMap.get("macros") as any;
-      for (let i = 0; i < macros.length; i++) {
-        const m = macros.get(i);
-        if (m.get("id") === macroId) { m.set("value", prev); break; }
+        if (m.get("id") === macroId) {
+          m.set("value", clamped);
+          break;
+        }
       }
     },
   };
@@ -1913,20 +1952,21 @@ export function renameMacro(doc: ProjectDocument, macroId: string, name: string)
       const macros = yMap.get("macros") as any;
       for (let i = 0; i < macros.length; i++) {
         const m = macros.get(i);
-        if (m.get("id") === macroId) { m.set("name", name); break; }
-      }
-    },
-    undoYDoc: (yMap) => {
-      const macros = yMap.get("macros") as any;
-      for (let i = 0; i < macros.length; i++) {
-        const m = macros.get(i);
-        if (m.get("id") === macroId) { m.set("name", prev); break; }
+        if (m.get("id") === macroId) {
+          m.set("name", name);
+          break;
+        }
       }
     },
   };
 }
 
-export function addMacroMapping(doc: ProjectDocument, macroId: string, trackId: string, param: "gain" | "pan"): Command {
+export function addMacroMapping(
+  doc: ProjectDocument,
+  macroId: string,
+  trackId: string,
+  param: "gain" | "pan",
+): Command {
   if (!doc.tracks.some((t) => t.id === trackId)) throw new Error(`Track ${trackId} not found`);
   if (!doc.macros.some((m) => m.id === macroId)) throw new Error(`Macro ${macroId} not found`);
   const mapping = { id: uid("map"), trackId, param, amount: 0.5 };
@@ -1943,18 +1983,19 @@ export function removeMacroMapping(doc: ProjectDocument, macroId: string, mappin
   return snapshot("removeMacroMapping", "Remove macro mapping", doc, next);
 }
 
-export function setMacroMappingAmount(doc: ProjectDocument, macroId: string, mappingId: string, amount: number): Command {
-  const prev = doc.macros
-    .find((m) => m.id === macroId)
-    ?.mappings.find((x) => x.id === mappingId)?.amount;
+export function setMacroMappingAmount(
+  doc: ProjectDocument,
+  macroId: string,
+  mappingId: string,
+  amount: number,
+): Command {
+  const prev = doc.macros.find((m) => m.id === macroId)?.mappings.find((x) => x.id === mappingId)?.amount;
   if (prev === undefined) throw new Error("Macro mapping not found");
   const clamped = clamp(amount, -1, 1);
   const apply = (d: ProjectDocument, v: number): ProjectDocument => ({
     ...d,
     macros: d.macros.map((m) =>
-      m.id === macroId
-        ? { ...m, mappings: m.mappings.map((x) => (x.id === mappingId ? { ...x, amount: v } : x)) }
-        : m,
+      m.id === macroId ? { ...m, mappings: m.mappings.map((x) => (x.id === mappingId ? { ...x, amount: v } : x)) } : m,
     ),
   });
   return {
@@ -1980,11 +2021,10 @@ export function setMasterConfig(doc: ProjectDocument, patch: Partial<MasterConfi
     undo: (d) => ({ ...d, master: prev }),
     applyToYDoc: (yMap) => {
       const master = yMap.get("master") as any;
-      if (master) for (const [k, v] of Object.entries(patch)) { if (v !== undefined) master.set(k, v); }
-    },
-    undoYDoc: (yMap) => {
-      const master = yMap.get("master") as any;
-      if (master) for (const [k, v] of Object.entries(prev)) { if (v !== undefined) master.set(k, v); }
+      if (master)
+        for (const [k, v] of Object.entries(patch)) {
+          if (v !== undefined) master.set(k, v);
+        }
     },
   };
 }
@@ -2007,14 +2047,10 @@ export function setTrackSend(doc: ProjectDocument, trackId: string, returnId: st
       const tracks = yMap.get("tracks") as any;
       for (let i = 0; i < tracks.length; i++) {
         const t = tracks.get(i);
-        if (t.get("id") === trackId) { (t.get("sends") as any).set(returnId, clamped); break; }
-      }
-    },
-    undoYDoc: (yMap) => {
-      const tracks = yMap.get("tracks") as any;
-      for (let i = 0; i < tracks.length; i++) {
-        const t = tracks.get(i);
-        if (t.get("id") === trackId) { (t.get("sends") as any).set(returnId, prev); break; }
+        if (t.get("id") === trackId) {
+          (t.get("sends") as any).set(returnId, clamped);
+          break;
+        }
       }
     },
   };
@@ -2036,14 +2072,10 @@ export function setReturnGain(doc: ProjectDocument, returnId: string, gain: numb
       const returns = yMap.get("returns") as any;
       for (let i = 0; i < returns.length; i++) {
         const r = returns.get(i);
-        if (r.get("id") === returnId) { r.set("gain", clamped); break; }
-      }
-    },
-    undoYDoc: (yMap) => {
-      const returns = yMap.get("returns") as any;
-      for (let i = 0; i < returns.length; i++) {
-        const r = returns.get(i);
-        if (r.get("id") === returnId) { r.set("gain", prev); break; }
+        if (r.get("id") === returnId) {
+          r.set("gain", clamped);
+          break;
+        }
       }
     },
   };
@@ -2051,7 +2083,11 @@ export function setReturnGain(doc: ProjectDocument, returnId: string, gain: numb
 
 /* ---------------- effects ---------------- */
 
-function withTrackEffects(doc: ProjectDocument, trackId: string, fn: (effects: EffectInstance[]) => EffectInstance[]): ProjectDocument {
+function withTrackEffects(
+  doc: ProjectDocument,
+  trackId: string,
+  fn: (effects: EffectInstance[]) => EffectInstance[],
+): ProjectDocument {
   return {
     ...doc,
     tracks: doc.tracks.map((t) => (t.id === trackId && "effects" in t ? { ...t, effects: fn(t.effects) } : t)),
@@ -2066,6 +2102,7 @@ function trackEffectsOf(doc: ProjectDocument, trackId: string): EffectInstance[]
 export function addEffect(_doc: ProjectDocument, trackId: string, type: EffectType): Command {
   const fx: EffectInstance = { id: uid("fx"), type, bypassed: false, params: defaultParamsOf(type) };
   if (type === "stepGate") fx.steps = [...DEFAULT_GATE_PATTERN];
+  if (type === "stutter") fx.steps = Array.from({ length: 16 }, () => 1);
   return {
     type: "addEffect",
     label: `Add ${EFFECT_DEFS[type].name}`,
@@ -2087,22 +2124,6 @@ export function addEffect(_doc: ProjectDocument, trackId: string, type: EffectTy
           for (const [k, v] of Object.entries(fx.params)) params.set(k, v);
           if (fx.steps) fxMap.set("steps", [...fx.steps]);
           effects.push([fxMap]);
-          break;
-        }
-      }
-    },
-    undoYDoc: (yMap) => {
-      const tracks = yMap.get("tracks") as any;
-      for (let i = 0; i < tracks.length; i++) {
-        const t = tracks.get(i) as any;
-        if (t.get("id") === trackId) {
-          const effects = t.get("effects") as any;
-          for (let j = 0; j < effects.length; j++) {
-            if ((effects.get(j) as any).get("id") === fx.id) {
-              effects.delete(j, 1);
-              break;
-            }
-          }
           break;
         }
       }
@@ -2140,10 +2161,6 @@ export function removeEffect(doc: ProjectDocument, trackId: string, fxId: string
         }
       }
     },
-    undoYDoc: (_yMap) => {
-      // Re-add the effect — simplified, full undo would need to store the effect data
-      // For now, fall back to snapshot approach
-    },
   };
 }
 
@@ -2154,9 +2171,7 @@ export function setEffectSteps(doc: ProjectDocument, trackId: string, fxId: stri
   const prev = target.steps ? [...target.steps] : undefined;
   const next = sanitizeGateSteps(steps);
   const apply = (d: ProjectDocument, values: number[] | undefined): ProjectDocument =>
-    withTrackEffects(d, trackId, (effects) =>
-      effects.map((f) => (f.id === fxId ? { ...f, steps: values } : f)),
-    );
+    withTrackEffects(d, trackId, (effects) => effects.map((f) => (f.id === fxId ? { ...f, steps: values } : f)));
   return {
     type: "setEffectSteps",
     label: "Edit step pattern",
@@ -2165,21 +2180,35 @@ export function setEffectSteps(doc: ProjectDocument, trackId: string, fxId: stri
   };
 }
 
-export function setEffectParam(doc: ProjectDocument, trackId: string, fxId: string, paramId: string, value: number): Command {
+export function setEffectParam(
+  doc: ProjectDocument,
+  trackId: string,
+  fxId: string,
+  paramId: string,
+  value: number,
+): Command {
   const target = trackEffectsOf(doc, trackId).find((f) => f.id === fxId);
   if (!target) throw new Error(`Effect ${fxId} not found`);
   const { type, params } = target;
   const def = EFFECT_DEFS[type].params.find((p) => p.id === paramId);
   if (!def) throw new Error(`Effect param ${paramId} not defined for ${type}`);
   const eqLegacyMap: Record<string, string> = {
-    lowGain: "lowShelfGain", lowFreq: "lowShelfFreq", midGain: "lowMidGain", midFreq: "lowMidFreq", midQ: "lowMidQ", highGain: "highShelfGain", highFreq: "highShelfFreq",
+    lowGain: "lowShelfGain",
+    lowFreq: "lowShelfFreq",
+    midGain: "lowMidGain",
+    midFreq: "lowMidFreq",
+    midQ: "lowMidQ",
+    highGain: "highShelfGain",
+    highFreq: "highShelfFreq",
   };
   const canonicalId = type === "eq" ? eqLegacyMap[paramId] : undefined;
   const clamped = clampEffectParam(type, paramId, value);
   const nextValues: Record<string, number> = { [paramId]: clamped };
   if (canonicalId) nextValues[canonicalId] = clampEffectParam(type, canonicalId, value);
   const previousValues: Record<string, number> = { [paramId]: params[paramId] ?? def.default };
-  if (canonicalId) previousValues[canonicalId] = params[canonicalId] ?? EFFECT_DEFS[type].params.find((p) => p.id === canonicalId)?.default ?? 0;
+  if (canonicalId)
+    previousValues[canonicalId] =
+      params[canonicalId] ?? EFFECT_DEFS[type].params.find((p) => p.id === canonicalId)?.default ?? 0;
   const apply = (d: ProjectDocument, values: Record<string, number>): ProjectDocument =>
     withTrackEffects(d, trackId, (effects) =>
       effects.map((f) => (f.id === fxId ? { ...f, params: { ...f.params, ...values } } : f)),
@@ -2207,24 +2236,6 @@ export function setEffectParam(doc: ProjectDocument, trackId: string, fxId: stri
         }
       }
     },
-    undoYDoc: (yMap) => {
-      const tracks = yMap.get("tracks") as any;
-      for (let i = 0; i < tracks.length; i++) {
-        const t = tracks.get(i) as any;
-        if (t.get("id") === trackId) {
-          const effects = t.get("effects") as any;
-          for (let j = 0; j < effects.length; j++) {
-            const fx = effects.get(j) as any;
-            if (fx.get("id") === fxId) {
-              const fxParams = fx.get("params") as any;
-              for (const [id, previousValue] of Object.entries(previousValues)) fxParams.set(id, previousValue);
-              break;
-            }
-          }
-          break;
-        }
-      }
-    },
   };
 }
 
@@ -2244,20 +2255,10 @@ export function toggleEffectBypass(doc: ProjectDocument, trackId: string, fxId: 
         if (t.get("id") === trackId) {
           const effects = t.get("effects") as any;
           for (let j = 0; j < effects.length; j++) {
-            if (effects.get(j).get("id") === fxId) { effects.get(j).set("bypassed", !prev); break; }
-          }
-          break;
-        }
-      }
-    },
-    undoYDoc: (yMap) => {
-      const tracks = yMap.get("tracks") as any;
-      for (let i = 0; i < tracks.length; i++) {
-        const t = tracks.get(i);
-        if (t.get("id") === trackId) {
-          const effects = t.get("effects") as any;
-          for (let j = 0; j < effects.length; j++) {
-            if (effects.get(j).get("id") === fxId) { effects.get(j).set("bypassed", prev); break; }
+            if (effects.get(j).get("id") === fxId) {
+              effects.get(j).set("bypassed", !prev);
+              break;
+            }
           }
           break;
         }
@@ -2277,7 +2278,211 @@ export function moveEffect(doc: ProjectDocument, trackId: string, fxId: string, 
   const next = withTrackEffects(doc, trackId, () => reordered);
   return snapshot("moveEffect", `Reorder ${EFFECT_DEFS[moved.type].name}`, doc, next);
 }
-/* ---------------- metadata & scorepack ---------------- */export function setProjectKey(doc: ProjectDocument, key: MusicalKey | null): Command {  const prev = doc.key;  const next: ProjectDocument = key    ? { ...doc, key }    : (() => {        const { key: _drop, ...rest } = doc;        return rest as ProjectDocument;      })();  return {    type: "setProjectKey",    label: key ? `Set project key to ${key}` : "Clear project key",    execute: () => next,    undo: (d) =>      prev        ? { ...d, key: prev }        : (() => {            const { key: _drop, ...rest } = d;            return rest as ProjectDocument;          })(),  };}export function setProjectTags(doc: ProjectDocument, tags: string[]): Command {  const prev = doc.tags;  const cleaned = tags.map((t) => t.trim()).filter((t) => t.length > 0);  return {    type: "setProjectTags",    label: "Edit project tags",    execute: (d) => ({ ...d, tags: cleaned }),    undo: (d) =>      prev        ? { ...d, tags: prev }        : (() => {            const { tags: _drop, ...rest } = d;            return rest as ProjectDocument;          })(),  };}/* ---------------- markers ---------------- */export function addMarker(  doc: ProjectDocument,  partial: { tick: number; type?: Marker["type"]; name?: string; linkedClipId?: string; customId?: string },): Command {  const marker: Marker = {    id: uid("marker"),    name: partial.name?.trim() || `Marker ${doc.markers.length + 1}`,    type: partial.type ?? "cue",    tick: Math.max(0, Math.floor(partial.tick)),    linkedClipId: partial.linkedClipId,    customId: partial.customId,  };  const next: ProjectDocument = { ...doc, markers: [...doc.markers, marker] };  return snapshot("addMarker", `Add marker ${marker.name}`, doc, next);}export function removeMarker(doc: ProjectDocument, markerId: string): Command {  const target = doc.markers.find((m) => m.id === markerId);  if (!target) throw new Error(`Marker ${markerId} not found`);  const next: ProjectDocument = { ...doc, markers: doc.markers.filter((m) => m.id !== markerId) };  return snapshot("removeMarker", `Remove marker ${target.name}`, doc, next);}export function renameMarker(doc: ProjectDocument, markerId: string, name: string): Command {  const target = doc.markers.find((m) => m.id === markerId);  if (!target) throw new Error(`Marker ${markerId} not found`);  const trimmed = name.trim() || target.name;  const next = {    ...doc,    markers: doc.markers.map((m) => (m.id === markerId ? { ...m, name: trimmed } : m)),  };  return snapshot("renameMarker", `Rename marker to ${trimmed}`, doc, next);}export function setMarkerType(doc: ProjectDocument, markerId: string, type: Marker["type"]): Command {  const target = doc.markers.find((m) => m.id === markerId);  if (!target) throw new Error(`Marker ${markerId} not found`);  const next = {    ...doc,    markers: doc.markers.map((m) => (m.id === markerId ? { ...m, type } : m)),  };  return snapshot("setMarkerType", `Marker type to ${type}`, doc, next);}export function moveMarker(doc: ProjectDocument, markerId: string, tick: number): Command {  const target = doc.markers.find((m) => m.id === markerId);  if (!target) throw new Error(`Marker ${markerId} not found`);  const clamped = Math.max(0, Math.floor(tick));  const next = {    ...doc,    markers: doc.markers.map((m) => (m.id === markerId ? { ...m, tick: clamped } : m)),  };  return snapshot("moveMarker", "Move marker", doc, next);}export function setMarkerLinkedClip(doc: ProjectDocument, markerId: string, linkedClipId: string | null): Command {  const target = doc.markers.find((m) => m.id === markerId);  if (!target) throw new Error(`Marker ${markerId} not found`);  const next = {    ...doc,    markers: doc.markers.map((m) =>      m.id === markerId ? { ...m, linkedClipId: linkedClipId ?? undefined } : m,    ),  };  return snapshot("setMarkerLinkedClip", "Link marker to clip", doc, next);}/* ---------------- scenes (intensity / loop) ---------------- */export function setSceneIntensity(doc: ProjectDocument, sceneId: string, intensity: number): Command {  const target = doc.scenes.find((s) => s.id === sceneId);  if (!target) throw new Error(`Scene ${sceneId} not found`);  const clamped = Math.min(1, Math.max(0, Number.isFinite(intensity) ? intensity : 0.7));  const next = {    ...doc,    scenes: doc.scenes.map((s) => (s.id === sceneId ? { ...s, intensity: clamped } : s)),  };  return snapshot("setSceneIntensity", `Scene intensity to ${clamped.toFixed(2)}`, doc, next);}export function setSceneIntensityCurve(doc: ProjectDocument, sceneId: string, curve: IntensityPoint[]): Command {  const target = doc.scenes.find((s) => s.id === sceneId);  if (!target) throw new Error(`Scene ${sceneId} not found`);  const cleaned = curve    .map((p) => ({      offset: Math.max(0, Math.floor(p.offset)),      value: Math.min(1, Math.max(0, Number.isFinite(p.value) ? p.value : 0)),    }))    .sort((a, b) => a.offset - b.offset);  const next = {    ...doc,    scenes: doc.scenes.map((s) =>      s.id === sceneId        ? { ...s, intensityCurve: cleaned.length > 0 ? cleaned : undefined }        : s,    ),  };  return snapshot("setSceneIntensityCurve", "Scene intensity curve", doc, next);}export function setSceneLoop(doc: ProjectDocument, sceneId: string, loop: boolean): Command {  const target = doc.scenes.find((s) => s.id === sceneId);  if (!target) throw new Error(`Scene ${sceneId} not found`);  const next = {    ...doc,    scenes: doc.scenes.map((s) => (s.id === sceneId ? { ...s, loop } : s)),  };  return snapshot("setSceneLoop", loop ? "Loop scene" : "Unloop scene", doc, next);}export function setArrangementClipLoop(doc: ProjectDocument, clipId: string, loop: boolean): Command {  const target = doc.arrangement.clips.find((c) => c.id === clipId);  if (!target) throw new Error(`Clip ${clipId} not found`);  const next = {    ...doc,    arrangement: {      ...doc.arrangement,      clips: doc.arrangement.clips.map((c) => (c.id === clipId ? { ...c, loop } : c)),    },  };  return snapshot("setArrangementClipLoop", loop ? "Loop clip" : "Unloop clip", doc, next);}/* ---------------- scene automation ---------------- */export function addSceneAutomation(doc: ProjectDocument, sceneId: string, target: AutomationTarget): Command {  if (!doc.scenes.some((s) => s.id === sceneId)) throw new Error(`Scene ${sceneId} not found`);  const lane: SceneAutomation = { id: uid("sceneAuto"), sceneId, target, points: [{ tick: 0, value: 0 }] };  const next = { ...doc, sceneAutomation: [...doc.sceneAutomation, lane] };  return snapshot("addSceneAutomation", "Add scene lane", doc, next);}export function removeSceneAutomation(doc: ProjectDocument, laneId: string): Command {  const target = doc.sceneAutomation.find((l) => l.id === laneId);  if (!target) throw new Error(`Scene lane ${laneId} not found`);  const next = { ...doc, sceneAutomation: doc.sceneAutomation.filter((l) => l.id !== laneId) };  return snapshot("removeSceneAutomation", "Remove scene lane", doc, next);}export function addSceneAutomationPoint(doc: ProjectDocument, laneId: string, tick: number, value: number): Command {  const lane = doc.sceneAutomation.find((l) => l.id === laneId);  if (!lane) throw new Error(`Scene lane ${laneId} not found`);  const next = {    ...doc,    sceneAutomation: doc.sceneAutomation.map((l) =>      l.id === laneId        ? {            ...l,            points: [...l.points, { tick: Math.max(0, Math.floor(tick)), value }].sort(              (a, b) => a.tick - b.tick,            ),          }        : l,    ),  };  return snapshot("addSceneAutomationPoint", "Add scene point", doc, next);}export function moveSceneAutomationPoint(  doc: ProjectDocument,  laneId: string,  index: number,  delta: { tick?: number; value?: number },): Command {  const lane = doc.sceneAutomation.find((l) => l.id === laneId);  if (!lane) throw new Error(`Scene lane ${laneId} not found`);  if (index < 0 || index >= lane.points.length) throw new Error("Scene point out of range");  const next = {    ...doc,    sceneAutomation: doc.sceneAutomation.map((l) => {      if (l.id !== laneId) return l;      const points = [...l.points];      const p = points[index];      points[index] = {        tick: delta.tick !== undefined ? Math.max(0, Math.floor(delta.tick)) : p.tick,        value: delta.value !== undefined ? delta.value : p.value,      };      points.sort((a, b) => a.tick - b.tick);      return { ...l, points };    }),  };  return snapshot("moveSceneAutomationPoint", "Move scene point", doc, next);}export function removeSceneAutomationPoint(doc: ProjectDocument, laneId: string, index: number): Command {  const lane = doc.sceneAutomation.find((l) => l.id === laneId);  if (!lane) throw new Error(`Scene lane ${laneId} not found`);  if (index < 0 || index >= lane.points.length) throw new Error("Scene point out of range");  const next = {    ...doc,    sceneAutomation: doc.sceneAutomation.map((l) =>      l.id === laneId ? { ...l, points: l.points.filter((_, i) => i !== index) } : l,    ),  };  return snapshot("removeSceneAutomationPoint", "Remove scene point", doc, next);}
+/* ---------------- metadata & scorepack ---------------- */ export function setProjectKey(
+  doc: ProjectDocument,
+  key: MusicalKey | null,
+): Command {
+  const prev = doc.key;
+  const next: ProjectDocument = key
+    ? { ...doc, key }
+    : (() => {
+        const { key: _drop, ...rest } = doc;
+        return rest as ProjectDocument;
+      })();
+  return {
+    type: "setProjectKey",
+    label: key ? `Set project key to ${key}` : "Clear project key",
+    execute: () => next,
+    undo: (d) =>
+      prev
+        ? { ...d, key: prev }
+        : (() => {
+            const { key: _drop, ...rest } = d;
+            return rest as ProjectDocument;
+          })(),
+  };
+}
+export function setProjectTags(doc: ProjectDocument, tags: string[]): Command {
+  const prev = doc.tags;
+  const cleaned = tags.map((t) => t.trim()).filter((t) => t.length > 0);
+  return {
+    type: "setProjectTags",
+    label: "Edit project tags",
+    execute: (d) => ({ ...d, tags: cleaned }),
+    undo: (d) =>
+      prev
+        ? { ...d, tags: prev }
+        : (() => {
+            const { tags: _drop, ...rest } = d;
+            return rest as ProjectDocument;
+          })(),
+  };
+}
+/* ---------------- markers ---------------- */ export function addMarker(
+  doc: ProjectDocument,
+  partial: { tick: number; type?: Marker["type"]; name?: string; linkedClipId?: string; customId?: string },
+): Command {
+  const marker: Marker = {
+    id: uid("marker"),
+    name: partial.name?.trim() || `Marker ${doc.markers.length + 1}`,
+    type: partial.type ?? "cue",
+    tick: Math.max(0, Math.floor(partial.tick)),
+    linkedClipId: partial.linkedClipId,
+    customId: partial.customId,
+  };
+  const next: ProjectDocument = { ...doc, markers: [...doc.markers, marker] };
+  return snapshot("addMarker", `Add marker ${marker.name}`, doc, next);
+}
+export function removeMarker(doc: ProjectDocument, markerId: string): Command {
+  const target = doc.markers.find((m) => m.id === markerId);
+  if (!target) throw new Error(`Marker ${markerId} not found`);
+  const next: ProjectDocument = { ...doc, markers: doc.markers.filter((m) => m.id !== markerId) };
+  return snapshot("removeMarker", `Remove marker ${target.name}`, doc, next);
+}
+export function renameMarker(doc: ProjectDocument, markerId: string, name: string): Command {
+  const target = doc.markers.find((m) => m.id === markerId);
+  if (!target) throw new Error(`Marker ${markerId} not found`);
+  const trimmed = name.trim() || target.name;
+  const next = { ...doc, markers: doc.markers.map((m) => (m.id === markerId ? { ...m, name: trimmed } : m)) };
+  return snapshot("renameMarker", `Rename marker to ${trimmed}`, doc, next);
+}
+export function setMarkerType(doc: ProjectDocument, markerId: string, type: Marker["type"]): Command {
+  const target = doc.markers.find((m) => m.id === markerId);
+  if (!target) throw new Error(`Marker ${markerId} not found`);
+  const next = { ...doc, markers: doc.markers.map((m) => (m.id === markerId ? { ...m, type } : m)) };
+  return snapshot("setMarkerType", `Marker type to ${type}`, doc, next);
+}
+export function moveMarker(doc: ProjectDocument, markerId: string, tick: number): Command {
+  const target = doc.markers.find((m) => m.id === markerId);
+  if (!target) throw new Error(`Marker ${markerId} not found`);
+  const clamped = Math.max(0, Math.floor(tick));
+  const next = { ...doc, markers: doc.markers.map((m) => (m.id === markerId ? { ...m, tick: clamped } : m)) };
+  return snapshot("moveMarker", "Move marker", doc, next);
+}
+export function setMarkerLinkedClip(doc: ProjectDocument, markerId: string, linkedClipId: string | null): Command {
+  const target = doc.markers.find((m) => m.id === markerId);
+  if (!target) throw new Error(`Marker ${markerId} not found`);
+  const next = {
+    ...doc,
+    markers: doc.markers.map((m) => (m.id === markerId ? { ...m, linkedClipId: linkedClipId ?? undefined } : m)),
+  };
+  return snapshot("setMarkerLinkedClip", "Link marker to clip", doc, next);
+}
+/* ---------------- scenes (intensity / loop) ---------------- */ export function setSceneIntensity(
+  doc: ProjectDocument,
+  sceneId: string,
+  intensity: number,
+): Command {
+  const target = doc.scenes.find((s) => s.id === sceneId);
+  if (!target) throw new Error(`Scene ${sceneId} not found`);
+  const clamped = Math.min(1, Math.max(0, Number.isFinite(intensity) ? intensity : 0.7));
+  const next = { ...doc, scenes: doc.scenes.map((s) => (s.id === sceneId ? { ...s, intensity: clamped } : s)) };
+  return snapshot("setSceneIntensity", `Scene intensity to ${clamped.toFixed(2)}`, doc, next);
+}
+export function setSceneIntensityCurve(doc: ProjectDocument, sceneId: string, curve: IntensityPoint[]): Command {
+  const target = doc.scenes.find((s) => s.id === sceneId);
+  if (!target) throw new Error(`Scene ${sceneId} not found`);
+  const cleaned = curve
+    .map((p) => ({
+      offset: Math.max(0, Math.floor(p.offset)),
+      value: Math.min(1, Math.max(0, Number.isFinite(p.value) ? p.value : 0)),
+    }))
+    .sort((a, b) => a.offset - b.offset);
+  const next = {
+    ...doc,
+    scenes: doc.scenes.map((s) =>
+      s.id === sceneId ? { ...s, intensityCurve: cleaned.length > 0 ? cleaned : undefined } : s,
+    ),
+  };
+  return snapshot("setSceneIntensityCurve", "Scene intensity curve", doc, next);
+}
+export function setSceneLoop(doc: ProjectDocument, sceneId: string, loop: boolean): Command {
+  const target = doc.scenes.find((s) => s.id === sceneId);
+  if (!target) throw new Error(`Scene ${sceneId} not found`);
+  const next = { ...doc, scenes: doc.scenes.map((s) => (s.id === sceneId ? { ...s, loop } : s)) };
+  return snapshot("setSceneLoop", loop ? "Loop scene" : "Unloop scene", doc, next);
+}
+export function setArrangementClipLoop(doc: ProjectDocument, clipId: string, loop: boolean): Command {
+  const target = doc.arrangement.clips.find((c) => c.id === clipId);
+  if (!target) throw new Error(`Clip ${clipId} not found`);
+  const next = {
+    ...doc,
+    arrangement: {
+      ...doc.arrangement,
+      clips: doc.arrangement.clips.map((c) => (c.id === clipId ? { ...c, loop } : c)),
+    },
+  };
+  return snapshot("setArrangementClipLoop", loop ? "Loop clip" : "Unloop clip", doc, next);
+}
+/* ---------------- scene automation ---------------- */ export function addSceneAutomation(
+  doc: ProjectDocument,
+  sceneId: string,
+  target: AutomationTarget,
+): Command {
+  if (!doc.scenes.some((s) => s.id === sceneId)) throw new Error(`Scene ${sceneId} not found`);
+  const lane: SceneAutomation = { id: uid("sceneAuto"), sceneId, target, points: [{ tick: 0, value: 0 }] };
+  const next = { ...doc, sceneAutomation: [...doc.sceneAutomation, lane] };
+  return snapshot("addSceneAutomation", "Add scene lane", doc, next);
+}
+export function removeSceneAutomation(doc: ProjectDocument, laneId: string): Command {
+  const target = doc.sceneAutomation.find((l) => l.id === laneId);
+  if (!target) throw new Error(`Scene lane ${laneId} not found`);
+  const next = { ...doc, sceneAutomation: doc.sceneAutomation.filter((l) => l.id !== laneId) };
+  return snapshot("removeSceneAutomation", "Remove scene lane", doc, next);
+}
+export function addSceneAutomationPoint(doc: ProjectDocument, laneId: string, tick: number, value: number): Command {
+  const lane = doc.sceneAutomation.find((l) => l.id === laneId);
+  if (!lane) throw new Error(`Scene lane ${laneId} not found`);
+  const next = {
+    ...doc,
+    sceneAutomation: doc.sceneAutomation.map((l) =>
+      l.id === laneId
+        ? {
+            ...l,
+            points: [...l.points, { tick: Math.max(0, Math.floor(tick)), value }].sort((a, b) => a.tick - b.tick),
+          }
+        : l,
+    ),
+  };
+  return snapshot("addSceneAutomationPoint", "Add scene point", doc, next);
+}
+export function moveSceneAutomationPoint(
+  doc: ProjectDocument,
+  laneId: string,
+  index: number,
+  delta: { tick?: number; value?: number },
+): Command {
+  const lane = doc.sceneAutomation.find((l) => l.id === laneId);
+  if (!lane) throw new Error(`Scene lane ${laneId} not found`);
+  if (index < 0 || index >= lane.points.length) throw new Error("Scene point out of range");
+  const next = {
+    ...doc,
+    sceneAutomation: doc.sceneAutomation.map((l) => {
+      if (l.id !== laneId) return l;
+      const points = [...l.points];
+      const p = points[index];
+      points[index] = {
+        tick: delta.tick !== undefined ? Math.max(0, Math.floor(delta.tick)) : p.tick,
+        value: delta.value !== undefined ? delta.value : p.value,
+      };
+      points.sort((a, b) => a.tick - b.tick);
+      return { ...l, points };
+    }),
+  };
+  return snapshot("moveSceneAutomationPoint", "Move scene point", doc, next);
+}
+export function removeSceneAutomationPoint(doc: ProjectDocument, laneId: string, index: number): Command {
+  const lane = doc.sceneAutomation.find((l) => l.id === laneId);
+  if (!lane) throw new Error(`Scene lane ${laneId} not found`);
+  if (index < 0 || index >= lane.points.length) throw new Error("Scene point out of range");
+  const next = {
+    ...doc,
+    sceneAutomation: doc.sceneAutomation.map((l) =>
+      l.id === laneId ? { ...l, points: l.points.filter((_, i) => i !== index) } : l,
+    ),
+  };
+  return snapshot("removeSceneAutomationPoint", "Remove scene point", doc, next);
+}
 
 /* ---------------- scale quantize ---------------- */
 
@@ -2324,10 +2529,23 @@ export function quantizePatternToGrid(doc: ProjectDocument, patternId: string, g
 // ---------------------------------------------------------------------------
 
 function ensureMidi(doc: ProjectDocument): NonNullable<ProjectDocument["midi"]> {
-  return doc.midi ?? { enabled: false, deviceId: "", drumChannel: 0, instrumentChannel: 0, ccMappings: [], drumNoteMap: [], pitchBendRange: 2 };
+  return (
+    doc.midi ?? {
+      enabled: false,
+      deviceId: "",
+      drumChannel: 0,
+      instrumentChannel: 0,
+      ccMappings: [],
+      drumNoteMap: [],
+      pitchBendRange: 2,
+    }
+  );
 }
 
-export function setMidiConfig(doc: ProjectDocument, changes: Partial<import("../project-model/types").MidiConfig>): Command {
+export function setMidiConfig(
+  doc: ProjectDocument,
+  changes: Partial<import("../project-model/types").MidiConfig>,
+): Command {
   const prev = ensureMidi(doc);
   const next: ProjectDocument = { ...doc, midi: { ...prev, ...changes } };
   return snapshot("setMidiConfig", `MIDI settings`, doc, next);
@@ -2400,14 +2618,10 @@ export function setTrackPreset(doc: ProjectDocument, trackId: string, presetId: 
       const tracks = yMap.get("tracks") as any;
       for (let i = 0; i < tracks.length; i++) {
         const t = tracks.get(i);
-        if (t.get("id") === trackId) { t.set("presetId", presetId); break; }
-      }
-    },
-    undoYDoc: (yMap) => {
-      const tracks = yMap.get("tracks") as any;
-      for (let i = 0; i < tracks.length; i++) {
-        const t = tracks.get(i);
-        if (t.get("id") === trackId) { t.set("presetId", prev); break; }
+        if (t.get("id") === trackId) {
+          t.set("presetId", presetId);
+          break;
+        }
       }
     },
   };
@@ -2430,7 +2644,11 @@ export function setMidiProgramMap(doc: ProjectDocument, programMap: { program: n
 // Aftertouch
 // ---------------------------------------------------------------------------
 
-export function setMidiAftertouch(doc: ProjectDocument, target: import("../project-model/types").AutomationTarget, range: number): Command {
+export function setMidiAftertouch(
+  doc: ProjectDocument,
+  target: import("../project-model/types").AutomationTarget,
+  range: number,
+): Command {
   const midi = ensureMidi(doc);
   const next: ProjectDocument = { ...doc, midi: { ...midi, aftertouchTarget: target, aftertouchRange: range } };
   return snapshot("setMidiAftertouch", `Aftertouch config`, doc, next);
@@ -2449,9 +2667,7 @@ export function setTrackMidiOutput(
   if (!prev) throw new Error(`Track ${trackId} not found`);
   const next: ProjectDocument = {
     ...doc,
-    tracks: doc.tracks.map((t) =>
-      t.id === trackId ? { ...t, midiOutput: output } : t,
-    ),
+    tracks: doc.tracks.map((t) => (t.id === trackId ? { ...t, midiOutput: output } : t)),
   };
   return snapshot("setTrackMidiOutput", `MIDI output config`, doc, next);
 }
@@ -2492,9 +2708,7 @@ export function freezeTrack(
       prevFrozen = d.tracks.find((t) => t.id === trackId)?.frozen;
       return {
         ...d,
-        tracks: d.tracks.map((t) =>
-          t.id === trackId ? { ...t, frozen: { bufferId, durationSec, sampleRate } } : t,
-        ),
+        tracks: d.tracks.map((t) => (t.id === trackId ? { ...t, frozen: { bufferId, durationSec, sampleRate } } : t)),
       };
     },
     undo: (d) => {
@@ -2549,11 +2763,7 @@ export function unfreezeTrack(doc: ProjectDocument, trackId: string): Command {
 
 /* ---------------- AI pattern generation ---------------- */
 
-export function generatePatternCommand(
-  doc: ProjectDocument,
-  options: GenerateOptions,
-  patternName?: string,
-): Command {
+export function generatePatternCommand(doc: ProjectDocument, options: GenerateOptions, patternName?: string): Command {
   const result = generateLocalResultFromOptions(doc, options, "apply");
   const pattern = result.proposal?.pattern;
   if (!pattern) throw new Error(result.diagnostics.errors.join(", ") || "Intent generation was rejected");
@@ -2568,22 +2778,22 @@ export function generatePatternCommand(
     grooveUpdate = { swing: groove.swing };
   }
 
-  if (options.replaceMode === 'replace') {
+  if (options.replaceMode === "replace") {
     const activeId = doc.activePatternId;
     const next: ProjectDocument = {
       ...doc,
-      patterns: doc.patterns.map(p =>
+      patterns: doc.patterns.map((p) =>
         p.id === activeId
           ? {
-            ...p,
-            rows: pattern.rows,
-            notes: pattern.notes,
-            stepMeta: pattern.stepMeta,
-            stepCount: pattern.stepCount,
-            name: pattern.name || p.name,
-            generation: pattern.generation,
-          }
-          : p
+              ...p,
+              rows: pattern.rows,
+              notes: pattern.notes,
+              stepMeta: pattern.stepMeta,
+              stepCount: pattern.stepCount,
+              name: pattern.name || p.name,
+              generation: pattern.generation,
+            }
+          : p,
       ),
       ...(grooveUpdate ? { groove: { ...doc.groove, ...grooveUpdate } } : {}),
     };
@@ -2625,11 +2835,14 @@ export function setEffectSidechainSource(
   if (!targetTrack || !target) throw new Error(`Effect ${fxId} not found`);
   if (sourceTrackId !== null) {
     if (sourceTrackId === trackId) throw new Error("A track cannot sidechain itself");
-    if (!doc.tracks.some((track) => track.id === sourceTrackId)) throw new Error(`Sidechain source ${sourceTrackId} not found`);
+    if (!doc.tracks.some((track) => track.id === sourceTrackId))
+      throw new Error(`Sidechain source ${sourceTrackId} not found`);
   }
   const previous = target.sidechainTrackId ?? null;
   const apply = (d: ProjectDocument, source: string | null): ProjectDocument =>
-    withTrackEffects(d, trackId, (effects) => effects.map((fx) => fx.id === fxId ? { ...fx, sidechainTrackId: source } : fx));
+    withTrackEffects(d, trackId, (effects) =>
+      effects.map((fx) => (fx.id === fxId ? { ...fx, sidechainTrackId: source } : fx)),
+    );
   return {
     type: "setEffectSidechainSource",
     label: sourceTrackId ? "Set sidechain source" : "Clear sidechain source",
@@ -2648,7 +2861,9 @@ export function applyEffectPreset(doc: ProjectDocument, trackId: string, fxId: s
   for (const [id, value] of Object.entries(preset.params)) nextParams[id] = clampEffectParam(target.type, id, value);
   const nextSteps = preset.steps ? sanitizeGateSteps(preset.steps) : target.steps;
   const apply = (d: ProjectDocument, params: Record<string, number>, steps: number[] | undefined): ProjectDocument =>
-    withTrackEffects(d, trackId, (effects) => effects.map((fx) => fx.id === fxId ? { ...fx, params: { ...params }, steps } : fx));
+    withTrackEffects(d, trackId, (effects) =>
+      effects.map((fx) => (fx.id === fxId ? { ...fx, params: { ...params }, steps } : fx)),
+    );
   return {
     type: "applyEffectPreset",
     label: `Apply ${preset.name} preset`,
@@ -2657,7 +2872,11 @@ export function applyEffectPreset(doc: ProjectDocument, trackId: string, fxId: s
   };
 }
 
-function applyRowsPatch(doc: ProjectDocument, patternId: string, patch: import("../assist/patternOps").RowsPatch): ProjectDocument {
+function applyRowsPatch(
+  doc: ProjectDocument,
+  patternId: string,
+  patch: import("../assist/patternOps").RowsPatch,
+): ProjectDocument {
   return {
     ...doc,
     patterns: doc.patterns.map((p) => {
@@ -2703,12 +2922,14 @@ function applyRowsPatch(doc: ProjectDocument, patternId: string, patch: import("
         if (Object.keys(cleanSteps).length > 0) cleanedMeta[padId] = cleanSteps;
       }
       const notes = patch.notes
-        ? Object.fromEntries(Object.entries(patch.notes).map(([trackId, noteList]) => [
-          trackId,
-          noteList
-            .map((note) => ({ ...note }))
-            .filter((note) => note.start >= 0 && note.start + note.duration <= stepCount * STEP_TICKS),
-        ]))
+        ? Object.fromEntries(
+            Object.entries(patch.notes).map(([trackId, noteList]) => [
+              trackId,
+              noteList
+                .map((note) => ({ ...note }))
+                .filter((note) => note.start >= 0 && note.start + note.duration <= stepCount * STEP_TICKS),
+            ]),
+          )
         : p.notes;
       return {
         ...p,
@@ -2724,7 +2945,7 @@ function applyRowsPatch(doc: ProjectDocument, patternId: string, patch: import("
 
 /** Remove the project-local slice edit from a pad while keeping its asset. */
 export function resetPadSlice(doc: ProjectDocument, padId: string): Command {
-  const pad = doc.tracks.flatMap((t) => t.kind === "drum" ? t.pads : []).find((p) => p.id === padId);
+  const pad = doc.tracks.flatMap((t) => (t.kind === "drum" ? t.pads : [])).find((p) => p.id === padId);
   if (!pad) throw new Error(`Pad ${padId} not found`);
   const next = withPad(doc, padId, (current) => {
     const clean = { ...current };
@@ -2779,7 +3000,13 @@ export function chopSampleToPads(doc: ProjectDocument, options: ChopSampleOption
   );
 }
 
-function assistCommand(type: string, label: string, doc: ProjectDocument, patternId: string, input: AssistInput): Command {
+function assistCommand(
+  type: string,
+  label: string,
+  doc: ProjectDocument,
+  patternId: string,
+  input: AssistInput,
+): Command {
   const sourcePattern = doc.patterns.find((pattern) => pattern.id === patternId);
   if (!sourcePattern) throw new Error(`Pattern ${patternId} not found`);
   const request = normalizeAssistRequest(input);
@@ -2821,21 +3048,40 @@ function assistCommand(type: string, label: string, doc: ProjectDocument, patter
 export function assistVary(doc: ProjectDocument, patternId: string, seed: string, amount: number): Command {
   const pattern = doc.patterns.find((p) => p.id === patternId);
   if (!pattern) throw new Error(`Pattern ${patternId} not found`);
-  return assistCommand("assistVary", `Vary ${pattern.name} (${seed})`, doc, patternId, { operation: "vary", seed, amount });
+  return assistCommand("assistVary", `Vary ${pattern.name} (${seed})`, doc, patternId, {
+    operation: "vary",
+    seed,
+    amount,
+  });
 }
 
 /** Expand the pattern to `bars` with a progressive element + energy build. */
 export function assistBuild(doc: ProjectDocument, patternId: string, bars: number, seed: string): Command {
   const pattern = doc.patterns.find((p) => p.id === patternId);
   if (!pattern) throw new Error(`Pattern ${patternId} not found`);
-  return assistCommand("assistBuild", `Build ${pattern.name} to ${bars} bars`, doc, patternId, { operation: "build", bars, seed });
+  return assistCommand("assistBuild", `Build ${pattern.name} to ${bars} bars`, doc, patternId, {
+    operation: "build",
+    bars,
+    seed,
+  });
 }
 
 /** Replace one pad family's groove with a style (hats → house, kicks → trap…). */
-export function assistReplace(doc: ProjectDocument, patternId: string, target: import("../assist/patternOps").ReplaceTarget, style: string, seed: string): Command {
+export function assistReplace(
+  doc: ProjectDocument,
+  patternId: string,
+  target: import("../assist/patternOps").ReplaceTarget,
+  style: string,
+  seed: string,
+): Command {
   const pattern = doc.patterns.find((p) => p.id === patternId);
   if (!pattern) throw new Error(`Pattern ${patternId} not found`);
-  return assistCommand("assistReplace", `${target} → ${style}`, doc, patternId, { operation: "replace", target, style, seed });
+  return assistCommand("assistReplace", `${target} → ${style}`, doc, patternId, {
+    operation: "replace",
+    target,
+    style,
+    seed,
+  });
 }
 
 /** Crescendo snare fill over the pattern's last bar. */

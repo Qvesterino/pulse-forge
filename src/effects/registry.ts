@@ -10,6 +10,8 @@ import { createStepGateNode } from "../audio-worklets/stepgate-node";
 import { createSvFilterNode } from "../audio-worklets/svfilter-node";
 import { createFlangerNode } from "../audio-worklets/flanger-node";
 import { createTremoloNode } from "../audio-worklets/tremolo-node";
+import { createAutowahNode } from "../audio-worklets/autowah-node";
+import { createStutterNode } from "../audio-worklets/stutter-node";
 
 const dbToLin = (db: number) => Math.pow(10, db / 20);
 const smooth = (param: AudioParam, value: number, when: number, tc = 0.02) =>
@@ -51,6 +53,8 @@ export const WORKLET_EFFECTS: Partial<Record<EffectType, "critical" | "degraded"
   svFilter: "critical",
   flanger: "critical",
   tremolo: "critical",
+  autowah: "critical",
+  stutter: "critical",
   compressor: "degraded",
   bitcrusher: "degraded",
   sidechain: "degraded",
@@ -70,7 +74,7 @@ export function effectProcessorStatus(
   const severity = WORKLET_EFFECTS[type];
   if (!severity) return "ok";
   return isWorkletReady(
-    type as "bitcrusher" | "sidechain" | "transient" | "gate" | "limiter" | "compressor" | "stepGate" | "svFilter" | "flanger" | "tremolo",
+    type as "bitcrusher" | "sidechain" | "transient" | "gate" | "limiter" | "compressor" | "stepGate" | "svFilter" | "flanger" | "tremolo" | "autowah" | "stutter",
     ctx,
   )
     ? "ok"
@@ -1582,6 +1586,78 @@ const tremolo: EffectDefinition = {
   },
 };
 
+/* ---------------- Autowah ---------------- */
+// Envelope follower drives a Chamberlin SVF's cutoff per-sample. Playing
+// harder opens the filter; release closes it gradually. Resonance gives the
+// classic vocal "wah" quality. Single worklet — truly zero-delay.
+
+const AUTOWAH_MODES = [
+  { value: 0, label: "BP" },
+  { value: 1, label: "LP" },
+];
+
+const autowah: EffectDefinition = {
+  type: "autowah",
+  name: "Autowah",
+  category: "movement",
+  params: [
+    { id: "minFreq", label: "MIN FREQ", min: 100, max: 2000, default: 300, unit: "Hz", format: formatHz },
+    { id: "maxFreq", label: "MAX FREQ", min: 500, max: 8000, default: 2500, unit: "Hz", format: formatHz },
+    { id: "resonance", label: "RESO", min: 0, max: 1, default: 0.7, format: formatPct },
+    { id: "attack", label: "ATTACK", min: 0.001, max: 0.1, default: 0.01, unit: "s", format: formatMs },
+    { id: "release", label: "RELEASE", min: 0.05, max: 1, default: 0.15, unit: "s", format: formatMs },
+    { id: "sensitivity", label: "SENSITIVITY", min: 0.5, max: 3, default: 1.5, format: (v) => v.toFixed(2) },
+    { id: "mode", label: "MODE", min: 0, max: 1, default: 0, options: AUTOWAH_MODES },
+    { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
+  ],
+  factory(ctx, instance) {
+    if (isWorkletReady("autowah", ctx)) return createAutowahNode(ctx, instance);
+    return bypassRuntime(ctx, "AudioWorklet unavailable — autowah bypassed (1:1 signal)");
+  },
+};
+
+/* ---------------- Stutter ---------------- */
+// BPM-synced loop-repeat: reads from one full loop cycle behind and gates
+// the delayed signal with a 16-step pattern. Because the underlying beat is
+// repetitive, hearing the same gated segments each cycle creates the classic
+// stutter/glitch feel. Feedback intensifies the loop.
+
+const STUTTER_DIVISIONS = [
+  { value: 0, label: "1/1" },
+  { value: 1, label: "1/2" },
+  { value: 2, label: "1/4" },
+  { value: 3, label: "1/8" },
+  { value: 4, label: "1/16" },
+  { value: 5, label: "1/32" },
+];
+
+const stutter: EffectDefinition = {
+  type: "stutter",
+  name: "Stutter",
+  category: "movement",
+  params: [
+    { id: "division", label: "RATE", min: 0, max: 5, default: 4, options: STUTTER_DIVISIONS },
+    { id: "mix", label: "MIX", min: 0, max: 1, default: 0.8, format: formatPct },
+    { id: "feedback", label: "FEEDBACK", min: 0, max: 0.7, default: 0, format: formatPct },
+  ],
+  factory(ctx, instance) {
+    if (isWorkletReady("stutter", ctx)) {
+      const handle = createStutterNode(ctx, instance);
+      if (instance.steps && instance.steps.length > 0) handle.setPattern(instance.steps);
+      return {
+        input: handle.input,
+        output: handle.output,
+        setParameter: handle.setParameter,
+        setParameterAt: handle.setParameterAt,
+        syncBpm: handle.syncBpm,
+        onTransportStarted: handle.onTransportStarted,
+        dispose: handle.dispose,
+      };
+    }
+    return bypassRuntime(ctx, "AudioWorklet unavailable — stutter bypassed (1:1 signal)");
+  },
+};
+
 /* ---------------- registry ---------------- */
 
 export const EFFECT_DEFS: Record<EffectType, EffectDefinition> = {
@@ -1594,6 +1670,8 @@ export const EFFECT_DEFS: Record<EffectType, EffectDefinition> = {
   svFilter,
   flanger,
   tremolo,
+  autowah,
+  stutter,
   reverb,
   delay,
   pump,
@@ -1619,6 +1697,8 @@ export const EFFECT_ORDER: EffectType[] = [
   "svFilter",
   "flanger",
   "tremolo",
+  "autowah",
+  "stutter",
   "reverb",
   "delay",
   "pump",
@@ -1643,6 +1723,8 @@ export const CORE_EFFECT_ORDER: EffectType[] = [
   "svFilter",
   "flanger",
   "tremolo",
+  "autowah",
+  "stutter",
   "drumBuss",
   "bassBuss",
   "utility",

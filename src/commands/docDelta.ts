@@ -294,11 +294,7 @@ function descend(node: unknown, op: DeltaOp, depth: number): unknown {
   return copy;
 }
 
-function applyLeaf(
-  container: Record<string, unknown>,
-  key: string,
-  op: DeltaOp,
-): unknown {
+function applyLeaf(container: Record<string, unknown>, key: string, op: DeltaOp): unknown {
   if (op.k === "set") {
     if (deepEqualRef(container[key], op.value)) return container;
     return { ...container, [key]: op.value };
