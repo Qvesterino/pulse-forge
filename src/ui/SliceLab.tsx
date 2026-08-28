@@ -568,12 +568,18 @@ export function SliceLab({ track, onClose }: { track: DrumTrack; onClose: () => 
                   onPointerCancel={finishPointer}
                   onPointerLeave={finishPointer}
                   onWheel={handleWheel}
-                  aria-label="Sample waveform with slice markers — drag to pan when zoomed, wheel to zoom, double-click to fit"
+                  aria-label="Sample waveform with slice markers"
+                  title="Drag to pan when zoomed, wheel to zoom, double-click to fit"
                   onDoubleClick={() => setZoom({ from: 0, to: 1 })}
                 />
 
                 <div className="slice-dialog-zoom-row" role="group" aria-label="Zoom and tools">
-                  <button type="button" className="btn btn-small" title="Fit to view (double-click waveform)" onClick={() => setZoom({ from: 0, to: 1 })}>
+                  <button
+                    type="button"
+                    className="btn btn-small"
+                    title="Fit to view (double-click waveform)"
+                    onClick={() => setZoom({ from: 0, to: 1 })}
+                  >
                     FIT
                   </button>
                   <button
@@ -610,7 +616,8 @@ export function SliceLab({ track, onClose }: { track: DrumTrack; onClose: () => 
                     <input type="checkbox" checked={normalize} onChange={(e) => setNormalize(e.target.checked)} /> NORM
                   </label>
                   <label className="slice-check">
-                    <input type="checkbox" checked={bpmPreview} onChange={(e) => setBpmPreview(e.target.checked)} /> BPM PREVIEW
+                    <input type="checkbox" checked={bpmPreview} onChange={(e) => setBpmPreview(e.target.checked)} /> BPM
+                    PREVIEW
                   </label>
                 </div>
 

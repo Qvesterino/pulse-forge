@@ -1030,6 +1030,13 @@ export class AudioEngine {
    * compensated — a few milliseconds inside diffuse reverb/delay tails is
    * inaudible.
    */
+  /**
+   * Minimal PDC for latency-introducing effects (look-ahead limiter etc.).
+   * Inserts and groups are fully compensated to the longest chain. Returns
+   * (send/return) are aligned among themselves; dry vs wet via a return
+   * remains offset by at most maxReturnLatency (≤5 ms for limiter, inaudible
+   * for reverb/delay tails). This is documented in DSP-ROADMAP §5.
+   */
   private syncPdc(): void {
     const ctx = this.ctx;
     if (!ctx || !this.doc) return;
@@ -1052,12 +1059,29 @@ export class AudioEngine {
     for (const lat of groupLatency.values()) {
       if (lat > maxEffective) maxEffective = lat;
     }
+    // Returns: align among themselves (sends via returns are offset by return latency,
+    // but at least all returns share the same latency)
+    const returnLatency = new Map<string, number>();
+    let maxReturnLatency = 0;
+    for (const [id, nodes] of this.returnNodes) {
+      const lat = chainLatency(nodes.fx);
+      returnLatency.set(id, lat);
+      if (lat > maxReturnLatency) maxReturnLatency = lat;
+    }
+    if (maxReturnLatency > maxEffective) maxEffective = maxReturnLatency;
     const now = ctx.currentTime;
     for (const [id, nodes] of this.trackNodes) {
       nodes.fx.pdcDelay?.delayTime.setTargetAtTime(Math.max(0, maxEffective - (effective.get(id) ?? 0)), now, 0.02);
     }
     for (const nodes of this.groupNodes.values()) {
       nodes.fx.pdcDelay?.delayTime.setTargetAtTime(0, now, 0.02);
+    }
+    for (const [id, nodes] of this.returnNodes) {
+      nodes.fx.pdcDelay?.delayTime.setTargetAtTime(
+        Math.max(0, maxReturnLatency - (returnLatency.get(id) ?? 0)),
+        now,
+        0.02,
+      );
     }
   }
 

@@ -4238,6 +4238,12 @@ button {
   border-radius: 4px;
 }
 
+.loudness-history {
+  border: 1px solid var(--border-soft);
+  background: var(--bg-panel);
+  border-radius: 4px;
+}
+
 .slice-dialog-hits-controls {
   display: flex;
   gap: 12px;

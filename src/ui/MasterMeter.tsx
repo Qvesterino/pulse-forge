@@ -4,7 +4,9 @@ import type { ChannelLevels } from "../audio-engine/metering";
 import { registerRaf, unregisterRaf } from "../services/rafLoop";
 import { evaluateMixCheck, MIN_DB } from "../audio-engine/metering";
 import { Goniometer } from "./Goniometer";
+import { LoudnessHistory } from "./LoudnessHistory";
 import { SpectrumAnalyzer } from "./SpectrumAnalyzer";
+import { setMasterConfig } from "../commands/commands";
 
 interface ReadState {
   left: ChannelLevels;
@@ -153,6 +155,25 @@ export function MasterMeter() {
         <button type="button" className="btn btn-small" onClick={() => services.engine.resetMasterIntegratedLufs?.()}>
           RESET INTEGRATED
         </button>
+        <button
+          type="button"
+          className="btn btn-small"
+          title="Auto gain stage to -6 dB below ceiling (pulls master IN so peaks sit at ceiling-6 dB)"
+          onClick={() => {
+            const snap = (
+              services.engine as unknown as { getMasterMeterSnapshot?: () => MasterSnapshot }
+            ).getMasterMeterSnapshot?.();
+            const peak = snap ? Math.max(snap.peakHoldDb, snap.truePeakDb) : state.peakHoldDb;
+            if (!Number.isFinite(peak) || peak <= -60) return;
+            const targetPeak = ceilingDb - 6;
+            const delta = targetPeak - peak;
+            const currentGain = doc.master.masterGain ?? 1;
+            const newGain = Math.max(0, Math.min(2, currentGain * Math.pow(10, delta / 20)));
+            services.store.execute(setMasterConfig(doc, { masterGain: newGain }));
+          }}
+        >
+          AUTO -6dB
+        </button>
       </div>
       <SpectrumAnalyzer
         analyser={
@@ -164,6 +185,7 @@ export function MasterMeter() {
         accent="#f59e0b"
         id="master"
       />
+      <LoudnessHistory id="master-loudness" height={64} />
       {state.warnings.length > 0 && (
         <div className="master-mix-check" role="status">
           {state.warnings.map((warning) => (
