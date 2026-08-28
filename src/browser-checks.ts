@@ -1560,6 +1560,127 @@ export async function runChecks(): Promise<CheckResult[]> {
     check("kwmeter: BS.1770 conformance (1 kHz @ −23 dBFS → −23 LUFS)", false, String(error));
   }
 
+  // ---------------- Step Gate (P0.4) ----------------
+
+  // Step gate alternates volume on a grid derived from BPM — identical grid
+  // math to the step modulator, but running inside an EffectRuntime instead
+  // of an automation lane.  Render through the same pipeline (renderProject)
+  // with a house pattern and a stepGate on the drums; compare gated vs
+  // control (no effect) block RMS on alternating 1/8-note windows.
+  // Division=3 (1/8) → each step = half-beat, so within a full beat there
+  // are exactly two steps (one gated, one open), giving clean contrast.
+  try {
+    const renderStepGate = async (withGate: boolean): Promise<Float32Array> => {
+      const doc = createProjectFromTemplate("house");
+      const drums = doc.tracks.find((t): t is DrumTrack => t.kind === "drum")!;
+      drums.pan = -1;
+      for (const track of doc.tracks) {
+        if (track.kind === "instrument") track.mute = true;
+      }
+      doc.master.limiterEnabled = false;
+      doc.master.clipperEnabled = false;
+      if (withGate) {
+        drums.effects = [{
+          id: "sg-chk", type: "stepGate", bypassed: false,
+          params: { division: 3, depth: 1, smooth: 0.02, mix: 1 },
+          steps: [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0],
+        }];
+      }
+      const buf = await renderProject(doc, bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0 });
+      return buf.getChannelData(0);
+    };
+    const gateData = await renderStepGate(true);
+    const ctrlData = await renderStepGate(false);
+    const beatSec = 60 / 124; // house bpm
+    const stepSec = beatSec * 0.5; // 1/8 note
+    const gateWins = [...Array(8)].map((_, w) => rmsWindow(gateData, w * stepSec * SR, (w + 0.9) * stepSec * SR));
+    const ctrlWins = [...Array(8)].map((_, w) => rmsWindow(ctrlData, w * stepSec * SR, (w + 0.9) * stepSec * SR));
+    // Pattern [1,0,1,0,...]: even steps = open, odd steps = closed
+    const gateHigh = (gateWins[0] + gateWins[2] + gateWins[4] + gateWins[6]) / 4;
+    const gateLow = (gateWins[1] + gateWins[3] + gateWins[5] + gateWins[7]) / 4;
+    const ctrlHigh = (ctrlWins[0] + ctrlWins[2] + ctrlWins[4] + ctrlWins[6]) / 4;
+    check(
+      "step gate: pattern halves signal on off-beats (offline)",
+      ctrlHigh > 0.005
+        && gateHigh > gateLow * 2
+        && gateHigh > ctrlHigh * 0.6,
+      `even=${gateHigh.toFixed(4)} odd=${gateLow.toFixed(4)} ctrl=${ctrlHigh.toFixed(4)}`,
+    );
+  } catch (error) {
+    check("step gate: pattern halves signal on off-beats (offline)", false, String(error));
+  }
+
+  // Step gate mix=0 passthrough:
+  try {
+    const renderGate = async (mix: number, stepVal: number): Promise<{ peak: number }> => {
+      const doc = createProjectFromTemplate("house");
+      const drums = doc.tracks.find((t): t is DrumTrack => t.kind === "drum")!;
+      drums.pan = -1;
+      for (const track of doc.tracks) { if (track.kind === "instrument") track.mute = true; }
+      doc.master.limiterEnabled = false;
+      doc.master.clipperEnabled = false;
+      drums.effects = [{ id: "sg-p", type: "stepGate", bypassed: false, params: { division: 4, depth: 1, smooth: 0.02, mix }, steps: Array(16).fill(stepVal) }];
+      const buf = await renderProject(doc, bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0 });
+      const data = buf.getChannelData(0);
+      let pk = 0;
+      for (let i = 0; i < data.length; i++) pk = Math.max(pk, Math.abs(data[i]));
+      return { peak: pk };
+    };
+    const allOpen = await renderGate(1, 1);
+    const mix0 = await renderGate(0, 0);
+    check("step gate: mix=0 passes signal through (no gating)", Math.abs(mix0.peak - allOpen.peak) < 0.05, `mix0=${mix0.peak.toFixed(4)} allOpen=${allOpen.peak.toFixed(4)}`);
+  } catch (error) {
+    check("step gate: mix=0 passes signal through (no gating)", false, String(error));
+  }
+
+  // Multiband sidechain: with splitFreq the low band is ducked but high
+  // frequencies pass through unaffected — the reason this is a worklet.
+  try {
+    const renderCarrier = async (carrierFreq: number, splitFreq: number): Promise<{ rms: number }> => {
+      const ctx = new OfflineAudioContext(2, SR, SR);
+      await loadWorkletModules(ctx);
+      const params = { threshold: -30, ratio: 8, attack: 0.002, release: 0.1, amount: 1, splitFreq };
+      const sidechainRt = EFFECT_DEFS.sidechain.factory(ctx, { id: "mb-sc", type: "sidechain", bypassed: false, params }, { bpm: 124 });
+      // Main: carrier tone
+      const carrier = ctx.createOscillator();
+      carrier.type = "sine";
+      carrier.frequency.value = carrierFreq;
+      const mainGain = ctx.createGain();
+      mainGain.gain.value = 0.7;
+      carrier.connect(mainGain).connect(sidechainRt.input);
+      sidechainRt.output.connect(ctx.destination);
+      // Sidechain: loud sub kick to trigger ducking
+      const kick = ctx.createOscillator();
+      kick.type = "sine";
+      kick.frequency.value = 50;
+      const kickGain = ctx.createGain();
+      kickGain.gain.value = 1.2;
+      kick.connect(kickGain);
+      sidechainRt.setSidechainInput?.(kickGain);
+      kick.start(0);
+      carrier.start(0);
+      const out = (await ctx.startRendering()).getChannelData(0);
+      sidechainRt.dispose();
+      // Measure RMS from 200ms onward (steady state after initial kick tails)
+      let rms = 0;
+      const start = Math.floor(SR * 0.4);
+      for (let i = start; i < out.length; i++) rms += out[i] * out[i];
+      rms = Math.sqrt(rms / Math.max(1, out.length - start));
+      return { rms };
+    };
+    // Baseline: full-band (splitFreq=0) ducks the 1 kHz carrier hard
+    const fullBand = await renderCarrier(1000, 0);
+    // Multiband: only low band ducked — 1 kHz carrier should survive
+    const multiBand = await renderCarrier(1000, 150);
+    check(
+      "sidechain: multiband split frees high frequencies from ducking",
+      multiBand.rms > fullBand.rms * 0.8 && fullBand.rms < 0.7 * Math.sqrt(0.7),
+      `fullBandRms=${fullBand.rms.toFixed(4)} multiBandRms=${multiBand.rms.toFixed(4)}`,
+    );
+  } catch (error) {
+    check("sidechain: multiband split frees high frequencies from ducking", false, String(error));
+  }
+
   return results;
 }
 

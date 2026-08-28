@@ -29,7 +29,7 @@ import type {
   Track,
 } from "../project-model/types";
 import { STEP_TICKS } from "../project-model/types";
-import { DEFAULT_STEP_PATTERN } from "../project-model/modulators";
+import { DEFAULT_GATE_PATTERN, DEFAULT_STEP_PATTERN, sanitizeGateSteps } from "../project-model/modulators";
 import { setStepVelocity, withPad, withTrack } from "../project-model/transform";
 import { insertPointSorted } from "../project-model/automation";
 import {
@@ -52,6 +52,7 @@ import { INSTRUMENT_DEFS, clampInstrumentParam, defaultInstrumentParams } from "
 import type { InstrumentPreset } from "../presets/types";
 import type { EffectPreset } from "../effects/presets";
 import { clamp, uid } from "../shared/ids";
+import { applyDocDelta, computeDocDelta, deepEqualRef } from "./docDelta";
 import { hashString, mulberry32 } from "../shared/rng";
 import { snapToScale } from "../project-model/scales";
 import { resolveGrooveForGeneration } from "../ai/generator";
@@ -80,11 +81,27 @@ import {
 import type { MidiCreativeOperation } from "../midi/creative";
 
 function snapshot(type: string, label: string, prev: ProjectDocument, next: ProjectDocument): Command {
+  // Inverse-patch command: capture the CHANGE (id-anchored operations), not
+  // the documents. Functional execute/undo apply the delta to whatever
+  // document is current — an async dispatch (seconds-long freeze render,
+  // collab merge) can no longer silently revert concurrent edits, and the
+  // undo stack no longer pins whole document chains.
+  const forward = computeDocDelta(prev, next);
+  const backward = computeDocDelta(next, prev);
+  // Self-verification: the delta must round-trip exactly, or we keep the
+  // legacy whole-document command. Costs ~O(changes) thanks to structural
+  // sharing — the reference-pruned walk skips untouched subtrees.
+  const verified =
+    deepEqualRef(applyDocDelta(prev, forward.ops), next) &&
+    deepEqualRef(applyDocDelta(next, backward.ops), prev);
+  if (!verified) {
+    return { type, label, execute: () => next, undo: () => prev };
+  }
   return {
     type,
     label,
-    execute: () => next,
-    undo: () => prev,
+    execute: (d) => applyDocDelta(d, forward.ops),
+    undo: (d) => applyDocDelta(d, backward.ops),
   };
 }
 
@@ -444,13 +461,12 @@ export function reorderPattern(doc: ProjectDocument, fromIndex: number, toIndex:
   return snapshot("reorderPattern", `Reorder ${moved.name}`, doc, { ...doc, patterns });
 }
 
-export function renamePattern(doc: ProjectDocument, patternId: string, name: string): Command {
-  const prev = doc.patterns.find((p) => p.id === patternId)?.name ?? "";
-  const next = { ...doc, patterns: doc.patterns.map((p) => (p.id === patternId ? { ...p, name } : p)) };
+export function renamePattern(_doc: ProjectDocument, patternId: string, name: string): Command {
+  const prev = _doc.patterns.find((p) => p.id === patternId)?.name ?? "";
   return {
     type: "renamePattern",
     label: `Rename pattern to "${name}"`,
-    execute: () => next,
+    execute: (d) => ({ ...d, patterns: d.patterns.map((p) => (p.id === patternId ? { ...p, name } : p)) }),
     undo: (d) => ({ ...d, patterns: d.patterns.map((p) => (p.id === patternId ? { ...p, name: prev } : p)) }),
     applyToYDoc: (yMap) => {
       const patterns = yMap.get("patterns") as any;
@@ -836,21 +852,24 @@ export function addToGroup(doc: ProjectDocument, trackId: string, groupId: strin
   if (!track || track.kind === "group") throw new Error(`Cannot add group to group`);
   if (!doc.tracks.some((t) => t.id === groupId && t.kind === "group")) throw new Error(`Group ${groupId} not found`);
   const prevGroupId = "groupId" in track ? track.groupId : undefined;
-  const next: ProjectDocument = {
-    ...doc,
-    tracks: doc.tracks.map((t) =>
-      t.id === trackId && t.kind !== "group" ? { ...t, groupId } : t,
-    ),
-  };
+  const hadGroupId = prevGroupId !== undefined;
   return {
     type: "addToGroup",
     label: `Add ${track.name} to group`,
-    execute: () => next,
-    undo: (d) => ({
+    execute: (d) => ({
       ...d,
       tracks: d.tracks.map((t) =>
-        t.id === trackId && t.kind !== "group" ? { ...t, groupId: prevGroupId } : t,
+        t.id === trackId && t.kind !== "group" ? { ...t, groupId } : t,
       ),
+    }),
+    undo: (d) => ({
+      ...d,
+      tracks: d.tracks.map((t) => {
+        if (t.id !== trackId || t.kind === "group") return t;
+        if (hadGroupId) return { ...t, groupId: prevGroupId };
+        const { groupId: _, ...rest } = t as any;
+        return rest;
+      }),
     }),
   };
 }
@@ -862,16 +881,15 @@ export function removeFromGroup(doc: ProjectDocument, trackId: string): Command 
   if (prevGroupId === undefined) {
     return { type: "removeFromGroup", label: "Remove from group", execute: (d) => d, undo: (d) => d };
   }
-  const next: ProjectDocument = {
-    ...doc,
-    tracks: doc.tracks.map((t) =>
-      t.id === trackId && t.kind !== "group" ? { ...t, groupId: undefined } : t,
-    ),
-  };
   return {
     type: "removeFromGroup",
     label: `Remove ${track.name} from group`,
-    execute: () => next,
+    execute: (d) => ({
+      ...d,
+      tracks: d.tracks.map((t) =>
+        t.id === trackId && t.kind !== "group" ? { ...t, groupId: undefined } : t,
+      ),
+    }),
     undo: (d) => ({
       ...d,
       tracks: d.tracks.map((t) =>
@@ -922,18 +940,16 @@ export function activeTrackNotes(doc: ProjectDocument, trackId: string): NoteEve
 }
 
 export function addNote(
-  doc: ProjectDocument,
+  _doc: ProjectDocument,
   trackId: string,
   note: { pitch: number; start: number; duration: number; velocity: number },
 ): Command {
   const id = uid("note");
-  const prev = activeTrackNotes(doc, trackId);
-  const next = withTrackNotes(doc, trackId, (notes) => [...notes, { id, ...note }]);
   return {
     type: "addNote",
     label: `Add note`,
-    execute: () => next,
-    undo: (d) => withTrackNotes(d, trackId, () => prev),
+    execute: (d) => withTrackNotes(d, trackId, (notes) => [...notes, { id, ...note }]),
+    undo: (d) => withTrackNotes(d, trackId, (notes) => notes.filter((n) => n.id !== id)),
   };
 }
 
@@ -985,25 +1001,33 @@ export function setNoteVelocity(doc: ProjectDocument, trackId: string, noteId: s
 }
 
 export function deleteNote(doc: ProjectDocument, trackId: string, noteId: string): Command {
-  const prev = activeTrackNotes(doc, trackId);
-  const next = withTrackNotes(doc, trackId, (notes) => notes.filter((n) => n.id !== noteId));
   return {
     type: "deleteNote",
     label: "Delete note",
-    execute: () => next,
-    undo: (d) => withTrackNotes(d, trackId, () => prev),
+    execute: (d) => withTrackNotes(d, trackId, (notes) => notes.filter((n) => n.id !== noteId)),
+    undo: (d) => {
+      const target = activeTrackNotes(doc, trackId).find((n) => n.id === noteId);
+      if (!target) return d;
+      return withTrackNotes(d, trackId, (notes) =>
+        notes.some((n) => n.id === noteId) ? notes : [...notes, target],
+      );
+    },
   };
 }
 
 export function deleteNotes(doc: ProjectDocument, trackId: string, noteIds: string[]): Command {
   const ids = new Set(noteIds);
-  const prev = activeTrackNotes(doc, trackId);
-  const next = withTrackNotes(doc, trackId, (notes) => notes.filter((note) => !ids.has(note.id)));
+  const removed = activeTrackNotes(doc, trackId).filter((note) => ids.has(note.id));
   return {
     type: "deleteNotes",
     label: `Delete ${ids.size} notes`,
-    execute: () => next,
-    undo: (d) => withTrackNotes(d, trackId, () => prev),
+    execute: (d) => withTrackNotes(d, trackId, (notes) => notes.filter((note) => !ids.has(note.id))),
+    undo: (d) =>
+      withTrackNotes(d, trackId, (notes) => {
+        const present = new Set(notes.map((n) => n.id));
+        const missing = removed.filter((note) => !present.has(note.id));
+        return missing.length === 0 ? notes : [...notes, ...missing];
+      }),
   };
 }
 
@@ -1153,19 +1177,25 @@ export function applyMidiCreativeTool(doc: ProjectDocument, options: ApplyMidiCr
   const untouched = requestedIds ? notes.filter((note) => !requestedIds.has(note.id)) : [];
   const nextNotes = [...untouched, ...transformed]
     .sort((a, b) => a.start - b.start || a.pitch - b.pitch || a.id.localeCompare(b.id));
-  const next: ProjectDocument = {
-    ...doc,
-    patterns: doc.patterns.map((candidate) =>
-      candidate.id === pattern.id
-        ? { ...candidate, notes: { ...(candidate.notes ?? {}), [track.id]: nextNotes } }
-        : candidate,
-    ),
-  };
   return {
     type: `applyMidiCreativeTool:${operation.kind}`,
     label: midiCreativeLabel(operation),
-    execute: () => next,
-    undo: () => doc,
+    execute: (d) => ({
+      ...d,
+      patterns: d.patterns.map((candidate) =>
+        candidate.id === pattern.id
+          ? { ...candidate, notes: { ...(candidate.notes ?? {}), [track.id]: nextNotes } }
+          : candidate,
+      ),
+    }),
+    undo: (d) => ({
+      ...d,
+      patterns: d.patterns.map((candidate) =>
+        candidate.id === pattern.id
+          ? { ...candidate, notes: { ...(candidate.notes ?? {}), [track.id]: notes } }
+          : candidate,
+      ),
+    }),
   };
 }
 
@@ -1368,11 +1398,10 @@ export function reorderScenes(doc: ProjectDocument, fromIndex: number, toIndex: 
 
 export function renameScene(doc: ProjectDocument, sceneId: string, name: string): Command {
   const prev = doc.scenes.find((s) => s.id === sceneId)?.name ?? "";
-  const next = { ...doc, scenes: doc.scenes.map((s) => (s.id === sceneId ? { ...s, name } : s)) };
   return {
     type: "renameScene",
     label: `Rename scene to "${name}"`,
-    execute: () => next,
+    execute: (d) => ({ ...d, scenes: d.scenes.map((s) => (s.id === sceneId ? { ...s, name } : s)) }),
     undo: (d) => ({ ...d, scenes: d.scenes.map((s) => (s.id === sceneId ? { ...s, name: prev } : s)) }),
   };
 }
@@ -1707,14 +1736,19 @@ function withLane(doc: ProjectDocument, laneId: string, fn: (lane: AutomationLan
 export function addAutomationPoint(doc: ProjectDocument, laneId: string, tick: number, value: number): Command {
   const lane = automationLaneOf(doc, laneId);
   if (!lane) throw new Error(`Lane ${laneId} not found`);
-  const prev = lane.points;
   const point = { tick: Math.max(0, Math.round(tick)), value };
-  const next = withLane(doc, laneId, (l) => ({ ...l, points: insertPointSorted(l.points, point) }));
   return {
     type: "addAutomationPoint",
     label: "Add automation point",
-    execute: () => next,
-    undo: (d) => withLane(d, laneId, (l) => ({ ...l, points: prev })),
+    execute: (d) => withLane(d, laneId, (l) => ({ ...l, points: insertPointSorted(l.points, point) })),
+    undo: (d) => withLane(d, laneId, (l) => {
+      // Inverse of the sorted insert: remove one instance of that (tick, value).
+      const idx = l.points.findIndex((p) => p.tick === point.tick && p.value === point.value);
+      if (idx === -1) return l;
+      const points = [...l.points];
+      points.splice(idx, 1);
+      return { ...l, points };
+    }),
   };
 }
 
@@ -1727,19 +1761,18 @@ export function moveAutomationPoint(
   const lane = automationLaneOf(doc, laneId);
   if (!lane || index < 0 || index >= lane.points.length) throw new Error("Automation point not found");
   const prev = lane.points;
-  const next = withLane(doc, laneId, (l) => {
-    const points = [...l.points];
-    const p = points[index];
-    points[index] = {
-      tick: Math.max(0, Math.round(delta.tick ?? p.tick)),
-      value: delta.value ?? p.value,
-    };
-    return { ...l, points: points.sort((a, b) => a.tick - b.tick) };
-  });
   return {
     type: "moveAutomationPoint",
     label: "Move automation point",
-    execute: () => next,
+    execute: (d) => withLane(d, laneId, (l) => {
+      const points = [...l.points];
+      const p = points[index];
+      points[index] = {
+        tick: Math.max(0, Math.round(delta.tick ?? p.tick)),
+        value: delta.value ?? p.value,
+      };
+      return { ...l, points: points.sort((a, b) => a.tick - b.tick) };
+    }),
     undo: (d) => withLane(d, laneId, (l) => ({ ...l, points: prev })),
   };
 }
@@ -1747,13 +1780,17 @@ export function moveAutomationPoint(
 export function deleteAutomationPoint(doc: ProjectDocument, laneId: string, index: number): Command {
   const lane = automationLaneOf(doc, laneId);
   if (!lane || index < 0 || index >= lane.points.length) throw new Error("Automation point not found");
-  const prev = lane.points;
-  const next = withLane(doc, laneId, (l) => ({ ...l, points: l.points.filter((_, i) => i !== index) }));
+  const removed = lane.points[index];
   return {
     type: "deleteAutomationPoint",
     label: "Delete automation point",
-    execute: () => next,
-    undo: (d) => withLane(d, laneId, (l) => ({ ...l, points: prev })),
+    execute: (d) => withLane(d, laneId, (l) => ({ ...l, points: l.points.filter((_, i) => i !== index) })),
+    undo: (d) => withLane(d, laneId, (l) => {
+      if (l.points.some((p) => p === removed)) return l;
+      const points = [...l.points];
+      points.splice(Math.min(index, points.length), 0, removed);
+      return { ...l, points };
+    }),
   };
 }
 
@@ -1916,13 +1953,12 @@ function dMap(doc: ProjectDocument, macroId: string, fn: (m: Macro) => Macro): P
 /* ---------------- master / sends / returns ---------------- */
 
 export function setMasterConfig(doc: ProjectDocument, patch: Partial<MasterConfig>): Command {
-  const next: ProjectDocument = { ...doc, master: { ...doc.master, ...patch } };
   const prev = { ...doc.master };
   return {
     type: "setMasterConfig",
     label: "Edit master chain",
-    execute: () => next,
-    undo: () => ({ ...doc, master: prev }),
+    execute: (d) => ({ ...d, master: { ...d.master, ...patch } }),
+    undo: (d) => ({ ...d, master: prev }),
     applyToYDoc: (yMap) => {
       const master = yMap.get("master") as any;
       if (master) for (const [k, v] of Object.entries(patch)) { if (v !== undefined) master.set(k, v); }
@@ -2008,14 +2044,14 @@ function trackEffectsOf(doc: ProjectDocument, trackId: string): EffectInstance[]
   return track && "effects" in track ? track.effects : [];
 }
 
-export function addEffect(doc: ProjectDocument, trackId: string, type: EffectType): Command {
+export function addEffect(_doc: ProjectDocument, trackId: string, type: EffectType): Command {
   const fx: EffectInstance = { id: uid("fx"), type, bypassed: false, params: defaultParamsOf(type) };
-  const next = withTrackEffects(doc, trackId, (effects) => [...effects, fx]);
+  if (type === "stepGate") fx.steps = [...DEFAULT_GATE_PATTERN];
   return {
     type: "addEffect",
     label: `Add ${EFFECT_DEFS[type].name}`,
-    execute: () => next,
-    undo: () => doc,
+    execute: (d) => withTrackEffects(d, trackId, (effects) => [...effects, fx]),
+    undo: (d) => withTrackEffects(d, trackId, (effects) => effects.filter((f) => f.id !== fx.id)),
     applyToYDoc: (yMap) => {
       const tracks = yMap.get("tracks") as any;
       for (let i = 0; i < tracks.length; i++) {
@@ -2030,6 +2066,7 @@ export function addEffect(doc: ProjectDocument, trackId: string, type: EffectTyp
           const params = new Y.Map();
           fxMap.set("params", params);
           for (const [k, v] of Object.entries(fx.params)) params.set(k, v);
+          if (fx.steps) fxMap.set("steps", [...fx.steps]);
           effects.push([fxMap]);
           break;
         }
@@ -2056,12 +2093,18 @@ export function addEffect(doc: ProjectDocument, trackId: string, type: EffectTyp
 
 export function removeEffect(doc: ProjectDocument, trackId: string, fxId: string): Command {
   const target = trackEffectsOf(doc, trackId).find((f) => f.id === fxId);
-  const next = withTrackEffects(doc, trackId, (effects) => effects.filter((f) => f.id !== fxId));
+  const targetIndex = trackEffectsOf(doc, trackId).findIndex((f) => f.id === fxId);
   return {
     type: "removeEffect",
     label: `Remove ${target ? EFFECT_DEFS[target.type].name : fxId}`,
-    execute: () => next,
-    undo: () => doc,
+    execute: (d) => withTrackEffects(d, trackId, (effects) => effects.filter((f) => f.id !== fxId)),
+    undo: (d) =>
+      withTrackEffects(d, trackId, (effects) => {
+        if (!target || effects.some((f) => f.id === fxId)) return effects;
+        const copy = [...effects];
+        copy.splice(Math.max(0, Math.min(targetIndex, copy.length)), 0, target);
+        return copy;
+      }),
     applyToYDoc: (yMap) => {
       const tracks = yMap.get("tracks") as any;
       for (let i = 0; i < tracks.length; i++) {
@@ -2082,6 +2125,24 @@ export function removeEffect(doc: ProjectDocument, trackId: string, fxId: string
       // Re-add the effect — simplified, full undo would need to store the effect data
       // For now, fall back to snapshot approach
     },
+  };
+}
+
+/** Replace the step pattern of a step-sequenced effect (stepGate) — one undo step per edit stroke. */
+export function setEffectSteps(doc: ProjectDocument, trackId: string, fxId: string, steps: number[]): Command {
+  const target = trackEffectsOf(doc, trackId).find((f) => f.id === fxId);
+  if (!target) throw new Error(`Effect ${fxId} not found`);
+  const prev = target.steps ? [...target.steps] : undefined;
+  const next = sanitizeGateSteps(steps);
+  const apply = (d: ProjectDocument, values: number[] | undefined): ProjectDocument =>
+    withTrackEffects(d, trackId, (effects) =>
+      effects.map((f) => (f.id === fxId ? { ...f, steps: values } : f)),
+    );
+  return {
+    type: "setEffectSteps",
+    label: "Edit step pattern",
+    execute: (d) => apply(d, next),
+    undo: (d) => apply(d, prev),
   };
 }
 
@@ -2299,17 +2360,23 @@ export function setTrackPreset(doc: ProjectDocument, trackId: string, presetId: 
   const track = doc.tracks.find((t) => t.id === trackId && t.kind === "instrument");
   if (!track || track.kind !== "instrument") throw new Error(`Instrument track ${trackId} not found`);
   const prev = track.presetId;
-  const next: ProjectDocument = {
-    ...doc,
-    tracks: doc.tracks.map((t) =>
-      t.id === trackId && t.kind === "instrument" ? { ...t, presetId } : t,
-    ),
-  };
+  const hadPresetId = prev !== undefined;
+  const apply = (d: ProjectDocument, id: string | null | undefined): ProjectDocument => ({
+    ...d,
+    tracks: d.tracks.map((t) => {
+      if (t.id !== trackId || t.kind !== "instrument") return t;
+      if (id === undefined && !hadPresetId) {
+        const { presetId: _, ...rest } = t as any;
+        return rest;
+      }
+      return { ...t, presetId: id };
+    }),
+  });
   return {
     type: "setTrackPreset",
     label: `Program Change → ${presetId}`,
-    execute: () => next,
-    undo: () => ({ ...doc, tracks: doc.tracks.map((t) => (t.id === trackId && t.kind === "instrument" ? { ...t, presetId: prev } : t)) }),
+    execute: (d) => apply(d, presetId),
+    undo: (d) => apply(d, prev),
     applyToYDoc: (yMap) => {
       const tracks = yMap.get("tracks") as any;
       for (let i = 0; i < tracks.length; i++) {
@@ -2411,10 +2478,20 @@ export function freezeTrack(
         ),
       };
     },
-    undo: (d) =>
-      d.tracks.some((t) => t.id === trackId)
-        ? { ...d, tracks: d.tracks.map((t) => (t.id === trackId ? { ...t, frozen: prevFrozen } : t)) }
-        : d,
+    undo: (d) => {
+      if (!d.tracks.some((t) => t.id === trackId)) return d;
+      return {
+        ...d,
+        tracks: d.tracks.map((t) => {
+          if (t.id !== trackId) return t;
+          if (prevFrozen === undefined) {
+            const { frozen: _, ...rest } = t as any;
+            return rest;
+          }
+          return { ...t, frozen: prevFrozen };
+        }),
+      };
+    },
   };
 }
 
@@ -2434,10 +2511,20 @@ export function unfreezeTrack(doc: ProjectDocument, trackId: string): Command {
         tracks: d.tracks.map((t) => (t.id === trackId ? { ...t, frozen: undefined } : t)),
       };
     },
-    undo: (d) =>
-      d.tracks.some((t) => t.id === trackId)
-        ? { ...d, tracks: d.tracks.map((t) => (t.id === trackId ? { ...t, frozen: prevFrozen } : t)) }
-        : d,
+    undo: (d) => {
+      if (!d.tracks.some((t) => t.id === trackId)) return d;
+      return {
+        ...d,
+        tracks: d.tracks.map((t) => {
+          if (t.id !== trackId) return t;
+          if (prevFrozen === undefined) {
+            const { frozen: _, ...rest } = t as any;
+            return rest;
+          }
+          return { ...t, frozen: prevFrozen };
+        }),
+      };
+    },
   };
 }
 
@@ -2537,15 +2624,17 @@ export function applyEffectPreset(doc: ProjectDocument, trackId: string, fxId: s
   if (!target) throw new Error(`Effect ${fxId} not found`);
   if (target.type !== preset.type) throw new Error("Preset does not match effect type");
   const previous = { ...target.params };
+  const previousSteps = target.steps ? [...target.steps] : undefined;
   const nextParams = { ...target.params };
   for (const [id, value] of Object.entries(preset.params)) nextParams[id] = clampEffectParam(target.type, id, value);
-  const apply = (d: ProjectDocument, params: Record<string, number>): ProjectDocument =>
-    withTrackEffects(d, trackId, (effects) => effects.map((fx) => fx.id === fxId ? { ...fx, params: { ...params } } : fx));
+  const nextSteps = preset.steps ? sanitizeGateSteps(preset.steps) : target.steps;
+  const apply = (d: ProjectDocument, params: Record<string, number>, steps: number[] | undefined): ProjectDocument =>
+    withTrackEffects(d, trackId, (effects) => effects.map((fx) => fx.id === fxId ? { ...fx, params: { ...params }, steps } : fx));
   return {
     type: "applyEffectPreset",
     label: `Apply ${preset.name} preset`,
-    execute: (d) => apply(d, nextParams),
-    undo: (d) => apply(d, previous),
+    execute: (d) => apply(d, nextParams, nextSteps),
+    undo: (d) => apply(d, previous, previousSteps),
   };
 }
 

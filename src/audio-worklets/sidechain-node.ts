@@ -41,6 +41,7 @@ export function createSidechainNode(
   setParam("attack", params.attack ?? 0.005);
   setParam("release", params.release ?? 0.2);
   setParam("amount", params.amount ?? 1);
+  setParam("splitFreq", params.splitFreq ?? 0);
 
   return {
     input,

@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { useDoc, useServices } from "./context";
 import type { EffectType, Track } from "../project-model/types";
-import { addEffect, applyEffectPreset, moveEffect, removeEffect, setEffectParam, setEffectSidechainSource, toggleEffectBypass } from "../commands/commands";
+import { addEffect, applyEffectPreset, moveEffect, removeEffect, setEffectParam, setEffectSidechainSource, setEffectSteps, toggleEffectBypass } from "../commands/commands";
 import { CORE_EFFECT_ORDER, EFFECT_DEFS } from "../effects/registry";
 import { presetsForEffect } from "../effects/presets";
 import { registerRaf, unregisterRaf } from "../services/rafLoop";
 import { Slider } from "./controls";
+import { StepGridEditor } from "./StepGridEditor";
 
 export function EffectRack({ track }: { track: Track }) {
   const services = useServices();
@@ -208,6 +209,15 @@ function Device({
           </button>
           <span className="fx-sidechain-status">{fx.sidechainTrackId ? doc.tracks.find((candidate) => candidate.id === fx.sidechainTrackId)?.name ?? "MISSING" : "No source"}</span>
         </div>
+      )}
+      {fx.type === "stepGate" && (
+        <StepGridEditor
+          steps={fx.steps && fx.steps.length > 0 ? fx.steps : [1, 0]}
+          min={0}
+          max={1}
+          ariaLabel={`Step gate pattern for ${track?.name ?? "track"}`}
+          onCommit={(steps) => services.store.execute(setEffectSteps(doc, track.id, fx.id, steps))}
+        />
       )}
       <div className="fx-device-params">
         {def.params.filter((p) => !((fx.type === "eq") && ["lowGain", "lowFreq", "midGain", "midFreq", "midQ", "highGain", "highFreq"].includes(p.id))).map((p) =>

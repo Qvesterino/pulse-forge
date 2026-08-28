@@ -31,6 +31,7 @@ import { INSTRUMENT_DEFS } from "../instruments/registry";
 import { Slider } from "./controls";
 import { trackBadge } from "./TrackTabs";
 import { clamp } from "../shared/ids";
+import { StepGridEditor } from "./StepGridEditor";
 import { newModulatorSeed } from "../commands/commands";
 
 const LFO_WAVES: { value: LfoWave; label: string }[] = [
@@ -1254,100 +1255,6 @@ function ScenePointEditor({
           />
         );
       })}
-    </div>
-  );
-}
-
-/**
- * Bipolar step-sequence grid for Step Modulators. Drag paints values across
- * columns (top = +1, bottom = −1); a single command commits on pointer-up so
- * a stroke stays one undo step.
- */
-function StepGridEditor({ steps, onCommit }: { steps: readonly number[]; onCommit: (steps: number[]) => void }) {
-  const canvasRef = useRef<HTMLDivElement>(null);
-  const [live, setLive] = useState<number[] | null>(null);
-  const dragRef = useRef<{ column: number; value: number } | null>(null);
-  const current = live ?? steps;
-
-  const paint = (event: React.PointerEvent): void => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const x = clamp(event.clientX - rect.left, 0, rect.width - 0.01);
-    const y = clamp(event.clientY - rect.top, 0, rect.height);
-    const column = Math.min(current.length - 1, Math.floor((x / rect.width) * current.length));
-    const value = Math.round((1 - 2 * (y / rect.height)) * 100) / 100;
-    dragRef.current = { column, value };
-    setLive((prev) => {
-      const next = [...(prev ?? steps)];
-      next[column] = value;
-      return next;
-    });
-  };
-
-  const commit = (): void => {
-    const finalSteps = current.slice();
-    dragRef.current = null;
-    setLive(null);
-    onCommit(finalSteps);
-  };
-
-  const height = 64;
-  return (
-    <div className="mod-step-grid-wrap">
-      <div
-        ref={canvasRef}
-        className="mod-step-grid"
-        style={{ height }}
-        role="slider"
-        aria-label={`Step sequence, ${current.length} steps`}
-        aria-valuenow={Math.round(((current.reduce((sum, v) => sum + v, 0) / current.length) + 1) * 50)}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        onPointerDown={(event) => {
-          event.currentTarget.setPointerCapture(event.pointerId);
-          paint(event);
-        }}
-        onPointerMove={(event) => {
-          if (event.buttons & 1) paint(event);
-        }}
-        onPointerUp={commit}
-        onPointerCancel={commit}
-      >
-        <svg viewBox={`0 0 ${current.length} 2`} preserveAspectRatio="none" role="img">
-          <line x1="0" y1="1" x2={current.length} y2="1" className="mod-step-grid-zero" />
-          {current.map((value, index) => {
-            const fromY = 1 - value;
-            return (
-              <rect
-                key={index}
-                x={index + 0.12}
-                y={Math.min(fromY, 1)}
-                width={0.76}
-                height={Math.max(0.04, Math.abs(value))}
-                className={dragRef.current?.column === index ? "mod-step-grid-bar active" : "mod-step-grid-bar"}
-              />
-            );
-          })}
-        </svg>
-      </div>
-      <div className="mod-step-grid-tools">
-        {[8, 16, 32].map((length) => (
-          <button
-            key={length}
-            type="button"
-            className={`btn btn-small${current.length === length ? " active" : ""}`}
-            onClick={() => {
-              const resized = Array.from({ length }, (_, i) => steps[i % steps.length] ?? 0);
-              setLive(resized);
-              onCommit(resized);
-              setLive(null);
-            }}
-          >
-            {length}
-          </button>
-        ))}
-      </div>
     </div>
   );
 }

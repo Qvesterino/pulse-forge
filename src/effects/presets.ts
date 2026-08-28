@@ -5,9 +5,12 @@ export interface EffectPreset {
   name: string;
   type: EffectType;
   params: Record<string, number>;
+  /** Step pattern for step-sequenced effects. */
+  steps?: number[];
 }
 
 const preset = (id: string, name: string, type: EffectType, params: Record<string, number>): EffectPreset => ({ id, name, type, params });
+const stepPreset = (id: string, name: string, type: EffectType, params: Record<string, number>, steps: number[]): EffectPreset => ({ id, name, type, params, steps });
 
 export const CORE_EFFECT_PRESETS: EffectPreset[] = [
   preset("eq-clean", "Clean", "eq", { lowShelfGain: 0, lowMidGain: 0, highMidGain: 0, highShelfGain: 0 }),
@@ -20,6 +23,18 @@ export const CORE_EFFECT_PRESETS: EffectPreset[] = [
   preset("limiter-safety", "Safety", "limiter", { ceiling: -1, threshold: -1.5, release: 0.12, lookaheadMs: 5, link: 1, mix: 1 }),
   preset("limiter-punch", "Punch", "limiter", { ceiling: -1, threshold: -6, release: 0.06, lookaheadMs: 3, link: 1, mix: 1 }),
   preset("limiter-slam", "Slam", "limiter", { ceiling: -1, threshold: -14, release: 0.18, lookaheadMs: 5, link: 1, mix: 1 }),
+  stepPreset("stepgate-trance", "Trance 1/16", "stepGate", { division: 4, depth: 1, smooth: 0.08, mix: 1 }, [
+    1, 0.35, 0.75, 0.25, 0.9, 0.3, 0.7, 0.2, 1, 0.35, 0.75, 0.25, 0.9, 0.3, 0.65, 0.18,
+  ]),
+  stepPreset("stepgate-stutter", "Stutter", "stepGate", { division: 4, depth: 1, smooth: 0.02, mix: 1 }, [
+    1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0,
+  ]),
+  stepPreset("stepgate-swell", "Slow Swell", "stepGate", { division: 1, depth: 0.85, smooth: 0.75, mix: 1 }, [
+    0, 0.2, 0.5, 0.8, 1, 1, 0.8, 0.4,
+  ]),
+  stepPreset("stepgate-pad", "Gated Pad", "stepGate", { division: 3, depth: 1, smooth: 0.25, mix: 1 }, [
+    1, 0.6, 0.2, 0.6, 1, 0.4, 0.7, 0.3,
+  ]),
   preset("comp-glue", "Glue", "compressor", { threshold: -20, ratio: 2, attack: 0.03, release: 0.25, knee: 12, detector: 0, scHpf: 20, makeup: 3, mix: 1 }),
   preset("comp-punch", "Punch", "compressor", { threshold: -16, ratio: 4, attack: 0.005, release: 0.12, knee: 6, detector: 1, scHpf: 20, makeup: 4, mix: 1 }),
   preset("comp-smash", "Smash", "compressor", { threshold: -24, ratio: 12, attack: 0.003, release: 0.08, knee: 0, detector: 1, scHpf: 60, makeup: 7, mix: 0.7 }),
@@ -39,6 +54,7 @@ export const CORE_EFFECT_PRESETS: EffectPreset[] = [
   preset("sidechain-pump", "Pump", "sidechain", { threshold: -28, ratio: 8, attack: 0.002, release: 0.18, amount: 1 }),
   preset("sidechain-gentle", "Gentle", "sidechain", { threshold: -18, ratio: 3, attack: 0.01, release: 0.3, amount: 0.65 }),
   preset("sidechain-deep", "Deep", "sidechain", { threshold: -36, ratio: 12, attack: 0.001, release: 0.28, amount: 1 }),
+  preset("sidechain-mb", "Multiband Pump", "sidechain", { threshold: -22, ratio: 8, attack: 0.003, release: 0.18, amount: 0.9, splitFreq: 150 }),
   preset("chorus-subtle", "Subtle", "chorus", { rate: 0.35, depth: 0.25, mix: 0.18 }),
   preset("chorus-wide", "Wide", "chorus", { rate: 0.6, depth: 0.7, mix: 0.45 }),
   preset("chorus-doubler", "Doubler", "chorus", { rate: 1.2, depth: 0.45, mix: 0.55 }),

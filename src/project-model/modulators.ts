@@ -295,7 +295,7 @@ export function sanitizeGateSteps(raw: unknown): number[] {
   if (source.length === 0) {
     return [...DEFAULT_GATE_PATTERN];
   }
-  let targetLength = STEP_MODULATOR_LENGTHS[0];
+  let targetLength: number = STEP_MODULATOR_LENGTHS[0];
   let bestDelta = Math.abs(targetLength - source.length);
   for (const length of STEP_MODULATOR_LENGTHS) {
     const delta = Math.abs(length - source.length);

@@ -132,11 +132,13 @@ function yMapToPad(m: unknown): DrumPad {
 
 function yMapToEffect(m: unknown): EffectInstance {
   const map = m as Y.Map<unknown>;
+  const rawSteps = map.get("steps");
   return {
     id: map.get("id") as string,
     type: map.get("type") as any,
     bypassed: map.get("bypassed") as boolean,
     params: yMapToRecord(map.get("params") as Y.Map<unknown>),
+    steps: Array.isArray(rawSteps) ? rawSteps.map((v) => Number(v) || 0) : undefined,
     sidechainTrackId: map.get("sidechainTrackId") as string | undefined,
   };
 }
@@ -513,6 +515,16 @@ function syncPadEntity(target: Y.Map<unknown>, pad: DrumPad): void {
 function syncEffectEntity(target: Y.Map<unknown>, fx: EffectInstance): void {
   mirrorScalars(target, fx, EFFECT_SCALARS);
   syncPlainFields(ensureChildMap(target, "params"), fx.params);
+  // Step-gate pattern: replaced wholesale on every sync (small array).
+  if (fx.steps) {
+    const steps = ensureChildArray(target, "steps");
+    if (steps.length !== fx.steps.length || steps.toArray().some((v, i) => (Number(v) || 0) !== fx.steps![i])) {
+      steps.delete(0, steps.length);
+      steps.insert(0, [...fx.steps]);
+    }
+  } else if (target.has("steps")) {
+    target.delete("steps");
+  }
 }
 
 function syncPatternEntity(target: Y.Map<unknown>, pattern: Pattern): void {
@@ -823,6 +835,7 @@ function effectToYMap(fx: EffectInstance): Y.Map<unknown> {
   for (const [k, v] of Object.entries(fx.params)) {
     params.set(k, v);
   }
+  if (fx.steps) m.set("steps", [...fx.steps]);
   if (fx.sidechainTrackId) m.set("sidechainTrackId", fx.sidechainTrackId);
   return m;
 }

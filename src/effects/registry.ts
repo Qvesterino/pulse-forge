@@ -6,6 +6,7 @@ import { createBitcrusherNode } from "../audio-worklets/bitcrusher-node";
 import { createSidechainNode } from "../audio-worklets/sidechain-node";
 import { createLimiterNode } from "../audio-worklets/limiter-node";
 import { createCompressorNode } from "../audio-worklets/compressor-node";
+import { createStepGateNode } from "../audio-worklets/stepgate-node";
 
 const dbToLin = (db: number) => Math.pow(10, db / 20);
 const smooth = (param: AudioParam, value: number, when: number, tc = 0.02) =>
@@ -43,6 +44,7 @@ export const WORKLET_EFFECTS: Partial<Record<EffectType, "critical" | "degraded"
   gate: "critical",
   transient: "critical",
   limiter: "critical",
+  stepGate: "critical",
   compressor: "degraded",
   bitcrusher: "degraded",
   sidechain: "degraded",
@@ -62,7 +64,7 @@ export function effectProcessorStatus(
   const severity = WORKLET_EFFECTS[type];
   if (!severity) return "ok";
   return isWorkletReady(
-    type as "bitcrusher" | "sidechain" | "transient" | "gate" | "limiter" | "compressor",
+    type as "bitcrusher" | "sidechain" | "transient" | "gate" | "limiter" | "compressor" | "stepGate",
     ctx,
   )
     ? "ok"
@@ -981,6 +983,7 @@ const sidechain: EffectDefinition = {
     { id: "attack", label: "ATTACK", min: 0.001, max: 0.5, default: 0.005, unit: "s", format: formatMs },
     { id: "release", label: "RELEASE", min: 0.02, max: 1, default: 0.2, unit: "s", format: formatMs },
     { id: "amount", label: "AMOUNT", min: 0, max: 1, default: 1, format: formatPct },
+    { id: "splitFreq", label: "SPLIT", min: 0, max: 500, default: 0, unit: "Hz", format: formatHz },
   ],
   factory(ctx, instance) {
     // Use AudioWorklet when modules are loaded for THIS context (audio-rate
@@ -1447,6 +1450,51 @@ const limiter: EffectDefinition = {
   },
 };
 
+/* ---------------- Step Gate (trance gate) ---------------- */
+// Rhythmically gates the input on an editable 8/16/32-step pattern, synced to
+// the transport grid via syncBpm/onTransportStarted (same hooks as Pump).
+// Zero latency, deterministic offline (default anchor phase 0 @ time 0).
+// The pattern lives on EffectInstance.steps (8/16/32 × 0..1 open amounts).
+
+const GATE_DIVISIONS = [
+  { value: 0, label: "1/1" },
+  { value: 1, label: "1/2" },
+  { value: 2, label: "1/4" },
+  { value: 3, label: "1/8" },
+  { value: 4, label: "1/16" },
+  { value: 5, label: "1/32" },
+];
+
+const stepGate: EffectDefinition = {
+  type: "stepGate",
+  name: "Step Gate",
+  category: "movement",
+  params: [
+    { id: "division", label: "RATE", min: 0, max: 5, default: 4, options: GATE_DIVISIONS },
+    { id: "depth", label: "DEPTH", min: 0, max: 1, default: 1, format: formatPct },
+    { id: "smooth", label: "SMOOTH", min: 0, max: 1, default: 0.15, format: formatPct },
+    { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
+  ],
+  factory(ctx, instance) {
+    if (isWorkletReady("stepGate", ctx)) {
+      const handle = createStepGateNode(ctx, instance);
+      if (instance.steps && instance.steps.length > 0) handle.setPattern(instance.steps);
+      return {
+        input: handle.input,
+        output: handle.output,
+        setParameter: handle.setParameter,
+        setParameterAt: handle.setParameterAt,
+        syncBpm: handle.syncBpm,
+        onTransportStarted: handle.onTransportStarted,
+        dispose: handle.dispose,
+      };
+    }
+    // Transparent 1:1 bypass fallback — a gate that doesn't gate silently
+    // would be worse than no gate; the UI shows the warning badge.
+    return bypassRuntime(ctx, "AudioWorklet unavailable — step gate bypassed (1:1 signal)");
+  },
+};
+
 /* ---------------- registry ---------------- */
 
 export const EFFECT_DEFS: Record<EffectType, EffectDefinition> = {
@@ -1455,6 +1503,7 @@ export const EFFECT_DEFS: Record<EffectType, EffectDefinition> = {
   saturation,
   clipper,
   limiter,
+  stepGate,
   reverb,
   delay,
   pump,
@@ -1476,6 +1525,7 @@ export const EFFECT_ORDER: EffectType[] = [
   "saturation",
   "clipper",
   "limiter",
+  "stepGate",
   "reverb",
   "delay",
   "pump",
@@ -1496,6 +1546,7 @@ export const CORE_EFFECT_ORDER: EffectType[] = [
   "eq",
   "transient",
   "limiter",
+  "stepGate",
   "drumBuss",
   "bassBuss",
   "utility",
