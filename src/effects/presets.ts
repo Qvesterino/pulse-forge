@@ -62,6 +62,12 @@ export const CORE_EFFECT_PRESETS: EffectPreset[] = [
   stepPreset("stutter-chop", "Chop", "stutter", { division: 3, mix: 0.85, feedback: 0.35 }, [
     1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0,
   ]),
+  preset("comb-tight", "Tight", "comb", { delayMs: 4, feedback: 0.35, damp: 8000, mix: 0.45 }),
+  preset("comb-reso", "Resonant", "comb", { delayMs: 14, feedback: 0.72, damp: 5000, mix: 0.55 }),
+  preset("comb-metallic", "Metallic", "comb", { delayMs: 28, feedback: -0.68, damp: 4000, mix: 0.6 }),
+  preset("vowel-ae", "A→E", "vowel", { vowel: 0.5, resonance: 0.6, mix: 1 }),
+  preset("vowel-io", "I→O", "vowel", { vowel: 2.5, resonance: 0.7, mix: 1 }),
+  preset("vowel-u", "U Hollow", "vowel", { vowel: 4, resonance: 0.5, mix: 0.85 }),
   preset("tape-warm", "Warm Tape", "tapeSat", { drive: 0.35, hysteresis: 0.25, tone: 6500, mix: 1, output: 0 }),
   preset("tape-hot", "Hot Tape", "tapeSat", { drive: 0.65, hysteresis: 0.55, tone: 5000, mix: 1, output: -1 }),
   preset("tape-crunch", "Tape Crunch", "tapeSat", { drive: 0.8, hysteresis: 0.45, tone: 8000, mix: 0.85, output: 0 }),

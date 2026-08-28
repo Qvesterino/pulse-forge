@@ -2,8 +2,20 @@ import { useRef, useState } from "react";
 import { useDoc, useServices } from "./context";
 import type { InstrumentTrack, NoteEvent, Pattern } from "../project-model/types";
 import { STEP_TICKS, pitchName } from "../project-model/types";
-import { addNote, deleteNote, moveNote, resizeNote } from "../commands/commands";
-import { clamp } from "../shared/ids";
+import {
+  addNote,
+  applyMidiCreativeTool,
+  deleteNote,
+  deleteNotes,
+  duplicateNotes,
+  glueNotes,
+  quantizeNotes,
+  setNotesVelocity,
+  splitNotes,
+  moveNote,
+  resizeNote,
+} from "../commands/commands";
+import { clamp, uid } from "../shared/ids";
 import { getScalePitchesInRange, isInScale, snapToScale, scaleDegreeLabel } from "../project-model/scales";
 
 const PITCH_MIN = 24;
@@ -47,6 +59,8 @@ export function PianoRollTrack({
   const [drag, setDrag] = useState<DragState | null>(null);
   const notes = pattern.notes?.[track.id] ?? [];
   const patternTicks = STEP_TICKS * pattern.stepCount;
+  const [velDrag, setVelDrag] = useState<{ noteId: string; startY: number; startVel: number } | null>(null);
+  const [noteClipboard, setNoteClipboard] = useState<NoteEvent[] | null>(null);
 
   // Scale awareness
   const projectKey = doc.key;
@@ -159,9 +173,23 @@ export function PianoRollTrack({
     }
   };
 
+  const [marquee, setMarquee] = useState<{ startStep: number; startPitch: number; endStep: number; endPitch: number } | null>(null);
+  const marqueeRef = useRef<{ startStep: number; startPitch: number } | null>(null);
+
   const onGridPointerDown = (event: React.PointerEvent) => {
     if (event.button !== 0) return;
     if (event.target !== gridRef.current) return;
+    if (event.shiftKey) {
+      const { stepF, pitch } = posFromEvent(event);
+      marqueeRef.current = { startStep: stepF, startPitch: pitch };
+      setMarquee({ startStep: stepF, startPitch: pitch, endStep: stepF, endPitch: pitch });
+      try {
+        (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+      } catch {
+        /* no capture */
+      }
+      return;
+    }
     const { stepF, pitch } = posFromEvent(event);
     const start = clamp(Math.floor(stepF), 0, pattern.stepCount - 1) * STEP_TICKS;
     services.store.execute(
@@ -169,16 +197,217 @@ export function PianoRollTrack({
     );
     onSelectNote(null);
   };
+  const onGridPointerMove = (event: React.PointerEvent) => {
+    if (!marqueeRef.current) return;
+    const { stepF, pitch } = posFromEvent(event);
+    const s = marqueeRef.current;
+    setMarquee({ startStep: s.startStep, startPitch: s.startPitch, endStep: stepF, endPitch: pitch });
+  };
+  const onGridPointerUp = () => {
+    if (!marqueeRef.current || !marquee) return;
+    const { startStep, startPitch, endStep, endPitch } = marquee;
+    const minStep = Math.min(startStep, endStep);
+    const maxStep = Math.max(startStep, endStep);
+    const minPitch = Math.min(startPitch, endPitch);
+    const maxPitch = Math.max(startPitch, endPitch);
+    const minTick = minStep * STEP_TICKS;
+    const maxTick = maxStep * STEP_TICKS;
+    const selected = notes.filter((n) => n.start >= minTick && n.start < maxTick && n.pitch >= minPitch && n.pitch <= maxPitch);
+    if (selected.length > 0) onSelectNote({ trackId: track.id, noteIds: selected.map((n) => n.id) });
+    else onSelectNote(null);
+    marqueeRef.current = null;
+    setMarquee(null);
+  };
 
   const previewKey = (pitch: number) => services.engine.previewNote(track.id, pitch);
 
   const stepPct = (step: number) => (step / pattern.stepCount) * 100;
 
+  const beginVelDrag = (e: React.PointerEvent, note: NoteEvent) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {
+      /* no capture */
+    }
+    setVelDrag({ noteId: note.id, startY: e.clientY, startVel: note.velocity });
+    onSelectNote({ trackId: track.id, noteIds: [note.id] });
+  };
+  const onVelPointerMove = (e: React.PointerEvent) => {
+    if (!velDrag) return;
+    const delta = velDrag.startY - e.clientY;
+    const v = clamp(velDrag.startVel + delta / 120, 0.05, 1);
+    // live preview: update drag visual only, commit on up
+    const el = document.querySelector(`[data-vel="${velDrag.noteId}"]`) as HTMLElement | null;
+    if (el) el.style.height = `${v * 100}%`;
+  };
+  const onVelPointerUp = (e: React.PointerEvent) => {
+    if (!velDrag) return;
+    const delta = velDrag.startY - e.clientY;
+    const v = clamp(velDrag.startVel + delta / 120, 0.05, 1);
+    services.store.execute(setNotesVelocity(doc, track.id, [velDrag.noteId], v));
+    setVelDrag(null);
+  };
+
+  // Note clipboard for copy/paste
+  const copySelectedNotes = () => {
+    if (!hasSelection) return;
+    const toCopy = notes.filter((n) => selectedNote!.noteIds.includes(n.id));
+    setNoteClipboard(toCopy.map((n) => ({ ...n })));
+  };
+  const pasteNotesClipboard = () => {
+    if (!noteClipboard || noteClipboard.length === 0) return;
+    const newNotes = noteClipboard.map((n) => ({ ...n, id: uid("note") }));
+    const prev = [...notes];
+    const next = [...notes, ...newNotes].sort((a, b) => a.start - b.start || a.pitch - b.pitch);
+    const newIds = newNotes.map((n) => n.id);
+    services.store.execute({
+      type: "pasteNotes",
+      label: `Paste ${newNotes.length} notes`,
+      execute: (d: any) => ({
+        ...d,
+        patterns: d.patterns.map((p: any) => (p.id === pattern.id ? { ...p, notes: { ...(p.notes ?? {}), [track.id]: next } } : p)),
+      }),
+      undo: (d: any) => ({
+        ...d,
+        patterns: d.patterns.map((p: any) => (p.id === pattern.id ? { ...p, notes: { ...(p.notes ?? {}), [track.id]: prev } } : p)),
+      }),
+    } as any);
+    onSelectNote({ trackId: track.id, noteIds: newIds });
+  };
+
   // Compute in-scale pitch set for visual highlighting
   const isScaleActive = scalePitches !== null && scalePitches.size > 0;
+  const hasSelection = selectedNote?.trackId === track.id && selectedNote.noteIds.length > 0;
+  const selCount = hasSelection ? selectedNote!.noteIds.length : notes.length;
+  const selLabel = hasSelection ? `${selCount} SEL` : `${notes.length} NOTES`;
+
+  const runOnSelection = (fn: (ids?: string[]) => void) => {
+    try {
+      const ids = hasSelection ? selectedNote!.noteIds : undefined;
+      fn(ids);
+      // keep selection after operation
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn(e);
+    }
+  };
 
   return (
-    <div className="pianoroll">
+    <div className="pianoroll-wrap">
+      <div className="pianoroll-toolbar" role="toolbar" aria-label="Piano roll tools">
+        <span className="pr-toolbar-count">{selLabel}</span>
+        <div className="pr-toolbar-group">
+          <button type="button" className="btn btn-small" title="Quantize to 1/16" onClick={() => runOnSelection((ids) => services.store.execute(quantizeNotes(doc, track.id, ids)))}>
+            QUANT
+          </button>
+          <button type="button" className="btn btn-small" title="Duplicate" onClick={() => runOnSelection((ids) => services.store.execute(duplicateNotes(doc, track.id, ids)))}>
+            DUP
+          </button>
+          <button type="button" className="btn btn-small" title="Split notes in half" disabled={!hasSelection} onClick={() => runOnSelection((ids) => services.store.execute(splitNotes(doc, track.id, ids)))}>
+            SPLIT
+          </button>
+          <button type="button" className="btn btn-small" title="Glue notes of same pitch" disabled={!hasSelection || (selectedNote?.noteIds.length ?? 0) < 2} onClick={() => runOnSelection((ids) => services.store.execute(glueNotes(doc, track.id, ids)))}>
+            GLUE
+          </button>
+          <button
+            type="button"
+            className="btn btn-small btn-danger"
+            title="Delete selected"
+            disabled={!hasSelection}
+            onClick={() => {
+              if (hasSelection) {
+                services.store.execute(deleteNotes(doc, track.id, selectedNote!.noteIds));
+                onSelectNote(null);
+              }
+            }}
+          >
+            DEL
+          </button>
+        </div>
+        <div className="pr-toolbar-group">
+          <button
+            type="button"
+            className="btn btn-small"
+            title="Reverse"
+            onClick={() => runOnSelection((ids) => services.store.execute(applyMidiCreativeTool(doc, { trackId: track.id, noteIds: ids, operation: { kind: "reverse", scaleLock: scaleSnap, key: doc.key } })))}
+          >
+            REV
+          </button>
+          <button
+            type="button"
+            className="btn btn-small"
+            title="Humanize ±12 ticks / ±0.1 vel (seeded)"
+            onClick={() =>
+              runOnSelection((ids) =>
+                services.store.execute(
+                  applyMidiCreativeTool(doc, {
+                    trackId: track.id,
+                    noteIds: ids,
+                    operation: { kind: "humanize", options: { timingTicks: 12, velocityAmount: 0.1, seed: `hum-${Date.now()}` }, scaleLock: scaleSnap, key: doc.key },
+                  }),
+                ),
+              )
+            }
+          >
+            HUM
+          </button>
+          <button
+            type="button"
+            className="btn btn-small"
+            title="Strum 20 ticks up"
+            onClick={() =>
+              runOnSelection((ids) =>
+                services.store.execute(
+                  applyMidiCreativeTool(doc, {
+                    trackId: track.id,
+                    noteIds: ids,
+                    operation: { kind: "strum", options: { spreadTicks: 20, direction: "up" }, scaleLock: scaleSnap, key: doc.key },
+                  }),
+                ),
+              )
+            }
+          >
+            STRUM
+          </button>
+          <button
+            type="button"
+            className="btn btn-small"
+            title="Velocity -10%"
+            disabled={!hasSelection}
+            onClick={() => {
+              if (!hasSelection) return;
+              const vel = Math.max(0.05, (notes.find((n) => selectedNote!.noteIds.includes(n.id))?.velocity ?? 0.8) - 0.1);
+              services.store.execute(setNotesVelocity(doc, track.id, selectedNote!.noteIds, vel));
+            }}
+          >
+            V-
+          </button>
+          <button
+            type="button"
+            className="btn btn-small"
+            title="Velocity +10%"
+            disabled={!hasSelection}
+            onClick={() => {
+              if (!hasSelection) return;
+              const vel = Math.min(1, (notes.find((n) => selectedNote!.noteIds.includes(n.id))?.velocity ?? 0.8) + 0.1);
+              services.store.execute(setNotesVelocity(doc, track.id, selectedNote!.noteIds, vel));
+            }}
+          >
+            V+
+          </button>
+        </div>
+        <div className="pr-toolbar-group">
+          <button type="button" className="btn btn-small" title="Copy selected notes" disabled={!hasSelection} onClick={copySelectedNotes}>
+            COPY
+          </button>
+          <button type="button" className="btn btn-small" title="Paste copied notes" disabled={!noteClipboard || noteClipboard.length === 0} onClick={pasteNotesClipboard}>
+            PASTE
+          </button>
+        </div>
+      </div>
+      <div className="pianoroll">
       <div className="pianoroll-keys">
         {Array.from({ length: PITCH_COUNT }, (_, i) => {
           const pitch = PITCH_MAX - i;
@@ -211,6 +440,8 @@ export function PianoRollTrack({
           ref={gridRef}
           style={{ height: PITCH_COUNT * ROW_HEIGHT }}
           onPointerDown={onGridPointerDown}
+          onPointerMove={onGridPointerMove}
+          onPointerUp={onGridPointerUp}
         >
           {/* Scale row highlights (background tint on in-scale rows) */}
           {isScaleActive &&
@@ -273,7 +504,38 @@ export function PianoRollTrack({
               />
             );
           })}
+          {marquee && (
+            <div
+              className="pr-marquee"
+              style={{
+                left: `${(Math.min(marquee.startStep, marquee.endStep) / pattern.stepCount) * 100}%`,
+                width: `${(Math.abs(marquee.endStep - marquee.startStep) / pattern.stepCount) * 100}%`,
+                top: `${(PITCH_MAX - Math.max(marquee.startPitch, marquee.endPitch)) * ROW_HEIGHT}px`,
+                height: `${Math.abs(marquee.endPitch - marquee.startPitch) * ROW_HEIGHT + ROW_HEIGHT}px`,
+              }}
+            />
+          )}
         </div>
+      </div>
+    </div>
+      <div className="pr-velocity-lane" aria-label="Velocity lane">
+        <div className="pr-velocity-bg" />
+        {notes.map((note) => {
+          const left = (note.start / patternTicks) * 100;
+          const selected = selectedNote?.trackId === track.id && selectedNote.noteIds.includes(note.id);
+          return (
+            <div
+              key={note.id}
+              data-vel={note.id}
+              className={`pr-vel-bar${selected ? " selected" : ""}`}
+              style={{ left: `${left}%`, height: `${note.velocity * 100}%` }}
+              title={`${pitchName(note.pitch)} vel ${Math.round(note.velocity * 100)}% — drag vertically`}
+              onPointerDown={(e) => beginVelDrag(e, note)}
+              onPointerMove={onVelPointerMove}
+              onPointerUp={onVelPointerUp}
+            />
+          );
+        })}
       </div>
     </div>
   );

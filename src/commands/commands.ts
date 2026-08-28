@@ -645,12 +645,25 @@ export function setStepMeta(
     cleaned.microtiming = Math.max(-1, Math.min(1, merged.microtiming));
   if (merged.locks !== undefined && Object.keys(merged.locks).length > 0) {
     const cleanedLocks: NonNullable<StepMeta["locks"]> = {};
+    const ALLOWED = new Set(["pitch", "gain", "pan", "cutoff", "sampleStart"]);
+    const clampMap = {
+      pitch: { min: -24, max: 24 },
+      gain: { min: 0, max: 2 },
+      pan: { min: -1, max: 1 },
+      cutoff: { min: 80, max: 16000 },
+      sampleStart: { min: 0, max: 1 },
+    } as const;
     for (const [k, v] of Object.entries(merged.locks)) {
-      if (k !== "pitch" && k !== "gain" && k !== "pan") continue;
+      if (!ALLOWED.has(k)) continue;
       if (typeof v !== "number" || !Number.isFinite(v)) continue;
-      const clampMap = { pitch: { min: -24, max: 24 }, gain: { min: 0, max: 2 }, pan: { min: -1, max: 1 } } as const;
-      const clamped = Math.min(clampMap[k as "pitch" | "gain" | "pan"].max, Math.max(clampMap[k as "pitch" | "gain" | "pan"].min, v));
-      const rounded = k === "pitch" ? Math.round(clamped * 10) / 10 : Math.round(clamped * 100) / 100;
+      const clamped = Math.min(
+        clampMap[k as keyof typeof clampMap].max,
+        Math.max(clampMap[k as keyof typeof clampMap].min, v),
+      );
+      let rounded: number;
+      if (k === "pitch") rounded = Math.round(clamped * 10) / 10;
+      else if (k === "cutoff") rounded = Math.round(clamped);
+      else rounded = Math.round(clamped * 100) / 100;
       cleanedLocks[k as keyof typeof cleanedLocks] = rounded;
     }
     if (Object.keys(cleanedLocks).length > 0) cleaned.locks = cleanedLocks;
@@ -677,6 +690,80 @@ export function setStepLocks(
 ): Command {
   return setStepMeta(doc, patternId, padId, stepIndex, { locks: patch } as StepMeta);
 }
+
+/** Bulk apply p-locks to every step in a rectangular selection. */
+export function setStepsLocks(
+  doc: ProjectDocument,
+  patternId: string,
+  padIds: string[],
+  fromStep: number,
+  toStep: number,
+  patch: Partial<Record<import("../project-model/types").StepLockKey, number | undefined>>,
+): Command {
+  const pattern = doc.patterns.find((p) => p.id === patternId);
+  if (!pattern) throw new Error(`Pattern ${patternId} not found`);
+  let nextDoc = doc;
+  for (const padId of padIds) {
+    for (let step = fromStep; step <= toStep; step++) {
+      if (step < 0 || step >= pattern.stepCount) continue;
+      nextDoc = setStepLocks(nextDoc, patternId, padId, step, patch).execute(nextDoc);
+    }
+  }
+  const prev = doc;
+  const next = nextDoc;
+  const label = `Set p-locks for ${padIds.length}×${toStep - fromStep + 1} steps`;
+  return {
+    type: "setStepsLocks",
+    label,
+    execute: () => next,
+    undo: () => prev,
+  };
+}
+
+/** Paste locks from a copied source (shallow) onto a selection. */
+export function pasteStepLocks(
+  doc: ProjectDocument,
+  patternId: string,
+  padIds: string[],
+  fromStep: number,
+  toStep: number,
+  locks: Partial<Record<import("../project-model/types").StepLockKey, number>>,
+): Command {
+  if (!locks || Object.keys(locks).length === 0) {
+    return { type: "pasteStepLocks", label: "Paste p-locks (empty)", execute: (d) => d, undo: (d) => d };
+  }
+  return setStepsLocks(doc, patternId, padIds, fromStep, toStep, locks as Partial<Record<import("../project-model/types").StepLockKey, number | undefined>>);
+}
+
+export function clearStepLocks(
+  doc: ProjectDocument,
+  patternId: string,
+  padIds: string[],
+  fromStep: number,
+  toStep: number,
+): Command {
+  const pattern = doc.patterns.find((p) => p.id === patternId);
+  if (!pattern) throw new Error(`Pattern ${patternId} not found`);
+  let nextDoc = doc;
+  for (const padId of padIds) {
+    for (let step = fromStep; step <= toStep; step++) {
+      const locks = pattern.stepMeta?.[padId]?.[step]?.locks;
+      if (!locks) continue;
+      const patch: Record<string, undefined> = {};
+      for (const k of Object.keys(locks)) patch[k] = undefined;
+      nextDoc = setStepLocks(nextDoc, patternId, padId, step, patch as any).execute(nextDoc);
+    }
+  }
+  const prev = doc;
+  const finalDoc = nextDoc;
+  return {
+    type: "clearStepLocks",
+    label: `Clear p-locks for ${padIds.length}×${toStep - fromStep + 1} steps`,
+    execute: () => finalDoc,
+    undo: () => prev,
+  };
+}
+
 export function clearSteps(
   doc: ProjectDocument,
   patternId: string,
@@ -1050,6 +1137,130 @@ export function deleteNotes(doc: ProjectDocument, trackId: string, noteIds: stri
         const missing = removed.filter((note) => !present.has(note.id));
         return missing.length === 0 ? notes : [...notes, ...missing];
       }),
+  };
+}
+
+export function quantizeNotes(doc: ProjectDocument, trackId: string, noteIds?: string[], gridTicks: number = STEP_TICKS): Command {
+  const pattern = doc.patterns.find((p) => p.id === doc.activePatternId);
+  if (!pattern) throw new Error("Active pattern not found");
+  const all = pattern.notes?.[trackId] ?? [];
+  const targetIds = noteIds && noteIds.length > 0 ? new Set(noteIds) : null;
+  const before = all.filter((n) => !targetIds || targetIds.has(n.id));
+  const prev = [...all];
+  const quantized = all.map((n) => {
+    if (targetIds && !targetIds.has(n.id)) return n;
+    const qStart = Math.round(n.start / gridTicks) * gridTicks;
+    const qDur = Math.max(gridTicks, Math.round(n.duration / gridTicks) * gridTicks);
+    return { ...n, start: Math.max(0, Math.min(pattern.stepCount * STEP_TICKS - qDur, qStart)), duration: qDur };
+  });
+  return {
+    type: "quantizeNotes",
+    label: `Quantize ${before.length} notes`,
+    execute: (d) => withTrackNotes(d, trackId, () => quantized),
+    undo: (d) => withTrackNotes(d, trackId, () => prev),
+  };
+}
+
+export function duplicateNotes(doc: ProjectDocument, trackId: string, noteIds?: string[]): Command {
+  const pattern = doc.patterns.find((p) => p.id === doc.activePatternId);
+  if (!pattern) throw new Error("Active pattern not found");
+  const all = pattern.notes?.[trackId] ?? [];
+  const targetIds = noteIds && noteIds.length > 0 ? new Set(noteIds) : null;
+  const toDup = targetIds ? all.filter((n) => targetIds.has(n.id)) : all;
+  if (toDup.length === 0) throw new Error("Select at least one note to duplicate");
+  const patternTicks = pattern.stepCount * STEP_TICKS;
+  const minStart = Math.min(...toDup.map((n) => n.start));
+  const maxEnd = Math.max(...toDup.map((n) => n.start + n.duration));
+  const width = maxEnd - minStart;
+  // Duplicate shifted by width, wrap if exceeds pattern
+  const copies = toDup.map((n) => ({
+    ...n,
+    id: uid("note"),
+    start: (n.start + width) % patternTicks,
+  }));
+  // If wrap would overlap original, keep original and add copies (allow overlap for now)
+  const next = [...all, ...copies].sort((a, b) => a.start - b.start || a.pitch - b.pitch);
+  const prev = [...all];
+  return {
+    type: "duplicateNotes",
+    label: `Duplicate ${toDup.length} notes`,
+    execute: (d) => withTrackNotes(d, trackId, () => next),
+    undo: (d) => withTrackNotes(d, trackId, () => prev),
+  };
+}
+
+export function splitNotes(doc: ProjectDocument, trackId: string, noteIds?: string[]): Command {
+  const all = activeTrackNotes(doc, trackId);
+  const targetIds = noteIds && noteIds.length > 0 ? new Set(noteIds) : null;
+  const toSplit = targetIds ? all.filter((n) => targetIds.has(n.id)) : all;
+  if (toSplit.length === 0) throw new Error("Select at least one note to split");
+  const prev = [...all];
+  const next: NoteEvent[] = [];
+  for (const n of all) {
+    if (!toSplit.includes(n)) {
+      next.push(n);
+      continue;
+    }
+    if (n.duration < STEP_TICKS * 2) {
+      next.push(n);
+      continue;
+    }
+    const half = Math.floor(n.duration / 2);
+    const a = { ...n, duration: half };
+    const b = { ...n, id: uid("note"), start: n.start + half, duration: n.duration - half };
+    next.push(a, b);
+  }
+  next.sort((a, b) => a.start - b.start || a.pitch - b.pitch);
+  return {
+    type: "splitNotes",
+    label: `Split ${toSplit.length} notes`,
+    execute: (d) => withTrackNotes(d, trackId, () => next),
+    undo: (d) => withTrackNotes(d, trackId, () => prev),
+  };
+}
+
+export function glueNotes(doc: ProjectDocument, trackId: string, noteIds?: string[]): Command {
+  const all = activeTrackNotes(doc, trackId);
+  const targetIds = noteIds && noteIds.length > 0 ? new Set(noteIds) : new Set(all.map((n) => n.id));
+  const toGlue = all.filter((n) => targetIds.has(n.id));
+  if (toGlue.length < 2) throw new Error("Select at least two notes to glue");
+  // Group by pitch
+  const byPitch = new Map<number, NoteEvent[]>();
+  for (const n of toGlue) {
+    const arr = byPitch.get(n.pitch) ?? [];
+    arr.push(n);
+    byPitch.set(n.pitch, arr);
+  }
+  // If multiple pitches, glue only if all same pitch, else no-op
+  if (byPitch.size !== 1) throw new Error("Glue requires notes of the same pitch");
+  const group = [...toGlue].sort((a, b) => a.start - b.start);
+  const glued: NoteEvent = {
+    id: uid("note"),
+    pitch: group[0].pitch,
+    start: group[0].start,
+    duration: Math.max(...group.map((n) => n.start + n.duration)) - group[0].start,
+    velocity: group[0].velocity,
+  };
+  const remaining = all.filter((n) => !targetIds.has(n.id));
+  const next = [...remaining, glued].sort((a, b) => a.start - b.start || a.pitch - b.pitch);
+  const prev = [...all];
+  return {
+    type: "glueNotes",
+    label: `Glue ${toGlue.length} notes`,
+    execute: (d) => withTrackNotes(d, trackId, () => next),
+    undo: (d) => withTrackNotes(d, trackId, () => prev),
+  };
+}
+
+export function setNotesVelocity(doc: ProjectDocument, trackId: string, noteIds: string[], velocity: number): Command {
+  const clamped = clamp(velocity, 0.05, 1);
+  const prev = activeTrackNotes(doc, trackId).filter((n) => noteIds.includes(n.id));
+  const prevMap = new Map(prev.map((n) => [n.id, n.velocity]));
+  return {
+    type: "setNotesVelocity",
+    label: `Set velocity for ${noteIds.length} notes`,
+    execute: (d) => withTrackNotes(d, trackId, (notes) => notes.map((n) => (noteIds.includes(n.id) ? { ...n, velocity: clamped } : n))),
+    undo: (d) => withTrackNotes(d, trackId, (notes) => notes.map((n) => (prevMap.has(n.id) ? { ...n, velocity: prevMap.get(n.id)! } : n))),
   };
 }
 

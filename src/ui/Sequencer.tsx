@@ -3,9 +3,12 @@ import { useDoc, useServices } from "./context";
 import type { DrumTrack, StepMeta, Track } from "../project-model/types";
 import { usePlayheadStep } from "./playhead";
 import {
+  clearStepLocks,
+  pasteStepLocks,
   setPadParams,
   setStepLocks,
   setStepMeta,
+  setStepsLocks,
   setStepsVelocity,
   setStepVelocityCommand,
   setTrackParams,
@@ -95,6 +98,7 @@ export function Sequencer({
   const dragRef = useRef<DragState | null>(null);
   const [dragPreview, setDragPreview] = useState<{ padId: string; stepIndex: number; velocity: number } | null>(null);
   const [stepEditor, setStepEditor] = useState<{ padId: string; stepIndex: number } | null>(null);
+  const [lockClipboard, setLockClipboard] = useState<Partial<Record<import("../project-model/types").StepLockKey, number>> | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(600);
@@ -271,8 +275,65 @@ export function Sequencer({
         <StepEditor
           padId={stepEditor.padId}
           stepIndex={stepEditor.stepIndex}
+          stepSelection={stepSelection}
           onClose={() => setStepEditor(null)}
         />
+      )}
+      {stepSelection && (
+        <div className="step-selection-toolbar" role="group" aria-label="Selection p-lock tools">
+          <span className="step-selection-label">
+            {stepSelection.padIds.length}×{stepSelection.to - stepSelection.from + 1} STEPS
+          </span>
+          <button
+            type="button"
+            className="btn btn-small"
+            title="Copy p-locks from the anchor step (first selected with locks, or editor step)"
+            onClick={() => {
+              let sourceLocks: Partial<Record<import("../project-model/types").StepLockKey, number>> | null = null;
+              if (stepEditor) {
+                sourceLocks = pattern.stepMeta?.[stepEditor.padId]?.[stepEditor.stepIndex]?.locks ?? null;
+              }
+              if (!sourceLocks) {
+                for (const pid of stepSelection.padIds) {
+                  for (let s = stepSelection.from; s <= stepSelection.to; s++) {
+                    const l = pattern.stepMeta?.[pid]?.[s]?.locks;
+                    if (l && Object.keys(l).length > 0) {
+                      sourceLocks = l;
+                      break;
+                    }
+                  }
+                  if (sourceLocks) break;
+                }
+              }
+              if (sourceLocks) setLockClipboard({ ...sourceLocks });
+            }}
+          >
+            COPY LOCKS
+          </button>
+          <button
+            type="button"
+            className="btn btn-small"
+            disabled={!lockClipboard || Object.keys(lockClipboard).length === 0}
+            title={lockClipboard ? `Paste ${Object.keys(lockClipboard).join(", ")}` : "No locks copied"}
+            onClick={() => {
+              if (!lockClipboard) return;
+              services.store.execute(pasteStepLocks(doc, pattern.id, stepSelection.padIds, stepSelection.from, stepSelection.to, lockClipboard));
+            }}
+          >
+            PASTE LOCKS
+          </button>
+          <button
+            type="button"
+            className="btn btn-small"
+            title="Clear all p-locks in selection"
+            onClick={() => services.store.execute(clearStepLocks(doc, pattern.id, stepSelection.padIds, stepSelection.from, stepSelection.to))}
+          >
+            CLEAR LOCKS
+          </button>
+          <button type="button" className="btn btn-small" onClick={() => onSelectSteps(null)}>
+            ✕ CLEAR SEL
+          </button>
+        </div>
       )}
       <div
         className="sequencer-ruler"
@@ -411,7 +472,17 @@ function VirtualRow({
 }
 
 /** Inline editor for per-step performance: probability, ratchet, microtiming + p-locks. */
-function StepEditor({ padId, stepIndex, onClose }: { padId: string; stepIndex: number; onClose: () => void }) {
+function StepEditor({
+  padId,
+  stepIndex,
+  onClose,
+  stepSelection,
+}: {
+  padId: string;
+  stepIndex: number;
+  onClose: () => void;
+  stepSelection: StepSelection | null;
+}) {
   const services = useServices();
   const doc = useDoc();
   const pattern = doc.patterns.find((p) => p.id === doc.activePatternId) ?? doc.patterns[0];
@@ -420,16 +491,45 @@ function StepEditor({ padId, stepIndex, onClose }: { padId: string; stepIndex: n
     .filter((t): t is DrumTrack => t.kind === "drum")
     .flatMap((t) => t.pads)
     .find((p) => p.id === padId);
+  const isInSelection =
+    stepSelection !== null &&
+    stepSelection.padIds.includes(padId) &&
+    stepIndex >= stepSelection.from &&
+    stepIndex <= stepSelection.to;
 
-  const set = (change: StepMeta) => services.store.execute(setStepMeta(doc, pattern.id, padId, stepIndex, change));
-  const setLock = (key: "pitch" | "gain" | "pan", value: number | undefined) =>
-    services.store.execute(setStepLocks(doc, pattern.id, padId, stepIndex, { [key]: value } as any));
+  const set = (change: StepMeta) => {
+    if (isInSelection && stepSelection) {
+      // Bulk: apply the same change to every selected cell's meta (conservative: apply via setStepMeta per cell)
+      let nextDoc = doc;
+      for (const pid of stepSelection.padIds) {
+        for (let s = stepSelection.from; s <= stepSelection.to; s++) {
+          nextDoc = setStepMeta(nextDoc, pattern.id, pid, s, change).execute(nextDoc);
+        }
+      }
+      services.store.execute({
+        type: "bulkStepMeta",
+        label: "Bulk edit steps",
+        execute: () => nextDoc,
+        undo: () => doc,
+      } as any);
+    } else {
+      services.store.execute(setStepMeta(doc, pattern.id, padId, stepIndex, change));
+    }
+  };
+  const setLock = (key: "pitch" | "gain" | "pan" | "cutoff" | "sampleStart", value: number | undefined) => {
+    if (isInSelection && stepSelection) {
+      services.store.execute(setStepsLocks(doc, pattern.id, stepSelection.padIds, stepSelection.from, stepSelection.to, { [key]: value } as any));
+    } else {
+      services.store.execute(setStepLocks(doc, pattern.id, padId, stepIndex, { [key]: value } as any));
+    }
+  };
   const hasLocks = meta.locks && Object.keys(meta.locks).length > 0;
 
   return (
     <div className="step-editor" role="group" aria-label="Step performance editor">
       <span className="step-editor-title">
         STEP {stepIndex + 1} · {pad?.name ?? "?"}
+        {isInSelection && stepSelection ? ` · +${stepSelection.padIds.length * (stepSelection.to - stepSelection.from + 1) - 1} SELECTED` : ""}
       </span>
       <button type="button" className="step-editor-close btn btn-small" onClick={onClose} title="Close step editor">
         ×
@@ -471,7 +571,7 @@ function StepEditor({ padId, stepIndex, onClose }: { padId: string; stepIndex: n
         onCommit={(microtiming) => set({ microtiming })}
       />
       <div className="step-editor-locks" role="group" aria-label="Parameter locks">
-        <span className="slider-label">P-LOCKS {hasLocks ? "●" : ""}</span>
+        <span className="slider-label">P-LOCKS {hasLocks ? "●" : ""} {isInSelection ? "(BULK)" : ""}</span>
         <div className="step-editor-lock-row">
           <DragNumber
             label="PITCH"
@@ -535,14 +635,60 @@ function StepEditor({ padId, stepIndex, onClose }: { padId: string; stepIndex: n
             ✕
           </button>
         </div>
+        <div className="step-editor-lock-row">
+          <DragNumber
+            label="CUTOFF"
+            value={meta.locks?.cutoff ?? 16000}
+            min={80}
+            max={16000}
+            defaultValue={16000}
+            sensitivity={5}
+            format={(v) => `${Math.round(v)} Hz${meta.locks?.cutoff === undefined ? " · —" : ""}`}
+            onCommit={(cutoff) => setLock("cutoff", cutoff)}
+          />
+          <button
+            type="button"
+            className="btn btn-small btn-lock-clear"
+            title={meta.locks?.cutoff !== undefined ? "Clear cutoff lock" : "No cutoff lock"}
+            disabled={meta.locks?.cutoff === undefined}
+            onClick={() => setLock("cutoff", undefined)}
+          >
+            ✕
+          </button>
+        </div>
+        <div className="step-editor-lock-row">
+          <DragNumber
+            label="START"
+            value={meta.locks?.sampleStart ?? 0}
+            min={0}
+            max={1}
+            defaultValue={0}
+            sensitivity={0.01}
+            format={(v) => `${Math.round(v * 100)}%${meta.locks?.sampleStart === undefined ? " · —" : ""}`}
+            onCommit={(sampleStart) => setLock("sampleStart", sampleStart)}
+          />
+          <button
+            type="button"
+            className="btn btn-small btn-lock-clear"
+            title={meta.locks?.sampleStart !== undefined ? "Clear start lock" : "No start lock"}
+            disabled={meta.locks?.sampleStart === undefined}
+            onClick={() => setLock("sampleStart", undefined)}
+          >
+            ✕
+          </button>
+        </div>
       </div>
       <button
         type="button"
         className="btn btn-small"
         title="Reset step performance to defaults"
         onClick={() => {
-          set({ probability: 1, ratchet: 1, microtiming: 0, locks: undefined } as StepMeta);
-          if (hasLocks) for (const k of Object.keys(meta.locks!)) setLock(k as any, undefined);
+          if (isInSelection && stepSelection) {
+            services.store.execute(clearStepLocks(doc, pattern.id, stepSelection.padIds, stepSelection.from, stepSelection.to));
+          } else {
+            set({ probability: 1, ratchet: 1, microtiming: 0, locks: undefined } as StepMeta);
+            if (hasLocks) for (const k of Object.keys(meta.locks!)) setLock(k as any, undefined);
+          }
         }}
       >
         RESET
@@ -753,6 +899,8 @@ function StepCell({
   if (meta?.locks?.pitch !== undefined) lockHints.push(`pitch ${meta.locks.pitch > 0 ? "+" : ""}${meta.locks.pitch.toFixed(1)} st`);
   if (meta?.locks?.gain !== undefined) lockHints.push(`gain ${meta.locks.gain.toFixed(2)}`);
   if (meta?.locks?.pan !== undefined) lockHints.push(`pan ${meta.locks.pan.toFixed(2)}`);
+  if (meta?.locks?.cutoff !== undefined) lockHints.push(`cutoff ${Math.round(meta.locks.cutoff)} Hz`);
+  if (meta?.locks?.sampleStart !== undefined) lockHints.push(`start ${Math.round(meta.locks.sampleStart * 100)}%`);
   const fullLabel = `${stepLabel}${lockHints.length > 0 ? `, p-locks: ${lockHints.join(", ")}` : ""}`;
 
   return (

@@ -14,6 +14,7 @@ import { createAutowahNode } from "../audio-worklets/autowah-node";
 import { createStutterNode } from "../audio-worklets/stutter-node";
 import { createTapeNode } from "../audio-worklets/tape-node";
 import { createCombNode } from "../audio-worklets/comb-node";
+import { createVowelNode } from "../audio-worklets/vowel-node";
 
 const dbToLin = (db: number) => Math.pow(10, db / 20);
 const smooth = (param: AudioParam, value: number, when: number, tc = 0.02) =>
@@ -59,6 +60,7 @@ export const WORKLET_EFFECTS: Partial<Record<EffectType, "critical" | "degraded"
   stutter: "critical",
   tapeSat: "critical",
   comb: "critical",
+  vowel: "critical",
   compressor: "degraded",
   bitcrusher: "degraded",
   sidechain: "degraded",
@@ -78,7 +80,7 @@ export function effectProcessorStatus(
   const severity = WORKLET_EFFECTS[type];
   if (!severity) return "ok";
   return isWorkletReady(
-    type as "bitcrusher" | "sidechain" | "transient" | "gate" | "limiter" | "compressor" | "stepGate" | "svFilter" | "flanger" | "tremolo" | "autowah" | "stutter" | "tapeSat" | "comb",
+    type as "bitcrusher" | "sidechain" | "transient" | "gate" | "limiter" | "compressor" | "stepGate" | "svFilter" | "flanger" | "tremolo" | "autowah" | "stutter" | "tapeSat" | "comb" | "vowel",
     ctx,
   )
     ? "ok"
@@ -1940,6 +1942,54 @@ const stutter: EffectDefinition = {
   },
 };
 
+/* ---------------- Comb Filter ---------------- */
+// Static feedback comb — tuned delay with damping, metallic / hollow resonances.
+// LFO-less cousin of Flanger: delay sets comb fundamental (pitch), feedback
+// sets resonance depth (positive = harmonic, negative = odd), damp tames highs.
+
+const comb: EffectDefinition = {
+  type: "comb",
+  name: "Comb",
+  category: "movement",
+  params: [
+    { id: "delayMs", label: "DELAY", min: 0.5, max: 60, default: 12, unit: "ms", format: formatMs },
+    { id: "feedback", label: "FEEDBACK", min: -0.95, max: 0.95, default: 0.5, format: (v) => `${v > 0 ? "+" : ""}${v.toFixed(2)}` },
+    { id: "damp", label: "DAMP", min: 500, max: 12000, default: 6500, unit: "Hz", format: formatHz },
+    { id: "mix", label: "MIX", min: 0, max: 1, default: 0.5, format: formatPct },
+  ],
+  factory(ctx, instance) {
+    if (isWorkletReady("comb", ctx)) return createCombNode(ctx, instance);
+    return bypassRuntime(ctx, "AudioWorklet unavailable — comb bypassed (1:1 signal)");
+  },
+};
+
+/* ---------------- Vowel / Formant Filter ---------------- */
+// 3× peaking cascade morphing across A-E-I-O-U (log-interpole). Resonance scales
+// Q (3.5→9) and peak gain (7→15 dB). True vowel movement for beat textures.
+
+const VOWEL_OPTIONS = [
+  { value: 0, label: "A" },
+  { value: 1, label: "E" },
+  { value: 2, label: "I" },
+  { value: 3, label: "O" },
+  { value: 4, label: "U" },
+];
+
+const vowel: EffectDefinition = {
+  type: "vowel",
+  name: "Vowel",
+  category: "movement",
+  params: [
+    { id: "vowel", label: "VOWEL", min: 0, max: 4, default: 0, options: VOWEL_OPTIONS, format: (v) => VOWEL_OPTIONS[Math.round(v)]?.label ?? v.toFixed(2) },
+    { id: "resonance", label: "RESO", min: 0, max: 1, default: 0.5, format: formatPct },
+    { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
+  ],
+  factory(ctx, instance) {
+    if (isWorkletReady("vowel", ctx)) return createVowelNode(ctx, instance);
+    return bypassRuntime(ctx, "AudioWorklet unavailable — vowel bypassed (1:1 signal)");
+  },
+};
+
 /* ---------------- registry ---------------- */
 
 export const EFFECT_DEFS: Record<EffectType, EffectDefinition> = {
@@ -1955,6 +2005,8 @@ export const EFFECT_DEFS: Record<EffectType, EffectDefinition> = {
   tremolo,
   autowah,
   stutter,
+  comb,
+  vowel,
   reverb,
   delay,
   pump,
@@ -1988,6 +2040,8 @@ export const EFFECT_ORDER: EffectType[] = [
   "tremolo",
   "autowah",
   "stutter",
+  "comb",
+  "vowel",
   "reverb",
   "delay",
   "pump",
@@ -2018,6 +2072,8 @@ export const CORE_EFFECT_ORDER: EffectType[] = [
   "tremolo",
   "autowah",
   "stutter",
+  "comb",
+  "vowel",
   "tapeSat",
   "drumBuss",
   "bassBuss",

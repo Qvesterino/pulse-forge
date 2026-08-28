@@ -25,6 +25,7 @@ export type EffectType =
   | "autowah"
   | "stutter"
   | "comb"
+  | "vowel"
   | "msEq"
   | "haasWidener"
   | "multiband"
