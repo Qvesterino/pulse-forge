@@ -1,7 +1,16 @@
 import { useEffect, useState } from "react";
 import { useDoc, useServices } from "./context";
 import type { EffectType, Track } from "../project-model/types";
-import { addEffect, applyEffectPreset, moveEffect, removeEffect, setEffectParam, setEffectSidechainSource, setEffectSteps, toggleEffectBypass } from "../commands/commands";
+import {
+  addEffect,
+  applyEffectPreset,
+  moveEffect,
+  removeEffect,
+  setEffectParam,
+  setEffectSidechainSource,
+  setEffectSteps,
+  toggleEffectBypass,
+} from "../commands/commands";
 import { CORE_EFFECT_ORDER, EFFECT_DEFS } from "../effects/registry";
 import { presetsForEffect } from "../effects/presets";
 import { registerRaf, unregisterRaf } from "../services/rafLoop";
@@ -35,8 +44,14 @@ export function EffectRack({ track }: { track: Track }) {
         const value = engineWithReport.getFxGainReductionDb?.(track.id, fx.id);
         if (value != null && value > 0.05) nextGr[fx.id] = Math.round(value * 2) / 2;
       }
-      const nextFallbackSig = Object.keys(nextFallbacks).sort().map((k) => `${k}:${nextFallbacks[k]}`).join("|");
-      const nextGrSig = Object.entries(nextGr).sort().map(([k, v]) => `${k}:${v}`).join("|");
+      const nextFallbackSig = Object.keys(nextFallbacks)
+        .sort()
+        .map((k) => `${k}:${nextFallbacks[k]}`)
+        .join("|");
+      const nextGrSig = Object.entries(nextGr)
+        .sort()
+        .map(([k, v]) => `${k}:${v}`)
+        .join("|");
       if (nextFallbackSig !== fallbackSig) {
         fallbackSig = nextFallbackSig;
         setFallbacks(nextFallbacks);
@@ -132,7 +147,11 @@ function Device({
             }}
           >
             <option value="">PRESETS</option>
-            {presetsForEffect(fx.type).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            {presetsForEffect(fx.type).map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
+              </option>
+            ))}
           </select>
         )}
         <div className="fx-device-buttons">
@@ -187,12 +206,19 @@ function Device({
             <span className="slider-label">SOURCE</span>
             <select
               value={fx.sidechainTrackId ?? ""}
-              onChange={(event) => services.store.execute(setEffectSidechainSource(doc, track.id, fx.id, event.target.value || null))}
+              onChange={(event) =>
+                services.store.execute(setEffectSidechainSource(doc, track.id, fx.id, event.target.value || null))
+              }
             >
               <option value="">OFF</option>
-              {doc.tracks.filter((candidate) => candidate.id !== track.id).map((candidate) => (
-                <option key={candidate.id} value={candidate.id}>{candidate.name}{candidate.kind === "group" ? " · BUS" : ""}</option>
-              ))}
+              {doc.tracks
+                .filter((candidate) => candidate.id !== track.id)
+                .map((candidate) => (
+                  <option key={candidate.id} value={candidate.id}>
+                    {candidate.name}
+                    {candidate.kind === "group" ? " · BUS" : ""}
+                  </option>
+                ))}
             </select>
           </label>
           <button
@@ -201,13 +227,22 @@ function Device({
             title="Choose the first kick drum track, or the first drum track"
             onClick={() => {
               const drums = doc.tracks.filter((candidate) => candidate.kind === "drum");
-              const kick = drums.find((candidate) => candidate.name.toLowerCase().includes("kick") || candidate.pads.some((pad) => pad.name.toLowerCase().includes("kick"))) ?? drums[0];
+              const kick =
+                drums.find(
+                  (candidate) =>
+                    candidate.name.toLowerCase().includes("kick") ||
+                    candidate.pads.some((pad) => pad.name.toLowerCase().includes("kick")),
+                ) ?? drums[0];
               if (kick) services.store.execute(setEffectSidechainSource(doc, track.id, fx.id, kick.id));
             }}
           >
             KICK
           </button>
-          <span className="fx-sidechain-status">{fx.sidechainTrackId ? doc.tracks.find((candidate) => candidate.id === fx.sidechainTrackId)?.name ?? "MISSING" : "No source"}</span>
+          <span className="fx-sidechain-status">
+            {fx.sidechainTrackId
+              ? (doc.tracks.find((candidate) => candidate.id === fx.sidechainTrackId)?.name ?? "MISSING")
+              : "No source"}
+          </span>
         </div>
       )}
       {fx.type === "stepGate" && (
@@ -229,37 +264,49 @@ function Device({
         />
       )}
       <div className="fx-device-params">
-        {def.params.filter((p) => !((fx.type === "eq") && ["lowGain", "lowFreq", "midGain", "midFreq", "midQ", "highGain", "highFreq"].includes(p.id))).map((p) =>
-          p.options ? (
-            <label key={p.id} className="fx-param-select">
-              <span className="slider-label">{p.label}</span>
-              <select
-                value={p.options.some((o) => o.value === (fx.params[p.id] ?? p.default)) ? fx.params[p.id] ?? p.default : p.default}
-                onChange={(event) =>
-                  services.store.execute(setEffectParam(doc, track.id, fx.id, p.id, Number(event.target.value)))
-                }
-              >
-                {p.options.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : (
-            <Slider
-              key={p.id}
-              compact
-              label={p.label}
-              value={fx.params[p.id] ?? p.default}
-              min={p.min}
-              max={p.max}
-              defaultValue={p.default}
-              format={p.format}
-              onCommit={(v) => services.store.execute(setEffectParam(doc, track.id, fx.id, p.id, v))}
-            />
-          ),
-        )}
+        {def.params
+          .filter(
+            (p) =>
+              !(
+                fx.type === "eq" &&
+                ["lowGain", "lowFreq", "midGain", "midFreq", "midQ", "highGain", "highFreq"].includes(p.id)
+              ),
+          )
+          .map((p) =>
+            p.options ? (
+              <label key={p.id} className="fx-param-select">
+                <span className="slider-label">{p.label}</span>
+                <select
+                  value={
+                    p.options.some((o) => o.value === (fx.params[p.id] ?? p.default))
+                      ? (fx.params[p.id] ?? p.default)
+                      : p.default
+                  }
+                  onChange={(event) =>
+                    services.store.execute(setEffectParam(doc, track.id, fx.id, p.id, Number(event.target.value)))
+                  }
+                >
+                  {p.options.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <Slider
+                key={p.id}
+                compact
+                label={p.label}
+                value={fx.params[p.id] ?? p.default}
+                min={p.min}
+                max={p.max}
+                defaultValue={p.default}
+                format={p.format}
+                onCommit={(v) => services.store.execute(setEffectParam(doc, track.id, fx.id, p.id, v))}
+              />
+            ),
+          )}
       </div>
     </div>
   );
@@ -267,9 +314,15 @@ function Device({
 
 function EqResponseCurve({ params }: { params: Record<string, number> }) {
   const points = [
-    [0, 42], [12, 42 - (params.lowShelfGain ?? 0) * 1.2], [31, 42 - (params.lowMidGain ?? 0) * 1.2],
-    [58, 42 - (params.highMidGain ?? 0) * 1.2], [84, 42 - (params.highShelfGain ?? 0) * 1.2], [100, 42],
-  ].map(([x, y]) => `${x},${Math.max(4, Math.min(60, y))}`).join(" ");
+    [0, 42],
+    [12, 42 - (params.lowShelfGain ?? 0) * 1.2],
+    [31, 42 - (params.lowMidGain ?? 0) * 1.2],
+    [58, 42 - (params.highMidGain ?? 0) * 1.2],
+    [84, 42 - (params.highShelfGain ?? 0) * 1.2],
+    [100, 42],
+  ]
+    .map(([x, y]) => `${x},${Math.max(4, Math.min(60, y))}`)
+    .join(" ");
   return (
     <div className="eq-response-curve" aria-label="EQ response curve">
       <svg viewBox="0 0 100 60" preserveAspectRatio="none" role="img">

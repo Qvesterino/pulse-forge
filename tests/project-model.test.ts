@@ -132,7 +132,10 @@ describe("normalizeProject — scenes", () => {
 
   it("drops scenes that reference missing patterns and falls back if empty", () => {
     const doc = minimalDoc();
-    const dangling = { ...doc, scenes: [{ id: "scene-orphan", name: "Orphan", patternId: "pattern-gone", intensity: 0.7 }] };
+    const dangling = {
+      ...doc,
+      scenes: [{ id: "scene-orphan", name: "Orphan", patternId: "pattern-gone", intensity: 0.7 }],
+    };
     const normalized = normalizeProject(dangling);
     expect(normalized.scenes.find((s) => s.id === "scene-orphan")).toBeUndefined();
     expect(normalized.scenes.length).toBeGreaterThan(0);
@@ -301,9 +304,7 @@ describe("normalizeProject — pattern rows and notes", () => {
     const originalRow = pattern.rows[padId];
     const modified = {
       ...doc,
-      tracks: doc.tracks.map((t) =>
-        t.kind === "drum" ? { ...t, pads: t.pads.filter((p) => p.id !== padId) } : t,
-      ),
+      tracks: doc.tracks.map((t) => (t.kind === "drum" ? { ...t, pads: t.pads.filter((p) => p.id !== padId) } : t)),
       patterns: [
         {
           ...pattern,
@@ -351,9 +352,7 @@ describe("normalizeProject — tracks", () => {
     const doc = createDefaultProject();
     const modified = {
       ...doc,
-      tracks: doc.tracks.map((t) =>
-        t.kind === "instrument" ? { ...t, params: { ...t.params, decay: 2 } } : t,
-      ),
+      tracks: doc.tracks.map((t) => (t.kind === "instrument" ? { ...t, params: { ...t.params, decay: 2 } } : t)),
     };
     const normalized = normalizeProject(modified);
     const inst = normalized.tracks.find((t) => t.kind === "instrument")!;

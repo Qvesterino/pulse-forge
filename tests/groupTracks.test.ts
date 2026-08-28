@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createProjectFromTemplate } from "../src/project-model/templates";
-import {
-  createGroupTrack,
-  addToGroup,
-  removeFromGroup,
-  deleteTrack,
-} from "../src/commands/commands";
+import { createGroupTrack, addToGroup, removeFromGroup, deleteTrack } from "../src/commands/commands";
 import { createGroupTrackModel } from "../src/project-model/schema";
 import { normalizeProject } from "../src/project-model/schema";
 import { trackBadge } from "../src/ui/TrackTabs";
@@ -74,9 +69,7 @@ describe("GroupTrack", () => {
     const drumTrack = doc.tracks.find((t) => t.kind === "drum")!;
     const withGroup = {
       ...doc,
-      tracks: doc.tracks.map((t) =>
-        t.id === drumTrack.id ? { ...t, groupId: group.id } : t,
-      ),
+      tracks: doc.tracks.map((t) => (t.id === drumTrack.id ? { ...t, groupId: group.id } : t)),
     };
     const cmd = removeFromGroup(withGroup, drumTrack.id);
     const next = cmd.execute(withGroup);
@@ -91,9 +84,7 @@ describe("GroupTrack", () => {
     const drumTrack = doc.tracks.find((t) => t.kind === "drum")!;
     const withGroup = {
       ...doc,
-      tracks: [...doc.tracks, group].map((t) =>
-        t.id === drumTrack.id ? { ...t, groupId: group.id } : t,
-      ),
+      tracks: [...doc.tracks, group].map((t) => (t.id === drumTrack.id ? { ...t, groupId: group.id } : t)),
     };
     const cmd = deleteTrack(withGroup, group.id);
     const next = cmd.execute(withGroup);
@@ -110,9 +101,7 @@ describe("GroupTrack", () => {
     const drumTrack = doc.tracks.find((t) => t.kind === "drum")!;
     const withBadGroup = {
       ...doc,
-      tracks: doc.tracks.map((t) =>
-        t.id === drumTrack.id ? { ...t, groupId: "nonexistent-group" } : t,
-      ),
+      tracks: doc.tracks.map((t) => (t.id === drumTrack.id ? { ...t, groupId: "nonexistent-group" } : t)),
     };
     const normalized = normalizeProject(withBadGroup);
     const updated = normalized.tracks.find((t) => t.id === drumTrack.id);
@@ -191,7 +180,10 @@ describe("soloAudibility (group solo semantics)", () => {
     const base = soloProjectDoc();
     const doc = {
       ...base,
-      tracks: [...base.tracks, { ...base.tracks.find((t) => t.id === "t-inst")!, id: "t-ungrouped", groupId: undefined }],
+      tracks: [
+        ...base.tracks,
+        { ...base.tracks.find((t) => t.id === "t-inst")!, id: "t-ungrouped", groupId: undefined },
+      ],
     };
     const soloed = { ...doc, tracks: doc.tracks.map((t) => (t.id === "grp-a" ? { ...t, solo: true } : t)) };
     const solo = soloAudibility(soloed);

@@ -22,7 +22,13 @@ function setup(patternOverrides: Partial<Pattern> = {}) {
   const rows = { ...pattern.rows };
   rows[kickPad.id] = Array.from({ length: pattern.stepCount }, (_, i) => (i % 4 === 0 ? 0.9 : 0));
   rows[snarePad.id] = Array.from({ length: pattern.stepCount }, (_, i) => (i % 8 === 4 ? 0.8 : 0));
-  return { doc: { ...doc, patterns: doc.patterns.map((p) => (p.id === pattern.id ? { ...pattern, rows } : p)) }, track, pattern: { ...pattern, rows }, kickPad, snarePad };
+  return {
+    doc: { ...doc, patterns: doc.patterns.map((p) => (p.id === pattern.id ? { ...pattern, rows } : p)) },
+    track,
+    pattern: { ...pattern, rows },
+    kickPad,
+    snarePad,
+  };
 }
 
 describe("classifyPads", () => {
@@ -52,7 +58,8 @@ describe("varyPattern", () => {
     const original = pattern.rows[kickPad.id];
     const after = varied.rows[kickPad.id];
     for (let i = 0; i < original.length; i++) {
-      if (original[i] > 0) expect(after[i]).toBeGreaterThan(0); // never removes kicks (non-snare)
+      if (original[i] > 0)
+        expect(after[i]).toBeGreaterThan(0); // never removes kicks (non-snare)
       else if (after[i] > 0) expect(after[i]).toBeLessThanOrEqual(0.35); // only ghost-level additions
     }
   });
@@ -69,7 +76,10 @@ describe("expandWithBuild", () => {
     const hatPad = hats[0];
     const withHats: Pattern = {
       ...pattern,
-      rows: { ...pattern.rows, [hatPad.id]: Array.from({ length: pattern.stepCount }, (_, i) => (i % 2 === 0 ? 0.5 : 0)) },
+      rows: {
+        ...pattern.rows,
+        [hatPad.id]: Array.from({ length: pattern.stepCount }, (_, i) => (i % 2 === 0 ? 0.5 : 0)),
+      },
     };
     const built2 = expandWithBuild(withHats, track.pads, bars, "s2");
     const hatRow = built2.rows[hatPad.id];
@@ -136,7 +146,9 @@ describe("assist commands", () => {
       return { next, undone };
     };
     expect(step(assistVary(doc, pattern.id, "a", 0.6)).undone).toEqual(doc);
-    expect(step(assistBuild(doc, pattern.id, 4, "b")).next.patterns.find((p) => p.id === pattern.id)!.stepCount).toBe(64);
+    expect(step(assistBuild(doc, pattern.id, 4, "b")).next.patterns.find((p) => p.id === pattern.id)!.stepCount).toBe(
+      64,
+    );
     expect(step(assistReplace(doc, pattern.id, "hats", "house", "c")).undone).toEqual(doc);
     expect(step(assistFill(doc, pattern.id, "d")).undone).toEqual(doc);
   });

@@ -1,4 +1,12 @@
-import type { AutomationTarget, DrumPad, EffectInstance, InstrumentTrack, MasterConfig, ProjectDocument, SceneAutomation } from "../project-model/types";
+import type {
+  AutomationTarget,
+  DrumPad,
+  EffectInstance,
+  InstrumentTrack,
+  MasterConfig,
+  ProjectDocument,
+  SceneAutomation,
+} from "../project-model/types";
 import type { AutomationPoint, Lfo } from "../project-model/types";
 import { valueAt } from "../project-model/automation";
 import { defaultMasterConfig } from "../project-model/schema";
@@ -12,8 +20,26 @@ import { loadWorkletModules, isWorkletReady } from "../audio-worklets/loader";
 import { createLimiterNode } from "../audio-worklets/limiter-node";
 import { createEnvFollowerNode, type EnvFollowerHandle } from "../audio-worklets/envfollower-node";
 import { createKwMeterNode, type KwMeterHandle } from "../audio-worklets/kwmeter-node";
-import { lfoKind, lfoWave, modulatorEventsInRange, modulatorPointValue, resolveLfoTarget } from "../project-model/modulators";
-import { channelLevels, integratedLufs, lufsFromChannels, monoLossDb, splitChannels, stereoCorrelation, PeakHold, toDb, truePeakOversampled, type Frame, type ChannelLevels } from "./metering";
+import {
+  lfoKind,
+  lfoWave,
+  modulatorEventsInRange,
+  modulatorPointValue,
+  resolveLfoTarget,
+} from "../project-model/modulators";
+import {
+  channelLevels,
+  integratedLufs,
+  lufsFromChannels,
+  monoLossDb,
+  splitChannels,
+  stereoCorrelation,
+  PeakHold,
+  toDb,
+  truePeakOversampled,
+  type Frame,
+  type ChannelLevels,
+} from "./metering";
 
 /** Tick position → seconds inside a frozen loop (mod buffer duration). */
 export function frozenPlaybackOffset(positionTick: number, bpm: number, durationSec: number): number {
@@ -37,9 +63,7 @@ export interface SoloAudibility {
 export function soloAudibility(doc: ProjectDocument): SoloAudibility {
   const tracks = doc.tracks;
   const anySolo = tracks.some((t) => t.solo);
-  const soloedGroups = new Set(
-    tracks.filter((t) => t.kind === "group" && t.solo).map((t) => t.id),
-  );
+  const soloedGroups = new Set(tracks.filter((t) => t.kind === "group" && t.solo).map((t) => t.id));
   const groupsWithSoloedChild = new Set<string>();
   for (const t of tracks) {
     if (t.kind !== "group" && t.solo && t.groupId) groupsWithSoloedChild.add(t.groupId);
@@ -586,8 +610,16 @@ export class AudioEngine {
       if (!("frozen" in track) || !track.frozen) continue;
       const existing = this.frozenBuffers.get(track.id);
       if (existing) {
-        try { existing.stop(); } catch { /* already stopped */ }
-        try { existing.disconnect(); } catch { /* already disconnected */ }
+        try {
+          existing.stop();
+        } catch {
+          /* already stopped */
+        }
+        try {
+          existing.disconnect();
+        } catch {
+          /* already disconnected */
+        }
         this.frozenBuffers.delete(track.id);
         this.frozenBufferIds.delete(track.id);
       }
@@ -612,15 +644,13 @@ export class AudioEngine {
   }
 
   private fxSignature(effects: EffectInstance[]): string {
-    return effects.filter((e) => !e.bypassed).map((e) => `${e.id}:${e.type}`).join("|");
+    return effects
+      .filter((e) => !e.bypassed)
+      .map((e) => `${e.id}:${e.type}`)
+      .join("|");
   }
 
-  private rebuildFxChain(
-    effects: EffectInstance[],
-    input: AudioNode,
-    output: AudioNode,
-    state: FxChainState,
-  ): void {
+  private rebuildFxChain(effects: EffectInstance[], input: AudioNode, output: AudioNode, state: FxChainState): void {
     const ctx = this.ctx;
     if (!ctx) return;
     for (const rt of state.runtimes.values()) rt.dispose();
@@ -628,7 +658,11 @@ export class AudioEngine {
     state.params.clear();
     input.disconnect();
     if (state.pdcDelay) {
-      try { state.pdcDelay.disconnect(); } catch { /* already disconnected */ }
+      try {
+        state.pdcDelay.disconnect();
+      } catch {
+        /* already disconnected */
+      }
     }
     const bpm = this.doc?.bpm ?? 124;
     let head: AudioNode = input;
@@ -879,8 +913,16 @@ export class AudioEngine {
           // Same buffer — keep the source running untouched.
         } else {
           if (existing) {
-            try { existing.stop(); } catch { /* already stopped */ }
-            try { existing.disconnect(); } catch { /* already disconnected */ }
+            try {
+              existing.stop();
+            } catch {
+              /* already stopped */
+            }
+            try {
+              existing.disconnect();
+            } catch {
+              /* already disconnected */
+            }
             this.frozenBuffers.delete(track.id);
             this.frozenBufferIds.delete(track.id);
           }
@@ -891,7 +933,10 @@ export class AudioEngine {
               source.buffer = buffer;
               source.loop = true;
               source.connect(nodes.input);
-              source.start(ctx.currentTime + 0.005, frozenPlaybackOffset(this.frozenPositionTickNow(), doc.bpm, buffer.duration));
+              source.start(
+                ctx.currentTime + 0.005,
+                frozenPlaybackOffset(this.frozenPositionTickNow(), doc.bpm, buffer.duration),
+              );
               this.frozenBuffers.set(track.id, source);
               this.frozenBufferIds.set(track.id, bufferId);
             }
@@ -908,8 +953,16 @@ export class AudioEngine {
       // Clean up frozen buffer if track was unfrozen
       const frozenSource = this.frozenBuffers.get(track.id);
       if (frozenSource) {
-        try { frozenSource.stop(); } catch { /* already stopped */ }
-        try { frozenSource.disconnect(); } catch { /* already disconnected */ }
+        try {
+          frozenSource.stop();
+        } catch {
+          /* already stopped */
+        }
+        try {
+          frozenSource.disconnect();
+        } catch {
+          /* already disconnected */
+        }
         this.frozenBuffers.delete(track.id);
         this.frozenBufferIds.delete(track.id);
       }
@@ -939,9 +992,17 @@ export class AudioEngine {
       const nodes = this.trackNodes.get(track.id);
       if (!nodes) continue;
       const groupDest = track.groupId ? this.groupNodes.get(track.groupId) : null;
-      try { nodes.modMacroPan.disconnect(this.master); } catch { /* not connected */ }
+      try {
+        nodes.modMacroPan.disconnect(this.master);
+      } catch {
+        /* not connected */
+      }
       for (const gn of this.groupNodes.values()) {
-        try { nodes.modMacroPan.disconnect(gn.input); } catch { /* not connected */ }
+        try {
+          nodes.modMacroPan.disconnect(gn.input);
+        } catch {
+          /* not connected */
+        }
       }
       if (groupDest) nodes.modMacroPan.connect(groupDest.input);
       else nodes.modMacroPan.connect(this.master);
@@ -983,7 +1044,7 @@ export class AudioEngine {
     const effective = new Map<string, number>();
     for (const [id, nodes] of this.trackNodes) {
       const track = this.doc.tracks.find((t) => t.id === id);
-      const downstream = track && track.kind !== "group" && track.groupId ? groupLatency.get(track.groupId) ?? 0 : 0;
+      const downstream = track && track.kind !== "group" && track.groupId ? (groupLatency.get(track.groupId) ?? 0) : 0;
       const total = chainLatency(nodes.fx) + downstream;
       effective.set(id, total);
       if (total > maxEffective) maxEffective = total;
@@ -1027,11 +1088,10 @@ export class AudioEngine {
     if (!ctx) return;
     let state = this.instruments.get(track.id);
     if (!state) {
-      const runtime = INSTRUMENT_DEFS[track.instrument].factory(
-        ctx,
-        track,
-        { bpm: this.doc?.bpm ?? 124, getSample: (id) => this.bank?.get(id) },
-      );
+      const runtime = INSTRUMENT_DEFS[track.instrument].factory(ctx, track, {
+        bpm: this.doc?.bpm ?? 124,
+        getSample: (id) => this.bank?.get(id),
+      });
       runtime.output.connect(nodes.input);
       state = { runtime, params: { ...track.params }, sampleId: track.sampleId, pitchBend: 0 };
       this.instruments.set(track.id, state);
@@ -1065,7 +1125,8 @@ export class AudioEngine {
   private lfoFrequency(lfo: Lfo): number {
     if (lfo.rateMode === "hz") return Math.max(0.01, lfo.rateHz ?? 2);
     const bpm = this.doc?.bpm ?? 124;
-    const mult = LFO_DIVISION_MULTS[Math.max(0, Math.min(LFO_DIVISION_MULTS.length - 1, Math.round(lfo.division ?? 2)))];
+    const mult =
+      LFO_DIVISION_MULTS[Math.max(0, Math.min(LFO_DIVISION_MULTS.length - 1, Math.round(lfo.division ?? 2)))];
     return Math.max(0.01, (bpm / 60) * mult);
   }
 
@@ -1120,14 +1181,23 @@ export class AudioEngine {
     // base param as the centre for additive modulation.
     let def: { min: number; max: number } | undefined;
     if (target.kind === "fxParam" && target.fxId && target.paramId) {
-      const owner = this.doc?.tracks.find((t) => t.id === target.trackId) ?? this.doc?.returns.find((r) => r.id === target.trackId) as unknown as { effects?: EffectInstance[] } | undefined;
-      const inst = owner && "effects" in owner ? (owner as { effects: EffectInstance[] }).effects.find((f) => f.id === target.fxId) : undefined;
+      const owner =
+        this.doc?.tracks.find((t) => t.id === target.trackId) ??
+        (this.doc?.returns.find((r) => r.id === target.trackId) as unknown as
+          { effects?: EffectInstance[] } | undefined);
+      const inst =
+        owner && "effects" in owner
+          ? (owner as { effects: EffectInstance[] }).effects.find((f) => f.id === target.fxId)
+          : undefined;
       if (inst) {
         def = EFFECT_DEFS[inst.type]?.params.find((p) => p.id === target.paramId);
       }
       if (!def) {
         // Fallback search across all tracks/returns for the fxId (cross-track LFO)
-        for (const track of [...(this.doc?.tracks ?? []), ...(this.doc?.returns ?? [])] as unknown as { id: string; effects?: EffectInstance[] }[]) {
+        for (const track of [...(this.doc?.tracks ?? []), ...(this.doc?.returns ?? [])] as unknown as {
+          id: string;
+          effects?: EffectInstance[];
+        }[]) {
           const fx = (track as { effects?: EffectInstance[] }).effects?.find((f) => f.id === target.fxId);
           if (fx) {
             def = EFFECT_DEFS[fx.type]?.params.find((p) => p.id === target.paramId);
@@ -1189,7 +1259,11 @@ export class AudioEngine {
           // BPM-synced rate may have drifted — keep frequency live.
           const freq = this.lfoFrequency(lfo);
           if (Math.abs(existing.osc.frequency.value - freq) > 1e-6) {
-            try { existing.osc.frequency.setTargetAtTime(freq, ctx.currentTime, 0.05); } catch { /* best effort */ }
+            try {
+              existing.osc.frequency.setTargetAtTime(freq, ctx.currentTime, 0.05);
+            } catch {
+              /* best effort */
+            }
           }
           continue;
         }
@@ -1223,16 +1297,27 @@ export class AudioEngine {
       // envFollower: detector taps the SOURCE track's input (pre-FX/pre-gain)
       // so a follower listening to its own host can never form a feedback loop.
       const available = isWorkletReady("envFollower", ctx);
-      const sourceTrackId = typeof lfo.sourceTrackId === "string" && lfo.sourceTrackId !== "" ? lfo.sourceTrackId : lfo.trackId;
-      const sourceNodes = this.trackNodes.get(sourceTrackId) ?? this.groupNodes.get(sourceTrackId) ?? hostNodes as unknown as TrackNodes;
+      const sourceTrackId =
+        typeof lfo.sourceTrackId === "string" && lfo.sourceTrackId !== "" ? lfo.sourceTrackId : lfo.trackId;
+      const sourceNodes =
+        this.trackNodes.get(sourceTrackId) ??
+        this.groupNodes.get(sourceTrackId) ??
+        (hostNodes as unknown as TrackNodes);
       if (!sourceNodes) continue;
       const sig = lfoSignature(lfo, available);
       const existing = this.lfos.get(lfo.id);
-      const paramMatches = existing && !isOscRuntime(existing) && (existing as FollowerModRuntime).targetParam === destParam;
+      const paramMatches =
+        existing && !isOscRuntime(existing) && (existing as FollowerModRuntime).targetParam === destParam;
       if (existing && !isOscRuntime(existing) && existing.signature === sig && paramMatches) continue;
       if (existing) disposeLfoRuntime(existing);
       if (!available) {
-        this.lfos.set(lfo.id, { follower: null, depth: null, signature: sig, targetParam: destParam, degradedReason: "AudioWorklet unavailable — envelope follower idle" });
+        this.lfos.set(lfo.id, {
+          follower: null,
+          depth: null,
+          signature: sig,
+          targetParam: destParam,
+          degradedReason: "AudioWorklet unavailable — envelope follower idle",
+        });
         continue;
       }
       const follower = createEnvFollowerNode(ctx, {
@@ -1459,7 +1544,10 @@ export class AudioEngine {
     const from = Math.max(0, fromTick);
     const to = Math.max(from, toTick);
 
-    interface ModGroup { target: AutomationTarget; members: Lfo[] }
+    interface ModGroup {
+      target: AutomationTarget;
+      members: Lfo[];
+    }
     const groups = new Map<string, ModGroup>();
     for (const lfo of doc.lfos) {
       const kind = lfoKind(lfo);
@@ -1506,21 +1594,26 @@ export class AudioEngine {
    * composited values; device params scale the contribution around the
    * parameter's mid-point using its registry definition.
    */
-  private makeModulatorWriter(target: AutomationTarget): ((value: number, mode: "set" | "ramp", when: number) => void) | null {
+  private makeModulatorWriter(
+    target: AutomationTarget,
+  ): ((value: number, mode: "set" | "ramp", when: number) => void) | null {
     switch (target.kind) {
       case "trackGain":
       case "trackPan": {
         const nodes = this.trackNodes.get(target.trackId) ?? this.groupNodes.get(target.trackId);
         if (!nodes) return null;
         const param = target.kind === "trackGain" ? nodes.modAutoGain.gain : nodes.modAutoPan.pan;
-        const clamp = target.kind === "trackGain"
-          ? (v: number) => Math.max(0, Math.min(2, 1 + v))
-          : (v: number) => Math.max(-1, Math.min(1, v));
+        const clamp =
+          target.kind === "trackGain"
+            ? (v: number) => Math.max(0, Math.min(2, 1 + v))
+            : (v: number) => Math.max(-1, Math.min(1, v));
         return (value, mode, when) => {
           try {
             if (mode === "set") param.setValueAtTime(clamp(value), when);
             else param.linearRampToValueAtTime(clamp(value), when);
-          } catch { /* overlapping automations — best effort */ }
+          } catch {
+            /* overlapping automations — best effort */
+          }
         };
       }
       case "fxParam":
@@ -1542,9 +1635,7 @@ export class AudioEngine {
               const def = EFFECT_DEFS[instance.type].params.find((p) => p.id === paramId);
               if (def) mapped = def.min + ((def.max - def.min) / 2) * (1 + value);
               const finalValue = clampEffectParam(instance.type, paramId, mapped);
-              rt.setParameterAt
-                ? rt.setParameterAt(paramId, finalValue, when)
-                : rt.setParameter(paramId, finalValue);
+              rt.setParameterAt ? rt.setParameterAt(paramId, finalValue, when) : rt.setParameter(paramId, finalValue);
             } else {
               const state = this.instruments.get(target.trackId);
               if (!state) return;
@@ -1557,7 +1648,9 @@ export class AudioEngine {
                 ? state.runtime.setParameterAt(paramId, finalValue, when)
                 : state.runtime.setParameter(paramId, finalValue);
             }
-          } catch { /* best effort */ }
+          } catch {
+            /* best effort */
+          }
         };
       }
     }
@@ -1641,13 +1734,17 @@ export class AudioEngine {
     }
   }
 
-  scheduleTrackAutomation(trackId: string, param: "gain" | "pan", points: AutomationPoint[], timeAt: (tick: number) => number): void {
+  scheduleTrackAutomation(
+    trackId: string,
+    param: "gain" | "pan",
+    points: AutomationPoint[],
+    timeAt: (tick: number) => number,
+  ): void {
     const nodes = this.trackNodes.get(trackId);
     if (!nodes || points.length === 0) return;
     const target = param === "gain" ? nodes.modAutoGain.gain : nodes.modAutoPan.pan;
-    const clampValue = param === "gain"
-      ? (v: number) => Math.max(0, Math.min(2, v))
-      : (v: number) => Math.max(-1, Math.min(1, v));
+    const clampValue =
+      param === "gain" ? (v: number) => Math.max(0, Math.min(2, v)) : (v: number) => Math.max(-1, Math.min(1, v));
     target.setValueAtTime(clampValue(valueAt(points, 0, param === "gain" ? 1 : 0)), 0);
     for (const point of points) {
       target.linearRampToValueAtTime(clampValue(point.value), Math.max(0, timeAt(point.tick)));
@@ -1689,16 +1786,26 @@ export class AudioEngine {
       // stale future events would snap parameters right back.
       try {
         nodes.modAutoGain.gain.cancelScheduledValues(now);
-      } catch { /* nothing scheduled */ }
+      } catch {
+        /* nothing scheduled */
+      }
       try {
         nodes.modAutoPan.pan.cancelScheduledValues(now);
-      } catch { /* nothing scheduled */ }
+      } catch {
+        /* nothing scheduled */
+      }
       nodes.modAutoGain.gain.setTargetAtTime(1, now, 0.01);
       nodes.modAutoPan.pan.setTargetAtTime(0, now, 0.01);
     }
   }
 
-  trigger(trackId: string, pad: DrumPad, when: number, velocity: number, locks?: Partial<Record<import("../project-model/types").StepLockKey, number>>): void {
+  trigger(
+    trackId: string,
+    pad: DrumPad,
+    when: number,
+    velocity: number,
+    locks?: Partial<Record<import("../project-model/types").StepLockKey, number>>,
+  ): void {
     const ctx = this.ctx;
     const trackNodes = this.trackNodes.get(trackId);
     if (!ctx || !trackNodes) return;
@@ -1723,6 +1830,22 @@ export class AudioEngine {
       const newEnd = Math.min(buffer.duration, newStart + originalDur);
       const newDur = Math.max(0.001, newEnd - newStart);
       slice = { ...slice, start: newStart, end: newEnd, duration: newDur, offset: slice.reverse ? newEnd : newStart };
+    }
+    // Length p-lock: multiplier of slice duration (0.1 = 10%, 2 = 200%)
+    if (locks?.length !== undefined) {
+      const mul = Math.min(2, Math.max(0.1, locks.length));
+      const baseDur = slice.duration;
+      const newDurRaw = baseDur * mul;
+      if (!slice.reverse) {
+        const maxDur = Math.max(0.02, buffer.duration - slice.start);
+        const newDur = Math.max(0.02, Math.min(maxDur, newDurRaw));
+        slice = { ...slice, duration: newDur, end: slice.start + newDur, offset: slice.start };
+      } else {
+        const maxDur = Math.max(0.02, slice.end);
+        const newDur = Math.max(0.02, Math.min(maxDur, newDurRaw));
+        const newStart = Math.max(0, slice.end - newDur);
+        slice = { ...slice, start: newStart, duration: newDur, offset: slice.end };
+      }
     }
     const effectivePitch = locks?.pitch !== undefined ? locks.pitch : pad.pitch;
     const rateMagnitude = Math.pow(2, (Number.isFinite(effectivePitch) ? effectivePitch : 0) / 12);
@@ -1823,8 +1946,16 @@ export class AudioEngine {
       } catch {
         // Already stopped.
       }
-      try { voice.gain.disconnect(); } catch { /* already disconnected */ }
-      try { voice.source.disconnect(); } catch { /* already disconnected */ }
+      try {
+        voice.gain.disconnect();
+      } catch {
+        /* already disconnected */
+      }
+      try {
+        voice.source.disconnect();
+      } catch {
+        /* already disconnected */
+      }
     }
     this.previewVoices.clear();
   }
@@ -1883,8 +2014,16 @@ export class AudioEngine {
     }
     this.voices.clear();
     for (const source of this.frozenBuffers.values()) {
-      try { source.stop(now); } catch { /* already stopped */ }
-      try { source.disconnect(); } catch { /* already disconnected */ }
+      try {
+        source.stop(now);
+      } catch {
+        /* already stopped */
+      }
+      try {
+        source.disconnect();
+      } catch {
+        /* already disconnected */
+      }
     }
     this.frozenBuffers.clear();
     this.frozenBufferIds.clear();
@@ -2076,7 +2215,10 @@ export class AudioEngine {
       this.meterHistoryR.splice(0, this.meterHistoryR.length - maxSamples);
     }
     // True peak: 4× polyphase oversampling (intersample peaks included).
-    const truePeak = Math.max(AudioEngine.measureTruePeak(this.masterChBufL, 1), AudioEngine.measureTruePeak(this.masterChBufR, 1));
+    const truePeak = Math.max(
+      AudioEngine.measureTruePeak(this.masterChBufL, 1),
+      AudioEngine.measureTruePeak(this.masterChBufR, 1),
+    );
     // Loudness: exact BS.1770 K-weighting from the worklet when loaded;
     // legacy flat-energy approximation otherwise.
     if (this.kwMeter) {
@@ -2097,7 +2239,10 @@ export class AudioEngine {
     }
     const window = (seconds: number): [Float32Array<ArrayBuffer>, Float32Array<ArrayBuffer>] => {
       const length = Math.min(this.meterHistoryL.length, Math.max(1, Math.round(seconds * sampleRate)));
-      return [Float32Array.from(this.meterHistoryL.slice(-length)), Float32Array.from(this.meterHistoryR.slice(-length))];
+      return [
+        Float32Array.from(this.meterHistoryL.slice(-length)),
+        Float32Array.from(this.meterHistoryR.slice(-length)),
+      ];
     };
     const [momentaryL, momentaryR] = window(0.4);
     const [shortL, shortR] = window(3);
@@ -2132,9 +2277,9 @@ export class AudioEngine {
 
   /**
    * True peak via 4× polyphase oversampling (ITU BS.1770 style) — catches
-    * intersample peaks that the old parabolic estimate missed. Delegates to
-    * the shared pure implementation in metering.ts.
-    */
+   * intersample peaks that the old parabolic estimate missed. Delegates to
+   * the shared pure implementation in metering.ts.
+   */
   static measureTruePeak(frames: Frame, channels: number): number {
     if (frames.length === 0) return 0;
     return truePeakOversampled(splitChannels(frames, channels));

@@ -51,8 +51,8 @@ class CombProcessor extends AudioWorkletProcessor {
     const dampFreq = Math.max(500, Math.min(12000, parameters.damp[0]));
     const mix = Math.max(0, Math.min(1, parameters.mix[0]));
 
-    const delaySamples = delayMs * sr / 1000;
-    const dampAlpha = 1 - Math.exp(-2 * Math.PI * dampFreq / sr);
+    const delaySamples = (delayMs * sr) / 1000;
+    const dampAlpha = 1 - Math.exp((-2 * Math.PI * dampFreq) / sr);
 
     for (let i = 0; i < len; i++) {
       const l = inL ? inL[i] : 0;

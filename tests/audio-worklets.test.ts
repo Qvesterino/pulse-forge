@@ -116,9 +116,7 @@ describe("Sidechain processor (unit logic)", () => {
 
     for (let i = 0; i < signal.length; i++) {
       const peak = Math.abs(signal[i]);
-      env = peak > env
-        ? attackCoef * env + (1 - attackCoef) * peak
-        : releaseCoef * env + (1 - releaseCoef) * peak;
+      env = peak > env ? attackCoef * env + (1 - attackCoef) * peak : releaseCoef * env + (1 - releaseCoef) * peak;
     }
 
     // After the signal drops to 0, env should still be > 0 (release phase)

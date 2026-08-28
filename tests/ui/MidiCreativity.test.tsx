@@ -11,18 +11,20 @@ function projectWithNotes() {
   return {
     ...base,
     key: "C Major" as const,
-    patterns: base.patterns.map((pattern) => pattern.id === base.activePatternId
-      ? {
-          ...pattern,
-          notes: {
-            ...pattern.notes,
-            [track.id]: [
-              { id: "ui-a", pitch: 60, start: 0, duration: 120, velocity: 0.8 },
-              { id: "ui-b", pitch: 64, start: 240, duration: 120, velocity: 0.8 },
-            ],
-          },
-        }
-      : pattern),
+    patterns: base.patterns.map((pattern) =>
+      pattern.id === base.activePatternId
+        ? {
+            ...pattern,
+            notes: {
+              ...pattern.notes,
+              [track.id]: [
+                { id: "ui-a", pitch: 60, start: 0, duration: 120, velocity: 0.8 },
+                { id: "ui-b", pitch: 64, start: 240, duration: 120, velocity: 0.8 },
+              ],
+            },
+          }
+        : pattern,
+    ),
   };
 }
 

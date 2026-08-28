@@ -5,10 +5,7 @@ import type { EffectRuntime } from "../effects/types";
  * The processor module MUST be pre-loaded via `loadWorkletModules()` first —
  * callers gate construction behind `isWorkletReady("tapeSat", ctx)`.
  */
-export function createTapeNode(
-  ctx: BaseAudioContext,
-  instance: { params: Record<string, number> },
-): EffectRuntime {
+export function createTapeNode(ctx: BaseAudioContext, instance: { params: Record<string, number> }): EffectRuntime {
   const node = new AudioWorkletNode(ctx, "tape-processor", {
     numberOfInputs: 1,
     numberOfOutputs: 1,

@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { useServices } from "./context";
-import { collectPerformanceReport, measureRenderTime, measureSongRender, type PerformanceReport } from "../benchmark/performance";
+import {
+  collectPerformanceReport,
+  measureRenderTime,
+  measureSongRender,
+  type PerformanceReport,
+} from "../benchmark/performance";
 import { evaluateReport } from "../benchmark/index";
 
 type DiagTab = "engine" | "memory" | "performance";
@@ -138,7 +143,9 @@ export function Diagnostics() {
             <div className="diag-issues">
               <div className="diag-issue-title">ISSUES</div>
               {issues.map((issue, i) => (
-                <div key={i} className="diag-issue">{issue}</div>
+                <div key={i} className="diag-issue">
+                  {issue}
+                </div>
               ))}
             </div>
           )}

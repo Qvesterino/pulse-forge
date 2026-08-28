@@ -66,10 +66,15 @@ async function renderThrough(type: EffectType, paramsOverride: Record<string, nu
 
 export async function runChecks(): Promise<CheckResult[]> {
   const results: CheckResult[] = [];
-  const check = (name: string, ok: boolean, message = "") => results.push({ name, ok, message: message || (ok ? "ok" : "failed") });
+  const check = (name: string, ok: boolean, message = "") =>
+    results.push({ name, ok, message: message || (ok ? "ok" : "failed") });
 
   const bank = await generateFactoryBank();
-  check("factory bank generates a buffer for every manifest asset", bank.size === FACTORY_ASSETS.length, `size=${bank.size}/${FACTORY_ASSETS.length}`);
+  check(
+    "factory bank generates a buffer for every manifest asset",
+    bank.size === FACTORY_ASSETS.length,
+    `size=${bank.size}/${FACTORY_ASSETS.length}`,
+  );
   const silentAssets = bank.entries().filter(([, buf]) => peakOf(buf.getChannelData(0)) < 0.001);
   check("factory buffers are audible", silentAssets.length === 0, silentAssets.map(([id]) => id).join(","));
 
@@ -185,7 +190,11 @@ export async function runChecks(): Promise<CheckResult[]> {
         if (v > peak) peak = v;
       }
     }
-    check("Texture Synth: polyphony + voice stealing renders signal", peak > 0.01 && peak <= 4, `peak=${peak.toFixed(3)}`);
+    check(
+      "Texture Synth: polyphony + voice stealing renders signal",
+      peak > 0.01 && peak <= 4,
+      `peak=${peak.toFixed(3)}`,
+    );
     rt.dispose();
   } catch (error) {
     check("Texture Synth: polyphony + voice stealing renders signal", false, String(error));
@@ -296,7 +305,11 @@ export async function runChecks(): Promise<CheckResult[]> {
   try {
     const ctx = new OfflineAudioContext(1, SR, SR);
     const params = { ...defaultParamsOf("distortion"), drive: 0.9, tone: 12000, mix: 1, output: 0 };
-    const rt = EFFECT_DEFS.distortion.factory(ctx, { id: "t", type: "distortion", bypassed: false, params }, { bpm: 124 });
+    const rt = EFFECT_DEFS.distortion.factory(
+      ctx,
+      { id: "t", type: "distortion", bypassed: false, params },
+      { bpm: 124 },
+    );
     const osc = ctx.createOscillator();
     osc.type = "sine";
     osc.frequency.value = 220;
@@ -316,7 +329,11 @@ export async function runChecks(): Promise<CheckResult[]> {
       if ((last <= 0 && v > 0) || (last >= 0 && v < 0)) crossings++;
       last = v;
     }
-    check("distortion: cubic clip adds harmonics (more zero-crossings than input)", crossings > 50, `crossings=${crossings}`);
+    check(
+      "distortion: cubic clip adds harmonics (more zero-crossings than input)",
+      crossings > 50,
+      `crossings=${crossings}`,
+    );
   } catch (error) {
     check("distortion: cubic clip adds harmonics", false, String(error));
   }
@@ -331,7 +348,11 @@ export async function runChecks(): Promise<CheckResult[]> {
   try {
     const ctx = new OfflineAudioContext(1, SR, SR);
     const params = { ...defaultParamsOf("bitcrusher"), bits: 4, downsample: 1, mix: 1, output: 0 };
-    const rt = EFFECT_DEFS.bitcrusher.factory(ctx, { id: "t", type: "bitcrusher", bypassed: false, params }, { bpm: 124 });
+    const rt = EFFECT_DEFS.bitcrusher.factory(
+      ctx,
+      { id: "t", type: "bitcrusher", bypassed: false, params },
+      { bpm: 124 },
+    );
     const osc = ctx.createOscillator();
     osc.type = "sawtooth";
     osc.frequency.value = 110;
@@ -342,7 +363,11 @@ export async function runChecks(): Promise<CheckResult[]> {
     const data = buffer.getChannelData(0);
     rt.dispose();
     const peak = peakOf(data);
-    check("bitcrusher: 4-bit quantisation renders signal with sane peak", peak > 0.001 && peak <= 4, `peak=${peak.toFixed(3)}`);
+    check(
+      "bitcrusher: 4-bit quantisation renders signal with sane peak",
+      peak > 0.001 && peak <= 4,
+      `peak=${peak.toFixed(3)}`,
+    );
   } catch (error) {
     check("bitcrusher: 4-bit quantisation renders signal with sane peak", false, String(error));
   }
@@ -373,7 +398,11 @@ export async function runChecks(): Promise<CheckResult[]> {
   // Phaser: stages can be re-chained at runtime
   try {
     const ctx = new OfflineAudioContext(1, SR, SR);
-    const rt = EFFECT_DEFS.phaser.factory(ctx, { id: "t", type: "phaser", bypassed: false, params: defaultParamsOf("phaser") }, { bpm: 124 });
+    const rt = EFFECT_DEFS.phaser.factory(
+      ctx,
+      { id: "t", type: "phaser", bypassed: false, params: defaultParamsOf("phaser") },
+      { bpm: 124 },
+    );
     const osc = ctx.createOscillator();
     osc.type = "sawtooth";
     osc.frequency.value = 110;
@@ -387,7 +416,11 @@ export async function runChecks(): Promise<CheckResult[]> {
     const data = buffer.getChannelData(0);
     rt.dispose();
     const peak = peakOf(data);
-    check("phaser: re-chains stages at runtime and renders signal", peak > 0.001 && peak <= 4, `peak=${peak.toFixed(3)}`);
+    check(
+      "phaser: re-chains stages at runtime and renders signal",
+      peak > 0.001 && peak <= 4,
+      `peak=${peak.toFixed(3)}`,
+    );
   } catch (error) {
     check("phaser: re-chains stages at runtime and renders signal", false, String(error));
   }
@@ -399,7 +432,11 @@ export async function runChecks(): Promise<CheckResult[]> {
   // by the realtime engine + the new `effects.test.ts` unit test.
   try {
     const ctx = new OfflineAudioContext(1, SR, SR);
-    const rt = EFFECT_DEFS.sidechain.factory(ctx, { id: "t", type: "sidechain", bypassed: false, params: defaultParamsOf("sidechain") }, { bpm: 124 });
+    const rt = EFFECT_DEFS.sidechain.factory(
+      ctx,
+      { id: "t", type: "sidechain", bypassed: false, params: defaultParamsOf("sidechain") },
+      { bpm: 124 },
+    );
     const osc = ctx.createOscillator();
     osc.type = "sine";
     osc.frequency.value = 220;
@@ -416,7 +453,11 @@ export async function runChecks(): Promise<CheckResult[]> {
     const data = buffer.getChannelData(0);
     rt.dispose();
     const peak = peakOf(data);
-    check("sidechain: setSidechainInput attaches/detaches safely and renders signal", peak > 0.001 && peak <= 4, `peak=${peak.toFixed(3)}`);
+    check(
+      "sidechain: setSidechainInput attaches/detaches safely and renders signal",
+      peak > 0.001 && peak <= 4,
+      `peak=${peak.toFixed(3)}`,
+    );
   } catch (error) {
     check("sidechain: setSidechainInput attaches/detaches safely and renders signal", false, String(error));
   }
@@ -427,7 +468,11 @@ export async function runChecks(): Promise<CheckResult[]> {
     const ctx = new OfflineAudioContext(1, SR, SR);
     await loadWorkletModules(ctx);
     if (!isWorkletReady("bitcrusher", ctx) || !isWorkletReady("sidechain", ctx)) {
-      check("audio-worklet: processors load and bitcrusher downsamples", false, "modules not ready after loadWorkletModules");
+      check(
+        "audio-worklet: processors load and bitcrusher downsamples",
+        false,
+        "modules not ready after loadWorkletModules",
+      );
     } else {
       const rt = createBitcrusherNode(ctx, { params: { bits: 8, downsample: 4, mix: 1, output: 0 } });
       const buf = ctx.createBuffer(1, 512, SR);
@@ -460,9 +505,17 @@ export async function runChecks(): Promise<CheckResult[]> {
     try {
       const ctx = new OfflineAudioContext(1, Math.floor(SR / 2), SR);
       const def = EFFECT_DEFS[type];
-      const rt = def.factory(ctx, { id: `fb-${type}`, type, bypassed: false, params: defaultParamsOf(type) }, { bpm: 124 });
+      const rt = def.factory(
+        ctx,
+        { id: `fb-${type}`, type, bypassed: false, params: defaultParamsOf(type) },
+        { bpm: 124 },
+      );
       const ok = rt.degraded === true && typeof rt.degradedReason === "string" && rt.degradedReason.length > 0;
-      check(`${def.name}: fallback reports degraded state`, ok, `degraded=${String(rt.degraded)} reason=${String(rt.degradedReason ?? "-")}`);
+      check(
+        `${def.name}: fallback reports degraded state`,
+        ok,
+        `degraded=${String(rt.degraded)} reason=${String(rt.degradedReason ?? "-")}`,
+      );
       rt.dispose();
     } catch (error) {
       check(`${EFFECT_DEFS[type].name}: fallback reports degraded state`, false, String(error));
@@ -474,7 +527,11 @@ export async function runChecks(): Promise<CheckResult[]> {
   try {
     const bypassed = await renderThrough("gate", { threshold: 0, range: -80, mix: 1 });
     const peak = peakOf(bypassed);
-    check("gate: fallback passes signal 1:1 (never silent)", Math.abs(peak - 0.5) < 0.02, `peak=${peak.toFixed(3)} expected≈0.500`);
+    check(
+      "gate: fallback passes signal 1:1 (never silent)",
+      Math.abs(peak - 0.5) < 0.02,
+      `peak=${peak.toFixed(3)} expected≈0.500`,
+    );
   } catch (error) {
     check("gate: fallback passes signal 1:1 (never silent)", false, String(error));
   }
@@ -500,7 +557,11 @@ export async function runChecks(): Promise<CheckResult[]> {
       const buffer = await ctx.startRendering();
       rt.dispose();
       const peak = peakOf(buffer.getChannelData(0));
-      check("gate: worklet path gates when modules are loaded", peak < 0.005, `peak=${peak.toFixed(4)} (fallback would be ≈0.5)`);
+      check(
+        "gate: worklet path gates when modules are loaded",
+        peak < 0.005,
+        `peak=${peak.toFixed(4)} (fallback would be ≈0.5)`,
+      );
     }
   } catch (error) {
     check("gate: worklet path gates when modules are loaded", false, String(error));
@@ -515,8 +576,19 @@ export async function runChecks(): Promise<CheckResult[]> {
     if (!isWorkletReady("limiter", ctx)) {
       check("limiter: look-ahead worklet limits, meters and anticipates", false, "worklet modules not ready");
     } else {
-      const limiterParams = { ...defaultParamsOf("limiter"), ceiling: -6, threshold: -18, release: 0.05, lookaheadMs: 5, mix: 1 };
-      const rt = EFFECT_DEFS.limiter.factory(ctx, { id: "lim", type: "limiter", bypassed: false, params: limiterParams }, { bpm: 124 });
+      const limiterParams = {
+        ...defaultParamsOf("limiter"),
+        ceiling: -6,
+        threshold: -18,
+        release: 0.05,
+        lookaheadMs: 5,
+        mix: 1,
+      };
+      const rt = EFFECT_DEFS.limiter.factory(
+        ctx,
+        { id: "lim", type: "limiter", bypassed: false, params: limiterParams },
+        { bpm: 124 },
+      );
       const buf = ctx.createBuffer(1, SR * 2, SR);
       const d = buf.getChannelData(0);
       for (let i = 0; i < d.length; i++) d[i] = 0.9 * Math.sin((i / SR) * 200 * Math.PI * 2); // ~-0.9 dBFS sine
@@ -545,7 +617,10 @@ export async function runChecks(): Promise<CheckResult[]> {
       const spread = maxWin / Math.max(minWin, 1e-9);
       let onset = -1;
       for (let i = 0; i < data.length; i++) {
-        if (Math.abs(data[i]) > 0.005) { onset = i; break; }
+        if (Math.abs(data[i]) > 0.005) {
+          onset = i;
+          break;
+        }
       }
       const expectedDelay = Math.round((limiterParams.lookaheadMs / 1000) * SR);
       const onsetOk = onset >= Math.round(expectedDelay * 0.9) && onset <= expectedDelay + 512;
@@ -608,11 +683,7 @@ export async function runChecks(): Promise<CheckResult[]> {
     const drum = doc.tracks.find((t) => t.kind === "drum")!;
     const withGroups = {
       ...doc,
-      tracks: [
-        ...doc.tracks.map((t) => (t.id === drum.id ? { ...t, groupId: groupA.id } : t)),
-        groupA,
-        groupB,
-      ],
+      tracks: [...doc.tracks.map((t) => (t.id === drum.id ? { ...t, groupId: groupA.id } : t)), groupA, groupB],
     };
     const moved = {
       ...withGroups,
@@ -628,7 +699,11 @@ export async function runChecks(): Promise<CheckResult[]> {
     const out = await ctx.startRendering();
     const l = peakOf(out.getChannelData(0));
     const r = peakOf(out.getChannelData(1));
-    check("groups: moved track feeds only the new group", r > 0.05 && l < r * 0.15, `L=${l.toFixed(3)} R=${r.toFixed(3)} (leak would make L≈R)`);
+    check(
+      "groups: moved track feeds only the new group",
+      r > 0.05 && l < r * 0.15,
+      `L=${l.toFixed(3)} R=${r.toFixed(3)} (leak would make L≈R)`,
+    );
   } catch (error) {
     check("groups: moved track feeds only the new group", false, String(error));
   }
@@ -640,9 +715,15 @@ export async function runChecks(): Promise<CheckResult[]> {
     const ctx = new AudioContext();
     try {
       if (ctx.state === "suspended") await ctx.resume();
-    } catch { /* autoplay may block resume — handled below */ }
+    } catch {
+      /* autoplay may block resume — handled below */
+    }
     if (ctx.state !== "running") {
-      check("master meter: reads true stereo (hard-left stays out of R)", true, "skipped — autoplay blocked in this environment");
+      check(
+        "master meter: reads true stereo (hard-left stays out of R)",
+        true,
+        "skipped — autoplay blocked in this environment",
+      );
     } else {
       // Headless audio devices take a moment to start rendering — wait until
       // the audio clock actually advances, otherwise the scheduled note has
@@ -652,7 +733,11 @@ export async function runChecks(): Promise<CheckResult[]> {
         await new Promise((r) => setTimeout(r, 50));
       }
       if (ctx.currentTime < t0 + 0.05) {
-        check("master meter: reads true stereo (hard-left stays out of R)", true, "skipped — audio clock not advancing");
+        check(
+          "master meter: reads true stereo (hard-left stays out of R)",
+          true,
+          "skipped — audio clock not advancing",
+        );
       } else {
         const engine = new AudioEngine();
         engine.useContext(ctx);
@@ -706,7 +791,11 @@ export async function runChecks(): Promise<CheckResult[]> {
     const data = buffer.getChannelData(0);
     const first = peakOf(data.subarray(Math.floor(0.05 * SR), Math.floor(0.2 * SR)));
     const third = peakOf(data.subarray(Math.floor(0.45 * SR), Math.floor(0.7 * SR)));
-    check("808: rapid retrigger renders every note (voice cleanup wiring)", first > 0.3 && third > 0.3, `first=${first.toFixed(3)} third=${third.toFixed(3)}`);
+    check(
+      "808: rapid retrigger renders every note (voice cleanup wiring)",
+      first > 0.3 && third > 0.3,
+      `first=${first.toFixed(3)} third=${third.toFixed(3)}`,
+    );
   } catch (error) {
     check("808: rapid retrigger renders every note (voice cleanup wiring)", false, String(error));
   }
@@ -825,7 +914,11 @@ export async function runChecks(): Promise<CheckResult[]> {
       `peak=${peakOf(buffer.getChannelData(0)).toFixed(3)} wav=${wav.byteLength}`,
     );
   } catch (error) {
-    check("quality: browser-generated pattern passes invariants and content hash is deterministic", false, String(error));
+    check(
+      "quality: browser-generated pattern passes invariants and content hash is deterministic",
+      false,
+      String(error),
+    );
     check("quality: generated pattern renders offline audio and a valid WAV", false, String(error));
   }
 
@@ -869,8 +962,10 @@ export async function runChecks(): Promise<CheckResult[]> {
     // Source: burst A [0.05, 0.15), silence, burst B [0.5, 0.65).
     const srcBuffer = ctx.createBuffer(1, SR, SR);
     const d = srcBuffer.getChannelData(0);
-    for (let i = Math.floor(0.05 * SR); i < Math.floor(0.15 * SR); i++) d[i] = 0.7 * Math.sin((2 * Math.PI * 220 * i) / SR);
-    for (let i = Math.floor(0.5 * SR); i < Math.floor(0.65 * SR); i++) d[i] = 0.7 * Math.sin((2 * Math.PI * 440 * i) / SR);
+    for (let i = Math.floor(0.05 * SR); i < Math.floor(0.15 * SR); i++)
+      d[i] = 0.7 * Math.sin((2 * Math.PI * 220 * i) / SR);
+    for (let i = Math.floor(0.5 * SR); i < Math.floor(0.65 * SR); i++)
+      d[i] = 0.7 * Math.sin((2 * Math.PI * 440 * i) / SR);
     bank.add("check-slice-src", srcBuffer);
 
     const doc = createProjectFromTemplate("house");
@@ -970,7 +1065,11 @@ export async function runChecks(): Promise<CheckResult[]> {
         peakPos = i;
       }
     }
-    check("sampler plays transposed sample from C4 root", peakVal > 0.05 && peakPos > 0, `peak=${peakVal.toFixed(3)} at ${peakPos}`);
+    check(
+      "sampler plays transposed sample from C4 root",
+      peakVal > 0.05 && peakPos > 0,
+      `peak=${peakVal.toFixed(3)} at ${peakPos}`,
+    );
   } catch (error) {
     check("sampler plays transposed sample from C4 root", false, String(error));
   }
@@ -1044,7 +1143,7 @@ export async function runChecks(): Promise<CheckResult[]> {
     const project = createDefaultProject();
     const patternBuffer = await renderProject(project, bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0.5 });
     const patternPeak = peakOf(patternBuffer.getChannelData(0));
-    const expectedPatternSec = (16 * (PPQ / 4)) * (60 / (project.bpm * PPQ)) + 0.5;
+    const expectedPatternSec = 16 * (PPQ / 4) * (60 / (project.bpm * PPQ)) + 0.5;
     check(
       "offline render: pattern mode produces audio of correct length",
       patternPeak > 0.05 && Math.abs(patternBuffer.duration - expectedPatternSec) < 0.05,
@@ -1069,8 +1168,16 @@ export async function runChecks(): Promise<CheckResult[]> {
 
   try {
     const project = createDefaultProject();
-    const drumStem = await renderProject(buildStemProject(project, STEM_GROUPS[0].filter), bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0.2 });
-    const bassStem = await renderProject(buildStemProject(project, STEM_GROUPS[1].filter), bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0.2 });
+    const drumStem = await renderProject(buildStemProject(project, STEM_GROUPS[0].filter), bank, {
+      mode: "pattern",
+      sampleRate: SR,
+      tailSeconds: 0.2,
+    });
+    const bassStem = await renderProject(buildStemProject(project, STEM_GROUPS[1].filter), bank, {
+      mode: "pattern",
+      sampleRate: SR,
+      tailSeconds: 0.2,
+    });
     const drumPeak = peakOf(drumStem.getChannelData(0));
     const bassPeak = peakOf(bassStem.getChannelData(0));
     check(
@@ -1098,7 +1205,11 @@ export async function runChecks(): Promise<CheckResult[]> {
     check("offline render encodes to a valid WAV file", false, String(error));
   }
 
-  check("templates: six factory templates are registered", TEMPLATES.length === 6, TEMPLATES.map((t) => t.id).join(","));
+  check(
+    "templates: six factory templates are registered",
+    TEMPLATES.length === 6,
+    TEMPLATES.map((t) => t.id).join(","),
+  );
 
   for (const template of TEMPLATES) {
     try {
@@ -1160,11 +1271,17 @@ export async function runChecks(): Promise<CheckResult[]> {
     check("groove: swing/humanize/ratchet change the exported audio", false, String(error));
   }
 
-  check("presets: factory bank covers all seven instruments", new Set(FACTORY_PRESETS.map((p) => p.instrument)).size === 7, `count=${FACTORY_PRESETS.length}`);
+  check(
+    "presets: factory bank covers all seven instruments",
+    new Set(FACTORY_PRESETS.map((p) => p.instrument)).size === 7,
+    `count=${FACTORY_PRESETS.length}`,
+  );
 
   try {
     const project = createProjectFromTemplate("house");
-    const bassTrack = project.tracks.find((t): t is InstrumentTrack => t.kind === "instrument" && t.instrument === "808");
+    const bassTrack = project.tracks.find(
+      (t): t is InstrumentTrack => t.kind === "instrument" && t.instrument === "808",
+    );
     const preset = FACTORY_PRESETS.find((p) => p.instrument === "808");
     if (!bassTrack || !preset) throw new Error("808 track or preset missing");
     const applied = applyInstrumentPreset(project, bassTrack.id, preset).execute(project);
@@ -1172,7 +1289,11 @@ export async function runChecks(): Promise<CheckResult[]> {
     const presetApplied = appliedTrack.presetId === preset.id && appliedTrack.params.decay === preset.params.decay;
     const buffer = await renderProject(applied, bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0.2 });
     const peak = peakOf(buffer.getChannelData(0));
-    check("presets: apply command sticks and project still renders", presetApplied && peak > 0.01, `applied=${presetApplied} peak=${peak.toFixed(3)}`);
+    check(
+      "presets: apply command sticks and project still renders",
+      presetApplied && peak > 0.01,
+      `applied=${presetApplied} peak=${peak.toFixed(3)}`,
+    );
   } catch (error) {
     check("presets: apply command sticks and project still renders", false, String(error));
   }
@@ -1269,10 +1390,18 @@ export async function runChecks(): Promise<CheckResult[]> {
       const doc = makeModDoc((d) => {
         const drums = d.tracks.find((t): t is DrumTrack => t.kind === "drum")!;
         if (withGate) {
-          d.lfos = [{
-            id: "chk-step", trackId: drums.id, kind: "step", param: "gain",
-            division: 2, glideSec: 0.02, amount: 0.9, steps: [1, -1],
-          }];
+          d.lfos = [
+            {
+              id: "chk-step",
+              trackId: drums.id,
+              kind: "step",
+              param: "gain",
+              division: 2,
+              glideSec: 0.02,
+              amount: 0.9,
+              steps: [1, -1],
+            },
+          ];
         }
       });
       const buf = await renderProject(doc, bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0 });
@@ -1294,20 +1423,32 @@ export async function runChecks(): Promise<CheckResult[]> {
       "step modulator: gain alternates on the division grid (offline)",
       // House groove itself has stronger backbeats — judge the gate RELATIVE
       // to the unmuted baseline ratio, plus absolute attenuation of gated lows.
-      ctrlHigh > 0.005 && gateHigh > 0.005
-        && (gateHigh / Math.max(gateLow, 1e-6)) > 2 * (ctrlHigh / Math.max(ctrlLow, 1e-6))
-        && gateLow < ctrlLow * 1.4,
-      "gate=" + [gateHigh.toFixed(4), gateLow.toFixed(4)].join("/") + " ctrl=" + [ctrlHigh.toFixed(4), ctrlLow.toFixed(4)].join("/"),
+      ctrlHigh > 0.005 &&
+        gateHigh > 0.005 &&
+        gateHigh / Math.max(gateLow, 1e-6) > 2 * (ctrlHigh / Math.max(ctrlLow, 1e-6)) &&
+        gateLow < ctrlLow * 1.4,
+      "gate=" +
+        [gateHigh.toFixed(4), gateLow.toFixed(4)].join("/") +
+        " ctrl=" +
+        [ctrlHigh.toFixed(4), ctrlLow.toFixed(4)].join("/"),
     );
 
     // Determinism law: two renders of the same document are sample-identical.
     try {
       const gatedDoc = makeModDoc((d) => {
         const drums = d.tracks.find((t): t is DrumTrack => t.kind === "drum")!;
-        d.lfos = [{
-          id: "chk-step", trackId: drums.id, kind: "step", param: "gain",
-          division: 2, glideSec: 0.02, amount: 0.9, steps: [1, -1],
-        }];
+        d.lfos = [
+          {
+            id: "chk-step",
+            trackId: drums.id,
+            kind: "step",
+            param: "gain",
+            division: 2,
+            glideSec: 0.02,
+            amount: 0.9,
+            steps: [1, -1],
+          },
+        ];
       });
       const ra = await renderProject(gatedDoc, bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0 });
       const rb = await renderProject(gatedDoc, bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0 });
@@ -1338,10 +1479,20 @@ export async function runChecks(): Promise<CheckResult[]> {
   try {
     const doc = makeModDoc((d) => {
       const drums = d.tracks.find((t): t is DrumTrack => t.kind === "drum")!;
-      d.lfos = [{
-        id: "chk-rnd", trackId: drums.id, kind: "random", param: "gain",
-        snh: "hold", rateMode: "sync", rateHz: 8, division: 3, amount: 0.85, seed: "browser-check-seed",
-      }];
+      d.lfos = [
+        {
+          id: "chk-rnd",
+          trackId: drums.id,
+          kind: "random",
+          param: "gain",
+          snh: "hold",
+          rateMode: "sync",
+          rateHz: 8,
+          division: 3,
+          amount: 0.85,
+          seed: "browser-check-seed",
+        },
+      ];
     });
     const runRandom = (): Promise<Float32Array> =>
       renderProject(doc, bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0 }).then((b) => b.getChannelData(0));
@@ -1360,7 +1511,9 @@ export async function runChecks(): Promise<CheckResult[]> {
       if (r > 1e-3) blocks.push(r);
     }
     const meanBlock = blocks.reduce((a, b) => a + b, 0) / Math.max(1, blocks.length);
-    const spread = Math.sqrt(blocks.reduce((acc, v) => acc + (v - meanBlock) ** 2, 0) / Math.max(1, blocks.length)) / Math.max(meanBlock, 1e-9);
+    const spread =
+      Math.sqrt(blocks.reduce((acc, v) => acc + (v - meanBlock) ** 2, 0) / Math.max(1, blocks.length)) /
+      Math.max(meanBlock, 1e-9);
     const relativeDelta = pairDiff / Math.max(energy, 1e-9);
     check(
       "random S&H: seeded stream is active and repeat-render stable",
@@ -1381,13 +1534,24 @@ export async function runChecks(): Promise<CheckResult[]> {
         const drums = d.tracks.find((t): t is DrumTrack => t.kind === "drum")!;
         const bass = d.tracks.find((t): t is InstrumentTrack => t.kind === "instrument" && t.instrument === "808");
         if (withFollower && bass) {
-          d.lfos = [{
-            id: "chk-env", trackId: bass.id, kind: "envFollower", param: "gain",
-            sourceTrackId: drums.id, attackMs: 4, releaseMs: 260, sensitivity: 2.5, amount: 0.95,
-          }];
+          d.lfos = [
+            {
+              id: "chk-env",
+              trackId: bass.id,
+              kind: "envFollower",
+              param: "gain",
+              sourceTrackId: drums.id,
+              attackMs: 4,
+              releaseMs: 260,
+              sensitivity: 2.5,
+              amount: 0.95,
+            },
+          ];
         }
       });
-      return { data: (await renderProject(doc, bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0 })).getChannelData(1) };
+      return {
+        data: (await renderProject(doc, bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0 })).getChannelData(1),
+      };
     };
     const ducked = await renderCoupled(true);
     const plain = await renderCoupled(false);
@@ -1422,8 +1586,22 @@ export async function runChecks(): Promise<CheckResult[]> {
     if (!isWorkletReady("compressor", ctx)) {
       check("compressor: worklet compresses hot input and reports GR", false, "worklet modules not ready");
     } else {
-      const params = { threshold: -30, ratio: 6, attack: 0.005, release: 0.1, knee: 6, makeup: 0, mix: 1, detector: 0, scHpf: 20 };
-      const rt = EFFECT_DEFS.compressor.factory(ctx, { id: "chk-comp", type: "compressor", bypassed: false, params }, { bpm: 124 });
+      const params = {
+        threshold: -30,
+        ratio: 6,
+        attack: 0.005,
+        release: 0.1,
+        knee: 6,
+        makeup: 0,
+        mix: 1,
+        detector: 0,
+        scHpf: 20,
+      };
+      const rt = EFFECT_DEFS.compressor.factory(
+        ctx,
+        { id: "chk-comp", type: "compressor", bypassed: false, params },
+        { bpm: 124 },
+      );
       const osc = ctx.createOscillator();
       osc.type = "sine";
       osc.frequency.value = 220;
@@ -1459,12 +1637,26 @@ export async function runChecks(): Promise<CheckResult[]> {
     if (!isWorkletReady("compressor", ctx)) {
       check("compressor: sidechain HPF gates bass-only detector", false, "worklet modules not ready");
     } else {
-    const renderWith = async (scHpf: number, withSidechain: boolean): Promise<{ rms: number; gr: number }> => {
-      // Each variant needs a FRESH context — startRendering closes it.
-      const ctx = new OfflineAudioContext(2, SR, SR);
-      await loadWorkletModules(ctx);
-      const params = { threshold: -30, ratio: 8, attack: 0.003, release: 0.05, knee: 3, makeup: 0, mix: 1, detector: 0, scHpf };
-      const rt = EFFECT_DEFS.compressor.factory(ctx, { id: `chk-sc${scHpf}`, type: "compressor", bypassed: false, params }, { bpm: 124 });
+      const renderWith = async (scHpf: number, withSidechain: boolean): Promise<{ rms: number; gr: number }> => {
+        // Each variant needs a FRESH context — startRendering closes it.
+        const ctx = new OfflineAudioContext(2, SR, SR);
+        await loadWorkletModules(ctx);
+        const params = {
+          threshold: -30,
+          ratio: 8,
+          attack: 0.003,
+          release: 0.05,
+          knee: 3,
+          makeup: 0,
+          mix: 1,
+          detector: 0,
+          scHpf,
+        };
+        const rt = EFFECT_DEFS.compressor.factory(
+          ctx,
+          { id: `chk-sc${scHpf}`, type: "compressor", bypassed: false, params },
+          { bpm: 124 },
+        );
         const carrier = ctx.createOscillator();
         carrier.type = "sine";
         carrier.frequency.value = 220;
@@ -1497,8 +1689,7 @@ export async function runChecks(): Promise<CheckResult[]> {
       const filtered = await renderWith(300, true);
       check(
         "compressor: sidechain HPF gates bass-only detector",
-        bassOn.rms < baseline.rms * 0.5 && bassOn.gr >= 6
-          && filtered.rms > baseline.rms * 0.85 && filtered.gr <= 0.7,
+        bassOn.rms < baseline.rms * 0.5 && bassOn.gr >= 6 && filtered.rms > baseline.rms * 0.85 && filtered.gr <= 0.7,
         `baseline=${baseline.rms.toFixed(4)} bassOn=${bassOn.rms.toFixed(4)}(gr ${bassOn.gr.toFixed(1)}) hpf300=${filtered.rms.toFixed(4)}(gr ${filtered.gr.toFixed(1)})`,
       );
     }
@@ -1510,8 +1701,22 @@ export async function runChecks(): Promise<CheckResult[]> {
   try {
     const ctx = new OfflineAudioContext(1, SR, SR);
     await loadWorkletModules(ctx);
-    const params = { threshold: -40, ratio: 20, attack: 0.001, release: 0.05, knee: 0, makeup: 0, mix: 0, detector: 1, scHpf: 20 };
-    const rt = EFFECT_DEFS.compressor.factory(ctx, { id: "chk-mix0", type: "compressor", bypassed: false, params }, { bpm: 124 });
+    const params = {
+      threshold: -40,
+      ratio: 20,
+      attack: 0.001,
+      release: 0.05,
+      knee: 0,
+      makeup: 0,
+      mix: 0,
+      detector: 1,
+      scHpf: 20,
+    };
+    const rt = EFFECT_DEFS.compressor.factory(
+      ctx,
+      { id: "chk-mix0", type: "compressor", bypassed: false, params },
+      { bpm: 124 },
+    );
     const osc = ctx.createOscillator();
     osc.type = "sine";
     osc.frequency.value = 220;
@@ -1524,7 +1729,11 @@ export async function runChecks(): Promise<CheckResult[]> {
     rt.dispose();
     let peak = 0;
     for (let i = 0; i < data.length; i++) peak = Math.max(peak, Math.abs(data[i]));
-    check("compressor: mix = 0 passes unity (parallel blend)", Math.abs(peak - 0.8) < 0.02, `peak=${peak.toFixed(4)} expected≈0.8`);
+    check(
+      "compressor: mix = 0 passes unity (parallel blend)",
+      Math.abs(peak - 0.8) < 0.02,
+      `peak=${peak.toFixed(4)} expected≈0.8`,
+    );
   } catch (error) {
     check("compressor: mix = 0 passes unity (parallel blend)", false, String(error));
   }
@@ -1580,11 +1789,15 @@ export async function runChecks(): Promise<CheckResult[]> {
       doc.master.limiterEnabled = false;
       doc.master.clipperEnabled = false;
       if (withGate) {
-        drums.effects = [{
-          id: "sg-chk", type: "stepGate", bypassed: false,
-          params: { division: 3, depth: 1, smooth: 0.02, mix: 1 },
-          steps: [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0],
-        }];
+        drums.effects = [
+          {
+            id: "sg-chk",
+            type: "stepGate",
+            bypassed: false,
+            params: { division: 3, depth: 1, smooth: 0.02, mix: 1 },
+            steps: [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0],
+          },
+        ];
       }
       const buf = await renderProject(doc, bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0 });
       return buf.getChannelData(0);
@@ -1601,9 +1814,7 @@ export async function runChecks(): Promise<CheckResult[]> {
     const ctrlHigh = (ctrlWins[0] + ctrlWins[2] + ctrlWins[4] + ctrlWins[6]) / 4;
     check(
       "step gate: pattern halves signal on off-beats (offline)",
-      ctrlHigh > 0.005
-        && gateHigh > gateLow * 2
-        && gateHigh > ctrlHigh * 0.6,
+      ctrlHigh > 0.005 && gateHigh > gateLow * 2 && gateHigh > ctrlHigh * 0.6,
       `even=${gateHigh.toFixed(4)} odd=${gateLow.toFixed(4)} ctrl=${ctrlHigh.toFixed(4)}`,
     );
   } catch (error) {
@@ -1616,10 +1827,20 @@ export async function runChecks(): Promise<CheckResult[]> {
       const doc = createProjectFromTemplate("house");
       const drums = doc.tracks.find((t): t is DrumTrack => t.kind === "drum")!;
       drums.pan = -1;
-      for (const track of doc.tracks) { if (track.kind === "instrument") track.mute = true; }
+      for (const track of doc.tracks) {
+        if (track.kind === "instrument") track.mute = true;
+      }
       doc.master.limiterEnabled = false;
       doc.master.clipperEnabled = false;
-      drums.effects = [{ id: "sg-p", type: "stepGate", bypassed: false, params: { division: 4, depth: 1, smooth: 0.02, mix }, steps: Array(16).fill(stepVal) }];
+      drums.effects = [
+        {
+          id: "sg-p",
+          type: "stepGate",
+          bypassed: false,
+          params: { division: 4, depth: 1, smooth: 0.02, mix },
+          steps: Array(16).fill(stepVal),
+        },
+      ];
       const buf = await renderProject(doc, bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0 });
       const data = buf.getChannelData(0);
       let pk = 0;
@@ -1628,7 +1849,11 @@ export async function runChecks(): Promise<CheckResult[]> {
     };
     const allOpen = await renderGate(1, 1);
     const mix0 = await renderGate(0, 0);
-    check("step gate: mix=0 passes signal through (no gating)", Math.abs(mix0.peak - allOpen.peak) < 0.05, `mix0=${mix0.peak.toFixed(4)} allOpen=${allOpen.peak.toFixed(4)}`);
+    check(
+      "step gate: mix=0 passes signal through (no gating)",
+      Math.abs(mix0.peak - allOpen.peak) < 0.05,
+      `mix0=${mix0.peak.toFixed(4)} allOpen=${allOpen.peak.toFixed(4)}`,
+    );
   } catch (error) {
     check("step gate: mix=0 passes signal through (no gating)", false, String(error));
   }
@@ -1640,7 +1865,11 @@ export async function runChecks(): Promise<CheckResult[]> {
       const ctx = new OfflineAudioContext(2, SR, SR);
       await loadWorkletModules(ctx);
       const params = { threshold: -30, ratio: 8, attack: 0.002, release: 0.1, amount: 1, splitFreq };
-      const sidechainRt = EFFECT_DEFS.sidechain.factory(ctx, { id: "mb-sc", type: "sidechain", bypassed: false, params }, { bpm: 124 });
+      const sidechainRt = EFFECT_DEFS.sidechain.factory(
+        ctx,
+        { id: "mb-sc", type: "sidechain", bypassed: false, params },
+        { bpm: 124 },
+      );
       // Main: carrier tone
       const carrier = ctx.createOscillator();
       carrier.type = "sine";
@@ -1691,18 +1920,27 @@ export async function runChecks(): Promise<CheckResult[]> {
       check("svFilter: LP attenuates high frequencies", false, "worklet modules not ready");
     } else {
       const params = { cutoff: 1000, resonance: 0, mode: 0, drive: 0, mix: 1 };
-      const rt = EFFECT_DEFS.svFilter.factory(ctx, { id: "svf-lp", type: "svFilter", bypassed: false, params }, { bpm: 124 });
+      const rt = EFFECT_DEFS.svFilter.factory(
+        ctx,
+        { id: "svf-lp", type: "svFilter", bypassed: false, params },
+        { bpm: 124 },
+      );
       // Two-tone: 200 Hz + 8 kHz
       const osc1 = ctx.createOscillator();
-      osc1.type = "sine"; osc1.frequency.value = 200;
+      osc1.type = "sine";
+      osc1.frequency.value = 200;
       const osc2 = ctx.createOscillator();
-      osc2.type = "sine"; osc2.frequency.value = 8000;
-      const g1 = ctx.createGain(); g1.gain.value = 0.4;
-      const g2 = ctx.createGain(); g2.gain.value = 0.4;
+      osc2.type = "sine";
+      osc2.frequency.value = 8000;
+      const g1 = ctx.createGain();
+      g1.gain.value = 0.4;
+      const g2 = ctx.createGain();
+      g2.gain.value = 0.4;
       osc1.connect(g1).connect(rt.input);
       osc2.connect(g2).connect(rt.input);
       rt.output.connect(ctx.destination);
-      osc1.start(0); osc2.start(0);
+      osc1.start(0);
+      osc2.start(0);
       const out = (await ctx.startRendering()).getChannelData(0);
       rt.dispose();
       // Measure energy above 4 kHz by zero-crossing density (proxy for high freq content)
@@ -1732,9 +1970,14 @@ export async function runChecks(): Promise<CheckResult[]> {
       check("svFilter: HP blocks low frequencies", false, "worklet modules not ready");
     } else {
       const params = { cutoff: 1000, resonance: 0, mode: 1, drive: 0, mix: 1 };
-      const rt = EFFECT_DEFS.svFilter.factory(ctx, { id: "svf-hp", type: "svFilter", bypassed: false, params }, { bpm: 124 });
+      const rt = EFFECT_DEFS.svFilter.factory(
+        ctx,
+        { id: "svf-hp", type: "svFilter", bypassed: false, params },
+        { bpm: 124 },
+      );
       const osc = ctx.createOscillator();
-      osc.type = "sine"; osc.frequency.value = 100; // 100 Hz — below cutoff
+      osc.type = "sine";
+      osc.frequency.value = 100; // 100 Hz — below cutoff
       osc.connect(rt.input);
       rt.output.connect(ctx.destination);
       osc.start(0);
@@ -1761,7 +2004,11 @@ export async function runChecks(): Promise<CheckResult[]> {
       check("flanger: wet signal differs from dry (comb filtering active)", false, "worklet modules not ready");
     } else {
       const params = { rate: 1, depth: 3, base: 5, feedback: 0.5, spread: 0, mix: 0.7 };
-      const rt = EFFECT_DEFS.flanger.factory(ctx, { id: "chk-flg", type: "flanger", bypassed: false, params }, { bpm: 124 });
+      const rt = EFFECT_DEFS.flanger.factory(
+        ctx,
+        { id: "chk-flg", type: "flanger", bypassed: false, params },
+        { bpm: 124 },
+      );
       const osc = ctx.createOscillator();
       osc.type = "sawtooth"; // rich spectrum for flanging
       osc.frequency.value = 220;
@@ -1775,8 +2022,10 @@ export async function runChecks(): Promise<CheckResult[]> {
       // Render dry reference
       const ctx2 = new OfflineAudioContext(1, SR, SR);
       const osc2 = ctx2.createOscillator();
-      osc2.type = "sawtooth"; osc2.frequency.value = 220;
-      const gain2 = ctx2.createGain(); gain2.gain.value = 0.5;
+      osc2.type = "sawtooth";
+      osc2.frequency.value = 220;
+      const gain2 = ctx2.createGain();
+      gain2.gain.value = 0.5;
       osc2.connect(gain2).connect(ctx2.destination);
       osc2.start(0);
       const dry = (await ctx2.startRendering()).getChannelData(0);
@@ -1809,10 +2058,16 @@ export async function runChecks(): Promise<CheckResult[]> {
       check("tremolo: AM modulates gain rhythmically", false, "worklet modules not ready");
     } else {
       const params = { rate: 4, depth: 0.9, shape: 1, mode: 0, mix: 1 }; // 4 Hz, square, hard
-      const rt = EFFECT_DEFS.tremolo.factory(ctx, { id: "chk-trem", type: "tremolo", bypassed: false, params }, { bpm: 124 });
+      const rt = EFFECT_DEFS.tremolo.factory(
+        ctx,
+        { id: "chk-trem", type: "tremolo", bypassed: false, params },
+        { bpm: 124 },
+      );
       const osc = ctx.createOscillator();
-      osc.type = "sine"; osc.frequency.value = 2000;
-      const gain = ctx.createGain(); gain.gain.value = 0.5;
+      osc.type = "sine";
+      osc.frequency.value = 2000;
+      const gain = ctx.createGain();
+      gain.gain.value = 0.5;
       osc.connect(gain).connect(rt.input);
       rt.output.connect(ctx.destination);
       osc.start(0);
@@ -1822,14 +2077,17 @@ export async function runChecks(): Promise<CheckResult[]> {
       const period = SR / 4;
       const half = period / 2;
       let peakAll = 0;
-      let hiRms = 0; let loRms = 0;
+      let hiRms = 0;
+      let loRms = 0;
       const cycles = 4;
       for (let c = 0; c < cycles; c++) {
-        let hiSum = 0; let loSum = 0;
+        let hiSum = 0;
+        let loSum = 0;
         for (let i = 0; i < half; i++) {
           const hv = data[Math.floor(c * period + i)];
           const lv = data[Math.floor(c * period + half + i)];
-          hiSum += hv * hv; loSum += lv * lv;
+          hiSum += hv * hv;
+          loSum += lv * lv;
           peakAll = Math.max(peakAll, Math.abs(hv), Math.abs(lv));
         }
         hiRms += Math.sqrt(hiSum / half);
@@ -1857,13 +2115,27 @@ export async function runChecks(): Promise<CheckResult[]> {
       check("autowah: envelope drives filter cutoff", false, "worklet modules not ready");
     } else {
       // LP mode: quiet → cutoff closes below carrier → attenuated
-    // loud → cutoff opens above carrier → passes
-    const params = { minFreq: 200, maxFreq: 4000, resonance: 0.5, attack: 0.01, release: 0.15, sensitivity: 2, mode: 1, mix: 1 };
-      const rt = EFFECT_DEFS.autowah.factory(ctx, { id: "chk-aw", type: "autowah", bypassed: false, params }, { bpm: 124 });
+      // loud → cutoff opens above carrier → passes
+      const params = {
+        minFreq: 200,
+        maxFreq: 4000,
+        resonance: 0.5,
+        attack: 0.01,
+        release: 0.15,
+        sensitivity: 2,
+        mode: 1,
+        mix: 1,
+      };
+      const rt = EFFECT_DEFS.autowah.factory(
+        ctx,
+        { id: "chk-aw", type: "autowah", bypassed: false, params },
+        { bpm: 124 },
+      );
       // First half: quiet tone (0.05) → cutoff ≈ 400 Hz → 2 kHz attenuated
       // Second half: loud tone (0.8) → cutoff ≈ 3800 Hz → 2 kHz passes
       const osc = ctx.createOscillator();
-      osc.type = "sine"; osc.frequency.value = 2000;
+      osc.type = "sine";
+      osc.frequency.value = 2000;
       const gain = ctx.createGain();
       gain.gain.setValueAtTime(0.05, 0);
       gain.gain.setValueAtTime(0.05, 0.9);
@@ -1894,14 +2166,20 @@ export async function runChecks(): Promise<CheckResult[]> {
       const doc = createProjectFromTemplate("house");
       const drums = doc.tracks.find((t): t is DrumTrack => t.kind === "drum")!;
       drums.pan = -1;
-      for (const track of doc.tracks) { if (track.kind === "instrument") track.mute = true; }
+      for (const track of doc.tracks) {
+        if (track.kind === "instrument") track.mute = true;
+      }
       doc.master.limiterEnabled = false;
       doc.master.clipperEnabled = false;
-      drums.effects = [{
-        id: "stut-chk", type: "stutter", bypassed: false,
-        params: { division: 4, mix, feedback: 0 },
-        ...(steps ? { steps } : {}),
-      }];
+      drums.effects = [
+        {
+          id: "stut-chk",
+          type: "stutter",
+          bypassed: false,
+          params: { division: 4, mix, feedback: 0 },
+          ...(steps ? { steps } : {}),
+        },
+      ];
       const buf = await renderProject(doc, bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0 });
       return buf.getChannelData(0);
     };
@@ -1923,4 +2201,3 @@ export async function runChecks(): Promise<CheckResult[]> {
 
   return results;
 }
-

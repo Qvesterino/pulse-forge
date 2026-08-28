@@ -38,18 +38,29 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
 
   const stylesForTarget = styleNames(target);
   const drumPads = getDrumTrack(doc).pads;
-  const previewPatch = useMemo(() => buildAssistPatch(pattern, drumPads, {
-    operation: previewOperation,
-    seed,
-    amount,
-    bars,
-    target,
-    style,
-  }), [pattern, drumPads, previewOperation, seed, amount, bars, target, style]);
-  const previewPad = drumPads.find((pad) => (previewPatch.rows[pad.id] ?? []).some((value) => value > 0)) ?? drumPads[0];
-  const previewRow = previewPad ? previewPatch.rows[previewPad.id] ?? [] : [];
-  const beforeHits = Object.values(pattern.rows).reduce((total, row) => total + row.filter((value) => value > 0).length, 0);
-  const afterHits = Object.values(previewPatch.rows).reduce((total, row) => total + row.filter((value) => value > 0).length, 0);
+  const previewPatch = useMemo(
+    () =>
+      buildAssistPatch(pattern, drumPads, {
+        operation: previewOperation,
+        seed,
+        amount,
+        bars,
+        target,
+        style,
+      }),
+    [pattern, drumPads, previewOperation, seed, amount, bars, target, style],
+  );
+  const previewPad =
+    drumPads.find((pad) => (previewPatch.rows[pad.id] ?? []).some((value) => value > 0)) ?? drumPads[0];
+  const previewRow = previewPad ? (previewPatch.rows[previewPad.id] ?? []) : [];
+  const beforeHits = Object.values(pattern.rows).reduce(
+    (total, row) => total + row.filter((value) => value > 0).length,
+    0,
+  );
+  const afterHits = Object.values(previewPatch.rows).reduce(
+    (total, row) => total + row.filter((value) => value > 0).length,
+    0,
+  );
 
   return (
     <div className="collab-panel assist-panel" role="dialog" aria-label="Pattern assist">
@@ -60,8 +71,8 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
         </button>
       </div>
       <p className="collab-hint">
-        Iterate on this pattern — your hits stay yours, the assist modifies surgically. Same seed = same result; the seed
-        re-rolls after every apply. Ctrl+Z takes anything back.
+        Iterate on this pattern — your hits stay yours, the assist modifies surgically. Same seed = same result; the
+        seed re-rolls after every apply. Ctrl+Z takes anything back.
       </p>
 
       <div className="assist-seed">
@@ -86,7 +97,8 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
           </select>
         </div>
         <div className="assist-preview-meta">
-          {previewPad?.name ?? "No drum pad"} · {beforeHits} → {afterHits} hits · {previewPatch.stepCount ?? pattern.stepCount} steps
+          {previewPad?.name ?? "No drum pad"} · {beforeHits} → {afterHits} hits ·{" "}
+          {previewPatch.stepCount ?? pattern.stepCount} steps
         </div>
         <div className="assist-preview-grid" role="img" aria-label={`${previewOperation} pattern preview`}>
           {Array.from({ length: 16 }, (_, step) => (
@@ -133,7 +145,9 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
           <button
             type="button"
             className="btn btn-export"
-            onClick={() => apply(`Built to ${bars} bars`, () => services.store.execute(assistBuild(doc, pattern.id, bars, seed)))}
+            onClick={() =>
+              apply(`Built to ${bars} bars`, () => services.store.execute(assistBuild(doc, pattern.id, bars, seed)))
+            }
           >
             BUILD
           </button>
@@ -170,7 +184,11 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
           <button
             type="button"
             className="btn btn-export"
-            onClick={() => apply(`${target} → ${style}`, () => services.store.execute(assistReplace(doc, pattern.id, target, style, seed)))}
+            onClick={() =>
+              apply(`${target} → ${style}`, () =>
+                services.store.execute(assistReplace(doc, pattern.id, target, style, seed)),
+              )
+            }
           >
             REPLACE
           </button>

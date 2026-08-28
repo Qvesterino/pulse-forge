@@ -1,10 +1,10 @@
-import type { StepMeta } from '../project-model/types';
-import type { GenerateOptions, GrooveData, VelocityLevel } from './types';
-import { buildPadModel, generatePadSequence, dequantizeVelocity } from './markov';
-import { canRatchet, ghostMultiplier, inferPadRole, type PadRole } from './pad-roles';
-import { applyPhraseDynamics, buildPhrasePlan } from './phrase';
-import { enforceDrumAnchors, repairDrumRow } from './quality';
-import { enforceSyncopationBudget } from './style-quality';
+import type { StepMeta } from "../project-model/types";
+import type { GenerateOptions, GrooveData, VelocityLevel } from "./types";
+import { buildPadModel, generatePadSequence, dequantizeVelocity } from "./markov";
+import { canRatchet, ghostMultiplier, inferPadRole, type PadRole } from "./pad-roles";
+import { applyPhraseDynamics, buildPhrasePlan } from "./phrase";
+import { enforceDrumAnchors, repairDrumRow } from "./quality";
+import { enforceSyncopationBudget } from "./style-quality";
 
 export interface DrumRandomStreams {
   /** Randomness for bar-level/ghost/fill variation. */
@@ -20,7 +20,8 @@ export interface DrumRandomStreams {
  * Returns a value centered at 0 with stddev=1, clamped to [-3, 3].
  */
 function gaussianRand(rand: () => number): number {
-  let u = 0, v = 0;
+  let u = 0,
+    v = 0;
   while (u === 0) u = rand();
   while (v === 0) v = rand();
   const z = Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
@@ -31,11 +32,7 @@ function gaussianRand(rand: () => number): number {
  * Apply groove swing to step meta: odd-numbered active steps get a positive
  * microtiming offset (delayed) proportional to groove.swing.
  */
-function applySwingToMeta(
-  row: number[],
-  padMeta: Map<number, StepMeta>,
-  swing: number,
-): void {
+function applySwingToMeta(row: number[], padMeta: Map<number, StepMeta>, swing: number): void {
   if (swing <= 0) return;
   // Swing is expressed as a fraction of a step: 0..1 → 0..0.5 steps delay
   // on odd 16th notes. We encode this as microtiming in range -1..1 where
@@ -75,7 +72,9 @@ export function generateDrumPattern(
 
   for (const padIndex of groove.activePads) {
     const role = inferPadRole(padNames?.[padIndex], padIndex);
-    const padPatterns: number[][] = groove.patterns.map(p => (p[padIndex] as number[] | undefined) ?? new Array(16).fill(0) as number[]);
+    const padPatterns: number[][] = groove.patterns.map(
+      (p) => (p[padIndex] as number[] | undefined) ?? (new Array(16).fill(0) as number[]),
+    );
     const model = buildPadModel(padIndex, padPatterns);
 
     // Generate base 16-step sequence
@@ -125,11 +124,7 @@ export function generateDrumPattern(
 
     // Swing has one owner: project-level groove settings when requested,
     // otherwise pattern-local metadata carries the groove feel.
-    applySwingToMeta(
-      rows[padIndex],
-      padMeta,
-      streams.swing ?? (options.applyGrooveSettings ? 0 : groove.swing),
-    );
+    applySwingToMeta(rows[padIndex], padMeta, streams.swing ?? (options.applyGrooveSettings ? 0 : groove.swing));
 
     if (padMeta.size > 0) {
       meta.set(padIndex, padMeta);
@@ -165,9 +160,8 @@ function addGhostNotes(
 
     // Probability scales with number of active neighbors
     // 1 neighbor: base chance, 2+: higher chance
-    const probability = (adjacentCount >= 2
-      ? options.ghostWeight * 0.5
-      : options.ghostWeight * 0.2) * ghostMultiplier(role);
+    const probability =
+      (adjacentCount >= 2 ? options.ghostWeight * 0.5 : options.ghostWeight * 0.2) * ghostMultiplier(role);
 
     if (rand() < probability) {
       // Velocity slightly higher when more neighbors are active

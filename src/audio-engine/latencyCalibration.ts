@@ -87,13 +87,14 @@ function readStorage(storage: LatencyStorage | null | undefined): LatencyCalibra
     const audio = parsed.audio;
     const audioRoundTripMs = finiteOrNull(audio?.roundTripMs);
     const audioJitterMs = finiteOrNull(audio?.jitterMs);
-    const audioSampleCount = typeof audio?.sampleCount === "number" && Number.isFinite(audio.sampleCount)
-      ? Math.max(0, Math.floor(audio.sampleCount))
-      : 0;
-    const audioStable = typeof audio?.stable === "boolean" ? audio.stable : audioRoundTripMs !== null ? audioSampleCount >= 5 : null;
-    const measuredAt = typeof audio?.measuredAt === "string" && Number.isFinite(Date.parse(audio.measuredAt))
-      ? audio.measuredAt
-      : null;
+    const audioSampleCount =
+      typeof audio?.sampleCount === "number" && Number.isFinite(audio.sampleCount)
+        ? Math.max(0, Math.floor(audio.sampleCount))
+        : 0;
+    const audioStable =
+      typeof audio?.stable === "boolean" ? audio.stable : audioRoundTripMs !== null ? audioSampleCount >= 5 : null;
+    const measuredAt =
+      typeof audio?.measuredAt === "string" && Number.isFinite(Date.parse(audio.measuredAt)) ? audio.measuredAt : null;
     return {
       audioRoundTripMs,
       audioJitterMs,

@@ -31,8 +31,8 @@ function stringList(value: unknown): string[] {
 
 function rolesOf(value: unknown): IntentRole[] {
   if (!Array.isArray(value)) return [...DEFAULT_ROLES];
-  const roles = value.filter((role): role is IntentRole =>
-    role === "drums" || role === "bass" || role === "chords" || role === "lead",
+  const roles = value.filter(
+    (role): role is IntentRole => role === "drums" || role === "bass" || role === "chords" || role === "lead",
   );
   return roles.length > 0 ? [...new Set(roles)] : [...DEFAULT_ROLES];
 }
@@ -49,18 +49,17 @@ function bool(value: unknown, fallback: boolean): boolean {
 
 /** Normalize untrusted user/provider data into one canonical IntentSpec. */
 export function normalizeIntent(input: IntentInput | unknown = {}): IntentSpec {
-  const source = typeof input === "object" && input !== null ? input as Record<string, unknown> : {};
-  const controls = source.controls && typeof source.controls === "object"
-    ? source.controls as Record<string, unknown>
-    : {};
-  const targetTracks = source.targetTracks && typeof source.targetTracks === "object"
-    ? source.targetTracks as Record<string, unknown>
-    : {};
-  const constraints = source.constraints && typeof source.constraints === "object"
-    ? source.constraints as Record<string, unknown>
-    : {};
-  const genre = GENRES.includes(source.genre as typeof GENRES[number])
-    ? source.genre as GenerateOptions["genre"]
+  const source = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
+  const controls =
+    source.controls && typeof source.controls === "object" ? (source.controls as Record<string, unknown>) : {};
+  const targetTracks =
+    source.targetTracks && typeof source.targetTracks === "object"
+      ? (source.targetTracks as Record<string, unknown>)
+      : {};
+  const constraints =
+    source.constraints && typeof source.constraints === "object" ? (source.constraints as Record<string, unknown>) : {};
+  const genre = GENRES.includes(source.genre as (typeof GENRES)[number])
+    ? (source.genre as GenerateOptions["genre"])
     : DEFAULT_GENERATE_OPTIONS.genre;
   const normalized: IntentSpec = {
     version: INTENT_SCHEMA_VERSION,
@@ -77,9 +76,10 @@ export function normalizeIntent(input: IntentInput | unknown = {}): IntentSpec {
     length: lengthOf(source.length, DEFAULT_GENERATE_OPTIONS.stepCount),
     roles: rolesOf(source.roles),
     targetTracks: {
-      drumTrackId: typeof targetTracks.drumTrackId === "string" && targetTracks.drumTrackId.length > 0
-        ? targetTracks.drumTrackId
-        : null,
+      drumTrackId:
+        typeof targetTracks.drumTrackId === "string" && targetTracks.drumTrackId.length > 0
+          ? targetTracks.drumTrackId
+          : null,
       instrumentTrackIds: stringList(targetTracks.instrumentTrackIds),
     },
     constraints: {
@@ -93,9 +93,8 @@ export function normalizeIntent(input: IntentInput | unknown = {}): IntentSpec {
       velocityVariation: unit(controls.velocityVariation, DEFAULT_GENERATE_OPTIONS.velocityVariation),
       temperature: Math.max(0.2, Math.min(2, finite(controls.temperature, DEFAULT_GENERATE_OPTIONS.temperature))),
     },
-    sourcePatternId: typeof source.sourcePatternId === "string" && source.sourcePatternId.length > 0
-      ? source.sourcePatternId
-      : null,
+    sourcePatternId:
+      typeof source.sourcePatternId === "string" && source.sourcePatternId.length > 0 ? source.sourcePatternId : null,
     replaceMode: source.replaceMode === "replace" ? "replace" : "new",
     applyGrooveSettings: bool(source.applyGrooveSettings, false),
   };

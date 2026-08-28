@@ -40,31 +40,71 @@ export function mockServices(doc?: ProjectDocument): Services {
         getTrackLevel: vi.fn(() => 0),
         getReturnLevel: vi.fn(() => 0),
         getDiagnostics: vi.fn(() => ({})),
-        get currentTime() { return 0; },
-        get context() { return { decodeAudioData: vi.fn(async (_bytes) => ({ duration: 1, sampleRate: 44100, numberOfChannels: 1, getChannelData: () => new Float32Array(44100) })) }; },
+        get currentTime() {
+          return 0;
+        },
+        get context() {
+          return {
+            decodeAudioData: vi.fn(async (_bytes) => ({
+              duration: 1,
+              sampleRate: 44100,
+              numberOfChannels: 1,
+              getChannelData: () => new Float32Array(44100),
+            })),
+          };
+        },
         attachBank: vi.fn(),
       } as any,
-      bank: (() => { const m = new Map(); return { get size() { return m.size; }, get: vi.fn((id: string) => m.get(id)), has: vi.fn((id: string) => m.has(id)), add: vi.fn((id: string, b: unknown) => m.set(id, b)), remove: vi.fn((id: string) => m.delete(id)), names: vi.fn(() => []), entries: vi.fn(() => []) } as any; })(),
+      bank: (() => {
+        const m = new Map();
+        return {
+          get size() {
+            return m.size;
+          },
+          get: vi.fn((id: string) => m.get(id)),
+          has: vi.fn((id: string) => m.has(id)),
+          add: vi.fn((id: string, b: unknown) => m.set(id, b)),
+          remove: vi.fn((id: string) => m.delete(id)),
+          names: vi.fn(() => []),
+          entries: vi.fn(() => []),
+        } as any;
+      })(),
       repo: { save: vi.fn(), load: vi.fn(), list: vi.fn() } as any,
       presets: { save: vi.fn(), load: vi.fn(), list: vi.fn() } as any,
-      library: { get: vi.fn(() => libraryState), subscribe: vi.fn(() => () => {}), toggleAssetFavorite: vi.fn(), togglePresetFavorite: vi.fn(), recordAsset: vi.fn(), recordPreset: vi.fn() } as any,
+      library: {
+        get: vi.fn(() => libraryState),
+        subscribe: vi.fn(() => () => {}),
+        toggleAssetFavorite: vi.fn(),
+        togglePresetFavorite: vi.fn(),
+        recordAsset: vi.fn(),
+        recordPreset: vi.fn(),
+      } as any,
       latency,
     } as any,
     store: {
       getDoc: () => project,
-      subscribe: (cb: () => void) => { listeners.add(cb); return () => listeners.delete(cb); },
+      subscribe: (cb: () => void) => {
+        listeners.add(cb);
+        return () => listeners.delete(cb);
+      },
       execute: vi.fn(),
       canUndo: false,
       canRedo: false,
       lastCommandLabel: null as string | null,
       undoStackLength: 0,
-      get saveStatus() { return "saved" as const; },
+      get saveStatus() {
+        return "saved" as const;
+      },
       getSaveStatus: () => "saved" as const,
       getLastSavedAt: () => null,
       setSaveStatus: vi.fn(),
-      get doc() { return project; },
+      get doc() {
+        return project;
+      },
       onDocChanged: null as ((doc: ProjectDocument) => void) | null,
-      _emit: () => { for (const l of listeners) l(); },
+      _emit: () => {
+        for (const l of listeners) l();
+      },
     } as any,
     engine: {
       ensureContext: vi.fn(),
@@ -74,7 +114,15 @@ export function mockServices(doc?: ProjectDocument): Services {
       previewAsset: vi.fn(),
       stopPreview: vi.fn(),
       get context() {
-        return { decodeAudioData: async (_b: ArrayBuffer) => ({ duration: 1, sampleRate: 44100, numberOfChannels: 1, getChannelData: () => new Float32Array(44100), length: 44100 }) };
+        return {
+          decodeAudioData: async (_b: ArrayBuffer) => ({
+            duration: 1,
+            sampleRate: 44100,
+            numberOfChannels: 1,
+            getChannelData: () => new Float32Array(44100),
+            length: 44100,
+          }),
+        };
       },
       setProject: vi.fn(),
       trigger: vi.fn(),
@@ -88,7 +136,9 @@ export function mockServices(doc?: ProjectDocument): Services {
       getTrackLevel: vi.fn(() => 0),
       getReturnLevel: vi.fn(() => 0),
       getDiagnostics: vi.fn(() => ({})),
-      get currentTime() { return 0; },
+      get currentTime() {
+        return 0;
+      },
     } as any,
     transport: {
       position: 0,
@@ -112,8 +162,28 @@ export function mockServices(doc?: ProjectDocument): Services {
       stats: { scheduledEvents: 0, lastHorizonTick: 0, windows: 0 },
     } as any,
     repo: { save: vi.fn(), load: vi.fn(), list: vi.fn() } as any,
-    bank: (() => { const m = new Map(); return { get size() { return m.size; }, get: vi.fn((id: string) => m.get(id)), has: vi.fn((id: string) => m.has(id)), add: vi.fn((id: string, b: unknown) => m.set(id, b)), remove: vi.fn((id: string) => m.delete(id)), names: vi.fn(() => []), entries: vi.fn(() => []) } as any; })(),
-    library: { get: vi.fn(() => libraryState), subscribe: vi.fn(() => () => {}), toggleAssetFavorite: vi.fn(), togglePresetFavorite: vi.fn(), recordAsset: vi.fn(), recordPreset: vi.fn() } as any,
+    bank: (() => {
+      const m = new Map();
+      return {
+        get size() {
+          return m.size;
+        },
+        get: vi.fn((id: string) => m.get(id)),
+        has: vi.fn((id: string) => m.has(id)),
+        add: vi.fn((id: string, b: unknown) => m.set(id, b)),
+        remove: vi.fn((id: string) => m.delete(id)),
+        names: vi.fn(() => []),
+        entries: vi.fn(() => []),
+      } as any;
+    })(),
+    library: {
+      get: vi.fn(() => libraryState),
+      subscribe: vi.fn(() => () => {}),
+      toggleAssetFavorite: vi.fn(),
+      togglePresetFavorite: vi.fn(),
+      recordAsset: vi.fn(),
+      recordPreset: vi.fn(),
+    } as any,
     playback: {
       mode: "pattern" as const,
       subscribe: vi.fn(() => () => {}),
@@ -133,8 +203,19 @@ export function mockServices(doc?: ProjectDocument): Services {
     collab: null,
     flushSave: vi.fn(),
     closeProject: vi.fn(),
-    frozenAudio: { save: vi.fn(async () => {}), load: vi.fn(async () => undefined), remove: vi.fn(async () => {}), list: vi.fn(async () => []) } as any,
-    userSamples: { list: vi.fn(async () => []), save: vi.fn(async () => {}), loadAudio: vi.fn(async () => undefined), remove: vi.fn(async () => {}), listAudio: vi.fn(async () => []) } as any,
+    frozenAudio: {
+      save: vi.fn(async () => {}),
+      load: vi.fn(async () => undefined),
+      remove: vi.fn(async () => {}),
+      list: vi.fn(async () => []),
+    } as any,
+    userSamples: {
+      list: vi.fn(async () => []),
+      save: vi.fn(async () => {}),
+      loadAudio: vi.fn(async () => undefined),
+      remove: vi.fn(async () => {}),
+      listAudio: vi.fn(async () => []),
+    } as any,
     latency,
     capture: {
       subscribe: vi.fn(() => () => {}),

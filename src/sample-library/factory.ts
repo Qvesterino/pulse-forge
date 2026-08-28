@@ -100,7 +100,10 @@ function kick(startHz: number, endHz: number, decay: number, click: number, driv
       const hp = ctx.createBiquadFilter();
       hp.type = "highpass";
       hp.frequency.value = 1500;
-      noise.connect(hp).connect(env(ctx, t0, click, 0.012)).connect(dest);
+      noise
+        .connect(hp)
+        .connect(env(ctx, t0, click, 0.012))
+        .connect(dest);
     }
   };
 }
@@ -120,7 +123,10 @@ function snare(toneHz: number, toneDecay: number, noiseDecay: number, noiseHz: n
     bp.type = "bandpass";
     bp.frequency.value = noiseHz;
     bp.Q.value = 0.9;
-    noise.connect(bp).connect(env(ctx, t0, 0.8, noiseDecay)).connect(dest);
+    noise
+      .connect(bp)
+      .connect(env(ctx, t0, 0.8, noiseDecay))
+      .connect(dest);
   };
 }
 
@@ -134,14 +140,20 @@ function clap(): Builder {
       bp.type = "bandpass";
       bp.frequency.value = 1150;
       bp.Q.value = 1.6;
-      noise.connect(bp).connect(env(ctx, t, 0.55, 0.018)).connect(dest);
+      noise
+        .connect(bp)
+        .connect(env(ctx, t, 0.55, 0.018))
+        .connect(dest);
     }
     const tail = noiseSource(ctx, 44, 0.3, t0 + 0.03);
     const bp = ctx.createBiquadFilter();
     bp.type = "bandpass";
     bp.frequency.value = 1100;
     bp.Q.value = 1.1;
-    tail.connect(bp).connect(env(ctx, t0 + 0.03, 0.5, 0.16)).connect(dest);
+    tail
+      .connect(bp)
+      .connect(env(ctx, t0 + 0.03, 0.5, 0.16))
+      .connect(dest);
   };
 }
 
@@ -152,7 +164,10 @@ function hat(decay: number, hpHz: number, level: number): Builder {
     const hp = ctx.createBiquadFilter();
     hp.type = "highpass";
     hp.frequency.value = hpHz;
-    noise.connect(hp).connect(env(ctx, t0, level, decay)).connect(dest);
+    noise
+      .connect(hp)
+      .connect(env(ctx, t0, level, decay))
+      .connect(dest);
   };
 }
 
@@ -196,7 +211,10 @@ function rim(): Builder {
     bp.type = "bandpass";
     bp.frequency.value = 3200;
     bp.Q.value = 2;
-    noise.connect(bp).connect(env(ctx, t0, 0.4, 0.02)).connect(dest);
+    noise
+      .connect(bp)
+      .connect(env(ctx, t0, 0.4, 0.02))
+      .connect(dest);
   };
 }
 
@@ -223,7 +241,10 @@ function ride(): Builder {
     const hp = ctx.createBiquadFilter();
     hp.type = "highpass";
     hp.frequency.value = 6200;
-    noise.connect(hp).connect(env(ctx, t0, 0.28, 0.6)).connect(dest);
+    noise
+      .connect(hp)
+      .connect(env(ctx, t0, 0.28, 0.6))
+      .connect(dest);
     const ping = ctx.createOscillator();
     ping.type = "square";
     ping.frequency.value = 3400;
@@ -231,7 +252,10 @@ function ride(): Builder {
     bp.type = "bandpass";
     bp.frequency.value = 3400;
     bp.Q.value = 9;
-    ping.connect(bp).connect(env(ctx, t0, 0.2, 0.14)).connect(dest);
+    ping
+      .connect(bp)
+      .connect(env(ctx, t0, 0.2, 0.14))
+      .connect(dest);
     ping.start(t0);
     ping.stop(t0 + 0.2);
   };
@@ -245,7 +269,10 @@ function tick(): Builder {
     bp.type = "bandpass";
     bp.frequency.value = 2100;
     bp.Q.value = 4;
-    noise.connect(bp).connect(env(ctx, t0, 0.6, 0.018)).connect(dest);
+    noise
+      .connect(bp)
+      .connect(env(ctx, t0, 0.6, 0.018))
+      .connect(dest);
   };
 }
 
@@ -263,7 +290,10 @@ function pluck(): Builder {
     const g2 = ctx.createGain();
     g2.gain.value = 0.35;
     osc.connect(env(ctx, t0, 0.85, 0.38)).connect(dest);
-    osc2.connect(g2).connect(env(ctx, t0, 0.5, 0.18)).connect(dest);
+    osc2
+      .connect(g2)
+      .connect(env(ctx, t0, 0.5, 0.18))
+      .connect(dest);
     osc.start(t0);
     osc.stop(t0 + 0.45);
     osc2.start(t0);
@@ -282,7 +312,10 @@ function stab(): Builder {
       const lp = ctx.createBiquadFilter();
       lp.type = "lowpass";
       lp.frequency.value = 2400;
-      osc.connect(lp).connect(env(ctx, t0, 0.3, 0.34)).connect(dest);
+      osc
+        .connect(lp)
+        .connect(env(ctx, t0, 0.3, 0.34))
+        .connect(dest);
       osc.start(t0);
       osc.stop(t0 + 0.42);
     });
@@ -345,7 +378,10 @@ function sub808(): Builder {
     const hp = ctx.createBiquadFilter();
     hp.type = "highpass";
     hp.frequency.value = 2000;
-    click.connect(hp).connect(env(ctx, t0, 0.18, 0.015)).connect(dest);
+    click
+      .connect(hp)
+      .connect(env(ctx, t0, 0.18, 0.015))
+      .connect(dest);
   };
 }
 
@@ -364,7 +400,10 @@ function snarePunch(): Builder {
     bp.type = "bandpass";
     bp.frequency.value = 1900;
     bp.Q.value = 1.1;
-    noise.connect(bp).connect(env(ctx, t0, 0.9, 0.22)).connect(dest);
+    noise
+      .connect(bp)
+      .connect(env(ctx, t0, 0.9, 0.22))
+      .connect(dest);
     // body thump
     const body = ctx.createOscillator();
     body.type = "sine";
@@ -390,7 +429,10 @@ function snareTrap(): Builder {
     const hp = ctx.createBiquadFilter();
     hp.type = "highpass";
     hp.frequency.value = 2600;
-    noise.connect(hp).connect(env(ctx, t0, 0.85, 0.14)).connect(dest);
+    noise
+      .connect(hp)
+      .connect(env(ctx, t0, 0.85, 0.14))
+      .connect(dest);
   };
 }
 
@@ -404,14 +446,20 @@ function clapSoft(): Builder {
       bp.type = "bandpass";
       bp.frequency.value = 1050;
       bp.Q.value = 1.4;
-      noise.connect(bp).connect(env(ctx, t, 0.4, 0.02)).connect(dest);
+      noise
+        .connect(bp)
+        .connect(env(ctx, t, 0.4, 0.02))
+        .connect(dest);
     }
     const tail = noiseSource(ctx, 45, 0.34, t0 + 0.04);
     const bp = ctx.createBiquadFilter();
     bp.type = "bandpass";
     bp.frequency.value = 1000;
     bp.Q.value = 1.0;
-    tail.connect(bp).connect(env(ctx, t0 + 0.04, 0.34, 0.22)).connect(dest);
+    tail
+      .connect(bp)
+      .connect(env(ctx, t0 + 0.04, 0.34, 0.22))
+      .connect(dest);
   };
 }
 
@@ -422,7 +470,10 @@ function rideBell(): Builder {
     const hp = ctx.createBiquadFilter();
     hp.type = "highpass";
     hp.frequency.value = 7000;
-    noises.connect(hp).connect(env(ctx, t0, 0.16, 1.1)).connect(dest);
+    noises
+      .connect(hp)
+      .connect(env(ctx, t0, 0.16, 1.1))
+      .connect(dest);
     const ping = ctx.createOscillator();
     ping.type = "square";
     ping.frequency.value = 4800;
@@ -430,7 +481,10 @@ function rideBell(): Builder {
     bp.type = "bandpass";
     bp.frequency.value = 4800;
     bp.Q.value = 12;
-    ping.connect(bp).connect(env(ctx, t0, 0.18, 0.55)).connect(dest);
+    ping
+      .connect(bp)
+      .connect(env(ctx, t0, 0.18, 0.55))
+      .connect(dest);
     ping.start(t0);
     ping.stop(t0 + 0.6);
   };
@@ -444,19 +498,28 @@ function crash(bandHz: number, decay: number, level: number): Builder {
     bp.type = "bandpass";
     bp.frequency.value = bandHz;
     bp.Q.value = 0.4;
-    noise.connect(bp).connect(env(ctx, t0, level, decay)).connect(dest);
+    noise
+      .connect(bp)
+      .connect(env(ctx, t0, level, decay))
+      .connect(dest);
     const shimmer = noiseSource(ctx, 92, 0.2, t0);
     const hp = ctx.createBiquadFilter();
     hp.type = "highpass";
     hp.frequency.value = 9000;
-    shimmer.connect(hp).connect(env(ctx, t0, level * 0.5, 0.12)).connect(dest);
+    shimmer
+      .connect(hp)
+      .connect(env(ctx, t0, level * 0.5, 0.12))
+      .connect(dest);
   };
 }
 
 function cowbell(): Builder {
   return (ctx, dest) => {
     const t0 = ctx.currentTime;
-    for (const [freq, level] of [[545, 0.5], [810, 0.35]] as [number, number][]) {
+    for (const [freq, level] of [
+      [545, 0.5],
+      [810, 0.35],
+    ] as [number, number][]) {
       const osc = ctx.createOscillator();
       osc.type = "square";
       osc.frequency.value = freq;
@@ -464,7 +527,10 @@ function cowbell(): Builder {
       bp.type = "bandpass";
       bp.frequency.value = freq;
       bp.Q.value = 2;
-      osc.connect(bp).connect(env(ctx, t0, level, 0.28)).connect(dest);
+      osc
+        .connect(bp)
+        .connect(env(ctx, t0, level, 0.28))
+        .connect(dest);
       osc.start(t0);
       osc.stop(t0 + 0.32);
     }
@@ -486,7 +552,10 @@ function conga(): Builder {
     bp.type = "bandpass";
     bp.frequency.value = 900;
     bp.Q.value = 1.5;
-    noise.connect(bp).connect(env(ctx, t0, 0.6, 0.06)).connect(dest);
+    noise
+      .connect(bp)
+      .connect(env(ctx, t0, 0.6, 0.06))
+      .connect(dest);
   };
 }
 
@@ -499,13 +568,22 @@ function tambourine(): Builder {
       const hp = ctx.createBiquadFilter();
       hp.type = "highpass";
       hp.frequency.value = 7000;
-      noise.connect(hp).connect(env(ctx, t, 0.4 - i * 0.05, 0.03)).connect(dest);
+      noise
+        .connect(hp)
+        .connect(env(ctx, t, 0.4 - i * 0.05, 0.03))
+        .connect(dest);
     }
   };
 }
 
 /** Bandpass-filtered noise whose center sweeps between two frequencies. */
-function sweepNoise(fromHz: number, toHz: number, duration: number, gainShape: "up" | "down" | "both", peak: number): Builder {
+function sweepNoise(
+  fromHz: number,
+  toHz: number,
+  duration: number,
+  gainShape: "up" | "down" | "both",
+  peak: number,
+): Builder {
   return (ctx, dest) => {
     const t0 = ctx.currentTime;
     const noise = noiseSource(ctx, 101, duration + 0.05, t0);
@@ -556,12 +634,18 @@ function fxImpact(): Builder {
     const lp = ctx.createBiquadFilter();
     lp.type = "lowpass";
     lp.frequency.value = 1800;
-    noise.connect(lp).connect(env(ctx, t0, 0.65, 0.4)).connect(dest);
+    noise
+      .connect(lp)
+      .connect(env(ctx, t0, 0.65, 0.4))
+      .connect(dest);
     const punch = noiseSource(ctx, 103, 0.05, t0);
     const hp = ctx.createBiquadFilter();
     hp.type = "highpass";
     hp.frequency.value = 3000;
-    punch.connect(hp).connect(env(ctx, t0, 0.8, 0.04)).connect(dest);
+    punch
+      .connect(hp)
+      .connect(env(ctx, t0, 0.8, 0.04))
+      .connect(dest);
   };
 }
 

@@ -23,16 +23,20 @@ class KwMeterProcessor extends AudioWorkletProcessor {
     this.s1 = s1;
     this.s2 = s2;
     // Biquad state per channel: [L, R]
-    this.x1 = [0, 0]; this.x2 = [0, 0];
-    this.y1 = [0, 0]; this.y2 = [0, 0];
-    this.u1 = [0, 0]; this.u2 = [0, 0];
-    this.w1 = [0, 0]; this.w2 = [0, 0];
+    this.x1 = [0, 0];
+    this.x2 = [0, 0];
+    this.y1 = [0, 0];
+    this.y2 = [0, 0];
+    this.u1 = [0, 0];
+    this.u2 = [0, 0];
+    this.w1 = [0, 0];
+    this.w2 = [0, 0];
 
     const sr = globalThis.sampleRate || 48000;
     this.subblockSamples = Math.max(1, Math.round(sr * 0.1)); // 100 ms hop
     this.subCount = 0;
     this.subAccum = [0, 0];
-    this.subPowers = [];   // channel-summed mean square per 100 ms subblock
+    this.subPowers = []; // channel-summed mean square per 100 ms subblock
     this.integratedStart = 0; // RESET INTEGRATED moves this forward
     this.lastPost = 0;
     this.loudness = { m: -180, s: -180, i: -180 };
@@ -79,17 +83,22 @@ class KwMeterProcessor extends AudioWorkletProcessor {
     for (let i = 0; i < inL.length; i++) {
       // K-weighting biquad chain per channel.
       for (let ch = 0; ch < 2; ch++) {
-        const x = ch === 0 ? (inL[i] || 0) : (inR ? inR[i] : (inL[i] || 0));
+        const x = ch === 0 ? inL[i] || 0 : inR ? inR[i] : inL[i] || 0;
         const shelf = s1[0] * x + s1[1] * this.x1[ch] + s1[2] * this.x2[ch] - s1[3] * this.y1[ch] - s1[4] * this.y2[ch];
-        this.x2[ch] = this.x1[ch]; this.x1[ch] = x;
-        this.y2[ch] = this.y1[ch]; this.y1[ch] = shelf;
+        this.x2[ch] = this.x1[ch];
+        this.x1[ch] = x;
+        this.y2[ch] = this.y1[ch];
+        this.y1[ch] = shelf;
         if (Math.abs(this.x1[ch]) < 1e-20) this.x1[ch] = 0;
         if (Math.abs(this.x2[ch]) < 1e-20) this.x2[ch] = 0;
         if (Math.abs(this.y1[ch]) < 1e-20) this.y1[ch] = 0;
         if (Math.abs(this.y2[ch]) < 1e-20) this.y2[ch] = 0;
-        const hp = s2[0] * shelf + s2[1] * this.u1[ch] + s2[2] * this.u2[ch] - s2[3] * this.w1[ch] - s2[4] * this.w2[ch];
-        this.u2[ch] = this.u1[ch]; this.u1[ch] = shelf;
-        this.w2[ch] = this.w1[ch]; this.w1[ch] = hp;
+        const hp =
+          s2[0] * shelf + s2[1] * this.u1[ch] + s2[2] * this.u2[ch] - s2[3] * this.w1[ch] - s2[4] * this.w2[ch];
+        this.u2[ch] = this.u1[ch];
+        this.u1[ch] = shelf;
+        this.w2[ch] = this.w1[ch];
+        this.w1[ch] = hp;
         if (Math.abs(this.u1[ch]) < 1e-20) this.u1[ch] = 0;
         if (Math.abs(this.u2[ch]) < 1e-20) this.u2[ch] = 0;
         if (Math.abs(this.w1[ch]) < 1e-20) this.w1[ch] = 0;
@@ -110,7 +119,8 @@ class KwMeterProcessor extends AudioWorkletProcessor {
         // Momentary: mean of the last 4 subblocks (400 ms).
         const n = this.subPowers.length;
         if (n >= 4) {
-          const mPower = (this.subPowers[n - 1] + this.subPowers[n - 2] + this.subPowers[n - 3] + this.subPowers[n - 4]) / 4;
+          const mPower =
+            (this.subPowers[n - 1] + this.subPowers[n - 2] + this.subPowers[n - 3] + this.subPowers[n - 4]) / 4;
           this.loudness.m = this.loudnessOf(mPower);
         }
         // Short-term: mean of the last 30 subblocks (3 s).

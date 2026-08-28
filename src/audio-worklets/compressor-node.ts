@@ -78,7 +78,9 @@ export function createCompressorNode(
       if (lastSidechainSource) {
         try {
           lastSidechainSource.disconnect(node);
-        } catch { /* not connected */ }
+        } catch {
+          /* not connected */
+        }
         lastSidechainSource = null;
       }
       if (source) {
@@ -94,7 +96,9 @@ export function createCompressorNode(
       if (lastSidechainSource) {
         try {
           lastSidechainSource.disconnect(node);
-        } catch { /* already gone */ }
+        } catch {
+          /* already gone */
+        }
         lastSidechainSource = null;
       }
       node.disconnect();

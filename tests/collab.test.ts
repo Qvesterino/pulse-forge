@@ -88,8 +88,16 @@ describe("YDocAdapter — round-trip conversion", () => {
     const yMap = yDoc.getMap("project");
     projectToYDoc(sliced, yMap);
     const restored = yDocToProject(yMap);
-    const restoredDrum = restored.tracks.find((track): track is DrumTrack => track.id === drum.id && track.kind === "drum")!;
-    expect(restoredDrum.pads[0]).toMatchObject({ sliceStart: 0.1, sliceEnd: 0.4, sliceFadeIn: 0.02, sliceFadeOut: 0.03, sliceReverse: true });
+    const restoredDrum = restored.tracks.find(
+      (track): track is DrumTrack => track.id === drum.id && track.kind === "drum",
+    )!;
+    expect(restoredDrum.pads[0]).toMatchObject({
+      sliceStart: 0.1,
+      sliceEnd: 0.4,
+      sliceFadeIn: 0.02,
+      sliceFadeOut: 0.03,
+      sliceReverse: true,
+    });
   });
 
   it("syncs slice field edits and clears optional fields in YDoc", () => {
@@ -97,11 +105,22 @@ describe("YDocAdapter — round-trip conversion", () => {
     const store = YDocStore.fromDocument(doc);
     const drum = doc.tracks.find((track): track is DrumTrack => track.kind === "drum")!;
     const pad = drum.pads[0];
-    store.execute(setPadParams(store.doc, pad.id, { sliceStart: 0.2, sliceEnd: 0.5, sliceFadeOut: 0.01, sliceReverse: true }));
-    const changedDrum = store.doc.tracks.find((track): track is DrumTrack => track.id === drum.id && track.kind === "drum")!;
-    expect(changedDrum.pads[0]).toMatchObject({ sliceStart: 0.2, sliceEnd: 0.5, sliceFadeOut: 0.01, sliceReverse: true });
+    store.execute(
+      setPadParams(store.doc, pad.id, { sliceStart: 0.2, sliceEnd: 0.5, sliceFadeOut: 0.01, sliceReverse: true }),
+    );
+    const changedDrum = store.doc.tracks.find(
+      (track): track is DrumTrack => track.id === drum.id && track.kind === "drum",
+    )!;
+    expect(changedDrum.pads[0]).toMatchObject({
+      sliceStart: 0.2,
+      sliceEnd: 0.5,
+      sliceFadeOut: 0.01,
+      sliceReverse: true,
+    });
     store.execute(setPadParams(store.doc, pad.id, { assetId: "factory.kick.punch" }));
-    const clearedDrum = store.doc.tracks.find((track): track is DrumTrack => track.id === drum.id && track.kind === "drum")!;
+    const clearedDrum = store.doc.tracks.find(
+      (track): track is DrumTrack => track.id === drum.id && track.kind === "drum",
+    )!;
     const cleared = clearedDrum.pads[0];
     expect(cleared.sliceStart).toBeUndefined();
     expect(cleared.sliceEnd).toBeUndefined();
@@ -184,7 +203,12 @@ describe("YDocStore", () => {
   it("undo restores previous state", () => {
     const doc = createProjectFromTemplate("house");
     const store = YDocStore.fromDocument(doc);
-    const cmd = { type: "test", label: "test", execute: (d: any) => ({ ...d, name: "changed" }), undo: (d: any) => ({ ...d, name: doc.name }) };
+    const cmd = {
+      type: "test",
+      label: "test",
+      execute: (d: any) => ({ ...d, name: "changed" }),
+      undo: (d: any) => ({ ...d, name: doc.name }),
+    };
     store.execute(cmd);
     expect(store.doc.name).toBe("changed");
     store.undo();
@@ -194,7 +218,12 @@ describe("YDocStore", () => {
   it("redo re-applies after undo", () => {
     const doc = createProjectFromTemplate("house");
     const store = YDocStore.fromDocument(doc);
-    const cmd = { type: "test", label: "test", execute: (d: any) => ({ ...d, name: "changed" }), undo: (d: any) => ({ ...d, name: doc.name }) };
+    const cmd = {
+      type: "test",
+      label: "test",
+      execute: (d: any) => ({ ...d, name: "changed" }),
+      undo: (d: any) => ({ ...d, name: doc.name }),
+    };
     store.execute(cmd);
     store.undo();
     store.redo();

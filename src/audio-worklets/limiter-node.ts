@@ -10,10 +10,7 @@ import type { EffectRuntime } from "../effects/types";
  * with a limiter stay sample-aligned with dry tracks. Changing LOOKAHEAD at
  * runtime updates both the node and the reported latency on the next sync.
  */
-export function createLimiterNode(
-  ctx: BaseAudioContext,
-  instance: { params: Record<string, number> },
-): EffectRuntime {
+export function createLimiterNode(ctx: BaseAudioContext, instance: { params: Record<string, number> }): EffectRuntime {
   const node = new AudioWorkletNode(ctx, "limiter-processor", {
     numberOfInputs: 1,
     numberOfOutputs: 1,

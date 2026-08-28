@@ -35,7 +35,15 @@ export interface SelectedNotes {
 export type SelectedNote = SelectedNotes;
 
 type DragState =
-  | { mode: "move"; noteId: string; grabStep: number; basePitch: number; baseStart: number; dSteps: number; dPitch: number }
+  | {
+      mode: "move";
+      noteId: string;
+      grabStep: number;
+      basePitch: number;
+      baseStart: number;
+      dSteps: number;
+      dPitch: number;
+    }
   | { mode: "resize"; noteId: string; baseStart: number; baseDurSteps: number; durSteps: number };
 
 export function PianoRollTrack({
@@ -61,7 +69,11 @@ export function PianoRollTrack({
   const [drag, setDrag] = useState<DragState | null>(null);
   const notes = pattern.notes?.[track.id] ?? [];
   const patternTicks = STEP_TICKS * pattern.stepCount;
-  const [velDrag, setVelDrag] = useState<{ anchorId: string; startY: number; startVels: Record<string, number> } | null>(null);
+  const [velDrag, setVelDrag] = useState<{
+    anchorId: string;
+    startY: number;
+    startVels: Record<string, number>;
+  } | null>(null);
   const [noteClipboard, setNoteClipboard] = useState<NoteEvent[] | null>(null);
 
   // Scale awareness
@@ -175,7 +187,12 @@ export function PianoRollTrack({
     }
   };
 
-  const [marquee, setMarquee] = useState<{ startStep: number; startPitch: number; endStep: number; endPitch: number } | null>(null);
+  const [marquee, setMarquee] = useState<{
+    startStep: number;
+    startPitch: number;
+    endStep: number;
+    endPitch: number;
+  } | null>(null);
   const marqueeRef = useRef<{ startStep: number; startPitch: number } | null>(null);
 
   const onGridPointerDown = (event: React.PointerEvent) => {
@@ -214,7 +231,9 @@ export function PianoRollTrack({
     const maxPitch = Math.max(startPitch, endPitch);
     const minTick = minStep * STEP_TICKS;
     const maxTick = maxStep * STEP_TICKS;
-    const selected = notes.filter((n) => n.start >= minTick && n.start < maxTick && n.pitch >= minPitch && n.pitch <= maxPitch);
+    const selected = notes.filter(
+      (n) => n.start >= minTick && n.start < maxTick && n.pitch >= minPitch && n.pitch <= maxPitch,
+    );
     if (selected.length > 0) onSelectNote({ trackId: track.id, noteIds: selected.map((n) => n.id) });
     else onSelectNote(null);
     marqueeRef.current = null;
@@ -285,11 +304,15 @@ export function PianoRollTrack({
       label: `Paste ${newNotes.length} notes`,
       execute: (d: any) => ({
         ...d,
-        patterns: d.patterns.map((p: any) => (p.id === pattern.id ? { ...p, notes: { ...(p.notes ?? {}), [track.id]: next } } : p)),
+        patterns: d.patterns.map((p: any) =>
+          p.id === pattern.id ? { ...p, notes: { ...(p.notes ?? {}), [track.id]: next } } : p,
+        ),
       }),
       undo: (d: any) => ({
         ...d,
-        patterns: d.patterns.map((p: any) => (p.id === pattern.id ? { ...p, notes: { ...(p.notes ?? {}), [track.id]: prev } } : p)),
+        patterns: d.patterns.map((p: any) =>
+          p.id === pattern.id ? { ...p, notes: { ...(p.notes ?? {}), [track.id]: prev } } : p,
+        ),
       }),
     } as any);
     onSelectNote({ trackId: track.id, noteIds: newIds });
@@ -316,7 +339,12 @@ export function PianoRollTrack({
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
-      const typing = target && (target.tagName === "INPUT" || target.tagName === "SELECT" || target.tagName === "TEXTAREA" || target.isContentEditable);
+      const typing =
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "SELECT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable);
       if (typing) return;
       if (!hasSelection) return;
       if (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "ArrowUp" || e.key === "ArrowDown") {
@@ -341,16 +369,38 @@ export function PianoRollTrack({
       <div className="pianoroll-toolbar" role="toolbar" aria-label="Piano roll tools">
         <span className="pr-toolbar-count">{selLabel}</span>
         <div className="pr-toolbar-group">
-          <button type="button" className="btn btn-small" title="Quantize to 1/16" onClick={() => runOnSelection((ids) => services.store.execute(quantizeNotes(doc, track.id, ids)))}>
+          <button
+            type="button"
+            className="btn btn-small"
+            title="Quantize to 1/16"
+            onClick={() => runOnSelection((ids) => services.store.execute(quantizeNotes(doc, track.id, ids)))}
+          >
             QUANT
           </button>
-          <button type="button" className="btn btn-small" title="Duplicate" onClick={() => runOnSelection((ids) => services.store.execute(duplicateNotes(doc, track.id, ids)))}>
+          <button
+            type="button"
+            className="btn btn-small"
+            title="Duplicate"
+            onClick={() => runOnSelection((ids) => services.store.execute(duplicateNotes(doc, track.id, ids)))}
+          >
             DUP
           </button>
-          <button type="button" className="btn btn-small" title="Split notes in half" disabled={!hasSelection} onClick={() => runOnSelection((ids) => services.store.execute(splitNotes(doc, track.id, ids)))}>
+          <button
+            type="button"
+            className="btn btn-small"
+            title="Split notes in half"
+            disabled={!hasSelection}
+            onClick={() => runOnSelection((ids) => services.store.execute(splitNotes(doc, track.id, ids)))}
+          >
             SPLIT
           </button>
-          <button type="button" className="btn btn-small" title="Glue notes of same pitch" disabled={!hasSelection || (selectedNote?.noteIds.length ?? 0) < 2} onClick={() => runOnSelection((ids) => services.store.execute(glueNotes(doc, track.id, ids)))}>
+          <button
+            type="button"
+            className="btn btn-small"
+            title="Glue notes of same pitch"
+            disabled={!hasSelection || (selectedNote?.noteIds.length ?? 0) < 2}
+            onClick={() => runOnSelection((ids) => services.store.execute(glueNotes(doc, track.id, ids)))}
+          >
             GLUE
           </button>
           <button
@@ -373,7 +423,17 @@ export function PianoRollTrack({
             type="button"
             className="btn btn-small"
             title="Reverse"
-            onClick={() => runOnSelection((ids) => services.store.execute(applyMidiCreativeTool(doc, { trackId: track.id, noteIds: ids, operation: { kind: "reverse", scaleLock: scaleSnap, key: doc.key } })))}
+            onClick={() =>
+              runOnSelection((ids) =>
+                services.store.execute(
+                  applyMidiCreativeTool(doc, {
+                    trackId: track.id,
+                    noteIds: ids,
+                    operation: { kind: "reverse", scaleLock: scaleSnap, key: doc.key },
+                  }),
+                ),
+              )
+            }
           >
             REV
           </button>
@@ -387,7 +447,12 @@ export function PianoRollTrack({
                   applyMidiCreativeTool(doc, {
                     trackId: track.id,
                     noteIds: ids,
-                    operation: { kind: "humanize", options: { timingTicks: 12, velocityAmount: 0.1, seed: `hum-${Date.now()}` }, scaleLock: scaleSnap, key: doc.key },
+                    operation: {
+                      kind: "humanize",
+                      options: { timingTicks: 12, velocityAmount: 0.1, seed: `hum-${Date.now()}` },
+                      scaleLock: scaleSnap,
+                      key: doc.key,
+                    },
                   }),
                 ),
               )
@@ -405,7 +470,12 @@ export function PianoRollTrack({
                   applyMidiCreativeTool(doc, {
                     trackId: track.id,
                     noteIds: ids,
-                    operation: { kind: "strum", options: { spreadTicks: 20, direction: "up" }, scaleLock: scaleSnap, key: doc.key },
+                    operation: {
+                      kind: "strum",
+                      options: { spreadTicks: 20, direction: "up" },
+                      scaleLock: scaleSnap,
+                      key: doc.key,
+                    },
                   }),
                 ),
               )
@@ -420,7 +490,10 @@ export function PianoRollTrack({
             disabled={!hasSelection}
             onClick={() => {
               if (!hasSelection) return;
-              const vel = Math.max(0.05, (notes.find((n) => selectedNote!.noteIds.includes(n.id))?.velocity ?? 0.8) - 0.1);
+              const vel = Math.max(
+                0.05,
+                (notes.find((n) => selectedNote!.noteIds.includes(n.id))?.velocity ?? 0.8) - 0.1,
+              );
               services.store.execute(setNotesVelocity(doc, track.id, selectedNote!.noteIds, vel));
             }}
           >
@@ -441,16 +514,48 @@ export function PianoRollTrack({
           </button>
         </div>
         <div className="pr-toolbar-group">
-          <button type="button" className="btn btn-small" title="Nudge left 1/16" disabled={!hasSelection} onClick={() => hasSelection && services.store.execute(nudgeNotes(doc, track.id, selectedNote!.noteIds, -STEP_TICKS, 0))}>
+          <button
+            type="button"
+            className="btn btn-small"
+            title="Nudge left 1/16"
+            disabled={!hasSelection}
+            onClick={() =>
+              hasSelection && services.store.execute(nudgeNotes(doc, track.id, selectedNote!.noteIds, -STEP_TICKS, 0))
+            }
+          >
             ◀
           </button>
-          <button type="button" className="btn btn-small" title="Nudge right 1/16" disabled={!hasSelection} onClick={() => hasSelection && services.store.execute(nudgeNotes(doc, track.id, selectedNote!.noteIds, STEP_TICKS, 0))}>
+          <button
+            type="button"
+            className="btn btn-small"
+            title="Nudge right 1/16"
+            disabled={!hasSelection}
+            onClick={() =>
+              hasSelection && services.store.execute(nudgeNotes(doc, track.id, selectedNote!.noteIds, STEP_TICKS, 0))
+            }
+          >
             ▶
           </button>
-          <button type="button" className="btn btn-small" title="Nudge up 1 semitone" disabled={!hasSelection} onClick={() => hasSelection && services.store.execute(nudgeNotes(doc, track.id, selectedNote!.noteIds, 0, 1))}>
+          <button
+            type="button"
+            className="btn btn-small"
+            title="Nudge up 1 semitone"
+            disabled={!hasSelection}
+            onClick={() =>
+              hasSelection && services.store.execute(nudgeNotes(doc, track.id, selectedNote!.noteIds, 0, 1))
+            }
+          >
             ▲
           </button>
-          <button type="button" className="btn btn-small" title="Nudge down 1 semitone" disabled={!hasSelection} onClick={() => hasSelection && services.store.execute(nudgeNotes(doc, track.id, selectedNote!.noteIds, 0, -1))}>
+          <button
+            type="button"
+            className="btn btn-small"
+            title="Nudge down 1 semitone"
+            disabled={!hasSelection}
+            onClick={() =>
+              hasSelection && services.store.execute(nudgeNotes(doc, track.id, selectedNote!.noteIds, 0, -1))
+            }
+          >
             ▼
           </button>
           <button
@@ -463,7 +568,18 @@ export function PianoRollTrack({
                   applyMidiCreativeTool(doc, {
                     trackId: track.id,
                     noteIds: ids,
-                    operation: { kind: "arpeggiate", options: { mode: "up", rateTicks: STEP_TICKS, octaveRange: 1, gate: 0.9, seed: `arp-${Date.now()}` }, scaleLock: scaleSnap, key: doc.key },
+                    operation: {
+                      kind: "arpeggiate",
+                      options: {
+                        mode: "up",
+                        rateTicks: STEP_TICKS,
+                        octaveRange: 1,
+                        gate: 0.9,
+                        seed: `arp-${Date.now()}`,
+                      },
+                      scaleLock: scaleSnap,
+                      key: doc.key,
+                    },
                   }),
                 ),
               )
@@ -481,7 +597,12 @@ export function PianoRollTrack({
                   applyMidiCreativeTool(doc, {
                     trackId: track.id,
                     noteIds: ids,
-                    operation: { kind: "note-repeat", options: { rateTicks: STEP_TICKS / 2, count: 4, velocityFalloff: 0.15 }, scaleLock: scaleSnap, key: doc.key },
+                    operation: {
+                      kind: "note-repeat",
+                      options: { rateTicks: STEP_TICKS / 2, count: 4, velocityFalloff: 0.15 },
+                      scaleLock: scaleSnap,
+                      key: doc.key,
+                    },
                   }),
                 ),
               )
@@ -491,125 +612,139 @@ export function PianoRollTrack({
           </button>
         </div>
         <div className="pr-toolbar-group">
-          <button type="button" className="btn btn-small" title="Copy selected notes" disabled={!hasSelection} onClick={copySelectedNotes}>
+          <button
+            type="button"
+            className="btn btn-small"
+            title="Copy selected notes"
+            disabled={!hasSelection}
+            onClick={copySelectedNotes}
+          >
             COPY
           </button>
-          <button type="button" className="btn btn-small" title="Paste copied notes" disabled={!noteClipboard || noteClipboard.length === 0} onClick={pasteNotesClipboard}>
+          <button
+            type="button"
+            className="btn btn-small"
+            title="Paste copied notes"
+            disabled={!noteClipboard || noteClipboard.length === 0}
+            onClick={pasteNotesClipboard}
+          >
             PASTE
           </button>
         </div>
       </div>
       <div className="pianoroll">
-      <div className="pianoroll-keys">
-        {Array.from({ length: PITCH_COUNT }, (_, i) => {
-          const pitch = PITCH_MAX - i;
-          const inScale = isScaleActive && scalePitches!.has(pitch);
-          const isRoot = inScale && projectKey && scaleDegreeLabel(pitch, projectKey) === "1";
-          return (
-            <button
-              key={pitch}
-              type="button"
-              className={`pr-key${BLACK_KEYS.has(pitch % 12) ? " black" : ""}${pitch % 12 === 0 ? " c-key" : ""}${isScaleActive && !inScale ? " out-scale" : ""}${isRoot ? " root" : ""}`}
-              style={{ height: ROW_HEIGHT }}
-              title={`Preview ${pitchName(pitch)}${inScale ? " (in scale)" : ""}`}
-              onPointerDown={() => previewKey(pitch)}
-            >
-              {pitch % 12 === 0 ? pitchName(pitch) : ""}
-              {isScaleActive && inScale && <span className="pr-scale-deg">{scaleDegreeLabel(pitch, projectKey!)}</span>}
-            </button>
-          );
-        })}
-      </div>
-      <div
-        className="pianoroll-scroll"
-        ref={scrollRef}
-        onPointerDown={(event) => {
-          if (event.target === event.currentTarget) onSelectNote(null);
-        }}
-      >
+        <div className="pianoroll-keys">
+          {Array.from({ length: PITCH_COUNT }, (_, i) => {
+            const pitch = PITCH_MAX - i;
+            const inScale = isScaleActive && scalePitches!.has(pitch);
+            const isRoot = inScale && projectKey && scaleDegreeLabel(pitch, projectKey) === "1";
+            return (
+              <button
+                key={pitch}
+                type="button"
+                className={`pr-key${BLACK_KEYS.has(pitch % 12) ? " black" : ""}${pitch % 12 === 0 ? " c-key" : ""}${isScaleActive && !inScale ? " out-scale" : ""}${isRoot ? " root" : ""}`}
+                style={{ height: ROW_HEIGHT }}
+                title={`Preview ${pitchName(pitch)}${inScale ? " (in scale)" : ""}`}
+                onPointerDown={() => previewKey(pitch)}
+              >
+                {pitch % 12 === 0 ? pitchName(pitch) : ""}
+                {isScaleActive && inScale && (
+                  <span className="pr-scale-deg">{scaleDegreeLabel(pitch, projectKey!)}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
         <div
-          className="pianoroll-grid"
-          ref={gridRef}
-          style={{ height: PITCH_COUNT * ROW_HEIGHT }}
-          onPointerDown={onGridPointerDown}
-          onPointerMove={onGridPointerMove}
-          onPointerUp={onGridPointerUp}
+          className="pianoroll-scroll"
+          ref={scrollRef}
+          onPointerDown={(event) => {
+            if (event.target === event.currentTarget) onSelectNote(null);
+          }}
         >
-          {/* Scale row highlights (background tint on in-scale rows) */}
-          {isScaleActive &&
-            Array.from({ length: PITCH_COUNT }, (_, i) => {
-              const pitch = PITCH_MAX - i;
-              const inScale = scalePitches!.has(pitch);
-              if (!inScale) return null;
-              const isRoot = scaleDegreeLabel(pitch, projectKey!) === "1";
+          <div
+            className="pianoroll-grid"
+            ref={gridRef}
+            style={{ height: PITCH_COUNT * ROW_HEIGHT }}
+            onPointerDown={onGridPointerDown}
+            onPointerMove={onGridPointerMove}
+            onPointerUp={onGridPointerUp}
+          >
+            {/* Scale row highlights (background tint on in-scale rows) */}
+            {isScaleActive &&
+              Array.from({ length: PITCH_COUNT }, (_, i) => {
+                const pitch = PITCH_MAX - i;
+                const inScale = scalePitches!.has(pitch);
+                if (!inScale) return null;
+                const isRoot = scaleDegreeLabel(pitch, projectKey!) === "1";
+                return (
+                  <div
+                    key={`scale-${pitch}`}
+                    className={`pr-scale-row${isRoot ? " root" : ""}`}
+                    style={{ top: i * ROW_HEIGHT, height: ROW_HEIGHT }}
+                  />
+                );
+              })}
+            {Array.from({ length: pattern.stepCount }, (_, i) =>
+              i % 4 === 0 ? <div key={i} className="pr-beatline" style={{ left: `${stepPct(i)}%` }} /> : null,
+            )}
+            {playheadStep >= 0 && playheadStep < pattern.stepCount && (
+              <div
+                className="pr-playhead"
+                style={{ left: `${stepPct(playheadStep)}%`, width: `${100 / pattern.stepCount}%` }}
+              />
+            )}
+            {notes.map((note) => {
+              let startSteps = note.start / STEP_TICKS;
+              let durSteps = note.duration / STEP_TICKS;
+              if (drag && drag.noteId === note.id) {
+                if (drag.mode === "move") {
+                  startSteps = clamp(startSteps + drag.dSteps, 0, pattern.stepCount - durSteps);
+                } else {
+                  durSteps = Math.max(1, drag.durSteps);
+                }
+              }
+              const selected = selectedNote?.trackId === track.id && selectedNote.noteIds.includes(note.id);
+              const top =
+                (PITCH_MAX - note.pitch - (drag && drag.noteId === note.id && drag.mode === "move" ? drag.dPitch : 0)) *
+                ROW_HEIGHT;
               return (
                 <div
-                  key={`scale-${pitch}`}
-                  className={`pr-scale-row${isRoot ? " root" : ""}`}
-                  style={{ top: i * ROW_HEIGHT, height: ROW_HEIGHT }}
+                  key={note.id}
+                  className={`pr-note${selected ? " selected" : ""}${isScaleActive && !isInScale(note.pitch, projectKey!) ? " out-of-scale" : ""}`}
+                  style={{
+                    left: `${(startSteps / pattern.stepCount) * 100}%`,
+                    width: `${(durSteps / pattern.stepCount) * 100}%`,
+                    top: `${clamp(top, 0, (PITCH_COUNT - 1) * ROW_HEIGHT)}px`,
+                    opacity: 0.35 + note.velocity * 0.65,
+                  }}
+                  title={`${pitchName(note.pitch)} — drag to move, drag right edge to resize, right-click to delete`}
+                  onPointerDown={(event) => beginNoteDrag(event, note)}
+                  onPointerMove={onNotePointerMove}
+                  onPointerUp={onNotePointerUp}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    services.store.execute(deleteNote(services.store.doc, track.id, note.id));
+                    if (selectedNote?.trackId === track.id && selectedNote.noteIds.includes(note.id))
+                      onSelectNote(null);
+                  }}
                 />
               );
             })}
-          {Array.from({ length: pattern.stepCount }, (_, i) =>
-            i % 4 === 0 ? (
-              <div key={i} className="pr-beatline" style={{ left: `${stepPct(i)}%` }} />
-            ) : null,
-          )}
-          {playheadStep >= 0 && playheadStep < pattern.stepCount && (
-            <div className="pr-playhead" style={{ left: `${stepPct(playheadStep)}%`, width: `${100 / pattern.stepCount}%` }} />
-          )}
-          {notes.map((note) => {
-            let startSteps = note.start / STEP_TICKS;
-            let durSteps = note.duration / STEP_TICKS;
-            if (drag && drag.noteId === note.id) {
-              if (drag.mode === "move") {
-                startSteps = clamp(
-                  startSteps + drag.dSteps,
-                  0,
-                  pattern.stepCount - durSteps,
-                );
-              } else {
-                durSteps = Math.max(1, drag.durSteps);
-              }
-            }
-            const selected = selectedNote?.trackId === track.id && selectedNote.noteIds.includes(note.id);
-            const top = (PITCH_MAX - note.pitch - (drag && drag.noteId === note.id && drag.mode === "move" ? drag.dPitch : 0)) * ROW_HEIGHT;
-            return (
+            {marquee && (
               <div
-                key={note.id}
-                className={`pr-note${selected ? " selected" : ""}${isScaleActive && !isInScale(note.pitch, projectKey!) ? " out-of-scale" : ""}`}
+                className="pr-marquee"
                 style={{
-                  left: `${(startSteps / pattern.stepCount) * 100}%`,
-                  width: `${(durSteps / pattern.stepCount) * 100}%`,
-                  top: `${clamp(top, 0, (PITCH_COUNT - 1) * ROW_HEIGHT)}px`,
-                  opacity: 0.35 + note.velocity * 0.65,
-                }}
-                title={`${pitchName(note.pitch)} — drag to move, drag right edge to resize, right-click to delete`}
-                onPointerDown={(event) => beginNoteDrag(event, note)}
-                onPointerMove={onNotePointerMove}
-                onPointerUp={onNotePointerUp}
-                onContextMenu={(event) => {
-                  event.preventDefault();
-                  services.store.execute(deleteNote(services.store.doc, track.id, note.id));
-                  if (selectedNote?.trackId === track.id && selectedNote.noteIds.includes(note.id)) onSelectNote(null);
+                  left: `${(Math.min(marquee.startStep, marquee.endStep) / pattern.stepCount) * 100}%`,
+                  width: `${(Math.abs(marquee.endStep - marquee.startStep) / pattern.stepCount) * 100}%`,
+                  top: `${(PITCH_MAX - Math.max(marquee.startPitch, marquee.endPitch)) * ROW_HEIGHT}px`,
+                  height: `${Math.abs(marquee.endPitch - marquee.startPitch) * ROW_HEIGHT + ROW_HEIGHT}px`,
                 }}
               />
-            );
-          })}
-          {marquee && (
-            <div
-              className="pr-marquee"
-              style={{
-                left: `${(Math.min(marquee.startStep, marquee.endStep) / pattern.stepCount) * 100}%`,
-                width: `${(Math.abs(marquee.endStep - marquee.startStep) / pattern.stepCount) * 100}%`,
-                top: `${(PITCH_MAX - Math.max(marquee.startPitch, marquee.endPitch)) * ROW_HEIGHT}px`,
-                height: `${Math.abs(marquee.endPitch - marquee.startPitch) * ROW_HEIGHT + ROW_HEIGHT}px`,
-              }}
-            />
-          )}
+            )}
+          </div>
         </div>
       </div>
-    </div>
       <div className="pr-velocity-lane" aria-label="Velocity lane">
         <div className="pr-velocity-bg" />
         {notes.map((note) => {

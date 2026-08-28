@@ -32,15 +32,10 @@ export function UndoHistoryPanel({ open }: { open: boolean }) {
         <span className="undo-history-title">HISTORY</span>
         <span className="undo-history-count">{history.length} steps</span>
       </div>
-      {reversed.length === 0 && (
-        <div className="undo-history-empty">No history yet</div>
-      )}
+      {reversed.length === 0 && <div className="undo-history-empty">No history yet</div>}
       <div className="undo-history-list">
         {reversed.map((entry, idx) => (
-          <div
-            key={`${entry.type}-${idx}`}
-            className={`undo-history-entry${idx === 0 ? " current" : ""}`}
-          >
+          <div key={`${entry.type}-${idx}`} className={`undo-history-entry${idx === 0 ? " current" : ""}`}>
             <span className="undo-history-dot" />
             <span className="undo-history-label">{entry.label}</span>
             <span className="undo-history-time">{formatTime(entry.timestamp)}</span>

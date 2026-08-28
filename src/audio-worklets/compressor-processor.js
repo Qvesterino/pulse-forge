@@ -22,11 +22,15 @@ class CompressorProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
     this.gain = 1;
-    this.rms = 0;       // smoothed squared level (RMS mode)
-    this.postL1 = 0; this.postR1 = 0;  // one-pole HP stage 1 state (outputs)
-    this.postL2 = 0; this.postR2 = 0;  // stage 2 state
-    this.prevInL = 0; this.prevInR = 0; // stage 1 previous input
-    this.prevL1 = 0; this.prevR1 = 0;  // stage 1 previous output (stage 2 input)
+    this.rms = 0; // smoothed squared level (RMS mode)
+    this.postL1 = 0;
+    this.postR1 = 0; // one-pole HP stage 1 state (outputs)
+    this.postL2 = 0;
+    this.postR2 = 0; // stage 2 state
+    this.prevInL = 0;
+    this.prevInR = 0; // stage 1 previous input
+    this.prevL1 = 0;
+    this.prevR1 = 0; // stage 1 previous output (stage 2 input)
     this.grAccumulator = 0;
     this.grWindowStart = typeof globalThis.currentTime === "number" ? globalThis.currentTime : 0;
     this.postedGr = -1;
@@ -39,9 +43,9 @@ class CompressorProcessor extends AudioWorkletProcessor {
       { name: "attack", defaultValue: 0.01, minValue: 0.001, maxValue: 0.5, automationRate: "k-rate" },
       { name: "release", defaultValue: 0.2, minValue: 0.02, maxValue: 1, automationRate: "k-rate" },
       { name: "knee", defaultValue: 6, minValue: 0, maxValue: 40, automationRate: "k-rate" },
-      { name: "makeup", defaultValue: 1, minValue: 0, maxValue: 16, automationRate: "k-rate" },   // linear (wrapper converts dB)
+      { name: "makeup", defaultValue: 1, minValue: 0, maxValue: 16, automationRate: "k-rate" }, // linear (wrapper converts dB)
       { name: "mix", defaultValue: 1, minValue: 0, maxValue: 1, automationRate: "k-rate" },
-      { name: "detector", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" },  // 0 = RMS, 1 = PEAK
+      { name: "detector", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" }, // 0 = RMS, 1 = PEAK
       { name: "scHpf", defaultValue: 20, minValue: 20, maxValue: 500, automationRate: "k-rate" }, // Hz
     ];
   }
@@ -93,10 +97,14 @@ class CompressorProcessor extends AudioWorkletProcessor {
           const y1r = hpA * (this.postR1 + sr2 - this.prevInR);
           const y2l = hpA * (this.postL2 + y1l - this.prevL1);
           const y2r = hpA * (this.postR2 + y1r - this.prevR1);
-          this.prevInL = sl; this.prevInR = sr2;
-          this.prevL1 = y1l; this.prevR1 = y1r;
-          this.postL1 = y1l; this.postR1 = y1r;
-          this.postL2 = y2l; this.postR2 = y2r;
+          this.prevInL = sl;
+          this.prevInR = sr2;
+          this.prevL1 = y1l;
+          this.prevR1 = y1r;
+          this.postL1 = y1l;
+          this.postR1 = y1r;
+          this.postL2 = y2l;
+          this.postR2 = y2r;
           if (Math.abs(this.postL1) < 1e-20) this.postL1 = 0;
           if (Math.abs(this.postR1) < 1e-20) this.postR1 = 0;
           if (Math.abs(this.postL2) < 1e-20) this.postL2 = 0;
@@ -105,14 +113,17 @@ class CompressorProcessor extends AudioWorkletProcessor {
           if (Math.abs(this.prevR1) < 1e-20) this.prevR1 = 0;
           if (Math.abs(this.prevInL) < 1e-20) this.prevInL = 0;
           if (Math.abs(this.prevInR) < 1e-20) this.prevInR = 0;
-          dL = y2l; dR = y2r;
+          dL = y2l;
+          dR = y2r;
           if (Math.abs(dL) < 1e-20) dL = 0;
           if (Math.abs(dR) < 1e-20) dR = 0;
         } else {
-          dL = sl; dR = sr2;
+          dL = sl;
+          dR = sr2;
         }
       } else {
-        dL = l; dR = r;
+        dL = l;
+        dR = r;
       }
 
       const absL = dL < 0 ? -dL : dL;
@@ -146,9 +157,10 @@ class CompressorProcessor extends AudioWorkletProcessor {
       }
 
       // ---- gain smoothing: attack dives, release recovers ----
-      this.gain = target < this.gain
-        ? this.gain + (target - this.gain) * attackBlend
-        : this.gain + (target - this.gain) * releaseBlend;
+      this.gain =
+        target < this.gain
+          ? this.gain + (target - this.gain) * attackBlend
+          : this.gain + (target - this.gain) * releaseBlend;
       if (Math.abs(this.gain) < 1e-20) this.gain = 0;
       else if (this.gain < 1e-10) this.gain = 0;
 
@@ -165,7 +177,8 @@ class CompressorProcessor extends AudioWorkletProcessor {
     // ---- metering ----
     const now = typeof globalThis.currentTime === "number" ? globalThis.currentTime : this.grWindowStart + len / sr;
     if (now - this.grWindowStart >= 0.05) {
-      const grDb = this.grAccumulator > 1e-4 ? Math.min(24, -20 * Math.log10(Math.max(1e-4, 1 - this.grAccumulator))) : 0;
+      const grDb =
+        this.grAccumulator > 1e-4 ? Math.min(24, -20 * Math.log10(Math.max(1e-4, 1 - this.grAccumulator))) : 0;
       this.grAccumulator = 0;
       this.grWindowStart = now;
       if (grDb !== this.postedGr) {

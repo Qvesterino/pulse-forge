@@ -146,9 +146,7 @@ describe("renderTrack filtering", () => {
     const drumTrack = doc.tracks.find((t) => t.kind === "drum")!;
     const withGroup = {
       ...doc,
-      tracks: [...doc.tracks, group].map((t) =>
-        t.id === drumTrack.id ? { ...t, groupId: group.id } : t,
-      ),
+      tracks: [...doc.tracks, group].map((t) => (t.id === drumTrack.id ? { ...t, groupId: group.id } : t)),
     };
     // Verify the filtered doc would contain both the drum track and the group
     const trackIds = new Set([drumTrack.id, group.id]);
@@ -165,9 +163,7 @@ describe("renderTrack filtering", () => {
     const instTrack = doc.tracks.find((t) => t.kind === "instrument")!;
     const withGroup = {
       ...doc,
-      tracks: [...doc.tracks, group].map((t) =>
-        t.id === drumTrack.id ? { ...t, groupId: group.id } : t,
-      ),
+      tracks: [...doc.tracks, group].map((t) => (t.id === drumTrack.id ? { ...t, groupId: group.id } : t)),
     };
     const trackIds = new Set([drumTrack.id, group.id]);
     const filtered = withGroup.tracks.filter((t) => trackIds.has(t.id));

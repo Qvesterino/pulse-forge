@@ -5,11 +5,21 @@ import { createDefaultProject } from "../src/project-model/schema";
 import { STEP_TICKS } from "../src/project-model/types";
 import { AI_BASELINE_CASES, baselineOptions } from "./fixtures/ai-baseline";
 
-function drumKey(hit: { trackId: string; pad: { id: string }; tick: number; velocity: number; ratchetIndex: number }): string {
+function drumKey(hit: {
+  trackId: string;
+  pad: { id: string };
+  tick: number;
+  velocity: number;
+  ratchetIndex: number;
+}): string {
   return [hit.trackId, hit.pad.id, hit.tick.toFixed(6), hit.velocity.toFixed(6), hit.ratchetIndex].join("|");
 }
 
-function noteKey(event: { trackId: string; tick: number; note: { pitch: number; duration: number; velocity: number } }): string {
+function noteKey(event: {
+  trackId: string;
+  tick: number;
+  note: { pitch: number; duration: number; velocity: number };
+}): string {
   return [event.trackId, event.tick, event.note.pitch, event.note.duration, event.note.velocity].join("|");
 }
 
@@ -20,13 +30,19 @@ describe("realtime/offline event plan parity", () => {
     const total = pattern.stepCount * STEP_TICKS;
     const full = patternEventsInWindow(doc, pattern, 0, 0, total);
     const boundaries = [0, 300, 720, 1199, total];
-    const splitPlans = boundaries.slice(0, -1).map((from, index) =>
-      patternEventsInWindow(doc, pattern, 0, from, boundaries[index + 1]),
-    );
+    const splitPlans = boundaries
+      .slice(0, -1)
+      .map((from, index) => patternEventsInWindow(doc, pattern, 0, from, boundaries[index + 1]));
     const fullDrums = full.drums.map(drumKey).sort();
-    const splitDrums = splitPlans.flatMap((plan) => plan.drums).map(drumKey).sort();
+    const splitDrums = splitPlans
+      .flatMap((plan) => plan.drums)
+      .map(drumKey)
+      .sort();
     const fullNotes = full.notes.map(noteKey).sort();
-    const splitNotes = splitPlans.flatMap((plan) => plan.notes).map(noteKey).sort();
+    const splitNotes = splitPlans
+      .flatMap((plan) => plan.notes)
+      .map(noteKey)
+      .sort();
     expect(splitDrums).toEqual(fullDrums);
     expect(splitNotes).toEqual(fullNotes);
   });

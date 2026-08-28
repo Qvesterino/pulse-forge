@@ -5,10 +5,7 @@ import type { EffectRuntime } from "../effects/types";
  * The processor module MUST be pre-loaded via `loadWorkletModules()` first —
  * callers gate construction behind `isWorkletReady("flanger", ctx)`.
  */
-export function createFlangerNode(
-  ctx: BaseAudioContext,
-  instance: { params: Record<string, number> },
-): EffectRuntime {
+export function createFlangerNode(ctx: BaseAudioContext, instance: { params: Record<string, number> }): EffectRuntime {
   const node = new AudioWorkletNode(ctx, "flanger-processor", {
     numberOfInputs: 1,
     numberOfOutputs: 1,

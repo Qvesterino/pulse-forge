@@ -28,8 +28,8 @@ class FlangerProcessor extends AudioWorkletProcessor {
   static get parameterDescriptors() {
     return [
       { name: "rate", defaultValue: 0.5, minValue: 0.05, maxValue: 10, automationRate: "k-rate" },
-      { name: "depth", defaultValue: 3, minValue: 0, maxValue: 10, automationRate: "k-rate" },  // ms
-      { name: "base", defaultValue: 5, minValue: 0.5, maxValue: 20, automationRate: "k-rate" },  // ms
+      { name: "depth", defaultValue: 3, minValue: 0, maxValue: 10, automationRate: "k-rate" }, // ms
+      { name: "base", defaultValue: 5, minValue: 0.5, maxValue: 20, automationRate: "k-rate" }, // ms
       { name: "feedback", defaultValue: 0.4, minValue: 0, maxValue: 0.95, automationRate: "k-rate" },
       { name: "spread", defaultValue: 0.7, minValue: 0, maxValue: 1, automationRate: "k-rate" },
       { name: "mix", defaultValue: 0.5, minValue: 0, maxValue: 1, automationRate: "k-rate" },
@@ -54,7 +54,7 @@ class FlangerProcessor extends AudioWorkletProcessor {
     const spread = parameters.spread[0];
     const mix = parameters.mix[0];
 
-    const lfoRateRad = 2 * Math.PI * rate / sr;
+    const lfoRateRad = (2 * Math.PI * rate) / sr;
     const depthSamples = depthSec * sr;
     const baseSamples = baseSec * sr;
     const spreadOffset = spread * Math.PI;

@@ -127,7 +127,12 @@ export async function manyVoices(engine: AudioEngine, bank: SampleBank): Promise
     memoryBeforeMB: mem0,
     memoryAfterMB: mem1,
     ok: true,
-    message: "Rendered in " + Math.round(t1Render - t0Render) + "ms, " + engine.getDiagnostics().activeInstruments + " instruments",
+    message:
+      "Rendered in " +
+      Math.round(t1Render - t0Render) +
+      "ms, " +
+      engine.getDiagnostics().activeInstruments +
+      " instruments",
   };
 }
 
@@ -142,7 +147,20 @@ export async function heavyFX(engine: AudioEngine, bank: SampleBank): Promise<St
   const drums = doc.tracks.find((t) => t.kind === "drum") as any;
   if (!drums) throw new Error("No drum track");
 
-  const fxTypes = ["eq", "compressor", "saturation", "clipper", "reverb", "delay", "pump", "distortion", "bitcrusher", "chorus", "phaser", "sidechain"];
+  const fxTypes = [
+    "eq",
+    "compressor",
+    "saturation",
+    "clipper",
+    "reverb",
+    "delay",
+    "pump",
+    "distortion",
+    "bitcrusher",
+    "chorus",
+    "phaser",
+    "sidechain",
+  ];
   drums.effects = fxTypes.map((type) => ({
     id: "fx-" + type,
     type,
@@ -168,7 +186,12 @@ export async function heavyFX(engine: AudioEngine, bank: SampleBank): Promise<St
     memoryBeforeMB: mem0,
     memoryAfterMB: mem1,
     ok: true,
-    message: "Rendered in " + Math.round(t1Render - t0Render) + "ms, " + engine.getDiagnostics().activeEffects + " effects active",
+    message:
+      "Rendered in " +
+      Math.round(t1Render - t0Render) +
+      "ms, " +
+      engine.getDiagnostics().activeEffects +
+      " effects active",
   };
 }
 

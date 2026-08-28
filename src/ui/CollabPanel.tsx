@@ -41,7 +41,11 @@ export function CollabPanel({ onReplaceServices }: { onReplaceServices: (service
 
   const copyLink = async () => {
     if (!session) return;
-    const url = shareUrl(session.roomId, session.serverUrl, typeof location !== "undefined" ? location.origin : "https://pulse-forge.app");
+    const url = shareUrl(
+      session.roomId,
+      session.serverUrl,
+      typeof location !== "undefined" ? location.origin : "https://pulse-forge.app",
+    );
     try {
       await navigator.clipboard.writeText(url);
       setCopied(true);
@@ -56,8 +60,8 @@ export function CollabPanel({ onReplaceServices }: { onReplaceServices: (service
       <div className="collab-panel" role="dialog" aria-label="Collaboration session">
         <div className="collab-title">JAM SESSION</div>
         <p className="collab-hint">
-          Start a room and share the link — everyone edits the same project live. Requires a running collab server
-          (<code>npm run collab</code>).
+          Start a room and share the link — everyone edits the same project live. Requires a running collab server (
+          <code>npm run collab</code>).
         </p>
         <label className="collab-field">
           <span>SERVER</span>
@@ -86,7 +90,9 @@ export function CollabPanel({ onReplaceServices }: { onReplaceServices: (service
         JAM SESSION <span className={`collab-status collab-status-${statusClass}`}>{session.status.toUpperCase()}</span>
       </div>
       <div className="collab-room">
-        <span className="collab-room-code" title="Room code">{session.roomId}</span>
+        <span className="collab-room-code" title="Room code">
+          {session.roomId}
+        </span>
         <button type="button" className="btn btn-small" onClick={() => void copyLink()}>
           {copied ? "COPIED!" : "COPY LINK"}
         </button>

@@ -84,11 +84,7 @@ describe.skipIf(typeof OfflineAudioContext === "undefined")("effect runtimes", (
   async function renderThrough(type: EffectType): Promise<{ peak: number }> {
     const ctx = new OfflineAudioContext(1, SR / 2, SR);
     const def = EFFECT_DEFS[type];
-    const rt = def.factory(
-      ctx,
-      { id: "test-fx", type, bypassed: false, params: defaultParamsOf(type) },
-      { bpm: 124 },
-    );
+    const rt = def.factory(ctx, { id: "test-fx", type, bypassed: false, params: defaultParamsOf(type) }, { bpm: 124 });
     const osc = ctx.createOscillator();
     osc.type = "sine";
     osc.frequency.value = 220;
@@ -144,7 +140,11 @@ describe.skipIf(typeof OfflineAudioContext === "undefined")("effect runtimes", (
   it("distortion produces harmonics (output has higher RMS than a pure sine after cubic waveshaping)", async () => {
     const ctx = new OfflineAudioContext(1, SR, SR);
     const params = { ...defaultParamsOf("distortion"), drive: 0.9, tone: 12000, mix: 1, output: 0 };
-    const rt = EFFECT_DEFS.distortion.factory(ctx, { id: "t", type: "distortion", bypassed: false, params }, { bpm: 124 });
+    const rt = EFFECT_DEFS.distortion.factory(
+      ctx,
+      { id: "t", type: "distortion", bypassed: false, params },
+      { bpm: 124 },
+    );
     const osc = ctx.createOscillator();
     osc.type = "sine";
     osc.frequency.value = 220;
@@ -171,7 +171,11 @@ describe.skipIf(typeof OfflineAudioContext === "undefined")("effect runtimes", (
   it("bitcrusher reduces the number of unique output samples", async () => {
     const ctx = new OfflineAudioContext(1, SR, SR);
     const params = { ...defaultParamsOf("bitcrusher"), bits: 4, downsample: 1, mix: 1, output: 0 };
-    const rt = EFFECT_DEFS.bitcrusher.factory(ctx, { id: "t", type: "bitcrusher", bypassed: false, params }, { bpm: 124 });
+    const rt = EFFECT_DEFS.bitcrusher.factory(
+      ctx,
+      { id: "t", type: "bitcrusher", bypassed: false, params },
+      { bpm: 124 },
+    );
     const osc = ctx.createOscillator();
     osc.type = "sawtooth";
     osc.frequency.value = 110;
@@ -215,7 +219,11 @@ describe.skipIf(typeof OfflineAudioContext === "undefined")("effect runtimes", (
 
   it("phaser re-chains allpass stages when STAGES changes mid-life", async () => {
     const ctx = new OfflineAudioContext(1, SR, SR);
-    const rt = EFFECT_DEFS.phaser.factory(ctx, { id: "t", type: "phaser", bypassed: false, params: defaultParamsOf("phaser") }, { bpm: 124 });
+    const rt = EFFECT_DEFS.phaser.factory(
+      ctx,
+      { id: "t", type: "phaser", bypassed: false, params: defaultParamsOf("phaser") },
+      { bpm: 124 },
+    );
     const osc = ctx.createOscillator();
     osc.type = "sawtooth";
     osc.frequency.value = 110;
@@ -237,8 +245,19 @@ describe.skipIf(typeof OfflineAudioContext === "undefined")("effect runtimes", (
 
   it("sidechain ducks the target gain when a sidechain input is provided", async () => {
     const ctx = new OfflineAudioContext(1, SR * 2, SR);
-    const params = { ...defaultParamsOf("sidechain"), threshold: -30, ratio: 8, attack: 0.001, release: 0.05, amount: 1 };
-    const rt = EFFECT_DEFS.sidechain.factory(ctx, { id: "t", type: "sidechain", bypassed: false, params }, { bpm: 124 });
+    const params = {
+      ...defaultParamsOf("sidechain"),
+      threshold: -30,
+      ratio: 8,
+      attack: 0.001,
+      release: 0.05,
+      amount: 1,
+    };
+    const rt = EFFECT_DEFS.sidechain.factory(
+      ctx,
+      { id: "t", type: "sidechain", bypassed: false, params },
+      { bpm: 124 },
+    );
 
     // Main path: a steady tone (so we can hear the ducking).
     const main = ctx.createOscillator();
@@ -278,7 +297,11 @@ describe.skipIf(typeof OfflineAudioContext === "undefined")("effect runtimes", (
 
   it("sidechain setSidechainInput(null) safely disconnects the feed", () => {
     const ctx = new OfflineAudioContext(1, 128, SR);
-    const rt = EFFECT_DEFS.sidechain.factory(ctx, { id: "t", type: "sidechain", bypassed: false, params: defaultParamsOf("sidechain") }, { bpm: 124 });
+    const rt = EFFECT_DEFS.sidechain.factory(
+      ctx,
+      { id: "t", type: "sidechain", bypassed: false, params: defaultParamsOf("sidechain") },
+      { bpm: 124 },
+    );
     const src = ctx.createOscillator();
     src.frequency.value = 220;
     rt.setSidechainInput?.(src);

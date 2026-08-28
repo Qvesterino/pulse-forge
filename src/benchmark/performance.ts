@@ -66,7 +66,13 @@ declare const performance: Performance & {
  */
 export function countAudioNodes(engine: AudioEngine): number {
   const diag = engine.getDiagnostics();
-  return Number(diag.activeEffects ?? 0) * 5 + Number(diag.activeInstruments ?? 0) * 10 + Number(diag.returns ?? 0) * 3 + Number(diag.activeLfos ?? 0) * 2 + 4;
+  return (
+    Number(diag.activeEffects ?? 0) * 5 +
+    Number(diag.activeInstruments ?? 0) * 10 +
+    Number(diag.returns ?? 0) * 3 +
+    Number(diag.activeLfos ?? 0) * 2 +
+    4
+  );
 }
 
 /**

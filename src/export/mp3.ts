@@ -41,9 +41,7 @@ export async function encodeMp3(buffer: AudioBuffer, options: Mp3Options = {}): 
   for (let block = 0; block < totalBlocks; block++) {
     const i = block * blockSize;
     const l = left.subarray(i, i + blockSize);
-    const encoded = right
-      ? encoder.encodeBuffer(l, right.subarray(i, i + blockSize))
-      : encoder.encodeBuffer(l);
+    const encoded = right ? encoder.encodeBuffer(l, right.subarray(i, i + blockSize)) : encoder.encodeBuffer(l);
     if (encoded.length > 0) chunks.push(new Uint8Array(encoded));
     // Yield every ~250 blocks (~6.5 s of audio) so the UI stays alive.
     if (block % 250 === 249) {

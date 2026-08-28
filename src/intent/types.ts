@@ -77,10 +77,13 @@ export interface GenerationPlan {
   effectiveSeed: string;
   inputContentHash: string | null;
   intentHash: string;
-  rolePlans: Record<IntentRole, {
-    enabled: boolean;
-    targetTrackIds: readonly string[];
-  }>;
+  rolePlans: Record<
+    IntentRole,
+    {
+      enabled: boolean;
+      targetTrackIds: readonly string[];
+    }
+  >;
   constraints: IntentConstraints;
   subSeeds: {
     groove: string;
@@ -132,9 +135,5 @@ export interface GenerationProvider {
   id: string;
   version: string;
   capabilities: readonly string[];
-  generate(
-    plan: GenerationPlan,
-    context: GenerationContext,
-    signal?: AbortSignal,
-  ): Promise<GenerationProposal>;
+  generate(plan: GenerationPlan, context: GenerationContext, signal?: AbortSignal): Promise<GenerationProposal>;
 }

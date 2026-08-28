@@ -190,7 +190,9 @@ export interface OpenProjectOptions {
   collab?: { roomId: string; serverUrl: string };
 }
 
-export function collabSessionInfo(services: Services): { roomId: string; status: CollabStatus; participants: CollaboratorInfo[] } | null {
+export function collabSessionInfo(
+  services: Services,
+): { roomId: string; status: CollabStatus; participants: CollaboratorInfo[] } | null {
   return services.collab
     ? { roomId: services.collab.roomId, status: services.collab.status, participants: services.collab.participants }
     : null;
@@ -208,7 +210,8 @@ export function collabSessionInfo(services: Services): { roomId: string; status:
 export function openProject(core: CoreServices, initial: ProjectDocument, options: OpenProjectOptions = {}): Services {
   const { engine, repo, bank, library, latency } = core;
 
-  const collabConfig = options.collab ?? (typeof location !== "undefined" ? collabParamsFromSearch(location.search) : null);
+  const collabConfig =
+    options.collab ?? (typeof location !== "undefined" ? collabParamsFromSearch(location.search) : null);
   const store: ProjectStore | YDocStore = collabConfig ? YDocStore.fromDocument(initial) : new ProjectStore(initial);
   const collab = collabConfig
     ? new CollabSession((store as YDocStore).yDocRef, collabConfig.roomId, collabConfig.serverUrl)
@@ -230,8 +233,7 @@ export function openProject(core: CoreServices, initial: ProjectDocument, option
     getScheduleOffsetSec: () => latency.getSnapshot().midiReferenceOffsetMs / 1000,
     getMode: () => modeRef.mode,
     trigger: (trackId, pad, when, velocity, locks) => engine.trigger(trackId, pad, when, velocity, locks),
-    noteOn: (trackId, pitch, velocity, when, durationSec) =>
-      engine.noteOn(trackId, pitch, velocity, when, durationSec),
+    noteOn: (trackId, pitch, velocity, when, durationSec) => engine.noteOn(trackId, pitch, velocity, when, durationSec),
     applyAutomation: (fromTick, toTick, relOf, scheduleOffsetSec) =>
       engine.applyAutomation(fromTick, toTick, relOf, scheduleOffsetSec),
     applyModulators: (fromTick, toTick, whenFor) => engine.applyModulators(fromTick, toTick, whenFor),
@@ -319,7 +321,16 @@ export function openProject(core: CoreServices, initial: ProjectDocument, option
         engine,
         store,
         transport,
-        () => store.doc.midi ?? { enabled: false, deviceId: "", drumChannel: 0, instrumentChannel: 0, ccMappings: [], drumNoteMap: [], pitchBendRange: 2 },
+        () =>
+          store.doc.midi ?? {
+            enabled: false,
+            deviceId: "",
+            drumChannel: 0,
+            instrumentChannel: 0,
+            ccMappings: [],
+            drumNoteMap: [],
+            pitchBendRange: 2,
+          },
         () => store.doc,
       );
       // Wire MIDI clock callbacks

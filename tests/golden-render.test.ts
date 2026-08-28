@@ -47,10 +47,20 @@ function engineHash(templateId: string): string {
       .sort(([a], [b]) => String(a).localeCompare(String(b))),
   );
   return hash({
-    doc: { name: doc.name, bpm: doc.bpm, trackCount: doc.tracks.length, patternCount: doc.patterns.length, clipWindows },
+    doc: {
+      name: doc.name,
+      bpm: doc.bpm,
+      trackCount: doc.tracks.length,
+      patternCount: doc.patterns.length,
+      clipWindows,
+    },
     rowsHash,
     notes: Object.entries(pattern.notes ?? {})
-      .flatMap(([trackId, notes]) => notes.map((n) => `${trackKey.get(trackId) ?? trackId}:${n.pitch}:${n.start}:${n.duration}:${n.velocity.toFixed(2)}`))
+      .flatMap(([trackId, notes]) =>
+        notes.map(
+          (n) => `${trackKey.get(trackId) ?? trackId}:${n.pitch}:${n.start}:${n.duration}:${n.velocity.toFixed(2)}`,
+        ),
+      )
       .sort()
       .join("|"),
     stepMeta: pattern.stepMeta ? hash(pattern.stepMeta) : "none",
@@ -62,7 +72,9 @@ describe("golden engine render — per template", () => {
     it(`${template.id} — engine output hash matches golden`, () => {
       const actual = engineHash(template.id);
       const expected = EXPECTED_GOLDEN_HASHES[template.id as keyof typeof EXPECTED_GOLDEN_HASHES];
-      expect(actual, `golden mismatch for ${template.id} — run: npm run ai:baseline to regenerate fixtures`).toBe(expected);
+      expect(actual, `golden mismatch for ${template.id} — run: npm run ai:baseline to regenerate fixtures`).toBe(
+        expected,
+      );
     });
   }
 
@@ -72,7 +84,10 @@ describe("golden engine render — per template", () => {
       expect(ids.has(key as any), `stale golden entry: ${key}`).toBe(true);
     }
     for (const t of TEMPLATES) {
-      expect(EXPECTED_GOLDEN_HASHES[t.id as keyof typeof EXPECTED_GOLDEN_HASHES], `missing golden for ${t.id}`).toBeDefined();
+      expect(
+        EXPECTED_GOLDEN_HASHES[t.id as keyof typeof EXPECTED_GOLDEN_HASHES],
+        `missing golden for ${t.id}`,
+      ).toBeDefined();
     }
   });
 });

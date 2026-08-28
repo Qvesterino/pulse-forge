@@ -77,7 +77,9 @@ export function HelpOverlay({ open, onClose }: HelpOverlayProps) {
           ))}
         </div>
         <footer className="help-footer">
-          <span>Close with <kbd className="help-kbd">Esc</kbd> or click outside</span>
+          <span>
+            Close with <kbd className="help-kbd">Esc</kbd> or click outside
+          </span>
         </footer>
       </div>
     </div>

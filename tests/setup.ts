@@ -11,9 +11,12 @@ HTMLElement.prototype.releasePointerCapture = vi.fn();
 
 // react-window v2 uses ResizeObserver which jsdom doesn't provide.
 if (typeof globalThis.ResizeObserver === "undefined") {
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  });
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
 }

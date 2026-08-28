@@ -12,13 +12,21 @@ function GoodComponent(): React.ReactElement {
 
 describe("ErrorBoundary", () => {
   it("renders children when no error", () => {
-    render(<ErrorBoundary><GoodComponent /></ErrorBoundary>);
+    render(
+      <ErrorBoundary>
+        <GoodComponent />
+      </ErrorBoundary>,
+    );
     expect(screen.getByText("alive")).toBeInTheDocument();
   });
 
   it("catches error and shows crash screen", () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
-    render(<ErrorBoundary><BrokenComponent /></ErrorBoundary>);
+    render(
+      <ErrorBoundary>
+        <BrokenComponent />
+      </ErrorBoundary>,
+    );
     expect(screen.getByText("PulseForge crashed")).toBeInTheDocument();
     expect(screen.getByText(/Your work has been saved/)).toBeInTheDocument();
     spy.mockRestore();
@@ -26,7 +34,11 @@ describe("ErrorBoundary", () => {
 
   it("shows error message", () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
-    render(<ErrorBoundary><BrokenComponent /></ErrorBoundary>);
+    render(
+      <ErrorBoundary>
+        <BrokenComponent />
+      </ErrorBoundary>,
+    );
     expect(screen.getByText("test crash")).toBeInTheDocument();
     spy.mockRestore();
   });
@@ -34,14 +46,22 @@ describe("ErrorBoundary", () => {
   it("calls onCrashSave when error occurs", () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     const onCrashSave = vi.fn();
-    render(<ErrorBoundary onCrashSave={onCrashSave}><BrokenComponent /></ErrorBoundary>);
+    render(
+      <ErrorBoundary onCrashSave={onCrashSave}>
+        <BrokenComponent />
+      </ErrorBoundary>,
+    );
     expect(onCrashSave).toHaveBeenCalled();
     spy.mockRestore();
   });
 
   it("shows reload button", () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
-    render(<ErrorBoundary><BrokenComponent /></ErrorBoundary>);
+    render(
+      <ErrorBoundary>
+        <BrokenComponent />
+      </ErrorBoundary>,
+    );
     expect(screen.getByRole("button", { name: /Reload/ })).toBeInTheDocument();
     spy.mockRestore();
   });

@@ -48,10 +48,14 @@ export function App({
   onReplaceServices: (services: Services) => void;
 }) {
   const doc = useSyncExternalStore(services.store.subscribe, services.store.getDoc, services.store.getDoc);
-  const playMode = useSyncExternalStore(services.playback.subscribe, services.playback.getSnapshot, services.playback.getSnapshot);
+  const playMode = useSyncExternalStore(
+    services.playback.subscribe,
+    services.playback.getSnapshot,
+    services.playback.getSnapshot,
+  );
   const [selectedTrackId, setSelectedTrackId] = useState(doc.tracks[0]?.id ?? "");
   const [selectedPadId, setSelectedPadId] = useState(
-    doc.tracks[0]?.kind === "drum" ? doc.tracks[0].pads[0]?.id ?? "" : "",
+    doc.tracks[0]?.kind === "drum" ? (doc.tracks[0].pads[0]?.id ?? "") : "",
   );
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const [bottomPanel, setBottomPanel] = useState<BottomPanel | null>("mixer");
@@ -67,7 +71,7 @@ export function App({
     track.kind === "drum" && track.pads.some((p) => p.id === selectedPadId)
       ? selectedPadId
       : track.kind === "drum"
-        ? track.pads[0]?.id ?? ""
+        ? (track.pads[0]?.id ?? "")
         : "";
 
   const selectTrack = (trackId: string) => {
@@ -77,8 +81,7 @@ export function App({
     if (next?.kind === "drum") setSelectedPadId(next.pads[0]?.id ?? "");
   };
 
-  const setBottomPanelTab = (panel: BottomPanel) =>
-    setBottomPanel((current) => (current === panel ? null : panel));
+  const setBottomPanelTab = (panel: BottomPanel) => setBottomPanel((current) => (current === panel ? null : panel));
 
   // A step selection belongs to the pattern it was made in.
   useEffect(() => {
@@ -94,7 +97,10 @@ export function App({
       const target = event.target as HTMLElement | null;
       const typing =
         target &&
-        (target.tagName === "INPUT" || target.tagName === "SELECT" || target.tagName === "TEXTAREA" || target.isContentEditable);
+        (target.tagName === "INPUT" ||
+          target.tagName === "SELECT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable);
       // Escape is contextual: close help → clear note selection → clear step
       // selection → blur inputs; only when nothing applies does it stop the
       // transport (matched as the "stop" shortcut below).
@@ -282,9 +288,7 @@ export function App({
         <main className="workspace">
           <div className="workspace-main">
             <TrackTabs selectedTrackId={track.id} onSelectTrack={selectTrack} />
-            {track.kind === "drum" && (
-              <RackStrip track={track} selectedPadId={padId} onSelectPad={setSelectedPadId} />
-            )}
+            {track.kind === "drum" && <RackStrip track={track} selectedPadId={padId} onSelectPad={setSelectedPadId} />}
             <PatternBar clip={clip} onCopy={setClip} />
             <Sequencer
               selectedPadId={padId}

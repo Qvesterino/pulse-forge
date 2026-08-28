@@ -116,7 +116,7 @@ describe("extractWavetable", () => {
         dot += frame[i] * ref;
         energy += frame[i] * frame[i];
       }
-      const cos = dot / Math.sqrt(energy * FRAME_SIZE / 2);
+      const cos = dot / Math.sqrt((energy * FRAME_SIZE) / 2);
       expect(Math.abs(cos)).toBeGreaterThan(0.9);
       // Loop-wrap continuity: adjacent samples at the seam are close.
       const seam = Math.abs(frame[FRAME_SIZE - 1] - frame[0]);
@@ -259,11 +259,10 @@ describe.skipIf(typeof OfflineAudioContext === "undefined")("Wavetable Synth run
     const sampleBuffer = ctx.createBuffer(1, SR / 2, SR);
     const sd = sampleBuffer.getChannelData(0);
     for (let i = 0; i < sd.length; i++) sd[i] = 0.6 * Math.sin((2 * Math.PI * freq * i) / SR);
-    const rt = INSTRUMENT_DEFS.wavetable.factory(
-      ctx,
-      makeTrack(),
-      { bpm: 124, getSample: (id) => (id === "user.cycle" ? sampleBuffer : undefined) },
-    );
+    const rt = INSTRUMENT_DEFS.wavetable.factory(ctx, makeTrack(), {
+      bpm: 124,
+      getSample: (id) => (id === "user.cycle" ? sampleBuffer : undefined),
+    });
     rt.output.connect(ctx.destination);
     rt.setSample?.("user.cycle");
     rt.noteOn(69, 0.9, 0.05, 0.3); // A4 = 440 Hz, the extracted 330 Hz table plays a fourth up

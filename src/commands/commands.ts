@@ -400,10 +400,7 @@ function cloneStepMeta(meta: Pattern["stepMeta"]): Pattern["stepMeta"] {
     Object.entries(meta).map(([padId, steps]) => [
       padId,
       Object.fromEntries(
-        Object.entries(steps).map(([step, m]) => [
-          step,
-          { ...m, ...(m.locks ? { locks: { ...m.locks } } : {}) },
-        ]),
+        Object.entries(steps).map(([step, m]) => [step, { ...m, ...(m.locks ? { locks: { ...m.locks } } : {}) }]),
       ),
     ]),
   );
@@ -645,13 +642,14 @@ export function setStepMeta(
     cleaned.microtiming = Math.max(-1, Math.min(1, merged.microtiming));
   if (merged.locks !== undefined && Object.keys(merged.locks).length > 0) {
     const cleanedLocks: NonNullable<StepMeta["locks"]> = {};
-    const ALLOWED = new Set(["pitch", "gain", "pan", "cutoff", "sampleStart"]);
+    const ALLOWED = new Set(["pitch", "gain", "pan", "cutoff", "sampleStart", "length"]);
     const clampMap = {
       pitch: { min: -24, max: 24 },
       gain: { min: 0, max: 2 },
       pan: { min: -1, max: 1 },
       cutoff: { min: 80, max: 16000 },
       sampleStart: { min: 0, max: 1 },
+      length: { min: 0.1, max: 2 },
     } as const;
     for (const [k, v] of Object.entries(merged.locks)) {
       if (!ALLOWED.has(k)) continue;
@@ -732,7 +730,14 @@ export function pasteStepLocks(
   if (!locks || Object.keys(locks).length === 0) {
     return { type: "pasteStepLocks", label: "Paste p-locks (empty)", execute: (d) => d, undo: (d) => d };
   }
-  return setStepsLocks(doc, patternId, padIds, fromStep, toStep, locks as Partial<Record<import("../project-model/types").StepLockKey, number | undefined>>);
+  return setStepsLocks(
+    doc,
+    patternId,
+    padIds,
+    fromStep,
+    toStep,
+    locks as Partial<Record<import("../project-model/types").StepLockKey, number | undefined>>,
+  );
 }
 
 export function clearStepLocks(
@@ -1140,7 +1145,12 @@ export function deleteNotes(doc: ProjectDocument, trackId: string, noteIds: stri
   };
 }
 
-export function quantizeNotes(doc: ProjectDocument, trackId: string, noteIds?: string[], gridTicks: number = STEP_TICKS): Command {
+export function quantizeNotes(
+  doc: ProjectDocument,
+  trackId: string,
+  noteIds?: string[],
+  gridTicks: number = STEP_TICKS,
+): Command {
   const pattern = doc.patterns.find((p) => p.id === doc.activePatternId);
   if (!pattern) throw new Error("Active pattern not found");
   const all = pattern.notes?.[trackId] ?? [];
@@ -1259,12 +1269,24 @@ export function setNotesVelocity(doc: ProjectDocument, trackId: string, noteIds:
   return {
     type: "setNotesVelocity",
     label: `Set velocity for ${noteIds.length} notes`,
-    execute: (d) => withTrackNotes(d, trackId, (notes) => notes.map((n) => (noteIds.includes(n.id) ? { ...n, velocity: clamped } : n))),
-    undo: (d) => withTrackNotes(d, trackId, (notes) => notes.map((n) => (prevMap.has(n.id) ? { ...n, velocity: prevMap.get(n.id)! } : n))),
+    execute: (d) =>
+      withTrackNotes(d, trackId, (notes) =>
+        notes.map((n) => (noteIds.includes(n.id) ? { ...n, velocity: clamped } : n)),
+      ),
+    undo: (d) =>
+      withTrackNotes(d, trackId, (notes) =>
+        notes.map((n) => (prevMap.has(n.id) ? { ...n, velocity: prevMap.get(n.id)! } : n)),
+      ),
   };
 }
 
-export function nudgeNotes(doc: ProjectDocument, trackId: string, noteIds: string[], deltaTicks: number, deltaPitch: number): Command {
+export function nudgeNotes(
+  doc: ProjectDocument,
+  trackId: string,
+  noteIds: string[],
+  deltaTicks: number,
+  deltaPitch: number,
+): Command {
   const pattern = doc.patterns.find((p) => p.id === doc.activePatternId);
   if (!pattern) throw new Error("Active pattern not found");
   const patternTicks = pattern.stepCount * STEP_TICKS;
@@ -1301,7 +1323,9 @@ export function setNotesVelocities(doc: ProjectDocument, trackId: string, veloci
         notes.map((n) => (velocities[n.id] !== undefined ? { ...n, velocity: clamp(velocities[n.id], 0.05, 1) } : n)),
       ),
     undo: (d) =>
-      withTrackNotes(d, trackId, (notes) => notes.map((n) => (prev.has(n.id) ? { ...n, velocity: prev.get(n.id)! } : n))),
+      withTrackNotes(d, trackId, (notes) =>
+        notes.map((n) => (prev.has(n.id) ? { ...n, velocity: prev.get(n.id)! } : n)),
+      ),
   };
 }
 

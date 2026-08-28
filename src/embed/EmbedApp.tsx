@@ -2,11 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { renderProject } from "../rendering/renderer";
 import { decodeShareCode, shareAppUrl } from "../export/shareCode";
 
-type Phase =
-  | { kind: "decoding" }
-  | { kind: "rendering" }
-  | { kind: "ready" }
-  | { kind: "error"; message: string };
+type Phase = { kind: "decoding" } | { kind: "rendering" } | { kind: "ready" } | { kind: "error"; message: string };
 
 /**
  * /embed — a self-contained beat player for sharing.
@@ -182,7 +178,9 @@ export function EmbedApp() {
     canvas.dataset.ready = "1";
   };
 
-  const openUrl = meta ? shareAppUrl(meta.code, typeof location !== "undefined" ? location.origin : "https://pulse-forge.app") : "#";
+  const openUrl = meta
+    ? shareAppUrl(meta.code, typeof location !== "undefined" ? location.origin : "https://pulse-forge.app")
+    : "#";
   const duration = bufferRef.current?.duration ?? 0;
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
@@ -219,9 +217,7 @@ export function EmbedApp() {
         </span>
       </div>
       <div className="embed-footer">
-        <span className="embed-meta">
-          {meta ? `${meta.name} · ${Math.round(meta.bpm)} BPM` : "…"}
-        </span>
+        <span className="embed-meta">{meta ? `${meta.name} · ${Math.round(meta.bpm)} BPM` : "…"}</span>
         <span className="embed-status" data-phase={phase.kind}>
           {phase.kind === "rendering" ? "rendering…" : ""}
           {phase.kind === "error" ? phase.message : ""}

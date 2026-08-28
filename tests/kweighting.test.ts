@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  analyzeLoudnessBuffer,
-  KWeightingFilter,
-  kWeightingCoefficients,
-} from "../src/audio-engine/kweighting";
+import { analyzeLoudnessBuffer, KWeightingFilter, kWeightingCoefficients } from "../src/audio-engine/kweighting";
 import { truePeakOversampled } from "../src/audio-engine/metering";
 
 /** Mono sine at a given dBFS amplitude into L/R channels. */

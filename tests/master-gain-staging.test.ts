@@ -45,7 +45,10 @@ describe("master config — gain staging", () => {
     expect(normalizeProject(dirty2).master.ceilingDb).toBe(-12);
   });
   it("preserves limiterEnabled / clipperEnabled within safe bounds", () => {
-    const proj = { ...baseDoc(), master: { ...baseDoc().master, limiterEnabled: false as boolean, clipperEnabled: true as boolean } } as ProjectDocument;
+    const proj = {
+      ...baseDoc(),
+      master: { ...baseDoc().master, limiterEnabled: false as boolean, clipperEnabled: true as boolean },
+    } as ProjectDocument;
     const fixed = normalizeProject(proj);
     expect(fixed.master.limiterEnabled).toBe(false);
     expect(fixed.master.clipperEnabled).toBe(true);

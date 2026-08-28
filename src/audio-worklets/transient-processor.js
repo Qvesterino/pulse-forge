@@ -37,7 +37,12 @@ class TransientProcessor extends AudioWorkletProcessor {
       if (Math.abs(this.fast) < 1e-20) this.fast = 0;
       if (Math.abs(this.slow) < 1e-20) this.slow = 0;
       const transient = Math.max(-1, Math.min(1, (this.fast - this.slow) * (3 + sensitivity * 9)));
-      const shape = Math.max(0.1, 1 + transient * (attack.length > 1 ? attack[i] : attack[0]) + (this.slow * (sustain.length > 1 ? sustain[i] : sustain[0])));
+      const shape = Math.max(
+        0.1,
+        1 +
+          transient * (attack.length > 1 ? attack[i] : attack[0]) +
+          this.slow * (sustain.length > 1 ? sustain[i] : sustain[0]),
+      );
       const wet = mix.length > 1 ? mix[i] : mix[0];
       const gain = Math.pow(10, (outputDb.length > 1 ? outputDb[i] : outputDb[0]) / 20);
       for (let ch = 0; ch < channels; ch++) output[ch][i] = input[ch][i] * (1 + (shape - 1) * wet) * gain;

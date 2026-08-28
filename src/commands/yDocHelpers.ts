@@ -7,12 +7,7 @@ import * as Y from "yjs";
 // ─── Pattern Operations ─────────────────────────────────────────────────────
 
 /** Toggle a step in a pattern's drum row. */
-export function yToggleStep(
-  yMap: Y.Map<unknown>,
-  patternId: string,
-  padId: string,
-  stepIndex: number,
-): void {
+export function yToggleStep(yMap: Y.Map<unknown>, patternId: string, padId: string, stepIndex: number): void {
   const patterns = yMap.get("patterns") as Y.Array<unknown>;
   const pattern = findPattern(patterns, patternId);
   if (!pattern) return;
@@ -56,12 +51,7 @@ export function ySetStepVelocity(
 }
 
 /** Set a scalar field on a pattern. */
-export function ySetPatternField(
-  yMap: Y.Map<unknown>,
-  patternId: string,
-  field: string,
-  value: unknown,
-): void {
+export function ySetPatternField(yMap: Y.Map<unknown>, patternId: string, field: string, value: unknown): void {
   const patterns = yMap.get("patterns") as Y.Array<unknown>;
   const pattern = findPattern(patterns, patternId);
   if (pattern) pattern.set(field, value);
@@ -70,12 +60,7 @@ export function ySetPatternField(
 // ─── Track Operations ───────────────────────────────────────────────────────
 
 /** Set a scalar field on a track. */
-export function ySetTrackField(
-  yMap: Y.Map<unknown>,
-  trackId: string,
-  field: string,
-  value: unknown,
-): void {
+export function ySetTrackField(yMap: Y.Map<unknown>, trackId: string, field: string, value: unknown): void {
   const tracks = yMap.get("tracks") as Y.Array<unknown>;
   const track = findTrack(tracks, trackId);
   if (track) track.set(field, value);
@@ -84,11 +69,7 @@ export function ySetTrackField(
 // ─── Scalar Operations ──────────────────────────────────────────────────────
 
 /** Set a top-level scalar field on the project. */
-export function ySetProjectField(
-  yMap: Y.Map<unknown>,
-  field: string,
-  value: unknown,
-): void {
+export function ySetProjectField(yMap: Y.Map<unknown>, field: string, value: unknown): void {
   yMap.set(field, value);
 }
 

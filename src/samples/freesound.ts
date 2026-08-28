@@ -109,9 +109,7 @@ export async function searchFreesound(query: string, options: SearchOptions): Pr
     throw new FreesoundError(`Freesound search failed (${response.status})`, response.status);
   }
   const json = (await response.json()) as { results?: RawSound[] };
-  return (json.results ?? [])
-    .map(mapResult)
-    .filter((r): r is FreesoundResult => r !== null);
+  return (json.results ?? []).map(mapResult).filter((r): r is FreesoundResult => r !== null);
 }
 
 /** Download a result's HQ MP3 preview bytes (public CDN, no auth). */
@@ -128,6 +126,11 @@ export async function fetchFreesoundPreview(result: FreesoundResult): Promise<Ar
 
 /** Convert a freesound name to a clean user-sample id. */
 export function freesoundSampleId(result: FreesoundResult): string {
-  const slug = result.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "sound";
+  const slug =
+    result.name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 40) || "sound";
   return `fs-${result.id}-${slug}`;
 }

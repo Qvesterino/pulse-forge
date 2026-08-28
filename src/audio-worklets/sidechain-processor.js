@@ -62,13 +62,13 @@ class SidechainProcessor extends AudioWorkletProcessor {
    * Only recalculated when splitFreq changes (typically once per block).
    */
   updateLPCoefficients(f) {
-    const K = Math.tan(Math.PI * f / (globalThis.sampleRate || 44100));
+    const K = Math.tan((Math.PI * f) / (globalThis.sampleRate || 44100));
     const K2 = K * K;
     const a0 = 1 + SQRT2 * K + K2;
     this.lpB0 = K2 / a0;
-    this.lpB1 = 2 * K2 / a0;
+    this.lpB1 = (2 * K2) / a0;
     this.lpB2 = K2 / a0;
-    this.lpA1 = 2 * (K2 - 1) / a0;
+    this.lpA1 = (2 * (K2 - 1)) / a0;
     this.lpA2 = (1 - SQRT2 * K + K2) / a0;
   }
 
@@ -77,8 +77,7 @@ class SidechainProcessor extends AudioWorkletProcessor {
    * own state (x1, x2, y1, y2 passed by reference).
    */
   lpFilter(x, state) {
-    const y = this.lpB0 * x + this.lpB1 * state.x1 + this.lpB2 * state.x2
-            - this.lpA1 * state.y1 - this.lpA2 * state.y2;
+    const y = this.lpB0 * x + this.lpB1 * state.x1 + this.lpB2 * state.x2 - this.lpA1 * state.y1 - this.lpA2 * state.y2;
     state.x2 = state.x1;
     state.x1 = x;
     state.y2 = state.y1;
@@ -139,9 +138,10 @@ class SidechainProcessor extends AudioWorkletProcessor {
       // Asymmetric envelope follower (per-sample).
       const attCoef = Math.exp(-1 / (sr * Math.max(0.001, att)));
       const relCoef = Math.exp(-1 / (sr * Math.max(0.001, rel)));
-      this.env = sidePeak > this.env
-        ? attCoef * this.env + (1 - attCoef) * sidePeak
-        : relCoef * this.env + (1 - relCoef) * sidePeak;
+      this.env =
+        sidePeak > this.env
+          ? attCoef * this.env + (1 - attCoef) * sidePeak
+          : relCoef * this.env + (1 - relCoef) * sidePeak;
       if (Math.abs(this.env) < 1e-20) this.env = 0;
 
       // Gain reduction.

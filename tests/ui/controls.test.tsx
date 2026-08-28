@@ -102,7 +102,15 @@ describe("DragNumber", () => {
 
   it("formats value with custom format", () => {
     render(
-      <DragNumber value={120} min={20} max={300} defaultValue={120} format={(v) => `${v} BPM`} label="BPM" onCommit={vi.fn()} />,
+      <DragNumber
+        value={120}
+        min={20}
+        max={300}
+        defaultValue={120}
+        format={(v) => `${v} BPM`}
+        label="BPM"
+        onCommit={vi.fn()}
+      />,
     );
     expect(screen.getByText("120 BPM")).toBeInTheDocument();
   });

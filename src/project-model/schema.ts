@@ -123,12 +123,7 @@ export function createInstrumentTrackModel(kind: InstrumentKind, index: number):
     pan: 0,
     mute: false,
     solo: false,
-    sampleId:
-      kind === "sampler"
-        ? "factory.tonal.pluck"
-        : kind === "granular"
-          ? "factory.tonal.keys"
-          : null,
+    sampleId: kind === "sampler" ? "factory.tonal.pluck" : kind === "granular" ? "factory.tonal.keys" : null,
     params: defaultInstrumentParams(kind),
     effects: [],
     sends: {},
@@ -258,10 +253,7 @@ function sanitizeIntensityPoint(raw: unknown): IntensityPoint | null {
 }
 
 /** Filter scene automation: drop lanes with no scene or no points. */
-export function sanitizeSceneAutomation(
-  input: unknown,
-  sceneIds: Set<string>,
-): SceneAutomation[] {
+export function sanitizeSceneAutomation(input: unknown, sceneIds: Set<string>): SceneAutomation[] {
   if (!Array.isArray(input)) return [];
   const out: SceneAutomation[] = [];
   for (const raw of input) {
@@ -400,9 +392,7 @@ export function sanitizeArrangementTransitions(
     if (!from || !to) continue;
     // A transition is a boundary annotation, so both clips must be ordered.
     if (from.startBar >= to.startBar || from.startBar + from.lengthBars > to.startBar) continue;
-    const cueAssetId = typeof raw.cueAssetId === "string" && raw.cueAssetId.trim() !== ""
-      ? raw.cueAssetId
-      : undefined;
+    const cueAssetId = typeof raw.cueAssetId === "string" && raw.cueAssetId.trim() !== "" ? raw.cueAssetId : undefined;
     seen.add(id);
     out.push({
       id,
@@ -418,45 +408,60 @@ export function sanitizeArrangementTransitions(
 
 function normalizeEffects(raw: unknown, trackId: string, trackIds: Set<string>): EffectInstance[] {
   if (!Array.isArray(raw)) return [];
-  return raw.filter((item): item is EffectInstance => {
-    const fx = item as Partial<EffectInstance>;
-    return typeof fx?.id === "string" && typeof fx?.type === "string" && Boolean(EFFECT_DEFS[fx.type as keyof typeof EFFECT_DEFS]);
-  }).map((item) => {
-    const type = item.type;
-    const defaults = defaultParamsOf(type);
-    const source = item.params && typeof item.params === "object" ? item.params : {};
-    const params: Record<string, number> = { ...defaults };
-    for (const id of Object.keys(defaults)) {
-      const value = (source as Record<string, unknown>)[id];
-      if (typeof value === "number" && Number.isFinite(value)) params[id] = clampEffectParam(type, id, value);
-    }
-    // EQ compatibility: old three-band fields feed the new canonical bands.
-    if (type === "eq") {
-      const aliases: Array<[string, string]> = [
-        ["lowGain", "lowShelfGain"], ["lowFreq", "lowShelfFreq"],
-        ["midGain", "lowMidGain"], ["midFreq", "lowMidFreq"], ["midQ", "lowMidQ"],
-        ["highGain", "highShelfGain"], ["highFreq", "highShelfFreq"],
-      ];
-      for (const [legacy, canonical] of aliases) {
-        if ((source as Record<string, unknown>)[canonical] === undefined && typeof (source as Record<string, unknown>)[legacy] === "number") {
-          params[canonical] = clampEffectParam(type, canonical, Number((source as Record<string, unknown>)[legacy]));
+  return raw
+    .filter((item): item is EffectInstance => {
+      const fx = item as Partial<EffectInstance>;
+      return (
+        typeof fx?.id === "string" &&
+        typeof fx?.type === "string" &&
+        Boolean(EFFECT_DEFS[fx.type as keyof typeof EFFECT_DEFS])
+      );
+    })
+    .map((item) => {
+      const type = item.type;
+      const defaults = defaultParamsOf(type);
+      const source = item.params && typeof item.params === "object" ? item.params : {};
+      const params: Record<string, number> = { ...defaults };
+      for (const id of Object.keys(defaults)) {
+        const value = (source as Record<string, unknown>)[id];
+        if (typeof value === "number" && Number.isFinite(value)) params[id] = clampEffectParam(type, id, value);
+      }
+      // EQ compatibility: old three-band fields feed the new canonical bands.
+      if (type === "eq") {
+        const aliases: Array<[string, string]> = [
+          ["lowGain", "lowShelfGain"],
+          ["lowFreq", "lowShelfFreq"],
+          ["midGain", "lowMidGain"],
+          ["midFreq", "lowMidFreq"],
+          ["midQ", "lowMidQ"],
+          ["highGain", "highShelfGain"],
+          ["highFreq", "highShelfFreq"],
+        ];
+        for (const [legacy, canonical] of aliases) {
+          if (
+            (source as Record<string, unknown>)[canonical] === undefined &&
+            typeof (source as Record<string, unknown>)[legacy] === "number"
+          ) {
+            params[canonical] = clampEffectParam(type, canonical, Number((source as Record<string, unknown>)[legacy]));
+          }
         }
       }
-    }
-    const sidechainTrackId = item.sidechainTrackId && item.sidechainTrackId !== trackId && trackIds.has(item.sidechainTrackId)
-      ? item.sidechainTrackId
-      : undefined;
-    // Step-sequenced effects (stepGate) carry an editable pattern array.
-    const steps = type === "stepGate" || type === "stutter" ? sanitizeGateSteps((item as { steps?: unknown }).steps) : undefined;
-    return {
-      id: item.id,
-      type,
-      bypassed: item.bypassed === true,
-      params,
-      ...(steps ? { steps } : {}),
-      ...(sidechainTrackId ? { sidechainTrackId } : {}),
-    };
-  });
+      const sidechainTrackId =
+        item.sidechainTrackId && item.sidechainTrackId !== trackId && trackIds.has(item.sidechainTrackId)
+          ? item.sidechainTrackId
+          : undefined;
+      // Step-sequenced effects (stepGate) carry an editable pattern array.
+      const steps =
+        type === "stepGate" || type === "stutter" ? sanitizeGateSteps((item as { steps?: unknown }).steps) : undefined;
+      return {
+        id: item.id,
+        type,
+        bypassed: item.bypassed === true,
+        params,
+        ...(steps ? { steps } : {}),
+        ...(sidechainTrackId ? { sidechainTrackId } : {}),
+      };
+    });
 }
 
 /**
@@ -547,13 +552,18 @@ function normalizeTracksDomain(s: NormalizeState): void {
         const sliceEnd = cleanNonNegative(pad.sliceEnd);
         const fadeIn = cleanNonNegative(pad.sliceFadeIn) ?? 0;
         const fadeOut = cleanNonNegative(pad.sliceFadeOut) ?? 0;
-        const hasSliceConfig = pad.sliceStart !== undefined || pad.sliceEnd !== undefined ||
-          pad.sliceFadeIn !== undefined || pad.sliceFadeOut !== undefined || pad.sliceReverse !== undefined;
+        const hasSliceConfig =
+          pad.sliceStart !== undefined ||
+          pad.sliceEnd !== undefined ||
+          pad.sliceFadeIn !== undefined ||
+          pad.sliceFadeOut !== undefined ||
+          pad.sliceReverse !== undefined;
         if (!hasSliceConfig) return pad;
         if (sliceStart !== pad.sliceStart || sliceEnd !== pad.sliceEnd) padChanged = true;
         if (fadeIn !== (pad.sliceFadeIn ?? 0) || fadeOut !== (pad.sliceFadeOut ?? 0)) padChanged = true;
         if (pad.sliceReverse !== undefined && typeof pad.sliceReverse !== "boolean") padChanged = true;
-        const invalidBound = (pad.sliceStart !== undefined && sliceStart === undefined) ||
+        const invalidBound =
+          (pad.sliceStart !== undefined && sliceStart === undefined) ||
           (pad.sliceEnd !== undefined && sliceEnd === undefined);
         if (invalidBound || (sliceStart !== undefined && sliceEnd !== undefined && sliceEnd <= sliceStart)) {
           nextPad = {
@@ -727,8 +737,7 @@ function normalizeLfosDomain(s: NormalizeState): void {
     const cleaned = sanitizeLfo(lfo, trackIds);
     if (cleaned) sanitized.push(cleaned);
   }
-  const shapeChanged = sanitized.length !== lfos.length
-    || sanitized.some((lfo, i) => lfo !== lfos[i]);
+  const shapeChanged = sanitized.length !== lfos.length || sanitized.some((lfo, i) => lfo !== lfos[i]);
   if (shapeChanged) {
     s.doc = { ...doc, lfos: sanitized };
     s.changed = true;
@@ -843,12 +852,10 @@ function normalizeMarkersDomain(s: NormalizeState): void {
   const totalProjectTicks = Math.max(
     0,
     ...doc.scenes.map((sc) => (doc.patterns.find((p) => p.id === sc.patternId)?.stepCount ?? 0) * STEP_TICKS),
-    ...doc.arrangement?.clips?.map((c) => (c.startBar + c.lengthBars) * BAR_TICKS) ?? [],
+    ...(doc.arrangement?.clips?.map((c) => (c.startBar + c.lengthBars) * BAR_TICKS) ?? []),
   );
   const cleanedMarkers = sanitizeMarkers(doc.markers, totalProjectTicks);
-  const markersChanged =
-    !Array.isArray(doc.markers) ||
-    JSON.stringify(cleanedMarkers) !== JSON.stringify(doc.markers);
+  const markersChanged = !Array.isArray(doc.markers) || JSON.stringify(cleanedMarkers) !== JSON.stringify(doc.markers);
   if (markersChanged) {
     s.doc = { ...doc, markers: cleanedMarkers };
     s.changed = true;
@@ -864,8 +871,7 @@ function normalizeSceneAutomationDomain(s: NormalizeState): void {
   // so a reference equality check would always fail). JSON.stringify is fine
   // here — the structures are small and we run this on save/commit only.
   const sceneAutoChanged =
-    !Array.isArray(doc.sceneAutomation) ||
-    JSON.stringify(cleanedSceneAuto) !== JSON.stringify(doc.sceneAutomation);
+    !Array.isArray(doc.sceneAutomation) || JSON.stringify(cleanedSceneAuto) !== JSON.stringify(doc.sceneAutomation);
   if (sceneAutoChanged) {
     s.doc = { ...doc, sceneAutomation: cleanedSceneAuto };
     s.changed = true;
@@ -881,12 +887,7 @@ function normalizeMasterAndReturnsDomain(s: NormalizeState): void {
     const dc = clampCeilingDb(m.ceilingDb);
     const dl = typeof m.limiterEnabled === "boolean" ? m.limiterEnabled : true;
     const dcl = typeof m.clipperEnabled === "boolean" ? m.clipperEnabled : false;
-    if (
-      dg !== m.masterGain ||
-      dc !== m.ceilingDb ||
-      dl !== m.limiterEnabled ||
-      dcl !== m.clipperEnabled
-    ) {
+    if (dg !== m.masterGain || dc !== m.ceilingDb || dl !== m.limiterEnabled || dcl !== m.clipperEnabled) {
       doc = { ...doc, master: { masterGain: dg, ceilingDb: dc, limiterEnabled: dl, clipperEnabled: dcl } };
       s.changed = true;
     }
@@ -950,7 +951,8 @@ function normalizeMidiDomain(s: NormalizeState): void {
       const enabled = m.enabled === true;
       const deviceId = typeof m.deviceId === "string" ? m.deviceId : "";
       const drumChannel = typeof m.drumChannel === "number" ? Math.max(0, Math.min(16, m.drumChannel)) : 0;
-      const instrumentChannel = typeof m.instrumentChannel === "number" ? Math.max(0, Math.min(16, m.instrumentChannel)) : 0;
+      const instrumentChannel =
+        typeof m.instrumentChannel === "number" ? Math.max(0, Math.min(16, m.instrumentChannel)) : 0;
       const pitchBendRange = typeof m.pitchBendRange === "number" ? Math.max(1, Math.min(24, m.pitchBendRange)) : 2;
       const ccMappings = Array.isArray(m.ccMappings) ? m.ccMappings : [];
       const drumNoteMap = Array.isArray(m.drumNoteMap) ? m.drumNoteMap : [];
@@ -962,7 +964,10 @@ function normalizeMidiDomain(s: NormalizeState): void {
         instrumentChannel !== (typeof m.instrumentChannel === "number" ? m.instrumentChannel : 0) ||
         pitchBendRange !== (typeof m.pitchBendRange === "number" ? m.pitchBendRange : 2)
       ) {
-        s.doc = { ...doc, midi: { enabled, deviceId, drumChannel, instrumentChannel, ccMappings, drumNoteMap, pitchBendRange } };
+        s.doc = {
+          ...doc,
+          midi: { enabled, deviceId, drumChannel, instrumentChannel, ccMappings, drumNoteMap, pitchBendRange },
+        };
         s.changed = true;
       }
     }
@@ -1001,69 +1006,67 @@ function normalizePatternsDomain(s: NormalizeState): void {
             metaChanged = true;
             continue;
           }
-           const raw: StepMeta = rawEntry;
-           const meta: StepMeta = {};
-           const probability = raw.probability;
-           if (probability !== undefined) {
-             const clamped = clampUnit(probability);
-             if (clamped < 1) meta.probability = clamped;
-             if (clamped !== probability) metaChanged = true;
-           }
-           const ratchet = raw.ratchet;
-           if (ratchet !== undefined) {
-             const clamped = Math.min(8, Math.max(1, Math.round(Number.isFinite(ratchet) ? ratchet : 1)));
-             if (clamped > 1) meta.ratchet = clamped;
-             if (clamped !== ratchet) metaChanged = true;
-           }
-           const microtiming = raw.microtiming;
-           if (microtiming !== undefined) {
-             const clamped = Math.min(1, Math.max(-1, Number.isFinite(microtiming) ? microtiming : 0));
-             if (clamped !== 0) meta.microtiming = clamped;
-             if (clamped !== microtiming) metaChanged = true;
-           }
-            const rawLocks = raw.locks;
-            if (rawLocks !== undefined && isObject(rawLocks)) {
-              const cleanedLocks: NonNullable<StepMeta["locks"]> = {};
-              let locksChanged = false;
-              const ALLOWED_LOCKS = new Set(["pitch", "gain", "pan", "cutoff", "sampleStart"]);
-              const def = {
-                pitch: { min: -24, max: 24 },
-                gain: { min: 0, max: 2 },
-                pan: { min: -1, max: 1 },
-                cutoff: { min: 80, max: 16000 },
-                sampleStart: { min: 0, max: 1 },
-              } as const;
-              for (const [k, v] of Object.entries(rawLocks)) {
-                if (!ALLOWED_LOCKS.has(k)) {
-                  locksChanged = true;
-                  continue;
-                }
-                if (typeof v !== "number" || !Number.isFinite(v)) {
-                  locksChanged = true;
-                  continue;
-                }
-                const clamped = Math.min(
-                  def[k as keyof typeof def].max,
-                  Math.max(def[k as keyof typeof def].min, v),
-                );
-                let rounded: number;
-                if (k === "pitch") rounded = Math.round(clamped * 10) / 10;
-                else if (k === "cutoff") rounded = Math.round(clamped);
-                else rounded = Math.round(clamped * 100) / 100;
-                cleanedLocks[k as keyof typeof cleanedLocks] = rounded;
-                if (rounded !== v) locksChanged = true;
+          const raw: StepMeta = rawEntry;
+          const meta: StepMeta = {};
+          const probability = raw.probability;
+          if (probability !== undefined) {
+            const clamped = clampUnit(probability);
+            if (clamped < 1) meta.probability = clamped;
+            if (clamped !== probability) metaChanged = true;
+          }
+          const ratchet = raw.ratchet;
+          if (ratchet !== undefined) {
+            const clamped = Math.min(8, Math.max(1, Math.round(Number.isFinite(ratchet) ? ratchet : 1)));
+            if (clamped > 1) meta.ratchet = clamped;
+            if (clamped !== ratchet) metaChanged = true;
+          }
+          const microtiming = raw.microtiming;
+          if (microtiming !== undefined) {
+            const clamped = Math.min(1, Math.max(-1, Number.isFinite(microtiming) ? microtiming : 0));
+            if (clamped !== 0) meta.microtiming = clamped;
+            if (clamped !== microtiming) metaChanged = true;
+          }
+          const rawLocks = raw.locks;
+          if (rawLocks !== undefined && isObject(rawLocks)) {
+            const cleanedLocks: NonNullable<StepMeta["locks"]> = {};
+            let locksChanged = false;
+            const ALLOWED_LOCKS = new Set(["pitch", "gain", "pan", "cutoff", "sampleStart", "length"]);
+            const def = {
+              pitch: { min: -24, max: 24 },
+              gain: { min: 0, max: 2 },
+              pan: { min: -1, max: 1 },
+              cutoff: { min: 80, max: 16000 },
+              sampleStart: { min: 0, max: 1 },
+              length: { min: 0.1, max: 2 },
+            } as const;
+            for (const [k, v] of Object.entries(rawLocks)) {
+              if (!ALLOWED_LOCKS.has(k)) {
+                locksChanged = true;
+                continue;
               }
-              if (Object.keys(cleanedLocks).length > 0) {
-                meta.locks = cleanedLocks;
-                if (locksChanged) metaChanged = true;
-              } else if (rawLocks && Object.keys(rawLocks).length > 0) {
-                metaChanged = true;
+              if (typeof v !== "number" || !Number.isFinite(v)) {
+                locksChanged = true;
+                continue;
               }
-            } else if (rawLocks !== undefined) {
+              const clamped = Math.min(def[k as keyof typeof def].max, Math.max(def[k as keyof typeof def].min, v));
+              let rounded: number;
+              if (k === "pitch") rounded = Math.round(clamped * 10) / 10;
+              else if (k === "cutoff") rounded = Math.round(clamped);
+              else rounded = Math.round(clamped * 100) / 100;
+              cleanedLocks[k as keyof typeof cleanedLocks] = rounded;
+              if (rounded !== v) locksChanged = true;
+            }
+            if (Object.keys(cleanedLocks).length > 0) {
+              meta.locks = cleanedLocks;
+              if (locksChanged) metaChanged = true;
+            } else if (rawLocks && Object.keys(rawLocks).length > 0) {
               metaChanged = true;
             }
-           if (Object.keys(meta).length > 0) cleanSteps[stepIndex] = meta;
-           else metaChanged = true;
+          } else if (rawLocks !== undefined) {
+            metaChanged = true;
+          }
+          if (Object.keys(meta).length > 0) cleanSteps[stepIndex] = meta;
+          else metaChanged = true;
         }
         if (Object.keys(cleanSteps).length > 0) cleaned[padId] = cleanSteps;
         else metaChanged = true;
@@ -1103,9 +1106,7 @@ function normalizePatternsDomain(s: NormalizeState): void {
       }
       if (!Array.isArray(row) || row.length !== safeStepCount) {
         if (rows === p.rows) rows = { ...rows };
-        rows[padId] = new Array<number>(safeStepCount)
-          .fill(0)
-          .map((_, i) => (Array.isArray(row) ? (row[i] ?? 0) : 0));
+        rows[padId] = new Array<number>(safeStepCount).fill(0).map((_, i) => (Array.isArray(row) ? (row[i] ?? 0) : 0));
         patternsChanged = true;
       }
       validPadIds.push(padId);

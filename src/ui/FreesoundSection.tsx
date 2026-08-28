@@ -118,7 +118,12 @@ export function FreesoundSection({ onImport }: { onImport: (asset: UserSampleAss
                     if (e.key === "Enter") void search();
                   }}
                 />
-                <button type="button" className="btn btn-small" disabled={busy || !query.trim()} onClick={() => void search()}>
+                <button
+                  type="button"
+                  className="btn btn-small"
+                  disabled={busy || !query.trim()}
+                  onClick={() => void search()}
+                >
                   {busy ? "…" : "GO"}
                 </button>
               </div>
@@ -135,7 +140,10 @@ export function FreesoundSection({ onImport }: { onImport: (asset: UserSampleAss
                     >
                       ▶
                     </button>
-                    <span className="freesound-name" title={`${result.name} by ${result.username} (${result.durationSec.toFixed(1)}s, CC0)`}>
+                    <span
+                      className="freesound-name"
+                      title={`${result.name} by ${result.username} (${result.durationSec.toFixed(1)}s, CC0)`}
+                    >
                       {result.name} <em>· {result.username}</em>
                     </span>
                     <button

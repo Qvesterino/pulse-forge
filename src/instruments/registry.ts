@@ -50,7 +50,12 @@ interface Voice {
 
 function makeVoiceManager(limit: number) {
   const voices: Voice[] = [];
-  const register = (pitch: number, stopAt: number, stop: (when: number) => void, silence: (now: number) => void): Voice => {
+  const register = (
+    pitch: number,
+    stopAt: number,
+    stop: (when: number) => void,
+    silence: (now: number) => void,
+  ): Voice => {
     const voice: Voice = { pitch, stopAt, stop, silence };
     voices.push(voice);
     if (voices.length > limit) {
@@ -75,7 +80,15 @@ const analog: InstrumentDefinition = {
   params: [
     { id: "oscA", label: "OSC A", min: 0, max: 3, default: 2, options: WAVE_OPTIONS },
     { id: "oscB", label: "OSC B", min: 0, max: 3, default: 2, options: WAVE_OPTIONS },
-    { id: "oscBDetune", label: "DETUNE", min: -50, max: 50, default: 8, unit: "ct", format: (v) => `${v > 0 ? "+" : ""}${v.toFixed(0)} ct` },
+    {
+      id: "oscBDetune",
+      label: "DETUNE",
+      min: -50,
+      max: 50,
+      default: 8,
+      unit: "ct",
+      format: (v) => `${v > 0 ? "+" : ""}${v.toFixed(0)} ct`,
+    },
     { id: "subLevel", label: "SUB", min: 0, max: 1, default: 0.25, format: formatPct },
     { id: "noiseLevel", label: "NOISE", min: 0, max: 0.5, default: 0.04, format: formatPct },
     { id: "cutoff", label: "CUTOFF", min: 80, max: 16000, default: 9000, unit: "Hz", format: formatHz },
@@ -165,7 +178,11 @@ const analog: InstrumentDefinition = {
             amp.gain.cancelScheduledValues(t);
             amp.gain.setTargetAtTime(0.0001, t, 0.01);
             for (const osc of oscs) {
-              try { osc.stop(t + 0.05); } catch { /* already stopped */ }
+              try {
+                osc.stop(t + 0.05);
+              } catch {
+                /* already stopped */
+              }
             }
           },
           (now) => {
@@ -174,12 +191,13 @@ const analog: InstrumentDefinition = {
           },
         );
         const latest = oscs[oscs.length - 1];
-        if (latest) latest.onended = () => {
-          liveFilters.delete(filter);
-          amp.disconnect();
-          filter.disconnect();
-          cleanup(voice);
-        };
+        if (latest)
+          latest.onended = () => {
+            liveFilters.delete(filter);
+            amp.disconnect();
+            filter.disconnect();
+            cleanup(voice);
+          };
       },
       setParameter(id, value) {
         p[id] = value;
@@ -198,7 +216,9 @@ const analog: InstrumentDefinition = {
         const cutoffBase = p.cutoff ?? 9000;
         const target = cutoffBase * (1 + pressure * 0.5);
         for (const v of findByPitch(pitch)) {
-          void v; void when; void target;
+          void v;
+          void when;
+          void target;
           // Per-voice filter modulation would require tracking filter per voice
           // For now, modulate globally via applyFilterLive
         }
@@ -239,7 +259,6 @@ const bass: InstrumentDefinition = {
     output.gain.value = 1;
     const p = { ...track.params };
     const { voices, register, cleanup, findByPitch } = makeVoiceManager(4);
-
 
     const shaper = ctx.createWaveShaper();
     shaper.oversample = "2x";
@@ -292,7 +311,13 @@ const bass: InstrumentDefinition = {
         }
 
         const oscs: OscillatorNode[] = [];
-        const mkVoiceOsc = (detuneCents: number, levelGain: number, panValue: number, type: OscillatorType, transpose = 0) => {
+        const mkVoiceOsc = (
+          detuneCents: number,
+          levelGain: number,
+          panValue: number,
+          type: OscillatorType,
+          transpose = 0,
+        ) => {
           const osc = ctx.createOscillator();
           osc.type = type;
           osc.frequency.value = freq * Math.pow(2, transpose / 12);
@@ -319,7 +344,11 @@ const bass: InstrumentDefinition = {
             amp.gain.cancelScheduledValues(t);
             amp.gain.setTargetAtTime(0.0001, t, 0.01);
             for (const osc of oscs) {
-              try { osc.stop(t + 0.05); } catch { /* already stopped */ }
+              try {
+                osc.stop(t + 0.05);
+              } catch {
+                /* already stopped */
+              }
             }
           },
           (now) => {
@@ -328,12 +357,13 @@ const bass: InstrumentDefinition = {
           },
         );
         const last = oscs[oscs.length - 1];
-        if (last) last.onended = () => {
-          liveFilters.delete(filter);
-          amp.disconnect();
-          filter.disconnect();
-          cleanup(voice);
-        };
+        if (last)
+          last.onended = () => {
+            liveFilters.delete(filter);
+            amp.disconnect();
+            filter.disconnect();
+            cleanup(voice);
+          };
       },
       setParameter(id, value) {
         p[id] = value;
@@ -446,9 +476,21 @@ const bass808: InstrumentDefinition = {
           // The click chain is short-lived — tear it down explicitly so it
           // does not linger on `post` after the voice is gone.
           src.onended = () => {
-            try { src.disconnect(); } catch { /* already disconnected */ }
-            try { hp.disconnect(); } catch { /* already disconnected */ }
-            try { g.disconnect(); } catch { /* already disconnected */ }
+            try {
+              src.disconnect();
+            } catch {
+              /* already disconnected */
+            }
+            try {
+              hp.disconnect();
+            } catch {
+              /* already disconnected */
+            }
+            try {
+              g.disconnect();
+            } catch {
+              /* already disconnected */
+            }
           };
         }
 
@@ -459,12 +501,20 @@ const bass808: InstrumentDefinition = {
             const t = Math.max(whenStop, 0);
             amp.gain.cancelScheduledValues(t);
             amp.gain.setTargetAtTime(0.0001, t, 0.01);
-            try { osc.stop(t + 0.06); } catch { /* already stopped */ }
+            try {
+              osc.stop(t + 0.06);
+            } catch {
+              /* already stopped */
+            }
           },
           silence: (now) => {
             amp.gain.cancelScheduledValues(now);
             amp.gain.setTargetAtTime(0.0001, now, 0.008);
-            try { osc.stop(now + 0.05); } catch { /* already stopped */ }
+            try {
+              osc.stop(now + 0.05);
+            } catch {
+              /* already stopped */
+            }
           },
         };
         current = voice;
@@ -473,7 +523,11 @@ const bass808: InstrumentDefinition = {
           toneFilter.disconnect();
           pre.disconnect();
           post.disconnect();
-          try { shaper.disconnect(post); } catch { /* already disconnected */ }
+          try {
+            shaper.disconnect(post);
+          } catch {
+            /* already disconnected */
+          }
           if (current === voice) current = null;
         };
       },
@@ -562,7 +616,11 @@ const sampler: InstrumentDefinition = {
             const t = Math.max(whenStop, 0);
             amp.gain.cancelScheduledValues(t);
             amp.gain.setTargetAtTime(0.0001, t, 0.01);
-            try { src.stop(t + 0.05); } catch { /* already stopped */ }
+            try {
+              src.stop(t + 0.05);
+            } catch {
+              /* already stopped */
+            }
           },
           (now) => {
             amp.gain.cancelScheduledValues(now);
@@ -683,7 +741,7 @@ const texture: InstrumentDefinition = {
       lfo2Depth.gain.setTargetAtTime(12 * motion, now, 0.05);
       delayFeedback.gain.setTargetAtTime(space * 0.7, now, 0.05);
       // Chaos shifts LFO rates by up to ±3x of base, deterministically from chaosSeed
-      const chaos1 = 1 + (((chaosSeed % 1000) / 1000) - 0.5) * 2 * chaos;
+      const chaos1 = 1 + ((chaosSeed % 1000) / 1000 - 0.5) * 2 * chaos;
       const chaos2 = 1 + (((chaosSeed >>> 8) % 1000) / 1000) * chaos * 0.6;
       lfo1.frequency.setTargetAtTime(0.13 * chaos1, now, 0.1);
       lfo2.frequency.setTargetAtTime(0.27 * chaos2, now, 0.1);
@@ -716,7 +774,7 @@ const texture: InstrumentDefinition = {
         // Per-voice LFO3 amp tremolo (subtle breathing)
         const lfo3 = ctx.createOscillator();
         lfo3.type = "sine";
-        lfo3.frequency.value = 0.31 + (Math.abs(Math.sin((chaosSeed + pitch) * 0.13)) * 0.4);
+        lfo3.frequency.value = 0.31 + Math.abs(Math.sin((chaosSeed + pitch) * 0.13)) * 0.4;
         const lfo3Depth = ctx.createGain();
         lfo3Depth.gain.value = 0.25 * (0.3 + motion * 0.7);
         lfo3.connect(lfo3Depth).connect(voiceGain.gain);
@@ -772,21 +830,37 @@ const texture: InstrumentDefinition = {
             voiceGain.gain.cancelScheduledValues(t);
             voiceGain.gain.setTargetAtTime(0.0001, t, 0.3);
             for (const osc of [osc1, osc2, lfo3, noise]) {
-              try { osc.stop(t + 0.1); } catch { /* already stopped */ }
+              try {
+                osc.stop(t + 0.1);
+              } catch {
+                /* already stopped */
+              }
             }
           },
           (silenceNow) => {
             voiceGain.gain.cancelScheduledValues(silenceNow);
             voiceGain.gain.setTargetAtTime(0.0001, silenceNow, 0.1);
             for (const osc of [osc1, osc2, lfo3, noise]) {
-              try { osc.stop(silenceNow + 0.05); } catch { /* already stopped */ }
+              try {
+                osc.stop(silenceNow + 0.05);
+              } catch {
+                /* already stopped */
+              }
             }
           },
         );
         const last = noise;
         last.onended = () => {
-          try { bandpass.disconnect(); } catch { /* already disconnected */ }
-          try { voiceGain.disconnect(); } catch { /* already disconnected */ }
+          try {
+            bandpass.disconnect();
+          } catch {
+            /* already disconnected */
+          }
+          try {
+            voiceGain.disconnect();
+          } catch {
+            /* already disconnected */
+          }
           cleanup(voice);
         };
       },
@@ -807,8 +881,16 @@ const texture: InstrumentDefinition = {
       },
       dispose() {
         this.panic();
-        try { lfo1.stop(); } catch { /* not started */ }
-        try { lfo2.stop(); } catch { /* not started */ }
+        try {
+          lfo1.stop();
+        } catch {
+          /* not started */
+        }
+        try {
+          lfo2.stop();
+        } catch {
+          /* not started */
+        }
         lfo1.disconnect();
         lfo2.disconnect();
         lfo1Depth.disconnect();
@@ -838,9 +920,24 @@ const wavetable: InstrumentDefinition = {
   kind: "wavetable",
   name: "Wavetable Synth",
   params: [
-    { id: "table", label: "TABLE", min: 0, max: FACTORY_WAVETABLES.length - 1, default: 0, options: FACTORY_TABLE_OPTIONS },
+    {
+      id: "table",
+      label: "TABLE",
+      min: 0,
+      max: FACTORY_WAVETABLES.length - 1,
+      default: 0,
+      options: FACTORY_TABLE_OPTIONS,
+    },
     { id: "morph", label: "MORPH", min: 0, max: 1, default: 0.3, format: formatPct },
-    { id: "detune", label: "DETUNE", min: -50, max: 50, default: 7, unit: "ct", format: (v) => `${v > 0 ? "+" : ""}${v.toFixed(0)} ct` },
+    {
+      id: "detune",
+      label: "DETUNE",
+      min: -50,
+      max: 50,
+      default: 7,
+      unit: "ct",
+      format: (v) => `${v > 0 ? "+" : ""}${v.toFixed(0)} ct`,
+    },
     { id: "sub", label: "SUB", min: 0, max: 1, default: 0.2, format: formatPct },
     { id: "cutoff", label: "CUTOFF", min: 80, max: 16000, default: 12000, unit: "Hz", format: formatHz },
     { id: "resonance", label: "RESO", min: 0.1, max: 12, default: 1, format: (v) => v.toFixed(2) },
@@ -973,25 +1070,34 @@ const wavetable: InstrumentDefinition = {
             amp.gain.cancelScheduledValues(t);
             amp.gain.setTargetAtTime(0.0001, t, 0.01);
             for (const src of sources) {
-              try { src.stop(t + 0.05); } catch { /* already stopped */ }
+              try {
+                src.stop(t + 0.05);
+              } catch {
+                /* already stopped */
+              }
             }
           },
           (now) => {
             amp.gain.cancelScheduledValues(now);
             amp.gain.setTargetAtTime(0.0001, now, 0.008);
             for (const src of sources) {
-              try { src.stop(now + 0.03); } catch { /* already stopped */ }
+              try {
+                src.stop(now + 0.03);
+              } catch {
+                /* already stopped */
+              }
             }
           },
         );
         const last = sources[sources.length - 1];
-        if (last) last.onended = () => {
-          liveFilters.delete(filter);
-          for (const pair of pairs) livePairs.delete(pair);
-          amp.disconnect();
-          filter.disconnect();
-          cleanup(voice);
-        };
+        if (last)
+          last.onended = () => {
+            liveFilters.delete(filter);
+            for (const pair of pairs) livePairs.delete(pair);
+            amp.disconnect();
+            filter.disconnect();
+            cleanup(voice);
+          };
       },
       setParameter(id, value) {
         p[id] = value;
@@ -1060,7 +1166,14 @@ const granular: InstrumentDefinition = {
     { id: "rate", label: "RATE", min: 1, max: 60, default: 14, unit: "/s", format: (v) => `${Math.round(v)}/s` },
     { id: "jitter", label: "JITTER", min: 0, max: 1, default: 0.15, format: formatPct },
     { id: "spread", label: "SPREAD", min: 0, max: 1, default: 0.5, format: formatPct },
-    { id: "pitch", label: "PITCH", min: -24, max: 24, default: 0, format: (v) => `${v > 0 ? "+" : ""}${v.toFixed(1)} st` },
+    {
+      id: "pitch",
+      label: "PITCH",
+      min: -24,
+      max: 24,
+      default: 0,
+      format: (v) => `${v > 0 ? "+" : ""}${v.toFixed(1)} st`,
+    },
     { id: "reverse", label: "REVERSE", min: 0, max: 1, default: 0, format: formatPct },
     { id: "tone", label: "TONE", min: 200, max: 16000, default: 9000, unit: "Hz", format: formatHz },
     { id: "shape", label: "SHAPE", min: 0, max: 1, default: 0.5, format: formatPct },
@@ -1172,21 +1285,34 @@ const granular: InstrumentDefinition = {
             amp.gain.cancelScheduledValues(t);
             amp.gain.setTargetAtTime(0.0001, t, 0.02);
             for (const src of sources) {
-              try { src.stop(t + 0.05); } catch { /* already stopped */ }
+              try {
+                src.stop(t + 0.05);
+              } catch {
+                /* already stopped */
+              }
             }
           },
           (now) => {
             amp.gain.cancelScheduledValues(now);
             amp.gain.setTargetAtTime(0.0001, now, 0.012);
             for (const src of sources) {
-              try { src.stop(now + 0.03); } catch { /* already stopped */ }
+              try {
+                src.stop(now + 0.03);
+              } catch {
+                /* already stopped */
+              }
             }
           },
         );
         let ended = 0;
         for (let i = 0; i < sources.length; i++) {
           sources[i].onended = () => {
-            try { grainNodes[i].g.disconnect(); grainNodes[i].pan.disconnect(); } catch { /* already gone */ }
+            try {
+              grainNodes[i].g.disconnect();
+              grainNodes[i].pan.disconnect();
+            } catch {
+              /* already gone */
+            }
             ended++;
             if (ended >= sources.length) {
               amp.disconnect();
@@ -1234,7 +1360,15 @@ export const INSTRUMENT_DEFS: Record<InstrumentKind, InstrumentDefinition> = {
   granular,
 };
 
-export const INSTRUMENT_ORDER: InstrumentKind[] = ["sampler", "analog", "bass", "808", "texture", "wavetable", "granular"];
+export const INSTRUMENT_ORDER: InstrumentKind[] = [
+  "sampler",
+  "analog",
+  "bass",
+  "808",
+  "texture",
+  "wavetable",
+  "granular",
+];
 
 export function defaultInstrumentParams(kind: InstrumentKind): Record<string, number> {
   return Object.fromEntries(INSTRUMENT_DEFS[kind].params.map((p) => [p.id, p.default]));

@@ -45,7 +45,12 @@ export function createKwMeterNode(ctx: BaseAudioContext): KwMeterHandle {
   let last: KwLoudness = { ...SILENT };
   node.port.onmessage = (event: MessageEvent) => {
     const data = event.data as { type?: string; m?: number; s?: number; i?: number } | null;
-    if (data?.type === "loudness" && typeof data.m === "number" && typeof data.s === "number" && typeof data.i === "number") {
+    if (
+      data?.type === "loudness" &&
+      typeof data.m === "number" &&
+      typeof data.s === "number" &&
+      typeof data.i === "number"
+    ) {
       last = { m: data.m, s: data.s, i: data.i };
     }
   };

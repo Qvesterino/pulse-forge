@@ -21,8 +21,16 @@ type Status =
 type MasterFormat = "wav" | "mp3-192" | "mp3-320" | "video";
 
 const EMPTY_EXPORT_SUMMARY: BufferSummary = {
-  peak: 0, peakDb: -120, truePeakDb: -120, rms: 0, rmsDb: -120, correlation: 1,
-  lufsMomentary: -120, lufsShortTerm: -120, lufsIntegrated: -120, monoLossDb: 0,
+  peak: 0,
+  peakDb: -120,
+  truePeakDb: -120,
+  rms: 0,
+  rmsDb: -120,
+  correlation: 1,
+  lufsMomentary: -120,
+  lufsShortTerm: -120,
+  lufsIntegrated: -120,
+  monoLossDb: 0,
 };
 
 function downloadBlob(blob: Blob, filename: string): void {
@@ -240,7 +248,12 @@ export function ExportPanel() {
         </label>
       </div>
       <div className="export-buttons">
-        <button type="button" className="btn btn-export" disabled={busy || (format === "video" && !videoSupported)} onClick={() => void exportMaster()}>
+        <button
+          type="button"
+          className="btn btn-export"
+          disabled={busy || (format === "video" && !videoSupported)}
+          onClick={() => void exportMaster()}
+        >
           {format === "video" ? "EXPORT VIDEO" : `EXPORT MASTER${format.startsWith("mp3") ? " (MP3)" : ""}`}
         </button>
         <button
@@ -293,7 +306,8 @@ export function ExportPanel() {
         </button>
       </div>
       <div className={`export-status export-${status.kind}`}>
-        {status.kind === "idle" && "Offline render uses the exact same engine, instruments and effects as playback — plus a 2 s tail for reverb/delay."}
+        {status.kind === "idle" &&
+          "Offline render uses the exact same engine, instruments and effects as playback — plus a 2 s tail for reverb/delay."}
         {status.kind !== "idle" && status.label}
       </div>
       {status.kind === "done" && <ExportSummary summary={status.summary} />}
@@ -324,11 +338,15 @@ function ExportSummary({ summary }: { summary: BufferSummary }) {
       </div>
       <div className="export-summary-row">
         <span className="export-summary-label">×CORR</span>
-        <span className="export-summary-value">{corr.toFixed(2)} {corrLabel}</span>
+        <span className="export-summary-value">
+          {corr.toFixed(2)} {corrLabel}
+        </span>
       </div>
       <div className="export-summary-row">
         <span className="export-summary-label">LUFS-I</span>
-        <span className="export-summary-value">{summary.lufsIntegrated <= -119 ? "-INF" : summary.lufsIntegrated.toFixed(1)}</span>
+        <span className="export-summary-value">
+          {summary.lufsIntegrated <= -119 ? "-INF" : summary.lufsIntegrated.toFixed(1)}
+        </span>
       </div>
       <div className="export-summary-row">
         <span className="export-summary-label">MONO LOSS</span>

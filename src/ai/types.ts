@@ -17,7 +17,7 @@ export interface PadMarkovModel {
 /** Groove data — one style variation within a genre */
 export interface GrooveData {
   id: string;
-  genre: 'house' | 'techno' | 'trap' | 'ambient';
+  genre: "house" | "techno" | "trap" | "ambient";
   name: string;
   bpm: [number, number];
   swing: number;
@@ -33,7 +33,7 @@ export interface GrooveData {
 
 /** User-facing generation options */
 export interface GenerateOptions {
-  genre: 'house' | 'techno' | 'trap' | 'ambient';
+  genre: "house" | "techno" | "trap" | "ambient";
   style?: string;
   seed: string;
   stepCount: number;
@@ -41,7 +41,7 @@ export interface GenerateOptions {
   microWeight: number;
   velocityVariation: number;
   temperature: number;
-  replaceMode: 'new' | 'replace';
+  replaceMode: "new" | "replace";
   drumTrackId?: string;
   instrumentTrackIds?: string[];
   /** If set, hash this pattern's rows to derive the seed for variation */
@@ -51,25 +51,37 @@ export interface GenerateOptions {
 }
 
 export const DEFAULT_GENERATE_OPTIONS: GenerateOptions = {
-  genre: 'house',
-  seed: '',
+  genre: "house",
+  seed: "",
   stepCount: 16,
   ghostWeight: 0.3,
   microWeight: 0.2,
   velocityVariation: 0.3,
   temperature: 1.0,
-  replaceMode: 'new',
+  replaceMode: "new",
 };
 
 /** All available genres */
-export const GENRES = ['house', 'techno', 'trap', 'ambient'] as const;
+export const GENRES = ["house", "techno", "trap", "ambient"] as const;
 
 /** Pad index → name mapping (matches makeKit in schema.ts) */
 export const PAD_NAMES: readonly string[] = [
-  'Kick Deep', 'Kick Punch', 'Kick Techno', 'Rim',
-  'Snare', 'Snare Tight', 'Clap', 'Shaker',
-  'Hat Closed', 'Hat Soft', 'Hat Open', 'Ride',
-  'Tom Low', 'Tom High', 'Tick', 'Blip',
+  "Kick Deep",
+  "Kick Punch",
+  "Kick Techno",
+  "Rim",
+  "Snare",
+  "Snare Tight",
+  "Clap",
+  "Shaker",
+  "Hat Closed",
+  "Hat Soft",
+  "Hat Open",
+  "Ride",
+  "Tom Low",
+  "Tom High",
+  "Tick",
+  "Blip",
 ];
 
 // ── Melodic types ────────────────────────────────────────
@@ -87,7 +99,7 @@ export interface MelodicNote {
 /** A melodic reference pattern for one instrument part */
 export interface MelodicPatternData {
   /** Instrument role */
-  role: 'bass' | 'chord' | 'lead';
+  role: "bass" | "chord" | "lead";
   /** Octave offset from middle (0=C3 range, +1 = one octave up) */
   octaveOffset: number;
   /** Reference note sequences (multiple variations) */

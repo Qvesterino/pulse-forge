@@ -23,7 +23,7 @@ class TremoloProcessor extends AudioWorkletProcessor {
       { name: "rate", defaultValue: 5, minValue: 0.1, maxValue: 20, automationRate: "k-rate" },
       { name: "depth", defaultValue: 0.7, minValue: 0, maxValue: 1, automationRate: "k-rate" },
       { name: "shape", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" }, // 0=sine 1=square
-      { name: "mode", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" },  // 0=AM 1=auto-pan
+      { name: "mode", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" }, // 0=AM 1=auto-pan
       { name: "mix", defaultValue: 1, minValue: 0, maxValue: 1, automationRate: "k-rate" },
     ];
   }
@@ -44,7 +44,7 @@ class TremoloProcessor extends AudioWorkletProcessor {
     const shape = parameters.shape[0];
     const autoPan = parameters.mode[0] >= 0.5;
     const mix = parameters.mix[0];
-    const phaseRate = 2 * Math.PI * rate / sr;
+    const phaseRate = (2 * Math.PI * rate) / sr;
 
     for (let i = 0; i < len; i++) {
       const l = inL ? inL[i] : 0;

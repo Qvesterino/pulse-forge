@@ -122,7 +122,7 @@ function drawFrame(
   const slot = (w * 0.84) / barCount;
   const barW = Math.max(2, slot * 0.68);
   const x0 = w * 0.08;
-  const playedX = x0 + (w * 0.84) * progress;
+  const playedX = x0 + w * 0.84 * progress;
   for (let i = 0; i < barCount; i++) {
     const col = envelope[i];
     const amp = Math.max(0.004, (col.max - col.min) / 2);

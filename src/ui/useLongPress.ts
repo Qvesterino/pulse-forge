@@ -50,19 +50,18 @@ export function useLongPress(fire: () => void, ms = 450): LongPressBind {
   );
 
   const wrapContextMenu = useCallback(
-    (original: (event: React.MouseEvent) => void) =>
-      (event: React.MouseEvent) => {
-        if (fired.current) {
-          // Our long-press already ran — swallow the synthetic follow-up menu.
-          event.preventDefault();
-          fired.current = false;
-          return;
-        }
-        // The browser's own long-press menu won the race — cancel our timer
-        // and let the original handler run once.
-        clear();
-        original(event);
-      },
+    (original: (event: React.MouseEvent) => void) => (event: React.MouseEvent) => {
+      if (fired.current) {
+        // Our long-press already ran — swallow the synthetic follow-up menu.
+        event.preventDefault();
+        fired.current = false;
+        return;
+      }
+      // The browser's own long-press menu won the race — cancel our timer
+      // and let the original handler run once.
+      clear();
+      original(event);
+    },
     [clear],
   );
 

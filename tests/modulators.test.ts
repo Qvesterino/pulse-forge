@@ -16,7 +16,7 @@ const trackIds = new Set(["t1", "t2"]);
 describe("modulator grid", () => {
   it("maps divisions to musical lengths in ticks", () => {
     expect(divisionTicks(0)).toBe(PPQ * 4); // 1/1 → full bar
-    expect(divisionTicks(2)).toBe(PPQ);     // 1/4
+    expect(divisionTicks(2)).toBe(PPQ); // 1/4
     expect(divisionTicks(4)).toBe(PPQ / 4); // 1/16
   });
 
@@ -46,9 +46,29 @@ describe("random S&H determinism", () => {
 });
 
 describe("event streams", () => {
-  const randomLfo: Lfo = { id: "r1", trackId: "t1", kind: "random", param: "gain", snh: "hold", rateMode: "sync", rateHz: 8, division: 3, amount: 0.4, seed: "s" };
+  const randomLfo: Lfo = {
+    id: "r1",
+    trackId: "t1",
+    kind: "random",
+    param: "gain",
+    snh: "hold",
+    rateMode: "sync",
+    rateHz: 8,
+    division: 3,
+    amount: 0.4,
+    seed: "s",
+  };
   const glideRandom: Lfo = { ...randomLfo, id: "r2", snh: "glide" };
-  const stepLfo: Lfo = { id: "s1", trackId: "t1", kind: "step", param: "gain", division: 3, glideSec: 0.02, amount: 0.6, steps: [0, 1, 0, -1] };
+  const stepLfo: Lfo = {
+    id: "s1",
+    trackId: "t1",
+    kind: "step",
+    param: "gain",
+    division: 3,
+    glideSec: 0.02,
+    amount: 0.6,
+    steps: [0, 1, 0, -1],
+  };
 
   it("anchors the current value at the window start, then emits boundaries", () => {
     const hold = divisionTicks(3); // PPQ (1/8 of a beat? division 3 → beats/cycle .5 → ticks 240)
@@ -95,7 +115,16 @@ const DEFAULT_STEP_PATTERN_N4 = [0, 1, 0, -1];
 
 describe("sanitizers", () => {
   it("keeps valid osc entries untouched semantically", () => {
-    const lfo: Lfo = { id: "a", trackId: "t1", param: "pan", wave: "square", rateMode: "sync", rateHz: 2, division: 2, amount: 0.3 };
+    const lfo: Lfo = {
+      id: "a",
+      trackId: "t1",
+      param: "pan",
+      wave: "square",
+      rateMode: "sync",
+      rateHz: 2,
+      division: 2,
+      amount: 0.3,
+    };
     const cleaned = sanitizeLfo(lfo, trackIds);
     expect(cleaned).not.toBeNull();
     expect(cleaned!.kind).toBeUndefined();
@@ -111,7 +140,17 @@ describe("sanitizers", () => {
 
   it("clamps amounts, waves, rates and repairs missing kind-specific fields", () => {
     const cleaned = sanitizeLfo(
-      { id: "b", trackId: "t1", kind: "osc", param: "nope", wave: "wobble", rateMode: "wat", rateHz: 999, division: 33, amount: 9 },
+      {
+        id: "b",
+        trackId: "t1",
+        kind: "osc",
+        param: "nope",
+        wave: "wobble",
+        rateMode: "wat",
+        rateHz: 999,
+        division: 33,
+        amount: 9,
+      },
       trackIds,
     )!;
     expect(cleaned.param).toBe("gain");
@@ -124,7 +163,17 @@ describe("sanitizers", () => {
 
   it("envFollower self-heals dangling source to host track and clamps timings", () => {
     const cleaned = sanitizeLfo(
-      { id: "c", trackId: "t1", kind: "envFollower", param: "gain", sourceTrackId: "ghost", attackMs: -50, releaseMs: 99999, sensitivity: 42, amount: 0.5 },
+      {
+        id: "c",
+        trackId: "t1",
+        kind: "envFollower",
+        param: "gain",
+        sourceTrackId: "ghost",
+        attackMs: -50,
+        releaseMs: 99999,
+        sensitivity: 42,
+        amount: 0.5,
+      },
       trackIds,
     )!;
     expect(cleaned.sourceTrackId).toBe("t1");
@@ -134,7 +183,10 @@ describe("sanitizers", () => {
   });
 
   it("random keeps stable fallback seed when seed is junk", () => {
-    const cleaned = sanitizeLfo({ id: "d", trackId: "t1", kind: "random", param: "gain", snh: "nonsense", amount: 0.4 }, trackIds)!;
+    const cleaned = sanitizeLfo(
+      { id: "d", trackId: "t1", kind: "random", param: "gain", snh: "nonsense", amount: 0.4 },
+      trackIds,
+    )!;
     expect(typeof cleaned.seed).toBe("string");
     expect(cleaned.seed!.length).toBeGreaterThan(0);
     const again = sanitizeLfo(cleaned, trackIds)!;
@@ -156,14 +208,43 @@ describe("sanitizers", () => {
 describe("target resolution", () => {
   it("random/step honour explicit generic targets", () => {
     const target = { kind: "fxParam" as const, trackId: "t1", fxId: "fx9", paramId: "cutoff" };
-    const lfo: Lfo = { id: "e", trackId: "t1", kind: "step", param: "pan", target, division: 3, glideSec: 0, amount: 0.5, steps: [] };
+    const lfo: Lfo = {
+      id: "e",
+      trackId: "t1",
+      kind: "step",
+      param: "pan",
+      target,
+      division: 3,
+      glideSec: 0,
+      amount: 0.5,
+      steps: [],
+    };
     expect(resolveLfoTarget(lfo)).toBe(target);
   });
 
   it("falls back to the native param selector otherwise", () => {
-    const osc: Lfo = { id: "f", trackId: "t1", param: "pan", wave: "sine", rateMode: "sync", rateHz: 2, division: 2, amount: 0.3 };
+    const osc: Lfo = {
+      id: "f",
+      trackId: "t1",
+      param: "pan",
+      wave: "sine",
+      rateMode: "sync",
+      rateHz: 2,
+      division: 2,
+      amount: 0.3,
+    };
     expect(resolveLfoTarget(osc)).toEqual({ kind: "trackPan", trackId: "t1" });
-    const follower: Lfo = { id: "g", trackId: "t1", kind: "envFollower", param: "gain", sourceTrackId: "t1", attackMs: 12, releaseMs: 180, sensitivity: 1.5, amount: 0.5 };
+    const follower: Lfo = {
+      id: "g",
+      trackId: "t1",
+      kind: "envFollower",
+      param: "gain",
+      sourceTrackId: "t1",
+      attackMs: 12,
+      releaseMs: 180,
+      sensitivity: 1.5,
+      amount: 0.5,
+    };
     expect(resolveLfoTarget(follower)).toEqual({ kind: "trackGain", trackId: "t1" });
   });
 });

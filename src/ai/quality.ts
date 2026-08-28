@@ -1,7 +1,7 @@
-import type { NoteEvent, MusicalKey } from '../project-model/types';
-import { parseKey, SCALE_INTERVALS } from '../project-model/scales';
-import type { GrooveData } from './types';
-import type { PadRole } from './pad-roles';
+import type { NoteEvent, MusicalKey } from "../project-model/types";
+import { parseKey, SCALE_INTERVALS } from "../project-model/scales";
+import type { GrooveData } from "./types";
+import type { PadRole } from "./pad-roles";
 
 function clampVelocity(value: number): number {
   if (!Number.isFinite(value) || value <= 0) return 0;
@@ -9,17 +9,13 @@ function clampVelocity(value: number): number {
 }
 
 /** Preserve style anchors that a sparse sampler must not erase. */
-export function enforceDrumAnchors(
-  row: number[],
-  references: readonly number[][],
-  role: PadRole,
-): void {
-  if (role !== 'kick' && role !== 'snare' && role !== 'clap') return;
+export function enforceDrumAnchors(row: number[], references: readonly number[][], role: PadRole): void {
+  if (role !== "kick" && role !== "snare" && role !== "clap") return;
 
-  const anchorPeriod = role === 'kick' ? 4 : 8;
-  const anchorOffset = role === 'kick' ? 0 : 4;
+  const anchorPeriod = role === "kick" ? 4 : 8;
+  const anchorOffset = role === "kick" ? 0 : 4;
   for (let step = anchorOffset; step < row.length; step += anchorPeriod) {
-    const reference = Math.max(...references.map(pattern => pattern[step % 16] ?? 0), 0);
+    const reference = Math.max(...references.map((pattern) => pattern[step % 16] ?? 0), 0);
     if (reference <= 0 || row[step] > 0) continue;
     // Deterministic repair: keep the reference's character, but leave room
     // for velocity contour and later phrase dynamics.
@@ -58,16 +54,16 @@ export function measureDrumQuality(
   for (let pad = 0; pad < rows.length; pad++) {
     const row = rows[pad];
     if (!row) continue;
-    const role = roles[pad] ?? 'unknown';
-    const references = groove.patterns.map(pattern => pattern[pad] ?? []);
+    const role = roles[pad] ?? "unknown";
+    const references = groove.patterns.map((pattern) => pattern[pad] ?? []);
     for (let step = 0; step < stepCount; step++) {
       const value = row[step] ?? 0;
       if (value > 0) {
         hits.push(value);
         if (step % 4 === 1 || step % 4 === 3) syncopated++;
       }
-      if ((role === 'kick' && step % 4 === 0) || ((role === 'snare' || role === 'clap') && step % 8 === 4)) {
-        const reference = Math.max(...references.map(pattern => pattern[step % 16] ?? 0), 0);
+      if ((role === "kick" && step % 4 === 0) || ((role === "snare" || role === "clap") && step % 8 === 4)) {
+        const reference = Math.max(...references.map((pattern) => pattern[step % 16] ?? 0), 0);
         if (reference > 0) {
           anchors++;
           if (value > 0) coveredAnchors++;
@@ -77,9 +73,7 @@ export function measureDrumQuality(
   }
 
   const mean = hits.length > 0 ? hits.reduce((sum, value) => sum + value, 0) / hits.length : 0;
-  const variance = hits.length > 0
-    ? hits.reduce((sum, value) => sum + (value - mean) ** 2, 0) / hits.length
-    : 0;
+  const variance = hits.length > 0 ? hits.reduce((sum, value) => sum + (value - mean) ** 2, 0) / hits.length : 0;
   const bars = Math.ceil(stepCount / 16);
   let repeatedPairs = 0;
   let comparedPairs = 0;
@@ -88,8 +82,8 @@ export function measureDrumQuality(
     if (!row) continue;
     for (let bar = 1; bar < bars; bar++) {
       comparedPairs++;
-      const previous = row.slice((bar - 1) * 16, bar * 16).join(',');
-      const current = row.slice(bar * 16, (bar + 1) * 16).join(',');
+      const previous = row.slice((bar - 1) * 16, bar * 16).join(",");
+      const current = row.slice(bar * 16, (bar + 1) * 16).join(",");
       if (previous === current) repeatedPairs++;
     }
   }
@@ -127,7 +121,7 @@ export function measureMelodicQuality(
   stepCount: number,
   key?: MusicalKey,
 ): MelodicQualityMetrics {
-  const pitches = notes.map(note => note.pitch);
+  const pitches = notes.map((note) => note.pitch);
   const pitchRange = pitches.length > 0 ? Math.max(...pitches) - Math.min(...pitches) : 0;
   let validScaleNotes = 0;
   const occupiedSteps = new Set<number>();
@@ -142,7 +136,7 @@ export function measureMelodicQuality(
   }
 
   for (const note of notes) {
-    if (!intervals || intervals.includes(((note.pitch - root) % 12 + 12) % 12)) validScaleNotes++;
+    if (!intervals || intervals.includes((((note.pitch - root) % 12) + 12) % 12)) validScaleNotes++;
     const startStep = Math.max(0, Math.floor(note.start / 120));
     const endStep = Math.min(stepCount, Math.ceil((note.start + Math.max(0, note.duration)) / 120));
     for (let step = startStep; step < endStep; step++) occupiedSteps.add(step);
@@ -158,16 +152,18 @@ export function measureMelodicQuality(
   const durationDenominator = Math.max(1, sortedNotes.length);
   const intervalMotifs = new Map<string, number>();
   for (let index = 0; index + 3 < sortedNotes.length; index++) {
-    const key = [1, 2, 3].map(offset => {
-      const interval = sortedNotes[index + offset].pitch - sortedNotes[index + offset - 1].pitch;
-      const duration = Math.round(Math.max(0, sortedNotes[index + offset].duration) / 120);
-      return `${interval}:${duration}`;
-    }).join('|');
+    const key = [1, 2, 3]
+      .map((offset) => {
+        const interval = sortedNotes[index + offset].pitch - sortedNotes[index + offset - 1].pitch;
+        const duration = Math.round(Math.max(0, sortedNotes[index + offset].duration) / 120);
+        return `${interval}:${duration}`;
+      })
+      .join("|");
     intervalMotifs.set(key, (intervalMotifs.get(key) ?? 0) + 1);
   }
   const motifTotal = [...intervalMotifs.values()].reduce((sum, count) => sum + count, 0);
   const repeatedMotifs = [...intervalMotifs.values()]
-    .filter(count => count > 1)
+    .filter((count) => count > 1)
     .reduce((sum, count) => sum + count, 0);
   const motifRepetition = motifTotal > 0 ? repeatedMotifs / motifTotal : 0;
   const occupiedStepRatio = Math.min(1, occupiedSteps.size / Math.max(1, stepCount));

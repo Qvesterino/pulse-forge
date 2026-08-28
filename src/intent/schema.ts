@@ -25,7 +25,7 @@ export function validateIntentSpec(value: unknown): string[] {
   const errors: string[] = [];
   if (!isRecord(value)) return ["intent must be an object"];
   if (value.version !== INTENT_SCHEMA_VERSION) errors.push("unsupported intent schema version");
-  if (!GENRES.includes(value.genre as typeof GENRES[number])) errors.push("genre is invalid");
+  if (!GENRES.includes(value.genre as (typeof GENRES)[number])) errors.push("genre is invalid");
   if (value.style !== null && typeof value.style !== "string") errors.push("style must be string or null");
   if (value.mood !== null && typeof value.mood !== "string") errors.push("mood must be string or null");
   for (const field of ["energy", "density", "complexity", "variation"] as const) {
@@ -38,10 +38,16 @@ export function validateIntentSpec(value: unknown): string[] {
       errors.push("bpmRange must be a two-number tuple or null");
     }
   }
-  if (!isFiniteNumber(value.length) || !Number.isInteger(value.length) || value.length < 16 || value.length % 16 !== 0) {
+  if (
+    !isFiniteNumber(value.length) ||
+    !Number.isInteger(value.length) ||
+    value.length < 16 ||
+    value.length % 16 !== 0
+  ) {
     errors.push("length must be a positive multiple of 16");
   }
-  if (!Array.isArray(value.roles) || value.roles.length === 0 || !value.roles.every(isRole)) errors.push("roles are invalid");
+  if (!Array.isArray(value.roles) || value.roles.length === 0 || !value.roles.every(isRole))
+    errors.push("roles are invalid");
   if (!isRecord(value.targetTracks)) errors.push("targetTracks must be an object");
   if (!isRecord(value.constraints)) errors.push("constraints must be an object");
   if (!isRecord(value.controls)) errors.push("controls must be an object");
@@ -49,7 +55,11 @@ export function validateIntentSpec(value: unknown): string[] {
     if (!isUnit(value.controls.ghostWeight)) errors.push("controls.ghostWeight must be between 0 and 1");
     if (!isUnit(value.controls.microWeight)) errors.push("controls.microWeight must be between 0 and 1");
     if (!isUnit(value.controls.velocityVariation)) errors.push("controls.velocityVariation must be between 0 and 1");
-    if (!isFiniteNumber(value.controls.temperature) || value.controls.temperature < 0.2 || value.controls.temperature > 2) {
+    if (
+      !isFiniteNumber(value.controls.temperature) ||
+      value.controls.temperature < 0.2 ||
+      value.controls.temperature > 2
+    ) {
       errors.push("controls.temperature must be between 0.2 and 2");
     }
   }

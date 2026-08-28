@@ -17,8 +17,10 @@ class AutowahProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
     this.env = 0;
-    this.lpL = 0; this.bpL = 0;
-    this.lpR = 0; this.bpR = 0;
+    this.lpL = 0;
+    this.bpL = 0;
+    this.lpR = 0;
+    this.bpR = 0;
   }
 
   static get parameterDescriptors() {
@@ -64,23 +66,24 @@ class AutowahProcessor extends AudioWorkletProcessor {
       // ---- Envelope follower ----
       const peak = Math.abs(l) > Math.abs(r) ? Math.abs(l) : Math.abs(r);
       const driven = Math.tanh(peak * sens);
-      this.env = driven > this.env
-        ? this.env + (driven - this.env) * atkBlend
-        : this.env + (driven - this.env) * relBlend;
+      this.env =
+        driven > this.env ? this.env + (driven - this.env) * atkBlend : this.env + (driven - this.env) * relBlend;
       if (this.env < 1e-20) this.env = 0;
 
       // ---- Envelope → cutoff frequency ----
       const fc = minF + this.env * (maxF - minF);
 
       // ---- Chamberlin SVF (cutoff moves per-sample) ----
-      const f = 2 * Math.sin(Math.PI * Math.min(fc, sr * 0.24) / sr);
+      const f = 2 * Math.sin((Math.PI * Math.min(fc, sr * 0.24)) / sr);
 
       // Left
       const hpL = l - this.lpL - q * this.bpL;
       this.bpL += f * hpL;
       this.lpL += f * this.bpL;
-      if (this.bpL > clampVal) this.bpL = clampVal; else if (this.bpL < -clampVal) this.bpL = -clampVal;
-      if (this.lpL > clampVal) this.lpL = clampVal; else if (this.lpL < -clampVal) this.lpL = -clampVal;
+      if (this.bpL > clampVal) this.bpL = clampVal;
+      else if (this.bpL < -clampVal) this.bpL = -clampVal;
+      if (this.lpL > clampVal) this.lpL = clampVal;
+      else if (this.lpL < -clampVal) this.lpL = -clampVal;
       if (Math.abs(this.bpL) < 1e-20) this.bpL = 0;
       if (Math.abs(this.lpL) < 1e-20) this.lpL = 0;
 
@@ -88,15 +91,22 @@ class AutowahProcessor extends AudioWorkletProcessor {
       const hpR = r - this.lpR - q * this.bpR;
       this.bpR += f * hpR;
       this.lpR += f * this.bpR;
-      if (this.bpR > clampVal) this.bpR = clampVal; else if (this.bpR < -clampVal) this.bpR = -clampVal;
-      if (this.lpR > clampVal) this.lpR = clampVal; else if (this.lpR < -clampVal) this.lpR = -clampVal;
+      if (this.bpR > clampVal) this.bpR = clampVal;
+      else if (this.bpR < -clampVal) this.bpR = -clampVal;
+      if (this.lpR > clampVal) this.lpR = clampVal;
+      else if (this.lpR < -clampVal) this.lpR = -clampVal;
       if (Math.abs(this.bpR) < 1e-20) this.bpR = 0;
       if (Math.abs(this.lpR) < 1e-20) this.lpR = 0;
 
       // Mode select
       let fL, fR;
-      if (bpMode) { fL = this.bpL; fR = this.bpR; }
-      else { fL = this.lpL; fR = this.lpR; }
+      if (bpMode) {
+        fL = this.bpL;
+        fR = this.bpR;
+      } else {
+        fL = this.lpL;
+        fR = this.lpR;
+      }
 
       outL[i] = l * (1 - mix) + fL * mix;
       if (outR) outR[i] = r * (1 - mix) + fR * mix;

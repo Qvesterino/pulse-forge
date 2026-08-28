@@ -56,7 +56,10 @@ function createLargeProject(): ProjectDocument {
   const patterns: Pattern[] = [];
   for (let p = 0; p < 12; p++) {
     const rows: Record<string, number[]> = {};
-    const notes: Record<string, Array<{ id: string; pitch: number; start: number; duration: number; velocity: number }>> = {};
+    const notes: Record<
+      string,
+      Array<{ id: string; pitch: number; start: number; duration: number; velocity: number }>
+    > = {};
     for (const track of tracks) {
       if (track.kind === "drum") {
         for (const pad of track.pads) {

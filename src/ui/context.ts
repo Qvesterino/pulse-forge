@@ -60,11 +60,7 @@ export function useCanRedo(): boolean {
 /** Reactive browser-local audio/MIDI timing preferences. */
 export function useLatencyCalibration(): LatencyCalibrationSnapshot {
   const { latency } = useServices();
-  return useSyncExternalStore(
-    latency.subscribe,
-    latency.getSnapshot,
-    latency.getSnapshot,
-  );
+  return useSyncExternalStore(latency.subscribe, latency.getSnapshot, latency.getSnapshot);
 }
 
 export function useArrangementCapture(): ArrangementCaptureSnapshot {

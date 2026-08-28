@@ -1,10 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useLatencyCalibration, useServices } from "./context";
 import { AudioLatencyCalibrationError, measureAudioRoundTrip } from "../audio-engine/latencyProbe";
-import {
-  MAX_MIDI_REFERENCE_OFFSET_MS,
-  MIN_MIDI_REFERENCE_OFFSET_MS,
-} from "../audio-engine/latencyCalibration";
+import { MAX_MIDI_REFERENCE_OFFSET_MS, MIN_MIDI_REFERENCE_OFFSET_MS } from "../audio-engine/latencyCalibration";
 
 type WizardPhase = "intro" | "permission" | "audio" | "audio-result" | "midi" | "error";
 
@@ -89,13 +86,9 @@ export function LatencyCalibrationWizard({ open, onClose }: LatencyCalibrationWi
       if (typeof AudioContext === "undefined" || !(context instanceof AudioContext)) {
         throw new AudioLatencyCalibrationError("A live AudioContext is required for calibration.");
       }
-      const measurement = await measureAudioRoundTrip(
-        context,
-        audioAbort.signal,
-        () => {
-          if (token === runTokenRef.current) setPhase("audio");
-        },
-      );
+      const measurement = await measureAudioRoundTrip(context, audioAbort.signal, () => {
+        if (token === runTokenRef.current) setPhase("audio");
+      });
       if (token !== runTokenRef.current) return;
       services.latency.setAudioMeasurement(measurement);
       setPhase("audio-result");
@@ -126,12 +119,18 @@ export function LatencyCalibrationWizard({ open, onClose }: LatencyCalibrationWi
 
   const phaseTitle = (() => {
     switch (phase) {
-      case "intro": return "LATENCY CALIBRATION";
-      case "permission": return "MICROPHONE ACCESS";
-      case "audio": return "MEASURING AUDIO PATH";
-      case "audio-result": return "AUDIO PATH RESULT";
-      case "midi": return "MIDI FINE-TUNE";
-      case "error": return "AUDIO TEST UNAVAILABLE";
+      case "intro":
+        return "LATENCY CALIBRATION";
+      case "permission":
+        return "MICROPHONE ACCESS";
+      case "audio":
+        return "MEASURING AUDIO PATH";
+      case "audio-result":
+        return "AUDIO PATH RESULT";
+      case "midi":
+        return "MIDI FINE-TUNE";
+      case "error":
+        return "AUDIO TEST UNAVAILABLE";
     }
   })();
 
@@ -151,15 +150,25 @@ export function LatencyCalibrationWizard({ open, onClose }: LatencyCalibrationWi
             <h2 className="panel-title">{phaseTitle}</h2>
             <span className="latency-step">{phase === "midi" ? "2 / 2" : "1 / 2"}</span>
           </div>
-          <button ref={closeRef} type="button" className="btn btn-small" onClick={closeWizard} aria-label="Close latency calibration">
+          <button
+            ref={closeRef}
+            type="button"
+            className="btn btn-small"
+            onClick={closeWizard}
+            aria-label="Close latency calibration"
+          >
             CLOSE
           </button>
         </header>
 
         {phase === "intro" && (
           <div className="latency-body">
-            <p className="latency-copy">Audio test measures the speaker or headphone output returning to your microphone.</p>
-            <p className="latency-copy">Use speakers or an acoustic loopback. MIDI timing is tuned separately and stays browser-local.</p>
+            <p className="latency-copy">
+              Audio test measures the speaker or headphone output returning to your microphone.
+            </p>
+            <p className="latency-copy">
+              Use speakers or an acoustic loopback. MIDI timing is tuned separately and stays browser-local.
+            </p>
             {calibration.audioRoundTripMs !== null && <AudioResult calibration={calibration} />}
             <div className="latency-actions">
               <button type="button" className="btn btn-small active-solo" onClick={() => void runAudioCalibration()}>
@@ -191,7 +200,9 @@ export function LatencyCalibrationWizard({ open, onClose }: LatencyCalibrationWi
         {phase === "audio-result" && (
           <div className="latency-body">
             <AudioResult calibration={calibration} />
-            <p className="latency-copy">This is an audio-path measurement, not the physical latency of a MIDI controller.</p>
+            <p className="latency-copy">
+              This is an audio-path measurement, not the physical latency of a MIDI controller.
+            </p>
             <div className="latency-actions">
               <button type="button" className="btn btn-small active-solo" onClick={() => setPhase("midi")}>
                 CONTINUE TO MIDI
@@ -205,7 +216,9 @@ export function LatencyCalibrationWizard({ open, onClose }: LatencyCalibrationWi
 
         {phase === "error" && (
           <div className="latency-body">
-            <div className="latency-error" role="alert">{error}</div>
+            <div className="latency-error" role="alert">
+              {error}
+            </div>
             <p className="latency-copy">You can still tune the reference playback manually with MIDI.</p>
             <div className="latency-actions">
               <button type="button" className="btn btn-small active-solo" onClick={() => setPhase("midi")}>
@@ -221,9 +234,16 @@ export function LatencyCalibrationWizard({ open, onClose }: LatencyCalibrationWi
         {phase === "midi" && (
           <div className="latency-body">
             {calibration.audioRoundTripMs !== null && <AudioResult calibration={calibration} />}
-            <p className="latency-copy">Start the test loop, play a repeated MIDI note, then move the offset until the live note sits with the project transient.</p>
+            <p className="latency-copy">
+              Start the test loop, play a repeated MIDI note, then move the offset until the live note sits with the
+              project transient.
+            </p>
             <div className="latency-test-row">
-              <button type="button" className={`btn btn-small${testPlaying ? " active-solo" : ""}`} onClick={toggleTestPlayback}>
+              <button
+                type="button"
+                className={`btn btn-small${testPlaying ? " active-solo" : ""}`}
+                onClick={toggleTestPlayback}
+              >
                 {testPlaying ? "STOP TEST LOOP" : "START TEST LOOP"}
               </button>
               <span className="latency-hint">Positive values delay the project reference.</span>
@@ -242,8 +262,12 @@ export function LatencyCalibrationWizard({ open, onClose }: LatencyCalibrationWi
               />
             </label>
             <div className="latency-actions">
-              <button type="button" className="btn btn-small active-solo" onClick={closeWizard}>DONE</button>
-              <button type="button" className="btn btn-small btn-danger" onClick={resetCalibration}>RESET</button>
+              <button type="button" className="btn btn-small active-solo" onClick={closeWizard}>
+                DONE
+              </button>
+              <button type="button" className="btn btn-small btn-danger" onClick={resetCalibration}>
+                RESET
+              </button>
             </div>
           </div>
         )}
@@ -255,10 +279,21 @@ export function LatencyCalibrationWizard({ open, onClose }: LatencyCalibrationWi
 function AudioResult({ calibration }: { calibration: ReturnType<typeof useLatencyCalibration> }) {
   return (
     <div className={`latency-result${calibration.audioStable === false ? " latency-result-unstable" : ""}`}>
-      <div><span>ROUND TRIP</span><strong>{calibration.audioRoundTripMs?.toFixed(1) ?? "—"} ms</strong></div>
-      <div><span>JITTER</span><strong>{calibration.audioJitterMs?.toFixed(1) ?? "—"} ms</strong></div>
-      <div><span>SAMPLES</span><strong>{calibration.audioSampleCount}</strong></div>
-      {calibration.audioStable === false && <p>Measurement is unstable. Try quieter surroundings or a clearer acoustic return.</p>}
+      <div>
+        <span>ROUND TRIP</span>
+        <strong>{calibration.audioRoundTripMs?.toFixed(1) ?? "—"} ms</strong>
+      </div>
+      <div>
+        <span>JITTER</span>
+        <strong>{calibration.audioJitterMs?.toFixed(1) ?? "—"} ms</strong>
+      </div>
+      <div>
+        <span>SAMPLES</span>
+        <strong>{calibration.audioSampleCount}</strong>
+      </div>
+      {calibration.audioStable === false && (
+        <p>Measurement is unstable. Try quieter surroundings or a clearer acoustic return.</p>
+      )}
     </div>
   );
 }

@@ -32,7 +32,8 @@ export function useSceneRuntimeState(): SceneRuntimeState {
         unsubScheduler();
       };
     },
-    () => `${services.playback.mode}:${services.transport.playing ? "playing" : "stopped"}:${services.scheduler.pendingPatternId ?? ""}`,
+    () =>
+      `${services.playback.mode}:${services.transport.playing ? "playing" : "stopped"}:${services.scheduler.pendingPatternId ?? ""}`,
     () => "pattern:stopped:",
   );
   return {
@@ -56,7 +57,9 @@ function currentSceneIdFor(
   playheadBar: number,
 ): string | null {
   if (mode === "song") {
-    const clip = clips.find((candidate) => playheadBar >= candidate.startBar && playheadBar < candidate.startBar + candidate.lengthBars);
+    const clip = clips.find(
+      (candidate) => playheadBar >= candidate.startBar && playheadBar < candidate.startBar + candidate.lengthBars,
+    );
     return clip?.sceneId ?? null;
   }
   return scenes.find((scene) => scene.patternId === activePatternId)?.id ?? null;
@@ -144,7 +147,9 @@ export function SceneLauncher({
             isPlaying ? "playing" : "",
             isQueued ? "queued" : "",
             draggedSceneIndex === index ? "dragging" : "",
-          ].filter(Boolean).join(" ");
+          ]
+            .filter(Boolean)
+            .join(" ");
 
           return (
             <div
@@ -186,14 +191,20 @@ export function SceneLauncher({
                   <span className="scene-select-meta">
                     <span>{pattern?.name ?? "PATTERN MISSING"}</span>
                     <span>{patternLengthLabel(pattern)}</span>
-                    <span className={useCount > 1 ? "scene-shared" : ""}>{useCount > 1 ? `SHARED ${useCount}x` : `USE 1x`}</span>
+                    <span className={useCount > 1 ? "scene-shared" : ""}>
+                      {useCount > 1 ? `SHARED ${useCount}x` : `USE 1x`}
+                    </span>
                     {scene.loop && <span className="scene-loop-badge">LOOP</span>}
                   </span>
                 </button>
               )}
 
               <div className="scene-state-badges" aria-live="polite">
-                {isPlaying ? <span className="scene-state-badge playing">PLAYING</span> : isCurrent && <span className="scene-state-badge current">CURRENT</span>}
+                {isPlaying ? (
+                  <span className="scene-state-badge playing">PLAYING</span>
+                ) : (
+                  isCurrent && <span className="scene-state-badge current">CURRENT</span>
+                )}
                 {isQueued && <span className="scene-state-badge queued">QUEUED</span>}
               </div>
 
@@ -249,7 +260,9 @@ export function SceneLauncher({
             DUPLICATE PATTERN
           </button>
           {doc.scenes.filter((scene) => scene.patternId === selectedScene.patternId).length > 1 && (
-            <span className="scene-shared-note">Selected scene shares its pattern. Duplicate it before editing independently.</span>
+            <span className="scene-shared-note">
+              Selected scene shares its pattern. Duplicate it before editing independently.
+            </span>
           )}
         </div>
       )}

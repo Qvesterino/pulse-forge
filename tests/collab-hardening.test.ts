@@ -108,9 +108,18 @@ describe("YDocAdapter — pattern provenance (generation / assist / phrasePlan)"
   it("applyProjectToYMap preserves provenance that a peer wrote (targeted diff)", () => {
     const doc = house();
     const generation: PatternGeneration = {
-      engineId: "e", engineVersion: "1", seed: "s", genre: "house", style: null,
-      grooveId: "g", stepCount: 16, ghostWeight: 0, microWeight: 0,
-      velocityVariation: 0, temperature: 1, sourcePatternId: null,
+      engineId: "e",
+      engineVersion: "1",
+      seed: "s",
+      genre: "house",
+      style: null,
+      grooveId: "g",
+      stepCount: 16,
+      ghostWeight: 0,
+      microWeight: 0,
+      velocityVariation: 0,
+      temperature: 1,
+      sourcePatternId: null,
     };
     const withGeneration: ProjectDocument = {
       ...doc,
@@ -154,14 +163,18 @@ describe("YDocAdapter — full-document conformance", () => {
         deviceId: "ctrl-1",
         drumChannel: 10,
         instrumentChannel: 1,
-        ccMappings: [{ id: "cc-1", ccNumber: 1, channel: 1, target: { kind: "trackGain", trackId: drum.id }, min: 0, max: 1 }],
+        ccMappings: [
+          { id: "cc-1", ccNumber: 1, channel: 1, target: { kind: "trackGain", trackId: drum.id }, min: 0, max: 1 },
+        ],
         drumNoteMap: [{ midiNote: 36, padId: drum.pads[0].id }],
         pitchBendRange: 12,
       },
       tracks: [
         {
           ...drum,
-          pads: drum.pads.map((p, i) => (i === 0 ? { ...p, sliceStart: 0.1, sliceEnd: 0.9, sliceFadeIn: 0.01, sliceReverse: true } : p)),
+          pads: drum.pads.map((p, i) =>
+            i === 0 ? { ...p, sliceStart: 0.1, sliceEnd: 0.9, sliceFadeIn: 0.01, sliceReverse: true } : p,
+          ),
         },
         {
           ...inst,
@@ -174,15 +187,27 @@ describe("YDocAdapter — full-document conformance", () => {
           ...pattern,
           notes: {
             ...pattern.notes,
-            [inst.id]: [...(pattern.notes[inst.id] ?? []), { id: "n1", pitch: 60, start: 0, duration: 120, velocity: 0.9 }],
+            [inst.id]: [
+              ...(pattern.notes[inst.id] ?? []),
+              { id: "n1", pitch: 60, start: 0, duration: 120, velocity: 0.9 },
+            ],
           },
           stepMeta: {
             [drum.pads[0].id]: { 0: { probability: 0.9, ratchet: 2, microtiming: -0.5 } },
           },
           generation: {
-            engineId: "e", engineVersion: "1", seed: "s", genre: "house", style: null,
-            grooveId: "g", stepCount: 16, ghostWeight: 0, microWeight: 0,
-            velocityVariation: 0, temperature: 1, sourcePatternId: null,
+            engineId: "e",
+            engineVersion: "1",
+            seed: "s",
+            genre: "house",
+            style: null,
+            grooveId: "g",
+            stepCount: 16,
+            ghostWeight: 0,
+            microWeight: 0,
+            velocityVariation: 0,
+            temperature: 1,
+            sourcePatternId: null,
           },
         },
       ],
@@ -200,13 +225,9 @@ describe("YDocAdapter — full-document conformance", () => {
       ],
       arrangement: {
         clips: [{ id: "clip-1", sceneId: scene.id, startBar: 0, lengthBars: 4, loop: false }],
-        transitions: [
-          { id: "tr-1", fromClipId: "clip-1", toClipId: "clip-1", type: "fill", lengthBars: 1 },
-        ],
+        transitions: [{ id: "tr-1", fromClipId: "clip-1", toClipId: "clip-1", type: "fill", lengthBars: 1 }],
       },
-      markers: [
-        { id: "mk-1", name: "Drop", type: "drop", tick: 0, linkedClipId: "clip-1", customId: "c-1" },
-      ],
+      markers: [{ id: "mk-1", name: "Drop", type: "drop", tick: 0, linkedClipId: "clip-1", customId: "c-1" }],
       automation: [
         {
           id: "auto-1",
@@ -217,9 +238,25 @@ describe("YDocAdapter — full-document conformance", () => {
           ],
         },
       ],
-      lfos: [{ id: "lfo-1", trackId: drum.id, param: "pan", wave: "sine", rateMode: "sync", rateHz: 2, division: 2, amount: 0.3 }],
+      lfos: [
+        {
+          id: "lfo-1",
+          trackId: drum.id,
+          param: "pan",
+          wave: "sine",
+          rateMode: "sync",
+          rateHz: 2,
+          division: 2,
+          amount: 0.3,
+        },
+      ],
       macros: [
-        { id: "macro-1", name: "DRUMS", value: 0.5, mappings: [{ id: "map-1", trackId: drum.id, param: "gain", amount: 0.25, source: "macro" }] },
+        {
+          id: "macro-1",
+          name: "DRUMS",
+          value: 0.5,
+          mappings: [{ id: "map-1", trackId: drum.id, param: "gain", amount: 0.25, source: "macro" }],
+        },
       ],
     };
 
@@ -360,7 +397,9 @@ describe("collab — performance gate", () => {
       ...base.patterns[0],
       id: "pattern-big",
       stepCount,
-      rows: Object.fromEntries(allPads.map((pad) => [pad.id, new Array<number>(stepCount).fill(0).map((_, i) => (i % 4 === 0 ? 0.8 : 0))])),
+      rows: Object.fromEntries(
+        allPads.map((pad) => [pad.id, new Array<number>(stepCount).fill(0).map((_, i) => (i % 4 === 0 ? 0.8 : 0))]),
+      ),
       notes: {} as Pattern["notes"],
     };
     let bigDoc: ProjectDocument = {

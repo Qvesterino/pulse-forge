@@ -48,8 +48,11 @@ function yMapToProject(m: Y.Map<unknown>): ProjectDocument {
     id: (m.get("id") as string) ?? "",
     name: (m.get("name") as string) ?? "",
     bpm: (m.get("bpm") as number) ?? 120,
-    timeSignature: (plainValue(m.get("timeSignature")) as unknown as { numerator: number; denominator: number }) ?? { numerator: 4, denominator: 4 },
-    key: (m.get("key") as string | undefined) as any,
+    timeSignature: (plainValue(m.get("timeSignature")) as unknown as { numerator: number; denominator: number }) ?? {
+      numerator: 4,
+      denominator: 4,
+    },
+    key: m.get("key") as string | undefined as any,
     tags: listValue(m.get("tags")) as string[],
     tracks: yArrToList(m.get("tracks") as Y.Array<unknown>).map(yMapToTrack),
     patterns: yArrToList(m.get("patterns") as Y.Array<unknown>).map(yMapToPattern),
@@ -70,9 +73,14 @@ function yMapToProject(m: Y.Map<unknown>): ProjectDocument {
     lfos: yArrToList(m.get("lfos") as Y.Array<unknown>).map(yMapToLfo),
     macros: yArrToList(m.get("macros") as Y.Array<unknown>).map(yMapToMacro),
     returns: yArrToList(m.get("returns") as Y.Array<unknown>).map(yMapToReturn),
-    master: (plainValue(m.get("master")) as unknown as MasterConfig) ?? { masterGain: 1, ceilingDb: -1, limiterEnabled: true, clipperEnabled: false },
-    groove: m.has("groove") ? plainValue(m.get("groove")) as unknown as Partial<GrooveSettings> : undefined,
-    midi: m.has("midi") ? plainValue(m.get("midi")) as unknown as MidiConfig : undefined,
+    master: (plainValue(m.get("master")) as unknown as MasterConfig) ?? {
+      masterGain: 1,
+      ceilingDb: -1,
+      limiterEnabled: true,
+      clipperEnabled: false,
+    },
+    groove: m.has("groove") ? (plainValue(m.get("groove")) as unknown as Partial<GrooveSettings>) : undefined,
+    midi: m.has("midi") ? (plainValue(m.get("midi")) as unknown as MidiConfig) : undefined,
     createdAt: (m.get("createdAt") as string) ?? "",
     updatedAt: (m.get("updatedAt") as string) ?? "",
   };
@@ -91,7 +99,7 @@ function yMapToTrack(m: unknown): Track {
     effects: yArrToList(map.get("effects") as Y.Array<unknown>).map(yMapToEffect),
     sends: yMapToRecord(map.get("sends") as Y.Map<unknown>),
     groupId: map.get("groupId") as string | undefined,
-    frozen: map.has("frozen") ? yMapToObj(map.get("frozen") as Y.Map<unknown>) as unknown as FrozenState : undefined,
+    frozen: map.has("frozen") ? (yMapToObj(map.get("frozen") as Y.Map<unknown>) as unknown as FrozenState) : undefined,
   };
   if (kind === "drum") {
     return { ...base, kind: "drum", pads: yArrToList(map.get("pads") as Y.Array<unknown>).map(yMapToPad) };
@@ -106,7 +114,7 @@ function yMapToTrack(m: unknown): Track {
     sampleId: map.get("sampleId") as string | null,
     params: yMapToRecord(map.get("params") as Y.Map<unknown>),
     presetId: map.get("presetId") as string | null | undefined,
-    midiOutput: map.has("midiOutput") ? yMapToObj(map.get("midiOutput") as Y.Map<unknown>) as any : undefined,
+    midiOutput: map.has("midiOutput") ? (yMapToObj(map.get("midiOutput") as Y.Map<unknown>) as any) : undefined,
   };
 }
 
@@ -122,11 +130,11 @@ function yMapToPad(m: unknown): DrumPad {
     mute: map.get("mute") as boolean,
     solo: map.get("solo") as boolean,
     chokeGroup: map.get("chokeGroup") as number | null,
-    sliceStart: map.has("sliceStart") ? map.get("sliceStart") as number : undefined,
-    sliceEnd: map.has("sliceEnd") ? map.get("sliceEnd") as number : undefined,
-    sliceFadeIn: map.has("sliceFadeIn") ? map.get("sliceFadeIn") as number : undefined,
-    sliceFadeOut: map.has("sliceFadeOut") ? map.get("sliceFadeOut") as number : undefined,
-    sliceReverse: map.has("sliceReverse") ? map.get("sliceReverse") as boolean : undefined,
+    sliceStart: map.has("sliceStart") ? (map.get("sliceStart") as number) : undefined,
+    sliceEnd: map.has("sliceEnd") ? (map.get("sliceEnd") as number) : undefined,
+    sliceFadeIn: map.has("sliceFadeIn") ? (map.get("sliceFadeIn") as number) : undefined,
+    sliceFadeOut: map.has("sliceFadeOut") ? (map.get("sliceFadeOut") as number) : undefined,
+    sliceReverse: map.has("sliceReverse") ? (map.get("sliceReverse") as boolean) : undefined,
   };
 }
 
@@ -183,7 +191,9 @@ function yMapToPattern(m: unknown): Pattern {
     // any collaborative edit.
     generation: map.has("generation") ? (plainValue(map.get("generation")) as unknown as PatternGeneration) : undefined,
     assist: map.has("assist") ? (plainValue(map.get("assist")) as unknown as PatternAssist) : undefined,
-    phrasePlan: map.has("phrasePlan") ? (plainValue(map.get("phrasePlan")) as unknown as PatternPhraseBar[]) : undefined,
+    phrasePlan: map.has("phrasePlan")
+      ? (plainValue(map.get("phrasePlan")) as unknown as PatternPhraseBar[])
+      : undefined,
   };
 }
 
@@ -205,7 +215,9 @@ function yMapToScene(m: unknown): Scene {
     name: map.get("name") as string,
     patternId: map.get("patternId") as string,
     intensity: map.get("intensity") as number,
-    intensityCurve: map.has("intensityCurve") ? yArrToList(map.get("intensityCurve") as Y.Array<unknown>).map((v) => yMapToObj(v as Y.Map<unknown>)) as any : undefined,
+    intensityCurve: map.has("intensityCurve")
+      ? (yArrToList(map.get("intensityCurve") as Y.Array<unknown>).map((v) => yMapToObj(v as Y.Map<unknown>)) as any)
+      : undefined,
     loop: map.get("loop") as boolean | undefined,
     role: map.get("role") as Scene["role"],
   };
@@ -282,7 +294,9 @@ function yMapToMacro(m: unknown): Macro {
     id: map.get("id") as string,
     name: map.get("name") as string,
     value: map.get("value") as number,
-    mappings: yArrToList(map.get("mappings") as Y.Array<unknown>).map((v) => yMapToObj(v as Y.Map<unknown>) as unknown as MacroMapping),
+    mappings: yArrToList(map.get("mappings") as Y.Array<unknown>).map(
+      (v) => yMapToObj(v as Y.Map<unknown>) as unknown as MacroMapping,
+    ),
   };
 }
 
@@ -314,7 +328,9 @@ function plainValue(value: unknown): unknown {
   if (value instanceof Y.Array) return value.toArray().map(plainValue);
   if (value instanceof Y.Map) {
     const out: Record<string, unknown> = {};
-    value.forEach((v, k) => { out[k] = plainValue(v); });
+    value.forEach((v, k) => {
+      out[k] = plainValue(v);
+    });
     return out;
   }
   return value;
@@ -464,7 +480,8 @@ function syncBlobContainer(
   createItem: (item: unknown) => Y.Map<unknown>,
 ): void {
   const current = map.get(key);
-  const currentJson = current instanceof Y.Array ? JSON.stringify(current.toArray().map((v) => plainValue(v))) : undefined;
+  const currentJson =
+    current instanceof Y.Array ? JSON.stringify(current.toArray().map((v) => plainValue(v))) : undefined;
   if (currentJson !== undefined && currentJson === JSON.stringify(items)) return;
   if (current !== undefined) map.delete(key);
   const arr = new Y.Array<unknown>();
@@ -475,7 +492,21 @@ function syncBlobContainer(
 // ─── Entity sync (targeted diff) ────────────────────────────────────────────
 
 const TRACK_SCALARS = ["kind", "name", "gain", "pan", "mute", "solo", "groupId", "instrument", "sampleId", "presetId"];
-const PAD_SCALARS = ["name", "assetId", "gain", "pan", "pitch", "mute", "solo", "chokeGroup", "sliceStart", "sliceEnd", "sliceFadeIn", "sliceFadeOut", "sliceReverse"];
+const PAD_SCALARS = [
+  "name",
+  "assetId",
+  "gain",
+  "pan",
+  "pitch",
+  "mute",
+  "solo",
+  "chokeGroup",
+  "sliceStart",
+  "sliceEnd",
+  "sliceFadeIn",
+  "sliceFadeOut",
+  "sliceReverse",
+];
 const EFFECT_SCALARS = ["type", "bypassed", "sidechainTrackId"];
 const NOTE_SCALARS = ["pitch", "start", "duration", "velocity"];
 const SCENE_SCALARS = ["name", "patternId", "intensity", "loop", "role"];
@@ -543,7 +574,8 @@ function syncPatternEntity(target: Y.Map<unknown>, pattern: Pattern): void {
   }
   for (const [padId, row] of Object.entries(pattern.rows)) {
     let yRow = rowsMap.get(padId) as Y.Array<number> | undefined;
-    if (!yRow || !(yRow instanceof Y.Array)) {      yRow = new Y.Array<number>();
+    if (!yRow || !(yRow instanceof Y.Array)) {
+      yRow = new Y.Array<number>();
       rowsMap.set(padId, yRow);
     }
     if (yRow.length > row.length) yRow.delete(row.length, yRow.length - row.length);
@@ -674,11 +706,7 @@ function syncReturnEntity(target: Y.Map<unknown>, ret: ReturnTrack): void {
  * edits to entities it did not touch — and applying an identical document is
  * a no-op. Runs inside the caller's transaction.
  */
-export function applyProjectToYMap(
-  _oldDoc: ProjectDocument,
-  newDoc: ProjectDocument,
-  yMap: Y.Map<unknown>,
-): void {
+export function applyProjectToYMap(_oldDoc: ProjectDocument, newDoc: ProjectDocument, yMap: Y.Map<unknown>): void {
   // Scalar fields (compare-before-set — same client, higher clock wins LWW)
   setIfChanged(yMap, "schemaVersion", newDoc.schemaVersion);
   setIfChanged(yMap, "id", newDoc.id);
@@ -701,7 +729,12 @@ export function applyProjectToYMap(
   syncIdList(ensureChildArray(yMap, "patterns"), newDoc.patterns, syncPatternEntity, patternToYMap);
   syncIdList(ensureChildArray(yMap, "scenes"), newDoc.scenes, syncSceneEntity, sceneToYMap);
   syncIdList(ensureChildArray(yMap, "markers"), newDoc.markers, syncMarkerEntity, markerToYMap);
-  syncIdList(ensureChildArray(yMap, "sceneAutomation"), newDoc.sceneAutomation, syncSceneAutomationEntity, sceneAutoToYMap);
+  syncIdList(
+    ensureChildArray(yMap, "sceneAutomation"),
+    newDoc.sceneAutomation,
+    syncSceneAutomationEntity,
+    sceneAutoToYMap,
+  );
   syncIdList(ensureChildArray(yMap, "automation"), newDoc.automation, syncAutomationEntity, automationToYMap);
   syncIdList(ensureChildArray(yMap, "lfos"), newDoc.lfos, syncLfoEntity, lfoToYMap);
   syncIdList(ensureChildArray(yMap, "macros"), newDoc.macros, syncMacroEntity, macroToYMap);
@@ -711,7 +744,12 @@ export function applyProjectToYMap(
   const arrangement = ensureChildMap(yMap, "arrangement");
   syncIdList(ensureChildArray(arrangement, "clips"), newDoc.arrangement.clips, syncClipEntity, clipToYMap);
   if (newDoc.arrangement.transitions !== undefined) {
-    syncIdList(ensureChildArray(arrangement, "transitions"), newDoc.arrangement.transitions, syncTransitionEntity, transitionToYMap);
+    syncIdList(
+      ensureChildArray(arrangement, "transitions"),
+      newDoc.arrangement.transitions,
+      syncTransitionEntity,
+      transitionToYMap,
+    );
   } else if (arrangement.has("transitions")) {
     arrangement.delete("transitions");
   }
@@ -729,7 +767,14 @@ export function applyProjectToYMap(
   // MIDI
   if (newDoc.midi) {
     const midiMap = ensureChildMap(yMap, "midi");
-    mirrorScalars(midiMap, newDoc.midi, ["enabled", "deviceId", "drumChannel", "instrumentChannel", "pitchBendRange", "clockMode"]);
+    mirrorScalars(midiMap, newDoc.midi, [
+      "enabled",
+      "deviceId",
+      "drumChannel",
+      "instrumentChannel",
+      "pitchBendRange",
+      "clockMode",
+    ]);
     syncPlainJsonField(midiMap, "ccMappings", newDoc.midi.ccMappings);
     syncPlainJsonField(midiMap, "drumNoteMap", newDoc.midi.drumNoteMap);
   } else if (yMap.has("midi")) {
@@ -1018,14 +1063,18 @@ function yArrToList<T>(arr: Y.Array<T> | undefined): T[] {
 function yMapToObj(m: Y.Map<unknown> | undefined): Record<string, unknown> | undefined {
   if (!m) return undefined;
   const obj: Record<string, unknown> = {};
-  m.forEach((v, k) => { obj[k] = v; });
+  m.forEach((v, k) => {
+    obj[k] = v;
+  });
   return obj;
 }
 
 function yMapToRecord(m: Y.Map<unknown> | undefined): Record<string, number> {
   if (!m) return {};
   const obj: Record<string, number> = {};
-  m.forEach((v, k) => { obj[k] = v as number; });
+  m.forEach((v, k) => {
+    obj[k] = v as number;
+  });
   return obj;
 }
 

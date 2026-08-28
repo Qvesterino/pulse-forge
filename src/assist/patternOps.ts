@@ -13,7 +13,14 @@
  * unit-testable and safe to reuse from preview/apply workflows.
  */
 import { mulberry32, hashString } from "../shared/rng";
-import { STEP_TICKS, type DrumPad, type NoteEvent, type Pattern, type PatternPhraseBar, type StepMeta } from "../project-model/types";
+import {
+  STEP_TICKS,
+  type DrumPad,
+  type NoteEvent,
+  type Pattern,
+  type PatternPhraseBar,
+  type StepMeta,
+} from "../project-model/types";
 import { buildPhrasePlan } from "../ai/phrase";
 import type { AssistTarget } from "./types";
 
@@ -91,7 +98,10 @@ export function varyPattern(pattern: Pattern, pads: DrumPad[], seed: string, amo
       }
       // Occasional microtiming feel.
       if (next[i] > 0 && rand() < amount * 0.15) {
-        padMeta[i] = { ...(pattern.stepMeta?.[padId]?.[i] ?? {}), microtiming: Math.round(((rand() - 0.5) * 0.2) * 100) / 100 };
+        padMeta[i] = {
+          ...(pattern.stepMeta?.[padId]?.[i] ?? {}),
+          microtiming: Math.round((rand() - 0.5) * 0.2 * 100) / 100,
+        };
       }
     }
     rows[padId] = next;
@@ -114,7 +124,8 @@ export function expandWithBuild(pattern: Pattern, pads: DrumPad[], bars: number,
   const entryBar: Record<string, number> = {};
   FAMILY_TIER.forEach((family, tier) => {
     const base = tier === 0 ? 0 : Math.round((bars * tier) / 4);
-    for (const pad of fams[family]) entryBar[pad.id] = Math.min(bars - 1, base + (tier > 0 ? Math.floor(rand() * 2) : 0));
+    for (const pad of fams[family])
+      entryBar[pad.id] = Math.min(bars - 1, base + (tier > 0 ? Math.floor(rand() * 2) : 0));
   });
 
   const rows: Record<string, number[]> = {};
@@ -219,7 +230,13 @@ export function styleNames(target: ReplaceTarget): string[] {
  * Replace ONLY the given pad family's rows with a style groove, tiled across
  * the whole pattern; every other pad keeps the user's data untouched.
  */
-export function replaceRows(pattern: Pattern, pads: DrumPad[], target: ReplaceTarget, style: string, seed: string): RowsPatch {
+export function replaceRows(
+  pattern: Pattern,
+  pads: DrumPad[],
+  target: ReplaceTarget,
+  style: string,
+  seed: string,
+): RowsPatch {
   const rand = randFromSeed(seed);
   const fams = classifyPads(pads);
   const table = STYLE_TABLES[target];

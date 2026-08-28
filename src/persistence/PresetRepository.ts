@@ -17,7 +17,12 @@ export class PresetRepository {
 
   async save(preset: InstrumentPreset): Promise<void> {
     const db = await openDb();
-    await tx(db, STORE_PRESETS, "readwrite", (store) => store.put({ ...preset, user: true }) as IDBRequest<IDBValidKey>);
+    await tx(
+      db,
+      STORE_PRESETS,
+      "readwrite",
+      (store) => store.put({ ...preset, user: true }) as IDBRequest<IDBValidKey>,
+    );
   }
 
   async delete(id: string): Promise<void> {

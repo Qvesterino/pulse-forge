@@ -28,7 +28,14 @@ export function Meter({ engine, kind, id }: { engine: AudioEngine; kind: "track"
 
   const color = level > 0.92 ? "#f87171" : level > 0.75 ? "#f59e0b" : "#4ade80";
   return (
-    <div className="meter" role="meter" aria-label="Level meter" aria-valuenow={Math.round(level * 100)} aria-valuemin={0} aria-valuemax={100}>
+    <div
+      className="meter"
+      role="meter"
+      aria-label="Level meter"
+      aria-valuenow={Math.round(level * 100)}
+      aria-valuemin={0}
+      aria-valuemax={100}
+    >
       <div className="meter-fill" style={{ height: `${level * 100}%`, background: color }} />
     </div>
   );

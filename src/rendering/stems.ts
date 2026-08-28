@@ -8,8 +8,16 @@ export interface StemGroup {
 
 export const STEM_GROUPS: StemGroup[] = [
   { id: "drums", label: "Drums", filter: (t) => t.kind === "drum" },
-  { id: "bass", label: "Bass", filter: (t) => t.kind === "instrument" && (t.instrument === "bass" || t.instrument === "808") },
-  { id: "music", label: "Music", filter: (t) => t.kind === "instrument" && (t.instrument === "analog" || t.instrument === "sampler") },
+  {
+    id: "bass",
+    label: "Bass",
+    filter: (t) => t.kind === "instrument" && (t.instrument === "bass" || t.instrument === "808"),
+  },
+  {
+    id: "music",
+    label: "Music",
+    filter: (t) => t.kind === "instrument" && (t.instrument === "analog" || t.instrument === "sampler"),
+  },
 ];
 
 export function buildStemProject(doc: ProjectDocument, filter: (track: Track) => boolean): ProjectDocument {

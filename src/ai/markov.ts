@@ -1,4 +1,4 @@
-import type { PadMarkovModel, VelocityLevel, StateIndex } from './types';
+import type { PadMarkovModel, VelocityLevel, StateIndex } from "./types";
 
 const STEPS_PER_BAR = 16;
 const NUM_LEVELS = 4;
@@ -40,7 +40,7 @@ export function decodePosition(index: StateIndex): number {
 
 /** Build a second-order Markov model for one pad from reference patterns */
 export function buildPadModel(padIndex: number, patterns: number[][]): PadMarkovModel {
-  const cacheKey = `${padIndex}|${patterns.map((pattern) => pattern.map((value) => Number.isFinite(value) ? value : 0).join(",")).join(";")}`;
+  const cacheKey = `${padIndex}|${patterns.map((pattern) => pattern.map((value) => (Number.isFinite(value) ? value : 0)).join(",")).join(";")}`;
   const cached = modelCache.get(cacheKey);
   if (cached) return cached;
 
@@ -103,7 +103,12 @@ function sampleFromDistribution(dist: Uint32Array, rand: () => number, temperatu
 }
 
 /** Sample the next state given the current state */
-export function sampleTransition(model: PadMarkovModel, currentState: StateIndex, rand: () => number, temperature: number = 1): StateIndex {
+export function sampleTransition(
+  model: PadMarkovModel,
+  currentState: StateIndex,
+  rand: () => number,
+  temperature: number = 1,
+): StateIndex {
   const rowStart = currentState * model.states;
   const row = model.transitions.subarray(rowStart, rowStart + model.states);
   const nextPosition = (decodePosition(currentState) + 1) % STEPS_PER_BAR;
@@ -130,7 +135,12 @@ export function sampleTransition(model: PadMarkovModel, currentState: StateIndex
 }
 
 /** Generate a full velocity sequence for one pad using second-order Markov */
-export function generatePadSequence(model: PadMarkovModel, length: number, rand: () => number, temperature: number = 1): number[] {
+export function generatePadSequence(
+  model: PadMarkovModel,
+  length: number,
+  rand: () => number,
+  temperature: number = 1,
+): number[] {
   const sequence: number[] = new Array(length);
 
   if (length === 0) return sequence;
@@ -160,9 +170,13 @@ export function generatePadSequence(model: PadMarkovModel, length: number, rand:
 /** Convert a quantized level back to a musical velocity with slight randomness */
 export function dequantizeVelocity(level: VelocityLevel, rand: () => number): number {
   switch (level) {
-    case 0: return 0;
-    case 1: return 0.2 + rand() * 0.15;
-    case 2: return 0.5 + rand() * 0.2;
-    case 3: return 0.8 + rand() * 0.2;
+    case 0:
+      return 0;
+    case 1:
+      return 0.2 + rand() * 0.15;
+    case 2:
+      return 0.5 + rand() * 0.2;
+    case 3:
+      return 0.8 + rand() * 0.2;
   }
 }

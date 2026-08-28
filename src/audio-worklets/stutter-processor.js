@@ -69,8 +69,7 @@ class StutterProcessor extends AudioWorkletProcessor {
     const stepBeats = STUT_DIV_BEATS[divIdx];
     const phaseRate = this.bpm / (60 * sr);
 
-    const loopSamples = Math.min(STUT_BUF_SIZE - 1,
-      Math.max(1, Math.round(16 * stepBeats * (60 / this.bpm) * sr)));
+    const loopSamples = Math.min(STUT_BUF_SIZE - 1, Math.max(1, Math.round(16 * stepBeats * (60 / this.bpm) * sr)));
 
     for (let i = 0; i < len; i++) {
       const l = inL ? inL[i] : 0;

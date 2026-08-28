@@ -2,13 +2,7 @@ import { useDoc, useServices } from "./context";
 import { setProjectKey } from "../commands/commands";
 import { ROOT_NAMES, SCALE_TYPES, SCALE_LABELS, formatKey, parseKey } from "../project-model/scales";
 
-export function ScalePanel({
-  scaleSnap,
-  onToggleSnap,
-}: {
-  scaleSnap: boolean;
-  onToggleSnap: () => void;
-}) {
+export function ScalePanel({ scaleSnap, onToggleSnap }: { scaleSnap: boolean; onToggleSnap: () => void }) {
   const services = useServices();
   const doc = useDoc();
   const key = doc.key;
@@ -44,7 +38,9 @@ export function ScalePanel({
           onChange={(e) => changeRoot(e.target.value)}
         >
           {ROOT_NAMES.map((n) => (
-            <option key={n} value={n}>{n}</option>
+            <option key={n} value={n}>
+              {n}
+            </option>
           ))}
         </select>
       </div>
@@ -57,7 +53,9 @@ export function ScalePanel({
           onChange={(e) => changeScale(e.target.value)}
         >
           {SCALE_TYPES.map((s) => (
-            <option key={s} value={s}>{SCALE_LABELS[s]}</option>
+            <option key={s} value={s}>
+              {SCALE_LABELS[s]}
+            </option>
           ))}
         </select>
       </div>

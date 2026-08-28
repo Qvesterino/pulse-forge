@@ -1,6 +1,12 @@
 import { generatePattern } from "../../ai/generator";
 import { LOCAL_ENGINE_ID, LOCAL_ENGINE_VERSION } from "../../ai/evaluation";
-import type { GenerationContext, GenerationDiagnostics, GenerationPlan, GenerationProposal, GenerationProvider } from "../types";
+import type {
+  GenerationContext,
+  GenerationDiagnostics,
+  GenerationPlan,
+  GenerationProposal,
+  GenerationProvider,
+} from "../types";
 
 function diagnosticsFor(quality: GenerationPlan["recipe"]["quality"]): GenerationDiagnostics {
   const warnings: string[] = [];
@@ -33,11 +39,7 @@ export class LocalDeterministicProvider implements GenerationProvider {
     return { pattern, diagnostics };
   }
 
-  async generate(
-    plan: GenerationPlan,
-    context: GenerationContext,
-    signal?: AbortSignal,
-  ): Promise<GenerationProposal> {
+  async generate(plan: GenerationPlan, context: GenerationContext, signal?: AbortSignal): Promise<GenerationProposal> {
     if (signal?.aborted) throw new DOMException("Generation aborted", "AbortError");
     return this.generateSync(plan, context);
   }

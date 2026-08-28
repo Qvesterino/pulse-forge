@@ -6,9 +6,7 @@ import { setBpm, setProjectName } from "../../src/commands/commands";
 describe("shareCode — round-trip", () => {
   it("encodes a project and decodes it back losslessly (normalized)", () => {
     const doc = createProjectFromTemplate("house");
-    const edited = setProjectName(setBpm(doc, 133).execute(doc), "Viral Beat").execute(
-      setBpm(doc, 133).execute(doc),
-    );
+    const edited = setProjectName(setBpm(doc, 133).execute(doc), "Viral Beat").execute(setBpm(doc, 133).execute(doc));
     const code = encodeShareCode(edited);
     const decoded = decodeShareCode(code);
     expect(decoded).not.toBeNull();

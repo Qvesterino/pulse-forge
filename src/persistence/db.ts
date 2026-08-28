@@ -19,9 +19,12 @@ export function openDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(STORE_META)) db.createObjectStore(STORE_META);
       if (!db.objectStoreNames.contains(STORE_PRESETS)) db.createObjectStore(STORE_PRESETS, { keyPath: "id" });
       if (!db.objectStoreNames.contains(STORE_LIBRARY)) db.createObjectStore(STORE_LIBRARY, { keyPath: "id" });
-      if (!db.objectStoreNames.contains(STORE_USER_SAMPLES)) db.createObjectStore(STORE_USER_SAMPLES, { keyPath: "id" });
-      if (!db.objectStoreNames.contains(STORE_USER_SAMPLE_AUDIO)) db.createObjectStore(STORE_USER_SAMPLE_AUDIO, { keyPath: "id" });
-      if (!db.objectStoreNames.contains(STORE_FROZEN_AUDIO)) db.createObjectStore(STORE_FROZEN_AUDIO, { keyPath: "id" });
+      if (!db.objectStoreNames.contains(STORE_USER_SAMPLES))
+        db.createObjectStore(STORE_USER_SAMPLES, { keyPath: "id" });
+      if (!db.objectStoreNames.contains(STORE_USER_SAMPLE_AUDIO))
+        db.createObjectStore(STORE_USER_SAMPLE_AUDIO, { keyPath: "id" });
+      if (!db.objectStoreNames.contains(STORE_FROZEN_AUDIO))
+        db.createObjectStore(STORE_FROZEN_AUDIO, { keyPath: "id" });
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
@@ -29,7 +32,12 @@ export function openDb(): Promise<IDBDatabase> {
   return dbPromise;
 }
 
-export function tx<T>(db: IDBDatabase, store: string, mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+export function tx<T>(
+  db: IDBDatabase,
+  store: string,
+  mode: IDBTransactionMode,
+  run: (store: IDBObjectStore) => IDBRequest<T>,
+): Promise<T> {
   return new Promise((resolve, reject) => {
     let settled = false;
     const fail = (err: unknown): void => {
@@ -59,7 +67,9 @@ export function tx<T>(db: IDBDatabase, store: string, mode: IDBTransactionMode, 
     // A request's `success` fires BEFORE the commit — resolving there would
     // report saves that were later rolled back (quota pressure, abort during
     // page close). Only `transaction.oncomplete` proves durability.
-    request.onsuccess = () => { /* wait for commit */ };
+    request.onsuccess = () => {
+      /* wait for commit */
+    };
     request.onerror = () => fail(request.error);
     transaction.onabort = () => fail(request.error ?? transaction.error);
     transaction.onerror = () => fail(transaction.error ?? request.error);

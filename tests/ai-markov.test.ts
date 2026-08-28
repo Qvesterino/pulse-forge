@@ -4,7 +4,16 @@ import { generatePatternCommand } from "../src/commands/commands";
 import { generatePattern, resolveGroove } from "../src/ai/generator";
 import { generateDrumPattern } from "../src/ai/drums";
 import { generateMelodicPattern } from "../src/ai/melodic";
-import { buildPadModel, generatePadSequence, quantizeVelocity, dequantizeVelocity, encodeState, decodeLevelPrev, decodeLevelCurr, decodePosition } from "../src/ai/markov";
+import {
+  buildPadModel,
+  generatePadSequence,
+  quantizeVelocity,
+  dequantizeVelocity,
+  encodeState,
+  decodeLevelPrev,
+  decodeLevelCurr,
+  decodePosition,
+} from "../src/ai/markov";
 import { getGroovesForGenre, getGrooveById, getStyleNamesForGenre } from "../src/ai/grooves/index";
 import { HOUSE_GROOVES } from "../src/ai/grooves/house";
 import { TECHNO_GROOVES } from "../src/ai/grooves/techno";
@@ -92,15 +101,16 @@ describe("markov engine", () => {
     // Should have some non-zero transitions
     let hasTransitions = false;
     for (let i = 0; i < model.transitions.length; i++) {
-      if (model.transitions[i] > 0) { hasTransitions = true; break; }
+      if (model.transitions[i] > 0) {
+        hasTransitions = true;
+        break;
+      }
     }
     expect(hasTransitions).toBe(true);
   });
 
   it("generatePadSequence produces correct length", () => {
-    const patterns = [
-      [0.9, 0, 0, 0, 0.9, 0, 0, 0, 0.9, 0, 0, 0, 0.9, 0, 0, 0],
-    ];
+    const patterns = [[0.9, 0, 0, 0, 0.9, 0, 0, 0, 0.9, 0, 0, 0, 0.9, 0, 0, 0]];
     const model = buildPadModel(0, patterns);
     const rand = mulberry32(42);
     const seq = generatePadSequence(model, 16, rand);
@@ -113,9 +123,7 @@ describe("markov engine", () => {
   });
 
   it("generatePadSequence is deterministic", () => {
-    const patterns = [
-      [0.9, 0, 0, 0, 0.9, 0, 0, 0, 0.9, 0, 0, 0, 0.9, 0, 0, 0],
-    ];
+    const patterns = [[0.9, 0, 0, 0, 0.9, 0, 0, 0, 0.9, 0, 0, 0, 0.9, 0, 0, 0]];
     const model = buildPadModel(0, patterns);
     const seq1 = generatePadSequence(model, 16, mulberry32(123));
     const seq2 = generatePadSequence(model, 16, mulberry32(123));
@@ -171,10 +179,10 @@ describe("groove library", () => {
 
   it("all grooves have unique IDs", () => {
     const ids = [
-      ...HOUSE_GROOVES.map(g => g.id),
-      ...TECHNO_GROOVES.map(g => g.id),
-      ...TRAP_GROOVES.map(g => g.id),
-      ...AMBIENT_GROOVES.map(g => g.id),
+      ...HOUSE_GROOVES.map((g) => g.id),
+      ...TECHNO_GROOVES.map((g) => g.id),
+      ...TRAP_GROOVES.map((g) => g.id),
+      ...AMBIENT_GROOVES.map((g) => g.id),
     ];
     expect(new Set(ids).size).toBe(ids.length);
   });
@@ -363,7 +371,7 @@ describe("generatePatternCommand", () => {
     const cmd = generatePatternCommand(doc, options);
     const next = cmd.execute(doc);
     const newPattern = next.patterns[next.patterns.length - 1];
-    const scene = next.scenes.find(s => s.patternId === newPattern.id);
+    const scene = next.scenes.find((s) => s.patternId === newPattern.id);
     expect(scene).toBeDefined();
   });
 
@@ -490,9 +498,7 @@ describe("melodic generation", () => {
     const notes1 = generateMelodicPattern(options, mulberry32(1));
     const notes2 = generateMelodicPattern(options, mulberry32(2));
     // At least the pitch or timing should differ
-    const same = notes1.every((n, i) =>
-      notes2[i] && n.pitch === notes2[i].pitch && n.start === notes2[i].start
-    );
+    const same = notes1.every((n, i) => notes2[i] && n.pitch === notes2[i].pitch && n.start === notes2[i].start);
     expect(same).toBe(false);
   });
 
@@ -556,7 +562,7 @@ describe("full pattern with melodic content", () => {
     // Should have drum rows
     expect(Object.keys(pattern.rows).length).toBeGreaterThan(0);
     // Should have melodic notes on an instrument track
-    const instrumentTrack = doc.tracks.find(t => t.kind === "instrument");
+    const instrumentTrack = doc.tracks.find((t) => t.kind === "instrument");
     if (instrumentTrack) {
       const trackNotes = pattern.notes[instrumentTrack.id];
       expect(trackNotes).toBeDefined();
@@ -628,9 +634,10 @@ describe("groove swing application", () => {
 
     // Collect average microtiming on odd steps for each
     const avgMicro = (meta: Map<number, Map<number, { microtiming?: number }>>) => {
-      let sum = 0, count = 0;
+      let sum = 0,
+        count = 0;
       for (const padMeta of meta.values()) {
-      for (const [step, m] of padMeta) {
+        for (const [step, m] of padMeta) {
           if (step % 2 === 1 && m.microtiming !== undefined && m.microtiming > 0) {
             sum += m.microtiming;
             count++;
@@ -679,111 +686,111 @@ describe("groove swing application", () => {
         if (step % 2 === 0 && row[step] > 0) {
           // microtiming on even steps should only come from micro jitter, not swing
           // (swing only affects odd steps)
-        if (m.microtiming !== undefined) {
-          expect(Math.abs(m.microtiming)).toBeLessThanOrEqual(0.4);
-           }
-         }
-       }
-     }
-   });
- });
-
-describe("melodic velocity from reference data", () => {
-   it("melodic notes use velocities from reference patterns, not random", () => {
-     const options = makeOptions({ genre: "house" });
-     const allVelocities: number[] = [];
-     for (let seed = 0; seed < 20; seed++) {
-       const rand = mulberry32(seed);
-       const notes = generateMelodicPattern(options, rand);
-       for (const n of notes) {
-         allVelocities.push(n.velocity);
-       }
-     }
-     expect(allVelocities.length).toBeGreaterThan(0);
-     for (const v of allVelocities) {
-       expect(v).toBeGreaterThanOrEqual(0.1);
-       expect(v).toBeLessThanOrEqual(1);
-     }
-     const avg = allVelocities.reduce((a, b) => a + b, 0) / allVelocities.length;
-     expect(avg).toBeGreaterThan(0.4);
-     expect(avg).toBeLessThan(0.9);
-   });
-
-    it("generates consistent velocities for same seed", () => {
-      const options = makeOptions({ genre: "techno" });
-      const notes1 = generateMelodicPattern(options, mulberry32(42));
-      const notes2 = generateMelodicPattern(options, mulberry32(42));
-      expect(notes1.length).toBe(notes2.length);
-      for (let i = 0; i < notes1.length; i++) {
-        expect(notes1[i].velocity).toBe(notes2[i].velocity);
-      }
-    });
-  });
-
-  describe("chord polyphony", () => {
-    it("house generates multiple simultaneous notes (bass + chord overlap)", () => {
-      const options = makeOptions({ genre: "house" });
-      const rand = mulberry32(42);
-      const notes = generateMelodicPattern(options, rand);
-      // With all roles generating, there should be many notes
-      expect(notes.length).toBeGreaterThan(5);
-
-      // Check that multiple notes share the same start tick (simultaneous)
-      const byStart = new Map<number, number>();
-      for (const n of notes) {
-        byStart.set(n.start, (byStart.get(n.start) ?? 0) + 1);
-      }
-      const maxSimultaneous = Math.max(...byStart.values());
-      // Bass + chord can overlap → expect >= 2 simultaneous notes
-      expect(maxSimultaneous).toBeGreaterThanOrEqual(2);
-    });
-
-    it("chord notes have layered velocities (root loudest)", () => {
-      const options = makeOptions({ genre: "house" });
-      const rand = mulberry32(42);
-      const notes = generateMelodicPattern(options, rand);
-      if (notes.length < 4) return;
-
-      // Find groups of simultaneous notes
-      const byStart = new Map<number, typeof notes>();
-      for (const n of notes) {
-        const group = byStart.get(n.start) ?? [];
-        group.push(n);
-        byStart.set(n.start, group);
-      }
-
-      for (const [, group] of byStart) {
-        if (group.length >= 2) {
-          const sorted = [...group].sort((a, b) => b.velocity - a.velocity);
-          expect(sorted[0].velocity).toBeGreaterThanOrEqual(sorted[sorted.length - 1].velocity);
-          return;
+          if (m.microtiming !== undefined) {
+            expect(Math.abs(m.microtiming)).toBeLessThanOrEqual(0.4);
+          }
         }
       }
-    });
+    }
+  });
+});
 
-    it("all notes are within valid MIDI range", () => {
-      const options = makeOptions({ genre: "house" });
-      const rand = mulberry32(42);
+describe("melodic velocity from reference data", () => {
+  it("melodic notes use velocities from reference patterns, not random", () => {
+    const options = makeOptions({ genre: "house" });
+    const allVelocities: number[] = [];
+    for (let seed = 0; seed < 20; seed++) {
+      const rand = mulberry32(seed);
       const notes = generateMelodicPattern(options, rand);
       for (const n of notes) {
-        expect(n.pitch).toBeGreaterThanOrEqual(0);
-        expect(n.pitch).toBeLessThanOrEqual(127);
+        allVelocities.push(n.velocity);
       }
-    });
-
-    it("generates notes for multiple roles (bass + chord/lead)", () => {
-      const options = makeOptions({ genre: "house" });
-      const rand = mulberry32(42);
-      const notes = generateMelodicPattern(options, rand);
-      // House has 2 roles (bass + chord), should produce significantly more notes than before
-      expect(notes.length).toBeGreaterThan(8);
-    });
-
-    it("techno generates bass + lead together", () => {
-      const options = makeOptions({ genre: "techno" });
-      const rand = mulberry32(42);
-      const notes = generateMelodicPattern(options, rand);
-      // Techno has 2 roles (bass + lead)
-      expect(notes.length).toBeGreaterThan(6);
-    });
+    }
+    expect(allVelocities.length).toBeGreaterThan(0);
+    for (const v of allVelocities) {
+      expect(v).toBeGreaterThanOrEqual(0.1);
+      expect(v).toBeLessThanOrEqual(1);
+    }
+    const avg = allVelocities.reduce((a, b) => a + b, 0) / allVelocities.length;
+    expect(avg).toBeGreaterThan(0.4);
+    expect(avg).toBeLessThan(0.9);
   });
+
+  it("generates consistent velocities for same seed", () => {
+    const options = makeOptions({ genre: "techno" });
+    const notes1 = generateMelodicPattern(options, mulberry32(42));
+    const notes2 = generateMelodicPattern(options, mulberry32(42));
+    expect(notes1.length).toBe(notes2.length);
+    for (let i = 0; i < notes1.length; i++) {
+      expect(notes1[i].velocity).toBe(notes2[i].velocity);
+    }
+  });
+});
+
+describe("chord polyphony", () => {
+  it("house generates multiple simultaneous notes (bass + chord overlap)", () => {
+    const options = makeOptions({ genre: "house" });
+    const rand = mulberry32(42);
+    const notes = generateMelodicPattern(options, rand);
+    // With all roles generating, there should be many notes
+    expect(notes.length).toBeGreaterThan(5);
+
+    // Check that multiple notes share the same start tick (simultaneous)
+    const byStart = new Map<number, number>();
+    for (const n of notes) {
+      byStart.set(n.start, (byStart.get(n.start) ?? 0) + 1);
+    }
+    const maxSimultaneous = Math.max(...byStart.values());
+    // Bass + chord can overlap → expect >= 2 simultaneous notes
+    expect(maxSimultaneous).toBeGreaterThanOrEqual(2);
+  });
+
+  it("chord notes have layered velocities (root loudest)", () => {
+    const options = makeOptions({ genre: "house" });
+    const rand = mulberry32(42);
+    const notes = generateMelodicPattern(options, rand);
+    if (notes.length < 4) return;
+
+    // Find groups of simultaneous notes
+    const byStart = new Map<number, typeof notes>();
+    for (const n of notes) {
+      const group = byStart.get(n.start) ?? [];
+      group.push(n);
+      byStart.set(n.start, group);
+    }
+
+    for (const [, group] of byStart) {
+      if (group.length >= 2) {
+        const sorted = [...group].sort((a, b) => b.velocity - a.velocity);
+        expect(sorted[0].velocity).toBeGreaterThanOrEqual(sorted[sorted.length - 1].velocity);
+        return;
+      }
+    }
+  });
+
+  it("all notes are within valid MIDI range", () => {
+    const options = makeOptions({ genre: "house" });
+    const rand = mulberry32(42);
+    const notes = generateMelodicPattern(options, rand);
+    for (const n of notes) {
+      expect(n.pitch).toBeGreaterThanOrEqual(0);
+      expect(n.pitch).toBeLessThanOrEqual(127);
+    }
+  });
+
+  it("generates notes for multiple roles (bass + chord/lead)", () => {
+    const options = makeOptions({ genre: "house" });
+    const rand = mulberry32(42);
+    const notes = generateMelodicPattern(options, rand);
+    // House has 2 roles (bass + chord), should produce significantly more notes than before
+    expect(notes.length).toBeGreaterThan(8);
+  });
+
+  it("techno generates bass + lead together", () => {
+    const options = makeOptions({ genre: "techno" });
+    const rand = mulberry32(42);
+    const notes = generateMelodicPattern(options, rand);
+    // Techno has 2 roles (bass + lead)
+    expect(notes.length).toBeGreaterThan(6);
+  });
+});

@@ -43,7 +43,9 @@ export class LibraryRepository {
   private sanitize(raw: Partial<LibraryState>): LibraryState {
     return {
       favoriteAssets: Array.isArray(raw.favoriteAssets) ? raw.favoriteAssets.filter((x) => typeof x === "string") : [],
-      favoritePresets: Array.isArray(raw.favoritePresets) ? raw.favoritePresets.filter((x) => typeof x === "string") : [],
+      favoritePresets: Array.isArray(raw.favoritePresets)
+        ? raw.favoritePresets.filter((x) => typeof x === "string")
+        : [],
       recentAssets: Array.isArray(raw.recentAssets) ? raw.recentAssets.filter((x) => typeof x === "string") : [],
       recentPresets: Array.isArray(raw.recentPresets) ? raw.recentPresets.filter((x) => typeof x === "string") : [],
     };
@@ -56,7 +58,12 @@ export class LibraryRepository {
     this.listeners.forEach((listener) => listener(next));
     try {
       const db = await openDb();
-      await tx(db, STORE_LIBRARY, "readwrite", (store) => store.put({ id: STATE_ID, ...next }) as IDBRequest<IDBValidKey>);
+      await tx(
+        db,
+        STORE_LIBRARY,
+        "readwrite",
+        (store) => store.put({ id: STATE_ID, ...next }) as IDBRequest<IDBValidKey>,
+      );
     } catch {
       // persistence is best-effort; the in-memory cache already updated
     }

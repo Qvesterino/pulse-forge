@@ -32,7 +32,10 @@ class StepGateProcessor extends AudioWorkletProcessor {
       if (d.type === "pattern" && Array.isArray(d.steps) && d.steps.length > 0) {
         this.steps = d.steps.map((v) => Math.min(1, Math.max(0, Number(v) || 0)));
       } else if (d.type === "align") {
-        const stepBeats = GATE_DIVISION_BEATS[Math.max(0, Math.min(GATE_DIVISION_BEATS.length - 1, Math.round(this.divisionValue ?? 4)))];
+        const stepBeats =
+          GATE_DIVISION_BEATS[
+            Math.max(0, Math.min(GATE_DIVISION_BEATS.length - 1, Math.round(this.divisionValue ?? 4)))
+          ];
         // Snap DOWN to the nearest step boundary of the transport grid.
         this.phase = Math.floor((d.phase || 0) / stepBeats) * stepBeats;
       } else if (d.type === "bpm") {
@@ -62,7 +65,8 @@ class StepGateProcessor extends AudioWorkletProcessor {
     const sr = globalThis.sampleRate || 44100;
     this.divisionValue = parameters.division[0]; // align handler snaps with the latest grid
 
-    const stepBeats = GATE_DIVISION_BEATS[Math.max(0, Math.min(GATE_DIVISION_BEATS.length - 1, Math.round(parameters.division[0])))];
+    const stepBeats =
+      GATE_DIVISION_BEATS[Math.max(0, Math.min(GATE_DIVISION_BEATS.length - 1, Math.round(parameters.division[0])))];
     const depth = parameters.depth[0];
     const mix = parameters.mix[0];
     const smoothValue = Math.max(0, Math.min(1, parameters.smooth[0]));

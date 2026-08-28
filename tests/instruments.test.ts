@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { INSTRUMENT_DEFS, INSTRUMENT_ORDER, clampInstrumentParam, defaultInstrumentParams } from "../src/instruments/registry";
+import {
+  INSTRUMENT_DEFS,
+  INSTRUMENT_ORDER,
+  clampInstrumentParam,
+  defaultInstrumentParams,
+} from "../src/instruments/registry";
 import type { InstrumentKind, InstrumentTrack } from "../src/project-model/types";
 
 describe("instrument registry", () => {

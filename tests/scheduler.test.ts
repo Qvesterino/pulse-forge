@@ -147,11 +147,16 @@ describe("scheduler", () => {
     const baseDoc = createDefaultProject();
     const doc = {
       ...baseDoc,
-      automation: [{
-        id: "auto-test",
-        target: { kind: "trackGain" as const, trackId: baseDoc.tracks[0].id },
-        points: [{ tick: 0, value: 0.5 }, { tick: 1920, value: 1 }],
-      }],
+      automation: [
+        {
+          id: "auto-test",
+          target: { kind: "trackGain" as const, trackId: baseDoc.tracks[0].id },
+          points: [
+            { tick: 0, value: 0.5 },
+            { tick: 1920, value: 1 },
+          ],
+        },
+      ],
     };
     const harness = makeHarness(doc, "pattern", 0.03);
     harness.transport.play(0);
@@ -237,7 +242,7 @@ describe("scheduler", () => {
       advance(0.025);
       scheduler["tick"]();
     }
-    const stepSeconds = (60 / doc.bpm) / 4;
+    const stepSeconds = 60 / doc.bpm / 4;
     const kickTimes = events.filter((e) => e.padId === kickPadId).map((e) => e.when);
     expect(kickTimes[0]).toBeCloseTo(10, 5);
     for (let i = 1; i < kickTimes.length; i++) {
@@ -272,7 +277,9 @@ describe("scheduler", () => {
 
   it("schedules instrument notes with correct pitch, timing and duration", () => {
     const doc = createDefaultProject();
-    const bass = doc.tracks.find((t): t is import("../src/project-model/types").InstrumentTrack => t.kind === "instrument")!;
+    const bass = doc.tracks.find(
+      (t): t is import("../src/project-model/types").InstrumentTrack => t.kind === "instrument",
+    )!;
     const { noteEvents, transport, scheduler, advance } = makeHarness(doc);
     transport.play(0);
     scheduler.start();
@@ -282,7 +289,7 @@ describe("scheduler", () => {
     }
     const bassEvents = noteEvents.filter((e) => e.trackId === bass.id);
     expect(bassEvents.length).toBeGreaterThanOrEqual(4);
-    const stepSec = (60 / doc.bpm) / 4;
+    const stepSec = 60 / doc.bpm / 4;
     for (const event of bassEvents) {
       expect(event.trackId).toBe(bass.id);
       expect(event.velocity).toBeGreaterThan(0);
@@ -297,7 +304,9 @@ describe("scheduler", () => {
 
   it("wraps note scheduling across the pattern boundary", () => {
     const doc = createDefaultProject();
-    const bass = doc.tracks.find((t): t is import("../src/project-model/types").InstrumentTrack => t.kind === "instrument")!;
+    const bass = doc.tracks.find(
+      (t): t is import("../src/project-model/types").InstrumentTrack => t.kind === "instrument",
+    )!;
     const { noteEvents, transport, scheduler, advance } = makeHarness(doc);
     transport.play(0);
     scheduler.start();
@@ -485,9 +494,7 @@ describe("scheduler", () => {
       rows: Object.fromEntries(
         drum.pads.map((pad) => [
           pad.id,
-          new Array<number>(stepCount)
-            .fill(0)
-            .map((_, i) => base.patterns[0].rows[pad.id][i] ?? 0),
+          new Array<number>(stepCount).fill(0).map((_, i) => base.patterns[0].rows[pad.id][i] ?? 0),
         ]),
       ),
     };
@@ -603,7 +610,9 @@ describe("scheduler — quantized pattern launch", () => {
       id: "pattern-silent",
       name: "Silent",
       stepCount: first.stepCount,
-      rows: Object.fromEntries(Object.keys(first.rows).map((padId) => [padId, new Array<number>(first.stepCount).fill(0)])),
+      rows: Object.fromEntries(
+        Object.keys(first.rows).map((padId) => [padId, new Array<number>(first.stepCount).fill(0)]),
+      ),
       notes: {},
     };
     return {
@@ -697,9 +706,7 @@ describe("scheduler — quantized pattern launch", () => {
     const hitTick = BAR_TICKS + STEP_TICKS;
     const boundarySeconds = h.transport.timeAtTick(BAR_TICKS);
     const hitSeconds = h.transport.timeAtTick(hitTick);
-    const scheduled = h.events.filter(
-      (e) => e.padId === kickPadId && Math.abs(e.when - hitSeconds) < 0.002,
-    );
+    const scheduled = h.events.filter((e) => e.padId === kickPadId && Math.abs(e.when - hitSeconds) < 0.002);
     expect(scheduled.length).toBe(1);
     expect(scheduled[0].when).toBeGreaterThanOrEqual(boundarySeconds);
     h.scheduler.stop();
@@ -734,7 +741,9 @@ describe("scheduler — pending launch notifications", () => {
       id: "pattern-silent-2",
       name: "Silent",
       stepCount: first.stepCount,
-      rows: Object.fromEntries(Object.keys(first.rows).map((padId) => [padId, new Array<number>(first.stepCount).fill(0)])),
+      rows: Object.fromEntries(
+        Object.keys(first.rows).map((padId) => [padId, new Array<number>(first.stepCount).fill(0)]),
+      ),
       notes: {},
     };
     const doc: ProjectDocument = { ...base, patterns: [first, second], activePatternId: first.id };

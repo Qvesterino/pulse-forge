@@ -55,7 +55,9 @@ export function MasterMeter() {
     registerRaf("master-meter", (t) => {
       if (t - lastRead >= 33) {
         lastRead = t;
-        const engineWithMeter = services.engine as typeof services.engine & { getMasterMeterSnapshot?: () => MasterSnapshot };
+        const engineWithMeter = services.engine as typeof services.engine & {
+          getMasterMeterSnapshot?: () => MasterSnapshot;
+        };
         const snapshot = engineWithMeter.getMasterMeterSnapshot?.();
         const levels = snapshot ?? services.engine.getMasterLevels();
         const peakHoldDb = snapshot?.peakHoldDb ?? services.engine.getMasterPeakHoldDb();
@@ -71,17 +73,18 @@ export function MasterMeter() {
         const imbalanceSince = imbalance > 6 ? (imbalanceSinceRef.current ?? t) : null;
         phaseSinceRef.current = phaseSince;
         imbalanceSinceRef.current = imbalanceSince;
-        const gainReductionDb = Math.round(
-          (snapshot ? snapshot.gainReductionDb : services.engine.getMasterGainReductionDb()) * 10,
-        ) / 10;
-        const warnings = snapshot ? evaluateMixCheck({
-          truePeakDb: snapshot.truePeakDb,
-          correlation: snapshot.correlation,
-          monoLossDb: snapshot.monoLossDb,
-          lrImbalanceDb: imbalance,
-          phaseDurationMs: phaseSince === null ? 0 : t - phaseSince,
-          imbalanceDurationMs: imbalanceSince === null ? 0 : t - imbalanceSince,
-        }) : [];
+        const gainReductionDb =
+          Math.round((snapshot ? snapshot.gainReductionDb : services.engine.getMasterGainReductionDb()) * 10) / 10;
+        const warnings = snapshot
+          ? evaluateMixCheck({
+              truePeakDb: snapshot.truePeakDb,
+              correlation: snapshot.correlation,
+              monoLossDb: snapshot.monoLossDb,
+              lrImbalanceDb: imbalance,
+              phaseDurationMs: phaseSince === null ? 0 : t - phaseSince,
+              imbalanceDurationMs: imbalanceSince === null ? 0 : t - imbalanceSince,
+            })
+          : [];
 
         const prev = lastStateRef.current;
         const changed =
@@ -101,7 +104,11 @@ export function MasterMeter() {
           prev.clipping !== clipping;
         if (changed) {
           const next: ReadState = {
-            left, right, correlation: levels.correlation, peakHoldDb, clipping,
+            left,
+            right,
+            correlation: levels.correlation,
+            peakHoldDb,
+            clipping,
             truePeakDb: snapshot?.truePeakDb ?? peakDb,
             lufsMomentary: snapshot?.lufsMomentary ?? MIN_DB,
             lufsShortTerm: snapshot?.lufsShortTerm ?? MIN_DB,
@@ -131,15 +138,27 @@ export function MasterMeter() {
         <span>TP {formatDb(state.truePeakDb)} dBTP</span>
         <span>MONO LOSS {formatDb(state.monoLossDb)} dB</span>
         <span title="Master-stage gain reduction">GR {state.gainReductionDb.toFixed(1)} dB</span>
-        <button type="button" className="btn btn-small" onClick={() => services.engine.resetMasterIntegratedLufs?.()}>RESET INTEGRATED</button>
+        <button type="button" className="btn btn-small" onClick={() => services.engine.resetMasterIntegratedLufs?.()}>
+          RESET INTEGRATED
+        </button>
       </div>
       <SpectrumAnalyzer
-        analyser={(services.engine as unknown as { getMasterSpectrumAnalyser?: () => AnalyserNode | null }).getMasterSpectrumAnalyser?.() ?? null}
+        analyser={
+          (
+            services.engine as unknown as { getMasterSpectrumAnalyser?: () => AnalyserNode | null }
+          ).getMasterSpectrumAnalyser?.() ?? null
+        }
         height={64}
         accent="#f59e0b"
         id="master"
       />
-      {state.warnings.length > 0 && <div className="master-mix-check" role="status">{state.warnings.map((warning) => <span key={warning.code}>{warning.message}</span>)}</div>}
+      {state.warnings.length > 0 && (
+        <div className="master-mix-check" role="status">
+          {state.warnings.map((warning) => (
+            <span key={warning.code}>{warning.message}</span>
+          ))}
+        </div>
+      )}
       {state.clipping && (
         <span className="master-clip-warning" role="alert" title="Master is clipping — pull down IN or engage LIMIT">
           CLIP
@@ -203,7 +222,9 @@ function CorrelationMeter({ value }: { value: number }) {
         <div className="master-correlation-center" />
         <div className="master-correlation-fill" style={{ width: `${pct}%`, background: color }} />
       </div>
-      <span className="master-correlation-label" style={{ color }}>{label}</span>
+      <span className="master-correlation-label" style={{ color }}>
+        {label}
+      </span>
     </div>
   );
 }

@@ -47,7 +47,9 @@ export class UserSampleRepository {
     await tx(db, STORE_USER_SAMPLES, "readwrite", (s) => s.put(asset));
     if (!data) return;
     try {
-      await tx(db, STORE_USER_SAMPLE_AUDIO, "readwrite", (s) => s.put({ id: asset.id, data } satisfies UserSampleAudio));
+      await tx(db, STORE_USER_SAMPLE_AUDIO, "readwrite", (s) =>
+        s.put({ id: asset.id, data } satisfies UserSampleAudio),
+      );
     } catch (err) {
       // Metadata without audio is a PERMANENT ghost sample: listed forever,
       // silently silent after reload. Roll the metadata row back and surface
@@ -104,7 +106,10 @@ export async function decodeAudioFile(file: File | Blob, ctx: BaseAudioContext):
 
 /** Generate a unique ID for a user sample. */
 export function userSampleId(fileName: string): string {
-  const slug = fileName.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase();
+  const slug = fileName
+    .replace(/\.[^.]+$/, "")
+    .replace(/[^a-zA-Z0-9]+/g, "-")
+    .toLowerCase();
   return `user.${slug}-${Date.now().toString(36)}`;
 }
 

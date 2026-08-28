@@ -25,13 +25,7 @@
  */
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 import { resetDeterministicIds, useDeterministicIds } from "../../src/shared/ids";
-import type {
-  DrumTrack,
-  InstrumentTrack,
-  Pattern,
-  ProjectDocument,
-  Scene,
-} from "../../src/project-model/types";
+import type { DrumTrack, InstrumentTrack, Pattern, ProjectDocument, Scene } from "../../src/project-model/types";
 import type { Command } from "../../src/commands/types";
 import { addArrangementClip } from "../../src/commands/commands";
 
@@ -60,12 +54,7 @@ export function deterministicTestDoc(): ProjectDocument {
  * Prefer this over raw `addArrangementClip` in tests when bar placement
  * is not the thing under test.
  */
-export function placeClipAt(
-  doc: ProjectDocument,
-  sceneId: string,
-  startBar = 0,
-  lengthBars = 2,
-): ProjectDocument {
+export function placeClipAt(doc: ProjectDocument, sceneId: string, startBar = 0, lengthBars = 2): ProjectDocument {
   let bar = startBar;
   // Try up to 256 bars — more than enough for any test doc.
   for (let attempt = 0; attempt < 256; attempt++) {

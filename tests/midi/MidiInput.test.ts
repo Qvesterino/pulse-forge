@@ -107,8 +107,12 @@ describe("MidiInput — system realtime messages and arity", () => {
 
   it("accepts 2-byte Program Change and Channel Pressure messages", () => {
     const midi = makeMidi("off");
-    const pc = vi.spyOn(midi as never as { handleProgramChange: () => void }, "handleProgramChange").mockImplementation(() => {});
-    const cp = vi.spyOn(midi as never as { handleChannelPressure: () => void }, "handleChannelPressure").mockImplementation(() => {});
+    const pc = vi
+      .spyOn(midi as never as { handleProgramChange: () => void }, "handleProgramChange")
+      .mockImplementation(() => {});
+    const cp = vi
+      .spyOn(midi as never as { handleChannelPressure: () => void }, "handleChannelPressure")
+      .mockImplementation(() => {});
     // Regression: used to be dropped by the `data.length < 3` guard.
     send(midi, [0xc0, 5]);
     send(midi, [0xd0, 64]);
@@ -158,7 +162,13 @@ describe("MidiInput — device subscriptions", () => {
     const midi = new MidiInput();
     const inputs = new Map<string, unknown>();
     (midi as unknown as { access: unknown }).access = { inputs, onstatechange: null as null | (() => void) };
-    midi.start({} as never, {} as never, {} as never, () => ({} as never), () => ({} as never));
+    midi.start(
+      {} as never,
+      {} as never,
+      {} as never,
+      () => ({}) as never,
+      () => ({}) as never,
+    );
     return { midi, inputs };
   }
 
@@ -169,7 +179,13 @@ describe("MidiInput — device subscriptions", () => {
 
     const handler = (midi as unknown as { access: { onstatechange: (() => void) | null } }).access.onstatechange;
     expect(typeof handler).toBe("function");
-    inputs.set("in-1", { id: "in-1", name: "Test Knob", manufacturer: "Test", addEventListener: vi.fn(), removeEventListener: vi.fn() });
+    inputs.set("in-1", {
+      id: "in-1",
+      name: "Test Knob",
+      manufacturer: "Test",
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    });
     handler!();
 
     expect(seen.length).toBeGreaterThan(0);
@@ -182,7 +198,13 @@ describe("MidiInput — device subscriptions", () => {
     const seen: unknown[][] = [];
     const unsubscribe = midi.subscribeDevices((devices) => seen.push(devices));
     const handler = (midi as unknown as { access: { onstatechange: (() => void) | null } }).access.onstatechange;
-    inputs.set("in-2", { id: "in-2", name: "X", manufacturer: "", addEventListener: vi.fn(), removeEventListener: vi.fn() });
+    inputs.set("in-2", {
+      id: "in-2",
+      name: "X",
+      manufacturer: "",
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    });
     handler!();
     const count = seen.length;
     unsubscribe();

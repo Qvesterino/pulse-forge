@@ -1,13 +1,13 @@
 export const PPQ = 480;
 export const STEPS_PER_PATTERN = 16;
-export const STEP_TICKS = PPQ / 4;        // 120 ticks = 1/16 note
+export const STEP_TICKS = PPQ / 4; // 120 ticks = 1/16 note
 export const BAR_TICKS = PPQ * 4;
 export const PATTERN_TICKS = BAR_TICKS;
 
 /** Quantize grid resolutions (ticks per grid division). */
-export const GRID_8TH = 2 * STEP_TICKS;   // 240 ticks = 1/8 note
-export const GRID_16TH = STEP_TICKS;      // 120 ticks = 1/16 note (default)
-export const GRID_32ND = STEP_TICKS / 2;  // 60 ticks = 1/32 note
+export const GRID_8TH = 2 * STEP_TICKS; // 240 ticks = 1/8 note
+export const GRID_16TH = STEP_TICKS; // 120 ticks = 1/16 note (default)
+export const GRID_32ND = STEP_TICKS / 2; // 60 ticks = 1/32 note
 
 export type ID = string;
 
@@ -202,15 +202,38 @@ export interface PatternAssist {
   style?: string;
 }
 
-export type StepLockKey = "pitch" | "gain" | "pan" | "cutoff" | "sampleStart";
+export type StepLockKey = "pitch" | "gain" | "pan" | "cutoff" | "sampleStart" | "length";
 
 /** Per-param clamp + UI metadata for p-locks (Elektron-style). */
-export const STEP_LOCK_DEFS: Record<StepLockKey, { label: string; min: number; max: number; default: number; unit?: string; format: (v: number) => string }> = {
-  pitch: { label: "PITCH", min: -24, max: 24, default: 0, unit: "st", format: (v) => `${v > 0 ? "+" : ""}${v.toFixed(1)} st` },
-  gain: { label: "GAIN", min: 0, max: 2, default: 1, format: (v) => `${(20 * Math.log10(Math.max(v, 0.001))).toFixed(1)} dB` },
-  pan: { label: "PAN", min: -1, max: 1, default: 0, format: (v) => (Math.abs(v) < 0.02 ? "C" : `${v < 0 ? "L" : "R"}${Math.round(Math.abs(v) * 100)}`) },
+export const STEP_LOCK_DEFS: Record<
+  StepLockKey,
+  { label: string; min: number; max: number; default: number; unit?: string; format: (v: number) => string }
+> = {
+  pitch: {
+    label: "PITCH",
+    min: -24,
+    max: 24,
+    default: 0,
+    unit: "st",
+    format: (v) => `${v > 0 ? "+" : ""}${v.toFixed(1)} st`,
+  },
+  gain: {
+    label: "GAIN",
+    min: 0,
+    max: 2,
+    default: 1,
+    format: (v) => `${(20 * Math.log10(Math.max(v, 0.001))).toFixed(1)} dB`,
+  },
+  pan: {
+    label: "PAN",
+    min: -1,
+    max: 1,
+    default: 0,
+    format: (v) => (Math.abs(v) < 0.02 ? "C" : `${v < 0 ? "L" : "R"}${Math.round(Math.abs(v) * 100)}`),
+  },
   cutoff: { label: "CUTOFF", min: 80, max: 16000, default: 16000, unit: "Hz", format: (v) => `${Math.round(v)} Hz` },
   sampleStart: { label: "START", min: 0, max: 1, default: 0, format: (v) => `${Math.round(v * 100)}%` },
+  length: { label: "LENGTH", min: 0.1, max: 2, default: 1, format: (v) => `${Math.round(v * 100)}%` },
 };
 
 export function clampStepLock(key: string, value: number): number {
@@ -529,23 +552,129 @@ export const GM_DRUM_MAP: ReadonlyArray<{ note: number; name: string }> = [
 ];
 
 /** All 24 major + minor keys (display strings). */
-const SCALE_LABELS = ["Major", "Natural Minor", "Harmonic Minor", "Melodic Minor", "Dorian", "Phrygian", "Mixolydian", "Pentatonic Major", "Pentatonic Minor"] as const;
+const SCALE_LABELS = [
+  "Major",
+  "Natural Minor",
+  "Harmonic Minor",
+  "Melodic Minor",
+  "Dorian",
+  "Phrygian",
+  "Mixolydian",
+  "Pentatonic Major",
+  "Pentatonic Minor",
+] as const;
 const ROOT_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"] as const;
 
 /** All 108 combinations: 12 root notes × 9 scale types. */
 export type MusicalKey =
-  | "C Major" | "C Natural Minor" | "C Harmonic Minor" | "C Melodic Minor" | "C Dorian" | "C Phrygian" | "C Mixolydian" | "C Pentatonic Major" | "C Pentatonic Minor"
-  | "C# Major" | "C# Natural Minor" | "C# Harmonic Minor" | "C# Melodic Minor" | "C# Dorian" | "C# Phrygian" | "C# Mixolydian" | "C# Pentatonic Major" | "C# Pentatonic Minor"
-  | "D Major" | "D Natural Minor" | "D Harmonic Minor" | "D Melodic Minor" | "D Dorian" | "D Phrygian" | "D Mixolydian" | "D Pentatonic Major" | "D Pentatonic Minor"
-  | "D# Major" | "D# Natural Minor" | "D# Harmonic Minor" | "D# Melodic Minor" | "D# Dorian" | "D# Phrygian" | "D# Mixolydian" | "D# Pentatonic Major" | "D# Pentatonic Minor"
-  | "E Major" | "E Natural Minor" | "E Harmonic Minor" | "E Melodic Minor" | "E Dorian" | "E Phrygian" | "E Mixolydian" | "E Pentatonic Major" | "E Pentatonic Minor"
-  | "F Major" | "F Natural Minor" | "F Harmonic Minor" | "F Melodic Minor" | "F Dorian" | "F Phrygian" | "F Mixolydian" | "F Pentatonic Major" | "F Pentatonic Minor"
-  | "F# Major" | "F# Natural Minor" | "F# Harmonic Minor" | "F# Melodic Minor" | "F# Dorian" | "F# Phrygian" | "F# Mixolydian" | "F# Pentatonic Major" | "F# Pentatonic Minor"
-  | "G Major" | "G Natural Minor" | "G Harmonic Minor" | "G Melodic Minor" | "G Dorian" | "G Phrygian" | "G Mixolydian" | "G Pentatonic Major" | "G Pentatonic Minor"
-  | "G# Major" | "G# Natural Minor" | "G# Harmonic Minor" | "G# Melodic Minor" | "G# Dorian" | "G# Phrygian" | "G# Mixolydian" | "G# Pentatonic Major" | "G# Pentatonic Minor"
-  | "A Major" | "A Natural Minor" | "A Harmonic Minor" | "A Melodic Minor" | "A Dorian" | "A Phrygian" | "A Mixolydian" | "A Pentatonic Major" | "A Pentatonic Minor"
-  | "A# Major" | "A# Natural Minor" | "A# Harmonic Minor" | "A# Melodic Minor" | "A# Dorian" | "A# Phrygian" | "A# Mixolydian" | "A# Pentatonic Major" | "A# Pentatonic Minor"
-  | "B Major" | "B Natural Minor" | "B Harmonic Minor" | "B Melodic Minor" | "B Dorian" | "B Phrygian" | "B Mixolydian" | "B Pentatonic Major" | "B Pentatonic Minor";
+  | "C Major"
+  | "C Natural Minor"
+  | "C Harmonic Minor"
+  | "C Melodic Minor"
+  | "C Dorian"
+  | "C Phrygian"
+  | "C Mixolydian"
+  | "C Pentatonic Major"
+  | "C Pentatonic Minor"
+  | "C# Major"
+  | "C# Natural Minor"
+  | "C# Harmonic Minor"
+  | "C# Melodic Minor"
+  | "C# Dorian"
+  | "C# Phrygian"
+  | "C# Mixolydian"
+  | "C# Pentatonic Major"
+  | "C# Pentatonic Minor"
+  | "D Major"
+  | "D Natural Minor"
+  | "D Harmonic Minor"
+  | "D Melodic Minor"
+  | "D Dorian"
+  | "D Phrygian"
+  | "D Mixolydian"
+  | "D Pentatonic Major"
+  | "D Pentatonic Minor"
+  | "D# Major"
+  | "D# Natural Minor"
+  | "D# Harmonic Minor"
+  | "D# Melodic Minor"
+  | "D# Dorian"
+  | "D# Phrygian"
+  | "D# Mixolydian"
+  | "D# Pentatonic Major"
+  | "D# Pentatonic Minor"
+  | "E Major"
+  | "E Natural Minor"
+  | "E Harmonic Minor"
+  | "E Melodic Minor"
+  | "E Dorian"
+  | "E Phrygian"
+  | "E Mixolydian"
+  | "E Pentatonic Major"
+  | "E Pentatonic Minor"
+  | "F Major"
+  | "F Natural Minor"
+  | "F Harmonic Minor"
+  | "F Melodic Minor"
+  | "F Dorian"
+  | "F Phrygian"
+  | "F Mixolydian"
+  | "F Pentatonic Major"
+  | "F Pentatonic Minor"
+  | "F# Major"
+  | "F# Natural Minor"
+  | "F# Harmonic Minor"
+  | "F# Melodic Minor"
+  | "F# Dorian"
+  | "F# Phrygian"
+  | "F# Mixolydian"
+  | "F# Pentatonic Major"
+  | "F# Pentatonic Minor"
+  | "G Major"
+  | "G Natural Minor"
+  | "G Harmonic Minor"
+  | "G Melodic Minor"
+  | "G Dorian"
+  | "G Phrygian"
+  | "G Mixolydian"
+  | "G Pentatonic Major"
+  | "G Pentatonic Minor"
+  | "G# Major"
+  | "G# Natural Minor"
+  | "G# Harmonic Minor"
+  | "G# Melodic Minor"
+  | "G# Dorian"
+  | "G# Phrygian"
+  | "G# Mixolydian"
+  | "G# Pentatonic Major"
+  | "G# Pentatonic Minor"
+  | "A Major"
+  | "A Natural Minor"
+  | "A Harmonic Minor"
+  | "A Melodic Minor"
+  | "A Dorian"
+  | "A Phrygian"
+  | "A Mixolydian"
+  | "A Pentatonic Major"
+  | "A Pentatonic Minor"
+  | "A# Major"
+  | "A# Natural Minor"
+  | "A# Harmonic Minor"
+  | "A# Melodic Minor"
+  | "A# Dorian"
+  | "A# Phrygian"
+  | "A# Mixolydian"
+  | "A# Pentatonic Major"
+  | "A# Pentatonic Minor"
+  | "B Major"
+  | "B Natural Minor"
+  | "B Harmonic Minor"
+  | "B Melodic Minor"
+  | "B Dorian"
+  | "B Phrygian"
+  | "B Mixolydian"
+  | "B Pentatonic Major"
+  | "B Pentatonic Minor";
 
 export const MUSICAL_KEYS: MusicalKey[] = (() => {
   const keys: MusicalKey[] = [];

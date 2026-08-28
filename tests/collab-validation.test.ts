@@ -151,7 +151,12 @@ describe("YDocStore collaboration", () => {
     projectToYDoc(doc, yDoc.getMap("project"));
     const store = new YDocStore(yDoc);
 
-    store.execute({ type: "setBpm", label: "BPM 150", execute: (d) => ({ ...d, bpm: 150 }), undo: (d) => ({ ...d, bpm: originalBpm }) });
+    store.execute({
+      type: "setBpm",
+      label: "BPM 150",
+      execute: (d) => ({ ...d, bpm: 150 }),
+      undo: (d) => ({ ...d, bpm: originalBpm }),
+    });
     expect(store.doc.bpm).toBe(150);
     store.undo();
     expect(store.doc.bpm).toBe(originalBpm);
@@ -201,7 +206,12 @@ describe("YDocStore collaboration", () => {
     expect(store2.doc.bpm).toBe(150);
 
     // Store2 changes name
-    store2.execute({ type: "setProjectName", label: "Name", execute: (d) => ({ ...d, name: "Collab" }), undo: (d) => d });
+    store2.execute({
+      type: "setProjectName",
+      label: "Name",
+      execute: (d) => ({ ...d, name: "Collab" }),
+      undo: (d) => d,
+    });
     expect(store2.doc.name).toBe("Collab");
     store1.refreshSnapshot();
     expect(store1.doc.name).toBe("Collab");
@@ -217,8 +227,18 @@ describe("YDocStore collaboration", () => {
     const stores = [0, 1, 2].map(() => new YDocStore(yDoc));
 
     stores[0].execute({ type: "setBpm", label: "BPM", execute: (d) => ({ ...d, bpm: 130 }), undo: (d) => d });
-    stores[1].execute({ type: "setProjectName", label: "Name", execute: (d) => ({ ...d, name: "Tab2" }), undo: (d) => d });
-    stores[2].execute({ type: "setMasterConfig", label: "Master", execute: (d) => ({ ...d, master: { ...d.master, masterGain: 0.5 } }), undo: (d) => d });
+    stores[1].execute({
+      type: "setProjectName",
+      label: "Name",
+      execute: (d) => ({ ...d, name: "Tab2" }),
+      undo: (d) => d,
+    });
+    stores[2].execute({
+      type: "setMasterConfig",
+      label: "Master",
+      execute: (d) => ({ ...d, master: { ...d.master, masterGain: 0.5 } }),
+      undo: (d) => d,
+    });
 
     // All three stores should see all changes after refreshSnapshot
     for (const s of stores) {

@@ -32,13 +32,19 @@ class GateProcessor extends AudioWorkletProcessor {
       const release = parameters.release.length > 1 ? parameters.release[i] : parameters.release[0];
       const range = parameters.range.length > 1 ? parameters.range[i] : parameters.range[0];
       const mix = parameters.mix.length > 1 ? parameters.mix[i] : parameters.mix[0];
-      const envCoef = Math.exp(-1 / (sr * (peak > this.envelope ? Math.max(0.0001, attack) : Math.max(0.001, release))));
+      const envCoef = Math.exp(
+        -1 / (sr * (peak > this.envelope ? Math.max(0.0001, attack) : Math.max(0.001, release))),
+      );
       this.envelope = envCoef * this.envelope + (1 - envCoef) * peak;
       if (Math.abs(this.envelope) < 1e-20) this.envelope = 0;
-      if (20 * Math.log10(Math.max(this.envelope, 1e-7)) >= threshold) this.holdSamples = Math.max(this.holdSamples, Math.round(hold * sr));
+      if (20 * Math.log10(Math.max(this.envelope, 1e-7)) >= threshold)
+        this.holdSamples = Math.max(this.holdSamples, Math.round(hold * sr));
       else this.holdSamples = Math.max(0, this.holdSamples - 1);
       const target = this.holdSamples > 0 ? 1 : Math.pow(10, range / 20);
-      const step = target > this.gain ? 1 / Math.max(1, sr * Math.max(0.0001, attack)) : 1 / Math.max(1, sr * Math.max(0.001, release));
+      const step =
+        target > this.gain
+          ? 1 / Math.max(1, sr * Math.max(0.0001, attack))
+          : 1 / Math.max(1, sr * Math.max(0.001, release));
       this.gain += (target - this.gain) * Math.min(1, step);
       if (Math.abs(this.gain) < 1e-20) this.gain = 0;
       for (let ch = 0; ch < channels; ch++) output[ch][i] = input[ch][i] * (1 + (this.gain - 1) * mix);

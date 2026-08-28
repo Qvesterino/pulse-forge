@@ -28,7 +28,9 @@ function makeDrafts(points: number[], duration: number): DraftSlice[] {
 
 function sourceLabel(id: string | null, userAssets: UserSampleAsset[]): string {
   if (!id) return "Sample";
-  return FACTORY_ASSETS.find((asset) => asset.id === id)?.name ?? userAssets.find((asset) => asset.id === id)?.name ?? id;
+  return (
+    FACTORY_ASSETS.find((asset) => asset.id === id)?.name ?? userAssets.find((asset) => asset.id === id)?.name ?? id
+  );
 }
 
 /** Modal sample editor: waveform, transient/grid slicing and Drum Rack mapping. */
@@ -45,7 +47,7 @@ export function SliceLab({ track, onClose }: { track: DrumTrack; onClose: () => 
   const [loopPreview, setLoopPreview] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
-  const buffer = sourceId ? services.bank.get(sourceId) ?? null : null;
+  const buffer = sourceId ? (services.bank.get(sourceId) ?? null) : null;
   const sourceName = sourceLabel(sourceId, userAssets);
 
   useEffect(() => {
@@ -53,7 +55,9 @@ export function SliceLab({ track, onClose }: { track: DrumTrack; onClose: () => 
     void services.userSamples.list().then((assets) => {
       if (alive) setUserAssets(assets);
     });
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, [services]);
 
   const basePoints = useMemo(() => {
@@ -172,9 +176,19 @@ export function SliceLab({ track, onClose }: { track: DrumTrack; onClose: () => 
     if (!selected || !buffer) return;
     if (selectedIndex < drafts.length - 1) updateBoundary(selectedIndex + 1, value);
     else {
-      setDrafts((current) => current.map((slice, index) => index === selectedIndex
-        ? { ...slice, end: Math.max(slice.start + 0.001, Math.min(buffer.duration, Number.isFinite(value) ? value : slice.end)) }
-        : slice));
+      setDrafts((current) =>
+        current.map((slice, index) =>
+          index === selectedIndex
+            ? {
+                ...slice,
+                end: Math.max(
+                  slice.start + 0.001,
+                  Math.min(buffer.duration, Number.isFinite(value) ? value : slice.end),
+                ),
+              }
+            : slice,
+        ),
+      );
     }
   };
 
@@ -184,13 +198,21 @@ export function SliceLab({ track, onClose }: { track: DrumTrack; onClose: () => 
     const x = Math.max(0, Math.min(rect.width, event.clientX - rect.left));
     const fraction = x / Math.max(1, rect.width);
     const markerTolerance = 12 / Math.max(1, rect.width);
-    const markerIndex = drafts.findIndex((slice, index) => index > 0 && Math.abs(slice.start / buffer.duration - fraction) <= markerTolerance);
+    const markerIndex = drafts.findIndex(
+      (slice, index) => index > 0 && Math.abs(slice.start / buffer.duration - fraction) <= markerTolerance,
+    );
     if (markerIndex > 0) {
       dragBoundaryRef.current = markerIndex;
-      try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* jsdom has no pointer capture */ }
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      } catch {
+        /* jsdom has no pointer capture */
+      }
       return;
     }
-    const index = drafts.findIndex((slice) => fraction * buffer.duration >= slice.start && fraction * buffer.duration < slice.end);
+    const index = drafts.findIndex(
+      (slice) => fraction * buffer.duration >= slice.start && fraction * buffer.duration < slice.end,
+    );
     if (index >= 0) setSelectedIndex(index);
   };
 
@@ -202,7 +224,9 @@ export function SliceLab({ track, onClose }: { track: DrumTrack; onClose: () => 
     updateBoundary(boundaryIndex, fraction * buffer.duration);
   };
 
-  const finishPointer = () => { dragBoundaryRef.current = null; };
+  const finishPointer = () => {
+    dragBoundaryRef.current = null;
+  };
 
   const preview = (loop: boolean) => {
     if (!previewPad) return;
@@ -211,22 +235,26 @@ export function SliceLab({ track, onClose }: { track: DrumTrack; onClose: () => 
   };
 
   const updateSelected = (values: Partial<DraftSlice>) => {
-    setDrafts((current) => current.map((slice, index) => index === selectedIndex ? { ...slice, ...values } : slice));
+    setDrafts((current) => current.map((slice, index) => (index === selectedIndex ? { ...slice, ...values } : slice)));
   };
 
   const chop = (createPattern: boolean) => {
     if (!sourceId || drafts.length === 0) return;
     const slices = drafts.slice(0, track.pads.length);
-    services.store.execute(chopSampleToPads(doc, {
-      trackId: track.id,
-      assetId: sourceId,
-      sourceName,
-      slices,
-      createPattern,
-    }));
-    setStatus(drafts.length > track.pads.length
-      ? `Mapped first ${track.pads.length} of ${drafts.length} slices`
-      : `${slices.length} slices mapped${createPattern ? " and pattern created" : ""}`);
+    services.store.execute(
+      chopSampleToPads(doc, {
+        trackId: track.id,
+        assetId: sourceId,
+        sourceName,
+        slices,
+        createPattern,
+      }),
+    );
+    setStatus(
+      drafts.length > track.pads.length
+        ? `Mapped first ${track.pads.length} of ${drafts.length} slices`
+        : `${slices.length} slices mapped${createPattern ? " and pattern created" : ""}`,
+    );
   };
 
   const close = () => {
@@ -240,7 +268,9 @@ export function SliceLab({ track, onClose }: { track: DrumTrack; onClose: () => 
       role="dialog"
       aria-modal="true"
       aria-label="Sample to beat editor"
-      onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) close();
+      }}
     >
       <div className="slice-dialog" tabIndex={-1}>
         <header className="slice-dialog-header">
@@ -248,7 +278,9 @@ export function SliceLab({ track, onClose }: { track: DrumTrack; onClose: () => 
             <span className="slice-dialog-kicker">SAMPLE TO BEAT</span>
             <h2>SLICE LAB</h2>
           </div>
-          <button type="button" className="btn btn-small" onClick={close} aria-label="Close sample to beat editor">x</button>
+          <button type="button" className="btn btn-small" onClick={close} aria-label="Close sample to beat editor">
+            x
+          </button>
         </header>
 
         <div className="slice-dialog-body">
@@ -270,7 +302,13 @@ export function SliceLab({ track, onClose }: { track: DrumTrack; onClose: () => 
           <section className="slice-dialog-editor">
             <div className="slice-dialog-source-meta">
               <strong>{sourceName}</strong>
-              {buffer ? <span>{buffer.duration.toFixed(3)}s | {buffer.sampleRate} Hz | {doc.bpm} BPM</span> : <span>SOURCE UNAVAILABLE</span>}
+              {buffer ? (
+                <span>
+                  {buffer.duration.toFixed(3)}s | {buffer.sampleRate} Hz | {doc.bpm} BPM
+                </span>
+              ) : (
+                <span>SOURCE UNAVAILABLE</span>
+              )}
             </div>
 
             {buffer && drafts.length > 0 ? (
@@ -288,39 +326,132 @@ export function SliceLab({ track, onClose }: { track: DrumTrack; onClose: () => 
 
                 <div className="slice-dialog-mode-row" role="group" aria-label="Slice mode">
                   {(Object.keys(DIVISIONS) as Exclude<ChopMode, "hits">[]).map((division) => (
-                    <button key={division} type="button" className={`btn btn-small${mode === division ? " active" : ""}`} aria-pressed={mode === division} onClick={() => setMode(division)}>{division}</button>
+                    <button
+                      key={division}
+                      type="button"
+                      className={`btn btn-small${mode === division ? " active" : ""}`}
+                      aria-pressed={mode === division}
+                      onClick={() => setMode(division)}
+                    >
+                      {division}
+                    </button>
                   ))}
-                  <button type="button" className={`btn btn-small${mode === "hits" ? " active" : ""}`} aria-pressed={mode === "hits"} onClick={() => setMode("hits")}>HITS</button>
+                  <button
+                    type="button"
+                    className={`btn btn-small${mode === "hits" ? " active" : ""}`}
+                    aria-pressed={mode === "hits"}
+                    onClick={() => setMode("hits")}
+                  >
+                    HITS
+                  </button>
                 </div>
 
                 <div className="slice-dialog-selection">
                   <div className="slice-dialog-selection-head">
-                    <strong>SLICE {selectedIndex + 1} / {drafts.length}</strong>
+                    <strong>
+                      SLICE {selectedIndex + 1} / {drafts.length}
+                    </strong>
                     <span>{selected ? `${selected.start.toFixed(3)}s - ${selected.end.toFixed(3)}s` : ""}</span>
                   </div>
                   {selected && (
                     <div className="slice-dialog-controls">
-                      <label className="slice-number"><span>START</span><input type="number" min={0} max={selected.end - 0.001} step={0.001} value={selected.start.toFixed(3)} disabled={selectedIndex === 0} onChange={(event) => updateSelectedStart(Number(event.target.value))} /></label>
-                      <label className="slice-number"><span>END</span><input type="number" min={selected.start + 0.001} max={buffer.duration} step={0.001} value={selected.end.toFixed(3)} onChange={(event) => updateSelectedEnd(Number(event.target.value))} /></label>
-                      <label className="slice-number"><span>FADE IN</span><input type="number" min={0} max={selected.end - selected.start} step={0.001} value={selected.fadeIn.toFixed(3)} onChange={(event) => updateSelected({ fadeIn: Math.max(0, Number(event.target.value) || 0) })} /></label>
-                      <label className="slice-number"><span>FADE OUT</span><input type="number" min={0} max={selected.end - selected.start} step={0.001} value={selected.fadeOut.toFixed(3)} onChange={(event) => updateSelected({ fadeOut: Math.max(0, Number(event.target.value) || 0) })} /></label>
-                      <label className="slice-check"><input type="checkbox" checked={selected.reverse} onChange={(event) => updateSelected({ reverse: event.target.checked })} /> REVERSE</label>
+                      <label className="slice-number">
+                        <span>START</span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={selected.end - 0.001}
+                          step={0.001}
+                          value={selected.start.toFixed(3)}
+                          disabled={selectedIndex === 0}
+                          onChange={(event) => updateSelectedStart(Number(event.target.value))}
+                        />
+                      </label>
+                      <label className="slice-number">
+                        <span>END</span>
+                        <input
+                          type="number"
+                          min={selected.start + 0.001}
+                          max={buffer.duration}
+                          step={0.001}
+                          value={selected.end.toFixed(3)}
+                          onChange={(event) => updateSelectedEnd(Number(event.target.value))}
+                        />
+                      </label>
+                      <label className="slice-number">
+                        <span>FADE IN</span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={selected.end - selected.start}
+                          step={0.001}
+                          value={selected.fadeIn.toFixed(3)}
+                          onChange={(event) => updateSelected({ fadeIn: Math.max(0, Number(event.target.value) || 0) })}
+                        />
+                      </label>
+                      <label className="slice-number">
+                        <span>FADE OUT</span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={selected.end - selected.start}
+                          step={0.001}
+                          value={selected.fadeOut.toFixed(3)}
+                          onChange={(event) =>
+                            updateSelected({ fadeOut: Math.max(0, Number(event.target.value) || 0) })
+                          }
+                        />
+                      </label>
+                      <label className="slice-check">
+                        <input
+                          type="checkbox"
+                          checked={selected.reverse}
+                          onChange={(event) => updateSelected({ reverse: event.target.checked })}
+                        />{" "}
+                        REVERSE
+                      </label>
                     </div>
                   )}
                 </div>
 
                 <div className="slice-dialog-actions">
-                  <button type="button" className="btn btn-small" onClick={() => { services.engine.stopPreview(); setLoopPreview(false); }}>STOP</button>
-                  <button type="button" className="btn btn-small" onClick={() => preview(false)}>PREVIEW</button>
-                  <button type="button" className={`btn btn-small${loopPreview ? " active" : ""}`} aria-pressed={loopPreview} onClick={() => loopPreview ? (services.engine.stopPreview(), setLoopPreview(false)) : preview(true)}>LOOP PREVIEW</button>
+                  <button
+                    type="button"
+                    className="btn btn-small"
+                    onClick={() => {
+                      services.engine.stopPreview();
+                      setLoopPreview(false);
+                    }}
+                  >
+                    STOP
+                  </button>
+                  <button type="button" className="btn btn-small" onClick={() => preview(false)}>
+                    PREVIEW
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn btn-small${loopPreview ? " active" : ""}`}
+                    aria-pressed={loopPreview}
+                    onClick={() =>
+                      loopPreview ? (services.engine.stopPreview(), setLoopPreview(false)) : preview(true)
+                    }
+                  >
+                    LOOP PREVIEW
+                  </button>
                   <span className="slice-dialog-spacer" />
-                  <button type="button" className="btn btn-small" onClick={() => chop(false)}>CHOP TO PADS</button>
-                  <button type="button" className="btn btn-export" onClick={() => chop(true)}>CHOP + PATTERN</button>
+                  <button type="button" className="btn btn-small" onClick={() => chop(false)}>
+                    CHOP TO PADS
+                  </button>
+                  <button type="button" className="btn btn-export" onClick={() => chop(true)}>
+                    CHOP + PATTERN
+                  </button>
                 </div>
                 {status && <div className="slice-dialog-status">{status}</div>}
               </>
             ) : (
-              <div className="slice-dialog-empty">{sourceId ? "SOURCE UNAVAILABLE" : "Choose a sample to start slicing."}</div>
+              <div className="slice-dialog-empty">
+                {sourceId ? "SOURCE UNAVAILABLE" : "Choose a sample to start slicing."}
+              </div>
             )}
           </section>
         </div>

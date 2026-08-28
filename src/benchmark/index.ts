@@ -4,19 +4,8 @@
 import type { AudioEngine } from "../audio-engine/AudioEngine";
 import type { SampleBank } from "../sample-library/factory";
 import type { Scheduler } from "../scheduler/Scheduler";
-import {
-  collectPerformanceReport,
-  measureRenderTime,
-  type PerformanceReport,
-} from "./performance";
-import {
-  denseDrums,
-  heavyFX,
-  longSong,
-  manyVoices,
-  multiRender,
-  type StressResult,
-} from "./stress";
+import { collectPerformanceReport, measureRenderTime, type PerformanceReport } from "./performance";
+import { denseDrums, heavyFX, longSong, manyVoices, multiRender, type StressResult } from "./stress";
 
 export interface BenchmarkReport {
   performance: PerformanceReport;

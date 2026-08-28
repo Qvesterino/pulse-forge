@@ -16,18 +16,18 @@ function fixture() {
   const instrument = doc.tracks.find((track) => track.kind === "instrument");
   const rows = {
     ...base.rows,
-    [kick.id]: Array.from({ length: base.stepCount }, (_, step) => step % 4 === 0 ? 0.9 : 0),
-    [snare.id]: Array.from({ length: base.stepCount }, (_, step) => step % 8 === 4 ? 0.8 : 0),
-    [hat.id]: Array.from({ length: base.stepCount }, (_, step) => step % 2 === 0 ? 0.4 : 0),
+    [kick.id]: Array.from({ length: base.stepCount }, (_, step) => (step % 4 === 0 ? 0.9 : 0)),
+    [snare.id]: Array.from({ length: base.stepCount }, (_, step) => (step % 8 === 4 ? 0.8 : 0)),
+    [hat.id]: Array.from({ length: base.stepCount }, (_, step) => (step % 2 === 0 ? 0.4 : 0)),
   };
   const pattern: Pattern = {
     ...base,
     rows,
     notes: instrument
       ? {
-        ...base.notes,
-        [instrument.id]: [{ id: "source-note", pitch: 36, start: 0, duration: STEP_TICKS, velocity: 0.8 }],
-      }
+          ...base.notes,
+          [instrument.id]: [{ id: "source-note", pitch: 36, start: 0, duration: STEP_TICKS, velocity: 0.8 }],
+        }
       : base.notes,
     stepMeta: {
       [kick.id]: { 0: { microtiming: 0.1 } },
@@ -36,7 +36,7 @@ function fixture() {
     },
   };
   return {
-    doc: { ...doc, patterns: doc.patterns.map((candidate) => candidate.id === pattern.id ? pattern : candidate) },
+    doc: { ...doc, patterns: doc.patterns.map((candidate) => (candidate.id === pattern.id ? pattern : candidate)) },
     pattern,
     drumTrack,
     kick,
@@ -89,8 +89,14 @@ describe("Assist command integration", () => {
       48 * STEP_TICKS,
     ]);
     expect(built.phrasePlan?.map((bar) => bar.section)).toEqual(["main", "variation", "drop", "outro"]);
-    expect(built.stepMeta?.[drumTrack.pads.find((pad) => /kick/i.test(pad.name))!.id]?.[0]).toEqual({ microtiming: 0.1 });
-    expect(built.assist).toMatchObject({ engineId: "pulse-forge.local-assist", engineVersion: "assist-1", operation: "build" });
+    expect(built.stepMeta?.[drumTrack.pads.find((pad) => /kick/i.test(pad.name))!.id]?.[0]).toEqual({
+      microtiming: 0.1,
+    });
+    expect(built.assist).toMatchObject({
+      engineId: "pulse-forge.local-assist",
+      engineVersion: "assist-1",
+      operation: "build",
+    });
     expect(built.assist?.sourceContentHash).toBe(contentHash(canonicalizePattern(doc, pattern)));
     expect(built.assist?.outputContentHash).toBe(contentHash(canonicalizePattern(next, built)));
     expect(command.undo(next)).toEqual(doc);

@@ -62,7 +62,11 @@ describe("intent contract and generation pipeline", () => {
     const apply = planGeneration(intent, doc);
 
     expect(preview).toEqual(apply);
-    expect(preview.outputShape).toEqual({ stepCount: 32, roles: ["drums", "bass", "chords", "lead"], replaceMode: "new" });
+    expect(preview.outputShape).toEqual({
+      stepCount: 32,
+      roles: ["drums", "bass", "chords", "lead"],
+      replaceMode: "new",
+    });
     expect(preview.subSeeds.drumsCore).toContain("drums.core");
     expect(preview.recipe.grooveId).toBe("house.driving");
   });

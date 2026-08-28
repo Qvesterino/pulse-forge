@@ -48,7 +48,9 @@ describe("setStepMeta", () => {
     expect(meta?.ratchet).toBe(2);
 
     // Returning everything to defaults removes the entry entirely.
-    const cleared = setStepMeta(withBoth, patternId, kickId, 3, { probability: 1, ratchet: 1, microtiming: 0 }).execute(withBoth);
+    const cleared = setStepMeta(withBoth, patternId, kickId, 3, { probability: 1, ratchet: 1, microtiming: 0 }).execute(
+      withBoth,
+    );
     expect(cleared.patterns[0].stepMeta).toBeUndefined();
   });
 
@@ -83,7 +85,7 @@ describe("clearSteps", () => {
 describe("setStepsVelocity", () => {
   it("batch-updates velocities and undoes per-entry", () => {
     const { doc, kickId, patternId } = docWithKick();
-    const clapId = (doc.tracks.find((t): t is DrumTrack => t.kind === "drum")!).pads[6].id;
+    const clapId = doc.tracks.find((t): t is DrumTrack => t.kind === "drum")!.pads[6].id;
     const entries = [
       { padId: kickId, stepIndex: 0, velocity: 0.42 },
       { padId: clapId, stepIndex: 4, velocity: 0.77 },
@@ -131,7 +133,9 @@ describe("mutatePattern", () => {
 describe("createFill", () => {
   it("duplicates as '<name> Fill' with a rising snare roll over the last beat", () => {
     const { doc, patternId } = docWithKick();
-    const snarePad = (doc.tracks.find((t): t is DrumTrack => t.kind === "drum")!).pads.find((p) => /snare/i.test(p.name))!;
+    const snarePad = doc.tracks
+      .find((t): t is DrumTrack => t.kind === "drum")!
+      .pads.find((p) => /snare/i.test(p.name))!;
     const command = createFill(doc, patternId);
     const next = command.execute(doc);
 
@@ -175,7 +179,15 @@ describe("quantizePatternToGrid", () => {
       ...doc,
       patterns: doc.patterns.map((p) =>
         p.id === patternId
-          ? { ...p, notes: { [kickId]: [{ id: "n1", pitch: 28, start: 180, duration: 120, velocity: 0.8 }, { id: "n2", pitch: 28, start: 360, duration: 120, velocity: 0.8 }] } }
+          ? {
+              ...p,
+              notes: {
+                [kickId]: [
+                  { id: "n1", pitch: 28, start: 180, duration: 120, velocity: 0.8 },
+                  { id: "n2", pitch: 28, start: 360, duration: 120, velocity: 0.8 },
+                ],
+              },
+            }
           : p,
       ),
     };
@@ -254,7 +266,11 @@ describe("velocity ramp (crescendo/decrecendo)", () => {
     const { doc, kickId, patternId } = docWithKick();
     // Set initial velocities for steps 0–3
     const initial = [0.3, 0.5, 0.6, 0.8];
-    const cmd1 = setStepsVelocity(doc, patternId, initial.map((v, i) => ({ padId: kickId, stepIndex: i, velocity: v })));
+    const cmd1 = setStepsVelocity(
+      doc,
+      patternId,
+      initial.map((v, i) => ({ padId: kickId, stepIndex: i, velocity: v })),
+    );
     const after = cmd1.execute(doc);
 
     // Simulate a ramp: leftmost (step 0) at 0.3, rightmost (step 3) at target 0.95
@@ -282,7 +298,7 @@ describe("velocity ramp (crescendo/decrecendo)", () => {
 
   it("ramp across multiple pad rows applies the same gradient to each row", () => {
     const { doc, kickId, patternId } = docWithKick();
-    const clapId = (doc.tracks.find((t): t is DrumTrack => t.kind === "drum")!).pads[6].id;
+    const clapId = doc.tracks.find((t): t is DrumTrack => t.kind === "drum")!.pads[6].id;
     // Set both rows to some initial velocities
     const cmd1 = setStepsVelocity(doc, patternId, [
       { padId: kickId, stepIndex: 0, velocity: 0.3 },

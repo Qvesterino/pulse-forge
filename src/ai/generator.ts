@@ -1,24 +1,24 @@
-import type { ProjectDocument, Pattern, NoteEvent, StepMeta } from '../project-model/types';
-import type { GenerateOptions, GrooveData } from './types';
-import { forkRandom, hashString } from '../shared/rng';
-import { uid } from '../shared/ids';
-import { getGroovesForGenre, getGrooveById } from './grooves/index';
-import { generateDrumPattern } from './drums';
-import { generateMelodicParts } from './melodic';
-import { inferPadRole } from './pad-roles';
-import { canonicalizePattern, contentHash, createGenerationRecipe } from './evaluation';
-import { measureDrumQuality, measureMelodicQuality } from './quality';
-import { evaluateStyleDistance } from './style-quality';
-import { buildPhrasePlan } from './phrase';
+import type { ProjectDocument, Pattern, NoteEvent, StepMeta } from "../project-model/types";
+import type { GenerateOptions, GrooveData } from "./types";
+import { forkRandom, hashString } from "../shared/rng";
+import { uid } from "../shared/ids";
+import { getGroovesForGenre, getGrooveById } from "./grooves/index";
+import { generateDrumPattern } from "./drums";
+import { generateMelodicParts } from "./melodic";
+import { inferPadRole } from "./pad-roles";
+import { canonicalizePattern, contentHash, createGenerationRecipe } from "./evaluation";
+import { measureDrumQuality, measureMelodicQuality } from "./quality";
+import { evaluateStyleDistance } from "./style-quality";
+import { buildPhrasePlan } from "./phrase";
 
 /** Resolve which groove to use based on genre + optional style name */
-export function resolveGroove(genre: GenerateOptions['genre'], style?: string, rand?: () => number): GrooveData {
+export function resolveGroove(genre: GenerateOptions["genre"], style?: string, rand?: () => number): GrooveData {
   if (style) {
-    const byId = getGrooveById(`${genre}.${style.toLowerCase().replace(/\s+/g, '')}`);
+    const byId = getGrooveById(`${genre}.${style.toLowerCase().replace(/\s+/g, "")}`);
     if (byId) return byId;
 
     const grooves = getGroovesForGenre(genre);
-    const match = grooves.find(g => g.name.toLowerCase() === style.toLowerCase());
+    const match = grooves.find((g) => g.name.toLowerCase() === style.toLowerCase());
     if (match) return match;
   }
 
@@ -31,33 +31,24 @@ export function resolveGroove(genre: GenerateOptions['genre'], style?: string, r
 /** UUID-free content identity for source-pattern variation. */
 export function sourcePatternContentHash(doc: ProjectDocument, sourcePatternId?: string): string | null {
   if (!sourcePatternId) return null;
-  const sourcePattern = doc.patterns.find(p => p.id === sourcePatternId);
+  const sourcePattern = doc.patterns.find((p) => p.id === sourcePatternId);
   return sourcePattern ? contentHash(canonicalizePattern(doc, sourcePattern)) : null;
 }
 
 /** Derive the effective seed from explicit input plus stable source content. */
 export function resolveEffectiveSeed(doc: ProjectDocument, options: GenerateOptions): string {
   const inputHash = sourcePatternContentHash(doc, options.sourcePatternId);
-  return inputHash
-    ? hashString(`${options.seed}|${inputHash}`).toString(36)
-    : options.seed;
+  return inputHash ? hashString(`${options.seed}|${inputHash}`).toString(36) : options.seed;
 }
 
 /** Resolve the groove using exactly the same seed derivation as generation. */
 export function resolveGrooveForGeneration(doc: ProjectDocument, options: GenerateOptions): GrooveData {
   const effectiveSeed = resolveEffectiveSeed(doc, options);
-  return resolveGroove(
-    options.genre,
-    options.style,
-    forkRandom(`${options.genre}|${effectiveSeed}`, 'groove'),
-  );
+  return resolveGroove(options.genre, options.style, forkRandom(`${options.genre}|${effectiveSeed}`, "groove"));
 }
 
 /** Generate a complete Pattern from the Markov engine */
-export function generatePattern(
-  doc: ProjectDocument,
-  options: GenerateOptions,
-): Pattern {
+export function generatePattern(doc: ProjectDocument, options: GenerateOptions): Pattern {
   const effectiveSeed = resolveEffectiveSeed(doc, options);
   const inputContentHash = sourcePatternContentHash(doc, options.sourcePatternId);
 
@@ -65,36 +56,41 @@ export function generatePattern(
   const groove = resolveGrooveForGeneration(doc, options);
 
   const generationSeed = `${options.genre}|${effectiveSeed}|${groove.id}`;
-  const drumRand = forkRandom(generationSeed, 'drums.core');
-  const drumVariationRand = forkRandom(generationSeed, 'drums.variation');
-  const drumMetaRand = forkRandom(generationSeed, 'drums.meta');
-  const melodyRand = forkRandom(generationSeed, 'melody.fallback');
-  const bassRand = forkRandom(generationSeed, 'melody.bass');
-  const chordRand = forkRandom(generationSeed, 'melody.chord');
-  const leadRand = forkRandom(generationSeed, 'melody.lead');
+  const drumRand = forkRandom(generationSeed, "drums.core");
+  const drumVariationRand = forkRandom(generationSeed, "drums.variation");
+  const drumMetaRand = forkRandom(generationSeed, "drums.meta");
+  const melodyRand = forkRandom(generationSeed, "melody.fallback");
+  const bassRand = forkRandom(generationSeed, "melody.bass");
+  const chordRand = forkRandom(generationSeed, "melody.chord");
+  const leadRand = forkRandom(generationSeed, "melody.lead");
 
   // Resolve the target drum track before generation so semantic pad metadata
   // (names/order) can participate in the local quality rules.
-  const drumTracks = doc.tracks.filter(t => t.kind === 'drum');
+  const drumTracks = doc.tracks.filter((t) => t.kind === "drum");
   const targetDrumTrack = options.drumTrackId
-    ? drumTracks.find(t => t.id === options.drumTrackId) ?? drumTracks[0]
+    ? (drumTracks.find((t) => t.id === options.drumTrackId) ?? drumTracks[0])
     : drumTracks[0];
-  const padNames = targetDrumTrack && targetDrumTrack.kind === 'drum'
-    ? targetDrumTrack.pads.map(pad => pad.name)
-    : undefined;
+  const padNames =
+    targetDrumTrack && targetDrumTrack.kind === "drum" ? targetDrumTrack.pads.map((pad) => pad.name) : undefined;
 
   // Generate drum pattern
-  const { rows: rawRows, meta } = generateDrumPattern(groove, options, drumRand, {
-    variation: drumVariationRand,
-    meta: drumMetaRand,
-    // Existing project swing remains the owner unless the caller explicitly
-    // asks generation to apply the resolved groove settings.
-    swing: options.applyGrooveSettings || (doc.groove?.swing ?? 0) > 0 ? 0 : groove.swing,
-  }, padNames);
+  const { rows: rawRows, meta } = generateDrumPattern(
+    groove,
+    options,
+    drumRand,
+    {
+      variation: drumVariationRand,
+      meta: drumMetaRand,
+      // Existing project swing remains the owner unless the caller explicitly
+      // asks generation to apply the resolved groove settings.
+      swing: options.applyGrooveSettings || (doc.groove?.swing ?? 0) > 0 ? 0 : groove.swing,
+    },
+    padNames,
+  );
 
   // Map pad indices to actual pad IDs from the target drum track
   const padIdMap = new Map<number, string>();
-  if (targetDrumTrack && targetDrumTrack.kind === 'drum') {
+  if (targetDrumTrack && targetDrumTrack.kind === "drum") {
     targetDrumTrack.pads.forEach((pad, i) => {
       padIdMap.set(i, pad.id);
     });
@@ -131,18 +127,19 @@ export function generatePattern(
 
   // Build notes Record<ID, NoteEvent[]>
   const notesRecord: Record<string, NoteEvent[]> = {};
-  const instrumentTracks = doc.tracks.filter(t => t.kind === 'instrument');
-  const targetTracks = options.instrumentTrackIds && options.instrumentTrackIds.length > 0
-    ? instrumentTracks.filter(t => options.instrumentTrackIds!.includes(t.id))
-    : instrumentTracks;
-  const roleOrder = ['bass', 'chord', 'lead'] as const;
+  const instrumentTracks = doc.tracks.filter((t) => t.kind === "instrument");
+  const targetTracks =
+    options.instrumentTrackIds && options.instrumentTrackIds.length > 0
+      ? instrumentTracks.filter((t) => options.instrumentTrackIds!.includes(t.id))
+      : instrumentTracks;
+  const roleOrder = ["bass", "chord", "lead"] as const;
 
   if (targetTracks.length > 0) {
     for (let roleIndex = 0; roleIndex < roleOrder.length; roleIndex++) {
       const role = roleOrder[roleIndex];
       const part = melodicParts[role];
       if (part.length === 0) continue;
-      const namedTrack = targetTracks.find(track => {
+      const namedTrack = targetTracks.find((track) => {
         const name = track.name.toLowerCase();
         return name.includes(role);
       });
@@ -152,7 +149,7 @@ export function generatePattern(
   }
 
   const pattern: Pattern = {
-    id: uid('pattern'),
+    id: uid("pattern"),
     name: `${groove.genre} - ${groove.name}`,
     stepCount: options.stepCount,
     rows,
@@ -165,11 +162,7 @@ export function generatePattern(
   const roles = Array.from({ length: rawRows.length }, (_, index) => inferPadRole(padNames?.[index], index));
   const drumQuality = measureDrumQuality(groove, rawRows, roles, options.stepCount);
   const styleGate = evaluateStyleDistance(groove, rawRows, options.stepCount);
-  const melodicQuality = measureMelodicQuality(
-    Object.values(notesRecord).flat(),
-    options.stepCount,
-    doc.key,
-  );
+  const melodicQuality = measureMelodicQuality(Object.values(notesRecord).flat(), options.stepCount, doc.key);
   return {
     ...pattern,
     generation: {

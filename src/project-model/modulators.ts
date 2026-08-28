@@ -141,10 +141,14 @@ function sanitizeTarget(raw: unknown, hostTrackId: ID): AutomationTarget | undef
   if (!raw || typeof raw !== "object") return undefined;
   const candidate = raw as Partial<AutomationTarget>;
   if (
-    (candidate.kind !== "trackGain" && candidate.kind !== "trackPan" && candidate.kind !== "fxParam" && candidate.kind !== "instParam")
-    || typeof candidate.trackId !== "string"
-    || candidate.trackId === ""
-  ) return undefined;
+    (candidate.kind !== "trackGain" &&
+      candidate.kind !== "trackPan" &&
+      candidate.kind !== "fxParam" &&
+      candidate.kind !== "instParam") ||
+    typeof candidate.trackId !== "string" ||
+    candidate.trackId === ""
+  )
+    return undefined;
   const target: AutomationTarget = { kind: candidate.kind, trackId: candidate.trackId };
   if (target.kind === "fxParam" || target.kind === "instParam") {
     if (typeof candidate.paramId !== "string" || candidate.paramId === "") return undefined;
@@ -165,7 +169,12 @@ function sanitizeTarget(raw: unknown, hostTrackId: ID): AutomationTarget | undef
 export function sanitizeLfo(raw: unknown, trackIds: Set<string>): Lfo | null {
   if (!raw || typeof raw !== "object") return null;
   const input = raw as Partial<Lfo> & Record<string, unknown>;
-  if (typeof input.id !== "string" || input.id === "" || typeof input.trackId !== "string" || !trackIds.has(input.trackId)) {
+  if (
+    typeof input.id !== "string" ||
+    input.id === "" ||
+    typeof input.trackId !== "string" ||
+    !trackIds.has(input.trackId)
+  ) {
     return null;
   }
   const kind = pickEnum<LfoKind>(input.kind, LFO_KINDS, "osc");
@@ -196,9 +205,8 @@ function buildSanitizedLfo(
     amount: clampRange(input.amount, 0, 1, 0.3),
   };
   if (kind === "envFollower") {
-    const sourceTrackId = typeof input.sourceTrackId === "string" && trackIds.has(input.sourceTrackId)
-      ? input.sourceTrackId
-      : trackId;
+    const sourceTrackId =
+      typeof input.sourceTrackId === "string" && trackIds.has(input.sourceTrackId) ? input.sourceTrackId : trackId;
     sanitized.sourceTrackId = sourceTrackId;
     sanitized.attackMs = clampRange(input.attackMs, 1, 500, 12);
     sanitized.releaseMs = clampRange(input.releaseMs, 10, 2000, 180);
@@ -272,9 +280,10 @@ export function sanitizeSteps(raw: unknown): number[] {
   }
   const steps: number[] = [];
   for (let i = 0; i < targetLength; i++) {
-    const value = typeof source[i % Math.max(1, source.length)] === "number" && Number.isFinite(source[i % source.length])
-      ? (source[i % source.length] as number)
-      : 0;
+    const value =
+      typeof source[i % Math.max(1, source.length)] === "number" && Number.isFinite(source[i % source.length])
+        ? (source[i % source.length] as number)
+        : 0;
     steps.push(Math.round(Math.min(1, Math.max(-1, value)) * 1000) / 1000);
   }
   return steps;
@@ -308,9 +317,10 @@ export function sanitizeGateSteps(raw: unknown): number[] {
   }
   const steps: number[] = [];
   for (let i = 0; i < targetLength; i++) {
-    const value = typeof source[i % source.length] === "number" && Number.isFinite(source[i % source.length])
-      ? (source[i % source.length] as number)
-      : 0;
+    const value =
+      typeof source[i % source.length] === "number" && Number.isFinite(source[i % source.length])
+        ? (source[i % source.length] as number)
+        : 0;
     steps.push(Math.round(Math.min(1, Math.max(0, value)) * 1000) / 1000);
   }
   return steps;

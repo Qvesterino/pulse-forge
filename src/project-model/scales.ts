@@ -72,7 +72,7 @@ export function parseKey(key: MusicalKey): { root: number; scaleType: ScaleType 
 }
 
 export function formatKey(root: number, scaleType: ScaleType): MusicalKey {
-  return (`${ROOT_NAMES[root]} ${SCALE_LABELS[scaleType]}`) as MusicalKey;
+  return `${ROOT_NAMES[root]} ${SCALE_LABELS[scaleType]}` as MusicalKey;
 }
 
 /** Get all MIDI pitches in the scale within [pitchMin, pitchMax]. */
@@ -152,9 +152,7 @@ export function scaleDegreeLabel(pitch: number, key: MusicalKey): string | null 
   const idx = intervals.indexOf(offset);
   if (idx < 0) return null;
   // Pentatonic uses 1,2,3,4,5 labels; heptatonic uses 1..7
-  const labels = intervals.length <= 5
-    ? ["1", "2", "3", "4", "5"]
-    : ["1", "2", "3", "4", "5", "6", "7"];
+  const labels = intervals.length <= 5 ? ["1", "2", "3", "4", "5"] : ["1", "2", "3", "4", "5", "6", "7"];
   return labels[idx] ?? null;
 }
 

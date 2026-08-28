@@ -63,27 +63,22 @@ export function StepGridEditor({
         style={{ height }}
         role="slider"
         aria-label={`${ariaLabel}, ${current.length} steps`}
-        aria-valuenow={Math.round(
-          (current.reduce((s, v) => s + v, 0) / current.length - min) / range * 100,
-        )}
+        aria-valuenow={Math.round(((current.reduce((s, v) => s + v, 0) / current.length - min) / range) * 100)}
         aria-valuemin={0}
         aria-valuemax={100}
-        onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); paint(e); }}
-        onPointerMove={(e) => { if (e.buttons & 1) paint(e); }}
+        onPointerDown={(e) => {
+          e.currentTarget.setPointerCapture(e.pointerId);
+          paint(e);
+        }}
+        onPointerMove={(e) => {
+          if (e.buttons & 1) paint(e);
+        }}
         onPointerUp={commit}
         onPointerCancel={commit}
       >
         <svg viewBox={`0 0 ${current.length} ${range}`} preserveAspectRatio="none" role="img">
           {/* zero line for bipolar grids */}
-          {bipolar && (
-            <line
-              x1="0"
-              y1={valueY(0)}
-              x2={current.length}
-              y2={valueY(0)}
-              className="mod-step-grid-zero"
-            />
-          )}
+          {bipolar && <line x1="0" y1={valueY(0)} x2={current.length} y2={valueY(0)} className="mod-step-grid-zero" />}
           {current.map((value, index) => {
             const yTop = valueY(Math.max(min, Math.min(max, value)));
             const zeroY = valueY(0);

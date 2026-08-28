@@ -92,7 +92,16 @@ interface DragNumberProps {
   onCommit: (value: number) => void;
 }
 
-export function DragNumber({ value, min, max, defaultValue, sensitivity = 0.4, format, label, onCommit }: DragNumberProps) {
+export function DragNumber({
+  value,
+  min,
+  max,
+  defaultValue,
+  sensitivity = 0.4,
+  format,
+  label,
+  onCommit,
+}: DragNumberProps) {
   const [edit, setEdit] = useState<number | null>(null);
   const startY = useRef(0);
   const startValue = useRef(0);

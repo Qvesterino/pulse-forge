@@ -37,7 +37,10 @@ describe("Program Change commands", () => {
   });
 
   it("setMidiProgramMap sets program map", () => {
-    const map = [{ program: 0, presetId: "piano" }, { program: 1, presetId: "organ" }];
+    const map = [
+      { program: 0, presetId: "piano" },
+      { program: 1, presetId: "organ" },
+    ];
     const cmd = setMidiProgramMap(doc, map);
     const next = cmd.execute(doc);
     expect(next.midi?.programMap).toEqual(map);

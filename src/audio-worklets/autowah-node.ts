@@ -5,10 +5,7 @@ import type { EffectRuntime } from "../effects/types";
  * The processor module MUST be pre-loaded via `loadWorkletModules()` first —
  * callers gate construction behind `isWorkletReady("autowah", ctx)`.
  */
-export function createAutowahNode(
-  ctx: BaseAudioContext,
-  instance: { params: Record<string, number> },
-): EffectRuntime {
+export function createAutowahNode(ctx: BaseAudioContext, instance: { params: Record<string, number> }): EffectRuntime {
   const node = new AudioWorkletNode(ctx, "autowah-processor", {
     numberOfInputs: 1,
     numberOfOutputs: 1,

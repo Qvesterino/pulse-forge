@@ -5,16 +5,7 @@ import { hashString, mulberry32 } from "../shared/rng";
 
 export type ChordMode = "diatonic" | "explicit";
 export type ChordQuality =
-  | "major"
-  | "minor"
-  | "diminished"
-  | "augmented"
-  | "sus2"
-  | "sus4"
-  | "dominant7"
-  | "major7"
-  | "minor7"
-  | "add9";
+  "major" | "minor" | "diminished" | "augmented" | "sus2" | "sus4" | "dominant7" | "major7" | "minor7" | "add9";
 export type ChordVoicing = "close" | "open" | "drop2";
 export type StrumDirection = "up" | "down";
 export type ArpeggiatorMode = "up" | "down" | "up-down" | "random";
@@ -228,10 +219,15 @@ export function reverseNotes(notes: NoteEvent[], patternTicks: number): NoteEven
   if (notes.length === 0) return [];
   const rangeStart = Math.min(...notes.map((note) => note.start));
   const rangeEnd = Math.max(...notes.map((note) => note.start + note.duration));
-  return notes.map((note) => clampNote({
-    ...note,
-    start: rangeStart + rangeEnd - note.start - note.duration,
-  }, patternTicks));
+  return notes.map((note) =>
+    clampNote(
+      {
+        ...note,
+        start: rangeStart + rangeEnd - note.start - note.duration,
+      },
+      patternTicks,
+    ),
+  );
 }
 
 export function invertNotes(notes: NoteEvent[], patternTicks: number): NoteEvent[] {
@@ -245,11 +241,16 @@ export function invertNotes(notes: NoteEvent[], patternTicks: number): NoteEvent
 function scaleTime(notes: NoteEvent[], factor: number, patternTicks: number): NoteEvent[] {
   if (notes.length === 0) return [];
   const origin = Math.min(...notes.map((note) => note.start));
-  return notes.map((note) => clampNote({
-    ...note,
-    start: origin + Math.round((note.start - origin) * factor),
-    duration: Math.max(1, Math.round(note.duration * factor)),
-  }, patternTicks));
+  return notes.map((note) =>
+    clampNote(
+      {
+        ...note,
+        start: origin + Math.round((note.start - origin) * factor),
+        duration: Math.max(1, Math.round(note.duration * factor)),
+      },
+      patternTicks,
+    ),
+  );
 }
 
 export function halveNotes(notes: NoteEvent[], patternTicks: number): NoteEvent[] {
@@ -283,7 +284,9 @@ export function strumNotes(notes: NoteEvent[], options: StrumOptions, patternTic
 
 export function gateNotes(notes: NoteEvent[], gate: number, patternTicks: number): NoteEvent[] {
   const amount = clamp(Number.isFinite(gate) ? gate : 1, 0.01, 1);
-  return notes.map((note) => clampNote({ ...note, duration: Math.max(1, Math.round(note.duration * amount)) }, patternTicks));
+  return notes.map((note) =>
+    clampNote({ ...note, duration: Math.max(1, Math.round(note.duration * amount)) }, patternTicks),
+  );
 }
 
 export function humanizeNotes(
@@ -297,11 +300,14 @@ export function humanizeNotes(
   return notes.map((note) => {
     const timingOffset = Math.round((random() * 2 - 1) * timing);
     const velocityOffset = (random() * 2 - 1) * velocity;
-    return clampNote({
-      ...note,
-      start: note.start + timingOffset,
-      velocity: note.velocity + velocityOffset,
-    }, patternTicks);
+    return clampNote(
+      {
+        ...note,
+        start: note.start + timingOffset,
+        velocity: note.velocity + velocityOffset,
+      },
+      patternTicks,
+    );
   });
 }
 
@@ -312,10 +318,15 @@ export function randomizeVelocity(
 ): NoteEvent[] {
   const random = mulberry32(hashString(options.seed));
   const amount = Math.max(0, options.amount);
-  return notes.map((note) => clampNote({
-    ...note,
-    velocity: note.velocity + (random() * 2 - 1) * amount,
-  }, patternTicks));
+  return notes.map((note) =>
+    clampNote(
+      {
+        ...note,
+        velocity: note.velocity + (random() * 2 - 1) * amount,
+      },
+      patternTicks,
+    ),
+  );
 }
 
 function arpeggioPitches(
@@ -327,9 +338,7 @@ function arpeggioPitches(
   const base = [...new Set(notes.map((note) => Math.round(note.pitch)))].sort((a, b) => a - b);
   if (base.length === 0) return [];
   const octaves = clamp(Math.round(octaveRange), 0, 4);
-  const expanded = Array.from({ length: octaves + 1 }, (_, octave) =>
-    base.map((pitch) => pitch + octave * 12),
-  ).flat();
+  const expanded = Array.from({ length: octaves + 1 }, (_, octave) => base.map((pitch) => pitch + octave * 12)).flat();
   if (mode === "up") return expanded;
   if (mode === "down") return [...expanded].reverse();
   if (mode === "up-down") {
@@ -341,9 +350,7 @@ function arpeggioPitches(
 
 function noteGroupsByStart(notes: NoteEvent[]): NoteEvent[][] {
   const groups = groupedByStart(notes);
-  return [...groups.entries()]
-    .sort(([a], [b]) => a - b)
-    .map(([, group]) => group.sort((a, b) => a.pitch - b.pitch));
+  return [...groups.entries()].sort(([a], [b]) => a - b).map(([, group]) => group.sort((a, b) => a.pitch - b.pitch));
 }
 
 export function arpeggiateNotes(
@@ -372,13 +379,18 @@ export function arpeggiateNotes(
       const pitch = pitches[index % pitches.length];
       const duration = Math.min(remaining, Math.max(1, Math.round(rate * gate)));
       const sourcePitch = group[index % group.length].pitch;
-      result.push(clampNote({
-        id: makeId(idIndex++),
-        pitch,
-        start: noteStart,
-        duration,
-        velocity: velocityByPitch.get(sourcePitch) ?? group[0].velocity,
-      }, patternTicks));
+      result.push(
+        clampNote(
+          {
+            id: makeId(idIndex++),
+            pitch,
+            start: noteStart,
+            duration,
+            velocity: velocityByPitch.get(sourcePitch) ?? group[0].velocity,
+          },
+          patternTicks,
+        ),
+      );
     }
   }
   return result;
@@ -399,13 +411,18 @@ export function repeatNotes(
     for (let index = 0; index < count; index++) {
       const start = note.start + index * rate;
       if (start >= patternTicks) continue;
-      result.push(clampNote({
-        ...note,
-        id: makeId(idIndex++),
-        start,
-        duration: Math.min(note.duration, rate),
-        velocity: note.velocity * Math.max(0, 1 - falloff * index),
-      }, patternTicks));
+      result.push(
+        clampNote(
+          {
+            ...note,
+            id: makeId(idIndex++),
+            start,
+            duration: Math.min(note.duration, rate),
+            velocity: note.velocity * Math.max(0, 1 - falloff * index),
+          },
+          patternTicks,
+        ),
+      );
     }
   }
   return result;
@@ -415,8 +432,9 @@ export function euclideanPattern(pulses: number, steps: number, rotation: number
   const safeSteps = clamp(Math.round(steps), 1, 128);
   const safePulses = clamp(Math.round(pulses), 0, safeSteps);
   const safeRotation = Math.round(rotation);
-  const base = Array.from({ length: safeSteps }, (_, index) =>
-    Math.floor(((index + 1) * safePulses) / safeSteps) > Math.floor((index * safePulses) / safeSteps),
+  const base = Array.from(
+    { length: safeSteps },
+    (_, index) => Math.floor(((index + 1) * safePulses) / safeSteps) > Math.floor((index * safePulses) / safeSteps),
   );
   return base.map((_, index) => base[mod(index - safeRotation, safeSteps)]);
 }
@@ -433,20 +451,29 @@ export function euclideanNotes(
   const steps = clamp(Math.round(options.steps), 1, 128);
   const stepWidth = span / steps;
   const gate = clamp(Number.isFinite(options.gate) ? options.gate : 1, 0.01, 1);
-  const velocity = clamp(Number.isFinite(options.velocity) ? options.velocity : first?.velocity ?? 0.8, MIN_VELOCITY, 1);
+  const velocity = clamp(
+    Number.isFinite(options.velocity) ? options.velocity : (first?.velocity ?? 0.8),
+    MIN_VELOCITY,
+    1,
+  );
   const hits = euclideanPattern(options.pulses, steps, options.rotation);
   const result: NoteEvent[] = [];
   hits.forEach((hit, index) => {
     if (!hit) return;
     const noteStart = start + Math.round(index * stepWidth);
     if (noteStart >= patternTicks) return;
-    result.push(clampNote({
-      id: makeId(result.length),
-      pitch: options.pitch,
-      start: noteStart,
-      duration: Math.max(1, Math.round(stepWidth * gate)),
-      velocity,
-    }, patternTicks));
+    result.push(
+      clampNote(
+        {
+          id: makeId(result.length),
+          pitch: options.pitch,
+          start: noteStart,
+          duration: Math.max(1, Math.round(stepWidth * gate)),
+          velocity,
+        },
+        patternTicks,
+      ),
+    );
   });
   return result;
 }
@@ -505,5 +532,7 @@ export function applyScaleOption(
   scaleLock: boolean,
   patternTicks: number,
 ): NoteEvent[] {
-  return scaleLock && key ? snapNotesToScale(notes, key, patternTicks) : notes.map((note) => clampNote(note, patternTicks));
+  return scaleLock && key
+    ? snapNotesToScale(notes, key, patternTicks)
+    : notes.map((note) => clampNote(note, patternTicks));
 }

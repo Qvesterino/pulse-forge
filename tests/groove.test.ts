@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createProjectFromTemplate } from "../src/project-model/templates";
-import {
-  MAX_HUMANIZE_TIMING,
-  MAX_MICRO_TIMING,
-  drumHitsInWindow,
-  swingOffsetTicks,
-} from "../src/project-model/groove";
+import { MAX_HUMANIZE_TIMING, MAX_MICRO_TIMING, drumHitsInWindow, swingOffsetTicks } from "../src/project-model/groove";
 import { normalizeProject } from "../src/project-model/schema";
 import { STEP_TICKS } from "../src/project-model/types";
 import type { DrumTrack, ProjectDocument } from "../src/project-model/types";
@@ -33,7 +28,11 @@ function setRow(doc: ProjectDocument, padId: string, steps: [number, number][]):
 describe("groove engine", () => {
   it("straight project: one hit per active step, exactly on the grid", () => {
     const { doc, kickId } = blankDoc();
-    const withHits = setRow(doc, kickId, [[0, 0.9], [4, 0.8], [8, 0.7]]);
+    const withHits = setRow(doc, kickId, [
+      [0, 0.9],
+      [4, 0.8],
+      [8, 0.7],
+    ]);
     const hits = drumHitsInWindow(withHits, withHits.patterns[0], 0, 0, PATTERN_TICKS);
     expect(hits).toHaveLength(3);
     expect(hits.map((h) => h.tick)).toEqual([0, 4 * STEP_TICKS, 8 * STEP_TICKS]);
@@ -47,7 +46,11 @@ describe("groove engine", () => {
     expect(swingOffsetTicks(3, 1)).toBeCloseTo(STEP_TICKS * 0.5, 5);
 
     const { doc, kickId } = blankDoc();
-    const swung = setRow({ ...doc, groove: { swing: 0.5 } }, kickId, [[0, 0.9], [1, 0.9], [2, 0.9]]);
+    const swung = setRow({ ...doc, groove: { swing: 0.5 } }, kickId, [
+      [0, 0.9],
+      [1, 0.9],
+      [2, 0.9],
+    ]);
     const hits = drumHitsInWindow(swung, swung.patterns[0], 0, 0, PATTERN_TICKS);
     expect(hits[0].tick).toBe(0);
     expect(hits[1].tick).toBeCloseTo(STEP_TICKS + 0.25 * STEP_TICKS, 5);
@@ -88,12 +91,24 @@ describe("groove engine", () => {
 
   it("probability rolls are deterministic per pattern/pad/step/pass", () => {
     const { doc, kickId } = blankDoc();
-    const base = setRow(doc, kickId, [[0, 0.9], [2, 0.9], [4, 0.9], [6, 0.9]]);
+    const base = setRow(doc, kickId, [
+      [0, 0.9],
+      [2, 0.9],
+      [4, 0.9],
+      [6, 0.9],
+    ]);
     const half = {
       ...base,
       patterns: base.patterns.map((p) => ({
         ...p,
-        stepMeta: { [kickId]: { 0: { probability: 0.5 }, 2: { probability: 0.5 }, 4: { probability: 0.5 }, 6: { probability: 0.5 } } },
+        stepMeta: {
+          [kickId]: {
+            0: { probability: 0.5 },
+            2: { probability: 0.5 },
+            4: { probability: 0.5 },
+            6: { probability: 0.5 },
+          },
+        },
       })),
     };
     const first = drumHitsInWindow(half, half.patterns[0], 0, 0, PATTERN_TICKS).map((h) => h.tick);
@@ -122,11 +137,7 @@ describe("groove engine", () => {
   it("humanize keeps timing jitter and velocity variation within bounds and deterministic", () => {
     const { doc, kickId } = blankDoc();
     const steps: [number, number][] = Array.from({ length: 16 }, (_, i) => [i, 0.8] as [number, number]);
-    const humanized = setRow(
-      { ...doc, groove: { humanizeTiming: 1, humanizeVelocity: 1 } },
-      kickId,
-      steps,
-    );
+    const humanized = setRow({ ...doc, groove: { humanizeTiming: 1, humanizeVelocity: 1 } }, kickId, steps);
     const hitsA = drumHitsInWindow(humanized, humanized.patterns[0], 0, 0, PATTERN_TICKS);
     const hitsB = drumHitsInWindow(humanized, humanized.patterns[0], 0, 0, PATTERN_TICKS);
     // Edge hits jittered across the window boundary land in the neighbouring
@@ -147,7 +158,10 @@ describe("groove engine", () => {
 
   it("window splitting is lossless: two halves equal the whole", () => {
     const { doc, kickId } = blankDoc();
-    const steps: [number, number][] = Array.from({ length: 16 }, (_, i) => [i, 0.5 + (i % 4) * 0.1] as [number, number]);
+    const steps: [number, number][] = Array.from(
+      { length: 16 },
+      (_, i) => [i, 0.5 + (i % 4) * 0.1] as [number, number],
+    );
     const grooved = setRow(
       { ...doc, groove: { swing: 0.6, humanizeTiming: 0.7, humanizeVelocity: 0.5 } },
       kickId,
@@ -156,7 +170,9 @@ describe("groove engine", () => {
     const pattern = grooved.patterns[0];
     const rattled = {
       ...grooved,
-      patterns: [{ ...pattern, stepMeta: { [kickId]: { 3: { ratchet: 3 }, 7: { ratchet: 2 }, 11: { microtiming: -0.8 } } } }],
+      patterns: [
+        { ...pattern, stepMeta: { [kickId]: { 3: { ratchet: 3 }, 7: { ratchet: 2 }, 11: { microtiming: -0.8 } } } },
+      ],
     };
     const whole = drumHitsInWindow(rattled, rattled.patterns[0], 0, 0, PATTERN_TICKS);
     const splitAt = 8 * STEP_TICKS + 17; // deliberately off-grid split
@@ -181,7 +197,9 @@ describe("groove engine", () => {
     const withHits = setRow(doc, kickId, [[0, 0.9]]);
     const muted = {
       ...withHits,
-      tracks: withHits.tracks.map((t) => (t.kind === "drum" ? { ...t, pads: t.pads.map((p) => (p.id === kickId ? { ...p, mute: true } : p)) } : t)),
+      tracks: withHits.tracks.map((t) =>
+        t.kind === "drum" ? { ...t, pads: t.pads.map((p) => (p.id === kickId ? { ...p, mute: true } : p)) } : t,
+      ),
     };
     expect(drumHitsInWindow(muted, muted.patterns[0], 0, 0, PATTERN_TICKS)).toHaveLength(0);
   });

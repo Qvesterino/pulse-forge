@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { matchShortcut, panelIdOfShortcut, SHORTCUTS } from "../../src/ui/shortcuts";
 
-function key(k: string, mods: Partial<Pick<KeyboardEvent, "ctrlKey" | "shiftKey" | "altKey" | "metaKey">> = {}): KeyboardEvent {
+function key(
+  k: string,
+  mods: Partial<Pick<KeyboardEvent, "ctrlKey" | "shiftKey" | "altKey" | "metaKey">> = {},
+): KeyboardEvent {
   return {
     key: k,
     ctrlKey: false,

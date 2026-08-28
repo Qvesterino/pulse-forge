@@ -217,7 +217,9 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
             <button
               type="button"
               className={`preset-fav${library.favoritePresets.includes(preset.id) ? " active" : ""}`}
-              aria-label={library.favoritePresets.includes(preset.id) ? `Unfavorite ${preset.name}` : `Favorite ${preset.name}`}
+              aria-label={
+                library.favoritePresets.includes(preset.id) ? `Unfavorite ${preset.name}` : `Favorite ${preset.name}`
+              }
               aria-pressed={library.favoritePresets.includes(preset.id)}
               onClick={(event) => {
                 event.stopPropagation();

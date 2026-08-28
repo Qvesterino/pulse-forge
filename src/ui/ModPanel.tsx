@@ -60,7 +60,15 @@ const LFO_KINDS: { value: LfoKind; label: string }[] = [
 function kindSwitchPatch(kind: LfoKind, hostTrackId: string): Parameters<typeof setLfoParams>[2] {
   switch (kind) {
     case "random":
-      return { kind, snh: "hold", rateMode: "sync", rateHz: 8, division: 3, seed: newModulatorSeed(), target: undefined };
+      return {
+        kind,
+        snh: "hold",
+        rateMode: "sync",
+        rateHz: 8,
+        division: 3,
+        seed: newModulatorSeed(),
+        target: undefined,
+      };
     case "step":
       return { kind, division: 3, glideSec: 0.02, steps: [...DEFAULT_STEP_PATTERN], target: undefined };
     case "envFollower":
@@ -146,7 +154,12 @@ export function ModPanel() {
   const services = useServices();
   const doc = useDoc();
   const [selectedLaneId, setSelectedLaneId] = useState<string | null>(doc.automation[0]?.id ?? null);
-  const [ addTarget, setAddTarget ] = useState<{ trackId: string; kind: AutomationParamKind; fxId?: string; paramId?: string }>({
+  const [addTarget, setAddTarget] = useState<{
+    trackId: string;
+    kind: AutomationParamKind;
+    fxId?: string;
+    paramId?: string;
+  }>({
     trackId: doc.tracks[0]?.id ?? "",
     kind: "trackGain",
   });
@@ -179,9 +192,7 @@ export function ModPanel() {
           <select
             aria-label="Automation target track"
             value={addTarget.trackId}
-            onChange={(event) =>
-              setAddTarget({ trackId: event.target.value, kind: "trackGain" })
-            }
+            onChange={(event) => setAddTarget({ trackId: event.target.value, kind: "trackGain" })}
           >
             {doc.tracks.map((track) => (
               <option key={track.id} value={track.id}>
@@ -194,7 +205,12 @@ export function ModPanel() {
             value={`${addTarget.kind}:${addTarget.fxId ?? ""}:${addTarget.paramId ?? ""}`}
             onChange={(event) => {
               const [kind, fxId, paramId] = event.target.value.split(":");
-              setAddTarget((prev) => ({ ...prev, kind: kind as AutomationParamKind, fxId: fxId || undefined, paramId: paramId || undefined }));
+              setAddTarget((prev) => ({
+                ...prev,
+                kind: kind as AutomationParamKind,
+                fxId: fxId || undefined,
+                paramId: paramId || undefined,
+              }));
             }}
           >
             <option value="trackGain:">Volume</option>
@@ -205,7 +221,8 @@ export function ModPanel() {
                   {p.label}
                 </option>
               ))}
-            {addableTrack && "effects" in addableTrack &&
+            {addableTrack &&
+              "effects" in addableTrack &&
               addableTrack.effects.map((fx) =>
                 EFFECT_DEFS[fx.type].params.map((p) => (
                   <option key={`${fx.id}:${p.id}`} value={`fxParam:${fx.id}:${p.id}`}>
@@ -285,7 +302,10 @@ export function ModPanel() {
         </div>
         <div className="lfo-list">
           {doc.lfos.length === 0 && (
-            <div className="fx-empty">No modulators yet. Oscillators run at audio rate; S&amp;H and step patterns schedule per division; followers track dynamics.</div>
+            <div className="fx-empty">
+              No modulators yet. Oscillators run at audio rate; S&amp;H and step patterns schedule per division;
+              followers track dynamics.
+            </div>
           )}
           {doc.lfos.map((lfo) => {
             const track = doc.tracks.find((t) => t.id === lfo.trackId);
@@ -312,7 +332,11 @@ export function ModPanel() {
                       value={kind}
                       onChange={(event) =>
                         services.store.execute(
-                          setLfoParams(services.store.doc, lfo.id, kindSwitchPatch(event.target.value as LfoKind, lfo.trackId)),
+                          setLfoParams(
+                            services.store.doc,
+                            lfo.id,
+                            kindSwitchPatch(event.target.value as LfoKind, lfo.trackId),
+                          ),
                         )
                       }
                     >
@@ -331,7 +355,10 @@ export function ModPanel() {
                         value={lfo.param}
                         onChange={(event) =>
                           services.store.execute(
-                            setLfoParams(services.store.doc, lfo.id, { param: event.target.value as "gain" | "pan", target: undefined }),
+                            setLfoParams(services.store.doc, lfo.id, {
+                              param: event.target.value as "gain" | "pan",
+                              target: undefined,
+                            }),
                           )
                         }
                       >
@@ -352,7 +379,8 @@ export function ModPanel() {
                               target: parseEncodedTarget(lfo.trackId, event.target.value),
                               param: "gain",
                             }),
-                          )}
+                          )
+                        }
                       >
                         {targetOptionsFor(doc, lfo.trackId).map((o) => (
                           <option key={o.value} value={o.value}>
@@ -370,7 +398,9 @@ export function ModPanel() {
                         <select
                           value={lfo.wave ?? "sine"}
                           onChange={(event) =>
-                            services.store.execute(setLfoParams(services.store.doc, lfo.id, { wave: event.target.value as LfoWave }))
+                            services.store.execute(
+                              setLfoParams(services.store.doc, lfo.id, { wave: event.target.value as LfoWave }),
+                            )
                           }
                         >
                           {LFO_WAVES.map((w) => (
@@ -386,7 +416,9 @@ export function ModPanel() {
                           value={lfo.rateMode ?? "sync"}
                           onChange={(event) =>
                             services.store.execute(
-                              setLfoParams(services.store.doc, lfo.id, { rateMode: event.target.value as "hz" | "sync" }),
+                              setLfoParams(services.store.doc, lfo.id, {
+                                rateMode: event.target.value as "hz" | "sync",
+                              }),
                             )
                           }
                         >
@@ -405,7 +437,9 @@ export function ModPanel() {
                           <select
                             value={lfo.division ?? 2}
                             onChange={(event) =>
-                              services.store.execute(setLfoParams(services.store.doc, lfo.id, { division: Number(event.target.value) }))
+                              services.store.execute(
+                                setLfoParams(services.store.doc, lfo.id, { division: Number(event.target.value) }),
+                              )
                             }
                           >
                             {LFO_DIVISIONS.map((d) => (
@@ -424,7 +458,9 @@ export function ModPanel() {
                           max={20}
                           defaultValue={2}
                           format={(v) => `${v.toFixed(2)} Hz`}
-                          onCommit={(rateHz) => services.store.execute(setLfoParams(services.store.doc, lfo.id, { rateHz }))}
+                          onCommit={(rateHz) =>
+                            services.store.execute(setLfoParams(services.store.doc, lfo.id, { rateHz }))
+                          }
                         />
                       )}
                     </>
@@ -437,7 +473,9 @@ export function ModPanel() {
                         <select
                           value={lfo.snh ?? "hold"}
                           onChange={(event) =>
-                            services.store.execute(setLfoParams(services.store.doc, lfo.id, { snh: event.target.value as "hold" | "glide" }))
+                            services.store.execute(
+                              setLfoParams(services.store.doc, lfo.id, { snh: event.target.value as "hold" | "glide" }),
+                            )
                           }
                         >
                           <option value="hold">Hold</option>
@@ -448,7 +486,9 @@ export function ModPanel() {
                         type="button"
                         className="btn btn-small"
                         title="Generate a new random seed (deterministic once stored)"
-                        onClick={() => services.store.execute(setLfoParams(services.store.doc, lfo.id, { seed: newModulatorSeed() }))}
+                        onClick={() =>
+                          services.store.execute(setLfoParams(services.store.doc, lfo.id, { seed: newModulatorSeed() }))
+                        }
                       >
                         🎲 SEED
                       </button>
@@ -462,7 +502,9 @@ export function ModPanel() {
                         <select
                           value={lfo.division ?? 3}
                           onChange={(event) =>
-                            services.store.execute(setLfoParams(services.store.doc, lfo.id, { division: Number(event.target.value) }))
+                            services.store.execute(
+                              setLfoParams(services.store.doc, lfo.id, { division: Number(event.target.value) }),
+                            )
                           }
                         >
                           {LFO_DIVISIONS.map((d) => (
@@ -480,11 +522,15 @@ export function ModPanel() {
                         max={0.3}
                         defaultValue={0.02}
                         format={(v) => `${Math.round(v * 1000)} ms`}
-                        onCommit={(glideSec) => services.store.execute(setLfoParams(services.store.doc, lfo.id, { glideSec }))}
+                        onCommit={(glideSec) =>
+                          services.store.execute(setLfoParams(services.store.doc, lfo.id, { glideSec }))
+                        }
                       />
                       <StepGridEditor
                         steps={lfo.steps && lfo.steps.length > 0 ? lfo.steps : [...DEFAULT_STEP_PATTERN]}
-                        onCommit={(steps) => services.store.execute(setLfoParams(services.store.doc, lfo.id, { steps }))}
+                        onCommit={(steps) =>
+                          services.store.execute(setLfoParams(services.store.doc, lfo.id, { steps }))
+                        }
                       />
                     </>
                   )}
@@ -496,7 +542,9 @@ export function ModPanel() {
                         <select
                           value={lfo.sourceTrackId ?? lfo.trackId}
                           onChange={(event) =>
-                            services.store.execute(setLfoParams(services.store.doc, lfo.id, { sourceTrackId: event.target.value }))
+                            services.store.execute(
+                              setLfoParams(services.store.doc, lfo.id, { sourceTrackId: event.target.value }),
+                            )
                           }
                         >
                           {doc.tracks.map((candidate) => (
@@ -515,7 +563,9 @@ export function ModPanel() {
                         max={400}
                         defaultValue={12}
                         format={(v) => `${Math.round(v)} ms`}
-                        onCommit={(attackMs) => services.store.execute(setLfoParams(services.store.doc, lfo.id, { attackMs }))}
+                        onCommit={(attackMs) =>
+                          services.store.execute(setLfoParams(services.store.doc, lfo.id, { attackMs }))
+                        }
                       />
                       <Slider
                         compact
@@ -525,7 +575,9 @@ export function ModPanel() {
                         max={2000}
                         defaultValue={180}
                         format={(v) => `${Math.round(v)} ms`}
-                        onCommit={(releaseMs) => services.store.execute(setLfoParams(services.store.doc, lfo.id, { releaseMs }))}
+                        onCommit={(releaseMs) =>
+                          services.store.execute(setLfoParams(services.store.doc, lfo.id, { releaseMs }))
+                        }
                       />
                       <Slider
                         compact
@@ -535,14 +587,20 @@ export function ModPanel() {
                         max={3}
                         defaultValue={1.5}
                         format={(v) => v.toFixed(2)}
-                        onCommit={(sensitivity) => services.store.execute(setLfoParams(services.store.doc, lfo.id, { sensitivity }))}
+                        onCommit={(sensitivity) =>
+                          services.store.execute(setLfoParams(services.store.doc, lfo.id, { sensitivity }))
+                        }
                       />
                       <label className="fx-param-select">
                         <span className="slider-label">POLARITY</span>
                         <select
                           value={(lfo.polarity ?? -1) === 1 ? "swell" : "duck"}
                           onChange={(event) =>
-                            services.store.execute(setLfoParams(services.store.doc, lfo.id, { polarity: event.target.value === "swell" ? 1 : -1 }))
+                            services.store.execute(
+                              setLfoParams(services.store.doc, lfo.id, {
+                                polarity: event.target.value === "swell" ? 1 : -1,
+                              }),
+                            )
                           }
                         >
                           <option value="duck">Duck</option>
@@ -611,7 +669,7 @@ function PointEditor({
     const x = clamp(event.clientX - rect.left, 0, rect.width);
     const y = clamp(event.clientY - rect.top, 0, rect.height);
     return {
-      tick: Math.round((x / rect.width) * patternTicks / STEP_TICKS) * STEP_TICKS,
+      tick: Math.round(((x / rect.width) * patternTicks) / STEP_TICKS) * STEP_TICKS,
       value: range.max - (y / rect.height) * (range.max - range.min),
     };
   };
@@ -661,7 +719,9 @@ function PointEditor({
     const start = points[drag.index];
     // Only commit if the user actually moved the point.
     if (start && (start.tick !== drag.tick || start.value !== drag.value)) {
-      services.store.execute(moveAutomationPoint(services.store.doc, laneId, drag.index, { tick: drag.tick, value: drag.value }));
+      services.store.execute(
+        moveAutomationPoint(services.store.doc, laneId, drag.index, { tick: drag.tick, value: drag.value }),
+      );
     }
     setLivePos(null);
   };
@@ -689,7 +749,15 @@ function PointEditor({
           <line key={y} x1="0" y1={y} x2="100" y2={y} stroke="#262a32" strokeWidth="0.4" />
         ))}
         {Array.from({ length: Math.floor(patternTicks / STEP_TICKS / 4) + 1 }, (_, i) => (
-          <line key={i} x1={(i * 4 * STEP_TICKS * 100) / patternTicks} y1="0" x2={(i * 4 * STEP_TICKS * 100) / patternTicks} y2="100" stroke="#2c313c" strokeWidth="0.4" />
+          <line
+            key={i}
+            x1={(i * 4 * STEP_TICKS * 100) / patternTicks}
+            y1="0"
+            x2={(i * 4 * STEP_TICKS * 100) / patternTicks}
+            y2="100"
+            stroke="#2c313c"
+            strokeWidth="0.4"
+          />
         ))}
         {renderPoints.length > 0 && (
           <polyline
@@ -710,7 +778,12 @@ function PointEditor({
         const x = (p.tick / patternTicks) * 100;
         const y = 100 - ((p.value - range.min) / (range.max - range.min)) * 100;
         return (
-          <div key={i} className="auto-point" style={{ left: `${x}%`, top: `${y}%` }} title={`${p.tick} ticks — ${range.format ? range.format(p.value) : p.value.toFixed(2)}`} />
+          <div
+            key={i}
+            className="auto-point"
+            style={{ left: `${x}%`, top: `${y}%` }}
+            title={`${p.tick} ticks — ${range.format ? range.format(p.value) : p.value.toFixed(2)}`}
+          />
         );
       })}
     </div>
@@ -790,7 +863,9 @@ function MacroCard({ macro }: { macro: ReturnType<typeof useDoc>["macros"][numbe
                 max={1}
                 defaultValue={0.5}
                 format={(v) => `${v > 0 ? "+" : ""}${Math.round(v * 100)}`}
-                onCommit={(amount) => services.store.execute(setMacroMappingAmount(services.store.doc, macro.id, mapping.id, amount))}
+                onCommit={(amount) =>
+                  services.store.execute(setMacroMappingAmount(services.store.doc, macro.id, mapping.id, amount))
+                }
               />
               <button
                 type="button"
@@ -826,7 +901,9 @@ function MacroCard({ macro }: { macro: ReturnType<typeof useDoc>["macros"][numbe
           <button
             type="button"
             className="btn btn-small"
-            onClick={() => services.store.execute(addMacroMapping(services.store.doc, macro.id, mapDraft.trackId, mapDraft.param))}
+            onClick={() =>
+              services.store.execute(addMacroMapping(services.store.doc, macro.id, mapDraft.trackId, mapDraft.param))
+            }
           >
             + MAP
           </button>
@@ -889,9 +966,7 @@ function ScenePanel() {
             max={1}
             defaultValue={0.7}
             format={(v) => `${(v * 100).toFixed(0)}%`}
-            onCommit={(intensity) =>
-              services.store.execute(setSceneIntensity(services.store.doc, scene.id, intensity))
-            }
+            onCommit={(intensity) => services.store.execute(setSceneIntensity(services.store.doc, scene.id, intensity))}
           />
 
           {/* Intensity curve editor */}
@@ -941,21 +1016,12 @@ function ScenePanel() {
             </div>
 
             <div className="mod-lane-list">
-              {sceneLanes.length === 0 && (
-                <div className="fx-empty">No scene automation yet.</div>
-              )}
+              {sceneLanes.length === 0 && <div className="fx-empty">No scene automation yet.</div>}
               {sceneLanes.map((lane) => {
                 const track = doc.tracks.find((t) => t.id === lane.target.trackId);
                 return (
-                  <div
-                    key={lane.id}
-                    className={`mod-lane-row${lane.id === selectedSceneLaneId ? " selected" : ""}`}
-                  >
-                    <button
-                      type="button"
-                      className="mod-lane-label"
-                      onClick={() => setSelectedSceneLaneId(lane.id)}
-                    >
+                  <div key={lane.id} className={`mod-lane-row${lane.id === selectedSceneLaneId ? " selected" : ""}`}>
+                    <button type="button" className="mod-lane-label" onClick={() => setSelectedSceneLaneId(lane.id)}>
                       {trackBadgeSafe(track)} {track?.name ?? "?"} · {lane.target.kind} · {lane.points.length} pts
                     </button>
                     <button
@@ -1013,7 +1079,7 @@ function IntensityEditor({
     const x = clamp(event.clientX - rect.left, 0, rect.width);
     const y = clamp(event.clientY - rect.top, 0, rect.height);
     return {
-      offset: Math.round((x / rect.width) * maxTicks / STEP_TICKS) * STEP_TICKS,
+      offset: Math.round(((x / rect.width) * maxTicks) / STEP_TICKS) * STEP_TICKS,
       value: range.max - (y / rect.height) * (range.max - range.min),
     };
   };
@@ -1043,9 +1109,7 @@ function IntensityEditor({
     } else {
       const { offset, value } = posFromEvent(event);
       const newPoint = { offset, value: clamp(value, range.min, range.max) };
-      services.store.execute(
-        setSceneIntensityCurve(services.store.doc, sceneId, [...curve, newPoint] as any),
-      );
+      services.store.execute(setSceneIntensityCurve(services.store.doc, sceneId, [...curve, newPoint] as any));
     }
   };
 
@@ -1152,7 +1216,7 @@ function ScenePointEditor({
     const x = clamp(event.clientX - rect.left, 0, rect.width);
     const y = clamp(event.clientY - rect.top, 0, rect.height);
     return {
-      tick: Math.round((x / rect.width) * maxTicks / STEP_TICKS) * STEP_TICKS,
+      tick: Math.round(((x / rect.width) * maxTicks) / STEP_TICKS) * STEP_TICKS,
       value: range.max - (y / rect.height) * (range.max - range.min),
     };
   };
@@ -1181,7 +1245,9 @@ function ScenePointEditor({
       event.currentTarget.setPointerCapture(event.pointerId);
     } else {
       const { tick, value } = posFromEvent(event);
-      services.store.execute(addSceneAutomationPoint(services.store.doc, laneId, tick, clamp(value, range.min, range.max)));
+      services.store.execute(
+        addSceneAutomationPoint(services.store.doc, laneId, tick, clamp(value, range.min, range.max)),
+      );
     }
   };
 
@@ -1201,7 +1267,9 @@ function ScenePointEditor({
     if (!drag) return;
     const start = points[drag.index];
     if (start && (start.tick !== drag.tick || start.value !== drag.value)) {
-      services.store.execute(moveSceneAutomationPoint(services.store.doc, laneId, drag.index, { tick: drag.tick, value: drag.value }));
+      services.store.execute(
+        moveSceneAutomationPoint(services.store.doc, laneId, drag.index, { tick: drag.tick, value: drag.value }),
+      );
     }
     setLivePos(null);
   };

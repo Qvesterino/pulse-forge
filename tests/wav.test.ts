@@ -44,7 +44,10 @@ describe("wav encoder", () => {
   });
 
   it("interleaves stereo channels", () => {
-    const buffer = makeBuffer([[0.5, 0.25], [-0.5, -0.25]]);
+    const buffer = makeBuffer([
+      [0.5, 0.25],
+      [-0.5, -0.25],
+    ]);
     const view = new DataView(encodeWav(buffer, 16));
     expect(view.getUint16(22, true)).toBe(2);
     expect(view.getUint32(40, true)).toBe(2 * 2 * 2);
@@ -71,11 +74,11 @@ describe("wav encoder", () => {
     // Regression: RIFF size fields are u32; a multi-hour bounce used to wrap
     // them and produce a corrupt file after an expensive render.
     const huge = {
-      length: (0xffffffff / 4) + 10, // exceeds u32 at 32-bit float mono
+      length: 0xffffffff / 4 + 10, // exceeds u32 at 32-bit float mono
       sampleRate: 48000,
       numberOfChannels: 1,
       duration: 1,
-      getChannelData: () => new Float32Array((0xffffffff / 4) + 10),
+      getChannelData: () => new Float32Array(0xffffffff / 4 + 10),
     } as unknown as AudioBuffer;
     expect(() => encodeWav(huge, 32)).toThrow(/too large/i);
   });

@@ -67,12 +67,7 @@ export function InstallPrompt() {
       <button type="button" className="btn btn-small" onClick={() => void install()}>
         INSTALL
       </button>
-      <button
-        type="button"
-        className="install-prompt-close"
-        aria-label="Dismiss install prompt"
-        onClick={dismiss}
-      >
+      <button type="button" className="install-prompt-close" aria-label="Dismiss install prompt" onClick={dismiss}>
         ×
       </button>
     </div>

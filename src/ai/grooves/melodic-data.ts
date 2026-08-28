@@ -1,4 +1,4 @@
-import type { MelodicPatternData } from '../types';
+import type { MelodicPatternData } from "../types";
 
 /**
  * Melodic reference patterns per genre.
@@ -11,7 +11,7 @@ import type { MelodicPatternData } from '../types';
 // ── House ──────────────────────────────────────────────
 
 const HOUSE_BASS: MelodicPatternData = {
-  role: 'bass',
+  role: "bass",
   octaveOffset: 0,
   sequences: [
     // Classic offbeat bass
@@ -51,7 +51,7 @@ const HOUSE_BASS: MelodicPatternData = {
 };
 
 const HOUSE_CHORD: MelodicPatternData = {
-  role: 'chord',
+  role: "chord",
   octaveOffset: 1,
   sequences: [
     // Stab on offbeats
@@ -76,7 +76,7 @@ const HOUSE_CHORD: MelodicPatternData = {
 };
 
 const HOUSE_LEAD: MelodicPatternData = {
-  role: 'lead',
+  role: "lead",
   octaveOffset: 2,
   sequences: [
     // Simple house motif
@@ -105,7 +105,7 @@ const HOUSE_LEAD: MelodicPatternData = {
 // ── Techno ─────────────────────────────────────────────
 
 const TECHNO_BASS: MelodicPatternData = {
-  role: 'bass',
+  role: "bass",
   octaveOffset: 0,
   sequences: [
     // Root pulse
@@ -146,7 +146,7 @@ const TECHNO_BASS: MelodicPatternData = {
 };
 
 const TECHNO_LEAD: MelodicPatternData = {
-  role: 'lead',
+  role: "lead",
   octaveOffset: 1,
   sequences: [
     // Minimal stab
@@ -171,7 +171,7 @@ const TECHNO_LEAD: MelodicPatternData = {
 };
 
 const TECHNO_CHORD: MelodicPatternData = {
-  role: 'chord',
+  role: "chord",
   octaveOffset: 1,
   sequences: [
     // Minimal stab chords
@@ -197,7 +197,7 @@ const TECHNO_CHORD: MelodicPatternData = {
 // ── Trap ───────────────────────────────────────────────
 
 const TRAP_BASS: MelodicPatternData = {
-  role: 'bass',
+  role: "bass",
   octaveOffset: 0,
   sequences: [
     // Classic 808 pattern
@@ -230,7 +230,7 @@ const TRAP_BASS: MelodicPatternData = {
 };
 
 const TRAP_LEAD: MelodicPatternData = {
-  role: 'lead',
+  role: "lead",
   octaveOffset: 2,
   sequences: [
     // Simple motif
@@ -257,7 +257,7 @@ const TRAP_LEAD: MelodicPatternData = {
 };
 
 const TRAP_CHORD: MelodicPatternData = {
-  role: 'chord',
+  role: "chord",
   octaveOffset: 1,
   sequences: [
     // Trap pad stabs
@@ -280,7 +280,7 @@ const TRAP_CHORD: MelodicPatternData = {
 // ── Ambient ────────────────────────────────────────────
 
 const AMBIENT_BASS: MelodicPatternData = {
-  role: 'bass',
+  role: "bass",
   octaveOffset: 0,
   sequences: [
     // Drone
@@ -297,7 +297,7 @@ const AMBIENT_BASS: MelodicPatternData = {
 };
 
 const AMBIENT_LEAD: MelodicPatternData = {
-  role: 'lead',
+  role: "lead",
   octaveOffset: 1,
   sequences: [
     // Sparse melody
@@ -324,7 +324,7 @@ const AMBIENT_LEAD: MelodicPatternData = {
 };
 
 const AMBIENT_CHORD: MelodicPatternData = {
-  role: 'chord',
+  role: "chord",
   octaveOffset: 1,
   sequences: [
     // Evolving pad drones

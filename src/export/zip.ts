@@ -63,8 +63,8 @@ export function buildZip(entries: ZipEntry[]): Blob {
     const view = new DataView(hdr.buffer);
     view.setUint32(0, PK_SIGNATURE, true);
     view.setUint16(4, 20, true); // version needed
-    view.setUint16(6, 0, true);  // flags
-    view.setUint16(8, 0, true);  // compression: stored
+    view.setUint16(6, 0, true); // flags
+    view.setUint16(8, 0, true); // compression: stored
     view.setUint16(10, 0, true); // mod time
     view.setUint16(12, 0, true); // mod date
     view.setUint32(14, localHeaders[i].crc, true);
@@ -85,7 +85,7 @@ export function buildZip(entries: ZipEntry[]): Blob {
     view.setUint32(0, CD_SIGNATURE, true);
     view.setUint16(4, 20, true); // version made by
     view.setUint16(6, 20, true); // version needed
-    view.setUint16(8, 0, true);  // flags
+    view.setUint16(8, 0, true); // flags
     view.setUint16(10, 0, true); // compression
     view.setUint16(12, 0, true); // mod time
     view.setUint16(14, 0, true); // mod date

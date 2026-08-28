@@ -48,7 +48,9 @@ describe("rafLoop", () => {
 
   it("provides timestamp to callback", () => {
     let receivedTs = -1;
-    registerRaf("test-ts", (t) => { receivedTs = t; });
+    registerRaf("test-ts", (t) => {
+      receivedTs = t;
+    });
     vi.advanceTimersByTime(16);
     expect(receivedTs).toBeGreaterThan(0);
     unregisterRaf("test-ts");

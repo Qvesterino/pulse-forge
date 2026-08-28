@@ -38,9 +38,23 @@ interface DragState {
 }
 
 // Flat item types for virtualized rendering
-interface HeaderItem { type: "header"; trackIndex: number; track: Track }
-interface PadRowItem { type: "padRow"; trackIndex: number; padIndex: number; pad: DrumTrack["pads"][number]; trackId: string }
-interface PianoRollItem { type: "pianoRoll"; trackIndex: number; track: Track }
+interface HeaderItem {
+  type: "header";
+  trackIndex: number;
+  track: Track;
+}
+interface PadRowItem {
+  type: "padRow";
+  trackIndex: number;
+  padIndex: number;
+  pad: DrumTrack["pads"][number];
+  trackId: string;
+}
+interface PianoRollItem {
+  type: "pianoRoll";
+  trackIndex: number;
+  track: Track;
+}
 type FlatItem = HeaderItem | PadRowItem | PianoRollItem;
 
 const COARSE_POINTER = typeof window !== "undefined" && !!window.matchMedia?.("(pointer: coarse)").matches;
@@ -98,7 +112,9 @@ export function Sequencer({
   const dragRef = useRef<DragState | null>(null);
   const [dragPreview, setDragPreview] = useState<{ padId: string; stepIndex: number; velocity: number } | null>(null);
   const [stepEditor, setStepEditor] = useState<{ padId: string; stepIndex: number } | null>(null);
-  const [lockClipboard, setLockClipboard] = useState<Partial<Record<import("../project-model/types").StepLockKey, number>> | null>(null);
+  const [lockClipboard, setLockClipboard] = useState<Partial<
+    Record<import("../project-model/types").StepLockKey, number>
+  > | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(600);
@@ -146,7 +162,12 @@ export function Sequencer({
     return ids;
   }, [doc.tracks]);
 
-  const selectionFromDrag = (anchorPad: string, anchorStep: number, padId: string, stepIndex: number): StepSelection => {
+  const selectionFromDrag = (
+    anchorPad: string,
+    anchorStep: number,
+    padId: string,
+    stepIndex: number,
+  ): StepSelection => {
     const a = orderedPadIds.indexOf(anchorPad);
     const b = orderedPadIds.indexOf(padId);
     const lo = Math.max(0, Math.min(a, b));
@@ -192,7 +213,8 @@ export function Sequencer({
     if (!drag) return;
     if (drag.mode === "select") {
       // Geometric hit-testing for virtualized rows (no DOM dependency)
-      const el = (document.elementFromPoint(event.clientX, event.clientY)?.closest(".step") ?? null) as HTMLElement | null;
+      const el = (document.elementFromPoint(event.clientX, event.clientY)?.closest(".step") ??
+        null) as HTMLElement | null;
       const padId = el?.dataset.pad;
       const stepIndex = Number(el?.dataset.step ?? NaN);
       if (padId && Number.isFinite(stepIndex)) {
@@ -217,9 +239,10 @@ export function Sequencer({
     }
     if (drag.moved) {
       const preview = dragPreview;
-      const velocity = preview && preview.padId === drag.padId && preview.stepIndex === drag.stepIndex
-        ? preview.velocity
-        : drag.startVelocity;
+      const velocity =
+        preview && preview.padId === drag.padId && preview.stepIndex === drag.stepIndex
+          ? preview.velocity
+          : drag.startVelocity;
       const delta = velocity - drag.startVelocity;
       if (selectionContains(drag.padId, drag.stepIndex) && stepSelection && Math.abs(delta) > 1e-6) {
         const span = stepSelection.to - stepSelection.from;
@@ -264,10 +287,13 @@ export function Sequencer({
     resizeObserverRef.current = ro;
   }, []);
   useEffect(() => () => resizeObserverRef.current?.disconnect(), []);
-  const attachScrollRef = useCallback((node: HTMLDivElement | null) => {
-    scrollRef.current = node;
-    containerRef(node);
-  }, [containerRef]);
+  const attachScrollRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      scrollRef.current = node;
+      containerRef(node);
+    },
+    [containerRef],
+  );
 
   return (
     <section className="sequencer" aria-label="Step Sequencer">
@@ -317,7 +343,16 @@ export function Sequencer({
             title={lockClipboard ? `Paste ${Object.keys(lockClipboard).join(", ")}` : "No locks copied"}
             onClick={() => {
               if (!lockClipboard) return;
-              services.store.execute(pasteStepLocks(doc, pattern.id, stepSelection.padIds, stepSelection.from, stepSelection.to, lockClipboard));
+              services.store.execute(
+                pasteStepLocks(
+                  doc,
+                  pattern.id,
+                  stepSelection.padIds,
+                  stepSelection.from,
+                  stepSelection.to,
+                  lockClipboard,
+                ),
+              );
             }}
           >
             PASTE LOCKS
@@ -326,7 +361,11 @@ export function Sequencer({
             type="button"
             className="btn btn-small"
             title="Clear all p-locks in selection"
-            onClick={() => services.store.execute(clearStepLocks(doc, pattern.id, stepSelection.padIds, stepSelection.from, stepSelection.to))}
+            onClick={() =>
+              services.store.execute(
+                clearStepLocks(doc, pattern.id, stepSelection.padIds, stepSelection.from, stepSelection.to),
+              )
+            }
           >
             CLEAR LOCKS
           </button>
@@ -360,7 +399,10 @@ export function Sequencer({
       >
         <div style={{ height: totalHeight, position: "relative" }}>
           {visibleItems.map(({ item, top, height }) => (
-            <div key={`${item.type}-${item.trackIndex}-${item.type === "padRow" ? (item as PadRowItem).padIndex : ""}`} style={{ position: "absolute", top, left: 0, right: 0, height }}>
+            <div
+              key={`${item.type}-${item.trackIndex}-${item.type === "padRow" ? (item as PadRowItem).padIndex : ""}`}
+              style={{ position: "absolute", top, left: 0, right: 0, height }}
+            >
               <VirtualRow
                 item={item}
                 pattern={pattern}
@@ -425,7 +467,9 @@ function VirtualRow({
   if (item.type === "header") {
     const track = item.track;
     const trackHasHit =
-      playheadStep >= 0 && track.kind === "drum" && track.pads.some((p) => (pattern.rows[p.id]?.[playheadStep] ?? 0) > 0);
+      playheadStep >= 0 &&
+      track.kind === "drum" &&
+      track.pads.some((p) => (pattern.rows[p.id]?.[playheadStep] ?? 0) > 0);
     return (
       <TrackHeaderRow
         track={track}
@@ -516,9 +560,13 @@ function StepEditor({
       services.store.execute(setStepMeta(doc, pattern.id, padId, stepIndex, change));
     }
   };
-  const setLock = (key: "pitch" | "gain" | "pan" | "cutoff" | "sampleStart", value: number | undefined) => {
+  const setLock = (key: "pitch" | "gain" | "pan" | "cutoff" | "sampleStart" | "length", value: number | undefined) => {
     if (isInSelection && stepSelection) {
-      services.store.execute(setStepsLocks(doc, pattern.id, stepSelection.padIds, stepSelection.from, stepSelection.to, { [key]: value } as any));
+      services.store.execute(
+        setStepsLocks(doc, pattern.id, stepSelection.padIds, stepSelection.from, stepSelection.to, {
+          [key]: value,
+        } as any),
+      );
     } else {
       services.store.execute(setStepLocks(doc, pattern.id, padId, stepIndex, { [key]: value } as any));
     }
@@ -529,7 +577,9 @@ function StepEditor({
     <div className="step-editor" role="group" aria-label="Step performance editor">
       <span className="step-editor-title">
         STEP {stepIndex + 1} · {pad?.name ?? "?"}
-        {isInSelection && stepSelection ? ` · +${stepSelection.padIds.length * (stepSelection.to - stepSelection.from + 1) - 1} SELECTED` : ""}
+        {isInSelection && stepSelection
+          ? ` · +${stepSelection.padIds.length * (stepSelection.to - stepSelection.from + 1) - 1} SELECTED`
+          : ""}
       </span>
       <button type="button" className="step-editor-close btn btn-small" onClick={onClose} title="Close step editor">
         ×
@@ -567,11 +617,15 @@ function StepEditor({
         max={1}
         defaultValue={0}
         sensitivity={0.01}
-        format={(v) => (Math.abs(v) < 0.02 ? "0" : v < 0 ? `${Math.round(v * 100)} EARLY` : `+${Math.round(v * 100)} LATE`)}
+        format={(v) =>
+          Math.abs(v) < 0.02 ? "0" : v < 0 ? `${Math.round(v * 100)} EARLY` : `+${Math.round(v * 100)} LATE`
+        }
         onCommit={(microtiming) => set({ microtiming })}
       />
       <div className="step-editor-locks" role="group" aria-label="Parameter locks">
-        <span className="slider-label">P-LOCKS {hasLocks ? "●" : ""} {isInSelection ? "(BULK)" : ""}</span>
+        <span className="slider-label">
+          P-LOCKS {hasLocks ? "●" : ""} {isInSelection ? "(BULK)" : ""}
+        </span>
         <div className="step-editor-lock-row">
           <DragNumber
             label="PITCH"
@@ -601,7 +655,9 @@ function StepEditor({
             max={2}
             defaultValue={pad?.gain ?? 1}
             sensitivity={0.02}
-            format={(v) => `${(20 * Math.log10(Math.max(v, 0.001))).toFixed(1)} dB${meta.locks?.gain === undefined ? " · —" : ""}`}
+            format={(v) =>
+              `${(20 * Math.log10(Math.max(v, 0.001))).toFixed(1)} dB${meta.locks?.gain === undefined ? " · —" : ""}`
+            }
             onCommit={(gain) => setLock("gain", gain)}
           />
           <button
@@ -622,7 +678,9 @@ function StepEditor({
             max={1}
             defaultValue={pad?.pan ?? 0}
             sensitivity={0.02}
-            format={(v) => `${Math.abs(v) < 0.02 ? "C" : `${v < 0 ? "L" : "R"}${Math.round(Math.abs(v) * 100)}`}${meta.locks?.pan === undefined ? " · —" : ""}`}
+            format={(v) =>
+              `${Math.abs(v) < 0.02 ? "C" : `${v < 0 ? "L" : "R"}${Math.round(Math.abs(v) * 100)}`}${meta.locks?.pan === undefined ? " · —" : ""}`
+            }
             onCommit={(pan) => setLock("pan", pan)}
           />
           <button
@@ -677,6 +735,27 @@ function StepEditor({
             ✕
           </button>
         </div>
+        <div className="step-editor-lock-row">
+          <DragNumber
+            label="LENGTH"
+            value={meta.locks?.length ?? 1}
+            min={0.1}
+            max={2}
+            defaultValue={1}
+            sensitivity={0.02}
+            format={(v) => `${Math.round(v * 100)}%${meta.locks?.length === undefined ? " · —" : ""}`}
+            onCommit={(length) => setLock("length", length)}
+          />
+          <button
+            type="button"
+            className="btn btn-small btn-lock-clear"
+            title={meta.locks?.length !== undefined ? "Clear length lock" : "No length lock"}
+            disabled={meta.locks?.length === undefined}
+            onClick={() => setLock("length", undefined)}
+          >
+            ✕
+          </button>
+        </div>
       </div>
       <button
         type="button"
@@ -684,7 +763,9 @@ function StepEditor({
         title="Reset step performance to defaults"
         onClick={() => {
           if (isInSelection && stepSelection) {
-            services.store.execute(clearStepLocks(doc, pattern.id, stepSelection.padIds, stepSelection.from, stepSelection.to));
+            services.store.execute(
+              clearStepLocks(doc, pattern.id, stepSelection.padIds, stepSelection.from, stepSelection.to),
+            );
           } else {
             set({ probability: 1, ratchet: 1, microtiming: 0, locks: undefined } as StepMeta);
             if (hasLocks) for (const k of Object.keys(meta.locks!)) setLock(k as any, undefined);
@@ -766,7 +847,12 @@ function PadRow({
 }: {
   pad: DrumTrack["pads"][number];
   trackId: string;
-  pattern: { id: string; stepCount: number; rows: Record<string, number[]>; stepMeta?: Record<string, Record<number, StepMeta>> };
+  pattern: {
+    id: string;
+    stepCount: number;
+    rows: Record<string, number[]>;
+    stepMeta?: Record<string, Record<number, StepMeta>>;
+  };
   playheadStep: number;
   selected: boolean;
   dragPreview: { padId: string; stepIndex: number; velocity: number } | null;
@@ -814,11 +900,15 @@ function PadRow({
           S
         </button>
       </div>
-      <div className="row-steps" style={{ gridTemplateColumns: `repeat(${pattern.stepCount}, minmax(${STEP_MIN_PX}px, 1fr))` }}>
+      <div
+        className="row-steps"
+        style={{ gridTemplateColumns: `repeat(${pattern.stepCount}, minmax(${STEP_MIN_PX}px, 1fr))` }}
+      >
         {Array.from({ length: pattern.stepCount }, (_, stepIndex) => {
-          const velocity = dragPreview && dragPreview.padId === pad.id && dragPreview.stepIndex === stepIndex
-            ? dragPreview.velocity
-            : row[stepIndex] ?? 0;
+          const velocity =
+            dragPreview && dragPreview.padId === pad.id && dragPreview.stepIndex === stepIndex
+              ? dragPreview.velocity
+              : (row[stepIndex] ?? 0);
           const active = velocity > 0;
           const meta = metaRow[stepIndex];
           const inSelection =
@@ -828,7 +918,8 @@ function PadRow({
             stepIndex <= stepSelection.to;
           const stepNumber = stepIndex + 1;
           const metaHints: string[] = [];
-          if (meta?.probability !== undefined && meta.probability < 1) metaHints.push(`probability ${Math.round(meta.probability * 100)}%`);
+          if (meta?.probability !== undefined && meta.probability < 1)
+            metaHints.push(`probability ${Math.round(meta.probability * 100)}%`);
           if (meta?.ratchet !== undefined && meta.ratchet > 1) metaHints.push(`ratchet ${meta.ratchet}×`);
           if (meta?.microtiming !== undefined && meta.microtiming !== 0)
             metaHints.push(`microtiming ${meta.microtiming < 0 ? "early" : "late"}`);
@@ -896,11 +987,13 @@ function StepCell({
 
   const hasLocks = meta?.locks && Object.keys(meta.locks).length > 0;
   const lockHints: string[] = [];
-  if (meta?.locks?.pitch !== undefined) lockHints.push(`pitch ${meta.locks.pitch > 0 ? "+" : ""}${meta.locks.pitch.toFixed(1)} st`);
+  if (meta?.locks?.pitch !== undefined)
+    lockHints.push(`pitch ${meta.locks.pitch > 0 ? "+" : ""}${meta.locks.pitch.toFixed(1)} st`);
   if (meta?.locks?.gain !== undefined) lockHints.push(`gain ${meta.locks.gain.toFixed(2)}`);
   if (meta?.locks?.pan !== undefined) lockHints.push(`pan ${meta.locks.pan.toFixed(2)}`);
   if (meta?.locks?.cutoff !== undefined) lockHints.push(`cutoff ${Math.round(meta.locks.cutoff)} Hz`);
   if (meta?.locks?.sampleStart !== undefined) lockHints.push(`start ${Math.round(meta.locks.sampleStart * 100)}%`);
+  if (meta?.locks?.length !== undefined) lockHints.push(`length ${Math.round(meta.locks.length * 100)}%`);
   const fullLabel = `${stepLabel}${lockHints.length > 0 ? `, p-locks: ${lockHints.join(", ")}` : ""}`;
 
   return (
@@ -939,7 +1032,11 @@ function StepCell({
       })}
     >
       {meta?.ratchet !== undefined && meta.ratchet > 1 && <span className="step-badge">{meta.ratchet}×</span>}
-      {hasLocks && <span className="step-lock-dot" aria-hidden="true">●</span>}
+      {hasLocks && (
+        <span className="step-lock-dot" aria-hidden="true">
+          ●
+        </span>
+      )}
     </button>
   );
 }

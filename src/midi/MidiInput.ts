@@ -316,7 +316,9 @@ export class MidiInput {
     if (config.programMap) {
       const entry = config.programMap.find((m) => m.program === program);
       if (entry) {
-        const instTrack = doc.tracks.find((t) => t.kind === "instrument" && (config.instrumentChannel === 0 || channel === config.instrumentChannel));
+        const instTrack = doc.tracks.find(
+          (t) => t.kind === "instrument" && (config.instrumentChannel === 0 || channel === config.instrumentChannel),
+        );
         if (instTrack && instTrack.kind === "instrument") {
           this.store.execute(this.setTrackPresetCmd(doc, instTrack.id, entry.presetId));
           return;
@@ -325,7 +327,9 @@ export class MidiInput {
     }
 
     // Fallback: program number = index in sorted preset list for the instrument kind
-    const instTrack = doc.tracks.find((t) => t.kind === "instrument" && (config.instrumentChannel === 0 || channel === config.instrumentChannel));
+    const instTrack = doc.tracks.find(
+      (t) => t.kind === "instrument" && (config.instrumentChannel === 0 || channel === config.instrumentChannel),
+    );
     if (instTrack && instTrack.kind === "instrument") {
       // Use program number as a hint — the actual preset switching depends on available presets
       // For now, just log it. Full implementation requires PresetRepository access.
@@ -397,9 +401,7 @@ export class MidiInput {
       label: "Program Change",
       execute: (d: ProjectDocument) => ({
         ...d,
-        tracks: d.tracks.map((t) =>
-          t.id === trackId && t.kind === "instrument" ? { ...t, presetId } : t,
-        ),
+        tracks: d.tracks.map((t) => (t.id === trackId && t.kind === "instrument" ? { ...t, presetId } : t)),
       }),
       undo: (d: ProjectDocument) => d,
     };

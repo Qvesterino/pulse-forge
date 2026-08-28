@@ -41,7 +41,10 @@ function clamp01(v: number): number {
 /** Convenience: look up a scene's intensity at a given absolute project tick, or
  *  fall back to the project-wide default if the scene is not currently active. */
 export function intensitySignalAt(
-  doc: { scenes: Scene[]; arrangement: { clips: { id: string; sceneId: string; startBar: number; lengthBars: number }[] } },
+  doc: {
+    scenes: Scene[];
+    arrangement: { clips: { id: string; sceneId: string; startBar: number; lengthBars: number }[] };
+  },
   activePatternId: string,
   tick: number,
 ): number {
@@ -50,7 +53,8 @@ export function intensitySignalAt(
     const start = clip.startBar * 1920;
     const end = start + clip.lengthBars * 1920;
     if (tick >= start && tick < end) {
-      const scene = doc.scenes.find((s) => s.patternId === activePatternId) ?? doc.scenes.find((s) => s.id === clip.sceneId);
+      const scene =
+        doc.scenes.find((s) => s.patternId === activePatternId) ?? doc.scenes.find((s) => s.id === clip.sceneId);
       if (scene) return computeSceneIntensity(scene, start, tick);
     }
   }

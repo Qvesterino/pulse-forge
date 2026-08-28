@@ -20,9 +20,7 @@ describe("expandAutomationAcrossWindows", () => {
       { tick: 0, value: 0 },
       { tick: STEP_TICKS * 8, value: 1 },
     ];
-    const result = expandAutomationAcrossWindows(points, [
-      { pattern, base: 0, from: 0, to: STEP_TICKS * 16 },
-    ]);
+    const result = expandAutomationAcrossWindows(points, [{ pattern, base: 0, from: 0, to: STEP_TICKS * 16 }]);
     expect(result).toEqual(points);
   });
 
@@ -32,9 +30,7 @@ describe("expandAutomationAcrossWindows", () => {
       { tick: 0, value: 0 },
       { tick: STEP_TICKS * 8, value: 1 },
     ];
-    const result = expandAutomationAcrossWindows(points, [
-      { pattern, base: 0, from: 0, to: STEP_TICKS * 16 * 4 },
-    ]);
+    const result = expandAutomationAcrossWindows(points, [{ pattern, base: 0, from: 0, to: STEP_TICKS * 16 * 4 }]);
     expect(result).toHaveLength(8);
     for (let cycle = 0; cycle < 4; cycle++) {
       const base = cycle * STEP_TICKS * 16;
@@ -67,9 +63,7 @@ describe("expandAutomationAcrossWindows", () => {
       { tick: 0, value: 0 },
       { tick: STEP_TICKS * 16, value: 0.5 },
     ];
-    const result = expandAutomationAcrossWindows(points, [
-      { pattern, base: 0, from: 0, to: 2 * BAR_TICKS },
-    ]);
+    const result = expandAutomationAcrossWindows(points, [{ pattern, base: 0, from: 0, to: 2 * BAR_TICKS }]);
     expect(result).toHaveLength(2);
     expect(result[0]).toEqual({ tick: 0, value: 0 });
     expect(result[1]).toEqual({ tick: STEP_TICKS * 16, value: 0.5 });
@@ -78,9 +72,7 @@ describe("expandAutomationAcrossWindows", () => {
   it("loops a 16-step pattern three times across a 3-bar window", () => {
     const pattern = makePattern(16);
     const points: AutomationPoint[] = [{ tick: 0, value: 1 }];
-    const result = expandAutomationAcrossWindows(points, [
-      { pattern, base: 0, from: 0, to: 3 * BAR_TICKS },
-    ]);
+    const result = expandAutomationAcrossWindows(points, [{ pattern, base: 0, from: 0, to: 3 * BAR_TICKS }]);
     expect(result).toHaveLength(3);
     expect(result.map((p) => p.tick)).toEqual([0, STEP_TICKS * 16, STEP_TICKS * 32]);
     expect(result.every((p) => p.value === 1)).toBe(true);
@@ -96,9 +88,7 @@ describe("expandAutomationAcrossWindows", () => {
     // (base 0 and base 1920). In cycle 0, point tick 1800 → absolute 1800 (kept).
     // In cycle 1, point tick 0 → absolute 1920 (kept), but point tick 1800 →
     // absolute 3720 (dropped, >= 2880).
-    const result = expandAutomationAcrossWindows(points, [
-      { pattern, base: 0, from: 0, to: 24 * STEP_TICKS },
-    ]);
+    const result = expandAutomationAcrossWindows(points, [{ pattern, base: 0, from: 0, to: 24 * STEP_TICKS }]);
     expect(result).toEqual([
       { tick: 0, value: 0 },
       { tick: 15 * STEP_TICKS, value: 0.9 },
@@ -121,9 +111,7 @@ describe("expandAutomationAcrossWindows", () => {
 
   it("returns an empty list when the source has no points", () => {
     const pattern = makePattern(16);
-    expect(
-      expandAutomationAcrossWindows([], [{ pattern, base: 0, from: 0, to: STEP_TICKS * 16 }]),
-    ).toEqual([]);
+    expect(expandAutomationAcrossWindows([], [{ pattern, base: 0, from: 0, to: STEP_TICKS * 16 }])).toEqual([]);
   });
 
   it("skips windows with a non-positive pattern length", () => {

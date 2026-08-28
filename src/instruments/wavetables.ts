@@ -147,13 +147,7 @@ function fmTable(): Wavetable {
   return { name: "FM Drive", frames };
 }
 
-export const FACTORY_WAVETABLES: Wavetable[] = [
-  sineGrowTable(),
-  pwmTable(),
-  formantTable(),
-  digitalTable(),
-  fmTable(),
-];
+export const FACTORY_WAVETABLES: Wavetable[] = [sineGrowTable(), pwmTable(), formantTable(), digitalTable(), fmTable()];
 
 export const FACTORY_TABLE_OPTIONS = FACTORY_WAVETABLES.map((t, i) => ({
   value: i,
@@ -236,7 +230,10 @@ export function extractWavetable(data: Float32Array, sampleRate: number): Waveta
   if (data.length < FRAME_SIZE / 4) return null;
 
   const winLen = Math.min(Math.round(sampleRate * 0.05), Math.floor(data.length / 2));
-  const winStart = Math.max(0, Math.min(data.length - winLen - 1, Math.round(data.length * 0.4) - Math.floor(winLen / 2)));
+  const winStart = Math.max(
+    0,
+    Math.min(data.length - winLen - 1, Math.round(data.length * 0.4) - Math.floor(winLen / 2)),
+  );
   const window = data.subarray(winStart, winStart + winLen);
 
   const minLag = Math.max(8, Math.floor(sampleRate / 4000));

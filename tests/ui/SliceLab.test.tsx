@@ -17,7 +17,16 @@ describe("SliceLab", () => {
     } as unknown as AudioBuffer;
     (services.bank.get as any).mockReturnValue(buffer);
     (services.userSamples.list as any).mockResolvedValue([
-      { id: "user.break", name: "Break", fileName: "break.wav", category: "Custom", duration: 1, sampleRate: 44100, channels: 1, createdAt: "2026-01-01" },
+      {
+        id: "user.break",
+        name: "Break",
+        fileName: "break.wav",
+        category: "Custom",
+        duration: 1,
+        sampleRate: 44100,
+        channels: 1,
+        createdAt: "2026-01-01",
+      },
     ]);
 
     renderWithContext(<SliceLab track={drum} onClose={() => undefined} />, { services });
@@ -43,6 +52,6 @@ describe("SliceLab", () => {
     await waitFor(() => expect(screen.getAllByText("SOURCE UNAVAILABLE").length).toBeGreaterThan(0));
     fireEvent.keyDown(window, { key: "Escape" });
     expect(onClose).toHaveBeenCalled();
-    expect((services.engine.stopPreview as any)).toHaveBeenCalled();
+    expect(services.engine.stopPreview as any).toHaveBeenCalled();
   });
 });

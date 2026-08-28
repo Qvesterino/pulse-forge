@@ -44,9 +44,8 @@ class EnvFollowerProcessor extends AudioWorkletProcessor {
       const r = inR ? inR[i] : l;
       const peak = Math.abs(l) > Math.abs(r) ? Math.abs(l) : Math.abs(r);
       const driven = Math.tanh(peak * sens);
-      this.env = driven > this.env
-        ? this.env + (driven - this.env) * atkBlend
-        : this.env + (driven - this.env) * relBlend;
+      this.env =
+        driven > this.env ? this.env + (driven - this.env) * atkBlend : this.env + (driven - this.env) * relBlend;
       if (this.env < 1e-20) this.env = 0; // denormal guard for long silences
       out[i] = this.env;
     }

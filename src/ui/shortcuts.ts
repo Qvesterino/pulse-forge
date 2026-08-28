@@ -92,10 +92,27 @@ export const SHORTCUTS: Shortcut[] = [
   { key: "seekHome", label: "Return to start", group: "Transport", keyHint: "Home" },
   { key: "seekBack", label: "Nudge −1 bar", group: "Transport", keyHint: "," },
   { key: "seekForward", label: "Nudge +1 bar", group: "Transport", keyHint: "." },
-  { key: "save", label: "Force save", group: "Transport", keyHint: "S", ctrl: true, altHints: [{ key: "s", ctrl: true }] },
+  {
+    key: "save",
+    label: "Force save",
+    group: "Transport",
+    keyHint: "S",
+    ctrl: true,
+    altHints: [{ key: "s", ctrl: true }],
+  },
   { key: "toggleLoop", label: "Toggle loop region", group: "Transport", keyHint: "L" },
   { key: "undo", label: "Undo", group: "Transport", keyHint: "Z", ctrl: true, altHints: [{ key: "z", ctrl: true }] },
-  { key: "redo", label: "Redo", group: "Transport", keyHint: "Y", ctrl: true, altHints: [{ key: "y", ctrl: true }, { key: "z", ctrl: true, shift: true }] },
+  {
+    key: "redo",
+    label: "Redo",
+    group: "Transport",
+    keyHint: "Y",
+    ctrl: true,
+    altHints: [
+      { key: "y", ctrl: true },
+      { key: "z", ctrl: true, shift: true },
+    ],
+  },
 
   { key: "nextTrack", label: "Next track", group: "Tracks", keyHint: "Tab" },
   { key: "prevTrack", label: "Previous track", group: "Tracks", keyHint: "Tab", shift: true },
@@ -195,9 +212,7 @@ export function groupShortcuts(): { group: Shortcut["group"]; items: Shortcut[] 
     list.push(sc);
     byGroup.set(sc.group, list);
   }
-  return order
-    .filter((g) => byGroup.has(g))
-    .map((g) => ({ group: g, items: byGroup.get(g)! }));
+  return order.filter((g) => byGroup.has(g)).map((g) => ({ group: g, items: byGroup.get(g)! }));
 }
 
 /**

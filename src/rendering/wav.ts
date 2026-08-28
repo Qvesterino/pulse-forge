@@ -74,5 +74,10 @@ export function downloadWav(arrayBuffer: ArrayBuffer, filename: string): void {
 }
 
 export function sanitizeFilename(name: string): string {
-  return name.replace(/[^\w\- ]+/g, "").replace(/\s+/g, "-").slice(0, 60) || "pulse-forge";
+  return (
+    name
+      .replace(/[^\w\- ]+/g, "")
+      .replace(/\s+/g, "-")
+      .slice(0, 60) || "pulse-forge"
+  );
 }

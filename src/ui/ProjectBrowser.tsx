@@ -177,12 +177,7 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
               e.target.value = "";
             }}
           />
-          <button
-            type="button"
-            className="btn btn-small"
-            disabled={busy}
-            onClick={() => fileInputRef.current?.click()}
-          >
+          <button type="button" className="btn btn-small" disabled={busy} onClick={() => fileInputRef.current?.click()}>
             IMPORT FROM FILE
           </button>
           {importError && <span className="pb-import-error">{importError}</span>}
@@ -243,7 +238,12 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
                       }}
                     />
                   ) : (
-                    <button type="button" className="pb-row-name" onClick={() => void openById(project.id)} disabled={busy}>
+                    <button
+                      type="button"
+                      className="pb-row-name"
+                      onClick={() => void openById(project.id)}
+                      disabled={busy}
+                    >
                       {project.name}
                     </button>
                   )}
@@ -251,13 +251,28 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
                     {project.bpm} BPM · {project.trackCount} tracks · saved {formatRelative(project.updatedAt)}
                   </span>
                   <div className="pb-row-actions">
-                    <button type="button" className="btn btn-ghost" onClick={() => void openById(project.id)} disabled={busy}>
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => void openById(project.id)}
+                      disabled={busy}
+                    >
                       OPEN
                     </button>
-                    <button type="button" className="btn btn-ghost" onClick={() => void duplicate(project.id)} title="Duplicate project">
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => void duplicate(project.id)}
+                      title="Duplicate project"
+                    >
                       DUP
                     </button>
-                    <button type="button" className="btn btn-ghost" onClick={() => startRename(project)} title="Rename project">
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => startRename(project)}
+                      title="Rename project"
+                    >
                       REN
                     </button>
                     {confirmDeleteId === project.id ? (
@@ -270,7 +285,12 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
                         </button>
                       </>
                     ) : (
-                      <button type="button" className="btn btn-ghost" onClick={() => setConfirmDeleteId(project.id)} title="Delete project">
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => setConfirmDeleteId(project.id)}
+                        title="Delete project"
+                      >
                         DEL
                       </button>
                     )}

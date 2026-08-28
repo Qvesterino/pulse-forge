@@ -35,9 +35,7 @@ export function FreezeButton({ track }: { track: Track }) {
         await services.frozenAudio.remove(prevBufferId);
       }
       // Set frozen flag
-      services.store.execute(
-        freezeTrack(doc, track.id, bufferId, buffer.duration, buffer.sampleRate),
-      );
+      services.store.execute(freezeTrack(doc, track.id, bufferId, buffer.duration, buffer.sampleRate));
       // Align the fresh buffer to the transport when freezing mid-playback.
       if (services.transport.playing) {
         services.engine.restartFrozenSources(services.transport.position);

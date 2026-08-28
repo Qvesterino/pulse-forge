@@ -112,7 +112,8 @@ describe("UserSampleRepository audio persistence", () => {
     const added2: Array<[string, unknown]> = [];
     await restoreUserSampleAudio(
       { add: (bid: string, buffer: unknown) => added2.push([bid, buffer]) } as any,
-      (data) => (new Uint8Array(data)[0] === 0 ? Promise.reject(new Error("corrupt")) : Promise.resolve(fakeBuffer as any)),
+      (data) =>
+        new Uint8Array(data)[0] === 0 ? Promise.reject(new Error("corrupt")) : Promise.resolve(fakeBuffer as any),
     );
     expect(added2).toContainEqual([id, fakeBuffer]);
     expect(added2.some(([bid]) => bid === badId)).toBe(false);

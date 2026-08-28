@@ -79,7 +79,7 @@ export function SpectrumAnalyzer({
       ];
       for (const [freq, label] of ticks) {
         if (freq < minFreq || freq > maxFreq) continue;
-        const x = w * (Math.log(freq) - logMin) / logRange;
+        const x = (w * (Math.log(freq) - logMin)) / logRange;
         ctx.fillText(label, x + 2, h - 3);
         ctx.strokeStyle = "rgba(255,255,255,0.04)";
         ctx.beginPath();
@@ -90,11 +90,11 @@ export function SpectrumAnalyzer({
 
       // Spectrum fill + line
       const points: { x: number; y: number }[] = [];
-      const step = Math.max(1, Math.floor(binCount / w * 2)); // skip bins for performance on wide canvases
+      const step = Math.max(1, Math.floor((binCount / w) * 2)); // skip bins for performance on wide canvases
       for (let bin = 1; bin < binCount; bin += step) {
         const freq = (bin * sampleRate) / fftSize;
         if (freq < minFreq || freq > maxFreq) continue;
-        const x = w * (Math.log(freq) - logMin) / logRange;
+        const x = (w * (Math.log(freq) - logMin)) / logRange;
         const db = Math.max(minDb, Math.min(0, freqData[bin]));
         const y = h * (1 - (db - minDb) / dbRange);
         points.push({ x, y });
@@ -126,7 +126,7 @@ export function SpectrumAnalyzer({
       for (let bin = 1; bin < binCount; bin += step) {
         const freq = (bin * sampleRate) / fftSize;
         if (freq < minFreq || freq > maxFreq) continue;
-        const x = w * (Math.log(freq) - logMin) / logRange;
+        const x = (w * (Math.log(freq) - logMin)) / logRange;
         const db = Math.max(minDb, Math.min(0, peakHold[bin]));
         const y = h * (1 - (db - minDb) / dbRange);
         peakPoints.push({ x, y });

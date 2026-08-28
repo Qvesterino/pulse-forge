@@ -15,10 +15,14 @@
 class SvFilterProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
-    this.lpL = 0; this.bpL = 0;
-    this.lpR = 0; this.bpR = 0;
-    this.lastCutoff = -1; this.lastRes = -1;
-    this.f = 0.1; this.q = 1;
+    this.lpL = 0;
+    this.bpL = 0;
+    this.lpR = 0;
+    this.bpR = 0;
+    this.lastCutoff = -1;
+    this.lastRes = -1;
+    this.f = 0.1;
+    this.q = 1;
   }
 
   static get parameterDescriptors() {
@@ -51,7 +55,7 @@ class SvFilterProcessor extends AudioWorkletProcessor {
     if (cutoff !== this.lastCutoff || res !== this.lastRes) {
       this.lastCutoff = cutoff;
       this.lastRes = res;
-      this.f = 2 * Math.sin(Math.PI * Math.min(cutoff, sr * 0.24) / sr);
+      this.f = 2 * Math.sin((Math.PI * Math.min(cutoff, sr * 0.24)) / sr);
       this.q = 2 - 2 * res; // damping: 2 = max damping, 0 = self-osc
     }
 
@@ -62,8 +66,8 @@ class SvFilterProcessor extends AudioWorkletProcessor {
       let l = inL ? inL[i] : 0;
       let r = inR ? inR[i] : l;
       if (drive > 0) {
-        l = Math.tanh(l * driveGain) / driveGain * (1 + drive * 2.5);
-        r = Math.tanh(r * driveGain) / driveGain * (1 + drive * 2.5);
+        l = (Math.tanh(l * driveGain) / driveGain) * (1 + drive * 2.5);
+        r = (Math.tanh(r * driveGain) / driveGain) * (1 + drive * 2.5);
       }
 
       // Chamberlin SVF — left
@@ -71,8 +75,10 @@ class SvFilterProcessor extends AudioWorkletProcessor {
       this.bpL += this.f * hpL;
       this.lpL += this.f * this.bpL;
       // Clamp for stability at high resonance
-      if (this.bpL > clampVal) this.bpL = clampVal; else if (this.bpL < -clampVal) this.bpL = -clampVal;
-      if (this.lpL > clampVal) this.lpL = clampVal; else if (this.lpL < -clampVal) this.lpL = -clampVal;
+      if (this.bpL > clampVal) this.bpL = clampVal;
+      else if (this.bpL < -clampVal) this.bpL = -clampVal;
+      if (this.lpL > clampVal) this.lpL = clampVal;
+      else if (this.lpL < -clampVal) this.lpL = -clampVal;
       if (Math.abs(this.bpL) < 1e-20) this.bpL = 0;
       if (Math.abs(this.lpL) < 1e-20) this.lpL = 0;
 
@@ -80,18 +86,32 @@ class SvFilterProcessor extends AudioWorkletProcessor {
       const hpR = r - this.lpR - this.q * this.bpR;
       this.bpR += this.f * hpR;
       this.lpR += this.f * this.bpR;
-      if (this.bpR > clampVal) this.bpR = clampVal; else if (this.bpR < -clampVal) this.bpR = -clampVal;
-      if (this.lpR > clampVal) this.lpR = clampVal; else if (this.lpR < -clampVal) this.lpR = -clampVal;
+      if (this.bpR > clampVal) this.bpR = clampVal;
+      else if (this.bpR < -clampVal) this.bpR = -clampVal;
+      if (this.lpR > clampVal) this.lpR = clampVal;
+      else if (this.lpR < -clampVal) this.lpR = -clampVal;
       if (Math.abs(this.bpR) < 1e-20) this.bpR = 0;
       if (Math.abs(this.lpR) < 1e-20) this.lpR = 0;
 
       // Mode select
       let fL, fR;
       switch (mode) {
-        case 1: fL = hpL; fR = hpR; break; // HP
-        case 2: fL = this.bpL; fR = this.bpR; break; // BP
-        case 3: fL = this.lpL + hpL; fR = this.lpR + hpR; break; // Notch
-        default: fL = this.lpL; fR = this.lpR; break; // LP
+        case 1:
+          fL = hpL;
+          fR = hpR;
+          break; // HP
+        case 2:
+          fL = this.bpL;
+          fR = this.bpR;
+          break; // BP
+        case 3:
+          fL = this.lpL + hpL;
+          fR = this.lpR + hpR;
+          break; // Notch
+        default:
+          fL = this.lpL;
+          fR = this.lpR;
+          break; // LP
       }
 
       outL[i] = l * (1 - mix) + fL * mix;

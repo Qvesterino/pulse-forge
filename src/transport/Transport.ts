@@ -56,8 +56,7 @@ export class Transport {
     const now = this.clock.now();
     // When loop is enabled, snap the play start to loopStart so a manual
     // play from a position before the loop doesn't immediately wrap.
-    const startTick =
-      this.loopEnabled_ && fromTick < this.loopStart_ ? this.loopStart_ : fromTick;
+    const startTick = this.loopEnabled_ && fromTick < this.loopStart_ ? this.loopStart_ : fromTick;
     this.anchorTick = startTick;
     this.anchorTime = now;
     this.playing_ = true;

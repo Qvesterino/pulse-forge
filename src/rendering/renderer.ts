@@ -146,14 +146,7 @@ function scheduleAutomation(
         break;
       }
       case "instParam": {
-        engine.scheduleDeviceAutomation(
-          lane.target.trackId,
-          "inst",
-          undefined,
-          lane.target.paramId,
-          expanded,
-          timeAt,
-        );
+        engine.scheduleDeviceAutomation(lane.target.trackId, "inst", undefined, lane.target.paramId, expanded, timeAt);
         break;
       }
     }
@@ -174,10 +167,7 @@ function scheduleAutomation(
  * (`valueAt(points, relOf(tick))`), but pre-expanded so it can drive
  * `scheduleDeviceAutomation` which plans individual automation events.
  */
-export function expandAutomationAcrossWindows(
-  points: AutomationPoint[],
-  windows: ClipWindow[],
-): AutomationPoint[] {
+export function expandAutomationAcrossWindows(points: AutomationPoint[], windows: ClipWindow[]): AutomationPoint[] {
   const expanded: AutomationPoint[] = [];
   for (const window of windows) {
     const patternTicks = window.pattern.stepCount * STEP_TICKS;

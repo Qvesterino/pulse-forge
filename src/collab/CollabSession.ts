@@ -110,7 +110,11 @@ export class CollabSession {
 
   private refresh(): void {
     this.participants_ = this.provider.getCollaborators();
-    this.status_ = this.provider.connected ? "connected" : this.status_ === "connecting" ? "connecting" : "disconnected";
+    this.status_ = this.provider.connected
+      ? "connected"
+      : this.status_ === "connecting"
+        ? "connecting"
+        : "disconnected";
     for (const listener of this.listeners) listener();
   }
 }

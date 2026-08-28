@@ -14,7 +14,10 @@ describe("Intent Engine quality gates", () => {
         const doc = createDefaultProject();
         const pattern = generatePattern(doc, baselineOptions(testCase, stepCount));
         const report = inspectPatternInvariants(doc, pattern);
-        expect(report.issues, `${testCase.id}/${stepCount}: ${report.issues.map((item) => item.message).join("; ")}`).toEqual([]);
+        expect(
+          report.issues,
+          `${testCase.id}/${stepCount}: ${report.issues.map((item) => item.message).join("; ")}`,
+        ).toEqual([]);
         expect(pattern.generation?.outputContentHash).toBe(contentHash(canonicalizePattern(doc, pattern)));
       }
     }
@@ -30,7 +33,9 @@ describe("Intent Engine quality gates", () => {
           const secondDoc = createDefaultProject();
           const first = generatePattern(firstDoc, options);
           const second = generatePattern(secondDoc, options);
-          expect(contentHash(canonicalizePattern(firstDoc, first))).toBe(contentHash(canonicalizePattern(secondDoc, second)));
+          expect(contentHash(canonicalizePattern(firstDoc, first))).toBe(
+            contentHash(canonicalizePattern(secondDoc, second)),
+          );
           expect(inspectPatternInvariants(firstDoc, first).ok).toBe(true);
         }
       }
@@ -56,16 +61,18 @@ describe("Intent Engine quality gates", () => {
       stepMeta: { ...(source.stepMeta ?? {}), [padId]: { ...(source.stepMeta?.[padId] ?? {}), 15: { ratchet: 99 } } },
     };
     const report = inspectPatternInvariants(doc, broken);
-    expect(new Set(report.issues.map((item) => item.code))).toEqual(new Set([
-      "row-length",
-      "note-pitch",
-      "note-start",
-      "note-duration",
-      "note-velocity",
-      "metadata-inactive-hit",
-      "metadata-value",
-      "content-hash",
-    ]));
+    expect(new Set(report.issues.map((item) => item.code))).toEqual(
+      new Set([
+        "row-length",
+        "note-pitch",
+        "note-start",
+        "note-duration",
+        "note-velocity",
+        "metadata-inactive-hit",
+        "metadata-value",
+        "content-hash",
+      ]),
+    );
   });
 
   it("normalizes malformed intents and still produces an accepted offline fallback", () => {

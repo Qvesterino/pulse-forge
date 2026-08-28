@@ -10,7 +10,11 @@ import {
 
 const REAL_FETCH = globalThis.fetch;
 
-interface MockResponse { status: number; body?: unknown; bodyArrayBuffer?: ArrayBuffer }
+interface MockResponse {
+  status: number;
+  body?: unknown;
+  bodyArrayBuffer?: ArrayBuffer;
+}
 
 function mockFetch(handler: (url: string) => MockResponse) {
   return vi.fn(async (input: RequestInfo | URL) => {
@@ -75,7 +79,7 @@ describe("searchFreesound", () => {
     // URL assertions after the call (throwing inside the mock gets caught
     // by the module's network-error wrapper).
     expect(capturedUrl).toContain("https://freesound.org/apiv2/search/text/");
-    expect(capturedUrl).toContain('license%3A%22Creative+Commons+0%22'); // CC0 filter
+    expect(capturedUrl).toContain("license%3A%22Creative+Commons+0%22"); // CC0 filter
     expect(capturedUrl).toContain("duration%3A%5B0+TO+8%5D");
     expect(capturedUrl).toContain("token=tok123");
     expect(capturedUrl).toContain("query=808+kick");
@@ -126,9 +130,23 @@ describe("fetchFreesoundPreview", () => {
 
 describe("freesoundSampleId", () => {
   it("builds a clean, bounded, unique-per-sound id", () => {
-    const a = freesoundSampleId({ id: 42, name: "Fat 808 KICK!!", username: "u", durationSec: 1, previewUrl: "p", license: "l" });
+    const a = freesoundSampleId({
+      id: 42,
+      name: "Fat 808 KICK!!",
+      username: "u",
+      durationSec: 1,
+      previewUrl: "p",
+      license: "l",
+    });
     expect(a).toBe("fs-42-fat-808-kick");
-    const long = freesoundSampleId({ id: 7, name: "x".repeat(200), username: "u", durationSec: 1, previewUrl: "p", license: "l" });
+    const long = freesoundSampleId({
+      id: 7,
+      name: "x".repeat(200),
+      username: "u",
+      durationSec: 1,
+      previewUrl: "p",
+      license: "l",
+    });
     expect(long.length).toBeLessThanOrEqual(3 + 1 + 1 + 40 + 1);
     expect(long.startsWith("fs-7-")).toBe(true);
   });

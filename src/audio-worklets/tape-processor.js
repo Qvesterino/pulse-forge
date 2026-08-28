@@ -47,7 +47,7 @@ class TapeProcessor extends AudioWorkletProcessor {
 
     const driveGain = 1 + drive * 14;
     const outGain = Math.pow(10, outDb / 20);
-    const alpha = 1 - Math.exp(-2 * Math.PI * tone / sr);
+    const alpha = 1 - Math.exp((-2 * Math.PI * tone) / sr);
 
     for (let i = 0; i < len; i++) {
       const l = inL ? inL[i] : 0;

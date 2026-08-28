@@ -134,7 +134,15 @@ function baseDocument(name: string, bpm: number): ProjectDocument {
     macros: defaultMacros(),
     returns: createDefaultReturns(),
     master: defaultMasterConfig(),
-    midi: { enabled: false, deviceId: "", drumChannel: 0, instrumentChannel: 0, ccMappings: [], drumNoteMap: [], pitchBendRange: 2 },
+    midi: {
+      enabled: false,
+      deviceId: "",
+      drumChannel: 0,
+      instrumentChannel: 0,
+      ccMappings: [],
+      drumNoteMap: [],
+      pitchBendRange: 2,
+    },
     createdAt: now,
     updatedAt: now,
   };
@@ -145,11 +153,7 @@ function finish(doc: ProjectDocument, activePatternIndex = 0): ProjectDocument {
 }
 
 /** Four performance macros mapped to the classic mix bus roles of the template. */
-function performanceMacros(
-  drumsId: string,
-  bassId: string | null,
-  musicId: string | null,
-): Macro[] {
+function performanceMacros(drumsId: string, bassId: string | null, musicId: string | null): Macro[] {
   const mappings = (trackId: string | null, param: MacroMapping["param"], amount: number): MacroMapping[] =>
     trackId ? [{ id: uid("map"), trackId, param, amount }] : [];
   return [
@@ -186,12 +190,39 @@ function buildHouse(): ProjectDocument {
   const bass = createInstrumentTrackModel("808", 1);
   const chords = createInstrumentTrackModel("analog", 1);
   chords.name = "Chords";
-  chords.params = { ...chords.params, oscA: 2, oscB: 1, oscBDetune: 9, subLevel: 0.2, cutoff: 5200, resonance: 1.3, filterEnv: 0.4, attack: 0.004, decay: 0.24, sustain: 0.3, release: 0.2, level: -10 };
+  chords.params = {
+    ...chords.params,
+    oscA: 2,
+    oscB: 1,
+    oscBDetune: 9,
+    subLevel: 0.2,
+    cutoff: 5200,
+    resonance: 1.3,
+    filterEnv: 0.4,
+    attack: 0.004,
+    decay: 0.24,
+    sustain: 0.3,
+    release: 0.2,
+    level: -10,
+  };
 
   let pattern = emptyPattern("Pattern A", [drums]);
-  pattern = setSteps(pattern, drums.pads, 0, [[0, 0.95], [4, 0.95], [8, 0.95], [12, 0.95]]);
-  pattern = setSteps(pattern, drums.pads, 6, [[4, 0.7], [12, 0.75]]);
-  pattern = setSteps(pattern, drums.pads, 8, [[2, 0.5], [6, 0.5], [10, 0.5], [14, 0.55]]);
+  pattern = setSteps(pattern, drums.pads, 0, [
+    [0, 0.95],
+    [4, 0.95],
+    [8, 0.95],
+    [12, 0.95],
+  ]);
+  pattern = setSteps(pattern, drums.pads, 6, [
+    [4, 0.7],
+    [12, 0.75],
+  ]);
+  pattern = setSteps(pattern, drums.pads, 8, [
+    [2, 0.5],
+    [6, 0.5],
+    [10, 0.5],
+    [14, 0.55],
+  ]);
   pattern = setSteps(pattern, drums.pads, 10, [[14, 0.4]]);
   pattern = withNotes(pattern, bass.id, [
     note(28, 0, PPQ / 2, 0.9),
@@ -222,10 +253,35 @@ function buildTechno(): ProjectDocument {
   const drums = createDrumTrackModel("Drums");
   const rumble = createInstrumentTrackModel("bass", 1);
   rumble.name = "Rumble";
-  rumble.params = { ...rumble.params, sub: 0.8, body: 0.45, punch: 0.3, grit: 0.55, movement: 0.25, width: 0.1, cutoff: 420, resonance: 2.5 };
+  rumble.params = {
+    ...rumble.params,
+    sub: 0.8,
+    body: 0.45,
+    punch: 0.3,
+    grit: 0.55,
+    movement: 0.25,
+    width: 0.1,
+    cutoff: 420,
+    resonance: 2.5,
+  };
   const stab = createInstrumentTrackModel("analog", 1);
   stab.name = "Stab";
-  stab.params = { ...stab.params, oscA: 2, oscB: 3, oscBDetune: 14, subLevel: 0.3, noiseLevel: 0.05, cutoff: 4200, resonance: 2.2, filterEnv: 0.5, attack: 0.003, decay: 0.2, sustain: 0.3, release: 0.12, level: -9 };
+  stab.params = {
+    ...stab.params,
+    oscA: 2,
+    oscB: 3,
+    oscBDetune: 14,
+    subLevel: 0.3,
+    noiseLevel: 0.05,
+    cutoff: 4200,
+    resonance: 2.2,
+    filterEnv: 0.5,
+    attack: 0.003,
+    decay: 0.2,
+    sustain: 0.3,
+    release: 0.12,
+    level: -9,
+  };
 
   const bassline = (pattern: Pattern): Pattern =>
     withNotes(pattern, rumble.id, [
@@ -236,27 +292,66 @@ function buildTechno(): ProjectDocument {
     ]);
 
   const stabline = (pattern: Pattern, root: number): Pattern =>
-    withNotes(pattern, stab.id, [
-      note(root, 0, 180, 0.55),
-      note(root + 3, 0, 180, 0.45),
-      note(root + 7, 0, 180, 0.42),
-    ]);
+    withNotes(pattern, stab.id, [note(root, 0, 180, 0.55), note(root + 3, 0, 180, 0.45), note(root + 7, 0, 180, 0.42)]);
 
   let loopA = emptyPattern("Loop A", [drums]);
-  loopA = setSteps(loopA, drums.pads, 2, [[0, 0.95], [4, 0.95], [8, 0.95], [12, 0.95]]);
-  loopA = setSteps(loopA, drums.pads, 6, [[4, 0.55], [12, 0.6]]);
-  loopA = setSteps(loopA, drums.pads, 10, [[2, 0.4], [6, 0.4], [10, 0.4], [14, 0.42]]);
-  loopA = setSteps(loopA, drums.pads, 8, [[1, 0.3], [3, 0.3], [5, 0.3], [7, 0.32], [9, 0.3], [11, 0.3], [13, 0.3], [15, 0.34]]);
+  loopA = setSteps(loopA, drums.pads, 2, [
+    [0, 0.95],
+    [4, 0.95],
+    [8, 0.95],
+    [12, 0.95],
+  ]);
+  loopA = setSteps(loopA, drums.pads, 6, [
+    [4, 0.55],
+    [12, 0.6],
+  ]);
+  loopA = setSteps(loopA, drums.pads, 10, [
+    [2, 0.4],
+    [6, 0.4],
+    [10, 0.4],
+    [14, 0.42],
+  ]);
+  loopA = setSteps(loopA, drums.pads, 8, [
+    [1, 0.3],
+    [3, 0.3],
+    [5, 0.3],
+    [7, 0.32],
+    [9, 0.3],
+    [11, 0.3],
+    [13, 0.3],
+    [15, 0.34],
+  ]);
   loopA = bassline(loopA);
   loopA = stabline(loopA, 48);
 
   let loopB = emptyPattern("Loop B", [drums]);
-  loopB = setSteps(loopB, drums.pads, 2, [[0, 0.95], [4, 0.95], [8, 0.95], [12, 0.95]]);
-  loopB = setSteps(loopB, drums.pads, 6, [[4, 0.55], [12, 0.6]]);
-  loopB = setSteps(loopB, drums.pads, 10, [[2, 0.4], [6, 0.4], [10, 0.4], [14, 0.42]]);
-  loopB = setSteps(loopB, drums.pads, 11, [[2, 0.3], [6, 0.3], [10, 0.3], [14, 0.3]]);
+  loopB = setSteps(loopB, drums.pads, 2, [
+    [0, 0.95],
+    [4, 0.95],
+    [8, 0.95],
+    [12, 0.95],
+  ]);
+  loopB = setSteps(loopB, drums.pads, 6, [
+    [4, 0.55],
+    [12, 0.6],
+  ]);
+  loopB = setSteps(loopB, drums.pads, 10, [
+    [2, 0.4],
+    [6, 0.4],
+    [10, 0.4],
+    [14, 0.42],
+  ]);
+  loopB = setSteps(loopB, drums.pads, 11, [
+    [2, 0.3],
+    [6, 0.3],
+    [10, 0.3],
+    [14, 0.3],
+  ]);
   loopB = setSteps(loopB, drums.pads, 12, [[14, 0.45]]);
-  loopB = setSteps(loopB, drums.pads, 3, [[7, 0.4], [15, 0.42]]);
+  loopB = setSteps(loopB, drums.pads, 3, [
+    [7, 0.4],
+    [15, 0.42],
+  ]);
   loopB = bassline(loopB);
   loopB = stabline(loopB, 51);
 
@@ -278,32 +373,57 @@ function buildTrap(): ProjectDocument {
   sub.params = { ...sub.params, decay: 1.6, pitchDrop: 0.5, click: 0.3, drive: 0.35, tone: 0.3, gain: 0.9 };
   const lead = createInstrumentTrackModel("analog", 1);
   lead.name = "Lead";
-  lead.params = { ...lead.params, oscA: 2, oscB: 3, cutoff: 5200, resonance: 2, filterEnv: 0.4, attack: 0.005, decay: 0.3, sustain: 0.4, release: 0.3, level: -12 };
+  lead.params = {
+    ...lead.params,
+    oscA: 2,
+    oscB: 3,
+    cutoff: 5200,
+    resonance: 2,
+    filterEnv: 0.4,
+    attack: 0.005,
+    decay: 0.3,
+    sustain: 0.4,
+    release: 0.3,
+    level: -12,
+  };
 
   let pattern = emptyPattern("Pattern A", [drums]);
-  pattern = setSteps(pattern, drums.pads, 0, [[0, 0.95], [7, 0.8], [10, 0.9]]);
+  pattern = setSteps(pattern, drums.pads, 0, [
+    [0, 0.95],
+    [7, 0.8],
+    [10, 0.9],
+  ]);
   pattern = setSteps(pattern, drums.pads, 5, [[8, 0.9]]);
-  pattern = setSteps(
-    pattern,
-    drums.pads,
-    8,
-    [
-      [0, 0.55], [1, 0.3], [2, 0.45], [3, 0.3], [4, 0.5], [5, 0.3], [6, 0.45], [7, 0.32],
-      [8, 0.55], [9, 0.3], [10, 0.45], [11, 0.35], [12, 0.5], [13, 0.4], [14, 0.45], [15, 0.35],
-    ],
-  );
+  pattern = setSteps(pattern, drums.pads, 8, [
+    [0, 0.55],
+    [1, 0.3],
+    [2, 0.45],
+    [3, 0.3],
+    [4, 0.5],
+    [5, 0.3],
+    [6, 0.45],
+    [7, 0.32],
+    [8, 0.55],
+    [9, 0.3],
+    [10, 0.45],
+    [11, 0.35],
+    [12, 0.5],
+    [13, 0.4],
+    [14, 0.45],
+    [15, 0.35],
+  ]);
   pattern = setSteps(pattern, drums.pads, 10, [[12, 0.35]]);
-  pattern = setSteps(pattern, drums.pads, 3, [[3, 0.35], [11, 0.35]]);
+  pattern = setSteps(pattern, drums.pads, 3, [
+    [3, 0.35],
+    [11, 0.35],
+  ]);
   pattern = withNotes(pattern, sub.id, [
     note(21, 0, 660, 0.95),
     note(21, 720, 220, 0.8),
     note(24, 960, 420, 0.85),
     note(19, 1440, 420, 0.8),
   ]);
-  pattern = withNotes(pattern, lead.id, [
-    note(76, 480, 180, 0.4),
-    note(74, 1200, 180, 0.35),
-  ]);
+  pattern = withNotes(pattern, lead.id, [note(76, 480, 180, 0.4), note(74, 1200, 180, 0.35)]);
 
   const sc = scene("Groove", pattern.id);
   doc.tracks = [drums, sub, lead];
@@ -319,10 +439,33 @@ function buildAmbient(): ProjectDocument {
   const drums = createDrumTrackModel("Drums");
   const texture = createInstrumentTrackModel("texture", 1);
   texture.name = "Drift";
-  texture.params = { ...texture.params, color: 0.45, motion: 0.5, space: 0.6, density: 0.6, texture: 0.35, chaos: 0.15, level: -8 };
+  texture.params = {
+    ...texture.params,
+    color: 0.45,
+    motion: 0.5,
+    space: 0.6,
+    density: 0.6,
+    texture: 0.35,
+    chaos: 0.15,
+    level: -8,
+  };
   const pad = createInstrumentTrackModel("analog", 1);
   pad.name = "Pad";
-  pad.params = { ...pad.params, oscA: 1, oscB: 1, oscBDetune: 12, subLevel: 0.15, cutoff: 2400, resonance: 0.8, filterEnv: 0.15, attack: 0.8, decay: 1.2, sustain: 0.8, release: 1.6, level: -10 };
+  pad.params = {
+    ...pad.params,
+    oscA: 1,
+    oscB: 1,
+    oscBDetune: 12,
+    subLevel: 0.15,
+    cutoff: 2400,
+    resonance: 0.8,
+    filterEnv: 0.15,
+    attack: 0.8,
+    decay: 1.2,
+    sustain: 0.8,
+    release: 1.6,
+    level: -10,
+  };
 
   const stepCount = STEPS_PER_PATTERN * 2;
   let pattern = emptyPattern("Drift A", [drums], stepCount);
@@ -339,7 +482,16 @@ function buildAmbient(): ProjectDocument {
   ]);
 
   const lfos: Lfo[] = [
-    { id: uid("lfo"), trackId: texture.id, param: "gain", wave: "sine", rateMode: "sync", rateHz: 0.3, division: 0, amount: 0.15 },
+    {
+      id: uid("lfo"),
+      trackId: texture.id,
+      param: "gain",
+      wave: "sine",
+      rateMode: "sync",
+      rateHz: 0.3,
+      division: 0,
+      amount: 0.15,
+    },
   ];
 
   const sc = scene("Drift", pattern.id);
@@ -369,19 +521,56 @@ function buildSceneScore(): ProjectDocument {
   ];
 
   let intro = emptyPattern("Intro", [drums]);
-  intro = setSteps(intro, drums.pads, 9, [[0, 0.25], [4, 0.25], [8, 0.25], [12, 0.25]]);
+  intro = setSteps(intro, drums.pads, 9, [
+    [0, 0.25],
+    [4, 0.25],
+    [8, 0.25],
+    [12, 0.25],
+  ]);
   intro = withNotes(intro, texture.id, textureChord(0, 1920, 0.5));
 
   let build = emptyPattern("Build", [drums]);
-  build = setSteps(build, drums.pads, 0, [[0, 0.9], [4, 0.9], [8, 0.9], [12, 0.9]]);
-  build = setSteps(build, drums.pads, 8, [[2, 0.4], [6, 0.42], [10, 0.44], [14, 0.5]]);
-  build = setSteps(build, drums.pads, 7, [[1, 0.3], [3, 0.3], [5, 0.32], [7, 0.34], [9, 0.36], [11, 0.38], [13, 0.42], [15, 0.48]]);
+  build = setSteps(build, drums.pads, 0, [
+    [0, 0.9],
+    [4, 0.9],
+    [8, 0.9],
+    [12, 0.9],
+  ]);
+  build = setSteps(build, drums.pads, 8, [
+    [2, 0.4],
+    [6, 0.42],
+    [10, 0.44],
+    [14, 0.5],
+  ]);
+  build = setSteps(build, drums.pads, 7, [
+    [1, 0.3],
+    [3, 0.3],
+    [5, 0.32],
+    [7, 0.34],
+    [9, 0.36],
+    [11, 0.38],
+    [13, 0.42],
+    [15, 0.48],
+  ]);
   build = withNotes(build, texture.id, textureChord(0, 1920, 0.55));
 
   let drop = emptyPattern("Drop", [drums]);
-  drop = setSteps(drop, drums.pads, 0, [[0, 0.95], [4, 0.95], [8, 0.95], [12, 0.95]]);
-  drop = setSteps(drop, drums.pads, 6, [[4, 0.7], [12, 0.75]]);
-  drop = setSteps(drop, drums.pads, 8, [[2, 0.5], [6, 0.5], [10, 0.5], [14, 0.55]]);
+  drop = setSteps(drop, drums.pads, 0, [
+    [0, 0.95],
+    [4, 0.95],
+    [8, 0.95],
+    [12, 0.95],
+  ]);
+  drop = setSteps(drop, drums.pads, 6, [
+    [4, 0.7],
+    [12, 0.75],
+  ]);
+  drop = setSteps(drop, drums.pads, 8, [
+    [2, 0.5],
+    [6, 0.5],
+    [10, 0.5],
+    [14, 0.55],
+  ]);
   drop = setSteps(drop, drums.pads, 10, [[14, 0.4]]);
   drop = withNotes(drop, bass.id, [
     note(28, 0, PPQ / 2, 0.9),
@@ -396,8 +585,18 @@ function buildSceneScore(): ProjectDocument {
   breakP = withNotes(breakP, bass.id, [note(28, 0, 1440, 0.6)]);
 
   let outro = emptyPattern("Outro", [drums]);
-  outro = setSteps(outro, drums.pads, 0, [[0, 0.7], [4, 0.6], [8, 0.5], [12, 0.4]]);
-  outro = setSteps(outro, drums.pads, 9, [[2, 0.3], [6, 0.28], [10, 0.26], [14, 0.24]]);
+  outro = setSteps(outro, drums.pads, 0, [
+    [0, 0.7],
+    [4, 0.6],
+    [8, 0.5],
+    [12, 0.4],
+  ]);
+  outro = setSteps(outro, drums.pads, 9, [
+    [2, 0.3],
+    [6, 0.28],
+    [10, 0.26],
+    [14, 0.24],
+  ]);
   outro = withNotes(outro, texture.id, textureChord(0, 1920, 0.45));
 
   const scIntro = scene("INTRO", intro.id, 0.4);
@@ -422,15 +621,48 @@ function buildSceneScore(): ProjectDocument {
   // Named timeline markers — auto-trigger their typed FX cue during playback.
   // Bar 1 (BUILD), bar 9 (DROP), bar 21 (OUTRO) align 1 tick AT each clip start.
   doc.markers = [
-    { id: uid("marker"), name: "Lift", type: "buildup", tick: 4 * BAR_TICKS, linkedClipId: doc.arrangement.clips[1].id },
+    {
+      id: uid("marker"),
+      name: "Lift",
+      type: "buildup",
+      tick: 4 * BAR_TICKS,
+      linkedClipId: doc.arrangement.clips[1].id,
+    },
     { id: uid("marker"), name: "Hit", type: "drop", tick: 8 * BAR_TICKS, linkedClipId: doc.arrangement.clips[2].id },
-    { id: uid("marker"), name: "Outro", type: "riser", tick: 20 * BAR_TICKS, linkedClipId: doc.arrangement.clips[4].id },
+    {
+      id: uid("marker"),
+      name: "Outro",
+      type: "riser",
+      tick: 20 * BAR_TICKS,
+      linkedClipId: doc.arrangement.clips[4].id,
+    },
   ];
   // Per-scene intensity curves: BUILD ramps up, DROP holds at 1.0, BREAK eases back.
   doc.scenes = doc.scenes.map((s, i) => {
-    if (i === 1) return { ...s, intensityCurve: [{ offset: 0, value: 0.4 }, { offset: 1920, value: 0.95 }] };
-    if (i === 2) return { ...s, intensityCurve: [{ offset: 0, value: 1.0 }, { offset: 3840, value: 1.0 }] };
-    if (i === 3) return { ...s, intensityCurve: [{ offset: 0, value: 0.95 }, { offset: 1920, value: 0.5 }] };
+    if (i === 1)
+      return {
+        ...s,
+        intensityCurve: [
+          { offset: 0, value: 0.4 },
+          { offset: 1920, value: 0.95 },
+        ],
+      };
+    if (i === 2)
+      return {
+        ...s,
+        intensityCurve: [
+          { offset: 0, value: 1.0 },
+          { offset: 3840, value: 1.0 },
+        ],
+      };
+    if (i === 3)
+      return {
+        ...s,
+        intensityCurve: [
+          { offset: 0, value: 0.95 },
+          { offset: 1920, value: 0.5 },
+        ],
+      };
     return s;
   });
   // Sample scene automation: texture filter-style gain ride into the DROP.

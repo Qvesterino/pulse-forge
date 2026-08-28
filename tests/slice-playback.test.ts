@@ -42,7 +42,10 @@ describe("slice playback parameters", () => {
   });
 
   it("scales overlapping fades so the envelope fits the slice", () => {
-    const resolved = resolveSlicePlayback(pad({ sliceStart: 0.25, sliceEnd: 0.75, sliceFadeIn: 0.4, sliceFadeOut: 0.4 }), 1);
+    const resolved = resolveSlicePlayback(
+      pad({ sliceStart: 0.25, sliceEnd: 0.75, sliceFadeIn: 0.4, sliceFadeOut: 0.4 }),
+      1,
+    );
     expect(resolved.duration).toBeCloseTo(0.5, 6);
     expect(resolved.fadeIn + resolved.fadeOut).toBeCloseTo(0.5, 6);
   });
@@ -56,14 +59,30 @@ describe("slice playback parameters", () => {
     const drum = doc.tracks.find((track): track is DrumTrack => track.kind === "drum")!;
     const dirty = {
       ...doc,
-      tracks: doc.tracks.map((track) => track.id === drum.id && track.kind === "drum"
-        ? { ...track, pads: track.pads.map((item, index) => index === 0
-          ? { ...item, sliceStart: -1, sliceEnd: 0, sliceFadeIn: -2, sliceFadeOut: Number.NaN, sliceReverse: "yes" as unknown as boolean }
-          : item) }
-        : track),
+      tracks: doc.tracks.map((track) =>
+        track.id === drum.id && track.kind === "drum"
+          ? {
+              ...track,
+              pads: track.pads.map((item, index) =>
+                index === 0
+                  ? {
+                      ...item,
+                      sliceStart: -1,
+                      sliceEnd: 0,
+                      sliceFadeIn: -2,
+                      sliceFadeOut: Number.NaN,
+                      sliceReverse: "yes" as unknown as boolean,
+                    }
+                  : item,
+              ),
+            }
+          : track,
+      ),
     };
     const normalized = normalizeProject(dirty);
-    const normalizedDrum = normalized.tracks.find((track): track is DrumTrack => track.id === drum.id && track.kind === "drum")!;
+    const normalizedDrum = normalized.tracks.find(
+      (track): track is DrumTrack => track.id === drum.id && track.kind === "drum",
+    )!;
     expect(normalizedDrum.pads[0].sliceStart).toBeUndefined();
     expect(normalizedDrum.pads[0].sliceEnd).toBeUndefined();
     expect(normalizedDrum.pads[0].sliceFadeIn).toBe(0);

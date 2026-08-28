@@ -103,7 +103,11 @@ describe("arrangement variations", () => {
     const store = new ProjectStore(doc);
     const [from, to] = store.doc.arrangement.clips;
     store.execute(addArrangementTransition(store.doc, from.id, to.id, "riser", 3, "factory.fx.riser"));
-    expect(store.doc.arrangement.transitions?.[0]).toMatchObject({ type: "riser", lengthBars: 3, cueAssetId: "factory.fx.riser" });
+    expect(store.doc.arrangement.transitions?.[0]).toMatchObject({
+      type: "riser",
+      lengthBars: 3,
+      cueAssetId: "factory.fx.riser",
+    });
     store.undo();
     expect(store.doc.arrangement.transitions).toBeUndefined();
   });
@@ -114,7 +118,11 @@ describe("arrangement capture", () => {
     const doc = createProjectFromTemplate("house");
     const store = new ProjectStore(doc);
     let tick = 0;
-    const capture = new ArrangementCaptureController(() => store.doc, (command) => store.execute(command), () => tick);
+    const capture = new ArrangementCaptureController(
+      () => store.doc,
+      (command) => store.execute(command),
+      () => tick,
+    );
     const scenes = store.doc.scenes;
     capture.start();
     capture.recordSceneLaunch(scenes[0].id, 0);
@@ -134,7 +142,11 @@ describe("arrangement capture", () => {
   it("cancel leaves the project untouched", () => {
     const doc = createProjectFromTemplate("house");
     const store = new ProjectStore(doc);
-    const capture = new ArrangementCaptureController(() => store.doc, (command) => store.execute(command), () => BAR_TICKS * 4);
+    const capture = new ArrangementCaptureController(
+      () => store.doc,
+      (command) => store.execute(command),
+      () => BAR_TICKS * 4,
+    );
     capture.start();
     capture.recordSceneLaunch(store.doc.scenes[0].id, 0);
     capture.cancel();
@@ -148,16 +160,18 @@ describe("arrangement persistence", () => {
     const doc = createProjectFromTemplate("scene-score");
     const roleDoc = normalizeProject({
       ...doc,
-      scenes: doc.scenes.map((scene, index) => index === 0 ? { ...scene, role: "intro" as const } : scene),
+      scenes: doc.scenes.map((scene, index) => (index === 0 ? { ...scene, role: "intro" as const } : scene)),
       arrangement: {
         ...doc.arrangement,
-        transitions: [{
-          id: "transition-test",
-          fromClipId: doc.arrangement.clips[0].id,
-          toClipId: doc.arrangement.clips[1].id,
-          type: "fill",
-          lengthBars: 2,
-        }],
+        transitions: [
+          {
+            id: "transition-test",
+            fromClipId: doc.arrangement.clips[0].id,
+            toClipId: doc.arrangement.clips[1].id,
+            type: "fill",
+            lengthBars: 2,
+          },
+        ],
       },
     });
     const yDoc = new Y.Doc();
@@ -173,7 +187,15 @@ describe("arrangement persistence", () => {
       ...doc,
       arrangement: {
         ...doc.arrangement,
-        transitions: [{ id: "dangling", fromClipId: "missing", toClipId: doc.arrangement.clips[0].id, type: "drop", lengthBars: 20 }],
+        transitions: [
+          {
+            id: "dangling",
+            fromClipId: "missing",
+            toClipId: doc.arrangement.clips[0].id,
+            type: "drop",
+            lengthBars: 20,
+          },
+        ],
       },
     });
     expect(normalized.arrangement.transitions).toEqual([]);

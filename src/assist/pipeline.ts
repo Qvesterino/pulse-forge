@@ -26,16 +26,16 @@ export function normalizeAssistRequest(input: AssistInput): AssistRequest {
 }
 
 /** Build the exact pure patch used by both Assist preview and Apply. */
-export function buildAssistPatch(
-  pattern: Pattern,
-  pads: DrumPad[],
-  input: AssistInput,
-): RowsPatch {
+export function buildAssistPatch(pattern: Pattern, pads: DrumPad[], input: AssistInput): RowsPatch {
   const request = normalizeAssistRequest(input);
   switch (request.operation) {
-    case "vary": return varyPattern(pattern, pads, request.seed, request.amount);
-    case "build": return expandWithBuild(pattern, pads, request.bars, request.seed);
-    case "replace": return replaceRows(pattern, pads, request.target, request.style, request.seed);
-    case "fill": return makeFill(pattern, pads, request.seed);
+    case "vary":
+      return varyPattern(pattern, pads, request.seed, request.amount);
+    case "build":
+      return expandWithBuild(pattern, pads, request.bars, request.seed);
+    case "replace":
+      return replaceRows(pattern, pads, request.target, request.style, request.seed);
+    case "fill":
+      return makeFill(pattern, pads, request.seed);
   }
 }

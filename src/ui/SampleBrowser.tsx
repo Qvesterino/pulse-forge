@@ -96,7 +96,12 @@ export function SampleBrowser({
       >
         ▶
       </button>
-      <button type="button" className="sample-name" title={isFactoryAsset(asset) ? `${asset.character} — click to assign` : `${asset.fileName} — click to assign`} onClick={() => apply(asset.id)}>
+      <button
+        type="button"
+        className="sample-name"
+        title={isFactoryAsset(asset) ? `${asset.character} — click to assign` : `${asset.fileName} — click to assign`}
+        onClick={() => apply(asset.id)}
+      >
         {asset.name}
       </button>
       {isFactoryAsset(asset) ? (
@@ -139,7 +144,11 @@ export function SampleBrowser({
         onChange={(event) => setQuery(event.target.value)}
       />
       <div className="preset-chips">
-        <button type="button" className={`preset-chip${category === "all" ? " active" : ""}`} onClick={() => setCategory("all")}>
+        <button
+          type="button"
+          className={`preset-chip${category === "all" ? " active" : ""}`}
+          onClick={() => setCategory("all")}
+        >
           ALL
         </button>
         {categories.map((cat) => (
@@ -147,7 +156,11 @@ export function SampleBrowser({
             key={cat}
             type="button"
             className={`preset-chip${category === cat ? " active" : ""}`}
-            style={category === cat ? { borderColor: categoryColor(cat as any), color: categoryColor(cat as any) } : undefined}
+            style={
+              category === cat
+                ? { borderColor: categoryColor(cat as any), color: categoryColor(cat as any) }
+                : undefined
+            }
             onClick={() => setCategory(cat)}
           >
             {cat.toUpperCase()}
@@ -156,7 +169,12 @@ export function SampleBrowser({
       </div>
       <div className="preset-chips">
         {ASSET_MOODS.map((m) => (
-          <button key={m} type="button" className={`preset-chip${mood === m ? " active" : ""}`} onClick={() => setMood(mood === m ? "all" : m)}>
+          <button
+            key={m}
+            type="button"
+            className={`preset-chip${mood === m ? " active" : ""}`}
+            onClick={() => setMood(mood === m ? "all" : m)}
+          >
             {m.toUpperCase()}
           </button>
         ))}

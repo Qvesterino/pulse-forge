@@ -83,11 +83,16 @@ export interface MixCheckWarning {
 
 export function evaluateMixCheck(snapshot: MixCheckSnapshot): MixCheckWarning[] {
   const warnings: MixCheckWarning[] = [];
-  if (snapshot.truePeakDb > -0.1) warnings.push({ code: "clipping", message: "True peak is clipping above -0.1 dBTP", severity: "error" });
-  else if (snapshot.truePeakDb > -1) warnings.push({ code: "true-peak", message: "True peak is above -1 dBTP", severity: "warn" });
-  if (snapshot.correlation < 0 && (snapshot.phaseDurationMs ?? 0) >= 250) warnings.push({ code: "phase", message: "Stereo correlation is negative", severity: "warn" });
-  if (snapshot.monoLossDb < -3) warnings.push({ code: "mono-loss", message: "Mono fold-down loses more than 3 dB", severity: "warn" });
-  if (snapshot.lrImbalanceDb > 6 && (snapshot.imbalanceDurationMs ?? 0) >= 1000) warnings.push({ code: "lr-imbalance", message: "Left/right balance differs by more than 6 dB", severity: "warn" });
+  if (snapshot.truePeakDb > -0.1)
+    warnings.push({ code: "clipping", message: "True peak is clipping above -0.1 dBTP", severity: "error" });
+  else if (snapshot.truePeakDb > -1)
+    warnings.push({ code: "true-peak", message: "True peak is above -1 dBTP", severity: "warn" });
+  if (snapshot.correlation < 0 && (snapshot.phaseDurationMs ?? 0) >= 250)
+    warnings.push({ code: "phase", message: "Stereo correlation is negative", severity: "warn" });
+  if (snapshot.monoLossDb < -3)
+    warnings.push({ code: "mono-loss", message: "Mono fold-down loses more than 3 dB", severity: "warn" });
+  if (snapshot.lrImbalanceDb > 6 && (snapshot.imbalanceDurationMs ?? 0) >= 1000)
+    warnings.push({ code: "lr-imbalance", message: "Left/right balance differs by more than 6 dB", severity: "warn" });
   return warnings;
 }
 
@@ -220,7 +225,18 @@ export interface BufferSummary {
   monoLossDb: number;
 }
 
-const EMPTY_SUMMARY: BufferSummary = { peak: 0, peakDb: MIN_DB, truePeakDb: MIN_DB, rms: 0, rmsDb: MIN_DB, correlation: 1, lufsMomentary: MIN_DB, lufsShortTerm: MIN_DB, lufsIntegrated: MIN_DB, monoLossDb: 0 };
+const EMPTY_SUMMARY: BufferSummary = {
+  peak: 0,
+  peakDb: MIN_DB,
+  truePeakDb: MIN_DB,
+  rms: 0,
+  rmsDb: MIN_DB,
+  correlation: 1,
+  lufsMomentary: MIN_DB,
+  lufsShortTerm: MIN_DB,
+  lufsIntegrated: MIN_DB,
+  monoLossDb: 0,
+};
 
 /**
  * Whole-buffer summary: peak, true-peak, RMS, and (stereo) correlation. Used
@@ -279,7 +295,10 @@ const TRUE_PEAK_FILTER: Float32Array[] = (() => {
     const x = (n - center) / TP_PHASES;
     const sinc = x === 0 ? 1 : Math.sin(Math.PI * x) / (Math.PI * x);
     // Blackman window for clean stopband.
-    const w = 0.42 - 0.5 * Math.cos((2 * Math.PI * n) / (prototype.length - 1)) + 0.08 * Math.cos((4 * Math.PI * n) / (prototype.length - 1));
+    const w =
+      0.42 -
+      0.5 * Math.cos((2 * Math.PI * n) / (prototype.length - 1)) +
+      0.08 * Math.cos((4 * Math.PI * n) / (prototype.length - 1));
     prototype[n] = sinc * w;
   }
   const phases: Float32Array[] = [];

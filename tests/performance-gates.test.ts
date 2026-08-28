@@ -8,8 +8,12 @@ describe("Intent Engine performance gates", () => {
     const doc = createDefaultProject();
     for (const stepCount of [16, 32, 64]) {
       const latency = measureGenerationLatency(doc, baselineOptions(AI_BASELINE_CASES[0], stepCount), 3);
-      console.info(`[intent-perf] ${stepCount} steps: median=${latency.medianMs.toFixed(2)}ms max=${latency.maxMs.toFixed(2)}ms`);
-      expect(latency.maxMs, `${stepCount}-step preview exceeded ${MAX_SYNC_PREVIEW_MS}ms`).toBeLessThan(MAX_SYNC_PREVIEW_MS);
+      console.info(
+        `[intent-perf] ${stepCount} steps: median=${latency.medianMs.toFixed(2)}ms max=${latency.maxMs.toFixed(2)}ms`,
+      );
+      expect(latency.maxMs, `${stepCount}-step preview exceeded ${MAX_SYNC_PREVIEW_MS}ms`).toBeLessThan(
+        MAX_SYNC_PREVIEW_MS,
+      );
     }
   });
 });

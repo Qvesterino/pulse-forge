@@ -18,9 +18,7 @@ function documentWithNotes(): { doc: ProjectDocument; trackId: string; notes: No
       ...base,
       key: "C Major",
       patterns: base.patterns.map((pattern) =>
-        pattern.id === base.activePatternId
-          ? { ...pattern, notes: { ...pattern.notes, [track.id]: notes } }
-          : pattern,
+        pattern.id === base.activePatternId ? { ...pattern, notes: { ...pattern.notes, [track.id]: notes } } : pattern,
       ),
     },
     trackId: track.id,
@@ -32,24 +30,26 @@ describe("MIDI creativity command", () => {
   it("changes only the selected notes and keeps one undo step", () => {
     const { doc, trackId } = documentWithNotes();
     const store = new ProjectStore(doc);
-    store.execute(applyMidiCreativeTool(doc, {
-      trackId,
-      noteIds: ["a", "b"],
-      operation: {
-        kind: "chord",
-        options: {
-          mode: "explicit",
-          quality: "minor",
-          voicing: "close",
-          inversion: 0,
-          seventh: false,
-          gate: 1,
-          strumTicks: 0,
-          strumDirection: "up",
-          scaleLock: false,
+    store.execute(
+      applyMidiCreativeTool(doc, {
+        trackId,
+        noteIds: ["a", "b"],
+        operation: {
+          kind: "chord",
+          options: {
+            mode: "explicit",
+            quality: "minor",
+            voicing: "close",
+            inversion: 0,
+            seventh: false,
+            gate: 1,
+            strumTicks: 0,
+            strumDirection: "up",
+            scaleLock: false,
+          },
         },
-      },
-    }));
+      }),
+    );
 
     const pattern = store.doc.patterns.find((value) => value.id === store.doc.activePatternId)!;
     const result = pattern.notes[trackId];
@@ -77,15 +77,19 @@ describe("MIDI creativity command", () => {
   it("rejects a drum track and an empty target", () => {
     const { doc, trackId } = documentWithNotes();
     const drum = doc.tracks.find((value) => value.kind === "drum")!;
-    expect(() => applyMidiCreativeTool(doc, {
-      trackId: drum.id,
-      operation: { kind: "reverse", scaleLock: false },
-    })).toThrow(/instrument track/i);
-    expect(() => applyMidiCreativeTool(doc, {
-      trackId,
-      noteIds: ["missing"],
-      operation: { kind: "reverse", scaleLock: false },
-    })).toThrow(/at least one note/i);
+    expect(() =>
+      applyMidiCreativeTool(doc, {
+        trackId: drum.id,
+        operation: { kind: "reverse", scaleLock: false },
+      }),
+    ).toThrow(/instrument track/i);
+    expect(() =>
+      applyMidiCreativeTool(doc, {
+        trackId,
+        noteIds: ["missing"],
+        operation: { kind: "reverse", scaleLock: false },
+      }),
+    ).toThrow(/at least one note/i);
   });
 
   it("materializes every phase-two generator as one undoable command", () => {

@@ -31,7 +31,13 @@ interface DragState {
   currentX: number;
 }
 
-export function PatternBar({ clip, onCopy }: { clip: PatternClipboard | null; onCopy: (clip: PatternClipboard) => void }) {
+export function PatternBar({
+  clip,
+  onCopy,
+}: {
+  clip: PatternClipboard | null;
+  onCopy: (clip: PatternClipboard) => void;
+}) {
   const services = useServices();
   const doc = useDoc();
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -202,10 +208,20 @@ export function PatternBar({ clip, onCopy }: { clip: PatternClipboard | null; on
       </div>
 
       <div className="pattern-actions">
-        <button type="button" className="btn btn-small" title="New pattern" onClick={() => services.store.execute(createPattern(doc))}>
+        <button
+          type="button"
+          className="btn btn-small"
+          title="New pattern"
+          onClick={() => services.store.execute(createPattern(doc))}
+        >
           ADD
         </button>
-        <button type="button" className="btn btn-small" title="Duplicate active pattern (Ctrl+D)" onClick={() => services.store.execute(duplicatePattern(doc, doc.activePatternId))}>
+        <button
+          type="button"
+          className="btn btn-small"
+          title="Duplicate active pattern (Ctrl+D)"
+          onClick={() => services.store.execute(duplicatePattern(doc, doc.activePatternId))}
+        >
           DUP
         </button>
         <button
@@ -249,7 +265,12 @@ export function PatternBar({ clip, onCopy }: { clip: PatternClipboard | null; on
         >
           PASTE
         </button>
-        <button type="button" className="btn btn-small" title="Clear all steps of active pattern" onClick={() => services.store.execute(clearPattern(doc, doc.activePatternId))}>
+        <button
+          type="button"
+          className="btn btn-small"
+          title="Clear all steps of active pattern"
+          onClick={() => services.store.execute(clearPattern(doc, doc.activePatternId))}
+        >
           CLEAR
         </button>
         <button
@@ -266,7 +287,9 @@ export function PatternBar({ clip, onCopy }: { clip: PatternClipboard | null; on
           aria-label="Pattern length"
           title="Pattern length in steps"
           value={active.stepCount}
-          onChange={(event) => services.store.execute(setPatternLength(doc, doc.activePatternId, Number(event.target.value)))}
+          onChange={(event) =>
+            services.store.execute(setPatternLength(doc, doc.activePatternId, Number(event.target.value)))
+          }
         >
           <option value={16}>16</option>
           <option value={32}>32</option>

@@ -230,7 +230,9 @@ describe("pattern commands", () => {
     store.execute(duplicatePattern(store.doc, store.doc.activePatternId));
     const source = store.doc.patterns[0];
     store.execute(clearPattern(store.doc, store.doc.activePatternId));
-    store.execute(pastePattern(store.doc, { stepCount: source.stepCount, rows: source.rows, notes: source.notes ?? {} }));
+    store.execute(
+      pastePattern(store.doc, { stepCount: source.stepCount, rows: source.rows, notes: source.notes ?? {} }),
+    );
     expect(store.doc.patterns.find((p) => p.id === store.doc.activePatternId)!.rows).toEqual(source.rows);
     store.undo();
     const cleared = store.doc.patterns.find((p) => p.id === store.doc.activePatternId)!;
@@ -442,7 +444,9 @@ describe("instrument tracks and notes", () => {
   it("addNote/moveNote/resizeNote/setNoteVelocity/deleteNote round-trip with undo", () => {
     const doc = createDefaultProject();
     const store = new ProjectStore(doc);
-    const bass = store.doc.tracks.find((t): t is import("../src/project-model/types").InstrumentTrack => t.kind === "instrument")!;
+    const bass = store.doc.tracks.find(
+      (t): t is import("../src/project-model/types").InstrumentTrack => t.kind === "instrument",
+    )!;
     store.execute(addNote(store.doc, bass.id, { pitch: 36, start: 480, duration: 240, velocity: 0.8 }));
     let notes = store.doc.patterns[0].notes[bass.id];
     expect(notes).toHaveLength(5);
@@ -473,18 +477,30 @@ describe("instrument tracks and notes", () => {
   it("setInstrumentParam clamps and undoes; setInstrumentSample round-trips", () => {
     const doc = createDefaultProject();
     const store = new ProjectStore(doc);
-    const track = store.doc.tracks.find((t): t is import("../src/project-model/types").InstrumentTrack => t.kind === "instrument")!;
+    const track = store.doc.tracks.find(
+      (t): t is import("../src/project-model/types").InstrumentTrack => t.kind === "instrument",
+    )!;
     store.execute(setInstrumentParam(store.doc, track.id, "decay", 99));
-    const edited = store.doc.tracks.find((t): t is import("../src/project-model/types").InstrumentTrack => t.kind === "instrument")!;
+    const edited = store.doc.tracks.find(
+      (t): t is import("../src/project-model/types").InstrumentTrack => t.kind === "instrument",
+    )!;
     expect(edited.params.decay).toBe(4);
     store.undo();
-    const restored = store.doc.tracks.find((t): t is import("../src/project-model/types").InstrumentTrack => t.kind === "instrument")!;
+    const restored = store.doc.tracks.find(
+      (t): t is import("../src/project-model/types").InstrumentTrack => t.kind === "instrument",
+    )!;
     expect(restored.params.decay).toBeCloseTo(0.9, 5);
 
     store.execute(setInstrumentSample(store.doc, track.id, "factory.tonal.stab"));
-    expect(store.doc.tracks.find((t): t is import("../src/project-model/types").InstrumentTrack => t.kind === "instrument")!.sampleId).toBe("factory.tonal.stab");
+    expect(
+      store.doc.tracks.find((t): t is import("../src/project-model/types").InstrumentTrack => t.kind === "instrument")!
+        .sampleId,
+    ).toBe("factory.tonal.stab");
     store.undo();
-    expect(store.doc.tracks.find((t): t is import("../src/project-model/types").InstrumentTrack => t.kind === "instrument")!.sampleId).toBe(track.sampleId);
+    expect(
+      store.doc.tracks.find((t): t is import("../src/project-model/types").InstrumentTrack => t.kind === "instrument")!
+        .sampleId,
+    ).toBe(track.sampleId);
   });
 
   it("deleteTrack removes notes of the deleted instrument track", () => {
@@ -646,20 +662,16 @@ describe("automation, lfo and macros", () => {
     const doc = createDefaultProject();
     const store = new ProjectStore(doc);
     const trackId = doc.tracks[0].id;
-    expect(() =>
-      addAutomationLane(store.doc, { kind: "trackGain", trackId: "track-missing" }),
-    ).toThrow(/Track/);
+    expect(() => addAutomationLane(store.doc, { kind: "trackGain", trackId: "track-missing" })).toThrow(/Track/);
     expect(() =>
       addAutomationLane(store.doc, { kind: "fxParam", trackId, fxId: "fx-missing", paramId: "lowGain" }),
     ).toThrow(/Effect/);
-    expect(() =>
-      addAutomationLane(store.doc, { kind: "fxParam", trackId }),
-    ).toThrow(/fxParam target requires fxId/);
+    expect(() => addAutomationLane(store.doc, { kind: "fxParam", trackId })).toThrow(/fxParam target requires fxId/);
     store.execute(addEffect(store.doc, trackId, "eq"));
     const fxId = getDrumTrack(store.doc).effects[0].id;
-    expect(() =>
-      addAutomationLane(store.doc, { kind: "fxParam", trackId, fxId }),
-    ).toThrow(/fxParam target requires paramId/);
+    expect(() => addAutomationLane(store.doc, { kind: "fxParam", trackId, fxId })).toThrow(
+      /fxParam target requires paramId/,
+    );
     const instrument = doc.tracks.find((t) => t.kind === "instrument")!;
     expect(() =>
       addAutomationLane(store.doc, { kind: "instParam", trackId: instrument.id, paramId: "decay" }),
@@ -712,10 +724,16 @@ describe("sliceToPads (chop beats)", () => {
   const drum = getDrumTrack(doc);
 
   it("chops slices onto pads as [start, end) regions with names", () => {
-    const cmd = sliceToPads(doc, drum.id, "user.break", [
-      { start: 0, end: 0.25 },
-      { start: 0.25, end: 0.5 },
-    ], "Break");
+    const cmd = sliceToPads(
+      doc,
+      drum.id,
+      "user.break",
+      [
+        { start: 0, end: 0.25 },
+        { start: 0.25, end: 0.5 },
+      ],
+      "Break",
+    );
     const next = cmd.execute(doc);
     const pads = (next.tracks.find((t) => t.id === drum.id) as typeof drum).pads;
     expect(pads[0]).toMatchObject({ assetId: "user.break", sliceStart: 0, sliceEnd: 0.25, name: "Break 01" });

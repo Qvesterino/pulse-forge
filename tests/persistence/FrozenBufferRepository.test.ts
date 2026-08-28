@@ -58,14 +58,9 @@ describe("restoreFrozenTracks", () => {
     bank.add("frozen-cached-2", fakeBuffer());
     const repo = new FrozenBufferRepository();
 
-    const missing = await restoreFrozenTracks(
-      doc,
-      bank,
-      repo,
-      async () => {
-        throw new Error("should not decode when the bank already has the buffer");
-      },
-    );
+    const missing = await restoreFrozenTracks(doc, bank, repo, async () => {
+      throw new Error("should not decode when the bank already has the buffer");
+    });
 
     expect(missing).toEqual([]);
   });
@@ -77,14 +72,9 @@ describe("restoreFrozenTracks", () => {
     await repo.save("frozen-corrupt-2", new ArrayBuffer(4));
     const bank = new SampleBank();
 
-    const missing = await restoreFrozenTracks(
-      doc,
-      bank,
-      repo,
-      async () => {
-        throw new Error("decode failed");
-      },
-    );
+    const missing = await restoreFrozenTracks(doc, bank, repo, async () => {
+      throw new Error("decode failed");
+    });
 
     expect(missing.sort()).toEqual(["frozen-corrupt", "frozen-corrupt-2"]);
     expect(bank.size).toBe(0);

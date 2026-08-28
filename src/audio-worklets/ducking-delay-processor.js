@@ -62,8 +62,8 @@ class DuckingDelayProcessor extends AudioWorkletProcessor {
     const relSec = Math.max(0.02, parameters.duckRelease[0]);
     const mix = Math.max(0, Math.min(1, parameters.mix[0]));
 
-    const delaySamples = delayMs * sr / 1000;
-    const toneAlpha = 1 - Math.exp(-2 * Math.PI * tone / sr);
+    const delaySamples = (delayMs * sr) / 1000;
+    const toneAlpha = 1 - Math.exp((-2 * Math.PI * tone) / sr);
     const threshLin = Math.pow(10, threshDb / 20);
     const atkCoef = Math.exp(-1 / (sr * atkSec));
     const relCoef = Math.exp(-1 / (sr * relSec));
@@ -74,9 +74,8 @@ class DuckingDelayProcessor extends AudioWorkletProcessor {
 
       // Envelope follower on dry (peak stereo)
       const peak = Math.abs(l) > Math.abs(r) ? Math.abs(l) : Math.abs(r);
-      this.env = peak > this.env
-        ? atkCoef * this.env + (1 - atkCoef) * peak
-        : relCoef * this.env + (1 - relCoef) * peak;
+      this.env =
+        peak > this.env ? atkCoef * this.env + (1 - atkCoef) * peak : relCoef * this.env + (1 - relCoef) * peak;
       if (Math.abs(this.env) < 1e-20) this.env = 0;
 
       // Duck gain: 1 when dry below thresh, 1-duckAmt when dry loud

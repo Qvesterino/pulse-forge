@@ -17,7 +17,9 @@ function memoryStorage(initial?: string): Storage {
     removeItem: (key) => data.delete(key),
     clear: () => data.clear(),
     key: (index) => [...data.keys()][index] ?? null,
-    get length() { return data.size; },
+    get length() {
+      return data.size;
+    },
   };
 }
 

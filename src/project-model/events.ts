@@ -19,12 +19,7 @@ export interface PatternEventPlan {
  * Realtime and offline rendering both use this helper so loop boundaries and
  * note timing cannot drift between playback and export.
  */
-export function noteEventsInWindow(
-  pattern: Pattern,
-  base: number,
-  fromTick: number,
-  toTick: number,
-): ScheduledNote[] {
+export function noteEventsInWindow(pattern: Pattern, base: number, fromTick: number, toTick: number): ScheduledNote[] {
   const patternTicks = pattern.stepCount * STEP_TICKS;
   if (patternTicks <= 0 || toTick <= fromTick) return [];
   const events: ScheduledNote[] = [];

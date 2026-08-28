@@ -5,10 +5,7 @@ import type { EffectRuntime } from "../effects/types";
  * Processor must be pre-loaded via `loadWorkletModules()` — callers gate
  * behind `isWorkletReady("comb", ctx)`.
  */
-export function createCombNode(
-  ctx: BaseAudioContext,
-  instance: { params: Record<string, number> },
-): EffectRuntime {
+export function createCombNode(ctx: BaseAudioContext, instance: { params: Record<string, number> }): EffectRuntime {
   const node = new AudioWorkletNode(ctx, "comb-processor", {
     numberOfInputs: 1,
     numberOfOutputs: 1,

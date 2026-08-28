@@ -1,6 +1,14 @@
 import { useState } from "react";
 import { useDoc, useServices } from "./context";
-import { addToGroup, deleteTrack, removeFromGroup, setMasterConfig, setReturnGain, setTrackParams, setTrackSend } from "../commands/commands";
+import {
+  addToGroup,
+  deleteTrack,
+  removeFromGroup,
+  setMasterConfig,
+  setReturnGain,
+  setTrackParams,
+  setTrackSend,
+} from "../commands/commands";
 import type { Track } from "../project-model/types";
 import { Slider } from "./controls";
 import { Meter } from "./Meter";
@@ -97,7 +105,9 @@ function MasterStrip() {
               title={limiterTitle}
               aria-label="Master limiter"
               aria-pressed={doc.master.limiterEnabled}
-              onClick={() => services.store.execute(setMasterConfig(doc, { limiterEnabled: !doc.master.limiterEnabled }))}
+              onClick={() =>
+                services.store.execute(setMasterConfig(doc, { limiterEnabled: !doc.master.limiterEnabled }))
+              }
             >
               LIMIT
             </button>
@@ -107,7 +117,9 @@ function MasterStrip() {
               title={clipperTitle}
               aria-label="Master soft clipper"
               aria-pressed={doc.master.clipperEnabled}
-              onClick={() => services.store.execute(setMasterConfig(doc, { clipperEnabled: !doc.master.clipperEnabled }))}
+              onClick={() =>
+                services.store.execute(setMasterConfig(doc, { clipperEnabled: !doc.master.clipperEnabled }))
+              }
             >
               CLIP
             </button>
@@ -158,9 +170,13 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
                 }}
               >
                 <option value="">UNGROUPED</option>
-                {doc.tracks.filter((candidate) => candidate.kind === "group").map((group) => (
-                  <option key={group.id} value={group.id}>{group.name}</option>
-                ))}
+                {doc.tracks
+                  .filter((candidate) => candidate.kind === "group")
+                  .map((group) => (
+                    <option key={group.id} value={group.id}>
+                      {group.name}
+                    </option>
+                  ))}
               </select>
             </label>
           )}

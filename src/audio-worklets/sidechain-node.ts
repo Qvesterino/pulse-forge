@@ -17,7 +17,7 @@ export function createSidechainNode(
   instance: { params: Record<string, number> },
 ): EffectRuntime {
   const workletNode = new AudioWorkletNode(ctx, "sidechain-processor", {
-    numberOfInputs: 2,   // [0]=main, [1]=sidechain
+    numberOfInputs: 2, // [0]=main, [1]=sidechain
     numberOfOutputs: 1,
     channelCount: 2,
     channelInterpretation: "speakers",
@@ -61,7 +61,11 @@ export function createSidechainNode(
      */
     setSidechainInput(node: AudioNode | null) {
       // Disconnect any existing sidechain source from input 1
-      try { input.disconnect(workletNode, 0, 1); } catch { /* not connected */ }
+      try {
+        input.disconnect(workletNode, 0, 1);
+      } catch {
+        /* not connected */
+      }
       if (node) {
         // Connect source output 0 -> worklet input 1
         node.connect(workletNode, 0, 1);

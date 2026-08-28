@@ -5,10 +5,7 @@ import type { EffectRuntime } from "../effects/types";
  * Processor must be pre-loaded via `loadWorkletModules()` — callers gate
  * behind `isWorkletReady("vowel", ctx)`.
  */
-export function createVowelNode(
-  ctx: BaseAudioContext,
-  instance: { params: Record<string, number> },
-): EffectRuntime {
+export function createVowelNode(ctx: BaseAudioContext, instance: { params: Record<string, number> }): EffectRuntime {
   const node = new AudioWorkletNode(ctx, "vowel-processor", {
     numberOfInputs: 1,
     numberOfOutputs: 1,

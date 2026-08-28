@@ -9,11 +9,7 @@
  *   4. Fallback safety: non-immutable command → legacy snapshot()
  */
 import { describe, expect, it } from "vitest";
-import {
-  applyDocDelta,
-  computeDocDelta,
-  deepEqualRef,
-} from "../src/commands/docDelta";
+import { applyDocDelta, computeDocDelta, deepEqualRef } from "../src/commands/docDelta";
 import {
   createScene,
   createPattern,
@@ -55,7 +51,8 @@ import {
   unfreezeTrack,
   __resetSnapshotVerificationFallbacks,
   __snapshotVerificationFallbacks,
-} from "../src/commands/commands";import type { Command } from "../src/commands/types";
+} from "../src/commands/commands";
+import type { Command } from "../src/commands/types";
 import type { ProjectDocument } from "../src/project-model/types";
 import {
   activePatternOf,
@@ -159,9 +156,7 @@ describe("docDelta — nested arrays (rows, points, notes)", () => {
     row[3] = 0.9;
     const b = {
       ...a,
-      patterns: a.patterns.map((p) =>
-        p.id === pattern.id ? { ...p, rows: { ...p.rows, [padId]: row } } : p,
-      ),
+      patterns: a.patterns.map((p) => (p.id === pattern.id ? { ...p, rows: { ...p.rows, [padId]: row } } : p)),
     };
     const delta = computeDocDelta(a, b);
     expect(delta.ops.length).toBe(1);
@@ -170,7 +165,11 @@ describe("docDelta — nested arrays (rows, points, notes)", () => {
 
   it("automation points array change", () => {
     const a = { ...house(), automation: [] };
-    const lane = { id: "lane-1", target: { kind: "trackGain" as const, trackId: drum(a).id }, points: [{ tick: 0, value: 0.5 }] };
+    const lane = {
+      id: "lane-1",
+      target: { kind: "trackGain" as const, trackId: drum(a).id },
+      points: [{ tick: 0, value: 0.5 }],
+    };
     const b = { ...a, automation: [lane] };
     const delta = computeDocDelta(a, b);
     expect(applyDocDelta(a, delta.ops)).toEqual(b);
@@ -347,7 +346,10 @@ describe("snapshot commands — execute/undo round-trip", () => {
   it("removeEffect", () => {
     const doc = house();
     const withFx = addEffect(doc, drum(doc).id, "eq").execute(doc);
-    roundTrip(removeEffect(withFx, drum(withFx).id, withFx.tracks.find((t) => t.id === drum(withFx).id)!.effects[0].id), withFx);
+    roundTrip(
+      removeEffect(withFx, drum(withFx).id, withFx.tracks.find((t) => t.id === drum(withFx).id)!.effects[0].id),
+      withFx,
+    );
   });
   it("moveEffect", () => {
     const doc = house();

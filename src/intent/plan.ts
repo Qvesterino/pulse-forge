@@ -19,9 +19,8 @@ export function generateOptionsFromIntent(intent: IntentSpec): GenerateOptions {
     temperature: intent.controls.temperature,
     replaceMode: intent.replaceMode,
     drumTrackId: intent.targetTracks.drumTrackId ?? undefined,
-    instrumentTrackIds: intent.targetTracks.instrumentTrackIds.length > 0
-      ? [...intent.targetTracks.instrumentTrackIds]
-      : undefined,
+    instrumentTrackIds:
+      intent.targetTracks.instrumentTrackIds.length > 0 ? [...intent.targetTracks.instrumentTrackIds] : undefined,
     sourcePatternId: intent.sourcePatternId ?? undefined,
     applyGrooveSettings: intent.applyGrooveSettings,
   };
@@ -40,15 +39,22 @@ export function planGeneration(input: IntentInput | IntentSpec, doc: ProjectDocu
   const inputContentHash = sourcePatternContentHash(doc, options.sourcePatternId);
   const seed = generationSeed(intent, effectiveSeed, groove.id);
   const recipe = createGenerationRecipe(options, groove.id, inputContentHash);
-  const rolePlans = Object.fromEntries(([
-    ["drums", intent.targetTracks.drumTrackId ? [intent.targetTracks.drumTrackId] : []],
-    ["bass", [...intent.targetTracks.instrumentTrackIds]],
-    ["chords", [...intent.targetTracks.instrumentTrackIds]],
-    ["lead", [...intent.targetTracks.instrumentTrackIds]],
-  ] as const).map(([role, targetTrackIds]) => [role, {
-    enabled: intent.roles.includes(role as IntentRole),
-    targetTrackIds,
-  }])) as GenerationPlan["rolePlans"];
+  const rolePlans = Object.fromEntries(
+    (
+      [
+        ["drums", intent.targetTracks.drumTrackId ? [intent.targetTracks.drumTrackId] : []],
+        ["bass", [...intent.targetTracks.instrumentTrackIds]],
+        ["chords", [...intent.targetTracks.instrumentTrackIds]],
+        ["lead", [...intent.targetTracks.instrumentTrackIds]],
+      ] as const
+    ).map(([role, targetTrackIds]) => [
+      role,
+      {
+        enabled: intent.roles.includes(role as IntentRole),
+        targetTrackIds,
+      },
+    ]),
+  ) as GenerationPlan["rolePlans"];
   return {
     intent,
     options,
@@ -85,5 +91,7 @@ export function planGeneration(input: IntentInput | IntentSpec, doc: ProjectDocu
 
 /** Expose deterministic stream objects for future providers without sharing mutable RNG state. */
 export function planRandomStreams(plan: GenerationPlan): Record<string, () => number> {
-  return Object.fromEntries(Object.entries(plan.subSeeds).map(([name, seed]) => [name, forkRandom(seed, "stream")])) as Record<string, () => number>;
+  return Object.fromEntries(
+    Object.entries(plan.subSeeds).map(([name, seed]) => [name, forkRandom(seed, "stream")]),
+  ) as Record<string, () => number>;
 }

@@ -11,7 +11,13 @@ export interface SchedulerDeps {
   /** Runtime-only delay applied to project-generated audio events. */
   getScheduleOffsetSec?(): number;
   getMode(): PlayMode;
-  trigger(trackId: string, pad: DrumTrack["pads"][number], when: number, velocity: number, locks?: Partial<Record<import("../project-model/types").StepLockKey, number>>): void;
+  trigger(
+    trackId: string,
+    pad: DrumTrack["pads"][number],
+    when: number,
+    velocity: number,
+    locks?: Partial<Record<import("../project-model/types").StepLockKey, number>>,
+  ): void;
   noteOn(trackId: string, pitch: number, velocity: number, when: number, durationSec: number): void;
   applyAutomation(fromTick: number, toTick: number, relOf: (tick: number) => number, scheduleOffsetSec?: number): void;
   /**
@@ -149,10 +155,7 @@ export class Scheduler {
           ? transport.loopEnd
           : mode === "pattern"
             ? STEP_TICKS * getActivePattern(doc).stepCount
-            : Math.max(
-                0,
-                ...doc.arrangement.clips.map((c) => (c.startBar + c.lengthBars) * BAR_TICKS),
-              );
+            : Math.max(0, ...doc.arrangement.clips.map((c) => (c.startBar + c.lengthBars) * BAR_TICKS));
       const position = transport.position;
       if (position >= loopEnd || position < loopStart) {
         transport.seek(loopStart);
@@ -185,10 +188,9 @@ export class Scheduler {
       const pattern = getActivePattern(currentDoc);
       const patternTicks = STEP_TICKS * pattern.stepCount;
       const pending = this.pendingLaunch;
-      const boundary =
-        pending && pending.atTick > windowStart && pending.atTick <= windowEnd ? pending.atTick : null;
+      const boundary = pending && pending.atTick > windowStart && pending.atTick <= windowEnd ? pending.atTick : null;
 
-        this.schedulePatternWindow(pattern, 0, windowStart, boundary ?? windowEnd);
+      this.schedulePatternWindow(pattern, 0, windowStart, boundary ?? windowEnd);
       automationCtx = { base: 0, patternTicks };
 
       if (boundary !== null && pending) {
@@ -210,14 +212,15 @@ export class Scheduler {
       }
       // In pattern mode, the active scene's intensity is fed from the static
       // value (no curve is meaningful inside a one-bar loop).
-      const activeScene = currentDoc.scenes.find((s) => s.id === currentDoc.activePatternId) ??
+      const activeScene =
+        currentDoc.scenes.find((s) => s.id === currentDoc.activePatternId) ??
         currentDoc.scenes.find((s) => s.patternId === currentDoc.activePatternId);
       this.deps.setSceneIntensity?.(activeScene ? Math.max(0, Math.min(1, activeScene.intensity)) : 0.7);
     } else {
       const clips = [...doc.arrangement.clips].sort((a, b) => a.startBar - b.startBar);
       // Find the active scene (whose clip contains the playhead) for intensity
       // computation and the marker-firing loop.
-      let activeScene: typeof doc.scenes[number] | null = null;
+      let activeScene: (typeof doc.scenes)[number] | null = null;
       let activeClipStart = 0;
       for (const clip of clips) {
         const clipStart = clip.startBar * BAR_TICKS;
@@ -312,7 +315,12 @@ export class Scheduler {
 
     if (automationCtx) {
       const { base, patternTicks } = automationCtx;
-      this.deps.applyAutomation(windowStart, windowEnd, (tick) => mod(tick - base, patternTicks), this.scheduleOffsetSec());
+      this.deps.applyAutomation(
+        windowStart,
+        windowEnd,
+        (tick) => mod(tick - base, patternTicks),
+        this.scheduleOffsetSec(),
+      );
     }
 
     // Track modulators share the window — boundaries map through the transport
@@ -331,12 +339,7 @@ export class Scheduler {
     this.stats.windows += 1;
   }
 
-  private schedulePatternWindow(
-    pattern: Pattern,
-    base: number,
-    windowStart: number,
-    windowEnd: number,
-  ): void {
+  private schedulePatternWindow(pattern: Pattern, base: number, windowStart: number, windowEnd: number): void {
     const transport = this.deps.getTransport();
     const doc = this.deps.getProject();
     const now = this.deps.getAudioTime();
@@ -369,7 +372,13 @@ export class Scheduler {
       if (!track || track.kind !== "instrument") continue;
       const when = timeAt(event.tick) + scheduleOffsetSec;
       if (!audible(when)) continue;
-      this.deps.noteOn(track.id, event.note.pitch, event.note.velocity, when, event.note.duration * transport.secondsPerTick);
+      this.deps.noteOn(
+        track.id,
+        event.note.pitch,
+        event.note.velocity,
+        when,
+        event.note.duration * transport.secondsPerTick,
+      );
       // MIDI output for instrument tracks
       if (this.deps.midiNoteOn && track.midiOutput?.enabled) {
         const ch = (track.midiOutput.channel || 1) - 1;

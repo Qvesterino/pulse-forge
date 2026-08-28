@@ -184,7 +184,8 @@ class LimiterProcessor extends AudioWorkletProcessor {
     // Metering: post gain reduction ~20x/sec at most.
     const now = typeof globalThis.currentTime === "number" ? globalThis.currentTime : this.grWindowStart + len / sr;
     if (now - this.grWindowStart >= 0.05) {
-      const grDb = this.grAccumulator > 1e-4 ? Math.min(24, -20 * Math.log10(Math.max(1e-4, 1 - this.grAccumulator))) : 0;
+      const grDb =
+        this.grAccumulator > 1e-4 ? Math.min(24, -20 * Math.log10(Math.max(1e-4, 1 - this.grAccumulator))) : 0;
       this.grAccumulator = 0;
       this.grWindowStart = now;
       if (grDb !== this.postedGr) {

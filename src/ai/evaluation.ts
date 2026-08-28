@@ -147,12 +147,13 @@ export function canonicalizePattern(doc: ProjectDocument, pattern: Pattern): Can
       });
     }
   }
-  notes.sort((a, b) =>
-    a.trackIndex - b.trackIndex ||
-    a.start - b.start ||
-    a.pitch - b.pitch ||
-    a.duration - b.duration ||
-    a.velocity - b.velocity,
+  notes.sort(
+    (a, b) =>
+      a.trackIndex - b.trackIndex ||
+      a.start - b.start ||
+      a.pitch - b.pitch ||
+      a.duration - b.duration ||
+      a.velocity - b.velocity,
   );
 
   const stepMeta: CanonicalStepMeta[] = [];
@@ -221,27 +222,26 @@ export function measurePattern(pattern: Pattern): PatternMetrics {
 
   const notes = allNotes(pattern);
   const pitches = notes.map((note) => note.pitch);
-  const maxNoteEnd = notes.length > 0
-    ? Math.max(...notes.map((note) => note.start + note.duration))
-    : null;
+  const maxNoteEnd = notes.length > 0 ? Math.max(...notes.map((note) => note.start + note.duration)) : null;
 
   return {
     drumRows: rows.length,
     drumHits,
-    drumDensity: stableNumber(rows.length > 0 && pattern.stepCount > 0
-      ? drumHits / (rows.length * pattern.stepCount)
-      : 0),
+    drumDensity: stableNumber(
+      rows.length > 0 && pattern.stepCount > 0 ? drumHits / (rows.length * pattern.stepCount) : 0,
+    ),
     downbeatHits,
     downbeatRatio: stableNumber(drumHits > 0 ? downbeatHits / drumHits : 0),
-    stepMetaEntries: Object.values(pattern.stepMeta ?? {})
-      .reduce((total, steps) => total + Object.keys(steps).length, 0),
+    stepMetaEntries: Object.values(pattern.stepMeta ?? {}).reduce(
+      (total, steps) => total + Object.keys(steps).length,
+      0,
+    ),
     melodicNotes: notes.length,
     melodicDensity: stableNumber(pattern.stepCount > 0 ? notes.length / pattern.stepCount : 0),
     pitchMin: pitches.length > 0 ? Math.min(...pitches) : null,
     pitchMax: pitches.length > 0 ? Math.max(...pitches) : null,
-    pitchMean: pitches.length > 0
-      ? stableNumber(pitches.reduce((sum, pitch) => sum + pitch, 0) / pitches.length)
-      : null,
+    pitchMean:
+      pitches.length > 0 ? stableNumber(pitches.reduce((sum, pitch) => sum + pitch, 0) / pitches.length) : null,
     maxNoteEnd,
   };
 }

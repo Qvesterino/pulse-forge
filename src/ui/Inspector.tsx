@@ -1,7 +1,13 @@
 import { useState } from "react";
 import { useDoc, useServices } from "./context";
 import { SliceLab } from "./SliceLab";
-import { resetPadSlice, setPadParams, setTrackParams, setInstrumentParam, setInstrumentSample } from "../commands/commands";
+import {
+  resetPadSlice,
+  setPadParams,
+  setTrackParams,
+  setInstrumentParam,
+  setInstrumentSample,
+} from "../commands/commands";
 import type { InstrumentKind, Track } from "../project-model/types";
 import { FACTORY_ASSETS } from "../sample-library/manifest";
 import { INSTRUMENT_DEFS } from "../instruments/registry";
@@ -55,7 +61,9 @@ export function Inspector({ track, selectedPadId }: { track: Track; selectedPadI
     const sampleLabel = SAMPLE_BROWSER_KINDS[track.instrument];
     return (
       <aside className="inspector" aria-label="Inspector">
-        <h2 className="panel-title">{def.name.toUpperCase()} — {track.name}</h2>
+        <h2 className="panel-title">
+          {def.name.toUpperCase()} — {track.name}
+        </h2>
 
         <PresetBrowser track={track} />
 
@@ -79,7 +87,11 @@ export function Inspector({ track, selectedPadId }: { track: Track; selectedPadI
             <label key={p.id} className="fx-param-select">
               <span className="slider-label">{p.label}</span>
               <select
-                value={p.options.some((o) => o.value === (track.params[p.id] ?? p.default)) ? track.params[p.id] ?? p.default : p.default}
+                value={
+                  p.options.some((o) => o.value === (track.params[p.id] ?? p.default))
+                    ? (track.params[p.id] ?? p.default)
+                    : p.default
+                }
                 onChange={(event) =>
                   services.store.execute(setInstrumentParam(doc, track.id, p.id, Number(event.target.value)))
                 }
@@ -136,9 +148,7 @@ export function Inspector({ track, selectedPadId }: { track: Track; selectedPadI
           SLICE LAB
         </button>
       </div>
-      {sliceLabOpen && track.kind === "drum" && (
-        <SliceLab track={track} onClose={() => setSliceLabOpen(false)} />
-      )}
+      {sliceLabOpen && track.kind === "drum" && <SliceLab track={track} onClose={() => setSliceLabOpen(false)} />}
 
       <h2 className="panel-title">PAD — {pad.name}</h2>
 
@@ -161,7 +171,11 @@ export function Inspector({ track, selectedPadId }: { track: Track; selectedPadI
               max={services.bank.get(pad.assetId)?.duration ?? 9999}
               step={0.001}
               value={(pad.sliceStart ?? 0).toFixed(3)}
-              onChange={(event) => services.store.execute(setPadParams(doc, pad.id, { sliceStart: Math.max(0, Number(event.target.value) || 0) }))}
+              onChange={(event) =>
+                services.store.execute(
+                  setPadParams(doc, pad.id, { sliceStart: Math.max(0, Number(event.target.value) || 0) }),
+                )
+              }
             />
           </label>
           <label className="slice-number">
@@ -172,7 +186,13 @@ export function Inspector({ track, selectedPadId }: { track: Track; selectedPadI
               max={services.bank.get(pad.assetId)?.duration ?? 9999}
               step={0.001}
               value={(pad.sliceEnd ?? services.bank.get(pad.assetId)?.duration ?? 0).toFixed(3)}
-              onChange={(event) => services.store.execute(setPadParams(doc, pad.id, { sliceEnd: Math.max((pad.sliceStart ?? 0) + 0.001, Number(event.target.value) || 0) }))}
+              onChange={(event) =>
+                services.store.execute(
+                  setPadParams(doc, pad.id, {
+                    sliceEnd: Math.max((pad.sliceStart ?? 0) + 0.001, Number(event.target.value) || 0),
+                  }),
+                )
+              }
             />
           </label>
           <Slider
@@ -180,7 +200,10 @@ export function Inspector({ track, selectedPadId }: { track: Track; selectedPadI
             label="Fade In"
             value={pad.sliceFadeIn ?? 0}
             min={0}
-            max={Math.max(0.001, (pad.sliceEnd ?? services.bank.get(pad.assetId)?.duration ?? 1) - (pad.sliceStart ?? 0))}
+            max={Math.max(
+              0.001,
+              (pad.sliceEnd ?? services.bank.get(pad.assetId)?.duration ?? 1) - (pad.sliceStart ?? 0),
+            )}
             defaultValue={0}
             format={(v) => `${v.toFixed(3)} s`}
             onCommit={(value) => services.store.execute(setPadParams(doc, pad.id, { sliceFadeIn: value }))}
@@ -190,7 +213,10 @@ export function Inspector({ track, selectedPadId }: { track: Track; selectedPadI
             label="Fade Out"
             value={pad.sliceFadeOut ?? 0}
             min={0}
-            max={Math.max(0.001, (pad.sliceEnd ?? services.bank.get(pad.assetId)?.duration ?? 1) - (pad.sliceStart ?? 0))}
+            max={Math.max(
+              0.001,
+              (pad.sliceEnd ?? services.bank.get(pad.assetId)?.duration ?? 1) - (pad.sliceStart ?? 0),
+            )}
             defaultValue={0}
             format={(v) => `${v.toFixed(3)} s`}
             onCommit={(value) => services.store.execute(setPadParams(doc, pad.id, { sliceFadeOut: value }))}
@@ -204,7 +230,11 @@ export function Inspector({ track, selectedPadId }: { track: Track; selectedPadI
             >
               REVERSE
             </button>
-            <button type="button" className="btn btn-small" onClick={() => services.store.execute(resetPadSlice(doc, pad.id))}>
+            <button
+              type="button"
+              className="btn btn-small"
+              onClick={() => services.store.execute(resetPadSlice(doc, pad.id))}
+            >
               RESET
             </button>
           </div>
