@@ -44,7 +44,8 @@ export type EffectType =
   | "utility"
   | "gate";
 
-export type InstrumentKind = "sampler" | "analog" | "bass" | "808" | "texture" | "wavetable" | "granular";
+export type InstrumentKind =
+  "sampler" | "analog" | "bass" | "808" | "texture" | "wavetable" | "granular" | "keys" | "pluck";
 
 export interface EffectInstance {
   id: ID;
@@ -92,6 +93,16 @@ export interface DrumPad {
   sliceFadeOut?: number;
   /** Play the slice backwards without changing its pitch offset. */
   sliceReverse?: boolean;
+  /** Optional synth voice — when set and assetId is null the pad synthesizes HH/perc without a sample. */
+  synth?: DrumSynthConfig | null;
+}
+
+export type DrumSynthType = "hatClosed" | "hatOpen" | "clap" | "perc" | "cowbell";
+
+export interface DrumSynthConfig {
+  type: DrumSynthType;
+  decay: number; // 0.05..1.2 seconds
+  tone: number; // 1000..12000 Hz
 }
 
 export interface FrozenState {
@@ -246,8 +257,10 @@ export function clampStepLock(key: string, value: number): number {
 /**
  * Per-step performance metadata (probability / ratchet / microtiming).
  * All fields are optional — an absent entry means "straight": probability 1,
- * ratchet 1, microtiming 0. `locks` holds per-step parameter overrides
- * (p-locks) — absolute values that replace the pad's base params for this hit.
+ * ratchet 1, microtiming 0, amount 1. `locks` holds per-step parameter
+ * overrides (p-locks) — absolute values that replace the pad's base params
+ * for this hit. `amount` is per-step modulation depth 0..1 that scales
+ * velocity and intensity-driven macros for this hit (ghost vs accent).
  */
 export interface StepMeta {
   /** 0..1 — chance the hit plays on each pass (deterministic seeded roll). */
@@ -258,6 +271,8 @@ export interface StepMeta {
   microtiming?: number;
   /** Per-step param locks — absolute overrides for this hit. */
   locks?: Partial<Record<StepLockKey, number>>;
+  /** 0..1 — per-step amount (velocity/mod depth). Default 1 = full. */
+  amount?: number;
 }
 
 /** Reproducibility recipe attached to content produced by the local Intent Engine. */
@@ -475,6 +490,8 @@ export interface MacroMapping {
   amount: number;
   /** Modulation source. Default "macro" for backwards compatibility. */
   source?: "macro" | "intensity" | "midiCC";
+  /** Generic modulation target — when present, overrides trackId/param for FX/inst params. */
+  target?: AutomationTarget;
   /** Direct CC number mapping (when source === "midiCC"). */
   ccNumber?: number;
   /** MIDI channel filter for CC mapping (undefined = all channels). */

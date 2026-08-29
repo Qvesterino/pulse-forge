@@ -18,6 +18,7 @@ const formatDb = (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(1)} dB`;
 const formatHz = (v: number) => `${Math.round(v)} Hz`;
 const formatMs = (v: number) => `${Math.round(v * 1000)} ms`;
 const formatPct = (v: number) => `${Math.round(v * 100)}%`;
+const formatSec = (v: number) => `${v.toFixed(2)} s`;
 
 function noiseBuffer(ctx: BaseAudioContext, seed: number): AudioBuffer {
   const length = Math.floor(ctx.sampleRate);
@@ -1348,6 +1349,452 @@ const granular: InstrumentDefinition = {
   },
 };
 
+/* ---------------- Keys (FM/Rhodes) ---------------- */
+// 4-op FM electric piano: two parallel FM pairs (1->2 body, 3->4 bell) summed
+// through a shared lowpass and amp. Ratios are fixed (1:1 and 3.5:1) for
+// Rhodes/Wurli/Bell coverage; tine/bell control modulator index, body
+// controls carrier mix, damp shapes release and brightness decay.
+// All FM via AudioParam (a-rate), deterministic, no Worklet.
+
+const keys: InstrumentDefinition = {
+  kind: "keys",
+  name: "Keys",
+  params: [
+    { id: "tine", label: "TINE", min: 0, max: 1, default: 0.55, format: formatPct },
+    { id: "bell", label: "BELL", min: 0, max: 1, default: 0.3, format: formatPct },
+    { id: "body", label: "BODY", min: 0, max: 1, default: 0.6, format: formatPct },
+    { id: "damp", label: "DAMP", min: 0, max: 1, default: 0.45, format: formatPct },
+    { id: "tremolo", label: "TREM", min: 0, max: 1, default: 0.15, format: formatPct },
+    { id: "width", label: "WIDTH", min: 0, max: 1, default: 0.3, format: formatPct },
+    { id: "cutoff", label: "CUTOFF", min: 80, max: 16000, default: 4500, unit: "Hz", format: formatHz },
+    { id: "resonance", label: "RESO", min: 0.1, max: 8, default: 1.8, format: (v) => v.toFixed(2) },
+    { id: "attack", label: "ATTACK", min: 0.001, max: 2, default: 0.005, unit: "s", format: formatMs },
+    { id: "release", label: "RELEASE", min: 0.01, max: 4, default: 0.35, unit: "s", format: formatMs },
+    { id: "level", label: "LEVEL", min: -24, max: 6, default: -8, unit: "dB", format: formatDb },
+  ],
+  factory(ctx, track) {
+    const output = ctx.createGain();
+    output.gain.value = 1;
+    const p = { ...track.params };
+    const { voices, register, cleanup, findByPitch } = makeVoiceManager(8);
+    const liveFilters = new Set<BiquadFilterNode>();
+
+    const runtime: InstrumentRuntime = {
+      output,
+      noteOn(pitch, velocity, when, durationSec) {
+        const freq = midiToFreq(pitch);
+        const attack = Math.max(0.001, p.attack ?? 0.005);
+        const release = Math.max(0.01, p.release ?? 0.35);
+        const hold = Math.max(durationSec, attack + 0.02);
+        const off = when + hold;
+        const stopTime = off + release * 2 + 0.2;
+        const level = velocity * dbToLin(p.level ?? -8);
+        const tine = p.tine ?? 0.55;
+        const bell = p.bell ?? 0.3;
+        const body = p.body ?? 0.6;
+        const damp = p.damp ?? 0.45;
+        const trem = p.tremolo ?? 0.15;
+        const width = p.width ?? 0.3;
+
+        const amp = ctx.createGain();
+        amp.gain.setValueAtTime(0.0001, when);
+        amp.gain.exponentialRampToValueAtTime(Math.max(level, 0.0002), when + attack);
+        // Damp shortens the sustain tail for a more muted Rhodes
+        const sustain = 0.72 - damp * 0.22;
+        const dampRelease = release * (0.55 + damp * 0.7);
+        amp.gain.setTargetAtTime(Math.max(level * sustain, 0.0002), when + attack, 0.28);
+        amp.gain.setTargetAtTime(0.0001, off, dampRelease / 3);
+        amp.connect(output);
+
+        if (trem > 0.005) {
+          const lfo = ctx.createOscillator();
+          lfo.type = "sine";
+          lfo.frequency.value = 4.8;
+          const depth = ctx.createGain();
+          depth.gain.value = trem * 0.28;
+          lfo.connect(depth).connect(amp.gain);
+          lfo.start(when);
+          lfo.stop(stopTime + 0.1);
+        }
+
+        const filter = ctx.createBiquadFilter();
+        filter.type = "lowpass";
+        filter.frequency.value = Math.max(80, Math.min(16000, p.cutoff ?? 4500));
+        filter.Q.value = p.resonance ?? 1.8;
+        filter.connect(amp);
+        liveFilters.add(filter);
+
+        // Tremolo also wobbles filter a touch when damp is low (open)
+        if (trem > 0.02 && damp < 0.5) {
+          const flfo = ctx.createOscillator();
+          flfo.type = "sine";
+          flfo.frequency.value = 3.2;
+          const fdepth = ctx.createGain();
+          fdepth.gain.value = 220 * trem * (1 - damp);
+          flfo.connect(fdepth).connect(filter.frequency);
+          flfo.start(when);
+          flfo.stop(stopTime + 0.1);
+        }
+
+        const makePair = (
+          modRatio: number,
+          carRatio: number,
+          modIndex: number,
+          carLevel: number,
+          pan: number,
+          fmDecay: number,
+        ) => {
+          const car = ctx.createOscillator();
+          car.type = "sine";
+          car.frequency.value = freq * carRatio;
+          const mod = ctx.createOscillator();
+          mod.type = "sine";
+          mod.frequency.value = freq * modRatio;
+
+          const modEnv = ctx.createGain();
+          modEnv.gain.setValueAtTime(0.0001, when);
+          modEnv.gain.exponentialRampToValueAtTime(Math.max(modIndex * 0.9, 0.0002), when + attack);
+          modEnv.gain.setTargetAtTime(Math.max(modIndex * 0.25, 0.0002), when + attack, fmDecay);
+
+          const carEnv = ctx.createGain();
+          carEnv.gain.setValueAtTime(0.0001, when);
+          carEnv.gain.exponentialRampToValueAtTime(Math.max(carLevel, 0.0002), when + attack);
+          carEnv.gain.setTargetAtTime(Math.max(carLevel * 0.85, 0.0002), when + attack, 0.32);
+          carEnv.gain.setTargetAtTime(0.0001, off, dampRelease / 3.5);
+
+          const modGain = ctx.createGain();
+          modGain.gain.value = modIndex * 420;
+          // FM: mod -> modGain -> car.frequency
+          mod
+            .connect(modEnv)
+            .connect(modGain)
+            .connect(car.frequency as unknown as AudioNode);
+
+          const panner = ctx.createStereoPanner();
+          panner.pan.value = pan;
+          car.connect(carEnv).connect(panner).connect(filter);
+
+          mod.start(when);
+          mod.stop(stopTime);
+          car.start(when);
+          car.stop(stopTime);
+          return { mod, car, modEnv, carEnv, modGain, panner };
+        };
+
+        const pairA = makePair(1, 1, 28 + tine * 720, 0.42 + body * 0.38, -width * 0.6, 0.22 + damp * 0.35);
+        const pairB = makePair(3.5, 1, 18 + bell * 1100, bell * 0.55, width * 0.6, 0.18 + damp * 0.28);
+
+        const voice = register(
+          pitch,
+          stopTime,
+          (whenStop) => {
+            const t = Math.max(whenStop, 0);
+            amp.gain.cancelScheduledValues(t);
+            amp.gain.setTargetAtTime(0.0001, t, 0.01);
+            for (const { mod, car } of [pairA, pairB]) {
+              try {
+                mod.stop(t + 0.05);
+              } catch {
+                /* already stopped */
+              }
+              try {
+                car.stop(t + 0.05);
+              } catch {
+                /* already stopped */
+              }
+            }
+          },
+          (now) => {
+            amp.gain.cancelScheduledValues(now);
+            amp.gain.setTargetAtTime(0.0001, now, 0.008);
+            for (const { mod, car } of [pairA, pairB]) {
+              try {
+                mod.stop(now + 0.03);
+              } catch {
+                /* already stopped */
+              }
+              try {
+                car.stop(now + 0.03);
+              } catch {
+                /* already stopped */
+              }
+            }
+          },
+        );
+        const last = pairB.car;
+        last.onended = () => {
+          liveFilters.delete(filter);
+          amp.disconnect();
+          filter.disconnect();
+          for (const { modEnv, carEnv, modGain, panner } of [pairA, pairB]) {
+            try {
+              modEnv.disconnect();
+            } catch {
+              /* already */
+            }
+            try {
+              carEnv.disconnect();
+            } catch {
+              /* already */
+            }
+            try {
+              modGain.disconnect();
+            } catch {
+              /* already */
+            }
+            try {
+              panner.disconnect();
+            } catch {
+              /* already */
+            }
+          }
+          cleanup(voice);
+        };
+      },
+      setParameter(id, value) {
+        p[id] = value;
+        if (id === "cutoff") for (const f of liveFilters) f.frequency.setTargetAtTime(value, ctx.currentTime, 0.02);
+        if (id === "resonance") for (const f of liveFilters) f.Q.setTargetAtTime(value, ctx.currentTime, 0.02);
+      },
+      setParameterAt(id, value, when) {
+        p[id] = value;
+        if (id === "cutoff") for (const f of liveFilters) f.frequency.setTargetAtTime(value, when, 0.02);
+        if (id === "resonance") for (const f of liveFilters) f.Q.setTargetAtTime(value, when, 0.02);
+      },
+      noteOff(pitch, when) {
+        for (const v of findByPitch(pitch)) v.stop(when);
+      },
+      panic() {
+        for (const voice of [...voices]) voice.silence(ctx.currentTime);
+        voices.length = 0;
+        liveFilters.clear();
+      },
+      dispose() {
+        this.panic();
+        output.disconnect();
+      },
+    };
+    return runtime;
+  },
+};
+
+/* ---------------- Pluck (Karplus-Strong) ---------------- */
+// Physical-model pluck using a tuned delay with filtered feedback.
+// Excitation is a short noise burst; the loop is Delay -> Tone filter
+// -> Feedback -> Delay, tapped after the filter into the amp/post-filter.
+// Damp controls feedback amount and tone, pick controls excitation brightness.
+
+const pluck: InstrumentDefinition = {
+  kind: "pluck",
+  name: "Pluck Synth",
+  params: [
+    { id: "pick", label: "PICK", min: 0, max: 1, default: 0.5, format: formatPct },
+    { id: "damp", label: "DAMP", min: 0, max: 1, default: 0.4, format: formatPct },
+    { id: "body", label: "BODY", min: 0, max: 1, default: 0.6, format: formatPct },
+    { id: "tone", label: "TONE", min: 300, max: 8000, default: 3500, unit: "Hz", format: formatHz },
+    { id: "decay", label: "DECAY", min: 0.1, max: 4, default: 0.9, unit: "s", format: formatSec },
+    { id: "width", label: "WIDTH", min: 0, max: 1, default: 0.3, format: formatPct },
+    { id: "cutoff", label: "CUTOFF", min: 80, max: 16000, default: 9000, unit: "Hz", format: formatHz },
+    { id: "resonance", label: "RESO", min: 0.1, max: 8, default: 1.2, format: (v) => v.toFixed(2) },
+    { id: "attack", label: "ATTACK", min: 0.001, max: 2, default: 0.002, unit: "s", format: formatMs },
+    { id: "release", label: "RELEASE", min: 0.01, max: 4, default: 0.3, unit: "s", format: formatMs },
+    { id: "level", label: "LEVEL", min: -24, max: 6, default: -8, unit: "dB", format: formatDb },
+  ],
+  factory(ctx, track) {
+    const output = ctx.createGain();
+    output.gain.value = 1;
+    const p = { ...track.params };
+    const { voices, register, cleanup, findByPitch } = makeVoiceManager(12);
+    const liveFilters = new Set<BiquadFilterNode>();
+    const exciteNoise = noiseBuffer(ctx, hashString(track.id) ^ 0x33cc);
+
+    const runtime: InstrumentRuntime = {
+      output,
+      noteOn(pitch, velocity, when, durationSec) {
+        const freq = midiToFreq(pitch);
+        const attack = Math.max(0.001, p.attack ?? 0.002);
+        const release = Math.max(0.01, p.release ?? 0.3);
+        const hold = Math.max(durationSec, attack + 0.02);
+        const off = when + hold;
+        const decay = Math.max(0.1, p.decay ?? 0.9);
+        const stopTime = off + Math.max(release, decay) * 1.2 + 0.3;
+        const level = velocity * dbToLin(p.level ?? -8);
+        const pick = p.pick ?? 0.5;
+        const damp = p.damp ?? 0.4;
+        const body = p.body ?? 0.6;
+        const width = p.width ?? 0.3;
+
+        const amp = ctx.createGain();
+        amp.gain.setValueAtTime(0.0001, when);
+        amp.gain.exponentialRampToValueAtTime(Math.max(level, 0.0002), when + attack);
+        amp.gain.setTargetAtTime(Math.max(level * 0.82, 0.0002), when + attack, 0.12);
+        amp.gain.setTargetAtTime(0.0001, off, release / 3);
+        amp.connect(output);
+
+        const postFilter = ctx.createBiquadFilter();
+        postFilter.type = "lowpass";
+        postFilter.frequency.value = p.cutoff ?? 9000;
+        postFilter.Q.value = p.resonance ?? 1.2;
+        postFilter.connect(amp);
+        liveFilters.add(postFilter);
+
+        const input = ctx.createGain();
+        input.gain.value = 1;
+        const delay = ctx.createDelay(1);
+        delay.delayTime.value = Math.max(0.001, 1 / freq);
+        const toneFilter = ctx.createBiquadFilter();
+        toneFilter.type = "lowpass";
+        // Tone + damp shape the feedback brightness
+        toneFilter.frequency.value = Math.max(300, Math.min(8000, (p.tone ?? 3500) * (1 - damp * 0.25)));
+        toneFilter.Q.value = 0.7;
+        const feedback = ctx.createGain();
+        // Damp shortens decay: 0.96 long, 0.88 short
+        feedback.gain.value = Math.max(0.82, Math.min(0.995, 0.97 - damp * 0.09 + (p.decay ?? 0.9) * 0.02));
+        // Feedback loop: input -> delay -> toneFilter -> feedback -> input
+        // Tap after toneFilter into amp/postFilter
+        input.connect(delay);
+        delay.connect(toneFilter);
+        toneFilter.connect(feedback);
+        feedback.connect(input);
+        toneFilter.connect(postFilter);
+
+        // Excitation: short noise burst shaped by pick (brightness) + body (level)
+        const src = ctx.createBufferSource();
+        src.buffer = exciteNoise;
+        // Pick: brighter = highpass, softer = lowpass
+        const exciteFilter = ctx.createBiquadFilter();
+        exciteFilter.type = pick < 0.5 ? "lowpass" : "highpass";
+        exciteFilter.frequency.value = pick < 0.5 ? 800 + pick * 4000 : 1200 + pick * 6000;
+        exciteFilter.Q.value = 0.7;
+        const exciteGain = ctx.createGain();
+        exciteGain.gain.setValueAtTime(0.0001, when);
+        exciteGain.gain.exponentialRampToValueAtTime(Math.max(0.3 + body * 0.7, 0.0002) * velocity, when + 0.001);
+        exciteGain.gain.exponentialRampToValueAtTime(0.0001, when + 0.008);
+        src.connect(exciteFilter).connect(exciteGain).connect(input);
+        src.start(when);
+        src.stop(when + 0.02);
+
+        const panner = ctx.createStereoPanner();
+        // Width via pan spread per voice (deterministic from pitch)
+        panner.pan.value = (pitch % 2 === 0 ? 1 : -1) * width * 0.5;
+        // Rewire: postFilter already connected to amp, amp to panner? Actually amp is after postFilter, so we need panner after amp
+        // Our chain above: toneFilter -> postFilter -> amp, so amp is after postFilter.
+        // To add width, we insert panner after amp
+        try {
+          amp.disconnect();
+        } catch {
+          /* not connected yet? */
+        }
+        amp.connect(panner).connect(output);
+        // postFilter was connected to amp, keep it: toneFilter -> postFilter -> amp
+        // So we need to ensure postFilter -> amp remains, and amp -> panner -> output is separate.
+        // The earlier postFilter.connect(amp) is correct, amp now goes to panner.
+
+        const voice = register(
+          pitch,
+          stopTime,
+          (whenStop) => {
+            const t = Math.max(whenStop, 0);
+            amp.gain.cancelScheduledValues(t);
+            amp.gain.setTargetAtTime(0.0001, t, 0.01);
+            try {
+              src.stop(t + 0.02);
+            } catch {
+              /* already stopped */
+            }
+          },
+          (now) => {
+            amp.gain.cancelScheduledValues(now);
+            amp.gain.setTargetAtTime(0.0001, now, 0.008);
+            try {
+              src.stop(now + 0.02);
+            } catch {
+              /* already stopped */
+            }
+          },
+        );
+        // Clock oscillator for deterministic cleanup (works for both live and offline)
+        const clock = ctx.createOscillator();
+        clock.type = "sine";
+        clock.frequency.value = 440;
+        const clockGain = ctx.createGain();
+        clockGain.gain.value = 0;
+        clock.connect(clockGain).connect(ctx.destination);
+        clock.start(when);
+        clock.stop(stopTime);
+        clock.onended = () => {
+          liveFilters.delete(postFilter);
+          try {
+            input.disconnect();
+          } catch {
+            /* already */
+          }
+          try {
+            delay.disconnect();
+          } catch {
+            /* already */
+          }
+          try {
+            toneFilter.disconnect();
+          } catch {
+            /* already */
+          }
+          try {
+            feedback.disconnect();
+          } catch {
+            /* already */
+          }
+          try {
+            postFilter.disconnect();
+          } catch {
+            /* already */
+          }
+          try {
+            panner.disconnect();
+          } catch {
+            /* already */
+          }
+          amp.disconnect();
+          try {
+            clock.disconnect();
+          } catch {
+            /* already */
+          }
+          try {
+            clockGain.disconnect();
+          } catch {
+            /* already */
+          }
+          cleanup(voice);
+        };
+      },
+      setParameter(id, value) {
+        p[id] = value;
+        if (id === "cutoff") for (const f of liveFilters) f.frequency.setTargetAtTime(value, ctx.currentTime, 0.02);
+        if (id === "resonance") for (const f of liveFilters) f.Q.setTargetAtTime(value, ctx.currentTime, 0.02);
+      },
+      setParameterAt(id, value, when) {
+        p[id] = value;
+        if (id === "cutoff") for (const f of liveFilters) f.frequency.setTargetAtTime(value, when, 0.02);
+        if (id === "resonance") for (const f of liveFilters) f.Q.setTargetAtTime(value, when, 0.02);
+      },
+      noteOff(pitch, when) {
+        for (const v of findByPitch(pitch)) v.stop(when);
+      },
+      panic() {
+        for (const voice of [...voices]) voice.silence(ctx.currentTime);
+        voices.length = 0;
+        liveFilters.clear();
+      },
+      dispose() {
+        this.panic();
+        output.disconnect();
+      },
+    };
+    return runtime;
+  },
+};
+
 /* ---------------- registry ---------------- */
 
 export const INSTRUMENT_DEFS: Record<InstrumentKind, InstrumentDefinition> = {
@@ -1358,6 +1805,8 @@ export const INSTRUMENT_DEFS: Record<InstrumentKind, InstrumentDefinition> = {
   texture,
   wavetable,
   granular,
+  keys,
+  pluck,
 };
 
 export const INSTRUMENT_ORDER: InstrumentKind[] = [
@@ -1368,6 +1817,8 @@ export const INSTRUMENT_ORDER: InstrumentKind[] = [
   "texture",
   "wavetable",
   "granular",
+  "keys",
+  "pluck",
 ];
 
 export function defaultInstrumentParams(kind: InstrumentKind): Record<string, number> {

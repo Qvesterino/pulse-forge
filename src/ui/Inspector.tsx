@@ -4,6 +4,7 @@ import { SliceLab } from "./SliceLab";
 import {
   resetPadSlice,
   setPadParams,
+  setPadSynth,
   setTrackParams,
   setInstrumentParam,
   setInstrumentSample,
@@ -135,6 +136,8 @@ export function Inspector({ track, selectedPadId }: { track: Track; selectedPadI
   const pad = track.pads.find((p) => p.id === selectedPadId) ?? track.pads[0];
   if (!pad) return null;
 
+  const isSynth = !!pad.synth;
+
   return (
     <aside className="inspector" aria-label="Inspector">
       <div className="slice-lab-toggle">
@@ -152,15 +155,88 @@ export function Inspector({ track, selectedPadId }: { track: Track; selectedPadI
 
       <h2 className="panel-title">PAD — {pad.name}</h2>
 
-      <h3 className="inspector-subtitle">SAMPLE</h3>
-      <SampleBrowser
-        assets={DRUM_ASSETS}
-        currentId={pad.assetId}
-        onSelect={(assetId) => services.store.execute(setPadParams(doc, pad.id, { assetId }))}
-        showDropZone
-      />
+      <div className="pad-source-toggle" style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+        <button
+          type="button"
+          className={`btn btn-small${!isSynth ? " active" : ""}`}
+          onClick={() => services.store.execute(setPadSynth(doc, pad.id, null))}
+        >
+          SAMPLE
+        </button>
+        <button
+          type="button"
+          className={`btn btn-small${isSynth ? " active" : ""}`}
+          onClick={() =>
+            services.store.execute(
+              setPadSynth(doc, pad.id, pad.synth ?? { type: "hatClosed", decay: 0.08, tone: 7500 }),
+            )
+          }
+        >
+          SYNTH
+        </button>
+      </div>
 
-      {(pad.sliceStart !== undefined || pad.sliceEnd !== undefined) && (
+      {!isSynth ? (
+        <>
+          <h3 className="inspector-subtitle">SAMPLE</h3>
+          <SampleBrowser
+            assets={DRUM_ASSETS}
+            currentId={pad.assetId}
+            onSelect={(assetId) => services.store.execute(setPadParams(doc, pad.id, { assetId }))}
+            showDropZone
+          />
+        </>
+      ) : (
+        <div className="pad-synth-controls">
+          <h3 className="inspector-subtitle">SYNTH</h3>
+          <label className="fx-param-select">
+            <span className="slider-label">TYPE</span>
+            <select
+              value={pad.synth?.type ?? "hatClosed"}
+              onChange={(e) => {
+                const type = e.target.value as any;
+                const defaults: Record<string, { decay: number; tone: number }> = {
+                  hatClosed: { decay: 0.08, tone: 7500 },
+                  hatOpen: { decay: 0.32, tone: 7000 },
+                  clap: { decay: 0.25, tone: 1200 },
+                  perc: { decay: 0.08, tone: 2100 },
+                  cowbell: { decay: 0.32, tone: 540 },
+                };
+                const d = defaults[type];
+                services.store.execute(setPadSynth(doc, pad.id, { type, decay: d.decay, tone: d.tone }));
+              }}
+            >
+              <option value="hatClosed">Hat Closed</option>
+              <option value="hatOpen">Hat Open</option>
+              <option value="clap">Clap</option>
+              <option value="perc">Perc (Tick)</option>
+              <option value="cowbell">Cowbell</option>
+            </select>
+          </label>
+          <Slider
+            compact
+            label="DECAY"
+            value={pad.synth?.decay ?? 0.08}
+            min={0.02}
+            max={1.2}
+            defaultValue={0.08}
+            format={(v) => `${v.toFixed(2)} s`}
+            onCommit={(decay) => services.store.execute(setPadSynth(doc, pad.id, { ...(pad.synth as any), decay }))}
+          />
+          <Slider
+            compact
+            label="TONE"
+            value={pad.synth?.tone ?? 5000}
+            min={200}
+            max={12000}
+            defaultValue={5000}
+            format={(v) => `${Math.round(v)} Hz`}
+            onCommit={(tone) => services.store.execute(setPadSynth(doc, pad.id, { ...(pad.synth as any), tone }))}
+          />
+        </div>
+      )}
+
+      {!isSynth && (pad.sliceStart !== undefined || pad.sliceEnd !== undefined) && (
         <div className="pad-slice-controls">
           <h3 className="inspector-subtitle">SLICE</h3>
           <label className="slice-number">

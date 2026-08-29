@@ -33,7 +33,7 @@ describe("TrackTabs", () => {
     const { services } = renderWithContext(<TrackTabs selectedTrackId="t1" onSelectTrack={onSelect} />);
     const doc = services.store.getDoc();
     await user.click(screen.getByText(doc.tracks[0].name));
-    expect(onSelect).toHaveBeenCalledWith(doc.tracks[0].id);
+    expect(onSelect.mock.calls[0][0]).toBe(doc.tracks[0].id);
   });
 
   it("shows + TRACK dropdown", () => {

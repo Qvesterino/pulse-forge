@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useDoc, useServices } from "./context";
+import { useDoc, useSelection, useServices } from "./context";
 import { createDrumTrack, createGroupTrack, createInstrumentTrack, setTrackParams } from "../commands/commands";
 import type { InstrumentKind, Track } from "../project-model/types";
 
@@ -13,6 +13,8 @@ const KIND_BADGE: Record<"drum" | "group" | InstrumentKind, string> = {
   texture: "TEX",
   wavetable: "WT",
   granular: "GRN",
+  keys: "KEY",
+  pluck: "PLK",
 };
 
 export function trackBadge(track: Track): string {
@@ -26,8 +28,9 @@ export function TrackTabs({
   onSelectTrack,
 }: {
   selectedTrackId: string;
-  onSelectTrack: (trackId: string) => void;
+  onSelectTrack: (trackId: string, e?: React.MouseEvent) => void;
 }) {
+  const selection = useSelection();
   const services = useServices();
   const doc = useDoc();
   const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
@@ -51,7 +54,7 @@ export function TrackTabs({
   return (
     <div className="track-tabs" role="tablist" aria-label="Tracks">
       {doc.tracks.map((track, idx) => {
-        const isSelected = track.id === selectedTrackId;
+        const isSelected = selection.trackIds.includes(track.id) || track.id === selectedTrackId;
         if (editingTrackId === track.id) {
           return (
             <input
@@ -77,8 +80,8 @@ export function TrackTabs({
             aria-selected={isSelected}
             aria-label={`${track.name} (${track.kind === "drum" ? "Drum track" : track.kind === "group" ? "Group track" : `${track.instrument} track`})${track.mute ? ", muted" : ""}${track.solo ? ", soloed" : ""}`}
             className={`track-tab${isSelected ? " active" : ""}`}
-            title={`${track.name} — select track (Alt+${idx + 1}), F2 to rename`}
-            onClick={() => onSelectTrack(track.id)}
+            title={`${track.name} — select track (Alt+${idx + 1}), F2 to rename — Ctrl+click add, Shift+click range, RMB drag lasso`}
+            onClick={(e) => onSelectTrack(track.id, e)}
             onDoubleClick={() => beginRename(track.id, track.name)}
             onKeyDown={(event) => {
               if (event.key === "F2") {
@@ -117,6 +120,8 @@ export function TrackTabs({
         <option value="texture">Texture Synth</option>
         <option value="wavetable">Wavetable Synth</option>
         <option value="granular">Granular Synth</option>
+        <option value="keys">Keys Synth</option>
+        <option value="pluck">Pluck Synth</option>
         <option value="group">Group</option>
       </select>
     </div>

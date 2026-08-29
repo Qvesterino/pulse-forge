@@ -200,7 +200,7 @@ function lfoSignature(lfo: Lfo, workletAvailable?: boolean): string {
 }
 
 interface Voice {
-  source: AudioBufferSourceNode;
+  source: AudioScheduledSourceNode;
   gain: GainNode;
   trackId: string;
   chokeGroup: number | null;
@@ -273,6 +273,23 @@ export class AudioEngine {
   private masterAnalyser: AnalyserNode | null = null;
   private bank: SampleBank | null = null;
   private doc: ProjectDocument | null = null;
+  private synthNoise: AudioBuffer | null = null;
+
+  private ensureSynthNoise(): AudioBuffer | null {
+    if (this.synthNoise && this.ctx && this.synthNoise.sampleRate === this.ctx.sampleRate) return this.synthNoise;
+    const ctx = this.ctx;
+    if (!ctx) return null;
+    const len = Math.floor(ctx.sampleRate * 1);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    let seed = 0x12345;
+    for (let i = 0; i < len; i++) {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      data[i] = (seed / 4294967296) * 2 - 1;
+    }
+    this.synthNoise = buf;
+    return buf;
+  }
   private trackNodes = new Map<string, TrackNodes>();
   private returnNodes = new Map<string, ReturnNodes>();
   private groupNodes = new Map<string, GroupNodes>();
@@ -1021,16 +1038,6 @@ export class AudioEngine {
   }
 
   /**
-   * Minimal plugin delay compensation (PDC) for latency-introducing effects
-   * (look-ahead limiter). Effective latency of a track = its own FX chain +
-   * the chain of the group it feeds; each track's compensation delay equals
-   * maxEffectiveLatency − own effective latency, so all material reaches the
-   * master sample-aligned. Group chains are compensated by their members'
-   * accounting (their own tap stays transparent); send/return paths are not
-   * compensated — a few milliseconds inside diffuse reverb/delay tails is
-   * inaudible.
-   */
-  /**
    * Minimal PDC for latency-introducing effects (look-ahead limiter etc.).
    * Inserts and groups are fully compensated to the longest chain. Returns
    * (send/return) are aligned among themselves; dry vs wet via a return
@@ -1388,15 +1395,66 @@ export class AudioEngine {
         else acc.pan += mapping.amount * bipolar;
       }
     }
-    // Intensity bindings: gain-only, scaled to ±amount from the live scene
-    // intensity (0..1). We treat intensity 0.5 as neutral (gain × 1).
+    // Intensity → any target: 1 fader (scene intensity 0..1 → bipolar -1..1) drives
+    // filter/movement/width etc. Gain/pan accumulate via next map (smoothed),
+    // FX/inst params are written directly (delta around base value).
     const intensityBipolar = Math.max(-1, Math.min(1, this.currentSceneIntensity * 2 - 1));
     for (const macro of doc.macros) {
       for (const mapping of macro.mappings) {
-        if (mapping.source !== "intensity" || mapping.param !== "gain") continue;
+        if (mapping.source !== "intensity") continue;
+        const amount = mapping.amount;
+        // Generic target (P2 bus) takes precedence over legacy trackId/param
+        if (mapping.target) {
+          const target = mapping.target;
+          if (target.kind === "trackGain" || target.kind === "trackPan") {
+            const acc = next.get(target.trackId);
+            if (!acc) continue;
+            if (target.kind === "trackGain") acc.gain += amount * intensityBipolar;
+            else acc.pan += amount * intensityBipolar;
+          } else if (target.kind === "fxParam") {
+            if (!target.fxId || !target.paramId) continue;
+            const nodes =
+              this.trackNodes.get(target.trackId) ??
+              this.groupNodes.get(target.trackId) ??
+              this.returnNodes.get(target.trackId);
+            const rt = nodes?.fx.runtimes.get(target.fxId);
+            if (!rt) continue;
+            const owner =
+              (doc.tracks.find((t) => t.id === target.trackId) as unknown as
+                { effects?: EffectInstance[] } | undefined) ??
+              (doc.returns.find((r) => r.id === target.trackId) as unknown as
+                { effects?: EffectInstance[] } | undefined);
+            const inst = (owner as { effects?: EffectInstance[] } | undefined)?.effects?.find(
+              (f) => f.id === target.fxId,
+            );
+            if (!inst) continue;
+            const def = EFFECT_DEFS[inst.type]?.params.find((p) => p.id === target.paramId);
+            if (!def) continue;
+            const base = inst.params[target.paramId] ?? def.default;
+            const delta = ((def.max - def.min) / 2) * intensityBipolar * amount;
+            const finalValue = clampEffectParam(inst.type, target.paramId, base + delta);
+            rt.setParameter(target.paramId, finalValue);
+          } else if (target.kind === "instParam") {
+            if (!target.paramId) continue;
+            const state = this.instruments.get(target.trackId);
+            if (!state) continue;
+            const track = doc.tracks.find((t) => t.id === target.trackId);
+            if (!track || track.kind !== "instrument") continue;
+            const def = INSTRUMENT_DEFS[track.instrument]?.params.find((p) => p.id === target.paramId);
+            if (!def) continue;
+            const base = state.params[target.paramId] ?? def.default;
+            const delta = ((def.max - def.min) / 2) * intensityBipolar * amount;
+            const finalValue = clampInstrumentParam(track.instrument, target.paramId, base + delta);
+            state.runtime.setParameter(target.paramId, finalValue);
+          }
+          continue;
+        }
+        // Legacy: trackId + param string (gain/pan only before P2 bus)
+        if (mapping.param !== "gain" && mapping.param !== "pan") continue;
         const acc = next.get(mapping.trackId);
         if (!acc) continue;
-        acc.gain += mapping.amount * intensityBipolar;
+        if (mapping.param === "gain") acc.gain += amount * intensityBipolar;
+        else acc.pan += amount * intensityBipolar;
       }
     }
     for (const [trackId, offsets] of next) {
@@ -1837,6 +1895,11 @@ export class AudioEngine {
     if (this.frozenBuffers.has(trackId)) return;
     const buffer = this.bank?.get(pad.assetId);
     if (!buffer) {
+      if (pad.synth) {
+        if (pad.chokeGroup !== null) this.choke(trackId, pad.chokeGroup, when);
+        this.triggerSynth(trackId, pad, when, velocity, locks);
+        return;
+      }
       if (pad.assetId) this.missedAssets.add(pad.assetId);
       return;
     }
@@ -1915,6 +1978,217 @@ export class AudioEngine {
     // copies are needed and realtime/export share the exact same playback.
     source.start(when, slice.offset, slice.duration);
     void voiceOutput;
+  }
+
+  private triggerSynth(
+    trackId: string,
+    pad: DrumPad,
+    when: number,
+    velocity: number,
+    locks?: Partial<Record<import("../project-model/types").StepLockKey, number>>,
+  ): void {
+    const ctx = this.ctx;
+    const trackNodes = this.trackNodes.get(trackId);
+    if (!ctx || !trackNodes || !pad.synth) return;
+    const synth = pad.synth;
+    const effectiveGain = locks?.gain !== undefined ? locks.gain : pad.gain;
+    const peak = Math.max(0, velocity * effectiveGain);
+    const pan = locks?.pan !== undefined ? locks.pan : pad.pan;
+    const cutoff = locks?.cutoff !== undefined ? locks.cutoff : synth.tone;
+    const lengthMul = locks?.length !== undefined ? Math.min(2, Math.max(0.1, locks.length)) : 1;
+    const pitchOffset = locks?.pitch !== undefined ? locks.pitch : pad.pitch;
+    const baseDecay = synth.decay * lengthMul;
+    const noise = this.ensureSynthNoise();
+    if (!noise) return;
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(peak, when);
+    // Decay is handled per-type below; for hat we use exponential ramp
+    const panner = ctx.createStereoPanner();
+    panner.pan.value = pan;
+    gain.connect(panner).connect(trackNodes.input);
+
+    const sources: AudioScheduledSourceNode[] = [];
+    const extraNodes: AudioNode[] = [gain, panner];
+
+    const addVoice = (src: AudioScheduledSourceNode, g: GainNode, filter?: BiquadFilterNode) => {
+      sources.push(src);
+      extraNodes.push(g);
+      if (filter) extraNodes.push(filter);
+      // Connect src -> filter? Handled per-type
+    };
+
+    const finishVoice = (dur: number) => {
+      const voiceGain = gain;
+      const voice: Voice = {
+        source: sources[0] ?? (gain as unknown as AudioScheduledSourceNode),
+        gain: voiceGain,
+        trackId,
+        chokeGroup: pad.chokeGroup,
+      };
+      // Store all sources for choke/silence
+      const allSources = [...sources];
+      // Override voice stop to stop all
+      const stopAll = (t: number) => {
+        for (const s of allSources) {
+          try {
+            (s as AudioBufferSourceNode).stop(t);
+          } catch {
+            try {
+              (s as OscillatorNode).stop(t);
+            } catch {
+              /* already */
+            }
+          }
+        }
+        voiceGain.gain.cancelScheduledValues(t);
+        voiceGain.gain.setTargetAtTime(0.0001, t, 0.005);
+      };
+      // Patch voice's stop/silence to use stopAll
+      (voice as any)._stopAll = stopAll;
+      this.voices.add(voice);
+      const primary = sources[0];
+      if (primary) {
+        primary.onended = () => {
+          this.voices.delete(voice);
+          for (const n of extraNodes) {
+            try {
+              n.disconnect();
+            } catch {
+              /* already */
+            }
+          }
+          for (const s of allSources) {
+            try {
+              s.disconnect();
+            } catch {
+              /* already */
+            }
+          }
+        };
+      }
+      // Schedule stop after dur
+      const stopAt = when + dur + 0.05;
+      for (const s of allSources) {
+        try {
+          if ((s as AudioBufferSourceNode).buffer) (s as AudioBufferSourceNode).stop(stopAt);
+          else (s as OscillatorNode).stop(stopAt);
+        } catch {
+          /* already */
+        }
+      }
+    };
+
+    switch (synth.type) {
+      case "hatClosed":
+      case "hatOpen": {
+        const isOpen = synth.type === "hatOpen";
+        const decay = isOpen ? 0.32 * lengthMul : 0.07 * lengthMul;
+        const hpFreq = Math.max(1000, Math.min(12000, cutoff));
+        const src = ctx.createBufferSource();
+        src.buffer = noise!;
+        const hp = ctx.createBiquadFilter();
+        hp.type = "highpass";
+        hp.frequency.value = hpFreq;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(peak, when);
+        g.gain.exponentialRampToValueAtTime(0.0001, when + decay);
+        src.connect(hp).connect(g).connect(gain);
+        src.start(when);
+        addVoice(src, g, hp);
+        finishVoice(decay);
+        break;
+      }
+      case "clap": {
+        const decays = [0.02, 0.018, 0.16];
+        const times = [0, 0.011, 0.03];
+        for (let i = 0; i < 3; i++) {
+          const src = ctx.createBufferSource();
+          src.buffer = noise!;
+          const bp = ctx.createBiquadFilter();
+          bp.type = "bandpass";
+          bp.frequency.value = i < 2 ? 1150 : 1100;
+          bp.Q.value = i < 2 ? 1.6 : 1.1;
+          const g = ctx.createGain();
+          const at = when + times[i];
+          const dec = decays[i] * lengthMul;
+          g.gain.setValueAtTime(0.55, at);
+          g.gain.exponentialRampToValueAtTime(0.0001, at + dec);
+          src.connect(bp).connect(g).connect(gain);
+          src.start(at);
+          addVoice(src, g, bp);
+        }
+        finishVoice(0.4 * lengthMul);
+        break;
+      }
+      case "perc": {
+        const freq = 2100 * Math.pow(2, pitchOffset / 12);
+        const src = ctx.createBufferSource();
+        src.buffer = noise!;
+        const bp = ctx.createBiquadFilter();
+        bp.type = "bandpass";
+        bp.frequency.value = Math.max(500, Math.min(8000, cutoff));
+        if (locks?.cutoff === undefined) bp.frequency.value = freq;
+        bp.Q.value = 4;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(peak, when);
+        g.gain.exponentialRampToValueAtTime(0.0001, when + 0.04 * lengthMul);
+        src.connect(bp).connect(g).connect(gain);
+        src.start(when);
+        addVoice(src, g, bp);
+        finishVoice(0.08);
+        break;
+      }
+      case "cowbell": {
+        const base = 540 * Math.pow(2, pitchOffset / 12);
+        const freqs = [base, base * 1.485];
+        for (const f of freqs) {
+          const osc = ctx.createOscillator();
+          osc.type = "square";
+          osc.frequency.value = f;
+          const bp = ctx.createBiquadFilter();
+          bp.type = "bandpass";
+          bp.frequency.value = f;
+          bp.Q.value = 2;
+          const g = ctx.createGain();
+          g.gain.setValueAtTime(peak * 0.45, when);
+          g.gain.exponentialRampToValueAtTime(0.0001, when + 0.32 * lengthMul);
+          osc.connect(bp).connect(g).connect(gain);
+          osc.start(when);
+          addVoice(osc, g, bp);
+        }
+        finishVoice(0.36);
+        break;
+      }
+      default: {
+        const src = ctx.createBufferSource();
+        src.buffer = noise!;
+        const hp = ctx.createBiquadFilter();
+        hp.type = "highpass";
+        hp.frequency.value = cutoff;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(peak, when);
+        g.gain.exponentialRampToValueAtTime(0.0001, when + baseDecay);
+        src.connect(hp).connect(g).connect(gain);
+        src.start(when);
+        addVoice(src, g, hp);
+        finishVoice(baseDecay);
+        break;
+      }
+    }
+
+    // Choke already handled via this.voices; triggerSynth voices are in same set
+    // so choke will find them by trackId/chokeGroup
+    // Patch voices' silence to use stopAll
+    // Already handled via _stopAll, but choke calls voice.gain and voice.source.stop
+    // For synth, we need to ensure choke stops all sources, not just primary
+    // Our _stopAll is stored but choke doesn't know it — we should monkey-patch voice's silence
+    // For now, handle via storing allSources on voice instance
+    for (const v of this.voices) {
+      if ((v as any)._stopAll && v.trackId === trackId && v.chokeGroup === pad.chokeGroup) {
+        // Keep reference for choke
+      }
+    }
   }
 
   preview(pad: DrumPad, trackId: string): void {
@@ -2013,10 +2287,19 @@ export class AudioEngine {
       if (voice.trackId !== trackId || voice.chokeGroup !== chokeGroup) continue;
       voice.gain.gain.cancelScheduledValues(ctx.currentTime);
       voice.gain.gain.setTargetAtTime(0, ctx.currentTime, 0.005);
-      try {
-        voice.source.stop(when + 0.02);
-      } catch {
-        // already stopped
+      const stopAll = (voice as any)._stopAll as ((t: number) => void) | undefined;
+      if (stopAll) {
+        try {
+          stopAll(when + 0.02);
+        } catch {
+          /* already */
+        }
+      } else {
+        try {
+          voice.source.stop(when + 0.02);
+        } catch {
+          // already stopped
+        }
       }
       this.voices.delete(voice);
     }
@@ -2030,10 +2313,19 @@ export class AudioEngine {
     for (const voice of this.voices) {
       voice.gain.gain.cancelScheduledValues(now);
       voice.gain.gain.setTargetAtTime(0, now, 0.008);
-      try {
-        voice.source.stop(now + 0.05);
-      } catch {
-        // already stopped
+      const stopAll = (voice as any)._stopAll as ((t: number) => void) | undefined;
+      if (stopAll) {
+        try {
+          stopAll(now + 0.05);
+        } catch {
+          /* already */
+        }
+      } else {
+        try {
+          voice.source.stop(now + 0.05);
+        } catch {
+          // already stopped
+        }
       }
     }
     this.voices.clear();

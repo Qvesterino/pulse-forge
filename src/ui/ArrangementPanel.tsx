@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { useArrangementCapture, useDoc, useServices } from "./context";
+import { useArrangementCapture, useDoc, useSelection, useSelectionStore, useServices } from "./context";
 import {
   addArrangementClip,
   addArrangementTransition,
@@ -79,6 +79,9 @@ export function ArrangementPanel() {
   const dragRef = useRef<DragState | null>(null);
   const [drag, setDrag] = useState<{ startBar: number; lengthBars: number } | null>(null);
   const playheadBar = usePlayheadBar(services.transport);
+  const selection = useSelection();
+  const selectionStore = useSelectionStore();
+  const [timeDrag, setTimeDrag] = useState<{ startBar: number; currentBar: number } | null>(null);
   const runtime = useSceneRuntimeState();
 
   const clips = [...doc.arrangement.clips].sort((a, b) => a.startBar - b.startBar);
@@ -124,6 +127,7 @@ export function ArrangementPanel() {
     const bar = Math.max(0, (event.clientX - rect.left) / BAR_WIDTH);
     services.playback.seek(bar * BAR_TICKS);
   };
+  void seekFromRulerEvent;
 
   const beginClipDrag = (event: React.PointerEvent, clipId: string, mode: "move" | "resize") => {
     if (event.button !== 0) return;
@@ -442,19 +446,48 @@ export function ArrangementPanel() {
           <div
             className="arr-ruler"
             style={{ width: totalBars * BAR_WIDTH }}
-            title="Click or drag to seek · shift+click adds a marker"
+            title="Click to seek · drag to select time range · shift+click adds a marker"
             onPointerDown={(event) => {
               if (event.button !== 0) return;
-              event.currentTarget.setPointerCapture(event.pointerId);
+              const bar = Math.max(0, (event.clientX - laneRef.current!.getBoundingClientRect().left) / BAR_WIDTH);
               if (event.shiftKey) {
-                const bar = Math.max(0, (event.clientX - laneRef.current!.getBoundingClientRect().left) / BAR_WIDTH);
                 execute(addMarker(services.store.doc, { tick: Math.floor(bar * BAR_TICKS), type: "cue" }));
                 return;
               }
-              seekFromRulerEvent(event);
+              setTimeDrag({ startBar: bar, currentBar: bar });
+              (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
             }}
             onPointerMove={(event) => {
-              if (event.buttons === 1) seekFromRulerEvent(event);
+              if (!timeDrag) return;
+              const bar = Math.max(
+                0,
+                Math.min(totalBars, (event.clientX - laneRef.current!.getBoundingClientRect().left) / BAR_WIDTH),
+              );
+              setTimeDrag({ startBar: timeDrag.startBar, currentBar: bar });
+              const from = Math.min(timeDrag.startBar, bar);
+              const to = Math.max(timeDrag.startBar, bar);
+              if (Math.abs(to - from) > 0.15) {
+                selectionStore.setTimeRange({
+                  fromTick: Math.floor(from * BAR_TICKS),
+                  toTick: Math.floor(to * BAR_TICKS),
+                });
+              } else {
+                selectionStore.setTimeRange(null);
+              }
+            }}
+            onPointerUp={(event) => {
+              if (!timeDrag) return;
+              const from = Math.min(timeDrag.startBar, timeDrag.currentBar);
+              const to = Math.max(timeDrag.startBar, timeDrag.currentBar);
+              if (Math.abs(to - from) < 0.15) {
+                services.playback.seek(Math.floor(from * BAR_TICKS));
+                selectionStore.setTimeRange(null);
+              }
+              setTimeDrag(null);
+              (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
+            }}
+            onPointerLeave={() => {
+              // keep drag active, don't clear
             }}
             onContextMenu={(event) => {
               event.preventDefault();
@@ -487,6 +520,15 @@ export function ArrangementPanel() {
                 }}
               />
             ))}
+            {selection.timeRange && (
+              <div
+                className="arr-time-range"
+                style={{
+                  left: (Math.min(selection.timeRange.fromTick, selection.timeRange.toTick) / BAR_TICKS) * BAR_WIDTH,
+                  width: (Math.abs(selection.timeRange.toTick - selection.timeRange.fromTick) / BAR_TICKS) * BAR_WIDTH,
+                }}
+              />
+            )}
             <div className="arr-playhead" style={{ left: playheadBar * BAR_WIDTH }} />
           </div>
           <div
@@ -506,6 +548,15 @@ export function ArrangementPanel() {
             }}
           >
             <div className="arr-playhead arr-playhead-lane" style={{ left: playheadBar * BAR_WIDTH }} />
+            {selection.timeRange && (
+              <div
+                className="arr-time-range arr-time-range-lane"
+                style={{
+                  left: (Math.min(selection.timeRange.fromTick, selection.timeRange.toTick) / BAR_TICKS) * BAR_WIDTH,
+                  width: (Math.abs(selection.timeRange.toTick - selection.timeRange.fromTick) / BAR_TICKS) * BAR_WIDTH,
+                }}
+              />
+            )}
             {Array.from({ length: totalBars }, (_, index) => (
               <div
                 key={index}

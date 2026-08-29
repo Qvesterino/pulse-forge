@@ -19,6 +19,7 @@ import type {
   ArrangementTransitionType,
   SceneAutomation,
   StepMeta,
+  AutomationTarget,
 } from "./types";
 import { BAR_TICKS, PPQ, STEP_TICKS, STEPS_PER_PATTERN, isMusicalKey } from "./types";
 import { sanitizeGateSteps, sanitizeLfo } from "./modulators";
@@ -111,6 +112,8 @@ const INSTRUMENT_NAMES: Record<InstrumentKind, string> = {
   texture: "Texture",
   wavetable: "Wavetable",
   granular: "Granular",
+  keys: "Keys",
+  pluck: "Pluck",
 };
 
 export function createInstrumentTrackModel(kind: InstrumentKind, index: number): InstrumentTrack {
@@ -289,10 +292,40 @@ function sanitizeMacroMapping(raw: unknown): MacroMapping | null {
   const id = typeof raw.id === "string" ? raw.id : uid("map");
   const trackId = typeof raw.trackId === "string" ? raw.trackId : null;
   if (!trackId) return null;
-  const param = raw.param === "pan" ? "pan" : "gain";
+  const param = raw.param === "pan" ? "pan" : typeof raw.param === "string" && raw.param !== "" ? raw.param : "gain";
   const amount = Math.max(-1, Math.min(1, Number(raw.amount) || 0));
   const source = raw.source === "intensity" ? "intensity" : raw.source === "midiCC" ? "midiCC" : "macro";
   const mapping: MacroMapping = { id, trackId, param, amount, source };
+  // Generic target for intensity→FX/inst (P2 bus). When present it overrides trackId/param.
+  if (isObject((raw as Record<string, unknown>).target)) {
+    const t = (raw as Record<string, unknown>).target as Record<string, unknown>;
+    const kind = t.kind as string;
+    if (
+      (kind === "trackGain" || kind === "trackPan" || kind === "fxParam" || kind === "instParam") &&
+      typeof t.trackId === "string" &&
+      t.trackId !== ""
+    ) {
+      const target: AutomationTarget = { kind: kind as AutomationTarget["kind"], trackId: t.trackId };
+      if (kind === "fxParam") {
+        if (typeof t.fxId !== "string" || typeof t.paramId !== "string" || t.fxId === "" || t.paramId === "") {
+          // invalid fx target — drop target and keep legacy param
+        } else {
+          target.fxId = t.fxId;
+          target.paramId = t.paramId;
+          mapping.target = target;
+        }
+      } else if (kind === "instParam") {
+        if (typeof t.paramId !== "string" || t.paramId === "") {
+          // invalid
+        } else {
+          target.paramId = t.paramId;
+          mapping.target = target;
+        }
+      } else {
+        mapping.target = target;
+      }
+    }
+  }
   if (source === "midiCC") {
     // Preserve the CC routing fields — rewriting the source (or dropping
     // ccNumber/channel) silently broke every MIDI CC macro mapping on
@@ -558,32 +591,76 @@ function normalizeTracksDomain(s: NormalizeState): void {
           pad.sliceFadeIn !== undefined ||
           pad.sliceFadeOut !== undefined ||
           pad.sliceReverse !== undefined;
-        if (!hasSliceConfig) return pad;
-        if (sliceStart !== pad.sliceStart || sliceEnd !== pad.sliceEnd) padChanged = true;
-        if (fadeIn !== (pad.sliceFadeIn ?? 0) || fadeOut !== (pad.sliceFadeOut ?? 0)) padChanged = true;
-        if (pad.sliceReverse !== undefined && typeof pad.sliceReverse !== "boolean") padChanged = true;
-        const invalidBound =
-          (pad.sliceStart !== undefined && sliceStart === undefined) ||
-          (pad.sliceEnd !== undefined && sliceEnd === undefined);
-        if (invalidBound || (sliceStart !== undefined && sliceEnd !== undefined && sliceEnd <= sliceStart)) {
-          nextPad = {
-            ...nextPad,
-            sliceFadeIn: fadeIn,
-            sliceFadeOut: fadeOut,
-            sliceReverse: typeof pad.sliceReverse === "boolean" ? pad.sliceReverse : false,
-          };
-          delete nextPad.sliceStart;
-          delete nextPad.sliceEnd;
-          padChanged = true;
-        } else if (padChanged) {
-          nextPad = {
-            ...nextPad,
-            sliceStart,
-            sliceEnd,
-            sliceFadeIn: fadeIn,
-            sliceFadeOut: fadeOut,
-            sliceReverse: typeof pad.sliceReverse === "boolean" ? pad.sliceReverse : false,
-          };
+        const hasSynth = (pad as any).synth !== undefined;
+        if (!hasSliceConfig && !hasSynth) return pad;
+        if (hasSliceConfig) {
+          if (sliceStart !== pad.sliceStart || sliceEnd !== pad.sliceEnd) padChanged = true;
+          if (fadeIn !== (pad.sliceFadeIn ?? 0) || fadeOut !== (pad.sliceFadeOut ?? 0)) padChanged = true;
+          if (pad.sliceReverse !== undefined && typeof pad.sliceReverse !== "boolean") padChanged = true;
+          const invalidBound =
+            (pad.sliceStart !== undefined && sliceStart === undefined) ||
+            (pad.sliceEnd !== undefined && sliceEnd === undefined);
+          if (invalidBound || (sliceStart !== undefined && sliceEnd !== undefined && sliceEnd <= sliceStart)) {
+            nextPad = {
+              ...nextPad,
+              sliceFadeIn: fadeIn,
+              sliceFadeOut: fadeOut,
+              sliceReverse: typeof pad.sliceReverse === "boolean" ? pad.sliceReverse : false,
+            };
+            delete nextPad.sliceStart;
+            delete nextPad.sliceEnd;
+            padChanged = true;
+          } else if (padChanged) {
+            nextPad = {
+              ...nextPad,
+              sliceStart,
+              sliceEnd,
+              sliceFadeIn: fadeIn,
+              sliceFadeOut: fadeOut,
+              sliceReverse: typeof pad.sliceReverse === "boolean" ? pad.sliceReverse : false,
+            };
+          }
+        }
+        // Synth config sanitization
+        const rawSynth: unknown = (pad as any).synth;
+        if (rawSynth !== undefined) {
+          if (rawSynth === null) {
+            if (nextPad.synth !== null) {
+              nextPad = { ...nextPad, synth: null } as any;
+              padChanged = true;
+            }
+          } else if (typeof rawSynth === "object" && rawSynth !== null) {
+            const obj = rawSynth as Record<string, unknown>;
+            const allowed: Record<string, { min: number; max: number; def: number }> = {
+              hatClosed: { min: 0.05, max: 1.5, def: 0.08 },
+              hatOpen: { min: 0.05, max: 1.5, def: 0.32 },
+              clap: { min: 0.05, max: 1.5, def: 0.25 },
+              perc: { min: 0.05, max: 1.5, def: 0.12 },
+              cowbell: { min: 0.05, max: 1.5, def: 0.3 },
+            };
+            const type = typeof obj.type === "string" && obj.type in allowed ? (obj.type as string) : null;
+            if (!type) {
+              nextPad = { ...nextPad, synth: null } as any;
+              padChanged = true;
+            } else {
+              const decay =
+                typeof obj.decay === "number" && Number.isFinite(obj.decay)
+                  ? Math.min(1.5, Math.max(0.02, obj.decay))
+                  : allowed[type].def;
+              const tone =
+                typeof obj.tone === "number" && Number.isFinite(obj.tone)
+                  ? Math.min(12000, Math.max(200, obj.tone))
+                  : 5000;
+              const nextSynth: any = { type, decay, tone };
+              if (JSON.stringify(nextSynth) !== JSON.stringify((pad as any).synth)) {
+                nextPad = { ...nextPad, synth: nextSynth } as any;
+                padChanged = true;
+              }
+            }
+          } else {
+            nextPad = { ...nextPad, synth: null } as any;
+            padChanged = true;
+          }
         }
         return padChanged ? nextPad : pad;
       });
@@ -1025,6 +1102,13 @@ function normalizePatternsDomain(s: NormalizeState): void {
             const clamped = Math.min(1, Math.max(-1, Number.isFinite(microtiming) ? microtiming : 0));
             if (clamped !== 0) meta.microtiming = clamped;
             if (clamped !== microtiming) metaChanged = true;
+          }
+          const amount = (raw as Record<string, unknown>).amount;
+          if (amount !== undefined) {
+            const clamped = clampUnit(amount);
+            if (clamped < 1) meta.amount = clamped;
+            if (clamped !== amount) metaChanged = true;
+            if (clamped >= 1 && amount !== 1) metaChanged = true;
           }
           const rawLocks = raw.locks;
           if (rawLocks !== undefined && isObject(rawLocks)) {

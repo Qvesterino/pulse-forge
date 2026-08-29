@@ -4,6 +4,10 @@ import type { ProjectDocument } from "../project-model/types";
 import type { LibraryState } from "../persistence/LibraryRepository";
 import type { LatencyCalibrationSnapshot } from "../audio-engine/latencyCalibration";
 import type { ArrangementCaptureSnapshot } from "../arrangement/capture";
+import type { SelectionState } from "../store/SelectionStore";
+import { SelectionStore } from "../store/SelectionStore";
+import type { Tool } from "../store/ToolStore";
+import { ToolStore } from "../store/ToolStore";
 
 const EMPTY_CAPTURE_SNAPSHOT: ArrangementCaptureSnapshot = { capturing: false, launchCount: 0, firstBar: null };
 const EMPTY_CAPTURE = {
@@ -15,11 +19,38 @@ const EMPTY_CAPTURE = {
 export type AppSaveStatus = "saved" | "dirty" | "saving" | "error" | "syncing";
 
 export const ServicesContext = createContext<Services | null>(null);
+export const SelectionContext = createContext<SelectionStore | null>(null);
+export const ToolContext = createContext<ToolStore | null>(null);
+
+const fallbackSelectionStore = new SelectionStore();
+const fallbackToolStore = new ToolStore();
 
 export function useServices(): Services {
   const services = useContext(ServicesContext);
   if (!services) throw new Error("Services not initialized");
   return services;
+}
+
+export function useSelectionStore(): SelectionStore {
+  const store = useContext(SelectionContext);
+  if (!store) throw new Error("SelectionStore not initialized");
+  return store;
+}
+
+export function useSelection(): SelectionState {
+  const store = useContext(SelectionContext) ?? fallbackSelectionStore;
+  return useSyncExternalStore(store.subscribe, store.getState, store.getState);
+}
+
+export function useToolStore(): ToolStore {
+  const store = useContext(ToolContext);
+  if (!store) throw new Error("ToolStore not initialized");
+  return store;
+}
+
+export function useTool(): Tool {
+  const store = useContext(ToolContext) ?? fallbackToolStore;
+  return useSyncExternalStore(store.subscribe, store.getTool, store.getTool);
 }
 
 export function useDoc(): ProjectDocument {

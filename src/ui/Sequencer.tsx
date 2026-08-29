@@ -186,6 +186,18 @@ export function Sequencer({
     stepIndex <= stepSelection.to;
 
   const beginStepInteraction = (event: React.PointerEvent, padId: string, stepIndex: number) => {
+    // RMB lasso — right-drag selects regardless of Shift
+    if (event.button === 2) {
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      } catch {
+        /* no capture */
+      }
+      dragRef.current = { mode: "select", padId, stepIndex, startY: event.clientY, startVelocity: 0, moved: true };
+      onSelectSteps(selectionFromDrag(padId, stepIndex, padId, stepIndex));
+      event.preventDefault();
+      return;
+    }
     if (event.button !== 0) return;
     try {
       event.currentTarget.setPointerCapture(event.pointerId);

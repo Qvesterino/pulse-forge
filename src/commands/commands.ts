@@ -303,6 +303,58 @@ export function setPadParams(doc: ProjectDocument, padId: string, params: PadPar
   };
 }
 
+export function setPadSynth(
+  doc: ProjectDocument,
+  padId: string,
+  synth: import("../project-model/types").DrumSynthConfig | null,
+): Command {
+  const track = doc.tracks.find((t): t is DrumTrack => t.kind === "drum");
+  const current = track?.pads.find((p) => p.id === padId);
+  const prevSynth = (current as any)?.synth ?? null;
+  const prevAssetId = current?.assetId ?? null;
+  const nextDoc: ProjectDocument = {
+    ...doc,
+    tracks: doc.tracks.map((t) => {
+      if (t.kind !== "drum") return t;
+      return {
+        ...t,
+        pads: t.pads.map((p) => {
+          if (p.id !== padId) return p;
+          const next: any = { ...p, synth: synth ? { ...synth } : null };
+          // When switching to synth, clear sample to avoid confusion
+          if (synth) {
+            next.assetId = null;
+            delete next.sliceStart;
+            delete next.sliceEnd;
+            delete next.sliceFadeIn;
+            delete next.sliceFadeOut;
+            delete next.sliceReverse;
+          }
+          return next;
+        }),
+      };
+    }),
+  };
+  const prevDoc: ProjectDocument = {
+    ...doc,
+    tracks: doc.tracks.map((t) => {
+      if (t.kind !== "drum") return t;
+      return {
+        ...t,
+        pads: t.pads.map((p) =>
+          p.id === padId ? { ...p, synth: prevSynth ? { ...prevSynth } : null, assetId: prevAssetId } : p,
+        ),
+      };
+    }),
+  };
+  return {
+    type: "setPadSynth",
+    label: synth ? `Set ${synth.type} synth` : "Clear synth",
+    execute: () => nextDoc,
+    undo: () => prevDoc,
+  };
+}
+
 type TrackParams = Partial<Pick<Track, "name" | "gain" | "pan" | "mute" | "solo">>;
 
 export function setTrackParams(doc: ProjectDocument, trackId: string, params: TrackParams): Command {

@@ -134,6 +134,10 @@ export function drumHitsInWindow(
           finalVelocity += (rand() * 2 - 1) * clamp01(humanizeVelocity) * MAX_HUMANIZE_VELOCITY;
         }
         finalVelocity = clampRange(finalVelocity, 0.05, 1);
+        // Per-step amount — 0..1 velocity/mod depth (ghost vs accent). Default 1.
+        if (meta?.amount !== undefined) {
+          finalVelocity = clampRange(finalVelocity * clamp01(meta.amount), 0.05, 1);
+        }
 
         const ratchet = Math.min(MAX_RATCHET, Math.max(1, Math.round(meta?.ratchet ?? 1)));
         const subdivision = STEP_TICKS / ratchet;

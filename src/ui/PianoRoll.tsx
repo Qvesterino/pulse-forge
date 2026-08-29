@@ -196,6 +196,18 @@ export function PianoRollTrack({
   const marqueeRef = useRef<{ startStep: number; startPitch: number } | null>(null);
 
   const onGridPointerDown = (event: React.PointerEvent) => {
+    if (event.button === 2) {
+      const { stepF, pitch } = posFromEvent(event);
+      marqueeRef.current = { startStep: stepF, startPitch: pitch };
+      setMarquee({ startStep: stepF, startPitch: pitch, endStep: stepF, endPitch: pitch });
+      try {
+        (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+      } catch {
+        /* no capture */
+      }
+      event.preventDefault();
+      return;
+    }
     if (event.button !== 0) return;
     if (event.target !== gridRef.current) return;
     if (event.shiftKey) {
