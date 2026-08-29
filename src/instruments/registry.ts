@@ -4,6 +4,7 @@ import { midiToFreq } from "../project-model/types";
 import type { ParamDef } from "../effects/types";
 import { hashString, mulberry32 } from "../shared/rng";
 import { extractWavetable, FACTORY_TABLE_OPTIONS, FACTORY_WAVETABLES, FRAME_SIZE } from "./wavetables";
+import { isWorkletReady } from "../audio-worklets/loader";
 
 const WAVE_NAMES = ["sine", "triangle", "sawtooth", "square"] as const;
 
@@ -73,6 +74,75 @@ function makeVoiceManager(limit: number) {
   return { voices, register, cleanup, findByPitch };
 }
 
+function createVoiceFilter(
+  ctx: BaseAudioContext,
+  initialCutoff: number,
+  initialResonance: number,
+): {
+  input: AudioNode;
+  output: AudioNode;
+  frequency: AudioParam;
+  resonance: AudioParam;
+  isWorklet: boolean;
+  disconnect(): void;
+} {
+  if (isWorkletReady("svFilter", ctx)) {
+    const node = new AudioWorkletNode(ctx, "svfilter-processor", {
+      numberOfInputs: 1,
+      numberOfOutputs: 1,
+      channelCount: 2,
+    });
+    const cutoffParam = node.parameters.get("cutoff")!;
+    const resParam = node.parameters.get("resonance")!;
+    const resNorm = Math.min(1, Math.max(0, (initialResonance - 0.1) / 7.9));
+    cutoffParam.value = initialCutoff;
+    resParam.value = resNorm;
+    node.parameters.get("mode")!.value = 0;
+    node.parameters.get("drive")!.value = 0;
+    node.parameters.get("mix")!.value = 1;
+    const input = ctx.createGain();
+    const output = ctx.createGain();
+    input.connect(node).connect(output);
+    return {
+      input,
+      output,
+      frequency: cutoffParam,
+      resonance: resParam,
+      isWorklet: true,
+      disconnect() {
+        input.disconnect();
+        node.disconnect();
+        output.disconnect();
+      },
+    };
+  }
+  const filter = ctx.createBiquadFilter();
+  filter.type = "lowpass";
+  filter.frequency.value = initialCutoff;
+  filter.Q.value = initialResonance;
+  return {
+    input: filter,
+    output: filter,
+    frequency: filter.frequency,
+    resonance: filter.Q,
+    isWorklet: false,
+    disconnect() {
+      filter.disconnect();
+    },
+  };
+}
+
+function setFilterResonance(filter: { resonance: AudioParam; isWorklet: boolean }, value: number, when?: number, tc = 0.02) {
+  if (filter.isWorklet) {
+    const norm = Math.min(1, Math.max(0, (value - 0.1) / 7.9));
+    if (when !== undefined) filter.resonance.setTargetAtTime(norm, when, tc);
+    else filter.resonance.value = norm;
+  } else {
+    if (when !== undefined) filter.resonance.setTargetAtTime(value, when, tc);
+    else filter.resonance.value = value;
+  }
+}
+
 /* ---------------- Analog Synth ---------------- */
 
 const analog: InstrumentDefinition = {
@@ -108,8 +178,8 @@ const analog: InstrumentDefinition = {
     const p = { ...track.params };
     const { voices, register, cleanup, findByPitch } = makeVoiceManager(12);
 
-    const liveFilters = new Set<BiquadFilterNode>();
-    const applyFilterLive = (fn: (f: BiquadFilterNode) => void) => {
+    const liveFilters = new Set<ReturnType<typeof createVoiceFilter>>();
+    const applyFilterLive = (fn: (f: ReturnType<typeof createVoiceFilter>) => void) => {
       for (const f of liveFilters) fn(f);
     };
 
@@ -133,15 +203,14 @@ const analog: InstrumentDefinition = {
         amp.gain.setTargetAtTime(0.0001, off, release / 4);
         amp.connect(output);
 
-        const filter = ctx.createBiquadFilter();
-        filter.type = "lowpass";
+        const filter = createVoiceFilter(ctx, p.cutoff ?? 9000, p.resonance ?? 1);
         const base = p.cutoff ?? 9000;
         const peakCut = Math.min(18000, base + (p.filterEnv ?? 0.3) * velocity * 6000);
         filter.frequency.setValueAtTime(Math.max(40, base * 0.6), when);
         filter.frequency.linearRampToValueAtTime(peakCut, when + attack);
         filter.frequency.setTargetAtTime(base, when + attack, decay / 3);
-        filter.Q.value = p.resonance ?? 1;
-        filter.connect(amp);
+        setFilterResonance(filter, p.resonance ?? 1);
+        filter.output.connect(amp);
         liveFilters.add(filter);
 
         const oscs: OscillatorNode[] = [];
@@ -152,7 +221,7 @@ const analog: InstrumentDefinition = {
           osc.detune.value = detune;
           const g = ctx.createGain();
           g.gain.value = level;
-          osc.connect(g).connect(filter);
+          osc.connect(g).connect(filter.input);
           osc.start(when);
           osc.stop(stopTime);
           oscs.push(osc);
@@ -166,7 +235,7 @@ const analog: InstrumentDefinition = {
           src.loop = true;
           const g = ctx.createGain();
           g.gain.value = p.noiseLevel ?? 0;
-          src.connect(g).connect(filter);
+          src.connect(g).connect(filter.input);
           src.start(when);
           src.stop(stopTime);
         }
@@ -203,12 +272,12 @@ const analog: InstrumentDefinition = {
       setParameter(id, value) {
         p[id] = value;
         if (id === "cutoff") applyFilterLive((f) => f.frequency.setTargetAtTime(value, ctx.currentTime, 0.02));
-        if (id === "resonance") applyFilterLive((f) => f.Q.setTargetAtTime(value, ctx.currentTime, 0.02));
+        if (id === "resonance") applyFilterLive((f) => setFilterResonance(f, value, ctx.currentTime, 0.02));
       },
       setParameterAt(id, value, when) {
         p[id] = value;
         if (id === "cutoff") applyFilterLive((f) => f.frequency.setTargetAtTime(value, when, 0.02));
-        if (id === "resonance") applyFilterLive((f) => f.Q.setTargetAtTime(value, when, 0.02));
+        if (id === "resonance") applyFilterLive((f) => setFilterResonance(f, value, when, 0.02));
       },
       noteOff(pitch, when) {
         for (const v of findByPitch(pitch)) v.stop(when);
@@ -268,7 +337,7 @@ const bass: InstrumentDefinition = {
     };
     applyGrit();
     shaper.connect(output);
-    const liveFilters = new Set<BiquadFilterNode>();
+    const liveFilters = new Set<ReturnType<typeof createVoiceFilter>>();
 
     const runtime: InstrumentRuntime = {
       output,
@@ -288,16 +357,15 @@ const bass: InstrumentDefinition = {
         amp.gain.setTargetAtTime(0.0001, off, release / 4);
         amp.connect(shaper);
 
-        const filter = ctx.createBiquadFilter();
-        filter.type = "lowpass";
+        const filter = createVoiceFilter(ctx, p.cutoff ?? 700, p.resonance ?? 1.2);
         const base = p.cutoff ?? 700;
         const punch = p.punch ?? 0.5;
         const peakCut = Math.min(8000, base + 400 + punch * 3600 * velocity);
         filter.frequency.setValueAtTime(Math.max(50, base), when);
         filter.frequency.linearRampToValueAtTime(peakCut, when + 0.003);
         filter.frequency.setTargetAtTime(base, when + 0.003, (0.1 + punch * 0.12) / 1);
-        filter.Q.value = p.resonance ?? 1.2;
-        filter.connect(amp);
+        setFilterResonance(filter, p.resonance ?? 1.2);
+        filter.output.connect(amp);
         liveFilters.add(filter);
 
         if ((p.movement ?? 0) > 0.005) {
@@ -327,7 +395,7 @@ const bass: InstrumentDefinition = {
           g.gain.value = levelGain;
           const pan = ctx.createStereoPanner();
           pan.pan.value = panValue;
-          osc.connect(g).connect(pan).connect(filter);
+          osc.connect(g).connect(pan).connect(filter.input);
           osc.start(when);
           osc.stop(stopTime);
           oscs.push(osc);
@@ -369,13 +437,13 @@ const bass: InstrumentDefinition = {
       setParameter(id, value) {
         p[id] = value;
         if (id === "cutoff") for (const f of liveFilters) f.frequency.setTargetAtTime(value, ctx.currentTime, 0.02);
-        if (id === "resonance") for (const f of liveFilters) f.Q.setTargetAtTime(value, ctx.currentTime, 0.02);
+        if (id === "resonance") for (const f of liveFilters) setFilterResonance(f, value, ctx.currentTime, 0.02);
         if (id === "grit") applyGrit();
       },
       setParameterAt(id, value, when) {
         p[id] = value;
         if (id === "cutoff") for (const f of liveFilters) f.frequency.setTargetAtTime(value, when, 0.02);
-        if (id === "resonance") for (const f of liveFilters) f.Q.setTargetAtTime(value, when, 0.02);
+        if (id === "resonance") for (const f of liveFilters) setFilterResonance(f, value, when, 0.02);
         if (id === "grit") applyGrit();
       },
       noteOff(pitch, when) {
@@ -575,7 +643,7 @@ const sampler: InstrumentDefinition = {
     const p = { ...track.params };
     let sampleId: string | null = track.sampleId;
     const { voices, register, cleanup, findByPitch } = makeVoiceManager(16);
-    const liveFilters = new Set<BiquadFilterNode>();
+    const liveFilters = new Set<ReturnType<typeof createVoiceFilter>>();
 
     const runtime: InstrumentRuntime = {
       output,
@@ -596,17 +664,14 @@ const sampler: InstrumentDefinition = {
         amp.gain.setTargetAtTime(0.0001, off, release / 3);
         amp.connect(output);
 
-        const filter = ctx.createBiquadFilter();
-        filter.type = "lowpass";
-        filter.frequency.value = p.cutoff ?? 15000;
-        filter.Q.value = p.resonance ?? 0.7;
-        filter.connect(amp);
+        const filter = createVoiceFilter(ctx, p.cutoff ?? 15000, p.resonance ?? 0.7);
+        filter.output.connect(amp);
         liveFilters.add(filter);
 
         const src = ctx.createBufferSource();
         src.buffer = buffer;
         src.playbackRate.value = Math.pow(2, (pitch - root) / 12);
-        src.connect(filter);
+        src.connect(filter.input);
         src.start(when);
         src.stop(stopTime);
 
@@ -638,12 +703,12 @@ const sampler: InstrumentDefinition = {
       setParameter(id, value) {
         p[id] = value;
         if (id === "cutoff") for (const f of liveFilters) f.frequency.setTargetAtTime(value, ctx.currentTime, 0.02);
-        if (id === "resonance") for (const f of liveFilters) f.Q.setTargetAtTime(value, ctx.currentTime, 0.02);
+        if (id === "resonance") for (const f of liveFilters) setFilterResonance(f, value, ctx.currentTime, 0.02);
       },
       setParameterAt(id, value, when) {
         p[id] = value;
         if (id === "cutoff") for (const f of liveFilters) f.frequency.setTargetAtTime(value, when, 0.02);
-        if (id === "resonance") for (const f of liveFilters) f.Q.setTargetAtTime(value, when, 0.02);
+        if (id === "resonance") for (const f of liveFilters) setFilterResonance(f, value, when, 0.02);
       },
       setSample(id) {
         sampleId = id;
@@ -952,7 +1017,7 @@ const wavetable: InstrumentDefinition = {
     const p = { ...track.params };
     let sampleId: string | null = track.sampleId;
     const { voices, register, cleanup, findByPitch } = makeVoiceManager(8);
-    const liveFilters = new Set<BiquadFilterNode>();
+    const liveFilters = new Set<ReturnType<typeof createVoiceFilter>>();
     // Crossfade pairs of sounding voices (with their fixed frame indices),
     // so live MORPH updates can retune the blend. Frame buffers themselves
     // are captured per voice — re-targeting frames mid-note isn't possible
@@ -1009,11 +1074,8 @@ const wavetable: InstrumentDefinition = {
         amp.gain.setTargetAtTime(0.0001, off, release / 3);
         amp.connect(output);
 
-        const filter = ctx.createBiquadFilter();
-        filter.type = "lowpass";
-        filter.frequency.value = p.cutoff ?? 12000;
-        filter.Q.value = p.resonance ?? 1;
-        filter.connect(amp);
+        const filter = createVoiceFilter(ctx, p.cutoff ?? 12000, p.resonance ?? 1);
+        filter.output.connect(amp);
         liveFilters.add(filter);
 
         const sources: Array<AudioBufferSourceNode | OscillatorNode> = [];
@@ -1042,8 +1104,8 @@ const wavetable: InstrumentDefinition = {
           const gB = ctx.createGain();
           gA.gain.value = (1 - blend) * level;
           gB.gain.value = blend * level;
-          mkFrameSource(frames[ia]).connect(gA).connect(filter);
-          mkFrameSource(frames[ib]).connect(gB).connect(filter);
+          mkFrameSource(frames[ia]).connect(gA).connect(filter.input);
+          mkFrameSource(frames[ib]).connect(gB).connect(filter.input);
           const pair = { a: gA, b: gB, ia, ib, level };
           pairs.push(pair);
           livePairs.add(pair);
@@ -1057,7 +1119,7 @@ const wavetable: InstrumentDefinition = {
           osc.frequency.value = freq / 2;
           const g = ctx.createGain();
           g.gain.value = (p.sub ?? 0.2) * 0.7;
-          osc.connect(g).connect(filter);
+          osc.connect(g).connect(filter.input);
           osc.start(when);
           osc.stop(stopTime);
           sources.push(osc);
@@ -1104,7 +1166,7 @@ const wavetable: InstrumentDefinition = {
         p[id] = value;
         const now = ctx.currentTime;
         if (id === "cutoff") for (const f of liveFilters) f.frequency.setTargetAtTime(value, now, 0.02);
-        if (id === "resonance") for (const f of liveFilters) f.Q.setTargetAtTime(value, now, 0.02);
+        if (id === "resonance") for (const f of liveFilters) setFilterResonance(f, value, now, 0.02);
         if (id === "morph") {
           // Voices whose captured frame pair still contains the new morph
           // position retune their crossfade; pairs further away keep theirs.
@@ -1377,7 +1439,7 @@ const keys: InstrumentDefinition = {
     output.gain.value = 1;
     const p = { ...track.params };
     const { voices, register, cleanup, findByPitch } = makeVoiceManager(8);
-    const liveFilters = new Set<BiquadFilterNode>();
+    const liveFilters = new Set<ReturnType<typeof createVoiceFilter>>();
 
     const runtime: InstrumentRuntime = {
       output,
@@ -1417,11 +1479,8 @@ const keys: InstrumentDefinition = {
           lfo.stop(stopTime + 0.1);
         }
 
-        const filter = ctx.createBiquadFilter();
-        filter.type = "lowpass";
-        filter.frequency.value = Math.max(80, Math.min(16000, p.cutoff ?? 4500));
-        filter.Q.value = p.resonance ?? 1.8;
-        filter.connect(amp);
+        const filter = createVoiceFilter(ctx, Math.max(80, Math.min(16000, p.cutoff ?? 4500)), p.resonance ?? 1.8);
+        filter.output.connect(amp);
         liveFilters.add(filter);
 
         // Tremolo also wobbles filter a touch when damp is low (open)
@@ -1472,7 +1531,7 @@ const keys: InstrumentDefinition = {
 
           const panner = ctx.createStereoPanner();
           panner.pan.value = pan;
-          car.connect(carEnv).connect(panner).connect(filter);
+          car.connect(carEnv).connect(panner).connect(filter.input);
 
           mod.start(when);
           mod.stop(stopTime);
@@ -1554,12 +1613,12 @@ const keys: InstrumentDefinition = {
       setParameter(id, value) {
         p[id] = value;
         if (id === "cutoff") for (const f of liveFilters) f.frequency.setTargetAtTime(value, ctx.currentTime, 0.02);
-        if (id === "resonance") for (const f of liveFilters) f.Q.setTargetAtTime(value, ctx.currentTime, 0.02);
+        if (id === "resonance") for (const f of liveFilters) setFilterResonance(f, value, ctx.currentTime, 0.02);
       },
       setParameterAt(id, value, when) {
         p[id] = value;
         if (id === "cutoff") for (const f of liveFilters) f.frequency.setTargetAtTime(value, when, 0.02);
-        if (id === "resonance") for (const f of liveFilters) f.Q.setTargetAtTime(value, when, 0.02);
+        if (id === "resonance") for (const f of liveFilters) setFilterResonance(f, value, when, 0.02);
       },
       noteOff(pitch, when) {
         for (const v of findByPitch(pitch)) v.stop(when);
@@ -1605,7 +1664,7 @@ const pluck: InstrumentDefinition = {
     output.gain.value = 1;
     const p = { ...track.params };
     const { voices, register, cleanup, findByPitch } = makeVoiceManager(12);
-    const liveFilters = new Set<BiquadFilterNode>();
+    const liveFilters = new Set<ReturnType<typeof createVoiceFilter>>();
     const exciteNoise = noiseBuffer(ctx, hashString(track.id) ^ 0x33cc);
 
     const runtime: InstrumentRuntime = {
@@ -1631,11 +1690,8 @@ const pluck: InstrumentDefinition = {
         amp.gain.setTargetAtTime(0.0001, off, release / 3);
         amp.connect(output);
 
-        const postFilter = ctx.createBiquadFilter();
-        postFilter.type = "lowpass";
-        postFilter.frequency.value = p.cutoff ?? 9000;
-        postFilter.Q.value = p.resonance ?? 1.2;
-        postFilter.connect(amp);
+        const postFilter = createVoiceFilter(ctx, p.cutoff ?? 9000, p.resonance ?? 1.2);
+        postFilter.output.connect(amp);
         liveFilters.add(postFilter);
 
         const input = ctx.createGain();
@@ -1656,7 +1712,7 @@ const pluck: InstrumentDefinition = {
         delay.connect(toneFilter);
         toneFilter.connect(feedback);
         feedback.connect(input);
-        toneFilter.connect(postFilter);
+        toneFilter.connect(postFilter.input);
 
         // Excitation: short noise burst shaped by pick (brightness) + body (level)
         const src = ctx.createBufferSource();
@@ -1771,12 +1827,12 @@ const pluck: InstrumentDefinition = {
       setParameter(id, value) {
         p[id] = value;
         if (id === "cutoff") for (const f of liveFilters) f.frequency.setTargetAtTime(value, ctx.currentTime, 0.02);
-        if (id === "resonance") for (const f of liveFilters) f.Q.setTargetAtTime(value, ctx.currentTime, 0.02);
+        if (id === "resonance") for (const f of liveFilters) setFilterResonance(f, value, ctx.currentTime, 0.02);
       },
       setParameterAt(id, value, when) {
         p[id] = value;
         if (id === "cutoff") for (const f of liveFilters) f.frequency.setTargetAtTime(value, when, 0.02);
-        if (id === "resonance") for (const f of liveFilters) f.Q.setTargetAtTime(value, when, 0.02);
+        if (id === "resonance") for (const f of liveFilters) setFilterResonance(f, value, when, 0.02);
       },
       noteOff(pitch, when) {
         for (const v of findByPitch(pitch)) v.stop(when);

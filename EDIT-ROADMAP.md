@@ -78,17 +78,17 @@
 
 ## 3. P2 — aby to bolo rýchle ako FL (po P1)
 
-### P2.1 PianoRoll doplnky
+### P2.1 PianoRoll doplnky — **2026-08-29 DOKONČENÉ**
 
-- [ ] `src/ui/PianoRoll.tsx:190` zapojiť `beginVelDrag` (vertical drag na note → velocity 0.05..1), `Alt+drag` = duplicate, `S` = strum, `Alt+S` = slide, `L` = legato
-- [ ] Ghost notes: čítaj `doc.patterns` vedľa `activePatternId` (priehľadné 30%), `src/project-model/types.ts:297` `Pattern.notes`
-- [ ] `Ctrl+B` duplicate selection, `RMB` erase (už z P1.2)
+- [x] `src/ui/PianoRoll.tsx:190` zapojiť `beginVelDrag` (vertical drag na velocity lane `pr-vel-bar` `deltaY/120→0.05..1` + `setNotesVelocities` multi), `Alt+drag` duplicate (`altDragDuplicate` — klonuje `selectedNote`/`[note]` s `uid` pred dragom, `snapshot` jedno undo, drag pohybuje kópiu), `S` = strum (`applyMidiCreativeTool strum spread 20 up`), `Alt+S` = slide (`slideNotes` 20% overlap `gap+0.2*STEP_TICKS`), `L` = legato (`legatoNotes` `nextStart-cur.start` clamp 1..patternTicks)
+- [x] Ghost notes: čítaj `doc.patterns` vedľa `activePatternId` (priehľadné 30%) — `src/ui/PianoRoll.tsx:68` `ghostNotes` z ostatných patterns pre `track.id`, render `.pr-note.ghost` `opacity 0.3` `pointer-events:none` pred live notami, `src/styles.css:984` `.pr-note.ghost`, `src/project-model/types.ts:312` `Pattern.notes`
+- [x] `Ctrl+B` duplicate selection (`src/ui/PianoRoll.tsx:351` `Ctrl/Cmd+B` → `duplicateNotes`), `RMB` erase (`onContextMenu` deleteNote, `RMB drag` lasso už z P1.2 `onGridPointerDown button===2` marquee) + tooltip `Alt+drag duplicate`
 
-### P2.2 Mixer rýchle akcie
+### P2.2 Mixer rýchle akcie — **2026-08-29 DOKONČENÉ**
 
-- [ ] `src/ui/Mixer.tsx:84` — `RMB na send → Create return`, `drag track → group` (zmeniť `track.groupId`), `RMB na fader → Reset / Type value / Link to macro` (hold menu)
-- [ ] `color/label` + `duplicate track with FX` (`src/commands/commands.ts` `duplicateTrack`)
-- [ ] Batch FX: `addEffectToTracks(trackIds: ID[], type: EffectType)` — 1 klik na 5 trackov
+- [x] `src/ui/Mixer.tsx:84` — `RMB na send → Create return` (`onContextMenu` na send `Slider` + `+ SEND (RMB→New return)` → `createReturnTrack`), `drag track → group` (`draggable` `ChannelStrip` non-group + `onDragOver/onDrop` `addToGroup` na `group-strip` `drag-over` outline), `RMB na fader → Reset / Type value / Link to macro` (`faderMenu` `fixed` `Reset` → `0.9/0/0`, `Type value…` prompt clamp, `Link to macro` → `addMacroMapping` na `macros[0]`, `Create return` pre send)
+- [x] `color/label` + `duplicate track with FX` (`src/commands/commands.ts:1070` `duplicateTrack` klonuje `pads` nové `uid pad`, `effects` nové `uid fx` + `sends/color/groupId`, `rows/stepMeta` premap `padIdMap`, `Instrument` `params/preset`, `Group` `effects/sends/color`, `src/project-model/types.ts:115` `color?:#rrggbb` + `schema.ts:sanitizeColor` + `normalizeTracksDomain`, `ChannelStrip` `input color` + `borderTopColor` + `DUP` btn + `name` inline)
+- [x] Batch FX: `addEffectToTracks(trackIds: ID[], type: EffectType)` (`src/commands/commands.ts:1190` `addEffectToTracks` loop `addEffect`/`returns` + `snapshot` jedno undo, guard `<=5` v UI) — `Mixer Batch bar` `useSelection trackIds` `>1?selected:all` `select EFFECT_DEFS` + `ADD TO ≤5` (P2 guardrail 1 klik na 5 trackov)
 
 ### P2.3 Sequencer (Channel Rack) rýchlosť
 
@@ -132,3 +132,5 @@
 - 2026-08-29 — **P1.2 Tool vs hold-RMB menu (základ)**: `ToolStore` + `ToolContext`, `S/P/C/B/E/M` + `Esc` → `select`, `hold 220ms` → `ContextMenu.tsx` `deriveContext`, `RMB drag >6px` → `cut`, `RMB click` = delete (PianoRoll `onContextMenu`, Sequencer `toggleStep`), statusbar `TOOL` `App.tsx:444`, CSS `.context-menu`. Verif: `typecheck` ✓, `vitest` 1012 ✓.
 - 2026-08-29 — **P1.3 Zóna dokončená**: `duplicateTimeRange` + `consolidateTimeRange` (`buildStemProject` guard pre group FX routing), `App.tsx` `Ctrl+D`/`Ctrl+Shift+C` + `ContextMenu` hasTime branch, trailing clips shift pri duplicate, consolidácia tvorí nový pattern/scene/clip a čistí zdroj. Verif: `typecheck` ✓, `vitest` 1012 ✓.
 - 2026-08-29 — **P1.4 Stems AudioClips dokončené**: `AudioClip` model+schema, `triggerAudioClip` live==offline (`frozenPlaybackOffset` tick→sec), `add/update/move/resize/duplicate` + `bounceZone` + waveform `WavetablePreview` štýl + `RMB` Reverse/Normalize/Stretch/Slice. Verif: `typecheck` ✓, `vitest` 1012 ✓, `format` ✓.
+- 2026-08-29 — **P2.1 PianoRoll dokončené**: `beginVelDrag` multi-velocity, `Alt+drag` clone-before-drag, `S` strum/`Alt+S` slide/`L` legato/`Ctrl+B` duplicate + ghost notes 30%. Verif: `typecheck` ✓, `vitest` 1012 ✓.
+- 2026-08-29 — **P2.2 Mixer dokončené**: `drag track→group`, `RMB send→Create return`, `RMB fader Reset/Type/Link macro`, `color` `#rrggbb` + `duplicateTrack` s FX/pads/sends, `Batch FX` 1 klik na 5. Verif: `typecheck` ✓, `vitest` 1012 ✓.

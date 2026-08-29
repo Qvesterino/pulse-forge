@@ -365,6 +365,13 @@ export function normalizeStepCount(stepCount: number): number {
   return stepCount;
 }
 
+export function sanitizeColor(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!/^#[0-9a-fA-F]{6}$/.test(trimmed)) return undefined;
+  return trimmed.toLowerCase();
+}
+
 function defaultSceneFor(doc: ProjectDocument): Scene {
   return { id: uid("scene"), name: "Scene A", patternId: doc.activePatternId, intensity: 0.7 };
 }
@@ -730,6 +737,14 @@ function normalizeTracksDomain(s: NormalizeState): void {
         t = { ...t, groupId: undefined } as DrumTrack;
         tracksChanged = true;
       }
+      const cleanColor = sanitizeColor((t as unknown as Record<string, unknown>).color);
+      if (cleanColor !== (t as unknown as Record<string, unknown>).color) {
+        if (cleanColor === undefined) {
+          const { color: _c, ...rest } = t as unknown as Record<string, unknown>;
+          t = rest as unknown as DrumTrack;
+        } else t = { ...t, color: cleanColor } as unknown as DrumTrack;
+        tracksChanged = true;
+      }
       return t;
     }
     if (track.kind === "group") {
@@ -741,6 +756,14 @@ function normalizeTracksDomain(s: NormalizeState): void {
       }
       if (t.sends === undefined) {
         t = { ...t, sends: {} };
+        tracksChanged = true;
+      }
+      const groupCleanColor = sanitizeColor((t as unknown as Record<string, unknown>).color);
+      if (groupCleanColor !== (t as unknown as Record<string, unknown>).color) {
+        if (groupCleanColor === undefined) {
+          const { color: _c, ...rest } = t as unknown as Record<string, unknown>;
+          t = rest as unknown as import("./types").GroupTrack;
+        } else t = { ...t, color: groupCleanColor };
         tracksChanged = true;
       }
       return t;
@@ -782,6 +805,14 @@ function normalizeTracksDomain(s: NormalizeState): void {
     // Validate groupId reference
     if (t.groupId !== undefined && !trackIds.has(t.groupId)) {
       t = { ...t, groupId: undefined };
+      tracksChanged = true;
+    }
+    const cleanColorInst = sanitizeColor((t as unknown as Record<string, unknown>).color);
+    if (cleanColorInst !== (t as unknown as Record<string, unknown>).color) {
+      if (cleanColorInst === undefined) {
+        const { color: _c, ...rest } = t as unknown as Record<string, unknown>;
+        t = rest as unknown as InstrumentTrack;
+      } else t = { ...t, color: cleanColorInst };
       tracksChanged = true;
     }
     return t;

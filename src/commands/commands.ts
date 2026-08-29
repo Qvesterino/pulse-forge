@@ -47,6 +47,7 @@ import {
   sceneRoleOf,
   clampArrangementTransitionType,
   sanitizeArrangementTransitions,
+  sanitizeColor,
 } from "../project-model/schema";
 import type { Pattern } from "../project-model/types";
 import { EFFECT_DEFS, clampEffectParam, defaultParamsOf } from "../effects/registry";
@@ -1086,6 +1087,150 @@ export function deleteTrack(doc: ProjectDocument, trackId: string): Command {
     })),
   };
   return snapshot("deleteTrack", `Delete track ${target.name}`, doc, next);
+}
+
+export function duplicateTrack(doc: ProjectDocument, trackId: string): Command {
+  const target = doc.tracks.find((t) => t.id === trackId);
+  if (!target) throw new Error(`Track ${trackId} not found`);
+  const cloneId = uid("track");
+  let clone: Track;
+  if (target.kind === "drum") {
+    clone = {
+      ...target,
+      id: cloneId,
+      name: `${target.name} copy`,
+      pads: target.pads.map((p) => ({ ...p, id: uid("pad"), chokeGroup: p.chokeGroup })),
+      effects: target.effects.map((fx) => ({
+        ...fx,
+        id: uid("fx"),
+        params: { ...fx.params },
+        ...(fx.steps ? { steps: [...fx.steps] } : {}),
+        ...(fx.sidechainTrackId ? { sidechainTrackId: fx.sidechainTrackId } : {}),
+      })),
+      sends: { ...target.sends },
+      ...(target.groupId ? { groupId: target.groupId } : {}),
+      ...(target.color ? { color: target.color } : {}),
+    };
+    // Remove frozen state on clone
+    if ((clone as unknown as Record<string, unknown>).frozen)
+      delete (clone as unknown as Record<string, unknown>).frozen;
+  } else if (target.kind === "instrument") {
+    clone = {
+      ...target,
+      id: cloneId,
+      name: `${target.name} copy`,
+      params: { ...target.params },
+      effects: target.effects.map((fx) => ({
+        ...fx,
+        id: uid("fx"),
+        params: { ...fx.params },
+        ...(fx.steps ? { steps: [...fx.steps] } : {}),
+        ...(fx.sidechainTrackId ? { sidechainTrackId: fx.sidechainTrackId } : {}),
+      })),
+      sends: { ...target.sends },
+      ...(target.groupId ? { groupId: target.groupId } : {}),
+      ...(target.color ? { color: target.color } : {}),
+      ...(target.presetId ? { presetId: target.presetId } : {}),
+    };
+    if ((clone as unknown as Record<string, unknown>).frozen)
+      delete (clone as unknown as Record<string, unknown>).frozen;
+    // Clear midiOutput to avoid duplicate MIDI routing collision
+    if ((clone as InstrumentTrack).midiOutput) delete (clone as InstrumentTrack).midiOutput;
+  } else {
+    clone = {
+      ...target,
+      id: cloneId,
+      name: `${target.name} copy`,
+      effects: target.effects.map((fx) => ({
+        ...fx,
+        id: uid("fx"),
+        params: { ...fx.params },
+        ...(fx.steps ? { steps: [...fx.steps] } : {}),
+        ...(fx.sidechainTrackId ? { sidechainTrackId: fx.sidechainTrackId } : {}),
+      })),
+      sends: { ...target.sends },
+      ...(target.color ? { color: target.color } : {}),
+    };
+    if ((clone as unknown as Record<string, unknown>).frozen)
+      delete (clone as unknown as Record<string, unknown>).frozen;
+  }
+  const idx = doc.tracks.findIndex((t) => t.id === trackId);
+  const tracks = [...doc.tracks];
+  tracks.splice(idx + 1, 0, clone);
+  let next: ProjectDocument = { ...doc, tracks };
+  // Duplicate pattern rows/notes for the new drum track's pads
+  if (target.kind === "drum") {
+    const padIdMap = new Map<string, string>();
+    (target as DrumTrack).pads.forEach((p, i) => padIdMap.set(p.id, (clone as DrumTrack).pads[i].id));
+    next = {
+      ...next,
+      patterns: next.patterns.map((pat) => {
+        const newRows: Record<string, number[]> = { ...pat.rows };
+        for (const [oldId, newId] of padIdMap) if (pat.rows[oldId]) newRows[newId] = [...pat.rows[oldId]];
+        // stepMeta clone
+        let newMeta = pat.stepMeta ? { ...pat.stepMeta } : undefined;
+        if (newMeta) {
+          for (const [oldId, newId] of padIdMap) if (newMeta[oldId]) newMeta[newId] = { ...newMeta[oldId] };
+        }
+        return { ...pat, rows: newRows, ...(newMeta ? { stepMeta: newMeta } : {}) };
+      }),
+    };
+  }
+  next = normalizeProject(next);
+  return snapshot("duplicateTrack", `Duplicate track ${target.name}`, doc, next);
+}
+
+export function setTrackColor(doc: ProjectDocument, trackId: string, color: string | null): Command {
+  const track = doc.tracks.find((t) => t.id === trackId);
+  if (!track) throw new Error(`Track ${trackId} not found`);
+  const clean = color ? sanitizeColor(color) : undefined;
+  if (color && !clean) throw new Error("Invalid color (use #rrggbb)");
+  const next: ProjectDocument = {
+    ...doc,
+    tracks: doc.tracks.map((t) => {
+      if (t.id !== trackId) return t;
+      if (!clean) {
+        const { color: _c, ...rest } = t as unknown as Record<string, unknown>;
+        return rest as unknown as Track;
+      }
+      return { ...t, color: clean } as unknown as Track;
+    }),
+  };
+  return snapshot("setTrackColor", color ? `Set ${track.name} color` : `Clear ${track.name} color`, doc, next);
+}
+
+export function createReturnTrack(doc: ProjectDocument, name?: string): Command {
+  const baseName = name?.trim() || `Return ${doc.returns.length + 1}`;
+  const ret: import("../project-model/types").ReturnTrack = {
+    id: uid("return"),
+    kind: "return",
+    name: baseName,
+    gain: 0.9,
+    effects: [],
+  };
+  const next: ProjectDocument = { ...doc, returns: [...doc.returns, ret] };
+  return snapshot("createReturnTrack", `Add return ${baseName}`, doc, next);
+}
+
+export function addEffectToTracks(doc: ProjectDocument, trackIds: string[], type: EffectType): Command {
+  if (trackIds.length === 0) throw new Error("Select at least one track");
+  const unique = [...new Set(trackIds)];
+  for (const id of unique)
+    if (!doc.tracks.some((t) => t.id === id) && !doc.returns.some((r) => r.id === id))
+      throw new Error(`Track ${id} not found`);
+  let next: ProjectDocument = doc;
+  for (const id of unique) {
+    const isReturn = doc.returns.some((r) => r.id === id);
+    if (isReturn) {
+      const fx: EffectInstance = { id: uid("fx"), type, bypassed: false, params: defaultParamsOf(type) };
+      if (type === "stepGate") fx.steps = [...DEFAULT_GATE_PATTERN];
+      if (type === "stutter") fx.steps = Array.from({ length: 16 }, () => 1);
+      next = { ...next, returns: next.returns.map((r) => (r.id === id ? { ...r, effects: [...r.effects, fx] } : r)) };
+    } else {
+      next = addEffect(next, id, type).execute(next);
+    }
+  }
+  return snapshot("addEffectToTracks", `Add ${EFFECT_DEFS[type].name} to ${unique.length} tracks`, doc, next);
 }
 
 /* ---------------- notes ---------------- */

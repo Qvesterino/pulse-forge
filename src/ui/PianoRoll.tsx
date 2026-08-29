@@ -43,6 +43,8 @@ type DragState =
       baseStart: number;
       dSteps: number;
       dPitch: number;
+      altDuplicate?: boolean;
+      duplicatedIds?: string[];
     }
   | { mode: "resize"; noteId: string; baseStart: number; baseDurSteps: number; durSteps: number };
 
@@ -69,6 +71,17 @@ export function PianoRollTrack({
   const [drag, setDrag] = useState<DragState | null>(null);
   const notes = pattern.notes?.[track.id] ?? [];
   const patternTicks = STEP_TICKS * pattern.stepCount;
+  // Ghost notes from other patterns (30% opacity, non-interactive)
+  const ghostNotes: NoteEvent[] = (() => {
+    const out: NoteEvent[] = [];
+    for (const other of doc.patterns) {
+      if (other.id === pattern.id) continue;
+      const list = other.notes?.[track.id];
+      if (!list || list.length === 0) continue;
+      for (const n of list) out.push({ ...n, id: `ghost-${other.id}-${n.id}` });
+    }
+    return out;
+  })();
   const [velDrag, setVelDrag] = useState<{
     anchorId: string;
     startY: number;
@@ -107,21 +120,63 @@ export function PianoRollTrack({
       onSelectNote(nextIds.length > 0 ? { trackId: track.id, noteIds: nextIds } : null);
       return;
     }
+    // Alt+drag duplicates selection (or this note if not in selection) before dragging — like FL
+    const isAlt = event.altKey;
+    let dragNoteId = note.id;
+    let altDuplicatedIds: string[] | undefined;
+    if (isAlt) {
+      const sel = selectedNote?.trackId === track.id ? selectedNote.noteIds : [];
+      const idsToDup = sel.includes(note.id) && sel.length > 0 ? sel : [note.id];
+      const dups: NoteEvent[] = [];
+      for (const nid of idsToDup) {
+        const src = notes.find((n) => n.id === nid);
+        if (!src) continue;
+        dups.push({ ...src, id: uid("note") });
+      }
+      if (dups.length > 0) {
+        const prev = [...notes];
+        const next = [...notes, ...dups].sort((a, b) => a.start - b.start || a.pitch - b.pitch);
+        const newIds = dups.map((n) => n.id);
+        altDuplicatedIds = newIds;
+        // Dispatch duplicate as one undo step, then drag the first duplicate
+        services.store.execute({
+          type: "altDragDuplicate",
+          label: `Duplicate ${dups.length} notes`,
+          execute: (d: any) => ({
+            ...d,
+            patterns: d.patterns.map((p: any) =>
+              p.id === pattern.id ? { ...p, notes: { ...(p.notes ?? {}), [track.id]: next } } : p,
+            ),
+          }),
+          undo: (d: any) => ({
+            ...d,
+            patterns: d.patterns.map((p: any) =>
+              p.id === pattern.id ? { ...p, notes: { ...(p.notes ?? {}), [track.id]: prev } } : p,
+            ),
+          }),
+        } as any);
+        // Switch selection to duplicates so the drag moves the copies
+        onSelectNote({ trackId: track.id, noteIds: newIds });
+        dragNoteId = newIds[0] ?? note.id;
+        // Update note reference to the duplicate's cloned data (same pitch/start as original)
+      }
+    }
     try {
       event.currentTarget.setPointerCapture(event.pointerId);
     } catch {
       // no active pointer (synthetic dispatch) — drag continues without capture
     }
     const { stepF } = posFromEvent(event);
-    const noteStartSteps = note.start / STEP_TICKS;
-    const noteDurSteps = note.duration / STEP_TICKS;
+    const refNote = notes.find((n) => n.id === note.id) ?? note;
+    const noteStartSteps = refNote.start / STEP_TICKS;
+    const noteDurSteps = refNote.duration / STEP_TICKS;
     const isEdge = stepF - noteStartSteps > Math.max(noteDurSteps - 0.35, 0.65);
-    onSelectNote({ trackId: track.id, noteIds: [note.id] });
+    if (!isAlt) onSelectNote({ trackId: track.id, noteIds: [dragNoteId] });
     if (isEdge) {
       const state: DragState = {
         mode: "resize",
-        noteId: note.id,
-        baseStart: note.start,
+        noteId: dragNoteId,
+        baseStart: refNote.start,
         baseDurSteps: noteDurSteps,
         durSteps: noteDurSteps,
       };
@@ -130,12 +185,14 @@ export function PianoRollTrack({
     } else {
       const state: DragState = {
         mode: "move",
-        noteId: note.id,
+        noteId: dragNoteId,
         grabStep: stepF - noteStartSteps,
-        basePitch: note.pitch,
-        baseStart: note.start,
+        basePitch: refNote.pitch,
+        baseStart: refNote.start,
         dSteps: 0,
         dPitch: 0,
+        altDuplicate: isAlt,
+        duplicatedIds: altDuplicatedIds,
       };
       dragRef.current = state;
       setDrag(state);
@@ -375,6 +432,118 @@ export function PianoRollTrack({
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [hasSelection, selectedNote, doc, track.id, services.store]);
+
+  // P2.1 shortcuts: S strum, Alt+S slide, L legato, Ctrl/Cmd+B duplicate
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const typing =
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "SELECT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable);
+      if (typing) return;
+      if (!hasSelection) return;
+      const lower = e.key.toLowerCase();
+      const ctrl = e.ctrlKey || e.metaKey;
+      if (ctrl && lower === "b") {
+        e.preventDefault();
+        try {
+          services.store.execute(duplicateNotes(doc, track.id, selectedNote!.noteIds));
+        } catch {
+          /* empty */
+        }
+        return;
+      }
+      if (lower === "s" && !ctrl) {
+        if (e.altKey) {
+          // Alt+S slide — overlapping legato with 20% overlap for glide
+          e.preventDefault();
+          const sel = notes.filter((n) => selectedNote!.noteIds.includes(n.id)).sort((a, b) => a.start - b.start);
+          if (sel.length < 2) return;
+          const prev = [...notes];
+          const map = new Map(sel.map((n) => [n.id, { ...n }]));
+          for (let i = 0; i < sel.length - 1; i++) {
+            const cur = map.get(sel[i].id)!;
+            const nxt = sel[i + 1];
+            const gap = nxt.start - cur.start;
+            cur.duration = Math.max(STEP_TICKS, gap + Math.round(STEP_TICKS * 0.2));
+          }
+          const last = map.get(sel[sel.length - 1].id);
+          if (last) last.duration = sel[sel.length - 1].duration;
+          const next = notes.map((n) => map.get(n.id) ?? n);
+          services.store.execute({
+            type: "slideNotes",
+            label: `Slide ${sel.length} notes`,
+            execute: (d: any) => ({
+              ...d,
+              patterns: d.patterns.map((p: any) =>
+                p.id === pattern.id ? { ...p, notes: { ...(p.notes ?? {}), [track.id]: next } } : p,
+              ),
+            }),
+            undo: (d: any) => ({
+              ...d,
+              patterns: d.patterns.map((p: any) =>
+                p.id === pattern.id ? { ...p, notes: { ...(p.notes ?? {}), [track.id]: prev } } : p,
+              ),
+            }),
+          } as any);
+          return;
+        }
+        // S strum — 20 ticks spread, uses FL strum semantics
+        e.preventDefault();
+        services.store.execute(
+          applyMidiCreativeTool(doc, {
+            trackId: track.id,
+            noteIds: selectedNote!.noteIds,
+            operation: {
+              kind: "strum",
+              options: { spreadTicks: 20, direction: "up" },
+              scaleLock: scaleSnap,
+              key: doc.key,
+            },
+          }),
+        );
+        return;
+      }
+      if (lower === "l" && !ctrl && !e.altKey) {
+        e.preventDefault();
+        // L legato — extend each selected note to next selected note's start
+        const sel = notes.filter((n) => selectedNote!.noteIds.includes(n.id)).sort((a, b) => a.start - b.start);
+        if (sel.length === 0) return;
+        const prev = [...notes];
+        const map = new Map(sel.map((n) => [n.id, { ...n }]));
+        for (let i = 0; i < sel.length; i++) {
+          const cur = map.get(sel[i].id)!;
+          const nextStart =
+            i + 1 < sel.length ? sel[i + 1].start : Math.min(patternTicks, cur.start + cur.duration + STEP_TICKS * 2);
+          cur.duration = Math.max(STEP_TICKS, nextStart - cur.start);
+          if (cur.start + cur.duration > patternTicks) cur.duration = patternTicks - cur.start;
+        }
+        const next = notes.map((n) => map.get(n.id) ?? n);
+        services.store.execute({
+          type: "legatoNotes",
+          label: `Legato ${sel.length} notes`,
+          execute: (d: any) => ({
+            ...d,
+            patterns: d.patterns.map((p: any) =>
+              p.id === pattern.id ? { ...p, notes: { ...(p.notes ?? {}), [track.id]: next } } : p,
+            ),
+          }),
+          undo: (d: any) => ({
+            ...d,
+            patterns: d.patterns.map((p: any) =>
+              p.id === pattern.id ? { ...p, notes: { ...(p.notes ?? {}), [track.id]: prev } } : p,
+            ),
+          }),
+        } as any);
+        return;
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [hasSelection, selectedNote, doc, track.id, pattern.id, patternTicks, notes, scaleSnap, services.store]);
 
   return (
     <div className="pianoroll-wrap">
@@ -706,6 +875,25 @@ export function PianoRollTrack({
                 style={{ left: `${stepPct(playheadStep)}%`, width: `${100 / pattern.stepCount}%` }}
               />
             )}
+            {/* Ghost notes from other patterns — 30% opaque, non-interactive */}
+            {ghostNotes.map((note) => {
+              const startSteps = note.start / STEP_TICKS;
+              const durSteps = note.duration / STEP_TICKS;
+              const top = (PITCH_MAX - note.pitch) * ROW_HEIGHT;
+              return (
+                <div
+                  key={note.id}
+                  className="pr-note ghost"
+                  style={{
+                    left: `${(startSteps / pattern.stepCount) * 100}%`,
+                    width: `${(durSteps / pattern.stepCount) * 100}%`,
+                    top: `${clamp(top, 0, (PITCH_COUNT - 1) * ROW_HEIGHT)}px`,
+                    opacity: 0.3,
+                  }}
+                  title={`Ghost ${pitchName(note.pitch)} — from another pattern`}
+                />
+              );
+            })}
             {notes.map((note) => {
               let startSteps = note.start / STEP_TICKS;
               let durSteps = note.duration / STEP_TICKS;
@@ -730,7 +918,7 @@ export function PianoRollTrack({
                     top: `${clamp(top, 0, (PITCH_COUNT - 1) * ROW_HEIGHT)}px`,
                     opacity: 0.35 + note.velocity * 0.65,
                   }}
-                  title={`${pitchName(note.pitch)} — drag to move, drag right edge to resize, right-click to delete`}
+                  title={`${pitchName(note.pitch)} — drag to move, Alt+drag duplicate, drag right edge to resize, right-click to delete — S strum, Alt+S slide, L legato, Ctrl+B duplicate`}
                   onPointerDown={(event) => beginNoteDrag(event, note)}
                   onPointerMove={onNotePointerMove}
                   onPointerUp={onNotePointerUp}

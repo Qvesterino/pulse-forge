@@ -125,6 +125,8 @@ export interface DrumTrack {
   sends: Record<ID, number>;
   /** Optional group membership — track routes through a GroupTrack instead of master. */
   groupId?: ID;
+  /** Tag color for mixer strips (CSS hex). */
+  color?: string;
   /** When set, the track is frozen — rendered to an AudioBuffer, saving CPU. */
   frozen?: FrozenState;
 }
@@ -148,6 +150,8 @@ export interface InstrumentTrack {
   midiOutput?: { enabled: boolean; channel: number; deviceId?: string };
   /** Optional group membership — track routes through a GroupTrack instead of master. */
   groupId?: ID;
+  /** Tag color for mixer strips (CSS hex). */
+  color?: string;
   /** When set, the track is frozen — rendered to an AudioBuffer, saving CPU. */
   frozen?: FrozenState;
 }
@@ -162,6 +166,8 @@ export interface GroupTrack {
   solo: boolean;
   effects: EffectInstance[];
   sends: Record<ID, number>;
+  /** Tag color for mixer strips (CSS hex). */
+  color?: string;
   /** When set, the track is frozen — rendered to an AudioBuffer, saving CPU. */
   frozen?: FrozenState;
 }

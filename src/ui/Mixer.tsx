@@ -1,15 +1,21 @@
-import { useState } from "react";
-import { useDoc, useServices } from "./context";
+import { useEffect, useState } from "react";
+import { useDoc, useSelection, useServices } from "./context";
 import {
+  addEffectToTracks,
+  addMacroMapping,
   addToGroup,
+  createReturnTrack,
   deleteTrack,
+  duplicateTrack,
   removeFromGroup,
   setMasterConfig,
   setReturnGain,
+  setTrackColor,
   setTrackParams,
   setTrackSend,
 } from "../commands/commands";
-import type { Track } from "../project-model/types";
+import type { EffectType, Track } from "../project-model/types";
+import { EFFECT_DEFS } from "../effects/registry";
 import { Slider } from "./controls";
 import { Meter } from "./Meter";
 import { MasterMeter } from "./MasterMeter";
@@ -19,9 +25,44 @@ import { FreezeButton } from "./FreezeButton";
 export function Mixer() {
   const services = useServices();
   const doc = useDoc();
-
+  const selection = useSelection();
+  const selectedIds = selection.trackIds;
+  const selectedTracks = doc.tracks.filter((t) => selectedIds.includes(t.id));
+  const batchCount = selectedTracks.length > 1 ? selectedTracks.length : doc.tracks.length;
+  const [batchType, setBatchType] = useState<EffectType>("eq");
   return (
     <section className="mixer" aria-label="Mixer">
+      <div className="mixer-batch-bar" role="toolbar" aria-label="Batch FX">
+        <span className="mixer-batch-label">BATCH FX → {batchCount} TRACKS</span>
+        <select
+          value={batchType}
+          onChange={(e) => setBatchType(e.target.value as EffectType)}
+          aria-label="Batch effect type"
+        >
+          {Object.keys(EFFECT_DEFS)
+            .sort()
+            .map((k) => (
+              <option key={k} value={k}>
+                {EFFECT_DEFS[k as EffectType].name}
+              </option>
+            ))}
+        </select>
+        <button
+          type="button"
+          className="btn btn-small"
+          title="Add effect to selected tracks (or all if none selected) — 1 click on 5 tracks"
+          onClick={() => {
+            const ids = selectedTracks.length > 0 ? selectedTracks.map((t) => t.id) : doc.tracks.map((t) => t.id);
+            try {
+              services.store.execute(addEffectToTracks(doc, ids.slice(0, 5), batchType));
+            } catch (e) {
+              /* toast via error */ void e;
+            }
+          }}
+        >
+          ADD TO {Math.min(5, batchCount)}
+        </button>
+      </div>
       <div className="mixer-strips">
         {doc.tracks.map((track) => (
           <ChannelStrip key={track.id} track={track} canDelete={doc.tracks.length > 1} />
@@ -135,9 +176,65 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
   const services = useServices();
   const doc = useDoc();
   const [nameDraft, setNameDraft] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [faderMenu, setFaderMenu] = useState<null | {
+    x: number;
+    y: number;
+    param: "gain" | "pan" | string;
+    defaultValue: number;
+    trackId: string;
+  }>(null);
+  const isGroup = track.kind === "group";
+
+  useEffect(() => {
+    if (!faderMenu) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t?.closest(".fader-menu")) return;
+      setFaderMenu(null);
+    };
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [faderMenu]);
+
+  const openFaderMenu = (e: React.MouseEvent, param: "gain" | "pan" | string, defaultValue: number) => {
+    e.preventDefault();
+    setFaderMenu({ x: e.clientX, y: e.clientY, param, defaultValue, trackId: track.id });
+  };
 
   return (
-    <div className={`channel-strip${track.kind === "group" ? " group-strip" : ""}`}>
+    <div
+      className={`channel-strip${isGroup ? " group-strip" : ""}${dragOver ? " drag-over" : ""}`}
+      draggable={!isGroup}
+      onDragStart={(e) => {
+        if (isGroup) {
+          e.preventDefault();
+          return;
+        }
+        e.dataTransfer.setData("text/plain", track.id);
+        e.dataTransfer.effectAllowed = "move";
+      }}
+      onDragOver={(e) => {
+        if (!isGroup) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        setDragOver(true);
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => {
+        if (!isGroup) return;
+        e.preventDefault();
+        setDragOver(false);
+        const draggedId = e.dataTransfer.getData("text/plain");
+        if (!draggedId || draggedId === track.id) return;
+        try {
+          services.store.execute(addToGroup(doc, draggedId, track.id));
+        } catch {
+          /* ignore */
+        }
+      }}
+      style={track.color ? { borderTopColor: track.color, borderTopWidth: 3 } : undefined}
+    >
       <div className="channel-name">
         <span className="track-tab-badge">{trackBadge(track)}</span>
         <input
@@ -154,6 +251,15 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
           onKeyDown={(event) => {
             if (event.key === "Enter") event.currentTarget.blur();
           }}
+        />
+        <input
+          type="color"
+          className="channel-color"
+          value={track.color ?? "#6366f1"}
+          title="Track color (tag)"
+          aria-label={`Color for ${track.name}`}
+          onChange={(e) => services.store.execute(setTrackColor(doc, track.id, e.target.value))}
+          onDoubleClick={() => services.store.execute(setTrackColor(doc, track.id, null))}
         />
       </div>
       <div className="channel-body">
@@ -180,37 +286,70 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
               </select>
             </label>
           )}
-          <Slider
-            label="VOL"
-            value={track.gain}
-            min={0}
-            max={1.5}
-            defaultValue={0.9}
-            format={(v) => (20 * Math.log10(Math.max(v, 0.001))).toFixed(1)}
-            onCommit={(gain) => services.store.execute(setTrackParams(doc, track.id, { gain }))}
-          />
-          <Slider
-            label="PAN"
-            value={track.pan}
-            min={-1}
-            max={1}
-            defaultValue={0}
-            format={(v) => (Math.abs(v) < 0.02 ? "C" : `${v < 0 ? "L" : "R"}${Math.round(Math.abs(v) * 100)}`)}
-            onCommit={(pan) => services.store.execute(setTrackParams(doc, track.id, { pan }))}
-          />
-          {doc.returns.map((ret) => (
+          <div onContextMenu={(e) => openFaderMenu(e, "gain", 0.9)}>
             <Slider
-              key={ret.id}
-              compact
-              label={`→ ${ret.name.toUpperCase()}`}
-              value={track.sends[ret.id] ?? 0}
+              label="VOL"
+              value={track.gain}
               min={0}
               max={1.5}
-              defaultValue={0}
-              format={(v) => (v < 0.005 ? "OFF" : `${Math.round((v / 1.5) * 100)}%`)}
-              onCommit={(level) => services.store.execute(setTrackSend(doc, track.id, ret.id, level))}
+              defaultValue={0.9}
+              format={(v) => (20 * Math.log10(Math.max(v, 0.001))).toFixed(1)}
+              onCommit={(gain) => services.store.execute(setTrackParams(doc, track.id, { gain }))}
             />
+          </div>
+          <div onContextMenu={(e) => openFaderMenu(e, "pan", 0)}>
+            <Slider
+              label="PAN"
+              value={track.pan}
+              min={-1}
+              max={1}
+              defaultValue={0}
+              format={(v) => (Math.abs(v) < 0.02 ? "C" : `${v < 0 ? "L" : "R"}${Math.round(Math.abs(v) * 100)}`)}
+              onCommit={(pan) => services.store.execute(setTrackParams(doc, track.id, { pan }))}
+            />
+          </div>
+          {doc.returns.map((ret) => (
+            <div
+              key={ret.id}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setFaderMenu({
+                  x: e.clientX,
+                  y: e.clientY,
+                  param: `send:${ret.id}`,
+                  defaultValue: 0,
+                  trackId: track.id,
+                });
+              }}
+              title="RMB → Create return"
+            >
+              <Slider
+                compact
+                label={`→ ${ret.name.toUpperCase()}`}
+                value={track.sends[ret.id] ?? 0}
+                min={0}
+                max={1.5}
+                defaultValue={0}
+                format={(v) => (v < 0.005 ? "OFF" : `${Math.round((v / 1.5) * 100)}%`)}
+                onCommit={(level) => services.store.execute(setTrackSend(doc, track.id, ret.id, level))}
+              />
+            </div>
           ))}
+          <div
+            className="send-create"
+            onContextMenu={(e) => {
+              e.preventDefault();
+              try {
+                services.store.execute(createReturnTrack(doc));
+              } catch {
+                /* ignore */
+              }
+            }}
+            title="RMB here to create a new return"
+            style={{ fontSize: 10, color: "var(--muted)", cursor: "context-menu", padding: "2px 0" }}
+          >
+            + SEND (RMB → New return)
+          </div>
         </div>
         <Meter engine={services.engine} kind="track" id={track.id} />
       </div>
@@ -233,6 +372,14 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
         </button>
         <button
           type="button"
+          className="btn btn-small"
+          title="Duplicate track with FX (copies pads/effects/sends/color)"
+          onClick={() => services.store.execute(duplicateTrack(doc, track.id))}
+        >
+          DUP
+        </button>
+        <button
+          type="button"
           className="btn btn-small btn-danger"
           title="Delete track"
           disabled={!canDelete}
@@ -242,6 +389,100 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
         </button>
         <FreezeButton track={track} />
       </div>
+      {faderMenu && faderMenu.trackId === track.id && (
+        <div
+          className="fader-menu"
+          role="menu"
+          style={{ left: faderMenu.x, top: faderMenu.y }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <div className="context-menu-header">FADER</div>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              if (faderMenu.param === "gain")
+                services.store.execute(setTrackParams(doc, track.id, { gain: faderMenu.defaultValue }));
+              else if (faderMenu.param === "pan")
+                services.store.execute(setTrackParams(doc, track.id, { pan: faderMenu.defaultValue }));
+              else if (faderMenu.param.startsWith("send:")) {
+                const rid = faderMenu.param.slice(5);
+                services.store.execute(setTrackSend(doc, track.id, rid, 0));
+              }
+              setFaderMenu(null);
+            }}
+          >
+            Reset to default ({faderMenu.defaultValue})
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              const cur =
+                faderMenu.param === "gain"
+                  ? track.gain
+                  : faderMenu.param === "pan"
+                    ? track.pan
+                    : (track.sends[faderMenu.param.slice(5)] ?? 0);
+              const raw = window.prompt(`Type value for ${faderMenu.param}:`, String(cur));
+              const n = raw ? Number(raw) : NaN;
+              if (Number.isFinite(n)) {
+                if (faderMenu.param === "gain")
+                  services.store.execute(setTrackParams(doc, track.id, { gain: Math.min(1.5, Math.max(0, n)) }));
+                else if (faderMenu.param === "pan")
+                  services.store.execute(setTrackParams(doc, track.id, { pan: Math.min(1, Math.max(-1, n)) }));
+                else if (faderMenu.param.startsWith("send:")) {
+                  const rid = faderMenu.param.slice(5);
+                  services.store.execute(setTrackSend(doc, track.id, rid, Math.min(1.5, Math.max(0, n))));
+                }
+              }
+              setFaderMenu(null);
+            }}
+          >
+            Type value…
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              if (faderMenu.param !== "gain" && faderMenu.param !== "pan") {
+                setFaderMenu(null);
+                return;
+              }
+              const macro = doc.macros[0];
+              if (!macro) {
+                setFaderMenu(null);
+                return;
+              }
+              try {
+                services.store.execute(addMacroMapping(doc, macro.id, track.id, faderMenu.param as "gain" | "pan"));
+              } catch {
+                /* ignore */
+              }
+              setFaderMenu(null);
+            }}
+          >
+            Link to macro ({doc.macros[0]?.name ?? "MACRO"})
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              if (faderMenu.param.startsWith("send:")) {
+                try {
+                  services.store.execute(createReturnTrack(doc));
+                } catch {
+                  /* ignore */
+                }
+              }
+              setFaderMenu(null);
+            }}
+            disabled={!faderMenu.param.startsWith("send:")}
+          >
+            Create return
+          </button>
+        </div>
+      )}
     </div>
   );
 }
