@@ -171,6 +171,18 @@ const analog: InstrumentDefinition = {
     { id: "cutoff", label: "CUTOFF", min: 80, max: 16000, default: 9000, unit: "Hz", format: formatHz },
     { id: "resonance", label: "RESO", min: 0.1, max: 12, default: 1, format: (v) => v.toFixed(2) },
     { id: "filterEnv", label: "FLT ENV", min: 0, max: 1, default: 0.3, format: formatPct },
+    { id: "unison", label: "UNISON", min: 1, max: 8, default: 1, format: (v) => `${Math.round(v)}×` },
+    { id: "spread", label: "SPREAD", min: 0, max: 50, default: 0, unit: "ct", format: (v) => `${v.toFixed(0)} ct` },
+    {
+      id: "lfoRate",
+      label: "LFO RATE",
+      min: 0,
+      max: 16,
+      default: 0,
+      unit: "Hz",
+      format: (v) => (v < 0.05 ? "OFF" : `${v.toFixed(2)} Hz`),
+    },
+    { id: "lfoDepth", label: "LFO DEPTH", min: 0, max: 1, default: 0, format: formatPct },
     { id: "attack", label: "ATTACK", min: 0.001, max: 2, default: 0.01, unit: "s", format: formatMs },
     { id: "decay", label: "DECAY", min: 0.02, max: 3, default: 0.25, unit: "s", format: formatMs },
     { id: "sustain", label: "SUSTAIN", min: 0, max: 1, default: 0.7, format: formatPct },
@@ -220,6 +232,7 @@ const analog: InstrumentDefinition = {
         liveFilters.add(filter);
 
         const oscs: OscillatorNode[] = [];
+        const lfoNodes: OscillatorNode[] = [];
         const mkOsc = (waveIndex: number, detune: number, level: number, transpose = 0) => {
           const osc = ctx.createOscillator();
           osc.type = WAVE_NAMES[Math.max(0, Math.min(3, Math.round(waveIndex)))];
@@ -235,6 +248,43 @@ const analog: InstrumentDefinition = {
         mkOsc(p.oscA ?? 2, 0, 0.5);
         mkOsc(p.oscB ?? 2, p.oscBDetune ?? 8, 0.5 * 0.9);
         mkOsc(0, 0, (p.subLevel ?? 0.25) * 0.8, -12);
+
+        // Per-voice cutoff LFO — audio-rate sweep (analog filter wobble)
+        const lfoRate = p.lfoRate ?? 0;
+        const lfoDepth = p.lfoDepth ?? 0;
+        if (lfoRate > 0.05 && lfoDepth > 0.01) {
+          const lfo = ctx.createOscillator();
+          lfo.type = "sine";
+          lfo.frequency.value = lfoRate;
+          const depth = ctx.createGain();
+          depth.gain.value = lfoDepth * base * 0.7;
+          lfo.connect(depth).connect(filter.frequency);
+          lfo.start(when);
+          lfo.stop(stopTime);
+          lfoNodes.push(lfo);
+        }
+        // Unison: N detuned copies of OSC A fanned across the stereo field
+        const unison = Math.max(1, Math.min(8, Math.round(p.unison ?? 1)));
+        if (unison > 1) {
+          const spread = p.spread ?? 0;
+          const uLevel = 0.5 / Math.sqrt(unison);
+          for (let u = 0; u < unison; u++) {
+            const t = unison === 1 ? 0 : (u / (unison - 1)) * 2 - 1;
+            const detune = t * spread;
+            const osc = ctx.createOscillator();
+            osc.type = WAVE_NAMES[Math.max(0, Math.min(3, Math.round(p.oscA ?? 2)))];
+            osc.frequency.value = freq;
+            osc.detune.value = detune;
+            const g = ctx.createGain();
+            g.gain.value = uLevel;
+            const pan = ctx.createStereoPanner();
+            pan.pan.value = t * 0.6;
+            osc.connect(g).connect(pan).connect(filter.input);
+            osc.start(when);
+            osc.stop(stopTime);
+            oscs.push(osc);
+          }
+        }
         if ((p.noiseLevel ?? 0) > 0.0005) {
           const src = ctx.createBufferSource();
           src.buffer = noise;
@@ -260,10 +310,24 @@ const analog: InstrumentDefinition = {
                 /* already stopped */
               }
             }
+            for (const lfo of lfoNodes) {
+              try {
+                lfo.stop(t + 0.05);
+              } catch {
+                /* already stopped */
+              }
+            }
           },
           (now) => {
             amp.gain.cancelScheduledValues(now);
             amp.gain.setTargetAtTime(0.0001, now, 0.008);
+            for (const lfo of lfoNodes) {
+              try {
+                lfo.stop(now + 0.03);
+              } catch {
+                /* already stopped */
+              }
+            }
           },
         );
         const latest = oscs[oscs.length - 1];
@@ -653,6 +717,7 @@ const sampler: InstrumentDefinition = {
         { value: 1, label: "Stretch" },
       ],
     },
+    { id: "spread", label: "SPREAD", min: 0, max: 1, default: 0, format: formatPct },
   ],
   factory(ctx, track, env) {
     const output = ctx.createGain();
@@ -714,6 +779,26 @@ const sampler: InstrumentDefinition = {
           src.playbackRate.value = Math.pow(2, semitones / 12);
         }
         src.connect(filter.input);
+        // Stereo spread: deterministic pan per note (seeded) — wide polyphony
+        const spread = Math.max(0, Math.min(1, p.spread ?? 0));
+        if (spread > 0.005) {
+          const rand = mulberry32(hashString(`${track.id}:${pitch}`));
+          const pan = ctx.createStereoPanner();
+          pan.pan.value = (rand() * 2 - 1) * spread * 0.8;
+          filter.output.disconnect();
+          filter.output.connect(pan).connect(amp);
+          src.onended = () => {
+            try {
+              pan.disconnect();
+            } catch {
+              /* already */
+            }
+            liveFilters.delete(filter);
+            amp.disconnect();
+            filter.disconnect();
+            cleanup(voice);
+          };
+        }
         src.start(when);
         src.stop(stopTime);
 
@@ -1048,6 +1133,8 @@ const wavetable: InstrumentDefinition = {
       format: (v) => `${v > 0 ? "+" : ""}${v.toFixed(0)} ct`,
     },
     { id: "sub", label: "SUB", min: 0, max: 1, default: 0.2, format: formatPct },
+    { id: "unison", label: "UNISON", min: 1, max: 8, default: 1, format: (v) => `${Math.round(v)}×` },
+    { id: "spread", label: "SPREAD", min: 0, max: 50, default: 0, unit: "ct", format: (v) => `${v.toFixed(0)} ct` },
     { id: "cutoff", label: "CUTOFF", min: 80, max: 16000, default: 12000, unit: "Hz", format: formatHz },
     { id: "resonance", label: "RESO", min: 0.1, max: 12, default: 1, format: (v) => v.toFixed(2) },
     { id: "attack", label: "ATTACK", min: 0.001, max: 2, default: 0.01, unit: "s", format: formatMs },
@@ -1155,6 +1242,40 @@ const wavetable: InstrumentDefinition = {
         };
         mkTableOsc(0, 0.5);
         mkTableOsc(p.detune ?? 7, 0.45);
+        // Unison: N extra detuned table oscs fanned across the stereo field
+        const unison = Math.max(1, Math.min(8, Math.round(p.unison ?? 1)));
+        if (unison > 1) {
+          const spread = p.spread ?? 0;
+          const uLevel = 0.4 / Math.sqrt(unison);
+          for (let u = 0; u < unison; u++) {
+            const t = unison === 1 ? 0 : (u / (unison - 1)) * 2 - 1;
+            // Offset from base detune so spread does not cancel the main pair
+            const detune = (p.detune ?? 7) * 0.5 + t * spread;
+            const panner = ctx.createStereoPanner();
+            panner.pan.value = t * 0.6;
+            // Reuse table frames per unison voice (morph blend follows main pair)
+            const rate = (freq * Math.pow(2, detune / 1200) * FRAME_SIZE) / ctx.sampleRate;
+            const mkUFrameSource = (buffer: AudioBuffer) => {
+              const src = ctx.createBufferSource();
+              src.buffer = buffer;
+              src.loop = true;
+              src.playbackRate.value = rate;
+              src.start(when);
+              src.stop(stopTime);
+              sources.push(src);
+              return src;
+            };
+            const gAu = ctx.createGain();
+            const gBu = ctx.createGain();
+            gAu.gain.value = (1 - blend) * uLevel;
+            gBu.gain.value = blend * uLevel;
+            mkUFrameSource(frames[ia]).connect(gAu).connect(panner).connect(filter.input);
+            mkUFrameSource(frames[ib]).connect(gBu).connect(panner).connect(filter.input);
+            const pairU = { a: gAu, b: gBu, ia, ib, level: uLevel };
+            pairs.push(pairU);
+            livePairs.add(pairU);
+          }
+        }
 
         if ((p.sub ?? 0.2) > 0.005) {
           const osc = ctx.createOscillator();
@@ -1473,6 +1594,16 @@ const keys: InstrumentDefinition = {
     { id: "width", label: "WIDTH", min: 0, max: 1, default: 0.3, format: formatPct },
     { id: "cutoff", label: "CUTOFF", min: 80, max: 16000, default: 4500, unit: "Hz", format: formatHz },
     { id: "resonance", label: "RESO", min: 0.1, max: 8, default: 1.8, format: (v) => v.toFixed(2) },
+    {
+      id: "lfoRate",
+      label: "LFO RATE",
+      min: 0,
+      max: 16,
+      default: 0,
+      unit: "Hz",
+      format: (v) => (v < 0.05 ? "OFF" : `${v.toFixed(2)} Hz`),
+    },
+    { id: "lfoDepth", label: "LFO DEPTH", min: 0, max: 1, default: 0, format: formatPct },
     { id: "attack", label: "ATTACK", min: 0.001, max: 2, default: 0.005, unit: "s", format: formatMs },
     { id: "release", label: "RELEASE", min: 0.01, max: 4, default: 0.35, unit: "s", format: formatMs },
     { id: "level", label: "LEVEL", min: -24, max: 6, default: -8, unit: "dB", format: formatDb },
@@ -1583,8 +1714,29 @@ const keys: InstrumentDefinition = {
           return { mod, car, modEnv, carEnv, modGain, panner };
         };
 
-        const pairA = makePair(1, 1, 28 + tine * 720, 0.42 + body * 0.38, -width * 0.6, 0.22 + damp * 0.35);
-        const pairB = makePair(3.5, 1, 18 + bell * 1100, bell * 0.55, width * 0.6, 0.18 + damp * 0.28);
+        // Velocity drives FM brightness — soft hits are rounder (Rhodes response)
+        const velIndex = 0.45 + velocity * 0.55;
+        // LFO modulates FM brightness audio-rate — seeded phase from note pitch
+        const klfoRate = p.lfoRate ?? 0;
+        const klfoDepth = p.lfoDepth ?? 0;
+        const lfoPhase = ((pitch * 0.618) % 1) * Math.PI * 2;
+        const lfoMul = klfoRate > 0.05 ? 1 + Math.sin(lfoPhase) * klfoDepth * 0.55 : 1;
+        const pairA = makePair(
+          1,
+          1,
+          (28 + tine * 720) * velIndex * lfoMul,
+          0.42 + body * 0.38,
+          -width * 0.6,
+          0.22 + damp * 0.35,
+        );
+        const pairB = makePair(
+          3.5,
+          1,
+          (18 + bell * 1100) * velIndex * lfoMul,
+          bell * 0.55,
+          width * 0.6,
+          0.18 + damp * 0.28,
+        );
 
         const voice = register(
           pitch,
@@ -1748,7 +1900,11 @@ const pluck: InstrumentDefinition = {
         toneFilter.Q.value = 0.7;
         const feedback = ctx.createGain();
         // Damp shortens decay: 0.96 long, 0.88 short
-        feedback.gain.value = Math.max(0.82, Math.min(0.995, 0.97 - damp * 0.09 + (p.decay ?? 0.9) * 0.02));
+        // Harder hits ring longer — velocity drives KS feedback
+        feedback.gain.value = Math.max(
+          0.82,
+          Math.min(0.995, 0.97 - damp * 0.09 + (p.decay ?? 0.9) * 0.02 + (velocity - 0.8) * 0.04),
+        );
         // Feedback loop: input -> delay -> toneFilter -> feedback -> input
         // Tap after toneFilter into amp/postFilter
         input.connect(delay);

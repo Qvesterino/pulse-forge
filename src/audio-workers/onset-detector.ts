@@ -18,7 +18,7 @@ export interface OnsetDetectorResponse {
   times: number[];
 }
 
-function detectTransients(data: Float32Array, sampleRate: number, sensitivity = 1): number[] {
+export function detectTransients(data: Float32Array, sampleRate: number, sensitivity = 1): number[] {
   const windowSize = 1024;
   const hop = 256;
   const frames = Math.max(0, Math.floor((data.length - windowSize) / hop) + 1);
@@ -71,10 +71,14 @@ function detectTransients(data: Float32Array, sampleRate: number, sensitivity = 
   return onsets;
 }
 
-self.onmessage = (e: MessageEvent<OnsetDetectorRequest>) => {
-  const { channelData, sampleRate, sensitivity } = e.data;
-  const times = detectTransients(channelData, sampleRate, sensitivity ?? 1);
-  (self as unknown as { postMessage: (msg: OnsetDetectorResponse) => void }).postMessage({
-    times,
-  });
-};
+if (typeof self !== "undefined" && typeof (self as unknown as { postMessage?: unknown }).postMessage === "function") {
+  (self as unknown as { onmessage: (e: MessageEvent<OnsetDetectorRequest>) => void }).onmessage = (
+    e: MessageEvent<OnsetDetectorRequest>,
+  ) => {
+    const { channelData, sampleRate, sensitivity } = e.data;
+    const times = detectTransients(channelData, sampleRate, sensitivity ?? 1);
+    (self as unknown as { postMessage: (msg: OnsetDetectorResponse) => void }).postMessage({
+      times,
+    });
+  };
+}

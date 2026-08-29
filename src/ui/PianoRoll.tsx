@@ -46,7 +46,8 @@ type DragState =
       altDuplicate?: boolean;
       duplicatedIds?: string[];
     }
-  | { mode: "resize"; noteId: string; baseStart: number; baseDurSteps: number; durSteps: number };
+  | { mode: "resize"; noteId: string; baseStart: number; baseDurSteps: number; durSteps: number }
+  | { mode: "noteVelocity"; noteId: string; startY: number; startVels: Record<string, number> };
 
 export function PianoRollTrack({
   track,
@@ -120,11 +121,47 @@ export function PianoRollTrack({
       onSelectNote(nextIds.length > 0 ? { trackId: track.id, noteIds: nextIds } : null);
       return;
     }
-    // Alt+drag duplicates selection (or this note if not in selection) before dragging — like FL
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    const relX = event.clientX - rect.left;
+    const relY = event.clientY - rect.top;
+    const isRightEdge = relX > rect.width - 8;
+    const isTopThird = relY < rect.height * 0.33;
     const isAlt = event.altKey;
+    const isCtrl = event.ctrlKey || event.metaKey;
+    // Smart Tool: right edge = resize (highest priority), Ctrl = velocity, Alt = duplicate+move, top third = move
+    const smartMode: "resize" | "velocity" | "duplicate" | "move" = isRightEdge
+      ? "resize"
+      : isCtrl
+        ? "velocity"
+        : isAlt
+          ? "duplicate"
+          : isTopThird
+            ? "move"
+            : "move";
+    if (smartMode === "velocity") {
+      // Middle+Ctrl = velocity (vertical drag, no pitch/time move) — like FL/Cubase smart tool
+      try {
+        (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+      } catch {}
+      const selIds =
+        selectedNote?.trackId === track.id && selectedNote.noteIds.includes(note.id) ? selectedNote.noteIds : [note.id];
+      const map: Record<string, number> = {};
+      for (const nid of selIds) {
+        const n = notes.find((x) => x.id === nid);
+        if (n) map[nid] = n.velocity;
+      }
+      if (!selectedNote || !selIds.every((id) => selectedNote.noteIds.includes(id)))
+        onSelectNote({ trackId: track.id, noteIds: selIds });
+      const state: DragState = { mode: "noteVelocity", noteId: note.id, startY: event.clientY, startVels: map };
+      dragRef.current = state;
+      setDrag(state as unknown as DragState);
+      return;
+    }
+    // Alt+drag duplicates selection (or this note if not in selection) before dragging — like FL
+    const isDuplicate = smartMode === "duplicate" || isAlt;
     let dragNoteId = note.id;
     let altDuplicatedIds: string[] | undefined;
-    if (isAlt) {
+    if (isDuplicate) {
       const sel = selectedNote?.trackId === track.id ? selectedNote.noteIds : [];
       const idsToDup = sel.includes(note.id) && sel.length > 0 ? sel : [note.id];
       const dups: NoteEvent[] = [];
@@ -138,7 +175,6 @@ export function PianoRollTrack({
         const next = [...notes, ...dups].sort((a, b) => a.start - b.start || a.pitch - b.pitch);
         const newIds = dups.map((n) => n.id);
         altDuplicatedIds = newIds;
-        // Dispatch duplicate as one undo step, then drag the first duplicate
         services.store.execute({
           type: "altDragDuplicate",
           label: `Duplicate ${dups.length} notes`,
@@ -155,23 +191,19 @@ export function PianoRollTrack({
             ),
           }),
         } as any);
-        // Switch selection to duplicates so the drag moves the copies
         onSelectNote({ trackId: track.id, noteIds: newIds });
         dragNoteId = newIds[0] ?? note.id;
-        // Update note reference to the duplicate's cloned data (same pitch/start as original)
       }
     }
     try {
       event.currentTarget.setPointerCapture(event.pointerId);
-    } catch {
-      // no active pointer (synthetic dispatch) — drag continues without capture
-    }
+    } catch {}
     const { stepF } = posFromEvent(event);
-    const refNote = notes.find((n) => n.id === note.id) ?? note;
+    const refNote = notes.find((n) => n.id === dragNoteId) ?? notes.find((n) => n.id === note.id) ?? note;
     const noteStartSteps = refNote.start / STEP_TICKS;
     const noteDurSteps = refNote.duration / STEP_TICKS;
-    const isEdge = stepF - noteStartSteps > Math.max(noteDurSteps - 0.35, 0.65);
-    if (!isAlt) onSelectNote({ trackId: track.id, noteIds: [dragNoteId] });
+    const isEdge = isRightEdge || stepF - noteStartSteps > Math.max(noteDurSteps - 0.35, 0.65);
+    if (!isDuplicate) onSelectNote({ trackId: track.id, noteIds: [dragNoteId] });
     if (isEdge) {
       const state: DragState = {
         mode: "resize",
@@ -191,7 +223,7 @@ export function PianoRollTrack({
         baseStart: refNote.start,
         dSteps: 0,
         dPitch: 0,
-        altDuplicate: isAlt,
+        altDuplicate: isDuplicate,
         duplicatedIds: altDuplicatedIds,
       };
       dragRef.current = state;
@@ -202,6 +234,17 @@ export function PianoRollTrack({
   const onNotePointerMove = (event: React.PointerEvent) => {
     const current = dragRef.current;
     if (!current) return;
+    if (current.mode === "noteVelocity") {
+      const delta = current.startY - event.clientY;
+      for (const [nid, startVel] of Object.entries(current.startVels)) {
+        const v = clamp(startVel + delta / 120, 0.05, 1);
+        const el = document.querySelector(`[data-vel="${nid}"]`) as HTMLElement | null;
+        if (el) el.style.height = `${v * 100}%`;
+        const noteEl = document.querySelector(`[data-note-id="${nid}"]`) as HTMLElement | null;
+        if (noteEl) noteEl.style.opacity = String(0.35 + v * 0.65);
+      }
+      return;
+    }
     const { stepF, pitch } = posFromEvent(event);
     if (current.mode === "move") {
       const next: DragState = {
@@ -221,11 +264,29 @@ export function PianoRollTrack({
     }
   };
 
-  const onNotePointerUp = () => {
+  const onNotePointerUp = (event?: React.PointerEvent) => {
     const current = dragRef.current;
     dragRef.current = null;
     setDrag(null);
     if (!current) return;
+    if (current.mode === "noteVelocity") {
+      const delta = current.startY - (event?.clientY ?? current.startY);
+      const velocities: Record<string, number> = {};
+      for (const [nid, startVel] of Object.entries(current.startVels))
+        velocities[nid] = clamp(startVel + delta / 120, 0.05, 1);
+      const ids = Object.keys(velocities);
+      if (ids.length === 1) services.store.execute(setNotesVelocity(doc, track.id, ids, velocities[ids[0]]));
+      else if (ids.length > 1) services.store.execute(setNotesVelocities(doc, track.id, velocities));
+      // reset preview styles
+      for (const nid of ids) {
+        const el = document.querySelector(`[data-vel="${nid}"]`) as HTMLElement | null;
+        if (el) {
+          const n = notes.find((x) => x.id === nid);
+          if (n) el.style.height = `${n.velocity * 100}%`;
+        }
+      }
+      return;
+    }
     if (current.mode === "move" && (current.dSteps !== 0 || current.dPitch !== 0)) {
       const newStart = clamp(current.baseStart + current.dSteps * STEP_TICKS, 0, patternTicks - STEP_TICKS);
       let newPitch = clamp(current.basePitch + current.dPitch, PITCH_MIN, PITCH_MAX);
@@ -900,7 +961,7 @@ export function PianoRollTrack({
               if (drag && drag.noteId === note.id) {
                 if (drag.mode === "move") {
                   startSteps = clamp(startSteps + drag.dSteps, 0, pattern.stepCount - durSteps);
-                } else {
+                } else if (drag.mode === "resize") {
                   durSteps = Math.max(1, drag.durSteps);
                 }
               }
@@ -911,6 +972,7 @@ export function PianoRollTrack({
               return (
                 <div
                   key={note.id}
+                  data-note-id={note.id}
                   className={`pr-note${selected ? " selected" : ""}${isScaleActive && !isInScale(note.pitch, projectKey!) ? " out-of-scale" : ""}`}
                   style={{
                     left: `${(startSteps / pattern.stepCount) * 100}%`,
@@ -918,9 +980,23 @@ export function PianoRollTrack({
                     top: `${clamp(top, 0, (PITCH_COUNT - 1) * ROW_HEIGHT)}px`,
                     opacity: 0.35 + note.velocity * 0.65,
                   }}
-                  title={`${pitchName(note.pitch)} — drag to move, Alt+drag duplicate, drag right edge to resize, right-click to delete — S strum, Alt+S slide, L legato, Ctrl+B duplicate`}
+                  title={`${pitchName(note.pitch)} — Smart Tool: top third = move, right edge = resize, middle+Alt = duplicate, middle+Ctrl = velocity — S strum, Alt+S slide, L legato, Ctrl+B duplicate`}
                   onPointerDown={(event) => beginNoteDrag(event, note)}
-                  onPointerMove={onNotePointerMove}
+                  onPointerMove={(event) => {
+                    onNotePointerMove(event);
+                    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+                    const x = event.clientX - rect.left;
+                    const y = event.clientY - rect.top;
+                    const edge = x > rect.width - 8;
+                    const topThird = y < rect.height * 0.33;
+                    const el = event.currentTarget as HTMLElement;
+                    if (edge) el.style.cursor = "ew-resize";
+                    else if ((event as React.PointerEvent).ctrlKey || (event as React.PointerEvent).metaKey)
+                      el.style.cursor = "ns-resize";
+                    else if ((event as React.PointerEvent).altKey) el.style.cursor = "copy";
+                    else if (topThird) el.style.cursor = "move";
+                    else el.style.cursor = "grab";
+                  }}
                   onPointerUp={onNotePointerUp}
                   onContextMenu={(event) => {
                     event.preventDefault();

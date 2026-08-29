@@ -125,3 +125,7 @@ Cieľ: `sampler` `pitch` nemení `duration` pre tonal chopy.
 ## Changelog
 
 - 2026-09-03 — Vytvorený dokument. B1 Keys (FM 4-op) + B2 Pluck (KS) + B3 HH synth (hat/clap/perc/cowbell) hotové, overené `typecheck` + `vitest 1012`. Naplánované B3b/B4/B5.
+- 2026-09-03 — B3b hotové: `kick|snare` synth vetvy `AudioEngine.triggerSynth`, schema + Inspector. B4 hotové: `createVoiceFilter` (SVF AudioWorklet + Biquad fallback) prepojené cez analog/bass/sampler/wavetable/keys/pluck. B5 hotové: `pitchShiftPreserveDuration` (granular overlap-add, deterministický, bez Workletu), sampler param `stretch 0|1` + cache. vitest 1017.
+- 2026-09-03 — **Expresivita pass**: Analog `unison 1..8` + `spread 0..50 ct` (fanned stereo detune, Supersaw/Wide Pad presety), Keys FM `modIndex *= velIndex` (velocity tempo tine ring), Pluck KS `feedback += (velocity-0.8)*0.04` (hard hits ring dlhšie). Era full-velocity responsivity.
+- 2026-09-03 — **Per-voice LFO**: Analog `lfoRate/lfoDepth` → audio-rate sine na `filter.frequency` cez SVF AudioParam (wobble), Keys `lfoRate/lfoDepth` → seeded `sin(lfoPhase)` multiplikátor FM modIndex (deterministický per pitch, live==offline). Presety Wobble Acid / Moving Pad Keys. Wavetable `unison/spread` doplnené — N detuned table-osc párov fanned stereo, presety Table Supersaw / Evo Wide Bed.
+- 2026-09-03 — **Sampler stereo spread**: `spread 0..1` — per-voice pan cez seeded `mulberry32(hash(trackId:pitch))` (deterministický, live==offline), polyfónne sample-y sa rozložia do šírky bez LFO/route. Cleanup pan v `onended`.

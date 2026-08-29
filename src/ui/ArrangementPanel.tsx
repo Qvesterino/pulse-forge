@@ -6,6 +6,7 @@ import {
   addArrangementTransition,
   addAudioClip,
   addMarker,
+  consolidateAudioClips,
   createArrangementSkeleton,
   createScene,
   createVariationAndPlaceClip,
@@ -24,6 +25,8 @@ import {
   reorderScenes,
   resizeArrangementClip,
   resizeAudioClip,
+  splitAudioClipAtTick,
+  stripSilenceAudioClip,
   updateAudioClip,
   sliceToPads,
 } from "../commands/commands";
@@ -672,9 +675,51 @@ export function ArrangementPanel() {
             ref={laneRef}
             style={{ width: totalBars * BAR_WIDTH, height: LANE_HEIGHT }}
             onPointerDown={(event) => {
-              if (event.target !== laneRef.current || event.button !== 0) return;
+              if (event.button !== 0) return;
+              // FL: Ctrl+drag on lane → range select (Cubase Range Tool)
+              if ((event.ctrlKey || event.metaKey) && event.target === laneRef.current) {
+                const bar = Math.max(0, (event.clientX - laneRef.current!.getBoundingClientRect().left) / BAR_WIDTH);
+                setTimeDrag({ startBar: bar, currentBar: bar });
+                (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+                event.preventDefault();
+                return;
+              }
+              if (event.target !== laneRef.current) return;
               if (selectedScene) placeScene(selectedScene.id, barFromEvent(event));
               setSelectedClipId(null);
+            }}
+            onPointerMove={(event) => {
+              if (!timeDrag) return;
+              // Only handle lane Ctrl+drag here; ruler has its own handler
+              if (!(event.ctrlKey || event.metaKey) && event.buttons === 1) {
+                // If we started via lane Ctrl+drag, keep updating even if Ctrl released
+              }
+              const bar = Math.max(
+                0,
+                Math.min(totalBars, (event.clientX - laneRef.current!.getBoundingClientRect().left) / BAR_WIDTH),
+              );
+              setTimeDrag({ startBar: timeDrag.startBar, currentBar: bar });
+              const from = Math.min(timeDrag.startBar, bar);
+              const to = Math.max(timeDrag.startBar, bar);
+              if (Math.abs(to - from) > 0.15)
+                selectionStore.setTimeRange({
+                  fromTick: Math.floor(from * BAR_TICKS),
+                  toTick: Math.floor(to * BAR_TICKS),
+                });
+              else selectionStore.setTimeRange(null);
+            }}
+            onPointerUp={(event) => {
+              if (!timeDrag) return;
+              const from = Math.min(timeDrag.startBar, timeDrag.currentBar);
+              const to = Math.max(timeDrag.startBar, timeDrag.currentBar);
+              if (Math.abs(to - from) < 0.15 && !(event.ctrlKey || event.metaKey)) {
+                // Small drag without Ctrl was actually a click → place already handled
+                selectionStore.setTimeRange(null);
+              }
+              setTimeDrag(null);
+              try {
+                (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
+              } catch {}
             }}
             onDragOver={(event) => event.preventDefault()}
             onDrop={(event) => {
@@ -1021,6 +1066,152 @@ export function ArrangementPanel() {
               }}
             >
               Slice to pads (onset)
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                const pos = services.transport.position;
+                const c = audioClips.find((x) => x.id === audioMenu.clipId);
+                if (!c) {
+                  setAudioMenu(null);
+                  return;
+                }
+                const s = c.startBar * BAR_TICKS;
+                const e = s + c.lengthBars * BAR_TICKS;
+                if (pos <= s || pos >= e) {
+                  setActionError("Move playhead inside clip then Ctrl+E");
+                  setAudioMenu(null);
+                  return;
+                }
+                try {
+                  execute(splitAudioClipAtTick(services.store.doc, c.id, pos));
+                } catch (err) {
+                  setActionError(String(err));
+                }
+                setAudioMenu(null);
+              }}
+            >
+              Separate at playhead (Ctrl+E)
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                const c = audioClips.find((x) => x.id === audioMenu.clipId);
+                if (!c) {
+                  setAudioMenu(null);
+                  return;
+                }
+                const buf = services.bank.get(c.bufferId);
+                if (!buf) {
+                  setActionError("Buffer not loaded");
+                  setAudioMenu(null);
+                  return;
+                }
+                const data = buf.getChannelData(0);
+                const win = 1024,
+                  hop = 256,
+                  thresh = 0.015;
+                const frames = Math.floor((data.length - win) / hop) + 1;
+                const env = new Float64Array(frames);
+                for (let f = 0; f < frames; f++) {
+                  let s = 0;
+                  for (let i = f * hop; i < f * hop + win; i++) s += data[i] * data[i];
+                  env[f] = Math.sqrt(s / win);
+                }
+                const segments: Array<{ startSec: number; endSec: number }> = [];
+                let inSeg = false,
+                  segStart = 0;
+                for (let f = 0; f < frames; f++) {
+                  const sec = (f * hop) / buf.sampleRate;
+                  const isSilent = env[f] < thresh;
+                  if (!isSilent && !inSeg) {
+                    inSeg = true;
+                    segStart = sec;
+                  } else if (isSilent && inSeg) {
+                    // require 0.08s silence to close
+                    let silentFrames = 0;
+                    for (let k = f; k < Math.min(frames, f + 8); k++) if (env[k] < thresh) silentFrames++;
+                    if (silentFrames >= 6) {
+                      segments.push({ startSec: segStart, endSec: sec });
+                      inSeg = false;
+                    }
+                  }
+                }
+                if (inSeg) segments.push({ startSec: segStart, endSec: buf.duration });
+                const filtered = segments.filter((s) => s.endSec - s.startSec > 0.06);
+                if (filtered.length === 0) {
+                  setActionError("No silence found");
+                  setAudioMenu(null);
+                  return;
+                }
+                if (filtered.length === 1 && Math.abs(filtered[0].startSec - (c.offsetSec ?? 0)) < 0.01) {
+                  setActionError("Already stripped");
+                  setAudioMenu(null);
+                  return;
+                }
+                try {
+                  execute(stripSilenceAudioClip(services.store.doc, c.id, filtered));
+                } catch (err) {
+                  setActionError(String(err));
+                }
+                setAudioMenu(null);
+              }}
+            >
+              Strip Silence (PT)
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                const sel = selection.timeRange;
+                if (sel) {
+                  const from = sel.fromTick,
+                    to = sel.toTick;
+                  const ids = (doc.arrangement.audioClips ?? [])
+                    .filter((ac) => {
+                      const s = ac.startBar * BAR_TICKS,
+                        e = s + ac.lengthBars * BAR_TICKS;
+                      return s >= from && e <= to;
+                    })
+                    .map((ac) => ac.id);
+                  if (ids.length < 2) {
+                    setActionError("Select timeRange with ≥2 clips to consolidate");
+                    setAudioMenu(null);
+                    return;
+                  }
+                  try {
+                    execute(consolidateAudioClips(services.store.doc, ids));
+                  } catch (err) {
+                    setActionError(String(err));
+                  }
+                } else {
+                  const c = audioClips.find((x) => x.id === audioMenu.clipId);
+                  if (!c) {
+                    setAudioMenu(null);
+                    return;
+                  }
+                  const sameTrack = (doc.arrangement.audioClips ?? [])
+                    .filter((ac) => ac.trackId === c.trackId)
+                    .sort((a, b) => a.startBar - b.startBar);
+                  const idx = sameTrack.findIndex((ac) => ac.id === c.id);
+                  const nxt = sameTrack[idx + 1];
+                  if (!nxt || Math.abs(nxt.startBar - (c.startBar + c.lengthBars)) > 0.5) {
+                    setActionError("Need adjacent clip on same track");
+                    setAudioMenu(null);
+                    return;
+                  }
+                  try {
+                    execute(consolidateAudioClips(services.store.doc, [c.id, nxt.id]));
+                  } catch (err) {
+                    setActionError(String(err));
+                  }
+                }
+                setAudioMenu(null);
+              }}
+            >
+              Consolidate (Shift+Tab+B)
             </button>
             <button
               type="button"

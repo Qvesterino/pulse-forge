@@ -29,7 +29,7 @@ import type {
   StepMeta,
   Track,
 } from "../project-model/types";
-import { BAR_TICKS, STEP_TICKS } from "../project-model/types";
+import { BAR_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
 import { buildStemProject } from "../rendering/stems";
 import { DEFAULT_GATE_PATTERN, DEFAULT_STEP_PATTERN, sanitizeGateSteps } from "../project-model/modulators";
 import { setStepVelocity, withPad, withTrack } from "../project-model/transform";
@@ -2238,6 +2238,114 @@ export function bounceStemsToAudioClip(
   // Use first track as destination (or first selected)
   const trackId = trackIds[0];
   return addAudioClip(doc, trackId, bufferId, startBar, lengthBars, { gain: 1, stretchRate: 1 });
+}
+
+export function splitAudioClipAtTick(doc: ProjectDocument, clipId: string, splitTick: number): Command {
+  const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
+  if (!clip) throw new Error(`AudioClip ${clipId} not found`);
+  const startTick = clip.startBar * BAR_TICKS;
+  const endTick = startTick + clip.lengthBars * BAR_TICKS;
+  if (splitTick <= startTick || splitTick >= endTick) throw new Error("Split point outside clip");
+  const leftBars = (splitTick - startTick) / BAR_TICKS;
+  const rightBars = clip.lengthBars - leftBars;
+  if (leftBars < 0.05 || rightBars < 0.05) throw new Error("Split too close to edge");
+  const secondsPerTick = 60 / (doc.bpm * PPQ);
+  const leftSec = leftBars * BAR_TICKS * secondsPerTick;
+  const rightOffset = (clip.offsetSec ?? 0) + (clip.trimStart ?? 0) + leftSec * (clip.stretchRate ?? 1);
+  const leftId = uid("audioClip");
+  const rightId = uid("audioClip");
+  const leftClip: import("../project-model/types").AudioClip = {
+    ...clip,
+    id: leftId,
+    lengthBars: Math.round(leftBars * 100) / 100,
+  };
+  const rightClip: import("../project-model/types").AudioClip = {
+    ...clip,
+    id: rightId,
+    startBar: splitTick / BAR_TICKS,
+    lengthBars: Math.round(rightBars * 100) / 100,
+    offsetSec: clip.reverse ? clip.offsetSec : Math.max(0, rightOffset - (clip.trimStart ?? 0)),
+    // For reverse, keep offset as is — approximate
+  };
+  // Fix reverse offset handling: keep original for now if reverse
+  if (clip.reverse) {
+    rightClip.offsetSec = clip.offsetSec;
+    leftClip.offsetSec = Math.max(
+      0,
+      (clip.offsetSec ?? 0) + rightBars * BAR_TICKS * secondsPerTick * (clip.stretchRate ?? 1),
+    );
+  }
+  const nextClips = (doc.arrangement.audioClips ?? [])
+    .filter((c) => c.id !== clipId)
+    .concat([leftClip, rightClip])
+    .sort((a, b) => a.startBar - b.startBar);
+  const next: ProjectDocument = { ...doc, arrangement: { ...doc.arrangement, audioClips: nextClips } };
+  return snapshot("splitAudioClip", `Split audio clip at bar ${(splitTick / BAR_TICKS + 1).toFixed(2)}`, doc, next);
+}
+
+export function stripSilenceAudioClip(
+  doc: ProjectDocument,
+  clipId: string,
+  segments: Array<{ startSec: number; endSec: number }>,
+): Command {
+  const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
+  if (!clip) throw new Error(`AudioClip ${clipId} not found`);
+  if (segments.length === 0) throw new Error("No non-silent segments");
+  if (
+    segments.length === 1 &&
+    Math.abs(segments[0].startSec - (clip.offsetSec ?? 0)) < 0.001 &&
+    Math.abs(segments[0].endSec - ((clip.offsetSec ?? 0) + (clip.lengthBars * BAR_TICKS * 60) / (doc.bpm * PPQ))) < 0.1
+  ) {
+    throw new Error("No silence to strip");
+  }
+  const secondsPerTick = 60 / (doc.bpm * PPQ);
+  const startTick = clip.startBar * BAR_TICKS;
+  const newClips: import("../project-model/types").AudioClip[] = segments.map((seg) => {
+    const segDurSec = seg.endSec - seg.startSec;
+    const segBars = segDurSec / secondsPerTick / BAR_TICKS;
+    const segStartTick = startTick + (seg.startSec - (clip.offsetSec ?? 0)) / secondsPerTick;
+    return {
+      ...clip,
+      id: uid("audioClip"),
+      startBar: segStartTick / BAR_TICKS,
+      lengthBars: Math.max(0.05, Math.round(segBars * 100) / 100),
+      offsetSec: seg.startSec,
+      trimStart: 0,
+      trimEnd: 0,
+    } as import("../project-model/types").AudioClip;
+  });
+  // Keep original clip's track/color but replace single with many
+  const nextClips = (doc.arrangement.audioClips ?? [])
+    .filter((c) => c.id !== clipId)
+    .concat(newClips)
+    .sort((a, b) => a.startBar - b.startBar);
+  const next: ProjectDocument = { ...doc, arrangement: { ...doc.arrangement, audioClips: nextClips } };
+  return snapshot("stripSilence", `Strip silence → ${newClips.length} clips`, doc, next);
+}
+
+export function consolidateAudioClips(doc: ProjectDocument, clipIds: string[]): Command {
+  const clips = (doc.arrangement.audioClips ?? []).filter((c) => clipIds.includes(c.id));
+  if (clips.length < 2) throw new Error("Select at least 2 audio clips to consolidate");
+  const trackIds = new Set(clips.map((c) => c.trackId));
+  if (trackIds.size > 1) throw new Error("Consolidate requires clips on same track");
+  const sorted = [...clips].sort((a, b) => a.startBar - b.startBar);
+  const minStart = Math.min(...sorted.map((c) => c.startBar));
+  const maxEnd = Math.max(...sorted.map((c) => c.startBar + c.lengthBars));
+  const totalBars = maxEnd - minStart;
+  // Guardrail: build stem for the track's group
+  const stemDoc = buildStemProject(doc, (t) => t.id === sorted[0].trackId);
+  void stemDoc;
+  const first = sorted[0];
+  const consolidated: import("../project-model/types").AudioClip = {
+    ...first,
+    id: uid("audioClip"),
+    startBar: minStart,
+    lengthBars: Math.round(totalBars * 100) / 100,
+  };
+  const remaining = (doc.arrangement.audioClips ?? []).filter((c) => !clipIds.includes(c.id));
+  const nextClips = [...remaining, consolidated].sort((a, b) => a.startBar - b.startBar);
+  const next: ProjectDocument = { ...doc, arrangement: { ...doc.arrangement, audioClips: nextClips } };
+  return snapshot("consolidateAudioClips", `Consolidate ${clips.length} clips`, doc, next);
 }
 
 /**
