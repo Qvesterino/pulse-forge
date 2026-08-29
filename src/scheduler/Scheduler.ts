@@ -44,6 +44,8 @@ export interface SchedulerDeps {
   triggerMarker?(assetId: string | null, when: number, trackId?: string): void;
   /** Update the live scene intensity signal (0..1). */
   setSceneIntensity?(intensity: number): void;
+  /** Trigger an arrangement AudioClip buffer at an absolute tick. */
+  triggerAudioClip?(clip: import("../project-model/types").AudioClip, when: number, durationSec: number): void;
   /** MIDI output: send a note on to external hardware. */
   midiNoteOn?(trackId: string, channel: number, note: number, velocity: number, when: number): void;
   /** MIDI output: send a note off to external hardware. */
@@ -309,6 +311,16 @@ export class Scheduler {
         for (const lane of doc.sceneAutomation) {
           if (lane.sceneId !== activeScene.id) continue;
           this.applySceneAutomation(lane, windowStart, windowEnd, activeClipStart, transport, this.scheduleOffsetSec());
+        }
+      }
+      // AudioClips: fire any clip whose start tick falls inside the current window
+      if (this.deps.triggerAudioClip && doc.arrangement.audioClips) {
+        for (const clip of doc.arrangement.audioClips) {
+          const clipStart = clip.startBar * BAR_TICKS;
+          if (clipStart < windowStart || clipStart >= windowEnd) continue;
+          const when = transport.timeAtTick(clipStart) + this.scheduleOffsetSec() + 0.005;
+          const durationSec = clip.lengthBars * BAR_TICKS * transport.secondsPerTick;
+          this.deps.triggerAudioClip(clip, when, durationSec);
         }
       }
     }

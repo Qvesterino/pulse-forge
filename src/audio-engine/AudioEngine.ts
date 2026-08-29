@@ -1148,6 +1148,63 @@ export class AudioEngine {
     inst.runtime.noteOn(adjustedPitch, velocity, when, durationSec);
   }
 
+  /**
+   * Schedule an AudioClip buffer segment through its track's FX chain.
+   * Reuses frozenPlaybackOffset semantics (tick→sec + loop offset not needed
+   * for one-shots; we use the same tick→sec conversion so live==offline).
+   * The clip's timeline is `startBar→lengthBars` (bars), playback offset is
+   * `offsetSec+trimStart`, duration is capped to the buffer length minus trims,
+   * stretched via `playbackRate = stretchRate * (reverse?-1:1)`.
+   */
+  triggerAudioClip(clip: import("../project-model/types").AudioClip, when: number, durationSec?: number): void {
+    const ctx = this.ctx;
+    const doc = this.doc;
+    if (!ctx || !doc) return;
+    if (this.frozenBuffers.has(clip.trackId)) return;
+    const nodes = this.trackNodes.get(clip.trackId) ?? this.groupNodes.get(clip.trackId);
+    if (!nodes) return;
+    const buffer = this.bank?.get(clip.bufferId);
+    if (!buffer) return;
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.playbackRate.value = (clip.reverse ? -1 : 1) * Math.min(4, Math.max(0.25, clip.stretchRate ?? 1));
+    const gain = ctx.createGain();
+    gain.gain.value = Math.min(2, Math.max(0, clip.gain ?? 1));
+    // Fade in/out using linear ramps — scheduled at `when`
+    const fadeIn = Math.max(0, clip.fadeIn ?? 0);
+    const fadeOut = Math.max(0, clip.fadeOut ?? 0);
+    const clipDurSec = durationSec ?? buffer.duration / Math.abs(source.playbackRate.value);
+    if (fadeIn > 0.001) {
+      gain.gain.setValueAtTime(0, when);
+      gain.gain.linearRampToValueAtTime(gain.gain.value, when + Math.min(fadeIn, clipDurSec / 2));
+    }
+    if (fadeOut > 0.001 && clipDurSec > 0.01) {
+      const outStart = when + Math.max(0, clipDurSec - fadeOut);
+      gain.gain.setValueAtTime(gain.gain.value, outStart);
+      gain.gain.linearRampToValueAtTime(0, when + clipDurSec);
+    }
+    source.connect(gain).connect(nodes.input);
+    const offset = Math.max(0, (clip.offsetSec ?? 0) + (clip.trimStart ?? 0));
+    // Clamp offset+duration to buffer length (stretched time already accounted)
+    const maxDur = Math.max(0.01, buffer.duration - offset - (clip.trimEnd ?? 0));
+    const dur = Math.min(clipDurSec, maxDur);
+    const playOffset = clip.reverse ? Math.max(0, buffer.duration - offset - dur) : offset;
+    try {
+      source.start(when, playOffset, dur);
+      source.stop(when + dur + 0.01);
+    } catch {
+      /* already started */
+    }
+    source.onended = () => {
+      try {
+        source.disconnect();
+      } catch {}
+      try {
+        gain.disconnect();
+      } catch {}
+    };
+  }
+
   previewNote(trackId: string, pitch: number): void {
     this.ensureContext();
     this.noteOn(trackId, pitch, 1, this.currentTime + 0.005, 0.25);

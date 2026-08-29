@@ -406,6 +406,52 @@ export function clampArrangementTransitionType(value: unknown): ArrangementTrans
     : "custom";
 }
 
+export function sanitizeAudioClips(input: unknown, trackIds: Set<string>): import("./types").AudioClip[] | undefined {
+  if (!Array.isArray(input)) return undefined;
+  const out: import("./types").AudioClip[] = [];
+  const seen = new Set<string>();
+  for (const raw of input as Record<string, unknown>[]) {
+    if (!isObject(raw)) continue;
+    const id = typeof raw.id === "string" && raw.id !== "" ? raw.id : uid("audioClip");
+    if (seen.has(id)) continue;
+    const trackId = typeof raw.trackId === "string" ? raw.trackId : "";
+    if (!trackIds.has(trackId)) continue;
+    const bufferId = typeof raw.bufferId === "string" && raw.bufferId !== "" ? raw.bufferId : null;
+    if (!bufferId) continue;
+    const startBar = Number(raw.startBar);
+    if (!Number.isFinite(startBar) || startBar < 0) continue;
+    const lengthBars = Number(raw.lengthBars);
+    if (!Number.isFinite(lengthBars) || lengthBars < 0.25) continue;
+    const offsetSec = Math.max(0, Number.isFinite(Number(raw.offsetSec)) ? Number(raw.offsetSec) : 0);
+    const trimStart = Math.max(0, Number.isFinite(Number(raw.trimStart)) ? Number(raw.trimStart) : 0);
+    const trimEnd = Math.max(0, Number.isFinite(Number(raw.trimEnd)) ? Number(raw.trimEnd) : 0);
+    const gain = Math.min(2, Math.max(0, Number.isFinite(Number(raw.gain)) ? Number(raw.gain) : 1));
+    const fadeIn = Math.max(0, Number.isFinite(Number(raw.fadeIn)) ? Number(raw.fadeIn) : 0);
+    const fadeOut = Math.max(0, Number.isFinite(Number(raw.fadeOut)) ? Number(raw.fadeOut) : 0);
+    let stretchRate = Number.isFinite(Number(raw.stretchRate)) ? Number(raw.stretchRate) : 1;
+    stretchRate = Math.min(4, Math.max(0.25, stretchRate));
+    const reverse = raw.reverse === true;
+    seen.add(id);
+    out.push({
+      id,
+      trackId,
+      bufferId,
+      startBar,
+      lengthBars,
+      offsetSec,
+      trimStart,
+      trimEnd,
+      gain,
+      fadeIn,
+      fadeOut,
+      stretchRate,
+      reverse,
+    });
+  }
+  out.sort((a, b) => a.startBar - b.startBar);
+  return out.length > 0 ? out : undefined;
+}
+
 export function sanitizeArrangementTransitions(
   input: unknown,
   clips: readonly { id: string; startBar: number; lengthBars: number }[],
@@ -765,6 +811,7 @@ function normalizeScenesDomain(s: NormalizeState): void {
 function normalizeArrangementDomain(s: NormalizeState): void {
   const doc = s.doc;
   const sceneIds = new Set(doc.scenes.map((sc) => sc.id));
+  const trackIds = new Set(doc.tracks.map((t) => t.id));
   let arrangement = doc.arrangement;
   if (arrangement === undefined || arrangement === null) {
     s.doc = { ...doc, arrangement: { clips: [] } };
@@ -776,10 +823,20 @@ function normalizeArrangementDomain(s: NormalizeState): void {
     .filter((c) => sceneIds.has(c.sceneId) && Number.isFinite(c.startBar) && c.startBar >= 0 && c.lengthBars >= 1)
     .sort((a, b) => a.startBar - b.startBar);
   const transitions = sanitizeArrangementTransitions(arrangement.transitions, sorted);
+  const audioClips = sanitizeAudioClips((arrangement as unknown as Record<string, unknown>).audioClips, trackIds);
   const clipsChanged = sorted.length !== rawClips.length || sorted.some((clip, index) => clip !== rawClips[index]);
   const transitionsChanged = JSON.stringify(transitions) !== JSON.stringify(arrangement.transitions);
-  if (clipsChanged || transitionsChanged) {
-    s.doc = { ...doc, arrangement: { clips: sorted, ...(transitions !== undefined ? { transitions } : {}) } };
+  const audioChanged =
+    JSON.stringify(audioClips) !== JSON.stringify((arrangement as unknown as Record<string, unknown>).audioClips);
+  if (clipsChanged || transitionsChanged || audioChanged) {
+    s.doc = {
+      ...doc,
+      arrangement: {
+        clips: sorted,
+        ...(audioClips ? { audioClips } : {}),
+        ...(transitions !== undefined ? { transitions } : {}),
+      },
+    };
     s.changed = true;
   }
 }

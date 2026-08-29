@@ -61,12 +61,19 @@ function createFilteredDoc(doc: ProjectDocument, trackId: string): ProjectDocume
   // Filter LFOs to only those targeting the frozen track or its group
   const filteredLfos = doc.lfos.filter((lfo) => trackIds.has(lfo.trackId));
 
+  // Filter audioClips to only those on the frozen track/group so bounced stems are self-contained
+  const filteredAudioClips = (doc.arrangement.audioClips ?? []).filter((c) => trackIds.has(c.trackId));
+  const filteredArrangement =
+    filteredAudioClips.length > 0
+      ? { ...doc.arrangement, clips: doc.arrangement.clips, audioClips: filteredAudioClips }
+      : doc.arrangement;
   return {
     ...doc,
     tracks: filteredTracks,
     returns: filteredReturns,
     automation: filteredAutomation,
     lfos: filteredLfos,
+    arrangement: filteredArrangement,
     // Flatten macros: apply static macro offsets during render (no live modulation)
     macros: [],
   };

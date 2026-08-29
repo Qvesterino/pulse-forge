@@ -400,8 +400,25 @@ export interface ArrangementTransition {
   cueAssetId?: string;
 }
 
+export interface AudioClip {
+  id: ID;
+  trackId: ID;
+  bufferId: string;
+  startBar: number;
+  lengthBars: number;
+  offsetSec: number;
+  trimStart: number;
+  trimEnd: number;
+  gain: number;
+  fadeIn: number;
+  fadeOut: number;
+  stretchRate: number;
+  reverse: boolean;
+}
+
 export interface Arrangement {
   clips: ArrangementClip[];
+  audioClips?: AudioClip[];
   transitions?: ArrangementTransition[];
 }
 

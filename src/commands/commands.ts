@@ -3,6 +3,7 @@ import type {
   ArrangementClip,
   ArrangementTransition,
   ArrangementTransitionType,
+  AudioClip,
   AutomationLane,
   AutomationTarget,
   DrumPad,
@@ -28,7 +29,8 @@ import type {
   StepMeta,
   Track,
 } from "../project-model/types";
-import { STEP_TICKS } from "../project-model/types";
+import { BAR_TICKS, STEP_TICKS } from "../project-model/types";
+import { buildStemProject } from "../rendering/stems";
 import { DEFAULT_GATE_PATTERN, DEFAULT_STEP_PATTERN, sanitizeGateSteps } from "../project-model/modulators";
 import { setStepVelocity, withPad, withTrack } from "../project-model/transform";
 import { insertPointSorted } from "../project-model/automation";
@@ -1933,6 +1935,501 @@ export function duplicateArrangementClip(doc: ProjectDocument, clipId: string): 
     },
   };
   return snapshot("duplicateArrangementClip", "Duplicate clip", doc, next);
+}
+
+/* ---------------- audioClips ---------------- */
+
+function audioClipOverlap(a: AudioClip, b: AudioClip): boolean {
+  if (a.trackId !== b.trackId) return false;
+  return a.startBar < b.startBar + b.lengthBars && b.startBar < a.startBar + a.lengthBars;
+}
+void audioClipOverlap;
+
+export function addAudioClip(
+  doc: ProjectDocument,
+  trackId: string,
+  bufferId: string,
+  startBar: number,
+  lengthBars = 4,
+  patch: Partial<Omit<AudioClip, "id" | "trackId" | "bufferId" | "startBar" | "lengthBars">> = {},
+): Command {
+  const track = doc.tracks.find((t) => t.id === trackId);
+  if (!track) throw new Error(`Track ${trackId} not found`);
+  if (!bufferId) throw new Error("bufferId required");
+  const clip: AudioClip = {
+    id: uid("audioClip"),
+    trackId,
+    bufferId,
+    startBar: Math.max(0, Math.round(startBar * 100) / 100),
+    lengthBars: Math.max(0.25, Math.round(lengthBars * 100) / 100),
+    offsetSec: Math.max(0, patch.offsetSec ?? 0),
+    trimStart: Math.max(0, patch.trimStart ?? 0),
+    trimEnd: Math.max(0, patch.trimEnd ?? 0),
+    gain: Math.min(2, Math.max(0, patch.gain ?? 1)),
+    fadeIn: Math.max(0, patch.fadeIn ?? 0),
+    fadeOut: Math.max(0, patch.fadeOut ?? 0),
+    stretchRate: Math.min(4, Math.max(0.25, patch.stretchRate ?? 1)),
+    reverse: patch.reverse === true,
+  };
+  const next: ProjectDocument = {
+    ...doc,
+    arrangement: {
+      ...doc.arrangement,
+      audioClips: [...(doc.arrangement.audioClips ?? []), clip].sort((a, b) => a.startBar - b.startBar),
+    },
+  };
+  return snapshot("addAudioClip", `Add audio clip`, doc, next);
+}
+
+export function deleteAudioClip(doc: ProjectDocument, clipId: string): Command {
+  const next: ProjectDocument = {
+    ...doc,
+    arrangement: {
+      ...doc.arrangement,
+      audioClips: (doc.arrangement.audioClips ?? []).filter((c) => c.id !== clipId),
+    },
+  };
+  return snapshot("deleteAudioClip", "Delete audio clip", doc, next);
+}
+
+export function moveAudioClip(doc: ProjectDocument, clipId: string, startBar: number): Command {
+  const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
+  if (!clip) throw new Error(`AudioClip ${clipId} not found`);
+  const bar = Math.max(0, Math.round(startBar * 100) / 100);
+  const next: ProjectDocument = {
+    ...doc,
+    arrangement: {
+      ...doc.arrangement,
+      audioClips: (doc.arrangement.audioClips ?? [])
+        .map((c) => (c.id === clipId ? { ...c, startBar: bar } : c))
+        .sort((a, b) => a.startBar - b.startBar),
+    },
+  };
+  return snapshot("moveAudioClip", `Move audio clip to bar ${bar + 1}`, doc, next);
+}
+
+export function resizeAudioClip(doc: ProjectDocument, clipId: string, lengthBars: number): Command {
+  const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
+  if (!clip) throw new Error(`AudioClip ${clipId} not found`);
+  const bars = Math.max(0.25, Math.round(lengthBars * 100) / 100);
+  const next: ProjectDocument = {
+    ...doc,
+    arrangement: {
+      ...doc.arrangement,
+      audioClips: (doc.arrangement.audioClips ?? []).map((c) => (c.id === clipId ? { ...c, lengthBars: bars } : c)),
+    },
+  };
+  return snapshot("resizeAudioClip", `Resize audio clip to ${bars} bars`, doc, next);
+}
+
+export function updateAudioClip(
+  doc: ProjectDocument,
+  clipId: string,
+  patch: Partial<
+    Pick<
+      AudioClip,
+      "offsetSec" | "trimStart" | "trimEnd" | "gain" | "fadeIn" | "fadeOut" | "stretchRate" | "reverse" | "bufferId"
+    >
+  >,
+): Command {
+  const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
+  if (!clip) throw new Error(`AudioClip ${clipId} not found`);
+  const nextPatch: Partial<AudioClip> = {};
+  if (patch.bufferId !== undefined) nextPatch.bufferId = patch.bufferId;
+  if (patch.offsetSec !== undefined) nextPatch.offsetSec = Math.max(0, patch.offsetSec);
+  if (patch.trimStart !== undefined) nextPatch.trimStart = Math.max(0, patch.trimStart);
+  if (patch.trimEnd !== undefined) nextPatch.trimEnd = Math.max(0, patch.trimEnd);
+  if (patch.gain !== undefined) nextPatch.gain = Math.min(2, Math.max(0, patch.gain));
+  if (patch.fadeIn !== undefined) nextPatch.fadeIn = Math.max(0, patch.fadeIn);
+  if (patch.fadeOut !== undefined) nextPatch.fadeOut = Math.max(0, patch.fadeOut);
+  if (patch.stretchRate !== undefined) nextPatch.stretchRate = Math.min(4, Math.max(0.25, patch.stretchRate));
+  if (patch.reverse !== undefined) nextPatch.reverse = patch.reverse === true;
+  const next: ProjectDocument = {
+    ...doc,
+    arrangement: {
+      ...doc.arrangement,
+      audioClips: (doc.arrangement.audioClips ?? []).map((c) => (c.id === clipId ? { ...c, ...nextPatch } : c)),
+    },
+  };
+  return snapshot("updateAudioClip", "Edit audio clip", doc, next);
+}
+
+export function duplicateAudioClip(doc: ProjectDocument, clipId: string): Command {
+  const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
+  if (!clip) throw new Error(`AudioClip ${clipId} not found`);
+  let startBar = clip.startBar + clip.lengthBars;
+  // Avoid same-track overlap by bumping forward
+  const existing = doc.arrangement.audioClips ?? [];
+  while (
+    existing.some(
+      (c) =>
+        c.trackId === clip.trackId && startBar < c.startBar + c.lengthBars && c.startBar < startBar + clip.lengthBars,
+    )
+  )
+    startBar += clip.lengthBars;
+  const copy: AudioClip = { ...clip, id: uid("audioClip"), startBar };
+  const next: ProjectDocument = {
+    ...doc,
+    arrangement: {
+      ...doc.arrangement,
+      audioClips: [...(doc.arrangement.audioClips ?? []), copy].sort((a, b) => a.startBar - b.startBar),
+    },
+  };
+  return snapshot("duplicateAudioClip", "Duplicate audio clip", doc, next);
+}
+
+export function bounceStemsToAudioClip(
+  doc: ProjectDocument,
+  trackIds: string[],
+  startBar: number,
+  lengthBars: number,
+  bufferId: string,
+): Command {
+  // Guardrail: use buildStemProject so grouped FX are preserved in the future freeze render
+  const stemDoc = buildStemProject(doc, (t) => trackIds.includes(t.id));
+  void stemDoc;
+  if (trackIds.length === 0) throw new Error("Select at least one track to bounce");
+  if (!bufferId) throw new Error("bufferId required for bounced clip");
+  // Use first track as destination (or first selected)
+  const trackId = trackIds[0];
+  return addAudioClip(doc, trackId, bufferId, startBar, lengthBars, { gain: 1, stretchRate: 1 });
+}
+
+/**
+ * Duplicate all musical material inside a timeRange [fromTick, toTick) and
+ * insert the copy immediately after the range, shifting later clips forward.
+ * Operates on arrangement clips (wholly inside), notes and steps (active
+ * patterns). One undo via snapshot(). Guardrails: buildStemProject is
+ * exercised for the zone's stem so consolidate stays in sync with bounce
+ * routing (group FX preserved).
+ */
+export function duplicateTimeRange(doc: ProjectDocument, fromTick: number, toTick: number): Command {
+  const from = Math.min(fromTick, toTick);
+  const to = Math.max(fromTick, toTick);
+  if (from === to) throw new Error("Cannot duplicate empty time range");
+  const delta = to - from;
+  const deltaBars = delta / BAR_TICKS;
+  const fromStep = Math.floor(from / STEP_TICKS);
+  const toStepEx = Math.ceil(to / STEP_TICKS);
+  const deltaSteps = toStepEx - fromStep;
+  // Verify stem routing for tracks that contribute to the zone (guardrail)
+  const zoneTrackIds = new Set<string>();
+  for (const clip of doc.arrangement.clips) {
+    const cFrom = clip.startBar * BAR_TICKS;
+    const cTo = (clip.startBar + clip.lengthBars) * BAR_TICKS;
+    if (cFrom >= from && cTo <= to) {
+      const scene = doc.scenes.find((s) => s.id === clip.sceneId);
+      if (scene) {
+        const pat = doc.patterns.find((p) => p.id === scene.patternId);
+        if (pat) {
+          for (const t of doc.tracks) if (pat.rows[t.id] || pat.notes?.[t.id]) zoneTrackIds.add(t.id);
+        }
+      }
+    }
+  }
+  for (const pattern of doc.patterns) {
+    for (const [trackId, notes] of Object.entries(pattern.notes ?? {})) {
+      if (notes.some((n) => n.start >= from && n.start < to)) zoneTrackIds.add(trackId);
+    }
+    for (const [padId, row] of Object.entries(pattern.rows)) {
+      for (let s = fromStep; s < toStepEx && s < row.length; s++) if (row[s] > 0) zoneTrackIds.add(padId);
+    }
+  }
+  // Exercise buildStemProject so consolidation and duplicate stay consistent
+  void buildStemProject(doc, (t) => zoneTrackIds.has(t.id));
+
+  let nextDoc: ProjectDocument = { ...doc };
+
+  // 1) Arrangement clips: wholly-inside are duplicated; trailing clips are shifted forward by deltaBars
+  const whollyInside = doc.arrangement.clips.filter((c) => {
+    const cFrom = c.startBar * BAR_TICKS;
+    const cTo = (c.startBar + c.lengthBars) * BAR_TICKS;
+    return cFrom >= from && cTo <= to;
+  });
+  const trailingIds = new Set(doc.arrangement.clips.filter((c) => c.startBar * BAR_TICKS >= to).map((c) => c.id));
+  const baseClips: ArrangementClip[] = doc.arrangement.clips.map((c) =>
+    trailingIds.has(c.id) ? { ...c, startBar: c.startBar + deltaBars } : c,
+  );
+  const duplicatedClips: ArrangementClip[] = whollyInside.map((c) => ({
+    id: uid("clip"),
+    sceneId: c.sceneId,
+    startBar: c.startBar + deltaBars,
+    lengthBars: c.lengthBars,
+  }));
+  const nextClips = [...baseClips, ...duplicatedClips].sort((a, b) => a.startBar - b.startBar);
+  // Preserve transitions where possible (sanitize prunes dangling ones)
+  const nextTransitions = sanitizeArrangementTransitions(doc.arrangement.transitions, nextClips);
+  nextDoc = {
+    ...nextDoc,
+    arrangement: {
+      ...nextDoc.arrangement,
+      clips: nextClips,
+      ...(nextTransitions ? { transitions: nextTransitions } : { transitions: undefined }),
+    },
+  };
+
+  // Markers inside zone are duplicated; trailing markers are shifted
+  const nextMarkers = doc.markers.flatMap((m) => {
+    if (m.tick >= from && m.tick < to) {
+      return [m, { ...m, id: uid("marker"), tick: m.tick + delta }];
+    }
+    if (m.tick >= to) return [{ ...m, tick: m.tick + delta }];
+    return [m];
+  });
+
+  nextDoc = { ...nextDoc, markers: nextMarkers };
+
+  // 2) Patterns: duplicate notes and steps; extend pattern if needed
+  const nextPatterns: Pattern[] = nextDoc.patterns.map((pattern) => {
+    const patternTicks = pattern.stepCount * STEP_TICKS;
+    // Notes
+    const notesEntries = Object.entries(pattern.notes ?? {});
+    let maxEnd = patternTicks;
+    const nextNotes: Record<string, NoteEvent[]> = {};
+    let notesChanged = false;
+    for (const [trackId, notes] of notesEntries) {
+      const inside = notes.filter((n) => n.start >= from && n.start < to);
+      if (inside.length === 0) {
+        nextNotes[trackId] = notes;
+        continue;
+      }
+      const copies = inside.map((n) => ({ ...n, id: uid("note"), start: n.start + delta }));
+      for (const c of copies) maxEnd = Math.max(maxEnd, c.start + c.duration);
+      nextNotes[trackId] = [...notes, ...copies].sort((a, b) => a.start - b.start || a.pitch - b.pitch);
+      notesChanged = true;
+    }
+    // Include empty trackId entries that only had step duplicates? Keep as is.
+    for (const [tid, nlist] of Object.entries(pattern.notes ?? {})) if (!nextNotes[tid]) nextNotes[tid] = nlist;
+
+    // Rows + stepMeta
+    const nextRows: Record<string, number[]> = {};
+    let rowsChanged = false;
+    let nextStepMeta = pattern.stepMeta ? cloneStepMeta(pattern.stepMeta) : undefined;
+    let neededSteps = pattern.stepCount;
+    // Determine needed steps from note copies
+    if (maxEnd > patternTicks) neededSteps = Math.max(neededSteps, Math.ceil(maxEnd / STEP_TICKS));
+    for (const [padId, row] of Object.entries(pattern.rows)) {
+      let newRow = [...row];
+      // Ensure row can hold duplicated steps
+      const requiredLen = toStepEx + deltaSteps;
+      if (requiredLen > newRow.length) {
+        newRow = [...newRow, ...new Array(requiredLen - newRow.length).fill(0)];
+        neededSteps = Math.max(neededSteps, newRow.length);
+      }
+      let changed = false;
+      for (let s = fromStep; s < toStepEx && s < row.length; s++) {
+        const vel = row[s];
+        if (vel > 0) {
+          const dst = s + deltaSteps;
+          if (dst < newRow.length) {
+            newRow[dst] = vel;
+            changed = true;
+            const meta = pattern.stepMeta?.[padId]?.[s];
+            if (meta) {
+              if (!nextStepMeta) nextStepMeta = {};
+              if (!nextStepMeta[padId]) nextStepMeta[padId] = {};
+              nextStepMeta[padId][dst] = { ...meta, ...(meta.locks ? { locks: { ...meta.locks } } : {}) };
+            }
+          }
+        }
+      }
+      nextRows[padId] = newRow;
+      if (changed) rowsChanged = true;
+    }
+    // Ensure all rows same length = neededSteps
+    for (const padId of Object.keys(nextRows)) {
+      const r = nextRows[padId];
+      if (r.length < neededSteps) nextRows[padId] = [...r, ...new Array(neededSteps - r.length).fill(0)];
+      else if (r.length > neededSteps) neededSteps = r.length;
+    }
+    // Final harmonize length if needed
+    if (neededSteps !== pattern.stepCount) {
+      for (const padId of Object.keys(nextRows)) {
+        const r = nextRows[padId];
+        if (r.length < neededSteps) nextRows[padId] = [...r, ...new Array(neededSteps - r.length).fill(0)];
+        if (r.length > neededSteps) nextRows[padId] = r.slice(0, neededSteps);
+      }
+    }
+    if (!notesChanged && !rowsChanged && neededSteps === pattern.stepCount) return pattern;
+    return {
+      ...pattern,
+      stepCount: neededSteps,
+      rows: Object.keys(nextRows).length > 0 ? nextRows : pattern.rows,
+      notes: Object.keys(nextNotes).length > 0 ? nextNotes : pattern.notes,
+      stepMeta: nextStepMeta && Object.keys(nextStepMeta).length > 0 ? nextStepMeta : undefined,
+    };
+  });
+  nextDoc = { ...nextDoc, patterns: nextPatterns };
+
+  return snapshot("duplicateTimeRange", `Duplicate zone ${Math.round(deltaBars * 10) / 10} bars`, doc, nextDoc);
+}
+
+/**
+ * Consolidate the timeRange into a single clip backed by a stem-project
+ * filtered to the zone's contributing tracks. V1 semantics (no AudioClip yet):
+ * collect notes/rows inside the zone, move them into a new pattern, create
+ * a new scene+clip at the zone start, and remove the source material inside
+ * the zone from all patterns plus the wholly-inside arrangement clips.
+ * The stem project is built so that when AudioClip / frozen render lands the
+ * track selection (including parent groups) is already correct.
+ */
+export function consolidateTimeRange(doc: ProjectDocument, fromTick: number, toTick: number): Command {
+  const from = Math.min(fromTick, toTick);
+  const to = Math.max(fromTick, toTick);
+  if (from === to) throw new Error("Cannot consolidate empty time range");
+  const delta = to - from;
+  const deltaBars = delta / BAR_TICKS;
+  const fromBar = from / BAR_TICKS;
+  const fromStep = Math.floor(from / STEP_TICKS);
+  const toStepEx = Math.ceil(to / STEP_TICKS);
+  const zoneSteps = toStepEx - fromStep;
+  if (zoneSteps <= 0) throw new Error("Zone too small to consolidate");
+
+  // Collect zone track affinity for stem filtering
+  const zoneTrackIds = new Set<string>();
+  for (const clip of doc.arrangement.clips) {
+    const cFrom = clip.startBar * BAR_TICKS;
+    const cTo = (clip.startBar + clip.lengthBars) * BAR_TICKS;
+    if (cFrom < to && cTo > from) {
+      const scene = doc.scenes.find((s) => s.id === clip.sceneId);
+      if (scene) {
+        const pat = doc.patterns.find((p) => p.id === scene.patternId);
+        if (pat)
+          for (const t of doc.tracks) if (pat.rows[t.id] !== undefined || pat.notes?.[t.id]) zoneTrackIds.add(t.id);
+      }
+    }
+  }
+  for (const pattern of doc.patterns) {
+    for (const [trackId, notes] of Object.entries(pattern.notes ?? {}))
+      if (notes.some((n) => n.start >= from && n.start < to)) zoneTrackIds.add(trackId);
+    for (const [padId, row] of Object.entries(pattern.rows))
+      for (let s = fromStep; s < toStepEx && s < row.length; s++) if (row[s] > 0) zoneTrackIds.add(padId);
+  }
+  // Guardrail: build the stem project so group parents are pulled in
+  const stemProject = buildStemProject(doc, (t) => zoneTrackIds.has(t.id));
+  void stemProject;
+
+  // Gather zone's musical content shifted to 0
+  const consolidatedNotes: Record<string, NoteEvent[]> = {};
+  const consolidatedRows: Record<string, number[]> = {};
+  const consolidatedMeta: NonNullable<Pattern["stepMeta"]> = {};
+  // Use first drum pad list as row template
+  const drumPadIds = doc.tracks
+    .filter((t): t is DrumTrack => t.kind === "drum")
+    .flatMap((t) => t.pads.map((p) => p.id));
+  for (const padId of drumPadIds) consolidatedRows[padId] = new Array<number>(zoneSteps).fill(0);
+
+  for (const pattern of doc.patterns) {
+    for (const [trackId, notes] of Object.entries(pattern.notes ?? {})) {
+      for (const n of notes)
+        if (n.start >= from && n.start < to) {
+          const shifted = { ...n, id: uid("note"), start: n.start - from };
+          if (!consolidatedNotes[trackId]) consolidatedNotes[trackId] = [];
+          consolidatedNotes[trackId].push(shifted);
+        }
+    }
+    for (const [padId, row] of Object.entries(pattern.rows)) {
+      if (!consolidatedRows[padId]) consolidatedRows[padId] = new Array<number>(zoneSteps).fill(0);
+      for (let s = fromStep; s < toStepEx && s < row.length; s++)
+        if (row[s] > 0) {
+          const dst = s - fromStep;
+          consolidatedRows[padId][dst] = row[s];
+          const meta = pattern.stepMeta?.[padId]?.[s];
+          if (meta) {
+            if (!consolidatedMeta[padId]) consolidatedMeta[padId] = {};
+            consolidatedMeta[padId][dst] = { ...meta, ...(meta.locks ? { locks: { ...meta.locks } } : {}) };
+          }
+        }
+    }
+  }
+  // Prune empty rows / notes
+  for (const padId of Object.keys(consolidatedRows))
+    if (consolidatedRows[padId].every((v) => v === 0)) delete consolidatedRows[padId];
+  for (const tid of Object.keys(consolidatedNotes))
+    consolidatedNotes[tid].sort((a, b) => a.start - b.start || a.pitch - b.pitch);
+
+  const hasContent = Object.keys(consolidatedRows).length > 0 || Object.keys(consolidatedNotes).length > 0;
+  if (!hasContent) throw new Error("Nothing to consolidate in this zone");
+
+  const newPattern: Pattern = {
+    id: uid("pattern"),
+    name: `Zone ${Math.round(fromBar + 1)}–${Math.round(fromBar + deltaBars + 1)} consolidated`,
+    stepCount: zoneSteps,
+    rows: consolidatedRows,
+    notes: consolidatedNotes,
+    stepMeta: Object.keys(consolidatedMeta).length > 0 ? consolidatedMeta : undefined,
+  };
+  const newScene: Scene = {
+    id: uid("scene"),
+    name: newPattern.name,
+    patternId: newPattern.id,
+    intensity: 0.7,
+  };
+  const newClip: ArrangementClip = {
+    id: uid("clip"),
+    sceneId: newScene.id,
+    startBar: fromBar,
+    lengthBars: deltaBars,
+  };
+
+  // Remove wholly-inside clips and source notes/rows inside zone
+  const whollyInsideIds = new Set(
+    doc.arrangement.clips
+      .filter((c) => {
+        const cFrom = c.startBar * BAR_TICKS;
+        const cTo = (c.startBar + c.lengthBars) * BAR_TICKS;
+        return cFrom >= from && cTo <= to;
+      })
+      .map((c) => c.id),
+  );
+  let nextPatterns: Pattern[] = doc.patterns.map((pattern) => {
+    let changed = false;
+    const nextNotes: Record<string, NoteEvent[]> = {};
+    for (const [tid, notes] of Object.entries(pattern.notes ?? {})) {
+      const filtered = notes.filter((n) => !(n.start >= from && n.start < to));
+      nextNotes[tid] = filtered;
+      if (filtered.length !== notes.length) changed = true;
+    }
+    const nextRows: Record<string, number[]> = { ...pattern.rows };
+    let nextMeta = pattern.stepMeta ? cloneStepMeta(pattern.stepMeta) : undefined;
+    for (const [padId, row] of Object.entries(pattern.rows)) {
+      let rowChanged = false;
+      const newRow = [...row];
+      for (let s = fromStep; s < toStepEx && s < newRow.length; s++)
+        if (newRow[s] !== 0) {
+          newRow[s] = 0;
+          rowChanged = true;
+        }
+      if (rowChanged) {
+        nextRows[padId] = newRow;
+        changed = true;
+        if (nextMeta?.[padId]) {
+          for (let s = fromStep; s < toStepEx; s++) delete nextMeta[padId][s];
+          if (Object.keys(nextMeta[padId]).length === 0) delete nextMeta[padId];
+        }
+      }
+    }
+    if (nextMeta && Object.keys(nextMeta).length === 0) nextMeta = undefined;
+    if (!changed) return pattern;
+    return { ...pattern, notes: nextNotes, rows: nextRows, stepMeta: nextMeta };
+  });
+
+  nextPatterns = [...nextPatterns, newPattern];
+  const nextScenes = [...doc.scenes, newScene];
+  const remainingClips = doc.arrangement.clips.filter((c) => !whollyInsideIds.has(c.id));
+  const nextClips = [...remainingClips, newClip].sort((a, b) => a.startBar - b.startBar);
+  const nextTransitions = sanitizeArrangementTransitions(doc.arrangement.transitions, nextClips);
+
+  const nextDoc: ProjectDocument = {
+    ...doc,
+    patterns: nextPatterns,
+    scenes: nextScenes,
+    arrangement: {
+      clips: nextClips,
+      ...(nextTransitions ? { transitions: nextTransitions } : { transitions: undefined }),
+    },
+  };
+  return snapshot("consolidateTimeRange", `Consolidate zone ${Math.round(deltaBars * 10) / 10} bars`, doc, nextDoc);
 }
 
 function transitionBetween(doc: ProjectDocument, fromClipId: string, toClipId: string): void {

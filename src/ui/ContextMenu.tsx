@@ -1,6 +1,14 @@
 import { useEffect } from "react";
 import { useDoc, useServices, useSelection } from "./context";
-import { clearSteps, deleteNote, deleteNotes, duplicateNotes, duplicatePattern } from "../commands/commands";
+import {
+  clearSteps,
+  consolidateTimeRange,
+  deleteNote,
+  deleteNotes,
+  duplicateNotes,
+  duplicatePattern,
+  duplicateTimeRange,
+} from "../commands/commands";
 
 export interface ContextMenuState {
   x: number;
@@ -64,7 +72,9 @@ export function ContextMenu({ state, onClose }: { state: ContextMenuState | null
         // Handled via existing clipboard in PianoRoll/Sequencer
         break;
       case "duplicate": {
-        if (hasNotes) {
+        if (hasTime) {
+          services.store.execute(duplicateTimeRange(doc, selection.timeRange!.fromTick, selection.timeRange!.toTick));
+        } else if (hasNotes) {
           const sel = selection.noteSelections[0];
           if (sel) services.store.execute(duplicateNotes(doc, sel.trackId, sel.noteIds));
         } else {
@@ -72,9 +82,12 @@ export function ContextMenu({ state, onClose }: { state: ContextMenuState | null
         }
         break;
       }
-      case "consolidate":
-        // Placeholder: would call buildStemProject + freeze
+      case "consolidate": {
+        if (hasTime) {
+          services.store.execute(consolidateTimeRange(doc, selection.timeRange!.fromTick, selection.timeRange!.toTick));
+        }
         break;
+      }
       default:
         break;
     }

@@ -234,6 +234,7 @@ export function openProject(core: CoreServices, initial: ProjectDocument, option
     getMode: () => modeRef.mode,
     trigger: (trackId, pad, when, velocity, locks) => engine.trigger(trackId, pad, when, velocity, locks),
     noteOn: (trackId, pitch, velocity, when, durationSec) => engine.noteOn(trackId, pitch, velocity, when, durationSec),
+    triggerAudioClip: (clip, when, durationSec) => engine.triggerAudioClip(clip, when, durationSec),
     applyAutomation: (fromTick, toTick, relOf, scheduleOffsetSec) =>
       engine.applyAutomation(fromTick, toTick, relOf, scheduleOffsetSec),
     applyModulators: (fromTick, toTick, whenFor) => engine.applyModulators(fromTick, toTick, whenFor),

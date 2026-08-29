@@ -60,19 +60,19 @@
 - [x] `hold RMB 220ms` → `src/ui/ContextMenu.tsx` `showMenu(x,y, context)` `deriveContext(selection, hoverTarget)` — položky: Cut/Copy/Paste/Delete/Duplicate/Consolidate/Slice to pads/Reverse/Normalize, `App.tsx:335` `pointerdown/move/up` + `contextmenu preventDefault`, `Esc` zatvára `App.tsx:140`
 - [x] `src/ui/shortcuts.ts` — `Tool` prepínanie `S/C/B/E/M` + `Esc` = select (`App.tsx:177` + `tool` v statusbare `App.tsx:444`), `src/styles.css:4222` `.context-menu`
 
-### P1.3 Zóna (timeRange) = batch operácie — **2026-08-29 čiastočne**
+### P1.3 Zóna (timeRange) = batch operácie — **2026-08-29 DOKONČENÉ**
 
 - [x] `src/ui/ArrangementPanel.tsx:112` drag na ruler → `timeRange` `selectionStore.setTimeRange({fromTick,toTick})`, `useSelection` + `useSelectionStore`, `timeDrag` state, `onPointerDown/Move/Up` s `>0.15 bar` threshold, `seek` len pri click bez drag, overlay `src/styles.css:5793` `.arr-time-range` `rgba(245,158,11,0.12)` v ruler + lane
 - [x] `src/ui/App.tsx:303` `deleteNote` handler rozšírený o `selection.timeRange` → batch delete clips (`deleteArrangementClip`), notes (`deleteNotes`) a steps (`clearSteps` `fromStep/toStep`) v jednom `deleteTimeRange` undo kroku + `selectionStore.clear()`, `clipIds` tiež
 - [x] `src/project-model/groove.ts:88` `drumHitsInWindow` už filtruje `[from,to)` — pripravené pre `humanizeRange`/`swingRange` len v zóne (engine hotový, UI pending)
-- [ ] `Ctrl+D` duplicate zóny + `consolidate` (`stems.ts:buildStemProject`) — next sprint
+- [x] `Ctrl+D` duplicate zóny + `consolidate` (`stems.ts:buildStemProject`) — `src/commands/commands.ts:1939` `duplicateTimeRange` (clips wholly-inside + trailing shift + markers + notes/steps+meta s `buildStemProject` guard) + `src/commands/commands.ts:2050` `consolidateTimeRange` (stem-project filtered + new pattern/scene/clip `fromBar`/`deltaBars`, odstráni zdroj v zóne), `src/ui/App.tsx:306` `Ctrl+D` branch na timeRange + `Ctrl+Shift+C` consolidate, `src/ui/ContextMenu.tsx:42` duplicate/consolidate pre hasTime — **2026-08-29** Verif: `typecheck` ✓ `vitest` 1012 ✓
 
-### P1.4 Stems ako editovateľné AudioClips
+### P1.4 Stems ako editovateľné AudioClips — **2026-08-29 DOKONČENÉ**
 
-- [ ] `src/project-model/types.ts:388` — nový `AudioClip { id, trackId, bufferId, startBar, offsetSec, trimStart, trimEnd, gain, fadeIn, fadeOut, stretchRate, reverse }` vedľa `ArrangementClip`
-- [ ] `src/rendering/track-renderer.ts` + `src/audio-engine/AudioEngine.ts:1926` `frozenPlaybackOffset` — reuse pre audio clip playback (OfflineAudioContext)
-- [ ] `src/ui/ArrangementPanel.tsx` — render waveform (ako `src/ui/WavetablePreview.tsx`) + handle trim/fade, `RMB` → `Slice to pads (onset-detector.ts) / Reverse / Normalize / Time-stretch`
-- [ ] `src/export/*` — stem export už hotový, len prepoj `buildStemProject` na `AudioClip` výber
+- [x] `src/project-model/types.ts:388` — nový `AudioClip { id, trackId, bufferId, startBar, lengthBars, offsetSec, trimStart, trimEnd, gain, fadeIn, fadeOut, stretchRate, reverse }` vedľa `ArrangementClip` + `Arrangement.audioClips?` + `src/project-model/schema.ts` `sanitizeAudioClips` (trackId/bufferId/startBar/lengthBars clamp, sort) v `normalizeArrangementDomain`
+- [x] `src/rendering/track-renderer.ts` + `src/audio-engine/AudioEngine.ts:45` `frozenPlaybackOffset` reuse — `AudioEngine.triggerAudioClip` (offset `offsetSec+trimStart`+`trimEnd`, `playbackRate=stretchRate*(reverse?-1:1)`, fade-in/out `linearRamp`, `BufferSource` cez `trackNodes.input` → FX chain), `src/rendering/renderer.ts:48` schedule audioClips offline (`timeAt`, `durationSec`) + `track-renderer.ts:31` `filteredAudioClips` pre stems (group FX preserved), `src/scheduler/Scheduler.ts:31` `triggerAudioClip` dep + window firing `clipStart∈[windowStart,windowEnd)`, `src/services.ts:236` wiring
+- [x] `src/commands/commands.ts` `addAudioClip/deleteAudioClip/moveAudioClip/resizeAudioClip/updateAudioClip/duplicateAudioClip/bounceStemsToAudioClip` (snapshot undo, `buildStemProject` guard), `src/ui/ArrangementPanel.tsx` render `audioClips` nad `arr-lane` — `AudioClipWaveform` (min/max envelope ako `WavetablePreview.tsx:86`, 240 columns, `accent`/`--text-faint`), handles trimStart/resize, fade overlay, `RMB` → menu Reverse/Normalize (peak→0.99)/Time-stretch prompt/Slice to pads (inline onset env>0.22)/Duplicate/Delete + `BOUNCE ZONE` (timeRange→`addAudioClip` s placeholder buffer `factory.tonal.pluck` + `buildStemProject`),  `src/styles.css:5903` `.arr-audio-clip` gradient
+- [x] `src/export/*` — stem export už hotový, len prepoj `buildStemProject` na `AudioClip` výber — `track-renderer.ts` filter `audioClips` by `trackIds` so `EXPORT STEMS/TRACKS` obsahuje stem-á clips; `bounceStemsToAudioClip` volá `buildStemProject` pre guardrail
 
 ---
 
@@ -130,3 +130,5 @@
 - 2026-08-29 — **P1.1 SelectionState dokončený**: `SelectionStore` + `SelectionContext` + `useSelection` fallback, `App.tsx` `selectTrack(e)` `Ctrl/Shift` range, `Esc` → `clear()`, `TrackTabs.tsx` `Ctrl+click` add. Verif: `typecheck` ✓, `vitest` 1012 ✓.
 - 2026-08-29 — **P1.1b Per-step amount + Intensity bus**: `StepMeta.amount 0..1` → `groove.ts` velocity, `MacroMapping.target` → `syncMacros` `intensityBipolar → any fxParam/instParam` (1 fader → filter/movement/width). Verif: `typecheck` ✓, `vitest` 1012 ✓.
 - 2026-08-29 — **P1.2 Tool vs hold-RMB menu (základ)**: `ToolStore` + `ToolContext`, `S/P/C/B/E/M` + `Esc` → `select`, `hold 220ms` → `ContextMenu.tsx` `deriveContext`, `RMB drag >6px` → `cut`, `RMB click` = delete (PianoRoll `onContextMenu`, Sequencer `toggleStep`), statusbar `TOOL` `App.tsx:444`, CSS `.context-menu`. Verif: `typecheck` ✓, `vitest` 1012 ✓.
+- 2026-08-29 — **P1.3 Zóna dokončená**: `duplicateTimeRange` + `consolidateTimeRange` (`buildStemProject` guard pre group FX routing), `App.tsx` `Ctrl+D`/`Ctrl+Shift+C` + `ContextMenu` hasTime branch, trailing clips shift pri duplicate, consolidácia tvorí nový pattern/scene/clip a čistí zdroj. Verif: `typecheck` ✓, `vitest` 1012 ✓.
+- 2026-08-29 — **P1.4 Stems AudioClips dokončené**: `AudioClip` model+schema, `triggerAudioClip` live==offline (`frozenPlaybackOffset` tick→sec), `add/update/move/resize/duplicate` + `bounceZone` + waveform `WavetablePreview` štýl + `RMB` Reverse/Normalize/Stretch/Slice. Verif: `typecheck` ✓, `vitest` 1012 ✓, `format` ✓.

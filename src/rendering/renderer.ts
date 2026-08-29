@@ -81,6 +81,19 @@ export async function renderProject(
     windows.map((w) => ({ from: w.from, to: w.to })),
     timeAt,
   );
+  // AudioClips — schedule each clip's buffer segment through its track FX.
+  // Reuses frozenPlaybackOffset tick→sec semantics so live==offline.
+  if (doc.arrangement.audioClips) {
+    for (const clip of doc.arrangement.audioClips) {
+      const clipStartTick = clip.startBar * BAR_TICKS;
+      const clipEndTick = clipStartTick + clip.lengthBars * BAR_TICKS;
+      // Only schedule if clip overlaps the total render window
+      if (clipEndTick <= 0 || clipStartTick >= totalTicks) continue;
+      const when = timeAt(clipStartTick);
+      const durationSec = clip.lengthBars * BAR_TICKS * secondsPerTick;
+      engine.triggerAudioClip(clip, when, durationSec);
+    }
+  }
 
   return ctx.startRendering();
 }

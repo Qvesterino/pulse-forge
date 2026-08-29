@@ -24,10 +24,12 @@ import { InstallPrompt } from "./InstallPrompt";
 import { ErrorBoundary } from "./ErrorBoundary";
 import {
   clearSteps,
+  consolidateTimeRange,
   deleteArrangementClip,
   deleteNote,
   deleteNotes,
   duplicatePattern,
+  duplicateTimeRange,
   setActivePattern,
   setTrackParams,
 } from "../commands/commands";
@@ -204,6 +206,22 @@ export function App({
         return;
       }
 
+      // Consolidate zone: Ctrl+Shift+C (or Cmd+Shift+C) — guard: needs timeRange
+      if (
+        selection.timeRange &&
+        (event.ctrlKey || event.metaKey) &&
+        event.shiftKey &&
+        event.key.toLowerCase() === "c"
+      ) {
+        event.preventDefault();
+        try {
+          services.store.execute(consolidateTimeRange(doc, selection.timeRange.fromTick, selection.timeRange.toTick));
+        } catch {
+          // ignore empty zone
+        }
+        return;
+      }
+
       const matched = matchShortcut(event);
       if (!matched) return;
 
@@ -301,10 +319,20 @@ export function App({
           if (next) services.store.execute(setActivePattern(doc, next.id));
           return;
         }
-        case "duplicatePattern":
+        case "duplicatePattern": {
           event.preventDefault();
-          services.store.execute(duplicatePattern(doc, doc.activePatternId));
+          if (selection.timeRange) {
+            try {
+              services.store.execute(duplicateTimeRange(doc, selection.timeRange.fromTick, selection.timeRange.toTick));
+            } catch (e) {
+              // fall back to pattern duplicate if zone empty
+              services.store.execute(duplicatePattern(doc, doc.activePatternId));
+            }
+          } else {
+            services.store.execute(duplicatePattern(doc, doc.activePatternId));
+          }
           return;
+        }
         case "deleteNote":
           if (selectedNote) {
             event.preventDefault();
