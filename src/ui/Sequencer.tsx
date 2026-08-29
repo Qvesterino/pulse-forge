@@ -34,6 +34,9 @@ interface DragState {
   stepIndex: number;
   startY: number;
   startVelocity: number;
+  startMicro: number;
+  startProb: number;
+  editKind: "velocity" | "microtiming" | "probability";
   moved: boolean;
 }
 
@@ -110,7 +113,14 @@ export function Sequencer({
   const pattern = doc.patterns.find((p) => p.id === doc.activePatternId) ?? doc.patterns[0];
   const playheadStep = usePlayheadStep(services.transport, doc);
   const dragRef = useRef<DragState | null>(null);
-  const [dragPreview, setDragPreview] = useState<{ padId: string; stepIndex: number; velocity: number } | null>(null);
+  const [dragPreview, setDragPreview] = useState<{
+    padId: string;
+    stepIndex: number;
+    velocity: number;
+    microtiming?: number;
+    probability?: number;
+    kind?: DragState["editKind"];
+  } | null>(null);
   const [stepEditor, setStepEditor] = useState<{ padId: string; stepIndex: number } | null>(null);
   const [lockClipboard, setLockClipboard] = useState<Partial<
     Record<import("../project-model/types").StepLockKey, number>
@@ -193,7 +203,17 @@ export function Sequencer({
       } catch {
         /* no capture */
       }
-      dragRef.current = { mode: "select", padId, stepIndex, startY: event.clientY, startVelocity: 0, moved: true };
+      dragRef.current = {
+        mode: "select",
+        padId,
+        stepIndex,
+        startY: event.clientY,
+        startVelocity: 0,
+        startMicro: 0,
+        startProb: 1,
+        editKind: "velocity",
+        moved: true,
+      };
       onSelectSteps(selectionFromDrag(padId, stepIndex, padId, stepIndex));
       event.preventDefault();
       return;
@@ -206,16 +226,35 @@ export function Sequencer({
       // drag tracking simply continues without capture.
     }
     if (event.shiftKey) {
-      dragRef.current = { mode: "select", padId, stepIndex, startY: event.clientY, startVelocity: 0, moved: true };
+      dragRef.current = {
+        mode: "select",
+        padId,
+        stepIndex,
+        startY: event.clientY,
+        startVelocity: 0,
+        startMicro: 0,
+        startProb: 1,
+        editKind: "velocity",
+        moved: true,
+      };
       onSelectSteps(selectionFromDrag(padId, stepIndex, padId, stepIndex));
       return;
     }
+    const meta = pattern.stepMeta?.[padId]?.[stepIndex];
+    const editKind: DragState["editKind"] = event.altKey
+      ? "microtiming"
+      : event.ctrlKey || event.metaKey
+        ? "probability"
+        : "velocity";
     dragRef.current = {
       mode: "edit",
       padId,
       stepIndex,
       startY: event.clientY,
       startVelocity: pattern.rows[padId]?.[stepIndex] ?? 0,
+      startMicro: meta?.microtiming ?? 0,
+      startProb: meta?.probability ?? 1,
+      editKind,
       moved: false,
     };
   };
@@ -237,8 +276,28 @@ export function Sequencer({
     const delta = drag.startY - event.clientY;
     if (!drag.moved && Math.abs(delta) < 5) return;
     drag.moved = true;
-    const velocity = clamp(drag.startVelocity + delta / 120, 0.05, 1);
-    setDragPreview({ padId: drag.padId, stepIndex: drag.stepIndex, velocity });
+    if (drag.editKind === "microtiming") {
+      const microtiming = clamp(drag.startMicro + delta / 60, -1, 1);
+      setDragPreview({
+        padId: drag.padId,
+        stepIndex: drag.stepIndex,
+        velocity: drag.startVelocity,
+        microtiming,
+        kind: "microtiming",
+      });
+    } else if (drag.editKind === "probability") {
+      const probability = clamp(drag.startProb + delta / 120, 0, 1);
+      setDragPreview({
+        padId: drag.padId,
+        stepIndex: drag.stepIndex,
+        velocity: drag.startVelocity,
+        probability,
+        kind: "probability",
+      });
+    } else {
+      const velocity = clamp(drag.startVelocity + delta / 120, 0.05, 1);
+      setDragPreview({ padId: drag.padId, stepIndex: drag.stepIndex, velocity, kind: "velocity" });
+    }
   };
 
   const endStepInteraction = () => {
@@ -251,26 +310,76 @@ export function Sequencer({
     }
     if (drag.moved) {
       const preview = dragPreview;
-      const velocity =
-        preview && preview.padId === drag.padId && preview.stepIndex === drag.stepIndex
-          ? preview.velocity
-          : drag.startVelocity;
-      const delta = velocity - drag.startVelocity;
-      if (selectionContains(drag.padId, drag.stepIndex) && stepSelection && Math.abs(delta) > 1e-6) {
-        const span = stepSelection.to - stepSelection.from;
-        const entries: { padId: string; stepIndex: number; velocity: number }[] = [];
-        for (const pad of stepSelection.padIds) {
-          const row = pattern.rows[pad] ?? [];
-          for (let i = stepSelection.from; i <= stepSelection.to && i < row.length; i++) {
-            if (row[i] <= 0) continue;
-            const progress = span > 0 ? (i - stepSelection.from) / span : 0;
-            const ramped = clamp(drag.startVelocity + delta * progress, 0.05, 1);
-            entries.push({ padId: pad, stepIndex: i, velocity: ramped });
+      if (drag.editKind === "microtiming") {
+        const microtiming =
+          preview &&
+          preview.padId === drag.padId &&
+          preview.stepIndex === drag.stepIndex &&
+          preview.microtiming !== undefined
+            ? preview.microtiming
+            : drag.startMicro;
+        if (microtiming !== drag.startMicro) {
+          if (selectionContains(drag.padId, drag.stepIndex) && stepSelection) {
+            let nextDoc = doc;
+            for (const pid of stepSelection.padIds)
+              for (let s = stepSelection.from; s <= stepSelection.to; s++)
+                nextDoc = setStepMeta(nextDoc, pattern.id, pid, s, { microtiming }).execute(nextDoc);
+            services.store.execute({
+              type: "bulkMicrotiming",
+              label: "Set microtiming",
+              execute: () => nextDoc,
+              undo: () => doc,
+            } as any);
+          } else {
+            services.store.execute(setStepMeta(doc, pattern.id, drag.padId, drag.stepIndex, { microtiming }));
           }
         }
-        if (entries.length > 0) services.store.execute(setStepsVelocity(doc, pattern.id, entries));
-      } else if (velocity !== drag.startVelocity) {
-        services.store.execute(setStepVelocityCommand(doc, drag.padId, drag.stepIndex, velocity));
+      } else if (drag.editKind === "probability") {
+        const probability =
+          preview &&
+          preview.padId === drag.padId &&
+          preview.stepIndex === drag.stepIndex &&
+          preview.probability !== undefined
+            ? preview.probability
+            : drag.startProb;
+        if (probability !== drag.startProb) {
+          if (selectionContains(drag.padId, drag.stepIndex) && stepSelection) {
+            let nextDoc = doc;
+            for (const pid of stepSelection.padIds)
+              for (let s = stepSelection.from; s <= stepSelection.to; s++)
+                nextDoc = setStepMeta(nextDoc, pattern.id, pid, s, { probability }).execute(nextDoc);
+            services.store.execute({
+              type: "bulkProbability",
+              label: "Set probability",
+              execute: () => nextDoc,
+              undo: () => doc,
+            } as any);
+          } else {
+            services.store.execute(setStepMeta(doc, pattern.id, drag.padId, drag.stepIndex, { probability }));
+          }
+        }
+      } else {
+        const velocity =
+          preview && preview.padId === drag.padId && preview.stepIndex === drag.stepIndex
+            ? preview.velocity
+            : drag.startVelocity;
+        const delta = velocity - drag.startVelocity;
+        if (selectionContains(drag.padId, drag.stepIndex) && stepSelection && Math.abs(delta) > 1e-6) {
+          const span = stepSelection.to - stepSelection.from;
+          const entries: { padId: string; stepIndex: number; velocity: number }[] = [];
+          for (const pad of stepSelection.padIds) {
+            const row = pattern.rows[pad] ?? [];
+            for (let i = stepSelection.from; i <= stepSelection.to && i < row.length; i++) {
+              if (row[i] <= 0) continue;
+              const progress = span > 0 ? (i - stepSelection.from) / span : 0;
+              const ramped = clamp(drag.startVelocity + delta * progress, 0.05, 1);
+              entries.push({ padId: pad, stepIndex: i, velocity: ramped });
+            }
+          }
+          if (entries.length > 0) services.store.execute(setStepsVelocity(doc, pattern.id, entries));
+        } else if (velocity !== drag.startVelocity) {
+          services.store.execute(setStepVelocityCommand(doc, drag.padId, drag.stepIndex, velocity));
+        }
       }
     } else {
       services.store.execute(toggleStep(doc, drag.padId, drag.stepIndex));
@@ -464,7 +573,14 @@ function VirtualRow({
   playheadStep: number;
   selectedPadId: string;
   selectedTrackId: string;
-  dragPreview: { padId: string; stepIndex: number; velocity: number } | null;
+  dragPreview: {
+    padId: string;
+    stepIndex: number;
+    velocity: number;
+    microtiming?: number;
+    probability?: number;
+    kind?: DragState["editKind"];
+  } | null;
   stepSelection: StepSelection | null;
   selectedNote: SelectedNote | null;
   scaleSnap: boolean;
@@ -867,7 +983,14 @@ function PadRow({
   };
   playheadStep: number;
   selected: boolean;
-  dragPreview: { padId: string; stepIndex: number; velocity: number } | null;
+  dragPreview: {
+    padId: string;
+    stepIndex: number;
+    velocity: number;
+    microtiming?: number;
+    probability?: number;
+    kind?: DragState["editKind"];
+  } | null;
   stepSelection: StepSelection | null;
   onBegin: (event: React.PointerEvent, padId: string, stepIndex: number) => void;
   onMove: (event: React.PointerEvent) => void;
@@ -922,7 +1045,7 @@ function PadRow({
               ? dragPreview.velocity
               : (row[stepIndex] ?? 0);
           const active = velocity > 0;
-          const meta = metaRow[stepIndex];
+          const meta: StepMeta | undefined = metaRow[stepIndex] as StepMeta | undefined;
           const inSelection =
             stepSelection !== null &&
             stepSelection.padIds.includes(pad.id) &&
@@ -1006,16 +1129,19 @@ function StepCell({
   if (meta?.locks?.cutoff !== undefined) lockHints.push(`cutoff ${Math.round(meta.locks.cutoff)} Hz`);
   if (meta?.locks?.sampleStart !== undefined) lockHints.push(`start ${Math.round(meta.locks.sampleStart * 100)}%`);
   if (meta?.locks?.length !== undefined) lockHints.push(`length ${Math.round(meta.locks.length * 100)}%`);
+  if (meta?.amount !== undefined && meta.amount < 1) lockHints.push(`amount ${Math.round(meta.amount * 100)}%`);
   const fullLabel = `${stepLabel}${lockHints.length > 0 ? `, p-locks: ${lockHints.join(", ")}` : ""}`;
+  const amount = meta?.amount ?? 1;
+  const amountPct = Math.round(amount * 100);
 
   return (
     <button
       type="button"
       data-pad={padId}
       data-step={stepIndex}
-      className={`step${active ? " active" : ""}${stepIndex % 4 === 0 ? " beat-start" : ""}${playhead ? " playhead" : ""}${inSelection ? " in-selection" : ""}${meta?.probability !== undefined && meta.probability < 1 ? " has-probability" : ""}${meta?.microtiming !== undefined && meta.microtiming !== 0 ? (meta.microtiming < 0 ? " micro-early" : " micro-late") : ""}${hasLocks ? " has-locks" : ""}`}
+      className={`step${active ? " active" : ""}${stepIndex % 4 === 0 ? " beat-start" : ""}${playhead ? " playhead" : ""}${inSelection ? " in-selection" : ""}${meta?.probability !== undefined && meta.probability < 1 ? " has-probability" : ""}${meta?.microtiming !== undefined && meta.microtiming !== 0 ? (meta.microtiming < 0 ? " micro-early" : " micro-late") : ""}${hasLocks ? " has-locks" : ""}${amount < 0.99 ? " has-amount" : ""}`}
       style={active ? ({ "--step-velocity": velocity } as React.CSSProperties) : undefined}
-      title={`${fullLabel} — click to toggle, drag vertically for velocity, shift+drag to multi-select, right-click (or long-press on touch) for probability / ratchet / microtiming / p-locks`}
+      title={`${fullLabel} — click to toggle, drag vertically for velocity (Alt microtiming −1..1, Ctrl/Cmd probability 0..1), shift+drag to multi-select, right-click (or long-press) for p-locks — bottom bar is amount 0..1`}
       aria-label={fullLabel}
       aria-pressed={active}
       onPointerDown={(event) => {
@@ -1049,6 +1175,49 @@ function StepCell({
           ●
         </span>
       )}
+      <span
+        className="step-amount-track"
+        title={`Amount ${amountPct}% — drag horizontally to set 0..100% (ghost vs accent)`}
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          const track = e.currentTarget as HTMLElement;
+          const rect = track.getBoundingClientRect();
+          const compute = (clientX: number) => clamp((clientX - rect.left) / rect.width, 0, 1);
+          const startAmount = amount;
+          let current = compute(e.clientX);
+          const onMove = (ev: PointerEvent) => {
+            current = compute(ev.clientX);
+            track.style.setProperty("--amount-preview", String(current));
+            const fill = track.querySelector(".step-amount-fill") as HTMLElement | null;
+            if (fill) fill.style.width = `${Math.round(current * 100)}%`;
+          };
+          const onUp = () => {
+            window.removeEventListener("pointermove", onMove);
+            window.removeEventListener("pointerup", onUp);
+            const final = current;
+            if (Math.abs(final - startAmount) > 0.01) {
+              const target = final >= 0.99 ? undefined : final;
+              services.store.execute(
+                setStepMeta(
+                  doc,
+                  doc.activePatternId,
+                  padId,
+                  stepIndex,
+                  target === undefined ? ({ amount: undefined } as any) : { amount: Math.round(final * 100) / 100 },
+                ),
+              );
+            }
+          };
+          window.addEventListener("pointermove", onMove);
+          window.addEventListener("pointerup", onUp);
+          try {
+            (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+          } catch {}
+        }}
+        aria-hidden="true"
+      >
+        <span className="step-amount-fill" style={{ width: `${amountPct}%` }} />
+      </span>
     </button>
   );
 }

@@ -5,6 +5,7 @@ import type { ParamDef } from "../effects/types";
 import { hashString, mulberry32 } from "../shared/rng";
 import { extractWavetable, FACTORY_TABLE_OPTIONS, FACTORY_WAVETABLES, FRAME_SIZE } from "./wavetables";
 import { isWorkletReady } from "../audio-worklets/loader";
+import { pitchShiftPreserveDuration } from "../audio-engine/time-stretch";
 
 const WAVE_NAMES = ["sine", "triangle", "sawtooth", "square"] as const;
 
@@ -132,7 +133,12 @@ function createVoiceFilter(
   };
 }
 
-function setFilterResonance(filter: { resonance: AudioParam; isWorklet: boolean }, value: number, when?: number, tc = 0.02) {
+function setFilterResonance(
+  filter: { resonance: AudioParam; isWorklet: boolean },
+  value: number,
+  when?: number,
+  tc = 0.02,
+) {
   if (filter.isWorklet) {
     const norm = Math.min(1, Math.max(0, (value - 0.1) / 7.9));
     if (when !== undefined) filter.resonance.setTargetAtTime(norm, when, tc);
@@ -636,6 +642,17 @@ const sampler: InstrumentDefinition = {
     { id: "cutoff", label: "CUTOFF", min: 500, max: 16000, default: 15000, unit: "Hz", format: formatHz },
     { id: "resonance", label: "RESO", min: 0.1, max: 8, default: 0.7, format: (v) => v.toFixed(2) },
     { id: "gain", label: "GAIN", min: 0, max: 1, default: 0.9, format: formatPct },
+    {
+      id: "stretch",
+      label: "STRETCH",
+      min: 0,
+      max: 1,
+      default: 0,
+      options: [
+        { value: 0, label: "Pitch" },
+        { value: 1, label: "Stretch" },
+      ],
+    },
   ],
   factory(ctx, track, env) {
     const output = ctx.createGain();
@@ -644,6 +661,15 @@ const sampler: InstrumentDefinition = {
     let sampleId: string | null = track.sampleId;
     const { voices, register, cleanup, findByPitch } = makeVoiceManager(16);
     const liveFilters = new Set<ReturnType<typeof createVoiceFilter>>();
+    const stretchCache = new Map<string, { semitones: number; data: Float32Array }>();
+    const STRETCH_CACHE_LIMIT = 24;
+    const cacheStretch = (key: string, semitones: number, data: Float32Array) => {
+      if (stretchCache.size >= STRETCH_CACHE_LIMIT) {
+        const first = stretchCache.keys().next().value as string | undefined;
+        if (first !== undefined) stretchCache.delete(first);
+      }
+      stretchCache.set(key, { semitones, data });
+    };
 
     const runtime: InstrumentRuntime = {
       output,
@@ -656,6 +682,7 @@ const sampler: InstrumentDefinition = {
         const hold = Math.max(durationSec, attack + 0.01);
         const off = when + hold;
         const stopTime = off + release * 3 + 0.05;
+        const semitones = pitch - root;
 
         const amp = ctx.createGain();
         const peak = velocity * (p.gain ?? 0.9);
@@ -670,7 +697,22 @@ const sampler: InstrumentDefinition = {
 
         const src = ctx.createBufferSource();
         src.buffer = buffer;
-        src.playbackRate.value = Math.pow(2, (pitch - root) / 12);
+        if ((p.stretch ?? 0) > 0.5 && semitones !== 0) {
+          // Time-stretch: pitch without changing duration. Cache per (sample, semitones).
+          const key = `${sampleId}:${semitones}`;
+          let entry = stretchCache.get(key);
+          if (!entry) {
+            const data = pitchShiftPreserveDuration(buffer.getChannelData(0), buffer.sampleRate, semitones);
+            entry = { semitones, data };
+            cacheStretch(key, semitones, data);
+          }
+          const stretched = ctx.createBuffer(1, entry.data.length, buffer.sampleRate);
+          stretched.getChannelData(0).set(entry.data);
+          src.buffer = stretched;
+          src.playbackRate.value = 1;
+        } else {
+          src.playbackRate.value = Math.pow(2, semitones / 12);
+        }
         src.connect(filter.input);
         src.start(when);
         src.stop(stopTime);
@@ -711,6 +753,7 @@ const sampler: InstrumentDefinition = {
         if (id === "resonance") for (const f of liveFilters) setFilterResonance(f, value, when, 0.02);
       },
       setSample(id) {
+        if (id !== sampleId) stretchCache.clear();
         sampleId = id;
       },
       noteOff(pitch, when) {

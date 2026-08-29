@@ -3505,6 +3505,33 @@ button {
   border-radius: 1px;
 }
 
+.step-amount-track {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  bottom: 2px;
+  height: 4px;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 2px;
+  overflow: hidden;
+  cursor: ew-resize;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.step-amount-fill {
+  height: 100%;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.2), var(--accent));
+  transition: width 0.06s;
+}
+.step:not(.active) .step-amount-track {
+  opacity: 0.45;
+}
+.step.has-amount .step-amount-track {
+  box-shadow: 0 0 4px rgba(245, 158, 11, 0.35);
+}
+.step-amount-track:hover {
+  opacity: 1;
+}
+
 .step-badge {
   position: absolute;
   right: 1px;

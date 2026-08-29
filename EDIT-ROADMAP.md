@@ -90,10 +90,10 @@
 - [x] `color/label` + `duplicate track with FX` (`src/commands/commands.ts:1070` `duplicateTrack` klonuje `pads` nové `uid pad`, `effects` nové `uid fx` + `sends/color/groupId`, `rows/stepMeta` premap `padIdMap`, `Instrument` `params/preset`, `Group` `effects/sends/color`, `src/project-model/types.ts:115` `color?:#rrggbb` + `schema.ts:sanitizeColor` + `normalizeTracksDomain`, `ChannelStrip` `input color` + `borderTopColor` + `DUP` btn + `name` inline)
 - [x] Batch FX: `addEffectToTracks(trackIds: ID[], type: EffectType)` (`src/commands/commands.ts:1190` `addEffectToTracks` loop `addEffect`/`returns` + `snapshot` jedno undo, guard `<=5` v UI) — `Mixer Batch bar` `useSelection trackIds` `>1?selected:all` `select EFFECT_DEFS` + `ADD TO ≤5` (P2 guardrail 1 klik na 5 trackov)
 
-### P2.3 Sequencer (Channel Rack) rýchlosť
+### P2.3 Sequencer (Channel Rack) rýchlosť — **2026-08-29 DOKONČENÉ**
 
-- [ ] `src/ui/Sequencer.tsx` — `Alt+drag` step → microtiming `StepMeta.microtiming -1..1` (`MAX_MICRO_TIMING 30 ticks`), `Ctrl+drag` → probability
-- [ ] Per-step `amount` už v `types.ts:252` — zobraziť ho ako mini slider pod stepom
+- [x] `src/ui/Sequencer.tsx` — `Alt+drag` step → microtiming `StepMeta.microtiming -1..1` (`MAX_MICRO_TIMING 30 ticks` → `deltaY/60` clamp, preview `ghost` + bulk `setStepMeta` na `stepSelection`), `Ctrl/Cmd+drag` → probability `0..1` (`deltaY/120`), `dragPreview` `microtiming/probability` overlay + `has-probability` `micro-early/late` class
+- [x] Per-step `amount` už v `types.ts:252` — zobrazený ako mini slider pod stepom (`StepCell` `.step-amount-track` `4px` `ew-resize`, `fill` `width amount*100%`, `has-amount` glow, `pointerdown` compute `clientX/width→0..1` preview `fill.width`, `onUp` → `setStepMeta doc.activePatternId` `amount:final<0.99?round 2dec:clear`, `groove.ts:MAX_MICRO_TIMING` reuse)
 
 ---
 
@@ -134,3 +134,4 @@
 - 2026-08-29 — **P1.4 Stems AudioClips dokončené**: `AudioClip` model+schema, `triggerAudioClip` live==offline (`frozenPlaybackOffset` tick→sec), `add/update/move/resize/duplicate` + `bounceZone` + waveform `WavetablePreview` štýl + `RMB` Reverse/Normalize/Stretch/Slice. Verif: `typecheck` ✓, `vitest` 1012 ✓, `format` ✓.
 - 2026-08-29 — **P2.1 PianoRoll dokončené**: `beginVelDrag` multi-velocity, `Alt+drag` clone-before-drag, `S` strum/`Alt+S` slide/`L` legato/`Ctrl+B` duplicate + ghost notes 30%. Verif: `typecheck` ✓, `vitest` 1012 ✓.
 - 2026-08-29 — **P2.2 Mixer dokončené**: `drag track→group`, `RMB send→Create return`, `RMB fader Reset/Type/Link macro`, `color` `#rrggbb` + `duplicateTrack` s FX/pads/sends, `Batch FX` 1 klik na 5. Verif: `typecheck` ✓, `vitest` 1012 ✓.
+- 2026-08-29 — **P2.3 Sequencer dokončené**: `Alt+drag` microtiming `−1..1` (30 ticks), `Ctrl+drag` probability `0..1`, `amount` mini slider `0..100%` `has-amount` + `micro-early/late` preview. Verif: `typecheck` ✓, `vitest` 1012 ✓.
