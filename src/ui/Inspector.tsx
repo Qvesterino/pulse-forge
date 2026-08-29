@@ -201,6 +201,8 @@ export function Inspector({ track, selectedPadId }: { track: Track; selectedPadI
                   clap: { decay: 0.25, tone: 1200 },
                   perc: { decay: 0.08, tone: 2100 },
                   cowbell: { decay: 0.32, tone: 540 },
+                  kick: { decay: 0.42, tone: 5000 },
+                  snare: { decay: 0.22, tone: 1750 },
                 };
                 const d = defaults[type];
                 services.store.execute(setPadSynth(doc, pad.id, { type, decay: d.decay, tone: d.tone }));
@@ -211,6 +213,8 @@ export function Inspector({ track, selectedPadId }: { track: Track; selectedPadI
               <option value="clap">Clap</option>
               <option value="perc">Perc (Tick)</option>
               <option value="cowbell">Cowbell</option>
+              <option value="kick">Kick</option>
+              <option value="snare">Snare</option>
             </select>
           </label>
           <Slider

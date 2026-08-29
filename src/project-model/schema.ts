@@ -637,6 +637,8 @@ function normalizeTracksDomain(s: NormalizeState): void {
               clap: { min: 0.05, max: 1.5, def: 0.25 },
               perc: { min: 0.05, max: 1.5, def: 0.12 },
               cowbell: { min: 0.05, max: 1.5, def: 0.3 },
+              kick: { min: 0.05, max: 1.5, def: 0.42 },
+              snare: { min: 0.05, max: 1.5, def: 0.22 },
             };
             const type = typeof obj.type === "string" && obj.type in allowed ? (obj.type as string) : null;
             if (!type) {

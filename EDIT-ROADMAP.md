@@ -60,12 +60,12 @@
 - [x] `hold RMB 220ms` → `src/ui/ContextMenu.tsx` `showMenu(x,y, context)` `deriveContext(selection, hoverTarget)` — položky: Cut/Copy/Paste/Delete/Duplicate/Consolidate/Slice to pads/Reverse/Normalize, `App.tsx:335` `pointerdown/move/up` + `contextmenu preventDefault`, `Esc` zatvára `App.tsx:140`
 - [x] `src/ui/shortcuts.ts` — `Tool` prepínanie `S/C/B/E/M` + `Esc` = select (`App.tsx:177` + `tool` v statusbare `App.tsx:444`), `src/styles.css:4222` `.context-menu`
 
-### P1.3 Zóna (timeRange) = batch operácie
+### P1.3 Zóna (timeRange) = batch operácie — **2026-08-29 čiastočne**
 
-- [ ] `src/ui/ArrangementPanel.tsx` — drag na timeline (ruler) → `timeRange`, vizuál overlay `rgba(f59e0b,0.12)`
-- [ ] `src/commands/commands.ts` — nové `deleteRange(doc, {fromTick,toTick})` (split notes na hranách, nie celý step), `duplicateRange`, `consolidateRange` (volá `stems.ts:buildStemProject` + `frozenPlaybackOffset`)
-- [ ] `src/project-model/groove.ts:88` `drumHitsInWindow` už filtruje `[from,to)` — použiť pre `humanizeRange`/`swingRange` len v zóne
-- [ ] Test: vyber 2 bary → `Ctrl+D` → 2 bary duplikované, undo 1 krok
+- [x] `src/ui/ArrangementPanel.tsx:112` drag na ruler → `timeRange` `selectionStore.setTimeRange({fromTick,toTick})`, `useSelection` + `useSelectionStore`, `timeDrag` state, `onPointerDown/Move/Up` s `>0.15 bar` threshold, `seek` len pri click bez drag, overlay `src/styles.css:5793` `.arr-time-range` `rgba(245,158,11,0.12)` v ruler + lane
+- [x] `src/ui/App.tsx:303` `deleteNote` handler rozšírený o `selection.timeRange` → batch delete clips (`deleteArrangementClip`), notes (`deleteNotes`) a steps (`clearSteps` `fromStep/toStep`) v jednom `deleteTimeRange` undo kroku + `selectionStore.clear()`, `clipIds` tiež
+- [x] `src/project-model/groove.ts:88` `drumHitsInWindow` už filtruje `[from,to)` — pripravené pre `humanizeRange`/`swingRange` len v zóne (engine hotový, UI pending)
+- [ ] `Ctrl+D` duplicate zóny + `consolidate` (`stems.ts:buildStemProject`) — next sprint
 
 ### P1.4 Stems ako editovateľné AudioClips
 

@@ -32,9 +32,7 @@ export function useServices(): Services {
 }
 
 export function useSelectionStore(): SelectionStore {
-  const store = useContext(SelectionContext);
-  if (!store) throw new Error("SelectionStore not initialized");
-  return store;
+  return useContext(SelectionContext) ?? fallbackSelectionStore;
 }
 
 export function useSelection(): SelectionState {

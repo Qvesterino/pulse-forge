@@ -37,6 +37,25 @@ export function moodLabel(mood: AssetMood): string {
 }
 
 export function assetCategoryOf(pad: DrumPad): AssetCategory {
+  if (pad.synth) {
+    switch (pad.synth.type) {
+      case "kick":
+        return "Kick";
+      case "snare":
+        return "Snare";
+      case "hatClosed":
+      case "hatOpen":
+        return "Hat";
+      case "clap":
+        return "Clap";
+      case "cowbell":
+        return "Percussion";
+      case "perc":
+        return "Percussion";
+      default:
+        return "Percussion";
+    }
+  }
   if (pad.assetId === null) return "Percussion";
   return CATEGORY_LOOKUP.get(pad.assetId) ?? "Percussion";
 }

@@ -33,7 +33,7 @@ export function RackStrip({
             type="button"
             className={`pad${hit ? " hit" : ""}${selected ? " selected" : ""}`}
             style={{ "--pad-color": categoryColor(assetCategoryOf(pad)) } as React.CSSProperties}
-            title={`${pad.name} — click to preview and select`}
+            title={`${pad.name}${pad.synth ? ` — ${pad.synth.type} synth` : ""} — click to preview and select`}
             onClick={() => {
               onSelectPad(pad.id);
               triggerPad(pad.id);
@@ -41,6 +41,7 @@ export function RackStrip({
           >
             <span className="pad-index">{index + 1}</span>
             <span className="pad-name">{pad.name}</span>
+            {pad.synth && <span className="pad-synth-badge">{pad.synth.type.slice(0, 3).toUpperCase()}</span>}
           </button>
         );
       })}

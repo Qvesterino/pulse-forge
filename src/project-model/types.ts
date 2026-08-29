@@ -97,12 +97,12 @@ export interface DrumPad {
   synth?: DrumSynthConfig | null;
 }
 
-export type DrumSynthType = "hatClosed" | "hatOpen" | "clap" | "perc" | "cowbell";
+export type DrumSynthType = "hatClosed" | "hatOpen" | "clap" | "perc" | "cowbell" | "kick" | "snare";
 
 export interface DrumSynthConfig {
   type: DrumSynthType;
-  decay: number; // 0.05..1.2 seconds
-  tone: number; // 1000..12000 Hz
+  decay: number; // 0.05..1.5 seconds
+  tone: number; // 200..12000 Hz
 }
 
 export interface FrozenState {
