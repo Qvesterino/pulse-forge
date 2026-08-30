@@ -411,6 +411,19 @@ const bass: InstrumentDefinition = {
     { id: "body", label: "BODY", min: 0, max: 1, default: 0.7, format: formatPct },
     { id: "punch", label: "PUNCH", min: 0, max: 1, default: 0.5, format: formatPct },
     { id: "grit", label: "GRIT", min: 0, max: 1, default: 0.25, format: formatPct },
+    { id: "glide", label: "GLIDE", min: 0, max: 1, default: 0.34, format: formatPct },
+    {
+      id: "distType",
+      label: "DIST",
+      min: 0,
+      max: 2,
+      default: 0,
+      options: [
+        { value: 0, label: "Soft" },
+        { value: 1, label: "Tube" },
+        { value: 2, label: "Hard" },
+      ],
+    },
     { id: "movement", label: "MOVE", min: 0, max: 1, default: 0.15, format: formatPct },
     { id: "width", label: "WIDTH", min: 0, max: 1, default: 0.2, format: formatPct },
     { id: "cutoff", label: "CUTOFF", min: 80, max: 4000, default: 700, unit: "Hz", format: formatHz },
@@ -423,18 +436,11 @@ const bass: InstrumentDefinition = {
     const p = { ...track.params };
     const { voices, register, cleanup, findByPitch } = makeVoiceManager(4);
 
-    const shaper = ctx.createWaveShaper();
-    shaper.oversample = "2x";
-    const applyGrit = () => {
-      shaper.curve = tanhCurve(1 + (p.grit ?? 0.25) * 8);
-    };
-    applyGrit();
-    shaper.connect(output);
     const liveFilters = new Set<ReturnType<typeof createVoiceFilter>>();
 
     const runtime: InstrumentRuntime = {
       output,
-      noteOn(pitch, velocity, when, durationSec) {
+      noteOn(pitch, velocity, when, durationSec, slideFrom) {
         const freq = midiToFreq(pitch);
         const width = p.width ?? 0.2;
         const hold = Math.max(durationSec, 0.03);
@@ -443,11 +449,31 @@ const bass: InstrumentDefinition = {
         const stopTime = off + release * 2 + 0.1;
         const level = velocity * dbToLin(p.level ?? -6);
 
+        const glideNorm = Math.max(0, Math.min(1, p.glide ?? 0.34));
+        const glide = glideNorm * 0.35;
+        const slideOn = !!slideFrom;
+        const glideStart = slideFrom ? Math.max(0, slideFrom.when) : when;
+        // Per-voice shaper so distType does not bleed — grit scales curve amount
+        const distType = Math.max(0, Math.min(2, Math.round(p.distType ?? 0)));
+        const grit = p.grit ?? 0.25;
+        const shaper = ctx.createWaveShaper();
+        shaper.oversample = "2x";
+        shaper.curve =
+          distType === 2 ? hardClipCurve(grit) : distType === 1 ? tubeCurve(grit) : tanhCurve(1 + grit * 8);
+        shaper.connect(output);
+
         const amp = ctx.createGain();
-        amp.gain.setValueAtTime(0.0001, when);
-        amp.gain.exponentialRampToValueAtTime(Math.max(level, 0.0002), when + 0.003);
-        amp.gain.setTargetAtTime(Math.max(level * 0.72, 0.0002), when + 0.003, 0.12);
-        amp.gain.setTargetAtTime(0.0001, off, release / 4);
+        if (slideOn && glide > 0.002 && slideFrom) {
+          amp.gain.setValueAtTime(Math.max(level * 0.9, 0.0002), glideStart);
+          amp.gain.setValueAtTime(Math.max(level, 0.0002), when);
+          amp.gain.setTargetAtTime(Math.max(level * 0.72, 0.0002), when + 0.003, 0.12);
+          amp.gain.setTargetAtTime(0.0001, off, release / 4);
+        } else {
+          amp.gain.setValueAtTime(0.0001, when);
+          amp.gain.exponentialRampToValueAtTime(Math.max(level, 0.0002), when + 0.003);
+          amp.gain.setTargetAtTime(Math.max(level * 0.72, 0.0002), when + 0.003, 0.12);
+          amp.gain.setTargetAtTime(0.0001, off, release / 4);
+        }
         amp.connect(shaper);
 
         const filter = createVoiceFilter(ctx, p.cutoff ?? 700, p.resonance ?? 1.2);
@@ -482,14 +508,22 @@ const bass: InstrumentDefinition = {
         ) => {
           const osc = ctx.createOscillator();
           osc.type = type;
-          osc.frequency.value = freq * Math.pow(2, transpose / 12);
+          const targetFreq = freq * Math.pow(2, transpose / 12);
           osc.detune.value = detuneCents;
           const g = ctx.createGain();
           g.gain.value = levelGain;
           const pan = ctx.createStereoPanner();
           pan.pan.value = panValue;
           osc.connect(g).connect(pan).connect(filter.input);
-          osc.start(when);
+          if (slideOn && slideFrom && glide > 0.002) {
+            const fromFreq = midiToFreq(slideFrom.pitch) * Math.pow(2, transpose / 12);
+            osc.frequency.setValueAtTime(Math.max(20, fromFreq), glideStart);
+            osc.frequency.exponentialRampToValueAtTime(Math.max(20, targetFreq), glideStart + glide);
+            osc.start(glideStart);
+          } else {
+            osc.frequency.value = targetFreq;
+            osc.start(when);
+          }
           osc.stop(stopTime);
           oscs.push(osc);
         };
@@ -524,6 +558,11 @@ const bass: InstrumentDefinition = {
             liveFilters.delete(filter);
             amp.disconnect();
             filter.disconnect();
+            try {
+              shaper.disconnect();
+            } catch {
+              /* already */
+            }
             cleanup(voice);
           };
       },
@@ -531,13 +570,11 @@ const bass: InstrumentDefinition = {
         p[id] = value;
         if (id === "cutoff") for (const f of liveFilters) f.frequency.setTargetAtTime(value, ctx.currentTime, 0.02);
         if (id === "resonance") for (const f of liveFilters) setFilterResonance(f, value, ctx.currentTime, 0.02);
-        if (id === "grit") applyGrit();
       },
       setParameterAt(id, value, when) {
         p[id] = value;
         if (id === "cutoff") for (const f of liveFilters) f.frequency.setTargetAtTime(value, when, 0.02);
         if (id === "resonance") for (const f of liveFilters) setFilterResonance(f, value, when, 0.02);
-        if (id === "grit") applyGrit();
       },
       noteOff(pitch, when) {
         for (const v of findByPitch(pitch)) v.stop(when);
@@ -549,7 +586,6 @@ const bass: InstrumentDefinition = {
       },
       dispose() {
         this.panic();
-        shaper.disconnect();
         output.disconnect();
       },
     };
@@ -677,7 +713,8 @@ const bass808: InstrumentDefinition = {
             const fromFreq = midiToFreq(slideFrom.pitch) / 2;
             const glideTime = glide > 0.002 ? glide : 0;
             subOsc.frequency.setValueAtTime(Math.max(20, fromFreq), glideStart);
-            if (glideTime > 0) subOsc.frequency.exponentialRampToValueAtTime(Math.max(20, freq / 2), glideStart + glideTime);
+            if (glideTime > 0)
+              subOsc.frequency.exponentialRampToValueAtTime(Math.max(20, freq / 2), glideStart + glideTime);
             else subOsc.frequency.setValueAtTime(Math.max(20, freq / 2), when);
             subOsc.start(glideStart);
           } else {

@@ -58,7 +58,14 @@ export interface SchedulerDeps {
   /** Metronome click for count-in / pre-roll (downbeat = bar start accent). */
   metronomeClick?(when: number, downbeat: boolean): void;
   /** Passive capture ring (Ableton): record every performed hit/note for later "Capture last take". */
-  recordCapturedEvent?(event: { trackId: string; padId?: string; pitch?: number; velocity: number; tick: number; duration?: number }): void;
+  recordCapturedEvent?(event: {
+    trackId: string;
+    padId?: string;
+    pitch?: number;
+    velocity: number;
+    tick: number;
+    duration?: number;
+  }): void;
   /** MIDI output: send a note on to external hardware. */
   midiNoteOn?(trackId: string, channel: number, note: number, velocity: number, when: number): void;
   /** MIDI output: send a note off to external hardware. */
@@ -197,10 +204,14 @@ export class Scheduler {
     // pre-roll region only. Content scheduling is untouched (starts on time).
     if (transport.preRollBars > 0 && this.deps.metronomeClick && windowStart < transport.anchorTickBeforePreRoll()) {
       const bar = transport.preRollBars * BAR_TICKS;
-      for (let t = Math.ceil(windowStart / BAR_TICKS) * BAR_TICKS; t < Math.min(windowEnd, transport.anchorTickBeforePreRoll()); t += BAR_TICKS) {
+      for (
+        let t = Math.ceil(windowStart / BAR_TICKS) * BAR_TICKS;
+        t < Math.min(windowEnd, transport.anchorTickBeforePreRoll());
+        t += BAR_TICKS
+      ) {
         const when = transport.timeAtTick(t) + this.scheduleOffsetSec() + 0.005;
         if (!audibleClick(when, now)) continue;
-        this.deps.metronomeClick(when, ((t / bar) % 1) === 0);
+        this.deps.metronomeClick(when, (t / bar) % 1 === 0);
       }
     }
 
@@ -393,7 +404,12 @@ export class Scheduler {
       if (!audible(when)) continue;
       this.deps.trigger(hit.trackId, hit.pad, when, hit.velocity, hit.locks);
       // Passive capture ring (Ableton) — always rolling, cheap ring push
-      this.deps.recordCapturedEvent?.({ trackId: hit.trackId, padId: hit.pad.id, velocity: hit.velocity, tick: hit.tick });
+      this.deps.recordCapturedEvent?.({
+        trackId: hit.trackId,
+        padId: hit.pad.id,
+        velocity: hit.velocity,
+        tick: hit.tick,
+      });
       // MIDI output for drum tracks
       if (this.deps.midiNoteOn) {
         const track = doc.tracks.find((t) => t.id === hit.trackId);

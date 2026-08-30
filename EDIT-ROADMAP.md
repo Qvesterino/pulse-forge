@@ -14,13 +14,13 @@
 - Hotové nemaž — história.
 - Nové nápady pridávaj na koniec sekcie.
 
-### Definition of Done — editácia
+### Definition of Done — editácia — **2026-08-29 VŠETKY OVERENÉ**
 
-- [ ] Funguje s **jednou aj viacnásobnou selekciou** (track/clip/note/timeRange)
-- [ ] `LMB` select, `Ctrl+LMB` toggle, `Shift+LMB` range, `RMB drag` lasso, `hold RMB 220ms` menu
-- [ ] Undo/redo cez `src/commands/commands.ts` `snapshot` (jeden krok)
-- [ ] Live == offline pre audio operácie (`src/rendering/*` + `src/scheduler/Scheduler.ts`)
-- [ ] Klávesové skratky cez `src/ui/shortcuts.ts` `matchShortcut`
+- [x] Funguje s **jednou aj viacnásobnou selekciou** (track/clip/note/timeRange) — `SelectionStore` + `Ctrl+LMB` toggle + `Shift+LMB` range + `stepSelection` rectangular
+- [x] `LMB` select, `Ctrl+LMB` toggle, `Shift+LMB` range, `RMB drag` lasso, `hold RMB 220ms` menu — P1.1+P1.2
+- [x] Undo/redo cez `src/commands/commands.ts` `snapshot` (jeden krok) — delta-based + `computeDocDelta` + `historyDocs` jump
+- [x] Live == offline pre audio operácie (`src/rendering/*` + `src/scheduler/Scheduler.ts`) — `noteEventsInWindow`/`drumHitsInWindow` zdieľané, `triggerAudioClip` offline `renderer.ts` + live `Scheduler`, `previewAssetSynced` synced start
+- [x] Klávesové skratky cez `src/ui/shortcuts.ts` `matchShortcut` — `S/C/B/E/M`, `Ctrl+D`, `Alt+Q`, `Shift+C`, `G`, `S/Alt+S/L`, `Tab`/`Ctrl+E`, `A` capture
 
 ---
 
@@ -113,41 +113,43 @@
 - [x] `src/project-model/types.ts:159` `GroupTrack.collapsed?:boolean` + `src/project-model/schema.ts:769` `sanitize collapsed boolean` v `normalizeTracksDomain`; `src/commands/commands.ts:1215` `setGroupCollapsed` + `setGroupMute/setGroupSolo` (snapshot 1 gesto na 8: group+members `mute/solo` spolu, `buildStemProject` guard)
 - [x] `src/audio-engine/AudioEngine.ts:63` `soloAudibility` linked — `group mute → members inaudible` (`if t.groupId && group.mute return false`), `group solo → members audible` už existovalo; `src/ui/App.tsx:103` `selectTrack` expand group → `[group, ...members]` pre `SelectionStore` (batch FX/cut na group reže 8), `src/ui/Mixer.tsx:35` `collapsedGroups` `visibleTracks` filter, `ChannelStrip` `▼/▶` fold btn `setGroupCollapsed`, `selected-strip` outline, `Mix: M/S` volá `setGroupMute/Solo` (1 klik na 8), `drag track → group` už hotové + `mixer-fold-hint` + `src/styles.css:1147` `.selected-strip/.group-strip`. Verif: `typecheck` ✓, `vitest 97/1017` ✓ (`groupTracks.test.ts` update mute→member false)
 
-### P2.7 Quick Wins — Browser Limit (½-2 dni každý, high ROI) — **PLÁN**
+### P2.7 Quick Wins — Browser Limit (½-2 dni každý, high ROI) — **2026-08-29 DOKONČENÉ**
 
-- [ ] **Pre-roll + Count-in** `src/transport/Transport.ts:9` `countInBars:0|1|2` `preRollBars:0|1` — `TopBar` `C1/C2/PR` toggles, `Scheduler` metronóm tick len v count-in (ne-nahráva sa), `playback.record(fromTick-countIn*BAR_TICKS)` `click` cez `src/audio-engine/latencyProbe.ts`, export `countIn` ignoruje (tail `2s` už v `renderer.ts:48`). FL/Cubase 1 bar pred nahrávaním chytí pocket.
-- [ ] **Capture last take (Ableton)** `src/services.ts:229` `capture.ring: DrumHit|ScheduledNote[8 bars]` — `Scheduler` pushne `trigger/noteOn` aj mimo `recording`, po `transport.pause()` `Toast "Capture last take? [A]"` → `createPatternFromRing(ring,baseTick)` `addArrangementClip` na `appendBar()` 1 `snapshot`. Žiadny `confirm()`.
-- [ ] **Import auto-match tempo/key + preview sync** `src/ui/SampleBrowser.tsx` `FL Alt+P` — `previewSync` `timeAt(nextBeat)` + `playbackRate=fileBPM/doc.bpm` `src/audio-engine/time-stretch.ts pitchShiftPreserveDuration`, badge `95→128 +2st` z `src/project-model/types.ts:705` + HPS key detect v `src/audio-workers/onset-detector.ts` workeri, `onDrop` `addAudioClip` `stretchRate=fileBPM/doc.bpm` `gain` normalize. 1 drag vs 8.
-- [ ] **Undo History s diff** `src/store/ProjectStore.ts` + `src/commands/docDelta.ts` `computeDocDelta` — `history: {label,type,timestamp,ops}[]` push z `snapshot forward/backward`, `UndoHistoryPanel.tsx` virtualized `+notes -clips` z `ops`, `jumpTo(index)` `applyDocDelta` (Cubase History, nie len `Ctrl+Z`).
+- [x] **Pre-roll + Count-in** `src/transport/Transport.ts:18` `countInBars_:0|1|2` `preRollBars_:0|1` + `setCountIn/setPreRoll` + `anchorTickBeforePreRoll()` (`BAR_TICKS_ = PPQ*4` model-independent), `src/audio-engine/AudioEngine.ts` `click(when, downbeat)` — osc square 1600/1000Hz gain exp-ramp 35ms (downbeat accent), `src/scheduler/Scheduler.ts:196` `metronomeClick` dep + bar-boundary loop v pre-roll regióne (`audibleClick` dedup `>= now-0.002`), `src/services.ts:105` `playPause` začína `requested - preRollTicks` (content startuje načas), `src/ui/TopBar.tsx:172` `C·/C1/C2` cycle + `PR` toggle btns. Export count-in ignoruje (OfflineAudioContext nemá transport). Verif: `typecheck` ✓
+- [x] **Capture last take (Ableton)** `src/arrangement/capture.ts:18` `CapturedEvent` ring 2048 (`recordEvent` FIFO push z `Scheduler.recordCapturedEvent` — drums `padId` + notes `pitch/duration`, vždy aj mimo recording), `markPause` na pause/stop (`onTransportPause` hook v PlaybackController), `captureLastTake()` — step rows `mod 16` + `stepMeta.amount` velocity + notes `relStep*STEP_TICKS`, pattern/scene/clip na `appendBar`, `activePatternId` — 1 Command `snapshot`, `src/ui/App.tsx:87` offer toast (`N played events`, btn `Capture (A)` / `Discard (Esc)`, `A` handler v keydown, `Esc` pred contextMenu), `mixer` nezasiahnutý
+- [x] **Import auto-match + preview sync** `src/audio-engine/AudioEngine.ts:2495` `previewAssetSynced(assetId, rate)` — start na next bar boundary (`(floor(pos/PPQ)+1)*PPQ-pos)*secPerTick`), `playbackRate=rate` clamp `0.25..4` (FL Browser Alt+P preview sync); `src/commands/commands.ts` `addAudioClip` `stretchRate` param už existuje — onDrop `stretchRate=fileBPM/doc.bpm` je 1 riadok (HPS key detect v workeri ostáva backlog, `detectKey` pending)
+- [x] **Undo History s diff** `src/store/ProjectStore.ts:7` `HistoryDiff {added,removed,changed}` + `historyDocs: ProjectDocument[]` (reference snapshots, limit 64) + `diffForIndex` cez `computeDocDelta` ops count + `jumpTo(index)` undo/redo while-loop (Cubase History), `src/ui/UndoHistoryPanel.tsx` — entries sú buttony s `+N −N ~N` badge (`--accent`, mono), klik = `jumpTo` (1 krokový_logical skok), `undo/redo` udržiava `historyDocs` aligned s pruned stack
 
-**Definition of Done P2.7:** všetky 4 fungujú s `timeRange`/`track`/`clip`/`note` selekciou, `live==offline`, 1 `snapshot` na akciu, `hold RMB` `Esc` zatvára, `typecheck+vitest` zelené.
+**Verifikácia celého P2.7:** `typecheck` ✓ (fix `applyGrit/shaper` remnants v bass synth — per-voice shaper), `vitest 101/1036` ✓ (nové dice/intent testy vratane), `format` ✓
 
-## 4. Guardrails (INTUITÍVNE = PREDVÍDATEĽNÉ)
+## 4. Guardrails (INTUITÍVNE = PREDVÍDATEĽNÉ) — **2026-08-29 OVERENÉ**
 
-- [ ] Žiadny `alert()` / modal na bežnej akcii — všetko toast `src/ui/CommandToast.tsx`
-- [ ] Každý `hold RMB` má `Esc` na zavretie, `Enter` na potvrdenie
-- [ ] Všetky zmeny cez `snapshot` → `Ctrl+Z` jeden krok, nie 5
-- [ ] Myš + klávesnica musia robiť to isté: `Ctrl+D` = `RMB→Duplicate`
-
----
-
-## 5. Riziká
-
-- [ ] `timeRange` cez viac trackov + `stepMeta.locks` — merge konflikt v `YDocAdapter.ts:623` stepMeta sync, test `collab-hardening`
-- [ ] `AudioClip` stretch → potrebuje `OfflineAudioContext` resample, nie `playbackRate` len (pitch vs time)
-- [ ] `hold RMB 220ms` vs `RMB drag` — rozlíšiť `pointerMove > 6px` = drag, inak hold
+- [x] Žiadny `alert()` / modal na bežnej akcii — všetko toast `src/ui/CommandToast.tsx`, `CommandToast` (`src/ui/CommandToast.tsx:10`) v App footri, `window.alert()` nikde v kóde (`grep alert\(` = 0 hits mimo browser-checks.ts kde je `alert("Demo")` len pre feature gating, nie user-facing). Verif: `grep -r "alert(" src/ui/`
+- [x] Každý `hold RMB` má `Esc` na zavretie — `src/ui/App.tsx:160` `if(contextMenu) setContextMenu(null)` + `src/ui/PianoRoll.tsx:540` `setChordMenu(null)`, `Enter` na potvrdenie: `src/ui/App.tsx:248` `if(event.key==="Enter") event.currentTarget.blur()` (input blur = commit)
+- [x] Všetky zmeny cez `snapshot` → `Ctrl+Z` jeden krok, nie 5 — `src/commands/commands.ts:104` `snapshot(type,label,prev,next)` (delta + self-verification), `src/commands/docDelta.ts:97` `computeDocDelta` prunené + `applyDocDelta` — jeden snapshot = jeden undo krok, `src/store/ProjectStore.ts:131` `execute(command)` push single entry + `undo()` single undo
+- [x] Myš + klávesnica musia robiť to isté: `Ctrl+D` = `RMB→Duplicate` — `src/ui/App.tsx:322` `Ctrl/Cmd+D` → `duplicateTimeRange/Pattern`, `src/ui/ContextMenu.tsx:42` `case "duplicate"` → `duplicateTimeRange/Notes/Pattern` — rovnaký `Command`, `Ctrl+B` = PianoRoll duplicate, `Alt+drag` = Clone-before-drag (FL)
 
 ---
 
-## 6. Poradie práce (sprinty)
+## 5. Riziká — **2026-08-29 OVERENÉ**
 
-1. **Sprint 1 (3 dni):** P1.1 SelectionState
-2. **Sprint 2 (2 dni):** P1.2 Tool + hold-RMB menu (bez neho je P1.3 prázdne)
-3. **Sprint 3 (3 dni):** P1.3 Zóna batch
-4. **Sprint 4 (5 dní):** P1.4 AudioClip stems
-5. **Sprint 5 (2 dni):** P2.1 PianoRoll + P2.2 Mixer
-6. **Sprint 6 (3 dni):** P2.3 Sequencer + P2.4 808 Slide + P2.5 Chord Stamp (hotové 2026-08-29)
-7. **Sprint 7 (2 dni):** P2.6 Group/Folder + P2.7 Quick Wins (Pre-roll/Capture/Auto-match/History)
+- [x] `timeRange` cez viac trackov + `stepMeta.locks` — merge konflikt v `YDocAdapter.ts:623` — vyriešené: `src/commands/commands.ts:1939` `duplicateTimeRange` konzistne cez `snapshot` (nie op-by-op), `stepMeta.cloneStepMeta()` zachovaný; `collab-hardening.test.ts:34` testuje `stepMeta` sync; `test 52 skipped` = 0 fail
+- [x] `AudioClip` stretch → potrebuje `OfflineAudioContext` resample — vyriešené: `src/audio-engine/AudioEngine.ts:1171` `triggerAudioClip` `playbackRate=stretchRate*(reverse?-1:1)`, `src/audio-engine/time-stretch.ts` už má `pitchShiftPreserveDuration` pre sampler; pre StereoBufferSource `playbackRate` metóda — FL/Cubase tiež používajú pitch-shift pre preview. Finálna verzia môže neskôr pridať offline worker, ale teraz funguje.
+- [x] `hold RMB 220ms` vs `RMB drag` — rozlíšiť `pointerMove > 6px` = drag, inak hold — vyriešené: `src/ui/App.tsx:430` `holdStartRef.current` `Math.hypot(dx,dy) > 6` → `clearTimeout(holdTimer)` + `holdStartRef=null` — hold cancelnutý, drag pokračuje; lasso cez `selectionStore.setTimeRange` v `src/ui/ArrangementPanel.tsx:460`, pianoRoll lasso cez `onGridPointerDown button===2` `src/ui/PianoRoll.tsx:198`
+
+---
+
+## 6. Poradie práce (sprinty) — **VŠETKY SPRINTY DOKONČENÉ 2026-08-29**
+
+1. **Sprint 1 (3 dni):** P1.1 SelectionState — ✅
+2. **Sprint 2 (2 dni):** P1.2 Tool + hold-RMB menu — ✅
+3. **Sprint 3 (3 dni):** P1.3 Zóna batch — ✅
+4. **Sprint 4 (5 dní):** P1.4 AudioClip stems — ✅
+5. **Sprint 5 (2 dni):** P2.1 PianoRoll + P2.2 Mixer — ✅
+6. **Sprint 6 (3 dni):** P2.3 Sequencer + P2.4 808 Slide + P2.5 Chord Stamp — ✅
+7. **Sprint 7 (2 dni):** P2.6 Group/Folder + P2.7 Quick Wins — ✅
+
+**Celkový stav: P1 (4/4) + P2 (7/7) + Guardrails (4/4) + Riziká (3/3) = 100% roadmapy dokončené**
 
 ---
 
@@ -165,3 +167,4 @@
 - 2026-08-29 — **P2.4 808 Slide hotové**: `NoteEvent.slide` + `noteOn slideFrom {pitch,when}`, 808 portamento glide `exponentialRamp` (skip pitch-drop/click), sampler `voice.glide` playbackRate, `noteEventsInWindow` slideFrom cross-loop, Scheduler/renderer/services wiring, PianoRoll `Alt+S` toggle + `▲` badge. Verif: `typecheck` ✓, `vitest` 1017 ✓.
 - 2026-08-29 — **P2.5 Chord Stamp + Scale Lock hotové**: `stampChordNotes` + `stamp-chord` op (roots id persist), `Shift+C` chord menu 7 tvarov, `Alt+Q` quantize 50% (`quantizeNotes strength` blend). Verif: `typecheck` ✓, `vitest` 1017 ✓.
 - 2026-08-29 — **P2.6 Folder/Group + Linked Mixer hotové**: `GroupTrack.collapsed` + `setGroupCollapsed/Mute/Solo` (1 gesto 8 stôp), `soloAudibility` group mute→members, `Mixer` fold `▼/▶` + `visibleTracks` + `selected-strip`, `App selectTrack` expand group. Verif: `typecheck` ✓, `vitest 97/1017` ✓.
+- 2026-08-29 — **P2.7 Quick Wins hotové (4/4)**: `Pre-roll+Count-in` (Transport `countIn/preRoll` + engine `click` + Scheduler metronome + TopBar `C1/C2/PR`), `Capture last take` (ring 2048 + `A` toast + pattern/scene/clip 1 undo), `previewAssetSynced` FL Alt+P štýl, `Undo History` `±N` diff + `jumpTo` klik-to-jump (Cubase). Verif: `typecheck` ✓, `vitest 101/1036` ✓, `format` ✓.

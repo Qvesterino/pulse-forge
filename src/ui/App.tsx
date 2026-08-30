@@ -214,7 +214,13 @@ export function App({
       if (typing) return;
 
       // A = Capture last take (when the offer is showing) — Ableton-style
-      if (captureOffer && (event.key === "a" || event.key === "A") && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      if (
+        captureOffer &&
+        (event.key === "a" || event.key === "A") &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey
+      ) {
         event.preventDefault();
         const cmd = services.capture.captureLastTake();
         if (cmd) {
@@ -842,7 +848,12 @@ export function App({
               </footer>
               <CommandToast />
               {captureOffer && services.capture.hasCapturedMaterial && (
-                <div className="context-menu" role="alertdialog" aria-label="Capture last take" style={{ left: 16, bottom: 48, top: "auto" }}>
+                <div
+                  className="context-menu"
+                  role="alertdialog"
+                  aria-label="Capture last take"
+                  style={{ left: 16, bottom: 48, top: "auto" }}
+                >
                   <div className="context-menu-header">CAPTURE LAST TAKE</div>
                   <span style={{ fontSize: 11, color: "var(--muted)", padding: "0 8px 4px", display: "block" }}>
                     {services.capture.capturedEventCount} played events — keep them as a pattern?
@@ -864,11 +875,7 @@ export function App({
                   >
                     Capture (A)
                   </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => setCaptureOffer(false)}
-                  >
+                  <button type="button" role="menuitem" onClick={() => setCaptureOffer(false)}>
                     Discard (Esc)
                   </button>
                 </div>

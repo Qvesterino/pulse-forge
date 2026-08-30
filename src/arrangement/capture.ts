@@ -123,7 +123,7 @@ export class ArrangementCaptureController {
           id: `cap-${ev.trackId}-${relStep}-${ev.pitch}-${list.length}`,
           pitch: ev.pitch,
           start: Math.max(0, relStep * STEP_TICKS),
-          duration: Math.max(STEP_TICKS, Math.round((ev.duration ?? 0.25) * 1000) / 1000 * 0 + STEP_TICKS),
+          duration: Math.max(STEP_TICKS, (Math.round((ev.duration ?? 0.25) * 1000) / 1000) * 0 + STEP_TICKS),
           velocity: Math.min(1, Math.max(0.05, ev.velocity)),
         });
       }

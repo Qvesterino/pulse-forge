@@ -2509,7 +2509,7 @@ export class AudioEngine {
     const pos = this.transportTickNow();
     const secondsPerTick = 60 / (bpm * PPQ);
     const nextBarSec = ((Math.floor(pos / PPQ) + 1) * PPQ - pos) * secondsPerTick;
-    const when = now + Math.max(0.005, nextBarSec % Math.max(0.001, barSec) + 0.005);
+    const when = now + Math.max(0.005, (nextBarSec % Math.max(0.001, barSec)) + 0.005);
     void barSec;
     const source = ctx.createBufferSource();
     source.buffer = buffer;

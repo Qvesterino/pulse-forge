@@ -56,7 +56,18 @@ export function UndoHistoryPanel({ open }: { open: boolean }) {
               key={`${entry.type}-${idx}`}
               type="button"
               className={`undo-history-entry${idx === 0 ? " current" : ""}`}
-              style={{ cursor: "pointer", background: "transparent", border: "none", color: "inherit", textAlign: "left", width: "100%", padding: "4px 8px", display: "flex", gap: 8, alignItems: "center" }}
+              style={{
+                cursor: "pointer",
+                background: "transparent",
+                border: "none",
+                color: "inherit",
+                textAlign: "left",
+                width: "100%",
+                padding: "4px 8px",
+                display: "flex",
+                gap: 8,
+                alignItems: "center",
+              }}
               title={`Jump to this state — ${entry.label}`}
               onClick={() => jump(chronoIdx)}
             >
