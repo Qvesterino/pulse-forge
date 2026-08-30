@@ -24,9 +24,12 @@ import {
   type DiceMode,
 } from "../intent/dice";
 import { nextSeed } from "../shared/dice";
+import { forkRandom } from "../shared/rng";
 import { normalizeIntent } from "../intent/normalize";
 import type { GenerateOptions } from "../ai/types";
 import { GENRES } from "../ai/types";
+import { resolveGrooveForGeneration } from "../ai/generator";
+import { resolveKitAssignments } from "../sample-library/kit-pools";
 
 export interface DicePreview {
   mode: DiceMode;
@@ -36,6 +39,8 @@ export interface DicePreview {
   hitCount: number;
   beforeHits: number;
   score: number | null;
+  swing: number | null;
+  kitAssignments: Map<string, string> | null;
 }
 
 interface DiceContextValue {
@@ -130,15 +135,35 @@ export function DiceProvider({ doc, children }: { doc: ProjectDocument; children
           style: "house",
         });
         const hits = Object.values(patch.rows).reduce((s, r) => s + r.filter((v) => v > 0).length, 0);
-        return { mode: "vary", seed, fullPattern: null, varyPatch: patch, hitCount: hits, beforeHits, score: null };
+        return {
+          mode: "vary",
+          seed,
+          fullPattern: null,
+          varyPatch: patch,
+          hitCount: hits,
+          beforeHits,
+          score: null,
+          swing: null,
+          kitAssignments: null,
+        };
       } catch {
-        return { mode: "vary", seed, fullPattern: null, varyPatch: null, hitCount: 0, beforeHits, score: null };
+        return {
+          mode: "vary",
+          seed,
+          fullPattern: null,
+          varyPatch: null,
+          hitCount: 0,
+          beforeHits,
+          score: null,
+          swing: null,
+          kitAssignments: null,
+        };
       }
     }
 
-    // Full mode — use subSeed locks for preview=apply parity when locks active
+    // Full mode — use subSeed locks for preview=apply parity when locks active + swing/kit jitter
     try {
-      const opts: GenerateOptions = {
+      let opts: GenerateOptions = {
         genre: jittered.genre,
         style: jittered.style ?? undefined,
         seed: jittered.seed,
@@ -150,6 +175,34 @@ export function DiceProvider({ doc, children }: { doc: ProjectDocument; children
         replaceMode: "new",
         drumTrackId: doc.tracks.find((t) => t.kind === "drum")?.id,
       };
+      // Swing jitter — derive groove first, then jitter
+      let swing: number | null = null;
+      let kitAssignments: Map<string, string> | null = null;
+      try {
+        const groove = resolveGrooveForGeneration(doc, opts);
+        if (session.jitter > 0.15) {
+          const r = forkRandom(seed, "dice.swing");
+          const jitteredSwing = Math.max(0, Math.min(1, groove.swing + (r() - 0.5) * 0.4 * session.jitter));
+          if (Math.abs(jitteredSwing - groove.swing) > 0.01) {
+            swing = Math.round(jitteredSwing * 100) / 100;
+            opts = { ...opts, _diceSwing: swing } as GenerateOptions & { _diceSwing?: number };
+          } else {
+            swing = groove.swing;
+          }
+        } else {
+          swing = groove.swing;
+        }
+      } catch {
+        swing = null;
+      }
+      // Kit assignments (category-constrained)
+      try {
+        const pads = getDrumTrack(doc).pads;
+        kitAssignments = resolveKitAssignments(pads, seed, session.locks, session.jitter);
+        if (kitAssignments.size === 0) kitAssignments = null;
+      } catch {
+        kitAssignments = null;
+      }
       const hasLocks = Object.values(session.locks).some(Boolean);
       let result = generateLocalResultFromOptions(doc, opts, "preview");
       if (hasLocks && result.proposal?.pattern) {
@@ -185,9 +238,29 @@ export function DiceProvider({ doc, children }: { doc: ProjectDocument; children
       const pat = result.proposal?.pattern;
       const hits = pat ? Object.values(pat.rows).reduce((s, r) => s + r.filter((v) => v > 0).length, 0) : 0;
       const score = diceScore(pat);
-      return { mode: "full", seed, fullPattern: result, varyPatch: null, hitCount: hits, beforeHits, score };
+      return {
+        mode: "full",
+        seed,
+        fullPattern: result,
+        varyPatch: null,
+        hitCount: hits,
+        beforeHits,
+        score,
+        swing,
+        kitAssignments,
+      };
     } catch {
-      return { mode: "full", seed, fullPattern: null, varyPatch: null, hitCount: 0, beforeHits, score: null };
+      return {
+        mode: "full",
+        seed,
+        fullPattern: null,
+        varyPatch: null,
+        hitCount: 0,
+        beforeHits,
+        score: null,
+        swing: null,
+        kitAssignments: null,
+      };
     }
   }, [session, doc]);
 
@@ -278,7 +351,7 @@ export function DiceProvider({ doc, children }: { doc: ProjectDocument; children
         } catch {}
         return;
       }
-      const opts: GenerateOptions = {
+      let opts: GenerateOptions = {
         genre: jittered.genre,
         style: jittered.style ?? undefined,
         seed: jittered.seed,
@@ -290,7 +363,29 @@ export function DiceProvider({ doc, children }: { doc: ProjectDocument; children
         replaceMode: "new",
         drumTrackId: currentDoc.tracks.find((t) => t.kind === "drum")?.id,
       };
-      const hasLocks = Object.values(session.locks).some(Boolean);
+      // Swing jitter (mirror preview)
+      try {
+        const groove = resolveGrooveForGeneration(currentDoc, opts);
+        if (session.jitter > 0.15) {
+          const r = forkRandom(seed, "dice.swing");
+          const jitteredSwing = Math.max(0, Math.min(1, groove.swing + (r() - 0.5) * 0.4 * session.jitter));
+          if (Math.abs(jitteredSwing - groove.swing) > 0.01) {
+            opts = { ...opts, _diceSwing: Math.round(jitteredSwing * 100) / 100 } as GenerateOptions & {
+              _diceSwing?: number;
+            };
+          }
+        }
+      } catch {}
+      // Kit assignments
+      let kitAssignments: Map<string, string> | null = null;
+      try {
+        const pads = getDrumTrack(currentDoc).pads;
+        kitAssignments = resolveKitAssignments(pads, seed, session.locks, session.jitter);
+        if (kitAssignments.size === 0) kitAssignments = null;
+      } catch {
+        kitAssignments = null;
+      }
+      const hasLocks = Object.values(session.locks).some(Boolean) || kitAssignments != null;
       if (!hasLocks) {
         services.store.execute(generatePatternCommand(currentDoc, opts));
         return;
@@ -316,8 +411,32 @@ export function DiceProvider({ doc, children }: { doc: ProjectDocument; children
         services.store.execute(generatePatternCommand(currentDoc, opts));
         return;
       }
+      // Apply kit assignments to drum track (single undo with pattern)
+      let nextTracks = currentDoc.tracks;
+      if (kitAssignments && kitAssignments.size > 0) {
+        nextTracks = currentDoc.tracks.map((t) => {
+          if (t.kind !== "drum") return t;
+          const pads = t.pads.map((p) => {
+            const assetId = kitAssignments!.get(p.id);
+            if (assetId)
+              return {
+                ...p,
+                assetId,
+                synth: null,
+                sliceStart: undefined,
+                sliceEnd: undefined,
+                sliceFadeIn: undefined,
+                sliceFadeOut: undefined,
+                sliceReverse: undefined,
+              };
+            return p;
+          });
+          return { ...t, pads };
+        });
+      }
       const nextDoc: ProjectDocument = {
         ...currentDoc,
+        tracks: nextTracks,
         patterns: [...currentDoc.patterns, lockedPattern],
         scenes: [
           ...currentDoc.scenes,

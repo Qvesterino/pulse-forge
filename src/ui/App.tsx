@@ -760,56 +760,56 @@ export function App({
                   )}
                   <PatternBar clip={clip} onCopy={setClip} onOpenDice={() => setBottomPanel("dice")} />
                   <Sequencer
-                  selectedPadId={padId}
-                  selectedTrackId={track.id}
-                  onSelectTrack={selectTrack}
-                  onSelectPad={setSelectedPadId}
-                  selectedNote={selectedNote}
-                  onSelectNote={setSelectedNote}
-                  stepSelection={stepSelection}
-                  onSelectSteps={setStepSelection}
-                  scaleSnap={scaleSnap}
-                />
-              </div>
-              <Inspector track={track} selectedPadId={padId} />
-            </main>
-            <ErrorBoundary panel="mixer">{bottomPanel === "mixer" && <Mixer />}</ErrorBoundary>
-            <ErrorBoundary panel="fx">{bottomPanel === "fx" && <EffectRack track={track} />}</ErrorBoundary>
-            <ErrorBoundary panel="arr">{bottomPanel === "arr" && <ArrangementPanel />}</ErrorBoundary>
-            <ErrorBoundary panel="mod">{bottomPanel === "mod" && <ModPanel />}</ErrorBoundary>
-            <ErrorBoundary panel="exp">{bottomPanel === "exp" && <ExportPanel />}</ErrorBoundary>
-            <ErrorBoundary panel="midi">
-              {bottomPanel === "midi" && (
-                <MidiPanel
-                  selectedTrackId={track.id}
-                  selectedNote={selectedNote}
-                  scaleSnap={scaleSnap}
-                  onToggleScaleSnap={() => setScaleSnap((value) => !value)}
-                  onClearSelection={() => setSelectedNote(null)}
-                />
-              )}
-            </ErrorBoundary>
-            <ErrorBoundary panel="dice">{bottomPanel === "dice" && <DiceTray />}</ErrorBoundary>
-            {diagnosticsOpen && (
-              <ErrorBoundary panel="diagnostics">
-                <Diagnostics />
+                    selectedPadId={padId}
+                    selectedTrackId={track.id}
+                    onSelectTrack={selectTrack}
+                    onSelectPad={setSelectedPadId}
+                    selectedNote={selectedNote}
+                    onSelectNote={setSelectedNote}
+                    stepSelection={stepSelection}
+                    onSelectSteps={setStepSelection}
+                    scaleSnap={scaleSnap}
+                  />
+                </div>
+                <Inspector track={track} selectedPadId={padId} />
+              </main>
+              <ErrorBoundary panel="mixer">{bottomPanel === "mixer" && <Mixer />}</ErrorBoundary>
+              <ErrorBoundary panel="fx">{bottomPanel === "fx" && <EffectRack track={track} />}</ErrorBoundary>
+              <ErrorBoundary panel="arr">{bottomPanel === "arr" && <ArrangementPanel />}</ErrorBoundary>
+              <ErrorBoundary panel="mod">{bottomPanel === "mod" && <ModPanel />}</ErrorBoundary>
+              <ErrorBoundary panel="exp">{bottomPanel === "exp" && <ExportPanel />}</ErrorBoundary>
+              <ErrorBoundary panel="midi">
+                {bottomPanel === "midi" && (
+                  <MidiPanel
+                    selectedTrackId={track.id}
+                    selectedNote={selectedNote}
+                    scaleSnap={scaleSnap}
+                    onToggleScaleSnap={() => setScaleSnap((value) => !value)}
+                    onClearSelection={() => setSelectedNote(null)}
+                  />
+                )}
               </ErrorBoundary>
-            )}
-            <footer className="statusbar">
-              <span>
-                SPACE play · 1–5 panels · ? help · Ctrl+Z undo · <kbd className="statusbar-kbd">1</kbd>–
-                <kbd className="statusbar-kbd">9</kbd> tracks · TOOL {tool.toUpperCase()} (S/C/B/E/M)
-              </span>
-            </footer>
-            <CommandToast />
-            <UndoHistoryPanel open={historyOpen} />
-            <InstallPrompt />
-            <HelpOverlay open={helpOpen} onClose={() => setHelpOpen(false)} />
-            <OnboardingHint />
-            <ContextMenu state={contextMenu} onClose={() => setContextMenu(null)} />
-          </div>
-        </ToolContext.Provider>
-      </SelectionContext.Provider>
+              <ErrorBoundary panel="dice">{bottomPanel === "dice" && <DiceTray />}</ErrorBoundary>
+              {diagnosticsOpen && (
+                <ErrorBoundary panel="diagnostics">
+                  <Diagnostics />
+                </ErrorBoundary>
+              )}
+              <footer className="statusbar">
+                <span>
+                  SPACE play · 1–5 panels · ? help · Ctrl+Z undo · <kbd className="statusbar-kbd">1</kbd>–
+                  <kbd className="statusbar-kbd">9</kbd> tracks · TOOL {tool.toUpperCase()} (S/C/B/E/M)
+                </span>
+              </footer>
+              <CommandToast />
+              <UndoHistoryPanel open={historyOpen} />
+              <InstallPrompt />
+              <HelpOverlay open={helpOpen} onClose={() => setHelpOpen(false)} />
+              <OnboardingHint />
+              <ContextMenu state={contextMenu} onClose={() => setContextMenu(null)} />
+            </div>
+          </ToolContext.Provider>
+        </SelectionContext.Provider>
       </DiceProvider>
     </ServicesContext.Provider>
   );

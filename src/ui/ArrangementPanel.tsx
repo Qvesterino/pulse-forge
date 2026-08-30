@@ -108,7 +108,9 @@ export function ArrangementPanel() {
     grabY: number;
   } | null>(null);
   const [audioDrag, setAudioDrag] = useState<{ startBar: number; lengthBars: number } | null>(null);
-  const [audioFadePreview, setAudioFadePreview] = useState<{ clipId: string; fadeIn: number; fadeOut: number } | null>(null);
+  const [audioFadePreview, setAudioFadePreview] = useState<{ clipId: string; fadeIn: number; fadeOut: number } | null>(
+    null,
+  );
   const [audioGainPreview, setAudioGainPreview] = useState<{ clipId: string; gain: number } | null>(null);
   const [audioMenu, setAudioMenu] = useState<{ clipId: string; x: number; y: number } | null>(null);
   useEffect(() => {
@@ -217,7 +219,7 @@ export function ArrangementPanel() {
   const beginAudioDrag = (
     event: React.PointerEvent,
     clipId: string,
-    mode: "move" | "resize" | "trimStart" | "trimEnd" | "fadeIn" | "fadeOut",
+    mode: "move" | "resize" | "trimStart" | "trimEnd" | "fadeIn" | "fadeOut" | "gain",
   ) => {
     if (event.button !== 0) return;
     event.stopPropagation();
@@ -235,8 +237,14 @@ export function ArrangementPanel() {
       origTrimEnd: clip.trimEnd ?? 0,
       origFadeIn: clip.fadeIn ?? 0,
       origFadeOut: clip.fadeOut ?? 0,
+      origGain: clip.gain ?? 1,
       grabBar: barFromEvent(event),
+      grabX: event.clientX,
+      grabY: event.clientY,
     };
+    if (mode === "fadeIn" || mode === "fadeOut")
+      setAudioFadePreview({ clipId, fadeIn: clip.fadeIn ?? 0, fadeOut: clip.fadeOut ?? 0 });
+    if (mode === "gain") setAudioGainPreview({ clipId, gain: clip.gain ?? 1 });
     setAudioDrag({ startBar: clip.startBar, lengthBars: clip.lengthBars });
   };
   const onAudioPointerMove = (event: React.PointerEvent) => {
@@ -244,29 +252,47 @@ export function ArrangementPanel() {
     if (!cur) return;
     const bar = barFromEvent(event);
     const delta = bar - cur.grabBar;
+    const secPerBar = (BAR_TICKS * 60) / (doc.bpm * PPQ);
     if (cur.mode === "move") setAudioDrag({ startBar: Math.max(0, cur.origStart + delta), lengthBars: cur.origLength });
     else if (cur.mode === "resize")
       setAudioDrag({ startBar: cur.origStart, lengthBars: Math.max(0.25, cur.origLength + delta) });
     else if (cur.mode === "trimStart") {
-      // left trim changes offsetSec/trimStart, keep right edge fixed: start moves, length shrinks opposite
       const newStart = Math.max(0, cur.origStart + delta);
       const newLen = Math.max(0.25, cur.origLength - delta);
       setAudioDrag({ startBar: newStart, lengthBars: newLen });
-    } else if (cur.mode === "fadeIn" || cur.mode === "fadeOut") {
-      // visual only; actual value commits on pointer up based on delta
+    } else if (cur.mode === "fadeIn") {
+      const deltaSec = delta * secPerBar;
+      const clipSec = cur.origLength * secPerBar;
+      const maxFade = Math.min(2, clipSec * 0.5);
+      const next = Math.max(0, Math.min(maxFade, cur.origFadeIn + deltaSec));
+      setAudioFadePreview({ clipId: cur.clipId, fadeIn: next, fadeOut: cur.origFadeOut });
+    } else if (cur.mode === "fadeOut") {
+      const deltaSec = delta * secPerBar;
+      const clipSec = cur.origLength * secPerBar;
+      const maxFade = Math.min(2, clipSec * 0.5);
+      const next = Math.max(0, Math.min(maxFade, cur.origFadeOut - deltaSec));
+      setAudioFadePreview({ clipId: cur.clipId, fadeIn: cur.origFadeIn, fadeOut: next });
+    } else if (cur.mode === "gain") {
+      const deltaY = cur.grabY - event.clientY;
+      const nextGain = Math.max(0, Math.min(2, cur.origGain + deltaY / 80));
+      setAudioGainPreview({ clipId: cur.clipId, gain: nextGain });
     }
   };
-  const onAudioPointerUp = () => {
+  const onAudioPointerUp = (event?: React.PointerEvent) => {
     const cur = audioDragRef.current;
     const final = audioDrag;
+    const fadePrev = audioFadePreview;
+    const gainPrev = audioGainPreview;
     audioDragRef.current = null;
     setAudioDrag(null);
-    if (!cur || !final) return;
-    if (cur.mode === "move" && final.startBar !== cur.origStart)
+    setAudioFadePreview(null);
+    setAudioGainPreview(null);
+    if (!cur) return;
+    if (cur.mode === "move" && final && final.startBar !== cur.origStart)
       execute(moveAudioClip(services.store.doc, cur.clipId, final.startBar));
-    else if (cur.mode === "resize" && final.lengthBars !== cur.origLength)
+    else if (cur.mode === "resize" && final && final.lengthBars !== cur.origLength)
       execute(resizeAudioClip(services.store.doc, cur.clipId, final.lengthBars));
-    else if (cur.mode === "trimStart") {
+    else if (cur.mode === "trimStart" && final) {
       const deltaSec = ((final.startBar - cur.origStart) * BAR_TICKS * 60) / (doc.bpm * PPQ);
       if (Math.abs(deltaSec) > 0.001)
         execute(
@@ -277,6 +303,16 @@ export function ArrangementPanel() {
         );
       if (final.lengthBars !== cur.origLength)
         execute(resizeAudioClip(services.store.doc, cur.clipId, final.lengthBars));
+    } else if (cur.mode === "fadeIn" && fadePrev && fadePrev.clipId === cur.clipId) {
+      if (Math.abs(fadePrev.fadeIn - cur.origFadeIn) > 0.005)
+        execute(updateAudioClip(services.store.doc, cur.clipId, { fadeIn: Math.round(fadePrev.fadeIn * 100) / 100 }));
+    } else if (cur.mode === "fadeOut" && fadePrev && fadePrev.clipId === cur.clipId) {
+      if (Math.abs(fadePrev.fadeOut - cur.origFadeOut) > 0.005)
+        execute(updateAudioClip(services.store.doc, cur.clipId, { fadeOut: Math.round(fadePrev.fadeOut * 100) / 100 }));
+    } else if (cur.mode === "gain" && gainPrev && gainPrev.clipId === cur.clipId) {
+      if (Math.abs(gainPrev.gain - cur.origGain) > 0.01)
+        execute(updateAudioClip(services.store.doc, cur.clipId, { gain: Math.round(gainPrev.gain * 100) / 100 }));
+      void event;
     }
   };
   const bounceZoneToClip = () => {
@@ -815,12 +851,15 @@ export function ArrangementPanel() {
               const isCurrent = playheadBar >= clip.startBar && playheadBar < clip.startBar + clip.lengthBars;
               const track = doc.tracks.find((t) => t.id === clip.trackId);
               const buffer = services.bank.get(clip.bufferId);
+              const effFadeIn = audioFadePreview?.clipId === clip.id ? audioFadePreview.fadeIn : (clip.fadeIn ?? 0);
+              const effFadeOut = audioFadePreview?.clipId === clip.id ? audioFadePreview.fadeOut : (clip.fadeOut ?? 0);
+              const effGain = audioGainPreview?.clipId === clip.id ? audioGainPreview.gain : (clip.gain ?? 1);
               return (
                 <div
                   key={clip.id}
                   className={`arr-audio-clip${selected ? " selected" : ""}${isCurrent ? " current" : ""}`}
                   style={{ left: startBar * BAR_WIDTH, width: lengthBars * BAR_WIDTH - 4 }}
-                  title={`${track?.name ?? clip.trackId} · ${clip.bufferId} · ${clip.reverse ? "REV " : ""}${clip.stretchRate !== 1 ? `×${clip.stretchRate.toFixed(2)} ` : ""}${lengthBars}b · trim ${clip.trimStart.toFixed(2)}/${clip.trimEnd.toFixed(2)} fade ${clip.fadeIn.toFixed(2)}/${clip.fadeOut.toFixed(2)}`}
+                  title={`${track?.name ?? clip.trackId} · ${clip.bufferId} · ${clip.reverse ? "REV " : ""}${clip.stretchRate !== 1 ? `×${clip.stretchRate.toFixed(2)} ` : ""}${lengthBars}b · trim ${clip.trimStart.toFixed(2)}/${clip.trimEnd.toFixed(2)} fade ${effFadeIn.toFixed(2)}/${effFadeOut.toFixed(2)} gain ${effGain.toFixed(2)} — PT: top corners fade, top middle clip gain`}
                   onPointerDown={(event) => {
                     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
                     const x = event.clientX - rect.left;
@@ -853,6 +892,21 @@ export function ArrangementPanel() {
                     title="Resize / trim end"
                     onPointerDown={(e) => beginAudioDrag(e, clip.id, "resize")}
                   />
+                  <span
+                    className="arr-audio-clip-handle-fade left"
+                    title={`Fade in ${effFadeIn.toFixed(2)}s — drag horizontal (PT top corner)`}
+                    onPointerDown={(e) => beginAudioDrag(e, clip.id, "fadeIn")}
+                  />
+                  <span
+                    className="arr-audio-clip-handle-fade right"
+                    title={`Fade out ${effFadeOut.toFixed(2)}s — drag horizontal`}
+                    onPointerDown={(e) => beginAudioDrag(e, clip.id, "fadeOut")}
+                  />
+                  <span
+                    className="arr-audio-clip-handle-gain"
+                    title={`Clip gain ${effGain.toFixed(2)} (${(20 * Math.log10(Math.max(effGain, 0.001))).toFixed(1)} dB) — drag vertical (PT top middle)`}
+                    onPointerDown={(e) => beginAudioDrag(e, clip.id, "gain")}
+                  />
                   {selected && (
                     <div className="arr-audio-clip-fades">
                       <span
@@ -860,7 +914,7 @@ export function ArrangementPanel() {
                         style={{
                           width: Math.min(
                             24,
-                            (clip.fadeIn / ((clip.lengthBars * BAR_TICKS * 60) / (doc.bpm * PPQ))) *
+                            (effFadeIn / ((clip.lengthBars * BAR_TICKS * 60) / (doc.bpm * PPQ))) *
                               lengthBars *
                               BAR_WIDTH,
                           ),
@@ -871,7 +925,7 @@ export function ArrangementPanel() {
                         style={{
                           width: Math.min(
                             24,
-                            (clip.fadeOut / ((clip.lengthBars * BAR_TICKS * 60) / (doc.bpm * PPQ))) *
+                            (effFadeOut / ((clip.lengthBars * BAR_TICKS * 60) / (doc.bpm * PPQ))) *
                               lengthBars *
                               BAR_WIDTH,
                           ),

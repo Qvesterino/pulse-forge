@@ -81,7 +81,12 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
           <span>SEED</span>
           <input value={seed} onChange={(e) => setSeed(e.target.value)} spellCheck={false} />
         </label>
-        <button type="button" className="btn btn-small" title="Re-roll seed" onClick={() => setSeed((prev) => randomSeed(prev))}>
+        <button
+          type="button"
+          className="btn btn-small"
+          title="Re-roll seed"
+          onClick={() => setSeed((prev) => randomSeed(prev))}
+        >
           ⚄
         </button>
       </div>

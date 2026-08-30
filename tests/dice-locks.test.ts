@@ -8,7 +8,10 @@ describe("dice locks", () => {
     const doc = testDoc();
     const prev = getActivePattern(doc);
     // Make next with different rows
-    const next = { ...prev, rows: Object.fromEntries(Object.entries(prev.rows).map(([k, v]) => [k, v.map((x) => (x > 0 ? 0 : 0.5))])) };
+    const next = {
+      ...prev,
+      rows: Object.fromEntries(Object.entries(prev.rows).map(([k, v]) => [k, v.map((x) => (x > 0 ? 0 : 0.5))])),
+    };
     const out = applyDiceLocks(prev, next, { ...DEFAULT_DICE_LOCKS, drums: true }, doc);
     expect(out.rows).toEqual(prev.rows);
   });

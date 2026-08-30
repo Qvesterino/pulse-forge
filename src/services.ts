@@ -21,6 +21,7 @@ import { CollabSession, collabParamsFromSearch, type CollabStatus } from "./coll
 import type { CollaboratorInfo } from "./collab/CollaborationProvider";
 import { LatencyCalibrationController } from "./audio-engine/latencyCalibration";
 import { ArrangementCaptureController } from "./arrangement/capture";
+import { GhostPreviewPlayer } from "./audio-engine/GhostPreviewPlayer";
 
 /**
  * Long-lived services shared across projects: the audio engine (one shared
@@ -54,6 +55,7 @@ export interface Services {
   frozenAudio: FrozenBufferRepository;
   latency: LatencyCalibrationController;
   capture: ArrangementCaptureController;
+  ghost: GhostPreviewPlayer;
   /** Live when a collab session is active, null otherwise. */
   collab: CollabSession | null;
   flushSave(): Promise<void>;
@@ -346,6 +348,8 @@ export function openProject(core: CoreServices, initial: ProjectDocument, option
   });
   void midiOutput.requestAccess();
 
+  const ghost = new GhostPreviewPlayer(engine, bank, () => store.doc);
+
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
   let saving: Promise<void> | null = null;
   let saveQueued = false;
@@ -401,6 +405,7 @@ export function openProject(core: CoreServices, initial: ProjectDocument, option
   window.addEventListener("beforeunload", onUnload);
 
   const closeProject = async (): Promise<void> => {
+    ghost.stop();
     capture.cancel();
     playback.stop();
     collab?.dispose();
@@ -448,6 +453,7 @@ export function openProject(core: CoreServices, initial: ProjectDocument, option
     frozenAudio,
     latency,
     capture,
+    ghost,
     collab,
     flushSave,
     closeProject,

@@ -31,7 +31,13 @@ describe("intent→engine mapping", () => {
   it("energy high increases velocityVariation mapping", () => {
     const intentLow = normalizeIntent({ energy: 0.2, seed: "x" });
     const intentHigh = normalizeIntent({ energy: 0.9, seed: "x" });
-    const base = { ...DEFAULT_GENERATE_OPTIONS, seed: "x", stepCount: 16, genre: "house" as const, velocityVariation: 0.3 };
+    const base = {
+      ...DEFAULT_GENERATE_OPTIONS,
+      seed: "x",
+      stepCount: 16,
+      genre: "house" as const,
+      velocityVariation: 0.3,
+    };
     const low = mapIntentToOptions(intentLow, base);
     const high = mapIntentToOptions(intentHigh, base);
     expect(high.velocityVariation).toBeGreaterThan(low.velocityVariation);

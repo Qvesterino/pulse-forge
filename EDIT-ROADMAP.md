@@ -113,6 +113,15 @@
 - [x] `src/project-model/types.ts:159` `GroupTrack.collapsed?:boolean` + `src/project-model/schema.ts:769` `sanitize collapsed boolean` v `normalizeTracksDomain`; `src/commands/commands.ts:1215` `setGroupCollapsed` + `setGroupMute/setGroupSolo` (snapshot 1 gesto na 8: group+members `mute/solo` spolu, `buildStemProject` guard)
 - [x] `src/audio-engine/AudioEngine.ts:63` `soloAudibility` linked — `group mute → members inaudible` (`if t.groupId && group.mute return false`), `group solo → members audible` už existovalo; `src/ui/App.tsx:103` `selectTrack` expand group → `[group, ...members]` pre `SelectionStore` (batch FX/cut na group reže 8), `src/ui/Mixer.tsx:35` `collapsedGroups` `visibleTracks` filter, `ChannelStrip` `▼/▶` fold btn `setGroupCollapsed`, `selected-strip` outline, `Mix: M/S` volá `setGroupMute/Solo` (1 klik na 8), `drag track → group` už hotové + `mixer-fold-hint` + `src/styles.css:1147` `.selected-strip/.group-strip`. Verif: `typecheck` ✓, `vitest 97/1017` ✓ (`groupTracks.test.ts` update mute→member false)
 
+### P2.7 Quick Wins — Browser Limit (½-2 dni každý, high ROI) — **PLÁN**
+
+- [ ] **Pre-roll + Count-in** `src/transport/Transport.ts:9` `countInBars:0|1|2` `preRollBars:0|1` — `TopBar` `C1/C2/PR` toggles, `Scheduler` metronóm tick len v count-in (ne-nahráva sa), `playback.record(fromTick-countIn*BAR_TICKS)` `click` cez `src/audio-engine/latencyProbe.ts`, export `countIn` ignoruje (tail `2s` už v `renderer.ts:48`). FL/Cubase 1 bar pred nahrávaním chytí pocket.
+- [ ] **Capture last take (Ableton)** `src/services.ts:229` `capture.ring: DrumHit|ScheduledNote[8 bars]` — `Scheduler` pushne `trigger/noteOn` aj mimo `recording`, po `transport.pause()` `Toast "Capture last take? [A]"` → `createPatternFromRing(ring,baseTick)` `addArrangementClip` na `appendBar()` 1 `snapshot`. Žiadny `confirm()`.
+- [ ] **Import auto-match tempo/key + preview sync** `src/ui/SampleBrowser.tsx` `FL Alt+P` — `previewSync` `timeAt(nextBeat)` + `playbackRate=fileBPM/doc.bpm` `src/audio-engine/time-stretch.ts pitchShiftPreserveDuration`, badge `95→128 +2st` z `src/project-model/types.ts:705` + HPS key detect v `src/audio-workers/onset-detector.ts` workeri, `onDrop` `addAudioClip` `stretchRate=fileBPM/doc.bpm` `gain` normalize. 1 drag vs 8.
+- [ ] **Undo History s diff** `src/store/ProjectStore.ts` + `src/commands/docDelta.ts` `computeDocDelta` — `history: {label,type,timestamp,ops}[]` push z `snapshot forward/backward`, `UndoHistoryPanel.tsx` virtualized `+notes -clips` z `ops`, `jumpTo(index)` `applyDocDelta` (Cubase History, nie len `Ctrl+Z`).
+
+**Definition of Done P2.7:** všetky 4 fungujú s `timeRange`/`track`/`clip`/`note` selekciou, `live==offline`, 1 `snapshot` na akciu, `hold RMB` `Esc` zatvára, `typecheck+vitest` zelené.
+
 ## 4. Guardrails (INTUITÍVNE = PREDVÍDATEĽNÉ)
 
 - [ ] Žiadny `alert()` / modal na bežnej akcii — všetko toast `src/ui/CommandToast.tsx`
@@ -137,6 +146,8 @@
 3. **Sprint 3 (3 dni):** P1.3 Zóna batch
 4. **Sprint 4 (5 dní):** P1.4 AudioClip stems
 5. **Sprint 5 (2 dni):** P2.1 PianoRoll + P2.2 Mixer
+6. **Sprint 6 (3 dni):** P2.3 Sequencer + P2.4 808 Slide + P2.5 Chord Stamp (hotové 2026-08-29)
+7. **Sprint 7 (2 dni):** P2.6 Group/Folder + P2.7 Quick Wins (Pre-roll/Capture/Auto-match/History)
 
 ---
 

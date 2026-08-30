@@ -15,6 +15,7 @@ export interface DiceLocks {
   kick: boolean;
   snare: boolean;
   hats: boolean;
+  kit: boolean;
 }
 
 export const DEFAULT_DICE_LOCKS: DiceLocks = {
@@ -25,6 +26,7 @@ export const DEFAULT_DICE_LOCKS: DiceLocks = {
   kick: false,
   snare: false,
   hats: false,
+  kit: false,
 };
 
 export interface DiceSession {

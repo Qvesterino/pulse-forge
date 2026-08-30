@@ -52,6 +52,8 @@ export interface GenerateOptions {
   _diceDensity?: number;
   _diceComplexity?: number;
   _diceEnergy?: number;
+  /** Dice swing jitter — absolute swing 0..1 to use instead of groove.swing */
+  _diceSwing?: number;
 }
 
 export const DEFAULT_GENERATE_OPTIONS: GenerateOptions = {

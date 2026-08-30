@@ -125,6 +125,14 @@ export function generatePattern(doc: ProjectDocument, options: GenerateOptions, 
     }
   }
 
+  // Dice swing jitter — if _diceSwing is set, it overrides groove swing
+  const effectiveSwing =
+    typeof (options as GenerateOptions & { _diceSwing?: number })._diceSwing === "number"
+      ? (options as GenerateOptions & { _diceSwing?: number })._diceSwing!
+      : options.applyGrooveSettings || (doc.groove?.swing ?? 0) > 0
+        ? 0
+        : groove.swing;
+
   // Generate drum pattern
   const { rows: rawRows, meta } = generateDrumPattern(
     groove,
@@ -133,7 +141,7 @@ export function generatePattern(doc: ProjectDocument, options: GenerateOptions, 
     {
       variation: drumVariationRand,
       meta: drumMetaRand,
-      swing: options.applyGrooveSettings || (doc.groove?.swing ?? 0) > 0 ? 0 : groove.swing,
+      swing: effectiveSwing,
       lockedIndices,
       prevRows: prevRowsByIndex,
       prevMeta: prevMetaByIndex,

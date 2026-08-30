@@ -168,7 +168,11 @@ export function Inspector({ track, selectedPadId }: { track: Track; selectedPadI
           className={`btn btn-small${isSynth ? " active" : ""}`}
           onClick={() =>
             services.store.execute(
-              setPadSynth(doc, pad.id, pad.synth ?? { type: "hatClosed", decay: 0.08, tone: 7500, snap: 0.35, body: 0.3 }),
+              setPadSynth(
+                doc,
+                pad.id,
+                pad.synth ?? { type: "hatClosed", decay: 0.08, tone: 7500, snap: 0.35, body: 0.3 },
+              ),
             )
           }
         >

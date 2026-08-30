@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useDoc, useServices } from "./context";
 import { useDice } from "./DiceContext";
 import { getStyleNamesForGenre } from "../ai/grooves/index";
@@ -81,6 +82,64 @@ export function DiceTray() {
     // previewRows is per padId order; show varyPatch rows directly via pads
     previewActivePads = pads.map((_, i) => (previewRows[i]?.some((v) => v > 0) ? i : -1)).filter((i) => i >= 0);
   }
+
+  const [ghostPlaying, setGhostPlaying] = useState(false);
+  useEffect(() => {
+    return () => services.ghost.stop();
+  }, [services.ghost]);
+  useEffect(() => {
+    // Stop ghost on preview change (seed/mode/locks)
+    services.ghost.stop();
+    setGhostPlaying(false);
+  }, [seed, session.mode, session.locks, services.ghost]);
+  // Stop ghost when main transport starts
+  useEffect(() => {
+    const unsub = services.playback.subscribe(() => {
+      if (services.transport.playing && services.ghost.isPlaying) {
+        services.ghost.stop();
+        setGhostPlaying(false);
+      }
+    });
+    return unsub;
+  }, [services.playback, services.transport, services.ghost]);
+
+  const handleGhostToggle = () => {
+    if (ghostPlaying) {
+      services.ghost.stop();
+      setGhostPlaying(false);
+      return;
+    }
+    const pat = preview.fullPattern?.proposal?.pattern;
+    if (pat) {
+      // If main transport is playing, don't ghost over it — stop ghost and notify
+      if (services.transport.playing) {
+        services.playback.stop();
+      }
+      services.ghost.play(pat, { loopBars: 1 });
+      setGhostPlaying(true);
+      setTimeout(() => setGhostPlaying(services.ghost.isPlaying), 100);
+    } else if (preview.varyPatch) {
+      // For vary mode, build a temporary pattern from patch and preview it
+      try {
+        const active = doc.patterns.find((p) => p.id === doc.activePatternId);
+        if (active) {
+          const ghostPat = {
+            ...active,
+            rows: preview.varyPatch.rows,
+            stepMeta: preview.varyPatch.stepMeta as unknown as typeof active.stepMeta,
+          };
+          services.ghost.play(ghostPat as unknown as typeof active, { loopBars: 1 });
+          setGhostPlaying(true);
+        }
+      } catch {}
+    }
+  };
+
+  const handleApply = () => {
+    services.ghost.stop();
+    setGhostPlaying(false);
+    apply(services, doc);
+  };
 
   const handleCopySeed = async () => {
     try {
@@ -310,6 +369,14 @@ export function DiceTray() {
         >
           Lead {session.locks.lead ? "■" : "□"}
         </button>
+        <button
+          type="button"
+          className={`btn btn-small dice-lock${session.locks.kit ? " active-solo" : ""}`}
+          onClick={() => toggleLockKey("kit")}
+          title="Lock kit — don't randomize samples"
+        >
+          Kit {session.locks.kit ? "■" : "□"}
+        </button>
       </div>
 
       {/* History strip */}
@@ -351,14 +418,24 @@ export function DiceTray() {
           <span>PREVIEW</span>
           <span className="dice-preview-meta">
             {preview.mode.toUpperCase()} · {preview.beforeHits} → {preview.hitCount} hits · score{" "}
-            {preview.score != null ? `${preview.score}/100` : "—"} · {session.intent.length} steps ·{" "}
-            {session.intent.genre}
+            {preview.score != null ? `${preview.score}/100` : "—"} · swing{" "}
+            {preview.swing != null ? `${Math.round(preview.swing * 100)}%` : "—"} ·{" "}
+            {preview.kitAssignments ? `${preview.kitAssignments.size} kit swaps · ` : ""}
+            {session.intent.length} steps · {session.intent.genre}
             {session.intent.style ? ` · ${session.intent.style}` : ""}
           </span>
           <button
             type="button"
+            className={`btn btn-small${ghostPlaying ? " active-solo" : ""}`}
+            onClick={handleGhostToggle}
+            title={ghostPlaying ? "Stop ghost preview" : "Play ghost preview — hear without committing (loops 1 bar)"}
+          >
+            {ghostPlaying ? "■ STOP" : "▶ PREVIEW"}
+          </button>
+          <button
+            type="button"
             className="btn btn-small btn-primary"
-            onClick={() => apply(services, doc)}
+            onClick={handleApply}
             title="Apply current dice roll (one undo)"
           >
             APPLY

@@ -567,8 +567,20 @@ const bass808: InstrumentDefinition = {
     { id: "pitchDrop", label: "P-DROP", min: 0, max: 1, default: 0.4, format: formatPct },
     { id: "click", label: "CLICK", min: 0, max: 1, default: 0.35, format: formatPct },
     { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0.25, format: formatPct },
-    { id: "glide", label: "GLIDE", min: 0, max: 0.35, default: 0.12, unit: "s", format: formatMs },
-    { id: "distType", label: "DIST", min: 0, max: 2, default: 0, options: [{ value: 0, label: "Soft" }, { value: 1, label: "Tube" }, { value: 2, label: "Hard" }] },
+    { id: "glide", label: "GLIDE", min: 0, max: 1, default: 0.34, format: formatPct },
+    {
+      id: "distType",
+      label: "DIST",
+      min: 0,
+      max: 2,
+      default: 0,
+      options: [
+        { value: 0, label: "Soft" },
+        { value: 1, label: "Tube" },
+        { value: 2, label: "Hard" },
+      ],
+    },
+    { id: "sub", label: "SUB", min: 0, max: 1, default: 0.35, format: formatPct },
     { id: "tone", label: "TONE", min: 0, max: 1, default: 0.35, format: formatPct },
     { id: "gain", label: "GAIN", min: 0, max: 1, default: 0.85, format: formatPct },
   ],
@@ -590,9 +602,11 @@ const bass808: InstrumentDefinition = {
         const gainVal = velocity * (p.gain ?? 0.85);
         const stopTime = when + decay + 0.6;
 
-        const glide = Math.max(0, Math.min(0.35, p.glide ?? 0.12));
+        const glideNorm = Math.max(0, Math.min(1, p.glide ?? 0.34));
+        const glide = glideNorm * 0.35; // 0..1 → 0..0.35 s lineárne
         const distType = Math.max(0, Math.min(2, Math.round(p.distType ?? 0)));
         const drive = p.drive ?? 0.25;
+        const subLev = Math.max(0, Math.min(1, p.sub ?? 0.35));
         const slideOn = !!slideFrom;
         const glideStart = slideFrom ? Math.max(0, slideFrom.when) : when;
 
@@ -649,6 +663,30 @@ const bass808: InstrumentDefinition = {
         osc.connect(amp);
         osc.stop(stopTime);
 
+        // Sub octave — clean outside shaper, drive/dist only on main
+        let subOsc: OscillatorNode | null = null;
+        let subGain: GainNode | null = null;
+        if (subLev > 0.005) {
+          subOsc = ctx.createOscillator();
+          subOsc.type = "sine";
+          subGain = ctx.createGain();
+          subGain.gain.setValueAtTime(subLev * 0.55 * velocity, when);
+          subGain.gain.setTargetAtTime(0.0001, when + 0.01, decay / 3);
+          subOsc.connect(subGain).connect(post);
+          if (slideOn && slideFrom) {
+            const fromFreq = midiToFreq(slideFrom.pitch) / 2;
+            const glideTime = glide > 0.002 ? glide : 0;
+            subOsc.frequency.setValueAtTime(Math.max(20, fromFreq), glideStart);
+            if (glideTime > 0) subOsc.frequency.exponentialRampToValueAtTime(Math.max(20, freq / 2), glideStart + glideTime);
+            else subOsc.frequency.setValueAtTime(Math.max(20, freq / 2), when);
+            subOsc.start(glideStart);
+          } else {
+            subOsc.frequency.value = freq / 2;
+            subOsc.start(when);
+          }
+          subOsc.stop(stopTime);
+        }
+
         if ((p.click ?? 0.35) > 0.005 && !slideOn) {
           const src = ctx.createBufferSource();
           src.buffer = noise;
@@ -689,24 +727,46 @@ const bass808: InstrumentDefinition = {
             const t = Math.max(whenStop, 0);
             amp.gain.cancelScheduledValues(t);
             amp.gain.setTargetAtTime(0.0001, t, 0.01);
+            if (subGain) {
+              subGain.gain.cancelScheduledValues(t);
+              subGain.gain.setTargetAtTime(0.0001, t, 0.01);
+            }
             try {
               osc.stop(t + 0.06);
             } catch {
               /* already stopped */
             }
+            if (subOsc) {
+              try {
+                subOsc.stop(t + 0.06);
+              } catch {
+                /* already stopped */
+              }
+            }
           },
           silence: (now) => {
             amp.gain.cancelScheduledValues(now);
             amp.gain.setTargetAtTime(0.0001, now, 0.008);
+            if (subGain) {
+              subGain.gain.cancelScheduledValues(now);
+              subGain.gain.setTargetAtTime(0.0001, now, 0.008);
+            }
             try {
               osc.stop(now + 0.05);
             } catch {
               /* already stopped */
             }
+            if (subOsc) {
+              try {
+                subOsc.stop(now + 0.05);
+              } catch {
+                /* already stopped */
+              }
+            }
           },
         };
         current = voice;
-        osc.onended = () => {
+        const cleanup = () => {
           amp.disconnect();
           toneFilter.disconnect();
           pre.disconnect();
@@ -716,8 +776,24 @@ const bass808: InstrumentDefinition = {
             /* already */
           }
           post.disconnect();
+          if (subOsc) {
+            try {
+              subOsc.disconnect();
+            } catch {
+              /* already */
+            }
+          }
+          if (subGain) {
+            try {
+              subGain.disconnect();
+            } catch {
+              /* already */
+            }
+          }
           if (current === voice) current = null;
         };
+        osc.onended = cleanup;
+        if (subOsc) subOsc.onended = cleanup;
       },
       setParameter(id, value) {
         p[id] = value;

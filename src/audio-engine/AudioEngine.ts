@@ -2282,7 +2282,8 @@ export class AudioEngine {
         const bp = ctx.createBiquadFilter();
         bp.type = "bandpass";
         bp.frequency.value = Math.max(500, Math.min(8000, cutoff));
-        if (locks?.cutoff === undefined) bp.frequency.value = Math.max(500, Math.min(8000, (synth as any).tone ?? 1750));
+        if (locks?.cutoff === undefined)
+          bp.frequency.value = Math.max(500, Math.min(8000, (synth as any).tone ?? 1750));
         bp.Q.value = 0.9 + snap * 0.7;
         const nGain = ctx.createGain();
         const snapGain = 0.55 + snap * 0.35;
@@ -2304,7 +2305,8 @@ export class AudioEngine {
         const bp = ctx.createBiquadFilter();
         bp.type = "bandpass";
         bp.frequency.value = Math.max(500, Math.min(8000, cutoff));
-        if (locks?.cutoff === undefined) bp.frequency.value = Math.max(500, Math.min(8000, (synth as any).tone ?? freq));
+        if (locks?.cutoff === undefined)
+          bp.frequency.value = Math.max(500, Math.min(8000, (synth as any).tone ?? freq));
         bp.Q.value = 2.5 + snap * 3;
         const g = ctx.createGain();
         g.gain.setValueAtTime(peak, when);
