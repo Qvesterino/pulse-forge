@@ -3,7 +3,13 @@ import type { ParamDef } from "../effects/types";
 
 export interface InstrumentRuntime {
   output: AudioNode;
-  noteOn(pitch: number, velocity: number, when: number, durationSec: number): void;
+  noteOn(
+    pitch: number,
+    velocity: number,
+    when: number,
+    durationSec: number,
+    slideFrom?: { pitch: number; when: number },
+  ): void;
   noteOff?(pitch: number, when: number): void;
   polyPressure?(pitch: number, pressure: number, when: number): void;
   setParameter(id: string, value: number): void;

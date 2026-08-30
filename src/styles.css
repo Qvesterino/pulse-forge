@@ -994,6 +994,19 @@ button {
   border-color: rgba(255, 255, 255, 0.15);
   pointer-events: none;
 }
+/* FL slide note (portamento): half-triangle badge on the left edge */
+.pr-note.slide::after {
+  content: "▲";
+  position: absolute;
+  left: 1px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 7px;
+  line-height: 1;
+  color: #fff;
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+}
 
 /* ---------- Pattern bar ---------- */
 

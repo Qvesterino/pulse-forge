@@ -79,6 +79,7 @@ import {
   randomizeVelocity,
   reverseNotes,
   snapNotesToScale,
+  stampChordNotes,
   strumNotes,
 } from "../midi/creative";
 import type { MidiCreativeOperation } from "../midi/creative";
@@ -1349,6 +1350,7 @@ export function quantizeNotes(
   trackId: string,
   noteIds?: string[],
   gridTicks: number = STEP_TICKS,
+  strength = 1,
 ): Command {
   const pattern = doc.patterns.find((p) => p.id === doc.activePatternId);
   if (!pattern) throw new Error("Active pattern not found");
@@ -1356,15 +1358,24 @@ export function quantizeNotes(
   const targetIds = noteIds && noteIds.length > 0 ? new Set(noteIds) : null;
   const before = all.filter((n) => !targetIds || targetIds.has(n.id));
   const prev = [...all];
+  const s = Math.min(1, Math.max(0, strength));
   const quantized = all.map((n) => {
     if (targetIds && !targetIds.has(n.id)) return n;
     const qStart = Math.round(n.start / gridTicks) * gridTicks;
-    const qDur = Math.max(gridTicks, Math.round(n.duration / gridTicks) * gridTicks);
-    return { ...n, start: Math.max(0, Math.min(pattern.stepCount * STEP_TICKS - qDur, qStart)), duration: qDur };
+    const qDur = Math.round(n.duration / gridTicks) * gridTicks;
+    // FL partial quantize: strength < 1 moves the start only a fraction of
+    // the way to the grid (50% = "quick quantize 50%", keeps the groove feel)
+    const start = qStart + (n.start - qStart) * (1 - s);
+    const duration = n.duration * (1 - s) + Math.max(gridTicks, qDur) * s;
+    return {
+      ...n,
+      start: Math.max(0, Math.min(pattern.stepCount * STEP_TICKS - duration, Math.round(start))),
+      duration: Math.max(1, Math.round(duration)),
+    };
   });
   return {
     type: "quantizeNotes",
-    label: `Quantize ${before.length} notes`,
+    label: s < 1 ? `Quantize ${before.length} notes ${Math.round(s * 100)}%` : `Quantize ${before.length} notes`,
     execute: (d) => withTrackNotes(d, trackId, () => quantized),
     undo: (d) => withTrackNotes(d, trackId, () => prev),
   };
@@ -1540,6 +1551,8 @@ function midiCreativeLabel(operation: MidiCreativeOperation): string {
       return "Snap notes to scale";
     case "chord":
       return "Generate chords";
+    case "stamp-chord":
+      return `Stamp ${operation.shape} chord`;
     case "reverse":
       return "Reverse notes";
     case "invert":
@@ -1590,6 +1603,13 @@ export function applyMidiCreativeTool(doc: ProjectDocument, options: ApplyMidiCr
     case "chord":
       transformed = target.flatMap((note) =>
         createChordNotes(note, operation.options, patternTicks, (index) => uid(`note-${index}`)),
+      );
+      break;
+    case "stamp-chord":
+      // FL Chord Stamp: every selected note becomes a chord root; roots keep
+      // their id so selection persists, added voices get fresh ids.
+      transformed = target.flatMap((note) =>
+        stampChordNotes(note, operation.shape, patternTicks, (index) => uid(`stamp-${index}`)),
       );
       break;
     case "reverse":

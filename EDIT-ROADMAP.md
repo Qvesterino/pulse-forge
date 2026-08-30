@@ -95,7 +95,18 @@
 - [x] `src/ui/Sequencer.tsx` — `Alt+drag` step → microtiming `StepMeta.microtiming -1..1` (`MAX_MICRO_TIMING 30 ticks` → `deltaY/60` clamp, preview `ghost` + bulk `setStepMeta` na `stepSelection`), `Ctrl/Cmd+drag` → probability `0..1` (`deltaY/120`), `dragPreview` `microtiming/probability` overlay + `has-probability` `micro-early/late` class
 - [x] Per-step `amount` už v `types.ts:252` — zobrazený ako mini slider pod stepom (`StepCell` `.step-amount-track` `4px` `ew-resize`, `fill` `width amount*100%`, `has-amount` glow, `pointerdown` compute `clientX/width→0..1` preview `fill.width`, `onUp` → `setStepMeta doc.activePatternId` `amount:final<0.99?round 2dec:clear`, `groove.ts:MAX_MICRO_TIMING` reuse)
 
----
+### P2.4 808 Slide / Note Portamento (FL slide note) — **2026-08-29 DOKONČENÉ**
+
+- [x] `src/project-model/types.ts:188` `NoteEvent.slide?:boolean` (portamento flag) + `src/instruments/types.ts:6` `noteOn(..., slideFrom?: { pitch: number; when: number })` — optional glide origin parameter (backward-compatible, ostatné runtimes ignorujú)
+- [x] `src/instruments/registry.ts:562` `bass808 noteOn slideFrom` — portamento `osc.frequency.setValueAtTime(fromFreq, glideStart)` + `exponentialRampToValueAtTime(freq, when)` `glideStart = when−Δtick·secPerTick` (max 0.2 s), skip pitch-drop transient + click (žiadny nový attack, `amp` fade-in na glideStart) — trap 808 glide jedným ťahom; `src/instruments/registry.ts:741` `sampler` glide fallback — `voice.glide(pitch, when, glideSec)` glide `playbackRate` `setValueAtTime(from)→exponentialRamp(2^(semis/12), at)` + `voice.pitch = target` (poly findByPitch), fallback new-attack keď nie je live voice
+- [x] `src/project-model/events.ts:22` `noteEventsInWindow` slide link — `ScheduledNote.slideFrom {pitch, tick}` z poslednej non-slide noty (cross-pattern-loop origin, `sorted by start`, deterministické), `src/scheduler/Scheduler.ts:387` deps.noteOn slideFrom forward + `src/services.ts:236` wiring + `src/rendering/renderer.ts:113` offline `scheduleNotes` slideFrom (live==offline glide)
+- [x] `src/ui/PianoRoll.tsx:520` `Alt+S` = slide toggle (FL portamento) — `slide:true` na select (okrem najskoršej), re-toggle odstráni `slide`, `snapshot` jedno undo; `src/ui/PianoRoll.tsx:977` `.pr-note.slide` + `src/styles.css:997` `▲` badge na ľavej hrane note (ako FL slide note vizuál) + tooltip `(slide)`. Verif: `typecheck` ✓, `vitest` 1017 ✓, `format` ✓
+
+### P2.5 Chord Stamp + Scale Lock helpers (FL) — **2026-08-29 DOKONČENÉ**
+
+- [x] `src/midi/creative.ts` `stampChordNotes(root, shape, patternTicks, makeId)` — FL Chord Stamp: `CHORD_INTERVALS[shape]` explicit intervals (`major/minor/dominant7/major7/minor7/sus2/sus4`), všetky voices zdieľajú root `start/duration/velocity`, `clampNote` pattern bounds; `MidiCreativeOperation "stamp-chord"` + `src/commands/commands.ts:1600` `applyMidiCreativeTool` case — roots zachovajú id (selection persistuje), nové voices `uid("stamp-N")`, `snapshot` jedno undo
+- [x] `src/ui/PianoRoll.tsx:516` `Shift+C` chord stamp menu — `.chord-stamp-menu` popup (`Major/Minor/Dom 7/Maj 7/Min 7/Sus 2/Sus 4`), anchored center-top, `Esc/click-out` zavrie, klik → `applyMidiCreativeTool stamp-chord` (funguje aj bez selection na všetkých notách via noteIds=undefined), `src/styles.css` reuse `.context-menu` + `.pr-note` zvyšok
+- [x] `Alt+Q` quick quantize 50% (FL) — `src/commands/commands.ts:1347` `quantizeNotes(..., strength=1)` rozšírený o FL partial quantize (`start = qStart+(n.start−qStart)·(1−s)` `duration` blend, `s=0.5` zachová groove feel), label `Quantize N notes 50%`; `src/ui/PianoRoll.tsx:540` `Alt+Q` → `quantizeNotes(doc, trackId, ids, STEP_TICKS, 0.5)` — 2 klávesy vs 8 klikov. Verif: `typecheck` ✓, `vitest` 1017 ✓
 
 ## 4. Guardrails (INTUITÍVNE = PREDVÍDATEĽNÉ)
 
@@ -135,3 +146,5 @@
 - 2026-08-29 — **P2.1 PianoRoll dokončené**: `beginVelDrag` multi-velocity, `Alt+drag` clone-before-drag, `S` strum/`Alt+S` slide/`L` legato/`Ctrl+B` duplicate + ghost notes 30%. Verif: `typecheck` ✓, `vitest` 1012 ✓.
 - 2026-08-29 — **P2.2 Mixer dokončené**: `drag track→group`, `RMB send→Create return`, `RMB fader Reset/Type/Link macro`, `color` `#rrggbb` + `duplicateTrack` s FX/pads/sends, `Batch FX` 1 klik na 5. Verif: `typecheck` ✓, `vitest` 1012 ✓.
 - 2026-08-29 — **P2.3 Sequencer dokončené**: `Alt+drag` microtiming `−1..1` (30 ticks), `Ctrl+drag` probability `0..1`, `amount` mini slider `0..100%` `has-amount` + `micro-early/late` preview. Verif: `typecheck` ✓, `vitest` 1012 ✓.
+- 2026-08-29 — **P2.4 808 Slide hotové**: `NoteEvent.slide` + `noteOn slideFrom {pitch,when}`, 808 portamento glide `exponentialRamp` (skip pitch-drop/click), sampler `voice.glide` playbackRate, `noteEventsInWindow` slideFrom cross-loop, Scheduler/renderer/services wiring, PianoRoll `Alt+S` toggle + `▲` badge. Verif: `typecheck` ✓, `vitest` 1017 ✓.
+- 2026-08-29 — **P2.5 Chord Stamp + Scale Lock hotové**: `stampChordNotes` + `stamp-chord` op (roots id persist), `Shift+C` chord menu 7 tvarov, `Alt+Q` quantize 50% (`quantizeNotes strength` blend). Verif: `typecheck` ✓, `vitest` 1017 ✓.

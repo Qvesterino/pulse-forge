@@ -18,7 +18,16 @@ export interface SchedulerDeps {
     velocity: number,
     locks?: Partial<Record<import("../project-model/types").StepLockKey, number>>,
   ): void;
-  noteOn(trackId: string, pitch: number, velocity: number, when: number, durationSec: number): void;
+  /** Trigger a note; optional slide origin (pitch + absolute when-tick) for FL portamento. */
+  noteOn(
+    trackId: string,
+    pitch: number,
+    velocity: number,
+    when: number,
+    durationSec: number,
+    slideFromTick?: number,
+    slideFromPitch?: number,
+  ): void;
   applyAutomation(fromTick: number, toTick: number, relOf: (tick: number) => number, scheduleOffsetSec?: number): void;
   /**
    * Schedulable track modulators (random S&H / step) for the same window.
@@ -384,12 +393,16 @@ export class Scheduler {
       if (!track || track.kind !== "instrument") continue;
       const when = timeAt(event.tick) + scheduleOffsetSec;
       if (!audible(when)) continue;
+      // FL slide note: glide from the previous non-slide note's end
+      const slideFrom = event.slideFrom ? { tick: event.slideFrom.tick, pitch: event.slideFrom.pitch } : undefined;
       this.deps.noteOn(
         track.id,
         event.note.pitch,
         event.note.velocity,
         when,
         event.note.duration * transport.secondsPerTick,
+        slideFrom?.tick,
+        slideFrom?.pitch,
       );
       // MIDI output for instrument tracks
       if (this.deps.midiNoteOn && track.midiOutput?.enabled) {

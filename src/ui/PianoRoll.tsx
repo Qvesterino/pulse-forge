@@ -89,6 +89,25 @@ export function PianoRollTrack({
     startVels: Record<string, number>;
   } | null>(null);
   const [noteClipboard, setNoteClipboard] = useState<NoteEvent[] | null>(null);
+  // FL Chord Stamp menu (Shift+C) — shape picker anchored at cursor
+  const [chordMenu, setChordMenu] = useState<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    if (!chordMenu) return;
+    const onDown = (ev: MouseEvent) => {
+      const t = ev.target as HTMLElement | null;
+      if (t?.closest(".chord-stamp-menu")) return;
+      setChordMenu(null);
+    };
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") setChordMenu(null);
+    };
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [chordMenu]);
 
   // Scale awareness
   const projectKey = doc.key;
@@ -494,7 +513,8 @@ export function PianoRollTrack({
     return () => window.removeEventListener("keydown", handler);
   }, [hasSelection, selectedNote, doc, track.id, services.store]);
 
-  // P2.1 shortcuts: S strum, Alt+S slide, L legato, Ctrl/Cmd+B duplicate
+  // P2.1 shortcuts + P2.5: S strum, Alt+S slide, L legato, Ctrl/Cmd+B duplicate,
+  // Shift+C chord stamp menu, Alt+Q quick quantize 50%
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
@@ -505,10 +525,10 @@ export function PianoRollTrack({
           target.tagName === "TEXTAREA" ||
           target.isContentEditable);
       if (typing) return;
-      if (!hasSelection) return;
       const lower = e.key.toLowerCase();
       const ctrl = e.ctrlKey || e.metaKey;
       if (ctrl && lower === "b") {
+        if (!hasSelection) return;
         e.preventDefault();
         try {
           services.store.execute(duplicateNotes(doc, track.id, selectedNote!.noteIds));
@@ -517,26 +537,46 @@ export function PianoRollTrack({
         }
         return;
       }
+      // Alt+Q quick quantize 50% (FL) — partial strength keeps groove feel, 2 keys vs 8
+      if (e.altKey && lower === "q" && !ctrl) {
+        e.preventDefault();
+        try {
+          services.store.execute(
+            quantizeNotes(doc, track.id, hasSelection ? selectedNote!.noteIds : undefined, STEP_TICKS, 0.5),
+          );
+        } catch {
+          /* nothing selected */
+        }
+        return;
+      }
+      // Shift+C chord stamp menu (anchored near the piano roll toolbar)
+      if (e.shiftKey && lower === "c" && !ctrl) {
+        e.preventDefault();
+        setChordMenu({ x: window.innerWidth / 2 - 90, y: 140 });
+        return;
+      }
+      if (!hasSelection) return;
       if (lower === "s" && !ctrl) {
         if (e.altKey) {
-          // Alt+S slide — overlapping legato with 20% overlap for glide
+          // Alt+S slide — FL portamento: mark notes slide=true (glide from previous note)
           e.preventDefault();
           const sel = notes.filter((n) => selectedNote!.noteIds.includes(n.id)).sort((a, b) => a.start - b.start);
-          if (sel.length < 2) return;
+          if (sel.length === 0) return;
+          const anySlid = sel.some((n) => n.slide === true);
           const prev = [...notes];
-          const map = new Map(sel.map((n) => [n.id, { ...n }]));
-          for (let i = 0; i < sel.length - 1; i++) {
-            const cur = map.get(sel[i].id)!;
-            const nxt = sel[i + 1];
-            const gap = nxt.start - cur.start;
-            cur.duration = Math.max(STEP_TICKS, gap + Math.round(STEP_TICKS * 0.2));
-          }
-          const last = map.get(sel[sel.length - 1].id);
-          if (last) last.duration = sel[sel.length - 1].duration;
-          const next = notes.map((n) => map.get(n.id) ?? n);
+          const slideSet = new Set(sel.map((n) => n.id));
+          const next = notes.map((n) => {
+            if (!slideSet.has(n.id)) return n;
+            // Toggle: first (earliest) selected note stays an attack; the rest slide
+            if (anySlid) {
+              const { slide: _drop, ...rest } = n;
+              return rest as NoteEvent;
+            }
+            return { ...n, slide: n.start > sel[0].start };
+          });
           services.store.execute({
             type: "slideNotes",
-            label: `Slide ${sel.length} notes`,
+            label: anySlid ? `Unslide ${sel.length} notes` : `Slide ${sel.length} notes`,
             execute: (d: any) => ({
               ...d,
               patterns: d.patterns.map((p: any) =>
@@ -973,14 +1013,14 @@ export function PianoRollTrack({
                 <div
                   key={note.id}
                   data-note-id={note.id}
-                  className={`pr-note${selected ? " selected" : ""}${isScaleActive && !isInScale(note.pitch, projectKey!) ? " out-of-scale" : ""}`}
+                  className={`pr-note${selected ? " selected" : ""}${isScaleActive && !isInScale(note.pitch, projectKey!) ? " out-of-scale" : ""}${note.slide ? " slide" : ""}`}
                   style={{
                     left: `${(startSteps / pattern.stepCount) * 100}%`,
                     width: `${(durSteps / pattern.stepCount) * 100}%`,
                     top: `${clamp(top, 0, (PITCH_COUNT - 1) * ROW_HEIGHT)}px`,
                     opacity: 0.35 + note.velocity * 0.65,
                   }}
-                  title={`${pitchName(note.pitch)} — Smart Tool: top third = move, right edge = resize, middle+Alt = duplicate, middle+Ctrl = velocity — S strum, Alt+S slide, L legato, Ctrl+B duplicate`}
+                  title={`${pitchName(note.pitch)}${note.slide ? " (slide)" : ""} — Smart Tool: top third = move, right edge = resize, middle+Alt = duplicate, middle+Ctrl = velocity — S strum, Alt+S slide, L legato, Ctrl+B duplicate`}
                   onPointerDown={(event) => beginNoteDrag(event, note)}
                   onPointerMove={(event) => {
                     onNotePointerMove(event);
@@ -1040,6 +1080,50 @@ export function PianoRollTrack({
           );
         })}
       </div>
+      {chordMenu && (
+        <div
+          className="context-menu chord-stamp-menu"
+          role="menu"
+          aria-label="Chord stamp"
+          style={{ left: chordMenu.x, top: chordMenu.y }}
+          onMouseDown={(ev) => ev.stopPropagation()}
+        >
+          <div className="context-menu-header">CHORD STAMP (Shift+C)</div>
+          {(
+            [
+              ["major", "Major"],
+              ["minor", "Minor"],
+              ["dominant7", "Dom 7"],
+              ["major7", "Maj 7"],
+              ["minor7", "Min 7"],
+              ["sus2", "Sus 2"],
+              ["sus4", "Sus 4"],
+            ] as const
+          ).map(([shape, label]) => (
+            <button
+              key={shape}
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setChordMenu(null);
+                try {
+                  services.store.execute(
+                    applyMidiCreativeTool(doc, {
+                      trackId: track.id,
+                      noteIds: hasSelection ? selectedNote!.noteIds : undefined,
+                      operation: { kind: "stamp-chord", shape },
+                    }),
+                  );
+                } catch {
+                  /* no notes */
+                }
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

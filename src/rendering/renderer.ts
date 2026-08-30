@@ -118,12 +118,16 @@ function scheduleNotes(
 ): void {
   const { base, from, to } = window;
   for (const event of noteEventsInWindow(window.pattern, base, from, to)) {
+    // FL slide note: glide from previous non-slide note's end (live==offline)
+    const slideFrom = event.slideFrom;
     engine.noteOn(
       event.trackId,
       event.note.pitch,
       event.note.velocity,
       timeAt(event.tick),
       event.note.duration * secondsPerTick,
+      slideFrom?.tick,
+      slideFrom?.pitch,
     );
   }
 }

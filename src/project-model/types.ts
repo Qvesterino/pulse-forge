@@ -197,6 +197,13 @@ export interface NoteEvent {
   start: number;
   duration: number;
   velocity: number;
+  /**
+   * FL-style slide note (portamento): when true, this note glides FROM the
+   * previous sounding pitch instead of starting a new attack. Consumed by
+   * instrument runtimes via the optional `slideFrom` noteOn parameter
+   * (pitch + when from the previous note's end).
+   */
+  slide?: boolean;
 }
 
 export interface PatternPhraseBar {

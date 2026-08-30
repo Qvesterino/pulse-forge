@@ -98,6 +98,7 @@ export interface BasslineOptions {
 export type MidiCreativeOperation =
   | { kind: "snap-scale"; key: MusicalKey }
   | { kind: "chord"; options: ChordOptions }
+  | { kind: "stamp-chord"; shape: "major" | "minor" | "dominant7" | "major7" | "minor7" | "sus2" | "sus4" }
   | { kind: "reverse"; scaleLock: boolean; key?: MusicalKey }
   | { kind: "invert"; scaleLock: boolean; key?: MusicalKey }
   | { kind: "halve"; scaleLock: boolean; key?: MusicalKey }
@@ -209,6 +210,30 @@ export function createChordNotes(
     };
     return clampNote(withScaleLock(note, options.key, options.scaleLock), patternTicks);
   });
+}
+
+/**
+ * FL "Chord Stamp": place a chord shape at the root note's position, one
+ * pressed chord = one stamp. Uses explicit intervals (Shift+C menu picks the
+ * shape), all voices share the root's start/duration/velocity.
+ */
+export function stampChordNotes(
+  root: NoteEvent,
+  shape: "major" | "minor" | "dominant7" | "major7" | "minor7" | "sus2" | "sus4",
+  patternTicks: number,
+  makeId: (index: number) => string,
+): NoteEvent[] {
+  const intervals = CHORD_INTERVALS[shape] ?? CHORD_INTERVALS.major;
+  return intervals.map((interval, index) =>
+    clampNote(
+      {
+        ...root,
+        id: makeId(index),
+        pitch: root.pitch + interval,
+      },
+      patternTicks,
+    ),
+  );
 }
 
 export function snapNotesToScale(notes: NoteEvent[], key: MusicalKey, patternTicks: number): NoteEvent[] {

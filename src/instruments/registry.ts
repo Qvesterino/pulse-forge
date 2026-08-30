@@ -559,7 +559,7 @@ const bass808: InstrumentDefinition = {
 
     const runtime: InstrumentRuntime = {
       output,
-      noteOn(pitch, velocity, when, _durationSec) {
+      noteOn(pitch, velocity, when, _durationSec, slideFrom) {
         current?.stop(when);
         const freq = midiToFreq(pitch);
         const decay = Math.max(0.05, p.decay ?? 0.9);
@@ -567,6 +567,11 @@ const bass808: InstrumentDefinition = {
         const toneHz = 150 * Math.pow(2, (p.tone ?? 0.35) * 5.5);
         const gainVal = velocity * (p.gain ?? 0.85);
         const stopTime = when + decay + 0.6;
+
+        // Slide notes glide from slideFrom.when up to `when` (max 0.25s),
+        // then skip the pitch-drop transient — trap 808 glide.
+        const slideOn = !!slideFrom;
+        const glideStart = slideFrom ? Math.max(0, slideFrom.when) : when;
 
         const pre = ctx.createGain();
         pre.gain.value = 1 + (p.drive ?? 0.25) * 4;
@@ -593,14 +598,26 @@ const bass808: InstrumentDefinition = {
 
         const osc = ctx.createOscillator();
         osc.type = "sine";
-        const startFreq = freq * (1 + drop * 1.3);
-        osc.frequency.setValueAtTime(Math.max(20, startFreq), when);
-        osc.frequency.exponentialRampToValueAtTime(Math.max(20, freq), when + 0.06);
+        if (slideOn && slideFrom) {
+          // Portamento: start at previous pitch at glideStart, ramp to target by `when`
+          const fromFreq = midiToFreq(slideFrom.pitch);
+          osc.frequency.setValueAtTime(Math.max(20, fromFreq), glideStart);
+          osc.frequency.exponentialRampToValueAtTime(Math.max(20, freq), when);
+          osc.start(glideStart);
+          // Fade in quickly at glide start (continuous sound — no new attack)
+          amp.gain.cancelScheduledValues(glideStart);
+          amp.gain.setValueAtTime(Math.max(gainVal * 0.9, 0.0002), glideStart);
+          amp.gain.setValueAtTime(Math.max(gainVal, 0.0002), when);
+        } else {
+          const startFreq = freq * (1 + drop * 1.3);
+          osc.frequency.setValueAtTime(Math.max(20, startFreq), when);
+          osc.frequency.exponentialRampToValueAtTime(Math.max(20, freq), when + 0.06);
+          osc.start(when);
+        }
         osc.connect(amp);
-        osc.start(when);
         osc.stop(stopTime);
 
-        if ((p.click ?? 0.35) > 0.005) {
+        if ((p.click ?? 0.35) > 0.005 && !slideOn) {
           const src = ctx.createBufferSource();
           src.buffer = noise;
           const hp = ctx.createBiquadFilter();
@@ -738,7 +755,7 @@ const sampler: InstrumentDefinition = {
 
     const runtime: InstrumentRuntime = {
       output,
-      noteOn(pitch, velocity, when, durationSec) {
+      noteOn(pitch, velocity, when, durationSec, slideFrom) {
         const buffer = env.getSample(sampleId);
         if (!buffer) return;
         const root = Math.round(p.root ?? 60);
@@ -748,6 +765,21 @@ const sampler: InstrumentDefinition = {
         const off = when + hold;
         const stopTime = off + release * 3 + 0.05;
         const semitones = pitch - root;
+        // Slide: reuse the previous voice's buffer source (it keeps playing)
+        // and just glide its playbackRate to the new pitch — sampler portamento.
+        if (slideFrom) {
+          const prevVoices = findByPitch(slideFrom.pitch);
+          const prevVoice = prevVoices[prevVoices.length - 1] as
+            (Voice & { glide?: (pitch: number, when: number, glideSec: number) => boolean }) | undefined;
+          if (
+            prevVoice?.glide &&
+            prevVoice.glide(pitch, when, Math.max(0.02, Math.min(0.2, when - Math.max(0, slideFrom.when))))
+          ) {
+            // Glide handled on the existing voice — skip a new attack
+            return;
+          }
+          // Fallback: no live voice to glide — play the note normally
+        }
 
         const amp = ctx.createGain();
         const peak = velocity * (p.gain ?? 0.9);
@@ -820,6 +852,27 @@ const sampler: InstrumentDefinition = {
             amp.gain.setTargetAtTime(0.0001, now, 0.008);
           },
         );
+        // Slide support: glide this voice's rate to a new pitch (stretched
+        // buffers are fixed-rate — glide only in pitch mode).
+        if (!((p.stretch ?? 0) > 0.5)) {
+          (voice as Voice & { glide?: unknown }).glide = (
+            targetPitch: number,
+            at: number,
+            glideSec: number,
+          ): boolean => {
+            try {
+              const targetSemis = targetPitch - root;
+              const from = src.playbackRate.value;
+              src.playbackRate.setValueAtTime(from, Math.max(0, at - glideSec));
+              src.playbackRate.exponentialRampToValueAtTime(Math.max(0.01, Math.pow(2, targetSemis / 12)), at);
+              // Voice's registered pitch changes so findByPitch finds the slid voice next time
+              voice.pitch = targetPitch;
+              return true;
+            } catch {
+              return false;
+            }
+          };
+        }
         src.onended = () => {
           liveFilters.delete(filter);
           amp.disconnect();
@@ -1716,15 +1769,16 @@ const keys: InstrumentDefinition = {
 
         // Velocity drives FM brightness — soft hits are rounder (Rhodes response)
         const velIndex = 0.45 + velocity * 0.55;
-        // LFO modulates FM brightness audio-rate — seeded phase from note pitch
+        // LFO sweeps FM brightness audio-rate — real osc on modGain.gain
+        // Base gain stays at modIndex*420; LFO adds (modIndex*420*multBase)
+        // of sweep around it. Per-note rate offset avoids phase-locking.
         const klfoRate = p.lfoRate ?? 0;
         const klfoDepth = p.lfoDepth ?? 0;
-        const lfoPhase = ((pitch * 0.618) % 1) * Math.PI * 2;
-        const lfoMul = klfoRate > 0.05 ? 1 + Math.sin(lfoPhase) * klfoDepth * 0.55 : 1;
+        const lfoMultBase = klfoRate > 0.05 ? klfoDepth * 0.6 : 0;
         const pairA = makePair(
           1,
           1,
-          (28 + tine * 720) * velIndex * lfoMul,
+          (28 + tine * 720) * velIndex,
           0.42 + body * 0.38,
           -width * 0.6,
           0.22 + damp * 0.35,
@@ -1732,11 +1786,26 @@ const keys: InstrumentDefinition = {
         const pairB = makePair(
           3.5,
           1,
-          (18 + bell * 1100) * velIndex * lfoMul,
+          (18 + bell * 1100) * velIndex,
           bell * 0.55,
           width * 0.6,
           0.18 + damp * 0.28,
         );
+
+        const lfoNodes: OscillatorNode[] = [];
+        if (lfoMultBase > 0.001) {
+          for (const pair of [pairA, pairB]) {
+            const lfo = ctx.createOscillator();
+            lfo.type = "sine";
+            lfo.frequency.value = klfoRate * (1 + ((pitch * 0.37) % 0.06) - 0.03);
+            const depth = ctx.createGain();
+            depth.gain.value = (pair.modGain.gain.value || 1) * lfoMultBase;
+            lfo.connect(depth).connect(pair.modGain.gain);
+            lfo.start(when);
+            lfo.stop(stopTime);
+            lfoNodes.push(lfo);
+          }
+        }
 
         const voice = register(
           pitch,
@@ -1745,6 +1814,13 @@ const keys: InstrumentDefinition = {
             const t = Math.max(whenStop, 0);
             amp.gain.cancelScheduledValues(t);
             amp.gain.setTargetAtTime(0.0001, t, 0.01);
+            for (const lfo of lfoNodes) {
+              try {
+                lfo.stop(t + 0.05);
+              } catch {
+                /* already stopped */
+              }
+            }
             for (const { mod, car } of [pairA, pairB]) {
               try {
                 mod.stop(t + 0.05);
@@ -1761,6 +1837,13 @@ const keys: InstrumentDefinition = {
           (now) => {
             amp.gain.cancelScheduledValues(now);
             amp.gain.setTargetAtTime(0.0001, now, 0.008);
+            for (const lfo of lfoNodes) {
+              try {
+                lfo.stop(now + 0.03);
+              } catch {
+                /* already stopped */
+              }
+            }
             for (const { mod, car } of [pairA, pairB]) {
               try {
                 mod.stop(now + 0.03);

@@ -1138,14 +1138,41 @@ export class AudioEngine {
     state.params = { ...track.params };
   }
 
-  noteOn(trackId: string, pitch: number, velocity: number, when: number, durationSec: number): void {
+  noteOn(
+    trackId: string,
+    pitch: number,
+    velocity: number,
+    when: number,
+    durationSec: number,
+    slideFromTick?: number,
+    slideFromPitch?: number,
+  ): void {
     // Frozen tracks play back a pre-rendered buffer — skip individual noteOn
     if (this.frozenBuffers.has(trackId)) return;
     const inst = this.instruments.get(trackId);
     if (!inst) return;
     const bendSemitones = inst.pitchBend ?? 0;
     const adjustedPitch = bendSemitones !== 0 ? pitch + bendSemitones : pitch;
-    inst.runtime.noteOn(adjustedPitch, velocity, when, durationSec);
+    const slideFrom =
+      slideFromTick !== undefined && slideFromPitch !== undefined
+        ? {
+            tick: slideFromTick,
+            pitch: bendSemitones !== 0 ? slideFromPitch + bendSemitones : slideFromPitch,
+          }
+        : undefined;
+    if (slideFrom) {
+      // Convert origin tick → seconds before `when` using tick delta
+      const bpm = this.doc?.bpm ?? 124;
+      const secondsPerTick = 60 / (bpm * PPQ);
+      // Glide origin time derived from tick delta relative to the slide note's `when`
+      const glideStart = when - (when - slideFrom.tick * secondsPerTick);
+      inst.runtime.noteOn(adjustedPitch, velocity, when, durationSec, {
+        pitch: slideFrom.pitch,
+        when: Math.max(0, glideStart),
+      });
+    } else {
+      inst.runtime.noteOn(adjustedPitch, velocity, when, durationSec);
+    }
   }
 
   /**
