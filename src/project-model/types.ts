@@ -431,6 +431,13 @@ export interface AudioClip {
   fadeOut: number;
   stretchRate: number;
   reverse: boolean;
+  /**
+   * Stretch mode:
+   * - "resample" (default): playbackRate changes pitch + time together
+   * - "stretch": non-destructive time-stretch that preserves pitch
+   *             (pre-rendered grain-based buffer, cached per bufferId+rate)
+   */
+  stretchMode?: "resample" | "stretch";
 }
 
 export interface Arrangement {

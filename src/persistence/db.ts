@@ -11,7 +11,8 @@ export const STORE_FROZEN_AUDIO = "frozen-audio";
 let dbPromise: Promise<IDBDatabase> | null = null;
 
 export function openDb(): Promise<IDBDatabase> {
-  dbPromise ??= new Promise((resolve, reject) => {
+  if (dbPromise) return dbPromise;
+  const attempt = new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
     request.onupgradeneeded = () => {
       const db = request.result;
@@ -28,6 +29,13 @@ export function openDb(): Promise<IDBDatabase> {
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
+  });
+  dbPromise = attempt;
+  // Do not cache a rejection: a transient open failure (version-change race,
+  // synchronous throw, private-browsing quirks) must not permanently poison
+  // every future repository call with the same stale error.
+  attempt.catch(() => {
+    if (dbPromise === attempt) dbPromise = null;
   });
   return dbPromise;
 }

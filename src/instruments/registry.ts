@@ -479,10 +479,11 @@ const bass: InstrumentDefinition = {
         const filter = createVoiceFilter(ctx, p.cutoff ?? 700, p.resonance ?? 1.2);
         const base = p.cutoff ?? 700;
         const punch = p.punch ?? 0.5;
-        const peakCut = Math.min(8000, base + 400 + punch * 3600 * velocity);
+        // Sweet-spot: punch now gives tighter 200-2600 range (was 400-4000, too wild)
+        const peakCut = Math.min(6500, base + 200 + punch * 2400 * Math.pow(velocity, 0.6));
         filter.frequency.setValueAtTime(Math.max(50, base), when);
-        filter.frequency.linearRampToValueAtTime(peakCut, when + 0.003);
-        filter.frequency.setTargetAtTime(base, when + 0.003, (0.1 + punch * 0.12) / 1);
+        filter.frequency.linearRampToValueAtTime(peakCut, when + 0.005);
+        filter.frequency.setTargetAtTime(base, when + 0.005, (0.12 + punch * 0.14) / 1);
         setFilterResonance(filter, p.resonance ?? 1.2);
         filter.output.connect(amp);
         liveFilters.add(filter);
@@ -490,9 +491,10 @@ const bass: InstrumentDefinition = {
         if ((p.movement ?? 0) > 0.005) {
           const lfo = ctx.createOscillator();
           lfo.type = "sine";
-          lfo.frequency.value = 3.5;
+          lfo.frequency.value = 3.2 + (p.movement ?? 0) * 1.8; // 3.2..5.0 Hz sweet spot
           const depth = ctx.createGain();
-          depth.gain.value = (p.movement ?? 0) * 700;
+          // 1200 Hz scaling: 0.15→180 Hz (audible), 0.6→720 Hz (acid wobble), was 105/420
+          depth.gain.value = (p.movement ?? 0) * 1200 * (0.7 + punch * 0.35);
           lfo.connect(depth).connect(filter.frequency);
           lfo.start(when);
           lfo.stop(stopTime);

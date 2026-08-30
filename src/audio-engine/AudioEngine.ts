@@ -20,6 +20,7 @@ import { loadWorkletModules, isWorkletReady } from "../audio-worklets/loader";
 import { createLimiterNode } from "../audio-worklets/limiter-node";
 import { createEnvFollowerNode, type EnvFollowerHandle } from "../audio-worklets/envfollower-node";
 import { createKwMeterNode, type KwMeterHandle } from "../audio-worklets/kwmeter-node";
+import { timeStretch } from "./time-stretch";
 import {
   lfoKind,
   lfoWave,
@@ -306,6 +307,13 @@ export class AudioEngine {
   private frozenPlaying = false;
   /** Transport tick + ctx time at the last frozen restart, for alignment. */
   private frozenAlign: { tick: number; ctxTime: number } | null = null;
+  /**
+   * Cache for time-stretched AudioBuffers keyed by `bufferId+rate+reverse`.
+   * Lazy-computed on first triggerAudioClip with stretchMode="stretch".
+   * Cleared on project swap to prevent stale references.
+   */
+  private stretchCache = new Map<string, AudioBuffer>();
+  private static readonly STRETCH_CACHE_LIMIT = 48;
   private lfos = new Map<string, LfoRuntimeState>();
   private macroCache = new Map<string, { gain: number; pan: number }>();
   private currentSceneIntensity = 0.7;
@@ -326,6 +334,8 @@ export class AudioEngine {
   private masterChBufR: Float32Array<ArrayBuffer> = new Float32Array(2048);
   private masterPeakHold = new PeakHold(0.4);
   private meterProjectId: string | null = null;
+  /** Project id the stretchCache entries were computed for. */
+  private stretchProjectId: string | null = null;
   private meterHistoryL: number[] = [];
   private meterHistoryR: number[] = [];
   private meterLoudnessBlocks: number[] = [];
@@ -603,6 +613,10 @@ export class AudioEngine {
   setProject(doc: ProjectDocument): void {
     if (this.meterProjectId !== null && this.meterProjectId !== doc.id) this.resetMeterHistory();
     this.meterProjectId = doc.id;
+    if (this.stretchProjectId !== doc.id) {
+      this.stretchProjectId = doc.id;
+      this.clearStretchCache();
+    }
     this.doc = doc;
     if (this.ctx) this.syncProject(doc);
   }
@@ -1185,8 +1199,12 @@ export class AudioEngine {
    * Reuses frozenPlaybackOffset semantics (tick→sec + loop offset not needed
    * for one-shots; we use the same tick→sec conversion so live==offline).
    * The clip's timeline is `startBar→lengthBars` (bars), playback offset is
-   * `offsetSec+trimStart`, duration is capped to the buffer length minus trims,
-   * stretched via `playbackRate = stretchRate * (reverse?-1:1)`.
+   * `offsetSec+trimStart`, duration is capped to the buffer length minus trims.
+   *
+   * stretchMode:
+   * - "resample" (default): playbackRate changes pitch + time together
+   * - "stretch": non-destructive time-stretch preserves pitch (pre-rendered
+   *   grain buffer cached per bufferId+rate, deterministic live==offline)
    */
   triggerAudioClip(clip: import("../project-model/types").AudioClip, when: number, durationSec?: number): void {
     const ctx = this.ctx;
@@ -1195,17 +1213,53 @@ export class AudioEngine {
     if (this.frozenBuffers.has(clip.trackId)) return;
     const nodes = this.trackNodes.get(clip.trackId) ?? this.groupNodes.get(clip.trackId);
     if (!nodes) return;
-    const buffer = this.bank?.get(clip.bufferId);
-    if (!buffer) return;
+    const srcBuffer = this.bank?.get(clip.bufferId);
+    if (!srcBuffer) return;
+
+    const rate = Math.min(4, Math.max(0.25, clip.stretchRate ?? 1));
+    const reverse = clip.reverse;
+
+    // --- stretchMode selection ---
+    let playBuffer: AudioBuffer;
+    let playbackRate: number;
+    let clipDurSec: number;
+    // offsetSec/trimStart/trimEnd are seconds in the ORIGINAL sample; the
+    // stretched buffer's timeline is original × rate, so positions must be
+    // scaled by `timeScale` before they can index into the play buffer.
+    let timeScale: number;
+
+    if (clip.stretchMode === "stretch" && Math.abs(rate - 1) >= 0.01) {
+      // Lazy-compute stretched buffer and cache it
+      const cacheKey = `${clip.bufferId}|${rate}|${reverse ? 1 : 0}`;
+      let stretched = this.stretchCache.get(cacheKey);
+      if (!stretched) {
+        stretched = computeStretchedBuffer(ctx, srcBuffer, rate, reverse);
+        if (this.stretchCache.size > AudioEngine.STRETCH_CACHE_LIMIT) {
+          this.stretchCache.clear();
+        }
+        this.stretchCache.set(cacheKey, stretched);
+      }
+      playBuffer = stretched;
+      playbackRate = 1;
+      clipDurSec = durationSec ?? stretched.duration;
+      timeScale = rate;
+    } else {
+      // Default resample: playbackRate controls both pitch and time
+      playBuffer = srcBuffer;
+      playbackRate = (reverse ? -1 : 1) * rate;
+      clipDurSec = durationSec ?? srcBuffer.duration / Math.abs(playbackRate);
+      timeScale = 1;
+    }
+
     const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    source.playbackRate.value = (clip.reverse ? -1 : 1) * Math.min(4, Math.max(0.25, clip.stretchRate ?? 1));
+    source.buffer = playBuffer;
+    source.playbackRate.value = playbackRate;
+
     const gain = ctx.createGain();
     gain.gain.value = Math.min(2, Math.max(0, clip.gain ?? 1));
     // Fade in/out using linear ramps — scheduled at `when`
     const fadeIn = Math.max(0, clip.fadeIn ?? 0);
     const fadeOut = Math.max(0, clip.fadeOut ?? 0);
-    const clipDurSec = durationSec ?? buffer.duration / Math.abs(source.playbackRate.value);
     if (fadeIn > 0.001) {
       gain.gain.setValueAtTime(0, when);
       gain.gain.linearRampToValueAtTime(gain.gain.value, when + Math.min(fadeIn, clipDurSec / 2));
@@ -1216,14 +1270,13 @@ export class AudioEngine {
       gain.gain.linearRampToValueAtTime(0, when + clipDurSec);
     }
     source.connect(gain).connect(nodes.input);
-    const offset = Math.max(0, (clip.offsetSec ?? 0) + (clip.trimStart ?? 0));
-    // Clamp offset+duration to buffer length (stretched time already accounted)
-    const maxDur = Math.max(0.01, buffer.duration - offset - (clip.trimEnd ?? 0));
-    const dur = Math.min(clipDurSec, maxDur);
-    const playOffset = clip.reverse ? Math.max(0, buffer.duration - offset - dur) : offset;
+
+    // Offset / trim handling
+    const { duration, playOffset } = audioClipPlayWindow(clip, playBuffer.duration, clipDurSec, timeScale);
+
     try {
-      source.start(when, playOffset, dur);
-      source.stop(when + dur + 0.01);
+      source.start(when, playOffset, duration);
+      source.stop(when + duration + 0.01);
     } catch {
       /* already started */
     }
@@ -1235,6 +1288,16 @@ export class AudioEngine {
         gain.disconnect();
       } catch {}
     };
+  }
+
+  /**
+   * Clear the time-stretch buffer cache. Called automatically when the engine
+   * switches to a different project (see setProject) — bufferIds are only
+   * meaningful within one bank/project generation, so stale stretched buffers
+   * must never outlive their source project.
+   */
+  clearStretchCache(): void {
+    this.stretchCache.clear();
   }
 
   previewNote(trackId: string, pitch: number): void {
@@ -2871,4 +2934,48 @@ export class AudioEngine {
       missingAssets: this.missingAssets.join(", ") || "none",
     };
   }
+}
+
+/**
+ * Compute a time-stretched AudioBuffer from source at the given rate.
+ * Uses the grain-based `timeStretch` algorithm from time-stretch.ts.
+ * The stretched buffer plays at rate=1 so pitch is preserved.
+ */
+function computeStretchedBuffer(ctx: BaseAudioContext, source: AudioBuffer, stretchRate: number, reverse: boolean): AudioBuffer {
+  const sr = source.sampleRate;
+  const ch = source.numberOfChannels;
+  const stretchFactor = Math.min(4, Math.max(0.25, stretchRate));
+  // timeStretch changes duration by stretchFactor: >1 = longer (slower), <1 = shorter (faster)
+  const outFrames = Math.max(1, Math.round(source.duration * stretchFactor * sr));
+  const out = ctx.createBuffer(ch, outFrames, sr);
+  for (let c = 0; c < ch; c++) {
+    const src = source.getChannelData(c);
+    const stretched = timeStretch(src, sr, stretchFactor);
+    // timeStretch returns the input array itself on its fallback paths —
+    // reversing it in place would corrupt the bank's shared source buffer.
+    const channel = reverse ? (stretched === src ? stretched.slice() : stretched).reverse() : stretched;
+    out.getChannelData(c).set(channel);
+  }
+  return out;
+}
+
+/**
+ * Resolve an AudioClip's playback window inside the (possibly stretched)
+ * play buffer. `offsetSec`/`trimStart`/`trimEnd` are seconds in the ORIGINAL
+ * sample; `timeScale` converts them into the play buffer's timeline (1 for
+ * resample mode, the stretch rate for pre-stretched buffers). Pure — shared
+ * reasoning for live playback and offline render.
+ */
+export function audioClipPlayWindow(
+  clip: import("../project-model/types").AudioClip,
+  playBufferDurationSec: number,
+  requestedDurationSec: number,
+  timeScale: number,
+): { duration: number; playOffset: number } {
+  const offset = Math.max(0, ((clip.offsetSec ?? 0) + (clip.trimStart ?? 0)) * timeScale);
+  const trimEnd = Math.max(0, (clip.trimEnd ?? 0) * timeScale);
+  const maxDur = Math.max(0.01, playBufferDurationSec - offset - trimEnd);
+  const duration = Math.min(requestedDurationSec, maxDur);
+  const playOffset = clip.reverse ? Math.max(0, playBufferDurationSec - offset - duration) : offset;
+  return { duration, playOffset };
 }

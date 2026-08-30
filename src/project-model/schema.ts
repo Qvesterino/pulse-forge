@@ -438,6 +438,7 @@ export function sanitizeAudioClips(input: unknown, trackIds: Set<string>): impor
     let stretchRate = Number.isFinite(Number(raw.stretchRate)) ? Number(raw.stretchRate) : 1;
     stretchRate = Math.min(4, Math.max(0.25, stretchRate));
     const reverse = raw.reverse === true;
+    const stretchMode: "resample" | "stretch" | undefined = raw.stretchMode === "stretch" ? "stretch" : undefined;
     seen.add(id);
     out.push({
       id,
@@ -453,6 +454,7 @@ export function sanitizeAudioClips(input: unknown, trackIds: Set<string>): impor
       fadeOut,
       stretchRate,
       reverse,
+      ...(stretchMode ? { stretchMode } : {}),
     });
   }
   out.sort((a, b) => a.startBar - b.startBar);

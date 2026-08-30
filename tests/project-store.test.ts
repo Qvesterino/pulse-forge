@@ -74,6 +74,28 @@ describe("ProjectStore — history shape", () => {
     expect(undos).toBe(256);
   });
 
+  it("keeps history diffs accurate after the undo stack exceeds its cap (regression: padded snapshots reported zero-diffs)", () => {
+    const store = new ProjectStore(createDefaultProject());
+    for (let i = 0; i < 300; i++) {
+      store.execute(setBpm(store.doc, 100 + (i % 50)));
+    }
+    const entries = store.history;
+    expect(entries.length).toBe(20);
+    // The newest entry must pair with its TRUE before/after snapshots — a BPM
+    // change always reports at least one changed field. The old padding logic
+    // duplicated the head snapshot up to the stack size, so recent entries
+    // diffed a snapshot against itself and reported "no changes".
+    const newest = entries[entries.length - 1];
+    expect(newest.diff).toBeDefined();
+    expect(newest.diff!.changed).toBeGreaterThan(0);
+    // Every diff the panel DOES show must come from a real snapshot pair.
+    for (const entry of entries) {
+      if (entry.diff) {
+        expect(entry.diff.changed + entry.diff.added + entry.diff.removed).toBeGreaterThan(0);
+      }
+    }
+  });
+
   it("marks the document dirty after any mutation", () => {
     const store = new ProjectStore(createDefaultProject());
     expect(store.saveStatus).toBe("saved");

@@ -2177,6 +2177,7 @@ export function addAudioClip(
     fadeOut: Math.max(0, patch.fadeOut ?? 0),
     stretchRate: Math.min(4, Math.max(0.25, patch.stretchRate ?? 1)),
     reverse: patch.reverse === true,
+    ...(patch.stretchMode ? { stretchMode: patch.stretchMode } : {}),
   };
   const next: ProjectDocument = {
     ...doc,
@@ -2235,21 +2236,43 @@ export function updateAudioClip(
   patch: Partial<
     Pick<
       AudioClip,
-      "offsetSec" | "trimStart" | "trimEnd" | "gain" | "fadeIn" | "fadeOut" | "stretchRate" | "reverse" | "bufferId"
+      | "offsetSec"
+      | "trimStart"
+      | "trimEnd"
+      | "gain"
+      | "fadeIn"
+      | "fadeOut"
+      | "stretchRate"
+      | "stretchMode"
+      | "reverse"
+      | "bufferId"
     >
   >,
 ): Command {
   const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
   if (!clip) throw new Error(`AudioClip ${clipId} not found`);
+  // sanitizeAudioClips drops non-finite numbers on load; match that here so a
+  // NaN patch (parse bug in a caller) can never poison the in-memory doc —
+  // a NaN stretchRate would throw inside the scheduler's audio window.
+  const num = (value: number | undefined, min: number, max: number): number | undefined =>
+    value === undefined || !Number.isFinite(value) ? undefined : Math.min(max, Math.max(min, value));
   const nextPatch: Partial<AudioClip> = {};
   if (patch.bufferId !== undefined) nextPatch.bufferId = patch.bufferId;
-  if (patch.offsetSec !== undefined) nextPatch.offsetSec = Math.max(0, patch.offsetSec);
-  if (patch.trimStart !== undefined) nextPatch.trimStart = Math.max(0, patch.trimStart);
-  if (patch.trimEnd !== undefined) nextPatch.trimEnd = Math.max(0, patch.trimEnd);
-  if (patch.gain !== undefined) nextPatch.gain = Math.min(2, Math.max(0, patch.gain));
-  if (patch.fadeIn !== undefined) nextPatch.fadeIn = Math.max(0, patch.fadeIn);
-  if (patch.fadeOut !== undefined) nextPatch.fadeOut = Math.max(0, patch.fadeOut);
-  if (patch.stretchRate !== undefined) nextPatch.stretchRate = Math.min(4, Math.max(0.25, patch.stretchRate));
+  const offsetSec = num(patch.offsetSec, 0, Infinity);
+  if (offsetSec !== undefined) nextPatch.offsetSec = offsetSec;
+  const trimStart = num(patch.trimStart, 0, Infinity);
+  if (trimStart !== undefined) nextPatch.trimStart = trimStart;
+  const trimEnd = num(patch.trimEnd, 0, Infinity);
+  if (trimEnd !== undefined) nextPatch.trimEnd = trimEnd;
+  const gain = num(patch.gain, 0, 2);
+  if (gain !== undefined) nextPatch.gain = gain;
+  const fadeIn = num(patch.fadeIn, 0, Infinity);
+  if (fadeIn !== undefined) nextPatch.fadeIn = fadeIn;
+  const fadeOut = num(patch.fadeOut, 0, Infinity);
+  if (fadeOut !== undefined) nextPatch.fadeOut = fadeOut;
+  const stretchRate = num(patch.stretchRate, 0.25, 4);
+  if (stretchRate !== undefined) nextPatch.stretchRate = stretchRate;
+  if (patch.stretchMode !== undefined) nextPatch.stretchMode = patch.stretchMode;
   if (patch.reverse !== undefined) nextPatch.reverse = patch.reverse === true;
   const next: ProjectDocument = {
     ...doc,

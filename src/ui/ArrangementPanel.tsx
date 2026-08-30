@@ -859,7 +859,7 @@ export function ArrangementPanel() {
                   key={clip.id}
                   className={`arr-audio-clip${selected ? " selected" : ""}${isCurrent ? " current" : ""}`}
                   style={{ left: startBar * BAR_WIDTH, width: lengthBars * BAR_WIDTH - 4 }}
-                  title={`${track?.name ?? clip.trackId} · ${clip.bufferId} · ${clip.reverse ? "REV " : ""}${clip.stretchRate !== 1 ? `×${clip.stretchRate.toFixed(2)} ` : ""}${lengthBars}b · trim ${clip.trimStart.toFixed(2)}/${clip.trimEnd.toFixed(2)} fade ${effFadeIn.toFixed(2)}/${effFadeOut.toFixed(2)} gain ${effGain.toFixed(2)} — PT: top corners fade, top middle clip gain`}
+                  title={`${track?.name ?? clip.trackId} · ${clip.bufferId} · ${clip.reverse ? "REV " : ""}${clip.stretchMode === "stretch" ? `STRETCH×${clip.stretchRate.toFixed(2)} ` : clip.stretchRate !== 1 ? `×${clip.stretchRate.toFixed(2)} ` : ""}${lengthBars}b · trim ${clip.trimStart.toFixed(2)}/${clip.trimEnd.toFixed(2)} fade ${effFadeIn.toFixed(2)}/${effFadeOut.toFixed(2)} gain ${effGain.toFixed(2)} — PT: top corners fade, top middle clip gain`}
                   onPointerDown={(event) => {
                     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
                     const x = event.clientX - rect.left;
@@ -1050,25 +1050,32 @@ export function ArrangementPanel() {
             >
               Normalize (gain→0.99 peak)
             </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                const v = window.prompt(
-                  "Stretch rate 0.25–4 (1=normal, 0.5=half speed):",
-                  String(audioClips.find((x) => x.id === audioMenu.clipId)?.stretchRate ?? 1),
-                );
-                const n = v ? Number(v) : NaN;
-                if (Number.isFinite(n)) {
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
                   const c = audioClips.find((x) => x.id === audioMenu.clipId);
-                  if (c)
-                    execute(updateAudioClip(services.store.doc, c.id, { stretchRate: Math.min(4, Math.max(0.25, n)) }));
-                }
-                setAudioMenu(null);
-              }}
-            >
-              Time-stretch…
-            </button>
+                  const currentRate = c?.stretchRate ?? 1;
+                  const currentMode = c?.stretchMode ?? "resample";
+                  const modeLabel = currentMode === "stretch" ? "preserve pitch" : "pitch+time";
+                  const v = window.prompt(
+                    `Stretch rate 0.25–4 (1=normal, 0.5=half speed)\nMode: ${modeLabel} (type "preserve" for pitch-preserving stretch, or just the rate)`,
+                    String(currentRate),
+                  );
+                  if (v === null) { setAudioMenu(null); return; }
+                  const isPreserve = v.toLowerCase().includes("preserve");
+                  const rate = Number(isPreserve ? v.replace(/preserve/i, "").trim() || currentRate : v);
+                  if (Number.isFinite(rate) && rate >= 0.25 && rate <= 4) {
+                    execute(updateAudioClip(services.store.doc, audioMenu.clipId, {
+                      stretchRate: Math.round(rate * 100) / 100,
+                      stretchMode: isPreserve ? "stretch" : "resample",
+                    }));
+                  }
+                  setAudioMenu(null);
+                }}
+              >
+                Time-stretch…
+              </button>
             <button
               type="button"
               role="menuitem"

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pitchShiftPreserveDuration } from "../src/audio-engine/time-stretch";
+import { pitchShiftPreserveDuration, timeStretch } from "../src/audio-engine/time-stretch";
 
 function makeSine(sampleRate: number, freq: number, seconds: number): Float32Array {
   const n = Math.floor(sampleRate * seconds);
@@ -52,5 +52,53 @@ describe("pitchShiftPreserveDuration", () => {
     const a = pitchShiftPreserveDuration(data, 44100, 7);
     const b = pitchShiftPreserveDuration(data, 44100, 7);
     expect(a).toEqual(b);
+  });
+});
+
+describe("timeStretch", () => {
+  it("stretches by factor 0.25 — the lowest supported rate (regression: was aliased to the input)", () => {
+    // AudioEngine.computeStretchedBuffer clamps stretchRate to [0.25, 4].
+    // At exactly 0.25 the guard used to hit the fallback path (`<= 0.25`),
+    // returning the SOURCE array itself: the caller then reversed it in place
+    // (corrupting the shared bank buffer) and AudioBuffer.set() with a
+    // longer-than-destination source threw, killing the scheduler window.
+    const data = makeSine(44100, 220, 0.5);
+    const snapshot = Float32Array.from(data);
+    const out = timeStretch(data, 44100, 0.25);
+    expect(out).not.toBe(data);
+    expect(out.length).toBeGreaterThanOrEqual(Math.round(data.length * 0.25) - 1);
+    expect(out.length).toBeLessThanOrEqual(Math.round(data.length * 0.25) + 1);
+    expect(Array.from(data)).toEqual(Array.from(snapshot));
+  });
+
+  it("doubles / halves length for factor 2 and 0.5 and never aliases the input", () => {
+    const data = makeSine(44100, 220, 0.5);
+    const up = timeStretch(data, 44100, 2);
+    const down = timeStretch(data, 44100, 0.5);
+    expect(up).not.toBe(data);
+    expect(down).not.toBe(data);
+    expect(up.length).toBeCloseTo(data.length * 2, -2);
+    expect(down.length).toBeCloseTo(data.length * 0.5, -2);
+  });
+
+  it("preserves signal level (window overlap is normalized)", () => {
+    const data = makeSine(44100, 220, 0.5);
+    const out = timeStretch(data, 44100, 1.5);
+    const rms = (x: Float32Array) => Math.sqrt(x.reduce((s, v) => s + v * v, 0) / x.length);
+    expect(rms(out)).toBeGreaterThan(rms(data) * 0.5);
+    expect(rms(out)).toBeLessThan(rms(data) * 1.5);
+  });
+
+  it("returns the input array by reference on documented fallbacks (callers must not mutate)", () => {
+    const data = makeSine(44100, 220, 0.2);
+    expect(timeStretch(data, 44100, 0.24)).toBe(data); // below supported range
+    expect(timeStretch(data, 44100, 5)).toBe(data); // above supported range
+    expect(timeStretch(data, 44100, 1.005)).toBe(data); // within 1 cent of unity
+    expect(timeStretch(new Float32Array(0), 44100, 2).length).toBe(0);
+  });
+
+  it("is deterministic (same input -> same output)", () => {
+    const data = makeSine(44100, 330, 0.3);
+    expect(timeStretch(data, 44100, 1.7)).toEqual(timeStretch(data, 44100, 1.7));
   });
 });

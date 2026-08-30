@@ -81,10 +81,14 @@ export class ProjectStore {
   /**
    * Cheap diff summary for a history entry: ops counts from the doc delta
    * between the entry's before/after snapshot (references, no deep copy).
+   * `historyDocs` only tracks the most recent HISTORY_LIMIT snapshots, so an
+   * index may fall outside the tracked window once the undo stack grows —
+   * those entries report no diff instead of pairing wrong snapshots.
    */
   private diffForIndex(cmdIndex: number): HistoryDiff | undefined {
-    const docBefore = this.historyDocs[cmdIndex];
-    const docAfter = this.historyDocs[cmdIndex + 1];
+    const offset = this.undoStack.length + 1 - this.historyDocs.length;
+    const docBefore = this.historyDocs[cmdIndex - offset];
+    const docAfter = this.historyDocs[cmdIndex - offset + 1];
     if (!docBefore || !docAfter) return undefined;
     try {
       const { ops } = computeDocDelta(docBefore, docAfter);
@@ -200,10 +204,10 @@ export class ProjectStore {
 
   private pruneHistoryDocs(): void {
     // The undo stack lost its oldest entry; drop the matching head snapshot.
+    // Never pad: historyDocs deliberately tracks fewer snapshots than the
+    // stack (HISTORY_LIMIT) — padding with duplicates would balloon memory
+    // and pair diffForIndex with fake before/after states.
     while (this.historyDocs.length > this.undoStack.length + 1) this.historyDocs.shift();
-    while (this.historyDocs.length < this.undoStack.length + 1) {
-      this.historyDocs.unshift(this.historyDocs[0] ?? this.doc_);
-    }
   }
 
   replaceDoc(doc: ProjectDocument): void {

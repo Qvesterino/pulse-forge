@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   SCHEMA_VERSION,
   createDefaultProject,
@@ -766,5 +766,45 @@ describe("scheduler — pending launch notifications", () => {
     expect(h.scheduler.pendingPatternId).toBeNull();
     unsub();
     h.scheduler.stop();
+  });
+});
+
+describe("scheduler — failure containment", () => {
+  it("a throwing trigger does not wedge the window (regression: exception re-scheduled the same events every 25 ms)", () => {
+    const doc = createDefaultProject();
+    const triggerCalls: number[] = [];
+    let audioTime = 10;
+    const transport = new Transport({ now: () => audioTime }, doc.bpm);
+    const scheduler = new Scheduler({
+      getProject: () => doc,
+      getTransport: () => transport,
+      getAudioTime: () => audioTime,
+      getMode: () => "pattern",
+      trigger: () => {
+        triggerCalls.push(audioTime);
+        throw new Error("boom");
+      },
+      noteOn: () => {},
+      applyAutomation: () => {},
+      applyPatternLaunch: () => {},
+    });
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    transport.play(0);
+    try {
+      // Old behavior: the trigger's exception propagated out of tick() and
+      // windowStartTick never advanced, so every later tick re-entered the
+      // same window — duplicating already-scheduled events forever.
+      expect(() => scheduler.start()).not.toThrow();
+      expect(errSpy).toHaveBeenCalled();
+      expect(scheduler.stats.lastHorizonTick).toBeGreaterThan(0);
+      // Advance time and tick again: the scheduler must move FORWARD —
+      // windowStartTick already passed the damaged window.
+      audioTime += 0.2;
+      scheduler["tick"]();
+      expect(triggerCalls.length).toBeLessThanOrEqual(4); // no runaway re-scheduling
+    } finally {
+      scheduler.stop();
+      errSpy.mockRestore();
+    }
   });
 });

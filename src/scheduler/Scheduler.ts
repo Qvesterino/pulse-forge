@@ -197,6 +197,22 @@ export class Scheduler {
       this.stats.windows += 1;
       return;
     }
+    try {
+      this.scheduleWindow(transport, now, windowStart, windowEnd);
+    } catch (err) {
+      // A scheduling failure must not wedge the transport: without advancing
+      // the window, the next tick would re-schedule the same events every
+      // 25 ms (machine-gun duplicates + exception spam). Skip the damaged
+      // window once, keep the failure observable, keep playing.
+      console.error("[scheduler] scheduling window failed:", err);
+    }
+    this.windowStartTick = windowEnd;
+    this.stats.lastHorizonTick = windowEnd;
+    this.stats.windows += 1;
+  }
+
+  /** Schedule one lookahead window (pattern/song content, markers, automation, modulators). */
+  private scheduleWindow(transport: Transport, now: number, windowStart: number, windowEnd: number): void {
     const doc = this.deps.getProject();
     const mode = this.deps.getMode();
 
@@ -385,10 +401,6 @@ export class Scheduler {
 
     // Poll envFollower modulators targeting FX/inst params (control rate).
     this.deps.applyEnvFollowers?.();
-
-    this.windowStartTick = windowEnd;
-    this.stats.lastHorizonTick = windowEnd;
-    this.stats.windows += 1;
   }
 
   private schedulePatternWindow(pattern: Pattern, base: number, windowStart: number, windowEnd: number): void {

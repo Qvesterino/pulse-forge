@@ -122,6 +122,16 @@
 
 **Verifikácia celého P2.7:** `typecheck` ✓ (fix `applyGrit/shaper` remnants v bass synth — per-voice shaper), `vitest 101/1036` ✓ (nové dice/intent testy vratane), `format` ✓
 
+### P3.1 Non-destructive Time-Stretch — **2026-08-29 DOKONČENÉ**
+
+- [x] `src/project-model/types.ts:432` `AudioClip.stretchMode?: "resample" | "stretch"` — backward-compatible (undefined = resample), `src/project-model/schema.ts:451` `sanitizeAudioClips` `stretchMode: raw.stretchMode === "stretch" ? "stretch" : undefined`
+- [x] `src/audio-engine/time-stretch.ts:50` `timeStretch(data, sampleRate, stretchFactor)` — granular resynthesis: grains of source are time-shifted by `stretchFactor` via linear interpolation, windowed by Hann envelope, accumulated + winSum normalized. Output length `round(D * stretchFactor)`, factor 0.5..3 optimal. Pure sync (live==offline).
+- [x] `src/audio-engine/AudioEngine.ts:1195` `triggerAudioClip` — dual mode: `"stretch"` → lazy `computeStretchedBuffer` (grain `timeStretch` per channel → `reverse?.reverse()`) cached `stretchCache Map<string,AudioBuffer>` 48-LRU, played at `playbackRate=1`; `"resample"` → existing `playbackRate` behavior. `clearStretchCache()` on project swap.
+- [x] `src/commands/commands.ts:2232` `updateAudioClip` `stretchMode` added to `Pick` type + patch handling; `src/ui/ArrangementPanel.tsx:1054` Time-stretch menu prompt s mode `preserve`/default (prompt input `contains("preserve")` → `stretchMode:"stretch"`), tooltip ukazuje `STRETCH×` pre stretch mode.
+- [x] `src/rendering/renderer.ts:86` — offline parity zachované cez `engine.triggerAudioClip(clip, when, durationSec)` ktorý teraz podporuje oba módy. Verif: `typecheck` ✓, `vitest 101/1036` ✓, `format` ✓
+
+**Verifikácia P3.1:** `typecheck` ✓, `vitest 101/1036` ✓, `format` ✓ — live==offline grain-based stretch s 48-LRU cache.
+
 ## 4. Guardrails (INTUITÍVNE = PREDVÍDATEĽNÉ) — **2026-08-29 OVERENÉ**
 
 - [x] Žiadny `alert()` / modal na bežnej akcii — všetko toast `src/ui/CommandToast.tsx`, `CommandToast` (`src/ui/CommandToast.tsx:10`) v App footri, `window.alert()` nikde v kóde (`grep alert\(` = 0 hits mimo browser-checks.ts kde je `alert("Demo")` len pre feature gating, nie user-facing). Verif: `grep -r "alert(" src/ui/`
@@ -168,3 +178,4 @@
 - 2026-08-29 — **P2.5 Chord Stamp + Scale Lock hotové**: `stampChordNotes` + `stamp-chord` op (roots id persist), `Shift+C` chord menu 7 tvarov, `Alt+Q` quantize 50% (`quantizeNotes strength` blend). Verif: `typecheck` ✓, `vitest` 1017 ✓.
 - 2026-08-29 — **P2.6 Folder/Group + Linked Mixer hotové**: `GroupTrack.collapsed` + `setGroupCollapsed/Mute/Solo` (1 gesto 8 stôp), `soloAudibility` group mute→members, `Mixer` fold `▼/▶` + `visibleTracks` + `selected-strip`, `App selectTrack` expand group. Verif: `typecheck` ✓, `vitest 97/1017` ✓.
 - 2026-08-29 — **P2.7 Quick Wins hotové (4/4)**: `Pre-roll+Count-in` (Transport `countIn/preRoll` + engine `click` + Scheduler metronome + TopBar `C1/C2/PR`), `Capture last take` (ring 2048 + `A` toast + pattern/scene/clip 1 undo), `previewAssetSynced` FL Alt+P štýl, `Undo History` `±N` diff + `jumpTo` klik-to-jump (Cubase). Verif: `typecheck` ✓, `vitest 101/1036` ✓, `format` ✓.
+- 2026-08-29 — **P3.1 Non-destructive Time-Stretch hotové**: `AudioClip.stretchMode "stretch"|"resample"`, `timeStretch()` grain resynthesis (0.5..3×, live==offline), `triggerAudioClip` lazy 48-LRU cache, `updateAudioClip stretchMode`, Time-stretch menu mode prompt. Verif: `typecheck` ✓, `vitest 101/1036` ✓.
