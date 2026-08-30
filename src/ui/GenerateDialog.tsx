@@ -6,12 +6,10 @@ import { GENRES, DEFAULT_GENERATE_OPTIONS } from "../ai/types";
 import { getStyleNamesForGenre } from "../ai/grooves/index";
 import { generateLocalResultFromOptions } from "../intent/pipeline";
 import { PAD_NAMES } from "../ai/types";
+import { nextSeed } from "../shared/dice";
 
-function randomSeed(): string {
-  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
-  let s = "";
-  for (let i = 0; i < 6; i++) s += chars[Math.floor(Math.random() * chars.length)];
-  return s;
+function randomSeed(prev?: string): string {
+  return nextSeed(prev ?? String(Date.now()), "generate");
 }
 
 /** Mini step sequencer preview */
@@ -163,7 +161,7 @@ export function GenerateDialog({ open, onClose }: { open: boolean; onClose: () =
     onClose();
   }, [generationOptions, patternName, doc, services, onClose]);
 
-  const handleRandomSeed = useCallback(() => setSeed(randomSeed()), []);
+  const handleRandomSeed = useCallback(() => setSeed((prev) => randomSeed(prev)), []);
 
   if (!open) return null;
 

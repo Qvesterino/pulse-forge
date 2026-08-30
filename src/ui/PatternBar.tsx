@@ -34,9 +34,11 @@ interface DragState {
 export function PatternBar({
   clip,
   onCopy,
+  onOpenDice,
 }: {
   clip: PatternClipboard | null;
   onCopy: (clip: PatternClipboard) => void;
+  onOpenDice?: () => void;
 }) {
   const services = useServices();
   const doc = useDoc();
@@ -247,6 +249,14 @@ export function PatternBar({
           onClick={() => setGenerateOpen(true)}
         >
           GEN
+        </button>
+        <button
+          type="button"
+          className="btn btn-small btn-dice"
+          title="Open Dice — rapid beat generator (100 rolls)"
+          onClick={() => onOpenDice?.()}
+        >
+          🎲 DICE
         </button>
         <button
           type="button"

@@ -1,4 +1,4 @@
-import type { InstrumentPreset } from "./types";
+import type { DrumSynthPreset, InstrumentPreset } from "./types";
 
 /**
  * Factory presets are pure data, curated by genre and mood. Parameter values
@@ -1633,5 +1633,62 @@ export const FACTORY_PRESETS: InstrumentPreset[] = [
       release: 1.1,
       level: -9,
     },
+  },
+];
+
+export const DRUM_FACTORY_PRESETS: DrumSynthPreset[] = [
+  {
+    id: "factory.drum.hat.tight",
+    name: "Tight Hat",
+    type: "hatClosed",
+    genre: "house",
+    mood: ["bright", "clean"],
+    tags: ["hat", "tight", "crisp"],
+    synth: { type: "hatClosed", decay: 0.06, tone: 8200, snap: 0.4, body: 0.3 },
+  },
+  {
+    id: "factory.drum.hat.wash",
+    name: "Wash Hat",
+    type: "hatOpen",
+    genre: "techno",
+    mood: ["dark", "atmosphere"],
+    tags: ["hat", "open", "wash", "shimmer"],
+    synth: { type: "hatOpen", decay: 0.45, tone: 6800, snap: 0.65, body: 0.5 },
+  },
+  {
+    id: "factory.drum.kick.808",
+    name: "808 Kick",
+    type: "kick",
+    genre: "trap",
+    mood: ["deep", "warm"],
+    tags: ["kick", "808", "sub"],
+    synth: { type: "kick", decay: 0.52, tone: 4200, snap: 0.25, body: 0.7 },
+  },
+  {
+    id: "factory.drum.kick.punch",
+    name: "Punch Kick",
+    type: "kick",
+    genre: "house",
+    mood: ["aggressive", "bright"],
+    tags: ["kick", "punch", "click"],
+    synth: { type: "kick", decay: 0.38, tone: 5000, snap: 0.6, body: 0.4 },
+  },
+  {
+    id: "factory.drum.snare.crisp",
+    name: "Crisp Snare",
+    type: "snare",
+    genre: "trap",
+    mood: ["bright", "aggressive"],
+    tags: ["snare", "crisp", "snap"],
+    synth: { type: "snare", decay: 0.2, tone: 2100, snap: 0.7, body: 0.3 },
+  },
+  {
+    id: "factory.drum.snare.fat",
+    name: "Fat Snare",
+    type: "snare",
+    genre: "house",
+    mood: ["warm", "deep"],
+    tags: ["snare", "fat", "body"],
+    synth: { type: "snare", decay: 0.28, tone: 1600, snap: 0.3, body: 0.7 },
   },
 ];

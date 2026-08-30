@@ -103,6 +103,8 @@ export interface DrumSynthConfig {
   type: DrumSynthType;
   decay: number; // 0.05..1.5 seconds
   tone: number; // 200..12000 Hz
+  snap: number; // 0..1 attack/click/sizzle
+  body: number; // 0..1 low/sub/fat
 }
 
 export interface FrozenState {
@@ -168,6 +170,8 @@ export interface GroupTrack {
   sends: Record<ID, number>;
   /** Tag color for mixer strips (CSS hex). */
   color?: string;
+  /** Collapsed (folded) in Mixer/Arrangement — hides children. */
+  collapsed?: boolean;
   /** When set, the track is frozen — rendered to an AudioBuffer, saving CPU. */
   frozen?: FrozenState;
 }

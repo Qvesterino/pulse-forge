@@ -705,8 +705,16 @@ function normalizeTracksDomain(s: NormalizeState): void {
               const tone =
                 typeof obj.tone === "number" && Number.isFinite(obj.tone)
                   ? Math.min(12000, Math.max(200, obj.tone))
-                  : 5000;
-              const nextSynth: any = { type, decay, tone };
+                  : (type === "hatClosed" ? 7500 : type === "hatOpen" ? 7000 : type === "snare" ? 1750 : 5000);
+              const snap =
+                typeof obj.snap === "number" && Number.isFinite(obj.snap)
+                  ? Math.min(1, Math.max(0, obj.snap))
+                  : 0.35;
+              const body =
+                typeof obj.body === "number" && Number.isFinite(obj.body)
+                  ? Math.min(1, Math.max(0, obj.body))
+                  : 0.5;
+              const nextSynth: any = { type, decay, tone, snap, body };
               if (JSON.stringify(nextSynth) !== JSON.stringify((pad as any).synth)) {
                 nextPad = { ...nextPad, synth: nextSynth } as any;
                 padChanged = true;
@@ -764,6 +772,15 @@ function normalizeTracksDomain(s: NormalizeState): void {
           const { color: _c, ...rest } = t as unknown as Record<string, unknown>;
           t = rest as unknown as import("./types").GroupTrack;
         } else t = { ...t, color: groupCleanColor };
+        tracksChanged = true;
+      }
+      // collapsed — boolean, absent = expanded
+      if (
+        typeof (t as unknown as Record<string, unknown>).collapsed !== "boolean" &&
+        (t as unknown as Record<string, unknown>).collapsed !== undefined
+      ) {
+        const { collapsed: _c, ...rest } = t as unknown as Record<string, unknown>;
+        t = rest as unknown as import("./types").GroupTrack;
         tracksChanged = true;
       }
       return t;

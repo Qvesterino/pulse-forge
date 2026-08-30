@@ -108,6 +108,11 @@
 - [x] `src/ui/PianoRoll.tsx:516` `Shift+C` chord stamp menu — `.chord-stamp-menu` popup (`Major/Minor/Dom 7/Maj 7/Min 7/Sus 2/Sus 4`), anchored center-top, `Esc/click-out` zavrie, klik → `applyMidiCreativeTool stamp-chord` (funguje aj bez selection na všetkých notách via noteIds=undefined), `src/styles.css` reuse `.context-menu` + `.pr-note` zvyšok
 - [x] `Alt+Q` quick quantize 50% (FL) — `src/commands/commands.ts:1347` `quantizeNotes(..., strength=1)` rozšírený o FL partial quantize (`start = qStart+(n.start−qStart)·(1−s)` `duration` blend, `s=0.5` zachová groove feel), label `Quantize N notes 50%`; `src/ui/PianoRoll.tsx:540` `Alt+Q` → `quantizeNotes(doc, trackId, ids, STEP_TICKS, 0.5)` — 2 klávesy vs 8 klikov. Verif: `typecheck` ✓, `vitest` 1017 ✓
 
+### P2.6 Folder / Group edit + Linked Mixer — **2026-08-29 DOKONČENÉ**
+
+- [x] `src/project-model/types.ts:159` `GroupTrack.collapsed?:boolean` + `src/project-model/schema.ts:769` `sanitize collapsed boolean` v `normalizeTracksDomain`; `src/commands/commands.ts:1215` `setGroupCollapsed` + `setGroupMute/setGroupSolo` (snapshot 1 gesto na 8: group+members `mute/solo` spolu, `buildStemProject` guard)
+- [x] `src/audio-engine/AudioEngine.ts:63` `soloAudibility` linked — `group mute → members inaudible` (`if t.groupId && group.mute return false`), `group solo → members audible` už existovalo; `src/ui/App.tsx:103` `selectTrack` expand group → `[group, ...members]` pre `SelectionStore` (batch FX/cut na group reže 8), `src/ui/Mixer.tsx:35` `collapsedGroups` `visibleTracks` filter, `ChannelStrip` `▼/▶` fold btn `setGroupCollapsed`, `selected-strip` outline, `Mix: M/S` volá `setGroupMute/Solo` (1 klik na 8), `drag track → group` už hotové + `mixer-fold-hint` + `src/styles.css:1147` `.selected-strip/.group-strip`. Verif: `typecheck` ✓, `vitest 97/1017` ✓ (`groupTracks.test.ts` update mute→member false)
+
 ## 4. Guardrails (INTUITÍVNE = PREDVÍDATEĽNÉ)
 
 - [ ] Žiadny `alert()` / modal na bežnej akcii — všetko toast `src/ui/CommandToast.tsx`
@@ -148,3 +153,4 @@
 - 2026-08-29 — **P2.3 Sequencer dokončené**: `Alt+drag` microtiming `−1..1` (30 ticks), `Ctrl+drag` probability `0..1`, `amount` mini slider `0..100%` `has-amount` + `micro-early/late` preview. Verif: `typecheck` ✓, `vitest` 1012 ✓.
 - 2026-08-29 — **P2.4 808 Slide hotové**: `NoteEvent.slide` + `noteOn slideFrom {pitch,when}`, 808 portamento glide `exponentialRamp` (skip pitch-drop/click), sampler `voice.glide` playbackRate, `noteEventsInWindow` slideFrom cross-loop, Scheduler/renderer/services wiring, PianoRoll `Alt+S` toggle + `▲` badge. Verif: `typecheck` ✓, `vitest` 1017 ✓.
 - 2026-08-29 — **P2.5 Chord Stamp + Scale Lock hotové**: `stampChordNotes` + `stamp-chord` op (roots id persist), `Shift+C` chord menu 7 tvarov, `Alt+Q` quantize 50% (`quantizeNotes strength` blend). Verif: `typecheck` ✓, `vitest` 1017 ✓.
+- 2026-08-29 — **P2.6 Folder/Group + Linked Mixer hotové**: `GroupTrack.collapsed` + `setGroupCollapsed/Mute/Solo` (1 gesto 8 stôp), `soloAudibility` group mute→members, `Mixer` fold `▼/▶` + `visibleTracks` + `selected-strip`, `App selectTrack` expand group. Verif: `typecheck` ✓, `vitest 97/1017` ✓.

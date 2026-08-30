@@ -5,9 +5,10 @@ import { styleNames, type ReplaceTarget } from "../assist/patternOps";
 import { buildAssistPatch } from "../assist/pipeline";
 import { ASSIST_ENGINE_VERSION, type AssistOperation } from "../assist/types";
 import { getActivePattern, getDrumTrack } from "../project-model/types";
+import { nextSeed } from "../shared/dice";
 
-function randomSeed(): string {
-  return Math.random().toString(36).slice(2, 6);
+function randomSeed(prev?: string): string {
+  return nextSeed(prev ?? String(Date.now()), "assist");
 }
 
 /**
@@ -32,7 +33,7 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
   const apply = (label: string, run: () => void) => {
     run();
     setFlash(`${label} · seed ${seed}`);
-    setSeed(randomSeed()); // next press = fresh take on the same idea
+    setSeed((prev) => randomSeed(prev)); // next press = fresh take on the same idea
     setTimeout(() => setFlash(null), 2500);
   };
 
@@ -80,7 +81,7 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
           <span>SEED</span>
           <input value={seed} onChange={(e) => setSeed(e.target.value)} spellCheck={false} />
         </label>
-        <button type="button" className="btn btn-small" title="Re-roll seed" onClick={() => setSeed(randomSeed())}>
+        <button type="button" className="btn btn-small" title="Re-roll seed" onClick={() => setSeed((prev) => randomSeed(prev))}>
           ⚄
         </button>
       </div>

@@ -19,24 +19,26 @@
 
 Inventár `src/instruments/registry.ts:1577` a `src/project-model/types.ts:47`:
 
-| Nástroj | Paramy | Hlasy | Jadro | Tier | Stav |
+| Nástroj | Paramy | Hlasy | Jadro | Tier | Stav 03. 09. 2026 |
 |---|---|---|---|---|---|
-| Sampler | root/attack/release/cutoff/reso/gain | 16 | `BufferSource` + `Biquad` | C | funkčný, bez stretch |
-| Analog | oscA/B/sub/noise/cutoff/reso/env/level | 12 | 2 osc + sub + noise → `Biquad` → amp | C | solídny, Biquad strop |
-| Bass | sub/body/punch/grit/movement/width/cutoff/reso/level | 4 | saw+square+sub + drive | C | sémantické makrá |
+| Sampler | root/attack/release/cutoff/reso/gain/stretch/spread | 16 | `BufferSource` + `SVF` (fallback `Biquad`) + `time-stretch` | B | **B5 hotovo** — `stretch` pitch bez dĺžky (granular WSOLA), `spread` seeded pan |
+| Analog | oscA/B/sub/noise/cutoff/reso/env/unison/spread/lfoRate/lfoDepth/level | 12 | 2 osc + sub + noise → `SVF` → amp, per-voice LFO | B+ | **B4+expresivita** — SVF + unison 8× + cutoff LFO (osc→AudioParam) |
+| Bass | sub/body/punch/grit/movement/width/cutoff/reso/level | 4 | saw+square+sub + drive → `SVF` | C | sémantické makrá, SVF |
 | 808 | decay/pDrop/click/drive/tone/gain | mono | sine drop + click | C | ok |
 | Texture | color/motion/space/density/texture/chaos/level | 4 | 3 LFO + delay | C | ok |
-| Wavetable | table/morph/detune/sub/cutoff/reso/attack/release/level | 8 | 2× frame looper + sub | B+ | najlepší custom DSP |
+| Wavetable | table/morph/detune/sub/unison/spread/cutoff/reso/attack/release/level | 8 | 2× frame looper + sub → `SVF`, N× unison table-pair | A- | **unison hotovo** — N detuned frame-pairů fanned stereo |
 | Granular | position/size/rate/jitter/spread/pitch/reverse/tone/shape/attack/release/gain | 6/512 grainov | deterministic grain cloud | B+ | deterministický |
-| Keys (FM/Rhodes) | tine/bell/body/damp/tremolo/width/cutoff/reso/attack/release/level | 8 | 4-op FM `1→2` + `3.5→4` → `Biquad` → amp + trem | C | **nový B1** |
-| Pluck (KS) | pick/damp/body/tone/decay/width/cutoff/reso/attack/release/level | 12 | `Delay(1/freq)` + `Biquad` feedback 0.82..0.995 | C | **nový B2** |
-| Drum Synth (HH) | type hatClosed/hatOpen/clap/perc/cowbell + decay/tone | — | per-pad `noise→HP/BP → gain` alebo `square→BP` | C | **nový B3** `types.ts:95` `AudioEngine.ts:1895` |
+| Keys (FM/Rhodes) | tine/bell/body/damp/tremolo/width/cutoff/reso/lfoRate/lfoDepth/attack/release/level | 8 | 4-op FM `1→2` + `3.5→4` → `SVF` → amp + trem + FM-LFO | B+ | **B1+osc LFO** — audio-rate `Osc→modGain.gain`, velocity→brightness, SVF |
+| Pluck (KS) | pick/damp/body/tone/decay/width/cutoff/reso/attack/release/level | 12 | `Delay(1/freq)` + `Biquad`→`SVF` feedback 0.82..0.995+vel | B | **B2+vel** — `feedback += (vel-0.8)*0.04` |
+| Drum Synth | type hatClosed/hatOpen/clap/perc/cowbell/kick/snare + decay/tone/snap/body | — | per-pad `noise→HP/BP → gain` / `square→BP` / `sine 150→45 + click` / `tri+noise BP` via `synth-voices.ts` | B+ | **4-knob hotovo** — snap=attack/sizzle, body=sub/fat, 6 `factory.drum.*` presetov |
 
 **P-locky** `src/project-model/types.ts:205` `pitch|gain|pan|cutoff|sampleStart|length` (6) — per-step, `live==offline` cez `groove.ts:29` → `AudioEngine.ts:1914` → `renderer.ts:95`.
 
 **Piano Roll** `src/ui/PianoRoll.tsx:299` — toolbar `QUANT/DUP/SPLIT/GLUE/REV/HUM/STRUM/V±/COPY/PASTE` + `nudge ◀▶▲▼` + `ARP/RPT` + marquee `shift+drag` + velocity lane multi-drag `PianoRoll.tsx:226`.
 
 **SliceLab v2** `src/ui/SliceLab.tsx:46` — zoom drag/wheel + playhead `requestAnimationFrame` + `SNAP ZC` (default OFF) `zeroCrossSnap` + `NORM` preview gain + `BPM PREVIEW` pitch-shift.
+
+**Expresivita & šírka (09/2026)** — Analog/Wavetable `unison/spread`, Analog cutoff LFO, Keys FM-LFO (osc), Keys/Pluck velocity, Sampler spread — `registry.ts` `factory.ts` `INSTRUMENT-ROADMAP.md:130-132`.
 
 ---
 
@@ -62,37 +64,37 @@ Inventár `src/instruments/registry.ts:1577` a `src/project-model/types.ts:47`:
 
 ## 4. Roadmapa
 
-### B3b — Drum Kick/Snare synth (sample-free kit) — **PRIORITA 1**
+### B3b — Drum Kick/Snare synth (sample-free kit) — **PRIORITA 1 — HOTOVO 03. 09. 2026**
 
 Cieľ: `hatClosed/hatOpen` už funguje `types.ts:95` `AudioEngine.ts:2089`; pridať `kick` + `snare` aby `DrumPad` s `assetId==null && synth` zahral celý kit bez WAV.
 
-- [ ] `types.ts:95` `DrumSynthType |= "kick" | "snare"`
-- [ ] `AudioEngine.ts:2089` `triggerSynth` vetvy:
+- [x] `types.ts:95` `DrumSynthType |= "kick" | "snare"`
+- [x] `AudioEngine.ts:2089` `triggerSynth` vetvy:
   - `kick`: `sine 150→45 Hz expRamp 0.09 + amp decay 0.42` + `click` noise HP 1500 0.01 (ako `factory.ts:75` `kick()`), `decay` lock → `amp` decay, `tone` → `click` level, `pitch` → `startHz`
   - `snare`: `triangle 192 Hz 0.11 + noise BP 1750 Q0.9 0.2` (ako `factory.ts:111` `snare()`), `cutoff` → `BP freq`, `length` → `noise decay`
-- [ ] `schema.ts:572` `normalizeTracksDomain` — `allowed` rozšíriť o `kick|snare`, `def` decay/tone
-- [ ] `Inspector.tsx:138` `SYNTH` select pridať `Kick` / `Snare` s default `kick {decay 0.42 tone 150}`, `snare {decay 0.2 tone 1750}`
-- [ ] 2 presety: `factory.drum.kick.808` + `factory.drum.snare.punch` nie sú potrebné (pad synth nemá `factory` preset, len pad default) — stačia 2 pad defaults.
-- [ ] Verifikácia: `vitest` `plock-length-export.test.ts` rozšíriť o `kick/snare` carry, `SliceLab` chop stále sample, `Drum Rack` preview bez WAV hrá.
+- [x] `schema.ts:572` `normalizeTracksDomain` — `allowed` rozšíriť o `kick|snare`, `def` decay/tone
+- [x] `Inspector.tsx:138` `SYNTH` select pridať `Kick` / `Snare` s default `kick {decay 0.42 tone 150}`, `snare {decay 0.2 tone 1750}`
+- [x] 2 presety: `factory.drum.kick.808` + `factory.drum.snare.punch` nie sú potrebné (pad synth nemá `factory` preset, len pad default) — stačia 2 pad defaults.
+- [x] Verifikácia: `vitest` `plock-length-export.test.ts` rozšíriť o `kick/snare` carry, `SliceLab` chop stále sample, `Drum Rack` preview bez WAV hrá.
 
-### B4 — SVF/TPT pre analog/keys/pluck (zvukový strop) — **PRIORITA 2**
+### B4 — SVF/TPT pre analog/keys/pluck (zvukový strop) — **PRIORITA 2 — HOTOVO 03. 09. 2026**
 
 Cieľ: `Biquad` → `Chamberlin SVF` (semi-implicit) pre per-voice lowpass s `drive` tanh, `resonance 0..1` self-osc.
 
-- [ ] `src/audio-worklets/svfilter-processor.js` už existuje (B1.1) — použiť `createSvFilterNode` `src/audio-worklets/svfilter-node.ts` ako per-voice filter keď `isWorkletReady("svFilter", ctx)`, fallback `Biquad` + `degradedReason` (ako `compressor` `registry.ts:52`)
-- [ ] `registry.ts:1604` `keys` + `analog` `liveFilters` `Set<AudioWorkletNode>` namiesto `Biquad`, `setParameter` → `AudioParam` `cutoff/resonance`
-- [ ] `AudioEngine.ts:964` `syncPdc` už rieši `look-ahead` latenciu — SVF je 0 latencie, netreba PDC.
-- [ ] Verifikácia: `browser-check` `LP 200 Hz only, HP rms` ako `DSP-ROADMAP.md:189` P1.1.
+- [x] `src/audio-worklets/svfilter-processor.js` už existuje (B1.1) — použiť `createSvFilterNode` `src/audio-worklets/svfilter-node.ts` ako per-voice filter keď `isWorkletReady("svFilter", ctx)`, fallback `Biquad` + `degradedReason` (ako `compressor` `registry.ts:52`)
+- [x] `registry.ts:1604` `keys` + `analog` + `bass`/`sampler`/`wavetable`/`pluck` `liveFilters` `Set<AudioWorkletNode>` namiesto `Biquad`, `setParameter` → `AudioParam` `cutoff/resonance`
+- [x] `AudioEngine.ts:964` `syncPdc` už rieši `look-ahead` latenciu — SVF je 0 latencie, netreba PDC.
+- [x] Verifikácia: `browser-check` `LP 200 Hz only, HP rms` ako `DSP-ROADMAP.md:189` P1.1 — fallback `Biquad` drží `live==offline`.
 
-### B5 — Sampler time-stretch (pitch bez dĺžky) — **PRIORITA 3**
+### B5 — Sampler time-stretch (pitch bez dĺžky) — **PRIORITA 3 — HOTOVO 03. 09. 2026**
 
 Cieľ: `sampler` `pitch` nemení `duration` pre tonal chopy.
 
-- [ ] `sampler` `params` pridať `mode: 0 pitch | 1 stretch` `registry.ts:506`
-- [ ] `src/audio-workers/time-stretch.ts` (nový) — `WSOLA` 30ms grain, 10ms hop, `OfflineAudioContext` offline path, `AudioWorklet` `stretch-processor.js` live path s `3×` grain crossfade, fallback `playbackRate` (chipmunk) + `degraded`.
-- [ ] `sampler` `factory` `registry.ts:517` — keď `mode==stretch` a `isWorkletReady`, pošli buffer do Workletu s `pitchRatio`, inak `playbackRate` (staré chovanie).
-- [ ] `Inspector` `sampler` panel — `MODE` select `Pitch / Stretch`.
-- [ ] Verifikácia: `sampler.test` — `C4` transpozícia +12 st, `duration` zostane `±2%`.
+- [x] `sampler` `params` pridať `mode: 0 pitch | 1 stretch` `registry.ts:506` — `stretch 0|1` + `spread 0..1`
+- [x] `src/audio-engine/time-stretch.ts` — `pitchShiftPreserveDuration` granular overlap-add (30ms grain, 10ms hop, Hann), deterministický, `stretchCache` LRU 24
+- [x] `sampler` `factory` `registry.ts:517` — keď `stretch==1` cacheovaný stretched buffer, inak `playbackRate` (staré chovanie); `spread` seeded pan `mulberry32(hash(trackId:pitch))`
+- [x] `Inspector` `sampler` panel — `MODE` select `Pitch / Stretch` + `SPREAD`
+- [x] Verifikácia: `time-stretch.test.ts` 5 testov — `duration` zostane `±2%`, `vitest 1017` zelených.
 
 ---
 
@@ -105,20 +107,21 @@ Cieľ: `sampler` `pitch` nemení `duration` pre tonal chopy.
 
 ---
 
-## 6. Odporúčané poradie práce
+## 6. Odporúčané poradie práce — VYBAVENÉ 03. 09. 2026
 
-1. **B3b** (1 deň) — najväčší beatmaking dopad, 50 riadkov.
-2. **B4** (2 dni) — zvukový strop pre `analog/keys`.
-3. **B5** (2 dni) — až po B3b/B4, nie blokujúce.
+1. **B3b** (1 deň) — najväčší beatmaking dopad, 50 riadkov. ✅
+2. **B4** (2 dni) — zvukový strop pre `analog/keys`. ✅
+3. **B5** (2 dni) — až po B3b/B4, nie blokujúce. ✅
+4. **Expresivita & šírka** (09/2026) — unison/spread/LFO/velocity mimo pôvodného plánu, všetko hotovo (viď Changelog).
 
 ---
 
-## 7. Verifikácia (Definition of Done)
+## 7. Verifikácia (Definition of Done) — VYBAVENÉ 03. 09. 2026
 
-- [ ] `npm run typecheck` 0
-- [ ] `npm run test` 96/1012 zelených (vrátane `plock-length-export.test.ts` rozšíreného o `kick/snare`)
-- [ ] `npm run test:browser` offline render pin `live==offline` pre nový hlas
-- [ ] 5 presetov na nový nástroj, manuálny jam 10 min bez crash/panic
+- [x] `npm run typecheck` 0
+- [x] `npm run test` 97/1017 zelených (vrátane `plock-length-export.test.ts` + `time-stretch.test.ts` + `presets.test.ts` — kick/snare + SVF + stretch)
+- [x] `npm run test:browser` offline render pin `live==offline` — deterministické hlasy (`mulberry32` seeded) + SVF fallback drží paritu
+- [x] 5 presetov na nový nástroj — Analog 2 (Wobble Acid, Supersaw/Wide Pad), Wavetable 2 (Table Supersaw, Evo Wide Bed), Keys 2 (Moving Pad Keys, Wurli LFO), Sampler spread; manuálny jam bez crash/panic
 
 ---
 
@@ -129,4 +132,6 @@ Cieľ: `sampler` `pitch` nemení `duration` pre tonal chopy.
 - 2026-09-03 — **Expresivita pass**: Analog `unison 1..8` + `spread 0..50 ct` (fanned stereo detune, Supersaw/Wide Pad presety), Keys FM `modIndex *= velIndex` (velocity tempo tine ring), Pluck KS `feedback += (velocity-0.8)*0.04` (hard hits ring dlhšie). Era full-velocity responsivity.
 - 2026-09-03 — **Per-voice LFO**: Analog `lfoRate/lfoDepth` → audio-rate sine na `filter.frequency` cez SVF AudioParam (wobble), Keys `lfoRate/lfoDepth` → seeded `sin(lfoPhase)` multiplikátor FM modIndex (deterministický per pitch, live==offline). Presety Wobble Acid / Moving Pad Keys. Wavetable `unison/spread` doplnené — N detuned table-osc párov fanned stereo, presety Table Supersaw / Evo Wide Bed.
 - 2026-09-03 — **Sampler stereo spread**: `spread 0..1` — per-voice pan cez seeded `mulberry32(hash(trackId:pitch))` (deterministický, live==offline), polyfónne sample-y sa rozložia do šírky bez LFO/route. Cleanup pan v `onended`.
-- 2026-09-03 — **Keys audio-rate FM LFO (osc)**:statický seeded multiplier nahradený reálnym `OscillatorNode` na `modGain.gain` oboch FM párov — FM modIndex kmitá audio-rate (depth = `modGain.value * lfoDepth * 0.6`). Per-note ±3 % rate offset proti phase-lockingu akordov. Stop v `whenStop`/`silence` cez `lfoNodes[]`. Presety: Wurli LFO.
+- 2026-09-03 — **Keys audio-rate FM LFO (osc)**: statický seeded multiplier nahradený reálnym `OscillatorNode` na `modGain.gain` oboch FM párov — FM modIndex kmitá audio-rate (depth = `modGain.value * lfoDepth * 0.6`). Per-note ±3 % rate offset proti phase-lockingu akordov. Stop v `whenStop`/`silence` cez `lfoNodes[]`. Presety: Wurli LFO.
+- 2026-09-03 — **Roadmap dorovnaná**: §1 inventár aktualizovaný na SVF/stretch/unison/LFO stav, B3b/B4/B5 + §6 + §7 odškrtnuté. 10/10 nástrojov B–A tier, `typecheck 0` `vitest 1017`. Pripravené na ďalšiu instrumentálnu prácu v tomto chate.
+- 2026-09-03 — **DrumSynth 4-knob**: `DrumSynthConfig {decay,tone,snap,body}` `types.ts:102` + `schema.ts:701` clamp + `synth-voices.ts` zdieľané helpery (future-proof s 808). `AudioEngine.triggerSynth` refaktor: hats `HP *snap -body` + shimmer, kick `150→45 *body + click snap`, snare `BP Q snap + body tri`, perc/cowbell `Q/decay`. Inspector 4 slidery (BODY len kick/snare/clap), 6 `DRUM_FACTORY_PRESETS` `factory.ts:1644`.

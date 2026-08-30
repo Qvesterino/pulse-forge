@@ -45,8 +45,10 @@ import { BAR_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
 import { CommandToast } from "./CommandToast";
 import { HelpOverlay } from "./HelpOverlay";
 import { OnboardingHint } from "./OnboardingHint";
+import { DiceTray } from "./DiceTray";
+import { DiceProvider } from "./DiceContext";
 
-const PANEL_KEYS = ["mixer", "fx", "arr", "mod", "exp", "midi"] as const;
+const PANEL_KEYS = ["mixer", "fx", "arr", "mod", "exp", "midi", "dice"] as const;
 type BottomPanel = (typeof PANEL_KEYS)[number];
 
 export function App({
@@ -108,8 +110,13 @@ export function App({
         : (e as unknown as { shiftKey?: boolean })?.shiftKey
           ? "range"
           : "replace";
+    const trackObj = doc.tracks.find((t) => t.id === trackId);
+    const ids =
+      trackObj?.kind === "group"
+        ? [trackId, ...doc.tracks.filter((t) => t.kind !== "group" && t.groupId === trackId).map((t) => t.id)]
+        : [trackId];
     selectionStore.setTracks(
-      [trackId],
+      ids,
       mode as "replace" | "add" | "range",
       doc.tracks.map((t) => t.id),
     );
@@ -552,7 +559,8 @@ export function App({
         case "panelFx":
         case "panelArr":
         case "panelMod":
-        case "panelExport": {
+        case "panelExport":
+        case "panelDice": {
           event.preventDefault();
           const panel = panelIdOfShortcut(matched);
           if (panel) setBottomPanelTab(panel as BottomPanel);
@@ -724,33 +732,34 @@ export function App({
 
   return (
     <ServicesContext.Provider value={services}>
-      <SelectionContext.Provider value={selectionStore}>
-        <ToolContext.Provider value={toolStore}>
-          <AudioUnlock />
-          <div className="app">
-            <TopBar
-              diagnosticsOpen={diagnosticsOpen}
-              bottomPanel={bottomPanel}
-              playMode={playMode}
-              onSetPlayMode={services.playback.setMode}
-              onToggleDiagnostics={() => setDiagnosticsOpen((open) => !open)}
-              onSetBottomPanel={setBottomPanelTab}
-              onToggleHelp={() => setHelpOpen((v) => !v)}
-              onOpenBrowser={onOpenBrowser}
-              onReplaceServices={onReplaceServices}
-              scaleSnap={scaleSnap}
-              onToggleScaleSnap={() => setScaleSnap((s) => !s)}
-              historyOpen={historyOpen}
-              onToggleHistory={() => setHistoryOpen((v) => !v)}
-            />
-            <main className="workspace">
-              <div className="workspace-main">
-                <TrackTabs selectedTrackId={track.id} onSelectTrack={selectTrack} />
-                {track.kind === "drum" && (
-                  <RackStrip track={track} selectedPadId={padId} onSelectPad={setSelectedPadId} />
-                )}
-                <PatternBar clip={clip} onCopy={setClip} />
-                <Sequencer
+      <DiceProvider doc={doc}>
+        <SelectionContext.Provider value={selectionStore}>
+          <ToolContext.Provider value={toolStore}>
+            <AudioUnlock />
+            <div className="app">
+              <TopBar
+                diagnosticsOpen={diagnosticsOpen}
+                bottomPanel={bottomPanel}
+                playMode={playMode}
+                onSetPlayMode={services.playback.setMode}
+                onToggleDiagnostics={() => setDiagnosticsOpen((open) => !open)}
+                onSetBottomPanel={setBottomPanelTab}
+                onToggleHelp={() => setHelpOpen((v) => !v)}
+                onOpenBrowser={onOpenBrowser}
+                onReplaceServices={onReplaceServices}
+                scaleSnap={scaleSnap}
+                onToggleScaleSnap={() => setScaleSnap((s) => !s)}
+                historyOpen={historyOpen}
+                onToggleHistory={() => setHistoryOpen((v) => !v)}
+              />
+              <main className="workspace">
+                <div className="workspace-main">
+                  <TrackTabs selectedTrackId={track.id} onSelectTrack={selectTrack} />
+                  {track.kind === "drum" && (
+                    <RackStrip track={track} selectedPadId={padId} onSelectPad={setSelectedPadId} />
+                  )}
+                  <PatternBar clip={clip} onCopy={setClip} onOpenDice={() => setBottomPanel("dice")} />
+                  <Sequencer
                   selectedPadId={padId}
                   selectedTrackId={track.id}
                   onSelectTrack={selectTrack}
@@ -780,6 +789,7 @@ export function App({
                 />
               )}
             </ErrorBoundary>
+            <ErrorBoundary panel="dice">{bottomPanel === "dice" && <DiceTray />}</ErrorBoundary>
             {diagnosticsOpen && (
               <ErrorBoundary panel="diagnostics">
                 <Diagnostics />
@@ -800,6 +810,7 @@ export function App({
           </div>
         </ToolContext.Provider>
       </SelectionContext.Provider>
+      </DiceProvider>
     </ServicesContext.Provider>
   );
 }

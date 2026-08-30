@@ -101,7 +101,7 @@ export function __resetSnapshotVerificationFallbacks(): void {
   snapshotVerificationFallbacks = 0;
 }
 
-function snapshot(type: string, label: string, prev: ProjectDocument, next: ProjectDocument): Command {
+export function snapshot(type: string, label: string, prev: ProjectDocument, next: ProjectDocument): Command {
   // Inverse-patch command: capture the CHANGE (id-anchored operations), not
   // the documents. Functional execute/undo apply the delta to whatever
   // document is current — an async dispatch (seconds-long freeze render,
@@ -1198,6 +1198,48 @@ export function setTrackColor(doc: ProjectDocument, trackId: string, color: stri
     }),
   };
   return snapshot("setTrackColor", color ? `Set ${track.name} color` : `Clear ${track.name} color`, doc, next);
+}
+
+export function setGroupCollapsed(doc: ProjectDocument, groupId: string, collapsed: boolean): Command {
+  const track = doc.tracks.find((t) => t.id === groupId);
+  if (!track || track.kind !== "group") throw new Error(`Group ${groupId} not found`);
+  const next: ProjectDocument = {
+    ...doc,
+    tracks: doc.tracks.map((t) =>
+      t.id === groupId ? ({ ...t, collapsed } as import("../project-model/types").GroupTrack) : t,
+    ),
+  };
+  return snapshot("setGroupCollapsed", collapsed ? `Fold ${track.name}` : `Unfold ${track.name}`, doc, next);
+}
+
+export function setGroupMute(doc: ProjectDocument, groupId: string, mute: boolean): Command {
+  const group = doc.tracks.find((t) => t.id === groupId && t.kind === "group");
+  if (!group) throw new Error(`Group ${groupId} not found`);
+  const memberIds = new Set(doc.tracks.filter((t) => t.kind !== "group" && t.groupId === groupId).map((t) => t.id));
+  const next: ProjectDocument = {
+    ...doc,
+    tracks: doc.tracks.map((t) => {
+      if (t.id === groupId) return { ...t, mute } as import("../project-model/types").GroupTrack;
+      if (memberIds.has(t.id)) return { ...t, mute } as Track;
+      return t;
+    }),
+  };
+  return snapshot("setGroupMute", `${mute ? "Mute" : "Unmute"} ${group.name} (+${memberIds.size})`, doc, next);
+}
+
+export function setGroupSolo(doc: ProjectDocument, groupId: string, solo: boolean): Command {
+  const group = doc.tracks.find((t) => t.id === groupId && t.kind === "group");
+  if (!group) throw new Error(`Group ${groupId} not found`);
+  const memberIds = new Set(doc.tracks.filter((t) => t.kind !== "group" && t.groupId === groupId).map((t) => t.id));
+  const next: ProjectDocument = {
+    ...doc,
+    tracks: doc.tracks.map((t) => {
+      if (t.id === groupId) return { ...t, solo } as import("../project-model/types").GroupTrack;
+      if (memberIds.has(t.id)) return { ...t, solo } as Track;
+      return t;
+    }),
+  };
+  return snapshot("setGroupSolo", `${solo ? "Solo" : "Un-solo"} ${group.name} (+${memberIds.size})`, doc, next);
 }
 
 export function createReturnTrack(doc: ProjectDocument, name?: string): Command {

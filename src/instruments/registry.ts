@@ -1783,14 +1783,7 @@ const keys: InstrumentDefinition = {
           -width * 0.6,
           0.22 + damp * 0.35,
         );
-        const pairB = makePair(
-          3.5,
-          1,
-          (18 + bell * 1100) * velIndex,
-          bell * 0.55,
-          width * 0.6,
-          0.18 + damp * 0.28,
-        );
+        const pairB = makePair(3.5, 1, (18 + bell * 1100) * velIndex, bell * 0.55, width * 0.6, 0.18 + damp * 0.28);
 
         const lfoNodes: OscillatorNode[] = [];
         if (lfoMultBase > 0.001) {

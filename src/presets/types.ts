@@ -24,3 +24,13 @@ export interface InstrumentPreset {
   sampleId?: string | null;
   user?: boolean;
 }
+
+export interface DrumSynthPreset {
+  id: string;
+  name: string;
+  type: import("../project-model/types").DrumSynthType;
+  genre: PresetGenre | null;
+  mood: PresetMood[];
+  tags: string[];
+  synth: import("../project-model/types").DrumSynthConfig;
+}

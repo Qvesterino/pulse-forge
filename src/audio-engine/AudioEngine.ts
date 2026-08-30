@@ -73,6 +73,11 @@ export function soloAudibility(doc: ProjectDocument): SoloAudibility {
     audible(trackId: string): boolean {
       const t = tracks.find((x) => x.id === trackId);
       if (!t) return false;
+      // Group mute silences its members — 1 gesture mutes 8 tracks
+      if (t.kind !== "group" && t.groupId) {
+        const g = tracks.find((x) => x.id === t.groupId);
+        if (g && g.mute) return false;
+      }
       if (t.kind === "group") {
         return !t.mute && (!anySolo || t.solo || groupsWithSoloedChild.has(t.id));
       }
@@ -2167,8 +2172,11 @@ export class AudioEngine {
       case "hatClosed":
       case "hatOpen": {
         const isOpen = synth.type === "hatOpen";
-        const decay = isOpen ? 0.32 * lengthMul : 0.07 * lengthMul;
-        const hpFreq = Math.max(1000, Math.min(12000, cutoff));
+        const snap = (synth as any).snap ?? 0.35;
+        const body = (synth as any).body ?? 0.5;
+        // decay now respects user value (schema def already 0.08/0.32); sizzle via snap, body darkens
+        const baseDecay = synth.decay * lengthMul;
+        const hpFreq = Math.max(1000, Math.min(12000, cutoff * (1 + snap * 0.35) - body * 600));
         const src = ctx.createBufferSource();
         src.buffer = noise!;
         const hp = ctx.createBiquadFilter();
@@ -2176,11 +2184,26 @@ export class AudioEngine {
         hp.frequency.value = hpFreq;
         const g = ctx.createGain();
         g.gain.setValueAtTime(peak, when);
-        g.gain.exponentialRampToValueAtTime(0.0001, when + decay);
+        g.gain.exponentialRampToValueAtTime(0.0001, when + baseDecay);
         src.connect(hp).connect(g).connect(gain);
         src.start(when);
         addVoice(src, g, hp);
-        finishVoice(decay);
+        // shimmer layer for open hats when snap high
+        if (isOpen && snap > 0.5) {
+          const shSrc = ctx.createBufferSource();
+          shSrc.buffer = noise!;
+          const bp = ctx.createBiquadFilter();
+          bp.type = "bandpass";
+          bp.frequency.value = 9200;
+          bp.Q.value = 1.2;
+          const sg = ctx.createGain();
+          sg.gain.setValueAtTime(peak * 0.22 * snap, when);
+          sg.gain.exponentialRampToValueAtTime(0.0001, when + baseDecay * 0.7);
+          shSrc.connect(bp).connect(sg).connect(gain);
+          shSrc.start(when);
+          addVoice(shSrc, sg, bp);
+        }
+        finishVoice(baseDecay);
         break;
       }
       case "clap": {
@@ -2206,29 +2229,32 @@ export class AudioEngine {
         break;
       }
       case "kick": {
+        const snap = (synth as any).snap ?? 0.35;
+        const body = (synth as any).body ?? 0.5;
         const baseDecay = synth.decay * lengthMul;
-        const startHz = 150 * Math.pow(2, pitchOffset / 12);
+        const startHz = 150 * Math.pow(2, pitchOffset / 12) * (1 + body * 0.15);
         const endHz = 45 * Math.pow(2, pitchOffset / 12);
         const osc = ctx.createOscillator();
         osc.type = "sine";
         osc.frequency.setValueAtTime(startHz, when);
-        osc.frequency.exponentialRampToValueAtTime(endHz, when + Math.min(0.09, baseDecay * 0.4));
+        osc.frequency.exponentialRampToValueAtTime(endHz, when + Math.min(0.09, baseDecay * (0.35 + body * 0.15)));
         const ampOsc = ctx.createGain();
         ampOsc.gain.setValueAtTime(peak, when);
         ampOsc.gain.exponentialRampToValueAtTime(0.0001, when + baseDecay);
         osc.connect(ampOsc).connect(gain);
         osc.start(when);
         addVoice(osc, ampOsc);
-        // Click
+        // Click — snap controls transient, tone controls brightness
         const clickSrc = ctx.createBufferSource();
         clickSrc.buffer = noise!;
         const hp = ctx.createBiquadFilter();
         hp.type = "highpass";
         hp.frequency.value = 1500;
         const clickGain = ctx.createGain();
-        const clickLevel = 0.25 + (cutoff / 12000) * 0.25;
+        const clickLevel = 0.2 + (cutoff / 12000) * 0.3 + snap * 0.28;
+        const clickDur = 0.008 + snap * 0.014;
         clickGain.gain.setValueAtTime(peak * clickLevel, when);
-        clickGain.gain.exponentialRampToValueAtTime(0.0001, when + 0.012);
+        clickGain.gain.exponentialRampToValueAtTime(0.0001, when + clickDur);
         clickSrc.connect(hp).connect(clickGain).connect(gain);
         clickSrc.start(when);
         addVoice(clickSrc, clickGain, hp);
@@ -2236,15 +2262,18 @@ export class AudioEngine {
         break;
       }
       case "snare": {
+        const snap = (synth as any).snap ?? 0.35;
+        const body = (synth as any).body ?? 0.5;
         const baseDecay = synth.decay * lengthMul;
-        const toneHz = 192 * Math.pow(2, pitchOffset / 12);
+        const toneHz = 192 * Math.pow(2, pitchOffset / 12) * (1 + body * 0.08);
         const osc = ctx.createOscillator();
         osc.type = "triangle";
         osc.frequency.setValueAtTime(toneHz, when);
-        osc.frequency.exponentialRampToValueAtTime(toneHz * 0.6, when + 0.11);
+        osc.frequency.exponentialRampToValueAtTime(toneHz * 0.6, when + 0.11 * (0.8 + body * 0.4));
         const oscGain = ctx.createGain();
-        oscGain.gain.setValueAtTime(peak * 0.7, when);
-        oscGain.gain.exponentialRampToValueAtTime(0.0001, when + 0.11 * lengthMul);
+        const bodyGain = 0.62 + body * 0.28;
+        oscGain.gain.setValueAtTime(peak * bodyGain, when);
+        oscGain.gain.exponentialRampToValueAtTime(0.0001, when + 0.11 * lengthMul * (0.8 + body * 0.4));
         osc.connect(oscGain).connect(gain);
         osc.start(when);
         addVoice(osc, oscGain);
@@ -2253,11 +2282,13 @@ export class AudioEngine {
         const bp = ctx.createBiquadFilter();
         bp.type = "bandpass";
         bp.frequency.value = Math.max(500, Math.min(8000, cutoff));
-        if (locks?.cutoff === undefined) bp.frequency.value = 1750;
-        bp.Q.value = 0.9;
+        if (locks?.cutoff === undefined) bp.frequency.value = Math.max(500, Math.min(8000, (synth as any).tone ?? 1750));
+        bp.Q.value = 0.9 + snap * 0.7;
         const nGain = ctx.createGain();
-        nGain.gain.setValueAtTime(peak * 0.8, when);
-        nGain.gain.exponentialRampToValueAtTime(0.0001, when + 0.2 * lengthMul);
+        const snapGain = 0.55 + snap * 0.35;
+        const noiseDecay = baseDecay * (0.6 + snap * 0.5);
+        nGain.gain.setValueAtTime(peak * snapGain, when);
+        nGain.gain.exponentialRampToValueAtTime(0.0001, when + noiseDecay);
         nSrc.connect(bp).connect(nGain).connect(gain);
         nSrc.start(when);
         addVoice(nSrc, nGain, bp);
@@ -2265,17 +2296,19 @@ export class AudioEngine {
         break;
       }
       case "perc": {
+        const snap = (synth as any).snap ?? 0.35;
+        const body = (synth as any).body ?? 0.5;
         const freq = 2100 * Math.pow(2, pitchOffset / 12);
         const src = ctx.createBufferSource();
         src.buffer = noise!;
         const bp = ctx.createBiquadFilter();
         bp.type = "bandpass";
         bp.frequency.value = Math.max(500, Math.min(8000, cutoff));
-        if (locks?.cutoff === undefined) bp.frequency.value = freq;
-        bp.Q.value = 4;
+        if (locks?.cutoff === undefined) bp.frequency.value = Math.max(500, Math.min(8000, (synth as any).tone ?? freq));
+        bp.Q.value = 2.5 + snap * 3;
         const g = ctx.createGain();
         g.gain.setValueAtTime(peak, when);
-        g.gain.exponentialRampToValueAtTime(0.0001, when + 0.04 * lengthMul);
+        g.gain.exponentialRampToValueAtTime(0.0001, when + (0.04 + body * 0.04) * lengthMul);
         src.connect(bp).connect(g).connect(gain);
         src.start(when);
         addVoice(src, g, bp);
@@ -2283,6 +2316,8 @@ export class AudioEngine {
         break;
       }
       case "cowbell": {
+        const snap = (synth as any).snap ?? 0.35;
+        const body = (synth as any).body ?? 0.5;
         const base = 540 * Math.pow(2, pitchOffset / 12);
         const freqs = [base, base * 1.485];
         for (const f of freqs) {
@@ -2292,10 +2327,10 @@ export class AudioEngine {
           const bp = ctx.createBiquadFilter();
           bp.type = "bandpass";
           bp.frequency.value = f;
-          bp.Q.value = 2;
+          bp.Q.value = 2 + snap * 1.2;
           const g = ctx.createGain();
-          g.gain.setValueAtTime(peak * 0.45, when);
-          g.gain.exponentialRampToValueAtTime(0.0001, when + 0.32 * lengthMul);
+          g.gain.setValueAtTime(peak * (0.38 + body * 0.14), when);
+          g.gain.exponentialRampToValueAtTime(0.0001, when + (0.32 + body * 0.12) * lengthMul);
           osc.connect(bp).connect(g).connect(gain);
           osc.start(when);
           addVoice(osc, g, bp);

@@ -168,7 +168,7 @@ export function Inspector({ track, selectedPadId }: { track: Track; selectedPadI
           className={`btn btn-small${isSynth ? " active" : ""}`}
           onClick={() =>
             services.store.execute(
-              setPadSynth(doc, pad.id, pad.synth ?? { type: "hatClosed", decay: 0.08, tone: 7500 }),
+              setPadSynth(doc, pad.id, pad.synth ?? { type: "hatClosed", decay: 0.08, tone: 7500, snap: 0.35, body: 0.3 }),
             )
           }
         >
@@ -195,17 +195,19 @@ export function Inspector({ track, selectedPadId }: { track: Track; selectedPadI
               value={pad.synth?.type ?? "hatClosed"}
               onChange={(e) => {
                 const type = e.target.value as any;
-                const defaults: Record<string, { decay: number; tone: number }> = {
-                  hatClosed: { decay: 0.08, tone: 7500 },
-                  hatOpen: { decay: 0.32, tone: 7000 },
-                  clap: { decay: 0.25, tone: 1200 },
-                  perc: { decay: 0.08, tone: 2100 },
-                  cowbell: { decay: 0.32, tone: 540 },
-                  kick: { decay: 0.42, tone: 5000 },
-                  snare: { decay: 0.22, tone: 1750 },
+                const defaults: Record<string, { decay: number; tone: number; snap: number; body: number }> = {
+                  hatClosed: { decay: 0.08, tone: 7500, snap: 0.35, body: 0.3 },
+                  hatOpen: { decay: 0.32, tone: 7000, snap: 0.55, body: 0.5 },
+                  clap: { decay: 0.25, tone: 1200, snap: 0.4, body: 0.5 },
+                  perc: { decay: 0.12, tone: 2100, snap: 0.35, body: 0.45 },
+                  cowbell: { decay: 0.32, tone: 540, snap: 0.35, body: 0.5 },
+                  kick: { decay: 0.42, tone: 5000, snap: 0.3, body: 0.6 },
+                  snare: { decay: 0.22, tone: 1750, snap: 0.45, body: 0.5 },
                 };
                 const d = defaults[type];
-                services.store.execute(setPadSynth(doc, pad.id, { type, decay: d.decay, tone: d.tone }));
+                services.store.execute(
+                  setPadSynth(doc, pad.id, { type, decay: d.decay, tone: d.tone, snap: d.snap, body: d.body }),
+                );
               }}
             >
               <option value="hatClosed">Hat Closed</option>
@@ -237,6 +239,28 @@ export function Inspector({ track, selectedPadId }: { track: Track; selectedPadI
             format={(v) => `${Math.round(v)} Hz`}
             onCommit={(tone) => services.store.execute(setPadSynth(doc, pad.id, { ...(pad.synth as any), tone }))}
           />
+          <Slider
+            compact
+            label="SNAP"
+            value={(pad.synth as any)?.snap ?? 0.35}
+            min={0}
+            max={1}
+            defaultValue={0.35}
+            format={(v) => `${Math.round(v * 100)}`}
+            onCommit={(snap) => services.store.execute(setPadSynth(doc, pad.id, { ...(pad.synth as any), snap }))}
+          />
+          {(pad.synth?.type === "kick" || pad.synth?.type === "snare" || pad.synth?.type === "clap") && (
+            <Slider
+              compact
+              label="BODY"
+              value={(pad.synth as any)?.body ?? 0.5}
+              min={0}
+              max={1}
+              defaultValue={0.5}
+              format={(v) => `${Math.round(v * 100)}`}
+              onCommit={(body) => services.store.execute(setPadSynth(doc, pad.id, { ...(pad.synth as any), body }))}
+            />
+          )}
         </div>
       )}
 

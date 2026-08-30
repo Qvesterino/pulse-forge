@@ -201,7 +201,8 @@ describe("soloAudibility (group solo semantics)", () => {
       }),
     };
     const solo = soloAudibility(muted);
-    expect(solo.audible("t-drum")).toBe(true); // its own gate is open
+    // Group mute now silences its members (1 gesto na 8) — linked mixer
+    expect(solo.audible("t-drum")).toBe(false); // group muted → member inaudible even if soloed
     expect(solo.audible("grp-a")).toBe(false); // but the muted group gate is closed
   });
 

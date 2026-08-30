@@ -12,6 +12,7 @@ import { ScalePanel } from "./ScalePanel";
 import { CollabPanel } from "./CollabPanel";
 import { AssistPanel } from "./AssistPanel";
 import { assistFill, assistVary } from "../commands/commands";
+import { nextSeed } from "../shared/dice";
 
 function formatClock(iso: string | null): string {
   if (!iso) return "";
@@ -37,8 +38,8 @@ export function TopBar({
 }: {
   onToggleDiagnostics: () => void;
   diagnosticsOpen: boolean;
-  onSetBottomPanel: (panel: "mixer" | "fx" | "arr" | "mod" | "exp" | "midi") => void;
-  bottomPanel: "mixer" | "fx" | "arr" | "mod" | "exp" | "midi" | null;
+  onSetBottomPanel: (panel: "mixer" | "fx" | "arr" | "mod" | "exp" | "midi" | "dice") => void;
+  bottomPanel: "mixer" | "fx" | "arr" | "mod" | "exp" | "midi" | "dice" | null;
   onToggleHelp: () => void;
   playMode: PlayMode;
   onSetPlayMode: (mode: PlayMode) => void;
@@ -116,12 +117,12 @@ export function TopBar({
       // 1-klik Assist shortcuts — deterministic, no panel
       if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "v") {
         event.preventDefault();
-        const seed = Math.random().toString(36).slice(2, 10);
+        const seed = nextSeed(doc.activePatternId + String(Date.now()), "topbar-vary");
         services.store.execute(assistVary(doc, doc.activePatternId, seed, 0.6));
       }
       if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "f") {
         event.preventDefault();
-        const seed = Math.random().toString(36).slice(2, 10);
+        const seed = nextSeed(doc.activePatternId + String(Date.now()), "topbar-fill");
         services.store.execute(assistFill(doc, doc.activePatternId, seed));
       }
     };
@@ -335,6 +336,16 @@ export function TopBar({
           </button>
           <button
             type="button"
+            className={`btn btn-ghost${bottomPanel === "dice" ? " active" : ""}`}
+            onClick={() => onSetBottomPanel("dice")}
+            title="Toggle dice panel — rapid beat generator (Alt+6, D to roll)"
+            aria-label="Toggle dice panel"
+            aria-pressed={bottomPanel === "dice"}
+          >
+            🎲 DICE
+          </button>
+          <button
+            type="button"
             className="btn btn-ghost"
             onClick={onToggleHelp}
             title="Show keyboard shortcuts (?)"
@@ -356,7 +367,7 @@ export function TopBar({
             type="button"
             className="btn btn-ghost"
             onClick={() => {
-              const seed = Math.random().toString(36).slice(2, 10);
+              const seed = nextSeed(doc.activePatternId + String(Date.now()), "topbar-vary");
               services.store.execute(assistVary(doc, doc.activePatternId, seed, 0.6));
             }}
             title="One-click vary (Ctrl+Shift+V)"
@@ -368,7 +379,7 @@ export function TopBar({
             type="button"
             className="btn btn-ghost"
             onClick={() => {
-              const seed = Math.random().toString(36).slice(2, 10);
+              const seed = nextSeed(doc.activePatternId + String(Date.now()), "topbar-fill");
               services.store.execute(assistFill(doc, doc.activePatternId, seed));
             }}
             title="One-click fill (Ctrl+Shift+F)"

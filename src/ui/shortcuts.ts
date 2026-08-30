@@ -33,6 +33,7 @@ export type ShortcutKey =
   | "panelArr"
   | "panelMod"
   | "panelExport"
+  | "panelDice"
   | "nextPattern"
   | "prevPattern"
   | "seekHome"
@@ -52,6 +53,7 @@ export const PANEL_IDS_BY_SHORTCUT: Record<string, string> = {
   panelArr: "arr",
   panelMod: "mod",
   panelExport: "exp",
+  panelDice: "dice",
 };
 
 export function panelIdOfShortcut(key: ShortcutKey): string | null {
@@ -147,6 +149,7 @@ export const SHORTCUTS: Shortcut[] = [
   { key: "panelArr", label: "Toggle arrangement", group: "Panels", keyHint: "3", alt: true },
   { key: "panelMod", label: "Toggle modulation", group: "Panels", keyHint: "4", alt: true },
   { key: "panelExport", label: "Toggle export", group: "Panels", keyHint: "5", alt: true },
+  { key: "panelDice", label: "Toggle dice panel", group: "Panels", keyHint: "6", alt: true },
 
   { key: "deleteNote", label: "Delete selected note / clear selected steps", group: "Sequencer", keyHint: "Delete" },
 

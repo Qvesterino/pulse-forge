@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useDoc, useSelection, useServices } from "./context";
+import { useDoc, useSelection, useSelectionStore, useServices } from "./context";
 import {
   addEffectToTracks,
   addMacroMapping,
@@ -8,6 +8,9 @@ import {
   deleteTrack,
   duplicateTrack,
   removeFromGroup,
+  setGroupCollapsed,
+  setGroupMute,
+  setGroupSolo,
   setMasterConfig,
   setReturnGain,
   setTrackColor,
@@ -30,6 +33,20 @@ export function Mixer() {
   const selectedTracks = doc.tracks.filter((t) => selectedIds.includes(t.id));
   const batchCount = selectedTracks.length > 1 ? selectedTracks.length : doc.tracks.length;
   const [batchType, setBatchType] = useState<EffectType>("eq");
+  const collapsedGroups = new Set(
+    doc.tracks
+      .filter((t) => t.kind === "group" && (t as import("../project-model/types").GroupTrack).collapsed)
+      .map((t) => t.id),
+  );
+  const visibleTracks = doc.tracks.filter((t) => {
+    if (
+      t.kind !== "group" &&
+      (t as unknown as { groupId?: string }).groupId &&
+      collapsedGroups.has((t as unknown as { groupId?: string }).groupId!)
+    )
+      return false;
+    return true;
+  });
   return (
     <section className="mixer" aria-label="Mixer">
       <div className="mixer-batch-bar" role="toolbar" aria-label="Batch FX">
@@ -64,9 +81,24 @@ export function Mixer() {
         </button>
       </div>
       <div className="mixer-strips">
-        {doc.tracks.map((track) => (
+        {visibleTracks.map((track) => (
           <ChannelStrip key={track.id} track={track} canDelete={doc.tracks.length > 1} />
         ))}
+        {collapsedGroups.size > 0 && (
+          <div className="mixer-fold-hint" style={{ fontSize: 10, color: "var(--muted)", padding: "4px 6px" }}>
+            {[...collapsedGroups].map((gid) => {
+              const g = doc.tracks.find((t) => t.id === gid) as import("../project-model/types").GroupTrack | undefined;
+              const count = doc.tracks.filter(
+                (t) => t.kind !== "group" && (t as unknown as { groupId?: string }).groupId === gid,
+              ).length;
+              return (
+                <span key={gid} style={{ marginRight: 8 }}>
+                  {g?.name ?? gid}: {count} hidden ▶
+                </span>
+              );
+            })}
+          </div>
+        )}
         {doc.returns.map((ret) => (
           <div key={ret.id} className="channel-strip return-strip" aria-label={`Return ${ret.name}`}>
             <div className="channel-name">
@@ -185,6 +217,8 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
     trackId: string;
   }>(null);
   const isGroup = track.kind === "group";
+  const selectionStore = useSelectionStore();
+  const selection = useSelection();
 
   useEffect(() => {
     if (!faderMenu) return;
@@ -204,8 +238,30 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
 
   return (
     <div
-      className={`channel-strip${isGroup ? " group-strip" : ""}${dragOver ? " drag-over" : ""}`}
+      className={`channel-strip${isGroup ? " group-strip" : ""}${dragOver ? " drag-over" : ""}${selection.trackIds.includes(track.id) ? " selected-strip" : ""}`}
       draggable={!isGroup}
+      onClick={(e) => {
+        if ((e.target as HTMLElement).closest("button, input, select, a, .channel-color")) return;
+        const ids = isGroup
+          ? [
+              track.id,
+              ...doc.tracks
+                .filter((t) => t.kind !== "group" && (t as unknown as { groupId?: string }).groupId === track.id)
+                .map((t) => t.id),
+            ]
+          : [track.id];
+        const mode =
+          e.ctrlKey || (e as unknown as { metaKey?: boolean }).metaKey
+            ? "add"
+            : (e as unknown as { shiftKey?: boolean }).shiftKey
+              ? "range"
+              : "replace";
+        selectionStore.setTracks(
+          ids,
+          mode as "replace" | "add" | "range",
+          doc.tracks.map((t) => t.id),
+        );
+      }}
       onDragStart={(e) => {
         if (isGroup) {
           e.preventDefault();
@@ -236,6 +292,21 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
       style={track.color ? { borderTopColor: track.color, borderTopWidth: 3 } : undefined}
     >
       <div className="channel-name">
+        {isGroup && (
+          <button
+            type="button"
+            className="btn btn-small"
+            title={track.collapsed ? "Unfold group (show members)" : "Fold group (hide members)"}
+            onClick={() =>
+              services.store.execute(
+                setGroupCollapsed(doc, track.id, !(track as import("../project-model/types").GroupTrack).collapsed),
+              )
+            }
+            style={{ minWidth: 22, padding: "2px 4px" }}
+          >
+            {(track as import("../project-model/types").GroupTrack).collapsed ? "▶" : "▼"}
+          </button>
+        )}
         <span className="track-tab-badge">{trackBadge(track)}</span>
         <input
           className="channel-name-input"
@@ -261,6 +332,16 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
           onChange={(e) => services.store.execute(setTrackColor(doc, track.id, e.target.value))}
           onDoubleClick={() => services.store.execute(setTrackColor(doc, track.id, null))}
         />
+        {isGroup && (track as import("../project-model/types").GroupTrack).collapsed && (
+          <span style={{ fontSize: 10, color: "var(--muted)", marginLeft: 4 }}>
+            {
+              doc.tracks.filter(
+                (t) => t.kind !== "group" && (t as unknown as { groupId?: string }).groupId === track.id,
+              ).length
+            }{" "}
+            hidden
+          </span>
+        )}
       </div>
       <div className="channel-body">
         <div className="channel-controls">
@@ -357,16 +438,22 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
         <button
           type="button"
           className={`btn btn-small${track.mute ? " active-mute" : ""}`}
-          title="Mute track"
-          onClick={() => services.store.execute(setTrackParams(doc, track.id, { mute: !track.mute }))}
+          title={isGroup ? "Mute group (+ members) — 1 gesto na 8" : "Mute track"}
+          onClick={() => {
+            if (isGroup) services.store.execute(setGroupMute(doc, track.id, !track.mute));
+            else services.store.execute(setTrackParams(doc, track.id, { mute: !track.mute }));
+          }}
         >
           M
         </button>
         <button
           type="button"
           className={`btn btn-small${track.solo ? " active-solo" : ""}`}
-          title="Solo track"
-          onClick={() => services.store.execute(setTrackParams(doc, track.id, { solo: !track.solo }))}
+          title={isGroup ? "Solo group (+ members)" : "Solo track"}
+          onClick={() => {
+            if (isGroup) services.store.execute(setGroupSolo(doc, track.id, !track.solo));
+            else services.store.execute(setTrackParams(doc, track.id, { solo: !track.solo }));
+          }}
         >
           S
         </button>
