@@ -6,6 +6,9 @@ export interface Clock {
 
 export const systemClock: Clock = { now: () => performance.now() / 1000 };
 
+/** Ticks per bar (4/4) — matches BAR_TICKS without importing the model (transport stays model-independent). */
+const BAR_TICKS_ = PPQ * 4;
+
 export class Transport {
   private bpm_: number;
   private playing_ = false;
@@ -15,6 +18,10 @@ export class Transport {
   private loopEnabled_ = false;
   private loopStart_ = 0;
   private loopEnd_ = 0;
+  /** Metronome count-in length in bars (0 = off, 1..2). */
+  private countInBars_ = 0;
+  /** Pre-roll length in bars (0 = off, 1) — playback starts this many bars early. */
+  private preRollBars_ = 0;
 
   constructor(
     private clock: Clock,
@@ -111,8 +118,34 @@ export class Transport {
     this.loopEnd_ = 0;
   }
 
+  /** Count-in bars for recording (0/1/2). Persistent setting, not a doc field. */
+  get countInBars(): number {
+    return this.countInBars_;
+  }
+
+  setCountIn(bars: number): void {
+    this.countInBars_ = Math.max(0, Math.min(2, Math.round(bars)));
+  }
+
+  /** Pre-roll bars (0/1) — playback begins this many bars before the requested tick. */
+  get preRollBars(): number {
+    return this.preRollBars_;
+  }
+
+  setPreRoll(bars: number): void {
+    this.preRollBars_ = Math.max(0, Math.min(1, Math.round(bars)));
+  }
+
   get secondsPerTick(): number {
     return 60 / (this.bpm_ * PPQ);
+  }
+
+  /**
+   * Absolute tick where actual content (drums/notes) starts sounding during a
+   * pre-roll playback — the count-in region [playStart, this) plays clicks only.
+   */
+  anchorTickBeforePreRoll(): number {
+    return this.anchorTick + this.preRollBars_ * BAR_TICKS_;
   }
 
   tickAt(audioTime: number): number {

@@ -1,7 +1,7 @@
 import { Transport } from "../transport/Transport";
 import type { AudioEngine } from "./AudioEngine";
 import type { SampleBank } from "../sample-library/factory";
-import type { Pattern, ProjectDocument } from "../project-model/types";
+import type { DrumPad, Pattern, ProjectDocument } from "../project-model/types";
 import { BAR_TICKS, PPQ } from "../project-model/types";
 import { drumHitsInWindow } from "../project-model/groove";
 import { noteEventsInWindow } from "../project-model/events";
@@ -25,10 +25,34 @@ export class GhostPreviewPlayer {
     return this.playing;
   }
 
-  play(pattern: Pattern, opts?: { loopBars?: number }): void {
+  play(pattern: Pattern, opts?: { loopBars?: number; kitAssignments?: Map<string, Partial<DrumPad>> }): void {
     this.stop();
     const live = this.getLiveDoc();
-    this.ghostDoc = { ...live, patterns: [...live.patterns, pattern], activePatternId: pattern.id } as ProjectDocument;
+    let tracks = live.tracks;
+    if (opts?.kitAssignments && opts.kitAssignments.size > 0) {
+      tracks = live.tracks.map((t) => {
+        if (t.kind !== "drum") return t;
+        const pads = t.pads.map((p) => {
+          const patch = opts.kitAssignments!.get(p.id);
+          if (!patch) return p;
+          return {
+            ...p,
+            assetId: patch.assetId !== undefined ? patch.assetId : p.assetId,
+            synth: patch.synth !== undefined ? patch.synth : p.synth,
+            gain: patch.gain !== undefined ? patch.gain! : p.gain,
+            pan: patch.pan !== undefined ? patch.pan! : p.pan,
+            chokeGroup: patch.chokeGroup !== undefined ? patch.chokeGroup : p.chokeGroup,
+          };
+        });
+        return { ...t, pads };
+      });
+    }
+    this.ghostDoc = {
+      ...live,
+      tracks,
+      patterns: [...live.patterns, pattern],
+      activePatternId: pattern.id,
+    } as ProjectDocument;
     this.pattern = pattern;
     this.loopTicks = (opts?.loopBars ?? 1) * BAR_TICKS;
     // Ghost transport runs off engine.currentTime

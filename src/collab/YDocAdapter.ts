@@ -120,7 +120,18 @@ function yMapToTrack(m: unknown): Track {
 
 function yMapToPad(m: unknown): DrumPad {
   const map = m as Y.Map<unknown>;
-  return {
+  const synthRaw = map.get("synth") as Y.Map<unknown> | undefined;
+  let synth: DrumPad["synth"] | undefined;
+  if (synthRaw && synthRaw instanceof Y.Map) {
+    synth = {
+      type: synthRaw.get("type") as DrumPad["synth"] extends { type: infer T } ? T : never,
+      decay: synthRaw.get("decay") as number,
+      tone: synthRaw.get("tone") as number,
+      snap: synthRaw.get("snap") as number,
+      body: synthRaw.get("body") as number,
+    } as DrumPad["synth"];
+  }
+  const base: DrumPad = {
     id: map.get("id") as string,
     name: map.get("name") as string,
     assetId: map.get("assetId") as string | null,
@@ -135,7 +146,9 @@ function yMapToPad(m: unknown): DrumPad {
     sliceFadeIn: map.has("sliceFadeIn") ? (map.get("sliceFadeIn") as number) : undefined,
     sliceFadeOut: map.has("sliceFadeOut") ? (map.get("sliceFadeOut") as number) : undefined,
     sliceReverse: map.has("sliceReverse") ? (map.get("sliceReverse") as boolean) : undefined,
-  };
+  } as DrumPad;
+  if (synth) (base as unknown as { synth: DrumPad["synth"] }).synth = synth;
+  return base;
 }
 
 function yMapToEffect(m: unknown): EffectInstance {
@@ -541,6 +554,16 @@ function syncTrackEntity(target: Y.Map<unknown>, track: Track): void {
 
 function syncPadEntity(target: Y.Map<unknown>, pad: DrumPad): void {
   mirrorScalars(target, pad, PAD_SCALARS);
+  if (pad.synth) {
+    const synthMap = ensureChildMap(target, "synth");
+    synthMap.set("type", pad.synth.type);
+    synthMap.set("decay", pad.synth.decay);
+    synthMap.set("tone", pad.synth.tone);
+    synthMap.set("snap", pad.synth.snap);
+    synthMap.set("body", pad.synth.body);
+  } else if (target.has("synth")) {
+    target.delete("synth");
+  }
 }
 
 function syncEffectEntity(target: Y.Map<unknown>, fx: EffectInstance): void {
@@ -867,6 +890,15 @@ function padToYMap(pad: DrumPad): Y.Map<unknown> {
   if (pad.sliceFadeIn !== undefined) m.set("sliceFadeIn", pad.sliceFadeIn);
   if (pad.sliceFadeOut !== undefined) m.set("sliceFadeOut", pad.sliceFadeOut);
   if (pad.sliceReverse !== undefined) m.set("sliceReverse", pad.sliceReverse);
+  if (pad.synth) {
+    const synthMap = new Y.Map<unknown>();
+    synthMap.set("type", pad.synth.type);
+    synthMap.set("decay", pad.synth.decay);
+    synthMap.set("tone", pad.synth.tone);
+    synthMap.set("snap", pad.synth.snap);
+    synthMap.set("body", pad.synth.body);
+    m.set("synth", synthMap);
+  }
   return m;
 }
 

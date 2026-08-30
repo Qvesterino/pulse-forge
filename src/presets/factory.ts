@@ -1012,6 +1012,26 @@ export const FACTORY_PRESETS: InstrumentPreset[] = [
     sampleId: "factory.tonal.bell",
     params: { root: 60, attack: 0.1, release: 1.4, cutoff: 6000, resonance: 0.5, gain: 0.7 },
   },
+  {
+    id: "factory.sampler.ambient.flutesustain",
+    name: "Flute Sustain",
+    instrument: "sampler",
+    genre: "ambient",
+    mood: ["atmosphere", "clean"],
+    tags: ["flute", "sustain", "loop", "seamless"],
+    sampleId: "factory.tonal.keys",
+    params: { root: 60, attack: 0.09, release: 0.5, cutoff: 7200, resonance: 0.9, gain: 0.8, loop: 1, loopXfade: 0.32, spread: 0.2 },
+  },
+  {
+    id: "factory.sampler.score.warmsustain",
+    name: "Warm Sustain",
+    instrument: "sampler",
+    genre: "score",
+    mood: ["warm", "deep"],
+    tags: ["sustain", "warm", "loop", "cinematic"],
+    sampleId: "factory.tonal.keys",
+    params: { root: 60, attack: 0.22, release: 0.9, cutoff: 5200, resonance: 0.8, gain: 0.78, loop: 1, loopXfade: 0.45, spread: 0.35 },
+  },
 
   /* ================= Texture Synth ================= */
   {

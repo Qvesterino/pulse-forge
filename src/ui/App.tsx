@@ -84,6 +84,25 @@ export function App({
   const [helpOpen, setHelpOpen] = useState(false);
   const [scaleSnap, setScaleSnap] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  // Capture last take (Ableton) — offered after pause/stop when the ring has material
+  const [captureOffer, setCaptureOffer] = useState(false);
+  useEffect(() => {
+    if (playMode !== "pattern" && playMode !== "song") return;
+    // playing=false snapshot after pause/stop — offer capture if the ring holds events
+    const snapshot = services.playback.getSnapshot();
+    void snapshot;
+    return;
+  }, [services.playback, playMode]);
+  useEffect(() => {
+    // Watch capture snapshot: when transport paused and the ring holds events, show the offer
+    const unsubscribe = services.capture.subscribe(() => {
+      const snap = services.capture.getSnapshot();
+      if (!snap.capturing && services.transport.playing === false && services.capture.hasCapturedMaterial) {
+        setCaptureOffer(true);
+      }
+    });
+    return unsubscribe;
+  }, [services]);
 
   // Derived unified selections
   const selectedNote = selection.noteSelections[0] ?? null;
@@ -154,6 +173,11 @@ export function App({
           target.isContentEditable);
       // Escape is contextual: close menu/help → clear unified selection → reset tool → blur inputs
       if (event.key === "Escape") {
+        if (captureOffer) {
+          setCaptureOffer(false);
+          event.preventDefault();
+          return;
+        }
         if (contextMenu) {
           setContextMenu(null);
           event.preventDefault();
@@ -188,6 +212,21 @@ export function App({
         }
       }
       if (typing) return;
+
+      // A = Capture last take (when the offer is showing) — Ableton-style
+      if (captureOffer && (event.key === "a" || event.key === "A") && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        event.preventDefault();
+        const cmd = services.capture.captureLastTake();
+        if (cmd) {
+          try {
+            services.store.execute(cmd);
+          } catch {
+            /* ignore */
+          }
+        }
+        setCaptureOffer(false);
+        return;
+      }
 
       // Tab-to-Transient (PT/FL) — Tab / Shift+Tab jumps playhead to next/prev transient in selected audioClip
       if (event.key === "Tab" && !event.ctrlKey && !event.metaKey && !event.altKey) {
@@ -802,6 +841,38 @@ export function App({
                 </span>
               </footer>
               <CommandToast />
+              {captureOffer && services.capture.hasCapturedMaterial && (
+                <div className="context-menu" role="alertdialog" aria-label="Capture last take" style={{ left: 16, bottom: 48, top: "auto" }}>
+                  <div className="context-menu-header">CAPTURE LAST TAKE</div>
+                  <span style={{ fontSize: 11, color: "var(--muted)", padding: "0 8px 4px", display: "block" }}>
+                    {services.capture.capturedEventCount} played events — keep them as a pattern?
+                  </span>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      const cmd = services.capture.captureLastTake();
+                      if (cmd) {
+                        try {
+                          services.store.execute(cmd);
+                        } catch {
+                          /* ignore */
+                        }
+                      }
+                      setCaptureOffer(false);
+                    }}
+                  >
+                    Capture (A)
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => setCaptureOffer(false)}
+                  >
+                    Discard (Esc)
+                  </button>
+                </div>
+              )}
               <UndoHistoryPanel open={historyOpen} />
               <InstallPrompt />
               <HelpOverlay open={helpOpen} onClose={() => setHelpOpen(false)} />

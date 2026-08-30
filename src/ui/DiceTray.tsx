@@ -5,6 +5,7 @@ import { getStyleNamesForGenre } from "../ai/grooves/index";
 import { GENRES } from "../ai/types";
 import { getDrumTrack } from "../project-model/types";
 import { PAD_NAMES } from "../ai/types";
+import { KIT_PRESETS } from "../project-model/kit-presets";
 
 function MiniPreview({ rows, activePads }: { rows: number[][]; activePads: number[] }) {
   if (!rows.length || activePads.length === 0) return <div className="dice-preview-empty">— no preview —</div>;
@@ -62,6 +63,7 @@ export function DiceTray() {
     setComplexity,
     setVariation,
     setMood,
+    setKitId,
   } = useDice();
 
   const styles = getStyleNamesForGenre(session.intent.genre);
@@ -111,11 +113,10 @@ export function DiceTray() {
     }
     const pat = preview.fullPattern?.proposal?.pattern;
     if (pat) {
-      // If main transport is playing, don't ghost over it — stop ghost and notify
       if (services.transport.playing) {
         services.playback.stop();
       }
-      services.ghost.play(pat, { loopBars: 1 });
+      services.ghost.play(pat, { loopBars: 1, kitAssignments: preview.kitAssignments ?? undefined });
       setGhostPlaying(true);
       setTimeout(() => setGhostPlaying(services.ghost.isPlaying), 100);
     } else if (preview.varyPatch) {
@@ -175,6 +176,17 @@ export function DiceTray() {
             {styles.map((s) => (
               <option key={s} value={s}>
                 {s}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="dice-field">
+          <span>KIT</span>
+          <select value={session.kitId ?? ""} onChange={(e) => setKitId(e.target.value || null)}>
+            <option value="">Random (dice)</option>
+            {KIT_PRESETS.map((k) => (
+              <option key={k.id} value={k.id}>
+                {k.name}
               </option>
             ))}
           </select>
@@ -420,7 +432,11 @@ export function DiceTray() {
             {preview.mode.toUpperCase()} · {preview.beforeHits} → {preview.hitCount} hits · score{" "}
             {preview.score != null ? `${preview.score}/100` : "—"} · swing{" "}
             {preview.swing != null ? `${Math.round(preview.swing * 100)}%` : "—"} ·{" "}
-            {preview.kitAssignments ? `${preview.kitAssignments.size} kit swaps · ` : ""}
+            {preview.kitName
+              ? `${preview.kitName} · `
+              : preview.kitAssignments
+                ? `${preview.kitAssignments.size} swaps · `
+                : ""}
             {session.intent.length} steps · {session.intent.genre}
             {session.intent.style ? ` · ${session.intent.style}` : ""}
           </span>

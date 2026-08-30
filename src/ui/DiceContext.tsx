@@ -1,5 +1,5 @@
 import { createContext, useContext, useMemo, useState, useCallback, useEffect } from "react";
-import type { ProjectDocument } from "../project-model/types";
+import type { DrumPad, ProjectDocument } from "../project-model/types";
 import { getActivePattern, getDrumTrack } from "../project-model/types";
 import { generateLocalResultFromOptions } from "../intent/pipeline";
 import { buildAssistPatch } from "../assist/pipeline";
@@ -16,6 +16,7 @@ import {
   setDiceMode,
   setDiceJitter,
   setDiceIntent,
+  setDiceKit,
   applyDiceLocks,
   diceCurrentSeed,
   jitteredIntentForSeed,
@@ -30,6 +31,7 @@ import type { GenerateOptions } from "../ai/types";
 import { GENRES } from "../ai/types";
 import { resolveGrooveForGeneration } from "../ai/generator";
 import { resolveKitAssignments } from "../sample-library/kit-pools";
+import { kitPresetById, resolveKitPreset } from "../project-model/kit-presets";
 
 export interface DicePreview {
   mode: DiceMode;
@@ -40,7 +42,8 @@ export interface DicePreview {
   beforeHits: number;
   score: number | null;
   swing: number | null;
-  kitAssignments: Map<string, string> | null;
+  kitAssignments: Map<string, Partial<DrumPad>> | null;
+  kitName: string | null;
 }
 
 interface DiceContextValue {
@@ -63,6 +66,7 @@ interface DiceContextValue {
   setComplexity: (v: number) => void;
   setVariation: (v: number) => void;
   setMood: (m: string | null) => void;
+  setKitId: (kitId: string | null) => void;
   canApply: boolean;
 }
 
@@ -145,6 +149,7 @@ export function DiceProvider({ doc, children }: { doc: ProjectDocument; children
           score: null,
           swing: null,
           kitAssignments: null,
+          kitName: null,
         };
       } catch {
         return {
@@ -157,6 +162,7 @@ export function DiceProvider({ doc, children }: { doc: ProjectDocument; children
           score: null,
           swing: null,
           kitAssignments: null,
+          kitName: null,
         };
       }
     }
@@ -177,7 +183,7 @@ export function DiceProvider({ doc, children }: { doc: ProjectDocument; children
       };
       // Swing jitter — derive groove first, then jitter
       let swing: number | null = null;
-      let kitAssignments: Map<string, string> | null = null;
+      let kitAssignments: Map<string, Partial<DrumPad>> | null = null;
       try {
         const groove = resolveGrooveForGeneration(doc, opts);
         if (session.jitter > 0.15) {
@@ -195,13 +201,24 @@ export function DiceProvider({ doc, children }: { doc: ProjectDocument; children
       } catch {
         swing = null;
       }
-      // Kit assignments (category-constrained)
+      // Kit assignments (full kit variability — preset + per-pad)
+      let kitName: string | null = null;
       try {
         const pads = getDrumTrack(doc).pads;
-        kitAssignments = resolveKitAssignments(pads, seed, session.locks, session.jitter);
-        if (kitAssignments.size === 0) kitAssignments = null;
+        const kitMap = resolveKitAssignments(pads, seed, session.locks, session.jitter, {
+          genre: jittered.genre,
+          kitId: session.kitId,
+          mood: jittered.mood,
+        });
+        kitAssignments = kitMap.size > 0 ? (kitMap as Map<string, Partial<DrumPad>>) : null;
+        if (kitAssignments && kitAssignments.size === 0) kitAssignments = null;
+        if (kitAssignments) {
+          if (session.kitId) kitName = kitPresetById(session.kitId)?.name ?? session.kitId;
+          else kitName = resolveKitPreset(`${seed}|${jittered.genre}`, jittered.genre).name;
+        }
       } catch {
         kitAssignments = null;
+        kitName = null;
       }
       const hasLocks = Object.values(session.locks).some(Boolean);
       let result = generateLocalResultFromOptions(doc, opts, "preview");
@@ -248,6 +265,7 @@ export function DiceProvider({ doc, children }: { doc: ProjectDocument; children
         score,
         swing,
         kitAssignments,
+        kitName,
       };
     } catch {
       return {
@@ -260,6 +278,7 @@ export function DiceProvider({ doc, children }: { doc: ProjectDocument; children
         score: null,
         swing: null,
         kitAssignments: null,
+        kitName: null,
       };
     }
   }, [session, doc]);
@@ -339,6 +358,9 @@ export function DiceProvider({ doc, children }: { doc: ProjectDocument; children
   const setMood = useCallback((m: string | null) => {
     setSession((prev) => setDiceIntent(prev, { ...prev.intent, mood: m } as unknown as DiceSession["intent"]));
   }, []);
+  const setKitId = useCallback((kitId: string | null) => {
+    setSession((prev) => setDiceKit(prev, kitId));
+  }, []);
 
   const apply = useCallback(
     (services: Services, currentDoc: ProjectDocument) => {
@@ -376,11 +398,15 @@ export function DiceProvider({ doc, children }: { doc: ProjectDocument; children
           }
         }
       } catch {}
-      // Kit assignments
-      let kitAssignments: Map<string, string> | null = null;
+      // Kit assignments (full kit — preset + per-pad)
+      let kitAssignments: Map<string, Partial<DrumPad>> | null = null;
       try {
         const pads = getDrumTrack(currentDoc).pads;
-        kitAssignments = resolveKitAssignments(pads, seed, session.locks, session.jitter);
+        kitAssignments = resolveKitAssignments(pads, seed, session.locks, session.jitter, {
+          genre: jittered.genre,
+          kitId: session.kitId,
+          mood: jittered.mood,
+        });
         if (kitAssignments.size === 0) kitAssignments = null;
       } catch {
         kitAssignments = null;
@@ -411,24 +437,28 @@ export function DiceProvider({ doc, children }: { doc: ProjectDocument; children
         services.store.execute(generatePatternCommand(currentDoc, opts));
         return;
       }
-      // Apply kit assignments to drum track (single undo with pattern)
+      // Apply kit assignments to drum track (single undo with pattern) — full kit patch
       let nextTracks = currentDoc.tracks;
       if (kitAssignments && kitAssignments.size > 0) {
         nextTracks = currentDoc.tracks.map((t) => {
           if (t.kind !== "drum") return t;
           const pads = t.pads.map((p) => {
-            const assetId = kitAssignments!.get(p.id);
-            if (assetId)
+            const patch = kitAssignments!.get(p.id);
+            if (patch) {
               return {
                 ...p,
-                assetId,
-                synth: null,
-                sliceStart: undefined,
-                sliceEnd: undefined,
-                sliceFadeIn: undefined,
-                sliceFadeOut: undefined,
-                sliceReverse: undefined,
+                assetId: patch.assetId !== undefined ? patch.assetId : p.assetId,
+                synth: patch.synth !== undefined ? patch.synth : p.synth,
+                gain: patch.gain !== undefined ? patch.gain! : p.gain,
+                pan: patch.pan !== undefined ? patch.pan! : p.pan,
+                chokeGroup: patch.chokeGroup !== undefined ? patch.chokeGroup : p.chokeGroup,
+                sliceStart: patch.assetId !== undefined ? undefined : p.sliceStart,
+                sliceEnd: patch.assetId !== undefined ? undefined : p.sliceEnd,
+                sliceFadeIn: patch.assetId !== undefined ? undefined : p.sliceFadeIn,
+                sliceFadeOut: patch.assetId !== undefined ? undefined : p.sliceFadeOut,
+                sliceReverse: patch.assetId !== undefined ? undefined : p.sliceReverse,
               };
+            }
             return p;
           });
           return { ...t, pads };
@@ -501,6 +531,7 @@ export function DiceProvider({ doc, children }: { doc: ProjectDocument; children
     setComplexity,
     setVariation,
     setMood,
+    setKitId,
     canApply: true,
   };
 

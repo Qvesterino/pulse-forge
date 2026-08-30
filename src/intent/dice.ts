@@ -38,6 +38,8 @@ export interface DiceSession {
   mode: DiceMode;
   /** 0..1 micro-jitter amount for style/controls (default 0.3) */
   jitter: number;
+  /** Selected kit preset id — null = random (dice picks per seed) */
+  kitId: string | null;
 }
 
 export function createDiceSession(intentInput: Partial<IntentSpec> | IntentSpec, initialSeed?: string): DiceSession {
@@ -53,6 +55,7 @@ export function createDiceSession(intentInput: Partial<IntentSpec> | IntentSpec,
     favorites: new Set<number>(),
     mode: "full",
     jitter: 0.3,
+    kitId: null,
   };
 }
 
@@ -118,6 +121,10 @@ export function setDiceJitter(session: DiceSession, jitter: number): DiceSession
 
 export function setDiceIntent(session: DiceSession, intent: IntentSpec): DiceSession {
   return { ...session, intent: normalizeIntent(intent) };
+}
+
+export function setDiceKit(session: DiceSession, kitId: string | null): DiceSession {
+  return { ...session, kitId };
 }
 
 /**

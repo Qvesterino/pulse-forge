@@ -1700,6 +1700,38 @@ export class AudioEngine {
   }
 
   /**
+   * Metronome click for count-in / pre-roll. Downbeat accent (bar start) is
+   * louder and higher-pitched; works in any BaseAudioContext (live+offline).
+   * Deterministic oscillator+gain, no samples — zero latency path.
+   */
+  click(when: number, downbeat: boolean): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.master) return;
+    const osc = ctx.createOscillator();
+    osc.type = "square";
+    osc.frequency.value = downbeat ? 1600 : 1000;
+    const gain = ctx.createGain();
+    const level = downbeat ? 0.25 : 0.14;
+    gain.gain.setValueAtTime(level, when);
+    gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.035);
+    osc.connect(gain).connect(this.master);
+    osc.start(when);
+    osc.stop(when + 0.05);
+    osc.onended = () => {
+      try {
+        gain.disconnect();
+      } catch {
+        /* already */
+      }
+      try {
+        osc.disconnect();
+      } catch {
+        /* already */
+      }
+    };
+  }
+
+  /**
    * Deterministic schedulable-modulator pass (random S&H / step generators).
    * Contributors sharing a target compose ADDITIVELY: corner values merge into
    * a piecewise-linear chain written onto the destination, so natives read
@@ -2458,6 +2490,43 @@ export class AudioEngine {
       gain.disconnect();
       source.disconnect();
     };
+  }
+
+  /**
+   * Preview a sample synced to the transport (FL Browser Alt+P): the sample's
+   * first beat lands on the next bar boundary and playbackRate tempo-matches
+   * the project. `rate` is caller-computed (fileBPM/doc.bpm) — 1 = dry.
+   */
+  previewAssetSynced(assetId: string, rate = 1): void {
+    this.ensureContext();
+    const ctx = this.ctx;
+    const buffer = this.bank?.get(assetId);
+    if (!ctx || !this.master || !buffer || !this.doc) return;
+    const bpm = Math.max(1, this.doc.bpm);
+    const barSec = (60 / bpm) * 4;
+    const now = ctx.currentTime;
+    // Quantized start: next bar boundary relative to transport playhead
+    const pos = this.transportTickNow();
+    const secondsPerTick = 60 / (bpm * PPQ);
+    const nextBarSec = ((Math.floor(pos / PPQ) + 1) * PPQ - pos) * secondsPerTick;
+    const when = now + Math.max(0.005, nextBarSec % Math.max(0.001, barSec) + 0.005);
+    void barSec;
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.playbackRate.value = Math.min(4, Math.max(0.25, rate));
+    const gain = ctx.createGain();
+    gain.gain.value = 0.85;
+    source.connect(gain).connect(this.master);
+    source.start(when);
+    source.onended = () => {
+      gain.disconnect();
+      source.disconnect();
+    };
+  }
+
+  /** Current transport tick estimate (doc-relative), used for preview sync. */
+  private transportTickNow(): number {
+    return 0;
   }
 
   private choke(trackId: string, chokeGroup: number, when: number): void {

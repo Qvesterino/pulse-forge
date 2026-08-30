@@ -76,6 +76,7 @@ export class PlaybackController {
     private applyPattern: (patternId: string) => void,
     private onSceneLaunch?: (sceneId: string, currentTick: number) => void,
     private onTransportStop?: (currentTick: number) => void,
+    private onTransportPause?: () => void,
   ) {}
 
   setMode = (mode: PlayMode): void => {
@@ -107,8 +108,17 @@ export class PlaybackController {
       this.scheduler.stop();
       this.engine.panic();
       this.transport.pause();
+      this.onTransportPause?.();
     } else {
-      this.transport.play();
+      // Pre-roll: start playback a few bars early so the metronome count-in
+      // leads into the requested position (content starts at anchor+preRoll).
+      const preRollTicks = this.transport.preRollBars * BAR_TICKS;
+      const requested = Math.max(0, this.transport.position);
+      if (preRollTicks > 0 && requested >= preRollTicks) {
+        this.transport.play(requested - preRollTicks);
+      } else {
+        this.transport.play();
+      }
       const pos = ((this.transport.position % PPQ) + PPQ) % PPQ;
       const beatPhase = pos / PPQ;
       this.engine.transportStarted(this.engine.currentTime, beatPhase);
@@ -126,6 +136,7 @@ export class PlaybackController {
     this.engine.panic();
     this.engine.automationReset();
     this.transport.stop();
+    this.onTransportPause?.();
     this.notify();
   };
 
@@ -238,6 +249,8 @@ export function openProject(core: CoreServices, initial: ProjectDocument, option
     noteOn: (trackId, pitch, velocity, when, durationSec, slideFromTick, slideFromPitch) =>
       engine.noteOn(trackId, pitch, velocity, when, durationSec, slideFromTick, slideFromPitch),
     triggerAudioClip: (clip, when, durationSec) => engine.triggerAudioClip(clip, when, durationSec),
+    metronomeClick: (when, downbeat) => engine.click(when, downbeat),
+    recordCapturedEvent: (event) => capture.recordEvent(event),
     applyAutomation: (fromTick, toTick, relOf, scheduleOffsetSec) =>
       engine.applyAutomation(fromTick, toTick, relOf, scheduleOffsetSec),
     applyModulators: (fromTick, toTick, whenFor) => engine.applyModulators(fromTick, toTick, whenFor),
@@ -283,6 +296,7 @@ export function openProject(core: CoreServices, initial: ProjectDocument, option
       void currentTick;
       capture.finish();
     },
+    () => capture.markPause(),
   );
 
   const midi = new MidiInput();

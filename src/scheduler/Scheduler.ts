@@ -55,6 +55,10 @@ export interface SchedulerDeps {
   setSceneIntensity?(intensity: number): void;
   /** Trigger an arrangement AudioClip buffer at an absolute tick. */
   triggerAudioClip?(clip: import("../project-model/types").AudioClip, when: number, durationSec: number): void;
+  /** Metronome click for count-in / pre-roll (downbeat = bar start accent). */
+  metronomeClick?(when: number, downbeat: boolean): void;
+  /** Passive capture ring (Ableton): record every performed hit/note for later "Capture last take". */
+  recordCapturedEvent?(event: { trackId: string; padId?: string; pitch?: number; velocity: number; tick: number; duration?: number }): void;
   /** MIDI output: send a note on to external hardware. */
   midiNoteOn?(trackId: string, channel: number, note: number, velocity: number, when: number): void;
   /** MIDI output: send a note off to external hardware. */
@@ -67,6 +71,11 @@ const INTERVAL_MS = 25;
 const HORIZON_SECONDS = 0.12;
 
 const mod = (value: number, m: number): number => ((value % m) + m) % m;
+
+/** Click dedup guard — fires only for future (not-yet-played) clicks like `audible`. */
+function audibleClick(when: number, now: number): boolean {
+  return when >= now - 0.002;
+}
 
 export class Scheduler {
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -183,6 +192,17 @@ export class Scheduler {
     }
     const doc = this.deps.getProject();
     const mode = this.deps.getMode();
+
+    // Pre-roll + count-in metronome: clicks fire on bar boundaries inside the
+    // pre-roll region only. Content scheduling is untouched (starts on time).
+    if (transport.preRollBars > 0 && this.deps.metronomeClick && windowStart < transport.anchorTickBeforePreRoll()) {
+      const bar = transport.preRollBars * BAR_TICKS;
+      for (let t = Math.ceil(windowStart / BAR_TICKS) * BAR_TICKS; t < Math.min(windowEnd, transport.anchorTickBeforePreRoll()); t += BAR_TICKS) {
+        const when = transport.timeAtTick(t) + this.scheduleOffsetSec() + 0.005;
+        if (!audibleClick(when, now)) continue;
+        this.deps.metronomeClick(when, ((t / bar) % 1) === 0);
+      }
+    }
 
     let automationCtx: { base: number; patternTicks: number } | null = null;
 
@@ -372,6 +392,8 @@ export class Scheduler {
       const when = timeAt(hit.tick) + scheduleOffsetSec;
       if (!audible(when)) continue;
       this.deps.trigger(hit.trackId, hit.pad, when, hit.velocity, hit.locks);
+      // Passive capture ring (Ableton) — always rolling, cheap ring push
+      this.deps.recordCapturedEvent?.({ trackId: hit.trackId, padId: hit.pad.id, velocity: hit.velocity, tick: hit.tick });
       // MIDI output for drum tracks
       if (this.deps.midiNoteOn) {
         const track = doc.tracks.find((t) => t.id === hit.trackId);
@@ -404,6 +426,14 @@ export class Scheduler {
         slideFrom?.tick,
         slideFrom?.pitch,
       );
+      // Passive capture ring (Ableton) — note events with pitch info
+      this.deps.recordCapturedEvent?.({
+        trackId: track.id,
+        pitch: event.note.pitch,
+        velocity: event.note.velocity,
+        tick: event.tick,
+        duration: event.note.duration * transport.secondsPerTick,
+      });
       // MIDI output for instrument tracks
       if (this.deps.midiNoteOn && track.midiOutput?.enabled) {
         const ch = (track.midiOutput.channel || 1) - 1;

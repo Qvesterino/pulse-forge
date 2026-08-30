@@ -841,6 +841,19 @@ const sampler: InstrumentDefinition = {
         { value: 1, label: "Stretch" },
       ],
     },
+    {
+      id: "loop",
+      label: "LOOP",
+      min: 0,
+      max: 1,
+      default: 0,
+      options: [
+        { value: 0, label: "One-shot" },
+        { value: 1, label: "Loop" },
+      ],
+    },
+    { id: "loopXfade", label: "L-XFADE", min: 0, max: 1, default: 0.3, format: formatPct },
+    { id: "reverse", label: "REVERSE", min: 0, max: 1, default: 0, format: formatPct },
     { id: "spread", label: "SPREAD", min: 0, max: 1, default: 0, format: formatPct },
   ],
   factory(ctx, track, env) {
@@ -858,6 +871,59 @@ const sampler: InstrumentDefinition = {
         if (first !== undefined) stretchCache.delete(first);
       }
       stretchCache.set(key, { semitones, data });
+    };
+    // Loop prerender cache: seamless sustain buffers with crossfaded seam.
+    // Key = sampleId:xfadeFrac — pure fn of sample data → live == offline.
+    const loopCache = new Map<string, AudioBuffer>();
+    const LOOP_CACHE_LIMIT = 12;
+    const makeLoopBuffer = (buffer: AudioBuffer, xfadeFrac: number): AudioBuffer => {
+      const xfade = Math.min(0.45, Math.max(0.02, xfadeFrac));
+      const len = buffer.length;
+      const xLen = Math.max(2, Math.floor(len * xfade));
+      const loopLen = len - xLen;
+      const out = ctx.createBuffer(buffer.numberOfChannels, len, buffer.sampleRate);
+      // Loop body: [0, loopLen); seam crossfades tail into head over xLen
+      for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+        const src = buffer.getChannelData(ch);
+        const dst = out.getChannelData(ch);
+        for (let i = 0; i < loopLen; i++) dst[i] = src[i];
+        for (let i = 0; i < xLen; i++) {
+          const t = i / xLen;
+          // Equal-power crossfade
+          const tailGain = Math.cos((t * Math.PI) / 2);
+          const headGain = Math.sin((t * Math.PI) / 2);
+          const tailIdx = loopLen + i;
+          dst[tailIdx] = src[tailIdx] * tailGain + src[i] * headGain;
+        }
+      }
+      return out;
+    };
+    const getLoopBuffer = (buffer: AudioBuffer, xfade: number): AudioBuffer => {
+      const key = `${sampleId}:${xfade.toFixed(3)}`;
+      let entry = loopCache.get(key);
+      if (!entry) {
+        if (loopCache.size >= LOOP_CACHE_LIMIT) {
+          const first = loopCache.keys().next().value as string | undefined;
+          if (first !== undefined) loopCache.delete(first);
+        }
+        entry = makeLoopBuffer(buffer, xfade);
+        loopCache.set(key, entry);
+      }
+      return entry;
+    };
+    const reversedCache = new Map<AudioBuffer, AudioBuffer>();
+    const reversedBuffer = (buffer: AudioBuffer): AudioBuffer => {
+      let rev = reversedCache.get(buffer);
+      if (!rev) {
+        rev = ctx.createBuffer(buffer.numberOfChannels, buffer.length, buffer.sampleRate);
+        for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+          const src = buffer.getChannelData(ch);
+          const dst = rev.getChannelData(ch);
+          for (let i = 0, n = src.length; i < n; i++) dst[i] = src[n - 1 - i];
+        }
+        reversedCache.set(buffer, rev);
+      }
+      return rev;
     };
 
     const runtime: InstrumentRuntime = {
@@ -900,8 +966,17 @@ const sampler: InstrumentDefinition = {
         liveFilters.add(filter);
 
         const src = ctx.createBufferSource();
-        src.buffer = buffer;
-        if ((p.stretch ?? 0) > 0.5 && semitones !== 0) {
+        // Reverse: cached reversed copy (pitch mode only — stretched data can be reversed too but keep simple)
+        let playBuffer = buffer;
+        if ((p.reverse ?? 0) > 0.5 && !((p.stretch ?? 0) > 0.5)) playBuffer = reversedBuffer(buffer);
+        src.buffer = playBuffer;
+        const loopOn = (p.loop ?? 0) > 0.5 && !((p.stretch ?? 0) > 0.5);
+        if (loopOn) {
+          // Seamless sustain: prerendered crossfaded loop buffer
+          src.buffer = getLoopBuffer(playBuffer, p.loopXfade ?? 0.3);
+          src.loop = true;
+          src.playbackRate.value = Math.pow(2, semitones / 12);
+        } else if ((p.stretch ?? 0) > 0.5 && semitones !== 0) {
           // Time-stretch: pitch without changing duration. Cache per (sample, semitones).
           const key = `${sampleId}:${semitones}`;
           let entry = stretchCache.get(key);

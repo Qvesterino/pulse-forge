@@ -171,6 +171,22 @@ export function TopBar({
           </button>
           <button
             type="button"
+            className={`btn btn-countin${services.transport.countInBars > 0 ? " active" : ""}`}
+            onClick={() => services.transport.setCountIn((services.transport.countInBars + 1) % 3)}
+            title="Metronome count-in before playback (1/2 bars) — FL/Cubase pre-roll"
+          >
+            C{services.transport.countInBars > 0 ? services.transport.countInBars : "·"}
+          </button>
+          <button
+            type="button"
+            className={`btn btn-preroll${services.transport.preRollBars > 0 ? " active" : ""}`}
+            onClick={() => services.transport.setPreRoll(services.transport.preRollBars > 0 ? 0 : 1)}
+            title="Pre-roll: play 1 bar before the playhead (clicks only, content starts on time)"
+          >
+            PR
+          </button>
+          <button
+            type="button"
             className="btn btn-history"
             disabled={!canUndo}
             onClick={() => services.store.undo()}
