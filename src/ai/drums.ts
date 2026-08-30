@@ -7,12 +7,13 @@ import { enforceDrumAnchors, repairDrumRow } from "./quality";
 import { enforceSyncopationBudget } from "./style-quality";
 
 export interface DrumRandomStreams {
-  /** Randomness for bar-level/ghost/fill variation. */
   variation?: () => number;
-  /** Randomness for per-step performance metadata. */
   meta?: () => number;
-  /** Explicit local swing amount; zero means project-level swing owns timing. */
   swing?: number;
+  /** SubSeed locks — skip generation for these pad indices, copy prev instead (preserves RNG for others). */
+  lockedIndices?: Set<number>;
+  prevRows?: Map<number, number[]>;
+  prevMeta?: Map<number, Map<number, StepMeta>>;
 }
 
 /**
@@ -55,6 +56,37 @@ function applySwingToMeta(row: number[], padMeta: Map<number, StepMeta>, swing: 
   }
 }
 
+/** Prune or densify a row to match density intent (0 sparse → 1 dense). */
+function pruneOrDensifyRow(row: number[], density: number | null, rand: () => number): void {
+  if (density == null) return;
+  // Neutral 0.45–0.55 → no change (preserve golden)
+  if (density >= 0.45 && density <= 0.55) return;
+  const hits = row.map((v, i) => (v > 0 ? { i, v } : null)).filter(Boolean) as { i: number; v: number }[];
+  if (hits.length === 0) return;
+  if (density < 0.45) {
+    // Sparse: prune weakest hits (20–40% at density 0.2)
+    const pruneFrac = (0.5 - density) * 0.8; // 0.5→0, 0.2→0.24
+    const toPrune = Math.floor(hits.length * pruneFrac);
+    if (toPrune <= 0) return;
+    const sorted = [...hits].sort((a, b) => a.v - b.v);
+    for (let k = 0; k < toPrune; k++) {
+      const pick = sorted[k];
+      // Keep anchors (downbeats) 50% of the time even when sparse
+      if (pick.i % 4 === 0 && rand() < 0.5) continue;
+      row[pick.i] = 0;
+    }
+  } else if (density > 0.55) {
+    // Dense: add ghost-like hits in gaps near existing hits
+    const addFrac = (density - 0.5) * 0.6; // 0.6→0.06, 0.9→0.24
+    for (let i = 0; i < row.length; i++) {
+      if (row[i] > 0) continue;
+      const hasNeighbor = (i > 0 && row[i - 1] > 0) || (i < row.length - 1 && row[i + 1] > 0);
+      if (!hasNeighbor) continue;
+      if (rand() < addFrac * 0.5) row[i] = 0.18 + rand() * 0.12;
+    }
+  }
+}
+
 /** Generate drum rows and step meta from a groove */
 export function generateDrumPattern(
   groove: GrooveData,
@@ -63,6 +95,8 @@ export function generateDrumPattern(
   streams: DrumRandomStreams = {},
   padNames?: readonly string[],
 ): { rows: number[][]; meta: Map<number, Map<number, StepMeta>> } {
+  const diceDensity = (options as GenerateOptions & { _diceDensity?: number })._diceDensity ?? null;
+  const diceComplexity = (options as GenerateOptions & { _diceComplexity?: number })._diceComplexity ?? null;
   const rows: number[][] = [];
   const meta = new Map<number, Map<number, StepMeta>>();
   const bars = Math.ceil(options.stepCount / 16);
@@ -71,6 +105,20 @@ export function generateDrumPattern(
   const phrasePlan = buildPhrasePlan(options.stepCount);
 
   for (const padIndex of groove.activePads) {
+    // SubSeed lock: skip generation entirely, preserve RNG for others
+    if (streams.lockedIndices?.has(padIndex)) {
+      const prev = streams.prevRows?.get(padIndex);
+      if (prev) {
+        const sliced = prev.slice(0, options.stepCount);
+        while (sliced.length < options.stepCount) sliced.push(0);
+        rows[padIndex] = sliced;
+      } else {
+        rows[padIndex] = new Array(options.stepCount).fill(0);
+      }
+      const prevM = streams.prevMeta?.get(padIndex);
+      if (prevM && prevM.size > 0) meta.set(padIndex, new Map(prevM));
+      continue;
+    }
     const role = inferPadRole(padNames?.[padIndex], padIndex);
     const padPatterns: number[][] = groove.patterns.map(
       (p) => (p[padIndex] as number[] | undefined) ?? (new Array(16).fill(0) as number[]),
@@ -80,14 +128,13 @@ export function generateDrumPattern(
     // Generate base 16-step sequence
     const baseSequence = generatePadSequence(model, 16, rand, options.temperature);
 
-    // Extend to full stepCount with bar-level variation
+    // Extend to full stepCount with bar-level variation (dice complexity/variation widens it)
+    const barVarChance = diceComplexity != null ? 0.08 + diceComplexity * 0.22 : 0.15; // 0.08 sparse → 0.30 dense
     const fullSequence: number[] = [];
     for (let bar = 0; bar < bars; bar++) {
       for (let step = 0; step < 16 && fullSequence.length < options.stepCount; step++) {
         let level = baseSequence[step];
-        // Bar 2+: slight velocity variation to create evolution
-        if (bar > 0 && level > 0 && variationRand() < 0.15) {
-          // 15% chance of velocity shift on later bars
+        if (bar > 0 && level > 0 && variationRand() < barVarChance) {
           level = Math.max(0, Math.min(3, level + (variationRand() < 0.5 ? 1 : -1)));
         }
         fullSequence.push(level);
@@ -107,12 +154,18 @@ export function generateDrumPattern(
     // Add ghost notes
     addGhostNotes(rows, padIndex, role, options, variationRand);
 
+    // Dice density: prune or densify before anchors (keeps anchors intact after)
+    pruneOrDensifyRow(rows[padIndex], diceDensity, variationRand);
+
     // Add fill variation at phrase boundaries (every 4 bars)
     addFillVariation(rows[padIndex], padIndex, options.ghostWeight, variationRand, 4);
 
     // Keep genre/style anchors before phrase dynamics are applied.
     enforceDrumAnchors(rows[padIndex], padPatterns, role);
-    enforceSyncopationBudget(rows[padIndex], padPatterns, role);
+    // Complexity relaxes syncopation budget (more off-beat allowed)
+    if (diceComplexity == null || diceComplexity < 0.65) {
+      enforceSyncopationBudget(rows[padIndex], padPatterns, role);
+    }
     applyPhraseDynamics(rows[padIndex], role, phrasePlan, variationRand);
 
     // Apply phrase-level velocity contour (2-bar sine envelope)
@@ -178,6 +231,9 @@ function addStepMeta(
   options: GenerateOptions,
   rand: () => number,
 ): Map<number, StepMeta> {
+  const diceComplexity = (options as GenerateOptions & { _diceComplexity?: number })._diceComplexity ?? null;
+  const ratchetChance = diceComplexity != null ? 0.02 + diceComplexity * 0.12 : 0.04; // 0.02 sparse → 0.14 dense
+  const probChance = diceComplexity != null ? 0.04 + diceComplexity * 0.08 : 0.08; // more human variation when complex
   const padMeta = new Map<number, StepMeta>();
 
   for (let i = 0; i < row.length; i++) {
@@ -186,24 +242,21 @@ function addStepMeta(
     const meta: StepMeta = {};
     let hasChanges = false;
 
-    // Microtiming jitter — Gaussian distribution for natural human feel
     if (rand() < options.microWeight) {
-      const jitter = gaussianRand(rand) * 0.12; // stddev=0.12 → most hits within ±0.12, rare outliers up to ±0.36
+      const jitter = gaussianRand(rand) * 0.12;
       if (Math.abs(jitter) > 0.03) {
         meta.microtiming = Math.round(jitter * 100) / 100;
         hasChanges = true;
       }
     }
 
-    // Low probability for some hits (creates variation across passes)
-    if (rand() < 0.08) {
-      meta.probability = 0.6 + rand() * 0.3; // 0.6 - 0.9
+    if (rand() < probChance) {
+      meta.probability = 0.6 + rand() * 0.3;
       hasChanges = true;
     }
 
-    // Occasional ratchet on hat/percussion (2-4 retriggers)
-    if (canRatchet(role) && rand() < 0.04) {
-      meta.ratchet = 2 + Math.floor(rand() * 3); // 2, 3, or 4
+    if (canRatchet(role) && rand() < ratchetChance) {
+      meta.ratchet = 2 + Math.floor(rand() * 3);
       hasChanges = true;
     }
 

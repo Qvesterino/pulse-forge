@@ -56,6 +56,11 @@ export function DiceTray() {
     setStyle,
     setSeed,
     setLength,
+    setEnergy,
+    setDensity,
+    setComplexity,
+    setVariation,
+    setMood,
   } = useDice();
 
   const styles = getStyleNamesForGenre(session.intent.genre);
@@ -129,6 +134,65 @@ export function DiceTray() {
           <button type="button" className="btn btn-small" onClick={handleCopySeed} title="Copy seed">
             📋
           </button>
+        </label>
+      </div>
+
+      {/* Deep intent sliders */}
+      <div className="dice-row dice-intent-sliders">
+        <label className="dice-slider">
+          <span>ENERGY {Math.round(session.intent.energy * 100)}%</span>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={session.intent.energy}
+            onChange={(e) => setEnergy(Number(e.target.value))}
+          />
+        </label>
+        <label className="dice-slider">
+          <span>DENSITY {Math.round(session.intent.density * 100)}%</span>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={session.intent.density}
+            onChange={(e) => setDensity(Number(e.target.value))}
+          />
+        </label>
+        <label className="dice-slider">
+          <span>COMPLEX {Math.round(session.intent.complexity * 100)}%</span>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={session.intent.complexity}
+            onChange={(e) => setComplexity(Number(e.target.value))}
+          />
+        </label>
+        <label className="dice-slider">
+          <span>VARIAT {Math.round(session.intent.variation * 100)}%</span>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={session.intent.variation}
+            onChange={(e) => setVariation(Number(e.target.value))}
+          />
+        </label>
+        <label className="dice-field">
+          <span>MOOD</span>
+          <select value={session.intent.mood ?? ""} onChange={(e) => setMood(e.target.value || null)}>
+            <option value="">—</option>
+            <option value="dark">dark</option>
+            <option value="aggressive">aggressive</option>
+            <option value="chill">chill</option>
+            <option value="energetic">energetic</option>
+            <option value="bright">bright</option>
+          </select>
         </label>
       </div>
 
@@ -286,8 +350,9 @@ export function DiceTray() {
         <div className="dice-preview-header">
           <span>PREVIEW</span>
           <span className="dice-preview-meta">
-            {preview.mode.toUpperCase()} · {preview.beforeHits} → {preview.hitCount} hits · {session.intent.length}{" "}
-            steps · {session.intent.genre}
+            {preview.mode.toUpperCase()} · {preview.beforeHits} → {preview.hitCount} hits · score{" "}
+            {preview.score != null ? `${preview.score}/100` : "—"} · {session.intent.length} steps ·{" "}
+            {session.intent.genre}
             {session.intent.style ? ` · ${session.intent.style}` : ""}
           </span>
           <button

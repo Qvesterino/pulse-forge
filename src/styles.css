@@ -6120,6 +6120,27 @@ html {
   gap: 8px;
   flex-wrap: wrap;
 }
+.dice-intent-sliders {
+  gap: 12px;
+  padding: 6px 0;
+  border-top: 1px solid var(--border-soft);
+  border-bottom: 1px solid var(--border-soft);
+}
+.dice-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 10px;
+  color: var(--text-dim);
+  min-width: 90px;
+}
+.dice-slider span {
+  font-family: var(--mono);
+  font-size: 9px;
+}
+.dice-slider input[type="range"] {
+  width: 90px;
+}
 .dice-field {
   display: flex;
   flex-direction: column;

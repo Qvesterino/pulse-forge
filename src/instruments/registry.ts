@@ -40,6 +40,29 @@ function tanhCurve(k: number, n = 1024): Float32Array<ArrayBuffer> {
   return curve;
 }
 
+function tubeCurve(drive: number, n = 1024): Float32Array<ArrayBuffer> {
+  // Asymmetric tube: 2nd harmonic bump + soft knee
+  const k = 1.5 + drive * 3.5;
+  const curve = new Float32Array(new ArrayBuffer(n * 4));
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1;
+    const base = Math.tanh(x * k);
+    curve[i] = base + 0.12 * Math.sin(Math.PI * x) * drive;
+  }
+  return curve;
+}
+
+function hardClipCurve(drive: number, n = 1024): Float32Array<ArrayBuffer> {
+  const k = 2.5 + drive * 5.5;
+  const curve = new Float32Array(new ArrayBuffer(n * 4));
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1;
+    const y = x * k;
+    curve[i] = Math.max(-1, Math.min(1, y * (1 - 0.18 * Math.abs(y))));
+  }
+  return curve;
+}
+
 function dbToLin(db: number): number {
   return Math.pow(10, db / 20);
 }
@@ -544,6 +567,8 @@ const bass808: InstrumentDefinition = {
     { id: "pitchDrop", label: "P-DROP", min: 0, max: 1, default: 0.4, format: formatPct },
     { id: "click", label: "CLICK", min: 0, max: 1, default: 0.35, format: formatPct },
     { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0.25, format: formatPct },
+    { id: "glide", label: "GLIDE", min: 0, max: 0.35, default: 0.12, unit: "s", format: formatMs },
+    { id: "distType", label: "DIST", min: 0, max: 2, default: 0, options: [{ value: 0, label: "Soft" }, { value: 1, label: "Tube" }, { value: 2, label: "Hard" }] },
     { id: "tone", label: "TONE", min: 0, max: 1, default: 0.35, format: formatPct },
     { id: "gain", label: "GAIN", min: 0, max: 1, default: 0.85, format: formatPct },
   ],
@@ -552,9 +577,6 @@ const bass808: InstrumentDefinition = {
     output.gain.value = 1;
     const p = { ...track.params };
     const noise = noiseBuffer(ctx, hashString(track.id) ^ 0x5f5f);
-    const shaper = ctx.createWaveShaper();
-    shaper.oversample = "2x";
-    shaper.curve = tanhCurve(2.5);
     let current: Voice | null = null;
 
     const runtime: InstrumentRuntime = {
@@ -568,13 +590,20 @@ const bass808: InstrumentDefinition = {
         const gainVal = velocity * (p.gain ?? 0.85);
         const stopTime = when + decay + 0.6;
 
-        // Slide notes glide from slideFrom.when up to `when` (max 0.25s),
-        // then skip the pitch-drop transient — trap 808 glide.
+        const glide = Math.max(0, Math.min(0.35, p.glide ?? 0.12));
+        const distType = Math.max(0, Math.min(2, Math.round(p.distType ?? 0)));
+        const drive = p.drive ?? 0.25;
         const slideOn = !!slideFrom;
         const glideStart = slideFrom ? Math.max(0, slideFrom.when) : when;
 
+        // Per-voice shaper so distType does not bleed between voices
+        const shaper = ctx.createWaveShaper();
+        shaper.oversample = "2x";
+        shaper.curve =
+          distType === 2 ? hardClipCurve(drive) : distType === 1 ? tubeCurve(drive) : tanhCurve(1.8 + drive * 2);
+
         const pre = ctx.createGain();
-        pre.gain.value = 1 + (p.drive ?? 0.25) * 4;
+        pre.gain.value = 1 + drive * 4;
         const post = ctx.createGain();
         post.gain.value = 0.8;
         pre.connect(shaper);
@@ -599,10 +628,13 @@ const bass808: InstrumentDefinition = {
         const osc = ctx.createOscillator();
         osc.type = "sine";
         if (slideOn && slideFrom) {
-          // Portamento: start at previous pitch at glideStart, ramp to target by `when`
+          // Portamento: glide time controls ramp length (0 = instant, 0.12 trap, 0.35 slow)
           const fromFreq = midiToFreq(slideFrom.pitch);
+          const glideTime = glide > 0.002 ? glide : 0;
+          const rampEnd = glideTime > 0 ? glideStart + glideTime : when;
           osc.frequency.setValueAtTime(Math.max(20, fromFreq), glideStart);
-          osc.frequency.exponentialRampToValueAtTime(Math.max(20, freq), when);
+          if (glideTime > 0) osc.frequency.exponentialRampToValueAtTime(Math.max(20, freq), rampEnd);
+          else osc.frequency.setValueAtTime(Math.max(20, freq), when);
           osc.start(glideStart);
           // Fade in quickly at glide start (continuous sound — no new attack)
           amp.gain.cancelScheduledValues(glideStart);
@@ -678,12 +710,12 @@ const bass808: InstrumentDefinition = {
           amp.disconnect();
           toneFilter.disconnect();
           pre.disconnect();
-          post.disconnect();
           try {
-            shaper.disconnect(post);
+            shaper.disconnect();
           } catch {
-            /* already disconnected */
+            /* already */
           }
+          post.disconnect();
           if (current === voice) current = null;
         };
       },
@@ -703,7 +735,6 @@ const bass808: InstrumentDefinition = {
       },
       dispose() {
         this.panic();
-        shaper.disconnect();
         output.disconnect();
       },
     };
@@ -1620,7 +1651,6 @@ const granular: InstrumentDefinition = {
       },
       dispose() {
         this.panic();
-        tone.disconnect();
         output.disconnect();
       },
     };

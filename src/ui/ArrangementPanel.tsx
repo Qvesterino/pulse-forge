@@ -95,16 +95,21 @@ export function ArrangementPanel() {
   const [selectedAudioClipId, setSelectedAudioClipId] = useState<string | null>(null);
   const audioDragRef = useRef<{
     clipId: string;
-    mode: "move" | "resize" | "trimStart" | "trimEnd" | "fadeIn" | "fadeOut";
+    mode: "move" | "resize" | "trimStart" | "trimEnd" | "fadeIn" | "fadeOut" | "gain";
     origStart: number;
     origLength: number;
     origTrimStart: number;
     origTrimEnd: number;
     origFadeIn: number;
     origFadeOut: number;
+    origGain: number;
     grabBar: number;
+    grabX: number;
+    grabY: number;
   } | null>(null);
   const [audioDrag, setAudioDrag] = useState<{ startBar: number; lengthBars: number } | null>(null);
+  const [audioFadePreview, setAudioFadePreview] = useState<{ clipId: string; fadeIn: number; fadeOut: number } | null>(null);
+  const [audioGainPreview, setAudioGainPreview] = useState<{ clipId: string; gain: number } | null>(null);
   const [audioMenu, setAudioMenu] = useState<{ clipId: string; x: number; y: number } | null>(null);
   useEffect(() => {
     if (!audioMenu) return;

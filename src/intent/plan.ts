@@ -5,10 +5,11 @@ import { resolveEffectiveSeed, resolveGrooveForGeneration, sourcePatternContentH
 import type { GenerateOptions } from "../ai/types";
 import { intentHash } from "./hash";
 import { normalizeIntent } from "./normalize";
+import { mapIntentToOptions } from "./mapping";
 import type { GenerationPlan, IntentInput, IntentRole, IntentSpec } from "./types";
 
 export function generateOptionsFromIntent(intent: IntentSpec): GenerateOptions {
-  return {
+  const base: GenerateOptions = {
     genre: intent.genre,
     style: intent.style ?? undefined,
     seed: intent.seed,
@@ -24,6 +25,7 @@ export function generateOptionsFromIntent(intent: IntentSpec): GenerateOptions {
     sourcePatternId: intent.sourcePatternId ?? undefined,
     applyGrooveSettings: intent.applyGrooveSettings,
   };
+  return mapIntentToOptions(intent, base);
 }
 
 function generationSeed(intent: IntentSpec, effectiveSeed: string, grooveId: string): string {

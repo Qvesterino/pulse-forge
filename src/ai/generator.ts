@@ -47,8 +47,29 @@ export function resolveGrooveForGeneration(doc: ProjectDocument, options: Genera
   return resolveGroove(options.genre, options.style, forkRandom(`${options.genre}|${effectiveSeed}`, "groove"));
 }
 
+export interface DiceLocks {
+  drums?: boolean;
+  bass?: boolean;
+  chords?: boolean;
+  lead?: boolean;
+  kick?: boolean;
+  snare?: boolean;
+  hats?: boolean;
+  /** Active pattern to lock from (for drums + melodic). */
+  prevPattern?: Pattern | null;
+}
+
+function isDrumPadLocked(padIndex: number, padNames: readonly string[] | undefined, locks: DiceLocks): boolean {
+  if (locks.drums) return true;
+  const role = inferPadRole(padNames?.[padIndex], padIndex);
+  if (locks.kick && role === "kick") return true;
+  if (locks.snare && (role === "snare" || role === "clap")) return true;
+  if (locks.hats && (role === "closedHat" || role === "openHat")) return true;
+  return false;
+}
+
 /** Generate a complete Pattern from the Markov engine */
-export function generatePattern(doc: ProjectDocument, options: GenerateOptions): Pattern {
+export function generatePattern(doc: ProjectDocument, options: GenerateOptions, diceLocks?: DiceLocks): Pattern {
   const effectiveSeed = resolveEffectiveSeed(doc, options);
   const inputContentHash = sourcePatternContentHash(doc, options.sourcePatternId);
 
@@ -73,6 +94,37 @@ export function generatePattern(doc: ProjectDocument, options: GenerateOptions):
   const padNames =
     targetDrumTrack && targetDrumTrack.kind === "drum" ? targetDrumTrack.pads.map((pad) => pad.name) : undefined;
 
+  // Dice subSeed locks: build prevRows/indices if needed
+  const dicePrev = diceLocks?.prevPattern ?? null;
+  let lockedIndices: Set<number> | undefined;
+  let prevRowsByIndex: Map<number, number[]> | undefined;
+  let prevMetaByIndex: Map<number, Map<number, StepMeta>> | undefined;
+  if (diceLocks && dicePrev && (diceLocks.drums || diceLocks.kick || diceLocks.snare || diceLocks.hats)) {
+    const targetTrackForLocks = targetDrumTrack;
+    const padIdToIndex = new Map<string, number>();
+    targetTrackForLocks?.pads.forEach((pad, i) => padIdToIndex.set(pad.id, i));
+    prevRowsByIndex = new Map<number, number[]>();
+    prevMetaByIndex = new Map<number, Map<number, StepMeta>>();
+    for (const [padId, row] of Object.entries(dicePrev.rows)) {
+      const idx = padIdToIndex.get(padId);
+      if (idx !== undefined) prevRowsByIndex.set(idx, [...row]);
+    }
+    if (dicePrev.stepMeta) {
+      for (const [padId, meta] of Object.entries(dicePrev.stepMeta)) {
+        const idx = padIdToIndex.get(padId);
+        if (idx !== undefined) {
+          const m = new Map<number, StepMeta>();
+          for (const [k, v] of Object.entries(meta)) m.set(Number(k), { ...v });
+          prevMetaByIndex.set(idx, m);
+        }
+      }
+    }
+    lockedIndices = new Set<number>();
+    for (const padIdx of groove.activePads) {
+      if (isDrumPadLocked(padIdx, padNames, diceLocks)) lockedIndices.add(padIdx);
+    }
+  }
+
   // Generate drum pattern
   const { rows: rawRows, meta } = generateDrumPattern(
     groove,
@@ -81,10 +133,11 @@ export function generatePattern(doc: ProjectDocument, options: GenerateOptions):
     {
       variation: drumVariationRand,
       meta: drumMetaRand,
-      // Existing project swing remains the owner unless the caller explicitly
-      // asks generation to apply the resolved groove settings.
       swing: options.applyGrooveSettings || (doc.groove?.swing ?? 0) > 0 ? 0 : groove.swing,
-    },
+      lockedIndices,
+      prevRows: prevRowsByIndex,
+      prevMeta: prevMetaByIndex,
+    } as unknown as import("./drums").DrumRandomStreams,
     padNames,
   );
 
@@ -137,6 +190,22 @@ export function generatePattern(doc: ProjectDocument, options: GenerateOptions):
   if (targetTracks.length > 0) {
     for (let roleIndex = 0; roleIndex < roleOrder.length; roleIndex++) {
       const role = roleOrder[roleIndex];
+      // Melodic subSeed lock: if locked and prev exists, reuse prev notes for that role's track
+      if (diceLocks && dicePrev) {
+        const shouldLock =
+          (role === "bass" && diceLocks.bass) ||
+          (role === "chord" && diceLocks.chords) ||
+          (role === "lead" && diceLocks.lead);
+        if (shouldLock) {
+          const namedTrack = targetTracks.find((track) => track.name.toLowerCase().includes(role));
+          const track = namedTrack ?? targetTracks[roleIndex % targetTracks.length];
+          const prevNotes = dicePrev.notes[track.id];
+          if (prevNotes) {
+            notesRecord[track.id] = JSON.parse(JSON.stringify(prevNotes));
+            continue;
+          }
+        }
+      }
       const part = melodicParts[role];
       if (part.length === 0) continue;
       const namedTrack = targetTracks.find((track) => {

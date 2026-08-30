@@ -48,6 +48,10 @@ export interface GenerateOptions {
   sourcePatternId?: string;
   /** If true, set project groove (swing/humanize) from the resolved groove */
   applyGrooveSettings?: boolean;
+  /** Dice intent hints (optional, not persisted) — density/complexity/energy shape drums */
+  _diceDensity?: number;
+  _diceComplexity?: number;
+  _diceEnergy?: number;
 }
 
 export const DEFAULT_GENERATE_OPTIONS: GenerateOptions = {
