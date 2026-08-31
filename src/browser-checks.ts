@@ -1005,6 +1005,76 @@ export async function runChecks(): Promise<CheckResult[]> {
     check("chop beats: pads play only their slice region + transients detected", false, String(error));
   }
 
+  // FXEQ: the vendored multiband DSP must run as a worklet in offline
+  // renders (heavy drive must transform a sine: louder + harmonically
+  // distorted vs the degraded passthrough), and the degraded transparent
+  // fallback must engage when the module is not loaded. Null-test metric:
+  // tanh saturation preserves zero crossings, so amplitude + waveform
+  // difference are the honest measures.
+  try {
+    const def = EFFECT_DEFS.fxeq;
+    // 1. Degraded fallback path (no modules loaded in this context).
+    const plainCtx = new OfflineAudioContext(1, SR, SR);
+    const fallback = def.factory(plainCtx, { id: "t", type: "fxeq", bypassed: false, params: defaultParamsOf("fxeq") }, { bpm: 124 });
+    const fallbackOk = fallback.degraded === true;
+    fallback.dispose();
+    // 2. Worklet path vs fallback path on the SAME input.
+    const params = {
+      ...defaultParamsOf("fxeq"),
+      bandCount: 4,
+      // 220 Hz lands in the lowest band — saturate ALL bands so the check
+      // is independent of the crossover's split frequencies.
+      "band1.satEnabled": 1,
+      "band1.satDriveDb": 18,
+      "band1.satMix": 100,
+      "band2.satEnabled": 1,
+      "band2.satDriveDb": 18,
+      "band2.satMix": 100,
+      "band3.satEnabled": 1,
+      "band3.satDriveDb": 18,
+      "band3.satMix": 100,
+      "band4.satEnabled": 1,
+      "band4.satDriveDb": 18,
+      "band4.satMix": 100,
+      limiterEnabled: 0,
+    };
+    const renderFxEq = async (loaded: boolean) => {
+      const ctx = new OfflineAudioContext(1, SR, SR);
+      if (loaded) await loadWorkletModules(ctx);
+      const rt = def.factory(ctx, { id: "t", type: "fxeq", bypassed: false, params }, { bpm: 124 });
+      const osc = ctx.createOscillator();
+      osc.frequency.value = 220;
+      const g = ctx.createGain();
+      g.gain.value = 0.25;
+      osc.connect(g).connect(rt.input);
+      rt.output.connect(ctx.destination);
+      osc.start(0);
+      const buffer = await ctx.startRendering();
+      rt.dispose();
+      return buffer.getChannelData(0);
+    };
+    const saturated = await renderFxEq(true);
+    const passthrough = await renderFxEq(false);
+    let peakA = 0;
+    let diffSq = 0;
+    let refSq = 0;
+    for (let i = 0; i < saturated.length; i++) {
+      peakA = Math.max(peakA, Math.abs(saturated[i]));
+      const d = saturated[i] - passthrough[i];
+      diffSq += d * d;
+      refSq += passthrough[i] * passthrough[i];
+    }
+    const diffRms = Math.sqrt(diffSq / saturated.length);
+    const refRms = Math.sqrt(refSq / saturated.length);
+    check(
+      "fxeq: worklet DSP renders in offline context (saturated) + honest fallback",
+      fallbackOk && refRms > 0.05 && diffRms > refRms * 0.3 && peakA > 0.6,
+      `fallback=${fallbackOk} refRms=${refRms.toFixed(3)} diffRms=${diffRms.toFixed(3)} peakSat=${peakA.toFixed(3)}`,
+    );
+  } catch (error) {
+    check("fxeq: worklet DSP renders in offline context (saturated) + honest fallback", false, String(error));
+  }
+
   try {
     const ctx = new OfflineAudioContext(1, SR, SR);
     const track: InstrumentTrack = {

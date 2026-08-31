@@ -43,7 +43,8 @@ export type EffectType =
   | "bassBuss"
   | "utility"
   | "gate"
-  | "shimmer";
+  | "shimmer"
+  | "fxeq";
 
 export type InstrumentKind =
   "sampler" | "analog" | "bass" | "808" | "texture" | "wavetable" | "granular" | "keys" | "pluck" | "logdrum";

@@ -17,7 +17,10 @@
     "collab": "node server/collab-server.mjs",
     "format": "prettier --write src tests",
     "format:check": "prettier --check src tests",
-    "prepare": "node scripts/setup-hooks.mjs"
+    "prepare": "node scripts/setup-hooks.mjs",
+    "build:fxeq": "node scripts/build-fxeq-worklet.mjs",
+    "predev": "npm run build:fxeq",
+    "prebuild": "npm run build:fxeq"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",

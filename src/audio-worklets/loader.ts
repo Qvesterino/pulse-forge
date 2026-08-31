@@ -37,7 +37,8 @@ export function isWorkletReady(
     | "comb"
     | "vowel"
     | "duckDelay"
-    | "reverb",
+    | "reverb"
+    | "fxeq",
   ctx: BaseAudioContext | null | undefined,
 ): boolean {
   if (!ctx || !readyContexts.has(ctx)) return false;
@@ -60,7 +61,8 @@ export function isWorkletReady(
     type === "comb" ||
     type === "vowel" ||
     type === "duckDelay" ||
-    type === "reverb"
+    type === "reverb" ||
+    type === "fxeq"
   );
 }
 
@@ -82,6 +84,10 @@ export async function loadWorkletModules(ctx: BaseAudioContext): Promise<void> {
     // envFollower and compressor processors. Keeping this as one addModule
     // call preserves the existing two-module contract.
     ctx.audioWorklet.addModule(new URL("./core-processor.js", import.meta.url).href),
+    // fxeq is a prebundled classic script in public/ (see
+    // scripts/build-fxeq-worklet.mjs) — served and PWA-precached from the
+    // origin root.
+    ctx.audioWorklet.addModule(new URL("/fxeq-worklet.js", import.meta.url).href),
   ])
     .then(() => {
       readyContexts.add(ctx);

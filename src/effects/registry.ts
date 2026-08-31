@@ -3,6 +3,7 @@ import type { EffectInstance, EffectType } from "../project-model/types";
 import { hashString, mulberry32 } from "../shared/rng";
 import { isWorkletReady } from "../audio-worklets/loader";
 import { createBitcrusherNode } from "../audio-worklets/bitcrusher-node";
+import { createFxEqNode } from "./fxeqNode";
 import { createSidechainNode } from "../audio-worklets/sidechain-node";
 import { createLimiterNode } from "../audio-worklets/limiter-node";
 import { createCompressorNode } from "../audio-worklets/compressor-node";
@@ -2008,6 +2009,46 @@ const shimmer: EffectDefinition = {
   },
 };
 
+/* ---------------- FXEQ Multiband (VocalForge plugin, vendored DSP oracle) ---------------- */
+// Multiband crossover (2-6 bands, LR4) feeding per-band Sat/LoFi/Mod/Delay/Rev
+// chains with a final limiter. DSP runs in an AudioWorklet (vendored core is
+// bit-exact with the VocalForge golden fixtures — tests/fxeq-golden.test.ts).
+// The rack exposes the top-level surface; per-band editing lands with the
+// EQ-paint panel.
+
+const FXEQ_PARAM_DEFAULTS: Record<string, number> = {
+  inputGainDb: 0,
+  bandCount: 6,
+  mix: 100,
+  outputGainDb: 0,
+  limiterEnabled: 1,
+  limiterCeilDb: -0.3,
+};
+
+const fxeq: EffectDefinition = {
+  type: "fxeq",
+  name: "FXEQ Multiband",
+  category: "character",
+  params: [
+    { id: "inputGainDb", label: "IN", min: -24, max: 24, default: 0, unit: "dB", format: formatDb },
+    { id: "bandCount", label: "BANDS", min: 2, max: 6, default: 6, format: (v) => `${Math.round(v)}` },
+    { id: "mix", label: "MIX", min: 0, max: 100, default: 100, unit: "%", format: (v) => `${v.toFixed(0)}%` },
+    { id: "outputGainDb", label: "OUT", min: -24, max: 24, default: 0, unit: "dB", format: formatDb },
+    { id: "limiterEnabled", label: "LIM", min: 0, max: 1, default: 1, format: (v) => (v >= 0.5 ? "ON" : "OFF") },
+    { id: "limiterCeilDb", label: "CEIL", min: -6, max: 0, default: -0.3, unit: "dB", format: formatDb },
+  ],
+  factory(ctx, instance) {
+    // Worklet DSP when the module loaded for THIS context (offline renders
+    // load it too); transparent degraded bypass otherwise — fxeq has no
+    // meaningful main-thread fallback, and silence-in-waiting is worse than
+    // an honest badge.
+    if (isWorkletReady("fxeq", ctx)) {
+      return createFxEqNode(ctx, instance, FXEQ_PARAM_DEFAULTS);
+    }
+    return bypassRuntime(ctx, "AudioWorklet unavailable — FXEQ bypassed (1:1 signal)");
+  },
+};
+
 function bussCurve(drive: number): Float32Array<ArrayBuffer> {
   const curve = new Float32Array(new ArrayBuffer(2048 * 4));
   const k = 1 + drive * 18;
@@ -2738,6 +2779,7 @@ export const EFFECT_DEFS: Record<EffectType, EffectDefinition> = {
   utility,
   gate,
   shimmer,
+  fxeq,
 };
 
 export const EFFECT_ORDER: EffectType[] = [
@@ -2773,6 +2815,7 @@ export const EFFECT_ORDER: EffectType[] = [
   "utility",
   "gate",
   "shimmer",
+  "fxeq",
 ];
 
 /** Effects intentionally exposed in the new mixer Add Effect menu. */
