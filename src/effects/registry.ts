@@ -1896,6 +1896,118 @@ const gate: EffectDefinition = {
   },
 };
 
+/* ---------------- Shimmer / Chime Exciter (universal instrument modifier) ---------------- */
+// Universal "plugin" modifier for any instrument: HP exciter + shimmer tail.
+// Use as track effect on any instrument bus — adds icy brightness without new kind.
+
+const shimmer: EffectDefinition = {
+  type: "shimmer",
+  name: "Shimmer",
+  category: "character",
+  params: [
+    { id: "amount", label: "AMOUNT", min: 0, max: 1, default: 0.35, format: formatPct },
+    { id: "tone", label: "TONE", min: 0, max: 1, default: 0.5, format: formatPct },
+    { id: "decay", label: "DECAY", min: 0, max: 1, default: 0.35, format: formatPct },
+    { id: "mix", label: "MIX", min: 0, max: 1, default: 0.4, format: formatPct },
+  ],
+  factory(ctx, instance) {
+    const mix = mixBus(ctx);
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = 2200 + (instance.params.tone ?? 0.5) * 7800;
+    hp.Q.value = 0.7;
+    const shaper = ctx.createWaveShaper();
+    shaper.oversample = "2x";
+    const buildCurve = (drive: number) => {
+      const k = 1 + drive * 10;
+      const n = 1024;
+      const c = new Float32Array(new ArrayBuffer(n * 4));
+      for (let i = 0; i < n; i++) {
+        const x = (i / (n - 1)) * 2 - 1;
+        c[i] = Math.tanh(x * k) * (1 - drive * 0.15) + x * drive * 0.15;
+      }
+      return c;
+    };
+    shaper.curve = buildCurve(instance.params.amount ?? 0.35);
+    const exciteGain = ctx.createGain();
+    exciteGain.gain.value = 0.7 + (instance.params.amount ?? 0.35) * 0.6;
+    const delay = ctx.createDelay(1);
+    delay.delayTime.value = 0.11;
+    const fb = ctx.createGain();
+    fb.gain.value = (instance.params.decay ?? 0.35) * 0.55;
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 5200 + (instance.params.tone ?? 0.5) * 3000;
+    // Chain: wet -> hp -> shaper -> exciteGain -> delay -> lp -> feedback -> delay loop
+    // Wet tap to output: lp feeds back to mix output via wet path
+    mix.wet.connect(hp).connect(shaper).connect(exciteGain).connect(delay);
+    delay.connect(lp).connect(fb).connect(delay);
+    // shimmer tail + direct exciter both feed wet path's output
+    // mixBus: wet node will be summed to output via its internal dry/wet gains — we wire lp to mix output via wet
+    lp.connect(mix.output);
+    exciteGain.connect(mix.output);
+    mix.setMix(instance.params.mix ?? 0.4, ctx.currentTime);
+
+    return {
+      input: mix.input,
+      output: mix.output,
+      setParameter(id: string, value: number) {
+        switch (id) {
+          case "amount":
+            shaper.curve = buildCurve(value);
+            exciteGain.gain.setTargetAtTime(0.7 + value * 0.6, ctx.currentTime, 0.02);
+            break;
+          case "tone":
+            hp.frequency.setTargetAtTime(2200 + value * 7800, ctx.currentTime, 0.02);
+            lp.frequency.setTargetAtTime(5200 + value * 3000, ctx.currentTime, 0.02);
+            break;
+          case "decay":
+            fb.gain.setTargetAtTime(value * 0.55, ctx.currentTime, 0.02);
+            break;
+          case "mix":
+            mix.setMix(value, ctx.currentTime);
+            break;
+        }
+      },
+      setParameterAt(id: string, value: number, when: number) {
+        switch (id) {
+          case "amount":
+            shaper.curve = buildCurve(value);
+            exciteGain.gain.setValueAtTime(0.7 + value * 0.6, when);
+            break;
+          case "tone":
+            hp.frequency.setValueAtTime(2200 + value * 7800, when);
+            lp.frequency.setValueAtTime(5200 + value * 3000, when);
+            break;
+          case "decay":
+            fb.gain.setValueAtTime(value * 0.55, when);
+            break;
+          case "mix":
+            mix.setMix(value, when);
+            break;
+        }
+      },
+      dispose() {
+        try {
+          mix.input.disconnect();
+        } catch {}
+        try {
+          mix.output.disconnect();
+        } catch {}
+        try {
+          hp.disconnect();
+        } catch {}
+        try {
+          shaper.disconnect();
+        } catch {}
+        try {
+          delay.disconnect();
+        } catch {}
+      },
+    };
+  },
+};
+
 function bussCurve(drive: number): Float32Array<ArrayBuffer> {
   const curve = new Float32Array(new ArrayBuffer(2048 * 4));
   const k = 1 + drive * 18;
@@ -2625,6 +2737,7 @@ export const EFFECT_DEFS: Record<EffectType, EffectDefinition> = {
   multiband,
   utility,
   gate,
+  shimmer,
 };
 
 export const EFFECT_ORDER: EffectType[] = [
@@ -2659,6 +2772,7 @@ export const EFFECT_ORDER: EffectType[] = [
   "bassBuss",
   "utility",
   "gate",
+  "shimmer",
 ];
 
 /** Effects intentionally exposed in the new mixer Add Effect menu. */

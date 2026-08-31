@@ -114,6 +114,7 @@ const INSTRUMENT_NAMES: Record<InstrumentKind, string> = {
   granular: "Granular",
   keys: "Keys",
   pluck: "Pluck",
+  logdrum: "Log Drum",
 };
 
 export function createInstrumentTrackModel(kind: InstrumentKind, index: number): InstrumentTrack {
@@ -439,6 +440,22 @@ export function sanitizeAudioClips(input: unknown, trackIds: Set<string>): impor
     stretchRate = Math.min(4, Math.max(0.25, stretchRate));
     const reverse = raw.reverse === true;
     const stretchMode: "resample" | "stretch" | undefined = raw.stretchMode === "stretch" ? "stretch" : undefined;
+    const warpMarkers: Array<{ timeSec: number; tick: number }> | undefined = (() => {
+      if (!Array.isArray(raw.warpMarkers)) return undefined;
+      const out: Array<{ timeSec: number; tick: number }> = [];
+      for (const m of raw.warpMarkers as Array<Record<string, unknown>>) {
+        if (
+          typeof m.timeSec === "number" &&
+          typeof m.tick === "number" &&
+          Number.isFinite(m.timeSec) &&
+          Number.isFinite(m.tick)
+        ) {
+          out.push({ timeSec: m.timeSec, tick: m.tick });
+        }
+      }
+      out.sort((a, b) => a.tick - b.tick);
+      return out.length > 0 ? out.slice(0, 256) : undefined;
+    })();
     seen.add(id);
     out.push({
       id,
@@ -455,6 +472,7 @@ export function sanitizeAudioClips(input: unknown, trackIds: Set<string>): impor
       stretchRate,
       reverse,
       ...(stretchMode ? { stretchMode } : {}),
+      ...(warpMarkers ? { warpMarkers } : {}),
     });
   }
   out.sort((a, b) => a.startBar - b.startBar);

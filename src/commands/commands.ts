@@ -2246,6 +2246,7 @@ export function updateAudioClip(
       | "stretchMode"
       | "reverse"
       | "bufferId"
+      | "warpMarkers"
     >
   >,
 ): Command {
@@ -2273,6 +2274,7 @@ export function updateAudioClip(
   const stretchRate = num(patch.stretchRate, 0.25, 4);
   if (stretchRate !== undefined) nextPatch.stretchRate = stretchRate;
   if (patch.stretchMode !== undefined) nextPatch.stretchMode = patch.stretchMode;
+  if (patch.warpMarkers !== undefined) nextPatch.warpMarkers = patch.warpMarkers;
   if (patch.reverse !== undefined) nextPatch.reverse = patch.reverse === true;
   const next: ProjectDocument = {
     ...doc,
@@ -2282,6 +2284,57 @@ export function updateAudioClip(
     },
   };
   return snapshot("updateAudioClip", "Edit audio clip", doc, next);
+}
+
+/**
+ * Slice an audio clip into multiple clips at given time positions (seconds).
+ * Each segment becomes a separate AudioClip in the arrangement, positioned
+ * sequentially after the original. SlicerX/PT-style: transient → clip row.
+ */
+export function sliceAudioClipToArrangement(doc: ProjectDocument, clipId: string, sliceTimesSec: number[]): Command {
+  const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
+  if (!clip) throw new Error(`AudioClip ${clipId} not found`);
+  if (sliceTimesSec.length === 0) throw new Error("No slice points provided");
+  // Build segments: [0, time1), [time1, time2), ..., [last, end)
+  const sorted = [...sliceTimesSec].sort((a, b) => a - b);
+  const totalDurationSec = (clip.lengthBars * (BAR_TICKS * 60)) / (doc.bpm * PPQ);
+  const ends = [...sorted, totalDurationSec];
+  const starts = [0, ...sorted];
+  const segments: Array<{ startSec: number; endSec: number }> = [];
+  for (let i = 0; i < starts.length; i++) {
+    const s = starts[i];
+    const e = ends[i];
+    if (e - s > 0.03) segments.push({ startSec: s, endSec: e });
+  }
+  if (segments.length < 2) throw new Error("Slices too short or too few");
+  // Position segments sequentially after original clip's end
+  const secPerBar = (BAR_TICKS * 60) / (doc.bpm * PPQ);
+  const originalEndBar = clip.startBar + clip.lengthBars;
+  const newClips: AudioClip[] = [];
+  let currentBar = originalEndBar + 0.5; // 0.5 bar gap after original
+  for (const seg of segments) {
+    const segDurationSec = seg.endSec - seg.startSec;
+    const segBars = Math.max(0.25, segDurationSec / secPerBar);
+    newClips.push({
+      ...clip,
+      id: uid("audioClip"),
+      startBar: currentBar,
+      lengthBars: Math.round(segBars * 100) / 100,
+      offsetSec: (clip.offsetSec ?? 0) + seg.startSec,
+      trimStart: 0,
+      trimEnd: 0,
+      warpMarkers: undefined,
+    });
+    currentBar += segBars + 0.25;
+  }
+  const next: ProjectDocument = {
+    ...doc,
+    arrangement: {
+      ...doc.arrangement,
+      audioClips: [...(doc.arrangement.audioClips ?? []), ...newClips].sort((a, b) => a.startBar - b.startBar),
+    },
+  };
+  return snapshot("sliceAudioClipToArrangement", `Slice clip → ${newClips.length} segments`, doc, next);
 }
 
 export function duplicateAudioClip(doc: ProjectDocument, clipId: string): Command {

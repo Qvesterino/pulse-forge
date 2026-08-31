@@ -42,10 +42,11 @@ export type EffectType =
   | "drumBuss"
   | "bassBuss"
   | "utility"
-  | "gate";
+  | "gate"
+  | "shimmer";
 
 export type InstrumentKind =
-  "sampler" | "analog" | "bass" | "808" | "texture" | "wavetable" | "granular" | "keys" | "pluck";
+  "sampler" | "analog" | "bass" | "808" | "texture" | "wavetable" | "granular" | "keys" | "pluck" | "logdrum";
 
 export interface EffectInstance {
   id: ID;
@@ -438,6 +439,12 @@ export interface AudioClip {
    *             (pre-rendered grain-based buffer, cached per bufferId+rate)
    */
   stretchMode?: "resample" | "stretch";
+  /**
+   * Warp markers for Ableton/FL Slicex-style time warping.
+   * Each marker pins a buffer time (sec) to an arrangement tick.
+   * Interpolated between markers for smooth warp.
+   */
+  warpMarkers?: Array<{ timeSec: number; tick: number }>;
 }
 
 export interface Arrangement {

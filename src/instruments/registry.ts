@@ -529,10 +529,12 @@ const bass: InstrumentDefinition = {
           osc.stop(stopTime);
           oscs.push(osc);
         };
-        const bodyLevel = 0.2 + (p.body ?? 0.7) * 0.4;
-        mkVoiceOsc(0, bodyLevel * 0.7, -width, "sawtooth");
-        mkVoiceOsc(width * 25, bodyLevel * 0.7, width, "square");
-        mkVoiceOsc(0, (p.sub ?? 0.6) * 1.0, 0, "sine", -12);
+        // Role tuning: Bass = body-first + filter punch (vs 808 = sub-first + hard clip)
+        // Make body more dominant, sub slightly pulled back → clear separation
+        const bodyLevel = 0.28 + (p.body ?? 0.7) * 0.52;
+        mkVoiceOsc(0, bodyLevel * 0.72, -width, "sawtooth");
+        mkVoiceOsc(width * 25, bodyLevel * 0.72, width, "square");
+        mkVoiceOsc(0, (p.sub ?? 0.6) * 0.82, 0, "sine", -12);
 
         const voice = register(
           pitch,
@@ -1864,6 +1866,7 @@ const keys: InstrumentDefinition = {
     { id: "body", label: "BODY", min: 0, max: 1, default: 0.6, format: formatPct },
     { id: "damp", label: "DAMP", min: 0, max: 1, default: 0.45, format: formatPct },
     { id: "tremolo", label: "TREM", min: 0, max: 1, default: 0.15, format: formatPct },
+    { id: "ratio", label: "RATIO", min: 1, max: 7, default: 3.5, format: (v) => v.toFixed(2) },
     { id: "width", label: "WIDTH", min: 0, max: 1, default: 0.3, format: formatPct },
     { id: "cutoff", label: "CUTOFF", min: 80, max: 16000, default: 4500, unit: "Hz", format: formatHz },
     { id: "resonance", label: "RESO", min: 0.1, max: 8, default: 1.8, format: (v) => v.toFixed(2) },
@@ -1995,6 +1998,7 @@ const keys: InstrumentDefinition = {
         const klfoRate = p.lfoRate ?? 0;
         const klfoDepth = p.lfoDepth ?? 0;
         const lfoMultBase = klfoRate > 0.05 ? klfoDepth * 0.6 : 0;
+        const bellRatio = Math.max(1, Math.min(7, p.ratio ?? 3.5));
         const pairA = makePair(
           1,
           1,
@@ -2003,7 +2007,7 @@ const keys: InstrumentDefinition = {
           -width * 0.6,
           0.22 + damp * 0.35,
         );
-        const pairB = makePair(3.5, 1, (18 + bell * 1100) * velIndex, bell * 0.55, width * 0.6, 0.18 + damp * 0.28);
+        const pairB = makePair(bellRatio, 1, (18 + bell * 1100) * velIndex, bell * 0.55, width * 0.6, 0.18 + damp * 0.28);
 
         const lfoNodes: OscillatorNode[] = [];
         if (lfoMultBase > 0.001) {
@@ -2346,6 +2350,177 @@ const pluck: InstrumentDefinition = {
   },
 };
 
+/* ---------------- Log Drum (Amapiano) ---------------- */
+// Tuned perc: 3× sine 1 / 2.15 / 3.8 → notch (hollow) → LP SVF + grit
+// pitchDrop on transient, glide + long decay, deterministic
+
+const logdrum: InstrumentDefinition = {
+  kind: "logdrum",
+  name: "Log Drum",
+  params: [
+    { id: "decay", label: "DECAY", min: 0.15, max: 3.5, default: 1.1, unit: "s", format: formatSec },
+    { id: "pitchDrop", label: "DROP", min: 0, max: 1, default: 0.35, format: formatPct },
+    { id: "tone", label: "TONE", min: 0, max: 1, default: 0.4, format: formatPct },
+    { id: "body", label: "BODY", min: 0, max: 1, default: 0.6, format: formatPct },
+    { id: "hollow", label: "HOLLOW", min: 0, max: 1, default: 0.45, format: formatPct },
+    { id: "grit", label: "GRIT", min: 0, max: 1, default: 0.12, format: formatPct },
+    { id: "width", label: "WIDTH", min: 0, max: 1, default: 0.25, format: formatPct },
+    { id: "glide", label: "GLIDE", min: 0, max: 1, default: 0.34, format: formatPct },
+    { id: "level", label: "LEVEL", min: -24, max: 6, default: -6, unit: "dB", format: formatDb },
+  ],
+  factory(ctx, track) {
+    const output = ctx.createGain();
+    output.gain.value = 1;
+    const p = { ...track.params };
+    const { voices, register, cleanup, findByPitch } = makeVoiceManager(4);
+    const liveFilters = new Set<ReturnType<typeof createVoiceFilter>>();
+    const liveNotches = new Set<BiquadFilterNode>();
+
+    const runtime: InstrumentRuntime = {
+      output,
+      noteOn(pitch, velocity, when, durationSec, slideFrom) {
+        const freq = midiToFreq(pitch);
+        const glideNorm = Math.max(0, Math.min(1, p.glide ?? 0.34));
+        const glide = glideNorm * 0.35;
+        const slideOn = !!slideFrom;
+        const glideStart = slideFrom ? Math.max(0, slideFrom.when) : when;
+        const hold = Math.max(durationSec, 0.03);
+        const off = when + hold;
+        const decay = Math.max(0.15, p.decay ?? 1.1);
+        const stopTime = off + decay * 1.2 + 0.15;
+        const level = velocity * dbToLin(p.level ?? -6);
+
+        const amp = ctx.createGain();
+        amp.gain.setValueAtTime(0.0001, when);
+        amp.gain.exponentialRampToValueAtTime(Math.max(level, 0.0002), when + 0.002);
+        amp.gain.setTargetAtTime(Math.max(level * 0.55, 0.0002), when + 0.002, decay / 3);
+        amp.gain.setTargetAtTime(0.0001, off, decay / 4);
+        amp.connect(output);
+
+        const tone = p.tone ?? 0.4;
+        const body = p.body ?? 0.6;
+        const hollow = p.hollow ?? 0.45;
+        const grit = p.grit ?? 0.12;
+        const width = p.width ?? 0.25;
+
+        const toneHz = 400 + tone * 2800;
+        const filter = createVoiceFilter(ctx, toneHz, 0.9);
+        liveFilters.add(filter);
+        filter.output.connect(amp);
+
+        const notch = ctx.createBiquadFilter();
+        notch.type = "notch";
+        notch.frequency.value = 950 + hollow * 300;
+        notch.Q.value = 1.1 + hollow * 0.6;
+        // depth via gain staging: hollow mixes notch amount (dry/wet by splitting)
+        notch.connect(filter.input);
+        liveNotches.add(notch);
+
+        const shaper = ctx.createWaveShaper();
+        shaper.oversample = "2x";
+        shaper.curve = tanhCurve(1 + grit * 5);
+        shaper.connect(notch);
+
+        const drop = p.pitchDrop ?? 0.35;
+        const oscs: OscillatorNode[] = [];
+        const mkLogOsc = (ratio: number, gainVal: number, panVal: number) => {
+          const osc = ctx.createOscillator();
+          osc.type = "sine";
+          const target = freq * ratio;
+          const start = target * (1 + drop * 1.4);
+          const g = ctx.createGain();
+          g.gain.value = gainVal;
+          const pan = ctx.createStereoPanner();
+          pan.pan.value = panVal;
+          osc.connect(g).connect(pan).connect(shaper);
+          if (slideOn && slideFrom && glide > 0.002) {
+            const fromFreq = midiToFreq(slideFrom.pitch) * ratio;
+            osc.frequency.setValueAtTime(Math.max(20, fromFreq * (1 + drop * 0.2)), glideStart);
+            osc.frequency.exponentialRampToValueAtTime(Math.max(20, target), glideStart + glide);
+            g.gain.setValueAtTime(gainVal * 0.9, glideStart);
+            g.gain.setValueAtTime(gainVal, when);
+            osc.start(glideStart);
+          } else {
+            osc.frequency.setValueAtTime(Math.max(20, start), when);
+            osc.frequency.exponentialRampToValueAtTime(Math.max(20, target), when + 0.045);
+            osc.start(when);
+          }
+          osc.stop(stopTime);
+          oscs.push(osc);
+        };
+        mkLogOsc(1, 0.72, 0);
+        mkLogOsc(2.15, 0.22 + body * 0.28, -width * 0.6);
+        mkLogOsc(3.8, 0.08 + body * 0.12, width * 0.6);
+
+        const voice = register(
+          pitch,
+          stopTime,
+          (whenStop) => {
+            const t = Math.max(whenStop, 0);
+            amp.gain.cancelScheduledValues(t);
+            amp.gain.setTargetAtTime(0.0001, t, 0.01);
+            for (const o of oscs) {
+              try {
+                o.stop(t + 0.05);
+              } catch {
+                /* already */
+              }
+            }
+          },
+          (now) => {
+            amp.gain.cancelScheduledValues(now);
+            amp.gain.setTargetAtTime(0.0001, now, 0.008);
+          },
+        );
+        const last = oscs[oscs.length - 1];
+        if (last)
+          last.onended = () => {
+            liveFilters.delete(filter);
+            liveNotches.delete(notch);
+            amp.disconnect();
+            filter.disconnect();
+            try {
+              notch.disconnect();
+            } catch {
+              /* already */
+            }
+            try {
+              shaper.disconnect();
+            } catch {
+              /* already */
+            }
+            cleanup(voice);
+          };
+      },
+      setParameter(id, value) {
+        p[id] = value;
+        if (id === "tone")
+          for (const f of liveFilters) f.frequency.setTargetAtTime(400 + value * 2800, ctx.currentTime, 0.02);
+        if (id === "cutoff") for (const f of liveFilters) f.frequency.setTargetAtTime(value, ctx.currentTime, 0.02);
+      },
+      setParameterAt(id, value, when) {
+        p[id] = value;
+        if (id === "tone") for (const f of liveFilters) f.frequency.setTargetAtTime(400 + value * 2800, when, 0.02);
+        if (id === "cutoff") for (const f of liveFilters) f.frequency.setTargetAtTime(value, when, 0.02);
+      },
+      noteOff(pitch, when) {
+        for (const v of findByPitch(pitch)) v.stop(when);
+      },
+      panic() {
+        for (const voice of [...voices]) voice.silence(ctx.currentTime);
+        voices.length = 0;
+        liveFilters.clear();
+        liveNotches.clear();
+      },
+      dispose() {
+        this.panic();
+        output.disconnect();
+      },
+    };
+    return runtime;
+  },
+};
+
 /* ---------------- registry ---------------- */
 
 export const INSTRUMENT_DEFS: Record<InstrumentKind, InstrumentDefinition> = {
@@ -2358,6 +2533,7 @@ export const INSTRUMENT_DEFS: Record<InstrumentKind, InstrumentDefinition> = {
   granular,
   keys,
   pluck,
+  logdrum,
 };
 
 export const INSTRUMENT_ORDER: InstrumentKind[] = [
@@ -2370,6 +2546,7 @@ export const INSTRUMENT_ORDER: InstrumentKind[] = [
   "granular",
   "keys",
   "pluck",
+  "logdrum",
 ];
 
 export function defaultInstrumentParams(kind: InstrumentKind): Record<string, number> {
