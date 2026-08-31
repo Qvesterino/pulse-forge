@@ -2320,6 +2320,31 @@ export function updateAudioClip(
 }
 
 /**
+ * Fit a loop clip to the project tempo: pitch-preserving time-stretch with
+ * rate = detected loop BPM / project BPM, so the loop locks to the grid
+ * while keeping its pitch. Warp markers are left untouched — they describe
+ * the source material, not the playback rate.
+ */
+export function fitAudioClipTempo(doc: ProjectDocument, clipId: string, detectedBpm: number): Command {
+  const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
+  if (!clip) throw new Error(`AudioClip ${clipId} not found`);
+  if (!Number.isFinite(detectedBpm) || detectedBpm < 40 || detectedBpm > 240) {
+    throw new Error(`Detected tempo ${detectedBpm} out of range — refusing to fit`);
+  }
+  const rate = Math.round(Math.min(4, Math.max(0.25, detectedBpm / doc.bpm)) * 100) / 100;
+  const next: ProjectDocument = {
+    ...doc,
+    arrangement: {
+      ...doc.arrangement,
+      audioClips: (doc.arrangement.audioClips ?? []).map((c) =>
+        c.id === clipId ? { ...c, stretchMode: "stretch", stretchRate: rate } : c,
+      ),
+    },
+  };
+  return snapshot("fitAudioClipTempo", `Fit loop ${Math.round(detectedBpm)}→${doc.bpm} BPM (×${rate})`, doc, next);
+}
+
+/**
  * Slice an audio clip into multiple clips at given time positions (seconds).
  * Each segment becomes a separate AudioClip in the arrangement, positioned
  * sequentially after the original. SlicerX/PT-style: transient → clip row.

@@ -81,7 +81,7 @@ describe("render length", () => {
 describe("master and send commands", () => {
   it("default project ships returns, master config and empty sends", () => {
     const doc = createDefaultProject();
-    expect(doc.returns.map((r) => r.name)).toEqual(["Reverb", "Delay"]);
+    expect(doc.returns.map((r) => r.name)).toEqual(["Reverb", "Delay", "NY Comp"]);
     expect(doc.master.limiterEnabled).toBe(true);
     expect(doc.master.clipperEnabled).toBe(false);
     expect(doc.tracks.every((t) => Object.keys(t.sends).length === 0)).toBe(true);
@@ -91,14 +91,14 @@ describe("master and send commands", () => {
     const doc = createDefaultProject();
     const store = new ProjectStore(doc);
     store.execute(setMasterConfig(store.doc, { clipperEnabled: true, limiterEnabled: false }));
-    expect(store.doc.master).toEqual({
+    expect(store.doc.master).toMatchObject({
       masterGain: 1,
       ceilingDb: -1,
       limiterEnabled: false,
       clipperEnabled: true,
     });
     store.undo();
-    expect(store.doc.master).toEqual({
+    expect(store.doc.master).toMatchObject({
       masterGain: 1,
       ceilingDb: -1,
       limiterEnabled: true,

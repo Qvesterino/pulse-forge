@@ -73,7 +73,8 @@ export function FloatingPlugin({
   const pad = isDrum ? (track.pads.find((p: any) => p.id === selectedPadId) ?? (track as any).pads[0]) : null;
   let title: string;
   if (isDrum) title = `DRUMS — ${pad?.name ?? "PAD"}`;
-  else if (track.kind === "instrument") title = `${INSTRUMENT_DEFS[track.instrument].name.toUpperCase()} — ${track.name}`;
+  else if (track.kind === "instrument")
+    title = `${INSTRUMENT_DEFS[track.instrument].name.toUpperCase()} — ${track.name}`;
   else title = track.name;
 
   return (
@@ -84,7 +85,12 @@ export function FloatingPlugin({
       aria-modal={false}
       style={{ left: pos.x, top: pos.y }}
     >
-      <div className="floating-plugin-header" onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}>
+      <div
+        className="floating-plugin-header"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+      >
         <span className="floating-plugin-title">{title}</span>
         <div className="floating-plugin-actions">
           <div className="floating-plugin-mode" role="group" aria-label="Plugin mode">
@@ -126,6 +132,19 @@ export function FloatingPlugin({
   );
 }
 
+const HOBBY_PARAMS: Record<string, string[]> = {
+  sampler: ["attack", "cutoff", "gain", "level"],
+  analog: ["cutoff", "resonance", "attack", "level"],
+  bass: ["sub", "body", "punch", "level"],
+  "808": ["decay", "pitchDrop", "drive", "level"],
+  texture: ["color", "density", "level", "chaos"],
+  wavetable: ["table", "morph", "cutoff", "level"],
+  granular: ["position", "size", "rate", "gain"],
+  keys: ["tine", "bell", "ratio", "level"],
+  pluck: ["pick", "body", "decay", "level"],
+  logdrum: ["decay", "tone", "body", "level"],
+};
+
 function InstrumentPluginContent({
   track,
   mode,
@@ -138,8 +157,7 @@ function InstrumentPluginContent({
   services: any;
 }) {
   const def: any = INSTRUMENT_DEFS[track.instrument];
-  // Hobby: first 3 + level; Profi: all
-  const params: any[] = mode === "hobby" ? hobbyParams(def.params) : def.params;
+  const params: any[] = mode === "hobby" ? hobbyParams(def.params, track.instrument) : def.params;
 
   return (
     <div className="floating-plugin-grid">
@@ -199,7 +217,9 @@ function DrumPluginContent({
     <div className="floating-plugin-stack">
       <div className="floating-plugin-pad-switch">
         <span className="slider-label">PAD — {pad.name}</span>
-        <span className={`floating-plugin-badge${isSynth ? " is-synth" : ""}`}>{isSynth ? pad.synth!.type : "SAMPLE"}</span>
+        <span className={`floating-plugin-badge${isSynth ? " is-synth" : ""}`}>
+          {isSynth ? pad.synth!.type : "SAMPLE"}
+        </span>
       </div>
 
       {isSynth && (
@@ -220,7 +240,9 @@ function DrumPluginContent({
                   snare: { decay: 0.22, tone: 1750, snap: 0.45, body: 0.5 },
                 };
                 const d = defaults[type];
-                services.store.execute(setPadSynth(doc, pad.id, { type, decay: d.decay, tone: d.tone, snap: d.snap, body: d.body }));
+                services.store.execute(
+                  setPadSynth(doc, pad.id, { type, decay: d.decay, tone: d.tone, snap: d.snap, body: d.body }),
+                );
               }}
             >
               <option value="hatClosed">Hat Closed</option>
@@ -264,18 +286,19 @@ function DrumPluginContent({
               onCommit={(snap) => services.store.execute(setPadSynth(doc, pad.id, { ...(pad.synth as any), snap }))}
             />
           )}
-          {mode === "profi" && (pad.synth?.type === "kick" || pad.synth?.type === "snare" || pad.synth?.type === "clap") && (
-            <Slider
-              compact
-              label="BODY"
-              value={(pad.synth as any)?.body ?? 0.5}
-              min={0}
-              max={1}
-              defaultValue={0.5}
-              format={(v) => `${Math.round(v * 100)}`}
-              onCommit={(body) => services.store.execute(setPadSynth(doc, pad.id, { ...(pad.synth as any), body }))}
-            />
-          )}
+          {mode === "profi" &&
+            (pad.synth?.type === "kick" || pad.synth?.type === "snare" || pad.synth?.type === "clap") && (
+              <Slider
+                compact
+                label="BODY"
+                value={(pad.synth as any)?.body ?? 0.5}
+                min={0}
+                max={1}
+                defaultValue={0.5}
+                format={(v) => `${Math.round(v * 100)}`}
+                onCommit={(body) => services.store.execute(setPadSynth(doc, pad.id, { ...(pad.synth as any), body }))}
+              />
+            )}
         </div>
       )}
 
@@ -315,13 +338,29 @@ function DrumPluginContent({
   );
 }
 
-function hobbyParams(params: readonly any[]): any[] {
-  // Keep first 3 musical + LEVEL + core filter if present
-  const keep = new Set(["sub", "tune", "cutoff", "decay", "level", "gain", "attack", "tine", "body", "pick", "table", "position"]);
+function hobbyParams(params: readonly any[], kind?: string): any[] {
+  if (kind && HOBBY_PARAMS[kind]) {
+    const ids = HOBBY_PARAMS[kind];
+    const picked = ids.map((id) => params.find((p) => p.id === id)).filter(Boolean) as any[];
+    if (picked.length >= 3) return picked;
+  }
+  // Fallback generic
+  const keep = new Set([
+    "sub",
+    "tune",
+    "cutoff",
+    "decay",
+    "level",
+    "gain",
+    "attack",
+    "tine",
+    "body",
+    "pick",
+    "table",
+    "position",
+  ]);
   const picked = params.filter((p) => keep.has(p.id) || p.label === "LEVEL" || p.label === "GAIN");
-  // Fallback: first 4 + level
   if (picked.length < 3) return params.slice(0, 4) as any;
-  // Ensure LEVEL/GAIN always last
   const level = params.find((p) => p.id === "level" || p.id === "gain");
   const withoutLevel = picked.filter((p) => p !== level);
   const result = withoutLevel.slice(0, 3);

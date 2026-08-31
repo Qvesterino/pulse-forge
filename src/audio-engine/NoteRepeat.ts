@@ -1,0 +1,204 @@
+/**
+ * Live Note Repeat pad-mode — the MPC-style performance engine.
+ *
+ * Hold a pad (mouse, QWERTY key or MIDI note) and the pad re-fires on a
+ * grid division (1/4 … 1/16T) with per-repeat velocity falloff. While the
+ * transport plays, repeats lock to the transport tick grid so rolls land
+ * quantized; while stopped they free-run on the audio clock at the current
+ * tempo so fills can be rehearsed before recording.
+ *
+ * The controller is transport-agnostic and testable: callers inject a
+ * Transport, the audio clock and a `fire` callback; scheduling is a pure
+ * lookahead loop (25 ms tick, 120 ms horizon — same cadence as the
+ * Scheduler).
+ */
+import { PPQ } from "../project-model/types";
+import type { Transport } from "../transport/Transport";
+
+export type RepeatRate = "off" | "1/4" | "1/8" | "1/16" | "1/8T" | "1/16T";
+export type FalloffMode = "constant" | "decay" | "rise";
+
+export const REPEAT_RATES: RepeatRate[] = ["off", "1/4", "1/8", "1/16", "1/8T", "1/16T"];
+export const FALLOFF_MODES: FalloffMode[] = ["constant", "decay", "rise"];
+
+/** Grid division in ticks. Triplets: PPQ/3 (1/8T) and PPQ/6 (1/16T). */
+export function rateTicksOf(rate: Exclude<RepeatRate, "off">): number {
+  switch (rate) {
+    case "1/4":
+      return PPQ;
+    case "1/8":
+      return PPQ / 2;
+    case "1/16":
+      return PPQ / 4;
+    case "1/8T":
+      return PPQ / 3;
+    case "1/16T":
+      return PPQ / 6;
+  }
+}
+
+/** Per-repeat velocity. Decay/rise use a geometric curve; rise clamps at 1, decay floors at 0.05. */
+export function repeatVelocity(base: number, index: number, mode: FalloffMode): number {
+  const safeBase = Math.min(1, Math.max(0, base));
+  if (mode === "decay") return Math.max(0.05, safeBase * Math.pow(0.85, index));
+  if (mode === "rise") return Math.min(1, safeBase * Math.pow(1.15, index));
+  return safeBase;
+}
+
+interface ActiveHold {
+  trackId: string;
+  padId: string;
+  base: number;
+  /** Hits fired so far (velocity index). */
+  index: number;
+  /** Next grid tick while the transport plays (null = needs re-anchor). */
+  nextTick: number | null;
+  /** Next audio-clock time while the transport is stopped (null otherwise). */
+  nextTime: number | null;
+}
+
+const TICK_MS = 25;
+const HORIZON_SECONDS = 0.12;
+const AUDIBLE_EPSILON = 0.002;
+
+export interface NoteRepeatDeps {
+  getTransport(): Transport;
+  getAudioTime(): number;
+  /** Fire one pad hit. Implementations resolve the pad and schedule it. */
+  fire(trackId: string, padId: string, velocity: number, when: number): void;
+}
+
+export class NoteRepeatController {
+  private holds = new Map<string, ActiveHold>();
+  private timer: ReturnType<typeof setInterval> | null = null;
+  private rate: RepeatRate = "off";
+  private falloff: FalloffMode = "decay";
+
+  constructor(private deps: NoteRepeatDeps) {}
+
+  get currentRate(): RepeatRate {
+    return this.rate;
+  }
+
+  get currentFalloff(): FalloffMode {
+    return this.falloff;
+  }
+
+  get size(): number {
+    return this.holds.size;
+  }
+
+  isHolding(key: string): boolean {
+    return this.holds.has(key);
+  }
+
+  setRate(rate: RepeatRate): void {
+    this.rate = rate;
+    if (rate === "off") {
+      this.stopAll();
+      return;
+    }
+    // Re-anchor every hold so the new division takes effect on the next
+    // repeat instead of fighting the old phase.
+    for (const key of [...this.holds.keys()]) {
+      const hold = this.holds.get(key)!;
+      this.anchor(hold, key);
+    }
+  }
+
+  setFalloff(mode: FalloffMode): void {
+    this.falloff = mode;
+  }
+
+  /**
+   * Pad-down. Fires the first hit immediately (index 0 = `base` velocity),
+   * then repeats on the grid while held. Callers must pair with `stop(key)`.
+   */
+  start(key: string, trackId: string, padId: string, base: number): void {
+    if (this.rate === "off") {
+      // Still fire the single hit so callers can route every pad-down here.
+      this.deps.fire(trackId, padId, Math.min(1, Math.max(0, base)), this.deps.getAudioTime() + 0.005);
+      return;
+    }
+    const now = this.deps.getAudioTime();
+    const hold: ActiveHold = { trackId, padId, base, index: 0, nextTick: null, nextTime: null };
+    this.holds.set(key, hold);
+    this.deps.fire(trackId, padId, repeatVelocity(base, 0, this.falloff), now + 0.005);
+    hold.index = 1;
+    this.anchor(hold, key);
+    if (this.timer === null) {
+      this.timer = setInterval(() => this.tick(), TICK_MS);
+    }
+  }
+
+  /** Pad-up — the key stops repeating. Already-scheduled hits (≤ horizon) play out. */
+  stop(key: string): void {
+    this.holds.delete(key);
+    this.pruneTimer();
+  }
+
+  stopAll(): void {
+    this.holds.clear();
+    this.pruneTimer();
+  }
+
+  private anchor(hold: ActiveHold, _key: string): void {
+    if (this.rate === "off") return;
+    const transport = this.deps.getTransport();
+    const rateTicks = rateTicksOf(this.rate);
+    if (transport.playing) {
+      const position = Math.max(0, transport.position);
+      hold.nextTick = (Math.floor(position / rateTicks) + 1) * rateTicks;
+      hold.nextTime = null;
+    } else {
+      hold.nextTime = this.deps.getAudioTime() + rateTicks * transport.secondsPerTick;
+      hold.nextTick = null;
+    }
+  }
+
+  private tick(): void {
+    if (this.holds.size === 0 || this.rate === "off") return;
+    const transport = this.deps.getTransport();
+    const now = this.deps.getAudioTime();
+    const horizon = now + HORIZON_SECONDS;
+    const rateTicks = rateTicksOf(this.rate);
+    const rateSec = rateTicks * transport.secondsPerTick;
+    for (const hold of this.holds.values()) {
+      if (transport.playing) {
+        if (hold.nextTick === null) {
+          // Was free-running (transport started mid-hold) — re-anchor to grid.
+          const position = Math.max(0, transport.position);
+          hold.nextTick = (Math.floor(position / rateTicks) + 1) * rateTicks;
+          hold.nextTime = null;
+        }
+        // The horizon can hold several repeats at fast rates — drain them all.
+        for (let guard = 0; guard < 64; guard++) {
+          const when = transport.timeAtTick(hold.nextTick!);
+          if (when > horizon) break;
+          if (when >= now - AUDIBLE_EPSILON) {
+            this.deps.fire(hold.trackId, hold.padId, repeatVelocity(hold.base, hold.index, this.falloff), when);
+            hold.index += 1;
+          }
+          hold.nextTick! += rateTicks;
+        }
+      } else {
+        if (hold.nextTime === null) {
+          hold.nextTime = now + rateSec;
+          hold.nextTick = null;
+        }
+        while (hold.nextTime! <= horizon) {
+          this.deps.fire(hold.trackId, hold.padId, repeatVelocity(hold.base, hold.index, this.falloff), hold.nextTime!);
+          hold.index += 1;
+          hold.nextTime! += rateSec;
+        }
+      }
+    }
+  }
+
+  private pruneTimer(): void {
+    if (this.holds.size === 0 && this.timer !== null) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
+  }
+}

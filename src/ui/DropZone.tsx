@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import { useServices } from "./context";
 import type { UserSampleAsset } from "../persistence/UserSampleRepository";
 import { userSampleId } from "../persistence/UserSampleRepository";
+import { detectLoopBpm } from "../audio-engine/bpm-detect";
 
 interface DropZoneProps {
   onImport: (asset: UserSampleAsset) => void;
@@ -64,6 +65,16 @@ export function DropZone({ onImport, className }: DropZoneProps) {
           // Add to audio bank (immediately playable)
           services.bank.add(id, buffer);
 
+          // One-time tempo detection for the "Fit to project BPM" workflow.
+          // Best-effort: a failed/absent detection just leaves `bpm` unset.
+          let bpm: number | undefined;
+          try {
+            const detected = detectLoopBpm(buffer.getChannelData(0), buffer.sampleRate);
+            if (detected) bpm = detected.bpm;
+          } catch (err) {
+            console.warn("[DropZone] bpm detection failed:", err);
+          }
+
           // Persist metadata + encoded bytes (survives reloads since DB v5)
           const asset: UserSampleAsset = {
             id,
@@ -74,6 +85,7 @@ export function DropZone({ onImport, className }: DropZoneProps) {
             sampleRate: buffer.sampleRate,
             channels: buffer.numberOfChannels,
             createdAt: new Date().toISOString(),
+            ...(bpm !== undefined ? { bpm } : {}),
           };
           await services.userSamples.save(asset, raw);
 

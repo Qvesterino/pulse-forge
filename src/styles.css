@@ -365,6 +365,49 @@ button {
   gap: 6px;
 }
 
+/* Live Note Repeat controls above the pad grid. */
+.rack-header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 2px 4px;
+}
+
+.rack-header-title {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 1px;
+  color: var(--text-faint);
+}
+
+.rack-header-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-faint);
+}
+
+.rack-header-field select {
+  font-family: var(--mono);
+  font-size: 10px;
+  background: var(--bg-panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 3px;
+}
+
+.rack-header-hint {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-faint);
+  opacity: 0.7;
+}
+
 .track-tab-badge,
 .track-header-badge {
   display: inline-block;
@@ -4321,6 +4364,18 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Detected-tempo chip on imported loops (feeds "Fit to project BPM"). */
+.sample-bpm {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 9px;
+  color: #60a5fa;
+  border: 1px solid #60a5fa55;
+  border-radius: 3px;
+  padding: 1px 3px;
+  line-height: 1.2;
 }
 
 .sample-name-none {

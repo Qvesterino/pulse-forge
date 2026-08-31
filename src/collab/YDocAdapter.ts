@@ -776,9 +776,21 @@ export function applyProjectToYMap(_oldDoc: ProjectDocument, newDoc: ProjectDocu
   } else if (arrangement.has("transitions")) {
     arrangement.delete("transitions");
   }
-  // Master
+  // Master — mirror every MasterConfig field, otherwise collab round-trips
+  // silently drop the newer keys (lufsTarget/tape/ms vanished for peers).
   const master = ensureChildMap(yMap, "master");
-  mirrorScalars(master, newDoc.master, ["masterGain", "ceilingDb", "limiterEnabled", "clipperEnabled"]);
+  mirrorScalars(master, newDoc.master, [
+    "masterGain",
+    "ceilingDb",
+    "limiterEnabled",
+    "clipperEnabled",
+    "tapeEnabled",
+    "tapeDrive",
+    "msEnabled",
+    "msMidGain",
+    "msSideGain",
+    "lufsTarget",
+  ]);
 
   // Groove
   if (newDoc.groove) {

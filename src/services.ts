@@ -22,6 +22,7 @@ import type { CollaboratorInfo } from "./collab/CollaborationProvider";
 import { LatencyCalibrationController } from "./audio-engine/latencyCalibration";
 import { ArrangementCaptureController } from "./arrangement/capture";
 import { GhostPreviewPlayer } from "./audio-engine/GhostPreviewPlayer";
+import { NoteRepeatController } from "./audio-engine/NoteRepeat";
 
 /**
  * Long-lived services shared across projects: the audio engine (one shared
@@ -56,6 +57,8 @@ export interface Services {
   latency: LatencyCalibrationController;
   capture: ArrangementCaptureController;
   ghost: GhostPreviewPlayer;
+  /** Live Note Repeat pad-mode (holds from pads, QWERTY keys or MIDI notes). */
+  noteRepeat: NoteRepeatController;
   /** Live when a collab session is active, null otherwise. */
   collab: CollabSession | null;
   flushSave(): Promise<void>;
@@ -303,6 +306,22 @@ export function openProject(core: CoreServices, initial: ProjectDocument, option
   const userSamples = new UserSampleRepository();
   const frozenAudio = new FrozenBufferRepository();
 
+  // Live Note Repeat: pad/QWERTY/MIDI holds re-fire a drum pad on a grid
+  // division. The fire callback resolves the pad fresh on every hit so mutes
+  // and track deletions apply mid-hold without the controller knowing.
+  const noteRepeat = new NoteRepeatController({
+    getTransport: () => transport,
+    getAudioTime: () => engine.currentTime,
+    fire: (trackId, padId, velocity, when) => {
+      const track = store.doc.tracks.find((t) => t.id === trackId);
+      if (!track || track.kind !== "drum" || track.mute) return;
+      const pad = track.pads.find((p) => p.id === padId);
+      if (!pad || pad.mute) return;
+      engine.trigger(trackId, pad, when, velocity);
+    },
+  });
+  midi.attachNoteRepeat(noteRepeat);
+
   // Restore frozen-track audio (IndexedDB → bank) so frozen tracks survive
   // reloads. Tracks whose buffer is gone (cleared site data, other browser)
   // are auto-unfrozen — they play live instead of staying permanently silent.
@@ -419,6 +438,7 @@ export function openProject(core: CoreServices, initial: ProjectDocument, option
   window.addEventListener("beforeunload", onUnload);
 
   const closeProject = async (): Promise<void> => {
+    noteRepeat.stopAll();
     ghost.stop();
     capture.cancel();
     playback.stop();
@@ -448,6 +468,7 @@ export function openProject(core: CoreServices, initial: ProjectDocument, option
       patternCount: store.doc.patterns.length,
       schemaVersion: store.doc.schemaVersion,
       saveStatus: store.saveStatus,
+      noteRepeatHolds: noteRepeat.size,
     };
   };
 
@@ -469,6 +490,7 @@ export function openProject(core: CoreServices, initial: ProjectDocument, option
     latency,
     capture,
     ghost,
+    noteRepeat,
     collab,
     flushSave,
     closeProject,

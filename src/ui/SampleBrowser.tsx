@@ -104,6 +104,11 @@ export function SampleBrowser({
       >
         {asset.name}
       </button>
+      {!isFactoryAsset(asset) && asset.bpm !== undefined && (
+        <span className="sample-bpm" title={`Detected tempo — use "Fit to project BPM" on an audio clip`}>
+          {Math.round(asset.bpm)}
+        </span>
+      )}
       {isFactoryAsset(asset) ? (
         <button
           type="button"

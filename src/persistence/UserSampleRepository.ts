@@ -10,6 +10,12 @@ export interface UserSampleAsset {
   sampleRate: number;
   channels: number;
   createdAt: string;
+  /**
+   * Detected tempo in BPM (0.1 precision), measured once at import time.
+   * Optional — samples imported before tempo detection simply lack it, and
+   * loops without a steady pulse never get one.
+   */
+  bpm?: number;
 }
 
 export interface UserSampleAudio {

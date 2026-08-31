@@ -17,6 +17,7 @@ import {
   duplicateAudioClip,
   duplicatePatternForScene,
   duplicateSceneAsVariation,
+  fitAudioClipTempo,
   moveArrangementClip,
   moveAudioClip,
   removeArrangementTransition,
@@ -33,6 +34,7 @@ import {
 import { sceneRoleOf } from "../project-model/schema";
 import type { ArrangementTransitionType, SceneRole } from "../project-model/types";
 import { BAR_TICKS, PPQ } from "../project-model/types";
+import { detectLoopBpm } from "../audio-engine/bpm-detect";
 import { usePlayheadBar } from "./playhead";
 import { SceneLauncher, useSceneRuntimeState } from "./SceneLauncher";
 
@@ -1049,6 +1051,28 @@ export function ArrangementPanel() {
               }}
             >
               Normalize (gain→0.99 peak)
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                const c = audioClips.find((x) => x.id === audioMenu.clipId);
+                const buf = c ? services.bank.get(c.bufferId) : null;
+                const detected = buf ? detectLoopBpm(buf.getChannelData(0), buf.sampleRate) : null;
+                if (c && detected) {
+                  try {
+                    execute(fitAudioClipTempo(services.store.doc, c.id, detected.bpm));
+                  } catch (err) {
+                    setActionError(err instanceof Error ? err.message : "Fit failed");
+                  }
+                } else {
+                  setActionError("No steady tempo detected in this sample");
+                }
+                setAudioMenu(null);
+              }}
+              title="Detect the loop's tempo and pitch-preserving time-stretch it to the project BPM"
+            >
+              Fit to project BPM ({doc.bpm})
             </button>
             <button
               type="button"

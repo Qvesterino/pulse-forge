@@ -239,6 +239,12 @@ describe("normalizeProject — macros, returns, master", () => {
       ceilingDb: -1,
       limiterEnabled: true,
       clipperEnabled: false,
+      tapeEnabled: false,
+      tapeDrive: 0.35,
+      msEnabled: false,
+      msMidGain: 0,
+      msSideGain: 0,
+      lufsTarget: -14,
     });
   });
 });

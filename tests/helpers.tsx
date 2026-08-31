@@ -6,6 +6,8 @@ import type { Services } from "../src/services";
 import type { ProjectDocument } from "../src/project-model/types";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { LatencyCalibrationController } from "../src/audio-engine/latencyCalibration";
+import { NoteRepeatController } from "../src/audio-engine/NoteRepeat";
+import { Transport } from "../src/transport/Transport";
 
 export function mockServices(doc?: ProjectDocument): Services {
   const project = doc ?? createProjectFromTemplate("house");
@@ -13,6 +15,7 @@ export function mockServices(doc?: ProjectDocument): Services {
   const latency = new LatencyCalibrationController(null);
   const libraryState = { favoriteAssets: [], recentAssets: [], favoritePresets: [], recentPresets: [] };
   const captureSnapshot = { capturing: false, launchCount: 0, firstBar: null };
+  const mockTransport = new Transport({ now: () => 0 }, 120);
 
   return {
     core: {
@@ -217,6 +220,11 @@ export function mockServices(doc?: ProjectDocument): Services {
       listAudio: vi.fn(async () => []),
     } as any,
     latency,
+    noteRepeat: new NoteRepeatController({
+      getTransport: () => mockTransport,
+      getAudioTime: () => 0,
+      fire: vi.fn(),
+    }),
     capture: {
       subscribe: vi.fn(() => () => {}),
       getSnapshot: vi.fn(() => captureSnapshot),

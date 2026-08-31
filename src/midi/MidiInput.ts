@@ -1,4 +1,5 @@
 import type { AudioEngine } from "../audio-engine/AudioEngine";
+import type { NoteRepeatController } from "../audio-engine/NoteRepeat";
 import type { Command } from "../commands/types";
 import type { Transport } from "../transport/Transport";
 import type { DrumTrack, MidiConfig, ProjectDocument } from "../project-model/types";
@@ -40,6 +41,13 @@ export class MidiInput {
   private runningStatus: number | null = null;
   /** One-shot capture for MIDI Learn (CC → macro). */
   private captureNextCcCb: ((cc: number, channel: number) => void) | null = null;
+  /** Live Note Repeat holds — drum notes repeat while physically held. */
+  private noteRepeat: NoteRepeatController | null = null;
+
+  /** Wire the live Note Repeat controller (services call once after construction). */
+  attachNoteRepeat(controller: NoteRepeatController): void {
+    this.noteRepeat = controller;
+  }
 
   async requestAccess(): Promise<boolean> {
     if (typeof navigator === "undefined" || !navigator.requestMIDIAccess) return false;
@@ -110,6 +118,7 @@ export class MidiInput {
     }
     this.listeners.clear();
     if (this.access) this.access.onstatechange = null;
+    this.noteRepeat?.stopAll();
     this.engine = null;
     this.store = null;
     this.transport = null;
@@ -249,14 +258,14 @@ export class MidiInput {
         if (customPad) {
           const pad = drumTrack.pads.find((p) => p.id === customPad.padId);
           if (pad) {
-            this.engine.trigger(drumTrack.id, pad, when, normVelocity);
+            this.drumHit(drumTrack, pad, normVelocity, when, `midi:${channel}:${note}`);
             return;
           }
         }
         // GM drum map fallback: map note to pad by index
         const gmIndex = GM_DRUM_MAP.findIndex((m) => m.note === note);
         if (gmIndex >= 0 && gmIndex < drumTrack.pads.length) {
-          this.engine.trigger(drumTrack.id, drumTrack.pads[gmIndex], when, normVelocity);
+          this.drumHit(drumTrack, drumTrack.pads[gmIndex], normVelocity, when, `midi:${channel}:${note}`);
           return;
         }
       }
@@ -271,9 +280,22 @@ export class MidiInput {
     }
   }
 
-  private handleNoteOff(_note: number, _channel: number, _config: MidiConfig): void {
-    // For now, note off is a no-op — instruments handle voice lifecycle internally
-    // via envelope release. Full note-off routing would require per-voice tracking.
+  /**
+   * One drum hit. With Note Repeat armed, a hold key routes through the
+   * controller — the first hit fires immediately, repeats follow on the
+   * grid until note-off.
+   */
+  private drumHit(track: DrumTrack, pad: DrumTrack["pads"][number], velocity: number, when: number, key: string): void {
+    if (this.noteRepeat && this.noteRepeat.currentRate !== "off") {
+      this.noteRepeat.start(key, track.id, pad.id, velocity);
+      return;
+    }
+    this.engine!.trigger(track.id, pad, when, velocity);
+  }
+
+  private handleNoteOff(note: number, channel: number, _config: MidiConfig): void {
+    // Release a live Note Repeat hold for this note (no-op without one).
+    this.noteRepeat?.stop(`midi:${channel}:${note}`);
   }
 
   private handleCC(cc: number, value: number, channel: number, config: MidiConfig): void {
