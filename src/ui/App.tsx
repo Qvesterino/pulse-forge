@@ -11,6 +11,7 @@ import { Sequencer } from "./Sequencer";
 import { AudioUnlock } from "./AudioUnlock";
 import type { StepSelection } from "./Sequencer";
 import { Inspector } from "./Inspector";
+import { FloatingPlugin } from "./FloatingPlugin";
 import { Diagnostics } from "./Diagnostics";
 import { PatternBar } from "./PatternBar";
 import { Mixer } from "./Mixer";
@@ -84,6 +85,7 @@ export function App({
   const [helpOpen, setHelpOpen] = useState(false);
   const [scaleSnap, setScaleSnap] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [pluginTrackId, setPluginTrackId] = useState<string | null>(null);
   // Capture last take (Ableton) — offered after pause/stop when the ring has material
   const [captureOffer, setCaptureOffer] = useState(false);
   useEffect(() => {
@@ -816,7 +818,7 @@ export function App({
                     scaleSnap={scaleSnap}
                   />
                 </div>
-                <Inspector track={track} selectedPadId={padId} />
+                <Inspector track={track} selectedPadId={padId} onOpenPlugin={() => setPluginTrackId(track.id)} />
               </main>
               <ErrorBoundary panel="mixer">{bottomPanel === "mixer" && <Mixer />}</ErrorBoundary>
               <ErrorBoundary panel="fx">{bottomPanel === "fx" && <EffectRack track={track} />}</ErrorBoundary>
@@ -885,6 +887,9 @@ export function App({
               <HelpOverlay open={helpOpen} onClose={() => setHelpOpen(false)} />
               <OnboardingHint />
               <ContextMenu state={contextMenu} onClose={() => setContextMenu(null)} />
+              {pluginTrackId && (
+                <FloatingPlugin trackId={pluginTrackId} selectedPadId={padId} onClose={() => setPluginTrackId(null)} />
+              )}
             </div>
           </ToolContext.Provider>
         </SelectionContext.Provider>

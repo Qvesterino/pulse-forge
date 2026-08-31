@@ -28,7 +28,15 @@ const SAMPLE_BROWSER_KINDS: Partial<Record<InstrumentKind, string>> = {
   granular: "GRAIN SOURCE",
 };
 
-export function Inspector({ track, selectedPadId }: { track: Track; selectedPadId: string }) {
+export function Inspector({
+  track,
+  selectedPadId,
+  onOpenPlugin,
+}: {
+  track: Track;
+  selectedPadId: string;
+  onOpenPlugin?: () => void;
+}) {
   const services = useServices();
   const doc = useDoc();
   const [sliceLabOpen, setSliceLabOpen] = useState(false);
@@ -62,9 +70,16 @@ export function Inspector({ track, selectedPadId }: { track: Track; selectedPadI
     const sampleLabel = SAMPLE_BROWSER_KINDS[track.instrument];
     return (
       <aside className="inspector" aria-label="Inspector">
-        <h2 className="panel-title">
-          {def.name.toUpperCase()} — {track.name}
-        </h2>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <h2 className="panel-title" style={{ flex: 1 }}>
+            {def.name.toUpperCase()} — {track.name}
+          </h2>
+          {onOpenPlugin && (
+            <button type="button" className="btn btn-small" onClick={onOpenPlugin} title="Open plugin window">
+              PLUGIN ↗
+            </button>
+          )}
+        </div>
 
         <PresetBrowser track={track} />
 
@@ -140,7 +155,7 @@ export function Inspector({ track, selectedPadId }: { track: Track; selectedPadI
 
   return (
     <aside className="inspector" aria-label="Inspector">
-      <div className="slice-lab-toggle">
+      <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
         <button
           type="button"
           className={`btn btn-small${sliceLabOpen ? " active" : ""}`}
@@ -150,6 +165,11 @@ export function Inspector({ track, selectedPadId }: { track: Track; selectedPadI
         >
           SLICE LAB
         </button>
+        {onOpenPlugin && (
+          <button type="button" className="btn btn-small" onClick={onOpenPlugin} title="Open drum plugin">
+            PLUGIN ↗
+          </button>
+        )}
       </div>
       {sliceLabOpen && track.kind === "drum" && <SliceLab track={track} onClose={() => setSliceLabOpen(false)} />}
 

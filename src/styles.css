@@ -6419,3 +6419,118 @@ html {
   font-size: 10px;
   margin: 0 1px;
 }
+
+/* ---------- Floating Instrument Plugin (native, not VST) ---------- */
+.floating-plugin {
+  position: absolute;
+  z-index: 120;
+  min-width: 380px;
+  max-width: 560px;
+  background: var(--bg-panel);
+  border: 1px solid #2f3542;
+  border-radius: 8px;
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(245, 158, 11, 0.18);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: 78vh;
+}
+
+.floating-plugin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  background: linear-gradient(180deg, var(--bg-raise), var(--bg-panel-2));
+  border-bottom: 1px solid var(--border);
+  cursor: grab;
+  user-select: none;
+}
+
+.floating-plugin-header:active {
+  cursor: grabbing;
+}
+
+.floating-plugin-title {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.4px;
+  color: var(--accent);
+  font-family: var(--mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.floating-plugin-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.floating-plugin-mode {
+  display: flex;
+  gap: 4px;
+}
+
+.floating-plugin-body {
+  padding: 12px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--bg-panel);
+}
+
+.floating-plugin-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 12px;
+}
+
+.floating-plugin-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.floating-plugin-pad-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  background: var(--bg-raise);
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+}
+
+.floating-plugin-badge {
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.8px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
+  color: var(--text-faint);
+}
+
+.floating-plugin-badge.is-synth {
+  color: var(--accent);
+  border-color: rgba(245, 158, 11, 0.35);
+  background: var(--accent-soft);
+}
+
+.floating-plugin-select select {
+  height: 24px;
+}
+
+.floating-plugin-empty {
+  font-size: 11px;
+  color: var(--text-faint);
+  padding: 12px 4px;
+  text-align: center;
+}
