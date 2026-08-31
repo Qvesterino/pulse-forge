@@ -513,7 +513,9 @@ export class AudioEngine {
     this.master.gain.value = 1;
     // Master tape saturation (pre-limiter, post-gain)
     if (isWorkletReady("tapeSat", ctx)) {
-      this.masterTape = createTapeNode(ctx, { params: { drive: 0.35, hysteresis: 0.3, tone: 6500, mix: 1, output: 0 } });
+      this.masterTape = createTapeNode(ctx, {
+        params: { drive: 0.35, hysteresis: 0.3, tone: 6500, mix: 1, output: 0 },
+      });
     } else {
       const shaper = ctx.createWaveShaper();
       shaper.oversample = "4x";
@@ -590,14 +592,102 @@ export class AudioEngine {
       merger.connect(output);
       this.masterMs = { input, output, splitter, merger, midGain, sideGain, sideInv };
       // Keep helper gains for cleanup
-      (this.masterMs as unknown as { lToMid: GainNode; rToMid: GainNode; lToSide: GainNode; rToSide: GainNode; midToL: GainNode; sideToL: GainNode; midToR: GainNode; sideToRInv: GainNode }).lToMid = lToMid;
-      (this.masterMs as unknown as { lToMid: GainNode; rToMid: GainNode; lToSide: GainNode; rToSide: GainNode; midToL: GainNode; sideToL: GainNode; midToR: GainNode; sideToRInv: GainNode }).rToMid = rToMid;
-      (this.masterMs as unknown as { lToMid: GainNode; rToMid: GainNode; lToSide: GainNode; rToSide: GainNode; midToL: GainNode; sideToL: GainNode; midToR: GainNode; sideToRInv: GainNode }).lToSide = lToSide;
-      (this.masterMs as unknown as { lToMid: GainNode; rToMid: GainNode; lToSide: GainNode; rToSide: GainNode; midToL: GainNode; sideToL: GainNode; midToR: GainNode; sideToRInv: GainNode }).rToSide = rToSide;
-      (this.masterMs as unknown as { lToMid: GainNode; rToMid: GainNode; lToSide: GainNode; rToSide: GainNode; midToL: GainNode; sideToL: GainNode; midToR: GainNode; sideToRInv: GainNode }).midToL = midToL;
-      (this.masterMs as unknown as { lToMid: GainNode; rToMid: GainNode; lToSide: GainNode; rToSide: GainNode; midToL: GainNode; sideToL: GainNode; midToR: GainNode; sideToRInv: GainNode }).sideToL = sideToL;
-      (this.masterMs as unknown as { lToMid: GainNode; rToMid: GainNode; lToSide: GainNode; rToSide: GainNode; midToL: GainNode; sideToL: GainNode; midToR: GainNode; sideToRInv: GainNode }).midToR = midToR;
-      (this.masterMs as unknown as { lToMid: GainNode; rToMid: GainNode; lToSide: GainNode; rToSide: GainNode; midToL: GainNode; sideToL: GainNode; midToR: GainNode; sideToRInv: GainNode }).sideToRInv = sideToRInv;
+      (
+        this.masterMs as unknown as {
+          lToMid: GainNode;
+          rToMid: GainNode;
+          lToSide: GainNode;
+          rToSide: GainNode;
+          midToL: GainNode;
+          sideToL: GainNode;
+          midToR: GainNode;
+          sideToRInv: GainNode;
+        }
+      ).lToMid = lToMid;
+      (
+        this.masterMs as unknown as {
+          lToMid: GainNode;
+          rToMid: GainNode;
+          lToSide: GainNode;
+          rToSide: GainNode;
+          midToL: GainNode;
+          sideToL: GainNode;
+          midToR: GainNode;
+          sideToRInv: GainNode;
+        }
+      ).rToMid = rToMid;
+      (
+        this.masterMs as unknown as {
+          lToMid: GainNode;
+          rToMid: GainNode;
+          lToSide: GainNode;
+          rToSide: GainNode;
+          midToL: GainNode;
+          sideToL: GainNode;
+          midToR: GainNode;
+          sideToRInv: GainNode;
+        }
+      ).lToSide = lToSide;
+      (
+        this.masterMs as unknown as {
+          lToMid: GainNode;
+          rToMid: GainNode;
+          lToSide: GainNode;
+          rToSide: GainNode;
+          midToL: GainNode;
+          sideToL: GainNode;
+          midToR: GainNode;
+          sideToRInv: GainNode;
+        }
+      ).rToSide = rToSide;
+      (
+        this.masterMs as unknown as {
+          lToMid: GainNode;
+          rToMid: GainNode;
+          lToSide: GainNode;
+          rToSide: GainNode;
+          midToL: GainNode;
+          sideToL: GainNode;
+          midToR: GainNode;
+          sideToRInv: GainNode;
+        }
+      ).midToL = midToL;
+      (
+        this.masterMs as unknown as {
+          lToMid: GainNode;
+          rToMid: GainNode;
+          lToSide: GainNode;
+          rToSide: GainNode;
+          midToL: GainNode;
+          sideToL: GainNode;
+          midToR: GainNode;
+          sideToRInv: GainNode;
+        }
+      ).sideToL = sideToL;
+      (
+        this.masterMs as unknown as {
+          lToMid: GainNode;
+          rToMid: GainNode;
+          lToSide: GainNode;
+          rToSide: GainNode;
+          midToL: GainNode;
+          sideToL: GainNode;
+          midToR: GainNode;
+          sideToRInv: GainNode;
+        }
+      ).midToR = midToR;
+      (
+        this.masterMs as unknown as {
+          lToMid: GainNode;
+          rToMid: GainNode;
+          lToSide: GainNode;
+          rToSide: GainNode;
+          midToL: GainNode;
+          sideToL: GainNode;
+          midToR: GainNode;
+          sideToRInv: GainNode;
+        }
+      ).sideToRInv = sideToRInv;
     }
     this.masterClipper = ctx.createWaveShaper();
     this.masterClipper.oversample = "4x";
@@ -1307,6 +1397,7 @@ export class AudioEngine {
     durationSec: number,
     slideFromTick?: number,
     slideFromPitch?: number,
+    locks?: Partial<Record<import("../project-model/types").StepLockKey, number>>,
   ): void {
     // Frozen tracks play back a pre-rendered buffer — skip individual noteOn
     if (this.frozenBuffers.has(trackId)) return;
@@ -1321,6 +1412,16 @@ export class AudioEngine {
             pitch: bendSemitones !== 0 ? slideFromPitch + bendSemitones : slideFromPitch,
           }
         : undefined;
+    // Ratio p-lock: for Keys, override bell ratio for this voice only (Elektron-style)
+    const docTrack = this.doc?.tracks.find((t) => t.id === trackId) as
+      import("../project-model/types").InstrumentTrack | undefined;
+    const lockedRatio = locks?.ratio;
+    const needsRatioLock = lockedRatio !== undefined && docTrack?.instrument === "keys";
+    const savedRatio: number | undefined = needsRatioLock ? (docTrack!.params as any).ratio : undefined;
+    if (needsRatioLock) {
+      inst.runtime.setParameterAt?.("ratio", Math.max(1, Math.min(7, lockedRatio as number)), when) ??
+        inst.runtime.setParameter("ratio", Math.max(1, Math.min(7, lockedRatio as number)));
+    }
     if (slideFrom) {
       // Convert origin tick → seconds before `when` using tick delta
       const bpm = this.doc?.bpm ?? 124;
@@ -1333,6 +1434,18 @@ export class AudioEngine {
       });
     } else {
       inst.runtime.noteOn(adjustedPitch, velocity, when, durationSec);
+    }
+    if (needsRatioLock) {
+      // Restore after voice captured ratio (next tick) — keep automation clean
+      const restoreAt = when + 0.001;
+      if (savedRatio === undefined) {
+        // No prior ratio — delete by restoring undefined via setParameter
+        inst.runtime.setParameterAt?.("ratio", 3.5, restoreAt) ?? inst.runtime.setParameter("ratio", 3.5);
+        // Then clear param so default applies: directly delete from track doc if needed
+        if (docTrack && (docTrack.params as any).ratio !== undefined) delete (docTrack.params as any).ratio;
+      } else {
+        inst.runtime.setParameterAt?.("ratio", savedRatio, restoreAt) ?? inst.runtime.setParameter("ratio", savedRatio);
+      }
     }
   }
 

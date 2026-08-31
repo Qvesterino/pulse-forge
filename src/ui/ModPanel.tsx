@@ -1178,54 +1178,121 @@ function IntensityEditor({
     : curve;
 
   return (
-    <div
-      className="auto-canvas"
-      ref={canvasRef}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onContextMenu={(event) => {
-        event.preventDefault();
-        const index = findPoint(event);
-        if (index >= 0) {
-          const updated = curve.filter((_, i) => i !== index);
-          services.store.execute(setSceneIntensityCurve(services.store.doc, sceneId, updated));
-        }
-      }}
-      title="Click to add point · drag to move · right-click to delete"
-    >
-      <svg className="auto-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
-        {[25, 50, 75].map((y) => (
-          <line key={y} x1="0" y1={y} x2="100" y2={y} stroke="#262a32" strokeWidth="0.4" />
-        ))}
-        {renderPoints.length > 0 && (
-          <polyline
-            fill="none"
-            stroke="var(--accent)"
-            strokeWidth="0.8"
-            points={renderPoints
-              .map((p) => {
-                const x = (p.offset / maxTicks) * 100;
-                const y = 100 - ((p.value - range.min) / (range.max - range.min)) * 100;
-                return `${x},${y}`;
-              })
-              .join(" ")}
-          />
-        )}
-      </svg>
-      {renderPoints.map((p, i) => {
-        const x = (p.offset / maxTicks) * 100;
-        const y = 100 - ((p.value - range.min) / (range.max - range.min)) * 100;
-        return (
-          <div
-            key={i}
-            className="auto-point"
-            style={{ left: `${x}%`, top: `${y}%` }}
-            title={`${p.offset} ticks — ${p.value.toFixed(2)}`}
-          />
-        );
-      })}
-    </div>
+    <>
+      <div
+        className="auto-canvas"
+        ref={canvasRef}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          const index = findPoint(event);
+          if (index >= 0) {
+            const updated = curve.filter((_, i) => i !== index);
+            services.store.execute(setSceneIntensityCurve(services.store.doc, sceneId, updated));
+          }
+        }}
+        title="Click to add point · drag to move · right-click to delete — Cubase precise: select point then type value below"
+      >
+        <svg className="auto-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+          {[25, 50, 75].map((y) => (
+            <line key={y} x1="0" y1={y} x2="100" y2={y} stroke="#262a32" strokeWidth="0.4" />
+          ))}
+          {renderPoints.length > 0 && (
+            <polyline
+              fill="none"
+              stroke="var(--accent)"
+              strokeWidth="0.8"
+              points={renderPoints
+                .map((p) => {
+                  const x = (p.offset / maxTicks) * 100;
+                  const y = 100 - ((p.value - range.min) / (range.max - range.min)) * 100;
+                  return `${x},${y}`;
+                })
+                .join(" ")}
+            />
+          )}
+        </svg>
+        {renderPoints.map((p, i) => {
+          const x = (p.offset / maxTicks) * 100;
+          const y = 100 - ((p.value - range.min) / (range.max - range.min)) * 100;
+          return (
+            <div
+              key={i}
+              className="auto-point"
+              style={{ left: `${x}%`, top: `${y}%` }}
+              title={`${p.offset} ticks — ${p.value.toFixed(2)}`}
+            />
+          );
+        })}
+      </div>
+      {curve.length > 0 && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", fontSize: 10, color: "var(--muted)", marginTop: 6 }}>
+          {curve.map((p, i) => (
+            <span
+              key={i}
+              style={{
+                display: "flex",
+                gap: 3,
+                alignItems: "center",
+                background: livePos?.index === i ? "var(--accent-soft)" : "transparent",
+                padding: "1px 4px",
+                borderRadius: 3,
+              }}
+            >
+              <span>#{i + 1}</span>
+              <input
+                type="number"
+                value={livePos?.index === i ? livePos.offset : p.offset}
+                onChange={(e) => {
+                  const v = Math.max(
+                    0,
+                    Math.min(maxTicks, Math.round(Number(e.target.value) / STEP_TICKS) * STEP_TICKS),
+                  );
+                  const updated = [...curve];
+                  updated[i] = { offset: v, value: p.value } as typeof p;
+                  services.store.execute(setSceneIntensityCurve(services.store.doc, sceneId, updated));
+                }}
+                style={{
+                  width: 56,
+                  fontSize: 10,
+                  background: "var(--bg-raise)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 3,
+                  color: "var(--text)",
+                  padding: "1px 3px",
+                }}
+                aria-label={`Point ${i + 1} offset ticks`}
+              />
+              <input
+                type="number"
+                step={0.05}
+                min={0}
+                max={1}
+                value={Number((livePos?.index === i ? livePos.value : p.value).toFixed(2))}
+                onChange={(e) => {
+                  const v = Math.max(0, Math.min(1, Number(e.target.value)));
+                  const updated = [...curve];
+                  updated[i] = { offset: p.offset, value: v } as typeof p;
+                  services.store.execute(setSceneIntensityCurve(services.store.doc, sceneId, updated));
+                }}
+                style={{
+                  width: 48,
+                  fontSize: 10,
+                  background: "var(--bg-raise)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 3,
+                  color: "var(--text)",
+                  padding: "1px 3px",
+                }}
+                aria-label={`Point ${i + 1} value`}
+              />
+            </span>
+          ))}
+        </div>
+      )}
+    </>
   );
 }
 

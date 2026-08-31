@@ -120,6 +120,12 @@ function scheduleNotes(
   for (const event of noteEventsInWindow(window.pattern, base, from, to)) {
     // FL slide note: glide from previous non-slide note's end (live==offline)
     const slideFrom = event.slideFrom;
+    const step = Math.floor((event.tick - base) / 120);
+    const metaLocks = (window.pattern as any).stepMeta?.[event.trackId]?.[step]?.locks as
+      Partial<Record<import("../project-model/types").StepLockKey, number>> | undefined;
+    const noteLocks = (event.note as any).locks as
+      Partial<Record<import("../project-model/types").StepLockKey, number>> | undefined;
+    const locks = noteLocks ?? metaLocks;
     engine.noteOn(
       event.trackId,
       event.note.pitch,
@@ -128,6 +134,7 @@ function scheduleNotes(
       event.note.duration * secondsPerTick,
       slideFrom?.tick,
       slideFrom?.pitch,
+      locks,
     );
   }
 }

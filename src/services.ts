@@ -246,8 +246,8 @@ export function openProject(core: CoreServices, initial: ProjectDocument, option
     getScheduleOffsetSec: () => latency.getSnapshot().midiReferenceOffsetMs / 1000,
     getMode: () => modeRef.mode,
     trigger: (trackId, pad, when, velocity, locks) => engine.trigger(trackId, pad, when, velocity, locks),
-    noteOn: (trackId, pitch, velocity, when, durationSec, slideFromTick, slideFromPitch) =>
-      engine.noteOn(trackId, pitch, velocity, when, durationSec, slideFromTick, slideFromPitch),
+    noteOn: (trackId, pitch, velocity, when, durationSec, slideFromTick, slideFromPitch, locks) =>
+      engine.noteOn(trackId, pitch, velocity, when, durationSec, slideFromTick, slideFromPitch, locks),
     triggerAudioClip: (clip, when, durationSec) => engine.triggerAudioClip(clip, when, durationSec),
     metronomeClick: (when, downbeat) => engine.click(when, downbeat),
     recordCapturedEvent: (event) => capture.recordEvent(event),

@@ -27,6 +27,7 @@ export interface SchedulerDeps {
     durationSec: number,
     slideFromTick?: number,
     slideFromPitch?: number,
+    locks?: Partial<Record<import("../project-model/types").StepLockKey, number>>,
   ): void;
   applyAutomation(fromTick: number, toTick: number, relOf: (tick: number) => number, scheduleOffsetSec?: number): void;
   /**
@@ -447,6 +448,13 @@ export class Scheduler {
       if (!audible(when)) continue;
       // FL slide note: glide from the previous non-slide note's end
       const slideFrom = event.slideFrom ? { tick: event.slideFrom.tick, pitch: event.slideFrom.pitch } : undefined;
+      // Ratio p-lock: support per-note locks (event.note.locks) and legacy stepMeta[trackId][step] (Elektron-style)
+      const step = Math.floor((event.tick - base) / STEP_TICKS);
+      const metaLocks = (pattern as any).stepMeta?.[track.id]?.[step]?.locks as
+        Partial<Record<import("../project-model/types").StepLockKey, number>> | undefined;
+      const noteLocks = (event.note as any).locks as
+        Partial<Record<import("../project-model/types").StepLockKey, number>> | undefined;
+      const locks = noteLocks ?? metaLocks;
       this.deps.noteOn(
         track.id,
         event.note.pitch,
@@ -455,6 +463,7 @@ export class Scheduler {
         event.note.duration * transport.secondsPerTick,
         slideFrom?.tick,
         slideFrom?.pitch,
+        locks,
       );
       // Passive capture ring (Ableton) — note events with pitch info
       this.deps.recordCapturedEvent?.({

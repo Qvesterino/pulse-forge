@@ -171,6 +171,7 @@ export function defaultMasterConfig(): MasterConfig {
     msEnabled: false,
     msMidGain: 0,
     msSideGain: 0,
+    lufsTarget: -14,
   };
 }
 
@@ -1111,10 +1112,17 @@ function normalizeMasterAndReturnsDomain(s: NormalizeState): void {
     const dl = typeof m.limiterEnabled === "boolean" ? m.limiterEnabled : true;
     const dcl = typeof m.clipperEnabled === "boolean" ? m.clipperEnabled : false;
     const tapeEnabled = typeof m.tapeEnabled === "boolean" ? m.tapeEnabled : false;
-    const tapeDrive = typeof m.tapeDrive === "number" && Number.isFinite(m.tapeDrive) ? Math.min(1, Math.max(0, m.tapeDrive)) : 0.35;
+    const tapeDrive =
+      typeof m.tapeDrive === "number" && Number.isFinite(m.tapeDrive) ? Math.min(1, Math.max(0, m.tapeDrive)) : 0.35;
     const msEnabled = typeof m.msEnabled === "boolean" ? m.msEnabled : false;
-    const msMidGain = typeof m.msMidGain === "number" && Number.isFinite(m.msMidGain) ? Math.min(6, Math.max(-6, m.msMidGain)) : 0;
-    const msSideGain = typeof m.msSideGain === "number" && Number.isFinite(m.msSideGain) ? Math.min(6, Math.max(-6, m.msSideGain)) : 0;
+    const msMidGain =
+      typeof m.msMidGain === "number" && Number.isFinite(m.msMidGain) ? Math.min(6, Math.max(-6, m.msMidGain)) : 0;
+    const msSideGain =
+      typeof m.msSideGain === "number" && Number.isFinite(m.msSideGain) ? Math.min(6, Math.max(-6, m.msSideGain)) : 0;
+    const lufsTarget =
+      typeof m.lufsTarget === "number" && Number.isFinite(m.lufsTarget)
+        ? Math.min(0, Math.max(-24, m.lufsTarget))
+        : -14;
     if (
       dg !== m.masterGain ||
       dc !== m.ceilingDb ||
@@ -1124,7 +1132,8 @@ function normalizeMasterAndReturnsDomain(s: NormalizeState): void {
       tapeDrive !== m.tapeDrive ||
       msEnabled !== m.msEnabled ||
       msMidGain !== m.msMidGain ||
-      msSideGain !== m.msSideGain
+      msSideGain !== m.msSideGain ||
+      lufsTarget !== m.lufsTarget
     ) {
       doc = {
         ...doc,
@@ -1138,6 +1147,7 @@ function normalizeMasterAndReturnsDomain(s: NormalizeState): void {
           msEnabled,
           msMidGain,
           msSideGain,
+          lufsTarget,
         },
       };
       s.changed = true;

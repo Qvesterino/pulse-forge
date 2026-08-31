@@ -2450,7 +2450,12 @@ const logdrum: InstrumentDefinition = {
         shaper.curve = tanhCurve(1 + grit * 5);
         shaper.connect(notch);
 
-        const drop = p.pitchDrop ?? 0.35;
+        const dropBase = p.pitchDrop ?? 0.35;
+        // velocity → pitchDrop: hard hit = more woody knock
+        const drop = dropBase * (0.55 + velocity * 0.9);
+        // inharmonic drift with pitch: lower notes more woody, higher more harmonic
+        const r2 = 2.0 + pitch * 0.004;
+        const r3 = 3.8 + (pitch - 60) * 0.006;
         const oscs: OscillatorNode[] = [];
         const mkLogOsc = (ratio: number, gainVal: number, panVal: number) => {
           const osc = ctx.createOscillator();
@@ -2478,8 +2483,8 @@ const logdrum: InstrumentDefinition = {
           oscs.push(osc);
         };
         mkLogOsc(1, 0.72, 0);
-        mkLogOsc(2.15, 0.22 + body * 0.28, -width * 0.6);
-        mkLogOsc(3.8, 0.08 + body * 0.12, width * 0.6);
+        mkLogOsc(r2, 0.22 + body * 0.28, -width * 0.6);
+        mkLogOsc(r3, 0.08 + body * 0.12, width * 0.6);
 
         const voice = register(
           pitch,

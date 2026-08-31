@@ -174,6 +174,52 @@ export function MasterMeter() {
         >
           AUTO -6dB
         </button>
+        <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 6, gridColumn: "1 / -1" }}>
+          <span style={{ fontSize: 10, color: "var(--muted)" }}>TARGET</span>
+          <select
+            value={String(doc.master.lufsTarget ?? -14)}
+            onChange={(e) => services.store.execute(setMasterConfig(doc, { lufsTarget: Number(e.target.value) }))}
+            style={{
+              fontSize: 10,
+              background: "var(--bg-raise)",
+              border: "1px solid var(--border)",
+              borderRadius: 3,
+              color: "var(--text)",
+              padding: "2px 4px",
+            }}
+            aria-label="LUFS target"
+          >
+            <option value="-14">-14 LUFS (Spotify)</option>
+            <option value="-12">-12 LUFS (YouTube)</option>
+            <option value="-9">-9 LUFS (Club)</option>
+            <option value="-7">-7 LUFS (Loud)</option>
+          </select>
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 600,
+              color:
+                Math.abs(state.lufsIntegrated - (doc.master.lufsTarget ?? -14)) <= 1
+                  ? "#4ade80"
+                  : state.lufsIntegrated <= -119
+                    ? "var(--muted)"
+                    : "#f59e0b",
+            }}
+            title="LUFS integrated target ±1 dB (true peak limiter already via look-ahead limiter + true peak meter)"
+          >
+            {state.lufsIntegrated <= -119
+              ? "—"
+              : Math.abs(state.lufsIntegrated - (doc.master.lufsTarget ?? -14)) <= 1
+                ? "✓ ±1 OK"
+                : `Δ ${(state.lufsIntegrated - (doc.master.lufsTarget ?? -14)).toFixed(1)} dB`}
+          </span>
+          <span
+            style={{ fontSize: 10, color: "var(--muted)" }}
+            title="True peak via 4× oversampled K-weighted meter (BS.1770)"
+          >
+            TP {formatDb(state.truePeakDb)} {state.truePeakDb > ceilingDb ? "⚠" : ""}
+          </span>
+        </div>
       </div>
       <SpectrumAnalyzer
         analyser={

@@ -196,7 +196,63 @@ function MasterStrip() {
             >
               CLIP
             </button>
+            <button
+              type="button"
+              className={`btn btn-small${doc.master.tapeEnabled ? " active-solo" : ""}`}
+              title="Tape saturation on master (post-gain, pre-limiter) — adds warmth, 1-knob drive"
+              aria-label="Master tape"
+              aria-pressed={!!doc.master.tapeEnabled}
+              onClick={() => services.store.execute(setMasterConfig(doc, { tapeEnabled: !doc.master.tapeEnabled }))}
+            >
+              TAPE
+            </button>
+            <button
+              type="button"
+              className={`btn btn-small${doc.master.msEnabled ? " active-solo" : ""}`}
+              title="Mid/Side processing on master (Cubase MixConsole) — separate mid/side gain"
+              aria-label="Master M/S"
+              aria-pressed={!!doc.master.msEnabled}
+              onClick={() => services.store.execute(setMasterConfig(doc, { msEnabled: !doc.master.msEnabled }))}
+            >
+              M/S
+            </button>
           </div>
+          {doc.master.tapeEnabled && (
+            <Slider
+              compact
+              label="TAPE DRIVE"
+              value={doc.master.tapeDrive ?? 0.35}
+              min={0}
+              max={1}
+              defaultValue={0.35}
+              format={(v) => `${Math.round(v * 100)}%`}
+              onCommit={(tapeDrive) => services.store.execute(setMasterConfig(doc, { tapeDrive }))}
+            />
+          )}
+          {doc.master.msEnabled && (
+            <>
+              <Slider
+                compact
+                label="MID"
+                value={doc.master.msMidGain ?? 0}
+                min={-6}
+                max={6}
+                defaultValue={0}
+                format={(v) => `${v > 0 ? "+" : ""}${v.toFixed(1)} dB`}
+                onCommit={(msMidGain) => services.store.execute(setMasterConfig(doc, { msMidGain }))}
+              />
+              <Slider
+                compact
+                label="SIDE"
+                value={doc.master.msSideGain ?? 0}
+                min={-6}
+                max={6}
+                defaultValue={0}
+                format={(v) => `${v > 0 ? "+" : ""}${v.toFixed(1)} dB`}
+                onCommit={(msSideGain) => services.store.execute(setMasterConfig(doc, { msSideGain }))}
+              />
+            </>
+          )}
         </div>
         <MasterMeter />
       </div>

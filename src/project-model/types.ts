@@ -201,6 +201,8 @@ export interface MasterConfig {
   msEnabled?: boolean;
   msMidGain?: number;
   msSideGain?: number;
+  /** Loudness target for integrated LUFS (e.g. -14 for streaming). */
+  lufsTarget?: number;
 }
 
 export interface NoteEvent {
@@ -216,6 +218,8 @@ export interface NoteEvent {
    * (pitch + when from the previous note's end).
    */
   slide?: boolean;
+  /** Per-note p-locks — absolute overrides for this hit (mirrors StepMeta.locks, for piano roll). */
+  locks?: Partial<Record<StepLockKey, number>>;
 }
 
 export interface PatternPhraseBar {
@@ -238,7 +242,7 @@ export interface PatternAssist {
   style?: string;
 }
 
-export type StepLockKey = "pitch" | "gain" | "pan" | "cutoff" | "sampleStart" | "length";
+export type StepLockKey = "pitch" | "gain" | "pan" | "cutoff" | "sampleStart" | "length" | "ratio";
 
 /** Per-param clamp + UI metadata for p-locks (Elektron-style). */
 export const STEP_LOCK_DEFS: Record<
@@ -270,6 +274,7 @@ export const STEP_LOCK_DEFS: Record<
   cutoff: { label: "CUTOFF", min: 80, max: 16000, default: 16000, unit: "Hz", format: (v) => `${Math.round(v)} Hz` },
   sampleStart: { label: "START", min: 0, max: 1, default: 0, format: (v) => `${Math.round(v * 100)}%` },
   length: { label: "LENGTH", min: 0.1, max: 2, default: 1, format: (v) => `${Math.round(v * 100)}%` },
+  ratio: { label: "RATIO", min: 1, max: 7, default: 3.5, format: (v) => v.toFixed(2) },
 };
 
 export function clampStepLock(key: string, value: number): number {
