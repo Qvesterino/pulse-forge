@@ -67,3 +67,28 @@ describe("rafLoop", () => {
     unregisterRaf("test-replace");
   });
 });
+
+describe("rafLoop — failure containment", () => {
+  it("a throwing callback is removed and does not freeze the loop for others (regression: one throw killed the rAF chain)", () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const good = vi.fn();
+    const boom = vi
+      .fn()
+      .mockImplementationOnce(() => {
+        throw new Error("meter exploded");
+      })
+      .mockImplementation(() => {
+        throw new Error("still broken");
+      });
+    registerRaf("good", good);
+    registerRaf("boom", boom);
+    vi.advanceTimersByTime(100);
+    // The healthy callback keeps receiving frames after the broken one threw.
+    expect(good.mock.calls.length).toBeGreaterThanOrEqual(3);
+    // The offender is removed instead of throwing every frame forever.
+    expect(boom.mock.calls.length).toBe(1);
+    expect(errSpy).toHaveBeenCalled();
+    unregisterRaf("good");
+    errSpy.mockRestore();
+  });
+});

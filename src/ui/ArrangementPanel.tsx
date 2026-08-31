@@ -1050,32 +1050,37 @@ export function ArrangementPanel() {
             >
               Normalize (gain→0.99 peak)
             </button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  const c = audioClips.find((x) => x.id === audioMenu.clipId);
-                  const currentRate = c?.stretchRate ?? 1;
-                  const currentMode = c?.stretchMode ?? "resample";
-                  const modeLabel = currentMode === "stretch" ? "preserve pitch" : "pitch+time";
-                  const v = window.prompt(
-                    `Stretch rate 0.25–4 (1=normal, 0.5=half speed)\nMode: ${modeLabel} (type "preserve" for pitch-preserving stretch, or just the rate)`,
-                    String(currentRate),
-                  );
-                  if (v === null) { setAudioMenu(null); return; }
-                  const isPreserve = v.toLowerCase().includes("preserve");
-                  const rate = Number(isPreserve ? v.replace(/preserve/i, "").trim() || currentRate : v);
-                  if (Number.isFinite(rate) && rate >= 0.25 && rate <= 4) {
-                    execute(updateAudioClip(services.store.doc, audioMenu.clipId, {
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                const c = audioClips.find((x) => x.id === audioMenu.clipId);
+                const currentRate = c?.stretchRate ?? 1;
+                const currentMode = c?.stretchMode ?? "resample";
+                const modeLabel = currentMode === "stretch" ? "preserve pitch" : "pitch+time";
+                const v = window.prompt(
+                  `Stretch rate 0.25–4 (1=normal, 0.5=half speed)\nMode: ${modeLabel} (type "preserve" for pitch-preserving stretch, or just the rate)`,
+                  String(currentRate),
+                );
+                if (v === null) {
+                  setAudioMenu(null);
+                  return;
+                }
+                const isPreserve = v.toLowerCase().includes("preserve");
+                const rate = Number(isPreserve ? v.replace(/preserve/i, "").trim() || currentRate : v);
+                if (Number.isFinite(rate) && rate >= 0.25 && rate <= 4) {
+                  execute(
+                    updateAudioClip(services.store.doc, audioMenu.clipId, {
                       stretchRate: Math.round(rate * 100) / 100,
                       stretchMode: isPreserve ? "stretch" : "resample",
-                    }));
-                  }
-                  setAudioMenu(null);
-                }}
-              >
-                Time-stretch…
-              </button>
+                    }),
+                  );
+                }
+                setAudioMenu(null);
+              }}
+            >
+              Time-stretch…
+            </button>
             <button
               type="button"
               role="menuitem"

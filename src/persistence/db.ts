@@ -10,9 +10,13 @@ export const STORE_FROZEN_AUDIO = "frozen-audio";
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
+/** How long to wait on a blocked open (another tab holds an old version). */
+const OPEN_BLOCKED_TIMEOUT_MS = 5000;
+
 export function openDb(): Promise<IDBDatabase> {
   if (dbPromise) return dbPromise;
   const attempt = new Promise<IDBDatabase>((resolve, reject) => {
+    let settled = false;
     const request = indexedDB.open(DB_NAME, DB_VERSION);
     request.onupgradeneeded = () => {
       const db = request.result;
@@ -27,8 +31,30 @@ export function openDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(STORE_FROZEN_AUDIO))
         db.createObjectStore(STORE_FROZEN_AUDIO, { keyPath: "id" });
     };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    // Another tab still holds an older DB version — the open stays pending
+    // until that tab closes. Fail with an actionable message instead of
+    // hanging forever, and let the rejection-reset below allow a retry.
+    request.onblocked = () => {
+      setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        reject(new Error("Database is locked by another Pulse Forge tab — close it and try again"));
+      }, OPEN_BLOCKED_TIMEOUT_MS);
+    };
+    request.onsuccess = () => {
+      if (settled) return;
+      settled = true;
+      // If yet another tab requests a future version, yield our connection
+      // immediately — otherwise WE become the blocker for everyone else.
+      const db = request.result;
+      db.onversionchange = () => db.close();
+      resolve(db);
+    };
+    request.onerror = () => {
+      if (settled) return;
+      settled = true;
+      reject(request.error);
+    };
   });
   dbPromise = attempt;
   // Do not cache a rejection: a transient open failure (version-change race,

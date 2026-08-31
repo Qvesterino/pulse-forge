@@ -441,6 +441,7 @@ export function openProject(core: CoreServices, initial: ProjectDocument, option
       transportTick: Math.round(transport.position),
       schedulerRunning: scheduler.isRunning,
       scheduledEvents: scheduler.stats.scheduledEvents,
+      schedulerFailedWindows: scheduler.stats.failedWindows,
       nextStepTick: Math.round(scheduler.stats.lastHorizonTick),
       schedulerWindows: scheduler.stats.windows,
       trackCount: store.doc.tracks.length,

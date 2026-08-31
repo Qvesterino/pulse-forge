@@ -196,7 +196,11 @@ export function Sequencer({
     stepIndex <= stepSelection.to;
 
   const beginStepInteraction = (event: React.PointerEvent, padId: string, stepIndex: number) => {
-    // RMB lasso — right-drag selects regardless of Shift
+    // RMB lasso — right-drag selects regardless of Shift. Selection only
+    // starts on the first MOVE: selecting on pointerdown would render the
+    // p-lock toolbar above the grid and shift it before the browser
+    // dispatches contextmenu, so the event landed on whatever moved under
+    // the cursor and a plain right-click could never open the step editor.
     if (event.button === 2) {
       try {
         event.currentTarget.setPointerCapture(event.pointerId);
@@ -212,9 +216,8 @@ export function Sequencer({
         startMicro: 0,
         startProb: 1,
         editKind: "velocity",
-        moved: true,
+        moved: false,
       };
-      onSelectSteps(selectionFromDrag(padId, stepIndex, padId, stepIndex));
       event.preventDefault();
       return;
     }

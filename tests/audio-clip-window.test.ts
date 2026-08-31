@@ -64,7 +64,12 @@ describe("audioClipPlayWindow", () => {
   });
 
   it("treats missing optional fields as zero", () => {
-    const clip = { ...makeClip(), offsetSec: undefined, trimStart: undefined, trimEnd: undefined } as unknown as AudioClip;
+    const clip = {
+      ...makeClip(),
+      offsetSec: undefined,
+      trimStart: undefined,
+      trimEnd: undefined,
+    } as unknown as AudioClip;
     const win = audioClipPlayWindow(clip, 4, 10, 1);
     expect(win.duration).toBeCloseTo(4, 5);
     expect(win.playOffset).toBeCloseTo(0, 5);

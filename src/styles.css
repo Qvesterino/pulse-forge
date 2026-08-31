@@ -475,6 +475,8 @@ button {
 
 .sequencer {
   min-height: 0;
+  /* Anchor for the absolutely-positioned p-lock selection toolbar. */
+  position: relative;
   overflow: auto;
   background: var(--bg-panel);
   border: 1px solid var(--border);
@@ -3597,15 +3599,25 @@ button {
 }
 
 .step-selection-toolbar {
+  /* Overlay, not in-flow: an in-flow bar shifts the whole step grid the
+     moment a selection starts, which invalidates the pointer-drag's
+     elementFromPoint hit-testing mid-gesture (multi-select collapsed to the
+     anchor step) and made the browser's contextmenu miss the right-clicked
+     step entirely. */
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  right: 10px;
+  z-index: 30;
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 6px 8px;
-  margin-bottom: 6px;
   background: var(--bg-panel-2);
   border: 1px solid var(--border);
   border-left: 3px solid #60a5fa;
   border-radius: 5px;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.35);
 }
 
 .step-selection-label {

@@ -308,7 +308,7 @@ export class AudioEngine {
   /** Transport tick + ctx time at the last frozen restart, for alignment. */
   private frozenAlign: { tick: number; ctxTime: number } | null = null;
   /**
-   * Cache for time-stretched AudioBuffers keyed by `bufferId+rate+reverse`.
+   * LRU cache for time-stretched AudioBuffers keyed by `bufferId+rate+reverse`.
    * Lazy-computed on first triggerAudioClip with stretchMode="stretch".
    * Cleared on project swap to prevent stale references.
    */
@@ -1229,13 +1229,19 @@ export class AudioEngine {
     let timeScale: number;
 
     if (clip.stretchMode === "stretch" && Math.abs(rate - 1) >= 0.01) {
-      // Lazy-compute stretched buffer and cache it
+      // Lazy-compute stretched buffer and cache it (LRU: re-inserting on a hit
+      // moves the key to the newest slot; eviction drops only the oldest —
+      // same policy as the sampler's pitch cache in registry.ts).
       const cacheKey = `${clip.bufferId}|${rate}|${reverse ? 1 : 0}`;
       let stretched = this.stretchCache.get(cacheKey);
-      if (!stretched) {
+      if (stretched) {
+        this.stretchCache.delete(cacheKey);
+        this.stretchCache.set(cacheKey, stretched);
+      } else {
         stretched = computeStretchedBuffer(ctx, srcBuffer, rate, reverse);
-        if (this.stretchCache.size > AudioEngine.STRETCH_CACHE_LIMIT) {
-          this.stretchCache.clear();
+        if (this.stretchCache.size >= AudioEngine.STRETCH_CACHE_LIMIT) {
+          const oldest = this.stretchCache.keys().next().value as string | undefined;
+          if (oldest !== undefined) this.stretchCache.delete(oldest);
         }
         this.stretchCache.set(cacheKey, stretched);
       }
@@ -2941,7 +2947,12 @@ export class AudioEngine {
  * Uses the grain-based `timeStretch` algorithm from time-stretch.ts.
  * The stretched buffer plays at rate=1 so pitch is preserved.
  */
-function computeStretchedBuffer(ctx: BaseAudioContext, source: AudioBuffer, stretchRate: number, reverse: boolean): AudioBuffer {
+function computeStretchedBuffer(
+  ctx: BaseAudioContext,
+  source: AudioBuffer,
+  stretchRate: number,
+  reverse: boolean,
+): AudioBuffer {
   const sr = source.sampleRate;
   const ch = source.numberOfChannels;
   const stretchFactor = Math.min(4, Math.max(0.25, stretchRate));

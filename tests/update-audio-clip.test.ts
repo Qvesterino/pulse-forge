@@ -72,7 +72,10 @@ describe("updateAudioClip", () => {
   it("addAudioClip honors stretchMode from its patch (was silently dropped)", () => {
     const base = createDefaultProject();
     const trackId = base.tracks[0].id;
-    const next = addAudioClip(base, trackId, "factory.kick", 0, 4, { stretchMode: "stretch", stretchRate: 1.5 }).execute(base);
+    const next = addAudioClip(base, trackId, "factory.kick", 0, 4, {
+      stretchMode: "stretch",
+      stretchRate: 1.5,
+    }).execute(base);
     const clip = next.arrangement.audioClips![0];
     expect(clip.stretchMode).toBe("stretch");
     expect(clip.stretchRate).toBe(1.5);

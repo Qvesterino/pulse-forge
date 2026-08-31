@@ -93,7 +93,8 @@ export class Scheduler {
   private firedMarkerIds = new Set<string>();
   /** Marker ids scheduled to fire in the current window (deferred trigger). */
   private pendingMarkers: { assetId: string | null; when: number; trackId?: string }[] = [];
-  stats = { scheduledEvents: 0, lastHorizonTick: 0, windows: 0 };
+  /** `failedWindows` = scheduling windows skipped after an exception (see tick). */
+  stats = { scheduledEvents: 0, lastHorizonTick: 0, windows: 0, failedWindows: 0 };
   private listeners = new Set<() => void>();
 
   constructor(private deps: SchedulerDeps) {}
@@ -204,6 +205,7 @@ export class Scheduler {
       // the window, the next tick would re-schedule the same events every
       // 25 ms (machine-gun duplicates + exception spam). Skip the damaged
       // window once, keep the failure observable, keep playing.
+      this.stats.failedWindows += 1;
       console.error("[scheduler] scheduling window failed:", err);
     }
     this.windowStartTick = windowEnd;
