@@ -194,6 +194,13 @@ export interface MasterConfig {
   ceilingDb: number;
   limiterEnabled: boolean;
   clipperEnabled: boolean;
+  /** Tape saturation on master (post-gain, pre-limiter). */
+  tapeEnabled?: boolean;
+  tapeDrive?: number;
+  /** Mid/Side processing on master. */
+  msEnabled?: boolean;
+  msMidGain?: number;
+  msSideGain?: number;
 }
 
 export interface NoteEvent {

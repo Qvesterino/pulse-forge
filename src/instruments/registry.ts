@@ -918,21 +918,43 @@ const sampler: InstrumentDefinition = {
     const loopCache = new Map<string, AudioBuffer>();
     const LOOP_CACHE_LIMIT = 12;
     const makeLoopBuffer = (buffer: AudioBuffer, xfadeFrac: number): AudioBuffer => {
-      const xfade = Math.min(0.45, Math.max(0.02, xfadeFrac));
       const len = buffer.length;
-      const xLen = Math.max(2, Math.floor(len * xfade));
-      const loopLen = len - xLen;
+      const sr = buffer.sampleRate;
+      // Polish: max 80ms (0.08*sr) and max 18% of buffer — avoids 45% wash on short samples
+      const rawXLen = len * Math.min(0.45, Math.max(0.02, xfadeFrac));
+      const xLen = Math.max(2, Math.min(Math.floor(rawXLen), Math.floor(len * 0.18), Math.floor(0.08 * sr)));
+      // Zero-cross snap for seam — search ± min(512, xLen*0.5) around loopLen for sign change closest to 0
+      const ch0 = buffer.getChannelData(0);
+      let loopLen = len - xLen;
+      const search = Math.min(512, Math.floor(xLen * 0.5));
+      let bestIdx = loopLen;
+      let bestScore = Infinity;
+      for (let d = -search; d <= search; d++) {
+        const idx = loopLen + d;
+        if (idx < 1 || idx >= len - 1) continue;
+        const a = ch0[idx];
+        const b = ch0[idx + 1];
+        const isCross = a * b <= 0;
+        const score = Math.abs(a) + Math.abs(b) + (isCross ? 0 : 0.5);
+        if (score < bestScore) {
+          bestScore = score;
+          bestIdx = idx;
+        }
+        if (isCross && Math.abs(a) < 0.02) break;
+      }
+      loopLen = Math.max(xLen, Math.min(len - xLen, bestIdx));
       const out = ctx.createBuffer(buffer.numberOfChannels, len, buffer.sampleRate);
-      // Loop body: [0, loopLen); seam crossfades tail into head over xLen
+      // Loop body: [0, loopLen); seam crossfades tail into head over xLen with Hann window
       for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
         const src = buffer.getChannelData(ch);
         const dst = out.getChannelData(ch);
         for (let i = 0; i < loopLen; i++) dst[i] = src[i];
         for (let i = 0; i < xLen; i++) {
           const t = i / xLen;
-          // Equal-power crossfade
-          const tailGain = Math.cos((t * Math.PI) / 2);
-          const headGain = Math.sin((t * Math.PI) / 2);
+          // Hann window crossfade — smoother than equal-power cos/sin, inaudible seam
+          const w = 0.5 * (1 - Math.cos(Math.PI * t));
+          const tailGain = 1 - w;
+          const headGain = w;
           const tailIdx = loopLen + i;
           dst[tailIdx] = src[tailIdx] * tailGain + src[i] * headGain;
         }

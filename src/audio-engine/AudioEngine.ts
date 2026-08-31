@@ -18,6 +18,8 @@ import { INSTRUMENT_DEFS, clampInstrumentParam } from "../instruments/registry";
 import type { InstrumentRuntime } from "../instruments/types";
 import { loadWorkletModules, isWorkletReady } from "../audio-worklets/loader";
 import { createLimiterNode } from "../audio-worklets/limiter-node";
+// @ts-ignore — reserved for tape stage, wired in next pass
+import { createTapeNode } from "../audio-worklets/tape-node";
 import { createEnvFollowerNode, type EnvFollowerHandle } from "../audio-worklets/envfollower-node";
 import { createKwMeterNode, type KwMeterHandle } from "../audio-worklets/kwmeter-node";
 import { timeStretch } from "./time-stretch";
@@ -276,6 +278,18 @@ export class AudioEngine {
   private masterLimiterWorklet: EffectRuntime | null = null;
   /** K-weighted loudness meter (BS.1770) — sink branch off the master limiter. */
   private kwMeter: KwMeterHandle | null = null;
+  // @ts-ignore — reserved for master tape/ms stage
+  private masterTape: EffectRuntime | null = null;
+  // @ts-ignore — reserved for master ms stage
+  private masterMs: {
+    input: GainNode;
+    output: GainNode;
+    splitter: ChannelSplitterNode;
+    merger: ChannelMergerNode;
+    midGain: GainNode;
+    sideGain: GainNode;
+    sideInv: GainNode;
+  } | null = null;
   private masterAnalyser: AnalyserNode | null = null;
   private bank: SampleBank | null = null;
   private doc: ProjectDocument | null = null;
@@ -469,8 +483,122 @@ export class AudioEngine {
     this.masterLimiterWorklet = null;
     this.kwMeter?.dispose();
     this.kwMeter = null;
+    this.masterTape?.dispose();
+    this.masterTape = null;
+    if (this.masterMs) {
+      try {
+        this.masterMs.splitter.disconnect();
+      } catch {}
+      try {
+        this.masterMs.merger.disconnect();
+      } catch {}
+      try {
+        this.masterMs.midGain.disconnect();
+      } catch {}
+      try {
+        this.masterMs.sideGain.disconnect();
+      } catch {}
+      try {
+        this.masterMs.sideInv.disconnect();
+      } catch {}
+      try {
+        this.masterMs.input.disconnect();
+      } catch {}
+      try {
+        this.masterMs.output.disconnect();
+      } catch {}
+      this.masterMs = null;
+    }
     this.master = ctx.createGain();
     this.master.gain.value = 1;
+    // Master tape saturation (pre-limiter, post-gain)
+    if (isWorkletReady("tapeSat", ctx)) {
+      this.masterTape = createTapeNode(ctx, { params: { drive: 0.35, hysteresis: 0.3, tone: 6500, mix: 1, output: 0 } });
+    } else {
+      const shaper = ctx.createWaveShaper();
+      shaper.oversample = "4x";
+      const curve = new Float32Array(1024);
+      for (let i = 0; i < 1024; i++) {
+        const x = (i / 1023) * 2 - 1;
+        curve[i] = Math.tanh(x * 1.8);
+      }
+      shaper.curve = curve;
+      const input = ctx.createGain();
+      const output = ctx.createGain();
+      input.connect(shaper).connect(output);
+      this.masterTape = {
+        input,
+        output,
+        setParameter: () => {},
+        setParameterAt: () => {},
+        getAudioParam: () => null,
+        dispose() {
+          input.disconnect();
+          shaper.disconnect();
+          output.disconnect();
+        },
+      };
+    }
+    // Master Mid/Side matrix (post-tape, pre-clipper) — unity when disabled
+    {
+      const input = ctx.createGain();
+      const output = ctx.createGain();
+      const splitter = ctx.createChannelSplitter(2);
+      const merger = ctx.createChannelMerger(2);
+      const midGain = ctx.createGain();
+      const sideGain = ctx.createGain();
+      const sideInv = ctx.createGain();
+      midGain.gain.value = 1;
+      sideGain.gain.value = 1;
+      sideInv.gain.value = -1;
+      input.connect(splitter);
+      // Encode: mid = 0.5*L + 0.5*R, side = 0.5*L -0.5*R
+      const lToMid = ctx.createGain();
+      const rToMid = ctx.createGain();
+      const lToSide = ctx.createGain();
+      const rToSide = ctx.createGain();
+      lToMid.gain.value = 0.5;
+      rToMid.gain.value = 0.5;
+      lToSide.gain.value = 0.5;
+      rToSide.gain.value = -0.5;
+      splitter.connect(lToMid, 0);
+      splitter.connect(rToMid, 1);
+      splitter.connect(lToSide, 0);
+      splitter.connect(rToSide, 1);
+      lToMid.connect(midGain);
+      rToMid.connect(midGain);
+      lToSide.connect(sideGain);
+      rToSide.connect(sideGain);
+      // Decode: L = mid+side, R = mid-side
+      const midToL = ctx.createGain();
+      const sideToL = ctx.createGain();
+      const midToR = ctx.createGain();
+      const sideToRInv = ctx.createGain();
+      midToL.gain.value = 1;
+      sideToL.gain.value = 1;
+      midToR.gain.value = 1;
+      sideToRInv.gain.value = -1;
+      midGain.connect(midToL);
+      sideGain.connect(sideToL);
+      midGain.connect(midToR);
+      sideGain.connect(sideInv);
+      sideInv.connect(sideToRInv);
+      midToL.connect(merger, 0, 0);
+      sideToL.connect(merger, 0, 0);
+      midToR.connect(merger, 0, 1);
+      sideToRInv.connect(merger, 0, 1);
+      merger.connect(output);
+      this.masterMs = { input, output, splitter, merger, midGain, sideGain, sideInv };
+      // Keep helper gains for cleanup
+      (this.masterMs as unknown as { lToMid: GainNode; rToMid: GainNode; lToSide: GainNode; rToSide: GainNode; midToL: GainNode; sideToL: GainNode; midToR: GainNode; sideToRInv: GainNode }).lToMid = lToMid;
+      (this.masterMs as unknown as { lToMid: GainNode; rToMid: GainNode; lToSide: GainNode; rToSide: GainNode; midToL: GainNode; sideToL: GainNode; midToR: GainNode; sideToRInv: GainNode }).rToMid = rToMid;
+      (this.masterMs as unknown as { lToMid: GainNode; rToMid: GainNode; lToSide: GainNode; rToSide: GainNode; midToL: GainNode; sideToL: GainNode; midToR: GainNode; sideToRInv: GainNode }).lToSide = lToSide;
+      (this.masterMs as unknown as { lToMid: GainNode; rToMid: GainNode; lToSide: GainNode; rToSide: GainNode; midToL: GainNode; sideToL: GainNode; midToR: GainNode; sideToRInv: GainNode }).rToSide = rToSide;
+      (this.masterMs as unknown as { lToMid: GainNode; rToMid: GainNode; lToSide: GainNode; rToSide: GainNode; midToL: GainNode; sideToL: GainNode; midToR: GainNode; sideToRInv: GainNode }).midToL = midToL;
+      (this.masterMs as unknown as { lToMid: GainNode; rToMid: GainNode; lToSide: GainNode; rToSide: GainNode; midToL: GainNode; sideToL: GainNode; midToR: GainNode; sideToRInv: GainNode }).sideToL = sideToL;
+      (this.masterMs as unknown as { lToMid: GainNode; rToMid: GainNode; lToSide: GainNode; rToSide: GainNode; midToL: GainNode; sideToL: GainNode; midToR: GainNode; sideToRInv: GainNode }).midToR = midToR;
+      (this.masterMs as unknown as { lToMid: GainNode; rToMid: GainNode; lToSide: GainNode; rToSide: GainNode; midToL: GainNode; sideToL: GainNode; midToR: GainNode; sideToRInv: GainNode }).sideToRInv = sideToRInv;
+    }
     this.masterClipper = ctx.createWaveShaper();
     this.masterClipper.oversample = "4x";
     this.masterClipper.curve = null;
@@ -483,9 +611,9 @@ export class AudioEngine {
     this.masterAnalyser.fftSize = 2048;
     this.masterAnalyser.channelCount = 2;
     this.masterAnalyser.channelCountMode = "explicit";
-    this.master.connect(this.masterClipper);
-    // Read through an assertion: the null-reset above narrows the property
-    // statically, but attachMasterWorklet() repopulates it at runtime.
+    this.master.connect(this.masterTape!.input);
+    this.masterTape!.output.connect(this.masterMs!.input);
+    this.masterMs!.output.connect(this.masterClipper);
     const attached = this.masterLimiterWorklet as EffectRuntime | null;
     if (attached) {
       this.masterClipper.connect(attached.input);
@@ -535,6 +663,20 @@ export class AudioEngine {
     const ctx = this.ctx;
     const now = ctx ? ctx.currentTime : 0;
     if (this.master) this.master.gain.setTargetAtTime(Math.min(2, Math.max(0, config.masterGain)), now, 0.01);
+    if (this.masterTape) {
+      const enabled = config.tapeEnabled ?? false;
+      const drive = Math.min(1, Math.max(0, config.tapeDrive ?? 0.35));
+      this.masterTape.setParameter("drive", enabled ? drive : 0);
+      this.masterTape.setParameter("mix", enabled ? 1 : 0);
+      this.masterTape.setParameter("hysteresis", enabled ? 0.3 : 0);
+    }
+    if (this.masterMs) {
+      const enabled = config.msEnabled ?? false;
+      const midLin = enabled ? Math.pow(10, (config.msMidGain ?? 0) / 20) : 1;
+      const sideLin = enabled ? Math.pow(10, (config.msSideGain ?? 0) / 20) : 1;
+      this.masterMs.midGain.gain.setTargetAtTime(midLin, now, 0.01);
+      this.masterMs.sideGain.gain.setTargetAtTime(sideLin, now, 0.01);
+    }
     if (config.clipperEnabled) {
       const n = 2048;
       const curve = new Float32Array(new ArrayBuffer(n * 4));

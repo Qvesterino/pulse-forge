@@ -147,14 +147,31 @@ export function createDefaultReturns(): ReturnTrack[] {
     bypassed: false,
     params: { time: 375, feedback: 0.4, tone: 4000, mix: 1 },
   };
+  const nyCompFx: EffectInstance = {
+    id: uid("fx"),
+    type: "compressor",
+    bypassed: false,
+    params: { threshold: -24, ratio: 10, attack: 0.001, release: 0.12, knee: 6, mix: 1 },
+  };
   return [
     { id: uid("return"), kind: "return", name: "Reverb", gain: 0.9, effects: [reverbFx] },
     { id: uid("return"), kind: "return", name: "Delay", gain: 0.85, effects: [delayFx] },
+    { id: uid("return"), kind: "return", name: "NY Comp", gain: 0.85, effects: [nyCompFx] },
   ];
 }
 
 export function defaultMasterConfig(): MasterConfig {
-  return { masterGain: 1, ceilingDb: -1, limiterEnabled: true, clipperEnabled: false };
+  return {
+    masterGain: 1,
+    ceilingDb: -1,
+    limiterEnabled: true,
+    clipperEnabled: false,
+    tapeEnabled: false,
+    tapeDrive: 0.35,
+    msEnabled: false,
+    msMidGain: 0,
+    msSideGain: 0,
+  };
 }
 
 /** Clamp a dB value to the master ceiling range (-12..0 dBFS). */
@@ -1093,8 +1110,36 @@ function normalizeMasterAndReturnsDomain(s: NormalizeState): void {
     const dc = clampCeilingDb(m.ceilingDb);
     const dl = typeof m.limiterEnabled === "boolean" ? m.limiterEnabled : true;
     const dcl = typeof m.clipperEnabled === "boolean" ? m.clipperEnabled : false;
-    if (dg !== m.masterGain || dc !== m.ceilingDb || dl !== m.limiterEnabled || dcl !== m.clipperEnabled) {
-      doc = { ...doc, master: { masterGain: dg, ceilingDb: dc, limiterEnabled: dl, clipperEnabled: dcl } };
+    const tapeEnabled = typeof m.tapeEnabled === "boolean" ? m.tapeEnabled : false;
+    const tapeDrive = typeof m.tapeDrive === "number" && Number.isFinite(m.tapeDrive) ? Math.min(1, Math.max(0, m.tapeDrive)) : 0.35;
+    const msEnabled = typeof m.msEnabled === "boolean" ? m.msEnabled : false;
+    const msMidGain = typeof m.msMidGain === "number" && Number.isFinite(m.msMidGain) ? Math.min(6, Math.max(-6, m.msMidGain)) : 0;
+    const msSideGain = typeof m.msSideGain === "number" && Number.isFinite(m.msSideGain) ? Math.min(6, Math.max(-6, m.msSideGain)) : 0;
+    if (
+      dg !== m.masterGain ||
+      dc !== m.ceilingDb ||
+      dl !== m.limiterEnabled ||
+      dcl !== m.clipperEnabled ||
+      tapeEnabled !== m.tapeEnabled ||
+      tapeDrive !== m.tapeDrive ||
+      msEnabled !== m.msEnabled ||
+      msMidGain !== m.msMidGain ||
+      msSideGain !== m.msSideGain
+    ) {
+      doc = {
+        ...doc,
+        master: {
+          masterGain: dg,
+          ceilingDb: dc,
+          limiterEnabled: dl,
+          clipperEnabled: dcl,
+          tapeEnabled,
+          tapeDrive,
+          msEnabled,
+          msMidGain,
+          msSideGain,
+        },
+      };
       s.changed = true;
     }
   }
