@@ -690,6 +690,10 @@ export async function runChecks(): Promise<CheckResult[]> {
       tracks: withGroups.tracks.map((t) => (t.id === drum.id ? { ...t, groupId: groupB.id } : t)),
     };
     const ctx = new OfflineAudioContext(2, SR, SR);
+    // Load worklets like the live app: without them the master chain falls
+    // back to an always-on tanh shaper (×~1.8 small-signal gain), which
+    // inflated the L leak past this check's isolation threshold.
+    await loadWorkletModules(ctx);
     const engine = new AudioEngine();
     engine.attachBank(bank);
     engine.useContext(ctx);

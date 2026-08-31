@@ -571,7 +571,10 @@ export class AudioEngine {
       rToMid.connect(midGain);
       lToSide.connect(sideGain);
       rToSide.connect(sideGain);
-      // Decode: L = mid+side, R = mid-side
+      // Decode: L = mid+side, R = mid-side. `sideInv` is THE single side
+      // inversion — `sideToRInv` must stay unity or the two −1 gains cancel
+      // and R receives +side (= mid+side = L), collapsing the master to mono
+      // even with the M/S section disabled.
       const midToL = ctx.createGain();
       const sideToL = ctx.createGain();
       const midToR = ctx.createGain();
@@ -579,7 +582,7 @@ export class AudioEngine {
       midToL.gain.value = 1;
       sideToL.gain.value = 1;
       midToR.gain.value = 1;
-      sideToRInv.gain.value = -1;
+      sideToRInv.gain.value = 1;
       midGain.connect(midToL);
       sideGain.connect(sideToL);
       midGain.connect(midToR);
