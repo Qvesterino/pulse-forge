@@ -1,10 +1,11 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useDoc, useServices } from "./context";
 import {
   addAutomationLane,
   addAutomationPoint,
   addLfo,
   addMacroMapping,
+  addMacroMappingMidiCC,
   addSceneAutomation,
   addSceneAutomationPoint,
   deleteAutomationPoint,
@@ -799,6 +800,9 @@ function MacroCard({ macro }: { macro: ReturnType<typeof useDoc>["macros"][numbe
     trackId: doc.tracks[0]?.id ?? "",
     param: "gain",
   });
+  const [learning, setLearning] = useState(false);
+  const learnCancelRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => learnCancelRef.current?.(), []);
 
   return (
     <div className="macro-card">
@@ -854,6 +858,9 @@ function MacroCard({ macro }: { macro: ReturnType<typeof useDoc>["macros"][numbe
             <div key={mapping.id} className="macro-mapping">
               <span className="macro-mapping-label">
                 {trackBadgeSafe(track)} {track?.name ?? "?"} · {mapping.param === "gain" ? "VOL" : "PAN"}
+                {mapping.source === "midiCC"
+                  ? ` · CC${mapping.ccNumber}${mapping.channel ? ` Ch${mapping.channel}` : ""}`
+                  : ""}
               </span>
               <Slider
                 compact
@@ -906,6 +913,36 @@ function MacroCard({ macro }: { macro: ReturnType<typeof useDoc>["macros"][numbe
             }
           >
             + MAP
+          </button>
+          <button
+            type="button"
+            className={`btn btn-small${learning ? " active-solo" : ""}`}
+            title="MIDI Learn — move a knob/fader on your controller"
+            onClick={() => {
+              if (learning) {
+                learnCancelRef.current?.();
+                setLearning(false);
+                return;
+              }
+              setLearning(true);
+              const cancel = services.midi.captureNextCc((cc, channel) => {
+                try {
+                  services.store.execute(
+                    addMacroMappingMidiCC(services.store.doc, macro.id, mapDraft.trackId, mapDraft.param, cc, channel),
+                  );
+                } catch {}
+                setLearning(false);
+              });
+              learnCancelRef.current = cancel;
+              setTimeout(() => {
+                if (learnCancelRef.current === cancel) {
+                  cancel();
+                  setLearning(false);
+                }
+              }, 8000);
+            }}
+          >
+            {learning ? "LEARNING…" : "LEARN CC"}
           </button>
         </div>
       </div>

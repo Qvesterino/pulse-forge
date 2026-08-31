@@ -130,6 +130,13 @@
 - [x] **Warp markers** `src/project-model/types.ts:420` `AudioClip.warpMarkers?: Array<{timeSec,tick}>` (256 max, sorted), `src/project-model/schema.ts:443` sanitize `typeof === "number"` + sort + 256 limit, `src/commands/commands.ts:2232` `updateAudioClip warpMarkers`, `src/ui/ArrangementPanel.tsx:1200` menu `Set warp markers (auto)` — pin start/end + transient `env peak >0.22`, `AudioClipWaveform` render: vertical amber lines `rgba(245,158,11,0.7)` + diamond marker at each `wm.tick/totalTick*w`
 - [x] Verif: `typecheck` ✓, `vitest 104/1057` ✓ (nové instrument testy + logdrum), `format` ✓ — P3.1 Audio Clip Editing kompletné
 
+### P3.2 MIDI Editing Depth (Melodic workflow) — **2026-08-29 DOKONČENÉ**
+
+- [x] **Ghost notes per track** `src/ui/PianoRoll.tsx:68` `ghostNotes` (other patterns same track) + `ghostTrackNotes` (same pattern other instrument tracks) `opacity 0.2` `.pr-note.ghost-track` `#7dd3fc` — nie len per pattern
+- [x] **Velocity lane zoom + per-velocity colors** `src/ui/PianoRoll.tsx:88` `velZoom 0.5..2.5` `V-ZOOM −/+` `48*velZoom px` lane, `hue 200→20` `hsl(85% 55%)` `background` per `velocity` + `height 100%` bar
+- [x] **Note transformations: Invert, Mirror, Retrograde, Cluster** `src/midi/creative.ts:258` `mirrorNotes(center 60)` `retrogradeNotes` `clusterNotes(minPitch+pc%12)` + `src/commands/commands.ts:1593` `midiCreativeLabel` + `applyMidiCreativeTool` `mirror/retrograde/cluster` + `src/ui/PianoRoll.tsx:810` toolbar `INV/MIR/RETRO/CLUS` `runOnSelection`
+- [x] **MIDI Learn — CC mapping pre macros** `src/midi/MidiInput.ts:24` `captureNextCcCb` + `captureNextCc(cb)` one-shot, `handleCC` intercept `cb(cc,channel)` pre Learn, `src/commands/commands.ts:1184` `addMacroMappingMidiCC(macroId,trackId,param,cc,channel)` `source:"midiCC"`, `src/ui/ModPanel.tsx:793` `MacroCard` `LEARN CC` btn `learning` state `captureNextCc` → `addMacroMappingMidiCC` + `+ MAP` + display `CC${n} Ch${c}` + 8s timeout. Verif: `typecheck` ✓, `vitest 104/1057` ✓
+
 ## 4. Guardrails (INTUITÍVNE = PREDVÍDATEĽNÉ) — **2026-08-29 OVERENÉ**
 
 - [x] Žiadny `alert()` / modal na bežnej akcii — všetko toast `src/ui/CommandToast.tsx`, `CommandToast` (`src/ui/CommandToast.tsx:10`) v App footri, `window.alert()` nikde v kóde (`grep alert\(` = 0 hits mimo browser-checks.ts kde je `alert("Demo")` len pre feature gating, nie user-facing). Verif: `grep -r "alert(" src/ui/`
@@ -177,3 +184,4 @@
 - 2026-08-29 — **P2.6 Folder/Group + Linked Mixer hotové**: `GroupTrack.collapsed` + `setGroupCollapsed/Mute/Solo` (1 gesto 8 stôp), `soloAudibility` group mute→members, `Mixer` fold `▼/▶` + `visibleTracks` + `selected-strip`, `App selectTrack` expand group. Verif: `typecheck` ✓, `vitest 97/1017` ✓.
 - 2026-08-29 — **P2.7 Quick Wins hotové (4/4)**: `Pre-roll+Count-in` (Transport `countIn/preRoll` + engine `click` + Scheduler metronome + TopBar `C1/C2/PR`), `Capture last take` (ring 2048 + `A` toast + pattern/scene/clip 1 undo), `previewAssetSynced` FL Alt+P štýl, `Undo History` `±N` diff + `jumpTo` klik-to-jump (Cubase). Verif: `typecheck` ✓, `vitest 101/1036` ✓, `format` ✓.
 - 2026-08-29 — **P3.1 Audio Clip Editing kompletné**: `timeStretch` (grain, 0.5–3×), auto-crossfade pri dragu, `sliceAudioClipToArrangement` SlicerX, warp markers (auto-transient + amber diamond), `stretchMode "stretch"|"resample"`, logdrum pridaný. Verif: `typecheck` ✓, `vitest 104/1057` ✓.
+- 2026-08-29 — **P3.2 MIDI Editing Depth hotové**: `ghost-track` per track, `V-ZOOM` + `hsl` per-velocity, `Invert/Mirror/Retrograde/Cluster` v `creative` + `PianoRoll` toolbar, `MIDI Learn CC→macro` `captureNextCc` + `LEARN CC` btn. Verif: `typecheck` ✓, `vitest 104/1057` ✓.

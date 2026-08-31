@@ -68,6 +68,7 @@ import {
   applyScaleOption,
   arpeggiateNotes,
   basslineNotes,
+  clusterNotes,
   createChordNotes,
   doubleNotes,
   euclideanNotes,
@@ -75,7 +76,9 @@ import {
   halveNotes,
   humanizeNotes,
   invertNotes,
+  mirrorNotes,
   repeatNotes,
+  retrogradeNotes,
   randomizeVelocity,
   reverseNotes,
   snapNotesToScale,
@@ -1599,6 +1602,12 @@ function midiCreativeLabel(operation: MidiCreativeOperation): string {
       return "Reverse notes";
     case "invert":
       return "Invert notes";
+    case "mirror":
+      return "Mirror notes";
+    case "retrograde":
+      return "Retrograde notes";
+    case "cluster":
+      return "Cluster notes";
     case "halve":
       return "Halve note timing";
     case "double":
@@ -1665,6 +1674,30 @@ export function applyMidiCreativeTool(doc: ProjectDocument, options: ApplyMidiCr
     case "invert":
       transformed = applyScaleOption(
         invertNotes(target, patternTicks),
+        operation.key,
+        operation.scaleLock,
+        patternTicks,
+      );
+      break;
+    case "mirror":
+      transformed = applyScaleOption(
+        mirrorNotes(target, operation.centerPitch, patternTicks),
+        operation.key,
+        operation.scaleLock,
+        patternTicks,
+      );
+      break;
+    case "retrograde":
+      transformed = applyScaleOption(
+        retrogradeNotes(target, patternTicks),
+        operation.key,
+        operation.scaleLock,
+        patternTicks,
+      );
+      break;
+    case "cluster":
+      transformed = applyScaleOption(
+        clusterNotes(target, patternTicks),
         operation.key,
         operation.scaleLock,
         patternTicks,
@@ -3238,6 +3271,32 @@ export function addMacroMapping(
     ...dMap(doc, macroId, (m) => ({ ...m, mappings: [...m.mappings, mapping] })),
   };
   return snapshot("addMacroMapping", "Add macro mapping", doc, next);
+}
+
+export function addMacroMappingMidiCC(
+  doc: ProjectDocument,
+  macroId: string,
+  trackId: string,
+  param: "gain" | "pan" | string,
+  ccNumber: number,
+  channel?: number,
+): Command {
+  if (!doc.tracks.some((t) => t.id === trackId)) throw new Error(`Track ${trackId} not found`);
+  if (!doc.macros.some((m) => m.id === macroId)) throw new Error(`Macro ${macroId} not found`);
+  if (!Number.isFinite(ccNumber) || ccNumber < 0 || ccNumber > 127) throw new Error("Invalid CC number");
+  const mapping: import("../project-model/types").MacroMapping = {
+    id: uid("map"),
+    trackId,
+    param,
+    amount: 0.5,
+    source: "midiCC",
+    ccNumber: Math.floor(ccNumber),
+    ...(channel !== undefined ? { channel: Math.floor(channel) } : {}),
+  };
+  const next: ProjectDocument = {
+    ...dMap(doc, macroId, (m) => ({ ...m, mappings: [...m.mappings, mapping] })),
+  };
+  return snapshot("addMacroMappingMidiCC", `Map CC${ccNumber} → ${param}`, doc, next);
 }
 
 export function removeMacroMapping(doc: ProjectDocument, macroId: string, mappingId: string): Command {

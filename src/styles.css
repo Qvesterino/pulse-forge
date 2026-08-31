@@ -996,6 +996,11 @@ button {
   border-color: rgba(255, 255, 255, 0.15);
   pointer-events: none;
 }
+.pr-note.ghost-track {
+  background: #7dd3fc;
+  border-color: rgba(125, 211, 252, 0.35);
+  pointer-events: none;
+}
 /* FL slide note (portamento): half-triangle badge on the left edge */
 .pr-note.slide::after {
   content: "▲";

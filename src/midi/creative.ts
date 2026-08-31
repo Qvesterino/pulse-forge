@@ -101,6 +101,9 @@ export type MidiCreativeOperation =
   | { kind: "stamp-chord"; shape: "major" | "minor" | "dominant7" | "major7" | "minor7" | "sus2" | "sus4" }
   | { kind: "reverse"; scaleLock: boolean; key?: MusicalKey }
   | { kind: "invert"; scaleLock: boolean; key?: MusicalKey }
+  | { kind: "mirror"; centerPitch?: number; scaleLock: boolean; key?: MusicalKey }
+  | { kind: "retrograde"; scaleLock: boolean; key?: MusicalKey }
+  | { kind: "cluster"; scaleLock: boolean; key?: MusicalKey }
   | { kind: "halve"; scaleLock: boolean; key?: MusicalKey }
   | { kind: "double"; scaleLock: boolean; key?: MusicalKey }
   | { kind: "strum"; options: StrumOptions; scaleLock: boolean; key?: MusicalKey }
@@ -261,6 +264,30 @@ export function invertNotes(notes: NoteEvent[], patternTicks: number): NoteEvent
   const maxPitch = Math.max(...notes.map((note) => note.pitch));
   const pivot = (minPitch + maxPitch) / 2;
   return notes.map((note) => clampNote({ ...note, pitch: Math.round(2 * pivot - note.pitch) }, patternTicks));
+}
+
+export function mirrorNotes(notes: NoteEvent[], centerPitch: number | undefined, patternTicks: number): NoteEvent[] {
+  if (notes.length === 0) return [];
+  const center = centerPitch !== undefined ? Math.round(centerPitch) : 60;
+  return notes.map((note) =>
+    clampNote({ ...note, pitch: clamp(Math.round(2 * center - note.pitch), 0, 127) }, patternTicks),
+  );
+}
+
+export function retrogradeNotes(notes: NoteEvent[], patternTicks: number): NoteEvent[] {
+  // Retrograde = reverse in time (same as reverseNotes) — keeps pitch
+  return reverseNotes(notes, patternTicks);
+}
+
+export function clusterNotes(notes: NoteEvent[], patternTicks: number): NoteEvent[] {
+  if (notes.length === 0) return [];
+  const minPitch = Math.min(...notes.map((note) => note.pitch));
+  // Cluster within one octave above min: pitch class preserved, octave collapsed
+  return notes.map((note) => {
+    const pc = (((note.pitch - minPitch) % 12) + 12) % 12;
+    const newPitch = minPitch + pc;
+    return clampNote({ ...note, pitch: clamp(newPitch, 0, 127) }, patternTicks);
+  });
 }
 
 function scaleTime(notes: NoteEvent[], factor: number, patternTicks: number): NoteEvent[] {

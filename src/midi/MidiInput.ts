@@ -38,6 +38,8 @@ export class MidiInput {
   private transport: Transport | null = null;
   /** Last channel voice status byte (running status support). */
   private runningStatus: number | null = null;
+  /** One-shot capture for MIDI Learn (CC → macro). */
+  private captureNextCcCb: ((cc: number, channel: number) => void) | null = null;
 
   async requestAccess(): Promise<boolean> {
     if (typeof navigator === "undefined" || !navigator.requestMIDIAccess) return false;
@@ -115,6 +117,17 @@ export class MidiInput {
     this.getDoc = null;
     this.deviceChangeCb = null;
     this.runningStatus = null;
+    this.captureNextCcCb = null;
+  }
+
+  /**
+   * Capture the next CC for MIDI Learn (maps CC → macro). Auto-clears after one CC.
+   */
+  captureNextCc(cb: (cc: number, channel: number) => void): () => void {
+    this.captureNextCcCb = cb;
+    return () => {
+      if (this.captureNextCcCb === cb) this.captureNextCcCb = null;
+    };
   }
 
   // ---------------------------------------------------------------------------
@@ -264,6 +277,12 @@ export class MidiInput {
   }
 
   private handleCC(cc: number, value: number, channel: number, config: MidiConfig): void {
+    if (this.captureNextCcCb) {
+      const cb = this.captureNextCcCb;
+      this.captureNextCcCb = null;
+      cb(cc, channel);
+      return;
+    }
     const doc = this.getDoc?.();
     if (!doc || !this.store || !this.engine) return;
 

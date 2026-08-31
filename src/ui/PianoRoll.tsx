@@ -83,11 +83,23 @@ export function PianoRollTrack({
     }
     return out;
   })();
+  // Ghost notes per track (same pattern, other instrument tracks) — 20% opacity
+  const ghostTrackNotes: NoteEvent[] = (() => {
+    const out: NoteEvent[] = [];
+    for (const [otherTrackId, list] of Object.entries(pattern.notes ?? {})) {
+      if (otherTrackId === track.id) continue;
+      const otherTrack = doc.tracks.find((t) => t.id === otherTrackId);
+      if (!otherTrack || otherTrack.kind !== "instrument") continue;
+      for (const n of list as NoteEvent[]) out.push({ ...n, id: `ghost-track-${otherTrackId}-${n.id}` });
+    }
+    return out;
+  })();
   const [velDrag, setVelDrag] = useState<{
     anchorId: string;
     startY: number;
     startVels: Record<string, number>;
   } | null>(null);
+  const [velZoom, setVelZoom] = useState(1);
   const [noteClipboard, setNoteClipboard] = useState<NoteEvent[] | null>(null);
   // FL Chord Stamp menu (Shift+C) — shape picker anchored at cursor
   const [chordMenu, setChordMenu] = useState<{ x: number; y: number } | null>(null);
@@ -799,6 +811,84 @@ export function PianoRollTrack({
           <button
             type="button"
             className="btn btn-small"
+            title="Invert (vertical flip)"
+            disabled={!hasSelection}
+            onClick={() =>
+              runOnSelection((ids) =>
+                services.store.execute(
+                  applyMidiCreativeTool(doc, {
+                    trackId: track.id,
+                    noteIds: ids,
+                    operation: { kind: "invert", scaleLock: scaleSnap, key: doc.key },
+                  }),
+                ),
+              )
+            }
+          >
+            INV
+          </button>
+          <button
+            type="button"
+            className="btn btn-small"
+            title="Mirror around C4 (60)"
+            disabled={!hasSelection}
+            onClick={() =>
+              runOnSelection((ids) =>
+                services.store.execute(
+                  applyMidiCreativeTool(doc, {
+                    trackId: track.id,
+                    noteIds: ids,
+                    operation: { kind: "mirror", centerPitch: 60, scaleLock: scaleSnap, key: doc.key },
+                  }),
+                ),
+              )
+            }
+          >
+            MIR
+          </button>
+          <button
+            type="button"
+            className="btn btn-small"
+            title="Retrograde (reverse in time)"
+            disabled={!hasSelection}
+            onClick={() =>
+              runOnSelection((ids) =>
+                services.store.execute(
+                  applyMidiCreativeTool(doc, {
+                    trackId: track.id,
+                    noteIds: ids,
+                    operation: { kind: "retrograde", scaleLock: scaleSnap, key: doc.key },
+                  }),
+                ),
+              )
+            }
+          >
+            RETRO
+          </button>
+          <button
+            type="button"
+            className="btn btn-small"
+            title="Cluster (within one octave)"
+            disabled={!hasSelection}
+            onClick={() =>
+              runOnSelection((ids) =>
+                services.store.execute(
+                  applyMidiCreativeTool(doc, {
+                    trackId: track.id,
+                    noteIds: ids,
+                    operation: { kind: "cluster", scaleLock: scaleSnap, key: doc.key },
+                  }),
+                ),
+              )
+            }
+          >
+            CLUS
+          </button>
+        </div>
+        <div className="pr-toolbar-group">
+          <button
+            type="button"
+            className="btn btn-small"
             title="Nudge left 1/16"
             disabled={!hasSelection}
             onClick={() =>
@@ -913,6 +1003,28 @@ export function PianoRollTrack({
             PASTE
           </button>
         </div>
+        <div className="pr-toolbar-group">
+          <span className="slider-label" title="Velocity lane zoom — per-velocity colors">
+            V-ZOOM
+          </span>
+          <button
+            type="button"
+            className="btn btn-small"
+            title="Zoom out velocity lane"
+            onClick={() => setVelZoom((z) => Math.max(0.5, z - 0.25))}
+          >
+            −
+          </button>
+          <span style={{ fontSize: 11, minWidth: 32, textAlign: "center" }}>{Math.round(velZoom * 100)}%</span>
+          <button
+            type="button"
+            className="btn btn-small"
+            title="Zoom in velocity lane"
+            onClick={() => setVelZoom((z) => Math.min(2.5, z + 0.25))}
+          >
+            +
+          </button>
+        </div>
       </div>
       <div className="pianoroll">
         <div className="pianoroll-keys">
@@ -995,6 +1107,25 @@ export function PianoRollTrack({
                 />
               );
             })}
+            {/* Ghost notes per track — same pattern, other instrument tracks (20% opacity) */}
+            {ghostTrackNotes.map((note) => {
+              const startSteps = note.start / STEP_TICKS;
+              const durSteps = note.duration / STEP_TICKS;
+              const top = (PITCH_MAX - note.pitch) * ROW_HEIGHT;
+              return (
+                <div
+                  key={note.id}
+                  className="pr-note ghost-track"
+                  style={{
+                    left: `${(startSteps / pattern.stepCount) * 100}%`,
+                    width: `${(durSteps / pattern.stepCount) * 100}%`,
+                    top: `${clamp(top, 0, (PITCH_COUNT - 1) * ROW_HEIGHT)}px`,
+                    opacity: 0.2,
+                  }}
+                  title={`Ghost ${pitchName(note.pitch)} — from another track in same pattern`}
+                />
+              );
+            })}
             {notes.map((note) => {
               let startSteps = note.start / STEP_TICKS;
               let durSteps = note.duration / STEP_TICKS;
@@ -1061,17 +1192,18 @@ export function PianoRollTrack({
           </div>
         </div>
       </div>
-      <div className="pr-velocity-lane" aria-label="Velocity lane">
+      <div className="pr-velocity-lane" aria-label="Velocity lane" style={{ height: `${48 * velZoom}px` }}>
         <div className="pr-velocity-bg" />
         {notes.map((note) => {
           const left = (note.start / patternTicks) * 100;
           const selected = selectedNote?.trackId === track.id && selectedNote.noteIds.includes(note.id);
+          const hue = Math.round(200 - Math.max(0, Math.min(1, (note.velocity - 0.05) / 0.95)) * 180);
           return (
             <div
               key={note.id}
               data-vel={note.id}
               className={`pr-vel-bar${selected ? " selected" : ""}`}
-              style={{ left: `${left}%`, height: `${note.velocity * 100}%` }}
+              style={{ left: `${left}%`, height: `${note.velocity * 100}%`, background: `hsl(${hue} 85% 55%)` }}
               title={`${pitchName(note.pitch)} vel ${Math.round(note.velocity * 100)}% — drag vertically`}
               onPointerDown={(e) => beginVelDrag(e, note)}
               onPointerMove={onVelPointerMove}
