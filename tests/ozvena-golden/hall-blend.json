@@ -1,0 +1,33 @@
+{
+  "name": "hall-blend",
+  "description": "All three engines active with the Blend Pad biased toward Hall. Long decay (12 s on E3) and low damping for a lush tail.",
+  "sampleRate": 48000,
+  "blockSize": 1024,
+  "state": {
+    "blendPad": { "x": 0.55, "y": 0.85, "engine2Algo": "mediumChamber" },
+    "engines": {
+      "e1": { "enabled": true, "space": 0.6, "time": 150, "size": 0.6, "diffusion": 80, "angle": 50, "lowpassHz": 10000, "mix": 80 },
+      "e2": { "enabled": true, "space": 0.6, "time": 6000, "size": 0.6, "diffusion": 80, "attack": 50, "crossoverHz": 800, "balance": 0.5, "dampingAmount": 6, "dampingFreqHz": 6000, "mix": 80, "algo": "mediumChamber" },
+      "e3": { "enabled": true, "space": 0.7, "time": 1800, "size": 0.7, "diffusion": 80, "attack": 50, "crossoverHz": 700, "balance": 0.5, "dampingAmount": 7, "dampingFreqHz": 5500, "mix": 80, "algo": "hall" }
+    },
+    "preDelay": { "enabled": true, "ms": 30, "syncEnabled": false, "syncNote": "1/4" },
+    "smoother": { "enabled": true, "amount": 30 },
+    "preEq": { "enabled": true, "autoCut": { "enabled": false, "amount": 50, "status": "idle", "suggestedBandGainsDb": [0, 0, 0] }, "band1": { "enabled": false, "freqHz": 100, "gainDb": 0, "q": 0.7, "shape": "lowShelf" }, "band2": { "enabled": true, "freqHz": 800, "gainDb": -1.5, "q": 1.0, "shape": "bell" }, "band3": { "enabled": false, "freqHz": 8000, "gainDb": 0, "q": 0.7, "shape": "highShelf" } },
+    "reverbEq": { "enabled": false, "unmask": { "enabled": false, "amount": 50, "source": "dryVsWet", "status": "idle", "suggestedBandGainsDb": [0, 0, 0] }, "band1": { "enabled": false, "freqHz": 200, "gainDb": 0, "q": 0.7, "shape": "lowShelf" }, "band2": { "enabled": false, "freqHz": 2500, "gainDb": 0, "q": 1.0, "shape": "bell" }, "band3": { "enabled": false, "freqHz": 10000, "gainDb": 0, "q": 0.7, "shape": "highShelf" } },
+    "masking": { "enabled": false, "source": "dryVsWet" },
+    "mod": { "enabled": false, "mode": "randomFat", "depthX": 0.25, "rateY": 0.24 },
+    "assistant": { "step": 0, "style": 0.5, "size": 0.5, "dryWet": 0.5, "tone": "clean", "status": "idle", "accepted": false },
+    "global": { "inputGainDb": 0, "outputGainDb": 0, "dryWet": 30, "levelDb": 0, "fxOnly": false, "bypass": false, "quality": "high" }
+  },
+  "input": {
+    "type": "stereo-click",
+    "amplitudeL": 0.5,
+    "amplitudeR": 0.5,
+    "clickSample": 0
+  },
+  "expected": {
+    "noNan": true,
+    "finite": true,
+    "tailEnergyWindow": { "startSample": 24000, "endSample": 130000, "min": 1e-10 }
+  }
+}

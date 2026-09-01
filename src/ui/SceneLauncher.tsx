@@ -1,6 +1,7 @@
 import { useState, useSyncExternalStore } from "react";
 import { useDoc, useServices } from "./context";
 import { sceneRoleOf } from "../project-model/schema";
+import { assistVary } from "../commands/commands";
 import type { Pattern, Scene } from "../project-model/types";
 import type { PlayMode } from "../project-model/types";
 
@@ -220,6 +221,23 @@ export function SceneLauncher({
                   }}
                 >
                   {variant === "panel" ? "LAUNCH" : "▶"}
+                </button>
+                <button
+                  type="button"
+                  className="scene-action scene-action-edit"
+                  aria-label={`Vary scene ${scene.name}`}
+                  title="VARY — re-roll this scene's pattern live (dice variation, undoable). Takes effect within a beat."
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    const seed = `v-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
+                    try {
+                      services.store.execute(assistVary(services.store.doc, scene.patternId, seed, 0.5));
+                    } catch {
+                      /* pattern missing — nothing to vary */
+                    }
+                  }}
+                >
+                  {variant === "panel" ? "VARY" : "⟳"}
                 </button>
                 {onRenameScene && (
                   <button

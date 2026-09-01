@@ -26,7 +26,7 @@ try {
   });
   page.on("pageerror", (err) => consoleErrors.push(String(err)));
 
-  await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded" });
+  await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 60_000 });
 
   // A shared dev machine means another agent may save files mid-run, which
   // Vite turns into a full page reload ("Execution context was destroyed").
@@ -41,7 +41,7 @@ try {
     } catch (error) {
       if (attempt === 3 || !/context was destroyed|navigation/i.test(String(error))) throw error;
       console.log("[retry] checks page reload race — retrying evaluate");
-      await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded" });
+      await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 60_000 });
     }
   }
 
@@ -59,7 +59,7 @@ try {
     if (msg.type() === "error") appErrors.push(msg.text());
   });
   appPage.on("pageerror", (err) => appErrors.push(String(err)));
-  await appPage.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded" });
+  await appPage.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 60_000 });
   try {
     // New boot flow: the app always starts in the project browser.
     await appPage.waitForSelector(".project-browser", { timeout: 15000 });
@@ -110,7 +110,9 @@ try {
     await appPage.waitForSelector('.generate-dialog-backdrop[role="dialog"]', { state: "detached", timeout: 10000 });
     const patternsAfterGenerate = await appPage.locator(".pattern-chip").count();
     if (patternsAfterGenerate !== patternsBeforeGenerate + 1) {
-      throw new Error(`generation accept expected ${patternsBeforeGenerate + 1} patterns, got ${patternsAfterGenerate}`);
+      throw new Error(
+        `generation accept expected ${patternsBeforeGenerate + 1} patterns, got ${patternsAfterGenerate}`,
+      );
     }
     await appPage.locator('button[aria-label="Undo"]').click();
     await appPage.waitForFunction(
@@ -133,7 +135,7 @@ try {
       throw new Error(`unexpected project export filename: ${download.suggestedFilename()}`);
     }
     await appPage.waitForTimeout(1200); // allow autosave to settle before reload
-    await appPage.reload({ waitUntil: "domcontentloaded" });
+    await appPage.reload({ waitUntil: "domcontentloaded", timeout: 60_000 });
     await appPage.waitForSelector(".project-browser", { timeout: 15000 });
     const continueCard = appPage.locator(".pb-continue-card").first();
     if (await continueCard.count()) {
@@ -240,8 +242,8 @@ try {
     const ROOM = `e2e-${Date.now().toString(36)}`;
     const pageA = await browser.newPage();
     const pageB = await browser.newPage();
-    await pageA.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded" });
-    await pageB.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded" });
+    await pageA.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+    await pageB.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 60_000 });
     await setup(pageA, ROOM, "Producer A");
     await setup(pageB, ROOM, "Producer B");
     await new Promise((r) => setTimeout(r, 1000));
@@ -254,12 +256,20 @@ try {
     await pageB.waitForFunction(() => window.__collab?.store.doc.bpm === 141, null, { timeout: 8000 });
 
     // Presence: each page sees the other producer.
-    await pageA.waitForFunction(() => window.__collab?.session.participants.some((p) => p.name === "Producer B"), null, {
-      timeout: 8000,
-    });
-    await pageB.waitForFunction(() => window.__collab?.session.participants.some((p) => p.name === "Producer A"), null, {
-      timeout: 8000,
-    });
+    await pageA.waitForFunction(
+      () => window.__collab?.session.participants.some((p) => p.name === "Producer B"),
+      null,
+      {
+        timeout: 8000,
+      },
+    );
+    await pageB.waitForFunction(
+      () => window.__collab?.session.participants.some((p) => p.name === "Producer A"),
+      null,
+      {
+        timeout: 8000,
+      },
+    );
 
     // Local undo must NOT revert the remote-synced base (still user-scoped).
     const undoScope = await pageB.evaluate(() => {
@@ -294,14 +304,15 @@ try {
     const embedPage = await browser.newPage();
     const embedErrors = [];
     embedPage.on("pageerror", (err) => embedErrors.push(String(err)));
-    await embedPage.goto(`http://127.0.0.1:${PORT}/embed/#p=${code}`, { waitUntil: "domcontentloaded" });
+    await embedPage.goto(`http://127.0.0.1:${PORT}/embed/#p=${code}`, {
+      waitUntil: "domcontentloaded",
+      timeout: 60_000,
+    });
     await embedPage.waitForSelector(".embed-play:not([disabled])", { timeout: 45_000 });
     await embedPage.click(".embed-play");
-    await embedPage.waitForFunction(
-      () => document.querySelector(".embed-play")?.textContent?.includes("❚❚"),
-      null,
-      { timeout: 5_000 },
-    );
+    await embedPage.waitForFunction(() => document.querySelector(".embed-play")?.textContent?.includes("❚❚"), null, {
+      timeout: 5_000,
+    });
     await new Promise((r) => setTimeout(r, 1_100)); // cross the 1 s display granularity + headless clock startup
     const time1 = await embedPage.textContent(".embed-time");
     await new Promise((r) => setTimeout(r, 1_400));
@@ -316,7 +327,10 @@ try {
 
     // 2. The share link: ?import= opens the project straight into the studio.
     const importPage = await browser.newPage();
-    await importPage.goto(`http://127.0.0.1:${PORT}/?import=${code}`, { waitUntil: "domcontentloaded" });
+    await importPage.goto(`http://127.0.0.1:${PORT}/?import=${code}`, {
+      waitUntil: "domcontentloaded",
+      timeout: 60_000,
+    });
     await importPage.waitForSelector(".topbar", { timeout: 45_000 });
     await importPage.waitForSelector(".sequencer", { timeout: 15_000 });
     if (await importPage.$(".project-browser")) throw new Error("project browser shown — import was skipped");
@@ -332,7 +346,7 @@ try {
   try {
     const touchContext = await browser.newContext({ hasTouch: true, viewport: { width: 900, height: 800 } });
     const touchPage = await touchContext.newPage();
-    await touchPage.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded" });
+    await touchPage.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 60_000 });
     await touchPage.waitForSelector(".project-browser", { timeout: 15_000 });
     await touchPage.locator('.pb-template:has-text("HOUSE")').first().click();
     await touchPage.waitForSelector(".sequencer", { timeout: 15_000 });

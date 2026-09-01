@@ -3122,6 +3122,129 @@ export function arrangementSkeletonPreview(doc: ProjectDocument): ArrangementSke
   return steps;
 }
 
+/**
+ * Auto-Arrange: lay ALL scenes into a classic electronic song template —
+ * intro → build → drop → break → build → drop → outro — with riser/fill
+ * transitions between the key boundaries and drop/buildup cue markers.
+ *
+ * Scenes are bucketed by role (`sceneRoleOf` infers from names); slots pick
+ * from their bucket in order, cycling when a bucket has several scenes
+ * (two drops → DROP A / DROP B). Missing roles fall back through a chain so
+ * even a 3-scene jam gets a coherent song.
+ */
+export function autoArrangeSong(doc: ProjectDocument): Command {
+  if (doc.scenes.length === 0) throw new Error("No scenes to arrange — create a few first");
+  type Bucket = "intro" | "build" | "drop" | "break" | "outro" | "other";
+  const buckets = new Map<Bucket, string[]>();
+  for (const scene of doc.scenes) {
+    const role = sceneRoleOf(scene) ?? "custom";
+    const bucket: Bucket =
+      role === "intro" || role === "build" || role === "drop" || role === "break" || role === "outro" ? role : "other";
+    const list = buckets.get(bucket) ?? [];
+    list.push(scene.id);
+    buckets.set(bucket, list);
+  }
+  const cursor = new Map<Bucket, number>();
+  const pick = (primary: Bucket, fallbacks: Bucket[]): string | null => {
+    for (const bucket of [primary, ...fallbacks]) {
+      const list = buckets.get(bucket) ?? [];
+      if (list.length === 0) continue;
+      const at = cursor.get(bucket) ?? 0;
+      cursor.set(bucket, (at + 1) % list.length);
+      return list[at];
+    }
+    return null;
+  };
+
+  const TEMPLATE: Array<{
+    primary: Bucket;
+    fallbacks: Bucket[];
+    lengthBars: number;
+    marker?: { type: Marker["type"]; name: string };
+    transitionIn?: ArrangementTransitionType | null;
+  }> = [
+    { primary: "intro", fallbacks: ["break", "other", "drop"], lengthBars: 4 },
+    {
+      primary: "build",
+      fallbacks: ["intro", "other", "drop"],
+      lengthBars: 4,
+      marker: { type: "buildup", name: "BUILD A" },
+      transitionIn: null,
+    },
+    {
+      primary: "drop",
+      fallbacks: ["other", "build"],
+      lengthBars: 8,
+      marker: { type: "drop", name: "DROP A" },
+      transitionIn: "riser",
+    },
+    {
+      primary: "break",
+      fallbacks: ["intro", "other"],
+      lengthBars: 4,
+      marker: { type: "cue", name: "BREAK" },
+      transitionIn: "break",
+    },
+    {
+      primary: "build",
+      fallbacks: ["intro", "other", "drop"],
+      lengthBars: 4,
+      marker: { type: "buildup", name: "BUILD B" },
+      transitionIn: "fill",
+    },
+    {
+      primary: "drop",
+      fallbacks: ["other", "build"],
+      lengthBars: 8,
+      marker: { type: "drop", name: "DROP B" },
+      transitionIn: "riser",
+    },
+    { primary: "outro", fallbacks: ["break", "intro", "other"], lengthBars: 4, transitionIn: "break" },
+  ];
+
+  let bar = 0;
+  const clips: ArrangementClip[] = [];
+  const transitions: ArrangementTransition[] = [];
+  const markers: Marker[] = [];
+  let previousClipId: string | null = null;
+  let usedSlots = 0;
+  for (const slot of TEMPLATE) {
+    const sceneId = pick(slot.primary, slot.fallbacks);
+    if (!sceneId) continue;
+    usedSlots += 1;
+    const clip: ArrangementClip = { id: uid("clip"), sceneId, startBar: bar, lengthBars: slot.lengthBars };
+    clips.push(clip);
+    if (previousClipId && slot.transitionIn) {
+      transitions.push({
+        id: uid("transition"),
+        fromClipId: previousClipId,
+        toClipId: clip.id,
+        type: slot.transitionIn,
+        lengthBars: 1,
+      });
+    }
+    if (slot.marker) {
+      markers.push({
+        id: uid("marker"),
+        name: slot.marker.name,
+        type: slot.marker.type,
+        tick: bar * BAR_TICKS,
+        linkedClipId: clip.id,
+      });
+    }
+    previousClipId = clip.id;
+    bar += slot.lengthBars;
+  }
+  if (usedSlots === 0) throw new Error("No scenes could be placed — create a few scenes first");
+
+  const next: ProjectDocument = {
+    ...doc,
+    arrangement: { ...doc.arrangement, clips, transitions },
+    markers: markers,
+  };
+  return snapshot("autoArrangeSong", `Auto-arrange song (intro→build→drop→break→drop→outro)`, doc, next);
+}
+
 export function createArrangementSkeleton(doc: ProjectDocument): Command {
   const steps = arrangementSkeletonPreview(doc);
   if (steps.length === 0) throw new Error("No INTRO, BUILD, DROP, BREAK or OUTRO scenes found");

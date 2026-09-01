@@ -7,6 +7,7 @@ import {
   addAudioClip,
   addMarker,
   consolidateAudioClips,
+  autoArrangeSong,
   createArrangementSkeleton,
   createScene,
   createVariationAndPlaceClip,
@@ -565,6 +566,20 @@ export function ArrangementPanel() {
             )}
             <button type="button" className="btn btn-small" onClick={() => setShowSkeletonPreview((value) => !value)}>
               BUILD SKELETON
+            </button>
+            <button
+              type="button"
+              className="btn btn-small btn-export"
+              title="Lay all scenes into a song: intro → build → drop → break → drop → outro, with transitions and cue markers"
+              onClick={() => {
+                try {
+                  execute(autoArrangeSong(services.store.doc));
+                } catch (err) {
+                  setActionError(err instanceof Error ? err.message : "Auto-arrange failed");
+                }
+              }}
+            >
+              AUTO ARRANGE
             </button>
           </div>
         </div>

@@ -17,6 +17,8 @@ import { LiveRecorder } from "./audio-engine/recorder";
 import { detectTransients } from "./audio-engine/transients";
 import { createFxEqProcessor } from "./effects/fxeq-core/core/fxEqProcessor";
 import { UltinaProcessor } from "./effects/ultina-core/dsp/ultinaProcessor";
+import { createOzvenaProcessor } from "./effects/ozvena-core/core/ozvenaProcessor";
+import { defaultOzvenaStateV1 } from "./effects/ozvena-core/v2/types";
 import { registerCoreModules } from "./effects/ultina-core/dsp/moduleFactories";
 import { createKwMeterNode } from "./audio-worklets/kwmeter-node";
 import { createDrumTrackModel, createGroupTrackModel } from "./project-model/schema";
@@ -737,20 +739,29 @@ export async function runChecks(): Promise<CheckResult[]> {
           ctx: live,
           getTapNode: (source) => (source.kind === "master" ? engine.getMasterTapNode() : null),
         });
-        await recorder.start({ kind: "master" });
-        // MediaRecorder has startup latency in headless and the shared test
-        // machine stalls audio rendering under load — so schedule a dense
-        // hit pattern across the WHOLE window: any captured slice then
-        // contains several full onsets and the peak assertion is stable.
-        await new Promise((r) => setTimeout(r, 300));
-        for (let i = 0; i < 25; i++) {
-          engine.trigger(drum.id, drum.pads[0], live.currentTime + 0.05 + i * 0.1, 1);
+        // One take + one retry: under heavy machine load a take can come back
+        // all-silence (the audio thread starves while the recorder clock
+        // runs). A retry lands past any transient load spike; two silent
+        // takes in a row mean a real regression.
+        let take: { buffer: AudioBuffer; blob: Blob } | null = null;
+        let peak = 0;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          await recorder.start({ kind: "master" });
+          // MediaRecorder has startup latency in headless and the shared test
+          // machine stalls audio rendering under load — so schedule a dense
+          // hit pattern across the WHOLE window: any captured slice then
+          // contains several full onsets and the peak assertion is stable.
+          await new Promise((r) => setTimeout(r, 300));
+          for (let i = 0; i < 25; i++) {
+            engine.trigger(drum.id, drum.pads[0], live.currentTime + 0.05 + i * 0.1, 1);
+          }
+          await new Promise((r) => setTimeout(r, 2800));
+          take = await recorder.stop();
+          if (!take) break;
+          peak = peakOf(take.buffer.getChannelData(0));
+          if (peak > 0.02) break;
         }
-        await new Promise((r) => setTimeout(r, 2800));
-        const take = await recorder.stop();
         if (!take) throw new Error("recorder produced no usable take");
-        const data = take.buffer.getChannelData(0);
-        const peak = peakOf(data);
         check(
           "resample: master bounce captures audible audio",
           take.buffer.duration > 0.6 && peak > 0.02 && take.buffer.sampleRate === live.sampleRate,
@@ -1339,7 +1350,11 @@ export async function runChecks(): Promise<CheckResult[]> {
     // getMeters() must hold a snapshot pushed over the port.
     const ctx = new OfflineAudioContext(2, SR, SR);
     await loadWorkletModules(ctx);
-    const rt = def.factory(ctx, { id: "t2", type: "ultina", bypassed: false, params: defaultParamsOf("ultina") }, { bpm: 124 });
+    const rt = def.factory(
+      ctx,
+      { id: "t2", type: "ultina", bypassed: false, params: defaultParamsOf("ultina") },
+      { bpm: 124 },
+    );
     const osc = ctx.createOscillator();
     osc.frequency.value = 220;
     const g = ctx.createGain();
@@ -1362,6 +1377,57 @@ export async function runChecks(): Promise<CheckResult[]> {
     );
   } catch (error) {
     check("ultina: live meters flow (DSP LUFS/spectrum + worklet port snapshots)", false, String(error));
+  }
+
+  // OZVENA Phase-A benchmark: per-engine realtime cost of the vendored TS
+  // core. The upstream perf harness measured a typical preset at ~106% of
+  // one core — these numbers decide the Phase-B strategy (hybrid
+  // ConvolverNode / offline-first / WASM).
+  try {
+    const bench = (mutate: (state: Record<string, unknown>) => void) => {
+      const proc = createOzvenaProcessor();
+      const state: Record<string, unknown> = defaultOzvenaStateV1() as unknown as Record<string, unknown>;
+      mutate(state);
+      proc.prepare(SR, 2, 128, 1);
+      proc.loadState(state as unknown as Parameters<typeof proc.loadState>[0]);
+      const stereo = [new Float32Array(128), new Float32Array(128)];
+      for (let i = 0; i < 30; i++) proc.process(stereo, 128);
+      const t0 = performance.now();
+      const blocks = 300;
+      for (let i = 0; i < blocks; i++) {
+        stereo[0][i % 128] = Math.sin(i * 0.07);
+        proc.process(stereo, 128);
+      }
+      const wallMs = performance.now() - t0;
+      proc.reset?.();
+      return (wallMs * 1000) / blocks; // µs/block
+    };
+    const budgetUs = (128 / SR) * 1000 * 1000;
+    const engineState = (engine: string) => (s: Record<string, unknown>) => {
+      // Keep every default field — engines carry required config (algo,
+      // lenMult sources); only flip the enabled flags.
+      const engines = s.engines as Record<string, { enabled: boolean }>;
+      for (const e of ["e1", "e2", "e3"]) engines[e].enabled = e === engine;
+    };
+    const e1 = bench(engineState("e1"));
+    const e2 = bench(engineState("e2"));
+    const e3 = bench(engineState("e3"));
+    const all = bench((s) => {
+      engineState("e1")(s);
+      (s.engines as Record<string, { enabled: boolean }>).e1.enabled = true;
+      (s.engines as Record<string, { enabled: boolean }>).e2.enabled = true;
+      (s.engines as Record<string, { enabled: boolean }>).e3.enabled = true;
+    });
+    const pct = (us: number) => ((us / budgetUs) * 100).toFixed(0);
+    // Informational for Phase B — the check itself only fails when the
+    // benchmark collapses entirely (broken vendored core).
+    check(
+      "ozvena: phase-A per-engine benchmark (decision data)",
+      e1 > 0 && e2 > 0 && e3 > 0 && all > 0,
+      `E1=${e1.toFixed(0)}µs (${pct(e1)}%) E2=${e2.toFixed(0)}µs (${pct(e2)}%) E3=${e3.toFixed(0)}µs (${pct(e3)}%) ALL=${all.toFixed(0)}µs (${pct(all)}%) — budget ${budgetUs.toFixed(0)}µs`,
+    );
+  } catch (error) {
+    check("ozvena: phase-A per-engine benchmark (decision data)", false, String(error));
   }
 
   try {
