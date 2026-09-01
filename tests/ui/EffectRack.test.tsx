@@ -222,3 +222,53 @@ describe("UltinaPanel — EQ band editor (direct render)", () => {
     expect(screen.getByRole("button", { name: /BAND 1/ })).toBeInTheDocument();
   });
 });
+
+
+describe('UltinaPanel — PRO tools (delta / A/B / gain match)', () => {
+  function renderPanel(params: Record<string, number>) {
+    const onParam = vi.fn();
+    const onApplyPreset = vi.fn();
+    renderWithContext(
+      <UltinaPanel
+        trackId="t-ult"
+        params={params}
+        onParam={onParam}
+        onApplyPreset={onApplyPreset}
+        onApplyProposal={vi.fn()}
+      />,
+      { services: mockServices() },
+    );
+    return { onParam, onApplyPreset };
+  }
+
+  it('DELTA and G-MATCH toggles execute global params', async () => {
+    const user = userEvent.setup();
+    const { onParam } = renderPanel({});
+    await user.click(screen.getByRole('button', { name: 'DELTA' }));
+    expect(onParam).toHaveBeenCalledWith('global.deltaListen', 1);
+    await user.click(screen.getByRole('button', { name: 'G-MATCH' }));
+    expect(onParam).toHaveBeenCalledWith('global.gainMatchEnabled', 1);
+  });
+
+  it('G-MATCH on reveals the target LUFS slider (default -14)', () => {
+    renderPanel({ 'global.gainMatchEnabled': 1 });
+    expect(screen.getByText('TARGET')).toBeInTheDocument();
+    // The slider shows the streaming-standard default.
+    expect(screen.getByText('-14.0 LUFS')).toBeInTheDocument();
+  });
+
+  it('A/B: STORE writes the active slot, clicking the other loads it as ONE gesture', async () => {
+    const user = userEvent.setup();
+    const params = { 'comp.thresholdDb': -18, 'global.mix': 80 };
+    const { onApplyPreset } = renderPanel(params);
+    // STORE into active slot A — dot marks it filled.
+    await user.click(screen.getByRole('button', { name: 'STORE' }));
+    expect(screen.getByRole('button', { name: /A•/ })).toBeInTheDocument();
+    // Switch to B (empty — just switches), then STORE B too.
+    await user.click(screen.getByRole('button', { name: /^B$/ }));
+    await user.click(screen.getByRole('button', { name: 'STORE' }));
+    // Click A — loads the stored snapshot as one bulk apply.
+    await user.click(screen.getByRole('button', { name: /A•/ }));
+    expect(onApplyPreset).toHaveBeenCalledWith('Slot A', expect.objectContaining({ 'comp.thresholdDb': -18 }));
+  });
+});

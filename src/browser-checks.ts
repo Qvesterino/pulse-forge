@@ -13,6 +13,7 @@ import { PPQ } from "./project-model/types";
 import { loadWorkletModules, isWorkletReady } from "./audio-worklets/loader";
 import { createBitcrusherNode } from "./audio-worklets/bitcrusher-node";
 import { AudioEngine } from "./audio-engine/AudioEngine";
+import { LiveRecorder } from "./audio-engine/recorder";
 import { detectTransients } from "./audio-engine/transients";
 import { createFxEqProcessor } from "./effects/fxeq-core/core/fxEqProcessor";
 import { UltinaProcessor } from "./effects/ultina-core/dsp/ultinaProcessor";
@@ -715,6 +716,54 @@ export async function runChecks(): Promise<CheckResult[]> {
     check("groups: moved track feeds only the new group", false, String(error));
   }
 
+  // Realtime resample: the LiveRecorder taps the post-limiter master and the
+  // take decodes back into an audible AudioBuffer — the "bounce what you
+  // hear" path that resampled pads/flips are built on.
+  try {
+    if (typeof MediaRecorder === "undefined") {
+      check("resample: master bounce captures audible audio", true, "skipped — MediaRecorder unavailable");
+    } else {
+      // MediaRecorder needs a REAL running context, not an offline one.
+      const live = new AudioContext();
+      try {
+        if (live.state === "suspended") await live.resume();
+        const engine = new AudioEngine();
+        engine.attachBank(bank);
+        engine.useContext(live);
+        const doc = createProjectFromTemplate("house");
+        engine.setProject(doc);
+        const drum = doc.tracks.find((t) => t.kind === "drum")!;
+        const recorder = new LiveRecorder({
+          ctx: live,
+          getTapNode: (source) => (source.kind === "master" ? engine.getMasterTapNode() : null),
+        });
+        await recorder.start({ kind: "master" });
+        // MediaRecorder has startup latency in headless and the shared test
+        // machine stalls audio rendering under load — so schedule a dense
+        // hit pattern across the WHOLE window: any captured slice then
+        // contains several full onsets and the peak assertion is stable.
+        await new Promise((r) => setTimeout(r, 300));
+        for (let i = 0; i < 25; i++) {
+          engine.trigger(drum.id, drum.pads[0], live.currentTime + 0.05 + i * 0.1, 1);
+        }
+        await new Promise((r) => setTimeout(r, 2800));
+        const take = await recorder.stop();
+        if (!take) throw new Error("recorder produced no usable take");
+        const data = take.buffer.getChannelData(0);
+        const peak = peakOf(data);
+        check(
+          "resample: master bounce captures audible audio",
+          take.buffer.duration > 0.6 && peak > 0.02 && take.buffer.sampleRate === live.sampleRate,
+          `dur=${take.buffer.duration.toFixed(2)}s peak=${peak.toFixed(3)} sr=${take.buffer.sampleRate}`,
+        );
+      } finally {
+        await live.close();
+      }
+    }
+  } catch (error) {
+    check("resample: master bounce captures audible audio", false, String(error));
+  }
+
   // Master meter must read TRUE stereo (splitter + per-channel analysers).
   // Regression: a single AnalyserNode downmixes to mono even with
   // channelCount=2/explicit, so L/R read the same mono signal.
@@ -1018,7 +1067,11 @@ export async function runChecks(): Promise<CheckResult[]> {
     const def = EFFECT_DEFS.fxeq;
     // 1. Degraded fallback path (no modules loaded in this context).
     const plainCtx = new OfflineAudioContext(1, SR, SR);
-    const fallback = def.factory(plainCtx, { id: "t", type: "fxeq", bypassed: false, params: defaultParamsOf("fxeq") }, { bpm: 124 });
+    const fallback = def.factory(
+      plainCtx,
+      { id: "t", type: "fxeq", bypassed: false, params: defaultParamsOf("fxeq") },
+      { bpm: 124 },
+    );
     const fallbackOk = fallback.degraded === true;
     fallback.dispose();
     // 2. Worklet path vs fallback path on the SAME input.
@@ -1163,7 +1216,11 @@ export async function runChecks(): Promise<CheckResult[]> {
     const def = EFFECT_DEFS.ultina;
     // 1. Degraded fallback (no modules loaded in this context).
     const plainCtx = new OfflineAudioContext(1, SR, SR);
-    const fallback = def.factory(plainCtx, { id: "t", type: "ultina", bypassed: false, params: defaultParamsOf("ultina") }, { bpm: 124 });
+    const fallback = def.factory(
+      plainCtx,
+      { id: "t", type: "ultina", bypassed: false, params: defaultParamsOf("ultina") },
+      { bpm: 124 },
+    );
     const fallbackOk = fallback.degraded === true;
     fallback.dispose();
 
@@ -1172,7 +1229,11 @@ export async function runChecks(): Promise<CheckResult[]> {
     const renderUltina = async (loaded: boolean, extraParams: Record<string, number>) => {
       const ctx = new OfflineAudioContext(2, SR, SR);
       if (loaded) await loadWorkletModules(ctx);
-      const rt = def.factory(ctx, { id: "t", type: "ultina", bypassed: false, params: { ...defaultParamsOf("ultina"), ...extraParams } }, { bpm: 124 });
+      const rt = def.factory(
+        ctx,
+        { id: "t", type: "ultina", bypassed: false, params: { ...defaultParamsOf("ultina"), ...extraParams } },
+        { bpm: 124 },
+      );
       const osc = ctx.createOscillator();
       osc.frequency.value = 220;
       const g = ctx.createGain();
@@ -1214,7 +1275,18 @@ export async function runChecks(): Promise<CheckResult[]> {
     registerCoreModules(proc);
     proc.prepare({ sampleRate: SR, channelCount: 2, maxBlockSize: 128, qualityMode: 1 });
     const worst: Record<string, number> = {};
-    for (const mod of ["eq", "comp", "gate", "exciter", "transient", "clipper", "density", "sculptor", "phase", "unmask"]) {
+    for (const mod of [
+      "eq",
+      "comp",
+      "gate",
+      "exciter",
+      "transient",
+      "clipper",
+      "density",
+      "sculptor",
+      "phase",
+      "unmask",
+    ]) {
       worst[`${mod}.enabled`] = 1;
     }
     proc.loadState(worst);

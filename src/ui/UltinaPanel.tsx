@@ -116,6 +116,21 @@ export function UltinaPanel({
 
   const valueOf = (id: string): number => params[id] ?? tryGetParamDef(id)?.defaultValue ?? 0;
 
+  // ── PRO: A/B slots (host-side snapshots — abSlot in the DSP is only a label) ──
+  const [abSlots, setAbSlots] = useState<{ A?: Record<string, number>; B?: Record<string, number> }>({});
+  const [abActive, setAbActive] = useState<"A" | "B">("A");
+  const storeAbSlot = (slot: "A" | "B") => {
+    setAbSlots((prev) => ({ ...prev, [slot]: { ...params } }));
+  };
+  const loadAbSlot = (slot: "A" | "B") => {
+    if (slot === abActive) return;
+    const snapshot = abSlots[slot];
+    if (snapshot) onApplyPreset(`Slot ${slot}`, snapshot); // exact restore: defaults + snapshot
+    setAbActive(slot);
+  };
+  const deltaOn = valueOf("global.deltaListen") >= 0.5;
+  const gainMatchOn = valueOf("global.gainMatchEnabled") >= 0.5;
+
   // ── MIX ASSIST: render this track offline → analyze → propose → apply ──
   const runMixAssist = async () => {
     if (assistBusy) return;
@@ -194,6 +209,68 @@ export function UltinaPanel({
   return (
     <div className="fxeq-panel ultina-panel" aria-label="Ultina module editor">
       {degraded && <div className="fxeq-degraded">AudioWorklet unavailable — Ultina is bypassed (1:1 signal)</div>}
+
+      {/* ── PRO: delta listen / A/B / gain match ───────────────────── */}
+      <div className="ultina-pro" aria-label="Pro tools">
+        <div className="ultina-pro-group">
+          <button
+            type="button"
+            className={`btn btn-small${deltaOn ? " active" : ""}`}
+            aria-pressed={deltaOn}
+            title="Hear ONLY what Ultina removes — the delta between dry and processed"
+            onClick={() => onParam("global.deltaListen", deltaOn ? 0 : 1)}
+          >
+            DELTA
+          </button>
+          <button
+            type="button"
+            className={`btn btn-small${gainMatchOn ? " active" : ""}`}
+            aria-pressed={gainMatchOn}
+            title="Level-locked tweaking — output loudness matched while you turn knobs"
+            onClick={() => onParam("global.gainMatchEnabled", gainMatchOn ? 0 : 1)}
+          >
+            G-MATCH
+          </button>
+          {gainMatchOn && (
+            <div className="ultina-pro-lufs">
+              <Slider
+                compact
+                label="TARGET"
+                value={valueOf("global.autogainTargetLufs")}
+                min={-30}
+                max={0}
+                defaultValue={-14}
+                format={(v) => `${v.toFixed(1)} LUFS`}
+                onCommit={(v) => onParam("global.autogainTargetLufs", v)}
+              />
+            </div>
+          )}
+        </div>
+        <div className="ultina-pro-group">
+          <span className="ultina-pro-label">A/B</span>
+          {(["A", "B"] as const).map((slot) => (
+            <button
+              key={slot}
+              type="button"
+              className={`btn btn-small${abActive === slot ? " active" : ""}`}
+              aria-pressed={abActive === slot}
+              title={abSlots[slot] ? `Load slot ${slot}` : `Slot ${slot} (empty — use STORE)`}
+              onClick={() => loadAbSlot(slot)}
+            >
+              {slot}
+              {abSlots[slot] ? "•" : ""}
+            </button>
+          ))}
+          <button
+            type="button"
+            className="btn btn-small"
+            title={`Store current settings into slot ${abActive}`}
+            onClick={() => storeAbSlot(abActive)}
+          >
+            STORE
+          </button>
+        </div>
+      </div>
 
       {/* ── MIX ASSIST ─────────────────────────────────────────────── */}
       <div className="ultina-assist" aria-label="Mix assistant">

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useDoc, useServices } from "./context";
 import { renderProject } from "../rendering/renderer";
 import { buildStemProject, nonEmptyStemGroups } from "../rendering/stems";
@@ -11,6 +11,9 @@ import { encodeShareCode, shareAppUrl, embedUrl, embedSnippet } from "../export/
 import type { WavBitDepth } from "../rendering/wav";
 import type { PlayMode } from "../project-model/types";
 import { summarizeBuffer, type BufferSummary } from "../audio-engine/metering";
+import { extensionForMime, LiveRecorder, type RecordSource } from "../audio-engine/recorder";
+import { detectLoopBpm } from "../audio-engine/bpm-detect";
+import { userSampleId, type UserSampleAsset } from "../persistence/UserSampleRepository";
 
 type Status =
   | { kind: "idle" }
@@ -42,7 +45,16 @@ function downloadBlob(blob: Blob, filename: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
-export function ExportPanel() {
+type RecSourceKind = "master" | "track" | "mic";
+type RecState = "idle" | "recording" | "saving";
+
+export function ExportPanel({
+  selectedTrackId,
+  selectedTrackName,
+}: {
+  selectedTrackId?: string;
+  selectedTrackName?: string;
+} = {}) {
   const services = useServices();
   const doc = useDoc();
   const [mode, setMode] = useState<PlayMode>(services.playback.mode);
@@ -51,6 +63,12 @@ export function ExportPanel() {
   const [format, setFormat] = useState<MasterFormat>("wav");
   const [clipSeconds, setClipSeconds] = useState(15);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
+
+  const [recSource, setRecSource] = useState<RecSourceKind>("master");
+  const [recState, setRecState] = useState<RecState>("idle");
+  const [recSeconds, setRecSeconds] = useState(0);
+  const [recError, setRecError] = useState<string | null>(null);
+  const recorderRef = useRef<LiveRecorder | null>(null);
 
   const busy = status.kind === "busy";
   const baseName = sanitizeFilename(doc.name);
@@ -194,6 +212,104 @@ export function ExportPanel() {
     }
   };
 
+  // ── Realtime resample — bounce what you hear / mic capture ─────────────
+
+  const startRecording = async () => {
+    services.engine.ensureContext();
+    const ctx = services.engine.getLiveAudioContext();
+    if (!ctx) {
+      setRecError("Audio engine not ready");
+      return;
+    }
+    const recorder = new LiveRecorder({
+      ctx,
+      getTapNode: (source: RecordSource) => {
+        if (source.kind === "master") return services.engine.getMasterTapNode();
+        if (source.kind === "track") return services.engine.getTrackTapNode(source.trackId);
+        return null;
+      },
+    });
+    // The TRACK option only renders with a selected track; anything else that
+    // slips through falls back to the master tap rather than failing silently.
+    const source: RecordSource =
+      recSource === "mic"
+        ? { kind: "mic" }
+        : recSource === "track" && selectedTrackId
+          ? { kind: "track", trackId: selectedTrackId }
+          : { kind: "master" };
+    try {
+      await recorder.start(source);
+      recorderRef.current = recorder;
+      setRecSeconds(0);
+      setRecError(null);
+      setRecState("recording");
+    } catch (err) {
+      setRecError(err instanceof Error ? err.message : "Recording failed");
+    }
+  };
+
+  const stopRecording = async () => {
+    const recorder = recorderRef.current;
+    if (!recorder) return;
+    setRecState("saving");
+    try {
+      const take = await recorder.stop();
+      if (!take || take.buffer.duration < 0.05) {
+        setRecError("Nothing captured — play something while recording");
+        setRecState("idle");
+        return;
+      }
+      const { buffer, blob } = take;
+      const stamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      const id = userSampleId(`resample-${stamp}`);
+      services.bank.add(id, buffer);
+      // Tempo tag for the sample browser — resampled loops fit the same
+      // "Fit to project BPM" workflow as imports.
+      let bpm: number | undefined;
+      try {
+        const detected = detectLoopBpm(buffer.getChannelData(0), buffer.sampleRate);
+        if (detected) bpm = detected.bpm;
+      } catch {
+        /* best-effort */
+      }
+      const asset: UserSampleAsset = {
+        id,
+        name: `Resample ${stamp}`,
+        fileName: `${id}${extensionForMime(blob.type)}`,
+        category: "Custom",
+        duration: buffer.duration,
+        sampleRate: buffer.sampleRate,
+        channels: buffer.numberOfChannels,
+        createdAt: new Date().toISOString(),
+        ...(bpm !== undefined ? { bpm } : {}),
+      };
+      try {
+        await services.userSamples.save(asset, await blob.arrayBuffer());
+      } catch (err) {
+        setRecError(err instanceof Error ? err.message : "Saving the take failed");
+        setRecState("idle");
+        return;
+      }
+      setStatus({
+        kind: "done",
+        label: `Resampled → "${asset.name}" in Samples (${buffer.duration.toFixed(1)}s) — click it in the browser to flip onto a pad`,
+        summary: summarizeBuffer(buffer),
+      });
+      setRecState("idle");
+    } finally {
+      recorderRef.current = null;
+    }
+  };
+
+  // Elapsed REC timer.
+  useEffect(() => {
+    if (recState !== "recording") return;
+    const timer = setInterval(() => {
+      setRecSeconds(recorderRef.current?.elapsedSeconds ?? 0);
+    }, 200);
+    return () => clearInterval(timer);
+  }, [recState]);
+
   return (
     <section className="export-panel" aria-label="Export">
       <div className="export-options">
@@ -311,6 +427,43 @@ export function ExportPanel() {
         {status.kind !== "idle" && status.label}
       </div>
       {status.kind === "done" && <ExportSummary summary={status.summary} />}
+
+      <div className="export-resample" role="group" aria-label="Realtime resample">
+        <div className="export-resample-head">RESAMPLE — BOUNCE WHAT YOU HEAR</div>
+        <div className="export-resample-row">
+          <select
+            aria-label="Recording source"
+            value={recSource}
+            disabled={recState !== "idle"}
+            onChange={(event) => setRecSource(event.target.value as RecSourceKind)}
+          >
+            <option value="master">MASTER (with FX)</option>
+            {selectedTrackId && (
+              <option value="track">TRACK: {(selectedTrackName ?? selectedTrackId).toUpperCase()}</option>
+            )}
+            <option value="mic">MIC / LINE IN</option>
+          </select>
+          {recState === "recording" ? (
+            <button type="button" className="btn btn-rec btn-rec-stop" onClick={() => void stopRecording()}>
+              ■ STOP {recSeconds.toFixed(0)}s
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-rec"
+              disabled={recState === "saving"}
+              onClick={() => void startRecording()}
+            >
+              ● REC
+            </button>
+          )}
+          {recState === "saving" && <span className="export-resample-saving">saving…</span>}
+        </div>
+        {recError && <div className="export-resample-error">{recError}</div>}
+        <div className="export-resample-hint">
+          Realtime capture through the full live chain. The take lands in Samples — click it to flip onto a pad.
+        </div>
+      </div>
     </section>
   );
 }

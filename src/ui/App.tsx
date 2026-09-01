@@ -824,7 +824,9 @@ export function App({
               <ErrorBoundary panel="fx">{bottomPanel === "fx" && <EffectRack track={track} />}</ErrorBoundary>
               <ErrorBoundary panel="arr">{bottomPanel === "arr" && <ArrangementPanel />}</ErrorBoundary>
               <ErrorBoundary panel="mod">{bottomPanel === "mod" && <ModPanel />}</ErrorBoundary>
-              <ErrorBoundary panel="exp">{bottomPanel === "exp" && <ExportPanel />}</ErrorBoundary>
+              <ErrorBoundary panel="exp">
+                {bottomPanel === "exp" && <ExportPanel selectedTrackId={track.id} selectedTrackName={track.name} />}
+              </ErrorBoundary>
               <ErrorBoundary panel="midi">
                 {bottomPanel === "midi" && (
                   <MidiPanel

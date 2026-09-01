@@ -2994,6 +2994,21 @@ export class AudioEngine {
     return this.peakOf(this.returnNodes.get(returnId)?.analyser ?? null);
   }
 
+  /** Post-limiter master tap for realtime recording ("bounce what you hear"). */
+  getMasterTapNode(): AudioNode | null {
+    return this.masterLimiter;
+  }
+
+  /** The real AudioContext for browser-only APIs (MediaRecorder, media streams). */
+  getLiveAudioContext(): AudioContext | null {
+    return this.ctx instanceof AudioContext ? this.ctx : null;
+  }
+
+  /** Post-FX tap for one track (the analyser branch carries the full track signal). */
+  getTrackTapNode(trackId: string): AudioNode | null {
+    return this.trackNodes.get(trackId)?.analyser ?? null;
+  }
+
   /**
    * Effects currently running degraded fallbacks (worklet DSP unavailable).
    * The UI shows a warning badge for each — fallbacks never degrade silently.

@@ -4,7 +4,9 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const PORT = 5199;
+// PORT=5219 npm run test:browser — override when 5199 is contended (a second
+// verify loop, a stuck dev server). StrictPort keeps behaviour deterministic.
+const PORT = Number(process.env.PORT) || 5199;
 
 const server = await createServer({
   root,

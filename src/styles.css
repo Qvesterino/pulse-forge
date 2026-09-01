@@ -2724,6 +2724,77 @@ button {
   color: var(--accent);
 }
 
+/* ── Realtime resample (bounce what you hear / mic) ── */
+.export-resample {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.export-resample-head {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 1px;
+  color: var(--text-faint);
+}
+
+.export-resample-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.export-resample-row select {
+  font-family: var(--mono);
+  font-size: 10px;
+  background: var(--bg-panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 5px;
+}
+
+.btn-rec {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: #fca5a5;
+  border: 1px solid #f8717166;
+  border-radius: 4px;
+  background: rgb(248 113 113 / 0.08);
+  padding: 3px 10px;
+}
+
+.btn-rec:hover:not(:disabled) {
+  background: rgb(248 113 113 / 0.16);
+}
+
+.btn-rec-stop {
+  color: #f87171;
+  border-color: #f87171;
+}
+
+.export-resample-saving {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.export-resample-error {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: #f87171;
+}
+
+.export-resample-hint {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-faint);
+  opacity: 0.7;
+}
+
 .export-done {
   color: var(--play);
 }
@@ -6798,4 +6869,34 @@ html {
   color: var(--text-dim, #8a8f98);
   font-size: 10px;
   margin-top: 4px;
+}
+
+/* ── Ultina PRO tools (delta / A-B / gain match) ────────────────────────── */
+
+.ultina-pro {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.ultina-pro-group {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.ultina-pro-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--text-dim, #8a8f98);
+}
+
+.ultina-pro-lufs {
+  flex: 1;
+  min-width: 140px;
 }
