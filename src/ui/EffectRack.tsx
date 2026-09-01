@@ -14,11 +14,13 @@ import {
   setUltinaParam,
   applyUltinaPreset,
   applyUltinaProposal,
+  applyOzvenaStatePatch,
   toggleEffectBypass,
 } from "../commands/commands";
 import { CORE_EFFECT_ORDER, EFFECT_DEFS } from "../effects/registry";
 import { FxEqPanel } from "./FxEqPanel";
 import { UltinaPanel } from "./UltinaPanel";
+import { OzvenaPanel } from "./OzvenaPanel";
 import { presetsForEffect } from "../effects/presets";
 import { registerRaf, unregisterRaf } from "../services/rafLoop";
 import { Slider } from "./controls";
@@ -296,6 +298,18 @@ function Device({
           }
           onApplyProposal={(label, toggles, changes) =>
             services.store.execute(applyUltinaProposal(doc, track.id, fx.id, label, toggles, changes))
+          }
+        />
+      )}
+      {fx.type === "ozvena" && (
+        <OzvenaPanel
+          params={fx.params}
+          degraded={!!fallbackReason}
+          onParam={(paramId, value) =>
+            services.store.execute(setEffectParam(doc, track.id, fx.id, paramId, value))
+          }
+          onApplyPatch={(label, flatParams) =>
+            services.store.execute(applyOzvenaStatePatch(doc, track.id, fx.id, label, flatParams))
           }
         />
       )}

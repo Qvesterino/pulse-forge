@@ -7006,3 +7006,300 @@ html {
 .ultina-ref {
   border-color: #22d3ee;
 }
+
+/* ── Ozvena panel (XY blend pad) ────────────────────────────────────────── */
+
+.ozvena-panel {
+  max-height: 560px;
+  overflow-y: auto;
+}
+
+.ozvena-weights {
+  display: flex;
+  gap: 10px;
+  font-family: ui-monospace, "Cascadia Code", monospace;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.ozvena-pad {
+  width: 100%;
+  height: 220px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  cursor: crosshair;
+  display: block;
+}
+
+.ozvena-engines {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ozvena-engine {
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+}
+
+/* ── Landing page ───────────────────────────────────────────────────────── */
+
+.landing {
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  overflow-x: hidden;
+}
+
+.landing-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 28px;
+  border-bottom: 1px solid var(--border);
+}
+
+.landing-brand {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.landing-brand .embed-brand-mark {
+  background: var(--accent);
+  color: #0e0f12;
+  border-radius: 3px;
+  padding: 3px 5px;
+  font-size: 12px;
+}
+
+.landing-cta {
+  font-size: 13px;
+  padding: 10px 18px;
+}
+
+.landing-hero {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 32px;
+  align-items: center;
+  padding: 56px 28px;
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+.landing-hero h1 {
+  font-size: clamp(34px, 5vw, 58px);
+  line-height: 1.05;
+  margin: 0 0 16px;
+  letter-spacing: -0.01em;
+}
+
+.landing-sub {
+  font-size: 17px;
+  color: var(--text-dim, #8a8f98);
+  line-height: 1.6;
+  margin: 0 0 24px;
+}
+
+.landing-hero-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.landing-cta-big {
+  font-size: 16px;
+  padding: 16px 28px;
+}
+
+.landing-hint {
+  font-size: 12px;
+  color: var(--text-dim, #8a8f98);
+}
+
+.landing-hero-player .embed-root {
+  position: static;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.5);
+  height: 240px;
+}
+
+.landing-hero-player .embed-main {
+  padding: 12px 14px 4px;
+}
+
+.landing-hero-player .embed-footer {
+  padding: 4px 14px 12px;
+}
+
+.landing-section-h2,
+.landing h2 {
+  text-align: center;
+  font-size: 13px;
+  letter-spacing: 0.16em;
+  color: var(--text-dim, #8a8f98);
+  margin: 40px 0 20px;
+}
+
+.landing-features,
+.landing-steps {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 24px 28px 48px;
+  text-align: center;
+}
+
+.landing-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+.landing-grid-3 {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.landing-card {
+  text-align: left;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px 20px;
+}
+
+.landing-card h3 {
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  margin: 10px 0 8px;
+}
+
+.landing-card p {
+  font-size: 13px;
+  color: var(--text-dim, #8a8f98);
+  line-height: 1.6;
+  margin: 0;
+}
+
+.landing-card-icon {
+  font-size: 22px;
+}
+
+.landing-step-n {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #0e0f12;
+  font-weight: 800;
+}
+
+.landing-steps .landing-cta-big {
+  margin-top: 8px;
+}
+
+.landing-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 22px 28px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-dim, #8a8f98);
+}
+
+@media (max-width: 860px) {
+  .landing-hero {
+    grid-template-columns: 1fr;
+    padding: 32px 20px;
+  }
+}
+
+/* ── Onboarding tour ────────────────────────────────────────────────────── */
+
+.tour-card {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 220;
+  width: min(460px, calc(100vw - 32px));
+  background: var(--bg-panel);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  padding: 14px 16px;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.55);
+}
+
+.tour-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.tour-brand {
+  background: var(--accent);
+  color: #0e0f12;
+  border-radius: 3px;
+  padding: 2px 5px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.tour-title {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  margin: 0 0 6px;
+}
+
+.tour-body {
+  font-size: 13px;
+  color: var(--text-dim, #b6bac2);
+  line-height: 1.55;
+  margin: 0 0 10px;
+}
+
+.tour-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tour-hint {
+  flex: 1;
+  font-size: 11px;
+  color: var(--text-dim, #8a8f98);
+}
+
+.tour-dots {
+  display: flex;
+  gap: 5px;
+}
+
+.tour-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--bg-raise);
+}
+
+.tour-dot.done {
+  background: var(--text-dim, #8a8f98);
+}
+
+.tour-dot.active {
+  background: var(--accent);
+}

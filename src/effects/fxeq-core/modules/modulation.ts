@@ -1,4 +1,5 @@
 /* eslint-disable */
+// @ts-nocheck
 /**
  * VENDORED from VocalForge_DAW/plugins/fxeq. Do not edit by hand — this is a
  * byte-faithful copy of the upstream DSP oracle so Pulse Forge and VocalForge

@@ -7,14 +7,18 @@ import { App } from "./ui/App";
 import { ErrorBoundary } from "./ui/ErrorBoundary";
 import { ProjectBrowser } from "./ui/ProjectBrowser";
 import { EmbedApp } from "./embed/EmbedApp";
+import { LandingPage } from "./landing/LandingPage";
 import { decodeShareCode } from "./export/shareCode";
 import "./styles.css";
 
 const container = document.getElementById("root");
 if (!container) throw new Error("Root element not found");
 
+const PATH = typeof location !== "undefined" ? location.pathname : "/";
+const ONBOARDED_KEY = "pf-onboarded";
+
 // /embed — a standalone share player; skip the whole studio boot.
-if (typeof location !== "undefined" && /^\/embed(\/|$)/.test(location.pathname)) {
+if (/^\/embed(\/|$)/.test(PATH)) {
   createRoot(container).render(
     <StrictMode>
       <EmbedApp />
@@ -23,9 +27,33 @@ if (typeof location !== "undefined" && /^\/embed(\/|$)/.test(location.pathname))
 } else {
   createRoot(container).render(
     <StrictMode>
-      <Boot />
+      <Entry />
     </StrictMode>,
   );
+}
+
+/** `/` shows the landing page for FIRST-TIME visitors; everyone else —
+ *  and anyone who clicks the CTA — lands in the studio flow. `/studio`
+ *  always skips the landing. */
+function Entry() {
+  const [entered, setEntered] = useState(() => {
+    if (/^\/studio(\/|$)/.test(PATH)) return true;
+    try {
+      return localStorage.getItem(ONBOARDED_KEY) === "1";
+    } catch {
+      return true; // storage blocked — skip the landing, respect the user
+    }
+  });
+  const enterStudio = () => {
+    try {
+      localStorage.setItem(ONBOARDED_KEY, "1");
+    } catch {
+      // private mode — entering still works this session
+    }
+    setEntered(true);
+  };
+  if (entered) return <Boot />;
+  return <LandingPage onEnterStudio={enterStudio} />;
 }
 
 type Screen =

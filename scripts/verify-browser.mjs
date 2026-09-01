@@ -61,12 +61,39 @@ try {
   appPage.on("pageerror", (err) => appErrors.push(String(err)));
   await appPage.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 60_000 });
   try {
-    // New boot flow: the app always starts in the project browser.
+    // First-time visitors get the landing page — exercise it: hero renders,
+    // CTA enters the studio (and marks the browser onboarded).
+    const onLanding = await appPage.$(".landing");
+    if (onLanding) {
+      await appPage.waitForSelector(".landing-hero-player .embed-play", { timeout: 30_000 });
+      await appPage.evaluate(() => document.querySelector(".landing-nav .landing-cta")?.click());
+    }
     await appPage.waitForSelector(".project-browser", { timeout: 15000 });
     // Create a project from the House template — one click from browser to sound.
-    await appPage.locator('.pb-template:has-text("HOUSE")').first().click();
+    // Evaluate-clicks keep this flow immune to HMR reload races from a busy
+    // shared dev machine (locator actionability would time out mid-reload).
+    await appPage.evaluate(() => document.querySelectorAll(".pb-template")[0]?.click());
     await appPage.waitForSelector(".topbar", { timeout: 15000 });
     await appPage.waitForSelector(".sequencer", { timeout: 15000 });
+    // First-run onboarding tour: walk all four steps, then finish.
+    // The card appears ~600 ms after studio mount — wait for it.
+    {
+      const tour = await appPage.waitForSelector(".tour-card", { timeout: 5000 }).catch(() => null);
+      if (tour) {
+        for (let s = 0; s < 3; s++) {
+          await appPage.evaluate(() => {
+            const btns = [...document.querySelectorAll(".tour-card button")];
+            btns.find((b) => b.textContent?.includes("NEXT"))?.click();
+          });
+          await appPage.waitForTimeout(150);
+        }
+        await appPage.evaluate(() => {
+          const btns = [...document.querySelectorAll(".tour-card button")];
+          btns.find((b) => b.textContent?.includes("LET'S FORGE"))?.click();
+        });
+        await appPage.waitForSelector(".tour-card", { state: "detached", timeout: 5000 });
+      }
+    }
     // MIX panel — the default is "mixer" open, so explicit toggle semantics:
     // ensure it's open, verify the master meter, toggle LIMIT/CLIP, then close.
     {
@@ -208,6 +235,12 @@ try {
   }
   await appPage.close();
 
+  // Fresh contexts get flags pre-set so E2E flows skip the landing and tour.
+  const SKIP_FLAGS = () => {
+    localStorage.setItem('pf-onboarded', '1');
+    localStorage.setItem('pf-tour-v1', '1');
+  };
+
   // ── Collab E2E: two pages, one room, real server, real websockets ──────
   let collabOk = false;
   let collabServer;
@@ -327,6 +360,7 @@ try {
 
     // 2. The share link: ?import= opens the project straight into the studio.
     const importPage = await browser.newPage();
+    await importPage.addInitScript(SKIP_FLAGS);
     await importPage.goto(`http://127.0.0.1:${PORT}/?import=${code}`, {
       waitUntil: "domcontentloaded",
       timeout: 60_000,
@@ -346,6 +380,7 @@ try {
   try {
     const touchContext = await browser.newContext({ hasTouch: true, viewport: { width: 900, height: 800 } });
     const touchPage = await touchContext.newPage();
+    await touchPage.addInitScript(SKIP_FLAGS);
     await touchPage.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 60_000 });
     await touchPage.waitForSelector(".project-browser", { timeout: 15_000 });
     await touchPage.locator('.pb-template:has-text("HOUSE")').first().click();

@@ -4844,3 +4844,27 @@ export function applyUltinaProposal(
     undo: (d) => apply(d, previousParams),
   };
 }
+
+/** Apply an Ozvena state patch (flattened dotted params) in ONE undoable gesture. */
+export function applyOzvenaStatePatch(
+  doc: ProjectDocument,
+  trackId: string,
+  fxId: string,
+  label: string,
+  flatParams: Record<string, number>,
+): Command {
+  const target = trackEffectsOf(doc, trackId).find((f) => f.id === fxId);
+  if (!target || target.type !== "ozvena") throw new Error(`Ozvena effect ${fxId} not found`);
+  const nextParams = { ...target.params, ...flatParams };
+  const previousParams = { ...target.params };
+  const apply = (d: ProjectDocument, values: Record<string, number>): ProjectDocument =>
+    withTrackEffects(d, trackId, (effects) =>
+      effects.map((f) => (f.id === fxId ? { ...f, params: { ...values } } : f)),
+    );
+  return {
+    type: "applyOzvenaStatePatch",
+    label,
+    execute: (d) => apply(d, nextParams),
+    undo: (d) => apply(d, previousParams),
+  };
+}

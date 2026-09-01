@@ -13,7 +13,9 @@ import { defaultOzvenaStateV1 } from "./ozvena-core/v2/types.ts";
 const MAX_BLOCK = 128;
 const CHANNELS = 2;
 
-/** Set a dotted path ("engines.e2.mix") preserving the current value's type. */
+/** Set a dotted path ("engines.e2.mix") preserving the current value's type.
+ *  String-enum paths ("engines.e2.algo") accept a numeric index and map to
+ *  the matching ENGINE2_ALGOS entry. */
 function setPath(state, id, value) {
   const parts = id.split(".");
   let node = state;
@@ -24,7 +26,12 @@ function setPath(state, id, value) {
   const key = parts[parts.length - 1];
   const current = node[key];
   if (typeof current === "boolean") node[key] = value >= 0.5;
-  else if (typeof current === "number") node[key] = typeof value === "number" ? value : Number(value);
+  else if (typeof current === "string" && typeof value === "number") {
+    const enums = { algo: ["room", "mediumChamber", "plate"] };
+    const enumKey = key.replace(/^\w+\./, "");
+    const list = enums[enumKey];
+    node[key] = list ? list[Math.max(0, Math.min(list.length - 1, Math.round(value)))] : String(value);
+  } else if (typeof current === "number") node[key] = typeof value === "number" ? value : Number(value);
   else node[key] = value;
 }
 

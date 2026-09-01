@@ -9,6 +9,7 @@ import { TrackTabs } from "./TrackTabs";
 import { RackStrip } from "./RackStrip";
 import { Sequencer } from "./Sequencer";
 import { AudioUnlock } from "./AudioUnlock";
+import { OnboardingTour } from "./OnboardingTour";
 import type { StepSelection } from "./Sequencer";
 import { Inspector } from "./Inspector";
 import { FloatingPlugin } from "./FloatingPlugin";
@@ -783,6 +784,7 @@ export function App({
         <SelectionContext.Provider value={selectionStore}>
           <ToolContext.Provider value={toolStore}>
             <AudioUnlock />
+      <OnboardingTour />
             <div className="app">
               <TopBar
                 diagnosticsOpen={diagnosticsOpen}

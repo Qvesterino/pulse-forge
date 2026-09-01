@@ -4059,7 +4059,12 @@
     const key = parts[parts.length - 1];
     const current = node[key];
     if (typeof current === "boolean") node[key] = value >= 0.5;
-    else if (typeof current === "number") node[key] = typeof value === "number" ? value : Number(value);
+    else if (typeof current === "string" && typeof value === "number") {
+      const enums = { algo: ["room", "mediumChamber", "plate"] };
+      const enumKey = key.replace(/^\w+\./, "");
+      const list = enums[enumKey];
+      node[key] = list ? list[Math.max(0, Math.min(list.length - 1, Math.round(value)))] : String(value);
+    } else if (typeof current === "number") node[key] = typeof value === "number" ? value : Number(value);
     else node[key] = value;
   }
   var OzvenaWorkletProcessor = class extends AudioWorkletProcessor {

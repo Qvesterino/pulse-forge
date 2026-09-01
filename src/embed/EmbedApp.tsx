@@ -16,7 +16,7 @@ type Phase = { kind: "decoding" } | { kind: "rendering" } | { kind: "ready" } | 
  * No app services are booted — no IndexedDB, no scheduler, no MIDI. The
  * embed is intentionally as small as a share page can be.
  */
-export function EmbedApp() {
+export function EmbedApp({ code: codeProp, inline = false }: { code?: string; inline?: boolean } = {}) {
   const [phase, setPhase] = useState<Phase>({ kind: "decoding" });
   const [meta, setMeta] = useState<{ name: string; bpm: number; code: string } | null>(null);
   const bufferRef = useRef<AudioBuffer | null>(null);
@@ -33,7 +33,7 @@ export function EmbedApp() {
   // ── decode + render ─────────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
-    const code = new URLSearchParams(
+    const code = codeProp ?? new URLSearchParams(
       typeof location !== "undefined" && location.hash.startsWith("#") ? location.hash.slice(1) : "",
     ).get("p");
     if (!code) {
@@ -185,7 +185,7 @@ export function EmbedApp() {
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
   return (
-    <div className="embed-root" role="document" aria-label="Pulse Forge beat player">
+    <div className={"embed-root" + (inline ? " embed-inline" : "")} role="document" aria-label="Pulse Forge beat player">
       <div className="embed-main">
         <button
           type="button"

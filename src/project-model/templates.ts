@@ -82,11 +82,11 @@ export function templateInfo(id: TemplateId): TemplateInfo {
 
 /* ---------------- builder helpers ---------------- */
 
-function note(pitch: number, start: number, duration: number, velocity: number): NoteEvent {
+export function note(pitch: number, start: number, duration: number, velocity: number): NoteEvent {
   return { id: uid("note"), pitch, start, duration, velocity };
 }
 
-function emptyPattern(name: string, drumTracks: DrumTrack[], stepCount = STEPS_PER_PATTERN): Pattern {
+export function emptyPattern(name: string, drumTracks: DrumTrack[], stepCount = STEPS_PER_PATTERN): Pattern {
   const rows: Record<string, number[]> = {};
   for (const track of drumTracks) {
     for (const pad of track.pads) rows[pad.id] = new Array<number>(stepCount).fill(0);
@@ -95,26 +95,26 @@ function emptyPattern(name: string, drumTracks: DrumTrack[], stepCount = STEPS_P
 }
 
 /** Set velocities on a pattern row by pad index (of the first drum track). Returns the mutated copy. */
-function setSteps(pattern: Pattern, pads: DrumPad[], padIndex: number, steps: [number, number][]): Pattern {
+export function setSteps(pattern: Pattern, pads: DrumPad[], padIndex: number, steps: [number, number][]): Pattern {
   const pad = pads[padIndex];
   const row = [...(pattern.rows[pad.id] ?? [])];
   for (const [step, velocity] of steps) row[step] = velocity;
   return { ...pattern, rows: { ...pattern.rows, [pad.id]: row } };
 }
 
-function withNotes(pattern: Pattern, trackId: string, notes: NoteEvent[]): Pattern {
+export function withNotes(pattern: Pattern, trackId: string, notes: NoteEvent[]): Pattern {
   return { ...pattern, notes: { ...pattern.notes, [trackId]: notes } };
 }
 
-function scene(name: string, patternId: string, intensity: number = 0.7): Scene {
+export function scene(name: string, patternId: string, intensity: number = 0.7): Scene {
   return { id: uid("scene"), name, patternId, intensity };
 }
 
-function clip(sceneId: string, startBar: number, lengthBars: number): ArrangementClip {
+export function clip(sceneId: string, startBar: number, lengthBars: number): ArrangementClip {
   return { id: uid("clip"), sceneId, startBar, lengthBars };
 }
 
-function baseDocument(name: string, bpm: number): ProjectDocument {
+export function baseDocument(name: string, bpm: number): ProjectDocument {
   const now = new Date().toISOString();
   return {
     schemaVersion: SCHEMA_VERSION,
@@ -148,12 +148,12 @@ function baseDocument(name: string, bpm: number): ProjectDocument {
   };
 }
 
-function finish(doc: ProjectDocument, activePatternIndex = 0): ProjectDocument {
+export function finish(doc: ProjectDocument, activePatternIndex = 0): ProjectDocument {
   return { ...doc, activePatternId: doc.patterns[activePatternIndex]?.id ?? "" };
 }
 
 /** Four performance macros mapped to the classic mix bus roles of the template. */
-function performanceMacros(drumsId: string, bassId: string | null, musicId: string | null): Macro[] {
+export function performanceMacros(drumsId: string, bassId: string | null, musicId: string | null): Macro[] {
   const mappings = (trackId: string | null, param: MacroMapping["param"], amount: number): MacroMapping[] =>
     trackId ? [{ id: uid("map"), trackId, param, amount }] : [];
   return [

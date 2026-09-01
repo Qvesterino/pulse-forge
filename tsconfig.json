@@ -17,6 +17,8 @@
     "noEmit": true,
     "types": ["vite/client", "node"]
   },
+  "incremental": true,
+  "tsBuildInfoFile": "./tsconfig.tsbuildinfo",
   "include": ["src", "tests", "vite.config.ts"],
   "exclude": ["node_modules", "src/effects/ultina-core/analysis"]
 }

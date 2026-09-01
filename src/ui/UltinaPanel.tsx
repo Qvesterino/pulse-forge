@@ -170,6 +170,44 @@ export function UltinaPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trackId, fxId, services]);
 
+  // ── EQ LEARN: resonance detection from the vendored learn meters ──────
+  const [learnOn, setLearnOn] = useState(false);
+  const [learnSuggestions, setLearnSuggestions] = useState<
+    { freqHz: number; gainDb: number; q: number; severity: number }[]
+  >([]);
+  useEffect(() => {
+    if (!learnOn) {
+      setLearnSuggestions([]);
+      return;
+    }
+    const id = setInterval(() => {
+      const meters = metersRef.current as
+        | { learn?: { eq?: { isReady?: boolean; suggestions?: { freqHz: number; gainDb: number; q: number; severity: number }[] } } }
+        | null;
+      const learn = meters?.learn?.eq;
+      if (learn?.isReady && learn.suggestions) {
+        const signature = JSON.stringify(learn.suggestions);
+        setLearnSuggestions((prev) =>
+          JSON.stringify(prev) === signature ? prev : learn.suggestions!,
+        );
+      }
+    }, 300);
+    return () => clearInterval(id);
+  }, [learnOn]);
+
+  /** Apply a learn suggestion: write it into the first disabled EQ band. */
+  const applyLearnSuggestion = (s: { freqHz: number; gainDb: number; q: number }) => {
+    for (let b = 0; b < 12; b++) {
+      if (valueOf(`eq.band${b}.enabled`) < 0.5) {
+        onParam(`eq.band${b}.enabled`, 1);
+        onParam(`eq.band${b}.freqHz`, Math.max(20, Math.min(20000, s.freqHz)));
+        onParam(`eq.band${b}.gainDb`, Math.max(-18, Math.min(18, s.gainDb)));
+        onParam(`eq.band${b}.q`, Math.max(0.1, Math.min(24, s.q)));
+        return;
+      }
+    }
+  };
+
   const drawMeters = () => {
     const meters = metersRef.current as
       | { global?: Partial<GlobalMeters>; modules?: Record<string, { gainReductionDb?: number; maskingScore?: number }> }
@@ -487,6 +525,43 @@ export function UltinaPanel({
               </div>
             ))}
             <div className="ultina-assist-note">EQ zmeny aplikované ako jedno gesto — Ctrl+Z vráti všetko.</div>
+          </div>
+        )}
+      </div>
+
+      {/* ── EQ LEARN ───────────────────────────────────────────────── */}
+      <div className="ultina-assist ultina-ref" aria-label="EQ learn">
+        <div className="ultina-assist-head">
+          <span className="ultina-assist-title">EQ LEARN</span>
+          <button
+            type="button"
+            className={`btn btn-export${learnOn ? " active" : ""}`}
+            aria-pressed={learnOn}
+            title="Play your track — Ultina detects resonances and suggests cuts"
+            onClick={() => setLearnOn((v) => !v)}
+          >
+            {learnOn ? "● LEARNING" : "LEARN"}
+          </button>
+        </div>
+        {learnOn && learnSuggestions.length > 0 && (
+          <div className="ultina-assist-summary">
+            {learnSuggestions.slice(0, 4).map((s, i) => (
+              <div key={i} className="ozvena-weights" style={{ alignItems: "center" }}>
+                <span>
+                  {s.freqHz >= 1000 ? `${(s.freqHz / 1000).toFixed(1)}k` : Math.round(s.freqHz)} Hz
+                </span>
+                <span style={{ color: "#ef4444" }}>{s.gainDb.toFixed(1)} dB</span>
+                <button
+                  type="button"
+                  className="btn btn-small"
+                  title={`Apply: ${Math.round(s.freqHz)} Hz ${s.gainDb.toFixed(1)} dB (Q ${s.q.toFixed(1)}) on the first free band`}
+                  onClick={() => applyLearnSuggestion(s)}
+                >
+                  APPLY
+                </button>
+              </div>
+            ))}
+            <div className="ultina-assist-note">Keep the track playing — suggestions refine as it analyzes.</div>
           </div>
         )}
       </div>
