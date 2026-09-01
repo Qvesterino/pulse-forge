@@ -20,6 +20,7 @@ import {
   setLfoParams,
   setMacroMappingAmount,
   setMacroValue,
+  setSceneBpm,
   setSceneIntensity,
   setSceneIntensityCurve,
 } from "../commands/commands";
@@ -1005,6 +1006,30 @@ function ScenePanel() {
             format={(v) => `${(v * 100).toFixed(0)}%`}
             onCommit={(intensity) => services.store.execute(setSceneIntensity(services.store.doc, scene.id, intensity))}
           />
+
+          {/* Scene tempo lane — pins the transport BPM while this scene plays */}
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <Slider
+                compact
+                label="SCENE TEMPO"
+                value={scene.bpm ?? doc.bpm}
+                min={40}
+                max={240}
+                defaultValue={120}
+                format={(v) => `${Math.round(v)} BPM`}
+                onCommit={(v) => services.store.execute(setSceneBpm(services.store.doc, scene.id, Math.round(v)))}
+              />
+            </div>
+            <button
+              type="button"
+              className={`rack-header-toggle${scene.bpm === undefined ? " active" : ""}`}
+              title="Clear the scene tempo and follow the project BPM"
+              onClick={() => services.store.execute(setSceneBpm(services.store.doc, scene.id, null))}
+            >
+              FOLLOW
+            </button>
+          </div>
 
           {/* Intensity curve editor */}
           <div className="mod-section">

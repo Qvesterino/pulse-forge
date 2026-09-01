@@ -227,6 +227,40 @@ export function FxEqPanel({
         <canvas ref={canvasRef} className="fxeq-canvas" />
       </div>
 
+      {/* Band scalars: solo / mute / gain — hear and level just this band. */}
+      <div className="fxeq-band-scalars">
+        <button
+          type="button"
+          className={`btn btn-small${valueOf(`band${selectedBand}.solo`) >= 0.5 ? " active" : ""}`}
+          aria-pressed={valueOf(`band${selectedBand}.solo`) >= 0.5}
+          title="Solo — hear ONLY this frequency band through the whole FXEQ engine"
+          onClick={() => onParam(`band${selectedBand}.solo`, valueOf(`band${selectedBand}.solo`) >= 0.5 ? 0 : 1)}
+        >
+          SOLO
+        </button>
+        <button
+          type="button"
+          className={`btn btn-small${valueOf(`band${selectedBand}.mute`) >= 0.5 ? " active" : ""}`}
+          aria-pressed={valueOf(`band${selectedBand}.mute`) >= 0.5}
+          title="Mute — silence this band"
+          onClick={() => onParam(`band${selectedBand}.mute`, valueOf(`band${selectedBand}.mute`) >= 0.5 ? 0 : 1)}
+        >
+          MUTE
+        </button>
+        <div className="fxeq-band-gain">
+          <Slider
+            compact
+            label={`B${selectedBand} GAIN`}
+            value={valueOf(`band${selectedBand}.gainDb`)}
+            min={-48}
+            max={12}
+            defaultValue={0}
+            format={(v) => `${v > 0 ? "+" : ""}${v.toFixed(1)} dB`}
+            onCommit={(v) => onParam(`band${selectedBand}.gainDb`, v)}
+          />
+        </div>
+      </div>
+
       {MODULE_ORDER.map((key) => {
         const defs = bandModuleDefs[key];
         if (!defs || defs.length === 0) return null;

@@ -1312,6 +1312,58 @@ export async function runChecks(): Promise<CheckResult[]> {
     check("ultina: CPU budget — all 10 modules fit the audio-thread block budget", false, String(error));
   }
 
+  // ULTINA meters: the worklet must push meter snapshots (spectrum, LUFS,
+  // waveform) through the port while rendering, and the DSP-level meters
+  // must reflect a loud signal.
+  try {
+    const def = EFFECT_DEFS.ultina;
+    // 1. DSP-level: loud signal → LUFS sane + spectrum bins populated.
+    const meterProc = new UltinaProcessor();
+    registerCoreModules(meterProc);
+    meterProc.prepare({ sampleRate: SR, channelCount: 2, maxBlockSize: 128, qualityMode: 1 });
+    const loud = [new Float32Array(128), new Float32Array(128)];
+    for (let i = 0; i < 128; i++) {
+      loud[0][i] = 0.5 * Math.sin((2 * Math.PI * 220 * i) / SR);
+      loud[1][i] = loud[0][i];
+    }
+    for (let b = 0; b < 80; b++) meterProc.process(loud, 128);
+    const dspMeters = meterProc.getMeters() as {
+      global?: { outputShortTermLufs?: number; inputSpectrumDb?: Float32Array | null };
+    };
+    const lufs = dspMeters.global?.outputShortTermLufs ?? -70;
+    const spectrum = dspMeters.global?.inputSpectrumDb;
+    let specEnergy = 0;
+    if (spectrum) for (let b = 0; b < spectrum.length; b++) specEnergy += Math.abs(spectrum[b]);
+
+    // 2. Worklet flow: render with the node connected, then the runtime's
+    // getMeters() must hold a snapshot pushed over the port.
+    const ctx = new OfflineAudioContext(2, SR, SR);
+    await loadWorkletModules(ctx);
+    const rt = def.factory(ctx, { id: "t2", type: "ultina", bypassed: false, params: defaultParamsOf("ultina") }, { bpm: 124 });
+    const osc = ctx.createOscillator();
+    osc.frequency.value = 220;
+    const g = ctx.createGain();
+    g.gain.value = 0.3;
+    osc.connect(g).connect(rt.input);
+    rt.output.connect(ctx.destination);
+    osc.start(0);
+    await ctx.startRendering();
+    // Port messages queue behind the render — wait briefly for delivery.
+    let workletMeters: unknown = null;
+    for (let attempt = 0; attempt < 10 && !workletMeters; attempt++) {
+      await new Promise((r) => setTimeout(r, 60));
+      workletMeters = (rt as { getMeters?: () => unknown }).getMeters?.();
+    }
+    rt.dispose();
+    check(
+      "ultina: live meters flow (DSP LUFS/spectrum + worklet port snapshots)",
+      lufs > -40 && specEnergy > 1 && !!workletMeters,
+      `lufs=${lufs.toFixed(1)} specEnergy=${specEnergy.toFixed(0)} workletSnapshot=${!!workletMeters}`,
+    );
+  } catch (error) {
+    check("ultina: live meters flow (DSP LUFS/spectrum + worklet port snapshots)", false, String(error));
+  }
+
   try {
     const ctx = new OfflineAudioContext(1, SR, SR);
     const track: InstrumentTrack = {

@@ -6896,6 +6896,7 @@
     proc = new UltinaProcessor();
     scratch = [new Float32Array(MAX_BLOCK), new Float32Array(MAX_BLOCK)];
     lastLatencyPosted = -1;
+    blockCount = 0;
     constructor(options) {
       super();
       registerCoreModules(this.proc);
@@ -6944,6 +6945,9 @@
       this.proc.process(this.scratch, frames);
       for (let c = 0; c < CHANNELS; c++) {
         output[c].set(this.scratch[c].subarray(0, frames));
+      }
+      if ((this.blockCount++ & 3) === 0) {
+        this.port.postMessage({ type: "meters", meters: this.proc.getMeters() });
       }
       return true;
     }

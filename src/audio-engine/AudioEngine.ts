@@ -3041,6 +3041,15 @@ export class AudioEngine {
     return rt?.getGainReductionDb?.() ?? null;
   }
 
+  /** Live meter snapshot from an effect runtime ( Ultina spectrum/LUFS/masking…). */
+  getFxMeters(trackId: string, fxId: string): unknown {
+    const rt =
+      this.trackNodes.get(trackId)?.fx.runtimes.get(fxId) ??
+      this.groupNodes.get(trackId)?.fx.runtimes.get(fxId) ??
+      this.returnNodes.get(trackId)?.fx.runtimes.get(fxId);
+    return rt?.getMeters?.() ?? null;
+  }
+
   getMasterLevel(): number {
     return this.peakOf(this.masterAnalyser);
   }

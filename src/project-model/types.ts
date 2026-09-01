@@ -382,6 +382,11 @@ export interface Scene {
   loop?: boolean;
   /** Optional arrangement role. Older scenes infer this from their name. */
   role?: SceneRole;
+  /**
+   * Scene tempo (BPM). While a clip of this scene plays the transport runs
+   * at this tempo (switching at the clip boundary); absent = project tempo.
+   */
+  bpm?: number;
 }
 
 export interface IntensityPoint {

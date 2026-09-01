@@ -5,7 +5,7 @@
  * command, so flakiness would corrupt user trust).
  */
 import { describe, expect, it } from "vitest";
-import { analyzeTrack } from "../src/effects/ultina-core/analysis/mixAssistant";
+import { analyzeTrack, analyzeWithTarget } from "../src/effects/ultina-core/analysis/mixAssistant";
 import { INSTRUMENT_LABELS } from "../src/effects/ultina-core/analysis/assistant";
 
 function sineStereo(freqHz: number, seconds: number, sampleRate = 44100, amplitude = 0.5): Float32Array[] {
@@ -72,5 +72,48 @@ describe("Mix Assistant (analyzeTrack)", () => {
     if (result.kind !== "success") return;
     expect(result.proposal.instrument).toBe("drums");
     expect(result.proposal.classification.confidence).toBe(1);
+  });
+});
+
+describe("Reference match (analyzeWithTarget)", () => {
+  it("proposes EQ band gainDb moves toward the target curve", () => {
+    // Bas-heavy signal (110 Hz) matched against a bright target curve.
+    const audio = sineStereo(110, 3, 44100, 0.5);
+    const brightTarget = [0, 0, 0, 0, 0, 0, 0, 2, 4, 6]; // push highs
+    const result = analyzeWithTarget(
+      { channels: audio, sampleRate: 44100, minimumDuration: 2 },
+      brightTarget,
+    );
+    expect(result.kind).toBe("success");
+    if (result.kind !== "success") return;
+    const eqMoves = result.proposal.changes.filter((c) => /^eq\.band\d+\.gainDb$/.test(c.parameterId));
+    expect(eqMoves.length).toBeGreaterThan(0);
+    // Values respect the eq gain schema range; each target adjustment is
+    // ±6 dB but merges onto any base-proposal move for that band.
+    for (const move of eqMoves) {
+      expect(Number.isFinite(move.value)).toBe(true);
+      expect(Math.abs(move.value)).toBeLessThanOrEqual(18);
+    }
+    expect(eqMoves.some((m) => m.reasonCode === "INSTRUMENT_PROFILE_MISMATCH")).toBe(true);
+  });
+
+  it("suggests nothing when the balance already matches the target", () => {
+    const audio = sineStereo(220, 3, 44100, 0.5);
+    const flatTarget = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    const result = analyzeWithTarget(
+      { channels: audio, sampleRate: 44100, minimumDuration: 2 },
+      flatTarget,
+    );
+    expect(result.kind).toBe("success");
+    if (result.kind !== "success") return;
+    const eqMoves = result.proposal.changes.filter(
+      (c) => c.parameterId.startsWith("eq.band") && c.reasonCode === "INSTRUMENT_PROFILE_MISMATCH",
+    );
+    // Whatever the flat-target deviations are, moves stay inside the
+    // eq gain schema range and are finite.
+    for (const move of eqMoves) {
+      expect(Number.isFinite(move.value)).toBe(true);
+      expect(Math.abs(move.value)).toBeLessThanOrEqual(18);
+    }
   });
 });

@@ -4,6 +4,9 @@ import type { DrumTrack } from "../project-model/types";
 import { usePlayheadStep } from "./playhead";
 import { assetCategoryOf, categoryColor } from "./kitColors";
 import { FALLOFF_MODES, REPEAT_RATES, type FalloffMode, type RepeatRate } from "../audio-engine/NoteRepeat";
+import { applyKitToDrumTrack, captureKitFromTrack } from "../commands/commands";
+import { decodeKitCode, encodeKitCode } from "../export/kitCode";
+import type { UserKit } from "../persistence/KitRepository";
 
 /** Two-row QWERTY layout for the 16 pads (MPC style). Plain letters only — no clash with shortcuts (digits, Alt+letters, Ctrl+letters). */
 const PAD_KEYS = ["q", "w", "e", "r", "t", "y", "u", "i", "a", "s", "d", "f", "g", "h", "j", "k"] as const;
@@ -35,6 +38,17 @@ export function RackStrip({
   /** Per-pad pinned divisions — kick can roll 1/16 while the hat rolls 1/8T. */
   const [pinnedRates, setPinnedRates] = useState<Record<string, PinnableRate>>({});
   const [rateMenu, setRateMenu] = useState<{ padId: string; x: number; y: number } | null>(null);
+  /** MPC 16 LEVELS: pads become velocity lanes for the selected sound. */
+  const [sixteenLevels, setSixteenLevels] = useState(false);
+  const [kitMenu, setKitMenu] = useState<{ x: number; y: number } | null>(null);
+  const [userKits, setUserKits] = useState<UserKit[]>([]);
+  const [kitStatus, setKitStatus] = useState<string | null>(null);
+
+  // Refresh the user kit list whenever the kit menu opens.
+  useEffect(() => {
+    if (!kitMenu) return;
+    void services.userKits.list().then(setUserKits);
+  }, [kitMenu, services]);
 
   // Close the per-pad rate menu on any outside press (same contract as the
   // arrangement context menus).
@@ -44,6 +58,12 @@ export function RackStrip({
     document.addEventListener("pointerdown", close);
     return () => document.removeEventListener("pointerdown", close);
   }, [rateMenu]);
+  useEffect(() => {
+    if (!kitMenu) return;
+    const close = () => setKitMenu(null);
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, [kitMenu]);
 
   const triggerPad = (padId: string) => {
     const pad = track.pads.find((p) => p.id === padId);
@@ -56,13 +76,21 @@ export function RackStrip({
 
   const padKeyOf = (padId: string) => `pad:${track.id}:${padId}`;
 
-  /** Pad-down via pointer/QWERTY: one immediate hit, repeats while held when armed. */
-  const padDown = (padId: string, baseVelocity: number, holdKey: string) => {
-    const pad = track.pads.find((p) => p.id === padId);
+  /**
+   * Pad-down via pointer/QWERTY: one immediate hit, repeats while held when
+   * armed. In 16 LEVELS mode every pad plays the SELECTED pad's sound at a
+   * fixed velocity by position (MPC style) — selection stays locked.
+   */
+  const padDown = (padId: string, holdKey: string) => {
+    const physicalIndex = track.pads.findIndex((p) => p.id === padId);
+    if (physicalIndex < 0) return;
+    const levels = sixteenLevels && selectedPadId;
+    const targetPadId = levels ? selectedPadId : padId;
+    const baseVelocity = levels ? (physicalIndex + 1) / track.pads.length : 1;
+    const pad = track.pads.find((p) => p.id === targetPadId);
     if (!pad) return;
-    services.noteRepeat.start(holdKey, track.id, padId, baseVelocity, pinnedRates[padId]);
-    const peak = pad.gain * baseVelocity;
-    setPeaks((prev) => ({ ...prev, [padId]: peak }));
+    services.noteRepeat.start(holdKey, track.id, targetPadId, baseVelocity, pinnedRates[targetPadId]);
+    setPeaks((prev) => ({ ...prev, [targetPadId]: pad.gain * baseVelocity }));
   };
 
   const padUp = (holdKey: string) => {
@@ -88,7 +116,7 @@ export function RackStrip({
       const padId = padByKey.get(event.key.toLowerCase());
       if (!padId) return;
       event.preventDefault();
-      padDown(padId, 1, `key:${event.key.toLowerCase()}`);
+      padDown(padId, `key:${event.key.toLowerCase()}`);
     };
     const onKeyUp = (event: KeyboardEvent) => {
       if (event.ctrlKey || event.metaKey || event.altKey) return;
@@ -149,6 +177,76 @@ export function RackStrip({
     }
   }, [playheadStep, pattern.rows, track.pads, track.mute]);
 
+  // ── User kits ──────────────────────────────────────────────────────────
+
+  const saveCurrentKit = () => {
+    const fallback = `Kit ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+    const name = window.prompt("Kit name", fallback);
+    if (!name) return;
+    const kit: UserKit = {
+      id: `ukit-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`,
+      name,
+      genre: "custom",
+      description: "",
+      pads: captureKitFromTrack(doc, track.id),
+      createdAt: new Date().toISOString(),
+    };
+    void services.userKits
+      .save(kit)
+      .then(() => services.userKits.list())
+      .then(setUserKits);
+    setKitStatus(`Saved "${name}"`);
+  };
+
+  const applyKit = (kit: UserKit) => {
+    try {
+      services.store.execute(applyKitToDrumTrack(doc, track.id, kit.name, kit.pads));
+      setKitStatus(`Applied "${kit.name}" — ${kit.pads.length} pads`);
+    } catch (err) {
+      setKitStatus(err instanceof Error ? err.message : "Apply failed");
+    }
+  };
+
+  const deleteKit = (kit: UserKit) => {
+    void services.userKits
+      .remove(kit.id)
+      .then(() => services.userKits.list())
+      .then(setUserKits);
+    setKitStatus(`Deleted "${kit.name}"`);
+  };
+
+  const copyKitCode = async (kit: UserKit) => {
+    try {
+      await navigator.clipboard.writeText(encodeKitCode(kit.name, kit.pads));
+      setKitStatus(`Code for "${kit.name}" copied — paste it into any Pulse Forge`);
+    } catch {
+      setKitStatus("Clipboard blocked by the browser");
+    }
+  };
+
+  const installFromCode = () => {
+    const code = window.prompt("Paste a kit code (PFKIT1:…)");
+    if (!code) return;
+    const kit = decodeKitCode(code);
+    if (!kit) {
+      setKitStatus("Invalid kit code");
+      return;
+    }
+    const userKit: UserKit = {
+      id: `ukit-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`,
+      name: kit.name,
+      genre: "shared",
+      description: "Installed from a kit code",
+      pads: kit.pads,
+      createdAt: new Date().toISOString(),
+    };
+    void services.userKits
+      .save(userKit)
+      .then(() => services.userKits.list())
+      .then(setUserKits);
+    setKitStatus(`Installed "${kit.name}"`);
+  };
+
   return (
     <section className="rack" aria-label="Drum Rack">
       <div className="rack-header" role="group" aria-label="Note Repeat">
@@ -190,6 +288,27 @@ export function RackStrip({
             ))}
           </select>
         </label>
+        <button
+          type="button"
+          className={`rack-header-toggle${sixteenLevels ? " active" : ""}`}
+          aria-pressed={sixteenLevels}
+          title="16 LEVELS — every pad plays the selected sound at a fixed velocity by position"
+          onClick={() => setSixteenLevels((v) => !v)}
+        >
+          16 LVL
+        </button>
+        <button
+          type="button"
+          className={`rack-header-toggle${kitMenu ? " active" : ""}`}
+          title="User kits — save the current pad mapping, apply saved kits, share via kit codes"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setKitMenu({ x: event.clientX, y: event.clientY });
+          }}
+        >
+          KIT
+        </button>
         <span className="rack-header-hint">hold pad · right-click = pad rate · QWERTYUI·ASDFGHJK</span>
       </div>
       {track.pads.map((pad, index) => {
@@ -211,8 +330,9 @@ export function RackStrip({
             }}
             onPointerDown={(event) => {
               event.preventDefault();
-              onSelectPad(pad.id);
-              padDown(pad.id, 1, holdKey);
+              // In 16 LEVELS the pads are velocity lanes — selection stays locked.
+              if (!sixteenLevels) onSelectPad(pad.id);
+              padDown(pad.id, holdKey);
             }}
             onPointerUp={() => padUp(holdKey)}
             onPointerLeave={() => padUp(holdKey)}
@@ -221,13 +341,16 @@ export function RackStrip({
               // Keyboard-activated button (Enter/Space): single hit, no hold.
               if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
-                onSelectPad(pad.id);
-                triggerPad(pad.id);
+                if (!sixteenLevels) onSelectPad(pad.id);
+                triggerPad(sixteenLevels ? selectedPadId || pad.id : pad.id);
               }
             }}
           >
             <span className="pad-index">{index + 1}</span>
             <span className="pad-name">{pad.name}</span>
+            {sixteenLevels && (
+              <span className="pad-rate-badge">{Math.round(((index + 1) / track.pads.length) * 100)}%</span>
+            )}
             {pinned && <span className="pad-rate-badge">{pinned}</span>}
             {pad.synth && <span className="pad-synth-badge">{pad.synth.type.slice(0, 3).toUpperCase()}</span>}
             <span className="pad-meter" aria-hidden="true">
@@ -273,6 +396,59 @@ export function RackStrip({
               {pinnedRates[rateMenu.padId] === rate ? " ✓" : ""}
             </button>
           ))}
+        </div>
+      )}
+      {kitMenu && (
+        <div
+          className="context-menu"
+          role="menu"
+          aria-label="User kits"
+          style={{ left: kitMenu.x, top: kitMenu.y }}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <div className="context-menu-header">USER KITS</div>
+          <button type="button" role="menuitem" onClick={saveCurrentKit}>
+            💾 Save current ({track.name})
+          </button>
+          {userKits.map((kit) => (
+            <div key={kit.id} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <button
+                type="button"
+                role="menuitem"
+                style={{ flex: 1, textAlign: "left" }}
+                title="Apply this kit to the current drum track"
+                onClick={() => {
+                  applyKit(kit);
+                  setKitMenu(null);
+                }}
+              >
+                {kit.name}
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                title="Copy kit share code"
+                aria-label={`Copy share code for ${kit.name}`}
+                onClick={() => void copyKitCode(kit)}
+              >
+                ⇧
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                title="Delete kit"
+                aria-label={`Delete ${kit.name}`}
+                onClick={() => deleteKit(kit)}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          {userKits.length > 0 && <div className="context-menu-header">SHARE</div>}
+          <button type="button" role="menuitem" onClick={installFromCode}>
+            Install from code…
+          </button>
+          {kitStatus && <div className="context-menu-header">{kitStatus}</div>}
         </div>
       )}
     </section>

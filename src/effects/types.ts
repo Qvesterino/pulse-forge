@@ -41,6 +41,8 @@ export interface EffectRuntime {
   getLatencySec?(): number;
   /** Latest gain reduction in dB (dynamics processors), for metering. */
   getGainReductionDb?(): number;
+  /** Live meter snapshot (spectrum, LUFS, GR…) — plugins with analysis DSP. */
+  getMeters?(): unknown;
   /** AudioParam for direct audio-rate modulation bus connection. */
   getAudioParam?(paramId: string): AudioParam | null;
   dispose(): void;

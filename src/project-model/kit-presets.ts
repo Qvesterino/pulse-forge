@@ -12,6 +12,7 @@ export interface KitPreset {
     gain?: number;
     pan?: number;
     chokeGroup?: number | null;
+    pitch?: number;
   }>;
 }
 

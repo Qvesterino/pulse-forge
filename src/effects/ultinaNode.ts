@@ -35,10 +35,13 @@ export function createUltinaNode(
   node.connect(output);
 
   let latencySamples = 0;
+  let meters: unknown = null;
   node.port.onmessage = (event) => {
-    const msg = event.data as { type?: string; samples?: number } | null;
+    const msg = event.data as { type?: string; samples?: number; meters?: unknown } | null;
     if (msg?.type === "latency" && typeof msg.samples === "number") {
       latencySamples = msg.samples;
+    } else if (msg?.type === "meters") {
+      meters = msg.meters;
     }
   };
 
@@ -46,6 +49,7 @@ export function createUltinaNode(
     input,
     output,
     getLatencySec: () => latencySamples / ctx.sampleRate,
+    getMeters: () => meters,
     setParameter(id: string, value: number) {
       node.port.postMessage({ type: "param", id, value });
     },

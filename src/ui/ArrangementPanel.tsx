@@ -18,6 +18,7 @@ import {
   duplicatePatternForScene,
   duplicateSceneAsVariation,
   fitAudioClipTempo,
+  stealGrooveIntoPattern,
   moveArrangementClip,
   moveAudioClip,
   removeArrangementTransition,
@@ -35,6 +36,7 @@ import { sceneRoleOf } from "../project-model/schema";
 import type { ArrangementTransitionType, SceneRole } from "../project-model/types";
 import { BAR_TICKS, PPQ } from "../project-model/types";
 import { detectLoopBpm } from "../audio-engine/bpm-detect";
+import { extractGroove } from "../audio-engine/groove-extract";
 import { usePlayheadBar } from "./playhead";
 import { SceneLauncher, useSceneRuntimeState } from "./SceneLauncher";
 
@@ -1073,6 +1075,38 @@ export function ArrangementPanel() {
               title="Detect the loop's tempo and pitch-preserving time-stretch it to the project BPM"
             >
               Fit to project BPM ({doc.bpm})
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                const c = audioClips.find((x) => x.id === audioMenu.clipId);
+                const buf = c ? services.bank.get(c.bufferId) : null;
+                const pattern = doc.patterns.find((p) => p.id === doc.activePatternId);
+                if (!buf || !c || !pattern) {
+                  setActionError("Loop not loaded");
+                  setAudioMenu(null);
+                  return;
+                }
+                // The groove lives in the loop's OWN tempo — use the detected
+                // one (falling back to the project tempo for steady loops).
+                const bpm = detectLoopBpm(buf.getChannelData(0), buf.sampleRate)?.bpm ?? doc.bpm;
+                const map = extractGroove(buf.getChannelData(0), buf.sampleRate, bpm, pattern.stepCount);
+                if (!map) {
+                  setActionError("No groove found — need a rhythmic loop");
+                  setAudioMenu(null);
+                  return;
+                }
+                try {
+                  execute(stealGrooveIntoPattern(doc, pattern.id, map, { applyVelocity: true }));
+                } catch (err) {
+                  setActionError(err instanceof Error ? err.message : "Steal groove failed");
+                }
+                setAudioMenu(null);
+              }}
+              title="Extract the loop's timing feel and accents onto the active pattern's existing steps"
+            >
+              Steal groove → active pattern
             </button>
             <button
               type="button"

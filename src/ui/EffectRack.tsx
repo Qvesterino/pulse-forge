@@ -285,6 +285,7 @@ function Device({
       {fx.type === "ultina" && (
         <UltinaPanel
           trackId={track.id}
+          fxId={fx.id}
           params={fx.params}
           degraded={!!fallbackReason}
           onParam={(paramId, value) =>

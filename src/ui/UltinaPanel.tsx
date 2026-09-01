@@ -1,8 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ALL_PARAMS, tryGetParamDef } from "../effects/ultina-core/contracts/parameterSchema";
 import { DEFAULT_MODULE_ORDER } from "../effects/ultina-core/contracts/state";
 import { FACTORY_PRESETS } from "../effects/ultina-core/presets/factoryPresets";
-import { analyzeTrack } from "../effects/ultina-core/analysis/mixAssistant";
+import { analyzeTrack, analyzeWithTarget } from "../effects/ultina-core/analysis/mixAssistant";
 import {
   ASSISTANT_CHARACTERS,
   ASSISTANT_INTENSITIES,
@@ -10,7 +10,10 @@ import {
   type AssistantCharacter,
   type AssistantIntensity,
 } from "../effects/ultina-core/analysis/assistant";
+import { extractFeatures } from "../effects/ultina-core/analysis/featureExtractor";
+import { TARGET_LIBRARY, getTargetById } from "../effects/ultina-core/analysis/targetLibrary";
 import { getExplanationForLocale } from "../effects/ultina-core/analysis/explanation";
+import type { GlobalMeters } from "../effects/ultina-core/contracts/meters";
 import { renderTrack } from "../rendering/track-renderer";
 import { useDoc, useServices } from "./context";
 import { Slider } from "./controls";
@@ -60,6 +63,7 @@ function formatUnit(value: number, unit: string): string {
  */
 export function UltinaPanel({
   trackId,
+  fxId,
   params,
   degraded,
   onParam,
@@ -67,6 +71,7 @@ export function UltinaPanel({
   onApplyProposal,
 }: {
   trackId: string;
+  fxId: string;
   params: Record<string, number>;
   degraded?: boolean;
   onParam: (paramId: string, value: number) => void;
@@ -86,6 +91,18 @@ export function UltinaPanel({
   const [assistSummary, setAssistSummary] = useState<string[] | null>(null);
   const [character, setCharacter] = useState<AssistantCharacter>("punchy");
   const [intensity, setIntensity] = useState<AssistantIntensity>("balanced");
+
+  // ── REFERENCE MATCH state ──
+  const [refSources, setRefSources] = useState<{ id: string; name: string }[]>([]);
+  const [refId, setRefId] = useState<string>("");
+  const [libTargetId, setLibTargetId] = useState<string>("drums-balanced");
+  const [matchBusy, setMatchBusy] = useState<string | null>(null);
+  const [matchError, setMatchError] = useState<string | null>(null);
+  const [matchSummary, setMatchSummary] = useState<string[] | null>(null);
+
+  useEffect(() => {
+    void services.userSamples.list().then((all) => setRefSources(all.slice(0, 40)));
+  }, [services]);
 
   const enabled = (mod: string) => (params[`${mod}.enabled`] ?? 0) >= 0.5;
 
@@ -131,7 +148,194 @@ export function UltinaPanel({
   const deltaOn = valueOf("global.deltaListen") >= 0.5;
   const gainMatchOn = valueOf("global.gainMatchEnabled") >= 0.5;
 
-  // ── MIX ASSIST: render this track offline → analyze → propose → apply ──
+  // ── LIVE METERS: poll the worklet snapshot, draw on canvas, no re-renders ──
+  const liveCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const lufsRef = useRef<HTMLSpanElement | null>(null);
+  const truePeakRef = useRef<HTMLSpanElement | null>(null);
+  const grFillRef = useRef<HTMLDivElement | null>(null);
+  const grTextRef = useRef<HTMLSpanElement | null>(null);
+  const maskFillRef = useRef<HTMLDivElement | null>(null);
+  const maskTextRef = useRef<HTMLSpanElement | null>(null);
+  const metersRef = useRef<unknown>(null);
+
+  useEffect(() => {
+    const engineWithMeters = services.engine as typeof services.engine & {
+      getFxMeters?: (trackId: string, fxId: string) => unknown;
+    };
+    const id = setInterval(() => {
+      metersRef.current = engineWithMeters.getFxMeters?.(trackId, fxId) ?? null;
+      drawMeters();
+    }, 66);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trackId, fxId, services]);
+
+  const drawMeters = () => {
+    const meters = metersRef.current as
+      | { global?: Partial<GlobalMeters>; modules?: Record<string, { gainReductionDb?: number; maskingScore?: number }> }
+      | null;
+    const global = meters?.global;
+
+    // Spectrum (64 bins, dBFS -100..0 → y) + waveform overlay (256 samples).
+    const canvas = liveCanvasRef.current;
+    if (canvas) {
+      const ctx2d = canvas.getContext("2d");
+      if (ctx2d) {
+        const dpr = window.devicePixelRatio || 1;
+        const w = canvas.width;
+        const h = canvas.height;
+        ctx2d.clearRect(0, 0, w, h);
+        ctx2d.fillStyle = "#0e0f12";
+        ctx2d.fillRect(0, 0, w, h);
+        // Spectrum curve.
+        const spectrum = global?.inputSpectrumDb;
+        if (spectrum && spectrum.length > 0) {
+          ctx2d.beginPath();
+          ctx2d.moveTo(0, h);
+          for (let b = 0; b < spectrum.length; b++) {
+            const x = (b / (spectrum.length - 1)) * w;
+            const db = Math.max(-100, Math.min(0, spectrum[b]));
+            const y = h - ((db + 100) / 100) * h;
+            ctx2d.lineTo(x, y);
+          }
+          ctx2d.lineTo(w, h);
+          ctx2d.closePath();
+          ctx2d.fillStyle = "rgba(245, 158, 11, 0.30)";
+          ctx2d.fill();
+          ctx2d.strokeStyle = "#f59e0b";
+          ctx2d.lineWidth = dpr;
+          ctx2d.stroke();
+        }
+        // Oscilloscope waveform.
+        const wave = global?.outputWaveform;
+        if (wave && wave.length > 0) {
+          ctx2d.beginPath();
+          for (let i = 0; i < wave.length; i++) {
+            const x = (i / (wave.length - 1)) * w;
+            const y = h / 2 - Math.max(-1, Math.min(1, wave[i])) * (h * 0.45);
+            if (i === 0) ctx2d.moveTo(x, y);
+            else ctx2d.lineTo(x, y);
+          }
+          ctx2d.strokeStyle = "rgba(244, 244, 245, 0.75)";
+          ctx2d.lineWidth = dpr;
+          ctx2d.stroke();
+        }
+      }
+    }
+
+    // LUFS + true peak readouts.
+    if (lufsRef.current) {
+      const lufs = global?.outputShortTermLufs ?? -70;
+      lufsRef.current.textContent = lufs <= -69 ? "— LUFS" : `${lufs.toFixed(1)} LUFS`;
+    }
+    if (truePeakRef.current) {
+      const tp = global?.outputTruePeakDb ?? -100;
+      truePeakRef.current.textContent = tp <= -99 ? "TP —" : `TP ${tp.toFixed(1)}`;
+    }
+
+    // Compressor gain-reduction bar (module meters only exist while enabled).
+    const comp = meters?.modules?.comp as { gainReductionDb?: number } | undefined;
+    const gr = Math.max(0, Math.min(20, comp?.gainReductionDb ?? 0));
+    if (grFillRef.current) grFillRef.current.style.width = `${(gr / 20) * 100}%`;
+    if (grTextRef.current) grTextRef.current.textContent = gr > 0.1 ? `-${gr.toFixed(1)} dB` : "";
+
+    // Unmask masking score bar.
+    const unmask = meters?.modules?.unmask as { maskingScore?: number } | undefined;
+    const score = Math.max(0, Math.min(1, unmask?.maskingScore ?? 0));
+    if (maskFillRef.current) {
+      maskFillRef.current.style.width = `${score * 100}%`;
+      maskFillRef.current.style.background = score > 0.5 ? "#ef4444" : score > 0.2 ? "#f59e0b" : "#34d399";
+    }
+    if (maskTextRef.current) {
+      maskTextRef.current.textContent = score > 0.02 ? `masking ${(score * 100).toFixed(0)}%` : "";
+    }
+  };
+
+  // ── REFERENCE MATCH: target curve from a reference sample or library ──
+  const runReferenceMatch = async () => {
+    if (matchBusy) return;
+    setMatchError(null);
+    setMatchSummary(null);
+    try {
+      // 1. Target curve: reference sample's spectral profile, or library target.
+      let targetCurve: number[];
+      let targetName: string;
+      const refBuffer = refId ? services.bank.get(refId) : null;
+      if (refBuffer) {
+        setMatchBusy("Analyzing reference…");
+        await new Promise((r) => setTimeout(r, 30));
+        const refCh = [refBuffer.getChannelData(0), refBuffer.numberOfChannels > 1 ? refBuffer.getChannelData(1) : refBuffer.getChannelData(0)];
+        const refFeatures = extractFeatures(refCh, refBuffer.sampleRate);
+        if (!refFeatures.valid) {
+          setMatchError("Reference is too short or too quiet to analyze.");
+          return;
+        }
+        // Same dB domain analyzeWithTarget uses for the current mix.
+        targetCurve = refFeatures.spectralProfile.map((b) => (b.ratio > 0 ? 10 * Math.log10(b.ratio * 10 + 1e-20) : -60));
+        targetName = "reference";
+      } else {
+        const lib = getTargetById(libTargetId);
+        if (!lib) {
+          setMatchError("Pick a reference sample or a target curve.");
+          return;
+        }
+        targetCurve = lib.curve;
+        targetName = lib.name;
+      }
+
+      // 2. Render the user's track and match toward the target.
+      setMatchBusy("Rendering your track…");
+      const buffer = await renderTrack(doc, trackId, services.bank, {
+        mode: "song",
+        sampleRate: 44100,
+        tailSeconds: 0.5,
+      });
+      setMatchBusy("Matching tonal balance…");
+      await new Promise((r) => setTimeout(r, 30));
+      const result = analyzeWithTarget(
+        {
+          channels: [buffer.getChannelData(0), buffer.getChannelData(1)],
+          sampleRate: buffer.sampleRate,
+          minimumDuration: 2,
+        },
+        targetCurve,
+      );
+      if (result.kind === "insufficient") {
+        setMatchError(`Not enough material: ${result.reason}`);
+        return;
+      }
+      if (result.kind === "error") {
+        setMatchError(result.message);
+        return;
+      }
+      const proposal = result.proposal;
+      const eqChanges = proposal.changes.filter((c) => c.parameterId.startsWith("eq.band"));
+      if (eqChanges.length === 0) {
+        setMatchSummary([`Tonal balance already within ±1.5 dB of ${targetName} — no EQ moves needed.`]);
+        return;
+      }
+      onApplyProposal(
+        `Reference match (${targetName})`,
+        proposal.moduleToggles.map((t) => ({ moduleType: t.moduleType, enabled: t.enabled })),
+        eqChanges.map((c) => ({ parameterId: c.parameterId, value: c.value })),
+      );
+      const lines: string[] = [`Target: ${targetName} · ${INSTRUMENT_LABELS[proposal.instrument] ?? proposal.instrument}`];
+      for (const c of eqChanges.slice(0, 6)) {
+        const bandMatch = /eq\.band(\d+)\./.exec(c.parameterId);
+        const bandNo = bandMatch ? Number(bandMatch[1]) + 1 : 0;
+        lines.push(
+          `EQ B${bandNo} ${c.value > 0 ? "+" : ""}${c.value.toFixed(1)} dB — ${getExplanationForLocale(c.reasonCode, "sk")}`,
+        );
+      }
+      if (eqChanges.length > 6) lines.push(`…a ${eqChanges.length - 6} ďalších EQ zmien`);
+      setMatchSummary(lines);
+    } catch (err) {
+      setMatchError(`Reference match failed: ${String(err instanceof Error ? err.message : err)}`);
+    } finally {
+      setMatchBusy(null);
+    }
+  };
+
   const runMixAssist = async () => {
     if (assistBusy) return;
     setAssistError(null);
@@ -209,6 +413,83 @@ export function UltinaPanel({
   return (
     <div className="fxeq-panel ultina-panel" aria-label="Ultina module editor">
       {degraded && <div className="fxeq-degraded">AudioWorklet unavailable — Ultina is bypassed (1:1 signal)</div>}
+
+      {/* ── LIVE METERS ────────────────────────────────────────────── */}
+      <div className="ultina-live" aria-label="Ultina live meters">
+        <canvas ref={liveCanvasRef} className="ultina-live-canvas" width={512} height={96} />
+        <div className="ultina-live-row">
+          <span className="ultina-lufs" ref={lufsRef}>
+            — LUFS
+          </span>
+          <span className="ultina-truepeak" ref={truePeakRef}>
+            TP —
+          </span>
+          <div className="ultina-meter" title="Compressor gain reduction">
+            <span className="ultina-meter-label">GR</span>
+            <div className="ultina-meter-track">
+              <div className="ultina-meter-fill" ref={grFillRef} style={{ background: "#f59e0b" }} />
+            </div>
+            <span className="ultina-meter-text" ref={grTextRef} />
+          </div>
+          <div className="ultina-meter" title="Unmask masking score">
+            <span className="ultina-meter-label">MSK</span>
+            <div className="ultina-meter-track">
+              <div className="ultina-meter-fill" ref={maskFillRef} style={{ background: "#34d399" }} />
+            </div>
+            <span className="ultina-meter-text" ref={maskTextRef} />
+          </div>
+        </div>
+      </div>
+
+      {/* ── REFERENCE MATCH ────────────────────────────────────────── */}
+      <div className="ultina-assist ultina-ref" aria-label="Reference match">
+        <div className="ultina-assist-head">
+          <span className="ultina-assist-title">REFERENCE MATCH</span>
+          <button
+            type="button"
+            className="btn btn-export"
+            disabled={!!matchBusy}
+            title="Match this track's tonal balance toward a reference sample or a target curve"
+            onClick={() => void runReferenceMatch()}
+          >
+            {matchBusy ?? "🎯 MATCH"}
+          </button>
+        </div>
+        <label className="collab-field">
+          <span>REFERENCE SAMPLE (optional — its balance becomes the target)</span>
+          <select value={refId} onChange={(e) => setRefId(e.target.value)}>
+            <option value="">— none: use target curve —</option>
+            {refSources.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        {!refId && (
+          <label className="collab-field">
+            <span>TARGET CURVE</span>
+            <select value={libTargetId} onChange={(e) => setLibTargetId(e.target.value)}>
+              {TARGET_LIBRARY.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {matchError && <div className="fxeq-degraded">{matchError}</div>}
+        {matchSummary && (
+          <div className="ultina-assist-summary">
+            {matchSummary.map((line, i) => (
+              <div key={i} className="ultina-assist-line">
+                {line}
+              </div>
+            ))}
+            <div className="ultina-assist-note">EQ zmeny aplikované ako jedno gesto — Ctrl+Z vráti všetko.</div>
+          </div>
+        )}
+      </div>
 
       {/* ── PRO: delta listen / A/B / gain match ───────────────────── */}
       <div className="ultina-pro" aria-label="Pro tools">

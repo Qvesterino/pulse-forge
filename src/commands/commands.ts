@@ -52,7 +52,11 @@ import {
 import type { Pattern } from "../project-model/types";
 import { EFFECT_DEFS, clampEffectParam, defaultParamsOf } from "../effects/registry";
 import { buildSchema as buildFxEqSchema } from "../effects/fxeq-core/core/parameterSchema";
-import { tryGetParamDef as tryGetUltinaParamDef, clampParam as clampUltinaParam, buildDefaultParams as buildUltinaDefaults } from "../effects/ultina-core/contracts/parameterSchema";
+import {
+  tryGetParamDef as tryGetUltinaParamDef,
+  clampParam as clampUltinaParam,
+  buildDefaultParams as buildUltinaDefaults,
+} from "../effects/ultina-core/contracts/parameterSchema";
 import { INSTRUMENT_DEFS, clampInstrumentParam, defaultInstrumentParams } from "../instruments/registry";
 import type { InstrumentPreset } from "../presets/types";
 import type { EffectPreset } from "../effects/presets";
@@ -2265,6 +2269,130 @@ export function resizeAudioClip(doc: ProjectDocument, clipId: string, lengthBars
   return snapshot("resizeAudioClip", `Resize audio clip to ${bars} bars`, doc, next);
 }
 
+/**
+ * "Steal the groove": bake an extracted loop-groove map into a pattern.
+ * Every ACTIVE step gets the loop's microtiming shift; with `applyVelocity`
+ * the step velocity is also scaled by the loop's accent (steps the loop was
+ * silent on keep their original velocity). Locks, probability and ratchets
+ * are preserved — only timing/velocity fields are touched.
+ */
+export function stealGrooveIntoPattern(
+  doc: ProjectDocument,
+  patternId: string,
+  map: { timing: number[]; accent: number[] },
+  options: { applyVelocity?: boolean } = {},
+): Command {
+  const pattern = doc.patterns.find((p) => p.id === patternId);
+  if (!pattern) throw new Error(`Pattern ${patternId} not found`);
+  if (!map.timing.length || !map.accent.length || map.timing.length !== map.accent.length) {
+    throw new Error("Invalid groove map");
+  }
+  const steps = pattern.stepCount;
+  const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+  const timingAt = (step: number) => map.timing[((step % map.timing.length) + map.timing.length) % map.timing.length];
+  const accentAt = (step: number) => map.accent[((step % map.accent.length) + map.accent.length) % map.accent.length];
+
+  const rows: Pattern["rows"] = {};
+  const stepMeta: Pattern["stepMeta"] = {};
+  let touched = 0;
+  for (const pad of doc.tracks.filter((t): t is DrumTrack => t.kind === "drum").flatMap((t) => t.pads)) {
+    const row = pattern.rows[pad.id];
+    if (!row) continue;
+    const nextRow = [...row];
+    const padMeta = pattern.stepMeta?.[pad.id];
+    let padTouched = false;
+    for (let step = 0; step < steps; step++) {
+      if ((row[step] ?? 0) <= 0) continue;
+      const timing = Math.max(-1, Math.min(1, timingAt(step)));
+      const accent = accentAt(step);
+      const meta = padMeta?.[step] ?? {};
+      stepMeta[pad.id] = { ...(stepMeta[pad.id] ?? {}), [step]: { ...meta, microtiming: timing } };
+      if (options.applyVelocity && accent > 0) {
+        nextRow[step] = clamp01((row[step] ?? 0) * (0.4 + 0.6 * accent));
+      }
+      padTouched = true;
+      touched += 1;
+    }
+    if (padTouched) rows[pad.id] = nextRow;
+  }
+  if (touched === 0) throw new Error("Pattern has no active steps to groove");
+
+  const next: ProjectDocument = {
+    ...doc,
+    patterns: doc.patterns.map((p) =>
+      p.id === patternId ? { ...p, rows: { ...p.rows, ...rows }, stepMeta: { ...p.stepMeta, ...stepMeta } } : p,
+    ),
+  };
+  return snapshot("stealGrooveIntoPattern", `Steal groove → ${touched} steps`, doc, next);
+}
+
+// ── User kits — pad mappings as first-class, shareable objects ─────────────
+
+export interface KitPadCapture {
+  idx: number;
+  assetId: string | null;
+  synth?: DrumTrack["pads"][number]["synth"] | null;
+  gain?: number;
+  pan?: number;
+  chokeGroup?: number | null;
+  pitch?: number;
+}
+
+/** Read a drum track's pad mapping into a portable kit object. */
+export function captureKitFromTrack(doc: ProjectDocument, trackId: string): KitPadCapture[] {
+  const track = doc.tracks.find((t): t is DrumTrack => t.kind === "drum" && t.id === trackId);
+  if (!track) throw new Error(`Drum track ${trackId} not found`);
+  return track.pads.map((pad, idx) => ({
+    idx,
+    assetId: pad.assetId ?? null,
+    synth: pad.synth ?? null,
+    gain: pad.gain,
+    pan: pad.pan,
+    chokeGroup: pad.chokeGroup ?? null,
+    pitch: pad.pitch ?? 0,
+  }));
+}
+
+/**
+ * Apply a kit's pad mapping onto a drum track (one undo entry). Pads with
+ * `assetId: null` in the kit keep their current sample; everything else
+ * (sample, synth, gain, pan, choke, pitch) is replaced.
+ */
+export function applyKitToDrumTrack(
+  doc: ProjectDocument,
+  trackId: string,
+  kitName: string,
+  pads: KitPadCapture[],
+): Command {
+  const track = doc.tracks.find((t): t is DrumTrack => t.kind === "drum" && t.id === trackId);
+  if (!track) throw new Error(`Drum track ${trackId} not found`);
+  const byIdx = new Map(pads.map((p) => [p.idx, p]));
+  const next: ProjectDocument = {
+    ...doc,
+    tracks: doc.tracks.map((t) => {
+      if (t.id !== trackId || t.kind !== "drum") return t;
+      const drum = t as DrumTrack;
+      return {
+        ...drum,
+        pads: drum.pads.map((pad, idx) => {
+          const k = byIdx.get(idx);
+          if (!k || k.assetId === null) return pad;
+          return {
+            ...pad,
+            assetId: k.assetId,
+            synth: k.synth ?? null,
+            gain: k.gain ?? pad.gain,
+            pan: k.pan ?? pad.pan,
+            chokeGroup: k.chokeGroup ?? pad.chokeGroup,
+            pitch: k.pitch ?? pad.pitch ?? 0,
+          };
+        }),
+      };
+    }),
+  };
+  return snapshot("applyKitToDrumTrack", `Apply kit "${kitName}"`, doc, next);
+}
+
 export function updateAudioClip(
   doc: ProjectDocument,
   clipId: string,
@@ -3728,6 +3856,26 @@ export function setMarkerLinkedClip(doc: ProjectDocument, markerId: string, link
   const clamped = Math.min(1, Math.max(0, Number.isFinite(intensity) ? intensity : 0.7));
   const next = { ...doc, scenes: doc.scenes.map((s) => (s.id === sceneId ? { ...s, intensity: clamped } : s)) };
   return snapshot("setSceneIntensity", `Scene intensity to ${clamped.toFixed(2)}`, doc, next);
+}
+
+/**
+ * Scene tempo: a number pins the scene's playback BPM (applied while its
+ * clips play); `null` clears it and the scene follows the project tempo.
+ */
+export function setSceneBpm(doc: ProjectDocument, sceneId: string, bpm: number | null): Command {
+  const target = doc.scenes.find((s) => s.id === sceneId);
+  if (!target) throw new Error(`Scene ${sceneId} not found`);
+  if (bpm !== null && (!Number.isFinite(bpm) || bpm < 40 || bpm > 240)) {
+    throw new Error(`Scene tempo ${bpm} out of range (40–240)`);
+  }
+  const value = bpm === null ? undefined : Math.round(bpm);
+  const next = { ...doc, scenes: doc.scenes.map((s) => (s.id === sceneId ? { ...s, bpm: value } : s)) };
+  return snapshot(
+    "setSceneBpm",
+    value === undefined ? "Scene follows project tempo" : `Scene tempo to ${value} BPM`,
+    doc,
+    next,
+  );
 }
 export function setSceneIntensityCurve(doc: ProjectDocument, sceneId: string, curve: IntensityPoint[]): Command {
   const target = doc.scenes.find((s) => s.id === sceneId);

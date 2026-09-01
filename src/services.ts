@@ -5,6 +5,7 @@ import { ProjectStore } from "./store/ProjectStore";
 import { ProjectRepository } from "./persistence/ProjectRepository";
 import { PresetRepository } from "./persistence/PresetRepository";
 import { LibraryRepository } from "./persistence/LibraryRepository";
+import { KitRepository } from "./persistence/KitRepository";
 import { generateFactoryBank } from "./sample-library/factory";
 import type { SampleBank } from "./sample-library/factory";
 import type { PlayMode, ProjectDocument, Scene } from "./project-model/types";
@@ -35,6 +36,7 @@ export interface CoreServices {
   repo: ProjectRepository;
   presets: PresetRepository;
   library: LibraryRepository;
+  userKits: KitRepository;
   latency: LatencyCalibrationController;
 }
 
@@ -48,6 +50,7 @@ export interface Services {
   repo: ProjectRepository;
   bank: SampleBank;
   library: LibraryRepository;
+  userKits: KitRepository;
   playback: PlaybackController;
   midi: MidiInput;
   midiOutput: MidiOutput;
@@ -190,6 +193,7 @@ export async function createCoreServices(): Promise<CoreServices> {
   // the app is fully usable while imports stream back in).
   void restoreUserSampleAudio(bank);
   const library = new LibraryRepository();
+  const userKits = new KitRepository();
   void library.load();
   return {
     engine,
@@ -197,6 +201,7 @@ export async function createCoreServices(): Promise<CoreServices> {
     repo: new ProjectRepository(),
     presets: new PresetRepository(),
     library,
+    userKits,
     latency: new LatencyCalibrationController(),
   };
 }
@@ -224,7 +229,7 @@ export function collabSessionInfo(
  * same onDocChanged path as local ones.
  */
 export function openProject(core: CoreServices, initial: ProjectDocument, options: OpenProjectOptions = {}): Services {
-  const { engine, repo, bank, library, latency } = core;
+  const { engine, repo, bank, library, userKits, latency } = core;
 
   const collabConfig =
     options.collab ?? (typeof location !== "undefined" ? collabParamsFromSearch(location.search) : null);
@@ -263,6 +268,9 @@ export function openProject(core: CoreServices, initial: ProjectDocument, option
     applyPatternLaunch: (patternId) => store.execute(setActivePattern(store.doc, patternId)),
     triggerMarker: (assetId, when, trackId) => engine.triggerMarker(assetId, when, trackId),
     setSceneIntensity: (value) => engine.setSceneIntensity(value),
+    // Scene tempo lane: clips whose scene pins a BPM drive the transport
+    // (setBpm re-anchors position-preserving); null = project tempo.
+    applySceneTempo: (bpm) => transport.setBpm(bpm ?? store.doc.bpm),
     midiNoteOn: (_trackId, channel, note, velocity, when) => {
       const doc = store.doc;
       const instTrack = doc.tracks.find((t) => t.id === _trackId && t.kind === "instrument");
@@ -490,6 +498,7 @@ export function openProject(core: CoreServices, initial: ProjectDocument, option
     repo,
     bank,
     library,
+    userKits,
     playback,
     midi,
     midiOutput,

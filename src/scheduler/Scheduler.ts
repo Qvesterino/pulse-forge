@@ -54,6 +54,8 @@ export interface SchedulerDeps {
   triggerMarker?(assetId: string | null, when: number, trackId?: string): void;
   /** Update the live scene intensity signal (0..1). */
   setSceneIntensity?(intensity: number): void;
+  /** Apply the active scene's tempo (null = follow the project tempo). */
+  applySceneTempo?(bpm: number | null): void;
   /** Trigger an arrangement AudioClip buffer at an absolute tick. */
   triggerAudioClip?(clip: import("../project-model/types").AudioClip, when: number, durationSec: number): void;
   /** Metronome click for count-in / pre-roll (downbeat = bar start accent). */
@@ -89,6 +91,8 @@ export class Scheduler {
   private timer: ReturnType<typeof setInterval> | null = null;
   private windowStartTick = 0;
   private stopped = true;
+  /** Last BPM handed to applySceneTempo (null = project tempo) — change-guard. */
+  private lastAppliedTempo: number | null | undefined = undefined;
   private pendingLaunch: { patternId: string; atTick: number } | null = null;
   /** Marker ids that have already fired in this playback session. Cleared on stop. */
   private firedMarkerIds = new Set<string>();
@@ -133,6 +137,8 @@ export class Scheduler {
   }
 
   stop(): void {
+    // Playback ended — hand tempo control back to the project BPM.
+    this.applyTempo(null);
     if (this.timer !== null) {
       clearInterval(this.timer);
       this.timer = null;
@@ -167,6 +173,13 @@ export class Scheduler {
       this.pendingLaunch = null;
       this.notify();
     }
+  }
+
+  private applyTempo(bpm: number | null): void {
+    if (!this.deps.applySceneTempo) return;
+    if (this.lastAppliedTempo === bpm) return;
+    this.lastAppliedTempo = bpm;
+    this.deps.applySceneTempo(bpm);
   }
 
   private tick(): void {
@@ -277,6 +290,8 @@ export class Scheduler {
         currentDoc.scenes.find((s) => s.id === currentDoc.activePatternId) ??
         currentDoc.scenes.find((s) => s.patternId === currentDoc.activePatternId);
       this.deps.setSceneIntensity?.(activeScene ? Math.max(0, Math.min(1, activeScene.intensity)) : 0.7);
+      // Pattern mode has no arrangement context — follow the project tempo.
+      this.applyTempo(null);
     } else {
       const clips = [...doc.arrangement.clips].sort((a, b) => a.startBar - b.startBar);
       // Find the active scene (whose clip contains the playhead) for intensity
@@ -326,6 +341,10 @@ export class Scheduler {
           this.deps.setSceneIntensity(0.7);
         }
       }
+      // Scene tempo: while inside a clip whose scene pins a BPM, the
+      // transport runs there (guarded — only actual changes re-anchor).
+      const wantedTempo = activeScene?.bpm ?? null;
+      this.applyTempo(wantedTempo);
       for (const clip of clips) {
         const clipStart = clip.startBar * BAR_TICKS;
         const clipEnd = clipStart + clip.lengthBars * BAR_TICKS;

@@ -209,6 +209,7 @@ describe("UltinaPanel — EQ band editor (direct render)", () => {
     renderWithContext(
       <UltinaPanel
         trackId="t-ult"
+        fxId="fx-ult"
         params={params}
         onParam={onParam}
         onApplyPreset={onApplyPreset}
@@ -231,6 +232,7 @@ describe('UltinaPanel — PRO tools (delta / A/B / gain match)', () => {
     renderWithContext(
       <UltinaPanel
         trackId="t-ult"
+        fxId="fx-ult"
         params={params}
         onParam={onParam}
         onApplyPreset={onApplyPreset}

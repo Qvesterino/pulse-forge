@@ -15,10 +15,12 @@ describe("RackStrip", () => {
 
   it("renders pad buttons for each pad", () => {
     const { doc, track } = drumTrack();
-    renderWithContext(<RackStrip track={track} selectedPadId={track.pads[0].id} onSelectPad={vi.fn()} />, {
-      services: mockServices(doc),
-    });
-    expect(screen.getAllByRole("button").length).toBe(track.pads.length);
+    const { container } = renderWithContext(
+      <RackStrip track={track} selectedPadId={track.pads[0].id} onSelectPad={vi.fn()} />,
+      { services: mockServices(doc) },
+    );
+    // Scope to pads — the header has its own buttons (16 LVL toggle).
+    expect(container.querySelectorAll(".pad").length).toBe(track.pads.length);
   });
 
   it("shows pad names", () => {

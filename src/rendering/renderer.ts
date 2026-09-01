@@ -17,6 +17,8 @@ interface ClipWindow {
   base: number;
   from: number;
   to: number;
+  /** Scene tempo for this window (falls back to the project BPM). */
+  bpm?: number;
 }
 
 export function computeRenderTicks(doc: ProjectDocument, mode: PlayMode): number {
@@ -36,13 +38,72 @@ function collectClipWindows(doc: ProjectDocument, mode: PlayMode): ClipWindow[] 
       const pattern = doc.patterns.find((p) => p.id === scene.patternId);
       if (!pattern) continue;
       const base = clip.startBar * BAR_TICKS;
-      windows.push({ pattern, base, from: base, to: base + clip.lengthBars * BAR_TICKS });
+      windows.push({ pattern, base, from: base, to: base + clip.lengthBars * BAR_TICKS, bpm: scene.bpm ?? doc.bpm });
     }
     if (windows.length > 0) return windows;
   }
   const pattern = getActivePattern(doc);
   const patternTicks = pattern.stepCount * STEP_TICKS;
-  return [{ pattern, base: 0, from: 0, to: patternTicks }];
+  return [{ pattern, base: 0, from: 0, to: patternTicks, bpm: doc.bpm }];
+}
+
+export interface TempoSegment {
+  from: number;
+  to: number;
+  bpm: number;
+  /** Wall-clock time (seconds) at `from`. */
+  startTime: number;
+}
+
+/**
+ * Piecewise tick→seconds map for scene tempo lanes: every window runs at its
+ * scene's BPM, gaps between windows run at the project BPM. Pure — the
+ * offline render and its length computation both consume it.
+ */
+export function buildTempoMap(
+  doc: ProjectDocument,
+  windows: ClipWindow[],
+): {
+  segments: TempoSegment[];
+  totalSeconds: number;
+  timeAt: (tick: number) => number;
+} {
+  const docSpt = 60 / (doc.bpm * PPQ);
+  const sorted = [...windows].sort((a, b) => a.from - b.from);
+  const segments: TempoSegment[] = [];
+  let cursorTick = 0;
+  let cursorTime = 0;
+  for (const w of sorted) {
+    if (w.from > cursorTick) {
+      // Gap: project-tempo travel up to the window start.
+      cursorTime += (w.from - cursorTick) * docSpt;
+      cursorTick = w.from;
+    }
+    const bpm = w.bpm ?? doc.bpm;
+    const spt = 60 / (bpm * PPQ);
+    segments.push({ from: w.from, to: w.to, bpm, startTime: cursorTime });
+    cursorTime += (w.to - w.from) * spt;
+    cursorTick = Math.max(cursorTick, w.to);
+  }
+  const totalSeconds = cursorTime;
+  const timeAt = (tick: number): number => {
+    let seg: TempoSegment | null = null;
+    for (const s of segments) {
+      if (tick >= s.from && tick <= s.to) {
+        seg = s;
+        break;
+      }
+    }
+    if (!seg) {
+      // Outside every window: project-tempo travel from the nearest edge.
+      const first = segments[0];
+      const last = segments[segments.length - 1];
+      if (tick < first.from) return tick * docSpt;
+      return last.startTime + (tick - last.to) * docSpt;
+    }
+    return seg.startTime + (tick - seg.from) * (60 / (seg.bpm * PPQ));
+  };
+  return { segments, totalSeconds, timeAt };
 }
 
 export async function renderProject(
@@ -53,8 +114,10 @@ export async function renderProject(
   const tail = options.tailSeconds ?? 2;
   const secondsPerTick = 60 / (doc.bpm * PPQ);
   const totalTicks = computeRenderTicks(doc, options.mode);
-  const duration = totalTicks * secondsPerTick + tail;
   const sampleRate = options.sampleRate;
+  const pendingWindows = collectClipWindows(doc, options.mode);
+  const tempoMap = buildTempoMap(doc, pendingWindows);
+  const duration = (tempoMap.totalSeconds || totalTicks * secondsPerTick) + tail;
   const ctx = new OfflineAudioContext(2, Math.max(1, Math.ceil(duration * sampleRate)), sampleRate);
   // Load AudioWorklet processors into THIS offline context so bitcrusher
   // downsample and sidechain ducking render correctly (the fallbacks are
@@ -67,12 +130,12 @@ export async function renderProject(
   engine.useContext(ctx);
   engine.setProject(doc);
 
-  const timeAt = (tick: number) => tick * secondsPerTick;
-  const windows = collectClipWindows(doc, options.mode);
+  const timeAt = tempoMap.timeAt;
+  const windows = pendingWindows;
 
   for (const window of windows) {
     scheduleDrums(doc, window, timeAt, engine);
-    scheduleNotes(window, timeAt, secondsPerTick, engine);
+    scheduleNotes(window, timeAt, 60 / ((window.bpm ?? doc.bpm) * PPQ), engine);
   }
   scheduleAutomation(doc, windows, timeAt, engine);
   // Schedulable track modulators (random S&H / step) share the same window
@@ -90,7 +153,8 @@ export async function renderProject(
       // Only schedule if clip overlaps the total render window
       if (clipEndTick <= 0 || clipStartTick >= totalTicks) continue;
       const when = timeAt(clipStartTick);
-      const durationSec = clip.lengthBars * BAR_TICKS * secondsPerTick;
+      // Wall-clock duration through the tempo map (scene BPM aware).
+      const durationSec = timeAt(clipEndTick) - when;
       engine.triggerAudioClip(clip, when, durationSec);
     }
   }

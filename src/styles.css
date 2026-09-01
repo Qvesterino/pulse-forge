@@ -400,6 +400,23 @@ button {
   padding: 1px 3px;
 }
 
+.rack-header-toggle {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-faint);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: transparent;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+.rack-header-toggle.active {
+  color: #60a5fa;
+  border-color: #60a5fa;
+  background: rgb(96 165 250 / 0.12);
+}
+
 .rack-header-hint {
   margin-left: auto;
   font-family: var(--mono);
@@ -6899,4 +6916,93 @@ html {
 .ultina-pro-lufs {
   flex: 1;
   min-width: 140px;
+}
+
+/* ── Ultina LIVE meters ─────────────────────────────────────────────────── */
+
+.ultina-live {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ultina-live-canvas {
+  width: 100%;
+  height: 96px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  display: block;
+}
+
+.ultina-live-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ultina-lufs {
+  font-family: ui-monospace, "Cascadia Code", monospace;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--accent);
+  min-width: 90px;
+}
+
+.ultina-truepeak {
+  font-family: ui-monospace, "Cascadia Code", monospace;
+  font-size: 11px;
+  color: var(--text-dim, #8a8f98);
+}
+
+.ultina-meter {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 1;
+  min-width: 110px;
+}
+
+.ultina-meter-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--text-dim, #8a8f98);
+}
+
+.ultina-meter-track {
+  flex: 1;
+  height: 6px;
+  background: var(--bg-raise);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.ultina-meter-fill {
+  height: 100%;
+  width: 0%;
+  transition: width 0.08s linear;
+}
+
+.ultina-meter-text {
+  font-size: 10px;
+  color: var(--text-dim, #8a8f98);
+  min-width: 52px;
+}
+
+/* ── FXEQ band scalars (solo/mute/gain) ─────────────────────────────────── */
+
+.fxeq-band-scalars {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.fxeq-band-gain {
+  flex: 1;
+  min-width: 160px;
+}
+
+.ultina-ref {
+  border-color: #22d3ee;
 }

@@ -28,10 +28,22 @@ try {
 
   await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded" });
 
-  const results = await page.evaluate(async () => {
-    const mod = await import("/src/browser-checks.ts");
-    return mod.runChecks();
-  });
+  // A shared dev machine means another agent may save files mid-run, which
+  // Vite turns into a full page reload ("Execution context was destroyed").
+  // Retry the whole evaluate on that specific failure.
+  let results = null;
+  for (let attempt = 1; attempt <= 3 && !results; attempt++) {
+    try {
+      results = await page.evaluate(async () => {
+        const mod = await import("/src/browser-checks.ts");
+        return mod.runChecks();
+      });
+    } catch (error) {
+      if (attempt === 3 || !/context was destroyed|navigation/i.test(String(error))) throw error;
+      console.log("[retry] checks page reload race — retrying evaluate");
+      await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded" });
+    }
+  }
 
   let failed = 0;
   for (const r of results) {

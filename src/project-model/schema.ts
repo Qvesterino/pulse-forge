@@ -1037,9 +1037,17 @@ function normalizeSceneDetailsDomain(s: NormalizeState): void {
     if (loop !== scene.loop) sceneChanged = true;
     const role = clampSceneRole(scene.role);
     if (role !== scene.role) sceneChanged = true;
+    // Scene tempo: absent = follow project; present = clamped to 40..240 BPM.
+    let bpm: number | undefined;
+    if (typeof scene.bpm === "number" && Number.isFinite(scene.bpm)) {
+      bpm = Math.min(240, Math.max(40, Math.round(scene.bpm)));
+      if (bpm !== scene.bpm) sceneChanged = true;
+    } else if (scene.bpm !== undefined) {
+      sceneChanged = true;
+    }
     if (sceneChanged) scenesChanged = true;
     if (!sceneChanged) return scene;
-    return { ...scene, intensity, intensityCurve: curve, loop, role };
+    return { ...scene, intensity, intensityCurve: curve, loop, role, bpm };
   });
   if (scenesChanged) {
     s.doc = { ...s.doc, scenes: cleanedScenes };
