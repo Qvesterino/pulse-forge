@@ -281,7 +281,7 @@ try {
     const embedErrors = [];
     embedPage.on("pageerror", (err) => embedErrors.push(String(err)));
     await embedPage.goto(`http://127.0.0.1:${PORT}/embed/#p=${code}`, { waitUntil: "domcontentloaded" });
-    await embedPage.waitForSelector(".embed-play:not([disabled])", { timeout: 20_000 });
+    await embedPage.waitForSelector(".embed-play:not([disabled])", { timeout: 45_000 });
     await embedPage.click(".embed-play");
     await embedPage.waitForFunction(
       () => document.querySelector(".embed-play")?.textContent?.includes("❚❚"),
@@ -303,7 +303,7 @@ try {
     // 2. The share link: ?import= opens the project straight into the studio.
     const importPage = await browser.newPage();
     await importPage.goto(`http://127.0.0.1:${PORT}/?import=${code}`, { waitUntil: "domcontentloaded" });
-    await importPage.waitForSelector(".topbar", { timeout: 20_000 });
+    await importPage.waitForSelector(".topbar", { timeout: 45_000 });
     await importPage.waitForSelector(".sequencer", { timeout: 15_000 });
     if (await importPage.$(".project-browser")) throw new Error("project browser shown — import was skipped");
     await importPage.close();

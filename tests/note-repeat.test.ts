@@ -278,48 +278,48 @@ describe("NoteRepeatController — pressure (aftertouch)", () => {
   });
 });
 
-describe("MidiInput — pressure feeds live note repeat", () => {
-  function makeMidiHarness() {
-    let audioTime = 10;
-    const transport = new Transport({ now: () => audioTime }, 120);
-    const hits: { padId: string; velocity: number; when: number }[] = [];
-    const controller = new NoteRepeatController({
-      getTransport: () => transport,
-      getAudioTime: () => audioTime,
-      fire: (_trackId, padId, velocity, when) => hits.push({ padId, velocity, when }),
+function makeMidiHarness() {
+  let audioTime = 10;
+  const transport = new Transport({ now: () => audioTime }, 120);
+  const hits: { padId: string; velocity: number; when: number }[] = [];
+  const controller = new NoteRepeatController({
+    getTransport: () => transport,
+    getAudioTime: () => audioTime,
+    fire: (_trackId, padId, velocity, when) => hits.push({ padId, velocity, when }),
+  });
+  const doc = createProjectFromTemplate("house");
+  const drum = doc.tracks.find((t) => t.kind === "drum") as DrumTrack;
+  const midi = new MidiInput();
+  midi.attachNoteRepeat(controller);
+  (midi as unknown as { engine: unknown }).engine = {
+    trigger: vi.fn(),
+    noteOn: vi.fn(),
+    applyMidiCc: vi.fn(),
+    polyPressure: vi.fn(),
+  };
+  (midi as unknown as { transport: Transport }).transport = transport;
+  (midi as unknown as { getDoc: () => ProjectDocument }).getDoc = () => doc;
+  (midi as unknown as { configCb: () => unknown }).configCb = () => ({
+    enabled: true,
+    deviceId: "test",
+    drumChannel: 0,
+    instrumentChannel: 1,
+    ccMappings: [],
+    drumNoteMap: [],
+    pitchBendRange: 2,
+  });
+  const send = (bytes: number[]) =>
+    (midi as unknown as { onMidiMessage: (e: { data: Uint8Array }) => void }).onMidiMessage({
+      data: new Uint8Array(bytes),
     });
-    const doc = createProjectFromTemplate("house");
-    const drum = doc.tracks.find((t) => t.kind === "drum") as DrumTrack;
-    const midi = new MidiInput();
-    midi.attachNoteRepeat(controller);
-    (midi as unknown as { engine: unknown }).engine = {
-      trigger: vi.fn(),
-      noteOn: vi.fn(),
-      applyMidiCc: vi.fn(),
-      polyPressure: vi.fn(),
-    };
-    (midi as unknown as { transport: Transport }).transport = transport;
-    (midi as unknown as { getDoc: () => ProjectDocument }).getDoc = () => doc;
-    (midi as unknown as { configCb: () => unknown }).configCb = () => ({
-      enabled: true,
-      deviceId: "test",
-      drumChannel: 0,
-      instrumentChannel: 1,
-      ccMappings: [],
-      drumNoteMap: [],
-      pitchBendRange: 2,
-    });
-    const send = (bytes: number[]) =>
-      (midi as unknown as { onMidiMessage: (e: { data: Uint8Array }) => void }).onMidiMessage({
-        data: new Uint8Array(bytes),
-      });
-    const advance = (seconds: number) => {
-      audioTime += seconds;
-      controller["tick"]();
-    };
-    return { controller, transport, hits, midi, send, advance, drum };
-  }
+  const advance = (seconds: number) => {
+    audioTime += seconds;
+    controller["tick"]();
+  };
+  return { controller, transport, hits, midi, send, advance, drum };
+}
 
+describe("MidiInput — pressure feeds live note repeat", () => {
   it("channel aftertouch (0xDn) modulates the held pad's repeats", () => {
     const h = makeMidiHarness();
     h.controller.setRate("1/16");
@@ -379,5 +379,71 @@ describe("MidiInput — pressure feeds live note repeat", () => {
     const velocities = h.hits.slice(1).map((hit) => hit.velocity);
     for (const v of velocities) expect(v).toBeLessThan(0.7);
     h.send([0x89, 36, 0]);
+  });
+});
+
+// ── Per-hold repeat rate (kick 1/16 + hat 1/8T simultaneously) ───────────
+
+describe("NoteRepeatController — per-hold rate", () => {
+  it("two holds with different pinned rates repeat on their own grids", () => {
+    const h = makeHarness(120); // 1/4 = 0.5 s, 1/16 = 0.125 s
+    h.controller.setRate("1/16");
+    h.transport.play(0);
+    h.controller.start("kick", "t1", "padA", 1, "1/4");
+    h.controller.start("hat", "t1", "padB", 1, "1/16");
+    for (let i = 0; i < 24; i++) h.advance(0.025);
+    const gapsFor = (padId: string) => {
+      const times = h.hits.filter((hit) => hit.padId === padId).map((hit) => hit.when);
+      return times.slice(1).map((t, i) => +(t - times[i]).toFixed(3));
+    };
+    const kickGaps = gapsFor("padA");
+    const hatGaps = gapsFor("padB");
+    // 0.6 s of advance fits one full 1/4 cycle plus the first repeat.
+    expect(kickGaps.length).toBeGreaterThanOrEqual(1);
+    expect(hatGaps.length).toBeGreaterThan(2);
+    for (const gap of kickGaps) expect(gap).toBeCloseTo(0.5, 1);
+    for (const gap of hatGaps) expect(gap).toBeCloseTo(0.125, 1);
+    h.controller.stopAll();
+  });
+
+  it("a pinned hold keeps its rate when the global default changes; unpinned follows", () => {
+    const h = makeHarness(120);
+    h.controller.setRate("1/16");
+    h.transport.play(0);
+    h.controller.start("pinned", "t1", "padA", 1, "1/4");
+    h.controller.start("follower", "t1", "padB", 1); // inherits 1/16
+    h.controller.setRate("1/8"); // global switch mid-hold
+    for (let i = 0; i < 24; i++) h.advance(0.025);
+    const gapsFor = (padId: string) => {
+      const times = h.hits.filter((hit) => hit.padId === padId).map((hit) => hit.when);
+      return times.slice(1).map((t, i) => +(t - times[i]).toFixed(3));
+    };
+    // Pinned 1/4 keeps 0.5 s spacing; the follower moved to 1/8 (0.25 s).
+    for (const gap of gapsFor("padA")) expect(gap).toBeCloseTo(0.5, 1);
+    for (const gap of gapsFor("padB")) expect(gap).toBeCloseTo(0.25, 1);
+    h.controller.stopAll();
+  });
+
+  it("free-run mode honours the per-hold rate too", () => {
+    const h = makeHarness(120);
+    h.controller.setRate("1/16");
+    h.controller.start("kick", "t1", "padA", 1, "1/4"); // 0.5 s spacing stopped
+    h.advance(1.1);
+    const times = h.hits.map((hit) => hit.when);
+    expect(times.length).toBeGreaterThanOrEqual(3);
+    const gaps = times.slice(1).map((t, i) => +(t - times[i]).toFixed(3));
+    for (const gap of gaps) expect(gap).toBeCloseTo(0.5, 1);
+    h.controller.stop("kick");
+  });
+
+  it("MIDI note-on with rate off fires one hit and leaves no hold (capture funnel path)", () => {
+    const h = makeMidiHarness();
+    h.controller.setRate("off");
+    h.send([0x99, 36, 100]);
+    expect(h.hits.length).toBe(1);
+    expect(h.hits[0].velocity).toBeCloseTo(100 / 127, 3);
+    expect(h.controller.isHolding("midi:10:36")).toBe(false);
+    h.send([0x89, 36, 0]); // note-off after a single hit — safe no-op
+    expect(h.controller.size).toBe(0);
   });
 });

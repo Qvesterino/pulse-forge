@@ -53,6 +53,9 @@ interface ActiveHold {
   index: number;
   /** Live aftertouch (0..1) — raises the effective base, never lowers it. */
   pressure: number | null;
+  /** This hold's division — inherited from the global default or pinned per pad. */
+  rate: Exclude<RepeatRate, "off">;
+  ratePinned: boolean;
   /** Next grid tick while the transport plays (null = needs re-anchor). */
   nextTick: number | null;
   /** Next audio-clock time while the transport is stopped (null otherwise). */
@@ -100,10 +103,13 @@ export class NoteRepeatController {
       this.stopAll();
       return;
     }
-    // Re-anchor every hold so the new division takes effect on the next
-    // repeat instead of fighting the old phase.
+    // Re-anchor every hold that INHERITS the global division so the new
+    // default takes effect on its next repeat. Per-pad pinned holds keep
+    // their own rate (that is what pinning means).
     for (const key of [...this.holds.keys()]) {
       const hold = this.holds.get(key)!;
+      if (hold.ratePinned) continue;
+      hold.rate = rate;
       this.anchor(hold, key);
     }
   }
@@ -141,15 +147,27 @@ export class NoteRepeatController {
   /**
    * Pad-down. Fires the first hit immediately (index 0 = `base` velocity),
    * then repeats on the grid while held. Callers must pair with `stop(key)`.
+   * `pinnedRate` gives THIS hold its own division (kick 1/16 while the hat
+   * rolls 1/8T); without it the hold inherits the global default.
    */
-  start(key: string, trackId: string, padId: string, base: number): void {
+  start(key: string, trackId: string, padId: string, base: number, pinnedRate?: Exclude<RepeatRate, "off">): void {
     if (this.rate === "off") {
       // Still fire the single hit so callers can route every pad-down here.
       this.deps.fire(trackId, padId, Math.min(1, Math.max(0, base)), this.deps.getAudioTime() + 0.005);
       return;
     }
     const now = this.deps.getAudioTime();
-    const hold: ActiveHold = { trackId, padId, base, index: 0, pressure: null, nextTick: null, nextTime: null };
+    const hold: ActiveHold = {
+      trackId,
+      padId,
+      base,
+      index: 0,
+      pressure: null,
+      rate: pinnedRate ?? this.rate,
+      ratePinned: pinnedRate !== undefined,
+      nextTick: null,
+      nextTime: null,
+    };
     this.holds.set(key, hold);
     this.deps.fire(trackId, padId, repeatVelocity(base, 0, this.falloff), now + 0.005);
     hold.index = 1;
@@ -171,9 +189,8 @@ export class NoteRepeatController {
   }
 
   private anchor(hold: ActiveHold, _key: string): void {
-    if (this.rate === "off") return;
     const transport = this.deps.getTransport();
-    const rateTicks = rateTicksOf(this.rate);
+    const rateTicks = rateTicksOf(hold.rate);
     if (transport.playing) {
       const position = Math.max(0, transport.position);
       hold.nextTick = (Math.floor(position / rateTicks) + 1) * rateTicks;
@@ -189,9 +206,9 @@ export class NoteRepeatController {
     const transport = this.deps.getTransport();
     const now = this.deps.getAudioTime();
     const horizon = now + HORIZON_SECONDS;
-    const rateTicks = rateTicksOf(this.rate);
-    const rateSec = rateTicks * transport.secondsPerTick;
     for (const hold of this.holds.values()) {
+      const rateTicks = rateTicksOf(hold.rate);
+      const rateSec = rateTicks * transport.secondsPerTick;
       // Aftertouch raises the effective base; it never reduces velocity below
       // the note-on hit (`max`), so soft hits stay soft until squeezed.
       const base = hold.pressure !== null ? Math.max(hold.base, hold.pressure) : hold.base;

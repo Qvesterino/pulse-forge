@@ -281,12 +281,13 @@ export class MidiInput {
   }
 
   /**
-   * One drum hit. With Note Repeat armed, a hold key routes through the
-   * controller — the first hit fires immediately, repeats follow on the
-   * grid until note-off.
+   * One drum hit. Every hit routes through the Note Repeat controller: with
+   * a rate armed the hold repeats until note-off; with it off the controller
+   * still fires the single hit — which is what feeds the passive capture
+   * ring, so performed MIDI hits are capturable too.
    */
   private drumHit(track: DrumTrack, pad: DrumTrack["pads"][number], velocity: number, when: number, key: string): void {
-    if (this.noteRepeat && this.noteRepeat.currentRate !== "off") {
+    if (this.noteRepeat) {
       this.noteRepeat.start(key, track.id, pad.id, velocity);
       return;
     }

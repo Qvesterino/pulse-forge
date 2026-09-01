@@ -4546,3 +4546,30 @@ export function applyUltinaPreset(
     undo: (d) => apply(d, previousParams),
   };
 }
+
+/** Apply a Mix Assistant proposal (module toggles + param changes) in ONE undoable gesture. */
+export function applyUltinaProposal(
+  doc: ProjectDocument,
+  trackId: string,
+  fxId: string,
+  label: string,
+  toggles: { moduleType: string; enabled: boolean }[],
+  changes: { parameterId: string; value: number }[],
+): Command {
+  const target = trackEffectsOf(doc, trackId).find((f) => f.id === fxId);
+  if (!target || target.type !== "ultina") throw new Error(`Ultina effect ${fxId} not found`);
+  const nextParams = { ...target.params };
+  for (const t of toggles) nextParams[`${t.moduleType}.enabled`] = t.enabled ? 1 : 0;
+  for (const c of changes) nextParams[c.parameterId] = c.value;
+  const previousParams = { ...target.params };
+  const apply = (d: ProjectDocument, values: Record<string, number>): ProjectDocument =>
+    withTrackEffects(d, trackId, (effects) =>
+      effects.map((f) => (f.id === fxId ? { ...f, params: { ...values } } : f)),
+    );
+  return {
+    type: "applyUltinaProposal",
+    label,
+    execute: (d) => apply(d, nextParams),
+    undo: (d) => apply(d, previousParams),
+  };
+}

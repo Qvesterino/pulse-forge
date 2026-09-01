@@ -309,6 +309,9 @@ export function openProject(core: CoreServices, initial: ProjectDocument, option
   // Live Note Repeat: pad/QWERTY/MIDI holds re-fire a drum pad on a grid
   // division. The fire callback resolves the pad fresh on every hit so mutes
   // and track deletions apply mid-hold without the controller knowing.
+  // Every live hit — single or repeat — lands in the passive capture ring at
+  // its grid tick, so "Capture last take" stamps performed fills as steps
+  // (the ring previously only heard pattern playback from the scheduler).
   const noteRepeat = new NoteRepeatController({
     getTransport: () => transport,
     getAudioTime: () => engine.currentTime,
@@ -318,6 +321,12 @@ export function openProject(core: CoreServices, initial: ProjectDocument, option
       const pad = track.pads.find((p) => p.id === padId);
       if (!pad || pad.mute) return;
       engine.trigger(trackId, pad, when, velocity);
+      capture.recordEvent({
+        trackId,
+        padId,
+        velocity,
+        tick: Math.max(0, Math.round(transport.tickAt(when))),
+      });
     },
   });
   midi.attachNoteRepeat(noteRepeat);

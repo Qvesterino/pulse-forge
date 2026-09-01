@@ -51,6 +51,16 @@ const FILES = [
   "dsp/modules/transientModule.ts",
   "dsp/modules/unmaskModule.ts",
   "presets/factoryPresets.ts",
+  "analysis/assistant.ts",
+  "analysis/explanation.ts",
+  "analysis/featureExtractor.ts",
+  "analysis/index.ts",
+  "analysis/instrumentClassifier.ts",
+  "analysis/mixAssistant.ts",
+  "analysis/proposalEngine.ts",
+  "analysis/targetLibrary.ts",
+  "analysis/tonalBalance.ts",
+  "analysis/trackEnhance.ts",
 ];
 
 const HEADER = `/* eslint-disable */
@@ -69,12 +79,16 @@ const HEADER = `/* eslint-disable */
 
 /** Mechanical transforms — extend only with type-marker fixes. */
 function applyTransforms(source) {
+  // Analysis-layer unused locals (upstream tsconfig is laxer than ours).
   return source
     // AutoGainReading appears last in its import list (no trailing comma).
     .replace(
       "import { AutoGainController, AutoGainReading } from",
       "import { AutoGainController, type AutoGainReading } from",
-    );
+    )
+    .replace(/const octaveBands = /, "const _octaveBands = ")
+    .replace(/const maxBlockSize = /, "const _maxBlockSize = ")
+    .replace(/const avgEnergy = /, "const _avgEnergy = ");
 }
 
 for (const rel of FILES) {

@@ -2,6 +2,17 @@ import { useMemo, useState } from "react";
 import { ALL_PARAMS, tryGetParamDef } from "../effects/ultina-core/contracts/parameterSchema";
 import { DEFAULT_MODULE_ORDER } from "../effects/ultina-core/contracts/state";
 import { FACTORY_PRESETS } from "../effects/ultina-core/presets/factoryPresets";
+import { analyzeTrack } from "../effects/ultina-core/analysis/mixAssistant";
+import {
+  ASSISTANT_CHARACTERS,
+  ASSISTANT_INTENSITIES,
+  INSTRUMENT_LABELS,
+  type AssistantCharacter,
+  type AssistantIntensity,
+} from "../effects/ultina-core/analysis/assistant";
+import { getExplanationForLocale } from "../effects/ultina-core/analysis/explanation";
+import { renderTrack } from "../rendering/track-renderer";
+import { useDoc, useServices } from "./context";
 import { Slider } from "./controls";
 
 const MODULE_LABELS: Record<string, string> = {
@@ -48,18 +59,33 @@ function formatUnit(value: number, unit: string): string {
  * module gets a dedicated 12-band editor with a response-curve sketch.
  */
 export function UltinaPanel({
+  trackId,
   params,
   degraded,
   onParam,
   onApplyPreset,
+  onApplyProposal,
 }: {
+  trackId: string;
   params: Record<string, number>;
   degraded?: boolean;
   onParam: (paramId: string, value: number) => void;
   onApplyPreset: (presetName: string, presetParams: Record<string, number>) => void;
+  onApplyProposal: (
+    label: string,
+    toggles: { moduleType: string; enabled: boolean }[],
+    changes: { parameterId: string; value: number }[],
+  ) => void;
 }) {
+  const services = useServices();
+  const doc = useDoc();
   const [selectedModule, setSelectedModule] = useState<string>("comp");
   const [selectedEqBand, setSelectedEqBand] = useState(0);
+  const [assistBusy, setAssistBusy] = useState<string | null>(null);
+  const [assistError, setAssistError] = useState<string | null>(null);
+  const [assistSummary, setAssistSummary] = useState<string[] | null>(null);
+  const [character, setCharacter] = useState<AssistantCharacter>("punchy");
+  const [intensity, setIntensity] = useState<AssistantIntensity>("balanced");
 
   const enabled = (mod: string) => (params[`${mod}.enabled`] ?? 0) >= 0.5;
 
@@ -90,6 +116,61 @@ export function UltinaPanel({
 
   const valueOf = (id: string): number => params[id] ?? tryGetParamDef(id)?.defaultValue ?? 0;
 
+  // ── MIX ASSIST: render this track offline → analyze → propose → apply ──
+  const runMixAssist = async () => {
+    if (assistBusy) return;
+    setAssistError(null);
+    setAssistSummary(null);
+    try {
+      setAssistBusy("Rendering track…");
+      const buffer = await renderTrack(doc, trackId, services.bank, {
+        mode: "song",
+        sampleRate: 44100,
+        tailSeconds: 0.5,
+      });
+      setAssistBusy("Analyzing…");
+      // Yield so the busy label paints before the (sync, heavy) analysis.
+      await new Promise((r) => setTimeout(r, 30));
+      const result = analyzeTrack({
+        channels: [buffer.getChannelData(0), buffer.getChannelData(1)],
+        sampleRate: buffer.sampleRate,
+        character,
+        intensity,
+        minimumDuration: 2,
+      });
+      if (result.kind === "insufficient") {
+        setAssistError(`Not enough material: ${result.reason}`);
+        return;
+      }
+      if (result.kind === "error") {
+        setAssistError(result.message);
+        return;
+      }
+      const proposal = result.proposal;
+      onApplyProposal(
+        `Mix assist (${INSTRUMENT_LABELS[proposal.instrument] ?? proposal.instrument})`,
+        proposal.moduleToggles.map((t) => ({ moduleType: t.moduleType, enabled: t.enabled })),
+        proposal.changes.map((c) => ({ parameterId: c.parameterId, value: c.value })),
+      );
+      // Human summary in Slovak (the vendored plugin ships sk explanations).
+      const lines: string[] = [
+        `Nástroj: ${INSTRUMENT_LABELS[proposal.instrument] ?? proposal.instrument} · ${proposal.analyzedDuration.toFixed(1)}s`,
+      ];
+      for (const t of proposal.moduleToggles) {
+        lines.push(`${MODULE_LABELS[t.moduleType] ?? t.moduleType} ${t.enabled ? "ON" : "OFF"} — ${getExplanationForLocale(t.reasonCode, "sk")}`);
+      }
+      for (const c of proposal.changes.slice(0, 6)) {
+        lines.push(`${c.parameterId} → ${formatUnit(c.value, tryGetParamDef(c.parameterId)?.unit ?? "generic")} — ${getExplanationForLocale(c.reasonCode, "sk")}`);
+      }
+      if (proposal.changes.length > 6) lines.push(`…a ${proposal.changes.length - 6} ďalších zmien`);
+      setAssistSummary(lines);
+    } catch (err) {
+      setAssistError(`Mix assist failed: ${String(err instanceof Error ? err.message : err)}`);
+    } finally {
+      setAssistBusy(null);
+    }
+  };
+
   // EQ curve sketch: bells/shelves from enabled band params. A visual
   // approximation (log-freq x, gain-mapped y) — the DSP itself is exact.
   const eqBands = useMemo(() => {
@@ -113,6 +194,55 @@ export function UltinaPanel({
   return (
     <div className="fxeq-panel ultina-panel" aria-label="Ultina module editor">
       {degraded && <div className="fxeq-degraded">AudioWorklet unavailable — Ultina is bypassed (1:1 signal)</div>}
+
+      {/* ── MIX ASSIST ─────────────────────────────────────────────── */}
+      <div className="ultina-assist" aria-label="Mix assistant">
+        <div className="ultina-assist-head">
+          <span className="ultina-assist-title">MIX ASSIST</span>
+          <button
+            type="button"
+            className="btn btn-export"
+            disabled={!!assistBusy}
+            title="Render this track, analyze it and propose mix settings"
+            onClick={() => void runMixAssist()}
+          >
+            {assistBusy ?? "⚡ MIX ASSIST"}
+          </button>
+        </div>
+        <div className="ultina-assist-opts">
+          <label className="collab-field">
+            <span>CHARACTER</span>
+            <select value={character} onChange={(e) => setCharacter(e.target.value as AssistantCharacter)}>
+              {ASSISTANT_CHARACTERS.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="collab-field">
+            <span>INTENSITY</span>
+            <select value={intensity} onChange={(e) => setIntensity(e.target.value as AssistantIntensity)}>
+              {ASSISTANT_INTENSITIES.map((i) => (
+                <option key={i} value={i}>
+                  {i}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        {assistError && <div className="fxeq-degraded">{assistError}</div>}
+        {assistSummary && (
+          <div className="ultina-assist-summary">
+            {assistSummary.map((line, i) => (
+              <div key={i} className="ultina-assist-line">
+                {line}
+              </div>
+            ))}
+            <div className="ultina-assist-note">Aplikované ako jedno gesto — Ctrl+Z vráti všetko.</div>
+          </div>
+        )}
+      </div>
 
       <div className="fxeq-preset-row">
         <select

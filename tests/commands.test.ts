@@ -14,6 +14,7 @@ import {
   sliceToPads,
   applyFxEqPreset,
   applyUltinaPreset,
+  applyUltinaProposal,
   setUltinaParam,
   setFxEqParam,
   createInstrumentTrack,
@@ -950,6 +951,40 @@ describe("applyUltinaPreset / setUltinaParam", () => {
     // Defaults filled in for everything else (e.g. globals).
     expect(after.params["global.inputGainDb"]).toBe(0);
     // Undo restores the exact pre-preset params.
+    const undone = cmd.undo(next);
+    const before = undone.tracks.find((t) => t.id === inst.id)!.effects.find((f) => f.type === "ultina")!;
+    expect(before.params).toEqual(fx.params);
+  });
+});
+
+describe("applyUltinaProposal (mix assistant)", () => {
+  const doc = createDefaultProject();
+  const inst = doc.tracks.find((t) => t.kind === "instrument")!;
+  const withFx = addEffect(doc, inst.id, "ultina").execute(doc);
+  const fx = withFx.tracks.find((t) => t.id === inst.id)!.effects.find((f) => f.type === "ultina")!;
+
+  it("applies module toggles + param changes in ONE undoable gesture", () => {
+    const cmd = applyUltinaProposal(
+      withFx,
+      inst.id,
+      fx.id,
+      "Mix assist (Drums)",
+      [
+        { moduleType: "comp", enabled: true },
+        { moduleType: "gate", enabled: false },
+      ],
+      [
+        { parameterId: "comp.thresholdDb", value: -18 },
+        { parameterId: "global.inputGainDb", value: 3 },
+      ],
+    );
+    const next = cmd.execute(withFx);
+    const after = next.tracks.find((t) => t.id === inst.id)!.effects.find((f) => f.type === "ultina")!;
+    expect(after.params["comp.enabled"]).toBe(1);
+    expect(after.params["gate.enabled"]).toBe(0);
+    expect(after.params["comp.thresholdDb"]).toBe(-18);
+    expect(after.params["global.inputGainDb"]).toBe(3);
+    // Undo restores the exact pre-proposal params.
     const undone = cmd.undo(next);
     const before = undone.tracks.find((t) => t.id === inst.id)!.effects.find((f) => f.type === "ultina")!;
     expect(before.params).toEqual(fx.params);

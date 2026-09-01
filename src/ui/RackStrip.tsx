@@ -8,6 +8,15 @@ import { FALLOFF_MODES, REPEAT_RATES, type FalloffMode, type RepeatRate } from "
 /** Two-row QWERTY layout for the 16 pads (MPC style). Plain letters only — no clash with shortcuts (digits, Alt+letters, Ctrl+letters). */
 const PAD_KEYS = ["q", "w", "e", "r", "t", "y", "u", "i", "a", "s", "d", "f", "g", "h", "j", "k"] as const;
 
+/** Divisions a pad can pin individually (global "off" is the master switch, not an option here). */
+const PINNABLE_RATES = ["1/4", "1/8", "1/16", "1/8T", "1/16T"] as const;
+type PinnableRate = (typeof PINNABLE_RATES)[number];
+
+/** A pad's pinned rate wins; otherwise the global default. (A function breaks TS's const alias-narrowing, which otherwise types this as PinnableRate.) */
+function effectiveRateOf(pinned: RepeatRate | undefined, globalRate: RepeatRate): RepeatRate {
+  return pinned ?? globalRate;
+}
+
 export function RackStrip({
   track,
   selectedPadId,
@@ -23,6 +32,18 @@ export function RackStrip({
   const playheadStep = usePlayheadStep(services.transport, doc);
   const [repeatRate, setRepeatRate] = useState<RepeatRate>("off");
   const [falloff, setFalloff] = useState<FalloffMode>("decay");
+  /** Per-pad pinned divisions — kick can roll 1/16 while the hat rolls 1/8T. */
+  const [pinnedRates, setPinnedRates] = useState<Record<string, PinnableRate>>({});
+  const [rateMenu, setRateMenu] = useState<{ padId: string; x: number; y: number } | null>(null);
+
+  // Close the per-pad rate menu on any outside press (same contract as the
+  // arrangement context menus).
+  useEffect(() => {
+    if (!rateMenu) return;
+    const close = () => setRateMenu(null);
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, [rateMenu]);
 
   const triggerPad = (padId: string) => {
     const pad = track.pads.find((p) => p.id === padId);
@@ -39,7 +60,7 @@ export function RackStrip({
   const padDown = (padId: string, baseVelocity: number, holdKey: string) => {
     const pad = track.pads.find((p) => p.id === padId);
     if (!pad) return;
-    services.noteRepeat.start(holdKey, track.id, padId, baseVelocity);
+    services.noteRepeat.start(holdKey, track.id, padId, baseVelocity, pinnedRates[padId]);
     const peak = pad.gain * baseVelocity;
     setPeaks((prev) => ({ ...prev, [padId]: peak }));
   };
@@ -169,19 +190,25 @@ export function RackStrip({
             ))}
           </select>
         </label>
-        <span className="rack-header-hint">hold pad / QWERTYUI·ASDFGHJK</span>
+        <span className="rack-header-hint">hold pad · right-click = pad rate · QWERTYUI·ASDFGHJK</span>
       </div>
       {track.pads.map((pad, index) => {
         const hit = playheadStep >= 0 && (pattern.rows[pad.id]?.[playheadStep] ?? 0) > 0;
         const selected = pad.id === selectedPadId;
         const holdKey = padKeyOf(pad.id);
+        const pinned: RepeatRate | undefined = pinnedRates[pad.id];
+        const effectiveRate = effectiveRateOf(pinned, repeatRate);
         return (
           <button
             key={pad.id}
             type="button"
             className={`pad${hit ? " hit" : ""}${selected ? " selected" : ""}`}
             style={{ "--pad-color": categoryColor(assetCategoryOf(pad)) } as React.CSSProperties}
-            title={`${pad.name} — hold to play${repeatRate !== "off" ? ` (repeats ${repeatRate}, velocity ${falloff})` : ""} — key ${PAD_KEYS[index]?.toUpperCase() ?? "—"}`}
+            title={`${pad.name} — hold to play${effectiveRate !== "off" ? ` (repeats ${effectiveRate}, velocity ${falloff})` : ""} — key ${PAD_KEYS[index]?.toUpperCase() ?? "—"} — right-click for a per-pad rate`}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              setRateMenu({ padId: pad.id, x: event.clientX, y: event.clientY });
+            }}
             onPointerDown={(event) => {
               event.preventDefault();
               onSelectPad(pad.id);
@@ -201,6 +228,7 @@ export function RackStrip({
           >
             <span className="pad-index">{index + 1}</span>
             <span className="pad-name">{pad.name}</span>
+            {pinned && <span className="pad-rate-badge">{pinned}</span>}
             {pad.synth && <span className="pad-synth-badge">{pad.synth.type.slice(0, 3).toUpperCase()}</span>}
             <span className="pad-meter" aria-hidden="true">
               <span className="pad-meter-fill" style={{ height: `${Math.min(100, (peaks[pad.id] ?? 0) * 100)}%` }} />
@@ -208,6 +236,45 @@ export function RackStrip({
           </button>
         );
       })}
+      {rateMenu && (
+        <div
+          className="context-menu"
+          role="menu"
+          aria-label="Pad repeat rate"
+          style={{ left: rateMenu.x, top: rateMenu.y }}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <div className="context-menu-header">PAD REPEAT RATE</div>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setPinnedRates((prev) => {
+                const next = { ...prev };
+                delete next[rateMenu.padId];
+                return next;
+              });
+              setRateMenu(null);
+            }}
+          >
+            Inherit global ({repeatRate})
+          </button>
+          {PINNABLE_RATES.map((rate) => (
+            <button
+              key={rate}
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setPinnedRates((prev) => ({ ...prev, [rateMenu.padId]: rate }));
+                setRateMenu(null);
+              }}
+            >
+              {rate}
+              {pinnedRates[rateMenu.padId] === rate ? " ✓" : ""}
+            </button>
+          ))}
+        </div>
+      )}
     </section>
   );
 }

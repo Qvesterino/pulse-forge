@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { screen } from "@testing-library/react";
+import { screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { EffectRack } from "../../src/ui/EffectRack";
+import { UltinaPanel } from "../../src/ui/UltinaPanel";
 import { renderWithContext, mockServices } from "../helpers";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 
@@ -181,10 +182,43 @@ describe("EffectRack — Ultina panel", () => {
   it("EQ module shows the 12-band editor with response sketch", async () => {
     const user = userEvent.setup();
     const { doc, track } = ultinaDoc();
-    renderWithContext(<EffectRack track={track} />, { services: mockServices(doc) });
+    const services = mockServices(doc);
+    renderWithContext(<EffectRack track={track} />, { services });
     await user.click(screen.getByRole("button", { name: "EQ" }));
+    // The store mock doesn't mutate the doc — assert the enable command.
+    await user.click(screen.getByRole("button", { name: "OFF" }));
+    const executed = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.map(
+      (call: unknown[]) => call[0] as { type: string; label: string },
+    );
+    expect(executed.some((c) => c.type === "setUltinaParam" && c.label.includes("eq.enabled"))).toBe(true);
+  });
+});
+
+describe("UltinaPanel — EQ band editor (direct render)", () => {
+  it("renders the response sketch and band params when EQ is enabled", () => {
+    const onParam = vi.fn();
+    const onApplyPreset = vi.fn();
+    const params: Record<string, number> = {
+      "eq.enabled": 1,
+      "eq.band0.enabled": 1,
+      "eq.band0.freqHz": 80,
+      "eq.band0.gainDb": 6,
+      "eq.band0.q": 1,
+      "eq.band0.shape": 0,
+    };
+    renderWithContext(
+      <UltinaPanel
+        trackId="t-ult"
+        params={params}
+        onParam={onParam}
+        onApplyPreset={onApplyPreset}
+        onApplyProposal={vi.fn()}
+      />,
+      { services: mockServices() },
+    );
+    // Select EQ, and since params enable it, the sketch renders.
+    fireEvent.click(screen.getAllByRole("button", { name: "EQ" })[0]);
     expect(screen.getByRole("img", { name: "EQ response sketch" })).toBeInTheDocument();
-    // 12 band chips (BAND toggle shows "BAND 1 — OFF" initially).
     expect(screen.getByRole("button", { name: /BAND 1/ })).toBeInTheDocument();
   });
 });

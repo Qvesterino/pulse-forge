@@ -13,6 +13,7 @@ import {
   setFxEqParam,
   setUltinaParam,
   applyUltinaPreset,
+  applyUltinaProposal,
   toggleEffectBypass,
 } from "../commands/commands";
 import { CORE_EFFECT_ORDER, EFFECT_DEFS } from "../effects/registry";
@@ -283,6 +284,7 @@ function Device({
       )}
       {fx.type === "ultina" && (
         <UltinaPanel
+          trackId={track.id}
           params={fx.params}
           degraded={!!fallbackReason}
           onParam={(paramId, value) =>
@@ -290,6 +292,9 @@ function Device({
           }
           onApplyPreset={(name, presetParams) =>
             services.store.execute(applyUltinaPreset(doc, track.id, fx.id, name, presetParams))
+          }
+          onApplyProposal={(label, toggles, changes) =>
+            services.store.execute(applyUltinaProposal(doc, track.id, fx.id, label, toggles, changes))
           }
         />
       )}
