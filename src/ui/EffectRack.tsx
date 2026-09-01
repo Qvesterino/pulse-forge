@@ -4,14 +4,17 @@ import type { EffectType, Track } from "../project-model/types";
 import {
   addEffect,
   applyEffectPreset,
+  applyFxEqPreset,
   moveEffect,
   removeEffect,
   setEffectParam,
   setEffectSidechainSource,
   setEffectSteps,
+  setFxEqParam,
   toggleEffectBypass,
 } from "../commands/commands";
 import { CORE_EFFECT_ORDER, EFFECT_DEFS } from "../effects/registry";
+import { FxEqPanel } from "./FxEqPanel";
 import { presetsForEffect } from "../effects/presets";
 import { registerRaf, unregisterRaf } from "../services/rafLoop";
 import { Slider } from "./controls";
@@ -261,6 +264,18 @@ function Device({
           max={1}
           ariaLabel={`Stutter gate pattern for ${track?.name ?? "track"}`}
           onCommit={(steps) => services.store.execute(setEffectSteps(doc, track.id, fx.id, steps))}
+        />
+      )}
+      {fx.type === "fxeq" && (
+        <FxEqPanel
+          params={fx.params}
+          degraded={!!fallbackReason}
+          onParam={(fullId, value) =>
+            services.store.execute(setFxEqParam(doc, track.id, fx.id, fullId, value))
+          }
+          onApplyPreset={(name, presetParams) =>
+            services.store.execute(applyFxEqPreset(doc, track.id, fx.id, name, presetParams))
+          }
         />
       )}
       <div className="fx-device-params">

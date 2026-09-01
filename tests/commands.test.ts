@@ -12,6 +12,8 @@ import {
   chopSampleToPads,
   createDrumTrack,
   sliceToPads,
+  applyFxEqPreset,
+  setFxEqParam,
   createInstrumentTrack,
   createPattern,
   createScene,
@@ -875,5 +877,45 @@ describe("deletePattern dangling-reference cleanup (regression)", () => {
     expect(store.doc.activePatternId).toBe(patternB.id);
     store.undo();
     expect(store.doc.activePatternId).toBe(prev);
+  });
+});
+
+describe("applyFxEqPreset / setFxEqParam", () => {
+  const doc = createDefaultProject();
+  const inst = doc.tracks.find((t) => t.kind === "instrument")!;
+  const withFx = addEffect(doc, inst.id, "fxeq").execute(doc);
+  const fx = withFx.tracks.find((t) => t.id === inst.id)!.effects.find((f) => f.type === "fxeq")!;
+
+  it("applyFxEqPreset replaces params with schema defaults + preset in ONE undoable gesture", () => {
+    const cmd = applyFxEqPreset(withFx, inst.id, fx.id, "Test Preset", {
+      bandCount: 4,
+      "band2.satEnabled": 1,
+      "band2.satDriveDb": 12,
+    });
+    const next = cmd.execute(withFx);
+    const after = next.tracks.find((t) => t.id === inst.id)!.effects.find((f) => f.type === "fxeq")!;
+    expect(after.params.bandCount).toBe(4);
+    expect(after.params["band2.satEnabled"]).toBe(1);
+    expect(after.params["band2.satDriveDb"]).toBe(12);
+    // Schema defaults filled in for everything else (sat disabled on band 3).
+    expect(after.params["band3.satEnabled"]).toBe(0);
+    // Undo restores the pre-preset params exactly.
+    const undone = cmd.undo(next);
+    const before = undone.tracks.find((t) => t.id === inst.id)!.effects.find((f) => f.type === "fxeq")!;
+    expect(before.params).toEqual(fx.params);
+  });
+
+  it("setFxEqParam accepts dotted band ids with schema clamping", () => {
+    const cmd = setFxEqParam(withFx, inst.id, fx.id, "band1.satDriveDb", 999);
+    const next = cmd.execute(withFx);
+    const after = next.tracks.find((t) => t.id === inst.id)!.effects.find((f) => f.type === "fxeq")!;
+    // satDriveDb tops out at +24 dB — clamped to the schema max, not stored raw.
+    expect(after.params["band1.satDriveDb"]).toBe(24);
+    // Undo restores the schema default (6 dB), not an absent key.
+    expect(cmd.undo(next).tracks.find((t) => t.id === inst.id)!.effects.find((f) => f.type === "fxeq")!.params["band1.satDriveDb"]).toBe(6);
+  });
+
+  it("setFxEqParam rejects ids outside the schema", () => {
+    expect(() => setFxEqParam(withFx, inst.id, fx.id, "band9.nope", 1)).toThrow();
   });
 });

@@ -6589,3 +6589,90 @@ html {
   padding: 12px 4px;
   text-align: center;
 }
+
+/* ── FXEQ panel (EQ-paint editor) ───────────────────────────────────────── */
+
+.fxeq-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: var(--bg-panel-2);
+  margin-bottom: 8px;
+}
+
+.fxeq-degraded {
+  font-size: 11px;
+  color: #f59e0b;
+  background: var(--accent-soft);
+  border-radius: 4px;
+  padding: 5px 8px;
+}
+
+.fxeq-preset-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.fxeq-preset-select {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  padding: 6px 8px;
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.fxeq-band-chips {
+  display: flex;
+  gap: 4px;
+}
+
+.fxeq-canvas-wrap {
+  height: 110px;
+  border-radius: 5px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  cursor: crosshair;
+}
+
+.fxeq-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.fxeq-module {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+}
+
+.fxeq-module-off {
+  opacity: 0.55;
+}
+
+.fxeq-module-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fxeq-module-tag {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #0e0f12;
+  border-radius: 3px;
+  padding: 2px 6px;
+}

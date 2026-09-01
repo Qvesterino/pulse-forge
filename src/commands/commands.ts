@@ -51,6 +51,7 @@ import {
 } from "../project-model/schema";
 import type { Pattern } from "../project-model/types";
 import { EFFECT_DEFS, clampEffectParam, defaultParamsOf } from "../effects/registry";
+import { buildSchema as buildFxEqSchema } from "../effects/fxeq-core/core/parameterSchema";
 import { INSTRUMENT_DEFS, clampInstrumentParam, defaultInstrumentParams } from "../instruments/registry";
 import type { InstrumentPreset } from "../presets/types";
 import type { EffectPreset } from "../effects/presets";
@@ -4437,4 +4438,58 @@ export function assistFill(doc: ProjectDocument, patternId: string, seed: string
   const pattern = doc.patterns.find((p) => p.id === patternId);
   if (!pattern) throw new Error(`Pattern ${patternId} not found`);
   return assistCommand("assistFill", `Fill ${pattern.name} (${seed})`, doc, patternId, { operation: "fill", seed });
+}
+
+/* ---------------- FXEQ per-band editing + presets ---------------- */
+
+/** Set any fxeq param — including dotted per-band ids ("band2.satDriveDb"). */
+export function setFxEqParam(
+  doc: ProjectDocument,
+  trackId: string,
+  fxId: string,
+  fullId: string,
+  value: number,
+): Command {
+  const target = trackEffectsOf(doc, trackId).find((f) => f.id === fxId);
+  if (!target || target.type !== "fxeq") throw new Error(`FXEQ effect ${fxId} not found`);
+  const schema = buildFxEqSchema(Math.round(target.params.bandCount ?? 6));
+  const def = schema.defs.find((d) => d.id === fullId);
+  if (!def) throw new Error(`FXEQ param ${fullId} not defined for ${Math.round(target.params.bandCount ?? 6)} bands`);
+  const clamped = Math.max(def.minValue, Math.min(def.maxValue, value));
+  const previous = target.params[fullId] ?? schema.defaultParams[fullId] ?? def.defaultValue;
+  const apply = (d: ProjectDocument, values: Record<string, number>): ProjectDocument =>
+    withTrackEffects(d, trackId, (effects) =>
+      effects.map((f) => (f.id === fxId ? { ...f, params: { ...f.params, ...values } } : f)),
+    );
+  return {
+    type: "setFxEqParam",
+    label: `FXEQ ${fullId}`,
+    execute: (d) => apply(d, { [fullId]: clamped }),
+    undo: (d) => apply(d, { [fullId]: previous }),
+  };
+}
+
+/** Apply an FXEQ preset in ONE undoable gesture: schema defaults + preset params. */
+export function applyFxEqPreset(
+  doc: ProjectDocument,
+  trackId: string,
+  fxId: string,
+  presetName: string,
+  presetParams: Record<string, number>,
+): Command {
+  const target = trackEffectsOf(doc, trackId).find((f) => f.id === fxId);
+  if (!target || target.type !== "fxeq") throw new Error(`FXEQ effect ${fxId} not found`);
+  const schema = buildFxEqSchema(Math.round(target.params.bandCount ?? 6));
+  const nextParams = { ...schema.defaultParams, ...presetParams };
+  const previousParams = { ...target.params };
+  const apply = (d: ProjectDocument, values: Record<string, number>): ProjectDocument =>
+    withTrackEffects(d, trackId, (effects) =>
+      effects.map((f) => (f.id === fxId ? { ...f, params: { ...values } } : f)),
+    );
+  return {
+    type: "applyFxEqPreset",
+    label: `FXEQ preset ${presetName}`,
+    execute: (d) => apply(d, nextParams),
+    undo: (d) => apply(d, previousParams),
+  };
 }
