@@ -7,11 +7,11 @@ Pulse Forge momentálne disponuje:
 
 | Sekcia | Počet | Kde |
 | --- | --- | --- |
-| Melodické inštrumenty (inštrumentová stopa) | **10** | `src/instruments/registry.ts` |
+| Melodické inštrumenty (inštrumentová stopa) | **13** | `src/instruments/registry.ts` |
 | Drum syntetizátory (pady bubnovej stopy) | **7** | `src/project-model/types.ts` + `src/audio-engine/synth-voices.ts` |
 | Veľké pluginy (vendored DSP rack) | **3** — FXEQ, Ultina, Ozvena | `src/effects/*-core/` |
 | Ostatné mixové FX (effect rack) | **32** | `src/effects/registry.ts` |
-| Factory presety | **119 inštrumentových + 12 bubnových** | `src/presets/factory.ts` |
+| Factory presety | **147 inštrumentových + 12 bubnových** | `src/presets/factory.ts` |
 
 ---
 
@@ -45,7 +45,8 @@ Prehrávanie sample z banky s transpozíciou okolo root noty.
 Klasické subtraction synth voicovanie: **OSC A + OSC B (detune) + sub osc −12 + noise** → per-voice SVF lowpass → amp.
 
 - OSC A/B: sine / triangle / saw / square, detune OSC B ±50 ct
-- CUTOFF, RESO, **FLT ENV** (velocity-citlivý filter sweep)
+- CUTOFF, RESO, **FILTER MODE: LP / BP / HP** (živá zmena aj počas hrania), **KEY TRK** (filter sleduje výšku noty — C4 je referencia)
+- **FLT ENV** (velocity-citlivý filter sweep)
 - **UNISON 1–8×** so SPREAD — detuned kópie OSC A roztvorené do sterea
 - LFO RATE/DEPTH — audio-rate wobble na cutoff
 - Plná ADSR obálka (attack/decay/sustain/release), LEVEL
@@ -125,6 +126,38 @@ Amapiano log drum: **3 inharmonické sine partiale** (pomer 1 / ~2,15 / ~3,8, dr
 - DECAY, DROP (pitch drop na transiente, velocity-citlivý)
 - TONE, BODY, HOLLOW (notch „dutosti"), GRIT
 - WIDTH, **GLIDE**, LEVEL
+
+### 1.11 Spectral Pad (`spectral`) — 6 hlasov
+Aditívny pad: až **8 sine partialov** na hlas, každý s vlastnou amplitúdou, decayom a priestorom.
+
+- PROFILE — amplitúdová krivka partialov: **Harmonic / Bright / Odd / Formant / Bell**
+- PARTIALS — počet partialov (2–8), hlasitosť je RMS-normalizovaná (zmena profilu neskáče v hlasitosti)
+- INHARM — inharmonické rozťahovanie (stiff-string `k·√(1+Bk²)`), zvonové charaktery
+- SHIMMER — deterministický per-partial detune (glassy rozjašenie)
+- SKEW — vyššie partialy doznievajú rýchlejšie (teplý tail)
+- ATTACK (do 4 s) / TAIL (do 8 s), CUTOFF/RESO, WIDTH (partialy roztvorené do sterea), LEVEL
+
+### 1.12 Vocal Chop (`vocalchop`) — 8 hlasov
+Sampler ladený na vocal chopy a talkboxové leady: sample hrá cez **paralelnú trojpásmovú formantovú banku** (F1/F2/F3 volené samohlásky).
+
+- VOWEL — samohláska **A / E / I / O / U** (Peterson–Barney formanty)
+- COLOR — suchý sample ↔ plná formantová farba
+- SHIFT — škálovanie formantov 0,7–1,5× (mužský ↔ chipmunk hlas)
+- SHARP — rezonancia formantových pásem (Q 4–13)
+- **MORPH** — automatická prechádzka formantov cez tabuľku samohlások počas noty („hovoriace" chopy)
+- TONE (LP), REVERSE, ATTACK/RELEASE, GAIN, ROOT
+- Defaultne dostane `factory.tonal.stab` sample, po pridaní stopy ihneď znie
+
+### 1.13 Drum Synth (`drumsynth`) — 8 hlasov
+Analógovo modelované bicie na inštrumentovej stope — **hrateľné chromaticky z piano rollu**. TYPE prepína 7 modelov:
+
+- **Kick** — sine s pitch envelope (TONE = začiatočná výška, BODY = dĺžka dropu), SNAP = click
+- **Snare** — 2 tónové osc (185/330 Hz) + noise cez ladený bandpass
+- **Hat C / Hat O** — 6 square osc v klasickom kovovom pomere 808 → bandpass + steep HP
+- **Clap** — noise bandpass s 3 pre-burstmi a telom
+- **Perc** — ladený sine s pitch dropom (bongo typ)
+- **Cowbell** — 2 square v klasickej racii 1 : 1,485
+- Spoločné: TUNE (±12 st), DECAY, TONE/SNAP/BODY (normalizované makrá reinterpretované každým modelom), DRIVE (tanh shaper), LEVEL — one-shot voicovanie, gates ignoruje
 
 ---
 
@@ -206,10 +239,13 @@ Presety sú čisté dáta (žiadne volania do audio engine) — idú cez command
 | Keys | 15 |
 | 808 Synth | 13 |
 | Texture Synth | 12 |
+| Drum Synth | 12 |
 | Sampler | 10 |
 | Wavetable Synth | 9 |
 | Pluck Synth | 9 |
+| Spectral Pad | 8 |
+| Vocal Chop | 8 |
 | Granular Synth | 7 |
 | Log Drum | 3 |
-| **Spolu inštrumenty** | **119** |
+| **Spolu inštrumenty** | **147** |
 | Drum bicie (kick, snare, hat, clap…) | 12 |

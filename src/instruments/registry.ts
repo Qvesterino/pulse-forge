@@ -98,16 +98,24 @@ function makeVoiceManager(limit: number) {
   return { voices, register, cleanup, findByPitch };
 }
 
+// UI filter modes: 0 = LP, 1 = BP, 2 = HP. The SVF worklet orders its mode
+// param 0=LP 1=HP 2=BP 3=Notch — map on the way in. The biquad fallback just
+// swaps its type, so live mode switches work identically on both paths.
+const FILTER_MODE_WORKLET = [0, 2, 1];
+const FILTER_MODE_BIQUAD = ["lowpass", "bandpass", "highpass"] as const;
+
 function createVoiceFilter(
   ctx: BaseAudioContext,
   initialCutoff: number,
   initialResonance: number,
+  modeIndex = 0,
 ): {
   input: AudioNode;
   output: AudioNode;
   frequency: AudioParam;
   resonance: AudioParam;
   isWorklet: boolean;
+  setMode(modeIndex: number): void;
   disconnect(): void;
 } {
   if (isWorkletReady("svFilter", ctx)) {
@@ -121,7 +129,7 @@ function createVoiceFilter(
     const resNorm = Math.min(1, Math.max(0, (initialResonance - 0.1) / 7.9));
     cutoffParam.value = initialCutoff;
     resParam.value = resNorm;
-    node.parameters.get("mode")!.value = 0;
+    node.parameters.get("mode")!.value = FILTER_MODE_WORKLET[modeIndex] ?? 0;
     node.parameters.get("drive")!.value = 0;
     node.parameters.get("mix")!.value = 1;
     const input = ctx.createGain();
@@ -133,6 +141,9 @@ function createVoiceFilter(
       frequency: cutoffParam,
       resonance: resParam,
       isWorklet: true,
+      setMode(m) {
+        node.parameters.get("mode")!.value = FILTER_MODE_WORKLET[m] ?? 0;
+      },
       disconnect() {
         input.disconnect();
         node.disconnect();
@@ -141,7 +152,7 @@ function createVoiceFilter(
     };
   }
   const filter = ctx.createBiquadFilter();
-  filter.type = "lowpass";
+  filter.type = FILTER_MODE_BIQUAD[modeIndex] ?? "lowpass";
   filter.frequency.value = initialCutoff;
   filter.Q.value = initialResonance;
   return {
@@ -150,6 +161,9 @@ function createVoiceFilter(
     frequency: filter.frequency,
     resonance: filter.Q,
     isWorklet: false,
+    setMode(m) {
+      filter.type = FILTER_MODE_BIQUAD[m] ?? "lowpass";
+    },
     disconnect() {
       filter.disconnect();
     },
@@ -193,6 +207,19 @@ const analog: InstrumentDefinition = {
     { id: "noiseLevel", label: "NOISE", min: 0, max: 0.5, default: 0.04, format: formatPct },
     { id: "cutoff", label: "CUTOFF", min: 80, max: 16000, default: 9000, unit: "Hz", format: formatHz },
     { id: "resonance", label: "RESO", min: 0.1, max: 12, default: 1, format: (v) => v.toFixed(2) },
+    {
+      id: "mode",
+      label: "FILTER",
+      min: 0,
+      max: 2,
+      default: 0,
+      options: [
+        { value: 0, label: "LP" },
+        { value: 1, label: "BP" },
+        { value: 2, label: "HP" },
+      ],
+    },
+    { id: "keytrack", label: "KEY TRK", min: 0, max: 1, default: 0.3, format: formatPct },
     { id: "filterEnv", label: "FLT ENV", min: 0, max: 1, default: 0.3, format: formatPct },
     { id: "unison", label: "UNISON", min: 1, max: 8, default: 1, format: (v) => `${Math.round(v)}×` },
     { id: "spread", label: "SPREAD", min: 0, max: 50, default: 0, unit: "ct", format: (v) => `${v.toFixed(0)} ct` },
@@ -219,9 +246,15 @@ const analog: InstrumentDefinition = {
     const p = { ...track.params };
     const { voices, register, cleanup, findByPitch } = makeVoiceManager(12);
 
-    const liveFilters = new Set<ReturnType<typeof createVoiceFilter>>();
-    const applyFilterLive = (fn: (f: ReturnType<typeof createVoiceFilter>) => void) => {
-      for (const f of liveFilters) fn(f);
+    // filter -> sounding pitch, so live CUTOFF moves respect KEYTRACK per note
+    const liveFilters = new Map<ReturnType<typeof createVoiceFilter>, number>();
+    // Keytrack: CUTOFF is tuned at C4; higher notes open the filter proportionally
+    const effCutoff = (base: number, pitch: number) => {
+      const trk = Math.max(0, Math.min(1, p.keytrack ?? 0.3));
+      return Math.max(60, Math.min(18000, base * Math.pow(midiToFreq(pitch) / midiToFreq(60), trk)));
+    };
+    const applyFilterLive = (fn: (f: ReturnType<typeof createVoiceFilter>, pitch: number) => void) => {
+      for (const [f, pitch] of liveFilters) fn(f, pitch);
     };
 
     const runtime: InstrumentRuntime = {
@@ -244,15 +277,16 @@ const analog: InstrumentDefinition = {
         amp.gain.setTargetAtTime(0.0001, off, release / 4);
         amp.connect(output);
 
-        const filter = createVoiceFilter(ctx, p.cutoff ?? 9000, p.resonance ?? 1);
-        const base = p.cutoff ?? 9000;
+        const filterMode = Math.max(0, Math.min(2, Math.round(p.mode ?? 0)));
+        const filter = createVoiceFilter(ctx, effCutoff(p.cutoff ?? 9000, pitch), p.resonance ?? 1, filterMode);
+        liveFilters.set(filter, pitch);
+        const base = effCutoff(p.cutoff ?? 9000, pitch);
         const peakCut = Math.min(18000, base + (p.filterEnv ?? 0.3) * velocity * 6000);
         filter.frequency.setValueAtTime(Math.max(40, base * 0.6), when);
         filter.frequency.linearRampToValueAtTime(peakCut, when + attack);
         filter.frequency.setTargetAtTime(base, when + attack, decay / 3);
         setFilterResonance(filter, p.resonance ?? 1);
         filter.output.connect(amp);
-        liveFilters.add(filter);
 
         const oscs: OscillatorNode[] = [];
         const lfoNodes: OscillatorNode[] = [];
@@ -364,13 +398,16 @@ const analog: InstrumentDefinition = {
       },
       setParameter(id, value) {
         p[id] = value;
-        if (id === "cutoff") applyFilterLive((f) => f.frequency.setTargetAtTime(value, ctx.currentTime, 0.02));
+        if (id === "cutoff")
+          applyFilterLive((f, pitch) => f.frequency.setTargetAtTime(effCutoff(value, pitch), ctx.currentTime, 0.02));
         if (id === "resonance") applyFilterLive((f) => setFilterResonance(f, value, ctx.currentTime, 0.02));
+        if (id === "mode") applyFilterLive((f) => f.setMode(Math.max(0, Math.min(2, Math.round(value)))));
       },
       setParameterAt(id, value, when) {
         p[id] = value;
-        if (id === "cutoff") applyFilterLive((f) => f.frequency.setTargetAtTime(value, when, 0.02));
+        if (id === "cutoff") applyFilterLive((f, pitch) => f.frequency.setTargetAtTime(effCutoff(value, pitch), when, 0.02));
         if (id === "resonance") applyFilterLive((f) => setFilterResonance(f, value, when, 0.02));
+        if (id === "mode") applyFilterLive((f) => f.setMode(Math.max(0, Math.min(2, Math.round(value)))));
       },
       noteOff(pitch, when) {
         for (const v of findByPitch(pitch)) v.stop(when);
@@ -2555,6 +2592,714 @@ const logdrum: InstrumentDefinition = {
   },
 };
 
+/* ---------------- Spectral Pad (additive) ---------------- */
+// Additive pad: up to 8 sine partials per voice. Each partial gets its own
+// amplitude from the PROFILE curve, its own release time from SKEW (high
+// partials die first), inharmonic stretching (INHARM, classic stiff-string
+// sqrt(1+B*k^2) map) and a deterministic shimmer detune (SHIMMER). Levels
+// are RMS-normalized so PROFILE/PARTIALS changes don't jump in loudness.
+// All envelopes are scheduled upfront — offline render == live playback.
+
+const SPECTRAL_PROFILE_OPTIONS = [
+  { value: 0, label: "Harmonic" },
+  { value: 1, label: "Bright" },
+  { value: 2, label: "Odd" },
+  { value: 3, label: "Formant" },
+  { value: 4, label: "Bell" },
+];
+
+const SPECTRAL_BELL_CURVE = [1, 0.55, 0.4, 0.5, 0.25, 0.3, 0.15, 0.2];
+
+function spectralPartialGain(profile: number, k: number): number {
+  switch (profile) {
+    case 1:
+      return 1 / Math.sqrt(k);
+    case 2:
+      return (k % 2 === 1 ? 1 : 0.08) / k;
+    case 3:
+      return (1 / k) * (1 + 2.2 * Math.exp(-((k - 3) * (k - 3)) / 2));
+    case 4:
+      return SPECTRAL_BELL_CURVE[k - 1] ?? 0.1;
+    default:
+      return 1 / k;
+  }
+}
+
+const spectral: InstrumentDefinition = {
+  kind: "spectral",
+  name: "Spectral Pad",
+  params: [
+    { id: "profile", label: "PROFILE", min: 0, max: 4, default: 0, options: SPECTRAL_PROFILE_OPTIONS },
+    { id: "partials", label: "PARTIALS", min: 2, max: 8, default: 6, format: (v) => `${Math.round(v)}` },
+    { id: "inharm", label: "INHARM", min: 0, max: 1, default: 0.12, format: formatPct },
+    { id: "shimmer", label: "SHIMMER", min: 0, max: 1, default: 0.25, format: formatPct },
+    { id: "skew", label: "SKEW", min: 0, max: 1, default: 0.45, format: formatPct },
+    { id: "attack", label: "ATTACK", min: 0.001, max: 4, default: 0.6, unit: "s", format: formatSec },
+    { id: "release", label: "TAIL", min: 0.05, max: 8, default: 3, unit: "s", format: formatSec },
+    { id: "cutoff", label: "CUTOFF", min: 200, max: 16000, default: 6000, unit: "Hz", format: formatHz },
+    { id: "resonance", label: "RESO", min: 0.1, max: 12, default: 0.8, format: (v) => v.toFixed(2) },
+    { id: "width", label: "WIDTH", min: 0, max: 1, default: 0.5, format: formatPct },
+    { id: "level", label: "LEVEL", min: -24, max: 6, default: -12, unit: "dB", format: formatDb },
+  ],
+  factory(ctx, track) {
+    const output = ctx.createGain();
+    output.gain.value = 1;
+    const p = { ...track.params };
+    const { voices, register, cleanup, findByPitch } = makeVoiceManager(6);
+    const liveFilters = new Set<ReturnType<typeof createVoiceFilter>>();
+
+    const runtime: InstrumentRuntime = {
+      output,
+      noteOn(pitch, velocity, when, durationSec) {
+        const f0 = midiToFreq(pitch);
+        const profile = Math.max(0, Math.min(4, Math.round(p.profile ?? 0)));
+        const count = Math.max(2, Math.min(8, Math.round(p.partials ?? 6)));
+        const inharm = Math.max(0, Math.min(1, p.inharm ?? 0.12));
+        const shimmer = Math.max(0, Math.min(1, p.shimmer ?? 0.25));
+        const skew = Math.max(0, Math.min(1, p.skew ?? 0.45));
+        const width = Math.max(0, Math.min(1, p.width ?? 0.5));
+        const attack = Math.max(0.002, p.attack ?? 0.6);
+        const release = Math.max(0.05, p.release ?? 3);
+        const hold = Math.max(durationSec, attack + 0.05);
+        const off = when + hold;
+        const stopTime = off + release * 1.5 + 0.3;
+        const level = velocity * dbToLin(p.level ?? -12);
+
+        // RMS-normalized partial amplitudes keep level consistent across profiles
+        let energy = 0;
+        const amps: number[] = [];
+        for (let k = 1; k <= count; k++) {
+          const a = spectralPartialGain(profile, k);
+          amps.push(a);
+          energy += a * a;
+        }
+        const norm = 0.5 / Math.max(0.15, Math.sqrt(energy));
+
+        const filter = createVoiceFilter(ctx, p.cutoff ?? 6000, p.resonance ?? 0.8);
+        filter.output.connect(output);
+        liveFilters.add(filter);
+
+        const oscs: OscillatorNode[] = [];
+        const gains: GainNode[] = [];
+        for (let k = 1; k <= count; k++) {
+          const a = amps[k - 1];
+          if (a * norm < 0.004) continue;
+          // Stiff-string inharmonicity: partial k sits sharper than k*f0
+          const ratio = k * Math.sqrt(1 + inharm * 0.006 * k * k);
+          // Golden-angle shimmer: deterministic per-partial detune spread
+          const detune = shimmer * 8 * Math.sin(k * 2.399963);
+          const decayTc = Math.max(0.12, release * (1 - skew * ((k - 1) / Math.max(1, count - 1)) * 0.8));
+          const osc = ctx.createOscillator();
+          osc.type = "sine";
+          osc.frequency.value = f0 * ratio;
+          osc.detune.value = detune;
+          const g = ctx.createGain();
+          g.gain.setValueAtTime(0.0001, when);
+          g.gain.exponentialRampToValueAtTime(Math.max(a * norm * level, 0.0002), when + attack);
+          g.gain.setTargetAtTime(0.0001, off, decayTc / 3);
+          const pan = ctx.createStereoPanner();
+          pan.pan.value = count === 1 ? 0 : ((k - 1) / (count - 1) * 2 - 1) * width * 0.8;
+          osc.connect(g).connect(pan).connect(filter.input);
+          osc.start(when);
+          osc.stop(stopTime);
+          oscs.push(osc);
+          gains.push(g);
+        }
+
+        const voice = register(
+          pitch,
+          stopTime,
+          (whenStop) => {
+            const t = Math.max(whenStop, 0);
+            for (const g of gains) {
+              g.gain.cancelScheduledValues(t);
+              g.gain.setTargetAtTime(0.0001, t, 0.05);
+            }
+            for (const osc of oscs) {
+              try {
+                osc.stop(t + 0.2);
+              } catch {
+                /* already stopped */
+              }
+            }
+          },
+          (now) => {
+            for (const g of gains) {
+              g.gain.cancelScheduledValues(now);
+              g.gain.setTargetAtTime(0.0001, now, 0.02);
+            }
+            for (const osc of oscs) {
+              try {
+                osc.stop(now + 0.1);
+              } catch {
+                /* already stopped */
+              }
+            }
+          },
+        );
+        const last = oscs[oscs.length - 1];
+        if (last)
+          last.onended = () => {
+            liveFilters.delete(filter);
+            filter.disconnect();
+            cleanup(voice);
+          };
+      },
+      setParameter(id, value) {
+        p[id] = value;
+        if (id === "cutoff") for (const f of liveFilters) f.frequency.setTargetAtTime(value, ctx.currentTime, 0.02);
+        if (id === "resonance") for (const f of liveFilters) setFilterResonance(f, value, ctx.currentTime, 0.02);
+      },
+      setParameterAt(id, value, when) {
+        p[id] = value;
+        if (id === "cutoff") for (const f of liveFilters) f.frequency.setTargetAtTime(value, when, 0.02);
+        if (id === "resonance") for (const f of liveFilters) setFilterResonance(f, value, when, 0.02);
+      },
+      noteOff(pitch, when) {
+        for (const v of findByPitch(pitch)) v.stop(when);
+      },
+      panic() {
+        for (const voice of [...voices]) voice.silence(ctx.currentTime);
+        voices.length = 0;
+        liveFilters.clear();
+      },
+      dispose() {
+        this.panic();
+        output.disconnect();
+      },
+    };
+    return runtime;
+  },
+};
+
+/* ---------------- Vocal Chop (formant sampler) ---------------- */
+// Sampler tuned for vocal chops and talkbox-style leads: the sample plays
+// through a parallel three-band formant bank (F1/F2/F3 of the selected
+// vowel, scaled by SHIFT for voice size). COLOR blends dry sample against
+// the formant-filtered copy; MORPH auto-cycles the vowel formants during
+// the note for "talking" chops. Vowel targets follow Peterson–Barney-ish
+// F1/F2/F3 averages, rounded and deterministic.
+
+const VOWEL_OPTIONS = [
+  { value: 0, label: "A" },
+  { value: 1, label: "E" },
+  { value: 2, label: "I" },
+  { value: 3, label: "O" },
+  { value: 4, label: "U" },
+];
+
+// [F1, F2, F3] in Hz for A/E/I/O/U
+const VOWEL_FORMANTS: number[][] = [
+  [800, 1150, 2900],
+  [400, 1600, 2700],
+  [250, 1750, 2900],
+  [400, 800, 2600],
+  [350, 700, 2400],
+];
+const VOWEL_BAND_GAINS = [1, 0.6, 0.38];
+
+const vocalchop: InstrumentDefinition = {
+  kind: "vocalchop",
+  name: "Vocal Chop",
+  params: [
+    { id: "root", label: "ROOT", min: 24, max: 84, default: 60, format: (v) => `${Math.round(v)}` },
+    { id: "vowel", label: "VOWEL", min: 0, max: 4, default: 0, options: VOWEL_OPTIONS },
+    { id: "color", label: "COLOR", min: 0, max: 1, default: 0.85, format: formatPct },
+    {
+      id: "shift",
+      label: "SHIFT",
+      min: 0.7,
+      max: 1.5,
+      default: 1,
+      format: (v) => `${v.toFixed(2)}×`,
+    },
+    { id: "sharp", label: "SHARP", min: 0, max: 1, default: 0.5, format: formatPct },
+    { id: "morph", label: "MORPH", min: 0, max: 1, default: 0, format: formatPct },
+    { id: "tone", label: "TONE", min: 500, max: 16000, default: 12000, unit: "Hz", format: formatHz },
+    { id: "reverse", label: "REVERSE", min: 0, max: 1, default: 0, format: formatPct },
+    { id: "attack", label: "ATTACK", min: 0.001, max: 1, default: 0.005, unit: "s", format: formatMs },
+    { id: "release", label: "RELEASE", min: 0.01, max: 2, default: 0.15, unit: "s", format: formatMs },
+    { id: "gain", label: "GAIN", min: 0, max: 1, default: 0.85, format: formatPct },
+  ],
+  factory(ctx, track, env) {
+    const output = ctx.createGain();
+    output.gain.value = 1;
+    const p = { ...track.params };
+    let sampleId: string | null = track.sampleId;
+    const { voices, register, cleanup, findByPitch } = makeVoiceManager(8);
+    const tone = ctx.createBiquadFilter();
+    tone.type = "lowpass";
+    tone.frequency.value = p.tone ?? 12000;
+    tone.Q.value = 0.7;
+    tone.connect(output);
+    const reversedCache = new Map<AudioBuffer, AudioBuffer>();
+    const reversedBuffer = (buffer: AudioBuffer): AudioBuffer => {
+      let rev = reversedCache.get(buffer);
+      if (!rev) {
+        rev = ctx.createBuffer(buffer.numberOfChannels, buffer.length, buffer.sampleRate);
+        for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+          const src = buffer.getChannelData(ch);
+          const dst = rev.getChannelData(ch);
+          for (let i = 0, n = src.length; i < n; i++) dst[i] = src[n - 1 - i];
+        }
+        reversedCache.set(buffer, rev);
+      }
+      return rev;
+    };
+
+    const runtime: InstrumentRuntime = {
+      output,
+      noteOn(pitch, velocity, when, durationSec) {
+        const buffer = env.getSample(sampleId);
+        if (!buffer) return;
+        const root = Math.round(p.root ?? 60);
+        const color = Math.max(0, Math.min(1, p.color ?? 0.85));
+        const shift = Math.max(0.7, Math.min(1.5, p.shift ?? 1));
+        const sharp = Math.max(0, Math.min(1, p.sharp ?? 0.5));
+        const q = 4 + sharp * 9;
+        const startVowel = Math.max(0, Math.min(4, Math.round(p.vowel ?? 0)));
+        const morph = Math.max(0, Math.min(1, p.morph ?? 0));
+        const attack = Math.max(0.001, p.attack ?? 0.005);
+        const release = Math.max(0.01, p.release ?? 0.15);
+        const hold = Math.max(durationSec, attack + 0.02);
+        const off = when + hold;
+        const stopTime = off + release * 3 + 0.05;
+        const peak = velocity * (p.gain ?? 0.85);
+
+        const amp = ctx.createGain();
+        amp.gain.setValueAtTime(0.0001, when);
+        amp.gain.exponentialRampToValueAtTime(Math.max(peak, 0.0002), when + attack);
+        amp.gain.setTargetAtTime(0.0001, off, release / 3);
+        amp.connect(tone);
+
+        const src = ctx.createBufferSource();
+        const playBuffer = (p.reverse ?? 0) > 0.5 ? reversedBuffer(buffer) : buffer;
+        src.buffer = playBuffer;
+        src.playbackRate.value = Math.pow(2, (pitch - root) / 12);
+
+        // Parallel formant bank + dry blend. Wet is pulled back so full COLOR
+        // stays in the same loudness ballpark as the dry sample.
+        const dry = ctx.createGain();
+        dry.gain.value = 1 - color * 0.85;
+        src.connect(dry).connect(amp);
+        const wet = ctx.createGain();
+        wet.gain.value = color * 0.8;
+        const formants: BiquadFilterNode[] = [];
+        for (let b = 0; b < 3; b++) {
+          const band = ctx.createBiquadFilter();
+          band.type = "bandpass";
+          band.frequency.value = VOWEL_FORMANTS[startVowel][b] * shift;
+          band.Q.value = q;
+          const bandGain = ctx.createGain();
+          bandGain.gain.value = VOWEL_BAND_GAINS[b];
+          src.connect(band).connect(bandGain).connect(wet);
+          formants.push(band);
+        }
+        wet.connect(amp);
+
+        // MORPH walks the formants through the vowel table during the note
+        if (morph > 0.02) {
+          const period = 0.45 + (1 - morph) * 3.2;
+          const steps = Math.min(24, Math.ceil(hold / period));
+          for (let s = 1; s <= steps; s++) {
+            const t = when + s * period;
+            if (t >= off) break;
+            const target = VOWEL_FORMANTS[(startVowel + s) % 5];
+            for (let b = 0; b < 3; b++) formants[b].frequency.setTargetAtTime(target[b] * shift, t, 0.04);
+          }
+        }
+
+        src.start(when);
+        src.stop(stopTime);
+
+        const voice = register(
+          pitch,
+          stopTime,
+          (whenStop) => {
+            const t = Math.max(whenStop, 0);
+            amp.gain.cancelScheduledValues(t);
+            amp.gain.setTargetAtTime(0.0001, t, 0.01);
+            try {
+              src.stop(t + 0.05);
+            } catch {
+              /* already stopped */
+            }
+          },
+          (now) => {
+            amp.gain.cancelScheduledValues(now);
+            amp.gain.setTargetAtTime(0.0001, now, 0.008);
+          },
+        );
+        src.onended = () => {
+          amp.disconnect();
+          dry.disconnect();
+          wet.disconnect();
+          for (const band of formants) {
+            try {
+              band.disconnect();
+            } catch {
+              /* already disconnected */
+            }
+          }
+          cleanup(voice);
+        };
+      },
+      setParameter(id, value) {
+        p[id] = value;
+        if (id === "tone") tone.frequency.setTargetAtTime(value, ctx.currentTime, 0.02);
+      },
+      setParameterAt(id, value) {
+        this.setParameter(id, value);
+      },
+      setSample(id) {
+        sampleId = id;
+      },
+      noteOff(pitch, when) {
+        for (const v of findByPitch(pitch)) v.stop(when);
+      },
+      panic() {
+        for (const voice of [...voices]) voice.silence(ctx.currentTime);
+        voices.length = 0;
+      },
+      dispose() {
+        this.panic();
+        output.disconnect();
+      },
+    };
+    return runtime;
+  },
+};
+
+/* ---------------- Drum Synth (analog-modeled, chromatic) ---------------- */
+// Drum-machine voices on an instrument track — playable chromatically from
+// the piano roll. TYPE selects the analog model (kick/snare/hats/clap/
+// perc/cowbell); TONE/SNAP/BODY are normalized macros re-interpreted per
+// model (documented inline), so one knob row drives all seven voices.
+// Notes transpose every model (2^(pitch/12)), DECAY scales ring time and
+// DRIVE runs a shared tanh shaper after the voice. One-shot: gates are
+// ignored, voices ring out and clean up after themselves.
+
+const DRUM_TYPE_OPTIONS = [
+  { value: 0, label: "Kick" },
+  { value: 1, label: "Snare" },
+  { value: 2, label: "Hat C" },
+  { value: 3, label: "Hat O" },
+  { value: 4, label: "Clap" },
+  { value: 5, label: "Perc" },
+  { value: 6, label: "Cowbell" },
+];
+
+const HAT_RATIOS = [2, 3, 4.16, 5.43, 6.79, 8.21];
+
+const drumsynth: InstrumentDefinition = {
+  kind: "drumsynth",
+  name: "Drum Synth",
+  params: [
+    { id: "type", label: "TYPE", min: 0, max: 6, default: 0, options: DRUM_TYPE_OPTIONS },
+    { id: "tune", label: "TUNE", min: -12, max: 12, default: 0, unit: "st", format: (v) => `${v > 0 ? "+" : ""}${v.toFixed(0)} st` },
+    { id: "tone", label: "TONE", min: 0, max: 1, default: 0.4, format: formatPct },
+    { id: "decay", label: "DECAY", min: 0.05, max: 2, default: 0.4, unit: "s", format: formatSec },
+    { id: "snap", label: "SNAP", min: 0, max: 1, default: 0.4, format: formatPct },
+    { id: "body", label: "BODY", min: 0, max: 1, default: 0.6, format: formatPct },
+    { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0.2, format: formatPct },
+    { id: "level", label: "LEVEL", min: -24, max: 6, default: -6, unit: "dB", format: formatDb },
+  ],
+  factory(ctx, track) {
+    const output = ctx.createGain();
+    output.gain.value = 1;
+    const p = { ...track.params };
+    const { voices, register, cleanup, findByPitch } = makeVoiceManager(8);
+    const noise = noiseBuffer(ctx, hashString(track.id) ^ 0xd42d);
+
+    const runtime: InstrumentRuntime = {
+      output,
+      noteOn(pitch, velocity, when, _durationSec, _slideFrom) {
+        const type = Math.max(0, Math.min(6, Math.round(p.type ?? 0)));
+        const tune = Math.max(-12, Math.min(12, p.tune ?? 0));
+        // All models transpose from C4 — po = pitch offset in semitones
+        const po = Math.pow(2, (pitch - 60 + tune) / 12);
+        const tone = Math.max(0, Math.min(1, p.tone ?? 0.4));
+        const decay = Math.max(0.05, p.decay ?? 0.4);
+        const snap = Math.max(0, Math.min(1, p.snap ?? 0.4));
+        const body = Math.max(0, Math.min(1, p.body ?? 0.6));
+        const drive = Math.max(0, Math.min(1, p.drive ?? 0.2));
+        const level = velocity * dbToLin(p.level ?? -6);
+        const stopTime = when + decay * 2 + 0.4;
+
+        // Shared voice chain: voice nodes -> noteGain -> [shaper] -> level -> output
+        const noteGain = ctx.createGain();
+        noteGain.gain.value = 1;
+        const levelGain = ctx.createGain();
+        levelGain.gain.value = level;
+        let tail: AudioNode = noteGain;
+        if (drive > 0.005) {
+          const shaper = ctx.createWaveShaper();
+          shaper.oversample = "2x";
+          shaper.curve = tanhCurve(1 + drive * 6);
+          noteGain.connect(shaper);
+          tail = shaper;
+        }
+        tail.connect(levelGain).connect(output);
+
+        const oscs: OscillatorNode[] = [];
+        const srcs: AudioBufferSourceNode[] = [];
+        let ringTime = decay;
+
+        if (type === 0) {
+          // Kick: TONE sets initial pitch, BODY the drop time and weight
+          const fEnd = Math.max(22, Math.min(180, 45 * po));
+          const fStart = fEnd * (1.6 + tone * 4.2) + 20;
+          const osc = ctx.createOscillator();
+          osc.type = "sine";
+          osc.frequency.setValueAtTime(fStart, when);
+          osc.frequency.exponentialRampToValueAtTime(fEnd, when + 0.03 + body * 0.05);
+          const g = ctx.createGain();
+          g.gain.setValueAtTime(1, when);
+          g.gain.setTargetAtTime(0.0001, when + 0.005, decay / 4);
+          osc.connect(g).connect(noteGain);
+          osc.start(when);
+          osc.stop(stopTime);
+          oscs.push(osc);
+          ringTime = decay + 0.1;
+          if (snap > 0.01) {
+            const click = ctx.createBufferSource();
+            click.buffer = noise;
+            const hp = ctx.createBiquadFilter();
+            hp.type = "highpass";
+            hp.frequency.value = 3500;
+            const cg = ctx.createGain();
+            cg.gain.setValueAtTime(snap * 0.6, when);
+            cg.gain.setTargetAtTime(0.0001, when + 0.002, 0.003);
+            click.connect(hp).connect(cg).connect(noteGain);
+            click.start(when);
+            click.stop(when + 0.05);
+            srcs.push(click);
+          }
+        } else if (type === 1) {
+          // Snare: two detuned tone oscs + noise through a tuned bandpass;
+          // TONE centers the wire band, SNAP leans tone->noise balance
+          const bp = ctx.createBiquadFilter();
+          bp.type = "bandpass";
+          bp.frequency.value = (900 + tone * 2600) * po;
+          bp.Q.value = 0.8;
+          const ng = ctx.createGain();
+          ng.gain.setValueAtTime(0.35 + snap * 0.55, when);
+          ng.gain.setTargetAtTime(0.0001, when + 0.004, decay * 0.25);
+          bp.connect(ng).connect(noteGain);
+          const nsrc = ctx.createBufferSource();
+          nsrc.buffer = noise;
+          nsrc.loop = true;
+          nsrc.start(when);
+          nsrc.stop(stopTime);
+          srcs.push(nsrc);
+          for (const f of [185, 330]) {
+            const osc = ctx.createOscillator();
+            osc.type = "triangle";
+            osc.frequency.value = f * po;
+            const og = ctx.createGain();
+            og.gain.setValueAtTime(0.3 + body * 0.3, when);
+            og.gain.setTargetAtTime(0.0001, when + 0.003, 0.04 + body * 0.05);
+            osc.connect(og).connect(noteGain);
+            osc.start(when);
+            osc.stop(stopTime);
+            oscs.push(osc);
+          }
+          ringTime = decay * 0.9 + 0.05;
+        } else if (type === 2 || type === 3) {
+          // Hats: six square oscillators at the classic 808 metallic ratios,
+          // bandpass + steep highpass extract the sizzle. Open = longer ring.
+          const open = type === 3;
+          const base = 130 * po;
+          const bp = ctx.createBiquadFilter();
+          bp.type = "bandpass";
+          bp.frequency.value = 3200 + tone * 5200;
+          bp.Q.value = 1;
+          const hp = ctx.createBiquadFilter();
+          hp.type = "highpass";
+          hp.frequency.value = 6000 * (0.7 + snap * 0.6);
+          const hg = ctx.createGain();
+          const ring = Math.max(0.05, decay * (open ? 1.6 : 0.5));
+          hg.gain.setValueAtTime(0.5, when);
+          hg.gain.setTargetAtTime(0.0001, when + 0.002, ring / 3.5);
+          bp.connect(hp).connect(hg).connect(noteGain);
+          for (const ratio of HAT_RATIOS) {
+            const osc = ctx.createOscillator();
+            osc.type = "square";
+            osc.frequency.value = base * ratio;
+            const og = ctx.createGain();
+            og.gain.value = 0.12;
+            osc.connect(og).connect(bp);
+            osc.start(when);
+            osc.stop(stopTime);
+            oscs.push(osc);
+          }
+          ringTime = ring + 0.05;
+        } else if (type === 4) {
+          // Clap: noise bandpass with three fast pre-bursts then the body tail
+          const bp = ctx.createBiquadFilter();
+          bp.type = "bandpass";
+          bp.frequency.value = (900 + tone * 1500) * po;
+          bp.Q.value = 1.2 + snap * 2.2;
+          const g = ctx.createGain();
+          g.gain.setValueAtTime(0.9, when);
+          g.gain.exponentialRampToValueAtTime(0.0001, when + 0.009);
+          g.gain.setValueAtTime(0.8, when + 0.011);
+          g.gain.exponentialRampToValueAtTime(0.0001, when + 0.02);
+          g.gain.setValueAtTime(0.75, when + 0.023);
+          g.gain.exponentialRampToValueAtTime(0.0001, when + 0.033);
+          g.gain.setTargetAtTime(0.0001, when + 0.033, (decay * (0.6 + body * 0.8)) / 3);
+          bp.connect(g).connect(noteGain);
+          const src = ctx.createBufferSource();
+          src.buffer = noise;
+          src.loop = true;
+          src.start(when);
+          src.stop(stopTime);
+          srcs.push(src);
+          ringTime = decay * (0.6 + body * 0.8) + 0.15;
+        } else if (type === 5) {
+          // Perc: pitched sine with a SNAP-scaled pitch drop — tunable bongo
+          const f = (300 + tone * 1300) * po;
+          const osc = ctx.createOscillator();
+          osc.type = "sine";
+          osc.frequency.setValueAtTime(f * (1 + snap * 1.2), when);
+          osc.frequency.exponentialRampToValueAtTime(f, when + 0.02);
+          const g = ctx.createGain();
+          g.gain.setValueAtTime(0.9, when);
+          g.gain.setTargetAtTime(0.0001, when + 0.004, (decay * (0.4 + body * 0.4)) / 3);
+          osc.connect(g).connect(noteGain);
+          osc.start(when);
+          osc.stop(stopTime);
+          oscs.push(osc);
+          ringTime = decay * 0.5 + 0.05;
+        } else {
+          // Cowbell: two squares at the classic 1 : 1.485 ratio through a bandpass
+          const base = (420 + tone * 380) * po;
+          const bp = ctx.createBiquadFilter();
+          bp.type = "bandpass";
+          bp.frequency.value = base * 1.3;
+          bp.Q.value = 1 + snap * 2;
+          const g = ctx.createGain();
+          g.gain.setValueAtTime(0.7, when);
+          g.gain.setTargetAtTime(0.0001, when + 0.004, (decay * (0.5 + body * 0.5)) / 3);
+          bp.connect(g).connect(noteGain);
+          for (const mult of [1, 1.485]) {
+            const osc = ctx.createOscillator();
+            osc.type = "square";
+            osc.frequency.value = base * mult;
+            const og = ctx.createGain();
+            og.gain.value = 0.35;
+            osc.connect(og).connect(bp);
+            osc.start(when);
+            osc.stop(stopTime);
+            oscs.push(osc);
+          }
+          ringTime = decay * 0.6 + 0.1;
+        }
+
+        const voice = register(
+          pitch,
+          when + ringTime,
+          (whenStop) => {
+            const t = Math.max(whenStop, 0);
+            noteGain.gain.cancelScheduledValues(t);
+            noteGain.gain.setTargetAtTime(0.0001, t, 0.008);
+            for (const osc of oscs) {
+              try {
+                osc.stop(t + 0.05);
+              } catch {
+                /* already stopped */
+              }
+            }
+            for (const src of srcs) {
+              try {
+                src.stop(t + 0.05);
+              } catch {
+                /* already stopped */
+              }
+            }
+          },
+          (now) => {
+            noteGain.gain.cancelScheduledValues(now);
+            noteGain.gain.setTargetAtTime(0.0001, now, 0.006);
+            for (const osc of oscs) {
+              try {
+                osc.stop(now + 0.04);
+              } catch {
+                /* already stopped */
+              }
+            }
+            for (const src of srcs) {
+              try {
+                src.stop(now + 0.04);
+              } catch {
+                /* already stopped */
+              }
+            }
+          },
+        );
+        // Drums are one-shot: silence the voice once the ring time elapses so
+        // the voice manager does not hold dead notes against polyphony.
+        const clock = ctx.createOscillator();
+        clock.type = "sine";
+        clock.frequency.value = 440;
+        const clockGain = ctx.createGain();
+        clockGain.gain.value = 0;
+        clock.connect(clockGain).connect(ctx.destination);
+        clock.start(when);
+        clock.stop(when + ringTime + 0.05);
+        clock.onended = () => {
+          try {
+            noteGain.disconnect();
+          } catch {
+            /* already */
+          }
+          try {
+            levelGain.disconnect();
+          } catch {
+            /* already */
+          }
+          if (tail !== noteGain) {
+            try {
+              tail.disconnect();
+            } catch {
+              /* already */
+            }
+          }
+          try {
+            clock.disconnect();
+          } catch {
+            /* already */
+          }
+          try {
+            clockGain.disconnect();
+          } catch {
+            /* already */
+          }
+          cleanup(voice);
+        };
+      },
+      setParameter(id, value) {
+        p[id] = value;
+      },
+      setParameterAt(id, value) {
+        p[id] = value;
+      },
+      noteOff(pitch, when) {
+        for (const v of findByPitch(pitch)) v.stop(when);
+      },
+      panic() {
+        for (const voice of [...voices]) voice.silence(ctx.currentTime);
+        voices.length = 0;
+      },
+      dispose() {
+        this.panic();
+        output.disconnect();
+      },
+    };
+    return runtime;
+  },
+};
+
 /* ---------------- registry ---------------- */
 
 export const INSTRUMENT_DEFS: Record<InstrumentKind, InstrumentDefinition> = {
@@ -2568,6 +3313,9 @@ export const INSTRUMENT_DEFS: Record<InstrumentKind, InstrumentDefinition> = {
   keys,
   pluck,
   logdrum,
+  spectral,
+  vocalchop,
+  drumsynth,
 };
 
 export const INSTRUMENT_ORDER: InstrumentKind[] = [
@@ -2581,6 +3329,9 @@ export const INSTRUMENT_ORDER: InstrumentKind[] = [
   "keys",
   "pluck",
   "logdrum",
+  "spectral",
+  "vocalchop",
+  "drumsynth",
 ];
 
 export function defaultInstrumentParams(kind: InstrumentKind): Record<string, number> {

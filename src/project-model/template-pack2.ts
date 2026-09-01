@@ -9,6 +9,7 @@ import {
   setSteps,
   withNotes,
 } from "./templates";
+import { defaultParamsOf } from "../effects/registry";
 import { createDrumTrackModel, createInstrumentTrackModel } from "./schema";
 import { uid } from "../shared/ids";
 import { PPQ } from "./types";
@@ -58,15 +59,15 @@ export function buildUkGarage(): ProjectDocument {
   pattern = withNotes(pattern, stab.id, [
     note(60, 3 * (PPQ / 2), PPQ / 4, 0.5),
     note(63, 3 * (PPQ / 2), PPQ / 4, 0.42),
-    note(67, 6 * PPQ + PPQ / 4, PPQ / 4, 0.5),
-    note(70, 6 * PPQ + PPQ / 4, PPQ / 4, 0.4),
+    note(67, 1440, PPQ / 4, 0.5),
+    note(70, 1440, PPQ / 4, 0.4),
   ]);
 
   doc.tracks = [drums, bass, stab];
   doc.patterns = [pattern];
   doc.scenes = [scene("2-Step", pattern.id)];
   doc.arrangement = { clips: [clip(doc.scenes[0].id, 0, 4)] };
-  doc.groove = { swing: 0.35 };
+  doc.groove = { swing: 0.35, humanizeTiming: 0, humanizeVelocity: 0 };
   doc.macros = performanceMacros(drums.id, bass.id, stab.id);
   return finish(doc);
 }
@@ -104,14 +105,14 @@ export function buildJerseyClub(): ProjectDocument {
   pattern = withNotes(pattern, bass.id, [
     note(28, 0, PPQ / 2, 0.9),
     note(28, 3 * (PPQ / 2), PPQ / 4, 0.5),
-    note(31, 8 * (PPQ / 2), PPQ / 2, 0.85),
+    note(31, 1440, PPQ / 2, 0.85),
   ]);
 
   doc.tracks = [drums, bass];
   doc.patterns = [pattern];
   doc.scenes = [scene("Bounce", pattern.id)];
   doc.arrangement = { clips: [clip(doc.scenes[0].id, 0, 4)] };
-  doc.groove = { swing: 0.12 };
+  doc.groove = { swing: 0.12, humanizeTiming: 0, humanizeVelocity: 0 };
   doc.macros = performanceMacros(drums.id, bass.id, null);
   return finish(doc);
 }
@@ -126,7 +127,7 @@ export function buildPhonk(): ProjectDocument {
       id: uid("fx"),
       type: "drumBuss",
       bypassed: false,
-      params: { drive: 0.35, transient: 0.2, crunch: 0.4 },
+      params: { ...defaultParamsOf("drumBuss"), drive: 0.35, transient: 0.2, compressor: 0.3, tone: 7000 },
     },
   ];
   const bass = createBass();
@@ -152,12 +153,12 @@ export function buildPhonk(): ProjectDocument {
     [6, 0.5],
     [12, 0.55],
   ]);
-  // Long overlapping 808s — the phonk slide.
+  // Long overlapping 808s — the phonk slide, all inside one bar.
   pattern = withNotes(pattern, bass.id, [
     note(24, 0, PPQ * 1.75, 0.95),
-    note(25, 7 * (PPQ / 2), PPQ, 0.9),
-    note(20, 4 * PPQ, PPQ * 1.5, 0.9),
-    note(27, 6 * PPQ + PPQ / 2, PPQ, 0.85),
+    note(25, PPQ * 1.75, PPQ * 0.75, 0.9),
+    note(20, PPQ * 2.5, PPQ * 0.75, 0.9),
+    note(27, PPQ * 3.25, PPQ * 0.75, 0.85),
   ]);
 
   doc.tracks = [drums, bass];
@@ -202,8 +203,8 @@ export function buildDrill(): ProjectDocument {
     note(26, 0, PPQ / 2, 0.9),
     note(26, PPQ / 2, PPQ / 2, 0.6),
     note(21, 2 * PPQ, PPQ, 0.9),
-    note(23, 4 * PPQ + 3 * (PPQ / 4), PPQ / 2, 0.7),
-    note(19, 6 * PPQ, PPQ * 1.25, 0.9),
+    note(23, 1260, PPQ / 2, 0.7),
+    note(19, 1440, PPQ * 0.5, 0.9),
   ]);
 
   doc.tracks = [drums, bass];
@@ -224,7 +225,7 @@ export function buildLoFiHouse(): ProjectDocument {
       id: uid("fx"),
       type: "tapeSat",
       bypassed: false,
-      params: { drive: 0.45, hysteresis: 0.5, tone: 4200 },
+      params: { ...defaultParamsOf("tapeSat"), drive: 0.45, hysteresis: 0.5, tone: 4200 },
     },
   ];
   const bass = createBass();
@@ -263,9 +264,9 @@ export function buildLoFiHouse(): ProjectDocument {
   ]);
   pattern = withNotes(pattern, bass.id, [
     note(33, 0, PPQ * 0.75, 0.8),
-    note(36, 2 * PPQ + PPQ / 2, PPQ / 2, 0.65),
-    note(31, 4 * PPQ, PPQ * 0.75, 0.8),
-    note(29, 6 * PPQ + PPQ / 2, PPQ / 2, 0.6),
+    note(36, 1080, PPQ / 2, 0.65),
+    note(31, 1440, PPQ * 0.5, 0.8),
+    note(29, 1680, PPQ / 4, 0.6),
   ]);
   pattern = withNotes(pattern, chords.id, [
     note(57, 0, PPQ * 0.9, 0.45),
@@ -281,7 +282,7 @@ export function buildLoFiHouse(): ProjectDocument {
   doc.patterns = [pattern];
   doc.scenes = [scene("Dusty", pattern.id)];
   doc.arrangement = { clips: [clip(doc.scenes[0].id, 0, 4)] };
-  doc.groove = { swing: 0.25, humanizeTiming: 0.3, humanizeVelocity: 0.35 };
+  doc.groove = { swing: 0.25, humanizeTiming: 0.3, humanizeVelocity: 0.35 }; // already full
   doc.macros = performanceMacros(drums.id, bass.id, chords.id);
   return finish(doc);
 }
@@ -314,17 +315,18 @@ export function buildReggaeton(): ProjectDocument {
     [2, 0.35],
     [10, 0.35],
   ]);
+  // Dembow sub line — one note per beat, all inside the 16-step bar.
   pattern = withNotes(pattern, bass.id, [
     note(26, 0, PPQ, 0.9),
-    note(26, 2 * PPQ, PPQ, 0.85),
-    note(21, 4 * PPQ, PPQ, 0.9),
-    note(26, 6 * PPQ, PPQ, 0.85),
+    note(21, PPQ, PPQ, 0.85),
+    note(26, 2 * PPQ, PPQ, 0.9),
+    note(26, 3 * PPQ, PPQ, 0.85),
   ]);
   pattern = withNotes(pattern, lead.id, [
     note(64, 3 * (PPQ / 2), PPQ / 2, 0.5),
     note(67, 2 * PPQ + PPQ / 2, PPQ / 2, 0.45),
-    note(69, 4 * PPQ + 3 * (PPQ / 2), PPQ / 2, 0.5),
-    note(64, 6 * PPQ + PPQ / 2, PPQ / 2, 0.42),
+    note(69, 3 * PPQ, PPQ / 2, 0.5),
+    note(64, 3 * PPQ + PPQ / 2, PPQ / 2, 0.42),
   ]);
 
   doc.tracks = [drums, bass, lead];

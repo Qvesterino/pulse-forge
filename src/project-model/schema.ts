@@ -115,6 +115,9 @@ const INSTRUMENT_NAMES: Record<InstrumentKind, string> = {
   keys: "Keys",
   pluck: "Pluck",
   logdrum: "Log Drum",
+  spectral: "Spectral",
+  vocalchop: "Vocal Chop",
+  drumsynth: "Drum Synth",
 };
 
 export function createInstrumentTrackModel(kind: InstrumentKind, index: number): InstrumentTrack {
@@ -127,7 +130,14 @@ export function createInstrumentTrackModel(kind: InstrumentKind, index: number):
     pan: 0,
     mute: false,
     solo: false,
-    sampleId: kind === "sampler" ? "factory.tonal.pluck" : kind === "granular" ? "factory.tonal.keys" : null,
+    sampleId:
+      kind === "sampler"
+        ? "factory.tonal.pluck"
+        : kind === "granular"
+          ? "factory.tonal.keys"
+          : kind === "vocalchop"
+            ? "factory.tonal.stab"
+            : null,
     params: defaultInstrumentParams(kind),
     effects: [],
     sends: {},

@@ -16,6 +16,9 @@ const KIND_BADGE: Record<"drum" | "group" | InstrumentKind, string> = {
   keys: "KEY",
   pluck: "PLK",
   logdrum: "LOG",
+  spectral: "SPC",
+  vocalchop: "VCX",
+  drumsynth: "DSY",
 };
 
 export function trackBadge(track: Track): string {
@@ -124,6 +127,9 @@ export function TrackTabs({
         <option value="keys">Keys Synth</option>
         <option value="pluck">Pluck Synth</option>
         <option value="logdrum">Log Drum</option>
+        <option value="spectral">Spectral Pad</option>
+        <option value="vocalchop">Vocal Chop</option>
+        <option value="drumsynth">Drum Synth</option>
         <option value="group">Group</option>
       </select>
     </div>

@@ -49,7 +49,19 @@ export type EffectType =
   | "ozvena";
 
 export type InstrumentKind =
-  "sampler" | "analog" | "bass" | "808" | "texture" | "wavetable" | "granular" | "keys" | "pluck" | "logdrum";
+  | "sampler"
+  | "analog"
+  | "bass"
+  | "808"
+  | "texture"
+  | "wavetable"
+  | "granular"
+  | "keys"
+  | "pluck"
+  | "logdrum"
+  | "spectral"
+  | "vocalchop"
+  | "drumsynth";
 
 export interface EffectInstance {
   id: ID;

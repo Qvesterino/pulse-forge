@@ -13,6 +13,14 @@ import type {
 import { BAR_TICKS, PPQ, STEPS_PER_PATTERN } from "./types";
 import { uid } from "../shared/ids";
 import {
+  buildDrill,
+  buildJerseyClub,
+  buildLoFiHouse,
+  buildPhonk,
+  buildReggaeton,
+  buildUkGarage,
+} from "./template-pack2";
+import {
   SCHEMA_VERSION,
   createDefaultReturns,
   createDrumTrackModel,
@@ -21,7 +29,19 @@ import {
   defaultMasterConfig,
 } from "./schema";
 
-export type TemplateId = "empty" | "house" | "techno" | "trap" | "ambient" | "scene-score";
+export type TemplateId =
+  | "empty"
+  | "house"
+  | "techno"
+  | "trap"
+  | "ambient"
+  | "scene-score"
+  | "ukg"
+  | "jersey"
+  | "phonk"
+  | "drill"
+  | "lofi-house"
+  | "reggaeton";
 
 export interface TemplateInfo {
   id: TemplateId;
@@ -67,6 +87,12 @@ export const TEMPLATES: TemplateInfo[] = [
     bpm: 120,
     tags: ["arrangement", "scenes", "sync"],
   },
+  { id: "ukg", name: "UK Garage", description: "Swung 2-step drums, sub syncopation and organ stabs at 133 BPM.", bpm: 133, tags: ["2-step", "swing", "stabs"] },
+  { id: "jersey", name: "Jersey Club", description: "The signature 3-3-2-3-3-2 kick bounce with squeak accents at 140 BPM.", bpm: 140, tags: ["bounce", "club"] },
+  { id: "phonk", name: "Phonk", description: "Half-time snare, driven drum buss and a sliding 808 cowbell hook at 145 BPM.", bpm: 145, tags: ["808", "half-time", "driven"] },
+  { id: "drill", name: "Drill", description: "Sparse kick, rolling hats and a sliding 808 at 142 BPM.", bpm: 142, tags: ["808", "slide", "dark"] },
+  { id: "lofi-house", name: "Lo-Fi House", description: "Dusty swung 4-to-the-floor with tape-saturated drums and soft keys.", bpm: 118, tags: ["lo-fi", "swing", "dusty"] },
+  { id: "reggaeton", name: "Reggaeton", description: "The dembow riddim over a rolling sub at 96 BPM.", bpm: 96, tags: ["dembow", "club"] },
   {
     id: "empty",
     name: "Empty",
@@ -696,5 +722,17 @@ export function createProjectFromTemplate(id: TemplateId): ProjectDocument {
       return buildAmbient();
     case "scene-score":
       return buildSceneScore();
+    case "ukg":
+      return buildUkGarage();
+    case "jersey":
+      return buildJerseyClub();
+    case "phonk":
+      return buildPhonk();
+    case "drill":
+      return buildDrill();
+    case "lofi-house":
+      return buildLoFiHouse();
+    case "reggaeton":
+      return buildReggaeton();
   }
 }

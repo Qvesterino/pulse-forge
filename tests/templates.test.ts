@@ -16,8 +16,10 @@ function drumPadIds(doc: ProjectDocument): Set<string> {
 }
 
 describe("templates", () => {
-  it("ships the six promised templates", () => {
-    expect(TEMPLATE_IDS.sort()).toEqual(["ambient", "empty", "house", "scene-score", "techno", "trap"].sort());
+  it("ships the twelve promised templates", () => {
+    expect(TEMPLATE_IDS.sort()).toEqual(
+      ["ambient", "drill", "empty", "house", "jersey", "lofi-house", "phonk", "reggaeton", "scene-score", "techno", "trap", "ukg"].sort(),
+    );
   });
 
   it("every template has metadata with description, bpm and tags", () => {

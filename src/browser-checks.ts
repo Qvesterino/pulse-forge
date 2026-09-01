@@ -1687,8 +1687,8 @@ export async function runChecks(): Promise<CheckResult[]> {
   }
 
   check(
-    "templates: six factory templates are registered",
-    TEMPLATES.length === 6,
+    "templates: 12 factory templates are registered",
+    TEMPLATES.length === 12,
     TEMPLATES.map((t) => t.id).join(","),
   );
 
