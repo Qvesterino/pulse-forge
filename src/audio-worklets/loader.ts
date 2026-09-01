@@ -38,7 +38,8 @@ export function isWorkletReady(
     | "vowel"
     | "duckDelay"
     | "reverb"
-    | "fxeq",
+    | "fxeq"
+    | "ultina",
   ctx: BaseAudioContext | null | undefined,
 ): boolean {
   if (!ctx || !readyContexts.has(ctx)) return false;
@@ -62,7 +63,8 @@ export function isWorkletReady(
     type === "vowel" ||
     type === "duckDelay" ||
     type === "reverb" ||
-    type === "fxeq"
+    type === "fxeq" ||
+    type === "ultina"
   );
 }
 
@@ -88,6 +90,9 @@ export async function loadWorkletModules(ctx: BaseAudioContext): Promise<void> {
     // scripts/build-fxeq-worklet.mjs) — served and PWA-precached from the
     // origin root.
     ctx.audioWorklet.addModule(new URL("/fxeq-worklet.js", import.meta.url).href),
+    // ultina is a prebundled classic script in public/ (see
+    // scripts/build-ultina-worklet.mjs).
+    ctx.audioWorklet.addModule(new URL("/ultina-worklet.js", import.meta.url).href),
   ])
     .then(() => {
       readyContexts.add(ctx);

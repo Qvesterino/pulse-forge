@@ -14,6 +14,9 @@ import { loadWorkletModules, isWorkletReady } from "./audio-worklets/loader";
 import { createBitcrusherNode } from "./audio-worklets/bitcrusher-node";
 import { AudioEngine } from "./audio-engine/AudioEngine";
 import { detectTransients } from "./audio-engine/transients";
+import { createFxEqProcessor } from "./effects/fxeq-core/core/fxEqProcessor";
+import { UltinaProcessor } from "./effects/ultina-core/dsp/ultinaProcessor";
+import { registerCoreModules } from "./effects/ultina-core/dsp/moduleFactories";
 import { createKwMeterNode } from "./audio-worklets/kwmeter-node";
 import { createDrumTrackModel, createGroupTrackModel } from "./project-model/schema";
 import { encodeMp3 } from "./export/mp3";
@@ -1073,6 +1076,166 @@ export async function runChecks(): Promise<CheckResult[]> {
     );
   } catch (error) {
     check("fxeq: worklet DSP renders in offline context (saturated) + honest fallback", false, String(error));
+  }
+
+  // FXEQ CPU budget: the same vendored DSP runs on the audio thread inside
+  // the worklet, so main-thread block timing is a faithful proxy. Worst
+  // case (6 bands, every module enabled) must fit comfortably inside the
+  // 128-frame audio-thread budget (128/44100 ≈ 2.90 ms per block).
+  try {
+    const proc = createFxEqProcessor();
+    proc.prepare(SR, 2, 128);
+    const worst: Record<string, number> = { bandCount: 6 };
+    for (let b = 1; b <= 6; b++) {
+      for (const mod of ["sat", "lofi", "mod", "delay", "rev"]) {
+        worst[`band${b}.${mod}Enabled`] = 1;
+      }
+      worst[`band${b}.satDriveDb`] = 12;
+      worst[`band${b}.delayTimeMs`] = 200;
+      worst[`band${b}.revDecayMs`] = 1500;
+    }
+    proc.loadParameters(worst);
+    const blocks = 600;
+    const stereo = [new Float32Array(128), new Float32Array(128)];
+    // Warm-up (JIT) then measure.
+    for (let i = 0; i < 50; i++) proc.process(stereo, 128);
+    const t0 = performance.now();
+    for (let i = 0; i < blocks; i++) {
+      stereo[0][i % 128] = Math.sin(i * 0.1);
+      proc.process(stereo, 128);
+    }
+    const wallMs = performance.now() - t0;
+    const avgUsPerBlock = (wallMs * 1000) / blocks;
+    const budgetUs = (128 / SR) * 1000 * 1000; // 2902 µs per 128-frame block
+    const cpuPercent = (avgUsPerBlock / budgetUs) * 100;
+    check(
+      "fxeq: CPU budget — worst case fits the audio-thread block budget",
+      avgUsPerBlock < budgetUs * 0.5,
+      `avg=${avgUsPerBlock.toFixed(0)}µs/block of ${budgetUs.toFixed(0)}µs budget → ${cpuPercent.toFixed(1)}% of one core`,
+    );
+  } catch (error) {
+    check("fxeq: CPU budget — worst case fits the audio-thread block budget", false, String(error));
+  }
+
+  // FXEQ PDC: the worklet must report its DSP latency (oversampled bands)
+  // so the engine's PDC aligns fxeq tracks with the rest of the mix.
+  try {
+    const ctx = new OfflineAudioContext(2, 256, SR);
+    await loadWorkletModules(ctx);
+    const def = EFFECT_DEFS.fxeq;
+    const rt = def.factory(
+      ctx,
+      {
+        id: "t",
+        type: "fxeq",
+        bypassed: false,
+        params: {
+          ...defaultParamsOf("fxeq"),
+          bandCount: 4,
+          "band1.satEnabled": 1,
+          "band1.satDriveDb": 12,
+          "band2.satEnabled": 1,
+          "band2.satDriveDb": 12,
+        },
+      },
+      { bpm: 124 },
+    );
+    // Latency arrives via a port message after the processor prepares —
+    // wait one macrotask for the round trip.
+    await new Promise((r) => setTimeout(r, 60));
+    const lat = rt.getLatencySec?.() ?? -1;
+    rt.dispose();
+    check(
+      "fxeq: reports DSP latency for PDC (oversampled bands)",
+      lat > 0 && lat < 0.01,
+      `latency=${(lat * 1000).toFixed(3)} ms`,
+    );
+  } catch (error) {
+    check("fxeq: reports DSP latency for PDC (oversampled bands)", false, String(error));
+  }
+
+  // ULTINA: the vendored mixing suite (10-module graph). Null-test the
+  // worklet path vs the degraded fallback, CPU-budget the worst case
+  // (all 10 modules).
+  try {
+    const def = EFFECT_DEFS.ultina;
+    // 1. Degraded fallback (no modules loaded in this context).
+    const plainCtx = new OfflineAudioContext(1, SR, SR);
+    const fallback = def.factory(plainCtx, { id: "t", type: "ultina", bypassed: false, params: defaultParamsOf("ultina") }, { bpm: 124 });
+    const fallbackOk = fallback.degraded === true;
+    fallback.dispose();
+
+    // 2. Worklet null-test: +6 dB input gain must land louder than the
+    // passthrough fallback with the SAME input.
+    const renderUltina = async (loaded: boolean, extraParams: Record<string, number>) => {
+      const ctx = new OfflineAudioContext(2, SR, SR);
+      if (loaded) await loadWorkletModules(ctx);
+      const rt = def.factory(ctx, { id: "t", type: "ultina", bypassed: false, params: { ...defaultParamsOf("ultina"), ...extraParams } }, { bpm: 124 });
+      const osc = ctx.createOscillator();
+      osc.frequency.value = 220;
+      const g = ctx.createGain();
+      g.gain.value = 0.25;
+      osc.connect(g).connect(rt.input);
+      rt.output.connect(ctx.destination);
+      osc.start(0);
+      const buffer = await ctx.startRendering();
+      rt.dispose();
+      return buffer.getChannelData(0);
+    };
+    const gained = await renderUltina(true, { "global.inputGainDb": 6 });
+    const passthrough = await renderUltina(false, {});
+    let peakA = 0;
+    let diffSq = 0;
+    let refSq = 0;
+    for (let i = 0; i < gained.length; i++) {
+      peakA = Math.max(peakA, Math.abs(gained[i]));
+      const d = gained[i] - passthrough[i];
+      diffSq += d * d;
+      refSq += passthrough[i] * passthrough[i];
+    }
+    const diffRms = Math.sqrt(diffSq / gained.length);
+    const refRms = Math.sqrt(refSq / gained.length);
+    // +6 dB ≈ 2× amplitude: essentially the whole signal differs.
+    check(
+      "ultina: worklet DSP renders in offline context (+6dB) + honest fallback",
+      fallbackOk && refRms > 0.05 && diffRms > refRms * 0.5 && peakA > 0.4,
+      `fallback=${fallbackOk} refRms=${refRms.toFixed(3)} diffRms=${diffRms.toFixed(3)} peak=${peakA.toFixed(3)}`,
+    );
+  } catch (error) {
+    check("ultina: worklet DSP renders in offline context (+6dB) + honest fallback", false, String(error));
+  }
+
+  // ULTINA CPU budget: all 10 modules enabled, stereo 128-frame blocks —
+  // the same vendored DSP the audio thread runs inside the worklet.
+  try {
+    const proc = new UltinaProcessor();
+    registerCoreModules(proc);
+    proc.prepare({ sampleRate: SR, channelCount: 2, maxBlockSize: 128, qualityMode: 1 });
+    const worst: Record<string, number> = {};
+    for (const mod of ["eq", "comp", "gate", "exciter", "transient", "clipper", "density", "sculptor", "phase", "unmask"]) {
+      worst[`${mod}.enabled`] = 1;
+    }
+    proc.loadState(worst);
+    const blocks = 400;
+    const stereo = [new Float32Array(128), new Float32Array(128)];
+    for (let i = 0; i < 50; i++) proc.process(stereo, 128);
+    const t0 = performance.now();
+    for (let i = 0; i < blocks; i++) {
+      stereo[0][i % 128] = Math.sin(i * 0.1);
+      stereo[1][i % 128] = Math.sin(i * 0.1 + 0.5);
+      proc.process(stereo, 128);
+    }
+    const wallMs = performance.now() - t0;
+    const avgUsPerBlock = (wallMs * 1000) / blocks;
+    const budgetUs = (128 / SR) * 1000 * 1000;
+    const cpuPercent = (avgUsPerBlock / budgetUs) * 100;
+    check(
+      "ultina: CPU budget — all 10 modules fit the audio-thread block budget",
+      avgUsPerBlock < budgetUs * 0.6,
+      `avg=${avgUsPerBlock.toFixed(0)}µs/block of ${budgetUs.toFixed(0)}µs budget → ${cpuPercent.toFixed(1)}% of one core`,
+    );
+  } catch (error) {
+    check("ultina: CPU budget — all 10 modules fit the audio-thread block budget", false, String(error));
   }
 
   try {

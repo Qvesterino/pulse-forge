@@ -13,6 +13,8 @@ import {
   createDrumTrack,
   sliceToPads,
   applyFxEqPreset,
+  applyUltinaPreset,
+  setUltinaParam,
   setFxEqParam,
   createInstrumentTrack,
   createPattern,
@@ -55,6 +57,7 @@ import {
   toggleStep,
 } from "../src/commands/commands";
 import { ProjectStore } from "../src/store/ProjectStore";
+import { FACTORY_PRESETS } from "../src/effects/ultina-core/presets/factoryPresets";
 import { getDrumTrack } from "../src/project-model/types";
 
 describe("commands", () => {
@@ -917,5 +920,38 @@ describe("applyFxEqPreset / setFxEqParam", () => {
 
   it("setFxEqParam rejects ids outside the schema", () => {
     expect(() => setFxEqParam(withFx, inst.id, fx.id, "band9.nope", 1)).toThrow();
+  });
+});
+
+describe("applyUltinaPreset / setUltinaParam", () => {
+  const doc = createDefaultProject();
+  const inst = doc.tracks.find((t) => t.kind === "instrument")!;
+  const withFx = addEffect(doc, inst.id, "ultina").execute(doc);
+  const fx = withFx.tracks.find((t) => t.id === inst.id)!.effects.find((f) => f.type === "ultina")!;
+
+  it("setUltinaParam accepts namespaced module params with schema clamping", () => {
+    const cmd = setUltinaParam(withFx, inst.id, fx.id, "comp.thresholdDb", -999);
+    const next = cmd.execute(withFx);
+    const after = next.tracks.find((t) => t.id === inst.id)!.effects.find((f) => f.type === "ultina")!;
+    // Clamped to the schema minimum, not stored raw.
+    expect(after.params["comp.thresholdDb"]).toBeLessThan(-40);
+    expect(() => setUltinaParam(withFx, inst.id, fx.id, "comp.nonexistent", 1)).toThrow();
+  });
+
+  it("applyUltinaPreset merges preset onto defaults in ONE undoable gesture", () => {
+    // Use a drum-category preset from the vendored factory set.
+    const preset = FACTORY_PRESETS[0];
+    const cmd = applyUltinaPreset(withFx, inst.id, fx.id, preset.name, preset.params);
+    const next = cmd.execute(withFx);
+    const after = next.tracks.find((t) => t.id === inst.id)!.effects.find((f) => f.type === "ultina")!;
+    for (const [k, v] of Object.entries(preset.params)) {
+      expect(after.params[k]).toBe(v);
+    }
+    // Defaults filled in for everything else (e.g. globals).
+    expect(after.params["global.inputGainDb"]).toBe(0);
+    // Undo restores the exact pre-preset params.
+    const undone = cmd.undo(next);
+    const before = undone.tracks.find((t) => t.id === inst.id)!.effects.find((f) => f.type === "ultina")!;
+    expect(before.params).toEqual(fx.params);
   });
 });

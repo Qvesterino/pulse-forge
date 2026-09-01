@@ -382,7 +382,15 @@ export class MidiInput {
   // Aftertouch
   // ---------------------------------------------------------------------------
 
-  private handleChannelPressure(pressure: number, _channel: number, config: MidiConfig): void {
+  private handleChannelPressure(pressure: number, channel: number, config: MidiConfig): void {
+    // Live Note Repeat: squeeze modulates the repeat velocity of every pad
+    // held on this channel (independent of the aftertouchTarget mapping).
+    if (this.noteRepeat) {
+      const normalized = pressure / 127;
+      for (const key of this.noteRepeat.holdKeysWithPrefix(`midi:${channel}:`)) {
+        this.noteRepeat.setHoldPressure(key, normalized);
+      }
+    }
     if (!this.engine || !config.aftertouchTarget) return;
     const range = config.aftertouchRange ?? 0.5;
     const normalized = pressure / 127;
@@ -390,7 +398,9 @@ export class MidiInput {
     this.engine.applyMidiCc(config.aftertouchTarget, scaled);
   }
 
-  private handlePolyPressure(note: number, pressure: number, _channel: number, config: MidiConfig): void {
+  private handlePolyPressure(note: number, pressure: number, channel: number, config: MidiConfig): void {
+    // Live Note Repeat: aftertouch on the held note modulates its repeats.
+    this.noteRepeat?.setHoldPressure(`midi:${channel}:${note}`, pressure / 127);
     if (!this.engine) return;
     const doc = this.getDoc?.();
     if (!doc) return;

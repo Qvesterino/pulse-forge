@@ -1,0 +1,66 @@
+[
+  {
+    "id": "passthrough_default",
+    "description": "Default params — effectively passthrough (all modules disabled)",
+    "sampleRate": 48000,
+    "frameCount": 4800,
+    "inputRmsDb": -9.030899887458997,
+    "outputRmsDb": -9.030899887458997
+  },
+  {
+    "id": "input_gain_plus6",
+    "description": "Input gain +6dB",
+    "sampleRate": 48000,
+    "frameCount": 4800,
+    "inputRmsDb": -9.030899887458997,
+    "outputRmsDb": -3.8565685488028265
+  },
+  {
+    "id": "input_gain_minus6",
+    "description": "Input gain -6dB",
+    "sampleRate": 48000,
+    "frameCount": 4800,
+    "inputRmsDb": -9.030899887458997,
+    "outputRmsDb": -13.288003586861105
+  },
+  {
+    "id": "output_gain_plus3",
+    "description": "Output gain +3dB",
+    "sampleRate": 48000,
+    "frameCount": 4800,
+    "inputRmsDb": -13.467874791633733,
+    "outputRmsDb": -10.961310921423092
+  },
+  {
+    "id": "mix_50_percent",
+    "description": "Mix at 50%",
+    "sampleRate": 48000,
+    "frameCount": 4800,
+    "inputRmsDb": -9.030899887458997,
+    "outputRmsDb": -9.030899887458997
+  },
+  {
+    "id": "noise_passthrough",
+    "description": "White noise passthrough",
+    "sampleRate": 48000,
+    "frameCount": 9600,
+    "inputRmsDb": -15.172255406776065,
+    "outputRmsDb": -15.172255406776065
+  },
+  {
+    "id": "low_freq_sine",
+    "description": "Low frequency sine (80Hz)",
+    "sampleRate": 48000,
+    "frameCount": 9600,
+    "inputRmsDb": -9.030899891496114,
+    "outputRmsDb": -9.030899891496114
+  },
+  {
+    "id": "high_freq_sine",
+    "description": "High frequency sine (8000Hz)",
+    "sampleRate": 48000,
+    "frameCount": 4800,
+    "inputRmsDb": -13.467875018142978,
+    "outputRmsDb": -13.467875018142978
+  }
+]

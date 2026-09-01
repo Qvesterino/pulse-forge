@@ -129,3 +129,62 @@ describe("EffectRack — FXEQ panel", () => {
     expect(executed.some((c) => c.type === "setFxEqParam")).toBe(true);
   });
 });
+
+describe("EffectRack — Ultina panel", () => {
+  function ultinaDoc() {
+    const doc = createProjectFromTemplate("house");
+    const track = doc.tracks.find((t) => t.kind === "instrument")!;
+    track.effects = [
+      { id: "fx-ult", type: "ultina" as const, bypassed: false, params: {} },
+    ];
+    return { doc, track };
+  }
+
+  it("mounts the module editor: chips in graph order + enable toggle", () => {
+    const { doc, track } = ultinaDoc();
+    renderWithContext(<EffectRack track={track} />, { services: mockServices(doc) });
+    expect(screen.getByLabelText("Ultina module editor")).toBeInTheDocument();
+    // Graph-order chips present.
+    expect(screen.getByRole("button", { name: "COMP" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "UNMSK" })).toBeInTheDocument();
+    // Default selected module is COMP, currently OFF (params {}).
+    expect(screen.getByRole("button", { name: "OFF" })).toBeInTheDocument();
+  });
+
+  it("enable toggle executes a dotted setUltinaParam", async () => {
+    const user = userEvent.setup();
+    const { doc, track } = ultinaDoc();
+    const services = mockServices(doc);
+    renderWithContext(<EffectRack track={track} />, { services });
+    await user.click(screen.getByRole("button", { name: "OFF" })); // COMP enable
+    const executed = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.map(
+      (call: unknown[]) => call[0] as { type: string },
+    );
+    const paramCmds = executed.filter((c) => c.type === "setUltinaParam");
+    expect(paramCmds.length).toBe(1);
+  });
+
+  it("selecting a preset executes ONE bulk apply command", async () => {
+    const user = userEvent.setup();
+    const { doc, track } = ultinaDoc();
+    const services = mockServices(doc);
+    renderWithContext(<EffectRack track={track} />, { services });
+    const select = screen.getByLabelText("Ultina preset");
+    const firstOption = select.querySelectorAll("option")[1]; // first real preset
+    await user.selectOptions(select, firstOption.getAttribute("value")!);
+    const executed = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.map(
+      (call: unknown[]) => call[0] as { type: string },
+    );
+    expect(executed.some((c) => c.type === "applyUltinaPreset")).toBe(true);
+  });
+
+  it("EQ module shows the 12-band editor with response sketch", async () => {
+    const user = userEvent.setup();
+    const { doc, track } = ultinaDoc();
+    renderWithContext(<EffectRack track={track} />, { services: mockServices(doc) });
+    await user.click(screen.getByRole("button", { name: "EQ" }));
+    expect(screen.getByRole("img", { name: "EQ response sketch" })).toBeInTheDocument();
+    // 12 band chips (BAND toggle shows "BAND 1 — OFF" initially).
+    expect(screen.getByRole("button", { name: /BAND 1/ })).toBeInTheDocument();
+  });
+});

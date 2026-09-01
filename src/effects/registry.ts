@@ -4,6 +4,7 @@ import { hashString, mulberry32 } from "../shared/rng";
 import { isWorkletReady } from "../audio-worklets/loader";
 import { createBitcrusherNode } from "../audio-worklets/bitcrusher-node";
 import { createFxEqNode } from "./fxeqNode";
+import { createUltinaNode } from "./ultinaNode";
 import { createSidechainNode } from "../audio-worklets/sidechain-node";
 import { createLimiterNode } from "../audio-worklets/limiter-node";
 import { createCompressorNode } from "../audio-worklets/compressor-node";
@@ -2049,6 +2050,44 @@ const fxeq: EffectDefinition = {
   },
 };
 
+/* ---------------- Ultina (VocalForge plugin, vendored DSP oracle) ---------------- */
+// Neutron-class modular mixing suite: EQ, Comp, Gate, Exciter, Transient,
+// Clipper, Density, Sculptor, Phase, Unmask + LUFS/autogain. DSP runs in an
+// AudioWorklet (vendored core is bit-exact with the VocalForge vectors —
+// tests/ultina-vectors.test.ts). The rack exposes the global surface and
+// quick module toggles; per-module editing lands with the Ultina panel.
+
+const ULTINA_PARAM_DEFAULTS: Record<string, number> = {
+  "global.inputGainDb": 0,
+  "global.mix": 100,
+  "global.outputGainDb": 0,
+  "comp.enabled": 0,
+  "transient.enabled": 0,
+  "unmask.enabled": 0,
+  "exciter.enabled": 0,
+};
+
+const ultina: EffectDefinition = {
+  type: "ultina",
+  name: "Ultina Suite",
+  category: "dynamics",
+  params: [
+    { id: "global.inputGainDb", label: "IN", min: -24, max: 24, default: 0, unit: "dB", format: formatDb },
+    { id: "global.mix", label: "MIX", min: 0, max: 100, default: 100, unit: "%", format: (v) => `${v.toFixed(0)}%` },
+    { id: "global.outputGainDb", label: "OUT", min: -24, max: 24, default: 0, unit: "dB", format: formatDb },
+    { id: "comp.enabled", label: "COMP", min: 0, max: 1, default: 0, format: (v) => (v >= 0.5 ? "ON" : "OFF") },
+    { id: "transient.enabled", label: "ATTACK", min: 0, max: 1, default: 0, format: (v) => (v >= 0.5 ? "ON" : "OFF") },
+    { id: "exciter.enabled", label: "EDGE", min: 0, max: 1, default: 0, format: (v) => (v >= 0.5 ? "ON" : "OFF") },
+    { id: "unmask.enabled", label: "UNMASK", min: 0, max: 1, default: 0, format: (v) => (v >= 0.5 ? "ON" : "OFF") },
+  ],
+  factory(ctx, instance) {
+    if (isWorkletReady("ultina", ctx)) {
+      return createUltinaNode(ctx, instance, ULTINA_PARAM_DEFAULTS);
+    }
+    return bypassRuntime(ctx, "AudioWorklet unavailable — Ultina bypassed (1:1 signal)");
+  },
+};
+
 function bussCurve(drive: number): Float32Array<ArrayBuffer> {
   const curve = new Float32Array(new ArrayBuffer(2048 * 4));
   const k = 1 + drive * 18;
@@ -2780,6 +2819,7 @@ export const EFFECT_DEFS: Record<EffectType, EffectDefinition> = {
   gate,
   shimmer,
   fxeq,
+  ultina,
 };
 
 export const EFFECT_ORDER: EffectType[] = [
@@ -2816,6 +2856,7 @@ export const EFFECT_ORDER: EffectType[] = [
   "gate",
   "shimmer",
   "fxeq",
+  "ultina",
 ];
 
 /** Effects intentionally exposed in the new mixer Add Effect menu. */

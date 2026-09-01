@@ -1,7 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { NoteRepeatController, rateTicksOf, repeatVelocity, type FalloffMode } from "../src/audio-engine/NoteRepeat";
 import { Transport } from "../src/transport/Transport";
 import { PPQ, STEP_TICKS } from "../src/project-model/types";
+import { MidiInput } from "../src/midi/MidiInput";
+import { createProjectFromTemplate } from "../src/project-model/templates";
+import { GM_DRUM_MAP, type DrumTrack, type ProjectDocument } from "../src/project-model/types";
 
 interface FiredHit {
   padId: string;
@@ -194,5 +197,187 @@ describe("NoteRepeatController — lifecycle", () => {
     const before = h.hits.length;
     h.advance(0.2);
     expect(h.hits.length).toBe(before);
+  });
+});
+
+// ── Pressure / aftertouch → velocity ─────────────────────────────────────
+
+describe("NoteRepeatController — pressure (aftertouch)", () => {
+  it("pressure raises repeat velocity above the note-on base (decay keeps its shape)", () => {
+    const h = makeHarness(120);
+    h.controller.setRate("1/16");
+    h.transport.play(0);
+    h.controller.start("k", "t1", "pad1", 0.4);
+    h.advance(0.02);
+    h.controller.setHoldPressure("k", 1);
+    for (let i = 0; i < 10; i++) h.advance(0.025);
+    // Twin comparison: the same hold without pressure keeps decaying from 0.4
+    // (falloff shape is preserved); squeezing lifts the whole curve to the
+    // pressed base and repeats land far louder.
+    const twin = makeHarness(120);
+    twin.controller.setRate("1/16");
+    twin.transport.play(0);
+    twin.controller.start("k", "t1", "pad1", 0.4);
+    twin.advance(0.02);
+    for (let i = 0; i < 10; i++) twin.advance(0.025);
+    const squeezed = h.hits[h.hits.length - 1].velocity;
+    const relaxed = twin.hits[twin.hits.length - 1].velocity;
+    expect(squeezed).toBeGreaterThan(relaxed * 1.8);
+    h.controller.stop("k");
+    twin.controller.stop("k");
+  });
+
+  it("pressure below the note-on base never reduces velocity", () => {
+    const soft = makeHarness(120);
+    soft.controller.setRate("1/16");
+    soft.transport.play(0);
+    soft.controller.start("k", "t1", "pad1", 0.8);
+    soft.advance(0.02);
+    soft.controller.setHoldPressure("k", 0.2);
+    soft.advance(0.2);
+    const hard = makeHarness(120);
+    hard.controller.setRate("1/16");
+    hard.transport.play(0);
+    hard.controller.start("k", "t1", "pad1", 0.8);
+    hard.advance(0.02);
+    hard.advance(0.2);
+    const softVels = soft.hits.filter((_, i) => i > 0).map((hit) => hit.velocity);
+    const hardVels = hard.hits.filter((_, i) => i > 0).map((hit) => hit.velocity);
+    expect(softVels).toEqual(hardVels);
+    soft.controller.stop("k");
+    hard.controller.stop("k");
+  });
+
+  it("holdKeysWithPrefix scopes pressure to one MIDI channel", () => {
+    const h = makeHarness(120);
+    h.controller.setRate("1/16");
+    h.transport.play(0);
+    h.controller.start("midi:10:36", "t1", "padA", 0.5);
+    h.controller.start("midi:11:40", "t1", "padB", 0.5);
+    expect(h.controller.holdKeysWithPrefix("midi:10:")).toEqual(["midi:10:36"]);
+    expect(h.controller.holdKeysWithPrefix("midi:").length).toBe(2);
+    h.controller.stopAll();
+  });
+
+  it("a fresh hold starts without residual pressure", () => {
+    const h = makeHarness(120);
+    h.controller.setRate("1/16");
+    h.transport.play(0);
+    h.controller.start("k", "t1", "pad1", 0.5);
+    h.controller.setHoldPressure("k", 1);
+    h.controller.stop("k");
+    const beforeRestart = h.hits.length;
+    h.controller.start("k", "t1", "pad1", 0.5);
+    h.advance(0.2);
+    // Skip the new hold's immediate hit — the first REPEAT must show clean
+    // decay from the note-on base, not the previous hold's pressure.
+    const velocities = h.hits.slice(beforeRestart + 1).map((hit) => hit.velocity);
+    const expected = repeatVelocity(0.5, 1, "decay");
+    expect(velocities[0]).toBeCloseTo(expected, 4);
+    h.controller.stop("k");
+  });
+});
+
+describe("MidiInput — pressure feeds live note repeat", () => {
+  function makeMidiHarness() {
+    let audioTime = 10;
+    const transport = new Transport({ now: () => audioTime }, 120);
+    const hits: { padId: string; velocity: number; when: number }[] = [];
+    const controller = new NoteRepeatController({
+      getTransport: () => transport,
+      getAudioTime: () => audioTime,
+      fire: (_trackId, padId, velocity, when) => hits.push({ padId, velocity, when }),
+    });
+    const doc = createProjectFromTemplate("house");
+    const drum = doc.tracks.find((t) => t.kind === "drum") as DrumTrack;
+    const midi = new MidiInput();
+    midi.attachNoteRepeat(controller);
+    (midi as unknown as { engine: unknown }).engine = {
+      trigger: vi.fn(),
+      noteOn: vi.fn(),
+      applyMidiCc: vi.fn(),
+      polyPressure: vi.fn(),
+    };
+    (midi as unknown as { transport: Transport }).transport = transport;
+    (midi as unknown as { getDoc: () => ProjectDocument }).getDoc = () => doc;
+    (midi as unknown as { configCb: () => unknown }).configCb = () => ({
+      enabled: true,
+      deviceId: "test",
+      drumChannel: 0,
+      instrumentChannel: 1,
+      ccMappings: [],
+      drumNoteMap: [],
+      pitchBendRange: 2,
+    });
+    const send = (bytes: number[]) =>
+      (midi as unknown as { onMidiMessage: (e: { data: Uint8Array }) => void }).onMidiMessage({
+        data: new Uint8Array(bytes),
+      });
+    const advance = (seconds: number) => {
+      audioTime += seconds;
+      controller["tick"]();
+    };
+    return { controller, transport, hits, midi, send, advance, drum };
+  }
+
+  it("channel aftertouch (0xDn) modulates the held pad's repeats", () => {
+    const h = makeMidiHarness();
+    h.controller.setRate("1/16");
+    h.transport.play(0);
+    h.send([0x99, 36, 80]); // note-on, velocity 80/127 — GM kick on channel 10
+    expect(h.hits.length).toBe(1);
+    expect(h.controller.isHolding("midi:10:36")).toBe(true);
+    h.send([0xd9, 127]); // channel pressure max on channel 10
+    // Small increments mirror the real 25 ms tick cadence — grid points in
+    // the past are correctly skipped, so a single big jump would skip them.
+    for (let i = 0; i < 12; i++) h.advance(0.025);
+    const velocities = h.hits.slice(1).map((hit) => hit.velocity);
+    expect(velocities.length).toBeGreaterThan(2);
+    // The squeeze restarts the curve at full velocity, which then decays.
+    expect(velocities[0]).toBeGreaterThan(0.95);
+    for (let i = 1; i < velocities.length; i++) {
+      expect(velocities[i]).toBeLessThan(velocities[i - 1]);
+    }
+    h.send([0x89, 36, 0]); // note-off releases the hold
+    expect(h.controller.isHolding("midi:10:36")).toBe(false);
+  });
+
+  it("poly aftertouch (0xAn) targets only that note's hold", () => {
+    const h = makeMidiHarness();
+    h.controller.setRate("1/16");
+    h.transport.play(0);
+    // Resolve GM pads the same way MidiInput does (note 35 is GM index 0, so
+    // 36/38 are NOT pads[0]/pads[1]).
+    const padForNote = (note: number) => h.drum.pads[GM_DRUM_MAP.findIndex((m) => m.note === note)].id;
+    const kickPad = padForNote(36);
+    const snarePad = padForNote(38);
+    h.send([0x99, 36, 90]); // kick hold
+    h.advance(0.02);
+    h.controller.start("midi:10:38", h.drum.id, snarePad, 0.4); // second hold, other note
+    h.advance(0.02);
+    h.send([0xa9, 38, 127]); // poly pressure on the SNARE note only
+    for (let i = 0; i < 12; i++) h.advance(0.025);
+    const kickVels = h.hits
+      .filter((hit) => hit.padId === kickPad)
+      .slice(1)
+      .map((hit) => hit.velocity);
+    const snareVels = h.hits.filter((hit) => hit.padId === snarePad).map((hit) => hit.velocity);
+    // Snare rides the pressure ceiling; kick keeps decaying from its base.
+    expect(snareVels[snareVels.length - 1]).toBeGreaterThan(0.7);
+    expect(kickVels[kickVels.length - 1]).toBeLessThan(0.5);
+    h.controller.stopAll();
+  });
+
+  it("pressure on another channel leaves the hold untouched", () => {
+    const h = makeMidiHarness();
+    h.controller.setRate("1/16");
+    h.transport.play(0);
+    h.send([0x99, 36, 70]);
+    h.advance(0.02);
+    h.send([0xdb, 127]); // channel 12 pressure — wrong channel
+    for (let i = 0; i < 8; i++) h.advance(0.025);
+    const velocities = h.hits.slice(1).map((hit) => hit.velocity);
+    for (const v of velocities) expect(v).toBeLessThan(0.7);
+    h.send([0x89, 36, 0]);
   });
 });

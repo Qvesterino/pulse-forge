@@ -19,8 +19,9 @@
     "format:check": "prettier --check src tests",
     "prepare": "node scripts/setup-hooks.mjs",
     "build:fxeq": "node scripts/build-fxeq-worklet.mjs",
-    "predev": "npm run build:fxeq",
-    "prebuild": "npm run build:fxeq"
+    "predev": "npm run build:fxeq && npm run build:ultina",
+    "prebuild": "npm run build:fxeq && npm run build:ultina",
+    "build:ultina": "node scripts/build-ultina-worklet.mjs"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",

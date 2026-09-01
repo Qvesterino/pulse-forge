@@ -39,9 +39,21 @@ export function createFxEqNode(
   input.connect(node);
   node.connect(output);
 
+  // The worklet reports DSP latency (oversampled bands) after prepare and
+  // whenever params change it — consumed by the engine's PDC via
+  // getLatencySec() so fxeq tracks stay in phase with the rest of the mix.
+  let latencySamples = 0;
+  node.port.onmessage = (event) => {
+    const msg = event.data as { type?: string; samples?: number } | null;
+    if (msg?.type === "latency" && typeof msg.samples === "number") {
+      latencySamples = msg.samples;
+    }
+  };
+
   return {
     input,
     output,
+    getLatencySec: () => latencySamples / ctx.sampleRate,
     setParameter(id: string, value: number) {
       // The worklet's setParameter validates ids — forward everything,
       // including dotted per-band ids outside the rack surface.

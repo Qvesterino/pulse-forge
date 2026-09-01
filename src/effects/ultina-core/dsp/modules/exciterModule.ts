@@ -1,0 +1,472 @@
+/* eslint-disable */
+/**
+ * VENDORED from VocalForge_DAW/plugins/ultina. Do not edit by hand — this is
+ * a byte-faithful copy of the upstream DSP oracle so Pulse Forge and
+ * VocalForge validate against the SAME golden vectors
+ * (tests/ultina-vectors.test.ts). Fix DSP issues upstream, then re-vendor
+ * via scripts/vendor-ultina.mjs.
+ *
+ * Applied transforms (mechanical, semantics-preserving):
+ *  - type-only specifiers marked with "type" for verbatimModuleSyntax
+ *    (Pulse Forge tsconfig is stricter than upstream).
+ */
+// ═══════════════════════════════════════════════════════════
+// Ultina — Exciter Module
+//
+// 8 saturation/distortion types with 4x oversampling,
+// multiband processing, tone slider, pre-emphasis modes.
+//
+// Saturation types (blendable): Tube, Warm, Tape, Retro
+// Distortion types (trash mode): Overdrive, Scream, Clipper, Scratch
+// ═══════════════════════════════════════════════════════════
+
+import type {
+  ModuleProcessArgs,
+  ModuleProcessorContext,
+  UltinaModuleProcessor,
+} from "../ultinaProcessor.js";
+import {
+  clamp,
+  dbToLinear,
+  fastTanh,
+  sanitizeSample,
+  softClip,
+  hardClip,
+  tubeSaturation,
+  tapeSaturation,
+  warmSaturation,
+} from "../primitives.js";
+import {
+  OS_FACTOR,
+  OS_LATENCY_SAMPLES,
+  type OsChannelState,
+  createOsChannelState,
+  resetOsChannelState,
+  upsample as osUpsample,
+  downsample as os_Downsample,
+} from "../oversampler.js";
+import {
+  channelModeFromValue,
+  type BandCount,
+  type CrossoverMode,
+} from "../../contracts/channelModes.js";
+import { MultibandProcessor } from "../multiband.js";
+
+// ── Constants ──────────────────────────────────────────────
+
+const EXCITER_MAX_BANDS = 3;
+
+// ── Meter interface ────────────────────────────────────────
+
+export interface ExciterMeters {
+  /** Per-band harmonic content increase (dB). */
+  harmonicContentDb: number[];
+  /** Per-band output peak (dBFS). */
+  outputPeakDb: number[];
+  /** Oversampling active. */
+  oversampling: boolean;
+}
+
+// ── Module ─────────────────────────────────────────────────
+
+interface SatAmounts {
+  tubeAmt: number;
+  warmAmt: number;
+  tapeAmt: number;
+  retroAmt: number;
+  odAmt: number;
+  screamAmt: number;
+  clipAmt: number;
+  scratchAmt: number;
+}
+
+export class ExciterModuleProcessor implements UltinaModuleProcessor {
+  private sampleRate = 44100;
+  private maxBlockSize = 512;
+
+  // Multiband
+  private multiband = new MultibandProcessor();
+
+  // Per-band oversampling state (2 channels × max bands)
+  private osStates: OsChannelState[][] = [];
+
+  // Dry buffer for mix
+  private dryL: Float32Array = new Float32Array(0);
+  private dryR: Float32Array = new Float32Array(0);
+
+  // Tone filter state (per channel, per band)
+  private toneLowState: number[] = [];
+  private toneHighState: number[] = [];
+
+  // Meter state
+  private harmonicContent: number[] = new Array(EXCITER_MAX_BANDS).fill(0);
+  private outputPeaks: number[] = new Array(EXCITER_MAX_BANDS).fill(-100);
+  private osActive = false;
+
+  // Cached config
+  private cachedBandCount = -1;
+  private cachedXover1 = -1;
+  private cachedXover2 = -1;
+
+  prepare(ctx: ModuleProcessorContext): void {
+    this.sampleRate = ctx.sampleRate;
+    this.maxBlockSize = ctx.maxBlockSize;
+
+    const maxOsFrames = this.maxBlockSize * OS_FACTOR;
+
+    // Allocate dry buffers
+    this.dryL = new Float32Array(this.maxBlockSize);
+    this.dryR = new Float32Array(this.maxBlockSize);
+
+    // Allocate OS state for max 2 channels × max bands
+    this.osStates = [];
+    for (let b = 0; b < EXCITER_MAX_BANDS; b++) {
+      const chStates: OsChannelState[] = [];
+      for (let ch = 0; ch < 2; ch++) {
+        chStates.push(createOsChannelState(maxOsFrames));
+      }
+      this.osStates.push(chStates);
+    }
+
+    // Tone filter state
+    this.toneLowState = new Array(EXCITER_MAX_BANDS * 2).fill(0);
+    this.toneHighState = new Array(EXCITER_MAX_BANDS * 2).fill(0);
+
+    this.multiband.prepare(this.sampleRate, 2, this.maxBlockSize, 1);
+  }
+
+  process(args: ModuleProcessArgs): void {
+    const { channels, frameCount, params } = args;
+
+    if (channels.length < 2) return;
+
+    const enabled = (params["exciter.enabled"] ?? 0) >= 0.5;
+    if (!enabled) return;
+
+    this.ensureBuffers(frameCount);
+
+    // Read parameters
+    const trashMode = (params["exciter.trashMode"] ?? 0) >= 0.5;
+    const tubeAmt = clamp(params["exciter.tubeAmount"] ?? 0, 0, 100) / 100;
+    const warmAmt = clamp(params["exciter.warmAmount"] ?? 30, 0, 100) / 100;
+    const tapeAmt = clamp(params["exciter.tapeAmount"] ?? 0, 0, 100) / 100;
+    const retroAmt = clamp(params["exciter.retroAmount"] ?? 0, 0, 100) / 100;
+    const odAmt = clamp(params["exciter.overdriveAmount"] ?? 0, 0, 100) / 100;
+    const screamAmt = clamp(params["exciter.screamAmount"] ?? 0, 0, 100) / 100;
+    const clipAmt = clamp(params["exciter.clipperAmount"] ?? 0, 0, 100) / 100;
+    const scratchAmt = clamp(params["exciter.scratchAmount"] ?? 0, 0, 100) / 100;
+    const toneSlider = clamp(params["exciter.toneSlider"] ?? 0, -100, 100) / 100;
+    const bandCount = Math.round(clamp(params["exciter.bandCount"] ?? 1, 1, 3)) as BandCount;
+    const xover1 = clamp(params["exciter.crossoverHz1"] ?? 2000, 20, 20000);
+    const xover2 = clamp(params["exciter.crossoverHz2"] ?? 8000, 20, 20000);
+    const channelModeRaw = Math.round(clamp(params["exciter.channelMode"] ?? 0, 0, 4));
+    const channelMode = channelModeFromValue(channelModeRaw);
+    const oversampling = (params["exciter.oversampling"] ?? 1) >= 0.5;
+    const mixPercent = clamp(params["exciter.mix"] ?? 50, 0, 100);
+    const deltaListen = (params["exciter.delta"] ?? 0) >= 0.5;
+
+    this.osActive = oversampling;
+    const amounts: SatAmounts = {
+      tubeAmt, warmAmt, tapeAmt, retroAmt,
+      odAmt, screamAmt, clipAmt, scratchAmt,
+    };
+
+    // Update multiband config if changed
+    this.updateMultiband(bandCount, xover1, xover2);
+    const xoverMode: CrossoverMode = (params["exciter.crossoverMode"] ?? 0) >= 0.5 ? "hybrid" : "analog";
+    this.multiband.setCrossoverMode(xoverMode);
+
+    // Store dry signal for mix
+    this.dryL.set(channels[0].subarray(0, frameCount));
+    this.dryR.set(channels[1].subarray(0, frameCount));
+
+    // Process through multiband
+    this.multiband.process(
+      channels,
+      frameCount,
+      (bandIdx, bandChannels, bandFrames) => {
+        this.processBand(bandIdx, bandChannels, bandFrames, trashMode, amounts, toneSlider, oversampling);
+      },
+      channelMode,
+    );
+
+    // Mix dry/wet
+    const mix = mixPercent / 100;
+    if (mix < 0.999) {
+      for (let i = 0; i < frameCount; i++) {
+        channels[0][i] = sanitizeSample(channels[0][i] * mix + this.dryL[i] * (1 - mix));
+        channels[1][i] = sanitizeSample(channels[1][i] * mix + this.dryR[i] * (1 - mix));
+      }
+    }
+
+    // Delta listen
+    if (deltaListen) {
+      for (let i = 0; i < frameCount; i++) {
+        channels[0][i] = sanitizeSample(channels[0][i] - this.dryL[i]);
+        channels[1][i] = sanitizeSample(channels[1][i] - this.dryR[i]);
+      }
+    }
+
+    // Module-output sanitize: ONE pass at the boundary. The downsample
+    // FIR is a linear combination of sanitized OS samples, so its output
+    // can sit a hair above the ±32 rail for insane inputs — clamp here.
+    for (let ch = 0; ch < channels.length; ch++) {
+      const data = channels[ch];
+      for (let i = 0; i < frameCount; i++) {
+        data[i] = sanitizeSample(data[i]);
+      }
+    }
+
+    // (Per-band output peaks are measured inside processBand —
+    // overwriting band 0 with the full-mix peak hid the real bands.)
+  }
+
+  reset(): void {
+    for (const bandStates of this.osStates) {
+      for (const s of bandStates) {
+        resetOsChannelState(s);
+      }
+    }
+    this.toneLowState.fill(0);
+    this.toneHighState.fill(0);
+    this.multiband.reset();
+    this.harmonicContent.fill(0);
+    this.outputPeaks.fill(-100);
+  }
+
+  getMeters(): ExciterMeters {
+    return {
+      harmonicContentDb: [...this.harmonicContent],
+      outputPeakDb: [...this.outputPeaks],
+      oversampling: this.osActive,
+    };
+  }
+
+  /** Hybrid crossover group delay + oversampler latency (samples). */
+  getLatency(): number {
+    let lat = this.multiband.getCrossoverLatency();
+    if (this.osActive) {
+      // Upsample FIR (7 OS) + downsample FIR (7 OS) + alignment delay (2 OS)
+      // = 16 OS samples = exactly 4 base samples (see oversampler.ts).
+      lat += OS_LATENCY_SAMPLES;
+    }
+    return lat;
+  }
+
+  // ── Internal methods ──────────────────────────────────────
+
+  private ensureBuffers(size: number): void {
+    if (this.dryL.length < size) {
+      this.dryL = new Float32Array(size);
+      this.dryR = new Float32Array(size);
+    }
+  }
+
+  private updateMultiband(bandCount: BandCount, xover1: number, xover2: number): void {
+    if (bandCount !== this.cachedBandCount) {
+      this.multiband.setBandCount(bandCount);
+      this.cachedBandCount = bandCount;
+      // setBandCount rebuilds the crossover (coefficients wiped) —
+      // force both split frequencies to be re-applied below.
+      this.cachedXover1 = -1;
+      this.cachedXover2 = -1;
+    }
+    if (xover1 !== this.cachedXover1) {
+      this.multiband.setCrossover(0, xover1);
+      this.cachedXover1 = xover1;
+    }
+    if (xover2 !== this.cachedXover2 && bandCount >= 3) {
+      this.multiband.setCrossover(1, xover2);
+      this.cachedXover2 = xover2;
+    }
+  }
+
+  private processBand(
+    bandIdx: number,
+    bandChannels: Float32Array[],
+    bandFrames: number,
+    trashMode: boolean,
+    amounts: SatAmounts,
+    toneSlider: number,
+    oversampling: boolean,
+  ): void {
+    const chL = bandChannels[0];
+    const chR = bandChannels.length >= 2 ? bandChannels[1] : bandChannels[0];
+
+    // Measure input energy for harmonic content meter
+    let inEnergy = 0;
+    for (let i = 0; i < bandFrames; i++) {
+      inEnergy += chL[i] * chL[i];
+    }
+
+    if (oversampling && bandFrames > 0) {
+      const osStateL = this.osStates[bandIdx][0];
+      const osStateR = this.osStates[bandIdx][1];
+
+      // Upsample 4x
+      const osFrames = bandFrames * OS_FACTOR;
+      this.upsample(chL, osStateL, bandFrames);
+      this.upsample(chR, osStateR, bandFrames);
+
+      // Process saturation at 4x rate
+      this.applySaturation(osStateL.osBuffer, osFrames, trashMode, amounts);
+      this.applySaturation(osStateR.osBuffer, osFrames, trashMode, amounts);
+
+      // Apply tone at oversampled rate
+      this.applyTone(osStateL.osBuffer, osStateR.osBuffer, osFrames, toneSlider, bandIdx);
+
+      // Downsample 4x
+      this.downsample(osStateL, chL, bandFrames);
+      this.downsample(osStateR, chR, bandFrames);
+    } else {
+      // No oversampling: process directly
+      this.applySaturation(chL, bandFrames, trashMode, amounts);
+      this.applySaturation(chR, bandFrames, trashMode, amounts);
+      this.applyTone(chL, chR, bandFrames, toneSlider, bandIdx);
+    }
+
+    // Measure harmonic content (ratio of output energy to input energy)
+    let outEnergy = 0;
+    for (let i = 0; i < bandFrames; i++) {
+      outEnergy += chL[i] * chL[i];
+    }
+    if (inEnergy > 1e-10 && bandFrames > 0) {
+      const ratio = outEnergy / inEnergy;
+      this.harmonicContent[bandIdx] = 10 * Math.log10(Math.max(1e-10, ratio));
+    }
+
+    // Measure output peak
+    let peak = 0;
+    for (let i = 0; i < bandFrames; i++) {
+      const a = Math.abs(chL[i]);
+      if (a > peak) peak = a;
+    }
+    this.outputPeaks[bandIdx] = peak > 1e-10 ? 20 * Math.log10(peak) : -100;
+  }
+
+  /**
+   * Apply all active saturation/distortion types.
+   * Saturation types are blended in parallel; distortion types
+   * are applied in series.
+   */
+  private applySaturation(
+    buf: Float32Array,
+    frames: number,
+    trashMode: boolean,
+    a: SatAmounts,
+  ): void {
+    const hasSat = a.tubeAmt > 0 || a.warmAmt > 0 || a.tapeAmt > 0 || a.retroAmt > 0;
+    const hasDist = trashMode && (a.odAmt > 0 || a.screamAmt > 0 || a.clipAmt > 0 || a.scratchAmt > 0);
+
+    if (!hasSat && !hasDist) return;
+
+    for (let i = 0; i < frames; i++) {
+      let x = buf[i];
+      let wet = 0;
+      let blendCount = 0;
+
+      // ── Saturation types (parallel blend) ──────────────
+
+      if (a.tubeAmt > 0) {
+        wet += tubeSaturation(x, 1 + a.tubeAmt * 2);
+        blendCount++;
+      }
+      if (a.warmAmt > 0) {
+        wet += warmSaturation(x, 1 + a.warmAmt * 1.5, a.warmAmt * 0.7);
+        blendCount++;
+      }
+      if (a.tapeAmt > 0) {
+        wet += tapeSaturation(x, 1 + a.tapeAmt * 2);
+        blendCount++;
+      }
+      if (a.retroAmt > 0) {
+        // Retro: asymmetric with gentle crossover distortion
+        const d = x * (1 + a.retroAmt * 2);
+        const pos = d > 0 ? fastTanh(d * 1.3) * 0.8 : fastTanh(d * 0.7) * 0.9;
+        wet += pos;
+        blendCount++;
+      }
+
+      if (blendCount > 0) {
+        wet /= blendCount;
+        const satBlend = Math.max(a.tubeAmt, a.warmAmt, a.tapeAmt, a.retroAmt);
+        x = x * (1 - satBlend * 0.5) + wet * (satBlend * 0.5);
+      }
+
+      // ── Distortion types (series, trash mode only) ─────
+
+      if (trashMode) {
+        if (a.odAmt > 0) {
+          const drive = 1 + a.odAmt * 5;
+          x = softClip(x, drive) / Math.sqrt(drive);
+        }
+        if (a.screamAmt > 0) {
+          const drive = 1 + a.screamAmt * 8;
+          const d = x * drive;
+          x = fastTanh(Math.tan(d * 0.3) * 0.8) * 0.7 * a.screamAmt + x * (1 - a.screamAmt);
+        }
+        if (a.clipAmt > 0) {
+          const threshold = 1 - a.clipAmt * 0.8;
+          x = hardClip(x, threshold);
+        }
+        if (a.scratchAmt > 0) {
+          const bits = Math.max(2, 12 - a.scratchAmt * 10);
+          const levels = Math.pow(2, bits);
+          const quantized = Math.round(x * levels) / levels;
+          x = quantized * a.scratchAmt + x * (1 - a.scratchAmt);
+        }
+      }
+
+      buf[i] = sanitizeSample(x);
+    }
+  }
+
+  /**
+   * Apply tone shelving via one-pole crossover.
+   * toneSlider: -1 = boost lows, +1 = boost highs.
+   */
+  private applyTone(
+    chL: Float32Array,
+    chR: Float32Array,
+    frames: number,
+    toneSlider: number,
+    bandIdx: number,
+  ): void {
+    if (Math.abs(toneSlider) < 0.001) return;
+
+    const lowGainDb = toneSlider < 0 ? -toneSlider * 6 : 0;
+    const highGainDb = toneSlider > 0 ? toneSlider * 6 : 0;
+    const lowGain = dbToLinear(lowGainDb);
+    const highGain = dbToLinear(highGainDb);
+
+    // One-pole crossover (~200Hz at base rate, scales with oversampling)
+    const alpha = 0.98;
+
+    let lowL = this.toneLowState[bandIdx * 2];
+    let lowR = this.toneLowState[bandIdx * 2 + 1];
+
+    for (let i = 0; i < frames; i++) {
+      const sL = chL[i];
+      lowL = lowL + alpha * (sL - lowL);
+      chL[i] = sanitizeSample(lowL * lowGain + (sL - lowL) * highGain);
+
+      const sR = chR[i];
+      lowR = lowR + alpha * (sR - lowR);
+      chR[i] = sanitizeSample(lowR * lowGain + (sR - lowR) * highGain);
+    }
+
+    this.toneLowState[bandIdx * 2] = lowL;
+    this.toneLowState[bandIdx * 2 + 1] = lowR;
+  }
+
+  // ── Oversampling (shared half-band FIR) ──────────────────
+
+  private upsample(input: Float32Array, osState: OsChannelState, frames: number): void {
+    osUpsample(input, osState, frames);
+  }
+
+  private downsample(osState: OsChannelState, output: Float32Array, frames: number): void {
+    os_Downsample(osState, output, frames);
+  }
+
+}

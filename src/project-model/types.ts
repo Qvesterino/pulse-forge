@@ -44,7 +44,8 @@ export type EffectType =
   | "utility"
   | "gate"
   | "shimmer"
-  | "fxeq";
+  | "fxeq"
+  | "ultina";
 
 export type InstrumentKind =
   "sampler" | "analog" | "bass" | "808" | "texture" | "wavetable" | "granular" | "keys" | "pluck" | "logdrum";

@@ -6676,3 +6676,60 @@ html {
   border-radius: 3px;
   padding: 2px 6px;
 }
+
+/* ── Ultina panel ───────────────────────────────────────────────────────── */
+
+.ultina-panel {
+  max-height: 480px;
+  overflow-y: auto;
+}
+
+.ultina-mod-on:not(.active) {
+  border-color: var(--accent);
+}
+
+.ultina-tag {
+  background: var(--accent);
+}
+
+.ultina-module-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ultina-enum-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ultina-enum-row .collab-field {
+  flex: 1;
+  min-width: 120px;
+}
+
+.ultina-bool-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ultina-eq {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ultina-eq-curve {
+  width: 100%;
+  height: 88px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+
+.ultina-eq-blob {
+  fill: var(--accent);
+}

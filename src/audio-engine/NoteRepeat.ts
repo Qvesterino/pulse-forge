@@ -51,6 +51,8 @@ interface ActiveHold {
   base: number;
   /** Hits fired so far (velocity index). */
   index: number;
+  /** Live aftertouch (0..1) — raises the effective base, never lowers it. */
+  pressure: number | null;
   /** Next grid tick while the transport plays (null = needs re-anchor). */
   nextTick: number | null;
   /** Next audio-clock time while the transport is stopped (null otherwise). */
@@ -111,6 +113,32 @@ export class NoteRepeatController {
   }
 
   /**
+   * Live pressure (MIDI aftertouch, 0..1) for one hold. It raises the hold's
+   * effective base — `max(noteOnVelocity, pressure)` — so squeezing a pad
+   * makes the repeats louder, and a RISING squeeze restarts the falloff
+   * curve (squeeze = re-energize the roll). Sub-note-on pressure never
+   * REDUCES velocity: soft hits stay soft until you actually squeeze.
+   */
+  setHoldPressure(key: string, pressure: number): void {
+    const hold = this.holds.get(key);
+    if (!hold) return;
+    const clamped = Math.min(1, Math.max(0, pressure));
+    const prevEffective = hold.pressure !== null ? Math.max(hold.base, hold.pressure) : hold.base;
+    const newEffective = Math.max(hold.base, clamped);
+    if (newEffective > prevEffective) hold.index = 0;
+    hold.pressure = clamped;
+  }
+
+  /** Hold keys sharing a namespace prefix (e.g. `midi:10:` for a channel). */
+  holdKeysWithPrefix(prefix: string): string[] {
+    const keys: string[] = [];
+    for (const key of this.holds.keys()) {
+      if (key.startsWith(prefix)) keys.push(key);
+    }
+    return keys;
+  }
+
+  /**
    * Pad-down. Fires the first hit immediately (index 0 = `base` velocity),
    * then repeats on the grid while held. Callers must pair with `stop(key)`.
    */
@@ -121,7 +149,7 @@ export class NoteRepeatController {
       return;
     }
     const now = this.deps.getAudioTime();
-    const hold: ActiveHold = { trackId, padId, base, index: 0, nextTick: null, nextTime: null };
+    const hold: ActiveHold = { trackId, padId, base, index: 0, pressure: null, nextTick: null, nextTime: null };
     this.holds.set(key, hold);
     this.deps.fire(trackId, padId, repeatVelocity(base, 0, this.falloff), now + 0.005);
     hold.index = 1;
@@ -164,6 +192,9 @@ export class NoteRepeatController {
     const rateTicks = rateTicksOf(this.rate);
     const rateSec = rateTicks * transport.secondsPerTick;
     for (const hold of this.holds.values()) {
+      // Aftertouch raises the effective base; it never reduces velocity below
+      // the note-on hit (`max`), so soft hits stay soft until squeezed.
+      const base = hold.pressure !== null ? Math.max(hold.base, hold.pressure) : hold.base;
       if (transport.playing) {
         if (hold.nextTick === null) {
           // Was free-running (transport started mid-hold) — re-anchor to grid.
@@ -176,7 +207,7 @@ export class NoteRepeatController {
           const when = transport.timeAtTick(hold.nextTick!);
           if (when > horizon) break;
           if (when >= now - AUDIBLE_EPSILON) {
-            this.deps.fire(hold.trackId, hold.padId, repeatVelocity(hold.base, hold.index, this.falloff), when);
+            this.deps.fire(hold.trackId, hold.padId, repeatVelocity(base, hold.index, this.falloff), when);
             hold.index += 1;
           }
           hold.nextTick! += rateTicks;
@@ -187,7 +218,7 @@ export class NoteRepeatController {
           hold.nextTick = null;
         }
         while (hold.nextTime! <= horizon) {
-          this.deps.fire(hold.trackId, hold.padId, repeatVelocity(hold.base, hold.index, this.falloff), hold.nextTime!);
+          this.deps.fire(hold.trackId, hold.padId, repeatVelocity(base, hold.index, this.falloff), hold.nextTime!);
           hold.index += 1;
           hold.nextTime! += rateSec;
         }

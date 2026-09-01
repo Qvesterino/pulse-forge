@@ -3641,15 +3641,30 @@
     constructor(options) {
       super();
       this.proc.prepare(sampleRate, CHANNELS, MAX_BLOCK);
+      this.lastLatencyPosted = -1;
       const initial = options?.processorOptions?.params;
       if (initial) this.proc.loadParameters(initial);
+      this.postLatency();
       this.port.onmessage = (event) => {
         const msg = event.data;
         if (!msg) return;
-        if (msg.type === "params") this.proc.loadParameters(msg.params);
-        else if (msg.type === "param") this.proc.setParameter(msg.id, msg.value);
-        else if (msg.type === "reset") this.proc.reset();
+        if (msg.type === "params") {
+          this.proc.loadParameters(msg.params);
+          this.postLatency();
+        } else if (msg.type === "param") {
+          this.proc.setParameter(msg.id, msg.value);
+          this.postLatency();
+        } else if (msg.type === "reset") {
+          this.proc.reset();
+        }
       };
+    }
+    postLatency() {
+      const samples = this.proc.getLatencySamples();
+      if (samples !== this.lastLatencyPosted) {
+        this.lastLatencyPosted = samples;
+        this.port.postMessage({ type: "latency", samples });
+      }
     }
     process(inputs, outputs) {
       const output = outputs[0];

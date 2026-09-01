@@ -11,10 +11,13 @@ import {
   setEffectSidechainSource,
   setEffectSteps,
   setFxEqParam,
+  setUltinaParam,
+  applyUltinaPreset,
   toggleEffectBypass,
 } from "../commands/commands";
 import { CORE_EFFECT_ORDER, EFFECT_DEFS } from "../effects/registry";
 import { FxEqPanel } from "./FxEqPanel";
+import { UltinaPanel } from "./UltinaPanel";
 import { presetsForEffect } from "../effects/presets";
 import { registerRaf, unregisterRaf } from "../services/rafLoop";
 import { Slider } from "./controls";
@@ -275,6 +278,18 @@ function Device({
           }
           onApplyPreset={(name, presetParams) =>
             services.store.execute(applyFxEqPreset(doc, track.id, fx.id, name, presetParams))
+          }
+        />
+      )}
+      {fx.type === "ultina" && (
+        <UltinaPanel
+          params={fx.params}
+          degraded={!!fallbackReason}
+          onParam={(paramId, value) =>
+            services.store.execute(setUltinaParam(doc, track.id, fx.id, paramId, value))
+          }
+          onApplyPreset={(name, presetParams) =>
+            services.store.execute(applyUltinaPreset(doc, track.id, fx.id, name, presetParams))
           }
         />
       )}

@@ -52,6 +52,7 @@ import {
 import type { Pattern } from "../project-model/types";
 import { EFFECT_DEFS, clampEffectParam, defaultParamsOf } from "../effects/registry";
 import { buildSchema as buildFxEqSchema } from "../effects/fxeq-core/core/parameterSchema";
+import { tryGetParamDef as tryGetUltinaParamDef, clampParam as clampUltinaParam, buildDefaultParams as buildUltinaDefaults } from "../effects/ultina-core/contracts/parameterSchema";
 import { INSTRUMENT_DEFS, clampInstrumentParam, defaultInstrumentParams } from "../instruments/registry";
 import type { InstrumentPreset } from "../presets/types";
 import type { EffectPreset } from "../effects/presets";
@@ -4489,6 +4490,58 @@ export function applyFxEqPreset(
   return {
     type: "applyFxEqPreset",
     label: `FXEQ preset ${presetName}`,
+    execute: (d) => apply(d, nextParams),
+    undo: (d) => apply(d, previousParams),
+  };
+}
+
+/* ---------------- Ultina per-module editing + presets ---------------- */
+
+/** Set any ultina param — schema-validated and clamped ("comp.thresholdDb", "eq.band3.gainDb"…). */
+export function setUltinaParam(
+  doc: ProjectDocument,
+  trackId: string,
+  fxId: string,
+  paramId: string,
+  value: number,
+): Command {
+  const target = trackEffectsOf(doc, trackId).find((f) => f.id === fxId);
+  if (!target || target.type !== "ultina") throw new Error(`Ultina effect ${fxId} not found`);
+  const def = tryGetUltinaParamDef(paramId);
+  if (!def) throw new Error(`Ultina param ${paramId} not defined`);
+  const clamped = clampUltinaParam(paramId, value);
+  const previous = target.params[paramId] ?? def.defaultValue;
+  const apply = (d: ProjectDocument, values: Record<string, number>): ProjectDocument =>
+    withTrackEffects(d, trackId, (effects) =>
+      effects.map((f) => (f.id === fxId ? { ...f, params: { ...f.params, ...values } } : f)),
+    );
+  return {
+    type: "setUltinaParam",
+    label: `Ultina ${paramId}`,
+    execute: (d) => apply(d, { [paramId]: clamped }),
+    undo: (d) => apply(d, { [paramId]: previous }),
+  };
+}
+
+/** Apply an Ultina module preset in ONE undoable gesture (defaults + preset overrides). */
+export function applyUltinaPreset(
+  doc: ProjectDocument,
+  trackId: string,
+  fxId: string,
+  presetName: string,
+  presetParams: Record<string, number>,
+): Command {
+  const target = trackEffectsOf(doc, trackId).find((f) => f.id === fxId);
+  if (!target || target.type !== "ultina") throw new Error(`Ultina effect ${fxId} not found`);
+  const nextParams = { ...buildUltinaDefaults(), ...presetParams };
+  const previousParams = { ...target.params };
+  const apply = (d: ProjectDocument, values: Record<string, number>): ProjectDocument =>
+    withTrackEffects(d, trackId, (effects) =>
+      effects.map((f) => (f.id === fxId ? { ...f, params: { ...values } } : f)),
+    );
+  return {
+    type: "applyUltinaPreset",
+    label: `Ultina preset ${presetName}`,
     execute: (d) => apply(d, nextParams),
     undo: (d) => apply(d, previousParams),
   };

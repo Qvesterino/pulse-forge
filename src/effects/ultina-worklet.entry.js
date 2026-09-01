@@ -1,0 +1,78 @@
+/**
+ * Ultina AudioWorklet entry — bundled by scripts/build-ultina-worklet.mjs
+ * into a single classic-script file (public/ultina-worklet.js) that the
+ * loader feeds to AudioWorklet.addModule().
+ *
+ * Thin wrapper: all DSP lives in the vendored ultina-core (bit-exact with
+ * the VocalForge vectors, see tests/ultina-vectors.test.ts). The wrapper
+ * owns block copying, parameter messaging and latency reporting.
+ */
+import { UltinaProcessor } from "./ultina-core/dsp/ultinaProcessor.ts";
+import { registerCoreModules } from "./ultina-core/dsp/moduleFactories.ts";
+
+const MAX_BLOCK = 128;
+const CHANNELS = 2;
+
+class UltinaWorkletProcessor extends AudioWorkletProcessor {
+  proc = new UltinaProcessor();
+  scratch = [new Float32Array(MAX_BLOCK), new Float32Array(MAX_BLOCK)];
+  lastLatencyPosted = -1;
+
+  constructor(options) {
+    super();
+    registerCoreModules(this.proc);
+    this.proc.prepare({
+      sampleRate,
+      channelCount: CHANNELS,
+      maxBlockSize: MAX_BLOCK,
+      qualityMode: 1, // "mix" — matches the vector harness
+    });
+    const initial = options?.processorOptions?.params;
+    if (initial) this.proc.loadState(initial);
+    this.postLatency();
+    this.port.onmessage = (event) => {
+      const msg = event.data;
+      if (!msg) return;
+      if (msg.type === "params") {
+        this.proc.loadState(msg.params);
+        this.postLatency();
+      } else if (msg.type === "param") {
+        this.proc.setParameter(msg.id, msg.value);
+        this.postLatency();
+      } else if (msg.type === "reset") {
+        this.proc.reset();
+      }
+    };
+  }
+
+  postLatency() {
+    const samples = this.proc.getLatencySamples();
+    if (samples !== this.lastLatencyPosted) {
+      this.lastLatencyPosted = samples;
+      this.port.postMessage({ type: "latency", samples });
+    }
+  }
+
+  process(inputs, outputs) {
+    const output = outputs[0];
+    if (!output || !output[0] || !output[1]) return true;
+    const frames = Math.min(MAX_BLOCK, output[0].length);
+    const input = inputs[0];
+
+    // Ultina is stereo — stage into scratch (input or silence), process
+    // in place, copy back.
+    for (let c = 0; c < CHANNELS; c++) {
+      const buf = this.scratch[c];
+      const inCh = input && input[c];
+      if (inCh && inCh.length >= frames) buf.set(inCh.subarray(0, frames));
+      else buf.fill(0, 0, frames);
+    }
+    this.proc.process(this.scratch, frames);
+    for (let c = 0; c < CHANNELS; c++) {
+      output[c].set(this.scratch[c].subarray(0, frames));
+    }
+    return true;
+  }
+}
+
+registerProcessor("ultina-processor", UltinaWorkletProcessor);
