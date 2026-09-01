@@ -19,7 +19,7 @@ describe("AudioWorklet loader", () => {
     const addModule = vi.fn(async () => {});
     const ctx = mockCtx(addModule);
     await loadWorkletModules(ctx);
-    expect(addModule).toHaveBeenCalledTimes(4); // bitcrusher + core + fxeq + ultina (sidechain, transient, gate, limiter)
+    expect(addModule).toHaveBeenCalledTimes(5); // bitcrusher + core + fxeq + ultina + ozvena (sidechain, transient, gate, limiter)
     expect(isWorkletReady("bitcrusher", ctx)).toBe(true);
     expect(isWorkletReady("sidechain", ctx)).toBe(true);
     expect(isWorkletReady("limiter", ctx)).toBe(true);
@@ -42,7 +42,7 @@ describe("AudioWorklet loader", () => {
     const ctx = mockCtx(addModule);
     await loadWorkletModules(ctx);
     await loadWorkletModules(ctx);
-    expect(addModule).toHaveBeenCalledTimes(4);
+    expect(addModule).toHaveBeenCalledTimes(5);
   });
 
   it("never rejects and keeps fallback on addModule failure", async () => {

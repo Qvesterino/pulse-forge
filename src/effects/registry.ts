@@ -5,6 +5,7 @@ import { isWorkletReady } from "../audio-worklets/loader";
 import { createBitcrusherNode } from "../audio-worklets/bitcrusher-node";
 import { createFxEqNode } from "./fxeqNode";
 import { createUltinaNode } from "./ultinaNode";
+import { createOzvenaNode } from "./ozvenaNode";
 import { createSidechainNode } from "../audio-worklets/sidechain-node";
 import { createLimiterNode } from "../audio-worklets/limiter-node";
 import { createCompressorNode } from "../audio-worklets/compressor-node";
@@ -2087,6 +2088,45 @@ const ultina: EffectDefinition = {
     return bypassRuntime(ctx, "AudioWorklet unavailable — Ultina bypassed (1:1 signal)");
   },
 };
+/* ---------------- Ozvena (VocalForge plugin, vendored DSP oracle) ---------------- */
+// Neoverb-class three-engine reverb: E1 Reflections, E2 Plate/Chamber,
+// E3 Hall + pre-delay/pre-EQ/reverb-EQ/mod/duck/safety limiter. DSP runs in
+// an AudioWorklet (vendored core parity-checked via tests/ozvena-golden.test.ts).
+// The rack exposes the global surface + blend pad + engine toggles; the
+// XY Blend Pad canvas lands with the Ozvena panel.
+
+const OZVENA_PARAM_DEFAULTS: Record<string, number> = {
+  "global.inputGainDb": 0,
+  "global.dryWet": 100,
+  "global.outputGainDb": 0,
+  "blendPad.x": 0.5,
+  "blendPad.y": 0.5,
+  "engines.e1.enabled": 1,
+  "engines.e2.enabled": 1,
+  "engines.e3.enabled": 1,
+};
+
+const ozvena: EffectDefinition = {
+  type: "ozvena",
+  name: "Ozvena Reverb",
+  category: "space",
+  params: [
+    { id: "global.inputGainDb", label: "IN", min: -24, max: 24, default: 0, unit: "dB", format: formatDb },
+    { id: "blendPad.x", label: "PAD X", min: 0, max: 1, default: 0.5, format: (v) => v.toFixed(2) },
+    { id: "blendPad.y", label: "PAD Y", min: 0, max: 1, default: 0.5, format: (v) => v.toFixed(2) },
+    { id: "global.dryWet", label: "MIX", min: 0, max: 100, default: 100, unit: "%", format: (v) => `${v.toFixed(0)}%` },
+    { id: "global.outputGainDb", label: "OUT", min: -24, max: 24, default: 0, unit: "dB", format: formatDb },
+    { id: "engines.e1.enabled", label: "E1", min: 0, max: 1, default: 1, format: (v) => (v >= 0.5 ? "ON" : "OFF") },
+    { id: "engines.e2.enabled", label: "E2", min: 0, max: 1, default: 1, format: (v) => (v >= 0.5 ? "ON" : "OFF") },
+    { id: "engines.e3.enabled", label: "E3", min: 0, max: 1, default: 1, format: (v) => (v >= 0.5 ? "ON" : "OFF") },
+  ],
+  factory(ctx, instance) {
+    if (isWorkletReady("ozvena", ctx)) {
+      return createOzvenaNode(ctx, instance, OZVENA_PARAM_DEFAULTS);
+    }
+    return bypassRuntime(ctx, "AudioWorklet unavailable — Ozvena bypassed (1:1 signal)");
+  },
+};
 
 function bussCurve(drive: number): Float32Array<ArrayBuffer> {
   const curve = new Float32Array(new ArrayBuffer(2048 * 4));
@@ -2820,6 +2860,7 @@ export const EFFECT_DEFS: Record<EffectType, EffectDefinition> = {
   shimmer,
   fxeq,
   ultina,
+  ozvena,
 };
 
 export const EFFECT_ORDER: EffectType[] = [
@@ -2857,6 +2898,7 @@ export const EFFECT_ORDER: EffectType[] = [
   "shimmer",
   "fxeq",
   "ultina",
+  "ozvena",
 ];
 
 /** Effects intentionally exposed in the new mixer Add Effect menu. */

@@ -1430,6 +1430,58 @@ export async function runChecks(): Promise<CheckResult[]> {
     check("ozvena: phase-A per-engine benchmark (decision data)", false, String(error));
   }
 
+  // OZVENA worklet: the three-engine reverb must render in offline contexts
+  // (100% wet reverb audibly transforms the signal vs the degraded
+  // passthrough — the tail lives on after the click dies), report PDC
+  // latency, and degrade honestly without the module.
+  try {
+    const def = EFFECT_DEFS.ozvena;
+    // 1. Degraded fallback (no modules loaded in this context).
+    const plainCtx = new OfflineAudioContext(1, SR, SR);
+    const fallback = def.factory(plainCtx, { id: "t", type: "ozvena", bypassed: false, params: defaultParamsOf("ozvena") }, { bpm: 124 });
+    const fallbackOk = fallback.degraded === true;
+    fallback.dispose();
+
+    // 2. Worklet path: 100% wet reverb on a short click.
+    const renderOzvena = async (loaded: boolean) => {
+      const ctx = new OfflineAudioContext(2, SR * 2, SR);
+      if (loaded) await loadWorkletModules(ctx);
+      const rt = def.factory(ctx, { id: "t", type: "ozvena", bypassed: false, params: { ...defaultParamsOf("ozvena"), "global.dryWet": 100 } }, { bpm: 124 });
+      const click = ctx.createBuffer(1, 64, SR);
+      click.getChannelData(0)[0] = 0.9;
+      const src = ctx.createBufferSource();
+      src.buffer = click;
+      src.connect(rt.input);
+      rt.output.connect(ctx.destination);
+      src.start(0);
+      const buffer = await ctx.startRendering();
+      const latency = (rt as { getLatencySec?: () => number }).getLatencySec?.() ?? 0;
+      rt.dispose();
+      return { data: buffer.getChannelData(0), latency };
+    };
+    const wet = await renderOzvena(true);
+    const dry = await renderOzvena(false);
+    let wetTail = 0;
+    let diffSq = 0;
+    // Tail window: 100–500 ms after the click (dry click is long gone).
+    const from = Math.floor(0.1 * SR);
+    const to = Math.floor(0.5 * SR);
+    for (let i = from; i < to; i++) {
+      wetTail += wet.data[i] * wet.data[i];
+      const d = wet.data[i] - dry.data[i];
+      diffSq += d * d;
+    }
+    const tailRms = Math.sqrt(wetTail / (to - from));
+    const diffRms = Math.sqrt(diffSq / (to - from));
+    check(
+      "ozvena: worklet reverb renders in offline context + PDC latency + honest fallback",
+      fallbackOk && tailRms > 0.0005 && diffRms > 0.0005 && wet.latency >= 0,
+      `fallback=${fallbackOk} tailRms=${tailRms.toFixed(5)} diffRms=${diffRms.toFixed(5)} latencyMs=${(wet.latency * 1000).toFixed(1)}`,
+    );
+  } catch (error) {
+    check("ozvena: worklet reverb renders in offline context + PDC latency + honest fallback", false, String(error));
+  }
+
   try {
     const ctx = new OfflineAudioContext(1, SR, SR);
     const track: InstrumentTrack = {
