@@ -175,6 +175,14 @@ function primarySignature(sc: Shortcut): string {
   return signature(sc.keyHint, sc.ctrl, sc.shift, sc.alt, sc.meta);
 }
 
+/** Every signature a shortcut answers to (primary + alternatives). */
+export function shortcutSignatures(sc: Shortcut): string[] {
+  return [
+    primarySignature(sc),
+    ...(sc.altHints ?? []).map((alt) => signature(alt.key, alt.ctrl, alt.shift, alt.alt, alt.meta)),
+  ];
+}
+
 /**
  * Match a KeyboardEvent against the registered shortcuts.
  * Returns the matched ShortcutKey, or null.

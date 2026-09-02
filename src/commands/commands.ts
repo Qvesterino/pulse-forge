@@ -33,6 +33,7 @@ import { BAR_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
 import { buildStemProject } from "../rendering/stems";
 import { DEFAULT_GATE_PATTERN, DEFAULT_STEP_PATTERN, sanitizeGateSteps } from "../project-model/modulators";
 import { setStepVelocity, withPad, withTrack } from "../project-model/transform";
+import { getYDocHelpers } from "./yDocBridge";
 import { insertPointSorted } from "../project-model/automation";
 import {
   clampUnit,
@@ -173,8 +174,8 @@ export function toggleStep(doc: ProjectDocument, padId: string, stepIndex: numbe
     execute: (d) => setStepVelocity(d, padId, stepIndex, next),
     undo: (d) => setStepVelocity(d, padId, stepIndex, prev),
     applyToYDoc: (yMap) => {
-      const { yToggleStep } = require("./yDocHelpers");
-      yToggleStep(yMap, patternId, padId, stepIndex);
+      const helpers = getYDocHelpers();
+      helpers?.yToggleStep(yMap, patternId, padId, stepIndex);
     },
   };
 }
@@ -193,8 +194,8 @@ export function setStepVelocityCommand(
     execute: (d) => setStepVelocity(d, padId, stepIndex, velocity),
     undo: (d) => setStepVelocity(d, padId, stepIndex, prev),
     applyToYDoc: (yMap) => {
-      const { ySetStepVelocity } = require("./yDocHelpers");
-      ySetStepVelocity(yMap, patternId, padId, stepIndex, velocity);
+      const helpers = getYDocHelpers();
+      helpers?.ySetStepVelocity(yMap, patternId, padId, stepIndex, velocity);
     },
   };
 }
@@ -639,7 +640,8 @@ export function setGroove(doc: ProjectDocument, groove: Partial<GrooveSettings>)
     applyToYDoc: (yMap) => {
       let g = yMap.get("groove") as any;
       if (!g) {
-        g = new (require("yjs").Map)();
+        g = getYDocHelpers()?.createYMap?.();
+        if (!g) return;
         yMap.set("groove", g);
       }
       for (const [k, v] of Object.entries(nextGroove)) {
@@ -3715,12 +3717,13 @@ export function addEffect(_doc: ProjectDocument, trackId: string, type: EffectTy
         const t = tracks.get(i) as any;
         if (t.get("id") === trackId) {
           const effects = t.get("effects") as any;
-          const Y = require("yjs");
-          const fxMap = new Y.Map();
+          const fxMap = getYDocHelpers()?.createYMap?.() as any;
+          if (!fxMap) return;
           fxMap.set("id", fx.id);
           fxMap.set("type", fx.type);
           fxMap.set("bypassed", false);
-          const params = new Y.Map();
+          const params = getYDocHelpers()?.createYMap?.() as any;
+          if (!params) return;
           fxMap.set("params", params);
           for (const [k, v] of Object.entries(fx.params)) params.set(k, v);
           if (fx.steps) fxMap.set("steps", [...fx.steps]);

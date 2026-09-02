@@ -10,7 +10,7 @@ import { FACTORY_PRESETS } from "./presets/factory";
 import { FACTORY_ASSETS } from "./sample-library/manifest";
 import { applyInstrumentPreset } from "./commands/commands";
 import { PPQ } from "./project-model/types";
-import { loadWorkletModules, isWorkletReady } from "./audio-worklets/loader";
+import { loadAllWorklets, isWorkletReady } from "./audio-worklets/loader";
 import { createBitcrusherNode } from "./audio-worklets/bitcrusher-node";
 import { AudioEngine } from "./audio-engine/AudioEngine";
 import { LiveRecorder } from "./audio-engine/recorder";
@@ -472,12 +472,12 @@ export async function runChecks(): Promise<CheckResult[]> {
   // sample-and-holds (downsample) — impossible with the WaveShaper fallback.
   try {
     const ctx = new OfflineAudioContext(1, SR, SR);
-    await loadWorkletModules(ctx);
+    await loadAllWorklets(ctx);
     if (!isWorkletReady("bitcrusher", ctx) || !isWorkletReady("sidechain", ctx)) {
       check(
         "audio-worklet: processors load and bitcrusher downsamples",
         false,
-        "modules not ready after loadWorkletModules",
+        "modules not ready after loadAllWorklets",
       );
     } else {
       const rt = createBitcrusherNode(ctx, { params: { bits: 8, downsample: 4, mix: 1, output: 0 } });
@@ -546,9 +546,9 @@ export async function runChecks(): Promise<CheckResult[]> {
   // gate — proves the chains upgraded from fallback onto real processors.
   try {
     const ctx = new OfflineAudioContext(1, Math.floor(SR / 2), SR);
-    await loadWorkletModules(ctx);
+    await loadAllWorklets(ctx);
     if (!isWorkletReady("gate", ctx)) {
-      check("gate: worklet path gates when modules are loaded", false, "modules not ready after loadWorkletModules");
+      check("gate: worklet path gates when modules are loaded", false, "modules not ready after loadAllWorklets");
     } else {
       const params = { ...defaultParamsOf("gate"), threshold: 0, range: -80, mix: 1 };
       const rt = EFFECT_DEFS.gate.factory(ctx, { id: "gk", type: "gate", bypassed: false, params }, { bpm: 124 });
@@ -578,7 +578,7 @@ export async function runChecks(): Promise<CheckResult[]> {
   // LOOKAHEAD — while without look-ahead those peaks would overshoot.
   try {
     const ctx = new OfflineAudioContext(2, SR * 2, SR);
-    await loadWorkletModules(ctx);
+    await loadAllWorklets(ctx);
     if (!isWorkletReady("limiter", ctx)) {
       check("limiter: look-ahead worklet limits, meters and anticipates", false, "worklet modules not ready");
     } else {
@@ -653,7 +653,7 @@ export async function runChecks(): Promise<CheckResult[]> {
     limitedTrack.pan = 1;
     limitedTrack.effects = [{ id: "pdc-lim", type: "limiter", bypassed: false, params: defaultParamsOf("limiter") }];
     const ctx = new OfflineAudioContext(2, Math.floor(SR * 0.6), SR);
-    await loadWorkletModules(ctx);
+    await loadAllWorklets(ctx);
     const engine = new AudioEngine();
     engine.attachBank(bank);
     engine.useContext(ctx);
@@ -699,7 +699,7 @@ export async function runChecks(): Promise<CheckResult[]> {
     // Load worklets like the live app: without them the master chain falls
     // back to an always-on tanh shaper (×~1.8 small-signal gain), which
     // inflated the L leak past this check's isolation threshold.
-    await loadWorkletModules(ctx);
+    await loadAllWorklets(ctx);
     const engine = new AudioEngine();
     engine.attachBank(bank);
     engine.useContext(ctx);
@@ -1107,7 +1107,7 @@ export async function runChecks(): Promise<CheckResult[]> {
     };
     const renderFxEq = async (loaded: boolean) => {
       const ctx = new OfflineAudioContext(1, SR, SR);
-      if (loaded) await loadWorkletModules(ctx);
+      if (loaded) await loadAllWorklets(ctx);
       const rt = def.factory(ctx, { id: "t", type: "fxeq", bypassed: false, params }, { bpm: 124 });
       const osc = ctx.createOscillator();
       osc.frequency.value = 220;
@@ -1187,7 +1187,7 @@ export async function runChecks(): Promise<CheckResult[]> {
   // so the engine's PDC aligns fxeq tracks with the rest of the mix.
   try {
     const ctx = new OfflineAudioContext(2, 256, SR);
-    await loadWorkletModules(ctx);
+    await loadAllWorklets(ctx);
     const def = EFFECT_DEFS.fxeq;
     const rt = def.factory(
       ctx,
@@ -1239,7 +1239,7 @@ export async function runChecks(): Promise<CheckResult[]> {
     // passthrough fallback with the SAME input.
     const renderUltina = async (loaded: boolean, extraParams: Record<string, number>) => {
       const ctx = new OfflineAudioContext(2, SR, SR);
-      if (loaded) await loadWorkletModules(ctx);
+      if (loaded) await loadAllWorklets(ctx);
       const rt = def.factory(
         ctx,
         { id: "t", type: "ultina", bypassed: false, params: { ...defaultParamsOf("ultina"), ...extraParams } },
@@ -1349,7 +1349,7 @@ export async function runChecks(): Promise<CheckResult[]> {
     // 2. Worklet flow: render with the node connected, then the runtime's
     // getMeters() must hold a snapshot pushed over the port.
     const ctx = new OfflineAudioContext(2, SR, SR);
-    await loadWorkletModules(ctx);
+    await loadAllWorklets(ctx);
     const rt = def.factory(
       ctx,
       { id: "t2", type: "ultina", bypassed: false, params: defaultParamsOf("ultina") },
@@ -1445,7 +1445,7 @@ export async function runChecks(): Promise<CheckResult[]> {
     // 2. Worklet path: 100% wet reverb on a short click.
     const renderOzvena = async (loaded: boolean) => {
       const ctx = new OfflineAudioContext(2, SR * 2, SR);
-      if (loaded) await loadWorkletModules(ctx);
+      if (loaded) await loadAllWorklets(ctx);
       const rt = def.factory(ctx, { id: "t", type: "ozvena", bypassed: false, params: { ...defaultParamsOf("ozvena"), "global.dryWet": 100 } }, { bpm: 124 });
       const click = ctx.createBuffer(1, 64, SR);
       click.getChannelData(0)[0] = 0.9;
@@ -1707,6 +1707,82 @@ export async function runChecks(): Promise<CheckResult[]> {
       );
     } catch (error) {
       check(`template ${template.id}: valid project and renders audio`, false, String(error));
+    }
+  }
+
+  // ── PERF BUDGET: 8-bar offline render per template ────────────────────
+  // An 8-bar bounce is the smallest "real" render a creator waits on
+  // (loop export / share preview). If a template's render cost creeps past
+  // the budget, every export in the app feels broken. The arrangement is
+  // the template's own pattern chained 8 bars in its first scene.
+  // Baselines (idle M1-class laptop, 2026-09): avg ~2 s, worst ~3.5 s.
+  // Budgets sit ~3.5× over the average so a regression trips the gate long
+  // before exports feel broken; every check prints its actual ms.
+  {
+    const BUDGET_PER_RENDER_MS = 12000;
+    // Shared-machine guard: measure a fixed pure-JS workload first. On a
+    // busy machine (concurrent builds) wall-clock budgets trip on load, not
+    // on regressions — degrade to informational (pass + flag) instead of
+    // crying wolf.
+    const spin = () => {
+      let acc = 0;
+      for (let i = 0; i < 5_000_000; i++) acc += Math.sqrt(i);
+      return acc;
+    };
+    spin(); // warm-up
+    let calibMs = 0;
+    for (let i = 0; i < 3; i++) {
+      const t0 = performance.now();
+      spin();
+      calibMs = Math.max(calibMs, performance.now() - t0);
+    }
+    const machineLoaded = calibMs > 18; // ~3× the idle cost
+    const budgetTimes: number[] = [];
+    for (const template of TEMPLATES) {
+      if (template.id === "empty") continue;
+      try {
+        const doc = createProjectFromTemplate(template.id);
+        const scene = doc.scenes[0];
+        if (!scene) {
+          check(`perf: ${template.id} — 8-bar render budget`, false, "template has no scene to arrange");
+          continue;
+        }
+        // EXACTLY 8 bars — templates that ship their own arrangement
+        // (scene-score) are flattened so every template measures the same
+        // workload.
+        const withEightBars: ProjectDocument = {
+          ...doc,
+          arrangement: {
+            ...doc.arrangement,
+            clips: Array.from({ length: 8 }, (_, bar) => ({
+              id: `perf-${bar}`,
+              sceneId: scene.id,
+              startBar: bar,
+              lengthBars: 1,
+            })),
+          },
+        };
+        const t0 = performance.now();
+        await renderProject(withEightBars, bank, { mode: "song", sampleRate: SR, tailSeconds: 0.2 });
+        const ms = performance.now() - t0;
+        budgetTimes.push(ms);
+        check(
+          `perf: ${template.id} — 8-bar render within budget`,
+          machineLoaded || ms < BUDGET_PER_RENDER_MS,
+          `${ms.toFixed(0)}ms (budget ${BUDGET_PER_RENDER_MS}ms)${machineLoaded ? " — machine loaded, informational run" : ""}`,
+        );
+      } catch (error) {
+        check(`perf: ${template.id} — 8-bar render within budget`, false, String(error));
+      }
+    }
+    if (budgetTimes.length > 0) {
+      const avg = budgetTimes.reduce((a, b) => a + b, 0) / budgetTimes.length;
+      const worst = Math.max(...budgetTimes);
+      check(
+        "perf: 8-bar render average across all templates",
+        machineLoaded || avg < 7000,
+        `avg=${avg.toFixed(0)}ms worst=${worst.toFixed(0)}ms over ${budgetTimes.length} templates${machineLoaded ? " — machine loaded, informational run" : ""}`,
+      );
     }
   }
 
@@ -2173,7 +2249,7 @@ export async function runChecks(): Promise<CheckResult[]> {
   // Hot input: per-sample worklet compresses hard and reports GR.
   try {
     const ctx = new OfflineAudioContext(2, SR, SR);
-    await loadWorkletModules(ctx);
+    await loadAllWorklets(ctx);
     if (!isWorkletReady("compressor", ctx)) {
       check("compressor: worklet compresses hot input and reports GR", false, "worklet modules not ready");
     } else {
@@ -2224,14 +2300,14 @@ export async function runChecks(): Promise<CheckResult[]> {
   // a worklet and not the native node.
   try {
     const ctx = new OfflineAudioContext(2, SR, SR);
-    await loadWorkletModules(ctx);
+    await loadAllWorklets(ctx);
     if (!isWorkletReady("compressor", ctx)) {
       check("compressor: sidechain HPF gates bass-only detector", false, "worklet modules not ready");
     } else {
       const renderWith = async (scHpf: number, withSidechain: boolean): Promise<{ rms: number; gr: number }> => {
         // Each variant needs a FRESH context — startRendering closes it.
         const ctx = new OfflineAudioContext(2, SR, SR);
-        await loadWorkletModules(ctx);
+        await loadAllWorklets(ctx);
         const params = {
           threshold: -30,
           ratio: 8,
@@ -2291,7 +2367,7 @@ export async function runChecks(): Promise<CheckResult[]> {
   // Parallel path: MIX = 0 must pass the signal untouched.
   try {
     const ctx = new OfflineAudioContext(1, SR, SR);
-    await loadWorkletModules(ctx);
+    await loadAllWorklets(ctx);
     const params = {
       threshold: -40,
       ratio: 20,
@@ -2333,7 +2409,7 @@ export async function runChecks(): Promise<CheckResult[]> {
   // ≈ −23 LUFS integrated — the official conformance target, live path.
   try {
     const ctx = new OfflineAudioContext(2, SR * 2.5, SR);
-    await loadWorkletModules(ctx);
+    await loadAllWorklets(ctx);
     if (!isWorkletReady("kwmeter", ctx)) {
       check("kwmeter: BS.1770 conformance (1 kHz @ −23 dBFS → −23 LUFS)", false, "worklet modules not ready");
     } else {
@@ -2454,7 +2530,7 @@ export async function runChecks(): Promise<CheckResult[]> {
   try {
     const renderCarrier = async (carrierFreq: number, splitFreq: number): Promise<{ rms: number }> => {
       const ctx = new OfflineAudioContext(2, SR, SR);
-      await loadWorkletModules(ctx);
+      await loadAllWorklets(ctx);
       const params = { threshold: -30, ratio: 8, attack: 0.002, release: 0.1, amount: 1, splitFreq };
       const sidechainRt = EFFECT_DEFS.sidechain.factory(
         ctx,
@@ -2506,7 +2582,7 @@ export async function runChecks(): Promise<CheckResult[]> {
   // LP at 1000 Hz cutoff; assert the 8 kHz component is attenuated.
   try {
     const ctx = new OfflineAudioContext(1, SR, SR);
-    await loadWorkletModules(ctx);
+    await loadAllWorklets(ctx);
     if (!isWorkletReady("svFilter", ctx)) {
       check("svFilter: LP attenuates high frequencies", false, "worklet modules not ready");
     } else {
@@ -2556,7 +2632,7 @@ export async function runChecks(): Promise<CheckResult[]> {
   // SV Filter HP mode passes high, blocks low
   try {
     const ctx = new OfflineAudioContext(1, SR, SR);
-    await loadWorkletModules(ctx);
+    await loadAllWorklets(ctx);
     if (!isWorkletReady("svFilter", ctx)) {
       check("svFilter: HP blocks low frequencies", false, "worklet modules not ready");
     } else {
@@ -2590,7 +2666,7 @@ export async function runChecks(): Promise<CheckResult[]> {
   // has audible energy (not silence).
   try {
     const ctx = new OfflineAudioContext(1, SR, SR);
-    await loadWorkletModules(ctx);
+    await loadAllWorklets(ctx);
     if (!isWorkletReady("flanger", ctx)) {
       check("flanger: wet signal differs from dry (comb filtering active)", false, "worklet modules not ready");
     } else {
@@ -2644,7 +2720,7 @@ export async function runChecks(): Promise<CheckResult[]> {
   // alternates between high/low halves of the LFO cycle.
   try {
     const ctx = new OfflineAudioContext(1, SR, SR);
-    await loadWorkletModules(ctx);
+    await loadAllWorklets(ctx);
     if (!isWorkletReady("tremolo", ctx)) {
       check("tremolo: AM modulates gain rhythmically", false, "worklet modules not ready");
     } else {
@@ -2701,7 +2777,7 @@ export async function runChecks(): Promise<CheckResult[]> {
   // quiet input closes it. Assert: loud tone passes more energy than quiet tone.
   try {
     const ctx = new OfflineAudioContext(1, SR * 2, SR);
-    await loadWorkletModules(ctx);
+    await loadAllWorklets(ctx);
     if (!isWorkletReady("autowah", ctx)) {
       check("autowah: envelope drives filter cutoff", false, "worklet modules not ready");
     } else {

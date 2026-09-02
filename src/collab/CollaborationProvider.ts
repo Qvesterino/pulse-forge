@@ -17,11 +17,18 @@ export interface CollaboratorInfo {
 }
 
 export interface CursorState {
-  view: "sequencer" | "arrangement" | "mixer" | "inspector";
+  view: "sequencer" | "arrangement" | "mixer" | "inspector" | "pianoroll";
   patternId?: string;
   padId?: string;
   stepIndex?: number;
   trackId?: string;
+  pitch?: number;
+}
+
+/** A remote user's presence cursor, with who it belongs to. */
+export interface RemoteCursor {
+  user: CollaboratorInfo;
+  cursor: CursorState;
 }
 
 /**
@@ -77,6 +84,18 @@ export class CollaborationProvider {
       if (state.user) collaborators.push(state.user);
     });
     return collaborators;
+  }
+
+  /** Remote cursors (awareness states that have both a user and a cursor). */
+  getRemoteCursors(): RemoteCursor[] {
+    if (!this.provider) return [];
+    const states = this.provider.awareness.getStates();
+    const cursors: RemoteCursor[] = [];
+    states.forEach((state, clientId) => {
+      if (clientId === this.provider?.awareness.clientID) return;
+      if (state.user && state.cursor) cursors.push({ user: state.user, cursor: state.cursor });
+    });
+    return cursors;
   }
 
   /** Get the local client ID. */

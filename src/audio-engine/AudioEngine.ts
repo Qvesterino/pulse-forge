@@ -16,7 +16,14 @@ import { EFFECT_DEFS, clampEffectParam } from "../effects/registry";
 import type { EffectRuntime } from "../effects/types";
 import { INSTRUMENT_DEFS, clampInstrumentParam } from "../instruments/registry";
 import type { InstrumentRuntime } from "../instruments/types";
-import { loadWorkletModules, isWorkletReady } from "../audio-worklets/loader";
+import {
+  ensureWorkletsForDoc,
+  isWorkletReady,
+  loadCoreWorklets,
+  loadPluginWorklet,
+  PLUGIN_WORKLET_TYPES,
+  type PluginWorkletType,
+} from "../audio-worklets/loader";
 import { createLimiterNode } from "../audio-worklets/limiter-node";
 // @ts-ignore — reserved for tape stage, wired in next pass
 import { createTapeNode } from "../audio-worklets/tape-node";
@@ -385,28 +392,27 @@ export class AudioEngine {
   /**
    * Pre-load AudioWorklet processor modules. Must be called before any
    * effects are created (before `setProject`/`syncProject`). Safe to call
-   * multiple times — modules are only loaded once per context.
+   * multiple times — modules are only loaded once per context. Loads the
+   * core modules plus exactly the vendored plugin modules this project uses.
    */
   async loadWorklets(ctx: BaseAudioContext): Promise<void> {
     // Delegates to the shared per-context loader (graceful no-op on
     // platforms without AudioWorklet, e.g. jsdom tests).
-    await loadWorkletModules(ctx);
+    await ensureWorkletsForDoc(this.doc, ctx);
   }
 
   private workletRefreshQueued = false;
 
   /**
-   * Rebuild all FX chains once AudioWorklet modules finish loading so the
-   * factories swap fallback runtimes for real processors. Only meaningful for
-   * the live realtime context — mutating an OfflineAudioContext graph mid-
-   * render is undefined behavior, so offline contexts never queue a refresh
-   * (they are expected to preload modules before useContext).
+   * Rebuild all FX chains so factories swap bypass/fallback runtimes for real
+   * processors. Only meaningful for the live realtime context — mutating an
+   * OfflineAudioContext graph mid-render is undefined behavior, so offline
+   * contexts never queue a refresh (they preload modules before useContext).
    */
-  private queueWorkletRefresh(ctx: BaseAudioContext): void {
-    if (!(ctx instanceof AudioContext)) return;
-    if (this.workletRefreshQueued || isWorkletReady("bitcrusher", ctx)) return;
+  private queueFxRebuild(ctx: BaseAudioContext): void {
+    if (this.workletRefreshQueued) return;
     this.workletRefreshQueued = true;
-    void loadWorkletModules(ctx)
+    Promise.resolve()
       .then(() => {
         this.workletRefreshQueued = false;
         if (this.ctx !== ctx || !this.doc) return;
@@ -421,6 +427,21 @@ export class AudioEngine {
       })
       .catch(() => {
         this.workletRefreshQueued = false;
+      });
+  }
+
+  /**
+   * Load CORE worklet modules, then rebuild the FX chains once they land.
+   * The chains may have been built with fallbacks before the modules were
+   * ready (context creation happens before any network fetch resolves).
+   */
+  private queueWorkletRefresh(ctx: BaseAudioContext): void {
+    if (!(ctx instanceof AudioContext)) return;
+    if (this.workletRefreshQueued || isWorkletReady("bitcrusher", ctx)) return;
+    void loadCoreWorklets(ctx)
+      .then(() => this.queueFxRebuild(ctx))
+      .catch(() => {
+        /* loader never rejects, but stay safe */
       });
   }
 
@@ -941,6 +962,18 @@ export class AudioEngine {
       if (fx.bypassed) continue;
       const def = EFFECT_DEFS[fx.type];
       if (!def) continue;
+      // Vendored plugin modules load on demand: the first chain build runs
+      // the honest bypass runtime, the module fetch kicks off here, and the
+      // rebuild hot-swaps the real processor once it lands.
+      if ((PLUGIN_WORKLET_TYPES as readonly string[]).includes(fx.type) && !isWorkletReady(fx.type as PluginWorkletType, ctx)) {
+        void loadPluginWorklet(ctx, fx.type as PluginWorkletType)
+          .then(() => {
+            if (ctx instanceof AudioContext) this.queueFxRebuild(ctx);
+          })
+          .catch(() => {
+            /* loader never rejects */
+          });
+      }
       const rt = def.factory(ctx, fx, { bpm });
       // Sidechain routing: wire the source track's input node as the effect's
       // sidechain feed (if the effect supports it and the source track is live).

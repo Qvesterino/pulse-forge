@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, lazy, Suspense } from "react";
 import type { Services } from "../services";
 import { SelectionStore } from "../store/SelectionStore";
 import { ToolStore } from "../store/ToolStore";
@@ -15,13 +15,16 @@ import { Inspector } from "./Inspector";
 import { FloatingPlugin } from "./FloatingPlugin";
 import { Diagnostics } from "./Diagnostics";
 import { PatternBar } from "./PatternBar";
-import { Mixer } from "./Mixer";
 import { EffectRack } from "./EffectRack";
-import { ArrangementPanel } from "./ArrangementPanel";
-import { ModPanel } from "./ModPanel";
-import { MidiPanel } from "./MidiPanel";
-import { ExportPanel } from "./ExportPanel";
 import { UndoHistoryPanel } from "./UndoHistoryPanel";
+// Bottom dock panels load on first open — they are large and most sessions
+// touch only one or two of them.
+const Mixer = lazy(() => import("./Mixer").then((m) => ({ default: m.Mixer })));
+const ArrangementPanel = lazy(() => import("./ArrangementPanel").then((m) => ({ default: m.ArrangementPanel })));
+const ModPanel = lazy(() => import("./ModPanel").then((m) => ({ default: m.ModPanel })));
+const MidiPanel = lazy(() => import("./MidiPanel").then((m) => ({ default: m.MidiPanel })));
+const ExportPanel = lazy(() => import("./ExportPanel").then((m) => ({ default: m.ExportPanel })));
+const DiceTray = lazy(() => import("./DiceTray").then((m) => ({ default: m.DiceTray })));
 import { InstallPrompt } from "./InstallPrompt";
 import { ErrorBoundary } from "./ErrorBoundary";
 import {
@@ -47,7 +50,6 @@ import { BAR_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
 import { CommandToast } from "./CommandToast";
 import { HelpOverlay } from "./HelpOverlay";
 import { OnboardingHint } from "./OnboardingHint";
-import { DiceTray } from "./DiceTray";
 import { DiceProvider } from "./DiceContext";
 
 const PANEL_KEYS = ["mixer", "fx", "arr", "mod", "exp", "midi", "dice"] as const;
@@ -87,6 +89,8 @@ export function App({
   const [scaleSnap, setScaleSnap] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [pluginTrackId, setPluginTrackId] = useState<string | null>(null);
+  // Mobile bottom-sheet: the bottom panel row collapses to a grab handle.
+  const [sheetCollapsed, setSheetCollapsed] = useState(false);
   // Capture last take (Ableton) — offered after pause/stop when the ring has material
   const [captureOffer, setCaptureOffer] = useState(false);
   useEffect(() => {
@@ -822,25 +826,41 @@ export function App({
                 </div>
                 <Inspector track={track} selectedPadId={padId} onOpenPlugin={() => setPluginTrackId(track.id)} />
               </main>
-              <ErrorBoundary panel="mixer">{bottomPanel === "mixer" && <Mixer />}</ErrorBoundary>
-              <ErrorBoundary panel="fx">{bottomPanel === "fx" && <EffectRack track={track} />}</ErrorBoundary>
-              <ErrorBoundary panel="arr">{bottomPanel === "arr" && <ArrangementPanel />}</ErrorBoundary>
-              <ErrorBoundary panel="mod">{bottomPanel === "mod" && <ModPanel />}</ErrorBoundary>
-              <ErrorBoundary panel="exp">
-                {bottomPanel === "exp" && <ExportPanel selectedTrackId={track.id} selectedTrackName={track.name} />}
-              </ErrorBoundary>
-              <ErrorBoundary panel="midi">
-                {bottomPanel === "midi" && (
-                  <MidiPanel
-                    selectedTrackId={track.id}
-                    selectedNote={selectedNote}
-                    scaleSnap={scaleSnap}
-                    onToggleScaleSnap={() => setScaleSnap((value) => !value)}
-                    onClearSelection={() => setSelectedNote(null)}
-                  />
-                )}
-              </ErrorBoundary>
-              <ErrorBoundary panel="dice">{bottomPanel === "dice" && <DiceTray />}</ErrorBoundary>
+              <div className={"bottom-panels" + (sheetCollapsed ? " sheet-collapsed" : "")}>
+                <button
+                  type="button"
+                  className="sheet-handle"
+                  aria-expanded={!sheetCollapsed}
+                  aria-label={sheetCollapsed ? "Expand bottom panel" : "Collapse bottom panel"}
+                  title={sheetCollapsed ? "Expand panel" : "Collapse panel"}
+                  onClick={() => setSheetCollapsed((v) => !v)}
+                >
+                  <span className="sheet-handle-bar" aria-hidden="true" />
+                </button>
+                <Suspense fallback={<div className="panel-loading">Loading panel…</div>}>
+                  <ErrorBoundary panel="mixer">{bottomPanel === "mixer" && <Mixer />}</ErrorBoundary>
+                  <ErrorBoundary panel="fx">{bottomPanel === "fx" && <EffectRack track={track} />}</ErrorBoundary>
+                  <ErrorBoundary panel="arr">{bottomPanel === "arr" && <ArrangementPanel />}</ErrorBoundary>
+                  <ErrorBoundary panel="mod">{bottomPanel === "mod" && <ModPanel />}</ErrorBoundary>
+                  <ErrorBoundary panel="exp">
+                    {bottomPanel === "exp" && (
+                      <ExportPanel selectedTrackId={track.id} selectedTrackName={track.name} />
+                    )}
+                  </ErrorBoundary>
+                  <ErrorBoundary panel="midi">
+                    {bottomPanel === "midi" && (
+                      <MidiPanel
+                        selectedTrackId={track.id}
+                        selectedNote={selectedNote}
+                        scaleSnap={scaleSnap}
+                        onToggleScaleSnap={() => setScaleSnap((value) => !value)}
+                        onClearSelection={() => setSelectedNote(null)}
+                      />
+                    )}
+                  </ErrorBoundary>
+                  <ErrorBoundary panel="dice">{bottomPanel === "dice" && <DiceTray />}</ErrorBoundary>
+                </Suspense>
+              </div>
               {diagnosticsOpen && (
                 <ErrorBoundary panel="diagnostics">
                   <Diagnostics />
@@ -848,7 +868,7 @@ export function App({
               )}
               <footer className="statusbar">
                 <span>
-                  SPACE play · 1–5 panels · ? help · Ctrl+Z undo · <kbd className="statusbar-kbd">1</kbd>–
+                  SPACE play · ALT+1–6 panels · ? help · Ctrl+Z undo · <kbd className="statusbar-kbd">1</kbd>–
                   <kbd className="statusbar-kbd">9</kbd> tracks · TOOL {tool.toUpperCase()} (S/C/B/E/M)
                 </span>
               </footer>

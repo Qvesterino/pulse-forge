@@ -83,10 +83,11 @@ describe("EffectRack — FXEQ panel", () => {
     return { doc, track };
   }
 
-  it("mounts the EQ-paint panel: preset select, band chips, canvas", () => {
+  it("mounts the EQ-paint panel: preset select, band chips, canvas", async () => {
     const { doc, track } = fxEqDoc();
     renderWithContext(<EffectRack track={track} />, { services: mockServices(doc) });
-    expect(screen.getByLabelText("FXEQ preset")).toBeInTheDocument();
+    // The panel is a lazy chunk — wait for it to load.
+    expect(await screen.findByLabelText("FXEQ preset")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "FXEQ band map" })).toBeInTheDocument();
     // bandCount 4 → B1..B4 chips (and no B5).
     expect(screen.getByRole("button", { name: "B4" })).toBeInTheDocument();
@@ -105,7 +106,7 @@ describe("EffectRack — FXEQ panel", () => {
     const { doc, track } = fxEqDoc();
     const services = mockServices(doc);
     renderWithContext(<EffectRack track={track} />, { services });
-    const select = screen.getByLabelText("FXEQ preset");
+    const select = await screen.findByLabelText("FXEQ preset");
     const presetName = "Warmth — All-Round";
     await user.selectOptions(select, presetName);
     const executed = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.map(
@@ -121,8 +122,8 @@ describe("EffectRack — FXEQ panel", () => {
     const { doc, track } = fxEqDoc();
     const services = mockServices(doc);
     renderWithContext(<EffectRack track={track} />, { services });
-    // B1 selected by default — toggle its SAT module ON.
-    const satSections = screen.getAllByText("SAT");
+    // B1 selected by default — toggle its SAT module ON. Await the lazy panel.
+    const satSections = await screen.findAllByText("SAT");
     await user.click(satSections[0].parentElement!.querySelector("button")!);
     const executed = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.map(
       (call: unknown[]) => call[0] as { type: string },
@@ -141,10 +142,11 @@ describe("EffectRack — Ultina panel", () => {
     return { doc, track };
   }
 
-  it("mounts the module editor: chips in graph order + enable toggle", () => {
+  it("mounts the module editor: chips in graph order + enable toggle", async () => {
     const { doc, track } = ultinaDoc();
     renderWithContext(<EffectRack track={track} />, { services: mockServices(doc) });
-    expect(screen.getByLabelText("Ultina module editor")).toBeInTheDocument();
+    // The panel is a lazy chunk — wait for it to load.
+    expect(await screen.findByLabelText("Ultina module editor")).toBeInTheDocument();
     // Graph-order chips present.
     expect(screen.getByRole("button", { name: "COMP" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "UNMSK" })).toBeInTheDocument();

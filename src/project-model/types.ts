@@ -149,6 +149,20 @@ export interface DrumTrack {
   frozen?: FrozenState;
 }
 
+/**
+ * One velocity zone of a sampler track. Disjoint windows act as velocity
+ * layers; overlapping windows round-robin (drum-machine style) within the
+ * shared zone.
+ */
+export interface SampleLayer {
+  id: ID;
+  sampleId: string | null;
+  /** Inclusive lower velocity bound (0..1). */
+  min: number;
+  /** Exclusive upper velocity bound (0..1]. */
+  max: number;
+}
+
 export interface InstrumentTrack {
   id: ID;
   kind: "instrument";
@@ -159,6 +173,11 @@ export interface InstrumentTrack {
   mute: boolean;
   solo: boolean;
   sampleId: string | null;
+  /**
+   * Velocity/round-robin sample layers (sampler). Absent or empty = classic
+   * single-sample mode via `sampleId`.
+   */
+  velocityLayers?: SampleLayer[];
   params: Record<string, number>;
   /** Id of the last applied preset (factory or user). Dangling/absent = "Custom". */
   presetId?: string | null;

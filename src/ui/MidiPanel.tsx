@@ -257,7 +257,7 @@ export function MidiPanel({
                       </option>
                     ))}
                   </select>
-                  <button type="button" className="btn btn-small" onClick={submitAddMapping}>
+                  <button type="button" className="btn btn-small" onClick={submitAddMapping} aria-label="Add MIDI mapping" title="Add mapping">
                     +
                   </button>
                 </div>

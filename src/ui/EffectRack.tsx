@@ -18,9 +18,12 @@ import {
   toggleEffectBypass,
 } from "../commands/commands";
 import { CORE_EFFECT_ORDER, EFFECT_DEFS } from "../effects/registry";
-import { FxEqPanel } from "./FxEqPanel";
-import { UltinaPanel } from "./UltinaPanel";
-import { OzvenaPanel } from "./OzvenaPanel";
+// Plugin editor panels are heavy (EQ-paint canvas, 51-preset Ultina suite,
+// Ozvena blend pad) — they load only when one of these effects is selected.
+import { lazy, Suspense } from "react";
+const FxEqPanel = lazy(() => import("./FxEqPanel").then((m) => ({ default: m.FxEqPanel })));
+const UltinaPanel = lazy(() => import("./UltinaPanel").then((m) => ({ default: m.UltinaPanel })));
+const OzvenaPanel = lazy(() => import("./OzvenaPanel").then((m) => ({ default: m.OzvenaPanel })));
 import { presetsForEffect } from "../effects/presets";
 import { registerRaf, unregisterRaf } from "../services/rafLoop";
 import { Slider } from "./controls";
@@ -272,47 +275,49 @@ function Device({
           onCommit={(steps) => services.store.execute(setEffectSteps(doc, track.id, fx.id, steps))}
         />
       )}
-      {fx.type === "fxeq" && (
-        <FxEqPanel
-          params={fx.params}
-          degraded={!!fallbackReason}
-          onParam={(fullId, value) =>
-            services.store.execute(setFxEqParam(doc, track.id, fx.id, fullId, value))
-          }
-          onApplyPreset={(name, presetParams) =>
-            services.store.execute(applyFxEqPreset(doc, track.id, fx.id, name, presetParams))
-          }
-        />
-      )}
-      {fx.type === "ultina" && (
-        <UltinaPanel
-          trackId={track.id}
-          fxId={fx.id}
-          params={fx.params}
-          degraded={!!fallbackReason}
-          onParam={(paramId, value) =>
-            services.store.execute(setUltinaParam(doc, track.id, fx.id, paramId, value))
-          }
-          onApplyPreset={(name, presetParams) =>
-            services.store.execute(applyUltinaPreset(doc, track.id, fx.id, name, presetParams))
-          }
-          onApplyProposal={(label, toggles, changes) =>
-            services.store.execute(applyUltinaProposal(doc, track.id, fx.id, label, toggles, changes))
-          }
-        />
-      )}
-      {fx.type === "ozvena" && (
-        <OzvenaPanel
-          params={fx.params}
-          degraded={!!fallbackReason}
-          onParam={(paramId, value) =>
-            services.store.execute(setEffectParam(doc, track.id, fx.id, paramId, value))
-          }
-          onApplyPatch={(label, flatParams) =>
-            services.store.execute(applyOzvenaStatePatch(doc, track.id, fx.id, label, flatParams))
-          }
-        />
-      )}
+      <Suspense fallback={<div className="fx-panel-loading">Loading editor…</div>}>
+        {fx.type === "fxeq" && (
+          <FxEqPanel
+            params={fx.params}
+            degraded={!!fallbackReason}
+            onParam={(fullId, value) =>
+              services.store.execute(setFxEqParam(doc, track.id, fx.id, fullId, value))
+            }
+            onApplyPreset={(name, presetParams) =>
+              services.store.execute(applyFxEqPreset(doc, track.id, fx.id, name, presetParams))
+            }
+          />
+        )}
+        {fx.type === "ultina" && (
+          <UltinaPanel
+            trackId={track.id}
+            fxId={fx.id}
+            params={fx.params}
+            degraded={!!fallbackReason}
+            onParam={(paramId, value) =>
+              services.store.execute(setUltinaParam(doc, track.id, fx.id, paramId, value))
+            }
+            onApplyPreset={(name, presetParams) =>
+              services.store.execute(applyUltinaPreset(doc, track.id, fx.id, name, presetParams))
+            }
+            onApplyProposal={(label, toggles, changes) =>
+              services.store.execute(applyUltinaProposal(doc, track.id, fx.id, label, toggles, changes))
+            }
+          />
+        )}
+        {fx.type === "ozvena" && (
+          <OzvenaPanel
+            params={fx.params}
+            degraded={!!fallbackReason}
+            onParam={(paramId, value) =>
+              services.store.execute(setEffectParam(doc, track.id, fx.id, paramId, value))
+            }
+            onApplyPatch={(label, flatParams) =>
+              services.store.execute(applyOzvenaStatePatch(doc, track.id, fx.id, label, flatParams))
+            }
+          />
+        )}
+      </Suspense>
       <div className="fx-device-params">
         {def.params
           .filter(

@@ -4,7 +4,7 @@ import type { AutomationPoint, Pattern, PlayMode, ProjectDocument } from "../pro
 import { BAR_TICKS, PPQ, STEP_TICKS, getActivePattern } from "../project-model/types";
 import { drumHitsInWindow } from "../project-model/groove";
 import { noteEventsInWindow } from "../project-model/events";
-import { loadWorkletModules } from "../audio-worklets/loader";
+import { ensureWorkletsForDoc } from "../audio-worklets/loader";
 
 export interface RenderOptions {
   mode: PlayMode;
@@ -122,8 +122,10 @@ export async function renderProject(
   // Load AudioWorklet processors into THIS offline context so bitcrusher
   // downsample and sidechain ducking render correctly (the fallbacks are
   // broken offline: WaveShaper has no state, setInterval never fires).
-  // Never rejects — factories fall back gracefully when unavailable.
-  await loadWorkletModules(ctx);
+  // Vendored plugin modules (fxeq/ultina/ozvena) load only when the project
+  // uses them. Never rejects — factories fall back gracefully when
+  // unavailable.
+  await ensureWorkletsForDoc(doc, ctx);
 
   const engine = new AudioEngine();
   engine.attachBank(bank);

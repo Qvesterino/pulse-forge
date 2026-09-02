@@ -1,4 +1,4 @@
-import { StrictMode, useCallback, useEffect, useState } from "react";
+import { StrictMode, Suspense, lazy, useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { createCoreServices, openProject } from "./services";
 import type { CoreServices, Services } from "./services";
@@ -6,11 +6,18 @@ import type { ProjectDocument } from "./project-model/types";
 import { App } from "./ui/App";
 import { ErrorBoundary } from "./ui/ErrorBoundary";
 import { ProjectBrowser } from "./ui/ProjectBrowser";
-import { EmbedApp } from "./embed/EmbedApp";
-import { LandingPage } from "./landing/LandingPage";
-import { GalleryPage } from "./gallery/GalleryPage";
 import { decodeShareCode } from "./export/shareCode";
 import "./styles.css";
+import { initTheme } from "./ui/theme";
+
+// Apply persisted user theme before the first paint.
+initTheme();
+
+// Route-level code splitting: /embed and /gallery never pull the studio,
+// the landing page never pulls it either. Each chunk loads only for its URL.
+const EmbedApp = lazy(() => import("./embed/EmbedApp").then((m) => ({ default: m.EmbedApp })));
+const GalleryPage = lazy(() => import("./gallery/GalleryPage").then((m) => ({ default: m.GalleryPage })));
+const LandingPage = lazy(() => import("./landing/LandingPage").then((m) => ({ default: m.LandingPage })));
 
 const container = document.getElementById("root");
 if (!container) throw new Error("Root element not found");
@@ -18,18 +25,24 @@ if (!container) throw new Error("Root element not found");
 const PATH = typeof location !== "undefined" ? location.pathname : "/";
 const ONBOARDED_KEY = "pf-onboarded";
 
+const ROUTE_FALLBACK = <div className="boot">PULSE FORGE — loading…</div>;
+
 // /embed — a standalone share player; skip the whole studio boot.
 if (/^\/embed(\/|$)/.test(PATH)) {
   createRoot(container).render(
     <StrictMode>
-      <EmbedApp />
+      <Suspense fallback={ROUTE_FALLBACK}>
+        <EmbedApp />
+      </Suspense>
     </StrictMode>,
   );
 } else if (/^\/gallery(\/|$)/.test(PATH)) {
   // /gallery — the beat feed; no studio boot either.
   createRoot(container).render(
     <StrictMode>
-      <GalleryPage />
+      <Suspense fallback={ROUTE_FALLBACK}>
+        <GalleryPage />
+      </Suspense>
     </StrictMode>,
   );
 } else {
@@ -61,7 +74,11 @@ function Entry() {
     setEntered(true);
   };
   if (entered) return <Boot />;
-  return <LandingPage onEnterStudio={enterStudio} />;
+  return (
+    <Suspense fallback={ROUTE_FALLBACK}>
+      <LandingPage onEnterStudio={enterStudio} />
+    </Suspense>
+  );
 }
 
 type Screen =
@@ -83,7 +100,14 @@ function Boot() {
         const code = new URLSearchParams(location.search).get("import");
         const imported = code ? decodeShareCode(code) : null;
         if (imported) {
-          setScreen({ kind: "studio", services: openProject(core, imported) });
+          void openProject(core, imported).then(
+            (services) => {
+              if (!cancelled) setScreen({ kind: "studio", services });
+            },
+            (error) => {
+              if (!cancelled) setScreen({ kind: "error", message: String(error) });
+            },
+          );
         } else {
           setScreen({ kind: "browser", core });
         }
@@ -98,7 +122,7 @@ function Boot() {
   }, []);
 
   const openDoc = useCallback((core: CoreServices, doc: ProjectDocument) => {
-    setScreen({ kind: "studio", services: openProject(core, doc) });
+    void openProject(core, doc).then((services) => setScreen({ kind: "studio", services }));
   }, []);
 
   /** Swap the studio's services in place (collab session start/leave). */

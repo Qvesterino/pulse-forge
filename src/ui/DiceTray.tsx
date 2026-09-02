@@ -202,7 +202,7 @@ export function DiceTray() {
         <label className="dice-field dice-seed-field">
           <span>SEED</span>
           <input value={seed} onChange={(e) => setSeed(e.target.value)} maxLength={16} spellCheck={false} />
-          <button type="button" className="btn btn-small" onClick={handleCopySeed} title="Copy seed">
+          <button type="button" className="btn btn-small" onClick={handleCopySeed} title="Copy seed" aria-label="Copy seed">
             📋
           </button>
         </label>

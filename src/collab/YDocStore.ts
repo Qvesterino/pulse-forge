@@ -10,6 +10,28 @@ import type { Command } from "../commands/types";
 import type { ProjectDocument } from "../project-model/types";
 import { normalizeProject } from "../project-model/schema";
 import { yDocToProject, projectToYDoc, applyProjectToYMap } from "./YDocAdapter";
+import { registerYDocHelpers } from "../commands/yDocBridge";
+import {
+  ySetPatternField,
+  ySetProjectField,
+  ySetStepVelocity,
+  ySetTrackField,
+  yToggleStep,
+} from "../commands/yDocHelpers";
+
+// The command factories in commands.ts stay yjs-free (yjs ships only in this
+// collab chunk) — they reach the helpers through the bridge, registered here
+// where yjs is guaranteed to be loaded anyway.
+registerYDocHelpers({
+  yToggleStep: (yMap, patternId, padId, stepIndex) => yToggleStep(yMap as Y.Map<unknown>, patternId, padId, stepIndex),
+  ySetStepVelocity: (yMap, patternId, padId, stepIndex, velocity) =>
+    ySetStepVelocity(yMap as Y.Map<unknown>, patternId, padId, stepIndex, velocity),
+  ySetPatternField: (yMap, patternId, field, value) =>
+    ySetPatternField(yMap as Y.Map<unknown>, patternId, field, value),
+  ySetTrackField: (yMap, trackId, field, value) => ySetTrackField(yMap as Y.Map<unknown>, trackId, field, value),
+  ySetProjectField: (yMap, field, value) => ySetProjectField(yMap as Y.Map<unknown>, field, value),
+  createYMap: () => new Y.Map(),
+});
 
 export type SaveStatus = "saved" | "dirty" | "saving" | "error" | "syncing";
 

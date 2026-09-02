@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import { isWorkletReady, loadWorkletModules } from "../src/audio-worklets/loader";
+import {
+  ensureWorkletsForDoc,
+  isWorkletReady,
+  loadAllWorklets,
+  loadCoreWorklets,
+  loadPluginWorklet,
+  pluginTypesInDoc,
+} from "../src/audio-worklets/loader";
 
 function mockCtx(addModule: (url: string) => Promise<void>): BaseAudioContext {
   return { audioWorklet: { addModule } } as unknown as BaseAudioContext;
@@ -11,19 +18,64 @@ describe("AudioWorklet loader", () => {
     expect(isWorkletReady("sidechain", {} as BaseAudioContext)).toBe(false);
     expect(isWorkletReady("limiter", {} as BaseAudioContext)).toBe(false);
     expect(isWorkletReady("compressor", {} as BaseAudioContext)).toBe(false);
+    expect(isWorkletReady("fxeq", {} as BaseAudioContext)).toBe(false);
     expect(isWorkletReady("bitcrusher", null)).toBe(false);
     expect(isWorkletReady("sidechain", undefined)).toBe(false);
   });
 
-  it("marks a context ready after modules load (both processors)", async () => {
+  it("marks a context ready after CORE modules load (no plugin fetches)", async () => {
     const addModule = vi.fn(async () => {});
     const ctx = mockCtx(addModule);
-    await loadWorkletModules(ctx);
-    expect(addModule).toHaveBeenCalledTimes(5); // bitcrusher + core + fxeq + ultina + ozvena (sidechain, transient, gate, limiter)
+    await loadCoreWorklets(ctx);
+    expect(addModule).toHaveBeenCalledTimes(2); // bitcrusher + core (sidechain, transient, gate, limiter…)
     expect(isWorkletReady("bitcrusher", ctx)).toBe(true);
     expect(isWorkletReady("sidechain", ctx)).toBe(true);
     expect(isWorkletReady("limiter", ctx)).toBe(true);
     expect(isWorkletReady("compressor", ctx)).toBe(true);
+    // Vendored plugin suites are NOT loaded by the core path.
+    expect(isWorkletReady("fxeq", ctx)).toBe(false);
+    expect(isWorkletReady("ultina", ctx)).toBe(false);
+    expect(isWorkletReady("ozvena", ctx)).toBe(false);
+  });
+
+  it("loads plugin modules on demand, per type", async () => {
+    const addModule = vi.fn(async () => {});
+    const ctx = mockCtx(addModule);
+    await loadPluginWorklet(ctx, "ozvena");
+    expect(addModule).toHaveBeenCalledTimes(3); // bitcrusher + core + ozvena
+    expect(isWorkletReady("ozvena", ctx)).toBe(true);
+    expect(isWorkletReady("fxeq", ctx)).toBe(false);
+    // Same type again → cached, no extra fetch.
+    await loadPluginWorklet(ctx, "ozvena");
+    expect(addModule).toHaveBeenCalledTimes(3);
+  });
+
+  it("ensureWorkletsForDoc loads exactly the plugin types the project uses", async () => {
+    const addModule = vi.fn(async () => {});
+    const ctx = mockCtx(addModule);
+    const doc = {
+      tracks: [
+        { effects: [{ type: "fxeq" }, { type: "tremolo" }] },
+        { effects: [] },
+        { effects: [{ type: "ultina" }] },
+      ],
+      returns: [{ effects: [{ type: "ozvena" }] }],
+      master: { effects: [{ type: "limiter" }] },
+    };
+    const ready = await ensureWorkletsForDoc(doc, ctx);
+    expect(ready.sort()).toEqual(["fxeq", "ozvena", "ultina"]);
+    expect(addModule).toHaveBeenCalledTimes(5); // 2 core + 3 plugins
+  });
+
+  it("pluginTypesInDoc scans tracks, returns and master (pure)", () => {
+    expect(pluginTypesInDoc(null)).toEqual([]);
+    expect(
+      pluginTypesInDoc({
+        tracks: [{ effects: [{ type: "fxeq" }] }],
+        returns: [{ effects: [{ type: "ozvena" }, { type: "ozvena" }] }],
+        master: { effects: [{ type: "bitcrusher" }] },
+      }),
+    ).toEqual(["fxeq", "ozvena"]);
   });
 
   it("tracks readiness per context — offline renders are separate contexts", async () => {
@@ -31,7 +83,7 @@ describe("AudioWorklet loader", () => {
     // AudioWorkletNodes in OfflineAudioContexts where the processor was
     // never registered, which throws during freeze/bounce/export.
     const live = mockCtx(async () => {});
-    await loadWorkletModules(live);
+    await loadCoreWorklets(live);
     const offline = mockCtx(async () => {});
     expect(isWorkletReady("bitcrusher", live)).toBe(true);
     expect(isWorkletReady("bitcrusher", offline)).toBe(false);
@@ -40,22 +92,35 @@ describe("AudioWorklet loader", () => {
   it("loads each context only once", async () => {
     const addModule = vi.fn(async () => {});
     const ctx = mockCtx(addModule);
-    await loadWorkletModules(ctx);
-    await loadWorkletModules(ctx);
-    expect(addModule).toHaveBeenCalledTimes(5);
+    await loadCoreWorklets(ctx);
+    await loadCoreWorklets(ctx);
+    expect(addModule).toHaveBeenCalledTimes(2);
   });
 
   it("never rejects and keeps fallback on addModule failure", async () => {
     const ctx = mockCtx(async () => {
       throw new Error("404 module not found");
     });
-    await expect(loadWorkletModules(ctx)).resolves.toBeUndefined();
+    await expect(loadCoreWorklets(ctx)).resolves.toBeUndefined();
     expect(isWorkletReady("bitcrusher", ctx)).toBe(false);
     expect(isWorkletReady("sidechain", ctx)).toBe(false);
+    // Plugin loads on a failed context are also graceful no-ops.
+    await expect(loadPluginWorklet(ctx, "fxeq")).resolves.toBeUndefined();
+    expect(isWorkletReady("fxeq", ctx)).toBe(false);
+  });
+
+  it("loadAllWorklets still fetches every module (browser check suite)", async () => {
+    const addModule = vi.fn(async () => {});
+    const ctx = mockCtx(addModule);
+    await loadAllWorklets(ctx);
+    expect(addModule).toHaveBeenCalledTimes(5);
+    expect(isWorkletReady("fxeq", ctx)).toBe(true);
+    expect(isWorkletReady("ultina", ctx)).toBe(true);
+    expect(isWorkletReady("ozvena", ctx)).toBe(true);
   });
 
   it("resolves silently without audioWorklet (jsdom)", async () => {
-    await expect(loadWorkletModules({} as BaseAudioContext)).resolves.toBeUndefined();
+    await expect(loadCoreWorklets({} as BaseAudioContext)).resolves.toBeUndefined();
   });
 });
 

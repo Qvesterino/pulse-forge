@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && node scripts/check-bundle-size.mjs",
     "typecheck": "tsc --noEmit",
     "typecheck:clean": "node -e \"try{require('fs').unlinkSync('tsconfig.tsbuildinfo')}catch{try{require('fs').unlinkSync('./tsconfig.tsbuildinfo')}catch{}}\" && tsc --noEmit --incremental false",
     "test": "vitest run",

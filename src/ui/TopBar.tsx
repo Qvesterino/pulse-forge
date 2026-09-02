@@ -9,6 +9,7 @@ import type { PlayMode } from "../project-model/types";
 import type { Services } from "../services";
 import { matchShortcut } from "./shortcuts";
 import { ScalePanel } from "./ScalePanel";
+import { ThemePanel } from "./ThemePanel";
 import { CollabPanel } from "./CollabPanel";
 import { AssistPanel } from "./AssistPanel";
 import { assistFill, assistVary } from "../commands/commands";
@@ -62,6 +63,7 @@ export function TopBar({
   const [loopStart, setLoopStart] = useState(services.transport.loopStart);
   const [loopEnd, setLoopEnd] = useState(services.transport.loopEnd);
   const [scalePanelOpen, setScalePanelOpen] = useState(false);
+  const [themeOpen, setThemeOpen] = useState(false);
   const [collabOpen, setCollabOpen] = useState(false);
   const [assistOpen, setAssistOpen] = useState(false);
 
@@ -446,6 +448,21 @@ export function TopBar({
           </button>
           <button
             type="button"
+            className={`btn btn-ghost${themeOpen ? " active" : ""}`}
+            onClick={() => {
+              setThemeOpen((open) => !open);
+              setCollabOpen(false);
+              setScalePanelOpen(false);
+              setAssistOpen(false);
+            }}
+            title="Theme — colours, size, density, motion"
+            aria-label="Toggle theme panel"
+            aria-pressed={themeOpen}
+          >
+            THEME
+          </button>
+          <button
+            type="button"
             className={`btn btn-ghost${diagnosticsOpen ? " active" : ""}`}
             onClick={onToggleDiagnostics}
             title="Toggle diagnostics panel"
@@ -464,6 +481,11 @@ export function TopBar({
       {collabOpen && (
         <div className="scale-popover">
           <CollabPanel onReplaceServices={onReplaceServices} />
+        </div>
+      )}
+      {themeOpen && (
+        <div className="scale-popover">
+          <ThemePanel />
         </div>
       )}
       {assistOpen && (

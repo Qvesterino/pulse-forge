@@ -16,9 +16,10 @@ import { MidiOutput } from "./midi/MidiOutput";
 import { MidiClock } from "./midi/MidiClock";
 import { UserSampleRepository, restoreUserSampleAudio } from "./persistence/UserSampleRepository";
 import { FrozenBufferRepository, restoreFrozenTracks } from "./persistence/FrozenBufferRepository";
-import { loadWorkletModules } from "./audio-worklets/loader";
-import { YDocStore } from "./collab/YDocStore";
-import { CollabSession, collabParamsFromSearch, type CollabStatus } from "./collab/CollabSession";
+import { ensureWorkletsForDoc } from "./audio-worklets/loader";
+import type { YDocStore } from "./collab/YDocStore";
+import type { CollabSession } from "./collab/CollabSession";
+import { collabParamsFromSearch, type CollabStatus } from "./collab/collabShared";
 import type { CollaboratorInfo } from "./collab/CollaborationProvider";
 import { LatencyCalibrationController } from "./audio-engine/latencyCalibration";
 import { ArrangementCaptureController } from "./arrangement/capture";
@@ -228,15 +229,23 @@ export function collabSessionInfo(
  * YDocStore synced over y-websocket; remote edits flow back through the
  * same onDocChanged path as local ones.
  */
-export function openProject(core: CoreServices, initial: ProjectDocument, options: OpenProjectOptions = {}): Services {
+export async function openProject(core: CoreServices, initial: ProjectDocument, options: OpenProjectOptions = {}): Promise<Services> {
   const { engine, repo, bank, library, userKits, latency } = core;
 
   const collabConfig =
     options.collab ?? (typeof location !== "undefined" ? collabParamsFromSearch(location.search) : null);
-  const store: ProjectStore | YDocStore = collabConfig ? YDocStore.fromDocument(initial) : new ProjectStore(initial);
-  const collab = collabConfig
-    ? new CollabSession((store as YDocStore).yDocRef, collabConfig.roomId, collabConfig.serverUrl)
-    : null;
+  // yjs + y-websocket ship only in the collab chunk — loaded on demand, so
+  // solo sessions never download ~300 KB of CRDT runtime.
+  let store: ProjectStore | YDocStore = new ProjectStore(initial);
+  let collab: CollabSession | null = null;
+  if (collabConfig) {
+    const [{ YDocStore: YDocStoreImpl }, { CollabSession: CollabSessionImpl }] = await Promise.all([
+      import("./collab/YDocStore"),
+      import("./collab/CollabSession"),
+    ]);
+    store = YDocStoreImpl.fromDocument(initial);
+    collab = new CollabSessionImpl((store as YDocStore).yDocRef, collabConfig.roomId, collabConfig.serverUrl);
+  }
   collab?.connect();
   const transport = new Transport({ now: () => engine.currentTime }, initial.bpm);
   const modeRef: { mode: PlayMode } = { mode: "pattern" };
@@ -291,9 +300,10 @@ export function openProject(core: CoreServices, initial: ProjectDocument, option
   });
   engine.setProject(store.doc);
   // Pre-load AudioWorklet modules (fire-and-forget — factories fall back
-  // to old implementation until modules are ready, then pick up worklet
-  // on the next syncProject cycle).
-  void loadWorkletModules(engine.ensureContext());
+  // to bypass/fallback until modules are ready, then the engine rebuilds
+  // the chains on the next syncProject cycle). The vendored plugin suites
+  // load only when this project references them.
+  void ensureWorkletsForDoc(store.doc, engine.ensureContext());
   transport.seek(0);
   const playback = new PlaybackController(
     engine,

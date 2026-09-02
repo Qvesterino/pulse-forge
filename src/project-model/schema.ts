@@ -874,6 +874,33 @@ function normalizeTracksDomain(s: NormalizeState): void {
       t = { ...t, groupId: undefined };
       tracksChanged = true;
     }
+    // Velocity/round-robin layers: keep well-formed zones only; drop the
+    // field entirely when nothing valid remains (classic single-sample mode)
+    if (t.velocityLayers !== undefined) {
+      const rawLayers = Array.isArray(t.velocityLayers) ? (t.velocityLayers as unknown[]) : [];
+      const cleanLayers: import("./types").SampleLayer[] = [];
+      for (const rawLayer of rawLayers) {
+        const l = (rawLayer ?? {}) as Partial<import("./types").SampleLayer> & Record<string, unknown>;
+        const min = typeof l.min === "number" && Number.isFinite(l.min) ? Math.min(1, Math.max(0, l.min)) : NaN;
+        const max = typeof l.max === "number" && Number.isFinite(l.max) ? Math.min(1, Math.max(0, l.max)) : NaN;
+        if (!Number.isFinite(min) || !Number.isFinite(max) || min >= max) continue;
+        cleanLayers.push({
+          id: typeof l.id === "string" && l.id ? l.id : uid("layer"),
+          sampleId: typeof l.sampleId === "string" ? l.sampleId : null,
+          min,
+          max,
+        });
+      }
+      const canonical = cleanLayers.length > 0 ? cleanLayers : undefined;
+      if (JSON.stringify(canonical) !== JSON.stringify(t.velocityLayers)) {
+        t = canonical ? { ...t, velocityLayers: canonical } : t;
+        if (!canonical) {
+          const { velocityLayers: _vl, ...rest } = t as unknown as Record<string, unknown>;
+          t = rest as unknown as InstrumentTrack;
+        }
+        tracksChanged = true;
+      }
+    }
     const cleanColorInst = sanitizeColor((t as unknown as Record<string, unknown>).color);
     if (cleanColorInst !== (t as unknown as Record<string, unknown>).color) {
       if (cleanColorInst === undefined) {

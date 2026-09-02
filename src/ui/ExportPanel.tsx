@@ -5,7 +5,6 @@ import { buildStemProject, nonEmptyStemGroups } from "../rendering/stems";
 import { downloadWav, encodeWav, sanitizeFilename } from "../rendering/wav";
 import { buildScorepack } from "../export/scorepack";
 import { exportProject } from "../export/project-io";
-import { encodeMp3 } from "../export/mp3";
 import { canExportVideo, recordVideo } from "../export/video";
 import { encodeShareCode, shareAppUrl, embedUrl, embedSnippet } from "../export/shareCode";
 import type { WavBitDepth } from "../rendering/wav";
@@ -101,6 +100,8 @@ export function ExportPanel({
 
       if (format.startsWith("mp3")) {
         const kbps = format === "mp3-320" ? 320 : 192;
+        // The LAME encoder is a heavy dependency — fetched on first MP3 export.
+        const { encodeMp3 } = await import("../export/mp3");
         const blob = await encodeMp3(buffer, {
           kbps,
           onProgress: (f) => setStatus({ kind: "busy", label: `Encoding MP3 ${kbps}… ${Math.round(f * 100)}%` }),

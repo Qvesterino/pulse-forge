@@ -10,8 +10,10 @@ describe("granular registry entry", () => {
       "size",
       "rate",
       "jitter",
+      "scan",
       "spread",
       "pitch",
+      "pRand",
       "reverse",
       "tone",
       "shape",
@@ -159,3 +161,82 @@ describe.skipIf(typeof OfflineAudioContext === "undefined")("Granular Synth runt
     rt.dispose();
   });
 });
+
+describe.skipIf(typeof OfflineAudioContext === "undefined")("Granular scan + pitch rand runtime", () => {
+  const SR = 44100;
+
+  function makeTrack(overrides: Record<string, number> = {}): InstrumentTrack {
+    return {
+      id: "gran-scan-test",
+      kind: "instrument",
+      instrument: "granular",
+      name: "Granular",
+      gain: 1,
+      pan: 0,
+      mute: false,
+      solo: false,
+      sampleId: "user.grains",
+      params: { ...defaultInstrumentParams("granular"), ...overrides },
+      effects: [],
+      sends: {},
+    };
+  }
+
+  function makeRuntime(ctx: BaseAudioContext, track: InstrumentTrack) {
+    const source = ctx.createBuffer(1, SR, SR);
+    const data = source.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+      data[i] = 0.6 * Math.sin((2 * Math.PI * 220 * i) / SR) + 0.2 * Math.sin((2 * Math.PI * 660 * i) / SR);
+    }
+    return INSTRUMENT_DEFS.granular.factory(ctx, track, {
+      bpm: 124,
+      getSample: (id) => (id === "user.grains" ? source : undefined),
+    });
+  }
+
+  it("renders an audible cloud with backward scan and pitch spray", async () => {
+    const ctx = new OfflineAudioContext(2, SR, SR);
+    const rt = makeRuntime(ctx, makeTrack({ scan: -0.4, pRand: 3, jitter: 0.3, reverse: 0.3 }));
+    rt.output.connect(ctx.destination);
+    rt.noteOn(60, 0.9, 0.05, 0.6);
+    const buffer = await ctx.startRendering();
+    let peak = 0;
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) peak = Math.max(peak, Math.abs(data[i]));
+    expect(peak).toBeGreaterThan(0.001);
+    expect(peak).toBeLessThanOrEqual(2);
+    rt.dispose();
+  });
+
+  it("is deterministic with scan + pitch rand enabled", async () => {
+    const render = async () => {
+      const ctx = new OfflineAudioContext(2, SR, SR);
+      const rt = makeRuntime(ctx, makeTrack({ scan: 0.7, pRand: 5, jitter: 0.5, spread: 0.8, reverse: 0.5 }));
+      rt.output.connect(ctx.destination);
+      rt.noteOn(60, 0.9, 0.05, 0.4);
+      rt.noteOn(64, 0.8, 0.1, 0.3);
+      const buffer = await ctx.startRendering();
+      rt.dispose();
+      return Array.from(buffer.getChannelData(0));
+    };
+    const a = await render();
+    const b = await render();
+    let maxDiff = 0;
+    for (let i = 0; i < a.length; i++) maxDiff = Math.max(maxDiff, Math.abs(a[i] - b[i]));
+    expect(maxDiff).toBeLessThan(1e-4);
+  });
+
+  it("wraps the scan read head at sample boundaries without clipping the offset", async () => {
+    const ctx = new OfflineAudioContext(2, SR, SR);
+    const rt = makeRuntime(ctx, makeTrack({ scan: 2, jitter: 0, rate: 30 }));
+    rt.output.connect(ctx.destination);
+    expect(() => rt.noteOn(60, 0.9, 0, 0.5)).not.toThrow();
+    const buffer = await ctx.startRendering();
+    let peak = 0;
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) peak = Math.max(peak, Math.abs(data[i]));
+    expect(peak).toBeGreaterThan(0.001);
+    rt.dispose();
+  });
+});
+

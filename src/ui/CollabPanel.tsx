@@ -1,6 +1,6 @@
 import { useSyncExternalStore, useState } from "react";
 import { openProject, type Services } from "../services";
-import { defaultServerUrl, randomRoomId, shareUrl } from "../collab/CollabSession";
+import { defaultServerUrl, randomRoomId, shareUrl } from "../collab/collabShared";
 import { useDoc, useServices } from "./context";
 
 /**
@@ -27,7 +27,7 @@ export function CollabPanel({ onReplaceServices }: { onReplaceServices: (service
   const startOrJoin = async () => {
     const roomId = (roomDraft.trim() || randomRoomId()).toLowerCase();
     await services.closeProject();
-    onReplaceServices(openProject(services.core, doc, { collab: { roomId, serverUrl: serverUrl.trim() } }));
+    void openProject(services.core, doc, { collab: { roomId, serverUrl: serverUrl.trim() } }).then(onReplaceServices);
   };
 
   const leave = async () => {
@@ -36,7 +36,7 @@ export function CollabPanel({ onReplaceServices }: { onReplaceServices: (service
       history.replaceState(null, "", location.pathname);
     }
     await services.closeProject();
-    onReplaceServices(openProject(services.core, doc));
+    void openProject(services.core, doc).then(onReplaceServices);
   };
 
   const copyLink = async () => {

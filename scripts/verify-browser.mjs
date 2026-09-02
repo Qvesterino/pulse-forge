@@ -26,7 +26,18 @@ try {
   });
   page.on("pageerror", (err) => consoleErrors.push(String(err)));
 
-  await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+  // A save from a concurrent agent mid-goto triggers a Vite full reload
+  // which interrupts the navigation — retry like the evaluate below.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+      break;
+    } catch (error) {
+      if (attempt >= 3 || !/interrupted|context was destroyed|navigation/i.test(String(error))) throw error;
+      console.log("[retry] checks page navigation race — retrying goto");
+      await page.waitForTimeout(2000);
+    }
+  }
 
   // A shared dev machine means another agent may save files mid-run, which
   // Vite turns into a full page reload ("Execution context was destroyed").
@@ -41,7 +52,18 @@ try {
     } catch (error) {
       if (attempt === 3 || !/context was destroyed|navigation/i.test(String(error))) throw error;
       console.log("[retry] checks page reload race — retrying evaluate");
+      // A save from a concurrent agent mid-goto triggers a Vite full reload
+  // which interrupts the navigation — retry like the evaluate below.
+  for (let attempt = 1; ; attempt++) {
+    try {
       await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+      break;
+    } catch (error) {
+      if (attempt >= 3 || !/interrupted|context was destroyed|navigation/i.test(String(error))) throw error;
+      console.log("[retry] checks page navigation race — retrying goto");
+      await page.waitForTimeout(2000);
+    }
+  }
     }
   }
 
@@ -62,19 +84,22 @@ try {
   await appPage.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 60_000 });
   try {
     // First-time visitors get the landing page — exercise it: hero renders,
-    // CTA enters the studio (and marks the browser onboarded).
+    // CTA enters the studio (and marks the browser onboarded). The landing
+    // is a lazy chunk since the route split — wait for it OR the browser.
+    await appPage.waitForSelector(".landing, .project-browser", { timeout: 30_000 });
     const onLanding = await appPage.$(".landing");
     if (onLanding) {
       await appPage.waitForSelector(".landing-hero-player .embed-play", { timeout: 30_000 });
-      await appPage.evaluate(() => document.querySelector(".landing-nav .landing-cta")?.click());
+      // Click the STUDIO button specifically — the nav also holds the gallery link.
+    await appPage.evaluate(() => document.querySelector(".landing-nav button.landing-cta")?.click());
     }
-    await appPage.waitForSelector(".project-browser", { timeout: 15000 });
+    await appPage.waitForSelector(".project-browser", { timeout: 30_000 });
     // Create a project from the House template — one click from browser to sound.
     // Evaluate-clicks keep this flow immune to HMR reload races from a busy
     // shared dev machine (locator actionability would time out mid-reload).
     await appPage.evaluate(() => document.querySelectorAll(".pb-template")[0]?.click());
-    await appPage.waitForSelector(".topbar", { timeout: 15000 });
-    await appPage.waitForSelector(".sequencer", { timeout: 15000 });
+    await appPage.waitForSelector(".topbar", { timeout: 30_000 });
+    await appPage.waitForSelector(".sequencer", { timeout: 30_000 });
     // First-run onboarding tour: walk all four steps, then finish.
     // The card appears ~600 ms after studio mount — wait for it.
     {
@@ -163,14 +188,14 @@ try {
     }
     await appPage.waitForTimeout(1200); // allow autosave to settle before reload
     await appPage.reload({ waitUntil: "domcontentloaded", timeout: 60_000 });
-    await appPage.waitForSelector(".project-browser", { timeout: 15000 });
+    await appPage.waitForSelector(".project-browser", { timeout: 30_000 });
     const continueCard = appPage.locator(".pb-continue-card").first();
     if (await continueCard.count()) {
       await continueCard.click();
     } else {
       await appPage.locator(".pb-row button:has-text(OPEN)").first().click();
     }
-    await appPage.waitForSelector(".sequencer", { timeout: 15000 });
+    await appPage.waitForSelector(".sequencer", { timeout: 30_000 });
     const patternsAfterReload = await appPage.locator(".pattern-chip").count();
     if (patternsAfterReload !== patternsAfterGenerate) {
       throw new Error(`reload lost generated pattern: ${patternsAfterReload}/${patternsAfterGenerate}`);
@@ -220,7 +245,7 @@ try {
     await appPage.locator('.topbar button:has-text("ARR")').first().click();
     // Return to the browser — the freshly created project must be listed.
     await appPage.locator('.topbar button:has-text("PROJECTS")').first().click();
-    await appPage.waitForSelector(".project-browser", { timeout: 15000 });
+    await appPage.waitForSelector(".project-browser", { timeout: 30_000 });
     await appPage.waitForSelector(".pb-row", { timeout: 15000 });
     const fatal = appErrors.filter((e) => !/AudioContext|autoplay|user gesture/i.test(e));
     if (fatal.length === 0) {

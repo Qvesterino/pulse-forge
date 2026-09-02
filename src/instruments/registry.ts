@@ -1,5 +1,5 @@
 import type { InstrumentDefinition, InstrumentRuntime } from "./types";
-import type { InstrumentKind, InstrumentTrack } from "../project-model/types";
+import type { InstrumentKind, InstrumentTrack, SampleLayer } from "../project-model/types";
 import { midiToFreq } from "../project-model/types";
 import type { ParamDef } from "../effects/types";
 import { hashString, mulberry32 } from "../shared/rng";
@@ -21,6 +21,28 @@ const formatHz = (v: number) => `${Math.round(v)} Hz`;
 const formatMs = (v: number) => `${Math.round(v * 1000)} ms`;
 const formatPct = (v: number) => `${Math.round(v * 100)}%`;
 const formatSec = (v: number) => `${v.toFixed(2)} s`;
+
+/* ---------------- BPM sync helpers ---------------- */
+// Shared division table for tempo-synced modulators. Selection 0 = OFF
+// (free Hz rate as before); otherwise the modulation period locks to a
+// note division derived from the track's bpm. Exported for math checks.
+export const SYNC_BEATS = [0, 2, 1, 0.75, 0.5, 1 / 3, 0.25]; // OFF, 1/2, 1/4, 1/8D, 1/8, 1/8T, 1/16
+export const SYNC_OPTIONS = [
+  { value: 0, label: "OFF" },
+  { value: 1, label: "1/2" },
+  { value: 2, label: "1/4" },
+  { value: 3, label: "1/8D" },
+  { value: 4, label: "1/8" },
+  { value: 5, label: "1/8T" },
+  { value: 6, label: "1/16" },
+];
+export function syncRateHz(selection: number, bpm: number): number {
+  const beats = SYNC_BEATS[Math.max(0, Math.min(SYNC_BEATS.length - 1, Math.round(selection)))];
+  return beats > 0 ? bpm / (60 * beats) : 0;
+}
+function clampBpm(bpm: number): number {
+  return Math.max(20, Math.min(300, bpm || 120));
+}
 
 function noiseBuffer(ctx: BaseAudioContext, seed: number): AudioBuffer {
   const length = Math.floor(ctx.sampleRate);
@@ -109,6 +131,7 @@ function createVoiceFilter(
   initialCutoff: number,
   initialResonance: number,
   modeIndex = 0,
+  drive = 0,
 ): {
   input: AudioNode;
   output: AudioNode;
@@ -116,6 +139,7 @@ function createVoiceFilter(
   resonance: AudioParam;
   isWorklet: boolean;
   setMode(modeIndex: number): void;
+  setDrive(drive: number): void;
   disconnect(): void;
 } {
   if (isWorkletReady("svFilter", ctx)) {
@@ -130,7 +154,7 @@ function createVoiceFilter(
     cutoffParam.value = initialCutoff;
     resParam.value = resNorm;
     node.parameters.get("mode")!.value = FILTER_MODE_WORKLET[modeIndex] ?? 0;
-    node.parameters.get("drive")!.value = 0;
+    node.parameters.get("drive")!.value = Math.min(1, Math.max(0, drive));
     node.parameters.get("mix")!.value = 1;
     const input = ctx.createGain();
     const output = ctx.createGain();
@@ -143,6 +167,9 @@ function createVoiceFilter(
       isWorklet: true,
       setMode(m) {
         node.parameters.get("mode")!.value = FILTER_MODE_WORKLET[m] ?? 0;
+      },
+      setDrive(v) {
+        node.parameters.get("drive")!.value = Math.min(1, Math.max(0, v));
       },
       disconnect() {
         input.disconnect();
@@ -163,6 +190,10 @@ function createVoiceFilter(
     isWorklet: false,
     setMode(m) {
       filter.type = FILTER_MODE_BIQUAD[m] ?? "lowpass";
+    },
+    setDrive() {
+      // Biquad fallback has no saturation stage — DRIVE is worklet-only,
+      // same degradation philosophy as the SVF itself falling back to biquad.
     },
     disconnect() {
       filter.disconnect();
@@ -220,6 +251,7 @@ const analog: InstrumentDefinition = {
       ],
     },
     { id: "keytrack", label: "KEY TRK", min: 0, max: 1, default: 0.3, format: formatPct },
+    { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0, format: formatPct },
     { id: "filterEnv", label: "FLT ENV", min: 0, max: 1, default: 0.3, format: formatPct },
     { id: "unison", label: "UNISON", min: 1, max: 8, default: 1, format: (v) => `${Math.round(v)}×` },
     { id: "spread", label: "SPREAD", min: 0, max: 50, default: 0, unit: "ct", format: (v) => `${v.toFixed(0)} ct` },
@@ -232,6 +264,7 @@ const analog: InstrumentDefinition = {
       unit: "Hz",
       format: (v) => (v < 0.05 ? "OFF" : `${v.toFixed(2)} Hz`),
     },
+    { id: "lfoSync", label: "LFO SYNC", min: 0, max: 6, default: 0, options: SYNC_OPTIONS },
     { id: "lfoDepth", label: "LFO DEPTH", min: 0, max: 1, default: 0, format: formatPct },
     { id: "attack", label: "ATTACK", min: 0.001, max: 2, default: 0.01, unit: "s", format: formatMs },
     { id: "decay", label: "DECAY", min: 0.02, max: 3, default: 0.25, unit: "s", format: formatMs },
@@ -239,11 +272,12 @@ const analog: InstrumentDefinition = {
     { id: "release", label: "RELEASE", min: 0.01, max: 4, default: 0.2, unit: "s", format: formatMs },
     { id: "level", label: "LEVEL", min: -24, max: 6, default: -6, unit: "dB", format: formatDb },
   ],
-  factory(ctx, track) {
+  factory(ctx, track, env) {
     const output = ctx.createGain();
     output.gain.value = 1;
     const noise = noiseBuffer(ctx, hashString(track.id));
     const p = { ...track.params };
+    let bpm = clampBpm(env.bpm);
     const { voices, register, cleanup, findByPitch } = makeVoiceManager(12);
 
     // filter -> sounding pitch, so live CUTOFF moves respect KEYTRACK per note
@@ -278,7 +312,13 @@ const analog: InstrumentDefinition = {
         amp.connect(output);
 
         const filterMode = Math.max(0, Math.min(2, Math.round(p.mode ?? 0)));
-        const filter = createVoiceFilter(ctx, effCutoff(p.cutoff ?? 9000, pitch), p.resonance ?? 1, filterMode);
+        const filter = createVoiceFilter(
+          ctx,
+          effCutoff(p.cutoff ?? 9000, pitch),
+          p.resonance ?? 1,
+          filterMode,
+          p.drive ?? 0,
+        );
         liveFilters.set(filter, pitch);
         const base = effCutoff(p.cutoff ?? 9000, pitch);
         const peakCut = Math.min(18000, base + (p.filterEnv ?? 0.3) * velocity * 6000);
@@ -306,8 +346,8 @@ const analog: InstrumentDefinition = {
         mkOsc(p.oscB ?? 2, p.oscBDetune ?? 8, 0.5 * 0.9);
         mkOsc(0, 0, (p.subLevel ?? 0.25) * 0.8, -12);
 
-        // Per-voice cutoff LFO — audio-rate sweep (analog filter wobble)
-        const lfoRate = p.lfoRate ?? 0;
+        // LFO SYNC locks the filter wobble to a note division (OFF = free Hz rate)
+        const lfoRate = syncRateHz(p.lfoSync ?? 0, bpm) || (p.lfoRate ?? 0);
         const lfoDepth = p.lfoDepth ?? 0;
         if (lfoRate > 0.05 && lfoDepth > 0.01) {
           const lfo = ctx.createOscillator();
@@ -402,27 +442,31 @@ const analog: InstrumentDefinition = {
           applyFilterLive((f, pitch) => f.frequency.setTargetAtTime(effCutoff(value, pitch), ctx.currentTime, 0.02));
         if (id === "resonance") applyFilterLive((f) => setFilterResonance(f, value, ctx.currentTime, 0.02));
         if (id === "mode") applyFilterLive((f) => f.setMode(Math.max(0, Math.min(2, Math.round(value)))));
+        if (id === "drive") applyFilterLive((f) => f.setDrive(value));
       },
       setParameterAt(id, value, when) {
         p[id] = value;
         if (id === "cutoff") applyFilterLive((f, pitch) => f.frequency.setTargetAtTime(effCutoff(value, pitch), when, 0.02));
         if (id === "resonance") applyFilterLive((f) => setFilterResonance(f, value, when, 0.02));
         if (id === "mode") applyFilterLive((f) => f.setMode(Math.max(0, Math.min(2, Math.round(value)))));
+        if (id === "drive") applyFilterLive((f) => f.setDrive(value));
+      },
+      syncBpm(next) {
+        // Per-voice LFOs capture rate at noteOn — new notes pick this up
+        bpm = clampBpm(next);
       },
       noteOff(pitch, when) {
         for (const v of findByPitch(pitch)) v.stop(when);
       },
       polyPressure(pitch, pressure, when) {
-        const cutoffBase = p.cutoff ?? 9000;
-        const target = cutoffBase * (1 + pressure * 0.5);
-        for (const v of findByPitch(pitch)) {
-          void v;
-          void when;
-          void target;
-          // Per-voice filter modulation would require tracking filter per voice
-          // For now, modulate globally via applyFilterLive
-        }
-        applyFilterLive((f) => f.frequency.setTargetAtTime(target, when, 0.01));
+        // Per-voice MPE pressure: matching notes open their own filter up to
+        // +50% over the keytracked base; pressure 0 restores CUTOFF.
+        const amt = Math.max(0, Math.min(1, pressure));
+        applyFilterLive((f, fpitch) => {
+          if (fpitch !== pitch) return;
+          const target = Math.min(20000, effCutoff(p.cutoff ?? 9000, pitch) * (1 + amt * 0.5));
+          f.frequency.setTargetAtTime(target, when, 0.01);
+        });
       },
       panic() {
         for (const voice of [...voices]) voice.silence(ctx.currentTime);
@@ -463,8 +507,24 @@ const bass: InstrumentDefinition = {
     },
     { id: "movement", label: "MOVE", min: 0, max: 1, default: 0.15, format: formatPct },
     { id: "width", label: "WIDTH", min: 0, max: 1, default: 0.2, format: formatPct },
+    { id: "unison", label: "UNISON", min: 1, max: 6, default: 1, format: (v) => `${Math.round(v)}×` },
+    { id: "spread", label: "SPREAD", min: 0, max: 50, default: 10, unit: "ct", format: (v) => `${v.toFixed(0)} ct` },
     { id: "cutoff", label: "CUTOFF", min: 80, max: 4000, default: 700, unit: "Hz", format: formatHz },
     { id: "resonance", label: "RESO", min: 0.1, max: 10, default: 1.2, format: (v) => v.toFixed(2) },
+    {
+      id: "mode",
+      label: "FILTER",
+      min: 0,
+      max: 2,
+      default: 0,
+      options: [
+        { value: 0, label: "LP" },
+        { value: 1, label: "BP" },
+        { value: 2, label: "HP" },
+      ],
+    },
+    { id: "keytrack", label: "KEY TRK", min: 0, max: 1, default: 0, format: formatPct },
+    { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0, format: formatPct },
     { id: "level", label: "LEVEL", min: -24, max: 6, default: -6, unit: "dB", format: formatDb },
   ],
   factory(ctx, track) {
@@ -473,7 +533,13 @@ const bass: InstrumentDefinition = {
     const p = { ...track.params };
     const { voices, register, cleanup, findByPitch } = makeVoiceManager(4);
 
-    const liveFilters = new Set<ReturnType<typeof createVoiceFilter>>();
+    // filter -> sounding pitch, so live CUTOFF moves respect KEYTRACK per note
+    const liveFilters = new Map<ReturnType<typeof createVoiceFilter>, number>();
+    // Keytrack: CUTOFF is tuned at C4; higher notes open the filter proportionally
+    const effCutoff = (base: number, pitch: number) => {
+      const trk = Math.max(0, Math.min(1, p.keytrack ?? 0));
+      return Math.max(50, Math.min(6500, base * Math.pow(midiToFreq(pitch) / midiToFreq(60), trk)));
+    };
 
     const runtime: InstrumentRuntime = {
       output,
@@ -513,8 +579,16 @@ const bass: InstrumentDefinition = {
         }
         amp.connect(shaper);
 
-        const filter = createVoiceFilter(ctx, p.cutoff ?? 700, p.resonance ?? 1.2);
-        const base = p.cutoff ?? 700;
+        const filterMode = Math.max(0, Math.min(2, Math.round(p.mode ?? 0)));
+        const filter = createVoiceFilter(
+          ctx,
+          effCutoff(p.cutoff ?? 700, pitch),
+          p.resonance ?? 1.2,
+          filterMode,
+          p.drive ?? 0,
+        );
+        liveFilters.set(filter, pitch);
+        const base = effCutoff(p.cutoff ?? 700, pitch);
         const punch = p.punch ?? 0.5;
         // Sweet-spot: punch now gives tighter 200-2600 range (was 400-4000, too wild)
         const peakCut = Math.min(6500, base + 200 + punch * 2400 * Math.pow(velocity, 0.6));
@@ -523,7 +597,6 @@ const bass: InstrumentDefinition = {
         filter.frequency.setTargetAtTime(base, when + 0.005, (0.12 + punch * 0.14) / 1);
         setFilterResonance(filter, p.resonance ?? 1.2);
         filter.output.connect(amp);
-        liveFilters.add(filter);
 
         if ((p.movement ?? 0) > 0.005) {
           const lfo = ctx.createOscillator();
@@ -569,8 +642,21 @@ const bass: InstrumentDefinition = {
         // Role tuning: Bass = body-first + filter punch (vs 808 = sub-first + hard clip)
         // Make body more dominant, sub slightly pulled back → clear separation
         const bodyLevel = 0.28 + (p.body ?? 0.7) * 0.52;
-        mkVoiceOsc(0, bodyLevel * 0.72, -width, "sawtooth");
-        mkVoiceOsc(width * 25, bodyLevel * 0.72, width, "square");
+        // UNISON > 1 fans detuned saw copies across the stereo field (supersaw
+        // body); the square keeps its own WIDTH character, sub stays centred.
+        const unison = Math.max(1, Math.min(6, Math.round(p.unison ?? 1)));
+        if (unison > 1) {
+          const spread = p.spread ?? 10;
+          const uLevel = (bodyLevel * 0.72) / Math.sqrt(unison);
+          for (let u = 0; u < unison; u++) {
+            const t = unison === 1 ? 0 : (u / (unison - 1)) * 2 - 1;
+            mkVoiceOsc(t * spread, uLevel, t * 0.6, "sawtooth");
+          }
+          mkVoiceOsc(width * 25, bodyLevel * 0.5, width, "square");
+        } else {
+          mkVoiceOsc(0, bodyLevel * 0.72, -width, "sawtooth");
+          mkVoiceOsc(width * 25, bodyLevel * 0.72, width, "square");
+        }
         mkVoiceOsc(0, (p.sub ?? 0.6) * 0.82, 0, "sine", -12);
 
         const voice = register(
@@ -609,13 +695,29 @@ const bass: InstrumentDefinition = {
       },
       setParameter(id, value) {
         p[id] = value;
-        if (id === "cutoff") for (const f of liveFilters) f.frequency.setTargetAtTime(value, ctx.currentTime, 0.02);
-        if (id === "resonance") for (const f of liveFilters) setFilterResonance(f, value, ctx.currentTime, 0.02);
+        if (id === "cutoff")
+          for (const [f, pitch] of liveFilters)
+            f.frequency.setTargetAtTime(effCutoff(value, pitch), ctx.currentTime, 0.02);
+        if (id === "resonance") for (const [f] of liveFilters) setFilterResonance(f, value, ctx.currentTime, 0.02);
+        if (id === "mode") for (const [f] of liveFilters) f.setMode(Math.max(0, Math.min(2, Math.round(value))));
+        if (id === "drive") for (const [f] of liveFilters) f.setDrive(value);
       },
       setParameterAt(id, value, when) {
         p[id] = value;
-        if (id === "cutoff") for (const f of liveFilters) f.frequency.setTargetAtTime(value, when, 0.02);
-        if (id === "resonance") for (const f of liveFilters) setFilterResonance(f, value, when, 0.02);
+        if (id === "cutoff") for (const [f, pitch] of liveFilters) f.frequency.setTargetAtTime(effCutoff(value, pitch), when, 0.02);
+        if (id === "resonance") for (const [f] of liveFilters) setFilterResonance(f, value, when, 0.02);
+        if (id === "mode") for (const [f] of liveFilters) f.setMode(Math.max(0, Math.min(2, Math.round(value))));
+        if (id === "drive") for (const [f] of liveFilters) f.setDrive(value);
+      },
+      polyPressure(pitch, pressure, when) {
+        // Per-voice MPE pressure: matching notes open their own filter up to
+        // +50% over the keytracked base; pressure 0 restores CUTOFF.
+        const amt = Math.max(0, Math.min(1, pressure));
+        for (const [f, fpitch] of liveFilters) {
+          if (fpitch !== pitch) continue;
+          const target = Math.min(20000, effCutoff(p.cutoff ?? 700, pitch) * (1 + amt * 0.5));
+          f.frequency.setTargetAtTime(target, when, 0.01);
+        }
       },
       noteOff(pitch, when) {
         for (const v of findByPitch(pitch)) v.stop(when);
@@ -907,6 +1009,20 @@ const sampler: InstrumentDefinition = {
     { id: "release", label: "RELEASE", min: 0.01, max: 2, default: 0.12, unit: "s", format: formatMs },
     { id: "cutoff", label: "CUTOFF", min: 500, max: 16000, default: 15000, unit: "Hz", format: formatHz },
     { id: "resonance", label: "RESO", min: 0.1, max: 8, default: 0.7, format: (v) => v.toFixed(2) },
+    {
+      id: "mode",
+      label: "FILTER",
+      min: 0,
+      max: 2,
+      default: 0,
+      options: [
+        { value: 0, label: "LP" },
+        { value: 1, label: "BP" },
+        { value: 2, label: "HP" },
+      ],
+    },
+    { id: "keytrack", label: "KEY TRK", min: 0, max: 1, default: 0, format: formatPct },
+    { id: "velFlt", label: "V-FLT", min: 0, max: 1, default: 0, format: formatPct },
     { id: "gain", label: "GAIN", min: 0, max: 1, default: 0.9, format: formatPct },
     {
       id: "stretch",
@@ -939,11 +1055,26 @@ const sampler: InstrumentDefinition = {
     output.gain.value = 1;
     const p = { ...track.params };
     let sampleId: string | null = track.sampleId;
+    // Velocity/round-robin layers (SampleLayer): disjoint windows = velocity
+    // layers, overlapping windows round-robin. Empty = single-sample mode.
+    let velocityLayers: SampleLayer[] = Array.isArray(track.velocityLayers) ? track.velocityLayers : [];
+    let rrCounter = 0;
     const { voices, register, cleanup, findByPitch } = makeVoiceManager(16);
-    const liveFilters = new Set<ReturnType<typeof createVoiceFilter>>();
-    const stretchCache = new Map<string, { semitones: number; data: Float32Array }>();
+    // filter -> triggering note (velocity + pitch), so live CUTOFF moves
+    // respect V-FLT and KEYTRACK per voice
+    const liveFilters = new Map<ReturnType<typeof createVoiceFilter>, { vel: number; pitch: number }>();
+    // V-FLT: velocity 1 keeps the full CUTOFF; quieter notes darken up to two
+    // octaves at full amount — the classic expressive sampler response.
+    // KEYTRACK: CUTOFF tuned at C4, higher notes open the filter proportionally.
+    const cutoffFor = (base: number, velocity: number, pitch: number) => {
+      const velFlt = Math.max(0, Math.min(1, p.velFlt ?? 0));
+      const trk = Math.max(0, Math.min(1, p.keytrack ?? 0));
+      const tracked = base * Math.pow(midiToFreq(pitch) / midiToFreq(60), trk);
+      return Math.max(100, tracked * Math.pow(2, velFlt * (velocity - 1) * 2));
+    };
+    const stretchCache = new Map<string, { semitones: number; data: Float32Array[] }>();
     const STRETCH_CACHE_LIMIT = 24;
-    const cacheStretch = (key: string, semitones: number, data: Float32Array) => {
+    const cacheStretch = (key: string, semitones: number, data: Float32Array[]) => {
       if (stretchCache.size >= STRETCH_CACHE_LIMIT) {
         const first = stretchCache.keys().next().value as string | undefined;
         if (first !== undefined) stretchCache.delete(first);
@@ -998,8 +1129,8 @@ const sampler: InstrumentDefinition = {
       }
       return out;
     };
-    const getLoopBuffer = (buffer: AudioBuffer, xfade: number): AudioBuffer => {
-      const key = `${sampleId}:${xfade.toFixed(3)}`;
+    const getLoopBuffer = (buffer: AudioBuffer, xfade: number, id: string | null): AudioBuffer => {
+      const key = `${id}:${xfade.toFixed(3)}`;
       let entry = loopCache.get(key);
       if (!entry) {
         if (loopCache.size >= LOOP_CACHE_LIMIT) {
@@ -1029,7 +1160,24 @@ const sampler: InstrumentDefinition = {
     const runtime: InstrumentRuntime = {
       output,
       noteOn(pitch, velocity, when, durationSec, slideFrom) {
-        const buffer = env.getSample(sampleId);
+        // Velocity layers: pick the layer whose window contains the note's
+        // velocity; overlapping windows round-robin through the candidates
+        // (deterministic counter). No match — or no layers — falls back to
+        // the default sampleId.
+        let activeId = sampleId;
+        if (velocityLayers.length > 0) {
+          const cands: string[] = [];
+          for (const layer of velocityLayers) {
+            if (velocity >= layer.min && velocity < layer.max && env.getSample(layer.sampleId)) {
+              cands.push(layer.sampleId as string);
+            }
+          }
+          if (cands.length > 0) {
+            activeId = cands[rrCounter % cands.length];
+            rrCounter = (rrCounter + 1) % 4096;
+          }
+        }
+        const buffer = env.getSample(activeId);
         if (!buffer) return;
         const root = Math.round(p.root ?? 60);
         const attack = Math.max(0.001, p.attack ?? 0.003);
@@ -1061,9 +1209,10 @@ const sampler: InstrumentDefinition = {
         amp.gain.setTargetAtTime(0.0001, off, release / 3);
         amp.connect(output);
 
-        const filter = createVoiceFilter(ctx, p.cutoff ?? 15000, p.resonance ?? 0.7);
+        const filterMode = Math.max(0, Math.min(2, Math.round(p.mode ?? 0)));
+        const filter = createVoiceFilter(ctx, cutoffFor(p.cutoff ?? 15000, velocity, pitch), p.resonance ?? 0.7, filterMode);
         filter.output.connect(amp);
-        liveFilters.add(filter);
+        liveFilters.set(filter, { vel: velocity, pitch });
 
         const src = ctx.createBufferSource();
         // Reverse: cached reversed copy (pitch mode only — stretched data can be reversed too but keep simple)
@@ -1073,20 +1222,28 @@ const sampler: InstrumentDefinition = {
         const loopOn = (p.loop ?? 0) > 0.5 && !((p.stretch ?? 0) > 0.5);
         if (loopOn) {
           // Seamless sustain: prerendered crossfaded loop buffer
-          src.buffer = getLoopBuffer(playBuffer, p.loopXfade ?? 0.3);
+          src.buffer = getLoopBuffer(playBuffer, p.loopXfade ?? 0.3, activeId);
           src.loop = true;
           src.playbackRate.value = Math.pow(2, semitones / 12);
         } else if ((p.stretch ?? 0) > 0.5 && semitones !== 0) {
-          // Time-stretch: pitch without changing duration. Cache per (sample, semitones).
-          const key = `${sampleId}:${semitones}`;
+          // Time-stretch: pitch without changing duration. Cache per (sample,
+          // semitones) as per-channel Float32Arrays — every channel runs the
+          // same deterministic grain grid (positions depend only on length,
+          // sampleRate and the ratio), so L/R stay phase-aligned and stereo
+          // samples keep their image instead of folding to mono. Keyed by the
+          // ACTIVE sample (layer-selected), not the track default.
+          const key = `${activeId}:${semitones}`;
           let entry = stretchCache.get(key);
           if (!entry) {
-            const data = pitchShiftPreserveDuration(buffer.getChannelData(0), buffer.sampleRate, semitones);
+            const data: Float32Array[] = [];
+            for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+              data.push(pitchShiftPreserveDuration(buffer.getChannelData(ch), buffer.sampleRate, semitones));
+            }
             entry = { semitones, data };
             cacheStretch(key, semitones, data);
           }
-          const stretched = ctx.createBuffer(1, entry.data.length, buffer.sampleRate);
-          stretched.getChannelData(0).set(entry.data);
+          const stretched = ctx.createBuffer(entry.data.length, entry.data[0].length, buffer.sampleRate);
+          for (let ch = 0; ch < entry.data.length; ch++) stretched.getChannelData(ch).set(entry.data[ch]);
           src.buffer = stretched;
           src.playbackRate.value = 1;
         } else {
@@ -1094,24 +1251,15 @@ const sampler: InstrumentDefinition = {
         }
         src.connect(filter.input);
         // Stereo spread: deterministic pan per note (seeded) — wide polyphony
+        let spreadPan: StereoPannerNode | null = null;
         const spread = Math.max(0, Math.min(1, p.spread ?? 0));
         if (spread > 0.005) {
           const rand = mulberry32(hashString(`${track.id}:${pitch}`));
           const pan = ctx.createStereoPanner();
+          spreadPan = pan;
           pan.pan.value = (rand() * 2 - 1) * spread * 0.8;
           filter.output.disconnect();
           filter.output.connect(pan).connect(amp);
-          src.onended = () => {
-            try {
-              pan.disconnect();
-            } catch {
-              /* already */
-            }
-            liveFilters.delete(filter);
-            amp.disconnect();
-            filter.disconnect();
-            cleanup(voice);
-          };
         }
         src.start(when);
         src.stop(stopTime);
@@ -1156,6 +1304,13 @@ const sampler: InstrumentDefinition = {
           };
         }
         src.onended = () => {
+          if (spreadPan) {
+            try {
+              spreadPan.disconnect();
+            } catch {
+              /* already */
+            }
+          }
           liveFilters.delete(filter);
           amp.disconnect();
           filter.disconnect();
@@ -1164,17 +1319,40 @@ const sampler: InstrumentDefinition = {
       },
       setParameter(id, value) {
         p[id] = value;
-        if (id === "cutoff") for (const f of liveFilters) f.frequency.setTargetAtTime(value, ctx.currentTime, 0.02);
-        if (id === "resonance") for (const f of liveFilters) setFilterResonance(f, value, ctx.currentTime, 0.02);
+        if (id === "cutoff")
+          for (const [f, v] of liveFilters)
+            f.frequency.setTargetAtTime(cutoffFor(value, v.vel, v.pitch), ctx.currentTime, 0.02);
+        if (id === "resonance") for (const [f] of liveFilters) setFilterResonance(f, value, ctx.currentTime, 0.02);
+        if (id === "mode") for (const [f] of liveFilters) f.setMode(Math.max(0, Math.min(2, Math.round(value))));
       },
       setParameterAt(id, value, when) {
         p[id] = value;
-        if (id === "cutoff") for (const f of liveFilters) f.frequency.setTargetAtTime(value, when, 0.02);
-        if (id === "resonance") for (const f of liveFilters) setFilterResonance(f, value, when, 0.02);
+        if (id === "cutoff")
+          for (const [f, v] of liveFilters) f.frequency.setTargetAtTime(cutoffFor(value, v.vel, v.pitch), when, 0.02);
+        if (id === "resonance") for (const [f] of liveFilters) setFilterResonance(f, value, when, 0.02);
+        if (id === "mode") for (const [f] of liveFilters) f.setMode(Math.max(0, Math.min(2, Math.round(value))));
+      },
+      polyPressure(pitch, pressure, when) {
+        // Per-voice MPE pressure: matching notes open their own filter (with
+        // V-FLT + KEYTRACK factored in) up to +50%; pressure 0 restores.
+        const amt = Math.max(0, Math.min(1, pressure));
+        for (const [f, v] of liveFilters) {
+          if (v.pitch !== pitch) continue;
+          const target = Math.min(20000, cutoffFor(p.cutoff ?? 15000, v.vel, pitch) * (1 + amt * 0.5));
+          f.frequency.setTargetAtTime(target, when, 0.01);
+        }
       },
       setSample(id) {
         if (id !== sampleId) stretchCache.clear();
         sampleId = id;
+      },
+      setVelocityLayers(layers) {
+        velocityLayers = Array.isArray(layers) ? layers : [];
+        rrCounter = 0;
+        // Different layers may point at different samples — stale stretch
+        // entries would be keyed by their sample id, but clearing is cheap
+        // and keeps memory bounded on live layer edits.
+        stretchCache.clear();
       },
       noteOff(pitch, when) {
         for (const v of findByPitch(pitch)) v.stop(when);
@@ -1211,15 +1389,17 @@ const texture: InstrumentDefinition = {
     { id: "color", label: "COLOR", min: 0, max: 1, default: 0.5, format: formatPct },
     { id: "motion", label: "MOTION", min: 0, max: 1, default: 0.4, format: formatPct },
     { id: "space", label: "SPACE", min: 0, max: 1, default: 0.35, format: formatPct },
+    { id: "sync", label: "SYNC", min: 0, max: 6, default: 0, options: SYNC_OPTIONS },
     { id: "density", label: "DENSITY", min: 0, max: 1, default: 0.7, format: formatPct },
     { id: "texture", label: "TEXTURE", min: 0, max: 1, default: 0.4, format: formatPct },
     { id: "chaos", label: "CHAOS", min: 0, max: 1, default: 0.2, format: formatPct },
     { id: "level", label: "LEVEL", min: -24, max: 6, default: -10, unit: "dB", format: formatDb },
   ],
-  factory(ctx, track) {
+  factory(ctx, track, env) {
     const output = ctx.createGain();
     output.gain.value = 1;
     const p = { ...track.params };
+    let bpm = clampBpm(env.bpm);
     const { voices, register, cleanup, findByPitch } = makeVoiceManager(4);
 
     // Shared LFO1: filter cutoff modulation
@@ -1266,6 +1446,10 @@ const texture: InstrumentDefinition = {
       const space = p.space ?? 0.35;
       const chaos = p.chaos ?? 0.2;
       const now = ctx.currentTime;
+      // SYNC locks the space delay to a note division; OFF keeps the classic 0.42 s
+      const sel = Math.max(0, Math.min(6, Math.round(p.sync ?? 0)));
+      const delayTarget = sel > 0 ? Math.min(1.9, SYNC_BEATS[sel] * (60 / bpm)) : 0.42;
+      delay.delayTime.setTargetAtTime(delayTarget, now, 0.05);
       lfo1Depth.gain.setTargetAtTime(800 * motion, now, 0.05);
       lfo2Depth.gain.setTargetAtTime(12 * motion, now, 0.05);
       delayFeedback.gain.setTargetAtTime(space * 0.7, now, 0.05);
@@ -1395,11 +1579,15 @@ const texture: InstrumentDefinition = {
       },
       setParameter(id, value) {
         p[id] = value;
-        if (id === "motion" || id === "space" || id === "chaos") applyParams();
+        if (id === "motion" || id === "space" || id === "chaos" || id === "sync") applyParams();
       },
       setParameterAt(id, value, _when) {
         p[id] = value;
-        if (id === "motion" || id === "space" || id === "chaos") applyParams();
+        if (id === "motion" || id === "space" || id === "chaos" || id === "sync") applyParams();
+      },
+      syncBpm(next) {
+        bpm = clampBpm(next);
+        applyParams();
       },
       noteOff(pitch, when) {
         for (const v of findByPitch(pitch)) v.stop(when);
@@ -1484,6 +1672,19 @@ const wavetable: InstrumentDefinition = {
     { id: "spread", label: "SPREAD", min: 0, max: 50, default: 0, unit: "ct", format: (v) => `${v.toFixed(0)} ct` },
     { id: "cutoff", label: "CUTOFF", min: 80, max: 16000, default: 12000, unit: "Hz", format: formatHz },
     { id: "resonance", label: "RESO", min: 0.1, max: 12, default: 1, format: (v) => v.toFixed(2) },
+    {
+      id: "mode",
+      label: "FILTER",
+      min: 0,
+      max: 2,
+      default: 0,
+      options: [
+        { value: 0, label: "LP" },
+        { value: 1, label: "BP" },
+        { value: 2, label: "HP" },
+      ],
+    },
+    { id: "keytrack", label: "KEY TRK", min: 0, max: 1, default: 0, format: formatPct },
     { id: "attack", label: "ATTACK", min: 0.001, max: 2, default: 0.01, unit: "s", format: formatMs },
     { id: "release", label: "RELEASE", min: 0.01, max: 4, default: 0.25, unit: "s", format: formatMs },
     { id: "level", label: "LEVEL", min: -24, max: 6, default: -6, unit: "dB", format: formatDb },
@@ -1494,7 +1695,13 @@ const wavetable: InstrumentDefinition = {
     const p = { ...track.params };
     let sampleId: string | null = track.sampleId;
     const { voices, register, cleanup, findByPitch } = makeVoiceManager(8);
-    const liveFilters = new Set<ReturnType<typeof createVoiceFilter>>();
+    // filter -> sounding pitch, so live CUTOFF moves respect KEYTRACK per note
+    const liveFilters = new Map<ReturnType<typeof createVoiceFilter>, number>();
+    // Keytrack: CUTOFF is tuned at C4; higher notes open the filter proportionally
+    const effCutoff = (base: number, pitch: number) => {
+      const trk = Math.max(0, Math.min(1, p.keytrack ?? 0));
+      return Math.max(60, Math.min(18000, base * Math.pow(midiToFreq(pitch) / midiToFreq(60), trk)));
+    };
     // Crossfade pairs of sounding voices (with their fixed frame indices),
     // so live MORPH updates can retune the blend. Frame buffers themselves
     // are captured per voice — re-targeting frames mid-note isn't possible
@@ -1554,9 +1761,10 @@ const wavetable: InstrumentDefinition = {
         amp.gain.setTargetAtTime(0.0001, off, release / 3);
         amp.connect(output);
 
-        const filter = createVoiceFilter(ctx, p.cutoff ?? 12000, p.resonance ?? 1);
+        const filterMode = Math.max(0, Math.min(2, Math.round(p.mode ?? 0)));
+        const filter = createVoiceFilter(ctx, effCutoff(p.cutoff ?? 12000, pitch), p.resonance ?? 1, filterMode);
+        liveFilters.set(filter, pitch);
         filter.output.connect(amp);
-        liveFilters.add(filter);
 
         const sources: Array<AudioBufferSourceNode | OscillatorNode> = [];
         const pairs: { a: GainNode; b: GainNode; ia: number; ib: number; level: number }[] = [];
@@ -1749,8 +1957,10 @@ const wavetable: InstrumentDefinition = {
       setParameter(id, value) {
         p[id] = value;
         const now = ctx.currentTime;
-        if (id === "cutoff") for (const f of liveFilters) f.frequency.setTargetAtTime(value, now, 0.02);
-        if (id === "resonance") for (const f of liveFilters) setFilterResonance(f, value, now, 0.02);
+        if (id === "cutoff")
+          for (const [f, pitch] of liveFilters) f.frequency.setTargetAtTime(effCutoff(value, pitch), now, 0.02);
+        if (id === "resonance") for (const [f] of liveFilters) setFilterResonance(f, value, now, 0.02);
+        if (id === "mode") for (const [f] of liveFilters) f.setMode(Math.max(0, Math.min(2, Math.round(value))));
         if (id === "morph") {
           // Voices whose captured frame pair still contains the new morph
           // position retune their crossfade; pairs further away keep theirs.
@@ -1771,6 +1981,16 @@ const wavetable: InstrumentDefinition = {
       setParameterAt(id, value, when) {
         this.setParameter(id, value);
         void when;
+      },
+      polyPressure(pitch, pressure, when) {
+        // Per-voice MPE pressure: matching notes open their own filter up to
+        // +50% over the keytracked base; pressure 0 restores CUTOFF.
+        const amt = Math.max(0, Math.min(1, pressure));
+        for (const [f, fpitch] of liveFilters) {
+          if (fpitch !== pitch) continue;
+          const target = Math.min(20000, effCutoff(p.cutoff ?? 12000, pitch) * (1 + amt * 0.5));
+          f.frequency.setTargetAtTime(target, when, 0.01);
+        }
       },
       setSample(id) {
         sampleId = id;
@@ -1800,7 +2020,10 @@ const wavetable: InstrumentDefinition = {
 // a deterministic PRNG (seeded from track id + pitch), so offline renders
 // are identical to live playback. Each grain is a short AudioBufferSource
 // with a trapezoid envelope, random pan within SPREAD, and optional
-// reversal through a cached reversed copy of the source buffer.
+// reversal through a cached reversed copy of the source buffer. SCAN drifts
+// the read head through the sample (fractions of sample length per second,
+// wraps, negative = backward) and P RAND sprays per-grain pitch; both are
+// deterministic per note and only draw from the PRNG when enabled.
 
 const MAX_GRAINS_PER_NOTE = 512;
 
@@ -1811,7 +2034,16 @@ const granular: InstrumentDefinition = {
     { id: "position", label: "POSITION", min: 0, max: 1, default: 0.25, format: formatPct },
     { id: "size", label: "GRAIN", min: 0.02, max: 0.4, default: 0.09, unit: "s", format: formatMs },
     { id: "rate", label: "RATE", min: 1, max: 60, default: 14, unit: "/s", format: (v) => `${Math.round(v)}/s` },
+    { id: "rateSync", label: "R SYNC", min: 0, max: 6, default: 0, options: SYNC_OPTIONS },
     { id: "jitter", label: "JITTER", min: 0, max: 1, default: 0.15, format: formatPct },
+    {
+      id: "scan",
+      label: "SCAN",
+      min: -2,
+      max: 2,
+      default: 0,
+      format: (v) => (Math.abs(v) < 0.005 ? "HOLD" : `${v > 0 ? "+" : ""}${v.toFixed(2)}/s`),
+    },
     { id: "spread", label: "SPREAD", min: 0, max: 1, default: 0.5, format: formatPct },
     {
       id: "pitch",
@@ -1820,6 +2052,15 @@ const granular: InstrumentDefinition = {
       max: 24,
       default: 0,
       format: (v) => `${v > 0 ? "+" : ""}${v.toFixed(1)} st`,
+    },
+    {
+      id: "pRand",
+      label: "P RAND",
+      min: 0,
+      max: 12,
+      default: 0,
+      unit: "st",
+      format: (v) => `±${v.toFixed(1)} st`,
     },
     { id: "reverse", label: "REVERSE", min: 0, max: 1, default: 0, format: formatPct },
     { id: "tone", label: "TONE", min: 200, max: 16000, default: 9000, unit: "Hz", format: formatHz },
@@ -1833,6 +2074,7 @@ const granular: InstrumentDefinition = {
     output.gain.value = 1;
     const p = { ...track.params };
     let sampleId: string | null = track.sampleId;
+    let bpm = clampBpm(env.bpm);
     const { voices, register, cleanup, findByPitch } = makeVoiceManager(6);
 
     const tone = ctx.createBiquadFilter();
@@ -1863,13 +2105,21 @@ const granular: InstrumentDefinition = {
         if (!buffer) return;
         const position = Math.min(1, Math.max(0, p.position ?? 0.25));
         const size = Math.min(0.4, Math.max(0.02, p.size ?? 0.09));
-        const rate = Math.max(1, p.rate ?? 14);
+        // R SYNC locks the grain rate to a note division (OFF = free grains/s)
+        const rate = Math.max(1, Math.min(60, syncRateHz(p.rateSync ?? 0, bpm) || (p.rate ?? 14)));
         const jitter = Math.max(0, p.jitter ?? 0.15);
         const spread = Math.max(0, Math.min(1, p.spread ?? 0.5));
         const reverseProb = Math.min(1, Math.max(0, p.reverse ?? 0));
         const shape = Math.min(1, Math.max(0, p.shape ?? 0.5));
         const attack = Math.max(0.001, p.attack ?? 0.02);
         const release = Math.max(0.01, p.release ?? 0.4);
+        // SCAN drifts the read head through the sample in fractions of the
+        // sample length per second (negative = backward), wrapping around;
+        // P RAND sprays each grain's pitch ± semitones. Both are 0 by
+        // default and only consume extra PRNG draws when enabled, so legacy
+        // param sets render bit-identically.
+        const scan = Math.max(-2, Math.min(2, p.scan ?? 0));
+        const pitchRand = Math.max(0, Math.min(12, p.pRand ?? 0));
         const rand = mulberry32(hashString(`${track.id}:${pitch}`));
 
         const hold = Math.max(durationSec, size + 0.02);
@@ -1897,7 +2147,11 @@ const granular: InstrumentDefinition = {
         for (let k = 0; k < grainCount; k++) {
           const t0 = when + k / rate;
           if (t0 >= off + 0.005) break;
-          const offsetFrac = Math.min(0.999, Math.max(0, position + (rand() * 2 - 1) * jitter * 0.5));
+          // Read head: POSITION + SCAN drift at the grain's own time (wrap
+          // via fract), then JITTER spray — same PRNG draw either way.
+          const drift = position + scan * (t0 - when);
+          const basePos = scan !== 0 ? drift - Math.floor(drift) : position;
+          const offsetFrac = Math.min(0.999, Math.max(0, basePos + (rand() * 2 - 1) * jitter * 0.5));
           const reverse = rand() < reverseProb;
           const grainBuffer = reverse ? reversedBuffer(buffer) : buffer;
           let offset = offsetFrac * buffer.duration;
@@ -1916,6 +2170,12 @@ const granular: InstrumentDefinition = {
 
           const pan = ctx.createStereoPanner();
           pan.pan.value = (rand() * 2 - 1) * spread;
+
+          // P RAND draw comes last so the shared PRNG stream feeding
+          // offset/reverse/pan stays identical to pRand-free legacy renders.
+          if (pitchRand > 0.005) {
+            src.playbackRate.value = Math.max(0.02, playRate * Math.pow(2, ((rand() * 2 - 1) * pitchRand) / 12));
+          }
 
           src.connect(g).connect(pan).connect(amp);
           src.start(t0, offset, grainDur);
@@ -1975,6 +2235,10 @@ const granular: InstrumentDefinition = {
       setParameterAt(id, value) {
         this.setParameter(id, value);
       },
+      syncBpm(next) {
+        // Grain rate is captured per note — new notes pick this up
+        bpm = clampBpm(next);
+      },
       setSample(id) {
         sampleId = id;
       },
@@ -2012,8 +2276,23 @@ const keys: InstrumentDefinition = {
     { id: "tremolo", label: "TREM", min: 0, max: 1, default: 0.15, format: formatPct },
     { id: "ratio", label: "RATIO", min: 1, max: 7, default: 3.5, format: (v) => v.toFixed(2) },
     { id: "width", label: "WIDTH", min: 0, max: 1, default: 0.3, format: formatPct },
+    { id: "unison", label: "UNISON", min: 1, max: 3, default: 1, format: (v) => `${Math.round(v)}×` },
+    { id: "spread", label: "SPREAD", min: 0, max: 25, default: 7, unit: "ct", format: (v) => `${v.toFixed(0)} ct` },
     { id: "cutoff", label: "CUTOFF", min: 80, max: 16000, default: 4500, unit: "Hz", format: formatHz },
     { id: "resonance", label: "RESO", min: 0.1, max: 8, default: 1.8, format: (v) => v.toFixed(2) },
+    {
+      id: "mode",
+      label: "FILTER",
+      min: 0,
+      max: 2,
+      default: 0,
+      options: [
+        { value: 0, label: "LP" },
+        { value: 1, label: "BP" },
+        { value: 2, label: "HP" },
+      ],
+    },
+    { id: "keytrack", label: "KEY TRK", min: 0, max: 1, default: 0, format: formatPct },
     {
       id: "lfoRate",
       label: "LFO RATE",
@@ -2023,17 +2302,25 @@ const keys: InstrumentDefinition = {
       unit: "Hz",
       format: (v) => (v < 0.05 ? "OFF" : `${v.toFixed(2)} Hz`),
     },
+    { id: "lfoSync", label: "LFO SYNC", min: 0, max: 6, default: 0, options: SYNC_OPTIONS },
     { id: "lfoDepth", label: "LFO DEPTH", min: 0, max: 1, default: 0, format: formatPct },
     { id: "attack", label: "ATTACK", min: 0.001, max: 2, default: 0.005, unit: "s", format: formatMs },
     { id: "release", label: "RELEASE", min: 0.01, max: 4, default: 0.35, unit: "s", format: formatMs },
     { id: "level", label: "LEVEL", min: -24, max: 6, default: -8, unit: "dB", format: formatDb },
   ],
-  factory(ctx, track) {
+  factory(ctx, track, env) {
     const output = ctx.createGain();
     output.gain.value = 1;
     const p = { ...track.params };
+    let bpm = clampBpm(env.bpm);
     const { voices, register, cleanup, findByPitch } = makeVoiceManager(8);
-    const liveFilters = new Set<ReturnType<typeof createVoiceFilter>>();
+    // filter -> sounding pitch, so live CUTOFF moves respect KEYTRACK per note
+    const liveFilters = new Map<ReturnType<typeof createVoiceFilter>, number>();
+    // Keytrack: CUTOFF is tuned at C4; higher notes open the filter proportionally
+    const effCutoff = (base: number, pitch: number) => {
+      const trk = Math.max(0, Math.min(1, p.keytrack ?? 0));
+      return Math.max(80, Math.min(16000, base * Math.pow(midiToFreq(pitch) / midiToFreq(60), trk)));
+    };
 
     const runtime: InstrumentRuntime = {
       output,
@@ -2073,9 +2360,10 @@ const keys: InstrumentDefinition = {
           lfo.stop(stopTime + 0.1);
         }
 
-        const filter = createVoiceFilter(ctx, Math.max(80, Math.min(16000, p.cutoff ?? 4500)), p.resonance ?? 1.8);
+        const filterMode = Math.max(0, Math.min(2, Math.round(p.mode ?? 0)));
+        const filter = createVoiceFilter(ctx, effCutoff(Math.max(80, Math.min(16000, p.cutoff ?? 4500)), pitch), p.resonance ?? 1.8, filterMode);
         filter.output.connect(amp);
-        liveFilters.add(filter);
+        liveFilters.set(filter, pitch);
 
         // Tremolo also wobbles filter a touch when damp is low (open)
         if (trem > 0.02 && damp < 0.5) {
@@ -2096,13 +2384,15 @@ const keys: InstrumentDefinition = {
           carLevel: number,
           pan: number,
           fmDecay: number,
+          detuneCents = 0,
         ) => {
+          const detuneMul = Math.pow(2, detuneCents / 1200);
           const car = ctx.createOscillator();
           car.type = "sine";
-          car.frequency.value = freq * carRatio;
+          car.frequency.value = freq * carRatio * detuneMul;
           const mod = ctx.createOscillator();
           mod.type = "sine";
-          mod.frequency.value = freq * modRatio;
+          mod.frequency.value = freq * modRatio * detuneMul;
 
           const modEnv = ctx.createGain();
           modEnv.gain.setValueAtTime(0.0001, when);
@@ -2139,30 +2429,51 @@ const keys: InstrumentDefinition = {
         // LFO sweeps FM brightness audio-rate — real osc on modGain.gain
         // Base gain stays at modIndex*420; LFO adds (modIndex*420*multBase)
         // of sweep around it. Per-note rate offset avoids phase-locking.
-        const klfoRate = p.lfoRate ?? 0;
+        // LFO SYNC locks the FM brightness sweep to a note division (OFF = Hz)
+        const klfoRate = syncRateHz(p.lfoSync ?? 0, bpm) || (p.lfoRate ?? 0);
         const klfoDepth = p.lfoDepth ?? 0;
         const lfoMultBase = klfoRate > 0.05 ? klfoDepth * 0.6 : 0;
         const bellRatio = Math.max(1, Math.min(7, p.ratio ?? 3.5));
-        const pairA = makePair(
-          1,
-          1,
-          (28 + tine * 720) * velIndex,
-          0.42 + body * 0.38,
-          -width * 0.6,
-          0.22 + damp * 0.35,
-        );
-        const pairB = makePair(
-          bellRatio,
-          1,
-          (18 + bell * 1100) * velIndex,
-          bell * 0.55,
-          width * 0.6,
-          0.18 + damp * 0.28,
-        );
+        // UNISON > 1 adds detuned copies of the body pair (A) at reduced
+        // level — FM-friendly unison without doubling the bell pair.
+        const unison = Math.max(1, Math.min(3, Math.round(p.unison ?? 1)));
+        const spread = p.spread ?? 7;
+        const pairs = [
+          makePair(1, 1, (28 + tine * 720) * velIndex, 0.42 + body * 0.38, -width * 0.6, 0.22 + damp * 0.35),
+          makePair(bellRatio, 1, (18 + bell * 1100) * velIndex, bell * 0.55, width * 0.6, 0.18 + damp * 0.28),
+        ];
+        if (unison > 1) {
+          pairs.push(
+            makePair(
+              1,
+              1,
+              (28 + tine * 720) * velIndex * 0.55,
+              (0.42 + body * 0.38) * 0.4,
+              -width * 0.3,
+              0.22 + damp * 0.35,
+              spread,
+            ),
+          );
+        }
+        if (unison > 2) {
+          pairs.push(
+            makePair(
+              1,
+              1,
+              (28 + tine * 720) * velIndex * 0.55,
+              (0.42 + body * 0.38) * 0.4,
+              width * 0.3,
+              0.22 + damp * 0.35,
+              -spread,
+            ),
+          );
+        }
+        const pairA = pairs[0];
+        const pairB = pairs[1];
 
         const lfoNodes: OscillatorNode[] = [];
         if (lfoMultBase > 0.001) {
-          for (const pair of [pairA, pairB]) {
+          for (const pair of pairs) {
             const lfo = ctx.createOscillator();
             lfo.type = "sine";
             lfo.frequency.value = klfoRate * (1 + ((pitch * 0.37) % 0.06) - 0.03);
@@ -2231,7 +2542,7 @@ const keys: InstrumentDefinition = {
           liveFilters.delete(filter);
           amp.disconnect();
           filter.disconnect();
-          for (const { modEnv, carEnv, modGain, panner } of [pairA, pairB]) {
+          for (const { modEnv, carEnv, modGain, panner } of pairs) {
             try {
               modEnv.disconnect();
             } catch {
@@ -2258,13 +2569,30 @@ const keys: InstrumentDefinition = {
       },
       setParameter(id, value) {
         p[id] = value;
-        if (id === "cutoff") for (const f of liveFilters) f.frequency.setTargetAtTime(value, ctx.currentTime, 0.02);
-        if (id === "resonance") for (const f of liveFilters) setFilterResonance(f, value, ctx.currentTime, 0.02);
+        if (id === "cutoff")
+          for (const [f, pitch] of liveFilters) f.frequency.setTargetAtTime(effCutoff(value, pitch), ctx.currentTime, 0.02);
+        if (id === "resonance") for (const [f] of liveFilters) setFilterResonance(f, value, ctx.currentTime, 0.02);
+        if (id === "mode") for (const [f] of liveFilters) f.setMode(Math.max(0, Math.min(2, Math.round(value))));
       },
       setParameterAt(id, value, when) {
         p[id] = value;
-        if (id === "cutoff") for (const f of liveFilters) f.frequency.setTargetAtTime(value, when, 0.02);
-        if (id === "resonance") for (const f of liveFilters) setFilterResonance(f, value, when, 0.02);
+        if (id === "cutoff") for (const [f, pitch] of liveFilters) f.frequency.setTargetAtTime(effCutoff(value, pitch), when, 0.02);
+        if (id === "resonance") for (const [f] of liveFilters) setFilterResonance(f, value, when, 0.02);
+        if (id === "mode") for (const [f] of liveFilters) f.setMode(Math.max(0, Math.min(2, Math.round(value))));
+      },
+      polyPressure(pitch, pressure, when) {
+        // Per-voice MPE pressure: matching notes open their own filter up to
+        // +50% over the keytracked base; pressure 0 restores CUTOFF.
+        const amt = Math.max(0, Math.min(1, pressure));
+        for (const [f, fpitch] of liveFilters) {
+          if (fpitch !== pitch) continue;
+          const target = Math.min(20000, effCutoff(p.cutoff ?? 4500, pitch) * (1 + amt * 0.5));
+          f.frequency.setTargetAtTime(target, when, 0.01);
+        }
+      },
+      syncBpm(next) {
+        // Per-note FM LFOs capture rate at noteOn — new notes pick this up
+        bpm = clampBpm(next);
       },
       noteOff(pitch, when) {
         for (const v of findByPitch(pitch)) v.stop(when);
@@ -2310,7 +2638,8 @@ const pluck: InstrumentDefinition = {
     output.gain.value = 1;
     const p = { ...track.params };
     const { voices, register, cleanup, findByPitch } = makeVoiceManager(12);
-    const liveFilters = new Set<ReturnType<typeof createVoiceFilter>>();
+    // filter -> sounding pitch, so MPE pressure can target single notes
+    const liveFilters = new Map<ReturnType<typeof createVoiceFilter>, number>();
     const exciteNoise = noiseBuffer(ctx, hashString(track.id) ^ 0x33cc);
 
     const runtime: InstrumentRuntime = {
@@ -2338,7 +2667,7 @@ const pluck: InstrumentDefinition = {
 
         const postFilter = createVoiceFilter(ctx, p.cutoff ?? 9000, p.resonance ?? 1.2);
         postFilter.output.connect(amp);
-        liveFilters.add(postFilter);
+        liveFilters.set(postFilter, pitch);
 
         const input = ctx.createGain();
         input.gain.value = 1;
@@ -2476,13 +2805,23 @@ const pluck: InstrumentDefinition = {
       },
       setParameter(id, value) {
         p[id] = value;
-        if (id === "cutoff") for (const f of liveFilters) f.frequency.setTargetAtTime(value, ctx.currentTime, 0.02);
-        if (id === "resonance") for (const f of liveFilters) setFilterResonance(f, value, ctx.currentTime, 0.02);
+        if (id === "cutoff") for (const [f] of liveFilters) f.frequency.setTargetAtTime(value, ctx.currentTime, 0.02);
+        if (id === "resonance") for (const [f] of liveFilters) setFilterResonance(f, value, ctx.currentTime, 0.02);
       },
       setParameterAt(id, value, when) {
         p[id] = value;
-        if (id === "cutoff") for (const f of liveFilters) f.frequency.setTargetAtTime(value, when, 0.02);
-        if (id === "resonance") for (const f of liveFilters) setFilterResonance(f, value, when, 0.02);
+        if (id === "cutoff") for (const [f] of liveFilters) f.frequency.setTargetAtTime(value, when, 0.02);
+        if (id === "resonance") for (const [f] of liveFilters) setFilterResonance(f, value, when, 0.02);
+      },
+      polyPressure(pitch, pressure, when) {
+        // Per-voice MPE pressure: matching notes open their own filter up to
+        // +50%; pressure 0 restores CUTOFF.
+        const amt = Math.max(0, Math.min(1, pressure));
+        for (const [f, fpitch] of liveFilters) {
+          if (fpitch !== pitch) continue;
+          const target = Math.min(20000, (p.cutoff ?? 9000) * (1 + amt * 0.5));
+          f.frequency.setTargetAtTime(target, when, 0.01);
+        }
       },
       noteOff(pitch, when) {
         for (const v of findByPitch(pitch)) v.stop(when);
@@ -2511,6 +2850,7 @@ const logdrum: InstrumentDefinition = {
   params: [
     { id: "decay", label: "DECAY", min: 0.15, max: 3.5, default: 1.1, unit: "s", format: formatSec },
     { id: "pitchDrop", label: "DROP", min: 0, max: 1, default: 0.35, format: formatPct },
+    { id: "dropSplay", label: "D SPLAY", min: 0, max: 1, default: 0, format: formatPct },
     { id: "tone", label: "TONE", min: 0, max: 1, default: 0.4, format: formatPct },
     { id: "body", label: "BODY", min: 0, max: 1, default: 0.6, format: formatPct },
     { id: "hollow", label: "HOLLOW", min: 0, max: 1, default: 0.45, format: formatPct },
@@ -2524,7 +2864,8 @@ const logdrum: InstrumentDefinition = {
     output.gain.value = 1;
     const p = { ...track.params };
     const { voices, register, cleanup, findByPitch } = makeVoiceManager(4);
-    const liveFilters = new Set<ReturnType<typeof createVoiceFilter>>();
+    // filter -> sounding pitch, so MPE pressure can target single notes
+    const liveFilters = new Map<ReturnType<typeof createVoiceFilter>, number>();
     const liveNotches = new Set<BiquadFilterNode>();
 
     const runtime: InstrumentRuntime = {
@@ -2556,7 +2897,7 @@ const logdrum: InstrumentDefinition = {
 
         const toneHz = 400 + tone * 2800;
         const filter = createVoiceFilter(ctx, toneHz, 0.9);
-        liveFilters.add(filter);
+        liveFilters.set(filter, pitch);
         filter.output.connect(amp);
 
         const notch = ctx.createBiquadFilter();
@@ -2575,15 +2916,19 @@ const logdrum: InstrumentDefinition = {
         const dropBase = p.pitchDrop ?? 0.35;
         // velocity → pitchDrop: hard hit = more woody knock
         const drop = dropBase * (0.55 + velocity * 0.9);
+        // D SPLAY: higher partials drop further and settle into tune faster —
+        // the woody "modes locking in" transient of a struck log. 0 = uniform.
+        const splay = Math.max(0, Math.min(1, p.dropSplay ?? 0));
         // inharmonic drift with pitch: lower notes more woody, higher more harmonic
         const r2 = 2.0 + pitch * 0.004;
         const r3 = 3.8 + (pitch - 60) * 0.006;
         const oscs: OscillatorNode[] = [];
-        const mkLogOsc = (ratio: number, gainVal: number, panVal: number) => {
+        const mkLogOsc = (ratio: number, gainVal: number, panVal: number, k = 1) => {
           const osc = ctx.createOscillator();
           osc.type = "sine";
           const target = freq * ratio;
-          const start = target * (1 + drop * 1.4);
+          const dropK = drop * (1 + (k - 1) * splay * 1.5);
+          const start = target * (1 + dropK * 1.4);
           const g = ctx.createGain();
           g.gain.value = gainVal;
           const pan = ctx.createStereoPanner();
@@ -2598,15 +2943,15 @@ const logdrum: InstrumentDefinition = {
             osc.start(glideStart);
           } else {
             osc.frequency.setValueAtTime(Math.max(20, start), when);
-            osc.frequency.exponentialRampToValueAtTime(Math.max(20, target), when + 0.045);
+            osc.frequency.exponentialRampToValueAtTime(Math.max(20, target), when + 0.045 / (1 + (k - 1) * splay));
             osc.start(when);
           }
           osc.stop(stopTime);
           oscs.push(osc);
         };
-        mkLogOsc(1, 0.72, 0);
-        mkLogOsc(r2, 0.22 + body * 0.28, -width * 0.6);
-        mkLogOsc(r3, 0.08 + body * 0.12, width * 0.6);
+        mkLogOsc(1, 0.72, 0, 1);
+        mkLogOsc(r2, 0.22 + body * 0.28, -width * 0.6, 2);
+        mkLogOsc(r3, 0.08 + body * 0.12, width * 0.6, 3);
 
         const voice = register(
           pitch,
@@ -2651,13 +2996,23 @@ const logdrum: InstrumentDefinition = {
       setParameter(id, value) {
         p[id] = value;
         if (id === "tone")
-          for (const f of liveFilters) f.frequency.setTargetAtTime(400 + value * 2800, ctx.currentTime, 0.02);
-        if (id === "cutoff") for (const f of liveFilters) f.frequency.setTargetAtTime(value, ctx.currentTime, 0.02);
+          for (const [f] of liveFilters) f.frequency.setTargetAtTime(400 + value * 2800, ctx.currentTime, 0.02);
+        if (id === "cutoff") for (const [f] of liveFilters) f.frequency.setTargetAtTime(value, ctx.currentTime, 0.02);
       },
       setParameterAt(id, value, when) {
         p[id] = value;
-        if (id === "tone") for (const f of liveFilters) f.frequency.setTargetAtTime(400 + value * 2800, when, 0.02);
-        if (id === "cutoff") for (const f of liveFilters) f.frequency.setTargetAtTime(value, when, 0.02);
+        if (id === "tone") for (const [f] of liveFilters) f.frequency.setTargetAtTime(400 + value * 2800, when, 0.02);
+        if (id === "cutoff") for (const [f] of liveFilters) f.frequency.setTargetAtTime(value, when, 0.02);
+      },
+      polyPressure(pitch, pressure, when) {
+        // Per-voice MPE pressure: matching notes open their own filter up to
+        // +50% over the TONE base; pressure 0 restores TONE.
+        const amt = Math.max(0, Math.min(1, pressure));
+        for (const [f, fpitch] of liveFilters) {
+          if (fpitch !== pitch) continue;
+          const target = Math.min(20000, (400 + (p.tone ?? 0.4) * 2800) * (1 + amt * 0.5));
+          f.frequency.setTargetAtTime(target, when, 0.01);
+        }
       },
       noteOff(pitch, when) {
         for (const v of findByPitch(pitch)) v.stop(when);
@@ -2716,6 +3071,7 @@ const spectral: InstrumentDefinition = {
   params: [
     { id: "profile", label: "PROFILE", min: 0, max: 4, default: 0, options: SPECTRAL_PROFILE_OPTIONS },
     { id: "partials", label: "PARTIALS", min: 2, max: 8, default: 6, format: (v) => `${Math.round(v)}` },
+    { id: "spacing", label: "SPACING", min: 0.5, max: 2, default: 1, format: (v) => `${v.toFixed(2)}×` },
     { id: "inharm", label: "INHARM", min: 0, max: 1, default: 0.12, format: formatPct },
     { id: "shimmer", label: "SHIMMER", min: 0, max: 1, default: 0.25, format: formatPct },
     { id: "skew", label: "SKEW", min: 0, max: 1, default: 0.45, format: formatPct },
@@ -2731,7 +3087,8 @@ const spectral: InstrumentDefinition = {
     output.gain.value = 1;
     const p = { ...track.params };
     const { voices, register, cleanup, findByPitch } = makeVoiceManager(6);
-    const liveFilters = new Set<ReturnType<typeof createVoiceFilter>>();
+    // filter -> sounding pitch, so MPE pressure can target single notes
+    const liveFilters = new Map<ReturnType<typeof createVoiceFilter>, number>();
 
     const runtime: InstrumentRuntime = {
       output,
@@ -2739,6 +3096,9 @@ const spectral: InstrumentDefinition = {
         const f0 = midiToFreq(pitch);
         const profile = Math.max(0, Math.min(4, Math.round(p.profile ?? 0)));
         const count = Math.max(2, Math.min(8, Math.round(p.partials ?? 6)));
+        // SPACING stretches (bell, >1) or compresses (organ flue, <1) the
+        // harmonic series: partial k sits at k^spacing. 1 = exactly harmonic.
+        const spacing = Math.max(0.5, Math.min(2, p.spacing ?? 1));
         const inharm = Math.max(0, Math.min(1, p.inharm ?? 0.12));
         const shimmer = Math.max(0, Math.min(1, p.shimmer ?? 0.25));
         const skew = Math.max(0, Math.min(1, p.skew ?? 0.45));
@@ -2762,15 +3122,15 @@ const spectral: InstrumentDefinition = {
 
         const filter = createVoiceFilter(ctx, p.cutoff ?? 6000, p.resonance ?? 0.8);
         filter.output.connect(output);
-        liveFilters.add(filter);
+        liveFilters.set(filter, pitch);
 
         const oscs: OscillatorNode[] = [];
         const gains: GainNode[] = [];
         for (let k = 1; k <= count; k++) {
           const a = amps[k - 1];
           if (a * norm < 0.004) continue;
-          // Stiff-string inharmonicity: partial k sits sharper than k*f0
-          const ratio = k * Math.sqrt(1 + inharm * 0.006 * k * k);
+          // Stiff-string inharmonicity on top of the SPACING stretch
+          const ratio = Math.pow(k, spacing) * Math.sqrt(1 + inharm * 0.006 * k * k);
           // Golden-angle shimmer: deterministic per-partial detune spread
           const detune = shimmer * 8 * Math.sin(k * 2.399963);
           const decayTc = Math.max(0.12, release * (1 - skew * ((k - 1) / Math.max(1, count - 1)) * 0.8));
@@ -2832,13 +3192,23 @@ const spectral: InstrumentDefinition = {
       },
       setParameter(id, value) {
         p[id] = value;
-        if (id === "cutoff") for (const f of liveFilters) f.frequency.setTargetAtTime(value, ctx.currentTime, 0.02);
-        if (id === "resonance") for (const f of liveFilters) setFilterResonance(f, value, ctx.currentTime, 0.02);
+        if (id === "cutoff") for (const [f] of liveFilters) f.frequency.setTargetAtTime(value, ctx.currentTime, 0.02);
+        if (id === "resonance") for (const [f] of liveFilters) setFilterResonance(f, value, ctx.currentTime, 0.02);
       },
       setParameterAt(id, value, when) {
         p[id] = value;
-        if (id === "cutoff") for (const f of liveFilters) f.frequency.setTargetAtTime(value, when, 0.02);
-        if (id === "resonance") for (const f of liveFilters) setFilterResonance(f, value, when, 0.02);
+        if (id === "cutoff") for (const [f] of liveFilters) f.frequency.setTargetAtTime(value, when, 0.02);
+        if (id === "resonance") for (const [f] of liveFilters) setFilterResonance(f, value, when, 0.02);
+      },
+      polyPressure(pitch, pressure, when) {
+        // Per-voice MPE pressure: matching notes open their own filter up to
+        // +50%; pressure 0 restores CUTOFF.
+        const amt = Math.max(0, Math.min(1, pressure));
+        for (const [f, fpitch] of liveFilters) {
+          if (fpitch !== pitch) continue;
+          const target = Math.min(20000, (p.cutoff ?? 6000) * (1 + amt * 0.5));
+          f.frequency.setTargetAtTime(target, when, 0.01);
+        }
       },
       noteOff(pitch, when) {
         for (const v of findByPitch(pitch)) v.stop(when);
@@ -2862,8 +3232,10 @@ const spectral: InstrumentDefinition = {
 // through a parallel three-band formant bank (F1/F2/F3 of the selected
 // vowel, scaled by SHIFT for voice size). COLOR blends dry sample against
 // the formant-filtered copy; MORPH auto-cycles the vowel formants during
-// the note for "talking" chops. Vowel targets follow Peterson–Barney-ish
-// F1/F2/F3 averages, rounded and deterministic.
+// the note for "talking" chops. VIB adds delayed-onset playbackRate
+// vibrato, CONS a consonant HP noise transient at the attack, and
+// overlapping notes glide (portamento) like the sampler. Vowel targets
+// follow Peterson–Barney-ish F1/F2/F3 averages, rounded and deterministic.
 
 const VOWEL_OPTIONS = [
   { value: 0, label: "A" },
@@ -2899,6 +3271,8 @@ const vocalchop: InstrumentDefinition = {
       format: (v) => `${v.toFixed(2)}×`,
     },
     { id: "sharp", label: "SHARP", min: 0, max: 1, default: 0.5, format: formatPct },
+    { id: "vib", label: "VIB", min: 0, max: 1, default: 0, format: formatPct },
+    { id: "cons", label: "CONS", min: 0, max: 1, default: 0, format: formatPct },
     { id: "morph", label: "MORPH", min: 0, max: 1, default: 0, format: formatPct },
     { id: "tone", label: "TONE", min: 500, max: 16000, default: 12000, unit: "Hz", format: formatHz },
     { id: "reverse", label: "REVERSE", min: 0, max: 1, default: 0, format: formatPct },
@@ -2917,6 +3291,8 @@ const vocalchop: InstrumentDefinition = {
     tone.frequency.value = p.tone ?? 12000;
     tone.Q.value = 0.7;
     tone.connect(output);
+    // Seeded noise for the consonant transient (CONS)
+    const noise = noiseBuffer(ctx, hashString(track.id) ^ 0xcea0);
     const reversedCache = new Map<AudioBuffer, AudioBuffer>();
     const reversedBuffer = (buffer: AudioBuffer): AudioBuffer => {
       let rev = reversedCache.get(buffer);
@@ -2934,9 +3310,24 @@ const vocalchop: InstrumentDefinition = {
 
     const runtime: InstrumentRuntime = {
       output,
-      noteOn(pitch, velocity, when, durationSec) {
+      noteOn(pitch, velocity, when, durationSec, slideFrom) {
         const buffer = env.getSample(sampleId);
         if (!buffer) return;
+        // Glide: reuse the previous voice's source and slide its playbackRate
+        // to the new pitch — vocal portamento between overlapping notes.
+        if (slideFrom) {
+          const prevVoices = findByPitch(slideFrom.pitch);
+          const prevVoice = prevVoices[prevVoices.length - 1] as
+            | (Voice & { glide?: (pitch: number, when: number, glideSec: number) => boolean })
+            | undefined;
+          if (
+            prevVoice?.glide &&
+            prevVoice.glide(pitch, when, Math.max(0.03, Math.min(0.16, when - Math.max(0, slideFrom.when))))
+          ) {
+            return;
+          }
+          // Fallback: no live voice to glide — play the note normally
+        }
         const root = Math.round(p.root ?? 60);
         const color = Math.max(0, Math.min(1, p.color ?? 0.85));
         const shift = Math.max(0.7, Math.min(1.5, p.shift ?? 1));
@@ -2956,6 +3347,42 @@ const vocalchop: InstrumentDefinition = {
         amp.gain.exponentialRampToValueAtTime(Math.max(peak, 0.0002), when + attack);
         amp.gain.setTargetAtTime(0.0001, off, release / 3);
         amp.connect(tone);
+
+        // CONS: consonant transient — short broadband HP noise burst at the
+        // attack, routed around the formant bank straight into the amp.
+        // Brighter SHARP moves the burst higher; never fires on glided notes
+        // (the early-return above skips this whole attack path).
+        const cons = Math.max(0, Math.min(1, p.cons ?? 0));
+        if (cons > 0.005) {
+          const burst = ctx.createBufferSource();
+          burst.buffer = noise;
+          const hp = ctx.createBiquadFilter();
+          hp.type = "highpass";
+          hp.frequency.value = 2500 + sharp * 3500;
+          const bg = ctx.createGain();
+          bg.gain.setValueAtTime(cons * 0.5 * velocity, when);
+          bg.gain.setTargetAtTime(0.0001, when + 0.004, 0.008);
+          burst.connect(hp).connect(bg).connect(amp);
+          burst.start(when);
+          burst.stop(when + 0.06);
+          burst.onended = () => {
+            try {
+              burst.disconnect();
+            } catch {
+              /* already disconnected */
+            }
+            try {
+              hp.disconnect();
+            } catch {
+              /* already disconnected */
+            }
+            try {
+              bg.disconnect();
+            } catch {
+              /* already disconnected */
+            }
+          };
+        }
 
         const src = ctx.createBufferSource();
         const playBuffer = (p.reverse ?? 0) > 0.5 ? reversedBuffer(buffer) : buffer;
@@ -2994,6 +3421,29 @@ const vocalchop: InstrumentDefinition = {
           }
         }
 
+        // VIB: delayed-onset playbackRate vibrato — singers start it ~100 ms
+        // after the attack, so the depth gain ramps in late (up to ±60 cents
+        // at full amount). Sine phase 0 at note start; slight per-pitch rate
+        // spread keeps neighbouring notes from locking together.
+        const vib = Math.max(0, Math.min(1, p.vib ?? 0));
+        let vibOsc: OscillatorNode | null = null;
+        let vibDepth: GainNode | null = null;
+        if (vib > 0.005) {
+          vibOsc = ctx.createOscillator();
+          vibOsc.type = "sine";
+          vibOsc.frequency.value = 5.2 + (pitch % 5) * 0.12;
+          vibDepth = ctx.createGain();
+          vibDepth.gain.setValueAtTime(0, when);
+          vibDepth.gain.setValueAtTime(0, Math.min(when + 0.1, off));
+          vibDepth.gain.linearRampToValueAtTime(
+            Math.max(0, Math.pow(2, (vib * 60) / 1200) - 1),
+            Math.min(when + 0.35, off),
+          );
+          vibOsc.connect(vibDepth).connect(src.playbackRate);
+          vibOsc.start(when);
+          vibOsc.stop(stopTime);
+        }
+
         src.start(when);
         src.stop(stopTime);
 
@@ -3009,13 +3459,61 @@ const vocalchop: InstrumentDefinition = {
             } catch {
               /* already stopped */
             }
+            if (vibOsc) {
+              try {
+                vibOsc.stop(t + 0.05);
+              } catch {
+                /* already stopped */
+              }
+            }
           },
           (now) => {
             amp.gain.cancelScheduledValues(now);
             amp.gain.setTargetAtTime(0.0001, now, 0.008);
+            if (vibOsc) {
+              try {
+                vibOsc.stop(now + 0.03);
+              } catch {
+                /* already stopped */
+              }
+            }
           },
         );
+        // Slide support: glide this voice's playbackRate to a new pitch —
+        // the VIB LFO keeps modulating on top of the ramped base value.
+        (voice as Voice & { glide?: unknown }).glide = (
+          targetPitch: number,
+          at: number,
+          glideSec: number,
+        ): boolean => {
+          try {
+            const from = src.playbackRate.value;
+            src.playbackRate.setValueAtTime(from, Math.max(0, at - glideSec));
+            src.playbackRate.exponentialRampToValueAtTime(
+              Math.max(0.01, Math.pow(2, (targetPitch - root) / 12)),
+              at,
+            );
+            voice.pitch = targetPitch;
+            return true;
+          } catch {
+            return false;
+          }
+        };
         src.onended = () => {
+          if (vibOsc) {
+            try {
+              vibOsc.disconnect();
+            } catch {
+              /* already disconnected */
+            }
+          }
+          if (vibDepth) {
+            try {
+              vibDepth.disconnect();
+            } catch {
+              /* already disconnected */
+            }
+          }
           amp.disconnect();
           dry.disconnect();
           wet.disconnect();
@@ -3095,6 +3593,8 @@ const drumsynth: InstrumentDefinition = {
     const p = { ...track.params };
     const { voices, register, cleanup, findByPitch } = makeVoiceManager(8);
     const noise = noiseBuffer(ctx, hashString(track.id) ^ 0xd42d);
+    // Currently ringing open hat — a closed hat (or another open) chokes it
+    let openHatVoice: Voice | null = null;
 
     const runtime: InstrumentRuntime = {
       output,
@@ -3302,6 +3802,7 @@ const drumsynth: InstrumentDefinition = {
                 /* already stopped */
               }
             }
+            if (openHatVoice === voice) openHatVoice = null;
           },
           (now) => {
             noteGain.gain.cancelScheduledValues(now);
@@ -3322,6 +3823,14 @@ const drumsynth: InstrumentDefinition = {
             }
           },
         );
+        // Hat choke (classic drum machine behaviour): a closed hat cuts a
+        // ringing open hat dead, and consecutive open hats choke each other.
+        // Closed hats don't register — nothing rings long enough to matter.
+        if (type === 2 || type === 3) {
+          openHatVoice?.stop(when);
+          openHatVoice = null;
+          if (type === 3) openHatVoice = voice;
+        }
         // Drums are one-shot: silence the voice once the ring time elapses so
         // the voice manager does not hold dead notes against polyphony.
         const clock = ctx.createOscillator();

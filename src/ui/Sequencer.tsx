@@ -21,6 +21,8 @@ import { trackBadge } from "./TrackTabs";
 import { useLongPress } from "./useLongPress";
 import { clamp } from "../shared/ids";
 import { DragNumber, Slider } from "./controls";
+import { cursorsAt, usePublishCursor, useRemoteCursors } from "./remoteCursors";
+import type { RemoteCursor } from "../collab/CollaborationProvider";
 
 export interface StepSelection {
   padIds: string[];
@@ -128,6 +130,11 @@ export function Sequencer({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(600);
+  // Presence: everyone else's cursor, published/erased on hover cell changes.
+  const remoteCursors = useRemoteCursors();
+  const publishCursor = usePublishCursor();
+  // Fullscreen piano roll on touch/narrow screens — which track is expanded.
+  const [pianoFullTrack, setPianoFullTrack] = useState<string | null>(null);
 
   // Flatten track tree into virtualizable items
   const flatItems = useMemo(() => buildFlatItems(doc.tracks), [doc.tracks]);
@@ -420,7 +427,7 @@ export function Sequencer({
   );
 
   return (
-    <section className="sequencer" aria-label="Step Sequencer">
+    <section className="sequencer" aria-label="Step Sequencer" onPointerLeave={() => publishCursor(null)}>
       {stepEditor && (
         <StepEditor
           padId={stepEditor.padId}
@@ -544,6 +551,9 @@ export function Sequencer({
                 moveStepInteraction={moveStepInteraction}
                 endStepInteraction={endStepInteraction}
                 setStepEditor={setStepEditor}
+                remoteCursors={remoteCursors}
+                pianoFullTrack={pianoFullTrack}
+                onTogglePianoFull={setPianoFullTrack}
               />
             </div>
           ))}
@@ -570,6 +580,9 @@ function VirtualRow({
   moveStepInteraction,
   endStepInteraction,
   setStepEditor,
+  remoteCursors,
+  pianoFullTrack,
+  onTogglePianoFull,
 }: {
   item: FlatItem;
   pattern: import("../project-model/types").Pattern;
@@ -594,6 +607,9 @@ function VirtualRow({
   moveStepInteraction: (event: React.PointerEvent) => void;
   endStepInteraction: () => void;
   setStepEditor: (v: { padId: string; stepIndex: number } | null) => void;
+  remoteCursors: RemoteCursor[];
+  pianoFullTrack: string | null;
+  onTogglePianoFull: (trackId: string | null) => void;
 }) {
   if (item.type === "header") {
     const track = item.track;
@@ -626,6 +642,7 @@ function VirtualRow({
         onEnd={endStepInteraction}
         onSelectPad={onSelectPad}
         onEditStep={(stepIndex) => setStepEditor({ padId: item.pad.id, stepIndex })}
+        remoteCursors={remoteCursors}
       />
     );
   }
@@ -639,6 +656,10 @@ function VirtualRow({
         selectedNote={selectedNote}
         onSelectNote={onSelectNote}
         scaleSnap={scaleSnap}
+        fullscreen={pianoFullTrack === item.track.id}
+        onToggleFullscreen={() =>
+          onTogglePianoFull(pianoFullTrack === item.track.id ? null : item.track.id)
+        }
       />
     );
   }
@@ -712,7 +733,7 @@ function StepEditor({
           ? ` · +${stepSelection.padIds.length * (stepSelection.to - stepSelection.from + 1) - 1} SELECTED`
           : ""}
       </span>
-      <button type="button" className="step-editor-close btn btn-small" onClick={onClose} title="Close step editor">
+      <button type="button" className="step-editor-close btn btn-small" onClick={onClose} title="Close step editor" aria-label="Close step editor">
         ×
       </button>
       <div className="step-editor-field">
@@ -975,6 +996,7 @@ function PadRow({
   onEnd,
   onSelectPad,
   onEditStep,
+  remoteCursors,
 }: {
   pad: DrumTrack["pads"][number];
   trackId: string;
@@ -1000,6 +1022,7 @@ function PadRow({
   onEnd: () => void;
   onSelectPad: (padId: string) => void;
   onEditStep: (stepIndex: number) => void;
+  remoteCursors: RemoteCursor[];
 }) {
   const services = useServices();
   const doc = useDoc();
@@ -1064,23 +1087,25 @@ function PadRow({
           const stepLabel = `Step ${stepNumber}${active ? `, velocity ${Math.round(velocity * 100)}%` : ", empty"}${
             metaHints.length > 0 ? ` (${metaHints.join(", ")})` : ""
           }`;
-          return (
-            <StepCell
-              key={stepIndex}
-              padId={pad.id}
-              stepIndex={stepIndex}
-              velocity={velocity}
-              active={active}
-              meta={meta}
-              inSelection={inSelection}
-              playhead={playheadStep === stepIndex}
-              stepLabel={stepLabel}
-              onBegin={onBegin}
-              onMove={onMove}
-              onEnd={onEnd}
-              onEditStep={() => onEditStep(stepIndex)}
-            />
-          );
+            return (
+              <StepCell
+                key={stepIndex}
+                patternId={pattern.id}
+                padId={pad.id}
+                stepIndex={stepIndex}
+                velocity={velocity}
+                active={active}
+                meta={meta}
+                inSelection={inSelection}
+                playhead={playheadStep === stepIndex}
+                stepLabel={stepLabel}
+                onBegin={onBegin}
+                onMove={onMove}
+                onEnd={onEnd}
+                onEditStep={() => onEditStep(stepIndex)}
+                remoteCursors={remoteCursors}
+              />
+            );
         })}
       </div>
     </div>
@@ -1093,6 +1118,7 @@ function PadRow({
  * not called inside the render loop.
  */
 function StepCell({
+  patternId,
   padId,
   stepIndex,
   velocity,
@@ -1105,7 +1131,9 @@ function StepCell({
   onMove,
   onEnd,
   onEditStep,
+  remoteCursors,
 }: {
+  patternId: string;
   padId: string;
   stepIndex: number;
   velocity: number;
@@ -1118,10 +1146,14 @@ function StepCell({
   onMove: (event: React.PointerEvent) => void;
   onEnd: (event: React.PointerEvent) => void;
   onEditStep: () => void;
+  remoteCursors: RemoteCursor[];
 }) {
   const services = useServices();
   const doc = useDoc();
   const longPress = useLongPress(onEditStep);
+  const publishCursor = usePublishCursor();
+  // Who else is pointing at this exact cell — one colored marker per user.
+  const remoteHere = cursorsAt(remoteCursors, { view: "sequencer", patternId, padId, stepIndex });
 
   const hasLocks = meta?.locks && Object.keys(meta.locks).length > 0;
   const lockHints: string[] = [];
@@ -1147,6 +1179,11 @@ function StepCell({
       title={`${fullLabel} — click to toggle, drag vertically for velocity (Alt microtiming −1..1, Ctrl/Cmd probability 0..1), shift+drag to multi-select, right-click (or long-press) for p-locks — bottom bar is amount 0..1`}
       aria-label={fullLabel}
       aria-pressed={active}
+      onPointerEnter={(event) => {
+        if (event.pointerType === "mouse") {
+          publishCursor({ view: "sequencer", patternId, padId, stepIndex });
+        }
+      }}
       onPointerDown={(event) => {
         longPress.onPointerDown(event);
         onBegin(event, padId, stepIndex);
@@ -1173,6 +1210,15 @@ function StepCell({
       })}
     >
       {meta?.ratchet !== undefined && meta.ratchet > 1 && <span className="step-badge">{meta.ratchet}×</span>}
+      {remoteHere.slice(0, 3).map(({ user }) => (
+        <span
+          key={user.id}
+          className="remote-cursor-dot"
+          style={{ background: user.color, borderColor: user.color }}
+          title={`${user.name} je tu`}
+          aria-label={`${user.name} is pointing at this step`}
+        />
+      ))}
       {hasLocks && (
         <span className="step-lock-dot" aria-hidden="true">
           ●

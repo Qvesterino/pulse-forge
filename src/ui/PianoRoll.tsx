@@ -19,6 +19,7 @@ import {
 } from "../commands/commands";
 import { clamp, uid } from "../shared/ids";
 import { getScalePitchesInRange, isInScale, snapToScale, scaleDegreeLabel } from "../project-model/scales";
+import { usePublishCursor, useRemoteCursors } from "./remoteCursors";
 
 const PITCH_MIN = 24;
 const PITCH_MAX = 84;
@@ -56,6 +57,8 @@ export function PianoRollTrack({
   selectedNote,
   onSelectNote,
   scaleSnap,
+  fullscreen = false,
+  onToggleFullscreen,
 }: {
   track: InstrumentTrack;
   pattern: Pattern;
@@ -63,6 +66,9 @@ export function PianoRollTrack({
   selectedNote: SelectedNote | null;
   onSelectNote: (selection: SelectedNote | null) => void;
   scaleSnap: boolean;
+  /** Fullscreen presentation for touch/narrow screens (mobile layout V2). */
+  fullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }) {
   const services = useServices();
   const doc = useDoc();
@@ -405,6 +411,34 @@ export function PianoRollTrack({
 
   const stepPct = (step: number) => (step / pattern.stepCount) * 100;
 
+  // ── Presence cursors ──────────────────────────────────────────────────
+  const remoteCursors = useRemoteCursors();
+  const publishCursor = usePublishCursor();
+  const lastHoverRef = useRef<string | null>(null);
+  /** Broadcast the hovered grid cell — only on cell change, mouse only. */
+  const publishHover = (event: React.PointerEvent) => {
+    if (event.pointerType !== "mouse") return;
+    const { stepF, pitch } = posFromEvent(event);
+    const step = clamp(Math.floor(stepF), 0, pattern.stepCount - 1);
+    const key = `${step}:${pitch}`;
+    if (lastHoverRef.current === key) return;
+    lastHoverRef.current = key;
+    publishCursor({ view: "pianoroll", patternId: pattern.id, trackId: track.id, stepIndex: step, pitch });
+  };
+  const leaveGrid = () => {
+    lastHoverRef.current = null;
+    publishCursor(null);
+  };
+  // Everyone else hovering a cell of THIS track in THIS pattern.
+  const remoteHere = remoteCursors.filter(
+    ({ cursor }) =>
+      cursor.view === "pianoroll" &&
+      cursor.trackId === track.id &&
+      (cursor.patternId ?? pattern.id) === pattern.id &&
+      cursor.pitch !== undefined &&
+      cursor.stepIndex !== undefined,
+  );
+
   const beginVelDrag = (e: React.PointerEvent, note: NoteEvent) => {
     if (e.button !== 0) return;
     e.stopPropagation();
@@ -659,9 +693,21 @@ export function PianoRollTrack({
   }, [hasSelection, selectedNote, doc, track.id, pattern.id, patternTicks, notes, scaleSnap, services.store]);
 
   return (
-    <div className="pianoroll-wrap">
+    <div className={"pianoroll-wrap" + (fullscreen ? " pr-fullscreen" : "")}>
       <div className="pianoroll-toolbar" role="toolbar" aria-label="Piano roll tools">
         <span className="pr-toolbar-count">{selLabel}</span>
+        {onToggleFullscreen && (
+          <button
+            type="button"
+            className="btn btn-small pr-fullscreen-toggle"
+            aria-pressed={fullscreen}
+            aria-label={fullscreen ? "Exit fullscreen piano roll" : "Fullscreen piano roll"}
+            title={fullscreen ? "Exit fullscreen" : "Fullscreen editor (touch screens)"}
+            onClick={onToggleFullscreen}
+          >
+            {fullscreen ? "✕" : "⤢"}
+          </button>
+        )}
         <div className="pr-toolbar-group">
           <button
             type="button"
@@ -1061,7 +1107,11 @@ export function PianoRollTrack({
             ref={gridRef}
             style={{ height: PITCH_COUNT * ROW_HEIGHT }}
             onPointerDown={onGridPointerDown}
-            onPointerMove={onGridPointerMove}
+            onPointerMove={(event) => {
+              onGridPointerMove(event);
+              publishHover(event);
+            }}
+            onPointerLeave={leaveGrid}
             onPointerUp={onGridPointerUp}
           >
             {/* Scale row highlights (background tint on in-scale rows) */}
@@ -1088,6 +1138,21 @@ export function PianoRollTrack({
                 style={{ left: `${stepPct(playheadStep)}%`, width: `${100 / pattern.stepCount}%` }}
               />
             )}
+            {/* Remote presence cursors — one colored marker per collaborator */}
+            {remoteHere.map(({ user, cursor }) => (
+              <div
+                key={`remote-${user.id}`}
+                className="pr-remote-cursor"
+                style={{
+                  left: `${stepPct(Math.min(cursor.stepIndex!, pattern.stepCount - 1))}%`,
+                  top: (PITCH_MAX - cursor.pitch!) * ROW_HEIGHT,
+                  background: user.color,
+                  borderColor: user.color,
+                }}
+                title={`${user.name} — ${pitchName(cursor.pitch!)}`}
+                aria-label={`${user.name} is pointing at ${pitchName(cursor.pitch!)}`}
+              />
+            ))}
             {/* Ghost notes from other patterns — 30% opaque, non-interactive */}
             {ghostNotes.map((note) => {
               const startSteps = note.start / STEP_TICKS;
