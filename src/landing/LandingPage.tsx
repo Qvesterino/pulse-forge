@@ -56,9 +56,14 @@ export function LandingPage({ onEnterStudio }: { onEnterStudio: () => void }) {
         <span className="landing-brand">
           <span className="embed-brand-mark">PF</span> PULSE FORGE
         </span>
-        <button type="button" className="btn btn-export landing-cta" onClick={onEnterStudio}>
-          OPEN THE STUDIO →
-        </button>
+        <div className="landing-nav-actions">
+          <a className="btn btn-export landing-cta" href="/gallery">
+            BEAT GALLERY
+          </a>
+          <button type="button" className="btn btn-export landing-cta" onClick={onEnterStudio}>
+            OPEN THE STUDIO →
+          </button>
+        </div>
       </nav>
 
       <header className="landing-hero">

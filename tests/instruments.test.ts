@@ -322,3 +322,66 @@ describe.skipIf(typeof OfflineAudioContext === "undefined")("Drum Synth runtime"
     rt.dispose();
   });
 });
+
+describe("wavetable morph modulation", () => {
+  it("exposes morph rate and depth alongside the static morph position", () => {
+    const ids = new Set(INSTRUMENT_DEFS.wavetable.params.map((p) => p.id));
+    for (const expected of ["morph", "morphRate", "morphDepth"]) {
+      expect(ids.has(expected)).toBe(true);
+    }
+    const rate = INSTRUMENT_DEFS.wavetable.params.find((p) => p.id === "morphRate")!;
+    expect(rate.default).toBe(0); // render-neutral for existing projects
+  });
+});
+
+describe.skipIf(typeof OfflineAudioContext === "undefined")("Wavetable morph LFO runtime", () => {
+  const SR = 44100;
+
+  function makeTrack(): InstrumentTrack {
+    return {
+      id: "wt-morph-test",
+      kind: "instrument",
+      instrument: "wavetable",
+      name: "Wavetable",
+      gain: 1,
+      pan: 0,
+      mute: false,
+      solo: false,
+      sampleId: null,
+      params: defaultInstrumentParams("wavetable"),
+      effects: [],
+      sends: {},
+    };
+  }
+
+  async function renderPeak(morphRate: number, morphDepth: number): Promise<number> {
+    const ctx = new OfflineAudioContext(2, SR, SR);
+    const rt = INSTRUMENT_DEFS.wavetable.factory(ctx, makeTrack(), { bpm: 124, getSample: () => undefined });
+    rt.output.connect(ctx.destination);
+    rt.setParameter("morphRate", morphRate);
+    rt.setParameter("morphDepth", morphDepth);
+    rt.noteOn(60, 0.9, 0.05, 0.8);
+    const buffer = await ctx.startRendering();
+    let peak = 0;
+    for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+      const data = buffer.getChannelData(ch);
+      for (let i = 0; i < data.length; i++) peak = Math.max(peak, Math.abs(data[i]));
+    }
+    rt.dispose();
+    return peak;
+  }
+
+  it("renders a modulated note within level bounds", async () => {
+    const peak = await renderPeak(3, 0.8);
+    expect(peak).toBeGreaterThan(0.001);
+    expect(peak).toBeLessThanOrEqual(2);
+  });
+
+  it("stays level-safe at the depth extremes (0 and 1)", async () => {
+    for (const depth of [0, 1]) {
+      const peak = await renderPeak(5, depth);
+      expect(peak).toBeGreaterThan(0.001);
+      expect(peak).toBeLessThanOrEqual(2);
+    }
+  });
+});

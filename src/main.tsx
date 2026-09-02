@@ -8,6 +8,7 @@ import { ErrorBoundary } from "./ui/ErrorBoundary";
 import { ProjectBrowser } from "./ui/ProjectBrowser";
 import { EmbedApp } from "./embed/EmbedApp";
 import { LandingPage } from "./landing/LandingPage";
+import { GalleryPage } from "./gallery/GalleryPage";
 import { decodeShareCode } from "./export/shareCode";
 import "./styles.css";
 
@@ -22,6 +23,13 @@ if (/^\/embed(\/|$)/.test(PATH)) {
   createRoot(container).render(
     <StrictMode>
       <EmbedApp />
+    </StrictMode>,
+  );
+} else if (/^\/gallery(\/|$)/.test(PATH)) {
+  // /gallery — the beat feed; no studio boot either.
+  createRoot(container).render(
+    <StrictMode>
+      <GalleryPage />
     </StrictMode>,
   );
 } else {

@@ -14,6 +14,7 @@ import { summarizeBuffer, type BufferSummary } from "../audio-engine/metering";
 import { extensionForMime, LiveRecorder, type RecordSource } from "../audio-engine/recorder";
 import { detectLoopBpm } from "../audio-engine/bpm-detect";
 import { userSampleId, type UserSampleAsset } from "../persistence/UserSampleRepository";
+import { PublishToGalleryButton } from "../gallery/PublishButton";
 
 type Status =
   | { kind: "idle" }
@@ -402,6 +403,7 @@ export function ExportPanel({
         >
           COPY EMBED CODE
         </button>
+        <PublishToGalleryButton />
         <button
           type="button"
           className="btn btn-export btn-export-scorepack"

@@ -1442,8 +1442,10 @@ const texture: InstrumentDefinition = {
 // additively; when the track has a sample assigned (sampleId), the table is
 // extracted from that sample via autocorrelation period detection. A voice
 // captures its frame pair at note start — live MORPH moves only the
-// crossfade within that pair. All envelopes are scheduled upfront in
-// noteOn, so offline rendering matches live playback.
+// crossfade within that pair. M RATE / M DEPTH add a per-note crossfade
+// LFO on the captured pair (see the livePairs note in factory): rate and
+// depth are static per note by design, so offline rendering matches live
+// playback. All envelopes are scheduled upfront in noteOn.
 
 const wavetable: InstrumentDefinition = {
   kind: "wavetable",
@@ -1458,6 +1460,16 @@ const wavetable: InstrumentDefinition = {
       options: FACTORY_TABLE_OPTIONS,
     },
     { id: "morph", label: "MORPH", min: 0, max: 1, default: 0.3, format: formatPct },
+    {
+      id: "morphRate",
+      label: "M RATE",
+      min: 0,
+      max: 12,
+      default: 0,
+      unit: "Hz",
+      format: (v) => (v < 0.05 ? "OFF" : `${v.toFixed(2)} Hz`),
+    },
+    { id: "morphDepth", label: "M DEPTH", min: 0, max: 1, default: 0.5, format: formatPct },
     {
       id: "detune",
       label: "DETUNE",
@@ -1486,7 +1498,10 @@ const wavetable: InstrumentDefinition = {
     // Crossfade pairs of sounding voices (with their fixed frame indices),
     // so live MORPH updates can retune the blend. Frame buffers themselves
     // are captured per voice — re-targeting frames mid-note isn't possible
-    // with looped buffer sources.
+    // with looped buffer sources. M RATE / M DEPTH ride on top of these
+    // pairs: a per-note sine LFO pushes +wobble into frame A's gain and
+    // −wobble into frame B's gain, so the crossfade breathes around the
+    // captured MORPH base while a+b stays constant (no amplitude pumping).
     const livePairs = new Set<{ a: GainNode; b: GainNode; ia: number; ib: number; level: number }>();
     let frameBuffers: AudioBuffer[] | null = null;
     let tableDirty = true;
@@ -1546,10 +1561,45 @@ const wavetable: InstrumentDefinition = {
         const sources: Array<AudioBufferSourceNode | OscillatorNode> = [];
         const pairs: { a: GainNode; b: GainNode; ia: number; ib: number; level: number }[] = [];
         const morph = Math.min(1, Math.max(0, p.morph ?? 0.3));
-        const pos = frames.length === 1 ? 0 : morph * (frames.length - 1);
-        const ia = Math.min(frames.length - 2, Math.floor(pos));
+        // Single-frame tables (short samples) have no pair to crossfade —
+        // lock the position to frame 0 so ia never goes negative.
+        const single = frames.length < 2;
+        const pos = single ? 0 : morph * (frames.length - 1);
+        const ia = single ? 0 : Math.min(frames.length - 2, Math.floor(pos));
         const ib = Math.min(frames.length - 1, ia + 1);
-        const blend = pos - ia;
+        const blend = single ? 0 : pos - ia;
+
+        // Per-note morph LFO (M RATE / M DEPTH). Captured at note start like
+        // the frames; sine phase starts at 0 on `when`, deterministic.
+        const morphRate = Math.max(0, p.morphRate ?? 0);
+        const morphDepth = Math.min(1, Math.max(0, p.morphDepth ?? 0.5));
+        let morphLfo: OscillatorNode | null = null;
+        if (morphRate > 0.02 && morphDepth > 0.005 && !single) {
+          morphLfo = ctx.createOscillator();
+          morphLfo.type = "sine";
+          morphLfo.frequency.value = morphRate;
+          morphLfo.start(when);
+          morphLfo.stop(stopTime);
+        }
+        // +wobble on frame A's gain, −wobble on frame B's: a+b stays at the
+        // pair level, so only the crossfade position moves. Sized to the
+        // pair's room (blend × level) so gains never dip negative.
+        const morphWobbles: Array<{ dg: GainNode; dgInv: GainNode }> = [];
+        const wireMorphWobble = (gA: GainNode, gB: GainNode, level: number) => {
+          if (!morphLfo) return;
+          const room = Math.min(blend, 1 - blend) * level * 0.9;
+          const wobble = morphDepth * room;
+          if (wobble <= 0.0015) return;
+          const dg = ctx.createGain();
+          dg.gain.value = wobble;
+          const dgInv = ctx.createGain();
+          dgInv.gain.value = -wobble;
+          morphLfo.connect(dg);
+          morphLfo.connect(dgInv);
+          dg.connect(gA.gain);
+          dgInv.connect(gB.gain);
+          morphWobbles.push({ dg, dgInv });
+        };
 
         const mkTableOsc = (detuneCents: number, level: number) => {
           // Detune is folded into playbackRate (2^cents/1200) rather than
@@ -1574,6 +1624,7 @@ const wavetable: InstrumentDefinition = {
           const pair = { a: gA, b: gB, ia, ib, level };
           pairs.push(pair);
           livePairs.add(pair);
+          wireMorphWobble(gA, gB, level);
         };
         mkTableOsc(0, 0.5);
         mkTableOsc(p.detune ?? 7, 0.45);
@@ -1609,6 +1660,7 @@ const wavetable: InstrumentDefinition = {
             const pairU = { a: gAu, b: gBu, ia, ib, level: uLevel };
             pairs.push(pairU);
             livePairs.add(pairU);
+            wireMorphWobble(gAu, gBu, uLevel);
           }
         }
 
@@ -1638,6 +1690,13 @@ const wavetable: InstrumentDefinition = {
                 /* already stopped */
               }
             }
+            if (morphLfo) {
+              try {
+                morphLfo.stop(t + 0.05);
+              } catch {
+                /* already stopped */
+              }
+            }
           },
           (now) => {
             amp.gain.cancelScheduledValues(now);
@@ -1649,6 +1708,13 @@ const wavetable: InstrumentDefinition = {
                 /* already stopped */
               }
             }
+            if (morphLfo) {
+              try {
+                morphLfo.stop(now + 0.03);
+              } catch {
+                /* already stopped */
+              }
+            }
           },
         );
         const last = sources[sources.length - 1];
@@ -1656,6 +1722,25 @@ const wavetable: InstrumentDefinition = {
           last.onended = () => {
             liveFilters.delete(filter);
             for (const pair of pairs) livePairs.delete(pair);
+            if (morphLfo) {
+              try {
+                morphLfo.disconnect();
+              } catch {
+                /* already disconnected */
+              }
+            }
+            for (const { dg, dgInv } of morphWobbles) {
+              try {
+                dg.disconnect();
+              } catch {
+                /* already disconnected */
+              }
+              try {
+                dgInv.disconnect();
+              } catch {
+                /* already disconnected */
+              }
+            }
             amp.disconnect();
             filter.disconnect();
             cleanup(voice);

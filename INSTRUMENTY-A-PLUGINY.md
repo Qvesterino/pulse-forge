@@ -11,7 +11,7 @@ Pulse Forge momentálne disponuje:
 | Drum syntetizátory (pady bubnovej stopy) | **7** | `src/project-model/types.ts` + `src/audio-engine/synth-voices.ts` |
 | Veľké pluginy (vendored DSP rack) | **3** — FXEQ, Ultina, Ozvena | `src/effects/*-core/` |
 | Ostatné mixové FX (effect rack) | **32** | `src/effects/registry.ts` |
-| Factory presety | **147 inštrumentových + 12 bubnových** | `src/presets/factory.ts` |
+| Factory presety | **150 inštrumentových + 12 bubnových** | `src/presets/factory.ts` |
 
 ---
 
@@ -85,6 +85,7 @@ Morphing wavetable: každý hlas prehráva dve framy tabuľky crossfaded podľa 
 - **5 factory tabuliek: Sine Grow, PWM, Formant, Digital, FM Drive** (aditívne syntetizované)
 - **Import z sample** — keď je stope priradený sample, tabuľka sa extrahuje autokoreláciou (detekcia periódy)
 - MORPH (pozícia v tabuľke), DETUNE páru, SUB
+- **M RATE / M DEPTH — per-note crossfade LFO**: morph pozícia „dýcha" okolo MORPH bázy (LFO tlačí +wobble na frame A a −wobble na frame B — súčet gains konštantný, žiadna amplitude pumpa; hĺbka sa clampne na priestor dvojice fám, takže gainty nikdy nepodtečú pod nulu). Default OFF — existujúce projekty znejú nezmenene
 - UNISON 1–8× + SPREAD, CUTOFF/RESO, ATTACK/RELEASE, LEVEL
 
 ### 1.7 Granular Synth (`granular`) — 6 hlasov
@@ -241,11 +242,11 @@ Presety sú čisté dáta (žiadne volania do audio engine) — idú cez command
 | Texture Synth | 12 |
 | Drum Synth | 12 |
 | Sampler | 10 |
-| Wavetable Synth | 9 |
+| Wavetable Synth | 12 |
 | Pluck Synth | 9 |
 | Spectral Pad | 8 |
 | Vocal Chop | 8 |
 | Granular Synth | 7 |
 | Log Drum | 3 |
-| **Spolu inštrumenty** | **147** |
+| **Spolu inštrumenty** | **150** |
 | Drum bicie (kick, snare, hat, clap…) | 12 |
