@@ -58,6 +58,11 @@ export function FloatingPlugin({
     } catch {}
   };
 
+  // Interrupted drag — stop following the pointer.
+  const onPointerCancel = () => {
+    dragging.current = null;
+  };
+
   // Close on Escape
   useEffect(() => {
     const h = (ev: KeyboardEvent) => {
@@ -90,6 +95,7 @@ export function FloatingPlugin({
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
+        onPointerCancel={onPointerCancel}
       >
         <span className="floating-plugin-title">{title}</span>
         <div className="floating-plugin-actions">

@@ -38,8 +38,14 @@ describe("wav encoder", () => {
   it("encodes 16-bit sample values correctly and clamps", () => {
     const buffer = makeBuffer([[1.5, -1.5, 0.5]]);
     const view = new DataView(encodeWav(buffer, 16));
-    expect(view.getInt16(44, true)).toBe(32767);
-    expect(view.getInt16(46, true)).toBe(-32768);
+    // Soft-knee + TPDF dither: overs top out just under full scale (never a
+    // hard-clipped square), in-range values land within ±1 LSB of the ideal.
+    const top = view.getInt16(44, true);
+    expect(top).toBeGreaterThan(32000);
+    expect(top).toBeLessThanOrEqual(32767);
+    const bottom = view.getInt16(46, true);
+    expect(bottom).toBeLessThan(-32000);
+    expect(bottom).toBeGreaterThanOrEqual(-32768);
     expect(view.getInt16(48, true)).toBeCloseTo(0.5 * 0x7fff, -1);
   });
 

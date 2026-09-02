@@ -286,3 +286,131 @@ export function morphFrames(
   const ia = Math.min(frames.length - 2, Math.floor(pos));
   return { a: frames[ia], b: frames[ia + 1], blend: pos - ia };
 }
+
+/* ---------------- mipmapping (band-limited playback levels) ---------------- */
+
+/** Iterative radix-2 FFT, in place (n must be a power of two). */
+function fftRadix2(re: Float32Array, im: Float32Array, inverse = false): void {
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) {
+      const tr = re[i];
+      re[i] = re[j];
+      re[j] = tr;
+      const ti = im[i];
+      im[i] = im[j];
+      im[j] = ti;
+    }
+  }
+  for (let len = 2; len <= n; len <<= 1) {
+    const ang = ((inverse ? 2 : -2) * Math.PI) / len;
+    const wr = Math.cos(ang);
+    const wi = Math.sin(ang);
+    const half = len >> 1;
+    for (let i = 0; i < n; i += len) {
+      let cr = 1;
+      let ci = 0;
+      for (let j = 0; j < half; j++) {
+        const ur = re[i + j];
+        const ui = im[i + j];
+        const vr = re[i + j + half] * cr - im[i + j + half] * ci;
+        const vi = re[i + j + half] * ci + im[i + j + half] * cr;
+        re[i + j] = ur + vr;
+        im[i + j] = ui + vi;
+        re[i + j + half] = ur - vr;
+        im[i + j + half] = ui - vi;
+        const ncr = cr * wr - ci * wi;
+        ci = cr * wi + ci * wr;
+        cr = ncr;
+      }
+    }
+  }
+  if (inverse) {
+    for (let i = 0; i < n; i++) {
+      re[i] /= n;
+      im[i] /= n;
+    }
+  }
+}
+
+function highestSignificantBin(frame: Float32Array): number {
+  const n = frame.length;
+  const re = new Float32Array(n);
+  const im = new Float32Array(n);
+  re.set(frame);
+  fftRadix2(re, im);
+  const half = n >> 1;
+  const mags = new Float32Array(half + 1);
+  let maxMag = 0;
+  for (let i = 0; i <= half; i++) {
+    mags[i] = Math.hypot(re[i], im[i]);
+    if (mags[i] > maxMag) maxMag = mags[i];
+  }
+  const eps = Math.max(maxMag, 1e-9) * 0.001; // −60 dB
+  for (let i = half; i >= 1; i--) {
+    if (mags[i] > eps) return i;
+  }
+  return 1;
+}
+
+/** Zero all harmonics above bin k (mirrored), keep the frame otherwise intact. */
+function bandlimit(frame: Float32Array, k: number): Float32Array {
+  const n = frame.length;
+  const re = new Float32Array(n);
+  const im = new Float32Array(n);
+  re.set(frame);
+  fftRadix2(re, im);
+  for (let i = k + 1; i < n - k; i++) {
+    re[i] = 0;
+    im[i] = 0;
+  }
+  fftRadix2(re, im, true);
+  return re;
+}
+
+export interface WavetableMips {
+  /** levels[0] = original frames; each next level keeps ~half the harmonics. */
+  levels: Float32Array[][];
+  /** Highest retained harmonic bin per level (descending). */
+  ks: number[];
+}
+
+/**
+ * Build band-limited mipmap levels for a table. Playing a frame at pitch f0
+ * puts harmonic k at k·f0 — any harmonic above Nyquist folds back as
+ * inharmonic grit. Levels halve the retained harmonics so high notes use
+ * spectrally lighter copies; level 0 is always the EXACT original frames, so
+ * pitches inside the table's clean range render bit-identically.
+ */
+export function buildWavetableMips(frames: Float32Array[]): WavetableMips {
+  if (frames.length === 0) return { levels: [frames], ks: [1] };
+  let kFull = 1;
+  for (const f of frames) kFull = Math.max(kFull, highestSignificantBin(f));
+  const ks: number[] = [kFull];
+  let k = Math.floor(kFull / 2);
+  while (k >= 2) {
+    if (k !== ks[ks.length - 1]) ks.push(k);
+    k = Math.floor(k / 2);
+  }
+  const levels: Float32Array[][] = [frames];
+  for (let m = 1; m < ks.length; m++) {
+    levels.push(frames.map((f) => bandlimit(f, ks[m])));
+  }
+  return { levels, ks };
+}
+
+/**
+ * Pick the most-harmonic level whose top frequency stays under Nyquist with
+ * ~5% headroom at the played fundamental. Level 0 (the untouched original)
+ * wins whenever the table is already clean at f0.
+ */
+export function pickMipLevel(ks: number[], f0: number, sampleRate: number): number {
+  const limit = 0.475 * sampleRate;
+  for (let m = 0; m < ks.length; m++) {
+    if (ks[m] * f0 <= limit) return m;
+  }
+  return ks.length - 1;
+}

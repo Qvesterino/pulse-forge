@@ -46,6 +46,11 @@ export function Slider({ label, value, min, max, defaultValue, format, onCommit,
     setDragValue(null);
   };
 
+  // Interrupted drag (touch gesture takeover, autoscroll, …) — abort, never
+  // commit; without this the slider would keep tracking hover moves and the
+  // next click would commit a stale value.
+  const handlePointerCancel = () => setDragValue(null);
+
   const percent = ((shown - min) / (max - min)) * 100;
 
   return (
@@ -66,12 +71,19 @@ export function Slider({ label, value, min, max, defaultValue, format, onCommit,
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
         onDoubleClick={() => onCommit(defaultValue)}
         onKeyDown={(event) => {
           if (disabled) return;
           const step = (max - min) / 100;
-          if (event.key === "ArrowLeft" || event.key === "ArrowDown") onCommit(Math.max(min, shown - step));
-          if (event.key === "ArrowRight" || event.key === "ArrowUp") onCommit(Math.min(max, shown + step));
+          if (event.key === "ArrowLeft" || event.key === "ArrowDown") {
+            event.preventDefault();
+            onCommit(Math.max(min, shown - step));
+          }
+          if (event.key === "ArrowRight" || event.key === "ArrowUp") {
+            event.preventDefault();
+            onCommit(Math.min(max, shown + step));
+          }
         }}
       >
         <div className="slider-fill" style={{ width: `${percent}%` }} />
@@ -135,6 +147,9 @@ export function DragNumber({
     setEdit(null);
   };
 
+  // Interrupted drag — abort without committing (see Slider).
+  const handlePointerCancel = () => setEdit(null);
+
   return (
     <div
       className="drag-number"
@@ -148,6 +163,7 @@ export function DragNumber({
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
       onDoubleClick={() => onCommit(defaultValue)}
       onKeyDown={(event) => {
         if (event.key === "ArrowUp") {

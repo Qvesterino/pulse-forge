@@ -1248,6 +1248,7 @@ function StepCell({
           const onUp = () => {
             window.removeEventListener("pointermove", onMove);
             window.removeEventListener("pointerup", onUp);
+            window.removeEventListener("pointercancel", onCancel);
             const final = current;
             if (Math.abs(final - startAmount) > 0.01) {
               const target = final >= 0.99 ? undefined : final;
@@ -1262,8 +1263,18 @@ function StepCell({
               );
             }
           };
+          // Interrupted drag — abort: restore the preview, never commit.
+          const onCancel = () => {
+            window.removeEventListener("pointermove", onMove);
+            window.removeEventListener("pointerup", onUp);
+            window.removeEventListener("pointercancel", onCancel);
+            track.style.setProperty("--amount-preview", String(startAmount));
+            const fill = track.querySelector(".step-amount-fill") as HTMLElement | null;
+            if (fill) fill.style.width = `${Math.round(startAmount * 100)}%`;
+          };
           window.addEventListener("pointermove", onMove);
           window.addEventListener("pointerup", onUp);
+          window.addEventListener("pointercancel", onCancel);
           try {
             (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
           } catch {}

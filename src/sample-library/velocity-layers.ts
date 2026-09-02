@@ -55,3 +55,27 @@ export const FACTORY_BEAT_RR_KITS: Record<string, SampleLayer[]> = {
   hatClosed: FACTORY_HAT_CLOSED_RR,
   hatOpen: FACTORY_HAT_OPEN_RR,
 };
+
+/**
+ * Keyzone layer set: each zone covers a pitch range across the full velocity
+ * window — the sampler picks the zone containing the played note.
+ */
+export function keyzoneLayers(
+  zones: Array<{ sampleId: string; minPitch: number; maxPitch: number }>,
+): SampleLayer[] {
+  return zones.map((z, i) => ({
+    id: `layer.kz.${i}`,
+    sampleId: z.sampleId,
+    min: 0,
+    max: 1,
+    minPitch: z.minPitch,
+    maxPitch: z.maxPitch,
+  }));
+}
+
+/** Factory tonal keyzones — bells up top, keys in the middle, stabs down low. */
+export const FACTORY_TONAL_KEYZONES = keyzoneLayers([
+  { sampleId: "factory.tonal.bell", minPitch: 72, maxPitch: 127 },
+  { sampleId: "factory.tonal.keys", minPitch: 48, maxPitch: 71 },
+  { sampleId: "factory.tonal.stab", minPitch: 0, maxPitch: 47 },
+]);

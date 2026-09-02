@@ -19,6 +19,8 @@ export class BroadcastChannelProvider {
   private channel: BroadcastChannel | null = null;
   private awarenessStates = new Map<number, Record<string, unknown>>();
   private clientId: number;
+  /** Update listener owned between connect()/disconnect() — see connect(). */
+  private updateListener: ((update: Uint8Array, origin: unknown) => void) | null = null;
 
   constructor(yDoc: Y.Doc, roomName: string) {
     this.yDoc = yDoc;
@@ -32,13 +34,17 @@ export class BroadcastChannelProvider {
 
     this.channel = new BroadcastChannel(`pulse-forge-${this.roomName}`);
 
-    // When the Y.Doc is updated locally, broadcast the update
-    this.yDoc.on("update", (update: Uint8Array, origin: unknown) => {
+    // When the Y.Doc is updated locally, broadcast the update. Tracked so
+    // disconnect() can remove it — connect/disconnect/connect would
+    // otherwise stack one live handler per cycle and broadcast every edit
+    // N times.
+    this.updateListener = (update: Uint8Array, origin: unknown) => {
       // Only broadcast updates from local edits (not from this provider)
       if (origin !== this) {
         this.channel?.postMessage({ type: "update", data: Array.from(update) });
       }
-    });
+    };
+    this.yDoc.on("update", this.updateListener);
 
     // When we receive an update from another tab, apply it
     this.channel.onmessage = (event: MessageEvent) => {
@@ -69,6 +75,10 @@ export class BroadcastChannelProvider {
     if (this.channel) {
       this.channel.close();
       this.channel = null;
+    }
+    if (this.updateListener) {
+      this.yDoc.off("update", this.updateListener);
+      this.updateListener = null;
     }
   }
 

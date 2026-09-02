@@ -342,6 +342,22 @@ export function PianoRollTrack({
     }
   };
 
+  // Interrupted drag (touch takeover, autoscroll, …) — abort without committing.
+  const onNotePointerCancel = () => {
+    const current = dragRef.current;
+    dragRef.current = null;
+    setDrag(null);
+    if (current?.mode === "noteVelocity") {
+      // Restore the inline previews the drag mutated (no doc change will re-render them).
+      for (const [nid, startVel] of Object.entries(current.startVels)) {
+        const el = document.querySelector(`[data-vel="${nid}"]`) as HTMLElement | null;
+        if (el) el.style.height = `${startVel * 100}%`;
+        const noteEl = document.querySelector(`[data-note-id="${nid}"]`) as HTMLElement | null;
+        if (noteEl) noteEl.style.opacity = String(0.35 + startVel * 0.65);
+      }
+    }
+  };
+
   const [marquee, setMarquee] = useState<{
     startStep: number;
     startPitch: number;
@@ -403,6 +419,11 @@ export function PianoRollTrack({
     );
     if (selected.length > 0) onSelectNote({ trackId: track.id, noteIds: selected.map((n) => n.id) });
     else onSelectNote(null);
+    marqueeRef.current = null;
+    setMarquee(null);
+  };
+  // Interrupted marquee — drop the selection rectangle without selecting.
+  const onGridPointerCancel = () => {
     marqueeRef.current = null;
     setMarquee(null);
   };
@@ -479,6 +500,15 @@ export function PianoRollTrack({
     const ids = Object.keys(velocities);
     if (ids.length === 1) services.store.execute(setNotesVelocity(doc, track.id, ids, velocities[ids[0]]));
     else services.store.execute(setNotesVelocities(doc, track.id, velocities));
+    setVelDrag(null);
+  };
+  // Interrupted velocity drag — abort and restore the lane previews.
+  const onVelPointerCancel = () => {
+    if (!velDrag) return;
+    for (const [nid, startVel] of Object.entries(velDrag.startVels)) {
+      const el = document.querySelector(`[data-vel="${nid}"]`) as HTMLElement | null;
+      if (el) el.style.height = `${startVel * 100}%`;
+    }
     setVelDrag(null);
   };
 
@@ -1113,6 +1143,7 @@ export function PianoRollTrack({
             }}
             onPointerLeave={leaveGrid}
             onPointerUp={onGridPointerUp}
+            onPointerCancel={onGridPointerCancel}
           >
             {/* Scale row highlights (background tint on in-scale rows) */}
             {isScaleActive &&
@@ -1234,6 +1265,7 @@ export function PianoRollTrack({
                     else el.style.cursor = "grab";
                   }}
                   onPointerUp={onNotePointerUp}
+                  onPointerCancel={onNotePointerCancel}
                   onContextMenu={(event) => {
                     event.preventDefault();
                     services.store.execute(deleteNote(services.store.doc, track.id, note.id));
@@ -1273,6 +1305,7 @@ export function PianoRollTrack({
               onPointerDown={(e) => beginVelDrag(e, note)}
               onPointerMove={onVelPointerMove}
               onPointerUp={onVelPointerUp}
+              onPointerCancel={onVelPointerCancel}
             />
           );
         })}

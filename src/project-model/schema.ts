@@ -893,11 +893,20 @@ function normalizeTracksDomain(s: NormalizeState): void {
         const min = typeof l.min === "number" && Number.isFinite(l.min) ? Math.min(1, Math.max(0, l.min)) : NaN;
         const max = typeof l.max === "number" && Number.isFinite(l.max) ? Math.min(1, Math.max(0, l.max)) : NaN;
         if (!Number.isFinite(min) || !Number.isFinite(max) || min >= max) continue;
+        const minPitch =
+          typeof l.minPitch === "number" && Number.isFinite(l.minPitch)
+            ? Math.round(Math.max(0, Math.min(127, l.minPitch)))
+            : undefined;
+        const maxPitch =
+          typeof l.maxPitch === "number" && Number.isFinite(l.maxPitch)
+            ? Math.round(Math.max(0, Math.min(127, l.maxPitch)))
+            : undefined;
         cleanLayers.push({
           id: typeof l.id === "string" && l.id ? l.id : uid("layer"),
           sampleId: typeof l.sampleId === "string" ? l.sampleId : null,
           min,
           max,
+          ...(minPitch !== undefined && maxPitch !== undefined ? { minPitch, maxPitch } : {}),
         });
       }
       const canonical = cleanLayers.length > 0 ? cleanLayers : undefined;

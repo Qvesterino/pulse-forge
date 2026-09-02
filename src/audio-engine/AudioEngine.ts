@@ -5,6 +5,7 @@ import type {
   InstrumentTrack,
   MasterConfig,
   ProjectDocument,
+  SampleLayer,
   SceneAutomation,
 } from "../project-model/types";
 import type { AutomationPoint, Lfo } from "../project-model/types";
@@ -132,6 +133,8 @@ interface InstrumentState {
   runtime: InstrumentRuntime;
   params: Record<string, number>;
   sampleId: string | null;
+  /** Reference-compared against the track — sampler velocity/RR layers. */
+  layers: SampleLayer[] | undefined;
   pitchBend: number; // semitones offset from MIDI pitch bend
 }
 
@@ -1321,6 +1324,9 @@ export class AudioEngine {
       for (const nodes of this.trackNodes.values()) {
         for (const rt of nodes.fx.runtimes.values()) rt.syncBpm?.(doc.bpm);
       }
+      // Instrument runtimes: tempo-synced modulators (LFO sync, texture delay,
+      // granular rate sync) pick the new tempo up live.
+      for (const inst of this.instruments.values()) inst.runtime.syncBpm?.(doc.bpm);
     }
   }
 
@@ -1411,13 +1417,24 @@ export class AudioEngine {
         getSample: (id) => this.bank?.get(id),
       });
       runtime.output.connect(nodes.input);
-      state = { runtime, params: { ...track.params }, sampleId: track.sampleId, pitchBend: 0 };
+      state = {
+        runtime,
+        params: { ...track.params },
+        sampleId: track.sampleId,
+        layers: track.velocityLayers,
+        pitchBend: 0,
+      };
       this.instruments.set(track.id, state);
       return;
     }
     if (state.sampleId !== track.sampleId) {
       state.runtime.setSample?.(track.sampleId);
       state.sampleId = track.sampleId;
+    }
+    if (state.layers !== track.velocityLayers) {
+      // Reference compare — setVelocityLayersCommand swaps in a fresh array.
+      state.layers = track.velocityLayers;
+      state.runtime.setVelocityLayers?.(track.velocityLayers ?? []);
     }
     for (const [key, value] of Object.entries(track.params)) {
       if (state.params[key] !== value) state.runtime.setParameter(key, value);

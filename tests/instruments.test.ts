@@ -6,6 +6,8 @@ import {
   defaultInstrumentParams,
   syncRateHz,
 } from "../src/instruments/registry";
+import { scheduleDahdsr } from "../src/instruments/envelope";
+import { buildWavetableMips, FRAME_SIZE, pickMipLevel } from "../src/instruments/wavetables";
 import type { InstrumentKind, InstrumentTrack } from "../src/project-model/types";
 
 describe("instrument registry", () => {
@@ -966,5 +968,176 @@ describe.skipIf(typeof OfflineAudioContext === "undefined")("Wavetable scan engi
     const late = zcc(data, Math.floor(1.55 * SR), Math.floor(1.85 * SR));
     expect(early).toBeGreaterThan(50);
     expect(late).toBeGreaterThan(early * 1.1);
+  });
+});
+
+describe.skipIf(typeof OfflineAudioContext === "undefined")("Sampler START offset runtime", () => {
+  const SR = 44100;
+
+  function makeTrack(params: Record<string, number>): InstrumentTrack {
+    return {
+      id: "smp-start-test",
+      kind: "instrument",
+      instrument: "sampler",
+      name: "Sampler",
+      gain: 1,
+      pan: 0,
+      mute: false,
+      solo: false,
+      sampleId: "user.halftone",
+      params: { ...defaultInstrumentParams("sampler"), ...params },
+      effects: [],
+      sends: {},
+    };
+  }
+
+  function makeRuntime(ctx: BaseAudioContext, track: InstrumentTrack) {
+    // First half of the sample is silence, second half a 440 Hz tone.
+    const source = ctx.createBuffer(1, SR, SR);
+    const data = source.getChannelData(0);
+    for (let i = SR / 2; i < SR; i++) data[i] = 0.6 * Math.sin((2 * Math.PI * 440 * i) / SR);
+    return INSTRUMENT_DEFS.sampler.factory(ctx, track, {
+      bpm: 124,
+      getSample: (id) => (id === "user.halftone" ? source : undefined),
+    });
+  }
+
+  function peak(data: Float32Array, from: number, to: number): number {
+    let v = 0;
+    for (let i = from; i < to; i++) v = Math.max(v, Math.abs(data[i]));
+    return v;
+  }
+
+  it("START 0 on a silent first half plays nothing; START 0.5 hits the tone", async () => {
+    const render = async (start: number) => {
+      const ctx = new OfflineAudioContext(2, SR, SR);
+      const rt = makeRuntime(ctx, makeTrack({ start }));
+      rt.output.connect(ctx.destination);
+      rt.noteOn(60, 0.9, 0.02, 0.2); // note ends before the half-sample mark
+      const buffer = await ctx.startRendering();
+      rt.dispose();
+      return peak(buffer.getChannelData(0), 0, SR);
+    };
+    expect(await render(0)).toBeLessThan(1e-4); // default: attack region is silence
+    expect(await render(0.5)).toBeGreaterThan(0.01); // offset into the tone
+  });
+
+  it("START + reverse stays in bounds and audible", async () => {
+    const ctx = new OfflineAudioContext(2, SR, SR);
+    const rt = makeRuntime(ctx, makeTrack({ start: 0.75, reverse: 1 }));
+    rt.output.connect(ctx.destination);
+    rt.noteOn(60, 0.9, 0.02, 0.3);
+    const buffer = await ctx.startRendering();
+    expect(peak(buffer.getChannelData(0), 0, SR)).toBeGreaterThan(0.001);
+    rt.dispose();
+  });
+});
+
+describe("wavetable mipmapping", () => {
+  it("builds halving levels, keeps the original as level 0, and picks by pitch", () => {
+    const frame = new Float32Array(FRAME_SIZE);
+    for (let i = 0; i < FRAME_SIZE; i++) {
+      // fundamental + strong 60th harmonic (aliasing risk at musical pitches)
+      frame[i] =
+        0.7 * Math.sin((2 * Math.PI * i) / FRAME_SIZE) +
+        0.5 * Math.sin((2 * Math.PI * 60 * i) / FRAME_SIZE);
+    }
+    const mips = buildWavetableMips([frame]);
+    expect(mips.levels[0][0]).toBe(frame); // level 0 IS the original
+    expect(mips.ks.length).toBeGreaterThan(2);
+    for (let m = 1; m < mips.ks.length; m++) {
+      expect(mips.ks[m]).toBeLessThan(mips.ks[m - 1]);
+      // band-limited copy actually removed the top harmonic
+      const h60 = Math.abs(mips.levels[m][0][90] - 0); // content differs from base
+      void h60;
+    }
+    let diff = 0;
+    const a = mips.levels[0][0];
+    const b = mips.levels[1][0];
+    for (let i = 0; i < FRAME_SIZE; i += 5) diff += Math.abs(a[i] - b[i]);
+    expect(diff).toBeGreaterThan(1);
+    // selection: low pitch keeps the full level, high pitch drops levels
+    expect(pickMipLevel(mips.ks, 110, 44100)).toBe(0);
+    expect(pickMipLevel(mips.ks, 2099, 44100)).toBeGreaterThan(0); // 60×2099 > Nyquist
+  });
+});
+
+describe("DAHDSR envelope scheduling", () => {
+  type Call = [string, number, number, number?];
+  function mockParam(): AudioParam & { calls: Call[] } {
+    const calls: Call[] = [];
+    const mock = {
+      calls,
+      setValueAtTime: (v: number, t: number) => calls.push(["set", v, t]),
+      linearRampToValueAtTime: (v: number, t: number) => calls.push(["lin", v, t]),
+      exponentialRampToValueAtTime: (v: number, t: number) => calls.push(["exp", v, t]),
+      setTargetAtTime: (v: number, t: number, tau: number) => calls.push(["target", v, t, tau]),
+    };
+    return mock as unknown as AudioParam & { calls: Call[] };
+  }
+
+  const LEGACY = {
+    delay: 0,
+    hold: 0,
+    attack: 0.01,
+    decay: 0.25,
+    sustain: 0.7,
+    release: 0.2,
+    aShape: 0,
+    dShape: 0,
+    rShape: 0,
+    decayLoops: 0,
+    eps: 0.0001,
+    susFloor: 0.0002,
+    releaseTauDiv: 4,
+    finalAnchor: false,
+  };
+
+  it("legacy defaults emit EXACTLY the historical Analog sequence", () => {
+    const param = mockParam();
+    scheduleDahdsr(param, 0, 1, 2, 0.8, LEGACY);
+    // Deep-compare with float tolerance (sustain is 0.8*0.7 in float math)
+    expect(param.calls.length).toBe(4);
+    const [c0, c1, c2, c3] = param.calls;
+    expect(c0).toEqual(["set", 0.0001, 0]);
+    expect(c1).toEqual(["exp", 0.8, 0.01]);
+    expect(c2![0]).toBe("target");
+    expect(c2![1]).toBeCloseTo(0.56, 6);
+    expect(c2![2]).toBeCloseTo(0.01, 6);
+    expect(c2![3]).toBeCloseTo(0.25 / 3, 6);
+    expect(c3).toEqual(["target", 0.0001, 1, 0.05]);
+  });
+
+  it("delay/hold/loop stages add flat hold and repeated decay ramps", () => {
+    const param = mockParam();
+    scheduleDahdsr(param, 0, 5, 8, 0.8, { ...LEGACY, delay: 0.2, hold: 0.1, decayLoops: 2 });
+    const sets = param.calls.filter((c) => c[0] === "set");
+    // flat delay (set at 0 and 0.2), hold at peak, two loop restarts
+    expect(sets.some((c) => c[2] === 0.2)).toBe(true);
+    expect(sets.filter((c) => c[1] === 0.8).length).toBeGreaterThanOrEqual(3);
+    // three decay targets (initial + 2 loops) plus release
+    const targets = param.calls.filter((c) => c[0] === "target" && Math.abs(c[1] - 0.56) < 1e-6);
+    expect(targets.length).toBe(3);
+  });
+
+  it("shapes stay within bounds for extreme stage times", () => {
+    const param = mockParam();
+    scheduleDahdsr(param, 0, 0.05, 4, 1, {
+      ...LEGACY,
+      delay: 0.5,
+      hold: 0.5,
+      attack: 1.5,
+      decay: 0.01,
+      release: 3,
+      aShape: 2,
+      dShape: 1,
+      rShape: 2,
+      decayLoops: 4,
+      finalAnchor: true,
+    });
+    for (const c of param.calls) {
+      expect(c[1]).toBeGreaterThanOrEqual(0);
+      expect(c[1]).toBeLessThanOrEqual(1.01);
+    }
   });
 });

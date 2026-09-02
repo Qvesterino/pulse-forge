@@ -311,6 +311,12 @@ export function ArrangementPanel() {
     }
   };
 
+  // Interrupted clip drag — abort without moving/resizing.
+  const onClipPointerCancel = () => {
+    dragRef.current = null;
+    setDrag(null);
+  };
+
   const beginAudioDrag = (
     event: React.PointerEvent,
     clipId: string,
@@ -409,6 +415,14 @@ export function ArrangementPanel() {
         execute(updateAudioClip(services.store.doc, cur.clipId, { gain: Math.round(gainPrev.gain * 100) / 100 }));
       void event;
     }
+  };
+
+  // Interrupted audio drag — abort; previews clear with the drag state.
+  const onAudioPointerCancel = () => {
+    audioDragRef.current = null;
+    setAudioDrag(null);
+    setAudioFadePreview(null);
+    setAudioGainPreview(null);
   };
   const bounceZoneToClip = () => {
     if (!selection.timeRange) return;
@@ -805,7 +819,16 @@ export function ArrangementPanel() {
                 selectionStore.setTimeRange(null);
               }
               setTimeDrag(null);
-              (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
+              try {
+                (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
+              } catch {
+                /* pointer already gone (cancelled) */
+              }
+            }}
+            onPointerCancel={() => {
+              // Interrupted drag — drop the in-progress range selection.
+              setTimeDrag(null);
+              selectionStore.setTimeRange(null);
             }}
             onPointerLeave={() => {
               // keep drag active, don't clear
@@ -901,7 +924,13 @@ export function ArrangementPanel() {
               setTimeDrag(null);
               try {
                 (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
-              } catch {}
+              } catch {
+                /* pointer already gone (cancelled) */
+              }
+            }}
+            onPointerCancel={() => {
+              setTimeDrag(null);
+              selectionStore.setTimeRange(null);
             }}
             onDragOver={(event) => event.preventDefault()}
             onDrop={(event) => {
@@ -951,6 +980,7 @@ export function ArrangementPanel() {
                     }
                     onPointerMove={onClipPointerMove}
                     onPointerUp={onClipPointerUp}
+                    onPointerCancel={onClipPointerCancel}
                     onClick={() => setSelectedClipId(clip.id)}
                     onContextMenu={(event) => {
                       event.preventDefault();
@@ -1011,6 +1041,7 @@ export function ArrangementPanel() {
                   }}
                   onPointerMove={onAudioPointerMove}
                   onPointerUp={onAudioPointerUp}
+                  onPointerCancel={onAudioPointerCancel}
                   onClick={() => {
                     setSelectedAudioClipId(clip.id);
                     setSelectedClipId(null);

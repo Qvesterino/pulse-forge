@@ -1,4 +1,4 @@
-import { useSyncExternalStore, useState } from "react";
+import { useSyncExternalStore, useEffect, useRef, useState } from "react";
 import { openProject, type Services } from "../services";
 import { defaultServerUrl, randomRoomId, shareUrl } from "../collab/collabShared";
 import { useDoc, useServices } from "./context";
@@ -15,6 +15,22 @@ export function CollabPanel({ onReplaceServices }: { onReplaceServices: (service
   const [serverUrl, setServerUrl] = useState(defaultServerUrl());
   const [roomDraft, setRoomDraft] = useState("");
   const [copied, setCopied] = useState(false);
+  // A project swap is an async close+reopen pair — two overlapping swaps
+  // (rapid double-click, START then LEAVE mid-flight) would race the two
+  // openProject() calls and orphan the loser's collab session/websocket.
+  // One swap at a time; later clicks wait or are dropped.
+  const [switching, setSwitching] = useState(false);
+  const [switchError, setSwitchError] = useState<string | null>(null);
+  // The ref is the authoritative guard: two synchronous clicks both observe
+  // the pre-update `switching` state, but never pass the ref check.
+  const switchingRef = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   // Reactive session snapshot: any status/participant change re-renders.
   useSyncExternalStore(
@@ -24,19 +40,34 @@ export function CollabPanel({ onReplaceServices }: { onReplaceServices: (service
   );
   const session = services.collab;
 
-  const startOrJoin = async () => {
-    const roomId = (roomDraft.trim() || randomRoomId()).toLowerCase();
-    await services.closeProject();
-    void openProject(services.core, doc, { collab: { roomId, serverUrl: serverUrl.trim() } }).then(onReplaceServices);
+  const swapProject = async (options: Parameters<typeof openProject>[2]) => {
+    if (switchingRef.current) return;
+    switchingRef.current = true;
+    setSwitching(true);
+    setSwitchError(null);
+    try {
+      await services.closeProject();
+      const next = await openProject(services.core, doc, options);
+      if (mounted.current) onReplaceServices(next);
+    } catch (err) {
+      if (mounted.current) setSwitchError(`Project switch failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      switchingRef.current = false;
+      if (mounted.current) setSwitching(false);
+    }
   };
 
-  const leave = async () => {
+  const startOrJoin = () => {
+    const roomId = (roomDraft.trim() || randomRoomId()).toLowerCase();
+    return swapProject({ collab: { roomId, serverUrl: serverUrl.trim() } });
+  };
+
+  const leave = () => {
     // Drop ?collab= from the URL so the next project open does not re-join.
     if (typeof history !== "undefined" && typeof location !== "undefined") {
       history.replaceState(null, "", location.pathname);
     }
-    await services.closeProject();
-    void openProject(services.core, doc).then(onReplaceServices);
+    return swapProject(undefined);
   };
 
   const copyLink = async () => {
@@ -76,9 +107,14 @@ export function CollabPanel({ onReplaceServices }: { onReplaceServices: (service
             spellCheck={false}
           />
         </label>
-        <button type="button" className="btn btn-export" onClick={() => void startOrJoin()}>
-          START / JOIN SESSION
+        <button type="button" className="btn btn-export" disabled={switching} onClick={() => void startOrJoin()}>
+          {switching ? "SWITCHING…" : "START / JOIN SESSION"}
         </button>
+        {switchError && (
+          <p className="collab-hint" role="alert">
+            {switchError}
+          </p>
+        )}
       </div>
     );
   }
@@ -108,9 +144,14 @@ export function CollabPanel({ onReplaceServices }: { onReplaceServices: (service
         ))}
         {session.participants.length === 0 && <span className="collab-hint">waiting for others — share the link…</span>}
       </div>
-      <button type="button" className="btn btn-export" onClick={() => void leave()}>
-        LEAVE SESSION
+      <button type="button" className="btn btn-export" disabled={switching} onClick={() => void leave()}>
+        {switching ? "SWITCHING…" : "LEAVE SESSION"}
       </button>
+      {switchError && (
+        <p className="collab-hint" role="alert">
+          {switchError}
+        </p>
+      )}
     </div>
   );
 }

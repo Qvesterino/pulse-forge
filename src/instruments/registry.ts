@@ -3,7 +3,15 @@ import type { InstrumentKind, InstrumentTrack, SampleLayer } from "../project-mo
 import { midiToFreq } from "../project-model/types";
 import type { ParamDef } from "../effects/types";
 import { hashString, mulberry32 } from "../shared/rng";
-import { extractWavetable, FACTORY_TABLE_OPTIONS, FACTORY_WAVETABLES, FRAME_SIZE } from "./wavetables";
+import {
+  buildWavetableMips,
+  extractWavetable,
+  FACTORY_TABLE_OPTIONS,
+  FACTORY_WAVETABLES,
+  FRAME_SIZE,
+  pickMipLevel,
+} from "./wavetables";
+import { ENV_SHAPE_OPTIONS, scheduleDahdsr } from "./envelope";
 import { isWorkletReady } from "../audio-worklets/loader";
 import { pitchShiftPreserveDuration } from "../audio-engine/time-stretch";
 
@@ -269,6 +277,19 @@ const analog: InstrumentDefinition = {
     { id: "attack", label: "ATTACK", min: 0.001, max: 2, default: 0.01, unit: "s", format: formatMs },
     { id: "decay", label: "DECAY", min: 0.02, max: 3, default: 0.25, unit: "s", format: formatMs },
     { id: "sustain", label: "SUSTAIN", min: 0, max: 1, default: 0.7, format: formatPct },
+    { id: "envDelay", label: "ENV DELAY", min: 0, max: 2, default: 0, unit: "s", format: formatSec },
+    { id: "envHold", label: "ENV HOLD", min: 0, max: 2, default: 0, unit: "s", format: formatSec },
+    { id: "aShape", label: "A SHAPE", min: 0, max: 2, default: 0, options: ENV_SHAPE_OPTIONS },
+    { id: "dShape", label: "D SHAPE", min: 0, max: 2, default: 0, options: ENV_SHAPE_OPTIONS },
+    { id: "rShape", label: "R SHAPE", min: 0, max: 2, default: 0, options: ENV_SHAPE_OPTIONS },
+    {
+      id: "dLoop",
+      label: "D LOOP",
+      min: 0,
+      max: 8,
+      default: 0,
+      format: (v) => (v < 0.5 ? "OFF" : `${Math.round(v)}×`),
+    },
     { id: "release", label: "RELEASE", min: 0.01, max: 4, default: 0.2, unit: "s", format: formatMs },
     { id: "level", label: "LEVEL", min: -24, max: 6, default: -6, unit: "dB", format: formatDb },
   ],
@@ -305,10 +326,25 @@ const analog: InstrumentDefinition = {
 
         const amp = ctx.createGain();
         const peak = velocity * dbToLin(p.level ?? -6);
-        amp.gain.setValueAtTime(0.0001, when);
-        amp.gain.exponentialRampToValueAtTime(Math.max(peak, 0.0002), when + attack);
-        amp.gain.setTargetAtTime(Math.max(peak * sustain, 0.0002), when + attack, decay / 3);
-        amp.gain.setTargetAtTime(0.0001, off, release / 4);
+        // DAHDSR with stage shapes + decay loop. Legacy defaults (delay 0,
+        // hold 0, shapes Exp, no loop) emit EXACTLY the historical sequence
+        // below — eps 0.0001, sustain floor 0.0002, release tau = release/4.
+        scheduleDahdsr(amp.gain, when, off, stopTime, peak, {
+          delay: p.envDelay ?? 0,
+          hold: p.envHold ?? 0,
+          attack,
+          decay,
+          sustain,
+          release,
+          aShape: Math.round(p.aShape ?? 0),
+          dShape: Math.round(p.dShape ?? 0),
+          rShape: Math.round(p.rShape ?? 0),
+          decayLoops: Math.round(p.dLoop ?? 0),
+          eps: 0.0001,
+          susFloor: 0.0002,
+          releaseTauDiv: 4,
+          finalAnchor: false,
+        });
         amp.connect(output);
 
         const filterMode = Math.max(0, Math.min(2, Math.round(p.mode ?? 0)));
@@ -1007,6 +1043,7 @@ const sampler: InstrumentDefinition = {
   name: "Sampler",
   params: [
     { id: "root", label: "ROOT", min: 24, max: 84, default: 60, format: (v) => `${Math.round(v)}` },
+    { id: "start", label: "START", min: 0, max: 1, default: 0, format: formatPct },
     { id: "attack", label: "ATTACK", min: 0.001, max: 1, default: 0.003, unit: "s", format: formatMs },
     { id: "release", label: "RELEASE", min: 0.01, max: 2, default: 0.12, unit: "s", format: formatMs },
     { id: "cutoff", label: "CUTOFF", min: 500, max: 16000, default: 15000, unit: "Hz", format: formatHz },
@@ -1170,7 +1207,11 @@ const sampler: InstrumentDefinition = {
         if (velocityLayers.length > 0) {
           const cands: string[] = [];
           for (const layer of velocityLayers) {
-            if (velocity >= layer.min && velocity < layer.max && env.getSample(layer.sampleId)) {
+            // Velocity window + optional keyzone (pitch window)
+            const pitchOk =
+              layer.minPitch === undefined ||
+              (pitch >= layer.minPitch && pitch <= (layer.maxPitch ?? 127));
+            if (pitchOk && velocity >= layer.min && velocity < layer.max && env.getSample(layer.sampleId)) {
               cands.push(layer.sampleId as string);
             }
           }
@@ -1268,7 +1309,14 @@ const sampler: InstrumentDefinition = {
           filter.output.disconnect();
           filter.output.connect(pan).connect(amp);
         }
-        src.start(when);
+        // START: offset into the chosen buffer (fraction of length) — access
+        // attack transients or gate loops from anywhere in the sample. In
+        // reverse mode the fraction maps from the start of the original take.
+        const startPos = Math.max(0, Math.min(1, p.start ?? 0));
+        const bufDuration = (src.buffer as AudioBuffer).duration;
+        let startOffset = startPos * bufDuration;
+        if ((p.reverse ?? 0) > 0.5 && !((p.stretch ?? 0) > 0.5)) startOffset = (1 - startPos) * bufDuration;
+        src.start(when, Math.max(0, startOffset - 0.002));
         src.stop(stopTime);
 
         const voice = register(
@@ -1726,7 +1774,11 @@ const wavetable: InstrumentDefinition = {
     // −wobble into frame B's gain, so the crossfade breathes around the
     // captured MORPH base while a+b stays constant (no amplitude pumping).
     const livePairs = new Set<{ a: GainNode; b: GainNode; ia: number; ib: number; level: number }>();
-    let frameBuffers: AudioBuffer[] | null = null;
+    // Mipmapped playback: frameLevels[level][frame] — level 0 is the exact
+    // original table, deeper levels keep ~half the harmonics for higher
+    // pitches (pickMipLevel) so table harmonics never fold above Nyquist.
+    let frameLevels: AudioBuffer[][] | null = null;
+    let frameKs: number[] | null = null;
     let tableDirty = true;
 
     const resolveTable = () => {
@@ -1740,30 +1792,42 @@ const wavetable: InstrumentDefinition = {
       const count = FACTORY_WAVETABLES.length;
       return FACTORY_WAVETABLES[((Math.round(p.table ?? 0) % count) + count) % count];
     };
-    const ensureFrames = (): AudioBuffer[] | null => {
-      if (tableDirty || !frameBuffers) {
+    const ensureFrames = (): AudioBuffer[][] | null => {
+      if (tableDirty || !frameLevels) {
         const table = resolveTable();
-        frameBuffers = table.frames.map((f) => {
-          const b = ctx.createBuffer(1, f.length, ctx.sampleRate);
-          b.getChannelData(0).set(f);
+        const mips = buildWavetableMips(table.frames);
+        const bufferCache = new Map<Float32Array, AudioBuffer>();
+        const toBuffer = (f: Float32Array) => {
+          let b = bufferCache.get(f);
+          if (!b) {
+            b = ctx.createBuffer(1, f.length, ctx.sampleRate);
+            b.getChannelData(0).set(f);
+            bufferCache.set(f, b);
+          }
           return b;
-        });
+        };
+        frameLevels = mips.levels.map((level) => level.map(toBuffer));
+        frameKs = mips.ks;
         // A user sample that is assigned but not yet in the bank (async
         // restore after a reload) must not cache the factory fallback
         // forever — keep the table dirty so the next noteOn retries with
         // the real sample as soon as it finishes decoding.
         tableDirty = sampleId != null && !env.getSample(sampleId);
       }
-      return frameBuffers;
+      return frameLevels;
     };
     ensureFrames();
 
     const runtime: InstrumentRuntime = {
       output,
       noteOn(pitch, velocity, when, durationSec) {
-        const frames = ensureFrames();
-        if (!frames) return;
         const freq = midiToFreq(pitch);
+        const allLevels = ensureFrames();
+        if (!allLevels || !frameKs) return;
+        // Mipmapped playback: the most-harmonic level that stays under
+        // Nyquist at this pitch. Level 0 = untouched original, so pitches
+        // inside the table's clean range render bit-identically.
+        const frames = allLevels[pickMipLevel(frameKs, freq, ctx.sampleRate)];
         const attack = Math.max(0.001, p.attack ?? 0.01);
         const release = Math.max(0.01, p.release ?? 0.25);
         const hold = Math.max(durationSec, attack + 0.01);
@@ -2078,7 +2142,7 @@ const wavetable: InstrumentDefinition = {
         if (id === "morph") {
           // Voices whose captured frame pair still contains the new morph
           // position retune their crossfade; pairs further away keep theirs.
-          const frames = frameBuffers;
+          const frames = frameLevels?.[0];
           if (frames && frames.length > 1) {
             const pos = Math.min(1, Math.max(0, value)) * (frames.length - 1);
             const ia = Math.min(frames.length - 2, Math.floor(pos));

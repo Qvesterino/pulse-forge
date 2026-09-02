@@ -728,6 +728,12 @@ function PointEditor({
     setLivePos(null);
   };
 
+  // Interrupted drag — abort; the point snaps back to its stored value.
+  const onCanvasPointerCancel = () => {
+    dragRef.current = null;
+    setLivePos(null);
+  };
+
   const renderPoints = livePos
     ? points.map((p, i) => (i === livePos.index ? { tick: livePos.tick, value: livePos.value } : p))
     : points;
@@ -739,6 +745,7 @@ function PointEditor({
       onPointerDown={onCanvasPointerDown}
       onPointerMove={onCanvasPointerMove}
       onPointerUp={onCanvasPointerUp}
+      onPointerCancel={onCanvasPointerCancel}
       onContextMenu={(event) => {
         event.preventDefault();
         const index = findPoint(event);
@@ -1198,6 +1205,12 @@ function IntensityEditor({
     setLivePos(null);
   };
 
+  // Interrupted drag — abort; the point snaps back to its stored value.
+  const onPointerCancel = () => {
+    dragRef.current = null;
+    setLivePos(null);
+  };
+
   const renderPoints = livePos
     ? curve.map((p, i) => (i === livePos.index ? { offset: livePos.offset, value: livePos.value } : p))
     : curve;
@@ -1210,6 +1223,7 @@ function IntensityEditor({
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
+        onPointerCancel={onPointerCancel}
         onContextMenu={(event) => {
           event.preventDefault();
           const index = findPoint(event);
@@ -1403,6 +1417,12 @@ function ScenePointEditor({
     setLivePos(null);
   };
 
+  // Interrupted drag — abort; the point snaps back to its stored value.
+  const onPointerCancel = () => {
+    dragRef.current = null;
+    setLivePos(null);
+  };
+
   const renderPoints = livePos
     ? points.map((p, i) => (i === livePos.index ? { tick: livePos.tick, value: livePos.value } : p))
     : points;
@@ -1414,6 +1434,7 @@ function ScenePointEditor({
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
       onContextMenu={(event) => {
         event.preventDefault();
         const index = findPoint(event);

@@ -163,6 +163,9 @@ export interface SampleLayer {
   min: number;
   /** Exclusive upper velocity bound (0..1]. */
   max: number;
+  /** Inclusive MIDI note bounds — keyzones (optional, full range when absent). */
+  minPitch?: number;
+  maxPitch?: number;
 }
 
 export interface InstrumentTrack {

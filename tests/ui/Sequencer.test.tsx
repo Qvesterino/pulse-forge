@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { Sequencer } from "../../src/ui/Sequencer";
 import { renderWithContext } from "../helpers";
 
@@ -44,5 +44,45 @@ describe("Sequencer", () => {
   it("has step sequencer aria label", () => {
     renderWithContext(<Sequencer {...defaultProps} />);
     expect(screen.getByRole("region", { name: /Step Sequencer/ })).toBeInTheDocument();
+  });
+});
+
+describe("step amount drag (window-level listeners)", () => {
+  const domRect = (left: number, width: number) =>
+    ({
+      left,
+      top: 0,
+      width,
+      height: 8,
+      right: left + width,
+      bottom: 8,
+      x: left,
+      y: 0,
+      toJSON: () => ({}),
+    }) as DOMRect;
+
+  /** Start an amount drag: 10px on a 100px track = 0.1, dragged to 80px = 0.8 (default 1 → changes). */
+  function beginAmountDrag() {
+    const utils = renderWithContext(<Sequencer {...defaultProps} />);
+    const track = document.querySelector(".step-amount-track") as HTMLElement;
+    vi.spyOn(track, "getBoundingClientRect").mockReturnValue(domRect(0, 100));
+    fireEvent.pointerDown(track, { button: 0, clientX: 10, pointerId: 1 });
+    fireEvent.pointerMove(window, { clientX: 80, pointerId: 1 });
+    return utils;
+  }
+
+  it("commits the dragged amount on pointerup", () => {
+    const { services } = beginAmountDrag();
+    fireEvent.pointerUp(window, { clientX: 80, pointerId: 1 });
+    expect(services.store.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it("aborts on pointercancel without committing, even on a stale pointerup", () => {
+    const { services } = beginAmountDrag();
+    fireEvent.pointerCancel(window, { pointerId: 1 });
+    expect(services.store.execute).not.toHaveBeenCalled();
+    // Listeners must be gone: a later pointerup anywhere commits nothing.
+    fireEvent.pointerUp(window, { clientX: 80, pointerId: 1 });
+    expect(services.store.execute).not.toHaveBeenCalled();
   });
 });

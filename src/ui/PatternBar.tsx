@@ -126,6 +126,12 @@ export function PatternBar({
     }
   };
 
+  // Interrupted reorder drag — abort without reordering.
+  const handlePointerCancel = () => {
+    dragRef.current = null;
+    setDrag(null);
+  };
+
   const dragToIndex = drag ? getDropIndex(drag.currentX) : -1;
 
   return (
@@ -166,6 +172,7 @@ export function PatternBar({
               onPointerDown={(e) => handlePointerDown(e, pattern.id, index)}
               onPointerMove={handlePointerMove}
               onPointerUp={handlePointerUp}
+              onPointerCancel={handlePointerCancel}
               onKeyDown={(event) => {
                 if (event.key === "F2") {
                   event.preventDefault();

@@ -244,3 +244,64 @@ describe.skipIf(typeof OfflineAudioContext === "undefined")("round-robin bank ge
     }
   });
 });
+
+describe.skipIf(typeof OfflineAudioContext === "undefined")("Sampler keyzone runtime", () => {
+  const SR = 44100;
+
+  function zcc(data: Float32Array, from: number, to: number): number {
+    let c = 0;
+    for (let i = from + 1; i < to; i++) {
+      if ((data[i - 1] < 0) !== (data[i] < 0)) c++;
+    }
+    return c;
+  }
+
+  it("routes notes to their pitch zone (keyzones over full velocity)", async () => {
+    const { keyzoneLayers } = await import("../src/sample-library/velocity-layers");
+    const layers = keyzoneLayers([
+      { sampleId: "sample.low", minPitch: 0, maxPitch: 59 },
+      { sampleId: "sample.high", minPitch: 60, maxPitch: 127 },
+    ]);
+    const render = async (pitch: number) => {
+      const ctx = new OfflineAudioContext(2, SR, SR);
+      const bank = new Map<string, AudioBuffer>();
+      for (const [id, freq] of [
+        ["sample.low", 220],
+        ["sample.high", 880],
+      ] as const) {
+        const buf = ctx.createBuffer(1, SR, SR);
+        const data = buf.getChannelData(0);
+        for (let i = 0; i < data.length; i++) data[i] = 0.6 * Math.sin((2 * Math.PI * freq * i) / SR);
+        bank.set(id, buf);
+      }
+      const track: InstrumentTrack = {
+        id: "kz-test",
+        kind: "instrument",
+        instrument: "sampler",
+        name: "Sampler",
+        gain: 1,
+        pan: 0,
+        mute: false,
+        solo: false,
+        sampleId: "sample.low",
+        velocityLayers: layers,
+        params: defaultInstrumentParams("sampler"),
+        effects: [],
+        sends: {},
+      };
+      const rt = INSTRUMENT_DEFS.sampler.factory(ctx, track, {
+        bpm: 124,
+        getSample: (id) => bank.get(id ?? ""),
+      });
+      rt.output.connect(ctx.destination);
+      rt.noteOn(pitch, 0.8, 0.05, 0.4);
+      const buffer = await ctx.startRendering();
+      rt.dispose();
+      return zcc(buffer.getChannelData(0), 0, SR);
+    };
+    const lowNote = await render(36); // zone 1 -> 220 Hz
+    const highNote = await render(84); // zone 2 -> 880 Hz
+    expect(lowNote).toBeGreaterThan(100);
+    expect(highNote).toBeGreaterThan(lowNote * 3);
+  });
+});

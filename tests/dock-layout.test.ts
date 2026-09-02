@@ -1,5 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { clampDockHeight, loadDockLayout, openInSlotA, toggleSlot, type DockState } from "../src/ui/dockLayout";
+import {
+  clampDockHeight,
+  defaultDockHeight,
+  loadDockLayout,
+  openInSlotA,
+  toggleSlot,
+  type DockState,
+} from "../src/ui/dockLayout";
+
+describe("defaultDockHeight", () => {
+  it("caps at 300 on big screens and scales down on short viewports", () => {
+    expect(defaultDockHeight(2000)).toBe(300);
+    expect(defaultDockHeight(800)).toBe(256); // 0.32 * 800
+    expect(defaultDockHeight(300)).toBe(160); // min height floor
+  });
+});
 
 const state = (overrides: Partial<DockState> = {}): DockState => ({
   height: 300,
@@ -64,7 +79,12 @@ describe("loadDockLayout", () => {
 
   it("falls back on corrupt JSON", () => {
     const dock = loadDockLayout("{oops", 800);
-    expect(dock).toEqual({ height: 300, slotA: "mixer", slotB: null });
+    expect(dock).toEqual({ height: defaultDockHeight(800), slotA: "mixer", slotB: null });
+  });
+
+  it("missing height field falls back to the viewport default", () => {
+    const dock = loadDockLayout(JSON.stringify({ slotA: "mixer" }), 800);
+    expect(dock.height).toBe(defaultDockHeight(800));
   });
 
   it("accepts null slots (closed dock)", () => {

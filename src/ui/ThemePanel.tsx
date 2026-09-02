@@ -1,4 +1,6 @@
 import { THEME_PRESETS, accentOf, resetTheme, setTheme, useTheme } from "./theme";
+import { decodeThemeCode, encodeThemeCode } from "../export/themeCode";
+import { useState } from "react";
 
 /**
  * Theme panel — preset palettes, custom accent hue, UI scale, density and
@@ -6,6 +8,7 @@ import { THEME_PRESETS, accentOf, resetTheme, setTheme, useTheme } from "./theme
  */
 export function ThemePanel() {
   const theme = useTheme();
+  const [shareStatus, setShareStatus] = useState<string | null>(null);
 
   return (
     <div className="theme-panel" role="group" aria-label="Theme settings">
@@ -84,6 +87,45 @@ export function ThemePanel() {
         <button type="button" className="theme-mini-btn" title="Reset all theme preferences" onClick={resetTheme}>
           RESET
         </button>
+      </div>
+
+      <div className="theme-share">
+        <div className="theme-row">
+          <button
+            type="button"
+            className="theme-mini-btn"
+            title="Copy a PFTHM1 code with your current look"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(encodeThemeCode(theme));
+                setShareStatus("Theme code copied — paste it into any Pulse Forge");
+              } catch {
+                setShareStatus("Clipboard blocked by the browser");
+              }
+            }}
+          >
+            COPY THEME CODE
+          </button>
+          <button
+            type="button"
+            className="theme-mini-btn"
+            title="Install a look from a PFTHM1 code"
+            onClick={() => {
+              const code = window.prompt("Paste a theme code (PFTHM1:…)");
+              if (!code) return;
+              const decoded = decodeThemeCode(code);
+              if (!decoded) {
+                setShareStatus("Invalid theme code");
+                return;
+              }
+              setTheme(decoded);
+              setShareStatus("Theme installed");
+            }}
+          >
+            INSTALL FROM CODE…
+          </button>
+        </div>
+        {shareStatus && <div className="theme-share-status">{shareStatus}</div>}
       </div>
     </div>
   );

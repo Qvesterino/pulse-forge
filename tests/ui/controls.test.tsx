@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Slider, DragNumber } from "../../src/ui/controls";
 
@@ -113,5 +113,62 @@ describe("DragNumber", () => {
       />,
     );
     expect(screen.getByText("120 BPM")).toBeInTheDocument();
+  });
+});
+
+describe("interrupted drags (pointercancel)", () => {
+  const domRect = (left: number, width: number, height = 10) =>
+    ({
+      left,
+      top: 0,
+      width,
+      height,
+      right: left + width,
+      bottom: height,
+      x: left,
+      y: 0,
+      toJSON: () => ({}),
+    }) as DOMRect;
+
+  it("Slider aborts without committing and reverts the display", () => {
+    const onCommit = vi.fn();
+    render(<Slider label="X" value={0.5} min={0} max={1} defaultValue={0.5} onCommit={onCommit} />);
+    const slider = screen.getByRole("slider");
+    vi.spyOn(slider, "getBoundingClientRect").mockReturnValue(domRect(0, 100));
+    fireEvent.pointerDown(slider, { button: 0, clientX: 50, pointerId: 1 });
+    fireEvent.pointerMove(slider, { clientX: 90, pointerId: 1 });
+    expect(screen.getByText("0.90")).toBeInTheDocument(); // drag preview followed the pointer
+    fireEvent.pointerCancel(slider, { pointerId: 1 });
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(screen.getByText("0.50")).toBeInTheDocument(); // display reverted
+    // A stale pointerup after the cancel must not commit the aborted drag.
+    fireEvent.pointerUp(slider, { pointerId: 1 });
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it("Slider still commits a completed drag after a previous cancel", () => {
+    const onCommit = vi.fn();
+    render(<Slider label="X" value={0.5} min={0} max={1} defaultValue={0.5} onCommit={onCommit} />);
+    const slider = screen.getByRole("slider");
+    vi.spyOn(slider, "getBoundingClientRect").mockReturnValue(domRect(0, 100));
+    fireEvent.pointerDown(slider, { button: 0, clientX: 50, pointerId: 1 });
+    fireEvent.pointerCancel(slider, { pointerId: 1 });
+    fireEvent.pointerDown(slider, { button: 0, clientX: 50, pointerId: 2 });
+    fireEvent.pointerUp(slider, { pointerId: 2 });
+    expect(onCommit).toHaveBeenCalledWith(0.5);
+  });
+
+  it("DragNumber aborts without committing and reverts the display", () => {
+    const onCommit = vi.fn();
+    render(<DragNumber value={120} min={20} max={300} defaultValue={120} label="BPM" onCommit={onCommit} />);
+    const el = screen.getByRole("spinbutton");
+    fireEvent.pointerDown(el, { button: 0, clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(el, { clientY: 50, pointerId: 1 }); // 50px up × 0.4 → +20
+    expect(screen.getByText("140.0")).toBeInTheDocument();
+    fireEvent.pointerCancel(el, { pointerId: 1 });
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(screen.getByText("120.0")).toBeInTheDocument();
+    fireEvent.pointerUp(el, { pointerId: 1 });
+    expect(onCommit).not.toHaveBeenCalled();
   });
 });

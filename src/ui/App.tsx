@@ -99,9 +99,17 @@ export function App({
     const onUp = () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+    };
+    // Interrupted resize (touch takeover, …) — stop following the pointer.
+    const onCancel = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
   };
 
   const [clip, setClip] = useState<PatternClipboard | null>(null);
@@ -791,15 +799,23 @@ export function App({
       holdTimerRef.current = null;
       holdStartRef.current = null;
     };
+    // A cancelled pointer must not fire the hold timer afterwards.
+    const onPointerCancel = () => {
+      if (holdTimerRef.current) window.clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+      holdStartRef.current = null;
+    };
     const onContextMenu = (e: MouseEvent) => e.preventDefault();
     window.addEventListener("pointerdown", onPointerDown);
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerCancel);
     window.addEventListener("contextmenu", onContextMenu);
     return () => {
       window.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerCancel);
       window.removeEventListener("contextmenu", onContextMenu);
       if (holdTimerRef.current) window.clearTimeout(holdTimerRef.current);
     };

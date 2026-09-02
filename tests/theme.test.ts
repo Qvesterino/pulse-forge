@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { decodeThemeCode, encodeThemeCode } from "../src/export/themeCode";
+import type { ThemeState } from "../src/ui/theme";
 import {
   accentOf,
   getThemeSnapshot,
@@ -74,5 +76,45 @@ describe("theme", () => {
     for (const preset of THEME_PRESETS) {
       expect(preset.accent).toMatch(/^#[0-9a-f]{6}$/i);
     }
+  });
+});
+
+describe("theme share codes", () => {
+  it("round-trips a full theme through encode/decode", () => {
+    const state: ThemeState = {
+      preset: "matrix",
+      hue: 210,
+      scale: 1.15,
+      compact: true,
+      reduceMotion: true,
+    };
+    const code = encodeThemeCode(state);
+    expect(code.startsWith("PFTHM1:")).toBe(true);
+    expect(decodeThemeCode(code)).toEqual(state);
+  });
+
+  it("falls back to the default preset for unknown ids and clamps values", () => {
+    const decoded = decodeThemeCode(
+      encodeThemeCode({ preset: "nope", hue: 999, scale: 5, compact: false, reduceMotion: false }),
+    );
+    expect(decoded!.preset).toBe("forge");
+    expect(decoded!.hue).toBe(359);
+    expect(decoded!.scale).toBe(1.3);
+  });
+
+  it("rejects garbage and non-PFTHM strings", () => {
+    expect(decodeThemeCode("hello")).toBeNull();
+    expect(decodeThemeCode("PFTHM1:" + btoa("garbage"))).toBeNull();
+    expect(decodeThemeCode("")).toBeNull();
+  });
+
+  it("a decoded theme applies to the document", () => {
+    const decoded = decodeThemeCode(
+      encodeThemeCode({ preset: "violet", hue: null, scale: 1, compact: false, reduceMotion: false }),
+    )!;
+    setTheme(decoded);
+    expect(document.documentElement.style.getPropertyValue("--accent")).toBe(
+      THEME_PRESETS.find((p) => p.id === "violet")!.accent,
+    );
   });
 });

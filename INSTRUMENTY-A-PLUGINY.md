@@ -34,13 +34,15 @@ Prehrávanie sample z banky s transpozíciou okolo root noty.
 | Parametre | Rozsah / možnosti |
 | --- | --- |
 | ROOT | nota 24–84 (default C4) |
+| **START** | štartovací offset v sample (0–100 %) — prístup k útokovým transientom, gating loopov z ľubovoľného miesta; v reverse móde sa mapuje od začiatku pôvodnej takeny |
 | ATTACK, RELEASE | ms obálky |
 | CUTOFF, RESO | per-voice LP filter |
 | **FILTER** | režim filtra **LP / BP / HP** (živá zmena; BP na chopoch znie formantovo) |
 | **KEY TRK** | keytracking — cutoff sleduje výšku noty (default 0 = neutrálne) |
 | **V-FLT** | velocity→filter — tichšie noty stmavujú cutoff až o dve oktávy (pri 100 %); klávesová vyjadrovosť |
 | GAIN | 0–100 % |
-| **Velocity layers / round-robin** | `velocityLayers` na stope (`SampleLayer[]`): disjunktné okná = velocity vrstvy (napr. factory kick kit soft→punch→deep→sub), **prekrývajúce sa okná sa striedajú round-robin**. Nastaviteľné cez `setVelocityLayersCommand`; žiadna zhoda = fallback na `sampleId`. Hotové beat kitmy v `FACTORY_BEAT_RR_KITS` (kick/snare/hat) — sample library obsahuje RR variácie (`.rr2`, `.rr3`: ±~1,5 % výška/dĺžka, ±4 % úroveň), takže beaty neprehrávajú bitovo rovnaký hit dvakrát |
+| **Velocity layers / round-robin** | `velocityLayers` na stope (`SampleLayer[]`): disjunktné okná = velocity vrstvy (napr. factory kick kit soft→punch→deep→sub), **prekrývajúce sa okná sa striedajú round-robin**. Nastaviteľné cez `setVelocityLayersCommand`; žiadna zhoda = fallback na `sampleId`. Hotové beat kitmy v `FACTORY_BEAT_RR_KITS` (kick/snare/hat) — sample library obsahuje RR variácie (`.rr2`, `.rr3`: ±~1,5 % výška/dĺžka, ±4 % úroveň), takže beaty neprehrávajú bitovo rovnaký hit dvakrát
+| **Keyzones** | voliteľné `minPitch`/`maxPitch` vo vrstvách — sample podľa výšky noty (Kontakt-lite); helper `keyzoneLayers` + `FACTORY_TONAL_KEYZONES` |
 | STRETCH | **Pitch** (rýchlejšie = vyššie) alebo **Stretch** (time-stretch — výška sa mení bez zmeny dĺžky, interný PSOLA-like algoritmus + cache; **stereo** — každý kanál beží na rovnakej deterministickej grain mrie, takže L/R ostáva fázovo zarovnané) |
 | LOOP | One-shot / Loop s prerenderovaným seamless bufferom (Hann crossfade na šve, snap na nulovú osu) |
 | L-XFADE | dĺžka loop crossfade |
@@ -56,7 +58,8 @@ Klasické subtraction synth voicovanie: **OSC A + OSC B (detune) + sub osc −12
 - **FLT ENV** (velocity-citlivý filter sweep)
 - **UNISON 1–8×** so SPREAD — detuned kópie OSC A roztvorené do sterea
 - LFO RATE/DEPTH — audio-rate wobble na cutoff + **LFO SYNC** — uzamknutie rýchlosti na notovú divíziu (1/2, 1/4, 1/8D, 1/8, 1/8T, 1/16) podľa tempa projektu
-- Plná ADSR obálka (attack/decay/sustain/release), LEVEL
+- **DAHDSR obálka** — ENV DELAY + ENV HOLD stage, tvary A/D/R (Exp/Lin/Log) a **D LOOP** (decay sa zopakuje — pulzujúce pady/perkusné obálky). Legacy defaulty = bitovo historické správanie
+- LEVEL
 
 ### 1.3 Bass Synth (`bass`) — 4 hlasy
 Bass-first voicovanie: **saw + detuned square (telo, šíriteľné do sterea) + sine sub −12**.
@@ -97,6 +100,7 @@ Morphing wavetable: každý hlas prehráva dve framy tabuľky crossfaded podľa 
 - **Import z sample** — keď je stope priradený sample, tabuľka sa extrahuje autokoreláciou (detekcia periódy)
 - MORPH (pozícia v tabuľke), DETUNE páru, SUB
 - **M RATE / M DEPTH — per-note crossfade LFO**: morph pozícia „dýcha" okolo MORPH bázy (LFO tlačí +wobble na frame A a −wobble na frame B — súčet gains konštantný, žiadna amplitude pumpa; hĺbka sa clampne na priestor dvojice fám, takže gainty nikdy nepodtečú pod nulu). Default OFF — existujúce projekty znejú nezmenene
+- **Mipmapped playback** — každá tabuľka má band-limited úrovne (FFT, ~polovica harmonických na oktávu); hlas si vyberie úroveň podľa výšky noty, takže harmonické nad Nyquistom neskĺznu ako grit. Level 0 = pôvodná tabuľka (nízke pitchy bitovo identické)
 - **S RATE — scan engine, skutočné prechádzanie tabuľkou**: pozícia sa počas noty posúva celou tabuľkou dopredu s wrapom. Nota sa delí na segmenty po pároch fám, blend v segmente rampuje lineárne a hranice sa striedajú pod ~6 ms equal-power crossfade (žiadne klicky). Segmenty sú capované (14) — po cap sa hlas „zamrzne" na poslednom páre. Pri zapnutom SCAN berie S RATE veli M RATE/M DEPTH
 - **FILTER MODE: LP / BP / HP** a **KEY TRK** — rovnaké ako na Analgu (default neutrálne)
 - UNISON 1–8× + SPREAD, CUTOFF/RESO, ATTACK/RELEASE, LEVEL
