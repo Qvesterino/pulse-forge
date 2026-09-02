@@ -87,6 +87,8 @@ class GalleryStore {
     this.filePath = filePath;
     /** @type {Array<Record<string, unknown>>} newest last */
     this.items = [];
+    /** Debounced save handle — play counters tick often, disk writes should not. */
+    this.saveTimer = null;
     try {
       if (existsSync(filePath)) {
         const parsed = JSON.parse(readFileSync(filePath, "utf-8"));
@@ -98,8 +100,21 @@ class GalleryStore {
   }
 
   list() {
-    // Newest first for the feed.
-    return [...this.items].reverse();
+    // Newest first for the feed, annotated with remix counts (children per
+    // parent) so cards can show "3 remixes" without a second request.
+    const remixCounts = new Map();
+    for (const item of this.items) {
+      if (typeof item.parentId === "string") {
+        remixCounts.set(item.parentId, (remixCounts.get(item.parentId) ?? 0) + 1);
+      }
+    }
+    return [...this.items]
+      .reverse()
+      .map((item) => ({ ...item, remixCount: remixCounts.get(item.id) ?? 0 }));
+  }
+
+  find(id) {
+    return this.items.find((item) => item.id === id) ?? null;
   }
 
   add(input) {
@@ -110,6 +125,13 @@ class GalleryStore {
     if (code.length > GALLERY_MAX_CODE_CHARS) return { error: "code too large" };
     const meta = decodeShareCodeMeta(code);
     if (!meta) return { error: "code is not a valid share token" };
+    let parentId = null;
+    if (input?.parentId !== undefined && input?.parentId !== null) {
+      if (typeof input.parentId !== "string" || !this.find(input.parentId)) {
+        return { error: "unknown parentId" };
+      }
+      parentId = input.parentId;
+    }
     const author = cleanText(input?.author, AUTHOR_MAX) || "anonymous";
     const item = {
       id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`,
@@ -119,6 +141,8 @@ class GalleryStore {
       code,
       bpm: meta.bpm,
       projectName: meta.projectName,
+      parentId,
+      plays: 0,
       createdAt: new Date().toISOString(),
     };
     this.items.push(item);
@@ -127,7 +151,29 @@ class GalleryStore {
     return { item };
   }
 
+  /** Count one playback. Returns the new total, or null for unknown ids. */
+  registerPlay(id) {
+    const item = this.find(id);
+    if (!item) return null;
+    item.plays = (typeof item.plays === "number" ? item.plays : 0) + 1;
+    this.scheduleSave();
+    return item.plays;
+  }
+
+  /** Play counters tick often — coalesce disk writes. */
+  scheduleSave() {
+    if (this.saveTimer) return;
+    this.saveTimer = setTimeout(() => {
+      this.saveTimer = null;
+      this.save();
+    }, 3000);
+  }
+
   save() {
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer);
+      this.saveTimer = null;
+    }
     try {
       mkdirSync(dirname(this.filePath), { recursive: true });
       writeFileSync(this.filePath, JSON.stringify({ items: this.items }, null, 2));
@@ -138,12 +184,12 @@ class GalleryStore {
 }
 
 /** Naive per-IP sliding-window limiter. Returns true when the request passes. */
-function makeRateLimiter() {
+function makeRateLimiter(limit = POST_WINDOW_LIMIT) {
   const hits = new Map(); // ip → timestamps[]
   return function allow(ip) {
     const now = Date.now();
     const recent = (hits.get(ip) ?? []).filter((t) => now - t < POST_WINDOW_MS);
-    if (recent.length >= POST_WINDOW_LIMIT) {
+    if (recent.length >= limit) {
       hits.set(ip, recent);
       return false;
     }
@@ -217,6 +263,8 @@ export function createCollabServer({ galleryFile = process.env.GALLERY_FILE ?? D
   const { getRoom, rooms } = createRoomRegistry();
   const gallery = new GalleryStore(galleryFile);
   const allowPost = makeRateLimiter();
+  // Play counters are much hotter than uploads — their own, looser window.
+  const allowPlay = makeRateLimiter(60);
 
   const server = createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://x");
@@ -269,6 +317,22 @@ export function createCollabServer({ galleryFile = process.env.GALLERY_FILE ?? D
           sendJson(res, 400, { error: `invalid JSON body: ${String(error)}` });
         }
       });
+      return;
+    }
+
+    if (req.method === "POST" && /^\/api\/gallery\/[\w-]+\/play$/.test(url.pathname)) {
+      const id = url.pathname.split("/")[3];
+      const ip = req.socket.remoteAddress ?? "unknown";
+      if (!allowPlay(ip)) {
+        sendJson(res, 429, { error: "slow down — too many play pings" });
+        return;
+      }
+      const plays = gallery.registerPlay(id);
+      if (plays === null) {
+        sendJson(res, 404, { error: "unknown beat" });
+        return;
+      }
+      sendJson(res, 200, { plays });
       return;
     }
 

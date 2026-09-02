@@ -3,11 +3,19 @@ import { EmbedApp } from "../embed/EmbedApp";
 import { shareAppUrl } from "../export/shareCode";
 import type { ProjectDocument } from "../project-model/types";
 import {
+  clearRemixParent,
+  creatorHandle,
+  formatCount,
   encodeProjectForGallery,
   extractShareCode,
   listBeats,
+  peekRemixParent,
+  registerPlay,
+  saveCreatorHandle,
+  setRemixParent,
   publishBeat,
   type GalleryItem,
+  type RemixParent,
 } from "./galleryApi";
 
 type FeedState =
@@ -155,6 +163,7 @@ export function GalleryPage() {
             playing={playingId === item.id}
             onTogglePlay={() => setPlayingId(playingId === item.id ? null : item.id)}
             onTagClick={(tag) => setFilter(filter === tag ? null : tag)}
+            onFork={reload}
           />
         ))}
       </div>
@@ -171,18 +180,24 @@ function GalleryCard({
   playing,
   onTogglePlay,
   onTagClick,
+  onFork,
 }: {
   item: GalleryItem;
   playing: boolean;
   onTogglePlay: () => void;
   onTagClick: (tag: string) => void;
+  onFork: () => void;
 }) {
   const [copied, setCopied] = useState(false);
+  /** Optimistic play counter — server response (or the optimistic +1) wins. */
+  const [plays, setPlays] = useState(item.plays ?? 0);
   const openUrl = shareAppUrl(item.code, location.origin);
   const date = new Date(item.createdAt);
   const dateLabel = Number.isNaN(date.getTime())
     ? ""
     : date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const myHandle = creatorHandle();
+  const isMine = myHandle !== "" && item.author.toLowerCase() === myHandle.toLowerCase();
 
   const copyLink = async () => {
     try {
@@ -194,6 +209,24 @@ function GalleryCard({
     }
   };
 
+  const togglePlay = () => {
+    if (!playing) {
+      // Count the first play of this beat per session, optimistically.
+      void registerPlay(item.id).then((total) => {
+        if (total !== null) setPlays(total);
+        else setPlays((p) => p + 1); // server unreachable — still show the tick
+      });
+    }
+    onTogglePlay();
+  };
+
+  /** FORK: remember the chain, open the studio with this beat loaded. */
+  const fork = () => {
+    setRemixParent({ id: item.id, title: item.title });
+    window.open(`${openUrl}&remixOf=${encodeURIComponent(item.id)}`, "_blank", "noopener");
+    onFork();
+  };
+
   return (
     <article className="gallery-card" aria-label={`Beat: ${item.title}`}>
       <div className="gallery-card-head">
@@ -201,12 +234,15 @@ function GalleryCard({
           type="button"
           className="gallery-play"
           aria-label={playing ? "Stop preview" : "Play preview"}
-          onClick={onTogglePlay}
+          onClick={togglePlay}
         >
           {playing ? "✕" : "▶"}
         </button>
         <div className="gallery-card-titlebox">
-          <h3 className="gallery-card-title">{item.title}</h3>
+          <h3 className="gallery-card-title">
+            {item.title}
+            {isMine && <span className="gallery-you-badge">YOU</span>}
+          </h3>
           <span className="gallery-card-meta">
             by {item.author}
             {dateLabel ? ` · ${dateLabel}` : ""}
@@ -214,6 +250,20 @@ function GalleryCard({
           </span>
         </div>
       </div>
+      {(plays > 0 || (item.remixCount ?? 0) > 0) && (
+        <div className="gallery-card-stats" aria-label="Play and remix counts">
+          {plays > 0 && (
+            <span className="gallery-stat" title={`${plays} plays`}>
+              ▶ {formatCount(plays)}
+            </span>
+          )}
+          {(item.remixCount ?? 0) > 0 && (
+            <span className="gallery-stat" title={`${item.remixCount} remixes of this beat`}>
+              🎸 {formatCount(item.remixCount ?? 0)} remix{(item.remixCount ?? 0) === 1 ? "" : "es"}
+            </span>
+          )}
+        </div>
+      )}
       {item.tags.length > 0 && (
         <div className="gallery-card-tags">
           {item.tags.map((tag) => (
@@ -232,6 +282,14 @@ function GalleryCard({
         <a className="btn btn-export gallery-open" href={openUrl} target="_blank" rel="noreferrer">
           OPEN IN FORGE
         </a>
+        <button
+          type="button"
+          className="gallery-fork"
+          title="Open this beat in the studio and remember it as your remix origin"
+          onClick={fork}
+        >
+          FORK 🎸
+        </button>
         <button type="button" className="gallery-copylink" onClick={() => void copyLink()}>
           {copied ? "LINK COPIED ✓" : "COPY LINK"}
         </button>
@@ -249,13 +307,17 @@ function PublishForm({
 }) {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
-  const [author, setAuthor] = useState("");
   const [tags, setTags] = useState("");
   const [codeInput, setCodeInput] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Creator handle + remix chain come from localStorage (the FORK button
+  // writes the parent; it expires after 24 h).
+  const [author, setAuthor] = useState(() => creatorHandle());
+  const [remixParent, setRemixParentState] = useState<RemixParent | null>(null);
 
   useEffect(() => {
+    setRemixParentState(peekRemixParent());
     if (prefilledCode) {
       setCodeInput(prefilledCode);
       setOpen(true);
@@ -296,8 +358,21 @@ function PublishForm({
     setBusy(true);
     setStatus(null);
     try {
-      await publishBeat({ title: title.trim(), author: author.trim(), tags: parseTags(tags), code });
-      setStatus("Published! Your beat is live in the feed. 🔥");
+      const item = await publishBeat({
+        title: title.trim(),
+        author: author.trim(),
+        tags: parseTags(tags),
+        code,
+        parentId: remixParent?.id ?? null,
+      });
+      saveCreatorHandle(author.trim());
+      clearRemixParent();
+      setRemixParentState(null);
+      setStatus(
+        item.parentId
+          ? `Remix published! It is chained to "${remixParent?.title}" in the feed. 🔥`
+          : "Published! Your beat is live in the feed. 🔥",
+      );
       setTitle("");
       setTags("");
       setCodeInput("");
@@ -350,6 +425,22 @@ function PublishForm({
               onChange={(e) => setTags(e.target.value)}
             />
           </div>
+          {remixParent && (
+            <div className="gallery-remix-chip" role="note" aria-label="Remix origin">
+              🎸 Remix of: <strong>{remixParent.title}</strong>
+              <button
+                type="button"
+                aria-label="Remove remix link"
+                title="Publish as an original instead"
+                onClick={() => {
+                  clearRemixParent();
+                  setRemixParentState(null);
+                }}
+              >
+                ✕
+              </button>
+            </div>
+          )}
           <textarea
             aria-label="Share link or code"
             placeholder="Paste your share link (COPY SHARE LINK in the studio) — or a project .json file below"

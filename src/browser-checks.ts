@@ -1,6 +1,7 @@
 import { EFFECT_DEFS, EFFECT_ORDER, defaultParamsOf } from "./effects/registry";
 import { INSTRUMENT_DEFS, INSTRUMENT_ORDER, defaultInstrumentParams } from "./instruments/registry";
 import { generateFactoryBank, RR_VARIATIONS } from "./sample-library/factory";
+import { loadCoreWorklets } from "./audio-worklets/loader";
 import { renderProject } from "./rendering/renderer";
 import { buildStemProject, STEM_GROUPS } from "./rendering/stems";
 import { encodeWav } from "./rendering/wav";
@@ -90,6 +91,59 @@ export async function runChecks(): Promise<CheckResult[]> {
   );
   const silentAssets = bank.entries().filter(([, buf]) => peakOf(buf.getChannelData(0)) < 0.001);
   check("factory buffers are audible", silentAssets.length === 0, silentAssets.map(([id]) => id).join(","));
+
+  {
+    // SVF drive must stay alias-clean: an 8 kHz tone driven hard only has
+    // true harmonics ABOVE Nyquist (24k/40k/56k) — anything audible at their
+    // fold points (20.1k/4.1k/11.9k) is aliasing. The 2× oversampled drive
+    // stage must keep the folded power ≥40dB under the fundamental.
+    try {
+      const ctx = new OfflineAudioContext(1, 44100, SR);
+      await loadCoreWorklets(ctx);
+      const node = new AudioWorkletNode(ctx, "svfilter-processor", {
+        numberOfInputs: 1,
+        numberOfOutputs: 1,
+        channelCount: 1,
+      });
+      node.parameters.get("cutoff")!.value = 12000;
+      node.parameters.get("resonance")!.value = 0.1;
+      node.parameters.get("mode")!.value = 0;
+      node.parameters.get("drive")!.value = 0.9;
+      node.parameters.get("mix")!.value = 1;
+      const src = ctx.createBufferSource();
+      const buf = ctx.createBuffer(1, 32768, SR);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = 0.8 * Math.sin((2 * Math.PI * 8000 * i) / SR);
+      src.buffer = buf;
+      src.connect(node).connect(ctx.destination);
+      src.start(0);
+      const rendered = await ctx.startRendering();
+      const seg = rendered.getChannelData(0).slice(4096);
+      const goertzel = (freq: number) => {
+        const n = seg.length;
+        const k = Math.round((freq * n) / SR);
+        const w = (2 * Math.PI * k) / n;
+        const coeff = 2 * Math.cos(w);
+        let s1 = 0;
+        let s2 = 0;
+        for (let i = 0; i < n; i++) {
+          const s0 = seg[i] + coeff * s1 - s2;
+          s2 = s1;
+          s1 = s0;
+        }
+        return s1 * s1 + s2 * s2 - coeff * s1 * s2;
+      };
+      const f0 = goertzel(8000);
+      const alias = goertzel(4100) + goertzel(11900);
+      check(
+        "svf drive keeps folded harmonics ≥40dB under the fundamental (2× oversampled)",
+        f0 > 0 && alias < f0 * 0.0001,
+        `ratio=${(alias / Math.max(f0, 1e-12)).toExponential(2)}`,
+      );
+    } catch (error) {
+      check("svf drive keeps folded harmonics ≥40dB under the fundamental (2× oversampled)", false, String(error));
+    }
+  }
 
   for (const type of EFFECT_ORDER) {
     const def = EFFECT_DEFS[type];

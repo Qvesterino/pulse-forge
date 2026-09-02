@@ -25,6 +25,7 @@ Všetky inštrumenty sú WebAudio grafy na main threadu s per-voice stateful fil
 - **Live parametre** — CUTOFF/RESO sa mení plynule (`setTargetAtTime`) aj počas hrania.
 - **Glide/portamento** — podpora sliding na Bass, 808, Log Drum (frekvenčný ramp) a Sampler (playbackRate ramp).
 - **MPE poly aftertouch** — na 8 inštrumentoch (Analog, Bass, Sampler, Wavetable, Keys, Pluck, Spectral, Log Drum): tlak na notu otvorí **len jej filter** až +50 % nad per-note bázu (vrátane keytracku/V-FLT); tlak 0 vracia CUTOFF. Per-voice cez filter→nota mapy, takže akord sa dá „obraľovať" notu po note.
+- **Filter je stabilný v celej rovine cutoff × rezonancia** — Chamberlin SVF má numerický stabilita clamp (`f·q`), takže extrémne nastavenia (vysoký cutoff + nízka rezonancia) neprejdú do clamp limit cyklu; len mierne zmenšia efektívnu rezonanciu v tom rohu.
 - **Panic/dispose** — okamžité utíšenie všetkých hlasov.
 
 ### 1.1 Sampler (`sampler`) — 16 hlasov
@@ -51,7 +52,7 @@ Klasické subtraction synth voicovanie: **OSC A + OSC B (detune) + sub osc −12
 
 - OSC A/B: sine / triangle / saw / square, detune OSC B ±50 ct
 - CUTOFF, RESO, **FILTER MODE: LP / BP / HP** (živá zmena aj počas hrania), **KEY TRK** (filter sleduje výšku noty — C4 je referencia)
-- **DRIVE** — tanh saturovanie v SVF filtri (worklet), pred-filter analógová teplota; živá zmena aj počas hrania (biquad fallback ho ignoruje)
+- **DRIVE** — tanh saturovanie v SVF filtri (worklet), pred-filter analógová teplota; **2× oversamplovaná saturation stage** (harmonické nad Nyquistom sa neskladajú späť ako grit — fold ≥40 dB pod fundamentalom), živá zmena aj počas hrania (biquad fallback ho ignoruje)
 - **FLT ENV** (velocity-citlivý filter sweep)
 - **UNISON 1–8×** so SPREAD — detuned kópie OSC A roztvorené do sterea
 - LFO RATE/DEPTH — audio-rate wobble na cutoff + **LFO SYNC** — uzamknutie rýchlosti na notovú divíziu (1/2, 1/4, 1/8D, 1/8, 1/8T, 1/16) podľa tempa projektu
@@ -270,3 +271,13 @@ Presety sú čisté dáta (žiadne volania do audio engine) — idú cez command
 | Log Drum | 4 |
 | **Spolu inštrumenty** | **166** |
 | Drum bicie (kick, snare, hat, clap…) | 12 |
+
+---
+
+## 6. Export — mastering-safe kvantizácia
+
+MP3 aj WAV 16-bit export prechádzajú cez spoločný kvantizátor (`src/export/quantize.ts`):
+
+- **Soft-knee clip** — obsah pod ≈ −0,45 dBFS prechádza bez zmeny; intersample overy sa zholia tanh kolenom namiesto hard-clipu (žiadne clip krížence na horúcom masteri),
+- **TPDF dither ±1 LSB** — tiché pasáže a reverb tail-y fadesujú do korelovaného šumu namiesto digitálneho ticha,
+- **Deterministické seedy** (per-kanál v MP3) — rovnaký render = byte-rovnaký súbor; 24-bit WAV dostane soft-knee bez ditheru, 32-bit float zostáva bez zásahu.

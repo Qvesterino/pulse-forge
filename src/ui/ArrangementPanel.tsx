@@ -38,6 +38,9 @@ import type { ArrangementTransitionType, SceneRole } from "../project-model/type
 import { BAR_TICKS, PPQ } from "../project-model/types";
 import { detectLoopBpm } from "../audio-engine/bpm-detect";
 import { extractGroove } from "../audio-engine/groove-extract";
+import { extensionForMime } from "../audio-engine/recorder";
+import { userSampleId } from "../persistence/UserSampleRepository";
+import { clipLengthBars, recordingStartBar } from "./timelineRec";
 import { usePlayheadBar } from "./playhead";
 import { SceneLauncher, useSceneRuntimeState } from "./SceneLauncher";
 
@@ -98,6 +101,93 @@ export function ArrangementPanel() {
   const [timeDrag, setTimeDrag] = useState<{ startBar: number; currentBar: number } | null>(null);
   const runtime = useSceneRuntimeState();
   const [selectedAudioClipId, setSelectedAudioClipId] = useState<string | null>(null);
+  // ── Timeline recording: arm a track, REC the mic straight into the song ──
+  const [armedTrackId, setArmedTrackId] = useState<string>("");
+  const [recState, setRecState] = useState<"idle" | "recording" | "saving">("idle");
+  const [recSeconds, setRecSeconds] = useState(0);
+  const [recError, setRecError] = useState<string | null>(null);
+  const recRef = useRef<import("../audio-engine/recorder").LiveRecorder | null>(null);
+  const recStartBarRef = useRef(0);
+
+  const startRec = async () => {
+    if (!armedTrackId || recState !== "idle") return;
+    setRecError(null);
+    try {
+      services.engine.ensureContext();
+      const ctx = services.engine.getLiveAudioContext();
+      if (!ctx) throw new Error("Audio engine is not ready");
+      // The recorder loads as a lazy chunk — first REC fetches it.
+      const { LiveRecorder } = await import("../audio-engine/recorder");
+      const rec = new LiveRecorder({
+        ctx,
+        getTapNode: () => null, // mic input, not an internal tap
+      });
+      await rec.start({ kind: "mic" });
+      recStartBarRef.current = Math.max(0, recordingStartBar(services.transport.position));
+      recRef.current = rec;
+      setRecSeconds(0);
+      setRecState("recording");
+      // Performers record against the backing track — roll the transport.
+      if (!services.transport.playing) services.playback.playPause();
+    } catch (error) {
+      setRecError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const stopRec = async () => {
+    const rec = recRef.current;
+    if (!rec) return;
+    setRecState("saving");
+    try {
+      const take = await rec.stop();
+      recRef.current = null;
+      if (!take || take.buffer.duration < 0.1) {
+        setRecError("Nothing captured — play/sing while recording");
+        setRecState("idle");
+        return;
+      }
+      const stamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      const bufferId = userSampleId(`rec-${stamp}`);
+      services.bank.add(bufferId, take.buffer);
+      // Persist the bytes so the take survives reloads (best effort — the
+      // in-memory bank already plays it this session).
+      try {
+        const asset = {
+          id: bufferId,
+          name: `REC ${stamp}`,
+          fileName: `${bufferId}${extensionForMime(take.blob.type)}`,
+          category: "Custom",
+          duration: take.buffer.duration,
+          sampleRate: take.buffer.sampleRate,
+          channels: take.buffer.numberOfChannels,
+          createdAt: new Date().toISOString(),
+        };
+        await services.userSamples.save(asset, await take.blob.arrayBuffer());
+      } catch {
+        /* session-only take */
+      }
+      const lengthBars = clipLengthBars(take.buffer.duration, doc.bpm);
+      services.store.execute(
+        addAudioClip(doc, armedTrackId, bufferId, recStartBarRef.current, lengthBars, {
+          fadeIn: 0.005,
+          fadeOut: 0.02,
+        }),
+      );
+      setRecState("idle");
+    } catch (error) {
+      setRecError(error instanceof Error ? error.message : String(error));
+      setRecState("idle");
+      recRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    if (recState !== "recording") return;
+    const timer = setInterval(() => {
+      setRecSeconds(recRef.current?.elapsedSeconds ?? 0);
+    }, 200);
+    return () => clearInterval(timer);
+  }, [recState]);
   const audioDragRef = useRef<{
     clipId: string;
     mode: "move" | "resize" | "trimStart" | "trimEnd" | "fadeIn" | "fadeOut" | "gain";
@@ -488,6 +578,38 @@ export function ArrangementPanel() {
             </div>
           </div>
           <div className="arr-timeline-actions">
+            <select
+              className="arr-arm-select"
+              aria-label="Arm track for recording"
+              title="Arm a track — recorded mic takes land here as audio clips"
+              value={armedTrackId}
+              disabled={recState !== "idle"}
+              onChange={(event) => setArmedTrackId(event.target.value)}
+            >
+              <option value="">ARM: pick track…</option>
+              {doc.tracks.map((track) => (
+                <option key={track.id} value={track.id}>
+                  {track.name}
+                </option>
+              ))}
+            </select>
+            {recState === "recording" ? (
+              <button type="button" className="btn btn-small btn-rec btn-rec-stop" onClick={() => void stopRec()}>
+                ■ STOP {recSeconds.toFixed(0)}s
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-small btn-rec"
+                title="Record the mic straight onto the armed track at the playhead (rolls the transport)"
+                disabled={!armedTrackId || recState === "saving"}
+                onClick={() => void startRec()}
+              >
+                ● REC
+              </button>
+            )}
+            {recState === "saving" && <span className="arr-rec-saving">placing clip…</span>}
+            {recError && <span className="arr-rec-error">{recError}</span>}
             <button
               type="button"
               className={`btn btn-small${rulerMode === "seconds" ? " active-solo" : ""}`}

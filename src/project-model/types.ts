@@ -96,6 +96,8 @@ export interface DrumPad {
   mute: boolean;
   solo: boolean;
   chokeGroup: number | null;
+  /** User pad colour override (CSS hex) — recolours the pad UI. */
+  color?: string;
   /**
    * Slice region into the asset (seconds) — chop-beats support. The source
    * buffer is played natively from sliceStart to sliceEnd, so slicing costs

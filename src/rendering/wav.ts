@@ -1,3 +1,5 @@
+import { mulberry32, quantizeInt16Sample, softClipSample } from "../export/quantize";
+
 export type WavBitDepth = 16 | 24 | 32;
 
 export function encodeWav(buffer: AudioBuffer, bitDepth: WavBitDepth): ArrayBuffer {
@@ -40,14 +42,16 @@ export function encodeWav(buffer: AudioBuffer, bitDepth: WavBitDepth): ArrayBuff
   for (let ch = 0; ch < numChannels; ch++) channels.push(buffer.getChannelData(ch));
 
   let offset = 44;
+  // TPDF dither PRNG for the 16-bit path (seeded → byte-reproducible exports)
+  const ditherRand = mulberry32(0x57415631);
   for (let i = 0; i < frames; i++) {
     for (let ch = 0; ch < numChannels; ch++) {
       const sample = Math.max(-1, Math.min(1, channels[ch][i]));
       if (bitDepth === 16) {
-        view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+        view.setInt16(offset, quantizeInt16Sample(sample, ditherRand), true);
         offset += 2;
       } else if (bitDepth === 24) {
-        const value = Math.round(sample < 0 ? sample * 0x800000 : sample * 0x7fffff);
+        const value = Math.round(softClipSample(sample) * (sample < 0 ? 0x800000 : 0x7fffff));
         view.setUint8(offset, value & 0xff);
         view.setUint8(offset + 1, (value >> 8) & 0xff);
         view.setUint8(offset + 2, (value >> 16) & 0xff);

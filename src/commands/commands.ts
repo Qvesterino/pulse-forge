@@ -1210,6 +1210,38 @@ export function setTrackColor(doc: ProjectDocument, trackId: string, color: stri
   };
   return snapshot("setTrackColor", color ? `Set ${track.name} color` : `Clear ${track.name} color`, doc, next);
 }
+/** Pad colour override (CSS hex) — recolours the pad UI; null clears. */
+export function setPadColor(
+  doc: ProjectDocument,
+  trackId: string,
+  padId: string,
+  color: string | null,
+): Command {
+  const track = doc.tracks.find((t): t is DrumTrack => t.kind === "drum" && t.id === trackId);
+  if (!track) throw new Error(`Drum track ${trackId} not found`);
+  if (!track.pads.some((p) => p.id === padId)) throw new Error(`Pad ${padId} not found`);
+  const clean = color ? sanitizeColor(color) : undefined;
+  if (color && !clean) throw new Error("Invalid color (use #rrggbb)");
+  const next: ProjectDocument = {
+    ...doc,
+    tracks: doc.tracks.map((t) => {
+      if (t.id !== trackId || t.kind !== "drum") return t;
+      const drum = t as DrumTrack;
+      return {
+        ...drum,
+        pads: drum.pads.map((p) => {
+          if (p.id !== padId) return p;
+          if (!clean) {
+            const { color: _c, ...rest } = p as unknown as Record<string, unknown>;
+            return rest as unknown as typeof p;
+          }
+          return { ...p, color: clean };
+        }),
+      };
+    }),
+  };
+  return snapshot("setPadColor", color ? "Set pad colour" : "Clear pad colour", doc, next);
+}
 
 export function setGroupCollapsed(doc: ProjectDocument, groupId: string, collapsed: boolean): Command {
   const track = doc.tracks.find((t) => t.id === groupId);

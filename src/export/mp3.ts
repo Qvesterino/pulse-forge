@@ -1,20 +1,11 @@
 import { Mp3Encoder } from "@breezystack/lamejs";
+import { quantizeInt16 } from "./quantize";
 
 export interface Mp3Options {
   /** Target bitrate in kbps (default 192). */
   kbps?: number;
   /** Progress callback, fraction 0..1. */
   onProgress?: (fraction: number) => void;
-}
-
-/** Convert float32 samples [-1..1] to LAME's int16 PCM input. */
-function floatToInt16(input: Float32Array): Int16Array<ArrayBuffer> {
-  const out = new Int16Array(input.length);
-  for (let i = 0; i < input.length; i++) {
-    const s = Math.max(-1, Math.min(1, input[i]));
-    out[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
-  }
-  return out;
 }
 
 /**
@@ -32,8 +23,12 @@ export async function encodeMp3(buffer: AudioBuffer, options: Mp3Options = {}): 
   const channelCount = Math.min(2, Math.max(1, buffer.numberOfChannels));
   const encoder = new Mp3Encoder(channelCount, buffer.sampleRate, kbps);
 
-  const left = floatToInt16(buffer.getChannelData(0));
-  const right = channelCount === 2 ? floatToInt16(buffer.getChannelData(1)) : null;
+  // Soft-knee clip + TPDF dither before 16-bit quantization: hot masters
+  // lose the hard-clip crunch, quiet passages fade into noise instead of
+  // digital silence. Seeds differ per channel to decorrelate the dither;
+  // fixed seeds keep exports byte-reproducible.
+  const left = quantizeInt16(buffer.getChannelData(0), 0x4c4631);
+  const right = channelCount === 2 ? quantizeInt16(buffer.getChannelData(1), 0x4c4632) : null;
 
   const blockSize = 1152; // LAME's MP3 frame size
   const chunks: Uint8Array[] = [];

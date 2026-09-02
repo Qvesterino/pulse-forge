@@ -9,6 +9,10 @@ import { ProjectBrowser } from "./ui/ProjectBrowser";
 import { decodeShareCode } from "./export/shareCode";
 import "./styles.css";
 import { initTheme } from "./ui/theme";
+import { initPadKeys } from "./ui/padKeys";
+
+// Load persisted pad key bindings before the first paint.
+initPadKeys();
 
 // Apply persisted user theme before the first paint.
 initTheme();

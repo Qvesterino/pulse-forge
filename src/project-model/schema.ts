@@ -680,6 +680,12 @@ function normalizeTracksDomain(s: NormalizeState): void {
       const pads = t.pads.map((pad) => {
         let nextPad = pad;
         let padChanged = false;
+        // User pad colour (CSS hex) — invalid values are dropped.
+        const padColor = sanitizeColor((pad as unknown as Record<string, unknown>).color);
+        if (padColor !== (pad as unknown as Record<string, unknown>).color) {
+          nextPad = { ...nextPad, color: padColor } as typeof pad;
+          padChanged = true;
+        }
         const cleanNonNegative = (value: unknown): number | undefined =>
           typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
         const sliceStart = cleanNonNegative(pad.sliceStart);

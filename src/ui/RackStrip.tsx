@@ -4,12 +4,24 @@ import type { DrumTrack } from "../project-model/types";
 import { usePlayheadStep } from "./playhead";
 import { assetCategoryOf, categoryColor } from "./kitColors";
 import { FALLOFF_MODES, REPEAT_RATES, type FalloffMode, type RepeatRate } from "../audio-engine/NoteRepeat";
-import { applyKitToDrumTrack, captureKitFromTrack } from "../commands/commands";
+import { applyKitToDrumTrack, captureKitFromTrack, setPadColor } from "../commands/commands";
 import { decodeKitCode, encodeKitCode } from "../export/kitCode";
 import type { UserKit } from "../persistence/KitRepository";
 
-/** Two-row QWERTY layout for the 16 pads (MPC style). Plain letters only — no clash with shortcuts (digits, Alt+letters, Ctrl+letters). */
-const PAD_KEYS = ["q", "w", "e", "r", "t", "y", "u", "i", "a", "s", "d", "f", "g", "h", "j", "k"] as const;
+import { bindPadKey, isPadKey, resetPadKeys, usePadKeys } from "./padKeys";
+
+const PAD_COLOR_SWATCHES = [
+  "#f59e0b",
+  "#f87171",
+  "#fb7185",
+  "#f472b6",
+  "#a78bfa",
+  "#60a5fa",
+  "#22d3ee",
+  "#4ade80",
+  "#a3e635",
+  "#e8e8e8",
+];
 
 /** Divisions a pad can pin individually (global "off" is the master switch, not an option here). */
 const PINNABLE_RATES = ["1/4", "1/8", "1/16", "1/8T", "1/16T"] as const;
@@ -40,6 +52,10 @@ export function RackStrip({
   const [rateMenu, setRateMenu] = useState<{ padId: string; x: number; y: number } | null>(null);
   /** MPC 16 LEVELS: pads become velocity lanes for the selected sound. */
   const [sixteenLevels, setSixteenLevels] = useState(false);
+  const padKeys = usePadKeys();
+  const [keysMenu, setKeysMenu] = useState<{ x: number; y: number } | null>(null);
+  const [captureIndex, setCaptureIndex] = useState<number | null>(null);
+  const [keyStatus, setKeyStatus] = useState<string | null>(null);
   const [kitMenu, setKitMenu] = useState<{ x: number; y: number } | null>(null);
   const [userKits, setUserKits] = useState<UserKit[]>([]);
   const [kitStatus, setKitStatus] = useState<string | null>(null);
@@ -64,6 +80,27 @@ export function RackStrip({
     document.addEventListener("pointerdown", close);
     return () => document.removeEventListener("pointerdown", close);
   }, [kitMenu]);
+
+  // While a key slot is "capturing", the next keydown binds it (swap on clash).
+  useEffect(() => {
+    if (captureIndex === null) return;
+    const onCapture = (event: KeyboardEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.key === "Escape") {
+        setCaptureIndex(null);
+        return;
+      }
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      const key = event.key.toLowerCase();
+      if (key.length !== 1) return;
+      bindPadKey(captureIndex, key);
+      setCaptureIndex(null);
+      setKeyStatus(`Bound '${key.toUpperCase()}' to pad ${captureIndex + 1}`);
+    };
+    window.addEventListener("keydown", onCapture, true);
+    return () => window.removeEventListener("keydown", onCapture, true);
+  }, [captureIndex]);
 
   const triggerPad = (padId: string) => {
     const pad = track.pads.find((p) => p.id === padId);
@@ -97,12 +134,12 @@ export function RackStrip({
     services.noteRepeat.stop(holdKey);
   };
 
-  // QWERTY pad play: hold a key to trigger (and repeat when armed). Plain
-  // letters only — digits and modifier combos belong to the shortcut system.
+  // QWERTY pad play: hold a key to trigger (and repeat when armed). Keys are
+  // user-rebindable (AZERTY/SK layouts) and shadow plain-letter shortcuts.
   useEffect(() => {
     const padByKey = new Map<string, string>();
     track.pads.forEach((pad, index) => {
-      if (index < PAD_KEYS.length) padByKey.set(PAD_KEYS[index], pad.id);
+      if (index < padKeys.length && padKeys[index]) padByKey.set(padKeys[index], pad.id);
     });
     const isTypingTarget = (target: EventTarget | null): boolean => {
       const el = target as HTMLElement | null;
@@ -113,16 +150,18 @@ export function RackStrip({
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
       if (isTypingTarget(event.target)) return;
-      const padId = padByKey.get(event.key.toLowerCase());
-      if (!padId) return;
-      event.preventDefault();
-      padDown(padId, `key:${event.key.toLowerCase()}`);
+      const key = event.key.toLowerCase();
+      const padId = padByKey.get(key);
+      if (!padId || isPadKey(key) === false) return;
+      if (isPadKey(key)) event.preventDefault();
+      padDown(padId, `key:${key}`);
     };
     const onKeyUp = (event: KeyboardEvent) => {
       if (event.ctrlKey || event.metaKey || event.altKey) return;
-      const padId = padByKey.get(event.key.toLowerCase());
+      const key = event.key.toLowerCase();
+      const padId = padByKey.get(key);
       if (!padId) return;
-      padUp(`key:${event.key.toLowerCase()}`);
+      if (isPadKey(key)) padUp(`key:${key}`);
     };
     const onBlur = () => {
       services.noteRepeat.stopAll();
@@ -137,7 +176,7 @@ export function RackStrip({
       services.noteRepeat.stopAll();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [track.id, track.pads, services.noteRepeat]);
+  }, [track.id, track.pads, services.noteRepeat, padKeys]);
 
   const [peaks, setPeaks] = useState<Record<string, number>>({});
   const peaksRef = useRef(peaks);
@@ -309,6 +348,19 @@ export function RackStrip({
         >
           KIT
         </button>
+        <button
+          type="button"
+          className={`rack-header-toggle${keysMenu ? " active" : ""}`}
+          title="Pad keys — rebind the QWERTY keys that play each pad (AZERTY/SK layouts)"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setCaptureIndex(null);
+            setKeysMenu({ x: event.clientX, y: event.clientY });
+          }}
+        >
+          KEYS
+        </button>
         <span className="rack-header-hint">hold pad · right-click = pad rate · QWERTYUI·ASDFGHJK</span>
       </div>
       {track.pads.map((pad, index) => {
@@ -323,7 +375,7 @@ export function RackStrip({
             type="button"
             className={`pad${hit ? " hit" : ""}${selected ? " selected" : ""}`}
             style={{ "--pad-color": categoryColor(assetCategoryOf(pad)) } as React.CSSProperties}
-            title={`${pad.name} — hold to play${effectiveRate !== "off" ? ` (repeats ${effectiveRate}, velocity ${falloff})` : ""} — key ${PAD_KEYS[index]?.toUpperCase() ?? "—"} — right-click for a per-pad rate`}
+            title={`${pad.name} — hold to play${effectiveRate !== "off" ? ` (repeats ${effectiveRate}, velocity ${falloff})` : ""} — key ${(padKeys[index] || "—").toUpperCase()} — right-click for rate/colour`}
             onContextMenu={(event) => {
               event.preventDefault();
               setRateMenu({ padId: pad.id, x: event.clientX, y: event.clientY });
@@ -396,6 +448,44 @@ export function RackStrip({
               {pinnedRates[rateMenu.padId] === rate ? " ✓" : ""}
             </button>
           ))}
+          <div className="context-menu-header">COLOR</div>
+          <div className="pad-color-row">
+            {PAD_COLOR_SWATCHES.map((swatch) => (
+              <button
+                key={swatch}
+                type="button"
+                role="menuitemradio"
+                aria-checked={track.pads.find((p) => p.id === rateMenu.padId)?.color === swatch}
+                className="pad-color-swatch"
+                style={{ background: swatch }}
+                title={swatch}
+                onClick={() => {
+                  try {
+                    services.store.execute(setPadColor(services.store.doc, track.id, rateMenu.padId, swatch));
+                  } catch {
+                    setKitStatus("Colour change failed");
+                  }
+                  setRateMenu(null);
+                }}
+              />
+            ))}
+            <button
+              type="button"
+              role="menuitem"
+              className="pad-color-auto"
+              title="Back to the category colour"
+              onClick={() => {
+                try {
+                  services.store.execute(setPadColor(services.store.doc, track.id, rateMenu.padId, null));
+                } catch {
+                  setKitStatus("Clear failed");
+                }
+                setRateMenu(null);
+              }}
+            >
+              AUTO
+            </button>
+          </div>
         </div>
       )}
       {kitMenu && (
@@ -449,6 +539,52 @@ export function RackStrip({
             Install from code…
           </button>
           {kitStatus && <div className="context-menu-header">{kitStatus}</div>}
+        </div>
+      )}
+      {keysMenu && (
+        <div
+          className="context-menu"
+          role="menu"
+          aria-label="Pad keys"
+          style={{ left: keysMenu.x, top: keysMenu.y, minWidth: 230 }}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <div className="context-menu-header">PAD KEYS</div>
+          <div className="pad-keys-grid">
+            {track.pads.slice(0, 16).map((pad, index) => (
+              <button
+                key={pad.id}
+                type="button"
+                role="menuitemradio"
+                aria-checked={captureIndex === index}
+                className={`pad-key-slot${captureIndex === index ? " capturing" : ""}`}
+                title={`${pad.name} — click, then press a key`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setCaptureIndex(captureIndex === index ? null : index);
+                  setKeyStatus(null);
+                }}
+              >
+                <span className="pad-key-index">{index + 1}</span>
+                {(padKeys[index] || "—").toUpperCase()}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              resetPadKeys();
+              setKeyStatus("Keys reset");
+            }}
+          >
+            Reset to QWERTY defaults
+          </button>
+          <div className="context-menu-header">
+            {captureIndex !== null
+              ? `PRESS A KEY FOR PAD ${captureIndex + 1} (Esc cancels)`
+              : (keyStatus ?? "Pad keys shadow plain-letter shortcuts")}
+          </div>
         </div>
       )}
     </section>

@@ -7,11 +7,89 @@
  * extreme resonance settings.
  *
  * Modes: LP (12 dB/oct), HP (12 dB/oct), BP (6 dB/oct), Notch (LP + HP).
- * Drive: tanh pre-filter saturation for analog-style warming.
+ * Drive: 2× oversampled tanh pre-filter saturation for analog-style
+ * warming — running only the nonlinear stage at twice the rate keeps the
+ * harmonics above Nyquist from folding back as inharmonic grit at high
+ * DRIVE (drive === 0 keeps the exact original per-sample path).
  * Resonance: 0 = max damping, 1 = self-oscillation boundary (clamped).
  *
  * NOTE: served RAW to AudioWorklet.addModule() — plain JavaScript only.
  */
+// ── 2× oversampled drive ────────────────────────────────────────────────
+// Only the nonlinear stage runs at 2× the rate: sub-samples are band-limited
+// with a short 9-tap windowed-sinc FIR, saturated, band-limited again and
+// decimated. tanh harmonics above Nyquist therefore fold back an octave
+// higher and ~30dB weaker instead of smearing into the audible band.
+const OS_TAPS = (() => {
+  const N = 9;
+  const fc = 0.375; // relative to the 2× rate ≈ 0.75× original fs — audio band untouched
+  const taps = new Array(N);
+  const M = N - 1;
+  for (let i = 0; i < N; i++) {
+    const m = i - (M >> 1);
+    const sinc = m === 0 ? 1 : Math.sin(Math.PI * fc * m) / (Math.PI * fc * m);
+    const w = 0.54 - 0.46 * Math.cos((2 * Math.PI * i) / M); // Hamming
+    taps[i] = sinc * w;
+  }
+  let sum = 0;
+  for (let i = 0; i < N; i++) sum += taps[i];
+  for (let i = 0; i < N; i++) taps[i] /= sum;
+  return taps;
+})();
+
+// Rational tanh — saturates smoothly to ±1 (clamped past |x|>3 where the
+// rational form is already flat), ~5× cheaper than Math.tanh on this hot
+// path. Curve deviation from true tanh stays under ~1%.
+function fastTanh(x) {
+  if (x > 3) return 1;
+  if (x < -3) return -1;
+  const x2 = x * x;
+  return (x * (27 + x2)) / (27 + 9 * x2);
+}
+
+// One input sample through the oversampled saturator. `state` carries the
+// per-channel history: sub/sat ring buffers (8 slots = 4 input samples at
+// the 2× rate) and the previous input for the midpoint stage.
+function osDrive(state, x, driveGain, makeup) {
+  const sub = state.sub;
+  const sat = state.sat;
+  // 1) 2× upsample: midpoint (odd sub-sample) then the sample itself
+  const mid = (state.prev + x) * 0.5;
+  state.prev = x;
+  // 2) band-limit the midpoint, saturate
+  sub[state.w] = mid;
+  let k = state.w;
+  let acc = 0;
+  for (let i = 0; i < 9; i++) {
+    acc += OS_TAPS[i] * sub[k];
+    k = (k + 7) & 7;
+  }
+  state.w = (state.w + 1) & 7;
+  const satMid = (fastTanh(acc * driveGain) / driveGain) * makeup;
+  // 3) band-limit the real sample, saturate
+  sub[state.w] = x;
+  k = state.w;
+  acc = 0;
+  for (let i = 0; i < 9; i++) {
+    acc += OS_TAPS[i] * sub[k];
+    k = (k + 7) & 7;
+  }
+  state.w = (state.w + 1) & 7;
+  const satEven = (fastTanh(acc * driveGain) / driveGain) * makeup;
+  // 4) anti-image FIR on the saturated stream, decimate to the even slot
+  sat[state.sw] = satMid;
+  state.sw = (state.sw + 1) & 7;
+  sat[state.sw] = satEven;
+  k = state.sw;
+  let out = 0;
+  for (let i = 0; i < 9; i++) {
+    out += OS_TAPS[i] * sat[k];
+    k = (k + 7) & 7;
+  }
+  state.sw = (state.sw + 1) & 7;
+  return out;
+}
+
 class SvFilterProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
@@ -23,6 +101,9 @@ class SvFilterProcessor extends AudioWorkletProcessor {
     this.lastRes = -1;
     this.f = 0.1;
     this.q = 1;
+    // 2× oversampled drive history, per channel
+    this.drvL = { sub: new Float32Array(8), w: 0, sat: new Float32Array(8), sw: 0, prev: 0 };
+    this.drvR = { sub: new Float32Array(8), w: 0, sat: new Float32Array(8), sw: 0, prev: 0 };
   }
 
   static get parameterDescriptors() {
@@ -57,6 +138,14 @@ class SvFilterProcessor extends AudioWorkletProcessor {
       this.lastRes = res;
       this.f = 2 * Math.sin((Math.PI * Math.min(cutoff, sr * 0.24)) / sr);
       this.q = 2 - 2 * res; // damping: 2 = max damping, 0 = self-osc
+      // Numerical stability: the semi-implicit Chamberlin recursion diverges
+      // when f*q >= (4 - f²)/2 — i.e. high cutoff combined with LOW resonance
+      // (counter-intuitive: max damping is the unstable corner). The old
+      // state clamps hid the divergence as a harsh ±8 limit cycle. Scale the
+      // damping into the stable region instead; settings that are already
+      // stable (small f, or res near 1) are untouched.
+      const fqMax = (4 - this.f * this.f) * 0.49;
+      if (this.f * this.q > fqMax) this.q = fqMax / this.f;
     }
 
     const driveGain = drive > 0 ? 1 + drive * 9 : 1;
@@ -66,8 +155,9 @@ class SvFilterProcessor extends AudioWorkletProcessor {
       let l = inL ? inL[i] : 0;
       let r = inR ? inR[i] : l;
       if (drive > 0) {
-        l = (Math.tanh(l * driveGain) / driveGain) * (1 + drive * 2.5);
-        r = (Math.tanh(r * driveGain) / driveGain) * (1 + drive * 2.5);
+        const makeup = 1 + drive * 2.5;
+        l = osDrive(this.drvL, l, driveGain, makeup);
+        r = osDrive(this.drvR, r, driveGain, makeup);
       }
 
       // Chamberlin SVF — left

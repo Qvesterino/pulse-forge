@@ -184,3 +184,117 @@ describe("GalleryPage", () => {
     expect(screen.getByText("✕", { selector: ".gallery-publish-close" })).toBeTruthy();
   });
 });
+
+describe("gallery flywheel", () => {
+  function itemWithStats() {
+    return {
+      items: [
+        {
+          id: "b1",
+          title: "Popular Beat",
+          author: "qveen",
+          tags: ["phonk"],
+          code: code(),
+          bpm: 124,
+          projectName: "house",
+          createdAt: "2026-09-01T10:00:00.000Z",
+          plays: 1234,
+          remixCount: 3,
+        },
+      ],
+    };
+  }
+
+  it("shows play + remix badges formatted for humans", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(itemWithStats())));
+    const { container } = render(<GalleryPage />);
+    expect(await screen.findByText("Popular Beat")).toBeTruthy();
+    expect(screen.getByText("▶ 1.2k")).toBeTruthy();
+    expect(screen.getByText("🎸 3 remixes")).toBeTruthy();
+    expect(container.querySelector(".gallery-card-stats")).toBeTruthy();
+  });
+
+  it("counts a play once per session and shows the optimistic tick", async () => {
+    const fetchMock = vi.fn((input: unknown) =>
+      typeof input === "string" && input.includes("/play")
+        ? Promise.resolve(jsonResponse({ plays: 1235 }))
+        : Promise.resolve(jsonResponse(itemWithStats())),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(<GalleryPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Play preview" }));
+
+    await waitFor(() => expect(screen.getByText("▶ 1.2k")).toBeTruthy());
+    const playCall = fetchMock.mock.calls.find(([url]) => String(url).includes("/play")) as
+      | [unknown, RequestInit?]
+      | undefined;
+    expect(playCall).toBeTruthy();
+    expect(playCall![1]?.method).toBe("POST");
+    // Second toggle (stop) does not ping again — session dedup.
+    fireEvent.click(screen.getByRole("button", { name: "Stop preview" }));
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes("/play"))).toHaveLength(1);
+  });
+
+  it("FORK remembers the remix parent and opens the studio with remixOf", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(itemWithStats())));
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    render(<GalleryPage />);
+    fireEvent.click(await screen.findByText("FORK 🎸"));
+
+    const stored = JSON.parse(localStorage.getItem("pf-remix-parent") ?? "{}");
+    expect(stored.id).toBe("b1");
+    expect(stored.title).toBe("Popular Beat");
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    expect(String(openSpy.mock.calls[0][0])).toContain("remixOf=b1");
+    localStorage.clear();
+  });
+
+  it("publish form chains the remix parent and persists the creator handle", async () => {
+    localStorage.setItem(
+      "pf-remix-parent",
+      JSON.stringify({ id: "b1", title: "Popular Beat", savedAt: Date.now() }),
+    );
+    const fetchMock = vi.fn().mockImplementation((_url: unknown, init?: RequestInit) =>
+      init?.method === "POST"
+        ? Promise.resolve(
+            jsonResponse(
+              {
+                item: {
+                  id: "child",
+                  title: "My Remix",
+                  author: "qveen",
+                  tags: [],
+                  code: "abc",
+                  bpm: 124,
+                  projectName: "x",
+                  createdAt: new Date().toISOString(),
+                  parentId: "b1",
+                },
+              },
+              201,
+            ),
+          )
+        : Promise.resolve(jsonResponse({ items: [] })),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(<GalleryPage />);
+
+    fireEvent.click(await screen.findByText("+ DROP YOUR BEAT"));
+    // Remix chip from the FORK hand-off is visible and removable.
+    expect(screen.getByText(/Remix of:/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Beat title"), { target: { value: "My Remix" } });
+    fireEvent.change(screen.getByLabelText("Your name"), { target: { value: "Qveen" } });
+    fireEvent.change(screen.getByLabelText("Share link or code"), { target: { value: code() } });
+    fireEvent.click(screen.getByText("PUBLISH TO GALLERY"));
+
+    await waitFor(() => expect(fetchMock.mock.calls.some(([, init]) => init?.method === "POST")).toBe(true));
+    const [, postInit] = fetchMock.mock.calls.find(([, init]) => init?.method === "POST") as [unknown, RequestInit];
+    const body = JSON.parse(String(postInit.body));
+    expect(body.parentId).toBe("b1");
+    // Handle persisted for the next publish.
+    expect(localStorage.getItem("pf-creator-name")).toBe("Qveen");
+    // Chain cleared after publish.
+    expect(localStorage.getItem("pf-remix-parent")).toBeNull();
+    localStorage.clear();
+  });
+});

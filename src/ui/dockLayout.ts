@@ -31,13 +31,18 @@ export function clampDockHeight(px: number, maxInner: number): number {
   return Math.min(ceiling, Math.max(DOCK_MIN_HEIGHT, Math.round(px)));
 }
 
+/** Sensible default: 300 px on big screens, scaled down on short viewports so the sequencer keeps room. */
+export function defaultDockHeight(maxInner: number): number {
+  return clampDockHeight(Math.min(300, Math.round(maxInner * 0.32)), maxInner);
+}
+
 export function loadDockLayout(raw: string | null, maxInner: number): DockState {
-  const fallback: DockState = { height: clampDockHeight(300, maxInner), slotA: "mixer", slotB: null };
+  const fallback: DockState = { height: defaultDockHeight(maxInner), slotA: "mixer", slotB: null };
   if (!raw) return fallback;
   try {
     const parsed = JSON.parse(raw) as Partial<DockState>;
     return {
-      height: clampDockHeight(typeof parsed.height === "number" ? parsed.height : 300, maxInner),
+      height: clampDockHeight(typeof parsed.height === "number" ? parsed.height : defaultDockHeight(maxInner), maxInner),
       slotA: isPanel(parsed.slotA) ? parsed.slotA : null,
       slotB: isPanel(parsed.slotB) ? parsed.slotB : null,
     };

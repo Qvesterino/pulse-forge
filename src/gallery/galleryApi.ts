@@ -19,6 +19,12 @@ export interface GalleryItem {
   bpm: number | null;
   projectName: string;
   createdAt: string;
+  /** Playback counter — incremented by POST /api/gallery/:id/play. */
+  plays?: number;
+  /** How many published beats call this one their parent. */
+  remixCount?: number;
+  /** Present when this beat was published as a remix of another beat. */
+  parentId?: string | null;
 }
 
 export interface PublishInput {
@@ -26,6 +32,8 @@ export interface PublishInput {
   author: string;
   tags: string[];
   code: string;
+  /** Gallery id of the beat this was forked from (remix chain). */
+  parentId?: string | null;
 }
 
 const API_KEY = "pf-gallery-api";
@@ -66,6 +74,98 @@ export async function publishBeat(input: PublishInput, baseUrl: string = gallery
   const body = (await res.json().catch(() => ({}))) as { item?: GalleryItem; error?: string };
   if (!res.ok || !body.item) throw new Error(body.error ?? `Publish failed (${res.status})`);
   return body.item;
+}
+
+/**
+ * Count one playback. Fire-and-forget (the feed never blocks on it) and
+ * deduplicated per beat per session, so hammering the play button or a
+ * page refresh does not inflate the counter.
+ */
+const playedThisSession = new Set<string>();
+
+export async function registerPlay(id: string, baseUrl: string = galleryBaseUrl()): Promise<number | null> {
+  if (playedThisSession.has(id)) return null;
+  playedThisSession.add(id);
+  try {
+    const res = await fetch(`${baseUrl}/api/gallery/${encodeURIComponent(id)}/play`, { method: "POST" });
+    if (!res.ok) return null;
+    const body = (await res.json()) as { plays?: number };
+    return typeof body.plays === "number" ? body.plays : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 42 → "42", 1234 → "1.2k", 1200000 → "1.2m" — the feed's count badges. */
+export function formatCount(value: number): string {
+  if (value < 1000) return String(value);
+  if (value < 1_000_000) return `${(value / 1000).toFixed(value < 10_000 ? 1 : 0).replace(/\.0$/, "")}k`;
+  return `${(value / 1_000_000).toFixed(1).replace(/\.0$/, "")}m`;
+}
+
+// ── creator handle + remix chain (localStorage, 24 h TTL on the chain) ──────
+
+const HANDLE_KEY = "pf-creator-name";
+const REMIX_PARENT_KEY = "pf-remix-parent";
+const REMIX_TTL_MS = 24 * 60 * 60 * 1000;
+
+/** Persisted author name — "by <handle>" stops being random on every publish. */
+export function creatorHandle(): string {
+  try {
+    return localStorage.getItem(HANDLE_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function saveCreatorHandle(name: string): void {
+  try {
+    if (name.trim()) localStorage.setItem(HANDLE_KEY, name.trim());
+  } catch {
+    // storage blocked — the handle just is not remembered
+  }
+}
+
+export interface RemixParent {
+  id: string;
+  title: string;
+  savedAt: number;
+}
+
+/** FORK writes this; the publish form reads (and clears) it. */
+export function setRemixParent(parent: { id: string; title?: string }): void {
+  try {
+    localStorage.setItem(
+      REMIX_PARENT_KEY,
+      JSON.stringify({ id: parent.id, title: parent.title ?? "a gallery beat", savedAt: Date.now() } satisfies RemixParent),
+    );
+  } catch {
+    // storage blocked — publishing still works, just without the chain
+  }
+}
+
+/** Fresh (24 h) fork origin, if any. */
+export function peekRemixParent(): RemixParent | null {
+  try {
+    const raw = localStorage.getItem(REMIX_PARENT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as RemixParent;
+    if (typeof parsed.id !== "string" || Date.now() - (parsed.savedAt ?? 0) > REMIX_TTL_MS) {
+      localStorage.removeItem(REMIX_PARENT_KEY);
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function clearRemixParent(): void {
+  try {
+    localStorage.removeItem(REMIX_PARENT_KEY);
+  } catch {
+    // ignore
+  }
 }
 
 /** Encode the current project for publishing (share-code pipeline). */

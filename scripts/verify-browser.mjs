@@ -53,17 +53,17 @@ try {
       if (attempt === 3 || !/context was destroyed|navigation/i.test(String(error))) throw error;
       console.log("[retry] checks page reload race — retrying evaluate");
       // A save from a concurrent agent mid-goto triggers a Vite full reload
-  // which interrupts the navigation — retry like the evaluate below.
-  for (let attempt = 1; ; attempt++) {
-    try {
-      await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 60_000 });
-      break;
-    } catch (error) {
-      if (attempt >= 3 || !/interrupted|context was destroyed|navigation/i.test(String(error))) throw error;
-      console.log("[retry] checks page navigation race — retrying goto");
-      await page.waitForTimeout(2000);
-    }
-  }
+      // which interrupts the navigation — retry like the evaluate below.
+      for (let attempt = 1; ; attempt++) {
+        try {
+          await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+          break;
+        } catch (error) {
+          if (attempt >= 3 || !/interrupted|context was destroyed|navigation/i.test(String(error))) throw error;
+          console.log("[retry] checks page navigation race — retrying goto");
+          await page.waitForTimeout(2000);
+        }
+      }
     }
   }
 
@@ -91,7 +91,7 @@ try {
     if (onLanding) {
       await appPage.waitForSelector(".landing-hero-player .embed-play", { timeout: 30_000 });
       // Click the STUDIO button specifically — the nav also holds the gallery link.
-    await appPage.evaluate(() => document.querySelector(".landing-nav button.landing-cta")?.click());
+      await appPage.evaluate(() => document.querySelector(".landing-nav button.landing-cta")?.click());
     }
     await appPage.waitForSelector(".project-browser", { timeout: 30_000 });
     // Create a project from the House template — one click from browser to sound.
@@ -209,8 +209,29 @@ try {
     await appPage.waitForSelector(".step-editor", { timeout: 5000 });
     await appPage.locator(".step-editor-close").click();
     await appPage.waitForSelector(".step-editor", { state: "detached", timeout: 5000 });
-    // Multi-select: shift+drag across steps selects the range.
+    // Multi-select: shift+drag across steps selects the range. The dock's
+    // fixed height can leave the virtualized sequencer scrolled — rows
+    // measured while clipped break the coordinate-based drag. Snap to top.
+    await appPage.evaluate(() => {
+      const seq = document.querySelector(".sequencer");
+      if (seq) seq.scrollTop = 0;
+      window.scrollTo(0, 0);
+    });
+    await appPage.waitForTimeout(120);
     const firstStep = await appPage.locator(".step").nth(0).boundingBox();
+    const dbg = await appPage.evaluate(() => {
+      const at = document.elementFromPoint(
+        document.querySelector(".step").getBoundingClientRect().x + 5,
+        document.querySelector(".step").getBoundingClientRect().y + 15,
+      );
+      return {
+        hit: at ? at.tagName + "." + String(at.className).slice(0, 40) : "null",
+        seqTop: document.querySelector(".sequencer")?.scrollTop ?? -1,
+        seqH: document.querySelector(".sequencer")?.clientHeight ?? -1,
+        stepY: document.querySelector(".step")?.getBoundingClientRect().y ?? -1,
+      };
+    });
+    console.log("[DBG]", JSON.stringify(dbg));
     const fourthStep = await appPage.locator(".step").nth(3).boundingBox();
     if (firstStep && fourthStep) {
       await appPage.mouse.move(firstStep.x + 5, firstStep.y + firstStep.height / 2);
@@ -262,8 +283,8 @@ try {
 
   // Fresh contexts get flags pre-set so E2E flows skip the landing and tour.
   const SKIP_FLAGS = () => {
-    localStorage.setItem('pf-onboarded', '1');
-    localStorage.setItem('pf-tour-v1', '1');
+    localStorage.setItem("pf-onboarded", "1");
+    localStorage.setItem("pf-tour-v1", "1");
   };
 
   // ── Collab E2E: two pages, one room, real server, real websockets ──────

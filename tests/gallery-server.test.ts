@@ -181,3 +181,74 @@ describe("y-websocket parity after the http refactor", () => {
     expect(size).toBeGreaterThan(2);
   });
 });
+
+describe("gallery flywheel: plays + remix chain", () => {
+  it("counts plays and annotates the feed with remix counts", async () => {
+    const { base } = await boot();
+
+    // Seed one parent beat.
+    const post = await fetch(`${base}/api/gallery`, {
+      method: "POST",
+      body: JSON.stringify({ title: "Parent Beat", code: shareCode(), tags: ["house"] }),
+    });
+    const { item: parent } = (await post.json()) as { item: { id: string } };
+
+    // Plays: each ping returns the running total.
+    const play1 = await fetch(`${base}/api/gallery/${parent.id}/play`, { method: "POST" });
+    expect(play1.status).toBe(200);
+    expect(((await play1.json()) as { plays: number }).plays).toBe(1);
+    const play2 = await fetch(`${base}/api/gallery/${parent.id}/play`, { method: "POST" });
+    expect(((await play2.json()) as { plays: number }).plays).toBe(2);
+
+    // Remix: child references the parent by id.
+    const remixPost = await fetch(`${base}/api/gallery`, {
+      method: "POST",
+      body: JSON.stringify({ title: "Child Remix", code: shareCode(), parentId: parent.id }),
+    });
+    expect(remixPost.status).toBe(201);
+
+    const feed = (await (await fetch(`${base}/api/gallery`)).json()) as {
+      items: { id: string; title?: string; plays?: number; remixCount: number; parentId?: string | null }[];
+    };
+    const feedParent = feed.items.find((i) => i.id === parent.id)!;
+    const feedChild = feed.items.find((i) => i.title === "Child Remix")!;
+    expect(feedParent.plays).toBe(2);
+    expect(feedParent.remixCount).toBe(1);
+    expect(feedChild.parentId).toBe(parent.id);
+    expect(feedChild.remixCount).toBe(0);
+  });
+
+  it("rejects unknown parent ids and unknown play targets", async () => {
+    const { base } = await boot();
+    const badParent = await fetch(`${base}/api/gallery`, {
+      method: "POST",
+      body: JSON.stringify({ title: "orphan", code: shareCode(), parentId: "does-not-exist" }),
+    });
+    expect(badParent.status).toBe(400);
+    expect(((await badParent.json()) as { error: string }).error).toContain("parentId");
+
+    const badPlay = await fetch(`${base}/api/gallery/nope/play`, { method: "POST" });
+    expect(badPlay.status).toBe(404);
+  });
+
+  it("persists plays across a server restart (debounced save flushes)", async () => {
+    const first = await boot();
+    const post = await fetch(`${first.base}/api/gallery`, {
+      method: "POST",
+      body: JSON.stringify({ title: "played beat", code: shareCode() }),
+    });
+    const { item } = (await post.json()) as { item: { id: string } };
+    await fetch(`${first.base}/api/gallery/${item.id}/play`, { method: "POST" });
+    // Force the debounced write by saving through a second add on the SAME store…
+    await new Promise((r) => setTimeout(r, 3200));
+
+    const collab2 = createCollabServer({ galleryFile: first.galleryFile });
+    await new Promise<void>((resolve) => collab2.server.listen(0, "127.0.0.1", resolve));
+    opened.push(collab2);
+    const { port } = collab2.server.address() as AddressInfo;
+    const feed = (await (await fetch(`http://127.0.0.1:${port}/api/gallery`)).json()) as {
+      items: { id: string; plays?: number }[];
+    };
+    expect(feed.items.find((i) => i.id === item.id)?.plays).toBe(1);
+  });
+});
