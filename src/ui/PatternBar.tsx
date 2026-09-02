@@ -51,6 +51,27 @@ export function PatternBar({
   const dragRef = useRef<DragState | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [generateOpen, setGenerateOpen] = useState(false);
+  const midiFileRef = useRef<HTMLInputElement | null>(null);
+  const [midiStatus, setMidiStatus] = useState<string | null>(null);
+  /** Parse a .mid file and drop it into the project as a new pattern. */
+  const importMidiFile = async (file: File) => {
+    try {
+      setMidiStatus(null);
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      // MIDI I/O is a lazy chunk — it only loads on first use.
+      const { importMidiCommand } = await import("../midi/midiProject");
+      const command = importMidiCommand(doc, bytes, file.name.replace(/\.[^.]+$/, ""));
+      services.store.execute(command);
+      const summary = (command as { summary?: { notes: number; drumHits: number; bpm: number | null } }).summary;
+      setMidiStatus(
+        summary
+          ? `${file.name}: ${summary.notes} notes + ${summary.drumHits} drum hits${summary.bpm ? ` · ${summary.bpm} BPM` : ""}`
+          : `${file.name} imported`,
+      );
+    } catch (error) {
+      setMidiStatus(`Import failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
   const beginRename = (id: string, name: string) => {
     setEditingId(id);
     setDraft(name);
@@ -252,6 +273,26 @@ export function PatternBar({
         </button>
         <button
           type="button"
+          className="btn btn-small"
+          title="Import a .mid file as a new pattern (drums via GM channel 10, rest as instrument tracks)"
+          onClick={() => midiFileRef.current?.click()}
+        >
+          MIDI
+        </button>
+        <input
+          ref={midiFileRef}
+          type="file"
+          accept=".mid,.midi,audio/midi,audio/x-midi"
+          style={{ display: "none" }}
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.target.value = "";
+            if (!file) return;
+            void importMidiFile(file);
+          }}
+        />
+        <button
+          type="button"
           className="btn btn-small btn-dice"
           title="Open Dice — rapid beat generator (100 rolls)"
           onClick={() => onOpenDice?.()}
@@ -304,6 +345,8 @@ export function PatternBar({
           <option value={16}>16</option>
           <option value={32}>32</option>
           <option value={64}>64</option>
+          <option value={128}>128</option>
+          <option value={256}>256</option>
         </select>
         <select
           className="pattern-length"
@@ -321,6 +364,12 @@ export function PatternBar({
           <option value={GRID_32ND}>1/32</option>
         </select>
       </div>
+
+      {midiStatus && (
+        <div className="pattern-midi-status" role="status" aria-label="MIDI import status">
+          {midiStatus}
+        </div>
+      )}
 
       <SceneLauncher
         variant="bar"

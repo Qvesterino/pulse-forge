@@ -52,8 +52,7 @@ import { HelpOverlay } from "./HelpOverlay";
 import { OnboardingHint } from "./OnboardingHint";
 import { DiceProvider } from "./DiceContext";
 
-const PANEL_KEYS = ["mixer", "fx", "arr", "mod", "exp", "midi", "dice"] as const;
-type BottomPanel = (typeof PANEL_KEYS)[number];
+import { useDockLayout, toggleSlot, openInSlotA, clampDockHeight, type BottomPanel } from "./dockLayout";
 
 export function App({
   services,
@@ -83,7 +82,27 @@ export function App({
     doc.tracks[0]?.kind === "drum" ? (doc.tracks[0].pads[0]?.id ?? "") : "",
   );
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
-  const [bottomPanel, setBottomPanel] = useState<BottomPanel | null>("mixer");
+  const viewportMax = typeof window === "undefined" ? 800 : window.innerHeight * 0.7;
+  const [dock, setDock] = useDockLayout(viewportMax);
+  const bottomPanel = dock.slotA;
+  const splitPanel = dock.slotB;
+  const setBottomPanel = (panel: BottomPanel) => setDock(openInSlotA(dock, panel));
+  const setBottomPanelTab = (panel: BottomPanel, split?: boolean) => setDock(toggleSlot(dock, panel, split ? 1 : 0));
+  const startDockResize = (event: React.PointerEvent) => {
+    event.preventDefault();
+    const startY = event.clientY;
+    const startHeight = dock.height;
+    const onMove = (move: PointerEvent) => {
+      setDock({ ...dock, height: clampDockHeight(startHeight + (startY - move.clientY), viewportMax) });
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+
   const [clip, setClip] = useState<PatternClipboard | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [scaleSnap, setScaleSnap] = useState(false);
@@ -152,8 +171,6 @@ export function App({
     const next = doc.tracks.find((t) => t.id === trackId);
     if (next?.kind === "drum") setSelectedPadId(next.pads[0]?.id ?? "");
   };
-
-  const setBottomPanelTab = (panel: BottomPanel) => setBottomPanel((current) => (current === panel ? null : panel));
 
   // Init selection with first track if empty; clear step selection on pattern change
   useEffect(() => {
@@ -782,17 +799,63 @@ export function App({
     };
   }, [selection]);
 
+  const panelRenderers: Record<BottomPanel, React.ReactNode> = {
+    mixer: (
+      <ErrorBoundary panel="mixer">
+        <Mixer />
+      </ErrorBoundary>
+    ),
+    fx: (
+      <ErrorBoundary panel="fx">
+        <EffectRack track={track} />
+      </ErrorBoundary>
+    ),
+    arr: (
+      <ErrorBoundary panel="arr">
+        <ArrangementPanel />
+      </ErrorBoundary>
+    ),
+    mod: (
+      <ErrorBoundary panel="mod">
+        <ModPanel />
+      </ErrorBoundary>
+    ),
+    exp: (
+      <ErrorBoundary panel="exp">
+        <ExportPanel selectedTrackId={track.id} selectedTrackName={track.name} />
+      </ErrorBoundary>
+    ),
+    midi: (
+      <ErrorBoundary panel="midi">
+        <MidiPanel
+          selectedTrackId={track.id}
+          selectedNote={selectedNote}
+          scaleSnap={scaleSnap}
+          onToggleScaleSnap={() => setScaleSnap((value) => !value)}
+          onClearSelection={() => setSelectedNote(null)}
+        />
+      </ErrorBoundary>
+    ),
+    dice: (
+      <ErrorBoundary panel="dice">
+        <DiceTray />
+      </ErrorBoundary>
+    ),
+  };
+  const renderDockSlot = (id: BottomPanel | null) => (id === null ? null : panelRenderers[id]);
+
   return (
     <ServicesContext.Provider value={services}>
       <DiceProvider doc={doc}>
         <SelectionContext.Provider value={selectionStore}>
           <ToolContext.Provider value={toolStore}>
             <AudioUnlock />
-      <OnboardingTour />
+            <OnboardingTour />
             <div className="app">
               <TopBar
                 diagnosticsOpen={diagnosticsOpen}
                 bottomPanel={bottomPanel}
+                splitPanel={splitPanel}
                 playMode={playMode}
                 onSetPlayMode={services.playback.setMode}
                 onToggleDiagnostics={() => setDiagnosticsOpen((open) => !open)}
@@ -826,7 +889,23 @@ export function App({
                 </div>
                 <Inspector track={track} selectedPadId={padId} onOpenPlugin={() => setPluginTrackId(track.id)} />
               </main>
-              <div className={"bottom-panels" + (sheetCollapsed ? " sheet-collapsed" : "")}>
+              <div
+                className={
+                  "bottom-panels" +
+                  (sheetCollapsed ? " sheet-collapsed" : "") +
+                  (dock.slotB !== null ? " dock-split" : "")
+                }
+                style={{ "--dock-height": `${dock.height}px` } as React.CSSProperties}
+              >
+                <button
+                  type="button"
+                  className="dock-resize-handle"
+                  aria-label="Resize bottom panel"
+                  title="Drag to resize the panel dock"
+                  onPointerDown={startDockResize}
+                >
+                  <span aria-hidden="true" />
+                </button>
                 <button
                   type="button"
                   className="sheet-handle"
@@ -837,29 +916,20 @@ export function App({
                 >
                   <span className="sheet-handle-bar" aria-hidden="true" />
                 </button>
-                <Suspense fallback={<div className="panel-loading">Loading panel…</div>}>
-                  <ErrorBoundary panel="mixer">{bottomPanel === "mixer" && <Mixer />}</ErrorBoundary>
-                  <ErrorBoundary panel="fx">{bottomPanel === "fx" && <EffectRack track={track} />}</ErrorBoundary>
-                  <ErrorBoundary panel="arr">{bottomPanel === "arr" && <ArrangementPanel />}</ErrorBoundary>
-                  <ErrorBoundary panel="mod">{bottomPanel === "mod" && <ModPanel />}</ErrorBoundary>
-                  <ErrorBoundary panel="exp">
-                    {bottomPanel === "exp" && (
-                      <ExportPanel selectedTrackId={track.id} selectedTrackName={track.name} />
-                    )}
-                  </ErrorBoundary>
-                  <ErrorBoundary panel="midi">
-                    {bottomPanel === "midi" && (
-                      <MidiPanel
-                        selectedTrackId={track.id}
-                        selectedNote={selectedNote}
-                        scaleSnap={scaleSnap}
-                        onToggleScaleSnap={() => setScaleSnap((value) => !value)}
-                        onClearSelection={() => setSelectedNote(null)}
-                      />
-                    )}
-                  </ErrorBoundary>
-                  <ErrorBoundary panel="dice">{bottomPanel === "dice" && <DiceTray />}</ErrorBoundary>
-                </Suspense>
+                {!sheetCollapsed && (
+                  <div className="dock-slot">
+                    <Suspense fallback={<div className="panel-loading">Loading panel…</div>}>
+                      {renderDockSlot(dock.slotA)}
+                    </Suspense>
+                  </div>
+                )}
+                {!sheetCollapsed && dock.slotB !== null && (
+                  <div className="dock-slot">
+                    <Suspense fallback={<div className="panel-loading">Loading panel…</div>}>
+                      {renderDockSlot(dock.slotB)}
+                    </Suspense>
+                  </div>
+                )}
               </div>
               {diagnosticsOpen && (
                 <ErrorBoundary panel="diagnostics">

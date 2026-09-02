@@ -434,7 +434,7 @@ button {
   font-size: 8px;
   color: var(--accent);
   background: rgb(0 0 0 / 0.45);
-  border: 1px solid var(--accent)66;
+  border: 1px solid var(--accent) 66;
   border-radius: 3px;
   padding: 0 2px;
   line-height: 1.3;
@@ -4612,7 +4612,7 @@ button {
   font-family: var(--mono);
   font-size: 9px;
   color: var(--accent);
-  border: 1px solid var(--accent)55;
+  border: 1px solid var(--accent) 55;
   border-radius: 3px;
   padding: 1px 3px;
   line-height: 1.2;
@@ -7523,7 +7523,9 @@ html {
   font-family: var(--mono);
   font-size: 12px;
   letter-spacing: 0.1em;
-  transition: border-color 0.15s, color 0.15s;
+  transition:
+    border-color 0.15s,
+    color 0.15s;
 }
 
 .gallery-publish-toggle:hover {
@@ -7817,16 +7819,71 @@ html {
   box-shadow: 0 0 8px currentColor;
   pointer-events: none;
   z-index: 4;
-  transition: left 0.12s ease-out, top 0.12s ease-out;
+  transition:
+    left 0.12s ease-out,
+    top 0.12s ease-out;
 }
 
 /* ---------- Mobile layout V2: bottom sheets + fullscreen piano roll ---------- */
 
-/* Desktop: the wrapper is invisible to the .app grid, exactly as before V2. */
+/* Desktop dock: a real flex column so --dock-height + split apply.
+   Panels keep their intrinsic height up to the dock height; overflow scrolls. */
 .bottom-panels {
-  display: contents;
+  display: flex;
+  flex-direction: column;
+  height: var(--dock-height, 300px);
+  min-height: 0;
+  overflow: hidden;
 }
-
+.bottom-panels.sheet-collapsed {
+  height: auto;
+  overflow: visible;
+}
+.bottom-panels.sheet-collapsed .dock-slot,
+.bottom-panels.sheet-collapsed .dock-resize-handle {
+  display: none;
+}
+.bottom-panels.dock-split {
+  flex-direction: row;
+  align-items: stretch;
+  column-gap: 6px;
+}
+.dock-slot {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.dock-slot > * {
+  flex: 1 0 auto;
+  max-height: none;
+}
+.bottom-panels .dock-resize-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 7px;
+  flex: none;
+  cursor: row-resize;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  touch-action: none;
+}
+.bottom-panels .dock-resize-handle span {
+  width: 42px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border);
+  transition: background 0.15s;
+}
+.bottom-panels .dock-resize-handle:hover span,
+.bottom-panels .dock-resize-handle:focus-visible span {
+  background: var(--accent);
+}
 .sheet-handle {
   display: none;
 }
@@ -7913,4 +7970,14 @@ html {
   .pr-fullscreen-toggle {
     display: inline-flex;
   }
+}
+
+.pattern-midi-status {
+  padding: 4px 10px;
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

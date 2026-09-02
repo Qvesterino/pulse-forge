@@ -74,6 +74,7 @@ export function ExportPanel({
   const baseName = sanitizeFilename(doc.name);
   const groups = nonEmptyStemGroups(doc);
   const videoSupported = canExportVideo();
+  const activePatternName = doc.patterns.find((p) => p.id === doc.activePatternId)?.name ?? "pattern";
 
   const exportMaster = async () => {
     setStatus({ kind: "busy", label: "Rendering master…" });
@@ -192,8 +193,24 @@ export function ExportPanel({
     return copyText(snippet, "Embed iframe copied — paste it into a website");
   };
 
-  const exportScorepack = async () => {
-    setStatus({ kind: "busy", label: "Building scorepack…" });
+  /** MIDI export: the active pattern as a format-1 .mid (drums on ch 10). */
+  const exportMidi = async () => {
+    try {
+      // The SMF writer is a lazy chunk — fetched on first MIDI export.
+      const { patternToMidi, downloadMidi } = await import("../midi/midiProject");
+      const bytes = patternToMidi(doc, doc.activePatternId);
+      downloadMidi(bytes, `${baseName}-${sanitizeFilename(activePatternName)}`);
+      setStatus({
+        kind: "done",
+        label: `MIDI exported (${activePatternName}) — opens in any DAW`,
+        summary: EMPTY_EXPORT_SUMMARY,
+      });
+    } catch (error) {
+      setStatus({ kind: "error", label: `MIDI export failed: ${String(error)}` });
+    }
+  };
+
+  const exportScorepack = async () => {    setStatus({ kind: "busy", label: "Building scorepack…" });
     try {
       const { blob, filename } = await buildScorepack(doc, services.bank, (p) => {
         setStatus({ kind: "busy", label: `Scorepack: ${p.phase}…` });
@@ -413,6 +430,15 @@ export function ExportPanel({
           onClick={() => void exportScorepack()}
         >
           EXPORT SCOREPACK
+        </button>
+        <button
+          type="button"
+          className="btn btn-export"
+          disabled={busy}
+          title="Download the active pattern as a .mid file (drums on channel 10, one track per instrument)"
+          onClick={() => void exportMidi()}
+        >
+          EXPORT MIDI (PATTERN)
         </button>
         <button
           type="button"

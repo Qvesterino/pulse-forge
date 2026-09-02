@@ -11,3 +11,47 @@ export const FACTORY_KICK_LAYERS: SampleLayer[] = [
   { id: "layer.kick.deep", sampleId: "factory.kick.deep", min: 0.5, max: 0.75 },
   { id: "layer.kick.sub", sampleId: "factory.kick.sub", min: 0.75, max: 1 },
 ];
+
+/**
+ * Round-robin layer set: every sample shares the full velocity window, so
+ * the sampler's overlapping-window rule cycles through them on repeated
+ * hits — micro-variations instead of machine-gun sameness.
+ */
+export function roundRobinLayers(sampleIds: string[]): SampleLayer[] {
+  return sampleIds.map((sampleId, i) => ({ id: `layer.rr.${i}`, sampleId, min: 0, max: 1 }));
+}
+
+/** Snare RR set — base + two micro-variations (±~1.5% pitch/length, ±4% level). */
+export const FACTORY_SNARE_RR = roundRobinLayers([
+  "factory.snare.main",
+  "factory.snare.main.rr2",
+  "factory.snare.main.rr3",
+]);
+
+/** Closed-hat RR set — hats are where machine-gun fatique is loudest. */
+export const FACTORY_HAT_CLOSED_RR = roundRobinLayers([
+  "factory.hat.closed",
+  "factory.hat.closed.rr2",
+  "factory.hat.closed.rr3",
+]);
+
+/** Open-hat RR set. */
+export const FACTORY_HAT_OPEN_RR = roundRobinLayers([
+  "factory.hat.open.short",
+  "factory.hat.open.short.rr2",
+]);
+
+/** Kick RR set — kicks vary less than snares, two takes are enough. */
+export const FACTORY_KICK_PUNCH_RR = roundRobinLayers([
+  "factory.kick.punch",
+  "factory.kick.punch.rr2",
+  "factory.kick.punch.rr3",
+]);
+
+/** Curated beat kits ready for `setVelocityLayersCommand`. */
+export const FACTORY_BEAT_RR_KITS: Record<string, SampleLayer[]> = {
+  kick: FACTORY_KICK_PUNCH_RR,
+  snare: FACTORY_SNARE_RR,
+  hatClosed: FACTORY_HAT_CLOSED_RR,
+  hatOpen: FACTORY_HAT_OPEN_RR,
+};

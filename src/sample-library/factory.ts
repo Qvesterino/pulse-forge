@@ -766,6 +766,56 @@ const DURATIONS: Record<string, number> = {
   "factory.tonal.bell": 1.5,
 };
 
+/**
+ * Round-robin variations — micro-different clones of the beat-critical
+ * drums (±~1.5% pitch/length, ±4% level). Mapped into overlapping sampler
+ * layer zones they kill the "machine-gun" effect of repeated identical
+ * hits. Derived from the rendered base (not re-synthesized) so every
+ * variation keeps the base character while no two hits are identical.
+ * Each entry generates `<base>.rr2`, `<base>.rr3`, … into the bank.
+ */
+export const RR_VARIATIONS: Record<string, Array<{ rate: number; gain: number }>> = {
+  "factory.snare.main": [
+    { rate: 1.018, gain: 1.04 },
+    { rate: 0.984, gain: 0.95 },
+  ],
+  "factory.snare.punch": [
+    { rate: 1.014, gain: 1.03 },
+    { rate: 0.988, gain: 0.96 },
+  ],
+  "factory.hat.closed": [
+    { rate: 1.022, gain: 1.05 },
+    { rate: 0.98, gain: 0.94 },
+  ],
+  "factory.hat.open.short": [
+    { rate: 1.016, gain: 1.04 },
+    { rate: 0.986, gain: 0.95 },
+  ],
+  "factory.kick.punch": [
+    { rate: 1.012, gain: 1.03 },
+    { rate: 0.99, gain: 0.96 },
+  ],
+};
+
+/** Derive one variation: linear-resample (pitch + length together) and scale. */
+function deriveVariation(src: AudioBuffer, rate: number, gain: number): AudioBuffer {
+  const length = Math.max(1, Math.round(src.length / rate));
+  const out = new AudioBuffer({ numberOfChannels: src.numberOfChannels, length, sampleRate: src.sampleRate });
+  for (let ch = 0; ch < src.numberOfChannels; ch++) {
+    const s = src.getChannelData(ch);
+    const d = out.getChannelData(ch);
+    for (let i = 0; i < length; i++) {
+      const pos = i * rate;
+      const i0 = Math.floor(pos);
+      const frac = pos - i0;
+      const a = s[i0] ?? 0;
+      const b = i0 + 1 < s.length ? s[i0 + 1] : a;
+      d[i] = (a + (b - a) * frac) * gain;
+    }
+  }
+  return out;
+}
+
 export async function generateFactoryBank(): Promise<SampleBank> {
   const bank = new SampleBank();
   const assets: FactoryAsset[] = FACTORY_ASSETS;
@@ -777,5 +827,12 @@ export async function generateFactoryBank(): Promise<SampleBank> {
       bank.add(asset.id, buffer);
     }),
   );
+  for (const [baseId, variations] of Object.entries(RR_VARIATIONS)) {
+    const base = bank.get(baseId);
+    if (!base) throw new Error(`No base buffer for RR variation of ${baseId}`);
+    variations.forEach(({ rate, gain }, i) => {
+      bank.add(`${baseId}.rr${i + 2}`, deriveVariation(base, rate, gain));
+    });
+  }
   return bank;
 }

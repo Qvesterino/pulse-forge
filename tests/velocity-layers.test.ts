@@ -191,3 +191,56 @@ describe.skipIf(typeof OfflineAudioContext === "undefined")("Sampler layer selec
     expect(zcc(buffer.getChannelData(0), 0, SR)).toBeGreaterThan(100);
   });
 });
+
+describe("round-robin sample content", () => {
+  it("declares variations only for manifest bases with subtle, safe amounts", async () => {
+    const { RR_VARIATIONS } = await import("../src/sample-library/factory");
+    const { FACTORY_ASSETS } = await import("../src/sample-library/manifest");
+    const manifestIds = new Set(FACTORY_ASSETS.map((a) => a.id));
+    for (const [base, vars] of Object.entries(RR_VARIATIONS)) {
+      expect(manifestIds.has(base)).toBe(true);
+      for (const v of vars) {
+        expect(v.rate).toBeGreaterThan(0.95);
+        expect(v.rate).toBeLessThan(1.05);
+        expect(v.gain).toBeGreaterThan(0.9);
+        expect(v.gain).toBeLessThan(1.1);
+      }
+    }
+  });
+
+  it("beat RR kits are full-window overlapping sets", async () => {
+    const { FACTORY_BEAT_RR_KITS } = await import("../src/sample-library/velocity-layers");
+    for (const layers of Object.values(FACTORY_BEAT_RR_KITS)) {
+      expect(layers.length).toBeGreaterThanOrEqual(2);
+      for (const l of layers) {
+        expect(l.min).toBe(0);
+        expect(l.max).toBe(1);
+        expect(l.sampleId).toBeTruthy();
+      }
+      expect(new Set(layers.map((l) => l.sampleId)).size).toBe(layers.length);
+    }
+  });
+});
+
+describe.skipIf(typeof OfflineAudioContext === "undefined")("round-robin bank generation", () => {
+  it("generates rr samples that differ from their base (length and content)", async () => {
+    const { generateFactoryBank, RR_VARIATIONS } = await import("../src/sample-library/factory");
+    const bank = await generateFactoryBank();
+    for (const [base, vars] of Object.entries(RR_VARIATIONS)) {
+      const baseBuf = bank.get(base)!;
+      vars.forEach((_, i) => {
+        const rr = bank.get(`${base}.rr${i + 2}`)!;
+        expect(rr).toBeDefined();
+        // resampled length differs by ~1/rate
+        expect(Math.abs(rr.length / baseBuf.length - 1)).toBeGreaterThan(0.005);
+        // content actually differs somewhere
+        const a = baseBuf.getChannelData(0);
+        const b = rr.getChannelData(0);
+        let diff = 0;
+        const n = Math.min(a.length, b.length);
+        for (let j = 0; j < n; j += 7) diff += Math.abs(a[j] - b[j]);
+        expect(diff).toBeGreaterThan(0.01);
+      });
+    }
+  });
+});

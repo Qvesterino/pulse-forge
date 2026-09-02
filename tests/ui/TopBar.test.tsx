@@ -11,7 +11,8 @@ function topBarProps(overrides?: Partial<React.ComponentProps<typeof TopBar>>) {
     onToggleDiagnostics: vi.fn(),
     diagnosticsOpen: false,
     onSetBottomPanel: vi.fn(),
-    bottomPanel: null as "mixer" | "fx" | "arr" | "mod" | "exp" | "midi" | null,
+    splitPanel: null as "mixer" | "fx" | "arr" | "mod" | "exp" | "midi" | "dice" | null,
+    bottomPanel: null as "mixer" | "fx" | "arr" | "mod" | "exp" | "midi" | "dice" | null,
     onToggleHelp: vi.fn(),
     playMode: "pattern" as const,
     onSetPlayMode: vi.fn(),
@@ -95,7 +96,9 @@ describe("TopBar", () => {
     const onSetBottomPanel = vi.fn();
     renderWithContext(<TopBar {...topBarProps({ onSetBottomPanel })} />);
     await user.click(screen.getByText("MIX"));
-    expect(onSetBottomPanel).toHaveBeenCalledWith("mixer");
+    // The handler also receives the modifier flag (ctrl/meta = keep-open) —
+    // assert the panel id only.
+    expect(onSetBottomPanel.mock.calls[0][0]).toBe("mixer");
   });
 
   it("calls onToggleHelp when ? clicked", async () => {

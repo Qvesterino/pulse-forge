@@ -1,6 +1,6 @@
 import { EFFECT_DEFS, EFFECT_ORDER, defaultParamsOf } from "./effects/registry";
 import { INSTRUMENT_DEFS, INSTRUMENT_ORDER, defaultInstrumentParams } from "./instruments/registry";
-import { generateFactoryBank } from "./sample-library/factory";
+import { generateFactoryBank, RR_VARIATIONS } from "./sample-library/factory";
 import { renderProject } from "./rendering/renderer";
 import { buildStemProject, STEM_GROUPS } from "./rendering/stems";
 import { encodeWav } from "./rendering/wav";
@@ -76,10 +76,17 @@ export async function runChecks(): Promise<CheckResult[]> {
     results.push({ name, ok, message: message || (ok ? "ok" : "failed") });
 
   const bank = await generateFactoryBank();
+  const rrIds = Object.entries(RR_VARIATIONS).flatMap(([base, vars]) => vars.map((_, i) => `${base}.rr${i + 2}`));
+  const missingBank = [
+    ...FACTORY_ASSETS.filter((a) => !bank.has(a.id)).map((a) => a.id),
+    ...rrIds.filter((id) => !bank.has(id)),
+  ];
   check(
-    "factory bank generates a buffer for every manifest asset",
-    bank.size === FACTORY_ASSETS.length,
-    `size=${bank.size}/${FACTORY_ASSETS.length}`,
+    "factory bank generates a buffer for every manifest asset + RR variation",
+    missingBank.length === 0,
+    missingBank.length > 0
+      ? `missing=${missingBank.join(",")}`
+      : `size=${bank.size}/${FACTORY_ASSETS.length + rrIds.length}`,
   );
   const silentAssets = bank.entries().filter(([, buf]) => peakOf(buf.getChannelData(0)) < 0.001);
   check("factory buffers are audible", silentAssets.length === 0, silentAssets.map(([id]) => id).join(","));

@@ -39,7 +39,7 @@ Prehrávanie sample z banky s transpozíciou okolo root noty.
 | **KEY TRK** | keytracking — cutoff sleduje výšku noty (default 0 = neutrálne) |
 | **V-FLT** | velocity→filter — tichšie noty stmavujú cutoff až o dve oktávy (pri 100 %); klávesová vyjadrovosť |
 | GAIN | 0–100 % |
-| **Velocity layers / round-robin** | `velocityLayers` na stope (`SampleLayer[]`): disjunktné okná = velocity vrstvy (napr. factory kick kit soft→punch→deep→sub), **prekrývajúce sa okná sa striedajú round-robin**. Nastaviteľné cez `setVelocityLayersCommand`; žiadna zhoda = fallback na `sampleId` |
+| **Velocity layers / round-robin** | `velocityLayers` na stope (`SampleLayer[]`): disjunktné okná = velocity vrstvy (napr. factory kick kit soft→punch→deep→sub), **prekrývajúce sa okná sa striedajú round-robin**. Nastaviteľné cez `setVelocityLayersCommand`; žiadna zhoda = fallback na `sampleId`. Hotové beat kitmy v `FACTORY_BEAT_RR_KITS` (kick/snare/hat) — sample library obsahuje RR variácie (`.rr2`, `.rr3`: ±~1,5 % výška/dĺžka, ±4 % úroveň), takže beaty neprehrávajú bitovo rovnaký hit dvakrát |
 | STRETCH | **Pitch** (rýchlejšie = vyššie) alebo **Stretch** (time-stretch — výška sa mení bez zmeny dĺžky, interný PSOLA-like algoritmus + cache; **stereo** — každý kanál beží na rovnakej deterministickej grain mrie, takže L/R ostáva fázovo zarovnané) |
 | LOOP | One-shot / Loop s prerenderovaným seamless bufferom (Hann crossfade na šve, snap na nulovú osu) |
 | L-XFADE | dĺžka loop crossfade |

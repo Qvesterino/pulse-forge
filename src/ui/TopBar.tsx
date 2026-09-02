@@ -27,6 +27,7 @@ export function TopBar({
   diagnosticsOpen,
   onSetBottomPanel,
   bottomPanel,
+  splitPanel,
   onToggleHelp,
   playMode,
   onSetPlayMode,
@@ -39,8 +40,9 @@ export function TopBar({
 }: {
   onToggleDiagnostics: () => void;
   diagnosticsOpen: boolean;
-  onSetBottomPanel: (panel: "mixer" | "fx" | "arr" | "mod" | "exp" | "midi" | "dice") => void;
+  onSetBottomPanel: (panel: "mixer" | "fx" | "arr" | "mod" | "exp" | "midi" | "dice", split?: boolean) => void;
   bottomPanel: "mixer" | "fx" | "arr" | "mod" | "exp" | "midi" | "dice" | null;
+  splitPanel: "mixer" | "fx" | "arr" | "mod" | "exp" | "midi" | "dice" | null;
   onToggleHelp: () => void;
   playMode: PlayMode;
   onSetPlayMode: (mode: PlayMode) => void;
@@ -294,71 +296,71 @@ export function TopBar({
           </span>
           <button
             type="button"
-            className={`btn btn-ghost${bottomPanel === "mixer" ? " active" : ""}`}
-            onClick={() => onSetBottomPanel("mixer")}
+            className={`btn btn-ghost${bottomPanel === "mixer" || splitPanel === "mixer" ? " active" : ""}`}
+            onClick={(event) => onSetBottomPanel("mixer", event.ctrlKey || event.metaKey)}
             title="Toggle mixer panel (1)"
             aria-label="Toggle mixer panel"
-            aria-pressed={bottomPanel === "mixer"}
+            aria-pressed={bottomPanel === "mixer" || splitPanel === "mixer"}
           >
             MIX
           </button>
           <button
             type="button"
-            className={`btn btn-ghost${bottomPanel === "fx" ? " active" : ""}`}
-            onClick={() => onSetBottomPanel("fx")}
+            className={`btn btn-ghost${bottomPanel === "fx" || splitPanel === "fx" ? " active" : ""}`}
+            onClick={(event) => onSetBottomPanel("fx", event.ctrlKey || event.metaKey)}
             title="Toggle effect rack (2)"
             aria-label="Toggle effect rack"
-            aria-pressed={bottomPanel === "fx"}
+            aria-pressed={bottomPanel === "fx" || splitPanel === "fx"}
           >
             FX
           </button>
           <button
             type="button"
-            className={`btn btn-ghost${bottomPanel === "arr" ? " active" : ""}`}
-            onClick={() => onSetBottomPanel("arr")}
+            className={`btn btn-ghost${bottomPanel === "arr" || splitPanel === "arr" ? " active" : ""}`}
+            onClick={(event) => onSetBottomPanel("arr", event.ctrlKey || event.metaKey)}
             title="Toggle arrangement and scenes (3)"
             aria-label="Toggle arrangement and scenes"
-            aria-pressed={bottomPanel === "arr"}
+            aria-pressed={bottomPanel === "arr" || splitPanel === "arr"}
           >
             ARR
           </button>
           <button
             type="button"
-            className={`btn btn-ghost${bottomPanel === "mod" ? " active" : ""}`}
-            onClick={() => onSetBottomPanel("mod")}
+            className={`btn btn-ghost${bottomPanel === "mod" || splitPanel === "mod" ? " active" : ""}`}
+            onClick={(event) => onSetBottomPanel("mod", event.ctrlKey || event.metaKey)}
             title="Toggle automation, LFOs and macros (4)"
             aria-label="Toggle modulation panel"
-            aria-pressed={bottomPanel === "mod"}
+            aria-pressed={bottomPanel === "mod" || splitPanel === "mod"}
           >
             MOD
           </button>
           <button
             type="button"
             className={`btn btn-ghost btn-export-toggle${bottomPanel === "exp" ? " active" : ""}`}
-            onClick={() => onSetBottomPanel("exp")}
+            onClick={(event) => onSetBottomPanel("exp", event.ctrlKey || event.metaKey)}
             title="Toggle export panel (5)"
             aria-label="Toggle export panel"
-            aria-pressed={bottomPanel === "exp"}
+            aria-pressed={bottomPanel === "exp" || splitPanel === "exp"}
           >
             EXPORT
           </button>
           <button
             type="button"
-            className={`btn btn-ghost${bottomPanel === "midi" ? " active" : ""}`}
-            onClick={() => onSetBottomPanel("midi")}
+            className={`btn btn-ghost${bottomPanel === "midi" || splitPanel === "midi" ? " active" : ""}`}
+            onClick={(event) => onSetBottomPanel("midi", event.ctrlKey || event.metaKey)}
             title="Toggle MIDI input panel"
             aria-label="Toggle MIDI input panel"
-            aria-pressed={bottomPanel === "midi"}
+            aria-pressed={bottomPanel === "midi" || splitPanel === "midi"}
           >
             MIDI
           </button>
           <button
             type="button"
-            className={`btn btn-ghost${bottomPanel === "dice" ? " active" : ""}`}
-            onClick={() => onSetBottomPanel("dice")}
+            className={`btn btn-ghost${bottomPanel === "dice" || splitPanel === "dice" ? " active" : ""}`}
+            onClick={(event) => onSetBottomPanel("dice", event.ctrlKey || event.metaKey)}
             title="Toggle dice panel — rapid beat generator (Alt+6, D to roll)"
             aria-label="Toggle dice panel"
-            aria-pressed={bottomPanel === "dice"}
+            aria-pressed={bottomPanel === "dice" || splitPanel === "dice"}
           >
             🎲 DICE
           </button>
