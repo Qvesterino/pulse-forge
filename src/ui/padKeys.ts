@@ -13,17 +13,55 @@ import { useSyncExternalStore } from "react";
  * Modifier combos (Ctrl/Alt/Meta+…) are untouched by this rule.
  */
 
-export const DEFAULT_PAD_KEYS = ["q", "w", "e", "r", "t", "y", "u", "i", "a", "s", "d", "f", "g", "h", "j", "k"] as const;
+export const DEFAULT_PAD_KEYS = [
+  "q",
+  "w",
+  "e",
+  "r",
+  "t",
+  "y",
+  "u",
+  "i",
+  "a",
+  "s",
+  "d",
+  "f",
+  "g",
+  "h",
+  "j",
+  "k",
+] as const;
 
 const STORAGE_KEY = "pf-padkeys-v1";
 
 /** Keys that must never be bound (modifiers, navigation, transport, help). */
 const RESERVED = new Set([
-  " ", "escape", "enter", "tab", "backspace", "delete",
-  "home", "end", "pageup", "pagedown", "insert",
-  "arrowup", "arrowdown", "arrowleft", "arrowright",
-  "shift", "control", "alt", "meta", "capslock", "contextmenu",
-  ",", ".", "?", "+", "-",
+  " ",
+  "escape",
+  "enter",
+  "tab",
+  "backspace",
+  "delete",
+  "home",
+  "end",
+  "pageup",
+  "pagedown",
+  "insert",
+  "arrowup",
+  "arrowdown",
+  "arrowleft",
+  "arrowright",
+  "shift",
+  "control",
+  "alt",
+  "meta",
+  "capslock",
+  "contextmenu",
+  ",",
+  ".",
+  "?",
+  "+",
+  "-",
 ]);
 
 export type PadKeyMap = string[];
@@ -31,7 +69,7 @@ export type PadKeyMap = string[];
 let state: PadKeyMap = [...DEFAULT_PAD_KEYS];
 const listeners = new Set<() => void>();
 
-function normalize(map: unknown): PadKeyMap {
+export function normalizePadKeyMap(map: unknown): PadKeyMap {
   const source = Array.isArray(map) ? map : [];
   const out: string[] = [];
   const used = new Set<string>();
@@ -58,7 +96,7 @@ function normalize(map: unknown): PadKeyMap {
 function load(): PadKeyMap {
   if (typeof localStorage === "undefined") return [...DEFAULT_PAD_KEYS];
   try {
-    return normalize(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]"));
+    return normalizePadKeyMap(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]"));
   } catch {
     return [...DEFAULT_PAD_KEYS];
   }
@@ -91,7 +129,14 @@ export function bindPadKey(index: number, key: string): void {
     next[existing] = next[index];
   }
   next[index] = k;
-  state = normalize(next);
+  state = normalizePadKeyMap(next);
+  persist();
+  for (const listener of listeners) listener();
+}
+
+/** Install a full key map from a BINDS share code (normalized + persisted). */
+export function importPadKeys(map: unknown): void {
+  state = normalizePadKeyMap(map);
   persist();
   for (const listener of listeners) listener();
 }

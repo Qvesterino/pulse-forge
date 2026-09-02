@@ -425,6 +425,81 @@ button {
   opacity: 0.7;
 }
 
+/* Pad keys editor + colour swatches (per-pad customisation). */
+.pad-keys-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.pad-key-slot {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text);
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 5px;
+  cursor: pointer;
+}
+
+.pad-key-slot.capturing {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.pad-key-index {
+  color: var(--text-faint);
+  font-size: 8px;
+}
+
+.pad-color-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+  padding: 2px 0 6px;
+}
+
+.pad-color-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 1px solid rgb(255 255 255 / 0.3);
+  cursor: pointer;
+}
+
+.pad-color-swatch:hover {
+  transform: scale(1.12);
+}
+
+.pad-color-auto {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-panel-2);
+  padding: 3px 6px;
+  cursor: pointer;
+}
+
+/* Track colour dot (user-set track colour). */
+.track-color-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid rgb(255 255 255 / 0.35);
+  margin-right: 4px;
+  flex: none;
+}
+
 /* Pinned per-pad repeat rate chip (kick 1/16, hat 1/8T …). */
 .pad-rate-badge {
   position: absolute;
@@ -8080,4 +8155,74 @@ html {
 
 .arr-rec-saving {
   color: var(--text-dim);
+}
+
+/* ---------- Project snapshots (history panel) ---------- */
+
+.snapshots-section {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.snapshots-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px 6px;
+}
+
+.snapshots-title {
+  font-size: 10px;
+  font-family: var(--mono);
+  letter-spacing: 0.14em;
+  color: var(--text-dim);
+}
+
+.snapshots-entry {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
+.snapshots-entry:hover {
+  background: var(--bg-raise);
+}
+
+.snapshots-label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.snapshots-time {
+  color: var(--text-faint);
+  font-family: var(--mono);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.snapshots-restore {
+  color: var(--accent);
+  font-size: 10px;
+  font-family: var(--mono);
+  letter-spacing: 0.06em;
+  padding: 2px 4px;
+}
+
+.snapshots-restore:hover {
+  background: var(--accent-soft);
+}
+
+.snapshots-delete {
+  color: var(--text-faint);
+  padding: 0 3px;
+}
+
+.snapshots-delete:hover {
+  color: var(--stop);
 }

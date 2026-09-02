@@ -11,7 +11,7 @@ Pulse Forge momentálne disponuje:
 | Drum syntetizátory (pady bubnovej stopy) | **7** | `src/project-model/types.ts` + `src/audio-engine/synth-voices.ts` |
 | Veľké pluginy (vendored DSP rack) | **3** — FXEQ, Ultina, Ozvena | `src/effects/*-core/` |
 | Ostatné mixové FX (effect rack) | **32** | `src/effects/registry.ts` |
-| Factory presety | **166 inštrumentových + 12 bubnových** | `src/presets/factory.ts` |
+| Factory presety | **169 inštrumentových + 12 bubnových** | `src/presets/factory.ts` |
 
 ---
 
@@ -97,6 +97,7 @@ Morphing wavetable: každý hlas prehráva dve framy tabuľky crossfaded podľa 
 - **Import z sample** — keď je stope priradený sample, tabuľka sa extrahuje autokoreláciou (detekcia periódy)
 - MORPH (pozícia v tabuľke), DETUNE páru, SUB
 - **M RATE / M DEPTH — per-note crossfade LFO**: morph pozícia „dýcha" okolo MORPH bázy (LFO tlačí +wobble na frame A a −wobble na frame B — súčet gains konštantný, žiadna amplitude pumpa; hĺbka sa clampne na priestor dvojice fám, takže gainty nikdy nepodtečú pod nulu). Default OFF — existujúce projekty znejú nezmenene
+- **S RATE — scan engine, skutočné prechádzanie tabuľkou**: pozícia sa počas noty posúva celou tabuľkou dopredu s wrapom. Nota sa delí na segmenty po pároch fám, blend v segmente rampuje lineárne a hranice sa striedajú pod ~6 ms equal-power crossfade (žiadne klicky). Segmenty sú capované (14) — po cap sa hlas „zamrzne" na poslednom páre. Pri zapnutom SCAN berie S RATE veli M RATE/M DEPTH
 - **FILTER MODE: LP / BP / HP** a **KEY TRK** — rovnaké ako na Analgu (default neutrálne)
 - UNISON 1–8× + SPREAD, CUTOFF/RESO, ATTACK/RELEASE, LEVEL
 
@@ -262,14 +263,14 @@ Presety sú čisté dáta (žiadne volania do audio engine) — idú cez command
 | 808 Synth | 13 |
 | Texture Synth | 13 |
 | Drum Synth | 12 |
-| Wavetable Synth | 12 |
+| Wavetable Synth | 15 |
 | Sampler | 11 |
 | Granular Synth | 10 |
 | Vocal Chop | 10 |
 | Pluck Synth | 9 |
 | Spectral Pad | 9 |
 | Log Drum | 4 |
-| **Spolu inštrumenty** | **166** |
+| **Spolu inštrumenty** | **169** |
 | Drum bicie (kick, snare, hat, clap…) | 12 |
 
 ---

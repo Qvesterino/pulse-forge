@@ -5,10 +5,11 @@ import { usePlayheadStep } from "./playhead";
 import { assetCategoryOf, categoryColor } from "./kitColors";
 import { FALLOFF_MODES, REPEAT_RATES, type FalloffMode, type RepeatRate } from "../audio-engine/NoteRepeat";
 import { applyKitToDrumTrack, captureKitFromTrack, setPadColor } from "../commands/commands";
+import { decodeBindsCode, encodeBindsCode } from "../export/bindsCode";
 import { decodeKitCode, encodeKitCode } from "../export/kitCode";
 import type { UserKit } from "../persistence/KitRepository";
 
-import { bindPadKey, isPadKey, resetPadKeys, usePadKeys } from "./padKeys";
+import { bindPadKey, getPadKeys, importPadKeys, isPadKey, resetPadKeys, usePadKeys } from "./padKeys";
 
 const PAD_COLOR_SWATCHES = [
   "#f59e0b",
@@ -580,6 +581,7 @@ export function RackStrip({
           >
             Reset to QWERTY defaults
           </button>
+          <div className="context-menu-header">SHARE</div>
           <div className="context-menu-header">
             {captureIndex !== null
               ? `PRESS A KEY FOR PAD ${captureIndex + 1} (Esc cancels)`
@@ -587,6 +589,39 @@ export function RackStrip({
           </div>
         </div>
       )}
+      <button
+        type="button"
+        role="menuitem"
+        title="Copy a PFBIND1 code with your pad keymap"
+        onClick={async () => {
+          try {
+            await navigator.clipboard.writeText(encodeBindsCode(getPadKeys()));
+            setKeyStatus("BINDS code copied — paste it into any Pulse Forge");
+          } catch {
+            setKeyStatus("Clipboard blocked by the browser");
+          }
+        }}
+      >
+        Copy BINDS code
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        title="Install a keymap from a PFBIND1 code"
+        onClick={() => {
+          const code = window.prompt("Paste a BINDS code (PFBIND1:…)");
+          if (!code) return;
+          const keys = decodeBindsCode(code);
+          if (!keys) {
+            setKeyStatus("Invalid BINDS code");
+            return;
+          }
+          importPadKeys(keys);
+          setKeyStatus("Keymap installed");
+        }}
+      >
+        Install from code…
+      </button>
     </section>
   );
 }

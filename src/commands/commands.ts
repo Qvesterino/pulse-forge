@@ -1211,12 +1211,7 @@ export function setTrackColor(doc: ProjectDocument, trackId: string, color: stri
   return snapshot("setTrackColor", color ? `Set ${track.name} color` : `Clear ${track.name} color`, doc, next);
 }
 /** Pad colour override (CSS hex) — recolours the pad UI; null clears. */
-export function setPadColor(
-  doc: ProjectDocument,
-  trackId: string,
-  padId: string,
-  color: string | null,
-): Command {
+export function setPadColor(doc: ProjectDocument, trackId: string, padId: string, color: string | null): Command {
   const track = doc.tracks.find((t): t is DrumTrack => t.kind === "drum" && t.id === trackId);
   if (!track) throw new Error(`Drum track ${trackId} not found`);
   if (!track.pads.some((p) => p.id === padId)) throw new Error(`Pad ${padId} not found`);

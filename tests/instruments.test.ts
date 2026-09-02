@@ -889,3 +889,82 @@ describe.skipIf(typeof OfflineAudioContext === "undefined")("Variability pack ru
     expect(choked).toBeLessThan(free * 0.5);
   });
 });
+
+describe.skipIf(typeof OfflineAudioContext === "undefined")("Wavetable scan engine runtime", () => {
+  const SR = 44100;
+
+  function makeTrack(params: Record<string, number>): InstrumentTrack {
+    return {
+      id: "wt-scan-test",
+      kind: "instrument",
+      instrument: "wavetable",
+      name: "Wavetable",
+      gain: 1,
+      pan: 0,
+      mute: false,
+      solo: false,
+      sampleId: null,
+      params: { ...defaultInstrumentParams("wavetable"), ...params },
+      effects: [],
+      sends: {},
+    };
+  }
+
+  function zcc(data: Float32Array, from: number, to: number): number {
+    let c = 0;
+    for (let i = from + 1; i < to; i++) {
+      if ((data[i - 1] < 0) !== (data[i] < 0)) c++;
+    }
+    return c;
+  }
+
+  it("scanRate defaults to render-neutral OFF", () => {
+    expect(INSTRUMENT_DEFS.wavetable.params.find((p) => p.id === "scanRate")!.default).toBe(0);
+  });
+
+  it("renders a scanned note in bounds, deterministically, even with unison", async () => {
+    const render = () => {
+      const ctx = new OfflineAudioContext(2, SR * 2, SR);
+      const rt = INSTRUMENT_DEFS.wavetable.factory(ctx, makeTrack({ scanRate: 1.5, unison: 4, spread: 14 }), {
+        bpm: 124,
+        getSample: () => undefined,
+      });
+      rt.output.connect(ctx.destination);
+      rt.noteOn(60, 0.9, 0.05, 1.2);
+      const buffer = ctx.startRendering();
+      rt.dispose();
+      return buffer;
+    };
+    const a = await render();
+    const b = await render();
+    const da = a.getChannelData(0);
+    const db = b.getChannelData(0);
+    let peak = 0;
+    let maxDiff = 0;
+    for (let i = 0; i < da.length; i++) {
+      peak = Math.max(peak, Math.abs(da[i]));
+      maxDiff = Math.max(maxDiff, Math.abs(da[i] - db[i]));
+    }
+    expect(peak).toBeGreaterThan(0.001);
+    expect(peak).toBeLessThanOrEqual(2);
+    expect(maxDiff).toBeLessThan(1e-4);
+  });
+
+  it("actually traverses the table: later note window is spectrally richer", async () => {
+    const ctx = new OfflineAudioContext(2, SR * 2, SR);
+    // Sine Grow grows from a plain sine — scanning morph 0 -> 1 adds harmonics
+    const rt = INSTRUMENT_DEFS.wavetable.factory(ctx, makeTrack({ table: 0, morph: 0, scanRate: 0.5 }), {
+      bpm: 124,
+      getSample: () => undefined,
+    });
+    rt.output.connect(ctx.destination);
+    rt.noteOn(60, 0.9, 0.05, 2.2);
+    const buffer = await ctx.startRendering();
+    rt.dispose();
+    const data = buffer.getChannelData(0);
+    const early = zcc(data, Math.floor(0.25 * SR), Math.floor(0.55 * SR));
+    const late = zcc(data, Math.floor(1.55 * SR), Math.floor(1.85 * SR));
+    expect(early).toBeGreaterThan(50);
+    expect(late).toBeGreaterThan(early * 1.1);
+  });
+});

@@ -680,12 +680,6 @@ function normalizeTracksDomain(s: NormalizeState): void {
       const pads = t.pads.map((pad) => {
         let nextPad = pad;
         let padChanged = false;
-        // User pad colour (CSS hex) — invalid values are dropped.
-        const padColor = sanitizeColor((pad as unknown as Record<string, unknown>).color);
-        if (padColor !== (pad as unknown as Record<string, unknown>).color) {
-          nextPad = { ...nextPad, color: padColor } as typeof pad;
-          padChanged = true;
-        }
         const cleanNonNegative = (value: unknown): number | undefined =>
           typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
         const sliceStart = cleanNonNegative(pad.sliceStart);
@@ -699,7 +693,16 @@ function normalizeTracksDomain(s: NormalizeState): void {
           pad.sliceFadeOut !== undefined ||
           pad.sliceReverse !== undefined;
         const hasSynth = (pad as any).synth !== undefined;
-        if (!hasSliceConfig && !hasSynth) return pad;
+        const padColor = sanitizeColor((pad as unknown as Record<string, unknown>).color);
+        const padColorChanged = padColor !== (pad as unknown as Record<string, unknown>).color;
+        if (padColorChanged) {
+          nextPad = { ...nextPad, color: padColor } as typeof pad;
+          padChanged = true;
+        }
+        if (!hasSliceConfig && !hasSynth) {
+          if (!padColorChanged) return pad;
+          return { ...pad, color: padColor };
+        }
         if (hasSliceConfig) {
           if (sliceStart !== pad.sliceStart || sliceEnd !== pad.sliceEnd) padChanged = true;
           if (fadeIn !== (pad.sliceFadeIn ?? 0) || fadeOut !== (pad.sliceFadeOut ?? 0)) padChanged = true;

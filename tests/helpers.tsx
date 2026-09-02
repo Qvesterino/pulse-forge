@@ -73,6 +73,19 @@ export function mockServices(doc?: ProjectDocument): Services {
         } as any;
       })(),
       repo: { save: vi.fn(), load: vi.fn(), list: vi.fn() } as any,
+      snapshots: {
+        save: vi.fn(async (_projectId: string, doc: unknown, label: string) => ({
+          id: `snap-${Date.now()}`,
+          projectId: "p",
+          label,
+          createdAt: new Date().toISOString(),
+          doc,
+        })),
+        list: vi.fn(async () => []),
+        get: vi.fn(async () => null),
+        delete: vi.fn(async () => {}),
+        prune: vi.fn(async () => {}),
+      } as any,
       presets: { save: vi.fn(), load: vi.fn(), list: vi.fn() } as any,
       library: {
         get: vi.fn(() => libraryState),
@@ -95,6 +108,7 @@ export function mockServices(doc?: ProjectDocument): Services {
       canRedo: false,
       lastCommandLabel: null as string | null,
       undoStackLength: 0,
+      history: [] as unknown[],
       get saveStatus() {
         return "saved" as const;
       },

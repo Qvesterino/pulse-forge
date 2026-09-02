@@ -53,6 +53,7 @@ import { OnboardingHint } from "./OnboardingHint";
 import { DiceProvider } from "./DiceContext";
 
 import { useDockLayout, toggleSlot, openInSlotA, clampDockHeight, type BottomPanel } from "./dockLayout";
+import { isPadKey } from "./padKeys";
 
 export function App({
   services,
@@ -195,6 +196,11 @@ export function App({
           target.tagName === "SELECT" ||
           target.tagName === "TEXTAREA" ||
           target.isContentEditable);
+      // Pad keys (user-rebindable) shadow plain-letter shortcuts: pressing a
+      // bound key plays the pad instead of triggering e.g. the loop toggle.
+      if (!event.ctrlKey && !event.metaKey && !event.altKey && !typing && isPadKey(event.key.toLowerCase())) {
+        return;
+      }
       // Escape is contextual: close menu/help → clear unified selection → reset tool → blur inputs
       if (event.key === "Escape") {
         if (captureOffer) {

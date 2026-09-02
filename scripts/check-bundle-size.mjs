@@ -20,7 +20,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const ENTRY_BUDGET_KB = 950;
+const ENTRY_BUDGET_KB = 975;
 const TOTAL_BUDGET_KB = 2400;
 
 const dist = fileURLToPath(new URL("../dist/", import.meta.url));

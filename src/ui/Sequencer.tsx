@@ -657,9 +657,7 @@ function VirtualRow({
         onSelectNote={onSelectNote}
         scaleSnap={scaleSnap}
         fullscreen={pianoFullTrack === item.track.id}
-        onToggleFullscreen={() =>
-          onTogglePianoFull(pianoFullTrack === item.track.id ? null : item.track.id)
-        }
+        onToggleFullscreen={() => onTogglePianoFull(pianoFullTrack === item.track.id ? null : item.track.id)}
       />
     );
   }
@@ -733,7 +731,13 @@ function StepEditor({
           ? ` · +${stepSelection.padIds.length * (stepSelection.to - stepSelection.from + 1) - 1} SELECTED`
           : ""}
       </span>
-      <button type="button" className="step-editor-close btn btn-small" onClick={onClose} title="Close step editor" aria-label="Close step editor">
+      <button
+        type="button"
+        className="step-editor-close btn btn-small"
+        onClick={onClose}
+        title="Close step editor"
+        aria-label="Close step editor"
+      >
         ×
       </button>
       <div className="step-editor-field">
@@ -954,6 +958,7 @@ function TrackHeaderRow({
           aria-pressed={isSelected}
           onClick={onSelect}
         >
+          {track.color && <span className="track-color-dot" style={{ background: track.color }} aria-hidden="true" />}
           <span className="track-header-badge">{trackBadge(track)}</span>
           {track.name}
         </button>
@@ -1087,25 +1092,25 @@ function PadRow({
           const stepLabel = `Step ${stepNumber}${active ? `, velocity ${Math.round(velocity * 100)}%` : ", empty"}${
             metaHints.length > 0 ? ` (${metaHints.join(", ")})` : ""
           }`;
-            return (
-              <StepCell
-                key={stepIndex}
-                patternId={pattern.id}
-                padId={pad.id}
-                stepIndex={stepIndex}
-                velocity={velocity}
-                active={active}
-                meta={meta}
-                inSelection={inSelection}
-                playhead={playheadStep === stepIndex}
-                stepLabel={stepLabel}
-                onBegin={onBegin}
-                onMove={onMove}
-                onEnd={onEnd}
-                onEditStep={() => onEditStep(stepIndex)}
-                remoteCursors={remoteCursors}
-              />
-            );
+          return (
+            <StepCell
+              key={stepIndex}
+              patternId={pattern.id}
+              padId={pad.id}
+              stepIndex={stepIndex}
+              velocity={velocity}
+              active={active}
+              meta={meta}
+              inSelection={inSelection}
+              playhead={playheadStep === stepIndex}
+              stepLabel={stepLabel}
+              onBegin={onBegin}
+              onMove={onMove}
+              onEnd={onEnd}
+              onEditStep={() => onEditStep(stepIndex)}
+              remoteCursors={remoteCursors}
+            />
+          );
         })}
       </div>
     </div>

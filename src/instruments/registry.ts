@@ -446,7 +446,8 @@ const analog: InstrumentDefinition = {
       },
       setParameterAt(id, value, when) {
         p[id] = value;
-        if (id === "cutoff") applyFilterLive((f, pitch) => f.frequency.setTargetAtTime(effCutoff(value, pitch), when, 0.02));
+        if (id === "cutoff")
+          applyFilterLive((f, pitch) => f.frequency.setTargetAtTime(effCutoff(value, pitch), when, 0.02));
         if (id === "resonance") applyFilterLive((f) => setFilterResonance(f, value, when, 0.02));
         if (id === "mode") applyFilterLive((f) => f.setMode(Math.max(0, Math.min(2, Math.round(value)))));
         if (id === "drive") applyFilterLive((f) => f.setDrive(value));
@@ -704,7 +705,8 @@ const bass: InstrumentDefinition = {
       },
       setParameterAt(id, value, when) {
         p[id] = value;
-        if (id === "cutoff") for (const [f, pitch] of liveFilters) f.frequency.setTargetAtTime(effCutoff(value, pitch), when, 0.02);
+        if (id === "cutoff")
+          for (const [f, pitch] of liveFilters) f.frequency.setTargetAtTime(effCutoff(value, pitch), when, 0.02);
         if (id === "resonance") for (const [f] of liveFilters) setFilterResonance(f, value, when, 0.02);
         if (id === "mode") for (const [f] of liveFilters) f.setMode(Math.max(0, Math.min(2, Math.round(value))));
         if (id === "drive") for (const [f] of liveFilters) f.setDrive(value);
@@ -1210,7 +1212,12 @@ const sampler: InstrumentDefinition = {
         amp.connect(output);
 
         const filterMode = Math.max(0, Math.min(2, Math.round(p.mode ?? 0)));
-        const filter = createVoiceFilter(ctx, cutoffFor(p.cutoff ?? 15000, velocity, pitch), p.resonance ?? 0.7, filterMode);
+        const filter = createVoiceFilter(
+          ctx,
+          cutoffFor(p.cutoff ?? 15000, velocity, pitch),
+          p.resonance ?? 0.7,
+          filterMode,
+        );
         filter.output.connect(amp);
         liveFilters.set(filter, { vel: velocity, pitch });
 
@@ -1659,6 +1666,15 @@ const wavetable: InstrumentDefinition = {
     },
     { id: "morphDepth", label: "M DEPTH", min: 0, max: 1, default: 0.5, format: formatPct },
     {
+      id: "scanRate",
+      label: "S RATE",
+      min: 0,
+      max: 8,
+      default: 0,
+      unit: "Hz",
+      format: (v) => (v < 0.02 ? "OFF" : `${v.toFixed(2)} Hz`),
+    },
+    {
       id: "detune",
       label: "DETUNE",
       min: -50,
@@ -1779,10 +1795,13 @@ const wavetable: InstrumentDefinition = {
 
         // Per-note morph LFO (M RATE / M DEPTH). Captured at note start like
         // the frames; sine phase starts at 0 on `when`, deterministic.
+        // Superseded by SCAN (S RATE) when the scan engine is active.
+        const scanRate = Math.max(0, Math.min(8, p.scanRate ?? 0));
+        const useScan = scanRate > 0.01 && !single;
         const morphRate = Math.max(0, p.morphRate ?? 0);
         const morphDepth = Math.min(1, Math.max(0, p.morphDepth ?? 0.5));
         let morphLfo: OscillatorNode | null = null;
-        if (morphRate > 0.02 && morphDepth > 0.005 && !single) {
+        if (!useScan && morphRate > 0.02 && morphDepth > 0.005 && !single) {
           morphLfo = ctx.createOscillator();
           morphLfo.type = "sine";
           morphLfo.frequency.value = morphRate;
@@ -1834,41 +1853,136 @@ const wavetable: InstrumentDefinition = {
           livePairs.add(pair);
           wireMorphWobble(gA, gB, level);
         };
-        mkTableOsc(0, 0.5);
-        mkTableOsc(p.detune ?? 7, 0.45);
-        // Unison: N extra detuned table oscs fanned across the stereo field
-        const unison = Math.max(1, Math.min(8, Math.round(p.unison ?? 1)));
-        if (unison > 1) {
-          const spread = p.spread ?? 0;
-          const uLevel = 0.4 / Math.sqrt(unison);
-          for (let u = 0; u < unison; u++) {
-            const t = unison === 1 ? 0 : (u / (unison - 1)) * 2 - 1;
-            // Offset from base detune so spread does not cancel the main pair
-            const detune = (p.detune ?? 7) * 0.5 + t * spread;
-            const panner = ctx.createStereoPanner();
-            panner.pan.value = t * 0.6;
-            // Reuse table frames per unison voice (morph blend follows main pair)
-            const rate = (freq * Math.pow(2, detune / 1200) * FRAME_SIZE) / ctx.sampleRate;
-            const mkUFrameSource = (buffer: AudioBuffer) => {
-              const src = ctx.createBufferSource();
-              src.buffer = buffer;
-              src.loop = true;
-              src.playbackRate.value = rate;
-              src.start(when);
-              src.stop(stopTime);
-              sources.push(src);
-              return src;
-            };
-            const gAu = ctx.createGain();
-            const gBu = ctx.createGain();
-            gAu.gain.value = (1 - blend) * uLevel;
-            gBu.gain.value = blend * uLevel;
-            mkUFrameSource(frames[ia]).connect(gAu).connect(panner).connect(filter.input);
-            mkUFrameSource(frames[ib]).connect(gBu).connect(panner).connect(filter.input);
-            const pairU = { a: gAu, b: gBu, ia, ib, level: uLevel };
-            pairs.push(pairU);
-            livePairs.add(pairU);
-            wireMorphWobble(gAu, gBu, uLevel);
+        // ── SCAN engine (S RATE): true full-table traversal ──
+        // The morph position sweeps through the WHOLE table (forward, wrap-
+        // ping) instead of holding the captured pair. The note splits at
+        // frame-pair boundaries into segments; the blend ramps linearly
+        // inside each segment (that ramp IS the position moving) and every
+        // boundary swaps the pair under a short equal-power crossfade so the
+        // source phase jump is masked. Segments are capped — past the cap
+        // the voice freezes on the last pair (sources keep looping, still
+        // deterministic). SCAN replaces M RATE / M DEPTH for that note.
+        const MAX_SCAN_SEGMENTS = 14;
+        const scanPans: StereoPannerNode[] = [];
+        if (useScan) {
+          const N = frames.length;
+          const Tpair = 1 / ((N - 1) * scanRate); // time to cross one frame pair
+          const xfade = Math.min(0.006, Tpair * 0.3);
+          const copies: Array<{ detune: number; level: number; pan: number }> = [
+            { detune: 0, level: 0.5, pan: 0 },
+            { detune: p.detune ?? 7, level: 0.45, pan: 0 },
+          ];
+          const uni = Math.max(1, Math.min(8, Math.round(p.unison ?? 1)));
+          if (uni > 1) {
+            const spr = p.spread ?? 0;
+            const uLevel = 0.4 / Math.sqrt(uni);
+            for (let u = 0; u < uni; u++) {
+              const t = uni === 1 ? 0 : (u / (uni - 1)) * 2 - 1;
+              copies.push({ detune: (p.detune ?? 7) * 0.5 + t * spr, level: uLevel, pan: t * 0.6 });
+            }
+          }
+          let pos = morph * (N - 1);
+          let t = when;
+          for (let seg = 0; seg < MAX_SCAN_SEGMENTS; seg++) {
+            const int = Math.floor(pos);
+            const ia = int % N;
+            const ib = (ia + 1) % N; // wraps (N-1) -> 0 exactly like the position does
+            const blend0 = pos - int;
+            const segEnd = t + (1 - blend0) * Tpair;
+            const frozen = segEnd >= off || seg === MAX_SCAN_SEGMENTS - 1;
+            // Shared equal-power envelope: fades the whole pair in/out across
+            // the boundary so the source swap never clicks.
+            const env = ctx.createGain();
+            env.connect(filter.input);
+            const fadeIn = seg === 0 ? 0 : Math.min(xfade, (segEnd - t) * 0.4);
+            if (seg === 0) {
+              env.gain.setValueAtTime(1, when);
+            } else {
+              env.gain.setValueAtTime(0, t - fadeIn);
+              env.gain.linearRampToValueAtTime(0.707, t - fadeIn * 0.5);
+              env.gain.linearRampToValueAtTime(1, t);
+            }
+            if (!frozen) {
+              const fadeOut = Math.min(xfade, Math.max(0.001, segEnd - t) * 0.4);
+              env.gain.setValueAtTime(1, Math.max(t, segEnd - fadeOut));
+              env.gain.linearRampToValueAtTime(0.707, segEnd - fadeOut * 0.5);
+              env.gain.linearRampToValueAtTime(0, segEnd + fadeOut);
+            }
+            for (const copy of copies) {
+              const rate = (freq * Math.pow(2, copy.detune / 1200) * FRAME_SIZE) / ctx.sampleRate;
+              const srcA = ctx.createBufferSource();
+              srcA.buffer = frames[ia];
+              srcA.loop = true;
+              srcA.playbackRate.value = rate;
+              const srcB = ctx.createBufferSource();
+              srcB.buffer = frames[ib];
+              srcB.loop = true;
+              srcB.playbackRate.value = rate;
+              const gA = ctx.createGain();
+              const gB = ctx.createGain();
+              gA.gain.setValueAtTime((1 - blend0) * copy.level, t);
+              gA.gain.linearRampToValueAtTime(0, segEnd);
+              gB.gain.setValueAtTime(blend0 * copy.level, t);
+              gB.gain.linearRampToValueAtTime(copy.level, segEnd);
+              srcA.connect(gA).connect(env);
+              srcB.connect(gB).connect(env);
+              if (copy.pan !== 0) {
+                const panner = ctx.createStereoPanner();
+                panner.pan.value = copy.pan;
+                env.connect(panner);
+                panner.connect(filter.input);
+                scanPans.push(panner);
+              }
+              const srcEnd = frozen ? stopTime : segEnd + xfade + 0.02;
+              srcA.start(t);
+              srcA.stop(srcEnd);
+              srcB.start(t);
+              srcB.stop(srcEnd);
+              sources.push(srcA, srcB);
+            }
+            if (frozen) break;
+            pos = int + 1;
+            t = segEnd;
+          }
+        }
+
+        if (!useScan) {
+          mkTableOsc(0, 0.5);
+          mkTableOsc(p.detune ?? 7, 0.45);
+          // Unison: N extra detuned table oscs fanned across the stereo field
+          const unison = Math.max(1, Math.min(8, Math.round(p.unison ?? 1)));
+          if (unison > 1) {
+            const spread = p.spread ?? 0;
+            const uLevel = 0.4 / Math.sqrt(unison);
+            for (let u = 0; u < unison; u++) {
+              const t = unison === 1 ? 0 : (u / (unison - 1)) * 2 - 1;
+              // Offset from base detune so spread does not cancel the main pair
+              const detune = (p.detune ?? 7) * 0.5 + t * spread;
+              const panner = ctx.createStereoPanner();
+              panner.pan.value = t * 0.6;
+              // Reuse table frames per unison voice (morph blend follows main pair)
+              const rate = (freq * Math.pow(2, detune / 1200) * FRAME_SIZE) / ctx.sampleRate;
+              const mkUFrameSource = (buffer: AudioBuffer) => {
+                const src = ctx.createBufferSource();
+                src.buffer = buffer;
+                src.loop = true;
+                src.playbackRate.value = rate;
+                src.start(when);
+                src.stop(stopTime);
+                sources.push(src);
+                return src;
+              };
+              const gAu = ctx.createGain();
+              const gBu = ctx.createGain();
+              gAu.gain.value = (1 - blend) * uLevel;
+              gBu.gain.value = blend * uLevel;
+              mkUFrameSource(frames[ia]).connect(gAu).connect(panner).connect(filter.input);
+              mkUFrameSource(frames[ib]).connect(gBu).connect(panner).connect(filter.input);
+              const pairU = { a: gAu, b: gBu, ia, ib, level: uLevel };
+              pairs.push(pairU);
+              livePairs.add(pairU);
+              wireMorphWobble(gAu, gBu, uLevel);
+            }
           }
         }
 
@@ -2361,7 +2475,12 @@ const keys: InstrumentDefinition = {
         }
 
         const filterMode = Math.max(0, Math.min(2, Math.round(p.mode ?? 0)));
-        const filter = createVoiceFilter(ctx, effCutoff(Math.max(80, Math.min(16000, p.cutoff ?? 4500)), pitch), p.resonance ?? 1.8, filterMode);
+        const filter = createVoiceFilter(
+          ctx,
+          effCutoff(Math.max(80, Math.min(16000, p.cutoff ?? 4500)), pitch),
+          p.resonance ?? 1.8,
+          filterMode,
+        );
         filter.output.connect(amp);
         liveFilters.set(filter, pitch);
 
@@ -2570,13 +2689,15 @@ const keys: InstrumentDefinition = {
       setParameter(id, value) {
         p[id] = value;
         if (id === "cutoff")
-          for (const [f, pitch] of liveFilters) f.frequency.setTargetAtTime(effCutoff(value, pitch), ctx.currentTime, 0.02);
+          for (const [f, pitch] of liveFilters)
+            f.frequency.setTargetAtTime(effCutoff(value, pitch), ctx.currentTime, 0.02);
         if (id === "resonance") for (const [f] of liveFilters) setFilterResonance(f, value, ctx.currentTime, 0.02);
         if (id === "mode") for (const [f] of liveFilters) f.setMode(Math.max(0, Math.min(2, Math.round(value))));
       },
       setParameterAt(id, value, when) {
         p[id] = value;
-        if (id === "cutoff") for (const [f, pitch] of liveFilters) f.frequency.setTargetAtTime(effCutoff(value, pitch), when, 0.02);
+        if (id === "cutoff")
+          for (const [f, pitch] of liveFilters) f.frequency.setTargetAtTime(effCutoff(value, pitch), when, 0.02);
         if (id === "resonance") for (const [f] of liveFilters) setFilterResonance(f, value, when, 0.02);
         if (id === "mode") for (const [f] of liveFilters) f.setMode(Math.max(0, Math.min(2, Math.round(value))));
       },
@@ -3143,7 +3264,7 @@ const spectral: InstrumentDefinition = {
           g.gain.exponentialRampToValueAtTime(Math.max(a * norm * level, 0.0002), when + attack);
           g.gain.setTargetAtTime(0.0001, off, decayTc / 3);
           const pan = ctx.createStereoPanner();
-          pan.pan.value = count === 1 ? 0 : ((k - 1) / (count - 1) * 2 - 1) * width * 0.8;
+          pan.pan.value = count === 1 ? 0 : (((k - 1) / (count - 1)) * 2 - 1) * width * 0.8;
           osc.connect(g).connect(pan).connect(filter.input);
           osc.start(when);
           osc.stop(stopTime);
@@ -3318,8 +3439,7 @@ const vocalchop: InstrumentDefinition = {
         if (slideFrom) {
           const prevVoices = findByPitch(slideFrom.pitch);
           const prevVoice = prevVoices[prevVoices.length - 1] as
-            | (Voice & { glide?: (pitch: number, when: number, glideSec: number) => boolean })
-            | undefined;
+            (Voice & { glide?: (pitch: number, when: number, glideSec: number) => boolean }) | undefined;
           if (
             prevVoice?.glide &&
             prevVoice.glide(pitch, when, Math.max(0.03, Math.min(0.16, when - Math.max(0, slideFrom.when))))
@@ -3481,18 +3601,11 @@ const vocalchop: InstrumentDefinition = {
         );
         // Slide support: glide this voice's playbackRate to a new pitch —
         // the VIB LFO keeps modulating on top of the ramped base value.
-        (voice as Voice & { glide?: unknown }).glide = (
-          targetPitch: number,
-          at: number,
-          glideSec: number,
-        ): boolean => {
+        (voice as Voice & { glide?: unknown }).glide = (targetPitch: number, at: number, glideSec: number): boolean => {
           try {
             const from = src.playbackRate.value;
             src.playbackRate.setValueAtTime(from, Math.max(0, at - glideSec));
-            src.playbackRate.exponentialRampToValueAtTime(
-              Math.max(0.01, Math.pow(2, (targetPitch - root) / 12)),
-              at,
-            );
+            src.playbackRate.exponentialRampToValueAtTime(Math.max(0.01, Math.pow(2, (targetPitch - root) / 12)), at);
             voice.pitch = targetPitch;
             return true;
           } catch {
@@ -3579,7 +3692,15 @@ const drumsynth: InstrumentDefinition = {
   name: "Drum Synth",
   params: [
     { id: "type", label: "TYPE", min: 0, max: 6, default: 0, options: DRUM_TYPE_OPTIONS },
-    { id: "tune", label: "TUNE", min: -12, max: 12, default: 0, unit: "st", format: (v) => `${v > 0 ? "+" : ""}${v.toFixed(0)} st` },
+    {
+      id: "tune",
+      label: "TUNE",
+      min: -12,
+      max: 12,
+      default: 0,
+      unit: "st",
+      format: (v) => `${v > 0 ? "+" : ""}${v.toFixed(0)} st`,
+    },
     { id: "tone", label: "TONE", min: 0, max: 1, default: 0.4, format: formatPct },
     { id: "decay", label: "DECAY", min: 0.05, max: 2, default: 0.4, unit: "s", format: formatSec },
     { id: "snap", label: "SNAP", min: 0, max: 1, default: 0.4, format: formatPct },

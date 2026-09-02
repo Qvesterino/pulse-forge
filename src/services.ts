@@ -3,6 +3,7 @@ import { Scheduler } from "./scheduler/Scheduler";
 import { Transport } from "./transport/Transport";
 import { ProjectStore } from "./store/ProjectStore";
 import { ProjectRepository } from "./persistence/ProjectRepository";
+import { SnapshotRepository, shouldAutoSnapshot } from "./persistence/SnapshotRepository";
 import { PresetRepository } from "./persistence/PresetRepository";
 import { LibraryRepository } from "./persistence/LibraryRepository";
 import { KitRepository } from "./persistence/KitRepository";
@@ -35,6 +36,7 @@ export interface CoreServices {
   engine: AudioEngine;
   bank: SampleBank;
   repo: ProjectRepository;
+  snapshots: SnapshotRepository;
   presets: PresetRepository;
   library: LibraryRepository;
   userKits: KitRepository;
@@ -200,6 +202,7 @@ export async function createCoreServices(): Promise<CoreServices> {
     engine,
     bank,
     repo: new ProjectRepository(),
+    snapshots: new SnapshotRepository(),
     presets: new PresetRepository(),
     library,
     userKits,
@@ -230,7 +233,7 @@ export function collabSessionInfo(
  * same onDocChanged path as local ones.
  */
 export async function openProject(core: CoreServices, initial: ProjectDocument, options: OpenProjectOptions = {}): Promise<Services> {
-  const { engine, repo, bank, library, userKits, latency } = core;
+  const { engine, repo, bank, library, userKits, latency, snapshots } = core;
 
   const collabConfig =
     options.collab ?? (typeof location !== "undefined" ? collabParamsFromSearch(location.search) : null);
@@ -247,6 +250,29 @@ export async function openProject(core: CoreServices, initial: ProjectDocument, 
     collab = new CollabSessionImpl((store as YDocStore).yDocRef, collabConfig.roomId, collabConfig.serverUrl);
   }
   collab?.connect();
+
+  // Snapshot safety net — "restore to yesterday". One snapshot at session
+  // start, then daily ones riding the save path. Full-document copies,
+  // pruned to the newest 20 per project; failures are silently ignored
+  // (the safety net must never take the app down).
+  let lastSnapCheck = 0;
+  const maybeAutoSnapshot = (label: string): void => {
+    const now = Date.now();
+    if (now - lastSnapCheck < 30 * 60 * 1000) return; // at most one DB check per 30 min
+    lastSnapCheck = now;
+    void (async () => {
+      try {
+        const newest = await snapshots.list(store.doc.id, 1);
+        if (!shouldAutoSnapshot(newest[0]?.createdAt)) return;
+        await snapshots.save(store.doc.id, store.doc, label);
+        await snapshots.prune(store.doc.id);
+      } catch {
+        /* best-effort */
+      }
+    })();
+  };
+  maybeAutoSnapshot("Auto — session start");
+
   const transport = new Transport({ now: () => engine.currentTime }, initial.bpm);
   const modeRef: { mode: PlayMode } = { mode: "pattern" };
   const midiOutput = new MidiOutput();
@@ -419,6 +445,7 @@ export async function openProject(core: CoreServices, initial: ProjectDocument, 
     try {
       await repo.save(store.doc);
       store.setSaveStatus("saved");
+      maybeAutoSnapshot("Auto — daily");
     } catch {
       store.setSaveStatus("error");
     }

@@ -95,6 +95,7 @@ export function TrackTabs({
             }}
           >
             <span className="track-tab-badge">{trackBadge(track)}</span>
+            {track.color && <span className="track-color-dot" style={{ background: track.color }} aria-hidden="true" />}
             {track.name}
           </button>
         );
