@@ -694,15 +694,47 @@ function normalizeTracksDomain(s: NormalizeState): void {
           pad.sliceFadeOut !== undefined ||
           pad.sliceReverse !== undefined;
         const hasSynth = (pad as any).synth !== undefined;
+        const sliceLoop = typeof (pad as unknown as Record<string, unknown>).sliceLoop === "boolean"
+          ? (pad as unknown as { sliceLoop?: unknown }).sliceLoop as boolean
+          : undefined;
+        const rawLoopStart = (pad as unknown as Record<string, unknown>).sliceLoopStart;
+        const rawLoopEnd = (pad as unknown as Record<string, unknown>).sliceLoopEnd;
+        const sliceLoopStart = typeof rawLoopStart === "number" && Number.isFinite(rawLoopStart) && rawLoopStart >= 0 ? rawLoopStart : undefined;
+        const sliceLoopEnd = typeof rawLoopEnd === "number" && Number.isFinite(rawLoopEnd) && rawLoopEnd >= 0 ? rawLoopEnd : undefined;
+
         const padColor = sanitizeColor((pad as unknown as Record<string, unknown>).color);
         const padColorChanged = padColor !== (pad as unknown as Record<string, unknown>).color;
+        const loopChanged =
+          sliceLoop !== (pad as unknown as { sliceLoop?: unknown }).sliceLoop ||
+          sliceLoopStart !== (pad as unknown as { sliceLoopStart?: unknown }).sliceLoopStart ||
+          sliceLoopEnd !== (pad as unknown as { sliceLoopEnd?: unknown }).sliceLoopEnd;
+        if (loopChanged) {
+          nextPad = {
+            ...nextPad,
+            sliceLoop: sliceLoop ?? undefined,
+            sliceLoopStart: sliceLoopStart ?? undefined,
+            sliceLoopEnd: sliceLoopEnd ?? undefined,
+          } as typeof pad;
+          padChanged = true;
+        }
+
         if (padColorChanged) {
           nextPad = { ...nextPad, color: padColor } as typeof pad;
           padChanged = true;
         }
         if (!hasSliceConfig && !hasSynth) {
-          if (!padColorChanged) return pad;
-          return { ...pad, color: padColor };
+          const earlyLoopChanged =
+            sliceLoop !== (pad as unknown as { sliceLoop?: unknown }).sliceLoop ||
+            sliceLoopStart !== (pad as unknown as { sliceLoopStart?: unknown }).sliceLoopStart ||
+            sliceLoopEnd !== (pad as unknown as { sliceLoopEnd?: unknown }).sliceLoopEnd;
+          if (!padColorChanged && !earlyLoopChanged) return pad;
+          return {
+            ...pad,
+            color: padColor,
+            sliceLoop: sliceLoop ?? undefined,
+            sliceLoopStart: sliceLoopStart ?? undefined,
+            sliceLoopEnd: sliceLoopEnd ?? undefined,
+          };
         }
         if (hasSliceConfig) {
           if (sliceStart !== pad.sliceStart || sliceEnd !== pad.sliceEnd) padChanged = true;

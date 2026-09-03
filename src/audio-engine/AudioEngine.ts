@@ -2472,8 +2472,31 @@ export class AudioEngine {
       if (voiceFilter) voiceFilter.disconnect();
       source.disconnect();
     };
-    // Slices use the native buffer offset/duration path, so no decoded buffer
-    // copies are needed and realtime/export share the exact same playback.
+    // Slice playback uses the native buffer offset/duration path — realtime
+    // and export share the exact same samples.
+    if (pad.sliceLoop === true && !slice.reverse) {
+      // MPC-style pad loop: play the head into the region, then cycle
+      // loopStart→loopEnd until choked, retriggered or a 30 s safety cap.
+      const loopStart = Math.min(
+        Math.max(slice.start, Number.isFinite(pad.sliceLoopStart) ? pad.sliceLoopStart! : slice.start),
+        buffer.duration - 0.005,
+      );
+      const loopEnd = Math.min(
+        Math.max(loopStart + 0.005, Number.isFinite(pad.sliceLoopEnd) ? pad.sliceLoopEnd! : slice.end),
+        buffer.duration,
+        Math.max(loopStart + 0.005, slice.end),
+      );
+      if (loopEnd - loopStart >= 0.005) {
+        source.loop = true;
+        source.loopStart = loopStart;
+        source.loopEnd = loopEnd;
+        source.start(when, slice.offset);
+        // Safety cap: looped pads ring until choke/retrigger, at most 30 s.
+        source.stop(when + 30);
+        void voiceOutput;
+        return;
+      }
+    }
     source.start(when, slice.offset, slice.duration);
     void voiceOutput;
   }

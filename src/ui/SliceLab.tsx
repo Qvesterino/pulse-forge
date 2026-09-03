@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useDoc, useServices } from "./context";
 import { SampleBrowser } from "./SampleBrowser";
-import { chopSampleToPads, type PadSlice } from "../commands/commands";
+import { chopSampleToPads, setPadLoop, type PadSlice } from "../commands/commands";
 import { detectTransients, gridSlicePoints, pointsToSlices, snapToGrid } from "../audio-engine/transients";
 import type { DrumPad, DrumTrack } from "../project-model/types";
 import { FACTORY_ASSETS } from "../sample-library/manifest";
@@ -83,6 +83,9 @@ export function SliceLab({ track, onClose }: { track: DrumTrack; onClose: () => 
   const [normalize, setNormalize] = useState(false);
   const [bpmPreview, setBpmPreview] = useState(true);
   const [playheadFrac, setPlayheadFrac] = useState<number | null>(null);
+  // Slices map to pads by index (chopSampleToPads assigns drafts[i] → pads[i]).
+  const selectedPad = track.pads[selectedIndex];
+  const selectedSliceLooped = selectedPad?.sliceLoop === true;
   const previewStartRef = useRef<number | null>(null);
   const panRef = useRef<{ startX: number; startFrom: number; startTo: number } | null>(null);
 
@@ -758,6 +761,40 @@ export function SliceLab({ track, onClose }: { track: DrumTrack; onClose: () => 
                   >
                     LOOP PREVIEW
                   </button>
+                  {selected && (
+                    <>
+                      <button
+                        type="button"
+                        className={`btn btn-small${selectedSliceLooped ? " active" : ""}`}
+                        aria-pressed={selectedSliceLooped}
+                        title="Loop this slice region while the pad rings — choke it with a pad in the same choke group"
+                        onClick={() =>
+                                                    services.store.execute(
+                            setPadLoop(
+                              doc,
+                              track.id,
+                              track.pads[selectedIndex].id,
+                              true,
+                              selected.start,
+                              selected.end,
+                            ),
+                          )
+                        }
+                      >
+                        LOOP SEL
+                      </button>
+                      {selectedSliceLooped && (
+                        <button
+                          type="button"
+                          className="btn btn-small"
+                          title="Turn the pad loop off"
+                          onClick={() => services.store.execute(setPadLoop(doc, track.id, track.pads[selectedIndex].id, false))}
+                        >
+                          LOOP OFF
+                        </button>
+                      )}
+                    </>
+                  )}
                   <span className="slice-dialog-spacer" />
                   <button type="button" className="btn btn-small" onClick={() => chop(false)}>
                     CHOP TO PADS

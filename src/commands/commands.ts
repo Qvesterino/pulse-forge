@@ -1211,6 +1211,48 @@ export function setTrackColor(doc: ProjectDocument, trackId: string, color: stri
   return snapshot("setTrackColor", color ? `Set ${track.name} color` : `Clear ${track.name} color`, doc, next);
 }
 /** Pad colour override (CSS hex) — recolours the pad UI; null clears. */
+/** Pad sample loop: on + region (absolute seconds in the sample). */
+export function setPadLoop(
+  doc: ProjectDocument,
+  trackId: string,
+  padId: string,
+  on: boolean,
+  startSec = 0,
+  endSec = 0,
+): Command {
+  const track = doc.tracks.find((t): t is DrumTrack => t.kind === "drum" && t.id === trackId);
+  if (!track) throw new Error(`Drum track ${trackId} not found`);
+  if (!track.pads.some((p) => p.id === padId)) throw new Error(`Pad ${padId} not found`);
+  if (on && (!Number.isFinite(startSec) || !Number.isFinite(endSec) || endSec - startSec < 0.005)) {
+    throw new Error("Loop region too short (min 5 ms)");
+  }
+  const next: ProjectDocument = {
+    ...doc,
+    tracks: doc.tracks.map((t) => {
+      if (t.id !== trackId || t.kind !== "drum") return t;
+      const drum = t as DrumTrack;
+      return {
+        ...drum,
+        pads: drum.pads.map((p) =>
+          p.id === padId
+            ? {
+                ...p,
+                sliceLoop: on,
+                sliceLoopStart: on ? Math.max(0, startSec) : undefined,
+                sliceLoopEnd: on ? Math.max(0, endSec) : undefined,
+              }
+            : p,
+        ),
+      };
+    }),
+  };
+  return snapshot(
+    "setPadLoop",
+    on ? `Pad loop ${startSec.toFixed(2)}–${endSec.toFixed(2)}s` : "Pad loop off",
+    doc,
+    next,
+  );
+}
 export function setPadColor(doc: ProjectDocument, trackId: string, padId: string, color: string | null): Command {
   const track = doc.tracks.find((t): t is DrumTrack => t.kind === "drum" && t.id === trackId);
   if (!track) throw new Error(`Drum track ${trackId} not found`);
