@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { useDoc, useServices } from "./context";
 import type { InstrumentTrack, NoteEvent, Pattern } from "../project-model/types";
 import { STEP_TICKS, pitchName } from "../project-model/types";
@@ -49,6 +49,128 @@ type DragState =
     }
   | { mode: "resize"; noteId: string; baseStart: number; baseDurSteps: number; durSteps: number }
   | { mode: "noteVelocity"; noteId: string; startY: number; startVels: Record<string, number> };
+
+/** Per-note visual state derived from an active drag (null = not dragging this note). */
+interface NoteDragPreview {
+  mode: "move" | "resize";
+  dSteps: number;
+  dPitch: number;
+  durSteps: number;
+}
+
+/** Note event handlers live behind a stable object (latest-ref) — see PianoRollNote. */
+interface PianoRollNoteHandlers {
+  beginDrag: (event: React.PointerEvent, note: NoteEvent) => void;
+  pointerHover: (event: React.PointerEvent) => void;
+  pointerUp: (event: React.PointerEvent) => void;
+  pointerCancel: () => void;
+  deleteAt: (event: React.MouseEvent, note: NoteEvent) => void;
+}
+
+/**
+ * One piano-roll note. Memoized because a drag re-renders the whole track on
+ * every pointermove and only the dragged note's props change — without the
+ * memo the per-frame diff is O(notes) and ~300-note patterns blow the 60 Hz
+ * frame budget (measured 7-10 ms/frame in the jsdom probe). Handlers arrive
+ * through a stable object whose fields the parent refreshes each render, so
+ * skipped notes never hold stale closures.
+ */
+const PianoRollNote = memo(
+  function PianoRollNote({
+    note,
+    stepCount,
+    selected,
+    outOfScale,
+    dragPreview,
+    handlers,
+  }: {
+    note: NoteEvent;
+    stepCount: number;
+    selected: boolean;
+    outOfScale: boolean;
+    dragPreview: NoteDragPreview | null;
+    handlers: PianoRollNoteHandlers;
+  }) {
+    let startSteps = note.start / STEP_TICKS;
+    let durSteps = note.duration / STEP_TICKS;
+    let top = (PITCH_MAX - note.pitch) * ROW_HEIGHT;
+    if (dragPreview?.mode === "move") {
+      startSteps = clamp(startSteps + dragPreview.dSteps, 0, stepCount - durSteps);
+      top = (PITCH_MAX - note.pitch - dragPreview.dPitch) * ROW_HEIGHT;
+    } else if (dragPreview?.mode === "resize") {
+      durSteps = Math.max(1, dragPreview.durSteps);
+    }
+    return (
+      <div
+        data-note-id={note.id}
+        className={`pr-note${selected ? " selected" : ""}${outOfScale ? " out-of-scale" : ""}${note.slide ? " slide" : ""}`}
+        style={{
+          left: `${(startSteps / stepCount) * 100}%`,
+          width: `${(durSteps / stepCount) * 100}%`,
+          top: `${clamp(top, 0, (PITCH_COUNT - 1) * ROW_HEIGHT)}px`,
+          opacity: 0.35 + note.velocity * 0.65,
+        }}
+        title={`${pitchName(note.pitch)}${note.slide ? " (slide)" : ""} — Smart Tool: top third = move, right edge = resize, middle+Alt = duplicate, middle+Ctrl = velocity — S strum, Alt+S slide, L legato, Ctrl+B duplicate`}
+        onPointerDown={(event) => handlers.beginDrag(event, note)}
+        onPointerMove={handlers.pointerHover}
+        onPointerUp={handlers.pointerUp}
+        onPointerCancel={handlers.pointerCancel}
+        onContextMenu={(event) => handlers.deleteAt(event, note)}
+      />
+    );
+  },
+  (a, b) =>
+    a.note === b.note &&
+    a.stepCount === b.stepCount &&
+    a.selected === b.selected &&
+    a.outOfScale === b.outOfScale &&
+    a.dragPreview?.mode === b.dragPreview?.mode &&
+    a.dragPreview?.dSteps === b.dragPreview?.dSteps &&
+    a.dragPreview?.dPitch === b.dragPreview?.dPitch &&
+    a.dragPreview?.durSteps === b.dragPreview?.durSteps,
+);
+
+/** Velocity-lane handlers behind a stable object — see VelocityBar. */
+interface PianoRollVelHandlers {
+  beginDrag: (event: React.PointerEvent, note: NoteEvent) => void;
+  pointerMove: (event: React.PointerEvent) => void;
+  pointerUp: (event: React.PointerEvent) => void;
+  pointerCancel: () => void;
+}
+
+/**
+ * One velocity-lane bar. Memoized for the same reason as PianoRollNote: the
+ * lane re-renders on every drag pointermove with only one bar changed.
+ */
+const VelocityBar = memo(
+  function VelocityBar({
+    note,
+    patternTicks,
+    selected,
+    handlers,
+  }: {
+    note: NoteEvent;
+    patternTicks: number;
+    selected: boolean;
+    handlers: PianoRollVelHandlers;
+  }) {
+    const left = (note.start / patternTicks) * 100;
+    const hue = Math.round(200 - Math.max(0, Math.min(1, (note.velocity - 0.05) / 0.95)) * 180);
+    return (
+      <div
+        data-vel={note.id}
+        className={`pr-vel-bar${selected ? " selected" : ""}`}
+        style={{ left: `${left}%`, height: `${note.velocity * 100}%`, background: `hsl(${hue} 85% 55%)` }}
+        title={`${pitchName(note.pitch)} vel ${Math.round(note.velocity * 100)}% — drag vertically`}
+        onPointerDown={(e) => handlers.beginDrag(e, note)}
+        onPointerMove={handlers.pointerMove}
+        onPointerUp={handlers.pointerUp}
+        onPointerCancel={handlers.pointerCancel}
+      />
+    );
+  },
+  (a, b) => a.note === b.note && a.patternTicks === b.patternTicks && a.selected === b.selected,
+);
 
 export function PianoRollTrack({
   track,
@@ -512,6 +634,29 @@ export function PianoRollTrack({
     setVelDrag(null);
   };
 
+  // Drag + hover cursor preview for one note (extracted from JSX so the
+  // memoized note component can call it through the stable handlers ref).
+  const onNotePointerHover = (event: React.PointerEvent) => {
+    onNotePointerMove(event);
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    const edge = x > rect.width - 8;
+    const topThird = y < rect.height * 0.33;
+    const el = event.currentTarget as HTMLElement;
+    if (edge) el.style.cursor = "ew-resize";
+    else if (event.ctrlKey || event.metaKey) el.style.cursor = "ns-resize";
+    else if (event.altKey) el.style.cursor = "copy";
+    else if (topThird) el.style.cursor = "move";
+    else el.style.cursor = "grab";
+  };
+
+  const deleteNoteAt = (event: React.MouseEvent, note: NoteEvent) => {
+    event.preventDefault();
+    services.store.execute(deleteNote(services.store.doc, track.id, note.id));
+    if (selectedNote?.trackId === track.id && selectedNote.noteIds.includes(note.id)) onSelectNote(null);
+  };
+
   // Note clipboard for copy/paste
   const copySelectedNotes = () => {
     if (!hasSelection) return;
@@ -721,6 +866,36 @@ export function PianoRollTrack({
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [hasSelection, selectedNote, doc, track.id, pattern.id, patternTicks, notes, scaleSnap, services.store]);
+
+  // Latest-ref handlers for the memoized notes: the ref object identity is
+  // stable (memo comparisons never see it change), while its fields always
+  // point at the freshest closures from this render.
+  const noteHandlersRef = useRef<PianoRollNoteHandlers>({
+    beginDrag: () => {},
+    pointerHover: () => {},
+    pointerUp: () => {},
+    pointerCancel: () => {},
+    deleteAt: () => {},
+  });
+  noteHandlersRef.current = {
+    beginDrag: beginNoteDrag,
+    pointerHover: onNotePointerHover,
+    pointerUp: onNotePointerUp,
+    pointerCancel: onNotePointerCancel,
+    deleteAt: deleteNoteAt,
+  };
+  const velHandlersRef = useRef<PianoRollVelHandlers>({
+    beginDrag: () => {},
+    pointerMove: () => {},
+    pointerUp: () => {},
+    pointerCancel: () => {},
+  });
+  velHandlersRef.current = {
+    beginDrag: beginVelDrag,
+    pointerMove: onVelPointerMove,
+    pointerUp: onVelPointerUp,
+    pointerCancel: onVelPointerCancel,
+  };
 
   return (
     <div className={"pianoroll-wrap" + (fullscreen ? " pr-fullscreen" : "")}>
@@ -1223,55 +1398,26 @@ export function PianoRollTrack({
               );
             })}
             {notes.map((note) => {
-              let startSteps = note.start / STEP_TICKS;
-              let durSteps = note.duration / STEP_TICKS;
-              if (drag && drag.noteId === note.id) {
-                if (drag.mode === "move") {
-                  startSteps = clamp(startSteps + drag.dSteps, 0, pattern.stepCount - durSteps);
-                } else if (drag.mode === "resize") {
-                  durSteps = Math.max(1, drag.durSteps);
-                }
-              }
+              const noteDrag = drag && drag.noteId === note.id && drag.mode !== "noteVelocity" ? drag : null;
               const selected = selectedNote?.trackId === track.id && selectedNote.noteIds.includes(note.id);
-              const top =
-                (PITCH_MAX - note.pitch - (drag && drag.noteId === note.id && drag.mode === "move" ? drag.dPitch : 0)) *
-                ROW_HEIGHT;
               return (
-                <div
+                <PianoRollNote
                   key={note.id}
-                  data-note-id={note.id}
-                  className={`pr-note${selected ? " selected" : ""}${isScaleActive && !isInScale(note.pitch, projectKey!) ? " out-of-scale" : ""}${note.slide ? " slide" : ""}`}
-                  style={{
-                    left: `${(startSteps / pattern.stepCount) * 100}%`,
-                    width: `${(durSteps / pattern.stepCount) * 100}%`,
-                    top: `${clamp(top, 0, (PITCH_COUNT - 1) * ROW_HEIGHT)}px`,
-                    opacity: 0.35 + note.velocity * 0.65,
-                  }}
-                  title={`${pitchName(note.pitch)}${note.slide ? " (slide)" : ""} — Smart Tool: top third = move, right edge = resize, middle+Alt = duplicate, middle+Ctrl = velocity — S strum, Alt+S slide, L legato, Ctrl+B duplicate`}
-                  onPointerDown={(event) => beginNoteDrag(event, note)}
-                  onPointerMove={(event) => {
-                    onNotePointerMove(event);
-                    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-                    const x = event.clientX - rect.left;
-                    const y = event.clientY - rect.top;
-                    const edge = x > rect.width - 8;
-                    const topThird = y < rect.height * 0.33;
-                    const el = event.currentTarget as HTMLElement;
-                    if (edge) el.style.cursor = "ew-resize";
-                    else if ((event as React.PointerEvent).ctrlKey || (event as React.PointerEvent).metaKey)
-                      el.style.cursor = "ns-resize";
-                    else if ((event as React.PointerEvent).altKey) el.style.cursor = "copy";
-                    else if (topThird) el.style.cursor = "move";
-                    else el.style.cursor = "grab";
-                  }}
-                  onPointerUp={onNotePointerUp}
-                  onPointerCancel={onNotePointerCancel}
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    services.store.execute(deleteNote(services.store.doc, track.id, note.id));
-                    if (selectedNote?.trackId === track.id && selectedNote.noteIds.includes(note.id))
-                      onSelectNote(null);
-                  }}
+                  note={note}
+                  stepCount={pattern.stepCount}
+                  selected={selected}
+                  outOfScale={isScaleActive && !isInScale(note.pitch, projectKey!)}
+                  dragPreview={
+                    noteDrag
+                      ? {
+                          mode: noteDrag.mode,
+                          dSteps: noteDrag.mode === "move" ? noteDrag.dSteps : 0,
+                          dPitch: noteDrag.mode === "move" ? noteDrag.dPitch : 0,
+                          durSteps: noteDrag.mode === "resize" ? noteDrag.durSteps : 0,
+                        }
+                      : null
+                  }
+                  handlers={noteHandlersRef.current}
                 />
               );
             })}
@@ -1292,20 +1438,14 @@ export function PianoRollTrack({
       <div className="pr-velocity-lane" aria-label="Velocity lane" style={{ height: `${48 * velZoom}px` }}>
         <div className="pr-velocity-bg" />
         {notes.map((note) => {
-          const left = (note.start / patternTicks) * 100;
           const selected = selectedNote?.trackId === track.id && selectedNote.noteIds.includes(note.id);
-          const hue = Math.round(200 - Math.max(0, Math.min(1, (note.velocity - 0.05) / 0.95)) * 180);
           return (
-            <div
+            <VelocityBar
               key={note.id}
-              data-vel={note.id}
-              className={`pr-vel-bar${selected ? " selected" : ""}`}
-              style={{ left: `${left}%`, height: `${note.velocity * 100}%`, background: `hsl(${hue} 85% 55%)` }}
-              title={`${pitchName(note.pitch)} vel ${Math.round(note.velocity * 100)}% — drag vertically`}
-              onPointerDown={(e) => beginVelDrag(e, note)}
-              onPointerMove={onVelPointerMove}
-              onPointerUp={onVelPointerUp}
-              onPointerCancel={onVelPointerCancel}
+              note={note}
+              patternTicks={patternTicks}
+              selected={selected}
+              handlers={velHandlersRef.current}
             />
           );
         })}

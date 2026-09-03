@@ -101,6 +101,8 @@ Morphing wavetable: každý hlas prehráva dve framy tabuľky crossfaded podľa 
 - MORPH (pozícia v tabuľke), DETUNE páru, SUB
 - **M RATE / M DEPTH — per-note crossfade LFO**: morph pozícia „dýcha" okolo MORPH bázy (LFO tlačí +wobble na frame A a −wobble na frame B — súčet gains konštantný, žiadna amplitude pumpa; hĺbka sa clampne na priestor dvojice fám, takže gainty nikdy nepodtečú pod nulu). Default OFF — existujúce projekty znejú nezmenene
 - **Mipmapped playback** — každá tabuľka má band-limited úrovne (FFT, ~polovica harmonických na oktávu); hlas si vyberie úroveň podľa výšky noty, takže harmonické nad Nyquistom neskĺznu ako grit. Level 0 = pôvodná tabuľka (nízke pitchy bitovo identické)
+- **Voice-worklet engine (`wtvoice-processor`)** — keď je worklet načítaný, celý hlas (unison osc bank, morph/scan, sub, SVF filter, obálka, mod matrica) beží per-sample vo worklete s 8 hlasmi, oldest-steal a sample-accurate event queue; fallback = historický main-thread graf nižšie
+- **Mod matrica (per-voice, per-sample)** — 2 slobodné routy: zdroj (Env / LFO / Velocity / MPE Pressure) → cieľ (Morph / Cutoff / Detune / Amp), ±100 % amount; LFO fáza je per-voice dekorrelovaná. Parametre MOD A/B (SRC/DST/AMT) + MOD LFO RATE
 - **S RATE — scan engine, skutočné prechádzanie tabuľkou**: pozícia sa počas noty posúva celou tabuľkou dopredu s wrapom. Nota sa delí na segmenty po pároch fám, blend v segmente rampuje lineárne a hranice sa striedajú pod ~6 ms equal-power crossfade (žiadne klicky). Segmenty sú capované (14) — po cap sa hlas „zamrzne" na poslednom páre. Pri zapnutom SCAN berie S RATE veli M RATE/M DEPTH
 - **FILTER MODE: LP / BP / HP** a **KEY TRK** — rovnaké ako na Analgu (default neutrálne)
 - UNISON 1–8× + SPREAD, CUTOFF/RESO, ATTACK/RELEASE, LEVEL

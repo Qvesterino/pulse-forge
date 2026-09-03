@@ -57,6 +57,7 @@ const CORE_TYPES = [
   "vowel",
   "duckDelay",
   "reverb",
+  "wtVoice",
 ] as const;
 
 export type WorkletType = (typeof CORE_TYPES)[number] | PluginWorkletType;

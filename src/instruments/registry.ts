@@ -12,6 +12,7 @@ import {
   pickMipLevel,
 } from "./wavetables";
 import { ENV_SHAPE_OPTIONS, scheduleDahdsr } from "./envelope";
+import { createWtVoiceRuntime } from "./wtvoiceNode";
 import { isWorkletReady } from "../audio-worklets/loader";
 import { pitchShiftPreserveDuration } from "../audio-engine/time-stretch";
 
@@ -1754,8 +1755,21 @@ const wavetable: InstrumentDefinition = {
     { id: "level", label: "LEVEL", min: -24, max: 6, default: -6, unit: "dB", format: formatDb },
   ],
   factory(ctx, track, env) {
+    // Phase-2 voice-engine pilot: when the wtvoice worklet module is loaded,
+    // the whole voice runs per-sample inside the worklet (with a per-voice
+    // modulation matrix). Otherwise the historical main-thread graph below
+    // remains the honest fallback.
     const output = ctx.createGain();
     output.gain.value = 1;
+    if (isWorkletReady("wtVoice", ctx)) {
+      const node = new AudioWorkletNode(ctx, "wtvoice-processor", {
+        numberOfInputs: 0,
+        numberOfOutputs: 1,
+        outputChannelCount: [2],
+      });
+      node.connect(output);
+      return createWtVoiceRuntime(node, track, env);
+    }
     const p = { ...track.params };
     let sampleId: string | null = track.sampleId;
     const { voices, register, cleanup, findByPitch } = makeVoiceManager(8);

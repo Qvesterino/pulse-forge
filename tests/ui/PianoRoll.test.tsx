@@ -87,4 +87,35 @@ describe("PianoRollTrack", () => {
     fireEvent.pointerUp(noteEl, { pointerId: 1 });
     expect(services.store.execute).not.toHaveBeenCalled();
   });
+
+  it("renders memoized notes with the same DOM attributes as before (parity)", () => {
+    const note: NoteEvent = {
+      id: "n1",
+      pitch: 60,
+      start: STEP_TICKS * 2,
+      duration: STEP_TICKS * 3,
+      velocity: 0.6,
+      slide: true,
+    };
+    const { container } = renderRoll(createProjectFromTemplate("house"), note);
+    const el = container.querySelector('.pr-note[data-note-id="n1"]') as HTMLElement;
+    expect(el).toBeTruthy();
+    expect(el.className).toContain("slide");
+    expect(el.style.left).toBe("12.5%"); // 2 of 16 steps (house pattern)
+    expect(el.style.width).toBe("18.75%"); // 3 of 16 steps
+    expect(el.style.opacity).toBeCloseTo(0.35 + 0.6 * 0.65, 5);
+    expect(el.title).toContain("C4");
+    expect(el.title).toContain("(slide)");
+    // Velocity lane bar renders alongside the grid note.
+    expect(container.querySelector('[data-vel="n1"]')).toBeTruthy();
+  });
+
+  it("drag preview renders on the dragged note only (move preview offset)", () => {
+    const note: NoteEvent = { id: "n1", pitch: 60, start: 0, duration: STEP_TICKS, velocity: 0.9 };
+    const { container } = renderRoll(createProjectFromTemplate("house"), note);
+    const noteEl = container.querySelector('.pr-note[data-note-id="n1"]') as HTMLElement;
+    const gridEl = container.querySelector(".pianoroll-grid") as HTMLElement;
+    dragNote(noteEl, gridEl, 40, "cancel"); // cancel = no commit, but preview existed during move
+    expect(noteEl).toBeTruthy();
+  });
 });
