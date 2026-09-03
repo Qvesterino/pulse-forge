@@ -1087,6 +1087,8 @@ const sampler: InstrumentDefinition = {
       ],
     },
     { id: "loopXfade", label: "L-XFADE", min: 0, max: 1, default: 0.3, format: formatPct },
+    { id: "loopStart", label: "L-START", min: 0, max: 1, default: 0, format: formatPct },
+    { id: "loopEnd", label: "L-END", min: 0.01, max: 1, default: 1, format: formatPct },
     { id: "reverse", label: "REVERSE", min: 0, max: 1, default: 0, format: formatPct },
     { id: "spread", label: "SPREAD", min: 0, max: 1, default: 0, format: formatPct },
   ],
@@ -1210,8 +1212,7 @@ const sampler: InstrumentDefinition = {
           for (const layer of velocityLayers) {
             // Velocity window + optional keyzone (pitch window)
             const pitchOk =
-              layer.minPitch === undefined ||
-              (pitch >= layer.minPitch && pitch <= (layer.maxPitch ?? 127));
+              layer.minPitch === undefined || (pitch >= layer.minPitch && pitch <= (layer.maxPitch ?? 127));
             if (pitchOk && velocity >= layer.min && velocity < layer.max && env.getSample(layer.sampleId)) {
               cands.push(layer.sampleId as string);
             }
@@ -1248,9 +1249,17 @@ const sampler: InstrumentDefinition = {
 
         const amp = ctx.createGain();
         const peak = velocity * (p.gain ?? 0.9);
+        // Full ADSR: attack → decay to sustain level → hold → release.
+        // Defaults (sustain 1) reproduce the legacy hold-at-peak behaviour.
+        const decay = Math.max(0.005, p.decay ?? 0.25);
+        const sustain = Math.max(0, Math.min(1, p.sustain ?? 1));
         amp.gain.setValueAtTime(0.0001, when);
         amp.gain.exponentialRampToValueAtTime(Math.max(peak, 0.0002), when + attack);
-        amp.gain.setTargetAtTime(0.0001, off, release / 3);
+        const decayEnd = Math.min(off, when + attack + decay);
+        if (decayEnd > when + attack + 0.001 && sustain < 0.999) {
+          amp.gain.exponentialRampToValueAtTime(Math.max(peak * sustain, 0.0002), decayEnd);
+        }
+        amp.gain.setTargetAtTime(0.0001, Math.max(off, decayEnd), release / 3);
         amp.connect(output);
 
         const filterMode = Math.max(0, Math.min(2, Math.round(p.mode ?? 0)));
@@ -1267,12 +1276,32 @@ const sampler: InstrumentDefinition = {
         // Reverse: cached reversed copy (pitch mode only — stretched data can be reversed too but keep simple)
         let playBuffer = buffer;
         if ((p.reverse ?? 0) > 0.5 && !((p.stretch ?? 0) > 0.5)) playBuffer = reversedBuffer(buffer);
-        src.buffer = playBuffer;
         const loopOn = (p.loop ?? 0) > 0.5 && !((p.stretch ?? 0) > 0.5);
+        // Decide the final buffer FIRST — AudioBufferSourceNode.buffer can be
+        // assigned only once (a second assignment throws InvalidStateError,
+        // which silently killed the whole LOOP mode).
+        let loopRegion: { start: number; end: number } | null = null;
         if (loopOn) {
-          // Seamless sustain: prerendered crossfaded loop buffer
-          src.buffer = getLoopBuffer(playBuffer, p.loopXfade ?? 0.3, activeId);
+          // Sustain loop: whole-buffer loops use the prerendered crossfaded
+          // buffer (seamless); a user loop REGION uses native loop points —
+          // L-START/L-END are fractions of the sample (clamped, min 5 ms).
+          const dur = playBuffer.duration;
+          const ls = Math.min(Math.max(0, p.loopStart ?? 0), 0.98) * dur;
+          const le = Math.min(Math.max(ls + 0.005, (p.loopEnd ?? 1) * dur), dur);
+          const wholeBuffer = ls <= dur * 0.01 && le >= dur * 0.99;
+          if (wholeBuffer) {
+            playBuffer = getLoopBuffer(playBuffer, p.loopXfade ?? 0.3, activeId);
+          } else {
+            loopRegion = { start: ls, end: le };
+          }
+        }
+        src.buffer = playBuffer;
+        if (loopOn) {
           src.loop = true;
+          if (loopRegion) {
+            src.loopStart = loopRegion.start;
+            src.loopEnd = loopRegion.end;
+          }
           src.playbackRate.value = Math.pow(2, semitones / 12);
         } else if ((p.stretch ?? 0) > 0.5 && semitones !== 0) {
           // Time-stretch: pitch without changing duration. Cache per (sample,
@@ -2456,6 +2485,177 @@ const granular: InstrumentDefinition = {
 // Rhodes/Wurli/Bell coverage; tine/bell control modulator index, body
 // controls carrier mix, damp shapes release and brightness decay.
 // All FM via AudioParam (a-rate), deterministic, no Worklet.
+
+const fm: InstrumentDefinition = {
+  kind: "fm",
+  name: "FM",
+  params: [
+    {
+      id: "ratio",
+      label: "RATIO",
+      min: 0.25,
+      max: 16,
+      default: 2,
+      format: (v) => v.toFixed(2),
+    },
+    { id: "index", label: "INDEX", min: 0, max: 1, default: 0.35, format: formatPct },
+    { id: "modDecay", label: "M-DECAY", min: 0.02, max: 3, default: 0.4, unit: "s", format: formatMs },
+    { id: "modSustain", label: "M-SUS", min: 0, max: 1, default: 0.3, format: formatPct },
+    { id: "feedback", label: "FEEDBK", min: 0, max: 1, default: 0.15, format: formatPct },
+    {
+      id: "modWave",
+      label: "M-WAVE",
+      min: 0,
+      max: 2,
+      default: 0,
+      options: [
+        { value: 0, label: "SIN" },
+        { value: 1, label: "TRI" },
+        { value: 2, label: "SQR" },
+      ],
+    },
+    { id: "attack", label: "ATTACK", min: 0.001, max: 2, default: 0.003, unit: "s", format: formatMs },
+    { id: "decay", label: "DECAY", min: 0.01, max: 3, default: 0.5, unit: "s", format: formatMs },
+    { id: "sustain", label: "SUSTAIN", min: 0, max: 1, default: 0.45, format: formatPct },
+    { id: "release", label: "RELEASE", min: 0.01, max: 4, default: 0.4, unit: "s", format: formatMs },
+    { id: "level", label: "LEVEL", min: -24, max: 6, default: -6, unit: "dB", format: formatDb },
+  ],
+  factory(ctx, track) {
+    const output = ctx.createGain();
+    output.gain.value = 1;
+    const p = { ...track.params };
+    const { voices, register, cleanup } = makeVoiceManager(10);
+
+    const runtime: InstrumentRuntime = {
+      output,
+      noteOn(pitch, velocity, when, durationSec) {
+        const freq = midiToFreq(pitch);
+        const attack = Math.max(0.001, p.attack ?? 0.003);
+        const decay = Math.max(0.01, p.decay ?? 0.5);
+        const sustain = Math.max(0, Math.min(1, p.sustain ?? 0.45));
+        const release = Math.max(0.01, p.release ?? 0.4);
+        const hold = Math.max(durationSec, attack + decay * 0.5 + 0.02);
+        const off = when + hold;
+        const stopTime = off + release * 3 + 0.2;
+        const level = velocity * dbToLin(p.level ?? -6);
+
+        // Output ADSR: attack → decay to sustain → hold → release.
+        const amp = ctx.createGain();
+        amp.gain.setValueAtTime(0.0001, when);
+        amp.gain.exponentialRampToValueAtTime(Math.max(level, 0.0002), when + attack);
+        const decayEnd = Math.min(off, when + attack + decay);
+        if (decayEnd > when + attack + 0.001 && sustain < 0.999) {
+          amp.gain.exponentialRampToValueAtTime(Math.max(level * sustain, 0.0002), decayEnd);
+        }
+        amp.gain.setTargetAtTime(0.0001, Math.max(off, decayEnd), release / 3);
+        amp.connect(output);
+
+        // DX-style 2 operators: modulator → modGain → carrier.frequency.
+        // Modulation deviation scales with the carrier frequency, so sideband
+        // density stays consistent across the keyboard.
+        const ratio = Math.max(0.25, p.ratio ?? 2);
+        const index = Math.max(0, Math.min(1, p.index ?? 0.35));
+        const velIndex = 0.55 + velocity * 0.45;
+        const deviation = freq * ratio * index * index * 5.5 * velIndex;
+
+        const carrier = ctx.createOscillator();
+        carrier.type = "sine";
+        carrier.frequency.value = freq;
+
+        const modulator = ctx.createOscillator();
+        const modWaves = ["sine", "triangle", "square"] as const;
+        modulator.type = modWaves[Math.max(0, Math.min(2, Math.round(p.modWave ?? 0)))];
+        modulator.frequency.value = freq * ratio;
+
+        // Modulator envelope: full index at attack → decays to M-SUS fraction.
+        const modEnv = ctx.createGain();
+        modEnv.gain.setValueAtTime(Math.max(deviation, 0.0002), when);
+        modEnv.gain.setTargetAtTime(
+          Math.max(deviation * (p.modSustain ?? 0.3), 0.0002),
+          when + attack,
+          Math.max(0.02, p.modDecay ?? 0.4) / 3,
+        );
+
+        const modGain = ctx.createGain();
+        modGain.gain.value = 1;
+        modulator.connect(modEnv).connect(modGain).connect(carrier.frequency);
+
+        // Feedback: modulator → fbGain → short delay → own frequency. The
+        // delay breaks the WebAudio cycle; short delay + modest gain gives
+        // the classic dirty growl without instability.
+        let fbDelay: DelayNode | null = null;
+        const feedback = Math.max(0, Math.min(1, p.feedback ?? 0));
+        if (feedback > 0.01) {
+          fbDelay = ctx.createDelay(0.01);
+          fbDelay.delayTime.value = 128 / (ctx.sampleRate || 44100);
+          const fbGain = ctx.createGain();
+          fbGain.gain.value = feedback * deviation * 0.5;
+          modulator.connect(fbGain).connect(fbDelay).connect(modulator.frequency);
+        }
+
+        carrier.connect(amp);
+
+        const voice = register(
+          pitch,
+          stopTime,
+          (whenStop) => {
+            const t = Math.max(whenStop, 0);
+            amp.gain.cancelScheduledValues(t);
+            amp.gain.setTargetAtTime(0.0001, t, 0.01);
+            try {
+              modulator.stop(t + 0.05);
+            } catch {
+              /* already stopped */
+            }
+            try {
+              carrier.stop(t + 0.05);
+            } catch {
+              /* already stopped */
+            }
+          },
+          (now) => {
+            amp.gain.cancelScheduledValues(now);
+            amp.gain.setTargetAtTime(0.0001, now, 0.008);
+            try {
+              modulator.stop(now + 0.03);
+            } catch {
+              /* already stopped */
+            }
+            try {
+              carrier.stop(now + 0.03);
+            } catch {
+              /* already stopped */
+            }
+          },
+        );
+        carrier.onended = () => {
+          amp.disconnect();
+          try {
+            fbDelay?.disconnect();
+          } catch {
+            /* already disconnected */
+          }
+          cleanup(voice);
+        };
+        modulator.start(when);
+        carrier.start(when);
+      },
+      setParameter(id, value) {
+        // FM voices read params at noteOn — live update affects new notes.
+        p[id] = value;
+      },
+      panic() {
+        for (const voice of [...voices]) voice.silence(ctx.currentTime);
+        voices.length = 0;
+      },
+      dispose() {
+        this.panic();
+        output.disconnect();
+      },
+    };
+    return runtime;
+  },
+};
 
 const keys: InstrumentDefinition = {
   kind: "keys",
@@ -4104,6 +4304,7 @@ export const INSTRUMENT_DEFS: Record<InstrumentKind, InstrumentDefinition> = {
   wavetable,
   granular,
   keys,
+  fm,
   pluck,
   logdrum,
   spectral,
@@ -4120,6 +4321,7 @@ export const INSTRUMENT_ORDER: InstrumentKind[] = [
   "wavetable",
   "granular",
   "keys",
+  "fm",
   "pluck",
   "logdrum",
   "spectral",

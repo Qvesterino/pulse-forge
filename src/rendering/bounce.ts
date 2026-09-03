@@ -22,11 +22,7 @@ export interface BounceZone {
   lengthBars: number;
 }
 
-export function buildBounceZoneDoc(
-  doc: ProjectDocument,
-  trackIds: string[],
-  zone: BounceZone,
-): ProjectDocument {
+export function buildBounceZoneDoc(doc: ProjectDocument, trackIds: string[], zone: BounceZone): ProjectDocument {
   if (trackIds.length === 0) throw new Error("Select at least one track to bounce");
   const zoneStartTick = zone.startBar * BAR_TICKS;
   const zoneEndTick = zoneStartTick + Math.max(0.25, zone.lengthBars) * BAR_TICKS;

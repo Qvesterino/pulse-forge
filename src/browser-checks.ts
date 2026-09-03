@@ -1499,7 +1499,11 @@ export async function runChecks(): Promise<CheckResult[]> {
     const def = EFFECT_DEFS.ozvena;
     // 1. Degraded fallback (no modules loaded in this context).
     const plainCtx = new OfflineAudioContext(1, SR, SR);
-    const fallback = def.factory(plainCtx, { id: "t", type: "ozvena", bypassed: false, params: defaultParamsOf("ozvena") }, { bpm: 124 });
+    const fallback = def.factory(
+      plainCtx,
+      { id: "t", type: "ozvena", bypassed: false, params: defaultParamsOf("ozvena") },
+      { bpm: 124 },
+    );
     const fallbackOk = fallback.degraded === true;
     fallback.dispose();
 
@@ -1507,7 +1511,11 @@ export async function runChecks(): Promise<CheckResult[]> {
     const renderOzvena = async (loaded: boolean) => {
       const ctx = new OfflineAudioContext(2, SR * 2, SR);
       if (loaded) await loadAllWorklets(ctx);
-      const rt = def.factory(ctx, { id: "t", type: "ozvena", bypassed: false, params: { ...defaultParamsOf("ozvena"), "global.dryWet": 100 } }, { bpm: 124 });
+      const rt = def.factory(
+        ctx,
+        { id: "t", type: "ozvena", bypassed: false, params: { ...defaultParamsOf("ozvena"), "global.dryWet": 100 } },
+        { bpm: 124 },
+      );
       const click = ctx.createBuffer(1, 64, SR);
       click.getChannelData(0)[0] = 0.9;
       const src = ctx.createBufferSource();
@@ -1614,6 +1622,111 @@ export async function runChecks(): Promise<CheckResult[]> {
     );
   } catch (error) {
     check("sampler plays transposed sample from C4 root", false, String(error));
+  }
+
+  // Sampler loop REGION: L-START/L-END with LOOP mode must sustain audio past
+  // the note gate (native loopStart/loopEnd path) and honor a mid-sample region.
+  try {
+    const ctx = new OfflineAudioContext(1, SR * 2, SR);
+    const track: InstrumentTrack = {
+      id: "check-sampler-loop",
+      kind: "instrument",
+      instrument: "sampler",
+      name: "Sampler Loop",
+      gain: 1,
+      pan: 0,
+      mute: false,
+      solo: false,
+      sampleId: "factory.tonal.pluck",
+      params: {
+        ...defaultInstrumentParams("sampler"),
+        loop: 1,
+        loopStart: 0.2,
+        loopEnd: 0.45,
+        sustain: 1,
+      },
+      effects: [],
+      sends: {},
+    };
+    const rt = INSTRUMENT_DEFS.sampler.factory(ctx, track, { bpm: 124, getSample: (id) => bank.get(id) });
+    rt.output.connect(ctx.destination);
+    rt.noteOn(60, 0.9, 0.02, 1.4); // long gate: the loop must sustain through the probe window
+    const rendered = await ctx.startRendering();
+    rt.dispose();
+    const data = rendered.getChannelData(0);
+    const rms = (fromSec: number, toSec: number): number => {
+      const from = Math.floor(fromSec * SR);
+      const to = Math.min(data.length, Math.floor(toSec * SR));
+      let sum = 0;
+      for (let i = from; i < to; i++) sum += data[i] * data[i];
+      return Math.sqrt(sum / Math.max(1, to - from));
+    };
+    const inLoop = rms(1.0, 1.4); // inside note gate + inside loop region
+    const afterRelease = rms(1.75, 1.95); // after release — near-silent
+    check(
+      "sampler: loop region sustains past the gate and releases cleanly",
+      inLoop > 0.02 && afterRelease < inLoop * 0.2,
+      "inLoop=" + inLoop.toFixed(3) + " afterRelease=" + afterRelease.toFixed(3),
+    );
+  } catch (error) {
+    check("sampler: loop region sustains past the gate and releases cleanly", false, String(error));
+  }
+
+  // FM synth: 2-op voice renders audible audio with the classic FM character
+  // (ratio 3.01 bell), and the growl preset stays quiet enough to mix.
+  try {
+    const ctx = new OfflineAudioContext(1, SR, SR);
+    const track: InstrumentTrack = {
+      id: "check-fm-bell",
+      kind: "instrument",
+      instrument: "fm",
+      name: "FM Bell",
+      gain: 1,
+      pan: 0,
+      mute: false,
+      solo: false,
+      sampleId: null,
+      params: defaultInstrumentParams("fm"),
+      effects: [],
+      sends: {},
+    };
+    const rt = INSTRUMENT_DEFS.fm.factory(ctx, track, { bpm: 124, getSample: (id) => bank.get(id) });
+    rt.output.connect(ctx.destination);
+    rt.noteOn(72, 0.9, 0.02, 0.5);
+    const rendered = await ctx.startRendering();
+    rt.dispose();
+    const data = rendered.getChannelData(0);
+    const peak = peakOf(data);
+    // Growl: ratio 1, feedback 0.5 — aggressive but mixable peak.
+    const growlTrack: InstrumentTrack = {
+      ...track,
+      id: "check-fm-growl",
+      name: "FM Growl",
+      params: {
+        ...defaultInstrumentParams("fm"),
+        ratio: 1,
+        index: 0.7,
+        feedback: 0.5,
+        modSustain: 0.6,
+        attack: 0.006,
+        sustain: 0.55,
+        level: -5,
+      },
+    };
+    const ctx2 = new OfflineAudioContext(1, SR, SR);
+    const rt2 = INSTRUMENT_DEFS.fm.factory(ctx2, growlTrack, { bpm: 124, getSample: (id) => bank.get(id) });
+    rt2.output.connect(ctx2.destination);
+    rt2.noteOn(45, 0.9, 0.02, 0.5);
+    const growled = await ctx2.startRendering();
+    rt2.dispose();
+    const growlPeak = peakOf(growled.getChannelData(0));
+    check(
+      "fm synth: bell renders with FM sidebands, growl stays mixable",
+      peak > 0.1 && growlPeak > 0.05 && growlPeak < 1.2,
+      "bellPeak=" + peak.toFixed(3) + " growlPeak=" + growlPeak.toFixed(3),
+    );
+  } catch (error) {
+    check("fm synth: bell renders with FM sidebands, growl stays mixable", false, String(error));
   }
 
   try {

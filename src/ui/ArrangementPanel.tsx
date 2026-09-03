@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useEffect, useRef, useState } from "react";
 import { useArrangementCapture, useDoc, useSelection, useSelectionStore, useServices } from "./context";
 import {
@@ -8,6 +7,7 @@ import {
   addMarker,
   consolidateAudioClips,
   autoArrangeSong,
+  generatePatternCommand,
   createArrangementSkeleton,
   createScene,
   createVariationAndPlaceClip,
@@ -27,9 +27,11 @@ import {
   renameScene,
   reorderScenes,
   resizeArrangementClip,
+  setSceneRole,
   resizeAudioClip,
   splitAudioClipAtTick,
   stripSilenceAudioClip,
+  updateArrangementTransition,
   updateAudioClip,
   sliceToPads,
 } from "../commands/commands";
@@ -38,8 +40,12 @@ import type { ArrangementTransitionType, SceneRole } from "../project-model/type
 import { BAR_TICKS, PPQ } from "../project-model/types";
 import { detectLoopBpm } from "../audio-engine/bpm-detect";
 import { extractGroove } from "../audio-engine/groove-extract";
+import { analyzeLoopForFlip, buildFlipOptions, flipSeed } from "../ai/flip";
 import { extensionForMime } from "../audio-engine/recorder";
 import { userSampleId } from "../persistence/UserSampleRepository";
+import { buildBounceZoneDoc } from "../rendering/bounce";
+import { renderProject } from "../rendering/renderer";
+import { encodeWav } from "../rendering/wav";
 import { clipLengthBars, recordingStartBar } from "./timelineRec";
 import { usePlayheadBar } from "./playhead";
 import { SceneLauncher, useSceneRuntimeState } from "./SceneLauncher";
@@ -156,7 +162,7 @@ export function ArrangementPanel() {
           id: bufferId,
           name: `REC ${stamp}`,
           fileName: `${bufferId}${extensionForMime(take.blob.type)}`,
-          category: "Custom",
+          category: "Custom" as const,
           duration: take.buffer.duration,
           sampleRate: take.buffer.sampleRate,
           channels: take.buffer.numberOfChannels,
@@ -1306,6 +1312,54 @@ export function ArrangementPanel() {
               title="Extract the loop's timing feel and accents onto the active pattern's existing steps"
             >
               Steal groove → active pattern
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                const c = audioClips.find((x) => x.id === audioMenu.clipId);
+                const buf = c ? services.bank.get(c.bufferId) : null;
+                if (!buf || !c) {
+                  setActionError("Loop not loaded");
+                  setAudioMenu(null);
+                  return;
+                }
+                const analysis = analyzeLoopForFlip(buf.getChannelData(0), buf.sampleRate);
+                if (!analysis) {
+                  setActionError("Could not analyse the loop — no steady groove found");
+                  setAudioMenu(null);
+                  return;
+                }
+                const genre = (window.prompt("AI FLIP — genre (house / techno / trap / ambient):", "house") ?? "")
+                  .trim()
+                  .toLowerCase();
+                const safeGenre = (["house", "techno", "trap", "ambient"] as const).includes(
+                  genre as "house" | "techno" | "trap" | "ambient",
+                )
+                  ? (genre as "house" | "techno" | "trap" | "ambient")
+                  : "house";
+                try {
+                  execute(
+                    generatePatternCommand(
+                      services.store.doc,
+                      buildFlipOptions(analysis, safeGenre, flipSeed(analysis)),
+                      `Flip ${c.startBar}b`,
+                    ),
+                  );
+                  // The generated pattern is now active — bake the loop's groove on top.
+                  execute(
+                    stealGrooveIntoPattern(services.store.doc, services.store.doc.activePatternId, analysis.groove, {
+                      applyVelocity: true,
+                    }),
+                  );
+                } catch (err) {
+                  setActionError(err instanceof Error ? err.message : "AI Flip failed");
+                }
+                setAudioMenu(null);
+              }}
+              title="Generate a fresh pattern from this loop's feel — your BPM, your key, its groove. Lands as a new scene."
+            >
+              AI FLIP → new scene
             </button>
             <button
               type="button"

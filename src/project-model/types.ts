@@ -57,6 +57,7 @@ export type InstrumentKind =
   | "wavetable"
   | "granular"
   | "keys"
+  | "fm"
   | "pluck"
   | "logdrum"
   | "spectral"

@@ -14,6 +14,7 @@ const KIND_BADGE: Record<"drum" | "group" | InstrumentKind, string> = {
   wavetable: "WT",
   granular: "GRN",
   keys: "KEY",
+  fm: "FM",
   pluck: "PLK",
   logdrum: "LOG",
   spectral: "SPC",

@@ -113,6 +113,7 @@ const INSTRUMENT_NAMES: Record<InstrumentKind, string> = {
   wavetable: "Wavetable",
   granular: "Granular",
   keys: "Keys",
+  fm: "FM",
   pluck: "Pluck",
   logdrum: "Log Drum",
   spectral: "Spectral",
