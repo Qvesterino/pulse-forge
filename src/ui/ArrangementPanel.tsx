@@ -424,19 +424,50 @@ export function ArrangementPanel() {
     setAudioFadePreview(null);
     setAudioGainPreview(null);
   };
-  const bounceZoneToClip = () => {
-    if (!selection.timeRange) return;
+  const [bouncingZone, setBouncingZone] = useState(false);
+  const bounceZoneToClip = async () => {
+    if (!selection.timeRange || bouncingZone) return;
     const fromBar = selection.timeRange.fromTick / BAR_TICKS;
     const lenBars = (selection.timeRange.toTick - selection.timeRange.fromTick) / BAR_TICKS;
-    // Build stem for guardrail (group FX) — real bounce would render offline then store bufferId
+    if (lenBars < 0.25) return;
     const trackIds = selection.trackIds.length > 0 ? selection.trackIds : doc.tracks.slice(0, 1).map((t) => t.id);
-    const bufferId = doc.tracks[0] ? `bounce-${Date.now()}` : "factory.tonal.pluck";
-    // Store a placeholder buffer in the bank so waveform can render (reuse first track sample if possible)
-    const placeholder =
-      services.bank.get(doc.tracks.find((t) => t.kind === "instrument")?.sampleId ?? "factory.tonal.pluck") ??
-      services.bank.get("factory.tonal.pluck");
-    if (placeholder) services.bank.add(bufferId, placeholder);
-    execute(addAudioClip(services.store.doc, trackIds[0], bufferId, fromBar, lenBars, { gain: 1, stretchRate: 1 }));
+    setBouncingZone(true);
+    try {
+      // REAL bounce: offline-render the selected tracks (FX, groups, sends
+      // included) for exactly the selected zone, then flip it to an audio
+      // clip. No more placeholder sample standing in for the render.
+      const zoneDoc = buildBounceZoneDoc(services.store.doc, trackIds, { startBar: fromBar, lengthBars: lenBars });
+      const sr = services.engine.getLiveAudioContext()?.sampleRate ?? 44100;
+      const buffer = await renderProject(zoneDoc, services.bank, { mode: "song", sampleRate: sr, tailSeconds: 0.35 });
+      const bufferId = userSampleId(`bounce-${Math.round(fromBar)}b`);
+      services.bank.add(bufferId, buffer);
+      // Persist the WAV so the bounce survives reloads (bank is runtime-only).
+      try {
+        const stamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        const detected = detectLoopBpm(buffer.getChannelData(0), buffer.sampleRate);
+        await services.userSamples.save(
+          {
+            id: bufferId,
+            name: `Bounce ${stamp}`,
+            fileName: `${bufferId}.wav`,
+            category: "Custom",
+            duration: buffer.duration,
+            sampleRate: buffer.sampleRate,
+            channels: buffer.numberOfChannels,
+            createdAt: new Date().toISOString(),
+            ...(detected ? { bpm: detected.bpm } : {}),
+          },
+          encodeWav(buffer, 16),
+        );
+      } catch {
+        /* persistence is best-effort — the take still plays this session */
+      }
+      execute(addAudioClip(services.store.doc, trackIds[0], bufferId, fromBar, lenBars, { gain: 1, stretchRate: 1 }));
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Bounce failed");
+    } finally {
+      setBouncingZone(false);
+    }
   };
 
   const placeScene = (sceneId: string, bar: number, lengthBars = 4) => {
@@ -682,9 +713,9 @@ export function ArrangementPanel() {
             <button
               type="button"
               className="btn btn-small"
-              disabled={!selection.timeRange}
-              title="Bounce zone (timeRange) to an editable AudioClip — stem built via buildStemProject, then rendered via OfflineAudioContext like track-renderer/frozen. Waveform: WavetablePreview min/max envelope; handles: trim/fade."
-              onClick={bounceZoneToClip}
+              disabled={!selection.timeRange || bouncingZone}
+              title="Bounce the selected zone (selected tracks, with FX/groups/sends) to an editable audio clip via an offline render. Shift the zone, hit bounce, flip it to a pad."
+              onClick={() => void bounceZoneToClip()}
             >
               BOUNCE ZONE
             </button>

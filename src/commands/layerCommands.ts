@@ -1,5 +1,7 @@
 import type { Command } from "./types";
 import type { InstrumentTrack, ProjectDocument, SampleLayer } from "../project-model/types";
+import type { RandomizeMode } from "../instruments/randomize";
+import { randomizeParams } from "../instruments/randomize";
 import { snapshot } from "./commands";
 
 function sanitizeLayers(layers: unknown): SampleLayer[] {
@@ -44,4 +46,28 @@ export function setVelocityLayersCommand(
     ),
   };
   return snapshot("setVelocityLayers", `Set ${clean.length} velocity layer${clean.length === 1 ? "" : "s"}`, doc, next);
+}
+
+/**
+ * Randomize an instrument track's parameters with musical constraints.
+ * mode "mutate" nudges ±12 % of range around current values, "deep" redraws
+ * the whole patch (log-distributed cutoffs, options re-rolled). Level/gain
+ * and the sampler root are never touched. Seeded — undo/redo is exact.
+ */
+export function randomizeInstrumentCommand(
+  doc: ProjectDocument,
+  trackId: string,
+  mode: RandomizeMode,
+  seed: number,
+): Command {
+  const target = doc.tracks.find((t): t is InstrumentTrack => t.id === trackId && t.kind === "instrument");
+  if (!target) throw new Error(`Instrument track ${trackId} not found`);
+  const next = randomizeParams(target.instrument, target.params, mode, seed);
+  const label = mode === "mutate" ? `Mutate ${target.name}` : `Deep randomize ${target.name}`;
+  return snapshot("randomizeInstrument", label, doc, {
+    ...doc,
+    tracks: doc.tracks.map((t) =>
+      t.kind === "instrument" && t.id === trackId ? { ...t, params: next, presetId: null } : t,
+    ),
+  });
 }

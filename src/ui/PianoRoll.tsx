@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useDoc, useServices } from "./context";
 import type { InstrumentTrack, NoteEvent, Pattern } from "../project-model/types";
 import { STEP_TICKS, pitchName } from "../project-model/types";
@@ -172,6 +172,84 @@ const VelocityBar = memo(
   (a, b) => a.note === b.note && a.patternTicks === b.patternTicks && a.selected === b.selected,
 );
 
+/** Keyboard-column handlers behind a stable object — see PianoKey. */
+interface PianoKeyHandlers {
+  preview: (pitch: number) => void;
+}
+
+/**
+ * One piano keyboard key. Memoized: the column is 61 static buttons that
+ * otherwise re-diff on every drag pointermove even though only the scale
+ * highlighting (rare) can change them. Scale labels arrive precomputed —
+ * the key has no access to the project key.
+ */
+const PianoKey = memo(
+  function PianoKey({
+    pitch,
+    scaleActive,
+    inScale,
+    isRoot,
+    degLabel,
+    handlers,
+  }: {
+    pitch: number;
+    scaleActive: boolean;
+    inScale: boolean;
+    isRoot: boolean;
+    degLabel: string;
+    handlers: PianoKeyHandlers;
+  }) {
+    return (
+      <button
+        type="button"
+        className={`pr-key${BLACK_KEYS.has(pitch % 12) ? " black" : ""}${pitch % 12 === 0 ? " c-key" : ""}${scaleActive && !inScale ? " out-scale" : ""}${isRoot ? " root" : ""}`}
+        style={{ height: ROW_HEIGHT }}
+        title={`Preview ${pitchName(pitch)}${scaleActive && inScale ? " (in scale)" : ""}`}
+        onPointerDown={() => handlers.preview(pitch)}
+      >
+        {pitch % 12 === 0 ? pitchName(pitch) : ""}
+        {scaleActive && inScale && degLabel && <span className="pr-scale-deg">{degLabel}</span>}
+      </button>
+    );
+  },
+  (a, b) =>
+    a.pitch === b.pitch &&
+    a.scaleActive === b.scaleActive &&
+    a.inScale === b.inScale &&
+    a.isRoot === b.isRoot &&
+    a.degLabel === b.degLabel,
+);
+
+/** A non-interactive ghost note shown behind the editable grid. */
+const GhostNote = memo(
+  function GhostNote({
+    note,
+    stepCount,
+    variant,
+  }: {
+    note: NoteEvent;
+    stepCount: number;
+    variant: "ghost" | "ghost-track";
+  }) {
+    const startSteps = note.start / STEP_TICKS;
+    const durSteps = note.duration / STEP_TICKS;
+    const top = (PITCH_MAX - note.pitch) * ROW_HEIGHT;
+    return (
+      <div
+        className={`pr-note ${variant}`}
+        style={{
+          left: `${(startSteps / stepCount) * 100}%`,
+          width: `${(durSteps / stepCount) * 100}%`,
+          top: `${clamp(top, 0, (PITCH_COUNT - 1) * ROW_HEIGHT)}px`,
+          opacity: variant === "ghost" ? 0.3 : 0.2,
+        }}
+        title={`Ghost ${pitchName(note.pitch)} — ${variant === "ghost" ? "from another pattern" : "from another track in same pattern"}`}
+      />
+    );
+  },
+  (a, b) => a.note === b.note && a.stepCount === b.stepCount && a.variant === b.variant,
+);
+
 export function PianoRollTrack({
   track,
   pattern,
@@ -200,8 +278,9 @@ export function PianoRollTrack({
   const [drag, setDrag] = useState<DragState | null>(null);
   const notes = pattern.notes?.[track.id] ?? [];
   const patternTicks = STEP_TICKS * pattern.stepCount;
-  // Ghost notes from other patterns (30% opacity, non-interactive)
-  const ghostNotes: NoteEvent[] = (() => {
+  // Ghost notes from other patterns (30% opacity, non-interactive) — memoized
+  // so drag re-renders reuse the same note objects and skip the diff.
+  const ghostNotes: NoteEvent[] = useMemo(() => {
     const out: NoteEvent[] = [];
     for (const other of doc.patterns) {
       if (other.id === pattern.id) continue;
@@ -210,9 +289,10 @@ export function PianoRollTrack({
       for (const n of list) out.push({ ...n, id: `ghost-${other.id}-${n.id}` });
     }
     return out;
-  })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc.patterns, pattern.id, track.id]);
   // Ghost notes per track (same pattern, other instrument tracks) — 20% opacity
-  const ghostTrackNotes: NoteEvent[] = (() => {
+  const ghostTrackNotes: NoteEvent[] = useMemo(() => {
     const out: NoteEvent[] = [];
     for (const [otherTrackId, list] of Object.entries(pattern.notes ?? {})) {
       if (otherTrackId === track.id) continue;
@@ -221,7 +301,8 @@ export function PianoRollTrack({
       for (const n of list as NoteEvent[]) out.push({ ...n, id: `ghost-track-${otherTrackId}-${n.id}` });
     }
     return out;
-  })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pattern.notes, doc.tracks, track.id]);
   const [velDrag, setVelDrag] = useState<{
     anchorId: string;
     startY: number;
@@ -896,6 +977,8 @@ export function PianoRollTrack({
     pointerUp: onVelPointerUp,
     pointerCancel: onVelPointerCancel,
   };
+  const keyHandlersRef = useRef<PianoKeyHandlers>({ preview: () => {} });
+  keyHandlersRef.current = { preview: previewKey };
 
   return (
     <div className={"pianoroll-wrap" + (fullscreen ? " pr-fullscreen" : "")}>
@@ -1284,19 +1367,15 @@ export function PianoRollTrack({
             const inScale = isScaleActive && scalePitches!.has(pitch);
             const isRoot = inScale && projectKey && scaleDegreeLabel(pitch, projectKey) === "1";
             return (
-              <button
+              <PianoKey
                 key={pitch}
-                type="button"
-                className={`pr-key${BLACK_KEYS.has(pitch % 12) ? " black" : ""}${pitch % 12 === 0 ? " c-key" : ""}${isScaleActive && !inScale ? " out-scale" : ""}${isRoot ? " root" : ""}`}
-                style={{ height: ROW_HEIGHT }}
-                title={`Preview ${pitchName(pitch)}${inScale ? " (in scale)" : ""}`}
-                onPointerDown={() => previewKey(pitch)}
-              >
-                {pitch % 12 === 0 ? pitchName(pitch) : ""}
-                {isScaleActive && inScale && (
-                  <span className="pr-scale-deg">{scaleDegreeLabel(pitch, projectKey!)}</span>
-                )}
-              </button>
+                pitch={pitch}
+                scaleActive={isScaleActive}
+                inScale={inScale}
+                isRoot={Boolean(isRoot)}
+                degLabel={(inScale && projectKey ? scaleDegreeLabel(pitch, projectKey) : "") ?? ""}
+                handlers={keyHandlersRef.current}
+              />
             );
           })}
         </div>
@@ -1360,43 +1439,13 @@ export function PianoRollTrack({
               />
             ))}
             {/* Ghost notes from other patterns — 30% opaque, non-interactive */}
-            {ghostNotes.map((note) => {
-              const startSteps = note.start / STEP_TICKS;
-              const durSteps = note.duration / STEP_TICKS;
-              const top = (PITCH_MAX - note.pitch) * ROW_HEIGHT;
-              return (
-                <div
-                  key={note.id}
-                  className="pr-note ghost"
-                  style={{
-                    left: `${(startSteps / pattern.stepCount) * 100}%`,
-                    width: `${(durSteps / pattern.stepCount) * 100}%`,
-                    top: `${clamp(top, 0, (PITCH_COUNT - 1) * ROW_HEIGHT)}px`,
-                    opacity: 0.3,
-                  }}
-                  title={`Ghost ${pitchName(note.pitch)} — from another pattern`}
-                />
-              );
-            })}
+            {ghostNotes.map((note) => (
+              <GhostNote key={note.id} note={note} stepCount={pattern.stepCount} variant="ghost" />
+            ))}
             {/* Ghost notes per track — same pattern, other instrument tracks (20% opacity) */}
-            {ghostTrackNotes.map((note) => {
-              const startSteps = note.start / STEP_TICKS;
-              const durSteps = note.duration / STEP_TICKS;
-              const top = (PITCH_MAX - note.pitch) * ROW_HEIGHT;
-              return (
-                <div
-                  key={note.id}
-                  className="pr-note ghost-track"
-                  style={{
-                    left: `${(startSteps / pattern.stepCount) * 100}%`,
-                    width: `${(durSteps / pattern.stepCount) * 100}%`,
-                    top: `${clamp(top, 0, (PITCH_COUNT - 1) * ROW_HEIGHT)}px`,
-                    opacity: 0.2,
-                  }}
-                  title={`Ghost ${pitchName(note.pitch)} — from another track in same pattern`}
-                />
-              );
-            })}
+            {ghostTrackNotes.map((note) => (
+              <GhostNote key={note.id} note={note} stepCount={pattern.stepCount} variant="ghost-track" />
+            ))}
             {notes.map((note) => {
               const noteDrag = drag && drag.noteId === note.id && drag.mode !== "noteVelocity" ? drag : null;
               const selected = selectedNote?.trackId === track.id && selectedNote.noteIds.includes(note.id);

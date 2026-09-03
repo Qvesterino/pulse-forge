@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useDoc, useServices } from "./context";
 import { setInstrumentParam, setPadSynth, setPadParams } from "../commands/commands";
+import { randomizeInstrumentCommand } from "../commands/layerCommands";
 import { INSTRUMENT_DEFS } from "../instruments/registry";
+import { WavetablePanel } from "./WavetablePanel";
+import { EnvEditor } from "./EnvEditor";
 import { Slider } from "./controls";
 import type { Track } from "../project-model/types";
 
@@ -99,6 +102,34 @@ export function FloatingPlugin({
       >
         <span className="floating-plugin-title">{title}</span>
         <div className="floating-plugin-actions">
+          {!isDrum && track.kind === "instrument" && (
+            <div className="floating-plugin-random" role="group" aria-label="Randomize">
+              <button
+                type="button"
+                className="btn btn-small"
+                title="Mutate — ±12 % okolo súčasných hodnôt"
+                onClick={() =>
+                  services.store.execute(
+                    randomizeInstrumentCommand(doc, track.id, "mutate", (Math.random() * 0x7fffffff) | 0),
+                  )
+                }
+              >
+                MUT
+              </button>
+              <button
+                type="button"
+                className="btn btn-small"
+                title="Deep randomize — celý patch (level ostáva)"
+                onClick={() =>
+                  services.store.execute(
+                    randomizeInstrumentCommand(doc, track.id, "deep", (Math.random() * 0x7fffffff) | 0),
+                  )
+                }
+              >
+                DEEP
+              </button>
+            </div>
+          )}
           <div className="floating-plugin-mode" role="group" aria-label="Plugin mode">
             <button
               type="button"
@@ -166,7 +197,10 @@ function InstrumentPluginContent({
   const params: any[] = mode === "hobby" ? hobbyParams(def.params, track.instrument) : def.params;
 
   return (
-    <div className="floating-plugin-grid">
+    <div className="floating-plugin-stack">
+      {track.instrument === "wavetable" && <WavetablePanel track={track} doc={doc} services={services} />}
+      {track.instrument === "analog" && mode === "profi" && <EnvEditor track={track} doc={doc} services={services} />}
+      <div className="floating-plugin-grid">
       {params.map((p: any) =>
         p.options ? (
           <label key={p.id} className="fx-param-select floating-plugin-select">
@@ -200,6 +234,7 @@ function InstrumentPluginContent({
           />
         ),
       )}
+      </div>
     </div>
   );
 }

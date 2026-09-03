@@ -461,8 +461,9 @@ export function DiceTray() {
       </div>
 
       <div className="dice-footer-hint">
-        Hotkeys: <kbd>D</kbd> Full · <kbd>Shift+D</kbd> Vary · <kbd>←</kbd>
-        <kbd>→</kbd> history · locks držia stem pri hode · Apply = 1 undo
+        Hotkeys: <kbd className="help-kbd">D</kbd> Full · <kbd className="help-kbd">Shift+D</kbd> Vary ·{' '}
+        <kbd className="help-kbd">←</kbd> <kbd className="help-kbd">→</kbd> history · locks keep the stem on a roll ·
+        Apply = 1 undo
       </div>
     </div>
   );

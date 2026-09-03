@@ -20,7 +20,9 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const ENTRY_BUDGET_KB = 975;
+// 995: instruments/registry.ts grows with every new instrument (wavetable,
+// granular landed at ~+21 KB) — the registry is core and must stay in entry.
+const ENTRY_BUDGET_KB = 995;
 const TOTAL_BUDGET_KB = 2400;
 
 const dist = fileURLToPath(new URL("../dist/", import.meta.url));

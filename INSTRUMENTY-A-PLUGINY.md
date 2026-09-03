@@ -281,7 +281,13 @@ Presety sú čisté dáta (žiadne volania do audio engine) — idú cez command
 
 ---
 
-## 6. Export — mastering-safe kvantizácia
+## 6. Editačná vrstva (Fáza 3)
+
+- **WavetablePanel** (vo floating plugine pri wavetable stope): canvas vizualizácia všetkých fám tabuľky stacked front-to-back, zvýraznený morph pár, blended aktuálna fáma jasne navrchu, pri zapnutom S RATE animovaný scan marker. Pod displejom **mod matrica** — MOD A/B: zdroj (Env/LFO/Vel/Press) → cieľ (Morph/Cutoff/Detune/Amp) s ±100 % amount, + MOD LFO RATE; riadi per-voice mod routes vo wtvoice worklete
+- **EnvEditor** (Analog, PROFI mód): draggable DAHDSR — delay/attack/hold/decay/release handles (x = čas), decay roh ťahá aj sustain level (y), tvary A/D/R klipom cik-cak (Exp/Lin/Log), D LOOP badge cyklí OFF/2×/4×/8×; commity cez setInstrumentParam (jeden undo na ťah)
+- **Randomize** — MUT (±12 % rozsahu okolo súčasných hodnôt) a DEEP (celý patch, log-distribuované cutoffy, options re-roll) priamo v hlavičke pluginu; level/gain a sampler root sa nikdy nemenia; seedované → undo/redo presné
+
+## 7. Export — mastering-safe kvantizácia
 
 MP3 aj WAV 16-bit export prechádzajú cez spoločný kvantizátor (`src/export/quantize.ts`):
 

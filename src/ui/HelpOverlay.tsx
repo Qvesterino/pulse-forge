@@ -1,5 +1,6 @@
-import { useEffect, useRef } from "react";
-import { formatShortcut, groupShortcuts } from "./shortcuts";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { groupShortcuts, shortcutDisplayBindings } from "./shortcuts";
+import { gestureMatches, gesturesByArea } from "./helpContent";
 
 interface HelpOverlayProps {
   open: boolean;
@@ -7,15 +8,20 @@ interface HelpOverlayProps {
 }
 
 /**
- * Modal-style overlay listing all keyboard shortcuts.
- * Opens with `?`, closes with Escape or by clicking the scrim.
+ * Help overlay — every keyboard shortcut (primary + alternative bindings)
+ * and every mouse/touch gesture, with a text filter. Opens with `?`,
+ * closes with Escape or by clicking the scrim.
  */
 export function HelpOverlay({ open, onClose }: HelpOverlayProps) {
-  const closeRef = useRef<HTMLButtonElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
-    if (!open) return;
-    closeRef.current?.focus();
+    if (!open) {
+      setQuery("");
+      return;
+    }
+    searchRef.current?.focus();
   }, [open]);
 
   useEffect(() => {
@@ -30,52 +36,126 @@ export function HelpOverlay({ open, onClose }: HelpOverlayProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
+  const groups = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const all = groupShortcuts();
+    if (!q) return all;
+    return all
+      .map(({ group, items }) => ({
+        group,
+        items: items.filter(
+          (sc) =>
+            sc.label.toLowerCase().includes(q) ||
+            group.toLowerCase().includes(q) ||
+            shortcutDisplayBindings(sc).some((binding) => binding.toLowerCase().includes(q)),
+        ),
+      }))
+      .filter(({ items }) => items.length > 0);
+  }, [query]);
+
+  const gestureAreas = useMemo(
+    () => gesturesByArea().map(({ area, items }) => ({ area, items: items.filter((g) => gestureMatches(g, query)) })),
+    [query],
+  );
+  const gesturesVisible = gestureAreas.some(({ items }) => items.length > 0);
+  const nothingFound = groups.length === 0 && !gesturesVisible;
+
   if (!open) return null;
-  const groups = groupShortcuts();
 
   return (
     <div
       className="help-overlay"
       role="dialog"
       aria-modal="true"
-      aria-label="Keyboard shortcuts"
+      aria-label="Help: shortcuts and gestures"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
       <div className="help-card">
         <header className="help-header">
-          <h2 className="panel-title">KEYBOARD SHORTCUTS</h2>
+          <h2 className="panel-title">HELP — SHORTCUTS &amp; GESTURES</h2>
+          <input
+            ref={searchRef}
+            type="search"
+            className="help-search"
+            placeholder="Filter — e.g. velocity, undo, Ctrl…"
+            aria-label="Filter shortcuts and gestures"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
           <button
-            ref={closeRef}
             type="button"
             className="btn btn-small"
             onClick={onClose}
-            aria-label="Close shortcuts"
+            aria-label="Close help"
             title="Close (Esc)"
           >
             CLOSE
           </button>
         </header>
-        <div className="help-grid">
-          {groups.map(({ group, items }) => (
-            <section key={group} className="help-group" aria-labelledby={`help-group-${group}`}>
-              <h3 id={`help-group-${group}`} className="help-group-title">
-                {group.toUpperCase()}
-              </h3>
-              <ul className="help-list">
-                {items.map((sc) => (
-                  <li key={sc.key} className="help-row">
-                    <span className="help-label">{sc.label}</span>
-                    <kbd className="help-kbd" aria-label={formatShortcut(sc)}>
-                      {formatShortcut(sc)}
-                    </kbd>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ))}
-        </div>
+
+        {nothingFound && (
+          <div className="undo-history-empty" role="status">
+            Nothing matches "{query.trim()}" — try "velocity", "undo" or "dice".
+          </div>
+        )}
+
+        {groups.length > 0 && (
+          <div className="help-grid">
+            {groups.map(({ group, items }) => (
+              <section key={group} className="help-group" aria-labelledby={`help-group-${group}`}>
+                <h3 id={`help-group-${group}`} className="help-group-title">
+                  {group.toUpperCase()}
+                </h3>
+                <ul className="help-list">
+                  {items.map((sc) => {
+                    const bindings = shortcutDisplayBindings(sc);
+                    return (
+                      <li key={sc.key} className="help-row">
+                        <span className="help-label">{sc.label}</span>
+                        <span className="help-bindings">
+                          {bindings.map((binding, idx) => (
+                            <span key={binding} className="help-binding">
+                              {idx > 0 && <span className="help-or">or</span>}
+                              <kbd className={idx === 0 ? "help-kbd" : "help-kbd help-kbd-alt"} aria-label={binding}>
+                                {binding}
+                              </kbd>
+                            </span>
+                          ))}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            ))}
+          </div>
+        )}
+
+        {gesturesVisible && (
+          <div className="help-gestures" aria-label="Mouse and touch gestures">
+            <h3 className="help-group-title">MOUSE &amp; TOUCH — BY AREA</h3>
+            {gestureAreas
+              .filter(({ items }) => items.length > 0)
+              .map(({ area, items }) => (
+                <section key={area} className="help-group" aria-labelledby={`help-gestures-${area}`}>
+                  <h4 className="help-group-title">{area.toUpperCase()}</h4>
+                  <ul className="help-list">
+                    {items.map((gesture) => (
+                      <li key={`${gesture.area}-${gesture.action}`} className="help-row">
+                        <span className="help-label">
+                          {gesture.action}
+                          <span className="help-gesture-detail"> — {gesture.detail}</span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ))}
+          </div>
+        )}
+
         <footer className="help-footer">
           <span>
             Close with <kbd className="help-kbd">Esc</kbd> or click outside

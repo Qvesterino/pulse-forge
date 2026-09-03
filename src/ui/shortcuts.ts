@@ -231,11 +231,40 @@ export function groupShortcuts(): { group: Shortcut["group"]; items: Shortcut[] 
  * Uses the primary keyHint and its modifiers.
  */
 export function formatShortcut(sc: Shortcut): string {
+  return formatBinding({
+    key: sc.keyHint,
+    ctrl: sc.ctrl,
+    shift: sc.shift,
+    alt: sc.alt,
+    meta: sc.meta,
+  });
+}
+
+/** Format one binding (primary or alternative) — "Ctrl + Shift + Z". */
+export function formatBinding(binding: {
+  key: string;
+  ctrl?: boolean;
+  shift?: boolean;
+  alt?: boolean;
+  meta?: boolean;
+}): string {
   const parts: string[] = [];
-  if (sc.ctrl) parts.push("Ctrl");
-  if (sc.alt) parts.push("Alt");
-  if (sc.shift) parts.push("Shift");
-  if (sc.meta) parts.push("Meta");
-  parts.push(sc.keyHint);
+  if (binding.ctrl) parts.push("Ctrl");
+  if (binding.alt) parts.push("Alt");
+  if (binding.shift) parts.push("Shift");
+  if (binding.meta) parts.push("Meta");
+  // Single-character keys display uppercase ("Ctrl + Z"), named keys keep
+  // their canonical form ("Escape", "PageDown").
+  const key = binding.key === " " ? "Space" : binding.key.length === 1 ? binding.key.toUpperCase() : binding.key;
+  parts.push(key);
   return parts.join(" + ");
+}
+
+/** All display strings for a shortcut: primary first, then unique alternatives. */
+export function shortcutDisplayBindings(sc: Shortcut): string[] {
+  const out: string[] = [];
+  for (const binding of [formatShortcut(sc), ...(sc.altHints ?? []).map((alt) => formatBinding(alt))]) {
+    if (!out.includes(binding)) out.push(binding);
+  }
+  return out;
 }

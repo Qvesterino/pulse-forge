@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { useDeterministicIds } from "../src/shared/ids";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { MAX_HUMANIZE_TIMING, MAX_MICRO_TIMING, drumHitsInWindow, swingOffsetTicks } from "../src/project-model/groove";
 import { normalizeProject } from "../src/project-model/schema";
@@ -75,18 +76,27 @@ describe("groove engine", () => {
   });
 
   it("probability 0 never plays, probability 1 always plays", () => {
-    const { doc, kickId } = blankDoc();
-    const base = setRow(doc, kickId, [[0, 0.9]]);
-    const never = {
-      ...base,
-      patterns: base.patterns.map((p) => ({ ...p, stepMeta: { [kickId]: { 0: { probability: 0 } } } })),
-    };
-    const always = {
-      ...base,
-      patterns: base.patterns.map((p) => ({ ...p, stepMeta: { [kickId]: { 0: { probability: 0.99 } } } })),
-    };
-    expect(drumHitsInWindow(never, never.patterns[0], 0, 0, PATTERN_TICKS)).toHaveLength(0);
-    expect(drumHitsInWindow(always, always.patterns[0], 0, 0, PATTERN_TICKS)).toHaveLength(1);
+    // The roll is seeded from the pattern id, which uid() randomizes by
+    // default — a random seed can roll ≥ 0.99 and fail the "always" claim
+    // (~1 % of runs). Pin the ids so the roll is fixed and the boundary
+    // (0 never, near-1 always) is what's actually under test.
+    const restore = useDeterministicIds();
+    try {
+      const { doc, kickId } = blankDoc();
+      const base = setRow(doc, kickId, [[0, 0.9]]);
+      const never = {
+        ...base,
+        patterns: base.patterns.map((p) => ({ ...p, stepMeta: { [kickId]: { 0: { probability: 0 } } } })),
+      };
+      const always = {
+        ...base,
+        patterns: base.patterns.map((p) => ({ ...p, stepMeta: { [kickId]: { 0: { probability: 0.99 } } } })),
+      };
+      expect(drumHitsInWindow(never, never.patterns[0], 0, 0, PATTERN_TICKS)).toHaveLength(0);
+      expect(drumHitsInWindow(always, always.patterns[0], 0, 0, PATTERN_TICKS)).toHaveLength(1);
+    } finally {
+      restore();
+    }
   });
 
   it("probability rolls are deterministic per pattern/pad/step/pass", () => {
