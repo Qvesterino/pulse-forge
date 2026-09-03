@@ -93,6 +93,10 @@ class OzvenaWorkletProcessor extends AudioWorkletProcessor {
     // Always load (even without processorOptions) — a null state makes the
     // core's process() return silently, i.e. a muted effect.
     this.proc.loadState(this.state);
+    // Pulse Forge consumes no spectrum/AutoCut/Unmask/masking taps — skip
+    // the nine per-block analyzer ring writes (≈10–20 µs + cache pressure).
+    // Upstream hosts simply never call this; taps stay live by default.
+    this.proc.setAnalyzersEnabled(false);
     this.postLatency();
     this.port.onmessage = (event) => {
       const msg = event.data;

@@ -92,3 +92,42 @@ describe("Ultina metering gate", () => {
     expect(chans[0][0]).toBeCloseTo(chans[1][0], 6);
   });
 });
+
+describe("Ultina pooled meter snapshot", () => {
+  it("reuses the snapshot buffers across calls (zero steady-state allocation)", () => {
+    const proc = makeProcessor();
+    const m1 = proc.getMeters();
+    const m2 = proc.getMeters();
+    // Pooling contract: same containers, overwritten in place.
+    expect(m2.global.outputWaveform).toBe(m1.global.outputWaveform);
+    expect(m2.global.inputSpectrumDb).toBe(m1.global.inputSpectrumDb);
+    expect(m2).toBe(m1);
+  });
+
+  it("pooled buffers still carry FRESH data every call (no stale pooling)", () => {
+    const proc = makeProcessor();
+    renderLoud(proc, 4);
+    const quietWaveformPeak = (() => {
+      const m = proc.getMeters();
+      let peak = 0;
+      for (let i = 0; i < m.global.outputWaveform!.length; i++) {
+        peak = Math.max(peak, Math.abs(m.global.outputWaveform![i]));
+      }
+      return peak;
+    })();
+    expect(quietWaveformPeak).toBeGreaterThan(0.05); // loud signal visible
+
+    // Silence the input; the next snapshot must reflect the new state.
+    const chans = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+    // 4 s of silence — the short-term LUFS window is 3 s, so it needs to
+    // fully drain before the reading can fall.
+    for (let b = 0; b < Math.round((4 * SR) / BLOCK); b++) proc.process(chans, BLOCK);
+    const m = proc.getMeters();
+    let peak = 0;
+    for (let i = 0; i < m.global.outputWaveform!.length; i++) {
+      peak = Math.max(peak, Math.abs(m.global.outputWaveform![i]));
+    }
+    expect(peak).toBeLessThan(0.01); // waveform followed the silence
+    expect(m.global.outputShortTermLufs).toBeLessThan(-40);
+  });
+});

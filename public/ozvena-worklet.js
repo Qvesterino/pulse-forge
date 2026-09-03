@@ -1167,6 +1167,7 @@
     let bq2 = createBiquad(channelCount);
     let bq3 = createBiquad(channelCount);
     let analyzer = createSpectrumAnalyzer({ fftSize: 2048 });
+    let analyzerEnabled = true;
     const snapshotGrid = new Float32Array(48);
     for (let i = 0; i < snapshotGrid.length; i++) {
       snapshotGrid[i] = 20 * Math.pow(1e3, i / (snapshotGrid.length - 1));
@@ -1187,6 +1188,7 @@
         bq2 = createBiquad(channelCount);
         bq3 = createBiquad(channelCount);
         analyzer = createSpectrumAnalyzer({ fftSize: 2048 });
+        analyzer.setEnabled(analyzerEnabled);
         updateCoefficients();
       },
       process(channels, frameCount) {
@@ -1205,6 +1207,10 @@
       },
       setAutoCutEnabled(on) {
         autoCutEnabled = on;
+      },
+      setAnalyzerEnabled(on) {
+        analyzerEnabled = on;
+        analyzer.setEnabled(on);
       },
       runAutoCut(sr) {
         const result = this.runAutoCutDetailed(sr);
@@ -1325,6 +1331,7 @@
     let bq2 = createBiquad(channelCount);
     let bq3 = createBiquad(channelCount);
     let analyzer = createSpectrumAnalyzer({ fftSize: 2048 });
+    let analyzerEnabled = true;
     const snapshotGrid = new Float32Array(48);
     for (let i = 0; i < snapshotGrid.length; i++) {
       snapshotGrid[i] = 20 * Math.pow(1e3, i / (snapshotGrid.length - 1));
@@ -1345,6 +1352,7 @@
         bq2 = createBiquad(channelCount);
         bq3 = createBiquad(channelCount);
         analyzer = createSpectrumAnalyzer({ fftSize: 2048 });
+        analyzer.setEnabled(analyzerEnabled);
         updateCoefficients();
       },
       process(wet, frameCount, dry) {
@@ -1364,6 +1372,10 @@
       },
       setUnmaskEnabled(on) {
         unmaskEnabled = on;
+      },
+      setAnalyzerEnabled(on) {
+        analyzerEnabled = on;
+        analyzer.setEnabled(on);
       },
       runUnmask(sr) {
         const result = this.runUnmaskDetailed(sr);
@@ -1535,6 +1547,7 @@
   // src/effects/ozvena-core/modules/maskingMeter.ts
   function createMaskingMeter() {
     let analyzer = createSpectrumAnalyzer({ fftSize: 2048 });
+    let analyzerEnabled = true;
     let params = { enabled: false, source: "dryVsWet" };
     let dryBuf = new Float32Array(0);
     let wetBuf = new Float32Array(0);
@@ -1550,6 +1563,7 @@
       prepare(sr) {
         const srClamped = clamp(sr, 8e3, 192e3);
         analyzer = createSpectrumAnalyzer({ fftSize: 2048 });
+        analyzer.setEnabled(analyzerEnabled);
         void srClamped;
       },
       push(dry, wet, frameCount) {
@@ -1558,6 +1572,10 @@
       },
       setParams(p) {
         params = { ...p };
+      },
+      setAnalyzerEnabled(on) {
+        analyzerEnabled = on;
+        analyzer.setEnabled(on);
       },
       snapshot(sampleRate2, grid, thresholdDb = 3) {
         ensureBufs(grid.length);
@@ -3692,6 +3710,7 @@
     let lastQualityTier = 1;
     let preparedMaxBs = 2048;
     let analyzer = createSpectrumAnalyzer({ fftSize: 2048 });
+    let analyzersEnabled = true;
     let loadedIrId = null;
     let loadedIrRate = 0;
     let userIrActive = false;
@@ -3918,6 +3937,7 @@
       plateChamber.setQuality(lastQualityTier);
       hall.setQuality(lastQualityTier);
       analyzer = createSpectrumAnalyzer({ fftSize: 2048 });
+      analyzer.setEnabled(analyzersEnabled);
       ensureScratch(2048);
       pushedState = null;
       pushStateToModules();
@@ -3949,6 +3969,7 @@
         plateChamber.setQuality(lastQualityTier);
         hall.setQuality(lastQualityTier);
         analyzer = createSpectrumAnalyzer({ fftSize: 2048 });
+        analyzer.setEnabled(analyzersEnabled);
         ensureScratch(2048);
         pushedState = null;
         pushStateToModules();
@@ -4154,6 +4175,13 @@
       runMaskingSnapshot(sr, grid) {
         return maskingMeter.snapshot(sr, grid);
       },
+      setAnalyzersEnabled(on) {
+        analyzersEnabled = on;
+        analyzer.setEnabled(on);
+        preEq.setAnalyzerEnabled(on);
+        reverbEq.setAnalyzerEnabled(on);
+        maskingMeter.setAnalyzerEnabled(on);
+      },
       loadUserIr(samples, channels) {
         loadUserIr(samples, channels);
       },
@@ -4224,6 +4252,7 @@
         for (const [id, value] of Object.entries(initial)) this.state = setPath(this.state, id, value);
       }
       this.proc.loadState(this.state);
+      this.proc.setAnalyzersEnabled(false);
       this.postLatency();
       this.port.onmessage = (event) => {
         const msg = event.data;

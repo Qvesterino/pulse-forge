@@ -73,6 +73,8 @@ export interface MaskingMeter {
   /** Feed audio: dry = the bypass signal, wet = the post-engine signal. */
   push(dry: Float32Array[], wet: Float32Array[], frameCount: number): void;
   setParams(p: MaskingParams): void;
+  /** Gate the internal dry/wet analyzer taps (see PreEq.setAnalyzerEnabled). */
+  setAnalyzerEnabled(on: boolean): void;
   /** Take a snapshot of dry vs wet and compute the per-bin mask. */
   snapshot(sampleRate: number, grid: Float32Array, thresholdDb?: number): MaskingResult;
   /**
@@ -86,6 +88,7 @@ export interface MaskingMeter {
 
 export function createMaskingMeter(): MaskingMeter {
   let analyzer: SpectrumAnalyzer = createSpectrumAnalyzer({ fftSize: 2048 });
+  let analyzerEnabled = true;
   let params: MaskingParams = { enabled: false, source: "dryVsWet" };
 
   let dryBuf: Float32Array = new Float32Array(0);
@@ -104,6 +107,7 @@ export function createMaskingMeter(): MaskingMeter {
     prepare(sr) {
       const srClamped = clamp(sr, 8000, 192000);
       analyzer = createSpectrumAnalyzer({ fftSize: 2048 });
+      analyzer.setEnabled(analyzerEnabled);
       void srClamped;
     },
 
@@ -113,6 +117,11 @@ export function createMaskingMeter(): MaskingMeter {
     },
 
     setParams(p) { params = { ...p }; },
+
+    setAnalyzerEnabled(on) {
+      analyzerEnabled = on;
+      analyzer.setEnabled(on);
+    },
 
     snapshot(sampleRate, grid, thresholdDb = 3) {
       ensureBufs(grid.length);

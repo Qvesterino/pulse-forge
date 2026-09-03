@@ -443,10 +443,20 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
           break;
         }
         case "trueEnvelope": {
-          // Interpolated peak: look at neighboring samples for true peak estimation
-          const s0 = Math.abs(band.prevDetected);
           const s1 = Math.abs(detectCh[i] ?? channels[0][i]);
-          const s2 = Math.abs(detectCh[i + 1] ?? channels[0][i + 1] ?? 0);
+          // Parabolic 3-point true-peak interpolation needs x[i-1] and x[i+1].
+          // The next sample does not exist at a block boundary; the old code
+          // fabricated s2 = 0 there, which read as a cliff edge and produced
+          // a small false peak once per maxBlockSize (a periodic 375 Hz
+          // artifact at a 128-frame quantum). At the boundary use the raw
+          // peak — no interpolation — and let the envelope follower smooth.
+          if (i + 1 >= frameCount) {
+            detected = band.peakEnv.process(s1);
+            band.prevDetected = s1;
+            break;
+          }
+          const s0 = Math.abs(band.prevDetected);
+          const s2 = Math.abs(detectCh[i + 1] ?? channels[0][i + 1]);
           // Simple quadratic interpolation for peak position
           const denom = s0 - 2 * s1 + s2;
           let truePeak = s1;

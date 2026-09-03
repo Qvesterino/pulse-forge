@@ -153,12 +153,28 @@ export function OzvenaPanel({
         tone: ASSISTANT_TONES[assistTone],
       };
       const rec = recommend(assistant);
-      const nextState = applyRecommendation(defaultOzvenaStateV1(), rec);
-      const flat = flattenState(nextState as unknown as Record<string, unknown>);
-      // Keep the user's master I/O — the assistant proposes the space, not gain staging.
+      const base = defaultOzvenaStateV1();
+      const nextState = applyRecommendation(base, rec);
+      const proposed = flattenState(nextState as unknown as Record<string, unknown>);
+      const baseline = flattenState(base as unknown as Record<string, unknown>);
+      // DIFF-BASED PATCH: only fields the recommendation actually moves
+      // away from the defaults land in the patch. The user's untouched
+      // configuration — engine toggles, MIX, convolution choices, anything
+      // not proposed — survives the gesture (applyOzvenaStatePatch merges).
+      const flat: Record<string, number> = {};
+      for (const [key, value] of Object.entries(proposed)) {
+        if (baseline[key] !== value) flat[key] = value;
+      }
+      // Wizard bookkeeping is not sound; gain staging stays with the user.
+      for (const key of Object.keys(flat)) {
+        if (key.startsWith("assistant.")) delete flat[key];
+      }
       delete flat["global.inputGainDb"];
-      flat["global.outputGainDb"] = params["global.outputGainDb"] ?? 0;
-      onApplyPatch(`Reverb assist (${ASSISTANT_TONES[assistTone]})`, flat);
+      delete flat["global.outputGainDb"];
+      delete flat["global.levelDb"];
+      if (Object.keys(flat).length > 0) {
+        onApplyPatch(`Reverb assist (${ASSISTANT_TONES[assistTone]})`, flat);
+      }
       setAssistSummary(rec.summary || "Assistant starting point applied.");
     } finally {
       setAssistBusy(false);

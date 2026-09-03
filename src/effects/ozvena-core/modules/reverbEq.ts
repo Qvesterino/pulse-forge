@@ -79,6 +79,10 @@ export interface ReverbEq {
   setParams(p: ReverbEqParams): void;
   setUnmaskAmount(amount: number): void;
   setUnmaskEnabled(on: boolean): void;
+  /**
+   * Gate the internal dry/wet analyzer taps (see PreEq.setAnalyzerEnabled).
+   */
+  setAnalyzerEnabled(on: boolean): void;
   runUnmask(sampleRate: number): [number, number, number] | null;
   runUnmaskDetailed(sampleRate: number): UnmaskDetails | null;
   reset(): void;
@@ -120,6 +124,7 @@ export function createReverbEq(): ReverbEq {
   let bq2: BiquadState = createBiquad(channelCount);
   let bq3: BiquadState = createBiquad(channelCount);
   let analyzer: SpectrumAnalyzer = createSpectrumAnalyzer({ fftSize: 2048 });
+  let analyzerEnabled = true;
 
   const snapshotGrid = new Float32Array(48);
   for (let i = 0; i < snapshotGrid.length; i++) {
@@ -145,6 +150,7 @@ export function createReverbEq(): ReverbEq {
       bq2 = createBiquad(channelCount);
       bq3 = createBiquad(channelCount);
       analyzer = createSpectrumAnalyzer({ fftSize: 2048 });
+      analyzer.setEnabled(analyzerEnabled);
       updateCoefficients();
     },
 
@@ -164,6 +170,10 @@ export function createReverbEq(): ReverbEq {
 
     setUnmaskAmount(amount) { unmaskAmount = clamp(amount, 0, 100); },
     setUnmaskEnabled(on) { unmaskEnabled = on; },
+    setAnalyzerEnabled(on) {
+      analyzerEnabled = on;
+      analyzer.setEnabled(on);
+    },
 
     runUnmask(sr) {
       const result = this.runUnmaskDetailed(sr);

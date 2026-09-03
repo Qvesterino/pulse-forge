@@ -68,6 +68,12 @@ export interface PreEq {
   setParams(p: PreEqParams): void;
   setAutoCutAmount(amount: number): void;
   setAutoCutEnabled(on: boolean): void;
+  /**
+   * Gate the internal spectrum-analyzer tap. Hosts with no Auto Cut UI
+   * (the analyzer input is otherwise pushed every block for nothing) turn
+   * this off; Auto Cut analysis then reads stale data until re-enabled.
+   */
+  setAnalyzerEnabled(on: boolean): void;
   /** Run one FFT snapshot and produce band suggestions. */
   runAutoCut(sampleRate: number): [number, number, number] | null;
   /**
@@ -150,6 +156,7 @@ export function createPreEq(): PreEq {
   let bq2: BiquadState = createBiquad(channelCount);
   let bq3: BiquadState = createBiquad(channelCount);
   let analyzer: SpectrumAnalyzer = createSpectrumAnalyzer({ fftSize: 2048 });
+  let analyzerEnabled = true;
 
   // Default snapshot grid: 48 log-frequency bins 20 → 20 kHz.
   const snapshotGrid = new Float32Array(48);
@@ -179,6 +186,7 @@ export function createPreEq(): PreEq {
       bq2 = createBiquad(channelCount);
       bq3 = createBiquad(channelCount);
       analyzer = createSpectrumAnalyzer({ fftSize: 2048 });
+      analyzer.setEnabled(analyzerEnabled);
       updateCoefficients();
     },
 
@@ -199,6 +207,10 @@ export function createPreEq(): PreEq {
 
     setAutoCutAmount(amount) { autoCutAmount = clamp(amount, 0, 100); },
     setAutoCutEnabled(on) { autoCutEnabled = on; },
+    setAnalyzerEnabled(on) {
+      analyzerEnabled = on;
+      analyzer.setEnabled(on);
+    },
 
     runAutoCut(sr) {
       // Backward-compatible wrapper: returns just the 3-band cuts.

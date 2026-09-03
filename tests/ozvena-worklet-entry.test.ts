@@ -29,6 +29,8 @@ class FakeAudioWorkletProcessor {
 
 interface ProcShape {
   port: FakePort;
+  /** The vendored core processor (public class field). */
+  proc: { getSpectrumAnalyzer(): { enabled: boolean } };
   state: {
     engines: { e2: { algo: string }; e3: { algo: string } };
     mod: { mode: string };
@@ -116,6 +118,11 @@ describe("Ozvena worklet entry (message port ↔ DSP core wiring)", () => {
     const latencies = proc.port.posted.filter((m) => m.type === "latency");
     expect(latencies.length).toBeGreaterThanOrEqual(1);
     expect(latencies[0].samples).toBeGreaterThan(0);
+  });
+
+  it("this host consumes no analyzer taps — the entry disables them", () => {
+    const proc = new Processor();
+    expect(proc.proc.getSpectrumAnalyzer().enabled).toBe(false);
   });
 
   it("regression: post-construction param updates reach the DSP core", () => {

@@ -103,6 +103,13 @@ export interface OzvenaProcessor {
   runAutoCutDetailed(): AutoCutDetails | null;
   runUnmaskDetailed(): UnmaskDetails | null;
   runMaskingSnapshot(sampleRate: number, grid: Float32Array): ReturnType<MaskingMeter["snapshot"]>;
+  /**
+   * Gate every internal spectrum-analyzer tap (processor input/dry/wet/
+   * output, Pre EQ, Reverb EQ, Masking Meter). Hosts that consume none of
+   * them skip nine per-block ring writes; Auto Cut / Unmask / masking
+   * snapshots read stale data until re-enabled. Default: enabled.
+   */
+  setAnalyzersEnabled(on: boolean): void;
 }
 
 export function createOzvenaProcessor(): OzvenaProcessor {
@@ -143,6 +150,10 @@ export function createOzvenaProcessor(): OzvenaProcessor {
   let preparedMaxBs = 2048;
 
   let analyzer: SpectrumAnalyzer = createSpectrumAnalyzer({ fftSize: 2048 });
+  // Master gate for every internal analyzer tap. Default enabled (upstream
+  // behaviour); hosts without spectrum/AutoCut/Unmask UI turn it off —
+  // see setAnalyzersEnabled below.
+  let analyzersEnabled = true;
 
   // Tracks which factory IR is currently loaded into the convolution
   // engine so we only regenerate when the selection or rate changes.
@@ -427,6 +438,7 @@ export function createOzvenaProcessor(): OzvenaProcessor {
       plateChamber.setQuality(lastQualityTier);
       hall.setQuality(lastQualityTier);
       analyzer = createSpectrumAnalyzer({ fftSize: 2048 });
+      analyzer.setEnabled(analyzersEnabled);
       ensureScratch(2048);
       // Force a full module re-push: prepare() may have changed the sample
       // rate or block size even though the state object stayed identical.
@@ -461,6 +473,7 @@ export function createOzvenaProcessor(): OzvenaProcessor {
       plateChamber.setQuality(lastQualityTier);
       hall.setQuality(lastQualityTier);
       analyzer = createSpectrumAnalyzer({ fftSize: 2048 });
+      analyzer.setEnabled(analyzersEnabled);
       ensureScratch(2048);
       // Force a full module re-push: prepare() may have changed the sample
       // rate or block size even though the state object stayed identical.
@@ -769,6 +782,14 @@ export function createOzvenaProcessor(): OzvenaProcessor {
 
     runMaskingSnapshot(sr, grid) {
       return maskingMeter.snapshot(sr, grid);
+    },
+
+    setAnalyzersEnabled(on) {
+      analyzersEnabled = on;
+      analyzer.setEnabled(on);
+      preEq.setAnalyzerEnabled(on);
+      reverbEq.setAnalyzerEnabled(on);
+      maskingMeter.setAnalyzerEnabled(on);
     },
 
     loadUserIr(samples, channels) {

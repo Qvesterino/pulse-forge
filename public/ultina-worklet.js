@@ -1006,6 +1006,13 @@
       inputSpectrumDb: null
     };
   }
+  function createDefaultMeters() {
+    return {
+      global: createDefaultGlobalMeters(),
+      modules: {},
+      learn: { eq: null, crossover: null }
+    };
+  }
 
   // src/effects/ultina-core/dsp/primitives.ts
   function clamp(v, min, max) {
@@ -2847,6 +2854,11 @@
     outputRmsL = 0;
     outputRmsR = 0;
     totalSamples = 0;
+    // Pooled meter snapshot — buffers and containers reused across getMeters()
+    // calls so a ~21 Hz poller costs zero steady-state allocation on the
+    // worklet thread. Consumers must consume immediately (postMessage clones;
+    // direct readers copy): the next call overwrites every field.
+    metersSnapshot = null;
     // Visualizer buffers (pre-allocated to avoid per-block GC)
     waveformBuffer = new Float32Array(256);
     waveformFillPos = 0;
@@ -3215,42 +3227,43 @@
      * Safe to call from the UI thread.
      */
     getMeters() {
-      const waveformCopy = new Float32Array(256);
-      waveformCopy.set(this.waveformBuffer);
-      const spectrumCopy = new Float32Array(SPECTRUM_BINS);
-      spectrumCopy.set(this.spectrumAnalyzer.getBins());
+      if (!this.metersSnapshot) {
+        this.metersSnapshot = createDefaultMeters();
+        this.metersSnapshot.global.outputWaveform = new Float32Array(this.waveformBuffer.length);
+        this.metersSnapshot.global.inputSpectrumDb = new Float32Array(SPECTRUM_BINS);
+      }
+      const snapshot = this.metersSnapshot;
+      const global = snapshot.global;
       const ag = this.autoGain.getReading();
-      const global = {
-        ...createDefaultGlobalMeters(),
-        inputPeakL: ampToDb(this.inputPeakL),
-        inputPeakR: ampToDb(this.inputPeakR),
-        inputRmsL: ampToDb(Math.sqrt(this.inputRmsL)),
-        inputRmsR: ampToDb(Math.sqrt(this.inputRmsR)),
-        outputPeakL: ampToDb(this.outputPeakL),
-        outputPeakR: ampToDb(this.outputPeakR),
-        outputRmsL: ampToDb(Math.sqrt(this.outputRmsL)),
-        outputRmsR: ampToDb(Math.sqrt(this.outputRmsR)),
-        qualityMode: this.qualityMode,
-        timestamp: this.totalSamples,
-        outputWaveform: waveformCopy,
-        inputSpectrumDb: spectrumCopy,
-        outputShortTermLufs: this.lufsMeter.getShortTermLufs(),
-        outputTruePeakDb: this.lufsMeter.getTruePeakDb(),
-        autoGainCorrectionDb: ag.gainCorrectionDb,
-        autoGainErrorDb: ag.errorDb,
-        autoGainActive: ag.active
-      };
-      const modules = {};
+      global.inputPeakL = ampToDb(this.inputPeakL);
+      global.inputPeakR = ampToDb(this.inputPeakR);
+      global.inputRmsL = ampToDb(Math.sqrt(this.inputRmsL));
+      global.inputRmsR = ampToDb(Math.sqrt(this.inputRmsR));
+      global.outputPeakL = ampToDb(this.outputPeakL);
+      global.outputPeakR = ampToDb(this.outputPeakR);
+      global.outputRmsL = ampToDb(Math.sqrt(this.outputRmsL));
+      global.outputRmsR = ampToDb(Math.sqrt(this.outputRmsR));
+      global.qualityMode = this.qualityMode;
+      global.timestamp = this.totalSamples;
+      global.outputWaveform.set(this.waveformBuffer);
+      global.inputSpectrumDb.set(this.spectrumAnalyzer.getBins());
+      global.outputShortTermLufs = this.lufsMeter.getShortTermLufs();
+      global.outputTruePeakDb = this.lufsMeter.getTruePeakDb();
+      global.autoGainCorrectionDb = ag.gainCorrectionDb;
+      global.autoGainErrorDb = ag.errorDb;
+      global.autoGainActive = ag.active;
+      snapshot.modules = {};
       for (const [type, module] of this.modules) {
         if (this.graphRuntime.isModuleEnabled(type)) {
-          modules[type] = module.getMeters();
+          snapshot.modules[type] = module.getMeters();
         }
       }
+      snapshot.learn.eq = null;
+      snapshot.learn.crossover = null;
       const eqLearnNow = (this.params["eq.learnActive"] ?? 0) >= 0.5;
-      let eq = null;
       if (eqLearnNow) {
         const res = this.eqLearn.getResult();
-        eq = {
+        snapshot.learn.eq = {
           suggestions: res.suggestions.map((s) => ({
             freqHz: s.freqHz,
             gainDb: s.gainDb,
@@ -3261,18 +3274,17 @@
         };
       }
       const xoverLearnNow = (this.params["comp.crossoverLearn"] ?? 0) >= 0.5 || (this.params["gate.crossoverLearn"] ?? 0) >= 0.5 || (this.params["exciter.crossoverLearn"] ?? 0) >= 0.5;
-      let crossover = null;
       if (xoverLearnNow) {
         const res = this.xoverLearn.getResult();
         const s3 = res.suggestions3Band;
-        crossover = {
+        snapshot.learn.crossover = {
           freqHz1: s3 ? s3[0].freqHz : res.suggestion2Band?.freqHz ?? 250,
           freqHz2: s3 ? s3[1].freqHz : null,
           confidence: s3 ? s3[0].confidence : res.suggestion2Band?.confidence ?? 0,
           isReady: res.isReady
         };
       }
-      return { global, modules, learn: { eq, crossover } };
+      return snapshot;
     }
     /**
      * Get detailed LUFS readings (momentary, short-term, integrated, LRA, true-peak).
@@ -4659,9 +4671,14 @@
             break;
           }
           case "trueEnvelope": {
-            const s0 = Math.abs(band.prevDetected);
             const s1 = Math.abs(detectCh[i] ?? channels[0][i]);
-            const s2 = Math.abs(detectCh[i + 1] ?? channels[0][i + 1] ?? 0);
+            if (i + 1 >= frameCount) {
+              detected = band.peakEnv.process(s1);
+              band.prevDetected = s1;
+              break;
+            }
+            const s0 = Math.abs(band.prevDetected);
+            const s2 = Math.abs(detectCh[i + 1] ?? channels[0][i + 1]);
             const denom = s0 - 2 * s1 + s2;
             let truePeak = s1;
             if (Math.abs(denom) > 1e-10) {

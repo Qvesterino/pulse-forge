@@ -35,8 +35,8 @@
 
 import { ModuleGraphRuntime } from "./moduleGraphRuntime.js";
 import { MODULE_TYPES, type ModuleType } from "../contracts/moduleTypes.js";
-import type { UltinaMeters, GlobalMeters } from "../contracts/meters.js";
-import { createDefaultGlobalMeters } from "../contracts/meters.js";
+import type { UltinaMeters } from "../contracts/meters.js";
+import { createDefaultMeters } from "../contracts/meters.js";
 import {
   GLOBAL_BYPASS_ID,
   GLOBAL_INPUT_GAIN_DB_ID,
@@ -242,6 +242,12 @@ export class UltinaProcessor {
   private outputRmsL: number = 0;
   private outputRmsR: number = 0;
   private totalSamples: number = 0;
+
+  // Pooled meter snapshot — buffers and containers reused across getMeters()
+  // calls so a ~21 Hz poller costs zero steady-state allocation on the
+  // worklet thread. Consumers must consume immediately (postMessage clones;
+  // direct readers copy): the next call overwrites every field.
+  private metersSnapshot: UltinaMeters | null = null;
 
   // Visualizer buffers (pre-allocated to avoid per-block GC)
   private waveformBuffer: Float32Array = new Float32Array(256);
@@ -742,50 +748,51 @@ export class UltinaProcessor {
    * Safe to call from the UI thread.
    */
   getMeters(): UltinaMeters {
-    // Copy waveform buffer snapshot (avoid sharing live reference)
-    const waveformCopy = new Float32Array(256);
-    waveformCopy.set(this.waveformBuffer);
-
-    // Copy spectrum bins snapshot
-    const spectrumCopy = new Float32Array(SPECTRUM_BINS);
-    spectrumCopy.set(this.spectrumAnalyzer.getBins());
-
+    // POOLED snapshot (control thread only): buffers and containers are
+    // reused across calls — zero steady-state allocation for the ~21 Hz
+    // meter poller. Consumers must consume immediately (postMessage clones;
+    // direct readers copy): the next call overwrites every field.
+    if (!this.metersSnapshot) {
+      this.metersSnapshot = createDefaultMeters();
+      this.metersSnapshot.global.outputWaveform = new Float32Array(this.waveformBuffer.length);
+      this.metersSnapshot.global.inputSpectrumDb = new Float32Array(SPECTRUM_BINS);
+    }
+    const snapshot = this.metersSnapshot;
+    const global = snapshot.global;
     const ag = this.autoGain.getReading();
 
-    const global: GlobalMeters = {
-      ...createDefaultGlobalMeters(),
-      inputPeakL: ampToDb(this.inputPeakL),
-      inputPeakR: ampToDb(this.inputPeakR),
-      inputRmsL: ampToDb(Math.sqrt(this.inputRmsL)),
-      inputRmsR: ampToDb(Math.sqrt(this.inputRmsR)),
-      outputPeakL: ampToDb(this.outputPeakL),
-      outputPeakR: ampToDb(this.outputPeakR),
-      outputRmsL: ampToDb(Math.sqrt(this.outputRmsL)),
-      outputRmsR: ampToDb(Math.sqrt(this.outputRmsR)),
-      qualityMode: this.qualityMode,
-      timestamp: this.totalSamples,
-      outputWaveform: waveformCopy,
-      inputSpectrumDb: spectrumCopy,
-      outputShortTermLufs: this.lufsMeter.getShortTermLufs(),
-      outputTruePeakDb: this.lufsMeter.getTruePeakDb(),
-      autoGainCorrectionDb: ag.gainCorrectionDb,
-      autoGainErrorDb: ag.errorDb,
-      autoGainActive: ag.active,
-    };
+    global.inputPeakL = ampToDb(this.inputPeakL);
+    global.inputPeakR = ampToDb(this.inputPeakR);
+    global.inputRmsL = ampToDb(Math.sqrt(this.inputRmsL));
+    global.inputRmsR = ampToDb(Math.sqrt(this.inputRmsR));
+    global.outputPeakL = ampToDb(this.outputPeakL);
+    global.outputPeakR = ampToDb(this.outputPeakR);
+    global.outputRmsL = ampToDb(Math.sqrt(this.outputRmsL));
+    global.outputRmsR = ampToDb(Math.sqrt(this.outputRmsR));
+    global.qualityMode = this.qualityMode;
+    global.timestamp = this.totalSamples;
+    global.outputWaveform!.set(this.waveformBuffer);
+    global.inputSpectrumDb!.set(this.spectrumAnalyzer.getBins());
+    global.outputShortTermLufs = this.lufsMeter.getShortTermLufs();
+    global.outputTruePeakDb = this.lufsMeter.getTruePeakDb();
+    global.autoGainCorrectionDb = ag.gainCorrectionDb;
+    global.autoGainErrorDb = ag.errorDb;
+    global.autoGainActive = ag.active;
 
-    const modules: Record<string, unknown> = {};
+    snapshot.modules = {};
     for (const [type, module] of this.modules) {
       if (this.graphRuntime.isModuleEnabled(type)) {
-        modules[type] = module.getMeters();
+        snapshot.modules[type] = module.getMeters();
       }
     }
 
     // Learn results (present only while the learn params are active)
+    snapshot.learn.eq = null;
+    snapshot.learn.crossover = null;
     const eqLearnNow = (this.params["eq.learnActive"] ?? 0) >= 0.5;
-    let eq: EqLearnMeters | null = null;
     if (eqLearnNow) {
       const res = this.eqLearn.getResult();
-      eq = {
+      snapshot.learn.eq = {
         suggestions: res.suggestions.map((s) => ({
           freqHz: s.freqHz, gainDb: s.gainDb, q: s.q, severity: s.severity,
         })),
@@ -795,11 +802,10 @@ export class UltinaProcessor {
     const xoverLearnNow = (this.params["comp.crossoverLearn"] ?? 0) >= 0.5
       || (this.params["gate.crossoverLearn"] ?? 0) >= 0.5
       || (this.params["exciter.crossoverLearn"] ?? 0) >= 0.5;
-    let crossover: CrossoverLearnMeters | null = null;
     if (xoverLearnNow) {
       const res = this.xoverLearn.getResult();
       const s3 = res.suggestions3Band;
-      crossover = {
+      snapshot.learn.crossover = {
         freqHz1: s3 ? s3[0].freqHz : (res.suggestion2Band?.freqHz ?? 250),
         freqHz2: s3 ? s3[1].freqHz : null,
         confidence: s3 ? s3[0].confidence : (res.suggestion2Band?.confidence ?? 0),
@@ -807,7 +813,7 @@ export class UltinaProcessor {
       };
     }
 
-    return { global, modules, learn: { eq, crossover } };
+    return snapshot;
   }
 
   /**

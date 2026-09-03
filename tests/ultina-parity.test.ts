@@ -160,26 +160,36 @@ describe("Ultina render parity", () => {
     expect(diff).toBeLessThanOrEqual(1e-9);
   });
 
-  it("trueEnvelope detection divergence across block sizes is bounded (known upstream defect)", () => {
-    // The trueEnvelope detector reads sample[i+1] at the block edge (stale
-    // value on the last frame), so its output DOES depend on the host block
-    // size. Pin the divergence: small enough to stay musical, but tracked so
-    // an upstream fix (carry the edge sample across blocks) shrinks it to ~0.
+  it("trueEnvelope boundary artifact is fixed to an inaudible residual (regression)", () => {
+    // Regression: the trueEnvelope detector used to fabricate s2 = 0 for the
+    // LAST sample of every internal processing block (the next sample does
+    // not exist there). That read as a cliff edge and produced a periodic
+    // false peak once per maxBlockSize — measured: maxDiff 6.6e-5 (−73 dB
+    // rel.) between 128- and 512-frame renderings of the same stream, first
+    // divergence right after the first block boundary.
+    //
+    // The boundary sample now uses the RAW peak (no interpolation). A fully
+    // block-size-transparent detector is structurally impossible with
+    // in-place streaming (a lookahead sample cannot retroactively scale the
+    // previous block's buffer), so the honest bound is the residual
+    // interpolation loss at boundaries: measured 1.7e-5 (−85 dB rel.) after
+    // the fix. Assert under that with margin — a regression to the old
+    // fabricated-cliff behavior (6.6e-5) fails this.
     const teParams = { ...PARAMS, "comp.detectionMode": 2 };
     const signal = makeSignal(FRAMES);
-    const renderRawTe = (hostBlockFrames: number): Float32Array[] => {
+    const renderRawTe = (blockFrames: number): Float32Array[] => {
       const proc = new UltinaProcessor();
       registerCoreModules(proc);
-      proc.prepare({ sampleRate: SR, maxBlockSize: 128, channelCount: 2, qualityMode: 1 });
+      proc.prepare({ sampleRate: SR, maxBlockSize: blockFrames, channelCount: 2, qualityMode: 1 });
       proc.loadState(teParams);
       proc.getGraphRuntime().setModuleEnabled("comp" as never, true);
       proc.getGraphRuntime().setModuleEnabled("eq" as never, true);
       proc.getGraphRuntime().setModuleEnabled("exciter" as never, true);
       const total = FRAMES;
       const out: Float32Array[] = [new Float32Array(total), new Float32Array(total)];
-      const io: Float32Array[] = [new Float32Array(hostBlockFrames), new Float32Array(hostBlockFrames)];
-      for (let off = 0; off < total; off += hostBlockFrames) {
-        const frames = Math.min(hostBlockFrames, total - off);
+      const io: Float32Array[] = [new Float32Array(blockFrames), new Float32Array(blockFrames)];
+      for (let off = 0; off < total; off += blockFrames) {
+        const frames = Math.min(blockFrames, total - off);
         io[0].set(signal[0].subarray(off, off + frames));
         io[1].set(signal[1].subarray(off, off + frames));
         proc.process(io, frames);
@@ -189,6 +199,7 @@ describe("Ultina render parity", () => {
       return out;
     };
     const diff = maxAbsDiff(renderRawTe(512), renderRawTe(128));
-    expect(diff).toBeLessThan(0.05);
+    expect(diff).toBeLessThan(5e-5);
+    expect(maxAbsDiff(renderRawTe(512), renderRawTe(384))).toBeLessThan(5e-5);
   });
 });
