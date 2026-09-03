@@ -36,8 +36,9 @@ export function createParamStore(
   for (const d of defs) values[d.id] = d.defaultValue;
   if (initial) {
     for (const d of defs) {
-      if (initial[d.id] !== undefined) {
-        values[d.id] = clamp(initial[d.id], d.minValue, d.maxValue);
+      const incoming = initial[d.id];
+      if (incoming !== undefined && typeof incoming === "number" && Number.isFinite(incoming)) {
+        values[d.id] = clamp(incoming, d.minValue, d.maxValue);
       }
     }
   }
@@ -46,16 +47,22 @@ export function createParamStore(
       return values[id] ?? 0;
     },
     set(id, value) {
+      // clamp() passes NaN through unchanged (both comparisons are false),
+      // so a non-number from a hostile host would poison the module state.
+      // Reject instead — the store keeps its previous finite value.
       const d = defs.find((x) => x.id === id);
-      if (d) values[id] = clamp(value, d.minValue, d.maxValue);
+      if (d && typeof value === "number" && Number.isFinite(value)) {
+        values[id] = clamp(value, d.minValue, d.maxValue);
+      }
     },
     all() {
       return { ...values };
     },
     load(params) {
       for (const d of defs) {
-        if (params[d.id] !== undefined) {
-          values[d.id] = clamp(params[d.id], d.minValue, d.maxValue);
+        const incoming = params[d.id];
+        if (incoming !== undefined && typeof incoming === "number" && Number.isFinite(incoming)) {
+          values[d.id] = clamp(incoming, d.minValue, d.maxValue);
         }
       }
     },

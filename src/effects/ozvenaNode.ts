@@ -29,11 +29,17 @@ export function createOzvenaNode(
   input.connect(node);
   node.connect(output);
 
+  // DSP latency arrives asynchronously over the port — the engine subscribes
+  // via onLatencyChange to re-sync PDC the moment it lands instead of
+  // waiting for the next document sync.
   let latencySamples = 0;
+  const latencyListeners = new Set<() => void>();
+  let disposed = false;
   node.port.onmessage = (event) => {
     const msg = event.data as { type?: string; samples?: number } | null;
     if (msg?.type === "latency" && typeof msg.samples === "number") {
       latencySamples = msg.samples;
+      if (!disposed) for (const listener of latencyListeners) listener();
     }
   };
 
@@ -41,10 +47,29 @@ export function createOzvenaNode(
     input,
     output,
     getLatencySec: () => latencySamples / ctx.sampleRate,
+    onLatencyChange(listener: () => void) {
+      latencyListeners.add(listener);
+      return () => {
+        latencyListeners.delete(listener);
+      };
+    },
     setParameter(id: string, value: number) {
+      if (disposed) return;
       node.port.postMessage({ type: "param", id, value });
     },
     dispose() {
+      disposed = true;
+      latencyListeners.clear();
+      node.port.onmessage = null;
+      try {
+        // Must land BEFORE close(): the processor's core keeps a
+        // module-global IPC peer entry (duck controller) that pins the
+        // whole DSP graph unless explicitly released — after close() no
+        // further messages are delivered and the processor would leak.
+        node.port.postMessage({ type: "dispose" });
+      } catch {
+        // port already closed
+      }
       try {
         node.port.close();
       } catch {

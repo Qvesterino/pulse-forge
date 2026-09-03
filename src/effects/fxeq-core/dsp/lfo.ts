@@ -33,6 +33,13 @@ export interface Lfo {
   reset(): void;
   /** Advance and return [left, right] in [-depth, +depth]. */
   read(): [number, number];
+  /**
+   * Allocation-free variant of read() for the audio thread: writes the
+   * advanced [left, right] pair into `out` and returns it. Callers must
+   * consume the values before the next call (read() itself is unchanged
+   * for hosts that keep the tuple).
+   */
+  readInto(out: [number, number]): [number, number];
 }
 
 export function createLfo(
@@ -116,6 +123,13 @@ export function createLfo(
       const right = sampleAt(rightPhase) * depthScale;
       advance();
       return [left, right];
+    },
+    readInto(out) {
+      out[0] = sampleAt(phase) * depthScale;
+      const rightPhase = phase + stereoPhase / (2 * Math.PI);
+      out[1] = sampleAt(rightPhase) * depthScale;
+      advance();
+      return out;
     },
   };
 }

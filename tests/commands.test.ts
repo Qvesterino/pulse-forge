@@ -291,6 +291,67 @@ describe("track commands", () => {
     expect(() => deleteTrack(store.doc, store.doc.tracks[0].id)).toThrow();
   });
 
+  it("deleteTrack removes automation/LFO/macro/scene-automation routed at it; undo restores them", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    const target = store.doc.tracks.find(
+      (t): t is import("../src/project-model/types").InstrumentTrack => t.kind === "instrument",
+    )!;
+    const sceneId = store.doc.scenes[0].id;
+    const otherTrackId = getDrumTrack(store.doc).id; // must exist — normalize drops dangling refs
+    // Route all four modulation domains at the doomed track.
+    store.replaceDoc({
+      ...store.doc,
+      automation: [
+        { id: "lane-1", target: { kind: "trackGain", trackId: target.id }, points: [{ tick: 0, value: 0.5 }] },
+        { id: "lane-keep", target: { kind: "trackGain", trackId: otherTrackId }, points: [{ tick: 0, value: 0.5 }] },
+      ],
+      lfos: [
+        { id: "lfo-1", trackId: target.id, param: "gain", amount: 0.5 },
+        {
+          id: "lfo-target",
+          trackId: otherTrackId,
+          param: "gain",
+          amount: 0.5,
+          target: { kind: "trackGain", trackId: target.id },
+        },
+      ],
+      macros: [
+        {
+          id: "macro-1",
+          name: "M",
+          value: 0.5,
+          mappings: [
+            { id: "map-1", trackId: target.id, param: "gain", amount: 0.5 },
+            {
+              id: "map-2",
+              trackId: target.id,
+              param: "pan",
+              amount: 0.5,
+              target: { kind: "trackGain", trackId: target.id },
+            },
+          ],
+        },
+      ],
+      sceneAutomation: [
+        { id: "sc-1", sceneId, target: { kind: "trackGain", trackId: target.id }, points: [{ tick: 0, value: 0.5 }] },
+      ],
+    });
+    const before = store.doc;
+
+    store.execute(deleteTrack(store.doc, target.id));
+    expect(store.doc.automation.map((l) => l.id)).toEqual(["lane-keep"]);
+    expect(store.doc.lfos).toHaveLength(0); // both the host and the generic target pointed at the track
+    expect(store.doc.macros![0].mappings).toHaveLength(0);
+    expect(store.doc.sceneAutomation).toHaveLength(0);
+
+    store.undo();
+    expect(store.doc.automation).toEqual(before.automation);
+    expect(store.doc.lfos).toEqual(before.lfos);
+    expect(store.doc.macros).toEqual(before.macros);
+    expect(store.doc.sceneAutomation).toEqual(before.sceneAutomation);
+  });
+
   it("setTrackParams mutates drum tracks", () => {
     const doc = createDefaultProject();
     const store = new ProjectStore(doc);
@@ -916,7 +977,12 @@ describe("applyFxEqPreset / setFxEqParam", () => {
     // satDriveDb tops out at +24 dB — clamped to the schema max, not stored raw.
     expect(after.params["band1.satDriveDb"]).toBe(24);
     // Undo restores the schema default (6 dB), not an absent key.
-    expect(cmd.undo(next).tracks.find((t) => t.id === inst.id)!.effects.find((f) => f.type === "fxeq")!.params["band1.satDriveDb"]).toBe(6);
+    expect(
+      cmd
+        .undo(next)
+        .tracks.find((t) => t.id === inst.id)!
+        .effects.find((f) => f.type === "fxeq")!.params["band1.satDriveDb"],
+    ).toBe(6);
   });
 
   it("setFxEqParam rejects ids outside the schema", () => {
@@ -988,5 +1054,26 @@ describe("applyUltinaProposal (mix assistant)", () => {
     const undone = cmd.undo(next);
     const before = undone.tracks.find((t) => t.id === inst.id)!.effects.find((f) => f.type === "ultina")!;
     expect(before.params).toEqual(fx.params);
+  });
+});
+
+describe("state integrity — in-flight collab deletions", () => {
+  it("moveNote/resizeNote on a note deleted mid-drag are no-ops, not throws", () => {
+    // Regression: a collab peer deleting the note between pointerdown and
+    // pointerup used to make the drag commit throw inside the UI handler.
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    const bass = store.doc.tracks.find(
+      (t): t is import("../src/project-model/types").InstrumentTrack => t.kind === "instrument",
+    )!;
+    store.execute(addNote(store.doc, bass.id, { pitch: 36, start: 480, duration: 240, velocity: 0.8 }));
+    const notes = store.doc.patterns[0].notes[bass.id];
+    const noteId = notes![notes!.length - 1].id;
+    store.execute(deleteNote(store.doc, bass.id, noteId));
+    const before = store.doc;
+
+    expect(() => store.execute(moveNote(store.doc, bass.id, noteId, { pitch: 40, start: 720 }))).not.toThrow();
+    expect(() => store.execute(resizeNote(store.doc, bass.id, noteId, 900))).not.toThrow();
+    expect(store.doc).toEqual(before);
   });
 });

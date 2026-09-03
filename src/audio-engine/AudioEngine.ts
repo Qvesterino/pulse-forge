@@ -107,6 +107,12 @@ interface FxChainState {
    * with identical total latency. delayTime 0 = fully transparent.
    */
   pdcDelay: DelayNode | null;
+  /**
+   * Latency-change subscriptions from runtimes whose DSP latency is only
+   * known asynchronously (worklet plugins). Each fires syncPdc() so PDC
+   * tracks latency without waiting for the next document sync.
+   */
+  latencySubs: Array<() => void>;
 }
 
 interface TrackNodes {
@@ -223,6 +229,8 @@ interface Voice {
   trackId: string;
   chokeGroup: number | null;
   filter?: BiquadFilterNode;
+  /** Per-pad mod nodes (LFO osc + depth gain) — disconnected with the voice. */
+  extras?: AudioNode[];
 }
 
 interface PreviewVoice {
@@ -948,6 +956,8 @@ export class AudioEngine {
   private rebuildFxChain(effects: EffectInstance[], input: AudioNode, output: AudioNode, state: FxChainState): void {
     const ctx = this.ctx;
     if (!ctx) return;
+    for (const unsub of state.latencySubs) unsub();
+    state.latencySubs.length = 0;
     for (const rt of state.runtimes.values()) rt.dispose();
     state.runtimes.clear();
     state.params.clear();
@@ -992,6 +1002,11 @@ export class AudioEngine {
       head = rt.output;
       state.runtimes.set(fx.id, rt);
       state.params.set(fx.id, { ...fx.params });
+      // Worklet plugins report latency asynchronously; re-run PDC whenever a
+      // report lands so compensation never waits for the next document sync.
+      if (rt.onLatencyChange) {
+        state.latencySubs.push(rt.onLatencyChange(() => this.syncPdc()));
+      }
     }
     // PDC tap: every chain routes through a compensation delay so syncPdc()
     // can align latency-introducing effects (look-ahead limiter) across the
@@ -1016,6 +1031,8 @@ export class AudioEngine {
   }
 
   private disposeTrackNodes(id: string, nodes: TrackNodes): void {
+    for (const unsub of nodes.fx.latencySubs) unsub();
+    nodes.fx.latencySubs.length = 0;
     for (const rt of nodes.fx.runtimes.values()) rt.dispose();
     nodes.fx.runtimes.clear();
     nodes.fx.params.clear();
@@ -1034,6 +1051,8 @@ export class AudioEngine {
   }
 
   private disposeReturnNodes(id: string, nodes: ReturnNodes): void {
+    for (const unsub of nodes.fx.latencySubs) unsub();
+    nodes.fx.latencySubs.length = 0;
     for (const rt of nodes.fx.runtimes.values()) rt.dispose();
     nodes.fx.runtimes.clear();
     nodes.fx.params.clear();
@@ -1045,6 +1064,8 @@ export class AudioEngine {
   }
 
   private disposeGroupNodes(id: string, nodes: GroupNodes): void {
+    for (const unsub of nodes.fx.latencySubs) unsub();
+    nodes.fx.latencySubs.length = 0;
     for (const rt of nodes.fx.runtimes.values()) rt.dispose();
     nodes.fx.runtimes.clear();
     nodes.fx.params.clear();
@@ -1123,7 +1144,7 @@ export class AudioEngine {
           modMacroGain,
           modMacroPan,
           analyser,
-          fx: { runtimes: new Map(), params: new Map(), signature: "", pdcDelay: null },
+          fx: { runtimes: new Map(), params: new Map(), signature: "", pdcDelay: null, latencySubs: [] },
           sends: new Map(),
         };
         this.groupNodes.set(track.id, nodes);
@@ -1156,7 +1177,7 @@ export class AudioEngine {
           input,
           gain,
           analyser,
-          fx: { runtimes: new Map(), params: new Map(), signature: "", pdcDelay: null },
+          fx: { runtimes: new Map(), params: new Map(), signature: "", pdcDelay: null, latencySubs: [] },
         };
         this.returnNodes.set(ret.id, nodes);
       }
@@ -1202,7 +1223,7 @@ export class AudioEngine {
           modMacroGain,
           modMacroPan,
           analyser,
-          fx: { runtimes: new Map(), params: new Map(), signature: "", pdcDelay: null },
+          fx: { runtimes: new Map(), params: new Map(), signature: "", pdcDelay: null, latencySubs: [] },
           sends: new Map(),
         };
         this.trackNodes.set(track.id, nodes);
@@ -2448,13 +2469,17 @@ export class AudioEngine {
     const panner = ctx.createStereoPanner();
     panner.pan.value = locks?.pan !== undefined ? locks.pan : pad.pan;
 
-    // Per-voice lowpass for cutoff p-lock (bypass when not locked)
+    // Per-voice lowpass for cutoff p-lock — or for a filter-target pad mod
+    const mod = pad.mod;
+    const modActive = !!(mod && mod.depth > 0 && mod.rateHz > 0);
+    const wantsFilter = locks?.cutoff !== undefined || (modActive && mod!.target === "filter");
     let voiceFilter: BiquadFilterNode | null = null;
     let voiceOutput: AudioNode = panner;
-    if (locks?.cutoff !== undefined) {
+    if (wantsFilter) {
       voiceFilter = ctx.createBiquadFilter();
       voiceFilter.type = "lowpass";
-      voiceFilter.frequency.value = Math.min(16000, Math.max(80, locks.cutoff));
+      const baseFreq = locks?.cutoff ?? (modActive && mod!.target === "filter" ? mod!.base : undefined) ?? 8000;
+      voiceFilter.frequency.value = Math.min(16000, Math.max(80, baseFreq));
       voiceFilter.Q.value = 0.7;
       // Chain: source -> gain -> panner -> filter -> trackInput
       source.connect(gain).connect(panner).connect(voiceFilter).connect(trackNodes.input);
@@ -2464,12 +2489,27 @@ export class AudioEngine {
     }
 
     const voice: Voice = { source, gain, trackId, chokeGroup: pad.chokeGroup, filter: voiceFilter ?? undefined };
+    if (modActive) this.attachPadMod(voice, mod!, peak, when, endWhen);
     this.voices.add(voice);
     source.onended = () => {
       this.voices.delete(voice);
       gain.disconnect();
       panner.disconnect();
       if (voiceFilter) voiceFilter.disconnect();
+      if (voice.extras) {
+        for (const n of voice.extras) {
+          try {
+            (n as OscillatorNode).stop?.();
+          } catch {
+            /* already stopped */
+          }
+          try {
+            n.disconnect();
+          } catch {
+            /* already */
+          }
+        }
+      }
       source.disconnect();
     };
     // Slice playback uses the native buffer offset/duration path — realtime
@@ -2499,6 +2539,57 @@ export class AudioEngine {
     }
     source.start(when, slice.offset, slice.duration);
     void voiceOutput;
+  }
+
+  /**
+   * MPC-style per-pad modulator: a voice-local LFO (osc → depth gain → param)
+   * wired to the voice's pitch, gain or filter. Lives and dies with the voice
+   * — realtime and offline render share this exact path.
+   */
+  private attachPadMod(
+    voice: Voice,
+    mod: NonNullable<import("../project-model/types").DrumPad["mod"]>,
+    peak: number,
+    when: number,
+    _endWhen: number,
+  ): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const osc = ctx.createOscillator();
+    osc.type = mod.wave;
+    osc.frequency.value = mod.rateHz;
+    const depth = ctx.createGain();
+    osc.connect(depth);
+    if (mod.target === "gain") {
+      // Tremolo: LFO adds on TOP of the envelope automation (params sum inputs).
+      depth.gain.value = mod.depth * Math.max(0.0001, peak);
+      depth.connect(voice.gain.gain);
+    } else if (mod.target === "filter") {
+      const target = voice.filter;
+      if (!target) return;
+      depth.gain.value = mod.depth;
+      depth.connect(target.frequency);
+    } else {
+      // Pitch wobble in semitones → cents on the source detune param.
+      depth.gain.value = mod.depth * 100;
+      const detune = (voice.source as AudioBufferSourceNode).detune;
+      if (detune) {
+        depth.connect(detune);
+      } else {
+        // Engines without source detune: wobble playbackRate (±depth semitones).
+        depth.gain.value = Math.pow(2, mod.depth / 12) - 1;
+        depth.connect((voice.source as AudioBufferSourceNode).playbackRate);
+      }
+    }
+    // Looping pads ring up to the 30 s safety cap; one-shot voices are
+    // disconnected at onended, this stop is just the upper bound.
+    osc.start(when);
+    try {
+      osc.stop(when + 30.5);
+    } catch {
+      /* already scheduled */
+    }
+    voice.extras = [osc, depth];
   }
 
   private triggerSynth(
@@ -2549,6 +2640,47 @@ export class AudioEngine {
       };
       // Store all sources for choke/silence
       const allSources = [...sources];
+      // Per-pad mod on synth voices: gain wobble on the voice gain, pitch via
+      // per-source detune, filter via an extra lowpass after the panner.
+      const synthMod = pad.mod;
+      if (synthMod && synthMod.depth > 0 && synthMod.rateHz > 0) {
+        const osc = ctx.createOscillator();
+        osc.type = synthMod.wave;
+        osc.frequency.value = synthMod.rateHz;
+        const depth = ctx.createGain();
+        osc.connect(depth);
+        if (synthMod.target === "gain") {
+          depth.gain.value = synthMod.depth * Math.max(0.0001, peak);
+          depth.connect(gain.gain);
+        } else if (synthMod.target === "filter") {
+          const vf = ctx.createBiquadFilter();
+          vf.type = "lowpass";
+          vf.frequency.value = Math.min(16000, Math.max(80, synthMod.base ?? 8000));
+          vf.Q.value = 0.7;
+          try {
+            panner.disconnect();
+          } catch {
+            /* not yet connected */
+          }
+          panner.connect(vf).connect(trackNodes.input);
+          depth.gain.value = synthMod.depth;
+          depth.connect(vf.frequency);
+          extraNodes.push(vf);
+        } else {
+          depth.gain.value = synthMod.depth * 100;
+          for (const s of allSources) {
+            const d = (s as OscillatorNode).detune;
+            if (d) depth.connect(d);
+          }
+        }
+        extraNodes.push(osc, depth);
+        osc.start(when);
+        try {
+          osc.stop(when + dur + 0.6);
+        } catch {
+          /* already scheduled */
+        }
+      }
       // Override voice stop to stop all
       const stopAll = (t: number) => {
         for (const s of allSources) {

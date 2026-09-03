@@ -34,7 +34,6 @@ import {
   processEnvelope,
   computeGain,
   rangeDbToLin,
-  computeCoefs,
   type DynamicState,
 } from "../dsp/dynamics.js";
 
@@ -108,6 +107,27 @@ export function createBandEngine(): BandEngine {
   let msBufA: Float32Array = new Float32Array(0);
   let msBufB: Float32Array = new Float32Array(0);
 
+  // Cached dynamic-EQ envelope coefficients. Recomputing them every block
+  // allocates a {attack, release} object per block per band — small, but
+  // the audio thread should not allocate at all. Invalidated when the
+  // attack/release params or sample rate change.
+  let dynAttackCoef = 0;
+  let dynReleaseCoef = 0;
+  let dynCoefAttackMs = -1;
+  let dynCoefReleaseMs = -1;
+  let dynCoefSr = 0;
+
+  function refreshDynCoefs(): void {
+    if (dynCoefAttackMs === dynAttackMs && dynCoefReleaseMs === dynReleaseMs && dynCoefSr === preparedSr) {
+      return;
+    }
+    dynAttackCoef = Math.exp(-1 / ((dynAttackMs / 1000) * preparedSr));
+    dynReleaseCoef = Math.exp(-1 / ((dynReleaseMs / 1000) * preparedSr));
+    dynCoefAttackMs = dynAttackMs;
+    dynCoefReleaseMs = dynReleaseMs;
+    dynCoefSr = preparedSr;
+  }
+
   return {
     prepare(sr, cc, maxBlockSize) {
       preparedMaxBlockSize = Math.max(1, maxBlockSize);
@@ -117,6 +137,14 @@ export function createBandEngine(): BandEngine {
       gainSmoother.reset(dbToLinear(bandGainDb));
       mixSmoother.reset(clamp(bandMix, 0, 100) / 100);
       preparedSr = sr;
+      // Preallocate the M/S scratch here so the FIRST processed block never
+      // allocates on the audio thread (the old lazy allocation inside
+      // process() did exactly that on its first M/S block).
+      if (msBufA.length < preparedMaxBlockSize) {
+        msBufA = new Float32Array(preparedMaxBlockSize);
+        msBufB = new Float32Array(preparedMaxBlockSize);
+      }
+      refreshDynCoefs();
       prepared = true;
     },
 
@@ -169,7 +197,8 @@ export function createBandEngine(): BandEngine {
       if (dynEnable >= 0.5 && channels.length >= 2) {
         const threshLin = dbToLinear(dynThresholdDb);
         const rangeLin = rangeDbToLin(dynRangeDb);
-        const coefs = computeCoefs(dynAttackMs, dynReleaseMs, preparedSr);
+        // Cached coefficients — no per-block allocation (see refreshDynCoefs).
+        refreshDynCoefs();
         let dynGain = 1;
 
         // Determine envelope source: sidechain or band signal.
@@ -192,7 +221,7 @@ export function createBandEngine(): BandEngine {
             }
           }
           // Envelope follower.
-          processEnvelope(peak, dynState, coefs.attack, coefs.release);
+          processEnvelope(peak, dynState, dynAttackCoef, dynReleaseCoef);
           // Gain computer.
           dynGain = computeGain(dynState.envelope, threshLin, rangeLin);
           dynState.smoothedGain = dynGain;

@@ -8427,3 +8427,104 @@ html {
 .help-gesture-detail {
   color: var(--text-dim);
 }
+
+/* ---------- Command palette (Ctrl+K) ---------- */
+
+.palette-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  background: rgba(8, 9, 12, 0.6);
+  backdrop-filter: blur(3px);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 10vh 16px 0;
+}
+
+.palette-card {
+  width: min(560px, 94vw);
+  max-height: 62vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+
+.palette-input {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font-size: 14px;
+  padding: 14px 16px;
+}
+
+.palette-input:focus {
+  outline: none;
+}
+
+.palette-list {
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.palette-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 6px;
+  text-align: left;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.palette-item.selected {
+  background: var(--accent-soft);
+}
+
+.palette-item.selected .palette-title {
+  color: var(--accent);
+}
+
+.palette-title {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.palette-kbd {
+  flex: none;
+}
+
+.palette-group {
+  flex: none;
+  font-size: 9px;
+  font-family: var(--mono);
+  letter-spacing: 0.1em;
+  color: var(--text-faint);
+}
+
+.palette-empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.palette-footer {
+  padding: 8px 14px;
+  border-top: 1px solid var(--border-soft);
+  color: var(--text-faint);
+  font-size: 10px;
+}

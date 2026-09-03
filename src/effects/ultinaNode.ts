@@ -34,12 +34,18 @@ export function createUltinaNode(
   input.connect(node);
   node.connect(output);
 
+  // DSP latency arrives asynchronously over the port — the engine subscribes
+  // via onLatencyChange to re-sync PDC the moment it lands instead of
+  // waiting for the next document sync.
   let latencySamples = 0;
   let meters: unknown = null;
+  const latencyListeners = new Set<() => void>();
+  let disposed = false;
   node.port.onmessage = (event) => {
     const msg = event.data as { type?: string; samples?: number; meters?: unknown } | null;
     if (msg?.type === "latency" && typeof msg.samples === "number") {
       latencySamples = msg.samples;
+      if (!disposed) for (const listener of latencyListeners) listener();
     } else if (msg?.type === "meters") {
       meters = msg.meters;
     }
@@ -49,11 +55,29 @@ export function createUltinaNode(
     input,
     output,
     getLatencySec: () => latencySamples / ctx.sampleRate,
+    onLatencyChange(listener: () => void) {
+      latencyListeners.add(listener);
+      return () => {
+        latencyListeners.delete(listener);
+      };
+    },
     getMeters: () => meters,
     setParameter(id: string, value: number) {
       node.port.postMessage({ type: "param", id, value });
     },
     dispose() {
+      disposed = true;
+      latencyListeners.clear();
+      // Best-effort spectral-registry cleanup: post before closing the port
+      // (messages already queued for the worklet end are still delivered;
+      // if delivery fails the entry is simply skipped by the staleness
+      // guard, never re-masked).
+      try {
+        node.port.postMessage({ type: "dispose" });
+      } catch {
+        // port already dead
+      }
+      node.port.onmessage = null;
       try {
         node.port.close();
       } catch {

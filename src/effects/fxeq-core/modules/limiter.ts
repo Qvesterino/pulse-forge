@@ -266,6 +266,9 @@ export function createLimiterModule(params?: Record<string, number>): ModuleProc
   let dequeIdx = new Int32Array(0);
   let dequeVal = new Float32Array(0);
   const linkedEnvScratch: Float32Array[] = [];
+  // Upsampled per-channel views for the linked path — hoisted so the
+  // per-block pass never allocates an array on the audio thread.
+  const upBuffers: Float32Array[] = [];
 
   function processTruePeak(channels: Float32Array[], n: number, ceil: number): void {
     const relMs = clamp(store.get("releaseMs"), 5, 500);
@@ -388,12 +391,12 @@ export function createLimiterModule(params?: Record<string, number>): ModuleProc
       }
     }
 
-    const upBuffers: Float32Array[] = [];
+    upBuffers.length = numCh;
 
     for (let c = 0; c < numCh; c++) {
       const s = ch[c];
       const up = s.os.upsample(channels[c]);
-      upBuffers.push(up);
+      upBuffers[c] = up;
 
       for (let i = 0; i < upLen; i++) {
         s.ring[(s.wp + i) % ringCap] = up[i];

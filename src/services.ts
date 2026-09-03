@@ -7,6 +7,7 @@ import { SnapshotRepository, shouldAutoSnapshot } from "./persistence/SnapshotRe
 import { PresetRepository } from "./persistence/PresetRepository";
 import { LibraryRepository } from "./persistence/LibraryRepository";
 import { KitRepository } from "./persistence/KitRepository";
+import { GroovePoolRepository } from "./persistence/GroovePoolRepository";
 import { generateFactoryBank } from "./sample-library/factory";
 import type { SampleBank } from "./sample-library/factory";
 import type { PlayMode, ProjectDocument, Scene } from "./project-model/types";
@@ -40,6 +41,7 @@ export interface CoreServices {
   presets: PresetRepository;
   library: LibraryRepository;
   userKits: KitRepository;
+  groovePool: GroovePoolRepository;
   latency: LatencyCalibrationController;
 }
 
@@ -54,6 +56,7 @@ export interface Services {
   bank: SampleBank;
   library: LibraryRepository;
   userKits: KitRepository;
+  groovePool: GroovePoolRepository;
   playback: PlaybackController;
   midi: MidiInput;
   midiOutput: MidiOutput;
@@ -197,6 +200,7 @@ export async function createCoreServices(): Promise<CoreServices> {
   void restoreUserSampleAudio(bank);
   const library = new LibraryRepository();
   const userKits = new KitRepository();
+  const groovePool = new GroovePoolRepository();
   void library.load();
   return {
     engine,
@@ -206,6 +210,7 @@ export async function createCoreServices(): Promise<CoreServices> {
     presets: new PresetRepository(),
     library,
     userKits,
+    groovePool,
     latency: new LatencyCalibrationController(),
   };
 }
@@ -232,8 +237,12 @@ export function collabSessionInfo(
  * YDocStore synced over y-websocket; remote edits flow back through the
  * same onDocChanged path as local ones.
  */
-export async function openProject(core: CoreServices, initial: ProjectDocument, options: OpenProjectOptions = {}): Promise<Services> {
-  const { engine, repo, bank, library, userKits, latency, snapshots } = core;
+export async function openProject(
+  core: CoreServices,
+  initial: ProjectDocument,
+  options: OpenProjectOptions = {},
+): Promise<Services> {
+  const { engine, repo, bank, library, userKits, groovePool, latency, snapshots } = core;
 
   const collabConfig =
     options.collab ?? (typeof location !== "undefined" ? collabParamsFromSearch(location.search) : null);
@@ -536,6 +545,7 @@ export async function openProject(core: CoreServices, initial: ProjectDocument, 
     bank,
     library,
     userKits,
+    groovePool,
     playback,
     midi,
     midiOutput,

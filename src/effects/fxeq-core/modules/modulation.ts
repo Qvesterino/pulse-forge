@@ -61,6 +61,12 @@ export function createModulationModule(params?: Record<string, number>): ModuleP
   const lfo = createLfo(44100, 1, "sine", Math.PI / 2, 1);
   const lfo2 = createLfo(44100, 1.3, "triangle", Math.PI / 4, 1);
   const lfo3 = createLfo(44100, 0.7, "sine", Math.PI, 1);
+  // Reused LFO read pairs — read() allocates a tuple per sample, which is
+  // GC pressure the audio thread must not generate. One pair per LFO: the
+  // chorus loop consumes all three pairs across the per-channel inner loop.
+  const lfoPair1: [number, number] = [0, 0];
+  const lfoPair2: [number, number] = [0, 0];
+  const lfoPair3: [number, number] = [0, 0];
 
   // Phaser all-pass stages (per channel): 6 stages.
   const phaserStages: BiquadState[][] = [];
@@ -120,7 +126,9 @@ export function createModulationModule(params?: Record<string, number>): ModuleP
   ): void {
     const numCh = channels.length;
     for (let i = 0; i < frameCount; i++) {
-      const [l, r] = lfo.read();
+      lfo.readInto(lfoPair1);
+      const l = lfoPair1[0];
+      const r = lfoPair1[1];
 
       if (i % PHASER_COEFF_INTERVAL === 0) {
         const lfoVal = 0.5 * (l + r);
@@ -199,9 +207,15 @@ export function createModulationModule(params?: Record<string, number>): ModuleP
       const doublerOffset = Math.round(0.022 * sampleRate);
 
       for (let i = 0; i < frameCount; i++) {
-        const [l1, r1] = lfo.read();
-        const [l2, r2] = lfo2.read();
-        const [l3, r3] = lfo3.read();
+        lfo.readInto(lfoPair1);
+        lfo2.readInto(lfoPair2);
+        lfo3.readInto(lfoPair3);
+        const l1 = lfoPair1[0];
+        const r1 = lfoPair1[1];
+        const l2 = lfoPair2[0];
+        const r2 = lfoPair2[1];
+        const l3 = lfoPair3[0];
+        const r3 = lfoPair3[1];
 
         for (let c = 0; c < channels.length; c++) {
           const buf = channels[c];

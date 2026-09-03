@@ -224,7 +224,9 @@ export class CrossoverNetwork {
     const N = this.firNumTaps;
     const M = this.firLatency;
     const ch = this.channelCount;
-    const numSplits = this.firFilters.length;
+    // Only convolve the splits the active band count uses — in 2-band mode
+    // split 1's output is never read (bands derive from lpOuts[0] + delayed).
+    const numSplits = Math.min(this.firFilters.length, this.bandCount - 1);
 
     for (let i = 0; i < frameCount; i++) {
       for (let c = 0; c < ch; c++) {
@@ -281,7 +283,13 @@ export class CrossoverNetwork {
       this.lr4Work[ch].set(input[ch].subarray(0, frameCount));
     }
 
-    for (let s = 0; s < this.splits.length; s++) {
+    // Run ONLY the splits the active band count needs. The remaining
+    // pre-allocated splits may still hold coefficients from an earlier
+    // 3-band configuration (setBandCount resets state, NOT coefficients)
+    // — cascading them would double-filter the high band and break the
+    // LR4 allpass sum after a 3-band → 2-band switch.
+    const activeSplits = this.bandCount - 1;
+    for (let s = 0; s < activeSplits; s++) {
       const split = this.splits[s];
 
       // LP branch → copy work to lpOut, then cascade LP sections
@@ -308,7 +316,7 @@ export class CrossoverNetwork {
         }
       }
 
-      if (s === this.splits.length - 1) {
+      if (s === activeSplits - 1) {
         // Last split: work = highest band
         const lastBand = this.bandCount - 1;
         for (let ch = 0; ch < this.channelCount; ch++) {

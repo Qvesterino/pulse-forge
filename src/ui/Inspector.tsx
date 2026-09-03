@@ -3,13 +3,14 @@ import { useDoc, useServices } from "./context";
 import { SliceLab } from "./SliceLab";
 import {
   resetPadSlice,
+  setPadMod,
   setPadParams,
   setPadSynth,
   setTrackParams,
   setInstrumentParam,
   setInstrumentSample,
 } from "../commands/commands";
-import type { InstrumentKind, Track } from "../project-model/types";
+import type { DrumPad, InstrumentKind, PadMod, Track } from "../project-model/types";
 import { FACTORY_ASSETS } from "../sample-library/manifest";
 import { INSTRUMENT_DEFS } from "../instruments/registry";
 import { pitchName } from "../project-model/types";
@@ -397,6 +398,8 @@ export function Inspector({
         onCommit={(pitch) => services.store.execute(setPadParams(doc, pad.id, { pitch }))}
       />
 
+      <PadModSection pad={pad} />
+
       <div className="pad-toggles">
         <button
           type="button"
@@ -416,5 +419,87 @@ export function Inspector({
 
       {trackSection}
     </aside>
+  );
+}
+
+const PAD_MOD_TARGETS = [
+  { id: "pitch", label: "PITCH", max: 24, def: 2, fmt: (v: number) => `±${v.toFixed(1)} st` },
+  { id: "gain", label: "GAIN", max: 1, def: 0.5, fmt: (v: number) => `±${Math.round(v * 100)}%` },
+  { id: "filter", label: "FILTER", max: 8000, def: 2000, fmt: (v: number) => `±${Math.round(v)} Hz` },
+] as const;
+
+/** MPC-style per-pad LFO: pick a target, then wave/rate/depth (+ filter center). */
+function PadModSection({ pad }: { pad: DrumPad }) {
+  const services = useServices();
+  const doc = useDoc();
+  const mod = pad.mod ?? null;
+  const spec = PAD_MOD_TARGETS.find((t) => t.id === mod?.target);
+  const buildMod = (target: PadMod["target"]): PadMod => ({
+    target,
+    wave: mod?.wave ?? "sine",
+    rateHz: mod?.rateHz ?? 2,
+    depth: mod?.depth ?? PAD_MOD_TARGETS.find((t) => t.id === target)!.def,
+    base: mod?.base,
+  });
+  return (
+    <div className="pad-mod">
+      <h3 className="inspector-subtitle">PAD LFO</h3>
+      <div className="pad-toggles">
+        {PAD_MOD_TARGETS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            className={`btn btn-small${mod?.target === t.id ? " active" : ""}`}
+            onClick={() =>
+              services.store.execute(setPadMod(doc, pad.id, mod?.target === t.id ? null : buildMod(t.id)))
+            }
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {mod && spec && (
+        <>
+          <label className="pad-mod-wave">
+            <span>WAVE</span>
+            <select value={mod.wave} onChange={(e) => services.store.execute(setPadMod(doc, pad.id, { ...mod, wave: e.target.value as PadMod["wave"] }))}>
+              <option value="sine">SINE</option>
+              <option value="triangle">TRI</option>
+              <option value="square">SQR</option>
+              <option value="sawtooth">SAW</option>
+            </select>
+          </label>
+          <Slider
+            label="Rate"
+            value={mod.rateHz}
+            min={0.01}
+            max={20}
+            defaultValue={2}
+            format={(v) => `${v < 1 ? v.toFixed(2) : v.toFixed(1)} Hz`}
+            onCommit={(rateHz) => services.store.execute(setPadMod(doc, pad.id, { ...mod, rateHz }))}
+          />
+          <Slider
+            label="Depth"
+            value={mod.depth}
+            min={0}
+            max={spec.max}
+            defaultValue={spec.def}
+            format={spec.fmt}
+            onCommit={(depth) => services.store.execute(setPadMod(doc, pad.id, { ...mod, depth }))}
+          />
+          {mod.target === "filter" && (
+            <Slider
+              label="Center"
+              value={mod.base ?? 8000}
+              min={80}
+              max={16000}
+              defaultValue={8000}
+              format={(v) => `${Math.round(v)} Hz`}
+              onCommit={(base) => services.store.execute(setPadMod(doc, pad.id, { ...mod, base }))}
+            />
+          )}
+        </>
+      )}
+    </div>
   );
 }

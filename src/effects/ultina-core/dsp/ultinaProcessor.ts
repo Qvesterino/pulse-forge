@@ -267,6 +267,20 @@ export class UltinaProcessor {
     qualityMode: 1,
   };
 
+  // Pre-allocated per-chunk channel refs + module process args. process()
+  // reuses these instead of allocating a channels array and an args object
+  // per module per block — the processor's own REALTIME CONSTRAINTS forbid
+  // allocations on the audio path (modules destructure args immediately and
+  // never retain it).
+  private chunkChannels: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
+  private chunkArgs: ModuleProcessArgs = {
+    channels: this.chunkChannels,
+    frameCount: 0,
+    sidechain: null,
+    ctx: this.cachedCtx,
+    params: {},
+  };
+
   // Pre-allocated per-module param records (keyed by module type prefix)
   private moduleParamCache: Map<string, Record<string, number>> = new Map();
   private moduleParamKeys: Map<string, string[]> = new Map();
@@ -434,13 +448,23 @@ export class UltinaProcessor {
     let offset = 0;
     while (offset < frameCount) {
       const frames = Math.min(this.maxBlockSize, frameCount - offset);
-      const chunkL = offset === 0 ? chL : chL.subarray(offset, offset + frames);
-      const chunkR = offset === 0 ? chR : chR.subarray(offset, offset + frames);
-      const chunkChannels: Float32Array[] = [chunkL, chunkR];
+      const chunkChannels = this.chunkChannels;
+      chunkChannels[0] = offset === 0 ? chL : chL.subarray(offset, offset + frames);
+      chunkChannels[1] = offset === 0 ? chR : chR.subarray(offset, offset + frames);
+      const chunkL = chunkChannels[0];
+      const chunkR = chunkChannels[1];
       const chunkSidechain =
         sidechain && offset > 0
           ? sidechain.map((s) => (s ? s.subarray(offset, offset + frames) : s))
           : sidechain;
+
+      // Reused args record — see chunkArgs declaration. Refreshed per module
+      // (params differ); modules read it synchronously and never retain it.
+      const args = this.chunkArgs;
+      args.channels = chunkChannels;
+      args.sidechain = chunkSidechain;
+      args.ctx = this.cachedCtx;
+      args.frameCount = frames;
 
       // Apply input gain (per-sample smoothing)
       for (let i = 0; i < frames; i++) {
@@ -465,14 +489,8 @@ export class UltinaProcessor {
           const module = this.getOrCreateModule(moduleType);
           if (!module) continue;
 
-          const moduleParams = this.getModuleParams(moduleType);
-          module.process({
-            channels: chunkChannels,
-            frameCount: frames,
-            sidechain: chunkSidechain,
-            ctx: this.cachedCtx,
-            params: moduleParams,
-          });
+          args.params = this.getModuleParams(moduleType);
+          module.process(args);
 
           if (moduleType === this.deltaModule) {
             processedToDelta = true;
@@ -490,14 +508,8 @@ export class UltinaProcessor {
           for (const moduleType of activeChain.modules) {
             const module = this.getOrCreateModule(moduleType);
             if (!module) continue;
-            const moduleParams = this.getModuleParams(moduleType);
-            module.process({
-              channels: chunkChannels,
-              frameCount: frames,
-              sidechain: chunkSidechain,
-              ctx: this.cachedCtx,
-              params: moduleParams,
-            });
+            args.params = this.getModuleParams(moduleType);
+            module.process(args);
           }
         }
       } else {
@@ -506,14 +518,8 @@ export class UltinaProcessor {
           const module = this.getOrCreateModule(moduleType);
           if (!module) continue;
 
-          const moduleParams = this.getModuleParams(moduleType);
-          module.process({
-            channels: chunkChannels,
-            frameCount: frames,
-            sidechain: chunkSidechain,
-            ctx: this.cachedCtx,
-            params: moduleParams,
-          });
+          args.params = this.getModuleParams(moduleType);
+          module.process(args);
         }
       }
 

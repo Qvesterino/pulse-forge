@@ -2865,6 +2865,19 @@
       channelCount: 2,
       qualityMode: 1
     };
+    // Pre-allocated per-chunk channel refs + module process args. process()
+    // reuses these instead of allocating a channels array and an args object
+    // per module per block — the processor's own REALTIME CONSTRAINTS forbid
+    // allocations on the audio path (modules destructure args immediately and
+    // never retain it).
+    chunkChannels = [new Float32Array(0), new Float32Array(0)];
+    chunkArgs = {
+      channels: this.chunkChannels,
+      frameCount: 0,
+      sidechain: null,
+      ctx: this.cachedCtx,
+      params: {}
+    };
     // Pre-allocated per-module param records (keyed by module type prefix)
     moduleParamCache = /* @__PURE__ */ new Map();
     moduleParamKeys = /* @__PURE__ */ new Map();
@@ -2977,10 +2990,17 @@
       let offset = 0;
       while (offset < frameCount) {
         const frames = Math.min(this.maxBlockSize, frameCount - offset);
-        const chunkL = offset === 0 ? chL : chL.subarray(offset, offset + frames);
-        const chunkR = offset === 0 ? chR : chR.subarray(offset, offset + frames);
-        const chunkChannels = [chunkL, chunkR];
+        const chunkChannels = this.chunkChannels;
+        chunkChannels[0] = offset === 0 ? chL : chL.subarray(offset, offset + frames);
+        chunkChannels[1] = offset === 0 ? chR : chR.subarray(offset, offset + frames);
+        const chunkL = chunkChannels[0];
+        const chunkR = chunkChannels[1];
         const chunkSidechain = sidechain && offset > 0 ? sidechain.map((s) => s ? s.subarray(offset, offset + frames) : s) : sidechain;
+        const args = this.chunkArgs;
+        args.channels = chunkChannels;
+        args.sidechain = chunkSidechain;
+        args.ctx = this.cachedCtx;
+        args.frameCount = frames;
         for (let i = 0; i < frames; i++) {
           const g = this.inputGainSmoother.process(inputGainTarget);
           chunkL[i] *= g;
@@ -2994,14 +3014,8 @@
           for (const moduleType of activeChain.modules) {
             const module = this.getOrCreateModule(moduleType);
             if (!module) continue;
-            const moduleParams = this.getModuleParams(moduleType);
-            module.process({
-              channels: chunkChannels,
-              frameCount: frames,
-              sidechain: chunkSidechain,
-              ctx: this.cachedCtx,
-              params: moduleParams
-            });
+            args.params = this.getModuleParams(moduleType);
+            module.process(args);
             if (moduleType === this.deltaModule) {
               processedToDelta = true;
               for (let i = 0; i < frames; i++) {
@@ -3015,28 +3029,16 @@
             for (const moduleType of activeChain.modules) {
               const module = this.getOrCreateModule(moduleType);
               if (!module) continue;
-              const moduleParams = this.getModuleParams(moduleType);
-              module.process({
-                channels: chunkChannels,
-                frameCount: frames,
-                sidechain: chunkSidechain,
-                ctx: this.cachedCtx,
-                params: moduleParams
-              });
+              args.params = this.getModuleParams(moduleType);
+              module.process(args);
             }
           }
         } else {
           for (const moduleType of activeChain.modules) {
             const module = this.getOrCreateModule(moduleType);
             if (!module) continue;
-            const moduleParams = this.getModuleParams(moduleType);
-            module.process({
-              channels: chunkChannels,
-              frameCount: frames,
-              sidechain: chunkSidechain,
-              ctx: this.cachedCtx,
-              params: moduleParams
-            });
+            args.params = this.getModuleParams(moduleType);
+            module.process(args);
           }
         }
         for (let i = 0; i < frames; i++) {
@@ -4037,7 +4039,7 @@
       const N = this.firNumTaps;
       const M = this.firLatency;
       const ch = this.channelCount;
-      const numSplits = this.firFilters.length;
+      const numSplits = Math.min(this.firFilters.length, this.bandCount - 1);
       for (let i = 0; i < frameCount; i++) {
         for (let c = 0; c < ch; c++) {
           const lpOuts = this.firLpOuts;
@@ -4074,7 +4076,8 @@
       for (let ch = 0; ch < this.channelCount; ch++) {
         this.lr4Work[ch].set(input[ch].subarray(0, frameCount));
       }
-      for (let s = 0; s < this.splits.length; s++) {
+      const activeSplits = this.bandCount - 1;
+      for (let s = 0; s < activeSplits; s++) {
         const split = this.splits[s];
         for (let ch = 0; ch < this.channelCount; ch++) {
           this.lr4LpOut[ch].set(this.lr4Work[ch].subarray(0, frameCount));
@@ -4094,7 +4097,7 @@
             bandOut[0][ch].set(this.lr4LpOut[ch].subarray(0, frameCount));
           }
         }
-        if (s === this.splits.length - 1) {
+        if (s === activeSplits - 1) {
           const lastBand = this.bandCount - 1;
           for (let ch = 0; ch < this.channelCount; ch++) {
             bandOut[lastBand][ch].set(this.lr4Work[ch].subarray(0, frameCount));
@@ -4604,6 +4607,7 @@
       const band = this.bands[bandIdx];
       band.attackCoef = smoothCoef(attackMs, this.sampleRate);
       band.releaseCoef = smoothCoef(releaseMs, this.sampleRate);
+      const autoReleaseFastCoef = autoRelease ? smoothCoef(releaseMs * 0.2, this.sampleRate) : 0;
       const detectCh = sidechainSource ? sidechainSource[0] ?? channels[0] : channels[0];
       for (let i = 0; i < frameCount; i++) {
         let detected;
@@ -4643,8 +4647,7 @@
         let releaseCoef = band.releaseCoef;
         if (autoRelease) {
           const grFraction = clamp(band.gainReductionDb / 12, 0, 1);
-          const fastRelease = smoothCoef(releaseMs * 0.2, this.sampleRate);
-          releaseCoef = band.releaseCoef * (1 - grFraction) + fastRelease * grFraction;
+          releaseCoef = band.releaseCoef * (1 - grFraction) + autoReleaseFastCoef * grFraction;
         }
         if (grDb > 0.1) {
           band.holdCounter = Math.round(attackMs / 1e3 * this.sampleRate);
@@ -6921,6 +6924,8 @@
           this.postLatency();
         } else if (msg.type === "reset") {
           this.proc.reset();
+        } else if (msg.type === "dispose") {
+          this.proc.dispose();
         }
       };
     }

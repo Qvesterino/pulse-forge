@@ -2516,6 +2516,8 @@ const fm: InstrumentDefinition = {
     { id: "modDecay", label: "M-DECAY", min: 0.02, max: 3, default: 0.4, unit: "s", format: formatMs },
     { id: "modSustain", label: "M-SUS", min: 0, max: 1, default: 0.3, format: formatPct },
     { id: "feedback", label: "FEEDBK", min: 0, max: 1, default: 0.15, format: formatPct },
+    { id: "fbDecay", label: "FB-DECAY", min: 0.02, max: 3, default: 0.5, unit: "s", format: formatMs },
+    { id: "fbSus", label: "FB-SUS", min: 0, max: 1, default: 1, format: formatPct },
     {
       id: "modWave",
       label: "M-WAVE",
@@ -2603,7 +2605,16 @@ const fm: InstrumentDefinition = {
           fbDelay = ctx.createDelay(0.01);
           fbDelay.delayTime.value = 128 / (ctx.sampleRate || 44100);
           const fbGain = ctx.createGain();
-          fbGain.gain.value = feedback * deviation * 0.5;
+          // Feedback envelope: full bite at attack, decays to FB-SUS fraction
+          // (default 1 = constant — legacy behaviour).
+          const fbPeak = feedback * deviation * 0.5;
+          const fbSus = Math.max(0, Math.min(1, p.fbSus ?? 1));
+          fbGain.gain.setValueAtTime(fbPeak, when);
+          fbGain.gain.setTargetAtTime(
+            Math.max(fbPeak * fbSus, 0.0002),
+            when + attack,
+            Math.max(0.02, p.fbDecay ?? 0.5) / 3,
+          );
           modulator.connect(fbGain).connect(fbDelay).connect(modulator.frequency);
         }
 

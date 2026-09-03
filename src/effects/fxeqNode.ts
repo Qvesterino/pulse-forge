@@ -42,11 +42,17 @@ export function createFxEqNode(
   // The worklet reports DSP latency (oversampled bands) after prepare and
   // whenever params change it — consumed by the engine's PDC via
   // getLatencySec() so fxeq tracks stay in phase with the rest of the mix.
+  // The report arrives ASYNCHRONOUSLY over the port, so the engine also
+  // subscribes via onLatencyChange to re-sync PDC the moment it lands
+  // (syncPdc would otherwise compensate 0 until the next document sync).
   let latencySamples = 0;
+  const latencyListeners = new Set<() => void>();
+  let disposed = false;
   node.port.onmessage = (event) => {
     const msg = event.data as { type?: string; samples?: number } | null;
     if (msg?.type === "latency" && typeof msg.samples === "number") {
       latencySamples = msg.samples;
+      if (!disposed) for (const listener of latencyListeners) listener();
     }
   };
 
@@ -54,12 +60,21 @@ export function createFxEqNode(
     input,
     output,
     getLatencySec: () => latencySamples / ctx.sampleRate,
+    onLatencyChange(listener: () => void) {
+      latencyListeners.add(listener);
+      return () => {
+        latencyListeners.delete(listener);
+      };
+    },
     setParameter(id: string, value: number) {
       // The worklet's setParameter validates ids — forward everything,
       // including dotted per-band ids outside the rack surface.
       node.port.postMessage({ type: "param", id, value: id === "bandCount" ? Math.round(value) : value });
     },
     dispose() {
+      disposed = true;
+      latencyListeners.clear();
+      node.port.onmessage = null;
       try {
         node.port.close();
       } catch {

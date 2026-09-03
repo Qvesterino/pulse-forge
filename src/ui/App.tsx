@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore, lazy, Suspense } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, lazy, Suspense } from "react";
 import type { Services } from "../services";
 import { SelectionStore } from "../store/SelectionStore";
 import { ToolStore } from "../store/ToolStore";
@@ -45,9 +45,12 @@ import {
 import { detectTransients } from "../audio-workers/onset-detector";
 import type { PatternClipboard } from "../commands/commands";
 import type { SelectedNote } from "./PianoRoll";
-import { matchShortcut, panelIdOfShortcut } from "./shortcuts";
+import { matchShortcut, panelIdOfShortcut, type ShortcutKey } from "./shortcuts";
+import type { PaletteDeps } from "./commandPalette";
 import { BAR_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
 import { CommandToast } from "./CommandToast";
+// Palette lives in a lazy chunk — it loads on first Ctrl+K.
+const PaletteOverlay = lazy(() => import("./PaletteOverlay").then((m) => ({ default: m.PaletteOverlay })));
 import { HelpOverlay } from "./HelpOverlay";
 import { OnboardingHint } from "./OnboardingHint";
 import { DiceProvider } from "./DiceContext";
@@ -72,6 +75,11 @@ export function App({
   );
   const [selectionStore] = useState(() => new SelectionStore());
   const selection = useSyncExternalStore(selectionStore.subscribe, selectionStore.getState, selectionStore.getState);
+  // A services swap is a project switch (collab start/leave): selections hold
+  // ids from the previous document and must not leak into the new one.
+  useEffect(() => {
+    selectionStore.clear();
+  }, [services, selectionStore]);
   const [toolStore] = useState(() => new ToolStore());
   const tool = useSyncExternalStore(toolStore.subscribe, toolStore.getTool, toolStore.getTool);
   void tool;
@@ -114,6 +122,7 @@ export function App({
 
   const [clip, setClip] = useState<PatternClipboard | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [scaleSnap, setScaleSnap] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [pluginTrackId, setPluginTrackId] = useState<string | null>(null);
@@ -191,6 +200,209 @@ export function App({
     selectionStore.setStepSelection(null);
   }, [doc.activePatternId]);
 
+  // Shortcut action dispatch — shared by the keyboard handler and the
+  // command palette so both always do the same thing.
+  const runShortcutRef = useRef<(key: ShortcutKey, event?: { preventDefault(): void }) => void>(() => {});
+  runShortcutRef.current = (matched: ShortcutKey, event?: { preventDefault(): void }) => {
+    switch (matched) {
+        case "playPause":
+          event?.preventDefault();
+          services.playback.playPause();
+          return;
+        case "stop":
+          event?.preventDefault();
+          services.playback.stop();
+          return;
+        case "seekHome":
+          event?.preventDefault();
+          services.playback.seek(0);
+          return;
+        case "seekBack":
+          event?.preventDefault();
+          services.playback.seek(Math.max(0, services.transport.position - BAR_TICKS));
+          return;
+        case "seekForward":
+          event?.preventDefault();
+          services.playback.seek(services.transport.position + BAR_TICKS);
+          return;
+        case "save":
+          event?.preventDefault();
+          void services.flushSave();
+          return;
+        case "undo":
+          event?.preventDefault();
+          services.store.undo();
+          return;
+        case "redo":
+          event?.preventDefault();
+          services.store.redo();
+          return;
+        case "nextTrack": {
+          event?.preventDefault();
+          const idx = doc.tracks.findIndex((t) => t.id === track.id);
+          const next = doc.tracks[(idx + 1) % doc.tracks.length];
+          if (next) selectTrack(next.id);
+          return;
+        }
+        case "prevTrack": {
+          event?.preventDefault();
+          const idx = doc.tracks.findIndex((t) => t.id === track.id);
+          const next = doc.tracks[(idx - 1 + doc.tracks.length) % doc.tracks.length];
+          if (next) selectTrack(next.id);
+          return;
+        }
+        case "selectTrack1":
+        case "selectTrack2":
+        case "selectTrack3":
+        case "selectTrack4":
+        case "selectTrack5":
+        case "selectTrack6":
+        case "selectTrack7":
+        case "selectTrack8":
+        case "selectTrack9": {
+          event?.preventDefault();
+          const n = Number(matched.slice(-1)) - 1;
+          const next = doc.tracks[n];
+          if (next) selectTrack(next.id);
+          return;
+        }
+        case "toggleMuteTrack":
+          event?.preventDefault();
+          services.store.execute(setTrackParams(doc, track.id, { mute: !track.mute }));
+          return;
+        case "toggleSoloTrack":
+          event?.preventDefault();
+          services.store.execute(setTrackParams(doc, track.id, { solo: !track.solo }));
+          return;
+        case "panelMix":
+        case "panelFx":
+        case "panelArr":
+        case "panelMod":
+        case "panelExport":
+        case "panelDice": {
+          event?.preventDefault();
+          const panel = panelIdOfShortcut(matched);
+          if (panel) setBottomPanelTab(panel as BottomPanel);
+          return;
+        }
+        case "nextPattern": {
+          event?.preventDefault();
+          const idx = doc.patterns.findIndex((p) => p.id === doc.activePatternId);
+          const next = doc.patterns[(idx + 1) % doc.patterns.length];
+          if (next) services.store.execute(setActivePattern(doc, next.id));
+          return;
+        }
+        case "prevPattern": {
+          event?.preventDefault();
+          const idx = doc.patterns.findIndex((p) => p.id === doc.activePatternId);
+          const next = doc.patterns[(idx - 1 + doc.patterns.length) % doc.patterns.length];
+          if (next) services.store.execute(setActivePattern(doc, next.id));
+          return;
+        }
+        case "duplicatePattern": {
+          event?.preventDefault();
+          if (selection.timeRange) {
+            try {
+              services.store.execute(duplicateTimeRange(doc, selection.timeRange.fromTick, selection.timeRange.toTick));
+            } catch (e) {
+              // fall back to pattern duplicate if zone empty
+              services.store.execute(duplicatePattern(doc, doc.activePatternId));
+            }
+          } else {
+            services.store.execute(duplicatePattern(doc, doc.activePatternId));
+          }
+          return;
+        }
+        case "deleteNote":
+          if (selectedNote) {
+            event?.preventDefault();
+            services.store.execute(
+              selectedNote.noteIds.length === 1
+                ? deleteNote(doc, selectedNote.trackId, selectedNote.noteIds[0])
+                : deleteNotes(doc, selectedNote.trackId, selectedNote.noteIds),
+            );
+            setSelectedNote(null);
+          } else if (stepSelection) {
+            event?.preventDefault();
+            services.store.execute(
+              clearSteps(doc, doc.activePatternId, stepSelection.padIds, stepSelection.from, stepSelection.to),
+            );
+            setStepSelection(null);
+          } else if (selection.timeRange) {
+            event?.preventDefault();
+            const from = selection.timeRange.fromTick;
+            const to = selection.timeRange.toTick;
+            let newDoc = doc;
+            const oldDoc = doc;
+            // Clips overlapping timeRange
+            const clipsToDelete = newDoc.arrangement.clips.filter((c) => {
+              const cFrom = c.startBar * BAR_TICKS;
+              const cTo = (c.startBar + c.lengthBars) * BAR_TICKS;
+              return cFrom < to && cTo > from;
+            });
+            for (const c of clipsToDelete) {
+              newDoc = deleteArrangementClip(newDoc, c.id).execute(newDoc);
+            }
+            // Notes and steps in active pattern within timeRange
+            const pattern = newDoc.patterns.find((p) => p.id === newDoc.activePatternId);
+            if (pattern) {
+              for (const trackId of Object.keys(pattern.notes)) {
+                const notes = pattern.notes[trackId] ?? [];
+                const toDelete = notes.filter((n) => n.start >= from && n.start < to).map((n) => n.id);
+                if (toDelete.length > 0) {
+                  newDoc = deleteNotes(newDoc, trackId, toDelete).execute(newDoc);
+                }
+              }
+              const fromStep = Math.max(0, Math.floor(from / STEP_TICKS));
+              const toStep = Math.min(pattern.stepCount - 1, Math.ceil(to / STEP_TICKS) - 1);
+              if (fromStep <= toStep) {
+                for (const track of newDoc.tracks) {
+                  if (track.kind !== "drum") continue;
+                  for (const pad of track.pads) {
+                    const row = pattern.rows[pad.id];
+                    if (!row) continue;
+                    let has = false;
+                    for (let s = fromStep; s <= toStep && s < row.length; s++) {
+                      if (row[s] > 0) {
+                        has = true;
+                        break;
+                      }
+                    }
+                    if (has) newDoc = clearSteps(newDoc, pattern.id, [pad.id], fromStep, toStep).execute(newDoc);
+                  }
+                }
+              }
+            }
+            services.store.execute({
+              type: "deleteTimeRange",
+              label: "Delete time range",
+              execute: () => newDoc,
+              undo: () => oldDoc,
+            } as unknown as import("../commands/types").Command);
+            selectionStore.clear();
+          } else if (selection.clipIds.length > 0) {
+            event?.preventDefault();
+            let newDoc = doc;
+            const oldDoc = doc;
+            for (const clipId of selection.clipIds) {
+              newDoc = deleteArrangementClip(newDoc, clipId).execute(newDoc);
+            }
+            services.store.execute({
+              type: "deleteClips",
+              label: "Delete clips",
+              execute: () => newDoc,
+              undo: () => oldDoc,
+            } as unknown as import("../commands/types").Command);
+            selectionStore.clear();
+          }
+          return;
+        case "toggleHelp":
+          event?.preventDefault();
+          setHelpOpen((v) => !v);
+          return;
+      }
+  };
+
   // Global keyboard shortcuts
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -207,6 +419,12 @@ export function App({
       // Pad keys (user-rebindable) shadow plain-letter shortcuts: pressing a
       // bound key plays the pad instead of triggering e.g. the loop toggle.
       if (!event.ctrlKey && !event.metaKey && !event.altKey && !typing && isPadKey(event.key.toLowerCase())) {
+        return;
+      }
+      // Command palette (Ctrl/Cmd+K) — works while typing in inputs too.
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setPaletteOpen((v) => !v);
         return;
       }
       // Escape is contextual: close menu/help → clear unified selection → reset tool → blur inputs
@@ -567,204 +785,7 @@ export function App({
 
       const matched = matchShortcut(event);
       if (!matched) return;
-
-      switch (matched) {
-        case "playPause":
-          event.preventDefault();
-          services.playback.playPause();
-          return;
-        case "stop":
-          event.preventDefault();
-          services.playback.stop();
-          return;
-        case "seekHome":
-          event.preventDefault();
-          services.playback.seek(0);
-          return;
-        case "seekBack":
-          event.preventDefault();
-          services.playback.seek(Math.max(0, services.transport.position - BAR_TICKS));
-          return;
-        case "seekForward":
-          event.preventDefault();
-          services.playback.seek(services.transport.position + BAR_TICKS);
-          return;
-        case "save":
-          event.preventDefault();
-          void services.flushSave();
-          return;
-        case "undo":
-          event.preventDefault();
-          services.store.undo();
-          return;
-        case "redo":
-          event.preventDefault();
-          services.store.redo();
-          return;
-        case "nextTrack": {
-          event.preventDefault();
-          const idx = doc.tracks.findIndex((t) => t.id === track.id);
-          const next = doc.tracks[(idx + 1) % doc.tracks.length];
-          if (next) selectTrack(next.id);
-          return;
-        }
-        case "prevTrack": {
-          event.preventDefault();
-          const idx = doc.tracks.findIndex((t) => t.id === track.id);
-          const next = doc.tracks[(idx - 1 + doc.tracks.length) % doc.tracks.length];
-          if (next) selectTrack(next.id);
-          return;
-        }
-        case "selectTrack1":
-        case "selectTrack2":
-        case "selectTrack3":
-        case "selectTrack4":
-        case "selectTrack5":
-        case "selectTrack6":
-        case "selectTrack7":
-        case "selectTrack8":
-        case "selectTrack9": {
-          event.preventDefault();
-          const n = Number(matched.slice(-1)) - 1;
-          const next = doc.tracks[n];
-          if (next) selectTrack(next.id);
-          return;
-        }
-        case "toggleMuteTrack":
-          event.preventDefault();
-          services.store.execute(setTrackParams(doc, track.id, { mute: !track.mute }));
-          return;
-        case "toggleSoloTrack":
-          event.preventDefault();
-          services.store.execute(setTrackParams(doc, track.id, { solo: !track.solo }));
-          return;
-        case "panelMix":
-        case "panelFx":
-        case "panelArr":
-        case "panelMod":
-        case "panelExport":
-        case "panelDice": {
-          event.preventDefault();
-          const panel = panelIdOfShortcut(matched);
-          if (panel) setBottomPanelTab(panel as BottomPanel);
-          return;
-        }
-        case "nextPattern": {
-          event.preventDefault();
-          const idx = doc.patterns.findIndex((p) => p.id === doc.activePatternId);
-          const next = doc.patterns[(idx + 1) % doc.patterns.length];
-          if (next) services.store.execute(setActivePattern(doc, next.id));
-          return;
-        }
-        case "prevPattern": {
-          event.preventDefault();
-          const idx = doc.patterns.findIndex((p) => p.id === doc.activePatternId);
-          const next = doc.patterns[(idx - 1 + doc.patterns.length) % doc.patterns.length];
-          if (next) services.store.execute(setActivePattern(doc, next.id));
-          return;
-        }
-        case "duplicatePattern": {
-          event.preventDefault();
-          if (selection.timeRange) {
-            try {
-              services.store.execute(duplicateTimeRange(doc, selection.timeRange.fromTick, selection.timeRange.toTick));
-            } catch (e) {
-              // fall back to pattern duplicate if zone empty
-              services.store.execute(duplicatePattern(doc, doc.activePatternId));
-            }
-          } else {
-            services.store.execute(duplicatePattern(doc, doc.activePatternId));
-          }
-          return;
-        }
-        case "deleteNote":
-          if (selectedNote) {
-            event.preventDefault();
-            services.store.execute(
-              selectedNote.noteIds.length === 1
-                ? deleteNote(doc, selectedNote.trackId, selectedNote.noteIds[0])
-                : deleteNotes(doc, selectedNote.trackId, selectedNote.noteIds),
-            );
-            setSelectedNote(null);
-          } else if (stepSelection) {
-            event.preventDefault();
-            services.store.execute(
-              clearSteps(doc, doc.activePatternId, stepSelection.padIds, stepSelection.from, stepSelection.to),
-            );
-            setStepSelection(null);
-          } else if (selection.timeRange) {
-            event.preventDefault();
-            const from = selection.timeRange.fromTick;
-            const to = selection.timeRange.toTick;
-            let newDoc = doc;
-            const oldDoc = doc;
-            // Clips overlapping timeRange
-            const clipsToDelete = newDoc.arrangement.clips.filter((c) => {
-              const cFrom = c.startBar * BAR_TICKS;
-              const cTo = (c.startBar + c.lengthBars) * BAR_TICKS;
-              return cFrom < to && cTo > from;
-            });
-            for (const c of clipsToDelete) {
-              newDoc = deleteArrangementClip(newDoc, c.id).execute(newDoc);
-            }
-            // Notes and steps in active pattern within timeRange
-            const pattern = newDoc.patterns.find((p) => p.id === newDoc.activePatternId);
-            if (pattern) {
-              for (const trackId of Object.keys(pattern.notes)) {
-                const notes = pattern.notes[trackId] ?? [];
-                const toDelete = notes.filter((n) => n.start >= from && n.start < to).map((n) => n.id);
-                if (toDelete.length > 0) {
-                  newDoc = deleteNotes(newDoc, trackId, toDelete).execute(newDoc);
-                }
-              }
-              const fromStep = Math.max(0, Math.floor(from / STEP_TICKS));
-              const toStep = Math.min(pattern.stepCount - 1, Math.ceil(to / STEP_TICKS) - 1);
-              if (fromStep <= toStep) {
-                for (const track of newDoc.tracks) {
-                  if (track.kind !== "drum") continue;
-                  for (const pad of track.pads) {
-                    const row = pattern.rows[pad.id];
-                    if (!row) continue;
-                    let has = false;
-                    for (let s = fromStep; s <= toStep && s < row.length; s++) {
-                      if (row[s] > 0) {
-                        has = true;
-                        break;
-                      }
-                    }
-                    if (has) newDoc = clearSteps(newDoc, pattern.id, [pad.id], fromStep, toStep).execute(newDoc);
-                  }
-                }
-              }
-            }
-            services.store.execute({
-              type: "deleteTimeRange",
-              label: "Delete time range",
-              execute: () => newDoc,
-              undo: () => oldDoc,
-            } as unknown as import("../commands/types").Command);
-            selectionStore.clear();
-          } else if (selection.clipIds.length > 0) {
-            event.preventDefault();
-            let newDoc = doc;
-            const oldDoc = doc;
-            for (const clipId of selection.clipIds) {
-              newDoc = deleteArrangementClip(newDoc, clipId).execute(newDoc);
-            }
-            services.store.execute({
-              type: "deleteClips",
-              label: "Delete clips",
-              execute: () => newDoc,
-              undo: () => oldDoc,
-            } as unknown as import("../commands/types").Command);
-            selectionStore.clear();
-          }
-          return;
-        case "toggleHelp":
-          event.preventDefault();
-          setHelpOpen((v) => !v);
-          return;
-      }
+      runShortcutRef.current(matched, event);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -866,6 +887,22 @@ export function App({
   };
   const renderDockSlot = (id: BottomPanel | null) => (id === null ? null : panelRenderers[id]);
 
+  const paletteDeps = useMemo(
+    (): PaletteDeps => ({
+        runShortcut: (key) => runShortcutRef.current(key),
+        snapshotNow: () => {
+          void services.core.snapshots
+            .save(doc.id, doc, `Manual — ${new Date().toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`)
+            .then(() => services.core.snapshots.prune(doc.id))
+            .catch(() => {});
+        },
+        openGallery: () => window.open("/gallery", "_blank", "noopener"),
+        toggleHistoryPanel: () => setHistoryOpen((v) => !v),
+        toggleDiagnostics: () => setDiagnosticsOpen((v) => !v),
+      }),
+    [services, doc],
+  );
+
   return (
     <ServicesContext.Provider value={services}>
       <DiceProvider doc={doc}>
@@ -883,6 +920,7 @@ export function App({
                 onToggleDiagnostics={() => setDiagnosticsOpen((open) => !open)}
                 onSetBottomPanel={setBottomPanelTab}
                 onToggleHelp={() => setHelpOpen((v) => !v)}
+                onOpenPalette={() => setPaletteOpen(true)}
                 onOpenBrowser={onOpenBrowser}
                 onReplaceServices={onReplaceServices}
                 scaleSnap={scaleSnap}
@@ -960,7 +998,7 @@ export function App({
               )}
               <footer className="statusbar">
                 <span>
-                  SPACE play · ALT+1–6 panels · ? help · Ctrl+Z undo · <kbd className="statusbar-kbd">1</kbd>–
+                  SPACE play · CTRL+K commands · ALT+1–6 panels · ? help · Ctrl+Z undo · <kbd className="statusbar-kbd">1</kbd>–
                   <kbd className="statusbar-kbd">9</kbd> tracks · TOOL {tool.toUpperCase()} (S/C/B/E/M)
                 </span>
               </footer>
@@ -1001,6 +1039,9 @@ export function App({
               <UndoHistoryPanel open={historyOpen} />
               <InstallPrompt />
               <HelpOverlay open={helpOpen} onClose={() => setHelpOpen(false)} />
+              <Suspense fallback={null}>
+                <PaletteOverlay open={paletteOpen} deps={paletteDeps} onClose={() => setPaletteOpen(false)} />
+              </Suspense>
               <OnboardingHint />
               <ContextMenu state={contextMenu} onClose={() => setContextMenu(null)} />
               {pluginTrackId && (

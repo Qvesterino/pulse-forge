@@ -95,6 +95,9 @@ export function createDelayModule(params?: Record<string, number>): ModuleProces
   // advances exactly once per sample (not once per channel).
   let wobbleLfoBufL: Float32Array = new Float32Array(0);
   let wobbleLfoBufR: Float32Array = new Float32Array(0);
+  // Reused LFO read pair — read() allocates a tuple per sample, which is
+  // GC pressure the audio thread must not generate.
+  const wobblePair: [number, number] = [0, 0];
 
   function allocChannels(channelCount: number, maxBlockSize: number): void {
     const len = Math.ceil((MAX_DELAY_MS / 1000) * sampleRate) + maxBlockSize + 8;
@@ -152,9 +155,9 @@ export function createDelayModule(params?: Record<string, number>): ModuleProces
       // in stereo, doubling the apparent modulation rate.
       if (type === 1) {
         for (let i = 0; i < frameCount; i++) {
-          const [l, r] = wobbleLfo.read();
-          wobbleLfoBufL[i] = l;
-          wobbleLfoBufR[i] = r;
+          wobbleLfo.readInto(wobblePair);
+          wobbleLfoBufL[i] = wobblePair[0];
+          wobbleLfoBufR[i] = wobblePair[1];
         }
       }
 

@@ -29,6 +29,7 @@ export function TopBar({
   bottomPanel,
   splitPanel,
   onToggleHelp,
+  onOpenPalette,
   playMode,
   onSetPlayMode,
   onOpenBrowser,
@@ -44,6 +45,8 @@ export function TopBar({
   bottomPanel: "mixer" | "fx" | "arr" | "mod" | "exp" | "midi" | "dice" | null;
   splitPanel: "mixer" | "fx" | "arr" | "mod" | "exp" | "midi" | "dice" | null;
   onToggleHelp: () => void;
+  /** Optional — the ⌘K palette button renders only when provided. */
+  onOpenPalette?: () => void;
   playMode: PlayMode;
   onSetPlayMode: (mode: PlayMode) => void;
   onOpenBrowser: () => void;
@@ -364,6 +367,17 @@ export function TopBar({
           >
             🎲 DICE
           </button>
+          {onOpenPalette && (
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={onOpenPalette}
+              title="Command palette (Ctrl+K) — every action, searchable"
+              aria-label="Open command palette"
+            >
+              ⌘K
+            </button>
+          )}
           <button
             type="button"
             className="btn btn-ghost"

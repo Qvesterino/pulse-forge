@@ -380,8 +380,9 @@
     for (const d of defs) values[d.id] = d.defaultValue;
     if (initial) {
       for (const d of defs) {
-        if (initial[d.id] !== void 0) {
-          values[d.id] = clamp(initial[d.id], d.minValue, d.maxValue);
+        const incoming = initial[d.id];
+        if (incoming !== void 0 && typeof incoming === "number" && Number.isFinite(incoming)) {
+          values[d.id] = clamp(incoming, d.minValue, d.maxValue);
         }
       }
     }
@@ -391,15 +392,18 @@
       },
       set(id, value) {
         const d = defs.find((x) => x.id === id);
-        if (d) values[id] = clamp(value, d.minValue, d.maxValue);
+        if (d && typeof value === "number" && Number.isFinite(value)) {
+          values[id] = clamp(value, d.minValue, d.maxValue);
+        }
       },
       all() {
         return { ...values };
       },
       load(params) {
         for (const d of defs) {
-          if (params[d.id] !== void 0) {
-            values[d.id] = clamp(params[d.id], d.minValue, d.maxValue);
+          const incoming = params[d.id];
+          if (incoming !== void 0 && typeof incoming === "number" && Number.isFinite(incoming)) {
+            values[d.id] = clamp(incoming, d.minValue, d.maxValue);
           }
         }
       }
@@ -1455,6 +1459,13 @@
         const right = sampleAt(rightPhase) * depthScale;
         advance();
         return [left, right];
+      },
+      readInto(out) {
+        out[0] = sampleAt(phase) * depthScale;
+        const rightPhase = phase + stereoPhase / (2 * Math.PI);
+        out[1] = sampleAt(rightPhase) * depthScale;
+        advance();
+        return out;
       }
     };
   }
@@ -1524,6 +1535,7 @@
     const flutterLfo = createLfo(44100, 6, "sine", Math.PI / 3, 1);
     let wowLfoBufL = new Float32Array(0);
     let wowLfoBufR = new Float32Array(0);
+    const lfoPair = [0, 0];
     const noisePrev = [];
     const PRNG_SEEDS = [305419896, 2596069104, 3735928559, 3405691582];
     const prngStates = [PRNG_SEEDS[0], PRNG_SEEDS[1]];
@@ -1646,10 +1658,12 @@
         const degradation = clamp(amount * (0.35 + wear * 0.65), 0, 1);
         if (mode === 2) {
           for (let i = 0; i < frameCount; i++) {
-            const [wowL, wowR] = wowLfo.read();
-            const [flL, flR] = flutterLfo.read();
-            wowLfoBufL[i] = wowL + flL * 0.3;
-            wowLfoBufR[i] = wowR + flR * 0.3;
+            wowLfo.readInto(lfoPair);
+            const wowL = lfoPair[0];
+            const wowR = lfoPair[1];
+            flutterLfo.readInto(lfoPair);
+            wowLfoBufL[i] = wowL + lfoPair[0] * 0.3;
+            wowLfoBufR[i] = wowR + lfoPair[1] * 0.3;
           }
         }
         for (let c = 0; c < channels.length; c++) {
@@ -1739,6 +1753,9 @@
     const lfo = createLfo(44100, 1, "sine", Math.PI / 2, 1);
     const lfo2 = createLfo(44100, 1.3, "triangle", Math.PI / 4, 1);
     const lfo3 = createLfo(44100, 0.7, "sine", Math.PI, 1);
+    const lfoPair1 = [0, 0];
+    const lfoPair2 = [0, 0];
+    const lfoPair3 = [0, 0];
     const phaserStages = [];
     function allocChannels(channelCount) {
       const delaySamples = Math.max(8, Math.ceil(MOD_MAX_DELAY_MS / 1e3 * sampleRate2) + 4);
@@ -1784,7 +1801,9 @@
     function processPhaser(channels, frameCount, depth, feedback, wetGain, dryGain) {
       const numCh = channels.length;
       for (let i = 0; i < frameCount; i++) {
-        const [l, r] = lfo.read();
+        lfo.readInto(lfoPair1);
+        const l = lfoPair1[0];
+        const r = lfoPair1[1];
         if (i % PHASER_COEFF_INTERVAL === 0) {
           const lfoVal = 0.5 * (l + r);
           const center = 300 + (0.5 + 0.5 * lfoVal) * 3e3;
@@ -1850,9 +1869,15 @@
         const flangerSpan = 4e-3 * sampleRate2;
         const doublerOffset = Math.round(0.022 * sampleRate2);
         for (let i = 0; i < frameCount; i++) {
-          const [l1, r1] = lfo.read();
-          const [l2, r2] = lfo2.read();
-          const [l3, r3] = lfo3.read();
+          lfo.readInto(lfoPair1);
+          lfo2.readInto(lfoPair2);
+          lfo3.readInto(lfoPair3);
+          const l1 = lfoPair1[0];
+          const r1 = lfoPair1[1];
+          const l2 = lfoPair2[0];
+          const r2 = lfoPair2[1];
+          const l3 = lfoPair3[0];
+          const r3 = lfoPair3[1];
           for (let c = 0; c < channels.length; c++) {
             const buf = channels[c];
             const dBuf = delayBuf[c];
@@ -1984,6 +2009,7 @@
     const wobbleLfo = createLfo(44100, 0.5, "sine", 0, 1);
     let wobbleLfoBufL = new Float32Array(0);
     let wobbleLfoBufR = new Float32Array(0);
+    const wobblePair = [0, 0];
     function allocChannels(channelCount, maxBlockSize) {
       const len = Math.ceil(MAX_DELAY_MS / 1e3 * sampleRate2) + maxBlockSize + 8;
       delayBuf = [];
@@ -2031,9 +2057,9 @@
         const bufLen = delayBuf[0].length;
         if (type === 1) {
           for (let i = 0; i < frameCount; i++) {
-            const [l, r] = wobbleLfo.read();
-            wobbleLfoBufL[i] = l;
-            wobbleLfoBufR[i] = r;
+            wobbleLfo.readInto(wobblePair);
+            wobbleLfoBufL[i] = wobblePair[0];
+            wobbleLfoBufR[i] = wobblePair[1];
           }
         }
         for (let c = 0; c < channels.length; c++) blockStartIdx[c] = writeIdx[c];
@@ -2453,12 +2479,6 @@
   function rangeDbToLin(rangeDb) {
     return Math.pow(10, rangeDb / 20);
   }
-  function computeCoefs(attackMs, releaseMs, sampleRate2) {
-    return {
-      attack: Math.exp(-1 / (attackMs / 1e3 * sampleRate2)),
-      release: Math.exp(-1 / (releaseMs / 1e3 * sampleRate2))
-    };
-  }
 
   // src/effects/fxeq-core/core/bandEngine.ts
   var BAND_PARAM_RANGES = new Map(BAND_SCALAR_DEFS.map((d) => [d.id, d]));
@@ -2495,6 +2515,21 @@
     let bandPeakLin = 0;
     let msBufA = new Float32Array(0);
     let msBufB = new Float32Array(0);
+    let dynAttackCoef = 0;
+    let dynReleaseCoef = 0;
+    let dynCoefAttackMs = -1;
+    let dynCoefReleaseMs = -1;
+    let dynCoefSr = 0;
+    function refreshDynCoefs() {
+      if (dynCoefAttackMs === dynAttackMs && dynCoefReleaseMs === dynReleaseMs && dynCoefSr === preparedSr) {
+        return;
+      }
+      dynAttackCoef = Math.exp(-1 / (dynAttackMs / 1e3 * preparedSr));
+      dynReleaseCoef = Math.exp(-1 / (dynReleaseMs / 1e3 * preparedSr));
+      dynCoefAttackMs = dynAttackMs;
+      dynCoefReleaseMs = dynReleaseMs;
+      dynCoefSr = preparedSr;
+    }
     return {
       prepare(sr, cc, maxBlockSize) {
         preparedMaxBlockSize = Math.max(1, maxBlockSize);
@@ -2504,6 +2539,11 @@
         gainSmoother.reset(dbToLinear(bandGainDb));
         mixSmoother.reset(clamp(bandMix, 0, 100) / 100);
         preparedSr = sr;
+        if (msBufA.length < preparedMaxBlockSize) {
+          msBufA = new Float32Array(preparedMaxBlockSize);
+          msBufB = new Float32Array(preparedMaxBlockSize);
+        }
+        refreshDynCoefs();
         prepared = true;
       },
       reset() {
@@ -2534,7 +2574,7 @@
         if (dynEnable >= 0.5 && channels.length >= 2) {
           const threshLin = dbToLinear(dynThresholdDb);
           const rangeLin = rangeDbToLin(dynRangeDb);
-          const coefs = computeCoefs(dynAttackMs, dynReleaseMs, preparedSr);
+          refreshDynCoefs();
           let dynGain = 1;
           const useSidechain = bandSidechainMode >= 0.5 && sidechain && sidechain.length >= 2;
           for (let i = 0; i < frameCount; i++) {
@@ -2550,7 +2590,7 @@
                 if (a > peak2) peak2 = a;
               }
             }
-            processEnvelope(peak2, dynState, coefs.attack, coefs.release);
+            processEnvelope(peak2, dynState, dynAttackCoef, dynReleaseCoef);
             dynGain = computeGain(dynState.envelope, threshLin, rangeLin);
             dynState.smoothedGain = dynGain;
             dynState.gainReductionDb = dynGain < 1 ? 20 * Math.log10(dynGain) : 0;
@@ -2904,6 +2944,7 @@
     let dequeIdx = new Int32Array(0);
     let dequeVal = new Float32Array(0);
     const linkedEnvScratch = [];
+    const upBuffers = [];
     function processTruePeak(channels, n, ceil) {
       const relMs = clamp(store.get("releaseMs"), 5, 500);
       const ovsRate = sampleRate2 * OS;
@@ -2994,11 +3035,11 @@
           linkedEnvScratch[c] = new Float32Array(upLen);
         }
       }
-      const upBuffers = [];
+      upBuffers.length = numCh;
       for (let c = 0; c < numCh; c++) {
         const s = ch[c];
         const up = s.os.upsample(channels[c]);
-        upBuffers.push(up);
+        upBuffers[c] = up;
         for (let i = 0; i < upLen; i++) {
           s.ring[(s.wp + i) % ringCap] = up[i];
         }

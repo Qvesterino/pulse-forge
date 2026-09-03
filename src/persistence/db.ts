@@ -8,6 +8,7 @@ export const STORE_USER_SAMPLES = "user-samples";
 export const STORE_USER_SAMPLE_AUDIO = "user-sample-audio";
 export const STORE_FROZEN_AUDIO = "frozen-audio";
 export const STORE_USER_KITS = "user-kits";
+export const STORE_GROOVE_POOL = "groove-pool";
 export const STORE_SNAPSHOTS = "project-snapshots";
 
 let dbPromise: Promise<IDBDatabase> | null = null;
@@ -33,6 +34,7 @@ export function openDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(STORE_FROZEN_AUDIO))
         db.createObjectStore(STORE_FROZEN_AUDIO, { keyPath: "id" });
       if (!db.objectStoreNames.contains(STORE_USER_KITS)) db.createObjectStore(STORE_USER_KITS, { keyPath: "id" });
+      if (!db.objectStoreNames.contains(STORE_GROOVE_POOL)) db.createObjectStore(STORE_GROOVE_POOL, { keyPath: "id" });
       if (!db.objectStoreNames.contains(STORE_SNAPSHOTS)) db.createObjectStore(STORE_SNAPSHOTS, { keyPath: "id" });
     };
     // Another tab still holds an older DB version — the open stays pending

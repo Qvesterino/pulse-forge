@@ -419,6 +419,11 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
     // Update attack/release coefficients
     band.attackCoef = smoothCoef(attackMs, this.sampleRate);
     band.releaseCoef = smoothCoef(releaseMs, this.sampleRate);
+    // Auto-release fast coefficient — constant for the whole block, so it
+    // is computed once here instead of calling Math.exp per sample below.
+    const autoReleaseFastCoef = autoRelease
+      ? smoothCoef(releaseMs * 0.2, this.sampleRate)
+      : 0;
 
     // Detect on sidechain if provided, otherwise on the band's own signal
     const detectCh = sidechainSource ? (sidechainSource[0] ?? channels[0]) : channels[0];
@@ -469,8 +474,7 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
       if (autoRelease) {
         // Faster release when GR is high (program-dependent)
         const grFraction = clamp(band.gainReductionDb / 12, 0, 1);
-        const fastRelease = smoothCoef(releaseMs * 0.2, this.sampleRate);
-        releaseCoef = band.releaseCoef * (1 - grFraction) + fastRelease * grFraction;
+        releaseCoef = band.releaseCoef * (1 - grFraction) + autoReleaseFastCoef * grFraction;
       }
 
       // ── Hold ──

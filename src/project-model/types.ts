@@ -118,6 +118,24 @@ export interface DrumPad {
   sliceReverse?: boolean;
   /** Optional synth voice — when set and assetId is null the pad synthesizes HH/perc without a sample. */
   synth?: DrumSynthConfig | null;
+  /**
+   * MPC-style per-pad modulator: one voice-local LFO per hit, wired to this
+   * pad's pitch / gain / filter. Absent or depth 0 = off.
+   */
+  mod?: PadMod | null;
+}
+
+/** Per-pad LFO assignment (one oscillator per triggered voice). */
+export interface PadMod {
+  /** What the LFO wobbles on this pad's voices. */
+  target: "pitch" | "gain" | "filter";
+  wave: "sine" | "triangle" | "square" | "sawtooth";
+  /** LFO speed in Hz (0.01–40). */
+  rateHz: number;
+  /** Depth: pitch → ±semitones, gain → ±fraction of peak, filter → ±Hz. */
+  depth: number;
+  /** Center frequency for the filter target (Hz, 80–16000). */
+  base?: number;
 }
 
 export type DrumSynthType = "hatClosed" | "hatOpen" | "clap" | "perc" | "cowbell" | "kick" | "snare";

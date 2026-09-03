@@ -4,8 +4,11 @@ import type { DrumTrack } from "../project-model/types";
 import { usePlayheadStep } from "./playhead";
 import { assetCategoryOf, categoryColor } from "./kitColors";
 import { FALLOFF_MODES, REPEAT_RATES, type FalloffMode, type RepeatRate } from "../audio-engine/NoteRepeat";
-import { applyKitToDrumTrack, captureKitFromTrack, setPadColor } from "../commands/commands";
+import { applyKitToDrumTrack, captureKitFromTrack, captureSketchFromDoc, installPackSketch, setPadColor } from "../commands/commands";
 import { decodeBindsCode, encodeBindsCode } from "../export/bindsCode";
+import { decodePackCode, encodePackCode, type SharedPack } from "../export/packCode";
+import { GroovePoolRepository } from "../persistence/GroovePoolRepository";
+import { getThemeSnapshot, setTheme } from "./theme";
 import { decodeKitCode, encodeKitCode } from "../export/kitCode";
 import type { UserKit } from "../persistence/KitRepository";
 
@@ -287,6 +290,82 @@ export function RackStrip({
     setKitStatus(`Installed "${kit.name}"`);
   };
 
+  const copyPackCode = async () => {
+    try {
+      const kitPads = captureKitFromTrack(doc, track.id);
+      let grooves: SharedPack["grooves"];
+      try {
+        const pool = await new GroovePoolRepository().list();
+        grooves = pool.slice(0, 8).map((g) => ({ name: g.name, timing: g.timing, accent: g.accent }));
+      } catch {
+        grooves = undefined;
+      }
+      const sketch = captureSketchFromDoc(doc, track.id);
+      const code = encodePackCode({
+        kitName: `${track.name} Pack`,
+        kitPads,
+        binds: getPadKeys(),
+        theme: getThemeSnapshot(),
+        grooves,
+        sketch,
+      });
+      await navigator.clipboard.writeText(code);
+      const parts = ["kit", "keys", "theme", grooves?.length ? `${grooves.length} groove${grooves.length > 1 ? "s" : ""}` : null, sketch ? `${sketch.scenes.length} scenes` : null].filter(Boolean);
+      setKitStatus(`PACK copied — ${parts.join(" + ")}`);
+    } catch {
+      setKitStatus("Clipboard blocked by the browser");
+    }
+  };
+
+  const installPackCode = () => {
+    const code = window.prompt("Paste a PACK code (PFPACK1:…)");
+    if (!code) return;
+    const pack = decodePackCode(code);
+    if (!pack) {
+      setKitStatus("Invalid PACK code");
+      return;
+    }
+    if (pack.binds) importPadKeys(pack.binds);
+    if (pack.theme) setTheme(pack.theme);
+    if (pack.grooves?.length) {
+      const repo = new GroovePoolRepository();
+      void Promise.all(
+        pack.grooves.map((g) =>
+          repo.save({
+            id: `groove-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`,
+            name: g.name,
+            timing: g.timing,
+            accent: g.accent,
+            createdAt: new Date().toISOString(),
+          }),
+        ),
+      ).catch(() => undefined);
+    }
+    if (pack.kitPads && pack.kitName) {
+      const userKit: UserKit = {
+        id: `ukit-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`,
+        name: pack.kitName,
+        genre: "shared",
+        description: "Installed from a PACK code",
+        pads: pack.kitPads,
+        createdAt: new Date().toISOString(),
+      };
+      void services.userKits
+        .save(userKit)
+        .then(() => services.userKits.list())
+        .then(setUserKits);
+    }
+    let installedScenes = 0;
+    if (pack.sketch) {
+      const cmd = installPackSketch(doc, track.id, pack.sketch);
+      if (cmd) {
+        services.store.execute(cmd);
+        installedScenes = pack.sketch.scenes.length;
+      }
+    }
+    setKitStatus(installedScenes ? `Pack installed — ${installedScenes} scenes added` : "Pack installed");
+  };
+
   return (
     <section className="rack" aria-label="Drum Rack">
       <div className="rack-header" role="group" aria-label="Note Repeat">
@@ -538,6 +617,13 @@ export function RackStrip({
           {userKits.length > 0 && <div className="context-menu-header">SHARE</div>}
           <button type="button" role="menuitem" onClick={installFromCode}>
             Install from code…
+          </button>
+          <div className="context-menu-header">PACK</div>
+          <button type="button" role="menuitem" onClick={() => void copyPackCode()}>
+            Copy PACK (kit+keys+theme+grooves+scenes)
+          </button>
+          <button type="button" role="menuitem" onClick={installPackCode}>
+            Install PACK…
           </button>
           {kitStatus && <div className="context-menu-header">{kitStatus}</div>}
         </div>

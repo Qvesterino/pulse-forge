@@ -13,26 +13,58 @@ import { defaultOzvenaStateV1 } from "./ozvena-core/v2/types.ts";
 const MAX_BLOCK = 128;
 const CHANNELS = 2;
 
-/** Set a dotted path ("engines.e2.mix") preserving the current value's type.
- *  String-enum paths ("engines.e2.algo") accept a numeric index and map to
- *  the matching ENGINE2_ALGOS entry. */
+/** Numeric-index → string-enum mapping, keyed by full dotted path. The UI
+ *  ships enums as indices; the DSP state carries them as strings. Keying by
+ *  full path (not leaf name) keeps e.g. engines.e3.algo inside its own
+ *  largeChamber/hall list — an E2 index would produce an invalid E3 algo
+ *  that throws inside the engine's recompute(). */
+const ENUM_BY_PATH = {
+  "engines.e2.algo": ["room", "mediumChamber", "plate"],
+  "engines.e3.algo": ["largeChamber", "hall"],
+  "blendPad.engine2Algo": ["room", "mediumChamber", "plate"],
+  "mod.mode": ["randomFat", "pitch"],
+  "convolution.mode": ["algorithmic", "hybrid", "convolution"],
+  "global.quality": ["eco", "standard", "high", "render"],
+};
+
+/**
+ * Return a NEW state with `id` (dotted path) set to `value`, cloning only
+ * the objects along the path (structural sharing). The vendored processor
+ * detects changes by section REFERENCE (pushStateToModules compares
+ * `state.preDelay !== prev.preDelay` etc.), so mutating the state in place
+ * makes loadState(sameRef) a silent no-op — every section-based param
+ * (engine time, EQ bands, pre-delay, mod…) would be dropped. Params must
+ * land as fresh section objects. The current value's type is preserved:
+ * booleans via >= 0.5, enum paths via index, numbers coerced.
+ */
 function setPath(state, id, value) {
   const parts = id.split(".");
-  let node = state;
-  for (let i = 0; i < parts.length - 1; i++) {
-    node = node[parts[i]];
-    if (!node) return;
-  }
-  const key = parts[parts.length - 1];
-  const current = node[key];
-  if (typeof current === "boolean") node[key] = value >= 0.5;
-  else if (typeof current === "string" && typeof value === "number") {
-    const enums = { algo: ["room", "mediumChamber", "plate"] };
-    const enumKey = key.replace(/^\w+\./, "");
-    const list = enums[enumKey];
-    node[key] = list ? list[Math.max(0, Math.min(list.length - 1, Math.round(value)))] : String(value);
-  } else if (typeof current === "number") node[key] = typeof value === "number" ? value : Number(value);
-  else node[key] = value;
+  const write = (node, depth) => {
+    if (depth === parts.length - 1) {
+      const key = parts[depth];
+      const current = node[key];
+      let next;
+      if (typeof current === "boolean") next = value >= 0.5;
+      else if (typeof current === "string" && typeof value === "number") {
+        const list = ENUM_BY_PATH[id];
+        next = list
+          ? list[Math.max(0, Math.min(list.length - 1, Math.round(value)))]
+          : String(value);
+      } else if (typeof current === "number") {
+        next = typeof value === "number" ? value : Number(value);
+      } else {
+        next = value;
+      }
+      if (next === current) return node;
+      return { ...node, [key]: next };
+    }
+    const child = node[parts[depth]];
+    if (!child || typeof child !== "object") return node;
+    const updated = write(child, depth + 1);
+    if (updated === child) return node;
+    return { ...node, [parts[depth]]: updated };
+  };
+  return write(state, 0);
 }
 
 class OzvenaWorkletProcessor extends AudioWorkletProcessor {
@@ -41,27 +73,37 @@ class OzvenaWorkletProcessor extends AudioWorkletProcessor {
   scratch = [new Float32Array(MAX_BLOCK), new Float32Array(MAX_BLOCK)];
   lastLatencyPosted = -1;
   blockCount = 0;
+  disposed = false;
 
   constructor(options) {
     super();
     this.proc.prepare(sampleRate, CHANNELS, 120, MAX_BLOCK);
     const initial = options?.processorOptions?.params;
     if (initial) {
-      for (const [id, value] of Object.entries(initial)) setPath(this.state, id, value);
-      this.proc.loadState(this.state);
+      for (const [id, value] of Object.entries(initial)) this.state = setPath(this.state, id, value);
     }
+    // Always load (even without processorOptions) — a null state makes the
+    // core's process() return silently, i.e. a muted effect.
+    this.proc.loadState(this.state);
     this.postLatency();
     this.port.onmessage = (event) => {
       const msg = event.data;
       if (!msg) return;
       if (msg.type === "param") {
-        setPath(this.state, msg.id, msg.value);
+        this.state = setPath(this.state, msg.id, msg.value);
         this.proc.loadState(this.state);
         this.postLatency();
       } else if (msg.type === "reset") {
         this.state = defaultOzvenaStateV1();
         this.proc.loadState(this.state);
         this.proc.reset();
+      } else if (msg.type === "dispose") {
+        // Terminal teardown from the main thread (node.dispose): release
+        // the module-global IPC peer registry entry + subscription that
+        // would otherwise pin this processor (and its delay buffers)
+        // forever. dispose() also unprepares the core, so audio stops.
+        this.proc.dispose();
+        this.disposed = true;
       }
     };
   }
@@ -75,6 +117,7 @@ class OzvenaWorkletProcessor extends AudioWorkletProcessor {
   }
 
   process(inputs, outputs) {
+    if (this.disposed) return false;
     const output = outputs[0];
     if (!output || !output[0] || !output[1]) return true;
     const frames = Math.min(MAX_BLOCK, output[0].length);

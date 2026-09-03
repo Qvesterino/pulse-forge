@@ -640,6 +640,30 @@ function normalizeTimeSignatureDomain(s: NormalizeState): void {
   }
 }
 
+const PAD_MOD_TARGETS = new Set(["pitch", "gain", "filter"]);
+const PAD_MOD_WAVES = new Set(["sine", "triangle", "square", "sawtooth"]);
+const PAD_MOD_DEPTH_MAX: Record<string, number> = { pitch: 24, gain: 1, filter: 12000 };
+
+/** Clamp a per-pad mod to a legal voice-local LFO; null = disabled. */
+function sanitizePadMod(raw: unknown): import("../project-model/types").PadMod | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const m = raw as Record<string, unknown>;
+  const target = typeof m.target === "string" && PAD_MOD_TARGETS.has(m.target) ? m.target : null;
+  if (!target) return null;
+  const rateHz = typeof m.rateHz === "number" && Number.isFinite(m.rateHz) ? m.rateHz : 0;
+  const depthRaw = typeof m.depth === "number" && Number.isFinite(m.depth) ? m.depth : 0;
+  const depth = Math.min(PAD_MOD_DEPTH_MAX[target], Math.max(0, Math.abs(depthRaw)));
+  if (rateHz <= 0 || depth <= 0) return null;
+  const wave = typeof m.wave === "string" && PAD_MOD_WAVES.has(m.wave) ? m.wave : "sine";
+  const base =
+    target === "filter" && typeof m.base === "number" && Number.isFinite(m.base)
+      ? Math.min(16000, Math.max(80, m.base))
+      : undefined;
+  const out: import("../project-model/types").PadMod = { target: target as import("../project-model/types").PadMod["target"], wave: wave as import("../project-model/types").PadMod["wave"], rateHz: Math.min(40, rateHz), depth };
+  if (base !== undefined) out.base = base;
+  return out;
+}
+
 function normalizeBpmDomain(s: NormalizeState): void {
   const clampedBpm = clampBpm(s.doc.bpm);
   if (clampedBpm !== s.doc.bpm) {
@@ -704,6 +728,10 @@ function normalizeTracksDomain(s: NormalizeState): void {
 
         const padColor = sanitizeColor((pad as unknown as Record<string, unknown>).color);
         const padColorChanged = padColor !== (pad as unknown as Record<string, unknown>).color;
+        // Per-pad mod (voice-local LFO) sanitization — null = disabled/off
+        const rawMod: unknown = (pad as unknown as Record<string, unknown>).mod;
+        const saneMod = rawMod !== undefined ? sanitizePadMod(rawMod) : undefined;
+        const modChanged = rawMod !== undefined && JSON.stringify(saneMod) !== JSON.stringify(rawMod ?? null);
         const loopChanged =
           sliceLoop !== (pad as unknown as { sliceLoop?: unknown }).sliceLoop ||
           sliceLoopStart !== (pad as unknown as { sliceLoopStart?: unknown }).sliceLoopStart ||
@@ -727,13 +755,14 @@ function normalizeTracksDomain(s: NormalizeState): void {
             sliceLoop !== (pad as unknown as { sliceLoop?: unknown }).sliceLoop ||
             sliceLoopStart !== (pad as unknown as { sliceLoopStart?: unknown }).sliceLoopStart ||
             sliceLoopEnd !== (pad as unknown as { sliceLoopEnd?: unknown }).sliceLoopEnd;
-          if (!padColorChanged && !earlyLoopChanged) return pad;
+          if (!padColorChanged && !earlyLoopChanged && !modChanged) return pad;
           return {
             ...pad,
             color: padColor,
             sliceLoop: sliceLoop ?? undefined,
             sliceLoopStart: sliceLoopStart ?? undefined,
             sliceLoopEnd: sliceLoopEnd ?? undefined,
+            ...(modChanged ? { mod: saneMod } : {}),
           };
         }
         if (hasSliceConfig) {
@@ -816,6 +845,11 @@ function normalizeTracksDomain(s: NormalizeState): void {
             nextPad = { ...nextPad, synth: null } as any;
             padChanged = true;
           }
+        }
+        // Per-pad mod sanitization (already computed above for the early-return path)
+        if (modChanged) {
+          nextPad = { ...nextPad, mod: saneMod } as any;
+          padChanged = true;
         }
         return padChanged ? nextPad : pad;
       });

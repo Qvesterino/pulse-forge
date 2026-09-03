@@ -4049,23 +4049,40 @@
   // src/effects/ozvena-worklet.entry.js
   var MAX_BLOCK = 128;
   var CHANNELS = 2;
+  var ENUM_BY_PATH = {
+    "engines.e2.algo": ["room", "mediumChamber", "plate"],
+    "engines.e3.algo": ["largeChamber", "hall"],
+    "blendPad.engine2Algo": ["room", "mediumChamber", "plate"],
+    "mod.mode": ["randomFat", "pitch"],
+    "convolution.mode": ["algorithmic", "hybrid", "convolution"],
+    "global.quality": ["eco", "standard", "high", "render"]
+  };
   function setPath(state, id, value) {
     const parts = id.split(".");
-    let node = state;
-    for (let i = 0; i < parts.length - 1; i++) {
-      node = node[parts[i]];
-      if (!node) return;
-    }
-    const key = parts[parts.length - 1];
-    const current = node[key];
-    if (typeof current === "boolean") node[key] = value >= 0.5;
-    else if (typeof current === "string" && typeof value === "number") {
-      const enums = { algo: ["room", "mediumChamber", "plate"] };
-      const enumKey = key.replace(/^\w+\./, "");
-      const list = enums[enumKey];
-      node[key] = list ? list[Math.max(0, Math.min(list.length - 1, Math.round(value)))] : String(value);
-    } else if (typeof current === "number") node[key] = typeof value === "number" ? value : Number(value);
-    else node[key] = value;
+    const write = (node, depth) => {
+      if (depth === parts.length - 1) {
+        const key = parts[depth];
+        const current = node[key];
+        let next;
+        if (typeof current === "boolean") next = value >= 0.5;
+        else if (typeof current === "string" && typeof value === "number") {
+          const list = ENUM_BY_PATH[id];
+          next = list ? list[Math.max(0, Math.min(list.length - 1, Math.round(value)))] : String(value);
+        } else if (typeof current === "number") {
+          next = typeof value === "number" ? value : Number(value);
+        } else {
+          next = value;
+        }
+        if (next === current) return node;
+        return { ...node, [key]: next };
+      }
+      const child = node[parts[depth]];
+      if (!child || typeof child !== "object") return node;
+      const updated = write(child, depth + 1);
+      if (updated === child) return node;
+      return { ...node, [parts[depth]]: updated };
+    };
+    return write(state, 0);
   }
   var OzvenaWorkletProcessor = class extends AudioWorkletProcessor {
     proc = createOzvenaProcessor();
@@ -4073,26 +4090,30 @@
     scratch = [new Float32Array(MAX_BLOCK), new Float32Array(MAX_BLOCK)];
     lastLatencyPosted = -1;
     blockCount = 0;
+    disposed = false;
     constructor(options) {
       super();
       this.proc.prepare(sampleRate, CHANNELS, 120, MAX_BLOCK);
       const initial = options?.processorOptions?.params;
       if (initial) {
-        for (const [id, value] of Object.entries(initial)) setPath(this.state, id, value);
-        this.proc.loadState(this.state);
+        for (const [id, value] of Object.entries(initial)) this.state = setPath(this.state, id, value);
       }
+      this.proc.loadState(this.state);
       this.postLatency();
       this.port.onmessage = (event) => {
         const msg = event.data;
         if (!msg) return;
         if (msg.type === "param") {
-          setPath(this.state, msg.id, msg.value);
+          this.state = setPath(this.state, msg.id, msg.value);
           this.proc.loadState(this.state);
           this.postLatency();
         } else if (msg.type === "reset") {
           this.state = defaultOzvenaStateV1();
           this.proc.loadState(this.state);
           this.proc.reset();
+        } else if (msg.type === "dispose") {
+          this.proc.dispose();
+          this.disposed = true;
         }
       };
     }
@@ -4104,6 +4125,7 @@
       }
     }
     process(inputs, outputs) {
+      if (this.disposed) return false;
       const output = outputs[0];
       if (!output || !output[0] || !output[1]) return true;
       const frames = Math.min(MAX_BLOCK, output[0].length);

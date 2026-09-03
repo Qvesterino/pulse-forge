@@ -34,7 +34,8 @@ import { Slider } from "./controls";
 import { trackBadge } from "./TrackTabs";
 import { clamp } from "../shared/ids";
 import { StepGridEditor } from "./StepGridEditor";
-import { newModulatorSeed } from "../commands/commands";
+import { newModulatorSeed, stealGrooveIntoPattern } from "../commands/commands";
+import { GroovePoolRepository, type GroovePoolEntry } from "../persistence/GroovePoolRepository";
 
 const LFO_WAVES: { value: LfoWave; label: string }[] = [
   { value: "sine", label: "Sine" },
@@ -966,6 +967,13 @@ function ScenePanel() {
 
   // Scene automation lanes for the selected scene
   const sceneLanes = scene ? doc.sceneAutomation.filter((l) => l.sceneId === scene.id) : [];
+
+  // Groove pool: saved groove maps (from "Steal groove") applicable to any pattern.
+  const groovePoolRef = useRef(new GroovePoolRepository());
+  const [poolEntries, setPoolEntries] = useState<GroovePoolEntry[]>([]);
+  const [poolStatus, setPoolStatus] = useState<string | null>(null);
+  const refreshPool = () => void groovePoolRef.current.list().then(setPoolEntries);
+  useEffect(refreshPool, [refreshPool]);
   const [selectedSceneLaneId, setSelectedSceneLaneId] = useState<string | null>(sceneLanes[0]?.id ?? null);
   const selectedLane = sceneLanes.find((l) => l.id === selectedSceneLaneId) ?? null;
 
@@ -1036,6 +1044,50 @@ function ScenePanel() {
             >
               FOLLOW
             </button>
+          </div>
+
+          {/* Groove pool: saved groove maps applicable to any pattern */}
+          <div className="mod-section">
+            <h3 className="panel-title" style={{ fontSize: "9px", marginBottom: "6px" }}>
+              GROOVE POOL
+            </h3>
+            {poolEntries.length === 0 && (
+              <div className="fx-empty">Empty — steal a groove from a loop (audio clip menu) to fill the pool.</div>
+            )}
+            {poolEntries.map((entry) => (
+              <div key={entry.id} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                <button
+                  type="button"
+                  className="btn btn-small"
+                  style={{ flex: 1, textAlign: "left" }}
+                  title="Apply this groove to the active pattern's existing steps"
+                  onClick={() => {
+                    try {
+                      services.store.execute(
+                        stealGrooveIntoPattern(services.store.doc, doc.activePatternId, entry, {
+                          applyVelocity: true,
+                        }),
+                      );
+                      setPoolStatus(`Applied "${entry.name}"`);
+                    } catch (err) {
+                      setPoolStatus(err instanceof Error ? err.message : "Apply failed");
+                    }
+                  }}
+                >
+                  {entry.name}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-small"
+                  aria-label={`Delete groove ${entry.name}`}
+                  title="Delete from pool"
+                  onClick={() => void groovePoolRef.current.remove(entry.id).then(refreshPool)}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+            {poolStatus && <div className="fx-empty">{poolStatus}</div>}
           </div>
 
           {/* Intensity curve editor */}

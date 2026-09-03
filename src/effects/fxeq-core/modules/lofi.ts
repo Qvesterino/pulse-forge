@@ -95,6 +95,9 @@ export function createLofiModule(params?: Record<string, number>): ModuleProcess
   // advances exactly once per sample instead of once per channel).
   let wowLfoBufL: Float32Array = new Float32Array(0);
   let wowLfoBufR: Float32Array = new Float32Array(0);
+  // Reused LFO read pair — read() allocates a tuple per sample, which is
+  // GC pressure the audio thread must not generate.
+  const lfoPair: [number, number] = [0, 0];
 
   // Vinyl noise filter state (one-pole HP to shape noise).
   const noisePrev: number[] = [];
@@ -258,10 +261,12 @@ export function createLofiModule(params?: Record<string, number>): ModuleProcess
       // version read inside the per-channel loop, doubling the rate in stereo.
       if (mode === 2) {
         for (let i = 0; i < frameCount; i++) {
-          const [wowL, wowR] = wowLfo.read();
-          const [flL, flR] = flutterLfo.read();
-          wowLfoBufL[i] = wowL + flL * 0.3;
-          wowLfoBufR[i] = wowR + flR * 0.3;
+          wowLfo.readInto(lfoPair);
+          const wowL = lfoPair[0];
+          const wowR = lfoPair[1];
+          flutterLfo.readInto(lfoPair);
+          wowLfoBufL[i] = wowL + lfoPair[0] * 0.3;
+          wowLfoBufR[i] = wowR + lfoPair[1] * 0.3;
         }
       }
 

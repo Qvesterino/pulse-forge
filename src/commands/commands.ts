@@ -62,6 +62,7 @@ import { INSTRUMENT_DEFS, clampInstrumentParam, defaultInstrumentParams } from "
 import type { InstrumentPreset } from "../presets/types";
 import type { EffectPreset } from "../effects/presets";
 import { clamp, uid } from "../shared/ids";
+import type { SharedPackSceneSketch, SharedPackSketch } from "../export/packCode";
 import { applyDocDelta, computeDocDelta, deepEqualRef, deepFreeze } from "./docDelta";
 import { hashString, mulberry32 } from "../shared/rng";
 import { snapToScale } from "../project-model/scales";
@@ -367,6 +368,26 @@ export function setPadSynth(
     execute: () => nextDoc,
     undo: () => prevDoc,
   };
+}
+
+/** Assign (or clear) the MPC-style per-pad LFO on one drum pad. */
+export function setPadMod(doc: ProjectDocument, padId: string, mod: import("../project-model/types").PadMod | null): Command {
+  let found = false;
+  const next: ProjectDocument = {
+    ...doc,
+    tracks: doc.tracks.map((t) => {
+      if (t.kind !== "drum") return t;
+      const drum = t as DrumTrack;
+      if (!drum.pads.some((p) => p.id === padId)) return t;
+      found = true;
+      return {
+        ...drum,
+        pads: drum.pads.map((p) => (p.id === padId ? { ...p, mod: mod ? { ...mod } : null } : p)),
+      };
+    }),
+  };
+  if (!found) throw new Error(`Pad ${padId} not found`);
+  return snapshot("setPadMod", mod ? `Pad LFO → ${mod.target}` : "Pad LFO off", doc, next);
 }
 
 type TrackParams = Partial<Pick<Track, "name" | "gain" | "pan" | "mute" | "solo">>;
@@ -1087,6 +1108,16 @@ export function deleteTrack(doc: ProjectDocument, trackId: string): Command {
   const removedPadIds = new Set(target.kind === "drum" ? target.pads.map((p) => p.id) : []);
   // When deleting a group, orphan its children (remove groupId)
   const isGroup = target.kind === "group";
+  // Automation/modulation routed at the deleted track would dangle: the
+  // engine skips them silently, but the lanes would live in every save until
+  // the next reload's normalize pass dropped them. Remove them with the track.
+  const automation = doc.automation?.filter((lane) => lane.target.trackId !== trackId);
+  const lfos = doc.lfos?.filter((lfo) => lfo.trackId !== trackId && lfo.target?.trackId !== trackId);
+  const sceneAutomation = doc.sceneAutomation?.filter((lane) => lane.target.trackId !== trackId);
+  const macros = doc.macros?.map((macro) => ({
+    ...macro,
+    mappings: macro.mappings.filter((m) => m.trackId !== trackId && m.target?.trackId !== trackId),
+  }));
   const next: ProjectDocument = {
     ...doc,
     tracks: doc.tracks
@@ -1097,6 +1128,10 @@ export function deleteTrack(doc: ProjectDocument, trackId: string): Command {
       rows: Object.fromEntries(Object.entries(pattern.rows).filter(([padId]) => !removedPadIds.has(padId))),
       notes: Object.fromEntries(Object.entries(pattern.notes ?? {}).filter(([tid]) => tid !== trackId)),
     })),
+    ...(doc.automation ? { automation } : {}),
+    ...(doc.lfos ? { lfos } : {}),
+    ...(doc.sceneAutomation ? { sceneAutomation } : {}),
+    ...(doc.macros ? { macros } : {}),
   };
   return snapshot("deleteTrack", `Delete track ${target.name}`, doc, next);
 }
@@ -1400,7 +1435,11 @@ export function moveNote(
   delta: { pitch?: number; start?: number },
 ): Command {
   const prev = activeTrackNotes(doc, trackId).find((n) => n.id === noteId);
-  if (!prev) throw new Error(`Note ${noteId} not found`);
+  if (!prev) {
+    // A collab peer can delete the note while a drag is in flight — the
+    // pointerup commit must be a no-op, not an exception inside the handler.
+    return { type: "moveNote", label: "Move note", execute: (d) => d, undo: (d) => d };
+  }
   const apply = (d: ProjectDocument, patch: { pitch?: number; start?: number }) =>
     withTrackNotes(d, trackId, (notes) => notes.map((n) => (n.id === noteId ? { ...n, ...patch } : n)));
   return {
@@ -1413,7 +1452,10 @@ export function moveNote(
 
 export function resizeNote(doc: ProjectDocument, trackId: string, noteId: string, duration: number): Command {
   const prev = activeTrackNotes(doc, trackId).find((n) => n.id === noteId);
-  if (!prev) throw new Error(`Note ${noteId} not found`);
+  if (!prev) {
+    // Same in-flight-deletion race as moveNote — abort silently.
+    return { type: "resizeNote", label: "Resize note", execute: (d) => d, undo: (d) => d };
+  }
   const apply = (d: ProjectDocument, dur: number) =>
     withTrackNotes(d, trackId, (notes) => notes.map((n) => (n.id === noteId ? { ...n, duration: dur } : n)));
   return {
@@ -2463,6 +2505,141 @@ export function applyKitToDrumTrack(
   };
   return snapshot("applyKitToDrumTrack", `Apply kit "${kitName}"`, doc, next);
 }
+
+// ── Pack sketch — the arrangement half of a PFPACK bundle ──────────────────
+
+const SKETCH_SCENE_LIMIT = 16;
+const SKETCH_CLIP_LIMIT = 64;
+const SKETCH_VELOCITY_STEPS = 15;
+
+function hexRowOf(row: number[] | undefined, steps: number): string | null {
+  if (!row) return null;
+  let out = "";
+  for (let i = 0; i < steps; i++) {
+    const v = Math.round(Math.min(1, Math.max(0, row[i] ?? 0)) * SKETCH_VELOCITY_STEPS);
+    out += v.toString(16);
+  }
+  return /[^0]/.test(out) ? out : null;
+}
+
+/**
+ * Capture the arrangement side of the current project as a portable sketch:
+ * scenes become drum rows keyed by the kit track's PAD INDEX (so the sketch
+ * replays through any installed kit), plus the timeline clip layout and bpm.
+ */
+export function captureSketchFromDoc(doc: ProjectDocument, trackId: string): SharedPackSketch | undefined {
+  const track = doc.tracks.find((t): t is DrumTrack => t.kind === "drum" && t.id === trackId);
+  if (!track) throw new Error(`Drum track ${trackId} not found`);
+  const scenes = doc.scenes.slice(0, SKETCH_SCENE_LIMIT);
+  if (scenes.length === 0) return undefined;
+  const padIds = track.pads.map((p) => p.id);
+  const sketchScenes: SharedPackSceneSketch[] = [];
+  const sceneIndexByScene = new Map<string, number>();
+  scenes.forEach((scene) => {
+    const pattern = doc.patterns.find((p) => p.id === scene.patternId);
+    if (!pattern) return;
+    const rows: string[] = [];
+    padIds.forEach((padId) => {
+      const hex = hexRowOf(pattern.rows[padId], pattern.stepCount);
+      if (hex) rows.push(hex);
+    });
+    if (rows.length === 0) return;
+    sceneIndexByScene.set(scene.id, sketchScenes.length);
+    sketchScenes.push({
+      name: scene.name.slice(0, 40),
+      role: scene.role,
+      intensity: scene.intensity,
+      steps: Math.min(64, Math.max(1, pattern.stepCount)),
+      rows,
+    });
+  });
+  if (sketchScenes.length === 0) return undefined;
+  const clips: SharedPackSketch["clips"] = [];
+  for (const clip of doc.arrangement.clips) {
+    const scene = sceneIndexByScene.get(clip.sceneId);
+    if (scene === undefined) continue;
+    clips.push({ scene, startBar: clip.startBar, lengthBars: clip.lengthBars });
+    if (clips.length >= SKETCH_CLIP_LIMIT) break;
+  }
+  return { bpm: doc.bpm, scenes: sketchScenes, clips };
+}
+
+const SKETCH_ROLE_SET = new Set<string>(["intro", "build", "drop", "break", "outro", "fill", "custom"]);
+
+/**
+ * Install a pack sketch against a drum track: creates one pattern per scene
+ * (rows mapped pad-index → this track's pads), matching scenes and the
+ * arrangement clips — all in ONE command so undo removes the whole import.
+ */
+export function installPackSketch(doc: ProjectDocument, trackId: string, sketch: SharedPackSketch): Command | null {
+  const track = doc.tracks.find((t): t is DrumTrack => t.kind === "drum" && t.id === trackId);
+  if (!track) return null;
+  if (!sketch.scenes.length) return null;
+  const drumPadIds = doc.tracks
+    .filter((t): t is DrumTrack => t.kind === "drum")
+    .flatMap((t) => t.pads.map((p) => p.id));
+  const emptyRow = (steps: number) => new Array<number>(steps).fill(0);
+
+  const patterns: Pattern[] = [];
+  const scenes: Scene[] = [];
+  const sceneIdByIndex: string[] = [];
+  const stamp = Date.now().toString(36);
+  sketch.scenes.forEach((sc, index) => {
+    const steps = Math.min(64, Math.max(1, Math.round(sc.steps)));
+    const patternId = uid(`psk-${stamp}`);
+    const rows: Pattern["rows"] = {};
+    for (const padId of drumPadIds) rows[padId] = emptyRow(steps);
+    sc.rows.forEach((hex, padIdx) => {
+      const pad = track.pads[padIdx];
+      if (!pad) return;
+      const row = rows[pad.id];
+      for (let step = 0; step < Math.min(steps, hex.length); step++) {
+        const v = parseInt(hex[step], 16);
+        if (v > 0) row[step] = Math.min(1, v / SKETCH_VELOCITY_STEPS);
+      }
+    });
+    patterns.push({
+      id: patternId,
+      name: sc.name || `Sketch ${index + 1}`,
+      stepCount: steps,
+      rows,
+      notes: {},
+    });
+    const sceneId = uid(`ssk-${stamp}`);
+    sceneIdByIndex.push(sceneId);
+    scenes.push({
+      id: sceneId,
+      name: sc.name || `Sketch ${index + 1}`,
+      patternId,
+      intensity: typeof sc.intensity === "number" ? Math.min(1, Math.max(0, sc.intensity)) : 0.7,
+      role: sc.role && SKETCH_ROLE_SET.has(sc.role) ? (sc.role as SceneRole) : undefined,
+    });
+  });
+  if (patterns.length === 0) return null;
+
+  const endBar = doc.arrangement.clips.reduce((max, c) => Math.max(max, c.startBar + c.lengthBars), 0);
+  const clips: ArrangementClip[] = [];
+  for (const c of sketch.clips) {
+    const sceneId = sceneIdByIndex[c.scene];
+    if (!sceneId) continue;
+    clips.push({
+      id: uid(`csk-${stamp}`),
+      sceneId,
+      startBar: endBar + c.startBar,
+      lengthBars: c.lengthBars,
+    });
+  }
+
+  const next: ProjectDocument = {
+    ...doc,
+    bpm: typeof sketch.bpm === "number" ? Math.min(300, Math.max(20, Math.round(sketch.bpm))) : doc.bpm,
+    patterns: [...doc.patterns, ...patterns],
+    scenes: [...doc.scenes, ...scenes],
+    arrangement: clips.length ? { ...doc.arrangement, clips: [...doc.arrangement.clips, ...clips] } : doc.arrangement,
+  };
+  return snapshot("installPackSketch", `Install sketch (${patterns.length} scenes)`, doc, next);
+}
+
 
 export function updateAudioClip(
   doc: ProjectDocument,

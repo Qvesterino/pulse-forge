@@ -42,6 +42,12 @@ class UltinaWorkletProcessor extends AudioWorkletProcessor {
         this.postLatency();
       } else if (msg.type === "reset") {
         this.proc.reset();
+      } else if (msg.type === "dispose") {
+        // Node teardown: unregister from the cross-instance spectral
+        // registry. AudioWorkletProcessor has no destruction hook, so this
+        // message is the only signal — without it every instance ever
+        // created leaks a stale registry entry for the page's lifetime.
+        this.proc.dispose();
       }
     };
   }

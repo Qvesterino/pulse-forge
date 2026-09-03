@@ -1129,6 +1129,52 @@ export async function runChecks(): Promise<CheckResult[]> {
     check("chop beats: pads play only their slice region + transients detected", false, String(error));
   }
 
+  // Per-pad MOD: an MPC-style voice-local LFO on one pad tremolos ONLY that
+  // voice — a gain-target LFO makes the output envelope pump while the plain
+  // pad stays flat.
+  try {
+    const renderPadMod = async (rateHz: number, depth: number) => {
+      const ctx = new OfflineAudioContext(1, SR, SR);
+      const srcBuffer = ctx.createBuffer(1, SR, SR);
+      const d = srcBuffer.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = 0.5 * Math.sin((2 * Math.PI * 220 * i) / SR);
+      bank.add("check-padmod-src", srcBuffer);
+      const doc = createProjectFromTemplate("house");
+      const drum = doc.tracks.find((t) => t.kind === "drum")!;
+      const engine = new AudioEngine();
+      engine.attachBank(bank);
+      engine.useContext(ctx);
+      engine.setProject(doc);
+      engine.trigger(
+        drum.id,
+        { ...drum.pads[0], assetId: "check-padmod-src", mod: { target: "gain", wave: "sine", rateHz, depth } },
+        0.05,
+        1,
+      );
+      return ctx.startRendering();
+    };
+    const pmWin = Math.floor(SR * 0.03125); // quarter period at 8 Hz
+    const pmRms = (data: Float32Array, i: number) => {
+      let sum = 0;
+      const start = Math.floor(SR * 0.2) + i * pmWin;
+      for (let j = start; j < start + pmWin; j++) sum += data[j] * data[j];
+      return Math.sqrt(sum / pmWin);
+    };
+    const pmSpread = (out: AudioBuffer) => {
+      const vals = Array.from({ length: 16 }, (_, i) => pmRms(out.getChannelData(0), i));
+      return Math.max(...vals) / Math.max(0.0001, Math.min(...vals));
+    };
+    const pmPlain = pmSpread(await renderPadMod(8, 0));
+    const pmMod = pmSpread(await renderPadMod(8, 1));
+    check(
+      "per-pad mod: gain LFO tremolos one voice (envelope pumps vs flat)",
+      pmPlain < 1.5 && pmMod > 2,
+      `plainSpread=${pmPlain.toFixed(2)} modSpread=${pmMod.toFixed(2)}`,
+    );
+  } catch (error) {
+    check("per-pad mod: gain LFO tremolos one voice (envelope pumps vs flat)", false, String(error));
+  }
+
   // FXEQ: the vendored multiband DSP must run as a worklet in offline
   // renders (heavy drive must transform a sine: louder + harmonically
   // distorted vs the degraded passthrough), and the degraded transparent

@@ -1302,6 +1302,16 @@ export function ArrangementPanel() {
                   setAudioMenu(null);
                   return;
                 }
+                // Auto-save to the groove pool — reusable on any pattern later.
+                void services.groovePool
+                  .save({
+                    id: `groove-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`,
+                    name: `Groove ${Math.round(bpm)} BPM`,
+                    timing: map.timing,
+                    accent: map.accent,
+                    createdAt: new Date().toISOString(),
+                  })
+                  .catch(() => {});
                 try {
                   execute(stealGrooveIntoPattern(doc, pattern.id, map, { applyVelocity: true }));
                 } catch (err) {

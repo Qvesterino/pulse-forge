@@ -39,6 +39,15 @@ export interface EffectRuntime {
    * Polled every sync by the engine's minimal PDC (see AudioEngine.syncPdc).
    */
   getLatencySec?(): number;
+  /**
+   * Subscribe to asynchronous latency changes (e.g. a worklet reporting DSP
+   * latency over its port after construction, or a param edit flipping an
+   * oversampling stage). The engine re-runs its PDC whenever this fires so
+   * compensation does not wait for the next document sync. Returns an
+   * unsubscribe function; implementations must stop notifying (and never
+   * notify a disposed runtime's listeners) after dispose().
+   */
+  onLatencyChange?(listener: () => void): () => void;
   /** Latest gain reduction in dB (dynamics processors), for metering. */
   getGainReductionDb?(): number;
   /** Live meter snapshot (spectrum, LUFS, GR…) — plugins with analysis DSP. */
