@@ -157,10 +157,17 @@ class ParamChangeQueue {
     this.readPos = 0;
   }
 
-  /** Control-thread: enqueue a parameter change. */
+  /** Control-thread: enqueue a parameter change.
+   * When the ring is full (control-side burst while the audio thread is not
+   * draining — e.g. a suspended context), the OLDEST entry is dropped so the
+   * audio thread always converges to the most RECENT values. Dropping the
+   * newest instead would silently diverge the audio state from the control
+   * state (the exact values the user just set would be the ones lost). */
   enqueue(id: string, value: number): boolean {
     const nextWrite = (this.writePos + 1) % PARAM_QUEUE_SIZE;
-    if (nextWrite === this.readPos) return false; // Full
+    if (nextWrite === this.readPos) {
+      this.readPos = (this.readPos + 1) % PARAM_QUEUE_SIZE; // overwrite oldest
+    }
     this.buffer[this.writePos].id = id;
     this.buffer[this.writePos].value = value;
     this.writePos = nextWrite;

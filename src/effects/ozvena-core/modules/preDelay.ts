@@ -24,7 +24,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { SYNC_NOTE_VALUES, type SyncNoteValue } from "../v2/types.js";
-import { clamp } from "../dsp/math.js";
+import { clamp, nextPow2 } from "../dsp/math.js";
 
 export interface PreDelayParams {
   enabled: boolean;
@@ -87,27 +87,34 @@ export function createPreDelay(): PreDelay {
   };
 
   let delaySamples = 0;
-  // Per-channel delay line (circular buffer) + write index.
+  // Per-channel delay line (circular buffer) + write index. Buffers grow
+  // LAZILY to cover the current delay need (power-of-two capacity + wrap
+  // mask). The old implementation always allocated the worst case — 8
+  // measures of sync at 20 BPM ≈ 96 s — which is ~37 MB per instance at
+  // 48 kHz and a multi-millisecond zeroing stall at creation, even though
+  // the default 20 ms pre-delay needs 960 samples.
   let buffers: Float32Array[] = [];
   let writeIdx: number[] = [];
+  let ringMask = 0;
+
+  /** Samples the rings must be able to span: the active delay and, during
+   *  a delay-time crossfade, the previous length. */
+  function requiredSpan(): number {
+    const fade = fadeFromSamples > 0 ? fadeFromSamples : 0;
+    return Math.max(delaySamples, fade) + 1;
+  }
 
   function ensureBuffers(): void {
-    // Size for the worst case: 500 ms free mode OR 8 measures at the
-    // lowest supported host tempo (20 BPM). 8 measures = 32 beats, so
-    // at 20 BPM that is 96 s — enough headroom for any tempo the host
-    // may report (BPM is clamped to ≥ 20 in prepare()).
-    const maxDelay = Math.max(
-      Math.ceil((500 / 1000) * sampleRate),                  // 500 ms (free mode max)
-      Math.ceil((syncNoteToBeats("8/1") * 60 / 20) * sampleRate), // 8 measures @ 20 BPM
-    );
-    if (buffers.length !== channelCount || buffers[0]?.length !== maxDelay) {
-      buffers = [];
-      writeIdx = [];
-      for (let c = 0; c < channelCount; c++) {
-        buffers.push(new Float32Array(maxDelay));
-        writeIdx.push(0);
-      }
+    const need = requiredSpan();
+    if (buffers.length === channelCount && buffers[0] && buffers[0].length >= need) return;
+    const cap = nextPow2(need);
+    buffers = [];
+    writeIdx = [];
+    for (let c = 0; c < channelCount; c++) {
+      buffers.push(new Float32Array(cap));
+      writeIdx.push(0);
     }
+    ringMask = cap - 1;
   }
 
   function recomputeDelaySamples(): void {
@@ -140,8 +147,8 @@ export function createPreDelay(): PreDelay {
       sampleRate = clamp(sr, 8000, 192000);
       channelCount = Math.max(1, cc);
       bpm = clamp(hostBpm, 20, 300);
-      ensureBuffers();
       recomputeDelaySamples();
+      ensureBuffers();
       activeDelaySamples = -1; // re-initialised on the next process()
       fadeFromSamples = -1;
       fadePos = 0;
@@ -157,6 +164,7 @@ export function createPreDelay(): PreDelay {
         fadeFromSamples = activeDelaySamples;
         fadePos = 0;
         activeDelaySamples = d;
+        ensureBuffers();
       }
       const fadeLen = Math.max(1, Math.round(FADE_SECONDS * sampleRate));
 
@@ -173,22 +181,20 @@ export function createPreDelay(): PreDelay {
           if (c >= buffers.length) continue;
           const buf = channels[c];
           const dly = buffers[c];
-          const len = dly.length;
           let wi = writeIdx[c];
 
           // Read delayLen ago, then write current.
-          const readIdx = (wi - d + len) % len;
-          let delayed = dly[readIdx];
+          let delayed = dly[(wi - d) & ringMask];
           if (fadeT >= 0) {
             // Crossfade from the previous delay length (both read
-            // distances are < len, so both slots are valid ring reads).
-            const readOld = (wi - fadeFromSamples + len) % len;
+            // distances are covered by the ring span, so both slots are
+            // valid reads).
+            const readOld = (wi - fadeFromSamples) & ringMask;
             delayed = dly[readOld] * (1 - fadeT) + delayed * fadeT;
           }
           dly[wi] = buf[i];
           buf[i] = delayed;
-          wi++;
-          if (wi >= len) wi = 0;
+          wi = (wi + 1) & ringMask;
           writeIdx[c] = wi;
         }
       }
@@ -197,11 +203,13 @@ export function createPreDelay(): PreDelay {
     setParams(p) {
       params = { ...p };
       recomputeDelaySamples();
+      ensureBuffers();
     },
 
     setBpm(hostBpm) {
       bpm = clamp(hostBpm, 20, 300);
       recomputeDelaySamples();
+      ensureBuffers();
     },
 
     getDelaySamples() {

@@ -113,6 +113,18 @@ export function msToSamples(ms: number, sampleRate: number): number {
   return Math.round((ms / 1000) * sampleRate);
 }
 
+/**
+ * Smallest power of two ≥ n (n ≥ 1). Ring/delay buffers are allocated at
+ * power-of-two capacity so the realtime loops can replace `% len` wrap
+ * arithmetic with a single `& mask`. Ring read/write distances always stay
+ * below the original (non-pow2) length, so values are unaffected.
+ */
+export function nextPow2(n: number): number {
+  let p = 1;
+  while (p < n) p <<= 1;
+  return p;
+}
+
 /** Convert seconds to samples at a given sample rate. */
 export function secondsToSamples(seconds: number, sampleRate: number): number {
   return Math.round(seconds * sampleRate);

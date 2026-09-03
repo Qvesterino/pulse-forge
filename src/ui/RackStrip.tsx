@@ -4,7 +4,13 @@ import type { DrumTrack } from "../project-model/types";
 import { usePlayheadStep } from "./playhead";
 import { assetCategoryOf, categoryColor } from "./kitColors";
 import { FALLOFF_MODES, REPEAT_RATES, type FalloffMode, type RepeatRate } from "../audio-engine/NoteRepeat";
-import { applyKitToDrumTrack, captureKitFromTrack, captureSketchFromDoc, installPackSketch, setPadColor } from "../commands/commands";
+import {
+  applyKitToDrumTrack,
+  captureKitFromTrack,
+  captureSketchFromDoc,
+  installPackSketch,
+  setPadColor,
+} from "../commands/commands";
 import { decodeBindsCode, encodeBindsCode } from "../export/bindsCode";
 import { decodePackCode, encodePackCode, type SharedPack } from "../export/packCode";
 import { GroovePoolRepository } from "../persistence/GroovePoolRepository";
@@ -310,7 +316,13 @@ export function RackStrip({
         sketch,
       });
       await navigator.clipboard.writeText(code);
-      const parts = ["kit", "keys", "theme", grooves?.length ? `${grooves.length} groove${grooves.length > 1 ? "s" : ""}` : null, sketch ? `${sketch.scenes.length} scenes` : null].filter(Boolean);
+      const parts = [
+        "kit",
+        "keys",
+        "theme",
+        grooves?.length ? `${grooves.length} groove${grooves.length > 1 ? "s" : ""}` : null,
+        sketch ? `${sketch.scenes.length} scenes` : null,
+      ].filter(Boolean);
       setKitStatus(`PACK copied — ${parts.join(" + ")}`);
     } catch {
       setKitStatus("Clipboard blocked by the browser");

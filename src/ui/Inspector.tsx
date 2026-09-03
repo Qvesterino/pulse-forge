@@ -1,6 +1,5 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { useDoc, useServices } from "./context";
-import { SliceLab } from "./SliceLab";
 import {
   resetPadSlice,
   setPadMod,
@@ -15,9 +14,13 @@ import { FACTORY_ASSETS } from "../sample-library/manifest";
 import { INSTRUMENT_DEFS } from "../instruments/registry";
 import { pitchName } from "../project-model/types";
 import { Slider } from "./controls";
-import { PresetBrowser } from "./PresetBrowser";
 import { SampleBrowser } from "./SampleBrowser";
 import { WavetablePreview } from "./WavetablePreview";
+// Both load on demand: PresetBrowser drags the ~45 KB factory-preset table
+// into its chunk (only needed once an instrument track is selected), SliceLab
+// only when the SLICE LAB toggle opens. Keeps them out of the entry budget.
+const PresetBrowser = lazy(() => import("./PresetBrowser").then((m) => ({ default: m.PresetBrowser })));
+const SliceLab = lazy(() => import("./SliceLab").then((m) => ({ default: m.SliceLab })));
 
 const TONAL_ASSETS = FACTORY_ASSETS.filter((a) => a.category === "Tonal");
 const DRUM_ASSETS = FACTORY_ASSETS.filter((a) => a.category !== "Tonal");
@@ -82,7 +85,9 @@ export function Inspector({
           )}
         </div>
 
-        <PresetBrowser track={track} />
+        <Suspense fallback={<h2 className="panel-title">PRESETS — loading…</h2>}>
+          <PresetBrowser track={track} />
+        </Suspense>
 
         {sampleLabel && (
           <>
@@ -172,7 +177,11 @@ export function Inspector({
           </button>
         )}
       </div>
-      {sliceLabOpen && track.kind === "drum" && <SliceLab track={track} onClose={() => setSliceLabOpen(false)} />}
+      {sliceLabOpen && track.kind === "drum" && (
+        <Suspense fallback={<p className="inspector-subtitle">SLICE LAB — loading…</p>}>
+          <SliceLab track={track} onClose={() => setSliceLabOpen(false)} />
+        </Suspense>
+      )}
 
       <h2 className="panel-title">PAD — {pad.name}</h2>
 
@@ -450,9 +459,7 @@ function PadModSection({ pad }: { pad: DrumPad }) {
             key={t.id}
             type="button"
             className={`btn btn-small${mod?.target === t.id ? " active" : ""}`}
-            onClick={() =>
-              services.store.execute(setPadMod(doc, pad.id, mod?.target === t.id ? null : buildMod(t.id)))
-            }
+            onClick={() => services.store.execute(setPadMod(doc, pad.id, mod?.target === t.id ? null : buildMod(t.id)))}
           >
             {t.label}
           </button>
@@ -462,7 +469,12 @@ function PadModSection({ pad }: { pad: DrumPad }) {
         <>
           <label className="pad-mod-wave">
             <span>WAVE</span>
-            <select value={mod.wave} onChange={(e) => services.store.execute(setPadMod(doc, pad.id, { ...mod, wave: e.target.value as PadMod["wave"] }))}>
+            <select
+              value={mod.wave}
+              onChange={(e) =>
+                services.store.execute(setPadMod(doc, pad.id, { ...mod, wave: e.target.value as PadMod["wave"] }))
+              }
+            >
               <option value="sine">SINE</option>
               <option value="triangle">TRI</option>
               <option value="square">SQR</option>

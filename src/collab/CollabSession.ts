@@ -19,6 +19,7 @@ export {
 } from "./collabShared";
 
 import { randomUser, type CollabStatus } from "./collabShared";
+import { normalizeJamRole, type JamRole } from "./jamRoles";
 
 /**
  * A live collaboration session over y-websocket: reactive status +
@@ -34,12 +35,26 @@ export class CollabSession {
   private participants_: CollaboratorInfo[] = [];
   private cursors_: RemoteCursor[] = [];
   private unsubs: Array<() => void> = [];
+  private role_: JamRole;
 
   constructor(yDoc: Y.Doc, roomId: string, serverUrl: string, user: CollaboratorInfo = randomUser()) {
     this.roomId = roomId;
     this.serverUrl = serverUrl;
     this.localUser = user;
-    this.provider = new CollaborationProvider(yDoc, roomId, user);
+    this.role_ = normalizeJamRole(user.role);
+    this.provider = new CollaborationProvider(yDoc, roomId, { ...user, role: this.role_ });
+  }
+
+  /** The local jam role (drives the command gate — see jamRoles.ts). */
+  get localRole(): JamRole {
+    return this.role_;
+  }
+
+  /** Switch the local role and broadcast it to the room. */
+  setRole(role: JamRole): void {
+    this.role_ = normalizeJamRole(role);
+    this.provider.setRole(this.role_);
+    this.refresh();
   }
 
   /** Connect and start tracking status/participants. Safe to call once. */

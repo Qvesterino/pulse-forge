@@ -371,7 +371,11 @@ export function setPadSynth(
 }
 
 /** Assign (or clear) the MPC-style per-pad LFO on one drum pad. */
-export function setPadMod(doc: ProjectDocument, padId: string, mod: import("../project-model/types").PadMod | null): Command {
+export function setPadMod(
+  doc: ProjectDocument,
+  padId: string,
+  mod: import("../project-model/types").PadMod | null,
+): Command {
   let found = false;
   const next: ProjectDocument = {
     ...doc,
@@ -2639,7 +2643,6 @@ export function installPackSketch(doc: ProjectDocument, trackId: string, sketch:
   };
   return snapshot("installPackSketch", `Install sketch (${patterns.length} scenes)`, doc, next);
 }
-
 
 export function updateAudioClip(
   doc: ProjectDocument,

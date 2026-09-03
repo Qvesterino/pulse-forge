@@ -39,6 +39,10 @@ export interface RouteEntry {
 
 export interface FxEqSchema {
   defs: FxEqParamDef[];
+  /** Def lookup by id — O(1). The worklet message port runs on the audio
+   *  rendering thread, so loadParameters must not linear-scan defs per param
+   *  (a full preset load used to cost ~60k string comparisons there). */
+  defById: Map<string, FxEqParamDef>;
   routes: Map<string, RouteEntry>;
   defaultParams: Record<string, number>;
 }
@@ -94,11 +98,13 @@ function capitalize(s: string): string {
 /** Build the full flat param defs + routing table for `bandCount` bands. */
 export function buildSchema(bandCount: number): FxEqSchema {
   const defs: FxEqParamDef[] = [];
+  const defById = new Map<string, FxEqParamDef>();
   const routes = new Map<string, RouteEntry>();
   const defaultParams: Record<string, number> = {};
 
   for (const def of GLOBAL_PARAM_DEFS) {
     defs.push(def);
+    defById.set(def.id, def);
     routes.set(def.id, { band: 0, kind: "global", rawId: def.id });
     defaultParams[def.id] = def.defaultValue;
   }
@@ -108,7 +114,9 @@ export function buildSchema(bandCount: number): FxEqSchema {
     // Band scalars.
     for (const def of BAND_SCALAR_DEFS) {
       const fullId = bandPrefix + def.id;
-      defs.push({ ...def, id: fullId, name: `B${b} ${def.name}` });
+      const fullDef = { ...def, id: fullId, name: `B${b} ${def.name}` };
+      defs.push(fullDef);
+      defById.set(fullId, fullDef);
       routes.set(fullId, { band: b, kind: "bandScalar", rawId: def.id });
       defaultParams[fullId] = def.defaultValue;
     }
@@ -116,14 +124,16 @@ export function buildSchema(bandCount: number): FxEqSchema {
     for (const key of MODULE_KEYS) {
       for (const mdef of MODULE_PARAM_DEFS[key]) {
         const fullId = bandPrefix + key + capitalize(mdef.id);
-        defs.push({ ...mdef, id: fullId, name: `B${b} ${mdef.name}` });
+        const fullDef = { ...mdef, id: fullId, name: `B${b} ${mdef.name}` };
+        defs.push(fullDef);
+        defById.set(fullId, fullDef);
         routes.set(fullId, { band: b, kind: "module", moduleKey: key, rawId: mdef.id });
         defaultParams[fullId] = mdef.defaultValue;
       }
     }
   }
 
-  return { defs, routes, defaultParams };
+  return { defs, defById, routes, defaultParams };
 }
 
 /** Strip a `bandN.` prefix; returns the band index + remainder, or null. */

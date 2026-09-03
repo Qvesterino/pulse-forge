@@ -31,7 +31,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import type { HallEngineState, Engine3Algo } from "../v2/types.js";
-import { clamp, flushDenormal, sanitize, TAU, hermiteInterp } from "../dsp/math.js";
+import { clamp, flushDenormal, sanitize, TAU, hermiteInterp, nextPow2 } from "../dsp/math.js";
 // Quantize libm-derived coefficients to float32: V8 and MSVC exp/pow/sin
 // differ by ULPs, and inside a feedback loop a 1-ULP coefficient difference
 // amplifies into full tail decorrelation. fround makes both ports identical.
@@ -102,6 +102,11 @@ export function createHallEngine(): HallEngine {
 
   let lines: Float32Array[][] = [];
   let writeIdx: number[][] = [];
+  // Per-line `& mask` wrap constants (capacity is power of two) and the
+  // per-line predelay offsets, hoisted out of the sample loop.
+  const lineMaskC: Int32Array[] = [new Int32Array(FDN_LINES), new Int32Array(FDN_LINES)];
+  const pdMaskC: Int32Array[] = [new Int32Array(FDN_LINES), new Int32Array(FDN_LINES)];
+  const pdOffC: Int32Array[] = [new Int32Array(FDN_LINES), new Int32Array(FDN_LINES)];
   let lpState: number[][] = [];
   let hpState: number[][] = [];
   let hpPrev: number[][] = [];
@@ -264,14 +269,24 @@ export function createHallEngine(): HallEngine {
       const pdIdx: number[] = [];
       for (let l = 0; l < FDN_LINES; l++) {
         const densityScale = 1 - l * 0.03;
-        const maxLen = Math.max(8, Math.round(base[l] * maxSrScale * densityScale)) + 16;
-        ls.push(new Float32Array(maxLen));
+        // +32 headroom covers the maximum modulation read overshoot with
+        // slack; power-of-two capacity lets the loop wrap with `& mask`
+        // instead of `% len` (identical audio — all read distances stay
+        // below the true ring length, so both wraps hit the same history).
+        const maxLen = Math.max(8, Math.round(base[l] * maxSrScale * densityScale)) + 32;
+        const cap = nextPow2(maxLen);
+        ls.push(new Float32Array(cap));
+        lineMaskC[c][l] = cap - 1;
         wi.push(0);
         lp.push(0);
         hp.push(0);
         hpv.push(0);
         blp.push(0);
-        pdBufs.push(new Float32Array(Math.max(4, Math.round(maxPredelay * maxSrScale))));
+        const pdLen = Math.max(4, Math.round(maxPredelay * maxSrScale));
+        const pdCap = nextPow2(pdLen);
+        pdBufs.push(new Float32Array(pdCap));
+        pdMaskC[c][l] = pdCap - 1;
+        pdOffC[c][l] = Math.min(LINE_PREDELAY_OFFSETS[l], pdLen - 1);
         pdIdx.push(0);
       }
       lines.push(ls);
@@ -336,7 +351,10 @@ export function createHallEngine(): HallEngine {
       const delayed = buf[idxs[s]];
       const out = delayed - diffG * x;
       buf[idxs[s]] = x + diffG * delayed;
-      idxs[s] = (idxs[s] + 1) % len;
+      // Allpass delay time === buffer length, so the length must stay
+      // exact (no pow2 rounding) — wrap with a branch instead of `%`.
+      const next = idxs[s] + 1;
+      idxs[s] = next >= len ? 0 : next;
       x = out;
     }
     return x;
@@ -430,6 +448,9 @@ export function createHallEngine(): HallEngine {
         for (let c = 0; c < cc; c++) {
           const ls = lines[c];
           const wis = writeIdx[c];
+          const masks = lineMaskC[c];
+          const pdMasks = pdMaskC[c];
+          const pdOffs = pdOffC[c];
           const lp = lpState[c];
           const hp = hpState[c];
           const hpv = hpPrev[c];
@@ -452,35 +473,31 @@ export function createHallEngine(): HallEngine {
 
           for (let l = 0; l < FDN_LINES; l++) {
             const pdBuf = pdBufs[l];
-            const pdLen = pdBuf.length;
             pdBuf[pdIdx[l]] = inSample;
-            const pdOffset = Math.min(LINE_PREDELAY_OFFSETS[l], pdLen - 1);
-            const pdRead = (pdIdx[l] - pdOffset + pdLen) % pdLen;
-            const delayedIn = pdBuf[pdRead];
-            pdIdx[l] = (pdIdx[l] + 1) % pdLen;
-            pd[l] = delayedIn;
+            pd[l] = pdBuf[(pdIdx[l] - pdOffs[l]) & pdMasks[l]];
+            pdIdx[l] = (pdIdx[l] + 1) & pdMasks[l];
 
-            const baseLen = lengthsC[c][l];
-            let readPos: number;
+            const buf = ls[l];
+            const m = masks[l];
+            let readPos = wis[l] - lengthsC[c][l];
             if (effectiveDepth > 0) {
               const modPhase = lfoPhase + (l / FDN_LINES) * Math.PI * 2;
-              const modOffset = Math.sin(modPhase) * effectiveDepth;
-              readPos = wis[l] - baseLen + modOffset;
-            } else {
-              readPos = wis[l] - baseLen;
+              readPos += Math.sin(modPhase) * effectiveDepth;
             }
-            const bufLen = ls[l].length;
-            readPos = ((readPos % bufLen) + bufLen) % bufLen;
-            const ri0 = Math.floor(readPos);
-            const ri1 = (ri0 + 1) % bufLen;
-            const frac = readPos - ri0;
+            const riFloor = Math.floor(readPos);
+            const ri0 = riFloor & m;
+            const frac = readPos - riFloor;
             // 4-point Hermite — mirrors plateChamberEngine.ts exactly.
             if (frac > 0) {
-              const rim1 = (ri0 + bufLen - 1) % bufLen;
-              const ri2 = (ri0 + 2) % bufLen;
-              taps[l] = hermiteInterp(ls[l][rim1], ls[l][ri0], ls[l][ri1], ls[l][ri2], frac);
+              taps[l] = hermiteInterp(
+                buf[(ri0 - 1) & m],
+                buf[ri0],
+                buf[(ri0 + 1) & m],
+                buf[(ri0 + 2) & m],
+                frac,
+              );
             } else {
-              taps[l] = ls[l][ri0];
+              taps[l] = buf[ri0];
             }
           }
           householder8(taps);
@@ -535,6 +552,7 @@ export function createHallEngine(): HallEngine {
         for (let c = 0; c < cc; c++) {
           const ls = lines[c];
           const wis = writeIdx[c];
+          const masks = lineMaskC[c];
           const blp = bassLp[c];
           const damped = dampedScratchC[c];
           const dampedO = dampedScratchC[cc > 1 ? 1 - c : c];
@@ -550,7 +568,7 @@ export function createHallEngine(): HallEngine {
             blp[l] = flushDenormal(blp[l]);
             const shelved = eff + (bassGain - 1) * sanitize(blp[l]);
             ls[l][wis[l]] = pd[l] + shelved * fbEff;
-            wis[l] = (wis[l] + 1) % ls[l].length;
+            wis[l] = (wis[l] + 1) & masks[l];
           }
           const out = c === 0 ? wetL : wetR;
           if (out) out[i] = (wetSumC[c] / FDN_LINES) * attackEnv;

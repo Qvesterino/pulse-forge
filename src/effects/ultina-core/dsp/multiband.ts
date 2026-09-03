@@ -190,9 +190,14 @@ export class CrossoverNetwork {
     frameCount: number,
     _sampleRate: number,
   ): void {
+    // M/S and T/S channel modes feed a SINGLE-channel buffer through the
+    // multiband chain — honor the actual input width, never assume the
+    // module's full channel count (a missing channel here crashes the
+    // audio callback with a TypeError).
+    const chCount = Math.min(this.channelCount, input.length);
     if (this.bandCount === 1) {
       // Single band: just copy (both modes identical)
-      for (let ch = 0; ch < this.channelCount; ch++) {
+      for (let ch = 0; ch < chCount; ch++) {
         bandOut[0][ch].set(input[ch].subarray(0, frameCount));
       }
       return;
@@ -223,7 +228,7 @@ export class CrossoverNetwork {
   ): void {
     const N = this.firNumTaps;
     const M = this.firLatency;
-    const ch = this.channelCount;
+    const ch = Math.min(this.channelCount, input.length);
     // Only convolve the splits the active band count uses — in 2-band mode
     // split 1's output is never read (bands derive from lpOuts[0] + delayed).
     const numSplits = Math.min(this.firFilters.length, this.bandCount - 1);
@@ -278,8 +283,9 @@ export class CrossoverNetwork {
       return;
     }
 
-    // Copy input to pre-allocated work buffer
-    for (let ch = 0; ch < this.channelCount; ch++) {
+    // Copy input to pre-allocated work buffer (width-honoring — see split())
+    const chCount = Math.min(this.channelCount, input.length);
+    for (let ch = 0; ch < chCount; ch++) {
       this.lr4Work[ch].set(input[ch].subarray(0, frameCount));
     }
 
@@ -293,7 +299,7 @@ export class CrossoverNetwork {
       const split = this.splits[s];
 
       // LP branch → copy work to lpOut, then cascade LP sections
-      for (let ch = 0; ch < this.channelCount; ch++) {
+      for (let ch = 0; ch < chCount; ch++) {
         this.lr4LpOut[ch].set(this.lr4Work[ch].subarray(0, frameCount));
       }
       for (const bq of split.lp) {
@@ -304,14 +310,14 @@ export class CrossoverNetwork {
 
       // HP branch → cascade HP sections on work buffer (becomes input for next split)
       for (const bq of split.hp) {
-        for (let ch = 0; ch < this.channelCount; ch++) {
+        for (let ch = 0; ch < chCount; ch++) {
           processBiquadInPlace(bq, this.lr4Work[ch], ch, frameCount);
         }
       }
 
       if (s === 0) {
         // Band 0 = lowest
-        for (let ch = 0; ch < this.channelCount; ch++) {
+        for (let ch = 0; ch < chCount; ch++) {
           bandOut[0][ch].set(this.lr4LpOut[ch].subarray(0, frameCount));
         }
       }
@@ -319,13 +325,13 @@ export class CrossoverNetwork {
       if (s === activeSplits - 1) {
         // Last split: work = highest band
         const lastBand = this.bandCount - 1;
-        for (let ch = 0; ch < this.channelCount; ch++) {
+        for (let ch = 0; ch < chCount; ch++) {
           bandOut[lastBand][ch].set(this.lr4Work[ch].subarray(0, frameCount));
         }
       } else {
         if (this.bandCount === 3 && s === 0) {
           // Store HP output as band 1 candidate; will be refined at split 1
-          for (let ch = 0; ch < this.channelCount; ch++) {
+          for (let ch = 0; ch < chCount; ch++) {
             bandOut[1][ch].set(this.lr4Work[ch].subarray(0, frameCount));
           }
         }
@@ -335,7 +341,7 @@ export class CrossoverNetwork {
     // For 3-band: apply LP of split 1 to the middle band candidate
     if (this.bandCount === 3 && this.splits.length === 2) {
       const split1 = this.splits[1];
-      for (let ch = 0; ch < this.channelCount; ch++) {
+      for (let ch = 0; ch < chCount; ch++) {
         this.lr4MidLp[ch].set(bandOut[1][ch].subarray(0, frameCount));
       }
       for (const bq of split1.lp) {
@@ -357,7 +363,10 @@ export class CrossoverNetwork {
     output: Float32Array[],
     frameCount: number,
   ): void {
-    for (let ch = 0; ch < this.channelCount; ch++) {
+    // Output may be narrower than the module channel count (M/S mode sums
+    // back into the single mid buffer) — honor it.
+    const chCount = Math.min(this.channelCount, output.length);
+    for (let ch = 0; ch < chCount; ch++) {
       output[ch].fill(0, 0, frameCount);
       for (let b = 0; b < this.bandCount; b++) {
         for (let i = 0; i < frameCount; i++) {

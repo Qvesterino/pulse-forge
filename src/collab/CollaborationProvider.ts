@@ -9,11 +9,14 @@
  */
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
+import { normalizeJamRole, type JamRole } from "./jamRoles";
 
 export interface CollaboratorInfo {
   id: string;
   name: string;
   color: string;
+  /** Self-selected jam role (presence — the server has no auth by design). */
+  role?: JamRole;
 }
 
 export interface CursorState {
@@ -72,6 +75,12 @@ export class CollaborationProvider {
   /** Update the local cursor position for awareness. */
   setCursor(cursor: CursorState | null): void {
     this.provider?.awareness.setLocalStateField("cursor", cursor);
+  }
+
+  /** Change (and re-broadcast) the local jam role. */
+  setRole(role: JamRole): void {
+    this.user = { ...this.user, role: normalizeJamRole(role) };
+    this.provider?.awareness.setLocalStateField("user", this.user);
   }
 
   /** Get all connected collaborators. */

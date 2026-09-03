@@ -1,6 +1,7 @@
 import { useSyncExternalStore, useEffect, useRef, useState } from "react";
 import { openProject, type Services } from "../services";
 import { defaultServerUrl, randomRoomId, shareUrl } from "../collab/collabShared";
+import { JAM_ROLES, normalizeJamRole, type JamRole } from "../collab/jamRoles";
 import { useDoc, useServices } from "./context";
 
 /**
@@ -39,6 +40,15 @@ export function CollabPanel({ onReplaceServices }: { onReplaceServices: (service
     () => "",
   );
   const session = services.collab;
+
+  // Jam-role gate feedback: the store publishes the last refused command.
+  const [blocked, setBlocked] = useState<string | null>(null);
+  useEffect(() => {
+    return services.store.subscribe(() => {
+      const yStore = services.store as { lastRoleBlock?: { type: string; role: JamRole } | null };
+      setBlocked(yStore.lastRoleBlock ? `${yStore.lastRoleBlock.role} can't run ${yStore.lastRoleBlock.type}` : null);
+    });
+  }, [services]);
 
   const swapProject = async (options: Parameters<typeof openProject>[2]) => {
     if (switchingRef.current) return;
@@ -140,10 +150,30 @@ export function CollabPanel({ onReplaceServices }: { onReplaceServices: (service
         {session.participants.map((p) => (
           <span key={p.id} className="collab-chip" style={{ borderColor: p.color }}>
             {p.name}
+            {p.role && p.role !== "owner" ? ` · ${p.role}` : ""}
           </span>
         ))}
         {session.participants.length === 0 && <span className="collab-hint">waiting for others — share the link…</span>}
       </div>
+      <label className="collab-field">
+        <span>YOUR ROLE</span>
+        <select
+          value={session.localRole}
+          onChange={(e) => session.setRole(normalizeJamRole(e.target.value))}
+          aria-label="Jam role"
+        >
+          {JAM_ROLES.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.label} — {r.blurb}
+            </option>
+          ))}
+        </select>
+      </label>
+      {blocked && (
+        <p className="collab-hint" role="alert">
+          ⛔ {blocked}
+        </p>
+      )}
       <button type="button" className="btn btn-export" disabled={switching} onClick={() => void leave()}>
         {switching ? "SWITCHING…" : "LEAVE SESSION"}
       </button>

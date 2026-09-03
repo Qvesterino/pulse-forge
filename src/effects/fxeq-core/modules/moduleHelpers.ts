@@ -33,7 +33,14 @@ export function createParamStore(
   initial?: Record<string, number>,
 ): ParamStore {
   const values: Record<string, number> = {};
-  for (const d of defs) values[d.id] = d.defaultValue;
+  // O(1) def lookup: set() runs per parameter change on the worklet's audio
+  // rendering thread, so it must not linear-scan defs (automatable params
+  // change far more often than presets load).
+  const defById = new Map<string, FxEqParamDef>();
+  for (const d of defs) {
+    values[d.id] = d.defaultValue;
+    defById.set(d.id, d);
+  }
   if (initial) {
     for (const d of defs) {
       const incoming = initial[d.id];
@@ -50,7 +57,7 @@ export function createParamStore(
       // clamp() passes NaN through unchanged (both comparisons are false),
       // so a non-number from a hostile host would poison the module state.
       // Reject instead — the store keeps its previous finite value.
-      const d = defs.find((x) => x.id === id);
+      const d = defById.get(id);
       if (d && typeof value === "number" && Number.isFinite(value)) {
         values[id] = clamp(value, d.minValue, d.maxValue);
       }

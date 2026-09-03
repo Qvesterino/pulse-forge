@@ -31,7 +31,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import type { PlateChamberEngineState, Engine2Algo } from "../v2/types.js";
-import { clamp, flushDenormal, sanitize, TAU, hermiteInterp } from "../dsp/math.js";
+import { clamp, flushDenormal, sanitize, TAU, hermiteInterp, nextPow2 } from "../dsp/math.js";
 // Quantize libm-derived coefficients to float32: V8 and MSVC exp/pow/sin
 // differ by ULPs, and inside a feedback loop a 1-ULP coefficient difference
 // amplifies into full tail decorrelation. fround makes both ports identical.
@@ -103,6 +103,9 @@ export function createPlateChamberEngine(): PlateChamberEngine {
 
   let lines: Float32Array[][] = [];
   let writeIdx: number[][] = [];
+  // Per-line `& mask` wrap constants (capacity is power of two), hoisted
+  // out of the sample loop — mirrors hallEngine.ts.
+  const lineMaskC: Int32Array[] = [new Int32Array(FDN_LINES), new Int32Array(FDN_LINES)];
   let lpState: number[][] = [];
   let hpState: number[][] = [];
   let hpPrev: number[][] = [];
@@ -285,8 +288,14 @@ export function createPlateChamberEngine(): PlateChamberEngine {
       const hpv: number[] = [];
       const blp: number[] = [];
       for (let l = 0; l < FDN_LINES; l++) {
-        const maxLen = Math.max(8, Math.round(base[l] * maxSrScale)) + 16;
-        ls.push(new Float32Array(maxLen));
+        // +32 headroom covers the maximum modulation read overshoot with
+        // slack; power-of-two capacity lets the loop wrap with `& mask`
+        // instead of `% len` (audio shifts by at most one float32 ULP in
+        // the modulated Hermite fraction — see hallEngine.ts).
+        const maxLen = Math.max(8, Math.round(base[l] * maxSrScale)) + 32;
+        const cap = nextPow2(maxLen);
+        ls.push(new Float32Array(cap));
+        lineMaskC[c][l] = cap - 1;
         wi.push(0);
         lp.push(0);
         hp.push(0);
@@ -370,7 +379,10 @@ export function createPlateChamberEngine(): PlateChamberEngine {
       const g = ALLPASS_GAINS[s];
       const out = delayed - g * x;
       buf[idxs[s]] = x + g * delayed;
-      idxs[s] = (idxs[s] + 1) % len;
+      // Allpass delay time === buffer length — length stays exact, the
+      // wrap is a branch instead of `%`.
+      const next = idxs[s] + 1;
+      idxs[s] = next >= len ? 0 : next;
       x = out;
     }
     return x;
@@ -389,7 +401,8 @@ export function createPlateChamberEngine(): PlateChamberEngine {
       const delayed = buf[idxs[s]];
       const out = delayed - diffG * x;
       buf[idxs[s]] = x + diffG * delayed;
-      idxs[s] = (idxs[s] + 1) % len;
+      const next = idxs[s] + 1;
+      idxs[s] = next >= len ? 0 : next;
       x = out;
     }
     return x;
@@ -492,6 +505,7 @@ export function createPlateChamberEngine(): PlateChamberEngine {
         for (let c = 0; c < cc; c++) {
           const ls = lines[c];
           const wis = writeIdx[c];
+          const masks = lineMaskC[c];
           const lp = lpState[c];
           const hp = hpState[c];
           const hpv = hpPrev[c];
@@ -509,28 +523,28 @@ export function createPlateChamberEngine(): PlateChamberEngine {
           inScratchC[c] = freeze_ ? 0 : inSample;
 
           for (let l = 0; l < FDN_LINES; l++) {
-            const baseLen = lengthsC[c][l];
-            let readPos: number;
+            const buf = ls[l];
+            const m = masks[l];
+            let readPos = wis[l] - lengthsC[c][l];
             if (effectiveDepth > 0) {
               const modPhase = lfoPhase + (l / FDN_LINES) * Math.PI * 2;
-              const modOffset = Math.sin(modPhase) * effectiveDepth;
-              readPos = wis[l] - baseLen + modOffset;
-            } else {
-              readPos = wis[l] - baseLen;
+              readPos += Math.sin(modPhase) * effectiveDepth;
             }
-            const bufLen = ls[l].length;
-            readPos = ((readPos % bufLen) + bufLen) % bufLen;
-            const ri0 = Math.floor(readPos);
-            const ri1 = (ri0 + 1) % bufLen;
-            const frac = readPos - ri0;
+            const riFloor = Math.floor(readPos);
+            const ri0 = riFloor & m;
+            const frac = readPos - riFloor;
             // 4-point Hermite — aliasing-free modulated reads (with no
             // modulation frac === 0 and this reduces exactly to ri0).
             if (frac > 0) {
-              const rim1 = (ri0 + bufLen - 1) % bufLen;
-              const ri2 = (ri0 + 2) % bufLen;
-              taps[l] = hermiteInterp(ls[l][rim1], ls[l][ri0], ls[l][ri1], ls[l][ri2], frac);
+              taps[l] = hermiteInterp(
+                buf[(ri0 - 1) & m],
+                buf[ri0],
+                buf[(ri0 + 1) & m],
+                buf[(ri0 + 2) & m],
+                frac,
+              );
             } else {
-              taps[l] = ls[l][ri0];
+              taps[l] = buf[ri0];
             }
           }
           householder8(taps);
@@ -586,6 +600,7 @@ export function createPlateChamberEngine(): PlateChamberEngine {
         for (let c = 0; c < cc; c++) {
           const ls = lines[c];
           const wis = writeIdx[c];
+          const masks = lineMaskC[c];
           const blp = bassLp[c];
           const damped = dampedScratchC[c];
           const dampedO = dampedScratchC[cc > 1 ? 1 - c : c];
@@ -601,7 +616,7 @@ export function createPlateChamberEngine(): PlateChamberEngine {
             blp[l] = flushDenormal(blp[l]);
             const shelved = eff + (bassGain - 1) * sanitize(blp[l]);
             ls[l][wis[l]] = inSample + shelved * fbEff;
-            wis[l] = (wis[l] + 1) % ls[l].length;
+            wis[l] = (wis[l] + 1) & masks[l];
           }
           const out = c === 0 ? wetL : wetR;
           if (out) out[i] = (wetSumC[c] / FDN_LINES) * attackEnv;

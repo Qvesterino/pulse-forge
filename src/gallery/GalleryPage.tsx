@@ -17,11 +17,9 @@ import {
   type GalleryItem,
   type RemixParent,
 } from "./galleryApi";
+import { buildRemix, remixTagsOf } from "./remix";
 
-type FeedState =
-  | { kind: "loading" }
-  | { kind: "error"; message: string }
-  | { kind: "ready"; items: GalleryItem[] };
+type FeedState = { kind: "loading" } | { kind: "error"; message: string } | { kind: "ready"; items: GalleryItem[] };
 
 const PUBLISH_CODE_KEY = "pf-publish-code";
 
@@ -227,6 +225,33 @@ function GalleryCard({
     onFork();
   };
 
+  /** REMIX: auto-arrange + drop variations, published as YOUR beat in one shot. */
+  const [remixing, setRemixing] = useState(false);
+  const [remixError, setRemixError] = useState(false);
+  const remix = async () => {
+    if (remixing) return;
+    setRemixing(true);
+    setRemixError(false);
+    try {
+      const result = buildRemix({ id: item.id, title: item.title, code: item.code });
+      if (!result) throw new Error("unreadable code");
+      await publishBeat({
+        title: result.title,
+        author: creatorHandle() || "anonymous",
+        tags: remixTagsOf(item.tags),
+        code: result.code,
+        parentId: item.id,
+      });
+      // Open the remix straight in the studio.
+      window.open(shareAppUrl(result.code, location.origin), "_blank", "noopener");
+      onFork(); // refresh lineage state in the feed
+    } catch {
+      setRemixError(true);
+    } finally {
+      setRemixing(false);
+    }
+  };
+
   return (
     <article className="gallery-card" aria-label={`Beat: ${item.title}`}>
       <div className="gallery-card-head">
@@ -285,6 +310,15 @@ function GalleryCard({
         <button
           type="button"
           className="gallery-fork"
+          title="Remix now: auto-arrange + fresh drop variations, published as your beat"
+          onClick={() => void remix()}
+          disabled={remixing}
+        >
+          {remixing ? "REMIXING…" : remixError ? "REMIX FAILED" : "REMIX ⚡"}
+        </button>
+        <button
+          type="button"
+          className="gallery-fork"
           title="Open this beat in the studio and remember it as your remix origin"
           onClick={fork}
         >
@@ -298,13 +332,7 @@ function GalleryCard({
   );
 }
 
-function PublishForm({
-  prefilledCode,
-  onPublished,
-}: {
-  prefilledCode: string | null;
-  onPublished: () => void;
-}) {
+function PublishForm({ prefilledCode, onPublished }: { prefilledCode: string | null; onPublished: () => void }) {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [tags, setTags] = useState("");

@@ -257,6 +257,11 @@ export async function openProject(
     ]);
     store = YDocStoreImpl.fromDocument(initial);
     collab = new CollabSessionImpl((store as YDocStore).yDocRef, collabConfig.roomId, collabConfig.serverUrl);
+    // Jam roles: gate local commands on the session role and surface refusals.
+    (store as YDocStore).roleProvider = () => collab?.localRole ?? null;
+    (store as YDocStore).onRoleBlocked = (commandType, role) => {
+      console.warn(`[jam] role "${role}" cannot run "${commandType}"`);
+    };
   }
   collab?.connect();
 

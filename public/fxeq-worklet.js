@@ -377,7 +377,11 @@
   // src/effects/fxeq-core/modules/moduleHelpers.ts
   function createParamStore(defs, initial) {
     const values = {};
-    for (const d of defs) values[d.id] = d.defaultValue;
+    const defById = /* @__PURE__ */ new Map();
+    for (const d of defs) {
+      values[d.id] = d.defaultValue;
+      defById.set(d.id, d);
+    }
     if (initial) {
       for (const d of defs) {
         const incoming = initial[d.id];
@@ -391,7 +395,7 @@
         return values[id] ?? 0;
       },
       set(id, value) {
-        const d = defs.find((x) => x.id === id);
+        const d = defById.get(id);
         if (d && typeof value === "number" && Number.isFinite(value)) {
           values[id] = clamp(value, d.minValue, d.maxValue);
         }
@@ -2430,10 +2434,12 @@
   }
   function buildSchema(bandCount) {
     const defs = [];
+    const defById = /* @__PURE__ */ new Map();
     const routes = /* @__PURE__ */ new Map();
     const defaultParams = {};
     for (const def of GLOBAL_PARAM_DEFS) {
       defs.push(def);
+      defById.set(def.id, def);
       routes.set(def.id, { band: 0, kind: "global", rawId: def.id });
       defaultParams[def.id] = def.defaultValue;
     }
@@ -2441,20 +2447,24 @@
       const bandPrefix = `band${b}.`;
       for (const def of BAND_SCALAR_DEFS) {
         const fullId = bandPrefix + def.id;
-        defs.push({ ...def, id: fullId, name: `B${b} ${def.name}` });
+        const fullDef = { ...def, id: fullId, name: `B${b} ${def.name}` };
+        defs.push(fullDef);
+        defById.set(fullId, fullDef);
         routes.set(fullId, { band: b, kind: "bandScalar", rawId: def.id });
         defaultParams[fullId] = def.defaultValue;
       }
       for (const key of MODULE_KEYS) {
         for (const mdef of MODULE_PARAM_DEFS[key]) {
           const fullId = bandPrefix + key + capitalize(mdef.id);
-          defs.push({ ...mdef, id: fullId, name: `B${b} ${mdef.name}` });
+          const fullDef = { ...mdef, id: fullId, name: `B${b} ${mdef.name}` };
+          defs.push(fullDef);
+          defById.set(fullId, fullDef);
           routes.set(fullId, { band: b, kind: "module", moduleKey: key, rawId: mdef.id });
           defaultParams[fullId] = mdef.defaultValue;
         }
       }
     }
-    return { defs, routes, defaultParams };
+    return { defs, defById, routes, defaultParams };
   }
 
   // src/effects/fxeq-core/dsp/dynamics.ts
@@ -3566,7 +3576,7 @@
           if (!route) continue;
           const incoming = p[id];
           if (typeof incoming !== "number" || !Number.isFinite(incoming)) continue;
-          const def = schema.defs.find((d) => d.id === id);
+          const def = schema.defById.get(id);
           values[id] = def ? Math.max(def.minValue, Math.min(def.maxValue, incoming)) : incoming;
         }
         applyAllParams();

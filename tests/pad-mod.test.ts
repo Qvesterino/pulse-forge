@@ -107,7 +107,9 @@ describe.skipIf(typeof OfflineAudioContext === "undefined")("per-pad mod (voice-
   });
 
   it("filter-target LFO creates the voice filter and sweeps it", async () => {
-    const mod = (await renderWith({ target: "filter", wave: "sine", rateHz: 3, depth: 4000, base: 700 }, 220)).getChannelData(0);
+    const mod = (
+      await renderWith({ target: "filter", wave: "sine", rateHz: 3, depth: 4000, base: 700 }, 220)
+    ).getChannelData(0);
     let peak = 0;
     for (let i = 0; i < mod.length; i++) peak = Math.max(peak, Math.abs(mod[i]));
     // Voice still audible through the sweeping lowpass.
@@ -144,8 +146,8 @@ describe("per-pad mod model + command", () => {
     const mod: PadMod = { target: "filter", wave: "triangle", rateHz: 1.5, depth: 2500, base: 900 };
     const cmd = setPadMod(doc, "pad-mod-0", mod);
     const next = cmd.execute(doc);
-    expect(((next.tracks[0] as DrumTrack).pads[0].mod ?? null)).toEqual(mod);
-    expect(((cmd.undo(next).tracks[0] as DrumTrack).pads[0].mod ?? null)).toBeNull();
+    expect((next.tracks[0] as DrumTrack).pads[0].mod ?? null).toEqual(mod);
+    expect((cmd.undo(next).tracks[0] as DrumTrack).pads[0].mod ?? null).toBeNull();
     expect(() => setPadMod(doc, "missing", mod)).toThrow(/not found/);
   });
 });

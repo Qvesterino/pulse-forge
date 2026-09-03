@@ -147,7 +147,8 @@ function sanitizeSketch(raw: unknown): SharedPackSketch | undefined {
     scenes.push({
       name: typeof sc.name === "string" && sc.name.trim() ? sc.name.trim().slice(0, 40) : `Scene ${scenes.length + 1}`,
       role: typeof sc.role === "string" ? sc.role.slice(0, 12) : undefined,
-      intensity: typeof sc.intensity === "number" && Number.isFinite(sc.intensity) ? clamp(sc.intensity, 0, 1) : undefined,
+      intensity:
+        typeof sc.intensity === "number" && Number.isFinite(sc.intensity) ? clamp(sc.intensity, 0, 1) : undefined,
       steps,
       rows,
     });

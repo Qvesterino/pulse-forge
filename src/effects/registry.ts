@@ -2104,7 +2104,18 @@ const OZVENA_PARAM_DEFAULTS: Record<string, number> = {
   "engines.e1.enabled": 1,
   "engines.e2.enabled": 1,
   "engines.e3.enabled": 1,
+  // CPU lever: eco drops the safety limiter to 1× oversampling and the FDN
+  // shimmer to a single grain — the cheapest way to run several Ozvenas in
+  // one rack. Mapped to the string enum inside the worklet entry.
+  "global.quality": 1,
 };
+
+const OZVENA_QUALITY_OPTIONS = [
+  { value: 0, label: "eco" },
+  { value: 1, label: "standard" },
+  { value: 2, label: "high" },
+  { value: 3, label: "render" },
+];
 
 const ozvena: EffectDefinition = {
   type: "ozvena",
@@ -2119,6 +2130,7 @@ const ozvena: EffectDefinition = {
     { id: "engines.e1.enabled", label: "E1", min: 0, max: 1, default: 1, format: (v) => (v >= 0.5 ? "ON" : "OFF") },
     { id: "engines.e2.enabled", label: "E2", min: 0, max: 1, default: 1, format: (v) => (v >= 0.5 ? "ON" : "OFF") },
     { id: "engines.e3.enabled", label: "E3", min: 0, max: 1, default: 1, format: (v) => (v >= 0.5 ? "ON" : "OFF") },
+    { id: "global.quality", label: "QUALITY", min: 0, max: 3, default: 1, options: OZVENA_QUALITY_OPTIONS },
   ],
   factory(ctx, instance) {
     if (isWorkletReady("ozvena", ctx)) {

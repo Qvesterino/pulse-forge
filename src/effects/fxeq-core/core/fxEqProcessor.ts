@@ -499,7 +499,7 @@ export function createFxEqProcessor(params?: Record<string, number>): FxEqProces
         // poisoned the band until reset. Clamp to the schema range and
         // drop non-finite values; module params re-clamp downstream.
         if (typeof incoming !== "number" || !Number.isFinite(incoming)) continue;
-        const def = schema.defs.find((d) => d.id === id);
+        const def = schema.defById.get(id);
         values[id] = def
           ? Math.max(def.minValue, Math.min(def.maxValue, incoming))
           : incoming;

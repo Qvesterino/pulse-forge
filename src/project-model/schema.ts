@@ -659,7 +659,12 @@ function sanitizePadMod(raw: unknown): import("../project-model/types").PadMod |
     target === "filter" && typeof m.base === "number" && Number.isFinite(m.base)
       ? Math.min(16000, Math.max(80, m.base))
       : undefined;
-  const out: import("../project-model/types").PadMod = { target: target as import("../project-model/types").PadMod["target"], wave: wave as import("../project-model/types").PadMod["wave"], rateHz: Math.min(40, rateHz), depth };
+  const out: import("../project-model/types").PadMod = {
+    target: target as import("../project-model/types").PadMod["target"],
+    wave: wave as import("../project-model/types").PadMod["wave"],
+    rateHz: Math.min(40, rateHz),
+    depth,
+  };
   if (base !== undefined) out.base = base;
   return out;
 }

@@ -1,0 +1,144 @@
+/**
+ * Ultina worklet entry regression — runs the REAL bundled entry
+ * (src/effects/ultina-worklet.entry.js) under a stubbed AudioWorklet scope.
+ *
+ * Pins the module-graph sync: the graph boots all-disabled and the entry is
+ * the ONLY layer that mirrors "<module>.enabled" params into it. Without that
+ * sync the active chain stays empty forever — the whole module DSP never runs
+ * in the shipped app while the UI reports it on (regression discovered while
+ * building the numeric-stress suite).
+ */
+import { beforeAll, describe, expect, it } from "vitest";
+
+interface PostedMessage {
+  type?: string;
+  samples?: number;
+  meters?: { modules?: Record<string, unknown>; global?: { timestamp?: number } };
+}
+
+class FakePort {
+  onmessage: ((event: { data: unknown }) => void) | null = null;
+  posted: PostedMessage[] = [];
+  postMessage(msg: unknown): void {
+    this.posted.push(msg as PostedMessage);
+  }
+  last(type: string): PostedMessage | undefined {
+    return [...this.posted].reverse().find((m) => m.type === type);
+  }
+}
+
+class FakeAudioWorkletProcessor {
+  port = new FakePort();
+}
+
+interface ProcShape {
+  port: FakePort;
+  process(inputs: Float32Array[][], outputs: Float32Array[][]): boolean;
+}
+
+type ProcCtor = new (options?: { processorOptions?: { params?: Record<string, number> } }) => ProcShape;
+
+let Processor: ProcCtor;
+
+beforeAll(async () => {
+  (globalThis as unknown as { sampleRate: number }).sampleRate = 48000;
+  (globalThis as unknown as { AudioWorkletProcessor: unknown }).AudioWorkletProcessor =
+    FakeAudioWorkletProcessor;
+  (globalThis as unknown as { registerProcessor: unknown }).registerProcessor = (
+    _name: string,
+    cls: ProcCtor,
+  ) => {
+    Processor = cls;
+  };
+  // @ts-expect-error untyped .js worklet entry (gallery-server.test.ts convention)
+  await import("../src/effects/ultina-worklet.entry.js");
+  if (!Processor) throw new Error("ultina-processor did not register");
+});
+
+const SR = 48000;
+const BLOCK = 128;
+
+function fillSine(chans: Float32Array[], blockIndex: number, amplitude: number): void {
+  for (let i = 0; i < BLOCK; i++) {
+    const t = (blockIndex * BLOCK + i) / SR;
+    const v = amplitude * Math.sin(2 * Math.PI * 1000 * t);
+    chans[0][i] = v;
+    chans[1][i] = v;
+  }
+}
+
+/** Run blocks through the entry; return [outputRms, inputRms]. */
+function run(proc: ProcShape, blocks: number, amplitude: number): [number, number] {
+  const input = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+  const output = [
+    [new Float32Array(BLOCK), new Float32Array(BLOCK)],
+  ];
+  let sumSq = 0;
+  let inSumSq = 0;
+  let n = 0;
+  for (let b = 0; b < blocks; b++) {
+    fillSine(input, b, amplitude);
+    proc.process([input], output);
+    // Measure only the settled tail.
+    if (b >= blocks - 8) {
+      for (let i = 0; i < BLOCK; i++) {
+        sumSq += output[0][0][i] * output[0][0][i];
+        inSumSq += input[0][i] * input[0][i];
+        n += 1;
+      }
+    }
+  }
+  return [Math.sqrt(sumSq / n), Math.sqrt(inSumSq / n)];
+}
+
+const COMP_ON: Record<string, number> = {
+  "comp.enabled": 1,
+  "comp.thresholdDb": -40,
+  "comp.ratio": 10,
+  "comp.attackMs": 5,
+  "comp.releaseMs": 120,
+  "comp.makeupDb": 0,
+};
+
+describe("Ultina worklet entry — module graph sync", () => {
+  it("an enabled compressor actually compresses audio through the entry", () => {
+    const proc = new Processor({ processorOptions: { params: { ...COMP_ON } } });
+    const [outRms, inRms] = run(proc, 200, 0.158); // −16 dBFS sine
+    // Threshold −40, ratio 10 → ≈21 dB of gain reduction on a −16 dBFS tone.
+    expect(outRms).toBeGreaterThan(0);
+    expect(outRms / inRms).toBeLessThan(0.3);
+  });
+
+  it("module meters are published once the module is enabled (graph populated)", () => {
+    const proc = new Processor({ processorOptions: { params: { ...COMP_ON } } });
+    run(proc, 12, 0.158);
+    const meters = proc.port.last("meters");
+    expect(meters).toBeDefined();
+    expect(meters?.meters?.modules?.comp).toBeDefined();
+  });
+
+  it("disabling the module via a param message returns the chain to passthrough", () => {
+    const proc = new Processor({ processorOptions: { params: { ...COMP_ON } } });
+    run(proc, 100, 0.158);
+    proc.port.onmessage?.({ data: { type: "param", id: "comp.enabled", value: 0 } });
+    const [outRms, inRms] = run(proc, 100, 0.158);
+    expect(outRms / inRms).toBeGreaterThan(0.9);
+  });
+
+  it("hybrid crossover latency is reported over the port", () => {
+    const proc = new Processor({
+      processorOptions: {
+        params: { ...COMP_ON, "comp.bandCount": 2, "comp.crossoverHz1": 200, "comp.crossoverMode": 1 },
+      },
+    });
+    const latency = proc.port.last("latency");
+    expect(latency?.type).toBe("latency");
+    expect(latency?.samples).toBe(31); // DEFAULT_FIR_TAPS=63 → (63−1)/2
+  });
+
+  it("a fresh instance with no enabled modules is a clean passthrough", () => {
+    const proc = new Processor({ processorOptions: { params: {} } });
+    const [outRms, inRms] = run(proc, 100, 0.3);
+    expect(Math.abs(outRms / inRms - 1)).toBeLessThan(0.02);
+  });
+});

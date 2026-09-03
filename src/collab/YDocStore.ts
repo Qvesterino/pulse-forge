@@ -11,6 +11,7 @@ import type { ProjectDocument } from "../project-model/types";
 import { normalizeProject } from "../project-model/schema";
 import { yDocToProject, projectToYDoc, applyProjectToYMap } from "./YDocAdapter";
 import { registerYDocHelpers } from "../commands/yDocBridge";
+import { roleAllows, type JamRole } from "./jamRoles";
 import {
   ySetPatternField,
   ySetProjectField,
@@ -65,6 +66,15 @@ export class YDocStore {
   private lastCoalesce: { key: string; at: number } | null = null;
   private doc_: ProjectDocument;
   onDocChanged: ((doc: ProjectDocument) => void) | null = null;
+  /**
+   * Jam-role gate: returns the local role (or null = ungated). Wired by
+   * openProject to the CollabSession — see jamRoles.ts.
+   */
+  roleProvider: (() => JamRole | null) | null = null;
+  /** Called when the gate refuses a command (UI surfaces the refusal). */
+  onRoleBlocked: ((commandType: string, role: JamRole) => void) | null = null;
+  /** Last refused command, for the UI — cleared on the next allowed execute. */
+  lastRoleBlock: { type: string; role: JamRole; at: number } | null = null;
 
   constructor(yDoc: Y.Doc) {
     this.yDoc = yDoc;
@@ -205,6 +215,16 @@ export class YDocStore {
    * origin and never enter the local undo stack.
    */
   execute(command: Command): void {
+    // Jam-role gate: a restricted role may not run commands outside its
+    // bucket. The refusal is surfaced, never thrown — the UI keeps working.
+    const role = this.roleProvider?.() ?? null;
+    if (role && !roleAllows(role, command.type)) {
+      this.lastRoleBlock = { type: command.type, role, at: Date.now() };
+      this.onRoleBlocked?.(command.type, role);
+      this.emit();
+      return;
+    }
+    this.lastRoleBlock = null;
     this.pendingLabel = command.label;
     try {
       // `this` (the store) is the tracked origin — only local commands land

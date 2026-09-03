@@ -20,7 +20,7 @@
 // per-channel state for the realtime audio callback.
 // ═══════════════════════════════════════════════════════════
 
-import { clamp } from "./math.js";
+import { clamp, nextPow2 } from "./math.js";
 
 export type OversampleFactor = 1 | 2 | 4 | 8;
 
@@ -126,20 +126,20 @@ export function createPolyphaseOversampler(): PolyphaseOversampler {
   let decNorm = 1;
   let fullDownKernel: Float32Array = new Float32Array(0);
   let fullDownTaps = 0;
-  const downState = new Map<number, Float32Array>();
-  const upState = new Map<number, Float32Array>();
+  // Ring delay lines (power-of-two capacity + wrap mask). The old
+  // implementation shifted the whole delay line per input sample — at 4×
+  // factor the downsample moved ~49k elements per 128-sample block per
+  // channel. Ring indexing reads the identical values in the identical
+  // order, so the convolution is bit-identical with zero moves.
+  let upDelay: Float32Array = new Float32Array(1);
+  let upMask = 0;
+  let upWp = 0;
+  let downDelay: Float32Array = new Float32Array(1);
+  let downMask = 0;
+  let downWp = 0;
   // Reused output buffers (real-time safe — no per-call allocation).
   let upBuf: Float32Array = new Float32Array(0);
   let downBuf: Float32Array = new Float32Array(0);
-
-  function stateKey(map: Map<number, Float32Array>, ch: number, len: number): Float32Array {
-    let s = map.get(ch);
-    if (!s || s.length !== len) {
-      s = new Float32Array(len);
-      map.set(ch, s);
-    }
-    return s;
-  }
 
   return {
     get factor() { return factor; },
@@ -152,8 +152,8 @@ export function createPolyphaseOversampler(): PolyphaseOversampler {
     prepare(sr, f) {
       sampleRate = clamp(sr, 8000, 192000);
       factor = f;
-      downState.clear();
-      upState.clear();
+      upWp = 0;
+      downWp = 0;
       if (factor <= 1) {
         subfilters = [];
         filterLength = 0;
@@ -178,6 +178,12 @@ export function createPolyphaseOversampler(): PolyphaseOversampler {
         subScale[p] = sums[p] > 0 ? 1 / sums[p] : 1;
       }
       decNorm = 1;
+      // Rings sized once for the largest line this instance will need.
+      const cap = nextPow2(Math.max(tapsPerPhase, fullDownTaps));
+      upDelay = new Float32Array(cap);
+      upMask = cap - 1;
+      downDelay = new Float32Array(cap);
+      downMask = cap - 1;
     },
 
     upsample(input, inputLen = input.length) {
@@ -190,17 +196,20 @@ export function createPolyphaseOversampler(): PolyphaseOversampler {
       const taps = sf[0].length;
       const outLen = inputLen * factor;
       if (upBuf.length < outLen) upBuf = new Float32Array(outLen);
-      const delayLine = stateKey(upState, 0, taps);
+      const delayLine = upDelay;
+      const mask = upMask;
+      let wp = upWp;
       for (let n = 0; n < inputLen; n++) {
-        for (let i = taps - 1; i > 0; i--) delayLine[i] = delayLine[i - 1];
-        delayLine[0] = input[n];
+        delayLine[wp] = input[n];
         for (let p = 0; p < factor; p++) {
           const sub = sf[p];
           let acc = 0;
-          for (let t = 0; t < taps; t++) acc += sub[t] * delayLine[t];
+          for (let t = 0; t < taps; t++) acc += sub[t] * delayLine[(wp - t) & mask];
           upBuf[n * factor + p] = acc * subScale[p];
         }
+        wp = (wp + 1) & mask;
       }
+      upWp = wp;
       return upBuf;
     },
 
@@ -211,24 +220,32 @@ export function createPolyphaseOversampler(): PolyphaseOversampler {
         for (let i = 0; i < outLen; i++) downBuf[i] = input[i];
         return downBuf;
       }
-      const delayLine = stateKey(downState, 0, fullDownTaps);
+      const delayLine = downDelay;
+      const mask = downMask;
+      const taps = fullDownTaps;
+      let wp = downWp;
       let inIdx = 0;
       for (let n = 0; n < outLen; n++) {
         for (let p = 0; p < factor; p++) {
-          for (let i = fullDownTaps - 1; i > 0; i--) delayLine[i] = delayLine[i - 1];
-          delayLine[0] = input[inIdx];
+          delayLine[wp] = input[inIdx];
           inIdx++;
+          wp = (wp + 1) & mask;
         }
+        // wp now sits one PAST the newest sample — kernel tap 0 must read
+        // (wp - 1), matching the old shift-line's delayLine[0].
         let acc = 0;
-        for (let t = 0; t < fullDownTaps; t++) acc += fullDownKernel[t] * delayLine[t];
+        for (let t = 0; t < taps; t++) acc += fullDownKernel[t] * delayLine[(wp - 1 - t) & mask];
         downBuf[n] = acc * decNorm;
       }
+      downWp = wp;
       return downBuf;
     },
 
     reset() {
-      downState.clear();
-      upState.clear();
+      upDelay.fill(0);
+      downDelay.fill(0);
+      upWp = 0;
+      downWp = 0;
     },
   };
 }

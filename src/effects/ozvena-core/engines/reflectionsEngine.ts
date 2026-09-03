@@ -33,7 +33,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import type { ReflectionsEngineState } from "../v2/types.js";
-import { clamp, flushDenormal, sanitize } from "../dsp/math.js";
+import { clamp, flushDenormal, sanitize, nextPow2 } from "../dsp/math.js";
 import {
   createBiquad,
   setLowPass,
@@ -94,11 +94,13 @@ export function createReflectionsEngine(): ReflectionsEngine {
 
   // Per-channel delay line ring buffers (one per channel), sized to the
   // longest tap. A single persistent write cursor per channel makes the
-  // engine block-size independent.
+  // engine block-size independent. Power-of-two capacity + wrap mask keep
+  // the per-sample ring arithmetic branch-free.
   let bufferL: Float32Array = new Float32Array(1);
   let bufferR: Float32Array = new Float32Array(1);
   let writePosL = 0;
   let writePosR = 0;
+  let ringMask = 0;
   let maxLen = 1;
   // Per-channel per-tap one-pole LPF state.
   let lpfL: Float32Array = new Float32Array(MAX_TAPS);
@@ -186,8 +188,10 @@ export function createReflectionsEngine(): ReflectionsEngine {
       maxLen = Math.max(maxLen, tapsL[i], tapsR[i]);
     }
     if (bufferL.length < maxLen) {
-      bufferL = new Float32Array(maxLen);
-      bufferR = new Float32Array(maxLen);
+      const cap = nextPow2(maxLen);
+      bufferL = new Float32Array(cap);
+      bufferR = new Float32Array(cap);
+      ringMask = cap - 1;
     }
   }
 
@@ -204,12 +208,13 @@ export function createReflectionsEngine(): ReflectionsEngine {
       // setParams() never reallocates it — mirrors the native engine.
       const maxScaleL = (250 / BASE_TAPS_MS_L[MAX_TAPS - 1]) * sampleRate / 1000;
       const maxScaleR = (250 / BASE_TAPS_MS_R[MAX_TAPS - 1]) * sampleRate / 1000;
-      const capacity = Math.max(1, Math.ceil(Math.max(
+      const capacity = nextPow2(Math.max(1, Math.ceil(Math.max(
         BASE_TAPS_MS_L[MAX_TAPS - 1] * maxScaleL,
         BASE_TAPS_MS_R[MAX_TAPS - 1] * maxScaleR,
-      )));
+      ))));
       bufferL = new Float32Array(capacity);
       bufferR = new Float32Array(capacity);
+      ringMask = capacity - 1;
       writePosL = 0;
       writePosR = 0;
       lpfL = new Float32Array(MAX_TAPS);
@@ -246,19 +251,14 @@ export function createReflectionsEngine(): ReflectionsEngine {
 
         if (hasL) bufferL[wl] = inL;
         if (hasR) bufferR[wr] = inR;
-        wl++;
-        if (wl >= maxLen) wl = 0;
-        wr++;
-        if (wr >= maxLen) wr = 0;
+        wl = (wl + 1) & ringMask;
+        wr = (wr + 1) & ringMask;
 
         let sumL = 0;
         let sumR = 0;
         if (hasL) {
           for (let t = 0; t < activeCount; t++) {
-            const d = tapsL[t];
-            const idx = wl - d;
-            const ri = idx < 0 ? idx + maxLen : idx;
-            let s = bufferL[ri];
+            const s = bufferL[(wl - tapsL[t]) & ringMask];
             lpfL[t] += lpAlphaL[t] * (s - lpfL[t]);
             lpfL[t] = flushDenormal(lpfL[t]);
             sumL += sanitize(lpfL[t]) * gainsL[t];
@@ -266,10 +266,7 @@ export function createReflectionsEngine(): ReflectionsEngine {
         }
         if (hasR) {
           for (let t = 0; t < activeCount; t++) {
-            const d = tapsR[t];
-            const idx = wr - d;
-            const ri = idx < 0 ? idx + maxLen : idx;
-            let s = bufferR[ri];
+            const s = bufferR[(wr - tapsR[t]) & ringMask];
             lpfR[t] += lpAlphaR[t] * (s - lpfR[t]);
             lpfR[t] = flushDenormal(lpfR[t]);
             sumR += sanitize(lpfR[t]) * gainsR[t];

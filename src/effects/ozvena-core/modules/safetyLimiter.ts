@@ -31,7 +31,7 @@
 // stereo image is preserved.
 // ═══════════════════════════════════════════════════════════
 
-import { clamp, dbToLinear } from "../dsp/math.js";
+import { clamp, dbToLinear, nextPow2 } from "../dsp/math.js";
 import {
   createPolyphaseOversampler,
   type PolyphaseOversampler,
@@ -71,7 +71,10 @@ export function createSafetyLimiter(): SafetyLimiter {
   let os: OversampleFactor = 4;
 
   let laOvs = 0;
+  // Power-of-two ring capacity + wrap mask — the peak scan touches every
+  // ring position each block, so `% ringCap` wraps are hot-path costs.
   let ringCap = 0;
+  let ringMask = 0;
   const ch: Chan[] = [];
 
   let epScratch = new Float32Array(0);
@@ -90,14 +93,14 @@ export function createSafetyLimiter(): SafetyLimiter {
 
   /** Fill epScratch[0..totalEp) with the effective (inter-sample) peak per position. */
   function computeEffectivePeaks(s: Chan, totalEp: number): void {
-    const ringStart = ((s.wp - totalEp) % ringCap + ringCap) % ringCap;
+    const ringStart = (s.wp - totalEp) & ringMask;
     for (let i = 0; i < totalEp; i++) {
-      const ri = (ringStart + i) % ringCap;
+      const ri = (ringStart + i) & ringMask;
       const a = s.ring[ri];
       const abs = a < 0 ? -a : a;
       let ep = abs;
       if (i < totalEp - 1) {
-        const ni = (ri + 1) % ringCap;
+        const ni = (ri + 1) & ringMask;
         const b = s.ring[ni];
         const d = b - a;
         let y = a + d * 0.25; let ay = y < 0 ? -y : y; if (ay > ep) ep = ay;
@@ -122,8 +125,8 @@ export function createSafetyLimiter(): SafetyLimiter {
       // stale samples past frameCount must not feed the filter state.
       const up = s.os.upsample(channels[c], n);
       upBuffers[c] = up;
-      for (let i = 0; i < upLen; i++) s.ring[(s.wp + i) % ringCap] = up[i];
-      s.wp = (s.wp + upLen) % ringCap;
+      for (let i = 0; i < upLen; i++) s.ring[(s.wp + i) & ringMask] = up[i];
+      s.wp = (s.wp + upLen) & ringMask;
       s.fill = Math.min(s.fill + upLen, ringCap);
 
       computeEffectivePeaks(s, totalEp);
@@ -148,7 +151,7 @@ export function createSafetyLimiter(): SafetyLimiter {
       for (let c = 1; c < numCh; c++) if (linkedEnvScratch[c][i] < minEnv) minEnv = linkedEnvScratch[c][i];
       for (let c = 0; c < numCh; c++) {
         const s = ch[c];
-        const op = ((s.wp - upLen + i - effLA) % ringCap + ringCap) % ringCap;
+        const op = (s.wp - upLen + i - effLA) & ringMask;
         upBuffers[c][i] = s.ring[op] * minEnv;
       }
     }
@@ -167,8 +170,8 @@ export function createSafetyLimiter(): SafetyLimiter {
     for (let c = 0; c < channels.length; c++) {
       const s = ch[c];
       const up = s.os.upsample(channels[c], n);
-      for (let i = 0; i < upLen; i++) s.ring[(s.wp + i) % ringCap] = up[i];
-      s.wp = (s.wp + upLen) % ringCap;
+      for (let i = 0; i < upLen; i++) s.ring[(s.wp + i) & ringMask] = up[i];
+      s.wp = (s.wp + upLen) & ringMask;
       s.fill = Math.min(s.fill + upLen, ringCap);
 
       computeEffectivePeaks(s, totalEp);
@@ -183,7 +186,7 @@ export function createSafetyLimiter(): SafetyLimiter {
           let tgt = 1;
           if (peak > ceil && peak > 1e-9) tgt = ceil / peak;
           s.env = tgt < s.env ? tgt : s.env * rc + tgt * (1 - rc);
-          const op = ((s.wp - upLen + outIdx - effLA) % ringCap + ringCap) % ringCap;
+          const op = (s.wp - upLen + outIdx - effLA) & ringMask;
           up[outIdx++] = s.ring[op] * s.env;
         }
       }
@@ -202,9 +205,11 @@ export function createSafetyLimiter(): SafetyLimiter {
       const maxBs = Math.max(1, maxBlockSize);
       initChannels(Math.max(1, channelCount));
       // Ring buffer sized for the maximum factor so a quality change
-      // never overflows it between re-prepares.
+      // never overflows it between re-prepares. Power-of-two capacity
+      // lets the wrap be a mask instead of `%`.
       const maxLaOvs = Math.round((MAX_LA_MS / 1000) * sampleRate) * OS_MAX;
-      ringCap = maxLaOvs + OS_MAX * maxBs;
+      ringCap = nextPow2(maxLaOvs + OS_MAX * maxBs);
+      ringMask = ringCap - 1;
       for (const s of ch) {
         s.os.prepare(sampleRate, os);
         s.ring = new Float32Array(ringCap);

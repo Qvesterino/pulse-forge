@@ -26,6 +26,11 @@
   function sanitize(x) {
     return Number.isFinite(x) ? x : 0;
   }
+  function nextPow2(n) {
+    let p = 1;
+    while (p < n) p <<= 1;
+    return p;
+  }
 
   // src/effects/ozvena-core/dsp/biquad.ts
   var q32 = (x) => Math.fround(x);
@@ -141,7 +146,7 @@
   }
 
   // src/effects/ozvena-core/dsp/fft.ts
-  function nextPow2(n) {
+  function nextPow22(n) {
     if (n <= 1) return 1;
     let p = 1;
     while (p < n) p <<= 1;
@@ -426,18 +431,14 @@
     let decNorm = 1;
     let fullDownKernel = new Float32Array(0);
     let fullDownTaps = 0;
-    const downState = /* @__PURE__ */ new Map();
-    const upState = /* @__PURE__ */ new Map();
+    let upDelay = new Float32Array(1);
+    let upMask = 0;
+    let upWp = 0;
+    let downDelay = new Float32Array(1);
+    let downMask = 0;
+    let downWp = 0;
     let upBuf = new Float32Array(0);
     let downBuf = new Float32Array(0);
-    function stateKey(map, ch, len) {
-      let s = map.get(ch);
-      if (!s || s.length !== len) {
-        s = new Float32Array(len);
-        map.set(ch, s);
-      }
-      return s;
-    }
     return {
       get factor() {
         return factor;
@@ -452,8 +453,8 @@
       prepare(sr, f) {
         sampleRate2 = clamp(sr, 8e3, 192e3);
         factor = f;
-        downState.clear();
-        upState.clear();
+        upWp = 0;
+        downWp = 0;
         if (factor <= 1) {
           subfilters = [];
           filterLength = 0;
@@ -478,6 +479,11 @@
           subScale[p] = sums[p] > 0 ? 1 / sums[p] : 1;
         }
         decNorm = 1;
+        const cap = nextPow2(Math.max(tapsPerPhase, fullDownTaps));
+        upDelay = new Float32Array(cap);
+        upMask = cap - 1;
+        downDelay = new Float32Array(cap);
+        downMask = cap - 1;
       },
       upsample(input, inputLen = input.length) {
         if (factor <= 1) {
@@ -489,17 +495,20 @@
         const taps = sf[0].length;
         const outLen = inputLen * factor;
         if (upBuf.length < outLen) upBuf = new Float32Array(outLen);
-        const delayLine = stateKey(upState, 0, taps);
+        const delayLine = upDelay;
+        const mask = upMask;
+        let wp = upWp;
         for (let n = 0; n < inputLen; n++) {
-          for (let i = taps - 1; i > 0; i--) delayLine[i] = delayLine[i - 1];
-          delayLine[0] = input[n];
+          delayLine[wp] = input[n];
           for (let p = 0; p < factor; p++) {
             const sub = sf[p];
             let acc = 0;
-            for (let t = 0; t < taps; t++) acc += sub[t] * delayLine[t];
+            for (let t = 0; t < taps; t++) acc += sub[t] * delayLine[wp - t & mask];
             upBuf[n * factor + p] = acc * subScale[p];
           }
+          wp = wp + 1 & mask;
         }
+        upWp = wp;
         return upBuf;
       },
       downsample(input, inputLen = input.length) {
@@ -509,23 +518,29 @@
           for (let i = 0; i < outLen; i++) downBuf[i] = input[i];
           return downBuf;
         }
-        const delayLine = stateKey(downState, 0, fullDownTaps);
+        const delayLine = downDelay;
+        const mask = downMask;
+        const taps = fullDownTaps;
+        let wp = downWp;
         let inIdx = 0;
         for (let n = 0; n < outLen; n++) {
           for (let p = 0; p < factor; p++) {
-            for (let i = fullDownTaps - 1; i > 0; i--) delayLine[i] = delayLine[i - 1];
-            delayLine[0] = input[inIdx];
+            delayLine[wp] = input[inIdx];
             inIdx++;
+            wp = wp + 1 & mask;
           }
           let acc = 0;
-          for (let t = 0; t < fullDownTaps; t++) acc += fullDownKernel[t] * delayLine[t];
+          for (let t = 0; t < taps; t++) acc += fullDownKernel[t] * delayLine[wp - 1 - t & mask];
           downBuf[n] = acc * decNorm;
         }
+        downWp = wp;
         return downBuf;
       },
       reset() {
-        downState.clear();
-        upState.clear();
+        upDelay.fill(0);
+        downDelay.fill(0);
+        upWp = 0;
+        downWp = 0;
       }
     };
   }
@@ -762,21 +777,22 @@
     let delaySamples = 0;
     let buffers = [];
     let writeIdx = [];
+    let ringMask = 0;
+    function requiredSpan() {
+      const fade = fadeFromSamples > 0 ? fadeFromSamples : 0;
+      return Math.max(delaySamples, fade) + 1;
+    }
     function ensureBuffers() {
-      const maxDelay = Math.max(
-        Math.ceil(500 / 1e3 * sampleRate2),
-        // 500 ms (free mode max)
-        Math.ceil(syncNoteToBeats("8/1") * 60 / 20 * sampleRate2)
-        // 8 measures @ 20 BPM
-      );
-      if (buffers.length !== channelCount || buffers[0]?.length !== maxDelay) {
-        buffers = [];
-        writeIdx = [];
-        for (let c = 0; c < channelCount; c++) {
-          buffers.push(new Float32Array(maxDelay));
-          writeIdx.push(0);
-        }
+      const need = requiredSpan();
+      if (buffers.length === channelCount && buffers[0] && buffers[0].length >= need) return;
+      const cap = nextPow2(need);
+      buffers = [];
+      writeIdx = [];
+      for (let c = 0; c < channelCount; c++) {
+        buffers.push(new Float32Array(cap));
+        writeIdx.push(0);
       }
+      ringMask = cap - 1;
     }
     function recomputeDelaySamples() {
       if (params.syncEnabled) {
@@ -799,8 +815,8 @@
         sampleRate2 = clamp(sr, 8e3, 192e3);
         channelCount = Math.max(1, cc);
         bpm = clamp(hostBpm, 20, 300);
-        ensureBuffers();
         recomputeDelaySamples();
+        ensureBuffers();
         activeDelaySamples = -1;
         fadeFromSamples = -1;
         fadePos = 0;
@@ -814,6 +830,7 @@
           fadeFromSamples = activeDelaySamples;
           fadePos = 0;
           activeDelaySamples = d;
+          ensureBuffers();
         }
         const fadeLen = Math.max(1, Math.round(FADE_SECONDS * sampleRate2));
         for (let i = 0; i < frameCount; i++) {
@@ -827,18 +844,15 @@
             if (c >= buffers.length) continue;
             const buf = channels[c];
             const dly = buffers[c];
-            const len = dly.length;
             let wi = writeIdx[c];
-            const readIdx = (wi - d + len) % len;
-            let delayed = dly[readIdx];
+            let delayed = dly[wi - d & ringMask];
             if (fadeT >= 0) {
-              const readOld = (wi - fadeFromSamples + len) % len;
+              const readOld = wi - fadeFromSamples & ringMask;
               delayed = dly[readOld] * (1 - fadeT) + delayed * fadeT;
             }
             dly[wi] = buf[i];
             buf[i] = delayed;
-            wi++;
-            if (wi >= len) wi = 0;
+            wi = wi + 1 & ringMask;
             writeIdx[c] = wi;
           }
         }
@@ -846,10 +860,12 @@
       setParams(p) {
         params = { ...p };
         recomputeDelaySamples();
+        ensureBuffers();
       },
       setBpm(hostBpm) {
         bpm = clamp(hostBpm, 20, 300);
         recomputeDelaySamples();
+        ensureBuffers();
       },
       getDelaySamples() {
         return params.enabled ? delaySamples : 0;
@@ -1750,6 +1766,7 @@
     let os = 4;
     let laOvs = 0;
     let ringCap = 0;
+    let ringMask = 0;
     const ch = [];
     let epScratch = new Float32Array(0);
     let dequeIdx = new Int32Array(0);
@@ -1763,14 +1780,14 @@
       }
     }
     function computeEffectivePeaks(s, totalEp) {
-      const ringStart = ((s.wp - totalEp) % ringCap + ringCap) % ringCap;
+      const ringStart = s.wp - totalEp & ringMask;
       for (let i = 0; i < totalEp; i++) {
-        const ri = (ringStart + i) % ringCap;
+        const ri = ringStart + i & ringMask;
         const a = s.ring[ri];
         const abs = a < 0 ? -a : a;
         let ep = abs;
         if (i < totalEp - 1) {
-          const ni = (ri + 1) % ringCap;
+          const ni = ri + 1 & ringMask;
           const b = s.ring[ni];
           const d = b - a;
           let y = a + d * 0.25;
@@ -1797,8 +1814,8 @@
         const s = ch[c];
         const up = s.os.upsample(channels[c], n);
         upBuffers[c] = up;
-        for (let i = 0; i < upLen; i++) s.ring[(s.wp + i) % ringCap] = up[i];
-        s.wp = (s.wp + upLen) % ringCap;
+        for (let i = 0; i < upLen; i++) s.ring[s.wp + i & ringMask] = up[i];
+        s.wp = s.wp + upLen & ringMask;
         s.fill = Math.min(s.fill + upLen, ringCap);
         computeEffectivePeaks(s, totalEp);
         let dqHead = 0, dqTail = 0, outIdx = 0;
@@ -1822,7 +1839,7 @@
         for (let c = 1; c < numCh; c++) if (linkedEnvScratch[c][i] < minEnv) minEnv = linkedEnvScratch[c][i];
         for (let c = 0; c < numCh; c++) {
           const s = ch[c];
-          const op = ((s.wp - upLen + i - effLA) % ringCap + ringCap) % ringCap;
+          const op = s.wp - upLen + i - effLA & ringMask;
           upBuffers[c][i] = s.ring[op] * minEnv;
         }
       }
@@ -1839,8 +1856,8 @@
       for (let c = 0; c < channels.length; c++) {
         const s = ch[c];
         const up = s.os.upsample(channels[c], n);
-        for (let i = 0; i < upLen; i++) s.ring[(s.wp + i) % ringCap] = up[i];
-        s.wp = (s.wp + upLen) % ringCap;
+        for (let i = 0; i < upLen; i++) s.ring[s.wp + i & ringMask] = up[i];
+        s.wp = s.wp + upLen & ringMask;
         s.fill = Math.min(s.fill + upLen, ringCap);
         computeEffectivePeaks(s, totalEp);
         let dqHead = 0, dqTail = 0, outIdx = 0;
@@ -1855,7 +1872,7 @@
             let tgt = 1;
             if (peak > ceil && peak > 1e-9) tgt = ceil / peak;
             s.env = tgt < s.env ? tgt : s.env * rc + tgt * (1 - rc);
-            const op = ((s.wp - upLen + outIdx - effLA) % ringCap + ringCap) % ringCap;
+            const op = s.wp - upLen + outIdx - effLA & ringMask;
             up[outIdx++] = s.ring[op] * s.env;
           }
         }
@@ -1872,7 +1889,8 @@
         const maxBs = Math.max(1, maxBlockSize);
         initChannels(Math.max(1, channelCount));
         const maxLaOvs = Math.round(MAX_LA_MS / 1e3 * sampleRate2) * OS_MAX;
-        ringCap = maxLaOvs + OS_MAX * maxBs;
+        ringCap = nextPow2(maxLaOvs + OS_MAX * maxBs);
+        ringMask = ringCap - 1;
         for (const s of ch) {
           s.os.prepare(sampleRate2, os);
           s.ring = new Float32Array(ringCap);
@@ -1973,6 +1991,7 @@
     let bufferR = new Float32Array(1);
     let writePosL = 0;
     let writePosR = 0;
+    let ringMask = 0;
     let maxLen = 1;
     let lpfL = new Float32Array(MAX_TAPS);
     let lpfR = new Float32Array(MAX_TAPS);
@@ -2031,8 +2050,10 @@
         maxLen = Math.max(maxLen, tapsL[i], tapsR[i]);
       }
       if (bufferL.length < maxLen) {
-        bufferL = new Float32Array(maxLen);
-        bufferR = new Float32Array(maxLen);
+        const cap = nextPow2(maxLen);
+        bufferL = new Float32Array(cap);
+        bufferR = new Float32Array(cap);
+        ringMask = cap - 1;
       }
     }
     return {
@@ -2044,12 +2065,13 @@
         setLowPass(sideBiquad.coeffs, clamp(params.lowpassHz, 30, 2e4), 0.7071, sampleRate2);
         const maxScaleL = 250 / BASE_TAPS_MS_L[MAX_TAPS - 1] * sampleRate2 / 1e3;
         const maxScaleR = 250 / BASE_TAPS_MS_R[MAX_TAPS - 1] * sampleRate2 / 1e3;
-        const capacity = Math.max(1, Math.ceil(Math.max(
+        const capacity = nextPow2(Math.max(1, Math.ceil(Math.max(
           BASE_TAPS_MS_L[MAX_TAPS - 1] * maxScaleL,
           BASE_TAPS_MS_R[MAX_TAPS - 1] * maxScaleR
-        )));
+        ))));
         bufferL = new Float32Array(capacity);
         bufferR = new Float32Array(capacity);
+        ringMask = capacity - 1;
         writePosL = 0;
         writePosR = 0;
         lpfL = new Float32Array(MAX_TAPS);
@@ -2077,18 +2099,13 @@
           const inR = hasR ? channels[1][i] : inL;
           if (hasL) bufferL[wl] = inL;
           if (hasR) bufferR[wr] = inR;
-          wl++;
-          if (wl >= maxLen) wl = 0;
-          wr++;
-          if (wr >= maxLen) wr = 0;
+          wl = wl + 1 & ringMask;
+          wr = wr + 1 & ringMask;
           let sumL = 0;
           let sumR = 0;
           if (hasL) {
             for (let t = 0; t < activeCount; t++) {
-              const d = tapsL[t];
-              const idx = wl - d;
-              const ri = idx < 0 ? idx + maxLen : idx;
-              let s = bufferL[ri];
+              const s = bufferL[wl - tapsL[t] & ringMask];
               lpfL[t] += lpAlphaL[t] * (s - lpfL[t]);
               lpfL[t] = flushDenormal(lpfL[t]);
               sumL += sanitize(lpfL[t]) * gainsL[t];
@@ -2096,10 +2113,7 @@
           }
           if (hasR) {
             for (let t = 0; t < activeCount; t++) {
-              const d = tapsR[t];
-              const idx = wr - d;
-              const ri = idx < 0 ? idx + maxLen : idx;
-              let s = bufferR[ri];
+              const s = bufferR[wr - tapsR[t] & ringMask];
               lpfR[t] += lpAlphaR[t] * (s - lpfR[t]);
               lpfR[t] = flushDenormal(lpfR[t]);
               sumR += sanitize(lpfR[t]) * gainsR[t];
@@ -2181,6 +2195,7 @@
     };
     let lines = [];
     let writeIdx = [];
+    const lineMaskC = [new Int32Array(FDN_LINES), new Int32Array(FDN_LINES)];
     let lpState = [];
     let hpState = [];
     let hpPrev = [];
@@ -2299,8 +2314,10 @@
         const hpv = [];
         const blp = [];
         for (let l = 0; l < FDN_LINES; l++) {
-          const maxLen = Math.max(8, Math.round(base[l] * maxSrScale)) + 16;
-          ls.push(new Float32Array(maxLen));
+          const maxLen = Math.max(8, Math.round(base[l] * maxSrScale)) + 32;
+          const cap = nextPow2(maxLen);
+          ls.push(new Float32Array(cap));
+          lineMaskC[c][l] = cap - 1;
           wi.push(0);
           lp.push(0);
           hp.push(0);
@@ -2377,7 +2394,8 @@
         const g = ALLPASS_GAINS[s];
         const out = delayed - g * x;
         buf[idxs[s]] = x + g * delayed;
-        idxs[s] = (idxs[s] + 1) % len;
+        const next = idxs[s] + 1;
+        idxs[s] = next >= len ? 0 : next;
         x = out;
       }
       return x;
@@ -2392,7 +2410,8 @@
         const delayed = buf[idxs[s]];
         const out = delayed - diffG * x;
         buf[idxs[s]] = x + diffG * delayed;
-        idxs[s] = (idxs[s] + 1) % len;
+        const next = idxs[s] + 1;
+        idxs[s] = next >= len ? 0 : next;
         x = out;
       }
       return x;
@@ -2472,6 +2491,7 @@
           for (let c = 0; c < cc; c++) {
             const ls = lines[c];
             const wis = writeIdx[c];
+            const masks = lineMaskC[c];
             const lp = lpState[c];
             const hp = hpState[c];
             const hpv = hpPrev[c];
@@ -2484,26 +2504,26 @@
             inSample = processAllpass(inSample, c);
             inScratchC[c] = freeze_ ? 0 : inSample;
             for (let l = 0; l < FDN_LINES; l++) {
-              const baseLen = lengthsC[c][l];
-              let readPos;
+              const buf = ls[l];
+              const m = masks[l];
+              let readPos = wis[l] - lengthsC[c][l];
               if (effectiveDepth > 0) {
                 const modPhase = lfoPhase + l / FDN_LINES * Math.PI * 2;
-                const modOffset = Math.sin(modPhase) * effectiveDepth;
-                readPos = wis[l] - baseLen + modOffset;
-              } else {
-                readPos = wis[l] - baseLen;
+                readPos += Math.sin(modPhase) * effectiveDepth;
               }
-              const bufLen = ls[l].length;
-              readPos = (readPos % bufLen + bufLen) % bufLen;
-              const ri0 = Math.floor(readPos);
-              const ri1 = (ri0 + 1) % bufLen;
-              const frac = readPos - ri0;
+              const riFloor = Math.floor(readPos);
+              const ri0 = riFloor & m;
+              const frac = readPos - riFloor;
               if (frac > 0) {
-                const rim1 = (ri0 + bufLen - 1) % bufLen;
-                const ri2 = (ri0 + 2) % bufLen;
-                taps[l] = hermiteInterp(ls[l][rim1], ls[l][ri0], ls[l][ri1], ls[l][ri2], frac);
+                taps[l] = hermiteInterp(
+                  buf[ri0 - 1 & m],
+                  buf[ri0],
+                  buf[ri0 + 1 & m],
+                  buf[ri0 + 2 & m],
+                  frac
+                );
               } else {
-                taps[l] = ls[l][ri0];
+                taps[l] = buf[ri0];
               }
             }
             householder8(taps);
@@ -2551,6 +2571,7 @@
           for (let c = 0; c < cc; c++) {
             const ls = lines[c];
             const wis = writeIdx[c];
+            const masks = lineMaskC[c];
             const blp = bassLp[c];
             const damped = dampedScratchC[c];
             const dampedO = dampedScratchC[cc > 1 ? 1 - c : c];
@@ -2562,7 +2583,7 @@
               blp[l] = flushDenormal(blp[l]);
               const shelved = eff + (bassGain - 1) * sanitize(blp[l]);
               ls[l][wis[l]] = inSample + shelved * fbEff;
-              wis[l] = (wis[l] + 1) % ls[l].length;
+              wis[l] = wis[l] + 1 & masks[l];
             }
             const out = c === 0 ? wetL : wetR;
             if (out) out[i] = wetSumC[c] / FDN_LINES * attackEnv;
@@ -2648,6 +2669,9 @@
     };
     let lines = [];
     let writeIdx = [];
+    const lineMaskC = [new Int32Array(FDN_LINES2), new Int32Array(FDN_LINES2)];
+    const pdMaskC = [new Int32Array(FDN_LINES2), new Int32Array(FDN_LINES2)];
+    const pdOffC = [new Int32Array(FDN_LINES2), new Int32Array(FDN_LINES2)];
     let lpState = [];
     let hpState = [];
     let hpPrev = [];
@@ -2771,14 +2795,20 @@
         const pdIdx = [];
         for (let l = 0; l < FDN_LINES2; l++) {
           const densityScale = 1 - l * 0.03;
-          const maxLen = Math.max(8, Math.round(base[l] * maxSrScale * densityScale)) + 16;
-          ls.push(new Float32Array(maxLen));
+          const maxLen = Math.max(8, Math.round(base[l] * maxSrScale * densityScale)) + 32;
+          const cap = nextPow2(maxLen);
+          ls.push(new Float32Array(cap));
+          lineMaskC[c][l] = cap - 1;
           wi.push(0);
           lp.push(0);
           hp.push(0);
           hpv.push(0);
           blp.push(0);
-          pdBufs.push(new Float32Array(Math.max(4, Math.round(maxPredelay * maxSrScale))));
+          const pdLen = Math.max(4, Math.round(maxPredelay * maxSrScale));
+          const pdCap = nextPow2(pdLen);
+          pdBufs.push(new Float32Array(pdCap));
+          pdMaskC[c][l] = pdCap - 1;
+          pdOffC[c][l] = Math.min(LINE_PREDELAY_OFFSETS[l], pdLen - 1);
           pdIdx.push(0);
         }
         lines.push(ls);
@@ -2839,7 +2869,8 @@
         const delayed = buf[idxs[s]];
         const out = delayed - diffG * x;
         buf[idxs[s]] = x + diffG * delayed;
-        idxs[s] = (idxs[s] + 1) % len;
+        const next = idxs[s] + 1;
+        idxs[s] = next >= len ? 0 : next;
         x = out;
       }
       return x;
@@ -2916,6 +2947,9 @@
           for (let c = 0; c < cc; c++) {
             const ls = lines[c];
             const wis = writeIdx[c];
+            const masks = lineMaskC[c];
+            const pdMasks = pdMaskC[c];
+            const pdOffs = pdOffC[c];
             const lp = lpState[c];
             const hp = hpState[c];
             const hpv = hpPrev[c];
@@ -2931,33 +2965,29 @@
             inSample = processInputDiffusion(inSample, c);
             for (let l = 0; l < FDN_LINES2; l++) {
               const pdBuf = pdBufs[l];
-              const pdLen = pdBuf.length;
               pdBuf[pdIdx[l]] = inSample;
-              const pdOffset = Math.min(LINE_PREDELAY_OFFSETS[l], pdLen - 1);
-              const pdRead = (pdIdx[l] - pdOffset + pdLen) % pdLen;
-              const delayedIn = pdBuf[pdRead];
-              pdIdx[l] = (pdIdx[l] + 1) % pdLen;
-              pd[l] = delayedIn;
-              const baseLen = lengthsC[c][l];
-              let readPos;
+              pd[l] = pdBuf[pdIdx[l] - pdOffs[l] & pdMasks[l]];
+              pdIdx[l] = pdIdx[l] + 1 & pdMasks[l];
+              const buf = ls[l];
+              const m = masks[l];
+              let readPos = wis[l] - lengthsC[c][l];
               if (effectiveDepth > 0) {
                 const modPhase = lfoPhase + l / FDN_LINES2 * Math.PI * 2;
-                const modOffset = Math.sin(modPhase) * effectiveDepth;
-                readPos = wis[l] - baseLen + modOffset;
-              } else {
-                readPos = wis[l] - baseLen;
+                readPos += Math.sin(modPhase) * effectiveDepth;
               }
-              const bufLen = ls[l].length;
-              readPos = (readPos % bufLen + bufLen) % bufLen;
-              const ri0 = Math.floor(readPos);
-              const ri1 = (ri0 + 1) % bufLen;
-              const frac = readPos - ri0;
+              const riFloor = Math.floor(readPos);
+              const ri0 = riFloor & m;
+              const frac = readPos - riFloor;
               if (frac > 0) {
-                const rim1 = (ri0 + bufLen - 1) % bufLen;
-                const ri2 = (ri0 + 2) % bufLen;
-                taps[l] = hermiteInterp(ls[l][rim1], ls[l][ri0], ls[l][ri1], ls[l][ri2], frac);
+                taps[l] = hermiteInterp(
+                  buf[ri0 - 1 & m],
+                  buf[ri0],
+                  buf[ri0 + 1 & m],
+                  buf[ri0 + 2 & m],
+                  frac
+                );
               } else {
-                taps[l] = ls[l][ri0];
+                taps[l] = buf[ri0];
               }
             }
             householder82(taps);
@@ -3004,6 +3034,7 @@
           for (let c = 0; c < cc; c++) {
             const ls = lines[c];
             const wis = writeIdx[c];
+            const masks = lineMaskC[c];
             const blp = bassLp[c];
             const damped = dampedScratchC[c];
             const dampedO = dampedScratchC[cc > 1 ? 1 - c : c];
@@ -3015,7 +3046,7 @@
               blp[l] = flushDenormal(blp[l]);
               const shelved = eff + (bassGain - 1) * sanitize(blp[l]);
               ls[l][wis[l]] = pd[l] + shelved * fbEff;
-              wis[l] = (wis[l] + 1) % ls[l].length;
+              wis[l] = wis[l] + 1 & masks[l];
             }
             const out = c === 0 ? wetL : wetR;
             if (out) out[i] = wetSumC[c] / FDN_LINES2 * attackEnv;
@@ -3200,7 +3231,7 @@
   }
   function recommendPartitionSize(irLength) {
     const target = Math.max(64, Math.round(2 * Math.sqrt(irLength)));
-    return nextPow2(target);
+    return nextPow22(target);
   }
 
   // src/effects/ozvena-core/engines/convolutionEngine.ts

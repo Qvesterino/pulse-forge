@@ -9,6 +9,7 @@
  */
 import { UltinaProcessor } from "./ultina-core/dsp/ultinaProcessor.ts";
 import { registerCoreModules } from "./ultina-core/dsp/moduleFactories.ts";
+import { MODULE_TYPES } from "./ultina-core/contracts/moduleTypes.ts";
 
 const MAX_BLOCK = 128;
 const CHANNELS = 2;
@@ -30,16 +31,24 @@ class UltinaWorkletProcessor extends AudioWorkletProcessor {
     });
     const initial = options?.processorOptions?.params;
     if (initial) this.proc.loadState(initial);
+    this.syncGraphFromParams();
     this.postLatency();
     this.port.onmessage = (event) => {
       const msg = event.data;
       if (!msg) return;
       if (msg.type === "params") {
         this.proc.loadState(msg.params);
+        this.syncGraphFromParams();
         this.postLatency();
       } else if (msg.type === "param") {
         this.proc.setParameter(msg.id, msg.value);
-        this.postLatency();
+        // Module on/off travels as a regular "<module>.enabled" param, but
+        // the audio thread walks the module GRAPH — a toggle must be mirrored
+        // there or the module never enters the active chain.
+        if (typeof msg.id === "string" && msg.id.endsWith(".enabled")) {
+          this.syncGraphFromParams();
+          this.postLatency();
+        }
       } else if (msg.type === "reset") {
         this.proc.reset();
       } else if (msg.type === "dispose") {
@@ -50,6 +59,17 @@ class UltinaWorkletProcessor extends AudioWorkletProcessor {
         this.proc.dispose();
       }
     };
+  }
+
+  /** Mirror the host-facing "<module>.enabled" params into the module graph.
+   * The graph boots ALL-DISABLED and nothing else syncs it — without this,
+   * the active chain stays empty forever and every module (EQ/Comp/Gate/…)
+   * is silent DSP while the UI happily reports it on. */
+  syncGraphFromParams() {
+    const graph = this.proc.getGraphRuntime();
+    for (const type of MODULE_TYPES) {
+      graph.setModuleEnabled(type, this.proc.getParameter(`${type}.enabled`) >= 0.5);
+    }
   }
 
   postLatency() {

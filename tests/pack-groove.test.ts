@@ -224,6 +224,8 @@ describe("pack sketch capture + install", () => {
   it("install refuses sketches that map nothing onto the track", () => {
     const { doc } = buildDoc();
     expect(installPackSketch(doc as never, "drum-1", { scenes: [], clips: [] })).toBeNull();
-    expect(installPackSketch(doc as never, "nope", { scenes: [{ name: "X", steps: 4, rows: ["f000"] }], clips: [] })).toBeNull();
+    expect(
+      installPackSketch(doc as never, "nope", { scenes: [{ name: "X", steps: 4, rows: ["f000"] }], clips: [] }),
+    ).toBeNull();
   });
 });

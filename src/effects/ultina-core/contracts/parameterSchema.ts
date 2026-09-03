@@ -439,7 +439,12 @@ export function fromNormalized(id: string, normalized: number): number {
 /** Clamp a value to a parameter's range. */
 export function clampParam(id: string, value: number): number {
   const def = PARAM_BY_ID.get(id);
-  if (!def) return value;
+  if (!def) return Number.isFinite(value) ? value : 0;
+  // NaN/Infinity must never reach the audio path: Math.min/max silently PASS
+  // non-finite values through (Math.min(max, NaN) === NaN), and a NaN
+  // parameter would flow into coefficient math (filters/limits) and poison
+  // the module. Bad automation frames or a corrupted stored state land here.
+  if (!Number.isFinite(value)) return def.defaultValue;
   return Math.max(def.minValue, Math.min(def.maxValue, value));
 }
 
