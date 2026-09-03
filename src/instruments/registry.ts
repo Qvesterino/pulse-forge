@@ -1046,7 +1046,11 @@ const sampler: InstrumentDefinition = {
     { id: "root", label: "ROOT", min: 24, max: 84, default: 60, format: (v) => `${Math.round(v)}` },
     { id: "start", label: "START", min: 0, max: 1, default: 0, format: formatPct },
     { id: "attack", label: "ATTACK", min: 0.001, max: 1, default: 0.003, unit: "s", format: formatMs },
+    { id: "decay", label: "DECAY", min: 0.005, max: 2, default: 0.25, unit: "s", format: formatMs },
+    { id: "sustain", label: "SUSTAIN", min: 0, max: 1, default: 1, format: formatPct },
     { id: "release", label: "RELEASE", min: 0.01, max: 2, default: 0.12, unit: "s", format: formatMs },
+    { id: "pitchDrop", label: "P-DROP", min: 0, max: 24, default: 0, unit: "st", format: (v) => `${v.toFixed(1)} st` },
+    { id: "pitchDecayT", label: "P-DECAY", min: 0.005, max: 1, default: 0.12, unit: "s", format: formatMs },
     { id: "cutoff", label: "CUTOFF", min: 500, max: 16000, default: 15000, unit: "Hz", format: formatHz },
     { id: "resonance", label: "RESO", min: 0.1, max: 8, default: 0.7, format: (v) => v.toFixed(2) },
     {
@@ -1326,6 +1330,16 @@ const sampler: InstrumentDefinition = {
           src.playbackRate.value = 1;
         } else {
           src.playbackRate.value = Math.pow(2, semitones / 12);
+        }
+        // Pitch envelope: start P-DROP semitones above the final pitch and
+        // glide down over P-DECAY (808/trap snap without touching the sample).
+        const pitchDrop = Math.max(0, Math.min(24, p.pitchDrop ?? 0));
+        if (pitchDrop > 0.05 && (p.reverse ?? 0) <= 0.5 && (p.loop ?? 0) <= 0.5) {
+          const base = Math.pow(2, semitones / 12);
+          const startRate = base * Math.pow(2, pitchDrop / 12);
+          const decayT = Math.max(0.01, p.pitchDecayT ?? 0.12);
+          src.playbackRate.setValueAtTime(startRate, when);
+          src.playbackRate.exponentialRampToValueAtTime(base, when + decayT);
         }
         src.connect(filter.input);
         // Stereo spread: deterministic pan per note (seeded) — wide polyphony

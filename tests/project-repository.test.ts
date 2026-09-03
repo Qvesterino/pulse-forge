@@ -155,6 +155,68 @@ describe("ProjectRepository", () => {
       console.warn = warn;
     }
   });
+
+  it("a CORRUPTED record (invalid shape) loads as null, is skipped in lists, and never hijacks the recent pointer", async () => {
+    // Corruption other than "newer version": required fields missing or of the
+    // wrong type (truncated structured clone, third-party write, bit rot).
+    const good = freshProject("Still Fine");
+    await repo.save(good);
+    const { openDb: open, tx: runTx, STORE_PROJECTS } = await import("../src/persistence/db");
+    const db = await open();
+    const put = (record: unknown) =>
+      new Promise<void>((resolve, reject) => {
+        const t = db.transaction(STORE_PROJECTS, "readwrite");
+        t.objectStore(STORE_PROJECTS).put(record);
+        t.oncomplete = () => resolve();
+        t.onerror = () => reject(t.error);
+      });
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      await put({ id: "corrupt-shape" }); // only the key — no tracks/patterns/bpm
+      await put({ id: "corrupt-types", name: 7, bpm: "fast", tracks: "nope", patterns: null });
+      await put({ ...freshProject("Bad Nested"), id: "corrupt-nested", scenes: "not-an-array" });
+
+      expect(await repo.load("corrupt-shape")).toBeNull();
+      expect(await repo.load("corrupt-types")).toBeNull();
+      expect(await repo.load("corrupt-nested")).toBeNull();
+
+      const list = await repo.listAll();
+      expect(list.map((m) => m.id)).not.toContain("corrupt-shape");
+      expect(list.map((m) => m.name)).toContain("Still Fine");
+
+      // The recent pointer sits on a VALID project here, but loadMostRecent
+      // must also survive when the pointer itself targets a corrupt record.
+      await runTx(db, "meta", "readwrite", (s) => s.put("corrupt-shape", "recentProjectId"));
+      const recent = await repo.loadMostRecent();
+      expect(recent).not.toBeNull();
+      expect(recent!.id).not.toBe("corrupt-shape");
+    } finally {
+      console.warn = warn;
+    }
+  });
+
+  it("non-finite numeric garbage inside an otherwise valid record is clamped, not rejected", async () => {
+    // NaN survives a structured clone — a half-written numeric field must end
+    // up at the documented fallback (bpm 120), never break normalization.
+    const db = await import("../src/persistence/db").then((m) => m.openDb());
+    const doc = { ...freshProject("NaN Field"), bpm: NaN };
+    await new Promise<void>((resolve, reject) => {
+      const t = db.transaction("projects", "readwrite");
+      t.objectStore("projects").put(doc);
+      t.oncomplete = () => resolve();
+      t.onerror = () => reject(t.error);
+    });
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      const loaded = await repo.load(doc.id);
+      expect(loaded).not.toBeNull();
+      expect(loaded!.bpm).toBe(120); // FALLBACK_BPM
+    } finally {
+      console.warn = warn;
+    }
+  });
 });
 
 describe("PresetRepository", () => {

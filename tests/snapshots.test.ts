@@ -52,6 +52,31 @@ describe("SnapshotRepository", () => {
     expect(list[0].doc.name).toBe("Edited");
   });
 
+  it("a corrupt snapshot row (bad doc shape) is skipped, not thrown", async () => {
+    // A snapshot written by an old build or damaged in place must not break
+    // the history panel — the restore safety net has to stay usable.
+    const doc = createProjectFromTemplate("house");
+    await repo.save(doc.id, doc, "good");
+    const { openDb: open, STORE_SNAPSHOTS } = await import("../src/persistence/db");
+    const db = await open();
+    await new Promise<void>((resolve, reject) => {
+      const t = db.transaction(STORE_SNAPSHOTS, "readwrite");
+      t.objectStore(STORE_SNAPSHOTS).put({
+        id: `${doc.id}:corrupt`,
+        projectId: doc.id,
+        label: "corrupt",
+        createdAt: new Date().toISOString(),
+        doc: { projectId: doc.id, label: "no real document here" }, // doc fails validateProjectShape
+      });
+      t.oncomplete = () => resolve();
+      t.onerror = () => reject(t.error);
+    });
+
+    const list = await repo.list(doc.id);
+    expect(list.map((s) => s.label)).toEqual(["good"]);
+    expect(await repo.get(`${doc.id}:corrupt`)).toBeNull();
+  });
+
   it("prunes to the newest N per project and keeps other projects untouched", async () => {
     const a = createProjectFromTemplate("house");
     const b = createProjectFromTemplate("techno");
@@ -105,7 +130,12 @@ describe("restore as an undoable command", () => {
     const snapshotDoc = structuredClone(original);
     const store = new ProjectStore({ ...original, name: "current" });
 
-    store.execute({ type: "restoreSnapshot", label: "restore", execute: () => snapshotDoc, undo: () => original } as never);
+    store.execute({
+      type: "restoreSnapshot",
+      label: "restore",
+      execute: () => snapshotDoc,
+      undo: () => original,
+    } as never);
     // Rename the restored doc through a follow-up command — the snapshot copy must not change.
     store.execute({
       type: "rename",
