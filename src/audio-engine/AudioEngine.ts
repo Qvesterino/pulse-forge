@@ -331,6 +331,9 @@ export class AudioEngine {
   private trackNodes = new Map<string, TrackNodes>();
   private returnNodes = new Map<string, ReturnNodes>();
   private groupNodes = new Map<string, GroupNodes>();
+  /** Desired metering state per fx id (panel attached → on). Re-applied when a
+   * chain rebuild recreates runtimes so the panel never has to re-register. */
+  private fxMetersEnabled = new Map<string, boolean>();
   private instruments = new Map<string, InstrumentState>();
   private frozenBuffers = new Map<string, AudioBufferSourceNode>();
   /** bufferId each frozen source is currently playing (detect re-freezes). */
@@ -1002,6 +1005,9 @@ export class AudioEngine {
       head = rt.output;
       state.runtimes.set(fx.id, rt);
       state.params.set(fx.id, { ...fx.params });
+      // Metering defaults to off; re-apply the panel's desired state after a
+      // rebuild swapped the runtime.
+      rt.setMetersEnabled?.(this.fxMetersEnabled.get(fx.id) ?? false);
       // Worklet plugins report latency asynchronously; re-run PDC whenever a
       // report lands so compensation never waits for the next document sync.
       if (rt.onLatencyChange) {
@@ -1035,6 +1041,7 @@ export class AudioEngine {
     nodes.fx.latencySubs.length = 0;
     for (const rt of nodes.fx.runtimes.values()) rt.dispose();
     nodes.fx.runtimes.clear();
+    for (const fxId of nodes.fx.params.keys()) this.fxMetersEnabled.delete(fxId);
     nodes.fx.params.clear();
     nodes.fx.pdcDelay?.disconnect();
     for (const send of nodes.sends.values()) send.disconnect();
@@ -1055,6 +1062,7 @@ export class AudioEngine {
     nodes.fx.latencySubs.length = 0;
     for (const rt of nodes.fx.runtimes.values()) rt.dispose();
     nodes.fx.runtimes.clear();
+    for (const fxId of nodes.fx.params.keys()) this.fxMetersEnabled.delete(fxId);
     nodes.fx.params.clear();
     nodes.fx.pdcDelay?.disconnect();
     nodes.input.disconnect();
@@ -1068,6 +1076,7 @@ export class AudioEngine {
     nodes.fx.latencySubs.length = 0;
     for (const rt of nodes.fx.runtimes.values()) rt.dispose();
     nodes.fx.runtimes.clear();
+    for (const fxId of nodes.fx.params.keys()) this.fxMetersEnabled.delete(fxId);
     nodes.fx.params.clear();
     nodes.fx.pdcDelay?.disconnect();
     nodes.input.disconnect();
@@ -3253,6 +3262,21 @@ export class AudioEngine {
       this.groupNodes.get(trackId)?.fx.runtimes.get(fxId) ??
       this.returnNodes.get(trackId)?.fx.runtimes.get(fxId);
     return rt?.getMeters?.() ?? null;
+  }
+
+  /**
+   * Metering gate for analysis-heavy effects (Ultina): the panel enables it
+   * on mount and disables on unmount, so closed panels cost zero audio-thread
+   * analysis. The desired state is remembered and re-applied when chain
+   * rebuilds recreate the runtime.
+   */
+  setFxMetersEnabled(trackId: string, fxId: string, enabled: boolean): void {
+    this.fxMetersEnabled.set(fxId, enabled);
+    const rt =
+      this.trackNodes.get(trackId)?.fx.runtimes.get(fxId) ??
+      this.groupNodes.get(trackId)?.fx.runtimes.get(fxId) ??
+      this.returnNodes.get(trackId)?.fx.runtimes.get(fxId);
+    rt?.setMetersEnabled?.(enabled);
   }
 
   getMasterLevel(): number {

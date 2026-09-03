@@ -311,6 +311,12 @@ process(channels, frameCount, mode, driveDb, mix01, outputLinear, quality) {
         st.transformerFlux = 0; st.dcPrevIn = 0; st.dcPrev = 0;
         st.adaaPrevIn = 0;
       }
+      // Reset the oversampling factor too: the host reads getLatencySamples()
+      // (via maxBandLatency) BEFORE the next process() runs, so a stale factor
+      // from pre-reset audio made the first post-reset block carry the old
+      // alignment delay — a reset processor was not equivalent to a freshly
+      // prepared one. A fresh processor starts with factor 1.
+      lastFactor = 1;
     },
   };
 }

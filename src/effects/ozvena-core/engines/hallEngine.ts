@@ -159,6 +159,28 @@ export function createHallEngine(): HallEngine {
   let modDepthSamples = 0;
   let lfoPhase = 0;
   let lfoInc = 0;
+  // Incremental phasor for the per-line modulation read: one complex
+  // rotation per sample replaces 8×2 Math.sin calls (one per line per
+  // channel). Re-seeded from the master `lfoPhase` every 64 samples so
+  // drift stays bounded at ~1e-14 — far below the float32 output grid.
+  const lineSin = new Float64Array(FDN_LINES);
+  const lineCos = new Float64Array(FDN_LINES);
+  for (let l = 0; l < FDN_LINES; l++) {
+    const phi = (l / FDN_LINES) * Math.PI * 2;
+    lineSin[l] = Math.sin(phi);
+    lineCos[l] = Math.cos(phi);
+  }
+  let phC = 1; // cos(lfoPhase)
+  let phS = 0; // sin(lfoPhase)
+  let phCosInc = 1;
+  let phSinInc = 0;
+  let phAge = 0;
+
+  function syncPhasorStep(): void {
+    phCosInc = Math.cos(lfoInc);
+    phSinInc = Math.sin(lfoInc);
+  }
+  syncPhasorStep();
 
   let predelayBufs: Float32Array[][] = [];
   let predelayIdx: number[][] = [];
@@ -211,6 +233,7 @@ export function createHallEngine(): HallEngine {
 
     diffG = 0.3 + 0.45 * (clamp(params.diffusion, 0, 100) / 100);
     shAmt = clamp(params.shimmer, 0, 1);
+    if (shAmt > 0) ensureShimmerTable();
 
     const bassMult = clamp(params.bassDecay, 0.25, 4);
     const fbBass = Math.pow(0.001, (avgLen / (decaySec * bassMult)) / sampleRate);
@@ -225,6 +248,7 @@ export function createHallEngine(): HallEngine {
     setHighPass(highSplitR.coeffs, clamp(params.crossoverHz, 20, 4000), 0.7071, sampleRate);
 
     lfoInc = (modRateHz * 0.7 * 2 * Math.PI) / sampleRate;
+    syncPhasorStep();
 
     // Buffers are sized for the largest supported tuning in prepare()
     // (hall, lenMult 1.0) — parameter changes are scalar-only.
@@ -368,6 +392,22 @@ export function createHallEngine(): HallEngine {
       Math.round((SH_WIN_BASE * SH_WIN_MULT[shQuality] * sampleRate) / 48000) & ~1,
     );
     if (shWindow > shWinMax) shWindow = shWinMax;
+    // Keep the grain table in sync on the message thread (quality-tier
+    // changes while shimmer is active) — never rebuild inside process().
+    if (shAmt > 0) ensureShimmerTable();
+  }
+
+  // Precomputed sin-π grain window. Both tap gains read INTEGER phases
+  // (shPhase steps by 1 and wraps at shWindow; the second tap is W/2 away),
+  // so the per-sample Math.sin calls memoize into a table of the exact
+  // same q32 values — bit-identical, one array read per grain.
+  let shTable: Float32Array | null = null;
+  function ensureShimmerTable(): void {
+    if (shTable && shTable.length === shWindow) return;
+    const W = shWindow;
+    const t = new Float32Array(W);
+    for (let ph = 0; ph < W; ph++) t[ph] = q32(Math.sin((Math.PI * ph) / W));
+    shTable = t;
   }
 
   return {
@@ -378,6 +418,7 @@ export function createHallEngine(): HallEngine {
       recompute();
       attackEnv = 0;
       lfoPhase = 0;
+      phC = 1; phS = 0; phAge = 0;
       // Allocate the shimmer ring for the LARGEST quality tier so
       // setQuality() stays a scalar-only realtime operation.
       shWinMax = Math.max(2048, Math.round((2 * SH_WIN_BASE * sampleRate) / 48000) & ~1);
@@ -433,6 +474,9 @@ export function createHallEngine(): HallEngine {
       const fb = feedbackGain;
       const fbEff = freeze_ ? 1.0 : fb;
       const effectiveDepth = modDepthSamples;
+      // Safety net: the table is normally built on the message thread
+      // (recompute/applyShimmerWindow) — this only covers order edge cases.
+      if (shAmt > 0 && (!shTable || shTable.length !== shWindow)) ensureShimmerTable();
       // Stereo width: cross-feed of the damped feedback between the L/R
       // loops. 1 = fully independent (widest), 0 = mono feedback.
       // Stereo width (Valhalla convention) — mirrors plateChamberEngine.
@@ -481,8 +525,9 @@ export function createHallEngine(): HallEngine {
             const m = masks[l];
             let readPos = wis[l] - lengthsC[c][l];
             if (effectiveDepth > 0) {
-              const modPhase = lfoPhase + (l / FDN_LINES) * Math.PI * 2;
-              readPos += Math.sin(modPhase) * effectiveDepth;
+              // sin(lfoPhase + φl) via the per-sample phasor — angle
+              // addition with the fixed per-line offsets.
+              readPos += (phS * lineCos[l] + phC * lineSin[l]) * effectiveDepth;
             }
             const riFloor = Math.floor(readPos);
             const ri0 = riFloor & m;
@@ -533,14 +578,14 @@ export function createHallEngine(): HallEngine {
             const ph1 = (ph + W / 2) % W;
             const d1 = W - ph1;
             const i1 = ((shW[c] - d1) % size + size) % size;
-            const g0 = q32(Math.sin((Math.PI * ph) / W));
+            const g0 = shTable ? shTable[ph] : q32(Math.sin((Math.PI * ph) / W));
             if (shSingle) {
               // Eco tier: one grain (half the shimmer cost). A lone sin-π
               // window has half the dual-tap power (g0²+g1² = 1), so the
               // surviving tap gains √2 to keep the injected level equal.
               shiftedC[c] = 1.4142 * g0 * buf[i0];
             } else {
-              const g1 = q32(Math.sin((Math.PI * ph1) / W));
+              const g1 = shTable ? shTable[ph1] : q32(Math.sin((Math.PI * ph1) / W));
               shiftedC[c] = g0 * buf[i0] + g1 * buf[i1];
             }
           } else {
@@ -576,6 +621,16 @@ export function createHallEngine(): HallEngine {
 
         lfoPhase += lfoInc;
         if (lfoPhase >= Math.PI * 2) lfoPhase -= Math.PI * 2;
+        // Advance the modulation phasor one step; re-seed from the master
+        // phase every 64 samples to bound drift.
+        const nC = phC * phCosInc - phS * phSinInc;
+        phS = phS * phCosInc + phC * phSinInc;
+        phC = nC;
+        if (++phAge >= 64) {
+          phAge = 0;
+          phC = Math.cos(lfoPhase);
+          phS = Math.sin(lfoPhase);
+        }
       }
 
       // Pure wet write-back — no dry, no mix gain. The width knob is
@@ -608,6 +663,7 @@ export function createHallEngine(): HallEngine {
       modRateHz = clamp(rateHz, 0, 20);
       modDepthSamples = clamp(depthSamples, 0, 20);
       lfoInc = (modRateHz * 0.7 * 2 * Math.PI) / sampleRate;
+      syncPhasorStep();
     },
 
     getLatencySamples() {
@@ -617,6 +673,7 @@ export function createHallEngine(): HallEngine {
     reset() {
       resetState();
       attackEnv = 0;
+      phC = 1; phS = 0; phAge = 0;
       lowSplitL.z1.fill(0); lowSplitL.z2.fill(0);
       highSplitL.z1.fill(0); highSplitL.z2.fill(0);
       lowSplitR.z1.fill(0); lowSplitR.z2.fill(0);

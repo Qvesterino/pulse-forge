@@ -695,7 +695,8 @@
   }
   function clampParam(id, value) {
     const def = PARAM_BY_ID.get(id);
-    if (!def) return value;
+    if (!def) return Number.isFinite(value) ? value : 0;
+    if (!Number.isFinite(value)) return def.defaultValue;
     return Math.max(def.minValue, Math.min(def.maxValue, value));
   }
 
@@ -2774,10 +2775,17 @@
       this.writePos = 0;
       this.readPos = 0;
     }
-    /** Control-thread: enqueue a parameter change. */
+    /** Control-thread: enqueue a parameter change.
+     * When the ring is full (control-side burst while the audio thread is not
+     * draining — e.g. a suspended context), the OLDEST entry is dropped so the
+     * audio thread always converges to the most RECENT values. Dropping the
+     * newest instead would silently diverge the audio state from the control
+     * state (the exact values the user just set would be the ones lost). */
     enqueue(id, value) {
       const nextWrite = (this.writePos + 1) % PARAM_QUEUE_SIZE;
-      if (nextWrite === this.readPos) return false;
+      if (nextWrite === this.readPos) {
+        this.readPos = (this.readPos + 1) % PARAM_QUEUE_SIZE;
+      }
       this.buffer[this.writePos].id = id;
       this.buffer[this.writePos].value = value;
       this.writePos = nextWrite;
@@ -2858,6 +2866,11 @@
     spectralRegistry = SpectralRegistry.getInstance();
     // Active delta module (null = no delta listen)
     deltaModule = null;
+    // Metering gate. Meters feed panel UIs nobody may be watching — when the
+    // host knows no consumer is attached it disables the whole analysis path
+    // (spectrum FFT, 32-band analyzer, waveform, peak/RMS) to keep the audio
+    // thread's cost flat. LUFS keeps running when gain-match needs it.
+    metersEnabled = true;
     // Cached context object (reused across process() calls — no per-block allocation)
     cachedCtx = {
       sampleRate: 44100,
@@ -2977,8 +2990,10 @@
         this.qualityMode = Math.round(qualityModeParam);
       }
       if (bypass) {
-        this.updateInputMeters(chL, chR, frameCount);
-        this.updateOutputMeters(chL, chR, frameCount);
+        if (this.metersEnabled) {
+          this.updateInputMeters(chL, chR, frameCount);
+          this.updateOutputMeters(chL, chR, frameCount);
+        }
         this.totalSamples += frameCount;
         return;
       }
@@ -3006,7 +3021,9 @@
           chunkL[i] *= g;
           chunkR[i] *= g;
         }
-        this.updateInputMeters(chunkL, chunkR, frames);
+        if (this.metersEnabled) {
+          this.updateInputMeters(chunkL, chunkR, frames);
+        }
         this.dryBufferL.set(chunkL.subarray(0, frames));
         this.dryBufferR.set(chunkR.subarray(0, frames));
         if (this.deltaModule !== null && activeChain.modules.length > 0) {
@@ -3063,7 +3080,11 @@
           chunkL[i] = sanitizeSample(chunkL[i]);
           chunkR[i] = sanitizeSample(chunkR[i]);
         }
-        this.updateOutputMeters(chunkL, chunkR, frames);
+        if (this.metersEnabled) {
+          this.updateOutputMeters(chunkL, chunkR, frames);
+        } else if (gainMatchEnabled) {
+          this.lufsMeter.process(chunkL, chunkR, frames);
+        }
         offset += frames;
       }
       this.totalSamples += frameCount;
@@ -3106,6 +3127,18 @@
      */
     dispose() {
       this.spectralRegistry.unregister(this.instanceId);
+    }
+    /**
+     * Enable/disable the metering analysis path (control thread). When
+     * disabled, process() skips spectrum/band/waveform/peak analysis entirely;
+     * the LUFS meter keeps running only while gain-match is enabled (its
+     * feedback loop reads it).
+     */
+    setMetersEnabled(enabled) {
+      this.metersEnabled = enabled;
+    }
+    getMetersEnabled() {
+      return this.metersEnabled;
     }
     // ── Parameter management ─────────────────────────────────
     /**
@@ -4012,8 +4045,9 @@
      * Dispatches between LR4 (analog) and FIR (hybrid) modes.
      */
     split(input, bandOut, frameCount, _sampleRate) {
+      const chCount = Math.min(this.channelCount, input.length);
       if (this.bandCount === 1) {
-        for (let ch = 0; ch < this.channelCount; ch++) {
+        for (let ch = 0; ch < chCount; ch++) {
           bandOut[0][ch].set(input[ch].subarray(0, frameCount));
         }
         return;
@@ -4038,7 +4072,7 @@
     splitFir(input, bandOut, frameCount) {
       const N = this.firNumTaps;
       const M = this.firLatency;
-      const ch = this.channelCount;
+      const ch = Math.min(this.channelCount, input.length);
       const numSplits = Math.min(this.firFilters.length, this.bandCount - 1);
       for (let i = 0; i < frameCount; i++) {
         for (let c = 0; c < ch; c++) {
@@ -4073,13 +4107,14 @@
         }
         return;
       }
-      for (let ch = 0; ch < this.channelCount; ch++) {
+      const chCount = Math.min(this.channelCount, input.length);
+      for (let ch = 0; ch < chCount; ch++) {
         this.lr4Work[ch].set(input[ch].subarray(0, frameCount));
       }
       const activeSplits = this.bandCount - 1;
       for (let s = 0; s < activeSplits; s++) {
         const split = this.splits[s];
-        for (let ch = 0; ch < this.channelCount; ch++) {
+        for (let ch = 0; ch < chCount; ch++) {
           this.lr4LpOut[ch].set(this.lr4Work[ch].subarray(0, frameCount));
         }
         for (const bq of split.lp) {
@@ -4088,23 +4123,23 @@
           }
         }
         for (const bq of split.hp) {
-          for (let ch = 0; ch < this.channelCount; ch++) {
+          for (let ch = 0; ch < chCount; ch++) {
             processBiquadInPlace(bq, this.lr4Work[ch], ch, frameCount);
           }
         }
         if (s === 0) {
-          for (let ch = 0; ch < this.channelCount; ch++) {
+          for (let ch = 0; ch < chCount; ch++) {
             bandOut[0][ch].set(this.lr4LpOut[ch].subarray(0, frameCount));
           }
         }
         if (s === activeSplits - 1) {
           const lastBand = this.bandCount - 1;
-          for (let ch = 0; ch < this.channelCount; ch++) {
+          for (let ch = 0; ch < chCount; ch++) {
             bandOut[lastBand][ch].set(this.lr4Work[ch].subarray(0, frameCount));
           }
         } else {
           if (this.bandCount === 3 && s === 0) {
-            for (let ch = 0; ch < this.channelCount; ch++) {
+            for (let ch = 0; ch < chCount; ch++) {
               bandOut[1][ch].set(this.lr4Work[ch].subarray(0, frameCount));
             }
           }
@@ -4112,7 +4147,7 @@
       }
       if (this.bandCount === 3 && this.splits.length === 2) {
         const split1 = this.splits[1];
-        for (let ch = 0; ch < this.channelCount; ch++) {
+        for (let ch = 0; ch < chCount; ch++) {
           this.lr4MidLp[ch].set(bandOut[1][ch].subarray(0, frameCount));
         }
         for (const bq of split1.lp) {
@@ -4129,7 +4164,8 @@
      * Sum bands back together. LR4 crossovers sum to flat (allpass).
      */
     sum(bands, output, frameCount) {
-      for (let ch = 0; ch < this.channelCount; ch++) {
+      const chCount = Math.min(this.channelCount, output.length);
+      for (let ch = 0; ch < chCount; ch++) {
         output[ch].fill(0, 0, frameCount);
         for (let b = 0; b < this.bandCount; b++) {
           for (let i = 0; i < frameCount; i++) {
@@ -6900,6 +6936,7 @@
     scratch = [new Float32Array(MAX_BLOCK), new Float32Array(MAX_BLOCK)];
     lastLatencyPosted = -1;
     blockCount = 0;
+    metersEnabled = true;
     constructor(options) {
       super();
       registerCoreModules(this.proc);
@@ -6912,22 +6949,40 @@
       });
       const initial = options?.processorOptions?.params;
       if (initial) this.proc.loadState(initial);
+      this.syncGraphFromParams();
       this.postLatency();
       this.port.onmessage = (event) => {
         const msg = event.data;
         if (!msg) return;
         if (msg.type === "params") {
           this.proc.loadState(msg.params);
+          this.syncGraphFromParams();
           this.postLatency();
         } else if (msg.type === "param") {
           this.proc.setParameter(msg.id, msg.value);
-          this.postLatency();
+          if (typeof msg.id === "string" && msg.id.endsWith(".enabled")) {
+            this.syncGraphFromParams();
+            this.postLatency();
+          }
         } else if (msg.type === "reset") {
           this.proc.reset();
+        } else if (msg.type === "setMeters") {
+          this.metersEnabled = msg.enabled !== false;
+          this.proc.setMetersEnabled(this.metersEnabled);
         } else if (msg.type === "dispose") {
           this.proc.dispose();
         }
       };
+    }
+    /** Mirror the host-facing "<module>.enabled" params into the module graph.
+     * The graph boots ALL-DISABLED and nothing else syncs it — without this,
+     * the active chain stays empty forever and every module (EQ/Comp/Gate/…)
+     * is silent DSP while the UI happily reports it on. */
+    syncGraphFromParams() {
+      const graph = this.proc.getGraphRuntime();
+      for (const type of MODULE_TYPES) {
+        graph.setModuleEnabled(type, this.proc.getParameter(`${type}.enabled`) >= 0.5);
+      }
     }
     postLatency() {
       const samples = this.proc.getLatencySamples();
@@ -6939,20 +6994,29 @@
     process(inputs, outputs) {
       const output = outputs[0];
       if (!output || !output[0] || !output[1]) return true;
-      const frames = Math.min(MAX_BLOCK, output[0].length);
       const input = inputs[0];
-      for (let c = 0; c < CHANNELS; c++) {
-        const buf = this.scratch[c];
-        const inCh = input && input[c];
-        if (inCh && inCh.length >= frames) buf.set(inCh.subarray(0, frames));
-        else buf.fill(0, 0, frames);
+      const total = output[0].length;
+      for (let offset = 0; offset < total; offset += MAX_BLOCK) {
+        const frames = Math.min(MAX_BLOCK, total - offset);
+        for (let c = 0; c < CHANNELS; c++) {
+          const buf = this.scratch[c];
+          const inCh = input && input[c];
+          if (inCh && inCh.length >= offset + frames) {
+            buf.set(inCh.subarray(offset, offset + frames));
+          } else if (inCh && inCh.length >= frames) {
+            buf.set(inCh.subarray(0, frames));
+          } else {
+            buf.fill(0, 0, frames);
+          }
+        }
+        this.proc.process(this.scratch, frames);
+        for (let c = 0; c < CHANNELS; c++) {
+          output[c].set(this.scratch[c].subarray(0, frames), offset);
+        }
       }
-      this.proc.process(this.scratch, frames);
-      for (let c = 0; c < CHANNELS; c++) {
-        output[c].set(this.scratch[c].subarray(0, frames));
-      }
-      if ((this.blockCount++ & 3) === 0) {
+      if (this.metersEnabled && (this.blockCount++ & 3) === 0) {
         this.port.postMessage({ type: "meters", meters: this.proc.getMeters() });
+        this.postLatency();
       }
       return true;
     }

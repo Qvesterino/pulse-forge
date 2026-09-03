@@ -31,6 +31,8 @@ const BUDGET_MEDIAN_RATIO = 22;
 const BUDGET_P95_RATIO = 25;
 /** Preset load vs passthrough block: measured worst ≈ 2.3–16×, budget above the band. */
 const BUDGET_LOAD_RATIO = 35;
+/** Morphing vs idle blocks of the same processor: new path ~1.65×, old ~2.4×. */
+const BUDGET_MORPH_RATIO = 2.1;
 
 type Proc = ReturnType<typeof createFxEqProcessor>;
 
@@ -173,5 +175,38 @@ describe("fxeq real-time performance gate", () => {
       ratio,
       `preset load (${worstId}) took ${worst.toFixed(0)}µs = ${ratio.toFixed(1)}× passthrough on the audio thread`,
     ).toBeLessThan(BUDGET_LOAD_RATIO);
+  });
+
+  it("keeps an active full-state morph within the self-calibrated budget", () => {
+    // During a morph every block routes the interpolated parameter set. The
+    // path is precompiled at startMorph (see fxEqProcessor) — measured
+    // overhead ~64 µs/block over idle vs 139 µs/block for the old per-block
+    // applyAllParams (full schema walk + crossover stage rebuild every
+    // block). Self-calibration: morph blocks vs the SAME processor's idle
+    // blocks, best-of-3 medians each. Budget sits between the new ratio
+    // (~1.65×) and the old path (~2.4×).
+    const channels = deterministicChannels();
+    const proc = createFxEqProcessor();
+    proc.prepare(SR, 2, BLOCK);
+    proc.loadParameters({ limiterEnabled: 0, globalMix: 100 });
+    const idle = measure(proc, channels);
+
+    const target: Record<string, number> = {};
+    for (const def of proc.parameterDefs) {
+      if (def.id === "bandCount") continue;
+      target[def.id] = def.minValue + (def.maxValue - def.minValue) * 0.75;
+    }
+    proc.startMorph(target, 60); // 60 s — far more blocks than we measure
+    const morphing = measure(proc, channels);
+
+    const ratio = morphing.median / idle.median;
+    console.info(
+      `[fxeq-perf] morph: idle=${idle.median.toFixed(0)}µs morphing=${morphing.median.toFixed(0)}µs ` +
+        `(${ratio.toFixed(2)}×, budget ${BUDGET_MORPH_RATIO}×)`,
+    );
+    expect(
+      ratio,
+      `morphing blocks cost ${ratio.toFixed(2)}× idle (budget ${BUDGET_MORPH_RATIO}×) — per-block schema work is back on the audio thread`,
+    ).toBeLessThan(BUDGET_MORPH_RATIO);
   });
 });

@@ -161,12 +161,19 @@ export function UltinaPanel({
   useEffect(() => {
     const engineWithMeters = services.engine as typeof services.engine & {
       getFxMeters?: (trackId: string, fxId: string) => unknown;
+      setFxMetersEnabled?: (trackId: string, fxId: string, enabled: boolean) => void;
     };
+    // Only a mounted panel consumes meters — the engine gates the worklet's
+    // analysis path so a closed Ultina costs zero metering CPU.
+    engineWithMeters.setFxMetersEnabled?.(trackId, fxId, true);
     const id = setInterval(() => {
       metersRef.current = engineWithMeters.getFxMeters?.(trackId, fxId) ?? null;
       drawMeters();
     }, 66);
-    return () => clearInterval(id);
+    return () => {
+      engineWithMeters.setFxMetersEnabled?.(trackId, fxId, false);
+      clearInterval(id);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trackId, fxId, services]);
 

@@ -19,6 +19,7 @@ class UltinaWorkletProcessor extends AudioWorkletProcessor {
   scratch = [new Float32Array(MAX_BLOCK), new Float32Array(MAX_BLOCK)];
   lastLatencyPosted = -1;
   blockCount = 0;
+  metersEnabled = true;
 
   constructor(options) {
     super();
@@ -51,6 +52,12 @@ class UltinaWorkletProcessor extends AudioWorkletProcessor {
         }
       } else if (msg.type === "reset") {
         this.proc.reset();
+      } else if (msg.type === "setMeters") {
+        // Metering gate: with no panel attached the host disables the whole
+        // analysis path (spectrum FFT, 32-band analyzer, waveform, snapshot
+        // posting) so per-instance audio-thread cost stays flat.
+        this.metersEnabled = msg.enabled !== false;
+        this.proc.setMetersEnabled(this.metersEnabled);
       } else if (msg.type === "dispose") {
         // Node teardown: unregister from the cross-instance spectral
         // registry. AudioWorkletProcessor has no destruction hook, so this
@@ -83,24 +90,39 @@ class UltinaWorkletProcessor extends AudioWorkletProcessor {
   process(inputs, outputs) {
     const output = outputs[0];
     if (!output || !output[0] || !output[1]) return true;
-    const frames = Math.min(MAX_BLOCK, output[0].length);
     const input = inputs[0];
 
-    // Ultina is stereo — stage into scratch (input or silence), process
-    // in place, copy back.
-    for (let c = 0; c < CHANNELS; c++) {
-      const buf = this.scratch[c];
-      const inCh = input && input[c];
-      if (inCh && inCh.length >= frames) buf.set(inCh.subarray(0, frames));
-      else buf.fill(0, 0, frames);
-    }
-    this.proc.process(this.scratch, frames);
-    for (let c = 0; c < CHANNELS; c++) {
-      output[c].set(this.scratch[c].subarray(0, frames));
+    // The render quantum is 128 everywhere today, but the spec allows a host
+    // to supply larger buffers — loop the internal MAX_BLOCK chunks so EVERY
+    // output sample is written (a single 128-frame pass would leave samples
+    // beyond it stale, duplicating the previous block's audio).
+    const total = output[0].length;
+    for (let offset = 0; offset < total; offset += MAX_BLOCK) {
+      const frames = Math.min(MAX_BLOCK, total - offset);
+      for (let c = 0; c < CHANNELS; c++) {
+        const buf = this.scratch[c];
+        const inCh = input && input[c];
+        if (inCh && inCh.length >= offset + frames) {
+          buf.set(inCh.subarray(offset, offset + frames));
+        } else if (inCh && inCh.length >= frames) {
+          buf.set(inCh.subarray(0, frames));
+        } else {
+          buf.fill(0, 0, frames);
+        }
+      }
+      this.proc.process(this.scratch, frames);
+      for (let c = 0; c < CHANNELS; c++) {
+        output[c].set(this.scratch[c].subarray(0, frames), offset);
+      }
     }
     // Meters snapshot ≈21 Hz — spectrum/LUFS/waveform/GR for the panel.
-    if ((this.blockCount++ & 3) === 0) {
+    // Entirely skipped while the host has metering disabled.
+    if (this.metersEnabled && (this.blockCount++ & 3) === 0) {
       this.port.postMessage({ type: "meters", meters: this.proc.getMeters() });
+      // Modules configure their crossover (and thus DSP latency) on their
+      // first processed block — re-report latency here so the host PDC picks
+      // up hybrid-mode delay that was unknown at construction time.
+      this.postLatency();
     }
     return true;
   }

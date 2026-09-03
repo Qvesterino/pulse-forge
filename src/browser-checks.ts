@@ -1454,12 +1454,21 @@ export async function runChecks(): Promise<CheckResult[]> {
     if (spectrum) for (let b = 0; b < spectrum.length; b++) specEnergy += Math.abs(spectrum[b]);
 
     // 2. Worklet flow: render with the node connected, then the runtime's
-    // getMeters() must hold a snapshot pushed over the port.
+    // getMeters() must hold a snapshot pushed over the port. Metering is
+    // gated — the panel enables it, so the check does the same. A second node
+    // that never enables must produce ZERO meter snapshots (closed panels
+    // cost nothing on the audio thread).
     const ctx = new OfflineAudioContext(2, SR, SR);
     await loadAllWorklets(ctx);
     const rt = def.factory(
       ctx,
       { id: "t2", type: "ultina", bypassed: false, params: defaultParamsOf("ultina") },
+      { bpm: 124 },
+    );
+    rt.setMetersEnabled?.(true);
+    const rtGated = def.factory(
+      ctx,
+      { id: "t2gated", type: "ultina", bypassed: false, params: defaultParamsOf("ultina") },
       { bpm: 124 },
     );
     const osc = ctx.createOscillator();
@@ -1468,6 +1477,7 @@ export async function runChecks(): Promise<CheckResult[]> {
     g.gain.value = 0.3;
     osc.connect(g).connect(rt.input);
     rt.output.connect(ctx.destination);
+    rtGated.output.connect(ctx.destination);
     osc.start(0);
     await ctx.startRendering();
     // Port messages queue behind the render — wait briefly for delivery.
@@ -1476,11 +1486,14 @@ export async function runChecks(): Promise<CheckResult[]> {
       await new Promise((r) => setTimeout(r, 60));
       workletMeters = (rt as { getMeters?: () => unknown }).getMeters?.();
     }
+    // The gated node must have received NO meter snapshots at all.
+    const gatedMeters = (rtGated as { getMeters?: () => unknown }).getMeters?.();
     rt.dispose();
+    rtGated.dispose();
     check(
-      "ultina: live meters flow (DSP LUFS/spectrum + worklet port snapshots)",
-      lufs > -40 && specEnergy > 1 && !!workletMeters,
-      `lufs=${lufs.toFixed(1)} specEnergy=${specEnergy.toFixed(0)} workletSnapshot=${!!workletMeters}`,
+      "ultina: live meters flow (DSP LUFS/spectrum + worklet port snapshots, gated node stays silent)",
+      lufs > -40 && specEnergy > 1 && !!workletMeters && !gatedMeters,
+      `lufs=${lufs.toFixed(1)} specEnergy=${specEnergy.toFixed(0)} workletSnapshot=${!!workletMeters} gatedSilent=${!gatedMeters}`,
     );
   } catch (error) {
     check("ultina: live meters flow (DSP LUFS/spectrum + worklet port snapshots)", false, String(error));

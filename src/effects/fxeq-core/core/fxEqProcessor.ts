@@ -106,9 +106,19 @@ export function createFxEqProcessor(params?: Record<string, number>): FxEqProces
   // Command history for undo/redo.
   const history: CommandHistory = createCommandHistory();
 
-  // A/B morph state.
-  let morphTarget: Record<string, number> | null = null;
-  let morphStart: Record<string, number> | null = null;
+  // A/B morph state. The morph is PRECOMPILED at startMorph() into routed
+  // entries; process() only interpolates and routes those. The old path
+  // re-ran applyAllParams() every block — a full schema walk PLUS an
+  // unconditional crossover stage rebuild (~140 coefficient sets with
+  // sin/cos) on the audio thread for the entire morph duration, even when
+  // the morph did not touch a single crossover frequency.
+  interface MorphEntry {
+    id: string;
+    route: RouteEntry;
+    start: number;
+    end: number;
+  }
+  let morphEntries: MorphEntry[] | null = null;
   let morphDuration = 0;
   let morphElapsed = 0;
   let morphing = false;
@@ -293,22 +303,26 @@ export function createFxEqProcessor(params?: Record<string, number>): FxEqProces
         }
       }
 
-      // A/B morph: interpolate parameters from start to target.
-      if (morphing && morphStart && morphTarget) {
+      // A/B morph: interpolate the precompiled parameter set and route only
+      // the morphed entries (see the morph state comment — no per-block
+      // applyAllParams on the audio thread).
+      if (morphing && morphEntries) {
         const blockDur = frameCount / sampleRate;
         morphElapsed += blockDur;
         const t = Math.min(1, morphElapsed / morphDuration);
-        // Linear interpolation of all parameters.
-        for (const id of Object.keys(morphTarget)) {
-          const startVal = morphStart[id] ?? 0;
-          const endVal = morphTarget[id]!;
-          values[id] = startVal + (endVal - startVal) * t;
+        const entries = morphEntries;
+        for (let i = 0; i < entries.length; i++) {
+          const entry = entries[i];
+          const v = entry.start + (entry.end - entry.start) * t;
+          values[entry.id] = v;
+          routeParam(entry.route, v);
         }
-        applyAllParams();
         if (t >= 1) {
           morphing = false;
-          morphTarget = null;
-          morphStart = null;
+          morphEntries = null;
+          // Pin the exact end state once (and snap the crossover frequency
+          // smoothing to it) instead of leaving it to the next param event.
+          if (prepared) applyAllParams();
         }
       }
 
@@ -543,8 +557,19 @@ export function createFxEqProcessor(params?: Record<string, number>): FxEqProces
     },
 
     startMorph(target, durationSec) {
-      morphStart = { ...values };
-      morphTarget = { ...target };
+      // Precompile once: resolve every target id to its route snapshot and
+      // capture the start value. Non-finite targets are dropped here so a
+      // corrupt morph cannot poison DSP state mid-interpolation (same guard
+      // as loadParameters). Unknown ids are skipped, matching setParameter.
+      const entries: MorphEntry[] = [];
+      for (const id of Object.keys(target)) {
+        const end = target[id];
+        if (typeof end !== "number" || !Number.isFinite(end)) continue;
+        const route = schema.routes.get(id);
+        if (!route) continue;
+        entries.push({ id, route, start: values[id] ?? 0, end });
+      }
+      morphEntries = entries;
       morphDuration = Math.max(0.01, durationSec);
       morphElapsed = 0;
       morphing = true;

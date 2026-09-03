@@ -37,9 +37,16 @@ interface ProcShape {
   process(inputs: Float32Array[][], outputs: Float32Array[][]): boolean;
 }
 
-type ProcCtor = new (options?: { processorOptions?: { params?: Record<string, number> } }) => ProcShape;
+type ProcCtor = new (
+  options?: { processorOptions?: { params?: Record<string, number>; bpm?: number } },
+) => ProcShape;
 
 let Processor: ProcCtor;
+/** Render clock for the worklet scope — the host advances it per quantum. */
+let now = 0;
+const setTime = (t: number) => {
+  now = t;
+};
 
 beforeAll(async () => {
   (globalThis as unknown as { sampleRate: number }).sampleRate = 48000;
@@ -51,6 +58,10 @@ beforeAll(async () => {
   ) => {
     Processor = cls;
   };
+  Object.defineProperty(globalThis, "currentTime", {
+    get: () => now,
+    configurable: true,
+  });
   await import("../src/effects/ozvena-worklet.entry.js");
   if (!Processor) throw new Error("ozvena-processor did not register");
 });
@@ -58,8 +69,10 @@ beforeAll(async () => {
 const SR = 48000;
 const BLOCK = 128;
 
-/** Feed a single impulse at t=0 then silence; return the accumulated output. */
+/** Feed a single impulse at t=0 then silence; return the accumulated output.
+ *  Advances the worklet render clock one quantum per block, like a host. */
 function renderImpulse(proc: ProcShape, seconds: number): Float32Array[] {
+  setTime(0); // each render starts a fresh clock (tests share module state)
   const frames = Math.round(seconds * SR);
   const blocks = Math.ceil(frames / BLOCK);
   const outL = new Float32Array(blocks * BLOCK);
@@ -80,6 +93,7 @@ function renderImpulse(proc: ProcShape, seconds: number): Float32Array[] {
         ],
       ],
     );
+    setTime(b * BLOCK * (1 / SR) + BLOCK / SR);
   }
   return [outL, outR];
 }
@@ -177,5 +191,92 @@ describe("Ozvena worklet entry (message port ↔ DSP core wiring)", () => {
     sendParam(proc, "engines.e2.algo", 2);
     proc.port.onmessage?.({ data: { type: "reset" } });
     expect(proc.state.engines.e2.algo).toBe("room");
+  });
+
+  // ── Bug regression: tempo-synced pre-delay must follow project BPM ──
+  // The core's setBpm() was unreachable from the message port, so a synced
+  // pre-delay always computed at the hardcoded init 120 BPM.
+  it("regression: bpm message retimes the tempo-synced pre-delay", () => {
+    // "1/4" = 1 beat: 0.5 s at 120 BPM, 0.25 s at 240 BPM.
+    const at120 = new Processor();
+    sendParam(at120, "preDelay.syncEnabled", 1);
+    const out120 = renderImpulse(at120, 1.0);
+    expect(energy(out120, 0, 0.35)).toBeLessThan(1e-12);
+    expect(energy(out120, 0.55, 0.95)).toBeGreaterThan(1e-9);
+
+    const at240 = new Processor();
+    sendParam(at240, "preDelay.syncEnabled", 1);
+    at240.port.onmessage?.({ data: { type: "bpm", bpm: 240 } });
+    const out240 = renderImpulse(at240, 1.0);
+    expect(energy(out240, 0, 0.2)).toBeLessThan(1e-12);
+    expect(energy(out240, 0.26, 0.45)).toBeGreaterThan(1e-9);
+  });
+
+  it("regression: initial bpm rides processorOptions", () => {
+    const proc = new Processor({
+      processorOptions: { params: { "preDelay.syncEnabled": 1 }, bpm: 240 },
+    });
+    const out = renderImpulse(proc, 1.0);
+    expect(energy(out, 0, 0.2)).toBeLessThan(1e-12);
+    expect(energy(out, 0.26, 0.45)).toBeGreaterThan(1e-9);
+  });
+
+  it("bpm messages clamp to the core's 20..300 range", () => {
+    const proc = new Processor();
+    sendParam(proc, "preDelay.syncEnabled", 1);
+    proc.port.onmessage?.({ data: { type: "bpm", bpm: 9999 } }); // → 300 → 1/4 = 0.2 s
+    const out = renderImpulse(proc, 1.0);
+    expect(energy(out, 0, 0.16)).toBeLessThan(1e-12);
+    expect(energy(out, 0.22, 0.45)).toBeGreaterThan(1e-9);
+  });
+
+  // ── Bug regression: time-stamped params (offline automation timing) ──
+  // Without setParameterAt the engine posted every automation point as an
+  // immediate message — offline exports heard each point at POST time, not
+  // project time (effectively the last value from second zero).
+  it("regression: paramAt events apply at their scheduled time, not on arrival", () => {
+    const proc = new Processor();
+    // dryWet 100 default (pure wet). Mute the wet bus a quarter second in.
+    proc.port.onmessage?.({ data: { type: "paramAt", id: "global.dryWet", value: 0, when: 0.25 } });
+    const out = renderImpulse(proc, 0.6);
+    // Still wet before the scheduled point — proof the event was NOT
+    // applied when it arrived.
+    expect(energy(out, 0.05, 0.2)).toBeGreaterThan(1e-9);
+    // Wet bus (the whole reverb tail) is gone after the scheduled point;
+    // dry is silence past the impulse block.
+    expect(energy(out, 0.32, 0.55)).toBeLessThan(1e-12);
+  });
+
+  it("paramAt events due in the past apply on the next block", () => {
+    const proc = new Processor();
+    proc.port.onmessage?.({ data: { type: "paramAt", id: "global.dryWet", value: 0, when: 0 } });
+    const out = renderImpulse(proc, 0.4);
+    expect(energy(out, 0.05, 0.35)).toBeLessThan(1e-12);
+  });
+
+  it("a manual param cancels later paramAt events for the same id", () => {
+    const proc = new Processor();
+    proc.port.onmessage?.({ data: { type: "paramAt", id: "global.dryWet", value: 0, when: 0.4 } });
+    // User touches the mixer before the event fires — the future event must go.
+    proc.port.onmessage?.({ data: { type: "param", id: "global.dryWet", value: 100 } });
+    const out = renderImpulse(proc, 0.8);
+    expect(energy(out, 0.5, 0.75)).toBeGreaterThan(1e-9);
+  });
+
+  it("reset clears pending paramAt events", () => {
+    const proc = new Processor();
+    proc.port.onmessage?.({ data: { type: "paramAt", id: "global.dryWet", value: 0, when: 0.4 } });
+    proc.port.onmessage?.({ data: { type: "reset" } });
+    const out = renderImpulse(proc, 0.8);
+    expect(energy(out, 0.5, 0.75)).toBeGreaterThan(1e-9);
+  });
+
+  it("sequential paramAt events fire in order across blocks", () => {
+    const proc = new Processor();
+    proc.port.onmessage?.({ data: { type: "paramAt", id: "global.dryWet", value: 0, when: 0.1 } });
+    proc.port.onmessage?.({ data: { type: "paramAt", id: "global.dryWet", value: 100, when: 0.3 } });
+    const out = renderImpulse(proc, 0.8);
+    expect(energy(out, 0.14, 0.26)).toBeLessThan(1e-12); // muted window
+    expect(energy(out, 0.35, 0.6)).toBeGreaterThan(1e-9); // wet restored
   });
 });

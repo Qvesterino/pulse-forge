@@ -2132,9 +2132,11 @@ const ozvena: EffectDefinition = {
     { id: "engines.e3.enabled", label: "E3", min: 0, max: 1, default: 1, format: (v) => (v >= 0.5 ? "ON" : "OFF") },
     { id: "global.quality", label: "QUALITY", min: 0, max: 3, default: 1, options: OZVENA_QUALITY_OPTIONS },
   ],
-  factory(ctx, instance) {
+  factory(ctx, instance, env) {
     if (isWorkletReady("ozvena", ctx)) {
-      return createOzvenaNode(ctx, instance, OZVENA_PARAM_DEFAULTS);
+      // Initial BPM seeds the tempo-synced pre-delay so the first block
+      // already matches the project tempo (syncBpm keeps it live after).
+      return createOzvenaNode(ctx, instance, OZVENA_PARAM_DEFAULTS, env?.bpm ?? 120);
     }
     return bypassRuntime(ctx, "AudioWorklet unavailable — Ozvena bypassed (1:1 signal)");
   },

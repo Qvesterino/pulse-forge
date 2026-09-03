@@ -11,6 +11,7 @@ export function createOzvenaNode(
   ctx: BaseAudioContext,
   instance: EffectInstance,
   defaults: Record<string, number>,
+  initialBpm = 120,
 ): EffectRuntime {
   const initial: Record<string, number> = { ...defaults, ...instance.params };
 
@@ -21,7 +22,7 @@ export function createOzvenaNode(
     channelCount: 2,
     channelCountMode: "explicit",
     channelInterpretation: "speakers",
-    processorOptions: { params: initial },
+    processorOptions: { params: initial, bpm: initialBpm },
   });
 
   const input = ctx.createGain();
@@ -56,6 +57,24 @@ export function createOzvenaNode(
     setParameter(id: string, value: number) {
       if (disposed) return;
       node.port.postMessage({ type: "param", id, value });
+    },
+    /**
+     * Time-stamped parameter set (automation lanes, offline render). The
+     * worklet queues the event and applies it when the render clock reaches
+     * `when` — otherwise every point would land at the moment it was
+     * posted and exports would lose automation timing entirely.
+     */
+    setParameterAt(id: string, value: number, when: number) {
+      if (disposed) return;
+      node.port.postMessage({ type: "paramAt", id, value, when });
+    },
+    /**
+     * Live tempo changes: the tempo-synced pre-delay must follow the
+     * project BPM (the core clamps 20..300 and re-computes the delay).
+     */
+    syncBpm(bpm: number) {
+      if (disposed || !Number.isFinite(bpm)) return;
+      node.port.postMessage({ type: "bpm", bpm });
     },
     dispose() {
       disposed = true;

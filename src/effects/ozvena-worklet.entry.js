@@ -74,10 +74,18 @@ class OzvenaWorkletProcessor extends AudioWorkletProcessor {
   lastLatencyPosted = -1;
   blockCount = 0;
   disposed = false;
+  // Time-stamped parameter events (setParameterAt — automation lanes and
+  // offline renders), sorted ascending by `when`. Applied from process()
+  // when the render clock reaches them — port messages alone have no
+  // timing, so without this queue an offline export would hear every
+  // automation point at the moment it was POSTED, not at its project time.
+  pendingParams = [];
 
   constructor(options) {
     super();
-    this.proc.prepare(sampleRate, CHANNELS, 120, MAX_BLOCK);
+    const bpmRaw = Number(options?.processorOptions?.bpm);
+    const bpm = Number.isFinite(bpmRaw) ? Math.min(300, Math.max(20, bpmRaw)) : 120;
+    this.proc.prepare(sampleRate, CHANNELS, bpm, MAX_BLOCK);
     const initial = options?.processorOptions?.params;
     if (initial) {
       for (const [id, value] of Object.entries(initial)) this.state = setPath(this.state, id, value);
@@ -90,10 +98,40 @@ class OzvenaWorkletProcessor extends AudioWorkletProcessor {
       const msg = event.data;
       if (!msg) return;
       if (msg.type === "param") {
+        // A manual value cancels still-pending automation for the same
+        // parameter (user touch overrides the future), matching how the
+        // engine treats AudioParam.cancelScheduledValues on takeover.
+        const now = currentTime;
+        if (this.pendingParams.length > 0) {
+          this.pendingParams = this.pendingParams.filter(
+            (ev) => ev.id !== msg.id || ev.when <= now,
+          );
+        }
         this.state = setPath(this.state, msg.id, msg.value);
         this.proc.loadState(this.state);
         this.postLatency();
+      } else if (msg.type === "paramAt") {
+        const when = Number(msg.when);
+        if (!Number.isFinite(when)) {
+          // Defensive: a malformed timestamp degrades to an immediate set.
+          this.state = setPath(this.state, msg.id, msg.value);
+          this.proc.loadState(this.state);
+          this.postLatency();
+          return;
+        }
+        // Keep the queue sorted ascending by `when`; events usually arrive
+        // in order, so scan back from the end.
+        const q = this.pendingParams;
+        let i = q.length;
+        while (i > 0 && q[i - 1].when > when) i--;
+        q.splice(i, 0, { id: msg.id, value: msg.value, when });
+      } else if (msg.type === "bpm") {
+        // Live tempo changes must reach the tempo-synced pre-delay — the
+        // core clamps to 20..300 itself.
+        const bpm = Number(msg.bpm);
+        if (Number.isFinite(bpm)) this.proc.setBpm(bpm);
       } else if (msg.type === "reset") {
+        this.pendingParams.length = 0;
         this.state = defaultOzvenaStateV1();
         this.proc.loadState(this.state);
         this.proc.reset();
@@ -106,6 +144,23 @@ class OzvenaWorkletProcessor extends AudioWorkletProcessor {
         this.disposed = true;
       }
     };
+  }
+
+  /** Apply every queued event whose project time has arrived (the render
+   *  clock granularity is one 128-frame quantum ≈ 2.7 ms). */
+  applyDueParams(horizon) {
+    const q = this.pendingParams;
+    if (q.length === 0 || q[0].when > horizon) return;
+    let applied = 0;
+    while (q.length > 0 && q[0].when <= horizon) {
+      const ev = q.shift();
+      this.state = setPath(this.state, ev.id, ev.value);
+      applied++;
+    }
+    if (applied > 0) {
+      this.proc.loadState(this.state);
+      this.postLatency();
+    }
   }
 
   postLatency() {
@@ -121,6 +176,9 @@ class OzvenaWorkletProcessor extends AudioWorkletProcessor {
     const output = outputs[0];
     if (!output || !output[0] || !output[1]) return true;
     const frames = Math.min(MAX_BLOCK, output[0].length);
+    // `currentTime` is the first sample of this quantum; events up to the
+    // end of the block are applied now (≤ one quantum early).
+    this.applyDueParams(currentTime + frames / sampleRate);
     const input = inputs[0];
 
     // Ozvena is stereo and requires both channels — stage into scratch

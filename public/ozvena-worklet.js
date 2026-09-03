@@ -2235,6 +2235,23 @@
     let modDepthSamples = 0;
     let lfoPhase = 0;
     let lfoInc = 0;
+    const lineSin = new Float64Array(FDN_LINES);
+    const lineCos = new Float64Array(FDN_LINES);
+    for (let l = 0; l < FDN_LINES; l++) {
+      const phi = l / FDN_LINES * Math.PI * 2;
+      lineSin[l] = Math.sin(phi);
+      lineCos[l] = Math.cos(phi);
+    }
+    let phC = 1;
+    let phS = 0;
+    let phCosInc = 1;
+    let phSinInc = 0;
+    let phAge = 0;
+    function syncPhasorStep() {
+      phCosInc = Math.cos(lfoInc);
+      phSinInc = Math.sin(lfoInc);
+    }
+    syncPhasorStep();
     let apLines = [];
     let apIdx = [];
     let lowSplitL = createBiquad(2);
@@ -2274,6 +2291,7 @@
       );
       diffG = 0.3 + 0.45 * (clamp(params.diffusion, 0, 100) / 100);
       shAmt = clamp(params.shimmer, 0, 1);
+      if (shAmt > 0) ensureShimmerTable();
       const bassMult = clamp(params.bassDecay, 0.25, 4);
       const fbBass = Math.pow(1e-3, avgLen / (decaySec * bassMult) / sampleRate2);
       bassGain = q322(clamp(fbBass / feedbackGain, 0.25, 2.5));
@@ -2284,6 +2302,7 @@
       setLowPass(lowSplitR.coeffs, clamp(params.crossoverHz, 20, 4e3), 0.7071, sampleRate2);
       setHighPass(highSplitR.coeffs, clamp(params.crossoverHz, 20, 4e3), 0.7071, sampleRate2);
       lfoInc = modRateHz * t.modRateMult * 2 * Math.PI / sampleRate2;
+      syncPhasorStep();
     }
     function allocChannels(cc) {
       const maxSrScale = sampleRate2 / 44100 * 1.15;
@@ -2422,6 +2441,15 @@
         Math.round(SH_WIN_BASE * SH_WIN_MULT[shQuality] * sampleRate2 / 48e3) & ~1
       );
       if (shWindow > shWinMax) shWindow = shWinMax;
+      if (shAmt > 0) ensureShimmerTable();
+    }
+    let shTable = null;
+    function ensureShimmerTable() {
+      if (shTable && shTable.length === shWindow) return;
+      const W = shWindow;
+      const t = new Float32Array(W);
+      for (let ph = 0; ph < W; ph++) t[ph] = q322(Math.sin(Math.PI * ph / W));
+      shTable = t;
     }
     return {
       prepare(sr, cc) {
@@ -2431,6 +2459,9 @@
         recompute();
         attackEnv = 0;
         lfoPhase = 0;
+        phC = 1;
+        phS = 0;
+        phAge = 0;
         shWinMax = Math.max(2048, Math.round(2 * SH_WIN_BASE * sampleRate2 / 48e3) & ~1);
         shBuf = [new Float32Array(2 * shWinMax), new Float32Array(2 * shWinMax)];
         applyShimmerWindow();
@@ -2482,6 +2513,7 @@
         const fbEff = freeze_ ? 1 : fb;
         const t = algoTuning(params.algo);
         const effectiveDepth = modDepthSamples * t.modDepthMult;
+        if (shAmt > 0 && (!shTable || shTable.length !== shWindow)) ensureShimmerTable();
         const width = clamp(params.stereoWidth, 0, 1);
         for (let i = 0; i < frameCount; i++) {
           if (attackEnv < 1) {
@@ -2508,8 +2540,7 @@
               const m = masks[l];
               let readPos = wis[l] - lengthsC[c][l];
               if (effectiveDepth > 0) {
-                const modPhase = lfoPhase + l / FDN_LINES * Math.PI * 2;
-                readPos += Math.sin(modPhase) * effectiveDepth;
+                readPos += (phS * lineCos[l] + phC * lineSin[l]) * effectiveDepth;
               }
               const riFloor = Math.floor(readPos);
               const ri0 = riFloor & m;
@@ -2554,14 +2585,14 @@
               const ph = shPhase[c];
               const d0 = W - ph;
               const i0 = ((shW[c] - d0) % size + size) % size;
-              const g0 = q322(Math.sin(Math.PI * ph / W));
+              const g0 = shTable ? shTable[ph] : q322(Math.sin(Math.PI * ph / W));
               if (shSingle) {
                 shiftedC[c] = 1.4142 * g0 * buf[i0];
               } else {
                 const ph1 = (ph + W / 2) % W;
                 const d1 = W - ph1;
                 const i1 = ((shW[c] - d1) % size + size) % size;
-                const g1 = q322(Math.sin(Math.PI * ph1 / W));
+                const g1 = shTable ? shTable[ph1] : q322(Math.sin(Math.PI * ph1 / W));
                 shiftedC[c] = g0 * buf[i0] + g1 * buf[i1];
               }
             } else {
@@ -2590,6 +2621,14 @@
           }
           lfoPhase += lfoInc;
           if (lfoPhase >= Math.PI * 2) lfoPhase -= Math.PI * 2;
+          const nC = phC * phCosInc - phS * phSinInc;
+          phS = phS * phCosInc + phC * phSinInc;
+          phC = nC;
+          if (++phAge >= 64) {
+            phAge = 0;
+            phC = Math.cos(lfoPhase);
+            phS = Math.sin(lfoPhase);
+          }
         }
         if (cc > 1) {
           const w = width;
@@ -2615,6 +2654,7 @@
         modDepthSamples = clamp(depthSamples, 0, 16);
         const t = algoTuning(params.algo);
         lfoInc = modRateHz * t.modRateMult * 2 * Math.PI / sampleRate2;
+        syncPhasorStep();
       },
       getLatencySamples() {
         return 0;
@@ -2622,6 +2662,9 @@
       reset() {
         resetState();
         attackEnv = 0;
+        phC = 1;
+        phS = 0;
+        phAge = 0;
         lowSplitL.z1.fill(0);
         lowSplitL.z2.fill(0);
         highSplitL.z1.fill(0);
@@ -2711,6 +2754,23 @@
     let modDepthSamples = 0;
     let lfoPhase = 0;
     let lfoInc = 0;
+    const lineSin = new Float64Array(FDN_LINES2);
+    const lineCos = new Float64Array(FDN_LINES2);
+    for (let l = 0; l < FDN_LINES2; l++) {
+      const phi = l / FDN_LINES2 * Math.PI * 2;
+      lineSin[l] = Math.sin(phi);
+      lineCos[l] = Math.cos(phi);
+    }
+    let phC = 1;
+    let phS = 0;
+    let phCosInc = 1;
+    let phSinInc = 0;
+    let phAge = 0;
+    function syncPhasorStep() {
+      phCosInc = Math.cos(lfoInc);
+      phSinInc = Math.sin(lfoInc);
+    }
+    syncPhasorStep();
     let predelayBufs = [];
     let predelayIdx = [];
     let lowSplitL = createBiquad(2);
@@ -2749,6 +2809,7 @@
       );
       diffG = 0.3 + 0.45 * (clamp(params.diffusion, 0, 100) / 100);
       shAmt = clamp(params.shimmer, 0, 1);
+      if (shAmt > 0) ensureShimmerTable();
       const bassMult = clamp(params.bassDecay, 0.25, 4);
       const fbBass = Math.pow(1e-3, avgLen / (decaySec * bassMult) / sampleRate2);
       bassGain = q323(clamp(fbBass / feedbackGain, 0.25, 2.5));
@@ -2759,6 +2820,7 @@
       setLowPass(lowSplitR.coeffs, clamp(params.crossoverHz, 20, 4e3), 0.7071, sampleRate2);
       setHighPass(highSplitR.coeffs, clamp(params.crossoverHz, 20, 4e3), 0.7071, sampleRate2);
       lfoInc = modRateHz * 0.7 * 2 * Math.PI / sampleRate2;
+      syncPhasorStep();
     }
     function allocChannels(cc) {
       const maxSrScale = sampleRate2 / 44100;
@@ -2881,6 +2943,15 @@
         Math.round(SH_WIN_BASE * SH_WIN_MULT[shQuality] * sampleRate2 / 48e3) & ~1
       );
       if (shWindow > shWinMax) shWindow = shWinMax;
+      if (shAmt > 0) ensureShimmerTable();
+    }
+    let shTable = null;
+    function ensureShimmerTable() {
+      if (shTable && shTable.length === shWindow) return;
+      const W = shWindow;
+      const t = new Float32Array(W);
+      for (let ph = 0; ph < W; ph++) t[ph] = q323(Math.sin(Math.PI * ph / W));
+      shTable = t;
     }
     return {
       prepare(sr, cc) {
@@ -2890,6 +2961,9 @@
         recompute();
         attackEnv = 0;
         lfoPhase = 0;
+        phC = 1;
+        phS = 0;
+        phAge = 0;
         shWinMax = Math.max(2048, Math.round(2 * SH_WIN_BASE * sampleRate2 / 48e3) & ~1);
         shBuf = [new Float32Array(2 * shWinMax), new Float32Array(2 * shWinMax)];
         applyShimmerWindow();
@@ -2938,6 +3012,7 @@
         const fb = feedbackGain;
         const fbEff = freeze_ ? 1 : fb;
         const effectiveDepth = modDepthSamples;
+        if (shAmt > 0 && (!shTable || shTable.length !== shWindow)) ensureShimmerTable();
         const width = clamp(params.stereoWidth, 0, 1);
         for (let i = 0; i < frameCount; i++) {
           if (attackEnv < 1) {
@@ -2972,8 +3047,7 @@
               const m = masks[l];
               let readPos = wis[l] - lengthsC[c][l];
               if (effectiveDepth > 0) {
-                const modPhase = lfoPhase + l / FDN_LINES2 * Math.PI * 2;
-                readPos += Math.sin(modPhase) * effectiveDepth;
+                readPos += (phS * lineCos[l] + phC * lineSin[l]) * effectiveDepth;
               }
               const riFloor = Math.floor(readPos);
               const ri0 = riFloor & m;
@@ -3020,11 +3094,11 @@
               const ph1 = (ph + W / 2) % W;
               const d1 = W - ph1;
               const i1 = ((shW[c] - d1) % size + size) % size;
-              const g0 = q323(Math.sin(Math.PI * ph / W));
+              const g0 = shTable ? shTable[ph] : q323(Math.sin(Math.PI * ph / W));
               if (shSingle) {
                 shiftedC[c] = 1.4142 * g0 * buf[i0];
               } else {
-                const g1 = q323(Math.sin(Math.PI * ph1 / W));
+                const g1 = shTable ? shTable[ph1] : q323(Math.sin(Math.PI * ph1 / W));
                 shiftedC[c] = g0 * buf[i0] + g1 * buf[i1];
               }
             } else {
@@ -3053,6 +3127,14 @@
           }
           lfoPhase += lfoInc;
           if (lfoPhase >= Math.PI * 2) lfoPhase -= Math.PI * 2;
+          const nC = phC * phCosInc - phS * phSinInc;
+          phS = phS * phCosInc + phC * phSinInc;
+          phC = nC;
+          if (++phAge >= 64) {
+            phAge = 0;
+            phC = Math.cos(lfoPhase);
+            phS = Math.sin(lfoPhase);
+          }
         }
         if (cc > 1) {
           const w = width;
@@ -3077,6 +3159,7 @@
         modRateHz = clamp(rateHz, 0, 20);
         modDepthSamples = clamp(depthSamples, 0, 20);
         lfoInc = modRateHz * 0.7 * 2 * Math.PI / sampleRate2;
+        syncPhasorStep();
       },
       getLatencySamples() {
         return 0;
@@ -3084,6 +3167,9 @@
       reset() {
         resetState();
         attackEnv = 0;
+        phC = 1;
+        phS = 0;
+        phAge = 0;
         lowSplitL.z1.fill(0);
         lowSplitL.z2.fill(0);
         highSplitL.z1.fill(0);
@@ -4122,9 +4208,17 @@
     lastLatencyPosted = -1;
     blockCount = 0;
     disposed = false;
+    // Time-stamped parameter events (setParameterAt — automation lanes and
+    // offline renders), sorted ascending by `when`. Applied from process()
+    // when the render clock reaches them — port messages alone have no
+    // timing, so without this queue an offline export would hear every
+    // automation point at the moment it was POSTED, not at its project time.
+    pendingParams = [];
     constructor(options) {
       super();
-      this.proc.prepare(sampleRate, CHANNELS, 120, MAX_BLOCK);
+      const bpmRaw = Number(options?.processorOptions?.bpm);
+      const bpm = Number.isFinite(bpmRaw) ? Math.min(300, Math.max(20, bpmRaw)) : 120;
+      this.proc.prepare(sampleRate, CHANNELS, bpm, MAX_BLOCK);
       const initial = options?.processorOptions?.params;
       if (initial) {
         for (const [id, value] of Object.entries(initial)) this.state = setPath(this.state, id, value);
@@ -4135,10 +4229,32 @@
         const msg = event.data;
         if (!msg) return;
         if (msg.type === "param") {
+          const now = currentTime;
+          if (this.pendingParams.length > 0) {
+            this.pendingParams = this.pendingParams.filter(
+              (ev) => ev.id !== msg.id || ev.when <= now
+            );
+          }
           this.state = setPath(this.state, msg.id, msg.value);
           this.proc.loadState(this.state);
           this.postLatency();
+        } else if (msg.type === "paramAt") {
+          const when = Number(msg.when);
+          if (!Number.isFinite(when)) {
+            this.state = setPath(this.state, msg.id, msg.value);
+            this.proc.loadState(this.state);
+            this.postLatency();
+            return;
+          }
+          const q = this.pendingParams;
+          let i = q.length;
+          while (i > 0 && q[i - 1].when > when) i--;
+          q.splice(i, 0, { id: msg.id, value: msg.value, when });
+        } else if (msg.type === "bpm") {
+          const bpm2 = Number(msg.bpm);
+          if (Number.isFinite(bpm2)) this.proc.setBpm(bpm2);
         } else if (msg.type === "reset") {
+          this.pendingParams.length = 0;
           this.state = defaultOzvenaStateV1();
           this.proc.loadState(this.state);
           this.proc.reset();
@@ -4147,6 +4263,22 @@
           this.disposed = true;
         }
       };
+    }
+    /** Apply every queued event whose project time has arrived (the render
+     *  clock granularity is one 128-frame quantum ≈ 2.7 ms). */
+    applyDueParams(horizon) {
+      const q = this.pendingParams;
+      if (q.length === 0 || q[0].when > horizon) return;
+      let applied = 0;
+      while (q.length > 0 && q[0].when <= horizon) {
+        const ev = q.shift();
+        this.state = setPath(this.state, ev.id, ev.value);
+        applied++;
+      }
+      if (applied > 0) {
+        this.proc.loadState(this.state);
+        this.postLatency();
+      }
     }
     postLatency() {
       const samples = this.proc.getLatencySamples();
@@ -4160,6 +4292,7 @@
       const output = outputs[0];
       if (!output || !output[0] || !output[1]) return true;
       const frames = Math.min(MAX_BLOCK, output[0].length);
+      this.applyDueParams(currentTime + frames / sampleRate);
       const input = inputs[0];
       for (let c = 0; c < CHANNELS; c++) {
         const buf = this.scratch[c];

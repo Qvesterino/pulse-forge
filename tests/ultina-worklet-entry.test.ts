@@ -93,8 +93,14 @@ function run(proc: ProcShape, blocks: number, amplitude: number): [number, numbe
 
 const COMP_ON: Record<string, number> = {
   "comp.enabled": 1,
+  // Per-band thresholds OVERRIDE comp.thresholdDb when present (schema
+  // defaults −20), so a deterministic test must pin all of them.
   "comp.thresholdDb": -40,
-  "comp.ratio": 10,
+  "comp.band0.thresholdDb": -40,
+  "comp.band1.thresholdDb": -40,
+  "comp.band2.thresholdDb": -40,
+  "comp.ratio": 20,
+  "comp.detectionMode": 0, // peak — amplitude-direct, no RMS window shaping
   "comp.attackMs": 5,
   "comp.releaseMs": 120,
   "comp.makeupDb": 0,
@@ -104,7 +110,7 @@ describe("Ultina worklet entry — module graph sync", () => {
   it("an enabled compressor actually compresses audio through the entry", () => {
     const proc = new Processor({ processorOptions: { params: { ...COMP_ON } } });
     const [outRms, inRms] = run(proc, 200, 0.158); // −16 dBFS sine
-    // Threshold −40, ratio 10 → ≈21 dB of gain reduction on a −16 dBFS tone.
+    // Threshold −40, ratio 20, peak detection → ≈23 dB gain reduction.
     expect(outRms).toBeGreaterThan(0);
     expect(outRms / inRms).toBeLessThan(0.3);
   });
@@ -125,12 +131,15 @@ describe("Ultina worklet entry — module graph sync", () => {
     expect(outRms / inRms).toBeGreaterThan(0.9);
   });
 
-  it("hybrid crossover latency is reported over the port", () => {
+  it("hybrid crossover latency is reported over the port after the first block configures it", () => {
     const proc = new Processor({
       processorOptions: {
         params: { ...COMP_ON, "comp.bandCount": 2, "comp.crossoverHz1": 200, "comp.crossoverMode": 1 },
       },
     });
+    // The crossover (and its latency) is applied on the first processed
+    // block; the meters-cadence latency re-post then reports it.
+    run(proc, 12, 0.158);
     const latency = proc.port.last("latency");
     expect(latency?.type).toBe("latency");
     expect(latency?.samples).toBe(31); // DEFAULT_FIR_TAPS=63 → (63−1)/2
@@ -140,5 +149,37 @@ describe("Ultina worklet entry — module graph sync", () => {
     const proc = new Processor({ processorOptions: { params: {} } });
     const [outRms, inRms] = run(proc, 100, 0.3);
     expect(Math.abs(outRms / inRms - 1)).toBeLessThan(0.02);
+  });
+});
+
+describe("Ultina worklet entry — metering gate", () => {
+  function metersPosted(proc: ProcShape): number {
+    return proc.port.posted.filter((m) => m.type === "meters").length;
+  }
+
+  it("meters post by default, stop after setMeters:false, resume after true", () => {
+    const proc = new Processor({ processorOptions: { params: {} } });
+    run(proc, 20, 0.2);
+    const before = metersPosted(proc);
+    expect(before).toBeGreaterThan(0); // worklet-side default is ON
+
+    proc.port.onmessage?.({ data: { type: "setMeters", enabled: false } });
+    const atDisable = metersPosted(proc);
+    run(proc, 80, 0.2);
+    expect(metersPosted(proc)).toBe(atDisable); // zero postings while gated
+
+    proc.port.onmessage?.({ data: { type: "setMeters", enabled: true } });
+    run(proc, 20, 0.2);
+    expect(metersPosted(proc)).toBeGreaterThan(atDisable); // resumed
+  });
+
+  it("setMeters message with a missing flag re-enables (defensive default)", () => {
+    const proc = new Processor({ processorOptions: { params: {} } });
+    proc.port.onmessage?.({ data: { type: "setMeters", enabled: false } });
+    run(proc, 40, 0.2);
+    expect(metersPosted(proc)).toBe(0);
+    proc.port.onmessage?.({ data: { type: "setMeters" } });
+    run(proc, 20, 0.2);
+    expect(metersPosted(proc)).toBeGreaterThan(0);
   });
 });

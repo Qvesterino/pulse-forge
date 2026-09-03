@@ -52,6 +52,13 @@ export interface EffectRuntime {
   getGainReductionDb?(): number;
   /** Live meter snapshot (spectrum, LUFS, GR…) — plugins with analysis DSP. */
   getMeters?(): unknown;
+  /**
+   * Toggle an effect's internal metering analysis. Heavy DSP panels (Ultina)
+   * keep a metering pipeline running on the audio thread; the engine flips it
+   * on while a consumer (panel) is mounted and off otherwise, so closed
+   * panels cost nothing. Effects without metering simply omit this.
+   */
+  setMetersEnabled?(enabled: boolean): void;
   /** AudioParam for direct audio-rate modulation bus connection. */
   getAudioParam?(paramId: string): AudioParam | null;
   dispose(): void;

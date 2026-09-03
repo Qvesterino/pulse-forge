@@ -41,13 +41,25 @@ export function createUltinaNode(
   let meters: unknown = null;
   const latencyListeners = new Set<() => void>();
   let disposed = false;
+
+  // Metering runs ONLY while a consumer (UltinaPanel) is attached: the
+  // analysis path costs real audio-thread CPU per instance (spectrum FFT,
+  // 32-band analyzer, waveform), so the node defaults to off and the engine
+  // flips it on behalf of the panel. The worklet defaults to on for any
+  // direct consumer that never negotiates — this initial message sets the
+  // app-side default. The node also ENFORCES the gate: worklet messages can
+  // straggle past the toggle (offline renders deliver port messages slightly
+  // late), and a gated instance must surface no meters at all.
+  let metersWanted = false;
+  node.port.postMessage({ type: "setMeters", enabled: false });
+
   node.port.onmessage = (event) => {
     const msg = event.data as { type?: string; samples?: number; meters?: unknown } | null;
     if (msg?.type === "latency" && typeof msg.samples === "number") {
       latencySamples = msg.samples;
       if (!disposed) for (const listener of latencyListeners) listener();
     } else if (msg?.type === "meters") {
-      meters = msg.meters;
+      if (metersWanted) meters = msg.meters;
     }
   };
 
@@ -64,6 +76,12 @@ export function createUltinaNode(
     getMeters: () => meters,
     setParameter(id: string, value: number) {
       node.port.postMessage({ type: "param", id, value });
+    },
+    setMetersEnabled(enabled: boolean) {
+      if (disposed) return;
+      metersWanted = enabled;
+      if (!enabled) meters = null; // no stale reads behind a closed panel
+      node.port.postMessage({ type: "setMeters", enabled });
     },
     dispose() {
       disposed = true;

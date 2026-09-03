@@ -927,6 +927,7 @@
           st.dcPrev = 0;
           st.adaaPrevIn = 0;
         }
+        lastFactor = 1;
       }
     };
   }
@@ -3281,8 +3282,7 @@
     const xoverFreqCurrent = [...DEFAULT_CROSSOVER_FREQS];
     let xoverSmoothCoef = 0;
     const history = createCommandHistory();
-    let morphTarget = null;
-    let morphStart = null;
+    let morphEntries = null;
     let morphDuration = 0;
     let morphElapsed = 0;
     let morphing = false;
@@ -3417,20 +3417,21 @@
             dcPrevOut[c] = prevOut;
           }
         }
-        if (morphing && morphStart && morphTarget) {
+        if (morphing && morphEntries) {
           const blockDur = frameCount / sampleRate2;
           morphElapsed += blockDur;
           const t = Math.min(1, morphElapsed / morphDuration);
-          for (const id of Object.keys(morphTarget)) {
-            const startVal = morphStart[id] ?? 0;
-            const endVal = morphTarget[id];
-            values[id] = startVal + (endVal - startVal) * t;
+          const entries = morphEntries;
+          for (let i = 0; i < entries.length; i++) {
+            const entry = entries[i];
+            const v = entry.start + (entry.end - entry.start) * t;
+            values[entry.id] = v;
+            routeParam(entry.route, v);
           }
-          applyAllParams();
           if (t >= 1) {
             morphing = false;
-            morphTarget = null;
-            morphStart = null;
+            morphEntries = null;
+            if (prepared) applyAllParams();
           }
         }
         const inGain = dbToLinear(values["inputGainDb"] ?? 0);
@@ -3617,8 +3618,15 @@
         return peaks;
       },
       startMorph(target, durationSec) {
-        morphStart = { ...values };
-        morphTarget = { ...target };
+        const entries = [];
+        for (const id of Object.keys(target)) {
+          const end = target[id];
+          if (typeof end !== "number" || !Number.isFinite(end)) continue;
+          const route = schema.routes.get(id);
+          if (!route) continue;
+          entries.push({ id, route, start: values[id] ?? 0, end });
+        }
+        morphEntries = entries;
         morphDuration = Math.max(0.01, durationSec);
         morphElapsed = 0;
         morphing = true;

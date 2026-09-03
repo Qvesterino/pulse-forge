@@ -266,6 +266,12 @@ export class UltinaProcessor {
   // Active delta module (null = no delta listen)
   private deltaModule: ModuleType | null = null;
 
+  // Metering gate. Meters feed panel UIs nobody may be watching — when the
+  // host knows no consumer is attached it disables the whole analysis path
+  // (spectrum FFT, 32-band analyzer, waveform, peak/RMS) to keep the audio
+  // thread's cost flat. LUFS keeps running when gain-match needs it.
+  private metersEnabled: boolean = true;
+
   // Cached context object (reused across process() calls — no per-block allocation)
   private cachedCtx: ModuleProcessorContext = {
     sampleRate: 44100,
@@ -428,8 +434,10 @@ export class UltinaProcessor {
 
     // If bypassed, pass through (no processing)
     if (bypass) {
-      this.updateInputMeters(chL, chR, frameCount);
-      this.updateOutputMeters(chL, chR, frameCount);
+      if (this.metersEnabled) {
+        this.updateInputMeters(chL, chR, frameCount);
+        this.updateOutputMeters(chL, chR, frameCount);
+      }
       this.totalSamples += frameCount;
       return;
     }
@@ -480,8 +488,11 @@ export class UltinaProcessor {
         chunkR[i] *= g;
       }
 
-      // Measure input (post-input-gain)
-      this.updateInputMeters(chunkL, chunkR, frames);
+      // Measure input (post-input-gain) — skipped entirely when no meter
+      // consumer is attached.
+      if (this.metersEnabled) {
+        this.updateInputMeters(chunkL, chunkR, frames);
+      }
 
       // Capture dry buffer (for mix and delta)
       this.dryBufferL.set(chunkL.subarray(0, frames));
@@ -560,8 +571,13 @@ export class UltinaProcessor {
         chunkR[i] = sanitizeSample(chunkR[i]);
       }
 
-      // Measure output
-      this.updateOutputMeters(chunkL, chunkR, frames);
+      // Measure output. With meters disabled, only the LUFS meter runs and
+      // only when gain-match needs it for its feedback loop.
+      if (this.metersEnabled) {
+        this.updateOutputMeters(chunkL, chunkR, frames);
+      } else if (gainMatchEnabled) {
+        this.lufsMeter.process(chunkL, chunkR, frames);
+      }
 
       offset += frames;
     }
@@ -616,6 +632,20 @@ export class UltinaProcessor {
    */
   dispose(): void {
     this.spectralRegistry.unregister(this.instanceId);
+  }
+
+  /**
+   * Enable/disable the metering analysis path (control thread). When
+   * disabled, process() skips spectrum/band/waveform/peak analysis entirely;
+   * the LUFS meter keeps running only while gain-match is enabled (its
+   * feedback loop reads it).
+   */
+  setMetersEnabled(enabled: boolean): void {
+    this.metersEnabled = enabled;
+  }
+
+  getMetersEnabled(): boolean {
+    return this.metersEnabled;
   }
 
   // ── Parameter management ─────────────────────────────────

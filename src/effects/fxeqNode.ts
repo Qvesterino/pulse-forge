@@ -2,6 +2,23 @@ import type { EffectRuntime } from "../effects/types";
 import type { EffectInstance } from "../project-model/types";
 
 /**
+ * Rack ↔ core parameter-id translation. The rack surface (registry params,
+ * stored in documents as instance.params) uses `mix`; the vendored core
+ * schema names the same control `globalMix`. Without this map the rack's
+ * MIX knob is silently dead — the core drops unknown ids (setParameter
+ * routes through schema.routes.get). Add an entry here whenever a rack id
+ * diverges from its core id; tests/fxeq-rack-contract.test.ts enforces that
+ * every registry param resolves through this map or the schema directly.
+ */
+const RACK_TO_CORE: Record<string, string> = {
+  mix: "globalMix",
+};
+
+function toCoreId(id: string): string {
+  return RACK_TO_CORE[id] ?? id;
+}
+
+/**
  * Main-thread FXEQ node: an AudioWorkletNode wrapping the vendored fxeq DSP
  * (multiband crossover + per-band Sat/LoFi/Mod/Delay/Rev + limiter). All
  * audio runs on the worklet; parameters travel over the message port.
@@ -19,9 +36,9 @@ export function createFxEqNode(
   // in the right state; later changes go over the port. Defaults first, then
   // EVERY instance param — the fxeq parameter space includes dotted
   // per-band ids ("band2.satDriveDb"…) beyond the rack's top-level surface.
-  const initial: Record<string, number> = { ...defaults, ...instance.params };
-  if (instance.params.bandCount !== undefined) {
-    initial.bandCount = Math.round(instance.params.bandCount);
+  const initial: Record<string, number> = {};
+  for (const [id, value] of Object.entries({ ...defaults, ...instance.params })) {
+    initial[toCoreId(id)] = id === "bandCount" ? Math.round(value) : value;
   }
 
   const node = new AudioWorkletNode(ctx, "fxeq-processor", {
@@ -68,8 +85,13 @@ export function createFxEqNode(
     },
     setParameter(id: string, value: number) {
       // The worklet's setParameter validates ids — forward everything,
-      // including dotted per-band ids outside the rack surface.
-      node.port.postMessage({ type: "param", id, value: id === "bandCount" ? Math.round(value) : value });
+      // including dotted per-band ids outside the rack surface. Rack ids
+      // that diverge from core ids are translated (see RACK_TO_CORE).
+      node.port.postMessage({
+        type: "param",
+        id: toCoreId(id),
+        value: id === "bandCount" ? Math.round(value) : value,
+      });
     },
     dispose() {
       disposed = true;
