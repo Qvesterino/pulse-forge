@@ -36,6 +36,7 @@ import { clamp } from "../shared/ids";
 import { StepGridEditor } from "./StepGridEditor";
 import { newModulatorSeed, stealGrooveIntoPattern } from "../commands/commands";
 import { GroovePoolRepository, type GroovePoolEntry } from "../persistence/GroovePoolRepository";
+import { formatMacroValue } from "./MacroPerformanceBar";
 
 const LFO_WAVES: { value: LfoWave; label: string }[] = [
   { value: "sine", label: "Sine" },
@@ -857,7 +858,7 @@ function MacroCard({ macro }: { macro: ReturnType<typeof useDoc>["macros"][numbe
         min={0}
         max={1}
         defaultValue={0.5}
-        format={(v) => `${Math.round((v * 2 - 1) * 100)}`}
+        format={formatMacroValue}
         onCommit={(value) => services.store.execute(setMacroValue(services.store.doc, macro.id, value))}
       />
       <div className="macro-mappings">

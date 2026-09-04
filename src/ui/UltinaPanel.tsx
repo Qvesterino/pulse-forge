@@ -34,6 +34,11 @@ const MODULE_LABELS: Record<string, string> = {
 /** Params hidden from the panel — host/engine concerns, not mix decisions. */
 const HIDDEN = new Set(["eq.learnActive", "eq.maskingMeterEnabled"]);
 
+export interface UltinaAbState {
+  slots: { A?: Record<string, number>; B?: Record<string, number> };
+  active: "A" | "B";
+}
+
 function formatUnit(value: number, unit: string): string {
   switch (unit) {
     case "db":
@@ -69,6 +74,8 @@ export function UltinaPanel({
   onParam,
   onApplyPreset,
   onApplyProposal,
+  abState,
+  onAbStateChange,
 }: {
   trackId: string;
   fxId: string;
@@ -81,6 +88,9 @@ export function UltinaPanel({
     toggles: { moduleType: string; enabled: boolean }[],
     changes: { parameterId: string; value: number }[],
   ) => void;
+  /** Kept by the device card so collapse/expand does not erase A/B work. */
+  abState?: UltinaAbState;
+  onAbStateChange?: (state: UltinaAbState) => void;
 }) {
   const services = useServices();
   const doc = useDoc();
@@ -110,7 +120,11 @@ export function UltinaPanel({
   const moduleParams = useMemo(
     () =>
       ALL_PARAMS.filter(
-        (d) => d.id.startsWith(`${selectedModule}.`) && d.unit !== "boolean" && !HIDDEN.has(d.id) && !/\.enabled$/.test(d.id),
+        (d) =>
+          d.id.startsWith(`${selectedModule}.`) &&
+          d.unit !== "boolean" &&
+          !HIDDEN.has(d.id) &&
+          !/\.enabled$/.test(d.id),
       ),
     [selectedModule],
   );
@@ -134,16 +148,32 @@ export function UltinaPanel({
   const valueOf = (id: string): number => params[id] ?? tryGetParamDef(id)?.defaultValue ?? 0;
 
   // ── PRO: A/B slots (host-side snapshots — abSlot in the DSP is only a label) ──
-  const [abSlots, setAbSlots] = useState<{ A?: Record<string, number>; B?: Record<string, number> }>({});
-  const [abActive, setAbActive] = useState<"A" | "B">("A");
+  const [localAbState, setLocalAbState] = useState<UltinaAbState>({ slots: {}, active: "A" });
+  const currentAbState = abState ?? localAbState;
+  const abSlots = currentAbState.slots;
+  const abActive = currentAbState.active;
+  const updateAbState = (next: UltinaAbState) => {
+    if (onAbStateChange) onAbStateChange(next);
+    else setLocalAbState(next);
+  };
   const storeAbSlot = (slot: "A" | "B") => {
-    setAbSlots((prev) => ({ ...prev, [slot]: { ...params } }));
+    updateAbState({ ...currentAbState, slots: { ...abSlots, [slot]: { ...params } } });
+  };
+  const clearAbSlot = (slot: "A" | "B") => {
+    const nextSlots = { ...abSlots };
+    delete nextSlots[slot];
+    updateAbState({ ...currentAbState, slots: nextSlots });
+  };
+  const copyAbSlot = (from: "A" | "B", to: "A" | "B") => {
+    const snapshot = abSlots[from];
+    if (!snapshot) return;
+    updateAbState({ ...currentAbState, slots: { ...abSlots, [to]: { ...snapshot } } });
   };
   const loadAbSlot = (slot: "A" | "B") => {
     if (slot === abActive) return;
     const snapshot = abSlots[slot];
     if (snapshot) onApplyPreset(`Slot ${slot}`, snapshot); // exact restore: defaults + snapshot
-    setAbActive(slot);
+    updateAbState({ ...currentAbState, active: slot });
   };
   const deltaOn = valueOf("global.deltaListen") >= 0.5;
   const gainMatchOn = valueOf("global.gainMatchEnabled") >= 0.5;
@@ -152,6 +182,7 @@ export function UltinaPanel({
   const liveCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const lufsRef = useRef<HTMLSpanElement | null>(null);
   const truePeakRef = useRef<HTMLSpanElement | null>(null);
+  const gainMatchStatusRef = useRef<HTMLSpanElement | null>(null);
   const grFillRef = useRef<HTMLDivElement | null>(null);
   const grTextRef = useRef<HTMLSpanElement | null>(null);
   const maskFillRef = useRef<HTMLDivElement | null>(null);
@@ -188,15 +219,15 @@ export function UltinaPanel({
       return;
     }
     const id = setInterval(() => {
-      const meters = metersRef.current as
-        | { learn?: { eq?: { isReady?: boolean; suggestions?: { freqHz: number; gainDb: number; q: number; severity: number }[] } } }
-        | null;
+      const meters = metersRef.current as {
+        learn?: {
+          eq?: { isReady?: boolean; suggestions?: { freqHz: number; gainDb: number; q: number; severity: number }[] };
+        };
+      } | null;
       const learn = meters?.learn?.eq;
       if (learn?.isReady && learn.suggestions) {
         const signature = JSON.stringify(learn.suggestions);
-        setLearnSuggestions((prev) =>
-          JSON.stringify(prev) === signature ? prev : learn.suggestions!,
-        );
+        setLearnSuggestions((prev) => (JSON.stringify(prev) === signature ? prev : learn.suggestions!));
       }
     }, 300);
     return () => clearInterval(id);
@@ -216,9 +247,10 @@ export function UltinaPanel({
   };
 
   const drawMeters = () => {
-    const meters = metersRef.current as
-      | { global?: Partial<GlobalMeters>; modules?: Record<string, { gainReductionDb?: number; maskingScore?: number }> }
-      | null;
+    const meters = metersRef.current as {
+      global?: Partial<GlobalMeters>;
+      modules?: Record<string, { gainReductionDb?: number; maskingScore?: number }>;
+    } | null;
     const global = meters?.global;
 
     // Spectrum (64 bins, dBFS -100..0 → y) + waveform overlay (256 samples).
@@ -277,6 +309,18 @@ export function UltinaPanel({
       const tp = global?.outputTruePeakDb ?? -100;
       truePeakRef.current.textContent = tp <= -99 ? "TP —" : `TP ${tp.toFixed(1)}`;
     }
+    if (gainMatchStatusRef.current) {
+      const active = global?.autoGainActive;
+      const correction = global?.autoGainCorrectionDb ?? 0;
+      const error = global?.autoGainErrorDb ?? 0;
+      const currentLufs = global?.outputShortTermLufs ?? -70;
+      const hasSignal = Number.isFinite(currentLufs) && currentLufs > -69;
+      gainMatchStatusRef.current.textContent =
+        active === true && hasSignal
+          ? `LOCK ${correction > 0 ? "+" : ""}${correction.toFixed(1)} dB · Δ ${error > 0 ? "+" : ""}${error.toFixed(1)}`
+          : "WAITING FOR SIGNAL";
+      gainMatchStatusRef.current.dataset.active = active === true && hasSignal ? "true" : "false";
+    }
 
     // Compressor gain-reduction bar (module meters only exist while enabled).
     const comp = meters?.modules?.comp as { gainReductionDb?: number } | undefined;
@@ -309,14 +353,19 @@ export function UltinaPanel({
       if (refBuffer) {
         setMatchBusy("Analyzing reference…");
         await new Promise((r) => setTimeout(r, 30));
-        const refCh = [refBuffer.getChannelData(0), refBuffer.numberOfChannels > 1 ? refBuffer.getChannelData(1) : refBuffer.getChannelData(0)];
+        const refCh = [
+          refBuffer.getChannelData(0),
+          refBuffer.numberOfChannels > 1 ? refBuffer.getChannelData(1) : refBuffer.getChannelData(0),
+        ];
         const refFeatures = extractFeatures(refCh, refBuffer.sampleRate);
         if (!refFeatures.valid) {
           setMatchError("Reference is too short or too quiet to analyze.");
           return;
         }
         // Same dB domain analyzeWithTarget uses for the current mix.
-        targetCurve = refFeatures.spectralProfile.map((b) => (b.ratio > 0 ? 10 * Math.log10(b.ratio * 10 + 1e-20) : -60));
+        targetCurve = refFeatures.spectralProfile.map((b) =>
+          b.ratio > 0 ? 10 * Math.log10(b.ratio * 10 + 1e-20) : -60,
+        );
         targetName = "reference";
       } else {
         const lib = getTargetById(libTargetId);
@@ -364,7 +413,9 @@ export function UltinaPanel({
         proposal.moduleToggles.map((t) => ({ moduleType: t.moduleType, enabled: t.enabled })),
         eqChanges.map((c) => ({ parameterId: c.parameterId, value: c.value })),
       );
-      const lines: string[] = [`Target: ${targetName} · ${INSTRUMENT_LABELS[proposal.instrument] ?? proposal.instrument}`];
+      const lines: string[] = [
+        `Target: ${targetName} · ${INSTRUMENT_LABELS[proposal.instrument] ?? proposal.instrument}`,
+      ];
       for (const c of eqChanges.slice(0, 6)) {
         const bandMatch = /eq\.band(\d+)\./.exec(c.parameterId);
         const bandNo = bandMatch ? Number(bandMatch[1]) + 1 : 0;
@@ -421,10 +472,14 @@ export function UltinaPanel({
         `Nástroj: ${INSTRUMENT_LABELS[proposal.instrument] ?? proposal.instrument} · ${proposal.analyzedDuration.toFixed(1)}s`,
       ];
       for (const t of proposal.moduleToggles) {
-        lines.push(`${MODULE_LABELS[t.moduleType] ?? t.moduleType} ${t.enabled ? "ON" : "OFF"} — ${getExplanationForLocale(t.reasonCode, "sk")}`);
+        lines.push(
+          `${MODULE_LABELS[t.moduleType] ?? t.moduleType} ${t.enabled ? "ON" : "OFF"} — ${getExplanationForLocale(t.reasonCode, "sk")}`,
+        );
       }
       for (const c of proposal.changes.slice(0, 6)) {
-        lines.push(`${c.parameterId} → ${formatUnit(c.value, tryGetParamDef(c.parameterId)?.unit ?? "generic")} — ${getExplanationForLocale(c.reasonCode, "sk")}`);
+        lines.push(
+          `${c.parameterId} → ${formatUnit(c.value, tryGetParamDef(c.parameterId)?.unit ?? "generic")} — ${getExplanationForLocale(c.reasonCode, "sk")}`,
+        );
       }
       if (proposal.changes.length > 6) lines.push(`…a ${proposal.changes.length - 6} ďalších zmien`);
       setAssistSummary(lines);
@@ -554,9 +609,7 @@ export function UltinaPanel({
           <div className="ultina-assist-summary">
             {learnSuggestions.slice(0, 4).map((s, i) => (
               <div key={i} className="ozvena-weights" style={{ alignItems: "center" }}>
-                <span>
-                  {s.freqHz >= 1000 ? `${(s.freqHz / 1000).toFixed(1)}k` : Math.round(s.freqHz)} Hz
-                </span>
+                <span>{s.freqHz >= 1000 ? `${(s.freqHz / 1000).toFixed(1)}k` : Math.round(s.freqHz)} Hz</span>
                 <span style={{ color: "#ef4444" }}>{s.gainDb.toFixed(1)} dB</span>
                 <button
                   type="button"
@@ -606,6 +659,12 @@ export function UltinaPanel({
                 format={(v) => `${v.toFixed(1)} LUFS`}
                 onCommit={(v) => onParam("global.autogainTargetLufs", v)}
               />
+              <div className="ultina-gain-match-meta">
+                <span className="ultina-gain-match-status" ref={gainMatchStatusRef} role="status">
+                  WAITING FOR SIGNAL
+                </span>
+                <span className="ultina-gain-match-note">output trim only · safe to A/B</span>
+              </div>
             </div>
           )}
         </div>
@@ -632,6 +691,39 @@ export function UltinaPanel({
           >
             STORE
           </button>
+          <button
+            type="button"
+            className="btn btn-small"
+            title={`Copy slot A to slot B`}
+            aria-label="Copy A to B"
+            disabled={!abSlots.A}
+            onClick={() => copyAbSlot("A", "B")}
+          >
+            A → B
+          </button>
+          <button
+            type="button"
+            className="btn btn-small"
+            title="Copy slot B to slot A"
+            aria-label="Copy B to A"
+            disabled={!abSlots.B}
+            onClick={() => copyAbSlot("B", "A")}
+          >
+            B → A
+          </button>
+          <button
+            type="button"
+            className="btn btn-small btn-danger"
+            title={`Clear slot ${abActive}`}
+            aria-label={`Clear slot ${abActive}`}
+            disabled={!abSlots[abActive]}
+            onClick={() => clearAbSlot(abActive)}
+          >
+            CLEAR
+          </button>
+          <span className="ultina-ab-status" role="status">
+            {abActive} ACTIVE · {abSlots[abActive] ? "STORED" : "EMPTY"}
+          </span>
         </div>
       </div>
 
@@ -782,7 +874,13 @@ export function UltinaPanel({
           {/* EQ: dedicated 12-band editor + response sketch */}
           {eqSelected ? (
             <div className="ultina-eq">
-              <svg viewBox="0 0 100 44" preserveAspectRatio="none" className="ultina-eq-curve" role="img" aria-label="EQ response sketch">
+              <svg
+                viewBox="0 0 100 44"
+                preserveAspectRatio="none"
+                className="ultina-eq-curve"
+                role="img"
+                aria-label="EQ response sketch"
+              >
                 <line x1="0" y1="26" x2="100" y2="26" className="eq-response-zero" />
                 {eqBands
                   .filter((b) => b.enabled && b.gain !== 0)
@@ -820,7 +918,9 @@ export function UltinaPanel({
                 const band = eqBands[selectedEqBand];
                 if (!band) return null;
                 const prefix = `eq.band${band.index}`;
-                const bandDefs = ALL_PARAMS.filter((d) => d.id.startsWith(`${prefix}.`) && d.unit !== "boolean" && !d.id.endsWith(".solo"));
+                const bandDefs = ALL_PARAMS.filter(
+                  (d) => d.id.startsWith(`${prefix}.`) && d.unit !== "boolean" && !d.id.endsWith(".solo"),
+                );
                 return (
                   <>
                     <button

@@ -28,6 +28,7 @@ import { presetsForEffect } from "../effects/presets";
 import { registerRaf, unregisterRaf } from "../services/rafLoop";
 import { Slider } from "./controls";
 import { StepGridEditor } from "./StepGridEditor";
+import type { UltinaAbState } from "./UltinaPanel";
 
 export function EffectRack({ track }: { track: Track }) {
   const services = useServices();
@@ -145,12 +146,27 @@ function Device({
   const services = useServices();
   const doc = useDoc();
   const def = EFFECT_DEFS[fx.type];
+  const [collapsed, setCollapsed] = useState(false);
+  const [ultinaAbState, setUltinaAbState] = useState<UltinaAbState>({ slots: {}, active: "A" });
+  const contentId = `fx-device-content-${fx.id}`;
 
   return (
-    <div className={`fx-device${fx.bypassed ? " bypassed" : ""}`}>
+    <div className={`fx-device${fx.bypassed ? " bypassed" : ""}${collapsed ? " collapsed" : ""}`}>
       <div className="fx-device-header">
-        <span className="fx-device-name">
-          {def.name}
+        <button
+          type="button"
+          className="fx-device-toggle"
+          aria-expanded={!collapsed}
+          aria-controls={contentId}
+          aria-label={`${collapsed ? "Expand" : "Collapse"} ${def.name}`}
+          title={`${collapsed ? "Expand" : "Collapse"} ${def.name}`}
+          onClick={() => setCollapsed((value) => !value)}
+        >
+          <span aria-hidden="true">{collapsed ? "▸" : "▾"}</span>
+        </button>
+        <span className="fx-device-title">
+          <span className="fx-device-name">{def.name}</span>
+          <span className="fx-device-state">{fx.bypassed ? "BYPASSED" : "ACTIVE"}</span>
           {fallbackReason && (
             <span className="fx-device-warn" role="status" title={fallbackReason}>
               ⚠ FALLBACK
@@ -212,168 +228,175 @@ function Device({
           </button>
         </div>
       </div>
-      {fx.type === "eq" && <EqResponseCurve params={fx.params} />}
-      {(fx.type === "limiter" || fx.type === "compressor") && (
-        <div className="fx-gr" aria-label="Gain reduction">
-          <div className="fx-gr-track">
-            <div className="fx-gr-fill" style={{ width: `${Math.min(100, ((gainReductionDb ?? 0) / 12) * 100)}%` }} />
-          </div>
-          <span className="fx-gr-label">GR {(gainReductionDb ?? 0).toFixed(1)} dB</span>
-        </div>
-      )}
-      {(fx.type === "sidechain" || fx.type === "compressor") && (
-        <div className="fx-sidechain-picker">
-          <label className="fx-param-select">
-            <span className="slider-label">SOURCE</span>
-            <select
-              value={fx.sidechainTrackId ?? ""}
-              onChange={(event) =>
-                services.store.execute(setEffectSidechainSource(doc, track.id, fx.id, event.target.value || null))
-              }
-            >
-              <option value="">OFF</option>
-              {doc.tracks
-                .filter((candidate) => candidate.id !== track.id)
-                .map((candidate) => (
-                  <option key={candidate.id} value={candidate.id}>
-                    {candidate.name}
-                    {candidate.kind === "group" ? " · BUS" : ""}
-                  </option>
-                ))}
-            </select>
-          </label>
-          <button
-            type="button"
-            className="btn btn-small"
-            title="Choose the first kick drum track, or the first drum track"
-            onClick={() => {
-              const drums = doc.tracks.filter((candidate) => candidate.kind === "drum");
-              const kick =
-                drums.find(
-                  (candidate) =>
-                    candidate.name.toLowerCase().includes("kick") ||
-                    candidate.pads.some((pad) => pad.name.toLowerCase().includes("kick")),
-                ) ?? drums[0];
-              if (kick) services.store.execute(setEffectSidechainSource(doc, track.id, fx.id, kick.id));
-            }}
-          >
-            KICK
-          </button>
-          <span className="fx-sidechain-status">
-            {fx.sidechainTrackId
-              ? (doc.tracks.find((candidate) => candidate.id === fx.sidechainTrackId)?.name ?? "MISSING")
-              : "No source"}
-          </span>
-        </div>
-      )}
-      {fx.type === "stepGate" && (
-        <StepGridEditor
-          steps={fx.steps && fx.steps.length > 0 ? fx.steps : [1, 0]}
-          min={0}
-          max={1}
-          ariaLabel={`Step gate pattern for ${track?.name ?? "track"}`}
-          onCommit={(steps) => services.store.execute(setEffectSteps(doc, track.id, fx.id, steps))}
-        />
-      )}
-      {fx.type === "stutter" && (
-        <StepGridEditor
-          steps={fx.steps && fx.steps.length > 0 ? fx.steps : Array(16).fill(1)}
-          min={0}
-          max={1}
-          ariaLabel={`Stutter gate pattern for ${track?.name ?? "track"}`}
-          onCommit={(steps) => services.store.execute(setEffectSteps(doc, track.id, fx.id, steps))}
-        />
-      )}
-      <Suspense fallback={<div className="fx-panel-loading">Loading editor…</div>}>
-        {fx.type === "fxeq" && (
-          <FxEqPanel
-            trackId={track.id}
-            fxId={fx.id}
-            params={fx.params}
-            degraded={!!fallbackReason}
-            onParam={(fullId, value) =>
-              services.store.execute(setFxEqParam(doc, track.id, fx.id, fullId, value))
-            }
-            onApplyPreset={(name, presetParams) =>
-              services.store.execute(applyFxEqPreset(doc, track.id, fx.id, name, presetParams))
-            }
-          />
-        )}
-        {fx.type === "ultina" && (
-          <UltinaPanel
-            trackId={track.id}
-            fxId={fx.id}
-            params={fx.params}
-            degraded={!!fallbackReason}
-            onParam={(paramId, value) =>
-              services.store.execute(setUltinaParam(doc, track.id, fx.id, paramId, value))
-            }
-            onApplyPreset={(name, presetParams) =>
-              services.store.execute(applyUltinaPreset(doc, track.id, fx.id, name, presetParams))
-            }
-            onApplyProposal={(label, toggles, changes) =>
-              services.store.execute(applyUltinaProposal(doc, track.id, fx.id, label, toggles, changes))
-            }
-          />
-        )}
-        {fx.type === "ozvena" && (
-          <OzvenaPanel
-            params={fx.params}
-            degraded={!!fallbackReason}
-            onParam={(paramId, value) =>
-              services.store.execute(setEffectParam(doc, track.id, fx.id, paramId, value))
-            }
-            onApplyPatch={(label, flatParams) =>
-              services.store.execute(applyOzvenaStatePatch(doc, track.id, fx.id, label, flatParams))
-            }
-          />
-        )}
-      </Suspense>
-      <div className="fx-device-params">
-        {def.params
-          .filter(
-            (p) =>
-              !(
-                fx.type === "eq" &&
-                ["lowGain", "lowFreq", "midGain", "midFreq", "midQ", "highGain", "highFreq"].includes(p.id)
-              ),
-          )
-          .map((p) =>
-            p.options ? (
-              <label key={p.id} className="fx-param-select">
-                <span className="slider-label">{p.label}</span>
+      {!collapsed && (
+        <div id={contentId} className="fx-device-content">
+          {fx.type === "eq" && <EqResponseCurve params={fx.params} />}
+          {(fx.type === "limiter" || fx.type === "compressor") && (
+            <div className="fx-gr" aria-label="Gain reduction">
+              <div className="fx-gr-track">
+                <div
+                  className="fx-gr-fill"
+                  style={{ width: `${Math.min(100, ((gainReductionDb ?? 0) / 12) * 100)}%` }}
+                />
+              </div>
+              <span className="fx-gr-label">GR {(gainReductionDb ?? 0).toFixed(1)} dB</span>
+            </div>
+          )}
+          {(fx.type === "sidechain" || fx.type === "compressor") && (
+            <div className="fx-sidechain-picker">
+              <label className="fx-param-select">
+                <span className="slider-label">SOURCE</span>
                 <select
-                  value={
-                    p.options.some((o) => o.value === (fx.params[p.id] ?? p.default))
-                      ? (fx.params[p.id] ?? p.default)
-                      : p.default
-                  }
+                  value={fx.sidechainTrackId ?? ""}
                   onChange={(event) =>
-                    services.store.execute(setEffectParam(doc, track.id, fx.id, p.id, Number(event.target.value)))
+                    services.store.execute(setEffectSidechainSource(doc, track.id, fx.id, event.target.value || null))
                   }
                 >
-                  {p.options.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
+                  <option value="">OFF</option>
+                  {doc.tracks
+                    .filter((candidate) => candidate.id !== track.id)
+                    .map((candidate) => (
+                      <option key={candidate.id} value={candidate.id}>
+                        {candidate.name}
+                        {candidate.kind === "group" ? " · BUS" : ""}
+                      </option>
+                    ))}
                 </select>
               </label>
-            ) : (
-              <Slider
-                key={p.id}
-                compact
-                label={p.label}
-                value={fx.params[p.id] ?? p.default}
-                min={p.min}
-                max={p.max}
-                defaultValue={p.default}
-                format={p.format}
-                onCommit={(v) => services.store.execute(setEffectParam(doc, track.id, fx.id, p.id, v))}
-              />
-            ),
+              <button
+                type="button"
+                className="btn btn-small"
+                title="Choose the first kick drum track, or the first drum track"
+                onClick={() => {
+                  const drums = doc.tracks.filter((candidate) => candidate.kind === "drum");
+                  const kick =
+                    drums.find(
+                      (candidate) =>
+                        candidate.name.toLowerCase().includes("kick") ||
+                        candidate.pads.some((pad) => pad.name.toLowerCase().includes("kick")),
+                    ) ?? drums[0];
+                  if (kick) services.store.execute(setEffectSidechainSource(doc, track.id, fx.id, kick.id));
+                }}
+              >
+                KICK
+              </button>
+              <span className="fx-sidechain-status">
+                {fx.sidechainTrackId
+                  ? (doc.tracks.find((candidate) => candidate.id === fx.sidechainTrackId)?.name ?? "MISSING")
+                  : "No source"}
+              </span>
+            </div>
           )}
-      </div>
+          {fx.type === "stepGate" && (
+            <StepGridEditor
+              steps={fx.steps && fx.steps.length > 0 ? fx.steps : [1, 0]}
+              min={0}
+              max={1}
+              ariaLabel={`Step gate pattern for ${track?.name ?? "track"}`}
+              onCommit={(steps) => services.store.execute(setEffectSteps(doc, track.id, fx.id, steps))}
+            />
+          )}
+          {fx.type === "stutter" && (
+            <StepGridEditor
+              steps={fx.steps && fx.steps.length > 0 ? fx.steps : Array(16).fill(1)}
+              min={0}
+              max={1}
+              ariaLabel={`Stutter gate pattern for ${track?.name ?? "track"}`}
+              onCommit={(steps) => services.store.execute(setEffectSteps(doc, track.id, fx.id, steps))}
+            />
+          )}
+          <Suspense fallback={<div className="fx-panel-loading">Loading editor…</div>}>
+            {fx.type === "fxeq" && (
+              <FxEqPanel
+                trackId={track.id}
+                fxId={fx.id}
+                params={fx.params}
+                degraded={!!fallbackReason}
+                onParam={(fullId, value) => services.store.execute(setFxEqParam(doc, track.id, fx.id, fullId, value))}
+                onApplyPreset={(name, presetParams) =>
+                  services.store.execute(applyFxEqPreset(doc, track.id, fx.id, name, presetParams))
+                }
+              />
+            )}
+            {fx.type === "ultina" && (
+              <UltinaPanel
+                trackId={track.id}
+                fxId={fx.id}
+                params={fx.params}
+                degraded={!!fallbackReason}
+                onParam={(paramId, value) =>
+                  services.store.execute(setUltinaParam(doc, track.id, fx.id, paramId, value))
+                }
+                onApplyPreset={(name, presetParams) =>
+                  services.store.execute(applyUltinaPreset(doc, track.id, fx.id, name, presetParams))
+                }
+                onApplyProposal={(label, toggles, changes) =>
+                  services.store.execute(applyUltinaProposal(doc, track.id, fx.id, label, toggles, changes))
+                }
+                abState={ultinaAbState}
+                onAbStateChange={setUltinaAbState}
+              />
+            )}
+            {fx.type === "ozvena" && (
+              <OzvenaPanel
+                params={fx.params}
+                degraded={!!fallbackReason}
+                onParam={(paramId, value) =>
+                  services.store.execute(setEffectParam(doc, track.id, fx.id, paramId, value))
+                }
+                onApplyPatch={(label, flatParams) =>
+                  services.store.execute(applyOzvenaStatePatch(doc, track.id, fx.id, label, flatParams))
+                }
+              />
+            )}
+          </Suspense>
+          <div className="fx-device-params">
+            {def.params
+              .filter(
+                (p) =>
+                  !(
+                    fx.type === "eq" &&
+                    ["lowGain", "lowFreq", "midGain", "midFreq", "midQ", "highGain", "highFreq"].includes(p.id)
+                  ),
+              )
+              .map((p) =>
+                p.options ? (
+                  <label key={p.id} className="fx-param-select">
+                    <span className="slider-label">{p.label}</span>
+                    <select
+                      value={
+                        p.options.some((o) => o.value === (fx.params[p.id] ?? p.default))
+                          ? (fx.params[p.id] ?? p.default)
+                          : p.default
+                      }
+                      onChange={(event) =>
+                        services.store.execute(setEffectParam(doc, track.id, fx.id, p.id, Number(event.target.value)))
+                      }
+                    >
+                      {p.options.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : (
+                  <Slider
+                    key={p.id}
+                    compact
+                    label={p.label}
+                    value={fx.params[p.id] ?? p.default}
+                    min={p.min}
+                    max={p.max}
+                    defaultValue={p.default}
+                    format={p.format}
+                    onCommit={(v) => services.store.execute(setEffectParam(doc, track.id, fx.id, p.id, v))}
+                  />
+                ),
+              )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

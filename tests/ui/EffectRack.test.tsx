@@ -85,15 +85,40 @@ describe("EffectRack", () => {
     await user.click(screen.getByText("B"));
     expect(services.store.execute).toHaveBeenCalled();
   });
+
+  it("collapses a device editor without removing its header controls", async () => {
+    const user = userEvent.setup();
+    const { doc, track } = trackWithEffects(1);
+    renderWithContext(<EffectRack track={track} />, { services: mockServices(doc) });
+
+    expect(screen.getByText("ACTIVE")).toBeInTheDocument();
+    const collapse = screen.getByRole("button", { name: "Collapse Delay" });
+    await user.click(collapse);
+
+    expect(screen.getByRole("button", { name: "Expand Delay" })).toBeInTheDocument();
+    expect(screen.queryByText("TIME")).toBeNull();
+  });
+
+  it("keeps an Ultina A/B snapshot when its editor is collapsed", async () => {
+    const user = userEvent.setup();
+    const doc = createProjectFromTemplate("house");
+    const track = doc.tracks.find((t) => t.kind === "instrument")!;
+    track.effects = [{ id: "fx-ult-collapse", type: "ultina", bypassed: false, params: {} }];
+    renderWithContext(<EffectRack track={track} />, { services: mockServices(doc) });
+
+    await user.click(await screen.findByRole("button", { name: "STORE" }));
+    await user.click(screen.getByRole("button", { name: "Collapse Ultina Suite" }));
+    await user.click(screen.getByRole("button", { name: "Expand Ultina Suite" }));
+
+    expect(screen.getByText("A ACTIVE · STORED")).toBeInTheDocument();
+  });
 });
 
 describe("EffectRack — FXEQ panel", () => {
   function fxEqDoc() {
     const doc = createProjectFromTemplate("house");
     const track = doc.tracks.find((t) => t.kind === "instrument")!;
-    track.effects = [
-      { id: "fx-eq", type: "fxeq" as const, bypassed: false, params: { bandCount: 4 } },
-    ];
+    track.effects = [{ id: "fx-eq", type: "fxeq" as const, bypassed: false, params: { bandCount: 4 } }];
     return { doc, track };
   }
 
@@ -152,9 +177,7 @@ describe("EffectRack — Ultina panel", () => {
   function ultinaDoc() {
     const doc = createProjectFromTemplate("house");
     const track = doc.tracks.find((t) => t.kind === "instrument")!;
-    track.effects = [
-      { id: "fx-ult", type: "ultina" as const, bypassed: false, params: {} },
-    ];
+    track.effects = [{ id: "fx-ult", type: "ultina" as const, bypassed: false, params: {} }];
     return { doc, track };
   }
 
@@ -242,8 +265,7 @@ describe("UltinaPanel — EQ band editor (direct render)", () => {
   });
 });
 
-
-describe('UltinaPanel — PRO tools (delta / A/B / gain match)', () => {
+describe("UltinaPanel — PRO tools (delta / A/B / gain match)", () => {
   function renderPanel(params: Record<string, number>) {
     const onParam = vi.fn();
     const onApplyPreset = vi.fn();
@@ -261,34 +283,49 @@ describe('UltinaPanel — PRO tools (delta / A/B / gain match)', () => {
     return { onParam, onApplyPreset };
   }
 
-  it('DELTA and G-MATCH toggles execute global params', async () => {
+  it("DELTA and G-MATCH toggles execute global params", async () => {
     const user = userEvent.setup();
     const { onParam } = renderPanel({});
-    await user.click(screen.getByRole('button', { name: 'DELTA' }));
-    expect(onParam).toHaveBeenCalledWith('global.deltaListen', 1);
-    await user.click(screen.getByRole('button', { name: 'G-MATCH' }));
-    expect(onParam).toHaveBeenCalledWith('global.gainMatchEnabled', 1);
+    await user.click(screen.getByRole("button", { name: "DELTA" }));
+    expect(onParam).toHaveBeenCalledWith("global.deltaListen", 1);
+    await user.click(screen.getByRole("button", { name: "G-MATCH" }));
+    expect(onParam).toHaveBeenCalledWith("global.gainMatchEnabled", 1);
   });
 
-  it('G-MATCH on reveals the target LUFS slider (default -14)', () => {
-    renderPanel({ 'global.gainMatchEnabled': 1 });
-    expect(screen.getByText('TARGET')).toBeInTheDocument();
+  it("G-MATCH on reveals the target LUFS slider (default -14)", () => {
+    renderPanel({ "global.gainMatchEnabled": 1 });
+    expect(screen.getByText("TARGET")).toBeInTheDocument();
     // The slider shows the streaming-standard default.
-    expect(screen.getByText('-14.0 LUFS')).toBeInTheDocument();
+    expect(screen.getByText("-14.0 LUFS")).toBeInTheDocument();
   });
 
-  it('A/B: STORE writes the active slot, clicking the other loads it as ONE gesture', async () => {
+  it("A/B: STORE writes the active slot, clicking the other loads it as ONE gesture", async () => {
     const user = userEvent.setup();
-    const params = { 'comp.thresholdDb': -18, 'global.mix': 80 };
+    const params = { "comp.thresholdDb": -18, "global.mix": 80 };
     const { onApplyPreset } = renderPanel(params);
     // STORE into active slot A — dot marks it filled.
-    await user.click(screen.getByRole('button', { name: 'STORE' }));
-    expect(screen.getByRole('button', { name: /A•/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "STORE" }));
+    expect(screen.getByRole("button", { name: /A•/ })).toBeInTheDocument();
     // Switch to B (empty — just switches), then STORE B too.
-    await user.click(screen.getByRole('button', { name: /^B$/ }));
-    await user.click(screen.getByRole('button', { name: 'STORE' }));
+    await user.click(screen.getByRole("button", { name: /^B$/ }));
+    await user.click(screen.getByRole("button", { name: "STORE" }));
     // Click A — loads the stored snapshot as one bulk apply.
-    await user.click(screen.getByRole('button', { name: /A•/ }));
-    expect(onApplyPreset).toHaveBeenCalledWith('Slot A', expect.objectContaining({ 'comp.thresholdDb': -18 }));
+    await user.click(screen.getByRole("button", { name: /A•/ }));
+    expect(onApplyPreset).toHaveBeenCalledWith("Slot A", expect.objectContaining({ "comp.thresholdDb": -18 }));
+  });
+
+  it("A/B exposes copy and clear controls without applying audio changes", async () => {
+    const user = userEvent.setup();
+    const { onApplyPreset } = renderPanel({ "comp.thresholdDb": -18 });
+
+    await user.click(screen.getByRole("button", { name: "STORE" }));
+    const copy = screen.getByRole("button", { name: "Copy A to B" });
+    expect(copy).not.toBeDisabled();
+    await user.click(copy);
+    expect(screen.getByRole("button", { name: /B•/ })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Clear slot A" }));
+    expect(screen.getByRole("button", { name: /^A$/ })).toBeInTheDocument();
+    expect(onApplyPreset).not.toHaveBeenCalled();
   });
 });

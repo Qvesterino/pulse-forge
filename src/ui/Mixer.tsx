@@ -24,6 +24,7 @@ import { Meter } from "./Meter";
 import { MasterMeter } from "./MasterMeter";
 import { trackBadge } from "./TrackTabs";
 import { FreezeButton } from "./FreezeButton";
+import { MacroPerformanceBar } from "./MacroPerformanceBar";
 
 export function Mixer() {
   const services = useServices();
@@ -31,7 +32,7 @@ export function Mixer() {
   const selection = useSelection();
   const selectedIds = selection.trackIds;
   const selectedTracks = doc.tracks.filter((t) => selectedIds.includes(t.id));
-  const batchCount = selectedTracks.length > 1 ? selectedTracks.length : doc.tracks.length;
+  const batchCount = selectedTracks.length > 0 ? selectedTracks.length : doc.tracks.length;
   const [batchType, setBatchType] = useState<EffectType>("eq");
   const collapsedGroups = new Set(
     doc.tracks
@@ -49,6 +50,7 @@ export function Mixer() {
   });
   return (
     <section className="mixer" aria-label="Mixer">
+      <MacroPerformanceBar />
       <div className="mixer-batch-bar" role="toolbar" aria-label="Batch FX">
         <span className="mixer-batch-label">BATCH FX → {batchCount} TRACKS</span>
         <select
@@ -584,29 +586,34 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
           >
             Type value…
           </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              if (faderMenu.param !== "gain" && faderMenu.param !== "pan") {
-                setFaderMenu(null);
-                return;
-              }
-              const macro = doc.macros[0];
-              if (!macro) {
-                setFaderMenu(null);
-                return;
-              }
-              try {
-                services.store.execute(addMacroMapping(doc, macro.id, track.id, faderMenu.param as "gain" | "pan"));
-              } catch {
-                /* ignore */
-              }
-              setFaderMenu(null);
-            }}
-          >
-            Link to macro ({doc.macros[0]?.name ?? "MACRO"})
-          </button>
+          {doc.macros.length > 0 ? (
+            doc.macros.slice(0, 4).map((macro) => (
+              <button
+                key={macro.id}
+                type="button"
+                role="menuitem"
+                disabled={faderMenu.param !== "gain" && faderMenu.param !== "pan"}
+                onClick={() => {
+                  if (faderMenu.param === "gain" || faderMenu.param === "pan") {
+                    try {
+                      services.store.execute(
+                        addMacroMapping(doc, macro.id, track.id, faderMenu.param as "gain" | "pan"),
+                      );
+                    } catch {
+                      /* ignore */
+                    }
+                  }
+                  setFaderMenu(null);
+                }}
+              >
+                Link to macro ({macro.name})
+              </button>
+            ))
+          ) : (
+            <button type="button" role="menuitem" disabled>
+              Link to macro (none)
+            </button>
+          )}
           <button
             type="button"
             role="menuitem"

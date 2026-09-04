@@ -1450,6 +1450,95 @@ button {
   border: 1px solid var(--border);
   border-radius: 6px;
 }
+
+.mixer-performance-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 7px 8px;
+  margin-bottom: 8px;
+  background: rgba(245, 158, 11, 0.035);
+  border: 1px solid rgba(245, 158, 11, 0.22);
+  border-radius: 6px;
+}
+
+.mixer-performance-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.mixer-performance-title {
+  color: var(--accent);
+  font: 700 10px var(--mono);
+  letter-spacing: 1px;
+}
+
+.mixer-performance-hint {
+  color: var(--text-faint);
+  font-size: 9px;
+}
+
+.mixer-performance-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 6px;
+}
+
+.mixer-macro-control {
+  min-width: 0;
+  padding: 5px 7px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+}
+
+.mixer-macro-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.mixer-macro-name,
+.mixer-macro-value {
+  font: 700 10px var(--mono);
+}
+
+.mixer-macro-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-dim);
+  letter-spacing: 0.8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mixer-macro-value {
+  color: var(--accent);
+}
+
+.mixer-macro-control .slider {
+  margin-top: 3px;
+}
+
+.mixer-macro-control .slider-header {
+  display: none;
+}
+
+.mixer-macro-targets {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-faint);
+  font: 9px var(--mono);
+  white-space: nowrap;
+}
+
+.mixer-macro-targets.empty {
+  color: var(--text-faint);
+  opacity: 0.75;
+}
 .mixer-batch-label {
   font-size: 11px;
   font-weight: 700;
@@ -1686,11 +1775,69 @@ button {
   gap: 8px;
 }
 
+.fx-device-toggle {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.fx-device-toggle:hover,
+.fx-device-toggle:focus-visible {
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.fx-device-toggle:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.fx-device-title {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  gap: 6px;
+}
+
 .fx-device-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 1.2px;
   color: var(--text-dim);
+}
+
+.fx-device-state {
+  flex: 0 0 auto;
+  color: var(--text-faint);
+  font: 9px var(--mono);
+  letter-spacing: 0.4px;
+}
+
+.fx-device.bypassed .fx-device-state {
+  color: #f59e0b;
+}
+
+.fx-device-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fx-device.collapsed {
+  align-self: flex-start;
+  min-height: 42px;
 }
 
 .fx-device-warn {
@@ -7299,6 +7446,36 @@ html {
 .ultina-pro-lufs {
   flex: 1;
   min-width: 140px;
+}
+
+.ultina-gain-match-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 3px;
+  font: 9px var(--mono);
+}
+
+.ultina-gain-match-status {
+  color: var(--text-faint);
+  letter-spacing: 0.3px;
+}
+
+.ultina-gain-match-status[data-active="true"] {
+  color: #4ade80;
+}
+
+.ultina-gain-match-note {
+  color: var(--text-faint);
+  text-align: right;
+}
+
+.ultina-ab-status {
+  color: var(--text-faint);
+  font: 9px var(--mono);
+  letter-spacing: 0.35px;
+  white-space: nowrap;
 }
 
 /* ── Ultina LIVE meters ─────────────────────────────────────────────────── */
