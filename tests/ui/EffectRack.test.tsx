@@ -40,6 +40,20 @@ describe("EffectRack", () => {
     expect(screen.getByLabelText("Add effect")).toBeInTheDocument();
   });
 
+  it("exposes the flagship plugin suites in the add effect menu", () => {
+    const { doc, track } = trackWithEffects(0);
+    renderWithContext(<EffectRack track={track} />, { services: mockServices(doc) });
+    const select = screen.getByLabelText("Add effect") as HTMLSelectElement;
+
+    expect(Array.from(select.options).map((option) => option.value)).toEqual(
+      expect.arrayContaining(["fxeq", "ultina", "ozvena"]),
+    );
+    expect(select.querySelector('optgroup[label="FLAGSHIP PLUGINS"]')).not.toBeNull();
+    expect(screen.getByRole("option", { name: "FXEQ Multiband" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Ultina Suite" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Ozvena Reverb" })).toBeInTheDocument();
+  });
+
   it("disables move-earlier on first effect", () => {
     const { doc, track } = trackWithEffects(2);
     renderWithContext(<EffectRack track={track} />, { services: mockServices(doc) });

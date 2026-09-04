@@ -3099,5 +3099,276 @@ export async function runChecks(): Promise<CheckResult[]> {
     check("stutter: gate pattern alternates delayed loop audibility", false, String(error));
   }
 
+  // ═══════════════════════════════════════════════════════════
+  // FXEQ — real-browser verification (Chrome AudioWorklet):
+  // module load, port latency → PDC, rack MIX knob wiring, band
+  // metering chain, latency-aligned transparency, multi-instance CPU.
+  // Nothing here can run in vitest: it needs a real AudioWorklet thread.
+  // ═══════════════════════════════════════════════════════════
+  try {
+    const ctx = new OfflineAudioContext(2, Math.floor(SR * 0.75), SR);
+    await loadAllWorklets(ctx);
+    const ready = isWorkletReady("fxeq", ctx);
+    const def = EFFECT_DEFS.fxeq;
+    const rt = def.factory(
+      ctx,
+      { id: "fxeq-chk", type: "fxeq", bypassed: false, params: defaultParamsOf("fxeq") },
+      { bpm: 124 },
+    );
+    const osc = ctx.createOscillator();
+    osc.frequency.value = 220;
+    const g = ctx.createGain();
+    g.gain.value = 0.5;
+    osc.connect(g).connect(rt.input);
+    rt.output.connect(ctx.destination);
+    osc.start(0);
+    const buffer = await ctx.startRendering();
+    const data = buffer.getChannelData(0);
+    const peak = peakOf(data);
+    let rms = 0;
+    for (let i = 0; i < data.length; i++) rms += data[i] * data[i];
+    rms = Math.sqrt(rms / data.length);
+    rt.dispose();
+    check(
+      "fxeq: real AudioWorklet DSP renders (loaded for this context, honest degradation)",
+      ready && !!(rt as { degraded?: boolean }).degraded === false && rms > 0.05 && peak < 1.01,
+      `workletReady=${ready} degraded=${!!(rt as { degraded?: boolean }).degraded} rms=${rms.toFixed(3)} peak=${peak.toFixed(3)}`,
+    );
+
+    // PDC contract: the worklet posts its DSP latency over the port; the
+    // runtime must surface it through getLatencySec() — asynchronous, so
+    // poll briefly. Without this, syncPdc compensates 0 and parallel
+    // tracks comb against the FXEQ lane.
+    const latCtx = new OfflineAudioContext(2, Math.floor(SR * 0.5), SR);
+    await loadAllWorklets(latCtx);
+    let latencySec = 0;
+    const latencyRt = def.factory(
+      latCtx,
+      { id: "fxeq-lat", type: "fxeq", bypassed: false, params: defaultParamsOf("fxeq") },
+      { bpm: 124 },
+    );
+    const osc2 = latCtx.createOscillator();
+    osc2.frequency.value = 220;
+    osc2.connect(latencyRt.input);
+    latencyRt.output.connect(latCtx.destination);
+    osc2.start(0);
+    await latCtx.startRendering();
+    for (let attempt = 0; attempt < 20 && latencySec === 0; attempt++) {
+      await new Promise((r) => setTimeout(r, 50));
+      latencySec = latencyRt.getLatencySec?.() ?? 0;
+    }
+    latencyRt.dispose();
+    check(
+      "fxeq: DSP latency reported over the port (PDC gets a nonzero figure)",
+      latencySec > 0,
+      `latencySec=${latencySec.toFixed(6)} (${Math.round(latencySec * SR)} samples @ ${SR})`,
+    );
+
+    // Rack MIX knob wiring: instance param "mix" must be translated to the
+    // core's "globalMix" (RACK_TO_CORE). Before that translation existed the
+    // core silently dropped the id and both renders were IDENTICAL.
+    const renderWithMix = async (mix: number): Promise<Float32Array> => {
+      const mctx = new OfflineAudioContext(1, Math.floor(SR * 0.5), SR);
+      await loadAllWorklets(mctx);
+      const mrt = def.factory(
+        mctx,
+        { id: "fxeq-mix", type: "fxeq", bypassed: false, params: { ...defaultParamsOf("fxeq"), mix } },
+        { bpm: 124 },
+      );
+      const mo = mctx.createOscillator();
+      mo.frequency.value = 220;
+      const mg = mctx.createGain();
+      mg.gain.value = 0.5;
+      mo.connect(mg).connect(mrt.input);
+      mrt.output.connect(mctx.destination);
+      mo.start(0);
+      const out = await mctx.startRendering();
+      mrt.dispose();
+      return out.getChannelData(0);
+    };
+    const [dryish, wet] = await Promise.all([renderWithMix(0), renderWithMix(100)]);
+    let mixDiff = 0;
+    const n = Math.min(dryish.length, wet.length);
+    for (let i = 0; i < n; i++) mixDiff = Math.max(mixDiff, Math.abs(dryish[i] - wet[i]));
+    check(
+      "fxeq: rack MIX knob reaches the core wet/dry (mix 0 vs 100 renders differ)",
+      peakOf(dryish) > 0.05 && mixDiff > 0.05,
+      `dryPeak=${peakOf(dryish).toFixed(3)} wetPeak=${peakOf(wet).toFixed(3)} maxDiff=${mixDiff.toFixed(3)}`,
+    );
+
+    // Band metering chain: the enabled node must receive bandPeaks snapshots
+    // over the port; a gated node must stay silent (closed panels cost zero
+    // audio-thread traffic).
+    const mctx = new OfflineAudioContext(2, SR, SR);
+    await loadAllWorklets(mctx);
+    const rtOn = def.factory(
+      mctx,
+      { id: "fxeq-m1", type: "fxeq", bypassed: false, params: defaultParamsOf("fxeq") },
+      { bpm: 124 },
+    );
+    rtOn.setMetersEnabled?.(true);
+    // OfflineAudioContext quirk: a port message posted immediately before
+    // startRendering can lose the race against the render (the queue drains
+    // on the audio thread once it spins up). The live app never hits this —
+    // the real context runs continuously and panels mount long after — so
+    // give the gate a beat to land, mirroring reality.
+    await new Promise((r) => setTimeout(r, 120));
+    const rtGated = def.factory(
+      mctx,
+      { id: "fxeq-m2", type: "fxeq", bypassed: false, params: defaultParamsOf("fxeq") },
+      { bpm: 124 },
+    );
+    const mo2 = mctx.createOscillator();
+    mo2.frequency.value = 220;
+    const mg2 = mctx.createGain();
+    mg2.gain.value = 0.4;
+    mo2.connect(mg2).connect(rtOn.input);
+    rtOn.output.connect(mctx.destination);
+    rtGated.output.connect(mctx.destination);
+    mo2.start(0);
+    await mctx.startRendering();
+    let meters: { bandPeaks?: Float32Array } | null = null;
+    for (let attempt = 0; attempt < 12 && !meters; attempt++) {
+      await new Promise((r) => setTimeout(r, 60));
+      meters = (rtOn as { getMeters?: () => unknown }).getMeters?.() as
+        | { bandPeaks?: Float32Array }
+        | null;
+    }
+    const gatedMeters = (rtGated as { getMeters?: () => unknown }).getMeters?.();
+    rtOn.dispose();
+    rtGated.dispose();
+    const peaks = meters?.bandPeaks;
+    let peaksOk = false;
+    let hotBand = -1;
+    if (peaks && peaks.length === 6) {
+      let allFinite = true;
+      let hotVal = 0;
+      for (let b = 0; b < peaks.length; b++) {
+        if (!Number.isFinite(peaks[b])) allFinite = false;
+        if (peaks[b] > hotVal) {
+          hotVal = peaks[b];
+          hotBand = b;
+        }
+      }
+      peaksOk = allFinite && hotVal > 0.01;
+    }
+    check(
+      "fxeq: band metering flows over the port (gated node stays silent)",
+      peaksOk && !gatedMeters,
+      `peaksLen=${peaks?.length ?? 0} hotBand=B${hotBand + 1} hotVal=${hotBand >= 0 ? peaks![hotBand].toFixed(3) : "0"} gatedSilent=${!gatedMeters}`,
+    );
+
+    // Transparency + latency consistency: with default params the lane must
+    // pass the signal 1:1 once aligned by its own reported latency — and the
+    // measured alignment lag must match getLatencySec() within one block
+    // (this is exactly what the engine's PDC trusts).
+    const renderRef = async (withFx: boolean): Promise<Float32Array> => {
+      const tctx = new OfflineAudioContext(1, Math.floor(SR * 0.6), SR);
+      await loadAllWorklets(tctx);
+      const trt = withFx
+        ? def.factory(
+            tctx,
+            { id: "fxeq-t", type: "fxeq", bypassed: false, params: defaultParamsOf("fxeq") },
+            { bpm: 124 },
+          )
+        : null;
+      const to = tctx.createOscillator();
+      to.frequency.value = 997;
+      const tg = tctx.createGain();
+      tg.gain.value = 0.5;
+      to.connect(tg);
+      if (trt) {
+        tg.connect(trt.input);
+        trt.output.connect(tctx.destination);
+      } else {
+        tg.connect(tctx.destination);
+      }
+      to.start(0);
+      const tout = await tctx.startRendering();
+      trt?.dispose();
+      return tout.getChannelData(0);
+    };
+    const [refOut, fxOut] = await Promise.all([renderRef(false), renderRef(true)]);
+    const expectedLag = Math.round((latencySec || 0) * SR);
+    let bestLag = -1;
+    let bestDiff = Infinity;
+    const searchFrom = Math.max(0, expectedLag - 256);
+    const searchTo = Math.min(refOut.length - 4096, expectedLag + 256);
+    for (let lag = searchFrom; lag <= searchTo; lag++) {
+      let acc = 0;
+      for (let i = 0; i < 4096; i += 4) {
+        const d = refOut[i] - fxOut[i + lag];
+        acc += d * d;
+      }
+      if (acc < bestDiff) {
+        bestDiff = acc;
+        bestLag = lag;
+      }
+    }
+    let alignedRms = 0;
+    let sigRms = 0;
+    for (let i = 0; i < 4096; i++) {
+      const d = refOut[i] - fxOut[i + bestLag];
+      alignedRms += d * d;
+      sigRms += refOut[i] * refOut[i];
+    }
+    alignedRms = Math.sqrt(alignedRms / 4096);
+    sigRms = Math.sqrt(sigRms / 4096);
+    const lagMatchesReport = Math.abs(bestLag - expectedLag) <= 128;
+    check(
+      "fxeq: latency-aligned lane is transparent; measured lag matches the reported latency",
+      sigRms > 0.1 && alignedRms < sigRms * 0.05 && lagMatchesReport,
+      `sigRms=${sigRms.toFixed(3)} alignedRms=${alignedRms.toFixed(4)} lag=${bestLag} reported=${expectedLag} (±128)`,
+    );
+
+    // Multi-instance CPU evidence: 4 creative-config instances render N
+    // seconds of audio offline; wall/rendered ratio per instance is the
+    // share of one realtime core a single instance consumes.
+    const cpuCtx = new OfflineAudioContext(2, Math.floor(SR * 3), SR);
+    await loadAllWorklets(cpuCtx);
+    const creative = {
+      ...defaultParamsOf("fxeq"),
+      "band1.satEnabled": 1,
+      "band1.satDriveDb": 12,
+      "band1.satMode": 1,
+      "band1.delayEnabled": 1,
+      "band1.revEnabled": 1,
+      "band1.revDecayMs": 1200,
+    };
+    const cpuRts: ReturnType<NonNullable<typeof def.factory>>[] = [];
+    const cpuOsc = cpuCtx.createOscillator();
+    cpuOsc.frequency.value = 220;
+    const cpuGain = cpuCtx.createGain();
+    cpuGain.gain.value = 0.4;
+    const INSTANCE_COUNT = 4;
+    for (let i = 0; i < INSTANCE_COUNT; i++) {
+      const rtI = def.factory(
+        cpuCtx,
+        { id: `fxeq-cpu${i}`, type: "fxeq", bypassed: false, params: { ...creative } },
+        { bpm: 124 },
+      );
+      cpuGain.connect(rtI.input);
+      rtI.output.connect(cpuCtx.destination);
+      cpuRts.push(rtI);
+    }
+    cpuOsc.connect(cpuGain);
+    cpuOsc.start(0);
+    const t0 = performance.now();
+    const cpuBuf = await cpuCtx.startRendering();
+    const wallSec = (performance.now() - t0) / 1000;
+    const audioSec = cpuBuf.duration;
+    const perInstance = wallSec / audioSec / INSTANCE_COUNT;
+    for (const rtI of cpuRts) rtI.dispose();
+    check(
+      "fxeq: multi-instance CPU — 4 creative instances stay inside the realtime budget",
+      perInstance < 0.6,
+      `${INSTANCE_COUNT} instances × ${audioSec.toFixed(1)}s audio in ${wallSec.toFixed(2)}s wall → ${(
+        perInstance * 100
+      ).toFixed(1)}% of one realtime core per instance`,
+    );
+  } catch (error) {
+    check("fxeq: real-browser suite (worklet/PDC/mix/meters/transparency/CPU)", false, String(error));
+  }
+
   return results;
 }

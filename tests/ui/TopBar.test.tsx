@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { mockServices } from "../helpers";
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TopBar } from "../../src/ui/TopBar";
 import { renderWithContext } from "../helpers";
@@ -89,6 +89,43 @@ describe("TopBar", () => {
     expect(screen.getByText("ARR")).toBeInTheDocument();
     expect(screen.getByText("MOD")).toBeInTheDocument();
     expect(screen.getByText("EXPORT")).toBeInTheDocument();
+  });
+
+  it("moves lower-priority controls into an accessible overflow menu", async () => {
+    const originalGetBoundingClientRect = HTMLElement.prototype.getBoundingClientRect;
+    const rectSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      const rect = originalGetBoundingClientRect.call(this);
+      if (this.classList.contains("topbar")) return { ...rect, width: 1280, left: 0, right: 1280 } as DOMRect;
+      return rect;
+    });
+    const user = userEvent.setup();
+    const onSetBottomPanel = vi.fn();
+
+    try {
+      renderWithContext(<TopBar {...topBarProps({ onSetBottomPanel, onOpenPalette: vi.fn() })} />);
+      await waitFor(() => expect(screen.getByRole("button", { name: /More topbar controls/ })).toBeInTheDocument());
+
+      expect(screen.getByLabelText("Toggle mixer panel")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Toggle dice panel")).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: /More topbar controls/ }));
+      expect(screen.getByRole("menu", { name: "More topbar controls" })).toBeInTheDocument();
+
+      expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Toggle modulation panel" }));
+      await user.keyboard("{ArrowDown}");
+      expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Toggle export panel" }));
+      await user.keyboard("{Escape}");
+      expect(screen.queryByRole("menu", { name: "More topbar controls" })).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: /More topbar controls/ }));
+      await user.click(screen.getByRole("menuitem", { name: "Toggle dice panel" }));
+      expect(onSetBottomPanel).toHaveBeenCalledWith("dice", false);
+      expect(screen.queryByRole("menu", { name: "More topbar controls" })).not.toBeInTheDocument();
+    } finally {
+      rectSpy.mockRestore();
+    }
   });
 
   it("calls onSetBottomPanel when panel button clicked", async () => {

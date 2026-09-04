@@ -17,7 +17,7 @@ import {
   applyOzvenaStatePatch,
   toggleEffectBypass,
 } from "../commands/commands";
-import { CORE_EFFECT_ORDER, EFFECT_DEFS } from "../effects/registry";
+import { CORE_EFFECT_ORDER, EFFECT_DEFS, FLAGSHIP_EFFECT_ORDER } from "../effects/registry";
 // Plugin editor panels are heavy (EQ-paint canvas, 51-preset Ultina suite,
 // Ozvena blend pad) — they load only when one of these effects is selected.
 import { lazy, Suspense } from "react";
@@ -90,11 +90,20 @@ export function EffectRack({ track }: { track: Track }) {
           }}
         >
           <option value="">+ ADD EFFECT</option>
-          {CORE_EFFECT_ORDER.map((type) => (
-            <option key={type} value={type}>
-              {EFFECT_DEFS[type].name}
-            </option>
-          ))}
+          <optgroup label="EFFECTS">
+            {CORE_EFFECT_ORDER.map((type) => (
+              <option key={type} value={type}>
+                {EFFECT_DEFS[type].name}
+              </option>
+            ))}
+          </optgroup>
+          <optgroup label="FLAGSHIP PLUGINS">
+            {FLAGSHIP_EFFECT_ORDER.map((type) => (
+              <option key={type} value={type}>
+                {EFFECT_DEFS[type].name}
+              </option>
+            ))}
+          </optgroup>
         </select>
       </div>
       {track.effects.length === 0 ? (

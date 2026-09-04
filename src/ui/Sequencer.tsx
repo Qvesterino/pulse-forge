@@ -135,6 +135,18 @@ export function Sequencer({
   const publishCursor = usePublishCursor();
   // Fullscreen piano roll on touch/narrow screens — which track is expanded.
   const [pianoFullTrack, setPianoFullTrack] = useState<string | null>(null);
+  const [beatFocus, setBeatFocus] = useState(false);
+
+  useEffect(() => {
+    if (!beatFocus) return;
+    const exitOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setBeatFocus(false);
+    };
+    window.addEventListener("keydown", exitOnEscape, true);
+    return () => window.removeEventListener("keydown", exitOnEscape, true);
+  }, [beatFocus]);
 
   // Flatten track tree into virtualizable items
   const flatItems = useMemo(() => buildFlatItems(doc.tracks), [doc.tracks]);
@@ -427,7 +439,29 @@ export function Sequencer({
   );
 
   return (
-    <section className="sequencer" aria-label="Step Sequencer" onPointerLeave={() => publishCursor(null)}>
+    <section
+      className={`sequencer${beatFocus ? " beat-focus" : ""}`}
+      aria-label={beatFocus ? "Step Sequencer — Beat Focus" : "Step Sequencer"}
+      onPointerLeave={() => publishCursor(null)}
+    >
+      <div className="sequencer-focus-bar">
+        <div className="sequencer-focus-context">
+          <span className="sequencer-focus-title">{beatFocus ? "BEAT FOCUS" : "SEQUENCER"}</span>
+          <span className="sequencer-focus-meta">
+            {pattern.name} · {pattern.stepCount} STEPS
+          </span>
+        </div>
+        <button
+          type="button"
+          className={`btn btn-small beat-focus-toggle${beatFocus ? " active" : ""}`}
+          onClick={() => setBeatFocus((open) => !open)}
+          aria-label={beatFocus ? "Exit Beat Focus" : "Enter Beat Focus"}
+          aria-pressed={beatFocus}
+          title={beatFocus ? "Exit Beat Focus (Escape)" : "Maximize the sequencer (Beat Focus)"}
+        >
+          {beatFocus ? "EXIT FOCUS" : "BEAT FOCUS"}
+        </button>
+      </div>
       {stepEditor && (
         <StepEditor
           padId={stepEditor.padId}

@@ -2941,6 +2941,9 @@ export const CORE_EFFECT_ORDER: EffectType[] = [
   "chorus",
 ];
 
+/** Flagship plugin suites exposed alongside the core effects. */
+export const FLAGSHIP_EFFECT_ORDER: EffectType[] = ["fxeq", "ultina", "ozvena"];
+
 export function defaultParamsOf(type: EffectType): Record<string, number> {
   return Object.fromEntries(EFFECT_DEFS[type].params.map((p) => [p.id, p.default]));
 }

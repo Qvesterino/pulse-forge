@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { MouseEvent } from "react";
 import { useCanRedo, useCanUndo, useDoc, useLastSavedAt, useSaveStatus, useServices } from "./context";
 import { useTransportPosition } from "./playhead";
 import { DragNumber } from "./controls";
@@ -20,6 +21,27 @@ function formatClock(iso: string | null): string {
   const date = new Date(iso);
   if (!Number.isFinite(date.getTime())) return "";
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+type TopbarAction = {
+  id: string;
+  label: string;
+  ariaLabel: string;
+  title: string;
+  priority: number;
+  active?: boolean;
+  className?: string;
+  onClick: (event: MouseEvent<HTMLButtonElement>) => void;
+};
+
+function selectTopbarActions(actions: readonly TopbarAction[], limit: number): TopbarAction[] {
+  const ranked = [...actions].sort(
+    (a, b) => Number(Boolean(b.active)) - Number(Boolean(a.active)) || b.priority - a.priority,
+  );
+  const selectedIds = new Set(
+    ranked.slice(0, Math.max(limit, actions.filter((action) => action.active).length)).map((a) => a.id),
+  );
+  return actions.filter((action) => selectedIds.has(action.id));
 }
 
 export function TopBar({
@@ -71,6 +93,30 @@ export function TopBar({
   const [themeOpen, setThemeOpen] = useState(false);
   const [collabOpen, setCollabOpen] = useState(false);
   const [assistOpen, setAssistOpen] = useState(false);
+  const topbarRef = useRef<HTMLElement>(null);
+  const overflowButtonRef = useRef<HTMLButtonElement>(null);
+  const overflowMenuRef = useRef<HTMLDivElement>(null);
+  const [topbarWidth, setTopbarWidth] = useState(1800);
+  const [overflowOpen, setOverflowOpen] = useState(false);
+
+  useEffect(() => {
+    const element = topbarRef.current;
+    if (!element) return;
+
+    const updateWidth = () => {
+      const width = element.getBoundingClientRect().width;
+      if (width > 0) setTopbarWidth(width);
+    };
+
+    updateWidth();
+    window.addEventListener("resize", updateWidth);
+    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(updateWidth) : null;
+    observer?.observe(element);
+    return () => {
+      window.removeEventListener("resize", updateWidth);
+      observer?.disconnect();
+    };
+  }, []);
 
   // Transport is not reactive — reading `playing` at render time goes stale
   // when playback is toggled from elsewhere (Space shortcut, Esc stop…).
@@ -138,9 +184,248 @@ export function TopBar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loopEnabled, loopStart, loopEnd, doc, services.store]);
 
+  const panelActions: TopbarAction[] = [
+    {
+      id: "mixer",
+      label: "MIX",
+      ariaLabel: "Toggle mixer panel",
+      title: "Toggle mixer panel (1)",
+      priority: 100,
+      active: bottomPanel === "mixer" || splitPanel === "mixer",
+      onClick: (event) => onSetBottomPanel("mixer", event.ctrlKey || event.metaKey),
+    },
+    {
+      id: "fx",
+      label: "FX",
+      ariaLabel: "Toggle effect rack",
+      title: "Toggle effect rack (2)",
+      priority: 98,
+      active: bottomPanel === "fx" || splitPanel === "fx",
+      onClick: (event) => onSetBottomPanel("fx", event.ctrlKey || event.metaKey),
+    },
+    {
+      id: "arr",
+      label: "ARR",
+      ariaLabel: "Toggle arrangement and scenes",
+      title: "Toggle arrangement and scenes (3)",
+      priority: 96,
+      active: bottomPanel === "arr" || splitPanel === "arr",
+      onClick: (event) => onSetBottomPanel("arr", event.ctrlKey || event.metaKey),
+    },
+    {
+      id: "mod",
+      label: "MOD",
+      ariaLabel: "Toggle modulation panel",
+      title: "Toggle automation, LFOs and macros (4)",
+      priority: 88,
+      active: bottomPanel === "mod" || splitPanel === "mod",
+      onClick: (event) => onSetBottomPanel("mod", event.ctrlKey || event.metaKey),
+    },
+    {
+      id: "exp",
+      label: "EXPORT",
+      ariaLabel: "Toggle export panel",
+      title: "Toggle export panel (5)",
+      priority: 82,
+      active: bottomPanel === "exp" || splitPanel === "exp",
+      className: "btn-export-toggle",
+      onClick: (event) => onSetBottomPanel("exp", event.ctrlKey || event.metaKey),
+    },
+    {
+      id: "midi",
+      label: "MIDI",
+      ariaLabel: "Toggle MIDI input panel",
+      title: "Toggle MIDI input panel",
+      priority: 72,
+      active: bottomPanel === "midi" || splitPanel === "midi",
+      onClick: (event) => onSetBottomPanel("midi", event.ctrlKey || event.metaKey),
+    },
+    {
+      id: "dice",
+      label: "🎲 DICE",
+      ariaLabel: "Toggle dice panel",
+      title: "Toggle dice panel — rapid beat generator (Alt+6, D to roll)",
+      priority: 64,
+      active: bottomPanel === "dice" || splitPanel === "dice",
+      onClick: (event) => onSetBottomPanel("dice", event.ctrlKey || event.metaKey),
+    },
+  ];
+
+  const toolActions: TopbarAction[] = [
+    ...(onOpenPalette
+      ? [
+          {
+            id: "palette",
+            label: "⌘K",
+            ariaLabel: "Open command palette",
+            title: "Command palette (Ctrl+K) — every action, searchable",
+            priority: 100,
+            onClick: () => onOpenPalette(),
+          },
+        ]
+      : []),
+    {
+      id: "help",
+      label: "?",
+      ariaLabel: "Show keyboard shortcuts",
+      title: "Show keyboard shortcuts (?)",
+      priority: 94,
+      onClick: onToggleHelp,
+    },
+    {
+      id: "history",
+      label: "↶",
+      ariaLabel: "Toggle undo history",
+      title: "Toggle undo history",
+      priority: 86,
+      active: historyOpen,
+      onClick: onToggleHistory,
+    },
+    {
+      id: "vary",
+      label: "⚡VARY",
+      ariaLabel: "One-click vary",
+      title: "One-click vary (Ctrl+Shift+V)",
+      priority: 78,
+      onClick: () => {
+        const seed = nextSeed(doc.activePatternId + String(Date.now()), "topbar-vary");
+        services.store.execute(assistVary(doc, doc.activePatternId, seed, 0.6));
+      },
+    },
+    {
+      id: "fill",
+      label: "FILL",
+      ariaLabel: "One-click fill",
+      title: "One-click fill (Ctrl+Shift+F)",
+      priority: 76,
+      onClick: () => {
+        const seed = nextSeed(doc.activePatternId + String(Date.now()), "topbar-fill");
+        services.store.execute(assistFill(doc, doc.activePatternId, seed));
+      },
+    },
+    {
+      id: "assist",
+      label: "ASSIST",
+      ariaLabel: "Toggle pattern assist panel",
+      title: "Iterate on the active pattern (vary / build / replace / fill)",
+      priority: 70,
+      active: assistOpen,
+      onClick: () => {
+        setAssistOpen((open) => !open);
+        setCollabOpen(false);
+        setScalePanelOpen(false);
+      },
+    },
+    {
+      id: "jam",
+      label: "JAM",
+      ariaLabel: "Toggle collaboration panel",
+      title: "Start or join a live jam session",
+      priority: 62,
+      active: collabOpen,
+      onClick: () => {
+        setCollabOpen((open) => !open);
+        setScalePanelOpen(false);
+        setAssistOpen(false);
+      },
+    },
+    {
+      id: "scale",
+      label: "SCALE",
+      ariaLabel: "Toggle scale panel",
+      title: "Toggle scale panel (key + scale + snap)",
+      priority: 58,
+      active: scalePanelOpen,
+      onClick: () => {
+        setScalePanelOpen((open) => !open);
+        setCollabOpen(false);
+      },
+    },
+    {
+      id: "theme",
+      label: "THEME",
+      ariaLabel: "Toggle theme panel",
+      title: "Theme — colours, size, density, motion",
+      priority: 52,
+      active: themeOpen,
+      onClick: () => {
+        setThemeOpen((open) => !open);
+        setCollabOpen(false);
+        setScalePanelOpen(false);
+        setAssistOpen(false);
+      },
+    },
+    {
+      id: "diagnostics",
+      label: "DIAG",
+      ariaLabel: "Toggle diagnostics panel",
+      title: "Toggle diagnostics panel",
+      priority: 42,
+      active: diagnosticsOpen,
+      onClick: onToggleDiagnostics,
+    },
+  ];
+
+  // Keep the transport and the project identity stable, then spend the remaining
+  // width on actions by priority. Active panels are promoted so state never hides.
+  const panelLimit = topbarWidth < 1120 ? 2 : topbarWidth < 1440 ? 3 : topbarWidth < 1760 ? 5 : panelActions.length;
+  const toolLimit = topbarWidth < 1120 ? 2 : topbarWidth < 1440 ? 3 : topbarWidth < 1760 ? 5 : toolActions.length;
+  const visiblePanelActions = selectTopbarActions(panelActions, panelLimit);
+  const visibleToolActions = selectTopbarActions(toolActions, toolLimit);
+  const overflowPanelActions = panelActions.filter((action) => !visiblePanelActions.includes(action));
+  const overflowToolActions = toolActions.filter((action) => !visibleToolActions.includes(action));
+  const overflowActionCount = overflowPanelActions.length + overflowToolActions.length;
+  const hasOverflowActions = overflowActionCount > 0;
+
+  useEffect(() => {
+    if (!hasOverflowActions) setOverflowOpen(false);
+  }, [hasOverflowActions]);
+
+  useEffect(() => {
+    if (!overflowOpen) return;
+
+    overflowMenuRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    const handleMenuKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setOverflowOpen(false);
+        overflowButtonRef.current?.focus();
+        return;
+      }
+      if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+
+      const items = Array.from(overflowMenuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? []);
+      if (items.length === 0) return;
+      const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement);
+      const nextIndex =
+        event.key === "Home"
+          ? 0
+          : event.key === "End"
+            ? items.length - 1
+            : (currentIndex + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+      event.preventDefault();
+      items[nextIndex]?.focus();
+    };
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (!overflowMenuRef.current?.parentElement?.contains(event.target as Node)) setOverflowOpen(false);
+    };
+    window.addEventListener("keydown", handleMenuKeyDown);
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    return () => {
+      window.removeEventListener("keydown", handleMenuKeyDown);
+      document.removeEventListener("pointerdown", closeOnOutsidePointer);
+    };
+  }, [overflowOpen]);
+
+  const invokeOverflowAction = (action: TopbarAction, event: MouseEvent<HTMLButtonElement>) => {
+    action.onClick(event);
+    setOverflowOpen(false);
+    overflowButtonRef.current?.focus();
+  };
+
   return (
     <>
-      <header className="topbar">
+      <header ref={topbarRef} className="topbar">
         <div className="brand">
           <span className="brand-mark">PF</span>
           <span className="brand-name">PULSE FORGE</span>
@@ -297,196 +582,99 @@ export function TopBar({
             {saveStatus === "saving" && "SAVING…"}
             {saveStatus === "error" && "SAVE ERROR — RETRY"}
           </span>
-          <button
-            type="button"
-            className={`btn btn-ghost${bottomPanel === "mixer" || splitPanel === "mixer" ? " active" : ""}`}
-            onClick={(event) => onSetBottomPanel("mixer", event.ctrlKey || event.metaKey)}
-            title="Toggle mixer panel (1)"
-            aria-label="Toggle mixer panel"
-            aria-pressed={bottomPanel === "mixer" || splitPanel === "mixer"}
-          >
-            MIX
-          </button>
-          <button
-            type="button"
-            className={`btn btn-ghost${bottomPanel === "fx" || splitPanel === "fx" ? " active" : ""}`}
-            onClick={(event) => onSetBottomPanel("fx", event.ctrlKey || event.metaKey)}
-            title="Toggle effect rack (2)"
-            aria-label="Toggle effect rack"
-            aria-pressed={bottomPanel === "fx" || splitPanel === "fx"}
-          >
-            FX
-          </button>
-          <button
-            type="button"
-            className={`btn btn-ghost${bottomPanel === "arr" || splitPanel === "arr" ? " active" : ""}`}
-            onClick={(event) => onSetBottomPanel("arr", event.ctrlKey || event.metaKey)}
-            title="Toggle arrangement and scenes (3)"
-            aria-label="Toggle arrangement and scenes"
-            aria-pressed={bottomPanel === "arr" || splitPanel === "arr"}
-          >
-            ARR
-          </button>
-          <button
-            type="button"
-            className={`btn btn-ghost${bottomPanel === "mod" || splitPanel === "mod" ? " active" : ""}`}
-            onClick={(event) => onSetBottomPanel("mod", event.ctrlKey || event.metaKey)}
-            title="Toggle automation, LFOs and macros (4)"
-            aria-label="Toggle modulation panel"
-            aria-pressed={bottomPanel === "mod" || splitPanel === "mod"}
-          >
-            MOD
-          </button>
-          <button
-            type="button"
-            className={`btn btn-ghost btn-export-toggle${bottomPanel === "exp" ? " active" : ""}`}
-            onClick={(event) => onSetBottomPanel("exp", event.ctrlKey || event.metaKey)}
-            title="Toggle export panel (5)"
-            aria-label="Toggle export panel"
-            aria-pressed={bottomPanel === "exp" || splitPanel === "exp"}
-          >
-            EXPORT
-          </button>
-          <button
-            type="button"
-            className={`btn btn-ghost${bottomPanel === "midi" || splitPanel === "midi" ? " active" : ""}`}
-            onClick={(event) => onSetBottomPanel("midi", event.ctrlKey || event.metaKey)}
-            title="Toggle MIDI input panel"
-            aria-label="Toggle MIDI input panel"
-            aria-pressed={bottomPanel === "midi" || splitPanel === "midi"}
-          >
-            MIDI
-          </button>
-          <button
-            type="button"
-            className={`btn btn-ghost${bottomPanel === "dice" || splitPanel === "dice" ? " active" : ""}`}
-            onClick={(event) => onSetBottomPanel("dice", event.ctrlKey || event.metaKey)}
-            title="Toggle dice panel — rapid beat generator (Alt+6, D to roll)"
-            aria-label="Toggle dice panel"
-            aria-pressed={bottomPanel === "dice" || splitPanel === "dice"}
-          >
-            🎲 DICE
-          </button>
-          {onOpenPalette && (
+          {visiblePanelActions.map((action) => (
             <button
+              key={action.id}
               type="button"
-              className="btn btn-ghost"
-              onClick={onOpenPalette}
-              title="Command palette (Ctrl+K) — every action, searchable"
-              aria-label="Open command palette"
+              className={["btn", "btn-ghost", action.className, action.active ? "active" : ""]
+                .filter(Boolean)
+                .join(" ")}
+              onClick={action.onClick}
+              title={action.title}
+              aria-label={action.ariaLabel}
+              aria-pressed={action.active}
             >
-              ⌘K
+              {action.label}
             </button>
+          ))}
+          {visibleToolActions.map((action) => (
+            <button
+              key={action.id}
+              type="button"
+              className={["btn", "btn-ghost", action.active ? "active" : ""].filter(Boolean).join(" ")}
+              onClick={action.onClick}
+              title={action.title}
+              aria-label={action.ariaLabel}
+              aria-pressed={action.active}
+            >
+              {action.label}
+            </button>
+          ))}
+          {hasOverflowActions && (
+            <div className="topbar-overflow">
+              <button
+                ref={overflowButtonRef}
+                type="button"
+                className={`btn btn-ghost topbar-overflow-trigger${overflowOpen ? " active" : ""}`}
+                onClick={() => setOverflowOpen((open) => !open)}
+                title="More topbar controls"
+                aria-label={`More topbar controls (${overflowActionCount} hidden)`}
+                aria-haspopup="menu"
+                aria-expanded={overflowOpen}
+                aria-controls="topbar-overflow-menu"
+              >
+                ⋯
+              </button>
+              {overflowOpen && (
+                <div
+                  ref={overflowMenuRef}
+                  id="topbar-overflow-menu"
+                  className="topbar-overflow-menu"
+                  role="menu"
+                  aria-label="More topbar controls"
+                >
+                  {overflowPanelActions.length > 0 && (
+                    <div className="topbar-overflow-section">
+                      <div className="topbar-overflow-heading">PANELS</div>
+                      {overflowPanelActions.map((action) => (
+                        <button
+                          key={action.id}
+                          type="button"
+                          className={`topbar-overflow-item${action.active ? " active" : ""}`}
+                          onClick={(event) => invokeOverflowAction(action, event)}
+                          title={action.title}
+                          aria-label={action.ariaLabel}
+                          aria-pressed={action.active}
+                          role="menuitem"
+                        >
+                          {action.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {overflowToolActions.length > 0 && (
+                    <div className="topbar-overflow-section">
+                      <div className="topbar-overflow-heading">TOOLS</div>
+                      {overflowToolActions.map((action) => (
+                        <button
+                          key={action.id}
+                          type="button"
+                          className={`topbar-overflow-item${action.active ? " active" : ""}`}
+                          onClick={(event) => invokeOverflowAction(action, event)}
+                          title={action.title}
+                          aria-label={action.ariaLabel}
+                          aria-pressed={action.active}
+                          role="menuitem"
+                        >
+                          {action.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           )}
-          <button
-            type="button"
-            className="btn btn-ghost"
-            onClick={onToggleHelp}
-            title="Show keyboard shortcuts (?)"
-            aria-label="Show keyboard shortcuts"
-          >
-            ?
-          </button>
-          <button
-            type="button"
-            className={`btn btn-ghost${historyOpen ? " active" : ""}`}
-            onClick={onToggleHistory}
-            title="Toggle undo history"
-            aria-label="Toggle undo history"
-            aria-pressed={historyOpen}
-          >
-            ↶
-          </button>
-          <button
-            type="button"
-            className="btn btn-ghost"
-            onClick={() => {
-              const seed = nextSeed(doc.activePatternId + String(Date.now()), "topbar-vary");
-              services.store.execute(assistVary(doc, doc.activePatternId, seed, 0.6));
-            }}
-            title="One-click vary (Ctrl+Shift+V)"
-            aria-label="One-click vary"
-          >
-            ⚡VARY
-          </button>
-          <button
-            type="button"
-            className="btn btn-ghost"
-            onClick={() => {
-              const seed = nextSeed(doc.activePatternId + String(Date.now()), "topbar-fill");
-              services.store.execute(assistFill(doc, doc.activePatternId, seed));
-            }}
-            title="One-click fill (Ctrl+Shift+F)"
-            aria-label="One-click fill"
-          >
-            FILL
-          </button>
-          <button
-            type="button"
-            className={`btn btn-ghost${assistOpen ? " active" : ""}`}
-            onClick={() => {
-              setAssistOpen((open) => !open);
-              setCollabOpen(false);
-              setScalePanelOpen(false);
-            }}
-            title="Iterate on the active pattern (vary / build / replace / fill)"
-            aria-label="Toggle pattern assist panel"
-            aria-pressed={assistOpen}
-          >
-            ASSIST
-          </button>
-          <button
-            type="button"
-            className={`btn btn-ghost${collabOpen ? " active" : ""}`}
-            onClick={() => {
-              setCollabOpen((open) => !open);
-              setScalePanelOpen(false);
-              setAssistOpen(false);
-            }}
-            title="Start or join a live jam session"
-            aria-label="Toggle collaboration panel"
-            aria-pressed={collabOpen}
-          >
-            JAM
-          </button>
-          <button
-            type="button"
-            className={`btn btn-ghost${scalePanelOpen ? " active" : ""}`}
-            onClick={() => {
-              setScalePanelOpen((open) => !open);
-              setCollabOpen(false);
-            }}
-            title="Toggle scale panel (key + scale + snap)"
-            aria-label="Toggle scale panel"
-            aria-pressed={scalePanelOpen}
-          >
-            SCALE
-          </button>
-          <button
-            type="button"
-            className={`btn btn-ghost${themeOpen ? " active" : ""}`}
-            onClick={() => {
-              setThemeOpen((open) => !open);
-              setCollabOpen(false);
-              setScalePanelOpen(false);
-              setAssistOpen(false);
-            }}
-            title="Theme — colours, size, density, motion"
-            aria-label="Toggle theme panel"
-            aria-pressed={themeOpen}
-          >
-            THEME
-          </button>
-          <button
-            type="button"
-            className={`btn btn-ghost${diagnosticsOpen ? " active" : ""}`}
-            onClick={onToggleDiagnostics}
-            title="Toggle diagnostics panel"
-            aria-label="Toggle diagnostics panel"
-            aria-pressed={diagnosticsOpen}
-          >
-            DIAG
-          </button>
         </div>
       </header>
       {scalePanelOpen && (

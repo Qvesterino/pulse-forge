@@ -45,6 +45,21 @@ describe("Sequencer", () => {
     renderWithContext(<Sequencer {...defaultProps} />);
     expect(screen.getByRole("region", { name: /Step Sequencer/ })).toBeInTheDocument();
   });
+
+  it("toggles Beat Focus without changing the pattern editor state", () => {
+    const { container } = renderWithContext(<Sequencer {...defaultProps} />);
+    const enter = screen.getByRole("button", { name: "Enter Beat Focus" });
+
+    expect(container.querySelector(".sequencer.beat-focus")).toBeNull();
+    fireEvent.click(enter);
+    expect(container.querySelector(".sequencer.beat-focus")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Step Sequencer — Beat Focus" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Exit Beat Focus" })).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(container.querySelector(".sequencer.beat-focus")).toBeNull();
+    expect(screen.getByRole("button", { name: "Enter Beat Focus" })).toBeInTheDocument();
+  });
 });
 
 describe("step amount drag (window-level listeners)", () => {
