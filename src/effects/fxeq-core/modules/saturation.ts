@@ -88,6 +88,18 @@ export function createSaturationModule(params?: Record<string, number>): ModuleP
   let qualityCached: "eco" | "standard" | "high" | "render" = "standard";
   let preparedMaxBlockSize = 1;
 
+  // De-click smoothing for the hot gains (drive/output/mix). Block-rate
+  // one-pole toward the current targets: a knob drag or automation curve
+  // glides over ~12 ms instead of stepping, which removes the zipper
+  // crackle at oversampling-factor boundaries. The smoothers PRIME at the
+  // first processed block after prepare/reset, so static settings render
+  // bit-identically to the unsmoothed path (golden parity).
+  let driveSm = 0;
+  let outputSm = 0;
+  let wetSm = 0;
+  let paramSmPrimed = false;
+  let paramSmAlpha = 1;
+
   return {
     get typeId() {
       return SAT_TYPE_ID;
@@ -102,6 +114,8 @@ export function createSaturationModule(params?: Record<string, number>): ModuleP
       tiltLowState.length = 0;
       for (let c = 0; c < cc; c++) tiltLowState.push(0);
       wrapper.prepare(sr, cc, maxBs);
+      paramSmAlpha = 1 - Math.exp(-1 / (0.012 * sampleRate));
+      paramSmPrimed = false;
       prepared = true;
     },
 
@@ -115,9 +129,22 @@ export function createSaturationModule(params?: Record<string, number>): ModuleP
       const tilt = clamp(store.get("tiltDb"), -12, 12) / 12;
       const outputDb = clamp(store.get("outputDb"), -12, 12);
       const mode = Math.round(store.get("mode"));
-      const wetGain = clamp(store.get("mix"), 0, 100) / 100;
-      const outputLinear = Math.pow(10, outputDb / 20);
+      const wetTarget = clamp(store.get("mix"), 0, 100) / 100;
       const quality = qualityCached;
+
+      if (!paramSmPrimed) {
+        driveSm = driveDb;
+        outputSm = outputDb;
+        wetSm = wetTarget;
+        paramSmPrimed = true;
+      } else {
+        driveSm += paramSmAlpha * (driveDb - driveSm);
+        outputSm += paramSmAlpha * (outputDb - outputSm);
+        wetSm += paramSmAlpha * (wetTarget - wetSm);
+      }
+      // The wrapper expects dB and derives its own linear drive internally.
+      const outputLinear = Math.pow(10, outputSm / 20);
+      const wetGain = wetSm;
 
       // A gentle complementary low/high tilt before the waveshaper. This is
       // intentionally stateful so Tilt changes the actual tone, not only the
@@ -138,12 +165,13 @@ export function createSaturationModule(params?: Record<string, number>): ModuleP
         }
       }
 
-      wrapper.process(channels, frameCount, mode, driveDb, wetGain, outputLinear, quality);
+      wrapper.process(channels, frameCount, mode, driveSm, wetGain, outputLinear, quality);
     },
 
     reset() {
       wrapper.reset();
       tiltLowState.fill(0);
+      paramSmPrimed = false;
     },
 
     getLatencySamples() {

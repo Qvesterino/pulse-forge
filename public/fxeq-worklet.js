@@ -982,6 +982,11 @@
     const wrapper = createOversampledSaturation();
     let qualityCached = "standard";
     let preparedMaxBlockSize = 1;
+    let driveSm = 0;
+    let outputSm = 0;
+    let wetSm = 0;
+    let paramSmPrimed = false;
+    let paramSmAlpha = 1;
     return {
       get typeId() {
         return SAT_TYPE_ID;
@@ -995,6 +1000,8 @@
         tiltLowState.length = 0;
         for (let c = 0; c < cc; c++) tiltLowState.push(0);
         wrapper.prepare(sr, cc, maxBs);
+        paramSmAlpha = 1 - Math.exp(-1 / (0.012 * sampleRate2));
+        paramSmPrimed = false;
         prepared = true;
       },
       process(channels, frameCount) {
@@ -1006,9 +1013,20 @@
         const tilt = clamp(store.get("tiltDb"), -12, 12) / 12;
         const outputDb = clamp(store.get("outputDb"), -12, 12);
         const mode = Math.round(store.get("mode"));
-        const wetGain = clamp(store.get("mix"), 0, 100) / 100;
-        const outputLinear = Math.pow(10, outputDb / 20);
+        const wetTarget = clamp(store.get("mix"), 0, 100) / 100;
         const quality = qualityCached;
+        if (!paramSmPrimed) {
+          driveSm = driveDb;
+          outputSm = outputDb;
+          wetSm = wetTarget;
+          paramSmPrimed = true;
+        } else {
+          driveSm += paramSmAlpha * (driveDb - driveSm);
+          outputSm += paramSmAlpha * (outputDb - outputSm);
+          wetSm += paramSmAlpha * (wetTarget - wetSm);
+        }
+        const outputLinear = Math.pow(10, outputSm / 20);
+        const wetGain = wetSm;
         if (Math.abs(tilt) > 1e-4) {
           const alpha = 1 - Math.exp(-2 * Math.PI * 320 / sampleRate2);
           const amount = tilt * 0.65;
@@ -1024,11 +1042,12 @@
             tiltLowState[c] = low;
           }
         }
-        wrapper.process(channels, frameCount, mode, driveDb, wetGain, outputLinear, quality);
+        wrapper.process(channels, frameCount, mode, driveSm, wetGain, outputLinear, quality);
       },
       reset() {
         wrapper.reset();
         tiltLowState.fill(0);
+        paramSmPrimed = false;
       },
       getLatencySamples() {
         if (store.get("enabled") < 0.5) return 0;
@@ -2167,6 +2186,10 @@
     let dampAlpha = 0.5;
     let hpAlpha = 0;
     let srScale = 1;
+    let fbSmL = [0, 0, 0, 0];
+    let fbSmR = [0, 0, 0, 0];
+    let fbSmPrimed = false;
+    let fbSmAlpha = 1;
     let predelayLines = [];
     let predelayWriteIdx = [];
     let predelayLen = 0;
@@ -2276,6 +2299,8 @@
         sampleRate2 = sr;
         preparedMaxBlockSize = Math.max(1, maxBlockSize);
         recompute();
+        fbSmAlpha = 1 - Math.exp(-1 / (0.015 * sampleRate2));
+        fbSmPrimed = false;
         allocPredelay(Math.max(1, channelCount));
         if (lines.length !== Math.max(1, channelCount)) {
           allocChannels(Math.max(1, channelCount));
@@ -2297,6 +2322,16 @@
         const dryGain = 1 - wetGain;
         const numCh = channels.length;
         const hasCoupling = numCh >= 2 && crossFeedPrev.length >= 2;
+        if (!fbSmPrimed) {
+          fbSmL = fbGainsL.slice();
+          fbSmR = fbGainsR.slice();
+          fbSmPrimed = true;
+        } else {
+          for (let l = 0; l < FDN_LINES; l++) {
+            fbSmL[l] += fbSmAlpha * (fbGainsL[l] - fbSmL[l]);
+            fbSmR[l] += fbSmAlpha * (fbGainsR[l] - fbSmR[l]);
+          }
+        }
         for (let c = 0; c < numCh; c++) {
           const buf = channels[c];
           const ls = lines[c];
@@ -2304,7 +2339,7 @@
           const lp = lpState[c];
           const hp = hpState[c];
           const hpv = hpPrev[c];
-          const fbLine = c & 1 ? fbGainsR : fbGainsL;
+          const fbLine = c & 1 ? fbSmR : fbSmL;
           const crossSrc = hasCoupling ? crossFeedPrev[1 - c] : null;
           const crossDst = hasCoupling ? crossFeedCur[c] : null;
           const pdl = predelayLines[c];
@@ -2357,6 +2392,7 @@
         for (let c = 0; c < predelayWriteIdx.length; c++) predelayWriteIdx[c] = 0;
         for (const cf of crossFeedPrev) cf.fill(0);
         for (const cf of crossFeedCur) cf.fill(0);
+        fbSmPrimed = false;
       },
       getLatencySamples() {
         return 0;
@@ -2878,7 +2914,8 @@
           ring: new Float32Array(0),
           wp: 0,
           fill: 0,
-          prev: 0
+          prev: 0,
+          fillPeak: 0
         });
       }
     }
@@ -2976,6 +3013,14 @@
       for (let c = 0; c < channels.length; c++) {
         const s = ch[c];
         const up = s.os.upsample(channels[c]);
+        const filling = s.fill < laOvs;
+        let blockOvsPeak = 0;
+        for (let i = 0; i < upLen; i++) {
+          const a = up[i] < 0 ? -up[i] : up[i];
+          if (a > blockOvsPeak) blockOvsPeak = a;
+        }
+        if (blockOvsPeak > s.fillPeak) s.fillPeak = blockOvsPeak;
+        const guard = filling ? Math.min(1, ceil * 0.97 / Math.max(s.fillPeak, 1e-9)) : 1;
         for (let i = 0; i < upLen; i++) {
           s.ring[(s.wp + i) % ringCap] = up[i];
         }
@@ -3025,6 +3070,7 @@
             } else {
               s.env = s.env * rc + tgt * (1 - rc);
             }
+            if (guard < s.env) s.env = guard;
             const op = ((s.wp - upLen + outIdx - effLA) % ringCap + ringCap) % ringCap;
             up[outIdx] = s.ring[op] * s.env;
             outIdx++;
@@ -3051,6 +3097,14 @@
         const s = ch[c];
         const up = s.os.upsample(channels[c]);
         upBuffers[c] = up;
+        const filling = s.fill < laOvs;
+        let blockOvsPeak = 0;
+        for (let i = 0; i < upLen; i++) {
+          const a = up[i] < 0 ? -up[i] : up[i];
+          if (a > blockOvsPeak) blockOvsPeak = a;
+        }
+        if (blockOvsPeak > s.fillPeak) s.fillPeak = blockOvsPeak;
+        const guard = filling ? Math.min(1, ceil * 0.97 / Math.max(s.fillPeak, 1e-9)) : 1;
         for (let i = 0; i < upLen; i++) {
           s.ring[(s.wp + i) % ringCap] = up[i];
         }
@@ -3100,6 +3154,7 @@
             } else {
               s.env = s.env * rc + tgt * (1 - rc);
             }
+            if (guard < s.env) s.env = guard;
             linkedEnvScratch[c][outIdx] = s.env;
             outIdx++;
           }
@@ -3168,6 +3223,7 @@
           s.prev = 0;
           s.wp = 0;
           s.fill = 0;
+          s.fillPeak = 0;
           s.ring.fill(0);
           s.os.reset();
         }

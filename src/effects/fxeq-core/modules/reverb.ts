@@ -63,6 +63,16 @@ export function createReverbModule(params?: Record<string, number>): ModuleProce
   let hpAlpha = 0; // LF cut
   let srScale = 1;
 
+  // De-click smoothing for the feedback gains (decayMs target). A decay
+  // change multiplies every FDN tap by a new gain instantly, which zippers
+  // audibly inside the reverb tail; gliding the gains over ~15 ms turns the
+  // step into an inaudible ride. PRIMED at the first processed block after
+  // prepare/reset so static settings render bit-identically (golden parity).
+  let fbSmL: number[] = [0, 0, 0, 0];
+  let fbSmR: number[] = [0, 0, 0, 0];
+  let fbSmPrimed = false;
+  let fbSmAlpha = 1;
+
   // Per-channel predelay line (circular buffer).
   let predelayLines: Float32Array[] = []; // [channel]
   let predelayWriteIdx: number[] = [];   // [channel]
@@ -202,6 +212,8 @@ export function createReverbModule(params?: Record<string, number>): ModuleProce
       sampleRate = sr;
       preparedMaxBlockSize = Math.max(1, maxBlockSize);
       recompute();
+      fbSmAlpha = 1 - Math.exp(-1 / (0.015 * sampleRate));
+      fbSmPrimed = false;
       allocPredelay(Math.max(1, channelCount));
       // Ensure channel count matches.
       if (lines.length !== Math.max(1, channelCount)) {
@@ -227,6 +239,18 @@ export function createReverbModule(params?: Record<string, number>): ModuleProce
       const numCh = channels.length;
       const hasCoupling = numCh >= 2 && crossFeedPrev.length >= 2;
 
+      // Glide the feedback gains toward the decay-derived targets (de-click).
+      if (!fbSmPrimed) {
+        fbSmL = fbGainsL.slice();
+        fbSmR = fbGainsR.slice();
+        fbSmPrimed = true;
+      } else {
+        for (let l = 0; l < FDN_LINES; l++) {
+          fbSmL[l] += fbSmAlpha * (fbGainsL[l] - fbSmL[l]);
+          fbSmR[l] += fbSmAlpha * (fbGainsR[l] - fbSmR[l]);
+        }
+      }
+
       for (let c = 0; c < numCh; c++) {
         const buf = channels[c];
         const ls = lines[c];
@@ -234,7 +258,7 @@ export function createReverbModule(params?: Record<string, number>): ModuleProce
         const lp = lpState[c];
         const hp = hpState[c];
         const hpv = hpPrev[c];
-        const fbLine = (c & 1) ? fbGainsR : fbGainsL;
+        const fbLine = (c & 1) ? fbSmR : fbSmL;
         const crossSrc = hasCoupling ? crossFeedPrev[1 - c] : null;
         const crossDst = hasCoupling ? crossFeedCur[c] : null;
 
@@ -299,6 +323,7 @@ export function createReverbModule(params?: Record<string, number>): ModuleProce
       for (let c = 0; c < predelayWriteIdx.length; c++) predelayWriteIdx[c] = 0;
       for (const cf of crossFeedPrev) cf.fill(0);
       for (const cf of crossFeedCur) cf.fill(0);
+      fbSmPrimed = false;
     },
 
     getLatencySamples() {

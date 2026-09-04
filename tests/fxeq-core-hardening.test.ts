@@ -16,6 +16,8 @@ import { createLfo, type LfoWaveform } from "../src/effects/fxeq-core/dsp/lfo";
 import { createBandEngine } from "../src/effects/fxeq-core/core/bandEngine";
 import { createDelayModule } from "../src/effects/fxeq-core/modules/delay";
 import { createLimiterModule } from "../src/effects/fxeq-core/modules/limiter";
+import { createSaturationModule } from "../src/effects/fxeq-core/modules/saturation";
+import { createReverbModule } from "../src/effects/fxeq-core/modules/reverb";
 
 const SR = 48000;
 const BLOCK = 128;
@@ -141,13 +143,20 @@ describe("fxeq-core module param store finite guards", () => {
 });
 
 describe("fxeq-core limiter linked true-peak path (hoisted scratch)", () => {
-  it("stereo-linked limiting keeps output bounded at the ceiling", () => {
+  // Oversampled-domain limiting bounds the oversampled signal; the
+  // decimation FIR's reconstruction can locally exceed it — measured
+  // ~0.2% on smooth material, up to ~2.4% on sign-alternating worst cases
+  // (≈0.02–0.2 dB — the reason pro ISP limiters carry a true-peak margin;
+  // the fill guard covers this during priming with its own 3% margin).
+  const BOUND_FACTOR = 1.003;
+
+  it("stereo-linked limiting keeps output bounded at the ceiling from block 0", () => {
     const mod = createLimiterModule({ enabled: 1, ceilDb: -3, truePeak: 1, lookaheadMs: 2, stereoLink: 1 });
     mod.prepare(SR, 2, BLOCK);
-    // Feed loud, decorrelated stereo blocks. The first blocks are the
-    // documented startup transient (the lookahead ring is still filling),
-    // so bounds are asserted once the ring is primed.
-    const warmupBlocks = 8;
+    // Loud, decorrelated stereo material FROM SAMPLE 0: the fill guard
+    // (Chan.fillPeak) must clamp the envelope while the lookahead ring
+    // primes, so the ceiling holds immediately — no startup overshoot.
+    const bound = Math.pow(10, -3 / 20) * BOUND_FACTOR + 1e-6;
     for (let blk = 0; blk < 64; blk++) {
       const L = new Float32Array(BLOCK);
       const R = new Float32Array(BLOCK);
@@ -156,14 +165,130 @@ describe("fxeq-core limiter linked true-peak path (hoisted scratch)", () => {
         R[i] = Math.sin((2 * Math.PI * 1973 * (blk * BLOCK + i)) / SR) * 4;
       }
       mod.process([L, R], BLOCK);
-      if (blk < warmupBlocks) continue;
-      const ceil = Math.pow(10, -3 / 20);
       for (let i = 0; i < BLOCK; i++) {
         expect(Number.isFinite(L[i])).toBe(true);
         expect(Number.isFinite(R[i])).toBe(true);
-        expect(Math.abs(L[i])).toBeLessThanOrEqual(ceil * 1.001 + 1e-6);
-        expect(Math.abs(R[i])).toBeLessThanOrEqual(ceil * 1.001 + 1e-6);
+        expect(Math.abs(L[i]), `block ${blk} sample ${i} exceeded the ceiling`).toBeLessThanOrEqual(bound);
+        expect(Math.abs(R[i]), `block ${blk} sample ${i} exceeded the ceiling`).toBeLessThanOrEqual(bound);
       }
     }
+  });
+
+  it("fill guard clamps a transient inside the first (unlookaheaded) block", () => {
+    // In block 0 the effective lookahead is zero, so the detector window is
+    // the single current sample — a burst starting mid-block-0 passed at
+    // FULL amplitude in the old code (+8 dB over the ceiling until the ring
+    // primed). The fill guard clamps the envelope to the loudest peak
+    // witnessed so far, so the burst is limited immediately.
+    const mod = createLimiterModule({ enabled: 1, ceilDb: -3, truePeak: 1, lookaheadMs: 2, stereoLink: 1 });
+    mod.prepare(SR, 2, BLOCK);
+    const bound = Math.pow(10, -3 / 20) * BOUND_FACTOR + 1e-6;
+    const burstFrom = 96; // inside block 0, before any lookahead exists
+    let maxSeen = 0;
+    for (let blk = 0; blk < 16; blk++) {
+      const L = new Float32Array(BLOCK);
+      const R = new Float32Array(BLOCK);
+      for (let i = 0; i < BLOCK; i++) {
+        const n = blk * BLOCK + i;
+        const v = n >= burstFrom ? Math.sin((2 * Math.PI * 997 * n) / SR) * 4 : 0;
+        L[i] = v;
+        R[i] = v;
+      }
+      mod.process([L, R], BLOCK);
+      for (let i = burstFrom > blk * BLOCK ? burstFrom - blk * BLOCK : 0; i < BLOCK; i++) {
+        maxSeen = Math.max(maxSeen, Math.abs(L[i]), Math.abs(R[i]));
+      }
+    }
+    expect(maxSeen, `burst output reached ${maxSeen.toFixed(4)} (ceiling bound ${bound.toFixed(4)})`).toBeLessThanOrEqual(
+      bound,
+    );
+  });
+});
+
+describe("fxeq-core de-click parameter smoothing", () => {
+  function maxJump(buf: Float32Array): number {
+    let m = 0;
+    for (let i = 1; i < buf.length; i++) {
+      const d = Math.abs(buf[i] - buf[i - 1]);
+      if (d > m) m = d;
+    }
+    return m;
+  }
+
+  it("saturation drive change glides instead of stepping", () => {
+    const mod = createSaturationModule();
+    mod.prepare(SR, 2, BLOCK);
+    mod.setParameter("enabled", 1);
+    mod.setParameter("driveDb", 0);
+    mod.setParameter("mix", 100);
+
+    const steady = new Float32Array(BLOCK);
+    for (let blk = 0; blk < 40; blk++) {
+      const L = new Float32Array(BLOCK);
+      const R = new Float32Array(BLOCK);
+      for (let i = 0; i < BLOCK; i++) {
+        L[i] = Math.sin((2 * Math.PI * 220 * (blk * BLOCK + i)) / SR) * 0.6;
+        R[i] = L[i];
+      }
+      mod.process([L, R], BLOCK);
+      if (blk === 39) steady.set(L);
+    }
+    const steadyJump = maxJump(steady);
+
+    // Full-scale drive step mid-stream.
+    mod.setParameter("driveDb", 24);
+    let changeJump = 0;
+    for (let blk = 40; blk < 140; blk++) {
+      const L = new Float32Array(BLOCK);
+      const R = new Float32Array(BLOCK);
+      for (let i = 0; i < BLOCK; i++) {
+        L[i] = Math.sin((2 * Math.PI * 220 * (blk * BLOCK + i)) / SR) * 0.6;
+        R[i] = L[i];
+      }
+      mod.process([L, R], BLOCK);
+      changeJump = Math.max(changeJump, maxJump(L));
+    }
+    // The glide keeps the worst per-sample jump in the same class as the
+    // steady-state signal (a raw 24 dB drive step multiplies it several-fold).
+    expect(changeJump, `drive step caused a ${changeJump.toFixed(4)} discontinuity`).toBeLessThan(
+      Math.max(0.02, steadyJump * 3),
+    );
+  });
+
+  it("reverb decay change glides the feedback gains instead of jumping the tail", () => {
+    const mod = createReverbModule();
+    mod.prepare(SR, 2, BLOCK);
+    mod.setParameter("enabled", 1);
+    mod.setParameter("mix", 100);
+    mod.setParameter("decayMs", 400);
+
+    const steady = new Float32Array(BLOCK);
+    for (let blk = 0; blk < 40; blk++) {
+      const L = new Float32Array(BLOCK);
+      const R = new Float32Array(BLOCK);
+      for (let i = 0; i < BLOCK; i++) {
+        L[i] = Math.sin((2 * Math.PI * 990 * (blk * BLOCK + i)) / SR) * 0.5;
+        R[i] = Math.sin((2 * Math.PI * 990 * (blk * BLOCK + i)) / SR) * 0.5;
+      }
+      mod.process([L, R], BLOCK);
+      if (blk === 39) steady.set(L);
+    }
+    const steadyJump = maxJump(steady);
+
+    mod.setParameter("decayMs", 8000); // huge decay jump mid-tail
+    let changeJump = 0;
+    for (let blk = 40; blk < 120; blk++) {
+      const L = new Float32Array(BLOCK);
+      const R = new Float32Array(BLOCK);
+      for (let i = 0; i < BLOCK; i++) {
+        L[i] = Math.sin((2 * Math.PI * 990 * (blk * BLOCK + i)) / SR) * 0.5;
+        R[i] = L[i];
+      }
+      mod.process([L, R], BLOCK);
+      changeJump = Math.max(changeJump, maxJump(L));
+    }
+    expect(changeJump, `decay step caused a ${changeJump.toFixed(4)} discontinuity in the tail`).toBeLessThan(
+      Math.max(0.02, steadyJump * 3),
+    );
   });
 });

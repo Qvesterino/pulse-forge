@@ -132,11 +132,36 @@ export function OzvenaPanel({
     ctx2d.stroke();
   }, [x, y, weights]);
 
-  // ── pad interaction (mouse + touch) ────────────────────────────────────
+  // ── pad interaction (mouse + touch + keyboard) ─────────────────────────
   const onPointer = (clientX: number, clientY: number, target: HTMLElement) => {
     const rect = target.getBoundingClientRect();
     const nx = Math.max(0, Math.min(1, ((clientX - rect.left) / rect.width - 0.04) / 0.92));
     const ny = Math.max(0, Math.min(1, (0.92 - (clientY - rect.top) / rect.height) / 0.84));
+    onParam("blendPad.x", +nx.toFixed(4));
+    onParam("blendPad.y", +ny.toFixed(4));
+  };
+
+  // 2-D pad on a 1-D slider role: X is the primary aria value, valuetext
+  // carries the full engine distribution for screen readers.
+  const padValueText = `E1 ${(weights.e1 * 100).toFixed(0)}%, E2 ${(weights.e2 * 100).toFixed(0)}%, E3 ${(weights.e3 * 100).toFixed(0)}%`;
+
+  const onPadKeyDown = (e: React.KeyboardEvent<HTMLCanvasElement>) => {
+    const key = e.key;
+    let dx = 0;
+    let dy = 0;
+    let step = 0.05;
+    if (key === "ArrowLeft") dx = -1;
+    else if (key === "ArrowRight") dx = 1;
+    else if (key === "ArrowUp") dy = 1;
+    else if (key === "ArrowDown") dy = -1;
+    else if (key === "PageUp") { dy = 1; step = 0.25; }
+    else if (key === "PageDown") { dy = -1; step = 0.25; }
+    else return;
+    e.preventDefault();
+    if (e.shiftKey && step === 0.05) step = 0.01;
+    const nx = Math.max(0, Math.min(1, x + dx * step));
+    const ny = Math.max(0, Math.min(1, y + dy * step));
+    if (nx === x && ny === y) return;
     onParam("blendPad.x", +nx.toFixed(4));
     onParam("blendPad.y", +ny.toFixed(4));
   };
@@ -204,7 +229,10 @@ export function OzvenaPanel({
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={Math.round(x * 100)}
+        aria-valuetext={padValueText}
+        tabIndex={0}
         style={{ touchAction: "none" }}
+        onKeyDown={onPadKeyDown}
         onPointerDown={(e) => {
           draggingRef.current = true;
           try {

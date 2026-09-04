@@ -133,6 +133,14 @@ interface Chan {
   fill: number;
   /** Previous input sample (legacy ISP detection only). */
   prev: number;
+  /**
+   * Loudest oversampled peak seen since the stream started, until the
+   * lookahead ring is full. Drives the fill guard (see processTruePeak):
+   * while the detector cannot see a full lookahead into the future, the
+   * envelope must assume the worst peak it has already witnessed could
+   * land inside the unseen window.
+   */
+  fillPeak: number;
 }
 
 // ── Factory ────────────────────────────────────────────────
@@ -162,6 +170,7 @@ export function createLimiterModule(params?: Record<string, number>): ModuleProc
         wp: 0,
         fill: 0,
         prev: 0,
+        fillPeak: 0,
       });
     }
   }
@@ -300,6 +309,26 @@ export function createLimiterModule(params?: Record<string, number>): ModuleProc
 
       const up = s.os.upsample(channels[c]);
 
+      // Fill guard (see Chan.fillPeak): while the lookahead ring is still
+      // filling, the detector cannot see a full laOvs window into the
+      // future, so an early transient passes through unattenuated and the
+      // output overshoots the ceiling for the first ~laOvs/OS samples.
+      // Clamp the envelope to what the loudest peak witnessed SO FAR would
+      // require — conservative during the priming window only, exact once
+      // the ring is full.
+      const filling = s.fill < laOvs;
+      let blockOvsPeak = 0;
+      for (let i = 0; i < upLen; i++) {
+        const a = up[i] < 0 ? -up[i] : up[i];
+        if (a > blockOvsPeak) blockOvsPeak = a;
+      }
+      if (blockOvsPeak > s.fillPeak) s.fillPeak = blockOvsPeak;
+      // 3% margin: the decimation FIR's reconstruction can locally exceed
+      // the oversampled-domain ceiling by up to ~2.4% on sign-alternating
+      // material — the same reason professional ISP limiters carry a small
+      // true-peak margin.
+      const guard = filling ? Math.min(1, (ceil * 0.97) / Math.max(s.fillPeak, 1e-9)) : 1;
+
       for (let i = 0; i < upLen; i++) {
         s.ring[(s.wp + i) % ringCap] = up[i];
       }
@@ -356,6 +385,7 @@ export function createLimiterModule(params?: Record<string, number>): ModuleProc
           } else {
             s.env = s.env * rc + tgt * (1 - rc);
           }
+          if (guard < s.env) s.env = guard;
 
           const op = (((s.wp - upLen + outIdx - effLA) % ringCap) + ringCap) % ringCap;
 
@@ -398,6 +428,20 @@ export function createLimiterModule(params?: Record<string, number>): ModuleProc
       const up = s.os.upsample(channels[c]);
       upBuffers[c] = up;
 
+      // Fill guard — same rationale as the unlinked path.
+      const filling = s.fill < laOvs;
+      let blockOvsPeak = 0;
+      for (let i = 0; i < upLen; i++) {
+        const a = up[i] < 0 ? -up[i] : up[i];
+        if (a > blockOvsPeak) blockOvsPeak = a;
+      }
+      if (blockOvsPeak > s.fillPeak) s.fillPeak = blockOvsPeak;
+      // 3% margin: the decimation FIR's reconstruction can locally exceed
+      // the oversampled-domain ceiling by up to ~2.4% on sign-alternating
+      // material — the same reason professional ISP limiters carry a small
+      // true-peak margin.
+      const guard = filling ? Math.min(1, (ceil * 0.97) / Math.max(s.fillPeak, 1e-9)) : 1;
+
       for (let i = 0; i < upLen; i++) {
         s.ring[(s.wp + i) % ringCap] = up[i];
       }
@@ -454,6 +498,7 @@ export function createLimiterModule(params?: Record<string, number>): ModuleProc
           } else {
             s.env = s.env * rc + tgt * (1 - rc);
           }
+          if (guard < s.env) s.env = guard;
 
           linkedEnvScratch[c][outIdx] = s.env;
           outIdx++;
@@ -546,6 +591,7 @@ export function createLimiterModule(params?: Record<string, number>): ModuleProc
         s.prev = 0;
         s.wp = 0;
         s.fill = 0;
+        s.fillPeak = 0;
         s.ring.fill(0);
         s.os.reset();
       }
