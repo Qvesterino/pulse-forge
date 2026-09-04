@@ -80,6 +80,21 @@ export interface EffectInstance {
    * to the effect runtime via `setSidechainInput`. Null = no sidechain feed.
    */
   sidechainTrackId?: ID | null;
+  /**
+   * Plugin EDITOR state that is not audio params — Ultina A/B snapshots,
+   * future module order/enabled flags. Persisted as a validated plain blob
+   * (kind + data) so each plugin owns its payload shape; React-only state
+   * (collapse, loading, DOM) never belongs here. Meter captures
+   * (capturedLufs) are session data and are deliberately excluded.
+   */
+  deviceState?: DeviceState;
+}
+
+/** Plugin-owned editor state blob on an EffectInstance (see deviceState). */
+export interface DeviceState {
+  /** Payload identity driving the per-plugin validator, e.g. "ultina-ab-v1". */
+  kind: string;
+  data: Record<string, unknown>;
 }
 
 export interface TimeSignature {

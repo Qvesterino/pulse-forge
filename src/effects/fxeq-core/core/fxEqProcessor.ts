@@ -391,12 +391,18 @@ export function createFxEqProcessor(params?: Record<string, number>): FxEqProces
         for (let c = 0; c < channelCount; c++) {
           scratch[c].set(bandChannels[c].subarray(0, frameCount));
         }
-        // If any band is soloed, mute non-soloed bands.
+        // Pass sidechain to band engine if available. Soloed-out bands (when
+        // any other band is soloed) KEEP CLOCKING here — their delay/reverb
+        // tails, LFOs and envelopes stay live and their meters keep tracking —
+        // and only their contribution to the sum is muted below. The old code
+        // skipped process() entirely for soloed-out bands, which froze the
+        // band mid-tail: un-soloing resumed stale content. Solo is a
+        // temporary monitoring state, so the extra CPU is bounded to the
+        // solo window.
+        bands[b].process(scratch, frameCount, sidechainChannels ?? undefined);
+        // If any band is soloed, mute non-soloed bands (after clocking).
         if (anySolo && bands[b].getBandParam("solo") < 0.5) {
           for (let c = 0; c < channelCount; c++) scratch[c].fill(0, 0, frameCount);
-        } else {
-          // Pass sidechain to band engine if available.
-          bands[b].process(scratch, frameCount, sidechainChannels ?? undefined);
         }
         const bandLat = Math.min(
           ALIGN_MAX,

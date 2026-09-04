@@ -96,23 +96,22 @@ export function createUltinaNode(
       node.port.postMessage({ type: "setMeters", enabled });
     },
     dispose() {
+      if (disposed) return; // idempotent — engine rebuild paths may re-dispose
       disposed = true;
       latencyListeners.clear();
-      // Best-effort spectral-registry cleanup: post before closing the port
-      // (messages already queued for the worklet end are still delivered;
-      // if delivery fails the entry is simply skipped by the staleness
-      // guard, never re-masked).
+      // Best-effort spectral-registry cleanup. The port must NOT be closed
+      // here: closing a MessagePort can drop already-queued messages
+      // (engine-dependent), which would silently discard this terminal
+      // teardown and leak one spectral-registry entry per disposed instance
+      // for the page's lifetime. Dropping the last JS reference to the node
+      // lets the implementation close the port after the message has been
+      // delivered.
       try {
         node.port.postMessage({ type: "dispose" });
       } catch {
         // port already dead
       }
       node.port.onmessage = null;
-      try {
-        node.port.close();
-      } catch {
-        // already closed
-      }
       node.disconnect();
       input.disconnect();
       output.disconnect();

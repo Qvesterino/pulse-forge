@@ -442,7 +442,57 @@ try {
     console.log("[FAIL] touch long-press E2E:", String(error).split("\n")[0]);
   }
 
-  const total = results.length + 5;
+  // ── Plugin workflow E2E: add flagship effect → collapse → bypass → macro → play ──
+  let pluginWorkflowOk = false;
+  try {
+    const plugContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const plugPage = await plugContext.newPage();
+    await plugPage.addInitScript(SKIP_FLAGS);
+    await plugPage.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+    await plugPage.waitForSelector(".project-browser", { timeout: 15_000 });
+    await plugPage.locator('.pb-template:has-text("HOUSE")').first().click();
+    await plugPage.waitForSelector(".sequencer", { timeout: 15_000 });
+    // Open the FX rack dock panel and add the flagship FXEQ to the selected track.
+    await plugPage.locator('button[aria-label="Toggle effect rack"]').first().click();
+    await plugPage.waitForSelector(".fx-rack", { timeout: 5000 });
+    await plugPage.locator("select.fx-add-select").first().selectOption("fxeq");
+    await plugPage.waitForSelector(".fx-device", { timeout: 5000 });
+    // Collapse must keep the device mounted and flip aria-expanded.
+    await plugPage.locator(".fx-device-toggle").first().click();
+    const collapsedAria = await plugPage.locator(".fx-device-toggle").first().getAttribute("aria-expanded");
+    if (collapsedAria !== "false") throw new Error(`collapse did not flip aria-expanded (${collapsedAria})`);
+    await plugPage.locator(".fx-device-toggle").first().click();
+    // Bypass flips the device state label.
+    await plugPage.locator('button[title="Bypass effect"]').first().click();
+    await plugPage.waitForSelector(".fx-device.bypassed", { timeout: 5000 });
+    const stateLabel = await plugPage.locator(".fx-device-state").first().textContent();
+    if (!stateLabel?.includes("BYPASSED")) throw new Error(`device state did not flip (${stateLabel})`);
+    // Undo once — the bypass must roll back (command layer, not local state).
+    await plugPage.keyboard.press("Control+z");
+    await plugPage.waitForSelector(".fx-device:not(.bypassed)", { timeout: 5000 });
+    // Macro: focus the first macro slider in the MOD panel and nudge it.
+    await plugPage.locator('button[aria-label="Toggle modulation panel"]').first().click();
+    await plugPage.waitForSelector(".macro-card", { timeout: 5000 });
+    const macroSliderBox = plugPage.locator(".macro-card .slider").first();
+    const macroKnob = macroSliderBox.locator('[role="slider"]');
+    const before = await macroSliderBox.textContent();
+    await macroKnob.focus();
+    await plugPage.keyboard.press("ArrowRight");
+    await plugPage.waitForTimeout(150);
+    const after = await macroSliderBox.textContent();
+    if (!before || !after || before === after) throw new Error("macro slider did not move on ArrowRight");
+    // Transport: play then stop must toggle without errors.
+    await plugPage.locator('button[title="Play / Pause (Space)"]').first().click();
+    await plugPage.waitForTimeout(400);
+    await plugPage.locator('button.btn-stop[title="Stop"]').first().click();
+    await plugContext.close();
+    pluginWorkflowOk = true;
+    console.log("[PASS] plugin workflow: add flagship effect, collapse, bypass, undo, macro nudge, play/stop");
+  } catch (error) {
+    console.log("[FAIL] plugin workflow E2E:", String(error).split("\n")[0]);
+  }
+
+  const total = results.length + 6;
   const passed =
     results.length -
     failed +
@@ -450,12 +500,14 @@ try {
     (collabOk ? 1 : 0) +
     (embedOk ? 1 : 0) +
     (importOk ? 1 : 0) +
-    (touchOk ? 1 : 0);
+    (touchOk ? 1 : 0) +
+    (pluginWorkflowOk ? 1 : 0);
   console.log(`\n${passed}/${total} checks passed`);
   if (consoleErrors.length > 0) {
     console.log("console errors during audio checks:", consoleErrors.slice(0, 5));
   }
-  exitCode = failed > 0 || !appBootOk || !collabOk || !embedOk || !importOk || !touchOk ? 1 : 0;
+  exitCode =
+    failed > 0 || !appBootOk || !collabOk || !embedOk || !importOk || !touchOk || !pluginWorkflowOk ? 1 : 0;
 } catch (error) {
   console.error("browser verification failed:", error);
   exitCode = 1;

@@ -396,11 +396,14 @@ export function createOzvenaProcessor(): OzvenaProcessor {
     }
 
     // Quality mode drives the safety limiter's oversampling factor.
-    // Re-prepare only when it actually changes (avoids clicks/reset).
+    // Scalar-only switch — all factor states are preallocated in the
+    // limiter's prepare(); the old path called safetyLimiter.prepare()
+    // here, allocating and zeroing the rings ON THE AUDIO THREAD on every
+    // quality change (dropout risk mid-render, envelope-reset click).
     const q = state.global.quality;
     if (prepared && q !== limiterQuality) {
       limiterQuality = q;
-      safetyLimiter.prepare(sampleRate, channelCount, preparedMaxBs, pickOversampleFactor(q));
+      safetyLimiter.setOversampleFactor(pickOversampleFactor(q));
     }
 
     // Quality also scales the FDN shimmer cost (window size, grain count).

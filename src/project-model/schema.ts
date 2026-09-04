@@ -1,6 +1,7 @@
 import type {
   DrumPad,
   DrumTrack,
+  DeviceState,
   EffectInstance,
   InstrumentKind,
   InstrumentTrack,
@@ -595,6 +596,9 @@ function normalizeEffects(raw: unknown, trackId: string, trackIds: Set<string>):
         item.sidechainTrackId && item.sidechainTrackId !== trackId && trackIds.has(item.sidechainTrackId)
           ? item.sidechainTrackId
           : undefined;
+      // Plugin editor state (A/B snapshots…) — validated per kind; unknown
+      // kinds fail closed so a plugin must ship its own validator.
+      const deviceState = sanitizeDeviceState((item as { deviceState?: unknown }).deviceState);
       // Step-sequenced effects (stepGate) carry an editable pattern array.
       const steps =
         type === "stepGate" || type === "stutter" ? sanitizeGateSteps((item as { steps?: unknown }).steps) : undefined;
@@ -605,8 +609,44 @@ function normalizeEffects(raw: unknown, trackId: string, trackIds: Set<string>):
         params,
         ...(steps ? { steps } : {}),
         ...(sidechainTrackId ? { sidechainTrackId } : {}),
+        ...(deviceState ? { deviceState } : {}),
       };
     });
+}
+
+const DEVICE_STATE_KIND_MAX = 32;
+const DEVICE_STATE_SLOT_KEYS_MAX = 64;
+const DEVICE_STATE_KEY_MAX = 48;
+
+/** Clamp a device state blob to a legal, size-bounded payload; unknown kinds drop. */
+export function sanitizeDeviceState(raw: unknown): DeviceState | undefined {
+  if (typeof raw !== "object" || raw === null) return undefined;
+  const ds = raw as Partial<DeviceState> & Record<string, unknown>;
+  if (typeof ds.kind !== "string" || ds.kind.length === 0 || ds.kind.length > DEVICE_STATE_KIND_MAX) return undefined;
+  if (typeof ds.data !== "object" || ds.data === null) return undefined;
+  if (ds.kind === "ultina-ab-v1") return sanitizeUltinaAbState(ds.data);
+  return undefined;
+}
+
+function sanitizeUltinaAbState(data: Record<string, unknown>): DeviceState | undefined {
+  const rawSlots = (data.slots ?? null) as Record<string, unknown> | null;
+  if (typeof rawSlots !== "object" || rawSlots === null) return undefined;
+  const slots: Record<string, Record<string, number>> = {};
+  for (const slot of ["A", "B"] as const) {
+    const raw = rawSlots[slot];
+    if (typeof raw !== "object" || raw === null) continue;
+    const clean: Record<string, number> = {};
+    for (const [key, value] of Object.entries(raw as Record<string, unknown>).slice(0, DEVICE_STATE_SLOT_KEYS_MAX)) {
+      if (key.length <= DEVICE_STATE_KEY_MAX && typeof value === "number" && Number.isFinite(value)) {
+        clean[key] = value;
+      }
+    }
+    if (Object.keys(clean).length > 0) slots[slot] = clean;
+  }
+  if (Object.keys(slots).length === 0) return undefined;
+  // capturedLufs and other meter data are session-scoped — never persisted here.
+  const active = data.active === "B" && slots.B ? "B" : "A";
+  return { kind: "ultina-ab-v1", data: { slots, active } };
 }
 
 /**

@@ -231,7 +231,12 @@ describe("gallery flywheel: plays + remix chain", () => {
     expect(badPlay.status).toBe(404);
   });
 
-  it("persists plays across a server restart (debounced save flushes)", async () => {
+  // Explicit timeout with a reason: the test deliberately sleeps 3200 ms to
+  // let the debounced gallery save flush, then boots a second server — that
+  // is 3.2 s of mandated wait inside vitest's default 5 s budget. On a loaded
+  // machine the remaining margin goes negative (the observed flake), so the
+  // timeout must exceed the deliberate wait, not the other way around.
+  it("persists plays across a server restart (debounced save flushes)", { timeout: 20_000 }, async () => {
     const first = await boot();
     const post = await fetch(`${first.base}/api/gallery`, {
       method: "POST",

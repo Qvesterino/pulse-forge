@@ -77,6 +77,7 @@ export function createOzvenaNode(
       node.port.postMessage({ type: "bpm", bpm });
     },
     dispose() {
+      if (disposed) return; // idempotent — engine rebuild paths may re-dispose
       disposed = true;
       latencyListeners.clear();
       node.port.onmessage = null;

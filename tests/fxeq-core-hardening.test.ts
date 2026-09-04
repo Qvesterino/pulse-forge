@@ -14,6 +14,7 @@
 import { describe, expect, it } from "vitest";
 import { createLfo, type LfoWaveform } from "../src/effects/fxeq-core/dsp/lfo";
 import { createBandEngine } from "../src/effects/fxeq-core/core/bandEngine";
+import { createFxEqProcessor } from "../src/effects/fxeq-core/core/fxEqProcessor";
 import { createDelayModule } from "../src/effects/fxeq-core/modules/delay";
 import { createLimiterModule } from "../src/effects/fxeq-core/modules/limiter";
 import { createSaturationModule } from "../src/effects/fxeq-core/modules/saturation";
@@ -290,5 +291,139 @@ describe("fxeq-core de-click parameter smoothing", () => {
     expect(changeJump, `decay step caused a ${changeJump.toFixed(4)} discontinuity in the tail`).toBeLessThan(
       Math.max(0.02, steadyJump * 3),
     );
+  });
+});
+
+describe("fxeq tape delay wobble read-head guard", () => {
+  // At the 1 ms minimum delay on an 8 kHz device the delay is 8 samples, so
+  // the ±12-sample wobble used to push the read AHEAD of the write head —
+  // the wrapped ring served ~2 s old content back into the output (and the
+  // feedback path re-wrote it at the live head). After a loud prime, silence
+  // must stay silent; normal delays (≥ 32 samples at 44.1 kHz+) never reach
+  // the guard floor, so audible wobble is unchanged.
+  it("sub-12-sample tape delay never serves stale ring content", () => {
+    const sr = 8000;
+    const block = 128;
+    const mod = createDelayModule({ enabled: 1, type: 1, timeMs: 1, feedback: 0.5, mix: 100 });
+    mod.prepare(sr, 1, block);
+    // 2 s of loud tone primes the ring; the 0.5 Hz wobble dips below the
+    // guard floor around 0.5 s into the silence — exactly when the ~2.02 s
+    // ring still holds prime content.
+    for (let b = 0; b < Math.ceil((sr * 2) / block); b++) {
+      const loud = new Float32Array(block);
+      for (let i = 0; i < block; i++) loud[i] = Math.sin((2 * Math.PI * 997 * i) / sr) * 0.8;
+      mod.process([loud], block);
+    }
+    // The first blocks still carry the legitimate 8-sample-spaced tail
+    // (fb 0.5 decays it within ~2 blocks) — assert past the decay so ONLY
+    // stale ring content can fail.
+    for (let b = 0; b < Math.ceil((sr * 3) / block); b++) {
+      const silent = new Float32Array(block);
+      mod.process([silent], block);
+      if (b < 4) continue;
+      let peak = 0;
+      for (let i = 0; i < block; i++) peak = Math.max(peak, Math.abs(silent[i]));
+      expect(peak, `stale ring content leaked at silence block ${b}`).toBeLessThan(1e-5);
+    }
+  });
+});
+
+describe("fxeq solo continuity (band tails keep clocking)", () => {
+  const PARAMS = {
+    bandCount: 2,
+    "band2.delayEnabled": 1,
+    "band2.delayType": 0,
+    "band2.delayTimeMs": 50,
+    "band2.delayFeedback": 0.5,
+    "band2.delayMix": 100,
+    limiterEnabled: 0,
+    globalMix: 100,
+  };
+
+  /** Drive with a deterministic per-block PRNG signal; returns the outputs. */
+  function drive(
+    proc: ReturnType<typeof createFxEqProcessor>,
+    seed: number,
+    blocks: number,
+  ): Float32Array[][] {
+    const out: Float32Array[][] = [];
+    for (let b = 0; b < blocks; b++) {
+      const L = new Float32Array(BLOCK);
+      const R = new Float32Array(BLOCK);
+      let s = (seed + b * 0x9e37) >>> 0;
+      for (let i = 0; i < BLOCK; i++) {
+        s ^= s << 13;
+        s ^= s >>> 17;
+        s ^= s << 5;
+        L[i] = ((s >>> 0) / 0x100000000) * 2 - 1;
+        R[i] = -L[i];
+      }
+      proc.process([L, R], BLOCK);
+      out.push([L, R]);
+    }
+    return out;
+  }
+
+  it("un-soloing resumes bit-identically to a never-soloed reference", () => {
+    const soloed = createFxEqProcessor();
+    const reference = createFxEqProcessor();
+    soloed.prepare(SR, 2, BLOCK);
+    reference.prepare(SR, 2, BLOCK);
+    soloed.loadParameters(PARAMS);
+    reference.loadParameters(PARAMS);
+
+    drive(soloed, 7, 40);
+    drive(reference, 7, 40);
+
+    // Solo band 1 for one second — band 2 must keep clocking underneath
+    // (both processors consume the same input the whole time).
+    soloed.setParameter("band1.solo", 1);
+    drive(soloed, 99, 80);
+    drive(reference, 99, 80);
+    soloed.setParameter("band1.solo", 0);
+
+    // After un-solo the soloed processor must be bit-identical to the
+    // never-soloed reference: skipping process() for soloed-out bands used
+    // to freeze band 2's delay line, so the resumed output diverged here.
+    const a = drive(soloed, 5, 12);
+    const b = drive(reference, 5, 12);
+    for (let blk = 0; blk < 12; blk++) {
+      for (let c = 0; c < 2; c++) {
+        for (let i = 0; i < BLOCK; i++) {
+          expect(a[blk][c][i], `block ${blk} channel ${c} sample ${i} diverged after un-solo`).toBe(
+            b[blk][c][i],
+          );
+        }
+      }
+    }
+  });
+
+  it("band meters track live levels while another band is soloed", () => {
+    const proc = createFxEqProcessor();
+    proc.prepare(SR, 2, BLOCK);
+    proc.loadParameters({ bandCount: 2, limiterEnabled: 0, globalMix: 100 });
+    // 1 kHz lands mostly in band 2 (top band, LP split at 400 Hz).
+    const hot = [0, 1].map(() => new Float32Array(BLOCK));
+    for (let i = 0; i < BLOCK; i++) {
+      const v = Math.sin((2 * Math.PI * 1000 * i) / SR) * 0.8;
+      hot[0][i] = v;
+      hot[1][i] = v;
+    }
+    proc.process(hot, BLOCK);
+    expect(proc.getBandPeaks()[1]).toBeGreaterThan(0.4);
+
+    proc.setParameter("band1.solo", 1);
+    for (let b = 0; b < 8; b++) {
+      const quiet = [0, 1].map(() => new Float32Array(BLOCK));
+      for (let i = 0; i < BLOCK; i++) {
+        const v = Math.sin((2 * Math.PI * 1000 * i) / SR) * 0.01;
+        quiet[0][i] = v;
+        quiet[1][i] = v;
+      }
+      proc.process(quiet, BLOCK);
+    }
+    // Band 2 keeps clocking on the quiet input, so its meter must fall —
+    // the old skip-process code left the stale hot peak on the meter.
+    expect(proc.getBandPeaks()[1]).toBeLessThan(0.05);
   });
 });

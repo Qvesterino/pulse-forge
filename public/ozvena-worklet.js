@@ -1777,6 +1777,7 @@
   var RELEASE_MS = 100;
   var LOOKAHEAD_MS = 2;
   var DEFAULT_CEIL_DB = -0.3;
+  var OS_FACTORS = [1, 2, 4, 8];
   function createSafetyLimiter() {
     let prepared = false;
     let sampleRate2 = 48e3;
@@ -1785,17 +1786,21 @@
     let laOvs = 0;
     let ringCap = 0;
     let ringMask = 0;
-    const ch = [];
+    let ch = [];
+    const chByFactor = {};
     let epScratch = new Float32Array(0);
     let dequeIdx = new Int32Array(0);
     let dequeVal = new Float32Array(0);
     let linkedEnvScratch = [];
     let upBuffers = [];
-    function initChannels(n) {
-      ch.length = 0;
+    function buildChannels(n, factor) {
+      const set = [];
       for (let i = 0; i < n; i++) {
-        ch.push({ os: createPolyphaseOversampler(), env: 1, ring: new Float32Array(0), wp: 0, fill: 0 });
+        const c = { os: createPolyphaseOversampler(), env: 1, ring: new Float32Array(ringCap), wp: 0, fill: 0 };
+        c.os.prepare(sampleRate2, factor);
+        set.push(c);
       }
+      return set;
     }
     function computeEffectivePeaks(s, totalEp) {
       const ringStart = s.wp - totalEp & ringMask;
@@ -1905,15 +1910,26 @@
         sampleRate2 = clamp(sr, 8e3, 192e3);
         os = osFactor;
         const maxBs = Math.max(1, maxBlockSize);
-        initChannels(Math.max(1, channelCount));
         const maxLaOvs = Math.round(MAX_LA_MS / 1e3 * sampleRate2) * OS_MAX;
         ringCap = nextPow2(maxLaOvs + OS_MAX * maxBs);
         ringMask = ringCap - 1;
-        for (const s of ch) {
-          s.os.prepare(sampleRate2, os);
-          s.ring = new Float32Array(ringCap);
+        const cc = Math.max(1, channelCount);
+        for (const f of OS_FACTORS) {
+          const set = buildChannels(cc, f);
+          chByFactor[f] = set;
         }
+        ch = chByFactor[os];
         prepared = true;
+      },
+      setOversampleFactor(factor) {
+        if (!prepared) return;
+        if (factor !== 1 && factor !== 2 && factor !== 4 && factor !== 8) return;
+        if (factor === os) return;
+        const nextSet = chByFactor[factor];
+        if (!nextSet) return;
+        for (let c = 0; c < ch.length; c++) nextSet[c].env = ch[c].env;
+        os = factor;
+        ch = nextSet;
       },
       process(channels, frameCount) {
         if (!prepared || frameCount <= 0 || ch.length === 0) return;
@@ -1936,12 +1952,15 @@
         }
       },
       reset() {
-        for (const s of ch) {
-          s.env = 1;
-          s.wp = 0;
-          s.fill = 0;
-          s.ring.fill(0);
-          s.os.reset();
+        for (const set of Object.values(chByFactor)) {
+          if (!set) continue;
+          for (const s of set) {
+            s.env = 1;
+            s.wp = 0;
+            s.fill = 0;
+            s.ring.fill(0);
+            s.os.reset();
+          }
         }
       },
       getLatencySamples() {
@@ -3915,7 +3934,7 @@
       const q = state.global.quality;
       if (prepared && q !== limiterQuality) {
         limiterQuality = q;
-        safetyLimiter.prepare(sampleRate2, channelCount, preparedMaxBs, pickOversampleFactor(q));
+        safetyLimiter.setOversampleFactor(pickOversampleFactor(q));
       }
       const tier = pickQualityTier(q);
       if (prepared && tier !== lastQualityTier) {

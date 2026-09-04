@@ -377,3 +377,83 @@ describe("Ozvena hardening — sample-rate robustness", () => {
     }
   });
 });
+
+describe("Ozvena hardening — quality switches are scalar-only on the audio thread", () => {
+  it("cycling all four quality tiers updates the reported latency and stays finite", () => {
+    // Pre-fix, every quality change called safetyLimiter.prepare() INSIDE
+    // the realtime path — allocating and zeroing the oversampler rings on
+    // the audio thread (dropout risk + envelope-reset click). The limiter
+    // now preallocates all four factor states in prepare() and the switch
+    // is a pointer swap; the latency report must still track the factor
+    // (lookahead + per-factor group delay).
+    const proc = new Processor();
+    const burst = noiseBurstThenSilence();
+    render(proc, burst, 0.2);
+    const latencies: number[] = [];
+    for (const q of [0, 1, 2, 3, 1, 0]) {
+      proc.port.posted.length = 0;
+      sendParam(proc, "global.quality", q);
+      const out = render(proc, burst, 0.2);
+      expect(countNonFinite(out)).toBe(0);
+      const lat = proc.port.posted.filter((m) => m.type === "latency").pop();
+      if (lat && typeof lat.samples === "number") latencies.push(lat.samples);
+    }
+    // eco/standard/high/render oversamplers have distinct group delays.
+    expect(new Set(latencies).size).toBeGreaterThanOrEqual(3);
+  });
+
+  it("rapid quality flicker while rendering keeps the output finite and bounded", () => {
+    const proc = new Processor();
+    setTime(0);
+    const rng = makeRng(424242);
+    let nonFinite = 0;
+    let maxAbs = 0;
+    const blocks = Math.ceil((1.0 * SR) / BLOCK);
+    for (let b = 0; b < blocks; b++) {
+      if (b % 8 === 0) sendParam(proc, "global.quality", (b / 8) % 4); // ~47 switches/s
+      const inL = new Float32Array(BLOCK);
+      const inR = new Float32Array(BLOCK);
+      for (let i = 0; i < BLOCK; i++) {
+        inL[i] = (rng() * 2 - 1) * 0.8;
+        inR[i] = (rng() * 2 - 1) * 0.8;
+      }
+      const outL = new Float32Array(BLOCK);
+      const outR = new Float32Array(BLOCK);
+      proc.process([[inL, inR]], [[outL, outR]]);
+      for (let i = 0; i < BLOCK; i++) {
+        if (!Number.isFinite(outL[i]) || !Number.isFinite(outR[i])) nonFinite++;
+        maxAbs = Math.max(maxAbs, Math.abs(outL[i]), Math.abs(outR[i]));
+      }
+      setTime(((b + 1) * BLOCK) / SR);
+    }
+    expect(nonFinite).toBe(0);
+    expect(maxAbs).toBeLessThanOrEqual(4); // limiter ceiling -0.3 dBFS + margin
+  });
+
+  it("switching quality mid-tail does not click via an envelope reset (gain carried)", () => {
+    // Drive the limiter into gain reduction, then switch factors: the new
+    // active set must inherit the reduction envelope instead of jumping
+    // back to unity.
+    const proc = new Processor();
+    sendParam(proc, "global.quality", 2);
+    const loud = (l: Float32Array, r: Float32Array, sample: number) => {
+      if (sample % BLOCK === 0) {
+        l[0] = 1.0;
+        r[0] = -1.0;
+      }
+    };
+    render(proc, loud, 0.3); // limiter engaged
+    const out = render(proc, loud, 0.1);
+    let peak = 0;
+    for (const ch of out) for (let i = 0; i < ch.length; i++) peak = Math.max(peak, Math.abs(ch[i]));
+    sendParam(proc, "global.quality", 3); // factor switch WHILE limiting
+    const out2 = render(proc, loud, 0.02);
+    let peak2 = 0;
+    for (const ch of out2) for (let i = 0; i < ch.length; i++) peak2 = Math.max(peak2, Math.abs(ch[i]));
+    // With the carry-over, the first blocks after the switch stay near the
+    // engaged reduction; without it, output would jump to the full-scale
+    // input (≈1.0) for the release duration.
+    expect(peak).toBeLessThan(0.99);
+    expect(peak2).toBeLessThan(1.0);
+  });
+});

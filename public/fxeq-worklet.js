@@ -2108,6 +2108,7 @@
             if (type === 1) {
               const wob = c === 0 ? wobbleLfoBufL[i] : wobbleLfoBufR[i];
               readOffset = delaySamples + wob * 12;
+              if (readOffset < 8) readOffset = 8;
             }
             let readPos = wi - readOffset;
             readPos = (readPos % bufLen + bufLen) % bufLen;
@@ -3561,10 +3562,9 @@
           for (let c = 0; c < channelCount; c++) {
             scratch[c].set(bandChannels[c].subarray(0, frameCount));
           }
+          bands[b].process(scratch, frameCount, sidechainChannels ?? void 0);
           if (anySolo && bands[b].getBandParam("solo") < 0.5) {
             for (let c = 0; c < channelCount; c++) scratch[c].fill(0, 0, frameCount);
-          } else {
-            bands[b].process(scratch, frameCount, sidechainChannels ?? void 0);
           }
           const bandLat = Math.min(
             ALIGN_MAX,

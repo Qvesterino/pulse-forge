@@ -154,6 +154,7 @@ function yMapToPad(m: unknown): DrumPad {
 function yMapToEffect(m: unknown): EffectInstance {
   const map = m as Y.Map<unknown>;
   const rawSteps = map.get("steps");
+  const rawDeviceState = map.get("deviceState");
   return {
     id: map.get("id") as string,
     type: map.get("type") as any,
@@ -161,6 +162,10 @@ function yMapToEffect(m: unknown): EffectInstance {
     params: yMapToRecord(map.get("params") as Y.Map<unknown>),
     steps: Array.isArray(rawSteps) ? rawSteps.map((v) => Number(v) || 0) : undefined,
     sidechainTrackId: map.get("sidechainTrackId") as string | undefined,
+    deviceState:
+      rawDeviceState && typeof rawDeviceState === "object"
+        ? (plainValue(rawDeviceState) as EffectInstance["deviceState"])
+        : undefined,
   };
 }
 
@@ -569,6 +574,8 @@ function syncPadEntity(target: Y.Map<unknown>, pad: DrumPad): void {
 function syncEffectEntity(target: Y.Map<unknown>, fx: EffectInstance): void {
   mirrorScalars(target, fx, EFFECT_SCALARS);
   syncPlainFields(ensureChildMap(target, "params"), fx.params);
+  // Plugin editor state (A/B snapshots) — plain JSON blob, replaced on change.
+  syncPlainJsonField(target, "deviceState", fx.deviceState);
   // Step-gate pattern: replaced wholesale on every sync (small array).
   if (fx.steps) {
     const steps = ensureChildArray(target, "steps");
@@ -926,6 +933,7 @@ function effectToYMap(fx: EffectInstance): Y.Map<unknown> {
   }
   if (fx.steps) m.set("steps", [...fx.steps]);
   if (fx.sidechainTrackId) m.set("sidechainTrackId", fx.sidechainTrackId);
+  if (fx.deviceState) m.set("deviceState", plainValue(fx.deviceState));
   return m;
 }
 

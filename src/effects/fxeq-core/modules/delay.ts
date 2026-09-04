@@ -180,6 +180,13 @@ export function createDelayModule(params?: Record<string, number>): ModuleProces
           if (type === 1) {
             const wob = c === 0 ? wobbleLfoBufL[i] : wobbleLfoBufR[i];
             readOffset = delaySamples + wob * 12; // ±12 samples wobble
+            // The modulated read must never overtake the write head: at the
+            // 1 ms minimum delay on low-rate devices (delaySamples < 12) a
+            // negative offset wraps the ring and plays ~2 s old content.
+            // Floor = 8 keeps the hermite window (readPos+3) safely behind
+            // the head; normal delays (≥ 32 samples at 44.1 kHz+) never
+            // reach the floor, so the audible wobble is unchanged.
+            if (readOffset < 8) readOffset = 8;
           }
           let readPos = wi - readOffset;
           // Wrap and interpolate.
