@@ -278,6 +278,8 @@ function Device({
       <Suspense fallback={<div className="fx-panel-loading">Loading editor…</div>}>
         {fx.type === "fxeq" && (
           <FxEqPanel
+            trackId={track.id}
+            fxId={fx.id}
             params={fx.params}
             degraded={!!fallbackReason}
             onParam={(fullId, value) =>

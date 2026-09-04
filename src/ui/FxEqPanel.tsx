@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FXEQ_PRESETS } from "../effects/fxeq-core/core/presets";
 import { buildSchema, type FxEqSchema } from "../effects/fxeq-core/core/parameterSchema";
+import { useServices } from "./context";
 import { Slider } from "./controls";
 
 const MODULE_ORDER = ["sat", "lofi", "mod", "delay", "rev", "dyn"] as const;
@@ -41,16 +42,21 @@ function freqToX(freqHz: number, width: number): number {
  * generated from the vendored parameter schema (ranges + defaults included).
  */
 export function FxEqPanel({
+  trackId,
+  fxId,
   params,
   degraded,
   onParam,
   onApplyPreset,
 }: {
+  trackId: string;
+  fxId: string;
   params: Record<string, number>;
   degraded?: boolean;
   onParam: (fullId: string, value: number) => void;
   onApplyPreset: (presetName: string, presetParams: Record<string, number>) => void;
 }) {
+  const services = useServices();
   const bandCount = Math.max(2, Math.min(6, Math.round(params.bandCount ?? 6)));
   const schema: FxEqSchema = useMemo(() => buildSchema(bandCount), [bandCount]);
   const [selectedBand, setSelectedBand] = useState(1);
@@ -160,6 +166,64 @@ export function FxEqPanel({
     }
   };
 
+  // ── LIVE BAND PEAKS: poll the worklet snapshot, draw on canvas, no re-renders ──
+  // Mirrors the UltinaPanel meter loop: the engine gates the worklet's
+  // metering path on mount/unmount, so a closed FXEQ panel costs zero
+  // band-peak traffic on the audio thread's message port.
+  const peaksCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const peaksRef = useRef<Float32Array | null>(null);
+  const edgesRef = useRef<number[]>([AXIS_MIN_HZ, AXIS_MAX_HZ]);
+  edgesRef.current = [AXIS_MIN_HZ, ...splits, AXIS_MAX_HZ];
+
+  useEffect(() => {
+    const engineWithMeters = services.engine as typeof services.engine & {
+      getFxMeters?: (trackId: string, fxId: string) => unknown;
+      setFxMetersEnabled?: (trackId: string, fxId: string, enabled: boolean) => void;
+    };
+    engineWithMeters.setFxMetersEnabled?.(trackId, fxId, true);
+
+    const drawPeaks = () => {
+      const canvas = peaksCanvasRef.current;
+      if (!canvas) return;
+      const ctx2d = canvas.getContext("2d");
+      if (!ctx2d) return;
+      const dpr = window.devicePixelRatio || 1;
+      const w = (canvas.width = canvas.offsetWidth * dpr);
+      const h = (canvas.height = canvas.offsetHeight * dpr);
+      ctx2d.clearRect(0, 0, w, h);
+      const edges = edgesRef.current;
+      const peaks = peaksRef.current;
+      for (let b = 0; b < edges.length - 1; b++) {
+        const x0 = freqToX(edges[b], w);
+        const x1 = freqToX(edges[b + 1], w);
+        ctx2d.fillStyle = "rgba(255,255,255,0.04)";
+        ctx2d.fillRect(x0, 0, x1 - x0, h);
+        const peak = peaks && b < peaks.length ? peaks[b] : 0;
+        if (peak > 1e-6) {
+          const db = 20 * Math.log10(peak);
+          const norm = Math.max(0, Math.min(1, (db + 60) / 60)); // −60 dB … 0 dB
+          const barH = Math.max(2 * dpr, norm * h);
+          ctx2d.fillStyle = db > -3 ? "#ef4444" : db > -12 ? "#f59e0b" : "#4ade80";
+          ctx2d.fillRect(x0 + dpr, h - barH, x1 - x0 - 2 * dpr, barH);
+        }
+      }
+    };
+
+    drawPeaks();
+    const id = setInterval(() => {
+      const meters = engineWithMeters.getFxMeters?.(trackId, fxId) as
+        | { bandPeaks?: Float32Array }
+        | null
+        | undefined;
+      peaksRef.current = meters?.bandPeaks ?? null;
+      drawPeaks();
+    }, 66);
+    return () => {
+      engineWithMeters.setFxMetersEnabled?.(trackId, fxId, false);
+      clearInterval(id);
+    };
+  }, [trackId, fxId, services]);
+
   // Selected band's module params, grouped per module (from the vendored schema).
   const bandModuleDefs = useMemo(() => {
     const groups: Record<string, { id: string; name: string; min: number; max: number; default: number; unit?: string }[]> = {};
@@ -225,6 +289,15 @@ export function FxEqPanel({
         onClick={(e) => selectBandAt(e.clientX, e.currentTarget)}
       >
         <canvas ref={canvasRef} className="fxeq-canvas" />
+      </div>
+
+      <div
+        className="fxeq-peaks-wrap"
+        role="img"
+        aria-label="FXEQ band peaks"
+        title="Live per-band peak level — which band is playing hot right now"
+      >
+        <canvas ref={peaksCanvasRef} className="fxeq-peaks-canvas" />
       </div>
 
       {/* Band scalars: solo / mute / gain — hear and level just this band. */}

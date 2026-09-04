@@ -118,3 +118,70 @@ describe("fxeq node async latency reporting", () => {
     expect(fires).toBe(0);
   });
 });
+
+describe("fxeq node band-peak metering contract", () => {
+  class CapturingNode extends FakeAudioWorkletNode {
+    static last: CapturingNode | null = null;
+    constructor(ctx: unknown, name: string, opts: Record<string, unknown>) {
+      super(ctx, name, opts);
+      CapturingNode.last = this;
+    }
+  }
+
+  afterEach(() => {
+    CapturingNode.last = null;
+  });
+
+  function makeRt() {
+    vi.stubGlobal("AudioWorkletNode", CapturingNode);
+    return createFxEqNode(fakeCtx(), instance(), {});
+  }
+
+  it("getMeters is null until a bandPeaks snapshot arrives", () => {
+    const rt = makeRt();
+    expect(rt.getMeters?.()).toBeNull();
+    rt.dispose();
+  });
+
+  it("setMetersEnabled forwards the gate over the port", () => {
+    const rt = makeRt();
+    const port = CapturingNode.last!.port;
+    port.posted.length = 0;
+    rt.setMetersEnabled!(true);
+    rt.setMetersEnabled!(false);
+    expect(port.posted).toEqual([
+      { type: "setMetersEnabled", enabled: true },
+      { type: "setMetersEnabled", enabled: false },
+    ]);
+    rt.dispose();
+  });
+
+  it("bandPeaks messages surface through getMeters, and dispose clears them", () => {
+    const rt = makeRt();
+    const port = CapturingNode.last!.port;
+    const peaks = new Float32Array([0.1, 0.5, 0.9, 0.2]);
+    port.onmessage!({ data: { type: "bandPeaks", peaks } });
+    expect(rt.getMeters?.()).toEqual({ bandPeaks: peaks });
+
+    // A later snapshot replaces the previous one (latest wins).
+    const newer = new Float32Array([0.3]);
+    port.onmessage!({ data: { type: "bandPeaks", peaks: newer } });
+    expect(rt.getMeters?.()).toEqual({ bandPeaks: newer });
+
+    // Non-float garbage is ignored.
+    port.onmessage!({ data: { type: "bandPeaks", peaks: "nope" } });
+    expect(rt.getMeters?.()).toEqual({ bandPeaks: newer });
+
+    rt.dispose();
+    expect(rt.getMeters?.()).toBeNull();
+  });
+
+  it("setMetersEnabled after dispose is a no-op", () => {
+    const rt = makeRt();
+    const port = CapturingNode.last!.port;
+    rt.dispose();
+    port.posted.length = 0;
+    expect(() => rt.setMetersEnabled!(true)).not.toThrow();
+    expect(port.posted).toEqual([]);
+  });
+});

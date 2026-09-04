@@ -17,6 +17,10 @@ class FxEqWorkletProcessor extends AudioWorkletProcessor {
   proc = createFxEqProcessor();
   /** Processing scratch (in-place DSP), copied to/from the graph buffers. */
   scratch = [new Float32Array(MAX_BLOCK), new Float32Array(MAX_BLOCK)];
+  /** Band-peak metering: gated by the host panel, throttled to ~20 Hz. */
+  metersEnabled = false;
+  blockCount = 0;
+  meterDivider = Math.max(1, Math.round((sampleRate / MAX_BLOCK) / 20));
 
   constructor(options) {
     super();
@@ -38,6 +42,8 @@ class FxEqWorkletProcessor extends AudioWorkletProcessor {
         this.postLatency();
       } else if (msg.type === "reset") {
         this.proc.reset();
+      } else if (msg.type === "setMetersEnabled") {
+        this.metersEnabled = !!msg.enabled;
       }
     };
   }
@@ -68,6 +74,13 @@ class FxEqWorkletProcessor extends AudioWorkletProcessor {
     for (let c = 0; c < CHANNELS; c++) {
       const outCh = output[c];
       if (outCh) outCh.set(this.scratch[c].subarray(0, frames));
+    }
+    // Band-peak metering for the panel — gated (closed panel costs zero)
+    // and throttled to ~20 Hz. getBandPeaks() reads the per-band peaks the
+    // DSP already tracked during process(); no extra analysis on the audio
+    // thread.
+    if (this.metersEnabled && this.blockCount++ % this.meterDivider === 0) {
+      this.port.postMessage({ type: "bandPeaks", peaks: this.proc.getBandPeaks() });
     }
     return true;
   }

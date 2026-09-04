@@ -7221,6 +7221,21 @@ html {
 
 /* ── FXEQ band scalars (solo/mute/gain) ─────────────────────────────────── */
 
+.fxeq-peaks-wrap {
+  height: 14px;
+  margin-top: 4px;
+  border-radius: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.fxeq-peaks-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
 .fxeq-band-scalars {
   display: flex;
   gap: 6px;

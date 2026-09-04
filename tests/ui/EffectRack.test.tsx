@@ -89,6 +89,8 @@ describe("EffectRack — FXEQ panel", () => {
     // The panel is a lazy chunk — wait for it to load.
     expect(await screen.findByLabelText("FXEQ preset")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "FXEQ band map" })).toBeInTheDocument();
+    // Live band-peak meter strip sits under the band map.
+    expect(screen.getByRole("img", { name: "FXEQ band peaks" })).toBeInTheDocument();
     // bandCount 4 → B1..B4 chips (and no B5).
     expect(screen.getByRole("button", { name: "B4" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "B5" })).toBeNull();

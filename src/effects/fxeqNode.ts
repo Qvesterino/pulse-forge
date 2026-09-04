@@ -63,13 +63,19 @@ export function createFxEqNode(
   // subscribes via onLatencyChange to re-sync PDC the moment it lands
   // (syncPdc would otherwise compensate 0 until the next document sync).
   let latencySamples = 0;
+  // Band-peak metering snapshot — pushed by the worklet only while the
+  // panel has metering enabled (see setMetersEnabled), polled by the panel
+  // through getMeters().
+  let bandPeaks: Float32Array | null = null;
   const latencyListeners = new Set<() => void>();
   let disposed = false;
   node.port.onmessage = (event) => {
-    const msg = event.data as { type?: string; samples?: number } | null;
+    const msg = event.data as { type?: string; samples?: number; peaks?: Float32Array } | null;
     if (msg?.type === "latency" && typeof msg.samples === "number") {
       latencySamples = msg.samples;
       if (!disposed) for (const listener of latencyListeners) listener();
+    } else if (msg?.type === "bandPeaks" && msg.peaks instanceof Float32Array) {
+      bandPeaks = msg.peaks;
     }
   };
 
@@ -82,6 +88,11 @@ export function createFxEqNode(
       return () => {
         latencyListeners.delete(listener);
       };
+    },
+    getMeters: () => (bandPeaks ? { bandPeaks } : null),
+    setMetersEnabled(enabled: boolean) {
+      if (disposed) return;
+      node.port.postMessage({ type: "setMetersEnabled", enabled });
     },
     setParameter(id: string, value: number) {
       // The worklet's setParameter validates ids — forward everything,
@@ -96,6 +107,7 @@ export function createFxEqNode(
     dispose() {
       disposed = true;
       latencyListeners.clear();
+      bandPeaks = null;
       node.port.onmessage = null;
       try {
         node.port.close();
