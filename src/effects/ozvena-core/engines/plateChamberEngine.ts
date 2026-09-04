@@ -10,6 +10,12 @@
  * Applied transforms (mechanical, semantics-preserving):
  *  - type-only specifiers marked with "type" for verbatimModuleSyntax
  *    (Pulse Forge tsconfig is stricter than upstream).
+ * LOCAL HARDENING (2026-09, Pulse Forge audit): this copy carries fixes NOT
+ * yet present in the last vendored upstream snapshot — global gain clamps
+ * (ozvenaProcessor) and the shimmer feedback stability guard (both
+ * engines). Re-vendoring from a stale upstream will revert them; sync the
+ * fixes upstream FIRST. Regression coverage: tests/ozvena-hardening.test.ts.
+
  */
 // ═══════════════════════════════════════════════════════════
 // Ozvena — Plate / Room / Medium Chamber Engine (E2)
@@ -161,6 +167,12 @@ export function createPlateChamberEngine(): PlateChamberEngine {
   const shW = [0, 0];
   const shPhase = [0, 0];
   let shAmt = 0;
+  // Shimmer loop-stability guard scalars (see recompute): injection gain
+  // and the direct-feedback weight that keeps the per-pass loop gain < 1.
+  // At shAmt === 0 both are exact no-ops (dirW 1, injection 0).
+  let shInj = 0;
+  let shDirW = 1;
+  let shDirWFreeze = 1;
   let shQuality = 1;
   let shSingle = false;
   let freeze_ = false;
@@ -263,6 +275,26 @@ export function createPlateChamberEngine(): PlateChamberEngine {
     const fbBass = Math.pow(0.001, (avgLen / (decaySec * bassMult)) / sampleRate);
     bassGain = q32(clamp(fbBass / feedbackGain, 0.25, 2.5));
     bassAlpha = q32(1 - Math.exp((-TAU * BASS_SHELF_HZ) / sampleRate));
+
+    // SHIMMER STABILITY GUARD. The octave-up grain is injected INSIDE the
+    // feedback loop (eff = direct + inj·shifted, then ×fb), and the
+    // Householder matrix passes the all-lines-equal (common-mode)
+    // component — exactly what the injection creates — with unity gain,
+    // so the worst-case per-pass loop gain is fb·(dirW + √2·inj): the
+    // dual grain taps read the SAME buffer W/2 apart, and octave-up
+    // feedback correlates them, giving a coherent amplitude sum g0+g1 ≤
+    // √2 (not the decorrelated √(g0²+g1²) = 1). Measured: unguarded,
+    // shimmer ≥ ~0.35 at most decay times runs away and overflows the
+    // float32 delay lines to Inf/NaN within seconds (the output limiter
+    // cannot see the internal loop). dirW attenuates the direct feedback
+    // just enough to keep the loop decaying (bass shelf included via
+    // fbMax; freeze runs at unity). Below the stability boundary dirW ===
+    // 1 and the audio is bit-identical to the unguarded engine.
+    shInj = 0.5 * shAmt;
+    const fbMax = Math.max(feedbackGain, feedbackGain * bassGain);
+    shDirW =
+      shAmt > 0 ? Math.min(1, 0.995 / Math.max(fbMax, 1e-6) - Math.SQRT2 * shInj) : 1;
+    shDirWFreeze = shAmt > 0 ? Math.min(1, 0.995 - Math.SQRT2 * shInj) : 1;
 
     attackAlpha = q32(1 - Math.exp(-1 / Math.max(0.001, (params.attack / 1000) * sampleRate)));
 
@@ -527,6 +559,9 @@ export function createPlateChamberEngine(): PlateChamberEngine {
 
       const fb = feedbackGain;
       const fbEff = freeze_ ? 1.0 : fb;
+      // Direct-feedback weight from the shimmer stability guard (1.0 when
+      // shimmer is off or inside the stable region — bit-identical path).
+      const shDirWCur = freeze_ ? shDirWFreeze : shDirW;
       const t = algoTuning(params.algo);
       const effectiveDepth = modDepthSamples * t.modDepthMult;
       // Safety net: the table is normally built on the message thread
@@ -654,10 +689,13 @@ export function createPlateChamberEngine(): PlateChamberEngine {
           for (let l = 0; l < FDN_LINES; l++) {
             const direct = width * damped[l] + (1 - width) * 0.5 * (damped[l] + dampedO[l]);
             // Shimmer INJECTS the octave-up grain as extra loop input —
-            // the direct feedback stays intact so loop gain never exceeds
-            // fb (stable), and the pitched content re-enters the shifter
-            // on later passes (the classic cascading shimmer buildup).
-            const eff = direct + shAmt * shiftedC[c] * 0.5;
+            // the pitched content re-enters the shifter on later passes
+            // (the classic cascading shimmer buildup). The direct feedback
+            // weight comes from the stability guard in recompute(): the
+            // injection is inside the loop, so without the guard the
+            // per-pass gain exceeds 1 and the lines overflow (see
+            // recompute). At zero shimmer this reduces to `direct`.
+            const eff = shDirWCur * direct + shInj * shiftedC[c];
             blp[l] += bassAlpha * (eff - blp[l]);
             blp[l] = flushDenormal(blp[l]);
             const shelved = eff + (bassGain - 1) * sanitize(blp[l]);

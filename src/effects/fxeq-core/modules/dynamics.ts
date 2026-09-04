@@ -156,6 +156,19 @@ export function createDynamicsModule(params?: Record<string, number>): ModulePro
   // M/S scratch buffers.
   let msBufM: Float32Array = new Float32Array(0);
   let msBufS: Float32Array = new Float32Array(0);
+  // Reused M/S parameter bundle — process() runs on the audio thread and
+  // must not allocate a fresh object literal per block.
+  const msParams: MSProcessParams = {
+    threshDb: 0,
+    ratio: 1,
+    attackCoeff: 1,
+    releaseCoeff: 1,
+    kneeDb: 0,
+    makeupLinear: 1,
+    wetGain: 1,
+    isExpander: false,
+    isDeEsser: false,
+  };
 
   function allocChannels(channelCount: number, maxBlockSize: number): void {
     envDb = [];
@@ -365,17 +378,16 @@ export function createDynamicsModule(params?: Record<string, number>): ModulePro
       }
 
       if (stereoMode === 1 && numCh >= 2) {
-        processMidSide(channels, frameCount, {
-          threshDb,
-          ratio,
-          attackCoeff,
-          releaseCoeff,
-          kneeDb,
-          makeupLinear,
-          wetGain,
-          isExpander,
-          isDeEsser,
-        });
+        msParams.threshDb = threshDb;
+        msParams.ratio = ratio;
+        msParams.attackCoeff = attackCoeff;
+        msParams.releaseCoeff = releaseCoeff;
+        msParams.kneeDb = kneeDb;
+        msParams.makeupLinear = makeupLinear;
+        msParams.wetGain = wetGain;
+        msParams.isExpander = isExpander;
+        msParams.isDeEsser = isDeEsser;
+        processMidSide(channels, frameCount, msParams);
         return;
       }
 

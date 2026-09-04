@@ -76,7 +76,16 @@ export function createFxEqProcessor(params?: Record<string, number>): FxEqProces
   let values: Record<string, number> = { ...schema.defaultParams };
   if (params) {
     for (const id of Object.keys(values)) {
-      if (params[id] !== undefined) values[id] = params[id];
+      const incoming = params[id];
+      if (incoming === undefined) continue;
+      // Same boundary validation as loadParameters: constructor params can
+      // arrive from host state, and per-block consumers (input/output gain)
+      // read `values` raw — an out-of-range value must never land there.
+      if (typeof incoming !== "number" || !Number.isFinite(incoming)) continue;
+      const def = schema.defById.get(id);
+      values[id] = def
+        ? Math.max(def.minValue, Math.min(def.maxValue, incoming))
+        : incoming;
     }
   }
 
@@ -480,9 +489,13 @@ export function createFxEqProcessor(params?: Record<string, number>): FxEqProces
     setParameter(id, value) {
       const route = schema.routes.get(id);
       if (!route) return;
-      // Same non-finite guard as loadParameters (audit C4): automation
-      // curves must not be able to poison band scalar state.
+      // Same guard as loadParameters (audit C4): automation curves must not
+      // be able to poison band scalar state — and the same schema-range
+      // clamp: per-block consumers (input/output gain) read `values` raw,
+      // so an out-of-range value must never land in the flat store.
       if (typeof value !== "number" || !Number.isFinite(value)) return;
+      const def = schema.defById.get(id);
+      if (def) value = Math.max(def.minValue, Math.min(def.maxValue, value));
       // Record previous value for undo.
       const oldValue = values[id] ?? 0;
       if (oldValue !== value) history.push(id, oldValue);
@@ -560,13 +573,17 @@ export function createFxEqProcessor(params?: Record<string, number>): FxEqProces
       // Precompile once: resolve every target id to its route snapshot and
       // capture the start value. Non-finite targets are dropped here so a
       // corrupt morph cannot poison DSP state mid-interpolation (same guard
-      // as loadParameters). Unknown ids are skipped, matching setParameter.
+      // as loadParameters), and the schema range is clamped so interpolated
+      // `values` stay valid for per-block raw consumers (same clamp as
+      // setParameter). Unknown ids are skipped, matching setParameter.
       const entries: MorphEntry[] = [];
       for (const id of Object.keys(target)) {
-        const end = target[id];
+        let end = target[id];
         if (typeof end !== "number" || !Number.isFinite(end)) continue;
         const route = schema.routes.get(id);
         if (!route) continue;
+        const def = schema.defById.get(id);
+        if (def) end = Math.max(def.minValue, Math.min(def.maxValue, end));
         entries.push({ id, route, start: values[id] ?? 0, end });
       }
       morphEntries = entries;

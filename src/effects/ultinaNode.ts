@@ -75,7 +75,19 @@ export function createUltinaNode(
     },
     getMeters: () => meters,
     setParameter(id: string, value: number) {
+      if (disposed) return;
       node.port.postMessage({ type: "param", id, value });
+    },
+    /**
+     * Time-stamped parameter set (automation lanes, offline render). The
+     * worklet queues the event and applies it when the render clock reaches
+     * `when` — port messages have no timing of their own, so without this
+     * an offline export collapses an entire automation lane to the final
+     * point's value (every point overwrites the previous one pre-render).
+     */
+    setParameterAt(id: string, value: number, when: number) {
+      if (disposed) return;
+      node.port.postMessage({ type: "paramAt", id, value, when });
     },
     setMetersEnabled(enabled: boolean) {
       if (disposed) return;

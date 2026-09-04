@@ -37,6 +37,7 @@ import {
   type BiquadState,
   createBiquad,
   resetBiquad,
+  clamp,
   setLowPass,
   setHighPass,
   setBell,
@@ -361,7 +362,9 @@ export class EqModuleProcessor implements UltinaModuleProcessor {
       const bandSidechain = (params[keys.sidechainEnabled] ?? 0) >= 0.5;
       const dynAttack = params[keys.dynamicAttackMs] ?? 15;
       const dynRelease = params[keys.dynamicReleaseMs] ?? 150;
-      const dynRatio = params[keys.dynamicRatio] ?? 3;
+      // Clamp like compModule: a ratio ≤ 0 makes the slope 1-1/ratio ±Inf,
+      // saturating the dynamic-band gain reduction and silencing the band.
+      const dynRatio = clamp(params[keys.dynamicRatio] ?? 3, 1, 20);
       const dynKnee = params[keys.dynamicKneeDb] ?? 0;
 
       // Update filter coefficients if parameters changed

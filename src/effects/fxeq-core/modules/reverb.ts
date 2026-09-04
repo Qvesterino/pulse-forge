@@ -62,6 +62,19 @@ export function createReverbModule(params?: Record<string, number>): ModuleProce
   let dampAlpha = 0.5; // HF damping
   let hpAlpha = 0; // LF cut
   let srScale = 1;
+  /** Physical per-line FDN capacity last allocated (samples). */
+  let fdnCapacity = 0;
+
+  /**
+   * Per-line physical capacity required for the CURRENT sample rate: the
+   * longest base length × the largest lenMult (1.4, hall) × rate scale.
+   * Shared by allocChannels and the re-prepare guard so they can never
+   * disagree about what "big enough" means.
+   */
+  function requiredFdnCapacity(): number {
+    const maxSrScale = (sampleRate / 44100) * 1.4;
+    return Math.max(8, Math.round(BASE_LENGTHS_R[3] * maxSrScale)) + 1;
+  }
 
   // De-click smoothing for the feedback gains (decayMs target). A decay
   // change multiplies every FDN tap by a new gain instantly, which zippers
@@ -103,8 +116,8 @@ export function createReverbModule(params?: Record<string, number>): ModuleProce
     // length (longest base length × largest lenMult 1.4 × rate scale).
     // Type changes then only move the logical delay lengths — no buffer
     // reallocation, no state wipe on the audio thread.
-    const maxSrScale = (sampleRate / 44100) * 1.4;
-    const maxLen = Math.max(8, Math.round(BASE_LENGTHS_R[3] * maxSrScale)) + 1;
+    const maxLen = requiredFdnCapacity();
+    fdnCapacity = maxLen;
     lines.length = 0;
     writeIdx.length = 0;
     lpState.length = 0;
@@ -215,8 +228,14 @@ export function createReverbModule(params?: Record<string, number>): ModuleProce
       fbSmAlpha = 1 - Math.exp(-1 / (0.015 * sampleRate));
       fbSmPrimed = false;
       allocPredelay(Math.max(1, channelCount));
-      // Ensure channel count matches.
-      if (lines.length !== Math.max(1, channelCount)) {
+      // Ensure channel count matches — and that the physical FDN capacity
+      // still covers the logical lengths. recompute() above already scaled
+      // `lengths` to the NEW sample rate, so a re-prepare at a higher rate
+      // with the SAME channel count must reallocate too: reading past the
+      // old capacity yields undefined, which NaN-poisons the tank (and via
+      // the wet sum the whole processor output) once the write cursor
+      // crosses the old capacity.
+      if (lines.length !== Math.max(1, channelCount) || fdnCapacity < requiredFdnCapacity()) {
         allocChannels(Math.max(1, channelCount));
       }
       crossFeedPrev = [];

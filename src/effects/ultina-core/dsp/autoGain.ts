@@ -109,6 +109,16 @@ export class AutoGainController {
 
   /** Set whether auto-gain is enabled. */
   setEnabled(enabled: boolean): void {
+    // Re-arm the startup delay on a disabled→enabled transition: the LUFS
+    // meter stops being fed while meters AND gain-match are both off, so its
+    // short-term window can hold minutes-old mean squares. The startup delay
+    // is what lets fresh blocks repopulate the window before the integrator
+    // starts steering the OUTPUT gain — without re-arming, enabling
+    // gain-match mid-session integrates error against a stale reading.
+    if (enabled && !this.enabled) {
+      this.msSinceStart = 0;
+      this.msSinceLastUpdate = 0;
+    }
     this.enabled = enabled;
     if (!enabled) {
       // Gradually return to zero — handled by smoother target change
@@ -198,15 +208,26 @@ export class AutoGainController {
     }
   }
 
+  /** Pooled reading — getReading() runs on the audio thread (meter cadence)
+   * inside UltinaProcessor.getMeters(); callers copy the scalars out
+   * immediately (the next call overwrites every field). */
+  private pooledReading: AutoGainReading = {
+    gainCorrectionDb: 0,
+    errorDb: 0,
+    currentLufs: -70,
+    targetLufs: -14,
+    active: false,
+  };
+
   /** Get current auto-gain state for metering/display. */
   getReading(): AutoGainReading {
-    return {
-      gainCorrectionDb: this.smoothedGainDb,
-      errorDb: this.currentErrorDb,
-      currentLufs: this.currentLufs,
-      targetLufs: this.targetLufs,
-      active: this.enabled && this.msSinceStart >= STARTUP_DELAY_MS,
-    };
+    const r = this.pooledReading;
+    r.gainCorrectionDb = this.smoothedGainDb;
+    r.errorDb = this.currentErrorDb;
+    r.currentLufs = this.currentLufs;
+    r.targetLufs = this.targetLufs;
+    r.active = this.enabled && this.msSinceStart >= STARTUP_DELAY_MS;
+    return r;
   }
 
   /** Get the raw (unsmoothed) gain correction target in dB. */

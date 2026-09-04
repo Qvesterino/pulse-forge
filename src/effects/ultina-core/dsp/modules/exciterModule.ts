@@ -334,6 +334,10 @@ export class ExciterModuleProcessor implements UltinaModuleProcessor {
     if (inEnergy > 1e-10 && bandFrames > 0) {
       const ratio = outEnergy / inEnergy;
       this.harmonicContent[bandIdx] = 10 * Math.log10(Math.max(1e-10, ratio));
+    } else {
+      // Silent band: decay the meter toward 0 instead of freezing at the
+      // last spoken value (a stale reading would show harmonics in silence).
+      this.harmonicContent[bandIdx] *= 0.8;
     }
 
     // Measure output peak

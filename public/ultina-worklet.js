@@ -2116,6 +2116,10 @@
     }
     /** Set whether auto-gain is enabled. */
     setEnabled(enabled) {
+      if (enabled && !this.enabled) {
+        this.msSinceStart = 0;
+        this.msSinceLastUpdate = 0;
+      }
       this.enabled = enabled;
       if (!enabled) {
       }
@@ -2174,15 +2178,25 @@
         this.gainCorrectionDb = candidate;
       }
     }
+    /** Pooled reading — getReading() runs on the audio thread (meter cadence)
+     * inside UltinaProcessor.getMeters(); callers copy the scalars out
+     * immediately (the next call overwrites every field). */
+    pooledReading = {
+      gainCorrectionDb: 0,
+      errorDb: 0,
+      currentLufs: -70,
+      targetLufs: -14,
+      active: false
+    };
     /** Get current auto-gain state for metering/display. */
     getReading() {
-      return {
-        gainCorrectionDb: this.smoothedGainDb,
-        errorDb: this.currentErrorDb,
-        currentLufs: this.currentLufs,
-        targetLufs: this.targetLufs,
-        active: this.enabled && this.msSinceStart >= STARTUP_DELAY_MS
-      };
+      const r = this.pooledReading;
+      r.gainCorrectionDb = this.smoothedGainDb;
+      r.errorDb = this.currentErrorDb;
+      r.currentLufs = this.currentLufs;
+      r.targetLufs = this.targetLufs;
+      r.active = this.enabled && this.msSinceStart >= STARTUP_DELAY_MS;
+      return r;
     }
     /** Get the raw (unsmoothed) gain correction target in dB. */
     getRawGainCorrectionDb() {
@@ -2315,6 +2329,9 @@
      */
     unregister(instanceId) {
       this.entries.delete(instanceId);
+      for (const entry of this.entries.values()) {
+        entry.consumerStaleness.delete(instanceId);
+      }
     }
     /**
      * Publish spectral data for an instance.
@@ -2326,7 +2343,11 @@
     publish(instanceId, bandLevelsDb) {
       const entry = this.entries.get(instanceId);
       if (entry) {
-        entry.bandLevelsDb.set(bandLevelsDb.subarray(0, SPECTRAL_BANDS));
+        if (bandLevelsDb.length <= SPECTRAL_BANDS) {
+          entry.bandLevelsDb.set(bandLevelsDb);
+        } else {
+          entry.bandLevelsDb.set(bandLevelsDb.subarray(0, SPECTRAL_BANDS));
+        }
         entry.blockCounter++;
         entry.active = true;
       }
@@ -2456,7 +2477,9 @@
       this.ensureBuffers(frameCount);
       for (let b = 0; b < EQ_LEARN_BANDS; b++) {
         const bq = this.filters[b];
-        this.tempBuf.set(input.subarray(0, frameCount));
+        for (let i = 0; i < frameCount; i++) {
+          this.tempBuf[i] = input[i];
+        }
         processBiquadChannel(bq, this.tempBuf, 0, frameCount);
         let sumSq = 0;
         for (let i = 0; i < frameCount; i++) {
@@ -2566,7 +2589,9 @@
       this.ensureBuffers(frameCount);
       for (let b = 0; b < XOVER_LEARN_BANDS; b++) {
         const bq = this.filters[b];
-        this.tempBuf.set(input.subarray(0, frameCount));
+        for (let i = 0; i < frameCount; i++) {
+          this.tempBuf[i] = input[i];
+        }
         processBiquadChannel(bq, this.tempBuf, 0, frameCount);
         let sumSq = 0;
         for (let i = 0; i < frameCount; i++) {
@@ -3439,12 +3464,23 @@
     scEnv = new Array(MASKING_BANDS).fill(0);
     mainBuf = new Float32Array(0);
     scBuf = new Float32Array(0);
-    /** Smoothing coefficient for envelope tracking. */
+    sampleRate = 48e3;
+    /** Per-sample smoothing coefficient for envelope tracking. */
     smoothCoef = 0.01;
+    /** Pooled result — analyze() runs per audio block on the audio thread;
+     * consumers (eqModule) copy out what they need immediately. */
+    pooledResult = {
+      levels: new Array(MASKING_BANDS).fill(0),
+      isMasking: new Array(MASKING_BANDS).fill(false),
+      mainLevels: new Array(MASKING_BANDS).fill(0),
+      sidechainLevels: new Array(MASKING_BANDS).fill(0)
+    };
     prepare(sampleRate2, maxBlockSize) {
+      this.sampleRate = sampleRate2;
       this.mainBuf = new Float32Array(maxBlockSize);
       this.scBuf = new Float32Array(maxBlockSize);
       this.smoothCoef = 1 - Math.exp(-1 / (50 / 1e3 * sampleRate2));
+      this.reset();
       this.mainFilters = [];
       this.scFilters = [];
       for (let i = 0; i < MASKING_BANDS; i++) {
@@ -3464,33 +3500,40 @@
     }
     /**
      * Analyze masking between main and sidechain signals.
-     * Returns per-band masking data.
+     * Returns per-band masking data. The result object is POOLED — copy out
+     * what you need; the next call overwrites every field.
      */
     analyze(main, sidechain, frameCount) {
       this.ensureBuffers(frameCount);
-      const levels = new Array(MASKING_BANDS).fill(0);
-      const isMasking = new Array(MASKING_BANDS).fill(false);
-      const mainLevels = new Array(MASKING_BANDS).fill(0);
-      const scLevels = new Array(MASKING_BANDS).fill(0);
+      const blockCoef = 1 - Math.exp(-frameCount / (50 / 1e3 * this.sampleRate));
+      const result = this.pooledResult;
+      const levels = result.levels;
+      const isMasking = result.isMasking;
+      const mainLevels = result.mainLevels;
+      const scLevels = result.sidechainLevels;
       for (let b = 0; b < MASKING_BANDS; b++) {
         const mainBq = this.mainFilters[b];
         const scBq = this.scFilters[b];
-        this.mainBuf.set(main.subarray(0, frameCount));
+        for (let i = 0; i < frameCount; i++) {
+          this.mainBuf[i] = main[i];
+        }
         processBiquadChannel(mainBq, this.mainBuf, 0, frameCount);
         let mainPeak = 0;
         for (let i = 0; i < frameCount; i++) {
           const a = Math.abs(this.mainBuf[i]);
           if (a > mainPeak) mainPeak = a;
         }
-        this.scBuf.set(sidechain.subarray(0, frameCount));
+        for (let i = 0; i < frameCount; i++) {
+          this.scBuf[i] = sidechain[i];
+        }
         processBiquadChannel(scBq, this.scBuf, 0, frameCount);
         let scPeak = 0;
         for (let i = 0; i < frameCount; i++) {
           const a = Math.abs(this.scBuf[i]);
           if (a > scPeak) scPeak = a;
         }
-        this.mainEnv[b] += this.smoothCoef * (mainPeak - this.mainEnv[b]);
-        this.scEnv[b] += this.smoothCoef * (scPeak - this.scEnv[b]);
+        this.mainEnv[b] += blockCoef * (mainPeak - this.mainEnv[b]);
+        this.scEnv[b] += blockCoef * (scPeak - this.scEnv[b]);
         const mainDb = 20 * Math.log10(Math.max(1e-10, this.mainEnv[b]));
         const scDb = 20 * Math.log10(Math.max(1e-10, this.scEnv[b]));
         mainLevels[b] = mainDb;
@@ -3499,7 +3542,7 @@
         levels[b] = safeNum2(maskingLevel);
         isMasking[b] = maskingLevel > MASKING_THRESHOLD_DB;
       }
-      return { levels, isMasking, mainLevels, sidechainLevels: scLevels };
+      return result;
     }
     ensureBuffers(requiredSize) {
       if (this.mainBuf.length < requiredSize) {
@@ -3717,7 +3760,7 @@
         const bandSidechain = (params[keys.sidechainEnabled] ?? 0) >= 0.5;
         const dynAttack = params[keys.dynamicAttackMs] ?? 15;
         const dynRelease = params[keys.dynamicReleaseMs] ?? 150;
-        const dynRatio = params[keys.dynamicRatio] ?? 3;
+        const dynRatio = clamp(params[keys.dynamicRatio] ?? 3, 1, 20);
         const dynKnee = params[keys.dynamicKneeDb] ?? 0;
         if (band.cachedFreq !== freq || band.cachedGain !== gain || band.cachedQ !== q || band.cachedShape !== shape || band.dirty) {
           this.updateBandCoefficients(band, freq, gain, q, shape);
@@ -4475,8 +4518,8 @@
       const scEnabled = (params["comp.sidechainEnabled"] ?? 0) >= 0.5;
       const scHpfHz = clamp(params["comp.sidechainHpfHz"] ?? 20, 20, 2e3);
       const bandCount = Math.round(clamp(params["comp.bandCount"] ?? 1, 1, 3));
-      const xover1 = params["comp.crossoverHz1"] ?? 250;
-      const xover2 = params["comp.crossoverHz2"] ?? 2500;
+      const xover1 = clamp(params["comp.crossoverHz1"] ?? 250, 20, 2e4);
+      const xover2 = clamp(params["comp.crossoverHz2"] ?? 2500, 20, 2e4);
       const channelModeRaw = Math.round(clamp(params["comp.channelMode"] ?? 0, 0, 4));
       const channelMode = channelModeFromValue(channelModeRaw);
       const deltaListen = (params["comp.delta"] ?? 0) >= 0.5;
@@ -4806,8 +4849,8 @@
       const hysteresisDb = clamp(params["gate.hysteresisDb"] ?? 6, 0, 24);
       const scHpfHz = clamp(params["gate.sidechainHpfHz"] ?? 20, 20, 2e3);
       const bandCount = Math.round(clamp(params["gate.bandCount"] ?? 1, 1, 3));
-      const xover1 = params["gate.crossoverHz1"] ?? 250;
-      const xover2 = params["gate.crossoverHz2"] ?? 2500;
+      const xover1 = clamp(params["gate.crossoverHz1"] ?? 250, 20, 2e4);
+      const xover2 = clamp(params["gate.crossoverHz2"] ?? 2500, 20, 2e4);
       const channelModeRaw = Math.round(clamp(params["gate.channelMode"] ?? 0, 0, 4));
       const channelMode = channelModeFromValue(channelModeRaw);
       const deltaListen = (params["gate.delta"] ?? 0) >= 0.5;
@@ -4823,6 +4866,11 @@
         params["gate.band1.closeThresholdDb"] ?? openThresholdDb[1] - hysteresisDb,
         params["gate.band2.closeThresholdDb"] ?? openThresholdDb[2] - hysteresisDb
       ];
+      for (let b = 0; b < closeThresholdDb.length; b++) {
+        if (closeThresholdDb[b] > openThresholdDb[b]) {
+          closeThresholdDb[b] = openThresholdDb[b];
+        }
+      }
       this.updateMultiband(bandCount, xover1, xover2);
       const xoverMode = (params["gate.crossoverMode"] ?? 0) >= 0.5 ? "hybrid" : "analog";
       this.multiband.setCrossoverMode(xoverMode);
@@ -5284,6 +5332,8 @@
       if (inEnergy > 1e-10 && bandFrames > 0) {
         const ratio = outEnergy / inEnergy;
         this.harmonicContent[bandIdx] = 10 * Math.log10(Math.max(1e-10, ratio));
+      } else {
+        this.harmonicContent[bandIdx] *= 0.8;
       }
       let peak = 0;
       for (let i = 0; i < bandFrames; i++) {
@@ -5667,7 +5717,10 @@
       const mixPercent = clamp(params["clipper.mix"] ?? 100, 0, 100);
       const driveLin = dbToLinear(driveDb);
       const ceilingLin = dbToLinear(ceilingDb);
-      const kneeLin = dbToLinear(ceilingDb + kneeDb) - ceilingLin;
+      const kneeLin = Math.min(
+        dbToLinear(ceilingDb + kneeDb) - ceilingLin,
+        ceilingLin
+      );
       this.updateMultiband(bandCount, xover1, xover2);
       const xoverMode = (params["clipper.crossoverMode"] ?? 0) >= 0.5 ? "hybrid" : "analog";
       this.multiband.setCrossoverMode(xoverMode);
@@ -6232,10 +6285,14 @@
           if (BAND_FREQS[b] < lowFreq || BAND_FREQS[b] > highFreq) {
             targetGainDb = 0;
           } else {
-            const measuredDb = ampToDb(this.envFollowers[b]);
-            const relativeLevel = measuredDb - avgDb;
-            targetGainDb = (targetCurve[b] - relativeLevel) * amount;
-            targetGainDb = clamp(targetGainDb, -MAX_CORRECTION_DB, MAX_CORRECTION_DB);
+            if (this.envFollowers[b] < 1e-6) {
+              targetGainDb = 0;
+            } else {
+              const measuredDb = ampToDb(this.envFollowers[b]);
+              const relativeLevel = measuredDb - avgDb;
+              targetGainDb = (targetCurve[b] - relativeLevel) * amount;
+              targetGainDb = clamp(targetGainDb, -MAX_CORRECTION_DB, MAX_CORRECTION_DB);
+            }
           }
           const coef = targetGainDb > this.smoothedGainDb[b] ? this.gainAtkCoef : this.gainRelCoef;
           this.smoothedGainDb[b] += coef * (targetGainDb - this.smoothedGainDb[b]);
@@ -6671,6 +6728,7 @@
       const mixPercent = clamp(params["unmask.mix"] ?? 100, 0, 100);
       const ecosystemEnabled = (params["unmask.ecosystemEnabled"] ?? 0) >= 0.5;
       if (enabled < 0.5) return;
+      if (channels.length < 2) return;
       this.ensureBuffers(frameCount);
       const n = Math.min(channels[0].length, frameCount);
       for (let ch = 0; ch < channels.length; ch++) {
@@ -6735,7 +6793,7 @@
       const mainSrc = channels[0];
       const scSrc = scEnabled >= 0.5 && sidechain && sidechain.length > 0 ? sidechain[0] : null;
       if (scSrc) {
-        const n = Math.min(frameCount, this.scAnalysisBuf.length);
+        const n = Math.min(frameCount, this.scAnalysisBuf.length, scSrc.length);
         for (let i = 0; i < n; i++) {
           this.scAnalysisBuf[i] = scSrc[i];
         }
@@ -6954,6 +7012,13 @@
     lastLatencyPosted = -1;
     blockCount = 0;
     metersEnabled = true;
+    // Time-stamped parameter events (setParameterAt — automation lanes and
+    // offline renders), sorted ascending by `when`. Applied from process()
+    // when the render clock reaches them — port messages alone have no
+    // timing, so without this queue an offline export would hear every
+    // automation point at the moment it was POSTED (the last one wins),
+    // collapsing the lane to a constant.
+    pendingParams = [];
     constructor(options) {
       super();
       registerCoreModules(this.proc);
@@ -6976,12 +7041,33 @@
           this.syncGraphFromParams();
           this.postLatency();
         } else if (msg.type === "param") {
+          if (this.pendingParams.length > 0) {
+            const now = currentTime;
+            this.pendingParams = this.pendingParams.filter(
+              (ev) => ev.id !== msg.id || ev.when <= now
+            );
+          }
           this.proc.setParameter(msg.id, msg.value);
           if (typeof msg.id === "string" && msg.id.endsWith(".enabled")) {
             this.syncGraphFromParams();
             this.postLatency();
           }
+        } else if (msg.type === "paramAt") {
+          const when = Number(msg.when);
+          if (!Number.isFinite(when)) {
+            this.proc.setParameter(msg.id, msg.value);
+            if (typeof msg.id === "string" && msg.id.endsWith(".enabled")) {
+              this.syncGraphFromParams();
+            }
+            this.postLatency();
+            return;
+          }
+          const q = this.pendingParams;
+          let i = q.length;
+          while (i > 0 && q[i - 1].when > when) i--;
+          q.splice(i, 0, { id: msg.id, value: msg.value, when });
         } else if (msg.type === "reset") {
+          this.pendingParams.length = 0;
           this.proc.reset();
         } else if (msg.type === "setMeters") {
           this.metersEnabled = msg.enabled !== false;
@@ -7008,11 +7094,32 @@
         this.port.postMessage({ type: "latency", samples });
       }
     }
+    /** Apply every queued event whose project time has arrived (the render
+     *  clock granularity is one 128-frame quantum ≈ 2.7 ms). */
+    applyDueParams(horizon) {
+      const q = this.pendingParams;
+      if (q.length === 0 || q[0].when > horizon) return;
+      let applied = 0;
+      let enabledToggled = false;
+      while (q.length > 0 && q[0].when <= horizon) {
+        const ev = q.shift();
+        this.proc.setParameter(ev.id, ev.value);
+        if (typeof ev.id === "string" && ev.id.endsWith(".enabled")) {
+          enabledToggled = true;
+        }
+        applied++;
+      }
+      if (applied > 0) {
+        if (enabledToggled) this.syncGraphFromParams();
+        this.postLatency();
+      }
+    }
     process(inputs, outputs) {
       const output = outputs[0];
       if (!output || !output[0] || !output[1]) return true;
       const input = inputs[0];
       const total = output[0].length;
+      this.applyDueParams(currentTime + total / sampleRate);
       for (let offset = 0; offset < total; offset += MAX_BLOCK) {
         const frames = Math.min(MAX_BLOCK, total - offset);
         for (let c = 0; c < CHANNELS; c++) {

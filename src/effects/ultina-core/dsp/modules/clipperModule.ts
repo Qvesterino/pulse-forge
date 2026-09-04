@@ -171,7 +171,17 @@ export class ClipperModuleProcessor implements UltinaModuleProcessor {
     // Pre-compute clipper curve parameters
     const driveLin = dbToLinear(driveDb);
     const ceilingLin = dbToLinear(ceilingDb);
-    const kneeLin = dbToLinear(ceilingDb + kneeDb) - ceilingLin; // knee width in linear amplitude
+    // Knee width in linear amplitude, clamped so the knee never extends below
+    // zero amplitude. For kneeDb > ~6.02 (10^(6.02/20) ≈ 2) the raw span
+    // ceilingLin - kneeLin goes negative: the "below knee: linear" branch
+    // becomes unreachable, near-zero inputs land in the smoothstep branch and
+    // are mapped to ~(kneeStart + 0.5·kneeLin) garbage, and the meter's
+    // absX/|out| ratio hits |out| = 0 → Infinity. Clamping at 0 makes every
+    // knee > 6.02 dB behave exactly like the 6.02 dB boundary curve.
+    const kneeLin = Math.min(
+      dbToLinear(ceilingDb + kneeDb) - ceilingLin,
+      ceilingLin,
+    );
 
     // Update multiband config if changed
     this.updateMultiband(bandCount, xover1, xover2);

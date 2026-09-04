@@ -2315,7 +2315,12 @@ export class AudioEngine {
       if (lane.points.length === 0) continue;
       const v0 = valueAt(lane.points, relOf(fromTick), 1);
       const v1 = valueAt(lane.points, relOf(toTick), 1);
-      const nodes = this.trackNodes.get(lane.target.trackId);
+      // Group tracks expose the same node shape (modAutoGain/modAutoPan/fx)
+      // as regular tracks — resolving them here keeps automation lanes on
+      // group buses from silently no-oping. Return tracks host FX but no
+      // mod auto-gain/pan; the fxParam case below consults them explicitly.
+      const nodes =
+        this.trackNodes.get(lane.target.trackId) ?? this.groupNodes.get(lane.target.trackId);
       if (!nodes) continue;
       switch (lane.target.kind) {
         case "trackGain":
@@ -2328,7 +2333,9 @@ export class AudioEngine {
           break;
         case "fxParam": {
           if (!lane.target.fxId || !lane.target.paramId) break;
-          const rt = nodes.fx.runtimes.get(lane.target.fxId);
+          const rt =
+            nodes.fx.runtimes.get(lane.target.fxId) ??
+            this.returnNodes.get(lane.target.trackId)?.fx.runtimes.get(lane.target.fxId);
           if (rt?.setParameterAt) rt.setParameterAt(lane.target.paramId, v0, t0);
           else rt?.setParameter(lane.target.paramId, v0);
           break;
@@ -2350,7 +2357,8 @@ export class AudioEngine {
     points: AutomationPoint[],
     timeAt: (tick: number) => number,
   ): void {
-    const nodes = this.trackNodes.get(trackId);
+    // Group buses carry the same mod auto-gain/pan pair as tracks.
+    const nodes = this.trackNodes.get(trackId) ?? this.groupNodes.get(trackId);
     if (!nodes || points.length === 0) return;
     const target = param === "gain" ? nodes.modAutoGain.gain : nodes.modAutoPan.pan;
     const clampValue =
@@ -2370,7 +2378,11 @@ export class AudioEngine {
     timeAt: (tick: number) => number,
   ): void {
     if (!paramId) return;
-    const nodes = this.trackNodes.get(trackId);
+    // FX automation must reach group-bus and return-track chains too — the
+    // lane editors offer fxParam targets for any track with effects, but a
+    // trackNodes-only lookup silently dropped every non-track lane.
+    const nodes =
+      this.trackNodes.get(trackId) ?? this.groupNodes.get(trackId) ?? this.returnNodes.get(trackId);
     if (!nodes) return;
     for (const point of points) {
       const when = Math.max(0, timeAt(point.tick));

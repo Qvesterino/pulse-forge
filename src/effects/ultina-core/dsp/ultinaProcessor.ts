@@ -55,7 +55,6 @@ import { AutoGainController, type AutoGainReading } from "./autoGain.js";
 import { SpectralRegistry, BandAnalyzer } from "./spectralRegistry.js";
 import { EqLearn } from "./eqLearn.js";
 import { CrossoverLearn } from "./crossoverLearn.js";
-import type { EqLearnMeters, CrossoverLearnMeters } from "../contracts/meters.js";
 
 // ── Module processor interface ─────────────────────────────
 //

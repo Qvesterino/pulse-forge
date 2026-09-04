@@ -186,6 +186,11 @@ export class UnmaskModuleProcessor implements UltinaModuleProcessor {
 
     if (enabled < 0.5) return;
 
+    // Stereo contract, like every other module: M/S encode reads
+    // channels[1] unconditionally — a mono channels array would throw inside
+    // the audio callback.
+    if (channels.length < 2) return;
+
     this.ensureBuffers(frameCount);
 
     // Store dry signal for delta/dryWet
@@ -282,8 +287,11 @@ export class UnmaskModuleProcessor implements UltinaModuleProcessor {
       : null;
 
     if (scSrc) {
-      // Copy sidechain source to analysis buffer
-      const n = Math.min(frameCount, this.scAnalysisBuf.length);
+      // Copy sidechain source to analysis buffer. Bounded by scSrc.length:
+      // a shorter sidechain channel would read `undefined`, which a
+      // Float32Array store converts to NaN — poisoning the biquad states,
+      // scEnv and (via clamp's comparison idiom) the gain smoother.
+      const n = Math.min(frameCount, this.scAnalysisBuf.length, scSrc.length);
       for (let i = 0; i < n; i++) {
         this.scAnalysisBuf[i] = scSrc[i];
       }

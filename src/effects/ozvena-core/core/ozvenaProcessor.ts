@@ -10,6 +10,12 @@
  * Applied transforms (mechanical, semantics-preserving):
  *  - type-only specifiers marked with "type" for verbatimModuleSyntax
  *    (Pulse Forge tsconfig is stricter than upstream).
+ * LOCAL HARDENING (2026-09, Pulse Forge audit): this copy carries fixes NOT
+ * yet present in the last vendored upstream snapshot — global gain clamps
+ * (ozvenaProcessor) and the shimmer feedback stability guard (both
+ * engines). Re-vendoring from a stale upstream will revert them; sync the
+ * fixes upstream FIRST. Regression coverage: tests/ozvena-hardening.test.ts.
+
  */
 // ═══════════════════════════════════════════════════════════
 // Ozvena — Top-level Processor (TS oracle)
@@ -518,8 +524,11 @@ export function createOzvenaProcessor(): OzvenaProcessor {
         }
       }
 
-      // 1. Input gain.
-      const inGain = dbToLinear(state.global.inputGainDb);
+      // 1. Input gain. Clamped to the documented range (-24..+24 dB) like
+      // every engine-side param — dbToLinear(1e9) is Infinity and would
+      // blow the output stage past float32 (input-side sanitize cannot
+      // rescue a gain applied to the WHOLE signal).
+      const inGain = dbToLinear(clamp(state.global.inputGainDb, -24, 24));
       for (let c = 0; c < cc; c++) {
         const buf = channels[c];
         for (let i = 0; i < frameCount; i++) buf[i] *= inGain;
@@ -691,8 +700,12 @@ export function createOzvenaProcessor(): OzvenaProcessor {
       const dw = clamp(state.global.dryWet, 0, 100) / 100;
       const dryG = state.global.fxOnly ? 0 : 1 - dw;
       const wetG = dw;
-      const levelGain = dbToLinear(state.global.levelDb);
-      const outGain = dbToLinear(state.global.outputGainDb);
+      // Level (-24..+6 dB) and output gain (-24..+24 dB) clamped to their
+      // documented ranges: these multiply AFTER the last input-side
+      // sanitize, so an out-of-range value (dbToLinear(1e9) = Infinity)
+      // would reach the output directly.
+      const levelGain = dbToLinear(clamp(state.global.levelDb, -24, 6));
+      const outGain = dbToLinear(clamp(state.global.outputGainDb, -24, 24));
       for (let c = 0; c < cc; c++) {
         const out = channels[c];
         const dry = finalDry[c];

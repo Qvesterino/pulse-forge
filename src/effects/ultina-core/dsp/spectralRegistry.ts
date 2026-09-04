@@ -255,6 +255,13 @@ export class SpectralRegistry {
    */
   unregister(instanceId: string): void {
     this.entries.delete(instanceId);
+    // The unregistering instance was also a CONSUMER: drop its staleness
+    // records from every surviving entry, or each live entry's
+    // consumerStaleness map accumulates one dead id per churned instance for
+    // the page's lifetime.
+    for (const entry of this.entries.values()) {
+      entry.consumerStaleness.delete(instanceId);
+    }
   }
 
   /**
@@ -267,8 +274,15 @@ export class SpectralRegistry {
   publish(instanceId: string, bandLevelsDb: Float32Array): void {
     const entry = this.entries.get(instanceId);
     if (entry) {
-      // Copy data into the entry's pre-allocated array
-      entry.bandLevelsDb.set(bandLevelsDb.subarray(0, SPECTRAL_BANDS));
+      // Copy data into the entry's pre-allocated array. Fast path avoids
+      // subarray() — it allocates a TypedArray view per call, once per
+      // publish, on the audio thread. (set() would throw on a longer source,
+      // so the truncating view remains as the defensive slow path.)
+      if (bandLevelsDb.length <= SPECTRAL_BANDS) {
+        entry.bandLevelsDb.set(bandLevelsDb);
+      } else {
+        entry.bandLevelsDb.set(bandLevelsDb.subarray(0, SPECTRAL_BANDS));
+      }
       entry.blockCounter++;
       entry.active = true;
     }

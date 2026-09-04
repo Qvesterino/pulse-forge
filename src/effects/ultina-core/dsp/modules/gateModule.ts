@@ -166,8 +166,11 @@ export class GateModuleProcessor implements UltinaModuleProcessor {
     const hysteresisDb = clamp(params["gate.hysteresisDb"] ?? 6, 0, 24);
     const scHpfHz = clamp(params["gate.sidechainHpfHz"] ?? 20, 20, 2000);
     const bandCount = Math.round(clamp(params["gate.bandCount"] ?? 1, 1, 3)) as BandCount;
-    const xover1 = params["gate.crossoverHz1"] ?? 250;
-    const xover2 = params["gate.crossoverHz2"] ?? 2500;
+    // Clamp like the exciter/transient/clipper/density modules: the hybrid
+    // FIR crossover designs its sinc from an unclamped fc = freq/sr — a
+    // value above Nyquist yields a degenerate filter.
+    const xover1 = clamp(params["gate.crossoverHz1"] ?? 250, 20, 20000);
+    const xover2 = clamp(params["gate.crossoverHz2"] ?? 2500, 20, 20000);
     const channelModeRaw = Math.round(clamp(params["gate.channelMode"] ?? 0, 0, 4));
     const channelMode = channelModeFromValue(channelModeRaw);
     const deltaListen = (params["gate.delta"] ?? 0) >= 0.5;
@@ -189,6 +192,14 @@ export class GateModuleProcessor implements UltinaModuleProcessor {
       params["gate.band1.closeThresholdDb"] ?? (openThresholdDb[1] - hysteresisDb),
       params["gate.band2.closeThresholdDb"] ?? (openThresholdDb[2] - hysteresisDb),
     ];
+    // A close threshold ABOVE its open threshold makes the state machine
+    // chatter (open→closing→open… per block) — enforce close ≤ open, which
+    // is also what the hysteresis default expresses.
+    for (let b = 0; b < closeThresholdDb.length; b++) {
+      if (closeThresholdDb[b] > openThresholdDb[b]) {
+        closeThresholdDb[b] = openThresholdDb[b];
+      }
+    }
 
     // Update multiband config
     this.updateMultiband(bandCount, xover1, xover2);

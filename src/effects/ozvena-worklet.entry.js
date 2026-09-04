@@ -43,6 +43,14 @@ function setPath(state, id, value) {
     if (depth === parts.length - 1) {
       const key = parts[depth];
       const current = node[key];
+      // Boundary validation: a non-finite numeric value (or a missing one)
+      // must never enter DSP state. NaN gains poison the wet bus (the
+      // output limiter does not reject them), and an enum index of NaN
+      // yields `list[NaN] === undefined`, which THROWS inside the engine's
+      // recompute() — on the real audio thread that kills the processor.
+      // Drop the update and keep the last valid value instead.
+      if (typeof value === "number" && !Number.isFinite(value)) return node;
+      if (value === undefined || value === null) return node;
       let next;
       if (typeof current === "boolean") next = value >= 0.5;
       else if (typeof current === "string" && typeof value === "number") {
@@ -52,6 +60,8 @@ function setPath(state, id, value) {
           : String(value);
       } else if (typeof current === "number") {
         next = typeof value === "number" ? value : Number(value);
+        // Coerced garbage (Number("abc") → NaN) is dropped like NaN above.
+        if (!Number.isFinite(next)) return node;
       } else {
         next = value;
       }

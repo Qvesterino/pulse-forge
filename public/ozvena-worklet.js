@@ -2246,6 +2246,9 @@
     const shW = [0, 0];
     const shPhase = [0, 0];
     let shAmt = 0;
+    let shInj = 0;
+    let shDirW = 1;
+    let shDirWFreeze = 1;
     let shQuality = 1;
     let shSingle = false;
     let freeze_ = false;
@@ -2314,6 +2317,10 @@
       const fbBass = Math.pow(1e-3, avgLen / (decaySec * bassMult) / sampleRate2);
       bassGain = q322(clamp(fbBass / feedbackGain, 0.25, 2.5));
       bassAlpha = q322(1 - Math.exp(-TAU * BASS_SHELF_HZ / sampleRate2));
+      shInj = 0.5 * shAmt;
+      const fbMax = Math.max(feedbackGain, feedbackGain * bassGain);
+      shDirW = shAmt > 0 ? Math.min(1, 0.995 / Math.max(fbMax, 1e-6) - Math.SQRT2 * shInj) : 1;
+      shDirWFreeze = shAmt > 0 ? Math.min(1, 0.995 - Math.SQRT2 * shInj) : 1;
       attackAlpha = q322(1 - Math.exp(-1 / Math.max(1e-3, params.attack / 1e3 * sampleRate2)));
       setLowPass(lowSplitL.coeffs, clamp(params.crossoverHz, 20, 4e3), 0.7071, sampleRate2);
       setHighPass(highSplitL.coeffs, clamp(params.crossoverHz, 20, 4e3), 0.7071, sampleRate2);
@@ -2529,6 +2536,7 @@
         }
         const fb = feedbackGain;
         const fbEff = freeze_ ? 1 : fb;
+        const shDirWCur = freeze_ ? shDirWFreeze : shDirW;
         const t = algoTuning(params.algo);
         const effectiveDepth = modDepthSamples * t.modDepthMult;
         if (shAmt > 0 && (!shTable || shTable.length !== shWindow)) ensureShimmerTable();
@@ -2627,7 +2635,7 @@
             const inSample = inScratchC[c];
             for (let l = 0; l < FDN_LINES; l++) {
               const direct = width * damped[l] + (1 - width) * 0.5 * (damped[l] + dampedO[l]);
-              const eff = direct + shAmt * shiftedC[c] * 0.5;
+              const eff = shDirWCur * direct + shInj * shiftedC[c];
               blp[l] += bassAlpha * (eff - blp[l]);
               blp[l] = flushDenormal(blp[l]);
               const shelved = eff + (bassGain - 1) * sanitize(blp[l]);
@@ -2765,6 +2773,9 @@
     const shW = [0, 0];
     const shPhase = [0, 0];
     let shAmt = 0;
+    let shInj = 0;
+    let shDirW = 1;
+    let shDirWFreeze = 1;
     let shQuality = 1;
     let shSingle = false;
     let freeze_ = false;
@@ -2832,6 +2843,10 @@
       const fbBass = Math.pow(1e-3, avgLen / (decaySec * bassMult) / sampleRate2);
       bassGain = q323(clamp(fbBass / feedbackGain, 0.25, 2.5));
       bassAlpha = q323(1 - Math.exp(-TAU * BASS_SHELF_HZ / sampleRate2));
+      shInj = 0.5 * shAmt;
+      const fbMax = Math.max(feedbackGain, feedbackGain * bassGain);
+      shDirW = shAmt > 0 ? Math.min(1, 0.995 / Math.max(fbMax, 1e-6) - Math.SQRT2 * shInj) : 1;
+      shDirWFreeze = shAmt > 0 ? Math.min(1, 0.995 - Math.SQRT2 * shInj) : 1;
       attackAlpha = q323(1 - Math.exp(-1 / Math.max(1e-3, params.attack / 1e3 * sampleRate2)));
       setLowPass(lowSplitL.coeffs, clamp(params.crossoverHz, 20, 4e3), 0.7071, sampleRate2);
       setHighPass(highSplitL.coeffs, clamp(params.crossoverHz, 20, 4e3), 0.7071, sampleRate2);
@@ -3029,6 +3044,7 @@
         }
         const fb = feedbackGain;
         const fbEff = freeze_ ? 1 : fb;
+        const shDirWCur = freeze_ ? shDirWFreeze : shDirW;
         const effectiveDepth = modDepthSamples;
         if (shAmt > 0 && (!shTable || shTable.length !== shWindow)) ensureShimmerTable();
         const width = clamp(params.stereoWidth, 0, 1);
@@ -3133,7 +3149,7 @@
             const pd = pdScratchC[c];
             for (let l = 0; l < FDN_LINES2; l++) {
               const direct = width * damped[l] + (1 - width) * 0.5 * (damped[l] + dampedO[l]);
-              const eff = direct + shAmt * shiftedC[c] * 0.5;
+              const eff = shDirWCur * direct + shInj * shiftedC[c];
               blp[l] += bassAlpha * (eff - blp[l]);
               blp[l] = flushDenormal(blp[l]);
               const shelved = eff + (bassGain - 1) * sanitize(blp[l]);
@@ -3998,7 +4014,7 @@
             if (!Number.isFinite(buf[i])) buf[i] = 0;
           }
         }
-        const inGain = dbToLinear(state.global.inputGainDb);
+        const inGain = dbToLinear(clamp(state.global.inputGainDb, -24, 24));
         for (let c = 0; c < cc; c++) {
           const buf = channels[c];
           for (let i = 0; i < frameCount; i++) buf[i] *= inGain;
@@ -4110,8 +4126,8 @@
         const dw = clamp(state.global.dryWet, 0, 100) / 100;
         const dryG = state.global.fxOnly ? 0 : 1 - dw;
         const wetG = dw;
-        const levelGain = dbToLinear(state.global.levelDb);
-        const outGain = dbToLinear(state.global.outputGainDb);
+        const levelGain = dbToLinear(clamp(state.global.levelDb, -24, 6));
+        const outGain = dbToLinear(clamp(state.global.outputGainDb, -24, 24));
         for (let c = 0; c < cc; c++) {
           const out = channels[c];
           const dry = finalDry[c];
@@ -4208,6 +4224,8 @@
       if (depth === parts.length - 1) {
         const key = parts[depth];
         const current = node[key];
+        if (typeof value === "number" && !Number.isFinite(value)) return node;
+        if (value === void 0 || value === null) return node;
         let next;
         if (typeof current === "boolean") next = value >= 0.5;
         else if (typeof current === "string" && typeof value === "number") {
@@ -4215,6 +4233,7 @@
           next = list ? list[Math.max(0, Math.min(list.length - 1, Math.round(value)))] : String(value);
         } else if (typeof current === "number") {
           next = typeof value === "number" ? value : Number(value);
+          if (!Number.isFinite(next)) return node;
         } else {
           next = value;
         }

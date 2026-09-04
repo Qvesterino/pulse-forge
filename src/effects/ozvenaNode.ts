@@ -81,18 +81,17 @@ export function createOzvenaNode(
       latencyListeners.clear();
       node.port.onmessage = null;
       try {
-        // Must land BEFORE close(): the processor's core keeps a
-        // module-global IPC peer entry (duck controller) that pins the
-        // whole DSP graph unless explicitly released — after close() no
-        // further messages are delivered and the processor would leak.
+        // The processor's core keeps a module-global IPC peer entry (duck
+        // controller) that pins state forever unless explicitly released.
+        // The port must NOT be closed here: closing a MessagePort may drop
+        // already-queued messages (engine-dependent), which would silently
+        // discard this terminal teardown and leak one registry entry per
+        // disposed instance over a long session. Dropping the last JS
+        // reference to the node lets the implementation close the port
+        // after the message has been delivered.
         node.port.postMessage({ type: "dispose" });
       } catch {
         // port already closed
-      }
-      try {
-        node.port.close();
-      } catch {
-        // already closed
       }
       node.disconnect();
       input.disconnect();

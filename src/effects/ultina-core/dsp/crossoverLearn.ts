@@ -134,7 +134,13 @@ export class CrossoverLearn {
 
     for (let b = 0; b < XOVER_LEARN_BANDS; b++) {
       const bq = this.filters[b];
-      this.tempBuf.set(input.subarray(0, frameCount));
+      // Scalar copy per band (processBiquadChannel filters tempBuf in place,
+      // so each band needs a pristine copy); subarray() would allocate a
+      // fresh TypedArray view per band — 32 heap objects per block on the
+      // audio thread.
+      for (let i = 0; i < frameCount; i++) {
+        this.tempBuf[i] = input[i];
+      }
       processBiquadChannel(bq, this.tempBuf, 0, frameCount);
 
       let sumSq = 0;

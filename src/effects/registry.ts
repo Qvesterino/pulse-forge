@@ -20,6 +20,12 @@ import { createCombNode } from "../audio-worklets/comb-node";
 import { createVowelNode } from "../audio-worklets/vowel-node";
 import { createDuckingDelayNode } from "../audio-worklets/ducking-delay-node";
 import { createReverbNode } from "../audio-worklets/reverb-node";
+import {
+  PARAM_BY_ID as ULTINA_PARAM_BY_ID,
+  clampParam as clampUltinaParam,
+  buildDefaultParams as buildUltinaDefaultParams,
+} from "./ultina-core/contracts/parameterSchema";
+import { buildSchema as buildFxEqSchema } from "./fxeq-core/core/parameterSchema";
 
 const dbToLin = (db: number) => Math.pow(10, db / 20);
 const smooth = (param: AudioParam, value: number, when: number, tc = 0.02) => param.setTargetAtTime(value, when, tc);
@@ -2952,4 +2958,68 @@ export function clampEffectParam(type: EffectType, paramId: string, value: numbe
   const def: ParamDef | undefined = EFFECT_DEFS[type].params.find((p) => p.id === paramId);
   if (!def) return value;
   return Math.min(def.max, Math.max(def.min, value));
+}
+
+/**
+ * Validate the FULL parameter map of a flagship plugin effect (ultina/fxeq/
+ * ozvena) from persisted state. These plugins expose deep, namespaced
+ * parameters ("eq.band3.gainDb", "band2.satDriveDb", "engines.e1.mix"…)
+ * authored by their panels, far beyond the registry's rack param list —
+ * `normalizeEffects` must not silently strip them on project load or every
+ * saved plugin mix resets itself.
+ *
+ * Returns the complete validated param map (rack defaults + deep params),
+ * or null for effect types without a plugin-deep surface (caller falls back
+ * to rack-default retention). Unknown ids are dropped; every retained value
+ * is finite; ultina/fxeq values are clamped to their authoritative DSP
+ * schemas, ozvena values are validated at the worklet's setPath boundary.
+ */
+export function normalizePluginParams(
+  type: EffectType,
+  source: Record<string, unknown>,
+): Record<string, number> | null {
+  if (type === "ultina") {
+    // Vendored parameterSchema is the single source of truth (ranges,
+    // defaults) for every ultina param, rack surface included.
+    const params: Record<string, number> = {
+      ...defaultParamsOf(type),
+      ...buildUltinaDefaultParams(),
+    };
+    for (const [id, value] of Object.entries(source)) {
+      if (typeof value !== "number" || !Number.isFinite(value)) continue;
+      if (!ULTINA_PARAM_BY_ID.has(id)) continue; // unknown id from an older schema
+      params[id] = clampUltinaParam(id, value);
+    }
+    return params;
+  }
+  if (type === "fxeq") {
+    // The deep param surface depends on bandCount — read it first (validated
+    // through the rack def), then build the band-aware schema.
+    const rawBands = source.bandCount;
+    const bandCount = Math.round(
+      typeof rawBands === "number" && Number.isFinite(rawBands)
+        ? clampEffectParam(type, "bandCount", rawBands)
+        : 6,
+    );
+    const schema = buildFxEqSchema(bandCount);
+    const params: Record<string, number> = { ...defaultParamsOf(type), ...schema.defaultParams };
+    for (const def of schema.defs) {
+      const value = source[def.id];
+      if (typeof value !== "number" || !Number.isFinite(value)) continue;
+      params[def.id] = Math.min(def.maxValue, Math.max(def.minValue, value));
+    }
+    return params;
+  }
+  if (type === "ozvena") {
+    // Dotted paths consumed by the worklet's setPath, which validates at the
+    // boundary (drops non-finite, walks only existing state branches, clamps
+    // enum indices). Rack ids additionally clamp through the registry def.
+    const params: Record<string, number> = { ...defaultParamsOf(type) };
+    for (const [id, value] of Object.entries(source)) {
+      if (typeof value !== "number" || !Number.isFinite(value)) continue;
+      params[id] = clampEffectParam(type, id, value);
+    }
+    return params;
+  }
+  return null;
 }

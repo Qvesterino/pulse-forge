@@ -1196,6 +1196,17 @@
     let dryBuf = [];
     let msBufM = new Float32Array(0);
     let msBufS = new Float32Array(0);
+    const msParams = {
+      threshDb: 0,
+      ratio: 1,
+      attackCoeff: 1,
+      releaseCoeff: 1,
+      kneeDb: 0,
+      makeupLinear: 1,
+      wetGain: 1,
+      isExpander: false,
+      isDeEsser: false
+    };
     function allocChannels(channelCount, maxBlockSize) {
       envDb = [];
       scHp1 = [];
@@ -1345,17 +1356,16 @@
           dryBuf[c].set(channels[c].subarray(0, frameCount));
         }
         if (stereoMode === 1 && numCh >= 2) {
-          processMidSide(channels, frameCount, {
-            threshDb,
-            ratio,
-            attackCoeff,
-            releaseCoeff,
-            kneeDb,
-            makeupLinear,
-            wetGain,
-            isExpander,
-            isDeEsser
-          });
+          msParams.threshDb = threshDb;
+          msParams.ratio = ratio;
+          msParams.attackCoeff = attackCoeff;
+          msParams.releaseCoeff = releaseCoeff;
+          msParams.kneeDb = kneeDb;
+          msParams.makeupLinear = makeupLinear;
+          msParams.wetGain = wetGain;
+          msParams.isExpander = isExpander;
+          msParams.isDeEsser = isDeEsser;
+          processMidSide(channels, frameCount, msParams);
           return;
         }
         for (let i = 0; i < frameCount; i++) {
@@ -2186,6 +2196,11 @@
     let dampAlpha = 0.5;
     let hpAlpha = 0;
     let srScale = 1;
+    let fdnCapacity = 0;
+    function requiredFdnCapacity() {
+      const maxSrScale = sampleRate2 / 44100 * 1.4;
+      return Math.max(8, Math.round(BASE_LENGTHS_R[3] * maxSrScale)) + 1;
+    }
     let fbSmL = [0, 0, 0, 0];
     let fbSmR = [0, 0, 0, 0];
     let fbSmPrimed = false;
@@ -2209,8 +2224,8 @@
       }
     }
     function allocChannels(channelCount) {
-      const maxSrScale = sampleRate2 / 44100 * 1.4;
-      const maxLen = Math.max(8, Math.round(BASE_LENGTHS_R[3] * maxSrScale)) + 1;
+      const maxLen = requiredFdnCapacity();
+      fdnCapacity = maxLen;
       lines.length = 0;
       writeIdx.length = 0;
       lpState.length = 0;
@@ -2302,7 +2317,7 @@
         fbSmAlpha = 1 - Math.exp(-1 / (0.015 * sampleRate2));
         fbSmPrimed = false;
         allocPredelay(Math.max(1, channelCount));
-        if (lines.length !== Math.max(1, channelCount)) {
+        if (lines.length !== Math.max(1, channelCount) || fdnCapacity < requiredFdnCapacity()) {
           allocChannels(Math.max(1, channelCount));
         }
         crossFeedPrev = [];
@@ -2919,6 +2934,15 @@
         });
       }
     }
+    function initTruePeakScratch() {
+      epScratch = new Float32Array(ringCap);
+      dequeIdx = new Int32Array(ringCap);
+      dequeVal = new Float32Array(ringCap);
+      linkedEnvScratch.length = 0;
+      for (let c = 0; c < ch.length; c++) {
+        linkedEnvScratch.push(new Float32Array(Math.max(1, maxBs) * OS));
+      }
+    }
     function processLegacy(channels, n, ceil) {
       const relMs = clamp(store.get("releaseMs"), 5, 500);
       const rc = Math.exp(-1 / (relMs / 1e3 * sampleRate2));
@@ -3199,6 +3223,7 @@
           s.os.prepare(sampleRate2, OS, maxBs);
           s.ring = new Float32Array(ringCap);
         }
+        initTruePeakScratch();
         prepared = true;
       },
       process(channels, frameCount) {
@@ -3320,7 +3345,11 @@
     let values = { ...schema.defaultParams };
     if (params) {
       for (const id of Object.keys(values)) {
-        if (params[id] !== void 0) values[id] = params[id];
+        const incoming = params[id];
+        if (incoming === void 0) continue;
+        if (typeof incoming !== "number" || !Number.isFinite(incoming)) continue;
+        const def = schema.defById.get(id);
+        values[id] = def ? Math.max(def.minValue, Math.min(def.maxValue, incoming)) : incoming;
       }
     }
     const crossover = createCrossoverBank(bandCount, 4, [...DEFAULT_CROSSOVER_FREQS]);
@@ -3613,6 +3642,8 @@
         const route = schema.routes.get(id);
         if (!route) return;
         if (typeof value !== "number" || !Number.isFinite(value)) return;
+        const def = schema.defById.get(id);
+        if (def) value = Math.max(def.minValue, Math.min(def.maxValue, value));
         const oldValue = values[id] ?? 0;
         if (oldValue !== value) history.push(id, oldValue);
         values[id] = value;
@@ -3676,10 +3707,12 @@
       startMorph(target, durationSec) {
         const entries = [];
         for (const id of Object.keys(target)) {
-          const end = target[id];
+          let end = target[id];
           if (typeof end !== "number" || !Number.isFinite(end)) continue;
           const route = schema.routes.get(id);
           if (!route) continue;
+          const def = schema.defById.get(id);
+          if (def) end = Math.max(def.minValue, Math.min(def.maxValue, end));
           entries.push({ id, route, start: values[id] ?? 0, end });
         }
         morphEntries = entries;

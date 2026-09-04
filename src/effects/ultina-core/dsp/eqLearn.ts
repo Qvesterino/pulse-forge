@@ -151,8 +151,14 @@ export class EqLearn {
     for (let b = 0; b < EQ_LEARN_BANDS; b++) {
       const bq = this.filters[b];
 
-      // Copy input and filter through this band
-      this.tempBuf.set(input.subarray(0, frameCount));
+      // Copy input and filter through this band. Scalar copy, NOT
+      // tempBuf.set(input.subarray(...)): processBiquadChannel filters
+      // tempBuf in place, so each band needs a pristine copy, and subarray()
+      // would allocate a fresh TypedArray view per band (16 heap objects per
+      // block on the audio thread).
+      for (let i = 0; i < frameCount; i++) {
+        this.tempBuf[i] = input[i];
+      }
       processBiquadChannel(bq, this.tempBuf, 0, frameCount);
 
       // Measure RMS energy of filtered band

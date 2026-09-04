@@ -26,7 +26,7 @@ import { sanitizeGateSteps, sanitizeLfo } from "./modulators";
 import { uid } from "../shared/ids";
 import { defaultInstrumentParams } from "../instruments/registry";
 import { createProjectFromTemplate } from "./templates";
-import { EFFECT_DEFS, clampEffectParam, defaultParamsOf } from "../effects/registry";
+import { EFFECT_DEFS, clampEffectParam, defaultParamsOf, normalizePluginParams } from "../effects/registry";
 
 export const SCHEMA_VERSION = 1;
 /** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
@@ -556,10 +556,20 @@ function normalizeEffects(raw: unknown, trackId: string, trackIds: Set<string>):
       const type = item.type;
       const defaults = defaultParamsOf(type);
       const source = item.params && typeof item.params === "object" ? item.params : {};
-      const params: Record<string, number> = { ...defaults };
-      for (const id of Object.keys(defaults)) {
-        const value = (source as Record<string, unknown>)[id];
-        if (typeof value === "number" && Number.isFinite(value)) params[id] = clampEffectParam(type, id, value);
+      // Flagship plugins (ultina/fxeq/ozvena) carry deep namespaced params
+      // authored by their panels — validate them against the plugin's own
+      // schema instead of retaining only the registry's rack defaults
+      // (which silently reset every saved plugin mix on load).
+      const pluginParams = normalizePluginParams(type, source as Record<string, unknown>);
+      let params: Record<string, number>;
+      if (pluginParams) {
+        params = pluginParams;
+      } else {
+        params = { ...defaults };
+        for (const id of Object.keys(defaults)) {
+          const value = (source as Record<string, unknown>)[id];
+          if (typeof value === "number" && Number.isFinite(value)) params[id] = clampEffectParam(type, id, value);
+        }
       }
       // EQ compatibility: old three-band fields feed the new canonical bands.
       if (type === "eq") {

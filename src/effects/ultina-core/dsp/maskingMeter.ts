@@ -72,14 +72,28 @@ export class MaskingMeter {
   private scEnv: number[] = new Array(MASKING_BANDS).fill(0);
   private mainBuf: Float32Array = new Float32Array(0);
   private scBuf: Float32Array = new Float32Array(0);
+  private sampleRate = 48000;
 
-  /** Smoothing coefficient for envelope tracking. */
+  /** Per-sample smoothing coefficient for envelope tracking. */
   private smoothCoef = 0.01;
 
+  /** Pooled result — analyze() runs per audio block on the audio thread;
+   * consumers (eqModule) copy out what they need immediately. */
+  private readonly pooledResult: MaskingResult = {
+    levels: new Array(MASKING_BANDS).fill(0),
+    isMasking: new Array(MASKING_BANDS).fill(false),
+    mainLevels: new Array(MASKING_BANDS).fill(0),
+    sidechainLevels: new Array(MASKING_BANDS).fill(0),
+  };
+
   prepare(sampleRate: number, maxBlockSize: number): void {
+    this.sampleRate = sampleRate;
     this.mainBuf = new Float32Array(maxBlockSize);
     this.scBuf = new Float32Array(maxBlockSize);
     this.smoothCoef = 1 - Math.exp(-1 / ((50 / 1000) * sampleRate));
+    // Fresh filters must not inherit stale envelopes from a previous
+    // prepare() — reset() is the single source of truth for state.
+    this.reset();
 
     // Create two independent filter banks — one for main, one for sidechain.
     // This ensures proper spectral analysis without cross-contamination.
@@ -105,7 +119,8 @@ export class MaskingMeter {
 
   /**
    * Analyze masking between main and sidechain signals.
-   * Returns per-band masking data.
+   * Returns per-band masking data. The result object is POOLED — copy out
+   * what you need; the next call overwrites every field.
    */
   analyze(
     main: Float32Array,
@@ -114,17 +129,28 @@ export class MaskingMeter {
   ): MaskingResult {
     this.ensureBuffers(frameCount);
 
-    const levels: number[] = new Array(MASKING_BANDS).fill(0);
-    const isMasking: boolean[] = new Array(MASKING_BANDS).fill(false);
-    const mainLevels: number[] = new Array(MASKING_BANDS).fill(0);
-    const scLevels: number[] = new Array(MASKING_BANDS).fill(0);
+    // smoothCoef is a PER-SAMPLE coefficient; it is applied once per block,
+    // so scale it to the actual block length — otherwise the 50 ms envelope
+    // becomes ~50 ms × (samples per block) (≈6.4 s at 128-frame blocks).
+    const blockCoef = 1 - Math.exp(-frameCount / ((50 / 1000) * this.sampleRate));
+
+    const result = this.pooledResult;
+    const levels = result.levels;
+    const isMasking = result.isMasking;
+    const mainLevels = result.mainLevels;
+    const scLevels = result.sidechainLevels;
 
     for (let b = 0; b < MASKING_BANDS; b++) {
       const mainBq = this.mainFilters[b];
       const scBq = this.scFilters[b];
 
-      // Filter main signal through this band
-      this.mainBuf.set(main.subarray(0, frameCount));
+      // Filter main signal through this band. Scalar copy (not subarray —
+      // a fresh TypedArray view per band is 8 heap objects per block on the
+      // audio thread) and pristine per band: processBiquadChannel filters
+      // the buffer in place.
+      for (let i = 0; i < frameCount; i++) {
+        this.mainBuf[i] = main[i];
+      }
       processBiquadChannel(mainBq, this.mainBuf, 0, frameCount);
 
       // Measure peak of filtered main
@@ -135,7 +161,9 @@ export class MaskingMeter {
       }
 
       // Filter sidechain signal through the same band (independent filter state)
-      this.scBuf.set(sidechain.subarray(0, frameCount));
+      for (let i = 0; i < frameCount; i++) {
+        this.scBuf[i] = sidechain[i];
+      }
       processBiquadChannel(scBq, this.scBuf, 0, frameCount);
 
       // Measure peak of filtered sidechain
@@ -146,8 +174,8 @@ export class MaskingMeter {
       }
 
       // Smooth envelopes
-      this.mainEnv[b] += this.smoothCoef * (mainPeak - this.mainEnv[b]);
-      this.scEnv[b] += this.smoothCoef * (scPeak - this.scEnv[b]);
+      this.mainEnv[b] += blockCoef * (mainPeak - this.mainEnv[b]);
+      this.scEnv[b] += blockCoef * (scPeak - this.scEnv[b]);
 
       // Convert to dB
       const mainDb = 20 * Math.log10(Math.max(1e-10, this.mainEnv[b]));
@@ -162,7 +190,7 @@ export class MaskingMeter {
       isMasking[b] = maskingLevel > MASKING_THRESHOLD_DB;
     }
 
-    return { levels, isMasking, mainLevels, sidechainLevels: scLevels };
+    return result;
   }
 
   private ensureBuffers(requiredSize: number): void {

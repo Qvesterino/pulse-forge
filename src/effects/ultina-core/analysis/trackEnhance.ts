@@ -67,6 +67,9 @@ export interface TrackEnhanceResult {
 // ── Amount → intensity mapping ───────────────────────────────
 
 function amountToIntensity(amount: number): AssistantIntensity {
+  // NaN fails every comparison below and would fall through to "strong"
+  // (maximum processing) — degrade to the middle intensity instead.
+  if (!Number.isFinite(amount)) return "balanced";
   if (amount < 33) return "subtle";
   if (amount < 67) return "balanced";
   return "strong";

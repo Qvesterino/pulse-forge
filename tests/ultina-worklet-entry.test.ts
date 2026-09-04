@@ -39,6 +39,8 @@ interface ProcShape {
 type ProcCtor = new (options?: { processorOptions?: { params?: Record<string, number> } }) => ProcShape;
 
 let Processor: ProcCtor;
+/** Render clock for the worklet scope — tests advance it per quantum. */
+let now = 0;
 
 beforeAll(async () => {
   (globalThis as unknown as { sampleRate: number }).sampleRate = 48000;
@@ -50,6 +52,10 @@ beforeAll(async () => {
   ) => {
     Processor = cls;
   };
+  Object.defineProperty(globalThis, "currentTime", {
+    get: () => now,
+    configurable: true,
+  });
   // @ts-expect-error untyped .js worklet entry (gallery-server.test.ts convention)
   await import("../src/effects/ultina-worklet.entry.js");
   if (!Processor) throw new Error("ultina-processor did not register");
@@ -181,5 +187,79 @@ describe("Ultina worklet entry — metering gate", () => {
     proc.port.onmessage?.({ data: { type: "setMeters" } });
     run(proc, 20, 0.2);
     expect(metersPosted(proc)).toBeGreaterThan(0);
+  });
+});
+
+describe("Ultina worklet entry — scheduled parameters (paramAt)", () => {
+  /** Run blocks advancing the render clock one quantum per block; returns
+   *  [outputRms, inputRms] measured over the settled tail. */
+  function runTimed(proc: ProcShape, blocks: number, amplitude: number): [number, number] {
+    const input = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+    const output = [[new Float32Array(BLOCK), new Float32Array(BLOCK)]];
+    let sumSq = 0;
+    let inSumSq = 0;
+    let n = 0;
+    for (let b = 0; b < blocks; b++) {
+      now = (b * BLOCK) / SR;
+      fillSine(input, b, amplitude);
+      proc.process([input], output);
+      if (b >= blocks - 8) {
+        for (let i = 0; i < BLOCK; i++) {
+          sumSq += output[0][0][i] * output[0][0][i];
+          inSumSq += input[0][i] * input[0][i];
+          n += 1;
+        }
+      }
+    }
+    now = (blocks * BLOCK) / SR;
+    return [Math.sqrt(sumSq / n), Math.sqrt(inSumSq / n)];
+  }
+
+  it("a paramAt event applies only once the render clock reaches it", () => {
+    now = 0;
+    const proc = new Processor({ processorOptions: { params: {} } });
+    // Reference level with the effect active but no automation.
+    const [refRms, inRms] = runTimed(proc, 40, 0.3);
+    expect(Math.abs(refRms / inRms - 1)).toBeLessThan(0.02);
+
+    // Fresh instance: schedule −20 dB output gain at t=0.25 s (schema min
+    // is −24 dB — values beyond it clamp at the DSP boundary).
+    now = 0;
+    const proc2 = new Processor({ processorOptions: { params: {} } });
+    proc2.port.onmessage?.({
+      data: { type: "paramAt", id: "global.outputGainDb", value: -20, when: 0.25 },
+    });
+    // Before the due time: untouched (≈ unity).
+    const [beforeRms] = runTimed(proc2, Math.round((0.2 * SR) / BLOCK), 0.3);
+    expect(beforeRms / inRms).toBeGreaterThan(0.9);
+    // Across the due time: the drop lands (0.1 × + smoother residual).
+    const [afterRms] = runTimed(proc2, Math.round((0.35 * SR) / BLOCK), 0.3);
+    expect(afterRms / inRms).toBeLessThan(0.15);
+  });
+
+  it("a manual param cancels pending scheduled events for that id", () => {
+    now = 0;
+    const proc = new Processor({ processorOptions: { params: {} } });
+    const [, inRms] = runTimed(proc, 8, 0.3);
+    proc.port.onmessage?.({
+      data: { type: "paramAt", id: "global.outputGainDb", value: -20, when: 0.1 },
+    });
+    // User touches the same knob before the event fires.
+    proc.port.onmessage?.({ data: { type: "param", id: "global.outputGainDb", value: 0 } });
+    const [outRms] = runTimed(proc, Math.round((0.3 * SR) / BLOCK), 0.3);
+    expect(outRms / inRms).toBeGreaterThan(0.9);
+  });
+
+  it("a malformed timestamp degrades to an immediate set", () => {
+    now = 0;
+    const proc = new Processor({ processorOptions: { params: {} } });
+    const [, inRms] = runTimed(proc, 8, 0.3);
+    proc.port.onmessage?.({
+      data: { type: "paramAt", id: "global.outputGainDb", value: -20, when: Number.NaN },
+    });
+    // 20 blocks later the −20 dB gain is most of the way through its 20 ms
+    // smoother (pre-fix: no paramAt handler at all → unity passthrough).
+    const [outRms] = runTimed(proc, 20, 0.3);
+    expect(outRms / inRms).toBeLessThan(0.5);
   });
 });

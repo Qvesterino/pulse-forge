@@ -20,6 +20,13 @@ class UltinaWorkletProcessor extends AudioWorkletProcessor {
   lastLatencyPosted = -1;
   blockCount = 0;
   metersEnabled = true;
+  // Time-stamped parameter events (setParameterAt — automation lanes and
+  // offline renders), sorted ascending by `when`. Applied from process()
+  // when the render clock reaches them — port messages alone have no
+  // timing, so without this queue an offline export would hear every
+  // automation point at the moment it was POSTED (the last one wins),
+  // collapsing the lane to a constant.
+  pendingParams = [];
 
   constructor(options) {
     super();
@@ -42,6 +49,15 @@ class UltinaWorkletProcessor extends AudioWorkletProcessor {
         this.syncGraphFromParams();
         this.postLatency();
       } else if (msg.type === "param") {
+        // A manual value cancels still-pending automation for the same
+        // parameter (user touch overrides the future), matching how the
+        // engine treats AudioParam.cancelScheduledValues on takeover.
+        if (this.pendingParams.length > 0) {
+          const now = currentTime;
+          this.pendingParams = this.pendingParams.filter(
+            (ev) => ev.id !== msg.id || ev.when <= now,
+          );
+        }
         this.proc.setParameter(msg.id, msg.value);
         // Module on/off travels as a regular "<module>.enabled" param, but
         // the audio thread walks the module GRAPH — a toggle must be mirrored
@@ -50,7 +66,25 @@ class UltinaWorkletProcessor extends AudioWorkletProcessor {
           this.syncGraphFromParams();
           this.postLatency();
         }
+      } else if (msg.type === "paramAt") {
+        const when = Number(msg.when);
+        if (!Number.isFinite(when)) {
+          // Defensive: a malformed timestamp degrades to an immediate set.
+          this.proc.setParameter(msg.id, msg.value);
+          if (typeof msg.id === "string" && msg.id.endsWith(".enabled")) {
+            this.syncGraphFromParams();
+          }
+          this.postLatency();
+          return;
+        }
+        // Keep the queue sorted ascending by `when`; events usually arrive
+        // in order, so scan back from the end.
+        const q = this.pendingParams;
+        let i = q.length;
+        while (i > 0 && q[i - 1].when > when) i--;
+        q.splice(i, 0, { id: msg.id, value: msg.value, when });
       } else if (msg.type === "reset") {
+        this.pendingParams.length = 0;
         this.proc.reset();
       } else if (msg.type === "setMeters") {
         // Metering gate: with no panel attached the host disables the whole
@@ -87,16 +121,41 @@ class UltinaWorkletProcessor extends AudioWorkletProcessor {
     }
   }
 
+  /** Apply every queued event whose project time has arrived (the render
+   *  clock granularity is one 128-frame quantum ≈ 2.7 ms). */
+  applyDueParams(horizon) {
+    const q = this.pendingParams;
+    if (q.length === 0 || q[0].when > horizon) return;
+    let applied = 0;
+    let enabledToggled = false;
+    while (q.length > 0 && q[0].when <= horizon) {
+      const ev = q.shift();
+      this.proc.setParameter(ev.id, ev.value);
+      if (typeof ev.id === "string" && ev.id.endsWith(".enabled")) {
+        enabledToggled = true;
+      }
+      applied++;
+    }
+    if (applied > 0) {
+      if (enabledToggled) this.syncGraphFromParams();
+      this.postLatency();
+    }
+  }
+
   process(inputs, outputs) {
     const output = outputs[0];
     if (!output || !output[0] || !output[1]) return true;
     const input = inputs[0];
+    const total = output[0].length;
+    // `currentTime` is the first sample of this quantum; events up to the
+    // end of the block are applied now (≤ one quantum early) so the whole
+    // block processes with one coherent parameter set.
+    this.applyDueParams(currentTime + total / sampleRate);
 
     // The render quantum is 128 everywhere today, but the spec allows a host
     // to supply larger buffers — loop the internal MAX_BLOCK chunks so EVERY
     // output sample is written (a single 128-frame pass would leave samples
     // beyond it stale, duplicating the previous block's audio).
-    const total = output[0].length;
     for (let offset = 0; offset < total; offset += MAX_BLOCK) {
       const frames = Math.min(MAX_BLOCK, total - offset);
       for (let c = 0; c < CHANNELS; c++) {

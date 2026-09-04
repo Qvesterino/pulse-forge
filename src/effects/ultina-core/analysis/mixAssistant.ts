@@ -35,6 +35,7 @@ import type {
 import { extractFeatures } from "./featureExtractor.js";
 import { classifyInstrument } from "./instrumentClassifier.js";
 import { generateProposal, ANALYSIS_VERSION } from "./proposalEngine.js";
+import { clampParam } from "../contracts/parameterSchema.js";
 
 /**
  * Run the full Mix Assistant analysis pipeline.
@@ -142,8 +143,14 @@ export function analyzeWithTarget(
       })
     : new Array(10).fill(0);
 
-  // Deviation = current - target
-  const deviation = currentDb.map((c, i) => c - (targetCurve[i] ?? 0));
+  // Deviation = current - target. A non-finite target entry (caller-supplied
+  // or custom-captured curve) would make every downstream Math.min/max
+  // comparison NaN — which then flows into proposal values and, unclamped,
+  // into live DSP parameters. Sanitize to 0 (= flat target, no adjustment).
+  const deviation = currentDb.map((c, i) => {
+    const target = targetCurve[i];
+    return c - (typeof target === "number" && Number.isFinite(target) ? target : 0);
+  });
 
   // Suggest EQ adjustments (inverse of deviation, ±6 dB max)
   const octaveFreqs = [31.5, 63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
@@ -169,13 +176,16 @@ export function analyzeWithTarget(
     const bandId = `eq.band${bestBand}.gainDb`;
     const existing = proposal.changes.find((c) => c.parameterId === bandId);
     if (existing) {
-      existing.value += adjustment;
+      // Clamp the accumulation to the parameter's schema range — unlike
+      // addParam in proposalEngine, this path writes values directly and an
+      // accumulated sum can exceed the band gain's legal range.
+      existing.value = clampParam(bandId, existing.value + adjustment);
       existing.reasonCode = "INSTRUMENT_PROFILE_MISMATCH";
       existing.explanation = `Adjusted toward target curve: ${adjustment > 0 ? "+" : ""}${adjustment.toFixed(1)} dB`;
     } else {
       proposal.changes.push({
         parameterId: bandId,
-        value: adjustment,
+        value: clampParam(bandId, adjustment),
         confidence: 0.6,
         reasonCode: "INSTRUMENT_PROFILE_MISMATCH",
         explanation: `Tonal balance target adjustment: ${adjustment > 0 ? "+" : ""}${adjustment.toFixed(1)} dB`,

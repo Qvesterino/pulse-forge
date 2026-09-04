@@ -52,6 +52,10 @@ let Processor: ProcCtor;
 
 beforeAll(async () => {
   (globalThis as unknown as { sampleRate: number }).sampleRate = SR;
+  // Render clock global — present in the real AudioWorkletGlobalScope, and
+  // the entry's scheduled-parameter queue reads it every process() call.
+  // A static 0 keeps the (empty) paramAt queue inert in these renders.
+  Object.defineProperty(globalThis, "currentTime", { value: 0, configurable: true });
   (globalThis as unknown as { AudioWorkletProcessor: unknown }).AudioWorkletProcessor =
     FakeAudioWorkletProcessor;
   (globalThis as unknown as { registerProcessor: unknown }).registerProcessor = (

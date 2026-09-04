@@ -45,6 +45,14 @@ export interface ModuleProcessor {
 
   prepare(sampleRate: number, channelCount: number, maxBlockSize: number): void;
   process(channels: Channels, frameCount: number): void;
+  /**
+   * Optional external trigger signal for dynamic EQ nodes with
+   * dynSource = external (P-engine #9). The channels ride the process
+   * chunking and are only read. Processors without sidechain support
+   * simply omit this — dynSource=external then falls back to internal
+   * detection.
+   */
+  setSidechain?(channels: Channels | null): void;
   reset(): void;
   getLatencySamples(): number;
   setParameter(id: string, value: number): void;

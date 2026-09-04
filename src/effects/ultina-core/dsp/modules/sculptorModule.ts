@@ -242,10 +242,18 @@ export class SculptorModuleProcessor implements UltinaModuleProcessor {
           // Outside boundaries: release toward 0
           targetGainDb = 0;
         } else {
-          const measuredDb = ampToDb(this.envFollowers[b]);
-          const relativeLevel = measuredDb - avgDb;
-          targetGainDb = (targetCurve[b] - relativeLevel) * amount;
-          targetGainDb = clamp(targetGainDb, -MAX_CORRECTION_DB, MAX_CORRECTION_DB);
+          // Skip correction for silent bands: an empty band measures -200 dB,
+          // so the relative-level math would clamp to a full +12 dB boost and
+          // actively lift the noise floor in spectral holes (e.g. 11 kHz on a
+          // bass track).
+          if (this.envFollowers[b] < 1e-6) {
+            targetGainDb = 0;
+          } else {
+            const measuredDb = ampToDb(this.envFollowers[b]);
+            const relativeLevel = measuredDb - avgDb;
+            targetGainDb = (targetCurve[b] - relativeLevel) * amount;
+            targetGainDb = clamp(targetGainDb, -MAX_CORRECTION_DB, MAX_CORRECTION_DB);
+          }
         }
 
         // Smooth the gain

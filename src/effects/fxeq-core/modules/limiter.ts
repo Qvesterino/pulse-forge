@@ -175,6 +175,23 @@ export function createLimiterModule(params?: Record<string, number>): ModuleProc
     }
   }
 
+  /**
+   * Preallocate the true-peak scratch buffers for the worst block the
+   * contract allows (maxLaOvs history + one maxBlockSize of oversampled
+   * samples — exactly ringCap). The grow-if-needed checks inside
+   * processTruePeak stay as a safety net but must never fire: allocating
+   * on the first processed block is still an audio-thread allocation.
+   */
+  function initTruePeakScratch(): void {
+    epScratch = new Float32Array(ringCap);
+    dequeIdx = new Int32Array(ringCap);
+    dequeVal = new Float32Array(ringCap);
+    linkedEnvScratch.length = 0;
+    for (let c = 0; c < ch.length; c++) {
+      linkedEnvScratch.push(new Float32Array(Math.max(1, maxBs) * OS));
+    }
+  }
+
   // ── Legacy sample-peak path (zero latency) ────────────────
 
   function processLegacy(channels: Float32Array[], n: number, ceil: number): void {
@@ -560,6 +577,7 @@ export function createLimiterModule(params?: Record<string, number>): ModuleProc
         s.os.prepare(sampleRate, OS, maxBs);
         s.ring = new Float32Array(ringCap);
       }
+      initTruePeakScratch();
       prepared = true;
     },
 

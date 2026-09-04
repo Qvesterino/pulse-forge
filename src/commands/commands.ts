@@ -5004,7 +5004,15 @@ export function applyFxEqPreset(
   const target = trackEffectsOf(doc, trackId).find((f) => f.id === fxId);
   if (!target || target.type !== "fxeq") throw new Error(`FXEQ effect ${fxId} not found`);
   const schema = buildFxEqSchema(Math.round(target.params.bandCount ?? 6));
-  const nextParams = { ...schema.defaultParams, ...presetParams };
+  // Validate preset values against the band-aware schema: presets are data,
+  // and an out-of-range or unknown id must never reach the DSP or the
+  // persisted doc verbatim.
+  const nextParams: Record<string, number> = { ...schema.defaultParams };
+  for (const [id, value] of Object.entries(presetParams)) {
+    const def = schema.defs.find((d) => d.id === id);
+    if (!def || typeof value !== "number" || !Number.isFinite(value)) continue;
+    nextParams[id] = Math.max(def.minValue, Math.min(def.maxValue, value));
+  }
   const previousParams = { ...target.params };
   const apply = (d: ProjectDocument, values: Record<string, number>): ProjectDocument =>
     withTrackEffects(d, trackId, (effects) =>
@@ -5056,7 +5064,16 @@ export function applyUltinaPreset(
 ): Command {
   const target = trackEffectsOf(doc, trackId).find((f) => f.id === fxId);
   if (!target || target.type !== "ultina") throw new Error(`Ultina effect ${fxId} not found`);
-  const nextParams = { ...buildUltinaDefaults(), ...presetParams };
+  // Validate preset values against the vendored schema (same discipline as
+  // setUltinaParam): presets are data — out-of-range values and unknown ids
+  // from older schemas must be clamped/dropped, not written verbatim into
+  // the doc and forwarded to the DSP.
+  const nextParams: Record<string, number> = { ...buildUltinaDefaults() };
+  for (const [id, value] of Object.entries(presetParams)) {
+    if (!tryGetUltinaParamDef(id)) continue;
+    if (typeof value !== "number" || !Number.isFinite(value)) continue;
+    nextParams[id] = clampUltinaParam(id, value);
+  }
   const previousParams = { ...target.params };
   const apply = (d: ProjectDocument, values: Record<string, number>): ProjectDocument =>
     withTrackEffects(d, trackId, (effects) =>
@@ -5082,8 +5099,18 @@ export function applyUltinaProposal(
   const target = trackEffectsOf(doc, trackId).find((f) => f.id === fxId);
   if (!target || target.type !== "ultina") throw new Error(`Ultina effect ${fxId} not found`);
   const nextParams = { ...target.params };
-  for (const t of toggles) nextParams[`${t.moduleType}.enabled`] = t.enabled ? 1 : 0;
-  for (const c of changes) nextParams[c.parameterId] = c.value;
+  // Analyzer output is untrusted input like any other parameter source:
+  // route every toggle and change through the schema (clamped, unknown ids
+  // dropped) instead of writing raw values into the doc.
+  for (const t of toggles) {
+    const id = `${t.moduleType}.enabled`;
+    if (tryGetUltinaParamDef(id)) nextParams[id] = t.enabled ? 1 : 0;
+  }
+  for (const c of changes) {
+    if (!tryGetUltinaParamDef(c.parameterId)) continue;
+    if (typeof c.value !== "number" || !Number.isFinite(c.value)) continue;
+    nextParams[c.parameterId] = clampUltinaParam(c.parameterId, c.value);
+  }
   const previousParams = { ...target.params };
   const apply = (d: ProjectDocument, values: Record<string, number>): ProjectDocument =>
     withTrackEffects(d, trackId, (effects) =>

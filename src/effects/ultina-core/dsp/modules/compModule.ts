@@ -186,8 +186,11 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
     const scEnabled = (params["comp.sidechainEnabled"] ?? 0) >= 0.5;
     const scHpfHz = clamp(params["comp.sidechainHpfHz"] ?? 20, 20, 2000);
     const bandCount = Math.round(clamp(params["comp.bandCount"] ?? 1, 1, 3)) as BandCount;
-    const xover1 = params["comp.crossoverHz1"] ?? 250;
-    const xover2 = params["comp.crossoverHz2"] ?? 2500;
+    // Clamp like the exciter/transient/clipper/density modules: the hybrid
+    // FIR crossover designs its sinc from an unclamped fc = freq/sr — a
+    // value above Nyquist yields a degenerate filter.
+    const xover1 = clamp(params["comp.crossoverHz1"] ?? 250, 20, 20000);
+    const xover2 = clamp(params["comp.crossoverHz2"] ?? 2500, 20, 20000);
     const channelModeRaw = Math.round(clamp(params["comp.channelMode"] ?? 0, 0, 4));
     const channelMode = channelModeFromValue(channelModeRaw);
     const deltaListen = (params["comp.delta"] ?? 0) >= 0.5;
