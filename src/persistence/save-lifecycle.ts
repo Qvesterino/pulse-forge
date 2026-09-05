@@ -11,7 +11,9 @@
  * This module installs three event hooks:
  *
  * - `pagehide` (the modern, mobile-friendly replacement for `beforeunload`)
- *   fires a final synchronous flush. It is the primary safety net on iOS.
+ *   starts a final best-effort asynchronous flush. It is the primary safety
+ *   net on iOS, although browsers cannot guarantee an IndexedDB promise after
+ *   the document is terminated.
  * - `beforeunload` warns the user when the project has unsaved changes
  *   (dirty / error) and lets the browser show its native "Leave site?"
  *   dialog. Without `event.returnValue` set, modern browsers ignore the
@@ -45,17 +47,16 @@ export function installSaveUnloadGuards(
 ): () => void {
   const onPageHide = (): void => {
     // pagehide is the one iOS Safari reliably fires before terminating
-    // a tab. Fire-and-forget: the IDB transaction is enqueued in the
-    // browser's commit queue and the OS will attempt the write even if
-    // the JS context is destroyed shortly after.
+    // a tab. Fire-and-forget: IndexedDB may commit an already-open
+    // transaction, but no browser guarantees completion after termination.
     void options.flushSave();
   };
 
   const onBeforeUnload = (event: Event): void => {
     // A "dirty" project means the user's last edit is in the 800 ms
-    // debounce window (or the previous save errored). A synchronous
-    // flush + a browser warning gives the user a chance to cancel close
-    // and let the write commit.
+    // debounce window (or the previous save errored). Start a best-effort
+    // flush and show a browser warning so the user can cancel close and let
+    // the write commit.
     if (options.isDirty()) {
       event.preventDefault();
       // Legacy string return — modern Chrome/Firefox require this exact

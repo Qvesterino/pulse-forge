@@ -92,7 +92,7 @@ export interface EffectInstance {
 
 /** Plugin-owned editor state blob on an EffectInstance (see deviceState). */
 export interface DeviceState {
-  /** Payload identity driving the per-plugin validator, e.g. "ultina-ab-v1". */
+  /** Payload identity driving the per-plugin validator, e.g. "ultina-ab-v1" or "effect-ab-v1". */
   kind: string;
   data: Record<string, unknown>;
 }

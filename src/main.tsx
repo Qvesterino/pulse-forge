@@ -126,7 +126,12 @@ function Boot() {
   }, []);
 
   const openDoc = useCallback((core: CoreServices, doc: ProjectDocument) => {
-    void openProject(core, doc).then((services) => setScreen({ kind: "studio", services }));
+    // Surface open failures (e.g. the lazy collab chunk cannot load) — a
+    // silent rejection would leave the browser looking unresponsive.
+    void openProject(core, doc).then(
+      (services) => setScreen({ kind: "studio", services }),
+      (error) => setScreen({ kind: "error", message: String(error) }),
+    );
   }, []);
 
   /** Swap the studio's services in place (collab session start/leave). */
@@ -135,9 +140,15 @@ function Boot() {
   }, []);
 
   const backToBrowser = useCallback((services: Services) => {
-    void services.closeProject().then(() => {
-      setScreen({ kind: "browser", core: services.core });
-    });
+    // closeProject awaits the final save internally; a rejection here must
+    // still return the user to the browser instead of wedging the studio.
+    void services.closeProject().then(
+      () => setScreen({ kind: "browser", core: services.core }),
+      (error) => {
+        console.error("[boot] closeProject failed:", error);
+        setScreen({ kind: "browser", core: services.core });
+      },
+    );
   }, []);
 
   if (screen.kind === "booting") {

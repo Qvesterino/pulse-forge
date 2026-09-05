@@ -447,3 +447,31 @@ describe("NoteRepeatController — per-hold rate", () => {
     expect(h.controller.size).toBe(0);
   });
 });
+
+describe("NoteRepeatController — stopWithPrefix (recovery)", () => {
+  it("releases only holds under the prefix, leaving other namespaces held", () => {
+    const h = makeHarness(120);
+    h.controller.setRate("1/16");
+    h.controller.start("midi:0:36", "t1", "padA", 1);
+    h.controller.start("midi:1:38", "t1", "padB", 1);
+    h.controller.start("pad:t1:padC", "t1", "padC", 1);
+    expect(h.controller.size).toBe(3);
+
+    h.controller.stopWithPrefix("midi:");
+    expect(h.controller.isHolding("midi:0:36")).toBe(false);
+    expect(h.controller.isHolding("midi:1:38")).toBe(false);
+    expect(h.controller.isHolding("pad:t1:padC")).toBe(true);
+    // Timer pruned only when nothing is held — the UI hold keeps it alive.
+    expect(h.controller.size).toBe(1);
+    h.controller.stopAll();
+  });
+
+  it("releasing the last prefixed hold prunes the repeat timer", () => {
+    const h = makeHarness(120);
+    h.controller.setRate("1/16");
+    h.controller.start("midi:0:42", "t1", "padA", 1);
+    h.controller.stopWithPrefix("midi:");
+    expect(h.controller.size).toBe(0);
+    expect(h.controller["timer"]).toBeNull();
+  });
+});

@@ -26,6 +26,8 @@ import {
   buildDefaultParams as buildUltinaDefaultParams,
 } from "./ultina-core/contracts/parameterSchema";
 import { buildSchema as buildFxEqSchema } from "./fxeq-core/core/parameterSchema";
+import { defaultOzvenaStateV1 } from "./ozvena-core/v2/types";
+import { clampOzvenaParam } from "./ozvena-params";
 
 const dbToLin = (db: number) => Math.pow(10, db / 20);
 const smooth = (param: AudioParam, value: number, when: number, tc = 0.02) => param.setTargetAtTime(value, when, tc);
@@ -2116,6 +2118,64 @@ const OZVENA_PARAM_DEFAULTS: Record<string, number> = {
   "global.quality": 1,
 };
 
+/**
+ * Ozvena's editor uses dotted paths into its canonical state tree. Keep the
+ * key catalog next to the default state so A/B snapshots and project loads
+ * can reject stale/corrupt paths before they reach the AudioWorklet.
+ */
+function collectStateLeafPaths(value: unknown, prefix = "", out = new Set<string>()): Set<string> {
+  if (value === null || value === undefined || Array.isArray(value)) return out;
+  if (typeof value !== "object") {
+    if (prefix) out.add(prefix);
+    return out;
+  }
+  for (const [key, child] of Object.entries(value)) {
+    collectStateLeafPaths(child, prefix ? prefix + "." + key : key, out);
+  }
+  return out;
+}
+
+function flattenNumericState(value: unknown, prefix = "", out: Record<string, number> = {}): Record<string, number> {
+  if (value === null || value === undefined || Array.isArray(value)) return out;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    if (prefix) out[prefix] = value;
+    return out;
+  }
+  if (typeof value === "boolean") {
+    if (prefix) out[prefix] = value ? 1 : 0;
+    return out;
+  }
+  if (typeof value !== "object") return out;
+  for (const [key, child] of Object.entries(value)) {
+    flattenNumericState(child, prefix ? prefix + "." + key : key, out);
+  }
+  return out;
+}
+
+// Only audio state belongs in the effect's param map. `schemaVersion`, the
+// assistant wizard and analyzer bookkeeping are serialized state metadata,
+// not DSP controls and must not become automatable target ids by accident.
+const OZVENA_PARAM_SECTIONS = [
+  "global",
+  "blendPad",
+  "engines",
+  "preDelay",
+  "smoother",
+  "preEq",
+  "reverbEq",
+  "mod",
+  "duck",
+  "convolution",
+] as const;
+const OZVENA_DEFAULT_STATE = defaultOzvenaStateV1();
+const OZVENA_PARAM_PATHS = new Set(
+  OZVENA_PARAM_SECTIONS.flatMap((section) => Array.from(collectStateLeafPaths(OZVENA_DEFAULT_STATE[section], section))),
+);
+const OZVENA_DEFAULT_DEEP_PARAMS = OZVENA_PARAM_SECTIONS.reduce(
+  (out, section) => flattenNumericState(OZVENA_DEFAULT_STATE[section], section, out),
+  {} as Record<string, number>,
+);
+
 const OZVENA_QUALITY_OPTIONS = [
   { value: 0, label: "eco" },
   { value: 1, label: "standard" },
@@ -2997,9 +3057,7 @@ export function normalizePluginParams(
     // through the rack def), then build the band-aware schema.
     const rawBands = source.bandCount;
     const bandCount = Math.round(
-      typeof rawBands === "number" && Number.isFinite(rawBands)
-        ? clampEffectParam(type, "bandCount", rawBands)
-        : 6,
+      typeof rawBands === "number" && Number.isFinite(rawBands) ? clampEffectParam(type, "bandCount", rawBands) : 6,
     );
     const schema = buildFxEqSchema(bandCount);
     const params: Record<string, number> = { ...defaultParamsOf(type), ...schema.defaultParams };
@@ -3014,10 +3072,13 @@ export function normalizePluginParams(
     // Dotted paths consumed by the worklet's setPath, which validates at the
     // boundary (drops non-finite, walks only existing state branches, clamps
     // enum indices). Rack ids additionally clamp through the registry def.
-    const params: Record<string, number> = { ...defaultParamsOf(type) };
+    // Start from the complete audio parameter tree so loading an A/B slot is
+    // a true restore rather than leaving deep parameters from the other slot.
+    const params: Record<string, number> = { ...defaultParamsOf(type), ...OZVENA_DEFAULT_DEEP_PARAMS };
     for (const [id, value] of Object.entries(source)) {
       if (typeof value !== "number" || !Number.isFinite(value)) continue;
-      params[id] = clampEffectParam(type, id, value);
+      if (!OZVENA_PARAM_PATHS.has(id)) continue;
+      params[id] = clampOzvenaParam(id, value, OZVENA_DEFAULT_DEEP_PARAMS[id] ?? 0);
     }
     return params;
   }

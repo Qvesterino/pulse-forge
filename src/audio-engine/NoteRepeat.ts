@@ -188,6 +188,19 @@ export class NoteRepeatController {
     this.pruneTimer();
   }
 
+  /**
+   * Pad-up every hold whose key shares a namespace prefix (e.g. all
+   * `midi:` holds when a controller disconnects mid-hold — its note-off
+   * will never arrive, so the roll must not outlive the device). UI holds
+   * (`pad:`, key holds) are unaffected.
+   */
+  stopWithPrefix(prefix: string): void {
+    for (const key of [...this.holds.keys()]) {
+      if (key.startsWith(prefix)) this.holds.delete(key);
+    }
+    this.pruneTimer();
+  }
+
   private anchor(hold: ActiveHold, _key: string): void {
     const transport = this.deps.getTransport();
     const rateTicks = rateTicksOf(hold.rate);

@@ -37,6 +37,16 @@ describe("MIDI commands", () => {
     expect(next.midi?.ccMappings[0].ccNumber).toBe(1);
   });
 
+  it("clamps a valid plugin target to its complete parameter range", () => {
+    const pluginDoc = createProjectFromTemplate("house");
+    const track = pluginDoc.tracks.find((item) => item.kind === "instrument")!;
+    track.effects = [{ id: "fx-midi", type: "fxeq", bypassed: false, params: { bandCount: 6, mix: 100 } }];
+    const effect = track.effects[0];
+    const target = { kind: "fxParam" as const, trackId: track.id, fxId: effect.id, paramId: "mix" };
+    const next = addMidiCcMapping(pluginDoc, 74, target, -999, 999).execute(pluginDoc);
+    expect(next.midi?.ccMappings[0]).toMatchObject({ min: 0, max: 100 });
+  });
+
   it("removeMidiCcMapping removes mapping", () => {
     const withMapping = addMidiCcMapping(doc, 1, { kind: "trackGain", trackId: "t1" }, 0, 1).execute(doc);
     const mappingId = withMapping.midi!.ccMappings[0].id;

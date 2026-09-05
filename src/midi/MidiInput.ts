@@ -105,7 +105,13 @@ export class MidiInput {
     for (const [, input] of this.access.inputs) {
       this.connectInput(input);
     }
-    this.access.onstatechange = () => {
+    this.access.onstatechange = (event: unknown) => {
+      // Recovery: a controller unplugged mid-hold never delivers its
+      // note-off, so its Note Repeat roll would fire forever. Holds are
+      // keyed by channel:note (not device), so release every midi-originated
+      // hold; mouse/QWERTY holds are unaffected.
+      const port = (event as { port?: { state?: string } } | null)?.port;
+      if (port?.state === "disconnected") this.noteRepeat?.stopWithPrefix("midi:");
       this.reconnectAll();
       this.notifyDevices();
     };
@@ -157,6 +163,9 @@ export class MidiInput {
       if (!this.access.inputs.has(input.id)) {
         input.removeEventListener("midimessage", this.listeners.get(input)!);
         this.listeners.delete(input);
+        // Some browsers remove the port from the map instead of flipping
+        // its state — release midi-originated Note Repeat holds here too.
+        this.noteRepeat?.stopWithPrefix("midi:");
       }
     }
     // Connect new inputs

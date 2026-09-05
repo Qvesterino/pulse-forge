@@ -582,6 +582,28 @@ describe("normalizeProject — macro mapping sources", () => {
   });
 });
 
+describe("normalizeProject — MIDI numeric boundaries", () => {
+  it("repairs non-finite channels and pitch-bend range instead of retaining NaN", () => {
+    const doc = {
+      ...minimalDoc(),
+      midi: {
+        enabled: true,
+        deviceId: "midi-test",
+        drumChannel: Number.NaN,
+        instrumentChannel: Number.POSITIVE_INFINITY,
+        ccMappings: [],
+        drumNoteMap: [],
+        pitchBendRange: Number.NaN,
+      },
+    } as ProjectDocument;
+
+    const midi = normalizeProject(doc).midi!;
+    expect(midi.drumChannel).toBe(0);
+    expect(midi.instrumentChannel).toBe(0);
+    expect(midi.pitchBendRange).toBe(2);
+  });
+});
+
 describe("normalizeProject — note integrity", () => {
   // Regression (Defect A03.D1, sequencer integrity audit): the
   // normalizer used to drop only notes whose end exceeded the

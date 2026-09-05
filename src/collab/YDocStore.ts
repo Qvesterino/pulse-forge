@@ -24,7 +24,8 @@ import {
 // collab chunk) — they reach the helpers through the bridge, registered here
 // where yjs is guaranteed to be loaded anyway.
 registerYDocHelpers({
-  yToggleStep: (yMap, patternId, padId, stepIndex) => yToggleStep(yMap as Y.Map<unknown>, patternId, padId, stepIndex),
+  yToggleStep: (yMap, patternId, padId, stepIndex, defaultVelocity) =>
+    yToggleStep(yMap as Y.Map<unknown>, patternId, padId, stepIndex, defaultVelocity),
   ySetStepVelocity: (yMap, patternId, padId, stepIndex, velocity) =>
     ySetStepVelocity(yMap as Y.Map<unknown>, patternId, padId, stepIndex, velocity),
   ySetPatternField: (yMap, patternId, field, value) =>

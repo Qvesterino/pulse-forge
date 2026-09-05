@@ -28,7 +28,7 @@ import { uid } from "../shared/ids";
 import { defaultInstrumentParams } from "../instruments/registry";
 import { createProjectFromTemplate } from "./templates";
 import { EFFECT_DEFS, clampEffectParam, defaultParamsOf, normalizePluginParams } from "../effects/registry";
-import { clampTargetValue, isAutomationTargetValid } from "./targets";
+import { clampTargetValue, isAutomationTargetValid, targetOwner, targetParamDef } from "./targets";
 
 export const SCHEMA_VERSION = 1;
 /** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
@@ -152,19 +152,27 @@ export function createDefaultReturns(): ReturnTrack[] {
     id: uid("fx"),
     type: "reverb",
     bypassed: false,
-    params: { decay: 2.2, predelay: 20, tone: 6000, mix: 1 },
+    params: { ...defaultParamsOf("reverb"), decay: 2.2, predelay: 20, tone: 6000, mix: 1 },
   };
   const delayFx: EffectInstance = {
     id: uid("fx"),
     type: "delay",
     bypassed: false,
-    params: { time: 375, feedback: 0.4, tone: 4000, mix: 1 },
+    params: { ...defaultParamsOf("delay"), time: 375, feedback: 0.4, tone: 4000, mix: 1 },
   };
   const nyCompFx: EffectInstance = {
     id: uid("fx"),
     type: "compressor",
     bypassed: false,
-    params: { threshold: -24, ratio: 10, attack: 0.001, release: 0.12, knee: 6, mix: 1 },
+    params: {
+      ...defaultParamsOf("compressor"),
+      threshold: -24,
+      ratio: 10,
+      attack: 0.001,
+      release: 0.12,
+      knee: 6,
+      mix: 1,
+    },
   };
   return [
     { id: uid("return"), kind: "return", name: "Reverb", gain: 0.9, effects: [reverbFx] },
@@ -288,13 +296,19 @@ function sanitizeIntensityPoint(raw: unknown): IntensityPoint | null {
 }
 
 /** Filter scene automation: drop lanes with no scene or no points. */
-export function sanitizeSceneAutomation(input: unknown, sceneIds: Set<string>): SceneAutomation[] {
+export function sanitizeSceneAutomation(
+  input: unknown,
+  sceneIds: Set<string>,
+  doc?: ProjectDocument,
+): SceneAutomation[] {
   if (!Array.isArray(input)) return [];
   const out: SceneAutomation[] = [];
   for (const raw of input) {
     if (!isObject(raw)) continue;
     if (typeof raw.sceneId !== "string" || !sceneIds.has(raw.sceneId)) continue;
     if (!isObject(raw.target)) continue;
+    const target = raw.target as unknown as AutomationTarget;
+    if (doc && !isAutomationTargetValid(doc, target)) continue;
     if (!Array.isArray(raw.points)) continue;
     const id = typeof raw.id === "string" ? raw.id : uid("sceneAuto");
     const points = raw.points
@@ -303,7 +317,7 @@ export function sanitizeSceneAutomation(input: unknown, sceneIds: Set<string>): 
         const tick = Math.max(0, Math.floor(Number(p.tick) || 0));
         const value = Number(p.value);
         if (!Number.isFinite(value)) return null;
-        return { tick, value };
+        return { tick, value: doc ? clampTargetValue(doc, target, value) : value };
       })
       .filter((p: unknown): p is { tick: number; value: number } => p !== null)
       .sort((a: { tick: number }, b: { tick: number }) => a.tick - b.tick);
@@ -311,7 +325,7 @@ export function sanitizeSceneAutomation(input: unknown, sceneIds: Set<string>): 
     out.push({
       id,
       sceneId: raw.sceneId,
-      target: raw.target as unknown as SceneAutomation["target"],
+      target: target as SceneAutomation["target"],
       points,
     });
   }
@@ -616,7 +630,11 @@ function normalizeEffects(raw: unknown, trackId: string, trackIds: Set<string>):
 }
 
 const DEVICE_STATE_KIND_MAX = 32;
-const DEVICE_STATE_SLOT_KEYS_MAX = 64;
+// Flagship snapshots are full parameter maps: FXEQ can expose ~200 deep
+// fields at six bands and Ozvena carries the complete three-engine state.
+// Keep a hard bound for hostile documents, but do not truncate legitimate
+// plugin snapshots halfway through their schema.
+const DEVICE_STATE_SLOT_KEYS_MAX = 512;
 const DEVICE_STATE_KEY_MAX = 48;
 
 /** Clamp a device state blob to a legal, size-bounded payload; unknown kinds drop. */
@@ -624,30 +642,41 @@ export function sanitizeDeviceState(raw: unknown): DeviceState | undefined {
   if (typeof raw !== "object" || raw === null) return undefined;
   const ds = raw as Partial<DeviceState> & Record<string, unknown>;
   if (typeof ds.kind !== "string" || ds.kind.length === 0 || ds.kind.length > DEVICE_STATE_KIND_MAX) return undefined;
-  if (typeof ds.data !== "object" || ds.data === null) return undefined;
-  if (ds.kind === "ultina-ab-v1") return sanitizeUltinaAbState(ds.data);
+  if (typeof ds.data !== "object" || ds.data === null || Array.isArray(ds.data)) return undefined;
+  if (ds.kind === "ultina-ab-v1" || ds.kind === "effect-ab-v1") return sanitizeAbState(ds.kind, ds.data);
   return undefined;
 }
 
-function sanitizeUltinaAbState(data: Record<string, unknown>): DeviceState | undefined {
+function sanitizeAbState(
+  kind: "ultina-ab-v1" | "effect-ab-v1",
+  data: Record<string, unknown>,
+): DeviceState | undefined {
   const rawSlots = (data.slots ?? null) as Record<string, unknown> | null;
-  if (typeof rawSlots !== "object" || rawSlots === null) return undefined;
+  if (typeof rawSlots !== "object" || rawSlots === null || Array.isArray(rawSlots)) return undefined;
   const slots: Record<string, Record<string, number>> = {};
+  let hasValidSlot = false;
   for (const slot of ["A", "B"] as const) {
     const raw = rawSlots[slot];
-    if (typeof raw !== "object" || raw === null) continue;
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) continue;
+    hasValidSlot = true;
     const clean: Record<string, number> = {};
     for (const [key, value] of Object.entries(raw as Record<string, unknown>).slice(0, DEVICE_STATE_SLOT_KEYS_MAX)) {
       if (key.length <= DEVICE_STATE_KEY_MAX && typeof value === "number" && Number.isFinite(value)) {
         clean[key] = value;
       }
     }
-    if (Object.keys(clean).length > 0) slots[slot] = clean;
+    // An empty object is valid for a freshly stored slot when an
+    // older/imported effect has not materialized its parameter map yet.
+    slots[slot] = clean;
   }
-  if (Object.keys(slots).length === 0) return undefined;
+  // An empty slot map is valid before the first STORE: the editor still needs
+  // to persist which side is active so the next STORE lands in that side.
+  if (!hasValidSlot && data.active !== "A" && data.active !== "B") return undefined;
   // capturedLufs and other meter data are session-scoped — never persisted here.
-  const active = data.active === "B" && slots.B ? "B" : "A";
-  return { kind: "ultina-ab-v1", data: { slots, active } };
+  // Keep an empty active slot: users can switch to B, edit, then STORE it.
+  // Recall still requires a concrete snapshot in loadEffectAbSlot/loadUltina.
+  const active = data.active === "B" ? "B" : "A";
+  return { kind, data: { slots, active } };
 }
 
 /**
@@ -1145,7 +1174,9 @@ function normalizeAutomationDomain(s: NormalizeState): void {
 
 function normalizeLfosDomain(s: NormalizeState): void {
   const doc = s.doc;
-  const trackIds = new Set(doc.tracks.map((t) => t.id));
+  // Returns are valid modulation hosts/sources too. The project-aware target
+  // catalog still rejects return-pan and dangling device targets below.
+  const trackIds = new Set([...doc.tracks.map((t) => t.id), ...doc.returns.map((ret) => ret.id)]);
   const lfos = doc.lfos;
   if (!Array.isArray(lfos)) {
     s.doc = { ...doc, lfos: [] };
@@ -1158,6 +1189,18 @@ function normalizeLfosDomain(s: NormalizeState): void {
   for (const lfo of lfos) {
     const cleaned = sanitizeLfo(lfo, trackIds);
     if (cleaned) sanitized.push(cleaned);
+    // `sanitizeLfo` can only validate the serialized target shape. The
+    // project-aware catalog must also reject deleted FX, unknown deep params
+    // and return-pan targets, otherwise the UI shows a live-looking LFO that
+    // the engine can never resolve.
+    const rawTarget = (lfo as unknown as Record<string, unknown>)?.target;
+    if (cleaned && rawTarget !== undefined && !cleaned.target) {
+      sanitized.pop();
+      continue;
+    }
+    if (cleaned?.target && !isAutomationTargetValid(doc, cleaned.target)) {
+      sanitized.pop();
+    }
   }
   const shapeChanged = sanitized.length !== lfos.length || sanitized.some((lfo, i) => lfo !== lfos[i]);
   if (shapeChanged) {
@@ -1186,7 +1229,11 @@ function normalizeMacrosDomain(s: NormalizeState): void {
       // dangling target at load time instead of leaving an inert macro that
       // looks healthy in the UI. Legacy VOL/PAN mappings remain compatible.
       if (sanitized.target && !isAutomationTargetValid(doc, sanitized.target)) continue;
-      if (!sanitized.target && sanitized.param !== "gain" && sanitized.param !== "pan") continue;
+      if (!sanitized.target) {
+        const owner = targetOwner(doc, sanitized.trackId);
+        if (!owner || (sanitized.param !== "gain" && sanitized.param !== "pan")) continue;
+        if (owner.kind === "return" && sanitized.param === "pan") continue;
+      }
       if (
         sanitized.id !== mapping.id ||
         sanitized.trackId !== mapping.trackId ||
@@ -1302,7 +1349,7 @@ function normalizeSceneAutomationDomain(s: NormalizeState): void {
   const doc = s.doc;
   // scene automation — clamp to valid scenes + non-empty lanes.
   const liveSceneIds = new Set(doc.scenes.map((sc) => sc.id));
-  const cleanedSceneAuto = sanitizeSceneAutomation(doc.sceneAutomation, liveSceneIds);
+  const cleanedSceneAuto = sanitizeSceneAutomation(doc.sceneAutomation, liveSceneIds, doc);
   // Only replace if the content actually changed (sanitize rebuilds objects,
   // so a reference equality check would always fail). JSON.stringify is fine
   // here — the structures are small and we run this on save/commit only.
@@ -1365,10 +1412,27 @@ function normalizeMasterAndReturnsDomain(s: NormalizeState): void {
       s.changed = true;
     }
   }
-  // returns
+  // returns — normalize their effect chains with the same plugin schema as
+  // regular tracks. Return FX are valid automation/macro owners and must not
+  // remain a second, weakly-validated persistence path.
   if (!Array.isArray(doc.returns)) {
     doc = { ...doc, returns: createDefaultReturns() };
     s.changed = true;
+  } else {
+    const returnIds = new Set([...doc.tracks, ...doc.returns].map((item) => item.id));
+    const returns = doc.returns
+      .filter((ret): ret is ReturnTrack => Boolean(ret && typeof ret.id === "string" && ret.id.length > 0))
+      .map((ret) => {
+        const effects = normalizeEffects(ret.effects, ret.id, returnIds);
+        const gain =
+          typeof ret.gain === "number" && Number.isFinite(ret.gain) ? Math.min(1.5, Math.max(0, ret.gain)) : 0.9;
+        const name = typeof ret.name === "string" && ret.name.trim() ? ret.name : "Return";
+        return { ...ret, kind: "return" as const, name, gain, effects };
+      });
+    if (JSON.stringify(returns) !== JSON.stringify(doc.returns)) {
+      doc = { ...doc, returns };
+      s.changed = true;
+    }
   }
   // master
   if (doc.master === undefined || doc.master === null || typeof doc.master !== "object") {
@@ -1423,23 +1487,81 @@ function normalizeMidiDomain(s: NormalizeState): void {
       const m = doc.midi as Record<string, unknown>;
       const enabled = m.enabled === true;
       const deviceId = typeof m.deviceId === "string" ? m.deviceId : "";
-      const drumChannel = typeof m.drumChannel === "number" ? Math.max(0, Math.min(16, m.drumChannel)) : 0;
+      const drumChannel =
+        typeof m.drumChannel === "number" && Number.isFinite(m.drumChannel)
+          ? Math.max(0, Math.min(16, Math.floor(m.drumChannel)))
+          : 0;
       const instrumentChannel =
-        typeof m.instrumentChannel === "number" ? Math.max(0, Math.min(16, m.instrumentChannel)) : 0;
-      const pitchBendRange = typeof m.pitchBendRange === "number" ? Math.max(1, Math.min(24, m.pitchBendRange)) : 2;
-      const ccMappings = Array.isArray(m.ccMappings) ? m.ccMappings : [];
+        typeof m.instrumentChannel === "number" && Number.isFinite(m.instrumentChannel)
+          ? Math.max(0, Math.min(16, Math.floor(m.instrumentChannel)))
+          : 0;
+      const pitchBendRange =
+        typeof m.pitchBendRange === "number" && Number.isFinite(m.pitchBendRange)
+          ? Math.max(1, Math.min(24, m.pitchBendRange))
+          : 2;
+      const rawCcMappings = Array.isArray(m.ccMappings) ? m.ccMappings : [];
+      const ccMappings = rawCcMappings
+        .map((raw): import("./types").MidiCcMapping | null => {
+          if (
+            !isObject(raw) ||
+            !isObject(raw.target) ||
+            !isAutomationTargetValid(doc, raw.target as unknown as AutomationTarget)
+          ) {
+            return null;
+          }
+          const target = raw.target as unknown as AutomationTarget;
+          const def = targetParamDef(doc, target);
+          if (!def) return null;
+          const ccNumber = Number(raw.ccNumber);
+          if (!Number.isFinite(ccNumber) || ccNumber < 0 || ccNumber > 127) return null;
+          const channel = Number(raw.channel);
+          const minRaw = Number(raw.min);
+          const maxRaw = Number(raw.max);
+          const min = Number.isFinite(minRaw) ? Math.max(def.min, Math.min(def.max, minRaw)) : def.min;
+          const max = Number.isFinite(maxRaw) ? Math.max(def.min, Math.min(def.max, maxRaw)) : def.max;
+          return {
+            id: typeof raw.id === "string" && raw.id.length > 0 ? raw.id : uid("midiMap"),
+            ccNumber: Math.floor(ccNumber),
+            ...(Number.isFinite(channel) && channel >= 1 && channel <= 16 ? { channel: Math.floor(channel) } : {}),
+            target,
+            min: Math.min(min, max),
+            max: Math.max(min, max),
+          };
+        })
+        .filter((mapping): mapping is import("./types").MidiCcMapping => mapping !== null);
       const drumNoteMap = Array.isArray(m.drumNoteMap) ? m.drumNoteMap : [];
+      const aftertouchTarget =
+        isObject(m.aftertouchTarget) && isAutomationTargetValid(doc, m.aftertouchTarget as unknown as AutomationTarget)
+          ? (m.aftertouchTarget as unknown as AutomationTarget)
+          : undefined;
+      const aftertouchRange =
+        typeof m.aftertouchRange === "number" && Number.isFinite(m.aftertouchRange)
+          ? Math.max(0, Math.min(1, m.aftertouchRange))
+          : undefined;
       // Only create new object if something actually changed
       if (
         enabled !== (m.enabled === true) ||
         deviceId !== (typeof m.deviceId === "string" ? m.deviceId : "") ||
-        drumChannel !== (typeof m.drumChannel === "number" ? m.drumChannel : 0) ||
-        instrumentChannel !== (typeof m.instrumentChannel === "number" ? m.instrumentChannel : 0) ||
-        pitchBendRange !== (typeof m.pitchBendRange === "number" ? m.pitchBendRange : 2)
+        drumChannel !== m.drumChannel ||
+        instrumentChannel !== m.instrumentChannel ||
+        pitchBendRange !== m.pitchBendRange ||
+        JSON.stringify(ccMappings) !== JSON.stringify(rawCcMappings) ||
+        JSON.stringify(aftertouchTarget) !== JSON.stringify(m.aftertouchTarget) ||
+        aftertouchRange !== m.aftertouchRange
       ) {
         s.doc = {
           ...doc,
-          midi: { enabled, deviceId, drumChannel, instrumentChannel, ccMappings, drumNoteMap, pitchBendRange },
+          midi: {
+            enabled,
+            deviceId,
+            drumChannel,
+            instrumentChannel,
+            ccMappings,
+            drumNoteMap,
+            pitchBendRange,
+            ...(aftertouchTarget ? { aftertouchTarget } : {}),
+            ...(aftertouchRange !== undefined ? { aftertouchRange } : {}),
+          },
         };
         s.changed = true;
       }
@@ -1632,6 +1754,7 @@ const NORMALIZE_DOMAINS: ((s: NormalizeState) => void)[] = [
   normalizeBpmDomain,
   normalizeActivePatternDomain,
   normalizeTracksDomain,
+  normalizeMasterAndReturnsDomain,
   normalizeScenesDomain,
   normalizeArrangementDomain,
   normalizeAutomationDomain,
@@ -1641,7 +1764,6 @@ const NORMALIZE_DOMAINS: ((s: NormalizeState) => void)[] = [
   normalizeKeyAndTagsDomain,
   normalizeMarkersDomain,
   normalizeSceneAutomationDomain,
-  normalizeMasterAndReturnsDomain,
   normalizeTimestampsDomain,
   normalizeGrooveDomain,
   normalizeMidiDomain,

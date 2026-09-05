@@ -424,6 +424,18 @@ describe("effect commands", () => {
     expect(() => setEffectParam(store.doc, trackId, fx.id, "nonexistent", 0.5)).toThrow(/not defined/);
   });
 
+  it("setEffectParam accepts Ozvena's deep enum paths and clamps the index", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    const trackId = doc.tracks[0].id;
+    store.execute(addEffect(store.doc, trackId, "ozvena"));
+    const fx = getDrumTrack(store.doc).effects[0];
+    store.execute(setEffectParam(store.doc, trackId, fx.id, "engines.e2.algo", 99));
+    expect(getDrumTrack(store.doc).effects[0].params["engines.e2.algo"]).toBe(2);
+    store.undo();
+    expect(getDrumTrack(store.doc).effects[0].params["engines.e2.algo"]).toBe(0);
+  });
+
   it("setEffectParam undo restores the default when the param was never set before", () => {
     const doc = createDefaultProject();
     const store = new ProjectStore(doc);

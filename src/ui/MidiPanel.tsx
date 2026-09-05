@@ -19,8 +19,12 @@ import type {
   MidiCreativeOperation,
   StrumDirection,
 } from "../midi/creative";
-import { EFFECT_DEFS } from "../effects/registry";
-import { INSTRUMENT_DEFS } from "../instruments/registry";
+import {
+  effectTargetParamDefs,
+  instrumentTargetParamDefs,
+  targetOwner,
+  targetParamDef,
+} from "../project-model/targets";
 import { DragNumber } from "./controls";
 import type { MidiDevice } from "../midi/MidiInput";
 import { LatencyCalibrationWizard } from "./LatencyCalibrationWizard";
@@ -59,17 +63,24 @@ export function MidiPanel({
   const [addCc, setAddCc] = useState(1);
   const [latencyOpen, setLatencyOpen] = useState(false);
   const [tab, setTab] = useState<"input" | "creativity">("input");
+  const midiTargetTracks = [...doc.tracks, ...doc.returns];
+  const activeAddTrackId = targetOwner(doc, addTrackId)?.id ?? midiTargetTracks[0]?.id ?? "";
 
   const toggle = () => services.store.execute(setMidiConfig(doc, { enabled: !midi.enabled }));
 
   const submitAddMapping = () => {
     const target: AutomationTarget = {
       kind: addTarget.kind as AutomationTarget["kind"],
-      trackId: addTrackId,
+      trackId: activeAddTrackId,
       fxId: addTarget.fxId,
       paramId: addTarget.paramId,
     };
-    services.store.execute(addMidiCcMapping(doc, addCc, target, 0, 1));
+    const def = targetParamDef(doc, target);
+    if (!def) return;
+    // Start each mapping at the complete legal parameter range. A universal
+    // 0..1 default makes MIDI frequency/dB targets appear connected while
+    // only reaching a tiny, often inaudible slice of their actual control.
+    services.store.execute(addMidiCcMapping(doc, addCc, target, def.min, def.max));
   };
 
   return (
@@ -194,14 +205,14 @@ export function MidiPanel({
                 <div className="midi-add-row">
                   <select
                     className="midi-select midi-select-small"
-                    value={addTrackId}
+                    value={activeAddTrackId}
                     aria-label="CC target track"
                     onChange={(e) => {
                       setAddTrackId(e.target.value);
                       setAddTarget({ kind: "trackGain" });
                     }}
                   >
-                    {doc.tracks.map((t) => (
+                    {midiTargetTracks.map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.name}
                       </option>
@@ -216,34 +227,11 @@ export function MidiPanel({
                       setAddTarget({ kind, fxId: fxId || undefined, paramId: paramId || undefined });
                     }}
                   >
-                    <option value="trackGain::">Volume</option>
-                    <option value="trackPan::">Pan</option>
-                    {(() => {
-                      const track = doc.tracks.find((t) => t.id === addTrackId);
-                      if (!track) return null;
-                      if (track.kind === "instrument") {
-                        const def = INSTRUMENT_DEFS[track.instrument];
-                        return def.params.map((p) => (
-                          <option key={p.id} value={`instParam::${p.id}`}>
-                            {p.label}
-                          </option>
-                        ));
-                      }
-                      return null;
-                    })()}
-                    {(() => {
-                      const track = doc.tracks.find((t) => t.id === addTrackId);
-                      if (!track || !("effects" in track)) return null;
-                      return (track as any).effects.map((fx: any) => {
-                        const def = EFFECT_DEFS[fx.type as keyof typeof EFFECT_DEFS];
-                        if (!def) return null;
-                        return def.params.map((p) => (
-                          <option key={`${fx.id}-${p.id}`} value={`fxParam:${fx.id}:${p.id}`}>
-                            {def.name} — {p.label}
-                          </option>
-                        ));
-                      });
-                    })()}
+                    {midiTargetOptions(doc, activeAddTrackId).map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                   </select>
                   <select
                     className="midi-select midi-select-tiny"
@@ -257,7 +245,13 @@ export function MidiPanel({
                       </option>
                     ))}
                   </select>
-                  <button type="button" className="btn btn-small" onClick={submitAddMapping} aria-label="Add MIDI mapping" title="Add mapping">
+                  <button
+                    type="button"
+                    className="btn btn-small"
+                    onClick={submitAddMapping}
+                    aria-label="Add MIDI mapping"
+                    title="Add mapping"
+                  >
                     +
                   </button>
                 </div>
@@ -956,26 +950,18 @@ function MidiCcRow({
   doc: import("../project-model/types").ProjectDocument;
 }) {
   const services = useServices();
+  const owner = targetOwner(doc, mapping.target.trackId);
+  const targetDef = targetParamDef(doc, mapping.target);
   const targetLabel = (() => {
     switch (mapping.target.kind) {
       case "trackGain":
-        return `${doc.tracks.find((t) => t.id === mapping.target.trackId)?.name ?? "?"} → Volume`;
+        return `${owner?.name ?? "?"} → Volume`;
       case "trackPan":
-        return `${doc.tracks.find((t) => t.id === mapping.target.trackId)?.name ?? "?"} → Pan`;
-      case "fxParam": {
-        const track = doc.tracks.find((t) => t.id === mapping.target.trackId);
-        const fx =
-          track && "effects" in track ? (track as any).effects.find((f: any) => f.id === mapping.target.fxId) : null;
-        const def = fx ? EFFECT_DEFS[fx.type as keyof typeof EFFECT_DEFS] : null;
-        const param = def?.params.find((p) => p.id === mapping.target.paramId);
-        return `${track?.name ?? "?"} → ${def?.name ?? "?"} ${param?.label ?? ""}`;
-      }
-      case "instParam": {
-        const track = doc.tracks.find((t) => t.id === mapping.target.trackId);
-        const def = track?.kind === "instrument" ? INSTRUMENT_DEFS[track.instrument] : null;
-        const param = def?.params.find((p) => p.id === mapping.target.paramId);
-        return `${track?.name ?? "?"} → ${param?.label ?? ""}`;
-      }
+        return `${owner?.name ?? "?"} → Pan`;
+      case "fxParam":
+        return `${owner?.name ?? "?"} → FX · ${targetDef?.label ?? mapping.target.paramId ?? "?"}`;
+      case "instParam":
+        return `${owner?.name ?? "?"} → Instrument · ${targetDef?.label ?? mapping.target.paramId ?? "?"}`;
     }
   })();
 
@@ -992,4 +978,25 @@ function MidiCcRow({
       </button>
     </div>
   );
+}
+
+/** Full MIDI target picker, kept on the same catalog as automation/macros. */
+function midiTargetOptions(
+  doc: import("../project-model/types").ProjectDocument,
+  trackId: string,
+): { value: string; label: string }[] {
+  const owner = targetOwner(doc, trackId);
+  const options: { value: string; label: string }[] = [{ value: "trackGain::", label: "Volume" }];
+  if (owner?.kind !== "return") options.push({ value: "trackPan::", label: "Pan" });
+  if (owner?.kind === "instrument") {
+    for (const param of instrumentTargetParamDefs(owner)) {
+      options.push({ value: `instParam::${param.id}`, label: `Instrument — ${param.label}` });
+    }
+  }
+  for (const fx of owner?.effects ?? []) {
+    for (const param of effectTargetParamDefs(fx)) {
+      options.push({ value: `fxParam:${fx.id}:${param.id}`, label: `${fx.type} — ${param.label}` });
+    }
+  }
+  return options;
 }

@@ -6,8 +6,16 @@ import * as Y from "yjs";
 
 // ─── Pattern Operations ─────────────────────────────────────────────────────
 
-/** Toggle a step in a pattern's drum row. */
-export function yToggleStep(yMap: Y.Map<unknown>, patternId: string, padId: string, stepIndex: number): void {
+/** Toggle a step in a pattern's drum row. `defaultVelocity` must match the
+ * solo-path `toggleStep` factory — a divergence here makes collab peers and
+ * solo mode disagree on the velocity a fresh step gets. */
+export function yToggleStep(
+  yMap: Y.Map<unknown>,
+  patternId: string,
+  padId: string,
+  stepIndex: number,
+  defaultVelocity = 0.8,
+): void {
   const patterns = yMap.get("patterns") as Y.Array<unknown>;
   const pattern = findPattern(patterns, patternId);
   if (!pattern) return;
@@ -24,7 +32,7 @@ export function yToggleStep(yMap: Y.Map<unknown>, patternId: string, padId: stri
   if (stepIndex >= row.length || stepIndex < 0) return;
   const current = row.get(stepIndex) ?? 0;
   row.delete(stepIndex, 1);
-  row.insert(stepIndex, [current > 0 ? 0 : 0.8]);
+  row.insert(stepIndex, [current > 0 ? 0 : defaultVelocity]);
 }
 
 /** Set velocity for a specific step. */

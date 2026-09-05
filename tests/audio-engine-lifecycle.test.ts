@@ -160,4 +160,17 @@ describe("AudioEngine — lifecycle hardening (source-grep)", () => {
     expect(voiceBlock).toMatch(/voice\.source\.stop\(\)/);
     expect(voiceBlock).toMatch(/voice\.gain\.disconnect\(\)/);
   });
+
+  it("ensureContext() swallows a rejected resume() (recovery-path hardening)", () => {
+    // Recovery-path audit: ctx.resume() rejects with NotAllowedError when
+    // the browser has not granted user activation — the exact scenario
+    // this best-effort resume targets (visibilitychange, first click on a
+    // suspended context). An unguarded `void ctx.resume()` produced an
+    // unhandled rejection on every suspended ensureContext() call.
+    const body = sliceFunction(readEngine(), /ensureContext\s*\(/);
+    expect(body, "ensureContext not found in AudioEngine.ts").not.toBe("");
+    expect(body, "ensureContext() must catch a rejected resume()").toMatch(
+      /ctx\.resume\(\)\.catch\(\(\)\s*=>\s*\{\}\)/,
+    );
+  });
 });

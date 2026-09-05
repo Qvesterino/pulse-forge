@@ -162,8 +162,10 @@ describe("EffectRack — FXEQ panel", () => {
   it("mounts the EQ-paint panel: preset select, band chips, canvas", async () => {
     const { doc, track } = fxEqDoc();
     renderWithContext(<EffectRack track={track} />, { services: mockServices(doc) });
-    // The panel is a lazy chunk — wait for it to load.
-    expect(await screen.findByLabelText("FXEQ preset")).toBeInTheDocument();
+    // The panel is a lazy chunk — wait for it to load. A generous explicit
+    // timeout keeps this deterministic under full-suite CPU load, where the
+    // dynamic import can outrun the 1s default.
+    expect(await screen.findByLabelText("FXEQ preset", {}, { timeout: 10_000 })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "FXEQ band map" })).toBeInTheDocument();
     // Live band-peak meter strip sits under the band map.
     expect(screen.getByRole("img", { name: "FXEQ band peaks" })).toBeInTheDocument();
@@ -184,7 +186,7 @@ describe("EffectRack — FXEQ panel", () => {
     const { doc, track } = fxEqDoc();
     const services = mockServices(doc);
     renderWithContext(<EffectRack track={track} />, { services });
-    const select = await screen.findByLabelText("FXEQ preset");
+    const select = await screen.findByLabelText("FXEQ preset", {}, { timeout: 10_000 });
     const presetName = "Warmth — All-Round";
     await user.selectOptions(select, presetName);
     const executed = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.map(
@@ -201,7 +203,7 @@ describe("EffectRack — FXEQ panel", () => {
     const services = mockServices(doc);
     renderWithContext(<EffectRack track={track} />, { services });
     // B1 selected by default — toggle its SAT module ON. Await the lazy panel.
-    const satSections = await screen.findAllByText("SAT");
+    const satSections = await screen.findAllByText("SAT", {}, { timeout: 10_000 });
     await user.click(satSections[0].parentElement!.querySelector("button")!);
     const executed = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.map(
       (call: unknown[]) => call[0] as { type: string },
@@ -221,8 +223,9 @@ describe("EffectRack — Ultina panel", () => {
   it("mounts the module editor: chips in graph order + enable toggle", async () => {
     const { doc, track } = ultinaDoc();
     renderWithContext(<EffectRack track={track} />, { services: mockServices(doc) });
-    // The panel is a lazy chunk — wait for it to load.
-    expect(await screen.findByLabelText("Ultina module editor")).toBeInTheDocument();
+    // The panel is a lazy chunk — wait for it to load (generous timeout:
+    // dynamic import latency under full-suite load exceeds the 1s default).
+    expect(await screen.findByLabelText("Ultina module editor", {}, { timeout: 10_000 })).toBeInTheDocument();
     // Graph-order chips present.
     expect(screen.getByRole("button", { name: "COMP" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "UNMSK" })).toBeInTheDocument();

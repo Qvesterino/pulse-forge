@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { MidiInput } from "../../src/midi/MidiInput";
+import { NoteRepeatController } from "../../src/audio-engine/NoteRepeat";
+import { Transport } from "../../src/transport/Transport";
 import { GM_DRUM_MAP } from "../../src/project-model/types";
 
 describe("MidiInput", () => {
@@ -210,5 +212,55 @@ describe("MidiInput — device subscriptions", () => {
     unsubscribe();
     handler!();
     expect(seen.length).toBe(count);
+  });
+});
+
+describe("MidiInput — device disconnect recovery", () => {
+  function makeMidiWithRepeat() {
+    const midi = new MidiInput();
+    const controller = new NoteRepeatController({
+      getTransport: () => new Transport({ now: () => 0 }, 120),
+      getAudioTime: () => 0,
+      fire: () => {},
+    });
+    midi.attachNoteRepeat(controller);
+    const inputs = new Map<string, unknown>();
+    (midi as unknown as { access: unknown }).access = {
+      inputs,
+      onstatechange: null as null | ((event?: unknown) => void),
+    };
+    midi.start(
+      {} as never,
+      {} as never,
+      {} as never,
+      () => ({}) as never,
+      () => ({}) as never,
+    );
+    const handler = (midi as unknown as { access: { onstatechange: ((event?: unknown) => void) | null } }).access
+      .onstatechange!;
+    return { midi, controller, inputs, handler };
+  }
+
+  it("releases midi-originated note repeat holds when a device disconnects", () => {
+    // Recovery audit: a controller unplugged mid-hold never delivers its
+    // note-off — the roll must not outlive the device.
+    const { controller, handler } = makeMidiWithRepeat();
+    controller.setRate("1/16");
+    controller.start("midi:0:36", "t1", "kick", 1);
+    controller.start("pad:t1:padX", "t1", "padX", 1);
+    handler({ port: { state: "disconnected" } });
+    expect(controller.isHolding("midi:0:36")).toBe(false);
+    expect(controller.isHolding("pad:t1:padX")).toBe(true);
+    controller.stopAll();
+  });
+
+  it("keeps holds when the state change is a connect or unrelated", () => {
+    const { controller, handler } = makeMidiWithRepeat();
+    controller.setRate("1/16");
+    controller.start("midi:0:36", "t1", "kick", 1);
+    handler({ port: { state: "connected" } });
+    handler(); // legacy no-arg notification shape
+    expect(controller.isHolding("midi:0:36")).toBe(true);
+    controller.stopAll();
   });
 });

@@ -371,6 +371,13 @@ export async function openProject(
   const userSamples = new UserSampleRepository();
   const frozenAudio = new FrozenBufferRepository();
 
+  // Close-race guard (critical path audit): several fire-and-forget asyncs
+  // started below resolve AFTER an awaited IndexedDB decode or a pending
+  // MIDI permission prompt. If the user closes this project (or switches to
+  // another one) before they land, their continuations must not touch the
+  // shared engine or wire handlers into a dead store.
+  let closed = false;
+
   // Live Note Repeat: pad/QWERTY/MIDI holds re-fire a drum pad on a grid
   // division. The fire callback resolves the pad fresh on every hit so mutes
   // and track deletions apply mid-hold without the controller knowing.
@@ -405,6 +412,11 @@ export async function openProject(
   void (async () => {
     try {
       const missing = await restoreFrozenTracks(store.doc, bank, frozenAudio);
+      // The restore awaits IndexedDB reads + audio decodes; the project may
+      // have been closed meanwhile. Re-running unfreeze commands on a dead
+      // store and re-pointing the shared engine at THIS (stale) doc would
+      // diverge the engine from the newly opened project.
+      if (closed) return;
       for (const track of store.doc.tracks) {
         if ("frozen" in track && track.frozen && missing.includes(track.frozen.bufferId)) {
           // The track can disappear while we await above (collab peer edit,
@@ -415,6 +427,7 @@ export async function openProject(
         }
       }
       const referenced = await repo.referencedFrozenBufferIds();
+      if (closed) return;
       for (const entry of await frozenAudio.list()) {
         if (!referenced.has(entry.id)) await frozenAudio.remove(entry.id);
       }
@@ -422,36 +435,39 @@ export async function openProject(
       // Restore is best-effort — never leave an unhandled rejection behind.
       console.warn("[services] frozen-audio restore failed:", err);
     } finally {
-      engine.setProject(store.doc);
+      if (!closed) engine.setProject(store.doc);
     }
   })();
 
   void midi.requestAccess().then((ok) => {
-    if (ok) {
-      midi.start(
-        engine,
-        store,
-        transport,
-        () =>
-          store.doc.midi ?? {
-            enabled: false,
-            deviceId: "",
-            drumChannel: 0,
-            instrumentChannel: 0,
-            ccMappings: [],
-            drumNoteMap: [],
-            pitchBendRange: 2,
-          },
-        () => store.doc,
-      );
-      // Wire MIDI clock callbacks
-      midi.onClock({
-        pulse: () => midiClock.handleSlavePulse(transport),
-        start: () => midiClock.handleSlaveStart(transport),
-        continue: () => midiClock.handleSlaveContinue(transport),
-        stop: () => midiClock.handleSlaveStop(transport),
-      });
-    }
+    // The Web MIDI permission prompt can outlive the project: a user may
+    // close (or switch) while it is still open and only grant access later.
+    // Wiring handlers into a closed project would drive the shared engine
+    // and a dead store from stale MIDI input.
+    if (!ok || closed) return;
+    midi.start(
+      engine,
+      store,
+      transport,
+      () =>
+        store.doc.midi ?? {
+          enabled: false,
+          deviceId: "",
+          drumChannel: 0,
+          instrumentChannel: 0,
+          ccMappings: [],
+          drumNoteMap: [],
+          pitchBendRange: 2,
+        },
+      () => store.doc,
+    );
+    // Wire MIDI clock callbacks
+    midi.onClock({
+      pulse: () => midiClock.handleSlavePulse(transport),
+      start: () => midiClock.handleSlaveStart(transport),
+      continue: () => midiClock.handleSlaveContinue(transport),
+      stop: () => midiClock.handleSlaveStop(transport),
+    });
   });
   void midiOutput.requestAccess();
 
@@ -462,13 +478,26 @@ export async function openProject(
   let saveQueued = false;
 
   const doSave = async (): Promise<void> => {
+    // Capture the exact immutable document revision being written. A user
+    // can edit while IndexedDB is awaiting; that newer revision must not be
+    // reported as saved when this older write completes.
+    const documentAtStart = store.doc;
     store.setSaveStatus("saving");
     try {
-      await repo.save(store.doc);
-      store.setSaveStatus("saved");
-      maybeAutoSnapshot("Auto — daily");
+      await repo.save(documentAtStart);
+      if (store.doc !== documentAtStart) {
+        saveQueued = true;
+        store.setSaveStatus("dirty");
+      } else {
+        store.setSaveStatus("saved");
+        maybeAutoSnapshot("Auto — daily");
+      }
     } catch {
       store.setSaveStatus("error");
+      // If a newer edit landed while the write failed, retry the newest
+      // revision through the shared drain instead of losing it behind the
+      // failed transaction.
+      if (store.doc !== documentAtStart) saveQueued = true;
     }
   };
 
@@ -482,17 +511,28 @@ export async function openProject(
       // it finishes, so rapid Ctrl+S / visibility changes don't lose data.
       saveQueued = true;
       await saving;
+      return;
     }
-    if (store.saveStatus === "dirty" || store.saveStatus === "error") {
-      saving = doSave().then(() => {
+    if (store.saveStatus !== "dirty" && store.saveStatus !== "error") return;
+
+    // Keep the whole drain in the shared promise. Callers that arrive while
+    // this save is running await the same promise, and a queued follow-up is
+    // awaited before any caller observes flushSave() as complete. This is
+    // important for closeProject/pagehide: fire-and-forget must not leave a
+    // second edit stranded behind the first IndexedDB transaction.
+    const run = (async (): Promise<void> => {
+      try {
+        await doSave();
+      } finally {
         saving = null;
         if (saveQueued) {
           saveQueued = false;
-          void flushSave();
+          await flushSave();
         }
-      });
-      await saving;
-    }
+      }
+    })();
+    saving = run;
+    await run;
   };
 
   store.onDocChanged = (doc) => {
@@ -531,6 +571,9 @@ export async function openProject(
   document.addEventListener("visibilitychange", onVisibility);
 
   const closeProject = async (): Promise<void> => {
+    // Ordered teardown; the flag first so pending fire-and-forget asyncs
+    // (frozen restore, Web MIDI access grant) observe the close immediately.
+    closed = true;
     noteRepeat.stopAll();
     ghost.stop();
     capture.cancel();

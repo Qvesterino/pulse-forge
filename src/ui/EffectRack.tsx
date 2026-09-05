@@ -17,6 +17,7 @@ import {
   applyOzvenaStatePatch,
   setDeviceState,
   loadUltinaAbSlot,
+  loadEffectAbSlot,
   toggleEffectBypass,
 } from "../commands/commands";
 import { CORE_EFFECT_ORDER, EFFECT_DEFS, FLAGSHIP_EFFECT_ORDER } from "../effects/registry";
@@ -31,6 +32,7 @@ import { registerRaf, unregisterRaf } from "../services/rafLoop";
 import { Slider } from "./controls";
 import { StepGridEditor } from "./StepGridEditor";
 import type { UltinaAbState } from "./UltinaPanel";
+import { EffectAbControls, type EffectAbState } from "./EffectAbControls";
 export function EffectRack({ track }: { track: Track }) {
   const services = useServices();
   const doc = useDoc();
@@ -202,10 +204,7 @@ function Device({
           </select>
         )}
         {fx.type === "ozvena" && (
-          <label
-            className="btn btn-small fx-ir-load"
-            title="Load a user impulse response (Ozvena convolution)"
-          >
+          <label className="btn btn-small fx-ir-load" title="Load a user impulse response (Ozvena convolution)">
             IR…
             <input
               type="file"
@@ -226,9 +225,7 @@ function Device({
                 engine
                   .loadUserIrForFx(track.id, fx.id, file)
                   .then(() => setIrNote("IR loaded"))
-                  .catch((err: unknown) =>
-                    setIrNote(err instanceof Error ? err.message : String(err)),
-                  );
+                  .catch((err: unknown) => setIrNote(err instanceof Error ? err.message : String(err)));
               }}
             />
           </label>
@@ -401,6 +398,19 @@ function Device({
               />
             )}
           </Suspense>
+          {(fx.type === "fxeq" || fx.type === "ozvena") && (
+            <EffectAbControls
+              effectName={def.name}
+              params={fx.params}
+              deviceState={fx.deviceState?.kind === "effect-ab-v1" ? fx.deviceState : undefined}
+              onStateChange={(next: EffectAbState) =>
+                services.store.execute(
+                  setDeviceState(doc, track.id, fx.id, { kind: "effect-ab-v1", data: { ...next } }),
+                )
+              }
+              onLoad={(slot) => services.store.execute(loadEffectAbSlot(doc, track.id, fx.id, slot))}
+            />
+          )}
           <div className="fx-device-params">
             {def.params
               .filter(

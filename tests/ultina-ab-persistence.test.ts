@@ -4,7 +4,7 @@ import { createProjectFromTemplate } from "../src/project-model/templates";
 import { normalizeProject } from "../src/project-model/schema";
 import { projectToYDoc, yDocToProject, applyProjectToYMap } from "../src/collab/YDocAdapter";
 import { YDocStore } from "../src/collab/YDocStore";
-import { loadUltinaAbSlot, setDeviceState, setUltinaParam } from "../src/commands/commands";
+import { loadEffectAbSlot, loadUltinaAbSlot, setDeviceState, setUltinaParam } from "../src/commands/commands";
 import type { DeviceState, EffectInstance, InstrumentTrack, ProjectDocument } from "../src/project-model/types";
 
 const AB_STATE: DeviceState = {
@@ -38,6 +38,21 @@ function abEffect(doc: ProjectDocument): EffectInstance {
   return track.effects[0];
 }
 
+function flagshipDoc(type: "fxeq" | "ozvena", state?: DeviceState): ProjectDocument {
+  const doc = createProjectFromTemplate("house");
+  const track = doc.tracks.find((t): t is InstrumentTrack => t.kind === "instrument")!;
+  track.effects = [
+    {
+      id: "fx-flagship-ab",
+      type,
+      bypassed: false,
+      params: type === "fxeq" ? { bandCount: 4, "band1.gainDb": 0 } : { "global.inputGainDb": -3 },
+      ...(state ? { deviceState: state } : {}),
+    },
+  ];
+  return doc;
+}
+
 describe("ultina A/B persistence — schema", () => {
   it("keeps a legal device state through normalizeProject", () => {
     const normalized = normalizeProject(JSON.parse(JSON.stringify(ultinaDoc(AB_STATE))));
@@ -49,7 +64,13 @@ describe("ultina A/B persistence — schema", () => {
 
   it("drops unknown kinds and cleans non-finite values inside slots", () => {
     // Unknown kind / broken shape fail closed.
-    for (const raw of [{ kind: "mystery", data: { x: 1 } }, { kind: 42, data: {} }, "garbage"]) {
+    for (const raw of [
+      { kind: "mystery", data: { x: 1 } },
+      { kind: 42, data: {} },
+      { kind: "effect-ab-v1", data: [] },
+      { kind: "effect-ab-v1", data: { slots: [] } },
+      "garbage",
+    ]) {
       const doc = ultinaDoc(raw as DeviceState);
       const normalized = normalizeProject(JSON.parse(JSON.stringify(doc)));
       expect(abEffect(normalized).deviceState).toBeUndefined();
@@ -64,10 +85,10 @@ describe("ultina A/B persistence — schema", () => {
     expect(slots.A).toEqual({ ok: 1 });
   });
 
-  it("an active B without a stored B slot falls back to A", () => {
+  it("allows an active empty B slot while preparing a new variation", () => {
     const doc = ultinaDoc({ kind: "ultina-ab-v1", data: { slots: { A: { x: 1 } }, active: "B" } });
     const normalized = normalizeProject(JSON.parse(JSON.stringify(doc)));
-    expect(abEffect(normalized).deviceState?.data.active).toBe("A");
+    expect(abEffect(normalized).deviceState?.data.active).toBe("B");
   });
 });
 
@@ -147,5 +168,64 @@ describe("ultina A/B persistence — commands", () => {
     expect(abEffect(undone).deviceState?.data.active).toBe("A");
     void setUltinaParam;
     void vi;
+  });
+});
+
+describe("flagship A/B persistence — FXEQ and Ozvena", () => {
+  it("keeps the shared A/B state through project normalization", () => {
+    const state: DeviceState = {
+      kind: "effect-ab-v1",
+      data: { slots: { A: { "band1.gainDb": -6 } }, active: "A" },
+    };
+    const normalized = normalizeProject(JSON.parse(JSON.stringify(flagshipDoc("fxeq", state))));
+    expect(abEffect(normalized).deviceState?.kind).toBe("effect-ab-v1");
+    expect(
+      (abEffect(normalized).deviceState!.data.slots as Record<string, Record<string, number>>).A["band1.gainDb"],
+    ).toBe(-6);
+  });
+
+  it("restores FXEQ against its band-aware schema and drops unknown snapshot keys", () => {
+    const doc = flagshipDoc("fxeq", {
+      kind: "effect-ab-v1",
+      data: {
+        slots: { B: { bandCount: 4, "band1.gainDb": 999, "not-a-param": 7 } },
+        active: "A",
+      },
+    });
+    const trackId = doc.tracks.find((t) => t.kind === "instrument")!.id;
+    const command = loadEffectAbSlot(doc, trackId, "fx-flagship-ab", "B");
+    const next = command.execute(doc);
+    expect(abEffect(next).params["band1.gainDb"]).toBe(12);
+    expect(abEffect(next).params["not-a-param"]).toBeUndefined();
+    expect(abEffect(next).deviceState?.data.active).toBe("B");
+    expect(abEffect(command.undo(next)).params["band1.gainDb"]).toBe(0);
+  });
+
+  it("restores Ozvena's complete deep state without accepting arbitrary paths", () => {
+    const doc = flagshipDoc("ozvena", {
+      kind: "effect-ab-v1",
+      data: {
+        slots: {
+          B: {
+            "engines.e1.time": 1234,
+            "engines.e2.attack": 9999,
+            "duck.thresholdDb": -999,
+            "preEq.band1.gainDb": 999,
+            "evil.nope": 1,
+          },
+        },
+        active: "A",
+      },
+    });
+    const trackId = doc.tracks.find((t) => t.kind === "instrument")!.id;
+    const next = loadEffectAbSlot(doc, trackId, "fx-flagship-ab", "B").execute(doc);
+    expect(abEffect(next).params["engines.e1.time"]).toBe(250);
+    expect(abEffect(next).params["engines.e2.attack"]).toBe(250);
+    expect(abEffect(next).params["duck.thresholdDb"]).toBe(-60);
+    expect(abEffect(next).params["preEq.band1.gainDb"]).toBe(24);
+    expect(abEffect(next).params["evil.nope"]).toBeUndefined();
+    expect(abEffect(next).params.schemaVersion).toBeUndefined();
+    expect(abEffect(next).params["assistant.step"]).toBeUndefined();
+    expect(abEffect(next).params["engines.e2.time"]).toBeDefined();
   });
 });

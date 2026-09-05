@@ -58,7 +58,9 @@ export function OzvenaPanel({
 }) {
   const padRef = useRef<HTMLCanvasElement | null>(null);
   const draggingRef = useRef(false);
-  const [engine2Algo, setEngine2Algo] = useState(0); // index into ENGINE2_ALGOS
+  const [engine2Algo, setEngine2Algo] = useState(() =>
+    Math.max(0, Math.min(ENGINE2_ALGOS.length - 1, Math.round(params["engines.e2.algo"] ?? 0))),
+  ); // index into ENGINE2_ALGOS
   const [assistBusy, setAssistBusy] = useState(false);
   const [assistStyle, setAssistStyle] = useState(0.5);
   const [assistSize, setAssistSize] = useState(0.5);
@@ -68,6 +70,9 @@ export function OzvenaPanel({
   const x = Math.max(0, Math.min(1, params["blendPad.x"] ?? 0.5));
   const y = Math.max(0, Math.min(1, params["blendPad.y"] ?? 0.5));
   const weights = blendPadToEngineWeights(x, y);
+  useEffect(() => {
+    setEngine2Algo(Math.max(0, Math.min(ENGINE2_ALGOS.length - 1, Math.round(params["engines.e2.algo"] ?? 0))));
+  }, [params["engines.e2.algo"]]);
   const enabled = (mod: string) => (params[`${mod}.enabled`] ?? 0) >= 0.5;
 
   // ── pad drawing ─────────────────────────────────────────────────────────
@@ -100,7 +105,14 @@ export function OzvenaPanel({
     for (const [key, weight] of Object.entries(weights)) {
       const v = VERTICES[key as keyof typeof VERTICES];
       if (weight <= 0.01) continue;
-      const grad = ctx2d.createRadialGradient(px(v.x), py(v.y), 0, px(v.x), py(v.y), 42 * dpr * Math.min(1, weight + 0.3));
+      const grad = ctx2d.createRadialGradient(
+        px(v.x),
+        py(v.y),
+        0,
+        px(v.x),
+        py(v.y),
+        42 * dpr * Math.min(1, weight + 0.3),
+      );
       grad.addColorStop(0, VERTEX_COLORS[key as keyof typeof VERTICES] + "55");
       grad.addColorStop(1, "transparent");
       ctx2d.fillStyle = grad;
@@ -154,9 +166,13 @@ export function OzvenaPanel({
     else if (key === "ArrowRight") dx = 1;
     else if (key === "ArrowUp") dy = 1;
     else if (key === "ArrowDown") dy = -1;
-    else if (key === "PageUp") { dy = 1; step = 0.25; }
-    else if (key === "PageDown") { dy = -1; step = 0.25; }
-    else return;
+    else if (key === "PageUp") {
+      dy = 1;
+      step = 0.25;
+    } else if (key === "PageDown") {
+      dy = -1;
+      step = 0.25;
+    } else return;
     e.preventDefault();
     if (e.shiftKey && step === 0.05) step = 0.01;
     const nx = Math.max(0, Math.min(1, x + dx * step));

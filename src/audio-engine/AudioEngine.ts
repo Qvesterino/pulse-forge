@@ -132,6 +132,8 @@ interface TrackNodes {
 interface ReturnNodes {
   input: GainNode;
   gain: GainNode;
+  modAutoGain: GainNode;
+  modMacroGain: GainNode;
   analyser: AnalyserNode;
   fx: FxChainState;
 }
@@ -616,7 +618,11 @@ export class AudioEngine {
       }
     }
     const ctx = this.ctx;
-    if (isLiveAudioContext(ctx) && ctx.state === "suspended") void ctx.resume();
+    // Best-effort resume: without a user gesture the browser rejects the
+    // promise (NotAllowedError) — swallow it so ensureContext() callers
+    // (visibilitychange, playback clicks) never produce unhandled
+    // rejections. The next real user gesture revives the context.
+    if (isLiveAudioContext(ctx) && ctx.state === "suspended") void ctx.resume().catch(() => {});
     return ctx;
   }
 
@@ -1216,6 +1222,8 @@ export class AudioEngine {
     nodes.fx.pdcDelay?.disconnect();
     nodes.input.disconnect();
     nodes.gain.disconnect();
+    nodes.modAutoGain.disconnect();
+    nodes.modMacroGain.disconnect();
     nodes.analyser.disconnect();
     this.returnNodes.delete(id);
   }
@@ -1325,15 +1333,23 @@ export class AudioEngine {
       if (!nodes) {
         const input = ctx.createGain();
         const gain = ctx.createGain();
+        const modAutoGain = ctx.createGain();
+        modAutoGain.gain.value = 1;
+        const modMacroGain = ctx.createGain();
+        modMacroGain.gain.value = 1;
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 2048;
         analyser.channelCount = 2;
         analyser.channelCountMode = "explicit";
-        gain.connect(analyser);
+        gain.connect(modAutoGain);
+        modAutoGain.connect(modMacroGain);
+        modMacroGain.connect(analyser);
         analyser.connect(this.master);
         nodes = {
           input,
           gain,
+          modAutoGain,
+          modMacroGain,
           analyser,
           fx: { runtimes: new Map(), params: new Map(), signature: "", pdcDelay: null, latencySubs: [] },
         };
@@ -1345,7 +1361,7 @@ export class AudioEngine {
       } else {
         this.syncFxParams(ret.effects, nodes.fx);
       }
-      nodes.gain.gain.setTargetAtTime(ret.gain, ctx.currentTime, 0.01);
+      nodes.gain.gain.setTargetAtTime(Math.max(0, Math.min(1.5, ret.gain)), ctx.currentTime, 0.01);
     }
 
     for (const track of doc.tracks) {
@@ -1811,8 +1827,9 @@ export class AudioEngine {
       case "trackGain":
       case "trackPan": {
         const nodes = this.trackNodes.get(target.trackId) ?? this.groupNodes.get(target.trackId);
-        if (!nodes) return null;
-        return target.kind === "trackGain" ? nodes.modAutoGain.gain : nodes.modAutoPan.pan;
+        if (nodes) return target.kind === "trackGain" ? nodes.modAutoGain.gain : nodes.modAutoPan.pan;
+        const returnNodes = this.returnNodes.get(target.trackId);
+        return returnNodes && target.kind === "trackGain" ? returnNodes.modAutoGain.gain : null;
       }
       case "fxParam": {
         if (!target.fxId || !target.paramId) return null;
@@ -1825,14 +1842,6 @@ export class AudioEngine {
         if (r) candidates.push(r.fx);
         for (const state of candidates) {
           const rt = state.runtimes.get(target.fxId);
-          if (rt?.getAudioParam) {
-            const p = rt.getAudioParam(target.paramId);
-            if (p) return p;
-          }
-        }
-        // Fallback: effect may live on a different track than the LFO host — search all
-        for (const nodes of [...this.trackNodes.values(), ...this.groupNodes.values(), ...this.returnNodes.values()]) {
-          const rt = nodes.fx.runtimes.get(target.fxId);
           if (rt?.getAudioParam) {
             const p = rt.getAudioParam(target.paramId);
             if (p) return p;
@@ -1886,11 +1895,16 @@ export class AudioEngine {
     for (const lfo of doc.lfos) {
       const kind = lfoKind(lfo);
       if (kind !== "osc" && kind !== "envFollower") continue;
-      const hostNodes = this.trackNodes.get(lfo.trackId) ?? this.groupNodes.get(lfo.trackId);
+      const hostNodes =
+        this.trackNodes.get(lfo.trackId) ?? this.groupNodes.get(lfo.trackId) ?? this.returnNodes.get(lfo.trackId);
       // Host may be a return track (for return-targeted bus); allow any nodes.
       if (!hostNodes && kind === "osc" && lfoKind(lfo) === "osc" && !lfo.target) continue;
       if (!hostNodes && !resolveLfoTarget(lfo)) continue;
       const target = resolveLfoTarget(lfo);
+      // ProjectStore local commands can reach the engine before a full
+      // normalization pass. Never let a stale/deleted FX id fall through to
+      // the runtime lookup or accidentally bind an LFO to a different chain.
+      if (!targetParamDef(doc, target)) continue;
       // Resolve the AudioParam for the bus connection. For trackGain/pan it is
       // always present when the host track exists; for FX it is null until the
       // effect runtime is built (or when the param has no AudioParam exposure).
@@ -1945,9 +1959,7 @@ export class AudioEngine {
       const sourceTrackId =
         typeof lfo.sourceTrackId === "string" && lfo.sourceTrackId !== "" ? lfo.sourceTrackId : lfo.trackId;
       const sourceNodes =
-        this.trackNodes.get(sourceTrackId) ??
-        this.groupNodes.get(sourceTrackId) ??
-        (hostNodes as unknown as TrackNodes);
+        this.trackNodes.get(sourceTrackId) ?? this.groupNodes.get(sourceTrackId) ?? this.returnNodes.get(sourceTrackId);
       if (!sourceNodes) continue;
       const sig = lfoSignature(lfo, available);
       const existing = this.lfos.get(lfo.id);
@@ -2058,6 +2070,9 @@ export class AudioEngine {
     for (const track of doc.tracks) {
       next.set(track.id, { gain: 1, pan: 0 });
     }
+    for (const ret of doc.returns) {
+      next.set(ret.id, { gain: 1, pan: 0 });
+    }
     const deviceOffsets = new Map<string, { target: AutomationTarget; delta: number }>();
     // Writer composition rule (one writer per chain):
     // - macro/intensity performance offsets resolve FX/inst params as
@@ -2143,9 +2158,16 @@ export class AudioEngine {
       const cached = this.macroCache.get(trackId);
       if (cached && cached.gain === gain && cached.pan === pan) continue;
       const nodes = this.trackNodes.get(trackId) ?? this.groupNodes.get(trackId);
+      const returnNodes = this.returnNodes.get(trackId);
       if (nodes) {
         nodes.modMacroGain.gain.setTargetAtTime(gain, ctx.currentTime, 0.01);
         nodes.modMacroPan.pan.setTargetAtTime(pan, ctx.currentTime, 0.01);
+      } else if (returnNodes) {
+        const returnTrack = doc.returns.find((ret) => ret.id === trackId);
+        if (returnTrack) {
+          returnNodes.gain.gain.setTargetAtTime(Math.max(0, Math.min(1.5, returnTrack.gain)), ctx.currentTime, 0.01);
+          returnNodes.modMacroGain.gain.setTargetAtTime(gain, ctx.currentTime, 0.01);
+        }
       }
       this.macroCache.set(trackId, { gain, pan });
     }
@@ -2371,8 +2393,13 @@ export class AudioEngine {
       case "trackGain":
       case "trackPan": {
         const nodes = this.trackNodes.get(target.trackId) ?? this.groupNodes.get(target.trackId);
-        if (!nodes) return null;
-        const param = target.kind === "trackGain" ? nodes.modAutoGain.gain : nodes.modAutoPan.pan;
+        const returnNodes = this.returnNodes.get(target.trackId);
+        if (!nodes && !returnNodes) return null;
+        const param = nodes
+          ? target.kind === "trackGain"
+            ? nodes.modAutoGain.gain
+            : nodes.modAutoPan.pan
+          : returnNodes!.modAutoGain.gain;
         const clamp =
           target.kind === "trackGain"
             ? (v: number) => Math.max(0, Math.min(2, 1 + v))
@@ -2452,7 +2479,7 @@ export class AudioEngine {
       const trackNodes = this.trackNodes.get(target.trackId) ?? this.groupNodes.get(target.trackId);
       const returnNodes = this.returnNodes.get(target.trackId);
       if (target.kind === "trackGain" && returnNodes) {
-        returnNodes.gain.gain.setTargetAtTime(Math.max(0, Math.min(1.5, value)), when, 0.008);
+        returnNodes.modAutoGain.gain.setTargetAtTime(Math.max(0, Math.min(1.5, value)), when, 0.008);
       } else if (trackNodes && target.kind === "trackGain") {
         trackNodes.modAutoGain.gain.setTargetAtTime(Math.max(0, Math.min(2, value)), when, 0.008);
       } else if (trackNodes && target.kind === "trackPan") {
@@ -2472,8 +2499,11 @@ export class AudioEngine {
     const t1 = Math.max(t0, this.currentTime + 0.1 + offset);
     for (const lane of doc.automation) {
       if (lane.points.length === 0) continue;
-      const v0 = valueAt(lane.points, relOf(fromTick), 1);
-      const v1 = valueAt(lane.points, relOf(toTick), 1);
+      const fallback =
+        targetParamDef(doc, lane.target)?.default ??
+        (lane.target.kind === "trackGain" ? 1 : lane.target.kind === "trackPan" ? 0 : 0);
+      const v0 = valueAt(lane.points, relOf(fromTick), fallback);
+      const v1 = valueAt(lane.points, relOf(toTick), fallback);
       this.writeAutomationTargetAt(lane.target, v0, t0);
       this.writeAutomationTargetAt(lane.target, v1, t1);
     }
@@ -2501,9 +2531,7 @@ export class AudioEngine {
   ): void {
     if (!paramId) return;
     const target: AutomationTarget =
-      kind === "fx"
-        ? { kind: "fxParam", trackId, fxId: deviceId, paramId }
-        : { kind: "instParam", trackId, paramId };
+      kind === "fx" ? { kind: "fxParam", trackId, fxId: deviceId, paramId } : { kind: "instParam", trackId, paramId };
     for (const point of points) {
       this.writeAutomationTargetAt(target, point.value, Math.max(0, timeAt(point.tick)));
     }
@@ -2528,6 +2556,41 @@ export class AudioEngine {
       }
       nodes.modAutoGain.gain.setTargetAtTime(1, now, 0.01);
       nodes.modAutoPan.pan.setTargetAtTime(0, now, 0.01);
+    }
+    for (const nodes of this.returnNodes.values()) {
+      try {
+        nodes.modAutoGain.gain.cancelScheduledValues(now);
+      } catch {
+        /* nothing scheduled */
+      }
+      nodes.modAutoGain.gain.setTargetAtTime(1, now, 0.01);
+    }
+
+    // Worklet parameters do not have an AudioParam cancelScheduledValues API:
+    // a manual set is the takeover operation that removes future timed
+    // events. Reset every device target touched by either project or scene
+    // automation, then re-compose persistent macro offsets below.
+    const deviceTargets = new Map<string, AutomationTarget>();
+    for (const lane of this.doc?.automation ?? []) {
+      if (lane.target.kind === "fxParam" || lane.target.kind === "instParam") {
+        deviceTargets.set(JSON.stringify(lane.target), lane.target);
+      }
+    }
+    for (const lane of this.doc?.sceneAutomation ?? []) {
+      if (lane.target.kind === "fxParam" || lane.target.kind === "instParam") {
+        deviceTargets.set(JSON.stringify(lane.target), lane.target);
+      }
+    }
+    for (const target of deviceTargets.values()) {
+      const base = this.baseValueForTarget(this.doc!, target);
+      if (base !== null) this.writeDeviceTargetAt(target, base);
+    }
+    if (this.doc) {
+      // Return and device macros share the same canonical base writer after a
+      // stop; force a fresh composition so stopping automation never erases
+      // an intentionally active macro value.
+      this.macroCache.clear();
+      this.syncMacros(this.doc);
     }
   }
 
@@ -3291,28 +3354,29 @@ export class AudioEngine {
   /** Apply a MIDI CC value directly to a target parameter. */
   applyMidiCc(target: AutomationTarget, value: number): void {
     const ctx = this.ctx;
-    if (!ctx) return;
+    const doc = this.doc;
+    if (!ctx || !doc || !targetParamDef(doc, target)) return;
+    const clamped = clampTargetValue(doc, target, value);
     const now = ctx.currentTime;
     switch (target.kind) {
       case "trackGain": {
-        const nodes = this.trackNodes.get(target.trackId);
-        if (nodes) nodes.modMacroGain.gain.setTargetAtTime(Math.max(0, Math.min(2, value)), now, 0.005);
+        const nodes = this.trackNodes.get(target.trackId) ?? this.groupNodes.get(target.trackId);
+        const returnNodes = this.returnNodes.get(target.trackId);
+        if (nodes) nodes.modMacroGain.gain.setTargetAtTime(clamped, now, 0.005);
+        else if (returnNodes) returnNodes.modMacroGain.gain.setTargetAtTime(clamped, now, 0.005);
         break;
       }
       case "trackPan": {
-        const nodes = this.trackNodes.get(target.trackId);
-        if (nodes) nodes.modMacroPan.pan.setTargetAtTime(Math.max(-1, Math.min(1, value)), now, 0.005);
+        const nodes = this.trackNodes.get(target.trackId) ?? this.groupNodes.get(target.trackId);
+        if (nodes) nodes.modMacroPan.pan.setTargetAtTime(clamped, now, 0.005);
         break;
       }
       case "fxParam": {
-        const nodes = this.trackNodes.get(target.trackId);
-        const rt = nodes?.fx.runtimes.get(target.fxId!);
-        if (rt) rt.setParameter(target.paramId!, value);
+        this.writeDeviceTargetAt(target, clamped);
         break;
       }
       case "instParam": {
-        const inst = this.instruments.get(target.trackId);
-        if (inst) inst.runtime.setParameter(target.paramId!, value);
+        this.writeDeviceTargetAt(target, clamped);
         break;
       }
     }

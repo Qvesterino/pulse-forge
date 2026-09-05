@@ -10,7 +10,7 @@
  */
 
 export interface YDocHelpers {
-  yToggleStep: (yMap: unknown, patternId: string, padId: string, stepIndex: number) => void;
+  yToggleStep: (yMap: unknown, patternId: string, padId: string, stepIndex: number, defaultVelocity?: number) => void;
   ySetStepVelocity: (
     yMap: unknown,
     patternId: string,

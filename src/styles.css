@@ -7478,6 +7478,31 @@ html {
   white-space: nowrap;
 }
 
+/* ── Shared flagship A/B compare controls ───────────────────────────────── */
+
+.effect-ab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 8px 0 2px;
+  padding-top: 7px;
+  border-top: 1px solid var(--border);
+}
+
+.effect-ab-label {
+  color: var(--text-dim, #8a8f98);
+  font: 700 9px var(--mono);
+  letter-spacing: 0.1em;
+}
+
+.effect-ab-status {
+  color: var(--text-faint);
+  font: 9px var(--mono);
+  letter-spacing: 0.35px;
+  white-space: nowrap;
+}
+
 /* ── Ultina LIVE meters ─────────────────────────────────────────────────── */
 
 .ultina-live {

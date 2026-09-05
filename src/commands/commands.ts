@@ -8,6 +8,7 @@ import type {
   AutomationTarget,
   DrumPad,
   DrumTrack,
+  DeviceState,
   EffectInstance,
   EffectType,
   GrooveSettings,
@@ -49,9 +50,10 @@ import {
   clampArrangementTransitionType,
   sanitizeArrangementTransitions,
   sanitizeColor,
+  sanitizeDeviceState,
 } from "../project-model/schema";
 import type { Pattern } from "../project-model/types";
-import { EFFECT_DEFS, clampEffectParam, defaultParamsOf } from "../effects/registry";
+import { EFFECT_DEFS, clampEffectParam, defaultParamsOf, normalizePluginParams } from "../effects/registry";
 import { buildSchema as buildFxEqSchema } from "../effects/fxeq-core/core/parameterSchema";
 import {
   tryGetParamDef as tryGetUltinaParamDef,
@@ -59,7 +61,7 @@ import {
   buildDefaultParams as buildUltinaDefaults,
 } from "../effects/ultina-core/contracts/parameterSchema";
 import { INSTRUMENT_DEFS, clampInstrumentParam, defaultInstrumentParams } from "../instruments/registry";
-import { clampTargetValue, isAutomationTargetValid, targetOwner } from "../project-model/targets";
+import { clampTargetValue, isAutomationTargetValid, targetOwner, targetParamDef } from "../project-model/targets";
 import type { InstrumentPreset } from "../presets/types";
 import type { EffectPreset } from "../effects/presets";
 import { clamp, uid } from "../shared/ids";
@@ -177,7 +179,7 @@ export function toggleStep(doc: ProjectDocument, padId: string, stepIndex: numbe
     undo: (d) => setStepVelocity(d, padId, stepIndex, prev),
     applyToYDoc: (yMap) => {
       const helpers = getYDocHelpers();
-      helpers?.yToggleStep(yMap, patternId, padId, stepIndex);
+      helpers?.yToggleStep(yMap, patternId, padId, stepIndex, defaultVelocity);
     },
   };
 }
@@ -270,8 +272,19 @@ export function sliceToPads(
 }
 
 export function setPadParams(doc: ProjectDocument, padId: string, params: PadParams): Command {
-  const track = doc.tracks.find((t): t is DrumTrack => t.kind === "drum");
-  const current = track?.pads.find((p) => p.id === padId);
+  // The pad must be resolved across ALL drum tracks — projects routinely
+  // carry several (user-creatable). Scoping the lookup to the first drum
+  // track made both the undo baseline and the collab fast path silently
+  // miss pads living on later tracks.
+  let current: import("../project-model/types").DrumPad | undefined;
+  for (const t of doc.tracks) {
+    if (t.kind !== "drum") continue;
+    const pad = t.pads.find((p) => p.id === padId);
+    if (pad) {
+      current = pad;
+      break;
+    }
+  }
   const prev = { ...current } as PadParams;
   const apply = (d: ProjectDocument, values: PadParams): ProjectDocument =>
     withPad(d, padId, (pad) => {
@@ -294,25 +307,23 @@ export function setPadParams(doc: ProjectDocument, padId: string, params: PadPar
     undo: (d) => apply(d, prev),
     applyToYDoc: (yMap) => {
       const tracks = yMap.get("tracks") as any;
-      for (let i = 0; i < tracks.length; i++) {
+      outer: for (let i = 0; i < tracks.length; i++) {
         const t = tracks.get(i);
-        if (t.get("kind") === "drum") {
-          const pads = t.get("pads") as any;
-          for (let j = 0; j < pads.length; j++) {
-            if (pads.get(j).get("id") === padId) {
-              const target = pads.get(j);
-              const sourceChanged = params.assetId !== undefined && params.assetId !== target.get("assetId");
-              for (const [k, v] of Object.entries(params)) {
-                if (v !== undefined) target.set(k, v);
-              }
-              if (sourceChanged) {
-                for (const key of ["sliceStart", "sliceEnd", "sliceFadeIn", "sliceFadeOut", "sliceReverse"])
-                  target.delete(key);
-              }
-              break;
+        if (t.get("kind") !== "drum") continue;
+        const pads = t.get("pads") as any;
+        for (let j = 0; j < pads.length; j++) {
+          if (pads.get(j).get("id") === padId) {
+            const target = pads.get(j);
+            const sourceChanged = params.assetId !== undefined && params.assetId !== target.get("assetId");
+            for (const [k, v] of Object.entries(params)) {
+              if (v !== undefined) target.set(k, v);
             }
+            if (sourceChanged) {
+              for (const key of ["sliceStart", "sliceEnd", "sliceFadeIn", "sliceFadeOut", "sliceReverse"])
+                target.delete(key);
+            }
+            break outer;
           }
-          break;
         }
       }
     },
@@ -324,8 +335,18 @@ export function setPadSynth(
   padId: string,
   synth: import("../project-model/types").DrumSynthConfig | null,
 ): Command {
-  const track = doc.tracks.find((t): t is DrumTrack => t.kind === "drum");
-  const current = track?.pads.find((p) => p.id === padId);
+  // Resolve the pad across ALL drum tracks (same contract as setPadParams) —
+  // the first-drum-track lookup silently restored the wrong undo baseline in
+  // multi-drum-track projects.
+  let current: import("../project-model/types").DrumPad | undefined;
+  for (const t of doc.tracks) {
+    if (t.kind !== "drum") continue;
+    const pad = t.pads.find((p) => p.id === padId);
+    if (pad) {
+      current = pad;
+      break;
+    }
+  }
   const prevSynth = (current as any)?.synth ?? null;
   const prevAssetId = current?.assetId ?? null;
   const nextDoc: ProjectDocument = {
@@ -3643,10 +3664,19 @@ export function automationLaneOf(doc: ProjectDocument, laneId: string): Automati
 }
 
 export function addAutomationLane(doc: ProjectDocument, target: AutomationTarget): Command {
+  if (target.kind === "fxParam" && !target.fxId) throw new Error("fxParam target requires fxId");
+  if ((target.kind === "fxParam" || target.kind === "instParam") && !target.paramId) {
+    throw new Error(`${target.kind} target requires paramId`);
+  }
   const owner = targetOwner(doc, target.trackId);
   if (!owner) throw new Error(`Track or return ${target.trackId} not found`);
+  if (target.kind === "fxParam" && !owner.effects.some((fx) => fx.id === target.fxId)) {
+    throw new Error(`Effect ${target.fxId} not found`);
+  }
   if (!isAutomationTargetValid(doc, target)) {
-    throw new Error(`Invalid automation target ${target.kind}:${target.trackId}:${target.fxId ?? ""}:${target.paramId ?? ""}`);
+    throw new Error(
+      `Invalid automation target ${target.kind}:${target.trackId}:${target.fxId ?? ""}:${target.paramId ?? ""}`,
+    );
   }
   const exists = doc.automation.some(
     (l) =>
@@ -3710,8 +3740,7 @@ export function moveAutomationPoint(
   const lane = automationLaneOf(doc, laneId);
   if (!lane || index < 0 || index >= lane.points.length) throw new Error("Automation point not found");
   const prev = lane.points;
-  const nextValue =
-    delta.value === undefined ? undefined : clampAutomationPointValue(doc, lane.target, delta.value);
+  const nextValue = delta.value === undefined ? undefined : clampAutomationPointValue(doc, lane.target, delta.value);
   return {
     type: "moveAutomationPoint",
     label: "Move automation point",
@@ -3755,6 +3784,7 @@ export function newModulatorSeed(): string {
 }
 
 export function addLfo(doc: ProjectDocument, trackId: string, kind: LfoKind = "osc"): Command {
+  if (!targetOwner(doc, trackId)) throw new Error(`LFO host ${trackId} not found`);
   const id = uid("lfo");
   let lfo: Lfo;
   if (kind === "random") {
@@ -3892,9 +3922,20 @@ export function addMacroMapping(
   trackId: string,
   param: "gain" | "pan",
 ): Command {
-  if (!doc.tracks.some((t) => t.id === trackId)) throw new Error(`Track ${trackId} not found`);
+  const owner = targetOwner(doc, trackId);
+  if (!owner) throw new Error(`Track or return ${trackId} not found`);
   if (!doc.macros.some((m) => m.id === macroId)) throw new Error(`Macro ${macroId} not found`);
-  const mapping = { id: uid("map"), trackId, param, amount: 0.5 };
+  if (owner.kind === "return" && param === "pan") throw new Error("Return targets do not support pan");
+  const mapping: import("../project-model/types").MacroMapping = {
+    id: uid("map"),
+    trackId,
+    param,
+    amount: 0.5,
+    // Return buses do not have the track modMacro gain/pan layer. Persist a
+    // first-class target so the engine applies the same macro semantics to
+    // the return gain node instead of silently ignoring the mapping.
+    ...(owner.kind === "return" ? { target: { kind: "trackGain" as const, trackId } } : {}),
+  };
   const next: ProjectDocument = {
     ...dMap(doc, macroId, (m) => ({ ...m, mappings: [...m.mappings, mapping] })),
   };
@@ -3910,10 +3951,17 @@ export function addMacroMappingMidiCC(
   channel?: number,
   target?: AutomationTarget,
 ): Command {
-  if (!doc.tracks.some((t) => t.id === trackId)) throw new Error(`Track ${trackId} not found`);
+  const owner = targetOwner(doc, trackId);
+  if (!owner) throw new Error(`Track or return ${trackId} not found`);
   if (!doc.macros.some((m) => m.id === macroId)) throw new Error(`Macro ${macroId} not found`);
   if (!Number.isFinite(ccNumber) || ccNumber < 0 || ccNumber > 127) throw new Error("Invalid CC number");
-  if (target && !isAutomationTargetValid(doc, target)) throw new Error("Invalid MIDI macro target");
+  if (channel !== undefined && (!Number.isFinite(channel) || channel < 1 || channel > 16)) {
+    throw new Error("Invalid MIDI channel");
+  }
+  if (!target && param !== "gain" && param !== "pan") throw new Error("MIDI macro target is required");
+  if (owner?.kind === "return" && !target && param === "pan") throw new Error("Return targets do not support pan");
+  const resolvedTarget = target ?? (owner?.kind === "return" ? { kind: "trackGain" as const, trackId } : undefined);
+  if (resolvedTarget && !isAutomationTargetValid(doc, resolvedTarget)) throw new Error("Invalid MIDI macro target");
   const mapping: import("../project-model/types").MacroMapping = {
     id: uid("map"),
     trackId,
@@ -3922,7 +3970,7 @@ export function addMacroMappingMidiCC(
     source: "midiCC",
     ccNumber: Math.floor(ccNumber),
     ...(channel !== undefined ? { channel: Math.floor(channel) } : {}),
-    ...(target ? { target: { ...target }, param: target.kind } : {}),
+    ...(resolvedTarget ? { target: { ...resolvedTarget }, param: resolvedTarget.kind } : {}),
   };
   const next: ProjectDocument = {
     ...dMap(doc, macroId, (m) => ({ ...m, mappings: [...m.mappings, mapping] })),
@@ -3978,11 +4026,23 @@ export function setMacroMappingTarget(
   const prev = macro?.mappings.find((x) => x.id === mappingId);
   if (!prev) throw new Error("Macro mapping not found");
   if (target && !isAutomationTargetValid(doc, target)) throw new Error("Invalid macro target");
-  const apply = (d: ProjectDocument, t: import("../project-model/types").AutomationTarget | null): ProjectDocument => ({
+  const apply = (
+    d: ProjectDocument,
+    t: import("../project-model/types").AutomationTarget | null,
+    legacyParam?: string,
+  ): ProjectDocument => ({
     ...dMap(d, macroId, (m) => ({
       ...m,
       mappings: m.mappings.map((x) =>
-        x.id === mappingId ? { ...x, target: t ? { ...t } : undefined, param: t ? t.kind : x.param } : x,
+        x.id === mappingId
+          ? {
+              ...x,
+              target: t ? { ...t } : undefined,
+              param: t
+                ? t.kind
+                : (legacyParam ?? (x.target?.kind === "trackPan" || x.param === "pan" ? "pan" : "gain")),
+            }
+          : x,
       ),
     })),
   });
@@ -3991,7 +4051,7 @@ export function setMacroMappingTarget(
     type: "setMacroMappingTarget",
     label: target ? "Retarget macro mapping" : "Macro mapping → legacy",
     execute: (d) => apply(d, target),
-    undo: (d) => apply(d, prevTarget),
+    undo: (d) => apply(d, prevTarget, prev.param),
   };
 }
 
@@ -4204,7 +4264,8 @@ export function setEffectParam(
   if (!target) throw new Error(`Effect ${fxId} not found`);
   const { type, params } = target;
   const def = EFFECT_DEFS[type].params.find((p) => p.id === paramId);
-  if (!def) throw new Error(`Effect param ${paramId} not defined for ${type}`);
+  const deepDef = !def && type === "ozvena" ? targetParamDef(doc, { kind: "fxParam", trackId, fxId, paramId }) : null;
+  if (!def && !deepDef) throw new Error(`Effect param ${paramId} not defined for ${type}`);
   const eqLegacyMap: Record<string, string> = {
     lowGain: "lowShelfGain",
     lowFreq: "lowShelfFreq",
@@ -4215,10 +4276,15 @@ export function setEffectParam(
     highFreq: "highShelfFreq",
   };
   const canonicalId = type === "eq" ? eqLegacyMap[paramId] : undefined;
-  const clamped = clampEffectParam(type, paramId, value);
+  const safeValue = Number.isFinite(value) ? value : (def?.default ?? deepDef!.default);
+  const clamped = def
+    ? clampEffectParam(type, paramId, safeValue)
+    : Math.min(deepDef!.max, Math.max(deepDef!.min, safeValue));
   const nextValues: Record<string, number> = { [paramId]: clamped };
-  if (canonicalId) nextValues[canonicalId] = clampEffectParam(type, canonicalId, value);
-  const previousValues: Record<string, number> = { [paramId]: params[paramId] ?? def.default };
+  if (canonicalId) nextValues[canonicalId] = clampEffectParam(type, canonicalId, safeValue);
+  const previousValues: Record<string, number> = {
+    [paramId]: params[paramId] ?? def?.default ?? deepDef!.default,
+  };
   if (canonicalId)
     previousValues[canonicalId] =
       params[canonicalId] ?? EFFECT_DEFS[type].params.find((p) => p.id === canonicalId)?.default ?? 0;
@@ -4453,7 +4519,21 @@ export function setArrangementClipLoop(doc: ProjectDocument, clipId: string, loo
   target: AutomationTarget,
 ): Command {
   if (!doc.scenes.some((s) => s.id === sceneId)) throw new Error(`Scene ${sceneId} not found`);
-  const lane: SceneAutomation = { id: uid("sceneAuto"), sceneId, target, points: [{ tick: 0, value: 0 }] };
+  if (!isAutomationTargetValid(doc, target)) throw new Error("Invalid scene automation target");
+  if (
+    doc.sceneAutomation.some(
+      (lane) =>
+        lane.sceneId === sceneId &&
+        lane.target.kind === target.kind &&
+        lane.target.trackId === target.trackId &&
+        lane.target.fxId === target.fxId &&
+        lane.target.paramId === target.paramId,
+    )
+  ) {
+    throw new Error("Scene automation lane for this target already exists");
+  }
+  const initial = clampAutomationPointValue(doc, target, targetParamDef(doc, target)?.default ?? 0);
+  const lane: SceneAutomation = { id: uid("sceneAuto"), sceneId, target, points: [{ tick: 0, value: initial }] };
   const next = { ...doc, sceneAutomation: [...doc.sceneAutomation, lane] };
   return snapshot("addSceneAutomation", "Add scene lane", doc, next);
 }
@@ -4491,8 +4571,7 @@ export function moveSceneAutomationPoint(
   const lane = doc.sceneAutomation.find((l) => l.id === laneId);
   if (!lane) throw new Error(`Scene lane ${laneId} not found`);
   if (index < 0 || index >= lane.points.length) throw new Error("Scene point out of range");
-  const nextValue =
-    delta.value === undefined ? undefined : clampAutomationPointValue(doc, lane.target, delta.value);
+  const nextValue = delta.value === undefined ? undefined : clampAutomationPointValue(doc, lane.target, delta.value);
   const next = {
     ...doc,
     sceneAutomation: doc.sceneAutomation.map((l) => {
@@ -4597,7 +4676,20 @@ export function addMidiCcMapping(
   max: number,
 ): Command {
   const midi = ensureMidi(doc);
+  if (!Number.isFinite(ccNumber) || ccNumber < 0 || ccNumber > 127) throw new Error("Invalid CC number");
+  if (!Number.isFinite(min) || !Number.isFinite(max)) throw new Error("Invalid MIDI mapping range");
+  const targetDef = targetParamDef(doc, target);
+  // Keep the command usable for legacy imports that refer to a track which
+  // is created by a later collab transaction; normalizeProject will remove
+  // that unresolved map. Once the owner exists, reject deleted FX/params at
+  // the command boundary and clamp the controller range to the target.
+  if (targetOwner(doc, target.trackId) && !targetDef) throw new Error("Invalid MIDI CC target");
+  const safeMin = targetDef ? clampTargetValue(doc, target, min) : min;
+  const safeMax = targetDef ? clampTargetValue(doc, target, max) : max;
   const mapping: import("../project-model/types").MidiCcMapping = { id: uid("midiMap"), ccNumber, target, min, max };
+  mapping.ccNumber = Math.floor(ccNumber);
+  mapping.min = Math.min(safeMin, safeMax);
+  mapping.max = Math.max(safeMin, safeMax);
   const next: ProjectDocument = { ...doc, midi: { ...midi, ccMappings: [...midi.ccMappings, mapping] } };
   return snapshot("addMidiCcMapping", `Map CC${ccNumber}`, doc, next);
 }
@@ -5144,8 +5236,9 @@ export function setFxEqParam(
   const schema = buildFxEqSchema(Math.round(target.params.bandCount ?? 6));
   const def = schema.defs.find((d) => d.id === fullId);
   if (!def) throw new Error(`FXEQ param ${fullId} not defined for ${Math.round(target.params.bandCount ?? 6)} bands`);
-  const clamped = Math.max(def.minValue, Math.min(def.maxValue, value));
   const previous = target.params[fullId] ?? schema.defaultParams[fullId] ?? def.defaultValue;
+  const safeValue = Number.isFinite(value) ? value : previous;
+  const clamped = Math.max(def.minValue, Math.min(def.maxValue, safeValue));
   const apply = (d: ProjectDocument, values: Record<string, number>): ProjectDocument =>
     withTrackEffects(d, trackId, (effects) =>
       effects.map((f) => (f.id === fxId ? { ...f, params: { ...f.params, ...values } } : f)),
@@ -5205,8 +5298,8 @@ export function setUltinaParam(
   if (!target || target.type !== "ultina") throw new Error(`Ultina effect ${fxId} not found`);
   const def = tryGetUltinaParamDef(paramId);
   if (!def) throw new Error(`Ultina param ${paramId} not defined`);
-  const clamped = clampUltinaParam(paramId, value);
   const previous = target.params[paramId] ?? def.defaultValue;
+  const clamped = clampUltinaParam(paramId, Number.isFinite(value) ? value : previous);
   const apply = (d: ProjectDocument, values: Record<string, number>): ProjectDocument =>
     withTrackEffects(d, trackId, (effects) =>
       effects.map((f) => (f.id === fxId ? { ...f, params: { ...f.params, ...values } } : f)),
@@ -5265,6 +5358,9 @@ export function setDeviceState(
   state: import("../project-model/types").DeviceState | null,
 ): Command {
   const target = trackEffectsOf(doc, trackId).find((f) => f.id === fxId);
+  const nextState = state ? sanitizeDeviceState(state) : undefined;
+  if (state && !nextState) throw new Error("Invalid device state " + state.kind);
+  if (nextState) state = nextState;
   if (!target) throw new Error(`Effect ${fxId} not found`);
   const prev = target.deviceState ? { kind: target.deviceState.kind, data: { ...target.deviceState.data } } : null;
   const apply = (d: ProjectDocument): ProjectDocument =>
@@ -5289,7 +5385,59 @@ export function setDeviceState(
 }
 
 /**
- * Activate an Ultina A/B slot: restores the snapshot into real params
+ * Activate a generic flagship A/B slot. The snapshot is restored against the
+ * effect's authoritative schema and the active slot flips in the same
+ * undoable command, matching Ultina's compare workflow.
+ */
+export function loadEffectAbSlot(doc: ProjectDocument, trackId: string, fxId: string, slot: "A" | "B"): Command {
+  const target = trackEffectsOf(doc, trackId).find((f) => f.id === fxId);
+  if (!target) throw new Error("Effect " + fxId + " not found");
+  const state = target.deviceState?.kind === "effect-ab-v1" ? target.deviceState : null;
+  const snapshot = (state?.data.slots as Record<string, Record<string, number>> | undefined)?.[slot];
+  if (!snapshot) throw new Error("A/B slot " + slot + " is empty");
+
+  // FXEQ's schema depends on bandCount. Retain only the current shape hint;
+  // every other value must come from the persisted snapshot, then normalize
+  // from plugin defaults so stale values from the opposite slot cannot leak.
+  const shapeSource: Record<string, unknown> = {
+    ...(target.type === "fxeq" && target.params.bandCount !== undefined ? { bandCount: target.params.bandCount } : {}),
+    ...snapshot,
+  };
+  const pluginParams = normalizePluginParams(target.type, shapeSource);
+  const restored: Record<string, number> = pluginParams ?? { ...defaultParamsOf(target.type) };
+  if (!pluginParams) {
+    for (const [id, value] of Object.entries(snapshot)) {
+      const def = EFFECT_DEFS[target.type].params.find((param) => param.id === id);
+      if (def && typeof value === "number" && Number.isFinite(value)) {
+        restored[id] = clampEffectParam(target.type, id, value);
+      }
+    }
+  }
+  const nextDeviceState: DeviceState = {
+    kind: "effect-ab-v1",
+    data: { ...state!.data, active: slot },
+  };
+  const previousParams = { ...target.params };
+  const previousState = target.deviceState ?? null;
+  const apply = (d: ProjectDocument): ProjectDocument =>
+    withTrackEffects(d, trackId, (effects) =>
+      effects.map((f) => (f.id === fxId ? { ...f, params: restored, deviceState: nextDeviceState } : f)),
+    );
+  const restore = (d: ProjectDocument): ProjectDocument =>
+    withTrackEffects(d, trackId, (effects) =>
+      effects.map((f) =>
+        f.id === fxId ? { ...f, params: previousParams, deviceState: previousState ?? undefined } : f,
+      ),
+    );
+  return {
+    type: "loadEffectAbSlot",
+    label: "A/B -> slot " + slot,
+    execute: (d) => apply(d),
+    undo: (d) => restore(d),
+  };
+}
+
+/** Activate an Ultina A/B slot: restores the snapshot into real params
  * (exact restore — defaults + clamped snapshot) AND flips the active flag,
  * as ONE undoable gesture so an A/B compare is a single Ctrl+Z away.
  */
@@ -5377,7 +5525,8 @@ export function applyOzvenaStatePatch(
 ): Command {
   const target = trackEffectsOf(doc, trackId).find((f) => f.id === fxId);
   if (!target || target.type !== "ozvena") throw new Error(`Ozvena effect ${fxId} not found`);
-  const nextParams = { ...target.params, ...flatParams };
+  const normalized = normalizePluginParams("ozvena", { ...target.params, ...flatParams });
+  const nextParams = normalized ?? { ...target.params };
   const previousParams = { ...target.params };
   const apply = (d: ProjectDocument, values: Record<string, number>): ProjectDocument =>
     withTrackEffects(d, trackId, (effects) =>

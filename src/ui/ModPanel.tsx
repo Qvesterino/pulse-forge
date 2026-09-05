@@ -32,7 +32,12 @@ import { laneLabel } from "../project-model/automation";
 import { EFFECT_DEFS } from "../effects/registry";
 import { ultinaLaneRange, ultinaOptionGroups } from "../effects/ultinaAutomation";
 import { INSTRUMENT_DEFS } from "../instruments/registry";
-import { effectTargetParamDefs, instrumentTargetParamDefs, targetOwner, targetParamDef } from "../project-model/targets";
+import {
+  effectTargetParamDefs,
+  instrumentTargetParamDefs,
+  targetOwner,
+  targetParamDef,
+} from "../project-model/targets";
 import { Slider } from "./controls";
 import { trackBadge } from "./TrackTabs";
 import { clamp } from "../shared/ids";
@@ -87,11 +92,11 @@ function kindSwitchPatch(kind: LfoKind, hostTrackId: string): Parameters<typeof 
 
 /** Encoded automation-target options for schedulable modulators (host track scope). */
 function targetOptionsFor(doc: ReturnType<typeof useDoc>, hostTrackId: string): { value: string; label: string }[] {
+  const host = targetOwner(doc, hostTrackId);
   const options = [
     { value: "trackGain:", label: "Volume" },
-    { value: "trackPan:", label: "Pan" },
+    ...(host?.kind === "return" ? [] : [{ value: "trackPan:", label: "Pan" }]),
   ];
-  const host = targetOwner(doc, hostTrackId);
   if (host?.kind === "instrument") {
     for (const p of instrumentTargetParamDefs(host)) {
       options.push({ value: `instParam::${p.id}`, label: p.label });
@@ -166,6 +171,7 @@ function trackBadgeSafe(track: { kind: string; instrument?: string } | undefined
 export function ModPanel() {
   const services = useServices();
   const doc = useDoc();
+  const routableTracks = [...doc.tracks, ...doc.returns];
   const [selectedLaneId, setSelectedLaneId] = useState<string | null>(doc.automation[0]?.id ?? null);
   const [addTarget, setAddTarget] = useState<{
     trackId: string;
@@ -200,7 +206,9 @@ export function ModPanel() {
 
   const addableTrack = targetOwner(doc, addTarget.trackId);
   const hasDeepParams = Boolean(
-    addableTrack && "effects" in addableTrack && addableTrack.effects.some((f) => f.type === "ultina" || f.type === "fxeq"),
+    addableTrack &&
+    "effects" in addableTrack &&
+    addableTrack.effects.some((f) => f.type === "ultina" || f.type === "fxeq"),
   );
 
   return (
@@ -246,7 +254,7 @@ export function ModPanel() {
             }}
           >
             <option value="trackGain:">Volume</option>
-            <option value="trackPan:">Pan</option>
+            {addableTrack?.kind !== "return" && <option value="trackPan:">Pan</option>}
             {addableTrack?.kind === "instrument" &&
               INSTRUMENT_DEFS[addableTrack.instrument].params.map((p) => (
                 <option key={p.id} value={`instParam::${p.id}`}>
@@ -256,28 +264,26 @@ export function ModPanel() {
             {addableTrack &&
               "effects" in addableTrack &&
               addableTrack.effects.map((fx) =>
-              fx.type === "ultina" ? (
-                ultinaOptionGroups(fx.id, paramFilter).map(({ module, options }) => (
-                    <optgroup key={`${fx.id}:${module}`} label={`Ultina · ${module}`}>
-                      {options.map((o) => (
-                        <option key={o.value} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))
-                ) : (
-                  effectTargetParamDefs(fx)
-                    .filter((p) => {
-                      const query = paramFilter.trim().toLowerCase();
-                      return !query || `${p.label} ${p.id}`.toLowerCase().includes(query);
-                    })
-                    .map((p) => (
-                    <option key={`${fx.id}:${p.id}`} value={`fxParam:${fx.id}:${p.id}`}>
-                      {EFFECT_DEFS[fx.type].name} · {p.label}
-                    </option>
+                fx.type === "ultina"
+                  ? ultinaOptionGroups(fx.id, paramFilter).map(({ module, options }) => (
+                      <optgroup key={`${fx.id}:${module}`} label={`Ultina · ${module}`}>
+                        {options.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </optgroup>
                     ))
-                ),
+                  : effectTargetParamDefs(fx)
+                      .filter((p) => {
+                        const query = paramFilter.trim().toLowerCase();
+                        return !query || `${p.label} ${p.id}`.toLowerCase().includes(query);
+                      })
+                      .map((p) => (
+                        <option key={`${fx.id}:${p.id}`} value={`fxParam:${fx.id}:${p.id}`}>
+                          {EFFECT_DEFS[fx.type].name} · {p.label}
+                        </option>
+                      )),
               )}
           </select>
           <button type="button" className="btn btn-small" onClick={submitAddLane}>
@@ -340,9 +346,9 @@ export function ModPanel() {
             <option value="">+ ADD MODULATOR…</option>
             {LFO_KINDS.map((kind) => (
               <optgroup key={kind.value} label={kind.label}>
-                {doc.tracks.map((track) => (
+                {routableTracks.map((track) => (
                   <option key={`${kind.value}:${track.id}`} value={`${kind.value}:${track.id}`}>
-                    {trackBadge(track)} {track.name}
+                    {trackBadgeSafe(track)} {track.name}
                   </option>
                 ))}
               </optgroup>
@@ -357,7 +363,7 @@ export function ModPanel() {
             </div>
           )}
           {doc.lfos.map((lfo) => {
-            const track = doc.tracks.find((t) => t.id === lfo.trackId);
+            const track = targetOwner(doc, lfo.trackId);
             const kind: LfoKind = lfo.kind ?? "osc";
             return (
               <div key={lfo.id} className={`lfo-row${kind !== "osc" ? " lfo-row-sched" : ""}`}>
@@ -412,7 +418,7 @@ export function ModPanel() {
                         }
                       >
                         <option value="gain">Volume</option>
-                        <option value="pan">Pan</option>
+                        {track?.kind !== "return" && <option value="pan">Pan</option>}
                       </select>
                     </label>
                   )}
@@ -596,9 +602,9 @@ export function ModPanel() {
                             )
                           }
                         >
-                          {doc.tracks.map((candidate) => (
+                          {routableTracks.map((candidate) => (
                             <option key={candidate.id} value={candidate.id}>
-                              {trackBadge(candidate)} {candidate.name}
+                              {trackBadgeSafe(candidate)} {candidate.name}
                               {candidate.id === lfo.trackId ? " (self)" : ""}
                             </option>
                           ))}
@@ -859,7 +865,7 @@ function macroMappingLabel(
     const owner = targetOwner(doc, t.trackId);
     const fx = owner?.effects.find((f) => f.id === t.fxId);
     const paramLabel = targetParamDef(doc, t)?.label ?? t.paramId;
-    return `FX ${fx ? EFFECT_DEFS[fx.type]?.name ?? fx.type : "?"} · ${paramLabel}`;
+    return `FX ${fx ? (EFFECT_DEFS[fx.type]?.name ?? fx.type) : "?"} · ${paramLabel}`;
   }
   if (t.kind === "instParam") {
     const paramLabel = targetParamDef(doc, t)?.label ?? t.paramId;
@@ -1019,7 +1025,9 @@ function MacroCard({ macro }: { macro: ReturnType<typeof useDoc>["macros"][numbe
           <select
             aria-label="Map macro to track"
             value={mapDraft.trackId}
-            onChange={(event) => setMapDraft((prev) => ({ ...prev, trackId: event.target.value, deviceId: "", paramId: "" }))}
+            onChange={(event) =>
+              setMapDraft((prev) => ({ ...prev, trackId: event.target.value, deviceId: "", paramId: "" }))
+            }
           >
             {[...doc.tracks, ...doc.returns].map((track) => (
               <option key={track.id} value={track.id}>
@@ -1039,7 +1047,7 @@ function MacroCard({ macro }: { macro: ReturnType<typeof useDoc>["macros"][numbe
             }
           >
             <option value="gain">VOL</option>
-            <option value="pan">PAN</option>
+            {mapTrack?.kind !== "return" && <option value="pan">PAN</option>}
             <option value="param">PARAM…</option>
           </select>
           {mapDraft.param === "param" && (

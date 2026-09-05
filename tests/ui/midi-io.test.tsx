@@ -64,17 +64,16 @@ describe("ExportPanel MIDI export", () => {
     const doc = createProjectFromTemplate("house");
     const services = mockServices(doc);
     const created: string[] = [];
-    vi.stubGlobal(
-      "URL",
-      Object.assign(URL, { createObjectURL: vi.fn(() => "blob:mock"), revokeObjectURL: vi.fn() }),
-    );
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: vi.fn(() => "blob:mock"), revokeObjectURL: vi.fn() }));
     void created;
 
     const { container } = renderWithContext(<ExportPanel />, { services });
     fireEvent.click(screen.getByText("EXPORT MIDI (PATTERN)"));
 
     // The SMF writer loads as a lazy chunk — wait for the async export.
-    await waitFor(() => expect(URL.createObjectURL).toHaveBeenCalledTimes(1));
+    // Generous timeout: the dynamic import can outrun the 1s default under
+    // full-suite CPU load.
+    await waitFor(() => expect(URL.createObjectURL).toHaveBeenCalledTimes(1), { timeout: 10_000 });
     const anchor = container.querySelector("a[download*='.mid']") ?? { download: "" };
     // The download fired with a .mid filename and the status confirms it.
     expect(screen.getByText(/MIDI exported/)).toBeInTheDocument();

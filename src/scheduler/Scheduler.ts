@@ -395,6 +395,7 @@ export class Scheduler {
         // of the launch would be silently dropped.
         const nextDoc = this.deps.getProject();
         const nextPattern = nextDoc.patterns.find((p) => p.id === pending.patternId);
+        currentDoc = nextDoc;
         if (nextPattern) {
           this.schedulePatternWindow(nextPattern, 0, boundary, windowEnd);
           automationCtx = { base: 0, patternTicks: STEP_TICKS * nextPattern.stepCount };
