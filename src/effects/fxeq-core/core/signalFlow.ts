@@ -57,3 +57,39 @@ export const MODULE_FACTORIES: Record<ModuleKey, ModuleFactory> = {
   delay: createDelayModule,
   rev: createReverbModule,
 };
+
+/**
+ * Q6 envelope-routing targets. Index = the band scalar `envModTarget`
+ * value; 0 = off. Each active entry names the routed parameter and the
+ * modulation swing in that parameter's own unit — the band's envelope
+ * (0..1 against full scale) scaled by `envModDepth` (%) sweeps the
+ * parameter around its base value by at most ±swing.
+ *
+ * Deliberately EXCLUDED: time-based parameters (delayTimeMs, revDecayMs,
+ * modRate) — block-rate retuning of delay lengths clicks and fights the
+ * tempo-sync machinery; and the dyn EQ's own thresholds — the follower
+ * would modulate its own detector domain.
+ */
+export interface EnvModTarget {
+  /** Routed module (undefined = band-scalar target). */
+  moduleKey?: ModuleKey;
+  /** Routed parameter id inside the module. */
+  paramId?: string;
+  /** Band-scalar target ("gainDb" is applied at the band gain stage). */
+  bandScalar?: "gainDb";
+  /** Modulation swing in the parameter's unit at depth = ±100 %. */
+  swing: number;
+}
+
+export const ENV_MOD_TARGETS: readonly (EnvModTarget | null)[] = [
+  null, // 0 = off
+  { moduleKey: "sat", paramId: "driveDb", swing: 6 }, // 1 — drive
+  { moduleKey: "sat", paramId: "mix", swing: 25 }, // 2 — sat blend
+  { moduleKey: "eq", paramId: "lowGainDb", swing: 12 }, // 3 — low shelf
+  { moduleKey: "eq", paramId: "peak1GainDb", swing: 12 }, // 4 — peak 1
+  { moduleKey: "eq", paramId: "peak2GainDb", swing: 12 }, // 5 — peak 2
+  { moduleKey: "eq", paramId: "highGainDb", swing: 12 }, // 6 — high shelf
+  { moduleKey: "delay", paramId: "mix", swing: 30 }, // 7 — delay blend
+  { moduleKey: "rev", paramId: "mix", swing: 30 }, // 8 — reverb blend
+  { bandScalar: "gainDb", swing: 12 }, // 9 — band gain
+] as const;

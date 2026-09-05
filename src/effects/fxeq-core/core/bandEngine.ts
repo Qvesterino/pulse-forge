@@ -26,7 +26,7 @@
 import type { ModuleProcessor } from "../dsp/types.js";
 import { clamp, dbToLinear, flushDenormal } from "../dsp/mathUtils.js";
 import { createSmoother } from "../dsp/envelope.js";
-import { MODULE_FACTORIES, MODULE_KEYS, type ModuleKey } from "./signalFlow.js";
+import { MODULE_FACTORIES, MODULE_KEYS, ENV_MOD_TARGETS, type ModuleKey } from "./signalFlow.js";
 import { BAND_SCALAR_DEFS } from "./parameterSchema.js";
 import { assertAudioBlock } from "../dsp/audioBlockContract.js";
 import {
@@ -131,6 +131,65 @@ export function createBandEngine(): BandEngine {
     dynCoefSr = preparedSr;
   }
 
+  // ── Q6: per-band envelope routing ─────────────────────────
+  // The band's own envelope (peak follower on the crossover output,
+  // normalized against full scale) drives one routed parameter around its
+  // base value. Routing is off (envModTarget 0) unless the host enables
+  // it — every default render stays bit-identical.
+  //
+  // Architecture note: routed MODULE parameters are written per block as
+  // base + offset, with the base cached here (updated by every
+  // setModuleParam for that parameter — user edits, presets, morphs, link
+  // groups). The processor's flat store is never touched by the modulation,
+  // so serialization always reports the base. Disabling the routing (target
+  // off, depth 0, band mute) restores the cached base exactly once.
+  let envTarget = 0; // index into ENV_MOD_TARGETS; 0 = off
+  let envDepth = 0; // -100..100 %
+  let envAtkMs = 10;
+  let envRelMs = 150;
+  let modEnvValue = 0; // follower state (linear amplitude)
+  let envRoutedModule: ModuleKey | null = null;
+  let envRoutedParam: string | null = null;
+  let envModBase = 0;
+  let envModApplied = false; // last block wrote an offset into the module
+  let envGainOffset = 0; // offset applied to bandGainDb this block
+  let envAtkCoef = 0;
+  let envRelCoef = 0;
+  let envCoefAtkMs = -1;
+  let envCoefRelMs = -1;
+  let envCoefSr = 0;
+
+  function refreshEnvCoefs(): void {
+    if (envCoefAtkMs === envAtkMs && envCoefRelMs === envRelMs && envCoefSr === preparedSr) {
+      return;
+    }
+    envAtkCoef = 1 - Math.exp(-1 / ((envAtkMs / 1000) * preparedSr));
+    envRelCoef = 1 - Math.exp(-1 / ((envRelMs / 1000) * preparedSr));
+    envCoefAtkMs = envAtkMs;
+    envCoefRelMs = envRelMs;
+    envCoefSr = preparedSr;
+  }
+
+  /** Switch the routed target; restores the previous target's base first. */
+  function retargetEnv(next: number): void {
+    if (envRoutedModule && envRoutedParam && envModApplied) {
+      modules[envRoutedModule].setParameter(envRoutedParam, envModBase);
+    }
+    envModApplied = false;
+    envGainOffset = 0;
+    const def = ENV_MOD_TARGETS[next] ?? null;
+    if (def && def.moduleKey && def.paramId) {
+      envRoutedModule = def.moduleKey;
+      envRoutedParam = def.paramId;
+      // The module currently holds its base (modulation was either off or
+      // just restored above).
+      envModBase = modules[def.moduleKey].getParameter(def.paramId);
+    } else {
+      envRoutedModule = null;
+      envRoutedParam = null;
+    }
+  }
+
   return {
     prepare(sr, cc, maxBlockSize) {
       preparedMaxBlockSize = Math.max(1, maxBlockSize);
@@ -157,6 +216,10 @@ export function createBandEngine(): BandEngine {
         gainSmoother.reset(dbToLinear(bandGainDb));
         mixSmoother.reset(clamp(bandMix, 0, 100) / 100);
       }
+      // Q6: reset the follower — routed modules keep their params, and the
+      // next process() reapplies base + fresh envelope from zero.
+      modEnvValue = 0;
+      envGainOffset = 0;
     },
 
     process(channels, frameCount, sidechain) {
@@ -178,6 +241,38 @@ export function createBandEngine(): BandEngine {
         for (let i = 0; i < frameCount; i++) {
           buf[i] = flushDenormal(buf[i]);
         }
+      }
+
+      // Q6: track the band envelope on the crossover output (before gain,
+      // dynEQ and modules — stable, no feedback into the detector) and
+      // apply the routed modulation for this block. Depth 0 / target 0
+      // skips the pass entirely and restores the routed base once.
+      const targetDef = ENV_MOD_TARGETS[envTarget] ?? null;
+      envGainOffset = 0;
+      if (targetDef && envDepth !== 0) {
+        refreshEnvCoefs();
+        let env = modEnvValue;
+        for (let i = 0; i < frameCount; i++) {
+          let peak = 0;
+          for (let c = 0; c < channels.length; c++) {
+            const a = channels[c][i] < 0 ? -channels[c][i] : channels[c][i];
+            if (a > peak) peak = a;
+          }
+          env += (peak > env ? envAtkCoef : envRelCoef) * (peak - env);
+        }
+        modEnvValue = env;
+        // Full-scale band level (1.0) sweeps the full depth swing.
+        const envNorm = env < 1 ? env : 1;
+        const offset = envNorm * (envDepth / 100) * targetDef.swing;
+        if (envRoutedModule && envRoutedParam) {
+          modules[envRoutedModule].setParameter(envRoutedParam, envModBase + offset);
+          envModApplied = true;
+        } else if (targetDef.bandScalar === "gainDb") {
+          envGainOffset = offset;
+        }
+      } else if (envRoutedModule && envModApplied) {
+        modules[envRoutedModule].setParameter(envRoutedParam!, envModBase);
+        envModApplied = false;
       }
 
       // Set per-band quality on saturation module before processing.
@@ -239,8 +334,10 @@ export function createBandEngine(): BandEngine {
       // Apply smoothed band gain. Audit M6: the smoother must advance
       // once per SAMPLE and apply the same value to every channel — the
       // old per-channel advance made the right ear's ramp run a whole
-      // block ahead of the left during gain moves.
-      const targetGain = dbToLinear(bandGainDb);
+      // block ahead of the left during gain moves. Q6: an envelope
+      // routing to the band gain (target 9) adds its offset to the
+      // base dB here — the base itself stays untouched.
+      const targetGain = dbToLinear(bandGainDb + envGainOffset);
       {
         let g = gainSmoother.getValue();
         for (let i = 0; i < frameCount; i++) {
@@ -369,10 +466,27 @@ export function createBandEngine(): BandEngine {
         case "sidechainMode": bandSidechainMode = v; break;
         case "quality": bandQuality = Math.round(v); break;
         case "linkGroup": bandLinkGroup = Math.round(v); break;
+        case "envModTarget": {
+          const next = Math.round(clamp(v, 0, ENV_MOD_TARGETS.length - 1));
+          if (next !== envTarget) retargetEnv(next);
+          envTarget = next;
+          break;
+        }
+        case "envModDepth": envDepth = v; break;
+        case "envModAtkMs": envAtkMs = v; break;
+        case "envModRelMs": envRelMs = v; break;
       }
     },
 
     setModuleParam(moduleKey, paramId, value) {
+      // Q6: the routed parameter's base is maintained here — user edits,
+      // presets, morphs and link groups all flow through setModuleParam,
+      // so the modulation always orbits the CURRENT base value. The
+      // module momentarily receives the unmodulated value; the next
+      // process() reapplies base + fresh envelope offset.
+      if (envRoutedModule === moduleKey && envRoutedParam === paramId) {
+        envModBase = value;
+      }
       modules[moduleKey].setParameter(paramId, value);
     },
 
@@ -398,10 +512,19 @@ export function createBandEngine(): BandEngine {
       if (id === "sidechainMode") return bandSidechainMode;
       if (id === "quality") return bandQuality;
       if (id === "linkGroup") return bandLinkGroup;
+      if (id === "envModTarget") return envTarget;
+      if (id === "envModDepth") return envDepth;
+      if (id === "envModAtkMs") return envAtkMs;
+      if (id === "envModRelMs") return envRelMs;
       return 0;
     },
 
     getModuleParam(moduleKey, paramId) {
+      // Q6: the routed parameter reports its BASE, not the last modulated
+      // value — introspection and serialization must not see the swing.
+      if (envRoutedModule === moduleKey && envRoutedParam === paramId) {
+        return envModBase;
+      }
       return modules[moduleKey].getParameter(paramId);
     },
 
@@ -437,11 +560,20 @@ export function createBandEngine(): BandEngine {
         sidechainMode: bandSidechainMode,
         quality: bandQuality,
         linkGroup: bandLinkGroup,
+        envModTarget: envTarget,
+        envModDepth: envDepth,
+        envModAtkMs: envAtkMs,
+        envModRelMs: envRelMs,
       };
       const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
       for (const key of MODULE_KEYS) {
         const mp = modules[key].getParameters();
         for (const k of Object.keys(mp)) {
+          // Q6: a routed (currently modulated) parameter reports its base.
+          if (envRoutedModule === key && envRoutedParam === k) {
+            out[key + cap(k)] = envModBase;
+            continue;
+          }
           out[key + cap(k)] = mp[k];
         }
       }

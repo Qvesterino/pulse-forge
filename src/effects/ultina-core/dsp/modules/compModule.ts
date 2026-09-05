@@ -27,6 +27,10 @@
 //   Punch:  Fast attack, aggressive ratio, slight warmth
 //   Modern: Balanced, transparent
 //   Vintage: Slow, warm, tube-style saturation on makeup
+//   Opto:   LA-2A school — slow electro-optical attack, long
+//           program-dependent release, gentle ratio, soft knee
+//   FET:    1176 school — 20 µs attack, aggressive ratio, and a
+//           gain-reduction-proportional saturation "bite"
 //
 // Detection:
 //   Peak:        Instantaneous peak detection
@@ -69,7 +73,7 @@ import {
 export const COMP_MAX_BANDS = 3;
 
 /** Comp mode enum values. */
-const COMP_MODES = ["punch", "modern", "vintage"] as const;
+const COMP_MODES = ["punch", "modern", "vintage", "opto", "fet"] as const;
 type CompMode = typeof COMP_MODES[number];
 
 /** Detection mode enum values. */
@@ -95,6 +99,8 @@ interface CompBandState {
   holdCounter: number;
   /** Previous detection value for True Envelope interpolation. */
   prevDetected: number;
+  /** Opto-mode photocell memory (0..1) — slows release under sustained GR. */
+  optoMemory: number;
 }
 
 // ── Module meters ───────────────────────────────────────────
@@ -119,6 +125,16 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
   // Sidechain HPF
   private scHpf: BiquadState = createBiquad(2);
 
+  // Per-band detector HPF (comp.detectorHpfHz) — filters each band's own
+  // detection signal so low-frequency energy does not trigger compression.
+  // Two cascaded 2-pole stages = 24 dB/oct, so a 120 Hz setting really
+  // rejects a 60 Hz rumble (a single 2-pole only manages −12 dB there,
+  // which still crosses the threshold). Inactive at the 20 Hz default;
+  // has no effect while an external sidechain drives the detector
+  // (comp.sidechainHpfHz covers that path).
+  private detHpf: BiquadState[][] = [];
+  private detHpfBufs: Float32Array[] = [];
+
   // Dry buffer for mix
   private dryL: Float32Array = new Float32Array(0);
   private dryR: Float32Array = new Float32Array(0);
@@ -141,6 +157,13 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
     this.ensureBuffers(this.maxBlockSize);
     this.scHpf = createBiquad(2);
 
+    this.detHpf = [];
+    this.detHpfBufs = [];
+    for (let i = 0; i < COMP_MAX_BANDS; i++) {
+      this.detHpf.push([createBiquad(1), createBiquad(1)]);
+      this.detHpfBufs.push(new Float32Array(this.maxBlockSize));
+    }
+
     this.bands = [];
     for (let i = 0; i < COMP_MAX_BANDS; i++) {
       this.bands.push({
@@ -152,6 +175,7 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
         releaseCoef: 0,
         holdCounter: 0,
         prevDetected: 0,
+        optoMemory: 0,
       });
       this.bands[i].peakEnv.prepare(10, 100, this.sampleRate);
       this.bands[i].rmsDetector.prepare(10, this.sampleRate);
@@ -172,7 +196,7 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
     this.ensureBuffers(frameCount);
 
     // Read parameters
-    const mode = COMP_MODES[Math.round(clamp(params["comp.mode"] ?? 1, 0, 2))];
+    const mode = COMP_MODES[Math.round(clamp(params["comp.mode"] ?? 1, 0, COMP_MODES.length - 1))];
     const detectionMode = DETECTION_MODES[Math.round(clamp(params["comp.detectionMode"] ?? 1, 0, 2))];
     const thresholdDb = params["comp.thresholdDb"] ?? -20;
     const ratio = clamp(params["comp.ratio"] ?? 3, 1, 20);
@@ -185,6 +209,7 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
     const mixPercent = clamp(params["comp.mix"] ?? 100, 0, 100);
     const scEnabled = (params["comp.sidechainEnabled"] ?? 0) >= 0.5;
     const scHpfHz = clamp(params["comp.sidechainHpfHz"] ?? 20, 20, 2000);
+    const detHpfHz = clamp(params["comp.detectorHpfHz"] ?? 20, 20, 1000);
     const bandCount = Math.round(clamp(params["comp.bandCount"] ?? 1, 1, 3)) as BandCount;
     // Clamp like the exciter/transient/clipper/density modules: the hybrid
     // FIR crossover designs its sinc from an unclamped fc = freq/sr — a
@@ -196,7 +221,8 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
     const deltaListen = (params["comp.delta"] ?? 0) >= 0.5;
 
     // Apply mode-specific adjustments
-    const { effectiveAttack, effectiveRelease, effectiveRatio } = this.applyMode(mode, attackMs, releaseMs, ratio);
+    const { effectiveAttack, effectiveRelease, effectiveRatio, effectiveKneeDb } =
+      this.applyMode(mode, attackMs, releaseMs, ratio, kneeDb);
 
     // Update multiband config if changed
     this.updateMultiband(bandCount, xover1, xover2);
@@ -226,8 +252,21 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
       params["comp.band2.thresholdDb"] ?? thresholdDb,
     ];
 
-    // Process through multiband
+    // Detector HPF for the internal (per-band) detection path. When an
+    // external sidechain drives the detector, comp.sidechainHpfHz already
+    // filters that source, so this stays off to avoid double filtering.
     const scActive = scEnabled && sidechain && sidechain.length >= 2;
+    const detHpfActive =
+      detHpfHz > 20.5 && !scActive && this.detHpf.length === COMP_MAX_BANDS;
+    if (detHpfActive) {
+      for (let b = 0; b < COMP_MAX_BANDS; b++) {
+        for (const stage of this.detHpf[b]) {
+          setHighPass(stage.coeffs, detHpfHz, 0.707, this.sampleRate);
+        }
+      }
+    }
+
+    // Process through multiband
     this.multiband.process(
       channels,
       frameCount,
@@ -241,9 +280,11 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
           effectiveAttack,
           effectiveRelease,
           effectiveRatio,
-          kneeDb,
+          effectiveKneeDb,
           detectionMode,
           autoRelease,
+          mode,
+          detHpfActive,
         );
       },
       channelMode,
@@ -273,6 +314,28 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
         const data = channels[ch];
         for (let i = 0; i < frameCount; i++) {
           data[i] = sanitizeSample(data[i] * makeupLinear);
+        }
+      }
+    }
+
+    // FET mode: gain-reduction-proportional bite — deeper compression
+    // drives the FET harder into saturation (the 1176 "all buttons in"
+    // character). Scales from the smoothed per-band GR meters.
+    if (mode === "fet") {
+      let avgGr = 0;
+      for (let b = 0; b < bandCount; b++) {
+        avgGr += this.gainReduction[b];
+      }
+      avgGr /= Math.max(1, bandCount);
+      const bite = clamp(avgGr / 10, 0, 1) * 0.25;
+      if (bite > 0.001) {
+        for (let ch = 0; ch < 2; ch++) {
+          const data = channels[ch];
+          for (let i = 0; i < frameCount; i++) {
+            const x = data[i];
+            const sat = fastTanh(x * 1.7) / 1.7;
+            data[i] = sanitizeSample(x * (1 - bite) + sat * bite);
+          }
         }
       }
     }
@@ -320,6 +383,7 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
       band.targetGrDb = 0;
       band.holdCounter = 0;
       band.prevDetected = 0;
+      band.optoMemory = 0;
     }
     this.gainReduction.fill(0);
     this.outputLevels.fill(-100);
@@ -327,6 +391,9 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
     this.autoMakeupSmoother.reset(0);
     this.multiband.reset();
     resetBiquad(this.scHpf);
+    for (const stages of this.detHpf) {
+      for (const stage of stages) resetBiquad(stage);
+    }
   }
 
   getMeters(): CompMeters {
@@ -354,6 +421,11 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
       this.scHpfBufferL = new Float32Array(requiredSize);
       this.scHpfBufferR = new Float32Array(requiredSize);
     }
+    for (let b = 0; b < this.detHpfBufs.length; b++) {
+      if (this.detHpfBufs[b].length < requiredSize) {
+        this.detHpfBufs[b] = new Float32Array(requiredSize);
+      }
+    }
   }
 
   private applyMode(
@@ -361,19 +433,43 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
     attackMs: number,
     releaseMs: number,
     ratio: number,
-  ): { effectiveAttack: number; effectiveRelease: number; effectiveRatio: number } {
+    kneeDb: number,
+  ): { effectiveAttack: number; effectiveRelease: number; effectiveRatio: number; effectiveKneeDb: number } {
     switch (mode) {
       case "punch":
         return {
           effectiveAttack: attackMs * 0.5, // Faster attack
           effectiveRelease: releaseMs * 0.7,
           effectiveRatio: ratio * 1.15, // Slightly more aggressive
+          effectiveKneeDb: kneeDb,
         };
       case "vintage":
         return {
           effectiveAttack: attackMs * 2.0, // Slower attack
           effectiveRelease: releaseMs * 1.5,
-          effectiveRatio: ratio * 0.85, // Gentler
+          // Clamp to ≥1: the ratio knob at 1–1.17 would otherwise invert
+          // the slope and turn compression into upward gain.
+          effectiveRatio: Math.max(1, ratio * 0.85), // Gentler
+          effectiveKneeDb: kneeDb,
+        };
+      case "opto":
+        // LA-2A school: electro-optical cell — attack never faster than
+        // ~8 ms, release stretched well past the knob, gentle slope, and
+        // a soft knee even when the knee knob is closed.
+        return {
+          effectiveAttack: clamp(attackMs * 1.5, 8, 40),
+          effectiveRelease: clamp(releaseMs * 2.5, 50, 2000),
+          effectiveRatio: Math.max(1, ratio * 0.8),
+          effectiveKneeDb: Math.max(kneeDb, 6),
+        };
+      case "fet":
+        // 1176 school: 20 µs–1 ms attack window (the real unit's range),
+        // ratio pushed harder, release capped near the unit's 1.1 s max.
+        return {
+          effectiveAttack: clamp(attackMs * 0.05, 0.02, 1),
+          effectiveRelease: clamp(releaseMs * 0.8, 5, 1100),
+          effectiveRatio: clamp(ratio * 1.3, 1, 20),
+          effectiveKneeDb: kneeDb,
         };
       case "modern":
       default:
@@ -381,6 +477,7 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
           effectiveAttack: attackMs,
           effectiveRelease: releaseMs,
           effectiveRatio: ratio,
+          effectiveKneeDb: kneeDb,
         };
     }
   }
@@ -416,6 +513,8 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
     kneeDb: number,
     detectionMode: DetectionMode,
     autoRelease: boolean,
+    mode: CompMode,
+    detHpfActive: boolean,
   ): void {
     const band = this.bands[bandIdx];
 
@@ -427,9 +526,20 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
     const autoReleaseFastCoef = autoRelease
       ? smoothCoef(releaseMs * 0.2, this.sampleRate)
       : 0;
+    // Opto photocell memory coefficient (~600 ms tau), also block-constant.
+    const optoMemCoef = mode === "opto" ? smoothCoef(600, this.sampleRate) : 0;
 
     // Detect on sidechain if provided, otherwise on the band's own signal
-    const detectCh = sidechainSource ? (sidechainSource[0] ?? channels[0]) : channels[0];
+    let detectCh = sidechainSource ? (sidechainSource[0] ?? channels[0]) : channels[0];
+    if (!sidechainSource && detHpfActive) {
+      // Filter the band's detection signal through the detector HPF so
+      // low-frequency energy does not trigger compression of this band.
+      const buf = this.detHpfBufs[bandIdx];
+      buf.set(channels[0].subarray(0, frameCount));
+      processBiquad(this.detHpf[bandIdx][0], [buf], frameCount);
+      processBiquad(this.detHpf[bandIdx][1], [buf], frameCount);
+      detectCh = buf;
+    }
 
     for (let i = 0; i < frameCount; i++) {
       // ── Detection ──
@@ -482,9 +592,16 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
       const detectedDb = linearToDb(Math.max(1e-10, detected));
       let grDb = this.computeGainReduction(detectedDb, thresholdDb, ratio, kneeDb);
 
-      // ── Auto-release ──
+      // ── Auto-release / opto program dependence ──
       let releaseCoef = band.releaseCoef;
-      if (autoRelease) {
+      if (mode === "opto") {
+        // Opto cell memory: sustained gain reduction heats the photocell
+        // and progressively slows the release; the memory decays with a
+        // ~600 ms tau once the material stops compressing.
+        const target = clamp(band.gainReductionDb / 10, 0, 1);
+        band.optoMemory += (target - band.optoMemory) * optoMemCoef;
+        releaseCoef = band.releaseCoef / (1 + band.optoMemory * 3);
+      } else if (autoRelease) {
         // Faster release when GR is high (program-dependent)
         const grFraction = clamp(band.gainReductionDb / 12, 0, 1);
         releaseCoef = band.releaseCoef * (1 - grFraction) + autoReleaseFastCoef * grFraction;

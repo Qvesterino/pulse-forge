@@ -371,8 +371,11 @@ export function createOzvenaProcessor(): OzvenaProcessor {
       const mod = state.mod.enabled
         ? modPad.getModParams()
         : { rateHz: 0, depthSamples: 0 };
-      plateChamber.setModulation(mod.rateHz, mod.depthSamples);
-      hall.setModulation(mod.rateHz, mod.depthSamples);
+      // Roadmap O6: caller-declared depth ceiling (additive state field,
+      // default 20 = historical engine clamp).
+      const maxDepth = state.mod?.maxDepthSamples ?? 20;
+      plateChamber.setModulation(mod.rateHz, mod.depthSamples, maxDepth);
+      hall.setModulation(mod.rateHz, mod.depthSamples, maxDepth);
     }
     if (!prev || state.convolution !== prev.convolution) {
       convolution.setParams({

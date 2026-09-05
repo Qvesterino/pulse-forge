@@ -152,8 +152,8 @@ for (let i = 0; i < P.EQ_MAX_BANDS; i++) {
 
 const COMP_PARAMS: UltinaParamDef[] = [
   p(P.COMP_ENABLED_ID, "Compressor Enabled", 0, 0, 1, "boolean"),
-  p(P.COMP_MODE_ID, "Comp Mode", 1, 0, 2, "enum",
-    true, { enumValues: ["punch", "modern", "vintage"] }),
+  p(P.COMP_MODE_ID, "Comp Mode", 1, 0, 4, "enum",
+    true, { enumValues: ["punch", "modern", "vintage", "opto", "fet"] }),
   p(P.COMP_DETECTION_MODE_ID, "Detection", 1, 0, 2, "enum",
     true, { enumValues: ["peak", "rms", "trueEnvelope"] }),
   p(P.COMP_THRESHOLD_DB_ID, "Threshold", -20, -60, 0, "db"),
@@ -167,6 +167,7 @@ const COMP_PARAMS: UltinaParamDef[] = [
   p(P.COMP_MIX_ID, "Comp Mix", 100, 0, 100, "percent"),
   p(P.COMP_SIDECHAIN_ENABLED_ID, "Comp Sidechain", 0, 0, 1, "boolean"),
   p(P.COMP_SIDECHAIN_HPF_HZ_ID, "SC HPF", 20, 20, 2000, "hz"),
+  p(P.COMP_DETECTOR_HPF_HZ_ID, "Det HPF", 20, 20, 1000, "hz"),
   p(P.COMP_BAND_COUNT_ID, "Comp Bands", 1, 1, 3, "enum", false,
     { enumValues: ["1", "2", "3"] }),
   p(P.COMP_CROSSOVER_HZ1_ID, "Comp Xover 1", 250, 20, 20000, "hz"),
@@ -224,6 +225,7 @@ const EXCITER_PARAMS: UltinaParamDef[] = [
   p(P.EXCITER_ENABLED_ID, "Exciter Enabled", 0, 0, 1, "boolean"),
   p(P.EXCITER_TRASH_MODE_ID, "Trash Mode", 0, 0, 1, "boolean"),
   p(P.EXCITER_TUBE_AMOUNT_ID, "Tube", 0, 0, 100, "percent"),
+  p(P.EXCITER_TUBE_ASYM_AMOUNT_ID, "Tube+", 0, 0, 100, "percent"),
   p(P.EXCITER_WARM_AMOUNT_ID, "Warm", 30, 0, 100, "percent"),
   p(P.EXCITER_TAPE_AMOUNT_ID, "Tape", 0, 0, 100, "percent"),
   p(P.EXCITER_RETRO_AMOUNT_ID, "Retro", 0, 0, 100, "percent"),

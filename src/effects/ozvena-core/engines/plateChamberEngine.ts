@@ -63,7 +63,7 @@ export interface PlateChamberEngine {
   prepare(sampleRate: number, channelCount: number): void;
   process(channels: Float32Array[], frameCount: number): void;
   setParams(p: PlateChamberParams): void;
-  setModulation(rateHz: number, depthSamples: number): void;
+  setModulation(rateHz: number, depthSamples: number, maxDepth?: number): void;
   /** Infinite tail hold: feedback gain → 1, loop input injection cut. */
   setFreeze(frozen: boolean): void;
   /**
@@ -103,6 +103,7 @@ export function createPlateChamberEngine(): PlateChamberEngine {
     mix: 100,
     algo: "room",
     bassDecay: 1.0,
+    midDecay: 1.0,
     stereoWidth: 1.0,
     shimmer: 0,
     drive: 0,
@@ -147,9 +148,23 @@ export function createPlateChamberEngine(): PlateChamberEngine {
   // One-pole shelf: y = x + (bassGain-1)*LP(x). At DC the loop gain
   // becomes fb*bassGain → bass rings longer (multiplier > 1) or shorter.
   const BASS_SHELF_HZ = 250.0;
+  // O3: mid/high crossover and per-band calibration reference frequencies.
+  const MID_XOVER_HZ = 3500.0;
+  const MID_REF_HZ = 300.0;
+  // Calibrated compensation exponent (roadmap O4): 1.0 = full loss at the
+  // band lower edge — the late EDC of a band-split measurement is dominated
+  // by the slowest-decaying (lowest-loss) frequency in the band, so the
+  // edge loss, not the band-center loss, is what the measured T60 sees.
+  const O4_BETA = 1.0;
+
   let bassAlpha = 0.02;
   let bassGain = 1.0;
+  let midBandGain = 1.0;
   let bassLp: number[][] = [];
+  // O3 multiband decay network: second one-pole state for the mid/high
+  // split (low + mid + high reconstruct the loop input sample-exactly).
+  let midLp: number[][] = [];
+  let midAlpha = 0.02;
 
   // Per-sample per-channel scratch (interleaved channel processing).
   const tapsScratchC = [new Float64Array(FDN_LINES), new Float64Array(FDN_LINES)];
@@ -283,13 +298,42 @@ export function createPlateChamberEngine(): PlateChamberEngine {
     diffG = 0.3 + 0.45 * (clamp(params.diffusion, 0, 100) / 100);
     shAmt = clamp(params.shimmer, 0, 1);
 
-    // Bass decay: bass loop gain = fb * bassGain must equal the loop gain
-    // of a reverb with T60 * bassDecay, i.e.
-    //   bassGain = 0.001^(avgLen/sr * (1/T60 - 1/(T60*bassDecay)))
-    const bassMult = clamp(params.bassDecay, 0.25, 4);
-    const fbBass = Math.pow(0.001, (avgLen / (decaySec * bassMult)) / sampleRate);
-    bassGain = q32(clamp(fbBass / feedbackGain, 0.25, 2.5));
+    // ── O3/O4: per-band decay targets with analytic loss compensation ──
+    // Pure per-band per-pass targets: band gain g such that fb·g equals
+    // the loop gain of a reverb with T60·multiplier.
+    const bandTarget = (mult: number): number =>
+      Math.pow(0.001, (avgLen / (decaySec * clamp(mult, 0.25, 4))) / sampleRate) / feedbackGain;
     bassAlpha = q32(1 - Math.exp((-TAU * BASS_SHELF_HZ) / sampleRate));
+    midAlpha = q32(1 - Math.exp((-TAU * MID_XOVER_HZ) / sampleRate));
+
+    // O4 calibration: measure the in-loop filter losses ANALYTICALLY at
+    // each band's reference frequency (damper one-pole at dampAlpha + the
+    // 30 Hz loop high-pass) and divide them out of that band's gain. The
+    // historical warning about scalar broadband compensation (200–800 Hz
+    // hump from over-boosting the loss-free low band) does not apply:
+    // each band is compensated at its OWN reference frequency, so the mid
+    // band hits the requested T60 and the low band tracks bassDecay
+    // relative to it. The high band stays uncompensated — the damper
+    // there is the intended HF decay shaping.
+    const dampMagAt = (w: number): number => {
+      const b = 1 - dampAlpha;
+      return dampAlpha / Math.sqrt(1 - 2 * b * Math.cos(w) + b * b);
+    };
+    // Mid-band damper deficit measured on SOLO-engine renders (roadmap O4):
+    // the broadband EDC regression sees only a FRACTION of the per-pass
+    // damper loss at MID_REF (the −5..−35 dB window mixes band slopes),
+    // hence the sub-linear exponent O4_BETA instead of a full 1/loss
+    // compensation. Low band is NOT loss-compensated: the 30 Hz loop HP
+    // rumble cut is intentional, and scalar compensation of a
+    // frequency-dependent loss over-boosts above the reference (measured
+    // runaway: fb·gLow = 1.09 with full 1/lowLoss).
+    const midLoss = dampMagAt((TAU * MID_REF_HZ) / sampleRate);
+    const midComp = 1 / Math.pow(midLoss, O4_BETA);
+    // HARD loop-safety cap: the compensated loop gain must stay below
+    // unity in every band (measured runaway without this: fb·gLow = 1.09).
+    const gCap = 0.995 / feedbackGain;
+    bassGain = q32(clamp(bandTarget(params.bassDecay), 0.25, Math.min(2.5, gCap)));
+    midBandGain = q32(clamp(bandTarget(params.midDecay ?? 1) * midComp, 0.25, Math.min(2.5, gCap)));
 
     // SHIMMER STABILITY GUARD. The octave-up grain is injected INSIDE the
     // feedback loop (eff = direct + inj·shifted, then ×fb), and the
@@ -305,8 +349,16 @@ export function createPlateChamberEngine(): PlateChamberEngine {
     // just enough to keep the loop decaying (bass shelf included via
     // fbMax; freeze runs at unity). Below the stability boundary
     // dirW === 1 and the audio is bit-identical to the unguarded engine.
-    shInj = 0.5 * shAmt;
-    const fbMax = Math.max(feedbackGain, feedbackGain * bassGain);
+    // O5 voicing: CAP the injection so the direct feedback keeps ≥90%
+    // weight. Measured (O1 harness): with a plain 0.5·shAmt injection the
+    // guard dropped dirW to ~0.4 at high shimmer and a 6 s tail collapsed
+    // to 0.51 s — the reverb body was slaughtered to feed the grain.
+    // Short decays (small fb) still get the full injection: they have
+    // loop-gain headroom; long decays saturate the injection instead.
+    const dirWFloor = 0.9;
+    const fbMax = feedbackGain * Math.max(1, bassGain, midBandGain);
+    const injMax = Math.max(0, 0.995 / Math.max(fbMax, 1e-6) - dirWFloor) / Math.SQRT2;
+    shInj = Math.min(0.5 * shAmt, injMax);
     shDirW =
       shAmt > 0 ? Math.min(1, 0.995 / Math.max(fbMax, 1e-6) - Math.SQRT2 * shInj) : 1;
     shDirWFreeze = shAmt > 0 ? Math.min(1, 0.995 - Math.SQRT2 * shInj) : 1;
@@ -348,6 +400,7 @@ export function createPlateChamberEngine(): PlateChamberEngine {
     hpState = [];
     hpPrev = [];
     bassLp = [];
+    midLp = [];
     diffBufs = [];
     diffIdx = [];
     for (let c = 0; c < cc; c++) {
@@ -369,7 +422,9 @@ export function createPlateChamberEngine(): PlateChamberEngine {
       const hpv: number[] = [];
       const blp: number[] = [];
       for (let l = 0; l < FDN_LINES; l++) {
-        const maxLen = Math.max(8, Math.round(base[l] * maxSrScale)) + 16;
+        // +96 headroom covers the O6 extended modulation depth (<=88)
+        // plus Hermite read overshoot; power-of-two caps absorb it.
+        const maxLen = Math.max(8, Math.round(base[l] * maxSrScale)) + 96;
         ls.push(new Float32Array(maxLen));
         wi.push(0);
         lp.push(0);
@@ -380,6 +435,7 @@ export function createPlateChamberEngine(): PlateChamberEngine {
       lines.push(ls);
       writeIdx.push(wi);
       bassLp.push(blp);
+      midLp.push(blp.map(() => 0));
       lpState.push(lp);
       hpState.push(hp);
       hpPrev.push(hpv);
@@ -409,6 +465,7 @@ export function createPlateChamberEngine(): PlateChamberEngine {
     for (const hp of hpState) for (let l = 0; l < hp.length; l++) hp[l] = 0;
     for (const hpv of hpPrev) for (let l = 0; l < hpv.length; l++) hpv[l] = 0;
     for (const blp of bassLp) for (let l = 0; l < blp.length; l++) blp[l] = 0;
+    for (const mlp of midLp) for (let l = 0; l < mlp.length; l++) mlp[l] = 0;
     for (const stages of apLines) for (const buf of stages) buf.fill(0);
     for (const idxs of apIdx) for (let s = 0; s < idxs.length; s++) idxs[s] = 0;
     for (const stages of diffBufs) for (const buf of stages) buf.fill(0);
@@ -698,6 +755,7 @@ export function createPlateChamberEngine(): PlateChamberEngine {
           const ls = lines[c];
           const wis = writeIdx[c];
           const blp = bassLp[c];
+          const mlp = midLp[c];
           const damped = dampedScratchC[c];
           const dampedO = dampedScratchC[cc > 1 ? 1 - c : c];
           const inSample = inScratchC[c];
@@ -715,9 +773,19 @@ export function createPlateChamberEngine(): PlateChamberEngine {
             // per-pass gain exceeds 1 and the lines overflow. At zero
             // shimmer this reduces to `direct`.
             const eff = shDirWCur * direct + shInj * shiftedC[c];
+            // O3 complementary 3-band split: low + mid + high === eff
+            // (sample-exact), so the network only re-weights the decay
+            // per band and collapses to the historical bass shelf when
+            // midBandGain === 1.
             blp[l] += bassAlpha * (eff - blp[l]);
             blp[l] = flushDenormal(blp[l]);
-            let shelved = eff + (bassGain - 1) * sanitize(blp[l]);
+            const lowBand = sanitize(blp[l]);
+            const lowHp = eff - lowBand;
+            mlp[l] += midAlpha * (lowHp - mlp[l]);
+            mlp[l] = flushDenormal(mlp[l]);
+            const midBand = sanitize(mlp[l]);
+            let shelved =
+              lowBand * bassGain + midBand * midBandGain + (lowHp - midBand);
             if (driveGain > 1.0001) {
               // In-loop Padé-tanh saturation: compresses hot excursions,
               // adds decaying harmonic density. Unity small-signal gain
@@ -768,9 +836,11 @@ export function createPlateChamberEngine(): PlateChamberEngine {
       // morph click-free via the length crossfade instead.
     },
 
-    setModulation(rateHz: number, depthSamples: number) {
+    setModulation(rateHz: number, depthSamples: number, maxDepth?: number) {
       modRateHz = clamp(rateHz, 0, 20);
-      modDepthSamples = clamp(depthSamples, 0, 16);
+      // Roadmap O6: caller-declared depth ceiling (mod.maxDepthSamples),
+      // bounded by the delay-line headroom so Hermite reads never wrap.
+      modDepthSamples = clamp(depthSamples, 0, Math.min(maxDepth ?? 20, 88));
       const t = algoTuning(params.algo);
       lfoInc = (modRateHz * t.modRateMult * 2 * Math.PI) / sampleRate;
     },

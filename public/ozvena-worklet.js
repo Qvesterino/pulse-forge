@@ -585,7 +585,8 @@
       diffusion: 70,
       angle: 50,
       lowpassHz: 8e3,
-      mix: 100
+      mix: 100,
+      width: 1
     };
   }
   function defaultPlateChamberEngine() {
@@ -603,6 +604,7 @@
       mix: 100,
       algo: "room",
       bassDecay: 1,
+      midDecay: 1,
       stereoWidth: 1,
       shimmer: 0,
       drive: 0
@@ -623,6 +625,7 @@
       mix: 100,
       algo: "hall",
       bassDecay: 1,
+      midDecay: 1,
       stereoWidth: 1,
       shimmer: 0,
       drive: 0
@@ -682,7 +685,7 @@
     return { enabled: false, source: "dryVsWet" };
   }
   function defaultMod() {
-    return { enabled: false, mode: "randomFat", depthX: 0.25, rateY: 0.24 };
+    return { enabled: false, mode: "randomFat", depthX: 0.25, rateY: 0.24, maxDepthSamples: 20 };
   }
   function defaultAssistant() {
     return {
@@ -2024,7 +2027,8 @@
       diffusion: 70,
       angle: 50,
       lowpassHz: 8e3,
-      mix: 100
+      mix: 100,
+      width: 1
     };
     let bufferL = new Float32Array(1);
     let bufferR = new Float32Array(1);
@@ -2215,12 +2219,19 @@
         hasRendered = true;
         if (wetL && wetR) processBiquad(sideBiquad, [wetL, wetR], frameCount);
         else if (wetL) processBiquad(sideBiquad, [wetL], frameCount);
-        if (wetL) {
+        const w = clamp(params.width ?? 1, 0, 1);
+        if (wetL && wetR && w < 1) {
+          for (let i = 0; i < frameCount; i++) {
+            const mono = (wetL[i] + wetR[i]) * 0.5;
+            channels[0][i] = wetL[i] * w + mono * (1 - w);
+            channels[1][i] = wetR[i] * w + mono * (1 - w);
+          }
+        } else if (wetL) {
           for (let i = 0; i < frameCount; i++) {
             channels[0][i] = wetL[i];
           }
         }
-        if (wetR) {
+        if (wetR && !(wetL && w < 1)) {
           for (let i = 0; i < frameCount; i++) {
             channels[1][i] = wetR[i];
           }
@@ -2281,6 +2292,7 @@
       mix: 100,
       algo: "room",
       bassDecay: 1,
+      midDecay: 1,
       stereoWidth: 1,
       shimmer: 0,
       drive: 0
@@ -2307,9 +2319,15 @@
     let diffIdx = [];
     let diffG = 0.5;
     const BASS_SHELF_HZ = 250;
+    const MID_XOVER_HZ = 3500;
+    const MID_REF_HZ = 300;
+    const O4_BETA = 1;
     let bassAlpha = 0.02;
     let bassGain = 1;
+    let midBandGain = 1;
     let bassLp = [];
+    let midLp = [];
+    let midAlpha = 0.02;
     const tapsScratchC = [new Float64Array(FDN_LINES), new Float64Array(FDN_LINES)];
     const dampedScratchC = [new Float64Array(FDN_LINES), new Float64Array(FDN_LINES)];
     const inScratchC = [0, 0];
@@ -2390,12 +2408,22 @@
       );
       diffG = 0.3 + 0.45 * (clamp(params.diffusion, 0, 100) / 100);
       shAmt = clamp(params.shimmer, 0, 1);
-      const bassMult = clamp(params.bassDecay, 0.25, 4);
-      const fbBass = Math.pow(1e-3, avgLen / (decaySec * bassMult) / sampleRate2);
-      bassGain = q322(clamp(fbBass / feedbackGain, 0.25, 2.5));
+      const bandTarget = (mult) => Math.pow(1e-3, avgLen / (decaySec * clamp(mult, 0.25, 4)) / sampleRate2) / feedbackGain;
       bassAlpha = q322(1 - Math.exp(-TAU * BASS_SHELF_HZ / sampleRate2));
-      shInj = 0.5 * shAmt;
-      const fbMax = Math.max(feedbackGain, feedbackGain * bassGain);
+      midAlpha = q322(1 - Math.exp(-TAU * MID_XOVER_HZ / sampleRate2));
+      const dampMagAt = (w) => {
+        const b = 1 - dampAlpha;
+        return dampAlpha / Math.sqrt(1 - 2 * b * Math.cos(w) + b * b);
+      };
+      const midLoss = dampMagAt(TAU * MID_REF_HZ / sampleRate2);
+      const midComp = 1 / Math.pow(midLoss, O4_BETA);
+      const gCap = 0.995 / feedbackGain;
+      bassGain = q322(clamp(bandTarget(params.bassDecay), 0.25, Math.min(2.5, gCap)));
+      midBandGain = q322(clamp(bandTarget(params.midDecay ?? 1) * midComp, 0.25, Math.min(2.5, gCap)));
+      const dirWFloor = 0.9;
+      const fbMax = feedbackGain * Math.max(1, bassGain, midBandGain);
+      const injMax = Math.max(0, 0.995 / Math.max(fbMax, 1e-6) - dirWFloor) / Math.SQRT2;
+      shInj = Math.min(0.5 * shAmt, injMax);
       shDirW = shAmt > 0 ? Math.min(1, 0.995 / Math.max(fbMax, 1e-6) - Math.SQRT2 * shInj) : 1;
       shDirWFreeze = shAmt > 0 ? Math.min(1, 0.995 - Math.SQRT2 * shInj) : 1;
       attackAlpha = q322(1 - Math.exp(-1 / Math.max(1e-3, params.attack / 1e3 * sampleRate2)));
@@ -2418,6 +2446,7 @@
       hpState = [];
       hpPrev = [];
       bassLp = [];
+      midLp = [];
       diffBufs = [];
       diffIdx = [];
       for (let c = 0; c < cc; c++) {
@@ -2439,7 +2468,7 @@
         const hpv = [];
         const blp = [];
         for (let l = 0; l < FDN_LINES; l++) {
-          const maxLen = Math.max(8, Math.round(base[l] * maxSrScale)) + 16;
+          const maxLen = Math.max(8, Math.round(base[l] * maxSrScale)) + 96;
           ls.push(new Float32Array(maxLen));
           wi.push(0);
           lp.push(0);
@@ -2450,6 +2479,7 @@
         lines.push(ls);
         writeIdx.push(wi);
         bassLp.push(blp);
+        midLp.push(blp.map(() => 0));
         lpState.push(lp);
         hpState.push(hp);
         hpPrev.push(hpv);
@@ -2474,6 +2504,7 @@
       for (const hp of hpState) for (let l = 0; l < hp.length; l++) hp[l] = 0;
       for (const hpv of hpPrev) for (let l = 0; l < hpv.length; l++) hpv[l] = 0;
       for (const blp of bassLp) for (let l = 0; l < blp.length; l++) blp[l] = 0;
+      for (const mlp of midLp) for (let l = 0; l < mlp.length; l++) mlp[l] = 0;
       for (const stages of apLines) for (const buf of stages) buf.fill(0);
       for (const idxs of apIdx) for (let s = 0; s < idxs.length; s++) idxs[s] = 0;
       for (const stages of diffBufs) for (const buf of stages) buf.fill(0);
@@ -2709,6 +2740,7 @@
             const ls = lines[c];
             const wis = writeIdx[c];
             const blp = bassLp[c];
+            const mlp = midLp[c];
             const damped = dampedScratchC[c];
             const dampedO = dampedScratchC[cc > 1 ? 1 - c : c];
             const inSample = inScratchC[c];
@@ -2717,7 +2749,12 @@
               const eff = shDirWCur * direct + shInj * shiftedC[c];
               blp[l] += bassAlpha * (eff - blp[l]);
               blp[l] = flushDenormal(blp[l]);
-              let shelved = eff + (bassGain - 1) * sanitize(blp[l]);
+              const lowBand = sanitize(blp[l]);
+              const lowHp = eff - lowBand;
+              mlp[l] += midAlpha * (lowHp - mlp[l]);
+              mlp[l] = flushDenormal(mlp[l]);
+              const midBand = sanitize(mlp[l]);
+              let shelved = lowBand * bassGain + midBand * midBandGain + (lowHp - midBand);
               if (driveGain > 1.0001) {
                 const hot = shelved * driveGain;
                 const hot2 = hot * hot;
@@ -2752,9 +2789,9 @@
         params = { ...p };
         recompute();
       },
-      setModulation(rateHz, depthSamples) {
+      setModulation(rateHz, depthSamples, maxDepth) {
         modRateHz = clamp(rateHz, 0, 20);
-        modDepthSamples = clamp(depthSamples, 0, 16);
+        modDepthSamples = clamp(depthSamples, 0, Math.min(maxDepth ?? 20, 88));
         const t = algoTuning(params.algo);
         lfoInc = modRateHz * t.modRateMult * 2 * Math.PI / sampleRate2;
       },
@@ -2809,6 +2846,7 @@
       mix: 100,
       algo: "hall",
       bassDecay: 1,
+      midDecay: 1,
       stereoWidth: 1,
       shimmer: 0,
       drive: 0
@@ -2835,9 +2873,15 @@
     let diffIdx = [];
     let diffG = 0.5;
     const BASS_SHELF_HZ = 250;
+    const MID_XOVER_HZ = 3500;
+    const MID_REF_HZ = 300;
+    const O4_BETA = 1;
     let bassAlpha = 0.02;
     let bassGain = 1;
+    let midBandGain = 1;
     let bassLp = [];
+    let midLp = [];
+    let midAlpha = 0.02;
     const tapsScratchC = [new Float64Array(FDN_LINES2), new Float64Array(FDN_LINES2)];
     const dampedScratchC = [new Float64Array(FDN_LINES2), new Float64Array(FDN_LINES2)];
     const pdScratchC = [new Float64Array(FDN_LINES2), new Float64Array(FDN_LINES2)];
@@ -2917,12 +2961,22 @@
       );
       diffG = 0.3 + 0.45 * (clamp(params.diffusion, 0, 100) / 100);
       shAmt = clamp(params.shimmer, 0, 1);
-      const bassMult = clamp(params.bassDecay, 0.25, 4);
-      const fbBass = Math.pow(1e-3, avgLen / (decaySec * bassMult) / sampleRate2);
-      bassGain = q323(clamp(fbBass / feedbackGain, 0.25, 2.5));
+      const bandTarget = (mult) => Math.pow(1e-3, avgLen / (decaySec * clamp(mult, 0.25, 4)) / sampleRate2) / feedbackGain;
       bassAlpha = q323(1 - Math.exp(-TAU * BASS_SHELF_HZ / sampleRate2));
-      shInj = 0.5 * shAmt;
-      const fbMax = Math.max(feedbackGain, feedbackGain * bassGain);
+      midAlpha = q323(1 - Math.exp(-TAU * MID_XOVER_HZ / sampleRate2));
+      const dampMagAt = (w) => {
+        const b = 1 - dampAlpha;
+        return dampAlpha / Math.sqrt(1 - 2 * b * Math.cos(w) + b * b);
+      };
+      const midLoss = dampMagAt(TAU * MID_REF_HZ / sampleRate2);
+      const midComp = 1 / Math.pow(midLoss, O4_BETA);
+      const gCap = 0.995 / feedbackGain;
+      bassGain = q323(clamp(bandTarget(params.bassDecay), 0.25, Math.min(2.5, gCap)));
+      midBandGain = q323(clamp(bandTarget(params.midDecay ?? 1) * midComp, 0.25, Math.min(2.5, gCap)));
+      const dirWFloor = 0.9;
+      const fbMax = feedbackGain * Math.max(1, bassGain, midBandGain);
+      const injMax = Math.max(0, 0.995 / Math.max(fbMax, 1e-6) - dirWFloor) / Math.SQRT2;
+      shInj = Math.min(0.5 * shAmt, injMax);
       shDirW = shAmt > 0 ? Math.min(1, 0.995 / Math.max(fbMax, 1e-6) - Math.SQRT2 * shInj) : 1;
       shDirWFreeze = shAmt > 0 ? Math.min(1, 0.995 - Math.SQRT2 * shInj) : 1;
       attackAlpha = q323(1 - Math.exp(-1 / Math.max(1e-3, params.attack / 1e3 * sampleRate2)));
@@ -2945,6 +2999,7 @@
       hpState = [];
       hpPrev = [];
       bassLp = [];
+      midLp = [];
       diffBufs = [];
       diffIdx = [];
       predelayBufs = [];
@@ -2972,7 +3027,7 @@
         const pdIdx = [];
         for (let l = 0; l < FDN_LINES2; l++) {
           const densityScale = 1 - l * 0.03;
-          const maxLen = Math.max(8, Math.round(base[l] * maxSrScale * densityScale)) + 16;
+          const maxLen = Math.max(8, Math.round(base[l] * maxSrScale * densityScale)) + 96;
           ls.push(new Float32Array(maxLen));
           wi.push(0);
           lp.push(0);
@@ -2988,6 +3043,7 @@
         hpState.push(hp);
         hpPrev.push(hpv);
         bassLp.push(blp);
+        midLp.push(blp.map(() => 0));
         predelayBufs.push(pdBufs);
         predelayIdx.push(pdIdx);
       }
@@ -3001,6 +3057,7 @@
       for (const bufs of predelayBufs) for (const b of bufs) b.fill(0);
       for (const idxs of predelayIdx) for (let l = 0; l < idxs.length; l++) idxs[l] = 0;
       for (const blp of bassLp) for (let l = 0; l < blp.length; l++) blp[l] = 0;
+      for (const mlp of midLp) for (let l = 0; l < mlp.length; l++) mlp[l] = 0;
       for (const stages of diffBufs) for (const buf of stages) buf.fill(0);
       for (const idxs of diffIdx) for (let s = 0; s < idxs.length; s++) idxs[s] = 0;
       shBuf[0].fill(0);
@@ -3225,6 +3282,7 @@
             const ls = lines[c];
             const wis = writeIdx[c];
             const blp = bassLp[c];
+            const mlp = midLp[c];
             const damped = dampedScratchC[c];
             const dampedO = dampedScratchC[cc > 1 ? 1 - c : c];
             const pd = pdScratchC[c];
@@ -3233,7 +3291,12 @@
               const eff = shDirWCur * direct + shInj * shiftedC[c];
               blp[l] += bassAlpha * (eff - blp[l]);
               blp[l] = flushDenormal(blp[l]);
-              let shelved = eff + (bassGain - 1) * sanitize(blp[l]);
+              const lowBand = sanitize(blp[l]);
+              const lowHp = eff - lowBand;
+              mlp[l] += midAlpha * (lowHp - mlp[l]);
+              mlp[l] = flushDenormal(mlp[l]);
+              const midBand = sanitize(mlp[l]);
+              let shelved = lowBand * bassGain + midBand * midBandGain + (lowHp - midBand);
               if (driveGain > 1.0001) {
                 const hot = shelved * driveGain;
                 const hot2 = hot * hot;
@@ -3268,9 +3331,9 @@
         params = { ...p };
         recompute();
       },
-      setModulation(rateHz, depthSamples) {
+      setModulation(rateHz, depthSamples, maxDepth) {
         modRateHz = clamp(rateHz, 0, 20);
-        modDepthSamples = clamp(depthSamples, 0, 20);
+        modDepthSamples = clamp(depthSamples, 0, Math.min(maxDepth ?? 20, 88));
         lfoInc = modRateHz * 0.7 * 2 * Math.PI / sampleRate2;
       },
       getLatencySamples() {
@@ -4068,8 +4131,9 @@
       }
       if (modChanged) {
         const mod = state.mod.enabled ? modPad.getModParams() : { rateHz: 0, depthSamples: 0 };
-        plateChamber.setModulation(mod.rateHz, mod.depthSamples);
-        hall.setModulation(mod.rateHz, mod.depthSamples);
+        const maxDepth = state.mod?.maxDepthSamples ?? 20;
+        plateChamber.setModulation(mod.rateHz, mod.depthSamples, maxDepth);
+        hall.setModulation(mod.rateHz, mod.depthSamples, maxDepth);
       }
       if (!prev || state.convolution !== prev.convolution) {
         convolution.setParams({

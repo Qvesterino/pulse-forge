@@ -91,6 +91,7 @@ export function createReflectionsEngine(): ReflectionsEngine {
     angle: 50,
     lowpassHz: 8000,
     mix: 100,
+    width: 1,
   };
 
   // Per-channel delay line ring buffers (one per channel), sized to the
@@ -345,13 +346,22 @@ export function createReflectionsEngine(): ReflectionsEngine {
       if (wetL && wetR) processBiquad(sideBiquad, [wetL, wetR], frameCount);
       else if (wetL) processBiquad(sideBiquad, [wetL], frameCount);
 
-      // Pure wet write-back — no dry, no mix gain.
-      if (wetL) {
+      // Pure wet write-back — no dry, no mix gain. Roadmap O6: output
+      // M/S width (1 = untouched, default; 0 = mono sum) mirrors the FDN
+      // engines convention.
+      const w = clamp(params.width ?? 1, 0, 1);
+      if (wetL && wetR && w < 1) {
+        for (let i = 0; i < frameCount; i++) {
+          const mono = (wetL[i] + wetR[i]) * 0.5;
+          channels[0][i] = wetL[i] * w + mono * (1 - w);
+          channels[1][i] = wetR[i] * w + mono * (1 - w);
+        }
+      } else if (wetL) {
         for (let i = 0; i < frameCount; i++) {
           channels[0][i] = wetL[i];
         }
       }
-      if (wetR) {
+      if (wetR && !(wetL && w < 1)) {
         for (let i = 0; i < frameCount; i++) {
           channels[1][i] = wetR[i];
         }

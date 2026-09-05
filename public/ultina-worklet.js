@@ -57,6 +57,7 @@
   var COMP_CROSSOVER_LEARN_ID = "comp.crossoverLearn";
   var COMP_DELTA_ID = "comp.delta";
   var COMP_AUTO_LEARN_THRESHOLD_ID = "comp.autoLearnThreshold";
+  var COMP_DETECTOR_HPF_HZ_ID = "comp.detectorHpfHz";
   var GATE_ENABLED_ID = "gate.enabled";
   var GATE_RANGE_DB_ID = "gate.rangeDb";
   var GATE_ATTACK_MS_ID = "gate.attackMs";
@@ -92,6 +93,7 @@
   var EXCITER_OVERSAMPLING_ID = "exciter.oversampling";
   var EXCITER_MIX_ID = "exciter.mix";
   var EXCITER_DELTA_ID = "exciter.delta";
+  var EXCITER_TUBE_ASYM_AMOUNT_ID = "exciter.tubeAsymAmount";
   var TRANSIENT_ENABLED_ID = "transient.enabled";
   var TRANSIENT_GLOBAL_MODE_ID = "transient.globalMode";
   var TRANSIENT_CONTOUR_SHAPE_ID = "transient.contourShape";
@@ -289,10 +291,10 @@
       "Comp Mode",
       1,
       0,
-      2,
+      4,
       "enum",
       true,
-      { enumValues: ["punch", "modern", "vintage"] }
+      { enumValues: ["punch", "modern", "vintage", "opto", "fet"] }
     ),
     p(
       COMP_DETECTION_MODE_ID,
@@ -315,6 +317,7 @@
     p(COMP_MIX_ID, "Comp Mix", 100, 0, 100, "percent"),
     p(COMP_SIDECHAIN_ENABLED_ID, "Comp Sidechain", 0, 0, 1, "boolean"),
     p(COMP_SIDECHAIN_HPF_HZ_ID, "SC HPF", 20, 20, 2e3, "hz"),
+    p(COMP_DETECTOR_HPF_HZ_ID, "Det HPF", 20, 20, 1e3, "hz"),
     p(
       COMP_BAND_COUNT_ID,
       "Comp Bands",
@@ -410,6 +413,7 @@
     p(EXCITER_ENABLED_ID, "Exciter Enabled", 0, 0, 1, "boolean"),
     p(EXCITER_TRASH_MODE_ID, "Trash Mode", 0, 0, 1, "boolean"),
     p(EXCITER_TUBE_AMOUNT_ID, "Tube", 0, 0, 100, "percent"),
+    p(EXCITER_TUBE_ASYM_AMOUNT_ID, "Tube+", 0, 0, 100, "percent"),
     p(EXCITER_WARM_AMOUNT_ID, "Warm", 30, 0, 100, "percent"),
     p(EXCITER_TAPE_AMOUNT_ID, "Tape", 0, 0, 100, "percent"),
     p(EXCITER_RETRO_AMOUNT_ID, "Retro", 0, 0, 100, "percent"),
@@ -1392,6 +1396,13 @@
     const d = x * drive;
     const sat = fastTanh(d);
     return x * (1 - amount) + sat * amount;
+  }
+  function tubeAsymSaturation(x, drive) {
+    const d = x * drive;
+    const bias = 0.3;
+    const tB = fastTanh(bias);
+    const norm = (1 - tB * tB) * Math.max(1e-6, drive);
+    return (fastTanh(d + bias) - tB) / norm;
   }
   var INV_SQRT2 = 1 / Math.SQRT2;
   function encodeMidSide(left, right, frameCount, midOut, sideOut) {
@@ -2447,14 +2458,14 @@
     bandEnergy = new Array(EQ_LEARN_BANDS).fill(0);
     tempBuf = new Float32Array(0);
     blockCount = 0;
-    smoothCoef = 0.01;
+    /** Analysis time constant in samples (100 ms) — process() derives the
+     * per-block coefficient from the ACTUAL frame count. */
+    tauSamples = 4800;
     /** Minimum blocks before results are considered reliable. */
     static MIN_BLOCKS = 20;
     prepare(sampleRate2, maxBlockSize) {
       this.tempBuf = new Float32Array(maxBlockSize);
-      const samplesPerBlock = Math.max(1, maxBlockSize);
-      const tauSamples = 100 / 1e3 * sampleRate2;
-      this.smoothCoef = 1 - Math.exp(-samplesPerBlock / tauSamples);
+      this.tauSamples = Math.max(1, 100 / 1e3 * sampleRate2);
       this.filters = [];
       for (let i = 0; i < EQ_LEARN_BANDS; i++) {
         const bq = createBiquad(1);
@@ -2487,7 +2498,8 @@
           sumSq += s * s;
         }
         const rms = Math.sqrt(sumSq / Math.max(1, frameCount));
-        this.bandEnergy[b] += this.smoothCoef * (rms - this.bandEnergy[b]);
+        const coef = 1 - Math.exp(-frameCount / this.tauSamples);
+        this.bandEnergy[b] += coef * (rms - this.bandEnergy[b]);
       }
       this.blockCount++;
     }
@@ -2564,11 +2576,12 @@
     bandEnergy = new Array(XOVER_LEARN_BANDS).fill(0);
     tempBuf = new Float32Array(0);
     blockCount = 0;
-    smoothCoef = 0.02;
+    /** Analysis time constant in samples (500 ms) — process() derives the
+     * per-block coefficient from the ACTUAL frame count. */
+    tauSamples = 24e3;
     prepare(sampleRate2, maxBlockSize) {
       this.tempBuf = new Float32Array(maxBlockSize);
-      const tauSamples = 500 / 1e3 * sampleRate2;
-      this.smoothCoef = 1 - Math.exp(-maxBlockSize / tauSamples);
+      this.tauSamples = Math.max(1, 500 / 1e3 * sampleRate2);
       this.filters = [];
       for (let i = 0; i < XOVER_LEARN_BANDS; i++) {
         const bq = createBiquad(1);
@@ -2599,7 +2612,8 @@
           sumSq += s * s;
         }
         const rms = Math.sqrt(sumSq / Math.max(1, frameCount));
-        this.bandEnergy[b] += this.smoothCoef * (rms - this.bandEnergy[b]);
+        const coef = 1 - Math.exp(-frameCount / this.tauSamples);
+        this.bandEnergy[b] += coef * (rms - this.bandEnergy[b]);
       }
       this.blockCount++;
     }
@@ -2879,6 +2893,9 @@
     outputRmsL = 0;
     outputRmsR = 0;
     totalSamples = 0;
+    /** Samples processed since the LUFS meter was last fed — staleness guard
+     * for the auto-gain feedback loop (meters off + gain-match off). */
+    lufsUnfedSamples = 0;
     // Pooled meter snapshot — buffers and containers reused across getMeters()
     // calls so a ~21 Hz poller costs zero steady-state allocation on the
     // worklet thread. Consumers must consume immediately (postMessage clones;
@@ -3003,6 +3020,7 @@
       this.eqLearn.prepare(this.sampleRate, this.maxBlockSize);
       this.xoverLearn.prepare(this.sampleRate, this.maxBlockSize);
       this.spectralRegistry.register(this.instanceId);
+      this.lufsUnfedSamples = 0;
       this.prepared = true;
     }
     /**
@@ -3103,8 +3121,9 @@
         }
         this.autoGain.setEnabled(gainMatchEnabled);
         this.autoGain.setTargetLufs(autoGainTargetLufs);
+        const lufsStale = this.lufsUnfedSamples > this.sampleRate * 3;
         const autoGainCorrectionDb = this.autoGain.process(
-          this.lufsMeter.getShortTermLufs(),
+          lufsStale ? -70 : this.lufsMeter.getShortTermLufs(),
           frames
         );
         const totalOutputGainTarget = dbToLinear(outputGainDb + autoGainCorrectionDb);
@@ -3119,8 +3138,12 @@
         }
         if (this.metersEnabled) {
           this.updateOutputMeters(chunkL, chunkR, frames);
+          this.lufsUnfedSamples = 0;
         } else if (gainMatchEnabled) {
           this.lufsMeter.process(chunkL, chunkR, frames);
+          this.lufsUnfedSamples = 0;
+        } else {
+          this.lufsUnfedSamples += frames;
         }
         offset += frames;
       }
@@ -3156,6 +3179,7 @@
       this.lufsMeter.reset();
       this.autoGain.reset();
       this.spectrumCounter = 0;
+      this.lufsUnfedSamples = 0;
       this.bandAnalyzer.reset();
     }
     /**
@@ -3751,7 +3775,7 @@
           continue;
         }
         const freq = params[keys.freqHz] ?? 1e3;
-        const gain = params[keys.gainDb] ?? 0;
+        const gain = clamp(params[keys.gainDb] ?? 0, -24, 24);
         const q = params[keys.q] ?? 1;
         const shape = Math.round(params[keys.shape] ?? 0);
         const mode = Math.round(params[keys.mode] ?? 0);
@@ -4454,7 +4478,7 @@
 
   // src/effects/ultina-core/dsp/modules/compModule.ts
   var COMP_MAX_BANDS = 3;
-  var COMP_MODES = ["punch", "modern", "vintage"];
+  var COMP_MODES = ["punch", "modern", "vintage", "opto", "fet"];
   var DETECTION_MODES = ["peak", "rms", "trueEnvelope"];
   var CompModuleProcessor = class {
     sampleRate = 44100;
@@ -4463,6 +4487,15 @@
     multiband = new MultibandProcessor();
     // Sidechain HPF
     scHpf = createBiquad(2);
+    // Per-band detector HPF (comp.detectorHpfHz) — filters each band's own
+    // detection signal so low-frequency energy does not trigger compression.
+    // Two cascaded 2-pole stages = 24 dB/oct, so a 120 Hz setting really
+    // rejects a 60 Hz rumble (a single 2-pole only manages −12 dB there,
+    // which still crosses the threshold). Inactive at the 20 Hz default;
+    // has no effect while an external sidechain drives the detector
+    // (comp.sidechainHpfHz covers that path).
+    detHpf = [];
+    detHpfBufs = [];
     // Dry buffer for mix
     dryL = new Float32Array(0);
     dryR = new Float32Array(0);
@@ -4480,6 +4513,12 @@
       this.maxBlockSize = ctx.maxBlockSize;
       this.ensureBuffers(this.maxBlockSize);
       this.scHpf = createBiquad(2);
+      this.detHpf = [];
+      this.detHpfBufs = [];
+      for (let i = 0; i < COMP_MAX_BANDS; i++) {
+        this.detHpf.push([createBiquad(1), createBiquad(1)]);
+        this.detHpfBufs.push(new Float32Array(this.maxBlockSize));
+      }
       this.bands = [];
       for (let i = 0; i < COMP_MAX_BANDS; i++) {
         this.bands.push({
@@ -4490,7 +4529,8 @@
           attackCoef: 0,
           releaseCoef: 0,
           holdCounter: 0,
-          prevDetected: 0
+          prevDetected: 0,
+          optoMemory: 0
         });
         this.bands[i].peakEnv.prepare(10, 100, this.sampleRate);
         this.bands[i].rmsDetector.prepare(10, this.sampleRate);
@@ -4504,7 +4544,7 @@
       const enabled = (params["comp.enabled"] ?? 0) >= 0.5;
       if (!enabled) return;
       this.ensureBuffers(frameCount);
-      const mode = COMP_MODES[Math.round(clamp(params["comp.mode"] ?? 1, 0, 2))];
+      const mode = COMP_MODES[Math.round(clamp(params["comp.mode"] ?? 1, 0, COMP_MODES.length - 1))];
       const detectionMode = DETECTION_MODES[Math.round(clamp(params["comp.detectionMode"] ?? 1, 0, 2))];
       const thresholdDb = params["comp.thresholdDb"] ?? -20;
       const ratio = clamp(params["comp.ratio"] ?? 3, 1, 20);
@@ -4517,13 +4557,14 @@
       const mixPercent = clamp(params["comp.mix"] ?? 100, 0, 100);
       const scEnabled = (params["comp.sidechainEnabled"] ?? 0) >= 0.5;
       const scHpfHz = clamp(params["comp.sidechainHpfHz"] ?? 20, 20, 2e3);
+      const detHpfHz = clamp(params["comp.detectorHpfHz"] ?? 20, 20, 1e3);
       const bandCount = Math.round(clamp(params["comp.bandCount"] ?? 1, 1, 3));
       const xover1 = clamp(params["comp.crossoverHz1"] ?? 250, 20, 2e4);
       const xover2 = clamp(params["comp.crossoverHz2"] ?? 2500, 20, 2e4);
       const channelModeRaw = Math.round(clamp(params["comp.channelMode"] ?? 0, 0, 4));
       const channelMode = channelModeFromValue(channelModeRaw);
       const deltaListen = (params["comp.delta"] ?? 0) >= 0.5;
-      const { effectiveAttack, effectiveRelease, effectiveRatio } = this.applyMode(mode, attackMs, releaseMs, ratio);
+      const { effectiveAttack, effectiveRelease, effectiveRatio, effectiveKneeDb } = this.applyMode(mode, attackMs, releaseMs, ratio, kneeDb);
       this.updateMultiband(bandCount, xover1, xover2);
       const xoverMode = (params["comp.crossoverMode"] ?? 0) >= 0.5 ? "hybrid" : "analog";
       this.multiband.setCrossoverMode(xoverMode);
@@ -4544,6 +4585,14 @@
         params["comp.band2.thresholdDb"] ?? thresholdDb
       ];
       const scActive = scEnabled && sidechain && sidechain.length >= 2;
+      const detHpfActive = detHpfHz > 20.5 && !scActive && this.detHpf.length === COMP_MAX_BANDS;
+      if (detHpfActive) {
+        for (let b = 0; b < COMP_MAX_BANDS; b++) {
+          for (const stage of this.detHpf[b]) {
+            setHighPass(stage.coeffs, detHpfHz, 0.707, this.sampleRate);
+          }
+        }
+      }
       this.multiband.process(
         channels,
         frameCount,
@@ -4557,9 +4606,11 @@
             effectiveAttack,
             effectiveRelease,
             effectiveRatio,
-            kneeDb,
+            effectiveKneeDb,
             detectionMode,
-            autoRelease
+            autoRelease,
+            mode,
+            detHpfActive
           );
         },
         channelMode
@@ -4583,6 +4634,24 @@
           const data = channels[ch];
           for (let i = 0; i < frameCount; i++) {
             data[i] = sanitizeSample(data[i] * makeupLinear);
+          }
+        }
+      }
+      if (mode === "fet") {
+        let avgGr = 0;
+        for (let b = 0; b < bandCount; b++) {
+          avgGr += this.gainReduction[b];
+        }
+        avgGr /= Math.max(1, bandCount);
+        const bite = clamp(avgGr / 10, 0, 1) * 0.25;
+        if (bite > 1e-3) {
+          for (let ch = 0; ch < 2; ch++) {
+            const data = channels[ch];
+            for (let i = 0; i < frameCount; i++) {
+              const x = data[i];
+              const sat = fastTanh(x * 1.7) / 1.7;
+              data[i] = sanitizeSample(x * (1 - bite) + sat * bite);
+            }
           }
         }
       }
@@ -4621,6 +4690,7 @@
         band.targetGrDb = 0;
         band.holdCounter = 0;
         band.prevDetected = 0;
+        band.optoMemory = 0;
       }
       this.gainReduction.fill(0);
       this.outputLevels.fill(-100);
@@ -4628,6 +4698,9 @@
       this.autoMakeupSmoother.reset(0);
       this.multiband.reset();
       resetBiquad(this.scHpf);
+      for (const stages of this.detHpf) {
+        for (const stage of stages) resetBiquad(stage);
+      }
     }
     getMeters() {
       return {
@@ -4650,31 +4723,55 @@
         this.scHpfBufferL = new Float32Array(requiredSize);
         this.scHpfBufferR = new Float32Array(requiredSize);
       }
+      for (let b = 0; b < this.detHpfBufs.length; b++) {
+        if (this.detHpfBufs[b].length < requiredSize) {
+          this.detHpfBufs[b] = new Float32Array(requiredSize);
+        }
+      }
     }
-    applyMode(mode, attackMs, releaseMs, ratio) {
+    applyMode(mode, attackMs, releaseMs, ratio, kneeDb) {
       switch (mode) {
         case "punch":
           return {
             effectiveAttack: attackMs * 0.5,
             // Faster attack
             effectiveRelease: releaseMs * 0.7,
-            effectiveRatio: ratio * 1.15
+            effectiveRatio: ratio * 1.15,
             // Slightly more aggressive
+            effectiveKneeDb: kneeDb
           };
         case "vintage":
           return {
             effectiveAttack: attackMs * 2,
             // Slower attack
             effectiveRelease: releaseMs * 1.5,
-            effectiveRatio: ratio * 0.85
+            // Clamp to ≥1: the ratio knob at 1–1.17 would otherwise invert
+            // the slope and turn compression into upward gain.
+            effectiveRatio: Math.max(1, ratio * 0.85),
             // Gentler
+            effectiveKneeDb: kneeDb
+          };
+        case "opto":
+          return {
+            effectiveAttack: clamp(attackMs * 1.5, 8, 40),
+            effectiveRelease: clamp(releaseMs * 2.5, 50, 2e3),
+            effectiveRatio: Math.max(1, ratio * 0.8),
+            effectiveKneeDb: Math.max(kneeDb, 6)
+          };
+        case "fet":
+          return {
+            effectiveAttack: clamp(attackMs * 0.05, 0.02, 1),
+            effectiveRelease: clamp(releaseMs * 0.8, 5, 1100),
+            effectiveRatio: clamp(ratio * 1.3, 1, 20),
+            effectiveKneeDb: kneeDb
           };
         case "modern":
         default:
           return {
             effectiveAttack: attackMs,
             effectiveRelease: releaseMs,
-            effectiveRatio: ratio
+            effectiveRatio: ratio,
+            effectiveKneeDb: kneeDb
           };
       }
     }
@@ -4694,12 +4791,20 @@
         this.cachedXover2 = xover2;
       }
     }
-    processBand(bandIdx, channels, frameCount, sidechainSource, thresholdDb, attackMs, releaseMs, ratio, kneeDb, detectionMode, autoRelease) {
+    processBand(bandIdx, channels, frameCount, sidechainSource, thresholdDb, attackMs, releaseMs, ratio, kneeDb, detectionMode, autoRelease, mode, detHpfActive) {
       const band = this.bands[bandIdx];
       band.attackCoef = smoothCoef(attackMs, this.sampleRate);
       band.releaseCoef = smoothCoef(releaseMs, this.sampleRate);
       const autoReleaseFastCoef = autoRelease ? smoothCoef(releaseMs * 0.2, this.sampleRate) : 0;
-      const detectCh = sidechainSource ? sidechainSource[0] ?? channels[0] : channels[0];
+      const optoMemCoef = mode === "opto" ? smoothCoef(600, this.sampleRate) : 0;
+      let detectCh = sidechainSource ? sidechainSource[0] ?? channels[0] : channels[0];
+      if (!sidechainSource && detHpfActive) {
+        const buf = this.detHpfBufs[bandIdx];
+        buf.set(channels[0].subarray(0, frameCount));
+        processBiquad(this.detHpf[bandIdx][0], [buf], frameCount);
+        processBiquad(this.detHpf[bandIdx][1], [buf], frameCount);
+        detectCh = buf;
+      }
       for (let i = 0; i < frameCount; i++) {
         let detected;
         switch (detectionMode) {
@@ -4741,7 +4846,11 @@
         const detectedDb = linearToDb(Math.max(1e-10, detected));
         let grDb = this.computeGainReduction(detectedDb, thresholdDb, ratio, kneeDb);
         let releaseCoef = band.releaseCoef;
-        if (autoRelease) {
+        if (mode === "opto") {
+          const target = clamp(band.gainReductionDb / 10, 0, 1);
+          band.optoMemory += (target - band.optoMemory) * optoMemCoef;
+          releaseCoef = band.releaseCoef / (1 + band.optoMemory * 3);
+        } else if (autoRelease) {
           const grFraction = clamp(band.gainReductionDb / 12, 0, 1);
           releaseCoef = band.releaseCoef * (1 - grFraction) + autoReleaseFastCoef * grFraction;
         }
@@ -5192,6 +5301,7 @@
       this.ensureBuffers(frameCount);
       const trashMode = (params["exciter.trashMode"] ?? 0) >= 0.5;
       const tubeAmt = clamp(params["exciter.tubeAmount"] ?? 0, 0, 100) / 100;
+      const tubeAsymAmt = clamp(params["exciter.tubeAsymAmount"] ?? 0, 0, 100) / 100;
       const warmAmt = clamp(params["exciter.warmAmount"] ?? 30, 0, 100) / 100;
       const tapeAmt = clamp(params["exciter.tapeAmount"] ?? 0, 0, 100) / 100;
       const retroAmt = clamp(params["exciter.retroAmount"] ?? 0, 0, 100) / 100;
@@ -5211,6 +5321,7 @@
       this.osActive = oversampling;
       const amounts = {
         tubeAmt,
+        tubeAsymAmt,
         warmAmt,
         tapeAmt,
         retroAmt,
@@ -5348,7 +5459,7 @@
      * are applied in series.
      */
     applySaturation(buf, frames, trashMode, a) {
-      const hasSat = a.tubeAmt > 0 || a.warmAmt > 0 || a.tapeAmt > 0 || a.retroAmt > 0;
+      const hasSat = a.tubeAmt > 0 || a.tubeAsymAmt > 0 || a.warmAmt > 0 || a.tapeAmt > 0 || a.retroAmt > 0;
       const hasDist = trashMode && (a.odAmt > 0 || a.screamAmt > 0 || a.clipAmt > 0 || a.scratchAmt > 0);
       if (!hasSat && !hasDist) return;
       for (let i = 0; i < frames; i++) {
@@ -5357,6 +5468,10 @@
         let blendCount = 0;
         if (a.tubeAmt > 0) {
           wet += tubeSaturation(x, 1 + a.tubeAmt * 2);
+          blendCount++;
+        }
+        if (a.tubeAsymAmt > 0) {
+          wet += tubeAsymSaturation(x, 1 + a.tubeAsymAmt * 2);
           blendCount++;
         }
         if (a.warmAmt > 0) {
@@ -5375,7 +5490,7 @@
         }
         if (blendCount > 0) {
           wet /= blendCount;
-          const satBlend = Math.max(a.tubeAmt, a.warmAmt, a.tapeAmt, a.retroAmt);
+          const satBlend = Math.max(a.tubeAmt, a.tubeAsymAmt, a.warmAmt, a.tapeAmt, a.retroAmt);
           x = x * (1 - satBlend * 0.5) + wet * (satBlend * 0.5);
         }
         if (trashMode) {

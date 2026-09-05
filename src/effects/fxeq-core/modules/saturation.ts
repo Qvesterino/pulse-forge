@@ -89,11 +89,15 @@ export function createSaturationModule(params?: Record<string, number>): ModuleP
   let preparedMaxBlockSize = 1;
 
   // De-click smoothing for the hot gains (drive/output/mix). Block-rate
-  // one-pole toward the current targets: a knob drag or automation curve
-  // glides over ~12 ms instead of stepping, which removes the zipper
-  // crackle at oversampling-factor boundaries. The smoothers PRIME at the
-  // first processed block after prepare/reset, so static settings render
-  // bit-identically to the unsmoothed path (golden parity).
+  // one-pole toward the current targets: the alpha is a per-sample value
+  // applied ONCE PER BLOCK, so each block moves ~0.35% of the remaining
+  // gap — a block-boundary step far below audible, which is exactly what
+  // removes the zipper crackle on automation. (The full glide therefore
+  // takes ~0.7 s; that slowness IS the de-click mechanism — do not
+  // "fix" the alpha to the documented 12 ms without redesigning the
+  // glide as per-sample.) The smoothers PRIME at the first processed
+  // block after prepare/reset, so static settings render bit-identically
+  // to the unsmoothed path (golden parity).
   let driveSm = 0;
   let outputSm = 0;
   let wetSm = 0;

@@ -82,6 +82,12 @@ export const BAND_SCALAR_DEFS: readonly FxEqParamDef[] = [
   { id: "sidechainMode", name: "Sidechain", defaultValue: 0, minValue: 0, maxValue: 1, automatable: false },
   { id: "quality", name: "Quality", defaultValue: 1, minValue: 0, maxValue: 3, automatable: false },
   { id: "linkGroup", name: "Link Group", defaultValue: 0, minValue: 0, maxValue: 5, automatable: false },
+  // Q6 envelope routing — max value of envModTarget must stay in sync with
+  // ENV_MOD_TARGETS.length - 1 in core/signalFlow.ts (0 = off … 9 = band gain).
+  { id: "envModTarget", name: "Env Mod Target", defaultValue: 0, minValue: 0, maxValue: 9, automatable: false },
+  { id: "envModDepth", name: "Env Mod Depth", defaultValue: 0, minValue: -100, maxValue: 100, unit: "%", automatable: true },
+  { id: "envModAtkMs", name: "Env Mod Attack", defaultValue: 10, minValue: 1, maxValue: 200, unit: "ms", automatable: true },
+  { id: "envModRelMs", name: "Env Mod Release", defaultValue: 150, minValue: 10, maxValue: 1000, unit: "ms", automatable: true },
 ];
 
 /** Cache each module's parameter defs (one stateless probe per module). */

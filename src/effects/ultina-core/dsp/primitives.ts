@@ -662,6 +662,24 @@ export function warmSaturation(x: number, drive: number, amount: number): number
   return x * (1 - amount) + sat * amount;
 }
 
+/**
+ * Biased tube saturation ("Tube+"): shifts the operating point so the
+ * positive half runs hotter into the tanh — dominant 2nd (even) harmonic,
+ * the classic "expensive warmth" color. Unlike tubeSaturation's slope
+ * asymmetry (1.2/0.8 gains), the bias-shift + normalization keeps the
+ * small-signal gain at exactly 1 for any drive, so blending it in does
+ * not jump the level and the even-harmonic amount scales smoothly.
+ */
+export function tubeAsymSaturation(x: number, drive: number): number {
+  const d = x * drive;
+  const bias = 0.3;
+  const tB = fastTanh(bias);
+  // Divide by the operating-point slope *and* the drive so the
+  // small-signal gain stays exactly 1 for any drive setting.
+  const norm = (1 - tB * tB) * Math.max(1e-6, drive);
+  return (fastTanh(d + bias) - tB) / norm;
+}
+
 // ── Mid/Side encode/decode ──────────────────────────────────
 
 const INV_SQRT2 = 1 / Math.SQRT2;

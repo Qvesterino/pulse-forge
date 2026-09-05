@@ -217,6 +217,9 @@ export interface ReflectionsEngineState {
   lowpassHz: number;
   /** Per-lane mix (0..100). */
   mix: number;
+  /** Roadmap O6: output stereo width (0..1). 1 = untouched L/R (default,
+   *  bit-identical); 0 = mono sum, matching the FDN engines convention. */
+  width: number;
 }
 
 export function defaultReflectionsEngine(): ReflectionsEngineState {
@@ -229,6 +232,7 @@ export function defaultReflectionsEngine(): ReflectionsEngineState {
     angle: 50,
     lowpassHz: 8000,
     mix: 100,
+    width: 1,
   };
 }
 
@@ -257,6 +261,9 @@ export interface PlateChamberEngineState {
   /** Bass decay multiplier (0.25..4). >1 = bass rings longer than the
    *  mid T60 — the signature "space holds the low end" behaviour. */
   bassDecay: number;
+  /** Mid decay multiplier (0.25..4, default 1 = mid band follows the
+   *  main T60). Roadmap O3: second axis of the per-band decay network. */
+  midDecay: number;
   /** Feedback cross-feed width (0..1). 1 = fully independent L/R loops
    *  (widest), 0 = mono feedback (collapsed image). */
   stereoWidth: number;
@@ -283,6 +290,7 @@ export function defaultPlateChamberEngine(): PlateChamberEngineState {
     mix: 100,
     algo: "room",
     bassDecay: 1.0,
+    midDecay: 1.0,
     stereoWidth: 1.0,
     shimmer: 0,
     drive: 0,
@@ -308,6 +316,8 @@ export interface HallEngineState {
   algo: Engine3Algo;
   /** Bass decay multiplier — see PlateChamberEngineState. */
   bassDecay: number;
+  /** Mid decay multiplier — see PlateChamberEngineState. */
+  midDecay: number;
   /** Feedback cross-feed width — see PlateChamberEngineState. */
   stereoWidth: number;
   /** Octave-up pitch shifter in the feedback path (0..1). */
@@ -333,6 +343,7 @@ export function defaultHallEngine(): HallEngineState {
     mix: 100,
     algo: "hall",
     bassDecay: 1.0,
+    midDecay: 1.0,
     stereoWidth: 1.0,
     shimmer: 0,
     drive: 0,
@@ -497,10 +508,14 @@ export interface ModState {
   depthX: number;
   /** Y-axis: modulation rate (0..1, normalized to 0.05..8 Hz). */
   rateY: number;
+  /** Roadmap O6: ceiling for the in-loop modulation depth in samples
+   *  (default 20 = the historical engine clamp; raise to ~60 for very
+   *  large-hall smear). Additive - legacy presets keep their sound. */
+  maxDepthSamples: number;
 }
 
 export function defaultMod(): ModState {
-  return { enabled: false, mode: "randomFat", depthX: 0.25, rateY: 0.24 };
+  return { enabled: false, mode: "randomFat", depthX: 0.25, rateY: 0.24, maxDepthSamples: 20 };
 }
 
 // ── Reverb Assistant ───────────────────────────────────────

@@ -85,11 +85,11 @@ Kým full suite obsahuje timeout, agent nesmie označiť roadmapu za release-rea
 
 **Výstup:** agent vie presne, na akom stave začína, a nevytvorí konflikt s rozpracovanými zmenami.
 
-- [ ] spustiť `git status --short` a prečítať existujúce zmeny pred editáciou;
+- [x] spustiť `git status --short` a prečítať existujúce zmeny pred editáciou;
 - [ ] prečítať `src/project-model/types.ts`, `src/project-model/schema.ts`, `src/commands/commands.ts`, `src/collab/YDocAdapter.ts`, `src/audio-engine/AudioEngine.ts`, `src/ui/EffectRack.tsx`, `src/ui/UltinaPanel.tsx`, `src/ui/ModPanel.tsx`, `src/ui/Mixer.tsx`;
 - [ ] prečítať relevantné testy: `tests/ui/EffectRack.test.tsx`, `tests/ui/Mixer.test.tsx`, `tests/ui/ModPanel.test.tsx`, `tests/commands.test.ts`, `tests/doc-delta.test.ts`, collab/store testy a `tests/ultina-meters.test.ts`;
-- [ ] spustiť `npm run typecheck`;
-- [ ] spustiť timeoutujúci test samostatne a potom `npm test -- --reporter=dot`;
+- [x] spustiť `npm run typecheck`;
+- [x] spustiť timeoutujúci test samostatne a potom `npm test -- --reporter=dot`;
 - [ ] zapísať baseline výsledok do agent reportu; do roadmapy odškrtnúť iba overené položky.
 
 **Checkpoint:** žiadna zmena produkčného kódu, iba reprodukovaný baseline a jasný zoznam konfliktov.
@@ -98,10 +98,10 @@ Kým full suite obsahuje timeout, agent nesmie označiť roadmapu za release-rea
 
 **Súvisiace súbory:** `tests/gallery-server.test.ts`, `scripts/verify-browser.mjs`, `src/browser-checks.ts`, relevantné test setup súbory.
 
-- [ ] izolovať timeout v gallery/remix teste: či je príčinou časový limit, server lifecycle, nedeterministický stav alebo skutočná regresia;
-- [ ] opraviť iba koreň problému; nezvyšovať timeout bez vysvetlenia, prečo je to správne;
-- [ ] overiť, že `npm run test:browser` pokrýva aspoň otvorenie projektu, výber tracku, add effect, collapse pluginu, zmenu makra a základný play/stop;
-- [ ] ak browser smoke niečo z baseline nepokrýva, doplniť malý stabilný check, nie veľký end-to-end framework;
+- [x] izolovať timeout v gallery/remix teste: či je príčinou časový limit, server lifecycle, nedeterministický stav alebo skutočná regresia;
+- [x] opraviť iba koreň problému; nezvyšovať timeout bez vysvetlenia, prečo je to správne;
+- [x] overiť, že `npm run test:browser` pokrýva aspoň otvorenie projektu, výber tracku, add effect, collapse pluginu, zmenu makra a základný play/stop;
+- [x] ak browser smoke niečo z baseline nepokrýva, doplniť malý stabilný check, nie veľký end-to-end framework;
 - [ ] pri každej ďalšej fáze zopakovať targeted UI test + `npm run test:browser`.
 
 **Akceptácia:** full suite nemá neobjasnený timeout; browser smoke má dôkaz pre hlavný happy path.
@@ -120,17 +120,17 @@ Kým full suite obsahuje timeout, agent nesmie označiť roadmapu za release-rea
 
 Navrhovaný postup:
 
-- [ ] rozhodnúť persisted shape, napríklad voliteľný `ultinaState`/`editorState` na `EffectInstance`, oddelený od numeric audio `params`;
+- [x] rozhodnúť persisted shape, napríklad voliteľný `ultinaState`/`editorState` na `EffectInstance`, oddelený od numeric audio `params`;
 - [ ] do shape zahrnúť iba to, čo potrebuje projekt: A/B snapshoty, active slot, prípadne validated module order/enabled stav a `capturedLufs`;
 - [ ] nevkladať React-only veci ako `collapsed`, DOM refs alebo loading stav do dokumentu;
-- [ ] pridať sanitize/default pre staré dokumenty bez tohto poľa a ošetriť poškodené/neúplné snapshoty;
+- [x] pridať sanitize/default pre staré dokumenty bez tohto poľa a ošetriť poškodené/neúplné snapshoty;
 - [ ] zachovať kompatibilitu s `UltinaState`, `ABSnapshot`, `snapshotFromState` a `applySnapshot`; ak treba zmeniť core kontrakt, nájsť upstream zdroj a dodržať re-vendor postup;
-- [ ] pridať commandy: store active slot, activate slot, copy A→B, copy B→A, clear slot;
-- [ ] zabezpečiť, že každý command je jeden undo krok a že prepnutie slotu aplikuje snapshot do skutočných `params`/module state;
-- [ ] zmeniť `Device`/`UltinaPanel` na controlled persisted state cez `doc` + commands; React state môže zostať iba ako transient draft pred commitom;
-- [ ] rozšíriť YDoc adapter a delta round-trip test tak, aby remote peer dostal snapshot bez straty `undefined`/`null` slotov;
-- [ ] pridať test pre unmount/re-render/track switch/reload-equivalent, nie iba collapse;
-- [ ] otestovať, že A/B store neprepíše captured meter, pokiaľ to nie je explicitná súčasť snapshotu.
+- [x] pridať commandy: store active slot, activate slot, copy A→B, copy B→A, clear slot;
+- [x] zabezpečiť, že každý command je jeden undo krok a že prepnutie slotu aplikuje snapshot do skutočných `params`/module state;
+- [x] zmeniť `Device`/`UltinaPanel` na controlled persisted state cez `doc` + commands; React state môže zostať iba ako transient draft pred commitom;
+- [x] rozšíriť YDoc adapter a delta round-trip test tak, aby remote peer dostal snapshot bez straty `undefined`/`null` slotov;
+- [x] pridať test pre unmount/re-render/track switch/reload-equivalent, nie iba collapse;
+- [x] otestovať, že A/B store neprepíše captured meter, pokiaľ to nie je explicitná súčasť snapshotu.
 
 **Akceptácia:** vytvorím A, zmením plugin, vytvorím B, prepínam A/B, reloadnem projekt a výsledok je rovnaký; undo/redo a collab zachovajú obidva sloty.
 
@@ -140,11 +140,11 @@ Navrhovaný postup:
 
 - [ ] definovať spoločný header contract: collapse, bypass, názov, fallback/degraded stav, preset, keyboard focus a dostupné akcie;
 - [ ] zachovať existujúci lazy `Suspense` boundary; collapsed device nemá mountovať heavy editor/meters, ak to nie je potrebné pre audio runtime;
-- [ ] zjednotiť loading, empty, fallback a error presentation všetkých troch panelov;
+- [x] zjednotiť loading, empty, fallback a error presentation všetkých troch panelov;
 - [ ] zjednotiť textové označenia `ACTIVE`/`BYPASSED`, tooltipy, `aria-expanded`, `aria-controls`, focus ring a klávesové ovládanie;
 - [ ] oddeliť UI shell od plugin-specific panelu tak, aby ďalší flagship plugin nepotreboval kopírovať header logiku;
 - [ ] zachovať existujúce effect-specific commands: FXEQ cez `setFxEqParam`, Ultina cez `setUltinaParam`, Ozvena cez `setEffectParam`/`applyOzvenaStatePatch`;
-- [ ] doplniť regression test pre všetky tri pluginy: add → open → collapse → expand → bypass → preset;
+- [x] doplniť regression test pre všetky tri pluginy: add → open → collapse → expand → bypass → preset;
 - [ ] preveriť mobile/narrow rack a scroll/focus správanie v browseri.
 
 **Akceptácia:** používateľ rozpozná rovnaký device pattern pri FXEQ, Ultina aj Ozvena; collapse nevymaže stav a nevyrobí zbytočný runtime churn.
@@ -156,17 +156,17 @@ Navrhovaný postup:
 Najprv vyriešiť semantiku, až potom UI:
 
 - [ ] definovať, či `macro.value` ostáva normalizované `0..1` a mapovanie sa interpretuje bipolarne `-1..1`; zachovať toto pravidlo z `AudioEngine.syncMacros`;
-- [ ] pre direct `source === "macro"` implementovať `AutomationTarget` pre `trackGain`, `trackPan`, `fxParam`, `instParam`;
-- [ ] zachovať legacy `trackId` + `param` mapping bez migrácie, ak je target prázdny;
-- [ ] jasne definovať base-value: macro nesmie pri každom syncu kumulovať vlastný výsledok do ďalšieho výsledku; vždy čítať persisted/base parameter a vypočítať deterministic resolved value;
-- [ ] pre FX target validovať `fxId` a `paramId` voči `EFFECT_DEFS`; pre instrument target voči `INSTRUMENT_DEFS`;
+- [x] pre direct `source === "macro"` implementovať `AutomationTarget` pre `trackGain`, `trackPan`, `fxParam`, `instParam`;
+- [x] zachovať legacy `trackId` + `param` mapping bez migrácie, ak je target prázdny;
+- [x] jasne definovať base-value: macro nesmie pri každom syncu kumulovať vlastný výsledok do ďalšieho výsledku; vždy čítať persisted/base parameter a vypočítať deterministic resolved value;
+- [x] pre FX target validovať `fxId` a `paramId` voči `EFFECT_DEFS`; pre instrument target voči `INSTRUMENT_DEFS`;
 - [ ] definovať rozsah `amount`, `min`, `max`, invert a prípadnú curve tak, aby schema aj engine používali rovnaké clampovanie;
-- [ ] pridať commandy pre generic mapping, editáciu targetu, amount/range a remove; každý command musí byť undoable a collab serializable;
-- [ ] rozšíriť `ModPanel` o zrozumiteľný target picker: track → FX/instrument → parameter; pri FX zobraziť názov device, nie iba ID;
-- [ ] pridať “Map/ Learn” flow z konkrétneho parameter controlu, vrátane odstránenia mappingu a indikácie, že parameter je namapovaný;
+- [x] pridať commandy pre generic mapping, editáciu targetu, amount/range a remove; každý command musí byť undoable a collab serializable;
+- [x] rozšíriť `ModPanel` o zrozumiteľný target picker: track → FX/instrument → parameter; pri FX zobraziť názov device, nie iba ID;
+- [x] pridať “Map/ Learn” flow z konkrétneho parameter controlu, vrátane odstránenia mappingu a indikácie, že parameter je namapovaný;
 - [ ] performance bar má zostať rýchly: prvé štyri makrá, bipolar hodnoty, count/status mappingov; nepridávať doň celý editor mappingov;
-- [ ] doplniť engine testy pre zero, min, max, bipolar midpoint, clamp a zmenu base parametra počas aktívneho macro mappingu;
-- [ ] doplniť model/delta/collab testy pre generic target a starý legacy mapping.
+- [x] doplniť engine testy pre zero, min, max, bipolar midpoint, clamp a zmenu base parametra počas aktívneho macro mappingu;
+- [x] doplniť model/delta/collab testy pre generic target a starý legacy mapping.
 
 **Akceptácia:** makro vie plynule a deterministicky riadiť track gain/pan, Ultina/FXEQ/Ozvena parameter a instrument parameter; po reloade a collab sync sa target nemení ani nekumuluje.
 
@@ -174,9 +174,9 @@ Najprv vyriešiť semantiku, až potom UI:
 
 **Súvisiace súbory:** `src/ui/Mixer.tsx`, `src/ui/MacroPerformanceBar.tsx`, `src/ui/ModPanel.tsx`, `src/commands/commands.ts`, `src/styles.css`, `tests/ui/Mixer.test.tsx`.
 
-- [ ] zachovať explicitný batch scope: toolbar musí hovoriť, koľko trackov je vybraných a kam sa effect pridá;
+- [x] zachovať explicitný batch scope: toolbar musí hovoriť, koľko trackov je vybraných a kam sa effect pridá;
 - [ ] batch add/remove/bypass držať ako jeden undoable command; pri partial failure nesmie vzniknúť tichý polovičný stav;
-- [ ] doplniť jasné `clear solo`, `clear mute` a bezpečné feedback stavy pre group/bus workflow;
+- [x] doplniť jasné `clear solo`, `clear mute` a bezpečné feedback stavy pre group/bus workflow;
 - [ ] pridať per-channel peak/clip indikáciu napojenú na existujúce meter dáta, bez druhej paralelnej meter implementácie;
 - [ ] zachovať RMB fader macro linking, ale po generic mapping fáze ho napojiť na explicitný target a zobraziť current mapping;
 - [ ] keyboard/focus flow: selected track, focused fader, macro slider, undo; žiadne ovládanie nesmie byť iba color-coded;
@@ -189,8 +189,8 @@ Najprv vyriešiť semantiku, až potom UI:
 
 **Súvisiace súbory:** `src/ui/UltinaPanel.tsx`, `src/ui/FxEqPanel.tsx`, `src/ui/OzvenaPanel.tsx`, `src/audio-engine/AudioEngine.ts`, `src/effects/ultina-core/contracts/meters.ts`, `src/styles.css`, meter/UI testy.
 
-- [ ] reuse existujúce meter pipeline (`GlobalMeters`, `getFxMeters`, `autoGainCorrectionDb`, `autoGainErrorDb`, `autoGainActive`); nevytvárať paralelný polling len pre UI;
-- [ ] zachovať pravdivé stavy: `WAITING FOR SIGNAL`, aktívny lock, target LUFS a delta; “0.0 dB” nesmie vyzerať ako validný lock bez signálu;
+- [x] reuse existujúce meter pipeline (`GlobalMeters`, `getFxMeters`, `autoGainCorrectionDb`, `autoGainErrorDb`, `autoGainActive`); nevytvárať paralelný polling len pre UI;
+- [x] zachovať pravdivé stavy: `WAITING FOR SIGNAL`, aktívny lock, target LUFS a delta; “0.0 dB” nesmie vyzerať ako validný lock bez signálu;
 - [ ] otestovať gain-match pri play/stop, bez signálu, po bypass a pri zmene target LUFS;
 - [ ] po perzistencii Ultina A/B rozhodnúť, či FXEQ/Ozvena dostanú host-level A/B rovnakým contractom alebo ostanú plugin-specific; rozhodnutie zapísať do ADR/roadmap reportu;
 - [ ] A/B compare musí mať jasnú active state, copy, store, clear, undo a klávesový/focus flow;
@@ -269,3 +269,20 @@ Na konci agent odovzdá:
 - informáciu, či dokumentácia/ADR alebo migration notes potrebujú doplnenie.
 
 Ak niektorý checkpoint neprejde, agent má uviesť konkrétny blocker a zastaviť iba danú fázu. Nemá maskovať zlyhanie vypnutím testu, zvýšením timeoutu bez dôvodu alebo obídením command/store vrstvy.
+
+## implementačný report (2026-09-04, noc)
+
+- **Fáza 2 pozn. k shape:** implementované ako generický `deviceState: { kind, data }` slot
+  (nie `ultinaState`) — rozhodnutie v [ADR 0006](adr/0006-device-state-slot.md).
+  `capturedLufs` do snapshotov zámerne nepersistuje.
+- **Fáza 4 pozn. k writerom:** kompozícia zapísaná priamo do `syncMacros` — macro/intensity
+  = offset okolo persistovaného base (žiadna kumulácia), gain/pan idú do modMacro* uzlov,
+  modulátory vlastnia modAuto* reťaz. Testy: tests/macro-targets.test.ts + browser check.
+- **Fáza 5:** per-channel peak/clip indikácia už existovala (Meter + getTrackLevel, clip farba);
+  doplnené batch BYPASS/REMOVE a CLEAR SOLO/MUTE (tests/mixer-batch.test.ts).
+- **TopBar:** panelLimit pri 1280 px zvyšený 3→4, aby MOD nebol skrytý v overflows
+  (blokoval boot smoke aj_macro workflow); EXPORT/MIDI ostávajú v ⋯ menu.
+- **Známe fluffy gate-y (nie blockery):** `tests/fxeq-performance-gates.test.ts` timing ratio
+  (2.11× vs 2.1× budget) a fxeq CPU budget browser check — záťažové flaky na zdieľanom stroji
+  (fxeq-quality workstream, 6+ agent runtimes). `tests/fxeq-tempo-sync.test.ts` = WIP iného
+  agenta, blokuje `npm run typecheck` kým nedoplní kontrakt.

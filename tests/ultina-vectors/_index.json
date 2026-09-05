@@ -62,5 +62,37 @@
     "frameCount": 4800,
     "inputRmsDb": -13.467875018142978,
     "outputRmsDb": -13.467875018142978
+  },
+  {
+    "id": "comp_opto_mode",
+    "description": "Compressor in Opto (LA-2A) mode compressing a loud sine",
+    "sampleRate": 48000,
+    "frameCount": 14400,
+    "inputRmsDb": -4.948500185166503,
+    "outputRmsDb": -12.774610964748794
+  },
+  {
+    "id": "comp_fet_mode",
+    "description": "Compressor in FET (1176) mode with GR-proportional bite",
+    "sampleRate": 48000,
+    "frameCount": 14400,
+    "inputRmsDb": -4.948500185166503,
+    "outputRmsDb": -15.83844875647517
+  },
+  {
+    "id": "comp_detector_hpf",
+    "description": "Detector HPF stops 60 Hz bass from driving compression",
+    "sampleRate": 48000,
+    "frameCount": 14400,
+    "inputRmsDb": -8.987686139348412,
+    "outputRmsDb": -8.987686139348412
+  },
+  {
+    "id": "exciter_tube_asym",
+    "description": "Exciter Tube+ (biased tube) saturation on a sine",
+    "sampleRate": 48000,
+    "frameCount": 9600,
+    "inputRmsDb": -9.030899952596343,
+    "outputRmsDb": -9.500683093126113
   }
 ]

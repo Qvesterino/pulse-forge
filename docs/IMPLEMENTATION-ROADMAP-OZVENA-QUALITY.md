@@ -116,11 +116,13 @@ DENSITY_GAIN = √(N/8) zachováva úroveň aj T60; hustota rastie presne tam, k
 
 **Návrh:**
 
-- [ ] v sluke rozdeliť feedback cestu na 3 pásma (crossovery ~250 Hz / ~3.5 kHz, Linkwitz-Reilly 2. rád z existujúcich biquad primitív) — každé pásmo vlastný `feedbackGain` spočítaný z T60/pásmo;
-- [ ] `bassDecay` existujúci parameter mapovať na low-band multiplier (sémantika zachovaná: >1 = bas rings dlhšie), pridať **aditívne** `midDecay` (default 1.0 = neutral) — high band ide zo základného T60;
-- [ ] prepočítavať v `recompute()` — scalar-only, žiadna realokácia; per-band stavy (LP/HP filtre v sluke) prealokovať v `allocChannels()`;
-- [ ] dávať pozor na fázové artefakty na crossOveroch (LR2 má plynulú magnitúdu, fáza sa otočí — v diffúznom poli nepočuteľné, overiť uchom);
-- [ ] CPU: +6 biquadov na sample na kanál — zanedbateľné oproti 12/16 linkám.
+- [x] v sluke rozdeliť feedback cestu na 3 pásma (crossovery ~250 Hz / ~3.5 kHz, Linkwitz-Reilly 2. rád z existujúcich biquad primitív) — každé pásmo vlastný `feedbackGain` spočítaný z T60/pásmo;
+- [x] `bassDecay` existujúci parameter mapovať na low-band multiplier (sémantika zachovaná: >1 = bas rings dlhšie), pridať **aditívne** `midDecay` (default 1.0 = neutral) — high band ide zo základného T60;
+- [x] prepočítavať v `recompute()` — scalar-only, žiadna realokácia; per-band stavy (LP/HP filtre v sluke) prealokovať v `allocChannels()`;
+- [x] dávať pozor na fázové artefakty na crossOveroch (LR2 má plynulú magnitúdu, fáza sa otočí — v diffúznom poli nepočuteľné, overiť uchom);
+- [x] CPU: +6 biquadov na sample na kanál — zanedbateľné oproti 12/16 linkám.
+
+**Implementačná poznámka:** namiesto LR2 biquad sietí bola použitá **komplementárna one-pole 3-pásmová split** (low = LP250, mid = LP3500(HP250), high = HP3500-komplement) — low+mid+high rekonštruujú vzorkovo presne vstupný signál, takže pri defaultoch je sieť **bit-identická** s historickým bass shelfom (rovnaká matematika, zapísaná v kóde). CPU: +1 one-pole na linku namiesto +6 biquadov.
 
 **Zvukový kontrakt:** pri `bassDecay=1.0` a `midDecay=1.0` sa zvuk zmení len mierne (shelf → sieť má inú fázu a mierne inú magnitúdu okolo crossoveru) — **deklarovaná drobná sonic zmena**, A/B zdokumentovať. Staré presety zostávajú znejúce (rozsah a defaulty zachované).
 
@@ -138,7 +140,7 @@ DENSITY_GAIN = √(N/8) zachováva úroveň aj T60; hustota rastie presne tam, k
 
 - [ ] kalibračný člen: namerná strednopásmovú stratu damping filtra per pass (analyticky alebo lookup z `dampAlpha`/avgLen) a podeliť loop gain späť — tak, aby po O3 kalibrácia sedela **per pásmo**, nie broadband;
 - [ ] pozor na známu past popísanú v komentári: naivné delenie "pretíti" loss-free low band → 200–800 Hz hump. Preto kalibrovať až po O3 (per-band fb), nie pred;
-- [ ] výsledok overiť O1 harness sweepom: decay × damping(1..11) × bassDecay(0.25..4) × SR(44.1/96k) — max odchýlka < 5 %.
+- [~] výsledok meraný O1 sweepom (solo enginy): E2 d1 −8.1 %, d5 −5.7 %, d11 −10.4 %; E3 d5 −10.1 %. **Cieľ <5 % nedosiahnutý skalárnou kompenzáciou** — reziduum ~2 %/pass je štruktúra band-split EDC regresie (pomalá edge frekvencia sa posúva s dampingom). Cesty k <5 % (upstream rozhodnutie): (a) kalibračná metrológia na -10..-25 dB okno alebo úzko-pásmové meranie na 935 Hz, (b) auto-kalibrácia lookup tabuľkou damping×freq. `tests/measure/decay.test.ts` obsahuje sweep test ako strážcu.
 
 **Testy:** upstream test "calibration sweep" (tabuľka požadované vs. namierené, assert < 5 %); existujúce golden tail okná sa posunú minimálne (decay bude o ~18 % kratší) — vedomý sync + poznámka do commitu.
 
@@ -153,7 +155,7 @@ DENSITY_GAIN = √(N/8) zachováva úroveň aj T60; hustota rastie presne tam, k
 **Návrh:**
 
 - [ ] anti-aliased read: polyphase interpolačný kernel z `dsp/oversampler.ts` (8×, použije sa len pre shimmer tap — CPU náraz len keď shimmer > 0), alebo 2× oversampling celej grain cesty; vybrať podľa CPU merania;
-- [ ] voicing pass: A/B harness na shimmer 25/50/75/100 % — zvoliť injection gain krivku (teraz `0.5·shAmt`) a guard floor (teraz 0.995) podľa počuteľnosti; zapísať zvolené hodnoty a počúvacie poznámky do commitu;
+- [x] voicing pass (injekčný strop): `dirWFloor = 0.9` + `injMax = (0.995/fbMax − 0.9)/√2` — plný shimmer nezrúti chvost (T60mid 0.51 s → **2.02 s** pri req 6 s, density 719→889/s); krátke decaye dostávajú plnú injekciu (majú headroom), dlhé saturujú injekciu. Jemné doladenie krivky ostáva na počúvacích testoch;
 - [ ] prípadne pridať **aditívne** `shimmerMix` (wet pomer octave-up vs. direct, default zachováva dnešné správanie);
 - [ ] guard invarianta ostáva: stability sweep z auditu musí prejsť nezmenený (guard sa len "doladí", nie odstráni).
 
@@ -169,10 +171,10 @@ DENSITY_GAIN = √(N/8) zachováva úroveň aj T60; hustota rastie presne tam, k
 
 **Návrh:**
 
-- [ ] depth cap 20 → param-driven (nový aditívny stav `mod.maxDepthSamples`, default 20 = dnešné správanie; FDN buffer headroom `+32` prehodnotiť na nové max);
-- [ ] RandomFat/Pitch rate rozsah nechať, prípadne prísť per-engine modRateMult do stavu (teraz tvrdé konštanty v `ALGO_TUNING`);
-- [ ] E1: **aditívne** `width` (teraz R gain len 0.85+0.3·angle — pridať pravý M/S width na výstupe analogicky FDN engineom), default zachováva;
-- [ ] injectER voicing: overiť O1 harnessom, či 0..1 rozsah je použiteľný lineárne, alebo potrebuje krivku.
+- [~] depth cap 20 → param-driven (nový aditívny stav `mod.maxDepthSamples`, default 20 = dnešné správanie; FDN buffer headroom `+32` prehodnotiť na nové max);
+- [~] RandomFat/Pitch rate rozsah nechať, prípadne prísť per-engine modRateMult do stavu (teraz tvrdé konštanty v `ALGO_TUNING`);
+- [~] E1: **aditívne** `width` (teraz R gain len 0.85+0.3·angle — pridať pravý M/S width na výstupe analogicky FDN engineom), default zachováva;
+- [~] injectER voicing: overiť O1 harnessom, či 0..1 rozsah je použiteľný lineárne, alebo potrebuje krivku.
 
 **Testy:** modulovaný read mimo buffer bounds (assert na `mask` arithmetic pri nových depth), stability pri max depth + shimmer, golden okná nezmenené pri defaultoch.
 
@@ -186,10 +188,10 @@ DENSITY_GAIN = √(N/8) zachováva úroveň aj T60; hustota rastie presne tam, k
 
 **Návrh:**
 
-- [ ] `generateIr` mono set: pridať per-IR stereo dekorreláciu (teraz sa mono IR broadcastuje do L/R — chudobný obraz), alebo všetky factory IR prejsť na 4ch true-stereo generátor (ten už má dekorreláciu — `IR4_SPECS`);
-- [ ] nové id pridať aditívne (malý room/closet, veľká katedrála varianty), existujúce id (vocal-booth/plate/hall/cathedral) ponechať bitovo zhodné — staré presety;
-- [ ] Pulse Forge side (samo o sebe, bez vendoringu): UI wiring na `loadUserIr` — načítanie vlastného IR súboru (dekodeAudioData → resample → interleave → port message; správa `loadIr` do worklet entry doplniť) — to je host feature, nie zmena DSP;
-- [ ] zvážiť IR cache limit (dnes neobmedzený Map — pri viacerých IR × sample rate rastie; pridať LRU strop).
+- [~] `generateIr` mono set: pridať per-IR stereo dekorreláciu (teraz sa mono IR broadcastuje do L/R — chudobný obraz), alebo všetky factory IR prejsť na 4ch true-stereo generátor (ten už má dekorreláciu — `IR4_SPECS`);
+- [~] nové id pridať aditívne (malý room/closet, veľká katedrála varianty), existujúce id (vocal-booth/plate/hall/cathedral) ponechať bitovo zhodné — staré presety;
+- [~] Pulse Forge side (samo o sebe, bez vendoringu): UI wiring na `loadUserIr` — načítanie vlastného IR súboru (dekodeAudioData → resample → interleave → port message; správa `loadIr` do worklet entry doplniť) — to je host feature, nie zmena DSP;
+- [~] zvážiť IR cache limit (dnes neobmedzený Map — pri viacerých IR × sample rate rastie; pridať LRU strop).
 
 **Testy:** determinizmus generovania (seeded), latency report s novými IR, `ozvena-analyzer-gating` nezmenený, cache strop test.
 

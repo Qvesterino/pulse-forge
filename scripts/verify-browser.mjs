@@ -28,7 +28,10 @@ async function clickPanelAction(page, label) {
   }
   const trigger = page.locator('button[aria-label^="More topbar controls"]').first();
   await trigger.click();
-  await page.locator('#topbar-overflow-menu button:has-text("' + label + '")').first().click();
+  await page
+    .locator('#topbar-overflow-menu button:has-text("' + label + '")')
+    .first()
+    .click();
   // Close the menu so the next action starts from a clean state.
   await page.keyboard.press("Escape");
   await page.waitForTimeout(80);
@@ -196,7 +199,7 @@ try {
       patternsAfterGenerate,
       { timeout: 5000 },
     );
-    await appPage.locator('.topbar button[aria-label="Toggle export panel"]').click();
+    await clickPanelAction(appPage, "EXPORT");
     await appPage.waitForSelector('.export-panel[aria-label="Export"]', { timeout: 5000 });
     const projectDownload = appPage.waitForEvent("download");
     await appPage.locator('.export-panel button:has-text("EXPORT JSON")').click();
@@ -236,7 +239,6 @@ try {
       window.scrollTo(0, 0);
     });
     await appPage.waitForTimeout(120);
-    const firstStep = await appPage.locator(".step").nth(0).boundingBox();
     const dbg = await appPage.evaluate(() => {
       const at = document.elementFromPoint(
         document.querySelector(".step").getBoundingClientRect().x + 5,
@@ -250,14 +252,37 @@ try {
       };
     });
     console.log("[DBG]", JSON.stringify(dbg));
+    // Close the export panel first — an open dock panel covers the step grid
+    // (elementFromPoint hits the panel, not the steps) and the lasso selects 0.
+    await clickPanelAction(appPage, "EXPORT");
+    await appPage.waitForTimeout(200);
+    await appPage
+      .locator(".step")
+      .nth(3)
+      .scrollIntoViewIfNeeded()
+      .catch(() => {});
+    // Re-measure AFTER closing the panel — closing the dock re-layouts the grid.
+    const firstStep = await appPage.locator(".step").nth(0).boundingBox();
     const fourthStep = await appPage.locator(".step").nth(3).boundingBox();
     if (firstStep && fourthStep) {
-      await appPage.mouse.move(firstStep.x + 5, firstStep.y + firstStep.height / 2);
+      // Explicit, paced drag: under heavy machine load, coalesced pointermoves
+      // can skip the "first move starts the lasso" window → 0 selected.
+      const startX = firstStep.x + 5;
+      const startY = firstStep.y + firstStep.height / 2;
+      const endX = fourthStep.x + fourthStep.width - 5;
+      const endY = fourthStep.y + fourthStep.height / 2;
+      await appPage.mouse.move(startX, startY);
+      await appPage.waitForTimeout(60);
       await appPage.keyboard.down("Shift");
       await appPage.mouse.down();
-      await appPage.mouse.move(fourthStep.x + fourthStep.width - 5, fourthStep.y + fourthStep.height / 2, { steps: 6 });
+      await appPage.waitForTimeout(60);
+      for (let i = 1; i <= 8; i++) {
+        await appPage.mouse.move(startX + (endX - startX) * (i / 8), startY + (endY - startY) * (i / 8));
+        await appPage.waitForTimeout(40);
+      }
       await appPage.mouse.up();
       await appPage.keyboard.up("Shift");
+      await appPage.waitForTimeout(120);
     }
     const selectedSteps = await appPage.locator(".step.in-selection").count();
     if (selectedSteps < 2) throw new Error(`multi-select expected >=2 selected steps, got ${selectedSteps}`);
@@ -473,7 +498,8 @@ try {
     // Open the FX rack dock panel and add the flagship FXEQ to the selected track.
     await clickPanelAction(plugPage, "FX");
     await plugPage.waitForSelector(".fx-rack", { timeout: 5000 });
-    await plugPage.locator("select.fx-add-select").first().selectOption("fxeq");
+    // Scope to the rack — .track-tabs has its own .fx-add-select.track-add.
+    await plugPage.locator(".fx-rack select.fx-add-select").first().selectOption("fxeq");
     await plugPage.waitForSelector(".fx-device", { timeout: 5000 });
     // Collapse must keep the device mounted and flip aria-expanded.
     await plugPage.locator(".fx-device-toggle").first().click();
@@ -524,8 +550,7 @@ try {
   if (consoleErrors.length > 0) {
     console.log("console errors during audio checks:", consoleErrors.slice(0, 5));
   }
-  exitCode =
-    failed > 0 || !appBootOk || !collabOk || !embedOk || !importOk || !touchOk || !pluginWorkflowOk ? 1 : 0;
+  exitCode = failed > 0 || !appBootOk || !collabOk || !embedOk || !importOk || !touchOk || !pluginWorkflowOk ? 1 : 0;
 } catch (error) {
   console.error("browser verification failed:", error);
   exitCode = 1;

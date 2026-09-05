@@ -108,7 +108,7 @@ export function eqBandVst3Id(bandIndex: number, paramIndex: number): number {
 // ═══════════════════════════════════════════════════════════
 
 export const COMP_ENABLED_ID             = "comp.enabled"              as const;  // 256
-export const COMP_MODE_ID                = "comp.mode"                 as const;  // 257 (0=Punch, 1=Modern, 2=Vintage)
+export const COMP_MODE_ID                = "comp.mode"                 as const;  // 257 (0=Punch, 1=Modern, 2=Vintage, 3=Opto, 4=FET)
 export const COMP_DETECTION_MODE_ID      = "comp.detectionMode"        as const;  // 258 (0=Peak, 1=RMS, 2=TrueEnvelope)
 export const COMP_THRESHOLD_DB_ID        = "comp.thresholdDb"          as const;  // 259
 export const COMP_RATIO_ID               = "comp.ratio"                as const;  // 260
@@ -129,6 +129,7 @@ export const COMP_CHANNEL_MODE_ID        = "comp.channelMode"          as const;
 export const COMP_CROSSOVER_LEARN_ID     = "comp.crossoverLearn"       as const;  // 275
 export const COMP_DELTA_ID               = "comp.delta"                as const;  // 276
 export const COMP_AUTO_LEARN_THRESHOLD_ID = "comp.autoLearnThreshold"  as const;  // 277
+export const COMP_DETECTOR_HPF_HZ_ID     = "comp.detectorHpfHz"        as const;  // 278
 
 // Per-band threshold override (up to 3 bands)
 export function compBandParamId(bandIndex: number, param: string): string {
@@ -188,6 +189,7 @@ export const EXCITER_CROSSOVER_LEARN_ID  = "exciter.crossoverLearn"    as const;
 export const EXCITER_OVERSAMPLING_ID     = "exciter.oversampling"      as const;  // 402
 export const EXCITER_MIX_ID              = "exciter.mix"               as const;  // 403
 export const EXCITER_DELTA_ID            = "exciter.delta"             as const;  // 404
+export const EXCITER_TUBE_ASYM_AMOUNT_ID = "exciter.tubeAsymAmount"    as const;  // 405
 
 // ═══════════════════════════════════════════════════════════
 // TRANSIENT SHAPER PARAMETERS (VST3: 448–511)

@@ -34,6 +34,7 @@ import {
   softClip,
   hardClip,
   tubeSaturation,
+  tubeAsymSaturation,
   tapeSaturation,
   warmSaturation,
 } from "../primitives.js";
@@ -72,6 +73,7 @@ export interface ExciterMeters {
 
 interface SatAmounts {
   tubeAmt: number;
+  tubeAsymAmt: number;
   warmAmt: number;
   tapeAmt: number;
   retroAmt: number;
@@ -149,6 +151,7 @@ export class ExciterModuleProcessor implements UltinaModuleProcessor {
     // Read parameters
     const trashMode = (params["exciter.trashMode"] ?? 0) >= 0.5;
     const tubeAmt = clamp(params["exciter.tubeAmount"] ?? 0, 0, 100) / 100;
+    const tubeAsymAmt = clamp(params["exciter.tubeAsymAmount"] ?? 0, 0, 100) / 100;
     const warmAmt = clamp(params["exciter.warmAmount"] ?? 30, 0, 100) / 100;
     const tapeAmt = clamp(params["exciter.tapeAmount"] ?? 0, 0, 100) / 100;
     const retroAmt = clamp(params["exciter.retroAmount"] ?? 0, 0, 100) / 100;
@@ -168,7 +171,7 @@ export class ExciterModuleProcessor implements UltinaModuleProcessor {
 
     this.osActive = oversampling;
     const amounts: SatAmounts = {
-      tubeAmt, warmAmt, tapeAmt, retroAmt,
+      tubeAmt, tubeAsymAmt, warmAmt, tapeAmt, retroAmt,
       odAmt, screamAmt, clipAmt, scratchAmt,
     };
 
@@ -360,7 +363,9 @@ export class ExciterModuleProcessor implements UltinaModuleProcessor {
     trashMode: boolean,
     a: SatAmounts,
   ): void {
-    const hasSat = a.tubeAmt > 0 || a.warmAmt > 0 || a.tapeAmt > 0 || a.retroAmt > 0;
+    const hasSat =
+      a.tubeAmt > 0 || a.tubeAsymAmt > 0 || a.warmAmt > 0 ||
+      a.tapeAmt > 0 || a.retroAmt > 0;
     const hasDist = trashMode && (a.odAmt > 0 || a.screamAmt > 0 || a.clipAmt > 0 || a.scratchAmt > 0);
 
     if (!hasSat && !hasDist) return;
@@ -374,6 +379,11 @@ export class ExciterModuleProcessor implements UltinaModuleProcessor {
 
       if (a.tubeAmt > 0) {
         wet += tubeSaturation(x, 1 + a.tubeAmt * 2);
+        blendCount++;
+      }
+      if (a.tubeAsymAmt > 0) {
+        // Tube+ (biased): even-harmonic operating-point shift
+        wet += tubeAsymSaturation(x, 1 + a.tubeAsymAmt * 2);
         blendCount++;
       }
       if (a.warmAmt > 0) {
@@ -394,7 +404,7 @@ export class ExciterModuleProcessor implements UltinaModuleProcessor {
 
       if (blendCount > 0) {
         wet /= blendCount;
-        const satBlend = Math.max(a.tubeAmt, a.warmAmt, a.tapeAmt, a.retroAmt);
+        const satBlend = Math.max(a.tubeAmt, a.tubeAsymAmt, a.warmAmt, a.tapeAmt, a.retroAmt);
         x = x * (1 - satBlend * 0.5) + wet * (satBlend * 0.5);
       }
 

@@ -1173,6 +1173,7 @@
             tiltLowState[c] = low;
           }
         }
+        if (typeof globalThis !== "undefined" && globalThis.__dbgDrive !== void 0) globalThis.__dbgDrive = driveSm;
         wrapper.process(channels, frameCount, mode, driveSm, wetGain, outputLinear, quality);
       },
       reset() {
@@ -1185,6 +1186,11 @@
         return wrapper.getLatencySamples();
       },
       setParameter(id, value) {
+        const __l = globalThis.__dbgW;
+        if (__l && id === "driveDb") {
+          __l.push({ set: +value.toFixed(3) });
+          if (__l.length > 8) __l.shift();
+        }
         store.set(id, value);
       },
       getParameter(id) {
@@ -2683,6 +2689,28 @@
     delay: createDelayModule,
     rev: createReverbModule
   };
+  var ENV_MOD_TARGETS = [
+    null,
+    // 0 = off
+    { moduleKey: "sat", paramId: "driveDb", swing: 6 },
+    // 1 — drive
+    { moduleKey: "sat", paramId: "mix", swing: 25 },
+    // 2 — sat blend
+    { moduleKey: "eq", paramId: "lowGainDb", swing: 12 },
+    // 3 — low shelf
+    { moduleKey: "eq", paramId: "peak1GainDb", swing: 12 },
+    // 4 — peak 1
+    { moduleKey: "eq", paramId: "peak2GainDb", swing: 12 },
+    // 5 — peak 2
+    { moduleKey: "eq", paramId: "highGainDb", swing: 12 },
+    // 6 — high shelf
+    { moduleKey: "delay", paramId: "mix", swing: 30 },
+    // 7 — delay blend
+    { moduleKey: "rev", paramId: "mix", swing: 30 },
+    // 8 — reverb blend
+    { bandScalar: "gainDb", swing: 12 }
+    // 9 — band gain
+  ];
 
   // src/effects/fxeq-core/core/parameterSchema.ts
   var GLOBAL_PARAM_DEFS = [
@@ -2716,7 +2744,13 @@
     { id: "phaseInvert", name: "Phase Invert", defaultValue: 0, minValue: 0, maxValue: 1, automatable: false },
     { id: "sidechainMode", name: "Sidechain", defaultValue: 0, minValue: 0, maxValue: 1, automatable: false },
     { id: "quality", name: "Quality", defaultValue: 1, minValue: 0, maxValue: 3, automatable: false },
-    { id: "linkGroup", name: "Link Group", defaultValue: 0, minValue: 0, maxValue: 5, automatable: false }
+    { id: "linkGroup", name: "Link Group", defaultValue: 0, minValue: 0, maxValue: 5, automatable: false },
+    // Q6 envelope routing — max value of envModTarget must stay in sync with
+    // ENV_MOD_TARGETS.length - 1 in core/signalFlow.ts (0 = off … 9 = band gain).
+    { id: "envModTarget", name: "Env Mod Target", defaultValue: 0, minValue: 0, maxValue: 9, automatable: false },
+    { id: "envModDepth", name: "Env Mod Depth", defaultValue: 0, minValue: -100, maxValue: 100, unit: "%", automatable: true },
+    { id: "envModAtkMs", name: "Env Mod Attack", defaultValue: 10, minValue: 1, maxValue: 200, unit: "ms", automatable: true },
+    { id: "envModRelMs", name: "Env Mod Release", defaultValue: 150, minValue: 10, maxValue: 1e3, unit: "ms", automatable: true }
   ];
   var MODULE_PARAM_DEFS = (() => {
     const out = {};
@@ -2835,6 +2869,47 @@
       dynCoefReleaseMs = dynReleaseMs;
       dynCoefSr = preparedSr;
     }
+    let envTarget = 0;
+    let envDepth = 0;
+    let envAtkMs = 10;
+    let envRelMs = 150;
+    let modEnvValue = 0;
+    let envRoutedModule = null;
+    let envRoutedParam = null;
+    let envModBase = 0;
+    let envModApplied = false;
+    let envGainOffset = 0;
+    let envAtkCoef = 0;
+    let envRelCoef = 0;
+    let envCoefAtkMs = -1;
+    let envCoefRelMs = -1;
+    let envCoefSr = 0;
+    function refreshEnvCoefs() {
+      if (envCoefAtkMs === envAtkMs && envCoefRelMs === envRelMs && envCoefSr === preparedSr) {
+        return;
+      }
+      envAtkCoef = 1 - Math.exp(-1 / (envAtkMs / 1e3 * preparedSr));
+      envRelCoef = 1 - Math.exp(-1 / (envRelMs / 1e3 * preparedSr));
+      envCoefAtkMs = envAtkMs;
+      envCoefRelMs = envRelMs;
+      envCoefSr = preparedSr;
+    }
+    function retargetEnv(next) {
+      if (envRoutedModule && envRoutedParam && envModApplied) {
+        modules[envRoutedModule].setParameter(envRoutedParam, envModBase);
+      }
+      envModApplied = false;
+      envGainOffset = 0;
+      const def = ENV_MOD_TARGETS[next] ?? null;
+      if (def && def.moduleKey && def.paramId) {
+        envRoutedModule = def.moduleKey;
+        envRoutedParam = def.paramId;
+        envModBase = modules[def.moduleKey].getParameter(def.paramId);
+      } else {
+        envRoutedModule = null;
+        envRoutedParam = null;
+      }
+    }
     return {
       prepare(sr, cc, maxBlockSize) {
         preparedMaxBlockSize = Math.max(1, maxBlockSize);
@@ -2857,6 +2932,8 @@
           gainSmoother.reset(dbToLinear(bandGainDb));
           mixSmoother.reset(clamp(bandMix, 0, 100) / 100);
         }
+        modEnvValue = 0;
+        envGainOffset = 0;
       },
       process(channels, frameCount, sidechain) {
         if (!prepared) return;
@@ -2872,6 +2949,39 @@
           for (let i = 0; i < frameCount; i++) {
             buf[i] = flushDenormal(buf[i]);
           }
+        }
+        const targetDef = ENV_MOD_TARGETS[envTarget] ?? null;
+        envGainOffset = 0;
+        if (targetDef && envDepth !== 0) {
+          refreshEnvCoefs();
+          let env = modEnvValue;
+          for (let i = 0; i < frameCount; i++) {
+            let peak2 = 0;
+            for (let c = 0; c < channels.length; c++) {
+              const a = channels[c][i] < 0 ? -channels[c][i] : channels[c][i];
+              if (a > peak2) peak2 = a;
+            }
+            env += (peak2 > env ? envAtkCoef : envRelCoef) * (peak2 - env);
+          }
+          modEnvValue = env;
+          const envNorm = env < 1 ? env : 1;
+          const offset = envNorm * (envDepth / 100) * targetDef.swing;
+          if (envRoutedModule && envRoutedParam) {
+            modules[envRoutedModule].setParameter(envRoutedParam, envModBase + offset);
+            const __l = globalThis.__dbgW;
+            if (__l) {
+              __l.push({ w: +(envModBase + offset).toFixed(3), env: +env.toFixed(3), depth: envDepth });
+              if (__l.length > 8) __l.shift();
+            }
+            envModApplied = true;
+          } else if (targetDef.bandScalar === "gainDb") {
+            envGainOffset = offset;
+          }
+        } else if (envRoutedModule && envModApplied) {
+          modules[envRoutedModule].setParameter(envRoutedParam, envModBase);
+          const __l = globalThis.__dbgW;
+          if (__l) __l.push({ restore: envModBase });
+          envModApplied = false;
         }
         if (modules.sat) {
           modules.sat.loadParameters({ quality: bandQuality });
@@ -2904,7 +3014,7 @@
             }
           }
         }
-        const targetGain = dbToLinear(bandGainDb);
+        const targetGain = dbToLinear(bandGainDb + envGainOffset);
         {
           let g = gainSmoother.getValue();
           for (let i = 0; i < frameCount; i++) {
@@ -3031,9 +3141,27 @@
           case "linkGroup":
             bandLinkGroup = Math.round(v);
             break;
+          case "envModTarget": {
+            const next = Math.round(clamp(v, 0, ENV_MOD_TARGETS.length - 1));
+            if (next !== envTarget) retargetEnv(next);
+            envTarget = next;
+            break;
+          }
+          case "envModDepth":
+            envDepth = v;
+            break;
+          case "envModAtkMs":
+            envAtkMs = v;
+            break;
+          case "envModRelMs":
+            envRelMs = v;
+            break;
         }
       },
       setModuleParam(moduleKey, paramId, value) {
+        if (envRoutedModule === moduleKey && envRoutedParam === paramId) {
+          envModBase = value;
+        }
         modules[moduleKey].setParameter(paramId, value);
       },
       setTempo(bpm) {
@@ -3055,9 +3183,16 @@
         if (id === "sidechainMode") return bandSidechainMode;
         if (id === "quality") return bandQuality;
         if (id === "linkGroup") return bandLinkGroup;
+        if (id === "envModTarget") return envTarget;
+        if (id === "envModDepth") return envDepth;
+        if (id === "envModAtkMs") return envAtkMs;
+        if (id === "envModRelMs") return envRelMs;
         return 0;
       },
       getModuleParam(moduleKey, paramId) {
+        if (envRoutedModule === moduleKey && envRoutedParam === paramId) {
+          return envModBase;
+        }
         return modules[moduleKey].getParameter(paramId);
       },
       getBandPeak() {
@@ -3087,12 +3222,20 @@
           phaseInvert: bandPhaseInvert,
           sidechainMode: bandSidechainMode,
           quality: bandQuality,
-          linkGroup: bandLinkGroup
+          linkGroup: bandLinkGroup,
+          envModTarget: envTarget,
+          envModDepth: envDepth,
+          envModAtkMs: envAtkMs,
+          envModRelMs: envRelMs
         };
         const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
         for (const key of MODULE_KEYS) {
           const mp = modules[key].getParameters();
           for (const k of Object.keys(mp)) {
+            if (envRoutedModule === key && envRoutedParam === k) {
+              out[key + cap(k)] = envModBase;
+              continue;
+            }
             out[key + cap(k)] = mp[k];
           }
         }
