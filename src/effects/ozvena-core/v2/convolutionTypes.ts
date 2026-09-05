@@ -24,7 +24,9 @@ export type FactoryIrId =
   | "vocal-booth"
   | "plate"
   | "hall"
-  | "cathedral";
+  | "cathedral"
+  | "plate-wide"
+  | "chamber-wide";
 
 /** Factory IR descriptor. */
 export interface FactoryIr {

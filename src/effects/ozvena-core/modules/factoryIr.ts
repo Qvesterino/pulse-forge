@@ -37,6 +37,10 @@ const IR_SPECS: Record<FactoryIrId, IrGenSpec> = {
   "plate":       { lengthSec: 2.5, earlyTaps: 0,  earlyMaxMs: 0,   lateDecay: 2.0, brightness: 0.85, character: "metallic" },
   "hall":        { lengthSec: 4.0, earlyTaps: 16, earlyMaxMs: 80,  lateDecay: 1.2, brightness: 0.5,  character: "warm" },
   "cathedral":   { lengthSec: 5.0, earlyTaps: 12, earlyMaxMs: 120, lateDecay: 0.8, brightness: 0.2,  character: "dark" },
+  // Roadmap O7: mono fallbacks for the wide variants (true-stereo set is
+  // preferred at runtime; these keep the catalogue total).
+  "plate-wide":  { lengthSec: 2.5, earlyTaps: 0,  earlyMaxMs: 0,   lateDecay: 2.0, brightness: 0.85, character: "metallic" },
+  "chamber-wide":{ lengthSec: 4.0, earlyTaps: 16, earlyMaxMs: 90,  lateDecay: 1.1, brightness: 0.45, character: "warm" },
 };
 
 function makeRng(seed: number): () => number {
@@ -144,9 +148,15 @@ const IR4_SPECS: Record<FactoryIrId, { lengthSec: number; spreadMs: number; seed
   "plate":       { lengthSec: 1.8, spreadMs: 4,   seed: 202, decay: 2.2, bright: 0.85 },
   "hall":        { lengthSec: 2.5, spreadMs: 38,  seed: 303, decay: 1.4, bright: 0.55 },
   "cathedral":   { lengthSec: 3.0, spreadMs: 55,  seed: 404, decay: 1.1, bright: 0.35 },
+  // Roadmap O7: wide true-stereo variants (4ch decorrelated by design).
+  "plate-wide":  { lengthSec: 1.8, spreadMs: 22,  seed: 205, decay: 2.2, bright: 0.85 },
+  "chamber-wide":{ lengthSec: 3.0, spreadMs: 46,  seed: 407, decay: 1.3, bright: 0.5 },
 };
 
 const cache4 = new Map<string, Float32Array>();
+// Roadmap O7: bounded caches — several IRs × several sample rates must not
+// accumulate without limit in long sessions.
+const IR_CACHE_MAX = 24;
 
 /**
  * Generate (or fetch from cache) a 4-channel interleaved TRUE-STEREO
@@ -228,6 +238,7 @@ export function generateFactoryIr4(id: string, sampleRate: number): Float32Array
   }
 
   cache4.set(key, out);
+  if (cache4.size > IR_CACHE_MAX) { const oldest = cache4.keys().next().value; if (oldest !== undefined) cache4.delete(oldest); }
   return out;
 }
 
@@ -246,6 +257,7 @@ export function generateFactoryIr(id: string, sampleRate: number): Float32Array 
   if (!ir) {
     ir = generateIr(spec, sampleRate);
     cache.set(key, ir);
+    if (cache.size > IR_CACHE_MAX) { const oldest = cache.keys().next().value; if (oldest !== undefined) cache.delete(oldest); }
   }
   return ir;
 }

@@ -61,8 +61,9 @@ import {
   type ConvolutionEngine,
 } from "../engines/convolutionEngine.js";
 import {
-  computeBlendPadMix,
+  computeBlendPadMixInto,
   distributeToEnginesInto,
+  type BlendPadMix,
 } from "./blendPad.js";
 import {
   createDuckController,
@@ -111,6 +112,10 @@ export interface OzvenaProcessor {
    * (Reconciled from Pulse Forge, 2026-09-05.)
    */
   setAnalyzersEnabled(on: boolean): void;
+  /** Roadmap O7: true when a convolution IR is currently loaded. */
+  isIrLoaded(): boolean;
+  /** Channel count of the loaded IR (1/2/4), 0 when empty. */
+  getIrChannels(): 1 | 2 | 4 | 0;
 }
 
 export function createOzvenaProcessor(): OzvenaProcessor {
@@ -148,6 +153,8 @@ export function createOzvenaProcessor(): OzvenaProcessor {
   // the wet bus when masking energy is detected.
   const duckController: DuckController = createDuckController();
   const ipc: OzvenaIpc = createOzvenaIpc();
+  // Phase P: persistent Blend Pad mix scratch — zero allocation per block.
+  const blendMixScratch: BlendPadMix = { weights: { e1: 0, e2: 0, e3: 0 }, wetGain: 1 };
   let duckInstanceId: number | null = null;
   let duckSubscription: (() => void) | null = null;
   let lastDuckGain = 1.0;
@@ -363,7 +370,12 @@ export function createOzvenaProcessor(): OzvenaProcessor {
     if (!prev || state.engines.e3 !== prev.engines.e3) {
       hall.setParams(state.engines.e3);
     }
-    if (modChanged) {
+    // Roadmap O6: per-engine modulation-rate multiplier (additive state,
+    // default 1 = the engine's ALGO_TUNING rate untouched). Engine changes
+    // must re-push modulation too (the multiplier lives in the engine state).
+    const enginesChanged =
+      !prev || state.engines.e2 !== prev.engines.e2 || state.engines.e3 !== prev.engines.e3;
+    if (modChanged || enginesChanged) {
       // Scalar-only — cheap, and must follow modPad.setParams. A disabled
       // Mod Pad must zero the engine modulation entirely: fractional LFO
       // reads add smear (and libm sin() rounding drift vs the native
@@ -374,8 +386,16 @@ export function createOzvenaProcessor(): OzvenaProcessor {
       // Roadmap O6: caller-declared depth ceiling (additive state field,
       // default 20 = historical engine clamp).
       const maxDepth = state.mod?.maxDepthSamples ?? 20;
-      plateChamber.setModulation(mod.rateHz, mod.depthSamples, maxDepth);
-      hall.setModulation(mod.rateHz, mod.depthSamples, maxDepth);
+      plateChamber.setModulation(
+        mod.rateHz * (state.engines.e2.modRateMult ?? 1),
+        mod.depthSamples,
+        maxDepth,
+      );
+      hall.setModulation(
+        mod.rateHz * (state.engines.e3.modRateMult ?? 1),
+        mod.depthSamples,
+        maxDepth,
+      );
     }
     if (!prev || state.convolution !== prev.convolution) {
       convolution.setParams({
@@ -588,16 +608,19 @@ export function createOzvenaProcessor(): OzvenaProcessor {
       }
 
       // 6. Distribute to engines via the Blend Pad. Writes into the
-      // pre-allocated engineIn scratch — no allocation in the audio path.
-      const mix = computeBlendPadMix(
+      // pre-allocated engineIn scratch — no allocation in the audio path
+      // (Phase P: the mix weights land in a persistent scratch object
+      // instead of two fresh objects per block).
+      computeBlendPadMixInto(
         state.blendPad,
         {
           e1: state.engines.e1.enabled,
           e2: state.engines.e2.enabled,
           e3: state.engines.e3.enabled,
         },
+        blendMixScratch,
       );
-      distributeToEnginesInto(engineIn, channels, mix.weights, frameCount);
+      distributeToEnginesInto(engineIn, channels, blendMixScratch.weights, frameCount);
 
       // 7. Run each engine on its own distributed scratch. Engine
       // contract: input → output, where output = dry * (1 - engine.mix)
@@ -814,6 +837,14 @@ export function createOzvenaProcessor(): OzvenaProcessor {
       preEq.setAnalyzerEnabled(on);
       reverbEq.setAnalyzerEnabled(on);
       maskingMeter.setAnalyzerEnabled(on);
+    },
+
+    isIrLoaded() {
+      return convolution.isIrLoaded();
+    },
+
+    getIrChannels() {
+      return convolution.getIrChannels();
     },
 
     loadUserIr(samples, channels) {

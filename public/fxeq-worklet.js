@@ -1173,7 +1173,6 @@
             tiltLowState[c] = low;
           }
         }
-        if (typeof globalThis !== "undefined" && globalThis.__dbgDrive !== void 0) globalThis.__dbgDrive = driveSm;
         wrapper.process(channels, frameCount, mode, driveSm, wetGain, outputLinear, quality);
       },
       reset() {
@@ -1186,11 +1185,6 @@
         return wrapper.getLatencySamples();
       },
       setParameter(id, value) {
-        const __l = globalThis.__dbgW;
-        if (__l && id === "driveDb") {
-          __l.push({ set: +value.toFixed(3) });
-          if (__l.length > 8) __l.shift();
-        }
         store.set(id, value);
       },
       getParameter(id) {
@@ -2968,19 +2962,12 @@
           const offset = envNorm * (envDepth / 100) * targetDef.swing;
           if (envRoutedModule && envRoutedParam) {
             modules[envRoutedModule].setParameter(envRoutedParam, envModBase + offset);
-            const __l = globalThis.__dbgW;
-            if (__l) {
-              __l.push({ w: +(envModBase + offset).toFixed(3), env: +env.toFixed(3), depth: envDepth });
-              if (__l.length > 8) __l.shift();
-            }
             envModApplied = true;
           } else if (targetDef.bandScalar === "gainDb") {
             envGainOffset = offset;
           }
         } else if (envRoutedModule && envModApplied) {
           modules[envRoutedModule].setParameter(envRoutedParam, envModBase);
-          const __l = globalThis.__dbgW;
-          if (__l) __l.push({ restore: envModBase });
           envModApplied = false;
         }
         if (modules.sat) {

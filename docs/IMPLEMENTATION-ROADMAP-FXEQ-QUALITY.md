@@ -14,7 +14,7 @@
 | Q3 per-band EQ modul | ✅ hotové 2026-09-05 | default off, `band{n}.eq{Param}` id priestor |
 | Q4 limiter PDR | ✅ hotové 2026-09-05 | default 0, pdr=0 bit-identické |
 | Q5 crossover monotónnosť | ✅ hotové 2026-09-05 | UI writeback follow-up (commands.ts vlastní iný agent) |
-| Q6 envelope routing | ⬜ otvorené | L — návrh pred implementáciou |
+| Q6 envelope routing | ✅ hotové 2026-09-05 | default off; 9 targetov; +8 testov |
 | Q7 linear-phase | ⬜ otvorené | L — samostatný design dokument |
 | P polish | 🟡 čiastočne | ping-pong hermite ✅; phaser smoothing a dyn attack otvorené (sonic zmeny) |
 
@@ -191,14 +191,22 @@ Interpretácia: gain staging nedotknutý (peak identický), rms mierne nižší 
 
 **Motivácia.** Modulácia je teraz fixne zapojená (LFO → modul). Dyn EQ už počíta envelope per band — ten ako mod source (→ sat drive, eq gain, delay mix...) z fxeq spraví dynamický nástroj. Toto je hlavný krok k "hrovému hardvéru".
 
-**Návrh (skica, pred fázou spísať detailný design):**
+**Návrh (realizovaný):**
 
-- [ ] expose per-band envelope (dyn EQ už trackuje `dynState.envelope`) ako normalizovanú hodnotu 0..1;
-- [ ] routing sloty: `envModTarget` (enum modul+param), `envModDepth` — routing v `routeParam`/bandEngine, aplikácia per block (nie per sample — ALLOC free);
-- [ ] drift pozor: modulovaný param nesmie obísť boundary validáciu — mod applied na clamped base;
-- [ ] CPU: len aktívne routings, gated default off.
+- [x] **dedikovaný follower** (nezdieľa dyn EQ envelope — dynEQ môže byť off alebo mať iné time constants): peak detekcia na band vstupe (crossover výstup, pred gain/dynEQ/modulmi — žiadna spätná väzba do detektoru), symetrický atk/rel one-pole, normalizácia na full scale (env 1.0 = plný swing);
+- [x] parametre (band scalars, boundary validácia z auditu automaticky): `envModTarget` (0..9), `envModDepth` (−100..100 %, záporné = invert), `envModAtkMs` (1..200), `envModRelMs` (10..1000);
+- [x] target tabuľka `ENV_MOD_TARGETS` v `core/signalFlow.ts`: 1 satDrive ±6 dB, 2 satMix ±25 %, 3–6 eq shelf/peak gainy ±12 dB, 7 delayMix ±30 %, 8 revMix ±30 %, 9 bandGain ±12 dB. **Vedomé vylúčenia:** časové parametre (delayTime, revDecay, modRate — block-rate retuning kliká a bije sa s tempo sync) a dyn EQ vlastný threshold (self-modulácia detektora);
+- [x] aplikácia: mod sa počíta raz za blok (offset = envNorm · depth/100 · swing) a zapisuje sa do routovaného modulu ako **base + offset** — base cache v bandEngine sa aktualizuje pri KAŽDOM `setModuleParam` toho parametru (user edit, preset, morph, link group), takže modulácia vždy orbituje aktuálnu base;
+- [x] **serializačná bezpečnosť:** processor flat store nikdy nie je modulovaný — `getParameter`/`getModuleParam`/`getAllParams` reportujú base; `getBandPeaks` netknuté;
+- [x] **restore:** target off / depth 0 / zmena targetu → base sa zapíše späť do modulu presne raz (`envModApplied` flag);
+- [x] band-gain target (9) sa aplikuje v mieste čítania `bandGainDb` (base nedotknutý);
+- [x] CPU: jeden follower + jeden write per block, len keď je routing aktívny; default off = nulová cena.
 
-**Testy:** determinizmus s routingom, bounded output pri full depth, off = bit-kompatibilné.
+**Sonic zmena:** NIE — `envModTarget` default 0 → Q6 blok sa preskočí celý, golden parity 8/8 bit-exaktná.
+
+**Testy (`tests/fxeq-env-routing.test.ts`, 8):** default off bit-identický; smer modulácie (hlasnejší vstup → viac drive); flat store zachováva base počas modulácie; restore konverguje naspäť k never-modulated referencii; negatívny depth invertuje smer; band-gain target zdvíha pásmo; determinizmus; všetkých 9 targetov pri ±100 % depth finitných a bit-stále.
+
+**Nález počas implementácie (dôležité):** saturácia/comp de-click smoothers používajú per-sample α aplikovaný raz za blok — reálny de-click τ je ~0.74 s, nie ~12 ms ako hovorili komentáre. Pokus o "opravu" α na blokovo-korektnú hodnotu spôsobil KLIKY na každej automation hranе (20 % kroky per blok) — de-click testy to okamžite chytili. **Záver: malý per-block krok JE mechanizmus proti kliku; opravené boli len zavádzajúce komentáre** (saturation.ts — "12 ms" → dokumentovaný blokový glide ~0.7 s). Rovnaký pattern zostáva v reverb fb glide (~1.9 s) a crossover smoothingu (~2 s) — zámerné, click-free, zdokumentované.
 
 ---
 
@@ -241,7 +249,9 @@ Interpretácia: gain staging nedotknutý (peak identický), rms mierne nižší 
 | Full repo suite | 1736 passed + 1 morph perf gate fail → rekalinbrácia → perf file 3/3; boot/E2E UI faily = súbežný agent (app sa nebootol) |
 | Sample rates | 44.1/48/96 kHz sweep cez všetkých 83 presetov — finitné a bounded |
 
-Nové/regresné testy tejto fázy: `fxeq-tempo-sync.test.ts` (9), `fxeq-band-eq.test.ts` (9), core-hardening +10 (crossover guard 2, PDR 3, ping-pong 1, reverb tank 3, staré 16→27), golden UPDATE_GOLDEN=1 path.
+Nové/regresné testy: `fxeq-tempo-sync.test.ts` (9), `fxeq-band-eq.test.ts` (9), `fxeq-env-routing.test.ts` (8, Q6), core-hardening +10 (crossover guard 2, PDR 3, ping-pong 1, reverb tank 3, staré 16→27), golden UPDATE_GOLDEN=1 path.
+
+**Verifikácia Q6 (2026-09-05):** fxeq sady 13 súborov **119 passed**; golden parity 8/8 bit-exaktná; typecheck čistý; worklet bundl rebuildnutý (envModTarget prítomný); browser Chromium **197/197** (všetkých 9 fxeq PASS, CPU 28.1 % worst case).
 
 ## Verifikačný matrix (po každej fáze)
 

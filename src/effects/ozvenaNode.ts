@@ -69,6 +69,33 @@ export function createOzvenaNode(
       node.port.postMessage({ type: "paramAt", id, value, when });
     },
     /**
+     * Roadmap O7: load a user impulse response (convolution mode). The
+     * buffer is interleaved to (1|2) channels and posted as a transferable;
+     * the core expects it already at the context sample rate (which
+     * decodeAudioData guarantees). Latency re-syncs over the port.
+     */
+    loadUserIr(ir: AudioBuffer) {
+      if (disposed) return;
+      const chCount = (ir.numberOfChannels >= 2 ? 2 : 1) as 1 | 2;
+      const len = ir.length;
+      const interleaved = new Float32Array(len * chCount);
+      const left = ir.getChannelData(0);
+      const right = chCount === 2 ? ir.getChannelData(1) : left;
+      for (let i = 0; i < len; i++) {
+        interleaved[i * 2] = left[i];
+        interleaved[i * 2 + 1] = right[i];
+      }
+      node.port.postMessage(
+        { type: "loadIr", samples: interleaved, channels: chCount },
+        [interleaved.buffer],
+      );
+    },
+    /** Remove a previously loaded user IR (fall back to factory selection). */
+    clearUserIr() {
+      if (disposed) return;
+      node.port.postMessage({ type: "clearIr" });
+    },
+    /**
      * Live tempo changes: the tempo-synced pre-delay must follow the
      * project BPM (the core clamps 20..300 and re-computes the delay).
      */

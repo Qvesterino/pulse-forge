@@ -264,6 +264,10 @@ export interface PlateChamberEngineState {
   /** Mid decay multiplier (0.25..4, default 1 = mid band follows the
    *  main T60). Roadmap O3: second axis of the per-band decay network. */
   midDecay: number;
+  /** Roadmap O6: modulation-rate multiplier on top of the algorithm
+   *  tuning (default 1 = untouched). Additive — legacy presets keep
+   *  their sound. */
+  modRateMult: number;
   /** Feedback cross-feed width (0..1). 1 = fully independent L/R loops
    *  (widest), 0 = mono feedback (collapsed image). */
   stereoWidth: number;
@@ -291,6 +295,7 @@ export function defaultPlateChamberEngine(): PlateChamberEngineState {
     algo: "room",
     bassDecay: 1.0,
     midDecay: 1.0,
+    modRateMult: 1.0,
     stereoWidth: 1.0,
     shimmer: 0,
     drive: 0,
@@ -318,6 +323,8 @@ export interface HallEngineState {
   bassDecay: number;
   /** Mid decay multiplier — see PlateChamberEngineState. */
   midDecay: number;
+  /** Modulation-rate multiplier — see PlateChamberEngineState. */
+  modRateMult: number;
   /** Feedback cross-feed width — see PlateChamberEngineState. */
   stereoWidth: number;
   /** Octave-up pitch shifter in the feedback path (0..1). */
@@ -344,6 +351,7 @@ export function defaultHallEngine(): HallEngineState {
     algo: "hall",
     bassDecay: 1.0,
     midDecay: 1.0,
+    modRateMult: 1.0,
     stereoWidth: 1.0,
     shimmer: 0,
     drive: 0,

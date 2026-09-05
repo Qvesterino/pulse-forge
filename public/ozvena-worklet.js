@@ -605,6 +605,7 @@
       algo: "room",
       bassDecay: 1,
       midDecay: 1,
+      modRateMult: 1,
       stereoWidth: 1,
       shimmer: 0,
       drive: 0
@@ -626,6 +627,7 @@
       algo: "hall",
       bassDecay: 1,
       midDecay: 1,
+      modRateMult: 1,
       stereoWidth: 1,
       shimmer: 0,
       drive: 0
@@ -1623,7 +1625,11 @@
     "vocal-booth": { lengthSec: 1.2, earlyTaps: 6, earlyMaxMs: 25, lateDecay: 4.5, brightness: 0.3, character: "dry" },
     "plate": { lengthSec: 2.5, earlyTaps: 0, earlyMaxMs: 0, lateDecay: 2, brightness: 0.85, character: "metallic" },
     "hall": { lengthSec: 4, earlyTaps: 16, earlyMaxMs: 80, lateDecay: 1.2, brightness: 0.5, character: "warm" },
-    "cathedral": { lengthSec: 5, earlyTaps: 12, earlyMaxMs: 120, lateDecay: 0.8, brightness: 0.2, character: "dark" }
+    "cathedral": { lengthSec: 5, earlyTaps: 12, earlyMaxMs: 120, lateDecay: 0.8, brightness: 0.2, character: "dark" },
+    // Roadmap O7: mono fallbacks for the wide variants (true-stereo set is
+    // preferred at runtime; these keep the catalogue total).
+    "plate-wide": { lengthSec: 2.5, earlyTaps: 0, earlyMaxMs: 0, lateDecay: 2, brightness: 0.85, character: "metallic" },
+    "chamber-wide": { lengthSec: 4, earlyTaps: 16, earlyMaxMs: 90, lateDecay: 1.1, brightness: 0.45, character: "warm" }
   };
   function makeRng2(seed) {
     let s = seed | 0;
@@ -1700,9 +1706,13 @@
     "vocal-booth": { lengthSec: 1.2, spreadMs: 18, seed: 101, decay: 3.4, bright: 0.45 },
     "plate": { lengthSec: 1.8, spreadMs: 4, seed: 202, decay: 2.2, bright: 0.85 },
     "hall": { lengthSec: 2.5, spreadMs: 38, seed: 303, decay: 1.4, bright: 0.55 },
-    "cathedral": { lengthSec: 3, spreadMs: 55, seed: 404, decay: 1.1, bright: 0.35 }
+    "cathedral": { lengthSec: 3, spreadMs: 55, seed: 404, decay: 1.1, bright: 0.35 },
+    // Roadmap O7: wide true-stereo variants (4ch decorrelated by design).
+    "plate-wide": { lengthSec: 1.8, spreadMs: 22, seed: 205, decay: 2.2, bright: 0.85 },
+    "chamber-wide": { lengthSec: 3, spreadMs: 46, seed: 407, decay: 1.3, bright: 0.5 }
   };
   var cache4 = /* @__PURE__ */ new Map();
+  var IR_CACHE_MAX = 24;
   function generateFactoryIr4(id, sampleRate2) {
     const spec = IR4_SPECS[id];
     if (!spec) return null;
@@ -1763,6 +1773,10 @@
       for (let i = 0; i < out.length; i++) out[i] *= g;
     }
     cache4.set(key, out);
+    if (cache4.size > IR_CACHE_MAX) {
+      const oldest = cache4.keys().next().value;
+      if (oldest !== void 0) cache4.delete(oldest);
+    }
     return out;
   }
   var cache = /* @__PURE__ */ new Map();
@@ -1774,6 +1788,10 @@
     if (!ir) {
       ir = generateIr(spec, sampleRate2);
       cache.set(key, ir);
+      if (cache.size > IR_CACHE_MAX) {
+        const oldest = cache.keys().next().value;
+        if (oldest !== void 0) cache.delete(oldest);
+      }
     }
     return ir;
   }
@@ -2291,8 +2309,9 @@
       dampingFreqHz: 5e3,
       mix: 100,
       algo: "room",
-      bassDecay: 1,
       midDecay: 1,
+      bassDecay: 1,
+      modRateMult: 1,
       stereoWidth: 1,
       shimmer: 0,
       drive: 0
@@ -2845,8 +2864,9 @@
       dampingFreqHz: 4e3,
       mix: 100,
       algo: "hall",
-      bassDecay: 1,
       midDecay: 1,
+      bassDecay: 1,
+      modRateMult: 1,
       stereoWidth: 1,
       shimmer: 0,
       drive: 0
@@ -3733,7 +3753,7 @@
   }
 
   // src/effects/ozvena-core/core/blendPad.ts
-  function computeBlendPadMix(blend, enginesEnabled) {
+  function computeBlendPadMixInto(blend, enginesEnabled, out) {
     const raw = blendPadToEngineWeights(blend.x, blend.y);
     let e1 = enginesEnabled.e1 ? raw.e1 : 0;
     let e2 = enginesEnabled.e2 ? raw.e2 : 0;
@@ -3744,7 +3764,10 @@
       e2 /= sum;
       e3 /= sum;
     }
-    return { weights: { e1, e2, e3 }, wetGain: 1 };
+    out.weights.e1 = e1;
+    out.weights.e2 = e2;
+    out.weights.e3 = e3;
+    out.wetGain = 1;
   }
   function distributeToEnginesInto(out, channels, weights, frameCount) {
     const cc = Math.min(channels.length, out.e1.length, out.e2.length, out.e3.length);
@@ -3955,6 +3978,7 @@
     const safetyLimiter = createSafetyLimiter();
     const duckController = createDuckController();
     const ipc = createOzvenaIpc();
+    const blendMixScratch = { weights: { e1: 0, e2: 0, e3: 0 }, wetGain: 1 };
     let duckInstanceId = null;
     let duckSubscription = null;
     let lastDuckGain = 1;
@@ -4129,11 +4153,20 @@
       if (!prev || state.engines.e3 !== prev.engines.e3) {
         hall.setParams(state.engines.e3);
       }
-      if (modChanged) {
+      const enginesChanged = !prev || state.engines.e2 !== prev.engines.e2 || state.engines.e3 !== prev.engines.e3;
+      if (modChanged || enginesChanged) {
         const mod = state.mod.enabled ? modPad.getModParams() : { rateHz: 0, depthSamples: 0 };
         const maxDepth = state.mod?.maxDepthSamples ?? 20;
-        plateChamber.setModulation(mod.rateHz, mod.depthSamples, maxDepth);
-        hall.setModulation(mod.rateHz, mod.depthSamples, maxDepth);
+        plateChamber.setModulation(
+          mod.rateHz * (state.engines.e2.modRateMult ?? 1),
+          mod.depthSamples,
+          maxDepth
+        );
+        hall.setModulation(
+          mod.rateHz * (state.engines.e3.modRateMult ?? 1),
+          mod.depthSamples,
+          maxDepth
+        );
       }
       if (!prev || state.convolution !== prev.convolution) {
         convolution.setParams({
@@ -4284,15 +4317,16 @@
             engineDry[c][i] = sanitize(channels[c][i]);
           }
         }
-        const mix = computeBlendPadMix(
+        computeBlendPadMixInto(
           state.blendPad,
           {
             e1: state.engines.e1.enabled,
             e2: state.engines.e2.enabled,
             e3: state.engines.e3.enabled
-          }
+          },
+          blendMixScratch
         );
-        distributeToEnginesInto(engineIn, channels, mix.weights, frameCount);
+        distributeToEnginesInto(engineIn, channels, blendMixScratch.weights, frameCount);
         reflections.process(engineIn.e1, frameCount);
         const injectER = clamp(state.blendPad.injectER, 0, 1);
         const m1g = clamp(state.engines.e1.mix, 0, 100) / 100;
@@ -4439,6 +4473,12 @@
         reverbEq.setAnalyzerEnabled(on);
         maskingMeter.setAnalyzerEnabled(on);
       },
+      isIrLoaded() {
+        return convolution.isIrLoaded();
+      },
+      getIrChannels() {
+        return convolution.getIrChannels();
+      },
       loadUserIr(samples, channels) {
         loadUserIr(samples, channels);
       },
@@ -4539,6 +4579,16 @@
           let i = q.length;
           while (i > 0 && q[i - 1].when > when) i--;
           q.splice(i, 0, { id: msg.id, value: msg.value, when });
+        } else if (msg.type === "loadIr") {
+          const samples = msg.samples;
+          const channels = msg.channels === 4 ? 4 : msg.channels === 2 ? 2 : 1;
+          if (samples && samples.length) {
+            this.proc.loadUserIr(samples, channels);
+            this.postLatency();
+          }
+        } else if (msg.type === "clearIr") {
+          this.proc.clearUserIr();
+          this.postLatency();
         } else if (msg.type === "bpm") {
           const bpm2 = Number(msg.bpm);
           if (Number.isFinite(bpm2)) this.proc.setBpm(bpm2);

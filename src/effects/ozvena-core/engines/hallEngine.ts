@@ -11,8 +11,6 @@
  *  - type-only specifiers marked with "type" for verbatimModuleSyntax
  *    (Pulse Forge tsconfig is stricter than upstream).
  */
-// ═══════════════════════════════════════════════════════════
-// Ozvena — Hall / Large Chamber Engine (E3)
 //
 // 8-line FDN with Householder feedback matrix, per-line HF damping
 // (IN the feedback loop), in-loop delay-line modulation (LFO per
@@ -101,8 +99,9 @@ export function createHallEngine(): HallEngine {
     dampingFreqHz: 4000,
     mix: 100,
     algo: "hall",
-    bassDecay: 1.0,
     midDecay: 1.0,
+    bassDecay: 1.0,
+    modRateMult: 1.0,
     stereoWidth: 1.0,
     shimmer: 0,
     drive: 0,

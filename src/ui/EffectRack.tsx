@@ -148,6 +148,8 @@ function Device({
   const doc = useDoc();
   const def = EFFECT_DEFS[fx.type];
   const [collapsed, setCollapsed] = useState(false);
+  // Roadmap O7: transient note for user-IR loading (Ozvena convolution).
+  const [irNote, setIrNote] = useState<string | null>(null);
   // A/B state lives in the DOCUMENT (fx.deviceState) — collapse, unmount,
   // track switches, reloads and collab sync all preserve it. React state is
   // only the transient draft inside the panel between pointer and command.
@@ -170,6 +172,11 @@ function Device({
         <span className="fx-device-title">
           <span className="fx-device-name">{def.name}</span>
           <span className="fx-device-state">{fx.bypassed ? "BYPASSED" : "ACTIVE"}</span>
+          {irNote && (
+            <span className="fx-device-warn" role="status">
+              {irNote}
+            </span>
+          )}
           {fallbackReason && (
             <span className="fx-device-warn" role="status" title={fallbackReason}>
               ⚠ FALLBACK
@@ -193,6 +200,38 @@ function Device({
               </option>
             ))}
           </select>
+        )}
+        {fx.type === "ozvena" && (
+          <label
+            className="btn btn-small fx-ir-load"
+            title="Load a user impulse response (Ozvena convolution)"
+          >
+            IR…
+            <input
+              type="file"
+              accept="audio/*"
+              style={{ display: "none" }}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                if (!file) return;
+                const engine = services.engine as typeof services.engine & {
+                  loadUserIrForFx?: (trackId: string, fxId: string, file: File) => Promise<void>;
+                };
+                if (!engine.loadUserIrForFx) {
+                  setIrNote("Engine cannot load IRs");
+                  return;
+                }
+                setIrNote("Decoding…");
+                engine
+                  .loadUserIrForFx(track.id, fx.id, file)
+                  .then(() => setIrNote("IR loaded"))
+                  .catch((err: unknown) =>
+                    setIrNote(err instanceof Error ? err.message : String(err)),
+                  );
+              }}
+            />
+          </label>
         )}
         <div className="fx-device-buttons">
           <button

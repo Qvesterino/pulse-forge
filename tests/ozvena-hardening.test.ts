@@ -43,6 +43,12 @@ class FakeAudioWorkletProcessor {
 
 interface ProcShape {
   port: FakePort;
+  proc: {
+    isIrLoaded(): boolean;
+    getIrChannels(): number;
+    clearUserIr(): void;
+    loadUserIr(samples: Float32Array, channels: 1 | 2 | 4): void;
+  };
   state: {
     global: Record<string, unknown>;
     engines: { e1: { enabled: boolean }; e2: Record<string, unknown>; e3: Record<string, unknown> };
@@ -455,5 +461,33 @@ describe("Ozvena hardening — quality switches are scalar-only on the audio thr
     // input (≈1.0) for the release duration.
     expect(peak).toBeLessThan(0.99);
     expect(peak2).toBeLessThan(1.0);
+  });
+});
+
+describe("Ozvena hardening — user IR wiring (roadmap O7)", () => {
+  it("loadIr message arms the convolver; clearIr disarms it; latency re-posts", () => {
+    const proc = new Processor();
+    // Convolution latency only counts in hybrid/convolution modes.
+    sendParam(proc, "convolution.mode", 1);
+    proc.port.posted.length = 0;
+    // 4-tap stereo IR (2 frames × 2 channels interleaved).
+    const ir = new Float32Array([1, 0.5, 0.25, 0.125]);
+    proc.port.onmessage?.({ data: { type: "loadIr", samples: ir, channels: 2 } });
+    expect(proc.proc.isIrLoaded()).toBe(true);
+    expect(proc.proc.getIrChannels()).toBe(2);
+    // Latency changes when a convolver appears — the node must re-report.
+    const latencies = proc.port.posted.filter((m) => m.type === "latency");
+    expect(latencies.length).toBeGreaterThanOrEqual(1);
+
+    proc.port.posted.length = 0;
+    proc.port.onmessage?.({ data: { type: "clearIr" } });
+    expect(proc.proc.isIrLoaded()).toBe(false);
+    expect(proc.port.posted.some((m) => m.type === "latency")).toBe(true);
+  });
+
+  it("an empty IR payload is ignored without corrupting the convolver", () => {
+    const proc = new Processor();
+    proc.port.onmessage?.({ data: { type: "loadIr", samples: new Float32Array(0), channels: 2 } });
+    expect(proc.proc.isIrLoaded()).toBe(false);
   });
 });

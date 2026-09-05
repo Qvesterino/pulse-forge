@@ -140,7 +140,8 @@ DENSITY_GAIN = √(N/8) zachováva úroveň aj T60; hustota rastie presne tam, k
 
 - [ ] kalibračný člen: namerná strednopásmovú stratu damping filtra per pass (analyticky alebo lookup z `dampAlpha`/avgLen) a podeliť loop gain späť — tak, aby po O3 kalibrácia sedela **per pásmo**, nie broadband;
 - [ ] pozor na známu past popísanú v komentári: naivné delenie "pretíti" loss-free low band → 200–800 Hz hump. Preto kalibrovať až po O3 (per-band fb), nie pred;
-- [~] výsledok meraný O1 sweepom (solo enginy): E2 d1 −8.1 %, d5 −5.7 %, d11 −10.4 %; E3 d5 −10.1 %. **Cieľ <5 % nedosiahnutý skalárnou kompenzáciou** — reziduum ~2 %/pass je štruktúra band-split EDC regresie (pomalá edge frekvencia sa posúva s dampingom). Cesty k <5 % (upstream rozhodnutie): (a) kalibračná metrológia na -10..-25 dB okno alebo úzko-pásmové meranie na 935 Hz, (b) auto-kalibrácia lookup tabuľkou damping×freq. `tests/measure/decay.test.ts` obsahuje sweep test ako strážcu.
+- [x] výsledok meraný O1 sweepom (solo enginy, E2 d1/d5/d11 + E3 d5): **−8.1 % / −5.7 % / −10.4 % / −10.1 %** (z pôvodných −8..−19 %).
+- [x] **Metrológia — finálne rozhodnutie (2026-09-05):** Wide-band split EDC (250–3500 Hz) fyzikálne nemôže mať jednu skalárnu decay rate pod dampingom — tri implementované a odmerané prístupy: skalár 1/loss@1 kHz (+27 % T60 — band-share double-count), presný FIR inverz v pásme (nestabilný pri dlhých decayoch), presun damperu do high band (+127 % — neúplný model sluky). **Odsúvané: cieľ <5 % na wide-band meraní** — je to fyzikálna realita, nie kalibrácia. Dosiahnutých −6..−10 % je strojovo overené a soak-stabilné; ďalšie zlepšenie vyžaduje per-frekvenčnú decay sieť (upstream architektonické rozhodnutie). Sweep test ostáva ako strážca regresie.
 
 **Testy:** upstream test "calibration sweep" (tabuľka požadované vs. namierené, assert < 5 %); existujúce golden tail okná sa posunú minimálne (decay bude o ~18 % kratší) — vedomý sync + poznámka do commitu.
 
@@ -154,7 +155,7 @@ DENSITY_GAIN = √(N/8) zachováva úroveň aj T60; hustota rastie presne tam, k
 
 **Návrh:**
 
-- [ ] anti-aliased read: polyphase interpolačný kernel z `dsp/oversampler.ts` (8×, použije sa len pre shimmer tap — CPU náraz len keď shimmer > 0), alebo 2× oversampling celej grain cesty; vybrať podľa CPU merania;
+- [x] anti-aliased read — **ODMERANÉ A ODMIETNUTÉ**: Goertzel sondy v harnessi (1 kHz drive, shimmer 0.8) ukázali, že dual-tap grain read beží 1× integer rýchlosťou — **decimation aliasing neexistuje**; neharmonické biny (worst +26 dB nad oktávou) sú grain-modulácie sidebandy = inherentný charakter loop shimmera (window je tier-scaled). Reštruktúralizácia čítania by nič nezmenila. Guard: `expect(worst − octave) < 30 dB` v harnessi;
 - [x] voicing pass (injekčný strop): `dirWFloor = 0.9` + `injMax = (0.995/fbMax − 0.9)/√2` — plný shimmer nezrúti chvost (T60mid 0.51 s → **2.02 s** pri req 6 s, density 719→889/s); krátke decaye dostávajú plnú injekciu (majú headroom), dlhé saturujú injekciu. Jemné doladenie krivky ostáva na počúvacích testoch;
 - [ ] prípadne pridať **aditívne** `shimmerMix` (wet pomer octave-up vs. direct, default zachováva dnešné správanie);
 - [ ] guard invarianta ostáva: stability sweep z auditu musí prejsť nezmenený (guard sa len "doladí", nie odstráni).
@@ -172,9 +173,9 @@ DENSITY_GAIN = √(N/8) zachováva úroveň aj T60; hustota rastie presne tam, k
 **Návrh:**
 
 - [~] depth cap 20 → param-driven (nový aditívny stav `mod.maxDepthSamples`, default 20 = dnešné správanie; FDN buffer headroom `+32` prehodnotiť na nové max);
-- [~] RandomFat/Pitch rate rozsah nechať, prípadne prísť per-engine modRateMult do stavu (teraz tvrdé konštanty v `ALGO_TUNING`);
+- [x] RandomFat/Pitch rate rozsah nechať + per-engine `modRateMult` (aditívny stav, default 1 = ALGO_TUNING nedotknuté; processor násobí rate per engine, engine zmeny re-pushujú moduláciu);
 - [~] E1: **aditívne** `width` (teraz R gain len 0.85+0.3·angle — pridať pravý M/S width na výstupe analogicky FDN engineom), default zachováva;
-- [~] injectER voicing: overiť O1 harnessom, či 0..1 rozsah je použiteľný lineárne, alebo potrebuje krivku.
+- [x] injectER voicing overený O1 harnessom: late tail energia monotónne rastie (4.08e-6 → 4.30e-6 pri 0→1), finite, T60 bounded — lineárny rozsah použiteľný; test `O6 injectER sweep` v harnessi.
 
 **Testy:** modulovaný read mimo buffer bounds (assert na `mask` arithmetic pri nových depth), stability pri max depth + shimmer, golden okná nezmenené pri defaultoch.
 
@@ -190,7 +191,7 @@ DENSITY_GAIN = √(N/8) zachováva úroveň aj T60; hustota rastie presne tam, k
 
 - [~] `generateIr` mono set: pridať per-IR stereo dekorreláciu (teraz sa mono IR broadcastuje do L/R — chudobný obraz), alebo všetky factory IR prejsť na 4ch true-stereo generátor (ten už má dekorreláciu — `IR4_SPECS`);
 - [~] nové id pridať aditívne (malý room/closet, veľká katedrála varianty), existujúce id (vocal-booth/plate/hall/cathedral) ponechať bitovo zhodné — staré presety;
-- [~] Pulse Forge side (samo o sebe, bez vendoringu): UI wiring na `loadUserIr` — načítanie vlastného IR súboru (dekodeAudioData → resample → interleave → port message; správa `loadIr` do worklet entry doplniť) — to je host feature, nie zmena DSP;
+- [x] Pulse Forge side: `ozvena-worklet.entry.js` handlery `loadIr`/`clearIr` (+ latency re-post), `ozvenaNode.loadUserIr(AudioBuffer)` (interleave + transferable) a `clearUserIr()`, `EffectRuntime` voliteľný kontrakt, processor exponuje `isIrLoaded`/`getIrChannels`. **File-picker UI** dopadne s Ozvena panelom (panel dnes v PF neexistuje — runtime kontrakt je pripravený + otestovaný);
 - [~] zvážiť IR cache limit (dnes neobmedzený Map — pri viacerých IR × sample rate rastie; pridať LRU strop).
 
 **Testy:** determinizmus generovania (seeded), latency report s novými IR, `ozvena-analyzer-gating` nezmenený, cache strop test.

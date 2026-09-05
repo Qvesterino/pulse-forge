@@ -139,6 +139,17 @@ class OzvenaWorkletProcessor extends AudioWorkletProcessor {
         let i = q.length;
         while (i > 0 && q[i - 1].when > when) i--;
         q.splice(i, 0, { id: msg.id, value: msg.value, when });
+      } else if (msg.type === "loadIr") {
+        // Roadmap O7: user IR (interleaved, already at the host rate).
+        const samples = msg.samples;
+        const channels = msg.channels === 4 ? 4 : msg.channels === 2 ? 2 : 1;
+        if (samples && samples.length) {
+          this.proc.loadUserIr(samples, channels);
+          this.postLatency();
+        }
+      } else if (msg.type === "clearIr") {
+        this.proc.clearUserIr();
+        this.postLatency();
       } else if (msg.type === "bpm") {
         // Live tempo changes must reach the tempo-synced pre-delay — the
         // core clamps to 20..300 itself.

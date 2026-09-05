@@ -3281,6 +3281,24 @@ export class AudioEngine {
     return rt?.getGainReductionDb?.() ?? null;
   }
 
+  /**
+   * Roadmap O7: load a user impulse response file into a convolution-capable
+   * effect (Ozvena). Decodes via the engine context (decodeAudioData already
+   * resamples to the context sample rate) and hands the AudioBuffer to the
+   * runtime, which interleaves and posts it to the worklet.
+   */
+  async loadUserIrForFx(trackId: string, fxId: string, file: File): Promise<void> {
+    const rt =
+      this.trackNodes.get(trackId)?.fx.runtimes.get(fxId) ??
+      this.groupNodes.get(trackId)?.fx.runtimes.get(fxId) ??
+      this.returnNodes.get(trackId)?.fx.runtimes.get(fxId);
+    if (!rt?.loadUserIr) throw new Error("This effect cannot load impulse responses");
+    const ctx = this.ctx;
+    if (!ctx) throw new Error("Audio engine is not started");
+    const buffer = await ctx.decodeAudioData(await file.arrayBuffer());
+    rt.loadUserIr(buffer);
+  }
+
   /** Live meter snapshot from an effect runtime ( Ultina spectrum/LUFS/masking…). */
   getFxMeters(trackId: string, fxId: string): unknown {
     const rt =

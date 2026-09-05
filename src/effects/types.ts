@@ -26,6 +26,14 @@ export interface EffectRuntime {
    */
   setSidechainInput?(node: AudioNode | null): void;
   /**
+   * Roadmap O7: load a user impulse response into convolution-capable
+   * effects (Ozvena). The runtime owns resampling/interleaving; the IR is
+   * already at the context sample rate (decodeAudioData guarantees it).
+   */
+  loadUserIr?(ir: AudioBuffer): void;
+  /** Remove a previously loaded user IR (fall back to factory selection). */
+  clearUserIr?(): void;
+  /**
    * True when this runtime runs a reduced or bypassed fallback because the
    * AudioWorklet DSP is unavailable in this context. The engine reports these
    * (getDegradedFx) so the UI can show a warning badge — fallbacks must never

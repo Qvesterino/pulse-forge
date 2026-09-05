@@ -82,6 +82,32 @@ export function distributeToEngines(
 }
 
 /**
+ * Phase P polish (2026-09-05 audit): allocation-free variant of
+ * `computeBlendPadMix` — writes into a caller-owned weights object so the
+ * realtime path allocates nothing per block.
+ */
+export function computeBlendPadMixInto(
+  blend: BlendPadState,
+  enginesEnabled: { e1: boolean; e2: boolean; e3: boolean },
+  out: BlendPadMix,
+): void {
+  const raw = blendPadToEngineWeights(blend.x, blend.y);
+  let e1 = enginesEnabled.e1 ? raw.e1 : 0;
+  let e2 = enginesEnabled.e2 ? raw.e2 : 0;
+  let e3 = enginesEnabled.e3 ? raw.e3 : 0;
+  const sum = e1 + e2 + e3;
+  if (sum > 1e-6) {
+    e1 /= sum;
+    e2 /= sum;
+    e3 /= sum;
+  }
+  out.weights.e1 = e1;
+  out.weights.e2 = e2;
+  out.weights.e3 = e3;
+  out.wetGain = 1;
+}
+
+/**
  * Realtime-safe variant of `distributeToEngines`: fills caller-owned,
  * pre-allocated scratch instead of allocating six new Float32Arrays per
  * audio block. Every buffer in `out` is fully written for `frameCount`
