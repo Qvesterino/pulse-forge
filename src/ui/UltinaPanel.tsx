@@ -2,6 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ALL_PARAMS, tryGetParamDef, clampParam as clampUltinaParam } from "../effects/ultina-core/contracts/parameterSchema";
 import { DEFAULT_MODULE_ORDER } from "../effects/ultina-core/contracts/state";
 import { FACTORY_PRESETS } from "../effects/ultina-core/presets/factoryPresets";
+import {
+  UltinaPresetRepository,
+  ULTINA_PRESET_SCHEMA_VERSION,
+  type UltinaPresetEntry,
+} from "../persistence/UltinaPresetRepository";
 import { analyzeTrack, analyzeWithTarget } from "../effects/ultina-core/analysis/mixAssistant";
 import {
   ASSISTANT_CHARACTERS,
@@ -107,6 +112,24 @@ export function UltinaPanel({
   const [assistSummary, setAssistSummary] = useState<string[] | null>(null);
   const [character, setCharacter] = useState<AssistantCharacter>("punchy");
   const [intensity, setIntensity] = useState<AssistantIntensity>("balanced");
+
+  // ── USER PRESETS: named snapshots of the full parameter map ──
+  const [userPresets, setUserPresets] = useState<UltinaPresetEntry[]>([]);
+  const [selectedUserPresetId, setSelectedUserPresetId] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void new UltinaPresetRepository()
+      .list()
+      .then((all) => {
+        if (!cancelled) setUserPresets(all);
+      })
+      .catch(() => {
+        /* repository already degrades to [] — nothing to surface here */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // ── REFERENCE MATCH state ──
   const [refSources, setRefSources] = useState<{ id: string; name: string }[]>([]);
@@ -802,18 +825,95 @@ export function UltinaPanel({
           aria-label="Ultina preset"
           defaultValue=""
           onChange={(event) => {
+            const user = userPresets.find((p) => p.id === event.target.value);
+            if (user) {
+              onApplyPreset(user.name, user.params);
+              setSelectedUserPresetId(user.id);
+              event.target.value = "";
+              return;
+            }
             const preset = FACTORY_PRESETS.find((p) => p.name === event.target.value);
             if (preset) onApplyPreset(preset.name, preset.params);
             event.target.value = "";
           }}
         >
           <option value="">PRESET…</option>
-          {FACTORY_PRESETS.map((p) => (
-            <option key={p.id} value={p.name}>
-              {p.module.toUpperCase()} · {p.name}
-            </option>
-          ))}
+          {userPresets.length > 0 && (
+            <optgroup label="USER">
+              {userPresets.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </optgroup>
+          )}
+          <optgroup label="FACTORY">
+            {FACTORY_PRESETS.map((p) => (
+              <option key={p.id} value={p.name}>
+                {p.module.toUpperCase()} · {p.name}
+              </option>
+            ))}
+          </optgroup>
         </select>
+        <button
+          type="button"
+          className="btn btn-small"
+          aria-label="Save user preset"
+          title="Save the current settings as a user preset"
+          onClick={async () => {
+            const name = (window.prompt("User preset name:", "") ?? "").trim();
+            if (!name) return;
+            const existing = userPresets.find((p) => p.name === name);
+            if (existing && !window.confirm(`Preset "${name}" already exists — overwrite it?`)) return;
+            const repo = new UltinaPresetRepository();
+            await repo.save({
+              id: existing?.id ?? `ultina-preset-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              name,
+              params: { ...params },
+              createdAt: new Date().toISOString(),
+              schemaVersion: ULTINA_PRESET_SCHEMA_VERSION,
+            });
+            setUserPresets(await repo.list());
+          }}
+        >
+          SAVE
+        </button>
+        {selectedUserPresetId && (
+          <>
+            <button
+              type="button"
+              className="btn btn-small"
+              aria-label="Rename user preset"
+              onClick={async () => {
+                const current = userPresets.find((p) => p.id === selectedUserPresetId);
+                if (!current) return;
+                const name = (window.prompt("Rename preset:", current.name) ?? "").trim();
+                if (!name || name === current.name) return;
+                const repo = new UltinaPresetRepository();
+                await repo.save({ ...current, name });
+                setUserPresets(await repo.list());
+              }}
+            >
+              RENAME
+            </button>
+            <button
+              type="button"
+              className="btn btn-small btn-danger"
+              aria-label="Delete user preset"
+              onClick={async () => {
+                const current = userPresets.find((p) => p.id === selectedUserPresetId);
+                if (!current) return;
+                if (!window.confirm(`Delete preset "${current.name}"?`)) return;
+                const repo = new UltinaPresetRepository();
+                await repo.remove(current.id);
+                setSelectedUserPresetId(null);
+                setUserPresets(await repo.list());
+              }}
+            >
+              DEL
+            </button>
+          </>
+        )}
       </div>
 
       {/* Module chips in graph order */}

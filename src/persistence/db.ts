@@ -1,5 +1,5 @@
 export const DB_NAME = "pulse-forge";
-export const DB_VERSION = 8;
+export const DB_VERSION = 9;
 export const STORE_PROJECTS = "projects";
 export const STORE_META = "meta";
 export const STORE_PRESETS = "presets";
@@ -10,6 +10,7 @@ export const STORE_FROZEN_AUDIO = "frozen-audio";
 export const STORE_USER_KITS = "user-kits";
 export const STORE_GROOVE_POOL = "groove-pool";
 export const STORE_SNAPSHOTS = "project-snapshots";
+export const STORE_ULTINA_PRESETS = "ultina-presets";
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -36,6 +37,8 @@ export function openDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(STORE_USER_KITS)) db.createObjectStore(STORE_USER_KITS, { keyPath: "id" });
       if (!db.objectStoreNames.contains(STORE_GROOVE_POOL)) db.createObjectStore(STORE_GROOVE_POOL, { keyPath: "id" });
       if (!db.objectStoreNames.contains(STORE_SNAPSHOTS)) db.createObjectStore(STORE_SNAPSHOTS, { keyPath: "id" });
+      if (!db.objectStoreNames.contains(STORE_ULTINA_PRESETS))
+        db.createObjectStore(STORE_ULTINA_PRESETS, { keyPath: "id" });
     };
     // Another tab still holds an older DB version — the open stays pending
     // until that tab closes. Fail with an actionable message instead of
