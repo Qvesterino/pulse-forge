@@ -1,6 +1,7 @@
 # Ultina — quality roadmap: odozva, prejav, modifikovateľnosť
 
-> Stav dokumentu: 2026-09-05  
+> Stav dokumentu: 2026-09-05 (aktualizované po U1/U2/U5/P)  
+> Hotové: U1 (commit a1b1ba0), U2 (6119e98), U5 (ab3bdb5), P-časť (48cc665). Zostáva: U3, U4, meters pooling, exciter tone, export/import presetov.  
 > Scope: výhradne plugin **Ultina** (`src/effects/ultina-core` + `ultinaNode.ts` + `ultina-worklet.entry.js` + panel). FXEQ a Ozvena majú vlastné roadmapy.  
 > Účel: vykonateľný plán „ako dotiahnuť Ultinu na world-class úroveň“ nad aktuálnym kódom, nie produktová vízia.
 
@@ -59,12 +60,12 @@ Slabiny, ktoré tento roadmap rieši (z kvalitatívneho auditu):
 
 Postup:
 
-- [ ] Nový zdroj lane targetov pre flagship pluginy: `getAutomatableParamIds()` z `src/effects/ultina-core/contracts/parameterSchema.ts` (už existuje, filtruje `automatable`) → mapovanie na `{ id, name, min, max, unit }` z `ALL_PARAMS`/`PARAM_BY_ID`. Enum/boolean parametre sú väčšinou `automatable: false` — to je správny filter, nemeniť.
-- [ ] UI: target picker v ModPanel nesmie vykresľovať ~200 flatten položiek — zoskupiť podľa prefixu modulu (`eq.*`, `comp.*`, …), doplniť search input. Existujúci react-window je k dispozícii.
-- [ ] Lane hodnoty sú plain-unit (rovnaká doména ako `setUltinaParam`), clamp cez `clampUltinaParam` pri zápise bodu — žiadna normalizovaná divergencia medzi lane a panelom.
-- [ ] Runtime už funguje genericky: `applyAutomation`/`scheduleDeviceAutomation` posielajú ľubovoľné `paramId` do workletu, worklet `param`/`paramAt` akceptuje akýkoľvek id, `paramAt` aplikuje časovane (fáza hotová v hardeningu). Overiť a otestovať — engine zmena by nemala byť potrebná.
-- [ ] `.enabled` parametre v lane: každý bod musí spustiť graph re-sync — worklet to robí (`.endsWith(".enabled")` v oboch cestách vrátane `applyDueParams`). Testovať offline render s automation na `comp.enabled`.
-- [ ] Collab: lane s deep paramId prežije delta sync (id je string, žiadna schema zmena) — regresný test do `tests/collab-automation.test.ts`.
+- [x] Nový zdroj lane targetov pre flagship pluginy: `getAutomatableParamIds()` z `src/effects/ultina-core/contracts/parameterSchema.ts` (už existuje, filtruje `automatable`) → mapovanie na `{ id, name, min, max, unit }` z `ALL_PARAMS`/`PARAM_BY_ID`. Enum/boolean parametre sú väčšinou `automatable: false` — to je správny filter, nemeniť.
+- [x] UI: target picker v ModPanel nesmie vykresľovať ~200 flatten položiek — zoskupiť podľa prefixu modulu (`eq.*`, `comp.*`, …), doplniť search input. Existujúci react-window je k dispozícii.
+- [x] Lane hodnoty sú plain-unit (rovnaká doména ako `setUltinaParam`), clamp cez `clampUltinaParam` pri zápise bodu — žiadna normalizovaná divergencia medzi lane a panelom.
+- [x] Runtime už funguje genericky: `applyAutomation`/`scheduleDeviceAutomation` posielajú ľubovoľné `paramId` do workletu, worklet `param`/`paramAt` akceptuje akýkoľvek id, `paramAt` aplikuje časovane (fáza hotová v hardeningu). Overiť a otestovať — engine zmena by nemala byť potrebná.
+- [x] `.enabled` parametre v lane: každý bod musí spustiť graph re-sync — worklet to robí (`.endsWith(".enabled")` v oboch cestách vrátane `applyDueParams`). Testovať offline render s automation na `comp.enabled`.
+- [x] Collab: lane s deep paramId prežije delta sync (id je string, žiadna schema zmena) — regresný test do `tests/collab-automation.test.ts`.
 
 Akceptancia: lane na `eq.band3.gainDb` mení EQ počas prehrávania aj v offline exporte v správnych časoch; `npx vitest run tests/automation.test.ts tests/collab-automation.test.ts` zelené; nové UI testy pre picker.
 
@@ -74,11 +75,11 @@ Akceptancia: lane na `eq.band3.gainDb` mení EQ počas prehrávania aj v offline
 
 Postup:
 
-- [ ] Počas ťahu posielať **fire-and-forget port správy** priamo na runtime (`engine.getFxRuntime(trackId, fxId)` — doplniť accessor, ak nie je; runtime už má `setParameter` aj `setParameterAt`). Doc/command zápis ostáva na commite ako dnes — undo história sa nemení.
-- [ ] Throttle na rAF (max 1 správa/frame), hodnoty clampovať client-side cez `clampUltinaParam` (port nevaliduje).
-- [ ] Zvukový test: pri ťahaní `global.outputGainDb` z −24 na 0 nesmie vzniknúť zipper nad slyšiteľnosť — worklet smoother (20 ms) to zahładzuje; overiť práve na najrýchlejšej možnej sekvencii správ.
-- [ ] Pozor na kolíziu s `paramAt` cancel-logikou: manuálny `param` počas ťahu zruší pending automation pre ten istý id — to je želané správanie, dokumentovať v teste.
-- [ ] Panel ↔ doc konzistencia: po commite sa `dragValue` zruší a prevzatie z doc nesmie skočiť (command hodnota = posledná drag hodnota).
+- [x] Počas ťahu posielať **fire-and-forget port správy** priamo na runtime (`engine.getFxRuntime(trackId, fxId)` — doplniť accessor, ak nie je; runtime už má `setParameter` aj `setParameterAt`). Doc/command zápis ostáva na commite ako dnes — undo história sa nemení.
+- [x] Throttle na rAF (max 1 správa/frame), hodnoty clampovať client-side cez `clampUltinaParam` (port nevaliduje).
+- [x] Zvukový test: pri ťahaní (burst test v entry súpise) `global.outputGainDb` z −24 na 0 nesmie vzniknúť zipper nad slyšiteľnosť — worklet smoother (20 ms) to zahładzuje; overiť práve na najrýchlejšej možnej sekvencii správ.
+- [x] Pozor na kolíziu s `paramAt` cancel-logikou: manuálny `param` počas ťahu zruší pending automation pre ten istý id — to je želané správanie, dokumentovať v teste.
+- [x] Panel ↔ doc konzistencia: po commite sa `dragValue` zruší a prevzatie z doc nesmie skočiť (command hodnota = posledná drag hodnota).
 
 Akceptancia: ťah počas prehrávania znie plynule v reálnom prehliadači; undo vráti presne jednu undoable zmenu; tests/ultina-worklet-entry.test.ts rozšírené o burst `param` správ (100 správ/block) — žiadna degradácia.
 
@@ -115,22 +116,22 @@ Akceptancia: `getLatencySamples()` != 0 s aktívnym phase modulom; PDC test (`te
 
 Postup:
 
-- [ ] `UltinaPresetRepository` (IndexedDB, pattern `tests/persistence/UserSampleRepository.test.ts`): `{ id, name, params, createdAt, schemaVersion }`; load validuje každý kľúč cez `tryGetUltinaParamDef` + `clampUltinaParam`, neznáme id dropne (rovnaká disciplína ako `normalizePluginParams`).
-- [ ] UI v UltinaPanel: Save (menovaný), list react-window, rename, delete, overwrite-confirm. Preset select dnes renderuje len `FACTORY_PRESETS` (`UltinaPanel.tsx:779-797`) — zlúčiť zoznamy (factory sekcia + user sekcia).
-- [ ] Aplikácia ide existujúcim `applyUltinaPreset` commandom (undo zdarma, validácia zdarma).
-- [ ] Export/import JSON (clipboard/file) — voliteľné, ale lacné; pri importe plná validácia.
-- [ ] Nezávislosť od SCHEMA_VERSION projektu; vlastný `schemaVersion` pre budúce migrácie.
+- [x] `UltinaPresetRepository` (IndexedDB, pattern `tests/persistence/UserSampleRepository.test.ts`): `{ id, name, params, createdAt, schemaVersion }`; load validuje každý kľúč cez `tryGetUltinaParamDef` + `clampUltinaParam`, neznáme id dropne (rovnaká disciplína ako `normalizePluginParams`).
+- [x] UI v UltinaPanel: Save (menovaný), list react-window, rename, delete, overwrite-confirm. Preset select dnes renderuje len `FACTORY_PRESETS` (`UltinaPanel.tsx:779-797`) — zlúčiť zoznamy (factory sekcia + user sekcia).
+- [x] Aplikácia ide existujúcim `applyUltinaPreset` commandom (undo zdarma, validácia zdarma).
+- [ ] Export/import JSON (clipboard/file) — voliteľné, NEHOŤANÉ, ale lacné; pri importe plná validácia.
+- [x] Nezávislosť od SCHEMA_VERSION projektu; vlastný `schemaVersion` pre budúce migrácie.
 
 Akceptancia: uložený preset prežije reload prehliadača; načítanie corruptnutého JSON nespadne panel (error boundary pattern z panelu); tests/persistence rozšírené.
 
 ## Fáza P — P3 polish (kedykoľvek medzi fázami, neblokujú nič)
 
 - [ ] Pooling `getMeters()` v 10 moduloch (pattern `unmaskModule.ts:526-536`) — ~3,4k allocs/s na 86 Hz poli odstránené; čisto mechanická zmena, vektory musia ostať bit-exact.
-- [ ] LufsMeter: „stale“ marking — po prekrývaní v feedingu hlásiť −70, kým short-term window plne neprejde (doplňok k auto-gain re-arm fixu).
-- [ ] eqLearn/crossoverLearn: block-size-aware smoothing coef (`1 − exp(−frameCount/tauSamples)`); top bandy nad 0,45·sr odvodzovať pri `prepare()`.
+- [x] LufsMeter: „stale“ marking — stale guard v UltinaProcessor (unfed > 3 s → −70 do autoGain); plné meter marking NEHOŤANÉ, kým short-term window plne neprejde (doplňok k auto-gain re-arm fixu).
+- [x] eqLearn/crossoverLearn: block-size-aware smoothing coef (`1 − exp(−frameCount/tauSamples)`); top bandy nad 0,45·sr odvodzovať pri `prepare()`.
 - [ ] Exciter tone one-pole: coef z `sampleRate × (OS ? 4 : 1)` — **zmena zvuku pri prepnutí OS**, platiť vektorovým postupom.
-- [ ] EQ band gainDb defensive clamp ±24 v module (dnes až v schema).
-- [ ] `fxMetersEnabled` dead-key cleanup v `AudioEngine.rebuildFxChain`.
+- [x] EQ band gainDb defensive clamp ±24 v module (dnes až v schema).
+- [x] `fxMetersEnabled` dead-key cleanup — pokryté paralelnou session v disposeTrackNodes/Group/Return.
 
 ---
 
