@@ -11,6 +11,7 @@ import * as Y from "yjs";
 import type {
   ArrangementClip,
   ArrangementTransition,
+  AudioClip,
   AutomationLane,
   AutomationPoint,
   DrumPad,
@@ -30,6 +31,7 @@ import type {
   PatternPhraseBar,
   ProjectDocument,
   ReturnTrack,
+  SampleLayer,
   Scene,
   SceneAutomation,
   StepMeta,
@@ -62,6 +64,16 @@ function yMapToProject(m: Y.Map<unknown>): ProjectDocument {
       const arrangement = m.get("arrangement") as Y.Map<unknown> | undefined;
       return {
         clips: yArrToList(arrangement?.get("clips") as Y.Array<unknown>).map(yMapToClip),
+        // Audio clips are plain-JSON entities (no nested Y types) — project
+        // them as blobs. They were silently dropped before, which erased
+        // every audio clip the moment a collab session opened.
+        ...(arrangement?.has("audioClips")
+          ? {
+              audioClips: yArrToList(arrangement.get("audioClips") as Y.Array<unknown>).map(
+                (v) => plainValue(v) as unknown as AudioClip,
+              ),
+            }
+          : {}),
         ...(arrangement?.has("transitions")
           ? { transitions: yArrToList(arrangement.get("transitions") as Y.Array<unknown>).map(yMapToTransition) }
           : {}),
@@ -99,13 +111,18 @@ function yMapToTrack(m: unknown): Track {
     effects: yArrToList(map.get("effects") as Y.Array<unknown>).map(yMapToEffect),
     sends: yMapToRecord(map.get("sends") as Y.Map<unknown>),
     groupId: map.get("groupId") as string | undefined,
+    color: map.has("color") ? (map.get("color") as string) : undefined,
     frozen: map.has("frozen") ? (yMapToObj(map.get("frozen") as Y.Map<unknown>) as unknown as FrozenState) : undefined,
   };
   if (kind === "drum") {
     return { ...base, kind: "drum", pads: yArrToList(map.get("pads") as Y.Array<unknown>).map(yMapToPad) };
   }
   if (kind === "group") {
-    return { ...base, kind: "group" };
+    return {
+      ...base,
+      kind: "group",
+      collapsed: map.has("collapsed") ? (map.get("collapsed") as boolean) : undefined,
+    };
   }
   return {
     ...base,
@@ -115,6 +132,9 @@ function yMapToTrack(m: unknown): Track {
     params: yMapToRecord(map.get("params") as Y.Map<unknown>),
     presetId: map.get("presetId") as string | null | undefined,
     midiOutput: map.has("midiOutput") ? (yMapToObj(map.get("midiOutput") as Y.Map<unknown>) as any) : undefined,
+    ...(map.has("velocityLayers")
+      ? { velocityLayers: plainValue(map.get("velocityLayers")) as unknown as SampleLayer[] }
+      : {}),
   };
 }
 
@@ -141,11 +161,16 @@ function yMapToPad(m: unknown): DrumPad {
     mute: map.get("mute") as boolean,
     solo: map.get("solo") as boolean,
     chokeGroup: map.get("chokeGroup") as number | null,
+    color: map.has("color") ? (map.get("color") as string) : undefined,
+    sliceLoop: map.has("sliceLoop") ? (map.get("sliceLoop") as boolean) : undefined,
+    sliceLoopStart: map.has("sliceLoopStart") ? (map.get("sliceLoopStart") as number) : undefined,
+    sliceLoopEnd: map.has("sliceLoopEnd") ? (map.get("sliceLoopEnd") as number) : undefined,
     sliceStart: map.has("sliceStart") ? (map.get("sliceStart") as number) : undefined,
     sliceEnd: map.has("sliceEnd") ? (map.get("sliceEnd") as number) : undefined,
     sliceFadeIn: map.has("sliceFadeIn") ? (map.get("sliceFadeIn") as number) : undefined,
     sliceFadeOut: map.has("sliceFadeOut") ? (map.get("sliceFadeOut") as number) : undefined,
     sliceReverse: map.has("sliceReverse") ? (map.get("sliceReverse") as boolean) : undefined,
+    ...(map.has("mod") ? { mod: (plainValue(map.get("mod")) as unknown as DrumPad["mod"]) ?? null } : {}),
   } as DrumPad;
   if (synth) (base as unknown as { synth: DrumPad["synth"] }).synth = synth;
   return base;
@@ -509,7 +534,20 @@ function syncBlobContainer(
 
 // ─── Entity sync (targeted diff) ────────────────────────────────────────────
 
-const TRACK_SCALARS = ["kind", "name", "gain", "pan", "mute", "solo", "groupId", "instrument", "sampleId", "presetId"];
+const TRACK_SCALARS = [
+  "kind",
+  "name",
+  "gain",
+  "pan",
+  "mute",
+  "solo",
+  "groupId",
+  "instrument",
+  "sampleId",
+  "presetId",
+  "color",
+  "collapsed",
+];
 const PAD_SCALARS = [
   "name",
   "assetId",
@@ -519,6 +557,10 @@ const PAD_SCALARS = [
   "mute",
   "solo",
   "chokeGroup",
+  "color",
+  "sliceLoop",
+  "sliceLoopStart",
+  "sliceLoopEnd",
   "sliceStart",
   "sliceEnd",
   "sliceFadeIn",
@@ -543,6 +585,8 @@ function syncTrackEntity(target: Y.Map<unknown>, track: Track): void {
     syncIdList(ensureChildArray(target, "pads"), track.pads, syncPadEntity, padToYMap);
   } else if (track.kind === "instrument") {
     syncPlainFields(ensureChildMap(target, "params"), track.params);
+    // Velocity/round-robin layers — plain JSON blob (replaced on change).
+    syncPlainJsonField(target, "velocityLayers", track.velocityLayers);
     if (track.midiOutput) {
       syncPlainFields(ensureChildMap(target, "midiOutput"), track.midiOutput as unknown as Record<string, unknown>);
     } else if (target.has("midiOutput")) {
@@ -559,6 +603,8 @@ function syncTrackEntity(target: Y.Map<unknown>, track: Track): void {
 
 function syncPadEntity(target: Y.Map<unknown>, pad: DrumPad): void {
   mirrorScalars(target, pad, PAD_SCALARS);
+  // Per-pad voice LFO — plain JSON blob (nested object, not a scalar).
+  syncPlainJsonField(target, "mod", pad.mod ?? undefined);
   if (pad.synth) {
     const synthMap = ensureChildMap(target, "synth");
     synthMap.set("type", pad.synth.type);
@@ -773,6 +819,15 @@ export function applyProjectToYMap(_oldDoc: ProjectDocument, newDoc: ProjectDocu
   // Arrangement
   const arrangement = ensureChildMap(yMap, "arrangement");
   syncIdList(ensureChildArray(arrangement, "clips"), newDoc.arrangement.clips, syncClipEntity, clipToYMap);
+  // Audio clips — plain-JSON entities mirrored as a blob container so peers
+  // see them (they were silently dropped before this sync existed).
+  if (newDoc.arrangement.audioClips !== undefined) {
+    syncBlobContainer(arrangement, "audioClips", newDoc.arrangement.audioClips, (item) =>
+      objToYMap(item as Record<string, unknown>),
+    );
+  } else if (arrangement.has("audioClips")) {
+    arrangement.delete("audioClips");
+  }
   if (newDoc.arrangement.transitions !== undefined) {
     syncIdList(
       ensureChildArray(arrangement, "transitions"),
@@ -816,9 +871,13 @@ export function applyProjectToYMap(_oldDoc: ProjectDocument, newDoc: ProjectDocu
       "instrumentChannel",
       "pitchBendRange",
       "clockMode",
+      "bankSelect",
+      "aftertouchTarget",
+      "aftertouchRange",
     ]);
     syncPlainJsonField(midiMap, "ccMappings", newDoc.midi.ccMappings);
     syncPlainJsonField(midiMap, "drumNoteMap", newDoc.midi.drumNoteMap);
+    syncPlainJsonField(midiMap, "programMap", newDoc.midi.programMap);
   } else if (yMap.has("midi")) {
     yMap.delete("midi");
   }
@@ -851,6 +910,11 @@ function trackToYMap(track: Track): Y.Map<unknown> {
   m.set("mute", track.mute);
   m.set("solo", track.solo);
   if ("groupId" in track && track.groupId) m.set("groupId", track.groupId);
+  // Keep in lockstep with TRACK_SCALARS — the insert path of syncIdList
+  // builds entities with THIS creator, so fields only listed in the scalar
+  // mirror would silently vanish at session seed.
+  if (track.color) m.set("color", track.color);
+  if (track.kind === "group" && track.collapsed !== undefined) m.set("collapsed", track.collapsed);
   if (track.frozen) m.set("frozen", objToYMap(track.frozen as unknown as Record<string, unknown>));
 
   // Effects
@@ -882,6 +946,7 @@ function trackToYMap(track: Track): Y.Map<unknown> {
       params.set(k, v);
     }
     if (track.presetId !== undefined) m.set("presetId", track.presetId);
+    if (track.velocityLayers) m.set("velocityLayers", plainValue(track.velocityLayers));
     if (track.midiOutput) {
       const mo = new Y.Map<unknown>();
       m.set("midiOutput", mo);
@@ -904,11 +969,18 @@ function padToYMap(pad: DrumPad): Y.Map<unknown> {
   m.set("mute", pad.mute);
   m.set("solo", pad.solo);
   m.set("chokeGroup", pad.chokeGroup);
+  // Keep in lockstep with PAD_SCALARS — syncIdList's insert path builds pads
+  // with THIS creator (fields only in the scalar mirror would vanish at seed).
+  if (pad.color) m.set("color", pad.color);
+  if (pad.sliceLoop !== undefined) m.set("sliceLoop", pad.sliceLoop);
+  if (pad.sliceLoopStart !== undefined) m.set("sliceLoopStart", pad.sliceLoopStart);
+  if (pad.sliceLoopEnd !== undefined) m.set("sliceLoopEnd", pad.sliceLoopEnd);
   if (pad.sliceStart !== undefined) m.set("sliceStart", pad.sliceStart);
   if (pad.sliceEnd !== undefined) m.set("sliceEnd", pad.sliceEnd);
   if (pad.sliceFadeIn !== undefined) m.set("sliceFadeIn", pad.sliceFadeIn);
   if (pad.sliceFadeOut !== undefined) m.set("sliceFadeOut", pad.sliceFadeOut);
   if (pad.sliceReverse !== undefined) m.set("sliceReverse", pad.sliceReverse);
+  if (pad.mod) m.set("mod", plainValue(pad.mod));
   if (pad.synth) {
     const synthMap = new Y.Map<unknown>();
     synthMap.set("type", pad.synth.type);

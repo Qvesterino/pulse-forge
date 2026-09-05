@@ -313,7 +313,10 @@ export function writeMidiFile(options: {
     }
     writeVlq(payload, 0);
     payload.push(0xff, 0x2f, 0x00);
-    bytes.push(...chunk("MTrk", payload));
+    // No argument-spread: a dense track's payload can exceed the engine's
+    // call-stack argument limit and throw RangeError mid-export.
+    const trackChunk = chunk("MTrk", payload);
+    for (const byte of trackChunk) bytes.push(byte);
   }
 
   return new Uint8Array(bytes);

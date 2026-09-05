@@ -100,9 +100,15 @@ function Boot() {
       (core) => {
         if (cancelled) return;
         // ?import=<share code> — a shared link drops the project straight
-        // into the studio, skipping the browser.
+        // into the studio, skipping the browser. A corrupted/truncated link
+        // must surface (like the embed player does) instead of silently
+        // dumping the user into an unrelated empty browser.
         const code = new URLSearchParams(location.search).get("import");
         const imported = code ? decodeShareCode(code) : null;
+        if (code && !imported) {
+          setScreen({ kind: "error", message: "This beat link is invalid or corrupted." });
+          return;
+        }
         if (imported) {
           void openProject(core, imported).then(
             (services) => {

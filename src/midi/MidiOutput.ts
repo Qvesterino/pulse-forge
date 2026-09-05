@@ -5,6 +5,9 @@
 export class MidiOutput {
   private access: MIDIAccess | null = null;
   private selectedDeviceId: string = "";
+  /** Scheduled future sends — cleared on dispose so a closed project cannot
+   * fire ghost notes into hardware afterwards. */
+  private pending = new Set<ReturnType<typeof setTimeout>>();
 
   async requestAccess(): Promise<boolean> {
     if (typeof navigator === "undefined" || !navigator.requestMIDIAccess) return false;
@@ -42,17 +45,28 @@ export class MidiOutput {
     return first;
   }
 
-  send(msg: Uint8Array): void {
+  send(msg: Uint8Array, delayMs?: number): void {
     const output = this.getOutput();
-    if (output) output.send(msg);
+    if (!output) return;
+    // delayMs > 0 schedules the send so notes land on the scheduler's
+    // musical timing instead of firing when the 25 ms tick happened to run.
+    if (delayMs !== undefined && Number.isFinite(delayMs) && delayMs > 0) {
+      const timer = setTimeout(() => {
+        this.pending.delete(timer);
+        output.send(msg);
+      }, delayMs);
+      this.pending.add(timer);
+      return;
+    }
+    output.send(msg);
   }
 
-  sendNoteOn(channel: number, note: number, velocity: number): void {
-    this.send(new Uint8Array([0x90 | (channel & 0x0f), note & 0x7f, velocity & 0x7f]));
+  sendNoteOn(channel: number, note: number, velocity: number, delayMs?: number): void {
+    this.send(new Uint8Array([0x90 | (channel & 0x0f), note & 0x7f, velocity & 0x7f]), delayMs);
   }
 
-  sendNoteOff(channel: number, note: number, velocity = 0): void {
-    this.send(new Uint8Array([0x80 | (channel & 0x0f), note & 0x7f, velocity & 0x7f]));
+  sendNoteOff(channel: number, note: number, velocity = 0, delayMs?: number): void {
+    this.send(new Uint8Array([0x80 | (channel & 0x0f), note & 0x7f, velocity & 0x7f]), delayMs);
   }
 
   sendCC(channel: number, cc: number, value: number): void {
@@ -88,6 +102,10 @@ export class MidiOutput {
   }
 
   dispose(): void {
+    // Cancel scheduled future sends FIRST — otherwise a note-on queued
+    // before teardown could start a hanging note after All Sound Off.
+    for (const timer of this.pending) clearTimeout(timer);
+    this.pending.clear();
     // Send all notes off
     for (let ch = 0; ch < 16; ch++) {
       this.sendCC(ch, 123, 0); // All Notes Off

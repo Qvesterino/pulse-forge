@@ -195,6 +195,7 @@ export async function recordVideo(buffer: AudioBuffer, options: VideoOptions): P
   const frameOpts = { title: options.title, bpm: options.bpm, seconds };
 
   const audioCtx = new AudioContext();
+  let stream: MediaStream | null = null;
   try {
     await audioCtx.resume().catch(() => {
       // Autoplay policies usually allow resume inside the click that
@@ -206,7 +207,7 @@ export async function recordVideo(buffer: AudioBuffer, options: VideoOptions): P
     source.buffer = buffer;
     source.connect(dest);
 
-    const stream = canvas.captureStream(fps);
+    stream = canvas.captureStream(fps);
     for (const track of dest.stream.getAudioTracks()) stream.addTrack(track);
 
     const recorder = new MediaRecorder(stream, {
@@ -218,8 +219,11 @@ export async function recordVideo(buffer: AudioBuffer, options: VideoOptions): P
     recorder.ondataavailable = (e) => {
       if (e.data.size > 0) chunks.push(e.data);
     };
-    const finished = new Promise<Blob>((resolve) => {
+    // A recorder failure must reject — otherwise the export hung forever on
+    // an `finished` promise nobody would ever settle.
+    const finished = new Promise<Blob>((resolve, reject) => {
       recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType.split(";")[0] }));
+      recorder.onerror = () => reject(new Error("Video recording failed (MediaRecorder error)"));
     });
 
     // First frame before recording starts — never ship a black frame.
@@ -230,6 +234,22 @@ export async function recordVideo(buffer: AudioBuffer, options: VideoOptions): P
     source.stop(t0 + seconds);
 
     await new Promise<void>((resolve) => {
+      // requestAnimationFrame stalls while the tab is hidden — without the
+      // timer watchdog a backgrounded export never reaches recorder.stop()
+      // and hangs forever. The watchdog resolves the loop from wall-clock
+      // audio time when rAF is dead (frames simply stop updating).
+      let watchdogCleared = false;
+      let watchdog: ReturnType<typeof setInterval> | null = null;
+      const resolveLoop = () => {
+        if (!watchdogCleared) {
+          watchdogCleared = true;
+          if (watchdog) clearInterval(watchdog);
+          resolve();
+        }
+      };
+      watchdog = setInterval(() => {
+        if (audioCtx.currentTime - t0 >= seconds + 0.25) resolveLoop();
+      }, 500);
       const loop = () => {
         const t = audioCtx.currentTime - t0;
         const clamped = Math.max(0, Math.min(seconds, t));
@@ -238,7 +258,7 @@ export async function recordVideo(buffer: AudioBuffer, options: VideoOptions): P
         if (t < seconds + 0.25) {
           requestAnimationFrame(loop);
         } else {
-          resolve();
+          resolveLoop();
         }
       };
       requestAnimationFrame(loop);
@@ -246,9 +266,9 @@ export async function recordVideo(buffer: AudioBuffer, options: VideoOptions): P
 
     recorder.stop();
     const blob = await finished;
-    for (const track of stream.getTracks()) track.stop();
     return { blob, ext: mimeType.includes("mp4") ? "mp4" : "webm", bytes: blob.size };
   } finally {
+    for (const track of stream?.getTracks() ?? []) track.stop();
     await audioCtx.close().catch(() => {});
   }
 }

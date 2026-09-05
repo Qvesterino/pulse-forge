@@ -1144,6 +1144,11 @@ export function deleteTrack(doc: ProjectDocument, trackId: string): Command {
     ...macro,
     mappings: macro.mappings.filter((m) => m.trackId !== trackId && m.target?.trackId !== trackId),
   }));
+  // Audio clips routed at the track would orphan: the engine skips them, but
+  // the dead references would persist in every save until the next reload's
+  // normalize pass dropped them. Remove them with the track (same contract
+  // as the automation lanes above).
+  const audioClips = doc.arrangement.audioClips?.filter((clip) => clip.trackId !== trackId);
   const next: ProjectDocument = {
     ...doc,
     tracks: doc.tracks
@@ -1154,6 +1159,10 @@ export function deleteTrack(doc: ProjectDocument, trackId: string): Command {
       rows: Object.fromEntries(Object.entries(pattern.rows).filter(([padId]) => !removedPadIds.has(padId))),
       notes: Object.fromEntries(Object.entries(pattern.notes ?? {}).filter(([tid]) => tid !== trackId)),
     })),
+    arrangement: {
+      ...doc.arrangement,
+      ...(doc.arrangement.audioClips ? { audioClips } : {}),
+    },
     ...(doc.automation ? { automation } : {}),
     ...(doc.lfos ? { lfos } : {}),
     ...(doc.sceneAutomation ? { sceneAutomation } : {}),
@@ -4825,6 +4834,13 @@ export function freezeTrack(
 ): Command {
   const track = doc.tracks.find((t) => t.id === trackId);
   if (!track) throw new Error(`Track ${trackId} not found`);
+  if (track.kind === "group") {
+    // State-invariant guard: a frozen group is a persisted lie — the offline
+    // renderer includes only the (source-less) group itself, so the buffer
+    // is silence, nothing is saved, and the "FROZEN" state survives
+    // save/load. Freeze the child tracks instead.
+    throw new Error(`Group track ${track.name} cannot be frozen — freeze its child tracks instead`);
+  }
   const label = `Freeze ${track.name}`;
   // Freeze is dispatched AFTER a seconds-long offline render — it must apply
   // to whatever document is current at dispatch time, not the snapshot taken

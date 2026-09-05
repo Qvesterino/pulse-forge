@@ -362,10 +362,16 @@ export function RackStrip({
         pads: pack.kitPads,
         createdAt: new Date().toISOString(),
       };
-      void services.userKits
+      // Without the catch, an IndexedDB failure (quota, private mode) left a
+      // half-installed pack behind AND an unhandled promise rejection.
+      services.userKits
         .save(userKit)
         .then(() => services.userKits.list())
-        .then(setUserKits);
+        .then(setUserKits)
+        .catch((err) => {
+          console.error("[pack] kit save failed:", err);
+          setKitStatus("Pack installed — but saving the kit failed (storage)");
+        });
     }
     let installedScenes = 0;
     if (pack.sketch) {

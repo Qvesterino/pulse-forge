@@ -18,6 +18,9 @@ export function FreezeButton({ track }: { track: Track }) {
 
   const handleFreeze = async () => {
     if (rendering) return;
+    // Group tracks have no own audio: their frozen buffer would be silence
+    // (the renderer includes only the group itself, not its children).
+    if (track.kind === "group") return;
     setRendering(true);
     try {
       const prevBufferId = track.frozen?.bufferId ?? null;
@@ -75,7 +78,7 @@ export function FreezeButton({ track }: { track: Track }) {
 
   return (
     <div className="freeze-controls">
-      {isFrozen ? (
+      {track.kind === "group" ? null : isFrozen ? (
         <button
           type="button"
           className="btn btn-small"

@@ -297,6 +297,10 @@ export async function openProject(
     (command) => store.execute(command),
     () => transport.position,
   );
+  // The scheduler speaks AudioContext seconds; scheduled MIDI sends are a
+  // delay-from-now. Events already due (negative delay) go out immediately.
+  const midiDelayMs = (when: number | undefined): number =>
+    when === undefined || !Number.isFinite(when) ? 0 : Math.max(0, (when - engine.currentTime) * 1000);
   const scheduler = new Scheduler({
     getProject: () => store.doc,
     getTransport: () => transport,
@@ -327,21 +331,24 @@ export async function openProject(
     // Scene tempo lane: clips whose scene pins a BPM drive the transport
     // (setBpm re-anchors position-preserving); null = project tempo.
     applySceneTempo: (bpm) => transport.setBpm(bpm ?? store.doc.bpm),
+    // MIDI out: the scheduler hands us the precise AudioContext time for the
+    // event — convert it to a delay so hardware receives note on/off on the
+    // musical timeline (previously both fired immediately, making drum hits
+    // clicks and sustained notes inaudible).
     midiNoteOn: (_trackId, channel, note, velocity, when) => {
       const doc = store.doc;
       const instTrack = doc.tracks.find((t) => t.id === _trackId && t.kind === "instrument");
       if (instTrack?.kind === "instrument" && instTrack.midiOutput?.enabled) {
         const ch = instTrack.midiOutput.channel || channel + 1;
-        midiOutput.sendNoteOn(ch - 1, note, velocity);
-        void when;
+        midiOutput.sendNoteOn(ch - 1, note, velocity, midiDelayMs(when));
       }
     },
-    midiNoteOff: (_trackId, channel, note, _when) => {
+    midiNoteOff: (_trackId, channel, note, when) => {
       const doc = store.doc;
       const instTrack = doc.tracks.find((t) => t.id === _trackId && t.kind === "instrument");
       if (instTrack?.kind === "instrument" && instTrack.midiOutput?.enabled) {
         const ch = instTrack.midiOutput.channel || channel + 1;
-        midiOutput.sendNoteOff(ch - 1, note);
+        midiOutput.sendNoteOff(ch - 1, note, 0, midiDelayMs(when));
       }
     },
   });

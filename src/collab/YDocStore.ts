@@ -151,8 +151,10 @@ export class YDocStore {
   }
 
   get undoStackLength(): number {
-    // Y.UndoManager doesn't expose stack length directly
-    return this.canUndo ? 1 : 0;
+    // Real stack length — CommandToast dedupes on value changes and the
+    // history panel uses it as its change key; a stubbed 0/1 froze both
+    // after the first command in collab sessions.
+    return this.undoManager.undoStack.length;
   }
 
   get lastCommandLabel(): string | null {
@@ -272,6 +274,17 @@ export class YDocStore {
     this.afterMutation();
   }
 
+  /**
+   * Cubase-style history jump — same contract as ProjectStore.jumpTo:
+   * undo/redo until the state after entry `index` (0-based in the undo
+   * stack) is current. Without this the history panel's jump silently
+   * no-oped in collab sessions.
+   */
+  jumpTo(index: number): void {
+    while (this.undoManager.undoStack.length > index + 1 && this.canUndo) this.undo();
+    while (this.undoManager.undoStack.length <= index && this.canRedo) this.redo();
+  }
+
   replaceDoc(doc: ProjectDocument): void {
     const normalized = normalizeProject(doc);
     // Stop tracking, then clear + repopulate in ONE transaction — peers must
@@ -283,6 +296,10 @@ export class YDocStore {
       projectToYDoc(normalized, this.yMap);
     });
     this.undoManager.clear();
+    // Defect 4.2 parity (undo/redo integrity audit): after a replace the
+    // in-memory doc no longer matches whatever was persisted last — the
+    // "SAVED hh:mm" watermark from the previous store must not survive.
+    this.lastSavedAt_ = null;
     this.afterMutation();
   }
 

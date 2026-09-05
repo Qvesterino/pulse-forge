@@ -973,6 +973,15 @@ function normalizeTracksDomain(s: NormalizeState): void {
     }
     if (track.kind === "group") {
       let t = track;
+      // Frozen state on a group is a historical inconsistency: the renderer
+      // cannot include group children, so the persisted buffer is silence
+      // and the flag saves no CPU. Strip it (the children simply play live
+      // again — the migration path for projects frozen before the guard).
+      if ("frozen" in (t as unknown as Record<string, unknown>)) {
+        const { frozen: _frozen, ...rest } = t as unknown as Record<string, unknown>;
+        t = rest as unknown as import("./types").GroupTrack;
+        tracksChanged = true;
+      }
       const normalizedEffects = normalizeEffects(t.effects, t.id, trackIds);
       if (t.effects === undefined || JSON.stringify(normalizedEffects) !== JSON.stringify(t.effects)) {
         t = { ...t, effects: normalizedEffects };

@@ -11,13 +11,7 @@
 
 export interface YDocHelpers {
   yToggleStep: (yMap: unknown, patternId: string, padId: string, stepIndex: number, defaultVelocity?: number) => void;
-  ySetStepVelocity: (
-    yMap: unknown,
-    patternId: string,
-    padId: string,
-    stepIndex: number,
-    velocity: number,
-  ) => void;
+  ySetStepVelocity: (yMap: unknown, patternId: string, padId: string, stepIndex: number, velocity: number) => void;
   ySetPatternField?: (yMap: unknown, patternId: string, field: string, value: unknown) => void;
   ySetTrackField?: (yMap: unknown, trackId: string, field: string, value: unknown) => void;
   ySetProjectField?: (yMap: unknown, field: string, value: unknown) => void;

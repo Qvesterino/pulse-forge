@@ -24,10 +24,14 @@ import {
   addArrangementClip,
   createPattern,
   deletePattern,
+  deleteTrack,
+  freezeTrack,
   renamePattern,
   setActivePattern,
   setBpm,
 } from "../src/commands/commands";
+import { ProjectStore } from "../src/store/ProjectStore";
+import type { ProjectDocument } from "../src/project-model/types";
 import { YDocStore } from "../src/collab/YDocStore";
 import {
   activePatternOf,
@@ -144,5 +148,116 @@ describe("fixtures — commandHarness & accessors", () => {
     const empty: any = { tracks: [], patterns: [], scenes: [], arrangement: { clips: [] } };
     expect(() => drumTrackOf(empty as any)).toThrow(/drum track/);
     expect(() => activePatternOf(empty as any)).toThrow(/activePatternId/);
+  });
+});
+
+// ─── 4. No orphaned audio clips (state-invariant audit) ────────────────────
+
+describe("invariant — arrangement.audioClips ownership", () => {
+  it("deleteTrack removes audio clips routed at the track (no persisted orphans)", () => {
+    // The engine no-ops clips whose track is gone, but the dead references
+    // used to survive every save until the next reload's normalize pass —
+    // the saved doc violated the model invariant.
+    const doc = testDoc();
+    const track = doc.tracks[1]; // not the only track
+    const withClips = {
+      ...doc,
+      arrangement: {
+        clips: [],
+        audioClips: [
+          {
+            id: "audio-keep",
+            trackId: doc.tracks[0].id,
+            bufferId: "buf-1",
+            startBar: 0,
+            lengthBars: 2,
+            offsetSec: 0,
+            trimStart: 0,
+            trimEnd: 1,
+            gain: 1,
+            fadeIn: 0,
+            fadeOut: 0,
+            stretchRate: 1,
+            reverse: false,
+          },
+          {
+            id: "audio-drop",
+            trackId: track.id,
+            bufferId: "buf-2",
+            startBar: 4,
+            lengthBars: 1,
+            offsetSec: 0,
+            trimStart: 0,
+            trimEnd: 1,
+            gain: 1,
+            fadeIn: 0,
+            fadeOut: 0,
+            stretchRate: 1,
+            reverse: false,
+          },
+        ],
+      },
+    } as ProjectDocument;
+
+    const store = new ProjectStore(withClips);
+    store.execute(deleteTrack(withClips, track.id));
+
+    const ids = (store.doc.arrangement.audioClips ?? []).map((c) => c.id);
+    expect(ids).toEqual(["audio-keep"]);
+    // And the whole deletion stays undoable.
+    store.undo();
+    expect((store.doc.arrangement.audioClips ?? []).map((c) => c.id)).toEqual(["audio-keep", "audio-drop"]);
+  });
+});
+
+describe("invariant — frozen state ownership (state-invariant audit)", () => {
+  it("freezeTrack rejects group tracks (their rendered buffer would be silence)", () => {
+    const doc = testDoc();
+    const group: ProjectDocument = {
+      ...doc,
+      tracks: [
+        ...doc.tracks,
+        {
+          id: "group-x",
+          kind: "group",
+          name: "Bus",
+          gain: 1,
+          pan: 0,
+          mute: false,
+          solo: false,
+          effects: [],
+          sends: {},
+        },
+      ],
+    };
+    expect(() => freezeTrack(group, "group-x", "buf-x", 4, 44100)).toThrow(/cannot be frozen/);
+  });
+
+  it("normalizeProject strips frozen state from group tracks (migration for poisoned projects)", () => {
+    const doc = testDoc();
+    const poisoned = {
+      ...doc,
+      tracks: [
+        ...doc.tracks,
+        {
+          id: "group-y",
+          kind: "group",
+          name: "Bus",
+          gain: 1,
+          pan: 0,
+          mute: false,
+          solo: false,
+          effects: [],
+          sends: {},
+          frozen: { bufferId: "buf-y", durationSec: 4, sampleRate: 44100 },
+        },
+      ],
+    } as ProjectDocument;
+    const healed = normalizeProject(poisoned);
+    const group = healed.tracks.find((t) => t.kind === "group") as Record<string, unknown> | undefined;
+    expect(group).toBeDefined();
+    expect("frozen" in group!).toBe(false);
+    // Idempotent: a second pass changes nothing.
+    expect(normalizeProject(healed)).toEqual(healed);
   });
 });

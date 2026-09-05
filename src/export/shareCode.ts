@@ -16,11 +16,19 @@ export function encodeShareCode(doc: ProjectDocument): string {
   return compressToEncodedURIComponent(JSON.stringify(doc));
 }
 
+// Decompression-bomb caps: a crafted ?import= URL (URLs can carry megabytes)
+// previously expanded + parsed on the main thread at boot with no ceiling —
+// one tab-killer OOM away from a hung boot. Real projects sit far below
+// these limits (a full project is a few hundred KB of JSON at worst).
+const MAX_TOKEN_CHARS = 2_000_000;
+const MAX_DECOMPRESSED_CHARS = 8_000_000;
+
 /** Decompress a share token back into a normalized project. Null when invalid. */
 export function decodeShareCode(code: string): ProjectDocument | null {
   try {
+    if (typeof code !== "string" || code.length > MAX_TOKEN_CHARS) return null;
     const json = decompressFromEncodedURIComponent(code);
-    if (!json) return null;
+    if (!json || json.length > MAX_DECOMPRESSED_CHARS) return null;
     const parsed: unknown = JSON.parse(json);
     if (typeof parsed !== "object" || parsed === null) return null;
     if (!validateProjectShape(parsed as Record<string, unknown>)) return null;

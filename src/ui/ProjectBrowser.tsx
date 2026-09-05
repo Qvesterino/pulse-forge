@@ -5,6 +5,7 @@ import type { ProjectDocument } from "../project-model/types";
 import { TEMPLATES, createProjectFromTemplate } from "../project-model/templates";
 import type { TemplateId } from "../project-model/templates";
 import { importProject } from "../export/project-io";
+import { uid } from "../shared/ids";
 
 function formatRelative(iso: string): string {
   const then = Date.parse(iso);
@@ -97,9 +98,13 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
     setImportError(null);
     try {
       const doc = await importProject(file);
-      // Save with new ID to avoid overwriting existing projects
-      await core.repo.save(doc);
-      onOpen(doc);
+      // Save under a FRESH id: the file embeds its original id, and saving
+      // with it would silently overwrite an existing library project with
+      // the same id (matching the comment's intent — and repo.save is a
+      // keyPath put).
+      const imported: ProjectDocument = { ...doc, id: uid("project") };
+      await core.repo.save(imported);
+      onOpen(imported);
     } catch (err) {
       setImportError(err instanceof Error ? err.message : "Import failed");
     } finally {

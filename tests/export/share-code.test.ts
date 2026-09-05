@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { encodeShareCode, decodeShareCode, shareAppUrl, embedUrl, embedSnippet } from "../../src/export/shareCode";
+import { compressToEncodedURIComponent } from "lz-string";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 import { setBpm, setProjectName } from "../../src/commands/commands";
 
@@ -51,5 +52,26 @@ describe("shareCode — URL helpers", () => {
     const snippet = embedSnippet("https://forge.app/embed/#p=abc");
     expect(snippet).toContain('<iframe src="https://forge.app/embed/#p=abc"');
     expect(snippet).toContain('title="Pulse Forge beat"');
+  });
+});
+
+describe("shareCode — decompression-bomb caps (import/export robustness)", () => {
+  it("rejects oversized tokens outright (null, no throw)", () => {
+    // 2 MB+ of raw token — far beyond any legitimate share link.
+    const huge = "A".repeat(2_000_001);
+    expect(decodeShareCode(huge)).toBeNull();
+  });
+
+  it("rejects tokens that decompress beyond the ceiling (compressed bomb)", () => {
+    // A highly repetitive 9 MB payload compresses into a small token but
+    // expands to >8 MB before JSON.parse — the cap must trip first, and a
+    // RangeError-style OOM must be impossible.
+    const bomb = compressToEncodedURIComponent("0".repeat(9_000_000));
+    expect(decodeShareCode(bomb)).toBeNull();
+  });
+
+  it("still decodes legitimate projects after the caps landed", () => {
+    const decoded = decodeShareCode(encodeShareCode(createProjectFromTemplate("house")));
+    expect(decoded).not.toBeNull();
   });
 });
