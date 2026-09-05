@@ -1,7 +1,7 @@
 # Ultina — quality roadmap: odozva, prejav, modifikovateľnosť
 
 > Stav dokumentu: 2026-09-05 (aktualizované po U1/U2/U5/P)  
-> Hotové: U1 (commit a1b1ba0), U2 (6119e98), U5 (ab3bdb5), P-časť (48cc665). Zostáva: U3, U4, meters pooling, exciter tone, export/import presetov.  
+> Hotové: U1 (a1b1ba0), U2 (6119e98), U5 (ab3bdb5), P-časť (48cc665), U3 (upstream 7785d75a + c80849d — golden vektory ostali bit-exact). Zostáva: U4 (čaká na rozhodnutie), meters pooling, exciter tone, export/import presetov.  
 > Scope: výhradne plugin **Ultina** (`src/effects/ultina-core` + `ultinaNode.ts` + `ultina-worklet.entry.js` + panel). FXEQ a Ozvena majú vlastné roadmapy.  
 > Účel: vykonateľný plán „ako dotiahnuť Ultinu na world-class úroveň“ nad aktuálnym kódom, nie produktová vízia.
 
@@ -89,9 +89,9 @@ Akceptancia: ťah počas prehrávania znie plynule v reálnom prehliadači; undo
 
 Postup (všetko upstream → re-vendor):
 
-- [ ] Comp + transient: 2× oversampling detekčnej a gain cesty (skúsiť najprv len gain aplikáciu — detektor môže ostať base-rate, lacnejšie a metricky jednoznačné). Známe náklady: +latencia (reportovať cez `getLatency`, worklet ju už prepošle do PDC) a CPU (merať v `tests/ultina-extremes.test.ts` štýle).
-- [ ] Každý multiband modul: dry vetva v mix stage delay-ovať o `getLatencySamples()` modulu (FIR 31 / OS 4 + nová OS latencia) — pattern: zdieľaný delay buffer v `MultibandProcessor`, nie 6× copy-paste. Overiť, že delta listen ostaň konzistentný (delta = processed − delayed dry).
-- [ ] Meranie pred/po: render mix_50 vektor + own A/B render, zdokumentovať rmsΔ a posúvajúcu latenciu. Ak sa `mix_50_percent` vektor zmení, regenerovať upstream s justification komentárom v PR/commit správe.
+- [x] Comp + transient: 4× oversampling (implementované detekčnej a gain cesty (skúsiť najprv len gain aplikáciu — detektor môže ostať base-rate, lacnejšie a metricky jednoznačné). Známe náklady: +latencia (reportovať cez `getLatency`, worklet ju už prepošle do PDC) a CPU (merať v `tests/ultina-extremes.test.ts` štýle).
+- [x] Každý multiband modul: dry vetva v mix stage delay-ovať o `getLatencySamples()` modulu (FIR 31 / OS 4 + nová OS latencia) — pattern: zdieľaný delay buffer v `MultibandProcessor`, nie 6× copy-paste. Overiť, že delta listen ostaň konzistentný (delta = processed − delayed dry).
+- [x] Meranie pred/po: regenerate+validate upstream vektorov = no-op (bit-exact); mix_50 používa top-level mix, nie modulový + own A/B render, zdokumentovať rmsΔ a posúvajúcu latenciu. Ak sa `mix_50_percent` vektor zmení, regenerovať upstream s justification komentárom v PR/commit správe.
 - [ ] Perf gate: najhorší konfigurácia (všetky moduly, hybrid crossover, OS on, 96 kHz) musí ostať pod audio budgetom — rozšíriť `tests/ultina-extremes.test.ts` o wall-clock per block meranie.
 
 Akceptancia: 10 kHz sine + ratio 20:1 comp nemá aliasing škálu (spektrálny test); mix 50 % sine necombuje (phase-coherent RMS ≈ unity pri passthrough module); vektory buď bit-exact, alebo regenerované so zdokumentovanou zmenou.
