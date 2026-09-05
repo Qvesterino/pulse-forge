@@ -720,3 +720,39 @@ describe("ultinaAutomation: lane surface helpers", () => {
     expect(formatUltinaParam("db", Number.NaN)).toBe("–");
   });
 });
+
+// ── 13. Live drag preview plumbing (roadmap phase U2) ─────────
+
+describe("AudioEngine.previewFxParam: fire-and-forget runtime write", () => {
+  it("reaches the track runtime without touching the document", () => {
+    const engine = new AudioEngine();
+    const calls: string[] = [];
+    const rt = { setParameter: (id: string, v: number) => calls.push(`${id}=${v}`) };
+    const tracks = (engine as unknown as { trackNodes: Map<string, unknown> }).trackNodes;
+    tracks.set("t1", { fx: { runtimes: new Map([["fx1", rt]]) } });
+
+    engine.previewFxParam("t1", "fx1", "comp.thresholdDb", -18.5);
+    expect(calls).toEqual(["comp.thresholdDb=-18.5"]);
+  });
+
+  it("resolves group and return chains like the meters accessor", () => {
+    const engine = new AudioEngine();
+    const calls: string[] = [];
+    const rt = { setParameter: (id: string) => calls.push(id) };
+    (engine as unknown as { groupNodes: Map<string, unknown> }).groupNodes.set(
+      "g1",
+      { fx: { runtimes: new Map([["fx1", rt]]) } },
+    );
+    const returns = (engine as unknown as { returnNodes: Map<string, unknown> }).returnNodes;
+    returns.set("r1", { fx: { runtimes: new Map([["fx1", rt]]) } });
+
+    engine.previewFxParam("g1", "fx1", "global.mix", 50);
+    engine.previewFxParam("r1", "fx1", "global.mix", 60);
+    expect(calls).toEqual(["global.mix", "global.mix"]);
+  });
+
+  it("is a silent no-op when no runtime exists (panel open before chain build)", () => {
+    const engine = new AudioEngine();
+    expect(() => engine.previewFxParam("missing", "fx1", "global.mix", 1)).not.toThrow();
+  });
+});

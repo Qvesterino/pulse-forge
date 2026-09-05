@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Slider, DragNumber } from "../../src/ui/controls";
 
@@ -170,5 +170,54 @@ describe("interrupted drags (pointercancel)", () => {
     expect(screen.getByText("120.0")).toBeInTheDocument();
     fireEvent.pointerUp(el, { pointerId: 1 });
     expect(onCommit).not.toHaveBeenCalled();
+  });
+});
+
+describe("Slider onPreview (live drag, roadmap phase U2)", () => {
+  const flushFrame = () => waitFor(() => {}, { timeout: 40 });
+
+  it("previews during drag and commits exactly once on release", async () => {
+    const onPreview = vi.fn();
+    const onCommit = vi.fn();
+    render(
+      <Slider label="PREVIEW_GAIN" value={0} min={-24} max={24} defaultValue={0} onCommit={onCommit} onPreview={onPreview} />,
+    );
+    const track = screen.getByRole("slider", { name: "PREVIEW_GAIN" });
+    fireEvent.pointerDown(track, { button: 0, clientX: 60, pointerId: 1 });
+    fireEvent.pointerMove(track, { clientX: 80, pointerId: 1 });
+    // rAF is stubbed as setTimeout(16) — wait a real frame BEFORE pointer-up
+    // so the coalesced preview actually fires (pointer-up cancels a pending one).
+    await act(() => new Promise((r) => setTimeout(r, 30)));
+    fireEvent.pointerUp(track, { pointerId: 1 });
+
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    expect(onPreview).toHaveBeenCalled();
+    for (const [v] of onPreview.mock.calls) {
+      expect(v).toBeGreaterThanOrEqual(-24);
+      expect(v).toBeLessThanOrEqual(24);
+    }
+  });
+
+  it("an aborted drag (pointercancel) never commits", async () => {
+    const onPreview = vi.fn();
+    const onCommit = vi.fn();
+    render(
+      <Slider label="PREVIEW_MIX" value={50} min={0} max={100} defaultValue={100} onCommit={onCommit} onPreview={onPreview} />,
+    );
+    const track = screen.getByRole("slider", { name: "PREVIEW_MIX" });
+    fireEvent.pointerDown(track, { button: 0, clientX: 30, pointerId: 1 });
+    fireEvent.pointerMove(track, { clientX: 45, pointerId: 1 });
+    fireEvent.pointerCancel(track, { pointerId: 1 });
+    await flushFrame();
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it("works without onPreview (plain commit-only usage)", () => {
+    const onCommit = vi.fn();
+    render(<Slider label="PREVIEW_PAN" value={0} min={-1} max={1} defaultValue={0} onCommit={onCommit} />);
+    const track = screen.getByRole("slider", { name: "PREVIEW_PAN" });
+    fireEvent.pointerDown(track, { button: 0, clientX: 10, pointerId: 1 });
+    fireEvent.pointerUp(track, { pointerId: 1 });
+    expect(onCommit).toHaveBeenCalledTimes(1);
   });
 });

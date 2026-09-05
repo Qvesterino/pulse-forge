@@ -297,3 +297,49 @@ describe("Ultina worklet entry — .enabled scheduled via paramAt (graph re-sync
     expect((after?.meters as { modules?: Record<string, unknown> } | undefined)?.modules?.comp).toBeDefined();
   });
 });
+
+describe("Ultina worklet entry — parameter burst (live drag preview)", () => {
+  it("survives 200 rapid param messages per block; the last value wins; output stays finite", () => {
+    now = 0;
+    const proc = new Processor({ processorOptions: { params: {} } });
+    const input = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+    const output = [[new Float32Array(BLOCK), new Float32Array(BLOCK)]];
+    let nonFinite = 0;
+    for (let b = 0; b < 20; b++) {
+      now = (b * BLOCK) / SR;
+      fillSine(input, b, 0.3);
+      // Simulate a maximally chatty drag: 100 immediate + 100 scheduled params.
+      for (let k = 0; k < 100; k++) {
+        proc.port.onmessage?.({
+          data: { type: "param", id: "global.outputGainDb", value: -6 + k * 0.01 },
+        });
+      }
+      for (let k = 0; k < 100; k++) {
+        proc.port.onmessage?.({
+          data: { type: "paramAt", id: "global.inputGainDb", value: -6 + k * 0.01, when: now },
+        });
+      }
+      proc.process([input], output);
+      for (let i = 0; i < BLOCK; i++) {
+        if (!Number.isFinite(output[0][0][i])) nonFinite++;
+      }
+    }
+    expect(nonFinite).toBe(0);
+    // Settle phase — no more messages: the 20 ms gain smoother converges to
+    // the LAST posted value, proving ordering survived the burst.
+    for (let b = 20; b < 60; b++) {
+      now = (b * BLOCK) / SR;
+      fillSine(input, b, 0.3);
+      proc.process([input], output);
+    }
+    // Both scheduled params converge to their last value (−6 + 99·0.01 ≈
+    // −5.01 dB each): the source passes input gain × output gain.
+    const sourceRms = 0.3 * Math.SQRT1_2;
+    let sumSq = 0;
+    for (let i = 0; i < BLOCK; i++) sumSq += output[0][0][i] * output[0][0][i];
+    const outRms = Math.sqrt(sumSq / BLOCK);
+    const expected = sourceRms * Math.pow(10, -5.01 / 20) * Math.pow(10, -5.01 / 20);
+    expect(outRms).toBeGreaterThan(expected * 0.9);
+    expect(outRms).toBeLessThan(expected * 1.1);
+  });
+});

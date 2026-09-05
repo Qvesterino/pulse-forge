@@ -8,14 +8,39 @@ interface SliderProps {
   defaultValue: number;
   format?: (value: number) => string;
   onCommit: (value: number) => void;
+  /**
+   * Fire-and-forget live preview while dragging (open plugin panels push the
+   * value straight to the audio runtime so the knob is audible DURING the
+   * drag). The document write still happens once, on commit — the preview
+   * must never mutate state.
+   */
+  onPreview?: (value: number) => void;
   disabled?: boolean;
   compact?: boolean;
 }
 
-export function Slider({ label, value, min, max, defaultValue, format, onCommit, disabled, compact }: SliderProps) {
+export function Slider({ label, value, min, max, defaultValue, format, onCommit, onPreview, disabled, compact }: SliderProps) {
   const [dragValue, setDragValue] = useState<number | null>(null);
   const trackRef = useRef<HTMLDivElement>(null);
+  // Preview coalescing: pointermove can fire faster than frames — schedule at
+  // most one preview per frame, always carrying the LATEST value.
+  const previewRaf = useRef<number | null>(null);
   const shown = dragValue ?? value;
+
+  const firePreview = (v: number) => {
+    if (!onPreview) return;
+    if (previewRaf.current !== null) cancelAnimationFrame(previewRaf.current);
+    previewRaf.current = requestAnimationFrame(() => {
+      previewRaf.current = null;
+      onPreview(v);
+    });
+  };
+  const cancelPreview = () => {
+    if (previewRaf.current !== null) {
+      cancelAnimationFrame(previewRaf.current);
+      previewRaf.current = null;
+    }
+  };
 
   const positionToValue = (clientX: number): number => {
     const track = trackRef.current;
@@ -32,16 +57,22 @@ export function Slider({ label, value, min, max, defaultValue, format, onCommit,
     } catch {
       // no active pointer (synthetic dispatch) — drag continues without capture
     }
-    setDragValue(positionToValue(event.clientX));
+    const v = positionToValue(event.clientX);
+    setDragValue(v);
+    firePreview(v);
   };
 
   const handlePointerMove = (event: React.PointerEvent) => {
     if (dragValue === null) return;
-    setDragValue(positionToValue(event.clientX));
+    const v = positionToValue(event.clientX);
+    setDragValue(v);
+    firePreview(v);
   };
 
   const handlePointerUp = () => {
     if (dragValue === null) return;
+    // Kill a pending preview so a stale frame can't land after the commit.
+    cancelPreview();
     onCommit(dragValue);
     setDragValue(null);
   };
@@ -49,7 +80,10 @@ export function Slider({ label, value, min, max, defaultValue, format, onCommit,
   // Interrupted drag (touch gesture takeover, autoscroll, …) — abort, never
   // commit; without this the slider would keep tracking hover moves and the
   // next click would commit a stale value.
-  const handlePointerCancel = () => setDragValue(null);
+  const handlePointerCancel = () => {
+    cancelPreview();
+    setDragValue(null);
+  };
 
   const percent = ((shown - min) / (max - min)) * 100;
 

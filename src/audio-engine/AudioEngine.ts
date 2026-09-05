@@ -3305,6 +3305,21 @@ export class AudioEngine {
     rt?.setMetersEnabled?.(enabled);
   }
 
+  /**
+   * Live parameter preview for an open plugin panel (drag): fire-and-forget
+   * write straight to the device runtime, bypassing the document — the knob
+   * is audible DURING the drag instead of only after pointer-up. The document
+   * write still happens once on commit (syncFxParams then pushes the final
+   * value), so the document stays authoritative between gestures.
+   */
+  previewFxParam(trackId: string, fxId: string, paramId: string, value: number): void {
+    const rt =
+      this.trackNodes.get(trackId)?.fx.runtimes.get(fxId) ??
+      this.groupNodes.get(trackId)?.fx.runtimes.get(fxId) ??
+      this.returnNodes.get(trackId)?.fx.runtimes.get(fxId);
+    rt?.setParameter?.(paramId, value);
+  }
+
   getMasterLevel(): number {
     return this.peakOf(this.masterAnalyser);
   }

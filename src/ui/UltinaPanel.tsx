@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ALL_PARAMS, tryGetParamDef } from "../effects/ultina-core/contracts/parameterSchema";
+import { ALL_PARAMS, tryGetParamDef, clampParam as clampUltinaParam } from "../effects/ultina-core/contracts/parameterSchema";
 import { DEFAULT_MODULE_ORDER } from "../effects/ultina-core/contracts/state";
 import { FACTORY_PRESETS } from "../effects/ultina-core/presets/factoryPresets";
 import { analyzeTrack, analyzeWithTarget } from "../effects/ultina-core/analysis/mixAssistant";
@@ -218,6 +218,14 @@ export function UltinaPanel({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trackId, fxId, services]);
+
+  // ── LIVE DRAG PREVIEW: knob moves are audible DURING the drag ──────────
+  // Fire-and-forget write to the device runtime; the document write still
+  // happens once on commit (onParam). Values are clamped here because the
+  // worklet port trusts the host.
+  const previewParam = (paramId: string, value: number) => {
+    services.engine.previewFxParam?.(trackId, fxId, paramId, clampUltinaParam(paramId, value));
+  };
 
   // ── EQ LEARN: resonance detection from the vendored learn meters ──────
   const [learnOn, setLearnOn] = useState(false);
@@ -669,6 +677,7 @@ export function UltinaPanel({
                 defaultValue={-14}
                 format={(v) => `${v.toFixed(1)} LUFS`}
                 onCommit={(v) => onParam("global.autogainTargetLufs", v)}
+                onPreview={(v) => previewParam("global.autogainTargetLufs", v)}
               />
               <div className="ultina-gain-match-meta">
                 <span className="ultina-gain-match-status" ref={gainMatchStatusRef} role="status">
@@ -966,6 +975,7 @@ export function UltinaPanel({
                             defaultValue={d.defaultValue}
                             format={(v) => formatUnit(v, d.unit)}
                             onCommit={(v) => onParam(d.id, v)}
+                            onPreview={(v) => previewParam(d.id, v)}
                           />
                         ),
                       )}
@@ -986,6 +996,7 @@ export function UltinaPanel({
                 defaultValue={d.defaultValue}
                 format={(v) => formatUnit(v, d.unit)}
                 onCommit={(v) => onParam(d.id, v)}
+                onPreview={(v) => previewParam(d.id, v)}
               />
             ))
           )}
