@@ -21,6 +21,10 @@ class FxEqWorkletProcessor extends AudioWorkletProcessor {
   metersEnabled = false;
   blockCount = 0;
   meterDivider = Math.max(1, Math.round((sampleRate / MAX_BLOCK) / 20));
+  // Port messages have no render-time semantics. Keep automation events in
+  // the audio thread and apply them at the block that reaches their timestamp
+  // so FXEQ exports/playback do not collapse every point to the last value.
+  pendingParams = [];
 
   constructor(options) {
     super();
@@ -35,12 +39,27 @@ class FxEqWorkletProcessor extends AudioWorkletProcessor {
       const msg = event.data;
       if (!msg) return;
       if (msg.type === "params") {
+        this.pendingParams.length = 0;
         this.proc.loadParameters(msg.params);
         this.postLatency();
       } else if (msg.type === "param") {
+        const now = currentTime;
+        this.pendingParams = this.pendingParams.filter((ev) => ev.id !== msg.id || ev.when <= now);
         this.proc.setParameter(msg.id, msg.value);
         this.postLatency();
+      } else if (msg.type === "paramAt") {
+        const when = Number(msg.when);
+        if (!Number.isFinite(when)) {
+          this.proc.setParameter(msg.id, msg.value);
+          this.postLatency();
+          return;
+        }
+        const q = this.pendingParams;
+        let i = q.length;
+        while (i > 0 && q[i - 1].when > when) i--;
+        q.splice(i, 0, { id: msg.id, value: msg.value, when });
       } else if (msg.type === "reset") {
+        this.pendingParams.length = 0;
         this.proc.reset();
       } else if (msg.type === "bpm") {
         // Q2 tempo sync — latency is unaffected, no re-report needed.
@@ -49,6 +68,18 @@ class FxEqWorkletProcessor extends AudioWorkletProcessor {
         this.metersEnabled = !!msg.enabled;
       }
     };
+  }
+
+  applyDueParams(horizon) {
+    const q = this.pendingParams;
+    if (q.length === 0 || q[0].when > horizon) return;
+    let applied = false;
+    while (q.length > 0 && q[0].when <= horizon) {
+      const ev = q.shift();
+      this.proc.setParameter(ev.id, ev.value);
+      applied = true;
+    }
+    if (applied) this.postLatency();
   }
 
   postLatency() {
@@ -64,6 +95,8 @@ class FxEqWorkletProcessor extends AudioWorkletProcessor {
     if (!output || !output[0]) return true;
     const frames = Math.min(MAX_BLOCK, output[0].length);
     const input = inputs[0];
+
+    this.applyDueParams(currentTime + frames / sampleRate);
 
     // Stage the block into scratch (input or silence), process in place,
     // copy back. Deterministic regardless of how the host wires channels.

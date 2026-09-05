@@ -59,6 +59,7 @@ import {
   buildDefaultParams as buildUltinaDefaults,
 } from "../effects/ultina-core/contracts/parameterSchema";
 import { INSTRUMENT_DEFS, clampInstrumentParam, defaultInstrumentParams } from "../instruments/registry";
+import { clampTargetValue, isAutomationTargetValid, targetOwner } from "../project-model/targets";
 import type { InstrumentPreset } from "../presets/types";
 import type { EffectPreset } from "../effects/presets";
 import { clamp, uid } from "../shared/ids";
@@ -3642,19 +3643,10 @@ export function automationLaneOf(doc: ProjectDocument, laneId: string): Automati
 }
 
 export function addAutomationLane(doc: ProjectDocument, target: AutomationTarget): Command {
-  const track = doc.tracks.find((t) => t.id === target.trackId);
-  if (!track) throw new Error(`Track ${target.trackId} not found`);
-  if (target.kind === "fxParam") {
-    if (!target.fxId) throw new Error("fxParam target requires fxId");
-    if (!("effects" in track) || !track.effects.some((f) => f.id === target.fxId)) {
-      throw new Error(`Effect ${target.fxId} not found on track ${target.trackId}`);
-    }
-  }
-  if (target.kind === "instParam" && track.kind !== "instrument") {
-    throw new Error(`instParam target requires an instrument track`);
-  }
-  if ((target.kind === "fxParam" || target.kind === "instParam") && !target.paramId) {
-    throw new Error(`${target.kind} target requires paramId`);
+  const owner = targetOwner(doc, target.trackId);
+  if (!owner) throw new Error(`Track or return ${target.trackId} not found`);
+  if (!isAutomationTargetValid(doc, target)) {
+    throw new Error(`Invalid automation target ${target.kind}:${target.trackId}:${target.fxId ?? ""}:${target.paramId ?? ""}`);
   }
   const exists = doc.automation.some(
     (l) =>
@@ -3686,14 +3678,7 @@ function withLane(doc: ProjectDocument, laneId: string, fn: (lane: AutomationLan
  * through their registry def. Non-finite values fall back to the default.
  */
 function clampAutomationPointValue(doc: ProjectDocument, target: AutomationTarget, value: number): number {
-  if (target.kind !== "fxParam" || !target.fxId || !target.paramId) return value;
-  const fx = trackEffectsOf(doc, target.trackId).find((f) => f.id === target.fxId);
-  if (!fx) return value;
-  if (fx.type === "ultina") return clampUltinaParam(target.paramId, value);
-  const def = EFFECT_DEFS[fx.type].params.find((p) => p.id === target.paramId);
-  if (!def) return value;
-  if (!Number.isFinite(value)) return def.default;
-  return Math.min(def.max, Math.max(def.min, value));
+  return clampTargetValue(doc, target, value);
 }
 
 export function addAutomationPoint(doc: ProjectDocument, laneId: string, tick: number, value: number): Command {
@@ -3923,10 +3908,12 @@ export function addMacroMappingMidiCC(
   param: "gain" | "pan" | string,
   ccNumber: number,
   channel?: number,
+  target?: AutomationTarget,
 ): Command {
   if (!doc.tracks.some((t) => t.id === trackId)) throw new Error(`Track ${trackId} not found`);
   if (!doc.macros.some((m) => m.id === macroId)) throw new Error(`Macro ${macroId} not found`);
   if (!Number.isFinite(ccNumber) || ccNumber < 0 || ccNumber > 127) throw new Error("Invalid CC number");
+  if (target && !isAutomationTargetValid(doc, target)) throw new Error("Invalid MIDI macro target");
   const mapping: import("../project-model/types").MacroMapping = {
     id: uid("map"),
     trackId,
@@ -3935,6 +3922,7 @@ export function addMacroMappingMidiCC(
     source: "midiCC",
     ccNumber: Math.floor(ccNumber),
     ...(channel !== undefined ? { channel: Math.floor(channel) } : {}),
+    ...(target ? { target: { ...target }, param: target.kind } : {}),
   };
   const next: ProjectDocument = {
     ...dMap(doc, macroId, (m) => ({ ...m, mappings: [...m.mappings, mapping] })),
@@ -3961,10 +3949,10 @@ export function addMacroTargetMapping(
   amount = 0.5,
 ): Command {
   if (!doc.macros.some((m) => m.id === macroId)) throw new Error(`Macro ${macroId} not found`);
-  if (!doc.tracks.some((t) => t.id === target.trackId)) throw new Error(`Track ${target.trackId} not found`);
   if (target.kind === "fxParam" && (!target.fxId || !target.paramId))
     throw new Error("fxParam target needs fxId + paramId");
   if (target.kind === "instParam" && !target.paramId) throw new Error("instParam target needs paramId");
+  if (!isAutomationTargetValid(doc, target)) throw new Error("Invalid macro target");
   const mapping: import("../project-model/types").MacroMapping = {
     id: uid("map"),
     trackId: target.trackId,
@@ -3989,7 +3977,7 @@ export function setMacroMappingTarget(
   const macro = doc.macros.find((m) => m.id === macroId);
   const prev = macro?.mappings.find((x) => x.id === mappingId);
   if (!prev) throw new Error("Macro mapping not found");
-  if (target && !doc.tracks.some((t) => t.id === target.trackId)) throw new Error(`Track ${target.trackId} not found`);
+  if (target && !isAutomationTargetValid(doc, target)) throw new Error("Invalid macro target");
   const apply = (d: ProjectDocument, t: import("../project-model/types").AutomationTarget | null): ProjectDocument => ({
     ...dMap(d, macroId, (m) => ({
       ...m,

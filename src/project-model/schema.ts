@@ -28,6 +28,7 @@ import { uid } from "../shared/ids";
 import { defaultInstrumentParams } from "../instruments/registry";
 import { createProjectFromTemplate } from "./templates";
 import { EFFECT_DEFS, clampEffectParam, defaultParamsOf, normalizePluginParams } from "../effects/registry";
+import { clampTargetValue, isAutomationTargetValid } from "./targets";
 
 export const SCHEMA_VERSION = 1;
 /** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
@@ -1113,15 +1114,30 @@ function normalizeArrangementDomain(s: NormalizeState): void {
 
 function normalizeAutomationDomain(s: NormalizeState): void {
   const doc = s.doc;
-  const trackIds = new Set(doc.tracks.map((t) => t.id));
   const automation = doc.automation;
   if (!Array.isArray(automation)) {
     s.doc = { ...doc, automation: [] };
     s.changed = true;
     return;
   }
-  const filtered = automation.filter((lane) => trackIds.has(lane.target.trackId));
-  if (filtered.length !== automation.length) {
+  // Automation targets may point at regular tracks, groups, or return buses.
+  // Validate the complete target against the normalized device catalog so a
+  // deleted FX/parameter cannot survive as a silent lane after reload/collab.
+  const filtered: typeof automation = [];
+  for (const lane of automation) {
+    if (!lane || typeof lane !== "object" || !lane.target || !isAutomationTargetValid(doc, lane.target)) continue;
+    const points = Array.isArray(lane.points)
+      ? lane.points
+          .filter((point) => point && Number.isFinite(point.tick) && Number.isFinite(point.value))
+          .map((point) => ({
+            tick: Math.max(0, Math.round(point.tick)),
+            value: clampTargetValue(doc, lane.target, point.value),
+          }))
+          .sort((a, b) => a.tick - b.tick)
+      : [];
+    filtered.push({ ...lane, points });
+  }
+  if (JSON.stringify(filtered) !== JSON.stringify(automation)) {
     s.doc = { ...doc, automation: filtered };
     s.changed = true;
   }
@@ -1166,12 +1182,18 @@ function normalizeMacrosDomain(s: NormalizeState): void {
     for (const mapping of macro.mappings) {
       const sanitized = sanitizeMacroMapping(mapping);
       if (!sanitized) continue;
+      // Generic mappings are references, not free-form strings. Drop a
+      // dangling target at load time instead of leaving an inert macro that
+      // looks healthy in the UI. Legacy VOL/PAN mappings remain compatible.
+      if (sanitized.target && !isAutomationTargetValid(doc, sanitized.target)) continue;
+      if (!sanitized.target && sanitized.param !== "gain" && sanitized.param !== "pan") continue;
       if (
         sanitized.id !== mapping.id ||
         sanitized.trackId !== mapping.trackId ||
         sanitized.param !== mapping.param ||
         sanitized.amount !== mapping.amount ||
-        sanitized.source !== (mapping.source ?? "macro")
+        sanitized.source !== (mapping.source ?? "macro") ||
+        JSON.stringify(sanitized.target) !== JSON.stringify(mapping.target)
       ) {
         macroChanged = true;
       }

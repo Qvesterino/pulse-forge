@@ -274,11 +274,6 @@ export class Scheduler {
       // were committed in this iteration too.
       if (windowEnd > loopEnd) windowEnd = loopEnd;
     }
-    const windowStart = this.windowStartTick;
-    if (windowEnd <= windowStart) {
-      this.stats.windows += 1;
-      return;
-    }
     // Defect 2.5 (recovery): if the audio context is suspended or closed,
     // every event scheduled in this window would be queued by
     // createBufferSource and fire as a microsecond burst on the next
@@ -299,9 +294,18 @@ export class Scheduler {
     // region (windowEnd was being walked forward against a frozen
     // engine.currentTime). Re-anchor to the live playhead so the
     // next scheduled window covers only the post-resume region.
+    let windowStart = this.windowStartTick;
     if (this.lastContextState !== "running") {
       this.windowStartTick = Math.max(0, transport.position);
       this.lastContextState = "running";
+      // Keep the local value in sync with the re-anchored field. Passing the
+      // stale pre-suspend origin here would schedule the entire suspended gap
+      // in one look-ahead window and recreate the machine-gun burst.
+      windowStart = this.windowStartTick;
+    }
+    if (windowEnd <= windowStart) {
+      this.stats.windows += 1;
+      return;
     }
     try {
       this.scheduleWindow(transport, now, windowStart, windowEnd);

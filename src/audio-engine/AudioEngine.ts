@@ -13,10 +13,11 @@ import { valueAt } from "../project-model/automation";
 import { defaultMasterConfig } from "../project-model/schema";
 import { PPQ } from "../project-model/types";
 import type { SampleBank } from "../sample-library/factory";
-import { EFFECT_DEFS, clampEffectParam } from "../effects/registry";
+import { EFFECT_DEFS } from "../effects/registry";
 import type { EffectRuntime } from "../effects/types";
-import { INSTRUMENT_DEFS, clampInstrumentParam } from "../instruments/registry";
+import { INSTRUMENT_DEFS } from "../instruments/registry";
 import type { InstrumentRuntime } from "../instruments/types";
+import { clampTargetValue, targetOwner, targetParamDef } from "../project-model/targets";
 import {
   ensureWorkletsForDoc,
   isWorkletReady,
@@ -238,6 +239,13 @@ interface PreviewVoice {
   gain: GainNode;
 }
 
+/** `instanceof AudioContext` is not safe in browsers that expose only the
+ * Base/Offline context globals (and it throws when the constructor is absent).
+ * Keep the live-context capability check in one place. */
+function isLiveAudioContext(ctx: BaseAudioContext | null | undefined): ctx is AudioContext {
+  return typeof AudioContext !== "undefined" && ctx instanceof AudioContext;
+}
+
 export interface ResolvedSlicePlayback {
   start: number;
   end: number;
@@ -397,6 +405,14 @@ export class AudioEngine {
   }
 
   useContext(ctx: BaseAudioContext): void {
+    const previousContext = this.ctx;
+    if (previousContext && previousContext !== ctx) {
+      try {
+        previousContext.onstatechange = null;
+      } catch {
+        /* host context may not expose a writable lifecycle hook */
+      }
+    }
     // Defect 1.1 (lifecycle audit): the previous context's per-track,
     // per-return and per-group EffectRuntimes, plus the LFO/follower
     // state and the AudioWorkletNode-side onLatencyChange subs, are
@@ -470,15 +486,32 @@ export class AudioEngine {
     this.frozenBufferIds.clear();
     this.frozenPlaying = false;
     this.frozenAlign = null;
-    // Instrument runtimes own their own voices + AudioWorkletNodes;
-    // panic() tears them down for the new context.
+    // Instrument runtimes own their own voices + AudioWorkletNodes. `panic()`
+    // only silences voices; `dispose()` also disconnects the runtime output
+    // and releases worklet-side subscriptions. Both are idempotent in the
+    // built-in runtimes, and the defensive catch keeps third-party runtimes
+    // from preventing the context swap.
     for (const state of this.instruments.values()) {
       try {
         state.runtime.panic();
       } catch {
-        /* already */
+        /* already stopped */
+      }
+      try {
+        state.runtime.dispose();
+      } catch {
+        /* already disposed */
       }
     }
+    this.instruments.clear();
+    // These are AudioBuffer / AudioNode caches, not value caches. They belong
+    // to the context that created them and must never survive a swap, even if
+    // the sample rate happens to be identical.
+    this.synthNoise = null;
+    this.stretchCache.clear();
+    this.stretchProjectId = null;
+    this.macroCache.clear();
+    this.syncedBpm = 0;
     this.ctx = ctx;
     this.buildMaster();
     if (this.doc) this.syncProject(this.doc);
@@ -547,7 +580,7 @@ export class AudioEngine {
    * ready (context creation happens before any network fetch resolves).
    */
   private queueWorkletRefresh(ctx: BaseAudioContext): void {
-    if (!(ctx instanceof AudioContext)) return;
+    if (!isLiveAudioContext(ctx)) return;
     if (this.workletRefreshQueued || isWorkletReady("bitcrusher", ctx)) return;
     void loadCoreWorklets(ctx)
       .then(() => this.queueFxRebuild(ctx))
@@ -558,6 +591,9 @@ export class AudioEngine {
 
   ensureContext(): BaseAudioContext {
     if (!this.ctx) {
+      if (typeof AudioContext === "undefined") {
+        throw new Error("This browser does not provide a realtime AudioContext");
+      }
       const ctx = new AudioContext();
       this.ctx = ctx;
       this.buildMaster();
@@ -580,7 +616,7 @@ export class AudioEngine {
       }
     }
     const ctx = this.ctx;
-    if (ctx instanceof AudioContext && ctx.state === "suspended") void ctx.resume();
+    if (isLiveAudioContext(ctx) && ctx.state === "suspended") void ctx.resume();
     return ctx;
   }
 
@@ -891,7 +927,7 @@ export class AudioEngine {
    */
   private upgradeKwMeter(): void {
     const ctx = this.ctx;
-    if (!ctx || !(ctx instanceof AudioContext)) return;
+    if (!isLiveAudioContext(ctx)) return;
     if (this.kwMeter || !this.masterLimiter || !isWorkletReady("kwmeter", ctx)) return;
     this.attachKwMeter(ctx);
   }
@@ -975,7 +1011,7 @@ export class AudioEngine {
    */
   private upgradeMasterDynamics(): void {
     const ctx = this.ctx;
-    if (!ctx || !(ctx instanceof AudioContext)) return;
+    if (!isLiveAudioContext(ctx)) return;
     if (!this.master || !this.masterClipper || !this.masterLimiter) return;
     if (isWorkletReady("limiter", ctx)) this.attachMasterWorklet(ctx);
     const attached = this.masterLimiterWorklet;
@@ -1097,7 +1133,7 @@ export class AudioEngine {
       ) {
         void loadPluginWorklet(ctx, fx.type as PluginWorkletType)
           .then(() => {
-            if (ctx instanceof AudioContext) this.queueFxRebuild(ctx);
+            if (isLiveAudioContext(ctx)) this.queueFxRebuild(ctx);
           })
           .catch(() => {
             /* loader never rejects */
@@ -1819,38 +1855,7 @@ export class AudioEngine {
     // amount=1 sweeps roughly the full range. This matches the polling writer's
     // `def.min + (range/2)*(1+value)` absolute mapping but keeps the user's
     // base param as the centre for additive modulation.
-    let def: { min: number; max: number } | undefined;
-    if (target.kind === "fxParam" && target.fxId && target.paramId) {
-      const owner =
-        this.doc?.tracks.find((t) => t.id === target.trackId) ??
-        (this.doc?.returns.find((r) => r.id === target.trackId) as unknown as
-          { effects?: EffectInstance[] } | undefined);
-      const inst =
-        owner && "effects" in owner
-          ? (owner as { effects: EffectInstance[] }).effects.find((f) => f.id === target.fxId)
-          : undefined;
-      if (inst) {
-        def = EFFECT_DEFS[inst.type]?.params.find((p) => p.id === target.paramId);
-      }
-      if (!def) {
-        // Fallback search across all tracks/returns for the fxId (cross-track LFO)
-        for (const track of [...(this.doc?.tracks ?? []), ...(this.doc?.returns ?? [])] as unknown as {
-          id: string;
-          effects?: EffectInstance[];
-        }[]) {
-          const fx = (track as { effects?: EffectInstance[] }).effects?.find((f) => f.id === target.fxId);
-          if (fx) {
-            def = EFFECT_DEFS[fx.type]?.params.find((p) => p.id === target.paramId);
-            if (def) break;
-          }
-        }
-      }
-    } else if (target.kind === "instParam" && target.paramId) {
-      const track = this.doc?.tracks.find((t) => t.id === target.trackId);
-      if (track && track.kind === "instrument") {
-        def = INSTRUMENT_DEFS[track.instrument]?.params.find((p) => p.id === target.paramId);
-      }
-    }
+    const def = this.doc ? targetParamDef(this.doc, target) : null;
     const range = def ? def.max - def.min : 1;
     return (range / 2) * amount;
   }
@@ -1987,6 +1992,65 @@ export class AudioEngine {
     }
   }
 
+  private effectRuntimeForTarget(target: AutomationTarget): EffectRuntime | null {
+    if (target.kind !== "fxParam" || !target.fxId) return null;
+    const nodes =
+      this.trackNodes.get(target.trackId) ??
+      this.groupNodes.get(target.trackId) ??
+      this.returnNodes.get(target.trackId);
+    return nodes?.fx.runtimes.get(target.fxId) ?? null;
+  }
+
+  private instrumentRuntimeForTarget(target: AutomationTarget): InstrumentRuntime | null {
+    if (target.kind !== "instParam") return null;
+    return this.instruments.get(target.trackId)?.runtime ?? null;
+  }
+
+  /** Current persisted base value for a device target (before modulation). */
+  private baseValueForTarget(doc: ProjectDocument, target: AutomationTarget): number | null {
+    const def = targetParamDef(doc, target);
+    if (!def) return null;
+    if (target.kind === "fxParam" && target.fxId && target.paramId) {
+      const effect = targetOwner(doc, target.trackId)?.effects.find((fx) => fx.id === target.fxId);
+      return effect?.params[target.paramId] ?? def.default;
+    }
+    if (target.kind === "instParam" && target.paramId) {
+      const track = targetOwner(doc, target.trackId);
+      return track?.kind === "instrument" ? (track.params[target.paramId] ?? def.default) : null;
+    }
+    return null;
+  }
+
+  /**
+   * The single device-parameter write path used by macros, modulators and
+   * automation. It resolves track/group/return ownership and clamps against
+   * the same catalog used by schema + UI before touching a runtime.
+   */
+  private writeDeviceTargetAt(target: AutomationTarget, value: number, when?: number): boolean {
+    const doc = this.doc;
+    if (!target.paramId) return false;
+    // The engine always has a document in production. Keeping the runtime
+    // fallback makes the small isolated engine tests useful with injected
+    // node maps, while real document-bound writes remain strictly validated.
+    if (doc && Array.isArray(doc.tracks) && !targetParamDef(doc, target)) return false;
+    const clamped = doc ? clampTargetValue(doc, target, value) : value;
+    if (target.kind === "fxParam") {
+      const runtime = this.effectRuntimeForTarget(target);
+      if (!runtime) return false;
+      if (when !== undefined && runtime.setParameterAt) runtime.setParameterAt(target.paramId, clamped, when);
+      else runtime.setParameter(target.paramId, clamped);
+      return true;
+    }
+    if (target.kind === "instParam") {
+      const runtime = this.instrumentRuntimeForTarget(target);
+      if (!runtime) return false;
+      if (when !== undefined && runtime.setParameterAt) runtime.setParameterAt(target.paramId, clamped, when);
+      else runtime.setParameter(target.paramId, clamped);
+      return true;
+    }
+    return false;
+  }
+
   private syncMacros(doc: ProjectDocument): void {
     const ctx = this.ctx;
     if (!ctx) return;
@@ -1994,6 +2058,7 @@ export class AudioEngine {
     for (const track of doc.tracks) {
       next.set(track.id, { gain: 1, pan: 0 });
     }
+    const deviceOffsets = new Map<string, { target: AutomationTarget; delta: number }>();
     // Writer composition rule (one writer per chain):
     // - macro/intensity performance offsets resolve FX/inst params as
     //   base ± half-range·bipolar·amount around the PERSISTED doc value —
@@ -2015,38 +2080,24 @@ export class AudioEngine {
       }
       if (target.kind === "fxParam") {
         if (!target.fxId || !target.paramId) return;
-        const nodes =
-          this.trackNodes.get(target.trackId) ??
-          this.groupNodes.get(target.trackId) ??
-          this.returnNodes.get(target.trackId);
-        const rt = nodes?.fx.runtimes.get(target.fxId);
-        if (!rt) return;
-        const owner =
-          (doc.tracks.find((t) => t.id === target.trackId) as unknown as { effects?: EffectInstance[] } | undefined) ??
-          (doc.returns.find((r) => r.id === target.trackId) as unknown as { effects?: EffectInstance[] } | undefined);
-        const inst = (owner as { effects?: EffectInstance[] } | undefined)?.effects?.find((f) => f.id === target.fxId);
-        if (!inst) return;
-        const def = EFFECT_DEFS[inst.type]?.params.find((p) => p.id === target.paramId);
+        const def = targetParamDef(doc, target);
         if (!def) return;
-        const base = inst.params[target.paramId] ?? def.default;
         const delta = ((def.max - def.min) / 2) * bipolar * amount;
-        rt.setParameter(target.paramId, clampEffectParam(inst.type, target.paramId, base + delta));
+        const key = `fx:${target.trackId}:${target.fxId}:${target.paramId}`;
+        const existing = deviceOffsets.get(key);
+        if (existing) existing.delta += delta;
+        else deviceOffsets.set(key, { target: { ...target }, delta });
         return;
       }
       if (target.kind === "instParam") {
         if (!target.paramId) return;
-        const state = this.instruments.get(target.trackId);
-        if (!state) return;
-        const track = doc.tracks.find((t) => t.id === target.trackId);
-        if (!track || track.kind !== "instrument") return;
-        const def = INSTRUMENT_DEFS[track.instrument]?.params.find((p) => p.id === target.paramId);
+        const def = targetParamDef(doc, target);
         if (!def) return;
-        const base = state.params[target.paramId] ?? def.default;
         const delta = ((def.max - def.min) / 2) * bipolar * amount;
-        state.runtime.setParameter(
-          target.paramId,
-          clampInstrumentParam(track.instrument, target.paramId, base + delta),
-        );
+        const key = `inst:${target.trackId}:${target.paramId}`;
+        const existing = deviceOffsets.get(key);
+        if (existing) existing.delta += delta;
+        else deviceOffsets.set(key, { target: { ...target }, delta });
       }
     };
     const intensityBipolar = Math.max(-1, Math.min(1, this.currentSceneIntensity * 2 - 1));
@@ -2078,6 +2129,13 @@ export class AudioEngine {
         if (mapping.param === "gain") acc.gain += amount * bipolar;
         else acc.pan += amount * bipolar;
       }
+    }
+    // Device mappings compose before the single runtime write. This prevents
+    // two macros/intensity mappings to the same deep parameter from silently
+    // overwriting each other in iteration order.
+    for (const { target, delta } of deviceOffsets.values()) {
+      const base = this.baseValueForTarget(doc, target);
+      if (base !== null) this.writeDeviceTargetAt(target, base + delta);
     }
     for (const [trackId, offsets] of next) {
       const gain = Math.max(0, offsets.gain);
@@ -2150,32 +2208,8 @@ export class AudioEngine {
     const offset = Number.isFinite(scheduleOffsetSec) ? scheduleOffsetSec : 0;
     const t0 = Math.max(ctx.currentTime, ctx.currentTime + offset);
     const t1 = Math.max(t0, this.currentTime + 0.1 + offset);
-    const nodes = this.trackNodes.get(lane.target.trackId);
-    if (!nodes) return;
-    switch (lane.target.kind) {
-      case "trackGain":
-        nodes.modAutoGain.gain.setTargetAtTime(Math.max(0, Math.min(2, v0)), t0, 0.008);
-        nodes.modAutoGain.gain.setTargetAtTime(Math.max(0, Math.min(2, v1)), t1, 0.008);
-        break;
-      case "trackPan":
-        nodes.modAutoPan.pan.setTargetAtTime(Math.min(1, Math.max(-1, v0)), t0, 0.008);
-        nodes.modAutoPan.pan.setTargetAtTime(Math.min(1, Math.max(-1, v1)), t1, 0.008);
-        break;
-      case "fxParam": {
-        if (!lane.target.fxId || !lane.target.paramId) break;
-        const rt = nodes.fx.runtimes.get(lane.target.fxId);
-        if (rt?.setParameterAt) rt.setParameterAt(lane.target.paramId, v0, t0);
-        else rt?.setParameter(lane.target.paramId, v0);
-        break;
-      }
-      case "instParam": {
-        if (!lane.target.paramId) break;
-        const inst = this.instruments.get(lane.target.trackId);
-        if (inst?.runtime.setParameterAt) inst.runtime.setParameterAt(lane.target.paramId, v0, t0);
-        else inst?.runtime.setParameter(lane.target.paramId, v0);
-        break;
-      }
-    }
+    this.writeAutomationTargetAt(lane.target, v0, t0);
+    this.writeAutomationTargetAt(lane.target, v1, t1);
     void fromTick;
     void toTick;
   }
@@ -2358,32 +2392,12 @@ export class AudioEngine {
         if (!paramId) return null;
         return (value, _mode, when) => {
           try {
-            let mapped = value;
-            if (target.kind === "fxParam") {
-              const fxId = target.fxId;
-              if (!fxId) return;
-              const nodes = this.trackNodes.get(target.trackId) ?? this.groupNodes.get(target.trackId);
-              const rt = nodes?.fx.runtimes.get(fxId);
-              if (!rt) return;
-              const owner = this.doc?.tracks.find((t) => t.id === target.trackId);
-              const instance = owner && "effects" in owner ? owner.effects.find((f) => f.id === fxId) : undefined;
-              if (!instance) return;
-              const def = EFFECT_DEFS[instance.type].params.find((p) => p.id === paramId);
-              if (def) mapped = def.min + ((def.max - def.min) / 2) * (1 + value);
-              const finalValue = clampEffectParam(instance.type, paramId, mapped);
-              rt.setParameterAt ? rt.setParameterAt(paramId, finalValue, when) : rt.setParameter(paramId, finalValue);
-            } else {
-              const state = this.instruments.get(target.trackId);
-              if (!state) return;
-              const track = this.doc?.tracks.find((t) => t.id === target.trackId);
-              if (!track || track.kind !== "instrument") return;
-              const def = INSTRUMENT_DEFS[track.instrument].params.find((p) => p.id === paramId);
-              if (def) mapped = def.min + ((def.max - def.min) / 2) * (1 + value);
-              const finalValue = clampInstrumentParam(track.instrument, paramId, mapped);
-              state.runtime.setParameterAt
-                ? state.runtime.setParameterAt(paramId, finalValue, when)
-                : state.runtime.setParameter(paramId, finalValue);
-            }
+            const doc = this.doc;
+            const def = doc ? targetParamDef(doc, target) : null;
+            const base = doc ? this.baseValueForTarget(doc, target) : null;
+            if (!def || base === null) return;
+            const mapped = base + (def.max - def.min) * 0.5 * value;
+            this.writeDeviceTargetAt(target, mapped, when);
           } catch {
             /* best effort */
           }
@@ -2430,6 +2444,25 @@ export class AudioEngine {
     }
   }
 
+  /** Shared target writer for realtime and offline automation. */
+  private writeAutomationTargetAt(target: AutomationTarget, value: number, when: number): void {
+    const doc = this.doc;
+    if (doc && Array.isArray(doc.tracks) && !targetParamDef(doc, target)) return;
+    if (target.kind === "trackGain" || target.kind === "trackPan") {
+      const trackNodes = this.trackNodes.get(target.trackId) ?? this.groupNodes.get(target.trackId);
+      const returnNodes = this.returnNodes.get(target.trackId);
+      if (target.kind === "trackGain" && returnNodes) {
+        returnNodes.gain.gain.setTargetAtTime(Math.max(0, Math.min(1.5, value)), when, 0.008);
+      } else if (trackNodes && target.kind === "trackGain") {
+        trackNodes.modAutoGain.gain.setTargetAtTime(Math.max(0, Math.min(2, value)), when, 0.008);
+      } else if (trackNodes && target.kind === "trackPan") {
+        trackNodes.modAutoPan.pan.setTargetAtTime(Math.min(1, Math.max(-1, value)), when, 0.008);
+      }
+      return;
+    }
+    this.writeDeviceTargetAt(target, value, when);
+  }
+
   applyAutomation(fromTick: number, toTick: number, relOf: (tick: number) => number, scheduleOffsetSec = 0): void {
     const ctx = this.ctx;
     const doc = this.doc;
@@ -2441,38 +2474,8 @@ export class AudioEngine {
       if (lane.points.length === 0) continue;
       const v0 = valueAt(lane.points, relOf(fromTick), 1);
       const v1 = valueAt(lane.points, relOf(toTick), 1);
-      // Group tracks expose the same node shape (modAutoGain/modAutoPan/fx)
-      // as regular tracks — resolving them here keeps automation lanes on
-      // group buses from silently no-oping. Return tracks host FX but no
-      // mod auto-gain/pan; the fxParam case below consults them explicitly.
-      const nodes = this.trackNodes.get(lane.target.trackId) ?? this.groupNodes.get(lane.target.trackId);
-      if (!nodes) continue;
-      switch (lane.target.kind) {
-        case "trackGain":
-          nodes.modAutoGain.gain.setTargetAtTime(Math.max(0, Math.min(2, v0)), t0, 0.008);
-          nodes.modAutoGain.gain.setTargetAtTime(Math.max(0, Math.min(2, v1)), t1, 0.008);
-          break;
-        case "trackPan":
-          nodes.modAutoPan.pan.setTargetAtTime(Math.min(1, Math.max(-1, v0)), t0, 0.008);
-          nodes.modAutoPan.pan.setTargetAtTime(Math.min(1, Math.max(-1, v1)), t1, 0.008);
-          break;
-        case "fxParam": {
-          if (!lane.target.fxId || !lane.target.paramId) break;
-          const rt =
-            nodes.fx.runtimes.get(lane.target.fxId) ??
-            this.returnNodes.get(lane.target.trackId)?.fx.runtimes.get(lane.target.fxId);
-          if (rt?.setParameterAt) rt.setParameterAt(lane.target.paramId, v0, t0);
-          else rt?.setParameter(lane.target.paramId, v0);
-          break;
-        }
-        case "instParam": {
-          if (!lane.target.paramId) break;
-          const inst = this.instruments.get(lane.target.trackId);
-          if (inst?.runtime.setParameterAt) inst.runtime.setParameterAt(lane.target.paramId, v0, t0);
-          else inst?.runtime.setParameter(lane.target.paramId, v0);
-          break;
-        }
-      }
+      this.writeAutomationTargetAt(lane.target, v0, t0);
+      this.writeAutomationTargetAt(lane.target, v1, t1);
     }
   }
 
@@ -2482,16 +2485,10 @@ export class AudioEngine {
     points: AutomationPoint[],
     timeAt: (tick: number) => number,
   ): void {
-    // Group buses carry the same mod auto-gain/pan pair as tracks.
-    const nodes = this.trackNodes.get(trackId) ?? this.groupNodes.get(trackId);
-    if (!nodes || points.length === 0) return;
-    const target = param === "gain" ? nodes.modAutoGain.gain : nodes.modAutoPan.pan;
-    const clampValue =
-      param === "gain" ? (v: number) => Math.max(0, Math.min(2, v)) : (v: number) => Math.max(-1, Math.min(1, v));
-    target.setValueAtTime(clampValue(valueAt(points, 0, param === "gain" ? 1 : 0)), 0);
-    for (const point of points) {
-      target.linearRampToValueAtTime(clampValue(point.value), Math.max(0, timeAt(point.tick)));
-    }
+    if (points.length === 0) return;
+    const target: AutomationTarget = { kind: param === "gain" ? "trackGain" : "trackPan", trackId };
+    this.writeAutomationTargetAt(target, valueAt(points, 0, param === "gain" ? 1 : 0), 0);
+    for (const point of points) this.writeAutomationTargetAt(target, point.value, Math.max(0, timeAt(point.tick)));
   }
 
   scheduleDeviceAutomation(
@@ -2503,23 +2500,12 @@ export class AudioEngine {
     timeAt: (tick: number) => number,
   ): void {
     if (!paramId) return;
-    // FX automation must reach group-bus and return-track chains too — the
-    // lane editors offer fxParam targets for any track with effects, but a
-    // trackNodes-only lookup silently dropped every non-track lane.
-    const nodes = this.trackNodes.get(trackId) ?? this.groupNodes.get(trackId) ?? this.returnNodes.get(trackId);
-    if (!nodes) return;
+    const target: AutomationTarget =
+      kind === "fx"
+        ? { kind: "fxParam", trackId, fxId: deviceId, paramId }
+        : { kind: "instParam", trackId, paramId };
     for (const point of points) {
-      const when = Math.max(0, timeAt(point.tick));
-      if (kind === "fx") {
-        if (!deviceId) return;
-        const rt = nodes.fx.runtimes.get(deviceId);
-        if (rt?.setParameterAt) rt.setParameterAt(paramId, point.value, when);
-        else rt?.setParameter(paramId, point.value);
-      } else {
-        const rt = this.instruments.get(trackId)?.runtime;
-        if (rt?.setParameterAt) rt.setParameterAt(paramId, point.value, when);
-        else rt?.setParameter(paramId, point.value);
-      }
+      this.writeAutomationTargetAt(target, point.value, Math.max(0, timeAt(point.tick)));
     }
   }
 
@@ -3379,7 +3365,7 @@ export class AudioEngine {
 
   /** The real AudioContext for browser-only APIs (MediaRecorder, media streams). */
   getLiveAudioContext(): AudioContext | null {
-    return this.ctx instanceof AudioContext ? this.ctx : null;
+    return isLiveAudioContext(this.ctx) ? this.ctx : null;
   }
 
   /** Post-FX tap for one track (the analyser branch carries the full track signal). */

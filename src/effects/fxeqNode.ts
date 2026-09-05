@@ -104,6 +104,16 @@ export function createFxEqNode(
         value: id === "bandCount" ? Math.round(value) : value,
       });
     },
+    /** Time-stamped parameter set for live/offline automation parity. */
+    setParameterAt(id: string, value: number, when: number) {
+      if (disposed) return;
+      node.port.postMessage({
+        type: "paramAt",
+        id: toCoreId(id),
+        value: id === "bandCount" ? Math.round(value) : value,
+        when,
+      });
+    },
     syncBpm(bpm: number) {
       // Q2 tempo sync: forwarded to the worklet, which notifies the
       // tempo-aware modules (delay/modulation). Latency is unaffected.

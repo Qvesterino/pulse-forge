@@ -25,13 +25,14 @@ import {
   setSceneIntensity,
   setSceneIntensityCurve,
 } from "../commands/commands";
-import type { AutomationParamKind, AutomationTarget, EffectInstance, LfoKind, LfoWave } from "../project-model/types";
+import type { AutomationParamKind, AutomationTarget, LfoKind, LfoWave } from "../project-model/types";
 import { STEP_TICKS } from "../project-model/types";
 import { DEFAULT_STEP_PATTERN } from "../project-model/modulators";
 import { laneLabel } from "../project-model/automation";
 import { EFFECT_DEFS } from "../effects/registry";
 import { ultinaLaneRange, ultinaOptionGroups } from "../effects/ultinaAutomation";
 import { INSTRUMENT_DEFS } from "../instruments/registry";
+import { effectTargetParamDefs, instrumentTargetParamDefs, targetOwner, targetParamDef } from "../project-model/targets";
 import { Slider } from "./controls";
 import { trackBadge } from "./TrackTabs";
 import { clamp } from "../shared/ids";
@@ -90,15 +91,15 @@ function targetOptionsFor(doc: ReturnType<typeof useDoc>, hostTrackId: string): 
     { value: "trackGain:", label: "Volume" },
     { value: "trackPan:", label: "Pan" },
   ];
-  const host = doc.tracks.find((t) => t.id === hostTrackId);
+  const host = targetOwner(doc, hostTrackId);
   if (host?.kind === "instrument") {
-    for (const p of INSTRUMENT_DEFS[host.instrument].params) {
+    for (const p of instrumentTargetParamDefs(host)) {
       options.push({ value: `instParam::${p.id}`, label: p.label });
     }
   }
   if (host && "effects" in host) {
     for (const fx of host.effects) {
-      for (const p of EFFECT_DEFS[fx.type].params) {
+      for (const p of effectTargetParamDefs(fx)) {
         options.push({ value: `fxParam:${fx.id}:${p.id}`, label: `${EFFECT_DEFS[fx.type].name} · ${p.label}` });
       }
     }
@@ -134,7 +135,7 @@ interface ParamRange {
 function laneRange(doc: ReturnType<typeof useDoc>, target: AutomationTarget): ParamRange {
   if (target.kind === "trackGain") return { min: 0, max: 1.5, format: (v) => v.toFixed(2) };
   if (target.kind === "trackPan") return { min: -1, max: 1, format: (v) => (Math.abs(v) < 0.02 ? "C" : v.toFixed(2)) };
-  const track = doc.tracks.find((t) => t.id === target.trackId);
+  const track = targetOwner(doc, target.trackId);
   if (target.kind === "fxParam" && track && "effects" in track) {
     const fx = track.effects.find((f) => f.id === target.fxId);
     if (fx) {
@@ -144,12 +145,12 @@ function laneRange(doc: ReturnType<typeof useDoc>, target: AutomationTarget): Pa
         const range = ultinaLaneRange(target.paramId);
         if (range) return range;
       }
-      const def = EFFECT_DEFS[fx.type].params.find((p) => p.id === target.paramId);
+      const def = effectTargetParamDefs(fx).find((p) => p.id === target.paramId);
       if (def) return { min: def.min, max: def.max, format: def.format };
     }
   }
   if (target.kind === "instParam" && track?.kind === "instrument") {
-    const def = INSTRUMENT_DEFS[track.instrument].params.find((p) => p.id === target.paramId);
+    const def = instrumentTargetParamDefs(track).find((p) => p.id === target.paramId);
     if (def) return { min: def.min, max: def.max, format: def.format };
   }
   return { min: 0, max: 1 };
@@ -197,15 +198,17 @@ export function ModPanel() {
     }
   };
 
-  const addableTrack = doc.tracks.find((t) => t.id === addTarget.trackId);
-  const hasUltina = Boolean(addableTrack && "effects" in addableTrack && addableTrack.effects.some((f) => f.type === "ultina"));
+  const addableTrack = targetOwner(doc, addTarget.trackId);
+  const hasDeepParams = Boolean(
+    addableTrack && "effects" in addableTrack && addableTrack.effects.some((f) => f.type === "ultina" || f.type === "fxeq"),
+  );
 
   return (
     <section className="mod-panel" aria-label="Automation, LFOs and macros">
       <div className="mod-section">
         <h2 className="panel-title">AUTOMATION</h2>
         <div className="mod-lane-add">
-          {hasUltina && (
+          {hasDeepParams && (
             <input
               type="text"
               className="mod-param-filter"
@@ -223,9 +226,9 @@ export function ModPanel() {
               setParamFilter("");
             }}
           >
-            {doc.tracks.map((track) => (
+            {[...doc.tracks, ...doc.returns].map((track) => (
               <option key={track.id} value={track.id}>
-                {trackBadge(track)} {track.name}
+                {track.kind === "return" ? "RT" : trackBadge(track)} {track.name}
               </option>
             ))}
           </select>
@@ -253,8 +256,8 @@ export function ModPanel() {
             {addableTrack &&
               "effects" in addableTrack &&
               addableTrack.effects.map((fx) =>
-                fx.type === "ultina" ? (
-                  ultinaOptionGroups(fx.id, paramFilter).map(({ module, options }) => (
+              fx.type === "ultina" ? (
+                ultinaOptionGroups(fx.id, paramFilter).map(({ module, options }) => (
                     <optgroup key={`${fx.id}:${module}`} label={`Ultina · ${module}`}>
                       {options.map((o) => (
                         <option key={o.value} value={o.value}>
@@ -264,11 +267,16 @@ export function ModPanel() {
                     </optgroup>
                   ))
                 ) : (
-                  EFFECT_DEFS[fx.type].params.map((p) => (
+                  effectTargetParamDefs(fx)
+                    .filter((p) => {
+                      const query = paramFilter.trim().toLowerCase();
+                      return !query || `${p.label} ${p.id}`.toLowerCase().includes(query);
+                    })
+                    .map((p) => (
                     <option key={`${fx.id}:${p.id}`} value={`fxParam:${fx.id}:${p.id}`}>
                       {EFFECT_DEFS[fx.type].name} · {p.label}
                     </option>
-                  ))
+                    ))
                 ),
               )}
           </select>
@@ -279,7 +287,7 @@ export function ModPanel() {
         <div className="mod-lane-list">
           {doc.automation.length === 0 && <div className="fx-empty">No automation lanes yet.</div>}
           {doc.automation.map((lane) => {
-            const track = doc.tracks.find((t) => t.id === lane.target.trackId);
+            const track = targetOwner(doc, lane.target.trackId);
             const fxName =
               lane.target.kind === "fxParam" && track && "effects" in track
                 ? EFFECT_DEFS[track.effects.find((f) => f.id === lane.target.fxId)?.type ?? "eq"]?.name
@@ -848,16 +856,13 @@ function macroMappingLabel(
   if (t.kind === "trackGain") return "VOL";
   if (t.kind === "trackPan") return "PAN";
   if (t.kind === "fxParam") {
-    const owner = doc.tracks.find((x) => x.id === t.trackId) as unknown as { effects?: EffectInstance[] } | undefined;
-    const fx = owner?.effects?.find((f) => f.id === t.fxId);
-    const def = fx ? EFFECT_DEFS[fx.type] : undefined;
-    const paramLabel = def?.params.find((p) => p.id === t.paramId)?.label ?? t.paramId;
-    return `FX ${def?.name ?? "?"} · ${paramLabel}`;
+    const owner = targetOwner(doc, t.trackId);
+    const fx = owner?.effects.find((f) => f.id === t.fxId);
+    const paramLabel = targetParamDef(doc, t)?.label ?? t.paramId;
+    return `FX ${fx ? EFFECT_DEFS[fx.type]?.name ?? fx.type : "?"} · ${paramLabel}`;
   }
   if (t.kind === "instParam") {
-    const track = doc.tracks.find((x) => x.id === t.trackId);
-    const def = track?.kind === "instrument" ? INSTRUMENT_DEFS[track.instrument] : undefined;
-    const paramLabel = def?.params.find((p) => p.id === t.paramId)?.label ?? t.paramId;
+    const paramLabel = targetParamDef(doc, t)?.label ?? t.paramId;
     return `INSTRUMENT · ${paramLabel}`;
   }
   return t.kind;
@@ -880,6 +885,7 @@ function MacroCard({ macro }: { macro: ReturnType<typeof useDoc>["macros"][numbe
     paramId: "",
   });
   const [learning, setLearning] = useState(false);
+  const [macroParamFilter, setMacroParamFilter] = useState("");
   const learnCancelRef = useRef<(() => void) | null>(null);
   useEffect(() => () => learnCancelRef.current?.(), []);
   // LEARN CC must always be escapable — Escape disarms the capture so it can
@@ -896,10 +902,10 @@ function MacroCard({ macro }: { macro: ReturnType<typeof useDoc>["macros"][numbe
     return () => window.removeEventListener("keydown", onKey);
   }, [learning]);
 
-  const mapTrack = doc.tracks.find((t) => t.id === mapDraft.trackId);
+  const mapTrack = targetOwner(doc, mapDraft.trackId);
   const deviceOptions = (() => {
     const out: { id: string; label: string }[] = [];
-    const effects = (mapTrack as unknown as { effects?: EffectInstance[] } | undefined)?.effects ?? [];
+    const effects = mapTrack?.effects ?? [];
     for (const fx of effects) out.push({ id: fx.id, label: `FX · ${EFFECT_DEFS[fx.type]?.name ?? fx.type}` });
     if (mapTrack?.kind === "instrument") out.push({ id: "instrument", label: "INSTRUMENT" });
     return out;
@@ -909,12 +915,18 @@ function MacroCard({ macro }: { macro: ReturnType<typeof useDoc>["macros"][numbe
     : (deviceOptions[0]?.id ?? "");
   const paramOptions = (() => {
     if (mapDraft.param !== "param" || !activeDeviceId) return [];
-    const fx = (mapTrack as unknown as { effects?: EffectInstance[] } | undefined)?.effects?.find(
-      (f) => f.id === activeDeviceId,
-    );
-    if (fx) return EFFECT_DEFS[fx.type]?.params ?? [];
+    const fx = mapTrack?.effects.find((f) => f.id === activeDeviceId);
+    if (fx) {
+      const query = macroParamFilter.trim().toLowerCase();
+      return effectTargetParamDefs(fx)
+        .filter((param) => !query || `${param.label} ${param.id}`.toLowerCase().includes(query))
+        .map((param) => ({ id: param.id, label: param.label }));
+    }
     if (activeDeviceId === "instrument" && mapTrack?.kind === "instrument") {
-      return INSTRUMENT_DEFS[mapTrack.instrument]?.params ?? [];
+      const query = macroParamFilter.trim().toLowerCase();
+      return instrumentTargetParamDefs(mapTrack)
+        .filter((param) => !query || `${param.label} ${param.id}`.toLowerCase().includes(query))
+        .map((param) => ({ id: param.id, label: param.label }));
     }
     return [];
   })();
@@ -971,7 +983,7 @@ function MacroCard({ macro }: { macro: ReturnType<typeof useDoc>["macros"][numbe
       />
       <div className="macro-mappings">
         {macro.mappings.map((mapping) => {
-          const track = doc.tracks.find((t) => t.id === mapping.trackId);
+          const track = targetOwner(doc, mapping.trackId);
           return (
             <div key={mapping.id} className="macro-mapping">
               <span className="macro-mapping-label">
@@ -1007,11 +1019,11 @@ function MacroCard({ macro }: { macro: ReturnType<typeof useDoc>["macros"][numbe
           <select
             aria-label="Map macro to track"
             value={mapDraft.trackId}
-            onChange={(event) => setMapDraft((prev) => ({ ...prev, trackId: event.target.value }))}
+            onChange={(event) => setMapDraft((prev) => ({ ...prev, trackId: event.target.value, deviceId: "", paramId: "" }))}
           >
-            {doc.tracks.map((track) => (
+            {[...doc.tracks, ...doc.returns].map((track) => (
               <option key={track.id} value={track.id}>
-                {trackBadge(track)} {track.name}
+                {track.kind === "return" ? "RT" : trackBadge(track)} {track.name}
               </option>
             ))}
           </select>
@@ -1019,7 +1031,11 @@ function MacroCard({ macro }: { macro: ReturnType<typeof useDoc>["macros"][numbe
             aria-label="Macro parameter"
             value={mapDraft.param}
             onChange={(event) =>
-              setMapDraft((prev) => ({ ...prev, param: event.target.value as "gain" | "pan" | "param" }))
+              setMapDraft((prev) => ({
+                ...prev,
+                param: event.target.value as "gain" | "pan" | "param",
+                paramId: "",
+              }))
             }
           >
             <option value="gain">VOL</option>
@@ -1028,6 +1044,14 @@ function MacroCard({ macro }: { macro: ReturnType<typeof useDoc>["macros"][numbe
           </select>
           {mapDraft.param === "param" && (
             <>
+              <input
+                type="search"
+                className="mod-param-filter"
+                aria-label="Filter macro parameters"
+                placeholder="Filter…"
+                value={macroParamFilter}
+                onChange={(event) => setMacroParamFilter(event.target.value)}
+              />
               <select
                 aria-label="Macro target device"
                 value={activeDeviceId}
@@ -1079,6 +1103,7 @@ function MacroCard({ macro }: { macro: ReturnType<typeof useDoc>["macros"][numbe
             type="button"
             className={`btn btn-small${learning ? " active-solo" : ""}`}
             title="MIDI Learn — move a knob/fader on your controller"
+            disabled={mapDraft.param === "param" && (!activeDeviceId || !activeParamId)}
             onClick={() => {
               if (learning) {
                 learnCancelRef.current?.();
@@ -1088,8 +1113,25 @@ function MacroCard({ macro }: { macro: ReturnType<typeof useDoc>["macros"][numbe
               setLearning(true);
               const cancel = services.midi.captureNextCc((cc, channel) => {
                 try {
+                  const target =
+                    mapDraft.param === "param"
+                      ? {
+                          kind: activeDeviceId === "instrument" ? ("instParam" as const) : ("fxParam" as const),
+                          trackId: mapDraft.trackId,
+                          ...(activeDeviceId === "instrument" ? {} : { fxId: activeDeviceId }),
+                          paramId: activeParamId,
+                        }
+                      : undefined;
                   services.store.execute(
-                    addMacroMappingMidiCC(services.store.doc, macro.id, mapDraft.trackId, mapDraft.param, cc, channel),
+                    addMacroMappingMidiCC(
+                      services.store.doc,
+                      macro.id,
+                      mapDraft.trackId,
+                      mapDraft.param,
+                      cc,
+                      channel,
+                      target,
+                    ),
                   );
                 } catch {}
                 setLearning(false);
