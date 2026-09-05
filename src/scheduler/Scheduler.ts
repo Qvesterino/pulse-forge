@@ -114,12 +114,39 @@ function findUsablePattern(doc: ProjectDocument): Pattern | undefined {
   return doc.patterns[0];
 }
 
+/**
+ * Resolve the loop end in absolute ticks. `transport.loopEnd === 0` means
+ * "to the end of the current content": the active pattern in pattern mode
+ * (step count × STEP_TICKS) or the arrangement end in song mode. Centralised
+ * so `start()` and `tick()` can both anchor on the same value (the scheduler
+ * precision audit's A01.D1 fix would otherwise drift between the two).
+ */
+function resolveLoopEnd(transport: Transport, doc: ProjectDocument, mode: PlayMode): number {
+  if (transport.loopEnd > 0) return transport.loopEnd;
+  if (mode === "pattern") {
+    return STEP_TICKS * (findUsablePattern(doc)?.stepCount ?? 16);
+  }
+  return Math.max(0, ...doc.arrangement.clips.map((c) => (c.startBar + c.lengthBars) * BAR_TICKS));
+}
+
 export class Scheduler {
   private timer: ReturnType<typeof setInterval> | null = null;
   private windowStartTick = 0;
   private stopped = true;
   /** Last BPM handed to applySceneTempo (null = project tempo) — change-guard. */
   private lastAppliedTempo: number | null | undefined = undefined;
+  /**
+   * Last observed AudioContext state. Used to detect the
+   * suspended → running transition (Defect A02.D2, browser audio
+   * lifecycle audit): while suspended, tick() skips windows so the
+   * transport position effectively freezes. When the context comes
+   * back, the live playhead is much further along than
+   * `windowStartTick` (the suspended region dropped out of the
+   * bookkeeping). Re-anchoring the window origin to the live playhead
+   * prevents the next tick from scheduling a massive "machine gun"
+   * burst covering the entire suspended gap.
+   */
+  private lastContextState: AudioContextState | "closed" = "running";
   private pendingLaunch: { patternId: string; atTick: number } | null = null;
   /** Marker ids that have already fired in this playback session. Cleared on stop. */
   private firedMarkerIds = new Set<string>();
@@ -215,6 +242,14 @@ export class Scheduler {
       this.stop();
       return;
     }
+    // Defect A01.D2 (scheduler precision audit): windowEnd is declared
+    // before the loop-wrap block so the post-wrap clamp can shorten it
+    // to the loop boundary. If a seek fires inside the wrap block, the
+    // post-seek value differs from the pre-seek one, so we recompute
+    // windowEnd against the new anchor.
+    const now = this.deps.getAudioTime();
+    const horizon = now + HORIZON_SECONDS;
+    let windowEnd = transport.tickAt(horizon);
     if (transport.loopEnabled) {
       const doc = this.deps.getProject();
       const mode = this.deps.getMode();
@@ -223,21 +258,22 @@ export class Scheduler {
       // getActivePattern(doc), which throws when the active pattern id
       // is stale. Resolve the loop end against the *first available*
       // pattern instead so the transport never wedges mid-loop.
-      const loopEnd =
-        transport.loopEnd > 0
-          ? transport.loopEnd
-          : mode === "pattern"
-            ? STEP_TICKS * (findUsablePattern(doc)?.stepCount ?? 16)
-            : Math.max(0, ...doc.arrangement.clips.map((c) => (c.startBar + c.lengthBars) * BAR_TICKS));
+      const loopEnd = resolveLoopEnd(transport, doc, mode);
       const position = transport.position;
       if (position >= loopEnd || position < loopStart) {
         transport.seek(loopStart);
         this.windowStartTick = loopStart;
+        // transport.seek re-anchored; windowEnd was computed against
+        // the old anchor. Recompute against the post-seek anchor so
+        // the clamp below sees the correct value.
+        windowEnd = transport.tickAt(horizon);
       }
+      // Clamp windowEnd to loopEnd so we never schedule events past
+      // the loop boundary in the same window. Without the clamp the
+      // next loop iteration re-fires those late events because they
+      // were committed in this iteration too.
+      if (windowEnd > loopEnd) windowEnd = loopEnd;
     }
-    const now = this.deps.getAudioTime();
-    const horizon = now + HORIZON_SECONDS;
-    const windowEnd = transport.tickAt(horizon);
     const windowStart = this.windowStartTick;
     if (windowEnd <= windowStart) {
       this.stats.windows += 1;
@@ -251,10 +287,21 @@ export class Scheduler {
     // context resumes.
     const contextState = this.deps.getContextState?.() ?? "running";
     if (contextState !== "running") {
+      this.lastContextState = contextState;
       this.windowStartTick = windowEnd;
       this.stats.lastHorizonTick = windowEnd;
       this.stats.windows += 1;
       return;
+    }
+    // Defect A02.D2 (browser audio lifecycle audit): detect the
+    // suspended → running transition. The window origin has drifted
+    // arbitrarily far from the live playhead during the suspended
+    // region (windowEnd was being walked forward against a frozen
+    // engine.currentTime). Re-anchor to the live playhead so the
+    // next scheduled window covers only the post-resume region.
+    if (this.lastContextState !== "running") {
+      this.windowStartTick = Math.max(0, transport.position);
+      this.lastContextState = "running";
     }
     try {
       this.scheduleWindow(transport, now, windowStart, windowEnd);
@@ -359,6 +406,14 @@ export class Scheduler {
       this.applyTempo(null);
     } else {
       const clips = [...doc.arrangement.clips].sort((a, b) => a.startBar - b.startBar);
+      // Defect A05.D1 (beat engine stress audit): every song-mode
+      // window used to look up scenes and patterns via
+      // `doc.scenes.find((sc) => sc.id === clip.sceneId)` inside the
+      // per-clip loop. With 50+ clips and 5–10 scenes that becomes
+      // O(clips × scenes) per window, i.e. per 25 ms tick. Build the
+      // id → entity Maps once per window for O(1) lookup.
+      const scenesById = new Map(doc.scenes.map((s) => [s.id, s] as const));
+      const patternsById = new Map(doc.patterns.map((p) => [p.id, p] as const));
       // Find the active scene (whose clip contains the playhead) for intensity
       // computation and the marker-firing loop.
       let activeScene: (typeof doc.scenes)[number] | null = null;
@@ -367,7 +422,7 @@ export class Scheduler {
         const clipStart = clip.startBar * BAR_TICKS;
         const clipEnd = clipStart + clip.lengthBars * BAR_TICKS;
         if (windowStart >= clipStart && windowStart < clipEnd) {
-          const scene = doc.scenes.find((sc) => sc.id === clip.sceneId);
+          const scene = scenesById.get(clip.sceneId);
           if (scene) {
             activeScene = scene;
             activeClipStart = clipStart;
@@ -416,9 +471,9 @@ export class Scheduler {
         const s = Math.max(windowStart, clipStart);
         const e = Math.min(windowEnd, clipEnd);
         if (e <= s) continue;
-        const scene = doc.scenes.find((sc) => sc.id === clip.sceneId);
+        const scene = scenesById.get(clip.sceneId);
         if (!scene) continue;
-        const pattern = doc.patterns.find((p) => p.id === scene.patternId);
+        const pattern = patternsById.get(scene.patternId);
         if (!pattern) continue;
         const patternTicks = STEP_TICKS * pattern.stepCount;
         this.schedulePatternWindow(pattern, clipStart, s, e);
@@ -432,8 +487,8 @@ export class Scheduler {
           return windowStart >= cs && windowStart < cs + c.lengthBars * BAR_TICKS;
         });
         if (covering) {
-          const scene = doc.scenes.find((sc) => sc.id === covering.sceneId);
-          const pattern = scene ? doc.patterns.find((p) => p.id === scene.patternId) : undefined;
+          const scene = scenesById.get(covering.sceneId);
+          const pattern = scene ? patternsById.get(scene.patternId) : undefined;
           const patternTicks = pattern ? STEP_TICKS * pattern.stepCount : STEP_TICKS * 16;
           automationCtx = { base: covering.startBar * BAR_TICKS, patternTicks };
         }
@@ -470,12 +525,22 @@ export class Scheduler {
 
     if (automationCtx) {
       const { base, patternTicks } = automationCtx;
-      this.deps.applyAutomation(
-        windowStart,
-        windowEnd,
-        (tick) => mod(tick - base, patternTicks),
-        this.scheduleOffsetSec(),
-      );
+      // Defect A01.D3 (scheduler precision audit): a pattern with
+      // stepCount === 0 (corrupted doc, collab peer pre-normalisation,
+      // future schema) would make patternTicks === 0 and
+      // mod(tick - base, 0) === NaN, poisoning the engine's
+      // automation parameters for the rest of the session. Skip the
+      // automation for this window — no useful loop length to wrap
+      // against anyway. A non-finite guard catches future bugs where
+      // patternTicks is also negative or NaN.
+      if (Number.isFinite(patternTicks) && patternTicks > 0) {
+        this.deps.applyAutomation(
+          windowStart,
+          windowEnd,
+          (tick) => mod(tick - base, patternTicks),
+          this.scheduleOffsetSec(),
+        );
+      }
     }
 
     // Track modulators share the window — boundaries map through the transport

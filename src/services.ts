@@ -302,6 +302,12 @@ export async function openProject(
     getTransport: () => transport,
     getAudioTime: () => engine.currentTime,
     getScheduleOffsetSec: () => latency.getSnapshot().midiReferenceOffsetMs / 1000,
+    // Defect A02.D1 (browser audio lifecycle audit): the scheduler
+    // gates its tick() on the live AudioContext state to prevent a
+    // "machine gun" burst of every missed event when the context
+    // resumes after visibility / screen lock / OS sleep. Without this
+    // getter the gate is dead code and the burst slips through.
+    getContextState: () => engine.context?.state ?? "closed",
     getMode: () => modeRef.mode,
     trigger: (trackId, pad, when, velocity, locks) => engine.trigger(trackId, pad, when, velocity, locks),
     noteOn: (trackId, pitch, velocity, when, durationSec, slideFromTick, slideFromPitch, locks) =>
@@ -498,7 +504,21 @@ export async function openProject(
   };
 
   const onVisibility = (): void => {
-    if (document.visibilityState === "hidden") void flushSave();
+    if (document.visibilityState === "hidden") {
+      void flushSave();
+      return;
+    }
+    // Defect A02.D3 (browser audio lifecycle audit): on the visible
+    // edge the AudioContext may still be in the suspended state the
+    // browser put it in on hide (Chrome, iOS Safari, Firefox all
+    // suspend by default on tab-hide). Best-effort resume via
+    // ensureContext() — if the browser still requires a user gesture
+    // the resume no-ops and the next click will revive it. When
+    // playback was running across the hide, re-anchor the scheduler's
+    // window origin to the live playhead so it does not try to
+    // schedule the events that piled up during the suspended gap.
+    engine.ensureContext();
+    if (transport.playing) scheduler.resync();
   };
   // pagehide is the one iOS Safari reliably fires before terminating a
   // tab; beforeunload also gets the "unsaved changes" warning wired up

@@ -33,9 +33,11 @@ export function EmbedApp({ code: codeProp, inline = false }: { code?: string; in
   // ── decode + render ─────────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
-    const code = codeProp ?? new URLSearchParams(
-      typeof location !== "undefined" && location.hash.startsWith("#") ? location.hash.slice(1) : "",
-    ).get("p");
+    const code =
+      codeProp ??
+      new URLSearchParams(
+        typeof location !== "undefined" && location.hash.startsWith("#") ? location.hash.slice(1) : "",
+      ).get("p");
     if (!code) {
       setPhase({ kind: "error", message: "Missing beat code in the link." });
       return;
@@ -86,6 +88,17 @@ export function EmbedApp({ code: codeProp, inline = false }: { code?: string; in
   const play = useCallback(() => {
     const buffer = bufferRef.current;
     if (!buffer) return;
+    // Defect A06.D1 (browser compatibility hardening): feature-detect
+    // AudioContext before constructing it. Server-side render, an
+    // iframe sandbox without `allow-scripts`/`allow-same-origin`, or
+    // any future webview that omits the audio context global would
+    // otherwise throw a ReferenceError mid-click. Surface a clear
+    // "audio not supported" state instead of a stack trace.
+    if (typeof AudioContext === "undefined") {
+      setPlaying(false);
+      setPhase({ kind: "error", message: "This browser does not expose AudioContext — preview is disabled." });
+      return;
+    }
     ctxRef.current ??= new AudioContext();
     const ctx = ctxRef.current;
     void ctx.resume().catch(() => {});
@@ -185,7 +198,11 @@ export function EmbedApp({ code: codeProp, inline = false }: { code?: string; in
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
   return (
-    <div className={"embed-root" + (inline ? " embed-inline" : "")} role="document" aria-label="Pulse Forge beat player">
+    <div
+      className={"embed-root" + (inline ? " embed-inline" : "")}
+      role="document"
+      aria-label="Pulse Forge beat player"
+    >
       <div className="embed-main">
         <button
           type="button"

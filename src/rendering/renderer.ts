@@ -111,6 +111,18 @@ export async function renderProject(
   bank: SampleBank,
   options: RenderOptions,
 ): Promise<AudioBuffer> {
+  // Defect A06.D2 (browser compatibility hardening): feature-detect
+  // OfflineAudioContext before constructing it. The shared-core
+  // services path runs through the same renderer in worker contexts
+  // (e.g. freeze / bounce / export) — a worker that lacks the
+  // OfflineAudioContext constructor would throw a ReferenceError at
+  // `new OfflineAudioContext(...)` and abort the export with a
+  // confusing stack trace. Surface a stable, named error so the UI
+  // can branch on `err.message` and show a clear "your browser does
+  // not support offline rendering" hint instead.
+  if (typeof OfflineAudioContext === "undefined") {
+    throw new Error("OfflineAudioContext is not available in this environment — offline export is unsupported.");
+  }
   const tail = options.tailSeconds ?? 2;
   const secondsPerTick = 60 / (doc.bpm * PPQ);
   const totalTicks = computeRenderTicks(doc, options.mode);

@@ -215,6 +215,14 @@ export class ProjectStore {
     this.undoStack = [];
     this.redoStack = [];
     this.historyDocs = [this.doc_];
+    // Defect 4.2 (undo/redo integrity audit): afterMutation() sets the
+    // save status to "dirty" (correct — the in-memory doc is now
+    // different from whatever was last persisted), but it does NOT
+    // touch lastSavedAt_. The UI keeps showing "SAVED hh:mm" stamped
+    // with the timestamp of the *previous* save, even though the
+    // current doc no longer matches that snapshot. Reset the watermark
+    // so the indicator reflects "we have no durable copy of this doc".
+    this.lastSavedAt_ = null;
     this.afterMutation();
   }
 

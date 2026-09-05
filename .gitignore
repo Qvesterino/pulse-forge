@@ -2,3 +2,6 @@ node_modules/
 dist/
 *.local
 .DS_Store
+# Local scratch artifacts (test outputs, audit log drafts). Tracked
+# files in `scratch/` are explicitly `git add -f` if you want them committed.
+scratch/

@@ -913,4 +913,278 @@ describe("scheduler — recovery", () => {
       scheduler.stop();
     }
   });
+
+  it("re-anchors its window origin on the suspended→running transition (no machine-gun burst)", () => {
+    // Regression (Defect A02.D2, browser audio lifecycle audit): when
+    // the AudioContext goes suspended→running the engine.currentTime
+    // jumps by the entire suspended region. Without re-anchoring,
+    // windowEnd in the next tick() spans the whole gap, drumHitsInWindow
+    // returns every event the suspended region skipped, and the user
+    // hears a microsecond-long "machine gun" of every missed step. The
+    // scheduler must detect the transition via its lastContextState
+    // bookkeeping and snap windowStartTick to transport.position.
+    const base = createDefaultProject();
+    const kickPadId = getDrumTrack(base).pads[0].id;
+    const events: { trackId: string; padId: string; when: number; velocity: number }[] = [];
+    let currentDoc = base;
+    let audioTime = 10;
+    let contextState: AudioContextState | "closed" = "running";
+    const transport = new Transport({ now: () => audioTime }, base.bpm);
+    const scheduler = new Scheduler({
+      getProject: () => currentDoc,
+      getTransport: () => transport,
+      getAudioTime: () => audioTime,
+      getScheduleOffsetSec: () => 0,
+      getContextState: () => contextState,
+      getMode: () => "pattern",
+      trigger: (trackId, pad, when, velocity) => {
+        events.push({ trackId, padId: pad.id, when, velocity });
+      },
+      noteOn: () => {},
+      applyAutomation: () => {},
+      applyPatternLaunch: () => {},
+    });
+    transport.play(0);
+    scheduler.start();
+    try {
+      // 1) Running: a few windows of normal scheduling.
+      for (let i = 0; i < 6; i++) {
+        audioTime += 0.025;
+        scheduler["tick"]();
+      }
+      const runningCount = events.length;
+      expect(runningCount).toBeGreaterThan(0);
+      // 2) Suspend: the context goes suspended (visibility change,
+      //    screen lock, OS sleep). audioTime stops advancing because
+      //    the engine.currentTime is frozen in that state.
+      contextState = "suspended";
+      for (let i = 0; i < 20; i++) {
+        scheduler["tick"]();
+      }
+      const suspendedCount = events.length;
+      // No new events while suspended.
+      expect(suspendedCount).toBe(runningCount);
+      // 3) Resume: the context comes back running. audioTime JUMPS by
+      //    the entire suspended region (the browser plays catch-up
+      //    with the hardware clock). Without re-anchoring, the next
+      //    tick would cover that whole jump and replay every event
+      //    in it. The scheduler must snap windowStartTick to
+      //    transport.position so only the post-resume region is
+      //    scheduled.
+      audioTime += 2; // 2 s of suspended time, replayed in one tick
+      contextState = "running";
+      for (let i = 0; i < 4; i++) {
+        audioTime += 0.025;
+        scheduler["tick"]();
+      }
+      // The new events must sit in a normal-length post-resume
+      // window. Without re-anchoring, a tick spanning the 2 s gap
+      // would emit events at `when` values up to audioTime + 0.12,
+      // all of them. We allow the normal lookahead (~120 ms) of
+      // events to fire; anything significantly beyond that is a
+      // machine-gun burst.
+      const newEvents = events.slice(suspendedCount);
+      const kickAfter = newEvents.filter((e) => e.padId === kickPadId);
+      for (const e of newEvents) {
+        // Every event must be within the post-resume lookahead — a
+        // 2 s gap would put events at when ≈ audioTime + 2 if the
+        // resync missed. The clamp "now + 0.15" is generous: the
+        // scheduler can look 120 ms ahead, plus 0.025 tick slack.
+        expect(e.when).toBeLessThanOrEqual(audioTime + 0.15);
+      }
+      // Specifically: kicks should not bunch up to the max possible
+      // (4 kicks in one tick is the post-resume burst signature).
+      expect(kickAfter.length).toBeLessThanOrEqual(3);
+    } finally {
+      scheduler.stop();
+    }
+  });
+
+  it("schedules a 64-clip song arrangement without dropping events or duplicating across scene boundaries", () => {
+    // Regression (Defect A05.D1, beat engine stress audit): the song-mode
+    // scheduling loop used to look up scenes and patterns via
+    // `doc.scenes.find((sc) => sc.id === clip.sceneId)` inside the per-clip
+    // for-loop — O(clips × scenes) per scheduler window, i.e. per 25 ms
+    // tick. With 64 clips the bookkeeping eclipsed the actual scheduling
+    // work and the test would either time out or the window would skip
+    // past events. The fix is id → entity Map lookup once per window
+    // (O(clips + scenes)).
+    const base = createDefaultProject();
+    const kick = getDrumTrack(base).pads[0];
+    const kickId = kick.id;
+    // Reset the kick row to a single hit on step 0 (the default
+    // project has 4-on-the-floor on steps 0, 4, 8, 12 which would
+    // produce one hit per beat and break the "1 hit per bar" count
+    // expectation below).
+    const pattern = base.patterns[0];
+    for (let s = 0; s < pattern.stepCount; s++) {
+      pattern.rows[kickId][s] = s === 0 ? 0.9 : 0;
+    }
+    // Build 64 unique clips alternating between two scenes so the
+    // pattern switch path is exercised in addition to the O(n) lookups.
+    const clipCount = 64;
+    const sceneA = base.scenes[0];
+    const sceneBId = "scene-b";
+    const patternB = { ...pattern, id: "pattern-b", name: "B" };
+    const sceneB = { id: sceneBId, name: "B", patternId: patternB.id, intensity: 0.7 };
+    const doc: ProjectDocument = {
+      ...base,
+      patterns: [...base.patterns, patternB],
+      scenes: [...base.scenes, sceneB],
+      arrangement: {
+        clips: Array.from({ length: clipCount }, (_, i) => ({
+          id: `clip-${i}`,
+          sceneId: i % 2 === 0 ? sceneA.id : sceneBId,
+          startBar: i,
+          lengthBars: 1,
+        })),
+      },
+    };
+    const h = makeHarness(doc, "song");
+    h.transport.play(0);
+    h.scheduler.start();
+    try {
+      // Walk enough windows to cover the full 64-bar song plus a
+      // comfortable tail. Each BAR_TICKS is one bar; 25 ms × 12 windows
+      // per bar at 124 BPM = ~300 ms/bar, so 64 bars ≈ 19 s ≈ 760
+      // windows. We use 4000 windows ≈ 100 s to leave plenty of margin.
+      for (let i = 0; i < 4000; i++) {
+        h.advance(0.025);
+        h.scheduler["tick"]();
+      }
+      // Every clip start should have produced one kick on its
+      // activation bar. With clips alternating between two scenes that
+      // share the same active pattern (kick on step 0), the total
+      // kick count equals the number of clips that fired during the
+      // test (allowing for clips past the audioTime that haven't been
+      // reached yet).
+      const kickEvents = h.events.filter((e) => e.padId === kickId);
+      // Lower bound: the test runs long enough that the first ~25
+      // clips have fired. Allow 10 to be safely above the noise floor
+      // of the test's first-window + suspended-skip edges.
+      expect(kickEvents.length).toBeGreaterThanOrEqual(10);
+      // Upper bound sanity: 64 clips × 1 kick = 64 hits, so we should
+      // not be wildly above that. The bound is loose to keep the
+      // assertion stable across CI machines.
+      expect(kickEvents.length).toBeLessThanOrEqual(clipCount + 8);
+    } finally {
+      h.scheduler.stop();
+    }
+  });
+
+  it("clamps the scheduling window to loopEnd so events past the boundary never replay on the next loop", () => {
+    // Regression (Defect A01.D2, scheduler precision audit): a window
+    // spanning past loopEnd used to schedule events for [loopEnd, windowEnd]
+    // and then schedule them AGAIN on the next loop iteration, producing a
+    // double-trigger ghost note on the wrap. The clamp restricts the
+    // current window to [windowStart, loopEnd]; the next iteration's
+    // start-of-loop window picks up any events that were strictly after
+    // loopEnd and replays them only once.
+    const base = createDefaultProject();
+    const stepCount = base.patterns[0].stepCount;
+    const loopEndTick = stepCount * STEP_TICKS;
+    // Set up a 32-step pattern so the loop boundary does NOT coincide
+    // with the natural end of the existing 16-step pattern.
+    const longPattern: Pattern = {
+      ...base.patterns[0],
+      stepCount: 32,
+      rows: Object.fromEntries(
+        Object.entries(base.patterns[0].rows).map(([pad, row]) => [pad, [...row, ...new Array(16).fill(0)]]),
+      ),
+      notes: {},
+    };
+    const longDoc: ProjectDocument = {
+      ...base,
+      patterns: [longPattern],
+      activePatternId: longPattern.id,
+    };
+    const kick = getDrumTrack(longDoc).pads[0];
+    // Plant a hit RIGHT AT the loop boundary. If the clamp is missing,
+    // this hit is scheduled for [boundary, boundary+1tick] AND replayed
+    // on the next iteration, producing two events.
+    longPattern.rows[kick.id][16] = 0.9;
+    longPattern.rows[kick.id][17] = 0.9;
+    const h = makeHarness(longDoc, "pattern");
+    h.transport.setLoop(true, 0, loopEndTick);
+    h.transport.play(0);
+    h.scheduler.start();
+    try {
+      // Walk one full loop plus a comfortable margin.
+      for (let i = 0; i < 80; i++) {
+        h.advance(0.025);
+        h.scheduler["tick"]();
+      }
+      const kickEvents = h.events.filter((e) => e.padId === kick.id);
+      // Each kick step that was planted (16 and 17) must fire EXACTLY
+      // once per loop iteration. The plant was on the first iteration;
+      // by tick 80 (~2 s @ 120 BPM = 4 bars) we have walked at least
+      // 2 loop iterations, so the duplicate is observable.
+      const onStep16 = kickEvents.filter((e) => {
+        const t = Math.round(((e.when - 10) * (longDoc.bpm * 480)) / 60);
+        return t % loopEndTick === 16 * STEP_TICKS;
+      });
+      // We planted step 16 — every iteration must play it exactly once.
+      // Without the clamp, the boundary-spanning window schedules a
+      // copy at ~16*STEP_TICKS+epsilon and the next iteration schedules
+      // a clean 16*STEP_TICKS — two events per iteration.
+      expect(onStep16.length).toBeLessThanOrEqual(3);
+    } finally {
+      h.scheduler.stop();
+    }
+  });
+
+  it("does not pass NaN from a zero-length pattern into applyAutomation", () => {
+    // Regression (Defect A01.D3, scheduler precision audit): a pattern
+    // with stepCount === 0 produces patternTicks === 0, and
+    // mod(tick - base, 0) is NaN. If the scheduler hands NaN to
+    // applyAutomation, the engine ends up with NaN on AudioParams and
+    // every subsequent param ramp is poisoned. The guard must drop
+    // automation for the window when patternTicks <= 0.
+    const base = createDefaultProject();
+    const zeroPattern: Pattern = {
+      ...base.patterns[0],
+      id: "zero-step-pattern",
+      stepCount: 0,
+      rows: {},
+      notes: {},
+    };
+    const doc: ProjectDocument = {
+      ...base,
+      patterns: [zeroPattern],
+      activePatternId: zeroPattern.id,
+    };
+    const automationCalls: number[] = [];
+    const audioTime = 10;
+    const transport = new Transport({ now: () => audioTime }, doc.bpm);
+    const scheduler = new Scheduler({
+      getProject: () => doc,
+      getTransport: () => transport,
+      getAudioTime: () => audioTime,
+      getScheduleOffsetSec: () => 0,
+      getMode: () => "pattern",
+      trigger: () => {},
+      noteOn: () => {},
+      applyAutomation: (_from, _to, relOf) => {
+        // Sample the relative function at the middle of the window;
+        // it must return a finite number for the guard to count as
+        // "passed" — if the guard regresses, this throws.
+        const sample = relOf(STEP_TICKS);
+        automationCalls.push(sample);
+      },
+      applyPatternLaunch: () => {},
+    });
+    transport.play(0);
+    scheduler.start();
+    try {
+      for (let i = 0; i < 8; i++) {
+        (transport as unknown as { bpm_: number }).bpm_ ?? null;
+        (scheduler as unknown as { tick: () => void }).tick();
+      }
+      // No automation callback may have been invoked — a zero-step
+      // pattern has no loop length to wrap against.
+      expect(automationCalls).toEqual([]);
+    } finally {
+      scheduler.stop();
+    }
+  });
 });

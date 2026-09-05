@@ -262,3 +262,27 @@ describe("ProjectStore — coalesced commands (continuous gestures)", () => {
     expect(store.undoStackLength).toBe(3);
   });
 });
+
+describe("ProjectStore — replaceDoc", () => {
+  // Defect 4.2 (undo/redo integrity audit): replaceDoc() must reset
+  // lastSavedAt_ so the "SAVED hh:mm" indicator does not keep showing
+  // a timestamp from a save that no longer matches the in-memory doc
+  // (e.g. snapshot restore, project import, replace via YDoc).
+  it("replaces the doc, clears history, and resets the saved watermark", () => {
+    const store = new ProjectStore(createDefaultProject());
+    store.setSaveStatus("saved");
+    const savedAt = store.lastSavedAt;
+    expect(savedAt).not.toBeNull();
+    const other = normalizeProject({ ...createDefaultProject(), name: "Imported" });
+    store.replaceDoc(other);
+    expect(store.doc.name).toBe("Imported");
+    expect(store.canUndo).toBe(false);
+    expect(store.canRedo).toBe(false);
+    // The watermark must be cleared — we have no durable copy of the
+    // new doc until the next save completes.
+    expect(store.lastSavedAt).toBeNull();
+    // And the save status must report dirty so the autosave timer
+    // re-arms.
+    expect(store.saveStatus).toBe("dirty");
+  });
+});

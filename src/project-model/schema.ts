@@ -773,13 +773,18 @@ function normalizeTracksDomain(s: NormalizeState): void {
           pad.sliceFadeOut !== undefined ||
           pad.sliceReverse !== undefined;
         const hasSynth = (pad as any).synth !== undefined;
-        const sliceLoop = typeof (pad as unknown as Record<string, unknown>).sliceLoop === "boolean"
-          ? (pad as unknown as { sliceLoop?: unknown }).sliceLoop as boolean
-          : undefined;
+        const sliceLoop =
+          typeof (pad as unknown as Record<string, unknown>).sliceLoop === "boolean"
+            ? ((pad as unknown as { sliceLoop?: unknown }).sliceLoop as boolean)
+            : undefined;
         const rawLoopStart = (pad as unknown as Record<string, unknown>).sliceLoopStart;
         const rawLoopEnd = (pad as unknown as Record<string, unknown>).sliceLoopEnd;
-        const sliceLoopStart = typeof rawLoopStart === "number" && Number.isFinite(rawLoopStart) && rawLoopStart >= 0 ? rawLoopStart : undefined;
-        const sliceLoopEnd = typeof rawLoopEnd === "number" && Number.isFinite(rawLoopEnd) && rawLoopEnd >= 0 ? rawLoopEnd : undefined;
+        const sliceLoopStart =
+          typeof rawLoopStart === "number" && Number.isFinite(rawLoopStart) && rawLoopStart >= 0
+            ? rawLoopStart
+            : undefined;
+        const sliceLoopEnd =
+          typeof rawLoopEnd === "number" && Number.isFinite(rawLoopEnd) && rawLoopEnd >= 0 ? rawLoopEnd : undefined;
 
         const padColor = sanitizeColor((pad as unknown as Record<string, unknown>).color);
         const padColorChanged = padColor !== (pad as unknown as Record<string, unknown>).color;
@@ -1539,7 +1544,24 @@ function normalizePatternsDomain(s: NormalizeState): void {
         continue;
       }
       const patternTicks = safeStepCount * (PPQ / 4);
-      const filtered = noteList.filter((n) => n.start + n.duration <= patternTicks);
+      // Defect A03.D1 (sequencer integrity audit): a note with
+      // duration <= 0 would fire its noteOn() with a non-positive
+      // durationSec, which the instrument runtimes interpret as
+      // "release immediately" — the audible result is either silence
+      // or, in some runtimes, a stuck tail because the scheduled
+      // noteOff has already happened by the time the envelope is
+      // running. A negative `start` would schedule the note in the
+      // past; the scheduler's `audible()` check would still accept
+      // it within its 2 ms grace window, so the user could hear
+      // one-shot ghost notes at pattern start. Filter both.
+      const filtered = noteList.filter(
+        (n) =>
+          Number.isFinite(n.start) &&
+          n.start >= 0 &&
+          Number.isFinite(n.duration) &&
+          n.duration > 0 &&
+          n.start + n.duration <= patternTicks,
+      );
       if (filtered.length !== noteList.length) notesChanged = true;
       notesByTrack[trackId] = filtered as never;
     }

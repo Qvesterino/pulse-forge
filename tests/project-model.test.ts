@@ -8,7 +8,7 @@ import {
   normalizeProject,
   validateProjectShape,
 } from "../src/project-model/schema";
-import { PPQ, STEPS_PER_PATTERN } from "../src/project-model/types";
+import { PPQ, STEPS_PER_PATTERN, STEP_TICKS } from "../src/project-model/types";
 import type { ProjectDocument } from "../src/project-model/types";
 
 function minimalDoc(overrides: Partial<ProjectDocument> = {}): ProjectDocument {
@@ -579,5 +579,79 @@ describe("normalizeProject — macro mapping sources", () => {
     // Absent source ≡ "macro" (normalize keeps unchanged originals as-is).
     const m = normalized.macros[0].mappings[1];
     expect(m.source ?? "macro").toBe("macro");
+  });
+});
+
+describe("normalizeProject — note integrity", () => {
+  // Regression (Defect A03.D1, sequencer integrity audit): the
+  // normalizer used to drop only notes whose end exceeded the
+  // pattern length. A note with duration <= 0 (corrupted data,
+  // import, or collab peer pre-normalisation) survived, and the
+  // scheduler then asked the instrument runtime to play a
+  // non-positive-duration note — some runtimes leave the voice
+  // stuck because the scheduled noteOff has already elapsed by the
+  // time the envelope starts. A note with start < 0 would schedule
+  // itself in the past, audible within the 2 ms grace window of the
+  // scheduler's check. Both must be removed at the normalizer
+  // boundary, not the runtime.
+  const buildDocWithNote = (note: { id: string; pitch: number; start: number; duration: number; velocity: number }) => {
+    const doc = createDefaultProject();
+    const track = doc.tracks.find((t) => t.kind === "instrument");
+    if (!track) throw new Error("test fixture: no instrument track");
+    const pattern = doc.patterns[0];
+    return {
+      ...doc,
+      patterns: [
+        {
+          ...pattern,
+          notes: { [track.id]: [note] },
+        },
+      ],
+    };
+  };
+
+  it("drops notes with non-positive duration", () => {
+    for (const duration of [0, -1, -STEP_TICKS]) {
+      const doc = buildDocWithNote({ id: "n", pitch: 60, start: 0, duration, velocity: 1 });
+      const normalized = normalizeProject(doc);
+      const track = normalized.tracks.find((t) => t.kind === "instrument")!;
+      expect(normalized.patterns[0].notes?.[track.id] ?? []).toEqual([]);
+    }
+  });
+
+  it("drops notes with negative start", () => {
+    const doc = buildDocWithNote({ id: "n", pitch: 60, start: -STEP_TICKS, duration: STEP_TICKS, velocity: 1 });
+    const normalized = normalizeProject(doc);
+    const track = normalized.tracks.find((t) => t.kind === "instrument")!;
+    expect(normalized.patterns[0].notes?.[track.id] ?? []).toEqual([]);
+  });
+
+  it("drops notes with non-finite start or duration", () => {
+    const docNaNStart = buildDocWithNote({
+      id: "n1",
+      pitch: 60,
+      start: Number.NaN,
+      duration: STEP_TICKS,
+      velocity: 1,
+    });
+    const docNaNDur = buildDocWithNote({
+      id: "n2",
+      pitch: 60,
+      start: 0,
+      duration: Number.NaN,
+      velocity: 1,
+    });
+    for (const doc of [docNaNStart, docNaNDur]) {
+      const normalized = normalizeProject(doc);
+      const track = normalized.tracks.find((t) => t.kind === "instrument")!;
+      expect(normalized.patterns[0].notes?.[track.id] ?? []).toEqual([]);
+    }
+  });
+
+  it("keeps notes that start at 0 with positive duration and fit the pattern", () => {
+    const doc = buildDocWithNote({ id: "n", pitch: 60, start: 0, duration: STEP_TICKS, velocity: 1 });
+    const normalized = normalizeProject(doc);
+    const track = normalized.tracks.find((t) => t.kind === "instrument")!;
+    expect(normalized.patterns[0].notes?.[track.id] ?? []).toHaveLength(1);
   });
 });

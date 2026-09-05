@@ -397,10 +397,107 @@ export class AudioEngine {
   }
 
   useContext(ctx: BaseAudioContext): void {
+    // Defect 1.1 (lifecycle audit): the previous context's per-track,
+    // per-return and per-group EffectRuntimes, plus the LFO/follower
+    // state and the AudioWorkletNode-side onLatencyChange subs, are
+    // only disposed when a track id disappears from the doc — not when
+    // the context itself is swapped. useContext() is the only path that
+    // fully discards the engine's prior graph state, so it must also
+    // dispose every runtime the old context owned.
+    for (const id of [...this.trackNodes.keys()]) {
+      const nodes = this.trackNodes.get(id);
+      if (nodes) this.disposeTrackNodes(id, nodes);
+    }
+    for (const id of [...this.returnNodes.keys()]) {
+      const nodes = this.returnNodes.get(id);
+      if (nodes) this.disposeReturnNodes(id, nodes);
+    }
+    for (const id of [...this.groupNodes.keys()]) {
+      const nodes = this.groupNodes.get(id);
+      if (nodes) this.disposeGroupNodes(id, nodes);
+    }
+    for (const state of [...this.lfos.values()]) disposeLfoRuntime(state);
+    this.lfos.clear();
+    // Defect A04.D1 (web audio graph lifecycle audit): voices, preview
+    // voices, frozen-track sources, frozen bookkeeping, and instrument
+    // runtimes all carry AudioNodes (or AudioWorkletNodes for some
+    // instruments) that were created against the OLD context. Leaving
+    // them in their Maps means (a) every node still references the old
+    // context (memory leak until the context is GC'd), and (b) their
+    // `onended` callbacks — which mutate the same Maps — fire after
+    // the new context is in place and can delete a fresh voice from a
+    // matching Set. Stop the live sources first (so onended doesn't
+    // race the clear), then disconnect, then clear the Maps.
+    for (const voice of this.voices) {
+      try {
+        voice.source.stop();
+      } catch {
+        /* already stopped */
+      }
+      try {
+        voice.gain.disconnect();
+      } catch {
+        /* already */
+      }
+    }
+    this.voices.clear();
+    for (const voice of this.previewVoices) {
+      try {
+        voice.source.stop();
+      } catch {
+        /* already stopped */
+      }
+      try {
+        voice.gain.disconnect();
+      } catch {
+        /* already */
+      }
+    }
+    this.previewVoices.clear();
+    for (const source of this.frozenBuffers.values()) {
+      try {
+        source.stop();
+      } catch {
+        /* already stopped */
+      }
+      try {
+        source.disconnect();
+      } catch {
+        /* already disconnected */
+      }
+    }
+    this.frozenBuffers.clear();
+    this.frozenBufferIds.clear();
+    this.frozenPlaying = false;
+    this.frozenAlign = null;
+    // Instrument runtimes own their own voices + AudioWorkletNodes;
+    // panic() tears them down for the new context.
+    for (const state of this.instruments.values()) {
+      try {
+        state.runtime.panic();
+      } catch {
+        /* already */
+      }
+    }
     this.ctx = ctx;
     this.buildMaster();
     if (this.doc) this.syncProject(this.doc);
     this.queueWorkletRefresh(ctx);
+    // Defect 1.2 (lifecycle audit): Chrome / iOS Safari / Firefox
+    // suspend the AudioContext on tab-switch, screen lock, OS sleep and
+    // any time the page loses user-activation focus. Without an
+    // onstatechange handler the engine never learns the context woke
+    // back up — playback silently resumes only when the user clicks
+    // somewhere. Re-queueing the worklet refresh on `running` re-builds
+    // any FX chains that were created against a different processor
+    // state (rare but documented in queueWorkletRefresh).
+    if (typeof (ctx as AudioContext).onstatechange !== "undefined") {
+      (ctx as AudioContext).onstatechange = () => {
+        if (ctx.state === "running" && this.ctx === ctx) {
+          this.queueWorkletRefresh(ctx);
+        }
+      };
+    }
   }
 
   /**
@@ -468,6 +565,19 @@ export class AudioEngine {
       // Worklet modules load asynchronously — chains built just now may run
       // reduced fallbacks; queue a rebuild once real processors are available.
       this.queueWorkletRefresh(ctx);
+      // Defect 1.2 (lifecycle audit): the very first AudioContext we
+      // construct is the one most likely to come up suspended (autoplay
+      // restrictions, browser privacy defaults). Wire the onstatechange
+      // observer right here so a delayed transition to "running" from
+      // the browser's autoplay-policy handshake re-queues the worklet
+      // refresh and the resume() below stays the user-gesture path.
+      if (typeof ctx.onstatechange !== "undefined") {
+        ctx.onstatechange = () => {
+          if (ctx.state === "running" && this.ctx === ctx) {
+            this.queueWorkletRefresh(ctx);
+          }
+        };
+      }
     }
     const ctx = this.ctx;
     if (ctx instanceof AudioContext && ctx.state === "suspended") void ctx.resume();
@@ -3123,9 +3233,37 @@ export class AudioEngine {
 
   panic(): void {
     const ctx = this.ctx;
-    if (!ctx) return;
+    if (!ctx) {
+      // Even with no live context, internal voice / LFO / frozen-buffer
+      // Maps must be cleared so the next play() does not dispatch into
+      // stale state. A panic is a hard reset — "everything off, now".
+      this.voices.clear();
+      this.previewVoices.clear();
+      this.frozenBuffers.clear();
+      this.frozenBufferIds.clear();
+      this.frozenPlaying = false;
+      this.frozenAlign = null;
+      for (const state of [...this.lfos.values()]) disposeLfoRuntime(state);
+      this.lfos.clear();
+      for (const state of this.instruments.values()) {
+        try {
+          state.runtime.panic();
+        } catch {
+          /* already */
+        }
+      }
+      return;
+    }
     this.stopPreview();
     const now = ctx.currentTime;
+    // Defect 6.1 (lifecycle / leak audit): dispose every LFO and
+    // follower modulator BEFORE instrument.panic() so the modulation
+    // path stops driving the (about-to-be-silenced) instrument
+    // parameters. Without this, the user hears "wet FX keeps going"
+    // for one or two buffer frames after a panic because the LFO
+    // oscillator is still connected to its target AudioParam.
+    for (const state of [...this.lfos.values()]) disposeLfoRuntime(state);
+    this.lfos.clear();
     for (const voice of this.voices) {
       voice.gain.gain.cancelScheduledValues(now);
       voice.gain.gain.setTargetAtTime(0, now, 0.008);
