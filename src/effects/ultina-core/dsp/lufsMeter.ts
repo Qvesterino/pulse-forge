@@ -212,6 +212,16 @@ export class LufsMeter {
   private integratedLufs = ABSOLUTE_GATE_LUFS;
   private lufsRange = 0;
 
+  // Stale-window guard: after a feed gap longer than the short-term window
+  // the ring still holds pre-gap mean squares, which would read as a
+  // plausible but WRONG loudness. noteUnfed() (called by the owner for every
+  // block it does not feed) arms the flag; getShortTermLufs() then reports
+  // silence until the window has fully turned over with fresh blocks.
+  private shortTermWindowSamples = 0;
+  private unfedSamples = 0;
+  private staleUntilTurnover = false;
+  private fedSinceStale = 0;
+
   // ── Lifecycle ────────────────────────────────────────────
 
   prepare(sampleRate: number, _maxBlockSize: number): void {
@@ -233,6 +243,7 @@ export class LufsMeter {
     // Allocate sliding windows
     const momentarySamples = Math.floor(sampleRate * MOMENTARY_WINDOW_MS / 1000);
     const shortTermSamples = Math.floor(sampleRate * SHORT_TERM_WINDOW_MS / 1000);
+    this.shortTermWindowSamples = shortTermSamples;
     this.momentaryBuf = new Float64Array(momentarySamples);
     this.shortTermBuf = new Float64Array(shortTermSamples);
     this.momentaryWritePos = 0;
@@ -264,7 +275,23 @@ export class LufsMeter {
     this.lufsRange = 0;
   }
 
+  /**
+   * Bookkeeping for a block the owner processed WITHOUT feeding the meter
+   * (metering gated and gain-match off). AUDIO-THREAD SAFE: O(1).
+   */
+  noteUnfed(frames: number): void {
+    this.unfedSamples += frames;
+    if (!this.staleUntilTurnover && this.shortTermWindowSamples > 0
+      && this.unfedSamples >= this.shortTermWindowSamples) {
+      this.staleUntilTurnover = true;
+      this.fedSinceStale = 0;
+    }
+  }
+
   reset(): void {
+    this.unfedSamples = 0;
+    this.staleUntilTurnover = false;
+    this.fedSinceStale = 0;
     for (const kw of [...this.kStage1, ...this.kStage2]) {
       kw.z1 = 0;
       kw.z2 = 0;
@@ -298,6 +325,13 @@ export class LufsMeter {
   // ── Processing ───────────────────────────────────────────
 
   process(left: Float32Array, right: Float32Array | null, frameCount: number): void {
+    this.unfedSamples = 0;
+    if (this.staleUntilTurnover) {
+      this.fedSinceStale += frameCount;
+      if (this.fedSinceStale >= this.shortTermWindowSamples) {
+        this.staleUntilTurnover = false;
+      }
+    }
     const bufL = left;
     const bufR = right ?? left;
 
@@ -410,7 +444,13 @@ export class LufsMeter {
   // ── Readouts ─────────────────────────────────────────────
 
   getMomentaryLufs(): number { return this.momentaryLufs; }
-  getShortTermLufs(): number { return this.shortTermLufs; }
+  getShortTermLufs(): number {
+    // Honest reading: while the short-term window has not fully turned over
+    // since a feed gap longer than the window, the ring holds pre-gap data —
+    // report silence instead of a plausible-looking stale number.
+    if (this.staleUntilTurnover) return ABSOLUTE_GATE_LUFS;
+    return this.shortTermLufs;
+  }
 
   /**
    * Integrated loudness — LAZY: recomputed only when new gated blocks
@@ -438,7 +478,7 @@ export class LufsMeter {
     this.ensureIntegratedFresh();
     return {
       momentaryLufs: this.momentaryLufs,
-      shortTermLufs: this.shortTermLufs,
+      shortTermLufs: this.getShortTermLufs(),
       integratedLufs: this.integratedLufs,
       lufsRange: this.lufsRange,
       truePeakDb: this.getTruePeakDb(),

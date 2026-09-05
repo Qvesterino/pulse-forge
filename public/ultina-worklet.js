@@ -1836,6 +1836,15 @@
     shortTermLufs = ABSOLUTE_GATE_LUFS;
     integratedLufs = ABSOLUTE_GATE_LUFS;
     lufsRange = 0;
+    // Stale-window guard: after a feed gap longer than the short-term window
+    // the ring still holds pre-gap mean squares, which would read as a
+    // plausible but WRONG loudness. noteUnfed() (called by the owner for every
+    // block it does not feed) arms the flag; getShortTermLufs() then reports
+    // silence until the window has fully turned over with fresh blocks.
+    shortTermWindowSamples = 0;
+    unfedSamples = 0;
+    staleUntilTurnover = false;
+    fedSinceStale = 0;
     // ── Lifecycle ────────────────────────────────────────────
     prepare(sampleRate2, _maxBlockSize) {
       const stage1Bq = createBiquad(1);
@@ -1848,6 +1857,7 @@
       this.kStage2[1].coeffs = { ...stage2Bq.coeffs };
       const momentarySamples = Math.floor(sampleRate2 * MOMENTARY_WINDOW_MS / 1e3);
       const shortTermSamples = Math.floor(sampleRate2 * SHORT_TERM_WINDOW_MS / 1e3);
+      this.shortTermWindowSamples = shortTermSamples;
       this.momentaryBuf = new Float64Array(momentarySamples);
       this.shortTermBuf = new Float64Array(shortTermSamples);
       this.momentaryWritePos = 0;
@@ -1875,7 +1885,21 @@
       this.integratedLufs = ABSOLUTE_GATE_LUFS;
       this.lufsRange = 0;
     }
+    /**
+     * Bookkeeping for a block the owner processed WITHOUT feeding the meter
+     * (metering gated and gain-match off). AUDIO-THREAD SAFE: O(1).
+     */
+    noteUnfed(frames) {
+      this.unfedSamples += frames;
+      if (!this.staleUntilTurnover && this.shortTermWindowSamples > 0 && this.unfedSamples >= this.shortTermWindowSamples) {
+        this.staleUntilTurnover = true;
+        this.fedSinceStale = 0;
+      }
+    }
     reset() {
+      this.unfedSamples = 0;
+      this.staleUntilTurnover = false;
+      this.fedSinceStale = 0;
       for (const kw of [...this.kStage1, ...this.kStage2]) {
         kw.z1 = 0;
         kw.z2 = 0;
@@ -1907,6 +1931,13 @@
     }
     // ── Processing ───────────────────────────────────────────
     process(left, right, frameCount) {
+      this.unfedSamples = 0;
+      if (this.staleUntilTurnover) {
+        this.fedSinceStale += frameCount;
+        if (this.fedSinceStale >= this.shortTermWindowSamples) {
+          this.staleUntilTurnover = false;
+        }
+      }
       const bufL = left;
       const bufR = right ?? left;
       for (let i = 0; i < frameCount; i++) {
@@ -1988,6 +2019,7 @@
       return this.momentaryLufs;
     }
     getShortTermLufs() {
+      if (this.staleUntilTurnover) return ABSOLUTE_GATE_LUFS;
       return this.shortTermLufs;
     }
     /**
@@ -2015,7 +2047,7 @@
       this.ensureIntegratedFresh();
       return {
         momentaryLufs: this.momentaryLufs,
-        shortTermLufs: this.shortTermLufs,
+        shortTermLufs: this.getShortTermLufs(),
         integratedLufs: this.integratedLufs,
         lufsRange: this.lufsRange,
         truePeakDb: this.getTruePeakDb(),
@@ -2893,9 +2925,6 @@
     outputRmsL = 0;
     outputRmsR = 0;
     totalSamples = 0;
-    /** Samples processed since the LUFS meter was last fed — staleness guard
-     * for the auto-gain feedback loop (meters off + gain-match off). */
-    lufsUnfedSamples = 0;
     // Pooled meter snapshot — buffers and containers reused across getMeters()
     // calls so a ~21 Hz poller costs zero steady-state allocation on the
     // worklet thread. Consumers must consume immediately (postMessage clones;
@@ -3020,7 +3049,6 @@
       this.eqLearn.prepare(this.sampleRate, this.maxBlockSize);
       this.xoverLearn.prepare(this.sampleRate, this.maxBlockSize);
       this.spectralRegistry.register(this.instanceId);
-      this.lufsUnfedSamples = 0;
       this.prepared = true;
     }
     /**
@@ -3121,9 +3149,8 @@
         }
         this.autoGain.setEnabled(gainMatchEnabled);
         this.autoGain.setTargetLufs(autoGainTargetLufs);
-        const lufsStale = this.lufsUnfedSamples > this.sampleRate * 3;
         const autoGainCorrectionDb = this.autoGain.process(
-          lufsStale ? -70 : this.lufsMeter.getShortTermLufs(),
+          this.lufsMeter.getShortTermLufs(),
           frames
         );
         const totalOutputGainTarget = dbToLinear(outputGainDb + autoGainCorrectionDb);
@@ -3138,12 +3165,10 @@
         }
         if (this.metersEnabled) {
           this.updateOutputMeters(chunkL, chunkR, frames);
-          this.lufsUnfedSamples = 0;
         } else if (gainMatchEnabled) {
           this.lufsMeter.process(chunkL, chunkR, frames);
-          this.lufsUnfedSamples = 0;
         } else {
-          this.lufsUnfedSamples += frames;
+          this.lufsMeter.noteUnfed(frames);
         }
         offset += frames;
       }
@@ -3179,7 +3204,6 @@
       this.lufsMeter.reset();
       this.autoGain.reset();
       this.spectrumCounter = 0;
-      this.lufsUnfedSamples = 0;
       this.bandAnalyzer.reset();
     }
     /**
@@ -5434,6 +5458,7 @@
 
   // src/effects/ultina-core/dsp/modules/exciterModule.ts
   var EXCITER_MAX_BANDS = 3;
+  var EXCITER_TONE_CORNER_HZ = 200;
   var ExciterModuleProcessor = class {
     sampleRate = 44100;
     maxBlockSize = 512;
@@ -5716,7 +5741,8 @@
       const highGainDb = toneSlider > 0 ? toneSlider * 6 : 0;
       const lowGain = dbToLinear(lowGainDb);
       const highGain = dbToLinear(highGainDb);
-      const alpha = 0.98;
+      const fsEffective = this.sampleRate * (this.osActive ? OS_FACTOR : 1);
+      const alpha = 1 - Math.exp(-2 * Math.PI * EXCITER_TONE_CORNER_HZ / fsEffective);
       let lowL = this.toneLowState[bandIdx * 2];
       let lowR = this.toneLowState[bandIdx * 2 + 1];
       for (let i = 0; i < frames; i++) {

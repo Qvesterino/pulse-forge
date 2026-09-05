@@ -44,18 +44,25 @@ describe("Ultina metering gate", () => {
     expect(proc.getLufsReading().shortTermLufs).toBeGreaterThan(-30);
   });
 
-  it("meters OFF freezes the analysis path (LUFS frozen exactly)", () => {
+  it("meters OFF freezes LUFS briefly, then reports silence once the window goes stale", () => {
     const proc = makeProcessor();
     renderLoud(proc, 4);
     const frozenAt = proc.getLufsReading().shortTermLufs;
     expect(frozenAt).toBeGreaterThan(-30);
 
+    // Short gap (inside the 3 s short-term window): the ring data is still
+    // current enough — the reading freezes at its last value.
     proc.setMetersEnabled(false);
-    renderLoud(proc, 3); // loud signal keeps flowing
+    renderLoud(proc, 1);
     expect(proc.getLufsReading().shortTermLufs).toBe(frozenAt);
 
-    // The meter snapshot still serves the last state without crashing.
-    expect(proc.getMeters().global.outputShortTermLufs).toBe(frozenAt);
+    // Past the window length (1 s + 3 s > 3 s window): the ring holds
+    // pre-gap mean squares only. The meter reports SILENCE instead of a
+    // plausible-looking stale number (LUFS stale marking, roadmap P) —
+    // a panel reopened after minutes must not show minutes-old loudness.
+    renderLoud(proc, 3);
+    expect(proc.getLufsReading().shortTermLufs).toBe(-70);
+    expect(proc.getMeters().global.outputShortTermLufs).toBe(-70);
   });
 
   it("meters OFF + gain-match ON keeps the LUFS feedback loop alive", () => {

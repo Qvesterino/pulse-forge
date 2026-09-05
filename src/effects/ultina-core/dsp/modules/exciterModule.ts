@@ -59,6 +59,9 @@ import { DryDelayMixer } from "../dryDelay.js";
 
 const EXCITER_MAX_BANDS = 3;
 
+/** Tone tilt crossover corner (Hz) — see applyTone. */
+const EXCITER_TONE_CORNER_HZ = 200;
+
 // ── Meter interface ────────────────────────────────────────
 
 export interface ExciterMeters {
@@ -467,8 +470,14 @@ export class ExciterModuleProcessor implements UltinaModuleProcessor {
     const lowGain = dbToLinear(lowGainDb);
     const highGain = dbToLinear(highGainDb);
 
-    // One-pole crossover (~200Hz at base rate, scales with oversampling)
-    const alpha = 0.98;
+    // One-pole crossover corner: 200 Hz, derived from the rate this code
+    // ACTUALLY runs at — the oversampled path executes at 4× the session
+    // rate, and the session rate itself varies (44.1/48/96 kHz). The old
+    // hardcoded 0.98 was a near-transparent integrator (high = x − low ≈ 0):
+    // the Tone knob moved level, not tone, and its behavior shifted with the
+    // oversampling toggle and the session sample rate.
+    const fsEffective = this.sampleRate * (this.osActive ? OS_FACTOR : 1);
+    const alpha = 1 - Math.exp((-2 * Math.PI * EXCITER_TONE_CORNER_HZ) / fsEffective);
 
     let lowL = this.toneLowState[bandIdx * 2];
     let lowR = this.toneLowState[bandIdx * 2 + 1];

@@ -984,3 +984,115 @@ describe("U4: phase module latency + per-channel compensation", () => {
     expect(Math.sqrt(tailSumSq / tailN)).toBeLessThan(0.02);
   });
 });
+
+// ── 16. Exciter Tone functional + LUFS stale marking (post-publish prep) ──
+
+describe("U-P: exciter Tone knob is functional and rate/OS invariant", () => {
+  /** Tilt = dB difference between the module's response at 6 kHz vs 80 Hz.
+   *  Runs the exciter with all saturation amounts at 0 — pure tone section. */
+  function tiltDb(sampleRate: number, oversampling: number): number {
+    const proc = new UltinaProcessor();
+    registerCoreModules(proc);
+    proc.prepare({ sampleRate, maxBlockSize: BLOCK, channelCount: 2, qualityMode: 1 });
+    enableInGraph(proc, "exciter");
+    proc.setParameters({
+      "exciter.tube": 0,
+      "exciter.warm": 0,
+      "exciter.tape": 0,
+      "exciter.retro": 0,
+      "exciter.overdrive": 0,
+      "exciter.scream": 0,
+      "exciter.clipper": 0,
+      "exciter.scratch": 0,
+      "exciter.toneSlider": 100, // +6 dB high shelf, corner 200 Hz
+      "exciter.oversampling": oversampling,
+      "exciter.mix": 100,
+      "exciter.bandCount": 1,
+    });
+    const measure = (freq: number): number => {
+      const chans = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+      const blocks = 160;
+      let inSumSq = 0;
+      let outSumSq = 0;
+      let n = 0;
+      for (let b = 0; b < blocks; b++) {
+        for (let i = 0; i < BLOCK; i++) {
+          const t = (b * BLOCK + i) / sampleRate;
+          const v = 0.25 * Math.sin(2 * Math.PI * freq * t);
+          chans[0][i] = v;
+          chans[1][i] = v;
+        }
+        proc.process(chans, BLOCK);
+        if (b >= 64) {
+          for (let i = 0; i < BLOCK; i++) {
+            inSumSq += chans[0][i] * chans[0][i];
+            n++;
+          }
+          for (let i = 0; i < BLOCK; i++) outSumSq += chans[1][i] * chans[1][i];
+        }
+      }
+      void inSumSq;
+      return 20 * Math.log10(Math.sqrt(outSumSq / n) / 0.25 * Math.SQRT2);
+    };
+    return measure(6000) - measure(80);
+  }
+
+  it("positive Tone tilts the high band up (knob is functional, not a level trim)", () => {
+    const tilt = tiltDb(SR, 0);
+    // Post-fix: 6 kHz sits far above the 200 Hz corner → ~+6 dB shelf minus
+    // the corner-summed low remainder; 80 Hz sits at/below it → ~0 dB.
+    // Pre-fix the crossover was transparent: tilt ≈ 0 dB at both.
+    expect(tilt).toBeGreaterThan(3);
+  });
+
+  it("the tilt is identical across sample rates (44.1 vs 96 kHz)", () => {
+    const tilt48 = tiltDb(48000, 0);
+    const tilt96 = tiltDb(96000, 0);
+    expect(Math.abs(tilt48 - tilt96)).toBeLessThan(0.5);
+  });
+
+  it("the tilt is identical with oversampling on vs off", () => {
+    const tiltOff = tiltDb(SR, 0);
+    const tiltOn = tiltDb(SR, 1);
+    expect(Math.abs(tiltOff - tiltOn)).toBeLessThan(0.5);
+  });
+});
+
+describe("U-P: LUFS meter reports silence after a long feed gap", () => {
+  it("getMeters shows -70 until the short-term window turns over", () => {
+    const proc = makeProcessor();
+    const chans = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+    // Fill the meter: 4 s of signal with meters on.
+    proc.setMetersEnabled(true);
+    for (let b = 0; b < Math.round((4 * SR) / BLOCK); b++) {
+      sine(chans, b, 997, 0.3);
+      proc.process(chans, BLOCK);
+    }
+    const live = proc.getMeters().global.outputShortTermLufs;
+    expect(live).toBeGreaterThan(-40); // real reading
+
+    // Gap: 4 s processed with meters off and gain-match off (> 3 s window).
+    proc.setMetersEnabled(false);
+    for (let b = 0; b < Math.round((4 * SR) / BLOCK); b++) {
+      sine(chans, b, 997, 0.3);
+      proc.process(chans, BLOCK);
+    }
+    // Pre-fix the panel would show a plausible but STALE number on reopen.
+    expect(proc.getMeters().global.outputShortTermLufs).toBe(-70);
+
+    // Re-enable: still -70 until the 3 s window turns over with fresh data.
+    proc.setMetersEnabled(true);
+    for (let b = 0; b < Math.round((0.5 * SR) / BLOCK); b++) {
+      sine(chans, b, 997, 0.3);
+      proc.process(chans, BLOCK);
+    }
+    expect(proc.getMeters().global.outputShortTermLufs).toBe(-70);
+
+    // After a full window of fresh blocks the reading returns.
+    for (let b = 0; b < Math.round((3 * SR) / BLOCK); b++) {
+      sine(chans, b, 997, 0.3);
+      proc.process(chans, BLOCK);
+    }
+    expect(proc.getMeters().global.outputShortTermLufs).toBeGreaterThan(-40);
+  });
+});
