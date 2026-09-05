@@ -80,13 +80,29 @@ export function tx<T>(
   store: string,
   mode: IDBTransactionMode,
   run: (store: IDBObjectStore) => IDBRequest<T>,
+): Promise<T>;
+export function tx<T>(
+  db: IDBDatabase,
+  stores: readonly string[],
+  mode: IDBTransactionMode,
+  run: (stores: Record<string, IDBObjectStore>) => IDBRequest<T>,
+): Promise<T>;
+export function tx<T>(
+  db: IDBDatabase,
+  storeOrStores: string | readonly string[],
+  mode: IDBTransactionMode,
+  // The implementation accepts both single-store and multi-store call
+  // shapes; the public overloads pin the precise type at the call site.
+  // Using `any` here is safe because we hand the callback a value
+  // whose shape exactly matches the selected overload.
+  run: (arg: any) => IDBRequest<T>,
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     let settled = false;
     const fail = (err: unknown): void => {
       if (settled) return;
       settled = true;
-      reject(err ?? new Error(`IndexedDB transaction on "${store}" was aborted`));
+      reject(err ?? new Error(`IndexedDB transaction was aborted`));
     };
     const succeed = (value: T): void => {
       if (settled) return;
@@ -95,14 +111,23 @@ export function tx<T>(
     };
     let transaction: IDBTransaction;
     try {
-      transaction = db.transaction(store, mode);
+      const scope: string | string[] = Array.isArray(storeOrStores) ? [...storeOrStores] : (storeOrStores as string);
+      transaction = db.transaction(scope, mode);
     } catch (err) {
       fail(err);
       return;
     }
     let request: IDBRequest<T>;
     try {
-      request = run(transaction.objectStore(store));
+      let arg: IDBObjectStore | Record<string, IDBObjectStore>;
+      if (Array.isArray(storeOrStores)) {
+        const map: Record<string, IDBObjectStore> = {};
+        for (const s of storeOrStores) map[s] = transaction.objectStore(s);
+        arg = map;
+      } else {
+        arg = transaction.objectStore(storeOrStores as string);
+      }
+      request = run(arg);
     } catch (err) {
       fail(err);
       return;

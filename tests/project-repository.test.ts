@@ -4,6 +4,7 @@ import { ProjectRepository } from "../src/persistence/ProjectRepository";
 import { PresetRepository } from "../src/persistence/PresetRepository";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { SCHEMA_VERSION } from "../src/project-model/schema";
+import { openDb, STORE_META, STORE_PROJECTS } from "../src/persistence/db";
 import type { InstrumentPreset } from "../src/presets/types";
 import type { ProjectDocument } from "../src/project-model/types";
 
@@ -122,6 +123,42 @@ describe("ProjectRepository", () => {
     expect(recent!.id).toBe(other.id);
     const renamed = await repo.load(working.id);
     expect(renamed!.name).toBe("Renamed Old Project");
+  });
+
+  it("save() commits the project body and the recent pointer in a single transaction", async () => {
+    // Regression: save() used to call db.transaction twice (once for the
+    // projects store, once for the meta store). A crash or quota abort
+    // between the two writes left a saved project with a stale recent
+    // pointer — "Continue last project" would then resume the wrong
+    // project on the next boot. The fix writes both stores in a single
+    // readwrite transaction that either commits or rolls back atomically.
+    const db = await openDb();
+    const originalTransaction = db.transaction.bind(db);
+    const calls: Array<{ stores: string | string[]; mode: IDBTransactionMode }> = [];
+    db.transaction = ((stores: string | string[], mode: IDBTransactionMode) => {
+      calls.push({ stores, mode });
+      return originalTransaction(stores, mode);
+    }) as typeof db.transaction;
+    try {
+      const doc = freshProject("Atomic Save");
+      await repo.save(doc);
+      // Find the readwrite transaction that touched both stores. Without
+      // the fix, save() would have made TWO transactions, each with one
+      // store — and neither would have included both names.
+      const atomic = calls.find(
+        (c) =>
+          c.mode === "readwrite" &&
+          Array.isArray(c.stores) &&
+          (c.stores as string[]).includes(STORE_PROJECTS) &&
+          (c.stores as string[]).includes(STORE_META),
+      );
+      expect(atomic).toBeDefined();
+      // And the round-trip must still update the recent pointer.
+      const recent = await repo.loadMostRecent();
+      expect(recent!.id).toBe(doc.id);
+    } finally {
+      db.transaction = originalTransaction;
+    }
   });
 
   it("a record written by a NEWER schema version does not blank the library or crash loads", async () => {

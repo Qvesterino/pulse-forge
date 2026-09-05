@@ -95,6 +95,68 @@ describe("Transport", () => {
     expect(transport.loopEnd).toBe(0);
   });
 
+  it("setBpm with an identical value leaves bpm and a steady playhead intact", () => {
+    // Regression: setBpm() used to call rebaseAnchor() unconditionally,
+    // which did not break audio output (the math is identical for an
+    // unchanged BPM) but did burn a needless re-anchor on every
+    // onDocChanged re-apply. A no-op setBpm is the contract.
+    const { clock, advance } = controlledClock();
+    const transport = new Transport(clock, 120);
+    transport.play(0);
+    advance(1);
+    transport.setBpm(120);
+    expect(transport.bpm).toBe(120);
+    advance(0.5);
+    expect(transport.position).toBeCloseTo(2 * PPQ + 0.5 * (2 * PPQ), 3);
+  });
+
+  it("setBpm with a numerically-equal value (epsilon) is a no-op", () => {
+    const { clock, advance } = controlledClock();
+    const transport = new Transport(clock, 120);
+    transport.play(0);
+    advance(1);
+    const before = transport.position;
+    advance(0.5);
+    transport.setBpm(120 + 1e-9);
+    expect(transport.bpm).toBe(120);
+    // Playhead still advanced the same musical distance.
+    expect(transport.position).toBeCloseTo(before + 0.5 * (2 * PPQ), 3);
+  });
+
+  it("seek ignores NaN", () => {
+    // Regression: a NaN tick poisoned tickAt() forever and NaN'd the
+    // scheduler's window endpoints. seek must guard finite + non-negative.
+    const { clock, advance } = controlledClock();
+    const transport = new Transport(clock, 120);
+    transport.play(0);
+    advance(1);
+    const before = transport.position;
+    transport.seek(Number.NaN);
+    expect(Number.isFinite(transport.position)).toBe(true);
+    expect(transport.position).toBeCloseTo(before, 5);
+  });
+
+  it("seek ignores Infinity", () => {
+    const { clock, advance } = controlledClock();
+    const transport = new Transport(clock, 120);
+    transport.play(0);
+    advance(0.5);
+    const before = transport.position;
+    transport.seek(Number.POSITIVE_INFINITY);
+    expect(Number.isFinite(transport.position)).toBe(true);
+    expect(transport.position).toBeCloseTo(before, 5);
+  });
+
+  it("seek ignores negative ticks", () => {
+    const { clock, advance } = controlledClock();
+    const transport = new Transport(clock, 120);
+    transport.play(0);
+    advance(0.25);
+    const before = transport.position;
+    transport.seek(-1_000);
+    expect(transport.position).toBeCloseTo(before, 5);
+  });
+
   it("setLoop stores start and end and flips the enabled flag", () => {
     const { clock } = controlledClock();
     const transport = new Transport(clock, 120);

@@ -8,6 +8,7 @@ import { PresetRepository } from "./persistence/PresetRepository";
 import { LibraryRepository } from "./persistence/LibraryRepository";
 import { KitRepository } from "./persistence/KitRepository";
 import { GroovePoolRepository } from "./persistence/GroovePoolRepository";
+import { installSaveUnloadGuards } from "./persistence/save-lifecycle";
 import { generateFactoryBank } from "./sample-library/factory";
 import type { SampleBank } from "./sample-library/factory";
 import type { PlayMode, ProjectDocument, Scene } from "./project-model/types";
@@ -499,11 +500,15 @@ export async function openProject(
   const onVisibility = (): void => {
     if (document.visibilityState === "hidden") void flushSave();
   };
-  const onUnload = (): void => {
-    void flushSave();
-  };
+  // pagehide is the one iOS Safari reliably fires before terminating a
+  // tab; beforeunload also gets the "unsaved changes" warning wired up
+  // so the user has a chance to keep the tab open long enough for the
+  // final IDB commit. The helper is testable in isolation.
+  const uninstallUnloadGuards = installSaveUnloadGuards({
+    flushSave,
+    isDirty: () => store.saveStatus === "dirty" || store.saveStatus === "error",
+  });
   document.addEventListener("visibilitychange", onVisibility);
-  window.addEventListener("beforeunload", onUnload);
 
   const closeProject = async (): Promise<void> => {
     noteRepeat.stopAll();
@@ -515,7 +520,7 @@ export async function openProject(
     midiClock.dispose();
     midiOutput.dispose();
     document.removeEventListener("visibilitychange", onVisibility);
-    window.removeEventListener("beforeunload", onUnload);
+    uninstallUnloadGuards();
     await flushSave();
   };
 

@@ -1,5 +1,5 @@
 import type { DrumTrack, Pattern, PlayMode, ProjectDocument } from "../project-model/types";
-import { BAR_TICKS, getActivePattern, STEP_TICKS } from "../project-model/types";
+import { BAR_TICKS, STEP_TICKS } from "../project-model/types";
 import { drumHitsInWindow } from "../project-model/groove";
 import { noteEventsInWindow } from "../project-model/events";
 import type { Transport } from "../transport/Transport";
@@ -11,6 +11,14 @@ export interface SchedulerDeps {
   /** Runtime-only delay applied to project-generated audio events. */
   getScheduleOffsetSec?(): number;
   getMode(): PlayMode;
+  /**
+   * Live audio context state. Used to gate event scheduling while the
+   * context is suspended or closed — otherwise every queued source fires
+   * within microseconds on the next resume ("machine gun" burst).
+   * Optional for backward compatibility with test harnesses; when
+   * absent, the scheduler assumes "running".
+   */
+  getContextState?(): AudioContextState | "closed";
   trigger(
     trackId: string,
     pad: DrumTrack["pads"][number],
@@ -85,6 +93,25 @@ const mod = (value: number, m: number): number => ((value % m) + m) % m;
 /** Click dedup guard — fires only for future (not-yet-played) clicks like `audible`. */
 function audibleClick(when: number, now: number): boolean {
   return when >= now - 0.002;
+}
+
+/**
+ * Resolve a usable pattern for the scheduler when the doc's `activePatternId`
+ * is stale (the pattern was deleted, the doc was replaced, or a future
+ * schema version wrote an id the local code doesn't know). Returns the
+ * first pattern in the doc, or `undefined` if the doc is empty.
+ *
+ * The scheduler uses this as a defensive fallback — never as a permanent
+ * substitute for a healthy project. Callers should normalise the doc as
+ * soon as practical (e.g. by writing the missing pattern back, or by
+ * re-running the normaliser on the next doc change).
+ */
+function findUsablePattern(doc: ProjectDocument): Pattern | undefined {
+  if (doc.patterns.length === 0) return undefined;
+  const active = doc.patterns.find((p) => p.id === doc.activePatternId);
+  if (active) return active;
+  console.warn(`[scheduler] active pattern ${doc.activePatternId} not in doc; falling back to ${doc.patterns[0].id}`);
+  return doc.patterns[0];
 }
 
 export class Scheduler {
@@ -192,11 +219,15 @@ export class Scheduler {
       const doc = this.deps.getProject();
       const mode = this.deps.getMode();
       const loopStart = transport.loopStart;
+      // Defect 2.1 (recovery): the loop end resolution calls
+      // getActivePattern(doc), which throws when the active pattern id
+      // is stale. Resolve the loop end against the *first available*
+      // pattern instead so the transport never wedges mid-loop.
       const loopEnd =
         transport.loopEnd > 0
           ? transport.loopEnd
           : mode === "pattern"
-            ? STEP_TICKS * getActivePattern(doc).stepCount
+            ? STEP_TICKS * (findUsablePattern(doc)?.stepCount ?? 16)
             : Math.max(0, ...doc.arrangement.clips.map((c) => (c.startBar + c.lengthBars) * BAR_TICKS));
       const position = transport.position;
       if (position >= loopEnd || position < loopStart) {
@@ -209,6 +240,19 @@ export class Scheduler {
     const windowEnd = transport.tickAt(horizon);
     const windowStart = this.windowStartTick;
     if (windowEnd <= windowStart) {
+      this.stats.windows += 1;
+      return;
+    }
+    // Defect 2.5 (recovery): if the audio context is suspended or closed,
+    // every event scheduled in this window would be queued by
+    // createBufferSource and fire as a microsecond burst on the next
+    // resume. Skip the window — the window still advances so we don't
+    // wedge — and let the running transport catch up cleanly when the
+    // context resumes.
+    const contextState = this.deps.getContextState?.() ?? "running";
+    if (contextState !== "running") {
+      this.windowStartTick = windowEnd;
+      this.stats.lastHorizonTick = windowEnd;
       this.stats.windows += 1;
       return;
     }
@@ -251,6 +295,15 @@ export class Scheduler {
 
     if (mode === "pattern") {
       let currentDoc = doc;
+      // Defect 2.2 (recovery): a queued launch whose target pattern was
+      // deleted from the doc would otherwise cause applyPatternLaunch to
+      // write a stale id into activePatternId, throwing on the next
+      // tick. Drop the stale launch before it can do harm.
+      if (this.pendingLaunch && !currentDoc.patterns.some((p) => p.id === this.pendingLaunch!.patternId)) {
+        console.warn(`[scheduler] dropping queued launch for missing pattern ${this.pendingLaunch.patternId}`);
+        this.pendingLaunch = null;
+        this.notify();
+      }
       // A queued launch whose boundary we already passed (e.g. after a seek)
       // commits immediately.
       if (this.pendingLaunch && this.pendingLaunch.atTick <= windowStart) {
@@ -259,7 +312,19 @@ export class Scheduler {
         this.notify();
         currentDoc = this.deps.getProject();
       }
-      const pattern = getActivePattern(currentDoc);
+      // Defect 2.1 (recovery): if the active pattern id is stale, fall
+      // back to a usable pattern instead of throwing. The pattern is
+      // re-resolved on every window so a doc change heals the scheduler
+      // as soon as the user fixes the project.
+      const pattern = findUsablePattern(currentDoc);
+      if (!pattern) {
+        // Empty doc — nothing to schedule this window; advance the
+        // window so the scheduler doesn't get stuck on a phantom gap.
+        this.windowStartTick = windowEnd;
+        this.stats.lastHorizonTick = windowEnd;
+        this.stats.windows += 1;
+        return;
+      }
       const patternTicks = STEP_TICKS * pattern.stepCount;
       const pending = this.pendingLaunch;
       const boundary = pending && pending.atTick > windowStart && pending.atTick <= windowEnd ? pending.atTick : null;

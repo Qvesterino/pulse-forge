@@ -36,8 +36,15 @@ export class ProjectRepository {
   async save(doc: ProjectDocument): Promise<void> {
     const db = await this.db();
     const stamped = { ...doc, updatedAt: new Date().toISOString() };
-    await tx(db, STORE_PROJECTS, "readwrite", (store) => store.put(stamped) as IDBRequest<IDBValidKey>);
-    await tx(db, STORE_META, "readwrite", (store) => store.put(doc.id, KEY_RECENT) as unknown as IDBRequest<undefined>);
+    // Atomic write: project body and "most recent" pointer must commit
+    // together. Two separate transactions could leave a saved project
+    // with a stale recent pointer if the page is closed (or the tab is
+    // terminated on mobile) between the two writes — "Continue last
+    // project" would then resume the wrong project on the next boot.
+    await tx(db, [STORE_PROJECTS, STORE_META] as const, "readwrite", (stores) => {
+      stores[STORE_PROJECTS].put(stamped) as IDBRequest<IDBValidKey>;
+      return stores[STORE_META].put(doc.id, KEY_RECENT) as unknown as IDBRequest<undefined>;
+    });
   }
 
   async load(id: string): Promise<ProjectDocument | null> {

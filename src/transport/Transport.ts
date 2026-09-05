@@ -81,6 +81,14 @@ export class Transport {
   }
 
   seek(tick: number): void {
+    // Defensive guard: a NaN/Infinity/negative tick poisons tickAt() and the
+    // scheduler's window endpoints forever. The diagnostics panel also
+    // displays `transport.position`, so a stray bad value would surface to
+    // the user as a meaningless "−NaN" tick. Clamp instead of crashing.
+    if (!Number.isFinite(tick) || tick < 0) {
+      console.warn(`[transport] ignored non-finite or negative seek: ${tick}`);
+      return;
+    }
     if (this.playing_) {
       this.anchorTick = tick;
       this.anchorTime = this.clock.now();
@@ -90,6 +98,12 @@ export class Transport {
   }
 
   setBpm(bpm: number): void {
+    // setBpm is called on every onDocChanged (the project BPM is re-applied
+    // each time the store mutates). A no-op rebase is harmless mathematically
+    // (the resulting position is identical) but it is wasted work and
+    // clutters the diagnostics trail. Skip the rebase when the value did
+    // not actually change.
+    if (Math.abs(bpm - this.bpm_) < 0.001) return;
     if (this.playing_) {
       const current = this.tickAt(this.clock.now());
       this.anchorTick = current;

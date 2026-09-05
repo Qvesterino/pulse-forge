@@ -808,3 +808,109 @@ describe("scheduler — failure containment", () => {
     }
   });
 });
+
+describe("scheduler — recovery", () => {
+  it("does not throw when the active pattern id points to a deleted pattern", () => {
+    // Regression: getActivePattern() throws when activePatternId is stale.
+    // The scheduler's tick() catch block counts the exception but the
+    // very next tick re-throws on the same line — the scheduler wedges
+    // and failedWindows grows unbounded. The scheduler must fall back
+    // to a usable pattern instead of crashing every window.
+    const doc = createDefaultProject();
+    doc.activePatternId = "deleted-pattern-id";
+    const h = makeHarness(doc);
+    h.transport.play(0);
+    h.scheduler.start();
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      for (let i = 0; i < 12; i++) {
+        h.advance(0.025);
+        expect(() => h.scheduler["tick"]()).not.toThrow();
+      }
+      // The scheduler must not be in a permanent failure spiral.
+      // (Some failedWindows are allowed for the first tick while it
+      // detects the missing pattern; the rest of the windows should
+      // recover.)
+      expect(h.scheduler.stats.windows).toBeGreaterThan(8);
+    } finally {
+      h.scheduler.stop();
+      errSpy.mockRestore();
+    }
+  });
+
+  it("clears a pending launch whose target pattern was removed from the doc", () => {
+    // Regression: a queued scene launch survives a pattern delete because
+    // the scheduler doesn't subscribe to onDocChanged. On the next
+    // boundary tick, applyPatternLaunch("deleted") is called, the
+    // dependency callback updates activePatternId to a missing id, and
+    // the next tick() throws on getActivePattern. The scheduler must
+    // drop the pending launch and never invoke applyPatternLaunch.
+    const base = createDefaultProject();
+    const second = { ...base.patterns[0], id: "second-pattern", name: "B" };
+    const doc: ProjectDocument = normalizeProject({
+      ...base,
+      patterns: [...base.patterns, second],
+    });
+    const h = makeHarness(doc, "pattern");
+    h.transport.play(0);
+    h.scheduler.queuePatternLaunch(second.id, BAR_TICKS);
+    expect(h.scheduler.pendingPatternId).toBe(second.id);
+    // Remove the second pattern from the live doc.
+    h.setDoc({ ...doc, patterns: doc.patterns.filter((p) => p.id !== second.id) });
+    h.scheduler.start();
+    try {
+      // Cross the queued boundary (one full bar of lookahead).
+      for (let i = 0; i < 80; i++) {
+        h.advance(0.025);
+        h.scheduler["tick"]();
+      }
+      // The scheduler must not have asked the harness to launch a
+      // pattern that no longer exists in the doc.
+      expect(h.launches).not.toContain(second.id);
+      expect(h.scheduler.pendingPatternId).toBeNull();
+    } finally {
+      h.scheduler.stop();
+    }
+  });
+
+  it("skips event scheduling while the audio context is suspended", () => {
+    // Regression: events scheduled against a suspended context are queued
+    // by createBufferSource; on resume they all fire in a microsecond
+    // burst (a "machine gun" of every missed step). The scheduler must
+    // gate tick() on the live context state and not enqueue anything
+    // while suspended — the window still advances so we don't wedge.
+    const base = createDefaultProject();
+    const events: { trackId: string; padId: string; when: number; velocity: number }[] = [];
+    let currentDoc = base;
+    let audioTime = 10;
+    const transport = new Transport({ now: () => audioTime }, base.bpm);
+    const scheduler = new Scheduler({
+      getProject: () => currentDoc,
+      getTransport: () => transport,
+      getAudioTime: () => audioTime,
+      getScheduleOffsetSec: () => 0,
+      getMode: () => "pattern",
+      getContextState: () => "suspended" as const,
+      trigger: (trackId, pad, when, velocity) => {
+        events.push({ trackId, padId: pad.id, when, velocity });
+      },
+      noteOn: () => {},
+      applyAutomation: () => {},
+      applyPatternLaunch: () => {},
+    });
+    transport.play(0);
+    scheduler.start();
+    try {
+      for (let i = 0; i < 40; i++) {
+        audioTime += 0.025;
+        scheduler["tick"]();
+      }
+      expect(events).toEqual([]);
+      // The scheduler must still have advanced its bookkeeping — a
+      // suspended context should not freeze windowStartTick forever.
+      expect(scheduler.stats.windows).toBeGreaterThan(0);
+    } finally {
+      scheduler.stop();
+    }
+  });
+});

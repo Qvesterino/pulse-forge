@@ -200,7 +200,7 @@ DENSITY_GAIN = √(N/8) zachováva úroveň aj T60; hustota rastie presne tam, k
 
 ## Fáza P — P3 polish (kedykoľvek medzi fázami)
 
-- [ ] `computeBlendPadMix` alokuje 2 malé objekty per block — vhodiť do `distributeToEnginesInto` scratch (mikro, ale jednoduché);
+- [x] `computeBlendPadMix` alokuje 2 malé objekty per block — nová `computeBlendPadMixInto` zapisuje do perzistentného scratch objektu procesora (nulová alokácia);
 - [ ] quality change / reset re-prepare: alokácia burst je bounded a user-initiated — zdokumentovať, nescrejdovať (deferred re-prepare redesign je mimo rozsahu);
 - [ ] E1 per-tap LPF mohol byť stereo-spojený s E3 predelay offsetmi pre širšie ER — len ak O1 harness ukáže zisk.
 
