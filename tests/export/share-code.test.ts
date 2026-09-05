@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { encodeShareCode, decodeShareCode, shareAppUrl, embedUrl, embedSnippet } from "../../src/export/shareCode";
-import { compressToEncodedURIComponent } from "lz-string";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 import { setBpm, setProjectName } from "../../src/commands/commands";
 
@@ -63,10 +64,12 @@ describe("shareCode — decompression-bomb caps (import/export robustness)", () 
   });
 
   it("rejects tokens that decompress beyond the ceiling (compressed bomb)", () => {
-    // A highly repetitive 9 MB payload compresses into a small token but
-    // expands to >8 MB before JSON.parse — the cap must trip first, and a
-    // RangeError-style OOM must be impossible.
-    const bomb = compressToEncodedURIComponent("0".repeat(9_000_000));
+    // A 31 KB token that expands to 9 MB (> 8 MB cap) before JSON.parse.
+    // Precomputed ONCE (lz-string compression of large payloads is slow;
+    // decompression — the path under test — is ~15 ms) via
+    // compressToEncodedURIComponent("abc123def456".repeat(750_000)).
+    const bomb = readFileSync(resolve(__dirname, "../fixtures/bomb-token.txt"), "utf8").trim();
+    expect(bomb.length).toBeLessThan(2_000_000); // passes the token cap
     expect(decodeShareCode(bomb)).toBeNull();
   });
 

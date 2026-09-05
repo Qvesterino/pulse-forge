@@ -185,7 +185,12 @@ export function parseMidiFile(data: Uint8Array): ParsedMidi {
       for (const open of stack) {
         const channel = key & 0x0f;
         const pitch = key >> 4;
-        notesOf(channel).push({ pitch, startTick: open.startTick, endTick: tick, velocity: Math.min(1, Math.max(0.01, open.velocity / 127)) });
+        notesOf(channel).push({
+          pitch,
+          startTick: open.startTick,
+          endTick: tick,
+          velocity: Math.min(1, Math.max(0.01, open.velocity / 127)),
+        });
       }
     }
     entry.open.clear();

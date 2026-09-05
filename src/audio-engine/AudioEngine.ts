@@ -1038,6 +1038,10 @@ export class AudioEngine {
     if (this.stretchProjectId !== doc.id) {
       this.stretchProjectId = doc.id;
       this.clearStretchCache();
+      // Missing-asset ids belong to the project that missed them — the
+      // engine outlives projects, so stale ids would accumulate forever and
+      // pollute the diagnostics panel of the newly opened project.
+      this.missedAssets.clear();
     }
     this.doc = doc;
     if (this.ctx) this.syncProject(doc);

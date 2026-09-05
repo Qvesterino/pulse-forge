@@ -210,7 +210,8 @@ export function ExportPanel({
     }
   };
 
-  const exportScorepack = async () => {    setStatus({ kind: "busy", label: "Building scorepack…" });
+  const exportScorepack = async () => {
+    setStatus({ kind: "busy", label: "Building scorepack…" });
     try {
       const { blob, filename } = await buildScorepack(doc, services.bank, (p) => {
         setStatus({ kind: "busy", label: `Scorepack: ${p.phase}…` });
@@ -328,6 +329,16 @@ export function ExportPanel({
     }, 200);
     return () => clearInterval(timer);
   }, [recState]);
+
+  // A recorder left running at unmount (panel switch, project close) would
+  // keep the mic stream, the engine tap and its chunk buffer alive forever.
+  useEffect(
+    () => () => {
+      recorderRef.current?.cancel();
+      recorderRef.current = null;
+    },
+    [],
+  );
 
   return (
     <section className="export-panel" aria-label="Export">

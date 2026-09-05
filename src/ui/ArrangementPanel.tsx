@@ -115,6 +115,16 @@ export function ArrangementPanel() {
   const recRef = useRef<import("../audio-engine/recorder").LiveRecorder | null>(null);
   const recStartBarRef = useRef(0);
 
+  // A recorder left running at unmount (panel switch, project close) would
+  // keep the mic stream and its chunk buffer alive forever.
+  useEffect(
+    () => () => {
+      recRef.current?.cancel();
+      recRef.current = null;
+    },
+    [],
+  );
+
   const startRec = async () => {
     if (!armedTrackId || recState !== "idle") return;
     setRecError(null);

@@ -58,31 +58,48 @@ describe("SMF writer + parser round-trip", () => {
       velocity: 0.8,
     }));
     const bytes = writeMidiFile({ bpm: 120, tracks: [{ channel: 0, notes }] });
-    expect(bytes.length).toBeLessThan 	(2048);
+    expect(bytes.length).toBeLessThan(2048);
     expect(() => parseMidiFile(bytes)).not.toThrow();
   });
 });
 
 describe("SMF parser edge cases", () => {
   function mthd(division: number): number[] {
-    return [
-      0x4d, 0x54, 0x68, 0x64, 0, 0, 0, 6, 0, 1, 0, 1,
-      (division >>> 8) & 0xff, division & 0xff,
-    ];
+    return [0x4d, 0x54, 0x68, 0x64, 0, 0, 0, 6, 0, 1, 0, 1, (division >>> 8) & 0xff, division & 0xff];
   }
 
   function mtrk(payload: number[]): number[] {
     const len = payload.length;
-    return [0x4d, 0x54, 0x72, 0x6b, (len >>> 24) & 0xff, (len >>> 16) & 0xff, (len >>> 8) & 0xff, len & 0xff, ...payload];
+    return [
+      0x4d,
+      0x54,
+      0x72,
+      0x6b,
+      (len >>> 24) & 0xff,
+      (len >>> 16) & 0xff,
+      (len >>> 8) & 0xff,
+      len & 0xff,
+      ...payload,
+    ];
   }
 
   it("reads running status (note events without repeated status bytes)", () => {
     // delta 0, noteOn C4 (0x90 ch0), then SAME status implied: noteOn D4, noteOn E4.
     const payload = [
-      0x00, 0x90, 60, 100,
-      0x60, 62, 100, // running status — no 0x90 prefix
-      0x60, 64, 100,
-      0x00, 0xff, 0x2f, 0x00,
+      0x00,
+      0x90,
+      60,
+      100,
+      0x60,
+      62,
+      100, // running status — no 0x90 prefix
+      0x60,
+      64,
+      100,
+      0x00,
+      0xff,
+      0x2f,
+      0x00,
     ];
     const parsed = parseMidiFile(new Uint8Array([...mthd(480), ...mtrk(payload)]));
     expect(parsed.tracks[0].notes.map((n) => n.pitch)).toEqual([60, 62, 64]);
@@ -90,9 +107,18 @@ describe("SMF parser edge cases", () => {
 
   it("treats velocity-0 note-ons as note-offs", () => {
     const payload = [
-      0x00, 0x90, 60, 100,
-      0x60, 0x90, 60, 0, // off via zero velocity
-      0x00, 0xff, 0x2f, 0x00,
+      0x00,
+      0x90,
+      60,
+      100,
+      0x60,
+      0x90,
+      60,
+      0, // off via zero velocity
+      0x00,
+      0xff,
+      0x2f,
+      0x00,
     ];
     const parsed = parseMidiFile(new Uint8Array([...mthd(480), ...mtrk(payload)]));
     expect(parsed.tracks[0].notes).toHaveLength(1);
@@ -101,9 +127,18 @@ describe("SMF parser edge cases", () => {
 
   it("closes hanging notes at the last event tick", () => {
     const payload = [
-      0x00, 0x90, 60, 100,
-      0x60, 0xb0, 7, 100, // a CC moves the clock, note never gets an off
-      0x00, 0xff, 0x2f, 0x00,
+      0x00,
+      0x90,
+      60,
+      100,
+      0x60,
+      0xb0,
+      7,
+      100, // a CC moves the clock, note never gets an off
+      0x00,
+      0xff,
+      0x2f,
+      0x00,
     ];
     const parsed = parseMidiFile(new Uint8Array([...mthd(480), ...mtrk(payload)]));
     const note = parsed.tracks[0].notes[0];
@@ -175,7 +210,13 @@ describe("MIDI → project import", () => {
   it("rounds pattern length up to whole bars for multi-bar files", () => {
     const bytes = writeMidiFile({
       bpm: 120,
-      tracks: [{ name: "Seq", channel: 0, notes: [{ pitch: 60, startTick: 2 * 1920 + 10, endTick: 2 * 1920 + 130, velocity: 0.8 }] }],
+      tracks: [
+        {
+          name: "Seq",
+          channel: 0,
+          notes: [{ pitch: 60, startTick: 2 * 1920 + 10, endTick: 2 * 1920 + 130, velocity: 0.8 }],
+        },
+      ],
     });
     const doc = createProjectFromTemplate("empty");
     const next = importMidiCommand(doc, bytes, "bars").execute(doc);
@@ -225,5 +266,24 @@ describe("project → MIDI export", () => {
     const starts = new Set(drums.notes.map((n) => n.startTick));
     for (const start of starts) expect(start % STEP_TICKS).toBe(0);
     for (const note of drums.notes) expect(note.endTick - note.startTick).toBe(STEP_TICKS);
+  });
+});
+
+describe("SMF writer — dense track robustness (import/export audit)", () => {
+  it("exports a very dense track without hitting the engine's spread-argument limit", () => {
+    // Regression: `bytes.push(...chunk(...))` spread the whole track payload
+    // as call arguments — a pattern with ~10^5+ notes threw RangeError
+    // (maximum call stack size) instead of exporting.
+    const noteCount = 120_000;
+    const notes = Array.from({ length: noteCount }, (_, i) => ({
+      pitch: 36 + (i % 12),
+      startTick: i * 10,
+      endTick: i * 10 + 8,
+      velocity: 0.8,
+    }));
+    const bytes = writeMidiFile({ tracks: [{ channel: 0, name: "dense", notes }] });
+    const parsed = parseMidiFile(bytes);
+    const track = parsed.tracks.find((t) => t.channel === 0)!;
+    expect(track.notes.length).toBeGreaterThanOrEqual(noteCount);
   });
 });
