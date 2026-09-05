@@ -108,4 +108,50 @@ export class DryDelayMixer {
       if (this.writePos >= this.size) this.writePos = 0;
     }
   }
+
+  /**
+   * Per-channel variant for modules whose latency DIFFERS between L and R
+   * (phase module: the Time Shift offset is a deliberate inter-channel
+   * feature). Each dry channel is delayed by its own wet-path latency, so
+   * mix and delta stay coherent on BOTH channels independently.
+   */
+  processPerChannel(
+    channels: Float32Array[],
+    dryL: Float32Array,
+    dryR: Float32Array,
+    frameCount: number,
+    delaySamplesL: number,
+    delaySamplesR: number,
+    mix: number,
+    delta: boolean,
+  ): void {
+    if (this.size === 0) return;
+    const delayL = Math.min(Math.max(0, delaySamplesL | 0), this.size - 1);
+    const delayR = Math.min(Math.max(0, delaySamplesR | 0), this.size - 1);
+    const applyMix = !delta && mix < 0.999;
+
+    for (let i = 0; i < frameCount; i++) {
+      this.bufL[this.writePos] = dryL[i];
+      this.bufR[this.writePos] = dryR[i];
+
+      if (delta || applyMix) {
+        let rl = this.writePos - delayL;
+        if (rl < 0) rl += this.size;
+        let rr = this.writePos - delayR;
+        if (rr < 0) rr += this.size;
+        const wetL = channels[0][i];
+        const wetR = channels[1][i];
+        if (delta) {
+          channels[0][i] = sanitizeSample(wetL - this.bufL[rl]);
+          channels[1][i] = sanitizeSample(wetR - this.bufR[rr]);
+        } else {
+          channels[0][i] = sanitizeSample(wetL * mix + this.bufL[rl] * (1 - mix));
+          channels[1][i] = sanitizeSample(wetR * mix + this.bufR[rr] * (1 - mix));
+        }
+      }
+
+      this.writePos++;
+      if (this.writePos >= this.size) this.writePos = 0;
+    }
+  }
 }

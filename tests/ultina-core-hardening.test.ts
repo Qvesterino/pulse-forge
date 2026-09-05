@@ -886,3 +886,101 @@ describe("U3: HQ quality mode oversamples the comp gain path", () => {
     expect(perBlockMs).toBeLessThan(5);
   });
 });
+
+// ── 15. Phase module latency semantics (roadmap phase U4) ────
+
+describe("U4: phase module latency + per-channel compensation", () => {
+  function makePhase(): UltinaProcessor {
+    const proc = makeProcessor();
+    enableInGraph(proc, "phase");
+    return proc;
+  }
+
+  it("reports scalar latency: 0 for a pure one-sided shift, +1 with rotation", () => {
+    const proc = makePhase();
+    proc.setParameters({ "phase.timeShiftMs": 5, "phase.rotationDegrees": 0 });
+    const chans = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+    for (let b = 0; b < 8; b++) {
+      sine(chans, b, 997, 0.3);
+      proc.process(chans, BLOCK);
+    }
+    // One-sided shift: the common (host-compensable) part is 0 — the offset
+    // is the creative feature and is NOT transport latency.
+    expect(proc.getLatencySamples()).toBe(0);
+
+    proc.setParameter("phase.rotationDegrees", 45);
+    for (let b = 0; b < 4; b++) {
+      sine(chans, b, 997, 0.3);
+      proc.process(chans, BLOCK);
+    }
+    // All-pass group delay is 1 sample while a rotation is active.
+    expect(proc.getLatencySamples()).toBe(1);
+  });
+
+  it("rotation 0 adds no degenerate z^-1 delay (output is the pure shifted input)", () => {
+    const proc = makePhase();
+    proc.setParameters({
+      "phase.timeShiftMs": 2, // → 96 samples @ 48 kHz, shift applied to L
+      "phase.rotationDegrees": 0,
+      "phase.mix": 100,
+    });
+    const shiftSamples = Math.round(2 * SR / 1000);
+    const total = SR;
+    const input = new Float32Array(total);
+    // 4 kHz: the module's 20 Hz DC blocker is transparent this far above its
+    // cutoff, so the output can be compared against the raw input.
+    for (let i = 0; i < total; i++) input[i] = 0.4 * Math.sin((2 * Math.PI * 4000 * i) / SR);
+    const chans = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+    const outL = new Float32Array(total);
+    const outR = new Float32Array(total);
+    for (let off = 0; off < total; off += BLOCK) {
+      chans[0].set(input.subarray(off, off + BLOCK));
+      chans[1].set(input.subarray(off, off + BLOCK));
+      proc.process(chans, BLOCK);
+      outL.set(chans[0].subarray(0, BLOCK), off);
+      outR.set(chans[1].subarray(0, BLOCK), off);
+    }
+    // L is the shifted copy of the input (DC blocker ≈ identity on AC);
+    // R must be the UNDELAYED input — proof the degenerate z⁻¹ is gone
+    // (pre-fix R carried a stray 1-sample delay) and no all-pass colors.
+    let maxErrR = 0;
+    for (let n = 4096; n < total; n++) maxErrR = Math.max(maxErrR, Math.abs(outR[n] - input[n]));
+    expect(maxErrR).toBeLessThan(0.01);
+    let maxErrL = 0;
+    for (let n = shiftSamples + 4096; n < total; n++) {
+      maxErrL = Math.max(maxErrL, Math.abs(outL[n] - input[n - shiftSamples]));
+    }
+    expect(maxErrL).toBeLessThan(0.01);
+  });
+
+  it("delta listen on a pure time shift reads ~0 on BOTH channels (per-channel compensation)", () => {
+    const proc = makePhase();
+    proc.setParameters({
+      "phase.timeShiftMs": 3,
+      "phase.mix": 100,
+      "phase.delta": 1,
+      "phase.rotationDegrees": 0,
+    });
+    const chans = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+    let tailSumSq = 0;
+    let tailN = 0;
+    const blocks = 150;
+    // 4 kHz keeps the DC blocker's own wet-vs-dry contribution negligible;
+    // the pre-fix delayed-copy echo at this frequency and 3 ms shift is
+    // ~0.25 RMS, so the 0.02 bound cleanly separates the two regimes.
+    for (let b = 0; b < blocks; b++) {
+      sine(chans, b, 4000, 0.3);
+      proc.process(chans, BLOCK);
+      if (b >= blocks - 16) {
+        for (let i = 0; i < BLOCK; i++) {
+          tailSumSq += chans[0][i] * chans[0][i] + chans[1][i] * chans[1][i];
+          tailN += 2;
+        }
+      }
+    }
+    // Pre-fix: delta = delayedWet(shifted L) − undelayedDry → a loud 3 ms
+    // difference tone on the shifted channel. Post-fix the dry copy is
+    // delayed per channel, so the delta is numerically ~0 everywhere.
+    expect(Math.sqrt(tailSumSq / tailN)).toBeLessThan(0.02);
+  });
+});

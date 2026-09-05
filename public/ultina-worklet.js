@@ -4614,6 +4614,39 @@
         if (this.writePos >= this.size) this.writePos = 0;
       }
     }
+    /**
+     * Per-channel variant for modules whose latency DIFFERS between L and R
+     * (phase module: the Time Shift offset is a deliberate inter-channel
+     * feature). Each dry channel is delayed by its own wet-path latency, so
+     * mix and delta stay coherent on BOTH channels independently.
+     */
+    processPerChannel(channels, dryL, dryR, frameCount, delaySamplesL, delaySamplesR, mix, delta) {
+      if (this.size === 0) return;
+      const delayL = Math.min(Math.max(0, delaySamplesL | 0), this.size - 1);
+      const delayR = Math.min(Math.max(0, delaySamplesR | 0), this.size - 1);
+      const applyMix = !delta && mix < 0.999;
+      for (let i = 0; i < frameCount; i++) {
+        this.bufL[this.writePos] = dryL[i];
+        this.bufR[this.writePos] = dryR[i];
+        if (delta || applyMix) {
+          let rl = this.writePos - delayL;
+          if (rl < 0) rl += this.size;
+          let rr = this.writePos - delayR;
+          if (rr < 0) rr += this.size;
+          const wetL = channels[0][i];
+          const wetR = channels[1][i];
+          if (delta) {
+            channels[0][i] = sanitizeSample(wetL - this.bufL[rl]);
+            channels[1][i] = sanitizeSample(wetR - this.bufR[rr]);
+          } else {
+            channels[0][i] = sanitizeSample(wetL * mix + this.bufL[rl] * (1 - mix));
+            channels[1][i] = sanitizeSample(wetR * mix + this.bufR[rr] * (1 - mix));
+          }
+        }
+        this.writePos++;
+        if (this.writePos >= this.size) this.writePos = 0;
+      }
+    }
   };
 
   // src/effects/ultina-core/contracts/channelModes.ts
@@ -6690,7 +6723,7 @@
   };
 
   // src/effects/ultina-core/dsp/modules/phaseModule.ts
-  var PhaseModuleProcessor = class {
+  var PhaseModuleProcessor = class _PhaseModuleProcessor {
     sampleRate = 44100;
     maxBlockSize = 512;
     // DC blocker state (per channel)
@@ -6710,6 +6743,29 @@
     // Dry buffers
     dryL = new Float32Array(0);
     dryR = new Float32Array(0);
+    // Latency-compensated dry/wet mixing. The Time Shift is a deliberate
+    // INTER-CHANNEL offset (one channel delayed, the other not) — it cannot be
+    // scalar-compensated by the host and stays a creative feature. What the
+    // module CAN do is delay its own dry copy per channel by the matching wet
+    // latency, so mix < 100 % and delta stay free of delayed-copy combing on
+    // BOTH channels independently.
+    dryDelay = new DryDelayMixer();
+    // Host-compensable (scalar) latency: the delay common to both channels
+    // (min of the two per-channel delays — with a one-sided shift that is 0)
+    // plus the all-pass group delay (1 sample) while rotation is active.
+    commonDelaySamples = 0;
+    allPassActive = false;
+    // Sidechain cross-correlation is time-decimated: a full ±maxLag sweep
+    // every chunk costs O(maxLag·chunk) per block; every 8th chunk (~11 Hz at
+    // a 128 quantum) tracks the 200 ms-smoothed offset more than well enough.
+    xcorrBlockCounter = 0;
+    static XCORR_INTERVAL = 8;
+    /** Reusable chunk channel views for the dry-delay mixer (no per-chunk
+     * allocation on the audio thread). */
+    chunkChannels = [
+      new Float32Array(0),
+      new Float32Array(0)
+    ];
     // ── Analysis state ──
     // Peak envelopes for asymmetry
     posPeakEnv = 0;
@@ -6744,6 +6800,7 @@
       this.delayBufL = new Float32Array(this.delayBufferSize);
       this.delayBufR = new Float32Array(this.delayBufferSize);
       this.delayWritePos = 0;
+      this.dryDelay.prepare(this.maxBlockSize);
       this.dcCoef = 1 - 2 * Math.PI * 20 / this.sampleRate;
       if (this.dcCoef < 0.9) this.dcCoef = 0.9;
       this.peakAtkCoef = smoothCoef(5, this.sampleRate);
@@ -6772,9 +6829,15 @@
         effectiveShiftMs = this.detectedOffsetMs;
       }
       const c = clamp(effectiveRotation / 180, -0.99, 0.99);
+      this.allPassActive = Math.abs(c) > 1e-6;
+      if (!this.allPassActive) {
+        this.allPassState[0] = 0;
+        this.allPassState[1] = 0;
+      }
       const shiftSamples = Math.round(effectiveShiftMs * this.sampleRate / 1e3);
       const delayL = Math.min(Math.max(0, shiftSamples), this.delayBufferSize - 1);
       const delayR = Math.min(Math.max(0, -shiftSamples), this.delayBufferSize - 1);
+      this.commonDelaySamples = Math.min(delayL, delayR);
       let offset = 0;
       while (offset < frameCount) {
         const remaining = frameCount - offset;
@@ -6795,14 +6858,16 @@
           this.dcPrevY[1] = yR_dc;
           xL = sanitizeSample(yL_dc);
           xR = sanitizeSample(yR_dc);
-          const sL0 = this.allPassState[0];
-          const sR0 = this.allPassState[1];
-          const yL_ap = c * xL + sL0;
-          const yR_ap = c * xR + sR0;
-          this.allPassState[0] = xL - c * yL_ap;
-          this.allPassState[1] = xR - c * yR_ap;
-          xL = sanitizeSample(yL_ap);
-          xR = sanitizeSample(yR_ap);
+          if (this.allPassActive) {
+            const sL0 = this.allPassState[0];
+            const sR0 = this.allPassState[1];
+            const yL_ap = c * xL + sL0;
+            const yR_ap = c * xR + sR0;
+            this.allPassState[0] = xL - c * yL_ap;
+            this.allPassState[1] = xR - c * yR_ap;
+            xL = sanitizeSample(yL_ap);
+            xR = sanitizeSample(yR_ap);
+          }
           this.delayBufL[this.delayWritePos] = xL;
           this.delayBufR[this.delayWritePos] = xR;
           const readPosL = (this.delayWritePos - delayL + this.delayBufferSize) % this.delayBufferSize;
@@ -6846,45 +6911,49 @@
           this.learnedRotation += learnCoef * (targetRot - this.learnedRotation);
         }
         if (sidechainEnabled && sidechain && sidechain.length >= 1) {
-          const sc = sidechain[0];
-          let bestLag = 0;
-          let bestCorr = -Infinity;
-          const maxLag = Math.min(this.xcorrMaxOffsetSamples, chunkSize - 1);
-          for (let lag = -maxLag; lag <= maxLag; lag++) {
-            let sum = 0;
-            let count = 0;
-            for (let i = Math.max(0, lag); i < Math.min(chunkSize, chunkSize + lag); i++) {
-              const scIdx = i - lag;
-              if (scIdx >= 0 && scIdx < sc.length) {
-                sum += this.dryL[i] * sc[scIdx];
-                count++;
+          this.xcorrBlockCounter++;
+          if (this.xcorrBlockCounter >= _PhaseModuleProcessor.XCORR_INTERVAL) {
+            this.xcorrBlockCounter = 0;
+            const sc = sidechain[0];
+            let bestLag = 0;
+            let bestCorr = -Infinity;
+            const maxLag = Math.min(this.xcorrMaxOffsetSamples, chunkSize - 1);
+            for (let lag = -maxLag; lag <= maxLag; lag++) {
+              let sum = 0;
+              let count = 0;
+              for (let i = Math.max(0, lag); i < Math.min(chunkSize, chunkSize + lag); i++) {
+                const scIdx = i - lag;
+                if (scIdx >= 0 && scIdx < sc.length) {
+                  sum += this.dryL[i] * sc[scIdx];
+                  count++;
+                }
+              }
+              if (count > 0) {
+                const avg = sum / count;
+                if (avg > bestCorr) {
+                  bestCorr = avg;
+                  bestLag = lag;
+                }
               }
             }
-            if (count > 0) {
-              const avg = sum / count;
-              if (avg > bestCorr) {
-                bestCorr = avg;
-                bestLag = lag;
-              }
-            }
+            const detectedMs = bestLag / this.sampleRate * 1e3;
+            const detectCoef = Math.min(1, smoothCoef(200, this.sampleRate) * chunkSize * _PhaseModuleProcessor.XCORR_INTERVAL);
+            this.detectedOffsetMs += detectCoef * (detectedMs - this.detectedOffsetMs);
           }
-          const detectedMs = bestLag / this.sampleRate * 1e3;
-          const detectCoef = Math.min(1, smoothCoef(200, this.sampleRate) * chunkSize);
-          this.detectedOffsetMs += detectCoef * (detectedMs - this.detectedOffsetMs);
         }
         const mix = mixPercent / 100;
-        if (mix < 0.999) {
-          for (let i = 0; i < chunkSize; i++) {
-            chunkL[i] = sanitizeSample(chunkL[i] * mix + this.dryL[i] * (1 - mix));
-            chunkR[i] = sanitizeSample(chunkR[i] * mix + this.dryR[i] * (1 - mix));
-          }
-        }
-        if (deltaListen) {
-          for (let i = 0; i < chunkSize; i++) {
-            chunkL[i] = sanitizeSample(chunkL[i] - this.dryL[i]);
-            chunkR[i] = sanitizeSample(chunkR[i] - this.dryR[i]);
-          }
-        }
+        this.chunkChannels[0] = chunkL;
+        this.chunkChannels[1] = chunkR;
+        this.dryDelay.processPerChannel(
+          this.chunkChannels,
+          this.dryL,
+          this.dryR,
+          chunkSize,
+          delayL,
+          delayR,
+          mix,
+          deltaListen
+        );
         offset += chunkSize;
       }
     }
@@ -6905,6 +6974,8 @@
       this.smoothAsymmetry = 0;
       this.smoothCorrelation = 1;
       this.learnedRotation = 0;
+      this.dryDelay.reset();
+      this.xcorrBlockCounter = 0;
     }
     getMeters() {
       return {
@@ -6912,6 +6983,16 @@
         correlation: clamp(this.smoothCorrelation, -1, 1),
         detectedOffsetMs: this.detectedOffsetMs
       };
+    }
+    /**
+     * Scalar, host-compensable latency: the delay common to BOTH channels
+     * (the inter-channel Time Shift offset is a deliberate creative feature,
+     * not a transport delay the host should advance) plus the all-pass group
+     * delay while a rotation is active. Zero until the first processed block
+     * materializes the current parameter values.
+     */
+    getLatency() {
+      return this.commonDelaySamples + (this.allPassActive ? 1 : 0);
     }
     // ── Internal ──
     ensureBuffers(size) {
