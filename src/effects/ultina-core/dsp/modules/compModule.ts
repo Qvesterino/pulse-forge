@@ -63,6 +63,16 @@ import {
   MultibandProcessor,
 } from "../multiband.js";
 import {
+  OS_FACTOR,
+  OS_LATENCY_SAMPLES,
+  type OsChannelState,
+  createOsChannelState,
+  resetOsChannelState,
+  upsample as osUpsample,
+  downsample as os_Downsample,
+} from "../oversampler.js";
+import { DryDelayMixer } from "../dryDelay.js";
+import {
   channelModeFromValue,
   type BandCount,
   type CrossoverMode,
@@ -139,6 +149,21 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
   private dryL: Float32Array = new Float32Array(0);
   private dryR: Float32Array = new Float32Array(0);
 
+  // Latency-compensated dry/wet mixing (see dsp/dryDelay.ts): the wet path
+  // carries the crossover + oversampler group delay; delaying the dry copy
+  // by the same amount keeps mix < 100 % phase-coherent and delta listen
+  // free of a delayed-copy echo.
+  private dryDelay = new DryDelayMixer();
+
+  // HQ oversampling of the gain-application path (quality mode 2). The
+  // detector and envelope smoothing stay at base rate — only the per-sample
+  // gain multiply runs at 4×, cleaning the residual modulation products of
+  // deep ratio + fast attack settings. Off in tracking/mix modes: default
+  // behavior and CPU are unchanged.
+  private osStates: OsChannelState[][] = [];
+  private bandGainBufs: Float64Array[] = [];
+  private osActive = false;
+
   // Meter state
   private gainReduction: number[] = new Array(COMP_MAX_BANDS).fill(0);
   private outputLevels: number[] = new Array(COMP_MAX_BANDS).fill(-100);
@@ -183,15 +208,33 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
 
     this.autoMakeupSmoother.setTimeConstant(50, this.sampleRate);
     this.multiband.prepare(this.sampleRate, 2, this.maxBlockSize, 1);
+    this.dryDelay.prepare(this.maxBlockSize);
+
+    // Oversampler state per band and channel + base-rate gain scratch.
+    this.osStates = [];
+    this.bandGainBufs = [];
+    for (let b = 0; b < COMP_MAX_BANDS; b++) {
+      this.osStates.push([
+        createOsChannelState(this.maxBlockSize * OS_FACTOR),
+        createOsChannelState(this.maxBlockSize * OS_FACTOR),
+      ]);
+      // Float64: the per-sample gain must keep double precision — a float32
+      // scratch here would round the multiply and shift every output sample.
+      this.bandGainBufs.push(new Float64Array(this.maxBlockSize));
+    }
+    this.osActive = false;
   }
 
   process(args: ModuleProcessArgs): void {
-    const { channels, frameCount, sidechain, params } = args;
+    const { channels, frameCount, sidechain, params, ctx } = args;
 
     if (channels.length < 2) return;
 
     const enabled = (params["comp.enabled"] ?? 0) >= 0.5;
     if (!enabled) return;
+
+    // HQ quality mode oversamples the gain-application path (see field docs).
+    this.osActive = ctx.qualityMode >= 2;
 
     this.ensureBuffers(frameCount);
 
@@ -353,24 +396,19 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
       }
     }
 
-    // Mix dry/wet
+    // Mix dry/wet — the dry copy is delayed by the wet path's current
+    // latency so the two signals stay phase-aligned (delta uses the same
+    // delayed copy: delta = processed − input, without a delayed echo).
     const mix = mixPercent / 100;
-    if (mix < 0.999) {
-      for (let i = 0; i < frameCount; i++) {
-        const wetL = channels[0][i];
-        const wetR = channels[1][i];
-        channels[0][i] = sanitizeSample(wetL * mix + this.dryL[i] * (1 - mix));
-        channels[1][i] = sanitizeSample(wetR * mix + this.dryR[i] * (1 - mix));
-      }
-    }
-
-    // Delta listen: output = wet - dry (matches global delta + all other modules)
-    if (deltaListen) {
-      for (let i = 0; i < frameCount; i++) {
-        channels[0][i] = sanitizeSample(channels[0][i] - this.dryL[i]);
-        channels[1][i] = sanitizeSample(channels[1][i] - this.dryR[i]);
-      }
-    }
+    this.dryDelay.process(
+      channels,
+      this.dryL,
+      this.dryR,
+      frameCount,
+      this.currentLatencySamples(),
+      mix,
+      deltaListen,
+    );
 
     // (Per-band output levels are measured inside processBand.)
   }
@@ -390,6 +428,10 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
     this.autoMakeupDb = 0;
     this.autoMakeupSmoother.reset(0);
     this.multiband.reset();
+    this.dryDelay.reset();
+    for (const bandStates of this.osStates) {
+      for (const s of bandStates) resetOsChannelState(s);
+    }
     resetBiquad(this.scHpf);
     for (const stages of this.detHpf) {
       for (const stage of stages) resetBiquad(stage);
@@ -406,7 +448,24 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
 
   /** Hybrid crossover group delay (samples). */
   getLatency(): number {
-    return this.multiband.getCrossoverLatency();
+    return this.currentLatencySamples();
+  }
+
+  /** Current wet-path latency: crossover + HQ oversampler when active. */
+  private currentLatencySamples(): number {
+    let lat = this.multiband.getCrossoverLatency();
+    if (this.osActive) lat += OS_LATENCY_SAMPLES;
+    return lat;
+  }
+
+  // ── Oversampling helpers (shared half-band FIR, see clipper) ──
+
+  private upsample(input: Float32Array, osState: OsChannelState, frames: number): void {
+    osUpsample(input, osState, frames);
+  }
+
+  private downsample(osState: OsChannelState, output: Float32Array, frames: number): void {
+    os_Downsample(osState, output, frames);
   }
 
   // ── Internal ──────────────────────────────────────────────
@@ -517,6 +576,7 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
     detHpfActive: boolean,
   ): void {
     const band = this.bands[bandIdx];
+    const gainBuf = this.bandGainBufs[bandIdx];
 
     // Update attack/release coefficients
     band.attackCoef = smoothCoef(attackMs, this.sampleRate);
@@ -620,10 +680,36 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
       const coef = grDb > band.gainReductionDb ? band.attackCoef : releaseCoef;
       band.gainReductionDb += coef * (grDb - band.gainReductionDb);
 
-      // ── Apply gain ──
-      const gainLinear = dbToLinear(-band.gainReductionDb);
-      for (let ch = 0; ch < channels.length; ch++) {
-        channels[ch][i] = sanitizeSample(channels[ch][i] * gainLinear);
+      // Store the per-sample linear gain; application happens below
+      // (direct at base rate, or oversampled in HQ quality mode).
+      gainBuf[i] = dbToLinear(-band.gainReductionDb);
+    }
+
+    // ── Apply gain ──
+    if (this.osActive && frameCount > 0) {
+      // 4× oversampled application: upsample the band, multiply by the
+      // base-rate gain (zero-order hold — the smoothed GR moves far slower
+      // than one base sample, so the hold adds no meaningful modulation
+      // product), downsample back. The detector stays at base rate.
+      const osStateL = this.osStates[bandIdx][0];
+      const osStateR = this.osStates[bandIdx][1];
+      const stereo = channels.length >= 2;
+      osUpsample(channels[0], osStateL, frameCount);
+      if (stereo) osUpsample(channels[1], osStateR, frameCount);
+      const osFrames = frameCount * OS_FACTOR;
+      for (let k = 0; k < osFrames; k++) {
+        const g = gainBuf[k >> 2];
+        osStateL.osBuffer[k] *= g;
+        if (stereo) osStateR.osBuffer[k] *= g;
+      }
+      os_Downsample(osStateL, channels[0], frameCount);
+      if (stereo) os_Downsample(osStateR, channels[1], frameCount);
+    } else {
+      for (let i = 0; i < frameCount; i++) {
+        const gainLinear = gainBuf[i];
+        for (let ch = 0; ch < channels.length; ch++) {
+          channels[ch][i] = sanitizeSample(channels[ch][i] * gainLinear);
+        }
       }
     }
 

@@ -53,6 +53,7 @@ import {
   type CrossoverMode,
 } from "../../contracts/channelModes.js";
 import { MultibandProcessor } from "../multiband.js";
+import { DryDelayMixer } from "../dryDelay.js";
 
 // ── Constants ──────────────────────────────────────────────
 
@@ -96,6 +97,8 @@ export class ExciterModuleProcessor implements UltinaModuleProcessor {
   // Dry buffer for mix
   private dryL: Float32Array = new Float32Array(0);
   private dryR: Float32Array = new Float32Array(0);
+  // Latency-compensated dry/wet mixing (see dsp/dryDelay.ts).
+  private dryDelay = new DryDelayMixer();
 
   // Tone filter state (per channel, per band)
   private toneLowState: number[] = [];
@@ -136,6 +139,7 @@ export class ExciterModuleProcessor implements UltinaModuleProcessor {
     this.toneHighState = new Array(EXCITER_MAX_BANDS * 2).fill(0);
 
     this.multiband.prepare(this.sampleRate, 2, this.maxBlockSize, 1);
+    this.dryDelay.prepare(this.maxBlockSize);
   }
 
   process(args: ModuleProcessArgs): void {
@@ -194,22 +198,19 @@ export class ExciterModuleProcessor implements UltinaModuleProcessor {
       channelMode,
     );
 
-    // Mix dry/wet
+    // Mix dry/wet — the dry copy is delayed by the wet path's current
+    // latency (crossover + oversampler) so mix < 100 % stays phase-coherent
+    // and delta listen has no delayed-copy echo (see dsp/dryDelay.ts).
     const mix = mixPercent / 100;
-    if (mix < 0.999) {
-      for (let i = 0; i < frameCount; i++) {
-        channels[0][i] = sanitizeSample(channels[0][i] * mix + this.dryL[i] * (1 - mix));
-        channels[1][i] = sanitizeSample(channels[1][i] * mix + this.dryR[i] * (1 - mix));
-      }
-    }
-
-    // Delta listen
-    if (deltaListen) {
-      for (let i = 0; i < frameCount; i++) {
-        channels[0][i] = sanitizeSample(channels[0][i] - this.dryL[i]);
-        channels[1][i] = sanitizeSample(channels[1][i] - this.dryR[i]);
-      }
-    }
+    this.dryDelay.process(
+      channels,
+      this.dryL,
+      this.dryR,
+      frameCount,
+      this.multiband.getCrossoverLatency() + (this.osActive ? OS_LATENCY_SAMPLES : 0),
+      mix,
+      deltaListen,
+    );
 
     // Module-output sanitize: ONE pass at the boundary. The downsample
     // FIR is a linear combination of sanitized OS samples, so its output
@@ -234,6 +235,7 @@ export class ExciterModuleProcessor implements UltinaModuleProcessor {
     this.toneLowState.fill(0);
     this.toneHighState.fill(0);
     this.multiband.reset();
+    this.dryDelay.reset();
     this.harmonicContent.fill(0);
     this.outputPeaks.fill(-100);
   }

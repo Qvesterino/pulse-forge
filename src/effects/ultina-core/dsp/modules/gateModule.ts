@@ -48,6 +48,7 @@ import {
 import {
   MultibandProcessor,
 } from "../multiband.js";
+import { DryDelayMixer } from "../dryDelay.js";
 import {
   channelModeFromValue,
   type BandCount,
@@ -110,6 +111,8 @@ export class GateModuleProcessor implements UltinaModuleProcessor {
   // Dry buffer for delta
   private dryL: Float32Array = new Float32Array(0);
   private dryR: Float32Array = new Float32Array(0);
+  // Latency-compensated dry/wet mixing (see dsp/dryDelay.ts).
+  private dryDelay = new DryDelayMixer();
 
   // Sidechain HPF buffers
   private scHpfBufferL: Float32Array = new Float32Array(0);
@@ -146,6 +149,7 @@ export class GateModuleProcessor implements UltinaModuleProcessor {
     }
 
     this.multiband.prepare(this.sampleRate, 2, this.maxBlockSize, 1);
+    this.dryDelay.prepare(this.maxBlockSize);
   }
 
   process(args: ModuleProcessArgs): void {
@@ -244,22 +248,19 @@ export class GateModuleProcessor implements UltinaModuleProcessor {
       channelMode,
     );
 
-    // Mix dry/wet
+    // Mix dry/wet — the dry copy is delayed by the wet path's current
+    // latency (crossover + oversampler) so mix < 100 % stays phase-coherent
+    // and delta listen has no delayed-copy echo (see dsp/dryDelay.ts).
     const mix = mixPercent / 100;
-    if (mix < 0.999) {
-      for (let i = 0; i < frameCount; i++) {
-        channels[0][i] = sanitizeSample(channels[0][i] * mix + this.dryL[i] * (1 - mix));
-        channels[1][i] = sanitizeSample(channels[1][i] * mix + this.dryR[i] * (1 - mix));
-      }
-    }
-
-    // Delta listen
-    if (deltaListen) {
-      for (let i = 0; i < frameCount; i++) {
-        channels[0][i] = sanitizeSample(channels[0][i] - this.dryL[i]);
-        channels[1][i] = sanitizeSample(channels[1][i] - this.dryR[i]);
-      }
-    }
+    this.dryDelay.process(
+      channels,
+      this.dryL,
+      this.dryR,
+      frameCount,
+      this.multiband.getCrossoverLatency(),
+      mix,
+      deltaListen,
+    );
 
     // Update output level smoothing is done per-band in processBand
   }
@@ -275,6 +276,7 @@ export class GateModuleProcessor implements UltinaModuleProcessor {
     this.bandState.fill(GateState.Closed);
     this.bandReductionDb.fill(0);
     this.multiband.reset();
+    this.dryDelay.reset();
     resetBiquad(this.scHpf);
   }
 

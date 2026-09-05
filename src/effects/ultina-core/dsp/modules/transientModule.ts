@@ -38,6 +38,16 @@ import {
   type CrossoverMode,
 } from "../../contracts/channelModes.js";
 import { MultibandProcessor } from "../multiband.js";
+import {
+  OS_FACTOR,
+  OS_LATENCY_SAMPLES,
+  type OsChannelState,
+  createOsChannelState,
+  resetOsChannelState,
+  upsample as osUpsample,
+  downsample as os_Downsample,
+} from "../oversampler.js";
+import { DryDelayMixer } from "../dryDelay.js";
 
 // ── Constants ──────────────────────────────────────────────
 
@@ -109,6 +119,13 @@ export class TransientModuleProcessor implements UltinaModuleProcessor {
   private dryL: Float32Array = new Float32Array(0);
   private dryR: Float32Array = new Float32Array(0);
 
+  // Latency-compensated dry/wet mixing + HQ oversampled gain application
+  // (same design as compModule — see the field docs there).
+  private dryDelay = new DryDelayMixer();
+  private osStates: OsChannelState[][] = [];
+  private bandGainBufs: Float64Array[] = [];
+  private osActive = false;
+
   // Meter state
   private transientLevels: number[] = new Array(TRANSIENT_MAX_BANDS).fill(0);
   private outputPeaks: number[] = new Array(TRANSIENT_MAX_BANDS).fill(-100);
@@ -138,15 +155,34 @@ export class TransientModuleProcessor implements UltinaModuleProcessor {
     }
 
     this.multiband.prepare(this.sampleRate, 2, this.maxBlockSize, 1);
+    this.dryDelay.prepare(this.maxBlockSize);
+
+    // Oversampler state per band and channel + base-rate gain scratch.
+    this.osStates = [];
+    this.bandGainBufs = [];
+    for (let b = 0; b < TRANSIENT_MAX_BANDS; b++) {
+      this.osStates.push([
+        createOsChannelState(this.maxBlockSize * OS_FACTOR),
+        createOsChannelState(this.maxBlockSize * OS_FACTOR),
+      ]);
+      // Float64: the per-sample gain must keep double precision — a float32
+      // scratch here would round the multiply and shift every output sample.
+      this.bandGainBufs.push(new Float64Array(this.maxBlockSize));
+    }
+    this.osActive = false;
   }
 
   process(args: ModuleProcessArgs): void {
-    const { channels, frameCount, params } = args;
+    const { channels, frameCount, params, ctx } = args;
 
     if (channels.length < 2) return;
 
     const enabled = (params["transient.enabled"] ?? 0) >= 0.5;
     if (!enabled) return;
+
+    // HQ quality mode oversamples the gain-application path (see field docs
+    // on osActive in compModule — same trade-off).
+    this.osActive = ctx.qualityMode >= 2;
 
     this.ensureBuffers(frameCount);
 
@@ -194,21 +230,18 @@ export class TransientModuleProcessor implements UltinaModuleProcessor {
     );
 
     // Mix dry/wet
+    // Mix dry/wet — latency-compensated (see dsp/dryDelay.ts); delta uses
+    // the same delayed dry copy.
     const mix = mixPercent / 100;
-    if (mix < 0.999) {
-      for (let i = 0; i < frameCount; i++) {
-        channels[0][i] = sanitizeSample(channels[0][i] * mix + this.dryL[i] * (1 - mix));
-        channels[1][i] = sanitizeSample(channels[1][i] * mix + this.dryR[i] * (1 - mix));
-      }
-    }
-
-    // Delta listen
-    if (deltaListen) {
-      for (let i = 0; i < frameCount; i++) {
-        channels[0][i] = sanitizeSample(channels[0][i] - this.dryL[i]);
-        channels[1][i] = sanitizeSample(channels[1][i] - this.dryR[i]);
-      }
-    }
+    this.dryDelay.process(
+      channels,
+      this.dryL,
+      this.dryR,
+      frameCount,
+      this.currentLatencySamples(),
+      mix,
+      deltaListen,
+    );
 
     // (Per-band output peaks are measured inside processBand.)
   }
@@ -223,6 +256,10 @@ export class TransientModuleProcessor implements UltinaModuleProcessor {
       band.prevSustainGain = 1;
     }
     this.multiband.reset();
+    this.dryDelay.reset();
+    for (const bandStates of this.osStates) {
+      for (const s of bandStates) resetOsChannelState(s);
+    }
     this.transientLevels.fill(0);
     this.outputPeaks.fill(-100);
   }
@@ -236,7 +273,24 @@ export class TransientModuleProcessor implements UltinaModuleProcessor {
 
   /** Hybrid crossover group delay (samples). */
   getLatency(): number {
-    return this.multiband.getCrossoverLatency();
+    return this.currentLatencySamples();
+  }
+
+  /** Current wet-path latency: crossover + HQ oversampler when active. */
+  private currentLatencySamples(): number {
+    let lat = this.multiband.getCrossoverLatency();
+    if (this.osActive) lat += OS_LATENCY_SAMPLES;
+    return lat;
+  }
+
+  // ── Oversampling helpers (shared half-band FIR, see clipper) ──
+
+  private upsample(input: Float32Array, osState: OsChannelState, frames: number): void {
+    osUpsample(input, osState, frames);
+  }
+
+  private downsample(osState: OsChannelState, output: Float32Array, frames: number): void {
+    os_Downsample(osState, output, frames);
   }
 
   // ── Internal methods ──────────────────────────────────────
@@ -279,6 +333,8 @@ export class TransientModuleProcessor implements UltinaModuleProcessor {
     const band = this.bands[bandIdx];
     const chL = bandChannels[0];
     const chR = bandChannels.length >= 2 ? bandChannels[1] : bandChannels[0];
+    const stereo = bandChannels.length >= 2;
+    const gainBuf = this.bandGainBufs[bandIdx];
 
     // Envelope follower coefficients (fast and slow)
     // Fast env: tracks transients quickly
@@ -350,14 +406,36 @@ export class TransientModuleProcessor implements UltinaModuleProcessor {
       band.transientGain = gainSmoothCoef * band.transientGain + (1 - gainSmoothCoef) * targetTransientGain;
       band.sustainGain = gainSmoothCoef * band.sustainGain + (1 - gainSmoothCoef) * targetSustainGain;
 
-      // Apply combined gain
+      // Store the combined gain; application happens below (direct at base
+      // rate, or oversampled in HQ quality mode).
       // The total gain is a blend of transient and sustain gain
       // weighted by transientAmount
-      const combinedGain = band.transientGain * transientAmount + band.sustainGain * (1 - transientAmount);
+      gainBuf[i] = band.transientGain * transientAmount + band.sustainGain * (1 - transientAmount);
+    }
 
-      chL[i] = sanitizeSample(chL[i] * combinedGain);
-      if (bandChannels.length >= 2) {
-        chR[i] = sanitizeSample(chR[i] * combinedGain);
+    // ── Apply gain ──
+    if (this.osActive && bandFrames > 0) {
+      // 4× oversampled application (zero-order hold on the base-rate gain —
+      // the 2 ms gain smoothing moves far slower than one base sample).
+      const osStateL = this.osStates[bandIdx][0];
+      const osStateR = this.osStates[bandIdx][1];
+      osUpsample(chL, osStateL, bandFrames);
+      if (stereo) osUpsample(chR, osStateR, bandFrames);
+      const osFrames = bandFrames * OS_FACTOR;
+      for (let k = 0; k < osFrames; k++) {
+        const g = gainBuf[k >> 2];
+        osStateL.osBuffer[k] *= g;
+        if (stereo) osStateR.osBuffer[k] *= g;
+      }
+      os_Downsample(osStateL, chL, bandFrames);
+      if (stereo) os_Downsample(osStateR, chR, bandFrames);
+    } else {
+      for (let i = 0; i < bandFrames; i++) {
+        const combinedGain = gainBuf[i];
+        chL[i] = sanitizeSample(chL[i] * combinedGain);
+        if (stereo) {
+          chR[i] = sanitizeSample(chR[i] * combinedGain);
+        }
       }
     }
 

@@ -4463,6 +4463,159 @@
     }
   };
 
+  // src/effects/ultina-core/dsp/oversampler.ts
+  var OS_FACTOR = 4;
+  var HB_TAPS = 15;
+  var HB_COEFS_RAW = [
+    -258e-5,
+    -667e-5,
+    -0.01139,
+    0,
+    0.04818,
+    0.13163,
+    0.21483,
+    0.25,
+    0.21483,
+    0.13163,
+    0.04818,
+    0,
+    -0.01139,
+    -667e-5,
+    -258e-5
+  ];
+  var HB_COEFS = (() => {
+    const sum = HB_COEFS_RAW.reduce((a, b) => a + b, 0);
+    return Float32Array.from(HB_COEFS_RAW, (v) => v / sum);
+  })();
+  var OS_LATENCY_SAMPLES = (HB_TAPS - 1 + 2) / OS_FACTOR;
+  function createOsChannelState(maxOsFrames) {
+    return {
+      upHist: new Float32Array(HB_TAPS),
+      upHistWrite: 0,
+      downHist: new Float32Array(HB_TAPS),
+      downHistWrite: 0,
+      osBuffer: new Float32Array(maxOsFrames),
+      dsD1: 0,
+      dsD2: 0
+    };
+  }
+  function resetOsChannelState(s) {
+    s.upHist.fill(0);
+    s.upHistWrite = 0;
+    s.downHist.fill(0);
+    s.downHistWrite = 0;
+    s.osBuffer.fill(0);
+    s.dsD1 = 0;
+    s.dsD2 = 0;
+  }
+  function upsample(input, osState, frames) {
+    const out = osState.osBuffer;
+    const osFrames = frames * OS_FACTOR;
+    const hist = osState.upHist;
+    let hw = osState.upHistWrite;
+    const tapLen = HB_TAPS;
+    for (let i = 0; i < osFrames; i++) out[i] = 0;
+    for (let i = 0; i < frames; i++) {
+      out[i * OS_FACTOR] = input[i] * OS_FACTOR;
+    }
+    for (let i = 0; i < osFrames; i++) {
+      hist[hw] = out[i];
+      const nextHw = (hw + 1) % tapLen;
+      let sum = 0;
+      let histIdx = nextHw;
+      for (let j = 0; j < tapLen; j++) {
+        sum += hist[histIdx] * HB_COEFS[j];
+        histIdx = (histIdx + 1) % tapLen;
+      }
+      out[i] = sum;
+      hw = nextHw;
+    }
+    osState.upHistWrite = hw;
+  }
+  function downsample(osState, output, frames) {
+    const input = osState.osBuffer;
+    const osFrames = frames * OS_FACTOR;
+    const hist = osState.downHist;
+    let hw = osState.downHistWrite;
+    const tapLen = HB_TAPS;
+    for (let i = 0; i < osFrames; i++) {
+      hist[hw] = input[i];
+      const nextHw = (hw + 1) % tapLen;
+      let sum = 0;
+      let histIdx = (hw + 1) % tapLen;
+      for (let j = 0; j < tapLen; j++) {
+        sum += hist[histIdx] * HB_COEFS[j];
+        histIdx = (histIdx + 1) % tapLen;
+      }
+      const delayed = osState.dsD2;
+      osState.dsD2 = osState.dsD1;
+      osState.dsD1 = sum;
+      if (i % OS_FACTOR === 0) {
+        output[i / OS_FACTOR] = delayed;
+      }
+      hw = nextHw;
+    }
+    osState.downHistWrite = hw;
+  }
+
+  // src/effects/ultina-core/dsp/dryDelay.ts
+  var DryDelayMixer = class {
+    bufL = new Float32Array(0);
+    bufR = new Float32Array(0);
+    size = 0;
+    writePos = 0;
+    prepare(maxBlockSize) {
+      this.size = maxBlockSize + 64;
+      this.bufL = new Float32Array(this.size);
+      this.bufR = new Float32Array(this.size);
+      this.writePos = 0;
+    }
+    reset() {
+      this.bufL.fill(0);
+      this.bufR.fill(0);
+      this.writePos = 0;
+    }
+    /**
+     * Feed this block's dry signal and apply the compensated mix/delta.
+     *
+     * The line is ALWAYS fed (even at mix = 100 % with delta off) so the
+     * history stays valid the moment the user touches the mix knob.
+     * `delaySamples` of 0 reproduces the classic un-delayed mix exactly.
+     *
+     * @param channels   Wet output, modified in place.
+     * @param dryL/dryR  This block's pre-processing signal.
+     * @param delaySamples Current wet-path latency in samples.
+     * @param mix        0..1 wet fraction (ignored while `delta` is set).
+     * @param delta      Delta listen: output = wet − delayed dry.
+     */
+    process(channels, dryL, dryR, frameCount, delaySamples, mix, delta) {
+      if (this.size === 0) return;
+      const delay = Math.min(Math.max(0, delaySamples | 0), this.size - 1);
+      const applyMix = !delta && mix < 0.999;
+      for (let i = 0; i < frameCount; i++) {
+        this.bufL[this.writePos] = dryL[i];
+        this.bufR[this.writePos] = dryR[i];
+        if (delta || applyMix) {
+          let r = this.writePos - delay;
+          if (r < 0) r += this.size;
+          const dryDelayL = this.bufL[r];
+          const dryDelayR = this.bufR[r];
+          const wetL = channels[0][i];
+          const wetR = channels[1][i];
+          if (delta) {
+            channels[0][i] = sanitizeSample(wetL - dryDelayL);
+            channels[1][i] = sanitizeSample(wetR - dryDelayR);
+          } else {
+            channels[0][i] = sanitizeSample(wetL * mix + dryDelayL * (1 - mix));
+            channels[1][i] = sanitizeSample(wetR * mix + dryDelayR * (1 - mix));
+          }
+        }
+        this.writePos++;
+        if (this.writePos >= this.size) this.writePos = 0;
+      }
+    }
+  };
+
   // src/effects/ultina-core/contracts/channelModes.ts
   var CHANNEL_MODES = [
     "stereo",
@@ -4499,6 +4652,19 @@
     // Dry buffer for mix
     dryL = new Float32Array(0);
     dryR = new Float32Array(0);
+    // Latency-compensated dry/wet mixing (see dsp/dryDelay.ts): the wet path
+    // carries the crossover + oversampler group delay; delaying the dry copy
+    // by the same amount keeps mix < 100 % phase-coherent and delta listen
+    // free of a delayed-copy echo.
+    dryDelay = new DryDelayMixer();
+    // HQ oversampling of the gain-application path (quality mode 2). The
+    // detector and envelope smoothing stay at base rate — only the per-sample
+    // gain multiply runs at 4×, cleaning the residual modulation products of
+    // deep ratio + fast attack settings. Off in tracking/mix modes: default
+    // behavior and CPU are unchanged.
+    osStates = [];
+    bandGainBufs = [];
+    osActive = false;
     // Meter state
     gainReduction = new Array(COMP_MAX_BANDS).fill(0);
     outputLevels = new Array(COMP_MAX_BANDS).fill(-100);
@@ -4537,12 +4703,24 @@
       }
       this.autoMakeupSmoother.setTimeConstant(50, this.sampleRate);
       this.multiband.prepare(this.sampleRate, 2, this.maxBlockSize, 1);
+      this.dryDelay.prepare(this.maxBlockSize);
+      this.osStates = [];
+      this.bandGainBufs = [];
+      for (let b = 0; b < COMP_MAX_BANDS; b++) {
+        this.osStates.push([
+          createOsChannelState(this.maxBlockSize * OS_FACTOR),
+          createOsChannelState(this.maxBlockSize * OS_FACTOR)
+        ]);
+        this.bandGainBufs.push(new Float64Array(this.maxBlockSize));
+      }
+      this.osActive = false;
     }
     process(args) {
-      const { channels, frameCount, sidechain, params } = args;
+      const { channels, frameCount, sidechain, params, ctx } = args;
       if (channels.length < 2) return;
       const enabled = (params["comp.enabled"] ?? 0) >= 0.5;
       if (!enabled) return;
+      this.osActive = ctx.qualityMode >= 2;
       this.ensureBuffers(frameCount);
       const mode = COMP_MODES[Math.round(clamp(params["comp.mode"] ?? 1, 0, COMP_MODES.length - 1))];
       const detectionMode = DETECTION_MODES[Math.round(clamp(params["comp.detectionMode"] ?? 1, 0, 2))];
@@ -4667,20 +4845,15 @@
         }
       }
       const mix = mixPercent / 100;
-      if (mix < 0.999) {
-        for (let i = 0; i < frameCount; i++) {
-          const wetL = channels[0][i];
-          const wetR = channels[1][i];
-          channels[0][i] = sanitizeSample(wetL * mix + this.dryL[i] * (1 - mix));
-          channels[1][i] = sanitizeSample(wetR * mix + this.dryR[i] * (1 - mix));
-        }
-      }
-      if (deltaListen) {
-        for (let i = 0; i < frameCount; i++) {
-          channels[0][i] = sanitizeSample(channels[0][i] - this.dryL[i]);
-          channels[1][i] = sanitizeSample(channels[1][i] - this.dryR[i]);
-        }
-      }
+      this.dryDelay.process(
+        channels,
+        this.dryL,
+        this.dryR,
+        frameCount,
+        this.currentLatencySamples(),
+        mix,
+        deltaListen
+      );
     }
     reset() {
       for (const band of this.bands) {
@@ -4697,6 +4870,10 @@
       this.autoMakeupDb = 0;
       this.autoMakeupSmoother.reset(0);
       this.multiband.reset();
+      this.dryDelay.reset();
+      for (const bandStates of this.osStates) {
+        for (const s of bandStates) resetOsChannelState(s);
+      }
       resetBiquad(this.scHpf);
       for (const stages of this.detHpf) {
         for (const stage of stages) resetBiquad(stage);
@@ -4711,7 +4888,20 @@
     }
     /** Hybrid crossover group delay (samples). */
     getLatency() {
-      return this.multiband.getCrossoverLatency();
+      return this.currentLatencySamples();
+    }
+    /** Current wet-path latency: crossover + HQ oversampler when active. */
+    currentLatencySamples() {
+      let lat = this.multiband.getCrossoverLatency();
+      if (this.osActive) lat += OS_LATENCY_SAMPLES;
+      return lat;
+    }
+    // ── Oversampling helpers (shared half-band FIR, see clipper) ──
+    upsample(input, osState, frames) {
+      upsample(input, osState, frames);
+    }
+    downsample(osState, output, frames) {
+      downsample(osState, output, frames);
     }
     // ── Internal ──────────────────────────────────────────────
     scHpfBufferL = new Float32Array(0);
@@ -4793,6 +4983,7 @@
     }
     processBand(bandIdx, channels, frameCount, sidechainSource, thresholdDb, attackMs, releaseMs, ratio, kneeDb, detectionMode, autoRelease, mode, detHpfActive) {
       const band = this.bands[bandIdx];
+      const gainBuf = this.bandGainBufs[bandIdx];
       band.attackCoef = smoothCoef(attackMs, this.sampleRate);
       band.releaseCoef = smoothCoef(releaseMs, this.sampleRate);
       const autoReleaseFastCoef = autoRelease ? smoothCoef(releaseMs * 0.2, this.sampleRate) : 0;
@@ -4863,9 +5054,28 @@
         band.targetGrDb = grDb;
         const coef = grDb > band.gainReductionDb ? band.attackCoef : releaseCoef;
         band.gainReductionDb += coef * (grDb - band.gainReductionDb);
-        const gainLinear = dbToLinear(-band.gainReductionDb);
-        for (let ch = 0; ch < channels.length; ch++) {
-          channels[ch][i] = sanitizeSample(channels[ch][i] * gainLinear);
+        gainBuf[i] = dbToLinear(-band.gainReductionDb);
+      }
+      if (this.osActive && frameCount > 0) {
+        const osStateL = this.osStates[bandIdx][0];
+        const osStateR = this.osStates[bandIdx][1];
+        const stereo = channels.length >= 2;
+        upsample(channels[0], osStateL, frameCount);
+        if (stereo) upsample(channels[1], osStateR, frameCount);
+        const osFrames = frameCount * OS_FACTOR;
+        for (let k = 0; k < osFrames; k++) {
+          const g = gainBuf[k >> 2];
+          osStateL.osBuffer[k] *= g;
+          if (stereo) osStateR.osBuffer[k] *= g;
+        }
+        downsample(osStateL, channels[0], frameCount);
+        if (stereo) downsample(osStateR, channels[1], frameCount);
+      } else {
+        for (let i = 0; i < frameCount; i++) {
+          const gainLinear = gainBuf[i];
+          for (let ch = 0; ch < channels.length; ch++) {
+            channels[ch][i] = sanitizeSample(channels[ch][i] * gainLinear);
+          }
         }
       }
       this.gainReduction[bandIdx] = this.gainReduction[bandIdx] * 0.7 + band.gainReductionDb * 0.3;
@@ -4915,6 +5125,8 @@
     // Dry buffer for delta
     dryL = new Float32Array(0);
     dryR = new Float32Array(0);
+    // Latency-compensated dry/wet mixing (see dsp/dryDelay.ts).
+    dryDelay = new DryDelayMixer();
     // Sidechain HPF buffers
     scHpfBufferL = new Float32Array(0);
     scHpfBufferR = new Float32Array(0);
@@ -4944,6 +5156,7 @@
         this.bands[i].detector.prepare(2, 20, this.sampleRate);
       }
       this.multiband.prepare(this.sampleRate, 2, this.maxBlockSize, 1);
+      this.dryDelay.prepare(this.maxBlockSize);
     }
     process(args) {
       const { channels, frameCount, sidechain, params } = args;
@@ -5016,18 +5229,15 @@
         channelMode
       );
       const mix = mixPercent / 100;
-      if (mix < 0.999) {
-        for (let i = 0; i < frameCount; i++) {
-          channels[0][i] = sanitizeSample(channels[0][i] * mix + this.dryL[i] * (1 - mix));
-          channels[1][i] = sanitizeSample(channels[1][i] * mix + this.dryR[i] * (1 - mix));
-        }
-      }
-      if (deltaListen) {
-        for (let i = 0; i < frameCount; i++) {
-          channels[0][i] = sanitizeSample(channels[0][i] - this.dryL[i]);
-          channels[1][i] = sanitizeSample(channels[1][i] - this.dryR[i]);
-        }
-      }
+      this.dryDelay.process(
+        channels,
+        this.dryL,
+        this.dryR,
+        frameCount,
+        this.multiband.getCrossoverLatency(),
+        mix,
+        deltaListen
+      );
     }
     reset() {
       for (const band of this.bands) {
@@ -5040,6 +5250,7 @@
       this.bandState.fill(0 /* Closed */);
       this.bandReductionDb.fill(0);
       this.multiband.reset();
+      this.dryDelay.reset();
       resetBiquad(this.scHpf);
     }
     getMeters() {
@@ -5157,101 +5368,6 @@
     }
   };
 
-  // src/effects/ultina-core/dsp/oversampler.ts
-  var OS_FACTOR = 4;
-  var HB_TAPS = 15;
-  var HB_COEFS_RAW = [
-    -258e-5,
-    -667e-5,
-    -0.01139,
-    0,
-    0.04818,
-    0.13163,
-    0.21483,
-    0.25,
-    0.21483,
-    0.13163,
-    0.04818,
-    0,
-    -0.01139,
-    -667e-5,
-    -258e-5
-  ];
-  var HB_COEFS = (() => {
-    const sum = HB_COEFS_RAW.reduce((a, b) => a + b, 0);
-    return Float32Array.from(HB_COEFS_RAW, (v) => v / sum);
-  })();
-  var OS_LATENCY_SAMPLES = (HB_TAPS - 1 + 2) / OS_FACTOR;
-  function createOsChannelState(maxOsFrames) {
-    return {
-      upHist: new Float32Array(HB_TAPS),
-      upHistWrite: 0,
-      downHist: new Float32Array(HB_TAPS),
-      downHistWrite: 0,
-      osBuffer: new Float32Array(maxOsFrames),
-      dsD1: 0,
-      dsD2: 0
-    };
-  }
-  function resetOsChannelState(s) {
-    s.upHist.fill(0);
-    s.upHistWrite = 0;
-    s.downHist.fill(0);
-    s.downHistWrite = 0;
-    s.osBuffer.fill(0);
-    s.dsD1 = 0;
-    s.dsD2 = 0;
-  }
-  function upsample(input, osState, frames) {
-    const out = osState.osBuffer;
-    const osFrames = frames * OS_FACTOR;
-    const hist = osState.upHist;
-    let hw = osState.upHistWrite;
-    const tapLen = HB_TAPS;
-    for (let i = 0; i < osFrames; i++) out[i] = 0;
-    for (let i = 0; i < frames; i++) {
-      out[i * OS_FACTOR] = input[i] * OS_FACTOR;
-    }
-    for (let i = 0; i < osFrames; i++) {
-      hist[hw] = out[i];
-      const nextHw = (hw + 1) % tapLen;
-      let sum = 0;
-      let histIdx = nextHw;
-      for (let j = 0; j < tapLen; j++) {
-        sum += hist[histIdx] * HB_COEFS[j];
-        histIdx = (histIdx + 1) % tapLen;
-      }
-      out[i] = sum;
-      hw = nextHw;
-    }
-    osState.upHistWrite = hw;
-  }
-  function downsample(osState, output, frames) {
-    const input = osState.osBuffer;
-    const osFrames = frames * OS_FACTOR;
-    const hist = osState.downHist;
-    let hw = osState.downHistWrite;
-    const tapLen = HB_TAPS;
-    for (let i = 0; i < osFrames; i++) {
-      hist[hw] = input[i];
-      const nextHw = (hw + 1) % tapLen;
-      let sum = 0;
-      let histIdx = (hw + 1) % tapLen;
-      for (let j = 0; j < tapLen; j++) {
-        sum += hist[histIdx] * HB_COEFS[j];
-        histIdx = (histIdx + 1) % tapLen;
-      }
-      const delayed = osState.dsD2;
-      osState.dsD2 = osState.dsD1;
-      osState.dsD1 = sum;
-      if (i % OS_FACTOR === 0) {
-        output[i / OS_FACTOR] = delayed;
-      }
-      hw = nextHw;
-    }
-    osState.downHistWrite = hw;
-  }
-
   // src/effects/ultina-core/dsp/modules/exciterModule.ts
   var EXCITER_MAX_BANDS = 3;
   var ExciterModuleProcessor = class {
@@ -5264,6 +5380,8 @@
     // Dry buffer for mix
     dryL = new Float32Array(0);
     dryR = new Float32Array(0);
+    // Latency-compensated dry/wet mixing (see dsp/dryDelay.ts).
+    dryDelay = new DryDelayMixer();
     // Tone filter state (per channel, per band)
     toneLowState = [];
     toneHighState = [];
@@ -5292,6 +5410,7 @@
       this.toneLowState = new Array(EXCITER_MAX_BANDS * 2).fill(0);
       this.toneHighState = new Array(EXCITER_MAX_BANDS * 2).fill(0);
       this.multiband.prepare(this.sampleRate, 2, this.maxBlockSize, 1);
+      this.dryDelay.prepare(this.maxBlockSize);
     }
     process(args) {
       const { channels, frameCount, params } = args;
@@ -5344,18 +5463,15 @@
         channelMode
       );
       const mix = mixPercent / 100;
-      if (mix < 0.999) {
-        for (let i = 0; i < frameCount; i++) {
-          channels[0][i] = sanitizeSample(channels[0][i] * mix + this.dryL[i] * (1 - mix));
-          channels[1][i] = sanitizeSample(channels[1][i] * mix + this.dryR[i] * (1 - mix));
-        }
-      }
-      if (deltaListen) {
-        for (let i = 0; i < frameCount; i++) {
-          channels[0][i] = sanitizeSample(channels[0][i] - this.dryL[i]);
-          channels[1][i] = sanitizeSample(channels[1][i] - this.dryR[i]);
-        }
-      }
+      this.dryDelay.process(
+        channels,
+        this.dryL,
+        this.dryR,
+        frameCount,
+        this.multiband.getCrossoverLatency() + (this.osActive ? OS_LATENCY_SAMPLES : 0),
+        mix,
+        deltaListen
+      );
       for (let ch = 0; ch < channels.length; ch++) {
         const data = channels[ch];
         for (let i = 0; i < frameCount; i++) {
@@ -5372,6 +5488,7 @@
       this.toneLowState.fill(0);
       this.toneHighState.fill(0);
       this.multiband.reset();
+      this.dryDelay.reset();
       this.harmonicContent.fill(0);
       this.outputPeaks.fill(-100);
     }
@@ -5578,6 +5695,12 @@
     // Dry buffer
     dryL = new Float32Array(0);
     dryR = new Float32Array(0);
+    // Latency-compensated dry/wet mixing + HQ oversampled gain application
+    // (same design as compModule — see the field docs there).
+    dryDelay = new DryDelayMixer();
+    osStates = [];
+    bandGainBufs = [];
+    osActive = false;
     // Meter state
     transientLevels = new Array(TRANSIENT_MAX_BANDS).fill(0);
     outputPeaks = new Array(TRANSIENT_MAX_BANDS).fill(-100);
@@ -5601,12 +5724,24 @@
         });
       }
       this.multiband.prepare(this.sampleRate, 2, this.maxBlockSize, 1);
+      this.dryDelay.prepare(this.maxBlockSize);
+      this.osStates = [];
+      this.bandGainBufs = [];
+      for (let b = 0; b < TRANSIENT_MAX_BANDS; b++) {
+        this.osStates.push([
+          createOsChannelState(this.maxBlockSize * OS_FACTOR),
+          createOsChannelState(this.maxBlockSize * OS_FACTOR)
+        ]);
+        this.bandGainBufs.push(new Float64Array(this.maxBlockSize));
+      }
+      this.osActive = false;
     }
     process(args) {
-      const { channels, frameCount, params } = args;
+      const { channels, frameCount, params, ctx } = args;
       if (channels.length < 2) return;
       const enabled = (params["transient.enabled"] ?? 0) >= 0.5;
       if (!enabled) return;
+      this.osActive = ctx.qualityMode >= 2;
       this.ensureBuffers(frameCount);
       const globalMode = Math.round(clamp(params["transient.globalMode"] ?? 1, 0, 2));
       const contourShape = Math.round(clamp(params["transient.contourShape"] ?? 1, 0, 2));
@@ -5643,18 +5778,15 @@
         channelMode
       );
       const mix = mixPercent / 100;
-      if (mix < 0.999) {
-        for (let i = 0; i < frameCount; i++) {
-          channels[0][i] = sanitizeSample(channels[0][i] * mix + this.dryL[i] * (1 - mix));
-          channels[1][i] = sanitizeSample(channels[1][i] * mix + this.dryR[i] * (1 - mix));
-        }
-      }
-      if (deltaListen) {
-        for (let i = 0; i < frameCount; i++) {
-          channels[0][i] = sanitizeSample(channels[0][i] - this.dryL[i]);
-          channels[1][i] = sanitizeSample(channels[1][i] - this.dryR[i]);
-        }
-      }
+      this.dryDelay.process(
+        channels,
+        this.dryL,
+        this.dryR,
+        frameCount,
+        this.currentLatencySamples(),
+        mix,
+        deltaListen
+      );
     }
     reset() {
       for (const band of this.bands) {
@@ -5666,6 +5798,10 @@
         band.prevSustainGain = 1;
       }
       this.multiband.reset();
+      this.dryDelay.reset();
+      for (const bandStates of this.osStates) {
+        for (const s of bandStates) resetOsChannelState(s);
+      }
       this.transientLevels.fill(0);
       this.outputPeaks.fill(-100);
     }
@@ -5677,7 +5813,20 @@
     }
     /** Hybrid crossover group delay (samples). */
     getLatency() {
-      return this.multiband.getCrossoverLatency();
+      return this.currentLatencySamples();
+    }
+    /** Current wet-path latency: crossover + HQ oversampler when active. */
+    currentLatencySamples() {
+      let lat = this.multiband.getCrossoverLatency();
+      if (this.osActive) lat += OS_LATENCY_SAMPLES;
+      return lat;
+    }
+    // ── Oversampling helpers (shared half-band FIR, see clipper) ──
+    upsample(input, osState, frames) {
+      upsample(input, osState, frames);
+    }
+    downsample(osState, output, frames) {
+      downsample(osState, output, frames);
     }
     // ── Internal methods ──────────────────────────────────────
     ensureBuffers(size) {
@@ -5706,6 +5855,8 @@
       const band = this.bands[bandIdx];
       const chL = bandChannels[0];
       const chR = bandChannels.length >= 2 ? bandChannels[1] : bandChannels[0];
+      const stereo = bandChannels.length >= 2;
+      const gainBuf = this.bandGainBufs[bandIdx];
       const fastAttackMs = 0.5 * modeCfg.attackMult;
       const fastReleaseMs = 20 * modeCfg.releaseMult;
       const slowAttackMs = 10 * modeCfg.attackMult;
@@ -5741,10 +5892,28 @@
         const targetSustainGain = 1 + (sustainGainBoost - 1) * sustainAmountNorm;
         band.transientGain = gainSmoothCoef * band.transientGain + (1 - gainSmoothCoef) * targetTransientGain;
         band.sustainGain = gainSmoothCoef * band.sustainGain + (1 - gainSmoothCoef) * targetSustainGain;
-        const combinedGain = band.transientGain * transientAmount + band.sustainGain * (1 - transientAmount);
-        chL[i] = sanitizeSample(chL[i] * combinedGain);
-        if (bandChannels.length >= 2) {
-          chR[i] = sanitizeSample(chR[i] * combinedGain);
+        gainBuf[i] = band.transientGain * transientAmount + band.sustainGain * (1 - transientAmount);
+      }
+      if (this.osActive && bandFrames > 0) {
+        const osStateL = this.osStates[bandIdx][0];
+        const osStateR = this.osStates[bandIdx][1];
+        upsample(chL, osStateL, bandFrames);
+        if (stereo) upsample(chR, osStateR, bandFrames);
+        const osFrames = bandFrames * OS_FACTOR;
+        for (let k = 0; k < osFrames; k++) {
+          const g = gainBuf[k >> 2];
+          osStateL.osBuffer[k] *= g;
+          if (stereo) osStateR.osBuffer[k] *= g;
+        }
+        downsample(osStateL, chL, bandFrames);
+        if (stereo) downsample(osStateR, chR, bandFrames);
+      } else {
+        for (let i = 0; i < bandFrames; i++) {
+          const combinedGain = gainBuf[i];
+          chL[i] = sanitizeSample(chL[i] * combinedGain);
+          if (stereo) {
+            chR[i] = sanitizeSample(chR[i] * combinedGain);
+          }
         }
       }
       this.transientLevels[bandIdx] = maxTransientLevel;
@@ -5785,6 +5954,8 @@
     /** Whether oversampling is currently active (for latency reporting). */
     osActive = false;
     // Dry buffer for delta listen
+    // Latency-compensated dry/wet mixing (see dsp/dryDelay.ts).
+    dryDelay = new DryDelayMixer();
     dryL = new Float32Array(0);
     dryR = new Float32Array(0);
     // Per-band meter state
@@ -5812,6 +5983,7 @@
         this.bandMeters.push(createBandMeterState());
       }
       this.multiband.prepare(this.sampleRate, 2, this.maxBlockSize, 1);
+      this.dryDelay.prepare(this.maxBlockSize);
     }
     process(args) {
       const { channels, frameCount, params } = args;
@@ -5880,18 +6052,15 @@
           else if (s1 < -ceilingLin) chunkChannels[1][i] = -ceilingLin;
         }
         const mix = mixPercent / 100;
-        if (mix < 0.999) {
-          for (let i = 0; i < remaining; i++) {
-            chunkChannels[0][i] = sanitizeSample(chunkChannels[0][i] * mix + this.dryL[i] * (1 - mix));
-            chunkChannels[1][i] = sanitizeSample(chunkChannels[1][i] * mix + this.dryR[i] * (1 - mix));
-          }
-        }
-        if (deltaListen) {
-          for (let i = 0; i < remaining; i++) {
-            chunkChannels[0][i] = sanitizeSample(chunkChannels[0][i] - this.dryL[i]);
-            chunkChannels[1][i] = sanitizeSample(chunkChannels[1][i] - this.dryR[i]);
-          }
-        }
+        this.dryDelay.process(
+          chunkChannels,
+          this.dryL,
+          this.dryR,
+          remaining,
+          this.multiband.getCrossoverLatency() + (this.osActive ? OS_LATENCY_SAMPLES : 0),
+          mix,
+          deltaListen
+        );
       }
     }
     reset() {
@@ -5904,6 +6073,7 @@
         resetBandMeterState(bm);
       }
       this.multiband.reset();
+      this.dryDelay.reset();
     }
     getMeters() {
       const bands = this.bandMeters.map((bm) => ({
@@ -6066,6 +6236,8 @@
     // Per-band meter state
     bandMeters = [];
     // Dry buffer for delta listen
+    // Latency-compensated dry/wet mixing (see dsp/dryDelay.ts).
+    dryDelay = new DryDelayMixer();
     dryL = new Float32Array(0);
     dryR = new Float32Array(0);
     // Cached config
@@ -6086,6 +6258,7 @@
         this.bandMeters.push(createBandMeterState2());
       }
       this.multiband.prepare(this.sampleRate, 2, this.maxBlockSize, 1);
+      this.dryDelay.prepare(this.maxBlockSize);
       this.initEnvelopeFollowers();
     }
     initEnvelopeFollowers() {
@@ -6170,18 +6343,15 @@
           channelMode
         );
         const mix = mixPercent / 100;
-        if (mix < 0.999) {
-          for (let i = 0; i < chunkSize; i++) {
-            chunkChannels[0][i] = sanitizeSample(chunkChannels[0][i] * mix + this.dryL[i] * (1 - mix));
-            chunkChannels[1][i] = sanitizeSample(chunkChannels[1][i] * mix + this.dryR[i] * (1 - mix));
-          }
-        }
-        if (deltaListen) {
-          for (let i = 0; i < chunkSize; i++) {
-            chunkChannels[0][i] = sanitizeSample(chunkChannels[0][i] - this.dryL[i]);
-            chunkChannels[1][i] = sanitizeSample(chunkChannels[1][i] - this.dryR[i]);
-          }
-        }
+        this.dryDelay.process(
+          chunkChannels,
+          this.dryL,
+          this.dryR,
+          chunkSize,
+          this.multiband.getCrossoverLatency(),
+          mix,
+          deltaListen
+        );
         offset += chunkSize;
       }
     }
@@ -6192,6 +6362,7 @@
       }
       this.initEnvelopeFollowers();
       this.multiband.reset();
+      this.dryDelay.reset();
       for (const bm of this.bandMeters) {
         resetBandMeterState2(bm);
       }

@@ -756,3 +756,133 @@ describe("AudioEngine.previewFxParam: fire-and-forget runtime write", () => {
     expect(() => engine.previewFxParam("missing", "fx1", "global.mix", 1)).not.toThrow();
   });
 });
+
+// ── 14. Latency-compensated mix & HQ oversampling (roadmap phase U3) ──
+
+describe("U3: hybrid crossover mix is latency-compensated", () => {
+  /** Comp configured: 2 bands, hybrid crossover, ratio 1 (zero gain
+   *  reduction → wet path = delayed input exactly), params per test. */
+  function makeHybridComp(qualityMode: number): UltinaProcessor {
+    const proc = makeProcessor();
+    enableInGraph(proc, "comp");
+    proc.setParameters({
+      "comp.bandCount": 2,
+      "comp.crossoverMode": 1, // hybrid FIR — 31-sample wet latency
+      "comp.ratio": 1, // slope 0 → no gain reduction
+      "comp.thresholdDb": 0,
+      "comp.makeupDb": 0,
+      "global.qualityMode": qualityMode,
+    });
+    return proc;
+  }
+
+  it("delta listen on a unity hybrid comp reads ~0 (no delayed-copy echo)", () => {
+    const proc = makeHybridComp(1);
+    proc.setParameter("comp.delta", 1);
+    const chans = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+    let tailSumSq = 0;
+    let tailN = 0;
+    const blocks = 120;
+    for (let b = 0; b < blocks; b++) {
+      sine(chans, b, 440, 0.3);
+      proc.process(chans, BLOCK);
+      if (b >= blocks - 16) {
+        for (let i = 0; i < BLOCK; i++) {
+          tailSumSq += chans[0][i] * chans[0][i];
+          tailN++;
+        }
+      }
+    }
+    // Pre-fix: delta = delayedWet − undelayedDry = the 31-sample difference
+    // of a 440 Hz sine (loud). Post-fix the delta is numerically ~0.
+    const tailRms = Math.sqrt(tailSumSq / tailN);
+    expect(tailRms).toBeLessThan(1e-5);
+  });
+
+  it("mix = 0 through a unity hybrid comp returns the input delayed by the reported latency", () => {
+    const proc = makeHybridComp(1);
+    proc.setParameter("comp.mix", 0);
+    // The hybrid crossover (and its latency) materializes on the first
+    // processed block — warm up before reading it.
+    const warm = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+    for (let b = 0; b < 8; b++) {
+      sine(warm, b, 997, 0.3);
+      proc.process(warm, BLOCK);
+    }
+    const latency = proc.getLatencySamples();
+    expect(latency).toBe(31); // 63-tap FIR → (63−1)/2
+
+    const total = 3 * SR;
+    const input = new Float32Array(total);
+    for (let i = 0; i < total; i++) input[i] = 0.3 * Math.sin((2 * Math.PI * 997 * i) / SR);
+    const chans = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+    const out = new Float32Array(total);
+    for (let off = 0; off < total; off += BLOCK) {
+      chans[0].set(input.subarray(off, off + BLOCK));
+      chans[1].set(input.subarray(off, off + BLOCK));
+      proc.process(chans, BLOCK);
+      out.set(chans[0].subarray(0, BLOCK), off);
+    }
+    // out[n] must equal in[n − 31] once the FIR settles.
+    let maxErr = 0;
+    for (let n = latency + 4096; n < total; n++) {
+      maxErr = Math.max(maxErr, Math.abs(out[n] - input[n - latency]));
+    }
+    expect(maxErr).toBeLessThan(1e-4);
+  });
+});
+
+describe("U3: HQ quality mode oversamples the comp gain path", () => {
+  it("reports +4 samples latency and stays finite under deep compression", () => {
+    const proc = makeProcessor();
+    enableInGraph(proc, "comp");
+    proc.setParameters({
+      "comp.bandCount": 2,
+      "comp.crossoverMode": 1,
+      "comp.ratio": 20,
+      "comp.thresholdDb": -40,
+      "comp.attackMs": 0.5,
+      "global.qualityMode": 2, // hq → gain-path oversampling
+    });
+    const inLat = proc.getLatencySamples();
+    const chans = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+    let nonFinite = 0;
+    for (let b = 0; b < 120; b++) {
+      sine(chans, b, 440, 0.4);
+      proc.process(chans, BLOCK);
+      for (let i = 0; i < BLOCK; i++) {
+        if (!Number.isFinite(chans[0][i])) nonFinite++;
+      }
+    }
+    expect(nonFinite).toBe(0);
+    // The worklet re-posts latency on its meter cadence; the raw accessor
+    // must already include the oversampler's 4 samples.
+    const outLat = proc.getLatencySamples();
+    expect(outLat).toBe(31 + 4);
+    void inLat;
+  });
+
+  it("hq + all modules under deep settings stays far inside the audio budget", () => {
+    const proc = makeProcessor();
+    for (const m of ["eq", "comp", "gate", "exciter", "transient", "clipper", "density", "sculptor", "unmask"]) {
+      enableInGraph(proc, m);
+    }
+    proc.setParameters({ "global.qualityMode": 2 });
+    const chans = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+    // Warm-up then measure.
+    for (let b = 0; b < 40; b++) {
+      sine(chans, b, 440, 0.4);
+      proc.process(chans, BLOCK);
+    }
+    const blocks = 400;
+    const t0 = performance.now();
+    for (let b = 0; b < blocks; b++) {
+      sine(chans, b, 440, 0.4);
+      proc.process(chans, BLOCK);
+    }
+    const perBlockMs = (performance.now() - t0) / blocks;
+    // Audio budget at 48 kHz is ~2.9 ms per 128-frame block; a generous 5 ms
+    // CI bound still catches gross oversampling regressions (10×+).
+    expect(perBlockMs).toBeLessThan(5);
+  });
+});

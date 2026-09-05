@@ -35,6 +35,7 @@ const FILES = [
   "dsp/maskingMeter.ts",
   "dsp/fft.ts",
   "dsp/oversampler.ts",
+  "dsp/dryDelay.ts",
   "contracts/channelModes.ts",
   "dsp/primitives.ts",
   "dsp/spectralRegistry.ts",

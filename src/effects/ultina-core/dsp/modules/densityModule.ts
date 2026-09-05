@@ -44,6 +44,7 @@ import {
   type CrossoverMode,
 } from "../../contracts/channelModes.js";
 import { MultibandProcessor } from "../multiband.js";
+import { DryDelayMixer } from "../dryDelay.js";
 import type { BandMeters } from "../../contracts/meters.js";
 
 // ── Constants ──────────────────────────────────────────────
@@ -123,6 +124,8 @@ export class DensityModuleProcessor implements UltinaModuleProcessor {
   private bandMeters: BandMeterState[] = [];
 
   // Dry buffer for delta listen
+  // Latency-compensated dry/wet mixing (see dsp/dryDelay.ts).
+  private dryDelay = new DryDelayMixer();
   private dryL: Float32Array = new Float32Array(0);
   private dryR: Float32Array = new Float32Array(0);
 
@@ -151,6 +154,7 @@ export class DensityModuleProcessor implements UltinaModuleProcessor {
     }
 
     this.multiband.prepare(this.sampleRate, 2, this.maxBlockSize, 1);
+    this.dryDelay.prepare(this.maxBlockSize);
 
     // Initialize proper envelope followers now that we have sampleRate
     this.initEnvelopeFollowers();
@@ -253,22 +257,19 @@ export class DensityModuleProcessor implements UltinaModuleProcessor {
         channelMode,
       );
 
-      // Mix dry/wet
+      // Mix dry/wet — the dry copy is delayed by the wet path's current
+      // latency (crossover + oversampler) so mix < 100 % stays phase-coherent
+      // and delta listen has no delayed-copy echo (see dsp/dryDelay.ts).
       const mix = mixPercent / 100;
-      if (mix < 0.999) {
-        for (let i = 0; i < chunkSize; i++) {
-          chunkChannels[0][i] = sanitizeSample(chunkChannels[0][i] * mix + this.dryL[i] * (1 - mix));
-          chunkChannels[1][i] = sanitizeSample(chunkChannels[1][i] * mix + this.dryR[i] * (1 - mix));
-        }
-      }
-
-      // Delta listen
-      if (deltaListen) {
-        for (let i = 0; i < chunkSize; i++) {
-          chunkChannels[0][i] = sanitizeSample(chunkChannels[0][i] - this.dryL[i]);
-          chunkChannels[1][i] = sanitizeSample(chunkChannels[1][i] - this.dryR[i]);
-        }
-      }
+      this.dryDelay.process(
+        chunkChannels,
+        this.dryL,
+        this.dryR,
+        chunkSize,
+        this.multiband.getCrossoverLatency(),
+        mix,
+        deltaListen,
+      );
 
       offset += chunkSize;
     }
@@ -281,6 +282,7 @@ export class DensityModuleProcessor implements UltinaModuleProcessor {
     }
     this.initEnvelopeFollowers();
     this.multiband.reset();
+    this.dryDelay.reset();
     for (const bm of this.bandMeters) {
       resetBandMeterState(bm);
     }
