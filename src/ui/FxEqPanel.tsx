@@ -4,8 +4,9 @@ import { buildSchema, type FxEqSchema } from "../effects/fxeq-core/core/paramete
 import { useServices } from "./context";
 import { Slider } from "./controls";
 
-const MODULE_ORDER = ["sat", "lofi", "mod", "delay", "rev", "dyn"] as const;
+const MODULE_ORDER = ["eq", "sat", "lofi", "mod", "delay", "rev", "dyn"] as const;
 const MODULE_LABELS: Record<string, string> = {
+  eq: "EQ",
   sat: "SAT",
   lofi: "LO-FI",
   mod: "MOD",
@@ -14,6 +15,7 @@ const MODULE_LABELS: Record<string, string> = {
   dyn: "DYN",
 };
 const MODULE_COLORS: Record<string, string> = {
+  eq: "#a3e635",
   sat: "#f59e0b",
   lofi: "#22d3ee",
   mod: "#a78bfa",

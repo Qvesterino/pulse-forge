@@ -72,6 +72,79 @@ export interface UnmaskDetails {
   maxCutDb: number;
 }
 
+/**
+ * Pure Unmask analysis over pre-computed dry/wet spectrum snapshots
+ * (dB per grid bin). Split out of ReverbEq.runUnmaskDetailed so the
+ * native-backed host adapter can feed snapshots from the native core's
+ * spectrum analyzer through the exact same detection code.
+ */
+export function analyzeUnmaskSnapshot(
+  dryDb: Float32Array,
+  wetDb: Float32Array,
+  grid: Float32Array,
+  sampleRate: number,
+  bandFreqs: readonly [number, number, number],
+  unmaskAmount: number,
+  unmaskEnabled: boolean,
+  snapshotBins: number,
+): UnmaskDetails | null {
+  if (snapshotBins === 0 || !unmaskEnabled) return null;
+
+  // Sensitivity 3..9 dB (amount 0..100): how much wet > dry before
+  // we suggest a cut.
+  const minExcess = 3 + (unmaskAmount / 100) * 6;
+  const maxCut = -(unmaskAmount / 100) * 9;
+
+  // FFT size proxy for the peak detector (grid length × 4).
+  const peakFftSize = grid.length * 4;
+
+  const bands: UnmaskBandInfo[] = [];
+  let sumCuts = 0;
+
+  for (let b = 0; b < 3; b++) {
+    const fc = bandFreqs[b];
+    const fLo = fc / Math.SQRT2;
+    const fHi = fc * Math.SQRT2;
+
+    // Mean band level (the spectrum is already in dB; mean is OK for
+    // broadband masking detection).
+    const dryBand = bandLevel(dryDb, grid, fLo, fHi);
+    const wetBand = bandLevel(wetDb, grid, fLo, fHi);
+
+    // Dominant wet peak inside the band.
+    const wetPeaks = findSpectralPeaks(
+      wetDb, 60, 3, peakFftSize, sampleRate,
+    ).filter((p) => p.freqHz >= fLo && p.freqHz <= fHi);
+    const dominant = wetPeaks[0] ?? null;
+
+    const excess = wetBand - dryBand;
+    const soft = softKneeMap(excess, minExcess, 6);
+    const cut = maxCut * clamp01(soft);
+
+    bands.push({
+      bandIndex: b,
+      bandFreqHz: fc,
+      wetPeakFreqHz: dominant?.freqHz ?? fc,
+      wetPeakDb: dominant?.magnitudeDb ?? wetBand,
+      wetBandLevelDb: wetBand,
+      dryBandLevelDb: dryBand,
+      excessDb: excess > 0 ? excess : 0,
+      softKnee: soft,
+      suggestedCutDb: cut,
+    });
+    sumCuts += cut;
+  }
+
+  const problemBandCount = bands.filter((b) => b.suggestedCutDb < 0).length;
+  return {
+    bands,
+    meanSuggestedCutDb: sumCuts / 3,
+    problemBandCount,
+    sensitivityDb: minExcess,
+    maxCutDb: maxCut,
+  };
+}
+
 export interface ReverbEq {
   prepare(sampleRate: number, channelCount: number): void;
   /** Process the wet bus in place. dry must be supplied for Unmask. */
@@ -81,6 +154,7 @@ export interface ReverbEq {
   setUnmaskEnabled(on: boolean): void;
   /**
    * Gate the internal dry/wet analyzer taps (see PreEq.setAnalyzerEnabled).
+   * (Reconciled from Pulse Forge, 2026-09-05.)
    */
   setAnalyzerEnabled(on: boolean): void;
   runUnmask(sampleRate: number): [number, number, number] | null;
@@ -132,9 +206,6 @@ export function createReverbEq(): ReverbEq {
   }
   const dryBuf = new Float32Array(snapshotGrid.length);
   const wetBuf = new Float32Array(snapshotGrid.length);
-
-  // FFT size proxy for the peak detector.
-  const peakFftSize = snapshotGrid.length * 4;
 
   function updateCoefficients(): void {
     shapeCoeffs(bq1, params.band1, sampleRate);
@@ -188,59 +259,16 @@ export function createReverbEq(): ReverbEq {
     runUnmaskDetailed(sr) {
       const dryN = analyzer.snapshot("dry", dryBuf, snapshotGrid, sr);
       const wetN = analyzer.snapshot("wet", wetBuf, snapshotGrid, sr);
-      if (dryN === 0 || wetN === 0 || !unmaskEnabled) return null;
-
-      // Sensitivity 3..9 dB (amount 0..100): how much wet > dry before
-      // we suggest a cut.
-      const minExcess = 3 + (unmaskAmount / 100) * 6;
-      const maxCut = -(unmaskAmount / 100) * 9;
-
-      const bandFreqs = [params.band1.freqHz, params.band2.freqHz, params.band3.freqHz];
-      const bands: UnmaskBandInfo[] = [];
-      let sumCuts = 0;
-
-      for (let b = 0; b < 3; b++) {
-        const fc = bandFreqs[b];
-        const fLo = fc / Math.SQRT2;
-        const fHi = fc * Math.SQRT2;
-
-        // Mean band level (the spectrum is already in dB; mean is OK for
-        // broadband masking detection).
-        const dryBand = bandLevel(dryBuf, snapshotGrid, fLo, fHi);
-        const wetBand = bandLevel(wetBuf, snapshotGrid, fLo, fHi);
-
-        // Dominant wet peak inside the band.
-        const wetPeaks = findSpectralPeaks(
-          wetBuf, 60, 3, peakFftSize, sr,
-        ).filter((p) => p.freqHz >= fLo && p.freqHz <= fHi);
-        const dominant = wetPeaks[0] ?? null;
-
-        const excess = wetBand - dryBand;
-        const soft = softKneeMap(excess, minExcess, 6);
-        const cut = maxCut * clamp01(soft);
-
-        bands.push({
-          bandIndex: b,
-          bandFreqHz: fc,
-          wetPeakFreqHz: dominant?.freqHz ?? fc,
-          wetPeakDb: dominant?.magnitudeDb ?? wetBand,
-          wetBandLevelDb: wetBand,
-          dryBandLevelDb: dryBand,
-          excessDb: excess > 0 ? excess : 0,
-          softKnee: soft,
-          suggestedCutDb: cut,
-        });
-        sumCuts += cut;
-      }
-
-      const problemBandCount = bands.filter((b) => b.suggestedCutDb < 0).length;
-      return {
-        bands,
-        meanSuggestedCutDb: sumCuts / 3,
-        problemBandCount,
-        sensitivityDb: minExcess,
-        maxCutDb: maxCut,
-      };
+      return analyzeUnmaskSnapshot(
+        dryBuf,
+        wetBuf,
+        snapshotGrid,
+        sr,
+        [params.band1.freqHz, params.band2.freqHz, params.band3.freqHz],
+        unmaskAmount,
+        unmaskEnabled,
+        Math.min(dryN, wetN),
+      );
     },
 
     reset() {

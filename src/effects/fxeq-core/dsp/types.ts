@@ -53,6 +53,13 @@ export interface ModuleProcessor {
    * detection.
    */
   setSidechain?(channels: Channels | null): void;
+  /**
+   * Optional host tempo notification (quality roadmap Q2). Modules with
+   * tempo-synced parameters (delay time, modulation rate) recompute their
+   * derived values; modules without tempo awareness omit this. Must never
+   * allocate or reallocate buffers.
+   */
+  setTempo?(bpm: number): void;
   reset(): void;
   getLatencySamples(): number;
   setParameter(id: string, value: number): void;

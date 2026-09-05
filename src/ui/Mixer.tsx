@@ -4,10 +4,14 @@ import {
   addEffectToTracks,
   addMacroMapping,
   addToGroup,
+  clearAllMutes,
+  clearAllSolos,
   createReturnTrack,
   deleteTrack,
   duplicateTrack,
+  removeEffectFromTracks,
   removeFromGroup,
+  setEffectBypassOnTracks,
   setGroupCollapsed,
   setGroupMute,
   setGroupSolo,
@@ -34,6 +38,8 @@ export function Mixer() {
   const selectedTracks = doc.tracks.filter((t) => selectedIds.includes(t.id));
   const batchCount = selectedTracks.length > 0 ? selectedTracks.length : doc.tracks.length;
   const [batchType, setBatchType] = useState<EffectType>("eq");
+  const soloCount = doc.tracks.filter((t) => t.solo).length;
+  const muteCount = doc.tracks.filter((t) => t.mute).length;
   const collapsedGroups = new Set(
     doc.tracks
       .filter((t) => t.kind === "group" && (t as import("../project-model/types").GroupTrack).collapsed)
@@ -80,6 +86,69 @@ export function Mixer() {
           }}
         >
           ADD TO {Math.min(5, batchCount)}
+        </button>
+        <button
+          type="button"
+          className="btn btn-small"
+          title={`Bypass ${EFFECT_DEFS[batchType].name} on the selected tracks (or all) — one undo step`}
+          onClick={() => {
+            const ids = selectedTracks.length > 0 ? selectedTracks.map((t) => t.id) : doc.tracks.map((t) => t.id);
+            try {
+              services.store.execute(setEffectBypassOnTracks(doc, ids, batchType, true));
+            } catch (e) {
+              void e;
+            }
+          }}
+        >
+          BYPASS
+        </button>
+        <button
+          type="button"
+          className="btn btn-small btn-danger"
+          title={`Remove every ${EFFECT_DEFS[batchType].name} from the selected tracks (or all) — one undo step`}
+          onClick={() => {
+            const ids = selectedTracks.length > 0 ? selectedTracks.map((t) => t.id) : doc.tracks.map((t) => t.id);
+            try {
+              services.store.execute(removeEffectFromTracks(doc, ids, batchType));
+            } catch (e) {
+              void e;
+            }
+          }}
+        >
+          REMOVE
+        </button>
+        <span className="mixer-batch-label" aria-hidden="true">
+          ·
+        </span>
+        <button
+          type="button"
+          className="btn btn-small"
+          title="Clear SOLO on every track — one undo step"
+          disabled={soloCount === 0}
+          onClick={() => {
+            try {
+              services.store.execute(clearAllSolos(doc));
+            } catch (e) {
+              void e;
+            }
+          }}
+        >
+          CLEAR SOLO{soloCount > 0 ? ` (${soloCount})` : ""}
+        </button>
+        <button
+          type="button"
+          className="btn btn-small"
+          title="Clear MUTE on every track — one undo step"
+          disabled={muteCount === 0}
+          onClick={() => {
+            try {
+              services.store.execute(clearAllMutes(doc));
+            } catch (e) {
+              void e;
+            }
+          }}
+        >
+          CLEAR MUTE{muteCount > 0 ? ` (${muteCount})` : ""}
         </button>
       </div>
       <div className="mixer-strips">

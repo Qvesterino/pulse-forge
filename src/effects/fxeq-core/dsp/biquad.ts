@@ -115,6 +115,58 @@ export function setAllPass(c: BiquadCoeffs, freq: number, q: number, sampleRate:
   c.a2 = (1 - alpha) / a0;
 }
 
+// ── RBJ EQ sections (quality roadmap Q3 — band equalizer module) ──
+
+/** RBJ peaking EQ: ±gainDb at freq with quality q. */
+export function setPeaking(c: BiquadCoeffs, freq: number, q: number, gainDb: number, sampleRate: number): void {
+  const w = w0(freq, sampleRate);
+  const cosW = Math.cos(w);
+  const sinW = Math.sin(w);
+  const a = Math.pow(10, gainDb / 40);
+  const alpha = sinW / (2 * Math.max(1e-6, q));
+  const a0 = 1 + alpha / a;
+
+  c.b0 = (1 + alpha * a) / a0;
+  c.b1 = (-2 * cosW) / a0;
+  c.b2 = (1 - alpha * a) / a0;
+  c.a1 = (-2 * cosW) / a0;
+  c.a2 = (1 - alpha / a) / a0;
+}
+
+/** RBJ low shelf (shelf slope S = 1): ±gainDb below freq. */
+export function setLowShelf(c: BiquadCoeffs, freq: number, gainDb: number, sampleRate: number): void {
+  const w = w0(freq, sampleRate);
+  const cosW = Math.cos(w);
+  const sinW = Math.sin(w);
+  const a = Math.pow(10, gainDb / 40);
+  const alpha = (sinW / 2) * Math.SQRT2;
+  const sq = 2 * Math.sqrt(a) * alpha;
+  const a0 = a + 1 + (a - 1) * cosW + sq;
+
+  c.b0 = (a * (a + 1 - (a - 1) * cosW + sq)) / a0;
+  c.b1 = (2 * a * (a - 1 - (a + 1) * cosW)) / a0;
+  c.b2 = (a * (a + 1 - (a - 1) * cosW - sq)) / a0;
+  c.a1 = (-2 * (a - 1 + (a + 1) * cosW)) / a0;
+  c.a2 = (a + 1 + (a - 1) * cosW - sq) / a0;
+}
+
+/** RBJ high shelf (shelf slope S = 1): ±gainDb above freq. */
+export function setHighShelf(c: BiquadCoeffs, freq: number, gainDb: number, sampleRate: number): void {
+  const w = w0(freq, sampleRate);
+  const cosW = Math.cos(w);
+  const sinW = Math.sin(w);
+  const a = Math.pow(10, gainDb / 40);
+  const alpha = (sinW / 2) * Math.SQRT2;
+  const sq = 2 * Math.sqrt(a) * alpha;
+  const a0 = a + 1 - (a - 1) * cosW + sq;
+
+  c.b0 = (a * (a + 1 + (a - 1) * cosW + sq)) / a0;
+  c.b1 = (-2 * a * (a - 1 + (a + 1) * cosW)) / a0;
+  c.b2 = (a * (a + 1 + (a - 1) * cosW - sq)) / a0;
+  c.a1 = (2 * (a - 1 - (a + 1) * cosW)) / a0;
+  c.a2 = (a + 1 - (a - 1) * cosW - sq) / a0;
+}
+
 // ── Processing ────────────────────────────────────────────────
 // Direct Form II Transposed:
 //   y[n]   = b0*x[n] + z1

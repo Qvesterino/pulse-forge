@@ -76,4 +76,38 @@ describe("YDocAdapter — automation and tags round-trip", () => {
     const restored = yDocToProject(yMap);
     expect(restored.tags).toEqual([]);
   });
+
+  it("preserves deep-parameter fxParam lanes (Ultina) via projectToYDoc", () => {
+    // The deep automation surface (phase U1) writes lane targets with dotted
+    // param ids like "eq.band3.gainDb" — the collab layer must treat them as
+    // opaque strings, never re-validate against the registry rack list.
+    const doc = docWithAutomation();
+    const track = doc.tracks.find((t) => t.effects !== undefined) ?? doc.tracks[0];
+    (track as { effects: unknown[] }).effects = [
+      { id: "fx-ultina-1", type: "ultina", bypassed: false, params: {} },
+    ];
+    doc.automation.push({
+      id: "lane-ultina-deep",
+      target: { kind: "fxParam", trackId: track.id, fxId: "fx-ultina-1", paramId: "eq.band3.gainDb" },
+      points: [
+        { tick: 0, value: -6 },
+        { tick: 480, value: 3.5 },
+      ],
+    });
+    const yDoc = new Y.Doc();
+    const yMap = yDoc.getMap("project");
+    projectToYDoc(doc, yMap);
+    const restored = yDocToProject(yMap);
+    const lane = restored.automation.find((l) => l.id === "lane-ultina-deep");
+    expect(lane).toBeDefined();
+    expect(lane!.target).toMatchObject({
+      kind: "fxParam",
+      fxId: "fx-ultina-1",
+      paramId: "eq.band3.gainDb",
+    });
+    expect(lane!.points).toEqual([
+      { tick: 0, value: -6 },
+      { tick: 480, value: 3.5 },
+    ]);
+  });
 });

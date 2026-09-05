@@ -54,6 +54,8 @@ export interface BandEngine {
   setBandParam(id: string, value: number): void;
   /** Set a module param, routing to the correct module by key prefix. */
   setModuleParam(moduleKey: ModuleKey, paramId: string, value: number): void;
+  /** Host tempo notification (Q2) — forwarded to tempo-aware modules. */
+  setTempo(bpm: number): void;
   getBandParam(id: string): number;
   getModuleParam(moduleKey: ModuleKey, paramId: string): number;
   /** Collect all params for serialization (unprefixed). */
@@ -69,6 +71,7 @@ export interface BandEngine {
 
 export function createBandEngine(): BandEngine {
   const modules: Record<ModuleKey, ModuleProcessor> = {
+    eq: MODULE_FACTORIES.eq(),
     sat: MODULE_FACTORIES.sat(),
     dyn: MODULE_FACTORIES.dyn(),
     lofi: MODULE_FACTORIES.lofi(),
@@ -371,6 +374,12 @@ export function createBandEngine(): BandEngine {
 
     setModuleParam(moduleKey, paramId, value) {
       modules[moduleKey].setParameter(paramId, value);
+    },
+
+    setTempo(bpm) {
+      // Only delay and modulation are tempo-aware today; the optional call
+      // keeps this forwarding future-proof without touching other modules.
+      for (const key of MODULE_KEYS) modules[key].setTempo?.(bpm);
     },
 
     getBandParam(id) {

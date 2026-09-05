@@ -263,3 +263,37 @@ describe("Ultina worklet entry — scheduled parameters (paramAt)", () => {
     expect(outRms / inRms).toBeLessThan(0.5);
   });
 });
+
+describe("Ultina worklet entry — .enabled scheduled via paramAt (graph re-sync)", () => {
+  it("a scheduled module toggle starts processing only after its due time", () => {
+    now = 0;
+    const proc = new Processor({ processorOptions: { params: {} } });
+    const runBlocks = (blocks: number): boolean => {
+      const input = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+      const output = [[new Float32Array(BLOCK), new Float32Array(BLOCK)]];
+      let sawComp = false;
+      for (let b = 0; b < blocks; b++) {
+        now = (b * BLOCK) / SR;
+        fillSine(input, b, 0.3);
+        proc.process([input], output);
+      }
+      const meters = [...proc.port.posted].reverse().find((m) => m.type === "meters");
+      const mods = (meters?.meters as { modules?: Record<string, unknown> } | undefined)?.modules;
+      sawComp = Boolean(mods?.comp);
+      return sawComp;
+    };
+
+    runBlocks(8); // settle
+    let before = [...proc.port.posted].reverse().find((m) => m.type === "meters");
+    expect((before?.meters as { modules?: Record<string, unknown> } | undefined)?.modules?.comp).toBeUndefined();
+
+    // Schedule comp.enable at t = 0.2 s (≈ block 75 at 48 kHz / 128).
+    proc.port.onmessage?.({
+      data: { type: "paramAt", id: "comp.enabled", value: 1, when: 0.2 },
+    });
+    now = 0;
+    runBlocks(Math.round((0.35 * SR) / BLOCK)); // run past the due time
+    const after = [...proc.port.posted].reverse().find((m) => m.type === "meters");
+    expect((after?.meters as { modules?: Record<string, unknown> } | undefined)?.modules?.comp).toBeDefined();
+  });
+});

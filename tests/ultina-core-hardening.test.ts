@@ -39,7 +39,18 @@ import {
   setFxEqParam,
   applyUltinaPreset,
   applyUltinaProposal,
+  addAutomationLane,
+  addAutomationPoint,
+  moveAutomationPoint,
+  addSceneAutomation,
+  addSceneAutomationPoint,
 } from "../src/commands/commands.js";
+import {
+  ultinaLaneParams,
+  ultinaLaneRange,
+  ultinaOptionGroups,
+  formatUltinaParam,
+} from "../src/effects/ultinaAutomation.js";
 
 const SR = 48000;
 const BLOCK = 128;
@@ -573,5 +584,139 @@ describe("AudioEngine: automation resolves group-bus chains", () => {
     engine.applyAutomation(0, 480, (t) => t, 0);
     expect(gainCalls).toContain("global.mix=42");
     expect(gainCalls.some((c) => c.startsWith("g:0.5@"))).toBe(true);
+  });
+});
+
+// ── 12. Deep-parameter automation lanes (roadmap phase U1) ────
+
+describe("automation lanes: Ultina deep params clamp at the command boundary", () => {
+  interface SimpleLane {
+    id: string;
+    target: { kind: string; trackId: string; fxId?: string; paramId?: string };
+    points: { tick: number; value: number }[];
+  }
+
+  function withUltinaLane(paramId: string) {
+    const base = createDefaultProject();
+    const inst = firstInstrumentTrack(base);
+    const withFx = addEffect(base, inst.id, "ultina").execute(base);
+    const fx = findEffect(firstInstrumentTrack(withFx), "ultina");
+    const doc = addAutomationLane(withFx, {
+      kind: "fxParam",
+      trackId: inst.id,
+      fxId: fx.id,
+      paramId,
+    }).execute(withFx);
+    const lane = doc.automation[doc.automation.length - 1] as SimpleLane;
+    return { doc, laneId: lane.id };
+  }
+
+  it("addAutomationPoint clamps an out-of-range deep value (999 → 18)", () => {
+    const { doc, laneId } = withUltinaLane("eq.band3.gainDb");
+    const next = addAutomationPoint(doc, laneId, 240, 999).execute(doc);
+    const lane = next.automation.find((l) => l.id === laneId)!;
+    expect(lane.points.at(-1)!.value).toBe(18);
+  });
+
+  it("moveAutomationPoint clamps a dragged deep value", () => {
+    const { doc, laneId } = withUltinaLane("comp.thresholdDb");
+    const seeded = addAutomationPoint(doc, laneId, 0, -20).execute(doc);
+    const moved = moveAutomationPoint(seeded, laneId, 0, { tick: 240, value: -999 }).execute(seeded);
+    const lane = moved.automation.find((l) => l.id === laneId)!;
+    expect(lane.points[0].value).toBe(-60);
+  });
+
+  it("a non-finite deep value falls back to the schema default", () => {
+    const { doc, laneId } = withUltinaLane("comp.thresholdDb");
+    const next = addAutomationPoint(doc, laneId, 0, Number.NaN).execute(doc);
+    const lane = next.automation.find((l) => l.id === laneId)!;
+    expect(lane.points.at(-1)!.value).toBe(-20);
+  });
+
+  it("scene automation points clamp through the same boundary", () => {
+    const base = createDefaultProject();
+    const inst = firstInstrumentTrack(base);
+    const withFx = addEffect(base, inst.id, "ultina").execute(base);
+    const fx = findEffect(firstInstrumentTrack(withFx), "ultina");
+    const withLane = addSceneAutomation(withFx, withFx.scenes[0].id, {
+      kind: "fxParam",
+      trackId: inst.id,
+      fxId: fx.id,
+      paramId: "eq.band0.q",
+    }).execute(withFx);
+    const sceneLane = withLane.sceneAutomation[withLane.sceneAutomation.length - 1];
+    const next = addSceneAutomationPoint(withLane, sceneLane.id, 96, 999).execute(withLane);
+    const after = next.sceneAutomation.find((l) => l.id === sceneLane.id)!;
+    expect(after.points.at(-1)!.value).toBe(24);
+  });
+
+  it("non-Ultina fx params clamp through the registry def", () => {
+    const base = createDefaultProject();
+    const inst = firstInstrumentTrack(base);
+    const withFx = addEffect(base, inst.id, "limiter").execute(base);
+    const fx = findEffect(firstInstrumentTrack(withFx), "limiter");
+    const doc = addAutomationLane(withFx, {
+      kind: "fxParam",
+      trackId: inst.id,
+      fxId: fx.id,
+      paramId: "threshold",
+    }).execute(withFx);
+    const lane = doc.automation[doc.automation.length - 1] as SimpleLane;
+    const next = addAutomationPoint(doc, lane.id, 0, 999).execute(doc);
+    const after = next.automation.find((l) => l.id === lane.id)!;
+    expect(after.points.at(-1)!.value).toBe(0); // limiter threshold range is −24..0
+  });
+
+  it("trackGain lanes keep their own 0..1.5 domain (no fx clamp)", () => {
+    const base = createDefaultProject();
+    const trackId = base.tracks[0].id;
+    const doc = addAutomationLane(base, { kind: "trackGain", trackId }).execute(base);
+    const lane = doc.automation[doc.automation.length - 1] as SimpleLane;
+    const next = addAutomationPoint(doc, lane.id, 0, 1.2).execute(doc);
+    const after = next.automation.find((l) => l.id === lane.id)!;
+    expect(after.points.at(-1)!.value).toBe(1.2);
+  });
+});
+
+describe("ultinaAutomation: lane surface helpers", () => {
+  it("exposes only automatable schema params with module grouping", () => {
+    const params = ultinaLaneParams();
+    expect(params.length).toBeGreaterThan(100);
+    expect(params.every((p) => p.id.includes("."))).toBe(true);
+    expect(params.some((p) => p.id === "comp.thresholdDb")).toBe(true);
+    expect(params.some((p) => p.id === "eq.band3.gainDb")).toBe(true);
+    // Non-automatable params (learn toggles, A/B slot) never surface.
+    expect(params.some((p) => p.id === "global.abSlot")).toBe(false);
+    expect(params.some((p) => p.id === "eq.learnActive")).toBe(false);
+  });
+
+  it("laneRange matches the vendored schema and formats dB", () => {
+    const range = ultinaLaneRange("eq.band3.gainDb");
+    expect(range).not.toBeNull();
+    expect(range!.min).toBe(-18);
+    expect(range!.max).toBe(18);
+    expect(range!.format(-6)).toBe("-6.0 dB");
+    expect(ultinaLaneRange("not.a.param")).toBeNull();
+  });
+
+  it("option groups are module-grouped and filterable", () => {
+    const all = ultinaOptionGroups("fx1", "");
+    const modules = all.map((g) => g.module);
+    expect(modules).toContain("Ultina · Comp".replace("Ultina · ", ""));
+    const compGroup = all.find((g) => g.options.some((o) => o.value === "fxParam:fx1:comp.thresholdDb"));
+    expect(compGroup).toBeDefined();
+    const filtered = ultinaOptionGroups("fx1", "threshold");
+    const values = filtered.flatMap((g) => g.options.map((o) => o.value));
+    expect(values).toContain("fxParam:fx1:comp.thresholdDb");
+    expect(values).not.toContain("fxParam:fx1:comp.attackMs");
+  });
+
+  it("formats the common units the lane readout shows", () => {
+    expect(formatUltinaParam("hz", 2500)).toBe("2.5 kHz");
+    expect(formatUltinaParam("ms", 100)).toBe("100 ms");
+    expect(formatUltinaParam("percent", 50)).toBe("50%");
+    expect(formatUltinaParam("ratio", 3)).toBe("3.00:1");
+    expect(formatUltinaParam("boolean", 1)).toBe("ON");
+    expect(formatUltinaParam("db", Number.NaN)).toBe("–");
   });
 });

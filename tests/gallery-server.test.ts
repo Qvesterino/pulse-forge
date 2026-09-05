@@ -57,7 +57,12 @@ describe("gallery REST API", () => {
     const post = await fetch(`${base}/api/gallery`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: "  Midnight Jam ", author: "Qveen", tags: ["Phonk", "808", "dark"], code: shareCode() }),
+      body: JSON.stringify({
+        title: "  Midnight Jam ",
+        author: "Qveen",
+        tags: ["Phonk", "808", "dark"],
+        code: shareCode(),
+      }),
     });
     expect(post.status).toBe(201);
     const { item } = (await post.json()) as {

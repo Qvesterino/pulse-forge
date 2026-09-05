@@ -32,6 +32,14 @@ const PARAM_DEFS: readonly FxEqParamDef[] = [
   { id: "enabled", name: "Enabled", defaultValue: 0, minValue: 0, maxValue: 1, automatable: false },
   { id: "type", name: "Type", defaultValue: 0, minValue: 0, maxValue: 3, automatable: false },
   { id: "rate", name: "Rate", defaultValue: 1.0, minValue: 0.05, maxValue: 20, unit: "Hz", logScale: true, automatable: true },
+  {
+    id: "syncMode",
+    name: "Tempo Sync",
+    defaultValue: 0,
+    minValue: 0,
+    maxValue: 8,
+    automatable: false,
+  },
   { id: "depth", name: "Depth", defaultValue: 40, minValue: 0, maxValue: 100, unit: "%", automatable: true },
   { id: "feedback", name: "Feedback", defaultValue: 0.3, minValue: 0, maxValue: 0.9, unit: "%", automatable: true },
   { id: "mix", name: "Mix", defaultValue: 50, minValue: 0, maxValue: 100, unit: "%", automatable: true },
@@ -43,11 +51,21 @@ const PARAM_DEFS: readonly FxEqParamDef[] = [
 const MOD_MAX_DELAY_MS = 40;
 const PHASER_STAGES = 6;
 
+/**
+ * Tempo-sync note divisions (quality roadmap Q2) — shared semantics with
+ * the delay module: 0 = free (rate), 1 = 1/1 … 8 = 1/4T, in quarter-note
+ * beats. The LFO rate becomes (bpm/60) / beats.
+ */
+const SYNC_BEATS = [0, 4, 2, 1, 0.5, 0.25, 1 / 3, 0.75, 2 / 3];
+
 export function createModulationModule(params?: Record<string, number>): ModuleProcessor {
   const store = createParamStore(PARAM_DEFS, params);
   let prepared = false;
   let sampleRate = 44100;
   let preparedMaxBlockSize = 1;
+  // Host tempo for syncMode (Q2), tracked even when sync is off so enabling
+  // it later uses the current tempo.
+  let bpm = 120;
 
   // Delay line (per channel) for chorus/flanger/doubler.
   const delayBuf: Float32Array[] = [];
@@ -57,6 +75,23 @@ export function createModulationModule(params?: Record<string, number>): ModuleP
   // Phaser feedback state (per channel): the all-pass chain output is
   // fed back into the chain input, scaled by `feedback`.
   const phaserFb: number[] = [];
+
+  /** Base LFO rate: free Hz, or derived from the host tempo (Q2). */
+  function lfoRate(): number {
+    const sync = Math.round(store.get("syncMode"));
+    if (sync >= 1 && sync < SYNC_BEATS.length) {
+      // 1/4 note at 120 BPM → 2 Hz; clamped into the free-rate range so the
+      // delay-line capacity contract never changes.
+      return clamp((bpm / 60) / SYNC_BEATS[sync], 0.05, 20);
+    }
+    return store.get("rate");
+  }
+
+  function applyLfoRates(): void {
+    lfo.setRate(lfoRate());
+    lfo2.setRate(lfoRate() * 1.3);
+    lfo3.setRate(lfoRate() * 0.7);
+  }
 
   const lfo = createLfo(44100, 1, "sine", Math.PI / 2, 1);
   const lfo2 = createLfo(44100, 1.3, "triangle", Math.PI / 4, 1);
@@ -174,9 +209,7 @@ export function createModulationModule(params?: Record<string, number>): ModuleP
       lfo.setSampleRate(sampleRate);
       lfo2.setSampleRate(sampleRate);
       lfo3.setSampleRate(sampleRate);
-      lfo.setRate(store.get("rate"));
-      lfo2.setRate(store.get("rate") * 1.3);
-      lfo3.setRate(store.get("rate") * 0.7);
+      applyLfoRates();
       lfo.reset();
       lfo2.reset();
       lfo3.reset();
@@ -277,11 +310,15 @@ export function createModulationModule(params?: Record<string, number>): ModuleP
 
     setParameter(id, value) {
       store.set(id, value);
-      if (prepared && id === "rate") {
-        lfo.setRate(store.get("rate"));
-        lfo2.setRate(store.get("rate") * 1.3);
-        lfo3.setRate(store.get("rate") * 0.7);
-      }
+      if (prepared && (id === "rate" || id === "syncMode")) applyLfoRates();
+    },
+    setTempo(nextBpm) {
+      if (typeof nextBpm !== "number" || !Number.isFinite(nextBpm)) return;
+      const clamped = clamp(nextBpm, 20, 999);
+      if (clamped === bpm) return;
+      bpm = clamped;
+      // Only a tempo-synced modulation changes its rate with the tempo.
+      if (prepared && Math.round(store.get("syncMode")) >= 1) applyLfoRates();
     },
     getParameter(id) {
       return store.get(id);
@@ -291,11 +328,7 @@ export function createModulationModule(params?: Record<string, number>): ModuleP
     },
     loadParameters(p) {
       store.load(p);
-      if (prepared) {
-        lfo.setRate(store.get("rate"));
-        lfo2.setRate(store.get("rate") * 1.3);
-        lfo3.setRate(store.get("rate") * 0.7);
-      }
+      if (prepared) applyLfoRates();
     },
   };
 }

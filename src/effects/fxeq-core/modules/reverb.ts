@@ -28,21 +28,43 @@ import { createParamStore } from "./moduleHelpers.js";
 
 export const REVERB_TYPE_ID = "reverb";
 
-const FDN_LINES = 4;
+// Quality roadmap Q1: 8 lines (was 4) — a denser Hadamard-8 FDN blurs the
+// static comb structure that made sustained tones ring metallic. All eight
+// lengths are mutually incommensurate primes; L and R stay decorrelated.
+const FDN_LINES = 8;
 
 const PARAM_DEFS: readonly FxEqParamDef[] = [
   { id: "enabled", name: "Enabled", defaultValue: 0, minValue: 0, maxValue: 1, automatable: false },
   { id: "type", name: "Type", defaultValue: 0, minValue: 0, maxValue: 2, automatable: false },
   { id: "decayMs", name: "Decay", defaultValue: 1500, minValue: 100, maxValue: 8000, unit: "ms", logScale: true, automatable: true },
   { id: "predelayMs", name: "Pre-Delay", defaultValue: 20, minValue: 0, maxValue: 100, unit: "ms", automatable: true },
+  {
+    id: "modDepthPct",
+    name: "Tank Mod Depth",
+    defaultValue: 0,
+    minValue: 0,
+    maxValue: 100,
+    unit: "%",
+    automatable: true,
+  },
+  {
+    id: "modRateHz",
+    name: "Tank Mod Rate",
+    defaultValue: 0.5,
+    minValue: 0.05,
+    maxValue: 5,
+    unit: "Hz",
+    logScale: true,
+    automatable: true,
+  },
   { id: "mix", name: "Mix", defaultValue: 25, minValue: 0, maxValue: 100, unit: "%", automatable: true },
 ] as const;
 
 // Prime-number delay lengths (samples @ 44.1 kHz) for incommensurate tails.
 // Stereo decorrelated: L and R use different mutually-incommensurate prime sets
 // so the two FDN tanks diverge, producing natural stereo width.
-const BASE_LENGTHS_L = [1116, 1188, 1277, 1356];
-const BASE_LENGTHS_R = [1422, 1491, 1557, 1617];
+const BASE_LENGTHS_L = [1116, 1188, 1277, 1356, 1493, 1571, 1619, 1667];
+const BASE_LENGTHS_R = [1422, 1491, 1557, 1617, 1721, 1787, 1861, 1951];
 
 export function createReverbModule(params?: Record<string, number>): ModuleProcessor {
   const store = createParamStore(PARAM_DEFS, params);
@@ -67,13 +89,16 @@ export function createReverbModule(params?: Record<string, number>): ModuleProce
 
   /**
    * Per-line physical capacity required for the CURRENT sample rate: the
-   * longest base length × the largest lenMult (1.4, hall) × rate scale.
-   * Shared by allocChannels and the re-prepare guard so they can never
-   * disagree about what "big enough" means.
+   * longest base length of either channel set × the largest lenMult
+   * (1.4, hall) × rate scale. Shared by allocChannels and the re-prepare
+   * guard so they can never disagree about what "big enough" means.
    */
   function requiredFdnCapacity(): number {
+    let longest = 0;
+    for (const v of BASE_LENGTHS_L) longest = Math.max(longest, v);
+    for (const v of BASE_LENGTHS_R) longest = Math.max(longest, v);
     const maxSrScale = (sampleRate / 44100) * 1.4;
-    return Math.max(8, Math.round(BASE_LENGTHS_R[3] * maxSrScale)) + 1;
+    return Math.max(8, Math.round(longest * maxSrScale)) + 1;
   }
 
   // De-click smoothing for the feedback gains (decayMs target). A decay
@@ -81,10 +106,26 @@ export function createReverbModule(params?: Record<string, number>): ModuleProce
   // audibly inside the reverb tail; gliding the gains over ~15 ms turns the
   // step into an inaudible ride. PRIMED at the first processed block after
   // prepare/reset so static settings render bit-identically (golden parity).
-  let fbSmL: number[] = [0, 0, 0, 0];
-  let fbSmR: number[] = [0, 0, 0, 0];
+  let fbSmL: number[] = [];
+  let fbSmR: number[] = [];
   let fbSmPrimed = false;
   let fbSmAlpha = 1;
+
+  // ── Tank modulation (Q1) ──────────────────────────────────
+  // Slow per-line sine drift of the tap read position, blurring the FDN's
+  // comb minima on sustained material. Depth 0 (the default) leaves the
+  // tap read exactly as before — bit-identical to the 4-line-era default
+  // contract of "no modulation".
+  const MOD_PHASE_STEP = Math.PI / 4; // decorrelated per-line start offsets
+  const phases = new Float64Array(FDN_LINES);
+  let modBuf = new Float32Array(0); // [sample * FDN_LINES + line]
+  let modRateInc = 0.5 / 44100;
+
+  /** Deepest tap modulation in samples for the current depth parameter. */
+  function modDepthSamples(): number {
+    if (store.get("modDepthPct") <= 0) return 0;
+    return Math.round((clamp(store.get("modDepthPct"), 0, 100) / 100) * 6 * (sampleRate / 44100));
+  }
 
   // Per-channel predelay line (circular buffer).
   let predelayLines: Float32Array[] = []; // [channel]
@@ -202,15 +243,25 @@ export function createReverbModule(params?: Record<string, number>): ModuleProce
         writeIdx[c][l] %= lengths[l];
       }
     }
+    // Q1: tank modulation rate coefficient.
+    modRateInc = clamp(store.get("modRateHz"), 0.05, 5) / sampleRate;
   }
 
-  // Hadamard 4×4 matrix application (in place).
-  function hadamard4(v: Float64Array): void {
+  // Hadamard 8×8 matrix application (in place, normalized by 1/√8).
+  // Sylvester construction — orthogonal, rows sum to ±√8, so the FDN
+  // stays lossless apart from the damping/feedback gains.
+  function hadamard8(v: Float64Array): void {
+    const i = 1 / Math.sqrt(8);
     const a = v[0], b = v[1], c = v[2], d = v[3];
-    v[0] = (a + b + c + d) * 0.5;
-    v[1] = (a - b + c - d) * 0.5;
-    v[2] = (a + b - c - d) * 0.5;
-    v[3] = (a - b - c + d) * 0.5;
+    const e = v[4], f = v[5], g = v[6], h = v[7];
+    v[0] = (a + b + c + d + e + f + g + h) * i;
+    v[1] = (a - b + c - d + e - f + g - h) * i;
+    v[2] = (a + b - c - d + e + f - g - h) * i;
+    v[3] = (a - b - c + d + e - f - g + h) * i;
+    v[4] = (a + b + c + d - e - f - g - h) * i;
+    v[5] = (a - b + c - d - e + f - g + h) * i;
+    v[6] = (a + b - c - d - e - f + g + h) * i;
+    v[7] = (a - b - c + d - e + f + g - h) * i;
   }
 
   return {
@@ -244,6 +295,9 @@ export function createReverbModule(params?: Record<string, number>): ModuleProce
         crossFeedPrev.push(new Float32Array(preparedMaxBlockSize));
         crossFeedCur.push(new Float32Array(preparedMaxBlockSize));
       }
+      // Q1: per-block modulation offsets buffer + deterministic phase start.
+      modBuf = new Float32Array(preparedMaxBlockSize * FDN_LINES);
+      phases.fill(0);
       prepared = true;
     },
 
@@ -267,6 +321,23 @@ export function createReverbModule(params?: Record<string, number>): ModuleProce
         for (let l = 0; l < FDN_LINES; l++) {
           fbSmL[l] += fbSmAlpha * (fbGainsL[l] - fbSmL[l]);
           fbSmR[l] += fbSmAlpha * (fbGainsR[l] - fbSmR[l]);
+        }
+      }
+
+      // Q1: precompute per-line modulation offsets once per sample (shared
+      // across channels; the L/R line-length sets already decorrelate).
+      // Depth 0 skips the whole block-level pass — default renders are
+      // untouched.
+      const maxModSamples = modDepthSamples();
+      const useMod = maxModSamples > 0;
+      if (useMod) {
+        for (let i = 0; i < frameCount; i++) {
+          for (let l = 0; l < FDN_LINES; l++) {
+            phases[l] += modRateInc;
+            if (phases[l] >= 1) phases[l] -= Math.floor(phases[l]);
+            modBuf[i * FDN_LINES + l] =
+              0.5 + 0.5 * Math.sin(2 * Math.PI * phases[l] + l * MOD_PHASE_STEP);
+          }
         }
       }
 
@@ -296,10 +367,25 @@ export function createReverbModule(params?: Record<string, number>): ModuleProce
           }
 
           for (let l = 0; l < FDN_LINES; l++) {
-            tapsScratch[l] = ls[l][wis[l]];
+            if (useMod) {
+              // Fractional read `modSamples` behind the write head: blurs
+              // the tank's comb minima. Clamped inside the logical length
+              // so the read never leaves the window.
+              const len = lengths[l];
+              let off = modBuf[i * FDN_LINES + l] * maxModSamples;
+              if (off > len - 2) off = len - 2;
+              let r = wis[l] - off;
+              r %= len;
+              if (r < 0) r += len;
+              const i0 = Math.floor(r);
+              const frac = r - i0;
+              tapsScratch[l] = ls[l][i0] * (1 - frac) + ls[l][(i0 + 1) % len] * frac;
+            } else {
+              tapsScratch[l] = ls[l][wis[l]];
+            }
           }
 
-          hadamard4(tapsScratch);
+          hadamard8(tapsScratch);
 
           let wet = 0;
           const crossIn = crossSrc ? crossSrc[i] * CROSS_COUPLING : 0;
@@ -343,6 +429,8 @@ export function createReverbModule(params?: Record<string, number>): ModuleProce
       for (const cf of crossFeedPrev) cf.fill(0);
       for (const cf of crossFeedCur) cf.fill(0);
       fbSmPrimed = false;
+      // Q1: deterministic modulation phase start.
+      phases.fill(0);
     },
 
     getLatencySamples() {
@@ -351,7 +439,7 @@ export function createReverbModule(params?: Record<string, number>): ModuleProce
 
     setParameter(id, value) {
       store.set(id, value);
-      if (prepared && (id === "type" || id === "decayMs")) recompute();
+      if (prepared && (id === "type" || id === "decayMs" || id === "modRateHz")) recompute();
       if (prepared && id === "predelayMs") {
         predelayLen = Math.round((clamp(value, 0, 100) / 1000) * sampleRate);
       }

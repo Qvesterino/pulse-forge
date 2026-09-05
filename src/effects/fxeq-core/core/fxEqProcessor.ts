@@ -48,6 +48,12 @@ export interface FxEqProcessor {
    * Call before process() each block. Pass null to disable.
    */
   setSidechain(channels: Float32Array[] | null): void;
+  /**
+   * Host tempo notification (quality roadmap Q2). Forwarded to every band
+   * engine; only tempo-synced modules (delay/mod with syncMode > 0) react.
+   * Allocation-free.
+   */
+  setTempo(bpm: number): void;
   /** Undo the last parameter change. Returns the restored entry or null. */
   undo(): { id: string; value: number } | null;
   /** Redo the last undone change. Returns the restored entry or null. */
@@ -111,6 +117,44 @@ export function createFxEqProcessor(params?: Record<string, number>): FxEqProces
   const xoverFreqTarget: number[] = [...DEFAULT_CROSSOVER_FREQS];
   const xoverFreqCurrent: number[] = [...DEFAULT_CROSSOVER_FREQS];
   let xoverSmoothCoef = 0;
+
+  // Quality roadmap Q5: the schema ranges allow neighbouring splits to cross
+  // (f2 max 800 > f3 min 300), which would invert band order inside the
+  // cascade tree and desync the paint-mask semantics. Splits are clamped to
+  // ascending order with a minimum gap — deterministic forward pass on bulk
+  // loads, neighbour clamp on single changes.
+  const XOVER_MIN_GAP_HZ = 40;
+
+  /** Force ascending order with a minimum gap (forward pass, deterministic). */
+  function monotonicClampFreqs(freqs: number[]): void {
+    let prev = 40;
+    for (let i = 0; i < freqs.length; i++) {
+      const clamped = Math.max(prev + XOVER_MIN_GAP_HZ, freqs[i]);
+      freqs[i] = clamped;
+      prev = clamped;
+    }
+  }
+
+  /**
+   * Clamp one split against its stored neighbours so band order cannot
+   * invert. Neighbours come from the flat store (always monotonic after the
+   * applyAllParams writeback); a missing upper neighbour (top split) leaves
+   * the upper bound open.
+   */
+  function clampXoverTarget(idx: number, value: number): number {
+    let lo = 80;
+    for (let i = 0; i < idx; i++) {
+      const f = values[`crossoverFreq${i + 2}`];
+      if (typeof f === "number" && Number.isFinite(f)) lo = Math.max(lo, f + XOVER_MIN_GAP_HZ);
+    }
+    for (let i = idx + 1; i < bandCount - 1; i++) {
+      const f = values[`crossoverFreq${i + 2}`];
+      if (typeof f === "number" && Number.isFinite(f)) {
+        return Math.max(lo, Math.min(f - XOVER_MIN_GAP_HZ, value));
+      }
+    }
+    return Math.max(lo, value);
+  }
 
   // Command history for undo/redo.
   const history: CommandHistory = createCommandHistory();
@@ -195,7 +239,11 @@ export function createFxEqProcessor(params?: Record<string, number>): FxEqProces
 
   /** Push current stored values down to the active sub-components. */
   function applyAllParams(): void {
-    // Crossover config.
+    // Crossover config. Bulk loads (constructor, presets, state restore) can
+    // carry crossing splits — the schema ranges allow it — so the resolved
+    // set is clamped ascending before it reaches the bank, and the clamped
+    // values are written back so the flat store stays the single source of
+    // truth for serialization and neighbour lookups.
     const freqs = [
       values["crossoverFreq2"],
       values["crossoverFreq3"],
@@ -203,8 +251,10 @@ export function createFxEqProcessor(params?: Record<string, number>): FxEqProces
       values["crossoverFreq5"],
     ].filter((f) => f !== undefined);
     const resolvedFreqs = freqs.length ? freqs : [...DEFAULT_CROSSOVER_FREQS];
+    monotonicClampFreqs(resolvedFreqs);
     crossover.setCrossoverFreqs(resolvedFreqs);
     for (let i = 0; i < resolvedFreqs.length && i < xoverFreqTarget.length; i++) {
+      values[`crossoverFreq${i + 2}`] = resolvedFreqs[i];
       xoverFreqTarget[i] = resolvedFreqs[i];
       xoverFreqCurrent[i] = resolvedFreqs[i];
     }
@@ -214,6 +264,7 @@ export function createFxEqProcessor(params?: Record<string, number>): FxEqProces
     limiter.setParameter("ceilDb", values["limiterCeilDb"] ?? -0.3);
     limiter.setParameter("truePeak", values["limiterTruePeak"] ?? 1);
     limiter.setParameter("lookaheadMs", values["limiterLookaheadMs"] ?? 2);
+    limiter.setParameter("pdr", values["limiterPdr"] ?? 0);
 
     // Bands.
     for (let b = 1; b <= bandCount; b++) {
@@ -544,6 +595,14 @@ export function createFxEqProcessor(params?: Record<string, number>): FxEqProces
       sidechainChannels = channels;
     },
 
+    setTempo(nextBpm) {
+      if (typeof nextBpm !== "number" || !Number.isFinite(nextBpm)) return;
+      const bpm = Math.min(999, Math.max(20, nextBpm));
+      // Every engine, not just the active bands: a bandCount change later
+      // must find the current tempo already in place.
+      for (let b = 0; b < MAX_BANDS; b++) bands[b].setTempo(bpm);
+    },
+
     get canUndo() { return history.canUndo; },
     get canRedo() { return history.canRedo; },
 
@@ -616,7 +675,11 @@ export function createFxEqProcessor(params?: Record<string, number>): FxEqProces
         case "crossoverFreq4":
         case "crossoverFreq5": {
           const idx = Number(route.rawId.slice(-1)) - 2;
-          xoverFreqTarget[idx] = value;
+          // Q5: clamp against stored neighbours and write back, so the flat
+          // store, the smoothing target and the crossover never disagree.
+          const clamped = clampXoverTarget(idx, value);
+          values[route.rawId] = clamped;
+          xoverFreqTarget[idx] = clamped;
           break;
         }
         case "limiterEnabled":
@@ -630,6 +693,9 @@ export function createFxEqProcessor(params?: Record<string, number>): FxEqProces
           break;
         case "limiterLookaheadMs":
           limiter.setParameter("lookaheadMs", value);
+          break;
+        case "limiterPdr":
+          limiter.setParameter("pdr", value);
           break;
         // inputGainDb/outputGainDb/globalMix/fxOnly are read each block.
         default:

@@ -113,9 +113,11 @@ describe("TopBar", () => {
       await user.click(screen.getByRole("button", { name: /More topbar controls/ }));
       expect(screen.getByRole("menu", { name: "More topbar controls" })).toBeInTheDocument();
 
-      expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Toggle modulation panel" }));
-      await user.keyboard("{ArrowDown}");
+      // At 1280 the four live panels (MIX/FX/ARR/MOD) are direct; the
+      // overflow starts at EXPORT.
       expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Toggle export panel" }));
+      await user.keyboard("{ArrowDown}");
+      expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Toggle MIDI input panel" }));
       await user.keyboard("{Escape}");
       expect(screen.queryByRole("menu", { name: "More topbar controls" })).not.toBeInTheDocument();
 

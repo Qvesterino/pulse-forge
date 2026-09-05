@@ -262,6 +262,10 @@ export interface PlateChamberEngineState {
   stereoWidth: number;
   /** Octave-up pitch shifter in the feedback path (0..1). */
   shimmer: number;
+  /** In-loop drive (0..1). Padé-tanh saturation of the feedback path —
+   *  adds harmonic density and slightly shortens hot decay. 0 = pure
+   *  linear (bit-neutral to legacy presets). */
+  drive: number;
 }
 
 export function defaultPlateChamberEngine(): PlateChamberEngineState {
@@ -281,6 +285,7 @@ export function defaultPlateChamberEngine(): PlateChamberEngineState {
     bassDecay: 1.0,
     stereoWidth: 1.0,
     shimmer: 0,
+    drive: 0,
   };
 }
 
@@ -307,6 +312,10 @@ export interface HallEngineState {
   stereoWidth: number;
   /** Octave-up pitch shifter in the feedback path (0..1). */
   shimmer: number;
+  /** In-loop drive (0..1). Padé-tanh saturation of the feedback path —
+   *  adds harmonic density and slightly shortens hot decay. 0 = pure
+   *  linear (bit-neutral to legacy presets). */
+  drive: number;
 }
 
 export function defaultHallEngine(): HallEngineState {
@@ -326,6 +335,7 @@ export function defaultHallEngine(): HallEngineState {
     bassDecay: 1.0,
     stereoWidth: 1.0,
     shimmer: 0,
+    drive: 0,
   };
 }
 

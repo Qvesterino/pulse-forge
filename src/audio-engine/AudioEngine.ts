@@ -981,7 +981,10 @@ export class AudioEngine {
       // Vendored plugin modules load on demand: the first chain build runs
       // the honest bypass runtime, the module fetch kicks off here, and the
       // rebuild hot-swaps the real processor once it lands.
-      if ((PLUGIN_WORKLET_TYPES as readonly string[]).includes(fx.type) && !isWorkletReady(fx.type as PluginWorkletType, ctx)) {
+      if (
+        (PLUGIN_WORKLET_TYPES as readonly string[]).includes(fx.type) &&
+        !isWorkletReady(fx.type as PluginWorkletType, ctx)
+      ) {
         void loadPluginWorklet(ctx, fx.type as PluginWorkletType)
           .then(() => {
             if (ctx instanceof AudioContext) this.queueFxRebuild(ctx);
@@ -1881,76 +1884,89 @@ export class AudioEngine {
     for (const track of doc.tracks) {
       next.set(track.id, { gain: 1, pan: 0 });
     }
-    for (const macro of doc.macros) {
-      const bipolar = macro.value * 2 - 1;
-      for (const mapping of macro.mappings) {
-        if (mapping.source === "intensity") continue; // routed through setSceneIntensity
-        const acc = next.get(mapping.trackId);
-        if (!acc) continue;
-        if (mapping.param === "gain") acc.gain += mapping.amount * bipolar;
-        else acc.pan += mapping.amount * bipolar;
+    // Writer composition rule (one writer per chain):
+    // - macro/intensity performance offsets resolve FX/inst params as
+    //   base ± half-range·bipolar·amount around the PERSISTED doc value —
+    //   repeated syncs can never accumulate;
+    // - gain/pan offsets accumulate into the dedicated modMacro* nodes;
+    // - modulators (LFO/step/S&H) own the modAuto* chain and automation
+    //   lanes their own writers — nobody else writes those params.
+    const applyToTarget = (
+      target: import("../project-model/types").AutomationTarget,
+      bipolar: number,
+      amount: number,
+    ): void => {
+      if (target.kind === "trackGain" || target.kind === "trackPan") {
+        const acc = next.get(target.trackId);
+        if (!acc) return;
+        if (target.kind === "trackGain") acc.gain += amount * bipolar;
+        else acc.pan += amount * bipolar;
+        return;
       }
-    }
-    // Intensity → any target: 1 fader (scene intensity 0..1 → bipolar -1..1) drives
-    // filter/movement/width etc. Gain/pan accumulate via next map (smoothed),
-    // FX/inst params are written directly (delta around base value).
+      if (target.kind === "fxParam") {
+        if (!target.fxId || !target.paramId) return;
+        const nodes =
+          this.trackNodes.get(target.trackId) ??
+          this.groupNodes.get(target.trackId) ??
+          this.returnNodes.get(target.trackId);
+        const rt = nodes?.fx.runtimes.get(target.fxId);
+        if (!rt) return;
+        const owner =
+          (doc.tracks.find((t) => t.id === target.trackId) as unknown as { effects?: EffectInstance[] } | undefined) ??
+          (doc.returns.find((r) => r.id === target.trackId) as unknown as { effects?: EffectInstance[] } | undefined);
+        const inst = (owner as { effects?: EffectInstance[] } | undefined)?.effects?.find((f) => f.id === target.fxId);
+        if (!inst) return;
+        const def = EFFECT_DEFS[inst.type]?.params.find((p) => p.id === target.paramId);
+        if (!def) return;
+        const base = inst.params[target.paramId] ?? def.default;
+        const delta = ((def.max - def.min) / 2) * bipolar * amount;
+        rt.setParameter(target.paramId, clampEffectParam(inst.type, target.paramId, base + delta));
+        return;
+      }
+      if (target.kind === "instParam") {
+        if (!target.paramId) return;
+        const state = this.instruments.get(target.trackId);
+        if (!state) return;
+        const track = doc.tracks.find((t) => t.id === target.trackId);
+        if (!track || track.kind !== "instrument") return;
+        const def = INSTRUMENT_DEFS[track.instrument]?.params.find((p) => p.id === target.paramId);
+        if (!def) return;
+        const base = state.params[target.paramId] ?? def.default;
+        const delta = ((def.max - def.min) / 2) * bipolar * amount;
+        state.runtime.setParameter(
+          target.paramId,
+          clampInstrumentParam(track.instrument, target.paramId, base + delta),
+        );
+      }
+    };
     const intensityBipolar = Math.max(-1, Math.min(1, this.currentSceneIntensity * 2 - 1));
     for (const macro of doc.macros) {
+      const bipolar = Math.max(-1, Math.min(1, macro.value * 2 - 1));
       for (const mapping of macro.mappings) {
-        if (mapping.source !== "intensity") continue;
         const amount = mapping.amount;
-        // Generic target (P2 bus) takes precedence over legacy trackId/param
-        if (mapping.target) {
-          const target = mapping.target;
-          if (target.kind === "trackGain" || target.kind === "trackPan") {
-            const acc = next.get(target.trackId);
+        if (mapping.source === "intensity") {
+          // Scene intensity drives ANY target; gain/pan accumulate via next map.
+          if (mapping.target) applyToTarget(mapping.target, intensityBipolar, amount);
+          else {
+            if (mapping.param !== "gain" && mapping.param !== "pan") continue;
+            const acc = next.get(mapping.trackId);
             if (!acc) continue;
-            if (target.kind === "trackGain") acc.gain += amount * intensityBipolar;
+            if (mapping.param === "gain") acc.gain += amount * intensityBipolar;
             else acc.pan += amount * intensityBipolar;
-          } else if (target.kind === "fxParam") {
-            if (!target.fxId || !target.paramId) continue;
-            const nodes =
-              this.trackNodes.get(target.trackId) ??
-              this.groupNodes.get(target.trackId) ??
-              this.returnNodes.get(target.trackId);
-            const rt = nodes?.fx.runtimes.get(target.fxId);
-            if (!rt) continue;
-            const owner =
-              (doc.tracks.find((t) => t.id === target.trackId) as unknown as
-                { effects?: EffectInstance[] } | undefined) ??
-              (doc.returns.find((r) => r.id === target.trackId) as unknown as
-                { effects?: EffectInstance[] } | undefined);
-            const inst = (owner as { effects?: EffectInstance[] } | undefined)?.effects?.find(
-              (f) => f.id === target.fxId,
-            );
-            if (!inst) continue;
-            const def = EFFECT_DEFS[inst.type]?.params.find((p) => p.id === target.paramId);
-            if (!def) continue;
-            const base = inst.params[target.paramId] ?? def.default;
-            const delta = ((def.max - def.min) / 2) * intensityBipolar * amount;
-            const finalValue = clampEffectParam(inst.type, target.paramId, base + delta);
-            rt.setParameter(target.paramId, finalValue);
-          } else if (target.kind === "instParam") {
-            if (!target.paramId) continue;
-            const state = this.instruments.get(target.trackId);
-            if (!state) continue;
-            const track = doc.tracks.find((t) => t.id === target.trackId);
-            if (!track || track.kind !== "instrument") continue;
-            const def = INSTRUMENT_DEFS[track.instrument]?.params.find((p) => p.id === target.paramId);
-            if (!def) continue;
-            const base = state.params[target.paramId] ?? def.default;
-            const delta = ((def.max - def.min) / 2) * intensityBipolar * amount;
-            const finalValue = clampInstrumentParam(track.instrument, target.paramId, base + delta);
-            state.runtime.setParameter(target.paramId, finalValue);
           }
           continue;
         }
-        // Legacy: trackId + param string (gain/pan only before P2 bus)
+        // source "macro" (and legacy midiCC): bipolar from THIS macro's value.
+        // Generic target (P2 bus) takes precedence over legacy trackId/param.
+        if (mapping.target) {
+          applyToTarget(mapping.target, bipolar, amount);
+          continue;
+        }
         if (mapping.param !== "gain" && mapping.param !== "pan") continue;
         const acc = next.get(mapping.trackId);
         if (!acc) continue;
-        if (mapping.param === "gain") acc.gain += amount * intensityBipolar;
-        else acc.pan += amount * intensityBipolar;
+        if (mapping.param === "gain") acc.gain += amount * bipolar;
+        else acc.pan += amount * bipolar;
       }
     }
     for (const [trackId, offsets] of next) {
@@ -2319,8 +2335,7 @@ export class AudioEngine {
       // as regular tracks — resolving them here keeps automation lanes on
       // group buses from silently no-oping. Return tracks host FX but no
       // mod auto-gain/pan; the fxParam case below consults them explicitly.
-      const nodes =
-        this.trackNodes.get(lane.target.trackId) ?? this.groupNodes.get(lane.target.trackId);
+      const nodes = this.trackNodes.get(lane.target.trackId) ?? this.groupNodes.get(lane.target.trackId);
       if (!nodes) continue;
       switch (lane.target.kind) {
         case "trackGain":
@@ -2381,8 +2396,7 @@ export class AudioEngine {
     // FX automation must reach group-bus and return-track chains too — the
     // lane editors offer fxParam targets for any track with effects, but a
     // trackNodes-only lookup silently dropped every non-track lane.
-    const nodes =
-      this.trackNodes.get(trackId) ?? this.groupNodes.get(trackId) ?? this.returnNodes.get(trackId);
+    const nodes = this.trackNodes.get(trackId) ?? this.groupNodes.get(trackId) ?? this.returnNodes.get(trackId);
     if (!nodes) return;
     for (const point of points) {
       const when = Math.max(0, timeAt(point.tick));

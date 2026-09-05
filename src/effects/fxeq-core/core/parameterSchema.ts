@@ -62,6 +62,7 @@ export const GLOBAL_PARAM_DEFS: readonly FxEqParamDef[] = [
   { id: "limiterCeilDb", name: "Limiter Ceiling", defaultValue: -0.3, minValue: -6, maxValue: 0, unit: "dB", automatable: true },
   { id: "limiterTruePeak", name: "True Peak", defaultValue: 1, minValue: 0, maxValue: 1, automatable: false },
   { id: "limiterLookaheadMs", name: "Lookahead", defaultValue: 2, minValue: 0, maxValue: 5, unit: "ms", automatable: false },
+  { id: "limiterPdr", name: "Limiter PDR", defaultValue: 0, minValue: 0, maxValue: 1, automatable: true },
 ] as const;
 
 // ── Per-band scalar parameters ───────────────────────────────

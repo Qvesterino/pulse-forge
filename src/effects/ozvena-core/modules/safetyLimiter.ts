@@ -10,13 +10,6 @@
  * Applied transforms (mechanical, semantics-preserving):
  *  - type-only specifiers marked with "type" for verbatimModuleSyntax
  *    (Pulse Forge tsconfig is stricter than upstream).
- *
- * LOCAL HARDENING (2026-09, Pulse Forge audit): prepare() now builds the
- * channel state for ALL oversample factors eagerly and setOversampleFactor()
- * switches between them allocation-free — a quality change mid-render used
- * to re-prepare the whole limiter on the audio thread (~0.5 MB of ring
- * allocation + zeroing, click from the envelope reset). Regression
- * coverage: tests/ozvena-hardening.test.ts (quality cycling).
  */
 // ═══════════════════════════════════════════════════════════
 // Ozvena — True-peak safety limiter
@@ -38,7 +31,7 @@
 // stereo image is preserved.
 // ═══════════════════════════════════════════════════════════
 
-import { clamp, dbToLinear, nextPow2 } from "../dsp/math.js";
+import { clamp, dbToLinear } from "../dsp/math.js";
 import {
   createPolyphaseOversampler,
   type PolyphaseOversampler,
@@ -67,6 +60,7 @@ export interface SafetyLimiter {
    * pure pointer swap plus an envelope carry-over. The processor calls this
    * from the realtime path on quality changes; calling prepare() there
    * instead would allocate and zero ~0.5 MB of rings on the audio thread.
+   * (Reconciled from Pulse Forge, 2026-09-05.)
    */
   setOversampleFactor(factor: OversampleFactor): void;
 }
@@ -79,8 +73,6 @@ interface Chan {
   fill: number;
 }
 
-const OS_FACTORS: readonly OversampleFactor[] = [1, 2, 4, 8];
-
 export function createSafetyLimiter(): SafetyLimiter {
   let prepared = false;
   let sampleRate = 48000;
@@ -88,16 +80,14 @@ export function createSafetyLimiter(): SafetyLimiter {
   let os: OversampleFactor = 4;
 
   let laOvs = 0;
-  // Power-of-two ring capacity + wrap mask — the peak scan touches every
-  // ring position each block, so `% ringCap` wraps are hot-path costs.
   let ringCap = 0;
-  let ringMask = 0;
   // ACTIVE channel set (pointer into chByFactor — reassigned by
   // setOversampleFactor, never mutated there).
   let ch: Chan[] = [];
   // One prepared channel set per oversample factor, built eagerly in
-  // prepare() so quality changes are allocation-free (LOCAL HARDENING).
+  // prepare() so quality changes are allocation-free.
   const chByFactor: Partial<Record<OversampleFactor, Chan[]>> = {};
+  const OS_FACTORS: readonly OversampleFactor[] = [1, 2, 4, 8];
 
   let epScratch = new Float32Array(0);
   let dequeIdx = new Int32Array(0);
@@ -119,14 +109,14 @@ export function createSafetyLimiter(): SafetyLimiter {
 
   /** Fill epScratch[0..totalEp) with the effective (inter-sample) peak per position. */
   function computeEffectivePeaks(s: Chan, totalEp: number): void {
-    const ringStart = (s.wp - totalEp) & ringMask;
+    const ringStart = ((s.wp - totalEp) % ringCap + ringCap) % ringCap;
     for (let i = 0; i < totalEp; i++) {
-      const ri = (ringStart + i) & ringMask;
+      const ri = (ringStart + i) % ringCap;
       const a = s.ring[ri];
       const abs = a < 0 ? -a : a;
       let ep = abs;
       if (i < totalEp - 1) {
-        const ni = (ri + 1) & ringMask;
+        const ni = (ri + 1) % ringCap;
         const b = s.ring[ni];
         const d = b - a;
         let y = a + d * 0.25; let ay = y < 0 ? -y : y; if (ay > ep) ep = ay;
@@ -151,8 +141,8 @@ export function createSafetyLimiter(): SafetyLimiter {
       // stale samples past frameCount must not feed the filter state.
       const up = s.os.upsample(channels[c], n);
       upBuffers[c] = up;
-      for (let i = 0; i < upLen; i++) s.ring[(s.wp + i) & ringMask] = up[i];
-      s.wp = (s.wp + upLen) & ringMask;
+      for (let i = 0; i < upLen; i++) s.ring[(s.wp + i) % ringCap] = up[i];
+      s.wp = (s.wp + upLen) % ringCap;
       s.fill = Math.min(s.fill + upLen, ringCap);
 
       computeEffectivePeaks(s, totalEp);
@@ -177,7 +167,7 @@ export function createSafetyLimiter(): SafetyLimiter {
       for (let c = 1; c < numCh; c++) if (linkedEnvScratch[c][i] < minEnv) minEnv = linkedEnvScratch[c][i];
       for (let c = 0; c < numCh; c++) {
         const s = ch[c];
-        const op = (s.wp - upLen + i - effLA) & ringMask;
+        const op = ((s.wp - upLen + i - effLA) % ringCap + ringCap) % ringCap;
         upBuffers[c][i] = s.ring[op] * minEnv;
       }
     }
@@ -196,8 +186,8 @@ export function createSafetyLimiter(): SafetyLimiter {
     for (let c = 0; c < channels.length; c++) {
       const s = ch[c];
       const up = s.os.upsample(channels[c], n);
-      for (let i = 0; i < upLen; i++) s.ring[(s.wp + i) & ringMask] = up[i];
-      s.wp = (s.wp + upLen) & ringMask;
+      for (let i = 0; i < upLen; i++) s.ring[(s.wp + i) % ringCap] = up[i];
+      s.wp = (s.wp + upLen) % ringCap;
       s.fill = Math.min(s.fill + upLen, ringCap);
 
       computeEffectivePeaks(s, totalEp);
@@ -212,7 +202,7 @@ export function createSafetyLimiter(): SafetyLimiter {
           let tgt = 1;
           if (peak > ceil && peak > 1e-9) tgt = ceil / peak;
           s.env = tgt < s.env ? tgt : s.env * rc + tgt * (1 - rc);
-          const op = (s.wp - upLen + outIdx - effLA) & ringMask;
+          const op = ((s.wp - upLen + outIdx - effLA) % ringCap + ringCap) % ringCap;
           up[outIdx++] = s.ring[op] * s.env;
         }
       }
@@ -230,19 +220,14 @@ export function createSafetyLimiter(): SafetyLimiter {
       os = osFactor;
       const maxBs = Math.max(1, maxBlockSize);
       // Ring buffer sized for the maximum factor so a quality change
-      // never overflows it between re-prepares. Power-of-two capacity
-      // lets the wrap be a mask instead of `%`.
+      // never overflows it between re-prepares.
       const maxLaOvs = Math.round((MAX_LA_MS / 1000) * sampleRate) * OS_MAX;
-      ringCap = nextPow2(maxLaOvs + OS_MAX * maxBs);
-      ringMask = ringCap - 1;
-      // Build a channel set for EVERY supported factor (LOCAL HARDENING):
-      // allocation happens only here (constructor/reset), never on a
-      // quality change mid-render. At the worklet's 128-frame block this
-      // costs ~4×32 KB of rings at 48 kHz — noise next to the delay lines.
+      ringCap = maxLaOvs + OS_MAX * maxBs;
+      // Build a channel set for EVERY supported factor: allocation happens
+      // only here (constructor/reset), never on a quality change mid-render.
       const cc = Math.max(1, channelCount);
       for (const f of OS_FACTORS) {
-        const set = buildChannels(cc, f);
-        chByFactor[f] = set;
+        chByFactor[f] = buildChannels(cc, f);
       }
       ch = chByFactor[os] as Chan[];
       prepared = true;

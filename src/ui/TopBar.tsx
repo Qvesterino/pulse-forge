@@ -368,7 +368,9 @@ export function TopBar({
 
   // Keep the transport and the project identity stable, then spend the remaining
   // width on actions by priority. Active panels are promoted so state never hides.
-  const panelLimit = topbarWidth < 1120 ? 2 : topbarWidth < 1440 ? 3 : topbarWidth < 1760 ? 5 : panelActions.length;
+  // Panels: the four live surfaces (MIX/FX/ARR/MOD) stay direct-access at
+  // common widths — EXPORT/MIDI live in the overflow until there is room.
+  const panelLimit = topbarWidth < 1120 ? 3 : topbarWidth < 1440 ? 4 : topbarWidth < 1760 ? 6 : panelActions.length;
   const toolLimit = topbarWidth < 1120 ? 2 : topbarWidth < 1440 ? 3 : topbarWidth < 1760 ? 5 : toolActions.length;
   const visiblePanelActions = selectTopbarActions(panelActions, panelLimit);
   const visibleToolActions = selectTopbarActions(toolActions, toolLimit);

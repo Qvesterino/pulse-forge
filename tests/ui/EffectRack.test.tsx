@@ -103,14 +103,51 @@ describe("EffectRack", () => {
     const user = userEvent.setup();
     const doc = createProjectFromTemplate("house");
     const track = doc.tracks.find((t) => t.kind === "instrument")!;
-    track.effects = [{ id: "fx-ult-collapse", type: "ultina", bypassed: false, params: {} }];
+    // A/B state lives in the DOCUMENT (fx.deviceState) — collapse cannot erase it.
+    track.effects = [
+      {
+        id: "fx-ult-collapse",
+        type: "ultina",
+        bypassed: false,
+        params: {},
+        deviceState: {
+          kind: "ultina-ab-v1",
+          data: { slots: { A: { "comp.band0.thresholdDb": -18 } }, active: "A" },
+        },
+      },
+    ];
     renderWithContext(<EffectRack track={track} />, { services: mockServices(doc) });
+    await screen.findByText("A ACTIVE · STORED");
 
-    await user.click(await screen.findByRole("button", { name: "STORE" }));
     await user.click(screen.getByRole("button", { name: "Collapse Ultina Suite" }));
     await user.click(screen.getByRole("button", { name: "Expand Ultina Suite" }));
 
     expect(screen.getByText("A ACTIVE · STORED")).toBeInTheDocument();
+  });
+
+  it("A/B state lives in the document — a full remount (reload equivalent) restores it", async () => {
+    const user = userEvent.setup();
+    const doc = createProjectFromTemplate("house");
+    const trackOf = () => doc.tracks.find((t) => t.kind === "instrument")!;
+    trackOf().effects = [{ id: "fx-ult-remount", type: "ultina", bypassed: false, params: {} }];
+    const services = mockServices(doc);
+    (services.store.execute as ReturnType<typeof vi.fn>).mockImplementation(
+      (cmd: { execute: (d: unknown) => unknown }) => {
+        Object.assign(doc, cmd.execute(doc));
+      },
+    );
+    const first = renderWithContext(<EffectRack track={trackOf()} />, { services });
+    await user.click(await screen.findByRole("button", { name: "STORE" }));
+    first.unmount();
+
+    // Fresh mount against the mutated document — no component state involved.
+    renderWithContext(<EffectRack track={trackOf()} />, { services });
+    expect(await screen.findByText("A ACTIVE · STORED")).toBeInTheDocument();
+    // And the executed command was the persisted device-state one.
+    const executed = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.map(
+      (call: unknown[]) => call[0] as { type: string },
+    );
+    expect(executed.some((c) => c.type === "setDeviceState")).toBe(true);
   });
 });
 
@@ -328,4 +365,56 @@ describe("UltinaPanel — PRO tools (delta / A/B / gain match)", () => {
     expect(screen.getByRole("button", { name: /^A$/ })).toBeInTheDocument();
     expect(onApplyPreset).not.toHaveBeenCalled();
   });
+});
+
+describe("EffectRack — flagship device shell contract (all three plugins)", () => {
+  function flagshipDoc(type: "fxeq" | "ultina" | "ozvena", id: string) {
+    const doc = createProjectFromTemplate("house");
+    const track = doc.tracks.find((t) => t.kind === "instrument")!;
+    track.effects = [{ id, type, bypassed: false, params: {} }];
+    return { doc, track };
+  }
+
+  const NAMES: Record<string, string> = {
+    fxeq: "FXEQ Multiband",
+    ultina: "Ultina Suite",
+    ozvena: "Ozvena Reverb",
+  };
+
+  for (const type of ["fxeq", "ultina", "ozvena"] as const) {
+    it(`${type}: add → mount → collapse keeps mounted → expand → bypass flips state`, async () => {
+      const user = userEvent.setup();
+      const id = `fx-${type}-shell`;
+      const { doc, track } = flagshipDoc(type, id);
+      const services = mockServices(doc);
+      (services.store.execute as ReturnType<typeof vi.fn>).mockImplementation(
+        (cmd: { execute: (d: unknown) => unknown }) => {
+          Object.assign(doc, cmd.execute(doc));
+        },
+      );
+      renderWithContext(<EffectRack track={track} />, { services });
+
+      // Device mounts with the shared header contract.
+      expect(screen.getByText(NAMES[type], { selector: ".fx-device-name" })).toBeInTheDocument();
+      expect(screen.getByText("ACTIVE")).toBeInTheDocument();
+
+      // Collapse: aria-expanded flips, header stays, heavy content unmounts.
+      await user.click(screen.getByRole("button", { name: `Collapse ${NAMES[type]}` }));
+      expect(screen.getByRole("button", { name: `Expand ${NAMES[type]}` })).toHaveAttribute("aria-expanded", "false");
+      expect(screen.getByText(NAMES[type], { selector: ".fx-device-name" })).toBeInTheDocument();
+      expect(screen.queryByText("ACTIVE")).toBeInTheDocument();
+
+      // Expand again.
+      await user.click(screen.getByRole("button", { name: `Expand ${NAMES[type]}` }));
+      expect(screen.getByRole("button", { name: `Collapse ${NAMES[type]}` })).toHaveAttribute("aria-expanded", "true");
+
+      // Bypass goes through the command layer (the label flip against the
+      // real store is covered by the browser plugin-workflow E2E).
+      await user.click(screen.getByTitle("Bypass effect"));
+      const executed = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.map(
+        (call: unknown[]) => call[0] as { type: string },
+      );
+      expect(executed.some((c) => c.type === "toggleEffectBypass")).toBe(true);
+    });
+  }
 });

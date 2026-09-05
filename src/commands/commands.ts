@@ -1395,6 +1395,100 @@ export function addEffectToTracks(doc: ProjectDocument, trackIds: string[], type
   return snapshot("addEffectToTracks", `Add ${EFFECT_DEFS[type].name} to ${unique.length} tracks`, doc, next);
 }
 
+/**
+ * Batch-bypass / batch-enable every instance of `type` on the given tracks —
+ * ONE command, one undo step (never a silent half-state).
+ */
+export function setEffectBypassOnTracks(
+  doc: ProjectDocument,
+  trackIds: string[],
+  type: EffectType,
+  bypassed: boolean,
+): Command {
+  if (trackIds.length === 0) throw new Error("Select at least one track");
+  const unique = new Set(trackIds);
+  const apply = (d: ProjectDocument): ProjectDocument => ({
+    ...d,
+    tracks: d.tracks.map((t) =>
+      unique.has(t.id) && "effects" in t
+        ? { ...t, effects: (t.effects as EffectInstance[]).map((f) => (f.type === type ? { ...f, bypassed } : f)) }
+        : t,
+    ),
+    returns: d.returns.map((r) =>
+      unique.has(r.id) ? { ...r, effects: r.effects.map((f) => (f.type === type ? { ...f, bypassed } : f)) } : r,
+    ),
+  });
+  const touched = apply(doc);
+  const count =
+    doc.tracks
+      .filter((t) => unique.has(t.id) && "effects" in t)
+      .reduce((n, t) => n + (t.effects as EffectInstance[]).filter((f) => f.type === type).length, 0) +
+    doc.returns
+      .filter((r) => unique.has(r.id))
+      .reduce((n, r) => n + r.effects.filter((f) => f.type === type).length, 0);
+  if (count === 0) throw new Error(`No ${EFFECT_DEFS[type].name} instances on the selected tracks`);
+  return snapshot(
+    "setEffectBypassOnTracks",
+    `${bypassed ? "Bypass" : "Enable"} ${EFFECT_DEFS[type].name} on ${unique.size} tracks`,
+    doc,
+    touched,
+  );
+}
+
+/** Batch-remove every instance of `type` from the given tracks — one command. */
+export function removeEffectFromTracks(doc: ProjectDocument, trackIds: string[], type: EffectType): Command {
+  if (trackIds.length === 0) throw new Error("Select at least one track");
+  const unique = new Set(trackIds);
+  const apply = (d: ProjectDocument): ProjectDocument => ({
+    ...d,
+    tracks: d.tracks.map((t) =>
+      unique.has(t.id) && "effects" in t
+        ? { ...t, effects: (t.effects as EffectInstance[]).filter((f) => f.type !== type) }
+        : t,
+    ),
+    returns: d.returns.map((r) => (unique.has(r.id) ? { ...r, effects: r.effects.filter((f) => f.type !== type) } : r)),
+  });
+  const touched = apply(doc);
+  const removed =
+    doc.tracks
+      .filter((t) => unique.has(t.id) && "effects" in t)
+      .reduce((n, t) => n + (t.effects as EffectInstance[]).filter((f) => f.type === type).length, 0) +
+    doc.returns
+      .filter((r) => unique.has(r.id))
+      .reduce((n, r) => n + r.effects.filter((f) => f.type === type).length, 0);
+  if (removed === 0) throw new Error(`No ${EFFECT_DEFS[type].name} instances on the selected tracks`);
+  return snapshot(
+    "removeEffectFromTracks",
+    `Remove ${EFFECT_DEFS[type].name} from ${unique.size} tracks`,
+    doc,
+    touched,
+  );
+}
+
+/** Clear SOLO on every track and group — one command, one undo. */
+export function clearAllSolos(doc: ProjectDocument): Command {
+  const apply = (d: ProjectDocument): ProjectDocument => ({
+    ...d,
+    tracks: d.tracks.map((t) => (t.solo ? { ...t, solo: false } : t)),
+  });
+  const touched = apply(doc);
+  const count = doc.tracks.filter((t) => t.solo).length;
+  if (count === 0) throw new Error("Nothing is soloed");
+  return snapshot("clearAllSolos", `Clear solo on ${count} tracks`, doc, touched);
+}
+
+/** Clear MUTE on every track and group — one command, one undo. */
+export function clearAllMutes(doc: ProjectDocument): Command {
+  const apply = (d: ProjectDocument): ProjectDocument => ({
+    ...d,
+    tracks: d.tracks.map((t) => (t.mute ? { ...t, mute: false } : t)),
+  });
+  const touched = apply(doc);
+  const count = doc.tracks.filter((t) => t.mute).length;
+  if (count === 0) throw new Error("Nothing is muted");
+  return snapshot("clearAllMutes", `Clear mute on ${count} tracks`, doc, touched);
+}
+
 /* ---------------- notes ---------------- */
 
 function withTrackNotes(
@@ -3584,10 +3678,28 @@ function withLane(doc: ProjectDocument, laneId: string, fn: (lane: AutomationLan
   return { ...doc, automation: doc.automation.map((l) => (l.id === laneId ? fn(l) : l)) };
 }
 
+/**
+ * Clamp an automation point value to the target parameter's legal range at
+ * the command boundary — lane points are trusted data downstream (engine →
+ * worklet port → DSP), so garbage must be rejected here, not in audio.
+ * Ultina deep params clamp through the vendored schema; other effect params
+ * through their registry def. Non-finite values fall back to the default.
+ */
+function clampAutomationPointValue(doc: ProjectDocument, target: AutomationTarget, value: number): number {
+  if (target.kind !== "fxParam" || !target.fxId || !target.paramId) return value;
+  const fx = trackEffectsOf(doc, target.trackId).find((f) => f.id === target.fxId);
+  if (!fx) return value;
+  if (fx.type === "ultina") return clampUltinaParam(target.paramId, value);
+  const def = EFFECT_DEFS[fx.type].params.find((p) => p.id === target.paramId);
+  if (!def) return value;
+  if (!Number.isFinite(value)) return def.default;
+  return Math.min(def.max, Math.max(def.min, value));
+}
+
 export function addAutomationPoint(doc: ProjectDocument, laneId: string, tick: number, value: number): Command {
   const lane = automationLaneOf(doc, laneId);
   if (!lane) throw new Error(`Lane ${laneId} not found`);
-  const point = { tick: Math.max(0, Math.round(tick)), value };
+  const point = { tick: Math.max(0, Math.round(tick)), value: clampAutomationPointValue(doc, lane.target, value) };
   return {
     type: "addAutomationPoint",
     label: "Add automation point",
@@ -3613,6 +3725,8 @@ export function moveAutomationPoint(
   const lane = automationLaneOf(doc, laneId);
   if (!lane || index < 0 || index >= lane.points.length) throw new Error("Automation point not found");
   const prev = lane.points;
+  const nextValue =
+    delta.value === undefined ? undefined : clampAutomationPointValue(doc, lane.target, delta.value);
   return {
     type: "moveAutomationPoint",
     label: "Move automation point",
@@ -3622,7 +3736,7 @@ export function moveAutomationPoint(
         const p = points[index];
         points[index] = {
           tick: Math.max(0, Math.round(delta.tick ?? p.tick)),
-          value: delta.value ?? p.value,
+          value: nextValue ?? p.value,
         };
         return { ...l, points: points.sort((a, b) => a.tick - b.tick) };
       }),
@@ -3833,6 +3947,64 @@ export function removeMacroMapping(doc: ProjectDocument, macroId: string, mappin
     ...dMap(doc, macroId, (m) => ({ ...m, mappings: m.mappings.filter((x) => x.id !== mappingId) })),
   };
   return snapshot("removeMacroMapping", "Remove macro mapping", doc, next);
+}
+
+/**
+ * Map a macro to ANY engine target: track gain/pan, an FX device parameter
+ * or an instrument parameter (AutomationTarget P2 bus). The engine resolves
+ * the mapping as an offset around the persisted base value.
+ */
+export function addMacroTargetMapping(
+  doc: ProjectDocument,
+  macroId: string,
+  target: import("../project-model/types").AutomationTarget,
+  amount = 0.5,
+): Command {
+  if (!doc.macros.some((m) => m.id === macroId)) throw new Error(`Macro ${macroId} not found`);
+  if (!doc.tracks.some((t) => t.id === target.trackId)) throw new Error(`Track ${target.trackId} not found`);
+  if (target.kind === "fxParam" && (!target.fxId || !target.paramId))
+    throw new Error("fxParam target needs fxId + paramId");
+  if (target.kind === "instParam" && !target.paramId) throw new Error("instParam target needs paramId");
+  const mapping: import("../project-model/types").MacroMapping = {
+    id: uid("map"),
+    trackId: target.trackId,
+    param: target.kind,
+    amount: clamp(amount, -1, 1),
+    source: "macro",
+    target: { ...target },
+  };
+  const next: ProjectDocument = {
+    ...dMap(doc, macroId, (m) => ({ ...m, mappings: [...m.mappings, mapping] })),
+  };
+  return snapshot("addMacroTargetMapping", `Map macro → ${target.kind}`, doc, next);
+}
+
+/** Retarget (or clear the generic target of) an existing macro mapping. */
+export function setMacroMappingTarget(
+  doc: ProjectDocument,
+  macroId: string,
+  mappingId: string,
+  target: import("../project-model/types").AutomationTarget | null,
+): Command {
+  const macro = doc.macros.find((m) => m.id === macroId);
+  const prev = macro?.mappings.find((x) => x.id === mappingId);
+  if (!prev) throw new Error("Macro mapping not found");
+  if (target && !doc.tracks.some((t) => t.id === target.trackId)) throw new Error(`Track ${target.trackId} not found`);
+  const apply = (d: ProjectDocument, t: import("../project-model/types").AutomationTarget | null): ProjectDocument => ({
+    ...dMap(d, macroId, (m) => ({
+      ...m,
+      mappings: m.mappings.map((x) =>
+        x.id === mappingId ? { ...x, target: t ? { ...t } : undefined, param: t ? t.kind : x.param } : x,
+      ),
+    })),
+  });
+  const prevTarget = prev.target ?? null;
+  return {
+    type: "setMacroMappingTarget",
+    label: target ? "Retarget macro mapping" : "Macro mapping → legacy",
+    execute: (d) => apply(d, target),
+    undo: (d) => apply(d, prevTarget),
+  };
 }
 
 export function setMacroMappingAmount(
@@ -4306,13 +4478,16 @@ export function removeSceneAutomation(doc: ProjectDocument, laneId: string): Com
 export function addSceneAutomationPoint(doc: ProjectDocument, laneId: string, tick: number, value: number): Command {
   const lane = doc.sceneAutomation.find((l) => l.id === laneId);
   if (!lane) throw new Error(`Scene lane ${laneId} not found`);
+  const clampedValue = clampAutomationPointValue(doc, lane.target, value);
   const next = {
     ...doc,
     sceneAutomation: doc.sceneAutomation.map((l) =>
       l.id === laneId
         ? {
             ...l,
-            points: [...l.points, { tick: Math.max(0, Math.floor(tick)), value }].sort((a, b) => a.tick - b.tick),
+            points: [...l.points, { tick: Math.max(0, Math.floor(tick)), value: clampedValue }].sort(
+              (a, b) => a.tick - b.tick,
+            ),
           }
         : l,
     ),
@@ -4328,6 +4503,8 @@ export function moveSceneAutomationPoint(
   const lane = doc.sceneAutomation.find((l) => l.id === laneId);
   if (!lane) throw new Error(`Scene lane ${laneId} not found`);
   if (index < 0 || index >= lane.points.length) throw new Error("Scene point out of range");
+  const nextValue =
+    delta.value === undefined ? undefined : clampAutomationPointValue(doc, lane.target, delta.value);
   const next = {
     ...doc,
     sceneAutomation: doc.sceneAutomation.map((l) => {
@@ -4336,7 +4513,7 @@ export function moveSceneAutomationPoint(
       const p = points[index];
       points[index] = {
         tick: delta.tick !== undefined ? Math.max(0, Math.floor(delta.tick)) : p.tick,
-        value: delta.value !== undefined ? delta.value : p.value,
+        value: nextValue ?? p.value,
       };
       points.sort((a, b) => a.tick - b.tick);
       return { ...l, points };
@@ -5084,6 +5261,84 @@ export function applyUltinaPreset(
     label: `Ultina preset ${presetName}`,
     execute: (d) => apply(d, nextParams),
     undo: (d) => apply(d, previousParams),
+  };
+}
+
+/**
+ * Store plugin EDITOR state (A/B snapshots, active slot…) on an effect.
+ * Generic device-state slot: `null` clears. The payload is validated again
+ * on load by the schema sanitizer, so a stale/corrupt blob can never leak
+ * into the doc. One undo step per call.
+ */
+export function setDeviceState(
+  doc: ProjectDocument,
+  trackId: string,
+  fxId: string,
+  state: import("../project-model/types").DeviceState | null,
+): Command {
+  const target = trackEffectsOf(doc, trackId).find((f) => f.id === fxId);
+  if (!target) throw new Error(`Effect ${fxId} not found`);
+  const prev = target.deviceState ? { kind: target.deviceState.kind, data: { ...target.deviceState.data } } : null;
+  const apply = (d: ProjectDocument): ProjectDocument =>
+    withTrackEffects(d, trackId, (effects) =>
+      effects.map((f) =>
+        f.id === fxId ? { ...f, deviceState: state ? { kind: state.kind, data: { ...state.data } } : undefined } : f,
+      ),
+    );
+  return {
+    type: "setDeviceState",
+    label: state ? `Device state ${state.kind}` : "Clear device state",
+    execute: (d) => apply(d),
+    undo: (d) =>
+      prev
+        ? withTrackEffects(d, trackId, (effects) =>
+            effects.map((f) => (f.id === fxId ? { ...f, deviceState: prev } : f)),
+          )
+        : withTrackEffects(d, trackId, (effects) =>
+            effects.map((f) => (f.id === fxId ? { ...f, deviceState: undefined } : f)),
+          ),
+  };
+}
+
+/**
+ * Activate an Ultina A/B slot: restores the snapshot into real params
+ * (exact restore — defaults + clamped snapshot) AND flips the active flag,
+ * as ONE undoable gesture so an A/B compare is a single Ctrl+Z away.
+ */
+export function loadUltinaAbSlot(doc: ProjectDocument, trackId: string, fxId: string, slot: "A" | "B"): Command {
+  const target = trackEffectsOf(doc, trackId).find((f) => f.id === fxId);
+  if (!target || target.type !== "ultina") throw new Error(`Ultina effect ${fxId} not found`);
+  const state = target.deviceState?.kind === "ultina-ab-v1" ? target.deviceState : null;
+  const snapshot = (state?.data.slots as Record<string, Record<string, number>> | undefined)?.[slot];
+  if (!snapshot) throw new Error(`A/B slot ${slot} is empty`);
+  // Exact restore: defaults first, then every legal snapshot value clamped.
+  const restored: Record<string, number> = { ...buildUltinaDefaults() };
+  for (const [id, value] of Object.entries(snapshot)) {
+    if (!tryGetUltinaParamDef(id)) continue;
+    if (typeof value !== "number" || !Number.isFinite(value)) continue;
+    restored[id] = clampUltinaParam(id, value);
+  }
+  const nextDeviceState: import("../project-model/types").DeviceState = {
+    kind: "ultina-ab-v1",
+    data: { ...state!.data, active: slot },
+  };
+  const previousParams = { ...target.params };
+  const previousState = target.deviceState ?? null;
+  const apply = (d: ProjectDocument): ProjectDocument =>
+    withTrackEffects(d, trackId, (effects) =>
+      effects.map((f) => (f.id === fxId ? { ...f, params: { ...restored }, deviceState: nextDeviceState } : f)),
+    );
+  const restore = (d: ProjectDocument): ProjectDocument =>
+    withTrackEffects(d, trackId, (effects) =>
+      effects.map((f) =>
+        f.id === fxId ? { ...f, params: previousParams, deviceState: previousState ?? undefined } : f,
+      ),
+    );
+  return {
+    type: "loadUltinaAbSlot",
+    label: `A/B → slot ${slot}`,
+    execute: (d) => apply(d),
+    undo: (d) => restore(d),
   };
 }
 

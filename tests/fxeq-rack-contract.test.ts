@@ -135,6 +135,8 @@ describe("fxeq rack ↔ core parameter contract", () => {
       // Limiter internals beyond the enable/ceiling rack knobs.
       "limiterTruePeak",
       "limiterLookaheadMs",
+      // Q4 program-dependent release — panel/preset domain (default 0).
+      "limiterPdr",
     ]);
     const uncovered = coreGlobals.filter((id) => !resolvedRackIds.includes(id) && !editorOnly.has(id));
     expect(uncovered, `core global params with no rack coverage: ${uncovered.join(", ")}`).toEqual([]);

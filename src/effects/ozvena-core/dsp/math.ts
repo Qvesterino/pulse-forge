@@ -45,6 +45,19 @@ export function linearToDb(linear: number): number {
 }
 
 /**
+ * Smallest power of two >= n (n >= 1). Ring/delay buffers are allocated at
+ * power-of-two capacity so the realtime loops can replace `% len` wrap
+ * arithmetic with a single `& mask`. Ring read/write distances always stay
+ * below the original (non-pow2) length, so values are unaffected.
+ * (Reconciled from Pulse Forge vendored drift, 2026-09-05.)
+ */
+export function nextPow2(n: number): number {
+  let p = 1;
+  while (p < n) p <<= 1;
+  return p;
+}
+
+/**
  * Fast tanh approximation: x*(27+x²)/(27+9x²). Accurate within ~1e-3 over
  * [-3, 3]. Saturates to ±1 outside that range.
  */
@@ -111,18 +124,6 @@ export const MAX_SAMPLE_RATE = 192000;
 /** Convert milliseconds to samples at a given sample rate. */
 export function msToSamples(ms: number, sampleRate: number): number {
   return Math.round((ms / 1000) * sampleRate);
-}
-
-/**
- * Smallest power of two ≥ n (n ≥ 1). Ring/delay buffers are allocated at
- * power-of-two capacity so the realtime loops can replace `% len` wrap
- * arithmetic with a single `& mask`. Ring read/write distances always stay
- * below the original (non-pow2) length, so values are unaffected.
- */
-export function nextPow2(n: number): number {
-  let p = 1;
-  while (p < n) p <<= 1;
-  return p;
 }
 
 /** Convert seconds to samples at a given sample rate. */

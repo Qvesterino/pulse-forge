@@ -76,6 +76,7 @@ export function UltinaPanel({
   onApplyProposal,
   abState,
   onAbStateChange,
+  onAbLoad,
 }: {
   trackId: string;
   fxId: string;
@@ -91,6 +92,11 @@ export function UltinaPanel({
   /** Kept by the device card so collapse/expand does not erase A/B work. */
   abState?: UltinaAbState;
   onAbStateChange?: (state: UltinaAbState) => void;
+  /**
+   * Slot activation as ONE undoable command (restore params + active flag).
+   * Absent → legacy path: onApplyPreset + local state flip.
+   */
+  onAbLoad?: (slot: "A" | "B") => void;
 }) {
   const services = useServices();
   const doc = useDoc();
@@ -172,6 +178,11 @@ export function UltinaPanel({
   const loadAbSlot = (slot: "A" | "B") => {
     if (slot === abActive) return;
     const snapshot = abSlots[slot];
+    if (snapshot && onAbLoad) {
+      // Persisted A/B: one command restores params AND the active slot.
+      onAbLoad(slot);
+      return;
+    }
     if (snapshot) onApplyPreset(`Slot ${slot}`, snapshot); // exact restore: defaults + snapshot
     updateAbState({ ...currentAbState, active: slot });
   };

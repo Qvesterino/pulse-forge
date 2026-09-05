@@ -11,8 +11,6 @@
  *  - type-only specifiers marked with "type" for verbatimModuleSyntax
  *    (Pulse Forge tsconfig is stricter than upstream).
  */
-// ═══════════════════════════════════════════════════════════
-// Ozvena — Polyphase FIR oversampling
 //
 // Used by the saturation/ADAA stage (not yet wired in this iteration)
 // and by the Smoother lookahead convolution. Mirrors FXEQ's
@@ -145,7 +143,14 @@ export function createPolyphaseOversampler(): PolyphaseOversampler {
     get factor() { return factor; },
     get latencySamples() {
       if (factor <= 1) return 0;
-      return Math.floor((tapsPerPhase - 1) / (2 * factor));
+      // Measured end-to-end group delay of the up→down round trip in
+      // INPUT samples — mirrors the calibrated native formula in
+      // ozvena_oversampler.h. The old (tapsPerPhase-1)/(2*factor)
+      // under-reported by ~12 samples at 2× (verified against rendered
+      // impulse peaks in the cross-validation suite).
+      const d =
+        (tapsPerPhase - 1) / 2 + (fullDownTaps - 1) / (2 * factor);
+      return Math.round(d);
     },
     get filterLength() { return filterLength; },
 

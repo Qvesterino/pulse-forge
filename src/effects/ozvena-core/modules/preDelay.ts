@@ -11,6 +11,19 @@
  *  - type-only specifiers marked with "type" for verbatimModuleSyntax
  *    (Pulse Forge tsconfig is stricter than upstream).
  */
+/* eslint-disable */
+// @ts-nocheck
+/**
+ * VENDORED from VocalForge_DAW/plugins/ozvena. Do not edit by hand — this is
+ * a byte-faithful copy of the upstream DSP oracle so Pulse Forge and
+ * VocalForge validate against the SAME golden fixtures
+ * (tests/ozvena-golden.test.ts). Fix DSP issues upstream, then re-vendor
+ * via scripts/vendor-ozvena.mjs.
+ *
+ * Applied transforms (mechanical, semantics-preserving):
+ *  - type-only specifiers marked with "type" for verbatimModuleSyntax
+ *    (Pulse Forge tsconfig is stricter than upstream).
+ */
 // ═══════════════════════════════════════════════════════════
 // Ozvena — Pre-Delay module
 //

@@ -10,12 +10,6 @@
  * Applied transforms (mechanical, semantics-preserving):
  *  - type-only specifiers marked with "type" for verbatimModuleSyntax
  *    (Pulse Forge tsconfig is stricter than upstream).
- * LOCAL HARDENING (2026-09, Pulse Forge audit): this copy carries fixes NOT
- * yet present in the last vendored upstream snapshot — global gain clamps
- * (ozvenaProcessor) and the shimmer feedback stability guard (both
- * engines). Re-vendoring from a stale upstream will revert them; sync the
- * fixes upstream FIRST. Regression coverage: tests/ozvena-hardening.test.ts.
-
  */
 // ═══════════════════════════════════════════════════════════
 // Ozvena — Top-level Processor (TS oracle)
@@ -114,6 +108,7 @@ export interface OzvenaProcessor {
    * output, Pre EQ, Reverb EQ, Masking Meter). Hosts that consume none of
    * them skip nine per-block ring writes; Auto Cut / Unmask / masking
    * snapshots read stale data until re-enabled. Default: enabled.
+   * (Reconciled from Pulse Forge, 2026-09-05.)
    */
   setAnalyzersEnabled(on: boolean): void;
 }
@@ -129,7 +124,14 @@ export function createOzvenaProcessor(): OzvenaProcessor {
   // Recreated in doPrepare() with the ACTUAL sample rate — the original
   // hard-coded 44.1 kHz coefficients detuned the 15 Hz corner at 48/96 kHz
   // and diverged from the native processor's DcBlocker(sampleRate, 15).
-  let dcBlock: DcBlocker = createDcBlocker(44100, 15);
+  // ONE BLOCKER PER CHANNEL: a shared blocker applied L-then-R per block
+  // lets each channel's state be kicked by the other channel a different
+  // number of times depending on the host block size — the output became
+  // block-size-dependent (and L/R subtly coupled). Mirrors the native fix.
+  let dcBlocks: [DcBlocker, DcBlocker] = [
+    createDcBlocker(44100, 15),
+    createDcBlocker(44100, 15),
+  ];
   const preDelay: PreDelay = createPreDelay();
   const smoother: Smoother = createSmoother();
   const preEq: PreEq = createPreEq();
@@ -400,6 +402,7 @@ export function createOzvenaProcessor(): OzvenaProcessor {
     // limiter's prepare(); the old path called safetyLimiter.prepare()
     // here, allocating and zeroing the rings ON THE AUDIO THREAD on every
     // quality change (dropout risk mid-render, envelope-reset click).
+    // (Reconciled from Pulse Forge, 2026-09-05.)
     const q = state.global.quality;
     if (prepared && q !== limiterQuality) {
       limiterQuality = q;
@@ -428,8 +431,9 @@ export function createOzvenaProcessor(): OzvenaProcessor {
       channelCount = Math.max(1, cc);
       bpm = clamp(hostBpm, 20, 300);
       preparedMaxBs = Math.max(64, maxBlockSize);
-      dcBlock = createDcBlocker(sampleRate, 15);
-      dcBlock.reset();
+      dcBlocks = [createDcBlocker(sampleRate, 15), createDcBlocker(sampleRate, 15)];
+      dcBlocks[0].reset();
+      dcBlocks[1].reset();
       preDelay.prepare(sampleRate, channelCount, bpm);
       smoother.prepare(sampleRate);
       preEq.prepare(sampleRate, channelCount);
@@ -463,8 +467,9 @@ export function createOzvenaProcessor(): OzvenaProcessor {
       channelCount = Math.max(1, cc);
       bpm = clamp(hostBpm, 20, 300);
       preparedMaxBs = Math.max(64, maxBlockSize);
-      dcBlock = createDcBlocker(sampleRate, 15);
-      dcBlock.reset();
+      dcBlocks = [createDcBlocker(sampleRate, 15), createDcBlocker(sampleRate, 15)];
+      dcBlocks[0].reset();
+      dcBlocks[1].reset();
       preDelay.prepare(sampleRate, channelCount, bpm);
       smoother.prepare(sampleRate);
       preEq.prepare(sampleRate, channelCount);
@@ -558,7 +563,7 @@ export function createOzvenaProcessor(): OzvenaProcessor {
       for (let c = 0; c < cc; c++) {
         const buf = channels[c];
         for (let i = 0; i < frameCount; i++) {
-          buf[i] = sanitize(dcBlock.process(buf[i]));
+          buf[i] = sanitize(dcBlocks[c].process(buf[i]));
         }
       }
 

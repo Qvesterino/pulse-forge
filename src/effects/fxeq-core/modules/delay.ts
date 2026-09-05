@@ -30,6 +30,13 @@ export const DELAY_TYPE_ID = "delay";
 
 const MAX_DELAY_MS = 2000;
 
+/**
+ * Tempo-sync note divisions (quality roadmap Q2). syncMode indexes this
+ * table: 0 = free (timeMs), 1 = 1/1, 2 = 1/2, 3 = 1/4, 4 = 1/8, 5 = 1/16,
+ * 6 = 1/8T, 7 = 1/8., 8 = 1/4T. Values are quarter-note beats.
+ */
+const SYNC_BEATS = [0, 4, 2, 1, 0.5, 0.25, 1 / 3, 0.75, 2 / 3];
+
 const PARAM_DEFS: readonly FxEqParamDef[] = [
   { id: "enabled", name: "Enabled", defaultValue: 0, minValue: 0, maxValue: 1, automatable: false },
   { id: "type", name: "Type", defaultValue: 0, minValue: 0, maxValue: 3, automatable: false },
@@ -42,6 +49,14 @@ const PARAM_DEFS: readonly FxEqParamDef[] = [
     unit: "ms",
     logScale: true,
     automatable: true,
+  },
+  {
+    id: "syncMode",
+    name: "Tempo Sync",
+    defaultValue: 0,
+    minValue: 0,
+    maxValue: 8,
+    automatable: false,
   },
   {
     id: "feedback",
@@ -78,6 +93,9 @@ export function createDelayModule(params?: Record<string, number>): ModuleProces
   let prepared = false;
   let sampleRate = 44100;
   let preparedMaxBlockSize = 1;
+  // Host tempo for syncMode (Q2). Tracked even when sync is off so enabling
+  // sync later picks up the current tempo without an extra host nudge.
+  let bpm = 120;
 
   let delayBuf: Float32Array[] = [];
   let writeIdx: number[] = [];
@@ -116,7 +134,15 @@ export function createDelayModule(params?: Record<string, number>): ModuleProces
   }
 
   function recompute(): void {
-    delaySamples = Math.max(1, Math.round((store.get("timeMs") / 1000) * sampleRate));
+    let timeMs = store.get("timeMs");
+    // Q2: with syncMode active, timeMs is derived from the host tempo.
+    // Result is clamped into the same [1, MAX_DELAY_MS] window the free
+    // parameter uses, so the delay-line capacity contract never changes.
+    const sync = Math.round(store.get("syncMode"));
+    if (sync >= 1 && sync < SYNC_BEATS.length) {
+      timeMs = clamp((SYNC_BEATS[sync] * 60000) / bpm, 1, MAX_DELAY_MS);
+    }
+    delaySamples = Math.max(1, Math.round((timeMs / 1000) * sampleRate));
     dampAlpha = onePoleLpCoef(clamp(store.get("dampHz"), 200, 20000), sampleRate);
   }
 
@@ -213,11 +239,18 @@ export function createDelayModule(params?: Record<string, number>): ModuleProces
             const other = (c + 1) % channels.length;
             let rp = blockStartIdx[other] + i - readOffset;
             rp = ((rp % bufLen) + bufLen) % bufLen;
+            // Roadmap P: hermite read, matching the main tap's fidelity —
+            // the old 2-point linear cross-read filtered the feedback path
+            // audibly harder than the dry tap on the same material.
             const oi = Math.floor(rp);
             const ofrac = rp - oi;
-            const o0 = delayBuf[other][oi];
-            const o1 = delayBuf[other][(oi + 1) % bufLen];
-            fbSource = o0 + (o1 - o0) * ofrac;
+            fbSource = hermiteInterp(
+              delayBuf[other][oi],
+              delayBuf[other][(oi + 1) % bufLen],
+              delayBuf[other][(oi + 2) % bufLen],
+              delayBuf[other][(oi + 3) % bufLen],
+              ofrac,
+            );
           }
 
           // Damping LPF on the feedback path.
@@ -254,7 +287,15 @@ export function createDelayModule(params?: Record<string, number>): ModuleProces
 
     setParameter(id, value) {
       store.set(id, value);
-      if (prepared && (id === "timeMs" || id === "dampHz")) recompute();
+      if (prepared && (id === "timeMs" || id === "dampHz" || id === "syncMode")) recompute();
+    },
+    setTempo(nextBpm) {
+      if (typeof nextBpm !== "number" || !Number.isFinite(nextBpm)) return;
+      const clamped = clamp(nextBpm, 20, 999);
+      if (clamped === bpm) return;
+      bpm = clamped;
+      // Only a tempo-synced delay changes its time with the tempo.
+      if (prepared && Math.round(store.get("syncMode")) >= 1) recompute();
     },
     getParameter(id) {
       return store.get(id);

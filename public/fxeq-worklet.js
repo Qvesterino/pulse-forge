@@ -92,6 +92,47 @@
     c.a1 = -2 * cosW / a0;
     c.a2 = (1 - alpha) / a0;
   }
+  function setPeaking(c, freq, q, gainDb, sampleRate2) {
+    const w = w0(freq, sampleRate2);
+    const cosW = Math.cos(w);
+    const sinW = Math.sin(w);
+    const a = Math.pow(10, gainDb / 40);
+    const alpha = sinW / (2 * Math.max(1e-6, q));
+    const a0 = 1 + alpha / a;
+    c.b0 = (1 + alpha * a) / a0;
+    c.b1 = -2 * cosW / a0;
+    c.b2 = (1 - alpha * a) / a0;
+    c.a1 = -2 * cosW / a0;
+    c.a2 = (1 - alpha / a) / a0;
+  }
+  function setLowShelf(c, freq, gainDb, sampleRate2) {
+    const w = w0(freq, sampleRate2);
+    const cosW = Math.cos(w);
+    const sinW = Math.sin(w);
+    const a = Math.pow(10, gainDb / 40);
+    const alpha = sinW / 2 * Math.SQRT2;
+    const sq = 2 * Math.sqrt(a) * alpha;
+    const a0 = a + 1 + (a - 1) * cosW + sq;
+    c.b0 = a * (a + 1 - (a - 1) * cosW + sq) / a0;
+    c.b1 = 2 * a * (a - 1 - (a + 1) * cosW) / a0;
+    c.b2 = a * (a + 1 - (a - 1) * cosW - sq) / a0;
+    c.a1 = -2 * (a - 1 + (a + 1) * cosW) / a0;
+    c.a2 = (a + 1 + (a - 1) * cosW - sq) / a0;
+  }
+  function setHighShelf(c, freq, gainDb, sampleRate2) {
+    const w = w0(freq, sampleRate2);
+    const cosW = Math.cos(w);
+    const sinW = Math.sin(w);
+    const a = Math.pow(10, gainDb / 40);
+    const alpha = sinW / 2 * Math.SQRT2;
+    const sq = 2 * Math.sqrt(a) * alpha;
+    const a0 = a + 1 - (a - 1) * cosW + sq;
+    c.b0 = a * (a + 1 + (a - 1) * cosW + sq) / a0;
+    c.b1 = -2 * a * (a - 1 + (a + 1) * cosW) / a0;
+    c.b2 = a * (a + 1 + (a - 1) * cosW - sq) / a0;
+    c.a1 = 2 * (a - 1 - (a + 1) * cosW) / a0;
+    c.a2 = (a + 1 - (a - 1) * cosW - sq) / a0;
+  }
   function processBiquad(bq, channels, frameCount) {
     const { b0, b1, b2, a1, a2 } = bq.coeffs;
     for (let ch = 0; ch < channels.length; ch++) {
@@ -410,6 +451,96 @@
             values[d.id] = clamp(incoming, d.minValue, d.maxValue);
           }
         }
+      }
+    };
+  }
+
+  // src/effects/fxeq-core/modules/bandEq.ts
+  var BANDEQ_TYPE_ID = "bandEq";
+  var PARAM_DEFS = [
+    { id: "enabled", name: "Enabled", defaultValue: 0, minValue: 0, maxValue: 1, automatable: false },
+    { id: "lowFreq", name: "Low Freq", defaultValue: 120, minValue: 20, maxValue: 500, unit: "Hz", logScale: true, automatable: true },
+    { id: "lowGainDb", name: "Low Gain", defaultValue: 0, minValue: -24, maxValue: 24, unit: "dB", automatable: true },
+    { id: "peak1Freq", name: "Peak 1 Freq", defaultValue: 800, minValue: 200, maxValue: 5e3, unit: "Hz", logScale: true, automatable: true },
+    { id: "peak1GainDb", name: "Peak 1 Gain", defaultValue: 0, minValue: -24, maxValue: 24, unit: "dB", automatable: true },
+    { id: "peak1Q", name: "Peak 1 Q", defaultValue: 0.7, minValue: 0.1, maxValue: 10, automatable: true },
+    { id: "peak2Freq", name: "Peak 2 Freq", defaultValue: 3500, minValue: 1e3, maxValue: 18e3, unit: "Hz", logScale: true, automatable: true },
+    { id: "peak2GainDb", name: "Peak 2 Gain", defaultValue: 0, minValue: -24, maxValue: 24, unit: "dB", automatable: true },
+    { id: "peak2Q", name: "Peak 2 Q", defaultValue: 0.7, minValue: 0.1, maxValue: 10, automatable: true },
+    { id: "highFreq", name: "High Freq", defaultValue: 8e3, minValue: 2e3, maxValue: 2e4, unit: "Hz", logScale: true, automatable: true },
+    { id: "highGainDb", name: "High Gain", defaultValue: 0, minValue: -24, maxValue: 24, unit: "dB", automatable: true }
+  ];
+  var FILTERS_PER_CHANNEL = 4;
+  function createBandEqModule(params) {
+    const store = createParamStore(PARAM_DEFS, params);
+    let prepared = false;
+    let sampleRate2 = 44100;
+    let preparedMaxBlockSize = 1;
+    let filters = [];
+    let dirty = false;
+    function retune() {
+      setLowShelf(filters[0].coeffs, store.get("lowFreq"), store.get("lowGainDb"), sampleRate2);
+      setPeaking(
+        filters[1].coeffs,
+        store.get("peak1Freq"),
+        store.get("peak1Q"),
+        store.get("peak1GainDb"),
+        sampleRate2
+      );
+      setPeaking(
+        filters[2].coeffs,
+        store.get("peak2Freq"),
+        store.get("peak2Q"),
+        store.get("peak2GainDb"),
+        sampleRate2
+      );
+      setHighShelf(filters[3].coeffs, store.get("highFreq"), store.get("highGainDb"), sampleRate2);
+    }
+    return {
+      get typeId() {
+        return BANDEQ_TYPE_ID;
+      },
+      get parameterDefs() {
+        return PARAM_DEFS;
+      },
+      prepare(sr, channelCount, maxBlockSize) {
+        sampleRate2 = sr;
+        preparedMaxBlockSize = Math.max(1, maxBlockSize);
+        const cc = Math.max(1, channelCount);
+        filters = Array.from({ length: FILTERS_PER_CHANNEL }, () => createBiquad(cc));
+        dirty = true;
+        prepared = true;
+      },
+      process(channels, frameCount) {
+        if (!prepared) return;
+        assertAudioBlock(channels, frameCount, preparedMaxBlockSize, "band EQ", filters[0]?.z1.length ?? 0);
+        if (frameCount === 0) return;
+        if (store.get("enabled") < 0.5) return;
+        if (dirty) {
+          retune();
+          dirty = false;
+        }
+        for (const f of filters) processBiquad(f, channels, frameCount);
+      },
+      reset() {
+        for (const f of filters) resetBiquad(f);
+      },
+      getLatencySamples() {
+        return 0;
+      },
+      setParameter(id, value) {
+        store.set(id, value);
+        dirty = true;
+      },
+      getParameter(id) {
+        return store.get(id);
+      },
+      getParameters() {
+        return store.all();
+      },
+      loadParameters(p) {
+        store.load(p);
+        dirty = true;
       }
     };
   }
@@ -934,7 +1065,7 @@
 
   // src/effects/fxeq-core/modules/saturation.ts
   var SAT_TYPE_ID = "saturation";
-  var PARAM_DEFS = [
+  var PARAM_DEFS2 = [
     { id: "enabled", name: "Enabled", defaultValue: 0, minValue: 0, maxValue: 1, automatable: false },
     {
       id: "driveDb",
@@ -975,7 +1106,7 @@
     }
   ];
   function createSaturationModule(params) {
-    const store = createParamStore(PARAM_DEFS, params);
+    const store = createParamStore(PARAM_DEFS2, params);
     let prepared = false;
     let sampleRate2 = 44100;
     const tiltLowState = [];
@@ -992,7 +1123,7 @@
         return SAT_TYPE_ID;
       },
       get parameterDefs() {
-        return PARAM_DEFS;
+        return PARAM_DEFS2;
       },
       prepare(sr, cc, maxBs) {
         sampleRate2 = sr;
@@ -1080,7 +1211,7 @@
 
   // src/effects/fxeq-core/modules/dynamics.ts
   var DYNAMICS_TYPE_ID = "dynamics";
-  var PARAM_DEFS2 = [
+  var PARAM_DEFS3 = [
     { id: "enabled", name: "Enabled", defaultValue: 0, minValue: 0, maxValue: 1, automatable: false },
     { id: "type", name: "Type", defaultValue: 0, minValue: 0, maxValue: 2, automatable: false },
     {
@@ -1183,7 +1314,7 @@
     }
   ];
   function createDynamicsModule(params) {
-    const store = createParamStore(PARAM_DEFS2, params);
+    const store = createParamStore(PARAM_DEFS3, params);
     let prepared = false;
     let sampleRate2 = 44100;
     let preparedMaxBlockSize = 1;
@@ -1323,7 +1454,7 @@
         return DYNAMICS_TYPE_ID;
       },
       get parameterDefs() {
-        return PARAM_DEFS2;
+        return PARAM_DEFS3;
       },
       prepare(sr, channelCount, maxBlockSize) {
         sampleRate2 = sr;
@@ -1512,7 +1643,7 @@
 
   // src/effects/fxeq-core/modules/lofi.ts
   var LOFI_TYPE_ID = "lofi";
-  var PARAM_DEFS3 = [
+  var PARAM_DEFS4 = [
     { id: "enabled", name: "Enabled", defaultValue: 0, minValue: 0, maxValue: 1, automatable: false },
     { id: "mode", name: "Mode", defaultValue: 0, minValue: 0, maxValue: 3, automatable: false },
     {
@@ -1556,7 +1687,7 @@
   ];
   var WOW_DELAY_MS = 512 / 44100 * 1e3;
   function createLofiModule(params) {
-    const store = createParamStore(PARAM_DEFS3, params);
+    const store = createParamStore(PARAM_DEFS4, params);
     let prepared = false;
     let preparedMaxBlockSize = 1;
     let sampleRate2 = 44100;
@@ -1664,7 +1795,7 @@
         return LOFI_TYPE_ID;
       },
       get parameterDefs() {
-        return PARAM_DEFS3;
+        return PARAM_DEFS4;
       },
       prepare(sr, channelCount, maxBlockSize) {
         sampleRate2 = sr;
@@ -1765,25 +1896,47 @@
 
   // src/effects/fxeq-core/modules/modulation.ts
   var MOD_TYPE_ID = "modulation";
-  var PARAM_DEFS4 = [
+  var PARAM_DEFS5 = [
     { id: "enabled", name: "Enabled", defaultValue: 0, minValue: 0, maxValue: 1, automatable: false },
     { id: "type", name: "Type", defaultValue: 0, minValue: 0, maxValue: 3, automatable: false },
     { id: "rate", name: "Rate", defaultValue: 1, minValue: 0.05, maxValue: 20, unit: "Hz", logScale: true, automatable: true },
+    {
+      id: "syncMode",
+      name: "Tempo Sync",
+      defaultValue: 0,
+      minValue: 0,
+      maxValue: 8,
+      automatable: false
+    },
     { id: "depth", name: "Depth", defaultValue: 40, minValue: 0, maxValue: 100, unit: "%", automatable: true },
     { id: "feedback", name: "Feedback", defaultValue: 0.3, minValue: 0, maxValue: 0.9, unit: "%", automatable: true },
     { id: "mix", name: "Mix", defaultValue: 50, minValue: 0, maxValue: 100, unit: "%", automatable: true }
   ];
   var MOD_MAX_DELAY_MS = 40;
   var PHASER_STAGES = 6;
+  var SYNC_BEATS = [0, 4, 2, 1, 0.5, 0.25, 1 / 3, 0.75, 2 / 3];
   function createModulationModule(params) {
-    const store = createParamStore(PARAM_DEFS4, params);
+    const store = createParamStore(PARAM_DEFS5, params);
     let prepared = false;
     let sampleRate2 = 44100;
     let preparedMaxBlockSize = 1;
+    let bpm = 120;
     const delayBuf = [];
     const writeIdx = [];
     const flangerFb = [];
     const phaserFb = [];
+    function lfoRate() {
+      const sync = Math.round(store.get("syncMode"));
+      if (sync >= 1 && sync < SYNC_BEATS.length) {
+        return clamp(bpm / 60 / SYNC_BEATS[sync], 0.05, 20);
+      }
+      return store.get("rate");
+    }
+    function applyLfoRates() {
+      lfo.setRate(lfoRate());
+      lfo2.setRate(lfoRate() * 1.3);
+      lfo3.setRate(lfoRate() * 0.7);
+    }
     const lfo = createLfo(44100, 1, "sine", Math.PI / 2, 1);
     const lfo2 = createLfo(44100, 1.3, "triangle", Math.PI / 4, 1);
     const lfo3 = createLfo(44100, 0.7, "sine", Math.PI, 1);
@@ -1866,7 +2019,7 @@
         return MOD_TYPE_ID;
       },
       get parameterDefs() {
-        return PARAM_DEFS4;
+        return PARAM_DEFS5;
       },
       prepare(sr, channelCount, maxBlockSize) {
         sampleRate2 = sr;
@@ -1875,9 +2028,7 @@
         lfo.setSampleRate(sampleRate2);
         lfo2.setSampleRate(sampleRate2);
         lfo3.setSampleRate(sampleRate2);
-        lfo.setRate(store.get("rate"));
-        lfo2.setRate(store.get("rate") * 1.3);
-        lfo3.setRate(store.get("rate") * 0.7);
+        applyLfoRates();
         lfo.reset();
         lfo2.reset();
         lfo3.reset();
@@ -1961,11 +2112,14 @@
       },
       setParameter(id, value) {
         store.set(id, value);
-        if (prepared && id === "rate") {
-          lfo.setRate(store.get("rate"));
-          lfo2.setRate(store.get("rate") * 1.3);
-          lfo3.setRate(store.get("rate") * 0.7);
-        }
+        if (prepared && (id === "rate" || id === "syncMode")) applyLfoRates();
+      },
+      setTempo(nextBpm) {
+        if (typeof nextBpm !== "number" || !Number.isFinite(nextBpm)) return;
+        const clamped = clamp(nextBpm, 20, 999);
+        if (clamped === bpm) return;
+        bpm = clamped;
+        if (prepared && Math.round(store.get("syncMode")) >= 1) applyLfoRates();
       },
       getParameter(id) {
         return store.get(id);
@@ -1975,11 +2129,7 @@
       },
       loadParameters(p) {
         store.load(p);
-        if (prepared) {
-          lfo.setRate(store.get("rate"));
-          lfo2.setRate(store.get("rate") * 1.3);
-          lfo3.setRate(store.get("rate") * 0.7);
-        }
+        if (prepared) applyLfoRates();
       }
     };
   }
@@ -1987,7 +2137,8 @@
   // src/effects/fxeq-core/modules/delay.ts
   var DELAY_TYPE_ID = "delay";
   var MAX_DELAY_MS = 2e3;
-  var PARAM_DEFS5 = [
+  var SYNC_BEATS2 = [0, 4, 2, 1, 0.5, 0.25, 1 / 3, 0.75, 2 / 3];
+  var PARAM_DEFS6 = [
     { id: "enabled", name: "Enabled", defaultValue: 0, minValue: 0, maxValue: 1, automatable: false },
     { id: "type", name: "Type", defaultValue: 0, minValue: 0, maxValue: 3, automatable: false },
     {
@@ -1999,6 +2150,14 @@
       unit: "ms",
       logScale: true,
       automatable: true
+    },
+    {
+      id: "syncMode",
+      name: "Tempo Sync",
+      defaultValue: 0,
+      minValue: 0,
+      maxValue: 8,
+      automatable: false
     },
     {
       id: "feedback",
@@ -2030,10 +2189,11 @@
     }
   ];
   function createDelayModule(params) {
-    const store = createParamStore(PARAM_DEFS5, params);
+    const store = createParamStore(PARAM_DEFS6, params);
     let prepared = false;
     let sampleRate2 = 44100;
     let preparedMaxBlockSize = 1;
+    let bpm = 120;
     let delayBuf = [];
     let writeIdx = [];
     let delaySamples = 0;
@@ -2060,7 +2220,12 @@
       }
     }
     function recompute() {
-      delaySamples = Math.max(1, Math.round(store.get("timeMs") / 1e3 * sampleRate2));
+      let timeMs = store.get("timeMs");
+      const sync = Math.round(store.get("syncMode"));
+      if (sync >= 1 && sync < SYNC_BEATS2.length) {
+        timeMs = clamp(SYNC_BEATS2[sync] * 6e4 / bpm, 1, MAX_DELAY_MS);
+      }
+      delaySamples = Math.max(1, Math.round(timeMs / 1e3 * sampleRate2));
       dampAlpha = onePoleLpCoef(clamp(store.get("dampHz"), 200, 2e4), sampleRate2);
     }
     return {
@@ -2068,7 +2233,7 @@
         return DELAY_TYPE_ID;
       },
       get parameterDefs() {
-        return PARAM_DEFS5;
+        return PARAM_DEFS6;
       },
       prepare(sr, channelCount, maxBlockSize) {
         sampleRate2 = sr;
@@ -2126,9 +2291,13 @@
               rp = (rp % bufLen + bufLen) % bufLen;
               const oi = Math.floor(rp);
               const ofrac = rp - oi;
-              const o0 = delayBuf[other][oi];
-              const o1 = delayBuf[other][(oi + 1) % bufLen];
-              fbSource = o0 + (o1 - o0) * ofrac;
+              fbSource = hermiteInterp(
+                delayBuf[other][oi],
+                delayBuf[other][(oi + 1) % bufLen],
+                delayBuf[other][(oi + 2) % bufLen],
+                delayBuf[other][(oi + 3) % bufLen],
+                ofrac
+              );
             }
             const dark = type === 3 ? 0.5 : 1;
             dp += dampAlpha * dark * (fbSource - dp);
@@ -2154,7 +2323,14 @@
       },
       setParameter(id, value) {
         store.set(id, value);
-        if (prepared && (id === "timeMs" || id === "dampHz")) recompute();
+        if (prepared && (id === "timeMs" || id === "dampHz" || id === "syncMode")) recompute();
+      },
+      setTempo(nextBpm) {
+        if (typeof nextBpm !== "number" || !Number.isFinite(nextBpm)) return;
+        const clamped = clamp(nextBpm, 20, 999);
+        if (clamped === bpm) return;
+        bpm = clamped;
+        if (prepared && Math.round(store.get("syncMode")) >= 1) recompute();
       },
       getParameter(id) {
         return store.get(id);
@@ -2171,18 +2347,37 @@
 
   // src/effects/fxeq-core/modules/reverb.ts
   var REVERB_TYPE_ID = "reverb";
-  var FDN_LINES = 4;
-  var PARAM_DEFS6 = [
+  var FDN_LINES = 8;
+  var PARAM_DEFS7 = [
     { id: "enabled", name: "Enabled", defaultValue: 0, minValue: 0, maxValue: 1, automatable: false },
     { id: "type", name: "Type", defaultValue: 0, minValue: 0, maxValue: 2, automatable: false },
     { id: "decayMs", name: "Decay", defaultValue: 1500, minValue: 100, maxValue: 8e3, unit: "ms", logScale: true, automatable: true },
     { id: "predelayMs", name: "Pre-Delay", defaultValue: 20, minValue: 0, maxValue: 100, unit: "ms", automatable: true },
+    {
+      id: "modDepthPct",
+      name: "Tank Mod Depth",
+      defaultValue: 0,
+      minValue: 0,
+      maxValue: 100,
+      unit: "%",
+      automatable: true
+    },
+    {
+      id: "modRateHz",
+      name: "Tank Mod Rate",
+      defaultValue: 0.5,
+      minValue: 0.05,
+      maxValue: 5,
+      unit: "Hz",
+      logScale: true,
+      automatable: true
+    },
     { id: "mix", name: "Mix", defaultValue: 25, minValue: 0, maxValue: 100, unit: "%", automatable: true }
   ];
-  var BASE_LENGTHS_L = [1116, 1188, 1277, 1356];
-  var BASE_LENGTHS_R = [1422, 1491, 1557, 1617];
+  var BASE_LENGTHS_L = [1116, 1188, 1277, 1356, 1493, 1571, 1619, 1667];
+  var BASE_LENGTHS_R = [1422, 1491, 1557, 1617, 1721, 1787, 1861, 1951];
   function createReverbModule(params) {
-    const store = createParamStore(PARAM_DEFS6, params);
+    const store = createParamStore(PARAM_DEFS7, params);
     let prepared = false;
     let sampleRate2 = 44100;
     let preparedMaxBlockSize = 1;
@@ -2199,13 +2394,24 @@
     let srScale = 1;
     let fdnCapacity = 0;
     function requiredFdnCapacity() {
+      let longest = 0;
+      for (const v of BASE_LENGTHS_L) longest = Math.max(longest, v);
+      for (const v of BASE_LENGTHS_R) longest = Math.max(longest, v);
       const maxSrScale = sampleRate2 / 44100 * 1.4;
-      return Math.max(8, Math.round(BASE_LENGTHS_R[3] * maxSrScale)) + 1;
+      return Math.max(8, Math.round(longest * maxSrScale)) + 1;
     }
-    let fbSmL = [0, 0, 0, 0];
-    let fbSmR = [0, 0, 0, 0];
+    let fbSmL = [];
+    let fbSmR = [];
     let fbSmPrimed = false;
     let fbSmAlpha = 1;
+    const MOD_PHASE_STEP = Math.PI / 4;
+    const phases = new Float64Array(FDN_LINES);
+    let modBuf = new Float32Array(0);
+    let modRateInc = 0.5 / 44100;
+    function modDepthSamples() {
+      if (store.get("modDepthPct") <= 0) return 0;
+      return Math.round(clamp(store.get("modDepthPct"), 0, 100) / 100 * 6 * (sampleRate2 / 44100));
+    }
     let predelayLines = [];
     let predelayWriteIdx = [];
     let predelayLen = 0;
@@ -2296,20 +2502,27 @@
           writeIdx[c][l] %= lengths[l];
         }
       }
+      modRateInc = clamp(store.get("modRateHz"), 0.05, 5) / sampleRate2;
     }
-    function hadamard4(v) {
+    function hadamard8(v) {
+      const i = 1 / Math.sqrt(8);
       const a = v[0], b = v[1], c = v[2], d = v[3];
-      v[0] = (a + b + c + d) * 0.5;
-      v[1] = (a - b + c - d) * 0.5;
-      v[2] = (a + b - c - d) * 0.5;
-      v[3] = (a - b - c + d) * 0.5;
+      const e = v[4], f = v[5], g = v[6], h = v[7];
+      v[0] = (a + b + c + d + e + f + g + h) * i;
+      v[1] = (a - b + c - d + e - f + g - h) * i;
+      v[2] = (a + b - c - d + e + f - g - h) * i;
+      v[3] = (a - b - c + d + e - f - g + h) * i;
+      v[4] = (a + b + c + d - e - f - g - h) * i;
+      v[5] = (a - b + c - d - e + f - g + h) * i;
+      v[6] = (a + b - c - d - e - f + g + h) * i;
+      v[7] = (a - b - c + d - e + f + g - h) * i;
     }
     return {
       get typeId() {
         return REVERB_TYPE_ID;
       },
       get parameterDefs() {
-        return PARAM_DEFS6;
+        return PARAM_DEFS7;
       },
       prepare(sr, channelCount, maxBlockSize) {
         sampleRate2 = sr;
@@ -2327,6 +2540,8 @@
           crossFeedPrev.push(new Float32Array(preparedMaxBlockSize));
           crossFeedCur.push(new Float32Array(preparedMaxBlockSize));
         }
+        modBuf = new Float32Array(preparedMaxBlockSize * FDN_LINES);
+        phases.fill(0);
         prepared = true;
       },
       process(channels, frameCount) {
@@ -2346,6 +2561,17 @@
           for (let l = 0; l < FDN_LINES; l++) {
             fbSmL[l] += fbSmAlpha * (fbGainsL[l] - fbSmL[l]);
             fbSmR[l] += fbSmAlpha * (fbGainsR[l] - fbSmR[l]);
+          }
+        }
+        const maxModSamples = modDepthSamples();
+        const useMod = maxModSamples > 0;
+        if (useMod) {
+          for (let i = 0; i < frameCount; i++) {
+            for (let l = 0; l < FDN_LINES; l++) {
+              phases[l] += modRateInc;
+              if (phases[l] >= 1) phases[l] -= Math.floor(phases[l]);
+              modBuf[i * FDN_LINES + l] = 0.5 + 0.5 * Math.sin(2 * Math.PI * phases[l] + l * MOD_PHASE_STEP);
+            }
           }
         }
         for (let c = 0; c < numCh; c++) {
@@ -2370,9 +2596,21 @@
               pdw = (pdw + 1) % pdLen;
             }
             for (let l = 0; l < FDN_LINES; l++) {
-              tapsScratch[l] = ls[l][wis[l]];
+              if (useMod) {
+                const len = lengths[l];
+                let off = modBuf[i * FDN_LINES + l] * maxModSamples;
+                if (off > len - 2) off = len - 2;
+                let r = wis[l] - off;
+                r %= len;
+                if (r < 0) r += len;
+                const i0 = Math.floor(r);
+                const frac = r - i0;
+                tapsScratch[l] = ls[l][i0] * (1 - frac) + ls[l][(i0 + 1) % len] * frac;
+              } else {
+                tapsScratch[l] = ls[l][wis[l]];
+              }
             }
-            hadamard4(tapsScratch);
+            hadamard8(tapsScratch);
             let wet = 0;
             const crossIn = crossSrc ? crossSrc[i] * CROSS_COUPLING : 0;
             for (let l = 0; l < FDN_LINES; l++) {
@@ -2409,13 +2647,14 @@
         for (const cf of crossFeedPrev) cf.fill(0);
         for (const cf of crossFeedCur) cf.fill(0);
         fbSmPrimed = false;
+        phases.fill(0);
       },
       getLatencySamples() {
         return 0;
       },
       setParameter(id, value) {
         store.set(id, value);
-        if (prepared && (id === "type" || id === "decayMs")) recompute();
+        if (prepared && (id === "type" || id === "decayMs" || id === "modRateHz")) recompute();
         if (prepared && id === "predelayMs") {
           predelayLen = Math.round(clamp(value, 0, 100) / 1e3 * sampleRate2);
         }
@@ -2434,8 +2673,9 @@
   }
 
   // src/effects/fxeq-core/core/signalFlow.ts
-  var MODULE_KEYS = ["sat", "dyn", "lofi", "mod", "delay", "rev"];
+  var MODULE_KEYS = ["eq", "sat", "dyn", "lofi", "mod", "delay", "rev"];
   var MODULE_FACTORIES = {
+    eq: createBandEqModule,
     sat: createSaturationModule,
     dyn: createDynamicsModule,
     lofi: createLofiModule,
@@ -2458,7 +2698,8 @@
     { id: "limiterEnabled", name: "Limiter", defaultValue: 1, minValue: 0, maxValue: 1, automatable: false },
     { id: "limiterCeilDb", name: "Limiter Ceiling", defaultValue: -0.3, minValue: -6, maxValue: 0, unit: "dB", automatable: true },
     { id: "limiterTruePeak", name: "True Peak", defaultValue: 1, minValue: 0, maxValue: 1, automatable: false },
-    { id: "limiterLookaheadMs", name: "Lookahead", defaultValue: 2, minValue: 0, maxValue: 5, unit: "ms", automatable: false }
+    { id: "limiterLookaheadMs", name: "Lookahead", defaultValue: 2, minValue: 0, maxValue: 5, unit: "ms", automatable: false },
+    { id: "limiterPdr", name: "Limiter PDR", defaultValue: 0, minValue: 0, maxValue: 1, automatable: true }
   ];
   var BAND_SCALAR_DEFS = [
     { id: "gainDb", name: "Band Gain", defaultValue: 0, minValue: -48, maxValue: 12, unit: "dB", automatable: true },
@@ -2547,6 +2788,7 @@
   var BAND_PARAM_RANGES = new Map(BAND_SCALAR_DEFS.map((d) => [d.id, d]));
   function createBandEngine() {
     const modules = {
+      eq: MODULE_FACTORIES.eq(),
       sat: MODULE_FACTORIES.sat(),
       dyn: MODULE_FACTORIES.dyn(),
       lofi: MODULE_FACTORIES.lofi(),
@@ -2794,6 +3036,9 @@
       setModuleParam(moduleKey, paramId, value) {
         modules[moduleKey].setParameter(paramId, value);
       },
+      setTempo(bpm) {
+        for (const key of MODULE_KEYS) modules[key].setTempo?.(bpm);
+      },
       getBandParam(id) {
         if (id === "gainDb") return bandGainDb;
         if (id === "enabled") return bandEnabled;
@@ -2860,7 +3105,7 @@
   var LIMITER_TYPE_ID = "limiter";
   var OS = 4;
   var MAX_LA_MS = 5;
-  var PARAM_DEFS7 = [
+  var PARAM_DEFS8 = [
     {
       id: "enabled",
       name: "Enabled",
@@ -2885,6 +3130,14 @@
       minValue: 5,
       maxValue: 500,
       unit: "ms",
+      automatable: true
+    },
+    {
+      id: "pdr",
+      name: "Program Dep. Release",
+      defaultValue: 0,
+      minValue: 0,
+      maxValue: 1,
       automatable: true
     },
     {
@@ -2914,7 +3167,7 @@
     }
   ];
   function createLimiterModule(params) {
-    const store = createParamStore(PARAM_DEFS7, params);
+    const store = createParamStore(PARAM_DEFS8, params);
     let prepared = false;
     let sampleRate2 = 44100;
     let maxBs = 0;
@@ -2931,8 +3184,30 @@
           wp: 0,
           fill: 0,
           prev: 0,
-          fillPeak: 0
+          fillPeak: 0,
+          grSmooth: 0
         });
+      }
+    }
+    const PDR_SLOW_RATIO = 3.5;
+    const PDR_TRACK_SEC = 0.06;
+    let pdrActive = false;
+    let pdrAmount = 0;
+    let pdrRcFast = 1;
+    let pdrRcSlow = 1;
+    let pdrAlpha = 1;
+    function advanceEnv(s, rc, tgt) {
+      let rcEff = rc;
+      if (pdrActive) {
+        s.grSmooth = pdrAlpha * s.grSmooth + (1 - pdrAlpha) * (1 - s.env);
+        const depthNorm = Math.min(1, s.grSmooth * 2);
+        const rcPdr = pdrRcFast + (pdrRcSlow - pdrRcFast) * depthNorm;
+        rcEff = rc + (rcPdr - rc) * pdrAmount;
+      }
+      if (tgt < s.env) {
+        s.env = tgt;
+      } else {
+        s.env = s.env * rcEff + tgt * (1 - rcEff);
       }
     }
     function initTruePeakScratch() {
@@ -3024,6 +3299,11 @@
       const rc = Math.exp(-1 / (relMs / 1e3 * ovsRate));
       const upLen = n * OS;
       const linked = store.get("stereoLink") >= 0.5 && channels.length > 1;
+      pdrAmount = clamp(store.get("pdr"), 0, 1);
+      pdrActive = pdrAmount > 0;
+      pdrRcFast = rc;
+      pdrRcSlow = Math.exp(-1 / (relMs * PDR_SLOW_RATIO / 1e3 * ovsRate));
+      pdrAlpha = Math.exp(-1 / (PDR_TRACK_SEC * ovsRate));
       const effLA = Math.min(laOvs, ch.length > 0 ? ch[0].fill : 0);
       const totalEp = effLA + upLen;
       if (epScratch.length < totalEp) {
@@ -3090,11 +3370,7 @@
             const peak = dequeVal[dqHead];
             let tgt = 1;
             if (peak > ceil && peak > 1e-9) tgt = ceil / peak;
-            if (tgt < s.env) {
-              s.env = tgt;
-            } else {
-              s.env = s.env * rc + tgt * (1 - rc);
-            }
+            advanceEnv(s, rc, tgt);
             if (guard < s.env) s.env = guard;
             const op = ((s.wp - upLen + outIdx - effLA) % ringCap + ringCap) % ringCap;
             up[outIdx] = s.ring[op] * s.env;
@@ -3174,11 +3450,7 @@
             const peak = dequeVal[dqHead];
             let tgt = 1;
             if (peak > ceil && peak > 1e-9) tgt = ceil / peak;
-            if (tgt < s.env) {
-              s.env = tgt;
-            } else {
-              s.env = s.env * rc + tgt * (1 - rc);
-            }
+            advanceEnv(s, rc, tgt);
             if (guard < s.env) s.env = guard;
             linkedEnvScratch[c][outIdx] = s.env;
             outIdx++;
@@ -3212,7 +3484,7 @@
         return LIMITER_TYPE_ID;
       },
       get parameterDefs() {
-        return PARAM_DEFS7;
+        return PARAM_DEFS8;
       },
       prepare(sampleRate_, channelCount, maxBlockSize) {
         sampleRate2 = clamp(sampleRate_, 8e3, 192e3);
@@ -3250,6 +3522,7 @@
           s.wp = 0;
           s.fill = 0;
           s.fillPeak = 0;
+          s.grSmooth = 0;
           s.ring.fill(0);
           s.os.reset();
         }
@@ -3367,6 +3640,29 @@
     const xoverFreqTarget = [...DEFAULT_CROSSOVER_FREQS];
     const xoverFreqCurrent = [...DEFAULT_CROSSOVER_FREQS];
     let xoverSmoothCoef = 0;
+    const XOVER_MIN_GAP_HZ = 40;
+    function monotonicClampFreqs(freqs) {
+      let prev = 40;
+      for (let i = 0; i < freqs.length; i++) {
+        const clamped = Math.max(prev + XOVER_MIN_GAP_HZ, freqs[i]);
+        freqs[i] = clamped;
+        prev = clamped;
+      }
+    }
+    function clampXoverTarget(idx, value) {
+      let lo = 80;
+      for (let i = 0; i < idx; i++) {
+        const f = values[`crossoverFreq${i + 2}`];
+        if (typeof f === "number" && Number.isFinite(f)) lo = Math.max(lo, f + XOVER_MIN_GAP_HZ);
+      }
+      for (let i = idx + 1; i < bandCount - 1; i++) {
+        const f = values[`crossoverFreq${i + 2}`];
+        if (typeof f === "number" && Number.isFinite(f)) {
+          return Math.max(lo, Math.min(f - XOVER_MIN_GAP_HZ, value));
+        }
+      }
+      return Math.max(lo, value);
+    }
     const history = createCommandHistory();
     let morphEntries = null;
     let morphDuration = 0;
@@ -3428,8 +3724,10 @@
         values["crossoverFreq5"]
       ].filter((f) => f !== void 0);
       const resolvedFreqs = freqs.length ? freqs : [...DEFAULT_CROSSOVER_FREQS];
+      monotonicClampFreqs(resolvedFreqs);
       crossover.setCrossoverFreqs(resolvedFreqs);
       for (let i = 0; i < resolvedFreqs.length && i < xoverFreqTarget.length; i++) {
+        values[`crossoverFreq${i + 2}`] = resolvedFreqs[i];
         xoverFreqTarget[i] = resolvedFreqs[i];
         xoverFreqCurrent[i] = resolvedFreqs[i];
       }
@@ -3437,6 +3735,7 @@
       limiter.setParameter("ceilDb", values["limiterCeilDb"] ?? -0.3);
       limiter.setParameter("truePeak", values["limiterTruePeak"] ?? 1);
       limiter.setParameter("lookaheadMs", values["limiterLookaheadMs"] ?? 2);
+      limiter.setParameter("pdr", values["limiterPdr"] ?? 0);
       for (let b = 1; b <= bandCount; b++) {
         const eng = bands[b - 1];
         for (const def of BAND_SCALAR_DEFS) {
@@ -3672,6 +3971,11 @@
       setSidechain(channels) {
         sidechainChannels = channels;
       },
+      setTempo(nextBpm) {
+        if (typeof nextBpm !== "number" || !Number.isFinite(nextBpm)) return;
+        const bpm = Math.min(999, Math.max(20, nextBpm));
+        for (let b = 0; b < MAX_BANDS; b++) bands[b].setTempo(bpm);
+      },
       get canUndo() {
         return history.canUndo;
       },
@@ -3735,7 +4039,9 @@
           case "crossoverFreq4":
           case "crossoverFreq5": {
             const idx = Number(route.rawId.slice(-1)) - 2;
-            xoverFreqTarget[idx] = value;
+            const clamped = clampXoverTarget(idx, value);
+            values[route.rawId] = clamped;
+            xoverFreqTarget[idx] = clamped;
             break;
           }
           case "limiterEnabled":
@@ -3749,6 +4055,9 @@
             break;
           case "limiterLookaheadMs":
             limiter.setParameter("lookaheadMs", value);
+            break;
+          case "limiterPdr":
+            limiter.setParameter("pdr", value);
             break;
           // inputGainDb/outputGainDb/globalMix/fxOnly are read each block.
           default:
@@ -3808,6 +4117,8 @@
           this.postLatency();
         } else if (msg.type === "reset") {
           this.proc.reset();
+        } else if (msg.type === "bpm") {
+          this.proc.setTempo(msg.bpm);
         } else if (msg.type === "setMetersEnabled") {
           this.metersEnabled = !!msg.enabled;
         }

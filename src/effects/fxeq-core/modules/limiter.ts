@@ -92,6 +92,14 @@ const PARAM_DEFS: readonly FxEqParamDef[] = [
     automatable: true,
   },
   {
+    id: "pdr",
+    name: "Program Dep. Release",
+    defaultValue: 0,
+    minValue: 0,
+    maxValue: 1,
+    automatable: true,
+  },
+  {
     id: "truePeak",
     name: "True Peak",
     defaultValue: 1,
@@ -141,6 +149,12 @@ interface Chan {
    * land inside the unseen window.
    */
   fillPeak: number;
+  /**
+   * Smoothed gain-reduction depth for the program-dependent release (Q4).
+   * Only read when the pdr parameter is > 0; kept per channel so a
+   * channel-split transient does not inherit the other channel's history.
+   */
+  grSmooth: number;
 }
 
 // ── Factory ────────────────────────────────────────────────
@@ -171,7 +185,38 @@ export function createLimiterModule(params?: Record<string, number>): ModuleProc
         fill: 0,
         prev: 0,
         fillPeak: 0,
+        grSmooth: 0,
       });
+    }
+  }
+
+  // ── Program-dependent release (Q4) ────────────────────────
+  // Deep, sustained gain reduction recovers with a slower release;
+  // brief/shallow reduction keeps the base release. pdr = 0 short-circuits
+  // to the original single-coefficient behaviour (bit-exact).
+  const PDR_SLOW_RATIO = 3.5;
+  const PDR_TRACK_SEC = 0.06;
+  // Per-block PDR coefficients (set at the top of processTruePeak, read in
+  // the sample loops — single audio thread, no reentrancy).
+  let pdrActive = false;
+  let pdrAmount = 0;
+  let pdrRcFast = 1;
+  let pdrRcSlow = 1;
+  let pdrAlpha = 1;
+
+  /** Advance one channel's gain envelope (Q4 PDR-aware). */
+  function advanceEnv(s: Chan, rc: number, tgt: number): void {
+    let rcEff = rc;
+    if (pdrActive) {
+      s.grSmooth = pdrAlpha * s.grSmooth + (1 - pdrAlpha) * (1 - s.env);
+      const depthNorm = Math.min(1, s.grSmooth * 2); // 0.5 GR → fully slow
+      const rcPdr = pdrRcFast + (pdrRcSlow - pdrRcFast) * depthNorm;
+      rcEff = rc + (rcPdr - rc) * pdrAmount;
+    }
+    if (tgt < s.env) {
+      s.env = tgt;
+    } else {
+      s.env = s.env * rcEff + tgt * (1 - rcEff);
     }
   }
 
@@ -303,6 +348,13 @@ export function createLimiterModule(params?: Record<string, number>): ModuleProc
     const upLen = n * OS;
     const linked = store.get("stereoLink") >= 0.5 && channels.length > 1;
 
+    // Q4: program-dependent release coefficients — shared by both TP paths.
+    pdrAmount = clamp(store.get("pdr"), 0, 1);
+    pdrActive = pdrAmount > 0;
+    pdrRcFast = rc;
+    pdrRcSlow = Math.exp(-1 / (((relMs * PDR_SLOW_RATIO) / 1000) * ovsRate));
+    pdrAlpha = Math.exp(-1 / (PDR_TRACK_SEC * ovsRate));
+
     // Effective lookahead: ramp up as the ring buffer fills.
     const effLA = Math.min(laOvs, ch.length > 0 ? ch[0].fill : 0);
 
@@ -397,11 +449,7 @@ export function createLimiterModule(params?: Record<string, number>): ModuleProc
           let tgt = 1;
           if (peak > ceil && peak > 1e-9) tgt = ceil / peak;
 
-          if (tgt < s.env) {
-            s.env = tgt;
-          } else {
-            s.env = s.env * rc + tgt * (1 - rc);
-          }
+          advanceEnv(s, rc, tgt);
           if (guard < s.env) s.env = guard;
 
           const op = (((s.wp - upLen + outIdx - effLA) % ringCap) + ringCap) % ringCap;
@@ -510,11 +558,7 @@ export function createLimiterModule(params?: Record<string, number>): ModuleProc
           let tgt = 1;
           if (peak > ceil && peak > 1e-9) tgt = ceil / peak;
 
-          if (tgt < s.env) {
-            s.env = tgt;
-          } else {
-            s.env = s.env * rc + tgt * (1 - rc);
-          }
+          advanceEnv(s, rc, tgt);
           if (guard < s.env) s.env = guard;
 
           linkedEnvScratch[c][outIdx] = s.env;
@@ -610,6 +654,7 @@ export function createLimiterModule(params?: Record<string, number>): ModuleProc
         s.wp = 0;
         s.fill = 0;
         s.fillPeak = 0;
+        s.grSmooth = 0;
         s.ring.fill(0);
         s.os.reset();
       }

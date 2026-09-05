@@ -33,7 +33,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import type { ReflectionsEngineState } from "../v2/types.js";
-import { clamp, flushDenormal, sanitize, nextPow2 } from "../dsp/math.js";
+import { clamp, flushDenormal, sanitize } from "../dsp/math.js";
 import {
   createBiquad,
   setLowPass,
@@ -81,6 +81,7 @@ interface TapLayout {
 export function createReflectionsEngine(): ReflectionsEngine {
   let sampleRate = 44100;
   let channelCount = 2;
+  let prepared = false;
   let params: ReflectionsParams = {
     enabled: true,
     space: 0.5,
@@ -94,17 +95,27 @@ export function createReflectionsEngine(): ReflectionsEngine {
 
   // Per-channel delay line ring buffers (one per channel), sized to the
   // longest tap. A single persistent write cursor per channel makes the
-  // engine block-size independent. Power-of-two capacity + wrap mask keep
-  // the per-sample ring arithmetic branch-free.
+  // engine block-size independent.
   let bufferL: Float32Array = new Float32Array(1);
   let bufferR: Float32Array = new Float32Array(1);
   let writePosL = 0;
   let writePosR = 0;
-  let ringMask = 0;
   let maxLen = 1;
   // Per-channel per-tap one-pole LPF state.
   let lpfL: Float32Array = new Float32Array(MAX_TAPS);
   let lpfR: Float32Array = new Float32Array(MAX_TAPS);
+  // Tap-length crossfade (mirrors the FDN engines): time/size automation
+  // moves the tap distances; blending the previous tap set out over ~20 ms
+  // turns the jump into an inaudible morph.
+  const oldTapsL = new Float64Array(MAX_TAPS);
+  const oldTapsR = new Float64Array(MAX_TAPS);
+  let tapFadeRemaining = 0;
+  let tapFadeLen = 1;
+  let oldActiveCount = 0;
+  let hasRendered = false;
+  // Number of tap slots valid in oldTapsL/oldTapsR during a fade
+  // (the shared count of the previous and current layouts).
+  let tapBlendCount = 0;
 
   let layout: TapLayout = {
     tapsL: new Float32Array(MAX_TAPS),
@@ -162,6 +173,16 @@ export function createReflectionsEngine(): ReflectionsEngine {
     const scaleL = (timeMs / lastBaseL) * msToSamples;
     const scaleR = (timeMs / lastBaseR) * msToSamples;
 
+    // Preserve the previous tap layout for the crossfade BEFORE refilling
+    // (only shared tap slots blend; extra/removed taps appear or vanish
+    // smoothly because the per-tap gains carry 1/sqrt(n) normalization).
+    const sharedCount = Math.min(activeCount, oldActiveCount);
+    for (let i = 0; i < sharedCount; i++) {
+      oldTapsL[i] = tapsL[i];
+      oldTapsR[i] = tapsR[i];
+    }
+    tapBlendCount = sharedCount;
+
     for (let i = 0; i < activeCount; i++) {
       // Scale base tap by (timeMs / last-base-tap) so the LAST active
       // tap reaches the desired time. Earlier taps are scaled linearly.
@@ -180,6 +201,20 @@ export function createReflectionsEngine(): ReflectionsEngine {
     }
     layout.activeCount = activeCount;
 
+    // Arm the tap crossfade when a shared tap distance actually moved.
+    // prepare() clears the fade after its initial recompute.
+    if (prepared && hasRendered && oldActiveCount > 0) {
+      let changed = false;
+      for (let i = 0; i < sharedCount; i++) {
+        if (tapsL[i] !== oldTapsL[i] || tapsR[i] !== oldTapsR[i]) { changed = true; break; }
+      }
+      if (changed) {
+        tapFadeLen = Math.max(1, Math.round(0.02 * sampleRate));
+        tapFadeRemaining = tapFadeLen;
+      }
+    }
+    oldActiveCount = activeCount;
+
     // The maximum tap length determines the ring wrap length. The backing
     // buffers are sized for the full parameter range in prepare(); a grow
     // here is a contract-violation fallback, not a steady-state path.
@@ -188,10 +223,8 @@ export function createReflectionsEngine(): ReflectionsEngine {
       maxLen = Math.max(maxLen, tapsL[i], tapsR[i]);
     }
     if (bufferL.length < maxLen) {
-      const cap = nextPow2(maxLen);
-      bufferL = new Float32Array(cap);
-      bufferR = new Float32Array(cap);
-      ringMask = cap - 1;
+      bufferL = new Float32Array(maxLen);
+      bufferR = new Float32Array(maxLen);
     }
   }
 
@@ -200,21 +233,23 @@ export function createReflectionsEngine(): ReflectionsEngine {
       sampleRate = clamp(sr, 8000, 192000);
       channelCount = Math.max(1, cc);
       recomputeLayout();
+      tapFadeRemaining = 0;
+      hasRendered = false;
       sideBiquad = createBiquad(channelCount);
       // The lowpass here is in series with the tap LPF, so a sharper cutoff
       // than the per-tap value is reasonable.
       setLowPass(sideBiquad.coeffs, clamp(params.lowpassHz, 30, 20000), 0.7071, sampleRate);
-      // Size the ring for the FULL parameter range (250 ms worst case) so
+
+      prepared = true;      // Size the ring for the FULL parameter range (250 ms worst case) so
       // setParams() never reallocates it — mirrors the native engine.
       const maxScaleL = (250 / BASE_TAPS_MS_L[MAX_TAPS - 1]) * sampleRate / 1000;
       const maxScaleR = (250 / BASE_TAPS_MS_R[MAX_TAPS - 1]) * sampleRate / 1000;
-      const capacity = nextPow2(Math.max(1, Math.ceil(Math.max(
+      const capacity = Math.max(1, Math.ceil(Math.max(
         BASE_TAPS_MS_L[MAX_TAPS - 1] * maxScaleL,
         BASE_TAPS_MS_R[MAX_TAPS - 1] * maxScaleR,
-      ))));
+      )));
       bufferL = new Float32Array(capacity);
       bufferR = new Float32Array(capacity);
-      ringMask = capacity - 1;
       writePosL = 0;
       writePosR = 0;
       lpfL = new Float32Array(MAX_TAPS);
@@ -251,14 +286,27 @@ export function createReflectionsEngine(): ReflectionsEngine {
 
         if (hasL) bufferL[wl] = inL;
         if (hasR) bufferR[wr] = inR;
-        wl = (wl + 1) & ringMask;
-        wr = (wr + 1) & ringMask;
+        wl++;
+        if (wl >= maxLen) wl = 0;
+        wr++;
+        if (wr >= maxLen) wr = 0;
 
         let sumL = 0;
         let sumR = 0;
         if (hasL) {
           for (let t = 0; t < activeCount; t++) {
-            const s = bufferL[(wl - tapsL[t]) & ringMask];
+            const d = tapsL[t];
+            const idx = wl - d;
+            const ri = idx < 0 ? idx + maxLen : idx;
+            let s = bufferL[ri];
+            if (tapFadeRemaining > 0 && t < tapBlendCount) {
+              // Tap crossfade: blend the previous tap distance out.
+              const tFade = tapFadeRemaining / tapFadeLen;
+              const oldD = oldTapsL[t];
+              const oldRi = wl - oldD < 0 ? wl - oldD + maxLen : wl - oldD;
+              const sOld = bufferL[oldRi];
+              s = s * (1 - tFade) + sOld * tFade;
+            }
             lpfL[t] += lpAlphaL[t] * (s - lpfL[t]);
             lpfL[t] = flushDenormal(lpfL[t]);
             sumL += sanitize(lpfL[t]) * gainsL[t];
@@ -266,7 +314,18 @@ export function createReflectionsEngine(): ReflectionsEngine {
         }
         if (hasR) {
           for (let t = 0; t < activeCount; t++) {
-            const s = bufferR[(wr - tapsR[t]) & ringMask];
+            const d = tapsR[t];
+            const idx = wr - d;
+            const ri = idx < 0 ? idx + maxLen : idx;
+            let s = bufferR[ri];
+            if (tapFadeRemaining > 0 && t < tapBlendCount) {
+              // Tap crossfade: blend the previous tap distance out.
+              const tFade = tapFadeRemaining / tapFadeLen;
+              const oldD = oldTapsR[t];
+              const oldRi = wr - oldD < 0 ? wr - oldD + maxLen : wr - oldD;
+              const sOld = bufferR[oldRi];
+              s = s * (1 - tFade) + sOld * tFade;
+            }
             lpfR[t] += lpAlphaR[t] * (s - lpfR[t]);
             lpfR[t] = flushDenormal(lpfR[t]);
             sumR += sanitize(lpfR[t]) * gainsR[t];
@@ -277,8 +336,10 @@ export function createReflectionsEngine(): ReflectionsEngine {
         if (wetL) wetL[i] = sumL;
         if (wetR) wetR[i] = sumR;
       }
+      if (tapFadeRemaining > 0) tapFadeRemaining--;
       writePosL = wl;
       writePosR = wr;
+      hasRendered = true;
 
       // Apply side-chain low-pass to wet.
       if (wetL && wetR) processBiquad(sideBiquad, [wetL, wetR], frameCount);
@@ -308,6 +369,7 @@ export function createReflectionsEngine(): ReflectionsEngine {
     },
 
     reset() {
+      tapFadeRemaining = 0;
       bufferL.fill(0);
       bufferR.fill(0);
       writePosL = 0;

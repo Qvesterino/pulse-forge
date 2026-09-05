@@ -15,6 +15,8 @@ import {
   applyUltinaPreset,
   applyUltinaProposal,
   applyOzvenaStatePatch,
+  setDeviceState,
+  loadUltinaAbSlot,
   toggleEffectBypass,
 } from "../commands/commands";
 import { CORE_EFFECT_ORDER, EFFECT_DEFS, FLAGSHIP_EFFECT_ORDER } from "../effects/registry";
@@ -29,7 +31,6 @@ import { registerRaf, unregisterRaf } from "../services/rafLoop";
 import { Slider } from "./controls";
 import { StepGridEditor } from "./StepGridEditor";
 import type { UltinaAbState } from "./UltinaPanel";
-
 export function EffectRack({ track }: { track: Track }) {
   const services = useServices();
   const doc = useDoc();
@@ -147,7 +148,9 @@ function Device({
   const doc = useDoc();
   const def = EFFECT_DEFS[fx.type];
   const [collapsed, setCollapsed] = useState(false);
-  const [ultinaAbState, setUltinaAbState] = useState<UltinaAbState>({ slots: {}, active: "A" });
+  // A/B state lives in the DOCUMENT (fx.deviceState) — collapse, unmount,
+  // track switches, reloads and collab sync all preserve it. React state is
+  // only the transient draft inside the panel between pointer and command.
   const contentId = `fx-device-content-${fx.id}`;
 
   return (
@@ -333,8 +336,17 @@ function Device({
                 onApplyProposal={(label, toggles, changes) =>
                   services.store.execute(applyUltinaProposal(doc, track.id, fx.id, label, toggles, changes))
                 }
-                abState={ultinaAbState}
-                onAbStateChange={setUltinaAbState}
+                abState={
+                  fx.deviceState?.kind === "ultina-ab-v1"
+                    ? (fx.deviceState.data as unknown as UltinaAbState)
+                    : undefined
+                }
+                onAbStateChange={(next) =>
+                  services.store.execute(
+                    setDeviceState(doc, track.id, fx.id, { kind: "ultina-ab-v1", data: { ...next } }),
+                  )
+                }
+                onAbLoad={(slot) => services.store.execute(loadUltinaAbSlot(doc, track.id, fx.id, slot))}
               />
             )}
             {fx.type === "ozvena" && (

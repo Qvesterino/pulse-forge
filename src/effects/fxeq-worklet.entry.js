@@ -42,6 +42,9 @@ class FxEqWorkletProcessor extends AudioWorkletProcessor {
         this.postLatency();
       } else if (msg.type === "reset") {
         this.proc.reset();
+      } else if (msg.type === "bpm") {
+        // Q2 tempo sync — latency is unaffected, no re-report needed.
+        this.proc.setTempo(msg.bpm);
       } else if (msg.type === "setMetersEnabled") {
         this.metersEnabled = !!msg.enabled;
       }

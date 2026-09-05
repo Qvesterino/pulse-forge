@@ -15,6 +15,25 @@ const server = await createServer({
 });
 await server.listen();
 
+/**
+ * Click a topbar panel action whether it is direct or collapsed into the
+ * "⋯" overflow menu (the topbar spends its width budget by priority, so on
+ * narrower viewports lower-priority panels live behind the overflow trigger).
+ */
+async function clickPanelAction(page, label) {
+  const direct = page.locator(`.topbar button:has-text("${label}")`).first();
+  if (await direct.isVisible().catch(() => false)) {
+    await direct.click();
+    return;
+  }
+  const trigger = page.locator('button[aria-label^="More topbar controls"]').first();
+  await trigger.click();
+  await page.locator('#topbar-overflow-menu button:has-text("' + label + '")').first().click();
+  // Close the menu so the next action starts from a clean state.
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(80);
+}
+
 let exitCode = 0;
 let browser;
 try {
@@ -141,10 +160,9 @@ try {
     }
     const panels = ["MIX", "FX", "ARR", "MOD", "EXPORT"];
     for (const label of panels) {
-      const btn = appPage.locator(`.topbar button:has-text("${label}")`).first();
-      await btn.click();
+      await clickPanelAction(appPage, label);
       await appPage.waitForTimeout(150);
-      await btn.click();
+      await clickPanelAction(appPage, label);
       await appPage.waitForTimeout(100);
     }
     // Offline generation workflow: preview the local plan, accept it, undo,
@@ -453,7 +471,7 @@ try {
     await plugPage.locator('.pb-template:has-text("HOUSE")').first().click();
     await plugPage.waitForSelector(".sequencer", { timeout: 15_000 });
     // Open the FX rack dock panel and add the flagship FXEQ to the selected track.
-    await plugPage.locator('button[aria-label="Toggle effect rack"]').first().click();
+    await clickPanelAction(plugPage, "FX");
     await plugPage.waitForSelector(".fx-rack", { timeout: 5000 });
     await plugPage.locator("select.fx-add-select").first().selectOption("fxeq");
     await plugPage.waitForSelector(".fx-device", { timeout: 5000 });
@@ -471,7 +489,7 @@ try {
     await plugPage.keyboard.press("Control+z");
     await plugPage.waitForSelector(".fx-device:not(.bypassed)", { timeout: 5000 });
     // Macro: focus the first macro slider in the MOD panel and nudge it.
-    await plugPage.locator('button[aria-label="Toggle modulation panel"]').first().click();
+    await clickPanelAction(plugPage, "MOD");
     await plugPage.waitForSelector(".macro-card", { timeout: 5000 });
     const macroSliderBox = plugPage.locator(".macro-card .slider").first();
     const macroKnob = macroSliderBox.locator('[role="slider"]');

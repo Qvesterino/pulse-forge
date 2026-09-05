@@ -104,6 +104,12 @@ export function createFxEqNode(
         value: id === "bandCount" ? Math.round(value) : value,
       });
     },
+    syncBpm(bpm: number) {
+      // Q2 tempo sync: forwarded to the worklet, which notifies the
+      // tempo-aware modules (delay/modulation). Latency is unaffected.
+      if (disposed || !Number.isFinite(bpm)) return;
+      node.port.postMessage({ type: "bpm", bpm });
+    },
     dispose() {
       disposed = true;
       latencyListeners.clear();

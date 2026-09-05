@@ -10,13 +10,6 @@
  * Applied transforms (mechanical, semantics-preserving):
  *  - type-only specifiers marked with "type" for verbatimModuleSyntax
  *    (Pulse Forge tsconfig is stricter than upstream).
-
- * LOCAL HARDENING (2026-09, Pulse Forge audit): this copy carries fixes NOT
- * yet present in the last vendored upstream snapshot — global gain clamps
- * (ozvenaProcessor) and the shimmer feedback stability guard (both
- * engines). Re-vendoring from a stale upstream will revert them; sync the
- * fixes upstream FIRST. Regression coverage: tests/ozvena-hardening.test.ts.
-
  */
 // ═══════════════════════════════════════════════════════════
 // Ozvena — Hall / Large Chamber Engine (E3)
@@ -38,7 +31,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import type { HallEngineState, Engine3Algo } from "../v2/types.js";
-import { clamp, flushDenormal, sanitize, TAU, hermiteInterp, nextPow2 } from "../dsp/math.js";
+import { clamp, flushDenormal, sanitize, TAU, hermiteInterp } from "../dsp/math.js";
 // Quantize libm-derived coefficients to float32: V8 and MSVC exp/pow/sin
 // differ by ULPs, and inside a feedback loop a 1-ULP coefficient difference
 // amplifies into full tail decorrelation. fround makes both ports identical.
@@ -53,12 +46,16 @@ import {
 
 export interface HallParams extends HallEngineState {}
 
-const FDN_LINES = 8;
+const FDN_LINES = 16;
+// Broadband level compensation for the O2 density upgrade: with N
+// decorrelated lines the averaged output amplitude scales ~1/√N vs the
+// historical 8-line reference, so gain back √(N/8).
+const DENSITY_GAIN = Math.sqrt(FDN_LINES / 8);
 
-const BASE_LENGTHS_L = [2243, 2371, 2503, 2663, 2819, 2971, 3137, 3307];
-const BASE_LENGTHS_R = [2053, 2179, 2311, 2459, 2617, 2789, 2969, 3163];
+const BASE_LENGTHS_L = [2243, 2371, 2503, 2663, 2819, 2971, 3137, 3307, 3449, 3607, 3767, 3947, 4127, 4283, 4451, 4639];
+const BASE_LENGTHS_R = [2053, 2179, 2311, 2459, 2617, 2789, 2969, 3163, 3319, 3467, 3613, 3779, 3917, 4057, 4201, 4363];
 
-const LINE_PREDELAY_OFFSETS = [0, 5, 11, 18, 26, 35, 45, 56];
+const LINE_PREDELAY_OFFSETS = [0, 5, 11, 18, 26, 35, 45, 56, 68, 81, 95, 110, 126, 143, 161, 180];
 
 export interface HallEngine {
   prepare(sampleRate: number, channelCount: number): void;
@@ -78,12 +75,14 @@ export interface HallEngine {
   reset(): void;
 }
 
-function householder8(v: Float64Array): void {
+// Householder reflection about the all-ones axis — norm-preserving for
+// ANY line count (roadmap O2: 12/16 lines for density without level loss).
+function householderN(v: Float64Array): void {
   let sum = 0;
-  for (let i = 0; i < 8; i++) sum += v[i];
-  const mean = sum / 8;
+  for (let i = 0; i < FDN_LINES; i++) sum += v[i];
+  const mean = sum / FDN_LINES;
   const offset = 2 * mean;
-  for (let i = 0; i < 8; i++) v[i] = offset - v[i];
+  for (let i = 0; i < FDN_LINES; i++) v[i] = offset - v[i];
 }
 
 export function createHallEngine(): HallEngine {
@@ -105,20 +104,23 @@ export function createHallEngine(): HallEngine {
     bassDecay: 1.0,
     stereoWidth: 1.0,
     shimmer: 0,
+    drive: 0,
   };
 
   let lines: Float32Array[][] = [];
   let writeIdx: number[][] = [];
-  // Per-line `& mask` wrap constants (capacity is power of two) and the
-  // per-line predelay offsets, hoisted out of the sample loop.
-  const lineMaskC: Int32Array[] = [new Int32Array(FDN_LINES), new Int32Array(FDN_LINES)];
-  const pdMaskC: Int32Array[] = [new Int32Array(FDN_LINES), new Int32Array(FDN_LINES)];
-  const pdOffC: Int32Array[] = [new Int32Array(FDN_LINES), new Int32Array(FDN_LINES)];
   let lpState: number[][] = [];
   let hpState: number[][] = [];
   let hpPrev: number[][] = [];
   // Per-channel line lengths (read distances) — mirrors plate.
   const lengthsC: Float64Array[] = [new Float64Array(FDN_LINES), new Float64Array(FDN_LINES)];
+  // Length-change crossfade (same mechanism as preDelay's 20 ms crossfade):
+  // time/size/algo automation changes the FDN read distances; blending the
+  // old and new taps over ~20 ms turns the jump into an inaudible morph.
+  const oldLengthsC: Float64Array[] = [new Float64Array(FDN_LINES), new Float64Array(FDN_LINES)];
+  let lensFadeRemaining = 0;
+  let lensFadeLen = 1;
+  let hasRendered = false;
   let feedbackGain = 0.5;
   let dampAlpha = 0.5;
   let attackAlpha = 1;
@@ -161,6 +163,7 @@ export function createHallEngine(): HallEngine {
   // Shimmer loop-stability guard scalars (see recompute): injection gain
   // and the direct-feedback weight that keeps the per-pass loop gain < 1.
   // At shAmt === 0 both are exact no-ops (dirW 1, injection 0).
+  // (Reconciled from Pulse Forge hardening audit, 2026-09-05.)
   let shInj = 0;
   let shDirW = 1;
   let shDirWFreeze = 1;
@@ -171,29 +174,22 @@ export function createHallEngine(): HallEngine {
   let modRateHz = 0;
   let modDepthSamples = 0;
   let lfoPhase = 0;
-  let lfoInc = 0;
-  // Incremental phasor for the per-line modulation read: one complex
-  // rotation per sample replaces 8×2 Math.sin calls (one per line per
-  // channel). Re-seeded from the master `lfoPhase` every 64 samples so
-  // drift stays bounded at ~1e-14 — far below the float32 output grid.
-  const lineSin = new Float64Array(FDN_LINES);
-  const lineCos = new Float64Array(FDN_LINES);
-  for (let l = 0; l < FDN_LINES; l++) {
-    const phi = (l / FDN_LINES) * Math.PI * 2;
-    lineSin[l] = Math.sin(phi);
-    lineCos[l] = Math.cos(phi);
-  }
-  let phC = 1; // cos(lfoPhase)
-  let phS = 0; // sin(lfoPhase)
-  let phCosInc = 1;
-  let phSinInc = 0;
-  let phAge = 0;
 
-  function syncPhasorStep(): void {
-    phCosInc = Math.cos(lfoInc);
-    phSinInc = Math.sin(lfoInc);
-  }
-  syncPhasorStep();
+  // ── Always-on air modulation (mirrors plateChamberEngine.ts; the
+  // longer hall tails get a touch more smear) ──
+  const AIR_DEPTH_A = 0.26;
+  const AIR_DEPTH_B = 0.17;
+  const AIR_RATE_A = 0.73;   // Hz
+  const AIR_RATE_B = 1.13;   // Hz
+  let airPhaseA = 0;
+  let airPhaseB = 0;
+  let airIncA = 0;
+  let airIncB = 0;
+
+  // ── Drive (in-loop saturation) — see plateChamberEngine.ts ──
+  let driveGain = 1;
+  let driveComp = 1;
+  let lfoInc = 0;
 
   let predelayBufs: Float32Array[][] = [];
   let predelayIdx: number[][] = [];
@@ -220,15 +216,27 @@ export function createHallEngine(): HallEngine {
     const decaySec = clamp(params.time, 4170, 24000) / 1000;
 
     let avgLen = 0;
+    let lensChanged = false;
     for (let c = 0; c < 2; c++) {
       const base = (c & 1) ? BASE_LENGTHS_R : BASE_LENGTHS_L;
       for (let l = 0; l < FDN_LINES; l++) {
         const densityScale = 1 - l * 0.03;
-        lengthsC[c][l] = Math.max(8, Math.round(base[l] * srScale * densityScale));
+        oldLengthsC[c][l] = lengthsC[c][l];
+        const nl = Math.max(8, Math.round(base[l] * srScale * densityScale));
+        if (nl !== lengthsC[c][l]) lensChanged = true;
+        lengthsC[c][l] = nl;
         avgLen += lengthsC[c][l];
       }
     }
     avgLen /= FDN_LINES * 2;
+
+    // Arm the length crossfade only when a length actually moved (a pure
+    // damping/shimmer change must not re-blend taps). prepare() clears the
+    // fade after its initial recompute.
+    if (lensChanged && hasRendered) {
+      lensFadeLen = Math.max(1, Math.round(0.02 * sampleRate));
+      lensFadeRemaining = lensFadeLen;
+    }
 
     const damp = (clamp(params.dampingAmount, 1, 11) - 1) / 10;
     const cutoffHz = clamp(params.dampingFreqHz, 30, 20000);
@@ -246,16 +254,26 @@ export function createHallEngine(): HallEngine {
 
     diffG = 0.3 + 0.45 * (clamp(params.diffusion, 0, 100) / 100);
     shAmt = clamp(params.shimmer, 0, 1);
-    if (shAmt > 0) ensureShimmerTable();
 
     const bassMult = clamp(params.bassDecay, 0.25, 4);
     const fbBass = Math.pow(0.001, (avgLen / (decaySec * bassMult)) / sampleRate);
     bassGain = q32(clamp(fbBass / feedbackGain, 0.25, 2.5));
     bassAlpha = q32(1 - Math.exp((-TAU * BASS_SHELF_HZ) / sampleRate));
 
-    // SHIMMER STABILITY GUARD — mirrors plateChamberEngine.ts exactly
-    // (common-mode Householder gain 1 + coherent dual-tap grain sum ≤ √2;
-    // see the full derivation there).
+    // SHIMMER STABILITY GUARD. The octave-up grain is injected INSIDE the
+    // feedback loop (eff = direct + inj·shifted, then ×fb), and the
+    // Householder matrix passes the all-lines-equal (common-mode)
+    // component — exactly what the injection creates — with unity gain,
+    // so the worst-case per-pass loop gain is fb·(dirW + √2·inj): the
+    // dual grain taps read the SAME buffer W/2 apart, and octave-up
+    // feedback correlates them, giving a coherent amplitude sum g0+g1 ≤
+    // √2 (not the decorrelated √(g0²+g1²) = 1). Measured: unguarded,
+    // shimmer ≥ ~0.35 at most decay times runs away and overflows the
+    // float32 delay lines to Inf/NaN within seconds (the output limiter
+    // cannot see the internal loop). dirW attenuates the direct feedback
+    // just enough to keep the loop decaying (bass shelf included via
+    // fbMax; freeze runs at unity). Below the stability boundary
+    // dirW === 1 and the audio is bit-identical to the unguarded engine.
     shInj = 0.5 * shAmt;
     const fbMax = Math.max(feedbackGain, feedbackGain * bassGain);
     shDirW =
@@ -264,13 +282,22 @@ export function createHallEngine(): HallEngine {
 
     attackAlpha = q32(1 - Math.exp(-1 / Math.max(0.001, (params.attack / 1000) * sampleRate)));
 
+    airIncA = q32((TAU * AIR_RATE_A) / sampleRate);
+    airIncB = q32((TAU * AIR_RATE_B) / sampleRate);
+
+    const driveT = clamp(params.drive, 0, 1);
+    // Tail levels live at −30..−60 dBFS: the pre-gain must be large
+    // enough to push them into the tanh knee (unity small-signal gain
+    // via driveComp keeps the calibrated decay intact).
+    driveGain = 1 + driveT * 63;
+    driveComp = 1 / driveGain;
+
     setLowPass(lowSplitL.coeffs, clamp(params.crossoverHz, 20, 4000), 0.7071, sampleRate);
     setHighPass(highSplitL.coeffs, clamp(params.crossoverHz, 20, 4000), 0.7071, sampleRate);
     setLowPass(lowSplitR.coeffs, clamp(params.crossoverHz, 20, 4000), 0.7071, sampleRate);
     setHighPass(highSplitR.coeffs, clamp(params.crossoverHz, 20, 4000), 0.7071, sampleRate);
 
     lfoInc = (modRateHz * 0.7 * 2 * Math.PI) / sampleRate;
-    syncPhasorStep();
 
     // Buffers are sized for the largest supported tuning in prepare()
     // (hall, lenMult 1.0) — parameter changes are scalar-only.
@@ -315,24 +342,14 @@ export function createHallEngine(): HallEngine {
       const pdIdx: number[] = [];
       for (let l = 0; l < FDN_LINES; l++) {
         const densityScale = 1 - l * 0.03;
-        // +32 headroom covers the maximum modulation read overshoot with
-        // slack; power-of-two capacity lets the loop wrap with `& mask`
-        // instead of `% len` (identical audio — all read distances stay
-        // below the true ring length, so both wraps hit the same history).
-        const maxLen = Math.max(8, Math.round(base[l] * maxSrScale * densityScale)) + 32;
-        const cap = nextPow2(maxLen);
-        ls.push(new Float32Array(cap));
-        lineMaskC[c][l] = cap - 1;
+        const maxLen = Math.max(8, Math.round(base[l] * maxSrScale * densityScale)) + 16;
+        ls.push(new Float32Array(maxLen));
         wi.push(0);
         lp.push(0);
         hp.push(0);
         hpv.push(0);
         blp.push(0);
-        const pdLen = Math.max(4, Math.round(maxPredelay * maxSrScale));
-        const pdCap = nextPow2(pdLen);
-        pdBufs.push(new Float32Array(pdCap));
-        pdMaskC[c][l] = pdCap - 1;
-        pdOffC[c][l] = Math.min(LINE_PREDELAY_OFFSETS[l], pdLen - 1);
+        pdBufs.push(new Float32Array(Math.max(4, Math.round(maxPredelay * maxSrScale))));
         pdIdx.push(0);
       }
       lines.push(ls);
@@ -361,6 +378,8 @@ export function createHallEngine(): HallEngine {
     shW[0] = 0; shW[1] = 0;
     shPhase[0] = 0; shPhase[1] = 0;
     lfoPhase = 0;
+    airPhaseA = 0;
+    airPhaseB = 0;
   }
 
   let lowL: Float32Array = new Float32Array(0);
@@ -397,10 +416,7 @@ export function createHallEngine(): HallEngine {
       const delayed = buf[idxs[s]];
       const out = delayed - diffG * x;
       buf[idxs[s]] = x + diffG * delayed;
-      // Allpass delay time === buffer length, so the length must stay
-      // exact (no pow2 rounding) — wrap with a branch instead of `%`.
-      const next = idxs[s] + 1;
-      idxs[s] = next >= len ? 0 : next;
+      idxs[s] = (idxs[s] + 1) % len;
       x = out;
     }
     return x;
@@ -414,22 +430,6 @@ export function createHallEngine(): HallEngine {
       Math.round((SH_WIN_BASE * SH_WIN_MULT[shQuality] * sampleRate) / 48000) & ~1,
     );
     if (shWindow > shWinMax) shWindow = shWinMax;
-    // Keep the grain table in sync on the message thread (quality-tier
-    // changes while shimmer is active) — never rebuild inside process().
-    if (shAmt > 0) ensureShimmerTable();
-  }
-
-  // Precomputed sin-π grain window. Both tap gains read INTEGER phases
-  // (shPhase steps by 1 and wraps at shWindow; the second tap is W/2 away),
-  // so the per-sample Math.sin calls memoize into a table of the exact
-  // same q32 values — bit-identical, one array read per grain.
-  let shTable: Float32Array | null = null;
-  function ensureShimmerTable(): void {
-    if (shTable && shTable.length === shWindow) return;
-    const W = shWindow;
-    const t = new Float32Array(W);
-    for (let ph = 0; ph < W; ph++) t[ph] = q32(Math.sin((Math.PI * ph) / W));
-    shTable = t;
   }
 
   return {
@@ -438,9 +438,12 @@ export function createHallEngine(): HallEngine {
       channelCount = Math.max(1, cc);
       allocChannels(channelCount);
       recompute();
+      lensFadeRemaining = 0;
+      hasRendered = false;
       attackEnv = 0;
       lfoPhase = 0;
-      phC = 1; phS = 0; phAge = 0;
+      airPhaseA = 0;
+      airPhaseB = 0;
       // Allocate the shimmer ring for the LARGEST quality tier so
       // setQuality() stays a scalar-only realtime operation.
       shWinMax = Math.max(2048, Math.round((2 * SH_WIN_BASE * sampleRate) / 48000) & ~1);
@@ -499,13 +502,27 @@ export function createHallEngine(): HallEngine {
       // shimmer is off or inside the stable region — bit-identical path).
       const shDirWCur = freeze_ ? shDirWFreeze : shDirW;
       const effectiveDepth = modDepthSamples;
-      // Safety net: the table is normally built on the message thread
-      // (recompute/applyShimmerWindow) — this only covers order edge cases.
-      if (shAmt > 0 && (!shTable || shTable.length !== shWindow)) ensureShimmerTable();
       // Stereo width: cross-feed of the damped feedback between the L/R
       // loops. 1 = fully independent (widest), 0 = mono feedback.
       // Stereo width (Valhalla convention) — mirrors plateChamberEngine.
       const width = clamp(params.stereoWidth, 0, 1);
+
+      // Hermite read at a given line length (used for the new length and,
+      // during a length crossfade, the previous length too).
+      const readTap = (buf: Float32Array, w: number, baseLen: number, modOffset: number): number => {
+        let readPos = modOffset !== 0 ? w - baseLen + modOffset : w - baseLen;
+        const bufLen = buf.length;
+        readPos = ((readPos % bufLen) + bufLen) % bufLen;
+        const ri0 = Math.floor(readPos);
+        const ri1 = (ri0 + 1) % bufLen;
+        const frac = readPos - ri0;
+        if (frac > 0) {
+          const rim1 = (ri0 + bufLen - 1) % bufLen;
+          const ri2 = (ri0 + 2) % bufLen;
+          return hermiteInterp(buf[rim1], buf[ri0], buf[ri1], buf[ri2], frac);
+        }
+        return buf[ri0];
+      };
 
       for (let i = 0; i < frameCount; i++) {
         if (attackEnv < 1) {
@@ -513,13 +530,18 @@ export function createHallEngine(): HallEngine {
           if (attackEnv > 1) attackEnv = 1;
         }
 
+        // Air LFOs advance once per sample (shared by both channels).
+        airPhaseA += airIncA;
+        if (airPhaseA >= TAU) airPhaseA -= TAU;
+        airPhaseB += airIncB;
+        if (airPhaseB >= TAU) airPhaseB -= TAU;
+        const airOffA = q32(Math.sin(airPhaseA)) * AIR_DEPTH_A;
+        const airOffB = q32(Math.sin(airPhaseB)) * AIR_DEPTH_B;
+
         // ── Per channel: input → diffusor → per-line predelay → taps → damp ──
         for (let c = 0; c < cc; c++) {
           const ls = lines[c];
           const wis = writeIdx[c];
-          const masks = lineMaskC[c];
-          const pdMasks = pdMaskC[c];
-          const pdOffs = pdOffC[c];
           const lp = lpState[c];
           const hp = hpState[c];
           const hpv = hpPrev[c];
@@ -542,35 +564,30 @@ export function createHallEngine(): HallEngine {
 
           for (let l = 0; l < FDN_LINES; l++) {
             const pdBuf = pdBufs[l];
+            const pdLen = pdBuf.length;
             pdBuf[pdIdx[l]] = inSample;
-            pd[l] = pdBuf[(pdIdx[l] - pdOffs[l]) & pdMasks[l]];
-            pdIdx[l] = (pdIdx[l] + 1) & pdMasks[l];
+            const pdOffset = Math.min(LINE_PREDELAY_OFFSETS[l], pdLen - 1);
+            const pdRead = (pdIdx[l] - pdOffset + pdLen) % pdLen;
+            const delayedIn = pdBuf[pdRead];
+            pdIdx[l] = (pdIdx[l] + 1) % pdLen;
+            pd[l] = delayedIn;
 
-            const buf = ls[l];
-            const m = masks[l];
-            let readPos = wis[l] - lengthsC[c][l];
+            const baseLen = lengthsC[c][l];
+            let modOffset = 0;
             if (effectiveDepth > 0) {
-              // sin(lfoPhase + φl) via the per-sample phasor — angle
-              // addition with the fixed per-line offsets.
-              readPos += (phS * lineCos[l] + phC * lineSin[l]) * effectiveDepth;
+              const modPhase = lfoPhase + (l / FDN_LINES) * Math.PI * 2;
+              modOffset = q32(Math.sin(modPhase)) * effectiveDepth;
             }
-            const riFloor = Math.floor(readPos);
-            const ri0 = riFloor & m;
-            const frac = readPos - riFloor;
-            // 4-point Hermite — mirrors plateChamberEngine.ts exactly.
-            if (frac > 0) {
-              taps[l] = hermiteInterp(
-                buf[(ri0 - 1) & m],
-                buf[ri0],
-                buf[(ri0 + 1) & m],
-                buf[(ri0 + 2) & m],
-                frac,
-              );
-            } else {
-              taps[l] = buf[ri0];
+            modOffset += (l & 1) ? airOffB : airOffA;
+            taps[l] = readTap(ls[l], wis[l], baseLen, modOffset);
+            if (lensFadeRemaining > 0) {
+              // Length crossfade: blend the previous read distance out.
+              const t = lensFadeRemaining / lensFadeLen;
+              const oldTap = readTap(ls[l], wis[l], oldLengthsC[c][l], modOffset);
+              taps[l] = taps[l] * (1 - t) + oldTap * t;
             }
           }
-          householder8(taps);
+          householderN(taps);
 
           for (let l = 0; l < FDN_LINES; l++) {
             lp[l] += dampAlpha * (taps[l] - lp[l]);
@@ -603,14 +620,14 @@ export function createHallEngine(): HallEngine {
             const ph1 = (ph + W / 2) % W;
             const d1 = W - ph1;
             const i1 = ((shW[c] - d1) % size + size) % size;
-            const g0 = shTable ? shTable[ph] : q32(Math.sin((Math.PI * ph) / W));
+            const g0 = q32(Math.sin((Math.PI * ph) / W));
             if (shSingle) {
               // Eco tier: one grain (half the shimmer cost). A lone sin-π
               // window has half the dual-tap power (g0²+g1² = 1), so the
               // surviving tap gains √2 to keep the injected level equal.
               shiftedC[c] = 1.4142 * g0 * buf[i0];
             } else {
-              const g1 = shTable ? shTable[ph1] : q32(Math.sin((Math.PI * ph1) / W));
+              const g1 = q32(Math.sin((Math.PI * ph1) / W));
               shiftedC[c] = g0 * buf[i0] + g1 * buf[i1];
             }
           } else {
@@ -622,7 +639,6 @@ export function createHallEngine(): HallEngine {
         for (let c = 0; c < cc; c++) {
           const ls = lines[c];
           const wis = writeIdx[c];
-          const masks = lineMaskC[c];
           const blp = bassLp[c];
           const damped = dampedScratchC[c];
           const dampedO = dampedScratchC[cc > 1 ? 1 - c : c];
@@ -630,36 +646,37 @@ export function createHallEngine(): HallEngine {
           for (let l = 0; l < FDN_LINES; l++) {
             const direct = width * damped[l] + (1 - width) * 0.5 * (damped[l] + dampedO[l]);
             // Shimmer INJECTS the octave-up grain as extra loop input —
+            // the direct feedback stays intact so loop gain never exceeds
+            // fb (stable), and the pitched content re-enters the shifter
+            // on later passes (the classic cascading shimmer buildup).
+            // Shimmer INJECTS the octave-up grain as extra loop input —
             // the pitched content re-enters the shifter on later passes
             // (the classic cascading shimmer buildup). The direct feedback
             // weight comes from the stability guard in recompute(): the
             // injection is inside the loop, so without the guard the
-            // per-pass gain exceeds 1 and the lines overflow (see
-            // recompute). At zero shimmer this reduces to `direct`.
+            // per-pass gain exceeds 1 and the lines overflow. At zero
+            // shimmer this reduces to `direct`.
             const eff = shDirWCur * direct + shInj * shiftedC[c];
             blp[l] += bassAlpha * (eff - blp[l]);
             blp[l] = flushDenormal(blp[l]);
-            const shelved = eff + (bassGain - 1) * sanitize(blp[l]);
+            let shelved = eff + (bassGain - 1) * sanitize(blp[l]);
+            if (driveGain > 1.0001) {
+              const hot = shelved * driveGain;
+              const hot2 = hot * hot;
+              shelved = ((hot * (27 + hot2)) / (27 + 9 * hot2)) * driveComp;
+            }
             ls[l][wis[l]] = pd[l] + shelved * fbEff;
-            wis[l] = (wis[l] + 1) & masks[l];
+            wis[l] = (wis[l] + 1) % ls[l].length;
           }
           const out = c === 0 ? wetL : wetR;
-          if (out) out[i] = (wetSumC[c] / FDN_LINES) * attackEnv;
+          if (out) out[i] = (wetSumC[c] / FDN_LINES) * attackEnv * DENSITY_GAIN;
         }
 
         lfoPhase += lfoInc;
         if (lfoPhase >= Math.PI * 2) lfoPhase -= Math.PI * 2;
-        // Advance the modulation phasor one step; re-seed from the master
-        // phase every 64 samples to bound drift.
-        const nC = phC * phCosInc - phS * phSinInc;
-        phS = phS * phCosInc + phC * phSinInc;
-        phC = nC;
-        if (++phAge >= 64) {
-          phAge = 0;
-          phC = Math.cos(lfoPhase);
-          phS = Math.sin(lfoPhase);
-        }
+        if (lensFadeRemaining > 0) lensFadeRemaining--;
       }
+      hasRendered = true;
 
       // Pure wet write-back — no dry, no mix gain. The width knob is
       // completed with an output-side M/S blend: in-loop crossfeed alone
@@ -684,14 +701,17 @@ export function createHallEngine(): HallEngine {
     setParams(p) {
       params = { ...p };
       recompute();
-      attackEnv = 0;
+      // NOTE: no attackEnv reset here — resetting the build-up envelope on
+      // every engine-parameter change ducked the tail during any time/size
+      // automation (audible pumping). The envelope initializes on
+      // prepare()/reset() only. Length changes morph click-free via the
+      // length crossfade instead.
     },
 
     setModulation(rateHz: number, depthSamples: number) {
       modRateHz = clamp(rateHz, 0, 20);
       modDepthSamples = clamp(depthSamples, 0, 20);
       lfoInc = (modRateHz * 0.7 * 2 * Math.PI) / sampleRate;
-      syncPhasorStep();
     },
 
     getLatencySamples() {
@@ -701,7 +721,8 @@ export function createHallEngine(): HallEngine {
     reset() {
       resetState();
       attackEnv = 0;
-      phC = 1; phS = 0; phAge = 0;
+      lensFadeRemaining = 0;
+      hasRendered = false;
       lowSplitL.z1.fill(0); lowSplitL.z2.fill(0);
       highSplitL.z1.fill(0); highSplitL.z2.fill(0);
       lowSplitR.z1.fill(0); lowSplitR.z2.fill(0);

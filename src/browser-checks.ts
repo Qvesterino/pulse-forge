@@ -1175,6 +1175,58 @@ export async function runChecks(): Promise<CheckResult[]> {
     check("per-pad mod: gain LFO tremolos one voice (envelope pumps vs flat)", false, String(error));
   }
 
+  // Macro generic targets: a macro mapped to an FX parameter must resolve as
+  // an offset around the PERSISTED base (base ± half-range·bipolar·amount) —
+  // repeated engine syncs converge to the same value (never accumulate).
+  try {
+    const mCtx = new OfflineAudioContext(1, SR, SR);
+    const mDoc = createProjectFromTemplate("house");
+    const mTrack = mDoc.tracks.find((t) => t.kind === "drum")!;
+    mTrack.effects.push({
+      id: "macro-trem",
+      type: "tremolo",
+      bypassed: false,
+      params: { rate: 5, depth: 0.5, shape: 0, mode: 0, mix: 1 },
+    });
+    mDoc.macros[0].mappings.push({
+      id: "macro-map-1",
+      trackId: mTrack.id,
+      param: "fxParam",
+      amount: 0.5,
+      source: "macro",
+      target: { kind: "fxParam", trackId: mTrack.id, fxId: "macro-trem", paramId: "depth" },
+    });
+    const mEngine = new AudioEngine();
+    mEngine.attachBank(bank);
+    mEngine.useContext(mCtx);
+    mEngine.setProject(mDoc);
+    const mRuntime = (
+      mEngine as unknown as {
+        trackNodes: Map<string, { fx: { runtimes: Map<string, { setParameter: (id: string, v: number) => void }> } }>;
+      }
+    ).trackNodes
+      .get(mTrack.id)!
+      .fx.runtimes.get("macro-trem")!;
+    const seen: number[] = [];
+    const origSet = mRuntime.setParameter.bind(mRuntime);
+    mRuntime.setParameter = (id: string, v: number) => {
+      if (id === "depth") seen.push(v);
+      origSet(id, v);
+    };
+    mEngine.setProject({ ...mDoc });
+    mEngine.setProject({ ...mDoc });
+    mEngine.setProject({ ...mDoc });
+    const last = seen.at(-1) ?? NaN;
+    // base 0.5 + half-range(0.5)·bipolar(macro value 0.5→0)·0.5 = 0.5
+    check(
+      "macro targets: fxParam resolves around base, repeated syncs never accumulate",
+      seen.length >= 3 && Math.abs(last - 0.5) < 0.001 && Math.abs(seen[0] - last) < 0.001,
+      `syncs=${seen.length} first=${seen[0]?.toFixed(4)} last=${last.toFixed(4)} (expect 0.5)`,
+    );
+  } catch (error) {
+    check("macro targets: fxParam resolves around base, repeated syncs never accumulate", false, String(error));
+  }
+
   // FXEQ: the vendored multiband DSP must run as a worklet in offline
   // renders (heavy drive must transform a sine: louder + harmonically
   // distorted vs the degraded passthrough), and the degraded transparent
@@ -3230,9 +3282,7 @@ export async function runChecks(): Promise<CheckResult[]> {
     let meters: { bandPeaks?: Float32Array } | null = null;
     for (let attempt = 0; attempt < 12 && !meters; attempt++) {
       await new Promise((r) => setTimeout(r, 60));
-      meters = (rtOn as { getMeters?: () => unknown }).getMeters?.() as
-        | { bandPeaks?: Float32Array }
-        | null;
+      meters = (rtOn as { getMeters?: () => unknown }).getMeters?.() as { bandPeaks?: Float32Array } | null;
     }
     const gatedMeters = (rtGated as { getMeters?: () => unknown }).getMeters?.();
     rtOn.dispose();

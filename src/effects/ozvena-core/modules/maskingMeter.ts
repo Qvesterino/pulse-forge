@@ -68,12 +68,45 @@ export interface MaskingResult {
   meanMaskDb: number;
 }
 
+/**
+ * Pure masking computation over pre-computed dry/wet spectrum snapshots.
+ * Split out of MaskingMeter.snapshot so the native-backed host adapter
+ * can feed snapshots from the native core's spectrum analyzer through
+ * the exact same mask formula.
+ */
+export function buildMaskingResult(
+  dryDb: Float32Array,
+  wetDb: Float32Array,
+  count: number,
+  thresholdDb = 3,
+  source: "dryVsWet" | "ipc" = "dryVsWet",
+): MaskingResult {
+  const n = Math.min(count, dryDb.length, wetDb.length);
+  const maskBuf = new Float32Array(n);
+  let sum = 0;
+  const problemBins: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const m = wetDb[i] - dryDb[i];
+    maskBuf[i] = m;
+    sum += m;
+    if (m > thresholdDb) problemBins.push(i);
+  }
+  const meanMaskDb = n > 0 ? sum / n : 0;
+  return {
+    dryDb, wetDb, maskDb: maskBuf,
+    count: n, thresholdDb, problemBins,
+    source,
+    meanMaskDb,
+  };
+}
+
 export interface MaskingMeter {
   prepare(sampleRate: number, channelCount: number): void;
   /** Feed audio: dry = the bypass signal, wet = the post-engine signal. */
   push(dry: Float32Array[], wet: Float32Array[], frameCount: number): void;
   setParams(p: MaskingParams): void;
-  /** Gate the internal dry/wet analyzer taps (see PreEq.setAnalyzerEnabled). */
+  /** Gate the internal dry/wet analyzer taps (see PreEq.setAnalyzerEnabled).
+   *  (Reconciled from Pulse Forge, 2026-09-05.) */
   setAnalyzerEnabled(on: boolean): void;
   /** Take a snapshot of dry vs wet and compute the per-bin mask. */
   snapshot(sampleRate: number, grid: Float32Array, thresholdDb?: number): MaskingResult;
@@ -93,13 +126,11 @@ export function createMaskingMeter(): MaskingMeter {
 
   let dryBuf: Float32Array = new Float32Array(0);
   let wetBuf: Float32Array = new Float32Array(0);
-  let maskBuf: Float32Array = new Float32Array(0);
 
   function ensureBufs(n: number): void {
     if (dryBuf.length < n) {
       dryBuf = new Float32Array(n);
       wetBuf = new Float32Array(n);
-      maskBuf = new Float32Array(n);
     }
   }
 
@@ -111,6 +142,11 @@ export function createMaskingMeter(): MaskingMeter {
       void srClamped;
     },
 
+    setAnalyzerEnabled(on) {
+      analyzerEnabled = on;
+      analyzer.setEnabled(on);
+    },
+
     push(dry, wet, frameCount) {
       analyzer.push("dry", dry, frameCount);
       analyzer.push("wet", wet, frameCount);
@@ -118,31 +154,11 @@ export function createMaskingMeter(): MaskingMeter {
 
     setParams(p) { params = { ...p }; },
 
-    setAnalyzerEnabled(on) {
-      analyzerEnabled = on;
-      analyzer.setEnabled(on);
-    },
-
     snapshot(sampleRate, grid, thresholdDb = 3) {
       ensureBufs(grid.length);
       const dryN = analyzer.snapshot("dry", dryBuf, grid, sampleRate);
       const wetN = analyzer.snapshot("wet", wetBuf, grid, sampleRate);
-      const n = Math.min(dryN, wetN);
-      let sum = 0;
-      const problemBins: number[] = [];
-      for (let i = 0; i < n; i++) {
-        const m = wetBuf[i] - dryBuf[i];
-        maskBuf[i] = m;
-        sum += m;
-        if (m > thresholdDb) problemBins.push(i);
-      }
-      const meanMaskDb = n > 0 ? sum / n : 0;
-      return {
-        dryDb: dryBuf, wetDb: wetBuf, maskDb: maskBuf,
-        count: n, thresholdDb, problemBins,
-        source: params.source,
-        meanMaskDb,
-      };
+      return buildMaskingResult(dryBuf, wetBuf, Math.min(dryN, wetN), thresholdDb, params.source);
     },
 
     getIpcPeers() {

@@ -31,8 +31,17 @@ const BUDGET_MEDIAN_RATIO = 22;
 const BUDGET_P95_RATIO = 25;
 /** Preset load vs passthrough block: measured worst ≈ 2.3–16×, budget above the band. */
 const BUDGET_LOAD_RATIO = 35;
-/** Morphing vs idle blocks of the same processor: new path ~1.65×, old ~2.4×. */
-const BUDGET_MORPH_RATIO = 2.1;
+/**
+ * Morphing vs idle blocks of the same processor. 2026-09-05 recalibration
+ * (Q3): the probe targets EVERY schema id, so the per-block routed-entry
+ * count grew ~15% when the band-EQ surface landed — measured 1.45–1.65× at
+ * the old schema size, 1.84–2.21× after (the spread is machine load; idle
+ * cost itself swings 2× between runs). Budget 2.4× still discriminates the
+ * pathology this gate exists for — the old per-block applyAllParams() path
+ * (full schema walk + crossover stage rebuild) measured ~2.4× at HALF the
+ * current schema size and would exceed 4× today.
+ */
+const BUDGET_MORPH_RATIO = 2.4;
 
 type Proc = ReturnType<typeof createFxEqProcessor>;
 

@@ -46,7 +46,6 @@ import {
 import { createSpectrumAnalyzer, type SpectrumAnalyzer } from "../dsp/spectrumAnalyzer.js";
 import {
   findSpectralPeaks,
-  harmonicProductSpectrum,
 } from "../dsp/peakDetection.js";
 import {
   bandLevel,
@@ -72,6 +71,7 @@ export interface PreEq {
    * Gate the internal spectrum-analyzer tap. Hosts with no Auto Cut UI
    * (the analyzer input is otherwise pushed every block for nothing) turn
    * this off; Auto Cut analysis then reads stale data until re-enabled.
+   * (Reconciled from Pulse Forge, 2026-09-05.)
    */
   setAnalyzerEnabled(on: boolean): void;
   /** Run one FFT snapshot and produce band suggestions. */
@@ -120,6 +120,93 @@ export interface AutoCutDetails {
   maxCutDb: number;
 }
 
+/** Default AutoCut snapshot grid: 48 log-frequency bins 20 Hz → 20 kHz. */
+export function makeAutoCutSnapshotGrid(): Float32Array {
+  const grid = new Float32Array(48);
+  for (let i = 0; i < grid.length; i++) {
+    grid[i] = 20 * Math.pow(1000, i / (grid.length - 1));
+  }
+  return grid;
+}
+
+/**
+ * Pure AutoCut analysis over a pre-computed spectrum snapshot (dB per
+ * grid bin). Split out of PreEq.runAutoCutDetailed so the native-backed
+ * host adapter can feed snapshots from the native core's spectrum
+ * analyzer through the exact same detection code — one source of truth,
+ * no DSP duplication.
+ */
+export function analyzeAutoCutSnapshot(
+  snapshotDb: Float32Array,
+  grid: Float32Array,
+  sampleRate: number,
+  bandFreqs: readonly [number, number, number],
+  autoCutAmount: number,
+  autoCutEnabled: boolean,
+  snapshotBins: number,
+): AutoCutDetails | null {
+  if (snapshotBins === 0 || !autoCutEnabled) return null;
+
+  // Robust baseline = median dB.
+  const baseline = medianLevel(snapshotDb);
+
+  // Sensitivity 6..18 dB (amount 0..100).
+  const sensitivity = 6 + (autoCutAmount / 100) * 12;
+  // Maximum cut 0..-12 dB.
+  const maxCut = -(autoCutAmount / 100) * 12;
+
+  // FFT size for peak detection (grid length × 4 approximation).
+  const peakFftSize = grid.length * 4;
+
+  const bands: AutoCutBandInfo[] = [];
+  let sumCuts = 0;
+
+  for (let b = 0; b < 3; b++) {
+    const fc = bandFreqs[b];
+    const fLo = fc / Math.SQRT2;
+    const fHi = fc * Math.SQRT2;
+    const bandMean = bandLevel(snapshotDb, grid, fLo, fHi);
+    const excess = bandMean - baseline;
+
+    // Spectral peak detection in the band window.
+    const peaks = findSpectralPeaks(
+      snapshotDb, 60, 3, peakFftSize, sampleRate,
+    ).filter((p) => p.freqHz >= fLo && p.freqHz <= fHi);
+
+    // Pick the dominant peak; fall back to band mean if none.
+    const dominant = peaks[0] ?? null;
+    const peakFreqHz = dominant?.freqHz ?? fc;
+    const peakDb = dominant?.magnitudeDb ?? bandMean;
+    const q = dominant?.q ?? 0;
+
+    const soft = softKneeMap(excess, sensitivity, 6);
+    const cut = maxCut * clamp01(soft);
+
+    bands.push({
+      bandIndex: b,
+      bandFreqHz: fc,
+      peakFreqHz,
+      peakDb,
+      q,
+      bandLevelDb: bandMean,
+      baselineDb: baseline,
+      excessDb: excess > 0 ? excess : 0,
+      softKnee: soft,
+      suggestedCutDb: cut,
+    });
+    sumCuts += cut;
+  }
+
+  const problemBandCount = bands.filter((b) => b.suggestedCutDb < 0).length;
+  return {
+    bands,
+    meanSuggestedCutDb: sumCuts / 3,
+    problemBandCount,
+    sensitivityDb: sensitivity,
+    maxCutDb: maxCut,
+  };
+}
+
 function shapeCoeffs(
   bq: BiquadState,
   band: EqBandState,
@@ -164,13 +251,6 @@ export function createPreEq(): PreEq {
     snapshotGrid[i] = 20 * Math.pow(1000, i / (snapshotGrid.length - 1));
   }
   let snapshotBuf: Float32Array = new Float32Array(snapshotGrid.length);
-
-  // Pre-allocated HPS buffer for the next-detailed run.
-  let hpsBuf: Float32Array = new Float32Array(Math.floor(snapshotGrid.length / 4));
-
-  // FFT size for peak detection (independent of analyzer.fftSize).
-  // We use the grid length × 4 as an approximation.
-  const peakFftSize = snapshotGrid.length * 4;
 
   function updateCoefficients(): void {
     shapeCoeffs(bq1, params.band1, sampleRate);
@@ -225,72 +305,15 @@ export function createPreEq(): PreEq {
 
     runAutoCutDetailed(sr) {
       const n = analyzer.snapshot("input", snapshotBuf, snapshotGrid, sr);
-      if (n === 0 || !autoCutEnabled) return null;
-
-      // Robust baseline = median dB.
-      const baseline = medianLevel(snapshotBuf);
-
-      // Compute HPS once (helps detect fundamentals buried in harmonics).
-      hpsBuf = harmonicProductSpectrum(snapshotBuf, 4);
-      const hpsPeaks = findSpectralPeaks(hpsBuf, 80, 8, hpsBuf.length * 4, sr);
-
-      // Sensitivity 6..18 dB (amount 0..100).
-      const sensitivity = 6 + (autoCutAmount / 100) * 12;
-      // Maximum cut 0..-12 dB.
-      const maxCut = -(autoCutAmount / 100) * 12;
-
-      const bandFreqs = [params.band1.freqHz, params.band2.freqHz, params.band3.freqHz];
-      const bands: AutoCutBandInfo[] = [];
-      let sumCuts = 0;
-
-      for (let b = 0; b < 3; b++) {
-        const fc = bandFreqs[b];
-        const fLo = fc / Math.SQRT2;
-        const fHi = fc * Math.SQRT2;
-        const bandMean = bandLevel(snapshotBuf, snapshotGrid, fLo, fHi);
-        const excess = bandMean - baseline;
-
-        // Spectral peak detection in the band window.
-        const peaks = findSpectralPeaks(
-          snapshotBuf, 60, 3, peakFftSize, sr,
-        ).filter((p) => p.freqHz >= fLo && p.freqHz <= fHi);
-
-        // Pick the dominant peak; fall back to band mean if none.
-        const dominant = peaks[0] ?? null;
-        const peakFreqHz = dominant?.freqHz ?? fc;
-        const peakDb = dominant?.magnitudeDb ?? bandMean;
-        const q = dominant?.q ?? 0;
-
-        const soft = softKneeMap(excess, sensitivity, 6);
-        const cut = maxCut * clamp01(soft);
-
-        bands.push({
-          bandIndex: b,
-          bandFreqHz: fc,
-          peakFreqHz,
-          peakDb,
-          q,
-          bandLevelDb: bandMean,
-          baselineDb: baseline,
-          excessDb: excess > 0 ? excess : 0,
-          softKnee: soft,
-          suggestedCutDb: cut,
-        });
-        sumCuts += cut;
-      }
-
-      // Optionally surface HPS-detected fundamentals for reference.
-      // (Currently used only internally; exposed later via host bridge.)
-      void hpsPeaks;
-
-      const problemBandCount = bands.filter((b) => b.suggestedCutDb < 0).length;
-      return {
-        bands,
-        meanSuggestedCutDb: sumCuts / 3,
-        problemBandCount,
-        sensitivityDb: sensitivity,
-        maxCutDb: maxCut,
-      };
+      return analyzeAutoCutSnapshot(
+        snapshotBuf,
+        snapshotGrid,
+        sr,
+        [params.band1.freqHz, params.band2.freqHz, params.band3.freqHz],
+        autoCutAmount,
+        autoCutEnabled,
+        n,
+      );
     },
 
     reset() {
