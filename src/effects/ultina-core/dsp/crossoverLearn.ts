@@ -101,14 +101,13 @@ export class CrossoverLearn {
   private bandEnergy: number[] = new Array(XOVER_LEARN_BANDS).fill(0);
   private tempBuf: Float32Array = new Float32Array(0);
   private blockCount = 0;
-  private smoothCoef = 0.02;
+  /** Analysis time constant in samples (500 ms) — process() derives the
+   * per-block coefficient from the ACTUAL frame count. */
+  private tauSamples = 24000;
 
   prepare(sampleRate: number, maxBlockSize: number): void {
     this.tempBuf = new Float32Array(maxBlockSize);
-
-    // Per-block smoothing: 500ms time constant
-    const tauSamples = (500 / 1000) * sampleRate;
-    this.smoothCoef = 1 - Math.exp(-maxBlockSize / tauSamples);
+    this.tauSamples = Math.max(1, (500 / 1000) * sampleRate);
 
     this.filters = [];
     for (let i = 0; i < XOVER_LEARN_BANDS; i++) {
@@ -149,7 +148,10 @@ export class CrossoverLearn {
         sumSq += s * s;
       }
       const rms = Math.sqrt(sumSq / Math.max(1, frameCount));
-      this.bandEnergy[b] += this.smoothCoef * (rms - this.bandEnergy[b]);
+      // Block-size-aware: derive the coefficient from the ACTUAL frame count
+      // (see EqLearn — smaller host blocks must not stretch the 500 ms tau).
+      const coef = 1 - Math.exp(-frameCount / this.tauSamples);
+      this.bandEnergy[b] += coef * (rms - this.bandEnergy[b]);
     }
 
     this.blockCount++;

@@ -110,19 +110,16 @@ export class EqLearn {
   private bandEnergy: number[] = new Array(EQ_LEARN_BANDS).fill(0);
   private tempBuf: Float32Array = new Float32Array(0);
   private blockCount = 0;
-  private smoothCoef = 0.01;
+  /** Analysis time constant in samples (100 ms) — process() derives the
+   * per-block coefficient from the ACTUAL frame count. */
+  private tauSamples = 4800;
 
   /** Minimum blocks before results are considered reliable. */
   private static readonly MIN_BLOCKS = 20;
 
   prepare(sampleRate: number, maxBlockSize: number): void {
     this.tempBuf = new Float32Array(maxBlockSize);
-    // Per-block smoothing coefficient: for a 100ms time constant,
-    // compute how many samples that is, then derive the per-block coef
-    // based on the expected block size. We assume ~maxBlockSize per block.
-    const samplesPerBlock = Math.max(1, maxBlockSize);
-    const tauSamples = (100 / 1000) * sampleRate;
-    this.smoothCoef = 1 - Math.exp(-samplesPerBlock / tauSamples);
+    this.tauSamples = Math.max(1, (100 / 1000) * sampleRate);
 
     this.filters = [];
     for (let i = 0; i < EQ_LEARN_BANDS; i++) {
@@ -169,8 +166,12 @@ export class EqLearn {
       }
       const rms = Math.sqrt(sumSq / Math.max(1, frameCount));
 
-      // Smooth the energy
-      this.bandEnergy[b] += this.smoothCoef * (rms - this.bandEnergy[b]);
+      // Smooth the energy. Block-size-aware: the coefficient is derived from
+      // the ACTUAL frame count, not the prepared maxBlockSize — a host that
+      // delivers smaller blocks would otherwise stretch the 100 ms time
+      // constant proportionally (128 vs 512 → 4× slower learning).
+      const coef = 1 - Math.exp(-frameCount / this.tauSamples);
+      this.bandEnergy[b] += coef * (rms - this.bandEnergy[b]);
     }
 
     this.blockCount++;

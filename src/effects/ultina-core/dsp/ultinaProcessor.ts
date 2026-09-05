@@ -241,6 +241,9 @@ export class UltinaProcessor {
   private outputRmsL: number = 0;
   private outputRmsR: number = 0;
   private totalSamples: number = 0;
+  /** Samples processed since the LUFS meter was last fed — staleness guard
+   * for the auto-gain feedback loop (meters off + gain-match off). */
+  private lufsUnfedSamples: number = 0;
 
   // Pooled meter snapshot — buffers and containers reused across getMeters()
   // calls so a ~21 Hz poller costs zero steady-state allocation on the
@@ -400,6 +403,7 @@ export class UltinaProcessor {
     this.xoverLearn.prepare(this.sampleRate, this.maxBlockSize);
     this.spectralRegistry.register(this.instanceId);
 
+    this.lufsUnfedSamples = 0;
     this.prepared = true;
   }
 
@@ -557,8 +561,12 @@ export class UltinaProcessor {
       // Auto-Gain feedback loop: adjust output gain toward target LUFS
       this.autoGain.setEnabled(gainMatchEnabled);
       this.autoGain.setTargetLufs(autoGainTargetLufs);
+      // A short-term window older than ~3 s (one full window) holds stale mean
+      // squares — feeding the controller -70 (silence) makes its MIN_VALID_LUFS
+      // guard hold the gain until fresh blocks refill the meter.
+      const lufsStale = this.lufsUnfedSamples > this.sampleRate * 3;
       const autoGainCorrectionDb = this.autoGain.process(
-        this.lufsMeter.getShortTermLufs(),
+        lufsStale ? -70 : this.lufsMeter.getShortTermLufs(),
         frames,
       );
 
@@ -577,11 +585,17 @@ export class UltinaProcessor {
       }
 
       // Measure output. With meters disabled, only the LUFS meter runs and
-      // only when gain-match needs it for its feedback loop.
+      // only when gain-match needs it for its feedback loop. The unfed-sample
+      // counter tracks LUFS staleness: after a long gap the short-term window
+      // still holds OLD mean squares, which must not steer the output gain.
       if (this.metersEnabled) {
         this.updateOutputMeters(chunkL, chunkR, frames);
+        this.lufsUnfedSamples = 0;
       } else if (gainMatchEnabled) {
         this.lufsMeter.process(chunkL, chunkR, frames);
+        this.lufsUnfedSamples = 0;
+      } else {
+        this.lufsUnfedSamples += frames;
       }
 
       offset += frames;
@@ -626,6 +640,7 @@ export class UltinaProcessor {
     this.lufsMeter.reset();
     this.autoGain.reset();
     this.spectrumCounter = 0;
+    this.lufsUnfedSamples = 0;
 
     // Reset cross-instance spectral sharing state
     this.bandAnalyzer.reset();

@@ -353,7 +353,10 @@ export class EqModuleProcessor implements UltinaModuleProcessor {
       }
 
       const freq = params[keys.freqHz] ?? 1000;
-      const gain = params[keys.gainDb] ?? 0;
+      // Defensive clamp: the schema bounds gainDb to ±18, but a hostile
+      // automation source that bypassed every clamp would overflow
+      // A = 10^(gain/40) to Inf → NaN coefficients → silenced band.
+      const gain = clamp(params[keys.gainDb] ?? 0, -24, 24);
       const q = params[keys.q] ?? 1;
       const shape = Math.round(params[keys.shape] ?? 0);
       const mode = Math.round(params[keys.mode] ?? 0);
