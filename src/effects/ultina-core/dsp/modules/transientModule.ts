@@ -122,6 +122,7 @@ export class TransientModuleProcessor implements UltinaModuleProcessor {
   // Latency-compensated dry/wet mixing + HQ oversampled gain application
   // (same design as compModule — see the field docs there).
   private dryDelay = new DryDelayMixer();
+  private pooledMeters: TransientMeters | null = null;
   private osStates: OsChannelState[][] = [];
   private bandGainBufs: Float64Array[] = [];
   private osActive = false;
@@ -265,10 +266,19 @@ export class TransientModuleProcessor implements UltinaModuleProcessor {
   }
 
   getMeters(): TransientMeters {
-    return {
-      transientLevel: [...this.transientLevels],
-      outputPeakDb: [...this.outputPeaks],
-    };
+    if (!this.pooledMeters) {
+      this.pooledMeters = {
+        transientLevel: new Array(this.transientLevels.length).fill(0),
+        outputPeakDb: new Array(this.outputPeaks.length).fill(0),
+      };
+    }
+    const m = this.pooledMeters;
+    // POOLED snapshot (audio thread — getMeters runs at meter cadence inside
+    // UltinaProcessor.getMeters). The next call overwrites every field;
+    // postMessage clones, direct readers must copy immediately.
+    for (let i = 0; i < m.transientLevel.length; i++) m.transientLevel[i] = this.transientLevels[i];
+    for (let i = 0; i < m.outputPeakDb.length; i++) m.outputPeakDb[i] = this.outputPeaks[i];
+    return m;
   }
 
   /** Hybrid crossover group delay (samples). */

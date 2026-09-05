@@ -169,6 +169,7 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
   private outputLevels: number[] = new Array(COMP_MAX_BANDS).fill(-100);
   private autoMakeupDb = 0;
   private autoMakeupSmoother = new OnePoleSmoother();
+  private pooledMeters: CompMeters | null = null;
 
   // Cached config
   private cachedBandCount = -1;
@@ -439,11 +440,21 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
   }
 
   getMeters(): CompMeters {
-    return {
-      gainReduction: [...this.gainReduction],
-      outputLevels: [...this.outputLevels],
-      autoMakeupDb: this.autoMakeupDb,
-    };
+    if (!this.pooledMeters) {
+      this.pooledMeters = {
+        gainReduction: new Array(this.gainReduction.length).fill(0),
+        outputLevels: new Array(this.outputLevels.length).fill(0),
+        autoMakeupDb: 0,
+      };
+    }
+    const m = this.pooledMeters;
+    // POOLED snapshot (audio thread — getMeters runs at meter cadence inside
+    // UltinaProcessor.getMeters). The next call overwrites every field;
+    // postMessage clones, direct readers must copy immediately.
+    for (let i = 0; i < m.gainReduction.length; i++) m.gainReduction[i] = this.gainReduction[i];
+    for (let i = 0; i < m.outputLevels.length; i++) m.outputLevels[i] = this.outputLevels[i];
+    m.autoMakeupDb = this.autoMakeupDb;
+    return m;
   }
 
   /** Hybrid crossover group delay (samples). */

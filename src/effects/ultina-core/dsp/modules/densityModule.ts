@@ -126,6 +126,7 @@ export class DensityModuleProcessor implements UltinaModuleProcessor {
   // Dry buffer for delta listen
   // Latency-compensated dry/wet mixing (see dsp/dryDelay.ts).
   private dryDelay = new DryDelayMixer();
+  private pooledMeters: DensityMeters | null = null;
   private dryL: Float32Array = new Float32Array(0);
   private dryR: Float32Array = new Float32Array(0);
 
@@ -289,19 +290,30 @@ export class DensityModuleProcessor implements UltinaModuleProcessor {
   }
 
   getMeters(): DensityMeters {
-    const bands: BandMeters[] = this.bandMeters.map((bm) => ({
-      inputPeakDb: ampToDb(bm.inputPeak),
-      outputPeakDb: ampToDb(bm.outputPeak),
-      outputRmsDb: bm.outputRmsCount > 0
+    if (!this.pooledMeters) {
+      this.pooledMeters = {
+        bands: this.bandMeters.map(() => ({
+          inputPeakDb: -100, outputPeakDb: -100, gainReductionDb: 0, outputRmsDb: -100,
+        })),
+        upwardGainDb: new Array(this.bandMeters.length).fill(0),
+      };
+    }
+    const m = this.pooledMeters;
+    // POOLED snapshot (audio thread — getMeters runs at meter cadence inside
+    // UltinaProcessor.getMeters). The next call overwrites every field;
+    // postMessage clones, direct readers must copy immediately.
+    for (let b = 0; b < m.bands.length; b++) {
+      const bm = this.bandMeters[b];
+      const dst = m.bands[b];
+      dst.inputPeakDb = ampToDb(bm.inputPeak);
+      dst.outputPeakDb = ampToDb(bm.outputPeak);
+      dst.outputRmsDb = bm.outputRmsCount > 0
         ? ampToDb(Math.sqrt(bm.outputRmsSum / bm.outputRmsCount))
-        : -100,
-      gainReductionDb: -bm.upwardGain, // negative of upward gain for consistent display
-    }));
-
-    return {
-      bands,
-      upwardGainDb: this.bandMeters.map((bm) => bm.upwardGain),
-    };
+        : -100;
+      dst.gainReductionDb = -bm.upwardGain; // negative of upward gain for consistent display
+      m.upwardGainDb[b] = bm.upwardGain;
+    }
+    return m;
   }
 
   /** Hybrid crossover group delay (samples). */

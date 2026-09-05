@@ -110,6 +110,7 @@ export class ClipperModuleProcessor implements UltinaModuleProcessor {
   // Dry buffer for delta listen
   // Latency-compensated dry/wet mixing (see dsp/dryDelay.ts).
   private dryDelay = new DryDelayMixer();
+  private pooledMeters: ClipperMeters | null = null;
   private dryL: Float32Array = new Float32Array(0);
   private dryR: Float32Array = new Float32Array(0);
 
@@ -270,16 +271,30 @@ export class ClipperModuleProcessor implements UltinaModuleProcessor {
   }
 
   getMeters(): ClipperMeters {
-    const bands: BandMeters[] = this.bandMeters.map((bm) => ({
-      inputPeakDb: ampToDb(bm.inputPeak),
-      outputPeakDb: ampToDb(bm.outputPeak),
-      gainReductionDb: bm.clippingReduction,
-      outputRmsDb: bm.outputRmsCount > 0
+    if (!this.pooledMeters) {
+      this.pooledMeters = {
+        bands: this.bandMeters.map(() => ({
+          inputPeakDb: -100, outputPeakDb: -100, gainReductionDb: 0, outputRmsDb: -100,
+        })),
+        clippingReductionDb: new Array(this.bandMeters.length).fill(0),
+      };
+    }
+    const m = this.pooledMeters;
+    // POOLED snapshot (audio thread — getMeters runs at meter cadence inside
+    // UltinaProcessor.getMeters). The next call overwrites every field;
+    // postMessage clones, direct readers must copy immediately.
+    for (let b = 0; b < m.bands.length; b++) {
+      const bm = this.bandMeters[b];
+      const dst = m.bands[b];
+      dst.inputPeakDb = ampToDb(bm.inputPeak);
+      dst.outputPeakDb = ampToDb(bm.outputPeak);
+      dst.gainReductionDb = bm.clippingReduction;
+      dst.outputRmsDb = bm.outputRmsCount > 0
         ? ampToDb(Math.sqrt(bm.outputRmsSum / bm.outputRmsCount))
-        : -100,
-    }));
-    const clippingReductionDb = this.bandMeters.map((bm) => bm.clippingReduction);
-    return { bands, clippingReductionDb };
+        : -100;
+      m.clippingReductionDb[b] = bm.clippingReduction;
+    }
+    return m;
   }
 
   /** Hybrid crossover group delay + oversampler latency (samples). */

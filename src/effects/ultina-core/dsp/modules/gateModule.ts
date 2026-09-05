@@ -113,6 +113,7 @@ export class GateModuleProcessor implements UltinaModuleProcessor {
   private dryR: Float32Array = new Float32Array(0);
   // Latency-compensated dry/wet mixing (see dsp/dryDelay.ts).
   private dryDelay = new DryDelayMixer();
+  private pooledMeters: GateMeters | null = null;
 
   // Sidechain HPF buffers
   private scHpfBufferL: Float32Array = new Float32Array(0);
@@ -281,11 +282,21 @@ export class GateModuleProcessor implements UltinaModuleProcessor {
   }
 
   getMeters(): GateMeters {
-    return {
-      bandGain: [...this.bandGain],
-      bandState: [...this.bandState],
-      bandReductionDb: [...this.bandReductionDb],
-    };
+    if (!this.pooledMeters) {
+      this.pooledMeters = {
+        bandGain: new Array(this.bandGain.length).fill(0),
+        bandState: new Array(this.bandState.length).fill(0),
+        bandReductionDb: new Array(this.bandReductionDb.length).fill(0),
+      };
+    }
+    const m = this.pooledMeters;
+    // POOLED snapshot (audio thread — getMeters runs at meter cadence inside
+    // UltinaProcessor.getMeters). The next call overwrites every field;
+    // postMessage clones, direct readers must copy immediately.
+    for (let i = 0; i < m.bandGain.length; i++) m.bandGain[i] = this.bandGain[i];
+    for (let i = 0; i < m.bandState.length; i++) m.bandState[i] = this.bandState[i];
+    for (let i = 0; i < m.bandReductionDb.length; i++) m.bandReductionDb[i] = this.bandReductionDb[i];
+    return m;
   }
 
   /** Hybrid crossover group delay (samples). */

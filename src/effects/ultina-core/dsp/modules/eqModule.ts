@@ -145,6 +145,7 @@ export class EqModuleProcessor implements UltinaModuleProcessor {
   private bandLevels: number[] = new Array(EQ_MAX_BANDS).fill(-100);
   private bandGainReduction: number[] = new Array(EQ_MAX_BANDS).fill(0);
   private maskingData: number[] | null = null;
+  private pooledMeters: EqMeters | null = null;
 
   // M/S processing buffers
   private midBuffer: Float32Array = new Float32Array(0);
@@ -281,11 +282,28 @@ export class EqModuleProcessor implements UltinaModuleProcessor {
   }
 
   getMeters(): EqMeters {
-    return {
-      bandLevels: [...this.bandLevels],
-      bandGainReduction: [...this.bandGainReduction],
-      masking: this.maskingData ? [...this.maskingData] : null,
-    };
+    if (!this.pooledMeters) {
+      this.pooledMeters = {
+        bandLevels: new Array(this.bandLevels.length).fill(0),
+        bandGainReduction: new Array(this.bandGainReduction.length).fill(0),
+        masking: this.maskingData ? new Array(this.maskingData.length).fill(0) : null,
+      };
+    }
+    const m = this.pooledMeters;
+    // POOLED snapshot (audio thread — getMeters runs at meter cadence inside
+    // UltinaProcessor.getMeters). The next call overwrites every field;
+    // postMessage clones, direct readers must copy immediately.
+    for (let i = 0; i < m.bandLevels.length; i++) m.bandLevels[i] = this.bandLevels[i];
+    for (let i = 0; i < m.bandGainReduction.length; i++) m.bandGainReduction[i] = this.bandGainReduction[i];
+    if (this.maskingData) {
+      if (!m.masking || m.masking.length !== this.maskingData.length) {
+        m.masking = new Array(this.maskingData.length).fill(0);
+      }
+      for (let i = 0; i < m.masking.length; i++) m.masking[i] = this.maskingData[i];
+    } else {
+      m.masking = null;
+    }
+    return m;
   }
 
   // ── Internal helpers ───────────────────────────────────────

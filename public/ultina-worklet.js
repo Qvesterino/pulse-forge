@@ -3618,6 +3618,7 @@
     bandLevels = new Array(EQ_MAX_BANDS2).fill(-100);
     bandGainReduction = new Array(EQ_MAX_BANDS2).fill(0);
     maskingData = null;
+    pooledMeters = null;
     // M/S processing buffers
     midBuffer = new Float32Array(0);
     sideBuffer = new Float32Array(0);
@@ -3725,11 +3726,25 @@
       this.maskingMeter.reset();
     }
     getMeters() {
-      return {
-        bandLevels: [...this.bandLevels],
-        bandGainReduction: [...this.bandGainReduction],
-        masking: this.maskingData ? [...this.maskingData] : null
-      };
+      if (!this.pooledMeters) {
+        this.pooledMeters = {
+          bandLevels: new Array(this.bandLevels.length).fill(0),
+          bandGainReduction: new Array(this.bandGainReduction.length).fill(0),
+          masking: this.maskingData ? new Array(this.maskingData.length).fill(0) : null
+        };
+      }
+      const m = this.pooledMeters;
+      for (let i = 0; i < m.bandLevels.length; i++) m.bandLevels[i] = this.bandLevels[i];
+      for (let i = 0; i < m.bandGainReduction.length; i++) m.bandGainReduction[i] = this.bandGainReduction[i];
+      if (this.maskingData) {
+        if (!m.masking || m.masking.length !== this.maskingData.length) {
+          m.masking = new Array(this.maskingData.length).fill(0);
+        }
+        for (let i = 0; i < m.masking.length; i++) m.masking[i] = this.maskingData[i];
+      } else {
+        m.masking = null;
+      }
+      return m;
     }
     // ── Internal helpers ───────────────────────────────────────
     ensureBuffers(requiredSize) {
@@ -4703,6 +4718,7 @@
     outputLevels = new Array(COMP_MAX_BANDS).fill(-100);
     autoMakeupDb = 0;
     autoMakeupSmoother = new OnePoleSmoother();
+    pooledMeters = null;
     // Cached config
     cachedBandCount = -1;
     cachedXover1 = -1;
@@ -4913,11 +4929,18 @@
       }
     }
     getMeters() {
-      return {
-        gainReduction: [...this.gainReduction],
-        outputLevels: [...this.outputLevels],
-        autoMakeupDb: this.autoMakeupDb
-      };
+      if (!this.pooledMeters) {
+        this.pooledMeters = {
+          gainReduction: new Array(this.gainReduction.length).fill(0),
+          outputLevels: new Array(this.outputLevels.length).fill(0),
+          autoMakeupDb: 0
+        };
+      }
+      const m = this.pooledMeters;
+      for (let i = 0; i < m.gainReduction.length; i++) m.gainReduction[i] = this.gainReduction[i];
+      for (let i = 0; i < m.outputLevels.length; i++) m.outputLevels[i] = this.outputLevels[i];
+      m.autoMakeupDb = this.autoMakeupDb;
+      return m;
     }
     /** Hybrid crossover group delay (samples). */
     getLatency() {
@@ -5160,6 +5183,7 @@
     dryR = new Float32Array(0);
     // Latency-compensated dry/wet mixing (see dsp/dryDelay.ts).
     dryDelay = new DryDelayMixer();
+    pooledMeters = null;
     // Sidechain HPF buffers
     scHpfBufferL = new Float32Array(0);
     scHpfBufferR = new Float32Array(0);
@@ -5287,11 +5311,18 @@
       resetBiquad(this.scHpf);
     }
     getMeters() {
-      return {
-        bandGain: [...this.bandGain],
-        bandState: [...this.bandState],
-        bandReductionDb: [...this.bandReductionDb]
-      };
+      if (!this.pooledMeters) {
+        this.pooledMeters = {
+          bandGain: new Array(this.bandGain.length).fill(0),
+          bandState: new Array(this.bandState.length).fill(0),
+          bandReductionDb: new Array(this.bandReductionDb.length).fill(0)
+        };
+      }
+      const m = this.pooledMeters;
+      for (let i = 0; i < m.bandGain.length; i++) m.bandGain[i] = this.bandGain[i];
+      for (let i = 0; i < m.bandState.length; i++) m.bandState[i] = this.bandState[i];
+      for (let i = 0; i < m.bandReductionDb.length; i++) m.bandReductionDb[i] = this.bandReductionDb[i];
+      return m;
     }
     /** Hybrid crossover group delay (samples). */
     getLatency() {
@@ -5415,6 +5446,7 @@
     dryR = new Float32Array(0);
     // Latency-compensated dry/wet mixing (see dsp/dryDelay.ts).
     dryDelay = new DryDelayMixer();
+    pooledMeters = null;
     // Tone filter state (per channel, per band)
     toneLowState = [];
     toneHighState = [];
@@ -5526,11 +5558,18 @@
       this.outputPeaks.fill(-100);
     }
     getMeters() {
-      return {
-        harmonicContentDb: [...this.harmonicContent],
-        outputPeakDb: [...this.outputPeaks],
-        oversampling: this.osActive
-      };
+      if (!this.pooledMeters) {
+        this.pooledMeters = {
+          harmonicContentDb: new Array(this.harmonicContent.length).fill(0),
+          outputPeakDb: new Array(this.outputPeaks.length).fill(0),
+          oversampling: false
+        };
+      }
+      const m = this.pooledMeters;
+      for (let i = 0; i < m.harmonicContentDb.length; i++) m.harmonicContentDb[i] = this.harmonicContent[i];
+      for (let i = 0; i < m.outputPeakDb.length; i++) m.outputPeakDb[i] = this.outputPeaks[i];
+      m.oversampling = this.osActive;
+      return m;
     }
     /** Hybrid crossover group delay + oversampler latency (samples). */
     getLatency() {
@@ -5731,6 +5770,7 @@
     // Latency-compensated dry/wet mixing + HQ oversampled gain application
     // (same design as compModule — see the field docs there).
     dryDelay = new DryDelayMixer();
+    pooledMeters = null;
     osStates = [];
     bandGainBufs = [];
     osActive = false;
@@ -5839,10 +5879,16 @@
       this.outputPeaks.fill(-100);
     }
     getMeters() {
-      return {
-        transientLevel: [...this.transientLevels],
-        outputPeakDb: [...this.outputPeaks]
-      };
+      if (!this.pooledMeters) {
+        this.pooledMeters = {
+          transientLevel: new Array(this.transientLevels.length).fill(0),
+          outputPeakDb: new Array(this.outputPeaks.length).fill(0)
+        };
+      }
+      const m = this.pooledMeters;
+      for (let i = 0; i < m.transientLevel.length; i++) m.transientLevel[i] = this.transientLevels[i];
+      for (let i = 0; i < m.outputPeakDb.length; i++) m.outputPeakDb[i] = this.outputPeaks[i];
+      return m;
     }
     /** Hybrid crossover group delay (samples). */
     getLatency() {
@@ -5989,6 +6035,7 @@
     // Dry buffer for delta listen
     // Latency-compensated dry/wet mixing (see dsp/dryDelay.ts).
     dryDelay = new DryDelayMixer();
+    pooledMeters = null;
     dryL = new Float32Array(0);
     dryR = new Float32Array(0);
     // Per-band meter state
@@ -6109,14 +6156,28 @@
       this.dryDelay.reset();
     }
     getMeters() {
-      const bands = this.bandMeters.map((bm) => ({
-        inputPeakDb: ampToDb(bm.inputPeak),
-        outputPeakDb: ampToDb(bm.outputPeak),
-        gainReductionDb: bm.clippingReduction,
-        outputRmsDb: bm.outputRmsCount > 0 ? ampToDb(Math.sqrt(bm.outputRmsSum / bm.outputRmsCount)) : -100
-      }));
-      const clippingReductionDb = this.bandMeters.map((bm) => bm.clippingReduction);
-      return { bands, clippingReductionDb };
+      if (!this.pooledMeters) {
+        this.pooledMeters = {
+          bands: this.bandMeters.map(() => ({
+            inputPeakDb: -100,
+            outputPeakDb: -100,
+            gainReductionDb: 0,
+            outputRmsDb: -100
+          })),
+          clippingReductionDb: new Array(this.bandMeters.length).fill(0)
+        };
+      }
+      const m = this.pooledMeters;
+      for (let b = 0; b < m.bands.length; b++) {
+        const bm = this.bandMeters[b];
+        const dst = m.bands[b];
+        dst.inputPeakDb = ampToDb(bm.inputPeak);
+        dst.outputPeakDb = ampToDb(bm.outputPeak);
+        dst.gainReductionDb = bm.clippingReduction;
+        dst.outputRmsDb = bm.outputRmsCount > 0 ? ampToDb(Math.sqrt(bm.outputRmsSum / bm.outputRmsCount)) : -100;
+        m.clippingReductionDb[b] = bm.clippingReduction;
+      }
+      return m;
     }
     /** Hybrid crossover group delay + oversampler latency (samples). */
     getLatency() {
@@ -6271,6 +6332,7 @@
     // Dry buffer for delta listen
     // Latency-compensated dry/wet mixing (see dsp/dryDelay.ts).
     dryDelay = new DryDelayMixer();
+    pooledMeters = null;
     dryL = new Float32Array(0);
     dryR = new Float32Array(0);
     // Cached config
@@ -6401,17 +6463,28 @@
       }
     }
     getMeters() {
-      const bands = this.bandMeters.map((bm) => ({
-        inputPeakDb: ampToDb(bm.inputPeak),
-        outputPeakDb: ampToDb(bm.outputPeak),
-        outputRmsDb: bm.outputRmsCount > 0 ? ampToDb(Math.sqrt(bm.outputRmsSum / bm.outputRmsCount)) : -100,
-        gainReductionDb: -bm.upwardGain
-        // negative of upward gain for consistent display
-      }));
-      return {
-        bands,
-        upwardGainDb: this.bandMeters.map((bm) => bm.upwardGain)
-      };
+      if (!this.pooledMeters) {
+        this.pooledMeters = {
+          bands: this.bandMeters.map(() => ({
+            inputPeakDb: -100,
+            outputPeakDb: -100,
+            gainReductionDb: 0,
+            outputRmsDb: -100
+          })),
+          upwardGainDb: new Array(this.bandMeters.length).fill(0)
+        };
+      }
+      const m = this.pooledMeters;
+      for (let b = 0; b < m.bands.length; b++) {
+        const bm = this.bandMeters[b];
+        const dst = m.bands[b];
+        dst.inputPeakDb = ampToDb(bm.inputPeak);
+        dst.outputPeakDb = ampToDb(bm.outputPeak);
+        dst.outputRmsDb = bm.outputRmsCount > 0 ? ampToDb(Math.sqrt(bm.outputRmsSum / bm.outputRmsCount)) : -100;
+        dst.gainReductionDb = -bm.upwardGain;
+        m.upwardGainDb[b] = bm.upwardGain;
+      }
+      return m;
     }
     /** Hybrid crossover group delay (samples). */
     getLatency() {
@@ -6505,6 +6578,7 @@
     envFollowers = new Array(NUM_BANDS).fill(0);
     // Per-band smoothed gain (dB)
     smoothedGainDb = new Array(NUM_BANDS).fill(0);
+    pooledMeters = null;
     // Envelope follower coefficients
     envAtkCoef = 0;
     envRelCoef = 0;
@@ -6670,23 +6744,28 @@
       }
     }
     getMeters() {
-      const bandLevelDb = new Float32Array(NUM_BANDS);
+      if (!this.pooledMeters) {
+        this.pooledMeters = {
+          spectralCurveDb: new Float32Array(NUM_BANDS),
+          targetCurveDb: new Float32Array(NUM_BANDS),
+          bandLevelDb: new Float32Array(NUM_BANDS),
+          amountActive: 0
+        };
+      }
+      const m = this.pooledMeters;
       let totalActiveGain = 0;
       for (let b = 0; b < NUM_BANDS; b++) {
-        bandLevelDb[b] = linearToDb(Math.max(1e-10, this.envFollowers[b]));
+        m.bandLevelDb[b] = linearToDb(Math.max(1e-10, this.envFollowers[b]));
         totalActiveGain += Math.abs(this.smoothedGainDb[b]);
       }
-      const amountActive = clamp(
+      m.amountActive = clamp(
         totalActiveGain / (NUM_BANDS * MAX_CORRECTION_DB),
         0,
         1
       );
-      return {
-        spectralCurveDb: new Float32Array(this.currentSpectralCurve),
-        targetCurveDb: new Float32Array(this.currentTargetCurve),
-        bandLevelDb,
-        amountActive
-      };
+      m.spectralCurveDb.set(this.currentSpectralCurve);
+      m.targetCurveDb.set(this.currentTargetCurve);
+      return m;
     }
     // ── Internal methods ──────────────────────────────────────
     ensureBuffers(size) {
@@ -6750,6 +6829,7 @@
     // latency, so mix < 100 % and delta stay free of delayed-copy combing on
     // BOTH channels independently.
     dryDelay = new DryDelayMixer();
+    pooledMeters = null;
     // Host-compensable (scalar) latency: the delay common to both channels
     // (min of the two per-channel delays — with a one-sided shift that is 0)
     // plus the all-pass group delay (1 sample) while rotation is active.
@@ -6978,11 +7058,14 @@
       this.xcorrBlockCounter = 0;
     }
     getMeters() {
-      return {
-        asymmetry: clamp(this.smoothAsymmetry, 0, 1),
-        correlation: clamp(this.smoothCorrelation, -1, 1),
-        detectedOffsetMs: this.detectedOffsetMs
-      };
+      if (!this.pooledMeters) {
+        this.pooledMeters = { asymmetry: 0, correlation: 1, detectedOffsetMs: 0 };
+      }
+      const m = this.pooledMeters;
+      m.asymmetry = clamp(this.smoothAsymmetry, 0, 1);
+      m.correlation = clamp(this.smoothCorrelation, -1, 1);
+      m.detectedOffsetMs = this.detectedOffsetMs;
+      return m;
     }
     /**
      * Scalar, host-compensable latency: the delay common to BOTH channels

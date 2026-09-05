@@ -71,6 +71,7 @@ export class PhaseModuleProcessor implements UltinaModuleProcessor {
   // latency, so mix < 100 % and delta stay free of delayed-copy combing on
   // BOTH channels independently.
   private dryDelay = new DryDelayMixer();
+  private pooledMeters: PhaseMeters | null = null;
   // Host-compensable (scalar) latency: the delay common to both channels
   // (min of the two per-channel delays — with a one-sided shift that is 0)
   // plus the all-pass group delay (1 sample) while rotation is active.
@@ -388,11 +389,17 @@ export class PhaseModuleProcessor implements UltinaModuleProcessor {
   }
 
   getMeters(): PhaseMeters {
-    return {
-      asymmetry: clamp(this.smoothAsymmetry, 0, 1),
-      correlation: clamp(this.smoothCorrelation, -1, 1),
-      detectedOffsetMs: this.detectedOffsetMs,
-    };
+    if (!this.pooledMeters) {
+      this.pooledMeters = { asymmetry: 0, correlation: 1, detectedOffsetMs: 0 };
+    }
+    const m = this.pooledMeters;
+    // POOLED snapshot (audio thread — getMeters runs at meter cadence inside
+    // UltinaProcessor.getMeters). The next call overwrites every field;
+    // postMessage clones, direct readers must copy immediately.
+    m.asymmetry = clamp(this.smoothAsymmetry, 0, 1);
+    m.correlation = clamp(this.smoothCorrelation, -1, 1);
+    m.detectedOffsetMs = this.detectedOffsetMs;
+    return m;
   }
 
   /**

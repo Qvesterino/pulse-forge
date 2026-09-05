@@ -95,6 +95,7 @@ export class SculptorModuleProcessor implements UltinaModuleProcessor {
 
   // Per-band smoothed gain (dB)
   private smoothedGainDb: number[] = new Array(NUM_BANDS).fill(0);
+  private pooledMeters: SculptorMeters | null = null;
 
   // Envelope follower coefficients
   private envAtkCoef = 0;
@@ -333,25 +334,33 @@ export class SculptorModuleProcessor implements UltinaModuleProcessor {
   }
 
   getMeters(): SculptorMeters {
+    if (!this.pooledMeters) {
+      this.pooledMeters = {
+        spectralCurveDb: new Float32Array(NUM_BANDS),
+        targetCurveDb: new Float32Array(NUM_BANDS),
+        bandLevelDb: new Float32Array(NUM_BANDS),
+        amountActive: 0,
+      };
+    }
+    const m = this.pooledMeters;
+    // POOLED snapshot (audio thread — getMeters runs at meter cadence inside
+    // UltinaProcessor.getMeters). The next call overwrites every field;
+    // postMessage clones, direct readers must copy immediately.
     // Convert envelope followers to dB for band level display
-    const bandLevelDb = new Float32Array(NUM_BANDS);
     let totalActiveGain = 0;
     for (let b = 0; b < NUM_BANDS; b++) {
-      bandLevelDb[b] = linearToDb(Math.max(1e-10, this.envFollowers[b]));
+      m.bandLevelDb[b] = linearToDb(Math.max(1e-10, this.envFollowers[b]));
       totalActiveGain += Math.abs(this.smoothedGainDb[b]);
     }
     // amountActive: 0-1 normalized by theoretical max (all bands at max correction)
-    const amountActive = clamp(
+    m.amountActive = clamp(
       totalActiveGain / (NUM_BANDS * MAX_CORRECTION_DB),
       0,
       1,
     );
-    return {
-      spectralCurveDb: new Float32Array(this.currentSpectralCurve),
-      targetCurveDb: new Float32Array(this.currentTargetCurve),
-      bandLevelDb,
-      amountActive,
-    };
+    m.spectralCurveDb.set(this.currentSpectralCurve);
+    m.targetCurveDb.set(this.currentTargetCurve);
+    return m;
   }
 
   // ── Internal methods ──────────────────────────────────────

@@ -99,6 +99,7 @@ export class ExciterModuleProcessor implements UltinaModuleProcessor {
   private dryR: Float32Array = new Float32Array(0);
   // Latency-compensated dry/wet mixing (see dsp/dryDelay.ts).
   private dryDelay = new DryDelayMixer();
+  private pooledMeters: ExciterMeters | null = null;
 
   // Tone filter state (per channel, per band)
   private toneLowState: number[] = [];
@@ -241,11 +242,21 @@ export class ExciterModuleProcessor implements UltinaModuleProcessor {
   }
 
   getMeters(): ExciterMeters {
-    return {
-      harmonicContentDb: [...this.harmonicContent],
-      outputPeakDb: [...this.outputPeaks],
-      oversampling: this.osActive,
-    };
+    if (!this.pooledMeters) {
+      this.pooledMeters = {
+        harmonicContentDb: new Array(this.harmonicContent.length).fill(0),
+        outputPeakDb: new Array(this.outputPeaks.length).fill(0),
+        oversampling: false,
+      };
+    }
+    const m = this.pooledMeters;
+    // POOLED snapshot (audio thread — getMeters runs at meter cadence inside
+    // UltinaProcessor.getMeters). The next call overwrites every field;
+    // postMessage clones, direct readers must copy immediately.
+    for (let i = 0; i < m.harmonicContentDb.length; i++) m.harmonicContentDb[i] = this.harmonicContent[i];
+    for (let i = 0; i < m.outputPeakDb.length; i++) m.outputPeakDb[i] = this.outputPeaks[i];
+    m.oversampling = this.osActive;
+    return m;
   }
 
   /** Hybrid crossover group delay + oversampler latency (samples). */
