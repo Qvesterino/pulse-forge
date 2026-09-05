@@ -1,7 +1,7 @@
 # Ultina — quality roadmap: odozva, prejav, modifikovateľnosť
 
 > Stav dokumentu: 2026-09-05 (aktualizované po U1/U2/U5/P)  
-> Hotové: U1 (a1b1ba0), U2 (6119e98), U5 (ab3bdb5), P-časť (48cc665), U3 (upstream 7785d75a + c80849d — golden vektory ostali bit-exact). Zostáva: U4 (čaká na rozhodnutie), meters pooling, exciter tone, export/import presetov.  
+> Hotové: U1 (a1b1ba0), U2 (6119e98), U5 (ab3bdb5), P-časť (48cc665), U3 (7785d75a + c80849d), U4 (bc6c8060 + 7583f2f, sémantika schválená používateľom), meters pooling (3d846eff + 99e8a39). Zostáva voliteľné: exciter tone filter (zámerná zmena zvuku), export/import presetov, LUFS plný stale-marking.  
 > Scope: výhradne plugin **Ultina** (`src/effects/ultina-core` + `ultinaNode.ts` + `ultina-worklet.entry.js` + panel). FXEQ a Ozvena majú vlastné roadmapy.  
 > Účel: vykonateľný plán „ako dotiahnuť Ultinu na world-class úroveň“ nad aktuálnym kódom, nie produktová vízia.
 
@@ -102,11 +102,11 @@ Akceptancia: 10 kHz sine + ratio 20:1 comp nemá aliasing škálu (spektrálny t
 
 Návrh sémantiky (upraviť pri implementácii):
 
-- [ ] `getLatency()` vráti **spoločný** delay = max(delayL, delayR) aplikovaný obojma kanálmi; skutočný inter-channel rozdiel (time-shift param) ostáva nez-kompenzovaný — to je kreatívna funkcia modulu, nie defekt, a host PDC ju kompenzovať nemá.
-- [ ] Vnútorná dry/wet a delta vetva modulu: dry delay-ovať o rovnaký spoločný delay (dnes comb). Time-shift offset nechať wet-only.
-- [ ] All-pass z⁻¹ (1 sample pri rotation 0) — zohľadniť v spoločnom deleji alebo odstrániť pri rotácii 0 (bypass cesta).
-- [ ] Dokumentovať v module hlavičke: čo host PDC kompenzuje a čo nie.
-- [ ] X-correlation auto-align na audio threade (do ~523k MAC/block pri 512) — rozložiť lag-ov do viacerých blokov (round-robin 64 lags/block), search range via ring buffer naviac cez blok.
+- [x] `getLatency()` vráti **spoločný** delay = max(delayL, delayR) aplikovaný obojma kanálmi; skutočný inter-channel rozdiel (time-shift param) ostáva nez-kompenzovaný — to je kreatívna funkcia modulu, nie defekt, a host PDC ju kompenzovať nemá.
+- [x] Vnútorná dry/wet a delta vetva modulu: dry delay-ovaná PER KANÁL (DryDelayMixer.processPerChannel) — mix/delta coherentné na oboch kanáloch (dnes comb). Time-shift offset nechať wet-only.
+- [x] All-pass z⁻¹ (1 sample pri rotation 0) — pri rotácii 0 sa celá sekcia preskočí v spoločnom deleji alebo odstrániť pri rotácii 0 (bypass cesta).
+- [x] Dokumentovať v module hlavičke (field docs): čo host PDC kompenzuje a čo nie.
+- [x] X-correlation auto-align na audio threade (do ~523k MAC/block pri 512) — rozložiť lag-ov do viacerých blokov (round-robin 64 lags/block), search range via ring buffer naviac cez blok.
 
 Akceptancia: `getLatencySamples()` != 0 s aktívnym phase modulom; PDC test (`tests/fx-node-latency.test.ts` pattern) pre ultinu s phase zapnutým; delta listen phase = čistý posun bez echa.
 
@@ -126,7 +126,7 @@ Akceptancia: uložený preset prežije reload prehliadača; načítanie corruptn
 
 ## Fáza P — P3 polish (kedykoľvek medzi fázami, neblokujú nič)
 
-- [ ] Pooling `getMeters()` v 10 moduloch (pattern `unmaskModule.ts:526-536`) — ~3,4k allocs/s na 86 Hz poli odstránené; čisto mechanická zmena, vektory musia ostať bit-exact.
+- [x] Pooling `getMeters()` v 10 moduloch (pattern `unmaskModule.ts:526-536`) — ~3,4k allocs/s na 86 Hz poli odstránené; čisto mechanická zmena, vektory musia ostať bit-exact.
 - [x] LufsMeter: „stale“ marking — stale guard v UltinaProcessor (unfed > 3 s → −70 do autoGain); plné meter marking NEHOŤANÉ, kým short-term window plne neprejde (doplňok k auto-gain re-arm fixu).
 - [x] eqLearn/crossoverLearn: block-size-aware smoothing coef (`1 − exp(−frameCount/tauSamples)`); top bandy nad 0,45·sr odvodzovať pri `prepare()`.
 - [ ] Exciter tone one-pole: coef z `sampleRate × (OS ? 4 : 1)` — **zmena zvuku pri prepnutí OS**, platiť vektorovým postupom.
