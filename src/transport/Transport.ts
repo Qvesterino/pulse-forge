@@ -113,6 +113,23 @@ export class Transport {
   }
 
   /**
+   * Re-anchor to an EXACT musical point (scene-tempo seam, roadmap 2.2):
+   * the scheduler pre-computes the boundary's old-map wall time and snaps
+   * the anchor onto it, so the post-boundary map continues the pre-scheduled
+   * piecewise map with zero drift. `setBpm()` would re-anchor at the current
+   * (tick-quantized) position instead — up to one tick of grid skip at the
+   * seam. The playhead position snaps onto the boundary tick (≤ one tick of
+   * movement), which is musically the more correct read.
+   */
+  setBpmAnchored(bpm: number, anchorTick: number, anchorTime: number): void {
+    if (!Number.isFinite(bpm) || bpm <= 0) return;
+    if (!Number.isFinite(anchorTick) || !Number.isFinite(anchorTime)) return;
+    this.anchorTick = anchorTick;
+    this.anchorTime = anchorTime;
+    this.bpm_ = bpm;
+  }
+
+  /**
    * Configure the loop region. `end` is clamped to be `>= start` so a
    * degenerate range collapses to a single tick rather than wrapping
    * backwards. `end === 0` keeps the "to end of content" sentinel and is

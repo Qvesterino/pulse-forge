@@ -1,5 +1,5 @@
 import type { DrumTrack, Pattern, PlayMode, ProjectDocument } from "../project-model/types";
-import { BAR_TICKS, STEP_TICKS } from "../project-model/types";
+import { BAR_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
 import { drumHitsInWindow } from "../project-model/groove";
 import { noteEventsInWindow } from "../project-model/events";
 import type { Transport } from "../transport/Transport";
@@ -139,6 +139,33 @@ export class Scheduler {
    * forever.
    */
   private activeLoopEnd: number | null = null;
+  /**
+   * Scheduled scene-tempo change (release roadmap 2.2) — the tempo seam fix.
+   * When the lookahead window reaches a clip boundary whose scene pins a
+   * DIFFERENT bpm, the window is split: events before the boundary keep the
+   * current (old-anchor) tick→time map, events after it are pre-scheduled on
+   * the NEW tempo integrated from the boundary (`boundaryTime + (tick −
+   * boundary) · sptNew` — the exact formula `buildTempoMap` uses offline).
+   * The transport itself re-anchors (setBpm, position-preserving) only when
+   * the playhead actually crosses the boundary, so the old-side map stays
+   * exact until that instant. Without this, the flip landed up to one
+   * lookahead (~120 ms) early at a non-musical window edge and live diverged
+   * from export.
+   */
+  private pendingTempoFlip: {
+    bpm: number;
+    atTick: number;
+    fromBpm: number;
+    /** Old-map wall time of the boundary — the exact re-anchor point. */
+    boundaryTime: number;
+  } | null = null;
+  /**
+   * The current window's tick→time map — piecewise across a scheduled tempo
+   * boundary, plain `transport.timeAtTick` otherwise. Consumed by the
+   * modulator sweep that runs after the song/pattern blocks; song mode sets
+   * it, pattern mode and the early returns leave it null.
+   */
+  private songTimeAt: ((tick: number) => number) | null = null;
   private windowStartTick = 0;
   private stopped = true;
   /** Last BPM handed to applySceneTempo (null = project tempo) — change-guard. */
@@ -200,6 +227,7 @@ export class Scheduler {
 
   stop(): void {
     // Playback ended — hand tempo control back to the project BPM.
+    this.pendingTempoFlip = null;
     this.applyTempo(null);
     if (this.timer !== null) {
       clearInterval(this.timer);
@@ -220,6 +248,9 @@ export class Scheduler {
 
   /** Re-align the scheduling window to the transport (after a seek while playing). */
   resync(): void {
+    // A seek invalidates a scheduled tempo flip — the boundary is re-detected
+    // against the new position on the next window.
+    this.pendingTempoFlip = null;
     const transport = this.deps.getTransport();
     this.windowStartTick = Math.max(0, transport.position);
   }
@@ -250,6 +281,20 @@ export class Scheduler {
       this.stop();
       return;
     }
+    // Tempo-seam flip (roadmap 2.2): the playhead crossed the scheduled
+    // boundary — re-anchor the transport now (setBpm is position-preserving,
+    // so it lands within one tick quantization of the boundary). The events
+    // past the boundary were already pre-scheduled on the new tempo, so this
+    // only aligns position()/timeAtTick for everything scheduled from here.
+    if (this.pendingTempoFlip && transport.position >= this.pendingTempoFlip.atTick) {
+      const flip = this.pendingTempoFlip;
+      this.pendingTempoFlip = null;
+      // Anchor EXACTLY on the pre-computed boundary point — a position-
+      // preserving setBpm() here would quantize the anchor to the tick and
+      // skip up to one tick-worth of grid right after the seam.
+      transport.setBpmAnchored(flip.bpm, flip.atTick, flip.boundaryTime);
+      this.lastAppliedTempo = flip.bpm;
+    }
     // Defect A01.D2 (scheduler precision audit): windowEnd is declared
     // before the loop-wrap block so the post-wrap clamp can shorten it
     // to the loop boundary. If a seek fires inside the wrap block, the
@@ -271,6 +316,9 @@ export class Scheduler {
       const position = transport.position;
       if (position >= loopEnd || position < loopStart) {
         transport.seek(loopStart);
+        // The wrap jumps position — a scheduled flip would fire at the wrong
+        // place. Boundary detection re-runs from the wrapped window.
+        this.pendingTempoFlip = null;
         this.windowStartTick = loopStart;
         // transport.seek re-anchored; windowEnd was computed against
         // the old anchor. Recompute against the post-seek anchor so
@@ -336,6 +384,7 @@ export class Scheduler {
   private scheduleWindow(transport: Transport, now: number, windowStart: number, windowEnd: number): void {
     const doc = this.deps.getProject();
     const mode = this.deps.getMode();
+    this.songTimeAt = null;
 
     // Pre-roll + count-in metronome: clicks fire on bar boundaries inside the
     // pre-roll region only. Content scheduling is untouched (starts on time).
@@ -491,10 +540,55 @@ export class Scheduler {
           this.deps.setSceneIntensity(0.7);
         }
       }
-      // Scene tempo: while inside a clip whose scene pins a BPM, the
-      // transport runs there (guarded — only actual changes re-anchor).
-      const wantedTempo = activeScene?.bpm ?? null;
-      this.applyTempo(wantedTempo);
+      // Scene tempo (release roadmap 2.2): while inside a clip whose scene
+      // pins a BPM, the transport runs there. With a SCHEDULED flip the
+      // apply is suppressed — the flip fires from tick() when the playhead
+      // crosses the boundary; applying it here would land up to one lookahead
+      // early (the original seam bug).
+      if (!this.pendingTempoFlip) {
+        this.applyTempo(activeScene?.bpm ?? null);
+      }
+      // Build the window's tick→time map: piecewise when a scene-tempo change
+      // sits inside (or is already scheduled for) this window.
+      let tempoSplit: { atTick: number; sptNew: number; timeAt: (tick: number) => number } | null = null;
+      const buildSplit = (atTick: number, bpmNew: number) => {
+        const sptNew = 60 / (bpmNew * PPQ);
+        const boundaryTime = transport.timeAtTick(atTick);
+        return {
+          atTick,
+          sptNew,
+          timeAt: (tick: number) =>
+            tick < atTick ? transport.timeAtTick(tick) : boundaryTime + (tick - atTick) * sptNew,
+        };
+      };
+      if (this.pendingTempoFlip) {
+        // A flip scheduled in a previous window whose boundary this window
+        // still spans — reuse it (same formula the offline buildTempoMap uses).
+        const pending = this.pendingTempoFlip;
+        tempoSplit = buildSplit(pending.atTick, pending.bpm);
+      } else {
+        // Detect the first clip boundary inside the window whose scene pins a
+        // DIFFERENT bpm than the one currently applied, and schedule the flip.
+        const currentBpm = transport.bpm;
+        for (const clip of clips) {
+          const boundaryTick = clip.startBar * BAR_TICKS;
+          if (boundaryTick <= windowStart || boundaryTick > windowEnd) continue;
+          const scene = scenesById.get(clip.sceneId);
+          if (!scene) continue;
+          const boundaryBpm = scene.bpm ?? doc.bpm;
+          if (boundaryBpm === currentBpm) continue;
+          this.pendingTempoFlip = {
+            bpm: boundaryBpm,
+            atTick: boundaryTick,
+            fromBpm: currentBpm,
+            boundaryTime: transport.timeAtTick(boundaryTick),
+          };
+          tempoSplit = buildSplit(boundaryTick, boundaryBpm);
+          break; // one flip per window — further changes land in later windows
+        }
+      }
+      const timeAtForWindow = tempoSplit ? tempoSplit.timeAt : (tick: number) => transport.timeAtTick(tick);
+      this.songTimeAt = timeAtForWindow;
       for (const clip of clips) {
         const clipStart = clip.startBar * BAR_TICKS;
         const clipEnd = clipStart + clip.lengthBars * BAR_TICKS;
@@ -506,7 +600,7 @@ export class Scheduler {
         const pattern = patternsById.get(scene.patternId);
         if (!pattern) continue;
         const patternTicks = STEP_TICKS * pattern.stepCount;
-        this.schedulePatternWindow(pattern, clipStart, s, e);
+        this.schedulePatternWindow(pattern, clipStart, s, e, tempoSplit ? timeAtForWindow : undefined);
         if (!automationCtx && windowStart >= clipStart) {
           automationCtx = { base: clipStart, patternTicks };
         }
@@ -531,7 +625,7 @@ export class Scheduler {
         if (this.firedMarkerIds.has(marker.id)) continue;
         this.firedMarkerIds.add(marker.id);
         const assetId = mapMarkerTypeToAsset(marker.type);
-        const when = transport.timeAtTick(marker.tick) + this.scheduleOffsetSec() + 0.005;
+        const when = timeAtForWindow(marker.tick) + this.scheduleOffsetSec() + 0.005;
         this.deps.triggerMarker?.(assetId, when, marker.linkedClipId);
       }
       // Scene automation: invoke applySceneAutomation per active clip window.
@@ -546,8 +640,10 @@ export class Scheduler {
         for (const clip of doc.arrangement.audioClips) {
           const clipStart = clip.startBar * BAR_TICKS;
           if (clipStart < windowStart || clipStart >= windowEnd) continue;
-          const when = transport.timeAtTick(clipStart) + this.scheduleOffsetSec() + 0.005;
-          const durationSec = clip.lengthBars * BAR_TICKS * transport.secondsPerTick;
+          const when = timeAtForWindow(clipStart) + this.scheduleOffsetSec() + 0.005;
+          // A clip starting past the tempo boundary runs at the NEW tempo.
+          const spt = tempoSplit && clipStart >= tempoSplit.atTick ? tempoSplit.sptNew : transport.secondsPerTick;
+          const durationSec = clip.lengthBars * BAR_TICKS * spt;
           this.deps.triggerAudioClip(clip, when, durationSec);
         }
       }
@@ -578,19 +674,30 @@ export class Scheduler {
     if (this.deps.applyModulators) {
       const transport = this.deps.getTransport();
       const offsetSec = this.scheduleOffsetSec() + 0.005;
-      this.deps.applyModulators(windowStart, windowEnd, (tick) => transport.timeAtTick(tick) + offsetSec);
+      const timeAtMod = this.songTimeAt ?? ((tick: number) => transport.timeAtTick(tick));
+      this.deps.applyModulators(windowStart, windowEnd, (tick) => timeAtMod(tick) + offsetSec);
     }
 
     // Poll envFollower modulators targeting FX/inst params (control rate).
     this.deps.applyEnvFollowers?.();
   }
 
-  private schedulePatternWindow(pattern: Pattern, base: number, windowStart: number, windowEnd: number): void {
+  private schedulePatternWindow(
+    pattern: Pattern,
+    base: number,
+    windowStart: number,
+    windowEnd: number,
+    timeAtOverride?: (tick: number) => number,
+  ): void {
     const transport = this.deps.getTransport();
     const doc = this.deps.getProject();
     const now = this.deps.getAudioTime();
     const scheduleOffsetSec = this.scheduleOffsetSec();
-    const timeAt = (tick: number) => transport.timeAtTick(tick);
+    // A tempo split overrides the transport map for the post-boundary part of
+    // the window (release roadmap 2.2 — the events past the boundary must run
+    // on the NEW tempo integrated from the boundary, not on the not-yet-
+    // re-anchored transport map).
+    const timeAt = timeAtOverride ?? ((tick: number) => transport.timeAtTick(tick));
     const audible = (when: number) => when >= now - 0.002;
 
     for (const hit of drumHitsInWindow(doc, pattern, base, windowStart, windowEnd)) {
