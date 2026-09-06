@@ -22,11 +22,11 @@
 
 > Toto stoja medzi appkou a publikom. Poradie podľa (riziko × cena opravy).
 
-### 1.1 QA v reálnych prehliadačoch `[!]` — najväčšie riziko celého releasu
+### 1.1 QA v reálnych prehliadačoch `[~]` — Chromium 197/197 PASS; Firefox/Safari manuálne
 
 Celý CI beží v jsdom, ktorý **nepočuje žiadny zvuk**. Všetkých 1866 testov overuje logiku, nie audio rendering.
 
-- [ ] Spustiť `npm run test:browser` (`src/browser-checks.ts`) v **Chromium / Edge / Firefox / Safari**.
+- [x] Spustiť `npm run test:browser` v **headless Chromium** — **197/197 PASS** (boot, collab cez reálny server, embed, share link `?import=`, touch, AudioWorklet DSP vrátane fxeq latency/PDC, MP3, offline generation flow, plugin workflow). Edge beží na tom istom Chromium engine. **Zostáva manuálne: Firefox + Safari/iOS.**
 - [ ] Manuálny test skript (najrizikovejšie scenáre):
   - [ ] iOS Safari: `pagehide` uloženie (zavrieť tab po editácii → projekt prežije), audio unlock banner, prvý click na suspendnutom kontexte.
   - [ ] Tab hide počas playback → resume bez "machine gun" burstu, scheduler re-anchor.
@@ -63,12 +63,10 @@ Autosnapshoty sa ukladajú (20 na projekt, `SnapshotRepository`) ale **neexistuj
 
 ## Fáza 2 — Optimalizácie
 
-### 2.1 Bundle headroom `[!]` — skoro release blocker
+### 2.1 Bundle headroom `[x]` — vendor split hotový
 
-- Entry chunk: **987 KB z 995 KB budgetu** — 8 KB rezervy. Akákoľvek nová funkcia rozbije build.
-- [ ] Audit entry chunku (`vite build` + rollup analyze): čo je eager, čo môže byť lazy (vzor `ExportPanel`/`EmbedApp`).
-- [ ] Kandidáti na lazy: väčšie panely, `commands.ts` časti (5 522 riadkov), vendored plugin kedy importovať.
-- [ ] Zvážiť prehodnotenie budgetu (ak je 995 zámerný CI limiter, inak návrh: entry ≤ 900 KB).
+- [x] **DONE:** `vite.config.ts` `manualChunks` — react/react-dom/scheduler do `vendor-react` chunku (142.79 kB). Entry: **988 → 846 KB** (149 KB headroom pod 995 budget). Motivácia: app-code zmeny už neinvalidujú PWA-precachovaný vendor chunk (jemnejšie delta update); initial payload sa nezmenil (vendor sa stále načítava pri boote). Overené: produkčný build + preview smoke (`scripts/preview-smoke.mjs`, nový nástroj — load + pageerror scan) bez chýb; budget check 846/995 + 1635/2400 OK.
+- [ ] Budúce (keď headroom znova dorastie): DiceContext eager-importuje AI stack (`intent/pipeline`, `assist/pipeline`, `ai/generator` — 9 call sites) → dynamic import v handleroch ťahá ~desiatky KB z entry; vzor `ExportPanel`/`EmbedApp`.
 
 ### 2.2 Tempo-map split windows (scene-tempo seam)
 
