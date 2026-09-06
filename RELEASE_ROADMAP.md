@@ -68,13 +68,16 @@ Autosnapshoty sa ukladajú (20 na projekt, `SnapshotRepository`) ale **neexistuj
 - [x] **DONE:** `vite.config.ts` `manualChunks` — react/react-dom/scheduler do `vendor-react` chunku (142.79 kB). Entry: **988 → 846 KB** (149 KB headroom pod 995 budget). Motivácia: app-code zmeny už neinvalidujú PWA-precachovaný vendor chunk (jemnejšie delta update); initial payload sa nezmenil (vendor sa stále načítava pri boote). Overené: produkčný build + preview smoke (`scripts/preview-smoke.mjs`, nový nástroj — load + pageerror scan) bez chýb; budget check 846/995 + 1635/2400 OK.
 - [ ] Budúce (keď headroom znova dorastie): DiceContext eager-importuje AI stack (`intent/pipeline`, `assist/pipeline`, `ai/generator` — 9 call sites) → dynamic import v handleroch ťahá ~desiatky KB z entry; vzor `ExportPanel`/`EmbedApp`.
 
-### 2.2 Tempo-map split windows (scene-tempo seam)
+### 2.2 Tempo-map split windows (scene-tempo seam) `[x]`
 
 Najväčšia zostávajúca audio-korektnosť položka: live prehodenie scene BPM pristane ~95–120 ms skoro na ne-muzikálnom okne (plánovač window edge) a offline prepína presne na clip boundary → počuteľná šva a live ≠ export.
 
-- [ ] `Scheduler.tick()`: rozdeliť okno na scene-tempo boundary rovnako ako pri quantized pattern launch (vzor už existuje), `transport.setBpm` aplikovať až na boundary.
-- [ ] Deterministický test: scene BPM zmena na bar 4 → udalosti po boundary používajú nové tempo presne od boundary.
-- [ ] Po landed: overiť vs. `buildTempoMap` (offline) — parity test live↔offline timing.
+- [x] `Scheduler`: window split na scene-tempo boundary — detekcia prvej clip boundary v (windowStart, windowEnd] so scénou, ktorá pinuje INÉ bpm; piecewise tick→time mapa (stará mapa pred boundary, nová integrovaná z boundary — presne `buildTempoMap` formula); samotný `setBpm` až keď playhead prekročí boundary.
+- [x] Presný re-anchor: nová `Transport.setBpmAnchored(bpm, anchorTick, anchorTime)` — flip sa ukotví na vopred vypočítaný boundary bod namiesto tick-kvantizovaného `setBpm` (ktorý preskočil až 1 grid krok za švom; odhalené testom: 8544→8664 pri preskočení 8640).
+- [x] Flip sa ruší pri stop/resync/loop-wrap seek; `applyTempo` potlačený počas pending flipu (inak by sa aplikoval ~120 ms skoro — pôvodná chyba).
+- [x] Deterministické testy: `tests/tempo-seam.test.ts` (5) — udalosti po boundary presne na novom tempe od boundary; transport 120→240 až pri prekročení; žiadne double-fire/drop na šve; live timing == `buildTempoMap` (parity, toBeCloseTo 4); stop ruší pending flip. Stability: 3× 56/56.
+- [x] Parita vs. `buildTempoMap` overená testom 4 (live `when − t0` == offline `timeAt(tick)`).
+- Rezidua: ±25 ms flip kvantizácia (tick interval) — neodstrániteľné bez audio-vlákna; ďalšia tempo zmena v tom istom okne (<120 ms) sa odloží na ďalšie okno; automation/modulátory sa píšu cez starú mapu v split okne (≤120 msprechod, engine-side wall-clock — spoločná rezidua s 2.3).
 
 ### 2.3 Tick-mapped automation
 
