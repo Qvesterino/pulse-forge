@@ -125,3 +125,6 @@ scripts/
 ```
 
 See `docs/adr/` for architectural decision records.
+
+See [`KNOWN_LIMITATIONS.md`](./KNOWN_LIMITATIONS.md) for the honest list of
+current caveats (export parity, collaboration, platform edges).

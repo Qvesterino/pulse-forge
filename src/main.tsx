@@ -7,12 +7,17 @@ import { App } from "./ui/App";
 import { ErrorBoundary } from "./ui/ErrorBoundary";
 import { ProjectBrowser } from "./ui/ProjectBrowser";
 import { decodeShareCode } from "./export/shareCode";
+import { initSwUpdate } from "./sw-update";
 import "./styles.css";
 import { initTheme } from "./ui/theme";
 import { initPadKeys } from "./ui/padKeys";
 
 // Load persisted pad key bindings before the first paint.
 initPadKeys();
+
+// Service-worker update banner (PWA "prompt" mode) — registers on every
+// route; the banner only appears when a new build is waiting.
+initSwUpdate();
 
 // Apply persisted user theme before the first paint.
 initTheme();

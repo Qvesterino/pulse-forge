@@ -9,7 +9,14 @@ import type { VitePWAOptions } from "vite-plugin-pwa";
  * inherently offline-first.
  */
 export const pwaOptions: Partial<VitePWAOptions> = {
-  registerType: "autoUpdate",
+  // "prompt" (release roadmap Fáza 3): a new service worker WAITS until the
+  // user accepts the reload banner. With "autoUpdate" the new precache
+  // activates + cleans outdated revisions while a long-running tab is still
+  // on the old build — its next lazy-chunk import (ExportPanel, FxEqPanel…)
+  // can then 404 mid-session. A DAW with work in progress must never have
+  // its cache pulled out from under it; the update banner in src/sw-update.ts
+  // hands the reload decision to the user.
+  registerType: "prompt",
   includeAssets: ["apple-touch-icon.png"],
   manifest: {
     name: "Pulse Forge — Browser DAW",

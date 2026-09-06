@@ -75,7 +75,13 @@ describe("PWA caching strategy", () => {
     expect(pwaOptions.workbox!.navigateFallback).toBe("index.html");
   });
 
-  it("uses autoUpdate so users always get fresh builds online", () => {
-    expect(pwaOptions.registerType).toBe("autoUpdate");
+  it("uses PROMPT mode so a running session never loses its precache", () => {
+    // Release roadmap Fáza 3: with "autoUpdate" the new precache activates
+    // and cleans outdated revisions while a long-running tab is still on the
+    // old build — its next lazy-chunk import (ExportPanel, FxEqPanel…) can
+    // 404 mid-session. "prompt" parks the new worker behind an update
+    // banner (src/sw-update.ts); the old cache stays intact until the user
+    // chooses RELOAD.
+    expect(pwaOptions.registerType).toBe("prompt");
   });
 });

@@ -105,11 +105,11 @@ Najväčšia zostávajúca audio-korektnosť položka: live prehodenie scene BPM
 
 ---
 
-## Fáza 3 — Release engineering
+## Fáza 3 — Release engineering `[x]`
 
-- [ ] **CI na PR-y**: full suite + `test:browser` (playwright headless Chromium je v devDeps) + `tsc --noEmit` + build budget check.
-- [ ] **PWA update flow**: manuálne overiť, že bežiaci tab po service-worker update nespadne a necommitnutá práca prežije (`autoUpdate` precache je nastavené).
-- [ ] **Known limitations dokument**: residual list z `MAINTENANCE_AUDIT_PROGRESS.md` preklopiť do krátkeho user-facing „Known limitations" (marker cues v master WAVe, MIDI master clock jitter, collab neatomické solo zmeny, 32f WAV hard-clip).
+- [x] **CI na PR-y**: už existuje `.github/workflows/ci.yml` (typecheck:clean, full vitest + ai:performance, produkčný build s budget checkom, browser audio checks v headless Chromium) — **pridaný** `audit-prod` job: `npm audit --omit=dev --audit-level=high` (runtime deps musia zostať na 0; dev advisories consciously deferované, pozri 2.5).
+- [x] **PWA update flow**: prepnuté `autoUpdate` → **`prompt`** — pôvodný režim aktivuje nový precache + čistí staré revízie, kým bežiaci tab ešte beží na starom builde → ďalší lazy-chunk import (ExportPanel, FxEqPanel…) mohol 404-núť počas session. V `prompt` režime nový worker ČAKÁ; banner „New version ready — RELOAD" (`src/sw-update.ts`, len z main.tsx — virtual modul nie je vo vitest grafe) + periodická kontrola updátov (15 min + visibilitychange — SPA má málo plných navigácií). **Overené end-to-end**: `scripts/pwa-update-smoke.mjs` simuluje deployment (build v1 → nasadenie v2 → reload → banner APPEARED → RELOAD → čistý reload, 0 errors); SW sa registruje v produkčnom preview (`preview-smoke.mjs` hlási registered).
+- [x] **Known limitations dokument**: [`KNOWN_LIMITATIONS.md`](./KNOWN_LIMITATIONS.md) — export parita (intensity, marker cues, 32f clip), collab (lokálne undo, neohraničená história), platform edge (sidechain mimo výberu, worklet-less fallbacky, MIDI clock jitter), import limity, Chromium-only CI. Prepojené z README.
 - [ ] **Malé fixy zo residual listu** (~pol dna dokopy):
   - [ ] `bounce.ts` head-trim cez tempo-mapu + `stretchRate` scaling.
   - [ ] 32-bit float WAV: soft-knee namiesto hard-clipu pri ±1.0.
@@ -157,6 +157,7 @@ Najväčšia zostávajúca audio-korektnosť položka: live prehodenie scene BPM
 | 1.3 Snapshot restore UI | ✅ (už existovalo — WIP commit) | 12/12 testov `snapshots-panel.test.tsx` |
 | 1.4 Import limity + cancel | ✅ | `01834a1` + testy (mp3 abort, size limity) |
 | 2.1 Bundle headroom | ✅ | `42810f8` — entry **988 → 846 KB**, preview smoke bez chýb |
-| 2.2–2.5, Fáza 3 | ⏳ | zostávajú v checkedoch vyššie |
+| 2.3, 2.4, Fáza 3 | ✅ | detaily v checkedoch + Results log vyššie |
+| 2.5 Vitest migrácia | ⏳ deferované | dev-only advisory; po release |
 
 **Finálna verifikácia:** typecheck ✓ · full suite **187 súborov / 1875 passed / 0 failed / 94 skipped** · build ✓ (846/995 + 1635/2400) · working tree clean (všetko commithnuté na main).

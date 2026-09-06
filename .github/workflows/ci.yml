@@ -69,3 +69,19 @@ jobs:
       # auto-installs the browser on first run.
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
+
+  audit-prod:
+    name: Production dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # Prod-only gate (release roadmap Fáza 3): runtime dependencies must
+      # stay vulnerability-free. Dev-dependency advisories (e.g. the esbuild
+      # dev-server one nested under vitest 2) are consciously deferred — see
+      # RELEASE_ROADMAP.md 2.5.
+      - run: npm audit --omit=dev --audit-level=high

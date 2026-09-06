@@ -1,0 +1,58 @@
+/// <reference types="vite-plugin-pwa/client" />
+
+/**
+ * Service-worker update banner (release roadmap Fáza 3).
+ *
+ * The PWA runs `registerType: "prompt"`: a new build installs and WAITS.
+ * This module surfaces the "update ready" state as a small fixed banner —
+ * RELOAD swaps to the new build (safe point: the user chose it), × dismisses
+ * (the waiting worker stays parked; the running session keeps its complete
+ * precache, so lazy chunks keep loading).
+ *
+ * Imported ONLY from main.tsx — `virtual:pwa-register` does not resolve in
+ * the vitest graph (no PWA plugin there), and no test needs this UI.
+ */
+import { registerSW } from "virtual:pwa-register";
+
+let update: (reloadPage?: boolean) => Promise<void> = async () => {};
+
+export function initSwUpdate(): void {
+  update = registerSW({
+    onNeedRefresh() {
+      if (document.getElementById("pf-update-banner")) return;
+      const el = document.createElement("div");
+      el.id = "pf-update-banner";
+      el.setAttribute("role", "status");
+      el.setAttribute("aria-label", "App update ready");
+      const label = document.createElement("span");
+      label.textContent = "New version ready";
+      const reload = document.createElement("button");
+      reload.type = "button";
+      reload.className = "btn btn-small";
+      reload.textContent = "RELOAD";
+      reload.addEventListener("click", () => {
+        void update(true);
+      });
+      const dismiss = document.createElement("button");
+      dismiss.type = "button";
+      dismiss.className = "btn btn-small";
+      dismiss.setAttribute("aria-label", "Dismiss update banner");
+      dismiss.textContent = "×";
+      dismiss.addEventListener("click", () => el.remove());
+      el.append(label, reload, dismiss);
+      document.body.appendChild(el);
+    },
+  });
+  // A long-lived SPA tab performs almost no full navigations, so the
+  // browser's natural sw.js update checks (on navigation, + every 24 h)
+  // rarely run. Poll on a timer and when the tab becomes visible again.
+  setInterval(
+    () => {
+      void update();
+    },
+    15 * 60 * 1000,
+  );
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") void update();
+  });
+}

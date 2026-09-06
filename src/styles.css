@@ -8904,3 +8904,22 @@ html {
   color: var(--text-faint);
   font-size: 10px;
 }
+
+/* SW update banner (PWA "prompt" mode) — src/sw-update.ts */
+.pf-update-banner {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--panel, #1c1f27);
+  color: var(--text, #eee);
+  border: 1px solid var(--accent, #f59e0b);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  font-family: inherit;
+  font-size: 12px;
+}
