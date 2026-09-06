@@ -36,15 +36,46 @@ export interface SaveUnloadGuards {
 }
 
 /**
+ * Track the most recent uninstall handler per target. A repeat call to
+ * `installSaveUnloadGuards(same target)` must not pile up listeners —
+ * services.ts has a flow where a fresh `openProject` is issued without a
+ * preceding `closeProject` (e.g. Project Browser → open new project,
+ * URL deep-link into a different project). Without the swap, each
+ * `install` adds another pagehide + beforeunload pair; the browser ends
+ * up racing dozens of flushSave() handlers on tab close, which delays
+ * the IndexedDB commit and risks the browser killing the tab before
+ * the user's last edit lands. We use a regular Map (not WeakMap) so
+ * tests can probe the registry with a fake target that lives in the
+ * test scope; in production, `closeProject` always calls the
+ * uninstall handler and the entry is removed before the Services
+ * object goes out of scope.
+ */
+const installedByTarget = new Map<object, () => void>();
+
+/**
  * Install unload-pagehide-beforeunload safety nets around a save pipeline.
  *
  * The default `target` is the global `window`. Tests can pass a custom
  * target to capture dispatched events without touching the real window.
+ *
+ * Defect A08.D1: this function is **idempotent on the same target**.
+ * A second call uninstalls the previous pair first so the target
+ * never accumulates listeners. The returned uninstall handler is the
+ * one that cleans up the most recent pair; `closeProject` only needs
+ * to call it once.
  */
 export function installSaveUnloadGuards(
   options: SaveUnloadGuardsOptions,
   target: Pick<Window, "addEventListener" | "removeEventListener"> = window,
 ): () => void {
+  // Idempotent: if a previous install on the same target is still
+  // live, tear it down before wiring new listeners. This is the
+  // user-data-loss safety net — without it, every Project Browser
+  // swap doubles the number of flushSave() handlers racing the
+  // browser's tab-termination deadline.
+  const previous = installedByTarget.get(target as object);
+  if (previous) previous();
+
   const onPageHide = (): void => {
     // pagehide is the one iOS Safari reliably fires before terminating
     // a tab. Fire-and-forget: IndexedDB may commit an already-open
@@ -80,8 +111,15 @@ export function installSaveUnloadGuards(
   target.addEventListener("pagehide", onPageHide);
   target.addEventListener("beforeunload", onBeforeUnload);
 
-  return () => {
+  const uninstall = (): void => {
     target.removeEventListener("pagehide", onPageHide);
     target.removeEventListener("beforeunload", onBeforeUnload);
+    // Only clear the registry if we are still the registered uninstall
+    // (a subsequent install() will have already replaced us).
+    if (installedByTarget.get(target as object) === uninstall) {
+      installedByTarget.delete(target as object);
+    }
   };
+  installedByTarget.set(target as object, uninstall);
+  return uninstall;
 }
