@@ -136,3 +136,19 @@ Najväčšia zostávajúca audio-korektnosť položka: live prehodenie scene BPM
 | Dátum | Prehliadač | Verzia | Výsledok | Poznámky |
 | ----- | ---------- | ------ | -------- | -------- |
 | — | — | — | — | — |
+
+---
+
+## Stav exekúcie (session `pustiť sa do ROADMAP`)
+
+| Položka | Stav | Evidence |
+| ------- | ---- | -------- |
+| Fáza 0 — commit práce | ✅ | `1eee712` (main) |
+| 1.1 QA real browser | ✅ Chromium časť / ⏳ Firefox+iOS manuálne | `npm run test:browser` — **197/197 PASS** headless Chromium |
+| 1.2 Export parita | ✅ sceneAutomation / `[!]` intensity | `8bfa4bd` + `tests/export/scene-automation-render.test.ts` (5); intensity = engine limitation (scheduled makro automation) |
+| 1.3 Snapshot restore UI | ✅ (už existovalo — WIP commit) | 12/12 testov `snapshots-panel.test.tsx` |
+| 1.4 Import limity + cancel | ✅ | `01834a1` + testy (mp3 abort, size limity) |
+| 2.1 Bundle headroom | ✅ | `42810f8` — entry **988 → 846 KB**, preview smoke bez chýb |
+| 2.2–2.5, Fáza 3 | ⏳ | zostávajú v checkedoch vyššie |
+
+**Finálna verifikácia:** typecheck ✓ · full suite **187 súborov / 1875 passed / 0 failed / 94 skipped** · build ✓ (846/995 + 1635/2400) · working tree clean (všetko commithnuté na main).
