@@ -18,6 +18,13 @@ export function exportProject(doc: ProjectDocument): void {
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
+// Import size ceiling (release roadmap 1.4): a project file becomes a JS
+// string + parsed object (2–3× the byte size) before validation can reject
+// it. Legit projects sit far below this — a hostile/accidental multi-hundred-
+// MB file must fail FAST with a clear message instead of stalling/OOM-ing
+// the tab.
+export const MAX_PROJECT_IMPORT_BYTES = 10 * 1024 * 1024;
+
 /**
  * Import a ProjectDocument from a File or string.
  * Validates shape, migrates schema, and normalizes.
@@ -26,6 +33,18 @@ export function exportProject(doc: ProjectDocument): void {
 export function importProject(input: File | string): Promise<ProjectDocument> {
   return new Promise((resolve, reject) => {
     if (input instanceof File) {
+      if (input.size > MAX_PROJECT_IMPORT_BYTES) {
+        reject(
+          new Error(
+            `Project file is too large (${(input.size / 1024 / 1024).toFixed(1)} MB — limit ${(
+              MAX_PROJECT_IMPORT_BYTES /
+              1024 /
+              1024
+            ).toFixed(0)} MB)`,
+          ),
+        );
+        return;
+      }
       const reader = new FileReader();
       reader.onload = () => {
         try {

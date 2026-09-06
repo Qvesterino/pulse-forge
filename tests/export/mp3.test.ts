@@ -63,3 +63,28 @@ describe("encodeMp3", () => {
     }
   });
 });
+
+describe("encodeMp3 — cancellation (release roadmap 1.4)", () => {
+  it("aborts at the next yield point without producing a Blob", async () => {
+    const controller = new AbortController();
+    // Abort right after the first yield — the encode loop must stop there.
+    let yielded = false;
+    const blobPromise = encodeMp3(fakeBuffer(30), {
+      signal: controller.signal,
+      onProgress: () => {
+        if (!yielded) {
+          yielded = true;
+          controller.abort();
+        }
+      },
+    });
+    await expect(blobPromise).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it("a signal that never aborts produces a normal Blob", async () => {
+    const controller = new AbortController();
+    const blob = await encodeMp3(fakeBuffer(0.5), { signal: controller.signal, kbps: 128 });
+    expect(blob.type).toBe("audio/mpeg");
+    expect(blob.size).toBeGreaterThan(3_000);
+  });
+});

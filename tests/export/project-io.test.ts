@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
-import { exportProject, importProject } from "../../src/export/project-io";
+import { exportProject, importProject, MAX_PROJECT_IMPORT_BYTES } from "../../src/export/project-io";
 
 describe("exportProject", () => {
   afterEach(() => vi.restoreAllMocks());
@@ -76,5 +76,21 @@ describe("importProject", () => {
     expect(result.patterns.length).toBe(doc.patterns.length);
     expect(result.scenes.length).toBe(doc.scenes.length);
     expect(result.macros.length).toBe(doc.macros.length);
+  });
+});
+
+describe("importProject — size limit (release roadmap 1.4)", () => {
+  it("rejects an oversized File fast, before reading its contents", async () => {
+    const oversized = new File([new Uint8Array(1)], "huge.pulseforge.json");
+    Object.defineProperty(oversized, "size", { value: MAX_PROJECT_IMPORT_BYTES + 1 });
+    await expect(importProject(oversized)).rejects.toThrow(/too large/);
+  });
+
+  it("accepts a file at the size limit boundary", async () => {
+    // Shape-invalid content is fine here — the point is the size gate lets
+    // it through to the parser instead of rejecting on size.
+    const atLimit = new File([new Uint8Array(1)], "ok.json");
+    Object.defineProperty(atLimit, "size", { value: MAX_PROJECT_IMPORT_BYTES });
+    await expect(importProject(atLimit)).rejects.toThrow(/Invalid JSON|not a valid project file/);
   });
 });

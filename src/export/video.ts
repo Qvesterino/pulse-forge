@@ -28,6 +28,8 @@ export interface VideoOptions {
   height?: number;
   fps?: number;
   onProgress?: (fraction: number) => void;
+  /** Abort support (release roadmap 1.4): checked each frame + before stop. */
+  signal?: AbortSignal;
 }
 
 export interface VideoResult {
@@ -248,9 +250,13 @@ export async function recordVideo(buffer: AudioBuffer, options: VideoOptions): P
         }
       };
       watchdog = setInterval(() => {
-        if (audioCtx.currentTime - t0 >= seconds + 0.25) resolveLoop();
+        if (options.signal?.aborted || audioCtx.currentTime - t0 >= seconds + 0.25) resolveLoop();
       }, 500);
       const loop = () => {
+        if (options.signal?.aborted) {
+          resolveLoop();
+          return;
+        }
         const t = audioCtx.currentTime - t0;
         const clamped = Math.max(0, Math.min(seconds, t));
         drawFrame(ctx2d, frameOpts, envelope, clamped);
@@ -264,6 +270,7 @@ export async function recordVideo(buffer: AudioBuffer, options: VideoOptions): P
       requestAnimationFrame(loop);
     });
 
+    if (options.signal?.aborted) throw new DOMException("Export cancelled", "AbortError");
     recorder.stop();
     const blob = await finished;
     return { blob, ext: mimeType.includes("mp4") ? "mp4" : "webm", bytes: blob.size };

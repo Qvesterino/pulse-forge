@@ -63,6 +63,22 @@ export function ExportPanel({
   const [format, setFormat] = useState<MasterFormat>("wav");
   const [clipSeconds, setClipSeconds] = useState(15);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
+  /** Active export run — the CANCEL button aborts it (roadmap 1.4). */
+  const abortRef = useRef<AbortController | null>(null);
+  const beginExport = (): AbortSignal => {
+    const controller = new AbortController();
+    abortRef.current = controller;
+    return controller.signal;
+  };
+  const cancelExport = () => abortRef.current?.abort();
+  /** Cancellation is a normal outcome, not an error — surface it as such. */
+  const cancelOrElse = (error: unknown, fallbackLabel: string): void => {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      setStatus({ kind: "done", label: "Export cancelled", summary: EMPTY_EXPORT_SUMMARY });
+      return;
+    }
+    setStatus({ kind: "error", label: fallbackLabel.replace("{err}", String(error)) });
+  };
 
   const [recSource, setRecSource] = useState<RecSourceKind>("master");
   const [recState, setRecState] = useState<RecState>("idle");
@@ -77,9 +93,11 @@ export function ExportPanel({
   const activePatternName = doc.patterns.find((p) => p.id === doc.activePatternId)?.name ?? "pattern";
 
   const exportMaster = async () => {
+    const signal = beginExport();
     setStatus({ kind: "busy", label: "Rendering master…" });
     try {
       const buffer = await renderProject(doc, services.bank, { mode, sampleRate });
+      if (signal.aborted) throw new DOMException("Export cancelled", "AbortError");
       const summary = summarizeBuffer(buffer);
 
       if (format === "video") {
@@ -88,6 +106,7 @@ export function ExportPanel({
           title: doc.name,
           bpm: doc.bpm,
           seconds,
+          signal,
           onProgress: (f) => setStatus({ kind: "busy", label: `Recording video… ${Math.round(f * 100)}%` }),
         });
         downloadBlob(result.blob, `${baseName}-clip.${result.ext}`);
@@ -105,6 +124,7 @@ export function ExportPanel({
         const { encodeMp3 } = await import("../export/mp3");
         const blob = await encodeMp3(buffer, {
           kbps,
+          signal,
           onProgress: (f) => setStatus({ kind: "busy", label: `Encoding MP3 ${kbps}… ${Math.round(f * 100)}%` }),
         });
         downloadBlob(blob, `${baseName}-${kbps}.mp3`);
@@ -123,14 +143,16 @@ export function ExportPanel({
         summary,
       });
     } catch (error) {
-      setStatus({ kind: "error", label: `Export failed: ${String(error)}` });
+      cancelOrElse(error, `Export failed: {err}`);
     }
   };
 
   const exportStems = async () => {
+    const signal = beginExport();
     try {
       let lastSummary: BufferSummary | null = null;
       for (let i = 0; i < groups.length; i++) {
+        if (signal.aborted) throw new DOMException("Export cancelled", "AbortError");
         const group = groups[i];
         setStatus({ kind: "busy", label: `Rendering stem ${i + 1}/${groups.length}: ${group.label}…` });
         const stemDoc = buildStemProject(doc, group.filter);
@@ -144,17 +166,19 @@ export function ExportPanel({
         summary: lastSummary ?? EMPTY_EXPORT_SUMMARY,
       });
     } catch (error) {
-      setStatus({ kind: "error", label: `Stem export failed: ${String(error)}` });
+      cancelOrElse(error, "Stem export failed: {err}");
     }
   };
 
   const exportTracks = async () => {
+    const signal = beginExport();
     try {
       // Group tracks have no own generators — rendering one produces a
       // silent WAV (their children belong to their own stems).
       const renderableTracks = doc.tracks.filter((t) => t.kind !== "group");
       let lastSummary: BufferSummary | null = null;
       for (let i = 0; i < renderableTracks.length; i++) {
+        if (signal.aborted) throw new DOMException("Export cancelled", "AbortError");
         const track = renderableTracks[i];
         setStatus({ kind: "busy", label: `Rendering track ${i + 1}/${renderableTracks.length}: ${track.name}…` });
         const trackDoc = buildStemProject(doc, (t) => t.id === track.id);
@@ -168,7 +192,7 @@ export function ExportPanel({
         summary: lastSummary ?? EMPTY_EXPORT_SUMMARY,
       });
     } catch (error) {
-      setStatus({ kind: "error", label: `Track export failed: ${String(error)}` });
+      cancelOrElse(error, "Track export failed: {err}");
     }
   };
 
@@ -468,6 +492,11 @@ export function ExportPanel({
         {status.kind === "idle" &&
           "Offline render uses the exact same engine, instruments and effects as playback — plus a 2 s tail for reverb/delay."}
         {status.kind !== "idle" && status.label}
+        {busy && (
+          <button type="button" className="btn btn-small" onClick={cancelExport} aria-label="Cancel export">
+            CANCEL
+          </button>
+        )}
       </div>
       {status.kind === "done" && <ExportSummary summary={status.summary} />}
 

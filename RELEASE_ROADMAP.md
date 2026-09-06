@@ -9,12 +9,12 @@
 
 ## Fáza 0 — Ešte dnes (ochrana práce)
 
-- [ ] **Commitnúť working tree** (~25 súborov: hardening fixy + FXEQ/Ozvena WIP + nové testy).
+- [x] **Commitnúť working tree** (~25 súborov: hardening fixy + FXEQ/Ozvena WIP + nové testy).
   Odporúčané logické commity:
   1. `fix(audit): maintenance hardening pass — scheduler/collab/export/security fixes + regression tests`
   2. `chore(deps): fast-uri audit fix (non-breaking)`
   3. tvoj pôvodný WIP (FXEQ panel / EffectAbControls / ozvena-params) oddelene, ak je rozpracovaný
-- [ ] Zmazať tranzitné logy (`baseline-tests.log`, `full-sweep.log`, `final-sweep.log` — už zmazané) a `topbar-diag.png`, ak sú obsolete.
+- [x] Zmazať tranzitné logy (`baseline-tests.log`, `full-sweep.log`, `final-sweep.log` — už zmazané) a `topbar-diag.png`, ak sú obsolete.
 
 ---
 
@@ -55,8 +55,8 @@ Autosnapshoty sa ukladajú (20 na projekt, `SnapshotRepository`) ale **neexistuj
 
 ### 1.4 Robustnosť importu/exportu
 
-- [ ] **Import limity**: cap na veľkosť súboru (audio ~25 MB, projekt JSON ~10 MB) s jasnou error správou — teraz hrozí OOM tabu (pamäť sa násobí 5–10× pri dekóde).
-- [ ] **Zrušiteľné exporty**: `AbortSignal` cez `encodeMp3`, stems, video loop; Cancel tlačidlo v `ExportPanel` status riadku; po zrušení žiadny čiastočný súbor na disku.
+- [x] **Import limity**: cap na veľkosť súboru (audio ~25 MB, projekt JSON ~10 MB) s jasnou error správou — teraz hrozí OOM tabu (pamäť sa násobí 5–10× pri dekóde). **DONE:** `MAX_PROJECT_IMPORT_BYTES` v `project-io.ts` (File.size gate pred readom), `MAX_AUDIO_IMPORT_BYTES` v `DropZone.tsx`; testy v project-io.test.ts.
+- [x] **Zrušiteľné exporty**: `AbortSignal` cez `encodeMp3`, stems, video loop; Cancel tlačidlo v `ExportPanel` status riadku; po zrušení žiadny čiastočný súbor na disku. **DONE:** `encodeMp3` abortuje na yield pointe (žiadny partial Blob), `recordVideo` kontroluje signal v rAF loope + watchdogu a pred `recorder.stop()`, stems/tracks medzi krokmi; CANCEL button v status bare; zrušenie sa zobrazí ako „Export cancelled", nie error. Testy v mp3.test.ts.
 - [ ] Video: nesám pridávať 1 s tichu pre krátke buffery (`Math.max(1, ...)` → `Math.max(0, ...)`) alebo aspoň dokumentovať.
 
 ---

@@ -22,6 +22,11 @@ const ACCEPTED_TYPES = [
 ];
 const ACCEPTED_EXTENSIONS = /\.(wav|mp3|ogg|flac|aiff|opus)$/i;
 
+// Import size ceiling (release roadmap 1.4): decoded PCM is ~5–10× the file
+// size — a 25 MB cap keeps the worst-case decode well under tab-killing
+// memory while comfortably above any musical one-shot/loop.
+export const MAX_AUDIO_IMPORT_BYTES = 25 * 1024 * 1024;
+
 /**
  * Drag & drop zone for importing audio files. Accepts WAV, MP3, OGG, FLAC,
  * AIFF files, decodes them via AudioContext, and adds them to the user
@@ -45,6 +50,20 @@ export function DropZone({ onImport, className }: DropZoneProps) {
         const isAccepted = ACCEPTED_TYPES.includes(file.type) || ACCEPTED_EXTENSIONS.test(file.name);
         if (!isAccepted) {
           setError(`Unsupported format: ${file.name}`);
+          setImporting(false);
+          return;
+        }
+
+        // Validate size BEFORE reading — decoded PCM multiplies the bytes,
+        // so an oversized file must fail fast instead of OOM-ing the tab.
+        if (file.size > MAX_AUDIO_IMPORT_BYTES) {
+          setError(
+            `File too large: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB — limit ${(
+              MAX_AUDIO_IMPORT_BYTES /
+              1024 /
+              1024
+            ).toFixed(0)} MB)`,
+          );
           setImporting(false);
           return;
         }

@@ -6,6 +6,8 @@ export interface Mp3Options {
   kbps?: number;
   /** Progress callback, fraction 0..1. */
   onProgress?: (fraction: number) => void;
+  /** Abort support (release roadmap 1.4): checked at every yield point. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -42,6 +44,8 @@ export async function encodeMp3(buffer: AudioBuffer, options: Mp3Options = {}): 
     if (block % 250 === 249) {
       options.onProgress?.(block / totalBlocks);
       await new Promise((resolve) => setTimeout(resolve, 0));
+      // Abort only at a yield point — no partial Blob is ever produced.
+      if (options.signal?.aborted) throw new DOMException("Export cancelled", "AbortError");
     }
   }
   const tail = encoder.flush();
