@@ -94,11 +94,14 @@ Najväčšia zostávajúca audio-korektnosť položka: live prehodenie scene BPM
 - [x] **Odmerané** (`scripts/startup-profile.mjs`, nový nástroj — headless Chromium + dev server): `generateFactoryBank()` = **62 ms**, `createProjectFromTemplate` = 1.2 ms, `normalizeProject` = 2.9 ms, studio entry po kliknutí = 456 ms (dev režim vrátane module graphu; produkčný precachovaný bundle je rýchlejší).
 - Záver: 62 ms ≪ 1 s prah — **eager bank ostáva**, lazy generovanie by neprinieslo merateľný zisk. Skript ostáva na opakované meranie po väčších zmenách.
 
-### 2.5 Vitest 5 + Vite 8 migrácia
+### 2.5 Vitest 5 + Vite 8 migrácia `[!]` — ROZHODNUTÉ: skip pred releaseom (deferovaný)
 
-- [ ] Rieši esbuild advisory (dev-server) a peer mismatch (`@vitest/mocker` chce vite ^5).
-- [ ] Plánovať na pokojný týždeň; full suite (186 súborov) je bezpečnostná sieť.
-- [ ] Po migrácii: `npm audit` by mal zostať na 0 (prod) / len zinformované dev položky.
+- **Rozhodnutie (po auditoch):** nepúšťať pred releaseom. Zdôvodnenie:
+  - esbuild advisory (GHSA-67mh) je **čisto dev-server** problém — produkčný build beží na top-level vite 6.4.3 s patchnutým esbuild 0.25.12 → `npm audit --omit=dev` = 0 vulnerabilities. End users nie sú nijako ovplyvnení.
+  - Expozícia je len lokálny dev server (drive-by webstránka proti `localhost:5173` počas vývoja). Zmiernenie bez migrácie: nespúšťať dev server s `--host` na nedôveryhodnej sieti.
+  - Migrácia vitest 2 → 5 (+ vite major) je breaking zmena cez 188 test súborov (fake timers, pool defaults, snapshot formáty, workspace config) — presne to, čo roadmap pred releaseom zakazuje.
+- **Kedy sa k tomu vrátiť:** po release, na pokojný týždeň. Trigger: ak kýbude prod-relevantný advisory alebo vitest 2 przestane dostávať security patche.
+- [!] Neriadiť sa `npm audit fix --force` — pretiahne vitest 5 + vite 8 naraz a rozbije strom.
 
 ---
 
