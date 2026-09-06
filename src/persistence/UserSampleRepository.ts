@@ -105,11 +105,6 @@ export class UserSampleRepository {
 /**
  * Decode an audio File/Blob into an AudioBuffer using the Web Audio API.
  */
-export async function decodeAudioFile(file: File | Blob, ctx: BaseAudioContext): Promise<AudioBuffer> {
-  const arrayBuffer = await file.arrayBuffer();
-  return ctx.decodeAudioData(arrayBuffer);
-}
-
 /** Generate a unique ID for a user sample. */
 export function userSampleId(fileName: string): string {
   const slug = fileName

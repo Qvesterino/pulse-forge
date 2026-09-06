@@ -6,6 +6,7 @@ import {
   addNote,
   createPattern,
   createScene,
+  quantizeNotes,
   setBpm,
   setPadParams,
   setProjectName,
@@ -160,5 +161,62 @@ describe("undo/redo integrity — mixed history through the real store", () => {
     expect(bass!.effects.find((fx) => fx.id === fxId)).toBeDefined();
     // The active pattern id resolves after the undo/redo round-trip.
     expect(store.doc.patterns.some((p) => p.id === store.doc.activePatternId)).toBe(true);
+  });
+});
+
+describe("undo/redo integrity — note commands pin their pattern (sequencer audit)", () => {
+  it("addNote undo removes the note from the ORIGINAL pattern after switching", () => {
+    const store = new ProjectStore(testDoc());
+    const bass = instTrackOf(store.doc);
+    const notesOf = (pid: string): unknown[] =>
+      ((store.doc.patterns.find((p) => p.id === pid)?.notes ?? {}) as Record<string, unknown[]>)[bass.id] ?? [];
+    const before = notesOf(store.doc.activePatternId).length;
+    store.execute(addNote(store.doc, bass.id, { pitch: 36, start: 480, duration: 240, velocity: 0.8 }));
+    const patternA = store.doc.activePatternId;
+    expect(notesOf(patternA).length).toBe(before + 1);
+    store.execute(createPattern(store.doc)); // switches active pattern
+    expect(store.doc.activePatternId).not.toBe(patternA);
+
+    store.undo(); // undoes the PATTERN SWITCH
+    expect(store.doc.activePatternId).toBe(patternA);
+    store.undo(); // undoes the addNote — must remove it from pattern A
+    expect(notesOf(patternA).length).toBe(before);
+
+    // Redo re-adds into pattern A, not the currently active one.
+    store.redo();
+    expect(notesOf(patternA).length).toBe(before + 1);
+  });
+
+  it("quantizeNotes undo does not overwrite ANOTHER pattern's note list", () => {
+    const store = new ProjectStore(testDoc());
+    const bass = instTrackOf(store.doc);
+    // Notes in pattern A.
+    store.execute(addNote(store.doc, bass.id, { pitch: 36, start: 490, duration: 240, velocity: 0.8 }));
+    const patternA = store.doc.activePatternId;
+    const preQuantize = (
+      (store.doc.patterns.find((p) => p.id === patternA)?.notes ?? {}) as Record<string, { start: number }[]>
+    )[bass.id].map((n) => n.start);
+    store.execute(quantizeNotes(store.doc, bass.id));
+
+    // Switch to pattern B, then remove the switch from the local undo stack —
+    // modeling a REMOTE-origin switch (collab): it changed the active pattern
+    // without entering this store's history. The next undo therefore runs the
+    // quantize undo while B is active — exactly the corruption scenario.
+    store.execute(createPattern(store.doc));
+    const patternB = store.doc.activePatternId;
+    const stack = (store as unknown as { undoStack: Command[] }).undoStack;
+    stack.pop();
+
+    store.undo(); // quantize undo, B active
+    const bNotes =
+      ((store.doc.patterns.find((p) => p.id === patternB)?.notes ?? {}) as Record<string, { start: number }[]>)[
+        bass.id
+      ] ?? [];
+    expect(bNotes.length).toBe(0); // old code replaced B's list with A's notes
+    const aNotes =
+      ((store.doc.patterns.find((p) => p.id === patternA)?.notes ?? {}) as Record<string, { start: number }[]>)[
+        bass.id
+      ] ?? [];
+    expect(aNotes.map((n) => n.start)).toEqual(preQuantize); // pre-quantize state restored in A
   });
 });

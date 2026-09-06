@@ -245,3 +245,39 @@ describe("groove engine", () => {
     expect(fixed.patterns[0].stepMeta?.["pad-missing"]).toBeUndefined();
   });
 });
+
+describe("groove — ratchet tails across window boundaries (scheduler precision)", () => {
+  it("a ratchet straddling a window edge plays its FULL tail (merged halves equal the whole)", () => {
+    const { doc, kickId } = blankDoc();
+    // Ratchet 8 on the LAST step of the first half: its tail extends
+    // 7 × (STEP/8) = 105 ticks past the parent — across any split placed
+    // in that region. The old parent-level window gate dropped the tail
+    // from BOTH halves (parent in window A, tail in window B).
+    const withHits = setRow(
+      doc,
+      kickId,
+      Array.from({ length: 16 }, (_, i) => [i, i === 7 ? 0.9 : 0]),
+    );
+    const rattled = {
+      ...withHits,
+      patterns: [{ ...withHits.patterns[0], stepMeta: { [kickId]: { 7: { ratchet: 8 } } } }],
+    };
+    const whole = drumHitsInWindow(rattled, rattled.patterns[0], 0, 0, PATTERN_TICKS);
+    expect(whole.length).toBe(8);
+
+    for (const splitAt of [8 * STEP_TICKS, 8 * STEP_TICKS + 60, 8 * STEP_TICKS + 105]) {
+      const firstHalf = drumHitsInWindow(rattled, rattled.patterns[0], 0, 0, splitAt);
+      const secondHalf = drumHitsInWindow(rattled, rattled.patterns[0], 0, splitAt, PATTERN_TICKS);
+      const merged = [...firstHalf, ...secondHalf].sort((a, b) => a.tick - b.tick);
+      expect(
+        merged.map((h) => `${h.tick}|${h.velocity.toFixed(6)}`),
+        `split at ${splitAt}`,
+      ).toEqual(whole.map((h) => `${h.tick}|${h.velocity.toFixed(6)}`));
+      // The tail's later sub-hits must land in the SECOND half…
+      const tailInSecond = secondHalf.filter((h) => h.tick >= splitAt).length;
+      if (splitAt > 7 * STEP_TICKS && splitAt < 7 * STEP_TICKS + 105) {
+        expect(tailInSecond).toBeGreaterThan(0);
+      }
+    }
+  });
+});

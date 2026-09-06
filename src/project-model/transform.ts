@@ -47,8 +47,12 @@ export function setStepVelocity(
   velocity: number,
 ): ProjectDocument {
   const clamped = clamp(velocity, 0, 1);
+  if (!Number.isInteger(stepIndex) || stepIndex < 0) return doc;
   return withActivePattern(doc, (pattern) => {
-    const row = [...pattern.rows[padId]];
+    // Rows are only guaranteed at normalize boundaries — a live doc can be
+    // missing the pad's row entirely. Write into a fresh row instead of
+    // crashing the dispatch.
+    const row = [...(pattern.rows[padId] ?? [])];
     row[stepIndex] = clamped;
     return { ...pattern, rows: { ...pattern.rows, [padId]: row } };
   });

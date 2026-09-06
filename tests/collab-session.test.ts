@@ -82,10 +82,30 @@ describe("collab helpers", () => {
       roomId: "k3x9qz",
       serverUrl: collabParamsFromSearch("?collab=x")!.serverUrl,
     });
-    expect(collabParamsFromSearch("?collab=k3x9qz&server=ws%3A%2F%2Fcustom%3A9")).toEqual({
-      roomId: "k3x9qz",
-      serverUrl: "ws://custom:9",
-    });
+  });
+
+  it("collabParamsFromSearch: a ?server= override may never redirect off the app origin (security)", () => {
+    // A crafted collab link pointing the victim's live sync at an attacker
+    // relay must fall back to the default server. (Self-hosted relays on
+    // other hosts remain available via the CollabPanel input, which passes
+    // the server explicitly — this gate only covers URL-provided values.)
+    const malicious = [
+      "ws%3A%2F%2Fevil%3A8080", // ws://evil:8080
+      "wss%3A%2F%2Fevil.example", // wss://evil.example
+      "https%3A%2F%2Fevil.example", // wrong scheme
+      "javascript%3Aalert(1)", // nonsense scheme
+      "%3A%2F%2F", // unparseable
+    ];
+    for (const server of malicious) {
+      const parsed = collabParamsFromSearch(`?collab=k3x9qz&server=${server}`);
+      expect(parsed).not.toBeNull();
+      expect(parsed!.serverUrl).toBe(collabParamsFromSearch("?collab=x")!.serverUrl);
+    }
+    // Same-host override (dev relay scenario) is still honoured.
+    const sameHost = collabParamsFromSearch(
+      `?collab=k3x9qz&server=${encodeURIComponent(`ws://${location.hostname}:1234`)}`,
+    );
+    expect(sameHost!.serverUrl).toBe(`ws://${location.hostname}:1234`);
   });
 
   it("shareUrl encodes the room (and the server only when custom)", () => {

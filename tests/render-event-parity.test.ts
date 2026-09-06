@@ -1,3 +1,5 @@
+import { unfreezeDoc } from "../src/rendering/renderer";
+import { createProjectFromTemplate } from "../src/project-model/templates";
 import { describe, expect, it } from "vitest";
 import { generatePattern } from "../src/ai/generator";
 import { patternEventsInWindow } from "../src/project-model/events";
@@ -53,5 +55,29 @@ describe("realtime/offline event plan parity", () => {
     const first = patternEventsInWindow(doc, pattern, 0, 0, 16 * STEP_TICKS).notes;
     const looped = patternEventsInWindow(doc, pattern, 0, 16 * STEP_TICKS, 32 * STEP_TICKS).notes;
     expect(looped.map((event) => event.tick - 16 * STEP_TICKS)).toEqual(first.map((event) => event.tick));
+  });
+});
+
+describe("render parity — frozen tracks (offline export audit)", () => {
+  it("unfreezeDoc strips frozen state and leaves other tracks untouched", () => {
+    const doc = createProjectFromTemplate("house") as unknown as Record<string, unknown>;
+    const drum = (doc.tracks as Record<string, unknown>[]).find((t) => t.kind === "drum")!;
+    const inst = (doc.tracks as Record<string, unknown>[]).find((t) => t.kind === "instrument")!;
+    drum.frozen = { bufferId: "buf-d", durationSec: 4, sampleRate: 44100 };
+    inst.frozen = { bufferId: "buf-i", durationSec: 4, sampleRate: 44100 };
+
+    const out = unfreezeDoc(doc as never) as unknown as Record<string, unknown>;
+    for (const t of out.tracks as Record<string, unknown>[]) {
+      expect("frozen" in t).toBe(false);
+    }
+    expect((out.tracks as unknown[]).length).toBe((doc.tracks as unknown[]).length);
+    // Non-frozen fields intact.
+    expect(((out.tracks as Record<string, unknown>[])[0] as Record<string, unknown>).id).toBe(
+      (doc.tracks as Record<string, unknown>[])[0].id,
+    );
+    // Idempotent + no-op fast path when nothing is frozen.
+    expect(unfreezeDoc(out as never)).toBe(out);
+    const clean = createProjectFromTemplate("house");
+    expect(unfreezeDoc(clean)).toBe(clean);
   });
 });

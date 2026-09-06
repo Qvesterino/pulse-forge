@@ -76,10 +76,6 @@ export function buildPadModel(padIndex: number, patterns: number[][]): PadMarkov
 }
 
 /** Test/diagnostics hook; generation never needs to clear immutable groove models. */
-export function clearPadModelCache(): void {
-  modelCache.clear();
-}
-
 /** Sample a state from a distribution vector using a PRNG, with optional temperature */
 function sampleFromDistribution(dist: Uint32Array, rand: () => number, temperature: number = 1): number {
   const invT = 1 / Math.max(0.01, temperature);

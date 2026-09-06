@@ -362,7 +362,3 @@ export const FACTORY_ASSETS: FactoryAsset[] = [
     mood: ["bright", "atmosphere"],
   },
 ];
-
-export function assetById(id: string): FactoryAsset | undefined {
-  return FACTORY_ASSETS.find((a) => a.id === id);
-}

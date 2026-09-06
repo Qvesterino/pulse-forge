@@ -36,6 +36,7 @@ export interface SchedulerDeps {
     slideFromTick?: number,
     slideFromPitch?: number,
     locks?: Partial<Record<import("../project-model/types").StepLockKey, number>>,
+    slideFromWhen?: number,
   ): void;
   applyAutomation(fromTick: number, toTick: number, relOf: (tick: number) => number, scheduleOffsetSec?: number): void;
   /**
@@ -131,6 +132,13 @@ function resolveLoopEnd(transport: Transport, doc: ProjectDocument, mode: PlayMo
 
 export class Scheduler {
   private timer: ReturnType<typeof setInterval> | null = null;
+  /**
+   * Effective loop end in ticks for the CURRENT window (loop enabled only).
+   * Read by the pending-launch commit logic in scheduleWindow — a launch
+   * quantized past the loop end must commit at the wrap instead of pending
+   * forever.
+   */
+  private activeLoopEnd: number | null = null;
   private windowStartTick = 0;
   private stopped = true;
   /** Last BPM handed to applySceneTempo (null = project tempo) — change-guard. */
@@ -259,6 +267,7 @@ export class Scheduler {
       // is stale. Resolve the loop end against the *first available*
       // pattern instead so the transport never wedges mid-loop.
       const loopEnd = resolveLoopEnd(transport, doc, mode);
+      this.activeLoopEnd = loopEnd;
       const position = transport.position;
       if (position >= loopEnd || position < loopStart) {
         transport.seek(loopStart);
@@ -308,6 +317,7 @@ export class Scheduler {
       return;
     }
     try {
+      if (!transport.loopEnabled) this.activeLoopEnd = null;
       this.scheduleWindow(transport, now, windowStart, windowEnd);
     } catch (err) {
       // A scheduling failure must not wedge the transport: without advancing
@@ -378,7 +388,22 @@ export class Scheduler {
       }
       const patternTicks = STEP_TICKS * pattern.stepCount;
       const pending = this.pendingLaunch;
-      const boundary = pending && pending.atTick > windowStart && pending.atTick <= windowEnd ? pending.atTick : null;
+      let boundary = pending && pending.atTick > windowStart && pending.atTick <= windowEnd ? pending.atTick : null;
+      // A launch quantized to a bar boundary BEYOND the loop end can never
+      // reach its boundary before the loop wraps — it used to pend forever
+      // (badge stuck; only stop() committed it). Commit at the loop edge:
+      // the switch lands exactly on the wrap, which is the next bar
+      // boundary the user's gesture could reach.
+      if (
+        pending &&
+        boundary === null &&
+        this.activeLoopEnd !== null &&
+        windowEnd >= this.activeLoopEnd &&
+        windowStart < this.activeLoopEnd &&
+        pending.atTick > this.activeLoopEnd
+      ) {
+        boundary = this.activeLoopEnd;
+      }
 
       this.schedulePatternWindow(pattern, 0, windowStart, boundary ?? windowEnd);
       automationCtx = { base: 0, patternTicks };
@@ -602,6 +627,10 @@ export class Scheduler {
       if (!audible(when)) continue;
       // FL slide note: glide from the previous non-slide note's end
       const slideFrom = event.slideFrom ? { tick: event.slideFrom.tick, pitch: event.slideFrom.pitch } : undefined;
+      // The glide ORIGIN time must come from the same tick→time map as `when`
+      // (transport-anchored, scene-tempo aware) — deriving it from doc.bpm in
+      // the engine desynced the glide after any pause/seek/tempo change.
+      const slideFromWhen = slideFrom ? timeAt(slideFrom.tick) + scheduleOffsetSec : undefined;
       // Ratio p-lock: support per-note locks (event.note.locks) and legacy stepMeta[trackId][step] (Elektron-style)
       const step = Math.floor((event.tick - base) / STEP_TICKS);
       const metaLocks = (pattern as any).stepMeta?.[track.id]?.[step]?.locks as
@@ -618,6 +647,7 @@ export class Scheduler {
         slideFrom?.tick,
         slideFrom?.pitch,
         locks,
+        slideFromWhen,
       );
       // Passive capture ring (Ableton) — note events with pitch info
       this.deps.recordCapturedEvent?.({

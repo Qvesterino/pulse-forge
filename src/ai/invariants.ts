@@ -170,16 +170,3 @@ export function inspectPatternInvariants(
 
   return { ok: issues.length === 0, issues };
 }
-
-export function assertPatternInvariants(
-  doc: ProjectDocument,
-  pattern: Pattern,
-  options: { checkScale?: boolean } = {},
-): void {
-  const report = inspectPatternInvariants(doc, pattern, options);
-  if (!report.ok) {
-    throw new Error(
-      `Pattern invariant failure: ${report.issues.map((item) => `${item.code}@${item.path}`).join(", ")}`,
-    );
-  }
-}

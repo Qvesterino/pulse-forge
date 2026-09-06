@@ -106,6 +106,25 @@ export function buildTempoMap(
   return { segments, totalSeconds, timeAt };
 }
 
+/**
+ * Strip frozen state for offline rendering. Frozen buffers are a LIVE
+ * transport feature (bank + frozenBuffers) and are never populated offline;
+ * rendering the unfrozen document reproduces each track's real processing
+ * chain — which is exactly what the frozen buffer was rendered from.
+ */
+export function unfreezeDoc(doc: ProjectDocument): ProjectDocument {
+  const hasFrozen = doc.tracks.some((t) => "frozen" in t && t.frozen);
+  if (!hasFrozen) return doc;
+  return {
+    ...doc,
+    tracks: doc.tracks.map((t) => {
+      if (!("frozen" in t) || !t.frozen) return t;
+      const { frozen: _frozen, ...rest } = t as unknown as Record<string, unknown>;
+      return rest as unknown as typeof t;
+    }),
+  };
+}
+
 export async function renderProject(
   doc: ProjectDocument,
   bank: SampleBank,
@@ -142,7 +161,12 @@ export async function renderProject(
   const engine = new AudioEngine();
   engine.attachBank(bank);
   engine.useContext(ctx);
-  engine.setProject(doc);
+  // Render the UNFROZEN document. The offline path never populates
+  // frozenBuffers (restartFrozenSources is live-transport-only), so a frozen
+  // instrument track dropped every note and a frozen drum track rendered
+  // dry — the frozen buffer itself was rendered from the track's real
+  // chain, so live-chain rendering is the correct export content.
+  engine.setProject(unfreezeDoc(doc));
 
   const timeAt = tempoMap.timeAt;
   const windows = pendingWindows;
@@ -213,6 +237,9 @@ function scheduleNotes(
       slideFrom?.tick,
       slideFrom?.pitch,
       locks,
+      // Glide origin from the SAME tempo map — the engine's doc.bpm fallback
+      // desyncs slides under scene tempo (parity with the live scheduler).
+      slideFrom ? timeAt(slideFrom.tick) : undefined,
     );
   }
 }

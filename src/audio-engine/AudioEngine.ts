@@ -364,6 +364,14 @@ export class AudioEngine {
   private currentSceneIntensity = 0.7;
   private voices = new Set<Voice>();
   private previewVoices = new Set<PreviewVoice>();
+  /**
+   * One-shot scheduled sources (AudioClips, marker cues, metronome clicks).
+   * These are committed up to the 120 ms horizon ahead and are NOT part of
+   * `voices`, so panic() previously left them playing — a stopped transport
+   * kept sounding a multi-bar AudioClip, and seek/stop fired stale marker
+   * cues. Bounded: each source removes itself on `onended`.
+   */
+  private oneShotSources = new Set<AudioScheduledSourceNode>();
   private missedAssets = new Set<string>();
   private levelBuf = new Float32Array(1024);
   /**
@@ -459,6 +467,7 @@ export class AudioEngine {
       }
     }
     this.voices.clear();
+    this.stopOneShotSources();
     for (const voice of this.previewVoices) {
       try {
         voice.source.stop();
@@ -1650,6 +1659,7 @@ export class AudioEngine {
     slideFromTick?: number,
     slideFromPitch?: number,
     locks?: Partial<Record<import("../project-model/types").StepLockKey, number>>,
+    slideFromWhen?: number,
   ): void {
     // Frozen tracks play back a pre-rendered buffer — skip individual noteOn
     if (this.frozenBuffers.has(trackId)) return;
@@ -1675,11 +1685,15 @@ export class AudioEngine {
         inst.runtime.setParameter("ratio", Math.max(1, Math.min(7, lockedRatio as number)));
     }
     if (slideFrom) {
-      // Convert origin tick → seconds before `when` using tick delta
-      const bpm = this.doc?.bpm ?? 124;
-      const secondsPerTick = 60 / (bpm * PPQ);
-      // Glide origin time derived from tick delta relative to the slide note's `when`
-      const glideStart = when - (when - slideFrom.tick * secondsPerTick);
+      // Glide origin in AudioContext seconds. The scheduler passes the
+      // origin's own time from the SAME transport tick→time map that
+      // produced `when` — the previous doc.bpm-based conversion was an
+      // identity no-op that desynced the glide after any pause, seek or
+      // scene-tempo change (glideStart clamped to 0 or landing after `when`).
+      const glideStart =
+        slideFromWhen !== undefined && Number.isFinite(slideFromWhen) && slideFromWhen < when
+          ? slideFromWhen
+          : Math.max(0, when - durationSec);
       inst.runtime.noteOn(adjustedPitch, velocity, when, durationSec, {
         pitch: slideFrom.pitch,
         when: Math.max(0, glideStart),
@@ -1793,7 +1807,9 @@ export class AudioEngine {
     } catch {
       /* already started */
     }
+    this.oneShotSources.add(source);
     source.onended = () => {
+      this.oneShotSources.delete(source);
       try {
         source.disconnect();
       } catch {}
@@ -2269,7 +2285,9 @@ export class AudioEngine {
     gain.gain.value = 0.85;
     source.connect(gain).connect(trackNodes.input);
     source.start(when);
+    this.oneShotSources.add(source);
     source.onended = () => {
+      this.oneShotSources.delete(source);
       gain.disconnect();
       source.disconnect();
     };
@@ -2286,7 +2304,9 @@ export class AudioEngine {
     gain.gain.value = 0.9;
     source.connect(gain).connect(this.master);
     source.start(when);
+    this.oneShotSources.add(source);
     source.onended = () => {
+      this.oneShotSources.delete(source);
       gain.disconnect();
       source.disconnect();
     };
@@ -2310,7 +2330,9 @@ export class AudioEngine {
     osc.connect(gain).connect(this.master);
     osc.start(when);
     osc.stop(when + 0.05);
+    this.oneShotSources.add(osc);
     osc.onended = () => {
+      this.oneShotSources.delete(osc);
       try {
         gain.disconnect();
       } catch {
@@ -3284,6 +3306,27 @@ export class AudioEngine {
     }
   }
 
+  /**
+   * Hard-stop every tracked one-shot source (AudioClips, marker cues,
+   * metronome clicks). Called from panic() — scheduling runs up to 120 ms
+   * ahead, so seek/stop must reach these too, not just `voices`.
+   */
+  private stopOneShotSources(): void {
+    for (const source of this.oneShotSources) {
+      try {
+        source.stop();
+      } catch {
+        /* already stopped */
+      }
+      try {
+        source.disconnect();
+      } catch {
+        /* already disconnected */
+      }
+    }
+    this.oneShotSources.clear();
+  }
+
   panic(): void {
     const ctx = this.ctx;
     if (!ctx) {
@@ -3292,6 +3335,7 @@ export class AudioEngine {
       // stale state. A panic is a hard reset — "everything off, now".
       this.voices.clear();
       this.previewVoices.clear();
+      this.stopOneShotSources();
       this.frozenBuffers.clear();
       this.frozenBufferIds.clear();
       this.frozenPlaying = false;

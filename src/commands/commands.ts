@@ -604,6 +604,9 @@ export function setActivePattern(doc: ProjectDocument, patternId: string): Comma
 export function setPatternLength(doc: ProjectDocument, patternId: string, stepCount: number): Command {
   const target = doc.patterns.find((p) => p.id === patternId);
   if (!target) throw new Error(`Pattern ${patternId} not found`);
+  // Math.max(1, Math.floor(NaN)) is NaN — the row rebuild would throw on
+  // `new Array(NaN)`. Reject explicitly instead of crashing at dispatch.
+  if (!Number.isFinite(stepCount)) throw new Error(`Pattern length must be a finite number`);
   const safeCount = Math.max(1, Math.floor(stepCount));
   const patternTicks = safeCount * STEP_TICKS;
   const next: ProjectDocument = {
@@ -623,6 +626,14 @@ export function setPatternLength(doc: ProjectDocument, patternId: string, stepCo
               Object.entries(p.notes ?? {}).map(([trackId, notes]) => [
                 trackId,
                 notes.filter((n) => n.start + n.duration <= patternTicks),
+              ]),
+            ),
+            // Prune meta beyond the new length — otherwise shrink→grow
+            // resurrects stale probability/ratchet/p-locks on zeroed steps.
+            stepMeta: Object.fromEntries(
+              Object.entries(p.stepMeta ?? {}).map(([padId, steps]) => [
+                padId,
+                Object.fromEntries(Object.entries(steps).filter(([stepKey]) => Number(stepKey) < safeCount)),
               ]),
             ),
           }
@@ -1084,23 +1095,37 @@ export function createGroupTrack(doc: ProjectDocument): Command {
 export function addToGroup(doc: ProjectDocument, trackId: string, groupId: string): Command {
   const track = doc.tracks.find((t) => t.id === trackId);
   if (!track || track.kind === "group") throw new Error(`Cannot add group to group`);
-  if (!doc.tracks.some((t) => t.id === groupId && t.kind === "group")) throw new Error(`Group ${groupId} not found`);
+  const group = doc.tracks.find((t) => t.id === groupId && t.kind === "group");
+  if (!group) throw new Error(`Group ${groupId} not found`);
   const prevGroupId = "groupId" in track ? track.groupId : undefined;
   const hadGroupId = prevGroupId !== undefined;
+  // Joining a SOLOED group must inherit the solo: the engine keeps children
+  // of a soloed group audible via the group gain, while the scheduler gates
+  // pattern content on the track's OWN solo — without inheritance the track
+  // previews live but its playback content stays silent.
+  const inheritSolo = group.solo === true && track.solo !== true;
+  const prevSolo = track.solo;
   return {
     type: "addToGroup",
     label: `Add ${track.name} to group`,
     execute: (d) => ({
       ...d,
-      tracks: d.tracks.map((t) => (t.id === trackId && t.kind !== "group" ? { ...t, groupId } : t)),
+      tracks: d.tracks.map((t) =>
+        t.id === trackId && t.kind !== "group" ? { ...t, groupId, ...(inheritSolo ? { solo: true } : {}) } : t,
+      ),
     }),
     undo: (d) => ({
       ...d,
       tracks: d.tracks.map((t) => {
         if (t.id !== trackId || t.kind === "group") return t;
-        if (hadGroupId) return { ...t, groupId: prevGroupId };
-        const { groupId: _, ...rest } = t as any;
-        return rest;
+        let restored = t;
+        if (hadGroupId) restored = { ...restored, groupId: prevGroupId };
+        else {
+          const { groupId: _, ...rest } = restored as any;
+          restored = rest;
+        }
+        if (inheritSolo) restored = { ...restored, solo: prevSolo };
+        return restored;
       }),
     }),
   };
@@ -1526,9 +1551,16 @@ function withTrackNotes(
   doc: ProjectDocument,
   trackId: string,
   fn: (notes: NoteEvent[]) => NoteEvent[],
+  patternId: string = doc.activePatternId,
 ): ProjectDocument {
-  const pattern = doc.patterns.find((p) => p.id === doc.activePatternId);
-  if (!pattern) throw new Error("No active pattern");
+  // The pattern is pinned at FACTORY time and matched here at apply time.
+  // Undo stacks outlive pattern switches — resolving against the CURRENTLY
+  // active pattern made every note-command undo after a switch a silent
+  // no-op (filter/map miss) or, worse, a wholesale note-list replacement of
+  // the wrong pattern (quantize/nudge/split/glue undos). A pinned pattern
+  // that no longer exists degrades to a no-op.
+  const pattern = doc.patterns.find((p) => p.id === patternId);
+  if (!pattern) return doc;
   const notes = fn(pattern.notes?.[trackId] ?? []);
   return {
     ...doc,
@@ -1548,12 +1580,14 @@ export function addNote(
   trackId: string,
   note: { pitch: number; start: number; duration: number; velocity: number },
 ): Command {
+  const patternId = _doc.activePatternId;
+
   const id = uid("note");
   return {
     type: "addNote",
     label: `Add note`,
-    execute: (d) => withTrackNotes(d, trackId, (notes) => [...notes, { id, ...note }]),
-    undo: (d) => withTrackNotes(d, trackId, (notes) => notes.filter((n) => n.id !== id)),
+    execute: (d) => withTrackNotes(d, trackId, (notes) => [...notes, { id, ...note }], patternId),
+    undo: (d) => withTrackNotes(d, trackId, (notes) => notes.filter((n) => n.id !== id), patternId),
   };
 }
 
@@ -1563,6 +1597,8 @@ export function moveNote(
   noteId: string,
   delta: { pitch?: number; start?: number },
 ): Command {
+  const patternId = doc.activePatternId;
+
   const prev = activeTrackNotes(doc, trackId).find((n) => n.id === noteId);
   if (!prev) {
     // A collab peer can delete the note while a drag is in flight — the
@@ -1570,7 +1606,7 @@ export function moveNote(
     return { type: "moveNote", label: "Move note", execute: (d) => d, undo: (d) => d };
   }
   const apply = (d: ProjectDocument, patch: { pitch?: number; start?: number }) =>
-    withTrackNotes(d, trackId, (notes) => notes.map((n) => (n.id === noteId ? { ...n, ...patch } : n)));
+    withTrackNotes(d, trackId, (notes) => notes.map((n) => (n.id === noteId ? { ...n, ...patch } : n)), patternId);
   return {
     type: "moveNote",
     label: "Move note",
@@ -1580,13 +1616,15 @@ export function moveNote(
 }
 
 export function resizeNote(doc: ProjectDocument, trackId: string, noteId: string, duration: number): Command {
+  const patternId = doc.activePatternId;
+
   const prev = activeTrackNotes(doc, trackId).find((n) => n.id === noteId);
   if (!prev) {
     // Same in-flight-deletion race as moveNote — abort silently.
     return { type: "resizeNote", label: "Resize note", execute: (d) => d, undo: (d) => d };
   }
   const apply = (d: ProjectDocument, dur: number) =>
-    withTrackNotes(d, trackId, (notes) => notes.map((n) => (n.id === noteId ? { ...n, duration: dur } : n)));
+    withTrackNotes(d, trackId, (notes) => notes.map((n) => (n.id === noteId ? { ...n, duration: dur } : n)), patternId);
   return {
     type: "resizeNote",
     label: "Resize note",
@@ -1596,11 +1634,13 @@ export function resizeNote(doc: ProjectDocument, trackId: string, noteId: string
 }
 
 export function setNoteVelocity(doc: ProjectDocument, trackId: string, noteId: string, velocity: number): Command {
+  const patternId = doc.activePatternId;
+
   const prev = activeTrackNotes(doc, trackId).find((n) => n.id === noteId);
   if (!prev) throw new Error(`Note ${noteId} not found`);
   const clamped = clamp(velocity, 0.05, 1);
   const apply = (d: ProjectDocument, v: number) =>
-    withTrackNotes(d, trackId, (notes) => notes.map((n) => (n.id === noteId ? { ...n, velocity: v } : n)));
+    withTrackNotes(d, trackId, (notes) => notes.map((n) => (n.id === noteId ? { ...n, velocity: v } : n)), patternId);
   return {
     type: "setNoteVelocity",
     label: "Set note velocity",
@@ -1610,31 +1650,45 @@ export function setNoteVelocity(doc: ProjectDocument, trackId: string, noteId: s
 }
 
 export function deleteNote(doc: ProjectDocument, trackId: string, noteId: string): Command {
+  const patternId = doc.activePatternId;
+
   return {
     type: "deleteNote",
     label: "Delete note",
-    execute: (d) => withTrackNotes(d, trackId, (notes) => notes.filter((n) => n.id !== noteId)),
+    execute: (d) => withTrackNotes(d, trackId, (notes) => notes.filter((n) => n.id !== noteId), patternId),
     undo: (d) => {
       const target = activeTrackNotes(doc, trackId).find((n) => n.id === noteId);
       if (!target) return d;
-      return withTrackNotes(d, trackId, (notes) => (notes.some((n) => n.id === noteId) ? notes : [...notes, target]));
+      return withTrackNotes(
+        d,
+        trackId,
+        (notes) => (notes.some((n) => n.id === noteId) ? notes : [...notes, target]),
+        patternId,
+      );
     },
   };
 }
 
 export function deleteNotes(doc: ProjectDocument, trackId: string, noteIds: string[]): Command {
+  const patternId = doc.activePatternId;
+
   const ids = new Set(noteIds);
   const removed = activeTrackNotes(doc, trackId).filter((note) => ids.has(note.id));
   return {
     type: "deleteNotes",
     label: `Delete ${ids.size} notes`,
-    execute: (d) => withTrackNotes(d, trackId, (notes) => notes.filter((note) => !ids.has(note.id))),
+    execute: (d) => withTrackNotes(d, trackId, (notes) => notes.filter((note) => !ids.has(note.id)), patternId),
     undo: (d) =>
-      withTrackNotes(d, trackId, (notes) => {
-        const present = new Set(notes.map((n) => n.id));
-        const missing = removed.filter((note) => !present.has(note.id));
-        return missing.length === 0 ? notes : [...notes, ...missing];
-      }),
+      withTrackNotes(
+        d,
+        trackId,
+        (notes) => {
+          const present = new Set(notes.map((n) => n.id));
+          const missing = removed.filter((note) => !present.has(note.id));
+          return missing.length === 0 ? notes : [...notes, ...missing];
+        },
+        patternId,
+      ),
   };
 }
 
@@ -1645,6 +1699,8 @@ export function quantizeNotes(
   gridTicks: number = STEP_TICKS,
   strength = 1,
 ): Command {
+  const patternId = doc.activePatternId;
+
   const pattern = doc.patterns.find((p) => p.id === doc.activePatternId);
   if (!pattern) throw new Error("Active pattern not found");
   const all = pattern.notes?.[trackId] ?? [];
@@ -1669,12 +1725,14 @@ export function quantizeNotes(
   return {
     type: "quantizeNotes",
     label: s < 1 ? `Quantize ${before.length} notes ${Math.round(s * 100)}%` : `Quantize ${before.length} notes`,
-    execute: (d) => withTrackNotes(d, trackId, () => quantized),
-    undo: (d) => withTrackNotes(d, trackId, () => prev),
+    execute: (d) => withTrackNotes(d, trackId, () => quantized, patternId),
+    undo: (d) => withTrackNotes(d, trackId, () => prev, patternId),
   };
 }
 
 export function duplicateNotes(doc: ProjectDocument, trackId: string, noteIds?: string[]): Command {
+  const patternId = doc.activePatternId;
+
   const pattern = doc.patterns.find((p) => p.id === doc.activePatternId);
   if (!pattern) throw new Error("Active pattern not found");
   const all = pattern.notes?.[trackId] ?? [];
@@ -1697,12 +1755,14 @@ export function duplicateNotes(doc: ProjectDocument, trackId: string, noteIds?: 
   return {
     type: "duplicateNotes",
     label: `Duplicate ${toDup.length} notes`,
-    execute: (d) => withTrackNotes(d, trackId, () => next),
-    undo: (d) => withTrackNotes(d, trackId, () => prev),
+    execute: (d) => withTrackNotes(d, trackId, () => next, patternId),
+    undo: (d) => withTrackNotes(d, trackId, () => prev, patternId),
   };
 }
 
 export function splitNotes(doc: ProjectDocument, trackId: string, noteIds?: string[]): Command {
+  const patternId = doc.activePatternId;
+
   const all = activeTrackNotes(doc, trackId);
   const targetIds = noteIds && noteIds.length > 0 ? new Set(noteIds) : null;
   const toSplit = targetIds ? all.filter((n) => targetIds.has(n.id)) : all;
@@ -1727,12 +1787,14 @@ export function splitNotes(doc: ProjectDocument, trackId: string, noteIds?: stri
   return {
     type: "splitNotes",
     label: `Split ${toSplit.length} notes`,
-    execute: (d) => withTrackNotes(d, trackId, () => next),
-    undo: (d) => withTrackNotes(d, trackId, () => prev),
+    execute: (d) => withTrackNotes(d, trackId, () => next, patternId),
+    undo: (d) => withTrackNotes(d, trackId, () => prev, patternId),
   };
 }
 
 export function glueNotes(doc: ProjectDocument, trackId: string, noteIds?: string[]): Command {
+  const patternId = doc.activePatternId;
+
   const all = activeTrackNotes(doc, trackId);
   const targetIds = noteIds && noteIds.length > 0 ? new Set(noteIds) : new Set(all.map((n) => n.id));
   const toGlue = all.filter((n) => targetIds.has(n.id));
@@ -1760,12 +1822,14 @@ export function glueNotes(doc: ProjectDocument, trackId: string, noteIds?: strin
   return {
     type: "glueNotes",
     label: `Glue ${toGlue.length} notes`,
-    execute: (d) => withTrackNotes(d, trackId, () => next),
-    undo: (d) => withTrackNotes(d, trackId, () => prev),
+    execute: (d) => withTrackNotes(d, trackId, () => next, patternId),
+    undo: (d) => withTrackNotes(d, trackId, () => prev, patternId),
   };
 }
 
 export function setNotesVelocity(doc: ProjectDocument, trackId: string, noteIds: string[], velocity: number): Command {
+  const patternId = doc.activePatternId;
+
   const clamped = clamp(velocity, 0.05, 1);
   const prev = activeTrackNotes(doc, trackId).filter((n) => noteIds.includes(n.id));
   const prevMap = new Map(prev.map((n) => [n.id, n.velocity]));
@@ -1773,12 +1837,18 @@ export function setNotesVelocity(doc: ProjectDocument, trackId: string, noteIds:
     type: "setNotesVelocity",
     label: `Set velocity for ${noteIds.length} notes`,
     execute: (d) =>
-      withTrackNotes(d, trackId, (notes) =>
-        notes.map((n) => (noteIds.includes(n.id) ? { ...n, velocity: clamped } : n)),
+      withTrackNotes(
+        d,
+        trackId,
+        (notes) => notes.map((n) => (noteIds.includes(n.id) ? { ...n, velocity: clamped } : n)),
+        patternId,
       ),
     undo: (d) =>
-      withTrackNotes(d, trackId, (notes) =>
-        notes.map((n) => (prevMap.has(n.id) ? { ...n, velocity: prevMap.get(n.id)! } : n)),
+      withTrackNotes(
+        d,
+        trackId,
+        (notes) => notes.map((n) => (prevMap.has(n.id) ? { ...n, velocity: prevMap.get(n.id)! } : n)),
+        patternId,
       ),
   };
 }
@@ -1790,6 +1860,8 @@ export function nudgeNotes(
   deltaTicks: number,
   deltaPitch: number,
 ): Command {
+  const patternId = doc.activePatternId;
+
   const pattern = doc.patterns.find((p) => p.id === doc.activePatternId);
   if (!pattern) throw new Error("Active pattern not found");
   const patternTicks = pattern.stepCount * STEP_TICKS;
@@ -1809,12 +1881,14 @@ export function nudgeNotes(
   return {
     type: "nudgeNotes",
     label: `Nudge ${before.length} notes`,
-    execute: (d) => withTrackNotes(d, trackId, () => sortedAfter),
-    undo: (d) => withTrackNotes(d, trackId, () => sortedBefore),
+    execute: (d) => withTrackNotes(d, trackId, () => sortedAfter, patternId),
+    undo: (d) => withTrackNotes(d, trackId, () => sortedBefore, patternId),
   };
 }
 
 export function setNotesVelocities(doc: ProjectDocument, trackId: string, velocities: Record<string, number>): Command {
+  const patternId = doc.activePatternId;
+
   const all = activeTrackNotes(doc, trackId);
   const prev = new Map(all.filter((n) => velocities[n.id] !== undefined).map((n) => [n.id, n.velocity]));
   if (prev.size === 0) throw new Error("No matching notes for velocity update");
@@ -1822,12 +1896,19 @@ export function setNotesVelocities(doc: ProjectDocument, trackId: string, veloci
     type: "setNotesVelocities",
     label: `Set velocity for ${prev.size} notes`,
     execute: (d) =>
-      withTrackNotes(d, trackId, (notes) =>
-        notes.map((n) => (velocities[n.id] !== undefined ? { ...n, velocity: clamp(velocities[n.id], 0.05, 1) } : n)),
+      withTrackNotes(
+        d,
+        trackId,
+        (notes) =>
+          notes.map((n) => (velocities[n.id] !== undefined ? { ...n, velocity: clamp(velocities[n.id], 0.05, 1) } : n)),
+        patternId,
       ),
     undo: (d) =>
-      withTrackNotes(d, trackId, (notes) =>
-        notes.map((n) => (prev.has(n.id) ? { ...n, velocity: prev.get(n.id)! } : n)),
+      withTrackNotes(
+        d,
+        trackId,
+        (notes) => notes.map((n) => (prev.has(n.id) ? { ...n, velocity: prev.get(n.id)! } : n)),
+        patternId,
       ),
   };
 }

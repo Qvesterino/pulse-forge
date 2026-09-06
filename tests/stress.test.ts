@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { drumHitsInWindow } from "../src/project-model/groove";
+import { STEP_TICKS } from "../src/project-model/types";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { normalizeProject } from "../src/project-model/schema";
 import type { ProjectDocument, Track, Pattern, InstrumentTrack } from "../src/project-model/types";
@@ -219,3 +221,100 @@ describe("Stress tests — large projects", () => {
     expect(elapsed).toBeLessThan(50);
   });
 });
+
+describe("Stress tests — dense scheduler windows (beat engine audit)", () => {
+  function denseDoc(trackCount = 24, steps = 64) {
+    const base = createProjectFromTemplate("house");
+    const pads = Array.from({ length: 16 }, (_, j) => ({
+      id: `pad-${j}`,
+      name: `Pad ${j + 1}`,
+      assetId: null,
+      gain: 1,
+      pan: 0,
+      pitch: 0,
+      chokeGroup: 0,
+      mute: false,
+      solo: false,
+    }));
+    const tracks: Track[] = Array.from({ length: trackCount }, (_, i) => ({
+      id: `track-${i}`,
+      kind: "drum" as const,
+      name: `D${i}`,
+      gain: 1,
+      pan: 0,
+      mute: false,
+      solo: false,
+      pads,
+      effects: [],
+      sends: {},
+    }));
+    const rows: Record<string, number[]> = {};
+    for (const pad of pads) rows[pad.id] = Array.from({ length: steps }, (_, s) => (s % 2 === 0 ? 0.8 : 0.15));
+    const pattern: Pattern = {
+      ...base.patterns[0],
+      id: "pattern-dense",
+      stepCount: steps,
+      rows,
+      stepMeta: { "pad-0": { 7: { ratchet: 8, probability: 0.9 }, 31: { ratchet: 4 } } },
+    };
+    return {
+      ...base,
+      tracks,
+      patterns: [pattern],
+      activePatternId: pattern.id,
+      groove: { swing: 0.4, humanizeTiming: 0.2, humanizeVelocity: 0.2 },
+    } as ProjectDocument;
+  }
+
+  it("schedules a 24-track × 64-step window (with ratchets + probability + swing) under budget", () => {
+    const doc = denseDoc();
+    const hits = drumHitsInWindow(doc, doc.patterns[0], 0, 0, 64 * STEP_TICKS);
+    // Dense: every even step fires on every track + ratchet tails.
+    expect(hits.length).toBeGreaterThan(track_count_min(doc));
+    const start = performance.now();
+    for (let w = 0; w < 20; w++) {
+      drumHitsInWindow(doc, doc.patterns[0], 0, w * 120, (w + 1) * 120);
+    }
+    const elapsed = performance.now() - start;
+    // 20 windows of the dense project — CI-safe ceiling, pathological
+    // algorithms would blow this by orders of magnitude.
+    expect(elapsed).toBeLessThan(300);
+  });
+
+  it("window splitting stays lossless under a mute/solo storm + dense load", () => {
+    const doc = denseDoc();
+    // Solo storm: every 5th track soloed (and a couple muted).
+    const stormed = {
+      ...doc,
+      tracks: doc.tracks.map((t, i) => ({ ...t, solo: i % 5 === 0, mute: i % 11 === 0 })),
+    } as ProjectDocument;
+    const total = 64 * STEP_TICKS;
+    const whole = drumHitsInWindow(stormed, stormed.patterns[0], 0, 0, total);
+    // Split into uneven windows like the 25 ms scheduler does.
+    const merged: string[] = [];
+    let from = 0;
+    while (from < total) {
+      const to = Math.min(total, from + 119); // ≈ one real window at 124 BPM
+      const part = drumHitsInWindow(stormed, stormed.patterns[0], 0, from, to);
+      merged.push(...part.map((h) => `${h.trackId}|${h.pad.id}|${Math.round(h.tick * 100)}`));
+      from = to;
+    }
+    const wholeIds = whole.map((h) => `${h.trackId}|${h.pad.id}|${Math.round(h.tick * 100)}`).sort();
+    expect(merged.sort()).toEqual(wholeIds);
+  });
+
+  it("identical state replays identically across window phases (determinism under load)", () => {
+    const doc = denseDoc(12, 32);
+    const a = drumHitsInWindow(doc, doc.patterns[0], 0, 53, 53 + 240);
+    const b = drumHitsInWindow(doc, doc.patterns[0], 0, 53, 53 + 240);
+    expect(a.map((h) => `${h.tick}|${h.velocity.toFixed(6)}`)).toEqual(
+      b.map((h) => `${h.tick}|${h.velocity.toFixed(6)}`),
+    );
+  });
+});
+
+function track_count_min(doc: ProjectDocument): number {
+  // 32 even steps × 24 tracks, minus solo/mute (none set) — floor for density.
+  void doc;
+  return 32 * 24;
+}

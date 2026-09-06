@@ -33,13 +33,33 @@ export function defaultServerUrl(): string {
   return `ws://${location.hostname || "127.0.0.1"}:1234`;
 }
 
+/**
+ * The `?server=` override must not become a traffic-redirection sink: a
+ * crafted collab link pointing at `wss://evil` would silently relay the
+ * victim's whole project and every subsequent edit through an attacker
+ * host. Overrides are limited to the SAME host as the app origin (ws/wss
+ * only) — self-hosted relays on other hosts can be entered in the UI,
+ * which stores them deliberately, instead of arriving via links.
+ */
+function isAllowedServerUrl(raw: string): boolean {
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "ws:" && url.protocol !== "wss:") return false;
+    if (typeof location === "undefined") return url.hostname === "127.0.0.1" || url.hostname === "localhost";
+    return url.hostname === location.hostname;
+  } catch {
+    return false;
+  }
+}
+
 /** Parse ?collab=<room>[&server=<url>] from a search string (pure for tests). */
 export function collabParamsFromSearch(search: string): { roomId: string; serverUrl: string } | null {
   if (!search) return null;
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
   const roomId = params.get("collab");
   if (!roomId) return null;
-  const serverUrl = params.get("server") || defaultServerUrl();
+  const serverOverride = params.get("server");
+  const serverUrl = serverOverride && isAllowedServerUrl(serverOverride) ? serverOverride : defaultServerUrl();
   return { roomId, serverUrl };
 }
 

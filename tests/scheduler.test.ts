@@ -7,6 +7,7 @@ import {
   normalizeProject,
   validateProjectShape,
 } from "../src/project-model/schema";
+import { createProjectFromTemplate } from "../src/project-model/templates";
 import { getDrumTrack, BAR_TICKS, STEP_TICKS } from "../src/project-model/types";
 import { Scheduler } from "../src/scheduler/Scheduler";
 import { Transport } from "../src/transport/Transport";
@@ -1186,5 +1187,40 @@ describe("scheduler — recovery", () => {
     } finally {
       scheduler.stop();
     }
+  });
+});
+
+describe("scheduler — pending launch vs loop end (precision audit)", () => {
+  it("commits a launch quantized past the loop end AT the loop wrap (no stuck badge)", () => {
+    // Loop is one pattern (16 steps = 1920 ticks) long; the next BAR
+    // boundary (3840) lies past the loop end. The old code never reached
+    // the boundary on any wrap pass — the launch pended forever.
+    const base = createProjectFromTemplate("house");
+    const second = {
+      ...base.patterns[0],
+      id: "pattern-loop-launch-b",
+      name: "Second",
+      rows: Object.fromEntries(Object.keys(base.patterns[0].rows).map((k) => [k, new Array(16).fill(0)])),
+    };
+    const doc = { ...base, patterns: [...base.patterns, second] };
+    const secondId = second.id;
+    const h = makeHarness(doc, "pattern");
+    h.transport.setLoop(true, 0, STEP_TICKS * 16);
+    h.transport.play(0);
+    h.scheduler.start();
+    // Queue while inside the first loop pass; quantization targets bar 2
+    // (3840) which is beyond the loop end (1920).
+    h.scheduler.queuePatternLaunch(secondId, 2 * BAR_TICKS);
+    expect(h.scheduler.pendingPatternId).toBe(secondId);
+    let committed = false;
+    for (let i = 0; i < 400 && !committed; i++) {
+      h.advance(0.025);
+      h.scheduler["tick"]();
+      committed = h.launches.length > 0;
+    }
+    expect(committed).toBe(true);
+    expect(h.launches).toEqual([secondId]);
+    expect(h.scheduler.pendingPatternId).toBeNull();
+    h.scheduler.stop();
   });
 });

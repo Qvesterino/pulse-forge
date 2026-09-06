@@ -150,10 +150,13 @@ export function ExportPanel({
 
   const exportTracks = async () => {
     try {
+      // Group tracks have no own generators — rendering one produces a
+      // silent WAV (their children belong to their own stems).
+      const renderableTracks = doc.tracks.filter((t) => t.kind !== "group");
       let lastSummary: BufferSummary | null = null;
-      for (let i = 0; i < doc.tracks.length; i++) {
-        const track = doc.tracks[i];
-        setStatus({ kind: "busy", label: `Rendering track ${i + 1}/${doc.tracks.length}: ${track.name}…` });
+      for (let i = 0; i < renderableTracks.length; i++) {
+        const track = renderableTracks[i];
+        setStatus({ kind: "busy", label: `Rendering track ${i + 1}/${renderableTracks.length}: ${track.name}…` });
         const trackDoc = buildStemProject(doc, (t) => t.id === track.id);
         const buffer = await renderProject(trackDoc, services.bank, { mode, sampleRate });
         lastSummary = summarizeBuffer(buffer);
@@ -161,7 +164,7 @@ export function ExportPanel({
       }
       setStatus({
         kind: "done",
-        label: `${doc.tracks.length} track stems exported`,
+        label: `${renderableTracks.length} track stems exported`,
         summary: lastSummary ?? EMPTY_EXPORT_SUMMARY,
       });
     } catch (error) {

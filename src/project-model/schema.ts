@@ -25,7 +25,7 @@ import type {
 import { BAR_TICKS, PPQ, STEP_TICKS, STEPS_PER_PATTERN, isMusicalKey } from "./types";
 import { sanitizeGateSteps, sanitizeLfo } from "./modulators";
 import { uid } from "../shared/ids";
-import { defaultInstrumentParams } from "../instruments/registry";
+import { defaultInstrumentParams, INSTRUMENT_DEFS } from "../instruments/registry";
 import { createProjectFromTemplate } from "./templates";
 import { EFFECT_DEFS, clampEffectParam, defaultParamsOf, normalizePluginParams } from "../effects/registry";
 import { clampTargetValue, isAutomationTargetValid, targetOwner, targetParamDef } from "./targets";
@@ -784,6 +784,26 @@ function normalizeTracksDomain(s: NormalizeState): void {
   const doc = s.doc;
   const trackIds = new Set(doc.tracks.map((t) => t.id));
   let tracksChanged = false;
+  // Sends entries are numbers keyed by return-track id. Content from a
+  // hostile doc (collab peer, corrupted import) is filtered to safe keys
+  // with finite numeric values — setter-trap keys (__proto__ etc.) and
+  // non-numeric garbage are dropped. Values are clamped on write.
+  const sanitizeSends = (sends: Record<string, number>): Record<string, number> => {
+    const clean: Record<string, number> = {};
+    let changed = false;
+    for (const [k, v] of Object.entries(sends)) {
+      if (["__proto__", "constructor", "prototype"].includes(k) || !/^[A-Za-z0-9_-]{1,64}$/.test(k)) {
+        changed = true;
+        continue;
+      }
+      if (typeof v !== "number" || !Number.isFinite(v)) {
+        changed = true;
+        continue;
+      }
+      clean[k] = v;
+    }
+    return changed ? clean : sends;
+  };
   const tracks = doc.tracks.map((track): DrumTrack | InstrumentTrack | import("../project-model/types").GroupTrack => {
     if (track.kind === "drum") {
       let t: DrumTrack = track;
@@ -952,8 +972,9 @@ function normalizeTracksDomain(s: NormalizeState): void {
         t = { ...t, effects: normalizedEffects } as DrumTrack;
         tracksChanged = true;
       }
-      if (t.sends === undefined) {
-        t = { ...t, sends: {} } as DrumTrack;
+      const cleanSends = sanitizeSends(t.sends ?? {});
+      if (t.sends === undefined || cleanSends !== t.sends) {
+        t = { ...t, sends: cleanSends } as DrumTrack;
         tracksChanged = true;
       }
       // Validate groupId reference
@@ -987,8 +1008,9 @@ function normalizeTracksDomain(s: NormalizeState): void {
         t = { ...t, effects: normalizedEffects };
         tracksChanged = true;
       }
-      if (t.sends === undefined) {
-        t = { ...t, sends: {} };
+      const groupCleanSends = sanitizeSends(t.sends ?? {});
+      if (t.sends === undefined || groupCleanSends !== t.sends) {
+        t = { ...t, sends: groupCleanSends };
         tracksChanged = true;
       }
       const groupCleanColor = sanitizeColor((t as unknown as Record<string, unknown>).color);
@@ -1010,12 +1032,27 @@ function normalizeTracksDomain(s: NormalizeState): void {
       }
       return t;
     }
-    // instrument: merge params with defaults only when keys are missing
-    const defaults = defaultInstrumentParams(track.instrument);
+    // instrument: merge params with defaults only when keys are missing.
+    // An unknown/missing instrument kind must HEAL, not throw — normalize
+    // promises never to throw, and a hostile doc (collab peer, corrupted
+    // import) previously crashed the whole sync path here.
+    const knownInstrument =
+      typeof track.instrument === "string" && Object.prototype.hasOwnProperty.call(INSTRUMENT_DEFS, track.instrument);
+    const instrument = knownInstrument
+      ? track.instrument
+      : (Object.keys(INSTRUMENT_DEFS)[0] as InstrumentTrack["instrument"]);
+    const defaults = defaultInstrumentParams(instrument);
     let t: InstrumentTrack = track;
     let paramsChanged = false;
+    if (instrument !== track.instrument) {
+      t = { ...track, instrument };
+      tracksChanged = true;
+    }
     const merged: Record<string, number> = { ...defaults };
     const paramsRecord: Record<string, number> = track.params ?? {};
+    const SAFE_PARAM_KEY = /^[A-Za-z0-9_.-]{1,64}$/;
+    const isSafeKey = (k: string): boolean =>
+      SAFE_PARAM_KEY.test(k) && !["__proto__", "constructor", "prototype"].includes(k);
     for (const k of Object.keys(defaults)) {
       const v = paramsRecord[k];
       if (v === undefined) {
@@ -1024,15 +1061,24 @@ function normalizeTracksDomain(s: NormalizeState): void {
         merged[k] = v;
       }
     }
-    // Backfill any keys present in the track params but missing from defaults
+    // Backfill any keys present in the track params but missing from defaults.
+    // Unknown keys may only ride along as finite numbers — arbitrary keys or
+    // non-numeric values from a hostile doc are dropped, and so are setter
+    // traps like __proto__ (they'd land on params via plain assignment).
     for (const k of Object.keys(paramsRecord)) {
-      if (merged[k] === undefined) {
+      if (
+        merged[k] === undefined &&
+        isSafeKey(k) &&
+        typeof paramsRecord[k] === "number" &&
+        Number.isFinite(paramsRecord[k])
+      ) {
         merged[k] = paramsRecord[k];
         paramsChanged = true;
       }
     }
     if (paramsChanged) {
-      t = { ...track, params: merged };
+      // Spread `t` (not `track`) so an instrument heal above survives.
+      t = { ...t, params: merged };
       tracksChanged = true;
     }
     const normalizedEffects = normalizeEffects(t.effects, t.id, trackIds);
@@ -1040,8 +1086,9 @@ function normalizeTracksDomain(s: NormalizeState): void {
       t = { ...t, effects: normalizedEffects };
       tracksChanged = true;
     }
-    if (t.sends === undefined) {
-      t = { ...t, sends: {} };
+    const instCleanSends = sanitizeSends(t.sends ?? {});
+    if (t.sends === undefined || instCleanSends !== t.sends) {
+      t = { ...t, sends: instCleanSends };
       tracksChanged = true;
     }
     // Validate groupId reference
@@ -1794,8 +1841,6 @@ export function normalizeProject(doc: ProjectDocument): ProjectDocument {
   for (const domain of NORMALIZE_DOMAINS) domain(state);
   return state.changed ? state.doc : doc;
 }
-
-export const ensurePatternRows = normalizeProject;
 
 export function migrateProject(doc: ProjectDocument): ProjectDocument {
   if (doc.schemaVersion > SCHEMA_VERSION) {

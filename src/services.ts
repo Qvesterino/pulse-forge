@@ -22,8 +22,7 @@ import { FrozenBufferRepository, restoreFrozenTracks } from "./persistence/Froze
 import { ensureWorkletsForDoc } from "./audio-worklets/loader";
 import type { YDocStore } from "./collab/YDocStore";
 import type { CollabSession } from "./collab/CollabSession";
-import { collabParamsFromSearch, type CollabStatus } from "./collab/collabShared";
-import type { CollaboratorInfo } from "./collab/CollaborationProvider";
+import { collabParamsFromSearch } from "./collab/collabShared";
 import { LatencyCalibrationController } from "./audio-engine/latencyCalibration";
 import { ArrangementCaptureController } from "./arrangement/capture";
 import { GhostPreviewPlayer } from "./audio-engine/GhostPreviewPlayer";
@@ -221,14 +220,6 @@ export interface OpenProjectOptions {
   collab?: { roomId: string; serverUrl: string };
 }
 
-export function collabSessionInfo(
-  services: Services,
-): { roomId: string; status: CollabStatus; participants: CollaboratorInfo[] } | null {
-  return services.collab
-    ? { roomId: services.collab.roomId, status: services.collab.status, participants: services.collab.participants }
-    : null;
-}
-
 /**
  * Build per-project services around the shared core. The engine is reused
  * across projects (its `setProject` diff handles full project swaps), so
@@ -314,8 +305,8 @@ export async function openProject(
     getContextState: () => engine.context?.state ?? "closed",
     getMode: () => modeRef.mode,
     trigger: (trackId, pad, when, velocity, locks) => engine.trigger(trackId, pad, when, velocity, locks),
-    noteOn: (trackId, pitch, velocity, when, durationSec, slideFromTick, slideFromPitch, locks) =>
-      engine.noteOn(trackId, pitch, velocity, when, durationSec, slideFromTick, slideFromPitch, locks),
+    noteOn: (trackId, pitch, velocity, when, durationSec, slideFromTick, slideFromPitch, locks, slideFromWhen) =>
+      engine.noteOn(trackId, pitch, velocity, when, durationSec, slideFromTick, slideFromPitch, locks, slideFromWhen),
     triggerAudioClip: (clip, when, durationSec) => engine.triggerAudioClip(clip, when, durationSec),
     metronomeClick: (when, downbeat) => engine.click(when, downbeat),
     recordCapturedEvent: (event) => capture.recordEvent(event),

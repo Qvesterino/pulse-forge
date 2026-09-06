@@ -9,6 +9,7 @@ import {
   validateProjectShape,
 } from "../src/project-model/schema";
 import { PPQ, STEPS_PER_PATTERN, STEP_TICKS } from "../src/project-model/types";
+import { createProjectFromTemplate } from "../src/project-model/templates";
 import type { ProjectDocument } from "../src/project-model/types";
 
 function minimalDoc(overrides: Partial<ProjectDocument> = {}): ProjectDocument {
@@ -675,5 +676,63 @@ describe("normalizeProject — note integrity", () => {
     const normalized = normalizeProject(doc);
     const track = normalized.tracks.find((t) => t.kind === "instrument")!;
     expect(normalized.patterns[0].notes?.[track.id] ?? []).toHaveLength(1);
+  });
+});
+
+describe("normalizeProject — hostile-doc hardening (security surface)", () => {
+  it("never throws on an unknown instrument kind — heals to a valid instrument", () => {
+    const doc = createProjectFromTemplate("house");
+    const inst = doc.tracks.find((t) => t.kind === "instrument") as { instrument: string; id: string };
+    const poisoned = {
+      ...doc,
+      tracks: doc.tracks.map((t) =>
+        t.id === inst.id ? { ...t, instrument: "not-a-synth", params: { ...("params" in t ? (t.params as object) : {}), cutoff: 4321 } } : t,
+      ),
+    } as unknown as Parameters<typeof normalizeProject>[0];
+    const healed = normalizeProject(poisoned);
+    const healedInst = healed.tracks.find((t) => t.kind === "instrument") as unknown as {
+      instrument: string;
+      params: Record<string, number>;
+    };
+    // The heal must SURVIVE the params merge (regression: params spread used
+    // the raw track, reverting the instrument when both changed at once).
+    expect(healedInst.instrument).not.toBe("not-a-synth");
+    expect(healedInst.params.cutoff).toBe(4321);
+    // The healed kind must be a REAL instrument (defaults resolvable).
+    expect(() => normalizeProject(healed)).not.toThrow();
+  });
+
+  it("drops setter-trap and non-numeric keys from track params and sends", () => {
+    const doc = createProjectFromTemplate("house") as unknown as Record<string, unknown>;
+    const inst = (doc.tracks as Record<string, unknown>[]).find((t) => t.kind === "instrument")!;
+    inst.params = {
+      __proto__: { polluted: true },
+      cutoff: 8000,
+      junk: "not-a-number",
+      toString: 5,
+    } as unknown as Record<string, number>;
+    const drum = (doc.tracks as Record<string, unknown>[]).find((t) => t.kind === "drum")!;
+    drum.sends = {
+      __proto__: { polluted: true },
+      "return-bad": Number.NaN,
+      realReturn: 0.4,
+    } as unknown as Record<string, number>;
+
+    const healed = normalizeProject(doc as never);
+    expect((Object.prototype as unknown as Record<string, unknown>).polluted).toBeUndefined();
+
+    const healedInst = healed.tracks.find((t) => t.kind === "instrument") as unknown as {
+      params: Record<string, number>;
+    };
+    expect(healedInst.params.cutoff).toBe(8000);
+    expect(healedInst.params.junk).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(healedInst.params, "toString")).toBe(false);
+
+    const healedDrum = healed.tracks.find((t) => t.kind === "drum") as unknown as {
+      sends: Record<string, number>;
+    };
+    expect(healedDrum.sends.realReturn).toBe(0.4);
+    expect(healedDrum.sends["return-bad"]).toBeUndefined();
+    expect((Object.prototype as unknown as Record<string, unknown>).polluted).toBeUndefined();
   });
 });

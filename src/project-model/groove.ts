@@ -127,7 +127,16 @@ export function drumHitsInWindow(
         const micro = clampRange(meta?.microtiming ?? 0, -1, 1) * MAX_MICRO_TIMING;
         const jitter = humanizeTiming > 0 ? (rand() * 2 - 1) * clamp01(humanizeTiming) * MAX_HUMANIZE_TIMING : 0;
         const tick = t + swingOffsetTicks(stepIndex, swing) + micro + jitter;
-        if (tick < fromTick || tick >= toTick) continue;
+        // NOTE: no parent-level window gate here. The per-hit filter below is
+        // the single source of truth. Gating the parent used to drop ratchet
+        // TAILS: a parent near a window edge whose tail sub-hits cross into
+        // the next window was rejected by that window's parent gate
+        // (tick < fromTick) after this window had filtered the tail out —
+        // the tail played nowhere. The ±1-step scan margin above already
+        // covers every parent whose tail can reach this window (max tail is
+        // under one step), and the seeded draws keep identical order either
+        // way, so replay stays deterministic and each hit lands in exactly
+        // one window.
 
         let finalVelocity = velocity;
         if (humanizeVelocity > 0) {

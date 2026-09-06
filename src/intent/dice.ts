@@ -199,11 +199,6 @@ export function applyDiceLocks(prev: Pattern | null, next: Pattern, locks: DiceL
 }
 
 /** Get the active intent+seed for preview (jitter already applied in rollSession). */
-export function dicePreviewIntent(session: DiceSession): IntentSpec {
-  const seed = session.seedChain[session.cursor] ?? session.seedChain[0];
-  return jitteredIntentForSeed(session.intent, seed, session.jitter);
-}
-
 export function diceCurrentSeed(session: DiceSession): string {
   return session.seedChain[session.cursor] ?? session.seedChain[0] ?? "";
 }
