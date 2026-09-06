@@ -1743,12 +1743,29 @@ export function duplicateNotes(doc: ProjectDocument, trackId: string, noteIds?: 
   const minStart = Math.min(...toDup.map((n) => n.start));
   const maxEnd = Math.max(...toDup.map((n) => n.start + n.duration));
   const width = maxEnd - minStart;
-  // Duplicate shifted by width, wrap if exceeds pattern
-  const copies = toDup.map((n) => ({
-    ...n,
-    id: uid("note"),
-    start: (n.start + width) % patternTicks,
-  }));
+  // Defect R9.D1 (reliability ratchet audit): the copy's `start` is wrapped
+  // via `% patternTicks` but the original `duration` was preserved. A long
+  // selection whose wrapped start lands near the end of the pattern produced
+  // a copy that extended past `patternTicks` — violating the
+  // `n.start + n.duration <= patternTicks` invariant enforced by
+  // `normalizeProject` in `src/project-model/schema.ts`. The duplicate was
+  // silently dropped on the next save/load. Clamp the copy's duration to
+  // what remains in the pattern; skip the copy if the wrap leaves no room
+  // (a 0-tick note would be filtered anyway, and silently dropping it is
+  // preferable to producing a note that does not represent the user's
+  // intent).
+  const copies: NoteEvent[] = [];
+  for (const n of toDup) {
+    const rawStart = (n.start + width) % patternTicks;
+    const remaining = patternTicks - rawStart;
+    if (remaining < 1) continue;
+    copies.push({
+      ...n,
+      id: uid("note"),
+      start: rawStart,
+      duration: Math.min(n.duration, remaining),
+    });
+  }
   // If wrap would overlap original, keep original and add copies (allow overlap for now)
   const next = [...all, ...copies].sort((a, b) => a.start - b.start || a.pitch - b.pitch);
   const prev = [...all];
