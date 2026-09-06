@@ -19,6 +19,8 @@ interface ClipWindow {
   to: number;
   /** Scene tempo for this window (falls back to the project BPM). */
   bpm?: number;
+  /** Owning scene (song mode only) — drives offline sceneAutomation rendering. */
+  sceneId?: string;
 }
 
 export function computeRenderTicks(doc: ProjectDocument, mode: PlayMode): number {
@@ -38,7 +40,14 @@ function collectClipWindows(doc: ProjectDocument, mode: PlayMode): ClipWindow[] 
       const pattern = doc.patterns.find((p) => p.id === scene.patternId);
       if (!pattern) continue;
       const base = clip.startBar * BAR_TICKS;
-      windows.push({ pattern, base, from: base, to: base + clip.lengthBars * BAR_TICKS, bpm: scene.bpm ?? doc.bpm });
+      windows.push({
+        pattern,
+        base,
+        from: base,
+        to: base + clip.lengthBars * BAR_TICKS,
+        bpm: scene.bpm ?? doc.bpm,
+        sceneId: clip.sceneId,
+      });
     }
     if (windows.length > 0) return windows;
   }
@@ -176,6 +185,10 @@ export async function renderProject(
     scheduleNotes(window, timeAt, 60 / ((window.bpm ?? doc.bpm) * PPQ), engine);
   }
   scheduleAutomation(doc, windows, timeAt, engine);
+  // Scene automation lanes (release roadmap 1.2): live applies these per
+  // window via applySceneAutomationLane; offline schedules the lane's exact
+  // shape through each owning clip's window via the same tempo map.
+  scheduleSceneAutomation(doc, windows, timeAt, engine);
   // Schedulable track modulators (random S&H / step) share the same window
   // sweep so offline exports match live playback deterministically.
   engine.scheduleModulatorsOffline(
@@ -241,6 +254,93 @@ function scheduleNotes(
       // desyncs slides under scene tempo (parity with the live scheduler).
       slideFrom ? timeAt(slideFrom.tick) : undefined,
     );
+  }
+}
+
+/**
+ * Offline rendering of `doc.sceneAutomation` (release roadmap 1.2). Lane
+ * points are scene-relative; each clip window owned by the lane's scene
+ * receives the lane's exact shape — boundary values at both window edges
+ * (interpolated exactly like the live applySceneAutomationLane) plus every
+ * interior point — written through the same tempo-map `timeAt` the project
+ * automation uses. Clips of the same scene chain continuously (the end value
+ * of one window equals the start value of the next). Pattern-mode fallback
+ * windows carry no sceneId and are skipped, matching live song-mode-only
+ * semantics.
+ */
+export function scheduleSceneAutomation(
+  doc: ProjectDocument,
+  windows: ClipWindow[],
+  timeAt: (tick: number) => number,
+  engine: AudioEngine,
+): void {
+  const lanes = doc.sceneAutomation;
+  if (!lanes || lanes.length === 0 || windows.length === 0) return;
+  const valueAtLocal = (points: AutomationPoint[], tick: number): number => {
+    if (tick <= points[0].tick) return points[0].value;
+    if (tick >= points[points.length - 1].tick) return points[points.length - 1].value;
+    for (let i = 0; i < points.length - 1; i++) {
+      const a = points[i];
+      const b = points[i + 1];
+      if (tick >= a.tick && tick <= b.tick) {
+        const span = b.tick - a.tick;
+        if (span <= 0) return a.value;
+        const t = (tick - a.tick) / span;
+        return a.value + (b.value - a.value) * t;
+      }
+    }
+    return points[points.length - 1].value;
+  };
+  for (const lane of lanes) {
+    if (lane.points.length === 0) continue;
+    for (const window of windows) {
+      if (window.sceneId !== lane.sceneId) continue;
+      const fromLocal = Math.max(0, window.from - window.base);
+      const toLocal = window.to - window.base;
+      if (toLocal <= fromLocal) continue;
+      // Boundary values first, then every interior lane point.
+      const expanded: AutomationPoint[] = [
+        { tick: window.from, value: valueAtLocal(lane.points, fromLocal) },
+        { tick: window.to, value: valueAtLocal(lane.points, toLocal) },
+      ];
+      for (const point of lane.points) {
+        const absoluteTick = window.base + point.tick;
+        if (absoluteTick > window.from && absoluteTick < window.to) {
+          expanded.push({ tick: absoluteTick, value: point.value });
+        }
+      }
+      expanded.sort((a, b) => a.tick - b.tick);
+      switch (lane.target.kind) {
+        case "trackGain":
+          engine.scheduleTrackAutomation(lane.target.trackId, "gain", expanded, timeAt);
+          break;
+        case "trackPan":
+          engine.scheduleTrackAutomation(lane.target.trackId, "pan", expanded, timeAt);
+          break;
+        case "fxParam": {
+          if (!lane.target.fxId) break;
+          engine.scheduleDeviceAutomation(
+            lane.target.trackId,
+            "fx",
+            lane.target.fxId,
+            lane.target.paramId,
+            expanded,
+            timeAt,
+          );
+          break;
+        }
+        case "instParam":
+          engine.scheduleDeviceAutomation(
+            lane.target.trackId,
+            "inst",
+            undefined,
+            lane.target.paramId,
+            expanded,
+            timeAt,
+          );
+          break;
+      }
+    }
   }
 }
 

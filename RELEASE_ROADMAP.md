@@ -36,16 +36,16 @@ Celý CI beží v jsdom, ktorý **nepočuje žiadny zvuk**. Všetkých 1866 test
   - [ ] Export WAV/MP3/MIDI/JSON projektu so scene BPM lanes a automation — počúvať, porovnať s live.
 - [ ] Výsledok zapísať do tohto dokumentu (sekcia „QA log").
 
-### 1.2 Export parita: sceneAutomation + scene intensity
+### 1.2 Export parita: sceneAutomation + scene intensity `[~]` — sceneAutomation DONE
 
 „What you hear = what you export" dnes **neplatí**, ak projekt používa scene lanes/intenzitu:
 
-- [ ] `renderer.ts`: naplánovať `doc.sceneAutomation` do offline renderu cez tempo-mapu `timeAt` (rovnaký vzor ako `scheduleTrackAutomation` / `scheduleDeviceAutomation`).
+- [x] `renderer.ts`: naplánovať `doc.sceneAutomation` do offline renderu cez tempo-mapu `timeAt`. **DONE:** `scheduleSceneAutomation` — lane points (scene-relative) sa expandujú na absolútne tiky cez vlastnícky clip window, boundary hodnoty interpolované ako live `applySceneAutomationLane`, routing cez `scheduleTrackAutomation`/`scheduleDeviceAutomation`; lane reštartuje per clip výskyt (live `sceneStartTick` sémantika). Testy: `tests/export/scene-automation-render.test.ts` (5).
 - [ ] `renderer.ts`: scene intensity per clip-window (vrátane `intensityCurve` interpolácie) → `engine.setSceneIntensity()` namiesto zafixovaných 0.7.
 - [ ] Parita test: projekt so scene lane + intensity → render-event porovnanie živého okna vs. offline segment.
 - Kriterium: export projektu s použitými scene lanes sa zvukovo zhoduje s live playbackom (okrem známej tempo-seam rezidui, fáza 2.2).
 
-### 1.3 UI na obnovu snapshotov
+### 1.3 UI na obnovu snapshotov [x] — už existuje (prišlo s WIP commitem; overené 12/12 testmi v snapshots-panel.test.tsx: list + NOW + RESTORE undoable + DELETE)
 
 Autosnapshoty sa ukladajú (20 na projekt, `SnapshotRepository`) ale **neexistuje UI na ich obnovu** — polovica recovery príbehu chýba.
 
