@@ -2212,6 +2212,7 @@ export class AudioEngine {
     toTick: number,
     sceneStartTick: number,
     scheduleOffsetSec = 0,
+    timeAt?: (tick: number) => number,
   ): void {
     if (lane.points.length === 0 || fromTick >= toTick) return;
     const t0Local = Math.max(0, fromTick - sceneStartTick);
@@ -2233,7 +2234,7 @@ export class AudioEngine {
     };
     const v0 = valueAt(t0Local);
     const v1 = valueAt(t1Local);
-    this.applyLane(lane, v0, v1, fromTick, toTick, scheduleOffsetSec);
+    this.applyLane(lane, v0, v1, fromTick, toTick, scheduleOffsetSec, timeAt);
   }
 
   /** Apply a single automation lane directly (not via doc.automation). */
@@ -2244,16 +2245,25 @@ export class AudioEngine {
     fromTick: number,
     toTick: number,
     scheduleOffsetSec = 0,
+    timeAt?: (tick: number) => number,
   ): void {
     const ctx = this.ctx;
     if (!ctx) return;
     const offset = Number.isFinite(scheduleOffsetSec) ? scheduleOffsetSec : 0;
-    const t0 = Math.max(ctx.currentTime, ctx.currentTime + offset);
-    const t1 = Math.max(t0, this.currentTime + 0.1 + offset);
+    const t0Fallback = Math.max(ctx.currentTime, ctx.currentTime + offset);
+    const t1Fallback = Math.max(t0Fallback, this.currentTime + 0.1 + offset);
+    let t0 = t0Fallback;
+    let t1 = t1Fallback;
+    if (timeAt) {
+      const mapped0 = timeAt(fromTick);
+      const mapped1 = timeAt(toTick);
+      if (Number.isFinite(mapped0) && Number.isFinite(mapped1)) {
+        t0 = Math.max(ctx.currentTime, mapped0 + offset);
+        t1 = Math.max(t0, mapped1 + offset);
+      }
+    }
     this.writeAutomationTargetAt(lane.target, v0, t0);
     this.writeAutomationTargetAt(lane.target, v1, t1);
-    void fromTick;
-    void toTick;
   }
 
   /**
@@ -2516,13 +2526,36 @@ export class AudioEngine {
     this.writeDeviceTargetAt(target, value, when);
   }
 
-  applyAutomation(fromTick: number, toTick: number, relOf: (tick: number) => number, scheduleOffsetSec = 0): void {
+  applyAutomation(
+    fromTick: number,
+    toTick: number,
+    relOf: (tick: number) => number,
+    scheduleOffsetSec = 0,
+    timeAt?: (tick: number) => number,
+  ): void {
     const ctx = this.ctx;
     const doc = this.doc;
     if (!ctx || !doc || doc.automation.length === 0) return;
     const offset = Number.isFinite(scheduleOffsetSec) ? scheduleOffsetSec : 0;
-    const t0 = Math.max(ctx.currentTime, ctx.currentTime + offset);
-    const t1 = Math.max(t0, this.currentTime + 0.1 + offset);
+    // Tick-mapped writes (release roadmap 2.3): when the scheduler supplies
+    // its tick→time map, the lane endpoints land at the events' musical
+    // times — contiguous windows then produce a continuous param timeline
+    // (v1 of window N == v0 of window N+1, same time, same value), which
+    // also removes the stale setTargetAtTime override of the old
+    // wall-clock staircase. Wall-clock fallback stays for callers without
+    // a map.
+    const t0Fallback = Math.max(ctx.currentTime, ctx.currentTime + offset);
+    const t1Fallback = Math.max(t0Fallback, this.currentTime + 0.1 + offset);
+    let t0 = t0Fallback;
+    let t1 = t1Fallback;
+    if (timeAt) {
+      const mapped0 = timeAt(fromTick);
+      const mapped1 = timeAt(toTick);
+      if (Number.isFinite(mapped0) && Number.isFinite(mapped1)) {
+        t0 = Math.max(ctx.currentTime, mapped0 + offset);
+        t1 = Math.max(t0, mapped1 + offset);
+      }
+    }
     for (const lane of doc.automation) {
       if (lane.points.length === 0) continue;
       const fallback =

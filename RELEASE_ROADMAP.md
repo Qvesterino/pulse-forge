@@ -79,18 +79,20 @@ Najväčšia zostávajúca audio-korektnosť položka: live prehodenie scene BPM
 - [x] Parita vs. `buildTempoMap` overená testom 4 (live `when − t0` == offline `timeAt(tick)`).
 - Rezidua: ±25 ms flip kvantizácia (tick interval) — neodstrániteľné bez audio-vlákna; ďalšia tempo zmena v tom istom okne (<120 ms) sa odloží na ďalšie okno; automation/modulátory sa píšu cez starú mapu v split okne (≤120 msprechod, engine-side wall-clock — spoločná rezidua s 2.3).
 
-### 2.3 Tick-mapped automation
+### 2.3 Tick-mapped automation `[x]`
 
 `applyAutomation` píše 2 `setTargetAtTime` per wall-clock okno → schodovitý priebeh + ~75 ms stale-event wobble. Modulátory už tick-exact sú (`whenFor`).
 
-- [ ] Prepnúť `applyAutomation`/`applySceneAutomationLane` na `timeAt(fromTick/toTick)` konverzie.
-- [ ] Odstrániť 100 ms horizon asumpciu; riešiť stale-event overrides (dnes riešiteľné až s tick-mapped modelom).
-- [ ] Pozor: zachovať modulator stream (cancel-based fix by jedol pending modulator kroky — preto sa to neopravovalo v audite).
+- [x] **DONE:** `applyAutomation` + `applySceneAutomationLane`/`applyLane` akceptujú voliteľnú `timeAt` mapu; schedulér jej podáva oknovú mapu (v split okne piecewise cez tempo boundary — dokončuje 2.2). Endpointy lane sa zapisujú na `timeAt(fromTick/toTick)` namiesto wall-clock schodov.
+- [x] Stale-event override zmizol **konštrukčne**: kontiguózne okná majú `v1(N) == v0(N+1)` v čase AJ hodnote (boundary kontinuita overená P01) — žiadny cancel potrebný, modulator stream netknutý.
+- [x] Pure mapy: schedulér snapshotuje anchor+slope raz per okno (mapa vyhodnotená neskôr reprodukuje tie isté časy — test volá mapu až po behu).
+- [x] Testy: `tempo-seam.test.ts` +2 — mapa sa delí piecewise cez seam; kontinuita `end(N) == start(N+1)`; split okno končí na NOVOM tempe (nie starom). Spolu 7/7.
+- Rezidua: `applyAutomation` bez mapy (starší voláči) má stále wall-clock fallback — všetky živé cesty mapu podávajú.
 
-### 2.4 Štart aplikácie
+### 2.4 Štart aplikácie `[x]` — odmerané, lazy bank netreba
 
-- [ ] Odmerať `createCoreServices()` (factory bank generácia) → first paint.
-- [ ] Ak > ~1 s: lazy generovanie banky len pre assety, ktoré projekt reálne používa; zvyšok na demand.
+- [x] **Odmerané** (`scripts/startup-profile.mjs`, nový nástroj — headless Chromium + dev server): `generateFactoryBank()` = **62 ms**, `createProjectFromTemplate` = 1.2 ms, `normalizeProject` = 2.9 ms, studio entry po kliknutí = 456 ms (dev režim vrátane module graphu; produkčný precachovaný bundle je rýchlejší).
+- Záver: 62 ms ≪ 1 s prah — **eager bank ostáva**, lazy generovanie by neprinieslo merateľný zisk. Skript ostáva na opakované meranie po väčších zmenách.
 
 ### 2.5 Vitest 5 + Vite 8 migrácia
 
@@ -130,7 +132,7 @@ Najväčšia zostávajúca audio-korektnosť položka: live prehodenie scene BPM
 4. 1.3 snapshot restore UI
 5. 1.4 import limity + cancel exportov
 6. 2.1 bundle headroom
-7. → release candidate → 2.2+ podľa spätnéj väzby
+7. → release candidate → 2.3+ podľa spätnej väzby
 
 ---
 

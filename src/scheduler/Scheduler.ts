@@ -38,7 +38,13 @@ export interface SchedulerDeps {
     locks?: Partial<Record<import("../project-model/types").StepLockKey, number>>,
     slideFromWhen?: number,
   ): void;
-  applyAutomation(fromTick: number, toTick: number, relOf: (tick: number) => number, scheduleOffsetSec?: number): void;
+  applyAutomation(
+    fromTick: number,
+    toTick: number,
+    relOf: (tick: number) => number,
+    scheduleOffsetSec?: number,
+    timeAt?: (tick: number) => number,
+  ): void;
   /**
    * Schedulable track modulators (random S&H / step) for the same window.
    * `whenFor` maps an absolute tick to a precise AudioContext time so event
@@ -54,6 +60,7 @@ export interface SchedulerDeps {
     toTick: number,
     sceneStartTick: number,
     scheduleOffsetSec?: number,
+    timeAt?: (tick: number) => number,
   ): void;
   /** Commit a queued (quantized) pattern launch into the project model. */
   applyPatternLaunch(patternId: string): void;
@@ -551,14 +558,19 @@ export class Scheduler {
       // Build the window's tick→time map: piecewise when a scene-tempo change
       // sits inside (or is already scheduled for) this window.
       let tempoSplit: { atTick: number; sptNew: number; timeAt: (tick: number) => number } | null = null;
+      // Snapshot the old-tempo line (anchor + slope) once per window so the
+      // returned maps are PURE: evaluating them later (after a flip re-anchored
+      // the transport) reproduces the exact times the engine saw at scheduling.
+      const sptOld = transport.secondsPerTick;
+      const baseTimeOld = transport.timeAtTick(0);
       const buildSplit = (atTick: number, bpmNew: number) => {
         const sptNew = 60 / (bpmNew * PPQ);
-        const boundaryTime = transport.timeAtTick(atTick);
+        const boundaryTime = baseTimeOld + atTick * sptOld;
         return {
           atTick,
           sptNew,
           timeAt: (tick: number) =>
-            tick < atTick ? transport.timeAtTick(tick) : boundaryTime + (tick - atTick) * sptNew,
+            tick < atTick ? baseTimeOld + tick * sptOld : boundaryTime + (tick - atTick) * sptNew,
         };
       };
       if (this.pendingTempoFlip) {
@@ -587,7 +599,7 @@ export class Scheduler {
           break; // one flip per window — further changes land in later windows
         }
       }
-      const timeAtForWindow = tempoSplit ? tempoSplit.timeAt : (tick: number) => transport.timeAtTick(tick);
+      const timeAtForWindow = tempoSplit ? tempoSplit.timeAt : (tick: number) => baseTimeOld + tick * sptOld;
       this.songTimeAt = timeAtForWindow;
       for (const clip of clips) {
         const clipStart = clip.startBar * BAR_TICKS;
@@ -632,7 +644,15 @@ export class Scheduler {
       if (activeScene) {
         for (const lane of doc.sceneAutomation) {
           if (lane.sceneId !== activeScene.id) continue;
-          this.applySceneAutomation(lane, windowStart, windowEnd, activeClipStart, transport, this.scheduleOffsetSec());
+          this.applySceneAutomation(
+            lane,
+            windowStart,
+            windowEnd,
+            activeClipStart,
+            transport,
+            this.scheduleOffsetSec(),
+            timeAtForWindow,
+          );
         }
       }
       // AudioClips: fire any clip whose start tick falls inside the current window
@@ -665,6 +685,10 @@ export class Scheduler {
           windowEnd,
           (tick) => mod(tick - base, patternTicks),
           this.scheduleOffsetSec(),
+          // Tick-mapped writes (roadmap 2.3): the lane endpoints land on the
+          // events' musical times — in tempo-split windows this is the
+          // piecewise map, so the seam stays exact for automation too.
+          this.songTimeAt ?? ((tick: number) => transport.timeAtTick(tick)),
         );
       }
     }
@@ -790,9 +814,10 @@ export class Scheduler {
     sceneStartTick: number,
     _transport: Transport,
     scheduleOffsetSec: number,
+    timeAt?: (tick: number) => number,
   ): void {
     if (lane.points.length === 0) return;
-    this.deps.applySceneAutomationLane?.(lane, windowStart, windowEnd, sceneStartTick, scheduleOffsetSec);
+    this.deps.applySceneAutomationLane?.(lane, windowStart, windowEnd, sceneStartTick, scheduleOffsetSec, timeAt);
   }
 }
 

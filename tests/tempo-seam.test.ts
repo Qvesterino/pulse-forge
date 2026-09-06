@@ -67,6 +67,12 @@ function makeHarness(doc: ProjectDocument) {
   const triggers: { when: number; velocity: number }[] = [];
   const captured: { tick: number; velocity: number; padId?: string }[] = [];
   const tempoCalls: (number | null)[] = [];
+  const automationCalls: {
+    from: number;
+    to: number;
+    offset: number;
+    timeAt?: (tick: number) => number;
+  }[] = [];
   const scheduler = new Scheduler({
     getProject: () => doc,
     getTransport: () => transport,
@@ -74,7 +80,8 @@ function makeHarness(doc: ProjectDocument) {
     getMode: () => "song",
     trigger: (_trackId, _pad, when, velocity) => triggers.push({ when, velocity }),
     noteOn: () => {},
-    applyAutomation: () => {},
+    applyAutomation: (from, to, _relOf, offset, timeAt) =>
+      automationCalls.push({ from, to, offset: offset ?? 0, timeAt }),
     applyPatternLaunch: () => {},
     applySceneTempo: (bpm) => {
       tempoCalls.push(bpm);
@@ -89,6 +96,7 @@ function makeHarness(doc: ProjectDocument) {
     triggers,
     captured,
     tempoCalls,
+    automationCalls,
     advance: (seconds: number) => {
       audioTime += seconds;
       scheduler["tick"]();
@@ -211,5 +219,87 @@ describe("Scheduler — scene-tempo seam (roadmap 2.2)", () => {
     h.advance(0.025);
     expect(h.transport.bpm).toBe(BPM_A);
     h.scheduler.stop();
+  });
+});
+
+describe("Scheduler — tick-mapped automation across the tempo seam (roadmap 2.3)", () => {
+  it("hands the window's tick→time map to applyAutomation — piecewise in the split window", () => {
+    let doc = twoTempoSong();
+    // Project automation lane on the drum track's gain.
+    const drum = doc.tracks.find((t): t is DrumTrack => t.kind === "drum")!;
+    doc = {
+      ...doc,
+      automation: [
+        {
+          id: "auto-1",
+          target: { kind: "trackGain", trackId: drum.id },
+          points: [
+            { tick: 0, value: 0.3 },
+            { tick: 8 * BAR_TICKS, value: 0.9 },
+          ],
+        },
+      ],
+    };
+    const h = makeHarness(doc);
+    h.transport.play(0);
+    h.scheduler.start();
+    while (h.time < 18.4) h.advance(0.025);
+    h.scheduler.stop();
+
+    expect(h.automationCalls.length).toBeGreaterThan(4);
+    // Every call carries a timeAt map; the window edge times must follow the
+    // TEMPO MAP (old before the boundary, new after), not the wall clock.
+    for (const call of h.automationCalls) {
+      expect(call.timeAt).toBeDefined();
+      const t0 = call.timeAt!(call.from);
+      const t1 = call.timeAt!(call.to);
+      expect(t0).toBeCloseTo(expectedWhen(call.from), 3);
+      expect(t1).toBeCloseTo(expectedWhen(call.to), 3);
+    }
+    // Continuity: end time of window N == start time of window N+1.
+    for (let i = 1; i < h.automationCalls.length; i++) {
+      const prevEnd = h.automationCalls[i - 1].timeAt!(h.automationCalls[i - 1].to);
+      const nextStart = h.automationCalls[i].timeAt!(h.automationCalls[i].from);
+      expect(nextStart).toBeCloseTo(prevEnd, 3);
+    }
+  });
+
+  it("the split window's end time uses the NEW tempo (seam-exact automation)", () => {
+    let doc = twoTempoSong();
+    const drum = doc.tracks.find((t): t is DrumTrack => t.kind === "drum")!;
+    doc = {
+      ...doc,
+      automation: [
+        {
+          id: "auto-1",
+          target: { kind: "trackGain", trackId: drum.id },
+          points: [{ tick: 0, value: 0.5 }],
+        },
+      ],
+    };
+    const h = makeHarness(doc);
+    h.transport.play(0);
+    h.scheduler.start();
+    // Stop driving INSIDE the split window: boundary tick B sounds at t=8;
+    // drive until the window covering B has been scheduled (window end > B).
+    let sawSplit = false;
+    while (h.time < 18.6) {
+      h.advance(0.025);
+      const last = h.automationCalls.at(-1);
+      if (last && last.to > B && last.from < B) sawSplit = true;
+      if (sawSplit) break;
+    }
+    h.scheduler.stop();
+    expect(sawSplit).toBe(true);
+    const split = h.automationCalls.find((c) => c.to > B && c.from < B)!;
+    const oldMapEnd = 10 + (split.to / (BPM_A * PPQ)) * 60; // old-tempo time of the window end
+    const newMapEnd = 18 + ((split.to - B) / (BPM_B * PPQ)) * 60; // new tempo from the boundary
+    const mappedEnd = split.timeAt!(split.to);
+    // The map must follow the NEW tempo past the boundary. The old-tempo
+    // value differs by the window's post-boundary width × (sptOld − sptNew)
+    // — narrow window, so the expectation is scaled to that width.
+    expect(Math.abs(mappedEnd - newMapEnd)).toBeLessThan(0.01);
+    const slopeDelta = (split.to - B) * Math.abs(60 / (BPM_A * PPQ) - 60 / (BPM_B * PPQ));
+    expect(Math.abs(mappedEnd - oldMapEnd)).toBeCloseTo(slopeDelta, 3);
   });
 });

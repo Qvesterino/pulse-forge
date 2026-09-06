@@ -310,12 +310,12 @@ export async function openProject(
     triggerAudioClip: (clip, when, durationSec) => engine.triggerAudioClip(clip, when, durationSec),
     metronomeClick: (when, downbeat) => engine.click(when, downbeat),
     recordCapturedEvent: (event) => capture.recordEvent(event),
-    applyAutomation: (fromTick, toTick, relOf, scheduleOffsetSec) =>
-      engine.applyAutomation(fromTick, toTick, relOf, scheduleOffsetSec),
+    applyAutomation: (fromTick, toTick, relOf, scheduleOffsetSec, timeAt) =>
+      engine.applyAutomation(fromTick, toTick, relOf, scheduleOffsetSec, timeAt),
     applyModulators: (fromTick, toTick, whenFor) => engine.applyModulators(fromTick, toTick, whenFor),
     applyEnvFollowers: () => engine.applyEnvFollowersToParams(),
-    applySceneAutomationLane: (lane, fromTick, toTick, sceneStartTick, scheduleOffsetSec) =>
-      engine.applySceneAutomationLane(lane, fromTick, toTick, sceneStartTick, scheduleOffsetSec),
+    applySceneAutomationLane: (lane, fromTick, toTick, sceneStartTick, scheduleOffsetSec, timeAt) =>
+      engine.applySceneAutomationLane(lane, fromTick, toTick, sceneStartTick, scheduleOffsetSec, timeAt),
     applyPatternLaunch: (patternId) => store.execute(setActivePattern(store.doc, patternId)),
     triggerMarker: (assetId, when, trackId) => engine.triggerMarker(assetId, when, trackId),
     setSceneIntensity: (value) => engine.setSceneIntensity(value),
