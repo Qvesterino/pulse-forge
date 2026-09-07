@@ -815,8 +815,8 @@ describe("scheduler — recovery", () => {
     // Regression: getActivePattern() throws when activePatternId is stale.
     // The scheduler's tick() catch block counts the exception but the
     // very next tick re-throws on the same line — the scheduler wedges
-    // and failedWindows grows unbounded. The scheduler must fall back
-    // to a usable pattern instead of crashing every window.
+    // and failedWindows grows unbounded. The scheduler must remain healthy
+    // and no-op instead of crashing every window or substituting another pattern.
     const doc = createDefaultProject();
     doc.activePatternId = "deleted-pattern-id";
     const h = makeHarness(doc);
@@ -829,9 +829,8 @@ describe("scheduler — recovery", () => {
         expect(() => h.scheduler["tick"]()).not.toThrow();
       }
       // The scheduler must not be in a permanent failure spiral.
-      // (Some failedWindows are allowed for the first tick while it
-      // detects the missing pattern; the rest of the windows should
-      // recover.)
+      // No pattern events can be emitted while the active id is invalid, but
+      // the scheduler must keep advancing without entering a failure spiral.
       expect(h.scheduler.stats.windows).toBeGreaterThan(8);
     } finally {
       h.scheduler.stop();

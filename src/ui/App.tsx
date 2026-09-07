@@ -48,6 +48,10 @@ import type { SelectedNote } from "./PianoRoll";
 import { matchShortcut, panelIdOfShortcut, type ShortcutKey } from "./shortcuts";
 import type { PaletteDeps } from "./commandPalette";
 import { BAR_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
+import { userSampleId } from "../persistence/UserSampleRepository";
+import { buildBounceZoneDoc } from "../rendering/bounce";
+import { renderProject } from "../rendering/renderer";
+import { encodeWav } from "../rendering/wav";
 import { CommandToast } from "./CommandToast";
 // Palette lives in a lazy chunk — it loads on first Ctrl+K.
 const PaletteOverlay = lazy(() => import("./PaletteOverlay").then((m) => ({ default: m.PaletteOverlay })));
@@ -128,6 +132,7 @@ export function App({
   const [pluginTrackId, setPluginTrackId] = useState<string | null>(null);
   // Mobile bottom-sheet: the bottom panel row collapses to a grab handle.
   const [sheetCollapsed, setSheetCollapsed] = useState(false);
+  const [bouncingRange, setBouncingRange] = useState(false);
   // Capture last take (Ableton) — offered after pause/stop when the ring has material
   const [captureOffer, setCaptureOffer] = useState(false);
   useEffect(() => {
@@ -711,26 +716,69 @@ export function App({
         }
       }
 
-      // Range Tool: Ctrl/Cmd+B bounce in Range (like Cubase Render in Place) — when timeRange exists, bounce zone to AudioClip (placeholder)
+      // Range Tool: Ctrl/Cmd+B bounce in Range (like Cubase Render in Place).
+      // This is deliberately async: the buffer must be rendered from the
+      // selected project content before the AudioClip is committed.
       if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "b") {
         if (selection.timeRange) {
           const fromBar = selection.timeRange.fromTick / BAR_TICKS;
           const lenBars = (selection.timeRange.toTick - selection.timeRange.fromTick) / BAR_TICKS;
           if (lenBars >= 0.25) {
             event.preventDefault();
-            const trackId = selection.trackIds[0] ?? doc.tracks[0]?.id;
-            if (trackId) {
-              const bufferId = `bounce-${Date.now()}`;
-              const placeholder =
-                services.bank.get(doc.tracks.find((t) => t.kind === "instrument")?.sampleId ?? "factory.tonal.pluck") ??
-                services.bank.get("factory.tonal.pluck");
-              if (placeholder) services.bank.add(bufferId, placeholder);
+            if (bouncingRange) return;
+            const trackIds = (selection.trackIds.length > 0 ? selection.trackIds : doc.tracks.map((t) => t.id)).filter(
+              (id) => doc.tracks.some((t) => t.id === id && t.kind !== "group"),
+            );
+            const trackId = trackIds[0];
+            if (!trackId) return;
+            const sourceDoc = doc;
+            setBouncingRange(true);
+            void (async () => {
               try {
-                services.store.execute(
-                  addAudioClip(doc, trackId, bufferId, fromBar, lenBars, { gain: 1, stretchRate: 1 }),
-                );
-              } catch {}
-            }
+                const zoneDoc = buildBounceZoneDoc(sourceDoc, trackIds, { startBar: fromBar, lengthBars: lenBars });
+                const liveContext = (services.engine as { getLiveAudioContext?: () => AudioContext | null })
+                  .getLiveAudioContext?.();
+                const buffer = await renderProject(zoneDoc, services.bank, {
+                  mode: "song",
+                  sampleRate: liveContext?.sampleRate ?? 44100,
+                  tailSeconds: 0.35,
+                });
+                const bufferId = userSampleId(`bounce-${Math.round(fromBar)}b`);
+                services.bank.add(bufferId, buffer);
+                // Bank entries are runtime-only. Persist the rendered WAV so
+                // the new clip remains playable after a reload.
+                try {
+                  await services.userSamples.save(
+                    {
+                      id: bufferId,
+                      name: `Bounce ${Math.round(fromBar) + 1}`,
+                      fileName: `${bufferId}.wav`,
+                      category: "Custom",
+                      duration: buffer.duration,
+                      sampleRate: buffer.sampleRate,
+                      channels: buffer.numberOfChannels,
+                      createdAt: new Date().toISOString(),
+                    },
+                    encodeWav(buffer, 16),
+                  );
+                } catch (error) {
+                  console.warn("[App] bounce persistence failed; clip is available for this session:", error);
+                }
+                const currentDoc = services.store.doc;
+                if (currentDoc.tracks.some((track) => track.id === trackId)) {
+                  services.store.execute(
+                    addAudioClip(currentDoc, trackId, bufferId, fromBar, lenBars, { gain: 1, stretchRate: 1 }),
+                  );
+                } else {
+                  services.bank.remove(bufferId);
+                  await services.userSamples.remove(bufferId);
+                }
+              } catch (error) {
+                console.error("[App] range bounce failed:", error);
+              } finally {
+                setBouncingRange(false);
+              }
+            })();
             return;
           }
         }
@@ -789,7 +837,7 @@ export function App({
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [services, doc, track, selection, helpOpen, selectionStore, tool, contextMenu, toolStore]);
+  }, [services, doc, track, selection, helpOpen, selectionStore, tool, contextMenu, toolStore, bouncingRange]);
 
   // Hold RMB 220ms → context menu, RMB drag >6px cancels hold (lets lasso handle it)
   useEffect(() => {

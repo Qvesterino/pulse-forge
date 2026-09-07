@@ -2,6 +2,7 @@ import type { DrumTrack, Pattern, PlayMode, ProjectDocument } from "../project-m
 import { BAR_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
 import { drumHitsInWindow } from "../project-model/groove";
 import { noteEventsInWindow } from "../project-model/events";
+import { computeSceneIntensity } from "../project-model/intensity";
 import type { Transport } from "../transport/Transport";
 
 export interface SchedulerDeps {
@@ -70,6 +71,8 @@ export interface SchedulerDeps {
   triggerMarker?(assetId: string | null, when: number, trackId?: string): void;
   /** Update the live scene intensity signal (0..1). */
   setSceneIntensity?(intensity: number): void;
+  /** Schedule future scene-intensity changes inside the look-ahead window. */
+  scheduleSceneIntensity?(points: Array<{ tick: number; value: number }>, timeAt: (tick: number) => number): void;
   /** Apply the active scene's tempo (null = follow the project tempo). */
   applySceneTempo?(bpm: number | null): void;
   /** Trigger an arrangement AudioClip buffer at an absolute tick. */
@@ -103,23 +106,10 @@ function audibleClick(when: number, now: number): boolean {
   return when >= now - 0.002;
 }
 
-/**
- * Resolve a usable pattern for the scheduler when the doc's `activePatternId`
- * is stale (the pattern was deleted, the doc was replaced, or a future
- * schema version wrote an id the local code doesn't know). Returns the
- * first pattern in the doc, or `undefined` if the doc is empty.
- *
- * The scheduler uses this as a defensive fallback — never as a permanent
- * substitute for a healthy project. Callers should normalise the doc as
- * soon as practical (e.g. by writing the missing pattern back, or by
- * re-running the normaliser on the next doc change).
- */
-function findUsablePattern(doc: ProjectDocument): Pattern | undefined {
+/** Resolve only the canonical active pattern. Never silently play another one. */
+function findActivePattern(doc: ProjectDocument): Pattern | undefined {
   if (doc.patterns.length === 0) return undefined;
-  const active = doc.patterns.find((p) => p.id === doc.activePatternId);
-  if (active) return active;
-  console.warn(`[scheduler] active pattern ${doc.activePatternId} not in doc; falling back to ${doc.patterns[0].id}`);
-  return doc.patterns[0];
+  return doc.patterns.find((p) => p.id === doc.activePatternId);
 }
 
 /**
@@ -132,13 +122,18 @@ function findUsablePattern(doc: ProjectDocument): Pattern | undefined {
 function resolveLoopEnd(transport: Transport, doc: ProjectDocument, mode: PlayMode): number {
   if (transport.loopEnd > 0) return transport.loopEnd;
   if (mode === "pattern") {
-    return STEP_TICKS * (findUsablePattern(doc)?.stepCount ?? 16);
+    // This is only an emergency transport bound for an invalid/empty
+    // document. Content scheduling still refuses to substitute another
+    // pattern; the document boundary repairs the invariant.
+    return STEP_TICKS * (findActivePattern(doc)?.stepCount ?? 16);
   }
   return Math.max(0, ...doc.arrangement.clips.map((c) => (c.startBar + c.lengthBars) * BAR_TICKS));
 }
 
 export class Scheduler {
   private timer: ReturnType<typeof setInterval> | null = null;
+  /** Last invalid active-pattern signature reported by this scheduler. */
+  private invalidPatternSignature: string | null = null;
   /**
    * Effective loop end in ticks for the CURRENT window (loop enabled only).
    * Read by the pending-launch commit logic in scheduleWindow — a launch
@@ -197,6 +192,19 @@ export class Scheduler {
   /** `failedWindows` = scheduling windows skipped after an exception (see tick). */
   stats = { scheduledEvents: 0, lastHorizonTick: 0, windows: 0, failedWindows: 0 };
   private listeners = new Set<() => void>();
+  /**
+   * Per-tick allocations in song mode (sorted clips + id → entity
+   * Maps for scenes / patterns) used to fire every 25 ms even when
+   * the project had not changed. That is fine for a 5-clip demo but
+   * adds measurable GC pressure on a long session with 50+ clips.
+   * Cache the derived structures and re-derive them only when the
+   * `getProject()` reference changes (commands build the next doc
+   * immutably, so a stable ref means "no edit since last tick").
+   */
+  private songCacheProject: ProjectDocument | null = null;
+  private songClipsCache: { sceneId: string; startBar: number; lengthBars: number }[] = [];
+  private songScenesByIdCache = new Map<string, ProjectDocument["scenes"][number]>();
+  private songPatternsByIdCache = new Map<string, ProjectDocument["patterns"][number]>();
 
   constructor(private deps: SchedulerDeps) {}
 
@@ -429,19 +437,26 @@ export class Scheduler {
         this.notify();
         currentDoc = this.deps.getProject();
       }
-      // Defect 2.1 (recovery): if the active pattern id is stale, fall
-      // back to a usable pattern instead of throwing. The pattern is
-      // re-resolved on every window so a doc change heals the scheduler
-      // as soon as the user fixes the project.
-      const pattern = findUsablePattern(currentDoc);
+      // The project model owns activePatternId. Do not hide a broken
+      // document by rendering the first pattern: that produces the wrong
+      // music while making the real state corruption invisible.
+      const pattern = findActivePattern(currentDoc);
       if (!pattern) {
-        // Empty doc — nothing to schedule this window; advance the
-        // window so the scheduler doesn't get stuck on a phantom gap.
+        const signature = `${currentDoc.activePatternId}|${currentDoc.patterns.map((p) => p.id).join(",")}`;
+        if (this.invalidPatternSignature !== signature) {
+          this.invalidPatternSignature = signature;
+          console.error(
+            `[scheduler] cannot schedule pattern mode: active pattern ${currentDoc.activePatternId} is not present in the project`,
+          );
+        }
+        // Invalid/empty doc — advance the window so the scheduler does not
+        // wedge, but never emit events from a substitute pattern.
         this.windowStartTick = windowEnd;
         this.stats.lastHorizonTick = windowEnd;
         this.stats.windows += 1;
         return;
       }
+      this.invalidPatternSignature = null;
       const patternTicks = STEP_TICKS * pattern.stepCount;
       const pending = this.pendingLaunch;
       let boundary = pending && pending.atTick > windowStart && pending.atTick <= windowEnd ? pending.atTick : null;
@@ -491,15 +506,35 @@ export class Scheduler {
       // Pattern mode has no arrangement context — follow the project tempo.
       this.applyTempo(null);
     } else {
-      const clips = [...doc.arrangement.clips].sort((a, b) => a.startBar - b.startBar);
-      // Defect A05.D1 (beat engine stress audit): every song-mode
-      // window used to look up scenes and patterns via
-      // `doc.scenes.find((sc) => sc.id === clip.sceneId)` inside the
-      // per-clip loop. With 50+ clips and 5–10 scenes that becomes
-      // O(clips × scenes) per window, i.e. per 25 ms tick. Build the
-      // id → entity Maps once per window for O(1) lookup.
-      const scenesById = new Map(doc.scenes.map((s) => [s.id, s] as const));
-      const patternsById = new Map(doc.patterns.map((p) => [p.id, p] as const));
+      // Performance: rebuild the song-mode derived structures only
+      // when the project reference has changed since the last tick.
+      // Commands build the next doc immutably, so identity equality
+      // here is a strong "no edit" signal — the previous tick's
+      // sorted clips + id Maps are still valid. This turns a 25 ms
+      // allocation triplet (array + spread + sort + 2 new Map) into
+      // a 25 ms no-op on a stable project.
+      let clips: { sceneId: string; startBar: number; lengthBars: number }[];
+      let scenesById: Map<string, ProjectDocument["scenes"][number]>;
+      let patternsById: Map<string, ProjectDocument["patterns"][number]>;
+      if (this.songCacheProject === doc) {
+        clips = this.songClipsCache;
+        scenesById = this.songScenesByIdCache;
+        patternsById = this.songPatternsByIdCache;
+      } else {
+        clips = doc.arrangement.clips.slice().sort((a, b) => a.startBar - b.startBar);
+        // Defect A05.D1 (beat engine stress audit): every song-mode
+        // window used to look up scenes and patterns via
+        // `doc.scenes.find((sc) => sc.id === clip.sceneId)` inside the
+        // per-clip loop. With 50+ clips and 5–10 scenes that becomes
+        // O(clips × scenes) per window, i.e. per 25 ms tick. Build the
+        // id → entity Maps once per (stable) window for O(1) lookup.
+        scenesById = new Map(doc.scenes.map((s) => [s.id, s] as const));
+        patternsById = new Map(doc.patterns.map((p) => [p.id, p] as const));
+        this.songClipsCache = clips;
+        this.songScenesByIdCache = scenesById;
+        this.songPatternsByIdCache = patternsById;
+        this.songCacheProject = doc;
+      }
       // Find the active scene (whose clip contains the playhead) for intensity
       // computation and the marker-firing loop.
       let activeScene: (typeof doc.scenes)[number] | null = null;
@@ -518,31 +553,7 @@ export class Scheduler {
       }
       if (this.deps.setSceneIntensity) {
         if (activeScene) {
-          const offset = Math.max(0, windowStart - activeClipStart);
-          const v = activeScene.intensity;
-          const curve = activeScene.intensityCurve;
-          let intensity = v;
-          if (curve && curve.length > 0) {
-            if (offset <= curve[0].offset) intensity = curve[0].value;
-            else if (offset >= curve[curve.length - 1].offset) intensity = curve[curve.length - 1].value;
-            else {
-              for (let i = 0; i < curve.length - 1; i++) {
-                const a = curve[i];
-                const b = curve[i + 1];
-                if (offset >= a.offset && offset <= b.offset) {
-                  const span = b.offset - a.offset;
-                  if (span > 0) {
-                    const t = (offset - a.offset) / span;
-                    intensity = a.value + (b.value - a.value) * t;
-                  } else {
-                    intensity = a.value;
-                  }
-                  break;
-                }
-              }
-            }
-          }
-          this.deps.setSceneIntensity(Math.max(0, Math.min(1, intensity)));
+          this.deps.setSceneIntensity(computeSceneIntensity(activeScene, activeClipStart, windowStart));
         } else {
           this.deps.setSceneIntensity(0.7);
         }
@@ -601,6 +612,10 @@ export class Scheduler {
       }
       const timeAtForWindow = tempoSplit ? tempoSplit.timeAt : (tick: number) => baseTimeOld + tick * sptOld;
       this.songTimeAt = timeAtForWindow;
+      this.deps.scheduleSceneIntensity?.(
+        sceneIntensityPointsForWindow(clips, scenesById, windowStart, windowEnd),
+        timeAtForWindow,
+      );
       for (const clip of clips) {
         const clipStart = clip.startBar * BAR_TICKS;
         const clipEnd = clipStart + clip.lengthBars * BAR_TICKS;
@@ -819,6 +834,39 @@ export class Scheduler {
     if (lane.points.length === 0) return;
     this.deps.applySceneAutomationLane?.(lane, windowStart, windowEnd, sceneStartTick, scheduleOffsetSec, timeAt);
   }
+}
+
+function sceneIntensityPointsForWindow(
+  clips: { sceneId: string; startBar: number; lengthBars: number }[],
+  scenesById: Map<string, ProjectDocument["scenes"][number]>,
+  fromTick: number,
+  toTick: number,
+): Array<{ tick: number; value: number }> {
+  const points: Array<{ tick: number; value: number }> = [];
+  let cursor = fromTick;
+  for (const clip of clips) {
+    const clipStart = clip.startBar * BAR_TICKS;
+    const clipEnd = clipStart + clip.lengthBars * BAR_TICKS;
+    const from = Math.max(fromTick, clipStart);
+    const to = Math.min(toTick, clipEnd);
+    if (to <= from) continue;
+    if (from > cursor) points.push({ tick: cursor, value: 0.7 }, { tick: from, value: 0.7 });
+    const scene = scenesById.get(clip.sceneId);
+    if (!scene) {
+      points.push({ tick: from, value: 0.7 }, { tick: to, value: 0.7 });
+    } else {
+      points.push({ tick: from, value: computeSceneIntensity(scene, clipStart, from) });
+      for (const curvePoint of scene.intensityCurve ?? []) {
+        const tick = clipStart + curvePoint.offset;
+        if (tick > from && tick < to) points.push({ tick, value: computeSceneIntensity(scene, clipStart, tick) });
+      }
+      points.push({ tick: to, value: computeSceneIntensity(scene, clipStart, to) });
+    }
+    cursor = Math.max(cursor, to);
+  }
+  if (points.length === 0) points.push({ tick: fromTick, value: 0.7 });
+  else if (cursor < toTick) points.push({ tick: cursor, value: 0.7 }, { tick: toTick, value: 0.7 });
+  return points;
 }
 
 /** Map a marker type to its auto-trigger asset (or null for no cue). */

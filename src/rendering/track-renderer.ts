@@ -18,27 +18,28 @@ export function renderTrack(
   doc: ProjectDocument,
   trackId: string,
   bank: SampleBank,
-  options: RenderOptions,
+  options: RenderOptions & { includeRouting?: boolean },
 ): Promise<AudioBuffer> {
-  const filtered = createFilteredDoc(doc, trackId);
+  const filtered = createFilteredDoc(doc, trackId, options.includeRouting ?? true);
   return renderProject(filtered, bank, options);
 }
 
 /**
- * Create a filtered ProjectDocument containing only the target track,
- * its parent group (if any), and return tracks it sends to.
+ * Create a filtered ProjectDocument containing the target track and, when
+ * requested, its parent group plus return tracks it sends to. Freeze uses the
+ * track-local form so routing stays live after the buffer is inserted.
  */
-function createFilteredDoc(doc: ProjectDocument, trackId: string): ProjectDocument {
+function createFilteredDoc(doc: ProjectDocument, trackId: string, includeRouting: boolean): ProjectDocument {
   const target = doc.tracks.find((t) => t.id === trackId);
   if (!target) throw new Error(`Track ${trackId} not found`);
 
   // Collect the target track + its parent group (if any)
   const trackIds = new Set<string>([trackId]);
-  if (target.kind !== "group" && target.groupId) trackIds.add(target.groupId);
+  if (includeRouting && target.kind !== "group" && target.groupId) trackIds.add(target.groupId);
 
   // Collect return tracks that this track (or its group) sends to
   const sendReturnIds = new Set<string>();
-  for (const id of trackIds) {
+  for (const id of includeRouting ? trackIds : []) {
     const t = doc.tracks.find((tr) => tr.id === id);
     if (t && "sends" in t) {
       for (const returnId of Object.keys(t.sends)) {
@@ -50,7 +51,7 @@ function createFilteredDoc(doc: ProjectDocument, trackId: string): ProjectDocume
   }
 
   const filteredTracks = doc.tracks.filter((t) => trackIds.has(t.id));
-  const filteredReturns = doc.returns.filter((r) => sendReturnIds.has(r.id));
+  const filteredReturns = includeRouting ? doc.returns.filter((r) => sendReturnIds.has(r.id)) : [];
 
   // Filter automation to only lanes targeting the frozen track or its group
   const filteredAutomation = doc.automation.filter((lane) => {

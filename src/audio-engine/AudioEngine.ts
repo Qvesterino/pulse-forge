@@ -1225,6 +1225,34 @@ export class AudioEngine {
     this.trackNodes.delete(id);
   }
 
+  private disposeInstrumentRuntime(id: string): void {
+    const state = this.instruments.get(id);
+    if (!state) return;
+    try {
+      state.runtime.dispose();
+    } catch {
+      /* already disposed */
+    }
+    this.instruments.delete(id);
+  }
+
+  private disposeFrozenSource(id: string): void {
+    const source = this.frozenBuffers.get(id);
+    if (!source) return;
+    try {
+      source.stop();
+    } catch {
+      /* already stopped */
+    }
+    try {
+      source.disconnect();
+    } catch {
+      /* already disconnected */
+    }
+    this.frozenBuffers.delete(id);
+    this.frozenBufferIds.delete(id);
+  }
+
   private disposeReturnNodes(id: string, nodes: ReturnNodes): void {
     for (const unsub of nodes.fx.latencySubs) unsub();
     nodes.fx.latencySubs.length = 0;
@@ -1422,25 +1450,24 @@ export class AudioEngine {
       // as the buffer is unchanged — editing another track must not audibly
       // restart a frozen loop from its beginning.
       if (track.frozen && "frozen" in track && track.frozen) {
+        // The buffer contains the track-local instrument + FX render. Dispose
+        // the live instrument and bypass the live track FX chain; otherwise a
+        // freeze silently keeps both runtimes alive and processes the result
+        // a second time on every playback.
+        this.disposeInstrumentRuntime(track.id);
+        if (nodes.fx.signature !== "") {
+          this.rebuildFxChain([], nodes.input, nodes.panner, nodes.fx);
+        }
+        // Sends remain live because the freeze render is intentionally
+        // pre-group/pre-return. This preserves live return control without
+        // double-rendering the return FX into the frozen buffer.
+        this.syncSends(track.sends, nodes);
         const bufferId = track.frozen.bufferId;
         const existing = this.frozenBuffers.get(track.id);
         if (existing && this.frozenBufferIds.get(track.id) === bufferId) {
           // Same buffer — keep the source running untouched.
         } else {
-          if (existing) {
-            try {
-              existing.stop();
-            } catch {
-              /* already stopped */
-            }
-            try {
-              existing.disconnect();
-            } catch {
-              /* already disconnected */
-            }
-            this.frozenBuffers.delete(track.id);
-            this.frozenBufferIds.delete(track.id);
-          }
+          if (existing) this.disposeFrozenSource(track.id);
           if (this.frozenPlaying) {
             const buffer = this.bank?.get(bufferId);
             if (buffer) {
@@ -1466,21 +1493,7 @@ export class AudioEngine {
       }
 
       // Clean up frozen buffer if track was unfrozen
-      const frozenSource = this.frozenBuffers.get(track.id);
-      if (frozenSource) {
-        try {
-          frozenSource.stop();
-        } catch {
-          /* already stopped */
-        }
-        try {
-          frozenSource.disconnect();
-        } catch {
-          /* already disconnected */
-        }
-        this.frozenBuffers.delete(track.id);
-        this.frozenBufferIds.delete(track.id);
-      }
+      this.disposeFrozenSource(track.id);
 
       const sig = this.fxSignature(track.effects);
       if (nodes.fx.signature !== sig) {
@@ -1488,6 +1501,14 @@ export class AudioEngine {
       } else {
         this.syncFxParams(track.effects, nodes.fx);
       }
+      // Defect 6.8 (lifecycle / leak audit): when a track's `kind`
+      // changes from "instrument" to "drum" (or group), the
+      // InstrumentRuntime stays parked in `this.instruments` because
+      // the cleanup loop above keys on `liveTrackIds` and the track
+      // id is still live — only its role changed. Dispose the stale
+      // runtime so its `runtime.output` (and any worklet / param
+      // subscriptions) does not outlive the track.
+      if (track.kind !== "instrument") this.disposeInstrumentRuntime(track.id);
       if (track.kind === "instrument") {
         this.syncInstrument(track, nodes);
       }
@@ -2198,7 +2219,91 @@ export class AudioEngine {
 
   /** Update the live scene intensity signal. Idempotent. */
   setSceneIntensity(value: number): void {
-    this.currentSceneIntensity = Math.max(0, Math.min(1, value));
+    const next = Math.max(0, Math.min(1, value));
+    if (next === this.currentSceneIntensity) return;
+    this.currentSceneIntensity = next;
+    // The signal is a live modulation source, not merely UI state. Recompose
+    // the same macro writer immediately so scheduler intensity changes are
+    // audible in realtime and use the exact same mapping semantics as export.
+    if (this.doc) this.syncMacros(this.doc);
+  }
+
+  /**
+   * Schedule the scene-intensity macro bus for offline rendering. The live
+   * scheduler updates this signal at control rate; an offline render must
+   * write the same composed macro/intensity values onto the audio timeline or
+   * exports will silently stay at the default 0.7 intensity.
+   */
+  scheduleSceneIntensity(points: Array<{ tick: number; value: number }>, timeAt: (tick: number) => number): void {
+    const ctx = this.ctx;
+    const doc = this.doc;
+    if (!ctx || !doc || points.length === 0) return;
+
+    const ordered = points
+      .filter((point) => Number.isFinite(point.tick) && Number.isFinite(point.value))
+      .slice()
+      .sort((a, b) => a.tick - b.tick);
+    for (const point of ordered) {
+      const next = new Map<string, { gain: number; pan: number }>();
+      for (const track of doc.tracks) next.set(track.id, { gain: 1, pan: 0 });
+      for (const ret of doc.returns) next.set(ret.id, { gain: 1, pan: 0 });
+
+      const deviceOffsets = new Map<string, { target: AutomationTarget; delta: number }>();
+      const applyToTarget = (target: AutomationTarget, bipolar: number, amount: number): void => {
+        if (target.kind === "trackGain" || target.kind === "trackPan") {
+          const acc = next.get(target.trackId);
+          if (!acc) return;
+          if (target.kind === "trackGain") acc.gain += amount * bipolar;
+          else acc.pan += amount * bipolar;
+          return;
+        }
+        if (target.kind !== "fxParam" && target.kind !== "instParam") return;
+        if (!target.paramId) return;
+        const def = targetParamDef(doc, target);
+        if (!def) return;
+        const delta = ((def.max - def.min) / 2) * bipolar * amount;
+        const key = `${target.kind}:${target.trackId}:${target.fxId ?? ""}:${target.paramId}`;
+        const existing = deviceOffsets.get(key);
+        if (existing) existing.delta += delta;
+        else deviceOffsets.set(key, { target: { ...target }, delta });
+      };
+
+      const intensityBipolar = Math.max(-1, Math.min(1, point.value * 2 - 1));
+      for (const macro of doc.macros) {
+        const macroBipolar = Math.max(-1, Math.min(1, macro.value * 2 - 1));
+        for (const mapping of macro.mappings) {
+          const bipolar = mapping.source === "intensity" ? intensityBipolar : macroBipolar;
+          if (mapping.target) {
+            applyToTarget(mapping.target, bipolar, mapping.amount);
+            continue;
+          }
+          if (mapping.param !== "gain" && mapping.param !== "pan") continue;
+          const acc = next.get(mapping.trackId);
+          if (!acc) continue;
+          if (mapping.param === "gain") acc.gain += mapping.amount * bipolar;
+          else acc.pan += mapping.amount * bipolar;
+        }
+      }
+
+      const mappedTime = timeAt(point.tick);
+      const when = Math.max(ctx.currentTime, Number.isFinite(mappedTime) ? mappedTime : ctx.currentTime);
+      for (const { target, delta } of deviceOffsets.values()) {
+        const base = this.baseValueForTarget(doc, target);
+        if (base !== null) this.writeDeviceTargetAt(target, base + delta, when);
+      }
+      for (const [trackId, offsets] of next) {
+        const gain = Math.max(0, offsets.gain);
+        const pan = Math.min(1, Math.max(-1, offsets.pan));
+        const nodes = this.trackNodes.get(trackId) ?? this.groupNodes.get(trackId);
+        const returnNodes = this.returnNodes.get(trackId);
+        if (nodes) {
+          nodes.modMacroGain.gain.setTargetAtTime(gain, when, 0.008);
+          nodes.modMacroPan.pan.setTargetAtTime(pan, when, 0.008);
+        } else if (returnNodes) {
+          returnNodes.modMacroGain.gain.setTargetAtTime(gain, when, 0.008);
+        }
+      }
+    }
   }
 
   /**
@@ -3317,7 +3422,14 @@ export class AudioEngine {
   private choke(trackId: string, chokeGroup: number, when: number): void {
     const ctx = this.ctx;
     if (!ctx) return;
-    for (const voice of this.voices) {
+    // Defect 6.2 (lifecycle / leak audit): the previous implementation
+    // iterated `this.voices` directly and called `this.voices.delete`
+    // mid-loop. ECMAScript tolerates that today, but the code is one
+    // future `continue` or thrown callback away from skipping or
+    // leaking voices. Take a defensive snapshot — choke fires only
+    // on the trigger path (not every tick), so the per-call cost is
+    // bounded and worth the safety.
+    for (const voice of [...this.voices]) {
       if (voice.trackId !== trackId || voice.chokeGroup !== chokeGroup) continue;
       voice.gain.gain.cancelScheduledValues(ctx.currentTime);
       voice.gain.gain.setTargetAtTime(0, ctx.currentTime, 0.005);

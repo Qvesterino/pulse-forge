@@ -18,9 +18,9 @@ npm run build        # production build
 ## What works (verified)
 
 - **Project browser** — the app always boots into a project browser: a one-click "Continue last project" card, the project list (open / duplicate / inline rename / delete with confirm, sorted by last update), and a template grid for new projects. Everything is persisted in IndexedDB; new projects are saved the moment they are created.
-- **Templates (6)** — House (starter groove), Techno (driving kick + rumble bass, two loop variations), Trap (half-time snare, rolling hats, long-decay 808 + sparse lead), Ambient (evolving texture pads + soft analog chords, no drums in your way), Scene Score (arrangement-first: INTRO/BUILD/DROP/BREAK/OUTRO scenes pre-placed on a 24-bar timeline) and Empty. Every template is schema-valid by construction and renders audio (verified in real Chromium).
-- **Factory sound bank** — 41 procedurally synthesized factory sounds (kicks, snares, claps, hats, cymbals / crashes, toms, percussion including cowbell / conga / tambourine, FX transitions like Riser / Downlifter / Impact / Sweep / Reverse Rise / Noise, plus tonal samples), each tagged by category and mood (dark / bright / warm / aggressive / clean / deep / atmosphere). The House starter groove ships with a chords track so the first play sounds full, and every template includes four named performance macros (DRUMS / BASS / MUSIC / WIDTH) mapped to mix-bus roles.
-- **Preset library** — 77 factory presets across all seven instruments, tagged by genre (House/Techno/Trap/Ambient/Score) and mood, curated by sound-design intent (e.g. "Acid Line", "FM Growl", "Cinematic Strings", "Shimmer"). Browser in the Inspector with genre + mood chips, ALL / FAVORITES / RECENT scope, search, one-click apply (single undo step), hearts, and "save as user preset" (persisted to IndexedDB).
+- **Templates (12)** — House (starter groove), Techno (driving kick + rumble bass, two loop variations), Trap (half-time snare, rolling hats, long-decay 808 + sparse lead), Ambient (evolving texture pads + soft analog chords, no drums in your way), Scene Score (arrangement-first: INTRO/BUILD/DROP/BREAK/OUTRO scenes pre-placed on a 24-bar timeline), UK Garage, Jersey Club, Phonk, Drill, Lo-Fi House, Reggaeton and Empty. Every template is schema-valid by construction and renders audio (verified in real Chromium).
+- **Factory sound bank** — 51 procedurally synthesized factory sounds (kicks, snares, claps, hats, cymbals / crashes, toms, percussion including cowbell / conga / tambourine, FX transitions like Riser / Downlifter / Impact / Sweep / Reverse Rise / Noise, plus tonal samples), each tagged by category and mood (dark / bright / warm / aggressive / clean / deep / atmosphere). The House starter groove ships with a chords track so the first play sounds full, and every template includes four named performance macros (DRUMS / BASS / MUSIC / WIDTH) mapped to mix-bus roles.
+- **Preset library** — 172 factory presets across all 14 instruments, tagged by genre (House/Techno/Trap/Ambient/Score) and mood, curated by sound-design intent (e.g. "Acid Line", "FM Growl", "Cinematic Strings", "Shimmer"). Browser in the Inspector with genre + mood chips, ALL / FAVORITES / RECENT scope, search, one-click apply (single undo step), hearts, and "save as user preset" (persisted to IndexedDB).
 - **Sample browser & favorites** — both drum-pad and sampler sample slots use a curated browser with search, category filter, mood filter, click-to-preview, a RECENT section and a heart toggle, all backed by the persistent IndexedDB `library` store.
 - **Autosave & recovery state** — debounced autosave (800 ms) with a live status indicator (`SAVED hh:mm` / `UNSAVED` / `SAVING…` / `SAVE ERROR — RETRY`, click to retry), flush on tab-hide and page close, and "saved X ago" freshness on every project card.
 - **Onboarding** — three interactive hints that advance as you actually do things (press SPACE → edit a step → discover the panels), shown once per browser profile. First run highlights the House template so the first sound is under a minute away.
@@ -75,7 +75,6 @@ npm run build        # production build
 - **LFO** — per-track audio-rate modulation of volume or pan: sine/tri/square/saw up/down, free Hz or tempo-synced (1/1–1/16), amount; re-syncs on BPM change.
 - **Macros** — four project macros (A–D) with bipolar value (center = neutral) mapping to track volume/pan offsets. Mapping editor per macro.
 - **Modulation routing in engine** — each track chain ends with dedicated automation/macro gain+pan stages, so mute/solo, manual volume, automation, LFO and macros never fight over the same AudioParam.
-- **Factory sound bank** — 20 procedurally synthesized sounds (16 drums + 4 tonal: pluck/stab/keys/bell), seeded, deterministic, license-clean, rendered via `OfflineAudioContext` at startup.
 - **Audio engine** — per-voice gain/pan/pitch, choke groups, voice cleanup, panic (guaranteed stop), track chains with smoothing.
 - **Persistence** — IndexedDB multi-project store (projects + user presets + user sample audio), debounced autosave (800 ms), manual `Ctrl+S`, reload restores the exact project (incl. after refresh); the browser lists every saved project with freshness and one-click resume. Imported user samples (WAV/MP3/OGG/FLAC/AIFF) keep their encoded bytes in IndexedDB and are decoded back into the sample bank on boot, so they survive reloads.
 - **Diagnostics panel** — context state, sample rate, voices, scheduled events, scheduler state, track/pattern counts, save status (toggle `DIAG` in the top bar).
@@ -84,9 +83,8 @@ npm run build        # production build
 ## Not implemented yet (planned)
 
 - User-defined buses (returns cover send/return routing today)
-- Arrangement loop regions, song-mode seek UI
-- Automation recording, per-scene automation
-- AudioWorklet + Rust/WASM DSP path
+- Automation recording
+- Rust/WASM DSP path (Web Audio worklets are already used for the flagship processors)
 
 ## Architecture
 

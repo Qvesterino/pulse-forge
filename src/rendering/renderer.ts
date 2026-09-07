@@ -4,6 +4,7 @@ import type { AutomationPoint, Pattern, PlayMode, ProjectDocument } from "../pro
 import { BAR_TICKS, PPQ, STEP_TICKS, getActivePattern } from "../project-model/types";
 import { drumHitsInWindow } from "../project-model/groove";
 import { noteEventsInWindow } from "../project-model/events";
+import { computeSceneIntensity } from "../project-model/intensity";
 import { ensureWorkletsForDoc } from "../audio-worklets/loader";
 
 export interface RenderOptions {
@@ -12,7 +13,7 @@ export interface RenderOptions {
   tailSeconds?: number;
 }
 
-interface ClipWindow {
+export interface ClipWindow {
   pattern: Pattern;
   base: number;
   from: number;
@@ -179,6 +180,10 @@ export async function renderProject(
 
   const timeAt = tempoMap.timeAt;
   const windows = pendingWindows;
+  // Scene intensity is a modulation source. Schedule its resolved values on
+  // the offline timeline before notes/automation so exports follow the same
+  // scene curve that the live scheduler feeds into the engine.
+  engine.scheduleSceneIntensity(buildSceneIntensityPoints(doc, windows, totalTicks), timeAt);
 
   for (const window of windows) {
     scheduleDrums(doc, window, timeAt, engine);
@@ -211,6 +216,59 @@ export async function renderProject(
   }
 
   return ctx.startRendering();
+}
+
+/** Build the intensity signal shared by offline rendering and its tests. */
+export function buildSceneIntensityPoints(
+  doc: ProjectDocument,
+  windows: ClipWindow[],
+  totalTicks: number,
+): Array<{ tick: number; value: number }> {
+  const points: Array<{ tick: number; value: number }> = [{ tick: 0, value: 0.7 }];
+  const sorted = [...windows].sort((a, b) => a.from - b.from);
+  for (let index = 0; index < sorted.length; index++) {
+    const window = sorted[index];
+    if (window.from > (index === 0 ? 0 : sorted[index - 1].to)) {
+      points.push({ tick: window.from, value: 0.7 });
+    }
+    const scene = window.sceneId
+      ? doc.scenes.find((candidate) => candidate.id === window.sceneId)
+      : doc.scenes.find((candidate) => candidate.patternId === window.pattern.id);
+    if (!scene) {
+      points.push({ tick: window.from, value: 0.7 }, { tick: window.to, value: 0.7 });
+      continue;
+    }
+
+    if (window.sceneId) {
+      points.push({ tick: window.from, value: computeSceneIntensity(scene, window.base, window.from) });
+      for (const curvePoint of scene.intensityCurve ?? []) {
+        const absoluteTick = window.base + curvePoint.offset;
+        if (absoluteTick > window.from && absoluteTick < window.to) {
+          points.push({ tick: absoluteTick, value: computeSceneIntensity(scene, window.base, absoluteTick) });
+        }
+      }
+      points.push({ tick: window.to, value: computeSceneIntensity(scene, window.base, window.to) });
+    } else {
+      // Pattern-mode live playback intentionally uses the scene's static
+      // intensity; a curve belongs to an arrangement clip context.
+      const value = Number.isFinite(scene.intensity) ? Math.max(0, Math.min(1, scene.intensity)) : 0.7;
+      points.push({ tick: window.from, value }, { tick: window.to, value });
+    }
+
+    const next = sorted[index + 1];
+    if (!next || next.from > window.to) points.push({ tick: window.to, value: 0.7 });
+  }
+  if (Number.isFinite(totalTicks) && totalTicks > 0) points.push({ tick: totalTicks, value: 0.7 });
+
+  // At clip boundaries the later point is authoritative (the next scene wins
+  // at its exact start). Keep the timeline monotonic and deterministic.
+  const deduped: Array<{ tick: number; value: number }> = [];
+  for (const point of points.sort((a, b) => a.tick - b.tick)) {
+    const previous = deduped[deduped.length - 1];
+    if (previous && previous.tick === point.tick) previous.value = point.value;
+    else deduped.push(point);
+  }
+  return deduped;
 }
 
 function scheduleDrums(

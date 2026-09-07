@@ -30,6 +30,16 @@ export class ProjectStore {
   private timestamps: number[] = [];
   /** Pre-computed doc snapshots (references, cheap) for history diff + jump. */
   private historyDocs: ProjectDocument[] = [];
+  /**
+   * Memo of `diffForIndex(cmdIndex)` results. The history panel
+   * calls `diffForIndex` once per visible row on every render, and
+   * the underlying `computeDocDelta` walks both snapshots — for a
+   * project with hundreds of tracks / patterns this can dominate
+   * the panel's render cost. The cache is cleared on every mutation
+   * (execute / undo / redo / replaceDoc) so results are always
+   * consistent with the current undo stack.
+   */
+  private diffCache = new Map<number, HistoryDiff | undefined>();
   private saveStatus_: SaveStatus = "saved";
   private lastSavedAt_: string | null = null;
   onDocChanged: ((doc: ProjectDocument) => void) | null = null;
@@ -37,8 +47,11 @@ export class ProjectStore {
   private static readonly HISTORY_LIMIT = 64;
 
   constructor(initial: ProjectDocument) {
-    this.doc_ = initial;
-    this.historyDocs.push(initial);
+    // ProjectStore is the plain-document authority. Imports, tests and
+    // future callers can bypass replaceDoc(), so enforce the same canonical
+    // active-pattern invariant at construction time as we do at replacement.
+    this.doc_ = normalizeProject(initial);
+    this.historyDocs.push(this.doc_);
   }
 
   get doc(): ProjectDocument {
@@ -86,10 +99,21 @@ export class ProjectStore {
    * those entries report no diff instead of pairing wrong snapshots.
    */
   private diffForIndex(cmdIndex: number): HistoryDiff | undefined {
+    // Performance: the history panel calls this for every visible
+    // row on every render, and `computeDocDelta` walks the full
+    // before/after snapshots. The cmdIndex is stable across renders
+    // as long as the undo stack does not mutate, so a tiny Map cache
+    // turns an O(rows × project) per-render cost into O(visible rows)
+    // per render after the first.
+    if (this.diffCache.has(cmdIndex)) return this.diffCache.get(cmdIndex);
     const offset = this.undoStack.length + 1 - this.historyDocs.length;
     const docBefore = this.historyDocs[cmdIndex - offset];
     const docAfter = this.historyDocs[cmdIndex - offset + 1];
-    if (!docBefore || !docAfter) return undefined;
+    if (!docBefore || !docAfter) {
+      this.diffCache.set(cmdIndex, undefined);
+      return undefined;
+    }
+    let result: HistoryDiff | undefined;
     try {
       const { ops } = computeDocDelta(docBefore, docAfter);
       let added = 0;
@@ -100,10 +124,12 @@ export class ProjectStore {
         else if (op.k === "del") removed += 1;
         else if (op.k === "set") changed += 1;
       }
-      return { added, removed, changed };
+      result = { added, removed, changed };
     } catch {
-      return undefined;
+      result = undefined;
     }
+    this.diffCache.set(cmdIndex, result);
+    return result;
   }
 
   get saveStatus(): SaveStatus {
@@ -143,17 +169,25 @@ export class ProjectStore {
       // entry — redo lands on the newest state, undo returns to the state
       // before the whole gesture began.
       const merged: Command = { ...command, undo: (doc) => top.undo(doc) };
-      this.doc_ = merged.execute(this.doc_);
+      this.doc_ = normalizeProject(merged.execute(this.doc_));
       this.undoStack[topIdx] = merged;
       this.timestamps[topIdx] = Date.now();
       this.redoStack = [];
-      this.recordHistoryDoc(this.doc_);
+      // History shape changed: any cached `diffForIndex` results are
+      // now stale (different before/after snapshot pairs).
+      this.diffCache.clear();
+      // A coalesced command is one logical gesture. Keep the original
+      // before-snapshot and replace only the after-snapshot; appending here
+      // creates a micro-step snapshot that makes the history diff pair the
+      // wrong states.
+      this.historyDocs[this.historyDocs.length - 1] = this.doc_;
       this.afterMutation();
       return;
     }
-    this.doc_ = command.execute(this.doc_);
+    this.doc_ = normalizeProject(command.execute(this.doc_));
     this.undoStack.push(command);
     this.timestamps.push(Date.now());
+    this.diffCache.clear();
     this.recordHistoryDoc(this.doc_);
     if (this.undoStack.length > 256) {
       this.undoStack.shift();
@@ -168,19 +202,22 @@ export class ProjectStore {
     const command = this.undoStack.pop();
     this.timestamps.pop();
     if (!command) return;
-    this.doc_ = command.undo(this.doc_);
+    this.doc_ = normalizeProject(command.undo(this.doc_));
     this.redoStack.push(command);
     this.historyDocs.length = Math.min(this.historyDocs.length, this.undoStack.length + 1);
     this.historyDocs[this.historyDocs.length - 1] = this.doc_;
+    // Snapshot index pairing shifted — drop the cache.
+    this.diffCache.clear();
     this.afterMutation();
   }
 
   redo(): void {
     const command = this.redoStack.pop();
     if (!command) return;
-    this.doc_ = command.execute(this.doc_);
+    this.doc_ = normalizeProject(command.execute(this.doc_));
     this.undoStack.push(command);
     this.timestamps.push(Date.now());
+    this.diffCache.clear();
     this.recordHistoryDoc(this.doc_);
     this.afterMutation();
   }
@@ -215,6 +252,7 @@ export class ProjectStore {
     this.undoStack = [];
     this.redoStack = [];
     this.historyDocs = [this.doc_];
+    this.diffCache.clear();
     // Defect 4.2 (undo/redo integrity audit): afterMutation() sets the
     // save status to "dirty" (correct — the in-memory doc is now
     // different from whatever was last persisted), but it does NOT

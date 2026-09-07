@@ -3,6 +3,8 @@ import { useDoc, useServices, useSelection } from "./context";
 import {
   clearSteps,
   consolidateTimeRange,
+  deleteArrangementClip,
+  deleteAudioClip,
   deleteNote,
   deleteNotes,
   duplicateNotes,
@@ -49,7 +51,6 @@ export function ContextMenu({ state, onClose }: { state: ContextMenuState | null
 
   const handle = (action: string) => {
     switch (action) {
-      case "cut":
       case "delete": {
         if (hasNotes) {
           const sel = selection.noteSelections[0];
@@ -64,13 +65,26 @@ export function ContextMenu({ state, onClose }: { state: ContextMenuState | null
           const sel = selection.stepSelection!;
           services.store.execute(clearSteps(doc, doc.activePatternId, sel.padIds, sel.from, sel.to));
         } else if (hasClips) {
-          // TODO: delete clips
+          const arrangementIds = new Set(doc.arrangement.clips.map((clip) => clip.id));
+          const audioIds = new Set((doc.arrangement.audioClips ?? []).map((clip) => clip.id));
+          let next = doc;
+          for (const clipId of selection.clipIds) {
+            if (arrangementIds.has(clipId)) next = deleteArrangementClip(next, clipId).execute(next);
+            else if (audioIds.has(clipId)) next = deleteAudioClip(next, clipId).execute(next);
+          }
+          if (next !== doc) {
+            // Multiple selected clips are one user gesture and therefore one
+            // undo entry, regardless of clip kind.
+            services.store.execute({
+              type: "deleteClips",
+              label: "Delete clips",
+              execute: () => next,
+              undo: () => doc,
+            });
+          }
         }
         break;
       }
-      case "copy":
-        // Handled via existing clipboard in PianoRoll/Sequencer
-        break;
       case "duplicate": {
         if (hasTime) {
           services.store.execute(duplicateTimeRange(doc, selection.timeRange!.fromTick, selection.timeRange!.toTick));
@@ -103,15 +117,6 @@ export function ContextMenu({ state, onClose }: { state: ContextMenuState | null
       onMouseDown={(e) => e.stopPropagation()}
     >
       <div className="context-menu-header">{state.context}</div>
-      <button type="button" role="menuitem" onClick={() => handle("cut")} disabled={!hasAny}>
-        Cut
-      </button>
-      <button type="button" role="menuitem" onClick={() => handle("copy")} disabled={!hasAny}>
-        Copy
-      </button>
-      <button type="button" role="menuitem" onClick={() => handle("paste")}>
-        Paste
-      </button>
       <button type="button" role="menuitem" onClick={() => handle("delete")} disabled={!hasAny}>
         Delete
       </button>
@@ -120,16 +125,6 @@ export function ContextMenu({ state, onClose }: { state: ContextMenuState | null
       </button>
       <button type="button" role="menuitem" onClick={() => handle("consolidate")} disabled={!hasTime}>
         Consolidate
-      </button>
-      <hr />
-      <button type="button" role="menuitem" onClick={() => handle("slice")}>
-        Slice to pads
-      </button>
-      <button type="button" role="menuitem" onClick={() => handle("reverse")}>
-        Reverse
-      </button>
-      <button type="button" role="menuitem" onClick={() => handle("normalize")}>
-        Normalize
       </button>
     </div>
   );

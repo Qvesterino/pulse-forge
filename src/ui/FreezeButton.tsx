@@ -29,6 +29,10 @@ export function FreezeButton({ track }: { track: Track }) {
         mode: "song",
         sampleRate: 44100,
         tailSeconds: 3,
+        // Freeze captures the track-local generator + FX. Group/master FX
+        // remain live, so the frozen buffer is not routed through those
+        // processors twice after it is inserted back into the graph.
+        includeRouting: false,
       });
       // Store in bank + persist to IndexedDB so the freeze survives reloads.
       services.bank.add(bufferId, buffer);

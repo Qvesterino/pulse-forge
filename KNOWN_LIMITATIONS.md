@@ -6,13 +6,12 @@ Tracked in [`RELEASE_ROADMAP.md`](./RELEASE_ROADMAP.md).
 
 ## Export & rendering
 
-- **Scene intensity is not rendered into exports.** Live, the active scene's
-  intensity (and its curve) drives any macro mapped to `source: "intensity"`.
-  The offline renderer pins that signal at its default, so exports of projects
-  using intensity-mapped macros differ from live playback. Scene **automation
-  lanes** (the `sceneAutomation` list) ARE rendered exactly. Fixing intensity
-  requires scheduled macro automation in the engine (macros currently write
-  parameter offsets immediately, not onto the AudioParam timeline).
+- **Scene intensity is scheduled into exports.** Live and offline both resolve
+  `source: "intensity"` through the same AudioEngine macro writer. The live
+  scheduler is still control-rate driven (25 ms look-ahead), so a scene seam
+  can differ from the offline sample-exact timeline by up to one scheduler
+  tick; the scene-tempo caveat below describes the same class of boundary
+  residual.
 - **Scene-tempo timing.** Since the tempo-seam fix, live playback applies a
   scene BPM change within one scheduler tick (≤ 25 ms) of the clip boundary,
   and exports apply it exactly at the boundary. Events within ±25 ms of the

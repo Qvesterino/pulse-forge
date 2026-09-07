@@ -1,7 +1,7 @@
 # Release Roadmap — k plne funkčnej, bezproblemovej appke
 
 > Východiskový stav: po 19-sekvenčnom maintenance & hardening passes (detaily v [`MAINTENANCE_AUDIT_PROGRESS.md`](./MAINTENANCE_AUDIT_PROGRESS.md)).
-> Zdravotný stav kodu: `npm run typecheck` ✓ · full test suite **186 súborov / 1866 passed / 0 failed** · `npm run build` ✓ (budgety OK) · prod `npm audit` 0 vulnerabilities.
+> Zdravotný stav kódu: `npm run typecheck:clean` ✓ · full test suite **193 súborov / 1911 passed / 94 skipped / 0 failed** · `npm run build` ✓ (budgety OK) · prod `npm audit` 0 vulnerabilities.
 >
 > Status legendy: `[ ]` pending · `[~]` robí sa · `[x]` hotové · `[!]` blocked / potrebuje rozhodnutie.
 
@@ -9,7 +9,7 @@
 
 ## Fáza 0 — Ešte dnes (ochrana práce)
 
-- [x] **Commitnúť working tree** (~25 súborov: hardening fixy + FXEQ/Ozvena WIP + nové testy).
+- [x] **Commitnúť working tree** — release hardening audit changes are committed together after final verification.
   Odporúčané logické commity:
   1. `fix(audit): maintenance hardening pass — scheduler/collab/export/security fixes + regression tests`
   2. `chore(deps): fast-uri audit fix (non-breaking)`
@@ -24,7 +24,7 @@
 
 ### 1.1 QA v reálnych prehliadačoch `[~]` — Chromium 197/197 PASS; Firefox/Safari manuálne
 
-Celý CI beží v jsdom, ktorý **nepočuje žiadny zvuk**. Všetkých 1866 testov overuje logiku, nie audio rendering.
+Celý CI beží v jsdom, ktorý **nepočuje žiadny zvuk**. Testy overujú logiku a offline scheduling, nie subjektívnu audio kvalitu.
 
 - [x] Spustiť `npm run test:browser` v **headless Chromium** — **197/197 PASS** (boot, collab cez reálny server, embed, share link `?import=`, touch, AudioWorklet DSP vrátane fxeq latency/PDC, MP3, offline generation flow, plugin workflow). Edge beží na tom istom Chromium engine. **Zostáva manuálne: Firefox + Safari/iOS.**
 - [ ] Manuálny test skript (najrizikovejšie scenáre):
@@ -36,28 +36,29 @@ Celý CI beží v jsdom, ktorý **nepočuje žiadny zvuk**. Všetkých 1866 test
   - [ ] Export WAV/MP3/MIDI/JSON projektu so scene BPM lanes a automation — počúvať, porovnať s live.
 - [ ] Výsledok zapísať do tohto dokumentu (sekcia „QA log").
 
-### 1.2 Export parita: sceneAutomation + scene intensity `[~]` — sceneAutomation DONE
+### 1.2 Export parita: sceneAutomation + scene intensity `[x]`
 
-„What you hear = what you export" dnes **neplatí**, ak projekt používa scene lanes/intenzitu:
+„What you hear = what you export" platí pre scene lanes/intenzitu s výnimkou
+známych scheduler-boundary rezíduí:
 
 - [x] `renderer.ts`: naplánovať `doc.sceneAutomation` do offline renderu cez tempo-mapu `timeAt`. **DONE:** `scheduleSceneAutomation` — lane points (scene-relative) sa expandujú na absolútne tiky cez vlastnícky clip window, boundary hodnoty interpolované ako live `applySceneAutomationLane`, routing cez `scheduleTrackAutomation`/`scheduleDeviceAutomation`; lane reštartuje per clip výskyt (live `sceneStartTick` sémantika). Testy: `tests/export/scene-automation-render.test.ts` (5).
-- [ ] `renderer.ts`: scene intensity per clip-window (vrátane `intensityCurve` interpolácie) → `engine.setSceneIntensity()` namiesto zafixovaných 0.7.
-- [ ] Parita test: projekt so scene lane + intensity → render-event porovnanie živého okna vs. offline segment.
-- Kriterium: export projektu s použitými scene lanes sa zvukovo zhoduje s live playbackom (okrem známej tempo-seam rezidui, fáza 2.2).
+- [x] `renderer.ts`: scene intensity per clip-window (vrátane `intensityCurve` interpolácie) sa expanduje na offline timeline; live scheduler používa rovnaký `computeSceneIntensity` helper a plánuje budúce hodnoty cez rovnakú AudioEngine macro writer cestu.
+- [x] Parita regression coverage: `tests/export/scene-intensity-render.test.ts` overuje curve body, clip boundary a návrat na neutrálnu intenzitu; scheduler recovery test overuje, že live cesta neskrýva neplatný stav.
+- Kriterium: export projektu s použitými scene lanes sa zvukovo zhoduje s live playbackom (okrem známych scheduler-boundary rezíduí).
 
-### 1.3 UI na obnovu snapshotov [x] — už existuje (prišlo s WIP commitem; overené 12/12 testmi v snapshots-panel.test.tsx: list + NOW + RESTORE undoable + DELETE)
+### 1.3 UI na obnovu snapshotov [x] — existuje a je otestované
 
-Autosnapshoty sa ukladajú (20 na projekt, `SnapshotRepository`) ale **neexistuje UI na ich obnovu** — polovica recovery príbehu chýba.
+Autosnapshoty sa ukladajú (20 na projekt, `SnapshotRepository`) a Snapshot panel ponúka zoznam, okamžité uloženie, obnovu aj zmazanie.
 
-- [ ] Jednoduchý panel (napr. v ProjectBrowser alebo TopBar menu): zoznam snapshotov projektu s časom + „Obnoviť".
-- [ ] Obnova = `repo.loadSnapshot` → potvrdenie → `store.replaceDoc(snapshot)` (history sa čistí, watermark resetuje — oboje už otestované).
-- [ ] Test: restore panel — obnova prepne doc, history prázdna, ďalšie uloženie funguje.
+- [x] Panel zobrazuje snapshoty projektu s časom a akciami `NOW`, `RESTORE`, `DELETE`.
+- [x] Obnova používa `repo.loadSnapshot` → potvrdenie → `store.replaceDoc(snapshot)`; história sa vyčistí a watermark resetuje.
+- [x] Test: `snapshots-panel.test.tsx` — 12/12 vrátane obnovy, undo/history správania a ďalšieho uloženia.
 
 ### 1.4 Robustnosť importu/exportu
 
 - [x] **Import limity**: cap na veľkosť súboru (audio ~25 MB, projekt JSON ~10 MB) s jasnou error správou — teraz hrozí OOM tabu (pamäť sa násobí 5–10× pri dekóde). **DONE:** `MAX_PROJECT_IMPORT_BYTES` v `project-io.ts` (File.size gate pred readom), `MAX_AUDIO_IMPORT_BYTES` v `DropZone.tsx`; testy v project-io.test.ts.
 - [x] **Zrušiteľné exporty**: `AbortSignal` cez `encodeMp3`, stems, video loop; Cancel tlačidlo v `ExportPanel` status riadku; po zrušení žiadny čiastočný súbor na disku. **DONE:** `encodeMp3` abortuje na yield pointe (žiadny partial Blob), `recordVideo` kontroluje signal v rAF loope + watchdogu a pred `recorder.stop()`, stems/tracks medzi krokmi; CANCEL button v status bare; zrušenie sa zobrazí ako „Export cancelled", nie error. Testy v mp3.test.ts.
-- [ ] Video: nesám pridávať 1 s tichu pre krátke buffery (`Math.max(1, ...)` → `Math.max(0, ...)`) alebo aspoň dokumentovať.
+- [x] Video: krátke buffery môžu mať minimálne 1 s záznamu; toto je zámerne zdokumentované v [`KNOWN_LIMITATIONS.md`](./KNOWN_LIMITATIONS.md).
 
 ---
 
@@ -65,7 +66,7 @@ Autosnapshoty sa ukladajú (20 na projekt, `SnapshotRepository`) ale **neexistuj
 
 ### 2.1 Bundle headroom `[x]` — vendor split hotový
 
-- [x] **DONE:** `vite.config.ts` `manualChunks` — react/react-dom/scheduler do `vendor-react` chunku (142.79 kB). Entry: **988 → 846 KB** (149 KB headroom pod 995 budget). Motivácia: app-code zmeny už neinvalidujú PWA-precachovaný vendor chunk (jemnejšie delta update); initial payload sa nezmenil (vendor sa stále načítava pri boote). Overené: produkčný build + preview smoke (`scripts/preview-smoke.mjs`, nový nástroj — load + pageerror scan) bez chýb; budget check 846/995 + 1635/2400 OK.
+- [x] **DONE:** `vite.config.ts` `manualChunks` — react/react-dom/scheduler do `vendor-react` chunku (142.79 kB). Entry: **988 → 861 KB** (134 KB headroom pod 995 budget). Motivácia: app-code zmeny už neinvalidujú PWA-precachovaný vendor chunk (jemnejšie delta update); initial payload sa nezmenil (vendor sa stále načítava pri boote). Overené: produkčný build + preview smoke (`scripts/preview-smoke.mjs`, nový nástroj — load + pageerror scan) bez chýb; aktuálny budget check **861/995 + 1648/2400 OK**.
 - [ ] Budúce (keď headroom znova dorastie): DiceContext eager-importuje AI stack (`intent/pipeline`, `assist/pipeline`, `ai/generator` — 9 call sites) → dynamic import v handleroch ťahá ~desiatky KB z entry; vzor `ExportPanel`/`EmbedApp`.
 
 ### 2.2 Tempo-map split windows (scene-tempo seam) `[x]`
@@ -129,13 +130,10 @@ Najväčšia zostávajúca audio-korektnosť položka: live prehodenie scene BPM
 
 ## Odporúčané poradie (ak sa robí len niečo)
 
-1. Fáza 0 (commit) — **dnes**
-2. 1.1 reálny prehliadačový test (hlavne iOS Safari)
-3. 1.2 export parita (scene automation + intensity)
-4. 1.3 snapshot restore UI
-5. 1.4 import limity + cancel exportov
-6. 2.1 bundle headroom
-7. → release candidate → 2.3+ podľa spätnej väzby
+1. 1.1 reálny prehliadačový test (hlavne iOS Safari)
+2. 1.4 finálne rozhodnutia okolo krátkeho video exportu a marker cue exportu
+3. 3.0 residual list podľa priority (bounce tempo-map, float WAV ceiling, seeded FXEQ random LFO)
+4. → release candidate → post-release Vitest/Vite migrácia podľa 2.5
 
 ---
 
@@ -151,13 +149,13 @@ Najväčšia zostávajúca audio-korektnosť položka: live prehodenie scene BPM
 
 | Položka | Stav | Evidence |
 | ------- | ---- | -------- |
-| Fáza 0 — commit práce | ✅ | `1eee712` (main) |
+| Fáza 0 — commit práce | ✅ | release hardening audit commit (main) |
 | 1.1 QA real browser | ✅ Chromium časť / ⏳ Firefox+iOS manuálne | `npm run test:browser` — **197/197 PASS** headless Chromium |
-| 1.2 Export parita | ✅ sceneAutomation / `[!]` intensity | `8bfa4bd` + `tests/export/scene-automation-render.test.ts` (5); intensity = engine limitation (scheduled makro automation) |
+| 1.2 Export parita | ✅ sceneAutomation + intensity | `tests/export/scene-automation-render.test.ts` + `tests/export/scene-intensity-render.test.ts`; live/offline zdieľajú scene-intensity writer |
 | 1.3 Snapshot restore UI | ✅ (už existovalo — WIP commit) | 12/12 testov `snapshots-panel.test.tsx` |
 | 1.4 Import limity + cancel | ✅ | `01834a1` + testy (mp3 abort, size limity) |
-| 2.1 Bundle headroom | ✅ | `42810f8` — entry **988 → 846 KB**, preview smoke bez chýb |
+| 2.1 Bundle headroom | ✅ | aktuálny build — entry **861/995 KB**, total JS **1648/2400 KB**, preview smoke bez chýb |
 | 2.3, 2.4, Fáza 3 | ✅ | detaily v checkedoch + Results log vyššie |
 | 2.5 Vitest migrácia | ⏳ deferované | dev-only advisory; po release |
 
-**Finálna verifikácia:** typecheck ✓ · full suite **187 súborov / 1875 passed / 0 failed / 94 skipped** · build ✓ (846/995 + 1635/2400) · working tree clean (všetko commithnuté na main).
+**Finálna verifikácia (2026-09-07):** `npm run typecheck:clean` ✓ · full suite **193/193 súborov, 1911 passed, 94 skipped, 0 failed** ✓ · `npm run build` ✓ (**861/995 KB entry, 1648/2400 KB total JS**) · `npm run test:browser` ✓ **197/197**. Pred release tagom ešte zostáva manuálna Firefox/Safari/iOS QA a kontrola clean worktree.
