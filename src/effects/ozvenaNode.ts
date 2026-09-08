@@ -1,6 +1,31 @@
 import type { EffectRuntime } from "../effects/types";
 import type { EffectInstance } from "../project-model/types";
 import { capUserIrFrames } from "./ozvena-params";
+import { generateFactoryIr, generateFactoryIr4 } from "./ozvena-core/modules/factoryIr";
+
+/**
+ * Build the interleaved factory-IR payload for the worklet (same shape
+ * logic as the core's inline default provider: the 4-channel true-stereo
+ * IR when the catalogue has one, mono broadcast to interleaved stereo
+ * otherwise). Runs on the MAIN thread — single-digit ms per (id, rate),
+ * off the audio rendering thread; the generator's own bounded cache makes
+ * repeated requests free.
+ */
+function buildFactoryIrPayload(
+  irId: string,
+  sampleRate: number,
+): { samples: Float32Array; channels: 1 | 2 | 4 } | null {
+  const quad = generateFactoryIr4(irId, sampleRate);
+  if (quad) return { samples: quad, channels: 4 };
+  const mono = generateFactoryIr(irId, sampleRate);
+  if (!mono) return null;
+  const stereo = new Float32Array(mono.length * 2);
+  for (let i = 0; i < mono.length; i++) {
+    stereo[2 * i] = mono[i];
+    stereo[2 * i + 1] = mono[i];
+  }
+  return { samples: stereo, channels: 2 };
+}
 
 /**
  * Main-thread Ozvena node: an AudioWorkletNode wrapping the vendored
@@ -38,10 +63,27 @@ export function createOzvenaNode(
   const latencyListeners = new Set<() => void>();
   let disposed = false;
   node.port.onmessage = (event) => {
-    const msg = event.data as { type?: string; samples?: number } | null;
+    const msg = event.data as
+      | { type?: string; samples?: number; irId?: string; sampleRate?: number }
+      | null;
     if (msg?.type === "latency" && typeof msg.samples === "number") {
       latencySamples = msg.samples;
       if (!disposed) for (const listener of latencyListeners) listener();
+    } else if (msg?.type === "irNeeded" && typeof msg.irId === "string") {
+      // The worklet's factory-IR provider asks the main thread to generate
+      // (audio-thread-free selection). Reply with the payload — cloned, not
+      // transferred, so the generator's bounded cache stays reusable.
+      if (disposed) return;
+      const sr =
+        typeof msg.sampleRate === "number" && Number.isFinite(msg.sampleRate) && msg.sampleRate > 0
+          ? msg.sampleRate
+          : ctx.sampleRate;
+      const payload = buildFactoryIrPayload(msg.irId, sr);
+      node.port.postMessage(
+        payload
+          ? { type: "factoryIr", irId: msg.irId, samples: payload.samples, channels: payload.channels }
+          : { type: "factoryIr", irId: msg.irId, samples: null, channels: 1 },
+      );
     }
   };
 

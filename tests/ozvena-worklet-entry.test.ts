@@ -13,6 +13,8 @@ import { globalPeerRegistry } from "../src/effects/ozvena-core/v2/vocalForgeIpc.
 interface PostedMessage {
   type?: string;
   samples?: number;
+  irId?: string;
+  sampleRate?: number;
 }
 
 class FakePort {
@@ -30,17 +32,28 @@ class FakeAudioWorkletProcessor {
 interface ProcShape {
   port: FakePort;
   /** The vendored core processor (public class field). */
-  proc: { getSpectrumAnalyzer(): { enabled: boolean } };
+  proc: {
+    getSpectrumAnalyzer(): { enabled: boolean };
+    isIrLoaded(): boolean;
+    getIrChannels(): number;
+    loadUserIr(samples: Float32Array, channels: 1 | 2 | 4): void;
+    clearUserIr(): void;
+  };
   state: {
     engines: { e2: { algo: string }; e3: { algo: string } };
     mod: { mode: string };
+    convolution?: { irId: string | null };
     [key: string]: unknown;
   };
   process(inputs: Float32Array[][], outputs: Float32Array[][]): boolean;
 }
 
 type ProcCtor = new (
-  options?: { processorOptions?: { params?: Record<string, number>; bpm?: number } },
+  options?: {
+    // Values travel through the entry's setPath, which accepts string state
+    // paths (e.g. an initial "convolution.irId") as well as numbers.
+    processorOptions?: { params?: Record<string, number | string>; bpm?: number };
+  },
 ) => ProcShape;
 
 let Processor: ProcCtor;
@@ -108,7 +121,7 @@ function energy(chans: Float32Array[], fromSec: number, toSec: number): number {
   return sum;
 }
 
-function sendParam(proc: ProcShape, id: string, value: number): void {
+function sendParam(proc: ProcShape, id: string, value: number | string): void {
   proc.port.onmessage?.({ data: { type: "param", id, value } });
 }
 
@@ -285,5 +298,163 @@ describe("Ozvena worklet entry (message port ↔ DSP core wiring)", () => {
     const out = renderImpulse(proc, 0.8);
     expect(energy(out, 0.14, 0.26)).toBeLessThan(1e-12); // muted window
     expect(energy(out, 0.35, 0.6)).toBeGreaterThan(1e-9); // wet restored
+  });
+
+  // ── Factory IR generation moved off the audio thread ──
+  // The port handler runs ON the audio rendering thread: generating a
+  // factory IR there (noise + envelope over up to 3 s × 4 ch, then the
+  // partition FFTs) was a few-millisecond dropout on the first selection
+  // of every (IR, rate). The entry now installs a provider that requests
+  // generation from the main thread ("irNeeded") and loads the payload
+  // when the reply lands; until then the CURRENT IR keeps playing.
+  //
+  // The payload cache is MODULE-scope in the entry (one per worklet
+  // scope), and "reset" clears it — every test below resets at
+  // construction so the suite is hermetic regardless of ordering.
+  const replyFactoryIr = (proc: ProcShape, irId: string, frames = 512, channels: 1 | 2 | 4 = 2) => {
+    const samples = new Float32Array(frames * channels);
+    let l1 = 0;
+    for (let i = 0; i < frames; i++) {
+      const v = Math.exp(-i / 96);
+      l1 += v;
+      for (let c = 0; c < channels; c++) samples[i * channels + c] = v;
+    }
+    // L1-normalised smooth decay: worst-case wet ≤ max|x| and adjacent
+    // sample steps stay small — the continuity proxy below needs a
+    // physically sane IR, not an amplifying one.
+    const inv = 1 / l1;
+    for (let i = 0; i < samples.length; i++) samples[i] *= inv;
+    proc.port.onmessage?.({ data: { type: "factoryIr", irId, samples, channels } });
+  };
+
+  /** Fresh processor with an empty module-scope payload cache. */
+  const freshIrProc = (options?: ConstructorParameters<ProcCtor>[0]) => {
+    const proc = new Processor(options);
+    proc.port.onmessage?.({ data: { type: "reset" } });
+    return proc;
+  };
+
+  it("regression: selecting a factory IR requests off-thread generation instead of generating inline", () => {
+    const proc = freshIrProc();
+    proc.port.posted.length = 0;
+    sendParam(proc, "convolution.mode", 1); // hybrid
+    sendParam(proc, "convolution.irId", "hall");
+    const needed = proc.port.posted.find((m) => m.type === "irNeeded");
+    expect(needed?.irId).toBe("hall");
+    expect(needed?.sampleRate).toBe(SR);
+    // Pre-fix: generation ran inline and the IR was armed immediately on
+    // the audio thread. Post-fix: nothing is loaded until the reply.
+    expect(proc.proc.isIrLoaded()).toBe(false);
+
+    replyFactoryIr(proc, "hall");
+    expect(proc.proc.isIrLoaded()).toBe(true);
+    expect(proc.proc.getIrChannels()).toBe(2);
+  });
+
+  it("an initial irId via processorOptions requests generation at construction", () => {
+    // No reset here — it would wipe the processorOptions state under test.
+    // ("plate" is not used by any other factory-IR test, so the module
+    // cache cannot short-circuit the request.)
+    const proc = new Processor({
+      processorOptions: { params: { "convolution.irId": "plate" } },
+    });
+    const needed = proc.port.posted.find((m) => m.type === "irNeeded");
+    expect(needed?.irId).toBe("plate");
+    expect(proc.proc.isIrLoaded()).toBe(false);
+  });
+
+  it("stale replies are cached but not loaded; re-selection is a free cache hit", () => {
+    const proc = freshIrProc();
+    sendParam(proc, "convolution.irId", "hall");
+    sendParam(proc, "convolution.irId", "cathedral"); // selection moved on while hall is in flight
+    let loads = 0;
+    const orig = proc.proc.loadUserIr;
+    proc.proc.loadUserIr = () => {
+      loads++;
+    };
+    replyFactoryIr(proc, "hall"); // stale — current selection is cathedral
+    expect(loads).toBe(0);
+    replyFactoryIr(proc, "cathedral");
+    expect(loads).toBe(1);
+    proc.proc.loadUserIr = orig;
+
+    // Re-selecting hall must NOT re-request: the stale reply was cached and
+    // the core's provider path loads it synchronously.
+    proc.port.posted.length = 0;
+    sendParam(proc, "convolution.irId", "hall");
+    expect(proc.proc.isIrLoaded()).toBe(true);
+    expect(proc.port.posted.some((m) => m.type === "irNeeded")).toBe(false);
+  });
+
+  it("unknown factory ids clear the convolution instead of looping requests", () => {
+    const proc = freshIrProc();
+    sendParam(proc, "convolution.irId", "hall");
+    replyFactoryIr(proc, "hall");
+    expect(proc.proc.isIrLoaded()).toBe(true);
+    proc.port.posted.length = 0;
+    sendParam(proc, "convolution.irId", "not-an-ir");
+    expect(proc.proc.isIrLoaded()).toBe(false);
+    expect(proc.port.posted.some((m) => m.type === "irNeeded")).toBe(false);
+  });
+
+  it("malformed factoryIr replies are dropped without corrupting state", () => {
+    const proc = freshIrProc();
+    sendParam(proc, "convolution.irId", "hall");
+    proc.port.onmessage?.({ data: { type: "factoryIr", irId: "hall", samples: null, channels: 2 } });
+    proc.port.onmessage?.({
+      // non-multiple length for 2 channels
+      data: { type: "factoryIr", irId: "hall", samples: new Float32Array(7), channels: 2 },
+    });
+    expect(proc.proc.isIrLoaded()).toBe(false);
+    // The selection can still be satisfied by a well-formed reply.
+    replyFactoryIr(proc, "hall");
+    expect(proc.proc.isIrLoaded()).toBe(true);
+  });
+
+  it("switching factory IRs during playback stays finite, bounded and continuous (listening proxy)", () => {
+    // The convolution engine crossfades IR swaps over ~50 ms and a pending
+    // selection keeps the old IR audible — a mid-playback factory switch
+    // must produce no non-finite sample, no level explosion and no
+    // sample-to-sample discontinuity beyond what the crossfade implies.
+    const proc = freshIrProc();
+    sendParam(proc, "convolution.mode", 2); // convolution
+    sendParam(proc, "convolution.irId", "hall");
+    replyFactoryIr(proc, "hall");
+
+    const rngState = { s: 0x51DE };
+    const noise = (l: Float32Array, r: Float32Array) => {
+      for (let i = 0; i < BLOCK; i++) {
+        rngState.s = (Math.imul(rngState.s, 1664525) + 1013904223) >>> 0;
+        l[i] = ((rngState.s / 4294967296) * 2 - 1) * 0.5;
+        r[i] = l[i];
+      }
+    };
+    const blocks = Math.ceil((0.6 * SR) / BLOCK);
+    const out = new Float32Array(blocks * BLOCK);
+    let maxAbs = 0;
+    let maxJump = 0;
+    let prev = 0;
+    for (let b = 0; b < blocks; b++) {
+      // Mid-render: select a second factory IR and deliver it a few
+      // blocks later (simulated main-thread latency).
+      if (b === Math.floor(blocks * 0.3)) sendParam(proc, "convolution.irId", "cathedral");
+      if (b === Math.floor(blocks * 0.35)) replyFactoryIr(proc, "cathedral");
+      const inL = new Float32Array(BLOCK);
+      const inR = new Float32Array(BLOCK);
+      noise(inL, inR);
+      const oL = out.subarray(b * BLOCK, b * BLOCK + BLOCK);
+      proc.process([[inL, inR]], [[oL, new Float32Array(BLOCK)]]);
+      for (let i = 0; i < BLOCK; i++) {
+        if (!Number.isFinite(oL[i])) throw new Error(`non-finite sample at block ${b}`);
+        maxAbs = Math.max(maxAbs, Math.abs(oL[i]));
+        maxJump = Math.max(maxJump, Math.abs(oL[i] - prev));
+        prev = oL[i];
+      }
+    }
+    expect(maxAbs).toBeLessThanOrEqual(1.0); // safety limiter ceiling
+    // A 50 ms equal-gain crossfade between two ≤1 IRs cannot step more
+    // than ~1.0 between adjacent samples; a hard IR swap would.
+    expect(maxJump).toBeLessThanOrEqual(0.7);
+    expect(energy([out], 0.1, 0.6)).toBeGreaterThan(1e-6); // tail kept flowing
   });
 });

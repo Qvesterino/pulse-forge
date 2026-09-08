@@ -76,6 +76,23 @@ import {
   type PeerNotification,
 } from "../v2/vocalForgeIpc.js";
 
+/**
+ * Result of a factory-IR lookup requested by the processor:
+ *  - a ready interleaved payload (`channels` 1/2/4),
+ *  - "pending" — generation is in flight elsewhere; keep the current IR,
+ *  - null — unknown id; clear the convolution.
+ */
+export type FactoryIrLookup =
+  | { samples: Float32Array; channels: 1 | 2 | 4 }
+  | "pending"
+  | null;
+
+export type FactoryIrProvider = (
+  irId: string,
+  sampleRate: number,
+  stereo: boolean,
+) => FactoryIrLookup;
+
 export interface OzvenaProcessor {
   prepare(sampleRate: number, channelCount: number, bpm: number, maxBlockSize: number): void;
   process(channels: Float32Array[], frameCount: number): void;
@@ -95,6 +112,19 @@ export interface OzvenaProcessor {
   /** Remove a user IR (falls back to the factory selection). */
   clearUserIr(): void;
   getSpectrumAnalyzer(): SpectrumAnalyzer;
+  /**
+   * Install a factory-IR acquisition hook (null restores the default
+   * inline generation). The provider is called from syncConvolutionIr when
+   * the selection wants a factory IR that is not already loaded:
+   *   - `{ samples, channels }` → loaded synchronously (caller-owned shape;
+   *     for stereo buses pass the interleaved 1/2/4-channel payload).
+   *   - "pending" → the CURRENT IR keeps playing; the host delivers the
+   *     payload later via loadUserIr() (which re-marks the selection).
+   *   - null → unknown id: the convolution is cleared.
+   * Hosts that must keep the audio thread light generate off-thread and
+   * return "pending". (Reconciled from Pulse Forge, 2026-09-08.)
+   */
+  setFactoryIrProvider(provider: FactoryIrProvider | null): void;
   /** Load a user IR (interleaved, resampled to the host rate). */
   loadUserIr(samples: Float32Array, channels: 1 | 2 | 4): void;
   /** Drop the user IR and fall back to the factory selection. */
@@ -178,6 +208,38 @@ export function createOzvenaProcessor(): OzvenaProcessor {
   // selection; any factory irId change clears it.
   let userIrActive = false;
 
+  // Factory-IR acquisition hook. Default: generate inline (the historical
+  // behaviour every host got before the hook existed — including the
+  // VocalForge native port). Audio-thread-conscious hosts install a
+  // provider that returns "pending" and deliver the payload through
+  // loadUserIr() once their off-thread generation completes.
+  // (Reconciled from Pulse Forge, 2026-09-08.)
+  let factoryIrProvider: FactoryIrProvider | null = null;
+
+  /** Historical inline factory-IR generation (exact pre-hook behaviour). */
+  function defaultFactoryIrLookup(irId: string, sr: number, stereo: boolean): FactoryIrLookup {
+    // TRUE-STEREO factory IRs: 4-channel decorrelated (LL, LR, RL, RR).
+    const quad = generateFactoryIr4(irId, sr);
+    if (quad) {
+      if (stereo) return { samples: quad, channels: 4 };
+      // Mono bus: first channel only.
+      return { samples: quad.subarray(0, quad.length / 4), channels: 1 };
+    }
+    const mono = generateFactoryIr(irId, sr);
+    if (!mono) return null;
+    // The convolution engine expects interleaved stereo when processing
+    // stereo — broadcast the mono IR.
+    if (stereo) {
+      const stereoIr = new Float32Array(mono.length * 2);
+      for (let i = 0; i < mono.length; i++) {
+        stereoIr[2 * i] = mono[i];
+        stereoIr[2 * i + 1] = mono[i];
+      }
+      return { samples: stereoIr, channels: 2 };
+    }
+    return { samples: mono, channels: 1 };
+  }
+
   /** (Re)load the factory IR selected in state into the convolution engine. */
   function syncConvolutionIr(): void {
     if (!state) return;
@@ -196,40 +258,23 @@ export function createOzvenaProcessor(): OzvenaProcessor {
       return;
     }
     userIrActive = false;
-    // TRUE-STEREO factory IRs: 4-channel decorrelated (LL, LR, RL, RR).
-    const quad = generateFactoryIr4(irId, sampleRate);
-    if (quad) {
-      if (channelCount >= 2) {
-        convolution.loadIr(quad, sampleRate, 4);
-      } else {
-        // Mono bus: first channel only.
-        const mono = quad.subarray(0, quad.length / 4);
-        convolution.loadIr(mono, sampleRate, 1);
-      }
-      loadedIrId = irId;
-      loadedIrRate = sampleRate;
-      return;
-    }
-    const mono = generateFactoryIr(irId, sampleRate);
-    if (!mono) {
+    const lookup = factoryIrProvider ?? defaultFactoryIrLookup;
+    const res = lookup(irId, sampleRate, channelCount >= 2);
+    if (res === null) {
       // Unknown/removed factory IDs must not leave the previous IR active.
       convolution.clearIr();
       loadedIrId = null;
       loadedIrRate = 0;
       return;
     }
-    // The convolution engine expects interleaved stereo when processing
-    // stereo — broadcast the mono IR.
-    if (channelCount >= 2) {
-      const stereo = new Float32Array(mono.length * 2);
-      for (let i = 0; i < mono.length; i++) {
-        stereo[2 * i] = mono[i];
-        stereo[2 * i + 1] = mono[i];
-      }
-      convolution.loadIr(stereo, sampleRate);
-    } else {
-      convolution.loadIr(mono, sampleRate);
+    if (res === "pending") {
+      // Off-thread generation in flight: keep the current IR audible; the
+      // host delivers the payload via loadUserIr() (which re-marks this
+      // selection as loaded) when it lands. A later sync while still
+      // pending simply asks again — providers dedupe their requests.
+      return;
     }
+    convolution.loadIr(res.samples, sampleRate, res.channels);
     loadedIrId = irId;
     loadedIrRate = sampleRate;
   }
@@ -846,6 +891,10 @@ export function createOzvenaProcessor(): OzvenaProcessor {
       preEq.setAnalyzerEnabled(on);
       reverbEq.setAnalyzerEnabled(on);
       maskingMeter.setAnalyzerEnabled(on);
+    },
+
+    setFactoryIrProvider(provider) {
+      factoryIrProvider = provider;
     },
 
     isIrLoaded() {

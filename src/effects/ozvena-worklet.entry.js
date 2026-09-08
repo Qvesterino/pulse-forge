@@ -14,6 +14,27 @@ import { capUserIrFrames } from "./ozvena-params.ts";
 const MAX_BLOCK = 128;
 const CHANNELS = 2;
 
+/** Factory IR ids accepted by the off-thread provider (the keys of the
+ *  upstream IR_SPECS/IR4_SPECS catalogues — hardcoded here like
+ *  ENUM_BY_PATH; anything else clears the convolution instead of looping
+ *  an async request). */
+const FACTORY_IR_IDS = new Set([
+  "vocal-booth",
+  "plate",
+  "hall",
+  "cathedral",
+  "plate-wide",
+  "chamber-wide",
+]);
+
+/** Delivered factory-IR payloads, shared by every Ozvena processor in this
+ *  worklet scope. After the first delivery a re-selection (or the
+ *  clearUserIr fallback) is a synchronous cache hit through the core — no
+ *  main-thread roundtrip, no generation. Payloads run a few MB each; the
+ *  bound keeps long sessions flat. */
+const factoryIrCache = new Map();
+const FACTORY_IR_CACHE_MAX = 8;
+
 /** Numeric-index → string-enum mapping, keyed by full dotted path. The UI
  *  ships enums as indices; the DSP state carries them as strings. Keying by
  *  full path (not leaf name) keeps e.g. engines.e3.algo inside its own
@@ -94,6 +115,23 @@ class OzvenaWorkletProcessor extends AudioWorkletProcessor {
 
   constructor(options) {
     super();
+    // Factory-IR generation moves OFF the audio thread: generating an IR
+    // (noise + envelope over up to 3 s × 4 channels) inside the port
+    // handler — which runs on the audio rendering thread — was a
+    // few-millisecond dropout on the first selection of every (IR, rate).
+    // The provider answers from cache, asks the main thread otherwise, and
+    // the core keeps the current IR audible until the payload lands.
+    this.pendingIrRequests = new Set();
+    this.proc.setFactoryIrProvider((irId, sr) => {
+      const hit = factoryIrCache.get(`${irId}:${sr}`);
+      if (hit) return hit;
+      if (!FACTORY_IR_IDS.has(irId)) return null;
+      if (!this.pendingIrRequests.has(irId)) {
+        this.pendingIrRequests.add(irId);
+        this.port.postMessage({ type: "irNeeded", irId, sampleRate: sr });
+      }
+      return "pending";
+    });
     const bpmRaw = Number(options?.processorOptions?.bpm);
     const bpm = Number.isFinite(bpmRaw) ? Math.min(300, Math.max(20, bpmRaw)) : 120;
     this.proc.prepare(sampleRate, CHANNELS, bpm, MAX_BLOCK);
@@ -155,6 +193,26 @@ class OzvenaWorkletProcessor extends AudioWorkletProcessor {
           this.proc.loadUserIr(msg.samples.subarray(0, frames * channels), channels);
           this.postLatency();
         }
+      } else if (msg.type === "factoryIr") {
+        // Main-thread generation reply (see the provider in the
+        // constructor). Malformed payloads are dropped — the selection
+        // stays "pending" and a later convolution change re-requests.
+        this.pendingIrRequests.delete(msg.irId);
+        const samples = msg.samples;
+        const channels = msg.channels === 4 ? 4 : msg.channels === 2 ? 2 : 1;
+        if (!(samples instanceof Float32Array) || samples.length === 0) return;
+        if (channels > 1 && samples.length % channels !== 0) return;
+        factoryIrCache.set(`${msg.irId}:${sampleRate}`, { samples, channels });
+        if (factoryIrCache.size > FACTORY_IR_CACHE_MAX) {
+          const oldest = factoryIrCache.keys().next().value;
+          if (oldest !== undefined) factoryIrCache.delete(oldest);
+        }
+        // Load only if the selection still points here; a stale reply is
+        // still cached, so re-selecting that IR later is a free hit.
+        if (this.state.convolution?.irId === msg.irId) {
+          this.proc.loadUserIr(samples, channels);
+          this.postLatency();
+        }
       } else if (msg.type === "clearIr") {
         this.proc.clearUserIr();
         this.postLatency();
@@ -168,6 +226,12 @@ class OzvenaWorkletProcessor extends AudioWorkletProcessor {
         this.state = defaultOzvenaStateV1();
         this.proc.loadState(this.state);
         this.proc.reset();
+        // Reset = fresh instance: drop delivered factory-IR payloads too
+        // (the main thread's generator cache re-serves them on the next
+        // selection). Keeps the shared worklet-scope cache from pinning
+        // MBs of IR audio after a reset.
+        this.pendingIrRequests.clear();
+        factoryIrCache.clear();
       } else if (msg.type === "dispose") {
         // Terminal teardown from the main thread (node.dispose): release
         // the module-global IPC peer registry entry + subscription that

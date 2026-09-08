@@ -465,6 +465,96 @@ describe("Ozvena hardening — quality switches are scalar-only on the audio thr
     expect(peak).toBeLessThan(0.99);
     expect(peak2).toBeLessThan(1.0);
   });
+
+  it("regression: reactivating an oversample set does not replay its stale lookahead audio", () => {
+    // Drive quality "render" (8×) with hot impulses — its rings fill with
+    // loud audio while the envelope engages. Switch away (eco), let
+    // silence release the envelope toward unity, then switch BACK: the 8×
+    // set's lookahead ring still held the old loud audio and re-emitted up
+    // to a full lookahead window of stale material at ~unity gain on the
+    // first silent block. The switch now zeroes the incoming set's ring
+    // (envelope still carried): silence renders as silence.
+    // Engines/pre-delay/smoother are disabled and dryWet is 0 so the DRY
+    // path feeds the limiter directly — otherwise the reverb tail (not
+    // the limiter) dominates the output and masks the replay.
+    const proc = new Processor();
+    sendParam(proc, "global.dryWet", 0);
+    sendParam(proc, "preDelay.enabled", 0);
+    sendParam(proc, "smoother.enabled", 0);
+    sendParam(proc, "engines.e1.enabled", 0);
+    sendParam(proc, "engines.e2.enabled", 0);
+    sendParam(proc, "engines.e3.enabled", 0);
+    sendParam(proc, "global.quality", 3); // render → 8×
+    const hot = (l: Float32Array, r: Float32Array, sample: number) => {
+      if (sample % BLOCK === 0) {
+        l[0] = 0.99;
+        r[0] = -0.99;
+      }
+    };
+    render(proc, hot, 0.3); // 8× rings full of hot audio, env engaged
+    sendParam(proc, "global.quality", 0); // eco → 1× active, 8× dormant
+    render(proc, () => {}, 0.15); // silence releases the envelope
+    sendParam(proc, "global.quality", 3); // back to the stale 8× set
+    const out = render(proc, () => {}, 0.02); // silent input
+    expect(countNonFinite(out)).toBe(0);
+    let peak = 0;
+    for (const ch of out) for (let i = 0; i < ch.length; i++) peak = Math.max(peak, Math.abs(ch[i]));
+    expect(peak).toBeLessThan(1e-3);
+  });
+});
+
+describe("Ozvena hardening — pre-delay sweep continuity (listening proxy)", () => {
+  it("a full 10→400 ms sweep renders the delayed sine without dropout windows", () => {
+    // Automated stand-in for the "manual listening on pre-delay sweeps"
+    // item. A 1000 Hz sine (period EXACTLY 48 samples = the 1 ms sweep
+    // step, so the two crossfaded reads are always in phase and cannot
+    // cancel; every 64-sample window spans ≥ 1.3 full cycles, so windowed
+    // RMS is a stable level meter) is swept 1 ms per 64-sample block from
+    // 10 ms to 400 ms, crossing ~6 power-of-two ring capacities
+    // (512→1024→2048→4096→8192→16384→32768 samples). Before the
+    // ring-growth fix every crossing wiped the line: the crossfade read a
+    // zeroed ring and the output went silent for the new delay duration.
+    // After the fix every 64-sample window carries the sine (RMS ≥ ~0.33).
+    const pd = createPreDelay();
+    pd.prepare(SR, 2, 120);
+    pd.setParams({ enabled: true, ms: 10, syncEnabled: false, syncNote: "1/4" });
+
+    const STEP = 64;
+    const STEPS = 390; // 10 ms + 390 × 1 ms → 400 ms
+    const N = STEPS * STEP;
+    const outL = new Float32Array(N);
+    let ms = 10;
+    let phase = 0;
+    for (let step = 0; step < STEPS; step++) {
+      pd.setParams({ enabled: true, ms, syncEnabled: false, syncNote: "1/4" });
+      ms += 1;
+      const l = new Float32Array(STEP);
+      const r = new Float32Array(STEP);
+      for (let i = 0; i < STEP; i++) {
+        phase += (2 * Math.PI * 1000) / SR;
+        if (phase >= 2 * Math.PI) phase -= 2 * Math.PI;
+        l[i] = Math.sin(phase) * 0.5;
+        r[i] = l[i];
+      }
+      pd.process([l, r], STEP);
+      outL.set(l, step * STEP);
+    }
+
+    // Skip the initial delay fill: until elapsed samples exceed the
+    // CURRENT delay distance, reads return the ring's (zero) tail —
+    // startup behaviour, not a defect. At step k the delay is 480+48k
+    // samples and elapsed is 64k, so reads are valid from k ≥ 30; skip 48
+    // steps (3072 samples) for margin. Every window after must carry the
+    // sine (RMS floor ≈ 0.33 for 0.5-amplitude 1000 Hz).
+    const SKIP_STEPS = 48;
+    let minRms = Infinity;
+    for (let w = SKIP_STEPS; w + 1 <= STEPS; w++) {
+      let s = 0;
+      for (let i = w * STEP; i < (w + 1) * STEP; i++) s += outL[i] * outL[i];
+      minRms = Math.min(minRms, Math.sqrt(s / STEP));
+    }
+    expect(minRms).toBeGreaterThan(0.2);
+  });
 });
 
 describe("Ozvena hardening — user IR wiring (roadmap O7)", () => {

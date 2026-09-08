@@ -71,3 +71,47 @@ Sequential maintenance & hardening pass over **Pulse Forge** (browser DAW).
 | FINAL verification | done | `npm run typecheck` ✓ · FULL `npm test` ✓ **186 files / 1866 passed / 0 failed / 94 skipped** (skips = env-conditional OfflineAudioContext DSP suites; baseline was 1811 passed / 3 FAILED) · `npm run build` ✓ (precache 46 entries, entry 987 KB / 995 budget, total JS 1634 KB / 2400 budget) · prod `npm audit` 0 vulnerabilities. All 19 audits `[x]`. | — | +55 net new tests across 11 new/extended files | all green |
 | U-A Ultina plugin hardening (browser-audio audit) | done | Full pass over `src/effects/ultina-core` + host surface (ultinaNode, worklet entry, UltinaPanel, AudioEngine fx integration, commands, presets, persistence). **D1 (HIGH) FIXED — undo of full-map plugin commands stranded DSP values:** `applyUltinaPreset`, `applyUltinaProposal`, `loadUltinaAbSlot`, `loadEffectAbSlot`, `applyFxEqPreset`, `applyOzvenaStatePatch` all write a FULL canonical param map on execute but restored the raw (possibly rack-only, 7-key) previous map on undo — the engine's `syncFxParams` pushes only doc-present keys, so every deep param the gesture wrote stayed stuck in the worklet (e.g. mix-assist → Ctrl+Z left comp.thresholdDb at the proposal value while doc/panel showed default; preset → undo on a fresh instance baked the whole preset into the DSP). Sibling pattern was already fixed for ozvena slot LOAD (`normalizePluginParams` "true restore") but not the undo paths. **D2 (MED) FIXED — stale meters after dispose:** `createUltinaNode` dispose left the last meters snapshot readable from a disposed runtime. **D3 (MED) FIXED — audio-thread allocation in the worklet entry:** the `param` takeover handler used `.filter()` (fresh array on the render thread per message during knob drags) — now in-place compaction. **Vendored-core defects (P1/P2, documented in KNOWN_LIMITATIONS.md § Ultina, fix upstream + re-vendor, NOT hand-edited per the byte-faithful contract):** sculptor silent-band average poisoning (max cut on all active bands when any in-band is silent); T/S stereo crosstalk (both channels filter through biquad state slot 0; splitLr4 cascades loop on channelCount not chCount); re-prepare wipes LR4 crossover to identity (+6/+9.5 dB until a knob moves — no in-app trigger today, latent for re-preparing hosts); phase dry-delay ring sized maxBlockSize+64 vs ±50 ms Time Shift (mix/delta comb above ~4 ms); mix-assist whole-song synchronous main-thread analysis + 40%-of-buffer "400 ms" LUFS blocks. Verified clean: metering gate (panel mount/unmount + straggler enforcement), paramAt automation queue (sorted insert, manual-takeover cancel, malformed-when degradation), latency reporting/PDC subscription lifecycle, dispose idempotency (registry unregister without port close), preset repository defensive validation, NaN/clamp boundaries at every parameter source, vectors/extremes/soak/samplerate/parity suites (soak: 300 s render, heap +31 MB stable, no drift). NOTE: tree carries a prior session's uncommitted fxeq/ozvena WIP (11 files + 2 bundles) and stash `audit-wip` (34 files, ultina) — untouched; the fxeq-performance-gates morph failure (2.44× vs 2.4×) reproduces ONLY with that WIP applied (verified via stash swap: 3/3 pass at HEAD) and is theirs to resolve. | D1 canonical undo maps (defaults + previous values) in all 6 commands; D2 meters nulled in dispose; D3 in-place pendingParams compaction; worklet bundle rebuilt (`npm run build:ultina`). | `tests/ultina-core-hardening.test.ts` +7 (canonical-undo family — verified 6/6 fail on pre-fix code); `tests/commands.test.ts` 3 assertions updated from exact-map to canonical-superset contract (justified: the old "exact restore" pinned the divergence bug). | typecheck ✓; vitest ✓ full suite 1923 passed / 94 skipped, 3 failures all attributed (2 known flakes passing in isolation, 1 prior-session WIP fxeq gate — see note); prettier ✓ on changed files (2 repo-preexisting-dirty files left as-is); `npm run build:ultina` ✓ |
 > Housekeeping: `full-sweep.log` / `final-sweep.log` / `baseline-tests.log` are transient verification artifacts and can be deleted.
+
+---
+
+# Phase C — QVESTER prompt vault audits (`D:\QVESTER_LANDING_PAGE\prompts`)
+
+Second sequential hardening pass (started 2026-09-08) over the same tree, driven by a different 23-mission vault.
+`00-README.md` + `Universal Application Hardening & Self-Audit Prompt.md` are the shared operating constitution, applied to every mission below — not separate missions.
+Status legend: `[ ]` pending · `[~]` running · `[x]` completed · `[!]` blocked / needs human review.
+Rule: strictly one mission at a time, in numeric order; each ends with findings/changes/tests/verification recorded in the Phase C results log.
+Prior-session context: working tree carries uncommitted ozvena WIP (6 files) + stash `audit-wip` — left untouched; failures attributable to it are recorded, not "fixed".
+
+## Phase C checklist
+
+- [ ] C01 — Test Coverage Expansion (`01-test-coverage-expansion.md`)
+- [ ] C02 — Regression Hunting (`02-regression-hunting.md`)
+- [ ] C03 — Edge Case Mining (`03-edge-case-mining.md`)
+- [ ] C04 — Error Handling Audit (`04-error-handling-audit.md`)
+- [ ] C05 — Error Boundary Hardening (`05-error-boundary-hardening.md`)
+- [ ] C06 — Lifecycle & Resource Audit (`06-lifecycle-resource-audit.md`)
+- [ ] C07 — Persistence Robustness (`07-persistence-robustness.md`)
+- [ ] C08 — State Integrity Audit (`08-state-integrity-audit.md`)
+- [ ] C09 — Async & Race Condition Audit (`09-async-race-condition-audit.md`)
+- [ ] C10 — Build, Type & Lint Hygiene (`10-build-type-lint-hygiene.md`)
+- [ ] C11 — Performance Risk Audit (`11-performance-audit.md`)
+- [ ] C12 — Code Duplication & Maintainability (`12-code-duplication-maintainability-audit.md`)
+- [ ] C13 — Architecture Conformance (`13-architecture-conformance-audit.md`)
+- [ ] C14 — Accessibility & UX Robustness (`14-accessibility-ux-robustness-audit.md`)
+- [ ] C15 — Critical Path Audit (`15-critical-path-audit.md`)
+- [ ] C16 — Recovery Path Audit (`16-recovery-path-audit.md`)
+- [ ] C17 — Cross-Component Contract (`17-cross-component-contract-audit.md`)
+- [ ] C18 — Import / Export Robustness (`18-import-export-robustness.md`)
+- [ ] C19 — Undo / Redo Integrity (`19-undo-redo-integrity.md`)
+- [ ] C20 — Dead / Suspicious Code (`20-dead-suspicious-code-audit.md`)
+- [ ] C21 — Dependency Health (`21-dependency-health.md`)
+- [ ] C22 — Security Surface Audit (`22-security-surface-audit.md`)
+- [ ] C23 — Final Reliability Sweep + final verification suite
+- [ ] C-FINAL — every mission `[x]`, full suite green, summary written
+
+## Phase C results log
+
+| Mission | Status | Findings | Fixes | Tests added/changed | Verification |
+| ------- | ------ | -------- | ----- | ------------------- | ------------ |
+| (Phase C baseline) | done | typecheck had 1 error in prior-session WIP test stub (`ProcCtor` typed `params: Record<string, number>` while the new WIP test legitimately passes a string `convolution.irId`) — stub widened to `number | string`, compile-fix only, WIP semantics untouched. FULL suite: **1931 passed / 3 failed / 94 skipped**. Attribution via 6-file stash swap: `ozvena-hardening` pre-delay sweep fails ONLY with WIP applied (passes at HEAD — prior session's incomplete work, left as documented); the 2 `fxeq-performance-gates` failures are contention-flaky perf ratios (morph 2.18× solo-PASS vs 2.4× budget; 2.67–2.84× under suite load — machine-sensitive, both pass solo at HEAD; budget NOT weakened). | test stub widen | — | typecheck ✓; full suite 1931/3/94 (all 3 attributed) |
+| C01 Test Coverage Expansion | done | Risk-mapped 232 src modules × 147 test files: ~60 modules had no direct test import; inspection showed most are incidentally covered (worklet node factories via loader tests, StepGridEditor via ModPanel/EffectRack renders, vendored cores via golden suites) or low-risk data/UI atoms. Two genuine high-risk gaps: **(1) `src/export/video.ts`** — the whole user-facing video-export pipeline had ZERO coverage, incl. the audit-07 watchdog + recorder-onerror fixes that shipped unpinned; **(2) `GhostPreviewPlayer`** — pattern auditioning (dice tray → critical user flow) builds a throwaway doc + private transport, untested. Not pursued (documented): remaining untested UI atoms (Goniometer, SpectrumAnalyzer, LoudnessHistory…) — display-only, low risk; `browser-checks.ts`/`benchmark/stress.ts` — real-browser tooling covered by `test:browser`. | None (production untouched). | NEW `tests/export/video.test.ts` (7: mime walk, happy path w/ frame-before-start + cleanup, hidden-tab watchdog, MediaRecorder-error rejection, abort → AbortError + track release, unsupported-browser throw) + NEW `tests/ghost-preview.test.ts` (5: live-doc immutability, first-window scheduling w/ exact when, stop() kills interval, past-hit skip + loop-wrap re-anchor, kitAssignment patch isolation). Mutation-verified all key pins: watchdog removed → watchdog test fails; onerror swallowed → error test fails; no-op stop() → zombie test fails. | typecheck ✓; prettier ✓; vitest ✓ 49 tests (export/ + ghost-preview + recorder) |
