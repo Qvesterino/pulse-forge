@@ -84,30 +84,30 @@ Prior-session context: working tree carries uncommitted ozvena WIP (6 files) + s
 
 ## Phase C checklist
 
-- [ ] C01 — Test Coverage Expansion (`01-test-coverage-expansion.md`)
-- [ ] C02 — Regression Hunting (`02-regression-hunting.md`)
-- [ ] C03 — Edge Case Mining (`03-edge-case-mining.md`)
-- [ ] C04 — Error Handling Audit (`04-error-handling-audit.md`)
-- [ ] C05 — Error Boundary Hardening (`05-error-boundary-hardening.md`)
-- [ ] C06 — Lifecycle & Resource Audit (`06-lifecycle-resource-audit.md`)
-- [ ] C07 — Persistence Robustness (`07-persistence-robustness.md`)
-- [ ] C08 — State Integrity Audit (`08-state-integrity-audit.md`)
-- [ ] C09 — Async & Race Condition Audit (`09-async-race-condition-audit.md`)
-- [ ] C10 — Build, Type & Lint Hygiene (`10-build-type-lint-hygiene.md`)
-- [ ] C11 — Performance Risk Audit (`11-performance-audit.md`)
-- [ ] C12 — Code Duplication & Maintainability (`12-code-duplication-maintainability-audit.md`)
-- [ ] C13 — Architecture Conformance (`13-architecture-conformance-audit.md`)
-- [ ] C14 — Accessibility & UX Robustness (`14-accessibility-ux-robustness-audit.md`)
-- [ ] C15 — Critical Path Audit (`15-critical-path-audit.md`)
-- [ ] C16 — Recovery Path Audit (`16-recovery-path-audit.md`)
-- [ ] C17 — Cross-Component Contract (`17-cross-component-contract-audit.md`)
-- [ ] C18 — Import / Export Robustness (`18-import-export-robustness.md`)
-- [ ] C19 — Undo / Redo Integrity (`19-undo-redo-integrity.md`)
-- [ ] C20 — Dead / Suspicious Code (`20-dead-suspicious-code-audit.md`)
-- [ ] C21 — Dependency Health (`21-dependency-health.md`)
-- [ ] C22 — Security Surface Audit (`22-security-surface-audit.md`)
-- [ ] C23 — Final Reliability Sweep + final verification suite
-- [ ] C-FINAL — every mission `[x]`, full suite green, summary written
+- [x] C01 — Test Coverage Expansion (`01-test-coverage-expansion.md`)
+- [x] C02 — Regression Hunting (`02-regression-hunting.md`)
+- [x] C03 — Edge Case Mining (`03-edge-case-mining.md`)
+- [x] C04 — Error Handling Audit (`04-error-handling-audit.md`)
+- [x] C05 — Error Boundary Hardening (`05-error-boundary-hardening.md`)
+- [x] C06 — Lifecycle & Resource Audit (`06-lifecycle-resource-audit.md`)
+- [x] C07 — Persistence Robustness (`07-persistence-robustness.md`)
+- [x] C08 — State Integrity Audit (`08-state-integrity-audit.md`)
+- [x] C09 — Async & Race Condition Audit (`09-async-race-condition-audit.md`)
+- [x] C10 — Build, Type & Lint Hygiene (`10-build-type-lint-hygiene.md`)
+- [x] C11 — Performance Risk Audit (`11-performance-audit.md`)
+- [x] C12 — Code Duplication & Maintainability (`12-code-duplication-maintainability-audit.md`)
+- [x] C13 — Architecture Conformance (`13-architecture-conformance-audit.md`)
+- [x] C14 — Accessibility & UX Robustness (`14-accessibility-ux-robustness-audit.md`)
+- [x] C15 — Critical Path Audit (`15-critical-path-audit.md`)
+- [x] C16 — Recovery Path Audit (`16-recovery-path-audit.md`)
+- [x] C17 — Cross-Component Contract (`17-cross-component-contract-audit.md`)
+- [x] C18 — Import / Export Robustness (`18-import-export-robustness.md`)
+- [x] C19 — Undo / Redo Integrity (`19-undo-redo-integrity.md`)
+- [x] C20 — Dead / Suspicious Code (`20-dead-suspicious-code-audit.md`)
+- [x] C21 — Dependency Health (`21-dependency-health.md`)
+- [x] C22 — Security Surface Audit (`22-security-surface-audit.md`)
+- [x] C23 — Final Reliability Sweep + final verification suite
+- [x] C-FINAL — every mission `[x]`, full suite green, summary written
 
 ## Phase C results log
 

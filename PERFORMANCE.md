@@ -6,9 +6,11 @@
 
 ## Executive Summary
 
-Pulse Forge runs entirely on native Web Audio nodes with zero AudioWorklet or WASM code. This document establishes baseline measurements to determine when, if ever, a migration is warranted.
+> **Superseded note (2026-09-08):** the measurements below are a point-in-time baseline from 2026-08-20. Since then the architecture HAS introduced AudioWorklets — core processors (bitcrusher, limiter, sidechain, tape, kwmeter, …) plus three vendored plugin worklets (fxeq, ultina, ozvena) — matching ARCHITECTURE.md §26/§101 Phase 5. WASM remains unused. The "zero AudioWorklet" statements in this baseline describe the past state, not the current one; current per-processor CPU is governed by the budget-gated suites (`performance-gates`, `performance-hardening`, `stress`, per-plugin soak/golden suites).
 
-**Current status: All metrics within healthy ranges. No AudioWorklet/WASM required at this time.**
+Pulse Forge ran entirely on native Web Audio nodes with zero AudioWorklet or WASM code **at baseline time**. This document establishes baseline measurements to determine when, if ever, a migration is warranted.
+
+**Baseline status: All metrics within healthy ranges. No WASM required at this time.**
 
 ---
 

@@ -169,7 +169,11 @@ function Boot() {
     return <div className="boot boot-error">Failed to start: {screen.message}</div>;
   }
   if (screen.kind === "browser") {
-    return <ProjectBrowser core={screen.core} onOpen={(doc) => openDoc(screen.core, doc)} />;
+    return (
+      <ErrorBoundary>
+        <ProjectBrowser core={screen.core} onOpen={(doc) => openDoc(screen.core, doc)} />
+      </ErrorBoundary>
+    );
   }
   return (
     <ErrorBoundary onCrashSave={() => screen.kind === "studio" && void screen.services.flushSave()}>

@@ -65,4 +65,33 @@ describe("ErrorBoundary", () => {
     expect(screen.getByRole("button", { name: /Reload/ })).toBeInTheDocument();
     spy.mockRestore();
   });
+
+  it("panel mode: a plain crash offers only Retry", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    render(
+      <ErrorBoundary panel="mixer">
+        <BrokenComponent />
+      </ErrorBoundary>,
+    );
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reload app" })).toBeNull();
+    spy.mockRestore();
+  });
+
+  it("panel mode: a stale-deploy chunk failure offers Reload app (retry alone cannot recover)", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    function StaleChunk(): React.ReactElement {
+      throw new Error("Failed to fetch dynamically imported module: /assets/Mixer-abc123.js");
+    }
+    render(
+      <ErrorBoundary panel="mixer">
+        <StaleChunk />
+      </ErrorBoundary>,
+    );
+    expect(screen.getByText(/app was updated since this tab loaded/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reload app" })).toBeInTheDocument();
+    // Retry stays available for transient network failures.
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    spy.mockRestore();
+  });
 });

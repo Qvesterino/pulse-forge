@@ -33,6 +33,7 @@ import {
   clearSteps,
   consolidateTimeRange,
   deleteArrangementClip,
+  deleteAudioClip,
   deleteNote,
   deleteNotes,
   duplicatePattern,
@@ -389,8 +390,14 @@ export function App({
             event?.preventDefault();
             let newDoc = doc;
             const oldDoc = doc;
+            // Same routing as the context menu's Delete: a clip selection can
+            // mix arrangement clips and audio clips — delete both kinds in one
+            // gesture.
+            const arrangementIds = new Set(doc.arrangement.clips.map((c) => c.id));
+            const audioIds = new Set((doc.arrangement.audioClips ?? []).map((c) => c.id));
             for (const clipId of selection.clipIds) {
-              newDoc = deleteArrangementClip(newDoc, clipId).execute(newDoc);
+              if (arrangementIds.has(clipId)) newDoc = deleteArrangementClip(newDoc, clipId).execute(newDoc);
+              else if (audioIds.has(clipId)) newDoc = deleteAudioClip(newDoc, clipId).execute(newDoc);
             }
             services.store.execute({
               type: "deleteClips",

@@ -49,7 +49,25 @@ describe("ContextMenu", () => {
     expect(command).toBeDefined();
     const deleted = command.execute(project);
     expect(deleted.arrangement.clips).not.toContainEqual(arrangementClip);
-    expect(deleted.arrangement.audioClips).not.toContainEqual(audioClip);
+    expect(deleted.arrangement.audioClips).not.toContain(audioClip);
+    // One gesture = one undo entry: a single undo returns BOTH clip kinds.
+    expect(command.undo(deleted)).toEqual(project);
+    rendered.unmount();
+  });
+
+  it("delete with stale clip ids executes nothing", () => {
+    const services = mockServices();
+    const selection = new SelectionStore();
+    selection.setClips(["ghost-clip"]);
+    const rendered = renderWithContext(
+      <SelectionContext.Provider value={selection}>
+        <ContextMenu state={{ x: 0, y: 0, context: "1 clips" }} onClose={() => {}} />
+      </SelectionContext.Provider>,
+      { services },
+    );
+
+    screen.getByRole("menuitem", { name: "Delete" }).click();
+    expect((services.store.execute as any).mock.calls).toHaveLength(0);
     rendered.unmount();
   });
 

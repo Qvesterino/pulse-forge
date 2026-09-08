@@ -107,4 +107,54 @@ describe("UltinaPanel — user presets", () => {
     );
     vi.restoreAllMocks();
   });
+
+  it("a failed preset save surfaces an error instead of an unhandled rejection", async () => {
+    const user = userEvent.setup();
+    renderPanel({ "comp.thresholdDb": -20 });
+    const saveSpy = vi
+      .spyOn(UltinaPresetRepository.prototype, "save")
+      .mockRejectedValue(new Error("QuotaExceededError: storage full"));
+
+    vi.spyOn(window, "prompt").mockReturnValue("Big Preset");
+    // The click handler is async and self-contained: an unhandled rejection
+    // here would fail the test run; the panel must own the failure instead.
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: "Save user preset" }));
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toContain("storage full");
+    });
+    expect(saveSpy).toHaveBeenCalled();
+    vi.restoreAllMocks();
+  });
+
+  it("a failed preset delete surfaces an error and keeps the preset selected", async () => {
+    const user = userEvent.setup();
+    const repo = new UltinaPresetRepository();
+    await repo.save({
+      id: "up-keep",
+      name: "Indestructible",
+      params: { "global.mix": 40 },
+      createdAt: new Date().toISOString(),
+      schemaVersion: 1,
+    });
+    renderPanel({});
+    await waitFor(() => {
+      expect(screen.getByLabelText("Ultina preset").textContent).toContain("Indestructible");
+    });
+    const picker = screen.getByLabelText("Ultina preset") as HTMLSelectElement;
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    await act(async () => {
+      await user.selectOptions(picker, "up-keep");
+    });
+    const removeSpy = vi.spyOn(UltinaPresetRepository.prototype, "remove").mockRejectedValue(new Error("db closed"));
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: "Delete user preset" }));
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toContain("db closed");
+    });
+    expect(removeSpy).toHaveBeenCalled();
+    vi.restoreAllMocks();
+  });
 });

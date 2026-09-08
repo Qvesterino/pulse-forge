@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ALL_PARAMS, tryGetParamDef, clampParam as clampUltinaParam } from "../effects/ultina-core/contracts/parameterSchema";
+import {
+  ALL_PARAMS,
+  tryGetParamDef,
+  clampParam as clampUltinaParam,
+} from "../effects/ultina-core/contracts/parameterSchema";
 import { DEFAULT_MODULE_ORDER } from "../effects/ultina-core/contracts/state";
 import { FACTORY_PRESETS } from "../effects/ultina-core/presets/factoryPresets";
 import {
@@ -109,6 +113,7 @@ export function UltinaPanel({
   const [selectedEqBand, setSelectedEqBand] = useState(0);
   const [assistBusy, setAssistBusy] = useState<string | null>(null);
   const [assistError, setAssistError] = useState<string | null>(null);
+  const [presetError, setPresetError] = useState<string | null>(null);
   const [assistSummary, setAssistSummary] = useState<string[] | null>(null);
   const [character, setCharacter] = useState<AssistantCharacter>("punchy");
   const [intensity, setIntensity] = useState<AssistantIntensity>("balanced");
@@ -865,15 +870,21 @@ export function UltinaPanel({
             if (!name) return;
             const existing = userPresets.find((p) => p.name === name);
             if (existing && !window.confirm(`Preset "${name}" already exists — overwrite it?`)) return;
-            const repo = new UltinaPresetRepository();
-            await repo.save({
-              id: existing?.id ?? `ultina-preset-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-              name,
-              params: { ...params },
-              createdAt: new Date().toISOString(),
-              schemaVersion: ULTINA_PRESET_SCHEMA_VERSION,
-            });
-            setUserPresets(await repo.list());
+            try {
+              const repo = new UltinaPresetRepository();
+              await repo.save({
+                id: existing?.id ?? `ultina-preset-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                name,
+                params: { ...params },
+                createdAt: new Date().toISOString(),
+                schemaVersion: ULTINA_PRESET_SCHEMA_VERSION,
+              });
+              setUserPresets(await repo.list());
+              setPresetError(null);
+            } catch (err) {
+              console.error("[UltinaPanel] preset save failed:", err);
+              setPresetError(err instanceof Error ? err.message : "Preset storage failed");
+            }
           }}
         >
           SAVE
@@ -889,9 +900,15 @@ export function UltinaPanel({
                 if (!current) return;
                 const name = (window.prompt("Rename preset:", current.name) ?? "").trim();
                 if (!name || name === current.name) return;
-                const repo = new UltinaPresetRepository();
-                await repo.save({ ...current, name });
-                setUserPresets(await repo.list());
+                try {
+                  const repo = new UltinaPresetRepository();
+                  await repo.save({ ...current, name });
+                  setUserPresets(await repo.list());
+                  setPresetError(null);
+                } catch (err) {
+                  console.error("[UltinaPanel] preset rename failed:", err);
+                  setPresetError(err instanceof Error ? err.message : "Preset storage failed");
+                }
               }}
             >
               RENAME
@@ -904,15 +921,26 @@ export function UltinaPanel({
                 const current = userPresets.find((p) => p.id === selectedUserPresetId);
                 if (!current) return;
                 if (!window.confirm(`Delete preset "${current.name}"?`)) return;
-                const repo = new UltinaPresetRepository();
-                await repo.remove(current.id);
-                setSelectedUserPresetId(null);
-                setUserPresets(await repo.list());
+                try {
+                  const repo = new UltinaPresetRepository();
+                  await repo.remove(current.id);
+                  setSelectedUserPresetId(null);
+                  setUserPresets(await repo.list());
+                  setPresetError(null);
+                } catch (err) {
+                  console.error("[UltinaPanel] preset delete failed:", err);
+                  setPresetError(err instanceof Error ? err.message : "Preset storage failed");
+                }
               }}
             >
               DEL
             </button>
           </>
+        )}
+        {presetError && (
+          <span className="ultina-preset-error" role="alert">
+            {presetError}
+          </span>
         )}
       </div>
 

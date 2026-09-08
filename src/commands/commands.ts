@@ -44,6 +44,8 @@ import {
   createPatternForDoc,
   drumTracksOf,
   instrumentTracksOf,
+  MAX_BPM,
+  MIN_BPM,
   normalizeProject,
   patternLetter,
   sceneRoleOf,
@@ -156,7 +158,7 @@ export function setProjectName(doc: ProjectDocument, name: string): Command {
 
 export function setBpm(doc: ProjectDocument, bpm: number): Command {
   const prev = doc.bpm;
-  const value = clamp(bpm, 20, 300);
+  const value = clamp(bpm, MIN_BPM, MAX_BPM);
   return {
     type: "setBpm",
     label: `Set BPM to ${value}`,
@@ -2859,7 +2861,7 @@ export function installPackSketch(doc: ProjectDocument, trackId: string, sketch:
 
   const next: ProjectDocument = {
     ...doc,
-    bpm: typeof sketch.bpm === "number" ? Math.min(300, Math.max(20, Math.round(sketch.bpm))) : doc.bpm,
+    bpm: typeof sketch.bpm === "number" ? Math.min(MAX_BPM, Math.max(MIN_BPM, Math.round(sketch.bpm))) : doc.bpm,
     patterns: [...doc.patterns, ...patterns],
     scenes: [...doc.scenes, ...scenes],
     arrangement: clips.length ? { ...doc.arrangement, clips: [...doc.arrangement.clips, ...clips] } : doc.arrangement,
