@@ -141,7 +141,7 @@ Najväčšia zostávajúca audio-korektnosť položka: live prehodenie scene BPM
 
 | Dátum | Prehliadač | Verzia | Výsledok | Poznámky |
 | ----- | ---------- | ------ | -------- | -------- |
-| — | — | — | — | — |
+| 2026-09-08 | Chromium (headless, Playwright) | commit `693d82a` | **197/197 PASS**, 0 console/page errors | boot/collab/embed/share/touch/AudioWorklet DSP (fxeq latency+PDC+metering+CPU)/offline generation/plugin workflow (add→bypass→undo→macro→play); Firefox/Safari/iOS zostáva manuálne |
 
 ---
 
