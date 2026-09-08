@@ -5386,6 +5386,12 @@ export function applyFxEqPreset(
     nextParams[id] = Math.max(def.minValue, Math.min(def.maxValue, value));
   }
   const previousParams = { ...target.params };
+  // Undo must restore a CANONICAL full map, not the raw partial previous
+  // one: the engine's syncFxParams only pushes doc-present keys, so a
+  // shrunken undo map would leave every preset-written deep param stuck in
+  // the DSP at its preset value while the document claims the default.
+  const undoSchema = buildFxEqSchema(Math.round(previousParams.bandCount ?? 6));
+  const undoParams: Record<string, number> = { ...undoSchema.defaultParams, ...previousParams };
   const apply = (d: ProjectDocument, values: Record<string, number>): ProjectDocument =>
     withTrackEffects(d, trackId, (effects) =>
       effects.map((f) => (f.id === fxId ? { ...f, params: { ...values } } : f)),
@@ -5394,7 +5400,7 @@ export function applyFxEqPreset(
     type: "applyFxEqPreset",
     label: `FXEQ preset ${presetName}`,
     execute: (d) => apply(d, nextParams),
-    undo: (d) => apply(d, previousParams),
+    undo: (d) => apply(d, undoParams),
   };
 }
 
@@ -5447,6 +5453,11 @@ export function applyUltinaPreset(
     nextParams[id] = clampUltinaParam(id, value);
   }
   const previousParams = { ...target.params };
+  // Undo must restore a CANONICAL full map: the engine syncs only doc-
+  // present keys to the DSP, so restoring the raw (possibly rack-only)
+  // previous map would leave every preset deep param stuck in the worklet
+  // while the document shows defaults.
+  const undoParams: Record<string, number> = { ...buildUltinaDefaults(), ...previousParams };
   const apply = (d: ProjectDocument, values: Record<string, number>): ProjectDocument =>
     withTrackEffects(d, trackId, (effects) =>
       effects.map((f) => (f.id === fxId ? { ...f, params: { ...values } } : f)),
@@ -5455,7 +5466,7 @@ export function applyUltinaPreset(
     type: "applyUltinaPreset",
     label: `Ultina preset ${presetName}`,
     execute: (d) => apply(d, nextParams),
-    undo: (d) => apply(d, previousParams),
+    undo: (d) => apply(d, undoParams),
   };
 }
 
@@ -5532,6 +5543,10 @@ export function loadEffectAbSlot(doc: ProjectDocument, trackId: string, fxId: st
     data: { ...state!.data, active: slot },
   };
   const previousParams = { ...target.params };
+  // Canonical undo (see applyUltinaPreset): overlay the previous partial
+  // map on plugin defaults so every execute-written deep key reverts in
+  // the DSP, not just the ones the previous doc map happened to contain.
+  const undoParams = normalizePluginParams(target.type, previousParams) ?? previousParams;
   const previousState = target.deviceState ?? null;
   const apply = (d: ProjectDocument): ProjectDocument =>
     withTrackEffects(d, trackId, (effects) =>
@@ -5539,9 +5554,7 @@ export function loadEffectAbSlot(doc: ProjectDocument, trackId: string, fxId: st
     );
   const restore = (d: ProjectDocument): ProjectDocument =>
     withTrackEffects(d, trackId, (effects) =>
-      effects.map((f) =>
-        f.id === fxId ? { ...f, params: previousParams, deviceState: previousState ?? undefined } : f,
-      ),
+      effects.map((f) => (f.id === fxId ? { ...f, params: undoParams, deviceState: previousState ?? undefined } : f)),
     );
   return {
     type: "loadEffectAbSlot",
@@ -5573,6 +5586,9 @@ export function loadUltinaAbSlot(doc: ProjectDocument, trackId: string, fxId: st
     data: { ...state!.data, active: slot },
   };
   const previousParams = { ...target.params };
+  // Canonical undo (see applyUltinaPreset): full schema defaults + previous
+  // partial map, so slot-written deep params revert in the DSP on Ctrl+Z.
+  const undoParams: Record<string, number> = { ...buildUltinaDefaults(), ...previousParams };
   const previousState = target.deviceState ?? null;
   const apply = (d: ProjectDocument): ProjectDocument =>
     withTrackEffects(d, trackId, (effects) =>
@@ -5580,9 +5596,7 @@ export function loadUltinaAbSlot(doc: ProjectDocument, trackId: string, fxId: st
     );
   const restore = (d: ProjectDocument): ProjectDocument =>
     withTrackEffects(d, trackId, (effects) =>
-      effects.map((f) =>
-        f.id === fxId ? { ...f, params: previousParams, deviceState: previousState ?? undefined } : f,
-      ),
+      effects.map((f) => (f.id === fxId ? { ...f, params: undoParams, deviceState: previousState ?? undefined } : f)),
     );
   return {
     type: "loadUltinaAbSlot",
@@ -5617,6 +5631,10 @@ export function applyUltinaProposal(
     nextParams[c.parameterId] = clampUltinaParam(c.parameterId, c.value);
   }
   const previousParams = { ...target.params };
+  // Canonical undo: the proposal ADDS deep keys the doc never had, so the
+  // raw previous map would strand those values in the DSP after Ctrl+Z —
+  // overlay defaults so every touched key reverts visibly.
+  const undoParams: Record<string, number> = { ...buildUltinaDefaults(), ...previousParams };
   const apply = (d: ProjectDocument, values: Record<string, number>): ProjectDocument =>
     withTrackEffects(d, trackId, (effects) =>
       effects.map((f) => (f.id === fxId ? { ...f, params: { ...values } } : f)),
@@ -5625,7 +5643,7 @@ export function applyUltinaProposal(
     type: "applyUltinaProposal",
     label,
     execute: (d) => apply(d, nextParams),
-    undo: (d) => apply(d, previousParams),
+    undo: (d) => apply(d, undoParams),
   };
 }
 
@@ -5642,6 +5660,9 @@ export function applyOzvenaStatePatch(
   const normalized = normalizePluginParams("ozvena", { ...target.params, ...flatParams });
   const nextParams = normalized ?? { ...target.params };
   const previousParams = { ...target.params };
+  // Canonical undo (see applyUltinaPreset): patch-written deep paths must
+  // revert in the DSP, which only sees doc-present keys.
+  const undoParams = normalizePluginParams("ozvena", previousParams) ?? previousParams;
   const apply = (d: ProjectDocument, values: Record<string, number>): ProjectDocument =>
     withTrackEffects(d, trackId, (effects) =>
       effects.map((f) => (f.id === fxId ? { ...f, params: { ...values } } : f)),
@@ -5650,6 +5671,6 @@ export function applyOzvenaStatePatch(
     type: "applyOzvenaStatePatch",
     label,
     execute: (d) => apply(d, nextParams),
-    undo: (d) => apply(d, previousParams),
+    undo: (d) => apply(d, undoParams),
   };
 }

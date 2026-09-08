@@ -768,11 +768,20 @@ export function createOzvenaProcessor(): OzvenaProcessor {
       // prepare() keeps some module state when buffers are already sized
       // — clear explicitly (mirrors the native reset).
       preDelay.reset();
+      smoother.reset();
       reflections.reset();
       plateChamber.reset();
       hall.reset();
       convolution.reset();
       safetyLimiter.reset();
+      // Same "freshly prepared" contract for the scalar states prepare()
+      // does not touch: a duck gain latched low, a gate envelope collapsed
+      // by silence, or a lingering transient-shaper reduction would all
+      // survive reset() and shape the post-reset tail differently than a
+      // brand-new instance. (Reconciled from Pulse Forge hardening audit,
+      // 2026-09-07.)
+      duckController.reset();
+      gateGain = 1.0;
     },
 
     dispose() {

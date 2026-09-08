@@ -976,10 +976,13 @@ describe("applyFxEqPreset / setFxEqParam", () => {
     expect(after.params["band2.satDriveDb"]).toBe(12);
     // Schema defaults filled in for everything else (sat disabled on band 3).
     expect(after.params["band3.satEnabled"]).toBe(0);
-    // Undo restores the pre-preset params exactly.
+    // Undo restores every pre-preset value on a CANONICAL full map (schema
+    // defaults + previous values). A raw partial undo map strands preset-
+    // written deep params in the DSP: the engine syncs only doc-present keys.
     const undone = cmd.undo(next);
     const before = undone.tracks.find((t) => t.id === inst.id)!.effects.find((f) => f.type === "fxeq")!;
-    expect(before.params).toEqual(fx.params);
+    expect(before.params).toMatchObject(fx.params);
+    expect(before.params["band2.satDriveDb"]).toBe(6);
   });
 
   it("setFxEqParam accepts dotted band ids with schema clamping", () => {
@@ -1028,10 +1031,15 @@ describe("applyUltinaPreset / setUltinaParam", () => {
     }
     // Defaults filled in for everything else (e.g. globals).
     expect(after.params["global.inputGainDb"]).toBe(0);
-    // Undo restores the exact pre-preset params.
+    // Undo restores the pre-preset values on a CANONICAL full map — a raw
+    // partial undo would leave preset deep params stuck in the DSP (the
+    // engine pushes only doc-present keys).
     const undone = cmd.undo(next);
     const before = undone.tracks.find((t) => t.id === inst.id)!.effects.find((f) => f.type === "ultina")!;
-    expect(before.params).toEqual(fx.params);
+    expect(before.params).toMatchObject(fx.params);
+    for (const id of Object.keys(after.params)) {
+      expect(before.params[id]).toBeDefined();
+    }
   });
 });
 
@@ -1062,10 +1070,13 @@ describe("applyUltinaProposal (mix assistant)", () => {
     expect(after.params["gate.enabled"]).toBe(0);
     expect(after.params["comp.thresholdDb"]).toBe(-18);
     expect(after.params["global.inputGainDb"]).toBe(3);
-    // Undo restores the exact pre-proposal params.
+    // Undo restores the pre-proposal values on a CANONICAL full map — the
+    // proposal ADDS deep keys, so a raw partial undo would leave them at
+    // proposal values in the DSP (engine syncs only doc-present keys).
     const undone = cmd.undo(next);
     const before = undone.tracks.find((t) => t.id === inst.id)!.effects.find((f) => f.type === "ultina")!;
-    expect(before.params).toEqual(fx.params);
+    expect(before.params).toMatchObject(fx.params);
+    expect(before.params["comp.thresholdDb"]).toBe(-20); // schema default, not absent
   });
 });
 

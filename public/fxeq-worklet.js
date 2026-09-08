@@ -965,18 +965,29 @@
         const wet = mix01;
         const dry = 1 - wet;
         const factor = pickOversampleFactor(quality, mode, driveDb);
+        if (factor !== lastFactor) {
+          const staleUp = upDelayByFactor.get(factor);
+          const staleDown = downDelayByFactor.get(factor);
+          if (staleUp) for (const d of staleUp) d.fill(0);
+          if (staleDown) for (const d of staleDown) d.fill(0);
+        }
         lastFactor = factor;
         if (factor === 1) {
           for (let c = 0; c < channels.length; c++) {
             const buf = channels[c];
             const st = satState[c] ?? (satState[c] = createSaturationState());
+            const dryRing = dryDelay[c] ?? (dryDelay[c] = new Float32Array(DRY_DELAY));
+            let ringPos = dryPos[c] ?? 0;
             for (let i = 0; i < frameCount; i++) {
               const x = buf[i];
+              dryRing[ringPos] = x;
+              ringPos = (ringPos + 1) % DRY_DELAY;
               const driven = x * driveLinear;
               let shaped = applyShapeEx(mode, driven, st, sampleRate2, driveLinear) * outputLinear;
               if (modeNeedsDCBlock(mode)) shaped = dcBlockSaturation(shaped, st, sampleRate2);
               buf[i] = x * dry + shaped * wet;
             }
+            dryPos[c] = ringPos;
           }
           return;
         }
@@ -1043,6 +1054,12 @@
         const upLatency = (set.upTaps - 1) / (2 * lastFactor);
         const downLatency = (set.downTaps - 1) / (2 * lastFactor);
         return Math.round(upLatency + downLatency);
+      },
+      clearDelayHistory() {
+        for (const delays of upDelayByFactor.values()) for (const d of delays) d.fill(0);
+        for (const delays of downDelayByFactor.values()) for (const d of delays) d.fill(0);
+        for (const d of dryDelay) d.fill(0);
+        for (let c = 0; c < dryPos.length; c++) dryPos[c] = 0;
       },
       reset() {
         for (const delays of upDelayByFactor.values()) for (const d of delays) d.fill(0);
@@ -1185,6 +1202,9 @@
         return wrapper.getLatencySamples();
       },
       setParameter(id, value) {
+        if (id === "enabled" && store.get("enabled") < 0.5 && value >= 0.5) {
+          wrapper.clearDelayHistory();
+        }
         store.set(id, value);
       },
       getParameter(id) {
@@ -3806,6 +3826,7 @@
     let bandDelayPos = [];
     let dryDelayRing = [];
     let dryDelayPos = [];
+    let ringsLive = false;
     function allocBuffers(maxBlockSize2) {
       dryBuf = [];
       wetBuf = [];
@@ -3984,6 +4005,7 @@
           }
         }
         const alignLat = maxBandLatency();
+        if (alignLat > 0) ringsLive = true;
         for (let c = 0; c < channelCount; c++) wetBuf[c].fill(0, 0, frameCount);
         for (let b = 0; b < bandCount; b++) {
           const bandChannels = crossover.getBand(b);
@@ -4003,16 +4025,24 @@
           for (let c = 0; c < channelCount; c++) {
             const dst = wetBuf[c];
             const src = scratch[c];
-            if (dly === 0) {
+            if (dly === 0 && !ringsLive) {
               for (let i = 0; i < frameCount; i++) dst[i] += src[i];
             } else {
               const ring = bandDelayRing[b][c];
               let pos = bandDelayPos[b][c];
-              for (let i = 0; i < frameCount; i++) {
-                const delayed = ring[(pos - dly + ALIGN_MAX) % ALIGN_MAX];
-                ring[pos] = src[i];
-                pos = (pos + 1) % ALIGN_MAX;
-                dst[i] += delayed;
+              if (dly === 0) {
+                for (let i = 0; i < frameCount; i++) {
+                  ring[pos] = src[i];
+                  pos = (pos + 1) % ALIGN_MAX;
+                  dst[i] += src[i];
+                }
+              } else {
+                for (let i = 0; i < frameCount; i++) {
+                  const delayed = ring[(pos - dly + ALIGN_MAX) % ALIGN_MAX];
+                  ring[pos] = src[i];
+                  pos = (pos + 1) % ALIGN_MAX;
+                  dst[i] += delayed;
+                }
               }
               bandDelayPos[b][c] = pos;
             }
@@ -4025,18 +4055,26 @@
           const out = channels[c];
           const wet = wetBuf[c];
           const dry = dryBuf[c];
-          if (alignLat === 0) {
+          if (alignLat === 0 && !ringsLive) {
             for (let i = 0; i < frameCount; i++) {
               out[i] = dry[i] * dryGain + wet[i] * wetGain;
             }
           } else {
             const ring = dryDelayRing[c];
             let pos = dryDelayPos[c];
-            for (let i = 0; i < frameCount; i++) {
-              const delayedDry = ring[(pos - alignLat + ALIGN_MAX) % ALIGN_MAX];
-              ring[pos] = dry[i];
-              pos = (pos + 1) % ALIGN_MAX;
-              out[i] = delayedDry * dryGain + wet[i] * wetGain;
+            if (alignLat === 0) {
+              for (let i = 0; i < frameCount; i++) {
+                ring[pos] = dry[i];
+                pos = (pos + 1) % ALIGN_MAX;
+                out[i] = dry[i] * dryGain + wet[i] * wetGain;
+              }
+            } else {
+              for (let i = 0; i < frameCount; i++) {
+                const delayedDry = ring[(pos - alignLat + ALIGN_MAX) % ALIGN_MAX];
+                ring[pos] = dry[i];
+                pos = (pos + 1) % ALIGN_MAX;
+                out[i] = delayedDry * dryGain + wet[i] * wetGain;
+              }
             }
             dryDelayPos[c] = pos;
           }
@@ -4063,6 +4101,7 @@
         dcPrevIn.fill(0);
         dcPrevOut.fill(0);
         clearAlignRings();
+        ringsLive = false;
       },
       getLatencySamples() {
         return maxBandLatency() + limiter.getLatencySamples();

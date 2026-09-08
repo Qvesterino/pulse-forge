@@ -7519,9 +7519,13 @@
         } else if (msg.type === "param") {
           if (this.pendingParams.length > 0) {
             const now = currentTime;
-            this.pendingParams = this.pendingParams.filter(
-              (ev) => ev.id !== msg.id || ev.when <= now
-            );
+            const q = this.pendingParams;
+            let w = 0;
+            for (let i = 0; i < q.length; i++) {
+              const ev = q[i];
+              if (ev.id !== msg.id || ev.when <= now) q[w++] = ev;
+            }
+            q.length = w;
           }
           this.proc.setParameter(msg.id, msg.value);
           if (typeof msg.id === "string" && msg.id.endsWith(".enabled")) {

@@ -65,6 +65,14 @@ export interface OversampledSaturation {
   ): void;
   getLatencySamples(): number;
   reset(): void;
+  /**
+   * Zero the FIR delay lines and the dry-alignment ring WITHOUT touching the
+   * waveshaper state or the reported latency. Called when the module is
+   * re-enabled after a bypassed period: process() did not run while
+   * bypassed, so the FIR history and dry ring hold pre-bypass audio that
+   * would otherwise replay as a stale burst on the first active block.
+   */
+  clearDelayHistory(): void;
 }
 
 export function createOversampledSaturation(): OversampledSaturation {
@@ -175,29 +183,50 @@ export function createOversampledSaturation(): OversampledSaturation {
       prepared = true;
     },
 
-process(channels, frameCount, mode, driveDb, mix01, outputLinear, quality) {
-    if (!prepared || frameCount <= 0) return;
-    const driveLinear = Math.pow(10, driveDb / 20);
-    const wet = mix01;
-    const dry = 1 - wet;
+    process(channels, frameCount, mode, driveDb, mix01, outputLinear, quality) {
+      if (!prepared || frameCount <= 0) return;
+      const driveLinear = Math.pow(10, driveDb / 20);
+      const wet = mix01;
+      const dry = 1 - wet;
 
-    // Audit M1: switching quality/drive across an oversampling threshold
-    // only flips to a pre-built filter set — no kernel design, no buffer
-    // reallocation on the audio thread.
-    const factor = pickOversampleFactor(quality, mode, driveDb);
-    lastFactor = factor;
+      // Audit M1: switching quality/drive across an oversampling threshold
+      // only flips to a pre-built filter set — no kernel design, no buffer
+      // reallocation on the audio thread. The NEW factor's FIR delay lines
+      // are zeroed on the switch: they hold history from the previous
+      // period at that factor (possibly long ago under drive automation),
+      // which would replay as a stale burst instead of filtering live
+      // audio. The dry ring needs no clearing — it is clocked every block
+      // while the module is enabled (both factor paths).
+      const factor = pickOversampleFactor(quality, mode, driveDb);
+      if (factor !== lastFactor) {
+        const staleUp = upDelayByFactor.get(factor);
+        const staleDown = downDelayByFactor.get(factor);
+        if (staleUp) for (const d of staleUp) d.fill(0);
+        if (staleDown) for (const d of staleDown) d.fill(0);
+      }
+      lastFactor = factor;
 
       if (factor === 1) {
         for (let c = 0; c < channels.length; c++) {
           const buf = channels[c];
           const st = satState[c] ?? (satState[c] = createSaturationState());
+          // Clock the dry-alignment ring even at 1× so it holds live dry
+          // history: drive automation crossing the oversample threshold
+          // flips the factor 1↔2+ mid-stream, and the oversampled path's
+          // delayed dry read would otherwise replay content from the
+          // previous oversampled period as a stale burst.
+          const dryRing = dryDelay[c] ?? (dryDelay[c] = new Float32Array(DRY_DELAY));
+          let ringPos = dryPos[c] ?? 0;
           for (let i = 0; i < frameCount; i++) {
             const x = buf[i];
+            dryRing[ringPos] = x;
+            ringPos = (ringPos + 1) % DRY_DELAY;
             const driven = x * driveLinear;
             let shaped = applyShapeEx(mode, driven, st, sampleRate, driveLinear) * outputLinear;
             if (modeNeedsDCBlock(mode)) shaped = dcBlockSaturation(shaped, st, sampleRate);
             buf[i] = x * dry + shaped * wet;
           }
+          dryPos[c] = ringPos;
         }
         return;
       }
@@ -299,6 +328,13 @@ process(channels, frameCount, mode, driveDb, mix01, outputLinear, quality) {
       const upLatency = (set.upTaps - 1) / (2 * lastFactor);
       const downLatency = (set.downTaps - 1) / (2 * lastFactor);
       return Math.round(upLatency + downLatency);
+    },
+
+    clearDelayHistory() {
+      for (const delays of upDelayByFactor.values()) for (const d of delays) d.fill(0);
+      for (const delays of downDelayByFactor.values()) for (const d of delays) d.fill(0);
+      for (const d of dryDelay) d.fill(0);
+      for (let c = 0; c < dryPos.length; c++) dryPos[c] = 0;
     },
 
     reset() {

@@ -192,6 +192,13 @@ export function createFxEqProcessor(params?: Record<string, number>): FxEqProces
   let bandDelayPos: number[][] = [];
   let dryDelayRing: Float32Array[] = [];
   let dryDelayPos: number[] = [];
+  // Once ANY latency has been active mid-stream, the alignment rings must
+  // keep clocking through zero-latency periods too: a later 0→8 transition
+  // (saturation enable toggle, drive crossing the oversample threshold)
+  // would otherwise replay the previous latency period's ring content as a
+  // stale audio burst. Cleared on prepare/reset — a fresh processor's
+  // zeroed rings behave exactly like the old startup path (golden parity).
+  let ringsLive = false;
 
   function allocBuffers(maxBlockSize: number): void {
     dryBuf = [];
@@ -434,6 +441,7 @@ export function createFxEqProcessor(params?: Record<string, number>): FxEqProces
       // band latency so a delay-carrying band (oversampled saturation)
       // no longer combs against zero-latency siblings (audit C2).
       const alignLat = maxBandLatency();
+      if (alignLat > 0) ringsLive = true;
       for (let c = 0; c < channelCount; c++) wetBuf[c].fill(0, 0, frameCount);
       for (let b = 0; b < bandCount; b++) {
         const bandChannels = crossover.getBand(b);
@@ -463,16 +471,29 @@ export function createFxEqProcessor(params?: Record<string, number>): FxEqProces
         for (let c = 0; c < channelCount; c++) {
           const dst = wetBuf[c];
           const src = scratch[c];
-          if (dly === 0) {
+          // While a latency period is (or has been) live, the ring is
+          // clocked EVERY block — even at dly === 0 — so it always holds
+          // the band's live 8-sample history for the next 0→8 transition.
+          // Before the first latency period (ringsLive false) the direct
+          // path is bit-identical to the old behaviour.
+          if (dly === 0 && !ringsLive) {
             for (let i = 0; i < frameCount; i++) dst[i] += src[i];
           } else {
             const ring = bandDelayRing[b][c];
             let pos = bandDelayPos[b][c];
-            for (let i = 0; i < frameCount; i++) {
-              const delayed = ring[(pos - dly + ALIGN_MAX) % ALIGN_MAX];
-              ring[pos] = src[i];
-              pos = (pos + 1) % ALIGN_MAX;
-              dst[i] += delayed;
+            if (dly === 0) {
+              for (let i = 0; i < frameCount; i++) {
+                ring[pos] = src[i];
+                pos = (pos + 1) % ALIGN_MAX;
+                dst[i] += src[i];
+              }
+            } else {
+              for (let i = 0; i < frameCount; i++) {
+                const delayed = ring[(pos - dly + ALIGN_MAX) % ALIGN_MAX];
+                ring[pos] = src[i];
+                pos = (pos + 1) % ALIGN_MAX;
+                dst[i] += delayed;
+              }
             }
             bandDelayPos[b][c] = pos;
           }
@@ -489,18 +510,29 @@ export function createFxEqProcessor(params?: Record<string, number>): FxEqProces
         const out = channels[c];
         const wet = wetBuf[c];
         const dry = dryBuf[c];
-        if (alignLat === 0) {
+        // Same ringsLive rule as the band rings: the dry ring keeps live
+        // history through zero-latency periods once one has been live, so
+        // the delayed dry read never replays the previous period's content.
+        if (alignLat === 0 && !ringsLive) {
           for (let i = 0; i < frameCount; i++) {
             out[i] = dry[i] * dryGain + wet[i] * wetGain;
           }
         } else {
           const ring = dryDelayRing[c];
           let pos = dryDelayPos[c];
-          for (let i = 0; i < frameCount; i++) {
-            const delayedDry = ring[(pos - alignLat + ALIGN_MAX) % ALIGN_MAX];
-            ring[pos] = dry[i];
-            pos = (pos + 1) % ALIGN_MAX;
-            out[i] = delayedDry * dryGain + wet[i] * wetGain;
+          if (alignLat === 0) {
+            for (let i = 0; i < frameCount; i++) {
+              ring[pos] = dry[i];
+              pos = (pos + 1) % ALIGN_MAX;
+              out[i] = dry[i] * dryGain + wet[i] * wetGain;
+            }
+          } else {
+            for (let i = 0; i < frameCount; i++) {
+              const delayedDry = ring[(pos - alignLat + ALIGN_MAX) % ALIGN_MAX];
+              ring[pos] = dry[i];
+              pos = (pos + 1) % ALIGN_MAX;
+              out[i] = delayedDry * dryGain + wet[i] * wetGain;
+            }
           }
           dryDelayPos[c] = pos;
         }
@@ -534,6 +566,7 @@ export function createFxEqProcessor(params?: Record<string, number>): FxEqProces
       dcPrevIn.fill(0);
       dcPrevOut.fill(0);
       clearAlignRings();
+      ringsLive = false;
     },
 
     getLatencySamples() {

@@ -629,6 +629,28 @@ export function createPlateChamberEngine(): PlateChamberEngine {
       // the output wide.
       const width = clamp(params.stereoWidth, 0, 1);
 
+      // Hermite read at a given line length (used for the new length
+      // and, during a length crossfade, the previous length too). Hoisted
+      // out of the per-sample loop — mirrors hallEngine: defining the
+      // closure inside the sample/channel loops allocated a fresh function
+      // object 2×frameCount times per block on the audio thread.
+      const readTap = (buf: Float32Array, w: number, baseLen: number, modOffset: number): number => {
+        let readPos = modOffset !== 0 ? w - baseLen + modOffset : w - baseLen;
+        const bufLen = buf.length;
+        readPos = ((readPos % bufLen) + bufLen) % bufLen;
+        const ri0 = Math.floor(readPos);
+        const ri1 = (ri0 + 1) % bufLen;
+        const frac = readPos - ri0;
+        // 4-point Hermite — aliasing-free modulated reads (with no
+        // modulation frac === 0 and this reduces exactly to ri0).
+        if (frac > 0) {
+          const rim1 = (ri0 + bufLen - 1) % bufLen;
+          const ri2 = (ri0 + 2) % bufLen;
+          return hermiteInterp(buf[rim1], buf[ri0], buf[ri1], buf[ri2], frac);
+        }
+        return buf[ri0];
+      };
+
       for (let i = 0; i < frameCount; i++) {
         if (attackEnv < 1) {
           attackEnv += attackAlpha * (1 - attackEnv);
@@ -662,25 +684,6 @@ export function createPlateChamberEngine(): PlateChamberEngine {
           inSample = processInputDiffusion(inSample, c);
           inSample = processAllpass(inSample, c);
           inScratchC[c] = freeze_ ? 0 : inSample;
-
-          // Hermite read at a given line length (used for the new length
-          // and, during a length crossfade, the previous length too).
-          const readTap = (buf: Float32Array, w: number, baseLen: number, modOffset: number): number => {
-            let readPos = modOffset !== 0 ? w - baseLen + modOffset : w - baseLen;
-            const bufLen = buf.length;
-            readPos = ((readPos % bufLen) + bufLen) % bufLen;
-            const ri0 = Math.floor(readPos);
-            const ri1 = (ri0 + 1) % bufLen;
-            const frac = readPos - ri0;
-            // 4-point Hermite — aliasing-free modulated reads (with no
-            // modulation frac === 0 and this reduces exactly to ri0).
-            if (frac > 0) {
-              const rim1 = (ri0 + bufLen - 1) % bufLen;
-              const ri2 = (ri0 + 2) % bufLen;
-              return hermiteInterp(buf[rim1], buf[ri0], buf[ri1], buf[ri2], frac);
-            }
-            return buf[ri0];
-          };
 
           for (let l = 0; l < FDN_LINES; l++) {
             const baseLen = lengthsC[c][l];

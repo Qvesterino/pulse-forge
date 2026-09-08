@@ -52,11 +52,18 @@ class UltinaWorkletProcessor extends AudioWorkletProcessor {
         // A manual value cancels still-pending automation for the same
         // parameter (user touch overrides the future), matching how the
         // engine treats AudioParam.cancelScheduledValues on takeover.
+        // In-place compaction: this handler runs on the render thread, so
+        // filter()'s fresh array would be an audio-thread allocation per
+        // message during a live knob drag.
         if (this.pendingParams.length > 0) {
           const now = currentTime;
-          this.pendingParams = this.pendingParams.filter(
-            (ev) => ev.id !== msg.id || ev.when <= now,
-          );
+          const q = this.pendingParams;
+          let w = 0;
+          for (let i = 0; i < q.length; i++) {
+            const ev = q[i];
+            if (ev.id !== msg.id || ev.when <= now) q[w++] = ev;
+          }
+          q.length = w;
         }
         this.proc.setParameter(msg.id, msg.value);
         // Module on/off travels as a regular "<module>.enabled" param, but

@@ -114,3 +114,20 @@ export function clampOzvenaParam(id: string, value: number, fallback = 0): numbe
   const range = ozvenaParamRange(id, safe);
   return Math.min(range.max, Math.max(range.min, safe));
 }
+
+/**
+ * Upper bound on a user impulse response's length, in seconds. Factory IRs
+ * top out at 5 s; real-world reverb IRs rarely exceed 8. Without a cap, a
+ * mistaken long file (decodeAudioData happily decodes a whole song) drives
+ * the partitioned convolver's spectrum allocation past hundreds of MB and
+ * stalls the audio thread for the full FFT batch — an OOM/tab-crash path
+ * reachable from the rack's IR file input.
+ */
+export const OZVENA_IR_MAX_SECONDS = 10;
+
+/** Frames of a user IR actually loaded at `sampleRate` (time-based cap). */
+export function capUserIrFrames(frames: number, sampleRate: number): number {
+  if (!Number.isFinite(frames) || frames <= 0) return 0;
+  const cap = Math.max(1, Math.floor(OZVENA_IR_MAX_SECONDS * sampleRate));
+  return Math.min(Math.floor(frames), cap);
+}

@@ -794,11 +794,23 @@
       const need = requiredSpan();
       if (buffers.length === channelCount && buffers[0] && buffers[0].length >= need) return;
       const cap = nextPow2(need);
+      const prevBuffers = buffers;
+      const prevWrite = writeIdx;
       buffers = [];
       writeIdx = [];
       for (let c = 0; c < channelCount; c++) {
-        buffers.push(new Float32Array(cap));
-        writeIdx.push(0);
+        const nb = new Float32Array(cap);
+        const ob = prevBuffers[c];
+        if (ob && ob.length > 0 && (prevWrite[c] ?? 0) >= 0) {
+          const wi = prevWrite[c];
+          const oldLen = ob.length;
+          for (let d = 0; d < oldLen; d++) {
+            const src = ((wi - d) % oldLen + oldLen) % oldLen;
+            nb[wi - d & cap - 1] = ob[src];
+          }
+        }
+        buffers.push(nb);
+        writeIdx.push(prevWrite[c] ?? 0);
       }
       ringMask = cap - 1;
     }
@@ -2659,6 +2671,20 @@
         const t = algoTuning(params.algo);
         const effectiveDepth = modDepthSamples * t.modDepthMult;
         const width = clamp(params.stereoWidth, 0, 1);
+        const readTap = (buf, w, baseLen, modOffset) => {
+          let readPos = modOffset !== 0 ? w - baseLen + modOffset : w - baseLen;
+          const bufLen = buf.length;
+          readPos = (readPos % bufLen + bufLen) % bufLen;
+          const ri0 = Math.floor(readPos);
+          const ri1 = (ri0 + 1) % bufLen;
+          const frac = readPos - ri0;
+          if (frac > 0) {
+            const rim1 = (ri0 + bufLen - 1) % bufLen;
+            const ri2 = (ri0 + 2) % bufLen;
+            return hermiteInterp(buf[rim1], buf[ri0], buf[ri1], buf[ri2], frac);
+          }
+          return buf[ri0];
+        };
         for (let i = 0; i < frameCount; i++) {
           if (attackEnv < 1) {
             attackEnv += attackAlpha * (1 - attackEnv);
@@ -2684,20 +2710,6 @@
             inSample = processInputDiffusion(inSample, c);
             inSample = processAllpass(inSample, c);
             inScratchC[c] = freeze_ ? 0 : inSample;
-            const readTap = (buf, w, baseLen, modOffset) => {
-              let readPos = modOffset !== 0 ? w - baseLen + modOffset : w - baseLen;
-              const bufLen = buf.length;
-              readPos = (readPos % bufLen + bufLen) % bufLen;
-              const ri0 = Math.floor(readPos);
-              const ri1 = (ri0 + 1) % bufLen;
-              const frac = readPos - ri0;
-              if (frac > 0) {
-                const rim1 = (ri0 + bufLen - 1) % bufLen;
-                const ri2 = (ri0 + 2) % bufLen;
-                return hermiteInterp(buf[rim1], buf[ri0], buf[ri1], buf[ri2], frac);
-              }
-              return buf[ri0];
-            };
             for (let l = 0; l < FDN_LINES; l++) {
               const baseLen = lengthsC[c][l];
               let modOffset = 0;
@@ -4418,11 +4430,14 @@
       reset() {
         doPrepare(sampleRate2, channelCount, bpm, preparedMaxBs);
         preDelay.reset();
+        smoother.reset();
         reflections.reset();
         plateChamber.reset();
         hall.reset();
         convolution.reset();
         safetyLimiter.reset();
+        duckController.reset();
+        gateGain = 1;
       },
       dispose() {
         if (duckSubscription) {
@@ -4486,6 +4501,14 @@
         clearUserIr();
       }
     };
+  }
+
+  // src/effects/ozvena-params.ts
+  var OZVENA_IR_MAX_SECONDS = 10;
+  function capUserIrFrames(frames, sampleRate2) {
+    if (!Number.isFinite(frames) || frames <= 0) return 0;
+    const cap = Math.max(1, Math.floor(OZVENA_IR_MAX_SECONDS * sampleRate2));
+    return Math.min(Math.floor(frames), cap);
   }
 
   // src/effects/ozvena-worklet.entry.js
@@ -4580,10 +4603,13 @@
           while (i > 0 && q[i - 1].when > when) i--;
           q.splice(i, 0, { id: msg.id, value: msg.value, when });
         } else if (msg.type === "loadIr") {
-          const samples = msg.samples;
           const channels = msg.channels === 4 ? 4 : msg.channels === 2 ? 2 : 1;
-          if (samples && samples.length) {
-            this.proc.loadUserIr(samples, channels);
+          const frames = capUserIrFrames(
+            (msg.samples?.length ?? 0) / channels,
+            sampleRate
+          );
+          if (msg.samples && frames > 0) {
+            this.proc.loadUserIr(msg.samples.subarray(0, frames * channels), channels);
             this.postLatency();
           }
         } else if (msg.type === "clearIr") {

@@ -9,6 +9,7 @@
  */
 import { createOzvenaProcessor } from "./ozvena-core/core/ozvenaProcessor.ts";
 import { defaultOzvenaStateV1 } from "./ozvena-core/v2/types.ts";
+import { capUserIrFrames } from "./ozvena-params.ts";
 
 const MAX_BLOCK = 128;
 const CHANNELS = 2;
@@ -141,10 +142,17 @@ class OzvenaWorkletProcessor extends AudioWorkletProcessor {
         q.splice(i, 0, { id: msg.id, value: msg.value, when });
       } else if (msg.type === "loadIr") {
         // Roadmap O7: user IR (interleaved, already at the host rate).
-        const samples = msg.samples;
+        // The length is re-clamped here (the main-thread node trims too):
+        // this is the last boundary before the convolver's FFT partition
+        // allocation, which scales linearly with IR length — an unbounded
+        // IR is an unbounded audio-thread stall + heap spike.
         const channels = msg.channels === 4 ? 4 : msg.channels === 2 ? 2 : 1;
-        if (samples && samples.length) {
-          this.proc.loadUserIr(samples, channels);
+        const frames = capUserIrFrames(
+          (msg.samples?.length ?? 0) / channels,
+          sampleRate,
+        );
+        if (msg.samples && frames > 0) {
+          this.proc.loadUserIr(msg.samples.subarray(0, frames * channels), channels);
           this.postLatency();
         }
       } else if (msg.type === "clearIr") {

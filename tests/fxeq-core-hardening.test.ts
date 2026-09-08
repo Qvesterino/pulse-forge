@@ -644,3 +644,146 @@ describe("fxeq reverb tank upgrade (roadmap Q1)", () => {
     }
   });
 });
+describe("fxeq latency-transition stale-buffer regression (alignment rings)", () => {
+  // Band latency flips 0↔8 mid-stream (saturation enable toggles, drive
+  // automation crossing the oversample threshold). Every ring that only
+  // clocks while its delayed read is active replays the PREVIOUS latency
+  // period's content as an 8-sample stale burst when the read switches
+  // back on. These tests pin the three layers involved: the processor's
+  // band/dry alignment rings, the saturation wrapper's per-factor FIR
+  // lines, and its dry-alignment ring.
+
+  const SILENCE_TAIL_FLOOR = 1e-5; // legit crossover/limiter decay sits ~1e-6
+
+  function loudBlock(chans: Float32Array[], index: number) {
+    for (let i = 0; i < BLOCK; i++) {
+      const v = Math.sin((2 * Math.PI * 1000 * (index * BLOCK + i)) / SR) * 0.9;
+      chans[0][i] = v;
+      chans[1][i] = v;
+    }
+  }
+
+  function silenceBlock(chans: Float32Array[]) {
+    chans[0].fill(0);
+    chans[1].fill(0);
+  }
+
+  function blockPeak(chans: Float32Array[]): number {
+    let m = 0;
+    for (let c = 0; c < 2; c++)
+      for (let i = 0; i < BLOCK; i++) {
+        const a = Math.abs(chans[c][i]);
+        if (a > m) m = a;
+      }
+    return m;
+  }
+
+  it("silence stays silent when a latency band is re-enabled mid-stream", () => {
+    const proc = createFxEqProcessor();
+    proc.prepare(SR, 2, BLOCK);
+    proc.loadParameters({
+      limiterEnabled: 0,
+      globalMix: 50,
+      "band1.satEnabled": 1,
+      "band1.satMode": 4,
+      "band1.satDriveDb": 18,
+      "band1.quality": 1,
+    });
+    const chans = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+    // Latency period with loud content (rings clocked hot).
+    for (let b = 0; b < 10; b++) {
+      loudBlock(chans, b);
+      proc.process(chans, BLOCK);
+    }
+    // Drop the latency structure to 0, let legit tails decay.
+    proc.setParameter("band1.satEnabled", 0);
+    for (let b = 0; b < 40; b++) {
+      silenceBlock(chans);
+      proc.process(chans, BLOCK);
+    }
+    expect(blockPeak(chans)).toBeLessThan(SILENCE_TAIL_FLOOR);
+    // Re-enable on silence — the FIRST block is where a stale ring burst
+    // escaped (previously up to 0.16 amplitude of pre-disable audio).
+    proc.setParameter("band1.satEnabled", 1);
+    for (let b = 0; b < 4; b++) {
+      silenceBlock(chans);
+      proc.process(chans, BLOCK);
+      expect(blockPeak(chans), `stale burst in re-enable block ${b}`).toBeLessThan(SILENCE_TAIL_FLOOR);
+    }
+  });
+
+  it("silence stays silent when drive automation re-crosses the oversample threshold", () => {
+    const proc = createFxEqProcessor();
+    proc.prepare(SR, 2, BLOCK);
+    proc.loadParameters({
+      limiterEnabled: 0,
+      globalMix: 50,
+      "band1.satEnabled": 1,
+      "band1.satMode": 4,
+      "band1.satDriveDb": 18, // factor 2 → band latency 8
+      "band1.satMix": 60,
+      "band1.quality": 1,
+    });
+    const chans = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+    // Hot factor-2 period first (smoother primes at 18 on the first block):
+    // latency must be live and the FIR history loud before the glide.
+    for (let b = 0; b < 10; b++) {
+      loudBlock(chans, b);
+      proc.process(chans, BLOCK);
+    }
+    expect(proc.getLatencySamples()).toBeGreaterThan(0);
+    // Phase A — glide the drive down (smoother moves ~0.17 %/block, so the
+    // 6 dB threshold lands after ~650 blocks) while feeding LOUD material,
+    // so the factor-2 FIR history is still hot at the moment the module
+    // actually drops to factor 1. Stop right after the real 2→1 crossing.
+    proc.setParameter("band1.satDriveDb", 0);
+    let crossedDownAt = -1;
+    for (let b = 0; b < 1200 && crossedDownAt < 0; b++) {
+      loudBlock(chans, b);
+      proc.process(chans, BLOCK);
+      if (proc.getLatencySamples() === 0) crossedDownAt = b;
+    }
+    expect(crossedDownAt, "descent must actually cross the threshold").toBeGreaterThan(0);
+    // Phase B — silence: legit tails decay; nothing may ring above the
+    // floor (the module now runs at factor 1 on silence).
+    for (let b = 0; b < 40; b++) {
+      silenceBlock(chans);
+      proc.process(chans, BLOCK);
+    }
+    expect(blockPeak(chans)).toBeLessThan(SILENCE_TAIL_FLOOR);
+    // Phase C — drive back up. The 1→2 crossing (~70 blocks in) re-enters
+    // the oversampled path: its FIR lines and dry ring must not replay the
+    // loud descent material they last held.
+    proc.setParameter("band1.satDriveDb", 18);
+    for (let b = 0; b < 300; b++) {
+      silenceBlock(chans);
+      proc.process(chans, BLOCK);
+      expect(blockPeak(chans), `stale burst in ascent block ${b}`).toBeLessThan(SILENCE_TAIL_FLOOR);
+    }
+    expect(proc.getLatencySamples(), "ascent must actually re-cross the threshold").toBeGreaterThan(0);
+  });
+
+  it("saturation module re-enable after a bypassed period starts from clean FIR history", () => {
+    const mod = createSaturationModule();
+    mod.prepare(SR, 2, BLOCK);
+    mod.loadParameters({ enabled: 1, mode: 4, driveDb: 18, mix: 60 });
+    const chans = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+    for (let b = 0; b < 10; b++) {
+      loudBlock(chans, b);
+      mod.process(chans, BLOCK);
+    }
+    mod.setParameter("enabled", 0);
+    for (let b = 0; b < 10; b++) {
+      silenceBlock(chans);
+      mod.process(chans, BLOCK);
+    }
+    // While bypassed the module never runs, so its FIR/dry history holds
+    // pre-bypass audio; re-enabling must not replay it.
+    mod.setParameter("enabled", 1);
+    for (let b = 0; b < 4; b++) {
+      silenceBlock(chans);
+      mod.process(chans, BLOCK);
+      expect(blockPeak(chans), `stale burst in re-enable block ${b}`).toBeLessThan(1e-6);
+    }
+  });
+});

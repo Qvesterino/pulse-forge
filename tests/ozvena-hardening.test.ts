@@ -1,4 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
+import { createPreDelay } from "../src/effects/ozvena-core/modules/preDelay.js";
+import { capUserIrFrames, OZVENA_IR_MAX_SECONDS } from "../src/effects/ozvena-params";
+import { globalPeerRegistry } from "../src/effects/ozvena-core/v2/vocalForgeIpc.js";
 
 /**
  * Ozvena hardening regressions — defects found in the 2026-09 self-audit.
@@ -489,5 +492,142 @@ describe("Ozvena hardening — user IR wiring (roadmap O7)", () => {
     const proc = new Processor();
     proc.port.onmessage?.({ data: { type: "loadIr", samples: new Float32Array(0), channels: 2 } });
     expect(proc.proc.isIrLoaded()).toBe(false);
+  });
+});
+
+describe("Ozvena hardening — user IR length cap (audio-thread allocation bound)", () => {
+  // Pre-fix: nothing bounded the IR length on the worklet side. A mistaken
+  // long file (decodeAudioData decodes whole songs) drove the partitioned
+  // convolver's FFT spectrum allocation linearly with length — hundreds of
+  // MB and an unbounded audio-thread stall for the load-time FFT batch.
+  it("capUserIrFrames: in-range lengths pass, over-cap trims, garbage → 0", () => {
+    expect(capUserIrFrames(48000, 48000)).toBe(48000); // 1 s — untouched
+    expect(capUserIrFrames(0, 48000)).toBe(0);
+    expect(capUserIrFrames(Number.NaN, 48000)).toBe(0);
+    expect(capUserIrFrames(-5, 48000)).toBe(0);
+    // 15 minutes of stereo at 48 kHz → exactly the 10 s cap.
+    expect(capUserIrFrames(15 * 60 * 48000, 48000)).toBe(OZVENA_IR_MAX_SECONDS * 48000);
+    // The cap is time-based: at 96 kHz twice the frames fit.
+    expect(capUserIrFrames(15 * 60 * 96000, 96000)).toBe(OZVENA_IR_MAX_SECONDS * 96000);
+  });
+
+  it("regression: an over-long loadIr payload is trimmed at the worklet boundary", () => {
+    const proc = new Processor();
+    const received: { len: number; channels: number }[] = [];
+    const orig = proc.proc.loadUserIr;
+    proc.proc.loadUserIr = (samples: Float32Array, channels: 1 | 2 | 4) => {
+      received.push({ len: samples.length, channels });
+    };
+    // 15 s of stereo at the suite's 48 kHz rate.
+    const ir = new Float32Array(2 * 15 * SR);
+    proc.port.onmessage?.({ data: { type: "loadIr", samples: ir, channels: 2 } });
+    expect(received).toHaveLength(1);
+    expect(received[0].channels).toBe(2);
+    expect(received[0].len).toBe(2 * OZVENA_IR_MAX_SECONDS * SR);
+
+    // A short IR passes through untrimmed.
+    const short = new Float32Array(1000);
+    proc.port.onmessage?.({ data: { type: "loadIr", samples: short, channels: 1 } });
+    expect(received[1].len).toBe(1000);
+    expect(received[1].channels).toBe(1);
+
+    proc.proc.loadUserIr = orig;
+  });
+});
+
+describe("Ozvena hardening — pre-delay ring growth keeps the tail", () => {
+  it("regression: growing the delay across a capacity boundary crossfades instead of wiping the tail", () => {
+    // 10 ms @ 48 kHz = 480 samples → ring capacity 512. 30 ms = 1440 →
+    // capacity 2048. Pre-fix, ensureBuffers() reallocated with FRESH zeroed
+    // rings: the delay-time crossfade then blended against silence, so an
+    // impulse already in the line never came out. Post-fix the history is
+    // copied in logical order and the impulse lands (fading) at t=480.
+    const pd = createPreDelay();
+    pd.prepare(SR, 2, 120);
+    pd.setParams({ enabled: true, ms: 10, syncEnabled: false, syncNote: "1/4" });
+
+    const N = 1024;
+    const outL = new Float32Array(N);
+    let grew = false;
+    for (let start = 0; start < N; start += 64) {
+      if (start === 64 && !grew) {
+        pd.setParams({ enabled: true, ms: 30, syncEnabled: false, syncNote: "1/4" });
+        grew = true;
+      }
+      const l = new Float32Array(64);
+      const r = new Float32Array(64);
+      if (start === 0) {
+        l[0] = 1;
+        r[0] = 1;
+      }
+      pd.process([l, r], 64);
+      outL.set(l, start);
+    }
+    expect(grew).toBe(true);
+    // The impulse must survive the growth: it re-emerges (blended by the
+    // 20 ms crossfade) around the old 480-sample delay. Pre-fix this window
+    // was exactly zero.
+    let e = 0;
+    for (let i = 440; i < 600; i++) e += outL[i] * outL[i];
+    expect(e).toBeGreaterThan(0.05);
+  });
+});
+
+describe("Ozvena hardening — reset() restores a freshly-prepared processor", () => {
+  // reset()'s contract (mirrors the native core): a reset processor is
+  // indistinguishable from a brand-new one. Pre-fix, three scalar states
+  // survived reset: the duck controller's gain, the gate envelope and the
+  // transient smoother's gain reduction. The duck gain is cleanly
+  // observable on the wet bus; the smoother reduction on post-reset input.
+  it("regression: an engaged auto-duck is released by reset()", () => {
+    const burst = noiseBurstThenSilence();
+    const tailEnergy = (out: Float32Array[]) => energy(out, 0.2, 0.5);
+
+    // Control: duck enabled but no peer ever notifies.
+    const control = new Processor();
+    sendParam(control, "duck.enabled", 1);
+    const controlOut = render(control, burst, 0.5);
+    const e0 = tailEnergy(controlOut);
+    expect(e0).toBeGreaterThan(1e-6);
+
+    // A loud peer notification (magDb=10, threshold −20, sensitivity 0.5)
+    // ducks the wet bus to gain 0.625 (−4.1 dB).
+    const proc = new Processor();
+    sendParam(proc, "duck.enabled", 1);
+    const peerId = globalPeerRegistry.register("fxeq", "duck-test-peer", SR, 0, 2);
+    globalPeerRegistry.notifyLevel(peerId, 1000, 10, 0);
+    const duckedOut = render(proc, burst, 0.5);
+    expect(tailEnergy(duckedOut)).toBeLessThan(e0 * 0.6);
+
+    // reset() must release the duck — the tail returns to the control level.
+    proc.port.onmessage?.({ data: { type: "reset" } });
+    // duck stays enabled in the restored default? No: reset restores the
+    // DEFAULT state (duck off). Re-enable it so the only variable is the
+    // controller state, then re-render.
+    sendParam(proc, "duck.enabled", 1);
+    const afterOut = render(proc, burst, 0.5);
+    expect(tailEnergy(afterOut)).toBeGreaterThan(e0 * 0.8);
+
+    globalPeerRegistry.unregister(peerId);
+  });
+
+  it("regression: a lingering transient-shaper reduction is cleared by reset()", () => {
+    // NOTE on coverage: the smoother's lingering reduction (like the gate
+    // envelope) is a state-carryover that is NOT observable through the
+    // output — the shaper's attack is instantaneous, so any post-reset
+    // signal re-latches the correct reduction within milliseconds, long
+    // before the engines' attack envelopes let wet energy through (probed
+    // empirically during the audit: pre-fix and post-fix renders are
+    // output-identical). The reset call is kept for the documented
+    // "bit-identical to freshly prepared" contract; the DUCK gain — the
+    // member of this defect class that IS audible — carries the
+    // observability duty above.
+    const proc = new Processor();
+    sendParam(proc, "smoother.enabled", 1);
+    sendParam(proc, "smoother.amount", 100);
+    expect(() => proc.port.onmessage?.({ data: { type: "reset" } })).not.toThrow();
+    const out = render(proc, noiseBurstThenSilence(), 0.2);
+    expect(countNonFinite(out)).toBe(0);
+    expect(energy(out, 0, 0.2)).toBeGreaterThan(0);
   });
 });

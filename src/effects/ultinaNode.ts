@@ -99,6 +99,8 @@ export function createUltinaNode(
       if (disposed) return; // idempotent — engine rebuild paths may re-dispose
       disposed = true;
       latencyListeners.clear();
+      metersWanted = false;
+      meters = null; // no stale reads from a disposed runtime
       // Best-effort spectral-registry cleanup. The port must NOT be closed
       // here: closing a MessagePort can drop already-queued messages
       // (engine-dependent), which would silently discard this terminal

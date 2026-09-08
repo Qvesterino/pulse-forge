@@ -121,11 +121,30 @@ export function createPreDelay(): PreDelay {
     const need = requiredSpan();
     if (buffers.length === channelCount && buffers[0] && buffers[0].length >= need) return;
     const cap = nextPow2(need);
+    // Growth must PRESERVE the delay history in logical (time) order. A
+    // fresh zeroed ring here silently discarded the current tail, so the
+    // delay-time crossfade blended against silence instead of the old read
+    // — an audible dip every time a delay sweep crossed a power-of-two
+    // capacity boundary. Copy distance-d history to the same distance in
+    // the new ring (old write cursors stay valid: oldCap ≤ newCap).
+    // (Reconciled from Pulse Forge hardening audit, 2026-09-07.)
+    const prevBuffers = buffers;
+    const prevWrite = writeIdx;
     buffers = [];
     writeIdx = [];
     for (let c = 0; c < channelCount; c++) {
-      buffers.push(new Float32Array(cap));
-      writeIdx.push(0);
+      const nb = new Float32Array(cap);
+      const ob = prevBuffers[c];
+      if (ob && ob.length > 0 && (prevWrite[c] ?? 0) >= 0) {
+        const wi = prevWrite[c];
+        const oldLen = ob.length;
+        for (let d = 0; d < oldLen; d++) {
+          const src = ((wi - d) % oldLen + oldLen) % oldLen;
+          nb[(wi - d) & (cap - 1)] = ob[src];
+        }
+      }
+      buffers.push(nb);
+      writeIdx.push(prevWrite[c] ?? 0);
     }
     ringMask = cap - 1;
   }

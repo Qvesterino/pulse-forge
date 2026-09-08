@@ -186,6 +186,14 @@ export function createSaturationModule(params?: Record<string, number>): ModuleP
     },
 
     setParameter(id, value) {
+      // A re-enable after a bypassed period must not resume from stale FIR
+      // history: process() did not run while disabled, so the wrapper's
+      // delay lines and dry ring still hold pre-bypass audio. Zero them on
+      // the rising edge (waveshaper state and reported latency are kept —
+      // the latency stays valid for the host's PDC across the toggle).
+      if (id === "enabled" && store.get("enabled") < 0.5 && value >= 0.5) {
+        wrapper.clearDelayHistory();
+      }
       store.set(id, value);
     },
     getParameter(id) {

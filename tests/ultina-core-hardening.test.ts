@@ -39,12 +39,21 @@ import {
   setFxEqParam,
   applyUltinaPreset,
   applyUltinaProposal,
+  applyFxEqPreset,
+  applyOzvenaStatePatch,
+  loadUltinaAbSlot,
+  loadEffectAbSlot,
+  setDeviceState,
   addAutomationLane,
   addAutomationPoint,
   moveAutomationPoint,
   addSceneAutomation,
   addSceneAutomationPoint,
 } from "../src/commands/commands.js";
+import {
+  buildDefaultParams as buildUltinaDefaultParams,
+  tryGetParamDef as tryGetUltinaDef,
+} from "../src/effects/ultina-core/contracts/parameterSchema.js";
 import {
   ultinaLaneParams,
   ultinaLaneRange,
@@ -509,6 +518,120 @@ describe("applyUltinaPreset / applyUltinaProposal: validate and clamp", () => {
     expect(fx.params["nope.enabled"]).toBeUndefined();
     expect(fx.params["comp.thresholdDb"]).toBe(-60);
     expect(fx.params["hacker.param"]).toBeUndefined();
+  });
+});
+
+// ── 12. Canonical undo: full-map commands revert DSP-visible deep params ──
+//
+// The engine's syncFxParams pushes ONLY doc-present keys to the effect
+// runtime. A preset/slot/proposal EXECUTE writes a full canonical param
+// map (schema defaults + overrides); if UNDO restored the raw previous
+// partial map (a fresh instance carries just the rack params), every deep
+// param the gesture wrote stayed stuck in the worklet at its gesture value
+// while the document — and the panel reading it — showed the default.
+// Undo must therefore restore a canonical map: plugin defaults overlaid
+// with the previous partial values.
+
+describe("canonical undo: full-map plugin commands revert DSP-visible deep params", () => {
+  function withFx(type: "ultina" | "fxeq" | "ozvena") {
+    const base = createDefaultProject();
+    const inst = firstInstrumentTrack(base);
+    const withFxD = addEffect(base, inst.id, type).execute(base);
+    const fx = findEffect(firstInstrumentTrack(withFxD), type);
+    return { doc: withFxD, instId: inst.id, fxId: fx.id };
+  }
+
+  function effectOf(doc: ProjectDocument, type: string): EffectInstance {
+    return findEffect(firstInstrumentTrack(doc), type);
+  }
+
+  it("applyUltinaPreset undo restores schema defaults for preset-written deep keys", () => {
+    const { doc, instId, fxId } = withFx("ultina");
+    const preset = { "comp.thresholdDb": -50, "eq.band0.gainDb": 6 };
+    const cmd = applyUltinaPreset(doc, instId, fxId, "p", preset);
+    const executed = cmd.execute(doc);
+    expect(effectOf(executed, "ultina").params["comp.thresholdDb"]).toBe(-50);
+    const undone = cmd.undo(executed);
+    const params = effectOf(undone, "ultina").params;
+    // Pre-fix: both keys were ABSENT from the partial undo map, so the DSP
+    // kept -50 dB / +6 dB forever while the doc claimed defaults.
+    expect(params["comp.thresholdDb"]).toBe(tryGetUltinaDef("comp.thresholdDb")!.defaultValue);
+    expect(params["eq.band0.gainDb"]).toBe(0);
+    // Every key the execute wrote is present after undo → the engine diff
+    // reverts each one in the DSP.
+    for (const id of Object.keys(effectOf(executed, "ultina").params)) {
+      expect(params[id]).toBeDefined();
+    }
+  });
+
+  it("applyUltinaProposal undo reverts proposal-added deep keys to defaults", () => {
+    const { doc, instId, fxId } = withFx("ultina");
+    const cmd = applyUltinaProposal(doc, instId, fxId, "assist", [], [
+      { parameterId: "comp.thresholdDb", value: -18 },
+    ]);
+    const executed = cmd.execute(doc);
+    expect(effectOf(executed, "ultina").params["comp.thresholdDb"]).toBe(-18);
+    const undone = cmd.undo(executed);
+    expect(effectOf(undone, "ultina").params["comp.thresholdDb"]).toBe(
+      tryGetUltinaDef("comp.thresholdDb")!.defaultValue,
+    );
+  });
+
+  it("loadUltinaAbSlot undo restores a canonical full map", () => {
+    const { doc, instId, fxId } = withFx("ultina");
+    const withState = setDeviceState(doc, instId, fxId, {
+      kind: "ultina-ab-v1",
+      data: { slots: { B: { "comp.thresholdDb": -45 } }, active: "A" },
+    }).execute(doc);
+    const cmd = loadUltinaAbSlot(withState, instId, fxId, "B");
+    const executed = cmd.execute(withState);
+    expect(effectOf(executed, "ultina").params["comp.thresholdDb"]).toBe(-45);
+    const undone = cmd.undo(executed);
+    expect(effectOf(undone, "ultina").params["comp.thresholdDb"]).toBe(
+      tryGetUltinaDef("comp.thresholdDb")!.defaultValue,
+    );
+  });
+
+  it("loadEffectAbSlot undo restores a canonical full map (generic flagship path)", () => {
+    const { doc, instId, fxId } = withFx("ultina");
+    const withState = setDeviceState(doc, instId, fxId, {
+      kind: "effect-ab-v1",
+      data: { slots: { B: { "eq.band3.q": 8 } }, active: "A" },
+    }).execute(doc);
+    const cmd = loadEffectAbSlot(withState, instId, fxId, "B");
+    const executed = cmd.execute(withState);
+    expect(effectOf(executed, "ultina").params["eq.band3.q"]).toBe(8);
+    const undone = cmd.undo(executed);
+    expect(effectOf(undone, "ultina").params["eq.band3.q"]).toBe(
+      tryGetUltinaDef("eq.band3.q")!.defaultValue,
+    );
+  });
+
+  it("applyFxEqPreset undo restores band-schema defaults (sibling pattern)", () => {
+    const { doc, instId, fxId } = withFx("fxeq");
+    const cmd = applyFxEqPreset(doc, instId, fxId, "p", { "band2.satDriveDb": 12 });
+    const executed = cmd.execute(doc);
+    expect(effectOf(executed, "fxeq").params["band2.satDriveDb"]).toBe(12);
+    const undone = cmd.undo(executed);
+    expect(effectOf(undone, "fxeq").params["band2.satDriveDb"]).toBe(6);
+  });
+
+  it("applyOzvenaStatePatch undo restores the deep state tree (sibling pattern)", () => {
+    const { doc, instId, fxId } = withFx("ozvena");
+    const cmd = applyOzvenaStatePatch(doc, instId, fxId, "patch", { "duck.thresholdDb": -30 });
+    const executed = cmd.execute(doc);
+    expect(effectOf(executed, "ozvena").params["duck.thresholdDb"]).toBe(-30);
+    const undone = cmd.undo(executed);
+    // Pre-fix: the patch-written path vanished from the doc while the
+    // worklet's state tree kept the patched value.
+    expect(effectOf(undone, "ozvena").params["duck.thresholdDb"]).toBeDefined();
+  });
+
+  it("the canonical ultina undo map agrees with the vendored schema for every id", () => {
+    const defaults = buildUltinaDefaultParams();
+    for (const id of Object.keys(defaults)) {
+      expect(defaults[id]).toBe(tryGetUltinaDef(id)!.defaultValue);
+    }
   });
 });
 

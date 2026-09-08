@@ -1,5 +1,6 @@
 import type { EffectRuntime } from "../effects/types";
 import type { EffectInstance } from "../project-model/types";
+import { capUserIrFrames } from "./ozvena-params";
 
 /**
  * Main-thread Ozvena node: an AudioWorkletNode wrapping the vendored
@@ -77,7 +78,11 @@ export function createOzvenaNode(
     loadUserIr(ir: AudioBuffer) {
       if (disposed) return;
       const chCount = (ir.numberOfChannels >= 2 ? 2 : 1) as 1 | 2;
-      const len = ir.length;
+      // Time-based cap: a mistaken long file must not be interleaved,
+      // transferred and convolved in full (the worklet re-clamps at its own
+      // boundary — this avoids shipping the wasted payload at all).
+      const len = capUserIrFrames(ir.length, ir.sampleRate);
+      if (len <= 0) return;
       const interleaved = new Float32Array(len * chCount);
       const left = ir.getChannelData(0);
       const right = chCount === 2 ? ir.getChannelData(1) : left;
