@@ -1961,7 +1961,14 @@
         if (factor === os) return;
         const nextSet = chByFactor[factor];
         if (!nextSet) return;
-        for (let c = 0; c < ch.length; c++) nextSet[c].env = ch[c].env;
+        for (let c = 0; c < ch.length; c++) {
+          const n = nextSet[c];
+          n.env = ch[c].env;
+          n.wp = 0;
+          n.fill = 0;
+          n.ring.fill(0);
+          n.os.reset();
+        }
         os = factor;
         ch = nextSet;
       },
@@ -4004,6 +4011,25 @@
     let loadedIrId = null;
     let loadedIrRate = 0;
     let userIrActive = false;
+    let factoryIrProvider = null;
+    function defaultFactoryIrLookup(irId, sr, stereo) {
+      const quad = generateFactoryIr4(irId, sr);
+      if (quad) {
+        if (stereo) return { samples: quad, channels: 4 };
+        return { samples: quad.subarray(0, quad.length / 4), channels: 1 };
+      }
+      const mono = generateFactoryIr(irId, sr);
+      if (!mono) return null;
+      if (stereo) {
+        const stereoIr = new Float32Array(mono.length * 2);
+        for (let i = 0; i < mono.length; i++) {
+          stereoIr[2 * i] = mono[i];
+          stereoIr[2 * i + 1] = mono[i];
+        }
+        return { samples: stereoIr, channels: 2 };
+      }
+      return { samples: mono, channels: 1 };
+    }
     function syncConvolutionIr() {
       if (!state) return;
       const irId = state.convolution?.irId ?? null;
@@ -4021,35 +4047,18 @@
         return;
       }
       userIrActive = false;
-      const quad = generateFactoryIr4(irId, sampleRate2);
-      if (quad) {
-        if (channelCount >= 2) {
-          convolution.loadIr(quad, sampleRate2, 4);
-        } else {
-          const mono2 = quad.subarray(0, quad.length / 4);
-          convolution.loadIr(mono2, sampleRate2, 1);
-        }
-        loadedIrId = irId;
-        loadedIrRate = sampleRate2;
-        return;
-      }
-      const mono = generateFactoryIr(irId, sampleRate2);
-      if (!mono) {
+      const lookup = factoryIrProvider ?? defaultFactoryIrLookup;
+      const res = lookup(irId, sampleRate2, channelCount >= 2);
+      if (res === null) {
         convolution.clearIr();
         loadedIrId = null;
         loadedIrRate = 0;
         return;
       }
-      if (channelCount >= 2) {
-        const stereo = new Float32Array(mono.length * 2);
-        for (let i = 0; i < mono.length; i++) {
-          stereo[2 * i] = mono[i];
-          stereo[2 * i + 1] = mono[i];
-        }
-        convolution.loadIr(stereo, sampleRate2);
-      } else {
-        convolution.loadIr(mono, sampleRate2);
+      if (res === "pending") {
+        return;
       }
+      convolution.loadIr(res.samples, sampleRate2, res.channels);
       loadedIrId = irId;
       loadedIrRate = sampleRate2;
     }
@@ -4488,6 +4497,9 @@
         reverbEq.setAnalyzerEnabled(on);
         maskingMeter.setAnalyzerEnabled(on);
       },
+      setFactoryIrProvider(provider) {
+        factoryIrProvider = provider;
+      },
       isIrLoaded() {
         return convolution.isIrLoaded();
       },
@@ -4514,6 +4526,16 @@
   // src/effects/ozvena-worklet.entry.js
   var MAX_BLOCK = 128;
   var CHANNELS = 2;
+  var FACTORY_IR_IDS = /* @__PURE__ */ new Set([
+    "vocal-booth",
+    "plate",
+    "hall",
+    "cathedral",
+    "plate-wide",
+    "chamber-wide"
+  ]);
+  var factoryIrCache = /* @__PURE__ */ new Map();
+  var FACTORY_IR_CACHE_MAX = 8;
   var ENUM_BY_PATH = {
     "engines.e2.algo": ["room", "mediumChamber", "plate"],
     "engines.e3.algo": ["largeChamber", "hall"],
@@ -4567,6 +4589,17 @@
     pendingParams = [];
     constructor(options) {
       super();
+      this.pendingIrRequests = /* @__PURE__ */ new Set();
+      this.proc.setFactoryIrProvider((irId, sr) => {
+        const hit = factoryIrCache.get(`${irId}:${sr}`);
+        if (hit) return hit;
+        if (!FACTORY_IR_IDS.has(irId)) return null;
+        if (!this.pendingIrRequests.has(irId)) {
+          this.pendingIrRequests.add(irId);
+          this.port.postMessage({ type: "irNeeded", irId, sampleRate: sr });
+        }
+        return "pending";
+      });
       const bpmRaw = Number(options?.processorOptions?.bpm);
       const bpm = Number.isFinite(bpmRaw) ? Math.min(300, Math.max(20, bpmRaw)) : 120;
       this.proc.prepare(sampleRate, CHANNELS, bpm, MAX_BLOCK);
@@ -4612,6 +4645,21 @@
             this.proc.loadUserIr(msg.samples.subarray(0, frames * channels), channels);
             this.postLatency();
           }
+        } else if (msg.type === "factoryIr") {
+          this.pendingIrRequests.delete(msg.irId);
+          const samples = msg.samples;
+          const channels = msg.channels === 4 ? 4 : msg.channels === 2 ? 2 : 1;
+          if (!(samples instanceof Float32Array) || samples.length === 0) return;
+          if (channels > 1 && samples.length % channels !== 0) return;
+          factoryIrCache.set(`${msg.irId}:${sampleRate}`, { samples, channels });
+          if (factoryIrCache.size > FACTORY_IR_CACHE_MAX) {
+            const oldest = factoryIrCache.keys().next().value;
+            if (oldest !== void 0) factoryIrCache.delete(oldest);
+          }
+          if (this.state.convolution?.irId === msg.irId) {
+            this.proc.loadUserIr(samples, channels);
+            this.postLatency();
+          }
         } else if (msg.type === "clearIr") {
           this.proc.clearUserIr();
           this.postLatency();
@@ -4623,6 +4671,8 @@
           this.state = defaultOzvenaStateV1();
           this.proc.loadState(this.state);
           this.proc.reset();
+          this.pendingIrRequests.clear();
+          factoryIrCache.clear();
         } else if (msg.type === "dispose") {
           this.proc.dispose();
           this.disposed = true;

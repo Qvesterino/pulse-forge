@@ -239,10 +239,26 @@ export function createSafetyLimiter(): SafetyLimiter {
       if (factor === os) return;
       const nextSet = chByFactor[factor];
       if (!nextSet) return;
-      // Carry the gain envelope across the switch: while the bus was
-      // limiting, a reset env=1 would be an instantaneous gain jump (an
-      // audible click on every quality change).
-      for (let c = 0; c < ch.length; c++) nextSet[c].env = ch[c].env;
+      for (let c = 0; c < ch.length; c++) {
+        const n = nextSet[c];
+        // Carry the gain envelope across the switch: while the bus was
+        // limiting, a reset env=1 would be an instantaneous gain jump (an
+        // audible click on every quality change).
+        n.env = ch[c].env;
+        // ...but NOT the lookahead ring: it still holds audio from whenever
+        // this factor was last active. If the envelope has since released
+        // toward unity, reactivating the set re-emits up to a full lookahead
+        // window of STALE audio at ~unity gain — a loud clip of old
+        // material on every eco→…→eco round trip. Zero the ring and the
+        // oversampler state instead: tens-of-KB fills, no allocation, and
+        // the first block after the switch renders with effLA=0 (no
+        // lookahead, correct output, envelope carried).
+        // (Reconciled from Pulse Forge hardening audit, 2026-09-08.)
+        n.wp = 0;
+        n.fill = 0;
+        n.ring.fill(0);
+        n.os.reset();
+      }
       os = factor;
       ch = nextSet;
     },

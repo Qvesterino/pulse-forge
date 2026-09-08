@@ -95,26 +95,24 @@ byte-faithful copy locked to the upstream golden vectors
 
 ### Ozvena vendored core (known caveats, 2026-09 audit)
 
-The 2026-09 ozvena hardening audit fixed what was safely fixable in place
-(user-IR length cap, pre-delay ring-growth continuity, `reset()` scalar
-state, plate-engine hot-loop allocation — see `tests/ozvena-hardening.test.ts`).
-These remain, all inside the vendored core, so fix upstream in
-`VocalForge_DAW/plugins/ozvena` and re-vendor via `scripts/vendor-ozvena.mjs`
-(the audit's reconciled edits would be overwritten by a blind re-vendor —
-sync them upstream first):
+The 2026-09 ozvena hardening audit (two rounds) fixed what was safely
+fixable in place — user-IR length cap, pre-delay ring-growth continuity,
+`reset()` scalar state, plate-engine hot-loop allocation, factory-IR
+generation moved off the audio thread (main-thread `irNeeded` →
+`factoryIr` roundtrip with a worklet-side payload cache), and the
+safety-limiter stale-lookahead replay on quality switches. See
+`tests/ozvena-hardening.test.ts` + `tests/ozvena-worklet-entry.test.ts`.
+All reconciled fixes are marked "(Reconciled from Pulse Forge …)" and have
+been synced upstream via `scripts/sync-ozvena-upstream.mjs`;
+`scripts/vendor-ozvena.mjs` now ABORTS a re-vendor that would silently
+drop reconciled markers the upstream snapshot lacks. These remain:
 
-- **First selection of each factory IR runs on the audio thread.** Picking a
-  factory convolution IR generates it (up to 3 s × 4 channels at the host
-  rate) plus the partition FFTs inside the worklet's message handler — a
-  few-millisecond dropout risk exactly once per (IR, sample rate); cached
-  afterwards (bounded cache, 24 entries). Upstream fix: pre-generate on the
-  main thread and post the IR as a transferable.
-- **Safety-limiter quality switches replay ≤ 2 ms of stale lookahead audio.**
-  `setOversampleFactor` swaps to a preallocated channel set whose ring still
-  holds audio from when that factor was last active; the lookahead window
-  (2 ms) can re-emit a sliver of it. Zeroing the ring on switch was
-  deliberately avoided (~0.5 MB alloc/zero on the audio thread); upstream
-  fix would be a stale-flag that mutes the first lookahead window instead.
+- **IR loading still runs its partition-FFT batch on the audio thread.**
+  Generation is off-thread now, but building the frequency-domain
+  partitions (`createPartitionedConvolver`) happens in the port handler
+  when the payload lands — a bounded ~2–8 ms one-time cost per selection,
+  identical to the pre-existing user-IR load path. Moving it off-thread
+  needs a precomputed-spectra convolver constructor (larger redesign).
 - **Pre-delay ring growth still allocates on the audio thread.** Delay-time
   sweeps that cross a power-of-two capacity boundary allocate + copy the
   ring in the message handler (bounded, history-preserving since the audit;
