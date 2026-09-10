@@ -75,15 +75,20 @@ import {
   type OzvenaIpc,
   type PeerNotification,
 } from "../v2/vocalForgeIpc.js";
+import type { PrecomputedIrSet } from "../dsp/fftPartitioned.js";
 
 /**
  * Result of a factory-IR lookup requested by the processor:
- *  - a ready interleaved payload (`channels` 1/2/4),
+ *  - a ready interleaved payload (`channels` 1/2/4), or its PRECOMPUTED
+ *    frequency-domain form (per-convolver slot sets — see
+ *    fftPartitioned.precomputeConvolverSpectra; the audio-thread-free
+ *    variant), 
  *  - "pending" — generation is in flight elsewhere; keep the current IR,
  *  - null — unknown id; clear the convolution.
  */
 export type FactoryIrLookup =
   | { samples: Float32Array; channels: 1 | 2 | 4 }
+  | { precomputed: PrecomputedIrSet[]; channels: 1 | 2 | 4 }
   | "pending"
   | null;
 
@@ -111,6 +116,14 @@ export interface OzvenaProcessor {
   loadUserIr(samples: Float32Array, channels: 1 | 2 | 4): void;
   /** Remove a user IR (falls back to the factory selection). */
   clearUserIr(): void;
+  /**
+   * Load a user IR from PRECOMPUTED frequency-domain partition sets (the
+   * FFT batch ran off the audio thread; see
+   * fftPartitioned.precomputeConvolverSpectra). Marks the current
+   * convolution selection as satisfied exactly like loadUserIr.
+   * (Reconciled from Pulse Forge, 2026-09-09.)
+   */
+  loadPrecomputedIr(sets: PrecomputedIrSet[], channels: 1 | 2 | 4): void;
   getSpectrumAnalyzer(): SpectrumAnalyzer;
   /**
    * Install a factory-IR acquisition hook (null restores the default
@@ -274,7 +287,12 @@ export function createOzvenaProcessor(): OzvenaProcessor {
       // pending simply asks again — providers dedupe their requests.
       return;
     }
-    convolution.loadIr(res.samples, sampleRate, res.channels);
+    if ("precomputed" in res && res.precomputed) {
+      // Frequency-domain payload — the FFT batch already ran off-thread.
+      convolution.loadIrPrecomputed(res.precomputed, res.channels);
+    } else {
+      convolution.loadIr(res.samples, sampleRate, res.channels);
+    }
     loadedIrId = irId;
     loadedIrRate = sampleRate;
   }
@@ -282,6 +300,16 @@ export function createOzvenaProcessor(): OzvenaProcessor {
   function loadUserIr(samples: Float32Array, channels: 1 | 2 | 4): void {
     if (!prepared || samples.length === 0) return;
     convolution.loadIr(samples, sampleRate, channels);
+    userIrActive = true;
+    loadedIrId = state?.convolution?.irId ?? null;
+    loadedIrRate = sampleRate;
+  }
+
+  /** Precomputed-spectra twin of loadUserIr — the FFT batch already ran
+   *  off the audio thread. (Reconciled from Pulse Forge, 2026-09-09.) */
+  function loadPrecomputedIr(sets: PrecomputedIrSet[], channels: 1 | 2 | 4): void {
+    if (!prepared || sets.length === 0) return;
+    convolution.loadIrPrecomputed(sets, channels);
     userIrActive = true;
     loadedIrId = state?.convolution?.irId ?? null;
     loadedIrRate = sampleRate;
@@ -907,6 +935,10 @@ export function createOzvenaProcessor(): OzvenaProcessor {
 
     loadUserIr(samples, channels) {
       loadUserIr(samples, channels);
+    },
+
+    loadPrecomputedIr(sets, channels) {
+      loadPrecomputedIr(sets, channels);
     },
 
     clearUserIr() {

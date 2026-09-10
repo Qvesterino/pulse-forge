@@ -132,13 +132,27 @@ export function createPreDelay(): PreDelay {
     const prevWrite = writeIdx;
     buffers = [];
     writeIdx = [];
+    // Only history within REACHABLE read distance can ever be read again:
+    // max(new delay, the delay in effect before this change, the old
+    // length mid-crossfade) + 1. Bounding the copy by that — instead of
+    // the whole old ring — keeps a growth pass proportional to the delay
+    // IN USE (a 10→400 ms sweep copies ≤ 19k samples, not megabytes), and
+    // is provably output-identical: reads never reach past that distance.
+    // (Reconciled from Pulse Forge hardening audit, 2026-09-09.)
+    const reachable =
+      Math.max(
+        delaySamples,
+        activeDelaySamples > 0 ? activeDelaySamples : 0,
+        fadeFromSamples > 0 ? fadeFromSamples : 0,
+      ) + 1;
     for (let c = 0; c < channelCount; c++) {
       const nb = new Float32Array(cap);
       const ob = prevBuffers[c];
       if (ob && ob.length > 0 && (prevWrite[c] ?? 0) >= 0) {
         const wi = prevWrite[c];
         const oldLen = ob.length;
-        for (let d = 0; d < oldLen; d++) {
+        const keep = Math.min(oldLen, reachable);
+        for (let d = 0; d < keep; d++) {
           const src = ((wi - d) % oldLen + oldLen) % oldLen;
           nb[(wi - d) & (cap - 1)] = ob[src];
         }

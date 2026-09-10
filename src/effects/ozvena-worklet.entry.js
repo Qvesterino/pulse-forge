@@ -10,6 +10,7 @@
 import { createOzvenaProcessor } from "./ozvena-core/core/ozvenaProcessor.ts";
 import { defaultOzvenaStateV1 } from "./ozvena-core/v2/types.ts";
 import { capUserIrFrames } from "./ozvena-params.ts";
+import { validatePrecomputedIrSet } from "./ozvena-core/dsp/fftPartitioned.ts";
 
 const MAX_BLOCK = 128;
 const CHANNELS = 2;
@@ -30,10 +31,35 @@ const FACTORY_IR_IDS = new Set([
 /** Delivered factory-IR payloads, shared by every Ozvena processor in this
  *  worklet scope. After the first delivery a re-selection (or the
  *  clearUserIr fallback) is a synchronous cache hit through the core — no
- *  main-thread roundtrip, no generation. Payloads run a few MB each; the
- *  bound keeps long sessions flat. */
+ *  main-thread roundtrip, no generation. Entries hold PRECOMPUTED
+ *  frequency-domain IR partitions (float64, ~2× the time-domain size);
+ *  irSpectra is immutable and safe to share across instances, the zeroed
+ *  blockSpectra rings are consume-once. The bound keeps long sessions
+ *  flat (a 3 s true-stereo IR holds ~18 MB of spectra). */
 const factoryIrCache = new Map();
-const FACTORY_IR_CACHE_MAX = 8;
+const FACTORY_IR_CACHE_MAX = 4;
+
+/** Consume-once blockSpectra handover: the first convolver built from a
+ *  cached set takes over its zeroed ring; later hits leave it undefined
+ *  so the engine allocates a fresh one (≤ ~1 ms for long IRs — the ring
+ *  is write-before-read, so ANY initial content is correct). Without the
+ *  handover, two instances re-using one cache entry would share one
+ *  MUTABLE input-block ring and corrupt each other's convolution.
+ *  (Reconciled from Pulse Forge hardening audit, 2026-09-09.) */
+function stripBlockSpectra(sets) {
+  for (const s of sets) delete s.blockSpectra;
+}
+
+/** Validate a delivered precomputed-sets payload against the IR length
+ *  cap; returns the checked array or null. */
+function checkedIrSets(rawSets, sampleRate) {
+  if (!Array.isArray(rawSets) || rawSets.length === 0) return null;
+  const frames = rawSets[0]?.irLengthSamples;
+  if (!(frames > 0) || frames !== capUserIrFrames(frames, sampleRate)) return null;
+  const sets = rawSets.map(validatePrecomputedIrSet);
+  if (sets.some((s) => s === null)) return null;
+  return sets;
+}
 
 /** Numeric-index → string-enum mapping, keyed by full dotted path. The UI
  *  ships enums as indices; the DSP state carries them as strings. Keying by
@@ -179,12 +205,18 @@ class OzvenaWorkletProcessor extends AudioWorkletProcessor {
         while (i > 0 && q[i - 1].when > when) i--;
         q.splice(i, 0, { id: msg.id, value: msg.value, when });
       } else if (msg.type === "loadIr") {
-        // Roadmap O7: user IR (interleaved, already at the host rate).
-        // The length is re-clamped here (the main-thread node trims too):
-        // this is the last boundary before the convolver's FFT partition
-        // allocation, which scales linearly with IR length — an unbounded
-        // IR is an unbounded audio-thread stall + heap spike.
+        // Roadmap O7: user IR. Preferred payload: PRECOMPUTED frequency-
+        // domain partitions (the FFT batch ran on the MAIN thread — the
+        // inline batch was a 2–8 ms audio-thread stall per load). Legacy
+        // shape: interleaved samples at the host rate, re-clamped here.
+        // (Reconciled from Pulse Forge hardening audit, 2026-09-09.)
         const channels = msg.channels === 4 ? 4 : msg.channels === 2 ? 2 : 1;
+        const sets = checkedIrSets(msg.sets, sampleRate);
+        if (sets) {
+          this.proc.loadPrecomputedIr(sets, channels);
+          this.postLatency();
+          return;
+        }
         const frames = capUserIrFrames(
           (msg.samples?.length ?? 0) / channels,
           sampleRate,
@@ -195,11 +227,39 @@ class OzvenaWorkletProcessor extends AudioWorkletProcessor {
         }
       } else if (msg.type === "factoryIr") {
         // Main-thread generation reply (see the provider in the
-        // constructor). Malformed payloads are dropped — the selection
-        // stays "pending" and a later convolution change re-requests.
+        // constructor). Preferred payload: PRECOMPUTED frequency-domain
+        // partitions — the per-partition FFT batch ran on the MAIN thread,
+        // so arming the convolver here does no FFT work and no large
+        // allocation (the old inline batch was a 2–8 ms audio-thread stall
+        // on the first selection of every IR). Malformed payloads are
+        // dropped — the selection stays "pending" and a later convolution
+        // change re-requests.
         this.pendingIrRequests.delete(msg.irId);
-        const samples = msg.samples;
         const channels = msg.channels === 4 ? 4 : msg.channels === 2 ? 2 : 1;
+        const sets = checkedIrSets(msg.sets, sampleRate);
+        if (sets) {
+          const cached = { precomputed: sets, channels };
+          factoryIrCache.set(`${msg.irId}:${sampleRate}`, cached);
+          if (factoryIrCache.size > FACTORY_IR_CACHE_MAX) {
+            const oldest = factoryIrCache.keys().next().value;
+            if (oldest !== undefined) factoryIrCache.delete(oldest);
+          }
+          // Load only if the selection still points here; a stale reply is
+          // still cached, so re-selecting that IR later is a free hit.
+          if (this.state.convolution?.irId === msg.irId) {
+            this.proc.loadPrecomputedIr(sets, channels);
+            this.postLatency();
+          }
+          // The delivered zeroed blockSpectra rings were consumed by this
+          // load (or are stale) — later cache hits get engine-allocated
+          // fresh rings instead of sharing a mutable one.
+          stripBlockSpectra(sets);
+          return;
+        }
+        // Legacy time-domain payload (direct hosts, tests): interleaved
+        // samples at the host rate. The convolver's FFT batch runs here —
+        // acceptable only as a compatibility path.
+        const samples = msg.samples;
         if (!(samples instanceof Float32Array) || samples.length === 0) return;
         if (channels > 1 && samples.length % channels !== 0) return;
         factoryIrCache.set(`${msg.irId}:${sampleRate}`, { samples, channels });
@@ -207,8 +267,6 @@ class OzvenaWorkletProcessor extends AudioWorkletProcessor {
           const oldest = factoryIrCache.keys().next().value;
           if (oldest !== undefined) factoryIrCache.delete(oldest);
         }
-        // Load only if the selection still points here; a stale reply is
-        // still cached, so re-selecting that IR later is a free hit.
         if (this.state.convolution?.irId === msg.irId) {
           this.proc.loadUserIr(samples, channels);
           this.postLatency();

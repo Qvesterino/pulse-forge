@@ -20,9 +20,11 @@ const TO = process.argv.includes("--to")
 
 const FILES = [
   "core/ozvenaProcessor.ts",
+  "engines/convolutionEngine.ts",
   "engines/plateChamberEngine.ts",
   "modules/preDelay.ts",
   "modules/safetyLimiter.ts",
+  "dsp/fftPartitioned.ts",
 ];
 
 // The vendored header is exactly this many lines (see vendor-ozvena.mjs).

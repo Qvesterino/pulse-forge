@@ -72,28 +72,36 @@ locked to the upstream golden vectors (`tests/ultina-vectors.test.ts`).
 
 ### Ozvena vendored core (known caveats, 2026-09 audit)
 
-The 2026-09 ozvena hardening audit (two rounds) fixed what was safely
-fixable in place — user-IR length cap, pre-delay ring-growth continuity,
-`reset()` scalar state, plate-engine hot-loop allocation, factory-IR
-generation moved off the audio thread (main-thread `irNeeded` →
-`factoryIr` roundtrip with a worklet-side payload cache), and the
-safety-limiter stale-lookahead replay on quality switches. See
-`tests/ozvena-hardening.test.ts` + `tests/ozvena-worklet-entry.test.ts`.
+The 2026-09 ozvena hardening audit (three rounds) fixed what was safely
+fixable in place — user-IR length cap, pre-delay ring-growth continuity
+(with the growth copy bounded by the reachable read distance), `reset()`
+scalar state, plate-engine hot-loop allocation, the safety-limiter
+stale-lookahead replay on quality switches, and the whole IR-load FFT
+pipeline moved off the audio thread: generation AND the per-partition FFT
+batch now run on the main thread, and the worklet receives PRECOMPUTED
+frequency-domain partitions as transferables
+(`precomputeConvolverSpectra` → `loadIrPrecomputed`; bit-identical to the
+time-domain path, proven in `tests/ozvena-ir-spectra.test.ts`).
+See `tests/ozvena-hardening.test.ts` + `tests/ozvena-worklet-entry.test.ts`.
 All reconciled fixes are marked "(Reconciled from Pulse Forge …)" and have
 been synced upstream via `scripts/sync-ozvena-upstream.mjs`;
 `scripts/vendor-ozvena.mjs` now ABORTS a re-vendor that would silently
 drop reconciled markers the upstream snapshot lacks. These remain:
 
-- **IR loading still runs its partition-FFT batch on the audio thread.**
-  Generation is off-thread now, but building the frequency-domain
-  partitions (`createPartitionedConvolver`) happens in the port handler
-  when the payload lands — a bounded ~2–8 ms one-time cost per selection,
-  identical to the pre-existing user-IR load path. Moving it off-thread
-  needs a precomputed-spectra convolver constructor (larger redesign).
+- **Re-loading a cached factory IR allocates its input-block spectra ring
+  on the audio thread.** The convolver's mutable input-block ring is
+  handed over once per delivery; cache-hit re-selections (and second
+  instances sharing the worklet cache) allocate a fresh zeroed ring
+  instead — up to ~1 ms for a 3 s IR, once per load, below one render
+  quantum for typical IRs. The ring is write-before-read, so any initial
+  content is correct.
 - **Pre-delay ring growth still allocates on the audio thread.** Delay-time
-  sweeps that cross a power-of-two capacity boundary allocate + copy the
-  ring in the message handler (bounded, history-preserving since the audit;
-  a full 0→500 ms sweep triggers ~6 grows).
+  sweeps that cross a power-of-two capacity boundary zero + allocate the
+  new ring in the message handler. The history copy is bounded by the
+  reachable read distance (a 10→400 ms sweep copies ≤ ~19 k samples), and
+  the whole pass stays well under one render quantum for the documented
+  0–500 ms range; only extreme tempo-synced delays (many seconds) pay a
+  ms-scale one-time cost.
 
 ## Collaboration
 

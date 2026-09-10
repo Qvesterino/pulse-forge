@@ -37,6 +37,7 @@ interface ProcShape {
     isIrLoaded(): boolean;
     getIrChannels(): number;
     loadUserIr(samples: Float32Array, channels: 1 | 2 | 4): void;
+    loadPrecomputedIr(sets: unknown[], channels: 1 | 2 | 4): void;
     clearUserIr(): void;
   };
   state: {
@@ -456,5 +457,207 @@ describe("Ozvena worklet entry (message port ↔ DSP core wiring)", () => {
     // than ~1.0 between adjacent samples; a hard IR swap would.
     expect(maxJump).toBeLessThanOrEqual(0.7);
     expect(energy([out], 0.1, 0.6)).toBeGreaterThan(1e-6); // tail kept flowing
+  });
+});
+
+// ── Precomputed-spectra IR path (the FFT batch moved off the audio thread) ──
+// The partitioned convolver's load-time work (one forward FFT per IR
+// partition) used to run inside the port handler — ON the audio thread —
+// a 2–8 ms dropout on the first selection of every IR. The main thread now
+// ships PRECOMPUTED frequency-domain partitions; arming the convolver here
+// does no FFT work. The node-side generation lives in
+// tests/ozvena-ir-spectra.test.ts (bit-identical parity is proven there).
+import { precomputeConvolverSpectra } from "../src/effects/ozvena-core/dsp/fftPartitioned.js";
+
+const IR_FRAMES = 512;
+
+/** Smooth decaying mono IR, L1-normalized (bounded wet output). */
+function makeMonoIr(seed: number): Float32Array {
+  const out = new Float32Array(IR_FRAMES);
+  let l1 = 0;
+  for (let i = 0; i < IR_FRAMES; i++) {
+    const v = Math.exp(-i / 96) * Math.sin(i * 0.11 + seed);
+    l1 += Math.abs(v);
+    out[i] = v;
+  }
+  const inv = 1 / l1;
+  for (let i = 0; i < IR_FRAMES; i++) out[i] *= inv;
+  return out;
+}
+
+/** Precomputed sets for the stereo-bus layout, channels 1/2/4. */
+function makeSets(channels: 1 | 2 | 4, seed = 3) {
+  const ps = 2048;
+  const np = Math.ceil(IR_FRAMES / (ps / 2));
+  const sources =
+    channels === 1
+      ? [makeMonoIr(seed)]
+      : channels === 2
+        ? [makeMonoIr(seed), makeMonoIr(seed + 1)]
+        : [makeMonoIr(seed), makeMonoIr(seed + 1), makeMonoIr(seed + 2), makeMonoIr(seed + 3)];
+  const spectra = sources.map(
+    (ch) => precomputeConvolverSpectra(ch, { partitionSize: ps, irLengthSamples: IR_FRAMES }).irSpectra,
+  );
+  const sets = [];
+  for (let slot = 0; slot < (channels === 1 ? 2 : channels); slot++) {
+    sets.push({
+      irSpectra: spectra[Math.min(slot, spectra.length - 1)],
+      blockSpectra: new Float64Array(np * ps * 2),
+      numPartitions: np,
+      partitionSize: ps,
+      irLengthSamples: IR_FRAMES,
+    });
+  }
+  return { sets, interleaved: sources };
+}
+
+describe("Ozvena worklet entry — precomputed IR spectra path", () => {
+  // Local aliases — the equivalents above live inside the earlier describe.
+  const freshIrProc = (options?: ConstructorParameters<ProcCtor>[0]) => {
+    const proc = new Processor(options);
+    proc.port.onmessage?.({ data: { type: "reset" } });
+    return proc;
+  };
+  const sendParam = (proc: ProcShape, id: string, value: number | string): void => {
+    proc.port.onmessage?.({ data: { type: "param", id, value } });
+  };
+
+  it("a factoryIr reply with spectra sets arms the convolver with no time-domain samples", () => {
+    const proc = freshIrProc();
+    sendParam(proc, "convolution.mode", 1);
+    sendParam(proc, "convolution.irId", "hall");
+    expect(proc.port.posted.some((m) => m.type === "irNeeded")).toBe(true);
+
+    const { sets } = makeSets(2);
+    proc.port.onmessage?.({
+      data: { type: "factoryIr", irId: "hall", channels: 2, sets },
+    });
+    expect(proc.proc.isIrLoaded()).toBe(true);
+    expect(proc.proc.getIrChannels()).toBe(2);
+  });
+
+  it("the spectra path renders BIT-IDENTICAL audio to the legacy samples path", () => {
+    // Same synthetic IR delivered both ways; the convolver consumes the
+    // same frequency-domain data either way, so the renders must match
+    // sample for sample.
+    const { sets, interleaved } = makeSets(2);
+    const viaSets = freshIrProc();
+    sendParam(viaSets, "convolution.mode", 2);
+    sendParam(viaSets, "convolution.irId", "hall");
+    viaSets.port.onmessage?.({ data: { type: "factoryIr", irId: "hall", channels: 2, sets } });
+    const outSets = renderImpulse(viaSets, 0.4);
+
+    const viaSamples = freshIrProc();
+    sendParam(viaSamples, "convolution.mode", 2);
+    sendParam(viaSamples, "convolution.irId", "hall");
+    const interleavedL1 = new Float32Array(IR_FRAMES * 2);
+    for (let i = 0; i < IR_FRAMES; i++) {
+      interleavedL1[i * 2] = interleaved[0][i];
+      interleavedL1[i * 2 + 1] = interleaved[1][i];
+    }
+    viaSamples.port.onmessage?.({
+      data: { type: "factoryIr", irId: "hall", channels: 2, samples: interleavedL1 },
+    });
+    const outSamples = renderImpulse(viaSamples, 0.4);
+
+    expect(outSets[0].length).toBe(outSamples[0].length);
+    for (let c = 0; c < 2; c++) {
+      for (let i = 0; i < outSets[c].length; i++) {
+        expect(outSets[c][i]).toBe(outSamples[c][i]);
+      }
+    }
+  });
+
+  it("a cache hit re-selection loads synchronously without re-requesting", () => {
+    const proc = freshIrProc();
+    sendParam(proc, "convolution.irId", "hall");
+    const { sets } = makeSets(2);
+    proc.port.onmessage?.({ data: { type: "factoryIr", irId: "hall", channels: 2, sets } });
+    expect(proc.proc.isIrLoaded()).toBe(true);
+
+    // Switch away and back: the provider must serve HALL's spectra from the
+    // worklet cache — no new irNeeded for hall, no wait for a reply.
+    // (Cathedral legitimately requests its own generation — nothing ever
+    // delivered it — which proves the request path is still live.)
+    proc.port.posted.length = 0;
+    sendParam(proc, "convolution.irId", "cathedral");
+    sendParam(proc, "convolution.irId", "hall");
+    expect(proc.proc.isIrLoaded()).toBe(true);
+    expect(
+      proc.port.posted.some((m) => m.type === "irNeeded" && m.irId === "hall"),
+    ).toBe(false);
+    expect(
+      proc.port.posted.some((m) => m.type === "irNeeded" && m.irId === "cathedral"),
+    ).toBe(true);
+  });
+
+  it("the consume-once blockSpectra handover keeps re-loads correct (finite render)", () => {
+    const proc = freshIrProc();
+    sendParam(proc, "convolution.mode", 2);
+    sendParam(proc, "convolution.irId", "hall");
+    const { sets } = makeSets(2);
+    proc.port.onmessage?.({ data: { type: "factoryIr", irId: "hall", channels: 2, sets } });
+    sendParam(proc, "convolution.irId", "cathedral");
+    sendParam(proc, "convolution.irId", "hall"); // cache hit: engine re-allocates rings
+
+    const out = renderImpulse(proc, 0.3);
+    let nonFinite = 0;
+    let peak = 0;
+    for (const ch of out) {
+      for (let i = 0; i < ch.length; i++) {
+        if (!Number.isFinite(ch[i])) nonFinite++;
+        peak = Math.max(peak, Math.abs(ch[i]));
+      }
+    }
+    expect(nonFinite).toBe(0);
+    expect(peak).toBeLessThanOrEqual(1.0);
+    expect(energy(out, 0.05, 0.3)).toBeGreaterThan(1e-6);
+  });
+
+  it("malformed spectra sets are dropped; the legacy samples path still arms", () => {
+    const proc = freshIrProc();
+    sendParam(proc, "convolution.irId", "hall");
+    const { sets } = makeSets(2);
+    const broken = sets.map((s) => ({
+      ...s,
+      irSpectra: s.irSpectra.subarray(0, s.irSpectra.length - 8),
+    }));
+    proc.port.onmessage?.({ data: { type: "factoryIr", irId: "hall", channels: 2, sets: broken } });
+    expect(proc.proc.isIrLoaded()).toBe(false);
+
+    const interleavedL1 = new Float32Array(IR_FRAMES * 2);
+    const { interleaved } = makeSets(2);
+    for (let i = 0; i < IR_FRAMES; i++) {
+      interleavedL1[i * 2] = interleaved[0][i];
+      interleavedL1[i * 2 + 1] = interleaved[1][i];
+    }
+    proc.port.onmessage?.({
+      data: { type: "factoryIr", irId: "hall", channels: 2, samples: interleavedL1 },
+    });
+    expect(proc.proc.isIrLoaded()).toBe(true);
+  });
+
+  it("an over-cap spectra payload is rejected at the IR length cap", () => {
+    const proc = freshIrProc();
+    sendParam(proc, "convolution.irId", "hall");
+    const { sets } = makeSets(2);
+    const overCap = sets.map((s) => ({ ...s, irLengthSamples: 15 * 60 * SR }));
+    proc.port.onmessage?.({ data: { type: "factoryIr", irId: "hall", channels: 2, sets: overCap } });
+    expect(proc.proc.isIrLoaded()).toBe(false);
+  });
+
+  it("the loadIr message accepts spectra sets directly (user IR path)", () => {
+    const proc = freshIrProc();
+    const { sets } = makeSets(2, 9);
+    proc.port.onmessage?.({ data: { type: "loadIr", channels: 2, sets } });
+    expect(proc.proc.isIrLoaded()).toBe(true);
+    expect(proc.proc.getIrChannels()).toBe(2);
+
+    // Quad user IR: four convolver slots.
+    const proc4 = freshIrProc();
+    const { sets: sets4 } = makeSets(4, 9);
+    proc4.port.onmessage?.({ data: { type: "loadIr", channels: 4, sets: sets4 } });
+    expect(proc4.proc.isIrLoaded()).toBe(true);
+    expect(proc4.proc.getIrChannels()).toBe(4);
   });
 });

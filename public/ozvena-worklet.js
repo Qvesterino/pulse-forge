@@ -798,13 +798,19 @@
       const prevWrite = writeIdx;
       buffers = [];
       writeIdx = [];
+      const reachable = Math.max(
+        delaySamples,
+        activeDelaySamples > 0 ? activeDelaySamples : 0,
+        fadeFromSamples > 0 ? fadeFromSamples : 0
+      ) + 1;
       for (let c = 0; c < channelCount; c++) {
         const nb = new Float32Array(cap);
         const ob = prevBuffers[c];
         if (ob && ob.length > 0 && (prevWrite[c] ?? 0) >= 0) {
           const wi = prevWrite[c];
           const oldLen = ob.length;
-          for (let d = 0; d < oldLen; d++) {
+          const keep = Math.min(oldLen, reachable);
+          for (let d = 0; d < keep; d++) {
             const src = ((wi - d) % oldLen + oldLen) % oldLen;
             nb[wi - d & cap - 1] = ob[src];
           }
@@ -3396,37 +3402,14 @@
   }
 
   // src/effects/ozvena-core/dsp/fftPartitioned.ts
-  function createPartitionedConvolver(ir, opts) {
-    const partitionSize = opts.partitionSize ?? 2048;
-    if (!isPow2(partitionSize)) {
-      throw new Error(
-        `createPartitionedConvolver: partitionSize must be a power of two, got ${partitionSize}`
-      );
-    }
+  function numPartitionsFor(irLengthSamples, partitionSize) {
+    return Math.max(1, Math.ceil(Math.max(1, irLengthSamples) / (partitionSize / 2)));
+  }
+  function createZeroedBlockSpectra(numPartitions, partitionSize) {
+    return new Float64Array(numPartitions * partitionSize * 2);
+  }
+  function makeConvolver(irSpectrums, blockSpectra, numPartitions, partitionSize) {
     const hopSize = partitionSize / 2;
-    const numPartitions = Math.ceil(opts.irLength / hopSize);
-    if (numPartitions < 1) {
-      throw new Error("createPartitionedConvolver: IR length must be \u2265 1 sample");
-    }
-    const irSpectrums = new Float64Array(numPartitions * partitionSize * 2);
-    const irRe = new Float64Array(partitionSize);
-    const irIm = new Float64Array(partitionSize);
-    for (let p = 0; p < numPartitions; p++) {
-      irRe.fill(0);
-      irIm.fill(0);
-      const offset = p * hopSize;
-      for (let i = 0; i < hopSize; i++) {
-        const src = offset + i;
-        if (src < ir.length) irRe[i] = ir[src];
-      }
-      fft(irRe, irIm);
-      const base = p * partitionSize * 2;
-      for (let k = 0; k < partitionSize; k++) {
-        irSpectrums[base + 2 * k] = irRe[k];
-        irSpectrums[base + 2 * k + 1] = irIm[k];
-      }
-    }
-    const blockSpectra = new Float64Array(numPartitions * partitionSize * 2);
     const blockBuf = new Float32Array(hopSize);
     let pending = 0;
     let blockCount = 0;
@@ -3528,6 +3511,59 @@
       }
     };
   }
+  function validatePrecomputedIrSet(set) {
+    if (!set || typeof set !== "object") return null;
+    const s = set;
+    if (!(s.irSpectra instanceof Float64Array) || s.irSpectra.length === 0) return null;
+    if (s.blockSpectra !== void 0 && !(s.blockSpectra instanceof Float64Array)) return null;
+    if (!Number.isFinite(s.numPartitions) || s.numPartitions < 1) return null;
+    if (!isPow2(s.partitionSize) || s.partitionSize < 2) return null;
+    if (!Number.isFinite(s.irLengthSamples) || s.irLengthSamples < 1) return null;
+    if (s.numPartitions !== numPartitionsFor(s.irLengthSamples, s.partitionSize)) return null;
+    const expected = s.numPartitions * s.partitionSize * 2;
+    if (s.irSpectra.length !== expected) return null;
+    if (s.blockSpectra !== void 0 && s.blockSpectra.length !== expected) return null;
+    return s;
+  }
+  function createPartitionedConvolverFromPrecomputed(set) {
+    const checked = validatePrecomputedIrSet(set);
+    if (!checked) {
+      throw new Error("createPartitionedConvolverFromPrecomputed: invalid precomputed IR set");
+    }
+    const blockSpectra = checked.blockSpectra ?? createZeroedBlockSpectra(checked.numPartitions, checked.partitionSize);
+    return makeConvolver(checked.irSpectra, blockSpectra, checked.numPartitions, checked.partitionSize);
+  }
+  function createPartitionedConvolver(ir, opts) {
+    const partitionSize = opts.partitionSize ?? 2048;
+    if (!isPow2(partitionSize)) {
+      throw new Error(
+        `createPartitionedConvolver: partitionSize must be a power of two, got ${partitionSize}`
+      );
+    }
+    const numPartitions = Math.ceil(opts.irLength / (partitionSize / 2));
+    if (numPartitions < 1) {
+      throw new Error("createPartitionedConvolver: IR length must be \u2265 1 sample");
+    }
+    const irSpectrums = new Float64Array(numPartitions * partitionSize * 2);
+    const irRe = new Float64Array(partitionSize);
+    const irIm = new Float64Array(partitionSize);
+    for (let p = 0; p < numPartitions; p++) {
+      irRe.fill(0);
+      irIm.fill(0);
+      const offset = p * (partitionSize / 2);
+      for (let i = 0; i < partitionSize / 2; i++) {
+        const src = offset + i;
+        if (src < ir.length) irRe[i] = ir[src];
+      }
+      fft(irRe, irIm);
+      const base = p * partitionSize * 2;
+      for (let k = 0; k < partitionSize; k++) {
+        irSpectrums[base + 2 * k] = irRe[k];
+        irSpectrums[base + 2 * k + 1] = irIm[k];
+      }
+    }
+    return makeConvolver(irSpectrums, new Float64Array(numPartitions * partitionSize * 2), numPartitions, partitionSize);
+  }
   function recommendPartitionSize(irLength) {
     const target = Math.max(64, Math.round(2 * Math.sqrt(irLength)));
     return nextPow22(target);
@@ -3600,6 +3636,48 @@
         }
       }
     }
+    function beginIrSwap() {
+      if (conv[0] !== null && preparedMaxBlockSize > 0 && hasRendered) {
+        oldConv[0] = conv[0];
+        oldConv[1] = conv[1];
+        oldConv[2] = conv[2];
+        oldConv[3] = conv[3];
+        oldIrChannels = irChannels;
+        convFadeLen = Math.max(1, Math.round(0.05 * hostSampleRate));
+        convFadePos = 0;
+        ensureOldScratch();
+      }
+    }
+    function clearLoadedIr() {
+      conv[0] = conv[1] = conv[2] = conv[3] = null;
+      irLengthSamples = 0;
+      irChannels = 0;
+    }
+    function assignIrSlots(mk, irCh) {
+      if (channelCount === 1) {
+        conv[0] = mk(0);
+        conv[1] = null;
+        conv[2] = null;
+        conv[3] = null;
+        irChannels = 1;
+      } else if (irCh === 1) {
+        conv[0] = mk(0);
+        conv[1] = mk(0);
+        conv[2] = null;
+        conv[3] = null;
+        irChannels = 1;
+      } else if (irCh === 2) {
+        conv[0] = mk(0);
+        conv[1] = mk(1);
+        conv[2] = null;
+        conv[3] = null;
+      } else {
+        conv[0] = mk(0);
+        conv[1] = mk(1);
+        conv[2] = mk(2);
+        conv[3] = mk(3);
+      }
+    }
     return {
       prepare(sr, cc, maxBlockSize = 4096) {
         channelCount = Math.max(1, Math.min(2, cc));
@@ -3619,26 +3697,14 @@
       },
       loadIr(ir, _sr, irCh = 2) {
         if (ir.length === 0 || irCh !== 1 && irCh !== 2 && irCh !== 4) {
-          conv[0] = conv[1] = conv[2] = conv[3] = null;
-          irLengthSamples = 0;
-          irChannels = 0;
+          clearLoadedIr();
           return;
         }
-        if (conv[0] !== null && preparedMaxBlockSize > 0 && hasRendered) {
-          oldConv[0] = conv[0];
-          oldConv[1] = conv[1];
-          oldConv[2] = conv[2];
-          oldConv[3] = conv[3];
-          oldIrChannels = irChannels;
-          convFadeLen = Math.max(1, Math.round(0.05 * hostSampleRate));
-          convFadePos = 0;
-          ensureOldScratch();
-        }
+        beginIrSwap();
         irLengthSamples = Math.floor(ir.length / irCh);
         irChannels = irCh;
         if (irLengthSamples === 0) {
-          conv[0] = conv[1] = conv[2] = conv[3] = null;
-          irChannels = 0;
+          clearLoadedIr();
           return;
         }
         const ps = Math.max(partitionSize, recommendPartitionSize(irLengthSamples));
@@ -3652,29 +3718,29 @@
             partitionSize: ps
           });
         };
-        if (channelCount === 1) {
-          conv[0] = mk(0);
-          conv[1] = null;
-          conv[2] = null;
-          conv[3] = null;
-          irChannels = 1;
-        } else if (irCh === 1) {
-          conv[0] = mk(0);
-          conv[1] = mk(0);
-          conv[2] = null;
-          conv[3] = null;
-          irChannels = 1;
-        } else if (irCh === 2) {
-          conv[0] = mk(0);
-          conv[1] = mk(1);
-          conv[2] = null;
-          conv[3] = null;
-        } else {
-          conv[0] = mk(0);
-          conv[1] = mk(1);
-          conv[2] = mk(2);
-          conv[3] = mk(3);
+        assignIrSlots(mk, irCh);
+      },
+      loadIrPrecomputed(sets, irCh = 2) {
+        if (!Array.isArray(sets) || irCh !== 1 && irCh !== 2 && irCh !== 4) {
+          clearLoadedIr();
+          return;
         }
+        const slotCount = channelCount === 1 ? 1 : irCh === 1 ? 2 : irCh;
+        const checked = [];
+        for (let i = 0; i < slotCount; i++) {
+          const src = i < sets.length ? sets[i] : sets[0];
+          const ok = validatePrecomputedIrSet(src);
+          if (!ok) {
+            clearLoadedIr();
+            return;
+          }
+          checked.push(ok);
+        }
+        beginIrSwap();
+        irLengthSamples = checked[0].irLengthSamples;
+        irChannels = irCh;
+        const mk = (slot) => createPartitionedConvolverFromPrecomputed(checked[slot]);
+        assignIrSlots(mk, irCh);
       },
       clearIr() {
         if (conv[0] !== null && hasRendered) {
@@ -4058,13 +4124,24 @@
       if (res === "pending") {
         return;
       }
-      convolution.loadIr(res.samples, sampleRate2, res.channels);
+      if ("precomputed" in res && res.precomputed) {
+        convolution.loadIrPrecomputed(res.precomputed, res.channels);
+      } else {
+        convolution.loadIr(res.samples, sampleRate2, res.channels);
+      }
       loadedIrId = irId;
       loadedIrRate = sampleRate2;
     }
     function loadUserIr(samples, channels) {
       if (!prepared || samples.length === 0) return;
       convolution.loadIr(samples, sampleRate2, channels);
+      userIrActive = true;
+      loadedIrId = state?.convolution?.irId ?? null;
+      loadedIrRate = sampleRate2;
+    }
+    function loadPrecomputedIr(sets, channels) {
+      if (!prepared || sets.length === 0) return;
+      convolution.loadIrPrecomputed(sets, channels);
       userIrActive = true;
       loadedIrId = state?.convolution?.irId ?? null;
       loadedIrRate = sampleRate2;
@@ -4509,6 +4586,9 @@
       loadUserIr(samples, channels) {
         loadUserIr(samples, channels);
       },
+      loadPrecomputedIr(sets, channels) {
+        loadPrecomputedIr(sets, channels);
+      },
       clearUserIr() {
         clearUserIr();
       }
@@ -4535,7 +4615,18 @@
     "chamber-wide"
   ]);
   var factoryIrCache = /* @__PURE__ */ new Map();
-  var FACTORY_IR_CACHE_MAX = 8;
+  var FACTORY_IR_CACHE_MAX = 4;
+  function stripBlockSpectra(sets) {
+    for (const s of sets) delete s.blockSpectra;
+  }
+  function checkedIrSets(rawSets, sampleRate2) {
+    if (!Array.isArray(rawSets) || rawSets.length === 0) return null;
+    const frames = rawSets[0]?.irLengthSamples;
+    if (!(frames > 0) || frames !== capUserIrFrames(frames, sampleRate2)) return null;
+    const sets = rawSets.map(validatePrecomputedIrSet);
+    if (sets.some((s) => s === null)) return null;
+    return sets;
+  }
   var ENUM_BY_PATH = {
     "engines.e2.algo": ["room", "mediumChamber", "plate"],
     "engines.e3.algo": ["largeChamber", "hall"],
@@ -4637,6 +4728,12 @@
           q.splice(i, 0, { id: msg.id, value: msg.value, when });
         } else if (msg.type === "loadIr") {
           const channels = msg.channels === 4 ? 4 : msg.channels === 2 ? 2 : 1;
+          const sets = checkedIrSets(msg.sets, sampleRate);
+          if (sets) {
+            this.proc.loadPrecomputedIr(sets, channels);
+            this.postLatency();
+            return;
+          }
           const frames = capUserIrFrames(
             (msg.samples?.length ?? 0) / channels,
             sampleRate
@@ -4647,8 +4744,23 @@
           }
         } else if (msg.type === "factoryIr") {
           this.pendingIrRequests.delete(msg.irId);
-          const samples = msg.samples;
           const channels = msg.channels === 4 ? 4 : msg.channels === 2 ? 2 : 1;
+          const sets = checkedIrSets(msg.sets, sampleRate);
+          if (sets) {
+            const cached = { precomputed: sets, channels };
+            factoryIrCache.set(`${msg.irId}:${sampleRate}`, cached);
+            if (factoryIrCache.size > FACTORY_IR_CACHE_MAX) {
+              const oldest = factoryIrCache.keys().next().value;
+              if (oldest !== void 0) factoryIrCache.delete(oldest);
+            }
+            if (this.state.convolution?.irId === msg.irId) {
+              this.proc.loadPrecomputedIr(sets, channels);
+              this.postLatency();
+            }
+            stripBlockSpectra(sets);
+            return;
+          }
+          const samples = msg.samples;
           if (!(samples instanceof Float32Array) || samples.length === 0) return;
           if (channels > 1 && samples.length % channels !== 0) return;
           factoryIrCache.set(`${msg.irId}:${sampleRate}`, { samples, channels });

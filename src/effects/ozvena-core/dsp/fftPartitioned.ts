@@ -61,30 +61,59 @@ export interface PartitionedConvolver {
 }
 
 /**
- * Build a partitioned convolver from a mono impulse response.
- * The IR is split into `ceil(irLength / hopSize)` partitions of
- * `hopSize` samples, each zero-padded to `partitionSize` and FFT'd
- * once at load time.
+ * One convolver's worth of precomputed frequency-domain IR data, built off
+ * the audio thread (see precomputeConvolverSpectra + the host adapter) and
+ * handed to createPartitionedConvolverFromPrecomputed as transferables. The
+ * convolver takes ownership of both arrays.
+ *
+ * `blockSpectra` is optional: the ring is written-before-read from a fresh
+ * convolver, so the engine allocates (and the runtime zero-fills) a fresh
+ * one when it is absent — a bounded one-time cost on re-selections that
+ * were served from a spectra cache. (Reconciled from Pulse Forge, 2026-09-09.)
  */
-export function createPartitionedConvolver(
-  ir: Float32Array,
-  opts: PartitionedConvolverOptions,
-): PartitionedConvolver {
-  const partitionSize = opts.partitionSize ?? 2048;
+export interface PrecomputedIrSet {
+  /** FFT'd IR partitions, layout [p * partitionSize * 2 ± {re, im}]. */
+  irSpectra: Float64Array;
+  /** Zeroed input-block spectra ring (same layout). */
+  blockSpectra?: Float64Array;
+  readonly numPartitions: number;
+  readonly partitionSize: number;
+  readonly irLengthSamples: number;
+}
+
+/** Partition size used for a given IR length (mirrors the engine's loadIr). */
+export function partitionSizeForIr(irLengthSamples: number): number {
+  return Math.max(2048, recommendPartitionSize(Math.max(1, irLengthSamples)));
+}
+
+/** Number of hop-aligned partitions an IR of this length is split into. */
+export function numPartitionsFor(irLengthSamples: number, partitionSize: number): number {
+  return Math.max(1, Math.ceil(Math.max(1, irLengthSamples) / (partitionSize / 2)));
+}
+
+/** A fresh zeroed input-block spectra ring for `numPartitions` partitions. */
+export function createZeroedBlockSpectra(numPartitions: number, partitionSize: number): Float64Array {
+  return new Float64Array(numPartitions * partitionSize * 2);
+}
+
+/**
+ * FFT one MONO IR channel into partition spectra, off the audio thread.
+ * This is the expensive half of createPartitionedConvolver's load-time
+ * work (the per-partition forward FFTs); hosts that care about audio-thread
+ * headroom run it on the main thread and ship the result as transferables.
+ */
+export function precomputeConvolverSpectra(
+  monoChannel: Float32Array,
+  opts?: { partitionSize?: number; irLengthSamples?: number },
+): PrecomputedIrSet {
+  const irLengthSamples = Math.max(1, opts?.irLengthSamples ?? monoChannel.length);
+  const partitionSize = opts?.partitionSize ?? partitionSizeForIr(irLengthSamples);
   if (!isPow2(partitionSize)) {
-    throw new Error(
-      `createPartitionedConvolver: partitionSize must be a power of two, got ${partitionSize}`,
-    );
+    throw new Error(`precomputeConvolverSpectra: partitionSize must be a power of two, got ${partitionSize}`);
   }
   const hopSize = partitionSize / 2;
-  const numPartitions = Math.ceil(opts.irLength / hopSize);
-  if (numPartitions < 1) {
-    throw new Error("createPartitionedConvolver: IR length must be ≥ 1 sample");
-  }
-
-  // Pre-computed FFT of each IR partition.
-  // Layout: irSpectrums[p * partitionSize * 2 + 2*k + 0] = real, + 1 = imag.
-  const irSpectrums = new Float64Array(numPartitions * partitionSize * 2);
+  const numPartitions = numPartitionsFor(irLengthSamples, partitionSize);
+  const irSpectra = new Float64Array(numPartitions * partitionSize * 2);
   const irRe = new Float64Array(partitionSize);
   const irIm = new Float64Array(partitionSize);
   for (let p = 0; p < numPartitions; p++) {
@@ -93,19 +122,31 @@ export function createPartitionedConvolver(
     const offset = p * hopSize;
     for (let i = 0; i < hopSize; i++) {
       const src = offset + i;
-      if (src < ir.length) irRe[i] = ir[src];
+      if (src < monoChannel.length) irRe[i] = monoChannel[src];
     }
     fft(irRe, irIm);
     const base = p * partitionSize * 2;
     for (let k = 0; k < partitionSize; k++) {
-      irSpectrums[base + 2 * k] = irRe[k];
-      irSpectrums[base + 2 * k + 1] = irIm[k];
+      irSpectra[base + 2 * k] = irRe[k];
+      irSpectra[base + 2 * k + 1] = irIm[k];
     }
   }
+  return { irSpectra, numPartitions, partitionSize, irLengthSamples };
+}
 
-  // Input block spectra ring — slot (j % numPartitions) holds X_j.
-  // Sized so Y_t can always reach the partitions it needs.
-  const blockSpectra = new Float64Array(numPartitions * partitionSize * 2);
+/**
+ * Shared convolver core: everything after the IR spectra exist. Both the
+ * time-domain constructor and the precomputed-spectra constructor delegate
+ * here, so the two paths are structurally identical (same ring layout, same
+ * FFT schedule, same latency). (Reconciled from Pulse Forge, 2026-09-09.)
+ */
+function makeConvolver(
+  irSpectrums: Float64Array,
+  blockSpectra: Float64Array,
+  numPartitions: number,
+  partitionSize: number,
+): PartitionedConvolver {
+  const hopSize = partitionSize / 2;
   const blockBuf = new Float32Array(hopSize);
   let pending = 0; // samples buffered toward the next hop block
   let blockCount = 0; // input blocks fully received so far
@@ -249,6 +290,89 @@ export function createPartitionedConvolver(
       absRead = 0;
     },
   };
+}
+
+/**
+ * Validate a PrecomputedIrSet arriving over an untrusted boundary (a
+ * message port). Returns null when the shape is unusable — callers treat
+ * that as "keep waiting" instead of arming a corrupt convolver.
+ */
+export function validatePrecomputedIrSet(set: unknown): PrecomputedIrSet | null {
+  if (!set || typeof set !== "object") return null;
+  const s = set as PrecomputedIrSet;
+  if (!(s.irSpectra instanceof Float64Array) || s.irSpectra.length === 0) return null;
+  if (s.blockSpectra !== undefined && !(s.blockSpectra instanceof Float64Array)) return null;
+  if (!Number.isFinite(s.numPartitions) || s.numPartitions < 1) return null;
+  if (!isPow2(s.partitionSize) || s.partitionSize < 2) return null;
+  if (!Number.isFinite(s.irLengthSamples) || s.irLengthSamples < 1) return null;
+  if (s.numPartitions !== numPartitionsFor(s.irLengthSamples, s.partitionSize)) return null;
+  const expected = s.numPartitions * s.partitionSize * 2;
+  if (s.irSpectra.length !== expected) return null;
+  if (s.blockSpectra !== undefined && s.blockSpectra.length !== expected) return null;
+  return s;
+}
+
+/**
+ * Build a convolver from precomputed frequency-domain IR partitions (see
+ * precomputeConvolverSpectra). Structurally identical to the convolver the
+ * time-domain constructor would build for the same IR — same rings, same
+ * schedule, same latency — but with NO FFT work and NO large allocation on
+ * the calling (audio) thread beyond the optional blockSpectra.
+ */
+export function createPartitionedConvolverFromPrecomputed(
+  set: PrecomputedIrSet,
+): PartitionedConvolver {
+  const checked = validatePrecomputedIrSet(set);
+  if (!checked) {
+    throw new Error("createPartitionedConvolverFromPrecomputed: invalid precomputed IR set");
+  }
+  const blockSpectra = checked.blockSpectra ?? createZeroedBlockSpectra(checked.numPartitions, checked.partitionSize);
+  return makeConvolver(checked.irSpectra, blockSpectra, checked.numPartitions, checked.partitionSize);
+}
+
+/**
+ * Build a partitioned convolver from a mono impulse response.
+ * The IR is split into `ceil(irLength / hopSize)` partitions of
+ * `hopSize` samples, each zero-padded to `partitionSize` and FFT'd
+ * once at load time.
+ */
+export function createPartitionedConvolver(
+  ir: Float32Array,
+  opts: PartitionedConvolverOptions,
+): PartitionedConvolver {
+  const partitionSize = opts.partitionSize ?? 2048;
+  if (!isPow2(partitionSize)) {
+    throw new Error(
+      `createPartitionedConvolver: partitionSize must be a power of two, got ${partitionSize}`,
+    );
+  }
+  const numPartitions = Math.ceil(opts.irLength / (partitionSize / 2));
+  if (numPartitions < 1) {
+    throw new Error("createPartitionedConvolver: IR length must be ≥ 1 sample");
+  }
+
+  // Pre-computed FFT of each IR partition.
+  // Layout: irSpectrums[p * partitionSize * 2 + 2*k + 0] = real, + 1 = imag.
+  const irSpectrums = new Float64Array(numPartitions * partitionSize * 2);
+  const irRe = new Float64Array(partitionSize);
+  const irIm = new Float64Array(partitionSize);
+  for (let p = 0; p < numPartitions; p++) {
+    irRe.fill(0);
+    irIm.fill(0);
+    const offset = p * (partitionSize / 2);
+    for (let i = 0; i < partitionSize / 2; i++) {
+      const src = offset + i;
+      if (src < ir.length) irRe[i] = ir[src];
+    }
+    fft(irRe, irIm);
+    const base = p * partitionSize * 2;
+    for (let k = 0; k < partitionSize; k++) {
+      irSpectrums[base + 2 * k] = irRe[k];
+      irSpectrums[base + 2 * k + 1] = irIm[k];
+    }
+  }
+
+  return makeConvolver(irSpectrums, new Float64Array(numPartitions * partitionSize * 2), numPartitions, partitionSize);
 }
 
 /**

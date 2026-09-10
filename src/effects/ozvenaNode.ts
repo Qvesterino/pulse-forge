@@ -2,29 +2,66 @@ import type { EffectRuntime } from "../effects/types";
 import type { EffectInstance } from "../project-model/types";
 import { capUserIrFrames } from "./ozvena-params";
 import { generateFactoryIr, generateFactoryIr4 } from "./ozvena-core/modules/factoryIr";
+import {
+  createZeroedBlockSpectra,
+  numPartitionsFor,
+  partitionSizeForIr,
+  precomputeConvolverSpectra,
+  type PrecomputedIrSet,
+} from "./ozvena-core/dsp/fftPartitioned";
+
+interface PrecomputedIrPayload {
+  channels: 1 | 2 | 4;
+  /** One set per convolver slot in the engine's stereo-bus layout:
+   *  mono IR → 2 sets sharing one irSpectra; stereo → 2; quad → 4. */
+  sets: PrecomputedIrSet[];
+}
 
 /**
- * Build the interleaved factory-IR payload for the worklet (same shape
- * logic as the core's inline default provider: the 4-channel true-stereo
- * IR when the catalogue has one, mono broadcast to interleaved stereo
- * otherwise). Runs on the MAIN thread — single-digit ms per (id, rate),
- * off the audio rendering thread; the generator's own bounded cache makes
- * repeated requests free.
+ * FFT the per-source-channel IR data into partition spectra — ON THE MAIN
+ * THREAD. The per-partition forward-FFT batch (hundreds of FFT-2048s for a
+ * multi-second IR) used to run inside the worklet's port handler, i.e. ON
+ * THE AUDIO THREAD: a 2–8 ms stall on the first selection of every IR —
+ * the kind of dropout users read as "this tool crashes sound". The result
+ * ships to the worklet as transferables; arming the convolver there does
+ * no FFT work. (Reconciled from Pulse Forge hardening audit, 2026-09-09.)
  */
-function buildFactoryIrPayload(
-  irId: string,
-  sampleRate: number,
-): { samples: Float32Array; channels: 1 | 2 | 4 } | null {
-  const quad = generateFactoryIr4(irId, sampleRate);
-  if (quad) return { samples: quad, channels: 4 };
-  const mono = generateFactoryIr(irId, sampleRate);
-  if (!mono) return null;
-  const stereo = new Float32Array(mono.length * 2);
-  for (let i = 0; i < mono.length; i++) {
-    stereo[2 * i] = mono[i];
-    stereo[2 * i + 1] = mono[i];
+function buildPrecomputedIrPayload(
+  perChannel: Float32Array[],
+  frames: number,
+): PrecomputedIrPayload {
+  const channels = (perChannel.length >= 4 ? 4 : perChannel.length >= 2 ? 2 : 1) as 1 | 2 | 4;
+  const ps = partitionSizeForIr(frames);
+  const np = numPartitionsFor(frames, ps);
+  // Spectra per SOURCE channel, computed once (mono broadcast shares).
+  const spectra = perChannel.slice(0, Math.max(1, Math.min(channels, perChannel.length)))
+    .map((ch) => precomputeConvolverSpectra(ch, { partitionSize: ps, irLengthSamples: frames }).irSpectra);
+  const slots = channels === 1 ? 2 : channels;
+  const sets: PrecomputedIrSet[] = [];
+  for (let slot = 0; slot < slots; slot++) {
+    const srcIdx = Math.min(slot, spectra.length - 1);
+    sets.push({
+      irSpectra: spectra[srcIdx],
+      blockSpectra: createZeroedBlockSpectra(np, ps),
+      numPartitions: np,
+      partitionSize: ps,
+      irLengthSamples: frames,
+    });
   }
-  return { samples: stereo, channels: 2 };
+  return { channels, sets };
+}
+
+/** Unique transferable buffers across a payload (shared irSpectra must be
+ *  listed once — a duplicate transfer entry throws DataCloneError). */
+function payloadTransfers(payload: PrecomputedIrPayload): Transferable[] {
+  const out: ArrayBuffer[] = [];
+  for (const s of payload.sets) {
+    for (const arr of [s.irSpectra, s.blockSpectra]) {
+      const buf = arr?.buffer as ArrayBuffer | undefined;
+      if (buf && !out.includes(buf)) out.push(buf);
+    }
+  }
+  return out;
 }
 
 /**
@@ -70,19 +107,33 @@ export function createOzvenaNode(
       latencySamples = msg.samples;
       if (!disposed) for (const listener of latencyListeners) listener();
     } else if (msg?.type === "irNeeded" && typeof msg.irId === "string") {
-      // The worklet's factory-IR provider asks the main thread to generate
-      // (audio-thread-free selection). Reply with the payload — cloned, not
-      // transferred, so the generator's bounded cache stays reusable.
+      // The worklet's factory-IR provider asks the main thread to generate.
+      // Reply with PRECOMPUTED spectra (generation + FFT batch here, off
+      // the audio thread); the arrays are transferred, not copied.
       if (disposed) return;
       const sr =
         typeof msg.sampleRate === "number" && Number.isFinite(msg.sampleRate) && msg.sampleRate > 0
           ? msg.sampleRate
           : ctx.sampleRate;
-      const payload = buildFactoryIrPayload(msg.irId, sr);
+      const quad = generateFactoryIr4(msg.irId, sr);
+      let payload: PrecomputedIrPayload | null = null;
+      if (quad) {
+        const frames = quad.length / 4;
+        const perChannel = [0, 1, 2, 3].map((c) => {
+          const out = new Float32Array(frames);
+          for (let i = 0; i < frames; i++) out[i] = quad[i * 4 + c];
+          return out;
+        });
+        payload = buildPrecomputedIrPayload(perChannel, frames);
+      } else {
+        const mono = generateFactoryIr(msg.irId, sr);
+        if (mono) payload = buildPrecomputedIrPayload([mono], mono.length);
+      }
       node.port.postMessage(
         payload
-          ? { type: "factoryIr", irId: msg.irId, samples: payload.samples, channels: payload.channels }
+          ? { type: "factoryIr", irId: msg.irId, channels: payload.channels, sets: payload.sets }
           : { type: "factoryIr", irId: msg.irId, samples: null, channels: 1 },
+        payload ? payloadTransfers(payload) : [],
       );
     }
   };
@@ -120,21 +171,26 @@ export function createOzvenaNode(
     loadUserIr(ir: AudioBuffer) {
       if (disposed) return;
       const chCount = (ir.numberOfChannels >= 2 ? 2 : 1) as 1 | 2;
-      // Time-based cap: a mistaken long file must not be interleaved,
-      // transferred and convolved in full (the worklet re-clamps at its own
-      // boundary — this avoids shipping the wasted payload at all).
+      // Time-based cap: a mistaken long file must not be decoded into
+      // spectra and convolved in full (the worklet re-clamps at its own
+      // boundary — this avoids the wasted FFT work at all).
       const len = capUserIrFrames(ir.length, ir.sampleRate);
       if (len <= 0) return;
-      const interleaved = new Float32Array(len * chCount);
-      const left = ir.getChannelData(0);
-      const right = chCount === 2 ? ir.getChannelData(1) : left;
-      for (let i = 0; i < len; i++) {
-        interleaved[i * 2] = left[i];
-        interleaved[i * 2 + 1] = right[i];
+      // Per-source-channel copies, then the partition-FFT batch HERE on
+      // the main thread (it used to run on the audio thread inside the
+      // worklet — a 2–8 ms dropout per load). Ships spectra as
+      // transferables.
+      const perChannel: Float32Array[] = [];
+      for (let c = 0; c < chCount; c++) {
+        const src = ir.getChannelData(c);
+        const out = new Float32Array(len);
+        for (let i = 0; i < len; i++) out[i] = src[i];
+        perChannel.push(out);
       }
+      const payload = buildPrecomputedIrPayload(perChannel, len);
       node.port.postMessage(
-        { type: "loadIr", samples: interleaved, channels: chCount },
-        [interleaved.buffer],
+        { type: "loadIr", channels: payload.channels, sets: payload.sets },
+        payloadTransfers(payload),
       );
     },
     /** Remove a previously loaded user IR (fall back to factory selection). */

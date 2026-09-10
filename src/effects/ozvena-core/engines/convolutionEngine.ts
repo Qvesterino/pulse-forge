@@ -27,7 +27,10 @@
 import { clamp } from "../dsp/math.js";
 import {
   createPartitionedConvolver,
+  createPartitionedConvolverFromPrecomputed,
+  validatePrecomputedIrSet,
   type PartitionedConvolver,
+  type PrecomputedIrSet,
   recommendPartitionSize,
 } from "../dsp/fftPartitioned.js";
 
@@ -54,6 +57,17 @@ export interface ConvolutionEngine {
    * convention: outL = inL·LL + inR·RL, outR = inL·LR + inR·RR).
    */
   loadIr(ir: Float32Array, sampleRate: number, irChannels?: IrChannelCount): void;
+  /**
+   * Load an IR from PRECOMPUTED frequency-domain partitions (built off the
+   * audio thread, see fftPartitioned.precomputeConvolverSpectra). Audio-
+   * thread equivalent of loadIr with NO per-partition FFT batch; only the
+   * optional per-set blockSpectra may still be allocated. `sets` are
+   * consumed per convolver slot in engine layout (mono bus: 1 set; mono IR
+   * on a stereo bus: 2 sets sharing one irSpectra; stereo: 2; true-stereo:
+   * 4).
+   * (Reconciled from Pulse Forge hardening audit, 2026-09-09.)
+   */
+  loadIrPrecomputed(sets: PrecomputedIrSet[], irChannels: IrChannelCount): void;
   /** Remove the active IR and return to a dry/no-convolution state. */
   clearIr(): void;
   /** Returns true if an IR is currently loaded. */
@@ -174,6 +188,61 @@ export function createConvolutionEngine(
     }
   }
 
+  // ── Shared IR-load helpers (time-domain and precomputed paths must
+  // behave identically: same swap crossfade, same slot layout). ──
+  // (Reconciled from Pulse Forge hardening audit, 2026-09-09.)
+
+  /** Arm the ~50 ms wet crossfade for an in-flight IR swap. */
+  function beginIrSwap(): void {
+    if (conv[0] !== null && preparedMaxBlockSize > 0 && hasRendered) {
+      oldConv[0] = conv[0]; oldConv[1] = conv[1];
+      oldConv[2] = conv[2]; oldConv[3] = conv[3];
+      oldIrChannels = irChannels;
+      convFadeLen = Math.max(1, Math.round(0.05 * hostSampleRate));
+      convFadePos = 0;
+      ensureOldScratch();
+    }
+  }
+
+  /** Drop any loaded IR bookkeeping (no crossfade — the caller decided). */
+  function clearLoadedIr(): void {
+    conv[0] = conv[1] = conv[2] = conv[3] = null;
+    irLengthSamples = 0;
+    irChannels = 0;
+  }
+
+  /** Install convolvers from `mk(slot)` using the engine channel layout. */
+  function assignIrSlots(
+    mk: (slot: number) => PartitionedConvolver,
+    irCh: IrChannelCount,
+  ): void {
+    if (channelCount === 1) {
+      // Mono bus: single convolver (first slot of the IR).
+      conv[0] = mk(0);
+      conv[1] = null;
+      conv[2] = null;
+      conv[3] = null;
+      irChannels = 1;
+    } else if (irCh === 1) {
+      // Mono IR: broadcast to both bus channels.
+      conv[0] = mk(0);
+      conv[1] = mk(0);
+      conv[2] = null;
+      conv[3] = null;
+      irChannels = 1;
+    } else if (irCh === 2) {
+      conv[0] = mk(0); // L
+      conv[1] = mk(1); // R
+      conv[2] = null;
+      conv[3] = null;
+    } else {
+      conv[0] = mk(0); // LL
+      conv[1] = mk(1); // LR
+      conv[2] = mk(2); // RL
+      conv[3] = mk(3); // RR
+    }
+  }
+
   return {
     prepare(sr, cc, maxBlockSize = 4096) {
       channelCount = Math.max(1, Math.min(2, cc));
@@ -195,26 +264,16 @@ export function createConvolutionEngine(
 
     loadIr(ir, _sr, irCh: IrChannelCount = 2) {
       if (ir.length === 0 || (irCh !== 1 && irCh !== 2 && irCh !== 4)) {
-        conv[0] = conv[1] = conv[2] = conv[3] = null;
-        irLengthSamples = 0;
-        irChannels = 0;
+        clearLoadedIr();
         return;
       }
       // An IR swap while audio flows: move the active set aside and arm
       // the wet crossfade (only when an IR was actually loaded).
-      if (conv[0] !== null && preparedMaxBlockSize > 0 && hasRendered) {
-        oldConv[0] = conv[0]; oldConv[1] = conv[1];
-        oldConv[2] = conv[2]; oldConv[3] = conv[3];
-        oldIrChannels = irChannels;
-        convFadeLen = Math.max(1, Math.round(0.05 * hostSampleRate));
-        convFadePos = 0;
-        ensureOldScratch();
-      }
+      beginIrSwap();
       irLengthSamples = Math.floor(ir.length / irCh);
       irChannels = irCh;
       if (irLengthSamples === 0) {
-        conv[0] = conv[1] = conv[2] = conv[3] = null;
-        irChannels = 0;
+        clearLoadedIr();
         return;
       }
       const ps = Math.max(partitionSize, recommendPartitionSize(irLengthSamples));
@@ -228,31 +287,34 @@ export function createConvolutionEngine(
           partitionSize: ps,
         });
       };
-      if (channelCount === 1) {
-        // Mono bus: single convolver (first channel of the IR).
-        conv[0] = mk(0);
-        conv[1] = null;
-        conv[2] = null;
-        conv[3] = null;
-        irChannels = 1;
-      } else if (irCh === 1) {
-        // Mono IR: broadcast to both bus channels.
-        conv[0] = mk(0);
-        conv[1] = mk(0);
-        conv[2] = null;
-        conv[3] = null;
-        irChannels = 1;
-      } else if (irCh === 2) {
-        conv[0] = mk(0); // L
-        conv[1] = mk(1); // R
-        conv[2] = null;
-        conv[3] = null;
-      } else {
-        conv[0] = mk(0); // LL
-        conv[1] = mk(1); // LR
-        conv[2] = mk(2); // RL
-        conv[3] = mk(3); // RR
+      assignIrSlots(mk, irCh);
+    },
+
+    loadIrPrecomputed(sets, irCh: IrChannelCount = 2) {
+      // (Reconciled from Pulse Forge hardening audit, 2026-09-09.)
+      if (!Array.isArray(sets) || (irCh !== 1 && irCh !== 2 && irCh !== 4)) {
+        clearLoadedIr();
+        return;
       }
+      const slotCount = channelCount === 1 ? 1 : irCh === 1 ? 2 : irCh;
+      const checked: PrecomputedIrSet[] = [];
+      for (let i = 0; i < slotCount; i++) {
+        // Mono broadcast shares one irSpectra across the two slots — each
+        // slot may still carry its OWN zeroed blockSpectra.
+        const src = i < sets.length ? sets[i] : sets[0];
+        const ok = validatePrecomputedIrSet(src);
+        if (!ok) {
+          clearLoadedIr();
+          return;
+        }
+        checked.push(ok);
+      }
+      beginIrSwap();
+      irLengthSamples = checked[0].irLengthSamples;
+      irChannels = irCh;
+      const mk = (slot: number): PartitionedConvolver =>
+        createPartitionedConvolverFromPrecomputed(checked[slot]);
+      assignIrSlots(mk, irCh);
     },
 
     clearIr() {

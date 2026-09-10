@@ -150,3 +150,85 @@ describe("plugin node dispose does not close the message port", () => {
     expect(node.port.posted.length).toBe(after1);
   });
 });
+
+describe("ozvena node ships PRECOMPUTED IR spectra (no time-domain payloads)", () => {
+  // The node is the main-thread side of the audio-thread allocation fix:
+  // both the user-IR load and the factory-IR reply must carry frequency-
+  // domain partition sets (the FFT batch ran HERE), never raw samples that
+  // would make the worklet's convolver FFT on the audio rendering thread.
+  function fakeAudioBuffer(channels: number, frames: number): AudioBuffer {
+    const chans = Array.from({ length: channels }, (_, c) => {
+      const d = new Float32Array(frames);
+      for (let i = 0; i < frames; i++) d[i] = Math.exp(-i / (frames / 4)) * (c + 1);
+      return d;
+    });
+    return {
+      numberOfChannels: channels,
+      length: frames,
+      sampleRate: 48000,
+      duration: frames / 48000,
+      getChannelData: (i: number) => chans[i],
+      copyFromChannel: () => {},
+      copyToChannel: () => {},
+    } as unknown as AudioBuffer;
+  }
+
+  it("loadUserIr posts per-slot spectra sets (no time-domain samples)", () => {
+    const ctx = makeCtx();
+    const rt = createOzvenaNode(ctx, instanceOf("ozvena"), {}, 120);
+    const node = lastNode as FakeAudioWorkletNode;
+
+    rt.loadUserIr!(fakeAudioBuffer(2, 1000));
+    const msg = node.port.posted.find((m) => m.type === "loadIr") as
+      | {
+          channels?: number;
+          sets?: {
+            irSpectra: Float64Array;
+            blockSpectra: Float64Array;
+            numPartitions: number;
+            partitionSize: number;
+            irLengthSamples: number;
+          }[];
+          samples?: unknown;
+        }
+      | undefined;
+    expect(msg).toBeDefined();
+    expect(msg!.samples).toBeUndefined(); // ← no time-domain payload
+    expect(msg!.channels).toBe(2);
+    expect(msg!.sets!.length).toBe(2); // stereo bus → L and R slots
+    const s0 = msg!.sets![0];
+    expect(s0.irLengthSamples).toBe(1000);
+    expect(s0.partitionSize).toBe(2048);
+    expect(s0.numPartitions).toBe(1); // 1000 < hop 1024
+    expect(s0.irSpectra.length).toBe(2048 * 2);
+    // The two slots must NOT share a blockSpectra (mutable per convolver).
+    expect(s0.blockSpectra).not.toBe(msg!.sets![1].blockSpectra);
+  });
+
+  it("irNeeded reply carries quad spectra sets for a true-stereo factory IR", () => {
+    const ctx = makeCtx();
+    createOzvenaNode(ctx, instanceOf("ozvena"), {}, 120);
+    const node = lastNode as FakeAudioWorkletNode;
+
+    node.port.onmessage?.({ data: { type: "irNeeded", irId: "hall", sampleRate: 48000 } });
+    const msg = node.port.posted.find((m) => m.type === "factoryIr") as
+      | { irId?: string; channels?: number; sets?: { irSpectra: Float64Array }[]; samples?: unknown }
+      | undefined;
+    expect(msg).toBeDefined();
+    expect(msg!.irId).toBe("hall");
+    expect(msg!.samples).toBeUndefined();
+    expect(msg!.channels).toBe(4); // factory IRs are true-stereo quads
+    expect(msg!.sets!.length).toBe(4); // LL, LR, RL, RR slots
+    // A 2.5 s hall at 48 kHz → 120000 frames → 118 partitions of 2048.
+    expect(msg!.sets![0].irSpectra.length).toBe(118 * 2048 * 2);
+  });
+
+  it("an empty/zero-frame buffer is ignored without posting a payload", () => {
+    const ctx = makeCtx();
+    const rt = createOzvenaNode(ctx, instanceOf("ozvena"), {}, 120);
+    const node = lastNode as FakeAudioWorkletNode;
+    const before = node.port.posted.length;
+    rt.loadUserIr!(fakeAudioBuffer(2, 0));
+    expect(node.port.posted.length).toBe(before);
+  });
+});
