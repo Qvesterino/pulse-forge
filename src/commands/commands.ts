@@ -2237,7 +2237,10 @@ export function applyInstrumentPreset(doc: ProjectDocument, trackId: string, pre
   ): ProjectDocument => ({
     ...d,
     tracks: d.tracks.map((t) =>
-      t.kind === "instrument" && t.id === trackId ? { ...t, params, sampleId, presetId } : t,
+      // Copy the params map on every apply: the closure-owned next/prev maps
+      // are shared by execute and every undo/redo cycle — inserting them by
+      // reference would alias one mutable object across doc revisions.
+      t.kind === "instrument" && t.id === trackId ? { ...t, params: { ...params }, sampleId, presetId } : t,
     ),
   });
   return {
@@ -4645,7 +4648,14 @@ export function setArrangementClipLoop(doc: ProjectDocument, clipId: string, loo
     throw new Error("Scene automation lane for this target already exists");
   }
   const initial = clampAutomationPointValue(doc, target, targetParamDef(doc, target)?.default ?? 0);
-  const lane: SceneAutomation = { id: uid("sceneAuto"), sceneId, target, points: [{ tick: 0, value: initial }] };
+  // Copy the caller's target: the lane must not alias an object the caller
+  // could later mutate in place (doc and undo snapshot would diverge).
+  const lane: SceneAutomation = {
+    id: uid("sceneAuto"),
+    sceneId,
+    target: { ...target },
+    points: [{ tick: 0, value: initial }],
+  };
   const next = { ...doc, sceneAutomation: [...doc.sceneAutomation, lane] };
   return snapshot("addSceneAutomation", "Add scene lane", doc, next);
 }
@@ -5118,6 +5128,30 @@ export function applyEffectPreset(doc: ProjectDocument, trackId: string, fxId: s
     label: `Apply ${preset.name} preset`,
     execute: (d) => apply(d, nextParams, nextSteps),
     undo: (d) => apply(d, previous, previousSteps),
+  };
+}
+
+/** Reset an effect to its complete schema default in one undoable operation. */
+export function resetEffect(doc: ProjectDocument, trackId: string, fxId: string): Command {
+  const target = trackEffectsOf(doc, trackId).find((fx) => fx.id === fxId);
+  if (!target) throw new Error(`Effect ${fxId} not found`);
+
+  const previousParams = { ...target.params };
+  // Flagship plugins expose deep, namespaced DSP parameters in addition to
+  // the compact rack surface. normalizePluginParams({}) builds a complete,
+  // schema-valid default map so reset cannot leave stale hidden parameters in
+  // the worklet after a prior preset or A/B recall.
+  const nextParams = normalizePluginParams(target.type, {}) ?? defaultParamsOf(target.type);
+  const apply = (d: ProjectDocument, params: Record<string, number>): ProjectDocument =>
+    withTrackEffects(d, trackId, (effects) =>
+      effects.map((fx) => (fx.id === fxId ? { ...fx, params: { ...params } } : fx)),
+    );
+
+  return {
+    type: "resetEffect",
+    label: `Reset ${EFFECT_DEFS[target.type].name}`,
+    execute: (d) => apply(d, nextParams),
+    undo: (d) => apply(d, previousParams),
   };
 }
 

@@ -11,6 +11,7 @@ import {
   listBeats,
   peekRemixParent,
   registerPlay,
+  reportBeat,
   saveCreatorHandle,
   setRemixParent,
   publishBeat,
@@ -87,7 +88,7 @@ export function GalleryPage() {
     <div className="gallery-root" aria-label="Beat Gallery">
       <header className="gallery-header">
         <div className="gallery-brand">
-          <span className="gallery-brand-mark">PF</span>
+          <span className="gallery-brand-mark">KYX</span>
           <div>
             <h1>BEAT GALLERY</h1>
             <p>Hear it. Fork it. Drop yours. Every beat opens in the full studio — free, no install.</p>
@@ -167,7 +168,8 @@ export function GalleryPage() {
       </div>
 
       <footer className="gallery-footer">
-        KYX — a free browser studio. Beats are share links; nothing is uploaded but the project data.
+        KYX — a free browser studio. Publishing stores the project share code, title, tags and optional creator name;
+        audio is not uploaded. Use REPORT on a card if a beat needs moderation.
       </footer>
     </div>
   );
@@ -187,6 +189,9 @@ function GalleryCard({
   onFork: () => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportReason, setReportReason] = useState("spam or misleading content");
+  const [reportStatus, setReportStatus] = useState<string | null>(null);
   /** Optimistic play counter — server response (or the optimistic +1) wins. */
   const [plays, setPlays] = useState(item.plays ?? 0);
   const openUrl = shareAppUrl(item.code, location.origin);
@@ -204,6 +209,17 @@ function GalleryCard({
       setTimeout(() => setCopied(false), 1500);
     } catch {
       // clipboard blocked — the Open button still works
+    }
+  };
+
+  const submitReport = async () => {
+    if (reportStatus === "SENDING…") return;
+    setReportStatus("SENDING…");
+    try {
+      await reportBeat(item.id, reportReason);
+      setReportStatus("REPORT SENT ✓");
+    } catch (error) {
+      setReportStatus(`REPORT FAILED — ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
@@ -305,7 +321,7 @@ function GalleryCard({
       )}
       <div className="gallery-card-actions">
         <a className="btn btn-export gallery-open" href={openUrl} target="_blank" rel="noreferrer">
-          OPEN IN FORGE
+          OPEN IN KYX
         </a>
         <button
           type="button"
@@ -327,7 +343,40 @@ function GalleryCard({
         <button type="button" className="gallery-copylink" onClick={() => void copyLink()}>
           {copied ? "LINK COPIED ✓" : "COPY LINK"}
         </button>
+        <button
+          type="button"
+          className="gallery-copylink gallery-report-toggle"
+          aria-expanded={reportOpen}
+          onClick={() => {
+            setReportOpen((open) => !open);
+            setReportStatus(null);
+          }}
+        >
+          REPORT
+        </button>
       </div>
+      {reportOpen && (
+        <div className="gallery-report" role="group" aria-label={`Report ${item.title}`}>
+          <label>
+            <span>WHY?</span>
+            <select value={reportReason} onChange={(event) => setReportReason(event.target.value)}>
+              <option>spam or misleading content</option>
+              <option>copyright or ownership issue</option>
+              <option>abusive or unsafe content</option>
+              <option>broken or malicious share code</option>
+              <option>other</option>
+            </select>
+          </label>
+          <button type="button" className="btn btn-small btn-danger" onClick={() => void submitReport()}>
+            {reportStatus === "SENDING…" ? "SENDING…" : "SEND REPORT"}
+          </button>
+          <button type="button" className="btn btn-small" onClick={() => setReportOpen(false)}>
+            CANCEL
+          </button>
+          {reportStatus && reportStatus !== "SENDING…" && <span role="status">{reportStatus}</span>}
+          <small>Reports contain the selected reason only; your IP is used transiently for rate limiting.</small>
+        </div>
+      )}
     </article>
   );
 }

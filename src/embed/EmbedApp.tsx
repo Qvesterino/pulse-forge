@@ -10,7 +10,7 @@ type Phase = { kind: "decoding" } | { kind: "rendering" } | { kind: "ready" } | 
  * The whole project travels in the URL hash (#p=<share code>); this page
  * decodes it, renders it deterministically with the exact offline engine
  * (instruments, effects, groove — no playback compromise), and exposes a
- * minimal play/seek chrome plus an "Open in Pulse Forge" CTA that drops the
+ * minimal play/seek chrome plus an "Open in KYX" CTA that drops the
  * same project straight into the full studio (?import=…).
  *
  * No app services are booted — no IndexedDB, no scheduler, no MIDI. The
@@ -192,17 +192,13 @@ export function EmbedApp({ code: codeProp, inline = false }: { code?: string; in
   };
 
   const openUrl = meta
-    ? shareAppUrl(meta.code, typeof location !== "undefined" ? location.origin : "https://pulse-forge.app")
+    ? shareAppUrl(meta.code, typeof location !== "undefined" ? location.origin : "https://kyx.app")
     : "#";
   const duration = bufferRef.current?.duration ?? 0;
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
   return (
-    <div
-      className={"embed-root" + (inline ? " embed-inline" : "")}
-      role="document"
-      aria-label="KYX beat player"
-    >
+    <div className={"embed-root" + (inline ? " embed-inline" : "")} role="document" aria-label="KYX beat player">
       <div className="embed-main">
         <button
           type="button"

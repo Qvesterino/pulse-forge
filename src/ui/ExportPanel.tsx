@@ -42,7 +42,7 @@ function downloadBlob(blob: Blob, filename: string): void {
   a.href = url;
   a.download = filename;
   a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  setTimeout(() => URL.revokeObjectURL?.(url), 5000);
 }
 
 type RecSourceKind = "master" | "track" | "mic";
@@ -248,7 +248,7 @@ export function ExportPanel({
       a.href = url;
       a.download = filename;
       a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      setTimeout(() => URL.revokeObjectURL?.(url), 5000);
       setStatus({
         kind: "done",
         label: `Scorepack exported (${filename})`,

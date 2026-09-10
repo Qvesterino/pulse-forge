@@ -17,6 +17,7 @@ import { createBandEngine } from "../src/effects/fxeq-core/core/bandEngine";
 import { createFxEqProcessor } from "../src/effects/fxeq-core/core/fxEqProcessor";
 import { createDelayModule } from "../src/effects/fxeq-core/modules/delay";
 import { createLimiterModule } from "../src/effects/fxeq-core/modules/limiter";
+import { createLofiModule } from "../src/effects/fxeq-core/modules/lofi";
 import { createSaturationModule } from "../src/effects/fxeq-core/modules/saturation";
 import { createReverbModule } from "../src/effects/fxeq-core/modules/reverb";
 
@@ -24,9 +25,11 @@ const SR = 48000;
 const BLOCK = 128;
 
 describe("fxeq-core LFO readInto (allocation-free reads)", () => {
-  // "random" is excluded: it samples Math.random(), so two instances can
-  // never match sample-for-sample by design.
-  const waves: LfoWaveform[] = ["sine", "triangle", "saw", "square"];
+  // Since the "random" S&H moved from Math.random() to a per-instance
+  // seeded xorshift (export determinism, KNOWN_LIMITATIONS residual),
+  // two identically-configured LFOs must also match sample-for-sample —
+  // that includes the "random" waveform.
+  const waves: LfoWaveform[] = ["sine", "triangle", "saw", "square", "random"];
 
   for (const wave of waves) {
     it(`readInto matches read sample-for-sample (${wave})`, () => {
@@ -43,6 +46,45 @@ describe("fxeq-core LFO readInto (allocation-free reads)", () => {
     });
   }
 
+  it("random S&H is deterministic: independent instances and reset restart the same sequence", () => {
+    // 300 Hz at 48 kHz: a hold retake every 80 samples — ~100 distinct
+    // values across the drive window, so the S&H shape is actually exercised.
+    const drive = (lfo: ReturnType<typeof createLfo>): [number, number][] => {
+      const out: [number, number][] = [];
+      for (let i = 0; i < 8000; i++) out.push([...lfo.read()] as [number, number]);
+      return out;
+    };
+    const a = drive(createLfo(SR, 300, "random", Math.PI / 5, 0.9));
+    const b = drive(createLfo(SR, 300, "random", Math.PI / 5, 0.9));
+    // Two independent instances produce the identical hold sequence…
+    expect(b).toEqual(a);
+    // …and the values are a real S&H: non-constant, within depth bounds,
+    // and each held value repeats across consecutive samples.
+    const distinct = new Set(a.map(([l]) => l.toFixed(6)));
+    expect(distinct.size).toBeGreaterThan(10);
+    for (const [l, r] of a) {
+      expect(Math.abs(l)).toBeLessThanOrEqual(0.9 + 1e-9);
+      expect(Math.abs(r)).toBeLessThanOrEqual(0.9 + 1e-9);
+    }
+    // reset() re-seeds: the sequence after a reset equals a fresh instance.
+    const c = createLfo(SR, 300, "random", Math.PI / 5, 0.9);
+    for (let i = 0; i < 500; i++) c.read();
+    c.reset();
+    const afterReset = drive(c);
+    expect(afterReset).toEqual(a);
+  });
+
+  it("accepts a stable per-instance seed without changing reset semantics", () => {
+    const drive = (seed: number): number[] => {
+      const lfo = createLfo(SR, 300, "random", 0, 1, seed);
+      const values: number[] = [];
+      for (let i = 0; i < 8000; i++) values.push(lfo.read()[0]);
+      return values;
+    };
+    expect(drive(0x11111111)).toEqual(drive(0x11111111));
+    expect(drive(0x11111111)).not.toEqual(drive(0x22222222));
+  });
+
   it("readInto keeps advancing phase like read", () => {
     const a = createLfo(SR, 5, "sine", 0, 1);
     const b = createLfo(SR, 5, "sine", 0, 1);
@@ -57,6 +99,27 @@ describe("fxeq-core LFO readInto (allocation-free reads)", () => {
     const nextB = b.readInto(pair);
     expect(nextB[0]).toBeCloseTo(nextA[0], 10);
     expect(nextB[1]).toBeCloseTo(nextA[1], 10);
+  });
+});
+
+describe("fxeq-core seeded module streams", () => {
+  it("decorrelates explicit lo-fi noise seeds while keeping identical seeds repeatable", () => {
+    const render = (seed: number): Float32Array => {
+      const module = createLofiModule(undefined, seed);
+      module.prepare(SR, 2, BLOCK);
+      module.setParameter("enabled", 1);
+      module.setParameter("mode", 3);
+      module.setParameter("amount", 100);
+      module.setParameter("mix", 100);
+      const left = new Float32Array(BLOCK);
+      const right = new Float32Array(BLOCK);
+      for (let i = 0; i < BLOCK; i++) left[i] = right[i] = Math.sin(i * 0.07) * 0.4;
+      module.process([left, right], BLOCK);
+      return left;
+    };
+
+    expect(Array.from(render(7))).toEqual(Array.from(render(7)));
+    expect(Array.from(render(7))).not.toEqual(Array.from(render(8)));
   });
 });
 
@@ -200,9 +263,10 @@ describe("fxeq-core limiter linked true-peak path (hoisted scratch)", () => {
         maxSeen = Math.max(maxSeen, Math.abs(L[i]), Math.abs(R[i]));
       }
     }
-    expect(maxSeen, `burst output reached ${maxSeen.toFixed(4)} (ceiling bound ${bound.toFixed(4)})`).toBeLessThanOrEqual(
-      bound,
-    );
+    expect(
+      maxSeen,
+      `burst output reached ${maxSeen.toFixed(4)} (ceiling bound ${bound.toFixed(4)})`,
+    ).toBeLessThanOrEqual(bound);
   });
 });
 
@@ -341,11 +405,7 @@ describe("fxeq solo continuity (band tails keep clocking)", () => {
   };
 
   /** Drive with a deterministic per-block PRNG signal; returns the outputs. */
-  function drive(
-    proc: ReturnType<typeof createFxEqProcessor>,
-    seed: number,
-    blocks: number,
-  ): Float32Array[][] {
+  function drive(proc: ReturnType<typeof createFxEqProcessor>, seed: number, blocks: number): Float32Array[][] {
     const out: Float32Array[][] = [];
     for (let b = 0; b < blocks; b++) {
       const L = new Float32Array(BLOCK);
@@ -390,9 +450,7 @@ describe("fxeq solo continuity (band tails keep clocking)", () => {
     for (let blk = 0; blk < 12; blk++) {
       for (let c = 0; c < 2; c++) {
         for (let i = 0; i < BLOCK; i++) {
-          expect(a[blk][c][i], `block ${blk} channel ${c} sample ${i} diverged after un-solo`).toBe(
-            b[blk][c][i],
-          );
+          expect(a[blk][c][i], `block ${blk} channel ${c} sample ${i} diverged after un-solo`).toBe(b[blk][c][i]);
         }
       }
     }

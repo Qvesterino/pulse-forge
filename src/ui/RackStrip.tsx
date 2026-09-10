@@ -274,7 +274,7 @@ export function RackStrip({
   };
 
   const installFromCode = () => {
-    const code = window.prompt("Paste a kit code (PFKIT1:…)");
+    const code = window.prompt("Paste a KYX kit code (PFKIT1:…)");
     if (!code) return;
     const kit = decodeKitCode(code);
     if (!kit) {
@@ -330,7 +330,7 @@ export function RackStrip({
   };
 
   const installPackCode = () => {
-    const code = window.prompt("Paste a PACK code (PFPACK1:…)");
+    const code = window.prompt("Paste a KYX PACK code (PFPACK1:…)");
     if (!code) return;
     const pack = decodePackCode(code);
     if (!pack) {
@@ -713,7 +713,7 @@ export function RackStrip({
         role="menuitem"
         title="Install a keymap from a PFBIND1 code"
         onClick={() => {
-          const code = window.prompt("Paste a BINDS code (PFBIND1:…)");
+          const code = window.prompt("Paste a KYX BINDS code (PFBIND1:…)");
           if (!code) return;
           const keys = decodeBindsCode(code);
           if (!keys) {

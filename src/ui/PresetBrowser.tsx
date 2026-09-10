@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDoc, useLibrary, useServices } from "./context";
 import { applyInstrumentPreset } from "../commands/commands";
 import { FACTORY_PRESETS } from "../presets/factory";
@@ -23,6 +23,31 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveName, setSaveName] = useState("");
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [previewingPresetId, setPreviewingPresetId] = useState<string | null>(null);
+  const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    setPreviewingPresetId(null);
+    // A preview must never outlive the browser/track that started it. This is
+    // intentionally a cleanup-only effect so opening the browser does not
+    // stop an unrelated preview before the user interacts with it.
+    return () => {
+      if (previewTimer.current) clearTimeout(previewTimer.current);
+      services.engine.stopPreview();
+    };
+  }, [services, track.id]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || !previewingPresetId) return;
+      if (previewTimer.current) clearTimeout(previewTimer.current);
+      previewTimer.current = null;
+      services.engine.stopPreview();
+      setPreviewingPresetId(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [previewingPresetId, services]);
 
   // Quota/private-browsing failures must surface in the UI instead of dying
   // as unhandled rejections behind a `void`ed promise.
@@ -67,8 +92,22 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
   const current = all.find((p) => p.id === track.presetId) ?? null;
 
   const apply = (preset: InstrumentPreset) => {
+    if (previewTimer.current) clearTimeout(previewTimer.current);
+    previewTimer.current = null;
+    services.engine.stopPreview();
+    setPreviewingPresetId(null);
     services.store.execute(applyInstrumentPreset(doc, track.id, preset));
     void services.library.recordPreset(preset.id);
+  };
+
+  const preview = (preset: InstrumentPreset) => {
+    if (previewTimer.current) clearTimeout(previewTimer.current);
+    services.engine.previewInstrumentPreset(track.id, preset);
+    setPreviewingPresetId(preset.id);
+    previewTimer.current = setTimeout(() => {
+      previewTimer.current = null;
+      setPreviewingPresetId((active) => (active === preset.id ? null : active));
+    }, 1_500);
   };
 
   const saveCurrent = async () => {
@@ -197,23 +236,40 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
       <div className="preset-list">
         {filtered.length === 0 && <div className="preset-empty">No presets match.</div>}
         {filtered.map((preset) => (
-          <div
-            key={preset.id}
-            className={`preset-row${preset.id === track.presetId ? " active" : ""}`}
-            role="button"
-            tabIndex={0}
-            onClick={() => apply(preset)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                apply(preset);
-              }
-            }}
-          >
-            <span className="preset-name">{preset.name}</span>
+          <div key={preset.id} className={`preset-row${preset.id === track.presetId ? " active" : ""}`}>
+            <button
+              type="button"
+              className={`preset-preview${previewingPresetId === preset.id ? " active" : ""}`}
+              aria-label={previewingPresetId === preset.id ? `Stop preview ${preset.name}` : `Preview ${preset.name}`}
+              aria-pressed={previewingPresetId === preset.id}
+              title={previewingPresetId === preset.id ? "Stop preview" : "Preview preset"}
+              onClick={() => {
+                if (previewingPresetId === preset.id) {
+                  if (previewTimer.current) clearTimeout(previewTimer.current);
+                  previewTimer.current = null;
+                  services.engine.stopPreview();
+                  setPreviewingPresetId(null);
+                } else {
+                  preview(preset);
+                }
+              }}
+            >
+              {previewingPresetId === preset.id ? "■" : "▶"}
+            </button>
+            <button type="button" className="preset-name" onClick={() => apply(preset)} title={`Apply ${preset.name}`}>
+              {preset.name}
+            </button>
             <span className="preset-tags">
               {preset.genre ? preset.genre : "user"} · {preset.mood.slice(0, 2).join(", ") || preset.tags[0]}
             </span>
+            <button
+              type="button"
+              className="preset-apply"
+              aria-label={`Apply ${preset.name}`}
+              onClick={() => apply(preset)}
+            >
+              APPLY
+            </button>
             <button
               type="button"
               className={`preset-fav${library.favoritePresets.includes(preset.id) ? " active" : ""}`}

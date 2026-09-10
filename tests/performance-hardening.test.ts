@@ -95,7 +95,12 @@ describe("release hardening — AudioEngine lifecycle", () => {
     expect(syncProject).toMatch(/track\.kind\s*!==\s*"instrument"\)\s*this\.disposeInstrumentRuntime\(track\.id\)/);
     const choke = sliceFunction(source, /choke\(trackId:\s*string/);
     expect(choke).toMatch(/for\s*\(\s*const\s+voice\s+of\s+\[\.\.\.this\.voices\]/);
-    expect(syncProject).toMatch(/rebuildFxChain\(\[\],\s*nodes\.input,\s*nodes\.panner,\s*nodes\.fx\)/);
+    // Frozen tracks rebuild an EMPTY effect chain (the freeze render already
+    // contains the FX). The call gained an ownerId first argument when
+    // rebuildFxChain was made owner-aware — the pinned invariant is the [].
+    expect(syncProject).toMatch(
+      /rebuildFxChain\(track\.id,\s*\[\],\s*nodes\.input,\s*nodes\.panner,\s*nodes\.fx\)/,
+    );
   });
 });
 

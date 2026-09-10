@@ -86,6 +86,22 @@ describe("EffectRack", () => {
     expect(services.store.execute).toHaveBeenCalled();
   });
 
+  it("marks changed effects and resets them through one command", async () => {
+    const user = userEvent.setup();
+    const { doc, track } = trackWithEffects(1);
+    track.effects[0].params = { time: 800 };
+    const services = mockServices(doc);
+    renderWithContext(<EffectRack track={track} />, { services });
+
+    expect(screen.getByText("MODIFIED")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Reset Delay" }));
+
+    const executed = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.map(
+      (call: unknown[]) => call[0] as { type: string },
+    );
+    expect(executed.at(-1)?.type).toBe("resetEffect");
+  });
+
   it("collapses a device editor without removing its header controls", async () => {
     const user = userEvent.setup();
     const { doc, track } = trackWithEffects(1);

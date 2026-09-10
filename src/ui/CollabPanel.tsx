@@ -85,7 +85,7 @@ export function CollabPanel({ onReplaceServices }: { onReplaceServices: (service
     const url = shareUrl(
       session.roomId,
       session.serverUrl,
-      typeof location !== "undefined" ? location.origin : "https://pulse-forge.app",
+      typeof location !== "undefined" ? location.origin : "https://kyx.app",
     );
     try {
       await navigator.clipboard.writeText(url);

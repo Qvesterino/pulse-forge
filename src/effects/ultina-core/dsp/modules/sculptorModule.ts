@@ -225,10 +225,25 @@ export class SculptorModuleProcessor implements UltinaModuleProcessor {
       }
 
       // ── Compute average band level (for relative measurement) ──
+      // Treat bands more than 20 dB below the loudest in-range band as
+      // spectral holes as well as honoring the absolute floor. Real-world
+      // bandpass leakage can leave a nominally empty band above 1e-6, and
+      // including that leakage still drags the reference average down.
+      let peakEnv = 0;
+      for (let b = 0; b < NUM_BANDS; b++) {
+        if (BAND_FREQS[b] >= lowFreq && BAND_FREQS[b] <= highFreq) {
+          peakEnv = Math.max(peakEnv, this.envFollowers[b]);
+        }
+      }
+      const activeFloor = Math.max(1e-6, peakEnv * 0.1);
       let sumDb = 0;
       let validBands = 0;
       for (let b = 0; b < NUM_BANDS; b++) {
-        if (BAND_FREQS[b] >= lowFreq && BAND_FREQS[b] <= highFreq) {
+        if (
+          BAND_FREQS[b] >= lowFreq &&
+          BAND_FREQS[b] <= highFreq &&
+          this.envFollowers[b] >= activeFloor
+        ) {
           sumDb += ampToDb(this.envFollowers[b]);
           validBands++;
         }
@@ -247,7 +262,7 @@ export class SculptorModuleProcessor implements UltinaModuleProcessor {
           // so the relative-level math would clamp to a full +12 dB boost and
           // actively lift the noise floor in spectral holes (e.g. 11 kHz on a
           // bass track).
-          if (this.envFollowers[b] < 1e-6) {
+          if (this.envFollowers[b] < activeFloor) {
             targetGainDb = 0;
           } else {
             const measuredDb = ampToDb(this.envFollowers[b]);

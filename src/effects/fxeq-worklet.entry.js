@@ -14,7 +14,7 @@ const CHANNELS = 2;
 
 class FxEqWorkletProcessor extends AudioWorkletProcessor {
   // `proc` never allocates inside process() — scratch is preallocated in prepare().
-  proc = createFxEqProcessor();
+  proc;
   /** Processing scratch (in-place DSP), copied to/from the graph buffers. */
   scratch = [new Float32Array(MAX_BLOCK), new Float32Array(MAX_BLOCK)];
   /** Band-peak metering: gated by the host panel, throttled to ~20 Hz. */
@@ -28,10 +28,12 @@ class FxEqWorkletProcessor extends AudioWorkletProcessor {
 
   constructor(options) {
     super();
+    const initial = options?.processorOptions?.params;
+    const rawSeed = options?.processorOptions?.seed;
+    const seed = Number.isFinite(rawSeed) ? (rawSeed >>> 0) || 0x1 : undefined;
+    this.proc = createFxEqProcessor(initial, seed === undefined ? undefined : { seed });
     this.proc.prepare(sampleRate, CHANNELS, MAX_BLOCK);
     this.lastLatencyPosted = -1;
-    const initial = options?.processorOptions?.params;
-    if (initial) this.proc.loadParameters(initial);
     // Report DSP latency (oversampled bands add delay) so the host's PDC
     // can compensate — sent on init and whenever params change it.
     this.postLatency();

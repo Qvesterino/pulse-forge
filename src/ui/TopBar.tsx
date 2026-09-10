@@ -429,7 +429,7 @@ export function TopBar({
     <>
       <header ref={topbarRef} className="topbar">
         <div className="brand">
-          <span className="brand-mark">PF</span>
+          <span className="brand-mark">KX</span>
           <span className="brand-name">KYX</span>
         </div>
 

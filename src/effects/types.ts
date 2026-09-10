@@ -74,6 +74,8 @@ export interface EffectRuntime {
 
 export interface EffectEnv {
   bpm: number;
+  /** Stable project/track/effect seed shared by live and offline DSP. */
+  seed?: number;
 }
 
 export type EffectFactory = (ctx: BaseAudioContext, instance: EffectInstance, env: EffectEnv) => EffectRuntime;

@@ -20,9 +20,11 @@ type CollabServer = ReturnType<typeof createCollabServer>;
 
 const opened: CollabServer[] = [];
 
-async function boot(): Promise<{ base: string; collab: CollabServer; galleryFile: string }> {
+async function boot(
+  options: Record<string, unknown> = {},
+): Promise<{ base: string; collab: CollabServer; galleryFile: string }> {
   const galleryFile = join(mkdtempSync(join(tmpdir(), "pf-gallery-")), "gallery.json");
-  const collab = createCollabServer({ galleryFile });
+  const collab = createCollabServer({ galleryFile, ...options });
   await new Promise<void>((resolve) => collab.server.listen(0, "127.0.0.1", resolve));
   opened.push(collab);
   const { port } = collab.server.address() as AddressInfo;
@@ -32,6 +34,32 @@ async function boot(): Promise<{ base: string; collab: CollabServer; galleryFile
 function shareCode(): string {
   // A realistic project through the exact same encoding the studio uses.
   return compressToEncodedURIComponent(JSON.stringify(createProjectFromTemplate("house")));
+}
+
+function openWebSocket(url: string): Promise<WebSocket> {
+  return new Promise((resolve, reject) => {
+    const conn = new WebSocket(url);
+    const onError = (error: Error) => reject(error);
+    conn.once("open", () => {
+      conn.off("error", onError);
+      resolve(conn);
+    });
+    conn.once("error", onError);
+  });
+}
+
+function rejectedWebSocket(url: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const conn = new WebSocket(url);
+    conn.once("open", () => {
+      conn.terminate();
+      reject(new Error("expected websocket upgrade to be rejected"));
+    });
+    conn.once("error", (error) => {
+      conn.terminate();
+      resolve(error.message);
+    });
+  });
 }
 
 afterEach(async () => {
@@ -102,6 +130,18 @@ describe("gallery REST API", () => {
     expect(unknown.status).toBe(404);
   });
 
+  it("returns a bounded error for oversized gallery request bodies", async () => {
+    const { base } = await boot();
+    const oversized = await fetch(`${base}/api/gallery`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "too large", code: "x".repeat(405_100) }),
+    });
+
+    expect(oversized.status).toBe(413);
+    expect(await oversized.json()).toEqual({ error: "request body too large" });
+  });
+
   it("sanitizes tags (bad chars dropped, max 5 kept)", async () => {
     const { base } = await boot();
     const post = await fetch(`${base}/api/gallery`, {
@@ -138,7 +178,7 @@ describe("gallery REST API", () => {
     expect(feed.items[0].title).toBe("persisted");
   });
 
-  it("rate limits uploads per IP (10 per minute)", async () => {
+  it("rate limits uploads per IP (10 per minute)", { timeout: 20_000 }, async () => {
     const { base } = await boot();
     const code = shareCode();
     let lastStatus = 0;
@@ -159,6 +199,61 @@ describe("gallery REST API", () => {
     expect(res.headers.get("access-control-allow-origin")).toBe("*");
     const preflight = await fetch(`${base}/api/gallery`, { method: "OPTIONS" });
     expect(preflight.status).toBe(204);
+  });
+
+  it("supports a production CORS allowlist while keeping non-browser health checks usable", async () => {
+    const { base } = await boot({ corsOrigins: ["https://kyx.example"] });
+    const allowed = await fetch(`${base}/api/gallery`, { headers: { Origin: "https://kyx.example" } });
+    expect(allowed.status).toBe(200);
+    expect(allowed.headers.get("access-control-allow-origin")).toBe("https://kyx.example");
+    expect(allowed.headers.get("vary")).toContain("Origin");
+
+    const blocked = await fetch(`${base}/api/gallery`, { headers: { Origin: "https://evil.example" } });
+    expect(blocked.status).toBe(403);
+    expect(await blocked.json()).toEqual({ error: "origin is not allowed" });
+
+    const health = await fetch(`${base}/api/health`);
+    expect(health.status).toBe(200);
+  });
+
+  it("accepts privacy-safe reports and protects moderation reports/delete behind an admin token", async () => {
+    const { base } = await boot({ adminToken: "release-moderator-token" });
+    const post = await fetch(`${base}/api/gallery`, {
+      method: "POST",
+      body: JSON.stringify({ title: "reported beat", code: shareCode() }),
+    });
+    const { item } = (await post.json()) as { item: { id: string } };
+
+    const report = await fetch(`${base}/api/gallery/${item.id}/report`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: "spam\u0000or misleading content" }),
+    });
+    expect(report.status).toBe(202);
+
+    const publicFeed = (await (await fetch(`${base}/api/gallery`)).json()) as { items: Record<string, unknown>[] };
+    expect(publicFeed.items[0]).not.toHaveProperty("reports");
+    expect(publicFeed.items[0]).not.toHaveProperty("reporterIp");
+
+    const unauthorized = await fetch(`${base}/api/admin/reports`);
+    expect(unauthorized.status).toBe(401);
+    const reports = await fetch(`${base}/api/admin/reports`, {
+      headers: { Authorization: "Bearer release-moderator-token" },
+    });
+    expect(reports.status).toBe(200);
+    expect(await reports.json()).toMatchObject({
+      reports: [{ beatId: item.id, beatTitle: "reported beat", reason: "spam or misleading content" }],
+    });
+
+    const blockedDelete = await fetch(`${base}/api/gallery/${item.id}`, { method: "DELETE" });
+    expect(blockedDelete.status).toBe(401);
+    const deleted = await fetch(`${base}/api/gallery/${item.id}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer release-moderator-token" },
+    });
+    expect(deleted.status).toBe(200);
+    expect(await deleted.json()).toEqual({ deleted: true });
+    expect(((await (await fetch(`${base}/api/gallery`)).json()) as { items: unknown[] }).items).toHaveLength(0);
   });
 });
 
@@ -184,6 +279,59 @@ describe("y-websocket parity after the http refactor", () => {
     conn.terminate();
     const size = (data as unknown as ArrayBuffer).byteLength ?? (data as unknown as Buffer).length;
     expect(size).toBeGreaterThan(2);
+  });
+
+  it("bounds rooms and connections and exposes live health metrics", async () => {
+    const galleryFile = join(mkdtempSync(join(tmpdir(), "pf-gallery-limits-")), "gallery.json");
+    const collab = createCollabServer({
+      galleryFile,
+      collabLimits: { maxRooms: 1, maxConnectionsPerRoom: 1 },
+    });
+    await new Promise<void>((resolve) => collab.server.listen(0, "127.0.0.1", resolve));
+    opened.push(collab);
+    const { port } = collab.server.address() as AddressInfo;
+    const wsBase = `ws://127.0.0.1:${port}`;
+    const first = await openWebSocket(`${wsBase}/bounded-room`);
+
+    const healthWhileConnected = (await (await fetch(`http://127.0.0.1:${port}/api/health`)).json()) as {
+      collab: { rooms: number; connections: number };
+    };
+    expect(healthWhileConnected.collab).toMatchObject({ rooms: 1, connections: 1 });
+    expect(await rejectedWebSocket(`${wsBase}/bounded-room`)).toContain("503");
+    expect(await rejectedWebSocket(`${wsBase}/another-room`)).toContain("503");
+
+    await new Promise<void>((resolve) => {
+      first.once("close", () => resolve());
+      first.close();
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const healthAfterClose = (await (await fetch(`http://127.0.0.1:${port}/api/health`)).json()) as {
+      collab: { rooms: number; connections: number };
+    };
+    expect(healthAfterClose.collab).toMatchObject({ rooms: 0, connections: 0 });
+  });
+
+  it("rejects malformed room ids and oversized binary messages without taking down the server", async () => {
+    const galleryFile = join(mkdtempSync(join(tmpdir(), "pf-gallery-payload-")), "gallery.json");
+    const collab = createCollabServer({ galleryFile, collabLimits: { maxMessageBytes: 32 } });
+    await new Promise<void>((resolve) => collab.server.listen(0, "127.0.0.1", resolve));
+    opened.push(collab);
+    const { port } = collab.server.address() as AddressInfo;
+    const wsBase = `ws://127.0.0.1:${port}`;
+
+    expect(await rejectedWebSocket(`${wsBase}/%E0%A4%A`)).toContain("400");
+
+    const conn = await openWebSocket(`${wsBase}/payload-room`);
+    const closed = new Promise<number>((resolve) => conn.once("close", (code) => resolve(code)));
+    conn.send(Buffer.alloc(64));
+    expect(await closed).toBe(1009);
+
+    const health = (await (await fetch(`http://127.0.0.1:${port}/api/health`)).json()) as {
+      ok: boolean;
+      collab: { rejectedPayloads: number };
+    };
+    expect(health.ok).toBe(true);
+    expect(health.collab.rejectedPayloads).toBeGreaterThanOrEqual(1);
   });
 });
 

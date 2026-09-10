@@ -233,6 +233,21 @@ describe("recordVideo", () => {
     expect(audioCtx.closeCalls).toBe(1);
   });
 
+  it("preserves a requested sub-second export duration", async () => {
+    const promise = recordVideo(fakeBuffer, { title: "Stinger", bpm: 124, seconds: 0.5 });
+    await flushAsync();
+    const audioCtx = FakeAudioContext.instances[0];
+    const recorder = FakeMediaRecorder.instances[0];
+    expect(recorder).toBeDefined();
+
+    audioCtx.currentTime = 0.9;
+    pumpFrame();
+    await promise;
+
+    expect(audioCtx.sourceStop).toHaveBeenCalledWith(0.56);
+    expect(recorder.stopped).toBe(true);
+  });
+
   it("hidden-tab watchdog: finishes the export when requestAnimationFrame never fires", async () => {
     // Fake ONLY the timer functions — sinon's default toFake would replace
     // the rAF stub too, defeating the hidden-tab simulation.

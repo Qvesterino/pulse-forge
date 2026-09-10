@@ -27,6 +27,7 @@ import { EqLearn, EQ_LEARN_FREQS } from "../src/effects/ultina-core/dsp/eqLearn.
 import { AutoGainController } from "../src/effects/ultina-core/dsp/autoGain.js";
 import { SpectralRegistry } from "../src/effects/ultina-core/dsp/spectralRegistry.js";
 import { MaskingMeter } from "../src/effects/ultina-core/dsp/maskingMeter.js";
+import { MultibandProcessor } from "../src/effects/ultina-core/dsp/multiband.js";
 import { dbToLinear } from "../src/effects/ultina-core/dsp/primitives.js";
 import { analyzeWithTarget } from "../src/effects/ultina-core/analysis/mixAssistant.js";
 import { createCustomTarget } from "../src/effects/ultina-core/analysis/targetLibrary.js";
@@ -376,10 +377,18 @@ describe("analysis: non-finite target curves cannot poison proposals", () => {
   });
 
   it("analyzeWithTarget with a NaN entry yields finite proposal values", () => {
-    const result = analyzeWithTarget(
-      { channels: audio, sampleRate: 44100, minimumDuration: 2 },
-      [0, Number.NaN, 0, 0, 0, 0, 0, 0, 0, 0],
-    );
+    const result = analyzeWithTarget({ channels: audio, sampleRate: 44100, minimumDuration: 2 }, [
+      0,
+      Number.NaN,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+    ]);
     expect(result.kind).toBe("success");
     if (result.kind !== "success") return;
     for (const c of result.proposal.changes) {
@@ -415,6 +424,56 @@ describe("sculptor: silent bands get no correction", () => {
       // clamped to a full correction boost, EQ-ing pure silence.
       expect(Math.abs(g)).toBeLessThan(0.5);
     }
+  });
+
+  it("a sparse low spectrum does not drag active bands to the −12 dB limit", () => {
+    const proc = makeProcessor();
+    enableInGraph(proc, "sculptor");
+    proc.setParameters({
+      "sculptor.amount": 100,
+      "sculptor.dryWet": 100,
+      "sculptor.targetProfile": 3, // flat-ish piano target
+    });
+    const chans = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+    for (let b = 0; b < Math.round((1.5 * SR) / BLOCK); b++) {
+      for (let i = 0; i < BLOCK; i++) {
+        const t = (b * BLOCK + i) / SR;
+        const v =
+          0.1 * (Math.sin(2 * Math.PI * 80 * t) + Math.sin(2 * Math.PI * 170 * t) + Math.sin(2 * Math.PI * 350 * t));
+        chans[0][i] = v;
+        chans[1][i] = v;
+      }
+      proc.process(chans, BLOCK);
+    }
+    const meters = proc.getMeters().modules.sculptor as { spectralCurveDb: Float32Array | null };
+    expect(meters.spectralCurveDb).not.toBeNull();
+    // High bands are silent and must not participate in avgDb. Before the
+    // fix, the dead −200 dB bands pulled the active low band to max cut.
+    expect(meters.spectralCurveDb![0]).toBeGreaterThan(-10);
+    expect(meters.spectralCurveDb![1]).toBeGreaterThan(-10);
+  });
+});
+
+// ── 8c. Multiband T/S channel isolation ─────────────────────
+
+describe("multiband: stereo transient/sustain keeps channel state isolated", () => {
+  it("silence on R stays silent after L has excited the crossover", () => {
+    const mb = new MultibandProcessor();
+    mb.prepare(SR, 2, BLOCK, 2);
+    mb.setCrossover(0, 1000);
+    const left = new Float32Array(BLOCK);
+    const right = new Float32Array(BLOCK);
+    for (let b = 0; b < 24; b++) {
+      sine([left, right], b, 220, 0.4);
+      right.fill(0);
+      mb.process([left, right], BLOCK, () => {}, "sustain");
+    }
+    left.fill(0);
+    right.fill(0);
+    mb.process([left, right], BLOCK, () => {}, "sustain");
+    let maxRight = 0;
+    for (const sample of right) maxRight = Math.max(maxRight, Math.abs(sample));
+    expect(maxRight).toBeLessThan(1e-7);
   });
 });
 
@@ -507,7 +566,10 @@ describe("applyUltinaPreset / applyUltinaProposal: validate and clamp", () => {
       instId,
       fxId,
       "test proposal",
-      [{ moduleType: "comp", enabled: true }, { moduleType: "nope", enabled: true }],
+      [
+        { moduleType: "comp", enabled: true },
+        { moduleType: "nope", enabled: true },
+      ],
       [
         { parameterId: "comp.thresholdDb", value: -999 }, // → clamp -60
         { parameterId: "hacker.param", value: 1 }, // → dropped
@@ -566,9 +628,7 @@ describe("canonical undo: full-map plugin commands revert DSP-visible deep param
 
   it("applyUltinaProposal undo reverts proposal-added deep keys to defaults", () => {
     const { doc, instId, fxId } = withFx("ultina");
-    const cmd = applyUltinaProposal(doc, instId, fxId, "assist", [], [
-      { parameterId: "comp.thresholdDb", value: -18 },
-    ]);
+    const cmd = applyUltinaProposal(doc, instId, fxId, "assist", [], [{ parameterId: "comp.thresholdDb", value: -18 }]);
     const executed = cmd.execute(doc);
     expect(effectOf(executed, "ultina").params["comp.thresholdDb"]).toBe(-18);
     const undone = cmd.undo(executed);
@@ -602,9 +662,7 @@ describe("canonical undo: full-map plugin commands revert DSP-visible deep param
     const executed = cmd.execute(withState);
     expect(effectOf(executed, "ultina").params["eq.band3.q"]).toBe(8);
     const undone = cmd.undo(executed);
-    expect(effectOf(undone, "ultina").params["eq.band3.q"]).toBe(
-      tryGetUltinaDef("eq.band3.q")!.defaultValue,
-    );
+    expect(effectOf(undone, "ultina").params["eq.band3.q"]).toBe(tryGetUltinaDef("eq.band3.q")!.defaultValue);
   });
 
   it("applyFxEqPreset undo restores band-schema defaults (sibling pattern)", () => {
@@ -670,14 +728,7 @@ describe("AudioEngine: automation resolves group-bus chains", () => {
     const returns = (engine as unknown as { returnNodes: Map<string, unknown> }).returnNodes;
     returns.set("r1", { fx: { runtimes: new Map([["fx1", rt]]) } });
 
-    engine.scheduleDeviceAutomation(
-      "r1",
-      "fx",
-      "fx1",
-      "global.mix",
-      [{ tick: 0, value: 25 }],
-      () => 0,
-    );
+    engine.scheduleDeviceAutomation("r1", "fx", "fx1", "global.mix", [{ tick: 0, value: 25 }], () => 0);
     expect(calls).toEqual(["global.mix@25"]);
   });
 
@@ -862,10 +913,9 @@ describe("AudioEngine.previewFxParam: fire-and-forget runtime write", () => {
     const engine = new AudioEngine();
     const calls: string[] = [];
     const rt = { setParameter: (id: string) => calls.push(id) };
-    (engine as unknown as { groupNodes: Map<string, unknown> }).groupNodes.set(
-      "g1",
-      { fx: { runtimes: new Map([["fx1", rt]]) } },
-    );
+    (engine as unknown as { groupNodes: Map<string, unknown> }).groupNodes.set("g1", {
+      fx: { runtimes: new Map([["fx1", rt]]) },
+    });
     const returns = (engine as unknown as { returnNodes: Map<string, unknown> }).returnNodes;
     returns.set("r1", { fx: { runtimes: new Map([["fx1", rt]]) } });
 
@@ -1047,7 +1097,7 @@ describe("U4: phase module latency + per-channel compensation", () => {
       "phase.rotationDegrees": 0,
       "phase.mix": 100,
     });
-    const shiftSamples = Math.round(2 * SR / 1000);
+    const shiftSamples = Math.round((2 * SR) / 1000);
     const total = SR;
     const input = new Float32Array(total);
     // 4 kHz: the module's 20 Hz DC blocker is transparent this far above its
@@ -1106,6 +1156,74 @@ describe("U4: phase module latency + per-channel compensation", () => {
     // delayed per channel, so the delta is numerically ~0 everywhere.
     expect(Math.sqrt(tailSumSq / tailN)).toBeLessThan(0.02);
   });
+
+  it("delta compensation remains coherent at a 10 ms shift", () => {
+    const proc = makePhase();
+    proc.setParameters({
+      "phase.timeShiftMs": 10,
+      "phase.mix": 100,
+      "phase.delta": 1,
+      "phase.rotationDegrees": 0,
+    });
+    const chans = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+    let sumSq = 0;
+    let n = 0;
+    const blocks = 180;
+    for (let b = 0; b < blocks; b++) {
+      sine(chans, b, 4000, 0.3);
+      proc.process(chans, BLOCK);
+      if (b >= blocks - 16) {
+        for (let i = 0; i < BLOCK; i++) {
+          sumSq += chans[0][i] * chans[0][i] + chans[1][i] * chans[1][i];
+          n += 2;
+        }
+      }
+    }
+    // The old maxBlockSize+64 ring clamped the dry copy to 192 samples;
+    // 10 ms is 480 samples at 48 kHz and exposed a loud delayed-copy comb.
+    expect(Math.sqrt(sumSq / n)).toBeLessThan(0.02);
+  });
+});
+
+// ── 16. Module re-prepare crossover restoration ─────────────
+
+describe("multiband modules: re-prepare restores crossover coefficients", () => {
+  it("re-preparing comp does not turn a 2-band unity chain into +6 dB", () => {
+    const proc = makeProcessor();
+    enableInGraph(proc, "comp");
+    proc.setParameters({
+      "comp.bandCount": 2,
+      "comp.crossoverHz1": 1000,
+      "comp.band0.thresholdDb": 0,
+      "comp.band1.thresholdDb": 0,
+      "comp.ratio": 1,
+      "comp.mix": 100,
+    });
+    const chans = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+    for (let b = 0; b < 24; b++) {
+      sine(chans, b, 440, 0.1);
+      proc.process(chans, BLOCK);
+    }
+
+    // This is the lifecycle used by a host after a sample-rate/block-size
+    // change. The parameter caches must not suppress the crossover redesign.
+    proc.prepare({ sampleRate: SR, maxBlockSize: BLOCK, channelCount: 2, qualityMode: 1 });
+    let sumSq = 0;
+    let n = 0;
+    for (let b = 0; b < 12; b++) {
+      sine(chans, b, 440, 0.1);
+      proc.process(chans, BLOCK);
+      if (b >= 4) {
+        for (let i = 0; i < BLOCK; i++) {
+          sumSq += chans[0][i] * chans[0][i];
+          n++;
+        }
+      }
+    }
+    const outRms = Math.sqrt(sumSq / n);
+    expect(outRms).toBeLessThan(0.12);
+    expect(outRms).toBeGreaterThan(0.05);
+  });
 });
 
 // ── 16. Exciter Tone functional + LUFS stale marking (post-publish prep) ──
@@ -1155,7 +1273,7 @@ describe("U-P: exciter Tone knob is functional and rate/OS invariant", () => {
         }
       }
       void inSumSq;
-      return 20 * Math.log10(Math.sqrt(outSumSq / n) / 0.25 * Math.SQRT2);
+      return 20 * Math.log10((Math.sqrt(outSumSq / n) / 0.25) * Math.SQRT2);
     };
     return measure(6000) - measure(80);
   }

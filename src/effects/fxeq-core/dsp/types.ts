@@ -69,5 +69,5 @@ export interface ModuleProcessor {
   getGainReductionDb?(): number;
 }
 
-/** Factory that constructs a module from optional initial parameters. */
-export type ModuleFactory = (params?: Record<string, number>) => ModuleProcessor;
+/** Factory that constructs a module from optional initial parameters and seed. */
+export type ModuleFactory = (params?: Record<string, number>, seed?: number) => ModuleProcessor;

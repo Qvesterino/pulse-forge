@@ -16,6 +16,7 @@
  * jam sessions. Only light sanitization and rate limiting on uploads.
  */
 import { createServer } from "node:http";
+import { timingSafeEqual } from "node:crypto";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -35,6 +36,80 @@ const DEFAULT_GALLERY_FILE = join(dirname(fileURLToPath(import.meta.url)), "gall
 const MESSAGE_SYNC = 0;
 const MESSAGE_AWARENESS = 1;
 
+// The relay is intentionally small, but its limits must be explicit before
+// exposing it to the public internet. These are deliberately conservative:
+// a normal project update is much smaller, while a runaway client cannot
+// allocate an unbounded number of rooms, sockets, or parser buffers.
+const COLLAB_DEFAULT_LIMITS = Object.freeze({
+  maxRooms: 256,
+  maxConnections: 512,
+  maxConnectionsPerRoom: 32,
+  maxRoomIdChars: 96,
+  maxMessageBytes: 8 * 1024 * 1024,
+});
+const WS_OPEN = 1;
+
+function normalizeCorsOrigins(value) {
+  const origins = Array.isArray(value) ? value : String(value ?? "*").split(",");
+  const clean = origins.map((origin) => String(origin).trim()).filter(Boolean);
+  return clean.length > 0 ? new Set(clean) : new Set(["*"]);
+}
+
+function applyCorsPolicy(res, request, allowedOrigins) {
+  const requestOrigin = request.headers.origin;
+  if (allowedOrigins.has("*")) {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    return true;
+  }
+  // Non-browser clients (curl, health checks, server-side fetch) have no
+  // Origin header and should remain usable even with a browser allowlist.
+  if (!requestOrigin) return true;
+  if (!allowedOrigins.has(requestOrigin)) return false;
+  res.setHeader("Access-Control-Allow-Origin", requestOrigin);
+  res.setHeader("Vary", "Origin");
+  return true;
+}
+
+function positiveInt(value, fallback) {
+  return Number.isInteger(value) && value > 0 ? value : fallback;
+}
+
+function normalizeCollabLimits(overrides = {}) {
+  return {
+    maxRooms: positiveInt(overrides.maxRooms, COLLAB_DEFAULT_LIMITS.maxRooms),
+    maxConnections: positiveInt(overrides.maxConnections, COLLAB_DEFAULT_LIMITS.maxConnections),
+    maxConnectionsPerRoom: positiveInt(overrides.maxConnectionsPerRoom, COLLAB_DEFAULT_LIMITS.maxConnectionsPerRoom),
+    maxRoomIdChars: positiveInt(overrides.maxRoomIdChars, COLLAB_DEFAULT_LIMITS.maxRoomIdChars),
+    maxMessageBytes: positiveInt(overrides.maxMessageBytes, COLLAB_DEFAULT_LIMITS.maxMessageBytes),
+  };
+}
+
+function rejectUpgrade(socket, statusCode, statusText, reason) {
+  if (socket.destroyed) return;
+  const body = `${reason}\n`;
+  socket.end(
+    `HTTP/1.1 ${statusCode} ${statusText}\r\n` +
+      "Connection: close\r\n" +
+      "Content-Type: text/plain; charset=utf-8\r\n" +
+      `Content-Length: ${Buffer.byteLength(body)}\r\n` +
+      "\r\n" +
+      body,
+  );
+}
+
+function rawDataSize(data) {
+  if (typeof data === "string") return Buffer.byteLength(data);
+  if (Array.isArray(data)) return data.reduce((size, chunk) => size + chunk.byteLength, 0);
+  if (data instanceof ArrayBuffer) return data.byteLength;
+  return data?.byteLength ?? 0;
+}
+
+function rawDataToUint8Array(data) {
+  if (Array.isArray(data)) return new Uint8Array(Buffer.concat(data));
+  if (data instanceof ArrayBuffer) return new Uint8Array(data);
+  return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+}
+
 // ── Beat Gallery store ──────────────────────────────────────────────────────
 
 const GALLERY_MAX_ITEMS = 500;
@@ -43,9 +118,12 @@ const TITLE_MAX = 64;
 const AUTHOR_MAX = 32;
 const TAGS_MAX = 5;
 const TAG_MAX = 16;
+const REPORT_REASON_MAX = 64;
+const REPORTS_MAX = 2_000;
 /** Sliding window: max posts per IP per minute (spam guard, not auth). */
 const POST_WINDOW_MS = 60_000;
 const POST_WINDOW_LIMIT = 10;
+const REPORT_WINDOW_LIMIT = 5;
 
 function cleanText(value, max) {
   return String(value ?? "")
@@ -57,7 +135,11 @@ function cleanText(value, max) {
 function cleanTags(value) {
   if (!Array.isArray(value)) return [];
   return value
-    .map((tag) => String(tag ?? "").trim().toLowerCase())
+    .map((tag) =>
+      String(tag ?? "")
+        .trim()
+        .toLowerCase(),
+    )
     .filter((tag) => /^[a-z0-9-]{1,16}$/.test(tag))
     .slice(0, TAGS_MAX);
 }
@@ -87,12 +169,17 @@ class GalleryStore {
     this.filePath = filePath;
     /** @type {Array<Record<string, unknown>>} newest last */
     this.items = [];
+    /** @type {Array<Record<string, unknown>>} newest last; never returned publicly */
+    this.reports = [];
     /** Debounced save handle — play counters tick often, disk writes should not. */
     this.saveTimer = null;
     try {
       if (existsSync(filePath)) {
         const parsed = JSON.parse(readFileSync(filePath, "utf-8"));
-        if (Array.isArray(parsed?.items)) this.items = parsed.items.filter((item) => item && typeof item.code === "string");
+        if (Array.isArray(parsed?.items))
+          this.items = parsed.items.filter((item) => item && typeof item.code === "string");
+        if (Array.isArray(parsed?.reports))
+          this.reports = parsed.reports.filter((report) => report && typeof report.beatId === "string");
       }
     } catch (error) {
       console.warn("[gallery] could not load store, starting empty:", String(error));
@@ -108,9 +195,7 @@ class GalleryStore {
         remixCounts.set(item.parentId, (remixCounts.get(item.parentId) ?? 0) + 1);
       }
     }
-    return [...this.items]
-      .reverse()
-      .map((item) => ({ ...item, remixCount: remixCounts.get(item.id) ?? 0 }));
+    return [...this.items].reverse().map((item) => ({ ...item, remixCount: remixCounts.get(item.id) ?? 0 }));
   }
 
   find(id) {
@@ -160,6 +245,28 @@ class GalleryStore {
     return item.plays;
   }
 
+  report(id, reason) {
+    if (!this.find(id)) return { error: "unknown beat" };
+    const cleanReason = cleanText(reason, REPORT_REASON_MAX) || "unspecified";
+    this.reports.push({
+      id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`,
+      beatId: id,
+      reason: cleanReason,
+      createdAt: new Date().toISOString(),
+    });
+    if (this.reports.length > REPORTS_MAX) this.reports.splice(0, this.reports.length - REPORTS_MAX);
+    this.save();
+    return { accepted: true };
+  }
+
+  remove(id) {
+    const index = this.items.findIndex((item) => item.id === id);
+    if (index < 0) return false;
+    this.items.splice(index, 1);
+    this.save();
+    return true;
+  }
+
   /** Play counters tick often — coalesce disk writes. */
   scheduleSave() {
     if (this.saveTimer) return;
@@ -176,7 +283,7 @@ class GalleryStore {
     }
     try {
       mkdirSync(dirname(this.filePath), { recursive: true });
-      writeFileSync(this.filePath, JSON.stringify({ items: this.items }, null, 2));
+      writeFileSync(this.filePath, JSON.stringify({ items: this.items, reports: this.reports }, null, 2));
     } catch (error) {
       console.warn("[gallery] could not save store:", String(error));
     }
@@ -208,6 +315,50 @@ function sendJson(res, status, body) {
   res.end(payload);
 }
 
+function readJsonBody(req, maxBytes) {
+  return new Promise((resolve, reject) => {
+    let body = "";
+    let bodyBytes = 0;
+    let oversized = false;
+    const fail = (code, message) => {
+      const error = new Error(message);
+      error.code = code;
+      reject(error);
+    };
+    req.on("data", (chunk) => {
+      bodyBytes += Buffer.byteLength(chunk);
+      if (bodyBytes > maxBytes) {
+        oversized = true;
+        req.resume();
+        return;
+      }
+      if (!oversized) body += chunk;
+    });
+    req.on("end", () => {
+      if (oversized) {
+        fail("PAYLOAD_TOO_LARGE", "request body too large");
+        return;
+      }
+      try {
+        resolve(JSON.parse(body || "{}"));
+      } catch (error) {
+        fail("INVALID_JSON", `invalid JSON body: ${String(error)}`);
+      }
+    });
+    req.on("error", (error) => reject(error));
+  });
+}
+
+function hasAdminToken(request, expectedToken) {
+  if (!expectedToken) return false;
+  const header = request.headers.authorization ?? "";
+  const match = /^Bearer\s+(.+)$/i.exec(header);
+  if (!match) return false;
+  const actual = Buffer.from(match[1]);
+  const expected = Buffer.from(expectedToken);
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
+}
+
 // ── Collab rooms (unchanged behavior) ───────────────────────────────────────
 
 class Room {
@@ -234,7 +385,7 @@ class Room {
 
   broadcast(message, excludeConn) {
     for (const conn of this.conns) {
-      if (conn !== excludeConn) conn.send(message, { binary: true });
+      if (conn !== excludeConn && conn.readyState === WS_OPEN) conn.send(message, { binary: true });
     }
   }
 }
@@ -259,12 +410,26 @@ function createRoomRegistry() {
  * test-suite can boot it on an ephemeral port; `npm run collab` starts it
  * through the main guard at the bottom of this file.
  */
-export function createCollabServer({ galleryFile = process.env.GALLERY_FILE ?? DEFAULT_GALLERY_FILE } = {}) {
+export function createCollabServer({
+  galleryFile = process.env.GALLERY_FILE ?? DEFAULT_GALLERY_FILE,
+  collabLimits: collabLimitOverrides = {},
+  corsOrigins = process.env.CORS_ORIGIN ?? "*",
+  adminToken: adminTokenOverride = process.env.GALLERY_ADMIN_TOKEN ?? "",
+} = {}) {
   const { getRoom, rooms } = createRoomRegistry();
+  const collabLimits = normalizeCollabLimits(collabLimitOverrides);
+  const allowedOrigins = normalizeCorsOrigins(corsOrigins);
   const gallery = new GalleryStore(galleryFile);
   const allowPost = makeRateLimiter();
   // Play counters are much hotter than uploads — their own, looser window.
   const allowPlay = makeRateLimiter(60);
+  const allowReport = makeRateLimiter(REPORT_WINDOW_LIMIT);
+  const adminToken = String(adminTokenOverride ?? "").trim();
+  const metrics = {
+    activeConnections: 0,
+    rejectedUpgrades: 0,
+    rejectedPayloads: 0,
+  };
 
   const server = createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://x");
@@ -273,10 +438,14 @@ export function createCollabServer({ galleryFile = process.env.GALLERY_FILE ?? D
       return;
     }
 
-    // CORS — the gallery page may live on another origin in dev/prod.
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    // CORS — development defaults to wildcard; production can set
+    // CORS_ORIGIN=https://app.example.com,https://www.example.com.
+    if (!applyCorsPolicy(res, req, allowedOrigins)) {
+      sendJson(res, 403, { error: "origin is not allowed" });
+      return;
+    }
+    res.setHeader("Access-Control-Allow-Methods", "DELETE,GET,POST,OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
     if (req.method === "OPTIONS") {
       res.writeHead(204);
       res.end();
@@ -296,15 +465,25 @@ export function createCollabServer({ galleryFile = process.env.GALLERY_FILE ?? D
       }
       let body = "";
       let oversized = false;
+      let oversizedResponseSent = false;
+      let bodyBytes = 0;
       req.on("data", (chunk) => {
-        body += chunk;
-        if (body.length > GALLERY_MAX_CODE_CHARS + 4_096) {
+        bodyBytes += Buffer.byteLength(chunk);
+        if (bodyBytes > GALLERY_MAX_CODE_CHARS + 4_096) {
           oversized = true;
-          req.destroy();
+          if (!oversizedResponseSent) {
+            oversizedResponseSent = true;
+            sendJson(res, 413, { error: "request body too large" });
+          }
+          // Drain the request without retaining it. This lets the client
+          // receive a useful 413 instead of an opaque socket reset.
+          req.resume();
+          return;
         }
+        if (!oversized) body += chunk;
       });
       req.on("end", () => {
-        if (oversized) return;
+        if (oversized || oversizedResponseSent) return;
         try {
           const parsed = JSON.parse(body || "{}");
           const result = gallery.add(parsed);
@@ -336,27 +515,177 @@ export function createCollabServer({ galleryFile = process.env.GALLERY_FILE ?? D
       return;
     }
 
+    if (req.method === "POST" && /^\/api\/gallery\/[\w-]+\/report$/.test(url.pathname)) {
+      const id = url.pathname.split("/")[3];
+      const ip = req.socket.remoteAddress ?? "unknown";
+      if (!allowReport(ip)) {
+        sendJson(res, 429, { error: "slow down — too many reports" });
+        return;
+      }
+      void readJsonBody(req, 4_096).then(
+        (parsed) => {
+          const result = gallery.report(id, parsed?.reason);
+          if (result.error) {
+            sendJson(res, 404, { error: result.error });
+            return;
+          }
+          sendJson(res, 202, result);
+        },
+        (error) => {
+          sendJson(res, error?.code === "PAYLOAD_TOO_LARGE" ? 413 : 400, {
+            error: error?.message ?? "invalid report body",
+          });
+        },
+      );
+      return;
+    }
+
+    if (url.pathname === "/api/admin/reports" && req.method === "GET") {
+      if (!adminToken) {
+        sendJson(res, 503, { error: "gallery moderation is not configured" });
+        return;
+      }
+      if (!hasAdminToken(req, adminToken)) {
+        sendJson(res, 401, { error: "moderation authorization required" });
+        return;
+      }
+      sendJson(res, 200, {
+        reports: gallery.reports.map((report) => ({
+          ...report,
+          beatTitle: gallery.find(report.beatId)?.title ?? null,
+        })),
+      });
+      return;
+    }
+
+    const deleteMatch = /^\/api\/gallery\/([\w-]+)$/.exec(url.pathname);
+    if (req.method === "DELETE" && deleteMatch) {
+      if (!adminToken) {
+        sendJson(res, 503, { error: "gallery moderation is not configured" });
+        return;
+      }
+      if (!hasAdminToken(req, adminToken)) {
+        sendJson(res, 401, { error: "moderation authorization required" });
+        return;
+      }
+      if (!gallery.remove(deleteMatch[1])) {
+        sendJson(res, 404, { error: "unknown beat" });
+        return;
+      }
+      sendJson(res, 200, { deleted: true });
+      return;
+    }
+
     if (req.method === "GET" && url.pathname === "/api/health") {
-      sendJson(res, 200, { ok: true, galleryItems: gallery.items.length });
+      sendJson(res, 200, {
+        ok: true,
+        galleryItems: gallery.items.length,
+        galleryReports: gallery.reports.length,
+        collab: {
+          rooms: rooms.size,
+          connections: metrics.activeConnections,
+          rejectedUpgrades: metrics.rejectedUpgrades,
+          rejectedPayloads: metrics.rejectedPayloads,
+        },
+      });
       return;
     }
 
     sendJson(res, 404, { error: `unknown API route: ${req.method} ${url.pathname}` });
   });
 
-  const wss = new WebSocketServer({ noServer: true });
+  const wss = new WebSocketServer({ noServer: true, maxPayload: collabLimits.maxMessageBytes });
+  let pendingConnections = 0;
+  const pendingByRoom = new Map();
+  const pendingRooms = new Set();
+
+  const reserveUpgrade = (roomId, roomExists) => {
+    pendingConnections += 1;
+    pendingByRoom.set(roomId, (pendingByRoom.get(roomId) ?? 0) + 1);
+    if (!roomExists) pendingRooms.add(roomId);
+  };
+
+  const releaseUpgrade = (roomId) => {
+    pendingConnections = Math.max(0, pendingConnections - 1);
+    const pending = (pendingByRoom.get(roomId) ?? 1) - 1;
+    if (pending <= 0) {
+      pendingByRoom.delete(roomId);
+      pendingRooms.delete(roomId);
+    } else {
+      pendingByRoom.set(roomId, pending);
+    }
+  };
 
   server.on("upgrade", (request, socket, head) => {
-    const roomId =
-      decodeURIComponent(new URL(request.url ?? "/", "http://x").pathname.replace(/^\//, "")) || "default";
-    wss.handleUpgrade(request, socket, head, (conn) => {
-      wss.emit("connection", conn, request, roomId);
-    });
+    const requestOrigin = request.headers.origin;
+    if (!allowedOrigins.has("*") && requestOrigin && !allowedOrigins.has(requestOrigin)) {
+      metrics.rejectedUpgrades += 1;
+      rejectUpgrade(socket, 403, "Forbidden", "origin is not allowed");
+      return;
+    }
+
+    let roomId;
+    try {
+      roomId = decodeURIComponent(new URL(request.url ?? "/", "http://x").pathname.replace(/^\//, "")) || "default";
+    } catch {
+      metrics.rejectedUpgrades += 1;
+      rejectUpgrade(socket, 400, "Bad Request", "invalid room id");
+      return;
+    }
+
+    if (roomId.length > collabLimits.maxRoomIdChars || /[\u0000-\u001f\u007f]/.test(roomId)) {
+      metrics.rejectedUpgrades += 1;
+      rejectUpgrade(socket, 414, "URI Too Long", "room id is too long or contains unsupported characters");
+      return;
+    }
+
+    const room = rooms.get(roomId);
+    const pendingRoomConnections = pendingByRoom.get(roomId) ?? 0;
+    const roomConnectionCount = (room?.conns.size ?? 0) + pendingRoomConnections;
+    if (metrics.activeConnections + pendingConnections >= collabLimits.maxConnections) {
+      metrics.rejectedUpgrades += 1;
+      rejectUpgrade(socket, 503, "Service Unavailable", "collaboration connection limit reached");
+      return;
+    }
+    if (roomConnectionCount >= collabLimits.maxConnectionsPerRoom) {
+      metrics.rejectedUpgrades += 1;
+      rejectUpgrade(socket, 503, "Service Unavailable", "room connection limit reached");
+      return;
+    }
+    if (!room && !pendingRooms.has(roomId) && rooms.size + pendingRooms.size >= collabLimits.maxRooms) {
+      metrics.rejectedUpgrades += 1;
+      rejectUpgrade(socket, 503, "Service Unavailable", "room limit reached");
+      return;
+    }
+
+    reserveUpgrade(roomId, Boolean(room));
+    let released = false;
+    const releasePending = () => {
+      if (released) return;
+      released = true;
+      releaseUpgrade(roomId);
+    };
+    socket.once("close", releasePending);
+
+    try {
+      wss.handleUpgrade(request, socket, head, (conn) => {
+        socket.off("close", releasePending);
+        releasePending();
+        wss.emit("connection", conn, request, roomId);
+      });
+    } catch (error) {
+      socket.off("close", releasePending);
+      releasePending();
+      metrics.rejectedUpgrades += 1;
+      console.warn("[collab] upgrade rejected:", String(error));
+      rejectUpgrade(socket, 400, "Bad Request", "invalid collaboration upgrade");
+    }
   });
 
   wss.on("connection", (conn, request, roomIdArg) => {
     const roomId = roomIdArg ?? "default";
     const room = getRoom(roomId);
+    metrics.activeConnections += 1;
     conn.binaryType = "arraybuffer";
     room.conns.add(conn);
     // Awareness client IDs this connection owns (for cleanup on disconnect).
@@ -372,34 +701,52 @@ export function createCollabServer({ galleryFile = process.env.GALLERY_FILE ?? D
     const syncEncoder = encoding.createEncoder();
     encoding.writeVarUint(syncEncoder, MESSAGE_SYNC);
     syncProtocol.writeSyncStep1(syncEncoder, room.ydoc);
-    conn.send(encoding.toUint8Array(syncEncoder), { binary: true });
+    const sendBinary = (message) => {
+      if (conn.readyState === WS_OPEN) conn.send(message, { binary: true });
+    };
+    sendBinary(encoding.toUint8Array(syncEncoder));
     const awarenessEncoder = encoding.createEncoder();
     encoding.writeVarUint(awarenessEncoder, MESSAGE_AWARENESS);
     encoding.writeVarUint8Array(
       awarenessEncoder,
       awarenessProtocol.encodeAwarenessUpdate(room.awareness, [...room.awareness.getStates().keys()]),
     );
-    conn.send(encoding.toUint8Array(awarenessEncoder), { binary: true });
+    sendBinary(encoding.toUint8Array(awarenessEncoder));
 
-    conn.on("message", (data) => {
+    conn.on("message", (data, isBinary) => {
+      const size = rawDataSize(data);
+      if (!isBinary || typeof data === "string") {
+        metrics.rejectedPayloads += 1;
+        if (conn.readyState === WS_OPEN) conn.close(1003, "binary collaboration messages required");
+        return;
+      }
+      if (size > collabLimits.maxMessageBytes) {
+        metrics.rejectedPayloads += 1;
+        if (conn.readyState === WS_OPEN) conn.close(1009, "collaboration message is too large");
+        return;
+      }
       try {
-        const decoder = decoding.createDecoder(new Uint8Array(data));
+        const decoder = decoding.createDecoder(rawDataToUint8Array(data));
         const encoder = encoding.createEncoder();
         const messageType = decoding.readVarUint(decoder);
         switch (messageType) {
           case MESSAGE_SYNC: {
             encoding.writeVarUint(encoder, MESSAGE_SYNC);
             syncProtocol.readSyncMessage(decoder, encoder, room.ydoc, conn);
-            if (encoding.length(encoder) > 1) conn.send(encoding.toUint8Array(encoder), { binary: true });
+            if (encoding.length(encoder) > 1) sendBinary(encoding.toUint8Array(encoder));
             break;
           }
           case MESSAGE_AWARENESS: {
             awarenessProtocol.applyAwarenessUpdate(room.awareness, decoding.readVarUint8Array(decoder), conn);
             break;
           }
+          default:
+            throw new Error(`unsupported message type ${messageType}`);
         }
       } catch (error) {
-        console.warn(`[collab] malformed message in room ${roomId}:`, String(error));
+        metrics.rejectedPayloads += 1;
+        console.warn(JSON.stringify({ event: "collab_message_rejected", room: roomId, reason: String(error) }));
+        if (conn.readyState === WS_OPEN) conn.close(1003, "malformed collaboration message");
       }
     });
 
@@ -407,6 +754,7 @@ export function createCollabServer({ galleryFile = process.env.GALLERY_FILE ?? D
     const close = () => {
       if (closed) return;
       closed = true;
+      metrics.activeConnections = Math.max(0, metrics.activeConnections - 1);
       room.conns.delete(conn);
       room.awareness.off("update", awarenessCleanup);
       if (room.conns.size === 0) {
@@ -416,7 +764,10 @@ export function createCollabServer({ galleryFile = process.env.GALLERY_FILE ?? D
       }
     };
     conn.on("close", close);
-    conn.on("error", close);
+    conn.on("error", (error) => {
+      if (String(error).toLowerCase().includes("max payload")) metrics.rejectedPayloads += 1;
+      close();
+    });
 
     conn.isAlive = true;
     conn.on("pong", () => {
@@ -438,7 +789,7 @@ export function createCollabServer({ galleryFile = process.env.GALLERY_FILE ?? D
   wss.on("close", () => clearInterval(pingTimer));
   server.on("close", () => clearInterval(pingTimer));
 
-  return { server, wss, gallery };
+  return { server, wss, gallery, metrics };
 }
 
 // ── Main entry ──────────────────────────────────────────────────────────────

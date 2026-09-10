@@ -26,6 +26,7 @@ import type { GlobalMeters } from "../effects/ultina-core/contracts/meters";
 import { renderTrack } from "../rendering/track-renderer";
 import { useDoc, useServices } from "./context";
 import { Slider } from "./controls";
+import { EffectAbControls, type EffectAbState } from "./EffectAbControls";
 
 const MODULE_LABELS: Record<string, string> = {
   gate: "GATE",
@@ -43,10 +44,7 @@ const MODULE_LABELS: Record<string, string> = {
 /** Params hidden from the panel — host/engine concerns, not mix decisions. */
 const HIDDEN = new Set(["eq.learnActive", "eq.maskingMeterEnabled"]);
 
-export interface UltinaAbState {
-  slots: { A?: Record<string, number>; B?: Record<string, number> };
-  active: "A" | "B";
-}
+export type UltinaAbState = EffectAbState;
 
 function formatUnit(value: number, unit: string): string {
   switch (unit) {
@@ -80,6 +78,7 @@ export function UltinaPanel({
   fxId,
   params,
   degraded,
+  bypassed,
   onParam,
   onApplyPreset,
   onApplyProposal,
@@ -91,6 +90,7 @@ export function UltinaPanel({
   fxId: string;
   params: Record<string, number>;
   degraded?: boolean;
+  bypassed?: boolean;
   onParam: (paramId: string, value: number) => void;
   onApplyPreset: (presetName: string, presetParams: Record<string, number>) => void;
   onApplyProposal: (
@@ -184,34 +184,19 @@ export function UltinaPanel({
   // ── PRO: A/B slots (host-side snapshots — abSlot in the DSP is only a label) ──
   const [localAbState, setLocalAbState] = useState<UltinaAbState>({ slots: {}, active: "A" });
   const currentAbState = abState ?? localAbState;
-  const abSlots = currentAbState.slots;
-  const abActive = currentAbState.active;
   const updateAbState = (next: UltinaAbState) => {
     if (onAbStateChange) onAbStateChange(next);
     else setLocalAbState(next);
   };
-  const storeAbSlot = (slot: "A" | "B") => {
-    updateAbState({ ...currentAbState, slots: { ...abSlots, [slot]: { ...params } } });
-  };
-  const clearAbSlot = (slot: "A" | "B") => {
-    const nextSlots = { ...abSlots };
-    delete nextSlots[slot];
-    updateAbState({ ...currentAbState, slots: nextSlots });
-  };
-  const copyAbSlot = (from: "A" | "B", to: "A" | "B") => {
-    const snapshot = abSlots[from];
-    if (!snapshot) return;
-    updateAbState({ ...currentAbState, slots: { ...abSlots, [to]: { ...snapshot } } });
-  };
   const loadAbSlot = (slot: "A" | "B") => {
-    if (slot === abActive) return;
-    const snapshot = abSlots[slot];
-    if (snapshot && onAbLoad) {
+    const snapshot = currentAbState.slots[slot];
+    if (!snapshot) return;
+    if (onAbLoad) {
       // Persisted A/B: one command restores params AND the active slot.
       onAbLoad(slot);
       return;
     }
-    if (snapshot) onApplyPreset(`Slot ${slot}`, snapshot); // exact restore: defaults + snapshot
+    onApplyPreset(`Slot ${slot}`, snapshot); // exact restore: defaults + snapshot
     updateAbState({ ...currentAbState, active: slot });
   };
   const deltaOn = valueOf("global.deltaListen") >= 0.5;
@@ -362,11 +347,14 @@ export function UltinaPanel({
       const error = global?.autoGainErrorDb ?? 0;
       const currentLufs = global?.outputShortTermLufs ?? -70;
       const hasSignal = Number.isFinite(currentLufs) && currentLufs > -69;
-      gainMatchStatusRef.current.textContent =
-        active === true && hasSignal
-          ? `LOCK ${correction > 0 ? "+" : ""}${correction.toFixed(1)} dB · Δ ${error > 0 ? "+" : ""}${error.toFixed(1)}`
-          : "WAITING FOR SIGNAL";
-      gainMatchStatusRef.current.dataset.active = active === true && hasSignal ? "true" : "false";
+      gainMatchStatusRef.current.textContent = bypassed
+        ? "BYPASSED"
+        : !hasSignal
+          ? "NO SIGNAL"
+          : active === true
+            ? `LOCK ${correction > 0 ? "+" : ""}${correction.toFixed(1)} dB · Δ ${error > 0 ? "+" : ""}${error.toFixed(1)}`
+            : "MEASURING…";
+      gainMatchStatusRef.current.dataset.active = active === true && hasSignal && !bypassed ? "true" : "false";
     }
 
     // Compressor gain-reduction bar (module meters only exist while enabled).
@@ -716,63 +704,14 @@ export function UltinaPanel({
             </div>
           )}
         </div>
-        <div className="ultina-pro-group">
-          <span className="ultina-pro-label">A/B</span>
-          {(["A", "B"] as const).map((slot) => (
-            <button
-              key={slot}
-              type="button"
-              className={`btn btn-small${abActive === slot ? " active" : ""}`}
-              aria-pressed={abActive === slot}
-              title={abSlots[slot] ? `Load slot ${slot}` : `Slot ${slot} (empty — use STORE)`}
-              onClick={() => loadAbSlot(slot)}
-            >
-              {slot}
-              {abSlots[slot] ? "•" : ""}
-            </button>
-          ))}
-          <button
-            type="button"
-            className="btn btn-small"
-            title={`Store current settings into slot ${abActive}`}
-            onClick={() => storeAbSlot(abActive)}
-          >
-            STORE
-          </button>
-          <button
-            type="button"
-            className="btn btn-small"
-            title={`Copy slot A to slot B`}
-            aria-label="Copy A to B"
-            disabled={!abSlots.A}
-            onClick={() => copyAbSlot("A", "B")}
-          >
-            A → B
-          </button>
-          <button
-            type="button"
-            className="btn btn-small"
-            title="Copy slot B to slot A"
-            aria-label="Copy B to A"
-            disabled={!abSlots.B}
-            onClick={() => copyAbSlot("B", "A")}
-          >
-            B → A
-          </button>
-          <button
-            type="button"
-            className="btn btn-small btn-danger"
-            title={`Clear slot ${abActive}`}
-            aria-label={`Clear slot ${abActive}`}
-            disabled={!abSlots[abActive]}
-            onClick={() => clearAbSlot(abActive)}
-          >
-            CLEAR
-          </button>
-          <span className="ultina-ab-status" role="status">
-            {abActive} ACTIVE · {abSlots[abActive] ? "STORED" : "EMPTY"}
-          </span>
-        </div>
+        <EffectAbControls
+          effectName="VLYX"
+          stateKind="ultina-ab-v1"
+          params={params}
+          deviceState={{ kind: "ultina-ab-v1", data: { ...currentAbState } }}
+          onStateChange={updateAbState}
+          onLoad={loadAbSlot}
+        />
       </div>
 
       {/* ── MIX ASSIST ─────────────────────────────────────────────── */}

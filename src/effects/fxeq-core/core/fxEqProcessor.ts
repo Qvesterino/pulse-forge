@@ -74,7 +74,15 @@ export interface FxEqProcessor {
   getBandPeaks(): Float32Array;
 }
 
-export function createFxEqProcessor(params?: Record<string, number>): FxEqProcessor {
+export interface FxEqProcessorOptions {
+  /** Stable host seed for all stateful random DSP streams. */
+  seed?: number;
+}
+
+export function createFxEqProcessor(
+  params?: Record<string, number>,
+  options?: FxEqProcessorOptions,
+): FxEqProcessor {
   let bandCount = 6;
   let schema = buildSchema(bandCount);
 
@@ -96,7 +104,9 @@ export function createFxEqProcessor(params?: Record<string, number>): FxEqProces
   }
 
   const crossover = createCrossoverBank(bandCount, 4, [...DEFAULT_CROSSOVER_FREQS]);
-  const bands = Array.from({ length: MAX_BANDS }, () => createBandEngine());
+  const bands = Array.from({ length: MAX_BANDS }, (_, index) =>
+    createBandEngine(options?.seed === undefined ? undefined : mixSeed(options.seed, index + 1)),
+  );
   const limiter = createLimiterModule({ ceilDb: values["limiterCeilDb"] ?? -0.3 });
 
   let sampleRate = DEFAULT_SAMPLE_RATE;
@@ -762,4 +772,12 @@ export function createFxEqProcessor(params?: Record<string, number>): FxEqProces
       bands[route.band - 1]?.setModuleParam(route.moduleKey, route.rawId, value);
     }
   }
+}
+
+function mixSeed(seed: number, salt: number): number {
+  let value = (seed ^ Math.imul(salt, 0x9e3779b9)) >>> 0;
+  value = Math.imul(value ^ (value >>> 16), 0x45d9f3b);
+  value = Math.imul(value ^ (value >>> 16), 0x45d9f3b);
+  value = (value ^ (value >>> 16)) >>> 0;
+  return value === 0 ? 0x1 : value;
 }

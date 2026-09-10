@@ -129,7 +129,10 @@ export class PhaseModuleProcessor implements UltinaModuleProcessor {
     this.delayBufL = new Float32Array(this.delayBufferSize);
     this.delayBufR = new Float32Array(this.delayBufferSize);
     this.delayWritePos = 0;
-    this.dryDelay.prepare(this.maxBlockSize);
+    this.dryDelay.prepare(
+      this.maxBlockSize,
+      Math.ceil((50 * this.sampleRate) / 1000),
+    );
 
     // DC blocker coefficient (~20 Hz cutoff)
     this.dcCoef = 1 - 2 * Math.PI * 20 / this.sampleRate;

@@ -102,6 +102,21 @@ describe("fxeq rack ↔ core parameter contract", () => {
     rt.dispose();
   });
 
+  it("forwards the host seed in processorOptions for deterministic per-instance DSP", () => {
+    const constructed: Array<Record<string, unknown>> = [];
+    class Capturing extends FakeAudioWorkletNode {
+      constructor(ctx: unknown, name: string, opts: Record<string, unknown>) {
+        super(ctx, name, opts);
+        constructed.push(opts);
+      }
+    }
+    vi.stubGlobal("AudioWorkletNode", Capturing);
+    const rt = createFxEqNode(fakeCtx(), instance({}), {}, 0x12345678);
+    const opts = constructed[0] as { processorOptions?: { seed?: number } };
+    expect(opts.processorOptions?.seed).toBe(0x12345678);
+    rt.dispose();
+  });
+
   it("every translated rack id is live on the real core (end-to-end)", () => {
     const proc = createFxEqProcessor();
     proc.prepare(48000, 2, 128);

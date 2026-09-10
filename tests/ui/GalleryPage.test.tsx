@@ -113,6 +113,35 @@ describe("GalleryPage", () => {
     expect(await screen.findByText("Midnight 808")).toBeTruthy();
   });
 
+  it("lets a visitor submit a moderation report without exposing reporter data", async () => {
+    const fetchMock = vi.fn((url: unknown) =>
+      String(url).includes("/report")
+        ? Promise.resolve(jsonResponse({ accepted: true }, 202))
+        : Promise.resolve(feedResponse()),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(<GalleryPage />);
+
+    await screen.findByText("Midnight 808");
+    fireEvent.click(screen.getAllByRole("button", { name: "REPORT" })[0]);
+    const reportGroup = screen.getByRole("group", { name: "Report Midnight 808" });
+    fireEvent.change(screen.getByRole("combobox", { name: "WHY?" }), {
+      target: { value: "copyright or ownership issue" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "SEND REPORT" }));
+
+    // Generous timeout: under full-suite CPU load the fetch round-trip can
+    // outrun waitFor's 1s default (same rationale as tests/ui/midi-io).
+    await waitFor(() => expect(screen.getByText("REPORT SENT ✓")).toBeTruthy(), { timeout: 10_000 });
+    expect(reportGroup).toBeTruthy();
+    const reportCall = fetchMock.mock.calls.find(([url]) => String(url).includes("/report")) as unknown as [
+      unknown,
+      RequestInit,
+    ];
+    expect(reportCall).toBeTruthy();
+    expect(JSON.parse(String(reportCall[1].body))).toEqual({ reason: "copyright or ownership issue" });
+  });
+
   it("publishes: opens the form, parses the pasted share link, POSTs the payload", async () => {
     const fetchMock = vi.fn().mockImplementation((_url: unknown, init?: RequestInit) =>
       init?.method === "POST"
@@ -226,8 +255,7 @@ describe("gallery flywheel", () => {
 
     await waitFor(() => expect(screen.getByText("▶ 1.2k")).toBeTruthy());
     const playCall = fetchMock.mock.calls.find(([url]) => String(url).includes("/play")) as
-      | [unknown, RequestInit?]
-      | undefined;
+      [unknown, RequestInit?] | undefined;
     expect(playCall).toBeTruthy();
     expect(playCall![1]?.method).toBe("POST");
     // Second toggle (stop) does not ping again — session dedup.
@@ -250,10 +278,7 @@ describe("gallery flywheel", () => {
   });
 
   it("publish form chains the remix parent and persists the creator handle", async () => {
-    localStorage.setItem(
-      "pf-remix-parent",
-      JSON.stringify({ id: "b1", title: "Popular Beat", savedAt: Date.now() }),
-    );
+    localStorage.setItem("pf-remix-parent", JSON.stringify({ id: "b1", title: "Popular Beat", savedAt: Date.now() }));
     const fetchMock = vi.fn().mockImplementation((_url: unknown, init?: RequestInit) =>
       init?.method === "POST"
         ? Promise.resolve(

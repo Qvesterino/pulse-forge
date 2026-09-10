@@ -25,6 +25,29 @@ const SliceLab = lazy(() => import("./SliceLab").then((m) => ({ default: m.Slice
 const TONAL_ASSETS = FACTORY_ASSETS.filter((a) => a.category === "Tonal");
 const DRUM_ASSETS = FACTORY_ASSETS.filter((a) => a.category !== "Tonal");
 
+/**
+ * The first screen should expose musical decisions, not every implementation
+ * parameter. Advanced mode still renders the complete registry definition.
+ * Keep this metadata here (rather than a component-level if/else tree) so a
+ * new instrument can opt into the same contract without changing the model.
+ */
+const SIMPLE_PARAM_IDS: Partial<Record<InstrumentKind, readonly string[]>> = {
+  analog: ["oscA", "oscB", "cutoff", "resonance", "attack", "release", "drive"],
+  bass: ["sub", "body", "punch", "grit", "cutoff", "glide"],
+  "808": ["decay", "pitchDrop", "click", "drive", "glide", "tone"],
+  sampler: ["root", "start", "attack", "decay", "cutoff", "reverse"],
+  texture: ["color", "motion", "space", "density", "texture", "chaos"],
+  wavetable: ["table", "morph", "morphRate", "scanRate", "cutoff", "attack", "release"],
+  granular: ["position", "size", "rate", "jitter", "scan", "spread"],
+  keys: ["tine", "bell", "body", "damp", "cutoff", "attack", "release"],
+  fm: ["ratio", "index", "feedback", "attack", "decay", "release"],
+  pluck: ["pick", "damp", "body", "tone", "decay", "cutoff"],
+  logdrum: ["decay", "pitchDrop", "tone", "body", "hollow", "grit"],
+  spectral: ["profile", "partials", "spacing", "shimmer", "attack", "release"],
+  vocalchop: ["root", "vowel", "color", "shift", "sharp", "morph"],
+  drumsynth: ["type", "tune", "tone", "decay", "snap", "body", "drive"],
+};
+
 /** Instruments that play a sample/browser source, with their panel labels. */
 const SAMPLE_BROWSER_KINDS: Partial<Record<InstrumentKind, string>> = {
   sampler: "SAMPLE",
@@ -44,6 +67,7 @@ export function Inspector({
   const services = useServices();
   const doc = useDoc();
   const [sliceLabOpen, setSliceLabOpen] = useState(false);
+  const [advancedInstrumentControls, setAdvancedInstrumentControls] = useState(false);
 
   const trackSection = (
     <>
@@ -72,6 +96,10 @@ export function Inspector({
   if (track.kind === "instrument") {
     const def = INSTRUMENT_DEFS[track.instrument];
     const sampleLabel = SAMPLE_BROWSER_KINDS[track.instrument];
+    const simpleIds = SIMPLE_PARAM_IDS[track.instrument];
+    const visibleParams = advancedInstrumentControls
+      ? def.params
+      : def.params.filter((param) => simpleIds?.includes(param.id) ?? true);
     return (
       <aside className="inspector" aria-label="Inspector">
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -83,6 +111,21 @@ export function Inspector({
               PLUGIN ↗
             </button>
           )}
+        </div>
+
+        <div className="inspector-control-mode" role="group" aria-label="Instrument control view">
+          <span className="inspector-control-mode-label">CONTROLS</span>
+          {([false, true] as const).map((advanced) => (
+            <button
+              key={advanced ? "advanced" : "simple"}
+              type="button"
+              className={`btn btn-small${advancedInstrumentControls === advanced ? " active" : ""}`}
+              aria-pressed={advancedInstrumentControls === advanced}
+              onClick={() => setAdvancedInstrumentControls(advanced)}
+            >
+              {advanced ? "ADVANCED" : "SIMPLE"}
+            </button>
+          ))}
         </div>
 
         <Suspense fallback={<h2 className="panel-title">PRESETS — loading…</h2>}>
@@ -104,7 +147,13 @@ export function Inspector({
           </>
         )}
 
-        {def.params.map((p) =>
+        {!advancedInstrumentControls && (
+          <div className="inspector-control-hint">
+            Core sound controls shown · open ADVANCED for the full instrument
+          </div>
+        )}
+
+        {visibleParams.map((p) =>
           p.options ? (
             <label key={p.id} className="fx-param-select">
               <span className="slider-label">{p.label}</span>

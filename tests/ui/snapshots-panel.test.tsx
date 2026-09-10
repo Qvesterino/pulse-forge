@@ -93,4 +93,33 @@ describe("snapshots section in the history panel", () => {
     await waitFor(() => expect(core.snapshots.delete).toHaveBeenCalledWith("snap-1"));
     await waitFor(() => expect(screen.queryByText("Manual — Sep 2, 10:00")).toBeNull());
   });
+
+  it("✕ delete failure surfaces an error instead of an unhandled rejection", async () => {
+    const { services, core } = setup([snapshot()]);
+    core.snapshots.delete = vi.fn(async () => {
+      throw new Error("QuotaExceededError");
+    });
+    renderWithContext(<UndoHistoryPanel open />, { services });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Delete snapshot Manual — Sep 2, 10:00" }));
+
+    await waitFor(() => expect(screen.getByText(/could not be deleted/i)).toBeTruthy());
+    // The row stays — the delete did not commit.
+    expect(screen.getByText("Manual — Sep 2, 10:00")).toBeTruthy();
+  });
+
+  it("RESTORE parks a pre-restore safety snapshot before executing the command", async () => {
+    const snap = snapshot();
+    const { services, core } = setup([snap]);
+    renderWithContext(<UndoHistoryPanel open />, { services });
+
+    fireEvent.click(await screen.findByText("RESTORE"));
+
+    const safetyCall = core.snapshots.save.mock.calls.find(
+      (call) => (call[2] as string) === "Auto — before restore",
+    );
+    expect(safetyCall).toBeTruthy();
+    expect(safetyCall?.[0]).toBe(services.store.doc.id);
+    await waitFor(() => expect(core.snapshots.prune).toHaveBeenCalled());
+  });
 });

@@ -15,7 +15,7 @@ export function exportProject(doc: ProjectDocument): void {
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  setTimeout(() => URL.revokeObjectURL?.(url), 5000);
 }
 
 // Import size ceiling (release roadmap 1.4): a project file becomes a JS

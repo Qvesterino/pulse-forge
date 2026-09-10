@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 export interface LongPressBind {
   /** Compose with the cell's own pointer handlers. */
@@ -33,6 +33,10 @@ export function useLongPress(fire: () => void, ms = 450): LongPressBind {
       timer.current = null;
     }
   }, []);
+
+  // A touch press can outlive its component (view switch mid-press) — the
+  // pending timer must not fire the callback into an unmounted surface.
+  useEffect(() => clear, [clear]);
 
   const onPointerDown = useCallback(
     (event: React.PointerEvent) => {

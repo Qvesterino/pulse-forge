@@ -34,6 +34,7 @@ export function UndoHistoryPanel({ open }: { open: boolean }) {
   // ── Snapshots ("restore to yesterday") ─────────────────────────────────
   const [snapshots, setSnapshots] = useState<ProjectSnapshot[] | null>(null);
   const [snapBusy, setSnapBusy] = useState(false);
+  const [snapError, setSnapError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -53,19 +54,32 @@ export function UndoHistoryPanel({ open }: { open: boolean }) {
 
   const snapshotNow = () => {
     setSnapBusy(true);
+    setSnapError(null);
     const label = `Manual — ${new Date().toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`;
     void services.core.snapshots
       .save(doc.id, doc, label)
       .then(() => services.core.snapshots.prune(doc.id))
       .then(() => services.core.snapshots.list(doc.id))
       .then((list) => setSnapshots(list))
-      .catch(() => {})
+      .catch((err) => {
+        console.error("[snapshots] manual snapshot failed:", err);
+        setSnapError("Snapshot could not be saved — storage may be full or unavailable.");
+      })
       .finally(() => setSnapBusy(false));
   };
 
   /** Restore = one undoable command; collab peers receive it as a normal edit. */
   const restoreSnapshot = (snapshot: ProjectSnapshot) => {
     const before = doc;
+    // Safety net: undo reverts the restore only until the tab closes. Park a
+    // best-effort pre-restore snapshot so a mistaken restore stays recoverable
+    // from the snapshot list even after a reload.
+    void services.core.snapshots
+      .save(before.id, before, "Auto — before restore")
+      .then(() => services.core.snapshots.prune(before.id))
+      .catch(() => {
+        /* best-effort — the undoable command still runs */
+      });
     // Clone: the stored document must stay untouched for future restores.
     const restored = typeof structuredClone === "function" ? structuredClone(snapshot.doc) : snapshot.doc;
     services.store.execute({
@@ -77,9 +91,18 @@ export function UndoHistoryPanel({ open }: { open: boolean }) {
   };
 
   const deleteSnapshot = (snapshot: ProjectSnapshot) => {
-    void services.core.snapshots.delete(snapshot.id).then(() => {
-      setSnapshots((list) => list?.filter((s) => s.id !== snapshot.id) ?? list);
-    });
+    setSnapError(null);
+    void services.core.snapshots
+      .delete(snapshot.id)
+      .then(() => {
+        setSnapshots((list) => list?.filter((s) => s.id !== snapshot.id) ?? list);
+      })
+      .catch((err) => {
+        // Without this the failed delete dies as an unhandled rejection and
+        // the list silently keeps the row.
+        console.error("[snapshots] delete failed:", err);
+        setSnapError("Snapshot could not be deleted — storage may be unavailable.");
+      });
   };
 
   if (!open) return null;
@@ -153,7 +176,12 @@ export function UndoHistoryPanel({ open }: { open: boolean }) {
           </button>
         </div>
         {snapshots === null && <div className="undo-history-empty">loading…</div>}
-        {snapshots !== null && snapshots.length === 0 && (
+        {snapError && (
+          <div className="undo-history-empty" role="alert">
+            {snapError}
+          </div>
+        )}
+        {snapshots !== null && snapshots.length === 0 && !snapError && (
           <div className="undo-history-empty">No snapshots yet — one is taken daily automatically</div>
         )}
         {snapshots?.map((snapshot) => (

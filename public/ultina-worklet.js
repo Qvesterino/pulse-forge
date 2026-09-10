@@ -4236,7 +4236,7 @@
           this.lr4LpOut[ch].set(this.lr4Work[ch].subarray(0, frameCount));
         }
         for (const bq of split.lp) {
-          for (let ch = 0; ch < this.channelCount; ch++) {
+          for (let ch = 0; ch < chCount; ch++) {
             processBiquadInPlace(bq, this.lr4LpOut[ch], ch, frameCount);
           }
         }
@@ -4269,11 +4269,11 @@
           this.lr4MidLp[ch].set(bandOut[1][ch].subarray(0, frameCount));
         }
         for (const bq of split1.lp) {
-          for (let ch = 0; ch < this.channelCount; ch++) {
+          for (let ch = 0; ch < chCount; ch++) {
             processBiquadInPlace(bq, this.lr4MidLp[ch], ch, frameCount);
           }
         }
-        for (let ch = 0; ch < this.channelCount; ch++) {
+        for (let ch = 0; ch < chCount; ch++) {
           bandOut[1][ch].set(this.lr4MidLp[ch].subarray(0, frameCount));
         }
       }
@@ -4386,6 +4386,11 @@
     bandBuffers = [];
     transientBuf = new Float32Array(0);
     sustainBuf = new Float32Array(0);
+    // Stereo T/S processing runs both channels through one crossover call so
+    // each channel keeps its own filter state slot. Reusing transientBuf for
+    // L then R made the single-channel path share state and leak L into R.
+    transientStereoBufs = [];
+    sustainStereoBufs = [];
     sampleRate = 48e3;
     channelCount = 2;
     maxBlockSize = 8192;
@@ -4407,6 +4412,14 @@
       }
       this.transientBuf = new Float32Array(this.maxBlockSize);
       this.sustainBuf = new Float32Array(this.maxBlockSize);
+      this.transientStereoBufs = [
+        new Float32Array(this.maxBlockSize),
+        new Float32Array(this.maxBlockSize)
+      ];
+      this.sustainStereoBufs = [
+        new Float32Array(this.maxBlockSize),
+        new Float32Array(this.maxBlockSize)
+      ];
       this.prepared = true;
     }
     setCrossover(splitIndex, freqHz) {
@@ -4429,6 +4442,8 @@
       for (const band of this.bandBuffers) {
         for (const ch of band) ch.fill(0);
       }
+      for (const ch of this.transientStereoBufs) ch.fill(0);
+      for (const ch of this.sustainStereoBufs) ch.fill(0);
     }
     /**
      * Process audio through the multiband chain.
@@ -4467,20 +4482,22 @@
             channels[0][i] = target[i] + otherBuf[i];
           }
         } else {
-          for (let ch = 0; ch < this.channelCount; ch++) {
+          const stereoChannels = Math.min(2, this.channelCount, channels.length);
+          for (let ch = 0; ch < stereoChannels; ch++) {
             this.tsSeparator.separate(
               channels[ch],
               frameCount,
-              this.transientBuf,
-              this.sustainBuf,
+              this.transientStereoBufs[ch],
+              this.sustainStereoBufs[ch],
               ch
             );
-            const target = channelMode === "transient" ? this.transientBuf : this.sustainBuf;
-            const otherBuf = channelMode === "transient" ? this.sustainBuf : this.transientBuf;
-            const singleChannel = [target];
-            this.processBands(singleChannel, frameCount, bandProcessFn);
+          }
+          const target = channelMode === "transient" ? this.transientStereoBufs : this.sustainStereoBufs;
+          this.processBands(target, frameCount, bandProcessFn);
+          const other = channelMode === "transient" ? this.sustainStereoBufs : this.transientStereoBufs;
+          for (let ch = 0; ch < stereoChannels; ch++) {
             for (let i = 0; i < frameCount; i++) {
-              channels[ch][i] = target[i] + otherBuf[i];
+              channels[ch][i] = target[ch][i] + other[ch][i];
             }
           }
         }
@@ -4603,8 +4620,8 @@
     bufR = new Float32Array(0);
     size = 0;
     writePos = 0;
-    prepare(maxBlockSize) {
-      this.size = maxBlockSize + 64;
+    prepare(maxBlockSize, maxDelaySamples = 64) {
+      this.size = maxBlockSize + Math.max(64, Math.ceil(maxDelaySamples));
       this.bufL = new Float32Array(this.size);
       this.bufR = new Float32Array(this.size);
       this.writePos = 0;
@@ -4777,6 +4794,9 @@
       this.autoMakeupSmoother.setTimeConstant(50, this.sampleRate);
       this.multiband.prepare(this.sampleRate, 2, this.maxBlockSize, 1);
       this.dryDelay.prepare(this.maxBlockSize);
+      this.cachedBandCount = -1;
+      this.cachedXover1 = -1;
+      this.cachedXover2 = -1;
       this.osStates = [];
       this.bandGainBufs = [];
       for (let b = 0; b < COMP_MAX_BANDS; b++) {
@@ -5238,6 +5258,9 @@
       }
       this.multiband.prepare(this.sampleRate, 2, this.maxBlockSize, 1);
       this.dryDelay.prepare(this.maxBlockSize);
+      this.cachedBandCount = -1;
+      this.cachedXover1 = -1;
+      this.cachedXover2 = -1;
     }
     process(args) {
       const { channels, frameCount, sidechain, params } = args;
@@ -5501,6 +5524,9 @@
       this.toneHighState = new Array(EXCITER_MAX_BANDS * 2).fill(0);
       this.multiband.prepare(this.sampleRate, 2, this.maxBlockSize, 1);
       this.dryDelay.prepare(this.maxBlockSize);
+      this.cachedBandCount = -1;
+      this.cachedXover1 = -1;
+      this.cachedXover2 = -1;
     }
     process(args) {
       const { channels, frameCount, params } = args;
@@ -5824,6 +5850,9 @@
       }
       this.multiband.prepare(this.sampleRate, 2, this.maxBlockSize, 1);
       this.dryDelay.prepare(this.maxBlockSize);
+      this.cachedBandCount = -1;
+      this.cachedXover1 = -1;
+      this.cachedXover2 = -1;
       this.osStates = [];
       this.bandGainBufs = [];
       for (let b = 0; b < TRANSIENT_MAX_BANDS; b++) {
@@ -6090,6 +6119,9 @@
       }
       this.multiband.prepare(this.sampleRate, 2, this.maxBlockSize, 1);
       this.dryDelay.prepare(this.maxBlockSize);
+      this.cachedBandCount = -1;
+      this.cachedXover1 = -1;
+      this.cachedXover2 = -1;
     }
     process(args) {
       const { channels, frameCount, params } = args;
@@ -6380,6 +6412,9 @@
       }
       this.multiband.prepare(this.sampleRate, 2, this.maxBlockSize, 1);
       this.dryDelay.prepare(this.maxBlockSize);
+      this.cachedBandCount = -1;
+      this.cachedXover1 = -1;
+      this.cachedXover2 = -1;
       this.initEnvelopeFollowers();
     }
     initEnvelopeFollowers() {
@@ -6690,10 +6725,17 @@
         for (let b = 0; b < NUM_BANDS; b++) {
           this.runBandpassAnalysis(b, analysisSignal, chunkSize);
         }
+        let peakEnv = 0;
+        for (let b = 0; b < NUM_BANDS; b++) {
+          if (BAND_FREQS[b] >= lowFreq && BAND_FREQS[b] <= highFreq) {
+            peakEnv = Math.max(peakEnv, this.envFollowers[b]);
+          }
+        }
+        const activeFloor = Math.max(1e-6, peakEnv * 0.1);
         let sumDb = 0;
         let validBands = 0;
         for (let b = 0; b < NUM_BANDS; b++) {
-          if (BAND_FREQS[b] >= lowFreq && BAND_FREQS[b] <= highFreq) {
+          if (BAND_FREQS[b] >= lowFreq && BAND_FREQS[b] <= highFreq && this.envFollowers[b] >= activeFloor) {
             sumDb += ampToDb(this.envFollowers[b]);
             validBands++;
           }
@@ -6704,7 +6746,7 @@
           if (BAND_FREQS[b] < lowFreq || BAND_FREQS[b] > highFreq) {
             targetGainDb = 0;
           } else {
-            if (this.envFollowers[b] < 1e-6) {
+            if (this.envFollowers[b] < activeFloor) {
               targetGainDb = 0;
             } else {
               const measuredDb = ampToDb(this.envFollowers[b]);
@@ -6906,7 +6948,10 @@
       this.delayBufL = new Float32Array(this.delayBufferSize);
       this.delayBufR = new Float32Array(this.delayBufferSize);
       this.delayWritePos = 0;
-      this.dryDelay.prepare(this.maxBlockSize);
+      this.dryDelay.prepare(
+        this.maxBlockSize,
+        Math.ceil(50 * this.sampleRate / 1e3)
+      );
       this.dcCoef = 1 - 2 * Math.PI * 20 / this.sampleRate;
       if (this.dcCoef < 0.9) this.dcCoef = 0.9;
       this.peakAtkCoef = smoothCoef(5, this.sampleRate);

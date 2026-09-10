@@ -46,19 +46,26 @@ export function encodeWav(buffer: AudioBuffer, bitDepth: WavBitDepth): ArrayBuff
   const ditherRand = mulberry32(0x57415631);
   for (let i = 0; i < frames; i++) {
     for (let ch = 0; ch < numChannels; ch++) {
-      const sample = Math.max(-1, Math.min(1, channels[ch][i]));
+      // Keep non-finite render artefacts from poisoning the file, but feed
+      // hot finite samples through the shared soft-knee policy. Clamping
+      // before softClipSample would turn the 24/32-bit paths into a hidden
+      // hard clip at exactly full scale.
+      const input = Number.isFinite(channels[ch][i]) ? channels[ch][i] : 0;
       if (bitDepth === 16) {
-        view.setInt16(offset, quantizeInt16Sample(sample, ditherRand), true);
+        view.setInt16(offset, quantizeInt16Sample(input, ditherRand), true);
         offset += 2;
-      } else if (bitDepth === 24) {
-        const value = Math.round(softClipSample(sample) * (sample < 0 ? 0x800000 : 0x7fffff));
-        view.setUint8(offset, value & 0xff);
-        view.setUint8(offset + 1, (value >> 8) & 0xff);
-        view.setUint8(offset + 2, (value >> 16) & 0xff);
-        offset += 3;
       } else {
-        view.setFloat32(offset, sample, true);
-        offset += 4;
+        const sample = softClipSample(input);
+        if (bitDepth === 24) {
+          const value = Math.round(sample * (sample < 0 ? 0x800000 : 0x7fffff));
+          view.setUint8(offset, value & 0xff);
+          view.setUint8(offset + 1, (value >> 8) & 0xff);
+          view.setUint8(offset + 2, (value >> 16) & 0xff);
+          offset += 3;
+        } else {
+          view.setFloat32(offset, sample, true);
+          offset += 4;
+        }
       }
     }
   }
@@ -74,7 +81,7 @@ export function downloadWav(arrayBuffer: ArrayBuffer, filename: string): void {
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  setTimeout(() => URL.revokeObjectURL?.(url), 5000);
 }
 
 export function sanitizeFilename(name: string): string {

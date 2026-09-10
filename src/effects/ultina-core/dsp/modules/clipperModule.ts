@@ -149,6 +149,10 @@ export class ClipperModuleProcessor implements UltinaModuleProcessor {
 
     this.multiband.prepare(this.sampleRate, 2, this.maxBlockSize, 1);
     this.dryDelay.prepare(this.maxBlockSize);
+    // prepare() rebuilds crossover filters; invalidate cached split values.
+    this.cachedBandCount = -1;
+    this.cachedXover1 = -1;
+    this.cachedXover2 = -1;
   }
 
   process(args: ModuleProcessArgs): void {

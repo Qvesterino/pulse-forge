@@ -78,7 +78,7 @@ export function OnboardingTour() {
   return (
     <div className="tour-card" role="dialog" aria-label="Onboarding tour" aria-live="polite">
       <div className="tour-head">
-        <span className="tour-brand">PF</span>
+        <span className="tour-brand">KYX</span>
         <button type="button" className="btn btn-small" onClick={finish} aria-label="Skip tour">
           SKIP
         </button>

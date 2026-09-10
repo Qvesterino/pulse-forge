@@ -2,7 +2,7 @@
 
 A focused, browser-first electronic music production workstation.
 
-This repository implements **Phases 0–6** of the build order defined in `Pulse Forge — Master Build Prompt.md`, through the production milestone (offline render + WAV/stem export).
+This repository implements **Phases 0–6** of the build order defined in the project master build prompt, through the production milestone (offline render + WAV/stem export).
 
 ## Run
 

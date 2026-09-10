@@ -96,6 +96,19 @@ describe("Inspector: wavetable track", () => {
     // track section still present
     expect(screen.getByText(/VOLUME/i)).toBeInTheDocument();
   });
+
+  it("keeps the first screen focused and exposes the full registry in advanced mode", async () => {
+    const services = servicesWithTrack(instrumentTrack("wavetable"));
+    renderWithContext(<Inspector track={services.store.doc.tracks.at(-1)!} selectedPadId="pad-1" />, { services });
+
+    expect(screen.getByRole("button", { name: "SIMPLE" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByText("UNISON")).toBeNull();
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "ADVANCED" }));
+
+    expect(screen.getByRole("button", { name: "ADVANCED" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("UNISON")).toBeInTheDocument();
+  });
 });
 
 describe("Inspector: granular track", () => {

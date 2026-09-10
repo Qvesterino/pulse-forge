@@ -303,7 +303,7 @@ export class CrossoverNetwork {
         this.lr4LpOut[ch].set(this.lr4Work[ch].subarray(0, frameCount));
       }
       for (const bq of split.lp) {
-        for (let ch = 0; ch < this.channelCount; ch++) {
+        for (let ch = 0; ch < chCount; ch++) {
           processBiquadInPlace(bq, this.lr4LpOut[ch], ch, frameCount);
         }
       }
@@ -345,11 +345,11 @@ export class CrossoverNetwork {
         this.lr4MidLp[ch].set(bandOut[1][ch].subarray(0, frameCount));
       }
       for (const bq of split1.lp) {
-        for (let ch = 0; ch < this.channelCount; ch++) {
+        for (let ch = 0; ch < chCount; ch++) {
           processBiquadInPlace(bq, this.lr4MidLp[ch], ch, frameCount);
         }
       }
-      for (let ch = 0; ch < this.channelCount; ch++) {
+      for (let ch = 0; ch < chCount; ch++) {
         bandOut[1][ch].set(this.lr4MidLp[ch].subarray(0, frameCount));
       }
     }
@@ -531,6 +531,11 @@ export class MultibandProcessor {
   private bandBuffers: Float32Array[][] = [];
   private transientBuf: Float32Array = new Float32Array(0);
   private sustainBuf: Float32Array = new Float32Array(0);
+  // Stereo T/S processing runs both channels through one crossover call so
+  // each channel keeps its own filter state slot. Reusing transientBuf for
+  // L then R made the single-channel path share state and leak L into R.
+  private transientStereoBufs: Float32Array[] = [];
+  private sustainStereoBufs: Float32Array[] = [];
 
   private sampleRate = 48000;
   private channelCount = 2;
@@ -564,6 +569,14 @@ export class MultibandProcessor {
 
     this.transientBuf = new Float32Array(this.maxBlockSize);
     this.sustainBuf = new Float32Array(this.maxBlockSize);
+    this.transientStereoBufs = [
+      new Float32Array(this.maxBlockSize),
+      new Float32Array(this.maxBlockSize),
+    ];
+    this.sustainStereoBufs = [
+      new Float32Array(this.maxBlockSize),
+      new Float32Array(this.maxBlockSize),
+    ];
 
     this.prepared = true;
   }
@@ -594,6 +607,8 @@ export class MultibandProcessor {
     for (const band of this.bandBuffers) {
       for (const ch of band) ch.fill(0);
     }
+    for (const ch of this.transientStereoBufs) ch.fill(0);
+    for (const ch of this.sustainStereoBufs) ch.fill(0);
   }
 
   /**
@@ -646,18 +661,27 @@ export class MultibandProcessor {
           channels[0][i] = target[i] + otherBuf[i];
         }
       } else {
-        // For stereo T/S, process each channel's transients separately
-        for (let ch = 0; ch < this.channelCount; ch++) {
+        // For stereo T/S, separate both channels first and process them as a
+        // stereo pair. This preserves independent crossover state slots;
+        // processing [targetL] and [targetR] sequentially would reuse slot 0
+        // and make L's filter tail seed R.
+        const stereoChannels = Math.min(2, this.channelCount, channels.length);
+        for (let ch = 0; ch < stereoChannels; ch++) {
           this.tsSeparator.separate(
             channels[ch], frameCount,
-            this.transientBuf, this.sustainBuf, ch,
+            this.transientStereoBufs[ch], this.sustainStereoBufs[ch], ch,
           );
-          const target = channelMode === "transient" ? this.transientBuf : this.sustainBuf;
-          const otherBuf = channelMode === "transient" ? this.sustainBuf : this.transientBuf;
-          const singleChannel: Float32Array[] = [target];
-          this.processBands(singleChannel, frameCount, bandProcessFn);
+        }
+        const target = channelMode === "transient"
+          ? this.transientStereoBufs
+          : this.sustainStereoBufs;
+        this.processBands(target, frameCount, bandProcessFn);
+        const other = channelMode === "transient"
+          ? this.sustainStereoBufs
+          : this.transientStereoBufs;
+        for (let ch = 0; ch < stereoChannels; ch++) {
           for (let i = 0; i < frameCount; i++) {
-            channels[ch][i] = target[i] + otherBuf[i];
+            channels[ch][i] = target[ch][i] + other[ch][i];
           }
         }
       }

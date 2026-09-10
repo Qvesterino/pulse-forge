@@ -2047,13 +2047,13 @@ const fxeq: EffectDefinition = {
     { id: "limiterEnabled", label: "LIM", min: 0, max: 1, default: 1, format: (v) => (v >= 0.5 ? "ON" : "OFF") },
     { id: "limiterCeilDb", label: "CEIL", min: -6, max: 0, default: -0.3, unit: "dB", format: formatDb },
   ],
-  factory(ctx, instance) {
+  factory(ctx, instance, env) {
     // Worklet DSP when the module loaded for THIS context (offline renders
     // load it too); transparent degraded bypass otherwise — fxeq has no
     // meaningful main-thread fallback, and silence-in-waiting is worse than
     // an honest badge.
     if (isWorkletReady("fxeq", ctx)) {
-      return createFxEqNode(ctx, instance, FXEQ_PARAM_DEFAULTS);
+      return createFxEqNode(ctx, instance, FXEQ_PARAM_DEFAULTS, env?.seed);
     }
     return bypassRuntime(ctx, "AudioWorklet unavailable — PRISM bypassed (1:1 signal)");
   },

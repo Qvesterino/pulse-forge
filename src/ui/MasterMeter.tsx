@@ -67,7 +67,11 @@ export function MasterMeter() {
         const left = levels.left;
         const right = levels.right;
         const peakDb = Math.max(left.peakDb, right.peakDb);
-        const nowOver = peakDb > -0.3;
+        // Clip state follows the same true-peak policy as mix warnings. A
+        // sample peak below 0 dBFS can still intersample-clip, while a
+        // conservative -0.3 dB sample threshold created false red flashes.
+        const truePeakDb = snapshot?.truePeakDb ?? peakDb;
+        const nowOver = truePeakDb > -0.1 || peakDb > 0;
         if (nowOver) clipHoldRef.current = 0;
         clipHoldRef.current += 0.033;
         const clipping = clipHoldRef.current < 0.6;
@@ -97,7 +101,7 @@ export function MasterMeter() {
           Math.abs(prev.right.rmsDb - right.rmsDb) > 0.4 ||
           Math.abs(prev.correlation - levels.correlation) > 0.02 ||
           Math.abs(prev.peakHoldDb - peakHoldDb) > 0.2 ||
-          Math.abs(prev.truePeakDb - (snapshot?.truePeakDb ?? peakDb)) > 0.2 ||
+          Math.abs(prev.truePeakDb - truePeakDb) > 0.2 ||
           Math.abs(prev.lufsMomentary - (snapshot?.lufsMomentary ?? MIN_DB)) > 0.2 ||
           Math.abs(prev.lufsShortTerm - (snapshot?.lufsShortTerm ?? MIN_DB)) > 0.2 ||
           Math.abs(prev.lufsIntegrated - (snapshot?.lufsIntegrated ?? MIN_DB)) > 0.2 ||
@@ -112,7 +116,7 @@ export function MasterMeter() {
             correlation: levels.correlation,
             peakHoldDb,
             clipping,
-            truePeakDb: snapshot?.truePeakDb ?? peakDb,
+            truePeakDb,
             lufsMomentary: snapshot?.lufsMomentary ?? MIN_DB,
             lufsShortTerm: snapshot?.lufsShortTerm ?? MIN_DB,
             lufsIntegrated: snapshot?.lufsIntegrated ?? MIN_DB,

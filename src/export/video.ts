@@ -157,17 +157,12 @@ function drawFrame(
     ctx.fill();
   }
 
-  // Footer wordmark
+  // Footer wordmark — public branding is KYX; PF is kept only in internal
+  // storage keys and compatibility identifiers, never in exported media.
   ctx.textAlign = "center";
-  const mark = ctx.measureText("PF");
   ctx.fillStyle = BRAND.accent;
-  ctx.fillRect(w / 2 - w * 0.075, h * 0.875, w * 0.055, w * 0.055);
-  ctx.fillStyle = BRAND.bg;
-  ctx.font = `700 ${Math.round(w * 0.03)}px system-ui, sans-serif`;
-  ctx.fillText("PF", w / 2 - w * 0.075 + (w * 0.055 - mark.width) / 2, h * 0.875 + w * 0.04);
-  ctx.fillStyle = BRAND.text;
-  ctx.font = `700 ${Math.round(w * 0.045)}px system-ui, sans-serif`;
-  ctx.fillText("KYX", w / 2 + w * 0.02, h * 0.912);
+  ctx.font = `700 ${Math.round(w * 0.055)}px system-ui, sans-serif`;
+  ctx.fillText("KYX", w / 2, h * 0.9);
   ctx.fillStyle = BRAND.textDim;
   ctx.font = `500 ${Math.round(w * 0.026)}px system-ui, sans-serif`;
   ctx.fillText("browser beat studio", w / 2, h * 0.945);
@@ -185,7 +180,14 @@ export async function recordVideo(buffer: AudioBuffer, options: VideoOptions): P
   const width = options.width ?? 1080;
   const height = options.height ?? 1920;
   const fps = options.fps ?? 30;
-  const seconds = Math.max(1, Math.min(options.seconds, buffer.duration));
+  if (!Number.isFinite(buffer.duration) || buffer.duration <= 0) {
+    throw new Error("Video export requires a non-empty rendered buffer");
+  }
+  // Short social stingers and one-shot previews are valid exports too. The
+  // old one-second floor silently scheduled extra silence for them and made
+  // the exported duration disagree with the user's requested range.
+  const requestedSeconds = Number.isFinite(options.seconds) ? options.seconds : buffer.duration;
+  const seconds = Math.min(buffer.duration, Math.max(0.01, requestedSeconds));
 
   const envelope = buildEnvelope(buffer, 108);
 

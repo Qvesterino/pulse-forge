@@ -1574,7 +1574,8 @@
   }
 
   // src/effects/fxeq-core/dsp/lfo.ts
-  function createLfo(sampleRate2, rateHz = 1, wave = "sine", stereoPhaseRad = 0, depth = 1) {
+  var RANDOM_SEED = 99537392;
+  function createLfo(sampleRate2, rateHz = 1, wave = "sine", stereoPhaseRad = 0, depth = 1, seed = RANDOM_SEED) {
     let phase = 0;
     let currentSampleRate = sanitizeSampleRate(sampleRate2);
     let currentRateHz = sanitizeRate(rateHz);
@@ -1584,6 +1585,14 @@
     let depthScale = depth;
     let randVal = 0;
     let prevPhase = 0;
+    const initialSeed = sanitizeSeed(seed);
+    let prngState = initialSeed;
+    const nextRandom = () => {
+      prngState ^= prngState << 13;
+      prngState ^= prngState >>> 17;
+      prngState ^= prngState << 5;
+      return (prngState >>> 0) / 4294967295 * 2 - 1;
+    };
     function sampleAt(p) {
       const ph = p - Math.floor(p);
       switch (waveform) {
@@ -1611,7 +1620,7 @@
         const wrappedNow = phase;
         const crossed = wrappedPrev < 0.5 && wrappedNow >= 0.5;
         if (crossed || randVal === 0) {
-          randVal = Math.random() * 2 - 1;
+          randVal = nextRandom();
         }
       }
     }
@@ -1637,6 +1646,7 @@
         phase = 0;
         prevPhase = 0;
         randVal = 0;
+        prngState = initialSeed;
       },
       read() {
         const left = sampleAt(phase) * depthScale;
@@ -1659,6 +1669,10 @@
   }
   function sanitizeRate(rateHz) {
     return Number.isFinite(rateHz) ? Math.max(0, rateHz) : 0;
+  }
+  function sanitizeSeed(seed) {
+    const normalized = Number.isFinite(seed) ? seed >>> 0 : RANDOM_SEED;
+    return normalized === 0 ? RANDOM_SEED : normalized;
   }
 
   // src/effects/fxeq-core/modules/lofi.ts
@@ -1706,7 +1720,7 @@
     }
   ];
   var WOW_DELAY_MS = 512 / 44100 * 1e3;
-  function createLofiModule(params) {
+  function createLofiModule(params, seed) {
     const store = createParamStore(PARAM_DEFS4, params);
     let prepared = false;
     let preparedMaxBlockSize = 1;
@@ -1716,13 +1730,14 @@
     const srrCounter = [];
     const wowBuffers = [];
     const wowWriteIdx = [];
-    const wowLfo = createLfo(44100, 0.7, "sine", 0, 1);
-    const flutterLfo = createLfo(44100, 6, "sine", Math.PI / 3, 1);
+    const wowLfo = createLfo(44100, 0.7, "sine", 0, 1, streamSeed(seed, 5721943));
+    const flutterLfo = createLfo(44100, 6, "sine", Math.PI / 3, 1, streamSeed(seed, 4607060));
     let wowLfoBufL = new Float32Array(0);
     let wowLfoBufR = new Float32Array(0);
     const lfoPair = [0, 0];
     const noisePrev = [];
-    const PRNG_SEEDS = [305419896, 2596069104, 3735928559, 3405691582];
+    const BASE_PRNG_SEEDS = [305419896, 2596069104, 3735928559, 3405691582];
+    const PRNG_SEEDS = BASE_PRNG_SEEDS.map((base) => streamSeed(seed, base));
     const prngStates = [PRNG_SEEDS[0], PRNG_SEEDS[1]];
     function seededRandom(ch) {
       let s = prngStates[ch] ?? PRNG_SEEDS[0];
@@ -1912,6 +1927,14 @@
         store.load(p);
       }
     };
+  }
+  function streamSeed(seed, salt) {
+    if (seed === void 0 || !Number.isFinite(seed)) return salt >>> 0;
+    let value = (seed ^ salt) >>> 0;
+    value = Math.imul(value ^ value >>> 16, 73244475);
+    value = Math.imul(value ^ value >>> 16, 73244475);
+    value = (value ^ value >>> 16) >>> 0;
+    return value === 0 ? 1 : value;
   }
 
   // src/effects/fxeq-core/modules/modulation.ts
@@ -2834,15 +2857,16 @@
 
   // src/effects/fxeq-core/core/bandEngine.ts
   var BAND_PARAM_RANGES = new Map(BAND_SCALAR_DEFS.map((d) => [d.id, d]));
-  function createBandEngine() {
+  function createBandEngine(seed) {
+    const moduleSeed = (salt) => seed === void 0 ? void 0 : mixSeed(seed, salt);
     const modules = {
-      eq: MODULE_FACTORIES.eq(),
-      sat: MODULE_FACTORIES.sat(),
-      dyn: MODULE_FACTORIES.dyn(),
-      lofi: MODULE_FACTORIES.lofi(),
-      mod: MODULE_FACTORIES.mod(),
-      delay: MODULE_FACTORIES.delay(),
-      rev: MODULE_FACTORIES.rev()
+      eq: MODULE_FACTORIES.eq(void 0, moduleSeed(17745)),
+      sat: MODULE_FACTORIES.sat(void 0, moduleSeed(5456212)),
+      dyn: MODULE_FACTORIES.dyn(void 0, moduleSeed(4479310)),
+      lofi: MODULE_FACTORIES.lofi(void 0, moduleSeed(5001030)),
+      mod: MODULE_FACTORIES.mod(void 0, moduleSeed(5066564)),
+      delay: MODULE_FACTORIES.delay(void 0, moduleSeed(4474188)),
+      rev: MODULE_FACTORIES.rev(void 0, moduleSeed(5391702))
     };
     let bandGainDb = 0;
     let bandEnabled = 1;
@@ -3249,6 +3273,13 @@
         return out;
       }
     };
+  }
+  function mixSeed(seed, salt) {
+    let value = (seed ^ salt) >>> 0;
+    value = Math.imul(value ^ value >>> 16, 73244475);
+    value = Math.imul(value ^ value >>> 16, 73244475);
+    value = (value ^ value >>> 16) >>> 0;
+    return value === 0 ? 1 : value;
   }
 
   // src/effects/fxeq-core/modules/limiter.ts
@@ -3763,7 +3794,7 @@
   }
 
   // src/effects/fxeq-core/core/fxEqProcessor.ts
-  function createFxEqProcessor(params) {
+  function createFxEqProcessor(params, options) {
     let bandCount = 6;
     let schema = buildSchema(bandCount);
     let values = { ...schema.defaultParams };
@@ -3777,7 +3808,10 @@
       }
     }
     const crossover = createCrossoverBank(bandCount, 4, [...DEFAULT_CROSSOVER_FREQS]);
-    const bands = Array.from({ length: MAX_BANDS }, () => createBandEngine());
+    const bands = Array.from(
+      { length: MAX_BANDS },
+      (_, index) => createBandEngine(options?.seed === void 0 ? void 0 : mixSeed2(options.seed, index + 1))
+    );
     const limiter = createLimiterModule({ ceilDb: values["limiterCeilDb"] ?? -0.3 });
     let sampleRate2 = DEFAULT_SAMPLE_RATE;
     let channelCount = 2;
@@ -4255,13 +4289,20 @@
       }
     }
   }
+  function mixSeed2(seed, salt) {
+    let value = (seed ^ Math.imul(salt, 2654435769)) >>> 0;
+    value = Math.imul(value ^ value >>> 16, 73244475);
+    value = Math.imul(value ^ value >>> 16, 73244475);
+    value = (value ^ value >>> 16) >>> 0;
+    return value === 0 ? 1 : value;
+  }
 
   // src/effects/fxeq-worklet.entry.js
   var MAX_BLOCK = 128;
   var CHANNELS = 2;
   var FxEqWorkletProcessor = class extends AudioWorkletProcessor {
     // `proc` never allocates inside process() — scratch is preallocated in prepare().
-    proc = createFxEqProcessor();
+    proc;
     /** Processing scratch (in-place DSP), copied to/from the graph buffers. */
     scratch = [new Float32Array(MAX_BLOCK), new Float32Array(MAX_BLOCK)];
     /** Band-peak metering: gated by the host panel, throttled to ~20 Hz. */
@@ -4274,10 +4315,12 @@
     pendingParams = [];
     constructor(options) {
       super();
+      const initial = options?.processorOptions?.params;
+      const rawSeed = options?.processorOptions?.seed;
+      const seed = Number.isFinite(rawSeed) ? rawSeed >>> 0 || 1 : void 0;
+      this.proc = createFxEqProcessor(initial, seed === void 0 ? void 0 : { seed });
       this.proc.prepare(sampleRate, CHANNELS, MAX_BLOCK);
       this.lastLatencyPosted = -1;
-      const initial = options?.processorOptions?.params;
-      if (initial) this.proc.loadParameters(initial);
       this.postLatency();
       this.port.onmessage = (event) => {
         const msg = event.data;

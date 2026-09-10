@@ -157,6 +157,10 @@ export class TransientModuleProcessor implements UltinaModuleProcessor {
 
     this.multiband.prepare(this.sampleRate, 2, this.maxBlockSize, 1);
     this.dryDelay.prepare(this.maxBlockSize);
+    // prepare() rebuilds crossover filters; invalidate cached split values.
+    this.cachedBandCount = -1;
+    this.cachedXover1 = -1;
+    this.cachedXover2 = -1;
 
     // Oversampler state per band and channel + base-rate gain scratch.
     this.osStates = [];

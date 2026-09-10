@@ -42,12 +42,23 @@ export interface Lfo {
   readInto(out: [number, number]): [number, number];
 }
 
+// Deterministic S&H source for the "random" waveform. Hosts may provide a
+// stable seed so independent plugin instances remain decorrelated while live
+// and offline renders keep identical random holds. The default stays fixed for
+// old callers and golden fixtures.
+// xorshift32: allocation-free, zero-dependency, never reaches state 0 from
+// a nonzero seed. State lives in the per-LFO closure so independent
+// instances follow identical sequences regardless of read interleaving,
+// and reset() re-seeds so a restarted render follows the same holds.
+const RANDOM_SEED = 0x5eed1f0;
+
 export function createLfo(
   sampleRate: number,
   rateHz = 1,
   wave: LfoWaveform = "sine",
   stereoPhaseRad = 0,
   depth = 1,
+  seed = RANDOM_SEED,
 ): Lfo {
   let phase = 0;
   let currentSampleRate = sanitizeSampleRate(sampleRate);
@@ -58,6 +69,14 @@ export function createLfo(
   let depthScale = depth;
   let randVal = 0;
   let prevPhase = 0;
+  const initialSeed = sanitizeSeed(seed);
+  let prngState = initialSeed;
+  const nextRandom = (): number => {
+    prngState ^= prngState << 13;
+    prngState ^= prngState >>> 17;
+    prngState ^= prngState << 5;
+    return ((prngState >>> 0) / 0xffffffff) * 2 - 1;
+  };
 
   function sampleAt(p: number): number {
     const ph = p - Math.floor(p); // wrap to [0, 1)
@@ -89,7 +108,7 @@ export function createLfo(
       const wrappedNow = phase;
       const crossed = wrappedPrev < 0.5 && wrappedNow >= 0.5;
       if (crossed || randVal === 0) {
-        randVal = Math.random() * 2 - 1;
+        randVal = nextRandom();
       }
     }
   }
@@ -116,6 +135,7 @@ export function createLfo(
       phase = 0;
       prevPhase = 0;
       randVal = 0;
+      prngState = initialSeed;
     },
     read() {
       const left = sampleAt(phase) * depthScale;
@@ -140,4 +160,9 @@ function sanitizeSampleRate(sampleRate: number): number {
 
 function sanitizeRate(rateHz: number): number {
   return Number.isFinite(rateHz) ? Math.max(0, rateHz) : 0;
+}
+
+function sanitizeSeed(seed: number): number {
+  const normalized = Number.isFinite(seed) ? seed >>> 0 : RANDOM_SEED;
+  return normalized === 0 ? RANDOM_SEED : normalized;
 }

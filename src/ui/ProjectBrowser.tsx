@@ -30,13 +30,24 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
   const [busy, setBusy] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [listError, setListError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(() => {
     core.repo
       .listAll()
-      .then(setProjects)
-      .catch(() => setProjects([]));
+      .then((list) => {
+        setListError(null);
+        setProjects(list);
+      })
+      .catch((err) => {
+        // A blocked/corrupted/unavailable DB must not masquerade as a
+        // first-run machine — the user would believe their projects are
+        // gone and start over. Show the storage failure instead.
+        console.error("[ProjectBrowser] project list failed:", err);
+        setListError(err instanceof Error ? err.message : "Storage is unavailable");
+        setProjects([]);
+      });
   }, [core]);
 
   useEffect(() => {
@@ -145,7 +156,7 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
     <div className="project-browser">
       <header className="pb-header">
         <div className="brand">
-          <span className="brand-mark">PF</span>
+          <span className="brand-mark">KX</span>
           <span className="brand-name">KYX</span>
         </div>
         <span className="pb-tagline">beat &amp; scene-score workstation</span>
@@ -222,7 +233,15 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
             </p>
           )}
           {projects === null && <p className="pb-empty">Loading…</p>}
-          {firstRun && <p className="pb-empty">No projects yet — everything you create is saved automatically.</p>}
+          {listError && projects !== null && projects.length === 0 && (
+            <p className="pb-import-error" role="alert">
+              Saved projects could not be read: {listError}. Your data is most likely intact — close other KYX tabs or
+              check storage permissions, then reopen this page.
+            </p>
+          )}
+          {firstRun && !listError && (
+            <p className="pb-empty">No projects yet — everything you create is saved automatically.</p>
+          )}
           {projects !== null && projects.length > 0 && (
             <div className="pb-list">
               {projects.map((project) => (

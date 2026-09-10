@@ -69,15 +69,17 @@ export interface BandEngine {
   getLatencySamples(): number;
 }
 
-export function createBandEngine(): BandEngine {
+export function createBandEngine(seed?: number): BandEngine {
+  const moduleSeed = (salt: number): number | undefined =>
+    seed === undefined ? undefined : mixSeed(seed, salt);
   const modules: Record<ModuleKey, ModuleProcessor> = {
-    eq: MODULE_FACTORIES.eq(),
-    sat: MODULE_FACTORIES.sat(),
-    dyn: MODULE_FACTORIES.dyn(),
-    lofi: MODULE_FACTORIES.lofi(),
-    mod: MODULE_FACTORIES.mod(),
-    delay: MODULE_FACTORIES.delay(),
-    rev: MODULE_FACTORIES.rev(),
+    eq: MODULE_FACTORIES.eq(undefined, moduleSeed(0x4551)),
+    sat: MODULE_FACTORIES.sat(undefined, moduleSeed(0x534154)),
+    dyn: MODULE_FACTORIES.dyn(undefined, moduleSeed(0x44594e)),
+    lofi: MODULE_FACTORIES.lofi(undefined, moduleSeed(0x4c4f46)),
+    mod: MODULE_FACTORIES.mod(undefined, moduleSeed(0x4d4f44)),
+    delay: MODULE_FACTORIES.delay(undefined, moduleSeed(0x44454c)),
+    rev: MODULE_FACTORIES.rev(undefined, moduleSeed(0x524556)),
   };
 
   let bandGainDb = 0;
@@ -580,4 +582,12 @@ export function createBandEngine(): BandEngine {
       return out;
     },
   };
+}
+
+function mixSeed(seed: number, salt: number): number {
+  let value = (seed ^ salt) >>> 0;
+  value = Math.imul(value ^ (value >>> 16), 0x45d9f3b);
+  value = Math.imul(value ^ (value >>> 16), 0x45d9f3b);
+  value = (value ^ (value >>> 16)) >>> 0;
+  return value === 0 ? 0x1 : value;
 }

@@ -31,6 +31,7 @@ export function createFxEqNode(
   ctx: BaseAudioContext,
   instance: EffectInstance,
   defaults: Record<string, number>,
+  seed?: number,
 ): EffectRuntime {
   // Initial params ride processorOptions so the very first block is already
   // in the right state; later changes go over the port. Defaults first, then
@@ -48,7 +49,7 @@ export function createFxEqNode(
     channelCount: 2,
     channelCountMode: "explicit",
     channelInterpretation: "speakers",
-    processorOptions: { params: initial },
+    processorOptions: { params: initial, seed },
   });
 
   const input = ctx.createGain();

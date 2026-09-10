@@ -10,13 +10,15 @@ import type {
 } from "../project-model/types";
 import type { AutomationPoint, Lfo } from "../project-model/types";
 import { valueAt } from "../project-model/automation";
+import { hashString } from "../shared/rng";
 import { defaultMasterConfig } from "../project-model/schema";
 import { PPQ } from "../project-model/types";
 import type { SampleBank } from "../sample-library/factory";
 import { EFFECT_DEFS } from "../effects/registry";
 import type { EffectRuntime } from "../effects/types";
-import { INSTRUMENT_DEFS } from "../instruments/registry";
+import { clampInstrumentParam, INSTRUMENT_DEFS } from "../instruments/registry";
 import type { InstrumentRuntime } from "../instruments/types";
+import type { InstrumentPreset } from "../presets/types";
 import { clampTargetValue, targetOwner, targetParamDef } from "../project-model/targets";
 import {
   ensureWorkletsForDoc,
@@ -241,6 +243,18 @@ interface PreviewVoice {
   gain: GainNode;
 }
 
+export interface TrackMeterSnapshot {
+  level: number;
+  peakDb: number;
+  clipping: boolean;
+}
+
+interface InstrumentPreviewVoice {
+  runtime: InstrumentRuntime;
+  gain: GainNode;
+  timer: ReturnType<typeof setTimeout> | null;
+}
+
 /** `instanceof AudioContext` is not safe in browsers that expose only the
  * Base/Offline context globals (and it throws when the constructor is absent).
  * Keep the live-context capability check in one place. */
@@ -364,6 +378,7 @@ export class AudioEngine {
   private currentSceneIntensity = 0.7;
   private voices = new Set<Voice>();
   private previewVoices = new Set<PreviewVoice>();
+  private instrumentPreviewVoices = new Set<InstrumentPreviewVoice>();
   /**
    * One-shot scheduled sources (AudioClips, marker cues, metronome clicks).
    * These are committed up to the 120 ms horizon ahead and are NOT part of
@@ -470,6 +485,25 @@ export class AudioEngine {
     }
     this.voices.clear();
     this.stopOneShotSources();
+    for (const voice of this.instrumentPreviewVoices) {
+      if (voice.timer) clearTimeout(voice.timer);
+      try {
+        voice.runtime.panic();
+      } catch {
+        /* already stopped */
+      }
+      try {
+        voice.runtime.dispose();
+      } catch {
+        /* already disposed */
+      }
+      try {
+        voice.gain.disconnect();
+      } catch {
+        /* already disconnected */
+      }
+    }
+    this.instrumentPreviewVoices.clear();
     for (const voice of this.previewVoices) {
       try {
         voice.source.stop();
@@ -1123,7 +1157,13 @@ export class AudioEngine {
       .join("|");
   }
 
-  private rebuildFxChain(effects: EffectInstance[], input: AudioNode, output: AudioNode, state: FxChainState): void {
+  private rebuildFxChain(
+    ownerId: string,
+    effects: EffectInstance[],
+    input: AudioNode,
+    output: AudioNode,
+    state: FxChainState,
+  ): void {
     const ctx = this.ctx;
     if (!ctx) return;
     for (const unsub of state.latencySubs) unsub();
@@ -1160,7 +1200,8 @@ export class AudioEngine {
             /* loader never rejects */
           });
       }
-      const rt = def.factory(ctx, fx, { bpm });
+      const seed = this.doc ? hashString(`${this.doc.id}|${ownerId}|${fx.id}|fx-dsp-v1`) : undefined;
+      const rt = def.factory(ctx, fx, { bpm, seed });
       // Sidechain routing: wire the source track's input node as the effect's
       // sidechain feed (if the effect supports it and the source track is live).
       if (fx.sidechainTrackId && rt.setSidechainInput) {
@@ -1360,7 +1401,7 @@ export class AudioEngine {
       }
       const sig = this.fxSignature(track.effects);
       if (nodes.fx.signature !== sig) {
-        this.rebuildFxChain(track.effects, nodes.input, nodes.panner, nodes.fx);
+        this.rebuildFxChain(track.id, track.effects, nodes.input, nodes.panner, nodes.fx);
       } else {
         this.syncFxParams(track.effects, nodes.fx);
       }
@@ -1400,7 +1441,7 @@ export class AudioEngine {
       }
       const sig = this.fxSignature(ret.effects);
       if (nodes.fx.signature !== sig) {
-        this.rebuildFxChain(ret.effects, nodes.input, nodes.gain, nodes.fx);
+        this.rebuildFxChain(ret.id, ret.effects, nodes.input, nodes.gain, nodes.fx);
       } else {
         this.syncFxParams(ret.effects, nodes.fx);
       }
@@ -1458,7 +1499,7 @@ export class AudioEngine {
         // a second time on every playback.
         this.disposeInstrumentRuntime(track.id);
         if (nodes.fx.signature !== "") {
-          this.rebuildFxChain([], nodes.input, nodes.panner, nodes.fx);
+          this.rebuildFxChain(track.id, [], nodes.input, nodes.panner, nodes.fx);
         }
         // Sends remain live because the freeze render is intentionally
         // pre-group/pre-return. This preserves live return control without
@@ -1499,7 +1540,7 @@ export class AudioEngine {
 
       const sig = this.fxSignature(track.effects);
       if (nodes.fx.signature !== sig) {
-        this.rebuildFxChain(track.effects, nodes.input, nodes.panner, nodes.fx);
+          this.rebuildFxChain(track.id, track.effects, nodes.input, nodes.panner, nodes.fx);
       } else {
         this.syncFxParams(track.effects, nodes.fx);
       }
@@ -3322,6 +3363,89 @@ export class AudioEngine {
     this.trigger(trackId, pad, this.currentTime + 0.005, 1);
   }
 
+  /**
+   * Audition an instrument preset without touching the project document.
+   *
+   * PresetBrowser uses this path for a short, isolated note. The temporary
+   * runtime is connected directly to the master preview bus so a muted or
+   * silent track cannot make a valid preset audition look broken. Applying
+   * the preset remains a separate command-owned operation in the UI.
+   */
+  previewInstrumentPreset(trackId: string, preset: InstrumentPreset): void {
+    this.ensureContext();
+    this.stopPreview();
+    const ctx = this.ctx;
+    const doc = this.doc;
+    const master = this.master;
+    const track = doc?.tracks.find((candidate): candidate is InstrumentTrack => {
+      return candidate.kind === "instrument" && candidate.id === trackId;
+    });
+    if (!ctx || !master || !track || preset.instrument !== track.instrument) return;
+
+    const definition = INSTRUMENT_DEFS[track.instrument];
+    if (!definition) return;
+    const params = { ...track.params };
+    for (const [id, value] of Object.entries(preset.params)) {
+      params[id] = clampInstrumentParam(track.instrument, id, value);
+    }
+    const previewTrack: InstrumentTrack = {
+      ...track,
+      params,
+      sampleId: preset.sampleId !== undefined ? preset.sampleId : track.sampleId,
+      presetId: preset.id,
+    };
+
+    let runtime: InstrumentRuntime;
+    try {
+      runtime = definition.factory(ctx, previewTrack, {
+        bpm: doc?.bpm ?? 124,
+        getSample: (id) => this.bank?.get(id),
+      });
+    } catch {
+      return;
+    }
+
+    const gain = ctx.createGain();
+    const when = ctx.currentTime + 0.01;
+    const durationSec = 0.65;
+    // Keep audition headroom independent from the track's current mixer gain.
+    gain.gain.setValueAtTime(0.78, when);
+    runtime.output.connect(gain).connect(master);
+    const voice: InstrumentPreviewVoice = { runtime, gain, timer: null };
+    this.instrumentPreviewVoices.add(voice);
+
+    try {
+      runtime.noteOn(60, 0.82, when, durationSec);
+    } catch {
+      this.disposeInstrumentPreviewVoice(voice);
+      return;
+    }
+
+    // Give envelopes a short tail before disposing the temporary runtime.
+    voice.timer = setTimeout(() => this.disposeInstrumentPreviewVoice(voice), 1_400);
+  }
+
+  private disposeInstrumentPreviewVoice(voice: InstrumentPreviewVoice): void {
+    if (voice.timer) clearTimeout(voice.timer);
+    voice.timer = null;
+    try {
+      voice.runtime.panic();
+    } catch {
+      /* already stopped */
+    }
+    try {
+      voice.runtime.dispose();
+    } catch {
+      /* already disposed */
+    }
+    try {
+      voice.gain.disconnect();
+    } catch {
+      /* already disconnected */
+    }
+    this.instrumentPreviewVoices.delete(voice);
+  }
+
   /** Preview a source region directly through the master bus. */
   previewSlice(pad: DrumPad, loop = false): void {
     this.ensureContext();
@@ -3364,6 +3488,7 @@ export class AudioEngine {
 
   stopPreview(): void {
     const ctx = this.ctx;
+    for (const voice of [...this.instrumentPreviewVoices]) this.disposeInstrumentPreviewVoice(voice);
     for (const voice of this.previewVoices) {
       try {
         voice.source.stop(ctx ? ctx.currentTime + 0.005 : 0);
@@ -3399,8 +3524,11 @@ export class AudioEngine {
     const gain = ctx.createGain();
     gain.gain.value = 0.9;
     source.connect(gain).connect(this.master);
+    const voice: PreviewVoice = { source, gain };
+    this.previewVoices.add(voice);
     source.start(ctx.currentTime + 0.005);
     source.onended = () => {
+      this.previewVoices.delete(voice);
       gain.disconnect();
       source.disconnect();
     };
@@ -3620,7 +3748,7 @@ export class AudioEngine {
     inst.runtime.noteOff(pitch, when);
   }
 
-  private peakOf(analyser: AnalyserNode | null): number {
+  private rawPeakOf(analyser: AnalyserNode | null): number {
     if (!analyser) return 0;
     analyser.getFloatTimeDomainData(this.levelBuf);
     let peak = 0;
@@ -3628,7 +3756,11 @@ export class AudioEngine {
       const v = Math.abs(this.levelBuf[i]);
       if (v > peak) peak = v;
     }
-    return Math.min(1, peak);
+    return peak;
+  }
+
+  private peakOf(analyser: AnalyserNode | null): number {
+    return Math.min(1, this.rawPeakOf(analyser));
   }
 
   getTrackLevel(trackId: string): number {
@@ -3637,6 +3769,17 @@ export class AudioEngine {
 
   getReturnLevel(returnId: string): number {
     return this.peakOf(this.returnNodes.get(returnId)?.analyser ?? null);
+  }
+
+  /** One read for the mixer channel meter: level, peak readout and clip flag. */
+  getTrackMeterSnapshot(trackId: string): TrackMeterSnapshot {
+    const peak = this.rawPeakOf(this.trackNodes.get(trackId)?.analyser ?? null);
+    return { level: Math.min(1, peak), peakDb: toDb(peak), clipping: peak >= 0.9995 };
+  }
+
+  getReturnMeterSnapshot(returnId: string): TrackMeterSnapshot {
+    const peak = this.rawPeakOf(this.returnNodes.get(returnId)?.analyser ?? null);
+    return { level: Math.min(1, peak), peakDb: toDb(peak), clipping: peak >= 0.9995 };
   }
 
   /** Post-limiter master tap for realtime recording ("bounce what you hear"). */

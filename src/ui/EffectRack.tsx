@@ -7,6 +7,7 @@ import {
   applyFxEqPreset,
   moveEffect,
   removeEffect,
+  resetEffect,
   setEffectParam,
   setEffectSidechainSource,
   setEffectSteps,
@@ -20,7 +21,13 @@ import {
   loadEffectAbSlot,
   toggleEffectBypass,
 } from "../commands/commands";
-import { CORE_EFFECT_ORDER, EFFECT_DEFS, FLAGSHIP_EFFECT_ORDER } from "../effects/registry";
+import {
+  CORE_EFFECT_ORDER,
+  EFFECT_DEFS,
+  FLAGSHIP_EFFECT_ORDER,
+  defaultParamsOf,
+  normalizePluginParams,
+} from "../effects/registry";
 // Plugin editor panels are heavy (EQ-paint canvas, 51-preset Ultina suite,
 // Ozvena blend pad) — they load only when one of these effects is selected.
 import { lazy, Suspense } from "react";
@@ -156,6 +163,10 @@ function Device({
   // track switches, reloads and collab sync all preserve it. React state is
   // only the transient draft inside the panel between pointer and command.
   const contentId = `fx-device-content-${fx.id}`;
+  const defaultParams = normalizePluginParams(fx.type, {}) ?? defaultParamsOf(fx.type);
+  const isModified = Object.keys({ ...defaultParams, ...fx.params }).some(
+    (paramId) => (fx.params[paramId] ?? defaultParams[paramId]) !== defaultParams[paramId],
+  );
 
   return (
     <div className={`fx-device${fx.bypassed ? " bypassed" : ""}${collapsed ? " collapsed" : ""}`}>
@@ -174,6 +185,11 @@ function Device({
         <span className="fx-device-title">
           <span className="fx-device-name">{def.name}</span>
           <span className="fx-device-state">{fx.bypassed ? "BYPASSED" : "ACTIVE"}</span>
+          {isModified && (
+            <span className="fx-device-dirty" title="Parameters differ from the factory defaults">
+              MODIFIED
+            </span>
+          )}
           {irNote && (
             <span className="fx-device-warn" role="status">
               {irNote}
@@ -256,6 +272,16 @@ function Device({
             onClick={() => services.store.execute(toggleEffectBypass(doc, track.id, fx.id))}
           >
             B
+          </button>
+          <button
+            type="button"
+            className="btn btn-small"
+            aria-label={`Reset ${def.name}`}
+            title={`Reset ${def.name} to factory defaults`}
+            disabled={!isModified}
+            onClick={() => services.store.execute(resetEffect(doc, track.id, fx.id))}
+          >
+            ↺
           </button>
           <button
             type="button"
@@ -363,6 +389,7 @@ function Device({
                 fxId={fx.id}
                 params={fx.params}
                 degraded={!!fallbackReason}
+                bypassed={fx.bypassed}
                 onParam={(paramId, value) =>
                   services.store.execute(setUltinaParam(doc, track.id, fx.id, paramId, value))
                 }

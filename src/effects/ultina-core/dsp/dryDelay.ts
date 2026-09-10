@@ -41,10 +41,11 @@ export class DryDelayMixer {
   private size = 0;
   private writePos = 0;
 
-  prepare(maxBlockSize: number): void {
-    // Block + enough headroom for the maximum realistic latency
-    // (63-tap hybrid FIR = 31 samples + oversampler = 4 samples).
-    this.size = maxBlockSize + 64;
+  prepare(maxBlockSize: number, maxDelaySamples = 64): void {
+    // Keep the historical 64-sample headroom for ordinary multiband
+    // modules, but let modules with a larger creative delay budget reserve
+    // enough history for a coherent mix/delta path.
+    this.size = maxBlockSize + Math.max(64, Math.ceil(maxDelaySamples));
     this.bufL = new Float32Array(this.size);
     this.bufR = new Float32Array(this.size);
     this.writePos = 0;

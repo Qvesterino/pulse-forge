@@ -30,6 +30,7 @@ export function mockServices(doc?: ProjectDocument): Services {
         preview: vi.fn(),
         previewSlice: vi.fn(),
         previewAsset: vi.fn(),
+        previewInstrumentPreset: vi.fn(),
         stopPreview: vi.fn(),
         applyAutomation: vi.fn(),
         applySceneAutomationLane: vi.fn(),
@@ -41,7 +42,9 @@ export function mockServices(doc?: ProjectDocument): Services {
         })),
         getMasterPeakHoldDb: vi.fn(() => -60),
         getTrackLevel: vi.fn(() => 0),
+        getTrackMeterSnapshot: vi.fn(() => ({ level: 0, peakDb: -120, clipping: false })),
         getReturnLevel: vi.fn(() => 0),
+        getReturnMeterSnapshot: vi.fn(() => ({ level: 0, peakDb: -120, clipping: false })),
         getDiagnostics: vi.fn(() => ({})),
         get currentTime() {
           return 0;
@@ -86,7 +89,7 @@ export function mockServices(doc?: ProjectDocument): Services {
         delete: vi.fn(async () => {}),
         prune: vi.fn(async () => {}),
       } as any,
-      presets: { save: vi.fn(), load: vi.fn(), list: vi.fn() } as any,
+      presets: { save: vi.fn(), load: vi.fn(), list: vi.fn(async () => []) } as any,
       library: {
         get: vi.fn(() => libraryState),
         subscribe: vi.fn(() => () => {}),
@@ -129,6 +132,7 @@ export function mockServices(doc?: ProjectDocument): Services {
       preview: vi.fn(),
       previewSlice: vi.fn(),
       previewAsset: vi.fn(),
+      previewInstrumentPreset: vi.fn(),
       stopPreview: vi.fn(),
       get context() {
         return {
@@ -151,7 +155,9 @@ export function mockServices(doc?: ProjectDocument): Services {
       })),
       getMasterPeakHoldDb: vi.fn(() => -60),
       getTrackLevel: vi.fn(() => 0),
+      getTrackMeterSnapshot: vi.fn(() => ({ level: 0, peakDb: -120, clipping: false })),
       getReturnLevel: vi.fn(() => 0),
+      getReturnMeterSnapshot: vi.fn(() => ({ level: 0, peakDb: -120, clipping: false })),
       getDiagnostics: vi.fn(() => ({})),
       get currentTime() {
         return 0;

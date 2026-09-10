@@ -96,6 +96,17 @@ export async function registerPlay(id: string, baseUrl: string = galleryBaseUrl(
   }
 }
 
+/** Send a privacy-safe moderation report; the server stores no reporter IP. */
+export async function reportBeat(id: string, reason: string, baseUrl: string = galleryBaseUrl()): Promise<void> {
+  const res = await fetch(`${baseUrl}/api/gallery/${encodeURIComponent(id)}/report`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason }),
+  });
+  const body = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) throw new Error(body.error ?? `Report failed (${res.status})`);
+}
+
 /** 42 → "42", 1234 → "1.2k", 1200000 → "1.2m" — the feed's count badges. */
 export function formatCount(value: number): string {
   if (value < 1000) return String(value);
@@ -137,7 +148,11 @@ export function setRemixParent(parent: { id: string; title?: string }): void {
   try {
     localStorage.setItem(
       REMIX_PARENT_KEY,
-      JSON.stringify({ id: parent.id, title: parent.title ?? "a gallery beat", savedAt: Date.now() } satisfies RemixParent),
+      JSON.stringify({
+        id: parent.id,
+        title: parent.title ?? "a gallery beat",
+        savedAt: Date.now(),
+      } satisfies RemixParent),
     );
   } catch {
     // storage blocked — publishing still works, just without the chain

@@ -5,9 +5,9 @@ export interface EffectAbState {
   active: "A" | "B";
 }
 
-function readState(deviceState?: DeviceState): EffectAbState {
+function readState(deviceState: DeviceState | undefined, stateKind: string): EffectAbState {
   if (
-    deviceState?.kind !== "effect-ab-v1" ||
+    deviceState?.kind !== stateKind ||
     typeof deviceState.data !== "object" ||
     deviceState.data === null ||
     Array.isArray(deviceState.data)
@@ -24,7 +24,10 @@ function readState(deviceState?: DeviceState): EffectAbState {
       for (const [key, value] of Object.entries(candidate as Record<string, unknown>)) {
         if (typeof value === "number" && Number.isFinite(value)) clean[key] = value;
       }
-      if (Object.keys(clean).length > 0) slots[slot] = clean;
+      // An empty map is still a valid snapshot (for example a freshly added
+      // effect whose defaults are resolved by the host). Do not turn a stored
+      // empty slot into EMPTY just because it has no explicit overrides.
+      slots[slot] = clean;
     }
   }
   // The active slot may intentionally be empty while the user is preparing
@@ -38,16 +41,19 @@ export function EffectAbControls({
   effectName,
   params,
   deviceState,
+  stateKind = "effect-ab-v1",
   onStateChange,
   onLoad,
 }: {
   effectName: string;
   params: Record<string, number>;
   deviceState?: DeviceState;
+  /** Allows legacy flagship-specific snapshots to use this same controller. */
+  stateKind?: string;
   onStateChange: (state: EffectAbState) => void;
   onLoad: (slot: "A" | "B") => void;
 }) {
-  const state = readState(deviceState);
+  const state = readState(deviceState, stateKind);
   const slots = state.slots;
 
   const store = (slot: "A" | "B") => onStateChange({ ...state, slots: { ...slots, [slot]: { ...params } } });

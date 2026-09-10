@@ -26,16 +26,26 @@ const MAX_PATTERN_STEPS = 512; // 32 bars of 16ths — sane import ceiling
 
 /** GM percussion note → default-kit pad index (see makeKit in schema.ts). */
 const GM_TO_PAD: Record<number, number> = {
-  35: 0, 36: 0, // Kick
+  35: 0,
+  36: 0, // Kick
   37: 3, // Side stick / rim
-  38: 4, 40: 4, // Snare
+  38: 4,
+  40: 4, // Snare
   39: 6, // Clap
-  42: 8, 44: 8, // Closed hat
+  42: 8,
+  44: 8, // Closed hat
   46: 10, // Open hat
-  51: 11, 53: 11, // Ride
-  41: 12, 43: 12, // Low tom
-  45: 13, 47: 13, 48: 13, 50: 13, // High/mid toms
-  54: 14, 56: 14, 75: 14, // Shaker/tambourine-ish → Tick
+  51: 11,
+  53: 11, // Ride
+  41: 12,
+  43: 12, // Low tom
+  45: 13,
+  47: 13,
+  48: 13,
+  50: 13, // High/mid toms
+  54: 14,
+  56: 14,
+  75: 14, // Shaker/tambourine-ish → Tick
 };
 
 function padIndexForGmNote(pitch: number): number {
@@ -69,11 +79,7 @@ export interface MidiImportSummary {
  * actually NO: deterministic freshness wins for imports, every import adds
  * its own tracks so repeated drops never merge two files into one track.
  */
-export function importMidiCommand(
-  doc: ProjectDocument,
-  midi: Uint8Array,
-  fileLabel: string,
-): Command {
+export function importMidiCommand(doc: ProjectDocument, midi: Uint8Array, fileLabel: string): Command {
   const parsed = parseMidiFile(midi);
   const melodic = parsed.tracks.filter((t) => t.channel !== GM_DRUM_CHANNEL).slice(0, 8);
   const drums = parsed.tracks.filter((t) => t.channel === GM_DRUM_CHANNEL);
@@ -124,9 +130,7 @@ export function importMidiCommand(
   // references by id before writing content, or the hits land on orphaned
   // clones and the pattern stays empty.
   const freshPattern = next.patterns.find((p) => p.id === pattern.id) ?? pattern;
-  const freshDrum = drumTrackId
-    ? (next.tracks.find((t) => t.id === drumTrackId) as DrumTrack | undefined)
-    : undefined;
+  const freshDrum = drumTrackId ? (next.tracks.find((t) => t.id === drumTrackId) as DrumTrack | undefined) : undefined;
 
   // Drum hits → rows (velocity grid).
   let drumHits = 0;
@@ -149,7 +153,7 @@ export function importMidiCommand(
   for (const plan of instrumentPlans) {
     const freshTrack = next.tracks.find((t) => t.id === plan.trackId) as InstrumentTrack | undefined;
     if (!freshTrack) continue;
-    const list: typeof freshPattern.notes[string] = [];
+    const list: (typeof freshPattern.notes)[string] = [];
     for (const note of plan.notes) {
       const start = scaleTicks(note.startTick, parsed.division);
       const end = scaleTicks(note.endTick, parsed.division);
@@ -212,12 +216,16 @@ export function patternToMidi(doc: ProjectDocument, patternId: string): Uint8Arr
   const pattern = doc.patterns.find((p) => p.id === patternId) ?? doc.patterns[0];
   if (!pattern) throw new Error("no pattern to export");
 
-  const tracks: { name: string; channel: number; notes: { pitch: number; startTick: number; endTick: number; velocity: number }[] }[] = [];
+  const tracks: {
+    name: string;
+    channel: number;
+    notes: { pitch: number; startTick: number; endTick: number; velocity: number }[];
+  }[] = [];
   let nextChannel = 0;
 
   for (const track of doc.tracks) {
     if (track.kind === "drum") {
-      const notes: typeof tracks[number]["notes"] = [];
+      const notes: (typeof tracks)[number]["notes"] = [];
       for (const pad of (track as DrumTrack).pads) {
         const row = pattern.rows[pad.id] ?? [];
         const pitch = gmNoteForPad(pad);
@@ -264,7 +272,7 @@ export function downloadMidi(bytes: Uint8Array, filename: string): void {
   a.href = url;
   a.download = filename.endsWith(".mid") ? filename : `${filename}.mid`;
   a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  setTimeout(() => URL.revokeObjectURL?.(url), 5000);
 }
 
 /** Convenience for UI code: parse + build the command in one call. */

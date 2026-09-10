@@ -39,7 +39,12 @@ describe("PatternBar MIDI import", () => {
     const file = new File([bytes as unknown as BlobPart], "My Beat.mid", { type: "audio/midi" });
     fireEvent.change(input, { target: { files: [file] } });
 
-    await waitFor(() => expect(screen.getByText(/notes \+ 1 drum hits/)).toBeInTheDocument());
+    // The SMF parser loads as a lazy chunk — under full-suite CPU load the
+    // dynamic import can outrun waitFor's 1s default (same rationale as the
+    // export test below).
+    await waitFor(() => expect(screen.getByText(/notes \+ 1 drum hits/)).toBeInTheDocument(), {
+      timeout: 10_000,
+    });
     // Command executed: track count grew (drums + lead added to the empty kit).
     expect((services.store.execute as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(0);
   });
@@ -55,6 +60,22 @@ describe("PatternBar MIDI import", () => {
     fireEvent.change(input, { target: { files: [junk] } });
 
     await waitFor(() => expect(screen.getByText(/Import failed/)).toBeInTheDocument());
+    expect(services.store.execute).not.toHaveBeenCalled();
+  });
+
+  it("rejects an oversized .mid before reading it into memory", async () => {
+    const doc = createProjectFromTemplate("empty");
+    const services = mockServices(doc);
+    renderWithContext(<PatternBar clip={null} onCopy={vi.fn()} />, { services });
+
+    fireEvent.click(screen.getByRole("button", { name: "MIDI" }));
+    const input = document.querySelector('input[type="file"][accept*=".mid"]') as HTMLInputElement;
+    // Stub a huge size without allocating the bytes.
+    const huge = new File([new Uint8Array(8)], "huge.mid", { type: "audio/midi" });
+    Object.defineProperty(huge, "size", { value: 11 * 1024 * 1024 });
+    fireEvent.change(input, { target: { files: [huge] } });
+
+    await waitFor(() => expect(screen.getByText(/too large/)).toBeInTheDocument());
     expect(services.store.execute).not.toHaveBeenCalled();
   });
 });

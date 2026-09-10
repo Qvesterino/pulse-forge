@@ -75,7 +75,7 @@ const PARAM_DEFS: readonly FxEqParamDef[] = [
 // time so wow/flutter has the same character at every sample rate.
 const WOW_DELAY_MS = (512 / 44100) * 1000;
 
-export function createLofiModule(params?: Record<string, number>): ModuleProcessor {
+export function createLofiModule(params?: Record<string, number>, seed?: number): ModuleProcessor {
   const store = createParamStore(PARAM_DEFS, params);
   let prepared = false;
   let preparedMaxBlockSize = 1;
@@ -89,8 +89,8 @@ export function createLofiModule(params?: Record<string, number>): ModuleProcess
   // Wow/flutter delay line (per channel).
   const wowBuffers: Float32Array[] = [];
   const wowWriteIdx: number[] = [];
-  const wowLfo = createLfo(44100, 0.7, "sine", 0, 1);
-  const flutterLfo = createLfo(44100, 6, "sine", Math.PI / 3, 1);
+  const wowLfo = createLfo(44100, 0.7, "sine", 0, 1, streamSeed(seed, 0x574f57));
+  const flutterLfo = createLfo(44100, 6, "sine", Math.PI / 3, 1, streamSeed(seed, 0x464c54));
   // Pre-computed LFO values per sample (one slot per channel, so the LFO
   // advances exactly once per sample instead of once per channel).
   let wowLfoBufL: Float32Array = new Float32Array(0);
@@ -104,7 +104,8 @@ export function createLofiModule(params?: Record<string, number>): ModuleProcess
 
   // Seeded PRNG (xorshift32) per channel for deterministic but decorrelated
   // noise/jitter between L and R (essential for golden snapshot tests).
-  const PRNG_SEEDS = [0x12345678, 0x9abcdef0, 0xdeadbeef, 0xcafebabe];
+  const BASE_PRNG_SEEDS = [0x12345678, 0x9abcdef0, 0xdeadbeef, 0xcafebabe];
+  const PRNG_SEEDS = BASE_PRNG_SEEDS.map((base) => streamSeed(seed, base));
   const prngStates: number[] = [PRNG_SEEDS[0], PRNG_SEEDS[1]];
 
   function seededRandom(ch: number): number {
@@ -336,4 +337,14 @@ export function createLofiModule(params?: Record<string, number>): ModuleProcess
       store.load(p);
     },
   };
+}
+
+/** Mix an optional host seed into a module stream without changing legacy defaults. */
+function streamSeed(seed: number | undefined, salt: number): number {
+  if (seed === undefined || !Number.isFinite(seed)) return salt >>> 0;
+  let value = (seed ^ salt) >>> 0;
+  value = Math.imul(value ^ (value >>> 16), 0x45d9f3b);
+  value = Math.imul(value ^ (value >>> 16), 0x45d9f3b);
+  value = (value ^ (value >>> 16)) >>> 0;
+  return value === 0 ? 0x1 : value;
 }

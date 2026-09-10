@@ -116,6 +116,9 @@ export class PlaybackController {
   }
 
   playPause = (): void => {
+    // Preview voices are an audition surface, not part of the timeline. Do
+    // not let a preset/sample audition survive into transport playback.
+    this.engine.stopPreview?.();
     this.engine.ensureContext();
     if (this.transport.playing) {
       this.scheduler.stop();
@@ -144,6 +147,7 @@ export class PlaybackController {
   };
 
   stop = (): void => {
+    this.engine.stopPreview?.();
     this.onTransportStop?.(this.transport.position);
     this.scheduler.stop();
     this.engine.panic();

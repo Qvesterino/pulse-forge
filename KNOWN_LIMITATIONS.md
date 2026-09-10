@@ -1,6 +1,6 @@
 # Known Limitations
 
-Honest list of what Pulse Forge does **not** (yet) do, or does with caveats.
+Honest list of what KYX does **not** (yet) do, or does with caveats.
 Each item notes the practical impact and, where relevant, the intended fix.
 Tracked in [`RELEASE_ROADMAP.md`](./RELEASE_ROADMAP.md).
 
@@ -22,17 +22,23 @@ Tracked in [`RELEASE_ROADMAP.md`](./RELEASE_ROADMAP.md).
 - **Marker cue one-shots are not part of the master WAV export.** Bounce-zone
   and scorepack exports deliberately exclude them; the master export follows
   the same rule. Live playback does fire them.
-- **32-bit float WAV export hard-clips at ±1.0.** The 16/24-bit paths use a
-  soft knee + dither; if the limiter is off and the master runs hot, float
-  exports can clip where the other formats would not.
-- **fxeq "random"-wave LFOs are not seeded.** With a random-wave LFO in the
-  fxeq plugin, two exports of the same project can differ slightly (all other
-  DSP is deterministically seeded).
+- **WAV overflow is intentionally soft-kneed, not transparent.** The 24/32-bit
+  paths run finite samples through the shared soft-knee policy; the 16-bit path
+  quantizes with deterministic dither. This prevents an accidental hard clip,
+  but a very hot master is still audibly limited. The limiter remains the
+  correct place to control a release mix rather than relying on export repair.
+- **Standalone FXEQ callers that omit a seed retain the deterministic fallback.**
+  KYX's PRISM host path now derives a stable seed from the project, owner and
+  effect identity, so separate instances no longer share the same random S&H
+  sequence and live/offline renders agree. Direct/core callers that omit the
+  optional seed intentionally keep the legacy fixed sequence for compatibility.
 - **Offline render of a stage cannot be interrupted.** The CANCEL button stops
   between stages (stems/tracks) and during MP3 encoding or video recording;
   the initial offline render of the current stage runs to completion.
-- **Video export for clips shorter than one second** records one second of
-  (mostly silent) video — `seconds` is clamped to a 1 s minimum.
+- **Very short video export duration is codec/frame-granular.** The exporter
+  accepts sub-second ranges down to 10 ms, but MediaRecorder/container timing
+  can add a small amount of tail or quantize the final duration to available
+  frames. Verify the final file duration for stingers and one-shots.
 
 ## Sound & mixer
 
@@ -46,44 +52,15 @@ Tracked in [`RELEASE_ROADMAP.md`](./RELEASE_ROADMAP.md).
   gain to 0…2, while the mixer fader and automation catalog clamp to 0…1.5 —
   drawn automation above 1.5 still plays.
 
-### Ultina vendored core (upstream defects, fix in VocalForge_DAW then re-vendor)
+### Ultina vendored core (current residual)
 
-Verified during the 2026-09 ultina hardening audit. The vendored core is a
-byte-faithful copy locked to the upstream golden vectors
-(`tests/ultina-vectors.test.ts`), so these must be fixed upstream in
-`VocalForge_DAW/plugins/ultina` and re-vendored via
-`scripts/vendor-ultina.mjs` — not patched here.
+The Sculptor sparse-spectrum guard, stereo T/S state isolation, crossover
+re-prepare invalidation and Phase Time Shift dry/delta capacity are now fixed
+in `D:/VocalForge_DAW/plugins/ultina`, mirrored into
+`src/effects/ultina-core/**`, rebuilt into `public/ultina-worklet.js`, and
+covered by `tests/ultina-core-hardening.test.ts`. The vendored core remains
+locked to the upstream golden vectors (`tests/ultina-vectors.test.ts`).
 
-- **Sculptor drags every active band down when any band is silent.** The
-  per-band average level includes silent bands at their −200 dB floor while
-  the per-band correction skips them (`sculptorModule.ts`, avg loop vs the
-  `envFollowers[b] < 1e-6` skip). A source with an empty high band (bass,
-  low-passed material) inside the sculptor boundaries pulls `avgDb` so low
-  that all active bands clamp to the maximum −12 dB cut. Upstream fix: skip
-  silent bands in the average as well.
-- **Transient/Sustain stereo mode leaks L into R.** The stereo T/S path runs
-  both channels through `processBands` with a single-channel view, so both
-  filter through the same biquad state slot — L's ringing tail seeds R's
-  filtering every block (`multiband.ts` splitLr4 cascades loop on
-  `channelCount` instead of the active `chCount`). Block-rate inter-channel
-  crosstalk in every multiband module's T/S mode with 2+ bands. The same
-  loop also keeps filtering stale channel-1 work buffers in M/S passes
-  (wasted CPU, no output effect).
-- **Re-preparing an existing Ultina instance resets the LR4 crossover to
-  identity.** `CrossoverNetwork.prepare` rebuilds its biquads as passthrough
-  and the modules' cached band/crossover values skip the redesign, so bands
-  stop separating and sum to +6/+9.5 dB until a crossover knob moves. No
-  Pulse Forge code path re-prepares a live instance today (each
-  AudioWorkletNode prepares once); latent for any host that re-prepares on
-  sample-rate changes. Upstream fix: invalidate the crossover caches in each
-  module's `prepare()` (the hybrid FIR path already does this).
-- **Phase Time Shift beyond ~4 ms mis-compensates mix/delta.** The module's
-  dry/wet compensation ring is sized `maxBlockSize + 64` samples while the
-  Time Shift parameter allows ±50 ms, so the dry copy is clamped far short
-  of the wet delay (`dryDelay.ts` prepare vs `phaseModule`'s 50 ms buffer).
-  At mix < 100 % or in delta listen, shifts past the ring size comb against
-  a wrongly delayed dry copy. Upstream fix: prepare the mixer with the
-  module's full 50 ms delay budget.
 - **Mix assist / reference match analyze the whole song synchronously on the
   main thread.** `featureExtractor` walks the full rendered buffer (5 typed-
   array allocations per 1024-sample hop) in one blocking call — a multi-
@@ -151,4 +128,4 @@ drop reconciled markers the upstream snapshot lacks. These remain:
 
 - Vitest 5 + Vite 8 migration (see above).
 - `bounceStemsToAudioClip` command exists and is tested but has no UI wiring.
-- Cancel for offline *renders* (see "Exports" above).
+- Cancel for offline _renders_ (see "Exports" above).

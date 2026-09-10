@@ -24,6 +24,10 @@ import { GenerateDialog } from "./GenerateDialog";
 import { SceneLauncher } from "./SceneLauncher";
 import { usePlayheadBar } from "./playhead";
 
+/** Byte ceiling for .mid imports — mirrors MAX_PROJECT_IMPORT_BYTES. Kept
+ * local (not in the lazy midi chunk) so checking it never pulls the chunk. */
+const MAX_MIDI_IMPORT_BYTES = 10 * 1024 * 1024;
+
 interface DragState {
   patternId: string;
   fromIndex: number;
@@ -57,6 +61,13 @@ export function PatternBar({
   const importMidiFile = async (file: File) => {
     try {
       setMidiStatus(null);
+      // Same ceiling class as the project-import cap: a hostile/huge .mid
+      // would otherwise buffer unbounded note arrays before validation
+      // could clip them, and OOM the tab.
+      if (file.size > MAX_MIDI_IMPORT_BYTES) {
+        setMidiStatus(`Import failed: ${file.name} is too large (max ${MAX_MIDI_IMPORT_BYTES / (1024 * 1024)} MB)`);
+        return;
+      }
       const bytes = new Uint8Array(await file.arrayBuffer());
       // MIDI I/O is a lazy chunk — it only loads on first use.
       const { importMidiCommand } = await import("../midi/midiProject");
