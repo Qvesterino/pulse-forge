@@ -204,7 +204,7 @@ function Device({
           </select>
         )}
         {fx.type === "ozvena" && (
-          <label className="btn btn-small fx-ir-load" title="Load a user impulse response (Ozvena convolution)">
+          <label className="btn btn-small fx-ir-load" title="Load a user impulse response (VØID convolution)">
             IR…
             <input
               type="file"

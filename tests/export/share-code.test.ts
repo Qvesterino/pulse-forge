@@ -52,7 +52,7 @@ describe("shareCode — URL helpers", () => {
   it("embedSnippet is a paste-ready iframe", () => {
     const snippet = embedSnippet("https://forge.app/embed/#p=abc");
     expect(snippet).toContain('<iframe src="https://forge.app/embed/#p=abc"');
-    expect(snippet).toContain('title="Pulse Forge beat"');
+    expect(snippet).toContain('title="KYX beat"');
   });
 });
 

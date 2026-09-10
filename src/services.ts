@@ -9,6 +9,7 @@ import { LibraryRepository } from "./persistence/LibraryRepository";
 import { KitRepository } from "./persistence/KitRepository";
 import { GroovePoolRepository } from "./persistence/GroovePoolRepository";
 import { installSaveUnloadGuards } from "./persistence/save-lifecycle";
+import { createAutosaveDebouncer } from "./persistence/autosave-debouncer";
 import { generateFactoryBank } from "./sample-library/factory";
 import type { SampleBank } from "./sample-library/factory";
 import type { PlayMode, ProjectDocument, Scene } from "./project-model/types";
@@ -472,7 +473,6 @@ export async function openProject(
 
   const ghost = new GhostPreviewPlayer(engine, bank, () => store.doc);
 
-  let saveTimer: ReturnType<typeof setTimeout> | null = null;
   let saving: Promise<void> | null = null;
   let saveQueued = false;
 
@@ -501,10 +501,10 @@ export async function openProject(
   };
 
   const flushSave = async (): Promise<void> => {
-    if (saveTimer) {
-      clearTimeout(saveTimer);
-      saveTimer = null;
-    }
+    // Defect D.1: the debouncer now owns the timer. Cancel the
+    // pending re-arm so a force-flush from unload paths isn't
+    // racing with a deferred save.
+    saveDebouncer.cancel();
     if (saving) {
       // A save is in progress — mark that another one is needed once
       // it finishes, so rapid Ctrl+S / visibility changes don't lose data.
@@ -534,12 +534,29 @@ export async function openProject(
     await run;
   };
 
+  // Defect D.1 (performance / memory recon): a continuous gesture
+  // (fader drag, CC sweep) re-armed the 800 ms debounce 60× per
+  // second and the save would never commit. The debouncer carries
+  // a max-defer ceiling (5 s OR 50 re-arms, whichever hits first)
+  // so a long gesture is still force-flushed even if the user never
+  // pauses — the 800 ms debounce still gives a single-edit snappy
+  // UX, but a sustained session cannot accidentally lose the last
+  // few minutes of edits to a closed tab.
+  const saveDebouncer = createAutosaveDebouncer({
+    flush: flushSave,
+    debounceMs: 800,
+    maxDeferMs: 5000,
+    maxArms: 50,
+  });
+
   store.onDocChanged = (doc) => {
     engine.setProject(doc);
     transport.setBpm(doc.bpm);
     store.setSaveStatus("dirty");
-    if (saveTimer) clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => void flushSave(), 800);
+    // Defect D.1: route through the debouncer so a continuous gesture
+    // still force-flushes after maxDeferMs / maxArms. flushSave
+    // remains the single writer — `arm()` decides WHEN to call it.
+    saveDebouncer.arm();
   };
 
   const onVisibility = (): void => {

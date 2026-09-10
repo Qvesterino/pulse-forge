@@ -61,7 +61,7 @@ export function InstallPrompt() {
     <div className="install-prompt" role="contentinfo">
       <span className="install-prompt-icon">◈</span>
       <span className="install-prompt-text">
-        Install PulseForge
+        Install KYX
         <small>Offline-ready · launches like a native app</small>
       </span>
       <button type="button" className="btn btn-small" onClick={() => void install()}>

@@ -38,7 +38,7 @@ describe("UltinaPanel — user presets", () => {
     });
 
     // The USER group appears with the saved entry.
-    const picker = screen.getByLabelText("Ultina preset") as HTMLSelectElement;
+    const picker = screen.getByLabelText("VLYX preset") as HTMLSelectElement;
     await waitFor(() => {
       expect([...picker.querySelectorAll("optgroup")].some((g) => g.label === "USER")).toBe(true);
     });
@@ -65,11 +65,11 @@ describe("UltinaPanel — user presets", () => {
 
     renderPanel({});
     await waitFor(() => {
-      expect(screen.getByLabelText("Ultina preset").textContent).toContain("Doomed");
+      expect(screen.getByLabelText("VLYX preset").textContent).toContain("Doomed");
     });
 
     // Select it, then delete with confirm.
-    const picker = screen.getByLabelText("Ultina preset") as HTMLSelectElement;
+    const picker = screen.getByLabelText("VLYX preset") as HTMLSelectElement;
     vi.spyOn(window, "confirm").mockReturnValue(true);
     await act(async () => {
       await user.selectOptions(picker, "up-del");
@@ -78,7 +78,7 @@ describe("UltinaPanel — user presets", () => {
       await user.click(screen.getByRole("button", { name: "Delete user preset" }));
     });
     await waitFor(() => {
-      const after = screen.getByLabelText("Ultina preset") as HTMLSelectElement;
+      const after = screen.getByLabelText("VLYX preset") as HTMLSelectElement;
       expect(after.textContent).not.toContain("Doomed");
     });
     vi.restoreAllMocks();
@@ -89,7 +89,7 @@ describe("UltinaPanel — user presets", () => {
     renderPanel({});
     // The fake DB is shared within this file — count USER entries and assert
     // the cancelled save added none.
-    const picker = screen.getByLabelText("Ultina preset") as HTMLSelectElement;
+    const picker = screen.getByLabelText("VLYX preset") as HTMLSelectElement;
     await waitFor(() => {
       expect(picker.querySelectorAll('optgroup[label="USER"] option').length).toBeGreaterThan(0);
     });
@@ -102,7 +102,7 @@ describe("UltinaPanel — user presets", () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 20));
     });
-    expect(screen.getByLabelText("Ultina preset").querySelectorAll('optgroup[label="USER"] option').length).toBe(
+    expect(screen.getByLabelText("VLYX preset").querySelectorAll('optgroup[label="USER"] option').length).toBe(
       before,
     );
     vi.restoreAllMocks();
@@ -140,9 +140,9 @@ describe("UltinaPanel — user presets", () => {
     });
     renderPanel({});
     await waitFor(() => {
-      expect(screen.getByLabelText("Ultina preset").textContent).toContain("Indestructible");
+      expect(screen.getByLabelText("VLYX preset").textContent).toContain("Indestructible");
     });
-    const picker = screen.getByLabelText("Ultina preset") as HTMLSelectElement;
+    const picker = screen.getByLabelText("VLYX preset") as HTMLSelectElement;
     vi.spyOn(window, "confirm").mockReturnValue(true);
     await act(async () => {
       await user.selectOptions(picker, "up-keep");

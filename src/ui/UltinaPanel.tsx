@@ -558,11 +558,11 @@ export function UltinaPanel({
   const eqSelected = selectedModule === "eq";
 
   return (
-    <div className="fxeq-panel ultina-panel" aria-label="Ultina module editor">
-      {degraded && <div className="fxeq-degraded">AudioWorklet unavailable — Ultina is bypassed (1:1 signal)</div>}
+    <div className="fxeq-panel ultina-panel" aria-label="VLYX module editor">
+      {degraded && <div className="fxeq-degraded">AudioWorklet unavailable — VLYX is bypassed (1:1 signal)</div>}
 
       {/* ── LIVE METERS ────────────────────────────────────────────── */}
-      <div className="ultina-live" aria-label="Ultina live meters">
+      <div className="ultina-live" aria-label="VLYX live meters">
         <canvas ref={liveCanvasRef} className="ultina-live-canvas" width={512} height={96} />
         <div className="ultina-live-row">
           <span className="ultina-lufs" ref={lufsRef}>
@@ -646,7 +646,7 @@ export function UltinaPanel({
             type="button"
             className={`btn btn-export${learnOn ? " active" : ""}`}
             aria-pressed={learnOn}
-            title="Play your track — Ultina detects resonances and suggests cuts"
+            title="Play your track — VLYX detects resonances and suggests cuts"
             onClick={() => setLearnOn((v) => !v)}
           >
             {learnOn ? "● LEARNING" : "LEARN"}
@@ -680,7 +680,7 @@ export function UltinaPanel({
             type="button"
             className={`btn btn-small${deltaOn ? " active" : ""}`}
             aria-pressed={deltaOn}
-            title="Hear ONLY what Ultina removes — the delta between dry and processed"
+            title="Hear ONLY what VLYX removes — the delta between dry and processed"
             onClick={() => onParam("global.deltaListen", deltaOn ? 0 : 1)}
           >
             DELTA
@@ -827,7 +827,7 @@ export function UltinaPanel({
       <div className="fxeq-preset-row">
         <select
           className="fxeq-preset-select"
-          aria-label="Ultina preset"
+          aria-label="VLYX preset"
           defaultValue=""
           onChange={(event) => {
             const user = userPresets.find((p) => p.id === event.target.value);

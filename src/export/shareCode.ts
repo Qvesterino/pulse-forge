@@ -50,5 +50,5 @@ export function embedUrl(code: string, origin: string): string {
 
 /** iframe snippet for pasting into Discord/Reddit/websites. */
 export function embedSnippet(url: string): string {
-  return `<iframe src="${url}" width="100%" height="220" frameborder="0" style="border:1px solid #26272c;border-radius:8px" title="Pulse Forge beat"></iframe>`;
+  return `<iframe src="${url}" width="100%" height="220" frameborder="0" style="border:1px solid #26272c;border-radius:8px" title="KYX beat"></iframe>`;
 }

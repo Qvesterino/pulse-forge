@@ -220,7 +220,7 @@ export function ModPanel() {
             <input
               type="text"
               className="mod-param-filter"
-              aria-label="Filter Ultina parameters"
+              aria-label="Filter VLYX parameters"
               placeholder="Filter parameters…"
               value={paramFilter}
               onChange={(event) => setParamFilter(event.target.value)}
@@ -266,7 +266,7 @@ export function ModPanel() {
               addableTrack.effects.map((fx) =>
                 fx.type === "ultina"
                   ? ultinaOptionGroups(fx.id, paramFilter).map(({ module, options }) => (
-                      <optgroup key={`${fx.id}:${module}`} label={`Ultina · ${module}`}>
+                      <optgroup key={`${fx.id}:${module}`} label={`VLYX · ${module}`}>
                         {options.map((o) => (
                           <option key={o.value} value={o.value}>
                             {o.label}

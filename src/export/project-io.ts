@@ -76,7 +76,7 @@ function parseAndValidate(json: string): ProjectDocument {
   }
 
   if (!validateProjectShape(raw)) {
-    throw new Error("Invalid project structure — file does not match PulseForge format");
+    throw new Error("Invalid project structure — file does not match KYX format");
   }
 
   try {

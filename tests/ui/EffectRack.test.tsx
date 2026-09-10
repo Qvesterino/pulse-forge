@@ -49,9 +49,9 @@ describe("EffectRack", () => {
       expect.arrayContaining(["fxeq", "ultina", "ozvena"]),
     );
     expect(select.querySelector('optgroup[label="FLAGSHIP PLUGINS"]')).not.toBeNull();
-    expect(screen.getByRole("option", { name: "FXEQ Multiband" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Ultina Suite" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Ozvena Reverb" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "PRISM" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "VLYX" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "VØID" })).toBeInTheDocument();
   });
 
   it("disables move-earlier on first effect", () => {
@@ -119,8 +119,8 @@ describe("EffectRack", () => {
     renderWithContext(<EffectRack track={track} />, { services: mockServices(doc) });
     await screen.findByText("A ACTIVE · STORED");
 
-    await user.click(screen.getByRole("button", { name: "Collapse Ultina Suite" }));
-    await user.click(screen.getByRole("button", { name: "Expand Ultina Suite" }));
+    await user.click(screen.getByRole("button", { name: "Collapse VLYX" }));
+    await user.click(screen.getByRole("button", { name: "Expand VLYX" }));
 
     expect(screen.getByText("A ACTIVE · STORED")).toBeInTheDocument();
   });
@@ -165,10 +165,10 @@ describe("EffectRack — FXEQ panel", () => {
     // The panel is a lazy chunk — wait for it to load. A generous explicit
     // timeout keeps this deterministic under full-suite CPU load, where the
     // dynamic import can outrun the 1s default.
-    expect(await screen.findByLabelText("FXEQ preset", {}, { timeout: 10_000 })).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "FXEQ band map" })).toBeInTheDocument();
+    expect(await screen.findByLabelText("PRISM preset", {}, { timeout: 10_000 })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "PRISM band map" })).toBeInTheDocument();
     // Live band-peak meter strip sits under the band map.
-    expect(screen.getByRole("img", { name: "FXEQ band peaks" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "PRISM band peaks" })).toBeInTheDocument();
     // bandCount 4 → B1..B4 chips (and no B5).
     expect(screen.getByRole("button", { name: "B4" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "B5" })).toBeNull();
@@ -186,7 +186,7 @@ describe("EffectRack — FXEQ panel", () => {
     const { doc, track } = fxEqDoc();
     const services = mockServices(doc);
     renderWithContext(<EffectRack track={track} />, { services });
-    const select = await screen.findByLabelText("FXEQ preset", {}, { timeout: 10_000 });
+    const select = await screen.findByLabelText("PRISM preset", {}, { timeout: 10_000 });
     const presetName = "Warmth — All-Round";
     await user.selectOptions(select, presetName);
     const executed = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.map(
@@ -225,7 +225,7 @@ describe("EffectRack — Ultina panel", () => {
     renderWithContext(<EffectRack track={track} />, { services: mockServices(doc) });
     // The panel is a lazy chunk — wait for it to load (generous timeout:
     // dynamic import latency under full-suite load exceeds the 1s default).
-    expect(await screen.findByLabelText("Ultina module editor", {}, { timeout: 10_000 })).toBeInTheDocument();
+    expect(await screen.findByLabelText("VLYX module editor", {}, { timeout: 10_000 })).toBeInTheDocument();
     // Graph-order chips present.
     expect(screen.getByRole("button", { name: "COMP" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "UNMSK" })).toBeInTheDocument();
@@ -251,7 +251,7 @@ describe("EffectRack — Ultina panel", () => {
     const { doc, track } = ultinaDoc();
     const services = mockServices(doc);
     renderWithContext(<EffectRack track={track} />, { services });
-    const select = screen.getByLabelText("Ultina preset");
+    const select = screen.getByLabelText("VLYX preset");
     const firstOption = select.querySelectorAll("option")[1]; // first real preset
     await user.selectOptions(select, firstOption.getAttribute("value")!);
     const executed = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.map(
@@ -379,9 +379,9 @@ describe("EffectRack — flagship device shell contract (all three plugins)", ()
   }
 
   const NAMES: Record<string, string> = {
-    fxeq: "FXEQ Multiband",
-    ultina: "Ultina Suite",
-    ozvena: "Ozvena Reverb",
+    fxeq: "PRISM",
+    ultina: "VLYX",
+    ozvena: "VØID",
   };
 
   for (const type of ["fxeq", "ultina", "ozvena"] as const) {

@@ -273,7 +273,7 @@ export function writeMidiFile(options: {
 
   // Conductor track: name + tempo + time signature + EOT.
   const meta: number[] = [];
-  const nameBytes = [...new TextEncoder().encode("Pulse Forge")];
+  const nameBytes = [...new TextEncoder().encode("KYX")];
   writeVlq(meta, 0);
   meta.push(0xff, 0x03, nameBytes.length, ...nameBytes);
   if (options.bpm && options.bpm > 0) {

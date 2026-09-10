@@ -1,5 +1,5 @@
 export const DB_NAME = "pulse-forge";
-export const DB_VERSION = 9;
+export const DB_VERSION = 10;
 export const STORE_PROJECTS = "projects";
 export const STORE_META = "meta";
 export const STORE_PRESETS = "presets";
@@ -10,6 +10,16 @@ export const STORE_FROZEN_AUDIO = "frozen-audio";
 export const STORE_USER_KITS = "user-kits";
 export const STORE_GROOVE_POOL = "groove-pool";
 export const STORE_SNAPSHOTS = "project-snapshots";
+/**
+ * Defect D.4 (performance / memory recon): secondary index for
+ * `STORE_SNAPSHOTS` so `SnapshotRepository.list(projectId)` and
+ * `prune(projectId)` do not have to `getAll()` every snapshot of
+ * every project on every call. The store holds out-of-line keys
+ * shaped `[projectId, seq]` (lexicographic ordering matches
+ * "all of one project, ordered by seq"), with the value being the
+ * snapshot id (foreign key into `STORE_SNAPSHOTS`).
+ */
+export const STORE_SNAPSHOT_INDEX = "project-snapshot-index";
 export const STORE_ULTINA_PRESETS = "ultina-presets";
 
 let dbPromise: Promise<IDBDatabase> | null = null;
@@ -37,6 +47,9 @@ export function openDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(STORE_USER_KITS)) db.createObjectStore(STORE_USER_KITS, { keyPath: "id" });
       if (!db.objectStoreNames.contains(STORE_GROOVE_POOL)) db.createObjectStore(STORE_GROOVE_POOL, { keyPath: "id" });
       if (!db.objectStoreNames.contains(STORE_SNAPSHOTS)) db.createObjectStore(STORE_SNAPSHOTS, { keyPath: "id" });
+      // D.4: out-of-line keys, no keyPath. `tx(db, STORE_SNAPSHOT_INDEX, ...)`
+      // uses `store.put(id, [projectId, seq])`.
+      if (!db.objectStoreNames.contains(STORE_SNAPSHOT_INDEX)) db.createObjectStore(STORE_SNAPSHOT_INDEX);
       if (!db.objectStoreNames.contains(STORE_ULTINA_PRESETS))
         db.createObjectStore(STORE_ULTINA_PRESETS, { keyPath: "id" });
     };
@@ -47,7 +60,7 @@ export function openDb(): Promise<IDBDatabase> {
       setTimeout(() => {
         if (settled) return;
         settled = true;
-        reject(new Error("Database is locked by another Pulse Forge tab — close it and try again"));
+      reject(new Error("Database is locked by another KYX tab — close it and try again"));
       }, OPEN_BLOCKED_TIMEOUT_MS);
     };
     request.onsuccess = () => {
@@ -79,13 +92,13 @@ export function tx<T>(
   db: IDBDatabase,
   store: string,
   mode: IDBTransactionMode,
-  run: (store: IDBObjectStore) => IDBRequest<T>,
+  run: (store: IDBObjectStore) => IDBRequest<T> | void,
 ): Promise<T>;
 export function tx<T>(
   db: IDBDatabase,
   stores: readonly string[],
   mode: IDBTransactionMode,
-  run: (stores: Record<string, IDBObjectStore>) => IDBRequest<T>,
+  run: (stores: Record<string, IDBObjectStore>) => IDBRequest<T> | void,
 ): Promise<T>;
 export function tx<T>(
   db: IDBDatabase,
@@ -94,8 +107,10 @@ export function tx<T>(
   // The implementation accepts both single-store and multi-store call
   // shapes; the public overloads pin the precise type at the call site.
   // Using `any` here is safe because we hand the callback a value
-  // whose shape exactly matches the selected overload.
-  run: (arg: any) => IDBRequest<T>,
+  // whose shape exactly matches the selected overload. A `void`
+  // return is allowed for multi-put transactions — we wait on
+  // `transaction.oncomplete` instead of a specific request.
+  run: (arg: any) => IDBRequest<T> | void,
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -117,30 +132,37 @@ export function tx<T>(
       fail(err);
       return;
     }
-    let request: IDBRequest<T>;
-    try {
-      let arg: IDBObjectStore | Record<string, IDBObjectStore>;
-      if (Array.isArray(storeOrStores)) {
-        const map: Record<string, IDBObjectStore> = {};
-        for (const s of storeOrStores) map[s] = transaction.objectStore(s);
-        arg = map;
-      } else {
-        arg = transaction.objectStore(storeOrStores as string);
-      }
-      request = run(arg);
-    } catch (err) {
-      fail(err);
-      return;
+    let arg: IDBObjectStore | Record<string, IDBObjectStore>;
+    if (Array.isArray(storeOrStores)) {
+      const map: Record<string, IDBObjectStore> = {};
+      for (const s of storeOrStores) map[s] = transaction.objectStore(s);
+      arg = map;
+    } else {
+      arg = transaction.objectStore(storeOrStores as string);
     }
+    const result = run(arg);
     // A request's `success` fires BEFORE the commit — resolving there would
     // report saves that were later rolled back (quota pressure, abort during
     // page close). Only `transaction.oncomplete` proves durability.
-    request.onsuccess = () => {
-      /* wait for commit */
-    };
-    request.onerror = () => fail(request.error);
-    transaction.onabort = () => fail(request.error ?? transaction.error);
-    transaction.onerror = () => fail(transaction.error ?? request.error);
-    transaction.oncomplete = () => succeed(request.result);
+    //
+    // The callback may legitimately return `null`/`undefined` for multi-store
+    // transactions (the caller issues several `put`s and only needs the
+    // commit signal). We only attach `onsuccess`/`onerror` when an actual
+    // request object is returned; otherwise we wait on the transaction
+    // directly.
+    if (result != null) {
+      const request = result as IDBRequest<T>;
+      request.onsuccess = () => {
+        /* wait for commit */
+      };
+      request.onerror = () => fail(request.error);
+      transaction.onabort = () => fail(request.error ?? transaction.error);
+      transaction.onerror = () => fail(transaction.error ?? request.error);
+      transaction.oncomplete = () => succeed(request.result);
+    } else {
+      transaction.onabort = () => fail(transaction.error);
+      transaction.onerror = () => fail(transaction.error);
+      transaction.oncomplete = () => succeed(undefined as unknown as T);
+    }
   });
 }

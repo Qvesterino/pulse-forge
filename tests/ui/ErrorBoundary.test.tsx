@@ -27,7 +27,7 @@ describe("ErrorBoundary", () => {
         <BrokenComponent />
       </ErrorBoundary>,
     );
-    expect(screen.getByText("PulseForge crashed")).toBeInTheDocument();
+    expect(screen.getByText("KYX crashed")).toBeInTheDocument();
     expect(screen.getByText(/Your work has been saved/)).toBeInTheDocument();
     spy.mockRestore();
   });

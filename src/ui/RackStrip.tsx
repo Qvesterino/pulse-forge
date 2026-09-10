@@ -267,7 +267,7 @@ export function RackStrip({
   const copyKitCode = async (kit: UserKit) => {
     try {
       await navigator.clipboard.writeText(encodeKitCode(kit.name, kit.pads));
-      setKitStatus(`Code for "${kit.name}" copied — paste it into any Pulse Forge`);
+      setKitStatus(`Code for "${kit.name}" copied — paste it into any KYX`);
     } catch {
       setKitStatus("Clipboard blocked by the browser");
     }
@@ -700,7 +700,7 @@ export function RackStrip({
         onClick={async () => {
           try {
             await navigator.clipboard.writeText(encodeBindsCode(getPadKeys()));
-            setKeyStatus("BINDS code copied — paste it into any Pulse Forge");
+            setKeyStatus("BINDS code copied — paste it into any KYX");
           } catch {
             setKeyStatus("Clipboard blocked by the browser");
           }

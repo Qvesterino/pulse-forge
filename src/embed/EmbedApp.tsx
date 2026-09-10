@@ -201,7 +201,7 @@ export function EmbedApp({ code: codeProp, inline = false }: { code?: string; in
     <div
       className={"embed-root" + (inline ? " embed-inline" : "")}
       role="document"
-      aria-label="Pulse Forge beat player"
+      aria-label="KYX beat player"
     >
       <div className="embed-main">
         <button
@@ -241,10 +241,10 @@ export function EmbedApp({ code: codeProp, inline = false }: { code?: string; in
         </span>
         <div className="embed-actions">
           <a className="embed-cta" href={openUrl} target="_blank" rel="noreferrer">
-            OPEN IN PULSE FORGE
+            OPEN IN KYX
           </a>
           <span className="embed-brand">
-            <span className="embed-brand-mark">PF</span> PULSE FORGE
+            <span className="embed-brand-mark">KX</span> KYX
           </span>
         </div>
       </div>

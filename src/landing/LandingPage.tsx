@@ -17,7 +17,7 @@ const FEATURES = [
   {
     icon: "🎛️",
     title: "3 PRO PLUGIN SUITES",
-    text: "FXEQ multiband, Ultina mixing suite, Ozvena three-engine reverb — bit-exact DSP, zero install.",
+    text: "PRISM spectral EQ, VLYX intelligent mixing, VØID spatial reverb — bit-exact DSP, zero install.",
   },
   {
     icon: "👥",
@@ -51,10 +51,10 @@ export function LandingPage({ onEnterStudio }: { onEnterStudio: () => void }) {
   const heroCode = useMemo(() => encodeShareCode(createProjectFromTemplate("house")), []);
 
   return (
-    <div className="landing" role="document" aria-label="Pulse Forge landing">
+    <div className="landing" role="document" aria-label="KYX landing">
       <nav className="landing-nav">
         <span className="landing-brand">
-          <span className="embed-brand-mark">PF</span> PULSE FORGE
+          <span className="embed-brand-mark">KX</span> KYX
         </span>
         <div className="landing-nav-actions">
           <button type="button" className="btn btn-export landing-cta" onClick={onEnterStudio}>
@@ -120,7 +120,7 @@ export function LandingPage({ onEnterStudio }: { onEnterStudio: () => void }) {
       </section>
 
       <footer className="landing-footer">
-        <span>PULSE FORGE — browser beat studio</span>
+        <span>KYX — browser beat studio</span>
         <span className="landing-footer-dim">Built with Web Audio · Works best in Chrome · PWA — install it</span>
       </footer>
     </div>

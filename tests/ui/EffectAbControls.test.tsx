@@ -8,7 +8,7 @@ describe("EffectAbControls", () => {
     const onLoad = vi.fn();
     const view = render(
       <EffectAbControls
-        effectName="FXEQ"
+        effectName="PRISM"
         params={{ bandCount: 4, "band1.gainDb": 0 }}
         onStateChange={onStateChange}
         onLoad={onLoad}
@@ -21,7 +21,7 @@ describe("EffectAbControls", () => {
     expect(onStateChange).toHaveBeenCalledWith({ slots: {}, active: "B" });
     view.rerender(
       <EffectAbControls
-        effectName="FXEQ"
+        effectName="PRISM"
         params={{ bandCount: 4, "band1.gainDb": 0 }}
         deviceState={{ kind: "effect-ab-v1", data: { slots: {}, active: "B" } }}
         onStateChange={onStateChange}
@@ -36,7 +36,7 @@ describe("EffectAbControls", () => {
     const onLoad = vi.fn();
     render(
       <EffectAbControls
-        effectName="Ozvena"
+        effectName="VØID"
         params={{ "global.dryWet": 100 }}
         deviceState={{
           kind: "effect-ab-v1",

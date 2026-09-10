@@ -19,8 +19,8 @@ export const pwaOptions: Partial<VitePWAOptions> = {
   registerType: "prompt",
   includeAssets: ["apple-touch-icon.png"],
   manifest: {
-    name: "Pulse Forge — Browser DAW",
-    short_name: "Pulse Forge",
+    name: "KYX — Browser DAW",
+    short_name: "KYX",
     description:
       "Step sequencer, synths, effects and arrangement — a full DAW that runs entirely in your browser. Works offline, saves automatically.",
     lang: "en",

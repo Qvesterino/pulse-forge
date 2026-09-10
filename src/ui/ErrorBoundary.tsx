@@ -77,7 +77,7 @@ export class ErrorBoundary extends Component<Props, State> {
       }
       return (
         <div className="crash-screen" role="alert">
-          <h1>PulseForge crashed</h1>
+          <h1>KYX crashed</h1>
           <p>Your work has been saved. Reload to continue.</p>
           <p className="crash-detail">{this.state.error?.message}</p>
           <button type="button" className="btn" onClick={this.handleReload}>

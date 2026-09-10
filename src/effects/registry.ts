@@ -2037,7 +2037,7 @@ const FXEQ_PARAM_DEFAULTS: Record<string, number> = {
 
 const fxeq: EffectDefinition = {
   type: "fxeq",
-  name: "FXEQ Multiband",
+  name: "PRISM",
   category: "character",
   params: [
     { id: "inputGainDb", label: "IN", min: -24, max: 24, default: 0, unit: "dB", format: formatDb },
@@ -2055,7 +2055,7 @@ const fxeq: EffectDefinition = {
     if (isWorkletReady("fxeq", ctx)) {
       return createFxEqNode(ctx, instance, FXEQ_PARAM_DEFAULTS);
     }
-    return bypassRuntime(ctx, "AudioWorklet unavailable — FXEQ bypassed (1:1 signal)");
+    return bypassRuntime(ctx, "AudioWorklet unavailable — PRISM bypassed (1:1 signal)");
   },
 };
 
@@ -2078,7 +2078,7 @@ const ULTINA_PARAM_DEFAULTS: Record<string, number> = {
 
 const ultina: EffectDefinition = {
   type: "ultina",
-  name: "Ultina Suite",
+  name: "VLYX",
   category: "dynamics",
   params: [
     { id: "global.inputGainDb", label: "IN", min: -24, max: 24, default: 0, unit: "dB", format: formatDb },
@@ -2093,7 +2093,7 @@ const ultina: EffectDefinition = {
     if (isWorkletReady("ultina", ctx)) {
       return createUltinaNode(ctx, instance, ULTINA_PARAM_DEFAULTS);
     }
-    return bypassRuntime(ctx, "AudioWorklet unavailable — Ultina bypassed (1:1 signal)");
+    return bypassRuntime(ctx, "AudioWorklet unavailable — VLYX bypassed (1:1 signal)");
   },
 };
 /* ---------------- Ozvena (VocalForge plugin, vendored DSP oracle) ---------------- */
@@ -2185,7 +2185,7 @@ const OZVENA_QUALITY_OPTIONS = [
 
 const ozvena: EffectDefinition = {
   type: "ozvena",
-  name: "Ozvena Reverb",
+  name: "VØID",
   category: "space",
   params: [
     { id: "global.inputGainDb", label: "IN", min: -24, max: 24, default: 0, unit: "dB", format: formatDb },
@@ -2204,7 +2204,7 @@ const ozvena: EffectDefinition = {
       // already matches the project tempo (syncBpm keeps it live after).
       return createOzvenaNode(ctx, instance, OZVENA_PARAM_DEFAULTS, env?.bpm ?? 120);
     }
-    return bypassRuntime(ctx, "AudioWorklet unavailable — Ozvena bypassed (1:1 signal)");
+    return bypassRuntime(ctx, "AudioWorklet unavailable — VØID bypassed (1:1 signal)");
   },
 };
 

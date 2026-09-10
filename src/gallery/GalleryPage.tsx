@@ -167,7 +167,7 @@ export function GalleryPage() {
       </div>
 
       <footer className="gallery-footer">
-        PULSE FORGE — a free browser studio. Beats are share links; nothing is uploaded but the project data.
+        KYX — a free browser studio. Beats are share links; nothing is uploaded but the project data.
       </footer>
     </div>
   );
@@ -364,7 +364,7 @@ function PublishForm({ prefilledCode, onPublished }: { prefilledCode: string | n
     try {
       const text = await file.text();
       const doc = JSON.parse(text) as ProjectDocument;
-      if (!doc || !Array.isArray((doc as ProjectDocument).tracks)) throw new Error("not a Pulse Forge project");
+      if (!doc || !Array.isArray((doc as ProjectDocument).tracks)) throw new Error("not a KYX project");
       setCodeInput(encodeProjectForGallery(doc));
       if (!title) setTitle(doc.name ?? "");
       setStatus(`Loaded "${doc.name}" — add a title and publish.`);

@@ -5348,10 +5348,10 @@ export function setFxEqParam(
   value: number,
 ): Command {
   const target = trackEffectsOf(doc, trackId).find((f) => f.id === fxId);
-  if (!target || target.type !== "fxeq") throw new Error(`FXEQ effect ${fxId} not found`);
+  if (!target || target.type !== "fxeq") throw new Error(`PRISM effect ${fxId} not found`);
   const schema = buildFxEqSchema(Math.round(target.params.bandCount ?? 6));
   const def = schema.defs.find((d) => d.id === fullId);
-  if (!def) throw new Error(`FXEQ param ${fullId} not defined for ${Math.round(target.params.bandCount ?? 6)} bands`);
+  if (!def) throw new Error(`PRISM param ${fullId} not defined for ${Math.round(target.params.bandCount ?? 6)} bands`);
   const previous = target.params[fullId] ?? schema.defaultParams[fullId] ?? def.defaultValue;
   const safeValue = Number.isFinite(value) ? value : previous;
   const clamped = Math.max(def.minValue, Math.min(def.maxValue, safeValue));
@@ -5361,7 +5361,7 @@ export function setFxEqParam(
     );
   return {
     type: "setFxEqParam",
-    label: `FXEQ ${fullId}`,
+    label: `PRISM ${fullId}`,
     execute: (d) => apply(d, { [fullId]: clamped }),
     undo: (d) => apply(d, { [fullId]: previous }),
   };
@@ -5376,7 +5376,7 @@ export function applyFxEqPreset(
   presetParams: Record<string, number>,
 ): Command {
   const target = trackEffectsOf(doc, trackId).find((f) => f.id === fxId);
-  if (!target || target.type !== "fxeq") throw new Error(`FXEQ effect ${fxId} not found`);
+  if (!target || target.type !== "fxeq") throw new Error(`PRISM effect ${fxId} not found`);
   const schema = buildFxEqSchema(Math.round(target.params.bandCount ?? 6));
   // Validate preset values against the band-aware schema: presets are data,
   // and an out-of-range or unknown id must never reach the DSP or the
@@ -5400,7 +5400,7 @@ export function applyFxEqPreset(
     );
   return {
     type: "applyFxEqPreset",
-    label: `FXEQ preset ${presetName}`,
+    label: `PRISM preset ${presetName}`,
     execute: (d) => apply(d, nextParams),
     undo: (d) => apply(d, undoParams),
   };
@@ -5417,9 +5417,9 @@ export function setUltinaParam(
   value: number,
 ): Command {
   const target = trackEffectsOf(doc, trackId).find((f) => f.id === fxId);
-  if (!target || target.type !== "ultina") throw new Error(`Ultina effect ${fxId} not found`);
+  if (!target || target.type !== "ultina") throw new Error(`VLYX effect ${fxId} not found`);
   const def = tryGetUltinaParamDef(paramId);
-  if (!def) throw new Error(`Ultina param ${paramId} not defined`);
+  if (!def) throw new Error(`VLYX param ${paramId} not defined`);
   const previous = target.params[paramId] ?? def.defaultValue;
   const clamped = clampUltinaParam(paramId, Number.isFinite(value) ? value : previous);
   const apply = (d: ProjectDocument, values: Record<string, number>): ProjectDocument =>
@@ -5428,7 +5428,7 @@ export function setUltinaParam(
     );
   return {
     type: "setUltinaParam",
-    label: `Ultina ${paramId}`,
+    label: `VLYX ${paramId}`,
     execute: (d) => apply(d, { [paramId]: clamped }),
     undo: (d) => apply(d, { [paramId]: previous }),
   };
@@ -5443,7 +5443,7 @@ export function applyUltinaPreset(
   presetParams: Record<string, number>,
 ): Command {
   const target = trackEffectsOf(doc, trackId).find((f) => f.id === fxId);
-  if (!target || target.type !== "ultina") throw new Error(`Ultina effect ${fxId} not found`);
+  if (!target || target.type !== "ultina") throw new Error(`VLYX effect ${fxId} not found`);
   // Validate preset values against the vendored schema (same discipline as
   // setUltinaParam): presets are data — out-of-range values and unknown ids
   // from older schemas must be clamped/dropped, not written verbatim into
@@ -5466,7 +5466,7 @@ export function applyUltinaPreset(
     );
   return {
     type: "applyUltinaPreset",
-    label: `Ultina preset ${presetName}`,
+    label: `VLYX preset ${presetName}`,
     execute: (d) => apply(d, nextParams),
     undo: (d) => apply(d, undoParams),
   };
@@ -5572,7 +5572,7 @@ export function loadEffectAbSlot(doc: ProjectDocument, trackId: string, fxId: st
  */
 export function loadUltinaAbSlot(doc: ProjectDocument, trackId: string, fxId: string, slot: "A" | "B"): Command {
   const target = trackEffectsOf(doc, trackId).find((f) => f.id === fxId);
-  if (!target || target.type !== "ultina") throw new Error(`Ultina effect ${fxId} not found`);
+  if (!target || target.type !== "ultina") throw new Error(`VLYX effect ${fxId} not found`);
   const state = target.deviceState?.kind === "ultina-ab-v1" ? target.deviceState : null;
   const snapshot = (state?.data.slots as Record<string, Record<string, number>> | undefined)?.[slot];
   if (!snapshot) throw new Error(`A/B slot ${slot} is empty`);
@@ -5618,7 +5618,7 @@ export function applyUltinaProposal(
   changes: { parameterId: string; value: number }[],
 ): Command {
   const target = trackEffectsOf(doc, trackId).find((f) => f.id === fxId);
-  if (!target || target.type !== "ultina") throw new Error(`Ultina effect ${fxId} not found`);
+  if (!target || target.type !== "ultina") throw new Error(`VLYX effect ${fxId} not found`);
   const nextParams = { ...target.params };
   // Analyzer output is untrusted input like any other parameter source:
   // route every toggle and change through the schema (clamped, unknown ids
@@ -5658,7 +5658,7 @@ export function applyOzvenaStatePatch(
   flatParams: Record<string, number>,
 ): Command {
   const target = trackEffectsOf(doc, trackId).find((f) => f.id === fxId);
-  if (!target || target.type !== "ozvena") throw new Error(`Ozvena effect ${fxId} not found`);
+  if (!target || target.type !== "ozvena") throw new Error(`VØID effect ${fxId} not found`);
   const normalized = normalizePluginParams("ozvena", { ...target.params, ...flatParams });
   const nextParams = normalized ?? { ...target.params };
   const previousParams = { ...target.params };

@@ -146,7 +146,7 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
       <header className="pb-header">
         <div className="brand">
           <span className="brand-mark">PF</span>
-          <span className="brand-name">PULSE FORGE</span>
+          <span className="brand-name">KYX</span>
         </div>
         <span className="pb-tagline">beat &amp; scene-score workstation</span>
       </header>

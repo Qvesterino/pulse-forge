@@ -223,8 +223,8 @@ export function OzvenaPanel({
   };
 
   return (
-    <div className="fxeq-panel ultina-panel ozvena-panel" aria-label="Ozvena reverb editor">
-      {degraded && <div className="fxeq-degraded">AudioWorklet unavailable — Ozvena is bypassed (1:1 signal)</div>}
+    <div className="fxeq-panel ultina-panel ozvena-panel" aria-label="VØID reverb editor">
+      {degraded && <div className="fxeq-degraded">AudioWorklet unavailable — VØID is bypassed (1:1 signal)</div>}
 
       {/* ── XY BLEND PAD ─────────────────────────────────────────────── */}
       <div className="ultina-assist-head">

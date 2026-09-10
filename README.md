@@ -1,4 +1,4 @@
-# Pulse Forge
+# KYX
 
 A focused, browser-first electronic music production workstation.
 

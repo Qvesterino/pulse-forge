@@ -29,7 +29,7 @@ function topBarProps(overrides?: Partial<React.ComponentProps<typeof TopBar>>) {
 describe("TopBar", () => {
   it("renders brand name", () => {
     renderWithContext(<TopBar {...topBarProps()} />);
-    expect(screen.getByText("PULSE FORGE")).toBeInTheDocument();
+    expect(screen.getByText("KYX")).toBeInTheDocument();
   });
 
   it("renders PROJECTS button", () => {

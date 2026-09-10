@@ -31,13 +31,13 @@ describe("InstallPrompt", () => {
   it("renders nothing in browsers that never fire the event (iOS)", () => {
     render(<InstallPrompt />);
     // no event fired — banner must stay hidden
-    expect(screen.queryByText("Install PulseForge")).not.toBeInTheDocument();
+    expect(screen.queryByText("Install KYX")).not.toBeInTheDocument();
   });
 
   it("shows the banner after beforeinstallprompt fires", () => {
     render(<InstallPrompt />);
     fireBeforeInstallPrompt();
-    expect(screen.getByText("Install PulseForge")).toBeInTheDocument();
+    expect(screen.getByText("Install KYX")).toBeInTheDocument();
   });
 
   it("INSTALL button triggers the native prompt and hides on accept", async () => {
@@ -50,7 +50,7 @@ describe("InstallPrompt", () => {
     await act(async () => {
       await event.userChoice;
     });
-    expect(screen.queryByText("Install PulseForge")).not.toBeInTheDocument();
+    expect(screen.queryByText("Install KYX")).not.toBeInTheDocument();
   });
 
   it("dismissal persists to localStorage and stays hidden on remount", () => {
@@ -63,16 +63,16 @@ describe("InstallPrompt", () => {
     // Fresh mount after dismissal — event fires but banner stays hidden
     render(<InstallPrompt />);
     fireBeforeInstallPrompt();
-    expect(screen.queryByText("Install PulseForge")).not.toBeInTheDocument();
+    expect(screen.queryByText("Install KYX")).not.toBeInTheDocument();
   });
 
   it("hides on appinstalled even without a click", () => {
     render(<InstallPrompt />);
     fireBeforeInstallPrompt();
-    expect(screen.getByText("Install PulseForge")).toBeInTheDocument();
+    expect(screen.getByText("Install KYX")).toBeInTheDocument();
     act(() => {
       window.dispatchEvent(new Event("appinstalled"));
     });
-    expect(screen.queryByText("Install PulseForge")).not.toBeInTheDocument();
+    expect(screen.queryByText("Install KYX")).not.toBeInTheDocument();
   });
 });

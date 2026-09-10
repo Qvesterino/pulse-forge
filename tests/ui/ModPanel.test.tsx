@@ -57,12 +57,12 @@ describe("ModPanel — Ultina deep-parameter lane targets (phase U1)", () => {
     const { container } = renderWithContext(<ModPanel />, { services: mockServices(doc) });
 
     // Filter input appears only for tracks hosting an Ultina.
-    const filter = screen.getByLabelText("Filter Ultina parameters") as HTMLInputElement;
+    const filter = screen.getByLabelText("Filter VLYX parameters") as HTMLInputElement;
 
     const picker = container.querySelector('select[aria-label="Automation target parameter"]')!;
     const optgroups = [...picker.querySelectorAll("optgroup")].map((g) => g.getAttribute("label"));
-    expect(optgroups.some((l) => l === "Ultina · Comp")).toBe(true);
-    expect(optgroups.some((l) => l === "Ultina · EQ")).toBe(true);
+    expect(optgroups.some((l) => l === "VLYX · Comp")).toBe(true);
+    expect(optgroups.some((l) => l === "VLYX · EQ")).toBe(true);
 
     const values = [...picker.querySelectorAll("option")].map((o) => o.value);
     expect(values).toContain("fxParam:fx-u1:comp.thresholdDb");
@@ -78,10 +78,10 @@ describe("ModPanel — Ultina deep-parameter lane targets (phase U1)", () => {
   it("no filter input and no deep groups without an Ultina on the track", () => {
     const doc = createProjectFromTemplate("house");
     const { container } = renderWithContext(<ModPanel />, { services: mockServices(doc) });
-    expect(screen.queryByLabelText("Filter Ultina parameters")).toBeNull();
+    expect(screen.queryByLabelText("Filter VLYX parameters")).toBeNull();
     const picker = container.querySelector('select[aria-label="Automation target parameter"]')!;
     const labels = [...picker.querySelectorAll("optgroup")].map((g) => g.getAttribute("label") ?? "");
-    expect(labels.every((l) => !l.startsWith("Ultina"))).toBe(true);
+    expect(labels.every((l) => !l.startsWith("VLYX"))).toBe(true);
   });
 
   it("adds a deep-parameter lane through the picker", async () => {

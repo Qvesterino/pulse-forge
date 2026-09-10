@@ -247,14 +247,14 @@ export function FxEqPanel({
   const valueOf = (id: string): number => params[id] ?? schema.defaultParams[id] ?? 0;
 
   return (
-    <div className="fxeq-panel" aria-label="FXEQ multiband editor">
+    <div className="fxeq-panel" aria-label="PRISM multiband editor">
       {degraded && (
-        <div className="fxeq-degraded">AudioWorklet unavailable — FXEQ is bypassed (1:1 signal)</div>
+        <div className="fxeq-degraded">AudioWorklet unavailable — PRISM is bypassed (1:1 signal)</div>
       )}
       <div className="fxeq-preset-row">
         <select
           className="fxeq-preset-select"
-          aria-label="FXEQ preset"
+          aria-label="PRISM preset"
           defaultValue=""
           onChange={(event) => {
             const preset = FXEQ_PRESETS.find((p) => p.name === event.target.value);
@@ -287,7 +287,7 @@ export function FxEqPanel({
       <div
         className="fxeq-canvas-wrap"
         role="img"
-        aria-label="FXEQ band map"
+        aria-label="PRISM band map"
         onClick={(e) => selectBandAt(e.clientX, e.currentTarget)}
       >
         <canvas ref={canvasRef} className="fxeq-canvas" />
@@ -296,7 +296,7 @@ export function FxEqPanel({
       <div
         className="fxeq-peaks-wrap"
         role="img"
-        aria-label="FXEQ band peaks"
+        aria-label="PRISM band peaks"
         title="Live per-band peak level — which band is playing hot right now"
       >
         <canvas ref={peaksCanvasRef} className="fxeq-peaks-canvas" />
@@ -308,7 +308,7 @@ export function FxEqPanel({
           type="button"
           className={`btn btn-small${valueOf(`band${selectedBand}.solo`) >= 0.5 ? " active" : ""}`}
           aria-pressed={valueOf(`band${selectedBand}.solo`) >= 0.5}
-          title="Solo — hear ONLY this frequency band through the whole FXEQ engine"
+          title="Solo — hear ONLY this frequency band through the whole PRISM engine"
           onClick={() => onParam(`band${selectedBand}.solo`, valueOf(`band${selectedBand}.solo`) >= 0.5 ? 0 : 1)}
         >
           SOLO

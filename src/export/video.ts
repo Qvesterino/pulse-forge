@@ -114,7 +114,7 @@ function drawFrame(
   ctx.fillText(title, w * 0.08, h * 0.12);
   ctx.font = `500 ${Math.round(w * 0.033)}px system-ui, sans-serif`;
   ctx.fillStyle = BRAND.textDim;
-  ctx.fillText(`${Math.round(opts.bpm)} BPM · PULSE FORGE`, w * 0.08, h * 0.155);
+  ctx.fillText(`${Math.round(opts.bpm)} BPM · KYX`, w * 0.08, h * 0.155);
 
   // Waveform band
   const bandTop = h * 0.24;
@@ -167,7 +167,7 @@ function drawFrame(
   ctx.fillText("PF", w / 2 - w * 0.075 + (w * 0.055 - mark.width) / 2, h * 0.875 + w * 0.04);
   ctx.fillStyle = BRAND.text;
   ctx.font = `700 ${Math.round(w * 0.045)}px system-ui, sans-serif`;
-  ctx.fillText("PULSE FORGE", w / 2 + w * 0.02, h * 0.912);
+  ctx.fillText("KYX", w / 2 + w * 0.02, h * 0.912);
   ctx.fillStyle = BRAND.textDim;
   ctx.font = `500 ${Math.round(w * 0.026)}px system-ui, sans-serif`;
   ctx.fillText("browser beat studio", w / 2, h * 0.945);

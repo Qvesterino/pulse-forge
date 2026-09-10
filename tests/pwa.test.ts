@@ -20,8 +20,8 @@ const publicDir = join(process.cwd(), "public");
 
 describe("PWA manifest config", () => {
   it("has required identity fields", () => {
-    expect(manifest.name).toMatch(/Pulse Forge/);
-    expect(manifest.short_name).toBe("Pulse Forge");
+    expect(manifest.name).toMatch(/KYX/);
+    expect(manifest.short_name).toBe("KYX");
     expect(manifest.start_url).toBe("/");
     expect(manifest.scope).toBe("/");
     expect(manifest.display).toBe("standalone");

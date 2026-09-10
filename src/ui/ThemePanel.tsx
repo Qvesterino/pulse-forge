@@ -98,7 +98,7 @@ export function ThemePanel() {
             onClick={async () => {
               try {
                 await navigator.clipboard.writeText(encodeThemeCode(theme));
-                setShareStatus("Theme code copied — paste it into any Pulse Forge");
+                setShareStatus("Theme code copied — paste it into any KYX");
               } catch {
                 setShareStatus("Clipboard blocked by the browser");
               }

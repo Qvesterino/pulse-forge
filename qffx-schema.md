@@ -1,6 +1,6 @@
 # QFFX Scorepack Schema
 
-Version 1.0 — Pulse Forge exports `.scorepack` ZIP files following this specification.
+Version 1.0 — KYX exports `.scorepack` ZIP files following this specification.
 
 ## Package structure
 
@@ -151,4 +151,4 @@ Per-scene intensity scalars and optional time-varying curves.
 
 ---
 
-*Created by Pulse Forge v1.0*
+*Created by KYX v1.0*

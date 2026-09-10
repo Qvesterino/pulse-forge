@@ -34,7 +34,7 @@ if (!container) throw new Error("Root element not found");
 const PATH = typeof location !== "undefined" ? location.pathname : "/";
 const ONBOARDED_KEY = "pf-onboarded";
 
-const ROUTE_FALLBACK = <div className="boot">PULSE FORGE — loading…</div>;
+const ROUTE_FALLBACK = <div className="boot">KYX — loading…</div>;
 
 // /embed — a standalone share player; skip the whole studio boot.
 if (/^\/embed(\/|$)/.test(PATH)) {
@@ -163,7 +163,7 @@ function Boot() {
   }, []);
 
   if (screen.kind === "booting") {
-    return <div className="boot">PULSE FORGE — forging audio engine…</div>;
+    return <div className="boot">KYX — forging audio engine…</div>;
   }
   if (screen.kind === "error") {
     return <div className="boot boot-error">Failed to start: {screen.message}</div>;
