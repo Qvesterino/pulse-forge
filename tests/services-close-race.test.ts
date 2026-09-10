@@ -66,6 +66,9 @@ function makeEngine(): AudioEngine {
     automationReset: vi.fn(),
     transportStarted: vi.fn(),
     restartFrozenSources: vi.fn(),
+    // Scene-tempo lane (Wave 1): the scheduler's tempo paths push the
+    // effective BPM into tempo-synced runtimes through services.
+    setEffectiveBpm: vi.fn(),
   } as unknown as AudioEngine;
 }
 
