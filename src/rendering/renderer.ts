@@ -186,6 +186,11 @@ export async function renderProject(
   engine.scheduleSceneIntensity(buildSceneIntensityPoints(doc, windows, totalTicks), timeAt);
 
   for (const window of windows) {
+    // Tempo-synced runtimes (texture SYNC delay, granular rate sync, LFO
+    // syncs) must see this window's scene tempo BEFORE its notes are
+    // scheduled — the live scheduler flips them at the seam boundary, so
+    // per-window parity keeps SYNC'd material aligned with the transport.
+    engine.setEffectiveBpm(window.bpm ?? null);
     scheduleDrums(doc, window, timeAt, engine);
     scheduleNotes(window, timeAt, 60 / ((window.bpm ?? doc.bpm) * PPQ), engine);
   }

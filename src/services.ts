@@ -322,8 +322,16 @@ export async function openProject(
     setSceneIntensity: (value) => engine.setSceneIntensity(value),
     scheduleSceneIntensity: (points, timeAt) => engine.scheduleSceneIntensity(points, timeAt),
     // Scene tempo lane: clips whose scene pins a BPM drive the transport
-    // (setBpm re-anchors position-preserving); null = project tempo.
-    applySceneTempo: (bpm) => transport.setBpm(bpm ?? store.doc.bpm),
+    // (setBpm re-anchors position-preserving); null = project tempo. The
+    // engine's tempo-synced runtimes follow the same effective tempo.
+    applySceneTempo: (bpm) => {
+      const effective = bpm ?? store.doc.bpm;
+      transport.setBpm(effective);
+      engine.setEffectiveBpm(effective);
+    },
+    // Tempo-seam flip commit: the transport re-anchors at the boundary via
+    // setBpmAnchored; the engine's SYNC-delay/LFO runtimes flip with it.
+    applyEngineTempo: (bpm) => engine.setEffectiveBpm(bpm),
     // MIDI out: the scheduler hands us the precise AudioContext time for the
     // event — convert it to a delay so hardware receives note on/off on the
     // musical timeline (previously both fired immediately, making drum hits

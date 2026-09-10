@@ -5,7 +5,7 @@ import { buildTempoMap } from "../src/rendering/renderer";
 import { Scheduler } from "../src/scheduler/Scheduler";
 import { Transport } from "../src/transport/Transport";
 import { BAR_TICKS, PPQ, STEP_TICKS } from "../src/project-model/types";
-import type { DrumTrack, ProjectDocument } from "../src/project-model/types";
+import type { DrumTrack, InstrumentTrack, ProjectDocument } from "../src/project-model/types";
 
 /**
  * Release roadmap 2.2 — scene-tempo seam. The scheduler must split its
@@ -65,8 +65,9 @@ function makeHarness(doc: ProjectDocument) {
   let audioTime = 10;
   const transport = new Transport({ now: () => audioTime }, doc.bpm);
   const triggers: { when: number; velocity: number }[] = [];
-  const captured: { tick: number; velocity: number; padId?: string }[] = [];
+  const captured: { tick: number; velocity: number; padId?: string; pitch?: number; duration?: number }[] = [];
   const tempoCalls: (number | null)[] = [];
+  const engineTempoCalls: number[] = [];
   const automationCalls: {
     from: number;
     to: number;
@@ -85,9 +86,21 @@ function makeHarness(doc: ProjectDocument) {
     applyPatternLaunch: () => {},
     applySceneTempo: (bpm) => {
       tempoCalls.push(bpm);
-      transport.setBpm(bpm ?? doc.bpm);
+      // Mirror the real services wiring: transport AND engine runtimes get
+      // the effective tempo on the immediate path.
+      const effective = bpm ?? doc.bpm;
+      transport.setBpm(effective);
+      engineTempoCalls.push(effective);
     },
-    recordCapturedEvent: (event) => captured.push({ tick: event.tick, velocity: event.velocity, padId: event.padId }),
+    applyEngineTempo: (bpm) => engineTempoCalls.push(bpm),
+    recordCapturedEvent: (event) =>
+      captured.push({
+        tick: event.tick,
+        velocity: event.velocity,
+        padId: event.padId,
+        pitch: event.pitch,
+        duration: event.duration,
+      }),
   });
   return {
     doc,
@@ -96,6 +109,7 @@ function makeHarness(doc: ProjectDocument) {
     triggers,
     captured,
     tempoCalls,
+    engineTempoCalls,
     automationCalls,
     advance: (seconds: number) => {
       audioTime += seconds;
@@ -218,6 +232,73 @@ describe("Scheduler — scene-tempo seam (roadmap 2.2)", () => {
     h.scheduler.start();
     h.advance(0.025);
     expect(h.transport.bpm).toBe(BPM_A);
+    h.scheduler.stop();
+  });
+
+  it("sustained notes take their duration from the LOCAL map tempo (old before the seam, new after)", () => {
+    // The live duration bug: in the split window the transport still runs the
+    // OLD tempo, so notes starting on the NEW side got old-tempo (2× too long
+    // at 120→240) durations live, while the offline render used the new one.
+    let doc = twoTempoSong();
+    const inst = doc.tracks.find((t): t is InstrumentTrack => t.kind === "instrument");
+    expect(inst).toBeDefined();
+    const seedNote = (patternId: string) => ({
+      ...doc,
+      patterns: doc.patterns.map((pat) =>
+        pat.id === patternId
+          ? {
+              ...pat,
+              notes: {
+                ...pat.notes,
+                [inst!.id]: [{ id: `sus-${patternId}`, pitch: 88, start: 0, duration: 480, velocity: 0.8 }],
+              },
+            }
+          : pat,
+      ),
+    });
+    // Both scenes share the house template's single pattern (see
+    // twoTempoSong's `patterns[1] ?? patterns[0]` fallback), so one seeded
+    // note fires in BOTH clip windows — old tempo in A, new in B.
+    doc = seedNote(doc.patterns[0].id);
+    if (doc.patterns[1]) doc = seedNote(doc.patterns[1].id);
+    const h = makeHarness(doc);
+    h.transport.play(0);
+    h.scheduler.start();
+    while (h.time < 19.2) h.advance(0.025);
+    h.scheduler.stop();
+
+    // A quarter note (480 ticks) lasts 0.5 s at 120 BPM and 0.25 s at 240.
+    const sptA = 60 / (BPM_A * PPQ);
+    const sptB = 60 / (BPM_B * PPQ);
+    const noteDur = (tick: number) => {
+      const events = h.captured.filter((e) => e.padId === undefined && e.pitch === 88 && e.tick === tick);
+      expect(events.length, `note at tick ${tick} must be captured`).toBeGreaterThan(0);
+      return events[0].duration;
+    };
+    // Old side (clip A cycles) — old tempo. New side (clip B) — NEW tempo,
+    // even though the transport had not re-anchored yet when the note was
+    // scheduled inside the split window.
+    expect(noteDur(0)).toBeCloseTo(480 * sptA, 6);
+    expect(noteDur(5760)).toBeCloseTo(480 * sptA, 6);
+    expect(noteDur(B)).toBeCloseTo(480 * sptB, 6);
+    expect(noteDur(B + BAR_TICKS)).toBeCloseTo(480 * sptB, 6);
+  });
+
+  it("pushes the effective tempo to the engine at the flip and restores doc BPM on stop", () => {
+    const h = makeHarness(twoTempoSong());
+    h.transport.play(0);
+    h.scheduler.start();
+    // First window: the active scene's tempo reaches the engine immediately.
+    expect(h.engineTempoCalls[0]).toBe(BPM_A);
+    while (h.time < 19.2) h.advance(0.025);
+    expect(h.transport.bpm).toBe(BPM_B);
+    // The flip commit handed the NEW tempo to the engine (SYNC delays/LFO
+    // syncs flip with the transport, not a window late).
+    expect(h.engineTempoCalls).toContain(BPM_B);
+    expect(h.engineTempoCalls.at(-1)).toBe(BPM_B);
+    h.scheduler.stop();
+    // stop() hands tempo control back to the project tempo — engine too.
+    expect(h.engineTempoCalls.at(-1)).toBe(h.doc.bpm);
     h.scheduler.stop();
   });
 });

@@ -263,6 +263,7 @@ function yMapToScene(m: unknown): Scene {
       : undefined,
     loop: map.get("loop") as boolean | undefined,
     role: map.get("role") as Scene["role"],
+    bpm: map.has("bpm") ? (map.get("bpm") as number) : undefined,
   };
 }
 
@@ -569,7 +570,7 @@ const PAD_SCALARS = [
 ];
 const EFFECT_SCALARS = ["type", "bypassed", "sidechainTrackId"];
 const NOTE_SCALARS = ["pitch", "start", "duration", "velocity"];
-const SCENE_SCALARS = ["name", "patternId", "intensity", "loop", "role"];
+const SCENE_SCALARS = ["name", "patternId", "intensity", "loop", "role", "bpm"];
 const CLIP_SCALARS = ["sceneId", "startBar", "lengthBars", "loop"];
 const TRANSITION_SCALARS = ["fromClipId", "toClipId", "type", "lengthBars", "cueAssetId"];
 const MARKER_SCALARS = ["name", "type", "tick", "linkedClipId", "customId"];
@@ -1082,6 +1083,7 @@ function sceneToYMap(s: Scene): Y.Map<unknown> {
   }
   if (s.loop !== undefined) m.set("loop", s.loop);
   if (s.role !== undefined) m.set("role", s.role);
+  if (s.bpm !== undefined) m.set("bpm", s.bpm);
   return m;
 }
 

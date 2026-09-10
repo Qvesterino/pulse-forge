@@ -393,6 +393,8 @@ export class AudioEngine {
   private meterHistoryR: number[] = [];
   private meterLoudnessBlocks: number[] = [];
   private syncedBpm = 0;
+  /** Active scene BPM override (song mode) — null = runtimes follow doc.bpm. */
+  private sceneBpmOverride: number | null = null;
 
   attachBank(bank: SampleBank): void {
     this.bank = bank;
@@ -1548,15 +1550,37 @@ export class AudioEngine {
     this.syncMacros(doc);
     this.syncPdc();
 
-    if (this.syncedBpm !== doc.bpm) {
-      this.syncedBpm = doc.bpm;
-      for (const nodes of this.trackNodes.values()) {
-        for (const rt of nodes.fx.runtimes.values()) rt.syncBpm?.(doc.bpm);
-      }
-      // Instrument runtimes: tempo-synced modulators (LFO sync, texture delay,
-      // granular rate sync) pick the new tempo up live.
-      for (const inst of this.instruments.values()) inst.runtime.syncBpm?.(doc.bpm);
+    // Tempo-synced runtimes follow the EFFECTIVE tempo: an active scene BPM
+    // override wins; otherwise doc changes propagate (pushSyncBpm is
+    // change-guarded, so this is a no-op while nothing moved).
+    this.pushSyncBpm(this.sceneBpmOverride ?? doc.bpm);
+  }
+
+  /**
+   * Push the EFFECTIVE transport tempo into tempo-synced runtimes without
+   * touching the persisted doc.bpm. In song mode a scene may pin its own
+   * BPM: the scheduler drives the transport to it (immediately on a seek,
+   * at the seam boundary for a flip), and without this call texture's SYNC
+   * delay, granular rate sync and LFO syncs would keep running at the
+   * project tempo while the transport runs at the scene tempo. The offline
+   * renderer calls this per clip window for live==offline parity.
+   * `null` clears the scene override — runtimes return to doc.bpm.
+   */
+  setEffectiveBpm(bpm: number | null): void {
+    this.sceneBpmOverride = bpm;
+    const effective = bpm ?? this.doc?.bpm;
+    if (effective != null && Number.isFinite(effective)) this.pushSyncBpm(effective);
+  }
+
+  private pushSyncBpm(bpm: number): void {
+    if (this.syncedBpm === bpm) return;
+    this.syncedBpm = bpm;
+    for (const nodes of this.trackNodes.values()) {
+      for (const rt of nodes.fx.runtimes.values()) rt.syncBpm?.(bpm);
     }
+    // Instrument runtimes: tempo-synced modulators (LFO sync, texture delay,
+    // granular rate sync) pick the new tempo up live.
+    for (const inst of this.instruments.values()) inst.runtime.syncBpm?.(bpm);
   }
 
   /**

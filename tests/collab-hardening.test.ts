@@ -250,6 +250,7 @@ describe("YDocAdapter — full-document conformance", () => {
           intensity: 0.8,
           loop: true,
           role: "drop",
+          bpm: 152,
           intensityCurve: [
             { offset: 0, value: 0.2 },
             { offset: 480, value: 1 },

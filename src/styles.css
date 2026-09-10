@@ -2146,6 +2146,81 @@ button {
   overflow-y: hidden;
 }
 
+/* Scene-intensity lane (VISION §11): a 0..1 editable curve strip under the
+   clip lane. Point handles are DOM spans; the curve is one SVG per lane. */
+.arr-intensity-lane {
+  position: relative;
+  height: 44px;
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid #23262d;
+  touch-action: none;
+  user-select: none;
+}
+
+.arr-intensity-label {
+  position: absolute;
+  left: 6px;
+  top: 3px;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: #5b6069;
+  pointer-events: none;
+}
+
+.arr-intensity-value {
+  position: absolute;
+  left: 6px;
+  bottom: 3px;
+  font-size: 10px;
+  color: var(--accent);
+  pointer-events: none;
+}
+
+.arr-intensity-neutral {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: #2c3037;
+  pointer-events: none;
+}
+
+.arr-intensity-clipspan {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.025);
+  border-left: 1px solid #23262d;
+  pointer-events: none;
+}
+
+.arr-intensity-svg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.arr-intensity-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.6;
+}
+
+.arr-intensity-point {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 1px solid #0e0f12;
+  transform: translate(-50%, -50%);
+  cursor: grab;
+}
+
+.arr-intensity-point:hover {
+  background: #ffd27a;
+}
+
 .arr-status-strip {
   display: flex;
   align-items: center;

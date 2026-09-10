@@ -884,11 +884,14 @@ function MacroCard({ macro }: { macro: ReturnType<typeof useDoc>["macros"][numbe
     param: "gain" | "pan" | "param";
     deviceId: string;
     paramId: string;
+    /** What drives the mapping — the macro knob itself, or the scene-intensity signal. */
+    source: "macro" | "intensity";
   }>({
     trackId: doc.tracks[0]?.id ?? "",
     param: "gain",
     deviceId: "",
     paramId: "",
+    source: "macro",
   });
   const [learning, setLearning] = useState(false);
   const [macroParamFilter, setMacroParamFilter] = useState("");
@@ -1086,6 +1089,17 @@ function MacroCard({ macro }: { macro: ReturnType<typeof useDoc>["macros"][numbe
               </select>
             </>
           )}
+          <select
+            aria-label="Macro mapping source"
+            title="MACRO = the macro knob · SCENE = the scene-intensity signal (VISION §11)"
+            value={mapDraft.source}
+            onChange={(event) =>
+              setMapDraft((prev) => ({ ...prev, source: event.target.value as "macro" | "intensity" }))
+            }
+          >
+            <option value="macro">MACRO</option>
+            <option value="intensity">SCENE</option>
+          </select>
           <button
             type="button"
             className="btn btn-small"
@@ -1093,16 +1107,26 @@ function MacroCard({ macro }: { macro: ReturnType<typeof useDoc>["macros"][numbe
               if (mapDraft.param === "param") {
                 if (!activeDeviceId || !activeParamId) return;
                 services.store.execute(
-                  addMacroTargetMapping(services.store.doc, macro.id, {
-                    kind: activeDeviceId === "instrument" ? "instParam" : "fxParam",
-                    trackId: mapDraft.trackId,
-                    ...(activeDeviceId === "instrument" ? {} : { fxId: activeDeviceId }),
-                    paramId: activeParamId,
-                  }),
+                  addMacroTargetMapping(
+                    services.store.doc,
+                    macro.id,
+                    {
+                      kind: activeDeviceId === "instrument" ? "instParam" : "fxParam",
+                      trackId: mapDraft.trackId,
+                      ...(activeDeviceId === "instrument" ? {} : { fxId: activeDeviceId }),
+                      paramId: activeParamId,
+                    },
+                    0.5,
+                    { source: mapDraft.source },
+                  ),
                 );
                 return;
               }
-              services.store.execute(addMacroMapping(services.store.doc, macro.id, mapDraft.trackId, mapDraft.param));
+              services.store.execute(
+                addMacroMapping(services.store.doc, macro.id, mapDraft.trackId, mapDraft.param, {
+                  source: mapDraft.source,
+                }),
+              );
             }}
           >
             + MAP

@@ -27,6 +27,7 @@ import {
   renameScene,
   reorderScenes,
   resizeArrangementClip,
+  setSceneIntensityCurve,
   setSceneRole,
   resizeAudioClip,
   splitAudioClipAtTick,
@@ -36,8 +37,15 @@ import {
   sliceToPads,
 } from "../commands/commands";
 import { sceneRoleOf } from "../project-model/schema";
-import type { ArrangementTransitionType, SceneRole } from "../project-model/types";
-import { BAR_TICKS, PPQ } from "../project-model/types";
+import { computeSceneIntensity } from "../project-model/intensity";
+import type {
+  ArrangementClip,
+  ArrangementTransitionType,
+  IntensityPoint,
+  ProjectDocument,
+  SceneRole,
+} from "../project-model/types";
+import { BAR_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
 import { detectLoopBpm } from "../audio-engine/bpm-detect";
 import { extractGroove } from "../audio-engine/groove-extract";
 import { analyzeLoopForFlip, buildFlipOptions, flipSeed } from "../ai/flip";
@@ -90,6 +98,7 @@ export function ArrangementPanel() {
   const [selectedSceneId, setSelectedSceneId] = useState(doc.scenes[0]?.id ?? "");
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [rulerMode, setRulerMode] = useState<"bars" | "seconds">("bars");
+  const [showIntensity, setShowIntensity] = useState(true);
   const [showSkeletonPreview, setShowSkeletonPreview] = useState(false);
   const [transitionBoundary, setTransitionBoundary] = useState<TransitionBoundary | null>(null);
   const [transitionDraft, setTransitionDraft] = useState<TransitionDraft>({
@@ -680,6 +689,15 @@ export function ArrangementPanel() {
             </button>
             <button
               type="button"
+              className={`btn btn-small${showIntensity ? " active-solo" : ""}`}
+              aria-pressed={showIntensity}
+              title="Show the scene-intensity lane under the clip lane"
+              onClick={() => setShowIntensity((value) => !value)}
+            >
+              INT
+            </button>
+            <button
+              type="button"
               className="btn btn-small"
               disabled={!selectedScene}
               onClick={() => selectedScene && placeScene(selectedScene.id, appendBar())}
@@ -1155,6 +1173,15 @@ export function ArrangementPanel() {
                 </div>
               );
             })}
+            {showIntensity && (
+              <IntensityLane
+                doc={doc}
+                clips={clips}
+                totalBars={totalBars}
+                playheadBar={playheadBar}
+                onEdit={(sceneId, curve) => execute(setSceneIntensityCurve(services.store.doc, sceneId, curve))}
+              />
+            )}
           </div>
         </div>
 
@@ -1709,5 +1736,256 @@ function AudioClipWaveform({ buffer, reverse }: { buffer: AudioBuffer | null; re
       style={{ width: "100%", height: 28 }}
       aria-label="Audio waveform (min/max envelope like WavetablePreview)"
     />
+  );
+}
+
+const INTENSITY_LANE_HEIGHT = 44;
+const INTENSITY_NEUTRAL = 0.7;
+
+interface IntensityHandle {
+  sceneId: string;
+  /** Index into the SCENE's full curve array (points outside visible windows keep their slot). */
+  index: number;
+  /** Absolute tick of the point (clip start + scene-local offset). */
+  absTick: number;
+  value: number;
+}
+
+/**
+ * Scene-intensity lane on the arrangement timeline (VISION §11): the engine
+ * already schedules `scene.intensityCurve` live and offline — this lane makes
+ * the curve VISIBLE and editable in place. One strip under the clip lane,
+ * one curve segment per scene clip window, points committed through the same
+ * undoable `setSceneIntensityCurve` command the ModPanel editor uses.
+ */
+function IntensityLane({
+  doc,
+  clips,
+  totalBars,
+  playheadBar,
+  onEdit,
+}: {
+  doc: ProjectDocument;
+  clips: ArrangementClip[];
+  totalBars: number;
+  playheadBar: number;
+  onEdit: (sceneId: string, curve: IntensityPoint[]) => void;
+}) {
+  const laneRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{
+    sceneId: string;
+    index: number;
+    curve: IntensityPoint[];
+    origOffset: number;
+    origValue: number;
+    /** Absolute tick of the handle when the drag began. */
+    originAbsTick: number;
+  } | null>(null);
+  const [live, setLive] = useState<{ sceneId: string; index: number; absTick: number; value: number } | null>(null);
+  const width = totalBars * BAR_WIDTH;
+  const pxPerTick = BAR_WIDTH / BAR_TICKS;
+  const yFor = (value: number) => INTENSITY_LANE_HEIGHT - value * INTENSITY_LANE_HEIGHT;
+
+  const scenesById = new Map(doc.scenes.map((s) => [s.id, s]));
+  /** Points of every scene curve that fall inside their owning clip window. */
+  const handles: IntensityHandle[] = [];
+  const segments: {
+    key: string;
+    sceneId: string;
+    clipStartTick: number;
+    clipEndTick: number;
+    points: IntensityPoint[];
+  }[] = [];
+  for (const clip of clips) {
+    const scene = scenesById.get(clip.sceneId);
+    if (!scene) continue;
+    const clipStartTick = clip.startBar * BAR_TICKS;
+    const clipEndTick = clipStartTick + clip.lengthBars * BAR_TICKS;
+    const curve = scene.intensityCurve ?? [];
+    const points: IntensityPoint[] = [];
+    curve.forEach((p, index) => {
+      const absTick = clipStartTick + p.offset;
+      if (absTick < clipStartTick || absTick > clipEndTick) return;
+      handles.push({ sceneId: scene.id, index, absTick, value: p.value });
+      points.push(p);
+    });
+    segments.push({ key: `${scene.id}:${clipStartTick}`, sceneId: scene.id, clipStartTick, clipEndTick, points });
+  }
+
+  const renderHandles = live
+    ? handles.map((h) =>
+        h.sceneId === live.sceneId && h.index === live.index ? { ...h, absTick: live.absTick, value: live.value } : h,
+      )
+    : handles;
+
+  const localFromEvent = (event: React.PointerEvent): { absTick: number; value: number } | null => {
+    const lane = laneRef.current;
+    if (!lane) return null;
+    const rect = lane.getBoundingClientRect();
+    const x = Math.max(0, Math.min(rect.width, event.clientX - rect.left));
+    const y = Math.max(0, Math.min(rect.height, event.clientY - rect.top));
+    return {
+      absTick: Math.round(x / pxPerTick / STEP_TICKS) * STEP_TICKS,
+      value: Math.min(1, Math.max(0, 1 - y / INTENSITY_LANE_HEIGHT)),
+    };
+  };
+
+  const handleAt = (event: { clientX: number; clientY: number }): IntensityHandle | null => {
+    const lane = laneRef.current;
+    if (!lane) return null;
+    const rect = lane.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    let best: { handle: IntensityHandle; dist: number } | null = null;
+    for (const handle of handles) {
+      const dx = Math.abs(handle.absTick * pxPerTick - x);
+      const dy = Math.abs(yFor(handle.value) - y);
+      if (dx < 9 && dy < 9 && (!best || dx + dy < best.dist)) best = { handle, dist: dx + dy };
+    }
+    return best?.handle ?? null;
+  };
+
+  const clipAt = (absTick: number): ArrangementClip | null =>
+    clips.find((c) => absTick >= c.startBar * BAR_TICKS && absTick < (c.startBar + c.lengthBars) * BAR_TICKS) ?? null;
+
+  const onPointerDown = (event: React.PointerEvent) => {
+    if (event.button !== 0) return;
+    const local = localFromEvent(event);
+    if (!local) return;
+    const hit = handleAt(event);
+    if (hit) {
+      const scene = scenesById.get(hit.sceneId);
+      if (!scene) return;
+      const curve = [...(scene.intensityCurve ?? [])];
+      dragRef.current = {
+        sceneId: hit.sceneId,
+        index: hit.index,
+        curve,
+        origOffset: curve[hit.index]?.offset ?? 0,
+        origValue: curve[hit.index]?.value ?? 0,
+        originAbsTick: hit.absTick,
+      };
+      setLive({ sceneId: hit.sceneId, index: hit.index, absTick: hit.absTick, value: hit.value });
+      event.currentTarget.setPointerCapture(event.pointerId);
+      return;
+    }
+    // Empty space inside a clip window: add a point (quantized to a step).
+    const clip = clipAt(local.absTick);
+    if (!clip) return;
+    const scene = scenesById.get(clip.sceneId);
+    if (!scene) return;
+    const offset = local.absTick - clip.startBar * BAR_TICKS;
+    onEdit(scene.id, [...(scene.intensityCurve ?? []), { offset, value: local.value }]);
+  };
+
+  const onPointerMove = (event: React.PointerEvent) => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    const local = localFromEvent(event);
+    if (!local) return;
+    const clip =
+      clipAt(local.absTick) ??
+      clipAt(handles.find((h) => h.sceneId === drag.sceneId && h.index === drag.index)?.absTick ?? -1);
+    if (!clip) return;
+    const offset = Math.max(0, Math.min(clip.lengthBars * BAR_TICKS, local.absTick - clip.startBar * BAR_TICKS));
+    setLive({
+      sceneId: drag.sceneId,
+      index: drag.index,
+      absTick: clip.startBar * BAR_TICKS + offset,
+      value: local.value,
+    });
+  };
+
+  const onPointerUp = () => {
+    const drag = dragRef.current;
+    const livePos = live;
+    dragRef.current = null;
+    setLive(null);
+    if (!drag || !livePos) return;
+    const clip = clipAt(livePos.absTick);
+    if (!clip) return;
+    const newOffset = livePos.absTick - clip.startBar * BAR_TICKS;
+    // The dragged handle's scene-local origin (its offset when the drag began).
+    const originClip = clipAt(drag.originAbsTick);
+    const origOffset = originClip ? drag.originAbsTick - originClip.startBar * BAR_TICKS : drag.origOffset;
+    if (newOffset === origOffset && livePos.value === drag.origValue) return;
+    const updated = [...drag.curve];
+    updated[drag.index] = { offset: newOffset, value: livePos.value };
+    onEdit(drag.sceneId, updated);
+  };
+
+  const onContextMenu = (event: React.MouseEvent) => {
+    event.preventDefault();
+    const hit = handleAt(event);
+    if (!hit) return;
+    const scene = scenesById.get(hit.sceneId);
+    if (!scene) return;
+    onEdit(
+      hit.sceneId,
+      (scene.intensityCurve ?? []).filter((_, i) => i !== hit.index),
+    );
+  };
+
+  // Live value readout at the playhead (the number the engine feeds macros).
+  const activeClip = clips.find(
+    (clip) => playheadBar >= clip.startBar && playheadBar < clip.startBar + clip.lengthBars,
+  );
+  const activeScene = activeClip ? scenesById.get(activeClip.sceneId) : undefined;
+  const playheadValue =
+    activeClip && activeScene
+      ? computeSceneIntensity(activeScene, activeClip.startBar * BAR_TICKS, Math.round(playheadBar * BAR_TICKS))
+      : null;
+
+  return (
+    <div
+      className="arr-intensity-lane"
+      ref={laneRef}
+      style={{ width }}
+      data-playhead-value={playheadValue !== null ? playheadValue.toFixed(2) : undefined}
+      title="Scene intensity — click to add a point, drag to shape, right-click to delete"
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={() => {
+        dragRef.current = null;
+        setLive(null);
+      }}
+      onContextMenu={onContextMenu}
+    >
+      <span className="arr-intensity-label">INTENSITY</span>
+      {playheadValue !== null && <span className="arr-intensity-value">{Math.round(playheadValue * 100)}%</span>}
+      <div className="arr-intensity-neutral" style={{ top: yFor(INTENSITY_NEUTRAL) }} />
+      {segments.map((segment) => (
+        <div
+          key={segment.key}
+          className="arr-intensity-clipspan"
+          style={{
+            left: segment.clipStartTick * pxPerTick,
+            width: (segment.clipEndTick - segment.clipStartTick) * pxPerTick,
+          }}
+        />
+      ))}
+      <svg className="arr-intensity-svg" width={width} height={INTENSITY_LANE_HEIGHT}>
+        {segments.map((segment) => {
+          const pts = segment.points
+            .map((p) => {
+              const handle = renderHandles.find(
+                (h) => h.sceneId === segment.sceneId && h.absTick === segment.clipStartTick + p.offset,
+              );
+              const value = handle ? handle.value : p.value;
+              return `${(segment.clipStartTick + p.offset) * pxPerTick},${yFor(value)}`;
+            })
+            .join(" ");
+          return pts ? <polyline key={segment.key} className="arr-intensity-line" points={pts} /> : null;
+        })}
+      </svg>
+      {renderHandles.map((handle, i) => (
+        <span
+          key={`${handle.sceneId}:${handle.index}:${i}`}
+          className="arr-intensity-point"
+          style={{ left: handle.absTick * pxPerTick, top: yFor(handle.value) }}
+        />
+      ))}
+    </div>
   );
 }

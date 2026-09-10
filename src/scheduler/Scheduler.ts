@@ -75,6 +75,8 @@ export interface SchedulerDeps {
   scheduleSceneIntensity?(points: Array<{ tick: number; value: number }>, timeAt: (tick: number) => number): void;
   /** Apply the active scene's tempo (null = follow the project tempo). */
   applySceneTempo?(bpm: number | null): void;
+  /** The transport's tempo actually changed (flip commit) — tempo-synced engine runtimes follow. */
+  applyEngineTempo?(bpm: number): void;
   /** Trigger an arrangement AudioClip buffer at an absolute tick. */
   triggerAudioClip?(clip: import("../project-model/types").AudioClip, when: number, durationSec: number): void;
   /** Metronome click for count-in / pre-roll (downbeat = bar start accent). */
@@ -309,6 +311,10 @@ export class Scheduler {
       // skip up to one tick-worth of grid right after the seam.
       transport.setBpmAnchored(flip.bpm, flip.atTick, flip.boundaryTime);
       this.lastAppliedTempo = flip.bpm;
+      // Tempo-synced engine runtimes (SYNC delays, LFO syncs) flip at the
+      // same instant — otherwise they stay at the project tempo while the
+      // transport runs the scene tempo.
+      this.deps.applyEngineTempo?.(flip.bpm);
     }
     // Defect A01.D2 (scheduler precision audit): windowEnd is declared
     // before the loop-wrap block so the post-wrap clamp can shorten it
@@ -737,6 +743,13 @@ export class Scheduler {
     // on the NEW tempo integrated from the boundary, not on the not-yet-
     // re-anchored transport map).
     const timeAt = timeAtOverride ?? ((tick: number) => transport.timeAtTick(tick));
+    // Local seconds-per-tick from the SAME map that schedules the note's
+    // `when`: in a tempo-split window the transport still runs the OLD tempo
+    // until the flip, so `transport.secondsPerTick` gave notes started on the
+    // far side of the boundary (and its 1-tick neighbourhood) wrong LIVE
+    // durations while the offline render (per-clip windows) used the new
+    // tempo. A 1-tick delta of a piecewise-linear map is its exact local spt.
+    const sptAt = (tick: number) => timeAt(tick + 1) - timeAt(tick);
     const audible = (when: number) => when >= now - 0.002;
 
     for (const hit of drumHitsInWindow(doc, pattern, base, windowStart, windowEnd)) {
@@ -789,7 +802,7 @@ export class Scheduler {
         event.note.pitch,
         event.note.velocity,
         when,
-        event.note.duration * transport.secondsPerTick,
+        event.note.duration * sptAt(event.tick),
         slideFrom?.tick,
         slideFrom?.pitch,
         locks,
@@ -801,14 +814,14 @@ export class Scheduler {
         pitch: event.note.pitch,
         velocity: event.note.velocity,
         tick: event.tick,
-        duration: event.note.duration * transport.secondsPerTick,
+        duration: event.note.duration * sptAt(event.tick),
       });
       // MIDI output for instrument tracks
       if (this.deps.midiNoteOn && track.midiOutput?.enabled) {
         const ch = (track.midiOutput.channel || 1) - 1;
         this.deps.midiNoteOn(track.id, ch, event.note.pitch, Math.round(event.note.velocity * 127), when);
         if (this.deps.midiNoteOff) {
-          const noteOffWhen = when + event.note.duration * transport.secondsPerTick;
+          const noteOffWhen = when + event.note.duration * sptAt(event.tick);
           this.deps.midiNoteOff(track.id, ch, event.note.pitch, noteOffWhen);
         }
       }

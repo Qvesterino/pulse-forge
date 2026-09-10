@@ -4030,6 +4030,7 @@ export function addMacroMapping(
   macroId: string,
   trackId: string,
   param: "gain" | "pan",
+  options?: { source?: "macro" | "intensity" },
 ): Command {
   const owner = targetOwner(doc, trackId);
   if (!owner) throw new Error(`Track or return ${trackId} not found`);
@@ -4044,6 +4045,7 @@ export function addMacroMapping(
     // first-class target so the engine applies the same macro semantics to
     // the return gain node instead of silently ignoring the mapping.
     ...(owner.kind === "return" ? { target: { kind: "trackGain" as const, trackId } } : {}),
+    ...(options?.source ? { source: options.source } : {}),
   };
   const next: ProjectDocument = {
     ...dMap(doc, macroId, (m) => ({ ...m, mappings: [...m.mappings, mapping] })),
@@ -4104,6 +4106,7 @@ export function addMacroTargetMapping(
   macroId: string,
   target: import("../project-model/types").AutomationTarget,
   amount = 0.5,
+  options?: { source?: "macro" | "intensity" },
 ): Command {
   if (!doc.macros.some((m) => m.id === macroId)) throw new Error(`Macro ${macroId} not found`);
   if (target.kind === "fxParam" && (!target.fxId || !target.paramId))
@@ -4115,7 +4118,7 @@ export function addMacroTargetMapping(
     trackId: target.trackId,
     param: target.kind,
     amount: clamp(amount, -1, 1),
-    source: "macro",
+    source: options?.source ?? "macro",
     target: { ...target },
   };
   const next: ProjectDocument = {

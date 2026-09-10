@@ -6,6 +6,7 @@ import {
   addAutomationPoint,
   addLfo,
   addMacroMapping,
+  addMacroTargetMapping,
   addEffect,
   addNote,
   clearPattern,
@@ -763,6 +764,39 @@ describe("automation, lfo and macros", () => {
     const macro = doc.macros[0];
     expect(() => addMacroMapping(store.doc, macro.id, "track-missing", "gain")).toThrow(/Track/);
     expect(() => addMacroMapping(store.doc, "macro-missing", doc.tracks[0].id, "gain")).toThrow(/Macro/);
+  });
+
+  it("macro mappings can be sourced from the scene-intensity signal (VISION §11)", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    const macro = store.doc.macros[0];
+    const trackId = store.doc.tracks[0].id;
+
+    // Default stays back-compat: no source field at all.
+    store.execute(addMacroMapping(store.doc, macro.id, trackId, "gain"));
+    expect(store.doc.macros[0].mappings.at(-1)!.source).toBeUndefined();
+
+    // SCENE source: the engine's syncMacros drives this mapping from the
+    // scene-intensity signal instead of the macro knob.
+    const beforeIntensity = store.doc.macros[0].mappings.length;
+    store.execute(addMacroMapping(store.doc, macro.id, trackId, "gain", { source: "intensity" }));
+    // The template macro ships with default mappings — the new one is last.
+    expect(store.doc.macros[0].mappings.at(-1)!.source).toBe("intensity");
+    store.undo();
+    expect(store.doc.macros[0].mappings).toHaveLength(beforeIntensity);
+    expect(store.doc.macros[0].mappings.at(-1)!.source).toBeUndefined();
+
+    // Generic FX/inst targets take the source too.
+    store.execute(addEffect(store.doc, trackId, "eq"));
+    const fxId = getDrumTrack(store.doc).effects[0].id;
+    store.execute(
+      addMacroTargetMapping(store.doc, macro.id, { kind: "fxParam", trackId, fxId, paramId: "lowGain" }, 0.5, {
+        source: "intensity",
+      }),
+    );
+    const targetMapping = store.doc.macros[0].mappings.at(-1)!;
+    expect(targetMapping.source).toBe("intensity");
+    expect(targetMapping.target).toEqual({ kind: "fxParam", trackId, fxId, paramId: "lowGain" });
   });
 });
 
