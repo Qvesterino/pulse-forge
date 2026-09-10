@@ -1,21 +1,21 @@
 # Pulse Forge — Prehľad instrumentov a pluginov
 
-> Stav k **1. 9. 2026** (main). Zdroje: `src/instruments/registry.ts`, `src/instruments/wavetables.ts`,
+> Stav k **10. 9. 2026** (main). Zdroje: `src/instruments/registry.ts`, `src/instruments/wavetables.ts`,
 > `src/project-model/types.ts`, `src/effects/registry.ts`, `src/effects/presets.ts`, `src/presets/factory.ts`.
 
 Pulse Forge momentálne disponuje:
 
 | Sekcia | Počet | Kde |
 | --- | --- | --- |
-| Melodické inštrumenty (inštrumentová stopa) | **13** | `src/instruments/registry.ts` |
+| Melodické inštrumenty (inštrumentová stopa) | **14** | `src/instruments/registry.ts` |
 | Drum syntetizátory (pady bubnovej stopy) | **7** | `src/project-model/types.ts` + `src/audio-engine/synth-voices.ts` |
 | Veľké pluginy (vendored DSP rack) | **3** — FXEQ, Ultina, Ozvena | `src/effects/*-core/` |
 | Ostatné mixové FX (effect rack) | **32** | `src/effects/registry.ts` |
-| Factory presety | **169 inštrumentových + 12 bubnových** | `src/presets/factory.ts` |
+| Factory presety | **182 inštrumentových + 6 bubnových** | `src/presets/factory.ts` |
 
 ---
 
-## 1. Melodické inštrumenty (10)
+## 1. Melodické inštrumenty (14)
 
 Všetky inštrumenty sú WebAudio grafy na main threadu s per-voice stateful filterom
 (AudioWorklet `svfilter-processor`, fallback biquad LP). Spoločné črty:
@@ -24,7 +24,7 @@ Všetky inštrumenty sú WebAudio grafy na main threadu s per-voice stateful fil
 - **Deterministické plánovanie** — obálky a grainy sa plánujú dopredu, takže offline render znie identicky ako live playback.
 - **Live parametre** — CUTOFF/RESO sa mení plynule (`setTargetAtTime`) aj počas hrania.
 - **Glide/portamento** — podpora sliding na Bass, 808, Log Drum (frekvenčný ramp) a Sampler (playbackRate ramp).
-- **MPE poly aftertouch** — na 8 inštrumentoch (Analog, Bass, Sampler, Wavetable, Keys, Pluck, Spectral, Log Drum): tlak na notu otvorí **len jej filter** až +50 % nad per-note bázu (vrátane keytracku/V-FLT); tlak 0 vracia CUTOFF. Per-voice cez filter→nota mapy, takže akord sa dá „obraľovať" notu po note.
+- **MPE poly aftertouch** — na 9 inštrumentoch (Analog, Bass, Sampler, Wavetable, Keys, Pluck, Spectral, Log Drum, FM): tlak na notu otvorí **len jej filter** až +50 % nad per-note bázu (vrátane keytracku/V-FLT); FM nemá filter, takže tlak mapuje na INDEX (jas modulácie) s tým istým +50 % stropom. Tlak 0 vracia bázu. Per-voice cez filter→nota mapy, takže akord sa dá „obraľovať" notu po note.
 - **Filter je stabilný v celej rovine cutoff × rezonancia** — Chamberlin SVF má numerický stabilita clamp (`f·q`), takže extrémne nastavenia (vysoký cutoff + nízka rezonancia) neprejdú do clamp limit cyklu; len mierne zmenšia efektívnu rezonanciu v tom rohu.
 - **Panic/dispose** — okamžité utíšenie všetkých hlasov.
 
@@ -135,7 +135,17 @@ Granulárny sampler — každá nota naplánuje celý grain cloud dopredu (deter
 - **UNISON 1–3× + SPREAD** — FM-friendly unison: detuned kópie telového páru A pri zníženej úrovni
 - Velocity riadi FM jas — mäkšie údery = okrúhlejší zvuk
 
-### 1.9 Pluck Synth (`pluck`) — 12 hlasov
+### 1.9 FM Synth (`fm`) — 10 hlasov
+Klasické **2-operačné DX-style FM**: modulátor → modGain → `carrier.frequency`, voliteľná self-feedback modulátora (128-vzorkové oneskorenie láme WebAudio cyklus) pre growl. Deviácia škáluje s frekvenciou nosiča → rovnomerná hustota bočných pásov po klávesnici.
+
+- RATIO — pomer modulátora (0,25–16), INDEX — hĺbka modulácie
+- M-DECAY / M-SUS — obálka indexu (plná pri ataku → sustain zlomok)
+- FEEDBK / FB-DECAY / FB-SUS — growl spätná väzba s vlastnou obálkou
+- M-WAVE — SIN / TRI / SQR, amp ADSR, LEVEL
+- **Live tonové parametre** — RATIO/INDEX/M-DECAY/M-SUS/FEEDBK/FB-DECAY/FB-SUS retunujú bežiaci hlas naživo (živý krúžok aj automation); M-WAVE a amp obálka platia pre nové noty
+- Velocity riadi INDEX (`0,45 + vel·0,55`, rovnaká krivka ako Keys) — mäkký úder = okrúhlejší zvuk
+
+### 1.10 Pluck Synth (`pluck`) — 12 hlasov
 **Karplus-Strong fyzikálny model** — ladené oneskorenie (1/f) s tónovanou spätnou väzbou, excite krátkym noise burstom.
 
 - PICK — jas excitácie (soft = LP, bright = HP)
@@ -144,7 +154,7 @@ Granulárny sampler — každá nota naplánuje celý grain cloud dopredu (deter
 - TONE — filter vo feedback loope
 - DECAY, WIDTH (pan podľa noty), CUTOFF/RESO, ATTACK/RELEASE, LEVEL
 
-### 1.10 Log Drum (`logdrum`) — 4 hlasy
+### 1.11 Log Drum (`logdrum`) — 4 hlasy
 Amapiano log drum: **3 inharmonické sine partiale** (pomer 1 / ~2,15 / ~3,8, driftujúci s výškou) → tanh grit → notch (HOLLOW) → SVF lowpass.
 
 - DECAY, DROP (pitch drop na transiente, velocity-citlivý)
@@ -152,7 +162,7 @@ Amapiano log drum: **3 inharmonické sine partiale** (pomer 1 / ~2,15 / ~3,8, dr
 - TONE, BODY, HOLLOW (notch „dutosti"), GRIT
 - WIDTH, **GLIDE**, LEVEL
 
-### 1.11 Spectral Pad (`spectral`) — 6 hlasov
+### 1.12 Spectral Pad (`spectral`) — 6 hlasov
 Aditívny pad: až **8 sine partialov** na hlas, každý s vlastnou amplitúdou, decayom a priestorom.
 
 - PROFILE — amplitúdová krivka partialov: **Harmonic / Bright / Odd / Formant / Bell**
@@ -163,7 +173,7 @@ Aditívny pad: až **8 sine partialov** na hlas, každý s vlastnou amplitúdou,
 - SKEW — vyššie partialy doznievajú rýchlejšie (teplý tail)
 - ATTACK (do 4 s) / TAIL (do 8 s), CUTOFF/RESO, WIDTH (partialy roztvorené do sterea), LEVEL
 
-### 1.12 Vocal Chop (`vocalchop`) — 8 hlasov
+### 1.13 Vocal Chop (`vocalchop`) — 8 hlasov
 Sampler ladený na vocal chopy a talkboxové leady: sample hrá cez **paralelnú trojpásmovú formantovú banku** (F1/F2/F3 volené samohlásky).
 
 - VOWEL — samohláska **A / E / I / O / U** (Peterson–Barney formanty)
@@ -177,7 +187,7 @@ Sampler ladený na vocal chopy a talkboxové leady: sample hrá cez **paralelnú
 - TONE (LP), REVERSE, ATTACK/RELEASE, GAIN, ROOT
 - Defaultne dostane `factory.tonal.stab` sample, po pridaní stopy ihneď znie
 
-### 1.13 Drum Synth (`drumsynth`) — 8 hlasov
+### 1.14 Drum Synth (`drumsynth`) — 8 hlasov
 Analógovo modelované bicie na inštrumentovej stope — **hrateľné chromaticky z piano rollu**. TYPE prepína 7 modelov:
 
 - **Kick** — sine s pitch envelope (TONE = začiatočná výška, BODY = dĺžka dropu), SNAP = click
@@ -204,7 +214,7 @@ Drum track obsahuje pady; každý pad je buď **sample** (so slice, reverse, fad
 | `perc` | percusný hlas |
 | `cowbell` | cowbell |
 
-Každý syntetizovaný pad má 4 zdieľané parametre: **DECAY** (0,05–1,5 s), **TONE** (200–12 000 Hz), **SNAP** (attack/click/sizzle), **BODY** (low/sub/fat). Factory presetov pre bicie: 12 (`DrumSynthPreset`).
+Každý syntetizovaný pad má 4 zdieľané parametre: **DECAY** (0,05–1,5 s), **TONE** (200–12 000 Hz), **SNAP** (attack/click/sizzle), **BODY** (low/sub/fat). Factory presetov pre bicie: 6 (`DrumSynthPreset`).
 
 ---
 
@@ -257,7 +267,7 @@ K tomu per-track sends do return stôp (`ReturnTrack`) a mute/solo/freeze (rende
 
 ---
 
-## 5. Factory presety (174)
+## 5. Factory presety (188)
 
 Presety sú čisté dáta (žiadne volania do audio engine) — idú cez command do project modelu. Filtrované podľa **žánru** (house, techno, trap, ambient, score) a **mood** (dark, bright, warm, aggressive, clean, deep, atmosphere).
 
@@ -267,6 +277,7 @@ Presety sú čisté dáta (žiadne volania do audio engine) — idú cez command
 | Bass Synth | 20 |
 | Keys | 17 |
 | 808 Synth | 13 |
+| FM Synth | 13 |
 | Texture Synth | 13 |
 | Drum Synth | 12 |
 | Wavetable Synth | 15 |
@@ -276,8 +287,8 @@ Presety sú čisté dáta (žiadne volania do audio engine) — idú cez command
 | Pluck Synth | 9 |
 | Spectral Pad | 9 |
 | Log Drum | 4 |
-| **Spolu inštrumenty** | **169** |
-| Drum bicie (kick, snare, hat, clap…) | 12 |
+| **Spolu inštrumenty** | **182** |
+| Drum bicie (kick, snare, hat, clap…) | 6 |
 
 ---
 

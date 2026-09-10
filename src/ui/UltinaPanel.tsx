@@ -11,7 +11,6 @@ import {
   ULTINA_PRESET_SCHEMA_VERSION,
   type UltinaPresetEntry,
 } from "../persistence/UltinaPresetRepository";
-import { analyzeTrack, analyzeWithTarget } from "../effects/ultina-core/analysis/mixAssistant";
 import {
   ASSISTANT_CHARACTERS,
   ASSISTANT_INTENSITIES,
@@ -19,9 +18,14 @@ import {
   type AssistantCharacter,
   type AssistantIntensity,
 } from "../effects/ultina-core/analysis/assistant";
-import { extractFeatures } from "../effects/ultina-core/analysis/featureExtractor";
 import { TARGET_LIBRARY, getTargetById } from "../effects/ultina-core/analysis/targetLibrary";
 import { getExplanationForLocale } from "../effects/ultina-core/analysis/explanation";
+import {
+  isUltinaAnalysisCancelledError,
+  startUltinaAnalysis,
+  startUltinaTargetAnalysis,
+  type UltinaAnalysisTask,
+} from "../analysis/ultinaAnalysisClient";
 import type { GlobalMeters } from "../effects/ultina-core/contracts/meters";
 import { renderTrack } from "../rendering/track-renderer";
 import { useDoc, useServices } from "./context";
@@ -143,6 +147,15 @@ export function UltinaPanel({
   const [matchBusy, setMatchBusy] = useState<string | null>(null);
   const [matchError, setMatchError] = useState<string | null>(null);
   const [matchSummary, setMatchSummary] = useState<string[] | null>(null);
+  const analysisCancelRef = useRef<(() => void) | null>(null);
+
+  useEffect(
+    () => () => {
+      analysisCancelRef.current?.();
+      analysisCancelRef.current = null;
+    },
+    [],
+  );
 
   useEffect(() => {
     void services.userSamples.list().then((all) => setRefSources(all.slice(0, 40)));
@@ -201,6 +214,20 @@ export function UltinaPanel({
   };
   const deltaOn = valueOf("global.deltaListen") >= 0.5;
   const gainMatchOn = valueOf("global.gainMatchEnabled") >= 0.5;
+
+  const awaitAnalysis = async <T,>(task: UltinaAnalysisTask<T>): Promise<T> => {
+    analysisCancelRef.current = task.cancel;
+    try {
+      return await task.promise;
+    } finally {
+      if (analysisCancelRef.current === task.cancel) analysisCancelRef.current = null;
+    }
+  };
+
+  const cancelAnalysis = () => {
+    analysisCancelRef.current?.();
+    analysisCancelRef.current = null;
+  };
 
   // ── LIVE METERS: poll the worklet snapshot, draw on canvas, no re-renders ──
   const liveCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -377,7 +404,7 @@ export function UltinaPanel({
 
   // ── REFERENCE MATCH: target curve from a reference sample or library ──
   const runReferenceMatch = async () => {
-    if (matchBusy) return;
+    if (matchBusy || assistBusy) return;
     setMatchError(null);
     setMatchSummary(null);
     try {
@@ -387,20 +414,16 @@ export function UltinaPanel({
       const refBuffer = refId ? services.bank.get(refId) : null;
       if (refBuffer) {
         setMatchBusy("Analyzing reference…");
-        await new Promise((r) => setTimeout(r, 30));
         const refCh = [
           refBuffer.getChannelData(0),
           refBuffer.numberOfChannels > 1 ? refBuffer.getChannelData(1) : refBuffer.getChannelData(0),
         ];
-        const refFeatures = extractFeatures(refCh, refBuffer.sampleRate);
-        if (!refFeatures.valid) {
-          setMatchError("Reference is too short or too quiet to analyze.");
+        const refResult = await awaitAnalysis(startUltinaTargetAnalysis(refCh, refBuffer.sampleRate));
+        if (!refResult.targetCurve) {
+          setMatchError(refResult.reason ?? "Reference is too short or too quiet to analyze.");
           return;
         }
-        // Same dB domain analyzeWithTarget uses for the current mix.
-        targetCurve = refFeatures.spectralProfile.map((b) =>
-          b.ratio > 0 ? 10 * Math.log10(b.ratio * 10 + 1e-20) : -60,
-        );
+        targetCurve = refResult.targetCurve;
         targetName = "reference";
       } else {
         const lib = getTargetById(libTargetId);
@@ -420,14 +443,15 @@ export function UltinaPanel({
         tailSeconds: 0.5,
       });
       setMatchBusy("Matching tonal balance…");
-      await new Promise((r) => setTimeout(r, 30));
-      const result = analyzeWithTarget(
-        {
-          channels: [buffer.getChannelData(0), buffer.getChannelData(1)],
-          sampleRate: buffer.sampleRate,
-          minimumDuration: 2,
-        },
-        targetCurve,
+      const result = await awaitAnalysis(
+        startUltinaAnalysis(
+          {
+            channels: [buffer.getChannelData(0), buffer.getChannelData(1)],
+            sampleRate: buffer.sampleRate,
+            minimumDuration: 2,
+          },
+          targetCurve,
+        ),
       );
       if (result.kind === "insufficient") {
         setMatchError(`Not enough material: ${result.reason}`);
@@ -461,6 +485,7 @@ export function UltinaPanel({
       if (eqChanges.length > 6) lines.push(`…a ${eqChanges.length - 6} ďalších EQ zmien`);
       setMatchSummary(lines);
     } catch (err) {
+      if (isUltinaAnalysisCancelledError(err)) return;
       setMatchError(`Reference match failed: ${String(err instanceof Error ? err.message : err)}`);
     } finally {
       setMatchBusy(null);
@@ -468,7 +493,7 @@ export function UltinaPanel({
   };
 
   const runMixAssist = async () => {
-    if (assistBusy) return;
+    if (assistBusy || matchBusy) return;
     setAssistError(null);
     setAssistSummary(null);
     try {
@@ -479,15 +504,15 @@ export function UltinaPanel({
         tailSeconds: 0.5,
       });
       setAssistBusy("Analyzing…");
-      // Yield so the busy label paints before the (sync, heavy) analysis.
-      await new Promise((r) => setTimeout(r, 30));
-      const result = analyzeTrack({
-        channels: [buffer.getChannelData(0), buffer.getChannelData(1)],
-        sampleRate: buffer.sampleRate,
-        character,
-        intensity,
-        minimumDuration: 2,
-      });
+      const result = await awaitAnalysis(
+        startUltinaAnalysis({
+          channels: [buffer.getChannelData(0), buffer.getChannelData(1)],
+          sampleRate: buffer.sampleRate,
+          character,
+          intensity,
+          minimumDuration: 2,
+        }),
+      );
       if (result.kind === "insufficient") {
         setAssistError(`Not enough material: ${result.reason}`);
         return;
@@ -519,6 +544,7 @@ export function UltinaPanel({
       if (proposal.changes.length > 6) lines.push(`…a ${proposal.changes.length - 6} ďalších zmien`);
       setAssistSummary(lines);
     } catch (err) {
+      if (isUltinaAnalysisCancelledError(err)) return;
       setAssistError(`Mix assist failed: ${String(err instanceof Error ? err.message : err)}`);
     } finally {
       setAssistBusy(null);
@@ -583,12 +609,17 @@ export function UltinaPanel({
           <button
             type="button"
             className="btn btn-export"
-            disabled={!!matchBusy}
+            disabled={!!matchBusy || !!assistBusy}
             title="Match this track's tonal balance toward a reference sample or a target curve"
             onClick={() => void runReferenceMatch()}
           >
             {matchBusy ?? "🎯 MATCH"}
           </button>
+          {matchBusy && (
+            <button type="button" className="btn btn-small" onClick={cancelAnalysis}>
+              CANCEL
+            </button>
+          )}
         </div>
         <label className="collab-field">
           <span>REFERENCE SAMPLE (optional — its balance becomes the target)</span>
@@ -721,12 +752,17 @@ export function UltinaPanel({
           <button
             type="button"
             className="btn btn-export"
-            disabled={!!assistBusy}
+            disabled={!!assistBusy || !!matchBusy}
             title="Render this track, analyze it and propose mix settings"
             onClick={() => void runMixAssist()}
           >
             {assistBusy ?? "⚡ MIX ASSIST"}
           </button>
+          {assistBusy && (
+            <button type="button" className="btn btn-small" onClick={cancelAnalysis}>
+              CANCEL
+            </button>
+          )}
         </div>
         <div className="ultina-assist-opts">
           <label className="collab-field">

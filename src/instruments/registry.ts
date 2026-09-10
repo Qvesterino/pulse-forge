@@ -2493,12 +2493,23 @@ const granular: InstrumentDefinition = {
   },
 };
 
-/* ---------------- Keys (FM/Rhodes) ---------------- */
-// 4-op FM electric piano: two parallel FM pairs (1->2 body, 3->4 bell) summed
-// through a shared lowpass and amp. Ratios are fixed (1:1 and 3.5:1) for
-// Rhodes/Wurli/Bell coverage; tine/bell control modulator index, body
-// controls carrier mix, damp shapes release and brightness decay.
-// All FM via AudioParam (a-rate), deterministic, no Worklet.
+/* ---------------- FM (2-operator DX style) ---------------- */
+// Classic 2-operator FM: modulator -> modGain -> carrier.frequency, optional
+// modulator self-feedback for growl. Tonal params (RATIO/INDEX/M-*/FEEDBK)
+// retone held notes live through per-voice rescheduling — all FM via
+// AudioParam (a-rate), deterministic, no Worklet.
+
+// Params that retone already-sounding voices; modWave (discrete type
+// switch), the amp envelope and level affect new notes only.
+const FM_LIVE_PARAM_IDS = new Set([
+  "ratio",
+  "index",
+  "modDecay",
+  "modSustain",
+  "feedback",
+  "fbDecay",
+  "fbSus",
+]);
 
 const fm: InstrumentDefinition = {
   kind: "fm",
@@ -2542,6 +2553,55 @@ const fm: InstrumentDefinition = {
     const p = { ...track.params };
     const { voices, register, cleanup } = makeVoiceManager(10);
 
+    // Per-voice live data so RATIO/INDEX/FEEDBK automation retunes held
+    // notes instead of only new ones (parity with filter instruments).
+    interface FmVoiceData {
+      freq: number;
+      velocity: number;
+      modulator: OscillatorNode;
+      modEnv: GainNode;
+      fbGain: GainNode;
+      /** MPE pressure multiplier on INDEX (1 = untouched). */
+      pressure: number;
+    }
+    const liveVoices = new Map<ReturnType<typeof register>, FmVoiceData>();
+
+    // Peak frequency swing (Hz) of the modulator — one formula shared by
+    // noteOn scheduling and every live update. Velocity drives INDEX with
+    // the same response curve as Keys: soft hits are rounder.
+    const deviationFor = (v: FmVoiceData) => {
+      const ratio = Math.max(0.25, p.ratio ?? 2);
+      const index = Math.max(0, Math.min(1, p.index ?? 0.35)) * v.pressure;
+      const velIndex = 0.45 + v.velocity * 0.55;
+      return v.freq * ratio * index * index * 5.5 * velIndex;
+    };
+
+    // (Re)schedule the modulator + feedback sustain targets from the
+    // current params; called at noteOn and by every live param update.
+    const reschedule = (v: FmVoiceData, at: number) => {
+      const modSus = Math.max(0, Math.min(1, p.modSustain ?? 0.3));
+      v.modEnv.gain.setTargetAtTime(
+        Math.max(deviationFor(v) * modSus, 0.0002),
+        at,
+        Math.max(0.02, p.modDecay ?? 0.4) / 3,
+      );
+      const feedback = Math.max(0, Math.min(1, p.feedback ?? 0));
+      const fbSus = Math.max(0, Math.min(1, p.fbSus ?? 1));
+      v.fbGain.gain.setTargetAtTime(
+        Math.max(feedback * deviationFor(v) * 0.5 * fbSus, 0.0002),
+        at,
+        Math.max(0.02, p.fbDecay ?? 0.5) / 3,
+      );
+    };
+
+    const applyLive = (id: string, value: number, at: number) => {
+      if (!FM_LIVE_PARAM_IDS.has(id)) return;
+      for (const v of liveVoices.values()) {
+        if (id === "ratio") v.modulator.frequency.setTargetAtTime(v.freq * Math.max(0.25, value), at, 0.02);
+        reschedule(v, at);
+      }
+    };
+
     const runtime: InstrumentRuntime = {
       output,
       noteOn(pitch, velocity, when, durationSec) {
@@ -2570,9 +2630,6 @@ const fm: InstrumentDefinition = {
         // Modulation deviation scales with the carrier frequency, so sideband
         // density stays consistent across the keyboard.
         const ratio = Math.max(0.25, p.ratio ?? 2);
-        const index = Math.max(0, Math.min(1, p.index ?? 0.35));
-        const velIndex = 0.55 + velocity * 0.45;
-        const deviation = freq * ratio * index * index * 5.5 * velIndex;
 
         const carrier = ctx.createOscillator();
         carrier.type = "sine";
@@ -2583,40 +2640,31 @@ const fm: InstrumentDefinition = {
         modulator.type = modWaves[Math.max(0, Math.min(2, Math.round(p.modWave ?? 0)))];
         modulator.frequency.value = freq * ratio;
 
-        // Modulator envelope: full index at attack → decays to M-SUS fraction.
         const modEnv = ctx.createGain();
-        modEnv.gain.setValueAtTime(Math.max(deviation, 0.0002), when);
-        modEnv.gain.setTargetAtTime(
-          Math.max(deviation * (p.modSustain ?? 0.3), 0.0002),
-          when + attack,
-          Math.max(0.02, p.modDecay ?? 0.4) / 3,
-        );
-
         const modGain = ctx.createGain();
         modGain.gain.value = 1;
-        modulator.connect(modEnv).connect(modGain).connect(carrier.frequency);
 
         // Feedback: modulator → fbGain → short delay → own frequency. The
         // delay breaks the WebAudio cycle; short delay + modest gain gives
-        // the classic dirty growl without instability.
-        let fbDelay: DelayNode | null = null;
-        const feedback = Math.max(0, Math.min(1, p.feedback ?? 0));
-        if (feedback > 0.01) {
-          fbDelay = ctx.createDelay(0.01);
-          fbDelay.delayTime.value = 128 / (ctx.sampleRate || 44100);
-          const fbGain = ctx.createGain();
-          // Feedback envelope: full bite at attack, decays to FB-SUS fraction
-          // (default 1 = constant — legacy behaviour).
-          const fbPeak = feedback * deviation * 0.5;
-          const fbSus = Math.max(0, Math.min(1, p.fbSus ?? 1));
-          fbGain.gain.setValueAtTime(fbPeak, when);
-          fbGain.gain.setTargetAtTime(
-            Math.max(fbPeak * fbSus, 0.0002),
-            when + attack,
-            Math.max(0.02, p.fbDecay ?? 0.5) / 3,
-          );
-          modulator.connect(fbGain).connect(fbDelay).connect(modulator.frequency);
-        }
+        // the classic dirty growl without instability. The path is always
+        // present so FEEDBK automation can rise from zero mid-note; at
+        // feedback 0 its loop-gain floor (~0.0002) is inaudible.
+        const fbDelay = ctx.createDelay(0.01);
+        fbDelay.delayTime.value = 128 / (ctx.sampleRate || 44100);
+        const fbGain = ctx.createGain();
+
+        const voiceData: FmVoiceData = { freq, velocity, modulator, modEnv, fbGain, pressure: 1 };
+        const deviation = deviationFor(voiceData);
+        // Full index / bite at attack; `reschedule` then decays both toward
+        // their sustain fractions from when + attack.
+        modEnv.gain.setValueAtTime(Math.max(deviation, 0.0002), when);
+        fbGain.gain.setValueAtTime(
+          Math.max(Math.max(0, Math.min(1, p.feedback ?? 0)) * deviation * 0.5, 0.0002),
+          when,
+        );
+        modulator.connect(modEnv).connect(modGain).connect(carrier.frequency);
+        modulator.connect(fbGain).connect(fbDelay).connect(modulator.frequency);
+        reschedule(voiceData, when + attack);
 
         carrier.connect(amp);
 
@@ -2656,22 +2704,47 @@ const fm: InstrumentDefinition = {
         carrier.onended = () => {
           amp.disconnect();
           try {
-            fbDelay?.disconnect();
+            fbGain.disconnect();
           } catch {
             /* already disconnected */
           }
+          try {
+            fbDelay.disconnect();
+          } catch {
+            /* already disconnected */
+          }
+          liveVoices.delete(voice);
           cleanup(voice);
         };
         modulator.start(when);
         carrier.start(when);
+        liveVoices.set(voice, voiceData);
       },
       setParameter(id, value) {
-        // FM voices read params at noteOn — live update affects new notes.
+        // Tonal params retune held notes at once (see FM_LIVE_PARAM_IDS);
+        // modWave, the amp envelope and level affect new notes only.
         p[id] = value;
+        applyLive(id, value, ctx.currentTime);
+      },
+      setParameterAt(id, value, when) {
+        p[id] = value;
+        applyLive(id, value, when);
+      },
+      polyPressure(pitch, pressure, when) {
+        // FM has no filter — MPE pressure maps to INDEX (brightness) with
+        // the same +50% ceiling convention as the filter instruments;
+        // pressure 0 restores the base INDEX.
+        const amt = Math.max(0, Math.min(1, pressure));
+        for (const [voice, v] of liveVoices) {
+          if (voice.pitch !== pitch) continue;
+          v.pressure = 1 + amt * 0.5;
+          reschedule(v, when);
+        }
       },
       panic() {
         for (const voice of [...voices]) voice.silence(ctx.currentTime);
         voices.length = 0;
+        liveVoices.clear();
       },
       dispose() {
         this.panic();
@@ -2681,6 +2754,13 @@ const fm: InstrumentDefinition = {
     return runtime;
   },
 };
+
+/* ---------------- Keys (FM/Rhodes) ---------------- */
+// 4-op FM electric piano: two parallel FM pairs (1->2 body, 3->4 bell) summed
+// through a shared lowpass and amp. Ratios are fixed (1:1 and 3.5:1) for
+// Rhodes/Wurli/Bell coverage; tine/bell control modulator index, body
+// controls carrier mix, damp shapes release and brightness decay.
+// All FM via AudioParam (a-rate), deterministic, no Worklet.
 
 const keys: InstrumentDefinition = {
   kind: "keys",

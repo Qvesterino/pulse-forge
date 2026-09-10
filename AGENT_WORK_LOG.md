@@ -151,3 +151,27 @@ afLoop.
 **FINAL SUITE RESULT: 2003 passed / 0 failed / 95 skipped (201 files, exit 0) — fully green**, including the concurrent editor's vendored ultina upstream fixes in their landed state (sculptor/multiband et al., correctly done via the upstream D:/VocalForge_DAW -> re-vendor flow, not local patching).
 
 Run #4 failure attribution: tests/ultina-core-hardening sculptor test hit the documented -12 dB poisoning signature because the suite collected files inside the 19:24-19:32 vendor window (upstream+vendored copies being written concurrently); it passes 3x3 in isolation immediately after and in the final full run. No action needed beyond attribution.
+
+---
+
+## VERIFICATION PASS — VLYX/ultina upstream defect closure (2026-09-10, 20:4x)
+
+**Goal:** verify the 5 documented ultina defects are actually closed after the concurrent upstream→re-vendor wave (commit b22a0a1).
+
+**Per-defect verdicts (code + tests + bundle):
+
+1. Sculptor silent-band poisoning — CLOSED. sculptorModule.ts adds a relative active floor (bands >20 dB below the loudest in-range band are spectral holes): excluded from the reference average AND get targetGain 0 instead of +12 dB boost. Test: "a sparse low spectrum does not drag active bands to the −12 dB limit".
+2. Transient/Sustain stereo L→R leak — CLOSED. Root cause was sequential per-channel processing through single-channel buffers (shared crossover state slot 0: L tail seeded R). Fixed with dedicated transient/sustain stereo buffers processed as a pair + CrossoverNetwork now iterates active chCount, not prepared channelCount. Tests: stereo T/S isolation suite incl. "silence on R stays silent after L has excited the crossover".
+3. Re-prepare resets LR4 crossover to identity — CLOSED via the prescribed upstream fix: every module prepare() now invalidates cached band/crossover values (cachedBandCount/cachedXover = -1), forcing crossover redesign. Verified in transient/comp/density (+ rest). Test: "re-preparing comp does not turn a 2-band unity chain into +6 dB".
+4. Phase Time Shift >4 ms dry/wet compensation — CLOSED. dryDelay.prepare(maxBlockSize, maxDelaySamples) reserves the full 50 ms budget; phaseModule passes ceil(50ms·SR). Test: "delta compensation remains coherent at a 10 ms shift".
+5. Mix-assist main-thread analysis — OPEN (the one residual, accurately kept in KNOWN_LIMITATIONS). UltinaPanel has a busy state + 30 ms yield before the call, but analyzeWithTarget still walks the whole buffer synchronously; long material freezes the editor. Recommended next: chunked async loop or Web Worker (host-side per vendoring contract) + progress/cancel.
+
+**Golden vectors:** NOT regenerated — passed within the rmsΔ ≤ toleranceDb contract unchanged, i.e. the fixes were scoped to the broken paths with zero re-voicing of canonical renders. Ideal outcome per the vendoring contract.
+
+**Worklet bundle:** public/ultina-worklet.js rebuilt 19:39 (after all DSP sources 19:20–19:32); new code confirmed in bundle (activeFloor/maxDelaySamples present).
+
+**Validation:** ultina battery 11 files / 158 tests PASS on committed tree. fxeq battery + full suite re-run launched (fxeq gained a further host-seed improvement — per-instance seed from project/owner/effect identity — after the previous full run).
+
+**Tree state:** everything committed as b22a0a1 (incl. campaign artifacts) — release report risk R7 resolved.
+
+**CONFIRMED:** fxeq battery PASS + full suite 2003 passed / 0 failed / 95 skipped (exit 0) on committed tree b22a0a1 — the per-instance fxeq seed improvement and ultina fixes are all green together.
