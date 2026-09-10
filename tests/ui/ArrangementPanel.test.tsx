@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
 import { ArrangementPanel } from "../../src/ui/ArrangementPanel";
 import { SelectionContext } from "../../src/ui/context";
 import { renderWithContext, mockServices } from "../helpers";
@@ -284,7 +284,9 @@ describe("ArrangementPanel — arrangement ergonomics", () => {
   it("dragging one clip of an active multi-selection moves all of them as ONE command", () => {
     const doc = docWithTwoClips();
     const { services, container, selectionStore } = renderErgo(doc);
-    selectionStore.setClips(["clip-1", "clip-2"]);
+    act(() => {
+      selectionStore.setClips(["clip-1", "clip-2"]);
+    });
     const clips = [...container.querySelectorAll(".arr-clip")] as HTMLElement[];
     // Press on clip-1, drag +2 bars (60px), release.
     fireEvent.pointerDown(clips[0], { button: 0, clientX: 10, clientY: 10, pointerId: 1 });
