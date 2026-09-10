@@ -185,3 +185,130 @@ describe("ArrangementPanel — scene intensity lane", () => {
     expect(container.querySelector(".arr-intensity-lane")).not.toBeNull();
   });
 });
+
+describe("ArrangementPanel — arrangement ergonomics", () => {
+  // Two scene clips at bars 0-4 and 4-8.
+  function docWithTwoClips(): ProjectDocument {
+    const doc = createProjectFromTemplate("house");
+    const scene = doc.scenes[0];
+    return {
+      ...doc,
+      arrangement: {
+        ...doc.arrangement,
+        clips: [
+          { id: "clip-1", sceneId: scene.id, startBar: 0, lengthBars: 4 },
+          { id: "clip-2", sceneId: scene.id, startBar: 4, lengthBars: 4 },
+        ],
+      },
+    };
+  }
+
+  function renderErgo(doc: ProjectDocument) {
+    const selectionStore = new SelectionStore();
+    const setClipsSpy = vi.spyOn(selectionStore, "setClips");
+    const wrapped = renderWithContext(
+      <SelectionContext.Provider value={selectionStore}>
+        <ArrangementPanel />
+      </SelectionContext.Provider>,
+      { services: mockServices(doc) },
+    );
+    const lane = wrapped.container.querySelector(".arr-lane") as HTMLElement;
+    vi.spyOn(lane, "getBoundingClientRect").mockReturnValue(domRect(0, 0, 800, 56));
+    // jsdom gives every element a zero rect — clip resize/move hit-testing
+    // needs the real geometry (30px per bar at zoom 1).
+    for (const node of wrapped.container.querySelectorAll(".arr-clip") as NodeListOf<HTMLElement>) {
+      const left = parseInt(node.style.left, 10) || 0;
+      const width = parseInt(node.style.width, 10) || 0;
+      vi.spyOn(node, "getBoundingClientRect").mockReturnValue(domRect(left, 0, width, 56));
+    }
+    return { ...wrapped, selectionStore, setClipsSpy, lane };
+  }
+
+  it("zoom buttons scale the arrangement width and FIT fits it", async () => {
+    const user = (await import("@testing-library/user-event")).default.setup();
+    const { container } = renderErgo(docWithTwoClips());
+    const widthOf = () => parseInt((container.querySelector(".arr-lane") as HTMLElement).style.width, 10);
+    const base = widthOf();
+    await user.click(screen.getByRole("button", { name: "Zoom in" }));
+    expect(widthOf()).toBe(Math.round(base * 1.4));
+    await user.click(screen.getByRole("button", { name: "Zoom out" }));
+    expect(widthOf()).toBe(base);
+    await user.click(screen.getByRole("button", { name: "Fit arrangement" }));
+    expect(widthOf()).toBeLessThanOrEqual(base);
+  });
+
+  it("ctrl+wheel zooms around the cursor (non-passive native listener)", () => {
+    const { container } = renderErgo(docWithTwoClips());
+    const scroll = container.querySelector(".arr-lane-scroll") as HTMLElement;
+    vi.spyOn(scroll, "getBoundingClientRect").mockReturnValue(domRect(0, 0, 800, 200));
+    const widthOf = () => parseInt((container.querySelector(".arr-lane") as HTMLElement).style.width, 10);
+    const before = widthOf();
+    fireEvent.wheel(scroll, { ctrlKey: true, deltaY: -240, clientX: 400, clientY: 100 });
+    expect(widthOf()).toBeGreaterThan(before);
+    // Plain wheel (no ctrl) must NOT zoom.
+    fireEvent.wheel(scroll, { deltaY: -240, clientX: 400, clientY: 100 });
+    expect(widthOf()).toBe(parseInt((container.querySelector(".arr-lane") as HTMLElement).style.width, 10));
+  });
+
+  it("ctrl+click adds clips to the shared clip selection", () => {
+    const { container, selectionStore, setClipsSpy } = renderErgo(docWithTwoClips());
+    const clips = [...container.querySelectorAll(".arr-clip")] as HTMLElement[];
+    expect(clips.length).toBe(2);
+    fireEvent.pointerDown(clips[0], { button: 0, clientX: 10, clientY: 10, pointerId: 1 });
+    expect(setClipsSpy).toHaveBeenLastCalledWith(["clip-1"]);
+    // Simulate the store actually holding the selection, then ctrl+click #2.
+    vi.spyOn(selectionStore, "isClipSelected").mockImplementation((id) => id === "clip-1");
+    (selectionStore as unknown as { state: { clipIds: string[] } }).state.clipIds = ["clip-1"];
+    fireEvent.pointerDown(clips[1], { button: 0, clientX: 200, clientY: 10, ctrlKey: true, pointerId: 1 });
+    expect(setClipsSpy).toHaveBeenLastCalledWith(["clip-1", "clip-2"]);
+  });
+
+  it("empty-lane drag marquees clips; a plain click still places the scene", () => {
+    const { services, container, setClipsSpy } = renderErgo(docWithTwoClips());
+    const lane = container.querySelector(".arr-lane") as HTMLElement;
+    // Drag from bar 0.2 to bar 3 → intersects clip-1 only.
+    fireEvent.pointerDown(lane, { button: 0, clientX: 6, clientY: 10, pointerId: 1 });
+    fireEvent.pointerMove(lane, { clientX: 90, clientY: 10, pointerId: 1 });
+    expect(container.querySelector(".arr-marquee")).not.toBeNull();
+    fireEvent.pointerUp(lane, { clientX: 90, pointerId: 1 });
+    expect(container.querySelector(".arr-marquee")).toBeNull();
+    expect(setClipsSpy).toHaveBeenLastCalledWith(["clip-1"]);
+    // A tiny drag (<0.15 bar) is a click → places the selected scene instead
+    // (bar 10 — past both clips, so the add cannot collide).
+    fireEvent.pointerDown(lane, { button: 0, clientX: 300, clientY: 10, pointerId: 2 });
+    fireEvent.pointerUp(lane, { clientX: 301, pointerId: 2 });
+    const last = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0];
+    expect(last?.type).toBe("addArrangementClip");
+  });
+
+  it("dragging one clip of an active multi-selection moves all of them as ONE command", () => {
+    const doc = docWithTwoClips();
+    const { services, container, selectionStore } = renderErgo(doc);
+    selectionStore.setClips(["clip-1", "clip-2"]);
+    const clips = [...container.querySelectorAll(".arr-clip")] as HTMLElement[];
+    // Press on clip-1, drag +2 bars (60px), release.
+    fireEvent.pointerDown(clips[0], { button: 0, clientX: 10, clientY: 10, pointerId: 1 });
+    fireEvent.pointerMove(clips[0], { clientX: 70, clientY: 10, pointerId: 1 });
+    fireEvent.pointerUp(clips[0], { pointerId: 1 });
+    const command = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0];
+    expect(command?.type).toBe("moveClips");
+    expect(command?.label).toBe("Move 2 clips");
+    // One gesture: both clips land 2 bars later.
+    const next = command.execute(doc);
+    expect(next.arrangement.clips.find((c: { id: string }) => c.id === "clip-1")?.startBar).toBe(2);
+    expect(next.arrangement.clips.find((c: { id: string }) => c.id === "clip-2")?.startBar).toBe(6);
+  });
+
+  it("right-click delete shows an actionable toast whose UNDO calls the store", async () => {
+    const user = (await import("@testing-library/user-event")).default.setup();
+    const { services, container } = renderErgo(docWithTwoClips());
+    const clips = [...container.querySelectorAll(".arr-clip")] as HTMLElement[];
+    fireEvent.contextMenu(clips[0]);
+    const toast = container.querySelector(".arr-delete-toast") as HTMLElement;
+    expect(toast).not.toBeNull();
+    expect(toast.textContent).toContain('Deleted "');
+    await user.click(screen.getByRole("button", { name: "UNDO" }));
+    expect(services.store.undo).toHaveBeenCalled();
+    expect(container.querySelector(".arr-delete-toast")).toBeNull();
+  });
+});
