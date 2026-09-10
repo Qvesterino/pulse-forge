@@ -314,3 +314,78 @@ describe("ArrangementPanel — arrangement ergonomics", () => {
     expect(container.querySelector(".arr-delete-toast")).toBeNull();
   });
 });
+
+describe("ArrangementPanel — SCENE SECS (wall-clock authoring)", () => {
+  /** One clip (bars 0-4) whose scene pins 240 BPM: 4 bars = 4 seconds. */
+  function docWithSecsClip(): ProjectDocument {
+    const doc = createProjectFromTemplate("house");
+    const scene = doc.scenes[0];
+    return {
+      ...doc,
+      scenes: [{ ...scene, bpm: 240 }],
+      arrangement: {
+        ...doc.arrangement,
+        clips: [{ id: "clip-1", sceneId: scene.id, startBar: 0, lengthBars: 4 }],
+      },
+    };
+  }
+
+  function renderSecs(doc: ProjectDocument) {
+    const selectionStore = new SelectionStore();
+    const wrapped = renderWithContext(
+      <SelectionContext.Provider value={selectionStore}>
+        <ArrangementPanel />
+      </SelectionContext.Provider>,
+      { services: mockServices(doc) },
+    );
+    const lane = wrapped.container.querySelector(".arr-lane") as HTMLElement;
+    vi.spyOn(lane, "getBoundingClientRect").mockReturnValue(domRect(0, 0, 800, 56));
+    const clip = wrapped.container.querySelector(".arr-clip") as HTMLElement;
+    vi.spyOn(clip, "getBoundingClientRect").mockReturnValue(domRect(0, 0, 120, 56));
+    // Select the clip — the SECS input appears in the status strip.
+    fireEvent.pointerDown(clip, { button: 0, clientX: 10, clientY: 10, pointerId: 1 });
+    const input = wrapped.container.querySelector('input[aria-label="Clip length in seconds"]') as HTMLInputElement;
+    expect(input).not.toBeNull();
+    return { ...wrapped, input };
+  }
+
+  it("shows the selected clip's wall-clock length at its scene's effective tempo", () => {
+    const { input } = renderSecs(docWithSecsClip());
+    // 4 bars at 240 BPM = 4.00 s (at the project 124 it would read 7.74).
+    expect(input.value).toBe("4.00");
+  });
+
+  it("typing seconds commits whole bars at the scene tempo via resizeArrangementClip", () => {
+    const { services, input } = renderSecs(docWithSecsClip());
+    fireEvent.change(input, { target: { value: "8" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    const command = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0];
+    expect(command?.type).toBe("resizeArrangementClip");
+    const next = command.execute(services.store.doc);
+    expect(next.arrangement.clips[0].lengthBars).toBe(8); // 8 s at 240 BPM = 8 bars
+  });
+
+  it("blur commits too; an empty or zero value changes nothing", () => {
+    const { services, input } = renderSecs(docWithSecsClip());
+    fireEvent.change(input, { target: { value: "0" } });
+    fireEvent.blur(input);
+    expect(
+      (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.some(
+        (c) => c[0]?.type === "resizeArrangementClip",
+      ),
+    ).toBe(false);
+  });
+
+  it("the seconds ruler accumulates at each scene's effective tempo", async () => {
+    const user = (await import("@testing-library/user-event")).default.setup();
+    const { container } = renderSecs(docWithSecsClip());
+    // Clip bars 0-4 run at the scene pin (240 BPM): bar 4 sits at 4.0 s
+    // (project 124 would say 15.5 s). Bar 8 accumulates: 4 s at the scene
+    // tempo + 4 gap bars at the project tempo = 11.7 s — the label must
+    // NOT use a constant project-tempo conversion.
+    await user.click(screen.getByRole("button", { name: "BARS" }));
+    const marks = [...container.querySelectorAll(".arr-ruler-mark")].map((m) => m.textContent);
+    expect(marks).toContain("4.0s");
+    expect(marks).toContain("11.7s");
+  });
+});

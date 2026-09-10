@@ -26,7 +26,8 @@ import {
   setSceneIntensityCurve,
 } from "../commands/commands";
 import type { AutomationParamKind, AutomationTarget, LfoKind, LfoWave } from "../project-model/types";
-import { STEP_TICKS } from "../project-model/types";
+import { BAR_TICKS, STEP_TICKS } from "../project-model/types";
+import { effectiveSceneBpm, sceneBarsToSeconds } from "../project-model/scene-time";
 import { DEFAULT_STEP_PATTERN } from "../project-model/modulators";
 import { laneLabel } from "../project-model/automation";
 import { EFFECT_DEFS } from "../effects/registry";
@@ -1247,6 +1248,20 @@ function ScenePanel() {
             format={(v) => `${(v * 100).toFixed(0)}%`}
             onCommit={(intensity) => services.store.execute(setSceneIntensity(services.store.doc, scene.id, intensity))}
           />
+
+          {/* Wall-clock info (VISION §10): how long one pattern loop of this
+              scene lasts at its effective tempo. Resizing the arrangement
+              clip to whole seconds lives in the arrangement clip toolbar. */}
+          {scenePattern && (
+            <div className="scene-loop-info" title="One pattern loop at this scene's effective tempo">
+              LOOP{" "}
+              {sceneBarsToSeconds(
+                (scenePattern.stepCount * STEP_TICKS) / BAR_TICKS,
+                effectiveSceneBpm(scene.bpm, doc.bpm),
+              ).toFixed(2)}
+              s
+            </div>
+          )}
 
           {/* Scene tempo lane — pins the transport BPM while this scene plays */}
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>

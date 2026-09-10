@@ -9143,3 +9143,29 @@ html {
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
   font-size: 12px;
 }
+
+/* Scene Mode wall-clock authoring (SCENE SECS) */
+.arr-clip-secs {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: #71717a;
+}
+
+.arr-clip-secs input {
+  width: 62px;
+  background: #101216;
+  border: 1px solid #2c3037;
+  border-radius: 4px;
+  color: #f4f4f5;
+  font-size: 11px;
+  padding: 3px 5px;
+}
+
+.scene-loop-info {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: #71717a;
+  padding: 2px 0;
+}

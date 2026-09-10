@@ -46,9 +46,7 @@ describe("ModPanel — Ultina deep-parameter lane targets (phase U1)", () => {
   function docWithUltina() {
     const doc = createProjectFromTemplate("house");
     const track = doc.tracks[0];
-    (track as { effects: unknown[] }).effects = [
-      { id: "fx-u1", type: "ultina", bypassed: false, params: {} },
-    ];
+    (track as { effects: unknown[] }).effects = [{ id: "fx-u1", type: "ultina", bypassed: false, params: {} }];
     return doc;
   }
 
@@ -95,15 +93,22 @@ describe("ModPanel — Ultina deep-parameter lane targets (phase U1)", () => {
     // the picker produced the right target.
     const { vi: vitest } = await import("vitest");
     const calls = (services.store.execute as ReturnType<typeof vitest.fn>).mock.calls;
-    const addLaneCall = calls.find(
-      (c) => (c[0] as { type: string }).type === "addAutomationLane",
-    );
+    const addLaneCall = calls.find((c) => (c[0] as { type: string }).type === "addAutomationLane");
     expect(addLaneCall).toBeDefined();
     const next = (addLaneCall![0] as { execute: (d: typeof doc) => typeof doc }).execute(doc);
-    const lane = next.automation.find(
-      (l) => l.target.kind === "fxParam" && l.target.paramId === "comp.thresholdDb",
-    );
+    const lane = next.automation.find((l) => l.target.kind === "fxParam" && l.target.paramId === "comp.thresholdDb");
     expect(lane).toBeDefined();
     expect(lane!.target.fxId).toBe("fx-u1");
+  });
+});
+
+describe("ModPanel — ScenePanel wall-clock info (Wave 2)", () => {
+  it("shows the pattern loop length in wall-clock seconds", () => {
+    const { container } = renderWithContext(<ModPanel />);
+    // ScenePanel mounts inside ModPanel's bottom dock; the house default is
+    // one 16-step pattern (1 bar) at the project tempo (124 BPM) → ~1.94 s.
+    const info = container.querySelector(".scene-loop-info");
+    expect(info).not.toBeNull();
+    expect(info?.textContent).toMatch(/^LOOP \d+\.\d+s$/);
   });
 });

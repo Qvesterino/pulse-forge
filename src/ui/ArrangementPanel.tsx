@@ -37,6 +37,7 @@ import {
   sliceToPads,
 } from "../commands/commands";
 import { sceneRoleOf } from "../project-model/schema";
+import { effectiveSceneBpm, sceneBarsToSeconds, sceneSecondsToBars } from "../project-model/scene-time";
 import { computeSceneIntensity } from "../project-model/intensity";
 import type {
   ArrangementClip,
@@ -125,6 +126,9 @@ export function ArrangementPanel() {
   const marqueeStartRef = useRef<number | null>(null);
   const [multiDrag, setMultiDrag] = useState<number | null>(null);
   const [deleteToast, setDeleteToast] = useState<{ label: string } | null>(null);
+  // SCENE SECS authoring (VISION §10): type a wall-clock duration for the
+  // selected clip — committed as whole bars at the clip's effective tempo.
+  const [secsDraft, setSecsDraft] = useState<string | null>(null);
   const laneRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const [drag, setDrag] = useState<{ startBar: number; lengthBars: number } | null>(null);
@@ -309,6 +313,18 @@ export function ArrangementPanel() {
   );
   const selectedScene = doc.scenes.find((scene) => scene.id === selectedSceneId) ?? doc.scenes[0];
   const selectedClip = clips.find((clip) => clip.id === selectedClipId);
+  const selectedClipScene = selectedClip ? doc.scenes.find((scene) => scene.id === selectedClip.sceneId) : undefined;
+  const selectedClipBpm = effectiveSceneBpm(selectedClipScene?.bpm, doc.bpm);
+  const selectedClipSeconds = selectedClip ? sceneBarsToSeconds(selectedClip.lengthBars, selectedClipBpm) : 0;
+  const commitClipSecs = (): void => {
+    if (!selectedClip || secsDraft === null) return;
+    const seconds = Number.parseFloat(secsDraft);
+    setSecsDraft(null);
+    if (!Number.isFinite(seconds) || seconds <= 0) return;
+    const bars = Math.max(1, Math.round(sceneSecondsToBars(seconds, selectedClipBpm)));
+    if (bars === selectedClip.lengthBars) return;
+    execute(resizeArrangementClip(services.store.doc, selectedClip.id, bars));
+  };
   const queuedScene = runtime.pendingPatternId
     ? doc.scenes.find((scene) => scene.patternId === runtime.pendingPatternId)
     : undefined;
@@ -329,10 +345,31 @@ export function ArrangementPanel() {
     }
   };
 
-  const formatBarAsSeconds = (bar: number): string => {
-    const sec = (bar * BAR_TICKS * 60) / (doc.bpm * PPQ);
-    return `${sec.toFixed(1)}s`;
+  // Piecewise bar→seconds map (VISION §10): every clip's span runs at its
+  // scene's EFFECTIVE tempo (scene.bpm pin, else project tempo), gaps at the
+  // project tempo. Cumulative — bar N's wall-clock position accounts for the
+  // tempo of everything before it, so SECS ruler labels stay honest.
+  const barToSeconds = (bar: number): number => {
+    const scenesById = new Map(doc.scenes.map((scene) => [scene.id, scene]));
+    let seconds = 0;
+    let cursor = 0;
+    for (const clip of clips) {
+      const start = clip.startBar;
+      const end = start + clip.lengthBars;
+      if (bar <= start) break;
+      const scene = scenesById.get(clip.sceneId);
+      const bpm = effectiveSceneBpm(scene?.bpm, doc.bpm);
+      const segEnd = Math.min(bar, end);
+      if (segEnd > cursor) {
+        seconds += sceneBarsToSeconds(segEnd - Math.max(cursor, start), bpm);
+        cursor = segEnd;
+      }
+    }
+    if (bar > cursor) seconds += sceneBarsToSeconds(bar - cursor, doc.bpm);
+    return seconds;
   };
+
+  const formatBarAsSeconds = (bar: number): string => `${barToSeconds(bar).toFixed(1)}s`;
 
   const barFromEvent = (event: React.PointerEvent | React.DragEvent): number => {
     const lane = laneRef.current;
@@ -886,6 +923,26 @@ export function ArrangementPanel() {
                 +
               </button>
             </span>
+            {selectedClip && (
+              <label className="arr-clip-secs">
+                SECS
+                <input
+                  type="number"
+                  min={0.5}
+                  step={0.5}
+                  aria-label="Clip length in seconds"
+                  title={`${selectedClip.lengthBars} bars at ${Math.round(selectedClipBpm)} BPM — Enter resizes the clip`}
+                  value={secsDraft ?? selectedClipSeconds.toFixed(2)}
+                  onFocus={() => setSecsDraft(selectedClipSeconds.toFixed(2))}
+                  onChange={(event) => setSecsDraft(event.target.value)}
+                  onBlur={commitClipSecs}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") commitClipSecs();
+                    if (event.key === "Escape") setSecsDraft(null);
+                  }}
+                />
+              </label>
+            )}
             <button
               type="button"
               className="btn btn-small"

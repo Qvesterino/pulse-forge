@@ -30,13 +30,18 @@ Status legendy: `[ ]` pending · `[~]` robí sa · `[x]` hotové · `[!]` blocke
 environment-citlivý na tomto stroji, 2.34–2.58× okolo 2.4× budgetu — nie je to regresia tejto vlny, fxeq-core
 nedotknuté) · `npm run test:browser` ✓ **197/197** · build + size budgety ✓.
 
-## Vlna 2 — wall-clock kompozícia `[ ]`
+## Vlna 2 — wall-clock kompozícia `[x]` (2026-09-10)
 
 - **Rozhodnutie:** sekundy ako VSTUP, uložené zostávajú bar-y (bez zmeny schémy/renderera; determinizmus zachovaný).
   Konverzia `bars = sec · bpm · PPQ / (BAR_TICKS · 60)` používa efektívne tempo scény (`scene.bpm ?? doc.bpm`).
-- [ ] Pole „SCENE SECS" (clip inspektor + ScenePanel) commitujúce cez `resizeArrangementClip`.
-- [ ] Sekundový ruler rešpektuje efektívne tempo scény (dnes počítal len `doc.bpm`).
-- [ ] Testy: konverzná matematika + UI commit.
+- [x] `src/project-model/scene-time.ts` — `effectiveSceneBpm` / `sceneBarsToSeconds` / `sceneSecondsToBars`
+      (unit testy vrátane bars→s→bars round-tripu a NaN/0 pin fallbacku).
+- [x] Pole „SECS" v arrangement clip toolbarri (pri vybranom klipe) — Enter/blur commituje
+      `resizeArrangementClip` na celé bar-y pri efektívnom tempe scény; kolízia → action error.
+- [x] Sekundový ruler je KUMULATÍVNY cez scény: každý clip span beží na svojom efektívnom tempe,
+      medzery na projektovom (mark na bare 8 = 4 s @240 + 4 bar-y @124 = 11.7 s — pinned testom).
+- [x] ModPanel ScenePanel: `LOOP x.xx s` info (dĺžka pattern loopu pri efektívnom tempe scény).
+- [x] Testy: `tests/scene-time.test.ts` (4) + ArrangementPanel SCENE SECS blok (4) + ModPanel LOOP (1).
 
 ## Vlna 3 — Texture A-tier `[ ]`
 
