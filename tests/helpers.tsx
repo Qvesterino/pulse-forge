@@ -107,6 +107,8 @@ export function mockServices(doc?: ProjectDocument): Services {
         return () => listeners.delete(cb);
       },
       execute: vi.fn(),
+      undo: vi.fn(),
+      redo: vi.fn(),
       canUndo: false,
       canRedo: false,
       lastCommandLabel: null as string | null,
