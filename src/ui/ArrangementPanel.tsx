@@ -58,7 +58,7 @@ import { clipLengthBars, recordingStartBar } from "./timelineRec";
 import { usePlayheadBar } from "./playhead";
 import { SceneLauncher, useSceneRuntimeState } from "./SceneLauncher";
 
-const BAR_WIDTH = 30;
+const BASE_BAR_WIDTH = 30;
 const LANE_HEIGHT = 56;
 const SCENE_ROLES: Array<{ value: SceneRole | ""; label: string }> = [
   { value: "", label: "INFER FROM NAME" },
@@ -78,6 +78,9 @@ interface DragState {
   origStart: number;
   origLength: number;
   grabBar: number;
+  /** Multi-select move: every selected clip id + its start when the drag began. */
+  movingIds?: string[];
+  origStarts?: Record<string, number>;
 }
 
 interface TransitionBoundary {
@@ -99,6 +102,14 @@ export function ArrangementPanel() {
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [rulerMode, setRulerMode] = useState<"bars" | "seconds">("bars");
   const [showIntensity, setShowIntensity] = useState(true);
+  // Arrangement zoom: px per bar = BASE_BAR_WIDTH * zoom. Ctrl+wheel zooms
+  // around the cursor, −/+ step, FIT squeezes the whole song into the view.
+  const [zoom, setZoom] = useState(1);
+  const barWidth = BASE_BAR_WIDTH * zoom;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const zoomRef = useRef(1);
+  const zoomAnchorRef = useRef<{ tick: number; cursorX: number } | null>(null);
+  zoomRef.current = zoom;
   const [showSkeletonPreview, setShowSkeletonPreview] = useState(false);
   const [transitionBoundary, setTransitionBoundary] = useState<TransitionBoundary | null>(null);
   const [transitionDraft, setTransitionDraft] = useState<TransitionDraft>({
@@ -107,6 +118,13 @@ export function ArrangementPanel() {
     cueAssetId: "",
   });
   const [actionError, setActionError] = useState<string | null>(null);
+  // Clip multi-select: marquee on empty-lane drag, ctrl/shift+click toggles.
+  // The ids live in the shared SelectionStore — keyboard Delete, the P
+  // (locators to selection) shortcut and the context menu already read them.
+  const [marquee, setMarquee] = useState<{ from: number; to: number } | null>(null);
+  const marqueeStartRef = useRef<number | null>(null);
+  const [multiDrag, setMultiDrag] = useState<number | null>(null);
+  const [deleteToast, setDeleteToast] = useState<{ label: string } | null>(null);
   const laneRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const [drag, setDrag] = useState<{ startBar: number; lengthBars: number } | null>(null);
@@ -123,6 +141,44 @@ export function ArrangementPanel() {
   const [recError, setRecError] = useState<string | null>(null);
   const recRef = useRef<import("../audio-engine/recorder").LiveRecorder | null>(null);
   const recStartBarRef = useRef(0);
+
+  // Ctrl+wheel zoom on the arrangement — needs a NON-passive native listener
+  // (React 17+ attaches wheel passively at the root, so preventDefault in
+  // onWheel is ignored and the browser zooms the page instead).
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onWheel = (event: WheelEvent) => {
+      if (!(event.ctrlKey || event.metaKey)) return;
+      event.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const cursorX = event.clientX - rect.left;
+      const tickAtCursor = ((el.scrollLeft + cursorX) / (BASE_BAR_WIDTH * zoomRef.current)) * BAR_TICKS;
+      const next = Math.min(4, Math.max(0.35, zoomRef.current * Math.exp(-event.deltaY * 0.002)));
+      if (next === zoomRef.current) return;
+      // Keep the tick under the cursor stable across the zoom.
+      zoomAnchorRef.current = { tick: tickAtCursor, cursorX };
+      setZoom(next);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
+  // Re-anchor the scroll position after a zoom render.
+  useEffect(() => {
+    const el = scrollRef.current;
+    const anchor = zoomAnchorRef.current;
+    if (!el || !anchor) return;
+    el.scrollLeft = Math.max(0, (anchor.tick / BAR_TICKS) * (BASE_BAR_WIDTH * zoom) - anchor.cursorX);
+    zoomAnchorRef.current = null;
+  }, [zoom]);
+
+  // Actionable delete toast — dismisses itself; UNDO stays available while shown.
+  useEffect(() => {
+    if (!deleteToast) return;
+    const id = setTimeout(() => setDeleteToast(null), 6000);
+    return () => clearTimeout(id);
+  }, [deleteToast]);
 
   // A recorder left running at unmount (panel switch, project close) would
   // keep the mic stream and its chunk buffer alive forever.
@@ -282,14 +338,14 @@ export function ArrangementPanel() {
     const lane = laneRef.current;
     if (!lane) return 0;
     const rect = lane.getBoundingClientRect();
-    return Math.max(0, Math.floor((event.clientX - rect.left) / BAR_WIDTH));
+    return Math.max(0, Math.floor((event.clientX - rect.left) / barWidth));
   };
 
   const seekFromRulerEvent = (event: React.PointerEvent) => {
     const lane = laneRef.current;
     if (!lane) return;
     const rect = lane.getBoundingClientRect();
-    const bar = Math.max(0, (event.clientX - rect.left) / BAR_WIDTH);
+    const bar = Math.max(0, (event.clientX - rect.left) / barWidth);
     services.playback.seek(bar * BAR_TICKS);
   };
   void seekFromRulerEvent;
@@ -299,8 +355,46 @@ export function ArrangementPanel() {
     event.stopPropagation();
     const clip = clips.find((candidate) => candidate.id === clipId);
     if (!clip) return;
-    event.currentTarget.setPointerCapture(event.pointerId);
     setSelectedClipId(clipId);
+    // Ctrl+click toggles the clip in the multi-selection (no drag).
+    if (event.ctrlKey || event.metaKey) {
+      const ids = selectionStore.isClipSelected(clipId)
+        ? selection.clipIds.filter((id) => id !== clipId)
+        : [...selection.clipIds, clipId];
+      selectionStore.setClips(ids);
+      return;
+    }
+    // Shift+click selects the range from the last selected clip.
+    if (event.shiftKey) {
+      const last = selection.clipIds.at(-1);
+      const a = clips.findIndex((c) => c.id === last);
+      const b = clips.findIndex((c) => c.id === clipId);
+      selectionStore.setClips(
+        a !== -1 && b !== -1 ? clips.slice(Math.min(a, b), Math.max(a, b) + 1).map((c) => c.id) : [clipId],
+      );
+      return;
+    }
+    // Plain press on a clip inside an active multi-selection moves ALL
+    // selected clips together (resize stays single-clip).
+    if (mode === "move" && selection.clipIds.length > 1 && selectionStore.isClipSelected(clipId)) {
+      const movingIds = selection.clipIds.filter((id) => clips.some((c) => c.id === id));
+      const origStarts = Object.fromEntries(movingIds.map((id) => [id, clips.find((c) => c.id === id)!.startBar]));
+      event.currentTarget.setPointerCapture(event.pointerId);
+      dragRef.current = {
+        mode,
+        clipId,
+        origStart: clip.startBar,
+        origLength: clip.lengthBars,
+        grabBar: barFromEvent(event),
+        movingIds,
+        origStarts,
+      };
+      setDrag({ startBar: clip.startBar, lengthBars: clip.lengthBars });
+      setMultiDrag(0);
+      return;
+    }
+    if (!selectionStore.isClipSelected(clipId)) selectionStore.setClips([clipId]);
+    event.currentTarget.setPointerCapture(event.pointerId);
     dragRef.current = {
       mode,
       clipId,
@@ -315,6 +409,11 @@ export function ArrangementPanel() {
     const current = dragRef.current;
     if (!current) return;
     const bar = barFromEvent(event);
+    if (current.movingIds) {
+      const delta = Math.max(bar - current.grabBar, -Math.min(...Object.values(current.origStarts ?? { 0: 0 })));
+      setMultiDrag(delta);
+      return;
+    }
     if (current.mode === "move") {
       setDrag({ startBar: Math.max(0, current.origStart + bar - current.grabBar), lengthBars: current.origLength });
     } else {
@@ -325,9 +424,48 @@ export function ArrangementPanel() {
   const onClipPointerUp = () => {
     const current = dragRef.current;
     const finalDrag = drag;
+    const delta = multiDrag;
     dragRef.current = null;
     setDrag(null);
+    setMultiDrag(null);
     if (!current || !finalDrag) return;
+    if (current.movingIds) {
+      if (!delta) return;
+      // One gesture = one undo entry, regardless of how many clips moved.
+      // The whole BLOCK moves to its final state at once: applying per-clip
+      // `moveArrangementClip` would validate overlaps against INTERMEDIATE
+      // states (moving adjacent clips by the same delta collides mid-way
+      // even though the final layout is clean). Only stationary clips guard.
+      const beforeDoc = services.store.doc;
+      const target = (id: string) => Math.max(0, Math.round((current.origStarts?.[id] ?? 0) + delta));
+      for (const id of current.movingIds) {
+        const start = target(id);
+        const length = beforeDoc.arrangement.clips.find((c) => c.id === id)?.lengthBars ?? 0;
+        const collides = beforeDoc.arrangement.clips.some(
+          (c) => !current.movingIds!.includes(c.id) && c.startBar < start + length && c.startBar + c.lengthBars > start,
+        );
+        if (collides) {
+          setActionError("Clips would overlap — move cancelled");
+          return;
+        }
+      }
+      const nextDoc: ProjectDocument = {
+        ...beforeDoc,
+        arrangement: {
+          ...beforeDoc.arrangement,
+          clips: beforeDoc.arrangement.clips
+            .map((c) => (current.movingIds!.includes(c.id) ? { ...c, startBar: target(c.id) } : c))
+            .sort((a, b) => a.startBar - b.startBar),
+        },
+      };
+      services.store.execute({
+        type: "moveClips",
+        label: `Move ${current.movingIds.length} clips`,
+        execute: () => nextDoc,
+        undo: () => beforeDoc,
+      });
+      return;
+    }
     if (current.mode === "move" && finalDrag.startBar !== current.origStart) {
       execute(moveArrangementClip(services.store.doc, current.clipId, finalDrag.startBar));
     }
@@ -340,6 +478,27 @@ export function ArrangementPanel() {
   const onClipPointerCancel = () => {
     dragRef.current = null;
     setDrag(null);
+    setMultiDrag(null);
+  };
+
+  /** Delete arrangement clips (single or multi) as ONE undoable gesture + toast. */
+  const deleteClipsWithToast = (ids: string[]) => {
+    if (ids.length === 0) return;
+    const beforeDoc = services.store.doc;
+    let nextDoc = beforeDoc;
+    let firstName = "";
+    for (const id of ids) {
+      const clip = beforeDoc.arrangement.clips.find((c) => c.id === id);
+      if (!clip) continue;
+      const scene = doc.scenes.find((sceneItem) => sceneItem.id === clip.sceneId);
+      if (!firstName) firstName = scene?.name ?? "clip";
+      nextDoc = deleteArrangementClip(nextDoc, id).execute(nextDoc);
+    }
+    if (nextDoc === beforeDoc) return;
+    const label = ids.length === 1 ? `Deleted "${firstName}"` : `Deleted ${ids.length} clips`;
+    services.store.execute({ type: "deleteClips", label, execute: () => nextDoc, undo: () => beforeDoc });
+    if (selectedClipId && ids.includes(selectedClipId)) setSelectedClipId(null);
+    setDeleteToast({ label });
   };
 
   const beginAudioDrag = (
@@ -696,6 +855,37 @@ export function ArrangementPanel() {
             >
               INT
             </button>
+            <span className="arr-zoom-group" role="group" aria-label="Arrangement zoom">
+              <button
+                type="button"
+                className="btn btn-small"
+                aria-label="Zoom out"
+                onClick={() => setZoom((value) => Math.max(0.35, value / 1.4))}
+              >
+                −
+              </button>
+              <button
+                type="button"
+                className="btn btn-small"
+                aria-label="Fit arrangement"
+                title="Fit the whole arrangement into the view"
+                onClick={() => {
+                  const viewport = scrollRef.current?.clientWidth ?? 800;
+                  setZoom(Math.max(0.35, Math.min(4, viewport / Math.max(1, totalBars * BASE_BAR_WIDTH))));
+                  if (scrollRef.current) scrollRef.current.scrollLeft = 0;
+                }}
+              >
+                FIT
+              </button>
+              <button
+                type="button"
+                className="btn btn-small"
+                aria-label="Zoom in"
+                onClick={() => setZoom((value) => Math.min(4, value * 1.4))}
+              >
+                +
+              </button>
+            </span>
             <button
               type="button"
               className="btn btn-small"
@@ -842,14 +1032,14 @@ export function ArrangementPanel() {
           )}
         </div>
 
-        <div className="arr-lane-scroll">
+        <div className="arr-lane-scroll" ref={scrollRef}>
           <div
             className="arr-ruler"
-            style={{ width: totalBars * BAR_WIDTH }}
+            style={{ width: totalBars * barWidth }}
             title="Click to seek · drag to select time range · shift+click adds a marker"
             onPointerDown={(event) => {
               if (event.button !== 0) return;
-              const bar = Math.max(0, (event.clientX - laneRef.current!.getBoundingClientRect().left) / BAR_WIDTH);
+              const bar = Math.max(0, (event.clientX - laneRef.current!.getBoundingClientRect().left) / barWidth);
               if (event.shiftKey) {
                 execute(addMarker(services.store.doc, { tick: Math.floor(bar * BAR_TICKS), type: "cue" }));
                 return;
@@ -861,7 +1051,7 @@ export function ArrangementPanel() {
               if (!timeDrag) return;
               const bar = Math.max(
                 0,
-                Math.min(totalBars, (event.clientX - laneRef.current!.getBoundingClientRect().left) / BAR_WIDTH),
+                Math.min(totalBars, (event.clientX - laneRef.current!.getBoundingClientRect().left) / barWidth),
               );
               setTimeDrag({ startBar: timeDrag.startBar, currentBar: bar });
               const from = Math.min(timeDrag.startBar, bar);
@@ -902,7 +1092,7 @@ export function ArrangementPanel() {
               event.preventDefault();
               const x = event.clientX - laneRef.current!.getBoundingClientRect().left;
               const closest = doc.markers
-                .map((marker) => ({ id: marker.id, dist: Math.abs((marker.tick / BAR_TICKS) * BAR_WIDTH - x) }))
+                .map((marker) => ({ id: marker.id, dist: Math.abs((marker.tick / BAR_TICKS) * barWidth - x) }))
                 .filter((marker) => marker.dist < 8)
                 .sort((a, b) => a.dist - b.dist)[0];
               if (closest) execute(removeMarker(services.store.doc, closest.id));
@@ -911,7 +1101,7 @@ export function ArrangementPanel() {
             {Array.from({ length: Math.ceil(totalBars / 4) }, (_, index) => {
               const barNum = index * 4 + 1;
               return (
-                <span key={index} className="arr-ruler-mark" style={{ left: index * 4 * BAR_WIDTH }}>
+                <span key={index} className="arr-ruler-mark" style={{ left: index * 4 * barWidth }}>
                   {rulerMode === "seconds" ? formatBarAsSeconds(barNum - 1) : barNum}
                 </span>
               );
@@ -920,7 +1110,7 @@ export function ArrangementPanel() {
               <div
                 key={marker.id}
                 className={`arr-marker arr-marker-${marker.type}`}
-                style={{ left: (marker.tick / BAR_TICKS) * BAR_WIDTH - 6 }}
+                style={{ left: (marker.tick / BAR_TICKS) * barWidth - 6 }}
                 title={`${marker.name} (${marker.type})`}
                 onContextMenu={(event) => {
                   event.preventDefault();
@@ -933,32 +1123,42 @@ export function ArrangementPanel() {
               <div
                 className="arr-time-range"
                 style={{
-                  left: (Math.min(selection.timeRange.fromTick, selection.timeRange.toTick) / BAR_TICKS) * BAR_WIDTH,
-                  width: (Math.abs(selection.timeRange.toTick - selection.timeRange.fromTick) / BAR_TICKS) * BAR_WIDTH,
+                  left: (Math.min(selection.timeRange.fromTick, selection.timeRange.toTick) / BAR_TICKS) * barWidth,
+                  width: (Math.abs(selection.timeRange.toTick - selection.timeRange.fromTick) / BAR_TICKS) * barWidth,
                 }}
               />
             )}
-            <div className="arr-playhead" style={{ left: playheadBar * BAR_WIDTH }} />
+            <div className="arr-playhead" style={{ left: playheadBar * barWidth }} />
           </div>
           <div
             className="arr-lane"
             ref={laneRef}
-            style={{ width: totalBars * BAR_WIDTH, height: LANE_HEIGHT }}
+            style={{ width: totalBars * barWidth, height: LANE_HEIGHT }}
             onPointerDown={(event) => {
               if (event.button !== 0) return;
               // FL: Ctrl+drag on lane → range select (Cubase Range Tool)
               if ((event.ctrlKey || event.metaKey) && event.target === laneRef.current) {
-                const bar = Math.max(0, (event.clientX - laneRef.current!.getBoundingClientRect().left) / BAR_WIDTH);
+                const bar = Math.max(0, (event.clientX - laneRef.current!.getBoundingClientRect().left) / barWidth);
                 setTimeDrag({ startBar: bar, currentBar: bar });
                 (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
                 event.preventDefault();
                 return;
               }
               if (event.target !== laneRef.current) return;
-              if (selectedScene) placeScene(selectedScene.id, barFromEvent(event));
-              setSelectedClipId(null);
+              // Empty-lane drag = marquee-select clips. A plain click still
+              // places the selected scene (handled at pointerup).
+              const bar = barFromEvent(event);
+              marqueeStartRef.current = bar;
+              setMarquee({ from: bar, to: bar });
+              (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+              event.preventDefault();
             }}
             onPointerMove={(event) => {
+              if (marqueeStartRef.current !== null) {
+                const bar = Math.max(0, (event.clientX - laneRef.current!.getBoundingClientRect().left) / barWidth);
+                setMarquee({ from: marqueeStartRef.current, to: bar });
+                return;
+              }
               if (!timeDrag) return;
               // Only handle lane Ctrl+drag here; ruler has its own handler
               if (!(event.ctrlKey || event.metaKey) && event.buttons === 1) {
@@ -966,7 +1166,7 @@ export function ArrangementPanel() {
               }
               const bar = Math.max(
                 0,
-                Math.min(totalBars, (event.clientX - laneRef.current!.getBoundingClientRect().left) / BAR_WIDTH),
+                Math.min(totalBars, (event.clientX - laneRef.current!.getBoundingClientRect().left) / barWidth),
               );
               setTimeDrag({ startBar: timeDrag.startBar, currentBar: bar });
               const from = Math.min(timeDrag.startBar, bar);
@@ -979,6 +1179,30 @@ export function ArrangementPanel() {
               else selectionStore.setTimeRange(null);
             }}
             onPointerUp={(event) => {
+              if (marqueeStartRef.current !== null) {
+                const bar = Math.max(0, (event.clientX - laneRef.current!.getBoundingClientRect().left) / barWidth);
+                const from = Math.min(marqueeStartRef.current, bar);
+                const to = Math.max(marqueeStartRef.current, bar);
+                marqueeStartRef.current = null;
+                setMarquee(null);
+                try {
+                  (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
+                } catch {
+                  /* pointer already gone */
+                }
+                if (to - from < 0.15) {
+                  // Plain click on empty lane: place the selected scene.
+                  if (selectedScene) placeScene(selectedScene.id, from);
+                  selectionStore.setClips([]);
+                  setSelectedClipId(null);
+                } else {
+                  selectionStore.setClips(
+                    clips.filter((c) => c.startBar < to && c.startBar + c.lengthBars > from).map((c) => c.id),
+                  );
+                  setSelectedClipId(null);
+                }
+                return;
+              }
               if (!timeDrag) return;
               const from = Math.min(timeDrag.startBar, timeDrag.currentBar);
               const to = Math.max(timeDrag.startBar, timeDrag.currentBar);
@@ -994,6 +1218,8 @@ export function ArrangementPanel() {
               }
             }}
             onPointerCancel={() => {
+              marqueeStartRef.current = null;
+              setMarquee(null);
               setTimeDrag(null);
               selectionStore.setTimeRange(null);
             }}
@@ -1004,13 +1230,22 @@ export function ArrangementPanel() {
               if (sceneId) placeScene(sceneId, barFromEvent(event));
             }}
           >
-            <div className="arr-playhead arr-playhead-lane" style={{ left: playheadBar * BAR_WIDTH }} />
+            <div className="arr-playhead arr-playhead-lane" style={{ left: playheadBar * barWidth }} />
             {selection.timeRange && (
               <div
                 className="arr-time-range arr-time-range-lane"
                 style={{
-                  left: (Math.min(selection.timeRange.fromTick, selection.timeRange.toTick) / BAR_TICKS) * BAR_WIDTH,
-                  width: (Math.abs(selection.timeRange.toTick - selection.timeRange.fromTick) / BAR_TICKS) * BAR_WIDTH,
+                  left: (Math.min(selection.timeRange.fromTick, selection.timeRange.toTick) / BAR_TICKS) * barWidth,
+                  width: (Math.abs(selection.timeRange.toTick - selection.timeRange.fromTick) / BAR_TICKS) * barWidth,
+                }}
+              />
+            )}
+            {marquee && (
+              <div
+                className="arr-marquee"
+                style={{
+                  left: Math.min(marquee.from, marquee.to) * barWidth,
+                  width: Math.abs(marquee.to - marquee.from) * barWidth,
                 }}
               />
             )}
@@ -1018,23 +1253,24 @@ export function ArrangementPanel() {
               <div
                 key={index}
                 className={`arr-bar-grid${index % 4 === 0 ? " bar-strong" : ""}`}
-                style={{ left: index * BAR_WIDTH }}
+                style={{ left: index * barWidth }}
               />
             ))}
             {clips.map((clip, index) => {
               const scene = doc.scenes.find((candidate) => candidate.id === clip.sceneId);
               const role = scene ? (sceneRoleOf(scene) ?? "custom") : "custom";
               const isDragging = dragRef.current?.clipId === clip.id && drag !== null;
-              const startBar = isDragging ? drag.startBar : clip.startBar;
+              const multiMoving = dragRef.current?.movingIds?.includes(clip.id) && multiDrag !== null;
+              const startBar = multiMoving ? clip.startBar + multiDrag : isDragging ? drag.startBar : clip.startBar;
               const lengthBars = isDragging ? drag.lengthBars : clip.lengthBars;
               const nextClip = clips[index + 1];
-              const selected = selectedClipId === clip.id;
+              const selected = selectedClipId === clip.id || selectionStore.isClipSelected(clip.id);
               const isCurrentClip = playheadBar >= clip.startBar && playheadBar < clip.startBar + clip.lengthBars;
               return (
                 <div key={clip.id}>
                   <div
                     className={`arr-clip role-${role}${selected ? " selected" : ""}${isCurrentClip ? " current" : ""}${runtime.playing && isCurrentClip ? " playing" : ""}`}
-                    style={{ left: startBar * BAR_WIDTH, width: lengthBars * BAR_WIDTH - 4 }}
+                    style={{ left: startBar * barWidth, width: lengthBars * barWidth - 4 }}
                     title={`${scene?.name ?? "?"} · ${role.toUpperCase()} · bars ${startBar + 1}–${startBar + lengthBars}`}
                     onPointerDown={(event) =>
                       beginClipDrag(
@@ -1049,8 +1285,10 @@ export function ArrangementPanel() {
                     onClick={() => setSelectedClipId(clip.id)}
                     onContextMenu={(event) => {
                       event.preventDefault();
-                      execute(deleteArrangementClip(services.store.doc, clip.id));
-                      if (selectedClipId === clip.id) setSelectedClipId(null);
+                      // Right-click deletes the whole active selection (or the
+                      // clicked clip) as one undoable gesture + toast with UNDO.
+                      const ids = selectionStore.isClipSelected(clip.id) ? [...selection.clipIds] : [clip.id];
+                      deleteClipsWithToast(ids);
                     }}
                   >
                     <span className="arr-clip-copy">
@@ -1064,7 +1302,7 @@ export function ArrangementPanel() {
                     <button
                       type="button"
                       className={`arr-transition-mark${transitionBoundary?.fromClipId === clip.id && transitionBoundary.toClipId === nextClip.id ? " selected" : ""}`}
-                      style={{ left: (clip.startBar + clip.lengthBars) * BAR_WIDTH - 8 }}
+                      style={{ left: (clip.startBar + clip.lengthBars) * barWidth - 8 }}
                       title="Edit transition to next clip"
                       onPointerDown={(event) => event.stopPropagation()}
                       onClick={() => selectTransitionBoundary(clip.id, nextClip.id)}
@@ -1094,7 +1332,7 @@ export function ArrangementPanel() {
                 <div
                   key={clip.id}
                   className={`arr-audio-clip${selected ? " selected" : ""}${isCurrent ? " current" : ""}`}
-                  style={{ left: startBar * BAR_WIDTH, width: lengthBars * BAR_WIDTH - 4 }}
+                  style={{ left: startBar * barWidth, width: lengthBars * barWidth - 4 }}
                   title={`${track?.name ?? clip.trackId} · ${clip.bufferId} · ${clip.reverse ? "REV " : ""}${clip.stretchMode === "stretch" ? `STRETCH×${clip.stretchRate.toFixed(2)} ` : clip.stretchRate !== 1 ? `×${clip.stretchRate.toFixed(2)} ` : ""}${lengthBars}b · trim ${clip.trimStart.toFixed(2)}/${clip.trimEnd.toFixed(2)} fade ${effFadeIn.toFixed(2)}/${effFadeOut.toFixed(2)} gain ${effGain.toFixed(2)} — PT: top corners fade, top middle clip gain`}
                   onPointerDown={(event) => {
                     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
@@ -1153,7 +1391,7 @@ export function ArrangementPanel() {
                             24,
                             (effFadeIn / ((clip.lengthBars * BAR_TICKS * 60) / (doc.bpm * PPQ))) *
                               lengthBars *
-                              BAR_WIDTH,
+                              barWidth,
                           ),
                         }}
                       />
@@ -1164,7 +1402,7 @@ export function ArrangementPanel() {
                             24,
                             (effFadeOut / ((clip.lengthBars * BAR_TICKS * 60) / (doc.bpm * PPQ))) *
                               lengthBars *
-                              BAR_WIDTH,
+                              barWidth,
                           ),
                         }}
                       />
@@ -1179,11 +1417,28 @@ export function ArrangementPanel() {
                 clips={clips}
                 totalBars={totalBars}
                 playheadBar={playheadBar}
+                barWidth={barWidth}
                 onEdit={(sceneId, curve) => execute(setSceneIntensityCurve(services.store.doc, sceneId, curve))}
               />
             )}
           </div>
         </div>
+
+        {deleteToast && (
+          <div className="arr-delete-toast" role="status">
+            <span>{deleteToast.label}</span>
+            <button
+              type="button"
+              className="btn btn-small"
+              onClick={() => {
+                services.store.undo();
+                setDeleteToast(null);
+              }}
+            >
+              UNDO
+            </button>
+          </div>
+        )}
 
         {transitionBoundary && (
           <div className="arr-transition-editor">
@@ -1763,12 +2018,14 @@ function IntensityLane({
   clips,
   totalBars,
   playheadBar,
+  barWidth,
   onEdit,
 }: {
   doc: ProjectDocument;
   clips: ArrangementClip[];
   totalBars: number;
   playheadBar: number;
+  barWidth: number;
   onEdit: (sceneId: string, curve: IntensityPoint[]) => void;
 }) {
   const laneRef = useRef<HTMLDivElement>(null);
@@ -1782,8 +2039,8 @@ function IntensityLane({
     originAbsTick: number;
   } | null>(null);
   const [live, setLive] = useState<{ sceneId: string; index: number; absTick: number; value: number } | null>(null);
-  const width = totalBars * BAR_WIDTH;
-  const pxPerTick = BAR_WIDTH / BAR_TICKS;
+  const width = totalBars * barWidth;
+  const pxPerTick = barWidth / BAR_TICKS;
   const yFor = (value: number) => INTENSITY_LANE_HEIGHT - value * INTENSITY_LANE_HEIGHT;
 
   const scenesById = new Map(doc.scenes.map((s) => [s.id, s]));

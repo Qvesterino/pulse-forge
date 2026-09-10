@@ -9111,3 +9111,35 @@ html {
   font-family: inherit;
   font-size: 12px;
 }
+
+/* Arrangement zoom + clip marquee + delete toast */
+.arr-zoom-group {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.arr-marquee {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.55);
+  pointer-events: none;
+  z-index: 4;
+}
+
+.arr-delete-toast {
+  position: fixed;
+  right: 16px;
+  bottom: 44px;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  background: #1a1d23;
+  border: 1px solid #2c3037;
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  font-size: 12px;
+}
