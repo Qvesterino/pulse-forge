@@ -66,10 +66,15 @@ export function isRankerManifest(value: unknown): value is RankerManifest {
     manifest.featureVersion === "features.v1" &&
     manifest.normalizationId === "norm.fixed.v1" &&
     typeof manifest.featureCount === "number" &&
-    Number.isFinite(manifest.featureCount) &&
+    Number.isInteger(manifest.featureCount) &&
+    manifest.featureCount > 0 &&
     typeof manifest.modelPath === "string" &&
+    manifest.modelPath.startsWith("/models/") &&
     typeof manifest.inputName === "string" &&
+    manifest.inputName.length > 0 &&
     typeof manifest.outputName === "string" &&
-    typeof manifest.modelHash === "string"
+    manifest.outputName.length > 0 &&
+    typeof manifest.modelHash === "string" &&
+    /^[0-9a-f]{64}$/i.test(manifest.modelHash)
   );
 }

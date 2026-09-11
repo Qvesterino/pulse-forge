@@ -10,13 +10,7 @@
  *   heuristic ranking without ever throwing.
  */
 
-import {
-  isRankerManifest,
-  type RankerManifest,
-  type RankerRequest,
-  type RankerResponse,
-} from "./ranker-types";
-
+import { isRankerManifest, type RankerManifest, type RankerRequest, type RankerResponse } from "./ranker-types";
 
 // The ranker only needs the CPU/WASM backend. Importing the root package pulls
 // the JSEP/WebGPU build and its much larger wasm binary into the lazy chunk.
@@ -32,7 +26,15 @@ async function ensureOrt(): Promise<OrtNamespace> {
   if (ort) return ort;
   const loaded = await import("onnxruntime-web/wasm");
   // Single-threaded WASM: worker-scoped inference must not spawn pthread
-  // pools inside an already-backgrounded context.
+  // pools inside an already-backgrounded context. The runtime binary is
+  // FETCHED as plain bytes from public/models/ort/ (npm run ranker:ort-sync)
+  // and handed over via env.wasm.wasmBinary — a plain fetch is served
+  // as-is by vite dev AND the production build, while importing the .mjs
+  // loader from public would hit vite's "no source imports from public"
+  // transform error.
+  const wasmResponse = await fetch("/models/ort/ort-wasm-simd-threaded.wasm");
+  if (!wasmResponse.ok) throw new Error(`ort wasm fetch failed: ${wasmResponse.status}`);
+  loaded.env.wasm.wasmBinary = await wasmResponse.arrayBuffer();
   loaded.env.wasm.numThreads = 1;
   ort = loaded as OrtNamespace;
   return ort;
@@ -45,6 +47,10 @@ async function ensureSession(manifest: RankerManifest): Promise<OrtSession> {
   const response = await fetch(manifest.modelPath);
   if (!response.ok) throw new Error(`model fetch failed: ${response.status}`);
   const bytes = await response.arrayBuffer();
+  if (!globalThis.crypto?.subtle) throw new Error("Web Crypto unavailable for model verification");
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
+  const actualHash = Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
+  if (actualHash !== manifest.modelHash.toLowerCase()) throw new Error("model hash mismatch");
   session = await ortNs.InferenceSession.create(new Uint8Array(bytes), {
     executionProviders: ["wasm"],
     graphOptimizationLevel: "all",

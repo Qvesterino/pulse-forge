@@ -80,7 +80,9 @@ describe("rankCandidatesWithModel — fallback + shadow contracts", () => {
     const ranking = await rankCandidatesWithModel(doc, candidates, plan);
     expect(ranking.source).toBe("off");
     expect(scoreMock).not.toHaveBeenCalled();
-    expect(ranking.order.map((c) => c.candidateIndex)).toEqual([...ranking.order.map((c) => c.candidateIndex)].sort((a, b) => a - b));
+    expect(ranking.order.map((c) => c.candidateIndex)).toEqual(
+      [...ranking.order.map((c) => c.candidateIndex)].sort((a, b) => a - b),
+    );
   });
 
   it("model unavailable: heuristic fallback order is the baseline", async () => {

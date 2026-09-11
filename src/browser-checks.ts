@@ -2,6 +2,8 @@ import { EFFECT_DEFS, EFFECT_ORDER, defaultParamsOf } from "./effects/registry";
 import { INSTRUMENT_DEFS, INSTRUMENT_ORDER, defaultInstrumentParams } from "./instruments/registry";
 import { generateFactoryBank, RR_VARIATIONS } from "./sample-library/factory";
 import { CURATED_SAMPLES, loadCuratedLayer } from "./sample-library/curated";
+import { normalizeIntent } from "./intent/normalize";
+import { planGeneration } from "./intent/plan";
 import { loadCoreWorklets } from "./audio-worklets/loader";
 import { renderProject } from "./rendering/renderer";
 import { buildStemProject, STEM_GROUPS } from "./rendering/stems";
@@ -445,6 +447,47 @@ export async function runChecks(): Promise<CheckResult[]> {
     );
   } catch (error) {
     check("Texture Synth: deterministic render (LFO clock anchored to the note timeline)", false, String(error));
+  }
+
+  // Intent ranker worker (goal doc Fáze 3/4): the ONNX model must load from
+  // local assets in the worker and score a real batch — or fall back in a
+  // controlled way (offline installs without the model artifact).
+  try {
+    const ranking = await import("./ai/ranking/ranker-client");
+    const { extractPatternFeatures } = await import("./ai/features/pattern-features");
+    const doc = createDefaultProject();
+    const intent = normalizeIntent({
+      genre: "house",
+      seed: "ranker-check",
+      roles: ["drums"],
+    });
+    const plan = planGeneration(intent, doc);
+    // Real patterns through the generator for meaningful features.
+    const patterns = [0, 1, 2].map((index) => generatePattern(doc, { ...plan.options, seed: `ranker-check-${index}` }));
+    const vectors = patterns.map((pattern) =>
+      extractPatternFeatures({
+        doc,
+        pattern,
+        intent,
+        options: plan.options,
+        resolvedBpm: plan.resolvedBpm,
+        batch: patterns,
+      }),
+    );
+    const batch = new Float32Array(vectors.length * vectors[0].values.length);
+    vectors.forEach((vector, index) => batch.set(vector.values, index * vector.values.length));
+    const result = await ranking.scoreCandidateFeatures(batch, vectors.length);
+    check(
+      "intent ranker: local ONNX worker scores a real candidate batch (or controlled fallback)",
+      (result.source === "model" && result.ok && result.scores?.length === 3) || result.source === "fallback",
+      `source=${result.source} scores=${result.scores ? result.scores.map((score: number) => score.toFixed(3)).join("/") : "none"}`,
+    );
+  } catch (error) {
+    check(
+      "intent ranker: local ONNX worker scores a real candidate batch (or controlled fallback)",
+      false,
+      String(error),
+    );
   }
 
   // Distortion: harmonics produced

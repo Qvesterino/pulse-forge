@@ -101,8 +101,7 @@ export async function rankCandidatesWithModel(
   // index asc, content hash asc).
   const withScores = heuristicOrder.map((entry, index) => ({
     entry,
-    finalScore:
-      HEURISTIC_WEIGHT * entry.score + MODEL_WEIGHT * (modelScores[index] ?? entry.score),
+    finalScore: HEURISTIC_WEIGHT * entry.score + MODEL_WEIGHT * (modelScores[index] ?? entry.score),
   }));
   withScores.sort(
     (a, b) =>

@@ -4,7 +4,7 @@
  * Walks the genre × style × seed matrix through the REAL intent pipeline
  * (generator + invariant gates + heuristic score), extracting features.v1
  * vectors for every candidate that survives the hard gates. Output is a
- * JSON dataset consumed by scripts/train-intent-ranker.mjs:
+ * JSON dataset consumed by scripts/train-intent-ranker.py:
  *
  *   {
  *     datasetVersion, featureVersion, featureNames, engineId/version,

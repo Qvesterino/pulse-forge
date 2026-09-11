@@ -213,9 +213,7 @@ export class LocalDeterministicProvider implements GenerationProvider {
       if (failures.length > 0) bankWarnings.push(...failures.map((failure) => `candidate-bank-skipped:${failure}`));
       // Ranker provenance + shadow diagnostics (goal doc Fáze 4).
       bankWarnings.push(
-        ranked.mode === "shadow"
-          ? `ranker-shadow:${ranked.source}`
-          : `ranker:${ranked.source}:${ranked.mode}`,
+        ranked.mode === "shadow" ? `ranker-shadow:${ranked.source}` : `ranker:${ranked.source}:${ranked.mode}`,
       );
       if (ranked.source === "model" && ranked.modelHash) {
         bankWarnings.push(`ranker-model:${ranked.rankerVersion}:${ranked.modelHash.slice(0, 12)}`);

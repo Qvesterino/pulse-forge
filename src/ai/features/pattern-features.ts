@@ -154,12 +154,7 @@ function hashValues(values: ArrayLike<number>): string {
   for (let index = 0; index < values.length; index++) {
     const value = values[index];
     const rounded = Math.round(value * 10_000);
-    const bytes = [
-      rounded & 0xff,
-      (rounded >> 8) & 0xff,
-      (rounded >> 16) & 0xff,
-      (rounded >> 24) & 0xff,
-    ];
+    const bytes = [rounded & 0xff, (rounded >> 8) & 0xff, (rounded >> 16) & 0xff, (rounded >> 24) & 0xff];
     for (const byte of bytes) {
       hash ^= byte;
       hash = Math.imul(hash, 0x01000193) >>> 0;
@@ -191,9 +186,9 @@ interface DrumStats {
 }
 
 function drumStats(doc: ProjectDocument, pattern: Pattern, options: GenerateOptions): DrumStats {
-  const drumTrack = doc.tracks.find(
-    (track) => track.id === options.drumTrackId && track.kind === "drum",
-  ) ?? doc.tracks.find((track) => track.kind === "drum");
+  const drumTrack =
+    doc.tracks.find((track) => track.id === options.drumTrackId && track.kind === "drum") ??
+    doc.tracks.find((track) => track.kind === "drum");
   const stats: DrumStats = {
     present: false,
     rows: [],
@@ -300,7 +295,9 @@ function melodicStats(pattern: Pattern, options: GenerateOptions): MelodicStats 
       const gap = note.start - (sortedAll[i - 1].start + Math.max(0, sortedAll[i - 1].duration));
       longestGap = Math.max(longestGap, gap);
     }
-    if (Math.floor(note.start / phraseTicks) !== Math.floor((note.start + Math.max(0, note.duration) - 1) / phraseTicks))
+    if (
+      Math.floor(note.start / phraseTicks) !== Math.floor((note.start + Math.max(0, note.duration) - 1) / phraseTicks)
+    )
       crossingPhrase += 1;
   }
   // Interval variety + repeated duration patterns (3-gram style, mirrors quality.ts).
@@ -390,7 +387,9 @@ export function extractPatternFeatures(input: PatternFeatureInput): PatternFeatu
   push(melodic.notes.length / melodicCells);
   push(melodicQuality.restRatio);
   push(clamp01(melodicQuality.pitchRange / 24));
-  push(clamp01(((melodic.notes.reduce((sum, note) => sum + note.pitch, 0) / Math.max(1, melodic.notes.length)) - 24) / 60));
+  push(
+    clamp01((melodic.notes.reduce((sum, note) => sum + note.pitch, 0) / Math.max(1, melodic.notes.length) - 24) / 60),
+  );
   push(clamp01(melodicQuality.durationDistribution.short / Math.max(1, melodic.notes.length)));
   push(clamp01(melodicQuality.durationDistribution.medium / Math.max(1, melodic.notes.length)));
   push(clamp01(melodicQuality.durationDistribution.long / Math.max(1, melodic.notes.length)));
@@ -432,7 +431,7 @@ export function extractPatternFeatures(input: PatternFeatureInput): PatternFeatu
   push(drums.present ? 0 : 1);
   push(melodic.present ? 0 : 1);
   push(drums.metaEntries > 0 || Object.keys(pattern.notes ?? {}).length > 0 ? 0 : 1);
-  push(options.key ?? doc.key ? 0 : 1);
+  push((options.key ?? doc.key) ? 0 : 1);
   push(melodic.notes.length > 0 ? 0 : 1);
   push(drums.hits > 0 || melodic.notes.length > 0 ? 0 : 1);
 
@@ -457,7 +456,11 @@ export function extractPatternFeatures(input: PatternFeatureInput): PatternFeatu
 
 /* ────────────────────────── shared small extractors ────────────────────────── */
 
-function drumRolesShares(roles: readonly PadRole[], rows: readonly (number[] | undefined)[], stepCount: number): number[] {
+function drumRolesShares(
+  roles: readonly PadRole[],
+  rows: readonly (number[] | undefined)[],
+  stepCount: number,
+): number[] {
   const share = new Map<PadRole, number>();
   for (const [index, role] of roles.entries()) {
     const row = rows[index];
@@ -515,10 +518,7 @@ function validStepMeta(pattern: Pattern, stepCount: number): number {
   return total > 0 ? ok / total : 1;
 }
 
-function candidateDensityEnergy(
-  candidate: Pattern,
-  options: GenerateOptions,
-): { density: number; energy: number } {
+function candidateDensityEnergy(candidate: Pattern, options: GenerateOptions): { density: number; energy: number } {
   let hits = 0;
   let cells = 0;
   const velocities: number[] = [];

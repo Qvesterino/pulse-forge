@@ -10,12 +10,7 @@
  * - repeated worker failures trip a circuit breaker that stops spawning the
  *   worker for the rest of the session.
  */
-import {
-  isRankerManifest,
-  type RankerManifest,
-  type RankerRequest,
-  type RankerResponse,
-} from "./ranker-types";
+import { isRankerManifest, type RankerManifest, type RankerRequest, type RankerResponse } from "./ranker-types";
 
 export type RankerMode = "off" | "shadow" | "active";
 
@@ -61,17 +56,11 @@ function request(request: RankerRequest, timeoutMs: number): Promise<Extract<Ran
       { requestId: number }
     >);
   return new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      workerFailures += 1;
-      if (workerFailures >= MAX_FAILURES) {
-        worker?.terminate();
-        worker = null;
-        workerDisabled = true;
-      }
-      resolve({ ...request, ok: false, error: "timeout" } as Extract<RankerResponse, { requestId: number }>);
-    }, timeoutMs);
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout>;
     const onMessage = (event: MessageEvent<RankerResponse>) => {
-      if (event.data?.requestId !== request.requestId) return;
+      if (event.data?.requestId !== request.requestId || settled) return;
+      settled = true;
       active.removeEventListener("message", onMessage);
       clearTimeout(timer);
       if (event.data.ok === false) {
@@ -81,6 +70,18 @@ function request(request: RankerRequest, timeoutMs: number): Promise<Extract<Ran
       }
       resolve(event.data);
     };
+    timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      active.removeEventListener("message", onMessage);
+      workerFailures += 1;
+      if (workerFailures >= MAX_FAILURES) {
+        worker?.terminate();
+        worker = null;
+        workerDisabled = true;
+      }
+      resolve({ ...request, ok: false, error: "timeout" } as Extract<RankerResponse, { requestId: number }>);
+    }, timeoutMs);
     active.addEventListener("message", onMessage);
     active.postMessage(request);
   });
@@ -116,8 +117,7 @@ export async function scoreCandidateFeatures(values: Float32Array, candidateCoun
   if (rankerMode() === "off") return { ok: false, scores: null, source: "off" };
   const manifest = await loadManifest();
   if (!manifest) return { ok: false, scores: null, source: "fallback" };
-  if (values.length !== candidateCount * manifest.featureCount)
-    return { ok: false, scores: null, source: "fallback" };
+  if (values.length !== candidateCount * manifest.featureCount) return { ok: false, scores: null, source: "fallback" };
   const active = spawnWorker();
   if (!active) return { ok: false, scores: null, source: "fallback" };
   const load = await request({ type: "load", requestId: nextRequestId++, manifest }, LOAD_TIMEOUT_MS);
