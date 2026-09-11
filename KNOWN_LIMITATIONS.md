@@ -161,3 +161,12 @@ the bounded memory footprint of the prepare-time delay reservation:
 - Offline rendre prichádzajú port messages do workletu až PO rendri — inicializácia (sample/params/bpm) preto ide cez `processorOptions` a render musí mať medzi engine sync a `startRendering()` aspoň jeden task-turn (reálny renderer ich má; testy pridávajú 60 ms yield).
 - Live zmeny POSITION/SCAN/JITTER/RATE/SIZE počas noty fungujú len na worklete; fallback cloud ich berie od novej noty (zostáva deterministický upfront scheduler).
 - AMP envelope vo worklete je one-pole aproximácia fallback exponentialRamp/`setTargetAtTime` krivky — zvukovo takmer identický, nie bit-identický s fallback cloudom (nový engine, nie parity fork).
+
+## Environment-citlivé QA checky (2026-09)
+
+- **Prism determinizmus (`maxDiff < 1e-4`)** a **fxeq morph gate (`< 2.4×`)** a **render budgety** sú
+  validné, ale margínovo citlivé na súčasnú záťaž stroja: pri CPU ~100 % (paralelné sessiony/buildy)
+  prism maxDiff kolíše 7e-7…1.1e-4 a morph ratio 2.18–2.58×. Na pokojnom stroji všetky prechádzajú
+  (217/217, Sep 2026). Ak niečo z toho padne: re-run solo/na pokojnom stroji pred akýmkoľvek
+  "fixovaním" — výsledky pod záťažou nie sú regresný signál.
+- Budgety zámerne NEslabujeme kvôli záťažovým flakeom — to by skrylo reálne regresie.
