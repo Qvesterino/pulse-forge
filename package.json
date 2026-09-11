@@ -30,7 +30,8 @@
     "build:core-worklets": "node scripts/build-core-worklets.mjs",
     "build:ultina": "node scripts/build-ultina-worklet.mjs",
     "build:ozvena": "node scripts/build-ozvena-worklet.mjs",
-    "ranker:golden": "vite-node scripts/generate-intent-ranker-golden.mts"
+    "ranker:golden": "vite-node scripts/generate-intent-ranker-golden.mts",
+    "ranker:review-pack": "node scripts/render-golden-review-pack.mjs"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",
