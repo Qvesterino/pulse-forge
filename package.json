@@ -16,6 +16,7 @@
     "curated:seeds": "node scripts/render-curated-seeds.mjs",
     "ranker:train": "vite-node scripts/generate-intent-ranker-dataset.mts && python scripts/train-intent-ranker.py && node scripts/validate-intent-ranker.mjs",
     "ranker:ort-sync": "node scripts/sync-ort-assets.mjs",
+    "ranker:activate": "node scripts/activate-intent-ranker.mjs",
     "test:browser:production": "node scripts/verify-production-browser.mjs",
     "release:preflight": "node scripts/release-preflight.mjs",
     "release:server-smoke": "node scripts/release-server-smoke.mjs",

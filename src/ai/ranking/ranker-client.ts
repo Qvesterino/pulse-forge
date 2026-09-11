@@ -15,6 +15,14 @@ import { isRankerManifest, type RankerManifest, type RankerRequest, type RankerR
 export type RankerMode = "off" | "shadow" | "active";
 
 /** Feature flag (goal doc Fáze 4): localStorage `pf:intent-ranker` = off|shadow|active. */
+/**
+ * Default ranker mode. "shadow" until human golden preferences exist AND the
+ * retrain verdict says ready-for-active — then flip to "active" (the
+ * npm run ranker:activate orchestrator does this after the golden gate
+ * passes). localStorage override (pf:intent-ranker) always wins.
+ */
+export const DEFAULT_RANKER_MODE: RankerMode = "shadow";
+
 export function rankerMode(): RankerMode {
   try {
     const value = localStorage.getItem("pf:intent-ranker");
@@ -22,7 +30,7 @@ export function rankerMode(): RankerMode {
   } catch {
     /* storage blocked — default below */
   }
-  return "shadow";
+  return DEFAULT_RANKER_MODE;
 }
 
 const SCORE_TIMEOUT_MS = 400; // preview budget — fall back fast
