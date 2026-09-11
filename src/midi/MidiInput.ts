@@ -43,6 +43,8 @@ export class MidiInput {
   private captureNextCcCb: ((cc: number, channel: number) => void) | null = null;
   /** Live Note Repeat holds — drum notes repeat while physically held. */
   private noteRepeat: NoteRepeatController | null = null;
+  /** Most recent note per MIDI channel — CC74 (MPE timbre) routes here. */
+  private channelLastNote = new Map<number, number>();
 
   /** Wire the live Note Repeat controller (services call once after construction). */
   attachNoteRepeat(controller: NoteRepeatController): void {
@@ -253,6 +255,8 @@ export class MidiInput {
       this.handleNoteOff(note, channel, config);
       return;
     }
+    // Last note per channel — CC74 (MPE timbre) routes to this note.
+    this.channelLastNote.set(channel, note);
     const doc = this.getDoc?.();
     if (!doc || !this.engine || !this.transport) return;
     const normVelocity = velocity / 127;
@@ -335,6 +339,18 @@ export class MidiInput {
         if (m.channel !== undefined && m.channel !== channel) continue;
         const normalized = value / 127;
         this.store.execute(this.setMacroValueCmd(doc, macro.id, normalized));
+      }
+    }
+
+    // MPE timbre dimension (CC74): per-note brightness. Without MPE zone
+    // info the channel's most recent note receives the timbre — on an MPE
+    // controller every note owns its channel, on a single-channel setup
+    // this degenerates to monophonic timbre expression.
+    if (cc === 74 && this.engine) {
+      const note = this.channelLastNote.get(channel);
+      const instTrack = doc.tracks.find((t) => t.kind === "instrument");
+      if (note !== undefined && instTrack) {
+        this.engine.polyTimbre(instTrack.id, note, value / 127);
       }
     }
   }

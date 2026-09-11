@@ -199,7 +199,7 @@ export interface SampleLayer {
   sampleId: string | null;
   /** Inclusive lower velocity bound (0..1). */
   min: number;
-  /** Exclusive upper velocity bound (0..1]. */
+  /** Exclusive upper velocity bound, except 1.0 which includes full velocity. */
   max: number;
   /** Inclusive MIDI note bounds — keyzones (optional, full range when absent). */
   minPitch?: number;
@@ -402,6 +402,8 @@ export interface PatternGeneration {
   outputContentHash?: string;
   /** BPM selected from the intent range for this generation, when requested. */
   resolvedBpm?: number;
+  /** Candidate bank size used for this generation, when greater than one. */
+  candidateCount?: number;
   /** Canonical hash of the normalized IntentSpec used to produce this pattern. */
   intentHash?: string;
   /** JSON-safe normalized IntentSpec snapshot for provenance and reloads. */

@@ -4,6 +4,7 @@ import { setInstrumentParam, setPadSynth, setPadParams } from "../commands/comma
 import { randomizeInstrumentCommand } from "../commands/layerCommands";
 import { INSTRUMENT_DEFS } from "../instruments/registry";
 import { WavetablePanel } from "./WavetablePanel";
+import { GranularPanel } from "./GranularPanel";
 import { EnvEditor } from "./EnvEditor";
 import { Slider } from "./controls";
 import type { Track } from "../project-model/types";
@@ -199,6 +200,7 @@ function InstrumentPluginContent({
   return (
     <div className="floating-plugin-stack">
       {track.instrument === "wavetable" && <WavetablePanel track={track} doc={doc} services={services} />}
+      {track.instrument === "granular" && <GranularPanel track={track} doc={doc} services={services} />}
       {track.instrument === "analog" && mode === "profi" && <EnvEditor track={track} doc={doc} services={services} />}
       <div className="floating-plugin-grid">
       {params.map((p: any) =>

@@ -212,13 +212,13 @@ describe("instrument expansion registry", () => {
     }
   });
 
-  it("drumsynth exposes analog drum macros and all seven types", () => {
+  it("drumsynth exposes analog drum macros and all thirteen types", () => {
     const ids = new Set(INSTRUMENT_DEFS.drumsynth.params.map((p) => p.id));
     for (const expected of ["type", "tune", "tone", "decay", "snap", "body", "drive"]) {
       expect(ids.has(expected)).toBe(true);
     }
     const type = INSTRUMENT_DEFS.drumsynth.params.find((p) => p.id === "type")!;
-    expect(type.options?.length).toBe(7);
+    expect(type.options?.length).toBe(13);
   });
 
   it("new kinds ship factory presets with in-range params", () => {
@@ -359,7 +359,7 @@ describe.skipIf(typeof OfflineAudioContext === "undefined")("Drum Synth runtime"
       rt.setParameter(p.id, p.max);
       rt.setParameter(p.id, p.default);
     }
-    for (let type = 0; type <= 6; type++) {
+    for (let type = 0; type <= 12; type++) {
       rt.setParameter("type", type);
       rt.noteOn(48 + type * 4, 0.9, 0.02 + type * 0.05, 0.2);
     }
@@ -1301,5 +1301,74 @@ describe.skipIf(typeof OfflineAudioContext === "undefined")("FM runtime", () => 
     const base = await renderFm();
     const touched = await renderFm((rt) => rt.polyPressure!(72, 1, 0.3));
     expect(peakDiff(base, touched)).toBeLessThan(1e-6);
+  });
+});
+
+describe.skipIf(typeof OfflineAudioContext === "undefined")("MPE timbre (CC74)", () => {
+  const SR = 44100;
+
+  it("filter instruments and FM expose polyTimbre", () => {
+    for (const kind of ["analog", "bass", "keys", "wavetable", "fm"] as const) {
+      const ctx = new OfflineAudioContext(2, 128, SR);
+      const track = {
+        id: `timbre-${kind}`,
+        kind: "instrument" as const,
+        instrument: kind,
+        name: kind,
+        gain: 1,
+        pan: 0,
+        mute: false,
+        solo: false,
+        sampleId: null,
+        params: defaultInstrumentParams(kind),
+        effects: [],
+        sends: {},
+      };
+      const rt = INSTRUMENT_DEFS[kind].factory(ctx, track, { bpm: 124, getSample: () => undefined });
+      expect(typeof rt.polyTimbre, `${kind} polyTimbre`).toBe("function");
+      expect(() => rt.polyTimbre!(60, 0.8, 0.1)).not.toThrow();
+      rt.panic();
+      rt.dispose();
+    }
+  });
+});
+
+describe("mod matrix rollout", () => {
+  it("every rolled-out instrument exposes the shared mod matrix params", () => {
+    const kinds = [
+      "analog",
+      "bass",
+      "keys",
+      "pluck",
+      "808",
+      "texture",
+      "logdrum",
+      "spectral",
+      "sampler",
+      "vocalchop",
+      "wavetable",
+    ] as const;
+    for (const kind of kinds) {
+      const ids = new Set(INSTRUMENT_DEFS[kind].params.map((p) => p.id));
+      for (const id of ["modASrc", "modADst", "modAAmt", "modBSrc", "modBDst", "modBAmt", "modLfoRate"]) {
+        expect(ids.has(id), `${kind}.${id}`).toBe(true);
+      }
+    }
+    // Granular is intentionally excluded — its PLAY/SCAN/RAND parameters are
+    // its modulation story, and the worklet engine has no mod routes.
+    expect(new Set(INSTRUMENT_DEFS.granular.params.map((p) => p.id)).has("modASrc")).toBe(false);
+  });
+
+  it("CUTOFF destination is offered only where a per-voice filter exists", () => {
+    const dstOf = (kind: string) =>
+      INSTRUMENT_DEFS[kind as "keys"].params.find((p) => p.id === "modADst")!.options ?? [];
+    // vocalchop: formant bank only — no CUTOFF
+    expect(dstOf("vocalchop").some((o) => o.value === 1)).toBe(false);
+    // filter instruments offer it
+    for (const kind of ["analog", "bass", "keys", "pluck", "808", "texture", "logdrum", "spectral", "sampler"]) {
+      expect(dstOf(kind).some((o) => o.value === 1), `${kind} CUTOFF dst`).toBe(true);
+    }
+    // wavetable also offers MORPH (dst 0)
+    expect(dstOf("wavetable").some((o) => o.value === 0)).toBe(true);
   });
 });

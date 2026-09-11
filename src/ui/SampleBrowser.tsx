@@ -24,6 +24,7 @@ export function SampleBrowser({
   onSelect,
   allowNone = true,
   showDropZone = false,
+  onBatchImport,
 }: {
   assets: FactoryAsset[];
   userAssets?: UserSampleAsset[];
@@ -31,6 +32,7 @@ export function SampleBrowser({
   onSelect: (assetId: string | null) => void;
   allowNone?: boolean;
   showDropZone?: boolean;
+  onBatchImport?: (assets: UserSampleAsset[]) => void;
 }) {
   const services = useServices();
   const library = useLibrary();
@@ -90,7 +92,10 @@ export function SampleBrowser({
 
   const handleImport = (asset: UserSampleAsset) => {
     setAllUserAssets((prev) => [...prev, asset]);
-    apply(asset.id);
+    // A sampler multi-file import is a proposal: the parent shows the
+    // keyzone/RR mapping and commits it with one command after Apply. Do not
+    // leak one setInstrumentSample undo entry per imported file.
+    if (!onBatchImport) apply(asset.id);
   };
 
   const Row = ({ asset, fav }: { asset: SampleAsset; fav: boolean }) => (
@@ -147,7 +152,7 @@ export function SampleBrowser({
 
   return (
     <div className="sample-browser">
-      {showDropZone && <DropZone onImport={handleImport} />}
+      {showDropZone && <DropZone onImport={handleImport} onBatchImport={onBatchImport} />}
       {showDropZone && <FreesoundSection onImport={handleImport} />}
       <input
         className="preset-search"

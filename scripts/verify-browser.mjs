@@ -1,5 +1,5 @@
 import { createServer } from "vite";
-import { chromium } from "playwright";
+import { chromium, firefox, webkit } from "playwright";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -41,11 +41,17 @@ let exitCode = 0;
 let browser;
 try {
   // The default is Playwright's pinned Chromium. Release QA can point the
-  // same deterministic flow at another installed Chromium-family browser
-  // (for example Edge) without maintaining a second script. Firefox/Safari
-  // still require their own runtime/manual matrix.
+  // same deterministic flow at Firefox/WebKit or another installed
+  // Chromium-family browser (for example Edge) without maintaining a second
+  // script. Safari/iOS Safari still require their own runtime/manual matrix.
+  const engineName = (process.env.KYX_BROWSER_ENGINE ?? "chromium").toLowerCase();
+  const browserTypes = { chromium, firefox, webkit };
+  const browserType = browserTypes[engineName];
+  if (!browserType) {
+    throw new Error(`unsupported KYX_BROWSER_ENGINE=${engineName}; expected chromium, firefox or webkit`);
+  }
   const executablePath = process.env.KYX_BROWSER_EXECUTABLE_PATH;
-  browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}) });
+  browser = await browserType.launch({ headless: true, ...(executablePath ? { executablePath } : {}) });
   const page = await browser.newPage();
   const consoleErrors = [];
   page.on("console", (msg) => {

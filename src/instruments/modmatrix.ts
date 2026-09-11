@@ -209,19 +209,20 @@ export const MOD_SRC_OPTIONS = [
  * instruments have no morph — slot 0 is labeled OFF there. DETUNE (2) is
  * reserved: unimplemented on the worklet and fallback alike.
  */
-export function modDstOptions(morph: boolean) {
+export function modDstOptions(morph: boolean, cutoff = true) {
   return [
     ...(morph ? [{ value: 0, label: "MORPH" }] : [{ value: 0, label: "OFF" }]),
-    { value: 1, label: "CUTOFF" },
+    ...(cutoff ? [{ value: 1, label: "CUTOFF" }] : []),
     { value: 3, label: "AMP" },
   ];
 }
 
 /** The 7 mod-matrix params, appended to a synth's ParamDef list. */
-export function modMatrixParams(morph: boolean): ParamDef[] {
+export function modMatrixParams(morph: boolean, opts?: { cutoff?: boolean }): ParamDef[] {
+  const cutoff = opts?.cutoff ?? true;
   return [
     { id: "modASrc", label: "MOD A SRC", min: 0, max: 3, default: 0, options: MOD_SRC_OPTIONS },
-    { id: "modADst", label: "MOD A DST", min: 0, max: 3, default: 0, options: modDstOptions(morph) },
+    { id: "modADst", label: "MOD A DST", min: 0, max: 3, default: 0, options: modDstOptions(morph, cutoff) },
     {
       id: "modAAmt",
       label: "MOD A AMT",
@@ -231,7 +232,7 @@ export function modMatrixParams(morph: boolean): ParamDef[] {
       format: (v) => `${v >= 0 ? "+" : ""}${(v * 100).toFixed(0)}%`,
     },
     { id: "modBSrc", label: "MOD B SRC", min: 0, max: 3, default: 0, options: MOD_SRC_OPTIONS },
-    { id: "modBDst", label: "MOD B DST", min: 0, max: 3, default: 1, options: modDstOptions(morph) },
+    { id: "modBDst", label: "MOD B DST", min: 0, max: 3, default: 1, options: modDstOptions(morph, cutoff) },
     {
       id: "modBAmt",
       label: "MOD B AMT",

@@ -1,11 +1,45 @@
 # KYX — pre-release implementation roadmap
 
-**Status:** agent-ready roadmap + live execution snapshot (not a release approval)  
+**Status:** agent-ready implementation source of truth + live execution snapshot (not a release approval)
 **Dátum:** 2026-09-11
 **Produkt:** KYX browser-first beatmaking DAW  
 **Cieľ:** dostať KYX do stavu, v ktorom nový používateľ vytvorí beat, vyberie zvuk, spracuje ho cez pluginy, zrozumiteľne ho zmixuje a bezpečne exportuje bez straty práce, nečakaných level skokov alebo nejasného workflow.
 
 Tento dokument je implementačný plán pre ďalšieho agenta. Každá úloha má byť riešená proti existujúcemu kódu v repozitári, nie ako samostatný redesign produktu.
+
+## Agent execution protocol
+
+### Ako s roadmapou pracovať
+
+1. Agent si najprv prečíta túto kapitolu, kapitolu 2 (source of truth) a kapitolu 3
+   (invariants). Až potom si vyberie jednu úlohu z najbližšieho execution queue.
+2. Stav `[x]` znamená „implementované a overené“, nie „kód existuje“. Pri každej
+   položke musí byť dohľadateľný test, browser check alebo manuálny release dôkaz.
+3. Neoverené zmeny v pracovnom strome sa nesmú potichu zahrnúť do tvrdenia, že
+   feature je shipped. Najprv sa musia zmapovať, otestovať, zdokumentovať a
+   oddeliť od nesúvisiacich zmien.
+4. Ak úloha mení audio, project model, export, persistence alebo server, agent
+   v completion reporte uvedie live/offline, reload, undo/autosave/collab a
+   failure-state dopad. Ak tieto údaje nevie doložiť, úloha nie je done.
+5. Po každej centrálnej zmene sa spustí aspoň typecheck + dotknuté testy. Pred
+   označením release gate ako zeleného sa spúšťa kompletná sada z kapitoly 15.
+
+### Najbližší execution queue
+
+Toto je praktické poradie práce pre agenta, ktorý preberá aktuálny strom. Kým
+nie je uzavretý `REL-01`, nemá zmysel pridávať nový plugin alebo veľký instrument.
+
+| ID | Priorita | Úloha | Reálne touchpoints | Done keď |
+| --- | --- | --- | --- | --- |
+| `REL-01` | P0 | Zmapovať a uzavrieť všetky uncommitted WIP zmeny | `git status`, `src/intent/`, `src/ai/`, `src/instruments/`, `src/ui/`, `tests/` | každý diff má ownera, dôvod, test a rozhodnutie land/odložiť; nič sa neprepíše naslepo |
+| `QA-01` | P0 | Manuálny browser/device release matrix | [`docs/KYX-MANUAL-RELEASE-CHECKLIST.md`](./KYX-MANUAL-RELEASE-CHECKLIST.md) | Chromium/Edge/Firefox/Safari macOS/Safari iOS prejdú create → sound → FX → mix → export → reload flow |
+| `DEP-01` | P0 | Overiť produkčný deploy, nie iba lokálny server smoke | `scripts/release-preflight.mjs`, `scripts/release-server-smoke.mjs`, nasadený host | health, CORS, origin rejection, gallery auth, refresh/tab-close recovery a worklet loading prejdú na skutočnej doméne |
+| `VOI-01` | P0 | Zmerať VØID IR/pre-delay footprint na fyzických zariadeniach | `src/effects/ozvena-core/`, `src/ui/OzvenaPanel.tsx`, `docs/KYX-MANUAL-RELEASE-CHECKLIST.md` | máme device/browser meranie ready time, peak memory proxy, pre-delay range, dropout a recovery správania |
+| `FMT-01` | Release hygiene | Rozhodnúť o 205 formatting deviations | `npm run format:check`, [`docs/FORMAT-CHECK-DEVIATIONS.md`](./FORMAT-CHECK-DEVIATIONS.md) | buď samostatný formatting-only cleanup, alebo explicitne schválená CI výnimka bez zmenšenia scope |
+
+`P2` backlog sa nesmie predbiehať pred týmito položkami. Ak agent narazí na
+nejasný scope, najprv doplní reprodukciu alebo rozhodovací záznam do reportu;
+nevyplní medzeru novou architektúrou iba preto, aby test prestal padať.
 
 ## 0. Aktuálny execution snapshot
 
@@ -45,21 +79,55 @@ Nasledujúce časti roadmapy už boli v tomto pracovnom strome implementované a
 - server-side moderation DELETE limiter, bounded per-IP limiter state a
   production CORS fail-fast guard,
 - `release:preflight` overuje production CORS config, voliteľný gallery admin
-  token, KYX manifest a všetky tri shipped worklety pred deployom,
+  token, KYX manifest a všetkých päť shipped worklet artefaktov pred deployom,
+- `release:server-smoke` spúšťa skutočný collab-server entrypoint v production
+  režime a overuje health, CORS, origin rejection a admin auth contract,
+- `release:preflight` skenuje aj shipped HTML/JS/CSS na starý verejný brand;
+  kompatibilné import prefixy a zámerný Qvester interoperability text ostávajú
+  povolené,
 - regression tests pre každý z vyššie uvedených kontraktov.
+- core AudioWorklet packaging: `core-processor.js` sa v production už nespolieha
+  na Vite `data:` URL, ale na hierarchické self-contained artefakty
+  `public/bitcrusher-worklet.js` a `public/core-worklet.js`; oba majú release
+  preflight aj samostatný bundle budget,
+- master limiter fallback používa pre `DynamicsCompressorNode.threshold` správne
+  dBFS ceiling hodnoty a má source-grep regresný test.
 - Intent Engine binding pre key/BPM/role constraints, deterministicý local
   provider s repair/fallback diagnostics a provenance v generation metadata.
+- current instrument/runtime hardening: dedicated Granular voice worklet with
+  live playhead and deterministic seeded grains, MPE timbre (CC74) routing,
+  Bass polyphony 8 voices, and a bounded 64-voice one-shot ceiling,
+- Intent candidate-bank generation with deterministic seeds, quality scoring
+  and provenance for the selected candidate; model caches reuse immutable
+  Markov/melodic source data without changing generation semantics.
+
+### Čo ešte potrebuje release triage
+
+Nasledujúce zmeny sú v čase písania dokumentu prítomné ako pracovné alebo
+necommitnuté zmeny, preto sa automaticky nepovažujú za release feature:
+
+- AutoMap už nie je iba helper: je integrovaný do drop/import proposal flow,
+  má explicitné `PREVIEW`/`CANCEL`/`APPLY MAP`, jednu undoable layer command
+  operáciu a unit/UI/browser coverage. Pred release ešte treba potvrdiť
+  reálny file-drag a export/import/collab parity v manuálnej matrixe;
+- zmeny v `src/intent/`, `src/ai/` a `src/instruments/` musia prejsť samostatným
+  diff reviewom, pretože zasahujú deterministickú generáciu, registry a live /
+  offline audio parity;
+- agent nesmie tieto súbory prepisovať, squasovať ani vyhadzovať bez toho, aby
+  najprv zaznamenal vlastníka zmeny a dôvod rozhodnutia v completion reporte.
 
 Overené príkazy a výsledky:
 
 | Gate                                                       | Výsledok                                                 |
 | ---------------------------------------------------------- | -------------------------------------------------------- |
 | `npm run typecheck:clean`                                  | PASS                                                     |
-| full Vitest (`npm test`, default isolated workers)          | PASS — 2064 passed / 0 failed / 101 skipped, 205 files   |
-| `npm run build` + worklet buildy + bundle budget           | PASS — entry 893 KB / 995 KB, total JS 1712 KB / 2400 KB |
+| full Vitest (`npm test`, default isolated workers)          | RED on current shared run — 2088 passed / 3 failed / 103 skipped, 208 files; groove + Gallery pass isolated, FXEQ perf gate remains red |
+| `npm run build` + worklet buildy + bundle budget           | PASS — entry 927 KB / 995 KB, total JS chunks 1728 KB / 2400 KB, core worklets ~101 KB / 120 KB, 344 modules |
 | `npm run build:ultina`                                     | PASS — rebuilt `public/ultina-worklet.js`                |
-| `npm run test:browser`                                     | PASS — 198/198 Chromium; 198/198 Edge                   |
+| `npm run test:browser`                                     | PASS — 200/200 Chromium (latest run; Edge/Firefox need rerun after latest worklet packaging) |
+| `npm run test:browser:production`                          | PASS — dist boot, HOUSE template, sequencer, FX rack and all five shipped worklet assets |
 | `npm run release:preflight`                                | PASS — explicit production-origin/config + KYX artifacts |
+| `npm run release:server-smoke`                             | PASS — real entrypoint health/CORS/origin/admin contract |
 | PRISM/FXEQ + VLYX targeted Vitest suite                    | PASS — 126/126 tests                                     |
 | upstream Ultina affected suite                             | PASS — 104/104 tests                                     |
 | VLYX analysis worker client suite                          | PASS — 4/4 tests                                         |
@@ -68,9 +136,9 @@ Overené príkazy a výsledky:
 | affected post-fix suites (`services-close-race`, `TopBar`) | PASS — 20/20 tests                                       |
 | scoped Prettier + `git diff --check`                       | PASS                                                     |
 
-Aktuálny kompletný `npm test` beh na quiescent pracovnom strome prešiel bez failu: 205 súborov, 2064 passed, 0 failed, 101 skipped (2165 total; približne 5 minút). Historické close-race/stale-branding flakey príčiny sú opravené; zámerné stderr z recovery testov, jsdom canvas a test-only act warnings nie sú production errors. Režim `singleFork` nie je validný release runner pre UI suite, pretože zdieľaný jsdom proces kontaminuje ďalšie testy.
+Aktuálny kompletný `npm test` beh v zdieľanom pracovnom strome nie je release-green: 208 súborov, 2088 passed, 3 failed, 103 skipped (2194 total). Izolované reruny potvrdili `groove.test.ts` a `GalleryPage.test.tsx`; `fxeq-performance-gates.test.ts` je na aktuálnom zaťaženom hoste stále červený (p95 aj morph gate). Treba ho zopakovať na quiescent hoste a buď odstrániť skutočný regres, alebo zdokumentovať reprodukovateľný environment-specific problém; threshold sa nesmie iba uvoľniť. Zámerné stderr z recovery testov, jsdom canvas a test-only act warnings nie sú samy osebe production errors.
 
-`npm run format:check` na celom historickom strome je stále červený kvôli 199 existujúcim formatting deviations mimo tohto passu. Presný, command-generated zoznam je v [`docs/FORMAT-CHECK-DEVIATIONS.md`](./FORMAT-CHECK-DEVIATIONS.md). Pred release treba buď vykonať samostatný formatting-only cleanup, alebo tento zoznam explicitne akceptovať v CI gate; nesmie sa to maskovať zmenou scope checku.
+`npm run format:check` na celom strome je stále červený kvôli 205 zdokumentovaným formatting deviations. Presný, command-generated zoznam je v [`docs/FORMAT-CHECK-DEVIATIONS.md`](./FORMAT-CHECK-DEVIATIONS.md). Pred release treba buď vykonať samostatný formatting-only cleanup, alebo tento zoznam explicitne akceptovať v CI gate; nesmie sa to maskovať zmenou scope checku.
 
 Ešte povinné pred verejným deployom: manuálny Firefox/Safari/iOS smoke podľa
 [`docs/KYX-MANUAL-RELEASE-CHECKLIST.md`](./KYX-MANUAL-RELEASE-CHECKLIST.md),
@@ -106,7 +174,7 @@ Pred začiatkom práce si agent overí stav priamo v kóde. Relevantné source-o
 
 V repozitári už existuje:
 
-- 13 nástrojov vrátane sampleru, synthov, wavetable, granular, keys, pluck, log drum, spectral pad, vocal chop a drum synth,
+- 14 instrument kinds vrátane sampleru, synthov, wavetable, granular, keys, pluck, log drum, spectral pad, vocal chop a drum synth,
 - tri flagship efekty PRISM, VLYX a VØID plus širší FX registry,
 - preset browser s vyhľadávaním, filtrami, favorites, recent a user presetmi,
 - sample preview cez `services.engine.previewAsset`,
@@ -116,6 +184,12 @@ V repozitári už existuje:
 - Beat Focus režim v `Sequencer.tsx`,
 - DICE, Assist a Arrangement workflow,
 - autosave/snapshot infrastructure a lokálna collaboration vrstva.
+
+Kanonický aktuálny počet a poradie nástrojov je `INSTRUMENT_ORDER` v
+`src/instruments/registry.ts` spolu s `InstrumentKind` v
+`src/instruments/types.ts`. Staršie produktové roadmapy môžu obsahovať historický
+počet; pri implementácii má prednosť kód a normalizácia v
+`src/project-model/schema.ts`.
 
 To znamená, že najbližšia práca má spevniť konzistenciu, audio správnosť, recovery a release QA. Prioritou nie je pridávať ďalšie nástroje alebo štvrtý flagship plugin.
 
@@ -141,7 +215,7 @@ Každý agent ich musí dodržať:
 Tieto body majú prednosť pred polishom. Ak niektorý P0 zlyháva, release sa nepovažuje za bezpečný.
 
 - [x] deterministický PRISM/FXEQ export (core, host seed aj browser
-  `serialize → reload → offline bounce`; 198/198 Chromium gate),
+  `serialize → reload → offline bounce`; 200/200 Chromium gate),
 - [x] odstránenie potvrdených VLYX DSP regresií (upstream → vendor → worklet),
 - [x] hardening VØID IR/pre-delay runtime allocations; reálne device footprint
   meranie ostáva manuálny release krok,
@@ -168,6 +242,71 @@ Tieto body majú prednosť pred polishom. Ak niektorý P0 zlyháva, release sa n
 - [ ] cloud účty, serverová persistentná databáza alebo komplexná moderácia,
 - [ ] nový flagship plugin alebo veľký instrument expansion.
 
+P2 neznamená „zabudnuté“. Znamená to, že tieto veci nesmú ohroziť prvý release.
+Každý budúci agent si vyberie konkrétny balík, nie neurčité „polish všetkého“:
+
+#### P2.1 — Sampler ingestion: keyzones, velocity a round-robin — [x] implemented
+
+**Cieľ:** import viacerých pomenovaných sample súborov bez ručného kreslenia
+každého layeru.
+
+**Touchpoints:** `src/samples/autoMap.ts`, `src/ui/DropZone.tsx`,
+`src/ui/SampleBrowser.tsx`, `src/commands/layerCommands.ts`,
+`src/project-model/types.ts`, `src/project-model/schema.ts`,
+`src/audio-engine/AudioEngine.ts`, `tests/automap.test.ts`.
+
+**Poradie implementácie:**
+
+1. uzamknúť filename convention pre root note, velocity a RR counter;
+2. dokončiť parser a deterministic ordering bez použitia UUID/timestampu na
+   rozhodovanie;
+3. integrovať preview importu s explicitným `Apply`/`Cancel`;
+4. uložiť vrstvy cez existujúce layer commands a normalizáciu;
+5. overiť overlapping velocity/RR výber, keyzone hranice, missing asset,
+   reload, export/import, collaboration a live/offline render.
+
+**Done:** nový používateľ pretiahne multi-sample set, vidí navrhnuté zóny,
+počuje preview, vie návrh odmietnuť alebo aplikovať jednou undo operáciou a
+rovnaký projekt dá rovnaký sample výber po reload/renderi. Samotná helper
+funkcia bez UI integrácie sa za hotovú feature nepočíta. Aktuálny stav túto
+podmienku spĺňa; manuálny file-drag a cross-browser/device parity ostávajú
+release QA krokom.
+
+#### P2.2 — Modulation matrix rollout
+
+**Cieľ:** rozšíriť už zavedený modulation contract na ďalšie nástroje bez
+kopírovania nových ad-hoc routovacích grafov.
+
+**Touchpoints:** `src/instruments/modmatrix.ts`,
+`src/instruments/registry.ts`, `src/audio-engine/AudioEngine.ts`,
+`src/project-model/schema.ts`, `src/ui/Inspector.tsx`,
+`src/rendering/renderer.ts`, instrument tests a browser parity checks.
+
+**Done:** každý rollout má explicitnú neutralitu pri `amount = 0`, live update,
+automation/p-lock, polyPressure/MPE podľa capability, dispose pri stop/panic,
+fallback a bit-stabilný alebo toleranciou definovaný offline výsledok.
+
+#### P2.3 — Onboarding, templates a sound discovery
+
+**Cieľ:** skrátiť cestu od prázdneho projektu k prvému dobrému beatu bez
+zahltenia používateľa ďalšími controls.
+
+**Touchpoints:** `src/ui/ProjectBrowser.tsx`, `src/ui/GenerateDialog.tsx`,
+`src/ui/DiceTray.tsx`, `src/ui/Inspector.tsx`, `src/presets/factory.ts`,
+`src/presets/`, relevantné UI/browser tests.
+
+**Done:** nový používateľ vie vytvoriť beat, nájsť vhodný preset a pochopiť
+scope Preview/Apply/Undo bez návodu; template je iba project data, nie druhý
+audio engine; onboarding nezapisuje neviditeľné zmeny do projektu.
+
+#### P2.4 — Routing templates a collaboration expansion
+
+Tieto balíky sa môžu začať až po product/security rozhodnutí. Pred
+implementáciou treba definovať permission model, persistence model, migráciu,
+rate limits, rollback a privacy policy. Bez toho sa nepridáva účet, cloud DB,
+komplexná moderácia ani veľký server rewrite do kritického create/play/export
+flow.
+
 ## 5. Fáza 0 — evidence baseline
 
 **Owner:** QA/release agent  
@@ -182,6 +321,7 @@ Spustiť a zaznamenať aktuálny stav pred ďalšími zmenami:
 npm run typecheck:clean
 npm test -- --reporter=dot
 npm run test:browser
+npm run test:browser:production
 npm run build
 npm run format:check
 npm audit --omit=dev --audit-level=high
@@ -245,7 +385,7 @@ Overiť v Chromium/Edge a následne manuálne vo Firefox, Safari a iOS Safari:
   zámernú odlišnosť pri inom seed; rack contract pokrýva seed forwarding,
 - [x] browser-level test `serialize → reload → offline bounce` beží v
   `src/browser-checks.ts`; dve PRISM worklet inštancie po JSON/migration
-  round-tripe ostali pod max-sample toleranciou `1e-5` (Chromium gate 198/198).
+  round-tripe ostali pod max-sample toleranciou `1e-5` (Chromium gate 200/200).
 
 ### 6.2 VLYX upstream kvalita
 
@@ -361,7 +501,7 @@ Používateľ musí vedieť porovnať preset bez toho, aby prišiel o aktuálny 
 
 - prvá obrazovka je pochopiteľná pre nového používateľa,
 - Advanced režim nestráca žiadnu existujúcu funkcionalitu,
-- všetkých 13 nástrojov má validný default, preset a reset path,
+- všetkých 14 instrument kinds má validný default, preset a reset path,
 - žiadny parameter nesmie byť nedostupný kvôli viewportu alebo focus trapu.
 
 ### 7.3 Preset curation
@@ -523,6 +663,8 @@ Súčasný `server/collab-server.mjs` je jednoduchý in-memory server bez auth, 
 - gallery moderation/report/delete flow a privacy text,
 - CORS/origin policy pre produkčné domény; pri `NODE_ENV=production` alebo
   `enforceProductionConfig: true` wildcard CORS odmietnuť už pri štarte.
+- production process musí bindovať na reachability interface platformy
+  (typicky `HOST=0.0.0.0` v kontajneri), nie zostať na defaultnom loopbacke.
 
 Neimplementovať účet, persistentnú DB ani veľký backend rewrite bez samostatného product/security rozhodnutia. Ak launch nemá verejnú collaboration/gallery, najprv feature vypnúť alebo držať za jasným feature flagom.
 

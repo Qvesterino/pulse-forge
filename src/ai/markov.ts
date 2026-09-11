@@ -1,10 +1,12 @@
-import type { PadMarkovModel, VelocityLevel, StateIndex } from "./types";
+import type { GrooveData, PadMarkovModel, VelocityLevel, StateIndex } from "./types";
 
 const STEPS_PER_BAR = 16;
 const NUM_LEVELS = 4;
 const NUM_STATES = NUM_LEVELS * NUM_LEVELS * STEPS_PER_BAR; // 256 states
 const MODEL_CACHE_LIMIT = 64;
 const modelCache = new Map<string, PadMarkovModel>();
+const grooveModelCache = new WeakMap<GrooveData, Map<number, { patterns: number[][]; model: PadMarkovModel }>>();
+const EMPTY_PATTERN: number[] = Object.freeze(new Array(16).fill(0)) as unknown as number[];
 
 /** Quantize a velocity value (0-1) to a discrete level (0-3) */
 export function quantizeVelocity(v: number): VelocityLevel {
@@ -75,27 +77,83 @@ export function buildPadModel(padIndex: number, patterns: number[][]): PadMarkov
   return model;
 }
 
-/** Test/diagnostics hook; generation never needs to clear immutable groove models. */
-/** Sample a state from a distribution vector using a PRNG, with optional temperature */
-function sampleFromDistribution(dist: Uint32Array, rand: () => number, temperature: number = 1): number {
-  const invT = 1 / Math.max(0.01, temperature);
-  const candidates: number[] = [];
-  for (let i = 0; i < dist.length; i++) {
-    if (dist[i] > 0) candidates.push(i);
+/**
+ * Return the cached model and normalized source rows for a static groove.
+ * Groove definitions are immutable, so object identity is a cheaper and more
+ * reliable cache key than serializing every row on every generation.
+ */
+export function getGroovePadModel(
+  groove: GrooveData,
+  padIndex: number,
+): { patterns: readonly number[][]; model: PadMarkovModel } {
+  let byPad = grooveModelCache.get(groove);
+  if (!byPad) {
+    byPad = new Map();
+    grooveModelCache.set(groove, byPad);
   }
-  if (candidates.length === 0) return -1;
+  const cached = byPad.get(padIndex);
+  if (cached) return cached;
 
+  const patterns = groove.patterns.map((pattern) => (pattern[padIndex] as number[] | undefined) ?? EMPTY_PATTERN);
+  const entry = { patterns, model: buildPadModel(padIndex, patterns) };
+  byPad.set(padIndex, entry);
+  return entry;
+}
+
+/** Test/diagnostics hook; generation never needs to clear immutable groove models. */
+/** Sample a state from a distribution vector using a PRNG, with optional temperature. */
+function sampleFromDistribution(
+  dist: Uint32Array,
+  rand: () => number,
+  temperature: number = 1,
+  start = 0,
+  end = dist.length,
+): number {
+  const invT = 1 / Math.max(0.01, temperature);
   let total = 0;
-  for (const i of candidates) {
-    total += Math.pow(dist[i], invT);
+  for (let i = start; i < end; i++) {
+    if (dist[i] > 0) total += Math.pow(dist[i], invT);
   }
+  if (total <= 0) return -1;
 
   let r = rand() * total;
-  for (const i of candidates) {
+  for (let i = start; i < end; i++) {
+    if (dist[i] <= 0) continue;
     r -= Math.pow(dist[i], invT);
-    if (r <= 0) return i;
+    if (r <= 0) return i - start;
   }
-  return candidates[candidates.length - 1];
+  for (let i = end - 1; i >= start; i--) {
+    if (dist[i] > 0) return i - start;
+  }
+  return -1;
+}
+
+/** Allocation-free position-filtered sampling for second-order transitions. */
+function sampleAtPosition(
+  dist: Uint32Array,
+  start: number,
+  end: number,
+  position: number,
+  rand: () => number,
+  temperature: number = 1,
+): number {
+  const invT = 1 / Math.max(0.01, temperature);
+  let total = 0;
+  for (let i = start; i < end; i++) {
+    if (dist[i] > 0 && decodePosition(i - start) === position) total += Math.pow(dist[i], invT);
+  }
+  if (total <= 0) return -1;
+
+  let r = rand() * total;
+  for (let i = start; i < end; i++) {
+    if (dist[i] <= 0 || decodePosition(i - start) !== position) continue;
+    r -= Math.pow(dist[i], invT);
+    if (r <= 0) return i - start;
+  }
+  for (let i = end - 1; i >= start; i--) {
+    if (dist[i] > 0 && decodePosition(i - start) === position) return i - start;
+  }
+  return -1;
 }
 
 /** Sample the next state given the current state */
@@ -106,24 +164,16 @@ export function sampleTransition(
   temperature: number = 1,
 ): StateIndex {
   const rowStart = currentState * model.states;
-  const row = model.transitions.subarray(rowStart, rowStart + model.states);
   const nextPosition = (decodePosition(currentState) + 1) % STEPS_PER_BAR;
 
   // Position is part of the state, but it is also a hard temporal invariant:
   // a transition must advance exactly one step in the bar.
-  const positional = new Uint32Array(model.states);
-  for (let i = 0; i < row.length; i++) {
-    if (row[i] > 0 && decodePosition(i) === nextPosition) {
-      positional[i] = row[i];
-    }
-  }
-
-  const sampled = sampleFromDistribution(positional, rand, temperature);
+  const sampled = sampleAtPosition(model.transitions, rowStart, rowStart + model.states, nextPosition, rand, temperature);
   if (sampled >= 0) return sampled;
 
   // A sparse model can legitimately have no row for a generated state. Keep
   // the last level as a conservative fallback and preserve the time position.
-  const anyTransition = sampleFromDistribution(row, rand, temperature);
+  const anyTransition = sampleFromDistribution(model.transitions, rand, temperature, rowStart, rowStart + model.states);
   if (anyTransition >= 0) {
     return encodeState(decodeLevelPrev(anyTransition), decodeLevelCurr(anyTransition), nextPosition);
   }

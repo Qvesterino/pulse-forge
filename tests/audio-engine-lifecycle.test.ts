@@ -173,4 +173,15 @@ describe("AudioEngine — lifecycle hardening (source-grep)", () => {
       /ctx\.resume\(\)\.catch\(\(\)\s*=>\s*\{\}\)/,
     );
   });
+
+  it("applyMasterConfig() passes the master ceiling to the native limiter in dBFS", () => {
+    // DynamicsCompressorNode.threshold is a dBFS AudioParam. A regression to
+    // the old linear-amplitude conversion makes negative ceilings invalid,
+    // causes browser warnings, and silently changes the limiter's behaviour.
+    const body = sliceFunction(readEngine(), /private\s+applyMasterConfig\s*\([^)]*\)\s*:\s*void\s*\{/);
+    expect(body, "applyMasterConfig not found in AudioEngine.ts").not.toBe("");
+    expect(body).toMatch(/const ceilingDb\s*=\s*Math\.min\(0,\s*Math\.max\(-12,\s*config\.ceilingDb\)\)/);
+    expect(body).toMatch(/this\.masterLimiter\.threshold\.value\s*=\s*ceilingDb/);
+    expect(body).not.toMatch(/Math\.pow\(10,\s*config\.ceilingDb\s*\/\s*20\)/);
+  });
 });

@@ -8,6 +8,7 @@ import "./kwmeter-processor.js";
 import "./stepgate-processor.js";
 import "./svfilter-processor.js";
 import "./wtvoice-processor.js";
+import "./granular-voice-processor.js";
 import "./flanger-processor.js";
 import "./tremolo-processor.js";
 import "./autowah-processor.js";

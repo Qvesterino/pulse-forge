@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import { useDeterministicIds } from "../src/shared/ids";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { MAX_HUMANIZE_TIMING, MAX_MICRO_TIMING, drumHitsInWindow, swingOffsetTicks } from "../src/project-model/groove";
+import { noteEventsInWindow } from "../src/project-model/events";
 import { normalizeProject } from "../src/project-model/schema";
-import { STEP_TICKS } from "../src/project-model/types";
+import { emptyPattern, note, withNotes } from "../src/project-model/templates";
+import { PPQ, STEP_TICKS } from "../src/project-model/types";
 import type { DrumTrack, ProjectDocument } from "../src/project-model/types";
 
 const PATTERN_TICKS = STEP_TICKS * 16;
@@ -278,6 +280,96 @@ describe("groove — ratchet tails across window boundaries (scheduler precision
       if (splitAt > 7 * STEP_TICKS && splitAt < 7 * STEP_TICKS + 105) {
         expect(tailInSecond).toBeGreaterThan(0);
       }
+    }
+  });
+});
+
+/**
+ * Performance / memory recon — regression coverage for the A.3 + A.4
+ * hot-path optimisations. These tests pin the contracts that the
+ * scheduler hot path relies on: deterministic sort order without
+ * ICU collation cost, and a no-clone contract on `hit.locks` so
+ * a 500-hit window does not allocate 500 throw-away objects.
+ */
+describe("groove engine — A.3 + A.4 hot-path contracts", () => {
+  it("drumHitsInWindow does not clone hit.locks (defect A.3)", () => {
+    // Build a project with a single step that has p-locks set on
+    // the source `stepMeta`. `drumHitsInWindow` should pass the
+    // locks reference through without re-allocating. We also have
+    // to seed a non-zero row velocity on the same (pad, step) —
+    // `drumHitsInWindow` early-exits a hit when `velocity <= 0`,
+    // and the test fixture in `blankDoc` does not seed any rows.
+    const { doc, kickId } = blankDoc();
+    const docWithLocks = setRow(doc, kickId, [[0, 0.9]]);
+    const docWithMeta: ProjectDocument = {
+      ...docWithLocks,
+      patterns: docWithLocks.patterns.map((p) => ({
+        ...p,
+        stepMeta: {
+          ...(p.stepMeta ?? {}),
+          [kickId]: {
+            ...((p.stepMeta ?? {})[kickId] ?? {}),
+            0: {
+              ...((p.stepMeta ?? {})[kickId]?.[0] ?? {}),
+              locks: { pitch: 1, gain: 0.5 },
+            },
+          },
+        },
+      })),
+    };
+    const normalized = normalizeProject(docWithMeta);
+    const pattern = normalized.patterns[0];
+    const hits = drumHitsInWindow(normalized, pattern, 0, 0, PATTERN_TICKS);
+    const withLocks = hits.filter((h) => h.locks);
+    expect(withLocks.length).toBeGreaterThan(0);
+    // The locks reference on the hit must be the same object as the
+    // source meta.locks — i.e. the schedule window did not clone.
+    const sourceLocks = pattern.stepMeta?.[kickId]?.[0]?.locks;
+    expect(sourceLocks, "test fixture: source must have locks").toBeDefined();
+    for (const h of withLocks) {
+      expect(h.locks).toBe(sourceLocks);
+    }
+  });
+
+  it("noteEventsInWindow sort order matches the previous localeCompare contract (defect A.4)", () => {
+    // Build a synthetic pattern with notes on three tracks at the
+    // SAME tick — that forces ties on the primary sort axis
+    // (`tick`) and exercises the secondary axis (`trackId`). The
+    // old comparator was `String.localeCompare` (ICU collation);
+    // we replaced it with a plain `<` / `>` comparator because
+    // Pulse Forge generates alphanumeric track ids (no locale-aware
+    // ordering required). For our codeset the two comparators
+    // produce identical ordering, but the new comparator must
+    // still be a *total order* — i.e. non-decreasing trackId across
+    // every run of equal-tick events.
+    const { doc } = blankDoc();
+    const drums = doc.tracks.find((t): t is DrumTrack => t.kind === "drum")!;
+    let pattern = emptyPattern("sort-test", [drums]);
+    // Three track ids chosen so the test does NOT accidentally
+    // depend on the order keys are inserted into `notes`. We
+    // intentionally insert them in a *non-sorted* order (c, a, b)
+    // so a stable sort that relied on insertion order would fail.
+    pattern = withNotes(pattern, "track-c", [note(60, 0, PPQ / 2, 0.8)]);
+    pattern = withNotes(pattern, "track-a", [note(60, 0, PPQ / 2, 0.8)]);
+    pattern = withNotes(pattern, "track-b", [note(61, 0, PPQ / 2, 0.8)]);
+    // First sanity check — the comparator must put the three
+    // events in `track-a`, `track-b`, `track-c` order (ascending
+    // ASCII) within the tick=0 group. Note `track-b` has pitch 61
+    // while the others have pitch 60; pitch is the *third* sort
+    // axis, so within same trackId there is only one note.
+    const events = noteEventsInWindow(pattern, 0, 0, PPQ);
+    expect(events).toHaveLength(3);
+    expect(events.map((e) => e.trackId)).toEqual(["track-a", "track-b", "track-c"]);
+    // Stronger invariant — for every adjacent pair in the result
+    // array, either `tick` is ascending, or `tick` is equal AND
+    // `trackId` is non-decreasing. This is the full `localeCompare`
+    // contract preserved.
+    for (let i = 1; i < events.length; i++) {
+      const prev = events[i - 1];
+      const curr = events[i];
+      const tickOk = curr.tick >= prev.tick;
+      const trackOk = curr.tick > prev.tick || curr.trackId >= prev.trackId;
+      expect(tickOk && trackOk, `events[${i - 1}] → events[${i}] out of order`).toBe(true);
     }
   });
 });

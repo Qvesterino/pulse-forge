@@ -58,6 +58,7 @@ const CORE_TYPES = [
   "duckDelay",
   "reverb",
   "wtVoice",
+  "grainVoice",
 ] as const;
 
 export type WorkletType = (typeof CORE_TYPES)[number] | PluginWorkletType;
@@ -86,11 +87,12 @@ export async function loadCoreWorklets(ctx: BaseAudioContext): Promise<void> {
   if (pending) return pending;
 
   const load = Promise.all([
-    ctx.audioWorklet.addModule(new URL("./bitcrusher-processor.js", import.meta.url).href),
-    // The core module imports sidechain, transient, gate, limiter,
-    // envFollower and compressor processors. Keeping this as one addModule
-    // call preserves the existing two-module contract.
-    ctx.audioWorklet.addModule(new URL("./core-processor.js", import.meta.url).href),
+    // These are generated self-contained files. Keeping the two-module
+    // contract preserves the loader's readiness semantics while avoiding a
+    // production-only Vite data-URL failure for core-processor's relative
+    // imports.
+    ctx.audioWorklet.addModule(new URL("/bitcrusher-worklet.js", import.meta.url).href),
+    ctx.audioWorklet.addModule(new URL("/core-worklet.js", import.meta.url).href),
   ])
     .then(() => {
       readyContexts.add(ctx);

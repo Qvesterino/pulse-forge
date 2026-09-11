@@ -19,6 +19,7 @@ import { MidiInput } from "./midi/MidiInput";
 import { MidiOutput } from "./midi/MidiOutput";
 import { MidiClock } from "./midi/MidiClock";
 import { UserSampleRepository, restoreUserSampleAudio } from "./persistence/UserSampleRepository";
+import { ensureCuratedLayer } from "./sample-library/curated";
 import { FrozenBufferRepository, restoreFrozenTracks } from "./persistence/FrozenBufferRepository";
 import { ensureWorkletsForDoc } from "./audio-worklets/loader";
 import type { YDocStore } from "./collab/YDocStore";
@@ -203,6 +204,10 @@ export async function createCoreServices(): Promise<CoreServices> {
   // Re-decode persisted user-sample audio into the bank (fire-and-forget —
   // the app is fully usable while imports stream back in).
   void restoreUserSampleAudio(bank);
+  // Curated factory layer (same-id override): the synthesized kit already
+  // sounds; these progressively replace the curated slots as they decode.
+  // Export paths await `curatedReady()` so renders use the intended sound.
+  void ensureCuratedLayer(bank);
   const library = new LibraryRepository();
   const userKits = new KitRepository();
   const groovePool = new GroovePoolRepository();

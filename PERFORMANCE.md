@@ -44,8 +44,8 @@ Instrument → FX chain → Track Gain → Pan → Auto Gain → Auto Pan → Ma
 | Others (clipper, distortion, bitcrusher, chorus, phaser, sidechain) | 3–8 each |
 
 ### Voice management
-- Drum voices: **uncapped Set** — each trigger = 3 nodes (source + gain + panner)
-- Instrument voices: bounded by polyphony limits (analog=12, bass=4, 808=1, sampler=16, texture=4)
+- Drum voices: **capped at 64** (`addDrumVoice`) — a roll fades+stops the oldest voice instead of growing the Set unbounded; each trigger = 3 nodes (source + gain + panner)
+- Instrument voices: bounded by polyphony limits (analog=12, bass=8, 808=1, sampler=16, texture=8)
 
 ---
 

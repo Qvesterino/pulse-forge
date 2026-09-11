@@ -102,6 +102,15 @@ describe("release hardening — AudioEngine lifecycle", () => {
       /rebuildFxChain\(track\.id,\s*\[\],\s*nodes\.input,\s*nodes\.panner,\s*nodes\.fx\)/,
     );
   });
+
+  it("retires only the excess one-shot voices when the ceiling is reached", () => {
+    const source = readFile(AUDIO_ENGINE_PATH);
+    const addDrumVoice = sliceFunction(source, /addDrumVoice\(voice:\s*Voice\)/);
+    expect(addDrumVoice, "addDrumVoice not found in AudioEngine.ts").not.toBe("");
+    expect(addDrumVoice).toMatch(/let\s+voicesToRetire\s*=\s*this\.voices\.size\s*-\s*MAX_ACTIVE_DRUM_VOICES/);
+    expect(addDrumVoice).toMatch(/if\s*\(voicesToRetire--\s*<=\s*0\)\s*break/);
+    expect(addDrumVoice).not.toMatch(/if\s*\(this\.voices\.size\s*<=\s*MAX_ACTIVE_DRUM_VOICES\)\s*break/);
+  });
 });
 
 describe("release hardening — ProjectStore", () => {

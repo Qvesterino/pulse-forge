@@ -18,6 +18,12 @@ export interface InstrumentRuntime {
    * track a filter->pitch map; a no-op for pitches with no live voice.
    */
   polyPressure?(pitch: number, pressure: number, when: number): void;
+  /**
+   * MPE timbre (CC74). Convention: 0..1 bipolar, 0.5 = the note's own base —
+   * instruments scale their brightness control (filter cutoff ×0.5..1.5;
+   * FM scales INDEX the same way) for the matching pitch only.
+   */
+  polyTimbre?(pitch: number, timbre: number, when: number): void;
   setParameter(id: string, value: number): void;
   setParameterAt?(id: string, value: number, when: number): void;
   setSample?(id: string | null): void;

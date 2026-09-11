@@ -6,6 +6,12 @@ import { detectLoopBpm } from "../audio-engine/bpm-detect";
 
 interface DropZoneProps {
   onImport: (asset: UserSampleAsset) => void;
+  /**
+   * Called once after a multi-file drop with every imported asset — the
+   * sampler auto-mapping hook (keyzones/RR from file names, see
+   * `autoMapVelocityLayers`).
+   */
+  onBatchImport?: (assets: UserSampleAsset[]) => void;
   className?: string;
 }
 
@@ -32,7 +38,7 @@ export const MAX_AUDIO_IMPORT_BYTES = 25 * 1024 * 1024;
  * AIFF files, decodes them via AudioContext, and adds them to the user
  * sample bank + IndexedDB.
  */
-export function DropZone({ onImport, className }: DropZoneProps) {
+export function DropZone({ onImport, onBatchImport, className }: DropZoneProps) {
   const services = useServices();
   const [dragOver, setDragOver] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -44,6 +50,7 @@ export function DropZone({ onImport, className }: DropZoneProps) {
       setImporting(true);
       setError(null);
       const fileArray = Array.from(files);
+      const importedBatch: UserSampleAsset[] = [];
 
       for (const file of fileArray) {
         // Validate file type
@@ -109,6 +116,7 @@ export function DropZone({ onImport, className }: DropZoneProps) {
           await services.userSamples.save(asset, raw);
 
           onImport(asset);
+          importedBatch.push(asset);
         } catch (err) {
           // Persistence failures now propagate out of userSamples.save — show
           // them distinctly from decode failures instead of leaving ghost
@@ -121,9 +129,12 @@ export function DropZone({ onImport, className }: DropZoneProps) {
           console.error("[DropZone] import error:", err);
         }
       }
+      if (onBatchImport && importedBatch.length > 1) {
+        onBatchImport(importedBatch);
+      }
       setImporting(false);
     },
-    [services, onImport],
+    [services, onBatchImport, onImport],
   );
 
   const handleDragOver = useCallback((e: React.DragEvent) => {

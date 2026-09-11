@@ -6,6 +6,7 @@ import { generateDrumPattern } from "../src/ai/drums";
 import { generateMelodicPattern } from "../src/ai/melodic";
 import {
   buildPadModel,
+  getGroovePadModel,
   generatePadSequence,
   quantizeVelocity,
   dequantizeVelocity,
@@ -107,6 +108,15 @@ describe("markov engine", () => {
       }
     }
     expect(hasTransitions).toBe(true);
+  });
+
+  it("reuses immutable groove pad models by groove identity", () => {
+    const groove = getGrooveById("house.driving")!;
+    const first = getGroovePadModel(groove, groove.activePads[0]);
+    const second = getGroovePadModel(groove, groove.activePads[0]);
+    expect(second).toBe(first);
+    expect(second.model).toBe(first.model);
+    expect(second.patterns).toBe(first.patterns);
   });
 
   it("generatePadSequence produces correct length", () => {

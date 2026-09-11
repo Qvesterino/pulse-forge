@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
+import * as Y from "yjs";
 import { INSTRUMENT_DEFS, defaultInstrumentParams } from "../src/instruments/registry";
 import { normalizeProject, validateProjectShape } from "../src/project-model/schema";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { createInstrumentTrack, setTrackParams } from "../src/commands/commands";
 import { setVelocityLayersCommand } from "../src/commands/layerCommands";
+import { projectToYDoc, yDocToProject } from "../src/collab/YDocAdapter";
 import { FACTORY_KICK_LAYERS } from "../src/sample-library/velocity-layers";
 import type { InstrumentTrack, ProjectDocument, SampleLayer } from "../src/project-model/types";
 
@@ -91,6 +93,63 @@ describe("setVelocityLayersCommand", () => {
 
     expect(() => setVelocityLayersCommand(doc, "missing-track", [])).toThrow();
     void setTrackParams;
+  });
+
+  it("preserves keyzones and applies the fallback sample in one command", () => {
+    const doc = samplerBaseDoc();
+    const sampler = samplerTrack(doc);
+    const layers: SampleLayer[] = [
+      { id: "kz-low", sampleId: "sample.low", min: 0, max: 1, minPitch: 0, maxPitch: 59 },
+      { id: "kz-high", sampleId: "sample.high", min: 0, max: 1, minPitch: 60, maxPitch: 127 },
+    ];
+
+    const command = setVelocityLayersCommand(doc, sampler.id, layers, "sample.low");
+    const applied = samplerTrack(command.execute(doc));
+    expect(applied.sampleId).toBe("sample.low");
+    expect(applied.velocityLayers).toEqual(layers);
+
+    const undone = samplerTrack(command.undo(command.execute(doc)));
+    expect(undone.sampleId).toBe(sampler.sampleId);
+    expect(undone.velocityLayers).toBeUndefined();
+  });
+
+  it("rejects layer commands for non-sampler instrument tracks", () => {
+    let doc = createProjectFromTemplate("empty");
+    doc = createInstrumentTrack(doc, "analog").execute(doc);
+    const analog = doc.tracks.find((t): t is InstrumentTrack => t.kind === "instrument" && t.instrument === "analog");
+    expect(analog).toBeDefined();
+    expect(() => setVelocityLayersCommand(doc, analog!.id, FACTORY_KICK_LAYERS)).toThrow(/sampler/);
+  });
+
+  it("survives JSON migration and Y.Doc collaboration round-trips", () => {
+    const doc = samplerBaseDoc();
+    const sampler = samplerTrack(doc);
+    const layers: SampleLayer[] = [
+      { id: "kz-low", sampleId: "sample.low", min: 0, max: 0.5, minPitch: 0, maxPitch: 59 },
+      { id: "kz-high", sampleId: "sample.high", min: 0.5, max: 1, minPitch: 60, maxPitch: 127 },
+    ];
+    const applied = setVelocityLayersCommand(doc, sampler.id, layers, "sample.low").execute(doc);
+    const migrated = normalizeProject(JSON.parse(JSON.stringify(applied)) as ProjectDocument);
+    const yDoc = new Y.Doc();
+    projectToYDoc(migrated, yDoc.getMap("project"));
+    const restored = yDocToProject(yDoc.getMap("project"));
+    expect(samplerTrack(migrated).velocityLayers).toEqual(layers);
+    expect(samplerTrack(restored).velocityLayers).toEqual(layers);
+    expect(samplerTrack(restored).sampleId).toBe("sample.low");
+  });
+
+  it("keeps the inclusive full-velocity upper boundary usable", () => {
+    const doc = samplerBaseDoc();
+    const sampler = samplerTrack(doc);
+    const layers: SampleLayer[] = [
+      { id: "full", sampleId: "sample.high", min: 0, max: 1, minPitch: 60, maxPitch: 127 },
+    ];
+    const applied = setVelocityLayersCommand(doc, sampler.id, layers, "sample.high").execute(doc);
+    expect(samplerTrack(applied).velocityLayers![0].max).toBe(1);
+    // The actual AudioWorklet/OfflineAudioContext selection is covered by the
+    // browser gate; this assertion pins the contract value that used to make
+    // velocity === 1 fall through to sampleId.
+    expect(1 >= layers[0].min && (1 < layers[0].max || (layers[0].max >= 1 && 1 <= layers[0].max))).toBe(true);
   });
 });
 

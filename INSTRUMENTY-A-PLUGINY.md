@@ -11,7 +11,7 @@ Pulse Forge momentálne disponuje:
 | Drum syntetizátory (pady bubnovej stopy) | **7** | `src/project-model/types.ts` + `src/audio-engine/synth-voices.ts` |
 | Veľké pluginy (vendored DSP rack) | **3** — FXEQ, Ultina, Ozvena | `src/effects/*-core/` |
 | Ostatné mixové FX (effect rack) | **32** | `src/effects/registry.ts` |
-| Factory presety | **182 inštrumentových + 6 bubnových** | `src/presets/factory.ts` |
+| Factory presety | **196 inštrumentových + 6 bubnových** | `src/presets/factory.ts` |
 
 ---
 
@@ -23,8 +23,11 @@ Všetky inštrumenty sú WebAudio grafy na main threadu s per-voice stateful fil
 - **Voice stealing** — pri prekročení polyfónie sa uvoľňuje najstarší hlas.
 - **Deterministické plánovanie** — obálky a grainy sa plánujú dopredu, takže offline render znie identicky ako live playback.
 - **Live parametre** — CUTOFF/RESO sa mení plynule (`setTargetAtTime`) aj počas hrania.
+- **Mod matrix (MOD A/B + MOD LFO)** — na 11 nástrojoch (analog, bass, keys, pluck, 808, texture, logdrum, spectral, sampler, vocalchop, wavetable): zdroje ENV/LFO/VEL/PRESS → ciele CUTOFF/AMP (wavetable aj MORPH; vocalchop len AMP). Rovnaká numerická schéma ako wtvoice worklet; `|AMT|<0.1 %` = žiadne nody → nezmenený zvuk. Granular má namiesto toho vlastný PLAY/SCAN príbeh + live playhead panel.
 - **Glide/portamento** — podpora sliding na Bass, 808, Log Drum (frekvenčný ramp) a Sampler (playbackRate ramp).
 - **MPE poly aftertouch** — na 9 inštrumentoch (Analog, Bass, Sampler, Wavetable, Keys, Pluck, Spectral, Log Drum, FM): tlak na notu otvorí **len jej filter** až +50 % nad per-note bázu (vrátane keytracku/V-FLT); FM nemá filter, takže tlak mapuje na INDEX (jas modulácie) s tým istým +50 % stropom. Tlak 0 vracia bázu. Per-voice cez filter→nota mapy, takže akord sa dá „obraľovať" notu po note.
+
+- **MPE timbre (CC74)** — druhá expresívna dimenzia (LinnStrument/Osmose): per-note bipolar, 0,5 = nota báza, ±50 % — filtre škálujú CUTOFF (Analog, Bass, Keys, Wavetable), FM škáluje INDEX; posledná nota kanála bez MPE zón = monofónny timbre. Routing: `MidiInput.handleCC` → `engine.polyTimbre`.
 - **Filter je stabilný v celej rovine cutoff × rezonancia** — Chamberlin SVF má numerický stabilita clamp (`f·q`), takže extrémne nastavenia (vysoký cutoff + nízka rezonancia) neprejdú do clamp limit cyklu; len mierne zmenšia efektívnu rezonanciu v tom rohu.
 - **Panic/dispose** — okamžité utíšenie všetkých hlasov.
 
@@ -61,7 +64,7 @@ Klasické subtraction synth voicovanie: **OSC A + OSC B (detune) + sub osc −12
 - **DAHDSR obálka** — ENV DELAY + ENV HOLD stage, tvary A/D/R (Exp/Lin/Log) a **D LOOP** (decay sa zopakuje — pulzujúce pady/perkusné obálky). Legacy defaulty = bitovo historické správanie
 - LEVEL
 
-### 1.3 Bass Synth (`bass`) — 4 hlasy
+### 1.3 Bass Synth (`bass`) — 8 hlasov
 Bass-first voicovanie: **saw + detuned square (telo, šíriteľné do sterea) + sine sub −12**.
 
 - SUB / BODY / PUNCH (tight filter env 200–2600 Hz) / GRIT (miera drive)
@@ -188,7 +191,7 @@ Sampler ladený na vocal chopy a talkboxové leady: sample hrá cez **paralelnú
 - Defaultne dostane `factory.tonal.stab` sample, po pridaní stopy ihneď znie
 
 ### 1.14 Drum Synth (`drumsynth`) — 8 hlasov
-Analógovo modelované bicie na inštrumentovej stope — **hrateľné chromaticky z piano rollu**. TYPE prepína 7 modelov:
+Analógovo modelované bicie na inštrumentovej stope — **hrateľné chromaticky z piano rollu**. TYPE prepína 13 modelov:
 
 - **Kick** — sine s pitch envelope (TONE = začiatočná výška, BODY = dĺžka dropu), SNAP = click
 - **Snare** — 2 tónové osc (185/330 Hz) + noise cez ladený bandpass
@@ -196,6 +199,11 @@ Analógovo modelované bicie na inštrumentovej stope — **hrateľné chromatic
 - **Clap** — noise bandpass s 3 pre-burstmi a telom
 - **Perc** — ladený sine s pitch dropom (bongo typ)
 - **Cowbell** — 2 square v klasickej racii 1 : 1,485
+- **Rimshot** — 2 inharmonické vysoké partiale 1 : 1,5 + drevený bandpass tick
+- **Tom** — hlboký pitched sine s BODY dropom, SNAP = mallet tick
+- **Crash / Ride** — 8 inharmonických square (kovový zhluk) cez wide BP + HP; Ride má sine „ping" (bell)
+- **909 Kick** — päknejší kick: bandpass noise thump v ataku, rýchlejší pitch drop
+- **Zap** — laser sweep: square z TONE výšky padá SUBJECT rychlosťou dolu
 - Spoločné: TUNE (±12 st), DECAY, TONE/SNAP/BODY (normalizované makrá reinterpretované každým modelom), DRIVE (tanh shaper), LEVEL — one-shot voicovanie, gates ignoruje
 
 ---
@@ -267,7 +275,7 @@ K tomu per-track sends do return stôp (`ReturnTrack`) a mute/solo/freeze (rende
 
 ---
 
-## 5. Factory presety (188)
+## 5. Factory presety (202)
 
 Presety sú čisté dáta (žiadne volania do audio engine) — idú cez command do project modelu. Filtrované podľa **žánru** (house, techno, trap, ambient, score) a **mood** (dark, bright, warm, aggressive, clean, deep, atmosphere).
 
@@ -286,8 +294,10 @@ Presety sú čisté dáta (žiadne volania do audio engine) — idú cez command
 | Vocal Chop | 10 |
 | Pluck Synth | 9 |
 | Spectral Pad | 9 |
-| Log Drum | 4 |
-| **Spolu inštrumenty** | **182** |
+| Log Drum | 10 |
+| Spectral Pad | 11 |
+| Drum Synth | 18 |
+| **Spolu inštrumenty** | **196** |
 | Drum bicie (kick, snare, hat, clap…) | 6 |
 
 ---

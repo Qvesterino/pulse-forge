@@ -199,6 +199,9 @@ export function createGenerationRecipe(
     temperature: stableNumber(options.temperature),
     sourcePatternId: options.sourcePatternId ?? null,
     inputContentHash,
+    ...(options.candidateCount !== undefined && options.candidateCount > 1
+      ? { candidateCount: Math.round(options.candidateCount) }
+      : {}),
   };
 }
 

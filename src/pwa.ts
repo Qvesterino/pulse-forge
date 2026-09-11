@@ -45,9 +45,14 @@ export const pwaOptions: Partial<VitePWAOptions> = {
     ],
   },
   workbox: {
-    // Precache all built assets (JS/CSS/HTML) + icons from public/.
-    globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
-    // Factory samples are generated at runtime — nothing extra to cache.
+    // Precache all built assets (JS/CSS/HTML) + icons + curated factory
+    // samples from public/samples/ (local-first: the curated kit must be
+    // available offline, not only on the first online visit).
+    globPatterns: ["**/*.{js,css,html,svg,png,woff2,wav}"],
+    // Workbox silently EXCLUDES precache entries above its 2 MiB default —
+    // raise the cap so curated one-shots (kicks/snares are typically well
+    // under this) never get silently dropped from the offline kit.
+    maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
     navigateFallback: "index.html",
     navigateFallbackDenylist: [/^\/api\//],
   },

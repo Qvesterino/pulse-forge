@@ -53,6 +53,8 @@ export interface GenerateOptions {
   roles?: readonly GenerationRole[];
   /** Hard generation constraints. Omitted means the legacy permissive defaults. */
   constraints?: GenerationConstraints;
+  /** Number of deterministic local candidates to rank. Defaults to one. */
+  candidateCount?: number;
   ghostWeight: number;
   microWeight: number;
   velocityVariation: number;

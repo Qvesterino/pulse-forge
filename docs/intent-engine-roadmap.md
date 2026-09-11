@@ -145,7 +145,7 @@ Odstrániť chyby, ktoré môžu meniť hudobnú logiku alebo znemožniť skuto�
 - [x] Rovnaký recipe vytvára rovnaký content hash.
 - [x] Zmena drum random streamu nemení bass/chord/lead stream.
 - [x] Swing sa pri žiadnej kombinácii neaplikuje dvakrát.
-- [ ] Všetky existujúce testy naďalej prechádzajú.
+- [x] Všetky existujúce testy naďalej prechádzajú.
 
 ---
 
@@ -174,7 +174,7 @@ Prejsť od „randomized pattern z template“ k riadenému, rýchlemu a hudobne
   - [ ] variation amount
   - [ ] phrase contrast
 - [x] Pridať deterministic repair pass po generovaní.
-- [ ] Pri neúspechu validácie vrátiť bezpečný style template namiesto poškodeného patternu.
+- [x] Pri neúspechu validácie vrátiť bezpečný style template namiesto poškodeného patternu.
 
 ### 2.2 Pad roles namiesto magic indexov
 
@@ -197,7 +197,7 @@ Prejsť od „randomized pattern z template“ k riadenému, rýchlemu a hudobne
 
 - [x] Generovať bass, chord a lead ako samostatné parts.
 - [x] Definovať role-specific register, density, duration a velocity range.
-- [ ] Zachovať scale/key constraints pred aj po repair kroku.
+- [x] Zachovať scale/key constraints pred aj po repair kroku.
 - [ ] Zlepšiť kick/bass coordination bez náhodného posunu, ktorý môže meniť groove.
 - [ ] Zabrániť duplicitnému priraďovaniu rovnakých NoteEvent ID na viac trackov.
 - [x] Pridať target mapping podľa role a názvu instrument tracku.
@@ -210,7 +210,7 @@ Prejsť od „randomized pattern z template“ k riadenému, rýchlemu a hudobne
   - [x] syncopation
   - [x] velocity contrast
   - [x] repetition vs. novelty
-  - [ ] groove/style distance
+  - [x] groove/style distance
 - [x] Implementovať metrics pre melodiku:
   - [x] rest ratio
   - [x] pitch range
@@ -289,6 +289,7 @@ src/intent/
   - [x] sub-seeds
   - [x] constraints
   - [x] resolved BPM selected deterministically from `bpmRange`
+  - [x] deterministic candidate seeds for the optional local candidate bank
   - [x] expected output shape
   - [x] recipe metadata
 - [x] Zabezpečiť, aby preview aj apply používali rovnaký plan.
@@ -313,6 +314,15 @@ src/intent/
 - [x] Zachovať kompatibilitu so staršími projektmi bez recipe.
 - [x] Zabezpečiť JSON round-trip stabilitu.
 - [x] Pridať test provenance, recipe a content hash round-trip.
+
+### 3.5 Offline candidate bank a hot paths
+
+- [x] Cacheovať immutable groove/pad Markov models podľa identity groove namiesto serializácie pri každom generate.
+- [x] Cacheovať melodic Markov models podľa immutable reference sequences.
+- [x] Odstrániť dočasné `candidates[]`, position-filtered `Uint32Array` a rest-repair distributions z Markov/melodic hot loopov.
+- [x] Pridať opt-in local candidate bank s limitom 1..8 kandidátov.
+- [x] Deduplikovať kandidátov podľa UUID-free content hash.
+- [x] Rankovať kandidátov deterministicky podľa style fit, anchor coverage a melodic motif quality.
 
 ### Acceptance criteria
 
@@ -427,7 +437,7 @@ interface GenerationProvider {
 }
 ```
 
-- [ ] Implementovať `LocalDeterministicProvider` ako default.
+- [x] Implementovať `LocalDeterministicProvider` ako default.
 - [ ] Implementovať remote provider iba za explicitným feature/config flagom.
 - [ ] Pridať timeout, cancellation a retry policy.
 - [ ] Pridať cache podľa canonical intent/context hash.

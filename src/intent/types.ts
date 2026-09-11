@@ -35,6 +35,8 @@ export interface IntentSpec {
   key: MusicalKey | null;
   bpmRange: [number, number] | null;
   length: number;
+  /** Number of local candidates to generate and rank before accepting one. */
+  candidateCount?: number;
   roles: readonly IntentRole[];
   targetTracks: {
     drumTrackId: string | null;
@@ -61,6 +63,7 @@ export type IntentInput = Partial<IntentSpec> & {
   key?: unknown;
   bpmRange?: unknown;
   length?: unknown;
+  candidateCount?: unknown;
   roles?: unknown;
   targetTracks?: unknown;
   constraints?: unknown;
@@ -87,6 +90,8 @@ export interface GenerationPlan {
   constraints: IntentConstraints;
   /** Optional BPM chosen from the resolved groove/request range. */
   resolvedBpm: number | null;
+  /** Stable seed for each local candidate in the bank. */
+  candidateSeeds: readonly string[];
   subSeeds: {
     groove: string;
     drumsCore: string;

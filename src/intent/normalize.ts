@@ -24,6 +24,10 @@ function lengthOf(value: unknown, fallback: number): number {
   return Math.max(16, Math.min(256, Math.round(raw / 16) * 16));
 }
 
+function candidateCountOf(value: unknown): number {
+  return Math.max(1, Math.min(8, Math.round(finite(value, 1))));
+}
+
 function stringList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return [...new Set(value.filter((item): item is string => typeof item === "string" && item.length > 0))];
@@ -74,6 +78,7 @@ export function normalizeIntent(input: IntentInput | unknown = {}): IntentSpec {
     key: isMusicalKey(source.key) ? source.key : null,
     bpmRange: bpmRangeOf(source.bpmRange),
     length: lengthOf(source.length, DEFAULT_GENERATE_OPTIONS.stepCount),
+    candidateCount: candidateCountOf(source.candidateCount),
     roles: rolesOf(source.roles),
     targetTracks: {
       drumTrackId:
@@ -110,6 +115,7 @@ export function intentFromGenerateOptions(options: GenerateOptions): IntentSpec 
     key: options.key ?? null,
     bpmRange: options.bpmRange ?? null,
     length: options.stepCount,
+    candidateCount: options.candidateCount,
     variation: options.velocityVariation,
     controls: {
       ghostWeight: options.ghostWeight,

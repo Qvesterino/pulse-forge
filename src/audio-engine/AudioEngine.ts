@@ -1014,7 +1014,11 @@ export class AudioEngine {
     } else {
       this.masterClipper.curve = null;
     }
-    const ceiling = Math.pow(10, config.ceilingDb / 20);
+    // DynamicsCompressorNode.threshold is expressed in dBFS, not linear
+    // amplitude. Passing pow(10, dB / 20) here coerced every negative ceiling
+    // into a positive value, which browsers clamp to 0 dB and repeatedly warn
+    // about during graph sync. Keep the native fallback honest and quiet.
+    const ceilingDb = Math.min(0, Math.max(-12, config.ceilingDb));
     const worklet = this.masterLimiterWorklet;
     if (worklet) {
       // The look-ahead worklet drives limiting; the native node is held at a
@@ -1034,7 +1038,7 @@ export class AudioEngine {
       this.masterLimiter.attack.value = 0.001;
       this.masterLimiter.release.value = 0.01;
     } else if (config.limiterEnabled) {
-      this.masterLimiter.threshold.value = ceiling;
+      this.masterLimiter.threshold.value = ceilingDb;
       this.masterLimiter.knee.value = 0;
       this.masterLimiter.ratio.value = 20;
       this.masterLimiter.attack.value = 0.002;
@@ -2913,7 +2917,7 @@ export class AudioEngine {
 
     const voice: Voice = { source, gain, trackId, chokeGroup: pad.chokeGroup, filter: voiceFilter ?? undefined };
     if (modActive) this.attachPadMod(voice, mod!, peak, when, endWhen);
-    this.voices.add(voice);
+    this.addDrumVoice(voice);
     source.onended = () => {
       this.voices.delete(voice);
       gain.disconnect();
@@ -3013,6 +3017,30 @@ export class AudioEngine {
       /* already scheduled */
     }
     voice.extras = [osc, depth];
+  }
+
+  /**
+   * Drum voice ceiling (PERFORMANCE.md flag: the one-shot voice Set used to
+   * be uncapped — a roll grew it without limit). Insertion-ordered Set, so
+   * the first entry is the oldest sounding voice: fade + stop it and let its
+   * onended run the normal node cleanup.
+   */
+  private addDrumVoice(voice: Voice): void {
+    this.voices.add(voice);
+    const MAX_ACTIVE_DRUM_VOICES = 64;
+    let voicesToRetire = this.voices.size - MAX_ACTIVE_DRUM_VOICES;
+    if (voicesToRetire <= 0) return;
+    const now = this.ctx?.currentTime ?? 0;
+    for (const oldest of this.voices) {
+      if (voicesToRetire-- <= 0) break;
+      try {
+        oldest.gain.gain.cancelScheduledValues(now);
+        oldest.gain.gain.setTargetAtTime(0.0001, now, 0.004);
+        oldest.source.stop(now + 0.03);
+      } catch {
+        /* already ended — onended removes it */
+      }
+    }
   }
 
   private triggerSynth(
@@ -3122,7 +3150,7 @@ export class AudioEngine {
       };
       // Patch voice's stop/silence to use stopAll
       (voice as any)._stopAll = stopAll;
-      this.voices.add(voice);
+      this.addDrumVoice(voice);
       const primary = sources[0];
       if (primary) {
         primary.onended = () => {
@@ -3735,6 +3763,18 @@ export class AudioEngine {
   }
 
   /** Apply polyphonic aftertouch to a specific note on an instrument track. */
+  /**
+   * MPE timbre dimension (CC74). Convention mirrors polyPressure: per-note,
+   * 0..1 bipolar with 0.5 = the note's base — instruments map it to their
+   * brightness control (filter cutoff; FM scales INDEX). No-op for tracks
+   * whose runtime does not implement it.
+   */
+  polyTimbre(trackId: string, pitch: number, timbre: number): void {
+    const inst = this.instruments.get(trackId);
+    if (!inst) return;
+    inst.runtime.polyTimbre?.(pitch, timbre, this.ctx?.currentTime ?? 0);
+  }
+
   polyPressure(trackId: string, pitch: number, pressure: number): void {
     const inst = this.instruments.get(trackId);
     if (!inst?.runtime.polyPressure) return;

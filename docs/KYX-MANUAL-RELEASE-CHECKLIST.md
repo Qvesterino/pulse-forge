@@ -2,9 +2,14 @@
 
 Tento checklist je posledný manuálny gate k
 [`KYX-PRE-RELEASE-IMPLEMENTATION-ROADMAP.md`](./KYX-PRE-RELEASE-IMPLEMENTATION-ROADMAP.md).
-Automated Chromium/Edge checks už pokrývajú základný flow; tu sa zapisujú iba
+Automated Chromium/Edge/Firefox checks už pokrývajú základný flow; tu sa zapisujú iba
 reálne browser/device výsledky, ktoré nie je možné poctivo odvodiť z jsdom alebo
 headless Chromium.
+
+Automated engine runs are reproducible with `npm run test:browser` (Chromium),
+`KYX_BROWSER_ENGINE=firefox npm run test:browser` (Firefox), and the Chromium
+runner plus `KYX_BROWSER_EXECUTABLE_PATH=<path-to-msedge.exe>` (Edge). These
+headless runs do not close the manual Safari/iOS or physical-audio-device gate.
 
 Pred deployom spusti po `npm run build` aj lokálny preflight:
 
@@ -14,7 +19,8 @@ NODE_ENV=production CORS_ORIGIN=https://app.example.com npm run release:prefligh
 
 Ak je verejná gallery zapnutá, pridaj `KYX_GALLERY_PUBLIC=1` a produkčný
 `GALLERY_ADMIN_TOKEN`. Preflight kontroluje iba lokálne artefakty a konfiguráciu;
-nasledujúca device matrix a production health check sú stále povinné.
+spusť tiež `npm run release:server-smoke` pre skutočný collab-server entrypoint.
+Nasledujúca device matrix a production health check sú stále povinné.
 
 ## 1. Matrix
 
@@ -84,6 +90,8 @@ Na zariadení s dostupným memory profilerom:
 Ak je collaboration/gallery verejne zapnutá:
 
 - nastav `CORS_ORIGIN` na presné production origins, nie wildcard;
+- nastav `HOST` na interface platformy (typicky `0.0.0.0` v kontajneri),
+  aby relay neostal dostupný iba z loopbacku;
 - over `GET /api/health` bez `Origin` aj z povolenej browser origin;
 - otvor room v dvoch tabs, zmeň BPM/pattern a over sync + presence;
 - odošli validný gallery publish/play/report request;

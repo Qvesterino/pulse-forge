@@ -2,6 +2,9 @@ import { buildPhrasePlan } from "../ai/phrase";
 import { canonicalizePattern, contentHash, createGenerationRecipe } from "../ai/evaluation";
 import { resolveGrooveForGeneration } from "../ai/generator";
 import type { GenerateOptions } from "../ai/types";
+import { inferPadRole } from "../ai/pad-roles";
+import { measureDrumQuality, measureMelodicQuality } from "../ai/quality";
+import { evaluateStyleDistance } from "../ai/style-quality";
 import { parseKey, snapToScale } from "../project-model/scales";
 import {
   STEP_TICKS,
@@ -201,6 +204,43 @@ export function refreshPatternOutputHash(doc: ProjectDocument, pattern: Pattern)
     generation: {
       ...pattern.generation,
       outputContentHash: contentHash(canonicalizePattern(doc, pattern)),
+    },
+  };
+}
+
+/** Recompute diagnostics after repair so quality metrics describe final content. */
+export function refreshPatternQuality(doc: ProjectDocument, pattern: Pattern, options: GenerateOptions): Pattern {
+  if (!pattern.generation) return pattern;
+  const groove = resolveGrooveForGeneration(doc, options);
+  const drumTracks = doc.tracks.filter((track) => track.kind === "drum");
+  const targetDrumTrack = options.drumTrackId
+    ? (drumTracks.find((track) => track.id === options.drumTrackId) ?? drumTracks[0])
+    : drumTracks[0];
+  const drumRows = targetDrumTrack?.kind === "drum" ? targetDrumTrack.pads.map((pad) => pattern.rows[pad.id]) : [];
+  const padRoles =
+    targetDrumTrack?.kind === "drum"
+      ? targetDrumTrack.pads.map((pad, index) => inferPadRole(pad.name, index))
+      : [];
+  const drumQuality = measureDrumQuality(groove, drumRows, padRoles, options.stepCount);
+  const styleGate = evaluateStyleDistance(groove, drumRows, options.stepCount);
+  const melodicQuality = measureMelodicQuality(
+    Object.values(pattern.notes ?? {}).flat(),
+    options.stepCount,
+    options.key ?? doc.key,
+  );
+  return {
+    ...pattern,
+    generation: {
+      ...pattern.generation,
+      quality: {
+        styleDistance: styleGate.distance,
+        styleAccepted: styleGate.accepted,
+        syncopation: drumQuality.syncopation,
+        anchorCoverage: drumQuality.anchorCoverage,
+        melodicMotifRepetition: melodicQuality.motifRepetition,
+        melodicRestRatio: melodicQuality.restRatio,
+        melodicDurationLongRatio: melodicQuality.durationDistribution.long,
+      },
     },
   };
 }

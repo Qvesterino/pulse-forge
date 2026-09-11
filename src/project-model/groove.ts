@@ -150,7 +150,18 @@ export function drumHitsInWindow(
 
         const ratchet = Math.min(MAX_RATCHET, Math.max(1, Math.round(meta?.ratchet ?? 1)));
         const subdivision = STEP_TICKS / ratchet;
-        const locks = meta?.locks && Object.keys(meta.locks).length > 0 ? { ...meta.locks } : undefined;
+        // Defect A.3 (performance / memory recon): every ratchet
+        // sub-hit used to clone `meta.locks` via `{ ...meta.locks }`,
+        // allocating one object per hit. Pattern stepMeta is treated
+        // as immutable across the project (commands always build a
+        // fresh doc; see `commands.ts:518, 3289, 3398` for the
+        // canonical "spread the locks if present" pattern on the
+        // *write* side), and downstream consumers — `Scheduler.trigger`,
+        // `AudioEngine.trigger`, `rendering/renderer.ts` — only read
+        // `hit.locks`. We therefore pass the reference through; the
+        // hit objects are short-lived (one 25 ms window) so the
+        // shared reference is GC-safe.
+        const locks = meta?.locks && Object.keys(meta.locks).length > 0 ? meta.locks : undefined;
         for (let k = 0; k < ratchet; k++) {
           const hitTick = tick + k * subdivision;
           if (hitTick < fromTick || hitTick >= toTick) continue;

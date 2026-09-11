@@ -1,6 +1,7 @@
 import { EFFECT_DEFS, EFFECT_ORDER, defaultParamsOf } from "./effects/registry";
 import { INSTRUMENT_DEFS, INSTRUMENT_ORDER, defaultInstrumentParams } from "./instruments/registry";
 import { generateFactoryBank, RR_VARIATIONS } from "./sample-library/factory";
+import { CURATED_SAMPLES, loadCuratedLayer } from "./sample-library/curated";
 import { loadCoreWorklets } from "./audio-worklets/loader";
 import { renderProject } from "./rendering/renderer";
 import { buildStemProject, STEM_GROUPS } from "./rendering/stems";
@@ -29,6 +30,7 @@ import type { DrumTrack, EffectType, InstrumentTrack, ProjectDocument } from "./
 import { generatePattern } from "./ai/generator";
 import { canonicalizePattern, contentHash } from "./ai/evaluation";
 import { inspectPatternInvariants } from "./ai/invariants";
+import { autoMapVelocityLayers } from "./samples/autoMap";
 
 export interface CheckResult {
   name: string;
@@ -91,6 +93,27 @@ export async function runChecks(): Promise<CheckResult[]> {
   );
   const silentAssets = bank.entries().filter(([, buf]) => peakOf(buf.getChannelData(0)) < 0.001);
   check("factory buffers are audible", silentAssets.length === 0, silentAssets.map(([id]) => id).join(","));
+
+  {
+    // Curated factory layer (VISION §5): the seeds in public/samples must
+    // actually reach the bank and OVERRIDE the synthesized slots end-to-end
+    // (fetch → decode → bank.add), with absent files leaving synth fallback.
+    try {
+      // Isolated bank — later checks (PDC correlation, meters…) must see the
+      // pristine synthesized kit, not the mastered curated overrides.
+      const curatedBank = await generateFactoryBank();
+      const before = curatedBank.get(CURATED_SAMPLES[0].id);
+      const result = await loadCuratedLayer(curatedBank);
+      const after = curatedBank.get(CURATED_SAMPLES[0].id);
+      check(
+        "curated layer overrides factory slots end-to-end (same-id, synth fallback intact)",
+        result.loaded > 0 && after !== before,
+        `loaded=${result.loaded}/${CURATED_SAMPLES.length} skipped=${result.skipped.length} failed=${result.failed.length}`,
+      );
+    } catch (error) {
+      check("curated layer overrides factory slots end-to-end (same-id, synth fallback intact)", false, String(error));
+    }
+  }
 
   {
     // SVF drive must stay alias-clean: an 8 kHz tone driven hard only has
@@ -196,7 +219,10 @@ export async function runChecks(): Promise<CheckResult[]> {
   for (const kind of INSTRUMENT_ORDER) {
     const def = INSTRUMENT_DEFS[kind];
     try {
-      const ctx = new OfflineAudioContext(1, SR, SR);
+      // Pluck's declared decay/release can extend past one second; render
+      // its complete tail so a feedback-loop runaway cannot hide beyond the
+      // short smoke window. Other instruments retain the original fast pass.
+      const ctx = new OfflineAudioContext(1, kind === "pluck" ? SR * 2 : SR, SR);
       const track: InstrumentTrack = {
         id: `check-${kind}`,
         kind: "instrument",
@@ -1147,6 +1173,9 @@ export async function runChecks(): Promise<CheckResult[]> {
       d[i] = 0.7 * Math.sin((2 * Math.PI * 220 * i) / SR);
     for (let i = Math.floor(0.5 * SR); i < Math.floor(0.65 * SR); i++)
       d[i] = 0.7 * Math.sin((2 * Math.PI * 440 * i) / SR);
+    // Firefox may detach an OfflineAudioContext source's channel view during
+    // startRendering(). Keep analysis independent from that browser detail.
+    const sourceSnapshot = Float32Array.from(d);
     bank.add("check-slice-src", srcBuffer);
 
     const doc = createProjectFromTemplate("house");
@@ -1169,7 +1198,7 @@ export async function runChecks(): Promise<CheckResult[]> {
     const after = rms(0.3, 0.5); // after slice end — must be silent again
 
     // Transient detection over the same source must find both bursts.
-    const onsets = detectTransients(d, SR);
+    const onsets = detectTransients(sourceSnapshot, SR);
     const foundA = onsets.some((t: number) => Math.abs(t - 0.05) < 0.05);
     const foundB = onsets.some((t: number) => Math.abs(t - 0.5) < 0.05);
 
@@ -2197,6 +2226,75 @@ export async function runChecks(): Promise<CheckResult[]> {
     );
   } catch (error) {
     check("presets: apply command sticks and project still renders", false, String(error));
+  }
+
+  // Sampler multi-file mapping: exercise the real sampler runtime with the
+  // same filename-derived keyzones used by the Inspector. This catches the
+  // easy-to-miss failure where a command or serializer drops minPitch/maxPitch
+  // and every imported sample ends up playing across the whole keyboard.
+  try {
+    const layers = autoMapVelocityLayers([
+      { sampleId: "browser-auto-low", name: "piano_C3.wav" },
+      { sampleId: "browser-auto-high", name: "piano_C4.wav" },
+    ]);
+    const low = new OfflineAudioContext(1, SR, SR).createBuffer(1, SR, SR);
+    const high = new OfflineAudioContext(1, SR, SR).createBuffer(1, SR, SR);
+    for (let i = 0; i < SR; i++) {
+      low.getChannelData(0)[i] = 0.7 * Math.sin((2 * Math.PI * 220 * i) / SR);
+      high.getChannelData(0)[i] = 0.7 * Math.sin((2 * Math.PI * 660 * i) / SR);
+    }
+    const bank = new Map([
+      ["browser-auto-low", low],
+      ["browser-auto-high", high],
+    ]);
+    const render = async (pitch: number, velocity = 0.8): Promise<Float32Array> => {
+      const ctx = new OfflineAudioContext(1, Math.floor(SR * 1.4), SR);
+      const track: InstrumentTrack = {
+        id: "browser-auto-sampler",
+        kind: "instrument",
+        instrument: "sampler",
+        name: "AutoMap",
+        gain: 1,
+        pan: 0,
+        mute: false,
+        solo: false,
+        sampleId: "browser-auto-low",
+        velocityLayers: layers,
+        params: defaultInstrumentParams("sampler"),
+        effects: [],
+        sends: {},
+      };
+      const runtime = INSTRUMENT_DEFS.sampler.factory(ctx, track, {
+        bpm: 124,
+        getSample: (id) => bank.get(id ?? ""),
+      });
+      runtime.output.connect(ctx.destination);
+      runtime.noteOn(pitch, velocity, 0.05, 0.35);
+      const rendered = await ctx.startRendering();
+      runtime.dispose();
+      return rendered.getChannelData(0);
+    };
+    const zc = (data: Float32Array): number => {
+      const from = Math.floor(0.12 * SR);
+      const to = Math.floor(0.45 * SR);
+      let count = 0;
+      for (let i = from + 1; i < to; i++) if (data[i - 1] < 0 !== data[i] < 0) count++;
+      return count;
+    };
+    const lowOut = await render(48);
+    const highOut = await render(72);
+    const highFullVelocityOut = await render(72, 1);
+    const lowCrossings = zc(lowOut);
+    const highCrossings = zc(highOut);
+    const highFullVelocityCrossings = zc(highFullVelocityOut);
+    const keyzones = layers.every((layer) => layer.minPitch !== undefined && layer.maxPitch !== undefined);
+    check(
+      "sampler AutoMap: filename keyzones route notes to the correct imported sample",
+      keyzones && lowCrossings > 20 && highCrossings > lowCrossings * 4 && highFullVelocityCrossings > lowCrossings * 4,
+      `keyzones=${keyzones} low=${lowCrossings} high=${highCrossings} full=${highFullVelocityCrossings}`,
+    );
+  } catch (error) {
+    check("sampler AutoMap: filename keyzones route notes to the correct imported sample", false, String(error));
   }
 
   // AudioClip stretch modes through the REAL engine path (OfflineAudioContext):

@@ -55,6 +55,8 @@ if (galleryPublic && String(process.env.GALLERY_ADMIN_TOKEN ?? "").length < 16) 
 const requiredFiles = [
   "index.html",
   "manifest.webmanifest",
+  "bitcrusher-worklet.js",
+  "core-worklet.js",
   "fxeq-worklet.js",
   "ultina-worklet.js",
   "ozvena-worklet.js",
@@ -94,10 +96,32 @@ if (!existsSync(assetsDir)) {
   }
 }
 
+// Compatibility parsing lives in source/import code, but old product/family
+// labels must never appear in shipped user-facing copy.
+const shippedTextFiles = [
+  join(dist, "index.html"),
+  join(dist, "manifest.webmanifest"),
+  ...(existsSync(assetsDir)
+    ? readdirSync(assetsDir)
+        .filter((file) => /\.(js|css)$/.test(file))
+        .map((file) => join(assetsDir, file))
+    : []),
+];
+for (const path of shippedTextFiles) {
+  try {
+    const text = readFileSync(path, "utf8");
+    if (/pulse\s+forge/i.test(text) || /\bpulseforge\b/i.test(text) || /\bvocalforge\b/i.test(text)) {
+      fail(`legacy public brand label found in shipped artifact: ${path.replace(`${root}${path.sep}`, "")}`);
+    }
+  } catch {
+    fail(`could not scan shipped artifact for legacy branding: ${path}`);
+  }
+}
+
 if (failures.length > 0) {
   console.error("[release-preflight] FAIL");
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
 
-console.log("[release-preflight] PASS — production config and KYX build artifacts are present");
+console.log("[release-preflight] PASS — production config, KYX artifacts and shipped branding scan are clean");

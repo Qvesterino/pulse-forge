@@ -152,4 +152,12 @@ the bounded memory footprint of the prepare-time delay reservation:
 - Fallback AMP route nemá worklet floor `max(0.1, 1+mod)` — pri amount blízko −1 s ENV/LFO plne otvoreným môže stagflux ticho prestáť (fázový flip namiesto flooru).
 - Destination DETUNE (2) je rezervovaná a neimplementovaná na oboch cestách (worklet ani fallback); UI možnosť je zatiaľ mŕtva.
 - Mod parametre menia bežiace hlasy až od novej noty na fallbacke (worklet číta p per-sample — žije okamžite); PRESS zdroj je živý na oboch.
-- Rollout na ďalšie syntetizátory (keys, pluck, 808, texture, logdrum, spectral, granular, vocalchop, sampler) je mechanický cez `modMatrixParams(false)` + `scheduleVoiceModMatrix` — pozri `scratch/modmatrix-check.mjs` ako overovaciu šablónu.
+- Rollout je dokončený (analog, bass, keys, pluck, 808, texture, logdrum, spectral, sampler, vocalchop + wavetable). **Granular je zámerne vynechaný** — jeho modulačný príbeh tvoria vlastné POSITION/SCAN/JITTER/RATE parametre a voice-worklet nemá mod routy.
+- PRESS zdroj žije len na nástrojoch s `polyPressure`: na 808 (monofónny), texture a vocalchop zostáva PRESS zdroj na 0, kým ich polyPressure nepridá.
+- Vocalchop neponúka CUTOFF cieľ (formant banka nemá per-voice lowpass) — dst options sú OFF/AMP.
+
+## Granular voice worklet (live playhead)
+
+- Offline rendre prichádzajú port messages do workletu až PO rendri — inicializácia (sample/params/bpm) preto ide cez `processorOptions` a render musí mať medzi engine sync a `startRendering()` aspoň jeden task-turn (reálny renderer ich má; testy pridávajú 60 ms yield).
+- Live zmeny POSITION/SCAN/JITTER/RATE/SIZE počas noty fungujú len na worklete; fallback cloud ich berie od novej noty (zostáva deterministický upfront scheduler).
+- AMP envelope vo worklete je one-pole aproximácia fallback exponentialRamp/`setTargetAtTime` krivky — zvukovo takmer identický, nie bit-identický s fallback cloudom (nový engine, nie parity fork).

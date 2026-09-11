@@ -1,4 +1,5 @@
 import { AudioEngine } from "../audio-engine/AudioEngine";
+import { curatedReadyWithin } from "../sample-library/curated";
 import type { SampleBank } from "../sample-library/factory";
 import type { AutomationPoint, Pattern, PlayMode, ProjectDocument } from "../project-model/types";
 import { BAR_TICKS, PPQ, STEP_TICKS, getActivePattern } from "../project-model/types";
@@ -152,6 +153,10 @@ export async function renderProject(
   if (typeof OfflineAudioContext === "undefined") {
     throw new Error("OfflineAudioContext is not available in this environment — offline export is unsupported.");
   }
+  // Curated factory layer (same-id override, memoized per bank): exports wait
+  // briefly for the curated sound so "what you hear is what you export" —
+  // after the timeout the synthesized fallback renders (offline installs).
+  await curatedReadyWithin(bank, 2000);
   const tail = options.tailSeconds ?? 2;
   const secondsPerTick = 60 / (doc.bpm * PPQ);
   const totalTicks = computeRenderTicks(doc, options.mode);

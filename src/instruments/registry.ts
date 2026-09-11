@@ -532,6 +532,14 @@ const analog: InstrumentDefinition = {
           liveMods.get(f)?.setPressure(amt, when);
         });
       },
+      polyTimbre(pitch, timbre, when) {
+        // MPE timbre (CC74): 0.5 = base cutoff, bipolar ±50%.
+        const mult = Math.max(0, Math.min(1.5, 0.5 + Math.max(0, Math.min(1, timbre))));
+        applyFilterLive((f, fpitch) => {
+          if (fpitch !== pitch) return;
+          f.frequency.setTargetAtTime(Math.min(20000, effCutoff(p.cutoff ?? 9000, pitch) * mult), when, 0.01);
+        });
+      },
       panic() {
         for (const voice of [...voices]) voice.silence(ctx.currentTime);
         voices.length = 0;
@@ -598,7 +606,7 @@ const bass: InstrumentDefinition = {
     const output = ctx.createGain();
     output.gain.value = 1;
     const p = { ...track.params };
-    const { voices, register, cleanup, findByPitch } = makeVoiceManager(4);
+    const { voices, register, cleanup, findByPitch } = makeVoiceManager(8);
 
     // filter -> sounding pitch, so live CUTOFF moves respect KEYTRACK per note
     const liveFilters = new Map<ReturnType<typeof createVoiceFilter>, number>();
@@ -810,6 +818,14 @@ const bass: InstrumentDefinition = {
           liveMods.get(f)?.setPressure(amt, when);
         }
       },
+      polyTimbre(pitch, timbre, when) {
+        // MPE timbre (CC74): 0.5 = base cutoff, bipolar ±50%.
+        const mult = Math.max(0, Math.min(1.5, 0.5 + Math.max(0, Math.min(1, timbre))));
+        for (const [f, fpitch] of liveFilters) {
+          if (fpitch !== pitch) continue;
+          f.frequency.setTargetAtTime(Math.min(6500, effCutoff(p.cutoff ?? 700, pitch) * mult), when, 0.01);
+        }
+      },
       noteOff(pitch, when) {
         for (const v of findByPitch(pitch)) v.stop(when);
       },
@@ -855,6 +871,7 @@ const bass808: InstrumentDefinition = {
     { id: "sub", label: "SUB", min: 0, max: 1, default: 0.35, format: formatPct },
     { id: "tone", label: "TONE", min: 0, max: 1, default: 0.35, format: formatPct },
     { id: "gain", label: "GAIN", min: 0, max: 1, default: 0.85, format: formatPct },
+    ...modMatrixParams(false),
   ],
   factory(ctx, track) {
     const output = ctx.createGain();
@@ -862,6 +879,8 @@ const bass808: InstrumentDefinition = {
     const p = { ...track.params };
     const noise = noiseBuffer(ctx, hashString(track.id) ^ 0x5f5f);
     let current: Voice | null = null;
+    // per-voice mod matrix handles (see modmatrix.ts)
+    const liveMods = new Map<object, ReturnType<typeof scheduleVoiceModMatrix>>();
 
     const runtime: InstrumentRuntime = {
       output,
@@ -905,6 +924,26 @@ const bass808: InstrumentDefinition = {
         // in onended instead of accumulating connections on `output` forever.)
         shaper.connect(post);
         post.connect(output);
+
+        // Mod matrix (ENV/LFO/VEL/PRESS -> CUTOFF/AMP) — see modmatrix.ts.
+        // CUTOFF steers the per-voice tone lowpass; AMP sits after `post`
+        // so it scales main + sub + click together. Monophonic instrument —
+        // there is no polyPressure, so the PRESS source stays 0.
+        const mod = scheduleVoiceModMatrix(ctx, p, {
+          when,
+          stopTime,
+          velocity,
+          attack: 0.005,
+          off: when,
+          release: decay,
+          cutoffParam: toneFilter.frequency,
+          cutoffBase: Math.max(120, toneHz),
+        });
+        liveMods.set(toneFilter, mod);
+        if (mod?.ampNode) {
+          post.disconnect(output);
+          post.connect(mod.ampNode).connect(output);
+        }
 
         const amp = ctx.createGain();
         amp.gain.setValueAtTime(Math.max(gainVal, 0.0002), when);
@@ -1049,6 +1088,8 @@ const bass808: InstrumentDefinition = {
             /* already */
           }
           post.disconnect();
+          mod?.dispose();
+          liveMods.delete(toneFilter);
           if (subOsc) {
             try {
               subOsc.disconnect();
@@ -1081,6 +1122,8 @@ const bass808: InstrumentDefinition = {
       panic() {
         current?.silence(ctx.currentTime);
         current = null;
+        for (const m of liveMods.values()) m?.dispose();
+        liveMods.clear();
       },
       dispose() {
         this.panic();
@@ -1149,6 +1192,7 @@ const sampler: InstrumentDefinition = {
     { id: "loopEnd", label: "L-END", min: 0.01, max: 1, default: 1, format: formatPct },
     { id: "reverse", label: "REVERSE", min: 0, max: 1, default: 0, format: formatPct },
     { id: "spread", label: "SPREAD", min: 0, max: 1, default: 0, format: formatPct },
+    ...modMatrixParams(false),
   ],
   factory(ctx, track, env) {
     const output = ctx.createGain();
@@ -1160,6 +1204,8 @@ const sampler: InstrumentDefinition = {
     let velocityLayers: SampleLayer[] = Array.isArray(track.velocityLayers) ? track.velocityLayers : [];
     let rrCounter = 0;
     const { voices, register, cleanup, findByPitch } = makeVoiceManager(16);
+    // per-voice mod matrix handles (see modmatrix.ts)
+    const liveMods = new Map<object, ReturnType<typeof scheduleVoiceModMatrix>>();
     // filter -> triggering note (velocity + pitch), so live CUTOFF moves
     // respect V-FLT and KEYTRACK per voice
     const liveFilters = new Map<ReturnType<typeof createVoiceFilter>, { vel: number; pitch: number }>();
@@ -1271,7 +1317,9 @@ const sampler: InstrumentDefinition = {
             // Velocity window + optional keyzone (pitch window)
             const pitchOk =
               layer.minPitch === undefined || (pitch >= layer.minPitch && pitch <= (layer.maxPitch ?? 127));
-            if (pitchOk && velocity >= layer.min && velocity < layer.max && env.getSample(layer.sampleId)) {
+            const velocityOk =
+              velocity >= layer.min && (velocity < layer.max || (layer.max >= 1 && velocity <= layer.max));
+            if (pitchOk && velocityOk && env.getSample(layer.sampleId)) {
               cands.push(layer.sampleId as string);
             }
           }
@@ -1329,6 +1377,23 @@ const sampler: InstrumentDefinition = {
         );
         filter.output.connect(amp);
         liveFilters.set(filter, { vel: velocity, pitch });
+
+        // Mod matrix (ENV/LFO/VEL/PRESS -> CUTOFF/AMP) — see modmatrix.ts.
+        const mod = scheduleVoiceModMatrix(ctx, p, {
+          when,
+          stopTime,
+          velocity,
+          attack,
+          off,
+          release,
+          cutoffParam: filter.frequency,
+          cutoffBase: cutoffFor(p.cutoff ?? 15000, velocity, pitch),
+        });
+        liveMods.set(filter, mod);
+        if (mod?.ampNode) {
+          filter.output.disconnect(amp);
+          filter.output.connect(mod.ampNode).connect(amp);
+        }
 
         const src = ctx.createBufferSource();
         // Reverse: cached reversed copy (pitch mode only — stretched data can be reversed too but keep simple)
@@ -1465,6 +1530,8 @@ const sampler: InstrumentDefinition = {
             }
           }
           liveFilters.delete(filter);
+          mod?.dispose();
+          liveMods.delete(filter);
           amp.disconnect();
           filter.disconnect();
           cleanup(voice);
@@ -1493,6 +1560,7 @@ const sampler: InstrumentDefinition = {
           if (v.pitch !== pitch) continue;
           const target = Math.min(20000, cutoffFor(p.cutoff ?? 15000, v.vel, pitch) * (1 + amt * 0.5));
           f.frequency.setTargetAtTime(target, when, 0.01);
+          liveMods.get(f)?.setPressure(amt, when);
         }
       },
       setSample(id) {
@@ -1513,6 +1581,8 @@ const sampler: InstrumentDefinition = {
       panic() {
         for (const voice of [...voices]) voice.silence(ctx.currentTime);
         voices.length = 0;
+        for (const m of liveMods.values()) m?.dispose();
+        liveMods.clear();
         liveFilters.clear();
       },
       dispose() {
@@ -1565,6 +1635,7 @@ const texture: InstrumentDefinition = {
     { id: "drift", label: "DRIFT", min: 0, max: 1, default: 0, format: formatPct },
     { id: "diffuse", label: "DIFFUSE", min: 0, max: 1, default: 0, format: formatPct },
     { id: "level", label: "LEVEL", min: -24, max: 6, default: -10, unit: "dB", format: formatDb },
+    ...modMatrixParams(false),
   ],
   factory(ctx, track, env) {
     const output = ctx.createGain();
@@ -1572,6 +1643,8 @@ const texture: InstrumentDefinition = {
     const p = { ...track.params };
     let bpm = clampBpm(env.bpm);
     const { voices, register, cleanup, findByPitch } = makeVoiceManager(8);
+    // per-voice mod matrix handles (see modmatrix.ts)
+    const liveMods = new Map<object, ReturnType<typeof scheduleVoiceModMatrix>>();
 
     // Shared LFO1: filter cutoff modulation
     const lfo1 = ctx.createOscillator();
@@ -1714,6 +1787,25 @@ const texture: InstrumentDefinition = {
         lfo1Depth.connect(bandpass.frequency);
         bandpass.connect(voiceGain);
 
+        // Mod matrix (ENV/LFO/VEL/PRESS -> CUTOFF/AMP) — see modmatrix.ts.
+        // CUTOFF steers the voice bandpass (COLOR); AMP sits between the
+        // voice amp and the voice panner.
+        const mod = scheduleVoiceModMatrix(ctx, p, {
+          when,
+          stopTime,
+          velocity,
+          attack,
+          off: when + hold,
+          release: releaseTc,
+          cutoffParam: bandpass.frequency,
+          cutoffBase: filterFreq,
+        });
+        liveMods.set(bandpass, mod);
+        if (mod?.ampNode) {
+          voiceGain.disconnect(voicePan);
+          voiceGain.connect(mod.ampNode).connect(voicePan);
+        }
+
         // Filtered noise
         const noise = ctx.createBufferSource();
         noise.buffer = noiseBuffer(ctx, (hashString(`${track.id}:${pitch}`) >>> 0) ^ 0xa5a5);
@@ -1778,6 +1870,8 @@ const texture: InstrumentDefinition = {
         );
         const last = noise;
         last.onended = () => {
+          mod?.dispose();
+          liveMods.delete(bandpass);
           try {
             bandpass.disconnect();
           } catch {
@@ -1816,6 +1910,8 @@ const texture: InstrumentDefinition = {
       panic() {
         for (const voice of [...voices]) voice.silence(ctx.currentTime);
         voices.length = 0;
+        for (const m of liveMods.values()) m?.dispose();
+        liveMods.clear();
       },
       dispose() {
         this.panic();
@@ -2394,6 +2490,14 @@ const wavetable: InstrumentDefinition = {
           liveMods.get(f)?.setPressure(amt, when);
         }
       },
+      polyTimbre(pitch, timbre, when) {
+        // MPE timbre (CC74): 0.5 = base cutoff, bipolar ±50%.
+        const mult = Math.max(0, Math.min(1.5, 0.5 + Math.max(0, Math.min(1, timbre))));
+        for (const [f, fpitch] of liveFilters) {
+          if (fpitch !== pitch) continue;
+          f.frequency.setTargetAtTime(Math.min(20000, effCutoff(p.cutoff ?? 12000, pitch) * mult), when, 0.01);
+        }
+      },
       setSample(id) {
         sampleId = id;
         tableDirty = true;
@@ -2740,6 +2844,8 @@ const fm: InstrumentDefinition = {
       fbGain: GainNode;
       /** MPE pressure multiplier on INDEX (1 = untouched). */
       pressure: number;
+      /** MPE timbre (CC74) multiplier on INDEX — 0.5..1.5, default 1. */
+      timbre: number;
     }
     const liveVoices = new Map<ReturnType<typeof register>, FmVoiceData>();
 
@@ -2748,7 +2854,7 @@ const fm: InstrumentDefinition = {
     // the same response curve as Keys: soft hits are rounder.
     const deviationFor = (v: FmVoiceData) => {
       const ratio = Math.max(0.25, p.ratio ?? 2);
-      const index = Math.max(0, Math.min(1, p.index ?? 0.35)) * v.pressure;
+      const index = Math.max(0, Math.min(1, p.index ?? 0.35)) * v.pressure * v.timbre;
       const velIndex = 0.45 + v.velocity * 0.55;
       return v.freq * ratio * index * index * 5.5 * velIndex;
     };
@@ -2830,7 +2936,7 @@ const fm: InstrumentDefinition = {
         fbDelay.delayTime.value = 128 / (ctx.sampleRate || 44100);
         const fbGain = ctx.createGain();
 
-        const voiceData: FmVoiceData = { freq, velocity, modulator, modEnv, fbGain, pressure: 1 };
+        const voiceData: FmVoiceData = { freq, velocity, modulator, modEnv, fbGain, pressure: 1, timbre: 1 };
         const deviation = deviationFor(voiceData);
         // Full index / bite at attack; `reschedule` then decays both toward
         // their sustain fractions from when + attack.
@@ -2915,6 +3021,15 @@ const fm: InstrumentDefinition = {
           reschedule(v, when);
         }
       },
+      polyTimbre(pitch, timbre, when) {
+        // MPE timbre (CC74): scales INDEX 0.5..1.5 around the note's base.
+        const t = Math.max(0, Math.min(1, timbre));
+        for (const [voice, v] of liveVoices) {
+          if (voice.pitch !== pitch) continue;
+          v.timbre = 0.5 + t;
+          reschedule(v, when);
+        }
+      },
       panic() {
         for (const voice of [...voices]) voice.silence(ctx.currentTime);
         voices.length = 0;
@@ -2978,6 +3093,7 @@ const keys: InstrumentDefinition = {
     { id: "attack", label: "ATTACK", min: 0.001, max: 2, default: 0.005, unit: "s", format: formatMs },
     { id: "release", label: "RELEASE", min: 0.01, max: 4, default: 0.35, unit: "s", format: formatMs },
     { id: "level", label: "LEVEL", min: -24, max: 6, default: -8, unit: "dB", format: formatDb },
+    ...modMatrixParams(false),
   ],
   factory(ctx, track, env) {
     const output = ctx.createGain();
@@ -2985,6 +3101,8 @@ const keys: InstrumentDefinition = {
     const p = { ...track.params };
     let bpm = clampBpm(env.bpm);
     const { voices, register, cleanup, findByPitch } = makeVoiceManager(8);
+    // per-voice mod matrix handles (see modmatrix.ts)
+    const liveMods = new Map<object, ReturnType<typeof scheduleVoiceModMatrix>>();
     // filter -> sounding pitch, so live CUTOFF moves respect KEYTRACK per note
     const liveFilters = new Map<ReturnType<typeof createVoiceFilter>, number>();
     // Keytrack: CUTOFF is tuned at C4; higher notes open the filter proportionally
@@ -3040,6 +3158,23 @@ const keys: InstrumentDefinition = {
         );
         filter.output.connect(amp);
         liveFilters.set(filter, pitch);
+
+        // Mod matrix (ENV/LFO/VEL/PRESS -> CUTOFF/AMP) — see modmatrix.ts.
+        const mod = scheduleVoiceModMatrix(ctx, p, {
+          when,
+          stopTime,
+          velocity,
+          attack,
+          off,
+          release,
+          cutoffParam: filter.frequency,
+          cutoffBase: effCutoff(p.cutoff ?? 4500, pitch),
+        });
+        liveMods.set(filter, mod);
+        if (mod?.ampNode) {
+          filter.output.disconnect(amp);
+          filter.output.connect(mod.ampNode).connect(amp);
+        }
 
         // Tremolo also wobbles filter a touch when damp is low (open)
         if (trem > 0.02 && damp < 0.5) {
@@ -3216,6 +3351,8 @@ const keys: InstrumentDefinition = {
         const last = pairB.car;
         last.onended = () => {
           liveFilters.delete(filter);
+          mod?.dispose();
+          liveMods.delete(filter);
           amp.disconnect();
           filter.disconnect();
           for (const { modEnv, carEnv, modGain, panner } of pairs) {
@@ -3266,6 +3403,15 @@ const keys: InstrumentDefinition = {
           if (fpitch !== pitch) continue;
           const target = Math.min(20000, effCutoff(p.cutoff ?? 4500, pitch) * (1 + amt * 0.5));
           f.frequency.setTargetAtTime(target, when, 0.01);
+          liveMods.get(f)?.setPressure(amt, when);
+        }
+      },
+      polyTimbre(pitch, timbre, when) {
+        // MPE timbre (CC74): 0.5 = base cutoff, bipolar ±50%.
+        const mult = Math.max(0, Math.min(1.5, 0.5 + Math.max(0, Math.min(1, timbre))));
+        for (const [f, fpitch] of liveFilters) {
+          if (fpitch !== pitch) continue;
+          f.frequency.setTargetAtTime(Math.min(20000, effCutoff(p.cutoff ?? 4500, pitch) * mult), when, 0.01);
         }
       },
       syncBpm(next) {
@@ -3278,6 +3424,8 @@ const keys: InstrumentDefinition = {
       panic() {
         for (const voice of [...voices]) voice.silence(ctx.currentTime);
         voices.length = 0;
+        for (const m of liveMods.values()) m?.dispose();
+        liveMods.clear();
         liveFilters.clear();
       },
       dispose() {
@@ -3310,12 +3458,15 @@ const pluck: InstrumentDefinition = {
     { id: "attack", label: "ATTACK", min: 0.001, max: 2, default: 0.002, unit: "s", format: formatMs },
     { id: "release", label: "RELEASE", min: 0.01, max: 4, default: 0.3, unit: "s", format: formatMs },
     { id: "level", label: "LEVEL", min: -24, max: 6, default: -8, unit: "dB", format: formatDb },
+    ...modMatrixParams(false),
   ],
   factory(ctx, track) {
     const output = ctx.createGain();
     output.gain.value = 1;
     const p = { ...track.params };
     const { voices, register, cleanup, findByPitch } = makeVoiceManager(12);
+    // per-voice mod matrix handles (see modmatrix.ts)
+    const liveMods = new Map<object, ReturnType<typeof scheduleVoiceModMatrix>>();
     // filter -> sounding pitch, so MPE pressure can target single notes
     const liveFilters = new Map<ReturnType<typeof createVoiceFilter>, number>();
     const exciteNoise = noiseBuffer(ctx, hashString(track.id) ^ 0x33cc);
@@ -3347,6 +3498,23 @@ const pluck: InstrumentDefinition = {
         postFilter.output.connect(amp);
         liveFilters.set(postFilter, pitch);
 
+        // Mod matrix (ENV/LFO/VEL/PRESS -> CUTOFF/AMP) — see modmatrix.ts.
+        const mod = scheduleVoiceModMatrix(ctx, p, {
+          when,
+          stopTime,
+          velocity,
+          attack,
+          off,
+          release,
+          cutoffParam: postFilter.frequency,
+          cutoffBase: p.cutoff ?? 9000,
+        });
+        liveMods.set(postFilter, mod);
+        if (mod?.ampNode) {
+          postFilter.output.disconnect(amp);
+          postFilter.output.connect(mod.ampNode).connect(amp);
+        }
+
         const input = ctx.createGain();
         input.gain.value = 1;
         const delay = ctx.createDelay(1);
@@ -3363,11 +3531,12 @@ const pluck: InstrumentDefinition = {
           0.82,
           Math.min(0.995, 0.97 - damp * 0.09 + (p.decay ?? 0.9) * 0.02 + (velocity - 0.8) * 0.04),
         );
-        // Feedback loop: input -> delay -> toneFilter -> feedback -> input
-        // Tap after toneFilter into amp/postFilter
+        // Feedback loop: input -> delay -> feedback -> input; the tone filter
+        // remains on the audible tap so browser-specific filter gain cannot
+        // make the recirculating loop unstable.
         input.connect(delay);
+        delay.connect(feedback);
         delay.connect(toneFilter);
-        toneFilter.connect(feedback);
         feedback.connect(input);
         toneFilter.connect(postFilter.input);
 
@@ -3437,6 +3606,8 @@ const pluck: InstrumentDefinition = {
         clock.stop(stopTime);
         clock.onended = () => {
           liveFilters.delete(postFilter);
+          mod?.dispose();
+          liveMods.delete(postFilter);
           try {
             input.disconnect();
           } catch {
@@ -3499,6 +3670,7 @@ const pluck: InstrumentDefinition = {
           if (fpitch !== pitch) continue;
           const target = Math.min(20000, (p.cutoff ?? 9000) * (1 + amt * 0.5));
           f.frequency.setTargetAtTime(target, when, 0.01);
+          liveMods.get(f)?.setPressure(amt, when);
         }
       },
       noteOff(pitch, when) {
@@ -3507,6 +3679,8 @@ const pluck: InstrumentDefinition = {
       panic() {
         for (const voice of [...voices]) voice.silence(ctx.currentTime);
         voices.length = 0;
+        for (const m of liveMods.values()) m?.dispose();
+        liveMods.clear();
         liveFilters.clear();
       },
       dispose() {
@@ -3536,12 +3710,15 @@ const logdrum: InstrumentDefinition = {
     { id: "width", label: "WIDTH", min: 0, max: 1, default: 0.25, format: formatPct },
     { id: "glide", label: "GLIDE", min: 0, max: 1, default: 0.34, format: formatPct },
     { id: "level", label: "LEVEL", min: -24, max: 6, default: -6, unit: "dB", format: formatDb },
+    ...modMatrixParams(false),
   ],
   factory(ctx, track) {
     const output = ctx.createGain();
     output.gain.value = 1;
     const p = { ...track.params };
     const { voices, register, cleanup, findByPitch } = makeVoiceManager(4);
+    // per-voice mod matrix handles (see modmatrix.ts)
+    const liveMods = new Map<object, ReturnType<typeof scheduleVoiceModMatrix>>();
     // filter -> sounding pitch, so MPE pressure can target single notes
     const liveFilters = new Map<ReturnType<typeof createVoiceFilter>, number>();
     const liveNotches = new Set<BiquadFilterNode>();
@@ -3577,6 +3754,24 @@ const logdrum: InstrumentDefinition = {
         const filter = createVoiceFilter(ctx, toneHz, 0.9);
         liveFilters.set(filter, pitch);
         filter.output.connect(amp);
+
+        // Mod matrix (ENV/LFO/VEL/PRESS -> CUTOFF/AMP) — see modmatrix.ts.
+        // One-shot drum: ENV decays with the voice (attack 2 ms, release = decay).
+        const mod = scheduleVoiceModMatrix(ctx, p, {
+          when,
+          stopTime,
+          velocity,
+          attack: 0.002,
+          off,
+          release: decay,
+          cutoffParam: filter.frequency,
+          cutoffBase: toneHz,
+        });
+        liveMods.set(filter, mod);
+        if (mod?.ampNode) {
+          filter.output.disconnect(amp);
+          filter.output.connect(mod.ampNode).connect(amp);
+        }
 
         const notch = ctx.createBiquadFilter();
         notch.type = "notch";
@@ -3655,6 +3850,8 @@ const logdrum: InstrumentDefinition = {
         if (last)
           last.onended = () => {
             liveFilters.delete(filter);
+            mod?.dispose();
+            liveMods.delete(filter);
             liveNotches.delete(notch);
             amp.disconnect();
             filter.disconnect();
@@ -3690,6 +3887,7 @@ const logdrum: InstrumentDefinition = {
           if (fpitch !== pitch) continue;
           const target = Math.min(20000, (400 + (p.tone ?? 0.4) * 2800) * (1 + amt * 0.5));
           f.frequency.setTargetAtTime(target, when, 0.01);
+          liveMods.get(f)?.setPressure(amt, when);
         }
       },
       noteOff(pitch, when) {
@@ -3698,6 +3896,8 @@ const logdrum: InstrumentDefinition = {
       panic() {
         for (const voice of [...voices]) voice.silence(ctx.currentTime);
         voices.length = 0;
+        for (const m of liveMods.values()) m?.dispose();
+        liveMods.clear();
         liveFilters.clear();
         liveNotches.clear();
       },
@@ -3759,12 +3959,37 @@ const spectral: InstrumentDefinition = {
     { id: "resonance", label: "RESO", min: 0.1, max: 12, default: 0.8, format: (v) => v.toFixed(2) },
     { id: "width", label: "WIDTH", min: 0, max: 1, default: 0.5, format: formatPct },
     { id: "level", label: "LEVEL", min: -24, max: 6, default: -12, unit: "dB", format: formatDb },
+    {
+      id: "motion",
+      label: "MOTION",
+      min: 0,
+      max: 1,
+      default: 0,
+      options: [
+        { value: 0, label: "OFF" },
+        { value: 1, label: "ROTARY" },
+      ],
+    },
+    {
+      id: "motionRate",
+      label: "M RATE",
+      min: 0.3,
+      max: 8,
+      default: 0.8,
+      unit: "Hz",
+      format: (v) => `${v.toFixed(2)} Hz`,
+    },
+    { id: "motionSync", label: "M SYNC", min: 0, max: 6, default: 0, options: SYNC_OPTIONS },
+    ...modMatrixParams(false),
   ],
-  factory(ctx, track) {
+  factory(ctx, track, env) {
     const output = ctx.createGain();
     output.gain.value = 1;
     const p = { ...track.params };
+    let bpm = clampBpm(env.bpm);
     const { voices, register, cleanup, findByPitch } = makeVoiceManager(6);
+    // per-voice mod matrix handles (see modmatrix.ts)
+    const liveMods = new Map<object, ReturnType<typeof scheduleVoiceModMatrix>>();
     // filter -> sounding pitch, so MPE pressure can target single notes
     const liveFilters = new Map<ReturnType<typeof createVoiceFilter>, number>();
 
@@ -3802,8 +4027,62 @@ const spectral: InstrumentDefinition = {
         filter.output.connect(output);
         liveFilters.set(filter, pitch);
 
+        // Mod matrix (ENV/LFO/VEL/PRESS -> CUTOFF/AMP) — see modmatrix.ts.
+        // AMP inserts a voice gain between the filter and the shared output.
+        const mod = scheduleVoiceModMatrix(ctx, p, {
+          when,
+          stopTime,
+          velocity,
+          attack,
+          off,
+          release,
+          cutoffParam: filter.frequency,
+          cutoffBase: p.cutoff ?? 6000,
+        });
+        liveMods.set(filter, mod);
+        if (mod?.ampNode) {
+          filter.output.disconnect(output);
+          filter.output.connect(mod.ampNode).connect(output);
+        }
+
+        // MOTION = ROTARY: per-note two-tap chorus panned hard L/R in counter
+        // phase — Leslie swirl for organ voicings. The LFO starts at phase 0
+        // on `when`, so offline renders stay deterministic. Taps disconnect
+        // with the voice (motionNodes in onended).
         const oscs: OscillatorNode[] = [];
         const gains: GainNode[] = [];
+        const motionNodes: AudioNode[] = [];
+        const motion = Math.max(0, Math.min(1, p.motion ?? 0));
+        if (motion > 0.005) {
+          const mRate = Math.max(0.3, Math.min(8, syncRateHz(p.motionSync ?? 0, bpm) || (p.motionRate ?? 0.8)));
+          const lfo = ctx.createOscillator();
+          lfo.type = "sine";
+          lfo.frequency.value = mRate;
+          const tapL = ctx.createDelay(0.06);
+          tapL.delayTime.value = 0.014;
+          const tapR = ctx.createDelay(0.06);
+          tapR.delayTime.value = 0.021;
+          const depthL = ctx.createGain();
+          depthL.gain.value = 0.004 * motion;
+          const depthR = ctx.createGain();
+          depthR.gain.value = -0.004 * motion;
+          lfo.connect(depthL).connect(tapL.delayTime);
+          lfo.connect(depthR).connect(tapR.delayTime);
+          const panL = ctx.createStereoPanner();
+          panL.pan.value = -0.85;
+          const panR = ctx.createStereoPanner();
+          panR.pan.value = 0.85;
+          const wet = ctx.createGain();
+          wet.gain.value = motion * 0.55;
+          filter.output.connect(tapL).connect(panL).connect(wet);
+          filter.output.connect(tapR).connect(panR).connect(wet);
+          wet.connect(output);
+          lfo.start(when);
+          lfo.stop(stopTime);
+          oscs.push(lfo);
+          motionNodes.push(tapL, tapR, panL, panR, wet, depthL, depthR);
+        }
+
         for (let k = 1; k <= count; k++) {
           const a = amps[k - 1];
           if (a * norm < 0.004) continue;
@@ -3864,7 +4143,16 @@ const spectral: InstrumentDefinition = {
         if (last)
           last.onended = () => {
             liveFilters.delete(filter);
+            mod?.dispose();
+            liveMods.delete(filter);
             filter.disconnect();
+            for (const n of motionNodes) {
+              try {
+                n.disconnect();
+              } catch {
+                /* already disconnected */
+              }
+            }
             cleanup(voice);
           };
       },
@@ -3878,6 +4166,10 @@ const spectral: InstrumentDefinition = {
         if (id === "cutoff") for (const [f] of liveFilters) f.frequency.setTargetAtTime(value, when, 0.02);
         if (id === "resonance") for (const [f] of liveFilters) setFilterResonance(f, value, when, 0.02);
       },
+      syncBpm(next) {
+        // Per-note rotary LFOs capture rate at noteOn — new notes pick this up
+        bpm = clampBpm(next);
+      },
       polyPressure(pitch, pressure, when) {
         // Per-voice MPE pressure: matching notes open their own filter up to
         // +50%; pressure 0 restores CUTOFF.
@@ -3886,6 +4178,7 @@ const spectral: InstrumentDefinition = {
           if (fpitch !== pitch) continue;
           const target = Math.min(20000, (p.cutoff ?? 6000) * (1 + amt * 0.5));
           f.frequency.setTargetAtTime(target, when, 0.01);
+          liveMods.get(f)?.setPressure(amt, when);
         }
       },
       noteOff(pitch, when) {
@@ -3894,6 +4187,8 @@ const spectral: InstrumentDefinition = {
       panic() {
         for (const voice of [...voices]) voice.silence(ctx.currentTime);
         voices.length = 0;
+        for (const m of liveMods.values()) m?.dispose();
+        liveMods.clear();
         liveFilters.clear();
       },
       dispose() {
@@ -3957,6 +4252,7 @@ const vocalchop: InstrumentDefinition = {
     { id: "attack", label: "ATTACK", min: 0.001, max: 1, default: 0.005, unit: "s", format: formatMs },
     { id: "release", label: "RELEASE", min: 0.01, max: 2, default: 0.15, unit: "s", format: formatMs },
     { id: "gain", label: "GAIN", min: 0, max: 1, default: 0.85, format: formatPct },
+    ...modMatrixParams(false, { cutoff: false }),
   ],
   factory(ctx, track, env) {
     const output = ctx.createGain();
@@ -3964,6 +4260,8 @@ const vocalchop: InstrumentDefinition = {
     const p = { ...track.params };
     let sampleId: string | null = track.sampleId;
     const { voices, register, cleanup, findByPitch } = makeVoiceManager(8);
+    // per-voice mod matrix handles (see modmatrix.ts)
+    const liveMods = new Map<object, ReturnType<typeof scheduleVoiceModMatrix>>();
     const tone = ctx.createBiquadFilter();
     tone.type = "lowpass";
     tone.frequency.value = p.tone ?? 12000;
@@ -4023,7 +4321,19 @@ const vocalchop: InstrumentDefinition = {
         amp.gain.setValueAtTime(0.0001, when);
         amp.gain.exponentialRampToValueAtTime(Math.max(peak, 0.0002), when + attack);
         amp.gain.setTargetAtTime(0.0001, off, release / 3);
-        amp.connect(tone);
+        // Mod matrix (ENV/LFO/VEL/PRESS -> AMP) — see modmatrix.ts. The
+        // formant bank has no per-voice lowpass, so CUTOFF is not offered.
+        const mod = scheduleVoiceModMatrix(ctx, p, {
+          when,
+          stopTime,
+          velocity,
+          attack,
+          off,
+          release,
+        });
+        liveMods.set(amp, mod);
+        amp.connect(mod?.ampNode ?? tone);
+        if (mod?.ampNode) mod.ampNode.connect(tone);
 
         // CONS: consonant transient — short broadband HP noise burst at the
         // attack, routed around the formant bank straight into the amp.
@@ -4184,6 +4494,8 @@ const vocalchop: InstrumentDefinition = {
               /* already disconnected */
             }
           }
+          mod?.dispose();
+          liveMods.delete(amp);
           amp.disconnect();
           dry.disconnect();
           wet.disconnect();
@@ -4213,6 +4525,8 @@ const vocalchop: InstrumentDefinition = {
       panic() {
         for (const voice of [...voices]) voice.silence(ctx.currentTime);
         voices.length = 0;
+        for (const m of liveMods.values()) m?.dispose();
+        liveMods.clear();
       },
       dispose() {
         this.panic();
@@ -4240,6 +4554,12 @@ const DRUM_TYPE_OPTIONS = [
   { value: 4, label: "Clap" },
   { value: 5, label: "Perc" },
   { value: 6, label: "Cowbell" },
+  { value: 7, label: "Rimshot" },
+  { value: 8, label: "Tom" },
+  { value: 9, label: "Crash" },
+  { value: 10, label: "Ride" },
+  { value: 11, label: "909 Kick" },
+  { value: 12, label: "Zap" },
 ];
 
 const HAT_RATIOS = [2, 3, 4.16, 5.43, 6.79, 8.21];
@@ -4248,7 +4568,7 @@ const drumsynth: InstrumentDefinition = {
   kind: "drumsynth",
   name: "Drum Synth",
   params: [
-    { id: "type", label: "TYPE", min: 0, max: 6, default: 0, options: DRUM_TYPE_OPTIONS },
+    { id: "type", label: "TYPE", min: 0, max: 12, default: 0, options: DRUM_TYPE_OPTIONS },
     {
       id: "tune",
       label: "TUNE",
@@ -4277,7 +4597,7 @@ const drumsynth: InstrumentDefinition = {
     const runtime: InstrumentRuntime = {
       output,
       noteOn(pitch, velocity, when, _durationSec, _slideFrom) {
-        const type = Math.max(0, Math.min(6, Math.round(p.type ?? 0)));
+        const type = Math.max(0, Math.min(12, Math.round(p.type ?? 0)));
         const tune = Math.max(-12, Math.min(12, p.tune ?? 0));
         // All models transpose from C4 — po = pitch offset in semitones
         const po = Math.pow(2, (pitch - 60 + tune) / 12);
@@ -4434,7 +4754,7 @@ const drumsynth: InstrumentDefinition = {
           osc.stop(stopTime);
           oscs.push(osc);
           ringTime = decay * 0.5 + 0.05;
-        } else {
+        } else if (type === 6) {
           // Cowbell: two squares at the classic 1 : 1.485 ratio through a bandpass
           const base = (420 + tone * 380) * po;
           const bp = ctx.createBiquadFilter();
@@ -4457,6 +4777,163 @@ const drumsynth: InstrumentDefinition = {
             oscs.push(osc);
           }
           ringTime = decay * 0.6 + 0.1;
+        } else if (type === 7) {
+          // Rimshot: two inharmonic high partials (1 : 1.5, classic rim) plus
+          // a woody bandpass tick. Short by nature - DECAY barely matters.
+          const base = (1450 + tone * 900) * po;
+          const bp = ctx.createBiquadFilter();
+          bp.type = "bandpass";
+          bp.frequency.value = base * 1.4;
+          bp.Q.value = 2 + body * 5;
+          const g = ctx.createGain();
+          g.gain.setValueAtTime(0.8, when);
+          g.gain.setTargetAtTime(0.0001, when + 0.002, Math.max(0.01, decay * 0.12) / 3);
+          bp.connect(g).connect(noteGain);
+          for (const mult of [1, 1.5]) {
+            const osc = ctx.createOscillator();
+            osc.type = "triangle";
+            osc.frequency.value = base * mult;
+            const og = ctx.createGain();
+            og.gain.setValueAtTime(0.5, when);
+            og.gain.setTargetAtTime(0.0001, when + 0.001, Math.max(0.008, decay * 0.08) / 3);
+            osc.connect(og).connect(bp);
+            osc.start(when);
+            osc.stop(stopTime);
+            oscs.push(osc);
+          }
+          if (snap > 0.01) {
+            const src = ctx.createBufferSource();
+            src.buffer = noise;
+            const hp = ctx.createBiquadFilter();
+            hp.type = "highpass";
+            hp.frequency.value = 4000;
+            const ng = ctx.createGain();
+            ng.gain.setValueAtTime(snap * 0.4, when);
+            ng.gain.setTargetAtTime(0.0001, when + 0.001, 0.004);
+            src.connect(hp).connect(ng).connect(noteGain);
+            src.start(when);
+            src.stop(when + 0.03);
+            srcs.push(src);
+          }
+          ringTime = decay * 0.2 + 0.05;
+        } else if (type === 8) {
+          // Tom: deep pitched sine with a BODY-scaled drop; SNAP adds a
+          // mallet tick through a tuned bandpass.
+          const f = (90 + tone * 220) * po;
+          const osc = ctx.createOscillator();
+          osc.type = "sine";
+          osc.frequency.setValueAtTime(f * (1 + body * 0.8), when);
+          osc.frequency.exponentialRampToValueAtTime(f, when + 0.04 + body * 0.08);
+          const g = ctx.createGain();
+          g.gain.setValueAtTime(0.95, when);
+          g.gain.setTargetAtTime(0.0001, when + 0.004, decay / 3.5);
+          osc.connect(g).connect(noteGain);
+          osc.start(when);
+          osc.stop(stopTime);
+          oscs.push(osc);
+          if (snap > 0.01) {
+            const src = ctx.createBufferSource();
+            src.buffer = noise;
+            const bp = ctx.createBiquadFilter();
+            bp.type = "bandpass";
+            bp.frequency.value = f * 8;
+            bp.Q.value = 1;
+            const ng = ctx.createGain();
+            ng.gain.setValueAtTime(snap * 0.35, when);
+            ng.gain.setTargetAtTime(0.0001, when + 0.002, 0.006);
+            src.connect(bp).connect(ng).connect(noteGain);
+            src.start(when);
+            src.stop(when + 0.04);
+            srcs.push(src);
+          }
+          ringTime = decay + 0.1;
+        } else if (type === 9 || type === 10) {
+          // Crash / Ride: eight inharmonic squares (metallic cluster) through
+          // a wide bandpass + highpass; ride adds a sine "ping" (bell).
+          const ride = type === 10;
+          const base = (ride ? 320 : 260) * po;
+          const bp = ctx.createBiquadFilter();
+          bp.type = "bandpass";
+          bp.frequency.value = (ride ? 4200 : 7000) + tone * 3000;
+          bp.Q.value = 0.4 + snap * 0.5;
+          const hp = ctx.createBiquadFilter();
+          hp.type = "highpass";
+          hp.frequency.value = ride ? 2500 : 4500;
+          const g = ctx.createGain();
+          const ring = Math.max(0.3, decay * 2.2);
+          g.gain.setValueAtTime(0.4, when);
+          g.gain.setTargetAtTime(0.0001, when + 0.01, ring / 3.5);
+          bp.connect(hp).connect(g).connect(noteGain);
+          for (let k = 0; k < 8; k++) {
+            const osc = ctx.createOscillator();
+            osc.type = "square";
+            osc.frequency.value = base * (1 + k * 0.7 + (k % 3) * 0.23);
+            const og = ctx.createGain();
+            og.gain.value = 0.09;
+            osc.connect(og).connect(bp);
+            osc.start(when);
+            osc.stop(stopTime);
+            oscs.push(osc);
+          }
+          if (ride) {
+            const ping = ctx.createOscillator();
+            ping.type = "sine";
+            ping.frequency.value = base * 2.6;
+            const pg = ctx.createGain();
+            pg.gain.setValueAtTime(0.3 + body * 0.3, when);
+            pg.gain.setTargetAtTime(0.0001, when + 0.01, ring / 4);
+            ping.connect(pg).connect(noteGain);
+            ping.start(when);
+            ping.stop(stopTime);
+            oscs.push(ping);
+          }
+          ringTime = ring + 0.1;
+        } else if (type === 11) {
+          // 909 Kick: punchier cousin of the kick - bandpassed noise thump at
+          // the attack, faster pitch drop, SNAP leans into the beater click.
+          const fEnd = Math.max(24, Math.min(200, 50 * po));
+          const osc = ctx.createOscillator();
+          osc.type = "sine";
+          osc.frequency.setValueAtTime(fEnd * (1.5 + tone * 2.5) + 10, when);
+          osc.frequency.exponentialRampToValueAtTime(fEnd, when + 0.012 + body * 0.02);
+          const g = ctx.createGain();
+          g.gain.setValueAtTime(1, when);
+          g.gain.setTargetAtTime(0.0001, when + 0.004, decay / 5);
+          osc.connect(g).connect(noteGain);
+          osc.start(when);
+          osc.stop(stopTime);
+          oscs.push(osc);
+          const src = ctx.createBufferSource();
+          src.buffer = noise;
+          const bp = ctx.createBiquadFilter();
+          bp.type = "bandpass";
+          bp.frequency.value = 1200 + snap * 3500;
+          bp.Q.value = 0.9;
+          const ng = ctx.createGain();
+          ng.gain.setValueAtTime(0.25 + snap * 0.6, when);
+          ng.gain.setTargetAtTime(0.0001, when + 0.002, 0.008);
+          src.connect(bp).connect(ng).connect(noteGain);
+          src.start(when);
+          src.stop(when + 0.06);
+          srcs.push(src);
+          ringTime = decay + 0.1;
+        } else {
+          // Zap: laser sweep - a square from TONE-height diving down at SNAP
+          // speed; BODY fattens the landing point.
+          const fStart = (1400 + tone * 4200) * po;
+          const sweep = Math.max(0.02, 0.05 + snap * 0.25);
+          const osc = ctx.createOscillator();
+          osc.type = "square";
+          osc.frequency.setValueAtTime(fStart, when);
+          osc.frequency.exponentialRampToValueAtTime(Math.max(60, fStart / (1.6 + body * 3)), when + sweep);
+          const g = ctx.createGain();
+          g.gain.setValueAtTime(0.45, when);
+          g.gain.setTargetAtTime(0.0001, when + 0.004, (decay * 0.35) / 3);
+          osc.connect(g).connect(noteGain);
+          osc.start(when);
+          osc.stop(stopTime);
+          oscs.push(osc);
+          ringTime = decay * 0.5 + 0.05;
         }
 
         const voice = register(

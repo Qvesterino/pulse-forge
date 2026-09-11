@@ -63,6 +63,7 @@ jobs:
           CORS_ORIGIN: https://ci.invalid
           KYX_GALLERY_PUBLIC: "1"
           GALLERY_ADMIN_TOKEN: ci-only-preflight-token
+      - run: npm run release:server-smoke
 
   test-browser:
     name: Browser audio checks (Chromium)
@@ -78,6 +79,22 @@ jobs:
       # auto-installs the browser on first run.
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
+
+  test-browser-production:
+    name: Production browser smoke (dist)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # This job intentionally builds its own dist: the dev-server browser job
+      # above cannot catch production-only asset paths or chunk loading errors.
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser:production
 
   audit-prod:
     name: Production dependency audit

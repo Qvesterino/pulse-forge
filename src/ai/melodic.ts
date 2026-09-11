@@ -12,6 +12,17 @@ const DURATIONS = [1, 2, 4, 8];
 const DURATION_COUNT = DURATIONS.length;
 const NUM_STATES = DEGREE_COUNT * DURATION_COUNT; // 32
 
+interface MelodicModel {
+  transitions: Uint32Array;
+  initial: Uint32Array;
+  /** Initial-state distribution with rests removed, reused by rest repair. */
+  nonRestInitial: Uint32Array;
+  /** Observed velocities per state index, for sampling during generation. */
+  velocities: Map<number, number[]>;
+}
+
+const melodicModelCache = new WeakMap<MelodicNote[][], MelodicModel>();
+
 /** Encode (degree, duration) into a flat state index */
 export function encodeMelodicState(degree: number, duration: number): number {
   const safeDegree = Number.isFinite(degree)
@@ -22,21 +33,33 @@ export function encodeMelodicState(degree: number, duration: number): number {
   return (safeDegree - DEGREE_MIN) * DURATION_COUNT + safeDurationIndex;
 }
 
+function safeMelodicStateIndex(index: number): number {
+  return Math.max(0, Math.min(NUM_STATES - 1, Math.trunc(index)));
+}
+
+function melodicDegreeFromSafeState(safeIndex: number): number {
+  return Math.floor(safeIndex / DURATION_COUNT) + DEGREE_MIN;
+}
+
+function melodicDurationFromSafeState(safeIndex: number): number {
+  return DURATIONS[safeIndex % DURATION_COUNT];
+}
+
+function melodicDegreeFromState(index: number): number {
+  return melodicDegreeFromSafeState(safeMelodicStateIndex(index));
+}
+
 /** Decode state index back to (degree, duration) */
 export function decodeMelodicState(index: number): { degree: number; duration: number } {
-  const safeIndex = Math.max(0, Math.min(NUM_STATES - 1, Math.trunc(index)));
-  const dIdx = safeIndex % DURATION_COUNT;
-  const degree = Math.floor(safeIndex / DURATION_COUNT) + DEGREE_MIN;
-  return { degree, duration: DURATIONS[dIdx] };
+  const safeIndex = safeMelodicStateIndex(index);
+  return { degree: melodicDegreeFromSafeState(safeIndex), duration: melodicDurationFromSafeState(safeIndex) };
 }
 
 /** Build a Markov model from melodic reference sequences */
-function buildMelodicModel(sequences: MelodicNote[][]): {
-  transitions: Uint32Array;
-  initial: Uint32Array;
-  /** Observed velocities per state index, for sampling during generation */
-  velocities: Map<number, number[]>;
-} {
+function getMelodicModel(sequences: MelodicNote[][]): MelodicModel {
+  const cached = melodicModelCache.get(sequences);
+  if (cached) return cached;
+
   const transitions = new Uint32Array(NUM_STATES * NUM_STATES);
   const initial = new Uint32Array(NUM_STATES);
   const velocities = new Map<number, number[]>();
@@ -64,29 +87,40 @@ function buildMelodicModel(sequences: MelodicNote[][]): {
     }
   }
 
-  return { transitions, initial, velocities };
+  const nonRestInitial = new Uint32Array(NUM_STATES);
+  for (let state = 0; state < NUM_STATES; state++) {
+    if (melodicDegreeFromState(state) >= 0) nonRestInitial[state] = initial[state];
+  }
+  const model = { transitions, initial, nonRestInitial, velocities };
+  melodicModelCache.set(sequences, model);
+  return model;
 }
 
 /** Sample from a distribution vector with optional temperature control */
-function sampleDist(dist: Uint32Array, rand: () => number, temperature: number = 1): number {
+function sampleDist(
+  dist: Uint32Array,
+  rand: () => number,
+  temperature: number = 1,
+  start = 0,
+  end = dist.length,
+): number {
   const invT = 1 / Math.max(0.01, temperature);
-  const candidates: number[] = [];
-  for (let i = 0; i < dist.length; i++) {
-    if (dist[i] > 0) candidates.push(i);
-  }
-  if (candidates.length === 0) return -1;
-
   let total = 0;
-  for (const i of candidates) {
-    total += Math.pow(dist[i], invT);
+  for (let i = start; i < end; i++) {
+    if (dist[i] > 0) total += Math.pow(dist[i], invT);
   }
+  if (total <= 0) return -1;
 
   let r = rand() * total;
-  for (const i of candidates) {
+  for (let i = start; i < end; i++) {
+    if (dist[i] <= 0) continue;
     r -= Math.pow(dist[i], invT);
-    if (r <= 0) return i;
+    if (r <= 0) return i - start;
   }
-  return candidates[candidates.length - 1];
+  for (let i = end - 1; i >= start; i--) {
+    if (dist[i] > 0) return i - start;
+  }
+  return -1;
 }
 
 /** Convert a scale degree to a MIDI pitch given root and scale intervals */
@@ -149,7 +183,7 @@ function sampleVelocity(velocities: Map<number, number[]>, state: number, rand: 
 
 /** Generate a melodic sequence from a Markov model */
 function generateMelodicSequence(
-  model: { transitions: Uint32Array; initial: Uint32Array; velocities: Map<number, number[]> },
+  model: MelodicModel,
   length: number,
   rand: () => number,
   temperature: number = 1,
@@ -163,21 +197,18 @@ function generateMelodicSequence(
   let currentState = sampledInitial >= 0 ? sampledInitial : encodeMelodicState(0, 1);
 
   for (let i = 0; i < length; i++) {
-    const { degree, duration } = decodeMelodicState(currentState);
+    const safeState = safeMelodicStateIndex(currentState);
+    const degree = melodicDegreeFromSafeState(safeState);
+    const duration = melodicDurationFromSafeState(safeState);
 
     // Skip consecutive rests — force a note instead
     if (degree < 0 && notes.length > 0 && notes[notes.length - 1].degree < 0) {
-      const nonRest = new Uint32Array(model.initial.length);
-      for (let s = 0; s < nonRest.length; s++) {
-        const d = decodeMelodicState(s);
-        if (d.degree >= 0) nonRest[s] = model.initial[s];
-      }
-      const sampledNonRest = sampleDist(nonRest, rand, temperature);
+      const sampledNonRest = sampleDist(model.nonRestInitial, rand, temperature);
       currentState = sampledNonRest >= 0 ? sampledNonRest : encodeMelodicState(0, 1);
-      const forced = decodeMelodicState(currentState);
+      const forcedState = safeMelodicStateIndex(currentState);
       notes.push({
-        degree: forced.degree,
-        duration: forced.duration,
+        degree: melodicDegreeFromSafeState(forcedState),
+        duration: melodicDurationFromSafeState(forcedState),
         velocity: sampleVelocity(model.velocities, currentState, rand),
       });
       continue;
@@ -187,8 +218,7 @@ function generateMelodicSequence(
 
     if (i < length - 1) {
       const rowStart = currentState * NUM_STATES;
-      const row = model.transitions.subarray(rowStart, rowStart + NUM_STATES);
-      const sampledNext = sampleDist(row, rand, temperature);
+      const sampledNext = sampleDist(model.transitions, rand, temperature, rowStart, rowStart + NUM_STATES);
       currentState = sampledNext >= 0 ? sampledNext : encodeMelodicState(degree, duration);
     }
   }
@@ -234,7 +264,7 @@ export function generateMelodicParts(
     if (options.roles && !options.roles.includes(intentRole)) continue;
     const roleRand = roleRandoms?.[pattern.role] ?? rand;
     // Build Markov model from reference sequences for this role
-    const model = buildMelodicModel(pattern.sequences);
+    const model = getMelodicModel(pattern.sequences);
 
     // Role-specific note density
     const notesPerBar = pattern.role === "chord" ? 2 : pattern.role === "bass" ? 4 : 3;

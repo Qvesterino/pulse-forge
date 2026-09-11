@@ -8,7 +8,9 @@ Command:
 npx prettier --list-different src tests
 ```
 
-Result: exit code `1`, exactly `199` paths. These are intentionally not
+Result: exit code `1`, exactly `205` paths. Six additional paths are from the
+current Granular/Intent WIP; the full list below was regenerated after that
+work landed. These are intentionally not
 rewritten in the release hardening pass because the changes span vendored DSP,
 golden fixtures, UI tests and unrelated historical files. The release gate
 accepts this explicit inventory; any future change to one of these paths should
@@ -18,8 +20,10 @@ either format it or update this inventory after rerunning the command.
 
 ```text
 src/ai/generator.ts
+src/ai/markov.ts
 src/audio-engine/AudioEngine.ts
 src/audio-engine/GhostPreviewPlayer.ts
+src/audio-worklets/granular-voice-processor.js
 src/audio-worklets/loader.ts
 src/audio-worklets/wtvoice-processor.js
 src/commands/commands.ts
@@ -126,7 +130,10 @@ src/export/quantize.ts
 src/export/video.ts
 src/instruments/envelope.ts
 src/instruments/registry.ts
+src/instruments/types.ts
 src/instruments/wtvoiceNode.ts
+src/intent/candidate-bank.ts
+src/intent/quality.ts
 src/landing/LandingPage.tsx
 src/midi/midiProject.ts
 src/persistence/db.ts
@@ -178,6 +185,7 @@ tests/fxeq-prepare-hardening.test.ts
 tests/granular.test.ts
 tests/helpers.tsx
 tests/instruments.test.ts
+tests/intent-binding.test.ts
 tests/ozvena-golden.test.ts
 tests/ozvena-golden/hall-blend.json
 tests/ozvena-golden/small-room.json

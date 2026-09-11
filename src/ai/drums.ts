@@ -1,6 +1,6 @@
 import type { StepMeta } from "../project-model/types";
 import type { GenerateOptions, GrooveData, VelocityLevel } from "./types";
-import { buildPadModel, generatePadSequence, dequantizeVelocity } from "./markov";
+import { generatePadSequence, dequantizeVelocity, getGroovePadModel } from "./markov";
 import { canRatchet, ghostMultiplier, inferPadRole, type PadRole } from "./pad-roles";
 import { applyPhraseDynamics, buildPhrasePlan } from "./phrase";
 import { enforceDrumAnchors, repairDrumRow } from "./quality";
@@ -120,10 +120,9 @@ export function generateDrumPattern(
       continue;
     }
     const role = inferPadRole(padNames?.[padIndex], padIndex);
-    const padPatterns: number[][] = groove.patterns.map(
-      (p) => (p[padIndex] as number[] | undefined) ?? (new Array(16).fill(0) as number[]),
-    );
-    const model = buildPadModel(padIndex, padPatterns);
+    const cachedPad = getGroovePadModel(groove, padIndex);
+    const padPatterns = cachedPad.patterns;
+    const model = cachedPad.model;
 
     // Generate base 16-step sequence
     const baseSequence = generatePadSequence(model, 16, rand, options.temperature);

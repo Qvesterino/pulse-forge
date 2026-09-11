@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useDoc, useServices } from "./context";
 import {
   resetPadSlice,
@@ -9,10 +9,12 @@ import {
   setInstrumentParam,
   setInstrumentSample,
 } from "../commands/commands";
-import type { DrumPad, InstrumentKind, PadMod, Track } from "../project-model/types";
+import type { DrumPad, InstrumentKind, PadMod, SampleLayer, Track } from "../project-model/types";
 import { FACTORY_ASSETS } from "../sample-library/manifest";
 import { INSTRUMENT_DEFS } from "../instruments/registry";
 import { pitchName } from "../project-model/types";
+import { autoMapVelocityLayers } from "../samples/autoMap";
+import { setVelocityLayersCommand } from "../commands/layerCommands";
 import { Slider } from "./controls";
 import { SampleBrowser } from "./SampleBrowser";
 import { WavetablePreview } from "./WavetablePreview";
@@ -68,6 +70,13 @@ export function Inspector({
   const doc = useDoc();
   const [sliceLabOpen, setSliceLabOpen] = useState(false);
   const [advancedInstrumentControls, setAdvancedInstrumentControls] = useState(false);
+  const [pendingSamplerMapping, setPendingSamplerMapping] = useState<SampleLayer[] | null>(null);
+
+  useEffect(() => {
+    // A mapping proposal belongs to the track that received the drop. Never
+    // leave an Apply button for a different track after selection changes.
+    setPendingSamplerMapping(null);
+  }, [track.id]);
 
   const trackSection = (
     <>
@@ -140,7 +149,60 @@ export function Inspector({
               currentId={track.sampleId}
               onSelect={(assetId) => services.store.execute(setInstrumentSample(doc, track.id, assetId))}
               showDropZone
+              onBatchImport={
+                track.instrument === "sampler"
+                  ? (imported) => {
+                      // Multi-file drop on a sampler track: file names carry
+                      // the mapping (kick_C2.wav, stab F#4.wav, -1/-2 RR) —
+                      // spread across the keyboard automatically.
+                      const layers = autoMapVelocityLayers(
+                        imported.map((a) => ({ sampleId: a.id, name: a.fileName })),
+                      );
+                      if (layers.length > 1) setPendingSamplerMapping(layers);
+                    }
+                  : undefined
+              }
             />
+            {track.instrument === "sampler" && pendingSamplerMapping && (
+              <div className="sampler-map-preview" role="dialog" aria-label="Sampler mapping preview">
+                <div className="sampler-map-preview-heading">
+                  <strong>MAP PREVIEW</strong>
+                  <span>
+                    {pendingSamplerMapping.length} layers · {new Set(pendingSamplerMapping.map((l) => `${l.minPitch ?? 0}-${l.maxPitch ?? 127}`)).size} keyzones
+                  </span>
+                </div>
+                <p>
+                  Imported samples are ready. Preview the first zone, then Apply to commit one undoable sampler mapping.
+                </p>
+                <div className="sampler-map-preview-actions">
+                  <button
+                    type="button"
+                    className="btn btn-small"
+                    onClick={() => {
+                      const first = pendingSamplerMapping[0]?.sampleId;
+                      if (first) services.engine.previewAsset(first);
+                    }}
+                  >
+                    PREVIEW
+                  </button>
+                  <button type="button" className="btn btn-small" onClick={() => setPendingSamplerMapping(null)}>
+                    CANCEL
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-small active"
+                    onClick={() => {
+                      const currentDoc = services.store.doc;
+                      const first = pendingSamplerMapping[0]?.sampleId ?? null;
+                      services.store.execute(setVelocityLayersCommand(currentDoc, track.id, pendingSamplerMapping, first));
+                      setPendingSamplerMapping(null);
+                    }}
+                  >
+                    APPLY MAP
+                  </button>
+                </div>
+              </div>
+            )}
             {(track.instrument === "wavetable" || track.instrument === "granular") && (
               <WavetablePreview track={track} />
             )}

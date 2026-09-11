@@ -71,6 +71,15 @@ describe("PWA caching strategy", () => {
     expect(glob).toContain("html");
   });
 
+  it("precache includes curated factory samples with a raised per-file cap", () => {
+    // Local-first (VISION §24): the curated kit must survive offline — WAVs
+    // are precached, and the 2 MiB workbox default would SILENTLY drop any
+    // larger curated one-shot from the offline kit.
+    const glob = (pwaOptions.workbox!.globPatterns as string[]).join(" ");
+    expect(glob).toContain("wav");
+    expect(pwaOptions.workbox!.maximumFileSizeToCacheInBytes).toBeGreaterThan(2 * 1024 * 1024);
+  });
+
   it("navigations fall back to index.html for SPA routing", () => {
     expect(pwaOptions.workbox!.navigateFallback).toBe("index.html");
   });

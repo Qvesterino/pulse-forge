@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { generatePattern } from "../src/ai/generator";
 import { inspectPatternInvariants } from "../src/ai/invariants";
 import { generatePatternCommand } from "../src/commands/commands";
+import { rankCandidateBank } from "../src/intent/candidate-bank";
 import { LocalDeterministicProvider } from "../src/intent/providers/local";
 import { generateLocalResult } from "../src/intent/pipeline";
 import { normalizeIntent } from "../src/intent/normalize";
@@ -112,5 +113,51 @@ describe("truthful local generation diagnostics", () => {
     expect(proposal.diagnostics.repairs).toEqual([]);
     expect(proposal.diagnostics.fallbackReason).toContain("synthetic generator failure");
     expect(inspectPatternInvariants(doc, proposal.pattern).ok).toBe(true);
+  });
+});
+
+describe("offline candidate bank", () => {
+  it("generates stable seeded candidates and selects the highest quality candidate", () => {
+    const doc = createDefaultProject();
+    const plan = planGeneration(normalizeIntent({ ...baseOptions, candidateCount: 3 }), doc);
+    const seenSeeds: string[] = [];
+    const provider = new LocalDeterministicProvider((project, options) => {
+      seenSeeds.push(options.seed);
+      const generated = generatePattern(project, options);
+      const candidateIndex = plan.candidateSeeds.indexOf(options.seed);
+      const quality = generated.generation!.quality!;
+      return {
+        ...generated,
+        generation: {
+          ...generated.generation!,
+          quality: {
+            ...quality,
+            styleAccepted: candidateIndex === 2,
+            styleDistance: candidateIndex === 2 ? 0 : 1,
+            anchorCoverage: candidateIndex === 2 ? 1 : 0,
+            melodicMotifRepetition: candidateIndex === 2 ? 1 : 0,
+          },
+        },
+      };
+    });
+
+    const proposal = provider.generateSync(plan, { project: doc, mode: "preview" });
+    expect(seenSeeds).toEqual(plan.candidateSeeds);
+    expect(proposal.status).toBe("accepted");
+    expect(proposal.diagnostics.repairs).toEqual([]);
+    expect(proposal.diagnostics.warnings).toContain("candidate-bank-enabled");
+    expect(proposal.diagnostics.warnings).toContain("candidate-bank-selected:2");
+    expect(proposal.pattern.generation?.candidateCount).toBe(3);
+  });
+
+  it("deduplicates identical musical candidates by UUID-free content hash", () => {
+    const doc = createDefaultProject();
+    const pattern = generatePattern(doc, baseOptions);
+    const ranked = rankCandidateBank(doc, [
+      { candidateIndex: 0, seed: "a", pattern, status: "accepted", repairs: [], score: 0, contentHash: "" },
+      { candidateIndex: 1, seed: "b", pattern: { ...pattern, id: "different-id" }, status: "accepted", repairs: [], score: 0, contentHash: "" },
+    ]);
+    expect(ranked).toHaveLength(1);
+    expect(ranked[0].candidateIndex).toBe(0);
   });
 });

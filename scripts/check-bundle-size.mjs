@@ -12,9 +12,10 @@
  *  - TOTAL across all chunks: catches dead-weight creeping into the graph
  *    even when it is split.
  *
- * NOTE: the vendored AudioWorklet bundles (public/*-worklet.js, ~520 KB)
- * are NOT part of either budget — since the lazy loader they only download
- * when a project actually uses the plugin.
+ * NOTE: the flagship plugin AudioWorklet bundles are not part of the app
+ * chunk budgets because they are lazy-loaded. The two stock/core bundles are
+ * shipped with every build and therefore have an explicit separate budget
+ * below; they must stay small enough to load during normal studio startup.
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -24,6 +25,7 @@ import { fileURLToPath } from "node:url";
 // granular landed at ~+21 KB) — the registry is core and must stay in entry.
 const ENTRY_BUDGET_KB = 995;
 const TOTAL_BUDGET_KB = 2400;
+const CORE_WORKLET_BUDGET_KB = 120;
 
 const dist = fileURLToPath(new URL("../dist/", import.meta.url));
 
@@ -44,6 +46,17 @@ for (const file of readdirSync(join(dist, "assets"))) {
 console.log(`[size-budget] entry: ${entryKb.toFixed(0)} KB (budget ${ENTRY_BUDGET_KB})`);
 console.log(`[size-budget] total JS chunks: ${totalKb.toFixed(0)} KB (budget ${TOTAL_BUDGET_KB})`);
 
+let coreWorkletKb = 0;
+for (const file of ["bitcrusher-worklet.js", "core-worklet.js"]) {
+  const path = join(dist, file);
+  if (!statSync(path).isFile()) {
+    console.error(`[size-budget] FAIL — missing core worklet: dist/${file}`);
+    process.exit(1);
+  }
+  coreWorkletKb += statSync(path).size / 1024;
+}
+console.log(`[size-budget] core worklets: ${coreWorkletKb.toFixed(0)} KB (budget ${CORE_WORKLET_BUDGET_KB})`);
+
 let failed = false;
 if (entryKb > ENTRY_BUDGET_KB) {
   console.error(`[size-budget] FAIL — entry chunk over budget: ${entryKb.toFixed(0)} > ${ENTRY_BUDGET_KB} KB.`);
@@ -52,6 +65,12 @@ if (entryKb > ENTRY_BUDGET_KB) {
 }
 if (totalKb > TOTAL_BUDGET_KB) {
   console.error(`[size-budget] FAIL — total JS over budget: ${totalKb.toFixed(0)} > ${TOTAL_BUDGET_KB} KB.`);
+  failed = true;
+}
+if (coreWorkletKb > CORE_WORKLET_BUDGET_KB) {
+  console.error(
+    `[size-budget] FAIL — core worklets over budget: ${coreWorkletKb.toFixed(0)} > ${CORE_WORKLET_BUDGET_KB} KB.`,
+  );
   failed = true;
 }
 if (failed) process.exit(1);

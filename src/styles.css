@@ -5116,6 +5116,43 @@ button {
   border-radius: 5px;
 }
 
+.sampler-map-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-panel-2));
+}
+
+.sampler-map-preview-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--accent);
+  font: 10px var(--mono);
+  letter-spacing: 0.08em;
+}
+
+.sampler-map-preview-heading span,
+.sampler-map-preview p {
+  color: var(--text-faint);
+  font: 9px var(--mono);
+  letter-spacing: normal;
+}
+
+.sampler-map-preview p {
+  margin: 0;
+  line-height: 1.4;
+}
+
+.sampler-map-preview-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
 .sample-list {
   display: flex;
   flex-direction: column;

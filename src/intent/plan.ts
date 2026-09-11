@@ -16,6 +16,7 @@ export function generateOptionsFromIntent(intent: IntentSpec): GenerateOptions {
     stepCount: intent.length,
     key: intent.key,
     bpmRange: intent.bpmRange,
+    candidateCount: intent.candidateCount ?? 1,
     roles: intent.roles,
     constraints: intent.constraints,
     ghostWeight: intent.controls.ghostWeight,
@@ -53,6 +54,9 @@ export function planGeneration(input: IntentInput | IntentSpec, doc: ProjectDocu
   const seed = generationSeed(intent, effectiveSeed, groove.id);
   const recipe = createGenerationRecipe(options, groove.id, inputContentHash);
   const resolvedBpm = resolveBpm(groove.bpm, intent.bpmRange);
+  const candidateSeeds = Array.from({ length: intent.candidateCount ?? 1 }, (_, index) =>
+    index === 0 ? intent.seed : `${intent.seed}|candidate:${index}`,
+  );
   const resolvedDrumTrackId =
     intent.targetTracks.drumTrackId ?? doc.tracks.find((track) => track.kind === "drum")?.id ?? null;
   const resolvedInstrumentTrackIds =
@@ -91,6 +95,7 @@ export function planGeneration(input: IntentInput | IntentSpec, doc: ProjectDocu
     rolePlans,
     constraints: intent.constraints,
     resolvedBpm,
+    candidateSeeds,
     subSeeds: {
       groove: `${seed}|groove`,
       drumsCore: `${seed}|drums.core`,

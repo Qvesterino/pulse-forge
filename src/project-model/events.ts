@@ -71,7 +71,21 @@ export function noteEventsInWindow(pattern: Pattern, base: number, fromTick: num
       if (cycle > 10000) break;
     }
   }
-  return events.sort((a, b) => a.tick - b.tick || a.trackId.localeCompare(b.trackId) || a.note.pitch - b.note.pitch);
+  return events.sort(
+    (a, b) =>
+      a.tick - b.tick ||
+      // Defect A.4 (performance / memory recon): `String.localeCompare`
+      // is O(n) per comparison and walks ICU collation tables — the
+      // DAW scheduler runs this comparator on the result of
+      // `noteEventsInWindow` every 25 ms tick. A plain
+      // string compare is O(n) too but with a much smaller constant,
+      // and we only need total order across a small set of track
+      // ids (≤ dozens per project). The same ordering semantics hold
+      // for the codeset we actually use (track ids are app-generated
+      // alphanumeric strings — no locale-aware comparison needed).
+      (a.trackId < b.trackId ? -1 : a.trackId > b.trackId ? 1 : 0) ||
+      a.note.pitch - b.note.pitch,
+  );
 }
 
 /** Shared absolute event plan consumed by realtime and offline paths. */
