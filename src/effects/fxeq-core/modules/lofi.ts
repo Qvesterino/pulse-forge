@@ -273,8 +273,10 @@ export function createLofiModule(params?: Record<string, number>, seed?: number)
 
       for (let c = 0; c < channels.length; c++) {
         const buf = channels[c];
-        // Snapshot the dry signal for a true wet/dry blend (subarray is a view).
-        dryBuf[c].set(buf.subarray(0, frameCount));
+        // Snapshot the dry signal for a true wet/dry blend without creating a
+        // subarray view on the render path.
+        const dry = dryBuf[c];
+        for (let i = 0; i < frameCount; i++) dry[i] = buf[i];
         switch (mode) {
           case 0:
             processBitDepth(buf, frameCount, degradation);

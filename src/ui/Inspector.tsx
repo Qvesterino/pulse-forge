@@ -18,6 +18,7 @@ import { setVelocityLayersCommand } from "../commands/layerCommands";
 import { Slider } from "./controls";
 import { SampleBrowser } from "./SampleBrowser";
 import { WavetablePreview } from "./WavetablePreview";
+import { ModMatrixRow, isModMatrixParam } from "./ModMatrixRow";
 // Both load on demand: PresetBrowser drags the ~45 KB factory-preset table
 // into its chunk (only needed once an instrument track is selected), SliceLab
 // only when the SLICE LAB toggle opens. Keeps them out of the entry budget.
@@ -215,7 +216,9 @@ export function Inspector({
           </div>
         )}
 
-        {visibleParams.map((p) =>
+        {visibleParams
+          .filter((p) => !isModMatrixParam(p.id))
+          .map((p) =>
           p.options ? (
             <label key={p.id} className="fx-param-select">
               <span className="slider-label">{p.label}</span>
@@ -250,6 +253,8 @@ export function Inspector({
             />
           ),
         )}
+
+        {advancedInstrumentControls && <ModMatrixRow track={track} doc={doc} services={services} />}
 
         {trackSection}
       </aside>

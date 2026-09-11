@@ -89,7 +89,9 @@ export function applyLpBranch(
 ): void {
   // Copy input into outBuf, then cascade the LP biquads in place.
   for (let c = 0; c < outBuf.length; c++) {
-    outBuf[c].set(input[c].subarray(0, frameCount));
+    const source = input[c];
+    const target = outBuf[c];
+    for (let i = 0; i < frameCount; i++) target[i] = source[i];
   }
   for (const bq of stage.lp) processBiquad(bq, outBuf, frameCount);
 }
@@ -105,7 +107,9 @@ export function applyHpBranch(
   frameCount: number,
 ): void {
   for (let c = 0; c < outBuf.length; c++) {
-    outBuf[c].set(input[c].subarray(0, frameCount));
+    const source = input[c];
+    const target = outBuf[c];
+    for (let i = 0; i < frameCount; i++) target[i] = source[i];
   }
   for (const bq of stage.hp) processBiquad(bq, outBuf, frameCount);
 }

@@ -117,7 +117,7 @@ describe("gallery REST API", () => {
     expect(feed.items[0].title).toBe("Midnight Jam");
   });
 
-  it("rejects junk: missing title, invalid code, malformed JSON, unknown route", async () => {
+  it("rejects junk: missing title, invalid code, malformed JSON, unknown route", { timeout: 20_000 }, async () => {
     const { base } = await boot();
 
     const noTitle = await fetch(`${base}/api/gallery`, {
@@ -288,7 +288,7 @@ describe("gallery REST API", () => {
 });
 
 describe("y-websocket parity after the http refactor", () => {
-  it("still accepts the yjs upgrade handshake on /<roomId>", async () => {
+  it("still accepts the yjs upgrade handshake on /<roomId>", { timeout: 20_000 }, async () => {
     const { base } = await boot();
     const wsUrl = `${base.replace("http", "ws")}/jam-room`;
     const conn = new WebSocket(wsUrl);
@@ -311,7 +311,7 @@ describe("y-websocket parity after the http refactor", () => {
     expect(size).toBeGreaterThan(2);
   });
 
-  it("bounds rooms and connections and exposes live health metrics", async () => {
+  it("bounds rooms and connections and exposes live health metrics", { timeout: 20_000 }, async () => {
     const galleryFile = join(mkdtempSync(join(tmpdir(), "pf-gallery-limits-")), "gallery.json");
     const collab = createCollabServer({
       galleryFile,

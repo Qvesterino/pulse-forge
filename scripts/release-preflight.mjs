@@ -8,6 +8,7 @@
  *   KYX_GALLERY_PUBLIC=1 GALLERY_ADMIN_TOKEN=...  (when the public gallery is enabled)
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 
 const root = process.cwd();
@@ -60,6 +61,8 @@ const requiredFiles = [
   "fxeq-worklet.js",
   "ultina-worklet.js",
   "ozvena-worklet.js",
+  "models/intent-ranker-v1.onnx",
+  "models/intent-ranker-v1.manifest.json",
 ];
 for (const relative of requiredFiles) {
   const path = join(dist, relative);
@@ -68,6 +71,23 @@ for (const relative of requiredFiles) {
     if (!info.isFile() || info.size === 0) fail(`missing or empty production artifact: dist/${relative}`);
   } catch {
     fail(`missing or unreadable production artifact: dist/${relative}`);
+  }
+}
+
+const rankerManifestPath = join(dist, "models", "intent-ranker-v1.manifest.json");
+const rankerModelPath = join(dist, "models", "intent-ranker-v1.onnx");
+if (existsSync(rankerManifestPath) && existsSync(rankerModelPath)) {
+  try {
+    const rankerManifest = JSON.parse(readFileSync(rankerManifestPath, "utf8"));
+    const actualHash = createHash("sha256").update(readFileSync(rankerModelPath)).digest("hex");
+    if (rankerManifest.modelPath !== "/models/intent-ranker-v1.onnx") {
+      fail("dist ranker manifest points outside the shipped local model path");
+    }
+    if (actualHash !== String(rankerManifest.modelHash ?? "").toLowerCase()) {
+      fail("dist ranker model hash does not match its manifest");
+    }
+  } catch {
+    fail("dist ranker manifest is not valid JSON or its model is unreadable");
   }
 }
 

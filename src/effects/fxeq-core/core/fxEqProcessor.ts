@@ -417,7 +417,12 @@ export function createFxEqProcessor(
 
       // Snapshot dry signal (post input-gain).
       for (let c = 0; c < channelCount; c++) {
-        dryBuf[c].set(channels[c].subarray(0, frameCount));
+        const source = channels[c];
+        const dry = dryBuf[c];
+        // Do not create a subarray view on the render path. AudioWorklet
+        // blocks arrive at maxBlockSize in practice, but frameCount may be a
+        // shorter view during host chunking; copy exactly the active range.
+        for (let i = 0; i < frameCount; i++) dry[i] = source[i];
       }
 
       // Smooth crossover frequencies to eliminate zipper noise.
@@ -458,7 +463,9 @@ export function createFxEqProcessor(
         const scratch = bandScratch[b];
         // Copy band data into preallocated scratch (no allocation).
         for (let c = 0; c < channelCount; c++) {
-          scratch[c].set(bandChannels[c].subarray(0, frameCount));
+          const source = bandChannels[c];
+          const target = scratch[c];
+          for (let i = 0; i < frameCount; i++) target[i] = source[i];
         }
         // Pass sidechain to band engine if available. Soloed-out bands (when
         // any other band is soloed) KEEP CLOCKING here — their delay/reverb

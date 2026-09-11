@@ -374,7 +374,9 @@ export function createDynamicsModule(params?: Record<string, number>): ModulePro
       const numCh = channels.length;
 
       for (let c = 0; c < numCh; c++) {
-        dryBuf[c].set(channels[c].subarray(0, frameCount));
+        const source = channels[c];
+        const dry = dryBuf[c];
+        for (let i = 0; i < frameCount; i++) dry[i] = source[i];
       }
 
       if (stereoMode === 1 && numCh >= 2) {

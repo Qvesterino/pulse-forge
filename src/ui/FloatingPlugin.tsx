@@ -5,6 +5,7 @@ import { randomizeInstrumentCommand } from "../commands/layerCommands";
 import { INSTRUMENT_DEFS } from "../instruments/registry";
 import { WavetablePanel } from "./WavetablePanel";
 import { GranularPanel } from "./GranularPanel";
+import { ModMatrixRow, isModMatrixParam } from "./ModMatrixRow";
 import { EnvEditor } from "./EnvEditor";
 import { Slider } from "./controls";
 import type { Track } from "../project-model/types";
@@ -203,7 +204,9 @@ function InstrumentPluginContent({
       {track.instrument === "granular" && <GranularPanel track={track} doc={doc} services={services} />}
       {track.instrument === "analog" && mode === "profi" && <EnvEditor track={track} doc={doc} services={services} />}
       <div className="floating-plugin-grid">
-      {params.map((p: any) =>
+      {params
+        .filter((p: any) => !isModMatrixParam(p.id))
+        .map((p: any) =>
         p.options ? (
           <label key={p.id} className="fx-param-select floating-plugin-select">
             <span className="slider-label">{p.label}</span>
@@ -237,6 +240,7 @@ function InstrumentPluginContent({
         ),
       )}
       </div>
+      <ModMatrixRow track={track} doc={doc} services={services} />
     </div>
   );
 }

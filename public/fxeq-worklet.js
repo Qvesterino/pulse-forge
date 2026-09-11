@@ -173,13 +173,17 @@
   }
   function applyLpBranch(stage, input, outBuf, frameCount) {
     for (let c = 0; c < outBuf.length; c++) {
-      outBuf[c].set(input[c].subarray(0, frameCount));
+      const source = input[c];
+      const target = outBuf[c];
+      for (let i = 0; i < frameCount; i++) target[i] = source[i];
     }
     for (const bq of stage.lp) processBiquad(bq, outBuf, frameCount);
   }
   function applyHpBranch(stage, input, outBuf, frameCount) {
     for (let c = 0; c < outBuf.length; c++) {
-      outBuf[c].set(input[c].subarray(0, frameCount));
+      const source = input[c];
+      const target = outBuf[c];
+      for (let i = 0; i < frameCount; i++) target[i] = source[i];
     }
     for (const bq of stage.hp) processBiquad(bq, outBuf, frameCount);
   }
@@ -352,7 +356,9 @@
         assertAudioBlock(input, frameCount, preparedMaxBlockSize, "crossover", channelCount);
         if (frameCount === 0) return;
         for (let c = 0; c < channelCount; c++) {
-          working[c].set(input[c].subarray(0, frameCount));
+          const source = input[c];
+          const target = working[c];
+          for (let i = 0; i < frameCount; i++) target[i] = source[i];
         }
         for (let k = 0; k < bandCount - 1; k++) {
           const band = bandBuffers[k];
@@ -364,7 +370,9 @@
         }
         const top = bandBuffers[bandCount - 1];
         for (let c = 0; c < channelCount; c++) {
-          top[c].set(working[c].subarray(0, frameCount));
+          const source = working[c];
+          const target = top[c];
+          for (let i = 0; i < frameCount; i++) target[i] = source[i];
         }
         if (equalize) {
           for (let k = 0; k < bandCount; k++) {
@@ -744,9 +752,9 @@
       }
       return s;
     }
-    function runUpsample(input, delayLine, output) {
+    function runUpsample(input, inputLen, delayLine, output) {
       const taps = subfilters[0].length;
-      for (let n = 0; n < input.length; n++) {
+      for (let n = 0; n < inputLen; n++) {
         for (let i = taps - 1; i > 0; i--) delayLine[i] = delayLine[i - 1];
         delayLine[0] = input[n];
         for (let p = 0; p < factor; p++) {
@@ -757,8 +765,8 @@
         }
       }
     }
-    function runDownsample(input, delayLine, output) {
-      const outLen = Math.floor(input.length / factor);
+    function runDownsample(input, inputLen, delayLine, output) {
+      const outLen = Math.floor(inputLen / factor);
       let inIdx = 0;
       for (let n = 0; n < outLen; n++) {
         for (let p = 0; p < factor; p++) {
@@ -776,9 +784,9 @@
       const impulse = new Float32Array(probeLen);
       impulse[0] = 1;
       const upProbe = new Float32Array(probeLen * factor);
-      runUpsample(impulse, new Float32Array(tapsPerPhase), upProbe);
+      runUpsample(impulse, impulse.length, new Float32Array(tapsPerPhase), upProbe);
       const downProbe = new Float32Array(probeLen);
-      runDownsample(upProbe, new Float32Array(fullDownTaps), downProbe);
+      runDownsample(upProbe, upProbe.length, new Float32Array(fullDownTaps), downProbe);
       let peakIdx = 0;
       let peakVal = 0;
       for (let i = 0; i < downProbe.length; i++) {
@@ -836,27 +844,27 @@
         upBuf = new Float32Array(maxInputSize * factor);
         downBuf = new Float32Array(maxInputSize);
       },
-      upsample(input) {
+      upsample(input, inputLen = input.length) {
         if (factor <= 1) {
-          if (upBuf.length < input.length) upBuf = new Float32Array(input.length);
-          upBuf.set(input);
-          return upBuf.subarray(0, input.length);
+          if (upBuf.length < inputLen) upBuf = new Float32Array(inputLen);
+          for (let i = 0; i < inputLen; i++) upBuf[i] = input[i];
+          return upBuf;
         }
-        const outLen = input.length * factor;
+        const outLen = inputLen * factor;
         if (upBuf.length < outLen) upBuf = new Float32Array(outLen);
-        runUpsample(input, stateKey(upState, 0, tapsPerPhase), upBuf);
-        return upBuf.subarray(0, outLen);
+        runUpsample(input, inputLen, stateKey(upState, 0, tapsPerPhase), upBuf);
+        return upBuf;
       },
-      downsample(input) {
+      downsample(input, inputLen = input.length) {
         if (factor <= 1) {
-          if (downBuf.length < input.length) downBuf = new Float32Array(input.length);
-          downBuf.set(input);
-          return downBuf.subarray(0, input.length);
+          if (downBuf.length < inputLen) downBuf = new Float32Array(inputLen);
+          for (let i = 0; i < inputLen; i++) downBuf[i] = input[i];
+          return downBuf;
         }
-        const outLen = Math.floor(input.length / factor);
+        const outLen = Math.floor(inputLen / factor);
         if (downBuf.length < outLen) downBuf = new Float32Array(outLen);
-        runDownsample(input, stateKey(downState, 0, fullDownTaps), downBuf);
-        return downBuf.subarray(0, outLen);
+        runDownsample(input, inputLen, stateKey(downState, 0, fullDownTaps), downBuf);
+        return downBuf;
       },
       reset() {
         downState.clear();
@@ -1504,7 +1512,9 @@
         const releaseCoeff = Math.exp(-1 / (releaseMs / 1e3 * sampleRate2));
         const numCh = channels.length;
         for (let c = 0; c < numCh; c++) {
-          dryBuf[c].set(channels[c].subarray(0, frameCount));
+          const source = channels[c];
+          const dry = dryBuf[c];
+          for (let i = 0; i < frameCount; i++) dry[i] = source[i];
         }
         if (stereoMode === 1 && numCh >= 2) {
           msParams.threshDb = threshDb;
@@ -1868,7 +1878,8 @@
         }
         for (let c = 0; c < channels.length; c++) {
           const buf = channels[c];
-          dryBuf[c].set(buf.subarray(0, frameCount));
+          const dry = dryBuf[c];
+          for (let i = 0; i < frameCount; i++) dry[i] = buf[i];
           switch (mode) {
             case 0:
               processBitDepth(buf, frameCount, degradation);
@@ -1893,9 +1904,9 @@
               processBitDepth(buf, frameCount, amount);
           }
           if (wetGain < 1) {
-            const dry = dryBuf[c];
+            const dry2 = dryBuf[c];
             for (let i = 0; i < frameCount; i++) {
-              buf[i] = dry[i] * (1 - wetGain) + buf[i] * wetGain;
+              buf[i] = dry2[i] * (1 - wetGain) + buf[i] * wetGain;
             }
           }
         }
@@ -2877,6 +2888,7 @@
     let bandPhaseInvert = 0;
     let bandSidechainMode = 0;
     let bandQuality = 1;
+    let appliedSatQuality = 1;
     let bandLinkGroup = 0;
     let gainSmoother = createSmoother(44100, 30);
     let mixSmoother = createSmoother(44100, 30);
@@ -3014,9 +3026,6 @@
           modules[envRoutedModule].setParameter(envRoutedParam, envModBase);
           envModApplied = false;
         }
-        if (modules.sat) {
-          modules.sat.loadParameters({ quality: bandQuality });
-        }
         if (dynEnable >= 0.5 && channels.length >= 2) {
           const threshLin = dbToLinear(dynThresholdDb);
           const rangeLin = rangeDbToLin(dynRangeDb);
@@ -3068,11 +3077,15 @@
             msBufB[i] = (L[i] - R[i]) * inv;
           }
           if (bandMidSide === 1) {
-            channels[0].set(msBufA.subarray(0, frameCount));
-            channels[1].set(msBufB.subarray(0, frameCount));
+            for (let i = 0; i < frameCount; i++) {
+              channels[0][i] = msBufA[i];
+              channels[1][i] = msBufB[i];
+            }
           } else {
-            channels[0].set(msBufB.subarray(0, frameCount));
-            channels[1].set(msBufA.subarray(0, frameCount));
+            for (let i = 0; i < frameCount; i++) {
+              channels[0][i] = msBufB[i];
+              channels[1][i] = msBufA[i];
+            }
           }
         }
         for (const key of MODULE_KEYS) {
@@ -3166,9 +3179,15 @@
           case "sidechainMode":
             bandSidechainMode = v;
             break;
-          case "quality":
-            bandQuality = Math.round(v);
+          case "quality": {
+            const nextQuality = Math.round(v);
+            bandQuality = nextQuality;
+            if (nextQuality !== appliedSatQuality) {
+              modules.sat.loadParameters({ quality: nextQuality });
+              appliedSatQuality = nextQuality;
+            }
             break;
+          }
           case "linkGroup":
             bandLinkGroup = Math.round(v);
             break;
@@ -3498,7 +3517,7 @@
       }
       for (let c = 0; c < channels.length; c++) {
         const s = ch[c];
-        const up = s.os.upsample(channels[c]);
+        const up = s.os.upsample(channels[c], n);
         const filling = s.fill < laOvs;
         let blockOvsPeak = 0;
         for (let i = 0; i < upLen; i++) {
@@ -3558,8 +3577,8 @@
             outIdx++;
           }
         }
-        const down = s.os.downsample(up);
-        const copyLen = Math.min(n, down.length);
+        const down = s.os.downsample(up, upLen);
+        const copyLen = n;
         for (let i = 0; i < copyLen; i++) channels[c][i] = down[i];
         for (let i = copyLen; i < n; i++) channels[c][i] = 0;
       }
@@ -3577,7 +3596,7 @@
       upBuffers.length = numCh;
       for (let c = 0; c < numCh; c++) {
         const s = ch[c];
-        const up = s.os.upsample(channels[c]);
+        const up = s.os.upsample(channels[c], n);
         upBuffers[c] = up;
         const filling = s.fill < laOvs;
         let blockOvsPeak = 0;
@@ -3654,8 +3673,8 @@
       for (let c = 0; c < numCh; c++) {
         const s = ch[c];
         s.env = lastMinEnv;
-        const down = s.os.downsample(upBuffers[c]);
-        const copyLen = Math.min(n, down.length);
+        const down = s.os.downsample(upBuffers[c], upLen);
+        const copyLen = n;
         for (let i = 0; i < copyLen; i++) channels[c][i] = down[i];
         for (let i = copyLen; i < n; i++) channels[c][i] = 0;
       }
@@ -4012,7 +4031,9 @@
           }
         }
         for (let c = 0; c < channelCount; c++) {
-          dryBuf[c].set(channels[c].subarray(0, frameCount));
+          const source = channels[c];
+          const dry = dryBuf[c];
+          for (let i = 0; i < frameCount; i++) dry[i] = source[i];
         }
         let xoverDirty = false;
         for (let i = 0; i < bandCount - 1; i++) {
@@ -4045,7 +4066,9 @@
           const bandChannels = crossover.getBand(b);
           const scratch = bandScratch[b];
           for (let c = 0; c < channelCount; c++) {
-            scratch[c].set(bandChannels[c].subarray(0, frameCount));
+            const source = bandChannels[c];
+            const target = scratch[c];
+            for (let i = 0; i < frameCount; i++) target[i] = source[i];
           }
           bands[b].process(scratch, frameCount, sidechainChannels ?? void 0);
           if (anySolo && bands[b].getBandParam("solo") < 0.5) {

@@ -376,7 +376,7 @@ export function createLimiterModule(params?: Record<string, number>): ModuleProc
     for (let c = 0; c < channels.length; c++) {
       const s = ch[c];
 
-      const up = s.os.upsample(channels[c]);
+      const up = s.os.upsample(channels[c], n);
 
       // Fill guard (see Chan.fillPeak): while the lookahead ring is still
       // filling, the detector cannot see a full laOvs window into the
@@ -459,8 +459,8 @@ export function createLimiterModule(params?: Record<string, number>): ModuleProc
         }
       }
 
-      const down = s.os.downsample(up);
-      const copyLen = Math.min(n, down.length);
+      const down = s.os.downsample(up, upLen);
+      const copyLen = n;
       for (let i = 0; i < copyLen; i++) channels[c][i] = down[i];
       for (let i = copyLen; i < n; i++) channels[c][i] = 0;
     }
@@ -490,7 +490,7 @@ export function createLimiterModule(params?: Record<string, number>): ModuleProc
 
     for (let c = 0; c < numCh; c++) {
       const s = ch[c];
-      const up = s.os.upsample(channels[c]);
+      const up = s.os.upsample(channels[c], n);
       upBuffers[c] = up;
 
       // Fill guard — same rationale as the unlinked path.
@@ -590,8 +590,8 @@ export function createLimiterModule(params?: Record<string, number>): ModuleProc
     for (let c = 0; c < numCh; c++) {
       const s = ch[c];
       s.env = lastMinEnv;
-      const down = s.os.downsample(upBuffers[c]);
-      const copyLen = Math.min(n, down.length);
+      const down = s.os.downsample(upBuffers[c], upLen);
+      const copyLen = n;
       for (let i = 0; i < copyLen; i++) channels[c][i] = down[i];
       for (let i = copyLen; i < n; i++) channels[c][i] = 0;
     }

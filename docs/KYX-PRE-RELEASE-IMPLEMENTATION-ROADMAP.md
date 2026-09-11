@@ -32,6 +32,7 @@ nie je uzavretý `REL-01`, nemá zmysel pridávať nový plugin alebo veľký in
 | ID | Priorita | Úloha | Reálne touchpoints | Done keď |
 | --- | --- | --- | --- | --- |
 | `REL-01` | P0 | Zmapovať a uzavrieť všetky uncommitted WIP zmeny | `git status`, `src/intent/`, `src/ai/`, `src/instruments/`, `src/ui/`, `tests/` | každý diff má ownera, dôvod, test a rozhodnutie land/odložiť; nič sa neprepíše naslepo |
+| `DSP-01` | P0 | Uzavrieť FXEQ full-load realtime performance gate | `tests/fxeq-performance-gates.test.ts`, `src/effects/fxeq-core/core/`, `src/effects/fxeq-core/modules/`, `scripts/build-fxeq-worklet.mjs` | opakovaný default aj izolovaný gate prejde bez zvýšenia limitu; vysvetlené sú p95 jitter/GC a audio-thread allocation; worklet + live/offline parity zostanú zelené |
 | `QA-01` | P0 | Manuálny browser/device release matrix | [`docs/KYX-MANUAL-RELEASE-CHECKLIST.md`](./KYX-MANUAL-RELEASE-CHECKLIST.md) | Chromium/Edge/Firefox/Safari macOS/Safari iOS prejdú create → sound → FX → mix → export → reload flow |
 | `DEP-01` | P0 | Overiť produkčný deploy, nie iba lokálny server smoke | `scripts/release-preflight.mjs`, `scripts/release-server-smoke.mjs`, nasadený host | health, CORS, origin rejection, gallery auth, refresh/tab-close recovery a worklet loading prejdú na skutočnej doméne |
 | `VOI-01` | P0 | Zmerať VØID IR/pre-delay footprint na fyzických zariadeniach | `src/effects/ozvena-core/`, `src/ui/OzvenaPanel.tsx`, `docs/KYX-MANUAL-RELEASE-CHECKLIST.md` | máme device/browser meranie ready time, peak memory proxy, pre-delay range, dropout a recovery správania |
@@ -100,6 +101,11 @@ Nasledujúce časti roadmapy už boli v tomto pracovnom strome implementované a
 - Intent candidate-bank generation with deterministic seeds, quality scoring
   and provenance for the selected candidate; model caches reuse immutable
   Markov/melodic source data without changing generation semantics.
+- Intent `features.v1` extractor and ONNX ranker are present as a
+  shadow/fallback-only WIP: feature vectors, candidate-batch ranking, a
+  hash-pinned 24.7 KB model, ESM Worker packaging and direct production
+  inference smoke exist, but the normal synchronous create/apply pipeline does
+  not activate the model and no claim of musical superiority is allowed yet.
 
 ### Čo ešte potrebuje release triage
 
@@ -113,6 +119,11 @@ necommitnuté zmeny, preto sa automaticky nepovažujú za release feature:
 - zmeny v `src/intent/`, `src/ai/` a `src/instruments/` musia prejsť samostatným
   diff reviewom, pretože zasahujú deterministickú generáciu, registry a live /
   offline audio parity;
+- nový ONNX ranker WIP (`src/ai/features/`, `src/ai/ranking/`,
+  `public/models/`, Python training tooling) je release-neutrálna shadow /
+  fallback vrstva. Pred aktiváciou treba dokončiť held-out/golden evaluáciu,
+  async pipeline integration, offline-cache contract a device budget; pred
+  release sa nesmie prepnúť na `active` ani prezentovať ako AI quality gain;
 - agent nesmie tieto súbory prepisovať, squasovať ani vyhadzovať bez toho, aby
   najprv zaznamenal vlastníka zmeny a dôvod rozhodnutia v completion reporte.
 
@@ -121,8 +132,8 @@ Overené príkazy a výsledky:
 | Gate                                                       | Výsledok                                                 |
 | ---------------------------------------------------------- | -------------------------------------------------------- |
 | `npm run typecheck:clean`                                  | PASS                                                     |
-| full Vitest (`npm test`, default isolated workers)          | PASS — 2107 passed / 103 skipped, 210 files, 2210 total, exit 0 |
-| `npm run build` + worklet buildy + bundle budget           | PASS — entry 912 KB / 995 KB, total JS chunks 1735 KB / 2400 KB, core worklets 98 KB / 120 KB, 346 modules |
+| full Vitest (`npm test`, default isolated workers)          | **BLOCKED — 1 failed / 2113 passed / 103 skipped, 211 files, 2217 total**; FXEQ morph measured 2.79× vs 2.4× budget |
+| `npm run build` + worklet buildy + bundle budget           | PASS — entry 926 KB / 995 KB, total JS chunks 1823 KB / 2400 KB, core worklets 98 KB / 120 KB, 350 modules; lazy ranker WASM is 13.6 MB and excluded from the app-shell precache |
 | `npm run build:ultina`                                     | PASS — rebuilt `public/ultina-worklet.js`                |
 | `npm run test:browser`                                     | PASS — 216/216 Chromium (FXEQ/Ultina/VØID, PRISM reload, template performance retry and UI flow) |
 | `npm run test:browser:production`                          | PASS — dist boot, HOUSE template, sequencer, FX rack and all five shipped worklet assets |
@@ -136,7 +147,7 @@ Overené príkazy a výsledky:
 | affected post-fix suites (`services-close-race`, `TopBar`) | PASS — 20/20 tests                                       |
 | scoped Prettier + `git diff --check`                       | PASS                                                     |
 
-Najnovší kompletný `npm test` beh na quiescent pracovnom strome je release-green: 210 súborov, 2107 passed, 103 skipped (2210 total), exit 0. Zámerné stderr z recovery testov, jsdom canvas a test-only act warnings nie sú samy osebe production errors. Pred tagom treba rovnaké gates zopakovať z commitnutého stromu.
+Najnovší kompletný `npm test` beh nie je release-green: 1 test zlyhal, 2113 prešlo a 103 je zámerne skipped (211 súborov, 2217 testov). Default run zlyhal na FXEQ morph ratio `2.79×` pri limite `2.4×`; dva po sebe idúce izolované behy prešli morph, ale zlyhali na full-load p95 (`25.7×` a `26.9×` pri limite `25×`). Toto sa nesmie uzavrieť iba zvýšením budgetu. Treba zmerať allocation/GC/audio-thread cost, opraviť regresiu alebo presne preukázať a zdokumentovať validnú gate metodiku. Zámerné stderr z recovery testov, jsdom canvas a test-only act warnings nie sú samy osebe production errors. Pred tagom treba všetky gates zopakovať z commitnutého stromu.
 
 `npm run format:check` na celom strome je stále červený kvôli 209 zdokumentovaným formatting deviations. Presný, command-generated zoznam je v [`docs/FORMAT-CHECK-DEVIATIONS.md`](./FORMAT-CHECK-DEVIATIONS.md). Pred release treba buď vykonať samostatný formatting-only cleanup, alebo tento zoznam explicitne akceptovať v CI gate; nesmie sa to maskovať zmenou scope checku.
 
@@ -225,6 +236,8 @@ Tieto body majú prednosť pred polishom. Ak niektorý P0 zlyháva, release sa n
 - [x] konzistentný A/B a gain-match kontrakt,
 - [x] recovery, reload a export/import smoke v automatizovanom Chromium flow;
   tab-close/production-host recovery ostáva manuálny release krok.
+- [ ] FXEQ full-load realtime gate: odstrániť alebo vysvetliť opakovaný p95
+  over-budget stav a potvrdiť default full-suite pass bez oslabenia limitu.
 
 ### P1 — najväčší UX dopad
 
@@ -306,6 +319,45 @@ implementáciou treba definovať permission model, persistence model, migráciu,
 rate limits, rollback a privacy policy. Bez toho sa nepridáva účet, cloud DB,
 komplexná moderácia ani veľký server rewrite do kritického create/play/export
 flow.
+
+#### P2.5 — Intent AI-assisted candidate ranking — shadow-only WIP
+
+**Cieľ:** zúžiť viac validných deterministic kandidátov na najvhodnejší návrh
+pomocou verzovaného feature contractu a lokálneho ONNX Worker-a, bez toho, aby
+model generoval alebo mutoval pattern.
+
+**Aktuálne touchpoints:** `src/ai/features/pattern-features.ts`,
+`src/ai/ranking/ranker-types.ts`, `src/ai/ranking/ranker-client.ts`,
+`src/ai/ranking/ranker-worker.ts`, `src/ai/ranking/rank-candidates.ts`,
+`src/intent/providers/local.ts`, `public/models/`,
+`scripts/generate-intent-ranker-dataset.mts`,
+`scripts/train-intent-ranker.py`, `scripts/validate-intent-ranker.mjs`,
+`scripts/sync-ort-assets.mjs`, `public/models/ort/`,
+`tests/pattern-features.test.ts`, `tests/rank-candidates.test.ts`.
+
+**Čo je implementované:** 54-position `features.v1` vector s clippingom,
+UUID-free hashom a presence flags; batch extraction/ranking nad validnými
+kandidátmi; `off`/`shadow`/`active` flag s heuristic fallbackom; lazy ESM
+Worker; CPU/WASM-only ONNX import; lokálny model + manifest hash verification;
+timeout/circuit breaker; production build a Chromium smoke, ktorý skutočne
+načíta Worker, WASM a model. Default je `shadow` a bežný sync command pipeline
+naďalej používa heuristic ranking.
+
+**Ďalšie kroky pred prípadným `active`:**
+
+1. preukázať held-out golden preferencie odlišné od teacher heuristiky;
+2. zapojiť async pipeline do explicitného preview flowu bez blokovania command
+   apply, undo/redo, autosave, collab a offline export invariants;
+3. pridať browser test missing-model/hash-mismatch/timeout fallbacku a reload /
+   offline-cache scenár;
+4. zmerať cold-start, WASM memory a preview budget na Safari/iOS a slabom
+   zariadení;
+5. až potom oddelene rozhodnúť o engine/ranker version bump a rollout guard.
+
+**Done:** ranker mení výber iba po explicitnom release rozhodnutí, má kvalitnú
+held-out evaluáciu, stabilnú provenance, UX opt-out a browser/device dôkaz.
+Kým tieto podmienky nie sú splnené, model je iba diagnostický shadow signal a
+heuristika je jediný release-safe výber.
 
 ## 5. Fáza 0 — evidence baseline
 

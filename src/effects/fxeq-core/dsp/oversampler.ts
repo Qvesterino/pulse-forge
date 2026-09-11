@@ -232,10 +232,18 @@ export interface PolyphaseOversampler {
   readonly latencySamples: number;
   readonly filterLength: number;
   prepare(inputSampleRate: number, factor: OversampleFactor, maxInputSize?: number): void;
-  /** Upsample one channel of `input`, returning the oversampled buffer. */
-  upsample(input: Float32Array): Float32Array;
-  /** Downsample one channel of `input`, returning the original-rate buffer. */
-  downsample(input: Float32Array): Float32Array;
+  /**
+   * Upsample the first `inputLen` samples (defaults to `input.length`).
+   * Returns the reused internal buffer; the caller must use the explicit
+   * frame count rather than the returned buffer's capacity.
+   */
+  upsample(input: Float32Array, inputLen?: number): Float32Array;
+  /**
+   * Downsample the first `inputLen` samples (defaults to `input.length`).
+   * Returns the reused internal buffer; the caller must use the explicit
+   * output frame count rather than the returned buffer's capacity.
+   */
+  downsample(input: Float32Array, inputLen?: number): Float32Array;
   reset(): void;
 }
 
@@ -270,9 +278,14 @@ export function createPolyphaseOversampler(): PolyphaseOversampler {
   }
 
   /** Shared upsampling core (caller owns the delay line + output). */
-  function runUpsample(input: Float32Array, delayLine: Float32Array, output: Float32Array): void {
+  function runUpsample(
+    input: Float32Array,
+    inputLen: number,
+    delayLine: Float32Array,
+    output: Float32Array,
+  ): void {
     const taps = subfilters[0].length;
-    for (let n = 0; n < input.length; n++) {
+    for (let n = 0; n < inputLen; n++) {
       for (let i = taps - 1; i > 0; i--) delayLine[i] = delayLine[i - 1];
       delayLine[0] = input[n];
 
@@ -286,8 +299,13 @@ export function createPolyphaseOversampler(): PolyphaseOversampler {
   }
 
   /** Shared downsampling core (caller owns the delay line + output). */
-  function runDownsample(input: Float32Array, delayLine: Float32Array, output: Float32Array): void {
-    const outLen = Math.floor(input.length / factor);
+  function runDownsample(
+    input: Float32Array,
+    inputLen: number,
+    delayLine: Float32Array,
+    output: Float32Array,
+  ): void {
+    const outLen = Math.floor(inputLen / factor);
     let inIdx = 0;
     for (let n = 0; n < outLen; n++) {
       for (let p = 0; p < factor; p++) {
@@ -310,9 +328,9 @@ export function createPolyphaseOversampler(): PolyphaseOversampler {
     const impulse = new Float32Array(probeLen);
     impulse[0] = 1;
     const upProbe = new Float32Array(probeLen * factor);
-    runUpsample(impulse, new Float32Array(tapsPerPhase), upProbe);
+    runUpsample(impulse, impulse.length, new Float32Array(tapsPerPhase), upProbe);
     const downProbe = new Float32Array(probeLen);
-    runDownsample(upProbe, new Float32Array(fullDownTaps), downProbe);
+    runDownsample(upProbe, upProbe.length, new Float32Array(fullDownTaps), downProbe);
     let peakIdx = 0;
     let peakVal = 0;
     for (let i = 0; i < downProbe.length; i++) {
@@ -385,28 +403,28 @@ export function createPolyphaseOversampler(): PolyphaseOversampler {
       downBuf = new Float32Array(maxInputSize);
     },
 
-    upsample(input) {
+    upsample(input, inputLen = input.length) {
       if (factor <= 1) {
-        if (upBuf.length < input.length) upBuf = new Float32Array(input.length);
-        upBuf.set(input);
-        return upBuf.subarray(0, input.length);
+        if (upBuf.length < inputLen) upBuf = new Float32Array(inputLen);
+        for (let i = 0; i < inputLen; i++) upBuf[i] = input[i];
+        return upBuf;
       }
-      const outLen = input.length * factor;
+      const outLen = inputLen * factor;
       if (upBuf.length < outLen) upBuf = new Float32Array(outLen);
-      runUpsample(input, stateKey(upState, 0, tapsPerPhase), upBuf);
-      return upBuf.subarray(0, outLen);
+      runUpsample(input, inputLen, stateKey(upState, 0, tapsPerPhase), upBuf);
+      return upBuf;
     },
 
-    downsample(input) {
+    downsample(input, inputLen = input.length) {
       if (factor <= 1) {
-        if (downBuf.length < input.length) downBuf = new Float32Array(input.length);
-        downBuf.set(input);
-        return downBuf.subarray(0, input.length);
+        if (downBuf.length < inputLen) downBuf = new Float32Array(inputLen);
+        for (let i = 0; i < inputLen; i++) downBuf[i] = input[i];
+        return downBuf;
       }
-      const outLen = Math.floor(input.length / factor);
+      const outLen = Math.floor(inputLen / factor);
       if (downBuf.length < outLen) downBuf = new Float32Array(outLen);
-      runDownsample(input, stateKey(downState, 0, fullDownTaps), downBuf);
-      return downBuf.subarray(0, outLen);
+      runDownsample(input, inputLen, stateKey(downState, 0, fullDownTaps), downBuf);
+      return downBuf;
     },
 
     reset() {

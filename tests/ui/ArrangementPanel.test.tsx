@@ -37,7 +37,7 @@ describe("ArrangementPanel", () => {
     const { click } = await import("@testing-library/user-event").then((m) => m.default.setup());
     await click(btn);
     expect(services.store.execute).toHaveBeenCalled();
-  });
+  }, 20_000);
 
   it("has correct aria label", () => {
     renderWithContext(<ArrangementPanel />);

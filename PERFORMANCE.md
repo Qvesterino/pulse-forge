@@ -92,10 +92,51 @@ mid-range mobile and re-run the script before promising budgets.
 | granular worklet, 6 voices, max grains (60/s × 20 ms, jitter 0.4) | 9.0 % |
 | granular fallback cloud, 6 voices | 9.5 % |
 
+### Voice worklets + mod matrix — node counts + headroom (2026-09 audit v2)
+
+Measured AudioNode counts per voice (2-voice measurement, exact factory
+instrumentation):
+
+| Instrument | matrix neutral | matrix active | delta |
+| --- | --- | --- | --- |
+| analog | 10 | 15 | +5 |
+| keys | 18 | 23 | +5 |
+| 808 | 11 | 16 | +5 |
+| texture | 15 | 20 | +5 |
+| logdrum | 13 | 18 | +5 |
+| spectral | 19 | 24 | +5 |
+| sampler | 3 | 8 | +5 |
+| vocalchop | 10 | 14 | +4 |
+| granular (worklet) | **2 runtime nodes** | — | grains live inside the one AudioWorkletNode |
+
+The +5/voice for an active route is exactly the LFO story: ConstantSource +
+osc + depth + signal bus + destination scaler. `amt = 0` adds zero.
+
+### Headroom (the honest "weaker machine" proxy)
+
+CDP CPU throttling does **not** reach the WebAudio render thread (measured:
+timings were throttle-insensitive at 4×/6×), so device-class is measured by
+LOAD instead — parallel identical tracks until one core saturates (RTS 100 %):
+
+| Scenario (single-track RTS ≈) | Saturates one core at |
+| --- | --- |
+| keys 8v, matrix active (~8 %) | **4× tracks** |
+| analog 8v, matrix active (~6 %) | **4× tracks** |
+| granular worklet 6v, max grains (~8 %) | **8× tracks** |
+
 Read-outs:
-- An active mod route costs **+1–4 percentage points of one core** at 8-voice poly — the LFO oscillator + scaler per voice is the whole story; grain-scale it stays linear in voices.
-- The granular worklet at full 6-voice poly (worst case ≈ 288 concurrent grain windows) costs the **same as the old fallback cloud** while adding the live playhead — the per-sample scheduler is not a regression.
-- These are single-track figures; a dense project stacks tracks, so treat ~10 % RTS per busy instrument as the per-track budget when counting.
+- One busy instrument ≈ **6–10 % of one core**; stack **4–8 such tracks per
+  core** before saturation on a desktop-class machine. A device ~4× slower
+  still fits 1–2 busy tracks per core — fine for the common case, but count
+  tracks in dense projects.
+- The granular worklet at full 6-voice poly (worst case ≈ 288 concurrent
+  grain windows) has **more headroom than the synths** and costs the same as
+  the old fallback cloud — the per-sample scheduler is not a regression.
+- Absolute numbers were measured on a desktop-class machine under variable
+  background load; single-scenario readings varied up to ~2× between runs.
+  Re-run `node scratch/perf-headroom.mjs` (load scaling) and
+  `node scratch/perf-audit.mjs` (RTS table) on target hardware before
+  publishing device-class claims — CDP throttling is not a valid shortcut.
 
 ### Scheduler throughput
 

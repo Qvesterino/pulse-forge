@@ -9235,3 +9235,20 @@ html {
   color: #71717a;
   padding: 2px 0;
 }
+
+/* Mod matrix shared UI (Inspector advanced + floating plugin) — mirrors the
+   WavetablePanel selectRow look via the wt-mod-* classes above. */
+.mod-matrix {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-top: 8px;
+}
+
+.mod-matrix .wt-mod-row .slider-wrap {
+  flex: 1;
+  min-width: 0;
+}

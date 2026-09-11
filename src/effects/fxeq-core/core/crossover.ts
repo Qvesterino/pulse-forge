@@ -244,7 +244,11 @@ export function createCrossoverBank(
 
       // Seed the working buffer with the input.
       for (let c = 0; c < channelCount; c++) {
-        working[c].set(input[c].subarray(0, frameCount));
+        const source = input[c];
+        const target = working[c];
+        // A subarray view is an allocation on some AudioWorklet engines;
+        // copy the active range directly so crossover stays render-safe.
+        for (let i = 0; i < frameCount; i++) target[i] = source[i];
       }
 
       // Tap low bands progressively.
@@ -261,7 +265,9 @@ export function createCrossoverBank(
       // Top band = remaining working signal.
       const top = bandBuffers[bandCount - 1];
       for (let c = 0; c < channelCount; c++) {
-        top[c].set(working[c].subarray(0, frameCount));
+        const source = working[c];
+        const target = top[c];
+        for (let i = 0; i < frameCount; i++) target[i] = source[i];
       }
 
       // ── Allpass equalization ─────────────────────────────────

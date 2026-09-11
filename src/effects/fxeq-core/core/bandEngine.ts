@@ -92,6 +92,7 @@ export function createBandEngine(seed?: number): BandEngine {
   let bandPhaseInvert = 0;
   let bandSidechainMode = 0;
   let bandQuality = 1; // 0=eco, 1=standard, 2=high, 3=render
+  let appliedSatQuality = 1;
   let bandLinkGroup = 0; // 0=unlinked, 1-5=link group
   let gainSmoother = createSmoother(44100, 30);
   let mixSmoother = createSmoother(44100, 30);
@@ -277,22 +278,6 @@ export function createBandEngine(seed?: number): BandEngine {
         envModApplied = false;
       }
 
-      // Set per-band quality on saturation module before processing.
-      // Saturation reads from its own internal store; the previous code
-      // set the property on the module object (`(modules.sat as any)._quality`)
-      // while saturation's overflow reads from `store._quality` — the
-      // two never lined up so host quality was silently ignored via this
-      // legacy multiband path (Audit #C1). loadParameters is the
-      // supported surface.
-      if (modules.sat) {
-        // Audit M8+: the per-band quality scalar was silently dead here —
-        // the old code sent the STRING name ("standard") while the
-        // saturation module's loadParameters only recognizes the numeric
-        // codes 0..3, so qualityCached never updated on this path.
-        // bandQuality is the numeric code; send it as such.
-        modules.sat.loadParameters({ quality: bandQuality });
-      }
-
       // Dynamic EQ: compute envelope and gain reduction.
       if (dynEnable >= 0.5 && channels.length >= 2) {
         const threshLin = dbToLinear(dynThresholdDb);
@@ -369,12 +354,16 @@ export function createBandEngine(seed?: number): BandEngine {
         }
         if (bandMidSide === 1) {
           // Mid mode: channels[0] = M, channels[1] = S.
-          channels[0].set(msBufA.subarray(0, frameCount));
-          channels[1].set(msBufB.subarray(0, frameCount));
+          for (let i = 0; i < frameCount; i++) {
+            channels[0][i] = msBufA[i];
+            channels[1][i] = msBufB[i];
+          }
         } else {
           // Side mode (bandMidSide === 2): channels[0] = S, channels[1] = M.
-          channels[0].set(msBufB.subarray(0, frameCount));
-          channels[1].set(msBufA.subarray(0, frameCount));
+          for (let i = 0; i < frameCount; i++) {
+            channels[0][i] = msBufB[i];
+            channels[1][i] = msBufA[i];
+          }
         }
       }
 
@@ -466,7 +455,19 @@ export function createBandEngine(seed?: number): BandEngine {
         case "mute": bandMute = v; break;
         case "phaseInvert": bandPhaseInvert = v; break;
         case "sidechainMode": bandSidechainMode = v; break;
-        case "quality": bandQuality = Math.round(v); break;
+        case "quality": {
+          const nextQuality = Math.round(v);
+          bandQuality = nextQuality;
+          // `quality` is a host scalar rather than a saturation parameter.
+          // Push it only when it changes: constructing the compatibility
+          // parameter object once per band per audio block was a hidden
+          // render-thread allocation and caused p95 jitter under full load.
+          if (nextQuality !== appliedSatQuality) {
+            modules.sat.loadParameters({ quality: nextQuality });
+            appliedSatQuality = nextQuality;
+          }
+          break;
+        }
         case "linkGroup": bandLinkGroup = Math.round(v); break;
         case "envModTarget": {
           const next = Math.round(clamp(v, 0, ENV_MOD_TARGETS.length - 1));

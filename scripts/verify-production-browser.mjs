@@ -1,5 +1,6 @@
 import { preview } from "vite";
 import { chromium } from "playwright";
+import { readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -13,6 +14,13 @@ const worklets = [
   "/ultina-worklet.js",
   "/ozvena-worklet.js",
 ];
+const distAssets = path.join(root, "dist", "assets");
+const rankerWorkerAsset = readdirSync(distAssets).find((file) => /^ranker-worker-.*\.js$/.test(file));
+const ortRuntimeAsset = readdirSync(distAssets).find((file) => /^ort\.wasm\.bundle.*\.js$/.test(file));
+const ortWasmAsset = readdirSync(distAssets).find((file) => /^ort-wasm-simd-threaded-.*\.wasm$/.test(file));
+if (!rankerWorkerAsset || !ortRuntimeAsset || !ortWasmAsset) {
+  throw new Error("production ranker assets are incomplete: expected worker, WASM runtime and WASM binary");
+}
 
 let server;
 let browser;
@@ -110,8 +118,71 @@ try {
   await page.waitForSelector('.fx-device[data-effect-type="fxeq"], .fx-device', { timeout: 10_000 });
   console.log("[production-smoke] FX device rendered");
 
+  // Exercise the actual lazy ONNX worker, not only the existence of its
+  // files. This catches broken relative imports, missing WASM assets, model
+  // hash mismatches and output-shape regressions in the production bundle.
+  const rankerResult = await page.evaluate(async (workerPath) => {
+    const manifestResponse = await fetch("/models/intent-ranker-v1.manifest.json", { cache: "no-store" });
+    if (!manifestResponse.ok) throw new Error(`ranker manifest returned ${manifestResponse.status}`);
+    const manifest = await manifestResponse.json();
+    const worker = new Worker(workerPath, { type: "module" });
+    const request = (message, transfer = []) =>
+      new Promise((resolve, reject) => {
+        const timer = window.setTimeout(() => {
+          worker.removeEventListener("message", onMessage);
+          worker.removeEventListener("error", onError);
+          reject(new Error(`ranker worker timeout: ${message.type}`));
+        }, 15_000);
+        const onMessage = (event) => {
+          if (event.data?.requestId !== message.requestId) return;
+          window.clearTimeout(timer);
+          worker.removeEventListener("message", onMessage);
+          worker.removeEventListener("error", onError);
+          resolve(event.data);
+        };
+        const onError = (event) => {
+          window.clearTimeout(timer);
+          worker.removeEventListener("message", onMessage);
+          worker.removeEventListener("error", onError);
+          reject(new Error(event.message || "ranker worker error"));
+        };
+        worker.addEventListener("message", onMessage);
+        worker.addEventListener("error", onError);
+        worker.postMessage(message, transfer);
+      });
+    try {
+      const load = await request({ type: "load", requestId: 1, manifest });
+      if (!load.ok) throw new Error(`ranker load failed: ${load.error || "unknown"}`);
+      const makeBatch = () => {
+        const batch = new Float32Array(manifest.featureCount * 3);
+        for (let candidate = 0; candidate < 3; candidate++) {
+          batch.fill([0.1, 0.4, 0.9][candidate], candidate * manifest.featureCount, (candidate + 1) * manifest.featureCount);
+        }
+        return batch;
+      };
+      const batch = makeBatch();
+      const score = await request({ type: "score", requestId: 2, batch, candidateCount: 3 }, [batch.buffer]);
+      if (!score.ok || !Array.isArray(score.scores) || score.scores.length !== 3) {
+        throw new Error(`ranker score failed: ${score.error || "invalid output"}`);
+      }
+      if (!score.scores.every((value) => Number.isFinite(value) && value >= 0 && value <= 1)) {
+        throw new Error("ranker output is not finite and normalized");
+      }
+      if (new Set(score.scores).size < 2) throw new Error("ranker probe collapsed to one score");
+      return { ok: true, scores: score.scores };
+    } finally {
+      worker.terminate();
+    }
+  }, `/assets/${rankerWorkerAsset}`);
+  console.log(`[production-smoke] ONNX ranker worker passed: ${JSON.stringify(rankerResult)}`);
+
   const assetResults = await page.evaluate(async (paths) => {
-    const entries = ["/manifest.webmanifest", ...paths];
+    const entries = [
+      "/manifest.webmanifest",
+      "/models/intent-ranker-v1.manifest.json",
+      "/models/intent-ranker-v1.onnx",
+      ...paths,
+    ];
     return Promise.all(
       entries.map(async (path) => {
         const response = await fetch(path, { cache: "no-store" });
