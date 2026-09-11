@@ -1,7 +1,7 @@
 # public/samples — kurátorská factory vrstva
 
 Tento priečinok drží **kurátorské nahradené zvuky** pre kľúčové sloty factory kitu.
-VIZIÓNA §5: *„factory content is part of the product"* — najlepšie zvuky v apke
+VIZIÓNA §5: _„factory content is part of the product"_ — najlepšie zvuky v apke
 by mali byť tie, ktoré do nej kurátorsky vložíš, nie len tie, čo sa syntetizujú.
 
 ## Ako to funguje
@@ -19,13 +19,13 @@ by mali byť tie, ktoré do nej kurátorsky vložíš, nie len tie, čo sa synte
 
 ## Kontrakt pre kurátorský súbor
 
-| Vec | Pravidlo |
-| --- | --- |
-| Meno | Presne ako v `CURATED_SAMPLES[].file` (napr. `factory.kick.deep.wav`) |
-| Formát | WAV PCM 16/24-bit, 44.1 alebo 48 kHz, mono aj stereo |
-| Peak | ~-6 dBFS (nechaj limiteru headroom; apka neclipuje) |
-| Dĺžka | Krátky tail (~do 1 s pre perkusie, dlhšie pre tonal) |
-| Normalizácia | Zvukovo konzistentná s ostatnými slotmi (počúv si súrodencov) |
+| Vec          | Pravidlo                                                              |
+| ------------ | --------------------------------------------------------------------- |
+| Meno         | Presne ako v `CURATED_SAMPLES[].file` (napr. `factory.kick.deep.wav`) |
+| Formát       | WAV PCM 16/24-bit, 44.1 alebo 48 kHz, mono aj stereo                  |
+| Peak         | ~-6 dBFS (nechaj limiteru headroom; apka neclipuje)                   |
+| Dĺžka        | Krátky tail (~do 1 s pre perkusie, dlhšie pre tonal)                  |
+| Normalizácia | Zvukovo konzistentná s ostatnými slotmi (počúv si súrodencov)         |
 
 ## Nahradenie seedov
 

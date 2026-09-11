@@ -115,7 +115,9 @@ describe("loadCuratedLayer — same-id override with synthesized fallback", () =
     const slowBank = new SampleBank();
     ensureCuratedLayer(slowBank, {
       fetchImpl: (async () =>
-        await new Promise<Response>((resolve) => setTimeout(() => resolve(notFound()), 10_000))) as unknown as typeof fetch,
+        await new Promise<Response>((resolve) =>
+          setTimeout(() => resolve(notFound()), 10_000),
+        )) as unknown as typeof fetch,
       decode: decodeOk,
     });
     const slow = curatedReadyWithin(slowBank, 50);
