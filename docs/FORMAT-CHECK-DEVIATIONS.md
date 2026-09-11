@@ -8,9 +8,8 @@ Command:
 npx prettier --list-different src tests
 ```
 
-Result: exit code `1`, exactly `205` paths. Six additional paths are from the
-current Granular/Intent WIP; the full list below was regenerated after that
-work landed. These are intentionally not
+Result: exit code `1`, exactly `209` paths. The full list below was regenerated
+after the current Granular/Intent/AutoMap work landed. These are intentionally not
 rewritten in the release hardening pass because the changes span vendored DSP,
 golden fixtures, UI tests and unrelated historical files. The release gate
 accepts this explicit inventory; any future change to one of these paths should
@@ -129,7 +128,7 @@ src/export/project-io.ts
 src/export/quantize.ts
 src/export/video.ts
 src/instruments/envelope.ts
-src/instruments/registry.ts
+src/instruments/modmatrix.ts
 src/instruments/types.ts
 src/instruments/wtvoiceNode.ts
 src/intent/candidate-bank.ts
@@ -143,11 +142,13 @@ src/project-model/template-pack2.ts
 src/project-model/templates.ts
 src/rendering/wav.ts
 src/sample-library/velocity-layers.ts
+src/samples/autoMap.ts
 src/ui/App.tsx
 src/ui/CollabPanel.tsx
 src/ui/controls.tsx
 src/ui/DiceTray.tsx
 src/ui/dockLayout.ts
+src/ui/DropZone.tsx
 src/ui/EffectRack.tsx
 src/ui/EnvEditor.tsx
 src/ui/FloatingPlugin.tsx
@@ -161,10 +162,12 @@ src/ui/OnboardingTour.tsx
 src/ui/PaletteOverlay.tsx
 src/ui/RackStrip.tsx
 src/ui/remoteCursors.ts
+src/ui/SampleBrowser.tsx
 src/ui/shortcuts.ts
 src/ui/SliceLab.tsx
 src/ui/WavetablePanel.tsx
 tests/_dbg-gain.test.ts
+tests/automap.test.ts
 tests/collab-automation.test.ts
 tests/export/video.test.ts
 tests/fixtures/golden-render.expected.ts

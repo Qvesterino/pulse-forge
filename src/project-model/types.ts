@@ -404,6 +404,15 @@ export interface PatternGeneration {
   resolvedBpm?: number;
   /** Candidate bank size used for this generation, when greater than one. */
   candidateCount?: number;
+  /** AI ranker provenance (Wave: intent-engine-ai-ranker) — which ranker chose this candidate. */
+  ranker?: {
+    featureVersion: string;
+    rankerVersion: string;
+    modelHash: string | null;
+    selectedIndex: number;
+    mode: "shadow" | "active";
+    source: "model" | "fallback";
+  };
   /** Canonical hash of the normalized IntentSpec used to produce this pattern. */
   intentHash?: string;
   /** JSON-safe normalized IntentSpec snapshot for provenance and reloads. */

@@ -5,6 +5,12 @@ import { pwaOptions } from "./src/pwa";
 
 export default defineConfig({
   plugins: [react(), VitePWA(pwaOptions)],
+  // Browser ranker workers use module imports (onnxruntime-web + shared
+  // feature code). IIFE output cannot be code-split, so keep Vite's worker
+  // contract aligned with the native ESM Worker created by ranker-client.
+  worker: {
+    format: "es",
+  },
   build: {
     rollupOptions: {
       output: {

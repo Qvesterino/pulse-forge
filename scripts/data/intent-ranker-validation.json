@@ -1,0 +1,17 @@
+{
+  "datasetVersion": "intent-ranker-ds.v1",
+  "featureVersion": "features.v1",
+  "featureCount": 54,
+  "hidden": [
+    64,
+    32,
+    16
+  ],
+  "epochs": 150,
+  "trainPairs": 402,
+  "valPairs": 102,
+  "valPairwiseAccuracyVsHeuristic": 0.7451,
+  "trainPairwiseAccuracyVsHeuristic": 0.704,
+  "valTop1AgreementWithHeuristic": 0.4706,
+  "valSpearmanVsHeuristic": 0.5882
+}

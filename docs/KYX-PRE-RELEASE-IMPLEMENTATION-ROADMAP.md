@@ -35,7 +35,7 @@ nie je uzavretý `REL-01`, nemá zmysel pridávať nový plugin alebo veľký in
 | `QA-01` | P0 | Manuálny browser/device release matrix | [`docs/KYX-MANUAL-RELEASE-CHECKLIST.md`](./KYX-MANUAL-RELEASE-CHECKLIST.md) | Chromium/Edge/Firefox/Safari macOS/Safari iOS prejdú create → sound → FX → mix → export → reload flow |
 | `DEP-01` | P0 | Overiť produkčný deploy, nie iba lokálny server smoke | `scripts/release-preflight.mjs`, `scripts/release-server-smoke.mjs`, nasadený host | health, CORS, origin rejection, gallery auth, refresh/tab-close recovery a worklet loading prejdú na skutočnej doméne |
 | `VOI-01` | P0 | Zmerať VØID IR/pre-delay footprint na fyzických zariadeniach | `src/effects/ozvena-core/`, `src/ui/OzvenaPanel.tsx`, `docs/KYX-MANUAL-RELEASE-CHECKLIST.md` | máme device/browser meranie ready time, peak memory proxy, pre-delay range, dropout a recovery správania |
-| `FMT-01` | Release hygiene | Rozhodnúť o 205 formatting deviations | `npm run format:check`, [`docs/FORMAT-CHECK-DEVIATIONS.md`](./FORMAT-CHECK-DEVIATIONS.md) | buď samostatný formatting-only cleanup, alebo explicitne schválená CI výnimka bez zmenšenia scope |
+| `FMT-01` | Release hygiene | Rozhodnúť o 209 formatting deviations | `npm run format:check`, [`docs/FORMAT-CHECK-DEVIATIONS.md`](./FORMAT-CHECK-DEVIATIONS.md) | buď samostatný formatting-only cleanup, alebo explicitne schválená CI výnimka bez zmenšenia scope |
 
 `P2` backlog sa nesmie predbiehať pred týmito položkami. Ak agent narazí na
 nejasný scope, najprv doplní reprodukciu alebo rozhodovací záznam do reportu;
@@ -121,10 +121,10 @@ Overené príkazy a výsledky:
 | Gate                                                       | Výsledok                                                 |
 | ---------------------------------------------------------- | -------------------------------------------------------- |
 | `npm run typecheck:clean`                                  | PASS                                                     |
-| full Vitest (`npm test`, default isolated workers)          | RED on current shared run — 2088 passed / 3 failed / 103 skipped, 208 files; groove + Gallery pass isolated, FXEQ perf gate remains red |
-| `npm run build` + worklet buildy + bundle budget           | PASS — entry 927 KB / 995 KB, total JS chunks 1728 KB / 2400 KB, core worklets ~101 KB / 120 KB, 344 modules |
+| full Vitest (`npm test`, default isolated workers)          | PASS — 2107 passed / 103 skipped, 210 files, 2210 total, exit 0 |
+| `npm run build` + worklet buildy + bundle budget           | PASS — entry 912 KB / 995 KB, total JS chunks 1735 KB / 2400 KB, core worklets 98 KB / 120 KB, 346 modules |
 | `npm run build:ultina`                                     | PASS — rebuilt `public/ultina-worklet.js`                |
-| `npm run test:browser`                                     | PASS — 200/200 Chromium (latest run; Edge/Firefox need rerun after latest worklet packaging) |
+| `npm run test:browser`                                     | PASS — 216/216 Chromium (FXEQ/Ultina/VØID, PRISM reload, template performance retry and UI flow) |
 | `npm run test:browser:production`                          | PASS — dist boot, HOUSE template, sequencer, FX rack and all five shipped worklet assets |
 | `npm run release:preflight`                                | PASS — explicit production-origin/config + KYX artifacts |
 | `npm run release:server-smoke`                             | PASS — real entrypoint health/CORS/origin/admin contract |
@@ -136,9 +136,9 @@ Overené príkazy a výsledky:
 | affected post-fix suites (`services-close-race`, `TopBar`) | PASS — 20/20 tests                                       |
 | scoped Prettier + `git diff --check`                       | PASS                                                     |
 
-Aktuálny kompletný `npm test` beh v zdieľanom pracovnom strome nie je release-green: 208 súborov, 2088 passed, 3 failed, 103 skipped (2194 total). Izolované reruny potvrdili `groove.test.ts` a `GalleryPage.test.tsx`; `fxeq-performance-gates.test.ts` je na aktuálnom zaťaženom hoste stále červený (p95 aj morph gate). Treba ho zopakovať na quiescent hoste a buď odstrániť skutočný regres, alebo zdokumentovať reprodukovateľný environment-specific problém; threshold sa nesmie iba uvoľniť. Zámerné stderr z recovery testov, jsdom canvas a test-only act warnings nie sú samy osebe production errors.
+Najnovší kompletný `npm test` beh na quiescent pracovnom strome je release-green: 210 súborov, 2107 passed, 103 skipped (2210 total), exit 0. Zámerné stderr z recovery testov, jsdom canvas a test-only act warnings nie sú samy osebe production errors. Pred tagom treba rovnaké gates zopakovať z commitnutého stromu.
 
-`npm run format:check` na celom strome je stále červený kvôli 205 zdokumentovaným formatting deviations. Presný, command-generated zoznam je v [`docs/FORMAT-CHECK-DEVIATIONS.md`](./FORMAT-CHECK-DEVIATIONS.md). Pred release treba buď vykonať samostatný formatting-only cleanup, alebo tento zoznam explicitne akceptovať v CI gate; nesmie sa to maskovať zmenou scope checku.
+`npm run format:check` na celom strome je stále červený kvôli 209 zdokumentovaným formatting deviations. Presný, command-generated zoznam je v [`docs/FORMAT-CHECK-DEVIATIONS.md`](./FORMAT-CHECK-DEVIATIONS.md). Pred release treba buď vykonať samostatný formatting-only cleanup, alebo tento zoznam explicitne akceptovať v CI gate; nesmie sa to maskovať zmenou scope checku.
 
 Ešte povinné pred verejným deployom: manuálny Firefox/Safari/iOS smoke podľa
 [`docs/KYX-MANUAL-RELEASE-CHECKLIST.md`](./KYX-MANUAL-RELEASE-CHECKLIST.md),
@@ -215,7 +215,7 @@ Každý agent ich musí dodržať:
 Tieto body majú prednosť pred polishom. Ak niektorý P0 zlyháva, release sa nepovažuje za bezpečný.
 
 - [x] deterministický PRISM/FXEQ export (core, host seed aj browser
-  `serialize → reload → offline bounce`; 200/200 Chromium gate),
+  `serialize → reload → offline bounce`; 216/216 Chromium gate),
 - [x] odstránenie potvrdených VLYX DSP regresií (upstream → vendor → worklet),
 - [x] hardening VØID IR/pre-delay runtime allocations; reálne device footprint
   meranie ostáva manuálny release krok,
@@ -385,7 +385,7 @@ Overiť v Chromium/Edge a následne manuálne vo Firefox, Safari a iOS Safari:
   zámernú odlišnosť pri inom seed; rack contract pokrýva seed forwarding,
 - [x] browser-level test `serialize → reload → offline bounce` beží v
   `src/browser-checks.ts`; dve PRISM worklet inštancie po JSON/migration
-  round-tripe ostali pod max-sample toleranciou `1e-5` (Chromium gate 200/200).
+  round-tripe ostali pod max-sample toleranciou `1e-5` (Chromium gate 216/216).
 
 ### 6.2 VLYX upstream kvalita
 

@@ -4,6 +4,8 @@ import { LOCAL_ENGINE_ID, LOCAL_ENGINE_VERSION } from "../../ai/evaluation";
 import type { GenerateOptions } from "../../ai/types";
 import type { Pattern, ProjectDocument } from "../../project-model/types";
 import { rankCandidateBank, type CandidateBankEntry } from "../candidate-bank";
+import { rankCandidatesWithModel } from "../../ai/ranking/rank-candidates";
+import { rankerMode } from "../../ai/ranking/ranker-client";
 import {
   createFallbackPattern,
   refreshPatternQuality,
@@ -106,8 +108,10 @@ export class LocalDeterministicProvider implements GenerationProvider {
     this.generator = generator;
   }
 
-  generateSync(plan: GenerationPlan, context: GenerationContext): GenerationProposal {
-    const effectiveKey = plan.options.key ?? context.project.key;
+  private collectCandidates(
+    plan: GenerationPlan,
+    context: GenerationContext,
+  ): { candidates: CandidateBankEntry[]; failures: string[]; candidateSeeds: readonly string[] } {
     const candidates: CandidateBankEntry[] = [];
     const failures: string[] = [];
     const candidateSeeds = plan.candidateSeeds.length > 0 ? plan.candidateSeeds : [plan.options.seed];
@@ -134,6 +138,12 @@ export class LocalDeterministicProvider implements GenerationProvider {
         failures.push(`candidate-${candidateIndex}:generator-error:${reason}`);
       }
     }
+    return { candidates, failures, candidateSeeds };
+  }
+
+  generateSync(plan: GenerationPlan, context: GenerationContext): GenerationProposal {
+    const effectiveKey = plan.options.key ?? context.project.key;
+    const { candidates, failures, candidateSeeds } = this.collectCandidates(plan, context);
 
     const ranked = rankCandidateBank(context.project, candidates);
     if (ranked.length > 0) {
@@ -184,7 +194,82 @@ export class LocalDeterministicProvider implements GenerationProvider {
 
   async generate(plan: GenerationPlan, context: GenerationContext, signal?: AbortSignal): Promise<GenerationProposal> {
     if (signal?.aborted) throw new DOMException("Generation aborted", "AbortError");
-    return this.generateSync(plan, context);
+    // Model ranking (goal doc Fáze 4) requires the async worker path; the
+    // synchronous command path keeps the heuristic ranking.
+    const mode = rankerMode();
+    if (mode === "off" || (plan.candidateSeeds.length <= 1 && !((plan.options.candidateCount ?? 0) > 1))) {
+      return this.generateSync(plan, context);
+    }
+    const effectiveKey = plan.options.key ?? context.project.key;
+    const { candidates, failures, candidateSeeds } = this.collectCandidates(plan, context);
+    const ranked = await rankCandidatesWithModel(context.project, candidates, plan);
+
+    if (ranked.order.length > 0) {
+      const selected = ranked.order[0];
+      const bankWarnings: string[] =
+        candidateSeeds.length > 1
+          ? [`candidate-bank-enabled`, `candidate-bank-selected:${selected.candidateIndex}`]
+          : [];
+      if (failures.length > 0) bankWarnings.push(...failures.map((failure) => `candidate-bank-skipped:${failure}`));
+      // Ranker provenance + shadow diagnostics (goal doc Fáze 4).
+      bankWarnings.push(
+        ranked.mode === "shadow"
+          ? `ranker-shadow:${ranked.source}`
+          : `ranker:${ranked.source}:${ranked.mode}`,
+      );
+      if (ranked.source === "model" && ranked.modelHash) {
+        bankWarnings.push(`ranker-model:${ranked.rankerVersion}:${ranked.modelHash.slice(0, 12)}`);
+      }
+      const withProvenance: Pattern = {
+        ...selected.pattern,
+        generation: {
+          ...selected.pattern.generation!,
+          ranker: {
+            featureVersion: ranked.featureVersion ?? "features.v1",
+            rankerVersion: ranked.rankerVersion ?? "unavailable",
+            modelHash: ranked.modelHash,
+            selectedIndex: selected.candidateIndex,
+            mode: ranked.mode === "active" ? "active" : "shadow",
+            source: ranked.source === "model" ? "model" : "fallback",
+          },
+        },
+      };
+      return {
+        status: selected.status,
+        pattern: withProvenance,
+        diagnostics: diagnosticsFor(withProvenance, selected.repairs, bankWarnings),
+      };
+    }
+
+    const fallback = attachProvenance(createFallbackPattern(context.project, plan.options), plan, context.project);
+    const fallbackReport = inspectPatternInvariants(context.project, fallback, {
+      checkScale: Boolean(effectiveKey),
+      key: effectiveKey,
+    });
+    if (fallbackReport.ok) {
+      return {
+        status: "fallback",
+        pattern: fallback,
+        diagnostics: diagnosticsFor(
+          fallback,
+          [],
+          ["local-generator-fallback", ...failures],
+          [],
+          failures.length > 0 ? failures.join("|") : "candidate-bank-no-valid-candidate",
+        ),
+      };
+    }
+    return {
+      status: "rejected",
+      pattern: fallback,
+      diagnostics: diagnosticsFor(
+        fallback,
+        [],
+        [],
+        [...failures, ...invariantErrors(fallbackReport)],
+        "fallback-failed-invariant-gate",
+      ),
+    };
   }
 }
 

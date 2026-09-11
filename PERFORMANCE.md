@@ -47,6 +47,9 @@ Instrument → FX chain → Track Gain → Pan → Auto Gain → Auto Pan → Ma
 - Drum voices: **capped at 64** (`addDrumVoice`) — a roll fades+stops the oldest voice instead of growing the Set unbounded; each trigger = 3 nodes (source + gain + panner)
 - Instrument voices: bounded by polyphony limits (analog=12, bass=8, 808=1, sampler=16, texture=8)
 
+- Granular worklet voice: grain pool **48 concurrent grains/voice × 6 voices** (cap 512 grains/note); the pool bounds node pressure by design — grains are arithmetic in the processor, not AudioNodes
+- Mod matrix: an ACTIVE route adds ~3 nodes per voice (source bus + amount scaler + destination adapter); `|AMT| < 0.1 %` adds **zero nodes** (render-identical)
+
 ---
 
 ## 2. Measurements
@@ -67,6 +70,32 @@ Instrument → FX chain → Track Gain → Pan → Auto Gain → Auto Pan → Ma
 | Instrument runtime | ~8 |
 | Active drum voices | 4–8 × 3 = 12–24 |
 | **Total** | **84–100** |
+
+### Voice worklets + mod matrix (2026-09 audit)
+
+Offline render cost of the new paths, measured via `node scratch/perf-audit.mjs`
+(headless Chromium, 4 s stereo render, RTS = wall-time / audio-time — lower is
+cheaper; includes the 60 ms port-flush yield on worklet scenarios, so worklet
+figures are conservative). Desktop-class machine; assume ~3–5× slower on
+mid-range mobile and re-run the script before promising budgets.
+
+| Scenario | RTS |
+| --- | --- |
+| analog 8v, matrix neutral | 4.3 % |
+| analog 8v, matrix active (LFO→CUTOFF, amt 0.9) | 7.9 % |
+| keys 8v, matrix neutral | 11.9 % |
+| keys 8v, matrix active | 13.6 % |
+| sampler 8v, matrix neutral | 1.5 % |
+| sampler 8v, matrix active | 3.7 % |
+| granular worklet, 1 voice | 7.9 % |
+| granular worklet, 6 voices | 9.6 % |
+| granular worklet, 6 voices, max grains (60/s × 20 ms, jitter 0.4) | 9.0 % |
+| granular fallback cloud, 6 voices | 9.5 % |
+
+Read-outs:
+- An active mod route costs **+1–4 percentage points of one core** at 8-voice poly — the LFO oscillator + scaler per voice is the whole story; grain-scale it stays linear in voices.
+- The granular worklet at full 6-voice poly (worst case ≈ 288 concurrent grain windows) costs the **same as the old fallback cloud** while adding the live playhead — the per-sample scheduler is not a regression.
+- These are single-track figures; a dense project stacks tracks, so treat ~10 % RTS per busy instrument as the per-track budget when counting.
 
 ### Scheduler throughput
 
