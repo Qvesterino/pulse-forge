@@ -7,11 +7,11 @@
     32,
     16
   ],
-  "epochs": 150,
+  "epochs": 1200,
   "trainPairs": 402,
   "valPairs": 102,
-  "valPairwiseAccuracyVsHeuristic": 0.7451,
-  "trainPairwiseAccuracyVsHeuristic": 0.704,
-  "valTop1AgreementWithHeuristic": 0.4706,
-  "valSpearmanVsHeuristic": 0.5882
+  "trainPairwiseAccuracyVsHeuristic": 1.0,
+  "valPairwiseAccuracyVsHeuristic": 0.7843,
+  "valTop1AgreementWithHeuristic": 0.5882,
+  "valSpearmanVsHeuristic": 0.6588
 }

@@ -33,8 +33,8 @@ DATASET_PATH = ROOT / "scripts" / "data" / "intent-ranker-dataset.json"
 MODELS_DIR = ROOT / "public" / "models"
 
 HIDDEN = [64, 32, 16]
-EPOCHS = 250
-LR = 0.01
+EPOCHS = 1200
+LR = 0.001
 SEED = 0x5EED
 
 
@@ -73,16 +73,15 @@ class MLP:
             activations.append(out)
         return activations
 
-    def train_step(self, x_better: np.ndarray, x_worse: np.ndarray, lr: float, step: int) -> float:
+    def pair_gradients(self, x_better: np.ndarray, x_worse: np.ndarray) -> tuple[float, list, list]:
         act_better = self.forward(x_better)
         act_worse = self.forward(x_worse)
-        diff = act_better[-1].sum() - act_worse[-1].sum()
-        loss = np.log1p(np.exp(np.clip(diff, -30, 30)))
+        diff = float(act_better[-1].sum() - act_worse[-1].sum())
+        loss = np.log1p(np.exp(np.clip(-diff, -30, 30)))  # -log sigmoid(diff)
         grad_output = -sigmoid(-diff)  # d(-log sigmoid(diff))/d(diff)
 
-        # Accumulate BOTH paths' gradients, then apply ONE update — applying
-        # per-path would run two opposing Adam steps per pair (the worse-path
-        # step lands last and inverts the learned ordering).
+        # Accumulate BOTH paths' gradients — per-path updates would run two
+        # opposing steps per pair and invert the learned ordering.
         total_gW = [np.zeros_like(w) for w in self.weights]
         total_gB = [np.zeros_like(b) for b in self.biases]
         for activation, sign in ((act_better, grad_output), (act_worse, -grad_output)):
@@ -94,20 +93,7 @@ class MLP:
                 delta = delta @ self.weights[index].T
                 if index > 0:
                     delta[input_activation <= 0] = 0  # ReLU derivative
-        beta1, beta2, eps = 0.9, 0.999, 1e-8
-        step_index = max(1, step)
-        for index in range(len(self.weights)):
-            self.mW[index] = beta1 * self.mW[index] + (1 - beta1) * total_gW[index]
-            self.vW[index] = beta2 * self.vW[index] + (1 - beta2) * total_gW[index] ** 2
-            self.mB[index] = beta1 * self.mB[index] + (1 - beta1) * total_gB[index]
-            self.vB[index] = beta2 * self.vB[index] + (1 - beta2) * total_gB[index] ** 2
-            mw_hat = self.mW[index] / (1 - beta1**step_index)
-            vw_hat = self.vW[index] / (1 - beta2**step_index)
-            mb_hat = self.mB[index] / (1 - beta1**step_index)
-            vb_hat = self.vB[index] / (1 - beta2**step_index)
-            self.weights[index] -= lr * mw_hat / (np.sqrt(vw_hat) + eps)
-            self.biases[index] -= lr * mb_hat / (np.sqrt(vb_hat) + eps)
-        return float(loss)
+        return float(loss), total_gW, total_gB
 
     def score(self, x: np.ndarray) -> np.ndarray:
         return self.forward(x)[-1]
@@ -226,15 +212,42 @@ def spearman(rows: list[dict]) -> float:
 
 
 dataset = json.loads(DATASET_PATH.read_text(encoding="utf8"))
+
+# Human golden preferences (goal doc Fáze 2 — the ONLY path to "better than
+# heuristic"): when scripts/data/intent-ranker-golden.json is reviewed=true,
+# golden groups use POSITION-DERIVED labels (best → 1.0 … worst → 0.0)
+# instead of the heuristic teacher. Unreviewed/missing file ⇒ heuristic
+# teacher everywhere and the model stays in shadow mode.
+golden_path = ROOT / "scripts" / "data" / "intent-ranker-golden.json"
+golden_orders: dict[str, list[int]] = {}
+golden_reviewed = False
+if golden_path.exists():
+    golden = json.loads(golden_path.read_text(encoding="utf8"))
+    golden_reviewed = bool(golden.get("reviewed"))
+    if golden_reviewed:
+        for combo in golden.get("combos", []):
+            golden_orders[combo["groupKey"]] = [int(position) for position in combo["order"]]
+        print(f"[golden] reviewed=true — {len(golden_orders)} golden group(s) use human labels")
+    else:
+        print("[golden] template exists but is NOT reviewed — heuristic teacher stays")
+
 samples: list[dict] = []
 for group in dataset["groups"]:
+    golden_order = golden_orders.get(group["groupKey"])
     for candidate in group["candidates"]:
+        if golden_reviewed and golden_order is not None and candidate["index"] in golden_order:
+            position = golden_order.index(candidate["index"])
+            denominator = max(1, len(golden_order) - 1)
+            label_score = 1.0 - position / denominator
+        else:
+            label_score = candidate["heuristicScore"]
         samples.append(
             {
                 "x": np.array(candidate["features"], dtype=np.float64),
-                "score": candidate["heuristicScore"],
+                "score": label_score,
                 "index": candidate["index"],
                 "groupKey": group["groupKey"],
+                "golden": bool(golden_reviewed and golden_order is not None and candidate["index"] in golden_order),
             }
         )
 feature_count = len(samples[0]["x"])
@@ -248,14 +261,37 @@ val_rows = [sample for sample in samples if sample["groupKey"] in validation_key
 print(f"[train] samples total={len(samples)} train={len(train_rows)} val={len(val_rows)} features={feature_count}")
 
 train_pairs = pairs_for(train_rows, rng)
-step = 0
-for epoch in range(EPOCHS):
+# Full-batch deterministic training: one Adam update per epoch over the
+# summed pairwise gradients — per-pair Adam was unstable (oscillated into a
+# degenerate constant model on this dataset size).
+optimizer_mw = [np.zeros_like(w) for w in model.weights]
+optimizer_vw = [np.zeros_like(w) for w in model.weights]
+optimizer_mb = [np.zeros_like(b) for b in model.biases]
+optimizer_vb = [np.zeros_like(b) for b in model.biases]
+beta1, beta2, eps = 0.9, 0.999, 1e-8
+for epoch in range(1, EPOCHS + 1):
     rng.shuffle(train_pairs)
     loss_sum = 0.0
+    gW = [np.zeros_like(w) for w in model.weights]
+    gB = [np.zeros_like(b) for b in model.biases]
     for better, worse in train_pairs:
-        loss_sum += model.train_step(better["x"], worse["x"], LR, step)
-        step += 1
-    if epoch % 50 == 0 or epoch == EPOCHS - 1:
+        loss, pair_gW, pair_gB = model.pair_gradients(better["x"], worse["x"])
+        loss_sum += loss
+        for index in range(len(gW)):
+            gW[index] += pair_gW[index]
+            gB[index] += pair_gB[index]
+    for index in range(len(model.weights)):
+        optimizer_mw[index] = beta1 * optimizer_mw[index] + (1 - beta1) * gW[index] / len(train_pairs)
+        optimizer_vw[index] = beta2 * optimizer_vw[index] + (1 - beta2) * (gW[index] / max(1, len(train_pairs))) ** 2
+        optimizer_mb[index] = beta1 * optimizer_mb[index] + (1 - beta1) * gB[index] / max(1, len(train_pairs))
+        optimizer_vb[index] = beta2 * optimizer_vb[index] + (1 - beta2) * (gB[index] / max(1, len(train_pairs))) ** 2
+        mw_hat = optimizer_mw[index] / (1 - beta1**epoch)
+        vw_hat = optimizer_vw[index] / (1 - beta2**epoch)
+        mb_hat = optimizer_mb[index] / (1 - beta1**epoch)
+        vb_hat = optimizer_vb[index] / (1 - beta2**epoch)
+        model.weights[index] -= LR * mw_hat / (np.sqrt(vw_hat) + eps)
+        model.biases[index] -= LR * mb_hat / (np.sqrt(vb_hat) + eps)
+    if epoch % 250 == 0 or epoch == EPOCHS - 1:
         print(f"[train] epoch {epoch} loss={loss_sum / max(1, len(train_pairs)):.5f}")
 
 report = {
@@ -271,7 +307,17 @@ report = {
     "valTop1AgreementWithHeuristic": round(top1_agreement(val_rows), 4),
     "valSpearmanVsHeuristic": round(spearman(val_rows), 4),
 }
+if golden_reviewed:
+    golden_rows = [sample for sample in samples if sample.get("golden")]
+    report["goldenPairwiseAccuracy"] = round(pairwise_accuracy(golden_rows), 4)
+    report["goldenVerdict"] = (
+        "ready-for-active"
+        if report["goldenPairwiseAccuracy"] >= 0.75
+        else "insufficient-golden-fit — stay in shadow and re-curate"
+    )
 print("[train] report:", json.dumps(report, indent=2))
+if golden_reviewed:
+    print(f"[train] golden verdict: {report.get('goldenVerdict')}")
 
 MODELS_DIR.mkdir(parents=True, exist_ok=True)
 model_bytes = model.export_onnx(feature_count)

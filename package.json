@@ -14,7 +14,7 @@
     "ai:performance": "vite-node scripts/ai-performance.mts",
     "test:browser": "node scripts/verify-browser.mjs",
     "curated:seeds": "node scripts/render-curated-seeds.mjs",
-  "ranker:train": "vite-node scripts/generate-intent-ranker-dataset.mts && python scripts/train-intent-ranker.py && node scripts/validate-intent-ranker.mjs",
+    "ranker:train": "vite-node scripts/generate-intent-ranker-dataset.mts && python scripts/train-intent-ranker.py && node scripts/validate-intent-ranker.mjs",
     "ranker:ort-sync": "node scripts/sync-ort-assets.mjs",
     "test:browser:production": "node scripts/verify-production-browser.mjs",
     "release:preflight": "node scripts/release-preflight.mjs",
@@ -29,7 +29,8 @@
     "prebuild": "npm run build:core-worklets && npm run build:fxeq && npm run build:ultina && npm run build:ozvena",
     "build:core-worklets": "node scripts/build-core-worklets.mjs",
     "build:ultina": "node scripts/build-ultina-worklet.mjs",
-    "build:ozvena": "node scripts/build-ozvena-worklet.mjs"
+    "build:ozvena": "node scripts/build-ozvena-worklet.mjs",
+    "ranker:golden": "vite-node scripts/generate-intent-ranker-golden.mts"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",
