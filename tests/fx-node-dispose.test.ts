@@ -223,6 +223,24 @@ describe("ozvena node ships PRECOMPUTED IR spectra (no time-domain payloads)", (
     expect(msg!.sets![0].irSpectra.length).toBe(118 * 2048 * 2);
   });
 
+  it("factory re-delivery reuses main-thread spectra but mints fresh mutable rings", () => {
+    const ctx = makeCtx();
+    createOzvenaNode(ctx, instanceOf("ozvena"), {}, 120);
+    const node = lastNode as FakeAudioWorkletNode;
+
+    node.port.onmessage?.({ data: { type: "irNeeded", irId: "hall", sampleRate: 48000 } });
+    node.port.onmessage?.({ data: { type: "irNeeded", irId: "hall", sampleRate: 48000 } });
+    const replies = node.port.posted.filter((m) => m.type === "factoryIr") as Array<{
+      sets?: { irSpectra: Float64Array; blockSpectra: Float64Array }[];
+    }>;
+    expect(replies).toHaveLength(2);
+    const first = replies[0].sets!;
+    const second = replies[1].sets!;
+    expect(first[0].irSpectra).not.toBe(second[0].irSpectra);
+    expect(first[0].irSpectra[0]).toBe(second[0].irSpectra[0]);
+    expect(first[0].blockSpectra).not.toBe(second[0].blockSpectra);
+  });
+
   it("an empty/zero-frame buffer is ignored without posting a payload", () => {
     const ctx = makeCtx();
     const rt = createOzvenaNode(ctx, instanceOf("ozvena"), {}, 120);

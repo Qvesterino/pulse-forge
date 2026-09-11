@@ -15,18 +15,25 @@ interface FrozenAudioEntry {
  * project would have frozen tracks with no buffer: permanently silent.
  */
 export class FrozenBufferRepository {
+  constructor(private readonly openDatabase: typeof openDb = openDb) {}
+
   async save(bufferId: string, data: ArrayBuffer): Promise<void> {
     try {
-      const db = await openDb();
+      const db = await this.openDatabase();
       await tx(db, STORE_FROZEN_AUDIO, "readwrite", (s) => s.put({ id: bufferId, data } satisfies FrozenAudioEntry));
-    } catch {
-      // best-effort — freeze still works in-session without persistence
+    } catch (error) {
+      // A freeze is not complete until its rendered bytes are durable. The
+      // old best-effort catch made the UI mark a track frozen even though a
+      // reload would leave it permanently silent. Let the caller surface a
+      // retryable error while keeping the in-session audio available.
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new Error(`Could not persist frozen audio for ${bufferId}: ${detail}`);
     }
   }
 
   async load(bufferId: string): Promise<ArrayBuffer | undefined> {
     try {
-      const db = await openDb();
+      const db = await this.openDatabase();
       const entry = await tx<FrozenAudioEntry | undefined>(db, STORE_FROZEN_AUDIO, "readonly", (s) => s.get(bufferId));
       return entry?.data;
     } catch {
@@ -36,7 +43,7 @@ export class FrozenBufferRepository {
 
   async remove(bufferId: string): Promise<void> {
     try {
-      const db = await openDb();
+      const db = await this.openDatabase();
       await tx(db, STORE_FROZEN_AUDIO, "readwrite", (s) => s.delete(bufferId));
     } catch {
       // best-effort
@@ -45,7 +52,7 @@ export class FrozenBufferRepository {
 
   async list(): Promise<FrozenAudioEntry[]> {
     try {
-      const db = await openDb();
+      const db = await this.openDatabase();
       const all = await tx<FrozenAudioEntry[]>(db, STORE_FROZEN_AUDIO, "readonly", (s) => s.getAll());
       return all ?? [];
     } catch {

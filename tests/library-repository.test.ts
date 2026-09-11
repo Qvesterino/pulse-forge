@@ -47,4 +47,15 @@ describe("LibraryRepository", () => {
     expect(state.recentAssets[0]).toBe("b");
     expect(state.recentAssets[1]).toBe("a");
   });
+
+  it("surfaces storage failure while retaining the optimistic in-memory state for retry", async () => {
+    const lib = new LibraryRepository(async () => {
+      throw new Error("quota exceeded");
+    });
+
+    await expect(lib.toggleAssetFavorite("factory.kick.failed")).rejects.toThrow(
+      /Could not save library preferences: quota exceeded/,
+    );
+    expect(lib.get().favoriteAssets).toContain("factory.kick.failed");
+  });
 });

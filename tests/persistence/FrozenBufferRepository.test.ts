@@ -34,6 +34,16 @@ describe("FrozenBufferRepository", () => {
     const ids = (await repo.list()).map((e) => e.id);
     expect(ids).toContain("frozen-gc");
   });
+
+  it("surfaces storage failure instead of reporting a non-durable freeze as saved", async () => {
+    const repo = new FrozenBufferRepository(async () => {
+      throw new Error("quota exceeded");
+    });
+
+    await expect(repo.save("frozen-failed", new ArrayBuffer(8))).rejects.toThrow(
+      /Could not persist frozen audio for frozen-failed: quota exceeded/,
+    );
+  });
 });
 
 describe("restoreFrozenTracks", () => {

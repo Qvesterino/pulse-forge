@@ -107,6 +107,8 @@ export function intentFromGenerateOptions(options: GenerateOptions): IntentSpec 
     genre: options.genre,
     style: options.style,
     seed: options.seed,
+    key: options.key ?? null,
+    bpmRange: options.bpmRange ?? null,
     length: options.stepCount,
     variation: options.velocityVariation,
     controls: {
@@ -119,6 +121,8 @@ export function intentFromGenerateOptions(options: GenerateOptions): IntentSpec 
       drumTrackId: options.drumTrackId ?? null,
       instrumentTrackIds: options.instrumentTrackIds ?? [],
     },
+    roles: options.roles,
+    constraints: options.constraints,
     sourcePatternId: options.sourcePatternId ?? null,
     replaceMode: options.replaceMode,
     applyGrooveSettings: options.applyGrooveSettings ?? false,

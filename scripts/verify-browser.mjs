@@ -40,7 +40,12 @@ async function clickPanelAction(page, label) {
 let exitCode = 0;
 let browser;
 try {
-  browser = await chromium.launch({ headless: true });
+  // The default is Playwright's pinned Chromium. Release QA can point the
+  // same deterministic flow at another installed Chromium-family browser
+  // (for example Edge) without maintaining a second script. Firefox/Safari
+  // still require their own runtime/manual matrix.
+  const executablePath = process.env.KYX_BROWSER_EXECUTABLE_PATH;
+  browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}) });
   const page = await browser.newPage();
   const consoleErrors = [];
   page.on("console", (msg) => {
@@ -204,7 +209,7 @@ try {
     const projectDownload = appPage.waitForEvent("download");
     await appPage.locator('.export-panel button:has-text("EXPORT JSON")').click();
     const download = await projectDownload;
-    if (!download.suggestedFilename().endsWith(".pulseforge.json")) {
+    if (!download.suggestedFilename().endsWith(".kyx.json")) {
       throw new Error(`unexpected project export filename: ${download.suggestedFilename()}`);
     }
     await appPage.waitForTimeout(1200); // allow autosave to settle before reload

@@ -10,7 +10,7 @@ function resultFromProposal(
   proposal: NonNullable<GenerationResult["proposal"]>,
 ): GenerationResult {
   return {
-    status: proposal.diagnostics.errors.length > 0 ? "rejected" : "accepted",
+    status: proposal.status ?? (proposal.diagnostics.errors.length > 0 ? "rejected" : "accepted"),
     plan,
     proposal,
     diagnostics: proposal.diagnostics,

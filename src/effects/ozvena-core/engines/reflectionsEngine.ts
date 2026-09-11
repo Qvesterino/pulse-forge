@@ -2,7 +2,8 @@
 // @ts-nocheck
 /**
  * VENDORED from VocalForge_DAW/plugins/ozvena. Do not edit by hand — this is
- * a byte-faithful copy of the upstream DSP oracle so Pulse Forge and
+ * a semantics-faithful copy of the upstream DSP oracle (line endings are
+ * normalized) so Pulse Forge and
  * VocalForge validate against the SAME golden fixtures
  * (tests/ozvena-golden.test.ts). Fix DSP issues upstream, then re-vendor
  * via scripts/vendor-ozvena.mjs.

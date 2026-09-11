@@ -2,7 +2,8 @@
 // @ts-nocheck
 /**
  * VENDORED from VocalForge_DAW/plugins/ozvena. Do not edit by hand — this is
- * a byte-faithful copy of the upstream DSP oracle so Pulse Forge and
+ * a semantics-faithful copy of the upstream DSP oracle (line endings are
+ * normalized) so Pulse Forge and
  * VocalForge validate against the SAME golden fixtures
  * (tests/ozvena-golden.test.ts). Fix DSP issues upstream, then re-vendor
  * via scripts/vendor-ozvena.mjs.
@@ -171,13 +172,16 @@ export function generateFactoryIr4(id: string, sampleRate: number): Float32Array
   if (hit) return hit;
 
   const frames = Math.floor(spec.lengthSec * sampleRate);
-  const out = new Float32Array(frames * 4);
-  const chs: Float32Array[] = [
-    out.subarray(0, frames),
-    out.subarray(frames, frames * 2),
-    out.subarray(frames * 2, frames * 3),
-    out.subarray(frames * 3, frames * 4),
-  ] as unknown as Float32Array[];
+  // Build the four response channels separately, then interleave them at
+  // the boundary. The convolution contract is LL, LR, RL, RR per frame;
+  // using four contiguous subarrays here would silently turn a planar
+  // buffer into an interleaved one at every downstream consumer.
+  const planes: Float32Array[] = [
+    new Float32Array(frames),
+    new Float32Array(frames),
+    new Float32Array(frames),
+    new Float32Array(frames),
+  ];
 
   // Directional early taps: left-biased for L-in responses, right for R.
   const spread = Math.floor((spec.spreadMs / 1000) * sampleRate);
@@ -210,7 +214,7 @@ export function generateFactoryIr4(id: string, sampleRate: number): Float32Array
         lp[c] += alpha * (n - lp[c]);
         v = (rngs[c]() * 0.5 + lp[c] * 0.5) * env * build;
       }
-      chs[c][i] = v;
+      planes[c][i] = v;
     }
   }
 
@@ -219,22 +223,36 @@ export function generateFactoryIr4(id: string, sampleRate: number): Float32Array
     const gl = tap.gain * Math.max(0, 1 - tap.pan);
     const gr = tap.gain * Math.max(0, 1 + tap.pan);
     // L-in responses: tap gain → LL (left mic), LR (right mic).
-    if (tap.pos < frames) chs[0][tap.pos] += gl;
-    if (tap.pos < frames) chs[1][tap.pos] += gr;
+    if (tap.pos < frames) planes[0][tap.pos] += gl;
+    if (tap.pos < frames) planes[1][tap.pos] += gr;
     // R-in responses: mirrored.
-    if (tap.pos < frames) chs[2][tap.pos] += gr;
-    if (tap.pos < frames) chs[3][tap.pos] += gl;
+    if (tap.pos < frames) planes[2][tap.pos] += gr;
+    if (tap.pos < frames) planes[3][tap.pos] += gl;
   }
 
   // Normalise the whole 4-channel set to -1 dBFS (shared peak).
   let peak = 0;
-  for (let i = 0; i < out.length; i++) {
-    const a = Math.abs(out[i]);
-    if (a > peak) peak = a;
+  for (const plane of planes) {
+    for (let i = 0; i < plane.length; i++) {
+      const a = Math.abs(plane[i]);
+      if (a > peak) peak = a;
+    }
   }
   if (peak > 1e-9) {
     const g = 0.89 / peak;
-    for (let i = 0; i < out.length; i++) out[i] *= g;
+    for (const plane of planes) {
+      for (let i = 0; i < plane.length; i++) plane[i] *= g;
+    }
+  }
+
+  // Public/native convolution layout: one frame is LL, LR, RL, RR.
+  const out = new Float32Array(frames * 4);
+  for (let i = 0; i < frames; i++) {
+    const base = i * 4;
+    out[base] = planes[0][i];
+    out[base + 1] = planes[1][i];
+    out[base + 2] = planes[2][i];
+    out[base + 3] = planes[3][i];
   }
 
   cache4.set(key, out);

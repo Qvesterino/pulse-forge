@@ -473,16 +473,6 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
     return lat;
   }
 
-  // ── Oversampling helpers (shared half-band FIR, see clipper) ──
-
-  private upsample(input: Float32Array, osState: OsChannelState, frames: number): void {
-    osUpsample(input, osState, frames);
-  }
-
-  private downsample(osState: OsChannelState, output: Float32Array, frames: number): void {
-    os_Downsample(osState, output, frames);
-  }
-
   // ── Internal ──────────────────────────────────────────────
 
   private scHpfBufferL: Float32Array = new Float32Array(0);

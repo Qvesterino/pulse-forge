@@ -13,6 +13,7 @@ import {
 } from "./wavetables";
 import { ENV_SHAPE_OPTIONS, scheduleDahdsr } from "./envelope";
 import { createWtVoiceRuntime } from "./wtvoiceNode";
+import { modMatrixParams, scheduleVoiceModMatrix } from "./modmatrix";
 import { isWorkletReady } from "../audio-worklets/loader";
 import { pitchShiftPreserveDuration } from "../audio-engine/time-stretch";
 
@@ -293,6 +294,7 @@ const analog: InstrumentDefinition = {
     },
     { id: "release", label: "RELEASE", min: 0.01, max: 4, default: 0.2, unit: "s", format: formatMs },
     { id: "level", label: "LEVEL", min: -24, max: 6, default: -6, unit: "dB", format: formatDb },
+    ...modMatrixParams(false),
   ],
   factory(ctx, track, env) {
     const output = ctx.createGain();
@@ -304,6 +306,8 @@ const analog: InstrumentDefinition = {
 
     // filter -> sounding pitch, so live CUTOFF moves respect KEYTRACK per note
     const liveFilters = new Map<ReturnType<typeof createVoiceFilter>, number>();
+    // filter -> mod matrix handle (same per-voice keying)
+    const liveMods = new Map<ReturnType<typeof createVoiceFilter>, ReturnType<typeof scheduleVoiceModMatrix>>();
     // Keytrack: CUTOFF is tuned at C4; higher notes open the filter proportionally
     const effCutoff = (base: number, pitch: number) => {
       const trk = Math.max(0, Math.min(1, p.keytrack ?? 0.3));
@@ -364,6 +368,23 @@ const analog: InstrumentDefinition = {
         filter.frequency.setTargetAtTime(base, when + attack, decay / 3);
         setFilterResonance(filter, p.resonance ?? 1);
         filter.output.connect(amp);
+
+        // Mod matrix (ENV/LFO/VEL/PRESS -> CUTOFF/AMP) — see modmatrix.ts.
+        const mod = scheduleVoiceModMatrix(ctx, p, {
+          when,
+          stopTime,
+          velocity,
+          attack,
+          off,
+          release,
+          cutoffParam: filter.frequency,
+          cutoffBase: base,
+        });
+        liveMods.set(filter, mod);
+        if (mod?.ampNode) {
+          filter.output.disconnect(amp);
+          filter.output.connect(mod.ampNode).connect(amp);
+        }
 
         const oscs: OscillatorNode[] = [];
         const lfoNodes: OscillatorNode[] = [];
@@ -468,6 +489,8 @@ const analog: InstrumentDefinition = {
         if (latest)
           latest.onended = () => {
             liveFilters.delete(filter);
+            mod?.dispose();
+            liveMods.delete(filter);
             amp.disconnect();
             filter.disconnect();
             cleanup(voice);
@@ -498,18 +521,22 @@ const analog: InstrumentDefinition = {
       },
       polyPressure(pitch, pressure, when) {
         // Per-voice MPE pressure: matching notes open their own filter up to
-        // +50% over the keytracked base; pressure 0 restores CUTOFF.
+        // +50% over the keytracked base; pressure 0 restores CUTOFF. The mod
+        // matrix PRESS source of the same voice follows the pressure too.
         const amt = Math.max(0, Math.min(1, pressure));
         applyFilterLive((f, fpitch) => {
           if (fpitch !== pitch) return;
           const target = Math.min(20000, effCutoff(p.cutoff ?? 9000, pitch) * (1 + amt * 0.5));
           f.frequency.setTargetAtTime(target, when, 0.01);
+          liveMods.get(f)?.setPressure(amt, when);
         });
       },
       panic() {
         for (const voice of [...voices]) voice.silence(ctx.currentTime);
         voices.length = 0;
         liveFilters.clear();
+        for (const mod of liveMods.values()) mod?.dispose();
+        liveMods.clear();
       },
       dispose() {
         this.panic();
@@ -564,6 +591,7 @@ const bass: InstrumentDefinition = {
     { id: "keytrack", label: "KEY TRK", min: 0, max: 1, default: 0, format: formatPct },
     { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0, format: formatPct },
     { id: "level", label: "LEVEL", min: -24, max: 6, default: -6, unit: "dB", format: formatDb },
+    ...modMatrixParams(false),
   ],
   factory(ctx, track) {
     const output = ctx.createGain();
@@ -573,6 +601,8 @@ const bass: InstrumentDefinition = {
 
     // filter -> sounding pitch, so live CUTOFF moves respect KEYTRACK per note
     const liveFilters = new Map<ReturnType<typeof createVoiceFilter>, number>();
+    // filter -> mod matrix handle (same per-voice keying)
+    const liveMods = new Map<ReturnType<typeof createVoiceFilter>, ReturnType<typeof scheduleVoiceModMatrix>>();
     // Keytrack: CUTOFF is tuned at C4; higher notes open the filter proportionally
     const effCutoff = (base: number, pitch: number) => {
       const trk = Math.max(0, Math.min(1, p.keytrack ?? 0));
@@ -635,6 +665,23 @@ const bass: InstrumentDefinition = {
         filter.frequency.setTargetAtTime(base, when + 0.005, (0.12 + punch * 0.14) / 1);
         setFilterResonance(filter, p.resonance ?? 1.2);
         filter.output.connect(amp);
+
+        // Mod matrix (ENV/LFO/VEL/PRESS -> CUTOFF/AMP) — see modmatrix.ts.
+        const mod = scheduleVoiceModMatrix(ctx, p, {
+          when,
+          stopTime,
+          velocity,
+          attack: 0.005,
+          off,
+          release,
+          cutoffParam: filter.frequency,
+          cutoffBase: base,
+        });
+        liveMods.set(filter, mod);
+        if (mod?.ampNode) {
+          filter.output.disconnect(amp);
+          filter.output.connect(mod.ampNode).connect(amp);
+        }
 
         if ((p.movement ?? 0) > 0.005) {
           const lfo = ctx.createOscillator();
@@ -721,6 +768,8 @@ const bass: InstrumentDefinition = {
         if (last)
           last.onended = () => {
             liveFilters.delete(filter);
+            mod?.dispose();
+            liveMods.delete(filter);
             amp.disconnect();
             filter.disconnect();
             try {
@@ -750,12 +799,14 @@ const bass: InstrumentDefinition = {
       },
       polyPressure(pitch, pressure, when) {
         // Per-voice MPE pressure: matching notes open their own filter up to
-        // +50% over the keytracked base; pressure 0 restores CUTOFF.
+        // +50% over the keytracked base; pressure 0 restores CUTOFF. The mod
+        // matrix PRESS source of the same voice follows the pressure too.
         const amt = Math.max(0, Math.min(1, pressure));
         for (const [f, fpitch] of liveFilters) {
           if (fpitch !== pitch) continue;
           const target = Math.min(20000, effCutoff(p.cutoff ?? 700, pitch) * (1 + amt * 0.5));
           f.frequency.setTargetAtTime(target, when, 0.01);
+          liveMods.get(f)?.setPressure(amt, when);
         }
       },
       noteOff(pitch, when) {
@@ -765,6 +816,8 @@ const bass: InstrumentDefinition = {
         for (const voice of [...voices]) voice.silence(ctx.currentTime);
         voices.length = 0;
         liveFilters.clear();
+        for (const mod of liveMods.values()) mod?.dispose();
+        liveMods.clear();
       },
       dispose() {
         this.panic();
@@ -1796,6 +1849,7 @@ const wavetable: InstrumentDefinition = {
     { id: "attack", label: "ATTACK", min: 0.001, max: 2, default: 0.01, unit: "s", format: formatMs },
     { id: "release", label: "RELEASE", min: 0.01, max: 4, default: 0.25, unit: "s", format: formatMs },
     { id: "level", label: "LEVEL", min: -24, max: 6, default: -6, unit: "dB", format: formatDb },
+    ...modMatrixParams(true),
   ],
   factory(ctx, track, env) {
     // Phase-2 voice-engine pilot: when the wtvoice worklet module is loaded,
@@ -1818,6 +1872,8 @@ const wavetable: InstrumentDefinition = {
     const { voices, register, cleanup, findByPitch } = makeVoiceManager(8);
     // filter -> sounding pitch, so live CUTOFF moves respect KEYTRACK per note
     const liveFilters = new Map<ReturnType<typeof createVoiceFilter>, number>();
+    // filter -> mod matrix handle (same per-voice keying)
+    const liveMods = new Map<ReturnType<typeof createVoiceFilter>, ReturnType<typeof scheduleVoiceModMatrix>>();
     // Keytrack: CUTOFF is tuned at C4; higher notes open the filter proportionally
     const effCutoff = (base: number, pitch: number) => {
       const trk = Math.max(0, Math.min(1, p.keytrack ?? 0));
@@ -2119,6 +2175,43 @@ const wavetable: InstrumentDefinition = {
           sources.push(osc);
         }
 
+        // Mod matrix (A/B routes) — graph equivalent of the worklet's
+        // per-sample routes, so the fallback path modulates identically
+        // instead of silently ignoring MOD A/B.
+        const mod = scheduleVoiceModMatrix(ctx, p, {
+          when,
+          stopTime,
+          velocity,
+          attack,
+          off,
+          release,
+          cutoffParam: filter.frequency,
+          cutoffBase: effCutoff(p.cutoff ?? 12000, pitch),
+        });
+        liveMods.set(filter, mod);
+        if (mod?.ampNode) {
+          filter.output.disconnect(amp);
+          filter.output.connect(mod.ampNode).connect(amp);
+        }
+        for (const slot of mod?.slots ?? []) {
+          if (!slot) continue;
+          // MORPH route: room-clamped crossfade wobble on every frame pair.
+          // The fallback holds one captured pair, so the worklet's ±2-pair
+          // position jump degrades to an in-pair wobble (same as M RATE).
+          const w = Math.max(-0.9, Math.min(0.9, slot.amt * 2));
+          for (const pair of pairs) {
+            const room = Math.min(blend, 1 - blend) * pair.level * 0.9;
+            if (room * Math.abs(w) < 0.0015) continue;
+            const dg = ctx.createGain();
+            dg.gain.value = w * room;
+            const dgInv = ctx.createGain();
+            dgInv.gain.value = -w * room;
+            slot.sig.connect(dg).connect(pair.a.gain);
+            slot.sig.connect(dgInv).connect(pair.b.gain);
+            morphWobbles.push({ dg, dgInv });
+          }
+        }
+
         const voice = register(
           pitch,
           stopTime,
@@ -2165,6 +2258,8 @@ const wavetable: InstrumentDefinition = {
           last.onended = () => {
             liveFilters.delete(filter);
             for (const pair of pairs) livePairs.delete(pair);
+            mod?.dispose();
+            liveMods.delete(filter);
             if (morphLfo) {
               try {
                 morphLfo.disconnect();
@@ -2219,12 +2314,14 @@ const wavetable: InstrumentDefinition = {
       },
       polyPressure(pitch, pressure, when) {
         // Per-voice MPE pressure: matching notes open their own filter up to
-        // +50% over the keytracked base; pressure 0 restores CUTOFF.
+        // +50% over the keytracked base; pressure 0 restores CUTOFF. The mod
+        // matrix PRESS source of the same voice follows the pressure too.
         const amt = Math.max(0, Math.min(1, pressure));
         for (const [f, fpitch] of liveFilters) {
           if (fpitch !== pitch) continue;
           const target = Math.min(20000, effCutoff(p.cutoff ?? 12000, pitch) * (1 + amt * 0.5));
           f.frequency.setTargetAtTime(target, when, 0.01);
+          liveMods.get(f)?.setPressure(amt, when);
         }
       },
       setSample(id) {
@@ -2240,6 +2337,8 @@ const wavetable: InstrumentDefinition = {
         voices.length = 0;
         liveFilters.clear();
         livePairs.clear();
+        for (const mod of liveMods.values()) mod?.dispose();
+        liveMods.clear();
       },
       dispose() {
         this.panic();

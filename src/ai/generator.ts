@@ -75,6 +75,9 @@ export function generatePattern(doc: ProjectDocument, options: GenerateOptions, 
 
   // Groove choice and every generation subsystem receive independent streams.
   const groove = resolveGrooveForGeneration(doc, options);
+  const effectiveKey = options.key ?? doc.key;
+  const roles = options.roles;
+  const drumsEnabled = !roles || roles.includes("drums");
 
   const generationSeed = `${options.genre}|${effectiveSeed}|${groove.id}`;
   const drumRand = forkRandom(generationSeed, "drums.core");
@@ -127,27 +130,31 @@ export function generatePattern(doc: ProjectDocument, options: GenerateOptions, 
 
   // Dice swing jitter — if _diceSwing is set, it overrides groove swing
   const effectiveSwing =
-    typeof (options as GenerateOptions & { _diceSwing?: number })._diceSwing === "number"
+    options.constraints?.allowSwing === false
+      ? 0
+      : typeof (options as GenerateOptions & { _diceSwing?: number })._diceSwing === "number"
       ? (options as GenerateOptions & { _diceSwing?: number })._diceSwing!
       : options.applyGrooveSettings || (doc.groove?.swing ?? 0) > 0
         ? 0
         : groove.swing;
 
   // Generate drum pattern
-  const { rows: rawRows, meta } = generateDrumPattern(
-    groove,
-    options,
-    drumRand,
-    {
-      variation: drumVariationRand,
-      meta: drumMetaRand,
-      swing: effectiveSwing,
-      lockedIndices,
-      prevRows: prevRowsByIndex,
-      prevMeta: prevMetaByIndex,
-    } as unknown as import("./drums").DrumRandomStreams,
-    padNames,
-  );
+  const { rows: rawRows, meta } = drumsEnabled
+    ? generateDrumPattern(
+        groove,
+        options,
+        drumRand,
+        {
+          variation: drumVariationRand,
+          meta: drumMetaRand,
+          swing: effectiveSwing,
+          lockedIndices,
+          prevRows: prevRowsByIndex,
+          prevMeta: prevMetaByIndex,
+        } as unknown as import("./drums").DrumRandomStreams,
+        padNames,
+      )
+    : { rows: [] as number[][], meta: new Map<number, Map<number, StepMeta>>() };
 
   // Map pad indices to actual pad IDs from the target drum track
   const padIdMap = new Map<number, string>();
@@ -180,7 +187,7 @@ export function generatePattern(doc: ProjectDocument, options: GenerateOptions, 
   }
 
   // Generate melodic content with scale constraints and drum-aware placement
-  const melodicParts = generateMelodicParts(options, melodyRand, doc.key, rawRows, {
+  const melodicParts = generateMelodicParts(options, melodyRand, effectiveKey, rawRows, {
     bass: bassRand,
     chord: chordRand,
     lead: leadRand,
@@ -236,10 +243,10 @@ export function generatePattern(doc: ProjectDocument, options: GenerateOptions, 
   };
 
   const outputContentHash = contentHash(canonicalizePattern(doc, pattern));
-  const roles = Array.from({ length: rawRows.length }, (_, index) => inferPadRole(padNames?.[index], index));
-  const drumQuality = measureDrumQuality(groove, rawRows, roles, options.stepCount);
+  const padRoles = Array.from({ length: rawRows.length }, (_, index) => inferPadRole(padNames?.[index], index));
+  const drumQuality = measureDrumQuality(groove, rawRows, padRoles, options.stepCount);
   const styleGate = evaluateStyleDistance(groove, rawRows, options.stepCount);
-  const melodicQuality = measureMelodicQuality(Object.values(notesRecord).flat(), options.stepCount, doc.key);
+  const melodicQuality = measureMelodicQuality(Object.values(notesRecord).flat(), options.stepCount, effectiveKey);
   return {
     ...pattern,
     generation: {

@@ -101,3 +101,35 @@ describe("ExportPanel MIDI export", () => {
     expect(anchor).toBeTruthy();
   });
 });
+
+describe("ExportPanel export policy", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("makes marker cue behavior and offline cancellation visible", () => {
+    const doc = createProjectFromTemplate("house");
+    doc.markers = [{ id: "marker-1", name: "Drop", type: "drop", tick: 0 }];
+    renderWithContext(<ExportPanel />, { services: mockServices(doc) });
+
+    const policy = screen.getByRole("note", { name: "Export policy" });
+    expect(policy).toHaveTextContent(/1 cue one-shots.*SCOREPACK.*master WAV/i);
+    expect(policy).toHaveTextContent(/CANCEL stops between stages\/encoding/i);
+  });
+
+  it("shows the video frame-granularity caveat when video is selected", () => {
+    class FakeMediaRecorder {
+      static isTypeSupported() {
+        return true;
+      }
+    }
+    vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
+
+    renderWithContext(<ExportPanel />, { services: mockServices(createProjectFromTemplate("house")) });
+    fireEvent.change(screen.getByLabelText("FORMAT"), { target: { value: "video" } });
+
+    expect(screen.getByRole("note", { name: "Export policy" })).toHaveTextContent(
+      /VIDEO: final duration is codec\/frame-granular/i,
+    );
+  });
+});

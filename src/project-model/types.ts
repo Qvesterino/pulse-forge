@@ -400,6 +400,8 @@ export interface PatternGeneration {
   inputContentHash?: string | null;
   /** UUID-free hash of the generated musical content. */
   outputContentHash?: string;
+  /** BPM selected from the intent range for this generation, when requested. */
+  resolvedBpm?: number;
   /** Canonical hash of the normalized IntentSpec used to produce this pattern. */
   intentHash?: string;
   /** JSON-safe normalized IntentSpec snapshot for provenance and reloads. */

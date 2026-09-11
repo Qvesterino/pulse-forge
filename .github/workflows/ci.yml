@@ -54,6 +54,15 @@ jobs:
       # tsc --noEmit + vite build — catches bundler-level regressions that
       # unit tests never see (dynamic imports, PWA precache, chunking).
       - run: npm run build
+      # Validate the exact production-only invariants without contacting a
+      # deployment. The real origin/token are supplied by the deployment
+      # environment, while CI uses explicit non-secret sentinels.
+      - run: npm run release:preflight
+        env:
+          NODE_ENV: production
+          CORS_ORIGIN: https://ci.invalid
+          KYX_GALLERY_PUBLIC: "1"
+          GALLERY_ADMIN_TOKEN: ci-only-preflight-token
 
   test-browser:
     name: Browser audio checks (Chromium)

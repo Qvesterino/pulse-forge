@@ -364,7 +364,7 @@ describe("Ozvena worklet entry (message port ↔ DSP core wiring)", () => {
     expect(proc.proc.isIrLoaded()).toBe(false);
   });
 
-  it("stale replies are cached but not loaded; re-selection is a free cache hit", () => {
+  it("stale replies are not armed or cached; re-selection requests a fresh payload", () => {
     const proc = freshIrProc();
     sendParam(proc, "convolution.irId", "hall");
     sendParam(proc, "convolution.irId", "cathedral"); // selection moved on while hall is in flight
@@ -375,16 +375,17 @@ describe("Ozvena worklet entry (message port ↔ DSP core wiring)", () => {
     };
     replyFactoryIr(proc, "hall"); // stale — current selection is cathedral
     expect(loads).toBe(0);
-    replyFactoryIr(proc, "cathedral");
-    expect(loads).toBe(1);
     proc.proc.loadUserIr = orig;
+    replyFactoryIr(proc, "cathedral");
+    expect(proc.proc.isIrLoaded()).toBe(true);
 
-    // Re-selecting hall must NOT re-request: the stale reply was cached and
-    // the core's provider path loads it synchronously.
+    // Re-selecting hall must request a new payload. The worklet cannot cache
+    // mutable blockSpectra safely across instances/reloads; the main thread
+    // owns the immutable spectra template and supplies a fresh ring.
     proc.port.posted.length = 0;
     sendParam(proc, "convolution.irId", "hall");
     expect(proc.proc.isIrLoaded()).toBe(true);
-    expect(proc.port.posted.some((m) => m.type === "irNeeded")).toBe(false);
+    expect(proc.port.posted.some((m) => m.type === "irNeeded" && m.irId === "hall")).toBe(true);
   });
 
   it("unknown factory ids clear the convolution instead of looping requests", () => {
@@ -568,27 +569,31 @@ describe("Ozvena worklet entry — precomputed IR spectra path", () => {
     }
   });
 
-  it("a cache hit re-selection loads synchronously without re-requesting", () => {
+  it("a re-selection requests a fresh mutable block-spectrum ring", () => {
     const proc = freshIrProc();
     sendParam(proc, "convolution.irId", "hall");
-    const { sets } = makeSets(2);
-    proc.port.onmessage?.({ data: { type: "factoryIr", irId: "hall", channels: 2, sets } });
+    const { sets: hallSets } = makeSets(2);
+    proc.port.onmessage?.({ data: { type: "factoryIr", irId: "hall", channels: 2, sets: hallSets } });
     expect(proc.proc.isIrLoaded()).toBe(true);
 
-    // Switch away and back: the provider must serve HALL's spectra from the
-    // worklet cache — no new irNeeded for hall, no wait for a reply.
-    // (Cathedral legitimately requests its own generation — nothing ever
-    // delivered it — which proves the request path is still live.)
+    // Load a different IR so the next HALL selection is a real reload rather
+    // than the core's already-loaded fast path.
     proc.port.posted.length = 0;
     sendParam(proc, "convolution.irId", "cathedral");
+    expect(proc.port.posted.some((m) => m.type === "irNeeded" && m.irId === "cathedral")).toBe(true);
+    const { sets: cathedralSets } = makeSets(2, 9);
+    proc.port.onmessage?.({ data: { type: "factoryIr", irId: "cathedral", channels: 2, sets: cathedralSets } });
+
+    proc.port.posted.length = 0;
     sendParam(proc, "convolution.irId", "hall");
-    expect(proc.proc.isIrLoaded()).toBe(true);
+    expect(proc.proc.isIrLoaded()).toBe(true); // cathedral remains audible while HALL is pending
     expect(
       proc.port.posted.some((m) => m.type === "irNeeded" && m.irId === "hall"),
-    ).toBe(false);
-    expect(
-      proc.port.posted.some((m) => m.type === "irNeeded" && m.irId === "cathedral"),
     ).toBe(true);
+
+    const { sets: hallReloadSets } = makeSets(2, 17);
+    proc.port.onmessage?.({ data: { type: "factoryIr", irId: "hall", channels: 2, sets: hallReloadSets } });
+    expect(proc.proc.isIrLoaded()).toBe(true);
   });
 
   it("the consume-once blockSpectra handover keeps re-loads correct (finite render)", () => {
@@ -598,7 +603,7 @@ describe("Ozvena worklet entry — precomputed IR spectra path", () => {
     const { sets } = makeSets(2);
     proc.port.onmessage?.({ data: { type: "factoryIr", irId: "hall", channels: 2, sets } });
     sendParam(proc, "convolution.irId", "cathedral");
-    sendParam(proc, "convolution.irId", "hall"); // cache hit: engine re-allocates rings
+    sendParam(proc, "convolution.irId", "hall"); // reload: fresh rings arrive from the main thread
 
     const out = renderImpulse(proc, 0.3);
     let nonFinite = 0;

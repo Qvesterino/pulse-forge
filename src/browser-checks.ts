@@ -5,7 +5,7 @@ import { loadCoreWorklets } from "./audio-worklets/loader";
 import { renderProject } from "./rendering/renderer";
 import { buildStemProject, STEM_GROUPS } from "./rendering/stems";
 import { encodeWav } from "./rendering/wav";
-import { createDefaultProject, normalizeProject, validateProjectShape } from "./project-model/schema";
+import { createDefaultProject, migrateProject, normalizeProject, validateProjectShape } from "./project-model/schema";
 import { TEMPLATES, createProjectFromTemplate } from "./project-model/templates";
 import { FACTORY_PRESETS } from "./presets/factory";
 import { FACTORY_ASSETS } from "./sample-library/manifest";
@@ -3418,6 +3418,56 @@ export async function runChecks(): Promise<CheckResult[]> {
     );
   } catch (error) {
     check("fxeq: real-browser suite (worklet/PDC/mix/meters/transparency/CPU)", false, String(error));
+  }
+
+  // PRISM export determinism: exercise the actual browser AudioWorklet path,
+  // then round-trip the project through the same JSON/migration boundary used
+  // by project import. Stable project/track/effect IDs must reproduce the same
+  // host-derived seed for both PRISM instances after the reload equivalent.
+  try {
+    const doc = createProjectFromTemplate("house");
+    doc.id = "browser-prism-determinism";
+    const track = doc.tracks.find((candidate): candidate is InstrumentTrack => candidate.kind === "instrument");
+    if (!track) throw new Error("house template has no instrument track");
+    const prismParams = {
+      ...defaultParamsOf("fxeq"),
+      bandCount: 2,
+      globalMix: 100,
+      limiterEnabled: 0,
+      "band1.lofiEnabled": 1,
+      "band1.lofiMode": 3,
+      "band1.lofiAmount": 100,
+      "band1.lofiMix": 100,
+      "band2.lofiEnabled": 1,
+      "band2.lofiMode": 3,
+      "band2.lofiAmount": 100,
+      "band2.lofiMix": 100,
+    };
+    track.effects = [
+      { id: "browser-prism-a", type: "fxeq", bypassed: false, params: { ...prismParams } },
+      { id: "browser-prism-b", type: "fxeq", bypassed: false, params: { ...prismParams } },
+    ];
+    const restored = migrateProject(JSON.parse(JSON.stringify(doc)));
+    const [first, afterReload] = await Promise.all([
+      renderProject(doc, bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0.2 }),
+      renderProject(restored, bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0.2 }),
+    ]);
+    let maxDiff = 0;
+    const sameShape = first.numberOfChannels === afterReload.numberOfChannels && first.length === afterReload.length;
+    if (sameShape) {
+      for (let ch = 0; ch < first.numberOfChannels; ch++) {
+        const a = first.getChannelData(ch);
+        const b = afterReload.getChannelData(ch);
+        for (let i = 0; i < a.length; i++) maxDiff = Math.max(maxDiff, Math.abs(a[i] - b[i]));
+      }
+    }
+    check(
+      "prism: two browser worklet instances stay deterministic after JSON reload",
+      sameShape && maxDiff <= 1e-5,
+      `sameShape=${sameShape} maxDiff=${maxDiff.toExponential(2)} length=${first.length}`,
+    );
+  } catch (error) {
+    check("prism: two browser worklet instances stay deterministic after JSON reload", false, String(error));
   }
 
   return results;

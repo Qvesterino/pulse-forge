@@ -32,11 +32,27 @@ export interface GrooveData {
 }
 
 /** User-facing generation options */
+export type GenerationRole = "drums" | "bass" | "chords" | "lead";
+
+export interface GenerationConstraints {
+  preserveAnchors: boolean;
+  allowGhosts: boolean;
+  allowSwing: boolean;
+}
+
 export interface GenerateOptions {
   genre: "house" | "techno" | "trap" | "ambient";
   style?: string;
   seed: string;
   stepCount: number;
+  /** Explicit key binding. Null means use the project's key, if any. */
+  key?: import("../project-model/types").MusicalKey | null;
+  /** Requested BPM range. Null/undefined leaves the project BPM unchanged. */
+  bpmRange?: [number, number] | null;
+  /** Enabled semantic output roles. Omitted means all roles for backwards compatibility. */
+  roles?: readonly GenerationRole[];
+  /** Hard generation constraints. Omitted means the legacy permissive defaults. */
+  constraints?: GenerationConstraints;
   ghostWeight: number;
   microWeight: number;
   velocityVariation: number;

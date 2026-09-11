@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildBounceZoneDoc } from "../src/rendering/bounce";
 import { createDefaultProject } from "../src/project-model/schema";
 import { addAudioClip, createScene } from "../src/commands/commands";
-import { BAR_TICKS } from "../src/project-model/types";
+import { BAR_TICKS, PPQ } from "../src/project-model/types";
 
 describe("buildBounceZoneDoc", () => {
   it("throws when the zone has no content", () => {
@@ -46,6 +46,27 @@ describe("buildBounceZoneDoc", () => {
     expect(clip.startBar).toBe(0);
     expect(clip.lengthBars).toBe(4);
     expect(clip.offsetSec).toBeCloseTo(2 * BAR_TICKS * (60 / (doc.bpm * 480)), 4);
+  });
+
+  it("uses the owning scene BPM for head trim and preserves stretch source-time semantics", () => {
+    let doc = createDefaultProject();
+    const scene = doc.scenes[0];
+    doc = {
+      ...doc,
+      scenes: doc.scenes.map((candidate) => (candidate.id === scene.id ? { ...candidate, bpm: 62 } : candidate)),
+      arrangement: {
+        ...doc.arrangement,
+        clips: [{ id: "scene-tempo", sceneId: scene.id, startBar: 0, lengthBars: 8 }],
+      },
+    };
+    doc = addAudioClip(doc, doc.tracks[0].id, "factory.kick.deep", 0, 8, { stretchRate: 2 }).execute(doc);
+
+    const bounced = buildBounceZoneDoc(doc, [doc.tracks[0].id], { startBar: 2, lengthBars: 4 });
+    const clip = bounced.arrangement.audioClips![0];
+    // offsetSec remains in original source seconds. The renderer will apply
+    // stretchRate when indexing the pre-stretched buffer later.
+    expect(clip.offsetSec).toBeCloseTo(2 * BAR_TICKS * (60 / (62 * PPQ)), 4);
+    expect(clip.stretchRate).toBe(2);
   });
 
   it("filters tracks to the selection plus parent groups", () => {

@@ -123,6 +123,58 @@ describe("fxeq-core seeded module streams", () => {
   });
 });
 
+describe("fxeq-core host-seeded render determinism", () => {
+  const render = (seed: number): Float32Array[] => {
+    const proc = createFxEqProcessor(
+      {
+        bandCount: 2,
+        globalMix: 100,
+        limiterEnabled: 0,
+        "band1.lofiEnabled": 1,
+        "band1.lofiMode": 3,
+        "band1.lofiAmount": 100,
+        "band1.lofiMix": 100,
+        "band2.lofiEnabled": 1,
+        "band2.lofiMode": 3,
+        "band2.lofiAmount": 100,
+        "band2.lofiMix": 100,
+      },
+      { seed },
+    );
+    proc.prepare(SR, 2, BLOCK);
+
+    const left = new Float32Array(BLOCK);
+    const right = new Float32Array(BLOCK);
+    const output: Float32Array[] = [];
+    let inputSeed = 0x13579bdf;
+    for (let block = 0; block < 24; block++) {
+      for (let i = 0; i < BLOCK; i++) {
+        inputSeed ^= inputSeed << 13;
+        inputSeed ^= inputSeed >>> 17;
+        inputSeed ^= inputSeed << 5;
+        const sample = ((inputSeed >>> 0) / 0x100000000) * 0.6 - 0.3;
+        left[i] = sample;
+        right[i] = -sample;
+      }
+      proc.process([left, right], BLOCK);
+      output.push(Float32Array.from(left), Float32Array.from(right));
+    }
+    return output;
+  };
+
+  it("reproduces a multi-instance export exactly for the same project seed", () => {
+    const first = render(0x2468ace0);
+    const second = render(0x2468ace0);
+    expect(second).toEqual(first);
+  });
+
+  it("changes the intentional noise stream when the render seed changes", () => {
+    const first = render(0x2468ace0);
+    const second = render(0x13579bdf);
+    expect(second).not.toEqual(first);
+  });
+});
+
 describe("fxeq-core band engine M/S scratch (prepare-time allocation)", () => {
   it("M/S round-trip reconstructs the input when all modules are bypassed", () => {
     const engine = createBandEngine();

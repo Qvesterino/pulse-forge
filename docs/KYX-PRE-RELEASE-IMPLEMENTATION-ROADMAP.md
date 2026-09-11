@@ -1,7 +1,7 @@
 # KYX — pre-release implementation roadmap
 
 **Status:** agent-ready roadmap + live execution snapshot (not a release approval)  
-**Dátum:** 2026-09-10  
+**Dátum:** 2026-09-11
 **Produkt:** KYX browser-first beatmaking DAW  
 **Cieľ:** dostať KYX do stavu, v ktorom nový používateľ vytvorí beat, vyberie zvuk, spracuje ho cez pluginy, zrozumiteľne ho zmixuje a bezpečne exportuje bez straty práce, nečakaných level skokov alebo nejasného workflow.
 
@@ -19,31 +19,63 @@ Nasledujúce časti roadmapy už boli v tomto pracovnom strome implementované a
 - collab room/connection/message limity, pending-upgrade reservations, CORS allowlist, health metrics a bounded REST payload response,
 - video sub-second export policy a soft-knee float WAV sanitizácia pre 24/32-bit export,
 - KYX/PRISM/VLYX/VØID user-facing branding pass s ponechanými internými compatibility IDs,
+- nové project exporty používajú verejnú príponu `.kyx.json`; legacy `.pulseforge.json`
+  ostáva podporované pri importe,
 - explicitný host seed pre PRISM/FXEQ s rovnakou hodnotou v live/offline chain,
 - VLYX upstream hardening: Sculptor sparse-spectrum guard, stereo T/S isolation,
   crossover re-prepare invalidation a Phase Time Shift dry/delta capacity,
+- VLYX Mix Assist/Reference Match host-side worker with transferable audio,
+  explicit cancellation and recoverable worker errors,
+- SCOREPACK export uses the shared abort controller and cancels cleanly at
+  stage boundaries,
+- VLYX loudness analysis now uses sample-rate-derived 400 ms integration
+  blocks while retaining the documented simplified K-weighting model,
+- VØID true-stereo factory IR layout now interleaves LL/LR/RL/RR correctly;
+  factory IR spectra are cached on the main thread while each delivery gets a
+  fresh mutable convolver ring,
+- VØID pre-delay reserves its complete supported range during `prepare()`;
+  live delay/tempo changes no longer resize or copy audio buffers from the
+  render path,
+- persistence failure paths now surface retryable errors: frozen-audio saves
+  cannot silently claim durability, library actions keep optimistic session
+  state while reporting IndexedDB failure, and snapshot list/rebuild skips
+  isolated unreadable rows,
 - zjednotený A/B controller pre PRISM/VLYX/VØID shell s undo-preserving recall,
 - gallery report/delete moderation flow s rate-limitom, admin auth a privacy policy,
+- server-side moderation DELETE limiter, bounded per-IP limiter state a
+  production CORS fail-fast guard,
+- `release:preflight` overuje production CORS config, voliteľný gallery admin
+  token, KYX manifest a všetky tri shipped worklety pred deployom,
 - regression tests pre každý z vyššie uvedených kontraktov.
+- Intent Engine binding pre key/BPM/role constraints, deterministicý local
+  provider s repair/fallback diagnostics a provenance v generation metadata.
 
 Overené príkazy a výsledky:
 
 | Gate                                                       | Výsledok                                                 |
 | ---------------------------------------------------------- | -------------------------------------------------------- |
 | `npm run typecheck:clean`                                  | PASS                                                     |
-| `npm run build` + worklet buildy + bundle budget           | PASS — entry 873 KB / 995 KB, total JS 1668 KB / 2400 KB |
+| full Vitest (`npm test`, default isolated workers)          | PASS — 2064 passed / 0 failed / 101 skipped, 205 files   |
+| `npm run build` + worklet buildy + bundle budget           | PASS — entry 893 KB / 995 KB, total JS 1712 KB / 2400 KB |
 | `npm run build:ultina`                                     | PASS — rebuilt `public/ultina-worklet.js`                |
-| `npm run test:browser`                                     | PASS — 197/197 checks                                    |
-| PRISM/FXEQ + VLYX targeted Vitest suite                    | PASS — 124/124 tests                                     |
+| `npm run test:browser`                                     | PASS — 198/198 Chromium; 198/198 Edge                   |
+| `npm run release:preflight`                                | PASS — explicit production-origin/config + KYX artifacts |
+| PRISM/FXEQ + VLYX targeted Vitest suite                    | PASS — 126/126 tests                                     |
 | upstream Ultina affected suite                             | PASS — 104/104 tests                                     |
+| VLYX analysis worker client suite                          | PASS — 4/4 tests                                         |
+| persistence failure/recovery targeted suite                | PASS — 28 passed / 1 skipped                             |
+| VØID upstream/pre-delay + factory-IR hardening              | PASS — 49/49 targeted upstream tests; 72/72 host/worklet tests |
 | affected post-fix suites (`services-close-race`, `TopBar`) | PASS — 20/20 tests                                       |
 | scoped Prettier + `git diff --check`                       | PASS                                                     |
 
-Historický kompletný Vitest beh pred poslednými mikro-opravami mal 2 zlyhané súbory; príčinou boli close-race mocky bez audition hooku a stale branding assertion. Obe príčiny majú opravy a zasiahnuté testy sú zelené. Po poslednom upstream VLYX syncu je pre release vhodné zopakovať full Vitest beh, ak CI časový budget dovolí; aktuálne je pokrytý cieleným KYX + upstream suite.
+Aktuálny kompletný `npm test` beh na quiescent pracovnom strome prešiel bez failu: 205 súborov, 2064 passed, 0 failed, 101 skipped (2165 total; približne 5 minút). Historické close-race/stale-branding flakey príčiny sú opravené; zámerné stderr z recovery testov, jsdom canvas a test-only act warnings nie sú production errors. Režim `singleFork` nie je validný release runner pre UI suite, pretože zdieľaný jsdom proces kontaminuje ďalšie testy.
 
-`npm run format:check` na celom historickom strome je stále červený kvôli 188 existujúcim formatting deviations mimo tohto passu. Pred release treba buď vykonať samostatný formatting-only cleanup, alebo tento presný zoznam explicitne akceptovať v CI gate; nesmie sa to maskovať zmenou scope checku.
+`npm run format:check` na celom historickom strome je stále červený kvôli 199 existujúcim formatting deviations mimo tohto passu. Presný, command-generated zoznam je v [`docs/FORMAT-CHECK-DEVIATIONS.md`](./FORMAT-CHECK-DEVIATIONS.md). Pred release treba buď vykonať samostatný formatting-only cleanup, alebo tento zoznam explicitne akceptovať v CI gate; nesmie sa to maskovať zmenou scope checku.
 
-Ešte povinné pred verejným deployom: manuálny Firefox/Safari/iOS smoke, reálne audio zariadenia, produkčný CORS origin, deploy/server health check a end-to-end refresh/tab-close recovery na produkčnom hoste.
+Ešte povinné pred verejným deployom: manuálny Firefox/Safari/iOS smoke podľa
+[`docs/KYX-MANUAL-RELEASE-CHECKLIST.md`](./KYX-MANUAL-RELEASE-CHECKLIST.md),
+reálne audio zariadenia, produkčný CORS origin, deploy/server health check a
+end-to-end refresh/tab-close recovery na produkčnom hoste.
 
 ## 1. Verejná terminológia
 
@@ -67,6 +99,7 @@ Pred začiatkom práce si agent overí stav priamo v kóde. Relevantné source-o
 - spoločné plugin ovládanie: `src/ui/EffectAbControls.tsx`, `src/ui/ModPanel.tsx`, `src/ui/MacroPerformanceBar.tsx`,
 - nástroje a mixer: `src/ui/Mixer.tsx`, `src/ui/Sequencer.tsx`, `src/ui/DiceTray.tsx`, `src/ui/AssistPanel.tsx`, `src/ui/ArrangementPanel.tsx`,
 - audio runtime: `src/audio-engine/AudioEngine.ts`, `src/services.ts`, `src/rendering/bounce.ts`, `src/rendering/wav.ts`,
+- VLYX analysis host bridge: `src/analysis/ultinaAnalysisClient.ts`, `src/analysis/ultinaAnalysisWorker.ts`,
 - persistence a recovery: `src/persistence/`, `src/export/project-io.ts`, `src/export/scorepack.ts`,
 - collaboration/backend: `src/collab/`, `server/collab-server.mjs`,
 - testy: `tests/` a browser smoke testy v konfigurácii projektu.
@@ -107,22 +140,26 @@ Každý agent ich musí dodržať:
 
 Tieto body majú prednosť pred polishom. Ak niektorý P0 zlyháva, release sa nepovažuje za bezpečný.
 
-- [ ] deterministický PRISM/FXEQ export,
-- [ ] odstránenie potvrdených VLYX DSP regresií,
-- [ ] hardening VØID IR/pre-delay runtime allocations,
-- [ ] export clipping/tempo/marker policy,
-- [ ] ne-deštruktívny preset audition pre nástroje,
-- [ ] konzistentný A/B a gain-match kontrakt,
-- [ ] recovery, reload a export/import smoke.
+- [x] deterministický PRISM/FXEQ export (core, host seed aj browser
+  `serialize → reload → offline bounce`; 198/198 Chromium gate),
+- [x] odstránenie potvrdených VLYX DSP regresií (upstream → vendor → worklet),
+- [x] hardening VØID IR/pre-delay runtime allocations; reálne device footprint
+  meranie ostáva manuálny release krok,
+- [x] export clipping/tempo/marker policy; zámerné residuals sú v §6.4 a
+  `KNOWN_LIMITATIONS.md`,
+- [x] ne-deštruktívny preset audition pre nástroje,
+- [x] konzistentný A/B a gain-match kontrakt,
+- [x] recovery, reload a export/import smoke v automatizovanom Chromium flow;
+  tab-close/production-host recovery ostáva manuálny release krok.
 
 ### P1 — najväčší UX dopad
 
-- [ ] Simple/Advanced instrument workflow,
-- [ ] jednotný plugin shell a focus/keyboard správanie,
-- [ ] mixer metering, clip feedback a batch operácie,
-- [ ] DICE → preview → lock → vary → arrange flow,
-- [ ] Beat Focus session/shortcut polish,
-- [ ] verejná branding konzistencia a release documentation.
+- [x] Simple/Advanced instrument workflow,
+- [x] jednotný plugin shell a focus/keyboard správanie,
+- [x] mixer metering, clip feedback a batch operácie,
+- [x] DICE → preview → lock → vary → arrange flow,
+- [x] Beat Focus session/shortcut polish,
+- [x] verejná branding konzistencia a release documentation.
 
 ### P2 — po release alebo iba ak neohrozuje P0/P1
 
@@ -198,6 +235,18 @@ Overiť v Chromium/Edge a následne manuálne vo Firefox, Safari a iOS Safari:
 - test pokrýva reload, export a viacero súčasných PRISM inštancií,
 - bundle budget sa nezvýši mimo existujúceho limitu.
 
+#### Evidence v aktuálnom pracovnom strome
+
+- [x] všetky identifikované stateful PRISM random streams používajú deterministický
+  default alebo explicitný host seed,
+- [x] `AudioEngine` odvodzuje seed stabilne z projektu, ownera a FX identity a
+  `fxeqNode` ho forwardingom pošle do workletu,
+- [x] core regression pokrýva reset, rovnaký seed pri viacerých inštanciách a
+  zámernú odlišnosť pri inom seed; rack contract pokrýva seed forwarding,
+- [x] browser-level test `serialize → reload → offline bounce` beží v
+  `src/browser-checks.ts`; dve PRISM worklet inštancie po JSON/migration
+  round-tripe ostali pod max-sample toleranciou `1e-5` (Chromium gate 198/198).
+
 ### 6.2 VLYX upstream kvalita
 
 **Owner:** VLYX/DSP agent  
@@ -209,14 +258,15 @@ Overiť v Chromium/Edge a následne manuálne vo Firefox, Safari a iOS Safari:
 - [x] Transient/Sustain neprepúšťa stereo L do R,
 - [x] reprepare existujúcej inštancie neresetuje LR4 crossover do identity,
 - [x] Phase Time Shift nad približne 4 ms správne kompenzuje dry/wet a delta,
-- [ ] mix assist/reference match analýza stále nesmie blokovať main thread pri dlhšom materiáli.
+- [x] mix assist/reference match analýza beží v host-side workeri, takže dlhší materiál neblokuje main thread; UI má busy/cancel/error stav.
+- [x] loudness integration používa sample-rate-derived 400 ms bloky.
 
 #### Akceptačné kritériá
 
 - štyri vyriešené DSP regresie majú upstream test, host regression test a nový
   vendored/worklet artefact,
 - live/offline parity je overená na krátkom aj dlhšom fixture,
-- analysis progress/cancel/failure stav je viditeľný v UI a neblokuje editor,
+- analysis busy/cancel/failure stav je viditeľný v UI a neblokuje editor,
 - pri nedostupnom upstream repozitári agent nahlási blocker; nesmie patchovať vendored core ako skratku.
 
 ### 6.3 VØID runtime hardening
@@ -226,11 +276,14 @@ Overiť v Chromium/Edge a následne manuálne vo Firefox, Safari a iOS Safari:
 
 #### Implementácia
 
-- zmerať IR loading a pre-delay resize na reálnych browser zariadeniach,
-- odstrániť alebo obmedziť audio-thread partition FFT allocation/copy,
-- pre-delay buffer zväčšovať mimo kritickej audio callback cesty alebo bezpečne pred pripravením playbacku,
-- pridať loading/ready/error stav pre IR bez falošného dojmu, že efekt je aktívny,
-- overiť bypass, reload, viac VØID inštancií a offline render.
+- [ ] zmerať IR loading a pripravený pre-delay footprint na reálnych browser zariadeniach,
+- [x] odstrániť audio-thread partition FFT allocation/copy; generovanie aj
+  partition FFT batch bežia na hoste a worklet dostáva transferované spektrá,
+- [x] pre-delay buffer je rezervovaný pri `prepare()` pre celý podporovaný
+  rozsah; parameter/tempo zmeny už nerastú v audio callback ceste,
+- [x] pridať loading/ready/error stav pre IR bez falošného dojmu, že efekt je aktívny,
+- [x] automaticky overiť bypass, reload, viac VØID delivery ciest a offline
+  render; manuálna cross-browser/device QA ostáva release gate.
 
 #### Akceptácia
 
@@ -250,6 +303,14 @@ Vyriešiť alebo explicitne uzavrieť:
 - marker cue one-shot policy v master WAV (buď podporiť, alebo jasne dokumentovať v export UI),
 - zrušenie offline stage renderu bez zamrznutia UI,
 - video export kratší ako jedna sekunda.
+
+Aktuálny stav: head-trim, `stretchRate`, sample-rate/bit-depth policy a deterministicý
+render sú pokryté testami. Marker cue one-shoty zostávajú zámerne mimo master WAV,
+ale `ExportPanel` pred exportom zobrazuje, že patria do SCOREPACK. Master/stem/track
+offline render a scorepack jednotlivé render stage sa stále nedajú prerušiť
+uprostred `OfflineAudioContext`; scorepack však po novom rešpektuje CANCEL medzi
+stages a počas manifest/ZIP fázy. Panel vysvetľuje túto hranicu aj
+frame-granularitu video kontajnera.
 
 Akceptácia: export zložitého projektu má stabilný duration, sample rate, tempo boundary, peak policy a reprodukovateľný výsledok. Každá zámerná strata informácie je viditeľná používateľovi pred exportom.
 
@@ -451,15 +512,17 @@ Akceptácia: používateľ vie generovať nápady bez strachu, že stratí dobr�
 
 ### Collaboration/server hardening
 
-Súčasný `server/collab-server.mjs` je jednoduchý in-memory server bez auth, s file-backed gallery a základným IP rate limitingom. Pred verejným launchom preveriť:
+Súčasný `server/collab-server.mjs` je jednoduchý in-memory server bez auth, s file-backed gallery a IP rate limitingom. Pred verejným launchom preveriť:
 
 - limit počtu roomov a connections,
 - limit veľkosti message/payload a bezpečné JSON parse failure,
 - idle TTL a cleanup, aby memory rástla pod kontrolou,
-- rate limit pre publish/play/report/delete operácie,
+- rate limit pre publish/play/report/delete operácie; limiter nesmie rásť
+  bez hranice pri nových IP adresách,
 - observability: structured error log, room count, connection count, rejected payload count,
 - gallery moderation/report/delete flow a privacy text,
-- CORS/origin policy pre produkčné domény.
+- CORS/origin policy pre produkčné domény; pri `NODE_ENV=production` alebo
+  `enforceProductionConfig: true` wildcard CORS odmietnuť už pri štarte.
 
 Neimplementovať účet, persistentnú DB ani veľký backend rewrite bez samostatného product/security rozhodnutia. Ak launch nemá verejnú collaboration/gallery, najprv feature vypnúť alebo držať za jasným feature flagom.
 

@@ -1,5 +1,5 @@
 import "fake-indexeddb/auto";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SnapshotRepository } from "../src/persistence/SnapshotRepository";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { openDb, STORE_SNAPSHOTS, STORE_SNAPSHOT_INDEX } from "../src/persistence/db";
@@ -192,5 +192,37 @@ describe("SnapshotRepository — D.4 secondary index", () => {
       req.onerror = () => reject(req.error);
     });
     expect(indexCount).toBe(1);
+  });
+
+  it("skips one unreadable record instead of failing the whole history listing", async () => {
+    const doc = freshProject("Partial read");
+    const first = await repo.save("projA", doc, "first");
+    const second = await repo.save("projA", doc, "second");
+    // Prime the in-memory index, then simulate a transient failure for one
+    // primary-row read. list() must still return the healthy snapshot.
+    await repo.list("projA", 1000);
+    const originalGet = repo.get.bind(repo);
+    vi.spyOn(repo, "get").mockImplementation(async (id) => {
+      if (id === first.id) throw new Error("transient row read failure");
+      return originalGet(id);
+    });
+
+    const result = await repo.list("projA", 1000);
+    expect(result.map((snapshot) => snapshot.id)).toEqual([second.id]);
+  });
+
+  it("rebuilds around a poisoned indexed row after a reload", async () => {
+    const doc = freshProject("Reload partial read");
+    const first = await repo.save("projA", doc, "first");
+    const second = await repo.save("projA", doc, "second");
+    const reloaded = new SnapshotRepository();
+    const originalGet = reloaded.get.bind(reloaded);
+    vi.spyOn(reloaded, "get").mockImplementation(async (id) => {
+      if (id === first.id) throw new Error("poisoned snapshot");
+      return originalGet(id);
+    });
+
+    const result = await reloaded.list("projA", 1000);
+    expect(result.map((snapshot) => snapshot.id)).toEqual([second.id]);
   });
 });

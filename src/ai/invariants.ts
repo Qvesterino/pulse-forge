@@ -1,6 +1,6 @@
 import { canonicalizePattern, contentHash } from "./evaluation";
 import { isInScale } from "../project-model/scales";
-import { STEP_TICKS, type Pattern, type ProjectDocument } from "../project-model/types";
+import { STEP_TICKS, type MusicalKey, type Pattern, type ProjectDocument } from "../project-model/types";
 
 export type PatternInvariantCode =
   | "row-length"
@@ -46,7 +46,7 @@ function issue(issues: PatternInvariantIssue[], code: PatternInvariantCode, path
 export function inspectPatternInvariants(
   doc: ProjectDocument,
   pattern: Pattern,
-  options: { checkScale?: boolean } = {},
+  options: { checkScale?: boolean; key?: MusicalKey | null } = {},
 ): PatternInvariantReport {
   const issues: PatternInvariantIssue[] = [];
   const stepCount = pattern.stepCount;
@@ -75,6 +75,7 @@ export function inspectPatternInvariants(
     });
   }
 
+  const scaleKey = options.key ?? doc.key;
   for (const [trackId, notes] of Object.entries(pattern.notes ?? {})) {
     if (!instrumentIds.has(trackId))
       issue(issues, "note-track", `notes.${trackId}`, "notes reference a non-instrument track");
@@ -92,8 +93,8 @@ export function inspectPatternInvariants(
       if (!Number.isFinite(note.velocity) || note.velocity < 0 || note.velocity > 1) {
         issue(issues, "note-velocity", `${path}.velocity`, "velocity must be finite and within 0..1");
       }
-      if (options.checkScale && doc.key && Number.isInteger(note.pitch) && !isInScale(note.pitch, doc.key)) {
-        issue(issues, "note-scale", `${path}.pitch`, `${note.pitch} is outside ${doc.key}`);
+      if (options.checkScale && scaleKey && Number.isInteger(note.pitch) && !isInScale(note.pitch, scaleKey)) {
+        issue(issues, "note-scale", `${path}.pitch`, `${note.pitch} is outside ${scaleKey}`);
       }
     }
   }

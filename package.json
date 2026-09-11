@@ -13,6 +13,7 @@
     "ai:baseline:browser": "node scripts/ai-baseline-browser.mjs",
     "ai:performance": "vite-node scripts/ai-performance.mts",
     "test:browser": "node scripts/verify-browser.mjs",
+    "release:preflight": "node scripts/release-preflight.mjs",
     "preview": "vite preview",
     "collab": "node server/collab-server.mjs",
     "format": "prettier --write src tests",

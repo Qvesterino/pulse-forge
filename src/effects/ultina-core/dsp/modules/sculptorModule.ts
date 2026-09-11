@@ -358,13 +358,23 @@ export class SculptorModuleProcessor implements UltinaModuleProcessor {
       };
     }
     const m = this.pooledMeters;
+    // The pooled object is allocated with all three curve buffers; guard
+    // anyway so TS narrowing holds (contract types are nullable).
+    if (!m.bandLevelDb || !m.spectralCurveDb || !m.targetCurveDb) {
+      m.bandLevelDb = new Float32Array(NUM_BANDS);
+      m.spectralCurveDb = new Float32Array(NUM_BANDS);
+      m.targetCurveDb = new Float32Array(NUM_BANDS);
+    }
+    const bandLevelDb = m.bandLevelDb;
+    const spectralCurveDb = m.spectralCurveDb;
+    const targetCurveDb = m.targetCurveDb;
     // POOLED snapshot (audio thread — getMeters runs at meter cadence inside
     // UltinaProcessor.getMeters). The next call overwrites every field;
     // postMessage clones, direct readers must copy immediately.
     // Convert envelope followers to dB for band level display
     let totalActiveGain = 0;
     for (let b = 0; b < NUM_BANDS; b++) {
-      m.bandLevelDb[b] = linearToDb(Math.max(1e-10, this.envFollowers[b]));
+      bandLevelDb[b] = linearToDb(Math.max(1e-10, this.envFollowers[b]));
       totalActiveGain += Math.abs(this.smoothedGainDb[b]);
     }
     // amountActive: 0-1 normalized by theoretical max (all bands at max correction)
@@ -373,8 +383,8 @@ export class SculptorModuleProcessor implements UltinaModuleProcessor {
       0,
       1,
     );
-    m.spectralCurveDb.set(this.currentSpectralCurve);
-    m.targetCurveDb.set(this.currentTargetCurve);
+    spectralCurveDb.set(this.currentSpectralCurve);
+    targetCurveDb.set(this.currentTargetCurve);
     return m;
   }
 

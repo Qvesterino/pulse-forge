@@ -74,9 +74,6 @@ export class MaskingMeter {
   private scBuf: Float32Array = new Float32Array(0);
   private sampleRate = 48000;
 
-  /** Per-sample smoothing coefficient for envelope tracking. */
-  private smoothCoef = 0.01;
-
   /** Pooled result — analyze() runs per audio block on the audio thread;
    * consumers (eqModule) copy out what they need immediately. */
   private readonly pooledResult: MaskingResult = {
@@ -90,7 +87,6 @@ export class MaskingMeter {
     this.sampleRate = sampleRate;
     this.mainBuf = new Float32Array(maxBlockSize);
     this.scBuf = new Float32Array(maxBlockSize);
-    this.smoothCoef = 1 - Math.exp(-1 / ((50 / 1000) * sampleRate));
     // Fresh filters must not inherit stale envelopes from a previous
     // prepare() — reset() is the single source of truth for state.
     this.reset();

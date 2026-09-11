@@ -85,6 +85,8 @@ export interface GenerationPlan {
     }
   >;
   constraints: IntentConstraints;
+  /** Optional BPM chosen from the resolved groove/request range. */
+  resolvedBpm: number | null;
   subSeeds: {
     groove: string;
     drumsCore: string;
@@ -112,12 +114,15 @@ export interface GenerationDiagnostics {
   warnings: string[];
   repairs: string[];
   errors: string[];
+  fallbackReason?: string;
   quality?: PatternGeneration["quality"];
 }
 
 export interface GenerationProposal {
   pattern: Pattern;
   diagnostics: GenerationDiagnostics;
+  /** Provider truth: the quality-gate outcome for this proposal. */
+  status?: GenerationStatus;
 }
 
 export interface GenerationResult {

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { buildZip } from "../src/export/zip";
+import { buildScorepack } from "../src/export/scorepack";
+import { SampleBank } from "../src/sample-library/factory";
+import { createProjectFromTemplate } from "../src/project-model/templates";
 
 describe("ZIP encoder", () => {
   it("produces a valid ZIP file with correct structure", async () => {
@@ -51,5 +54,16 @@ describe("ZIP encoder", () => {
     const view = new DataView(ab);
     const crc = view.getUint32(14, true);
     expect(crc).toBe(0xf7d18982);
+  });
+});
+
+describe("scorepack export cancellation", () => {
+  it("honors an already-aborted signal before the first offline render", async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      buildScorepack(createProjectFromTemplate("house"), new SampleBank(), undefined, controller.signal),
+    ).rejects.toMatchObject({ name: "AbortError" });
   });
 });

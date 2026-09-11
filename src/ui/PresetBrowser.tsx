@@ -51,14 +51,13 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
 
   // Quota/private-browsing failures must surface in the UI instead of dying
   // as unhandled rejections behind a `void`ed promise.
-  const guard = useCallback(
-    (action: () => Promise<void>): Promise<void> =>
-      action().catch((err) => {
-        console.error("[PresetBrowser] operation failed:", err);
-        setSaveError(err instanceof Error ? err.message : "Storage operation failed");
-      }),
-    [],
-  );
+  const guard = useCallback((action: () => Promise<void>): Promise<void> => {
+    setSaveError(null);
+    return action().catch((err) => {
+      console.error("[PresetBrowser] operation failed:", err);
+      setSaveError(err instanceof Error ? err.message : "Storage operation failed");
+    });
+  }, []);
 
   const refreshUserPresets = useCallback(() => {
     services.core.presets
@@ -97,7 +96,9 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
     services.engine.stopPreview();
     setPreviewingPresetId(null);
     services.store.execute(applyInstrumentPreset(doc, track.id, preset));
-    void services.library.recordPreset(preset.id);
+    void guard(async () => {
+      await services.library.recordPreset(preset.id);
+    });
   };
 
   const preview = (preset: InstrumentPreset) => {
@@ -171,11 +172,12 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
           <button type="button" className="btn btn-small" onClick={() => void guard(saveCurrent)}>
             OK
           </button>
-          {saveError && (
-            <span className="preset-save-error" role="alert">
-              {saveError}
-            </span>
-          )}
+        </div>
+      )}
+
+      {saveError && (
+        <div className="preset-save-error" role="alert" aria-live="polite">
+          {saveError}
         </div>
       )}
 
@@ -279,7 +281,9 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
               aria-pressed={library.favoritePresets.includes(preset.id)}
               onClick={(event) => {
                 event.stopPropagation();
-                void services.library.togglePresetFavorite(preset.id);
+                void guard(async () => {
+                  await services.library.togglePresetFavorite(preset.id);
+                });
               }}
             >
               {library.favoritePresets.includes(preset.id) ? "♥" : "♡"}

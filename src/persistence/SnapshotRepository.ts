@@ -86,16 +86,11 @@ export class SnapshotRepository {
     // the secondary index. The index is the source of truth for
     // list() / prune() / delete() in this implementation; the IDB
     // copy is only consulted by rebuildIndex() (post-restart).
-    await tx(
-      db,
-      [STORE_SNAPSHOTS, STORE_SNAPSHOT_INDEX] as const,
-      "readwrite",
-      (stores) => {
-        stores[STORE_SNAPSHOTS].put(snapshot);
-        stores[STORE_SNAPSHOT_INDEX].put(snapshot.id, `${projectId}:${String(seq).padStart(10, "0")}`);
-        return;
-      },
-    );
+    await tx(db, [STORE_SNAPSHOTS, STORE_SNAPSHOT_INDEX] as const, "readwrite", (stores) => {
+      stores[STORE_SNAPSHOTS].put(snapshot);
+      stores[STORE_SNAPSHOT_INDEX].put(snapshot.id, `${projectId}:${String(seq).padStart(10, "0")}`);
+      return;
+    });
     // Defect D.4: update the in-memory index in lockstep with the
     // durable write. If the durable write throws, the in-memory
     // map is never updated.
@@ -123,8 +118,11 @@ export class SnapshotRepository {
 
   async get(id: string): Promise<ProjectSnapshot | null> {
     const db = await this.db();
-    const result = await tx<ProjectSnapshot | undefined>(db, STORE_SNAPSHOTS, "readonly", (store) =>
-      store.get(id) as IDBRequest<ProjectSnapshot | undefined>,
+    const result = await tx<ProjectSnapshot | undefined>(
+      db,
+      STORE_SNAPSHOTS,
+      "readonly",
+      (store) => store.get(id) as IDBRequest<ProjectSnapshot | undefined>,
     );
     return result && validateProjectShape(result.doc) ? result : null;
   }
@@ -134,16 +132,11 @@ export class SnapshotRepository {
     const snap = await this.get(id);
     if (snap && typeof snap.seq === "number") {
       const key = `${snap.projectId}:${String(snap.seq).padStart(10, "0")}`;
-      await tx(
-        db,
-        [STORE_SNAPSHOTS, STORE_SNAPSHOT_INDEX] as const,
-        "readwrite",
-        (stores) => {
-          stores[STORE_SNAPSHOTS].delete(id);
-          stores[STORE_SNAPSHOT_INDEX].delete(key);
-          return;
-        },
-      );
+      await tx(db, [STORE_SNAPSHOTS, STORE_SNAPSHOT_INDEX] as const, "readwrite", (stores) => {
+        stores[STORE_SNAPSHOTS].delete(id);
+        stores[STORE_SNAPSHOT_INDEX].delete(key);
+        return;
+      });
       // Defect D.4: drop the in-memory index entry too.
       const bucket = this.index.get(snap.projectId);
       if (bucket) {
@@ -193,21 +186,14 @@ export class SnapshotRepository {
     // not a primary-store scan, to keep `fake-indexeddb` happy.
     const snaps = await this.loadManyByIds(evict);
     const db = await this.db();
-    await tx(
-      db,
-      [STORE_SNAPSHOTS, STORE_SNAPSHOT_INDEX] as const,
-      "readwrite",
-      (stores) => {
-        for (const snap of snaps) {
-          if (!snap || typeof snap.seq !== "number") continue;
-          stores[STORE_SNAPSHOTS].delete(snap.id);
-          stores[STORE_SNAPSHOT_INDEX].delete(
-            `${snap.projectId}:${String(snap.seq).padStart(10, "0")}`,
-          );
-        }
-        return;
-      },
-    );
+    await tx(db, [STORE_SNAPSHOTS, STORE_SNAPSHOT_INDEX] as const, "readwrite", (stores) => {
+      for (const snap of snaps) {
+        if (!snap || typeof snap.seq !== "number") continue;
+        stores[STORE_SNAPSHOTS].delete(snap.id);
+        stores[STORE_SNAPSHOT_INDEX].delete(`${snap.projectId}:${String(snap.seq).padStart(10, "0")}`);
+      }
+      return;
+    });
     // Defect D.4: trim the in-memory index to match the durable
     // eviction. (The async IDB write above is best-effort — we
     // optimise for the common case where they agree.)
@@ -229,8 +215,15 @@ export class SnapshotRepository {
     if (ids.length === 0) return [];
     const out: ProjectSnapshot[] = [];
     for (const id of ids) {
-      const snap = await this.get(id);
-      if (snap) out.push(snap);
+      try {
+        const snap = await this.get(id);
+        if (snap) out.push(snap);
+      } catch (error) {
+        // One deleted/corrupt row must not make the whole history panel
+        // unusable. The durable index is reconciled lazily on the next
+        // rebuild; this read simply omits the unavailable record.
+        console.warn(`[snapshots] skipping unreadable snapshot ${id}:`, error);
+      }
     }
     return out;
   }
@@ -258,16 +251,27 @@ export class SnapshotRepository {
     // `fake-indexeddb` once it carries full project documents,
     // so we go via the index → per-id `get(id)` (sequential; see
     // `loadManyByIds` for why parallel reads can deadlock).
-    const ids = await tx<string[]>(db, STORE_SNAPSHOT_INDEX, "readonly", (store) =>
-      store.getAll() as IDBRequest<string[]>,
+    const ids = await tx<string[]>(
+      db,
+      STORE_SNAPSHOT_INDEX,
+      "readonly",
+      (store) => store.getAll() as IDBRequest<string[]>,
     );
     if (!ids || ids.length === 0) return;
     for (const id of ids) {
-      const snap = await this.get(id);
-      if (!snap || typeof snap.projectId !== "string") continue;
-      const bucket = this.index.get(snap.projectId);
-      if (bucket) bucket.push(snap.id);
-      else this.index.set(snap.projectId, [snap.id]);
+      if (typeof id !== "string" || id.length === 0) continue;
+      try {
+        const snap = await this.get(id);
+        if (!snap || typeof snap.projectId !== "string") continue;
+        const bucket = this.index.get(snap.projectId);
+        if (bucket) bucket.push(snap.id);
+        else this.index.set(snap.projectId, [snap.id]);
+      } catch (error) {
+        // A single poisoned primary row should not blank every project's
+        // recovery history after reload. Leave it out of the rebuilt index;
+        // a later successful rebuild can discover it again.
+        console.warn(`[snapshots] skipping unreadable indexed snapshot ${id}:`, error);
+      }
     }
   }
 }

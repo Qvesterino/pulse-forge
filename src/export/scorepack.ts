@@ -24,6 +24,7 @@ export async function buildScorepack(
   doc: ProjectDocument,
   bank: SampleBank,
   onProgress: (p: ScorepackProgress) => void = () => {},
+  signal?: AbortSignal,
 ): Promise<ScorepackResult> {
   const baseName = doc.name.replace(/[^a-zA-Z0-9 _.-]/g, "_").replace(/ +/g, "-");
   const sampleRate = 48000;
@@ -31,29 +32,37 @@ export async function buildScorepack(
 
   const entries: { name: string; data: Uint8Array }[] = [];
 
+  throwIfAborted(signal);
   onProgress({ phase: "Rendering master", pct: 0.1 });
   const masterBuffer = await renderProject(doc, bank, { mode: "song", sampleRate, tailSeconds });
+  throwIfAborted(signal);
   entries.push({ name: "audio/" + baseName + "-master.wav", data: new Uint8Array(encodeWav(masterBuffer, 24)) });
 
+  throwIfAborted(signal);
   onProgress({ phase: "Rendering stems", pct: 0.3 });
   for (let i = 0; i < STEM_GROUPS.length; i++) {
+    throwIfAborted(signal);
     const group = STEM_GROUPS[i];
     const stemDoc = buildStemProject(doc, group.filter);
     const stemBuffer = await renderProject(stemDoc, bank, { mode: "song", sampleRate, tailSeconds });
+    throwIfAborted(signal);
     entries.push({
       name: "audio/stems/" + baseName + "-" + group.id + ".wav",
       data: new Uint8Array(encodeWav(stemBuffer, 24)),
     });
   }
 
+  throwIfAborted(signal);
   onProgress({ phase: "Rendering cues", pct: 0.6 });
   const cueEntries = new Set<string>();
   for (const marker of doc.markers) {
+    throwIfAborted(signal);
     const assetId = markerAssetFor(marker.type);
     if (!assetId || cueEntries.has(marker.type)) continue;
     cueEntries.add(marker.type);
     try {
       const cueBuffer = await renderCueAsset(assetId, bank, sampleRate);
+      throwIfAborted(signal);
       entries.push({
         name: "audio/cues/" + marker.type + ".wav",
         data: new Uint8Array(encodeWav(cueBuffer, 24)),
@@ -63,6 +72,7 @@ export async function buildScorepack(
     }
   }
 
+  throwIfAborted(signal);
   onProgress({ phase: "Writing manifests", pct: 0.85 });
   entries.push({ name: "score.json", data: encodeUtf8(JSON.stringify(buildScoreJson(doc), null, 2)) });
   entries.push({ name: "markers.json", data: encodeUtf8(JSON.stringify(buildMarkersJson(doc), null, 2)) });
@@ -70,11 +80,16 @@ export async function buildScorepack(
   entries.push({ name: "intensity.json", data: encodeUtf8(JSON.stringify(buildIntensityJson(doc), null, 2)) });
   entries.push({ name: "README.md", data: encodeUtf8(buildReadme(baseName, doc)) });
 
+  throwIfAborted(signal);
   onProgress({ phase: "Building ZIP", pct: 0.95 });
   const blob = buildZip(entries);
   onProgress({ phase: "Done", pct: 1 });
 
   return { blob, filename: baseName + ".scorepack" };
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw new DOMException("Export cancelled", "AbortError");
 }
 
 async function renderCueAsset(assetId: string, bank: SampleBank, sampleRate: number): Promise<AudioBuffer> {

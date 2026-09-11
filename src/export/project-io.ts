@@ -11,7 +11,9 @@ export function exportProject(doc: ProjectDocument): void {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `${sanitizeFilename(doc.name)}.pulseforge.json`;
+  // New files use the public brand. The importer still accepts the legacy
+  // .pulseforge.json suffix so existing sessions remain portable.
+  anchor.download = `${sanitizeFilename(doc.name)}.kyx.json`;
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();

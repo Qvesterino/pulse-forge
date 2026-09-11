@@ -1141,3 +1141,116 @@ describe("DAHDSR envelope scheduling", () => {
     }
   });
 });
+
+describe("FM registry", () => {
+  it("exposes the 2-op tonal params that retune held notes", () => {
+    const ids = new Set(INSTRUMENT_DEFS.fm.params.map((p) => p.id));
+    for (const expected of ["ratio", "index", "modDecay", "modSustain", "feedback", "fbDecay", "fbSus"]) {
+      expect(ids.has(expected)).toBe(true);
+    }
+  });
+});
+
+describe.skipIf(typeof OfflineAudioContext === "undefined")("FM runtime", () => {
+  const SR = 44100;
+
+  function makeTrack(params: Record<string, number> = {}): InstrumentTrack {
+    return {
+      id: "fm-test",
+      kind: "instrument",
+      instrument: "fm",
+      name: "FM",
+      gain: 1,
+      pan: 0,
+      mute: false,
+      solo: false,
+      sampleId: null,
+      params: { ...defaultInstrumentParams("fm"), ...params },
+      effects: [],
+      sends: {},
+    };
+  }
+
+  async function renderFm(
+    modify?: (rt: ReturnType<typeof INSTRUMENT_DEFS.fm.factory>, ctx: OfflineAudioContext) => void,
+    params: Record<string, number> = {},
+  ) {
+    const ctx = new OfflineAudioContext(2, SR, SR);
+    const rt = INSTRUMENT_DEFS.fm.factory(ctx, makeTrack(params), { bpm: 124, getSample: () => undefined });
+    rt.output.connect(ctx.destination);
+    rt.noteOn(60, 0.9, 0.01, 0.8);
+    modify?.(rt, ctx);
+    const buffer = await ctx.startRendering();
+    rt.dispose();
+    return buffer;
+  }
+
+  function peakDiff(a: AudioBuffer, b: AudioBuffer): number {
+    let diff = 0;
+    for (let ch = 0; ch < a.numberOfChannels; ch++) {
+      const da = a.getChannelData(ch);
+      const db = b.getChannelData(ch);
+      for (let i = 0; i < da.length; i++) {
+        const d = Math.abs(da[i] - db[i]);
+        if (d > diff) diff = d;
+      }
+    }
+    return diff;
+  }
+
+  it("renders an audible 2-op voice and survives a full param sweep", async () => {
+    const buffer = await renderFm((rt) => {
+      for (const p of INSTRUMENT_DEFS.fm.params) {
+        rt.setParameter(p.id, p.min);
+        rt.setParameter(p.id, p.max);
+        rt.setParameter(p.id, p.default);
+      }
+    });
+    let peak = 0;
+    for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+      const data = buffer.getChannelData(ch);
+      for (let i = 0; i < data.length; i++) {
+        const v = Math.abs(data[i]);
+        if (v > peak) peak = v;
+      }
+    }
+    expect(peak).toBeGreaterThan(0.001);
+    expect(peak).toBeLessThanOrEqual(2);
+  });
+
+  it("INDEX automation retunes a held note mid-flight", async () => {
+    const base = await renderFm();
+    const modulated = await renderFm((rt) => rt.setParameterAt!("index", 0.9, 0.4));
+    expect(peakDiff(base, modulated)).toBeGreaterThan(0.01);
+  });
+
+  it("RATIO automation re-pitches the modulator on a held note", async () => {
+    const base = await renderFm();
+    const modulated = await renderFm((rt) => rt.setParameterAt!("ratio", 4.01, 0.4));
+    expect(peakDiff(base, modulated)).toBeGreaterThan(0.01);
+  });
+
+  it("FEEDBK automation can rise from zero mid-note", async () => {
+    const base = await renderFm(undefined, { feedback: 0 });
+    const modulated = await renderFm((rt) => rt.setParameterAt!("feedback", 0.8, 0.35), { feedback: 0 });
+    expect(peakDiff(base, modulated)).toBeGreaterThan(0.005);
+  });
+
+  it("MPE pressure brightens only the matching pitch and restores at 0", async () => {
+    const twin = await renderFm((rt) => {
+      rt.noteOn(67, 0.9, 0.01, 0.8);
+    });
+    const pressed = await renderFm((rt) => {
+      rt.noteOn(67, 0.9, 0.01, 0.8);
+      rt.polyPressure!(60, 1, 0.4); // INDEX ×1.5 on pitch 60 only
+      rt.polyPressure!(60, 0, 0.7); // restore before the release tail
+    });
+    expect(peakDiff(twin, pressed)).toBeGreaterThan(0.005);
+  });
+
+  it("pressure on a pitch with no live voice is a no-op", async () => {
+    const base = await renderFm();
+    const touched = await renderFm((rt) => rt.polyPressure!(72, 1, 0.3));
+    expect(peakDiff(base, touched)).toBeLessThan(1e-6);
+  });
+});

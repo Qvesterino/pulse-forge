@@ -3513,8 +3513,6 @@
     mainBuf = new Float32Array(0);
     scBuf = new Float32Array(0);
     sampleRate = 48e3;
-    /** Per-sample smoothing coefficient for envelope tracking. */
-    smoothCoef = 0.01;
     /** Pooled result — analyze() runs per audio block on the audio thread;
      * consumers (eqModule) copy out what they need immediately. */
     pooledResult = {
@@ -3527,7 +3525,6 @@
       this.sampleRate = sampleRate2;
       this.mainBuf = new Float32Array(maxBlockSize);
       this.scBuf = new Float32Array(maxBlockSize);
-      this.smoothCoef = 1 - Math.exp(-1 / (50 / 1e3 * sampleRate2));
       this.reset();
       this.mainFilters = [];
       this.scFilters = [];
@@ -4996,13 +4993,6 @@
       if (this.osActive) lat += OS_LATENCY_SAMPLES;
       return lat;
     }
-    // ── Oversampling helpers (shared half-band FIR, see clipper) ──
-    upsample(input, osState, frames) {
-      upsample(input, osState, frames);
-    }
-    downsample(osState, output, frames) {
-      downsample(osState, output, frames);
-    }
     // ── Internal ──────────────────────────────────────────────
     scHpfBufferL = new Float32Array(0);
     scHpfBufferR = new Float32Array(0);
@@ -5955,13 +5945,6 @@
       if (this.osActive) lat += OS_LATENCY_SAMPLES;
       return lat;
     }
-    // ── Oversampling helpers (shared half-band FIR, see clipper) ──
-    upsample(input, osState, frames) {
-      upsample(input, osState, frames);
-    }
-    downsample(osState, output, frames) {
-      downsample(osState, output, frames);
-    }
     // ── Internal methods ──────────────────────────────────────
     ensureBuffers(size) {
       if (this.dryL.length < size) {
@@ -6821,9 +6804,17 @@
         };
       }
       const m = this.pooledMeters;
+      if (!m.bandLevelDb || !m.spectralCurveDb || !m.targetCurveDb) {
+        m.bandLevelDb = new Float32Array(NUM_BANDS);
+        m.spectralCurveDb = new Float32Array(NUM_BANDS);
+        m.targetCurveDb = new Float32Array(NUM_BANDS);
+      }
+      const bandLevelDb = m.bandLevelDb;
+      const spectralCurveDb = m.spectralCurveDb;
+      const targetCurveDb = m.targetCurveDb;
       let totalActiveGain = 0;
       for (let b = 0; b < NUM_BANDS; b++) {
-        m.bandLevelDb[b] = linearToDb(Math.max(1e-10, this.envFollowers[b]));
+        bandLevelDb[b] = linearToDb(Math.max(1e-10, this.envFollowers[b]));
         totalActiveGain += Math.abs(this.smoothedGainDb[b]);
       }
       m.amountActive = clamp(
@@ -6831,8 +6822,8 @@
         0,
         1
       );
-      m.spectralCurveDb.set(this.currentSpectralCurve);
-      m.targetCurveDb.set(this.currentTargetCurve);
+      spectralCurveDb.set(this.currentSpectralCurve);
+      targetCurveDb.set(this.currentTargetCurve);
       return m;
     }
     // ── Internal methods ──────────────────────────────────────

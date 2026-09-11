@@ -75,6 +75,15 @@ afterEach(async () => {
 });
 
 describe("gallery REST API", () => {
+  it("refuses wildcard CORS when production config enforcement is enabled", () => {
+    expect(() =>
+      createCollabServer({
+        galleryFile: join(mkdtempSync(join(tmpdir(), "pf-gallery-production-cors-")), "gallery.json"),
+        enforceProductionConfig: true,
+      }),
+    ).toThrow("explicit CORS_ORIGIN allowlist");
+  });
+
   it("starts empty and accepts a valid beat", async () => {
     const { base } = await boot();
 
@@ -254,6 +263,27 @@ describe("gallery REST API", () => {
     expect(deleted.status).toBe(200);
     expect(await deleted.json()).toEqual({ deleted: true });
     expect(((await (await fetch(`${base}/api/gallery`)).json()) as { items: unknown[] }).items).toHaveLength(0);
+  });
+
+  it("rate limits moderation deletes per source IP", async () => {
+    const { base } = await boot({ adminToken: "release-moderator-token" });
+    const post = await fetch(`${base}/api/gallery`, {
+      method: "POST",
+      body: JSON.stringify({ title: "delete-limit beat", code: shareCode() }),
+    });
+    const { item } = (await post.json()) as { item: { id: string } };
+
+    const responses = await Promise.all(
+      Array.from({ length: 11 }, () =>
+        fetch(`${base}/api/gallery/${item.id}`, {
+          method: "DELETE",
+          headers: { Authorization: "Bearer release-moderator-token" },
+        }),
+      ),
+    );
+    expect(responses.filter((response) => response.status === 429)).toHaveLength(1);
+    expect(responses.filter((response) => response.status === 200)).toHaveLength(1);
+    expect(responses.filter((response) => response.status === 404)).toHaveLength(9);
   });
 });
 

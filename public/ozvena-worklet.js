@@ -785,50 +785,33 @@
     let delaySamples = 0;
     let buffers = [];
     let writeIdx = [];
-    let ringMask = 0;
-    function requiredSpan() {
-      const fade = fadeFromSamples > 0 ? fadeFromSamples : 0;
-      return Math.max(delaySamples, fade) + 1;
+    let ringLength = 0;
+    function maxSupportedDelaySamples() {
+      return Math.max(
+        Math.ceil(500 / 1e3 * sampleRate2),
+        Math.ceil(syncNoteToBeats("8/1") * 60 / 20 * sampleRate2)
+      );
     }
     function ensureBuffers() {
-      const need = requiredSpan();
-      if (buffers.length === channelCount && buffers[0] && buffers[0].length >= need) return;
-      const cap = nextPow2(need);
-      const prevBuffers = buffers;
-      const prevWrite = writeIdx;
+      const capacity = maxSupportedDelaySamples() + 1;
+      if (buffers.length === channelCount && ringLength === capacity) return;
       buffers = [];
       writeIdx = [];
-      const reachable = Math.max(
-        delaySamples,
-        activeDelaySamples > 0 ? activeDelaySamples : 0,
-        fadeFromSamples > 0 ? fadeFromSamples : 0
-      ) + 1;
       for (let c = 0; c < channelCount; c++) {
-        const nb = new Float32Array(cap);
-        const ob = prevBuffers[c];
-        if (ob && ob.length > 0 && (prevWrite[c] ?? 0) >= 0) {
-          const wi = prevWrite[c];
-          const oldLen = ob.length;
-          const keep = Math.min(oldLen, reachable);
-          for (let d = 0; d < keep; d++) {
-            const src = ((wi - d) % oldLen + oldLen) % oldLen;
-            nb[wi - d & cap - 1] = ob[src];
-          }
-        }
-        buffers.push(nb);
-        writeIdx.push(prevWrite[c] ?? 0);
+        buffers.push(new Float32Array(capacity));
+        writeIdx.push(0);
       }
-      ringMask = cap - 1;
+      ringLength = capacity;
     }
     function recomputeDelaySamples() {
       if (params.syncEnabled) {
         const beats = syncNoteToBeats(params.syncNote);
         delaySamples = Math.max(0, Math.round(60 / Math.max(1e-3, bpm) * beats * sampleRate2));
-        const cap = Math.ceil(syncNoteToBeats("8/1") * 60 / 20 * sampleRate2);
+        const cap = maxSupportedDelaySamples();
         if (delaySamples > cap) delaySamples = cap;
       } else {
         delaySamples = Math.max(0, Math.round(params.ms / 1e3 * sampleRate2));
-        const cap = Math.ceil(500 / 1e3 * sampleRate2);
+        const cap = maxSupportedDelaySamples();
         if (delaySamples > cap) delaySamples = cap;
       }
     }
@@ -849,14 +832,13 @@
       },
       process(channels, frameCount) {
         if (!params.enabled || delaySamples <= 0 || frameCount <= 0) return;
-        ensureBuffers();
+        if (buffers.length !== channelCount || ringLength <= 0) return;
         const d = delaySamples;
         if (activeDelaySamples < 0) activeDelaySamples = d;
         if (d !== activeDelaySamples) {
           fadeFromSamples = activeDelaySamples;
           fadePos = 0;
           activeDelaySamples = d;
-          ensureBuffers();
         }
         const fadeLen = Math.max(1, Math.round(FADE_SECONDS * sampleRate2));
         for (let i = 0; i < frameCount; i++) {
@@ -871,14 +853,18 @@
             const buf = channels[c];
             const dly = buffers[c];
             let wi = writeIdx[c];
-            let delayed = dly[wi - d & ringMask];
+            let readIdx = wi - d;
+            if (readIdx < 0) readIdx += ringLength;
+            let delayed = dly[readIdx];
             if (fadeT >= 0) {
-              const readOld = wi - fadeFromSamples & ringMask;
+              let readOld = wi - fadeFromSamples;
+              if (readOld < 0) readOld += ringLength;
               delayed = dly[readOld] * (1 - fadeT) + delayed * fadeT;
             }
             dly[wi] = buf[i];
             buf[i] = delayed;
-            wi = wi + 1 & ringMask;
+            wi++;
+            if (wi >= ringLength) wi = 0;
             writeIdx[c] = wi;
           }
         }
@@ -886,12 +872,10 @@
       setParams(p) {
         params = { ...p };
         recomputeDelaySamples();
-        ensureBuffers();
       },
       setBpm(hostBpm) {
         bpm = clamp(hostBpm, 20, 300);
         recomputeDelaySamples();
-        ensureBuffers();
       },
       getDelaySamples() {
         return params.enabled ? delaySamples : 0;
@@ -1738,12 +1722,11 @@
     const hit = cache4.get(key);
     if (hit) return hit;
     const frames = Math.floor(spec.lengthSec * sampleRate2);
-    const out = new Float32Array(frames * 4);
-    const chs = [
-      out.subarray(0, frames),
-      out.subarray(frames, frames * 2),
-      out.subarray(frames * 2, frames * 3),
-      out.subarray(frames * 3, frames * 4)
+    const planes = [
+      new Float32Array(frames),
+      new Float32Array(frames),
+      new Float32Array(frames),
+      new Float32Array(frames)
     ];
     const spread = Math.floor(spec.spreadMs / 1e3 * sampleRate2);
     const taps = 7;
@@ -1770,25 +1753,37 @@
           lp[c] += alpha * (n - lp[c]);
           v = (rngs[c]() * 0.5 + lp[c] * 0.5) * env * build;
         }
-        chs[c][i] = v;
+        planes[c][i] = v;
       }
     }
     for (const tap of early) {
       const gl = tap.gain * Math.max(0, 1 - tap.pan);
       const gr = tap.gain * Math.max(0, 1 + tap.pan);
-      if (tap.pos < frames) chs[0][tap.pos] += gl;
-      if (tap.pos < frames) chs[1][tap.pos] += gr;
-      if (tap.pos < frames) chs[2][tap.pos] += gr;
-      if (tap.pos < frames) chs[3][tap.pos] += gl;
+      if (tap.pos < frames) planes[0][tap.pos] += gl;
+      if (tap.pos < frames) planes[1][tap.pos] += gr;
+      if (tap.pos < frames) planes[2][tap.pos] += gr;
+      if (tap.pos < frames) planes[3][tap.pos] += gl;
     }
     let peak = 0;
-    for (let i = 0; i < out.length; i++) {
-      const a = Math.abs(out[i]);
-      if (a > peak) peak = a;
+    for (const plane of planes) {
+      for (let i = 0; i < plane.length; i++) {
+        const a = Math.abs(plane[i]);
+        if (a > peak) peak = a;
+      }
     }
     if (peak > 1e-9) {
       const g = 0.89 / peak;
-      for (let i = 0; i < out.length; i++) out[i] *= g;
+      for (const plane of planes) {
+        for (let i = 0; i < plane.length; i++) plane[i] *= g;
+      }
+    }
+    const out = new Float32Array(frames * 4);
+    for (let i = 0; i < frames; i++) {
+      const base = i * 4;
+      out[base] = planes[0][i];
+      out[base + 1] = planes[1][i];
+      out[base + 2] = planes[2][i];
+      out[base + 3] = planes[3][i];
     }
     cache4.set(key, out);
     if (cache4.size > IR_CACHE_MAX) {
@@ -4614,11 +4609,6 @@
     "plate-wide",
     "chamber-wide"
   ]);
-  var factoryIrCache = /* @__PURE__ */ new Map();
-  var FACTORY_IR_CACHE_MAX = 4;
-  function stripBlockSpectra(sets) {
-    for (const s of sets) delete s.blockSpectra;
-  }
   function checkedIrSets(rawSets, sampleRate2) {
     if (!Array.isArray(rawSets) || rawSets.length === 0) return null;
     const frames = rawSets[0]?.irLengthSamples;
@@ -4682,11 +4672,10 @@
       super();
       this.pendingIrRequests = /* @__PURE__ */ new Set();
       this.proc.setFactoryIrProvider((irId, sr) => {
-        const hit = factoryIrCache.get(`${irId}:${sr}`);
-        if (hit) return hit;
         if (!FACTORY_IR_IDS.has(irId)) return null;
-        if (!this.pendingIrRequests.has(irId)) {
-          this.pendingIrRequests.add(irId);
+        const requestKey = `${irId}:${sr}`;
+        if (!this.pendingIrRequests.has(requestKey)) {
+          this.pendingIrRequests.add(requestKey);
           this.port.postMessage({ type: "irNeeded", irId, sampleRate: sr });
         }
         return "pending";
@@ -4743,31 +4732,19 @@
             this.postLatency();
           }
         } else if (msg.type === "factoryIr") {
-          this.pendingIrRequests.delete(msg.irId);
+          this.pendingIrRequests.delete(`${msg.irId}:${sampleRate}`);
           const channels = msg.channels === 4 ? 4 : msg.channels === 2 ? 2 : 1;
           const sets = checkedIrSets(msg.sets, sampleRate);
           if (sets) {
-            const cached = { precomputed: sets, channels };
-            factoryIrCache.set(`${msg.irId}:${sampleRate}`, cached);
-            if (factoryIrCache.size > FACTORY_IR_CACHE_MAX) {
-              const oldest = factoryIrCache.keys().next().value;
-              if (oldest !== void 0) factoryIrCache.delete(oldest);
-            }
             if (this.state.convolution?.irId === msg.irId) {
               this.proc.loadPrecomputedIr(sets, channels);
               this.postLatency();
             }
-            stripBlockSpectra(sets);
             return;
           }
           const samples = msg.samples;
           if (!(samples instanceof Float32Array) || samples.length === 0) return;
           if (channels > 1 && samples.length % channels !== 0) return;
-          factoryIrCache.set(`${msg.irId}:${sampleRate}`, { samples, channels });
-          if (factoryIrCache.size > FACTORY_IR_CACHE_MAX) {
-            const oldest = factoryIrCache.keys().next().value;
-            if (oldest !== void 0) factoryIrCache.delete(oldest);
-          }
           if (this.state.convolution?.irId === msg.irId) {
             this.proc.loadUserIr(samples, channels);
             this.postLatency();
@@ -4784,7 +4761,6 @@
           this.proc.loadState(this.state);
           this.proc.reset();
           this.pendingIrRequests.clear();
-          factoryIrCache.clear();
         } else if (msg.type === "dispose") {
           this.proc.dispose();
           this.disposed = true;

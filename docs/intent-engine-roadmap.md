@@ -288,6 +288,7 @@ src/intent/
   - [x] role plans
   - [x] sub-seeds
   - [x] constraints
+  - [x] resolved BPM selected deterministically from `bpmRange`
   - [x] expected output shape
   - [x] recipe metadata
 - [x] Zabezpečiť, aby preview aj apply používali rovnaký plan.
@@ -302,7 +303,7 @@ src/intent/
   - [x] quality metrics
   - [x] warnings
   - [x] provider metadata
-- [ ] Rozlíšiť `accepted`, `repaired`, `fallback` a `rejected` výsledok podľa skutočne vykonaných repairov.
+- [x] Rozlíšiť `accepted`, `repaired`, `fallback` a `rejected` výsledok podľa skutočne vykonaných repairov (`LocalDeterministicProvider` + invariant gate).
 - [x] Pridať deterministic repair diagnostics a dôvody quality gate warningov.
 
 ### 3.4 Project model a persistence

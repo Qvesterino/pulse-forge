@@ -5036,6 +5036,11 @@ export function generatePatternCommand(doc: ProjectDocument, options: GenerateOp
     const groove = resolveGrooveForGeneration(doc, options);
     grooveUpdate = { swing: groove.swing };
   }
+  const bpmUpdate = result.plan.resolvedBpm;
+  const projectUpdates = {
+    ...(grooveUpdate ? { groove: { ...doc.groove, ...grooveUpdate } } : {}),
+    ...(bpmUpdate !== null && bpmUpdate !== undefined ? { bpm: bpmUpdate } : {}),
+  };
 
   if (options.replaceMode === "replace") {
     const activeId = doc.activePatternId;
@@ -5054,7 +5059,7 @@ export function generatePatternCommand(doc: ProjectDocument, options: GenerateOp
             }
           : p,
       ),
-      ...(grooveUpdate ? { groove: { ...doc.groove, ...grooveUpdate } } : {}),
+      ...projectUpdates,
     };
     return snapshot("generatePattern", `Replace with ${pattern.name}`, doc, next);
   }
@@ -5071,7 +5076,7 @@ export function generatePatternCommand(doc: ProjectDocument, options: GenerateOp
     patterns: [...doc.patterns, pattern],
     scenes: [...doc.scenes, scene],
     activePatternId: pattern.id,
-    ...(grooveUpdate ? { groove: { ...doc.groove, ...grooveUpdate } } : {}),
+    ...projectUpdates,
   };
   return snapshot("generatePattern", `Generate ${pattern.name}`, doc, next);
 }

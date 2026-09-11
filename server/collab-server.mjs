@@ -124,6 +124,8 @@ const REPORTS_MAX = 2_000;
 const POST_WINDOW_MS = 60_000;
 const POST_WINDOW_LIMIT = 10;
 const REPORT_WINDOW_LIMIT = 5;
+const DELETE_WINDOW_LIMIT = 10;
+const RATE_LIMIT_MAX_KEYS = 4_096;
 
 function cleanText(value, max) {
   return String(value ?? "")
@@ -296,9 +298,22 @@ function makeRateLimiter(limit = POST_WINDOW_LIMIT) {
   return function allow(ip) {
     const now = Date.now();
     const recent = (hits.get(ip) ?? []).filter((t) => now - t < POST_WINDOW_MS);
+    if (recent.length === 0) hits.delete(ip);
     if (recent.length >= limit) {
       hits.set(ip, recent);
       return false;
+    }
+    // A public endpoint can receive a never-seen IP on every request. Keep
+    // the limiter itself bounded instead of allowing that attacker to turn
+    // the abuse guard into an unbounded memory sink.
+    if (!hits.has(ip) && hits.size >= RATE_LIMIT_MAX_KEYS) {
+      for (const [key, timestamps] of hits) {
+        if (timestamps.every((timestamp) => now - timestamp >= POST_WINDOW_MS)) hits.delete(key);
+      }
+      if (hits.size >= RATE_LIMIT_MAX_KEYS) {
+        const oldestKey = hits.keys().next().value;
+        if (oldestKey !== undefined) hits.delete(oldestKey);
+      }
     }
     recent.push(now);
     hits.set(ip, recent);
@@ -415,15 +430,20 @@ export function createCollabServer({
   collabLimits: collabLimitOverrides = {},
   corsOrigins = process.env.CORS_ORIGIN ?? "*",
   adminToken: adminTokenOverride = process.env.GALLERY_ADMIN_TOKEN ?? "",
+  enforceProductionConfig = process.env.NODE_ENV === "production",
 } = {}) {
   const { getRoom, rooms } = createRoomRegistry();
   const collabLimits = normalizeCollabLimits(collabLimitOverrides);
   const allowedOrigins = normalizeCorsOrigins(corsOrigins);
+  if (enforceProductionConfig && allowedOrigins.has("*")) {
+    throw new Error("production collab server requires an explicit CORS_ORIGIN allowlist");
+  }
   const gallery = new GalleryStore(galleryFile);
   const allowPost = makeRateLimiter();
   // Play counters are much hotter than uploads — their own, looser window.
   const allowPlay = makeRateLimiter(60);
   const allowReport = makeRateLimiter(REPORT_WINDOW_LIMIT);
+  const allowDelete = makeRateLimiter(DELETE_WINDOW_LIMIT);
   const adminToken = String(adminTokenOverride ?? "").trim();
   const metrics = {
     activeConnections: 0,
@@ -560,6 +580,11 @@ export function createCollabServer({
 
     const deleteMatch = /^\/api\/gallery\/([\w-]+)$/.exec(url.pathname);
     if (req.method === "DELETE" && deleteMatch) {
+      const ip = req.socket.remoteAddress ?? "unknown";
+      if (!allowDelete(ip)) {
+        sendJson(res, 429, { error: "slow down — too many moderation deletes" });
+        return;
+      }
       if (!adminToken) {
         sendJson(res, 503, { error: "gallery moderation is not configured" });
         return;

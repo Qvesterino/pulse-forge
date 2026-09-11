@@ -28,28 +28,6 @@ const FACTORY_IR_IDS = new Set([
   "chamber-wide",
 ]);
 
-/** Delivered factory-IR payloads, shared by every Ozvena processor in this
- *  worklet scope. After the first delivery a re-selection (or the
- *  clearUserIr fallback) is a synchronous cache hit through the core — no
- *  main-thread roundtrip, no generation. Entries hold PRECOMPUTED
- *  frequency-domain IR partitions (float64, ~2× the time-domain size);
- *  irSpectra is immutable and safe to share across instances, the zeroed
- *  blockSpectra rings are consume-once. The bound keeps long sessions
- *  flat (a 3 s true-stereo IR holds ~18 MB of spectra). */
-const factoryIrCache = new Map();
-const FACTORY_IR_CACHE_MAX = 4;
-
-/** Consume-once blockSpectra handover: the first convolver built from a
- *  cached set takes over its zeroed ring; later hits leave it undefined
- *  so the engine allocates a fresh one (≤ ~1 ms for long IRs — the ring
- *  is write-before-read, so ANY initial content is correct). Without the
- *  handover, two instances re-using one cache entry would share one
- *  MUTABLE input-block ring and corrupt each other's convolution.
- *  (Reconciled from Pulse Forge hardening audit, 2026-09-09.) */
-function stripBlockSpectra(sets) {
-  for (const s of sets) delete s.blockSpectra;
-}
-
 /** Validate a delivered precomputed-sets payload against the IR length
  *  cap; returns the checked array or null. */
 function checkedIrSets(rawSets, sampleRate) {
@@ -149,11 +127,15 @@ class OzvenaWorkletProcessor extends AudioWorkletProcessor {
     // the core keeps the current IR audible until the payload lands.
     this.pendingIrRequests = new Set();
     this.proc.setFactoryIrProvider((irId, sr) => {
-      const hit = factoryIrCache.get(`${irId}:${sr}`);
-      if (hit) return hit;
       if (!FACTORY_IR_IDS.has(irId)) return null;
-      if (!this.pendingIrRequests.has(irId)) {
-        this.pendingIrRequests.add(irId);
+      // Every delivery must contain a fresh mutable input-spectrum ring. A
+      // worklet-scope cache can safely share immutable IR spectra, but cannot
+      // share blockSpectra between convolver instances or reloads. Ask the
+      // main thread for a new transferable payload on every cache hit; its
+      // immutable spectra template avoids repeating the expensive FFT batch.
+      const requestKey = `${irId}:${sr}`;
+      if (!this.pendingIrRequests.has(requestKey)) {
+        this.pendingIrRequests.add(requestKey);
         this.port.postMessage({ type: "irNeeded", irId, sampleRate: sr });
       }
       return "pending";
@@ -234,26 +216,17 @@ class OzvenaWorkletProcessor extends AudioWorkletProcessor {
         // on the first selection of every IR). Malformed payloads are
         // dropped — the selection stays "pending" and a later convolution
         // change re-requests.
-        this.pendingIrRequests.delete(msg.irId);
+        this.pendingIrRequests.delete(`${msg.irId}:${sampleRate}`);
         const channels = msg.channels === 4 ? 4 : msg.channels === 2 ? 2 : 1;
         const sets = checkedIrSets(msg.sets, sampleRate);
         if (sets) {
-          const cached = { precomputed: sets, channels };
-          factoryIrCache.set(`${msg.irId}:${sampleRate}`, cached);
-          if (factoryIrCache.size > FACTORY_IR_CACHE_MAX) {
-            const oldest = factoryIrCache.keys().next().value;
-            if (oldest !== undefined) factoryIrCache.delete(oldest);
-          }
-          // Load only if the selection still points here; a stale reply is
-          // still cached, so re-selecting that IR later is a free hit.
+          // Load only if the selection still points here. Stale replies are
+          // deliberately not cached in the worklet: the next selection must
+          // receive a fresh mutable blockSpectra ring from the main thread.
           if (this.state.convolution?.irId === msg.irId) {
             this.proc.loadPrecomputedIr(sets, channels);
             this.postLatency();
           }
-          // The delivered zeroed blockSpectra rings were consumed by this
-          // load (or are stale) — later cache hits get engine-allocated
-          // fresh rings instead of sharing a mutable one.
-          stripBlockSpectra(sets);
           return;
         }
         // Legacy time-domain payload (direct hosts, tests): interleaved
@@ -262,11 +235,6 @@ class OzvenaWorkletProcessor extends AudioWorkletProcessor {
         const samples = msg.samples;
         if (!(samples instanceof Float32Array) || samples.length === 0) return;
         if (channels > 1 && samples.length % channels !== 0) return;
-        factoryIrCache.set(`${msg.irId}:${sampleRate}`, { samples, channels });
-        if (factoryIrCache.size > FACTORY_IR_CACHE_MAX) {
-          const oldest = factoryIrCache.keys().next().value;
-          if (oldest !== undefined) factoryIrCache.delete(oldest);
-        }
         if (this.state.convolution?.irId === msg.irId) {
           this.proc.loadUserIr(samples, channels);
           this.postLatency();
@@ -284,12 +252,7 @@ class OzvenaWorkletProcessor extends AudioWorkletProcessor {
         this.state = defaultOzvenaStateV1();
         this.proc.loadState(this.state);
         this.proc.reset();
-        // Reset = fresh instance: drop delivered factory-IR payloads too
-        // (the main thread's generator cache re-serves them on the next
-        // selection). Keeps the shared worklet-scope cache from pinning
-        // MBs of IR audio after a reset.
         this.pendingIrRequests.clear();
-        factoryIrCache.clear();
       } else if (msg.type === "dispose") {
         // Terminal teardown from the main thread (node.dispose): release
         // the module-global IPC peer registry entry + subscription that

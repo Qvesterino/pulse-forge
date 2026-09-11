@@ -13,6 +13,7 @@ export function FreezeButton({ track }: { track: Track }) {
   const services = useServices();
   const doc = useDoc();
   const [rendering, setRendering] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const isFrozen = "frozen" in track && track.frozen != null;
 
@@ -22,9 +23,12 @@ export function FreezeButton({ track }: { track: Track }) {
     // (the renderer includes only the group itself, not its children).
     if (track.kind === "group") return;
     setRendering(true);
+    setError(null);
+    let newBufferId: string | null = null;
     try {
       const prevBufferId = track.frozen?.bufferId ?? null;
       const bufferId = `frozen-${track.id}-${Date.now().toString(36)}`;
+      newBufferId = bufferId;
       const buffer = await renderTrack(doc, track.id, services.bank, {
         mode: "song",
         sampleRate: 44100,
@@ -49,6 +53,8 @@ export function FreezeButton({ track }: { track: Track }) {
       }
     } catch (err) {
       console.error("[FreezeButton] freeze failed:", err);
+      if (newBufferId) services.bank.remove(newBufferId);
+      setError(err instanceof Error ? err.message : "Freeze failed — try again");
     } finally {
       setRendering(false);
     }
@@ -65,6 +71,7 @@ export function FreezeButton({ track }: { track: Track }) {
   const handleBounce = async () => {
     if (rendering) return;
     setRendering(true);
+    setError(null);
     try {
       const buffer = await renderTrack(doc, track.id, services.bank, {
         mode: "song",
@@ -75,6 +82,7 @@ export function FreezeButton({ track }: { track: Track }) {
       downloadWav(wav, `${track.name}-bounce.wav`);
     } catch (err) {
       console.error("[FreezeButton] bounce failed:", err);
+      setError(err instanceof Error ? err.message : "Bounce failed — try again");
     } finally {
       setRendering(false);
     }
@@ -82,6 +90,11 @@ export function FreezeButton({ track }: { track: Track }) {
 
   return (
     <div className="freeze-controls">
+      {error && (
+        <span className="freeze-error" role="status" aria-live="polite" title={error}>
+          {error}
+        </span>
+      )}
       {track.kind === "group" ? null : isFrozen ? (
         <button
           type="button"

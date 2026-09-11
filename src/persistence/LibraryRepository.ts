@@ -17,6 +17,8 @@ const EMPTY: LibraryState = { favoriteAssets: [], favoritePresets: [], recentAss
  * blob in IndexedDB. Read-heavy (the sample/preset browsers subscribe to it).
  */
 export class LibraryRepository {
+  constructor(private readonly openDatabase: typeof openDb = openDb) {}
+
   private listeners = new Set<(state: LibraryState) => void>();
   private cache: LibraryState | null = null;
 
@@ -27,7 +29,7 @@ export class LibraryRepository {
 
   async load(): Promise<LibraryState> {
     try {
-      const db = await openDb();
+      const db = await this.openDatabase();
       const stored = await tx<LibraryState | undefined>(db, STORE_LIBRARY, "readonly", (store) => store.get(STATE_ID));
       const state = stored ? this.sanitize(stored) : EMPTY;
       this.cache = state;
@@ -57,15 +59,19 @@ export class LibraryRepository {
     this.cache = next;
     this.listeners.forEach((listener) => listener(next));
     try {
-      const db = await openDb();
+      const db = await this.openDatabase();
       await tx(
         db,
         STORE_LIBRARY,
         "readwrite",
         (store) => store.put({ id: STATE_ID, ...next }) as IDBRequest<IDBValidKey>,
       );
-    } catch {
-      // persistence is best-effort; the in-memory cache already updated
+    } catch (error) {
+      // Keep the optimistic in-memory update so the browser remains useful,
+      // but do not report a favorite/recent as durably saved when IndexedDB
+      // rejected it. Callers can show the error and retry the same action.
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new Error(`Could not save library preferences: ${detail}`);
     }
     return next;
   }

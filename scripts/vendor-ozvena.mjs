@@ -61,7 +61,8 @@ const HEADER = `/* eslint-disable */
 // @ts-nocheck
 /**
  * VENDORED from VocalForge_DAW/plugins/ozvena. Do not edit by hand — this is
- * a byte-faithful copy of the upstream DSP oracle so Pulse Forge and
+ * a semantics-faithful copy of the upstream DSP oracle (line endings are
+ * normalized) so Pulse Forge and
  * VocalForge validate against the SAME golden fixtures
  * (tests/ozvena-golden.test.ts). Fix DSP issues upstream, then re-vendor
  * via scripts/vendor-ozvena.mjs.
@@ -75,6 +76,13 @@ const HEADER = `/* eslint-disable */
 /** Mechanical transforms — extend only with type-marker fixes. */
 function applyTransforms(source) {
   return source;
+}
+
+/** Keep generated vendored sources stable across the upstream repository's
+ * historical CRLF/CRCRLF line-ending variants. This is whitespace-only and
+ * does not alter the DSP body. */
+function normalizeLineEndings(source) {
+  return source.replace(/\r\r\n/g, "\n").replace(/\r\n?/g, "\n");
 }
 
 /** Lines carrying an in-place audit-fix marker. Comparison is
@@ -134,7 +142,7 @@ let vendored = 0;
 for (const rel of FILES) {
   const out = join(DST, rel);
   mkdirSync(dirname(out), { recursive: true });
-  writeFileSync(out, HEADER + applyTransforms(upstreamSources.get(rel)));
+  writeFileSync(out, HEADER + normalizeLineEndings(applyTransforms(upstreamSources.get(rel))));
   vendored++;
 }
 console.log(`[vendor] ${vendored} DSP files -> ${DST}`);

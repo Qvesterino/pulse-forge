@@ -57,7 +57,7 @@ function applySwingToMeta(row: number[], padMeta: Map<number, StepMeta>, swing: 
 }
 
 /** Prune or densify a row to match density intent (0 sparse → 1 dense). */
-function pruneOrDensifyRow(row: number[], density: number | null, rand: () => number): void {
+function pruneOrDensifyRow(row: number[], density: number | null, rand: () => number, allowGhosts = true): void {
   if (density == null) return;
   // Neutral 0.45–0.55 → no change (preserve golden)
   if (density >= 0.45 && density <= 0.55) return;
@@ -75,7 +75,7 @@ function pruneOrDensifyRow(row: number[], density: number | null, rand: () => nu
       if (pick.i % 4 === 0 && rand() < 0.5) continue;
       row[pick.i] = 0;
     }
-  } else if (density > 0.55) {
+  } else if (density > 0.55 && allowGhosts) {
     // Dense: add ghost-like hits in gaps near existing hits
     const addFrac = (density - 0.5) * 0.6; // 0.6→0.06, 0.9→0.24
     for (let i = 0; i < row.length; i++) {
@@ -151,17 +151,28 @@ export function generateDrumPattern(
 
     rows[padIndex] = velocities;
 
-    // Add ghost notes
-    addGhostNotes(rows, padIndex, role, options, variationRand);
+    // Ghosts are an explicit intent constraint, not just a stylistic hint.
+    if (options.constraints?.allowGhosts !== false) {
+      addGhostNotes(rows, padIndex, role, options, variationRand);
+    }
 
     // Dice density: prune or densify before anchors (keeps anchors intact after)
-    pruneOrDensifyRow(rows[padIndex], diceDensity, variationRand);
+    pruneOrDensifyRow(rows[padIndex], diceDensity, variationRand, options.constraints?.allowGhosts !== false);
 
     // Add fill variation at phrase boundaries (every 4 bars)
-    addFillVariation(rows[padIndex], padIndex, options.ghostWeight, variationRand, 4);
+    addFillVariation(
+      rows[padIndex],
+      padIndex,
+      options.ghostWeight,
+      variationRand,
+      4,
+      options.constraints?.allowGhosts !== false,
+    );
 
     // Keep genre/style anchors before phrase dynamics are applied.
-    enforceDrumAnchors(rows[padIndex], padPatterns, role);
+    if (options.constraints?.preserveAnchors !== false) {
+      enforceDrumAnchors(rows[padIndex], padPatterns, role);
+    }
     // Complexity relaxes syncopation budget (more off-beat allowed)
     if (diceComplexity == null || diceComplexity < 0.65) {
       enforceSyncopationBudget(rows[padIndex], padPatterns, role);
@@ -177,7 +188,13 @@ export function generateDrumPattern(
 
     // Swing has one owner: project-level groove settings when requested,
     // otherwise pattern-local metadata carries the groove feel.
-    applySwingToMeta(rows[padIndex], padMeta, streams.swing ?? (options.applyGrooveSettings ? 0 : groove.swing));
+    applySwingToMeta(
+      rows[padIndex],
+      padMeta,
+      options.constraints?.allowSwing === false
+        ? 0
+        : (streams.swing ?? (options.applyGrooveSettings ? 0 : groove.swing)),
+    );
 
     if (padMeta.size > 0) {
       meta.set(padIndex, padMeta);
@@ -294,6 +311,7 @@ function addFillVariation(
   ghostWeight: number,
   rand: () => number,
   fillBars: number,
+  allowGhosts = true,
 ): void {
   if (!row) return;
   for (let bar = fillBars - 1; bar * 16 < row.length; bar += fillBars) {
@@ -303,7 +321,7 @@ function addFillVariation(
     for (let i = Math.max(fillStart, fillEnd - 4); i < fillEnd; i++) {
       if (row[i] > 0) {
         row[i] = Math.min(1, row[i] + 0.1 + rand() * 0.1); // boost existing hits
-      } else if (rand() < ghostWeight * 0.6) {
+      } else if (allowGhosts && rand() < ghostWeight * 0.6) {
         row[i] = 0.2 + rand() * 0.15; // add ghost notes
       }
     }

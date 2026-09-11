@@ -17,6 +17,24 @@ interface PrecomputedIrPayload {
   sets: PrecomputedIrSet[];
 }
 
+interface PrecomputedIrTemplate {
+  channels: 1 | 2 | 4;
+  frames: number;
+  partitionSize: number;
+  numPartitions: number;
+  /** Immutable main-thread spectra, cloned into each transferable payload. */
+  spectra: Float64Array[];
+}
+
+// A worklet convolver owns a mutable input-spectrum ring, so a cached factory
+// IR cannot be handed directly to another instance. Keep the immutable spectra
+// on the main side instead and mint fresh spectra + rings for every delivery.
+// This preserves fast re-selection without allowing a cache hit to allocate on
+// the audio thread. The cap is deliberately small: true-stereo spectra are
+// sizeable and factoryIr.ts already keeps a bounded time-domain cache.
+const FACTORY_TEMPLATE_CACHE_MAX = 4;
+const factoryTemplateCache = new Map<string, PrecomputedIrTemplate>();
+
 /**
  * FFT the per-source-channel IR data into partition spectra — ON THE MAIN
  * THREAD. The per-partition forward-FFT batch (hundreds of FFT-2048s for a
@@ -26,29 +44,73 @@ interface PrecomputedIrPayload {
  * ships to the worklet as transferables; arming the convolver there does
  * no FFT work. (Reconciled from Pulse Forge hardening audit, 2026-09-09.)
  */
-function buildPrecomputedIrPayload(
+function makePrecomputedIrTemplate(
   perChannel: Float32Array[],
   frames: number,
-): PrecomputedIrPayload {
+): PrecomputedIrTemplate {
   const channels = (perChannel.length >= 4 ? 4 : perChannel.length >= 2 ? 2 : 1) as 1 | 2 | 4;
   const ps = partitionSizeForIr(frames);
   const np = numPartitionsFor(frames, ps);
-  // Spectra per SOURCE channel, computed once (mono broadcast shares).
-  const spectra = perChannel.slice(0, Math.max(1, Math.min(channels, perChannel.length)))
+  const spectra = perChannel
+    .slice(0, Math.max(1, Math.min(channels, perChannel.length)))
     .map((ch) => precomputeConvolverSpectra(ch, { partitionSize: ps, irLengthSamples: frames }).irSpectra);
+  return { channels, frames, partitionSize: ps, numPartitions: np, spectra };
+}
+
+function buildPrecomputedIrPayload(template: PrecomputedIrTemplate): PrecomputedIrPayload {
+  // `irSpectra` is immutable and may be retained in the template, but every
+  // payload needs its own transferable copy. `blockSpectra` is mutable and
+  // must always be newly zeroed for each convolver slot/instance.
+  const spectra = template.spectra.map((source) => source.slice());
+  const { channels, frames, partitionSize, numPartitions } = template;
   const slots = channels === 1 ? 2 : channels;
   const sets: PrecomputedIrSet[] = [];
   for (let slot = 0; slot < slots; slot++) {
     const srcIdx = Math.min(slot, spectra.length - 1);
     sets.push({
       irSpectra: spectra[srcIdx],
-      blockSpectra: createZeroedBlockSpectra(np, ps),
-      numPartitions: np,
-      partitionSize: ps,
+      blockSpectra: createZeroedBlockSpectra(numPartitions, partitionSize),
+      numPartitions,
+      partitionSize,
       irLengthSamples: frames,
     });
   }
   return { channels, sets };
+}
+
+function factoryPrecomputedIrPayload(irId: string, sampleRate: number): PrecomputedIrPayload | null {
+  const key = `${irId}:${sampleRate}`;
+  const cached = factoryTemplateCache.get(key);
+  if (cached) {
+    // Map insertion order is our tiny LRU: refresh a hit before returning.
+    factoryTemplateCache.delete(key);
+    factoryTemplateCache.set(key, cached);
+    return buildPrecomputedIrPayload(cached);
+  }
+
+  const quad = generateFactoryIr4(irId, sampleRate);
+  let template: PrecomputedIrTemplate | null = null;
+  if (quad) {
+    const frames = quad.length / 4;
+    const perChannel = [0, 1, 2, 3].map((channel) => {
+      const out = new Float32Array(frames);
+      for (let i = 0; i < frames; i++) out[i] = quad[i * 4 + channel];
+      return out;
+    });
+    template = makePrecomputedIrTemplate(perChannel, frames);
+  } else {
+    const mono = generateFactoryIr(irId, sampleRate);
+    if (mono) template = makePrecomputedIrTemplate([mono], mono.length);
+  }
+  if (!template) return null;
+
+  factoryTemplateCache.set(key, template);
+  while (factoryTemplateCache.size > FACTORY_TEMPLATE_CACHE_MAX) {
+    const oldest = factoryTemplateCache.keys().next().value;
+    if (oldest === undefined) break;
+    factoryTemplateCache.delete(oldest);
+  }
+  return buildPrecomputedIrPayload(template);
 }
 
 /** Unique transferable buffers across a payload (shared irSpectra must be
@@ -115,20 +177,7 @@ export function createOzvenaNode(
         typeof msg.sampleRate === "number" && Number.isFinite(msg.sampleRate) && msg.sampleRate > 0
           ? msg.sampleRate
           : ctx.sampleRate;
-      const quad = generateFactoryIr4(msg.irId, sr);
-      let payload: PrecomputedIrPayload | null = null;
-      if (quad) {
-        const frames = quad.length / 4;
-        const perChannel = [0, 1, 2, 3].map((c) => {
-          const out = new Float32Array(frames);
-          for (let i = 0; i < frames; i++) out[i] = quad[i * 4 + c];
-          return out;
-        });
-        payload = buildPrecomputedIrPayload(perChannel, frames);
-      } else {
-        const mono = generateFactoryIr(msg.irId, sr);
-        if (mono) payload = buildPrecomputedIrPayload([mono], mono.length);
-      }
+      const payload = factoryPrecomputedIrPayload(msg.irId, sr);
       node.port.postMessage(
         payload
           ? { type: "factoryIr", irId: msg.irId, channels: payload.channels, sets: payload.sets }
@@ -187,7 +236,7 @@ export function createOzvenaNode(
         for (let i = 0; i < len; i++) out[i] = src[i];
         perChannel.push(out);
       }
-      const payload = buildPrecomputedIrPayload(perChannel, len);
+      const payload = buildPrecomputedIrPayload(makePrecomputedIrTemplate(perChannel, len));
       node.port.postMessage(
         { type: "loadIr", channels: payload.channels, sets: payload.sets },
         payloadTransfers(payload),

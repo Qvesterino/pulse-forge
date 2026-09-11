@@ -38,6 +38,14 @@ export function SampleBrowser({
   const [category, setCategory] = useState<CategoryFilter>("all");
   const [mood, setMood] = useState<MoodFilter>("all");
   const [allUserAssets, setAllUserAssets] = useState<UserSampleAsset[]>(userAssets);
+  const [libraryError, setLibraryError] = useState<string | null>(null);
+
+  const reportLibraryFailure = (operation: Promise<unknown> | void): void => {
+    setLibraryError(null);
+    void Promise.resolve(operation).catch((error: unknown) => {
+      setLibraryError(error instanceof Error ? error.message : "Could not save library preferences");
+    });
+  };
 
   // Load user samples from repo on mount
   useEffect(() => {
@@ -75,7 +83,7 @@ export function SampleBrowser({
   const apply = (id: string | null) => {
     onSelect(id);
     if (id) {
-      void services.library.recordAsset(id);
+      reportLibraryFailure(services.library.recordAsset(id));
       services.engine.previewAsset(id);
     }
   };
@@ -116,7 +124,7 @@ export function SampleBrowser({
           title={fav ? "Remove from favorites" : "Add to favorites"}
           aria-label={fav ? `Unfavorite ${asset.name}` : `Favorite ${asset.name}`}
           aria-pressed={fav}
-          onClick={() => void services.library.toggleAssetFavorite(asset.id)}
+          onClick={() => reportLibraryFailure(services.library.toggleAssetFavorite(asset.id))}
         >
           {fav ? "♥" : "♡"}
         </button>
@@ -148,6 +156,11 @@ export function SampleBrowser({
         aria-label="Search samples"
         onChange={(event) => setQuery(event.target.value)}
       />
+      {libraryError && (
+        <div className="sample-library-error" role="status" aria-live="polite">
+          {libraryError}
+        </div>
+      )}
       <div className="preset-chips">
         <button
           type="button"

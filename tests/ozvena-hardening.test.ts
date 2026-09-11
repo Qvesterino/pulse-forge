@@ -62,9 +62,7 @@ interface ProcShape {
   process(inputs: Float32Array[][], outputs: Float32Array[][]): boolean;
 }
 
-type ProcCtor = new (options?: {
-  processorOptions?: { params?: Record<string, number>; bpm?: number };
-}) => ProcShape;
+type ProcCtor = new (options?: { processorOptions?: { params?: Record<string, number>; bpm?: number } }) => ProcShape;
 
 let Processor: ProcCtor;
 let now = 0;
@@ -74,12 +72,8 @@ const setTime = (t: number) => {
 
 beforeAll(async () => {
   (globalThis as unknown as { sampleRate: number }).sampleRate = 48000;
-  (globalThis as unknown as { AudioWorkletProcessor: unknown }).AudioWorkletProcessor =
-    FakeAudioWorkletProcessor;
-  (globalThis as unknown as { registerProcessor: unknown }).registerProcessor = (
-    _name: string,
-    cls: ProcCtor,
-  ) => {
+  (globalThis as unknown as { AudioWorkletProcessor: unknown }).AudioWorkletProcessor = FakeAudioWorkletProcessor;
+  (globalThis as unknown as { registerProcessor: unknown }).registerProcessor = (_name: string, cls: ProcCtor) => {
     Processor = cls;
   };
   Object.defineProperty(globalThis, "currentTime", {
@@ -120,12 +114,7 @@ function render(
     for (let i = 0; i < BLOCK; i++) gen(inL, inR, b * BLOCK + i);
     proc.process(
       [[inL, inR]],
-      [
-        [
-          outL.subarray(b * BLOCK, b * BLOCK + BLOCK),
-          outR.subarray(b * BLOCK, b * BLOCK + BLOCK),
-        ],
-      ],
+      [[outL.subarray(b * BLOCK, b * BLOCK + BLOCK), outR.subarray(b * BLOCK, b * BLOCK + BLOCK)]],
     );
     setTime(((b + 1) * BLOCK) / SR);
   }
@@ -134,7 +123,7 @@ function render(
 
 /** Full-scale noise burst for the first 0.5 s, then silence. */
 function noiseBurstThenSilence() {
-  const rng = makeRng(0x5EED);
+  const rng = makeRng(0x5eed);
   return (l: Float32Array, r: Float32Array, sample: number) => {
     if (sample < 0.5 * SR && sample % BLOCK === 0) {
       l[0] = (rng() * 2 - 1) * 0.9;
@@ -154,7 +143,11 @@ function rms(chans: Float32Array[], fromSec: number, toSec: number): number {
   const to = Math.min(chans[0].length, Math.floor(toSec * SR));
   let sum = 0;
   let n = 0;
-  for (const ch of chans) for (let i = from; i < to; i++) { sum += ch[i] * ch[i]; n++; }
+  for (const ch of chans)
+    for (let i = from; i < to; i++) {
+      sum += ch[i] * ch[i];
+      n++;
+    }
   return n > 0 ? Math.sqrt(sum / n) : 0;
 }
 
@@ -362,12 +355,7 @@ describe("Ozvena hardening — sample-rate robustness", () => {
         }
         proc.process(
           [[inL, inR]],
-          [
-            [
-              outL.subarray(b * BLOCK, b * BLOCK + BLOCK),
-              outR.subarray(b * BLOCK, b * BLOCK + BLOCK),
-            ],
-          ],
+          [[outL.subarray(b * BLOCK, b * BLOCK + BLOCK), outR.subarray(b * BLOCK, b * BLOCK + BLOCK)]],
         );
         setTime(((b + 1) * BLOCK) / sr);
       }
@@ -376,7 +364,8 @@ describe("Ozvena hardening — sample-rate robustness", () => {
       expect(bad).toBe(0);
       // Tail present after the default 20 ms pre-delay.
       let tail = 0;
-      for (const ch of [outL, outR]) for (let i = Math.floor(0.05 * sr); i < Math.floor(0.4 * sr); i++) tail += ch[i] * ch[i];
+      for (const ch of [outL, outR])
+        for (let i = Math.floor(0.05 * sr); i < Math.floor(0.4 * sr); i++) tail += ch[i] * ch[i];
       expect(tail).toBeGreaterThan(1e-6);
       // Latency report scales with the rate (≈2 ms lookahead + OS delay).
       const lat = proc.port.posted.filter((m) => m.type === "latency").pop();
@@ -625,13 +614,12 @@ describe("Ozvena hardening — user IR length cap (audio-thread allocation bound
   });
 });
 
-describe("Ozvena hardening — pre-delay ring growth keeps the tail", () => {
-  it("regression: growing the delay across a capacity boundary crossfades instead of wiping the tail", () => {
-    // 10 ms @ 48 kHz = 480 samples → ring capacity 512. 30 ms = 1440 →
-    // capacity 2048. Pre-fix, ensureBuffers() reallocated with FRESH zeroed
-    // rings: the delay-time crossfade then blended against silence, so an
-    // impulse already in the line never came out. Post-fix the history is
-    // copied in logical order and the impulse lands (fading) at t=480.
+describe("Ozvena hardening — pre-delay range is prepared up front", () => {
+  it("regression: a live delay sweep crossfades instead of losing the tail", () => {
+    // The full supported ring is reserved in prepare(), so a 10→30 ms
+    // change cannot allocate or copy audio memory from the render path. The
+    // same continuity assertion also protects the delay-time crossfade: an
+    // impulse already in the line must still emerge around the old delay.
     const pd = createPreDelay();
     pd.prepare(SR, 2, 120);
     pd.setParams({ enabled: true, ms: 10, syncEnabled: false, syncNote: "1/4" });
@@ -654,9 +642,8 @@ describe("Ozvena hardening — pre-delay ring growth keeps the tail", () => {
       outL.set(l, start);
     }
     expect(grew).toBe(true);
-    // The impulse must survive the growth: it re-emerges (blended by the
-    // 20 ms crossfade) around the old 480-sample delay. Pre-fix this window
-    // was exactly zero.
+    // The impulse must survive the live change: it re-emerges (blended by
+    // the 20 ms crossfade) around the old 480-sample delay.
     let e = 0;
     for (let i = 440; i < 600; i++) e += outL[i] * outL[i];
     expect(e).toBeGreaterThan(0.05);

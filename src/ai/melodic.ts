@@ -1,5 +1,5 @@
 import type { NoteEvent, MusicalKey } from "../project-model/types";
-import type { GenerateOptions, MelodicNote, MelodicPatternData } from "./types";
+import type { GenerateOptions, GenerationRole, MelodicNote, MelodicPatternData } from "./types";
 import { STEP_TICKS } from "../project-model/types";
 import { parseKey, snapToScale, SCALE_INTERVALS } from "../project-model/scales";
 import { uid } from "../shared/ids";
@@ -230,6 +230,8 @@ export function generateMelodicParts(
 
   // Generate for each role in the genre
   for (const pattern of patterns) {
+    const intentRole: GenerationRole = pattern.role === "chord" ? "chords" : pattern.role;
+    if (options.roles && !options.roles.includes(intentRole)) continue;
     const roleRand = roleRandoms?.[pattern.role] ?? rand;
     // Build Markov model from reference sequences for this role
     const model = buildMelodicModel(pattern.sequences);

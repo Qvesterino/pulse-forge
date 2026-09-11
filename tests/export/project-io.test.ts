@@ -23,7 +23,7 @@ describe("exportProject", () => {
 
     exportProject(doc);
 
-    expect(mockAnchor.download).toContain(".pulseforge.json");
+    expect(mockAnchor.download).toContain(".kyx.json");
     expect(click).toHaveBeenCalled();
     expect(createObjectURL).toHaveBeenCalled();
   });

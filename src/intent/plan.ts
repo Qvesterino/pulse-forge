@@ -14,6 +14,10 @@ export function generateOptionsFromIntent(intent: IntentSpec): GenerateOptions {
     style: intent.style ?? undefined,
     seed: intent.seed,
     stepCount: intent.length,
+    key: intent.key,
+    bpmRange: intent.bpmRange,
+    roles: intent.roles,
+    constraints: intent.constraints,
     ghostWeight: intent.controls.ghostWeight,
     microWeight: intent.controls.microWeight,
     velocityVariation: intent.controls.velocityVariation,
@@ -26,6 +30,13 @@ export function generateOptionsFromIntent(intent: IntentSpec): GenerateOptions {
     applyGrooveSettings: intent.applyGrooveSettings,
   };
   return mapIntentToOptions(intent, base);
+}
+
+function resolveBpm(bpm: [number, number], requested: [number, number] | null): number | null {
+  if (!requested) return null;
+  const grooveMidpoint = (bpm[0] + bpm[1]) / 2;
+  const clamped = Math.max(requested[0], Math.min(requested[1], grooveMidpoint));
+  return Math.round(clamped * 10) / 10;
 }
 
 function generationSeed(intent: IntentSpec, effectiveSeed: string, grooveId: string): string {
@@ -41,19 +52,26 @@ export function planGeneration(input: IntentInput | IntentSpec, doc: ProjectDocu
   const inputContentHash = sourcePatternContentHash(doc, options.sourcePatternId);
   const seed = generationSeed(intent, effectiveSeed, groove.id);
   const recipe = createGenerationRecipe(options, groove.id, inputContentHash);
+  const resolvedBpm = resolveBpm(groove.bpm, intent.bpmRange);
+  const resolvedDrumTrackId =
+    intent.targetTracks.drumTrackId ?? doc.tracks.find((track) => track.kind === "drum")?.id ?? null;
+  const resolvedInstrumentTrackIds =
+    intent.targetTracks.instrumentTrackIds.length > 0
+      ? [...intent.targetTracks.instrumentTrackIds]
+      : doc.tracks.filter((track) => track.kind === "instrument").map((track) => track.id);
   const rolePlans = Object.fromEntries(
     (
       [
-        ["drums", intent.targetTracks.drumTrackId ? [intent.targetTracks.drumTrackId] : []],
-        ["bass", [...intent.targetTracks.instrumentTrackIds]],
-        ["chords", [...intent.targetTracks.instrumentTrackIds]],
-        ["lead", [...intent.targetTracks.instrumentTrackIds]],
+        ["drums", resolvedDrumTrackId ? [resolvedDrumTrackId] : []],
+        ["bass", [...resolvedInstrumentTrackIds]],
+        ["chords", [...resolvedInstrumentTrackIds]],
+        ["lead", [...resolvedInstrumentTrackIds]],
       ] as const
     ).map(([role, targetTrackIds]) => [
       role,
       {
         enabled: intent.roles.includes(role as IntentRole),
-        targetTrackIds,
+        targetTrackIds: intent.roles.includes(role as IntentRole) ? targetTrackIds : [],
       },
     ]),
   ) as GenerationPlan["rolePlans"];
@@ -72,6 +90,7 @@ export function planGeneration(input: IntentInput | IntentSpec, doc: ProjectDocu
     intentHash: intentHash(intent),
     rolePlans,
     constraints: intent.constraints,
+    resolvedBpm,
     subSeeds: {
       groove: `${seed}|groove`,
       drumsCore: `${seed}|drums.core`,

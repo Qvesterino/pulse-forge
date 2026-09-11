@@ -60,7 +60,7 @@ const OCTAVE_CENTER_FREQS = [31.5, 63, 125, 250, 500, 1000, 2000, 4000, 8000, 16
 // Stage 1: high-shelf at ~38 Hz, +12 dB
 // Stage 2: high-pass at ~1500 Hz, +1.5 dB shelf
 // For simplicity we use a 2-pole high-pass approximation
-function kWeightedRms(samples: Float32Array, frameCount: number): number {
+function kWeightedRms(samples: Float32Array, frameCount: number, sampleRate: number): number {
   // Simplified K-weighting: first-order high-pass at 100 Hz to remove LF,
   // then high-shelf boost above 1 kHz. This is an approximation — true
   // ITU-R BS.1770 uses specific biquad coefficients.
@@ -68,7 +68,7 @@ function kWeightedRms(samples: Float32Array, frameCount: number): number {
   const a0 = 0.999; // very gentle high-pass
   const sumSq: number[] = [];
   // Process in 400ms blocks for momentary loudness, then integrate
-  const blockSize = Math.max(1, Math.floor(frameCount * 0.4));
+  const blockSize = Math.max(1, Math.floor(sampleRate * 0.4));
   for (let block = 0; block < frameCount; block += blockSize) {
     const end = Math.min(block + blockSize, frameCount);
     let sq = 0;
@@ -273,7 +273,7 @@ export function extractFeatures(
     : 0;
 
   // ── LUFS integrated (K-weighted) ──
-  const lufsIntegrated = kWeightedRms(mono, frameCount);
+  const lufsIntegrated = kWeightedRms(mono, frameCount, sampleRate);
 
   // ── Stereo analysis ──
   const stereo = computeStereoWidth(channels, frameCount);

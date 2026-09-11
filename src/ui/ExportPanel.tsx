@@ -63,6 +63,7 @@ export function ExportPanel({
   const [format, setFormat] = useState<MasterFormat>("wav");
   const [clipSeconds, setClipSeconds] = useState(15);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
+  const markerCount = doc.markers.length;
   /** Active export run — the CANCEL button aborts it (roadmap 1.4). */
   const abortRef = useRef<AbortController | null>(null);
   const beginExport = (): AbortSignal => {
@@ -238,11 +239,18 @@ export function ExportPanel({
   };
 
   const exportScorepack = async () => {
+    const signal = beginExport();
     setStatus({ kind: "busy", label: "Building scorepack…" });
     try {
-      const { blob, filename } = await buildScorepack(doc, services.bank, (p) => {
-        setStatus({ kind: "busy", label: `Scorepack: ${p.phase}…` });
-      });
+      const { blob, filename } = await buildScorepack(
+        doc,
+        services.bank,
+        (p) => {
+          setStatus({ kind: "busy", label: `Scorepack: ${p.phase}…` });
+        },
+        signal,
+      );
+      if (signal.aborted) throw new DOMException("Export cancelled", "AbortError");
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -255,7 +263,7 @@ export function ExportPanel({
         summary: EMPTY_EXPORT_SUMMARY,
       });
     } catch (error) {
-      setStatus({ kind: "error", label: `Scorepack failed: ${String(error)}` });
+      cancelOrElse(error, "Scorepack failed: {err}");
     }
   };
 
@@ -419,6 +427,19 @@ export function ExportPanel({
             <option value={32}>32-bit float</option>
           </select>
         </label>
+      </div>
+      <div className="export-policy" role="note" aria-label="Export policy">
+        {markerCount > 0 && (
+          <span className="export-policy-warning">
+            MARKERS: {markerCount} cue one-shots are included in SCOREPACK, not the master WAV.
+          </span>
+        )}
+        <span>OFFLINE: CANCEL stops between stages/encoding; the current render stage completes.</span>
+        {format === "video" && (
+          <span className="export-policy-warning">
+            VIDEO: final duration is codec/frame-granular; verify short clips after export.
+          </span>
+        )}
       </div>
       <div className="export-buttons">
         <button
