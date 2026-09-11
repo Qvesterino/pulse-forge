@@ -59,11 +59,34 @@ describe("instrument registry", () => {
     }
   });
 
-  it("texture exposes color/motion/space/density/texture/chaos", () => {
+  it("texture exposes color/motion/space/density/texture/chaos + Wave 3 controls", () => {
     const ids = new Set(INSTRUMENT_DEFS.texture.params.map((p) => p.id));
-    for (const expected of ["color", "motion", "space", "density", "texture", "chaos"]) {
+    for (const expected of [
+      "color",
+      "motion",
+      "space",
+      "density",
+      "texture",
+      "chaos",
+      "attack",
+      "hold",
+      "release",
+      "unison",
+      "spread",
+      "drift",
+      "diffuse",
+    ]) {
       expect(ids.has(expected)).toBe(true);
     }
+    // Render-neutral defaults: the upgrade must reproduce the pre-Wave-3 sound.
+    const byId = Object.fromEntries(INSTRUMENT_DEFS.texture.params.map((p) => [p.id, p.default]));
+    expect(byId.attack).toBe(0.5);
+    expect(byId.hold).toBe(1.5);
+    expect(byId.release).toBe(0.6);
+    expect(byId.unison).toBe(2);
+    expect(byId.spread).toBe(0);
+    expect(byId.drift).toBe(0);
+    expect(byId.diffuse).toBe(0);
   });
 });
 
@@ -122,7 +145,11 @@ describe.skipIf(typeof OfflineAudioContext === "undefined")("Texture Synth runti
     rt.noteOn(64, 0.9, 0.0, 0.4);
     rt.noteOn(67, 0.9, 0.0, 0.4);
     rt.noteOn(70, 0.9, 0.0, 0.4);
-    rt.noteOn(72, 0.9, 0.0, 0.4); // exceeds poly (4) — oldest voice should be stolen
+    rt.noteOn(72, 0.9, 0.0, 0.4);
+    rt.noteOn(74, 0.9, 0.0, 0.4);
+    rt.noteOn(76, 0.9, 0.0, 0.4);
+    rt.noteOn(78, 0.9, 0.0, 0.4);
+    rt.noteOn(80, 0.9, 0.0, 0.4); // exceeds poly (8) — oldest voice should be stolen
     rt.panic();
     rt.noteOn(60, 0.9, 0.0, 0.4); // can still play after panic
     const buffer = await ctx.startRendering();
@@ -133,6 +160,30 @@ describe.skipIf(typeof OfflineAudioContext === "undefined")("Texture Synth runti
       if (v > peak) peak = v;
     }
     expect(peak).toBeGreaterThan(0.001);
+    rt.dispose();
+  });
+
+  it("Wave 3 params (unison/spread/drift/diffuse/attack) render an evolving signal", async () => {
+    const ctx = new OfflineAudioContext(2, SR * 2, SR);
+    const track = makeTrack();
+    const rt = INSTRUMENT_DEFS.texture.factory(ctx, track, { bpm: 124, getSample: () => undefined });
+    rt.output.connect(ctx.destination);
+    rt.setParameter("unison", 5);
+    rt.setParameter("spread", 0.6);
+    rt.setParameter("drift", 0.8);
+    rt.setParameter("diffuse", 0.6);
+    rt.setParameter("attack", 0.05);
+    rt.setParameter("hold", 0.3);
+    rt.setParameter("sync", 2);
+    rt.noteOn(60, 0.9, 0.05, 0.5);
+    const buffer = await ctx.startRendering();
+    let peak = 0;
+    for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+      const data = buffer.getChannelData(ch);
+      for (let i = 0; i < data.length; i++) peak = Math.max(peak, Math.abs(data[i]));
+    }
+    expect(peak).toBeGreaterThan(0.001);
+    expect(peak).toBeLessThanOrEqual(2);
     rt.dispose();
   });
 
@@ -915,7 +966,7 @@ describe.skipIf(typeof OfflineAudioContext === "undefined")("Wavetable scan engi
   function zcc(data: Float32Array, from: number, to: number): number {
     let c = 0;
     for (let i = from + 1; i < to; i++) {
-      if ((data[i - 1] < 0) !== (data[i] < 0)) c++;
+      if (data[i - 1] < 0 !== data[i] < 0) c++;
     }
     return c;
   }
@@ -1038,9 +1089,7 @@ describe("wavetable mipmapping", () => {
     const frame = new Float32Array(FRAME_SIZE);
     for (let i = 0; i < FRAME_SIZE; i++) {
       // fundamental + strong 60th harmonic (aliasing risk at musical pitches)
-      frame[i] =
-        0.7 * Math.sin((2 * Math.PI * i) / FRAME_SIZE) +
-        0.5 * Math.sin((2 * Math.PI * 60 * i) / FRAME_SIZE);
+      frame[i] = 0.7 * Math.sin((2 * Math.PI * i) / FRAME_SIZE) + 0.5 * Math.sin((2 * Math.PI * 60 * i) / FRAME_SIZE);
     }
     const mips = buildWavetableMips([frame]);
     expect(mips.levels[0][0]).toBe(frame); // level 0 IS the original

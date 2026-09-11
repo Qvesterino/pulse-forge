@@ -43,15 +43,20 @@ nedotknuté) · `npm run test:browser` ✓ **197/197** · build + size budgety �
 - [x] ModPanel ScenePanel: `LOOP x.xx s` info (dĺžka pattern loopu pri efektívnom tempe scény).
 - [x] Testy: `tests/scene-time.test.ts` (4) + ArrangementPanel SCENE SECS blok (4) + ModPanel LOOP (1).
 
-## Vlna 3 — Texture A-tier `[ ]`
+## Vlna 3 — Texture A-tier `[x]` (2026-09-10)
 
 - **Rozhodnutie:** in-place upgrade (Bass v2 / B4 receptúra) — zlučovanie s granularom zrušené (granular je
   sample-based, bez samplu ticho končí; texture je sample-free drone engine).
-- [ ] Deterministická LFO fáza (per-track seeded / tick-anchored) → odomkne live==offline render test (dnes chýba).
-- [ ] Evolving motion: LFO destície rozšírené (delay time, pan, noise level), tempo-sync rate cez `setEffectiveBpm`.
-- [ ] Unison 1..6 + spread, attack/release parametre (dnes pevný 1.5 s hold floor), voices 4→8, bohatší space.
-- [ ] Presety 13→~16; normalizácia cez `defaultInstrumentParams` backfill — žiadny `schemaVersion` bump.
-- [ ] Test gates: render parity + determinizmus (granular pattern), browser poly + deterministický render check.
+- [x] Deterministická LFO fáza: LFO1/LFO2 sa vytvárajú vo factory, ale ŠTARTUJÚ až pri prvej noty (`when`) —
+      fáza je ukotvená na note timeline, nie na wall-clock okamih stavby instrumentu. Odomkol render parity.
+- [x] Evolving motion: DRIFT param (render-neutrálne 0) — LFO2 chveje delay time (±30 ms), LFO3 ťahá per-voice
+      pan (±0.35); pri SYNC > 0 sa LFO rate synchronizuje s (scénovým) BPM cez `setEffectiveBpm` (Vlna 1).
+- [x] Unison 1..6 + SPREAD (detune + pan fan), ATTACK/HOLD/RELEASE parametre (defaulty = pôvodné správanie:
+      0.5 / 1.5 / 0.6 — render-neutrálne), DIFFUSE (all-pass difúzia v delay feedbacku, default 0), voices 4→8.
+- [x] Presety 13→16: Evolution (ambient), Score Bloom (score), Pulse Bed (techno — SYNC-driven rhythmic bed).
+- [x] Test gates: instruments.test ids/defaults/poly(8)/new-param render; browser-check „Texture Synth:
+      deterministic render" (identické offline rendery, maxDiff < 1e-4 — granular pattern).
+- Žiadny `schemaVersion` bump — nové parametre cez `defaultInstrumentParams` backfill.
 
 ## Guardrails
 

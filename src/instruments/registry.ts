@@ -13,6 +13,7 @@ import {
 } from "./wavetables";
 import { ENV_SHAPE_OPTIONS, scheduleDahdsr } from "./envelope";
 import { createWtVoiceRuntime } from "./wtvoiceNode";
+import { createGrainVoiceRuntime, grainProcessorOptions } from "./granularNode";
 import { modMatrixParams, scheduleVoiceModMatrix } from "./modmatrix";
 import { isWorkletReady } from "../audio-worklets/loader";
 import { pitchShiftPreserveDuration } from "../audio-engine/time-stretch";
@@ -1524,15 +1525,26 @@ const sampler: InstrumentDefinition = {
 };
 
 /* ---------------- Texture Synth ---------------- */
-// Polyphonic pad/drone/atmosphere instrument.
+// Polyphonic pad/drone/atmosphere instrument (Scene Mode workhorse — VISION §7.6).
 // Signal path per voice:
-//   OSC1 (sine/saw) + OSC2 (sine/saw, detuned) + filtered noise
+//   unison bank (N detuned oscs, pan-fanned) + filtered noise
 //     -> bandpass (color/Q, LFO1-modulated)
-//     -> voice amp (tremolo LFO3)
+//     -> voice pan (LFO3 drift) -> voice amp (tremolo LFO3)
 //     -> sum (shared)
-//   sum -> output (dry) + delay (space) -> feedback -> output
-// Shared LFOs (LFO1, LFO2) modulate filter cutoff and oscillator detune; per-voice
-// LFO3 adds a subtle amp tremolo. All audio-rate, no worklets. Polyphony 4, oldest steal.
+//   sum -> output (dry) + delay (space, LFO2 wobble, optional all-pass
+//   diffusion) -> feedback -> output
+// Shared LFO1/LFO2 modulate the filter and the unison detune/delay time;
+// per-voice LFO3 adds tremolo + stereo drift. All audio-rate, no worklets.
+// Polyphony 8, oldest steal.
+//
+// Determinism contract (live == offline): LFO1/LFO2 are created at factory
+// time but STARTED at the first note's `when` — their phase is anchored to
+// the note timeline, not to the wall-clock moment the instrument happened to
+// be built, so identical note schedules render identically (pinned by the
+// browser-check deterministic-render gate).
+// Render-neutral defaults: attack/release/hold/unison/spread/drift/diffuse
+// defaults reproduce the pre-upgrade sound exactly (spread 0 = the classic
+// 2-osc ±3.5 ct pair, drift/diffuse 0 = no extra motion/diffusion).
 
 const texture: InstrumentDefinition = {
   kind: "texture",
@@ -1545,6 +1557,13 @@ const texture: InstrumentDefinition = {
     { id: "density", label: "DENSITY", min: 0, max: 1, default: 0.7, format: formatPct },
     { id: "texture", label: "TEXTURE", min: 0, max: 1, default: 0.4, format: formatPct },
     { id: "chaos", label: "CHAOS", min: 0, max: 1, default: 0.2, format: formatPct },
+    { id: "attack", label: "ATTACK", min: 0.01, max: 3, default: 0.5, unit: "s", format: (v) => `${v.toFixed(2)}s` },
+    { id: "hold", label: "HOLD", min: 0, max: 6, default: 1.5, unit: "s", format: (v) => `${v.toFixed(2)}s` },
+    { id: "release", label: "RELEASE", min: 0.05, max: 4, default: 0.6, unit: "s", format: (v) => `${v.toFixed(2)}s` },
+    { id: "unison", label: "UNISON", min: 1, max: 6, default: 2, format: (v) => `${Math.round(v)}×` },
+    { id: "spread", label: "SPREAD", min: 0, max: 1, default: 0, format: formatPct },
+    { id: "drift", label: "DRIFT", min: 0, max: 1, default: 0, format: formatPct },
+    { id: "diffuse", label: "DIFFUSE", min: 0, max: 1, default: 0, format: formatPct },
     { id: "level", label: "LEVEL", min: -24, max: 6, default: -10, unit: "dB", format: formatDb },
   ],
   factory(ctx, track, env) {
@@ -1552,7 +1571,7 @@ const texture: InstrumentDefinition = {
     output.gain.value = 1;
     const p = { ...track.params };
     let bpm = clampBpm(env.bpm);
-    const { voices, register, cleanup, findByPitch } = makeVoiceManager(4);
+    const { voices, register, cleanup, findByPitch } = makeVoiceManager(8);
 
     // Shared LFO1: filter cutoff modulation
     const lfo1 = ctx.createOscillator();
@@ -1561,18 +1580,18 @@ const texture: InstrumentDefinition = {
     const lfo1Depth = ctx.createGain();
     lfo1Depth.gain.value = 0;
     lfo1.connect(lfo1Depth);
-    lfo1.start();
+    // Started at the FIRST note's `when` (see the determinism contract above).
 
-    // Shared LFO2: oscillator detune modulation
+    // Shared LFO2: unison detune modulation + (drift) delay-time wobble
     const lfo2 = ctx.createOscillator();
     lfo2.type = "sine";
     lfo2.frequency.value = 0.27;
     const lfo2Depth = ctx.createGain();
     lfo2Depth.gain.value = 0;
     lfo2.connect(lfo2Depth);
-    lfo2.start();
+    let lfoClockStarted = false;
 
-    // Shared delay feedback for "space"
+    // Shared delay feedback for "space" (+ optional all-pass diffusion)
     const delay = ctx.createDelay(2);
     delay.delayTime.value = 0.42;
     const delayFeedback = ctx.createGain();
@@ -1580,10 +1599,26 @@ const texture: InstrumentDefinition = {
     const delayTone = ctx.createBiquadFilter();
     delayTone.type = "lowpass";
     delayTone.frequency.value = 4000;
+    const diffuseDry = ctx.createGain();
+    diffuseDry.gain.value = 1;
+    const diffuseWet = ctx.createGain();
+    diffuseWet.gain.value = 0;
+    const diffuseAp = ctx.createBiquadFilter();
+    diffuseAp.type = "allpass";
+    diffuseAp.frequency.value = 900;
+    diffuseAp.Q.value = 0.4;
     delay.connect(delayTone);
-    delayTone.connect(delayFeedback);
-    delayFeedback.connect(delay);
+    delayTone.connect(diffuseDry);
+    diffuseDry.connect(delayFeedback);
+    delayTone.connect(diffuseAp);
+    diffuseAp.connect(diffuseWet);
+    diffuseWet.connect(delayFeedback);
     delayTone.connect(output);
+    // LFO2 drift wobbles the delay time (±30 ms at drift 1) — render-neutral (drift 0).
+    const delayWobble = ctx.createGain();
+    delayWobble.gain.value = 0;
+    lfo2.connect(delayWobble);
+    delayWobble.connect(delay.delayTime);
 
     // Per-instrument sum gain (all voices -> sum -> dry + delay)
     const sum = ctx.createGain();
@@ -1597,19 +1632,27 @@ const texture: InstrumentDefinition = {
       const motion = p.motion ?? 0.4;
       const space = p.space ?? 0.35;
       const chaos = p.chaos ?? 0.2;
+      const drift = p.drift ?? 0;
+      const diffuse = p.diffuse ?? 0;
       const now = ctx.currentTime;
       // SYNC locks the space delay to a note division; OFF keeps the classic 0.42 s
       const sel = Math.max(0, Math.min(6, Math.round(p.sync ?? 0)));
       const delayTarget = sel > 0 ? Math.min(1.9, SYNC_BEATS[sel] * (60 / bpm)) : 0.42;
       delay.delayTime.setTargetAtTime(delayTarget, now, 0.05);
+      // With SYNC active the MOTION rates follow the (scene) tempo too —
+      // evolution stays musical instead of wall-clock-locked.
+      const rateSync = sel > 0 ? bpm / 120 : 1;
       lfo1Depth.gain.setTargetAtTime(800 * motion, now, 0.05);
       lfo2Depth.gain.setTargetAtTime(12 * motion, now, 0.05);
       delayFeedback.gain.setTargetAtTime(space * 0.7, now, 0.05);
+      delayWobble.gain.setTargetAtTime(0.03 * drift, now, 0.05);
+      diffuseDry.gain.setTargetAtTime(1 - 0.55 * diffuse, now, 0.05);
+      diffuseWet.gain.setTargetAtTime(0.55 * diffuse, now, 0.05);
       // Chaos shifts LFO rates by up to ±3x of base, deterministically from chaosSeed
       const chaos1 = 1 + ((chaosSeed % 1000) / 1000 - 0.5) * 2 * chaos;
       const chaos2 = 1 + (((chaosSeed >>> 8) % 1000) / 1000) * chaos * 0.6;
-      lfo1.frequency.setTargetAtTime(0.13 * chaos1, now, 0.1);
-      lfo2.frequency.setTargetAtTime(0.27 * chaos2, now, 0.1);
+      lfo1.frequency.setTargetAtTime(0.13 * chaos1 * rateSync, now, 0.1);
+      lfo2.frequency.setTargetAtTime(0.27 * chaos2 * rateSync, now, 0.1);
     };
     applyParams();
 
@@ -1621,28 +1664,45 @@ const texture: InstrumentDefinition = {
         const density = p.density ?? 0.7;
         const textureVal = p.texture ?? 0.4;
         const motion = p.motion ?? 0.4;
+        const drift = p.drift ?? 0;
         const level = velocity * dbToLin(p.level ?? -10);
         const filterFreq = 200 * Math.pow(15, color);
         const filterQ = 0.5 + textureVal * 7.5;
         const useSaw = textureVal > 0.5;
-        const hold = Math.max(durationSec, 1.5);
-        const stopTime = when + hold + 1.2;
+        const attack = Math.max(0.01, Math.min(3, p.attack ?? 0.5));
+        const hold = Math.max(durationSec, p.hold ?? 1.5);
+        const releaseTc = Math.max(0.05, Math.min(4, p.release ?? 0.6));
+        const stopTime = when + hold + Math.max(1.2, releaseTc * 2) + 0.1;
 
-        // Voice amp -> sum
+        // The shared LFO clock starts anchored to the first note's `when` —
+        // deterministic phase (see the determinism contract above).
+        if (!lfoClockStarted) {
+          lfoClockStarted = true;
+          lfo1.start(when);
+          lfo2.start(when);
+        }
+
+        // Voice pan (LFO3 drift) -> voice amp -> sum
+        const voicePan = ctx.createStereoPanner();
+        voicePan.pan.value = 0;
+        voicePan.connect(sum);
         const voiceGain = ctx.createGain();
         voiceGain.gain.setValueAtTime(0.0001, when);
-        voiceGain.gain.exponentialRampToValueAtTime(Math.max(level, 0.0002), when + 0.5);
-        voiceGain.gain.setTargetAtTime(Math.max(level * 0.75, 0.0002), when + 0.5, 0.5);
-        voiceGain.gain.setTargetAtTime(0.0001, when + hold + 0.05, 0.6);
-        voiceGain.connect(sum);
+        voiceGain.gain.exponentialRampToValueAtTime(Math.max(level, 0.0002), when + attack);
+        voiceGain.gain.setTargetAtTime(Math.max(level * 0.75, 0.0002), when + attack, 0.5);
+        voiceGain.gain.setTargetAtTime(0.0001, when + hold + 0.05, releaseTc);
+        voiceGain.connect(voicePan);
 
-        // Per-voice LFO3 amp tremolo (subtle breathing)
+        // Per-voice LFO3 amp tremolo (subtle breathing) + stereo drift
         const lfo3 = ctx.createOscillator();
         lfo3.type = "sine";
         lfo3.frequency.value = 0.31 + Math.abs(Math.sin((chaosSeed + pitch) * 0.13)) * 0.4;
         const lfo3Depth = ctx.createGain();
         lfo3Depth.gain.value = 0.25 * (0.3 + motion * 0.7);
         lfo3.connect(lfo3Depth).connect(voiceGain.gain);
+        const lfo3PanDepth = ctx.createGain();
+        lfo3PanDepth.gain.value = 0.35 * drift;
+        lfo3.connect(lfo3PanDepth).connect(voicePan.pan);
         lfo3.start(when);
         lfo3.stop(stopTime + 0.1);
 
@@ -1664,28 +1724,30 @@ const texture: InstrumentDefinition = {
         noise.start(when);
         noise.stop(stopTime + 0.1);
 
-        // OSC1 (sine or saw depending on texture)
-        const osc1 = ctx.createOscillator();
-        osc1.type = useSaw ? "sawtooth" : "sine";
-        osc1.frequency.value = freq;
-        lfo2Depth.connect(osc1.detune);
-        const osc1Gain = ctx.createGain();
-        osc1Gain.gain.value = density * 0.6;
-        osc1.connect(osc1Gain).connect(voiceGain);
-        osc1.start(when);
-        osc1.stop(stopTime + 0.1);
-
-        // OSC2 (detuned copy, opposite waveform blending for richness)
-        const osc2 = ctx.createOscillator();
-        osc2.type = useSaw ? "sawtooth" : "sine";
-        osc2.frequency.value = freq;
-        osc2.detune.value = 7;
-        lfo2Depth.connect(osc2.detune);
-        const osc2Gain = ctx.createGain();
-        osc2Gain.gain.value = density * 0.5;
-        osc2.connect(osc2Gain).connect(voiceGain);
-        osc2.start(when);
-        osc2.stop(stopTime + 0.1);
+        // Unison bank: N detuned oscillators fanned across the stereo field.
+        // n=2/spread=0 reproduces the classic osc pair exactly (0 / +7 ct,
+        // gains 0.6/0.5 × density) — render-neutral default.
+        const n = Math.max(1, Math.min(6, Math.round(p.unison ?? 2)));
+        const spreadCents = (p.spread ?? 0) * 24;
+        const oscs: OscillatorNode[] = [];
+        for (let u = 0; u < n; u++) {
+          const t = n === 1 ? 0 : u / (n - 1);
+          const weight = u === 0 ? 0.6 : 0.5;
+          const sumWeights = 0.6 + 0.5 * (n - 1);
+          const osc = ctx.createOscillator();
+          osc.type = useSaw ? "sawtooth" : "sine";
+          osc.frequency.value = freq;
+          osc.detune.value = t * (spreadCents + 7);
+          lfo2Depth.connect(osc.detune);
+          const oscGain = ctx.createGain();
+          oscGain.gain.value = (density * 1.1 * weight) / sumWeights;
+          const oscPan = ctx.createStereoPanner();
+          oscPan.pan.value = n > 1 ? t * (p.spread ?? 0) * 0.8 : 0;
+          osc.connect(oscGain).connect(oscPan).connect(voiceGain);
+          osc.start(when);
+          osc.stop(stopTime + 0.1);
+          oscs.push(osc);
+        }
 
         const voice = register(
           pitch,
@@ -1693,8 +1755,8 @@ const texture: InstrumentDefinition = {
           (whenStop) => {
             const t = Math.max(whenStop, 0);
             voiceGain.gain.cancelScheduledValues(t);
-            voiceGain.gain.setTargetAtTime(0.0001, t, 0.3);
-            for (const osc of [osc1, osc2, lfo3, noise]) {
+            voiceGain.gain.setTargetAtTime(0.0001, t, Math.min(0.3, releaseTc));
+            for (const osc of [...oscs, lfo3, noise]) {
               try {
                 osc.stop(t + 0.1);
               } catch {
@@ -1705,7 +1767,7 @@ const texture: InstrumentDefinition = {
           (silenceNow) => {
             voiceGain.gain.cancelScheduledValues(silenceNow);
             voiceGain.gain.setTargetAtTime(0.0001, silenceNow, 0.1);
-            for (const osc of [osc1, osc2, lfo3, noise]) {
+            for (const osc of [...oscs, lfo3, noise]) {
               try {
                 osc.stop(silenceNow + 0.05);
               } catch {
@@ -1726,16 +1788,23 @@ const texture: InstrumentDefinition = {
           } catch {
             /* already disconnected */
           }
+          try {
+            voicePan.disconnect();
+          } catch {
+            /* already disconnected */
+          }
           cleanup(voice);
         };
       },
       setParameter(id, value) {
         p[id] = value;
-        if (id === "motion" || id === "space" || id === "chaos" || id === "sync") applyParams();
+        if (id === "motion" || id === "space" || id === "chaos" || id === "sync" || id === "drift" || id === "diffuse")
+          applyParams();
       },
       setParameterAt(id, value, _when) {
         p[id] = value;
-        if (id === "motion" || id === "space" || id === "chaos" || id === "sync") applyParams();
+        if (id === "motion" || id === "space" || id === "chaos" || id === "sync" || id === "drift" || id === "diffuse")
+          applyParams();
       },
       syncBpm(next) {
         bpm = clampBpm(next);
@@ -1750,20 +1819,21 @@ const texture: InstrumentDefinition = {
       },
       dispose() {
         this.panic();
-        try {
-          lfo1.stop();
-        } catch {
-          /* not started */
-        }
-        try {
-          lfo2.stop();
-        } catch {
-          /* not started */
+        for (const osc of [lfo1, lfo2]) {
+          try {
+            osc.stop();
+          } catch {
+            /* not started */
+          }
         }
         lfo1.disconnect();
         lfo2.disconnect();
         lfo1Depth.disconnect();
         lfo2Depth.disconnect();
+        delayWobble.disconnect();
+        diffuseDry.disconnect();
+        diffuseWet.disconnect();
+        diffuseAp.disconnect();
         sum.disconnect();
         delay.disconnect();
         delayFeedback.disconnect();
@@ -2417,6 +2487,22 @@ const granular: InstrumentDefinition = {
     tone.Q.value = 0.7;
     tone.connect(output);
 
+    // Phase-2 voice-engine track: when the granular voice worklet is
+    // loaded, grains are scheduled per-sample inside the processor and the
+    // playhead (POSITION/SCAN/JITTER/RATE/SIZE) is live during held notes.
+    // Otherwise the deterministic upfront-scheduled cloud below stays.
+    if (isWorkletReady("grainVoice", ctx)) {
+      const node = new AudioWorkletNode(ctx, "granular-voice-processor", {
+        numberOfInputs: 0,
+        numberOfOutputs: 1,
+        outputChannelCount: [2],
+        processorOptions: grainProcessorOptions(track, env),
+      });
+      const rt = createGrainVoiceRuntime(node, track, env);
+      rt.output.connect(tone);
+      return rt;
+    }
+
     const reversedCache = new Map<AudioBuffer, AudioBuffer>();
     const reversedBuffer = (buffer: AudioBuffer): AudioBuffer => {
       let rev = reversedCache.get(buffer);
@@ -2600,15 +2686,7 @@ const granular: InstrumentDefinition = {
 
 // Params that retone already-sounding voices; modWave (discrete type
 // switch), the amp envelope and level affect new notes only.
-const FM_LIVE_PARAM_IDS = new Set([
-  "ratio",
-  "index",
-  "modDecay",
-  "modSustain",
-  "feedback",
-  "fbDecay",
-  "fbSus",
-]);
+const FM_LIVE_PARAM_IDS = new Set(["ratio", "index", "modDecay", "modSustain", "feedback", "fbDecay", "fbSus"]);
 
 const fm: InstrumentDefinition = {
   kind: "fm",
@@ -2757,10 +2835,7 @@ const fm: InstrumentDefinition = {
         // Full index / bite at attack; `reschedule` then decays both toward
         // their sustain fractions from when + attack.
         modEnv.gain.setValueAtTime(Math.max(deviation, 0.0002), when);
-        fbGain.gain.setValueAtTime(
-          Math.max(Math.max(0, Math.min(1, p.feedback ?? 0)) * deviation * 0.5, 0.0002),
-          when,
-        );
+        fbGain.gain.setValueAtTime(Math.max(Math.max(0, Math.min(1, p.feedback ?? 0)) * deviation * 0.5, 0.0002), when);
         modulator.connect(modEnv).connect(modGain).connect(carrier.frequency);
         modulator.connect(fbGain).connect(fbDelay).connect(modulator.frequency);
         reschedule(voiceData, when + attack);

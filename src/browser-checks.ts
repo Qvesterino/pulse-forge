@@ -368,6 +368,59 @@ export async function runChecks(): Promise<CheckResult[]> {
     check("Granular Synth: deterministic render + noteOff cuts the tail", false, String(error));
   }
 
+  // Texture Synth: deterministic render (Wave 3 — LFO clock anchored to the
+  // first note's `when`, so live and offline share the same phase timeline).
+  try {
+    const renderTexture = async () => {
+      const ctx = new OfflineAudioContext(2, SR * 2, SR);
+      const track: InstrumentTrack = {
+        id: "check-tex",
+        kind: "instrument",
+        instrument: "texture",
+        name: "Texture",
+        gain: 1,
+        pan: 0,
+        mute: false,
+        solo: false,
+        sampleId: null,
+        params: {
+          ...defaultInstrumentParams("texture"),
+          motion: 0.7,
+          drift: 0.6,
+          unison: 4,
+          spread: 0.5,
+          diffuse: 0.5,
+          sync: 2,
+        },
+        effects: [],
+        sends: {},
+      };
+      const rt = INSTRUMENT_DEFS.texture.factory(ctx, track, { bpm: 124, getSample: () => undefined });
+      rt.output.connect(ctx.destination);
+      rt.noteOn(60, 0.9, 0.05, 1.5);
+      rt.noteOn(67, 0.7, 0.45, 1.0);
+      const buffer = await ctx.startRendering();
+      rt.dispose();
+      return Array.from(buffer.getChannelData(0));
+    };
+    const texA = await renderTexture();
+    const texB = await renderTexture();
+    let texDiff = 0;
+    const texSame = texA.length === texB.length;
+    if (texSame) {
+      for (let i = 0; i < texA.length; i++) texDiff = Math.max(texDiff, Math.abs(texA[i] - texB[i]));
+    }
+    let texPeak = 0;
+    for (let i = 0; i < texA.length; i++) texPeak = Math.max(texPeak, Math.abs(texA[i]));
+    check(
+      "Texture Synth: deterministic render (LFO clock anchored to the note timeline)",
+      texSame && texDiff < 1e-4 && texPeak > 0.001,
+      `maxDiff=${texDiff.toExponential(2)} peak=${texPeak.toFixed(4)}`,
+    );
+  } catch (error) {
+    check("Texture Synth: deterministic render (LFO clock anchored to the note timeline)", false, String(error));
+  }
+
   // Distortion: harmonics produced
   try {
     const ctx = new OfflineAudioContext(1, SR, SR);
