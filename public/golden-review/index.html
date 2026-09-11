@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+<meta charset="UTF-8">
+<title>Golden Review — počúvaci nástroj</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #1a1d23; color: #eee; padding: 2rem; max-width: 800px; margin: 0 auto; }
+  .combo { background: #22252c; border-radius: 8px; padding: 1.5rem; margin: 1rem 0; border: 1px solid #333; }
+  .combo h3 { margin: 0 0 1rem; color: #f59e0b; }
+  .cand { display: flex; align-items: center; gap: 1rem; margin: 0.5rem 0; padding: 0.5rem; background: #2a2d35; border-radius: 6px; }
+  .cand audio { flex: 1; height: 32px; }
+  .cand .label { min-width: 80px; font-weight: bold; color: #f59e0b; }
+  .cand .seed { min-width: 200px; font-size: 0.8rem; color: #888; }
+  .btn { background: #f59e0b; color: #1a1d23; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-weight: bold; }
+  .export { margin-top: 2rem; padding: 1rem; background: #22252c; border-radius: 8px; }
+  .export pre { background: #111; padding: 1rem; border-radius: 4px; overflow-x: auto; font-size: 0.8rem; max-height: 300px; }
+</style>
+</head>
+<body>
+<h1>🎧 Golden Review — Intent Ranker</h1>
+<p>Počúvaj kandidátov v každej combo, usporiadaj ich najlepší → najhorší, a skopíruj výsledný JSON do <code>intent-ranker-golden.json</code>.</p>
+<div id="combos"></div>
+<div class="export">
+  <h3>📋 Export</h3>
+  <button class="btn" onclick="exportJson()">Export JSON</button>
+  <pre id="exportOut">Klikni na Export JSON…</pre>
+</div>
+<script>
+const COMBOS = [
+  { combo: "house:classic", candidates: ["cand-0","cand-1","cand-2","cand-3"] },
+  { combo: "house:deep", candidates: ["cand-0","cand-1","cand-2","cand-3"] },
+  { combo: "house:organs", candidates: ["cand-0","cand-1","cand-2","cand-3"] },
+  { combo: "techno:drive", candidates: ["cand-0","cand-1","cand-2","cand-3"] },
+  { combo: "techno:acid", candidates: ["cand-0","cand-1","cand-2","cand-3"] },
+  { combo: "trap:roll", candidates: ["cand-0","cand-1","cand-2","cand-3"] },
+  { combo: "ambient:drift", candidates: ["cand-0","cand-1","cand-2","cand-3"] },
+];
+const rankings = {};
+const root = document.getElementById("combos");
+COMBOS.forEach(({combo, candidates}) => {
+  const div = document.createElement("div");
+  div.className = "combo";
+  div.innerHTML = `<h3>${combo}</h3>` + candidates.map(c =>
+    `<div class="cand"><span class="label">${c}</span><audio controls preload="none" src="../golden-review/${combo.replace(":","_")}/${c}.wav"></audio></div>`
+  ).join("") + `<button class="btn" onclick="rank('${combo}')">Zapísať poradie</button><pre class="rank-out" id="out-${combo.replace(":","_")}"></pre>`;
+  root.appendChild(div);
+});
+function rank(combo) {
+  const answer = prompt(`Poradie kandidátov pre ${combo} (najlepší prvý, oddelené čiarkou):\nnapr. cand-2,cand-0,cand-3,cand-1`);
+  if (!answer) return;
+  const order = answer.split(",").map(s => s.trim().replace("cand-","")).filter(Boolean);
+  rankings[combo] = order;
+  document.getElementById("out-" + combo.replace(":","_")).textContent = "order: [" + order.join(", ") + "]";
+}
+function exportJson() {
+  const result = { version: "golden.v1", reviewed: true, reviewedBy: "KYX", reviewedAt: new Date().toISOString().slice(0,10), combos: [] };
+  for (const [combo, order] of Object.entries(rankings)) {
+    result.combos.push({ combo, order: order.map(Number) });
+  }
+  document.getElementById("exportOut").textContent = JSON.stringify(result, null, 2);
+}
+</script>
+</body>
+</html>
