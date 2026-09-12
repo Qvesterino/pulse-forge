@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { screen, fireEvent } from "@testing-library/react";
+import { act, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { EffectRack } from "../../src/ui/EffectRack";
 import { UltinaPanel } from "../../src/ui/UltinaPanel";
@@ -225,6 +225,74 @@ describe("EffectRack — FXEQ panel", () => {
       (call: unknown[]) => call[0] as { type: string },
     );
     expect(executed.some((c) => c.type === "setFxEqParam")).toBe(true);
+  });
+
+  it("exposes PRISM's sidechain source picker and records a source command", async () => {
+    const user = userEvent.setup();
+    const { doc, track } = fxEqDoc();
+    const services = mockServices(doc);
+    renderWithContext(<EffectRack track={track} />, { services });
+    await screen.findByLabelText("PRISM preset", {}, { timeout: 10_000 });
+
+    const source = screen.getByDisplayValue("OFF") as HTMLSelectElement;
+    const candidate = doc.tracks.find((item) => item.id !== track.id)!;
+    await user.selectOptions(source, candidate.id);
+
+    const executed = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.map(
+      (call: unknown[]) => call[0] as { type: string; label: string },
+    );
+    expect(executed.some((command) => command.type === "setEffectSidechainSource")).toBe(true);
+  });
+
+  it("uses one persisted A/B controller and hydrates PRISM morph slots", async () => {
+    const { doc, track } = fxEqDoc();
+    track.effects[0].deviceState = {
+      kind: "effect-ab-v1",
+      data: {
+        slots: { A: { "band1.gainDb": -6 }, B: { "band1.gainDb": 6 } },
+        active: "A",
+      },
+    };
+    const services = mockServices(doc);
+    const runtime = {
+      setMorphSnapshot: vi.fn(),
+      getMorphSnapshot: vi.fn((slot: 0 | 1) => (slot === 0 ? { "band1.gainDb": -6 } : { "band1.gainDb": 6 })),
+      morphBlendSnapshots: vi.fn(),
+      setParameter: vi.fn(),
+      beginParamSync: vi.fn(),
+      endParamSync: vi.fn(),
+    } as any;
+    (services.engine as any).getFxRuntime = vi.fn(() => runtime);
+    renderWithContext(<EffectRack track={track} />, { services });
+    await screen.findByLabelText("PRISM preset", {}, { timeout: 10_000 });
+
+    expect(screen.getAllByRole("group", { name: "PRISM A/B morph" })).toHaveLength(1);
+    expect(screen.getByText("A ACTIVE · STORED")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "A•" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "B•" })).toBeInTheDocument();
+    expect(runtime.setMorphSnapshot).toHaveBeenCalledWith(0, { "band1.gainDb": -6 });
+    expect(runtime.setMorphSnapshot).toHaveBeenCalledWith(1, { "band1.gainDb": 6 });
+  });
+
+  it("sends PRISM slider movement to live preview while commit stays a document command", async () => {
+    const { doc, track } = fxEqDoc();
+    const services = mockServices(doc);
+    const previewFxParam = vi.fn();
+    (services.engine as any).previewFxParam = previewFxParam;
+    renderWithContext(<EffectRack track={track} />, { services });
+    await screen.findByLabelText("PRISM preset", {}, { timeout: 10_000 });
+
+    const slider = screen.getByRole("slider", { name: "B1 GAIN" });
+    fireEvent.pointerDown(slider, { button: 0, clientX: 10, pointerId: 1 });
+    fireEvent.pointerMove(slider, { clientX: 80, pointerId: 1 });
+    await act(() => new Promise((resolve) => setTimeout(resolve, 30)));
+    fireEvent.pointerUp(slider, { pointerId: 1 });
+
+    await waitFor(() => expect(previewFxParam).toHaveBeenCalled());
+    const executed = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.map(
+      (call: unknown[]) => call[0] as { type: string },
+    );
+    expect(executed.some((command) => command.type === "setFxEqParam")).toBe(true);
   });
 });
 

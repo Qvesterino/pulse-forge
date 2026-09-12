@@ -75,6 +75,7 @@ export function createCompressorNode(
     },
     getAudioParam: (paramId: string) => node.parameters.get(paramId === "makeup" ? "makeup" : paramId) ?? null,
     setSidechainInput(source: AudioNode | null) {
+      if (lastSidechainSource === source) return;
       if (lastSidechainSource) {
         try {
           lastSidechainSource.disconnect(node);

@@ -456,11 +456,9 @@ try {
         waitUntil: "domcontentloaded",
         timeout: 60_000,
       });
-      await p.waitForFunction(
-        () => window.__pfJam && window.__pfJam.collab.status === "connected",
-        null,
-        { timeout: 20_000 },
-      );
+      await p.waitForFunction(() => window.__pfJam && window.__pfJam.collab.status === "connected", null, {
+        timeout: 20_000,
+      });
       await p.evaluate((nameArg) => {
         // Rename the LOCAL USER identity so presence assertions can tell peers apart.
         window.__pfJam.collab.localUser.name = nameArg;
@@ -503,7 +501,9 @@ try {
     const spread = Math.max(...positions) - Math.min(...positions);
     // 480 PPQ × 4 = one bar at any tempo; band-practice sync must sit well inside it.
     if (spread > 480) {
-      throw new Error(`transport playheads diverged: ${spread.toFixed(0)} ticks (${positions.map((x) => x.toFixed(0)).join(", ")})`);
+      throw new Error(
+        `transport playheads diverged: ${spread.toFixed(0)} ticks (${positions.map((x) => x.toFixed(0)).join(", ")})`,
+      );
     }
 
     // 6. Host stops; everyone stops.
@@ -621,6 +621,112 @@ try {
     const collapsedAria = await plugPage.locator(".fx-device-toggle").first().getAttribute("aria-expanded");
     if (collapsedAria !== "false") throw new Error(`collapse did not flip aria-expanded (${collapsedAria})`);
     await plugPage.locator(".fx-device-toggle").first().click();
+    // PRISM host workflow: the source picker must be present on the actual
+    // flagship panel, and selecting a source must remain a visible state.
+    await plugPage.waitForSelector('.fxeq-panel[aria-label="PRISM multiband editor"]', { timeout: 10_000 });
+    const prismSource = plugPage.locator(".fx-sidechain-picker select").first();
+    const sourceOptions = await prismSource.locator('option:not([value=""])').count();
+    if (sourceOptions < 1) throw new Error("PRISM source picker has no eligible source tracks");
+    await prismSource.selectOption({ index: 1 });
+    await plugPage.waitForTimeout(150);
+    const selectedPrismSource = await prismSource.inputValue();
+    if (!selectedPrismSource) throw new Error("PRISM sidechain source did not persist in the UI");
+    // A/B is rendered once inside PRISM. Exercise both slots with a real
+    // pointer drag so preview/history is covered, then verify the plugin undo
+    // and redo buttons apply the asynchronous worklet reply back to the doc.
+    const prismAb = plugPage.locator(".fxeq-panel .effect-ab").first();
+    await prismAb.locator('button:has-text("STORE")').click();
+    await plugPage.waitForTimeout(120);
+    if (!(await prismAb.locator('button:has-text("A•")').count())) throw new Error("PRISM A slot did not store");
+    const prismGain = plugPage.locator('.fxeq-panel [role="slider"][aria-label="B1 GAIN"]').first();
+    await prismAb.getByRole("button", { name: "B", exact: true }).click();
+    const bGainBefore = await prismGain.getAttribute("aria-valuenow");
+    const gainBox = await prismGain.boundingBox();
+    if (!gainBox) throw new Error("PRISM gain control has no browser box");
+    await prismGain.dispatchEvent("pointerdown", {
+      button: 0,
+      pointerId: 1,
+      clientX: gainBox.x + gainBox.width * 0.45,
+      clientY: gainBox.y + gainBox.height / 2,
+    });
+    // Let React commit the pointer-down drag state before the first move;
+    // otherwise a very fast browser sequence can be observed by the
+    // pointer-move handler through its pre-drag closure. Dispatching on the
+    // control itself also keeps this deterministic when the rack is nested in
+    // a transformed/scrolled dock panel.
+    await plugPage.waitForTimeout(60);
+    for (let i = 1; i <= 5; i += 1) {
+      const ratio = 0.45 + (0.82 - 0.45) * (i / 5);
+      await prismGain.dispatchEvent("pointermove", {
+        button: 0,
+        pointerId: 1,
+        clientX: gainBox.x + gainBox.width * ratio,
+        clientY: gainBox.y + gainBox.height / 2,
+      });
+    }
+    await plugPage.waitForTimeout(120);
+    await prismGain.dispatchEvent("pointerup", {
+      button: 0,
+      pointerId: 1,
+      clientX: gainBox.x + gainBox.width * 0.82,
+      clientY: gainBox.y + gainBox.height / 2,
+    });
+    const bGainAfter = await prismGain.getAttribute("aria-valuenow");
+    if (!bGainBefore || !bGainAfter || bGainBefore === bGainAfter) throw new Error("PRISM gain drag did not change B");
+    await prismAb.locator('button:has-text("STORE")').click();
+    await plugPage.waitForTimeout(120);
+    if (!(await prismAb.locator('button:has-text("B•")').count())) throw new Error("PRISM B slot did not store");
+    await plugPage.locator('[aria-label="Undo PRISM parameter edit"]').first().click();
+    await plugPage.waitForTimeout(180);
+    const bGainAfterUndo = await prismGain.getAttribute("aria-valuenow");
+    if (bGainAfterUndo !== bGainBefore)
+      throw new Error(`PRISM plugin undo did not restore B (${bGainAfterUndo}/${bGainBefore})`);
+    await plugPage.locator('[aria-label="Redo PRISM parameter edit"]').first().click();
+    await plugPage.waitForTimeout(180);
+    const bGainAfterRedo = await prismGain.getAttribute("aria-valuenow");
+    if (bGainAfterRedo !== bGainAfter)
+      throw new Error(`PRISM plugin redo did not restore B (${bGainAfterRedo}/${bGainAfter})`);
+    // With both snapshots available, morph is enabled and a keyboard scrub
+    // commits a document blend on release. The exact musical result is
+    // deliberately not hard-coded; the control transition is the invariant.
+    const prismMorph = plugPage.locator('input[aria-label="PRISM morph A to B"]').first();
+    if (await prismMorph.isDisabled()) throw new Error("PRISM morph stayed disabled after storing A and B");
+    const morphBefore = await prismMorph.inputValue();
+    await prismMorph.focus();
+    await prismMorph.press("ArrowRight");
+    await plugPage.waitForTimeout(180);
+    const morphAfter = await prismMorph.inputValue();
+    if (morphBefore === morphAfter) throw new Error("PRISM morph did not move on ArrowRight");
+    await plugPage.locator(".fx-device-toggle").first().click();
+    await plugPage.locator(".fx-device-toggle").first().click();
+    await plugPage.waitForSelector(".fxeq-panel .effect-ab", { timeout: 5000 });
+    // Reload is the user-facing persistence boundary: source, both snapshots
+    // and the enabled morph control must survive the project rehydrate.
+    await plugPage.waitForTimeout(1200); // allow command autosave to settle before reload
+    await plugPage.reload({ waitUntil: "domcontentloaded", timeout: 60_000 });
+    await plugPage.waitForSelector(".project-browser", { timeout: 30_000 });
+    const continueCard = plugPage.locator(".pb-continue-card").first();
+    if (await continueCard.count()) {
+      await continueCard.click();
+    } else {
+      await plugPage.locator(".pb-row button:has-text(OPEN)").first().click();
+    }
+    await plugPage.waitForSelector(".sequencer", { timeout: 30_000 });
+    await clickPanelAction(plugPage, "FX");
+    await plugPage.waitForSelector('.fxeq-panel[aria-label="PRISM multiband editor"]', { timeout: 10_000 });
+    const reloadedSource = await plugPage.locator(".fx-sidechain-picker select").first().inputValue();
+    if (reloadedSource !== selectedPrismSource)
+      throw new Error(`PRISM source lost on reload (${reloadedSource}/${selectedPrismSource})`);
+    const reloadedAb = plugPage.locator(".fxeq-panel .effect-ab").first();
+    if (
+      !(await reloadedAb.locator('button:has-text("A•")').count()) ||
+      !(await reloadedAb.locator('button:has-text("B•")').count())
+    ) {
+      throw new Error("PRISM A/B snapshots lost on reload");
+    }
+    if (await plugPage.locator('input[aria-label="PRISM morph A to B"]').first().isDisabled()) {
+      throw new Error("PRISM morph became disabled after reload");
+    }
     // Bypass flips the device state label.
     await plugPage.locator('button[title="Bypass effect"]').first().click();
     await plugPage.waitForSelector(".fx-device.bypassed", { timeout: 5000 });
@@ -666,7 +772,8 @@ try {
   if (consoleErrors.length > 0) {
     console.log("console errors during audio checks:", consoleErrors.slice(0, 5));
   }
-  exitCode = failed > 0 || !appBootOk || !collabOk || !embedOk || !importOk || !touchOk || !pluginWorkflowOk || !jamOk ? 1 : 0;
+  exitCode =
+    failed > 0 || !appBootOk || !collabOk || !embedOk || !importOk || !touchOk || !pluginWorkflowOk || !jamOk ? 1 : 0;
 } catch (error) {
   console.error("browser verification failed:", error);
   exitCode = 1;

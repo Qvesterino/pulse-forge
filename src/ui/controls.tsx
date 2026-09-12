@@ -15,11 +15,25 @@ interface SliderProps {
    * must never mutate state.
    */
   onPreview?: (value: number) => void;
+  /** Restore the audio preview when an in-progress pointer gesture is cancelled. */
+  onCancel?: () => void;
   disabled?: boolean;
   compact?: boolean;
 }
 
-export function Slider({ label, value, min, max, defaultValue, format, onCommit, onPreview, disabled, compact }: SliderProps) {
+export function Slider({
+  label,
+  value,
+  min,
+  max,
+  defaultValue,
+  format,
+  onCommit,
+  onPreview,
+  onCancel,
+  disabled,
+  compact,
+}: SliderProps) {
   const [dragValue, setDragValue] = useState<number | null>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   // Preview coalescing: pointermove can fire faster than frames — schedule at
@@ -83,6 +97,7 @@ export function Slider({ label, value, min, max, defaultValue, format, onCommit,
   const handlePointerCancel = () => {
     cancelPreview();
     setDragValue(null);
+    onCancel?.();
   };
 
   const percent = ((shown - min) / (max - min)) * 100;

@@ -2,6 +2,22 @@ import { describe, expect, it } from "vitest";
 import { AudioEngine } from "../src/audio-engine/AudioEngine";
 
 describe("AudioEngine channel meter snapshots", () => {
+  it("treats a sidechain source change as a different FX graph", () => {
+    const engine = new AudioEngine();
+    const signature = (
+      engine as unknown as {
+        fxSignature: (
+          effects: Array<{ id: string; type: string; bypassed: boolean; sidechainTrackId?: string }>,
+        ) => string;
+      }
+    ).fxSignature;
+    const base = { id: "fx-prism", type: "fxeq", bypassed: false };
+    expect(signature([{ ...base, sidechainTrackId: "kick" }])).not.toBe(
+      signature([{ ...base, sidechainTrackId: "snare" }]),
+    );
+    expect(signature([{ ...base, sidechainTrackId: "kick" }])).toBe(signature([{ ...base, sidechainTrackId: "kick" }]));
+  });
+
   it("keeps a clipped peak visible instead of hiding it behind the 0..1 level clamp", () => {
     const engine = new AudioEngine();
     const analyser = {

@@ -11,16 +11,19 @@ and recommendations.
 **Goal executed:** Deep reconnaissance; establish trustworthy system map; fix immediately dangerous issues found en route.
 
 **Areas inspected:**
+
 - Full repo tree (src 20+ subsystems, server, scripts, tests ~200 files).
 - Docs distilled via subagent: ARCHITECTURE.md, README, MAINTENANCE_AUDIT_PROGRESS, KNOWN_LIMITATIONS, RELEASE_ROADMAP, SCENE-MODE-ROADMAP, docs/* (4 quality roadmaps, plugin-mixing roadmap, intent roadmap, ADRs, parked plans).
 - Uncommitted WIP reviewed file-by-file (718 insertions): coherent KYX-roadmap implementation (preset audition, meter snapshots+clip, resetEffect, Inspector Simple/Advanced, collab-server hardening with tests). Left in place, not committed.
 - Core runtime read: main.tsx, services.ts (full), ProjectStore.ts (full), Transport.ts (full), persistence/db.ts (full), Scheduler structure, schema.ts normalizer inventory, vite/vitest configs, package.json scripts.
 
 **Confirmed problems:**
+
 1. Full-suite baseline: `tests/ui/midi-io.test.tsx` failed (waitFor default 1 s timeout under full-suite CPU load) + unhandled `TypeError: URL.revokeObjectURL is not a function` from `src/midi/midiProject.ts:267` — a 5 s post-download revoke timer firing after afterEach restored the jsdom-undefined original. The unhandled error is attributed by vitest to whichever file is running when it fires → can fail UNRELATED files nondeterministically. Same pattern at 5 production sites.
 2. Docs drift: MAINTENANCE_AUDIT_PROGRESS lists items as open that are fixed (scene-tempo seam, automation staircase, import caps); Phase C results log records only C01 of 23 marked-complete missions.
 
 **Fixes implemented:**
+
 - `URL.revokeObjectURL?.(url)` optional-call guard at all 5 delayed-revoke sites (src/export/project-io.ts:18, src/midi/midiProject.ts:267, src/rendering/wav.ts:84, src/ui/ExportPanel.tsx:45+251). Invisible in browsers; eliminates the post-test crash class.
 - `tests/ui/midi-io.test.tsx` import-test waitFor raised to 10 s timeout (matches rationale already documented in the sibling export test).
 
@@ -29,6 +32,7 @@ and recommendations.
 **Validation:** `tsc --noEmit` PASS; targeted vitest run midi-io + project-io + wav: 18/18 PASS. Full suite re-run deferred to later gates (15 min runtime).
 
 **Unresolved issues:**
+
 - Working tree carries substantial uncommitted WIP (KYX roadmap items) — owner should commit; campaign treats it as the current baseline.
 - `npm run test:browser` and `npm run build` not yet run this session (scheduled for GOAL 12 gate).
 
@@ -43,6 +47,7 @@ and recommendations.
 **Areas inspected:** circular deps (madge, 341 files), UI→infrastructure imports, doc-mutation exclusivity (grep sweep UI + engine), packCode layering, schema/templates cycle, browser-checks.ts role, YDocStore/ProjectStore parity.
 
 **Confirmed findings:**
+
 - 5 circular deps, all function-level-safe at runtime: commands↔packCode (type-only edge), schema↔templates↔template-pack2, metering↔kweighting (const). Two intentional layering couplings: export/packCode→ui (share codes embed theme/padkey prefs — feature), project-model→effects/registry (normalizer clamps params against defs — its job). NOT refactored: no correctness impact; KYX §16 forbids refactor churn pre-release.
 - Command-layer exclusivity VERIFIED: zero direct doc/track mutations in src/ui or AudioEngine (grep for assignment/push/splice patterns — clean).
 - browser-checks.ts (3.4k lines) is dev-server-only self-test infra, dynamic-imported by scripts/verify-browser.mjs; correctly excluded from prod bundle.
@@ -59,6 +64,7 @@ and recommendations.
 **Areas inspected:** fxeq determinism P0 (deep-dive agent), WIP preset-audition path end-to-end (PresetBrowser + AudioEngine.previewInstrumentPreset + PlaybackController preview-stop policy), collab-server WIP hardening (limits, accounting, cleanup).
 
 **Confirmed problems & fixes:**
+
 1. **fxeq "random" LFO unseeded (KYX P0)** — root cause: `dsp/lfo.ts:92` `Math.random()` in the S&H wave. Nuance found: waveform "random" is currently unreachable from host wiring (latent, not active) — but the defect class + the hardening test's explicit exclusion confirmed it. FIX: per-instance xorshift32 seeded from fixed constant (0x5eed1f0), re-seeded on reset() — follows lofi-module (fixed seeds) + ozvena modPad (re-seed on reset) precedents; authorized by the 2026-09-05 fxeq fork amendment. Worklet rebuilt (`npm run build:fxeq`, zero Math.random in bundle). KNOWN_LIMITATIONS updated (residual: instances share one fixed sequence, no host seed param). Tests: hardening test now INCLUDES "random" in readInto parity + new determinism/reset test.
 2. **WIP audition path verified sound**: preview is engine-only (no doc/history/collab mutation), apply = single undoable command, cleanup on unmount/Escape/track-change/play/stop. No fix needed.
 
@@ -71,6 +77,7 @@ and recommendations.
 **Areas inspected (deep-dive agent):** corrupted IDB records, schema-version guards, quota exhaustion UX, snapshot restore flow, user-sample corruption, blocked-DB open, silent-failure sweep of src/persistence.
 
 **Confirmed problems & fixes:**
+
 1. **deleteSnapshot unhandled rejection** (UndoHistoryPanel.tsx) — failed delete died as unhandled rejection, UI stale. FIXED: catch → console.error + visible snapError state.
 2. **DB failure masquerading as first-run** (ProjectBrowser.refresh swallowed errors into empty list — user believes projects are gone). FIXED: listError state + alert banner distinguishing storage failure from genuinely-empty; "No projects yet" hidden when listError set.
 3. **Snapshot restore irrecoverable after reload** (undo-only safety; auto-snapshots ≥12h apart). FIXED: restoreSnapshot parks best-effort "Auto — before restore" snapshot before executing the (still undoable) command.
@@ -89,6 +96,7 @@ and recommendations.
 **Areas inspected:** Meter/engine contract, collab parity, listener/timer sweep (43 addEventListener sites audited), engine dispose/diff-sync teardown, controller dispose paths.
 
 **Confirmed problems & fixes:**
+
 1. **Meter.tsx duck-typed optional meter methods** — bypassed the engine's typed contract; a renamed method would silently degrade every mixer meter to the legacy path while tests still pass. FIXED: direct typed calls (engine.getTrackMeterSnapshot/getReturnMeterSnapshot); removed the cast + fallback.
 2. **useLongPress missing unmount cleanup** — touch press outliving its component could fire a command post-unmount. FIXED: useEffect(() => clear) on unmount.
 
@@ -101,6 +109,7 @@ and recommendations.
 **Areas inspected (deep-dive agent):** project JSON import, share codes, MIDI import, export atomicity, round-trip fidelity; XSS/eval/redirect/secrets/path-traversal/CSP sweep; npm audit.
 
 **Confirmed problems & fixes:**
+
 1. **MIDI import had no size cap** (PatternBar.importMidiFile) — hostile/huge .mid buffers unbounded note arrays pre-clip → tab OOM. FIXED: MAX_MIDI_IMPORT_BYTES = 10 MB (mirrors project import), checked before arrayBuffer(). Test added (oversized file rejected pre-read, 4/4 pass).
 
 **Verified safe:** project import (10MB cap, wrapped parse, no partial state); share codes never throw, 2MB/8MB caps; export atomicity (no partial blobs, no state mutation); zero dangerouslySetInnerHTML/innerHTML/eval/new Function; no open redirects; no secrets (Freesound token is user-provided by design); gallery file writes use server-generated ids + regex-gated routes; npm audit prod = 0 vulnerabilities.
@@ -114,6 +123,7 @@ and recommendations.
 **Areas inspected (deep-dive agent):** resetEffect/applyInstrumentPreset/applyEffectPreset/setEffectParam/setEffectSteps/note commands/scene automation/macro commands reference discipline; engine dispose; timer sweep.
 
 **Confirmed problems & fixes:**
+
 1. **applyInstrumentPreset inserted closure-owned params maps by reference** into every doc revision (execute + undo/redo cycles alias one object). FIXED: copy-on-apply (`params: { ...params }`).
 2. **addSceneAutomation inserted caller's target by reference** (doc + undo snapshot would diverge if caller mutates). FIXED: `target: { ...target }`.
 
@@ -183,6 +193,7 @@ Run #4 failure attribution: tests/ultina-core-hardening sculptor test hit the do
 **Goal executed:** continue `docs/KYX-PRE-RELEASE-IMPLEMENTATION-ROADMAP.md` against the current shared worktree; close locally actionable release gaps without claiming manual/device or deployed-host completion.
 
 **Changes:**
+
 - Added `scripts/release-deployed-smoke.mjs` and the `release:deployed-smoke` package script. It probes a real app URL for the KYX app shell, manifest identity, five shipped worklets, service worker, and optionally a collab URL for health, exact CORS allowlisting, rejected origins, and gallery admin 401/200.
 - Extended `docs/KYX-MANUAL-RELEASE-CHECKLIST.md`, the KYX roadmap, and `RELEASE_READINESS_REPORT.md` with the executable deployed-host command and explicit skipped-service semantics.
 - Added upstream VLYX `preReleaseHardening.test.ts` oracles for M/S single-band aliasing and dynamicTilt coefficient reset; corrected the host hardening fixture so the clipper oracle is genuinely linear (`kneeDb=0`), then ran `scripts/vendor-ultina.mjs` and rebuilt `public/ultina-worklet.js`.
@@ -273,3 +284,39 @@ passed 17/17. Chromium smoke was 217/218 because only the aggregate 8-bar
 average timing check failed (`avg=7640 ms`); all individual templates and
 product flow checks passed. `release:deployed-smoke` correctly remained blocked
 because `KYX_DEPLOY_URL` was not configured.
+
+## CURRENT WORKTREE — PRISM host workflow implementation (2026-09-12)
+
+The blocking PRISM host/UI handoff was implemented in the working tree. The
+implementation keeps `effect-ab-v1` as the persisted A/B source of truth,
+hydrates FXEQ runtime morph slots after mount/rebuild, removes the duplicate
+PRISM A/B surface, wires PRISM parameter drags through preview + cancel
+rollback, exposes an FXEQ sidechain picker with source-aware rewire, queues
+async plugin history requests, and makes sidechain/fx-chain sync idempotent.
+Touched areas are `src/ui/FxEqPanel.tsx`, `src/ui/EffectRack.tsx`,
+`src/ui/controls.tsx`, `src/audio-engine/AudioEngine.ts`,
+`src/effects/fxeqNode.ts`, `src/effects/types.ts`,
+`src/audio-worklets/compressor-node.ts`, `src/effects/registry.ts`, the
+browser verifier, styles, and their focused tests.
+
+**Targeted evidence:** 6 files / 92 tests passed, including FXEQ host queue,
+snapshot hydration/clear, sidechain signature, PRISM UI source picker and
+persisted A/B controller, preview/commit/cancel behavior, controls, worklet
+entry and plugin surface.
+
+**Release evidence after this diff:** `npm run typecheck:clean`, `npm run build`
+(354 modules; entry 934/995 KB; total JS 1839/2400 KB; core worklets 98/120 KB;
+57 precache entries / 4012.48 KiB), `npm run test:browser` 218/218, and
+`npm run test:browser:production` passed. The full default Vitest run is still
+not release-green under shared-machine load: 224 files / 2152 passed / 162
+skipped / 5 failed. Two Ozvena hook timeouts followed the 10-minute soak;
+collab and VLYX HQ budgets passed in targeted isolation, while large-project
+normalize still fails its 100 ms budget. No threshold was changed and no PRISM
+failure occurred.
+
+**Remaining release gates:** add the missing browser-level B/morph/undo/reload
+assertions or explicitly accept their current targeted coverage, run a quiet
+full suite, review and commit the implementation diff, run the manual
+Firefox/Edge/Safari/iOS and physical audio-device matrix, resolve the 209
+formatting-deviation decision, and run `release:deployed-smoke` with the real
+`KYX_DEPLOY_URL`.

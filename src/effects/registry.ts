@@ -1792,6 +1792,7 @@ const sidechain: EffectDefinition = {
       setParameter: (id, v) => apply(id, v, ctx.currentTime),
       setParameterAt: (id, v, when) => apply(id, v, when),
       setSidechainInput(node: AudioNode | null) {
+        if (sidechainNode === node) return;
         if (sidechainNode) {
           try {
             sidechainNode.disconnect(analyser);

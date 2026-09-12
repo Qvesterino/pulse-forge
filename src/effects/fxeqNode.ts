@@ -32,14 +32,18 @@ export type MorphSlot = 0 | 1;
  */
 export function blendParams(a: Record<string, number>, b: Record<string, number>, t: number): Record<string, number> {
   const out: Record<string, number> = {};
-  for (const id of Object.keys(a)) {
+  const ids = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const id of ids) {
     if (id === "bandCount") continue;
     const from = a[id];
     const to = b[id];
-    out[id] =
-      typeof from === "number" && typeof to === "number" && Number.isFinite(from) && Number.isFinite(to)
-        ? from + (to - from) * t
-        : from;
+    if (typeof from === "number" && Number.isFinite(from) && typeof to === "number" && Number.isFinite(to)) {
+      out[id] = from + (to - from) * t;
+    } else if (typeof from === "number" && Number.isFinite(from)) {
+      out[id] = from;
+    } else if (typeof to === "number" && Number.isFinite(to)) {
+      out[id] = to;
+    }
   }
   return out;
 }
@@ -108,9 +112,31 @@ export function createFxEqNode(
   // target so the audio thread only interpolates.
   const morphSlots: [Record<string, number> | null, Record<string, number> | null] = [null, null];
 
-  // One-shot callback for the in-plugin undo/redo reply (the restored entry
-  // must reach the caller so the document can be written through).
+  // History replies are asynchronous. Queue requests so a double-click on
+  // undo/redo cannot overwrite the callback belonging to the first reply.
+  type HistoryCallback = (entry: { id: string; value: number } | null) => void;
+  const historyQueue: { action: "undo" | "redo"; callback: HistoryCallback }[] = [];
   let historyCallback: ((entry: { id: string; value: number } | null) => void) | null = null;
+  let historyInFlight = false;
+
+  const pumpHistory = () => {
+    if (disposed || historyInFlight || historyQueue.length === 0) return;
+    const request = historyQueue.shift()!;
+    historyInFlight = true;
+    historyCallback = request.callback;
+    try {
+      node.port.postMessage({ type: request.action });
+    } catch {
+      const callback = historyCallback;
+      historyCallback = null;
+      historyInFlight = false;
+      try {
+        callback?.(null);
+      } finally {
+        pumpHistory();
+      }
+    }
+  };
 
   // Sidechain source bookkeeping for clean (dis)connection — the engine
   // attaches/removes track feeds and the runtime must release them on
@@ -137,7 +163,12 @@ export function createFxEqNode(
     } else if (msg?.type === "history" && historyCallback) {
       const cb = historyCallback;
       historyCallback = null;
-      cb(typeof msg.id === "string" && typeof msg.value === "number" ? { id: msg.id, value: msg.value } : null);
+      try {
+        cb(typeof msg.id === "string" && typeof msg.value === "number" ? { id: msg.id, value: msg.value } : null);
+      } finally {
+        historyInFlight = false;
+        pumpHistory();
+      }
     }
   };
 
@@ -158,6 +189,7 @@ export function createFxEqNode(
       node.port.postMessage({ type: "setMetersEnabled", enabled });
     },
     setParameter(id: string, value: number) {
+      if (disposed) return;
       // The worklet's setParameter validates ids — forward everything,
       // including dotted per-band ids outside the rack surface. Rack ids
       // that diverge from core ids are translated (see RACK_TO_CORE).
@@ -195,17 +227,17 @@ export function createFxEqNode(
      *  asynchronously via the callback so the host can write it through. */
     undoParam(onApplied) {
       if (disposed) return;
-      historyCallback = onApplied;
-      node.port.postMessage({ type: "undo" });
+      historyQueue.push({ action: "undo", callback: onApplied });
+      pumpHistory();
     },
     redoParam(onApplied) {
       if (disposed) return;
-      historyCallback = onApplied;
-      node.port.postMessage({ type: "redo" });
+      historyQueue.push({ action: "redo", callback: onApplied });
+      pumpHistory();
     },
     /** Store a full param snapshot into morph slot A (0) or B (1). */
-    setMorphSnapshot(slot: MorphSlot, params: Record<string, number>) {
-      morphSlots[slot] = { ...params };
+    setMorphSnapshot(slot: MorphSlot, params: Record<string, number> | null) {
+      morphSlots[slot] = params ? { ...params } : null;
     },
     getMorphSnapshot(slot: MorphSlot) {
       const snap = morphSlots[slot];
@@ -240,6 +272,8 @@ export function createFxEqNode(
      * runtime's tolerant semantics (never throws when already gone).
      */
     setSidechainInput(source: AudioNode | null) {
+      if (disposed) return;
+      if (sidechainSource === source) return;
       if (sidechainSource) {
         try {
           sidechainSource.disconnect(node);
@@ -249,8 +283,13 @@ export function createFxEqNode(
         sidechainSource = null;
       }
       if (source) {
-        source.connect(node, 0, 1);
-        sidechainSource = source;
+        try {
+          source.connect(node, 0, 1);
+          sidechainSource = source;
+        } catch {
+          // A source may disappear during a graph rebuild. Treat it as no
+          // sidechain rather than taking down the audio engine.
+        }
       }
     },
     syncBpm(bpm: number) {
@@ -266,6 +305,8 @@ export function createFxEqNode(
       gainReductionDb = 0;
       morphSlots[0] = null;
       morphSlots[1] = null;
+      historyQueue.length = 0;
+      historyInFlight = false;
       historyCallback = null;
       if (sidechainSource) {
         try {

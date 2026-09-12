@@ -1155,10 +1155,14 @@ export class AudioEngine {
   }
 
   private fxSignature(effects: EffectInstance[]): string {
-    return effects
-      .filter((e) => !e.bypassed)
-      .map((e) => `${e.id}:${e.type}`)
-      .join("|");
+    return (
+      effects
+        .filter((e) => !e.bypassed)
+        // Sidechain selection changes the graph even when type and params stay
+        // identical. Include it so an old feed cannot survive a source change.
+        .map((e) => `${e.id}:${e.type}:${e.sidechainTrackId ?? ""}`)
+        .join("|")
+    );
   }
 
   private rebuildFxChain(
@@ -1206,6 +1210,29 @@ export class AudioEngine {
       }
       const seed = this.doc ? hashString(`${this.doc.id}|${ownerId}|${fx.id}|fx-dsp-v1`) : undefined;
       const rt = def.factory(ctx, fx, { bpm, seed });
+      // PRISM's runtime morph slots are intentionally transient audio state,
+      // but their source snapshots are document-owned. Rehydrate them here so
+      // a lazy worklet swap or chain rebuild cannot silently empty A/B.
+      if (fx.type === "fxeq" && rt.setMorphSnapshot && fx.deviceState?.kind === "effect-ab-v1") {
+        const rawSlots = fx.deviceState.data.slots;
+        for (const [slotName, slot] of [
+          ["A", 0],
+          ["B", 1],
+        ] as const) {
+          const raw =
+            typeof rawSlots === "object" && rawSlots !== null && !Array.isArray(rawSlots)
+              ? (rawSlots as Record<string, unknown>)[slotName]
+              : undefined;
+          const hasSnapshot = typeof raw === "object" && raw !== null && !Array.isArray(raw);
+          const snapshot: Record<string, number> = {};
+          if (hasSnapshot) {
+            for (const [id, value] of Object.entries(raw as Record<string, unknown>)) {
+              if (typeof value === "number" && Number.isFinite(value)) snapshot[id] = value;
+            }
+          }
+          rt.setMorphSnapshot(slot, hasSnapshot ? snapshot : null);
+        }
+      }
       // Sidechain routing: wire the source track's input node as the effect's
       // sidechain feed (if the effect supports it and the source track is live).
       if (fx.sidechainTrackId && rt.setSidechainInput) {
@@ -1248,11 +1275,35 @@ export class AudioEngine {
       // effects with an internal undo history must not record it, or one
       // preset load evicts the user's live-tweak history.
       rt.beginParamSync?.();
-      for (const [k, v] of Object.entries(fx.params)) {
-        if (cached[k] !== v) rt.setParameter(k, v);
+      try {
+        for (const [k, v] of Object.entries(fx.params)) {
+          if (cached[k] !== v) rt.setParameter(k, v);
+        }
+      } finally {
+        rt.endParamSync?.();
       }
-      rt.endParamSync?.();
       state.params.set(fx.id, { ...fx.params });
+    }
+  }
+
+  /**
+   * Resolve sidechains only after every group and track node exists. A source
+   * is allowed to appear later in document order, so wiring it during the
+   * target chain's construction is not sufficient.
+   */
+  private syncFxSidechains(doc: ProjectDocument): void {
+    for (const owner of doc.tracks) {
+      const ownerNodes = owner.kind === "group" ? this.groupNodes.get(owner.id) : this.trackNodes.get(owner.id);
+      if (!ownerNodes) continue;
+      for (const fx of owner.effects) {
+        if (fx.bypassed) continue;
+        const runtime = ownerNodes.fx.runtimes.get(fx.id);
+        if (!runtime?.setSidechainInput) continue;
+        const sourceNodes = fx.sidechainTrackId
+          ? (this.trackNodes.get(fx.sidechainTrackId) ?? this.groupNodes.get(fx.sidechainTrackId))
+          : null;
+        runtime.setSidechainInput(sourceNodes?.input ?? null);
+      }
     }
   }
 
@@ -1549,7 +1600,7 @@ export class AudioEngine {
 
       const sig = this.fxSignature(track.effects);
       if (nodes.fx.signature !== sig) {
-          this.rebuildFxChain(track.id, track.effects, nodes.input, nodes.panner, nodes.fx);
+        this.rebuildFxChain(track.id, track.effects, nodes.input, nodes.panner, nodes.fx);
       } else {
         this.syncFxParams(track.effects, nodes.fx);
       }
@@ -1569,6 +1620,10 @@ export class AudioEngine {
       nodes.panner.pan.setTargetAtTime(track.pan, now, 0.01);
       nodes.gain.gain.setTargetAtTime(solo.audible(track.id) ? track.gain : 0, now, 0.01);
     }
+
+    // All source nodes now exist, including tracks that appear after their
+    // PRISM/compressor target in document order.
+    this.syncFxSidechains(doc);
 
     // Route child tracks through their group instead of master. Disconnect
     // every previous destination first — a track moved between groups used

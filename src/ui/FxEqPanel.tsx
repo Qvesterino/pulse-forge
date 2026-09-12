@@ -5,6 +5,7 @@ import { blendParams } from "../effects/fxeqNode";
 import type { EffectRuntime } from "../effects/types";
 import { useServices } from "./context";
 import { Slider } from "./controls";
+import { EffectAbControls, type EffectAbState } from "./EffectAbControls";
 
 const MODULE_ORDER = ["eq", "sat", "lofi", "mod", "delay", "rev", "dyn"] as const;
 const MODULE_LABELS: Record<string, string> = {
@@ -50,6 +51,10 @@ export function FxEqPanel({
   fxId,
   params,
   degraded,
+  sidechainTrackId,
+  abState,
+  onAbStateChange,
+  onAbLoad,
   onParam,
   onApplyPreset,
 }: {
@@ -57,6 +62,10 @@ export function FxEqPanel({
   fxId: string;
   params: Record<string, number>;
   degraded?: boolean;
+  sidechainTrackId?: string | null;
+  abState?: EffectAbState;
+  onAbStateChange?: (state: EffectAbState) => void;
+  onAbLoad?: (slot: "A" | "B") => void;
   onParam: (fullId: string, value: number) => void;
   onApplyPreset: (presetName: string, presetParams: Record<string, number>) => void;
 }) {
@@ -73,34 +82,41 @@ export function FxEqPanel({
     getFxRuntime?: (trackId: string, fxId: string) => EffectRuntime | null;
     getFxMeters?: (trackId: string, fxId: string) => unknown;
     setFxMetersEnabled?: (trackId: string, fxId: string, enabled: boolean) => void;
+    previewFxParam?: (trackId: string, fxId: string, paramId: string, value: number) => void;
   };
   const fxRuntime = (): EffectRuntime | null => engineWithFx.getFxRuntime?.(trackId, fxId) ?? null;
-  const [morphSlots, setMorphSlots] = useState<[boolean, boolean]>([false, false]);
+  const morphSlots: [boolean, boolean] = [Boolean(abState?.slots.A), Boolean(abState?.slots.B)];
   const [morphT, setMorphT] = useState(0.5);
   const grRef = useRef<HTMLSpanElement | null>(null);
 
-  const MORPH_GLIDE_SEC = 0.4;
+  const valueOf = (id: string): number => params[id] ?? schema.defaultParams[id] ?? 0;
+  const sidechainActive = valueOf(`band${selectedBand}.sidechainMode`) >= 0.5;
+  const sidechainAvailable = Boolean(sidechainTrackId);
 
-  const captureSnapshot = (slot: 0 | 1) => {
-    fxRuntime()?.setMorphSnapshot?.(slot, params);
-    setMorphSlots((prev) => {
-      const next: [boolean, boolean] = [prev[0], prev[1]];
-      next[slot] = true;
-      return next;
-    });
+  // Keep preview audio outside the document command stream. The document is
+  // written once on pointer-up, while the worklet hears every coalesced move.
+  const previewParam = (id: string, value: number) => {
+    engineWithFx.previewFxParam?.(trackId, fxId, id, value);
   };
-
-  const recallSnapshot = (slot: 0 | 1) => {
+  const cancelParamPreview = (id: string) => {
     const runtime = fxRuntime();
-    const snap = runtime?.getMorphSnapshot?.(slot);
-    if (!runtime || !snap) return;
-    // Glide the audio via the core morph, then land the SAME state in the
-    // document once the glide has finished. The commit must not race the
-    // glide: a bulk param sync cancels a running morph in the core, so an
-    // immediate commit would snap instead of glide.
-    runtime.morphToSnapshot?.(slot, MORPH_GLIDE_SEC);
-    window.setTimeout(() => onApplyPreset(slot === 0 ? "A" : "B", snap), MORPH_GLIDE_SEC * 1000 + 150);
+    if (!runtime) return;
+    runtime.beginParamSync?.();
+    try {
+      runtime.setParameter(id, valueOf(id));
+    } finally {
+      runtime.endParamSync?.();
+    }
   };
+
+  // Persisted A/B slots are the source of truth. Hydrate the runtime copy
+  // whenever the document/runtime changes so morphing survives reloads and
+  // chain rebuilds without exposing a second session-only store.
+  useEffect(() => {
+    const runtime = fxRuntime();
+    runtime?.setMorphSnapshot?.(0, abState?.slots.A ?? null);
+    runtime?.setMorphSnapshot?.(1, abState?.slots.B ?? null);
+  }, [trackId, fxId, services.engine, params, abState]);
 
   /** Live scrub: transient audio morph, document untouched until release. */
   const scrubMorph = (t: number) => {
@@ -108,9 +124,20 @@ export function FxEqPanel({
     fxRuntime()?.morphBlendSnapshots?.(0, 1, t, 0.08);
   };
 
+  const morphStartRef = useRef(0.5);
+  const morphDirtyRef = useRef(false);
+  const cancelMorph = () => {
+    const t = morphStartRef.current;
+    setMorphT(t);
+    morphDirtyRef.current = false;
+    fxRuntime()?.morphBlendSnapshots?.(0, 1, t, 0.08);
+  };
+
   /** On release: commit the scrubbed blend so knob edits continue from
    *  what the user actually hears (no silent snap-back to the old state). */
   const commitMorph = () => {
+    if (!morphDirtyRef.current) return;
+    morphDirtyRef.current = false;
     const runtime = fxRuntime();
     const a = runtime?.getMorphSnapshot?.(0);
     const b = runtime?.getMorphSnapshot?.(1);
@@ -167,7 +194,12 @@ export function FxEqPanel({
     for (let b = 0; b < edges.length - 1; b++) {
       const x0 = freqToX(edges[b], w);
       const x1 = freqToX(edges[b + 1], w);
-      ctx2d.fillStyle = b === selectedBand - 1 ? "rgba(245, 158, 11, 0.10)" : b % 2 === 0 ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.16)";
+      ctx2d.fillStyle =
+        b === selectedBand - 1
+          ? "rgba(245, 158, 11, 0.10)"
+          : b % 2 === 0
+            ? "rgba(255,255,255,0.03)"
+            : "rgba(0,0,0,0.16)";
       ctx2d.fillRect(x0, 0, x1 - x0, h);
       // Band number label.
       ctx2d.fillStyle = b === selectedBand - 1 ? "#f59e0b" : "#71717a";
@@ -275,9 +307,7 @@ export function FxEqPanel({
     drawPeaks();
     const id = setInterval(() => {
       const meters = engineWithFx.getFxMeters?.(trackId, fxId) as
-        | { bandPeaks?: Float32Array; gainReductionDb?: number }
-        | null
-        | undefined;
+        { bandPeaks?: Float32Array; gainReductionDb?: number } | null | undefined;
       peaksRef.current = meters?.bandPeaks ?? null;
       // GR readout rides the same snapshot (no React state — direct DOM
       // text update, mirroring the canvas draw loop).
@@ -295,7 +325,10 @@ export function FxEqPanel({
 
   // Selected band's module params, grouped per module (from the vendored schema).
   const bandModuleDefs = useMemo(() => {
-    const groups: Record<string, { id: string; name: string; min: number; max: number; default: number; unit?: string }[]> = {};
+    const groups: Record<
+      string,
+      { id: string; name: string; min: number; max: number; default: number; unit?: string }[]
+    > = {};
     for (const def of schema.defs) {
       const route = schema.routes.get(def.id);
       if (!route || route.band !== selectedBand || route.kind !== "module") continue;
@@ -311,13 +344,9 @@ export function FxEqPanel({
     return groups;
   }, [schema, selectedBand]);
 
-  const valueOf = (id: string): number => params[id] ?? schema.defaultParams[id] ?? 0;
-
   return (
     <div className="fxeq-panel" aria-label="PRISM multiband editor">
-      {degraded && (
-        <div className="fxeq-degraded">AudioWorklet unavailable — PRISM is bypassed (1:1 signal)</div>
-      )}
+      {degraded && <div className="fxeq-degraded">AudioWorklet unavailable — PRISM is bypassed (1:1 signal)</div>}
       <div className="fxeq-preset-row">
         <select
           className="fxeq-preset-select"
@@ -352,40 +381,19 @@ export function FxEqPanel({
       </div>
 
       <div className="fxeq-morph-row" role="group" aria-label="PRISM A/B morph">
-        <button
-          type="button"
-          className="btn btn-small"
-          title="Capture the current state into morph slot A"
-          onClick={() => captureSnapshot(0)}
-        >
-          SET A
-        </button>
-        <button
-          type="button"
-          className="btn btn-small"
-          title="Capture the current state into morph slot B"
-          onClick={() => captureSnapshot(1)}
-        >
-          SET B
-        </button>
-        <button
-          type="button"
-          className={`btn btn-small${morphSlots[0] ? "" : " fxeq-module-off"}`}
-          title={morphSlots[0] ? "Glide to A" : "Capture A first (SET A)"}
-          disabled={!morphSlots[0]}
-          onClick={() => recallSnapshot(0)}
-        >
-          A
-        </button>
-        <button
-          type="button"
-          className={`btn btn-small${morphSlots[1] ? "" : " fxeq-module-off"}`}
-          title={morphSlots[1] ? "Glide to B" : "Capture B first (SET B)"}
-          disabled={!morphSlots[1]}
-          onClick={() => recallSnapshot(1)}
-        >
-          B
-        </button>
+        {onAbStateChange && onAbLoad && (
+          <EffectAbControls
+            effectName="PRISM"
+            params={params}
+            deviceState={
+              abState
+                ? { kind: "effect-ab-v1", data: { slots: { ...abState.slots }, active: abState.active } }
+                : undefined
+            }
+            onStateChange={onAbStateChange}
+            onLoad={onAbLoad}
+          />
+        )}
         <input
           type="range"
           className="fxeq-morph-slider"
@@ -396,8 +404,16 @@ export function FxEqPanel({
           step={0.01}
           value={morphT}
           disabled={!morphSlots[0] || !morphSlots[1]}
-          onChange={(e) => scrubMorph(Number(e.target.value))}
+          onPointerDown={() => {
+            morphStartRef.current = morphT;
+            morphDirtyRef.current = false;
+          }}
+          onChange={(e) => {
+            morphDirtyRef.current = true;
+            scrubMorph(Number(e.target.value));
+          }}
           onPointerUp={commitMorph}
+          onPointerCancel={cancelMorph}
           onKeyUp={commitMorph}
         />
         <button
@@ -469,6 +485,8 @@ export function FxEqPanel({
             defaultValue={0}
             format={(v) => `${v > 0 ? "+" : ""}${v.toFixed(1)} dB`}
             onCommit={(v) => onParam(`band${selectedBand}.gainDb`, v)}
+            onPreview={(v) => previewParam(`band${selectedBand}.gainDb`, v)}
+            onCancel={() => cancelParamPreview(`band${selectedBand}.gainDb`)}
           />
         </div>
       </div>
@@ -493,14 +511,16 @@ export function FxEqPanel({
         </button>
         <button
           type="button"
-          className={`btn btn-small${valueOf(`band${selectedBand}.sidechainMode`) >= 0.5 ? " active" : ""}`}
-          aria-pressed={valueOf(`band${selectedBand}.sidechainMode`) >= 0.5}
-          title="Sidechain — drive this band's dynamic EQ from the external sidechain feed instead of the band itself"
+          className={`btn btn-small${sidechainActive ? " active" : ""}`}
+          aria-pressed={sidechainActive}
+          disabled={!sidechainAvailable && !sidechainActive}
+          title={
+            sidechainAvailable
+              ? "Sidechain — drive this band's dynamic EQ from the selected external source"
+              : "Choose a SOURCE in the effect rack before enabling external sidechain"
+          }
           onClick={() =>
-            onParam(
-              `band${selectedBand}.sidechainMode`,
-              valueOf(`band${selectedBand}.sidechainMode`) >= 0.5 ? 0 : 1,
-            )
+            onParam(`band${selectedBand}.sidechainMode`, valueOf(`band${selectedBand}.sidechainMode`) >= 0.5 ? 0 : 1)
           }
         >
           EXT SC
@@ -514,6 +534,8 @@ export function FxEqPanel({
           defaultValue={-20}
           format={(v) => `${v.toFixed(1)} dB`}
           onCommit={(v) => onParam(`band${selectedBand}.dynThresholdDb`, v)}
+          onPreview={(v) => previewParam(`band${selectedBand}.dynThresholdDb`, v)}
+          onCancel={() => cancelParamPreview(`band${selectedBand}.dynThresholdDb`)}
         />
         <Slider
           compact
@@ -524,6 +546,8 @@ export function FxEqPanel({
           defaultValue={-6}
           format={(v) => `${v.toFixed(1)} dB`}
           onCommit={(v) => onParam(`band${selectedBand}.dynRangeDb`, v)}
+          onPreview={(v) => previewParam(`band${selectedBand}.dynRangeDb`, v)}
+          onCancel={() => cancelParamPreview(`band${selectedBand}.dynRangeDb`)}
         />
         <Slider
           compact
@@ -534,6 +558,8 @@ export function FxEqPanel({
           defaultValue={10}
           format={(v) => `${v.toFixed(1)} ms`}
           onCommit={(v) => onParam(`band${selectedBand}.dynAttackMs`, v)}
+          onPreview={(v) => previewParam(`band${selectedBand}.dynAttackMs`, v)}
+          onCancel={() => cancelParamPreview(`band${selectedBand}.dynAttackMs`)}
         />
         <Slider
           compact
@@ -544,6 +570,8 @@ export function FxEqPanel({
           defaultValue={150}
           format={(v) => `${v.toFixed(0)} ms`}
           onCommit={(v) => onParam(`band${selectedBand}.dynReleaseMs`, v)}
+          onPreview={(v) => previewParam(`band${selectedBand}.dynReleaseMs`, v)}
+          onCancel={() => cancelParamPreview(`band${selectedBand}.dynReleaseMs`)}
         />
       </div>
 
@@ -579,8 +607,20 @@ export function FxEqPanel({
                     min={d.min}
                     max={d.max}
                     defaultValue={d.default}
-                    format={d.unit === "dB" ? (v) => `${v.toFixed(1)} dB` : d.unit === "%" ? (v) => `${v.toFixed(0)}%` : d.unit === "ms" ? (v) => `${v.toFixed(0)} ms` : d.unit === "Hz" ? (v) => `${v >= 1000 ? (v / 1000).toFixed(1) + "k" : v.toFixed(0)} Hz` : (v) => v.toFixed(2)}
+                    format={
+                      d.unit === "dB"
+                        ? (v) => `${v.toFixed(1)} dB`
+                        : d.unit === "%"
+                          ? (v) => `${v.toFixed(0)}%`
+                          : d.unit === "ms"
+                            ? (v) => `${v.toFixed(0)} ms`
+                            : d.unit === "Hz"
+                              ? (v) => `${v >= 1000 ? (v / 1000).toFixed(1) + "k" : v.toFixed(0)} Hz`
+                              : (v) => v.toFixed(2)
+                    }
                     onCommit={(v) => onParam(d.id, v)}
+                    onPreview={(v) => previewParam(d.id, v)}
+                    onCancel={() => cancelParamPreview(d.id)}
                   />
                 ))}
           </div>

@@ -7823,7 +7823,14 @@ html {
   display: flex;
   gap: 6px;
   align-items: center;
+  flex-wrap: wrap;
   margin-top: 4px;
+}
+
+.fxeq-morph-row > .effect-ab {
+  margin: 0;
+  padding: 0;
+  border-top: 0;
 }
 
 .fxeq-morph-slider {
@@ -7840,7 +7847,10 @@ html {
   position: absolute;
   right: 6px;
   top: 1px;
-  font: 700 9px ui-monospace, "Cascadia Code", monospace;
+  font:
+    700 9px ui-monospace,
+    "Cascadia Code",
+    monospace;
   color: #ef4444;
   pointer-events: none;
 }

@@ -307,7 +307,7 @@ function Device({
               <span className="fx-gr-label">GR {(gainReductionDb ?? 0).toFixed(1)} dB</span>
             </div>
           )}
-          {(fx.type === "sidechain" || fx.type === "compressor") && (
+          {(fx.type === "sidechain" || fx.type === "compressor" || fx.type === "fxeq") && (
             <div className="fx-sidechain-picker">
               <label className="fx-param-select">
                 <span className="slider-label">SOURCE</span>
@@ -377,6 +377,18 @@ function Device({
                 fxId={fx.id}
                 params={fx.params}
                 degraded={!!fallbackReason}
+                sidechainTrackId={fx.sidechainTrackId}
+                abState={
+                  fx.deviceState?.kind === "effect-ab-v1"
+                    ? (fx.deviceState.data as unknown as EffectAbState)
+                    : undefined
+                }
+                onAbStateChange={(next) =>
+                  services.store.execute(
+                    setDeviceState(doc, track.id, fx.id, { kind: "effect-ab-v1", data: { ...next } }),
+                  )
+                }
+                onAbLoad={(slot) => services.store.execute(loadEffectAbSlot(doc, track.id, fx.id, slot))}
                 onParam={(fullId, value) => services.store.execute(setFxEqParam(doc, track.id, fx.id, fullId, value))}
                 onApplyPreset={(name, presetParams) =>
                   services.store.execute(applyFxEqPreset(doc, track.id, fx.id, name, presetParams))
@@ -425,7 +437,7 @@ function Device({
               />
             )}
           </Suspense>
-          {(fx.type === "fxeq" || fx.type === "ozvena") && (
+          {fx.type === "ozvena" && (
             <EffectAbControls
               effectName={def.name}
               params={fx.params}

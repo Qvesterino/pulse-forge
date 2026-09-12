@@ -81,8 +81,10 @@ describe("blendParams (morph target resolution)", () => {
     const out = blendParams(a, b, 0.25);
     expect(out["band1.gainDb"]).toBeCloseTo(-6, 12);
     expect(out["band2.satDriveDb"]).toBeCloseTo(6, 12);
-    // Ids missing from b keep a's value (no interpolation target).
+    // Ids missing from b keep a's value; B-only ids are retained as well so a
+    // partial persisted snapshot cannot silently drop a parameter at release.
     expect(out.globalMix).toBe(0);
+    expect(out.extra).toBe(5);
   });
 
   it("excludes bandCount — interpolating an active-band count would rebuild the schema per block", () => {
@@ -118,6 +120,8 @@ describe("fxeq node morph slots", () => {
     rt.setMorphSnapshot!(1, { inputGainDb: 6 });
     rt.morphToSnapshot!(1, 0.4);
     expect(port.posted).toEqual([{ type: "morph", params: { inputGainDb: 6 }, durationSec: 0.4 }]);
+    rt.setMorphSnapshot!(1, null);
+    expect(rt.getMorphSnapshot?.(1)).toBeNull();
     rt.dispose();
   });
 
@@ -152,6 +156,22 @@ describe("fxeq node in-plugin undo/redo", () => {
     rt.redoParam!((entry) => replies.push(entry));
     port.onmessage!({ data: { type: "history", action: "redo", id: null, value: 0 } });
     expect(replies).toEqual([null]);
+    rt.dispose();
+  });
+
+  it("serializes overlapping undo/redo requests until each port reply arrives", () => {
+    const { rt, port } = makeRt();
+    const replies: string[] = [];
+    rt.undoParam!((entry) => replies.push(entry?.id ?? "null"));
+    rt.redoParam!((entry) => replies.push(entry?.id ?? "null"));
+    expect(port.posted).toEqual([{ type: "undo" }]);
+
+    port.onmessage!({ data: { type: "history", id: "first", value: 1 } });
+    expect(replies).toEqual(["first"]);
+    expect(port.posted).toEqual([{ type: "undo" }, { type: "redo" }]);
+
+    port.onmessage!({ data: { type: "history", id: "second", value: 2 } });
+    expect(replies).toEqual(["first", "second"]);
     rt.dispose();
   });
 

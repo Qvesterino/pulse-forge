@@ -89,7 +89,8 @@ export interface EffectRuntime {
    * via the core's precompiled morph, morphBlendSnapshots scrubs between
    * the two (t = 0 → a, 1 → b) with a short tracking glide.
    */
-  setMorphSnapshot?(slot: 0 | 1, params: Record<string, number>): void;
+  /** Pass null to clear a slot when persisted A/B state is removed. */
+  setMorphSnapshot?(slot: 0 | 1, params: Record<string, number> | null): void;
   getMorphSnapshot?(slot: 0 | 1): Record<string, number> | null;
   morphToSnapshot?(slot: 0 | 1, durationSec: number): void;
   morphBlendSnapshots?(a: 0 | 1, b: 0 | 1, t: number, durationSec: number): void;
