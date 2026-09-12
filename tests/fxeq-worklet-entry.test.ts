@@ -36,6 +36,7 @@ interface ProcShape {
     getParameter(id: string): number;
     loadParameters(params: Record<string, number>): void;
     reset(): void;
+    isMorphing(): boolean;
     getLatencySamples(): number;
     getBandPeaks(): Float32Array;
   };
@@ -241,5 +242,136 @@ describe("fxeq worklet entry (message port ↔ DSP core wiring)", () => {
     send(proc, { type: "bpm", bpm: Number.NaN }); // hostile value ignored
     step(proc);
     expect(proc.proc.getParameter("band2.delaySyncMode")).toBe(3);
+  });
+});
+
+describe("fxeq worklet entry — A/B morph, history, sidechain, GR", () => {
+  it("morph message glides the parameter to its target on the audio thread", () => {
+    const proc = new Processor();
+    now = 0;
+    send(proc, { type: "morph", params: { inputGainDb: 6 }, durationSec: 0.01 });
+    // ~4 quanta to cover the 10 ms glide, then the core pins the end state.
+    for (let i = 0; i < 8; i++) step(proc);
+    expect(proc.proc.getParameter("inputGainDb")).toBeCloseTo(6, 6);
+    // The morph must have finished (not linger writing per block forever).
+    expect(proc.proc.isMorphing).toBe(false);
+  });
+
+  it("undo/redo round-trips a manual param and replies with the restored entry", () => {
+    const proc = new Processor();
+    now = 0;
+    send(proc, { type: "param", id: "inputGainDb", value: -6 });
+    expect(proc.proc.getParameter("inputGainDb")).toBe(-6);
+    send(proc, { type: "undo" });
+    expect(proc.proc.getParameter("inputGainDb")).toBe(0);
+    const historyPosts = proc.port.posted.filter((m) => m.type === "history");
+    expect(historyPosts.length).toBe(1);
+    expect(historyPosts[0]).toMatchObject({ action: "undo", id: "inputGainDb", value: 0 });
+    send(proc, { type: "redo" });
+    expect(proc.proc.getParameter("inputGainDb")).toBe(-6);
+  });
+
+  it("bulk params clear the history (a state replacement is not a user gesture)", () => {
+    const proc = new Processor();
+    now = 0;
+    send(proc, { type: "param", id: "inputGainDb", value: -6 });
+    send(proc, { type: "params", params: { inputGainDb: 3 } });
+    send(proc, { type: "undo" });
+    const historyPosts = proc.port.posted.filter((m) => m.type === "history");
+    expect(historyPosts[historyPosts.length - 1]).toMatchObject({ id: null, value: 0 });
+    expect(proc.proc.getParameter("inputGainDb")).toBe(3);
+  });
+
+  it("historyRecording gates manual param recording (host bulk syncs)", () => {
+    const proc = new Processor();
+    now = 0;
+    send(proc, { type: "historyRecording", enabled: false });
+    send(proc, { type: "param", id: "inputGainDb", value: -6 });
+    send(proc, { type: "historyRecording", enabled: true });
+    send(proc, { type: "undo" });
+    const historyPosts = proc.port.posted.filter((m) => m.type === "history");
+    expect(historyPosts[historyPosts.length - 1]).toMatchObject({ id: null });
+  });
+
+  it("timestamped automation never enters the plugin history", () => {
+    const proc = new Processor();
+    now = 0;
+    send(proc, { type: "paramAt", id: "inputGainDb", value: -6, when: 0.001 });
+    step(proc);
+    expect(proc.proc.getParameter("inputGainDb")).toBe(-6);
+    send(proc, { type: "undo" });
+    const historyPosts = proc.port.posted.filter((m) => m.type === "history");
+    expect(historyPosts[historyPosts.length - 1]).toMatchObject({ id: null });
+  });
+
+  it("a loud sidechain input ducks its band harder than a silent one", () => {
+    const setup = () => {
+      const proc = new Processor();
+      now = 0;
+      send(proc, { type: "param", id: "bandCount", value: 2 });
+      send(proc, { type: "param", id: "limiterEnabled", value: 0 });
+      send(proc, { type: "param", id: "band1.dynEnable", value: 1 });
+      send(proc, { type: "param", id: "band1.sidechainMode", value: 1 });
+      send(proc, { type: "param", id: "band1.dynThresholdDb", value: -40 });
+      send(proc, { type: "param", id: "band1.dynRangeDb", value: -24 });
+      send(proc, { type: "param", id: "band2.mute", value: 1 });
+      return proc;
+    };
+    // 80 Hz tone lives in band 1 (default split 400 Hz).
+    const tone = new Float32Array(BLOCK);
+    for (let i = 0; i < BLOCK; i++) tone[i] = 0.5 * Math.sin((2 * Math.PI * 80 * i) / SR);
+    const loudSc = new Float32Array(BLOCK);
+    let seed = 0xbeef;
+    for (let i = 0; i < BLOCK; i++) {
+      seed ^= seed << 13;
+      seed ^= seed >>> 17;
+      seed ^= seed << 5;
+      loudSc[i] = ((seed >>> 0) / 0x100000000) * 1.6 - 0.8;
+    }
+
+    const energyOf = (sidechain: Float32Array[]): number => {
+      const proc = setup();
+      const out = new Float32Array(BLOCK);
+      for (let b = 0; b < 120; b++) {
+        const outL = new Float32Array(BLOCK);
+        const outR = new Float32Array(BLOCK);
+        proc.process([[tone], sidechain], [[outL, outR]]);
+        now += BLOCK / SR;
+        if (b >= 60) for (let i = 0; i < BLOCK; i++) out[i] += outL[i] * outL[i];
+      }
+      let sum = 0;
+      for (let i = 0; i < BLOCK; i++) sum += out[i];
+      return sum;
+    };
+
+    const silent = energyOf([new Float32Array(BLOCK), new Float32Array(BLOCK)]);
+    const loud = energyOf([loudSc, loudSc]);
+    // The loud sidechain pushes the band's envelope over the threshold and
+    // ducks it (up to −24 dB); the silent sidechain leaves it untouched.
+    expect(loud).toBeLessThan(silent * 0.5);
+  });
+
+  it("bandPeaks metering posts carry the limiter's gain reduction", () => {
+    const proc = new Processor();
+    now = 0;
+    send(proc, { type: "param", id: "limiterCeilDb", value: -6 });
+    send(proc, { type: "setMetersEnabled", enabled: true });
+    let seed = 0xface;
+    let grSeen = -1;
+    for (let b = 0; b < 60 && grSeen < 0; b++) {
+      const hot = new Float32Array(BLOCK);
+      for (let i = 0; i < BLOCK; i++) {
+        seed ^= seed << 13;
+        seed ^= seed >>> 17;
+        seed ^= seed << 5;
+        hot[i] = ((seed >>> 0) / 0x100000000) * 1.8 - 0.9;
+      }
+      step(proc, [hot, hot]);
+      const peaks = proc.port.posted.filter((m) => m.type === "bandPeaks");
+      const last = peaks[peaks.length - 1] as { gr?: number } | undefined;
+      if (last && typeof last.gr === "number" && last.gr > 0) grSeen = last.gr;
+    }
+    // A hot signal into a −6 dBFS ceiling must show real reduction.
+    expect(grSeen).toBeGreaterThan(0);
   });
 });

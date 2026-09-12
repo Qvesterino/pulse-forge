@@ -18,6 +18,32 @@ function toCoreId(id: string): string {
   return RACK_TO_CORE[id] ?? id;
 }
 
+/** Morph slot index: 0 = A, 1 = B. */
+export type MorphSlot = 0 | 1;
+
+/**
+ * Interpolate two snapshot maps for a morph target. `bandCount` is excluded
+ * — interpolating an active-band count would rebuild the schema/crossover
+ * every block mid-morph (the core's morph perf gate excludes it for the
+ * same reason). Non-finite entries ride along from `a` unchanged; the
+ * worklet re-clamps every id against the schema on arrival. Exported so the
+ * panel commits the SAME blend it scrubbed (what you hear is what the
+ * document stores).
+ */
+export function blendParams(a: Record<string, number>, b: Record<string, number>, t: number): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const id of Object.keys(a)) {
+    if (id === "bandCount") continue;
+    const from = a[id];
+    const to = b[id];
+    out[id] =
+      typeof from === "number" && typeof to === "number" && Number.isFinite(from) && Number.isFinite(to)
+        ? from + (to - from) * t
+        : from;
+  }
+  return out;
+}
+
 /**
  * Main-thread FXEQ node: an AudioWorkletNode wrapping the vendored fxeq DSP
  * (multiband crossover + per-band Sat/LoFi/Mod/Delay/Rev + limiter). All
@@ -26,6 +52,11 @@ function toCoreId(id: string): string {
  * The registry exposes a small top-level param surface (input/output gain,
  * band count, global mix, limiter) — the full per-band palette arrives with
  * the EQ-paint editor panel.
+ *
+ * Input 1 is the optional sidechain feed for spectral ducking: the engine
+ * attaches a source via setSidechainInput when the effect's sidechainTrackId
+ * resolves; the worklet hands it to the core each block (mono feeds are
+ * upmixed) and bands with sidechainMode=1 drive their dynamic EQ from it.
  */
 export function createFxEqNode(
   ctx: BaseAudioContext,
@@ -43,7 +74,7 @@ export function createFxEqNode(
   }
 
   const node = new AudioWorkletNode(ctx, "fxeq-processor", {
-    numberOfInputs: 1,
+    numberOfInputs: 2,
     numberOfOutputs: 1,
     outputChannelCount: [2],
     channelCount: 2,
@@ -64,19 +95,49 @@ export function createFxEqNode(
   // subscribes via onLatencyChange to re-sync PDC the moment it lands
   // (syncPdc would otherwise compensate 0 until the next document sync).
   let latencySamples = 0;
-  // Band-peak metering snapshot — pushed by the worklet only while the
-  // panel has metering enabled (see setMetersEnabled), polled by the panel
-  // through getMeters().
+  // Band-peak metering + limiter gain reduction — pushed by the worklet only
+  // while the panel has metering enabled (see setMetersEnabled), polled by
+  // the panel through getMeters()/getGainReductionDb().
   let bandPeaks: Float32Array | null = null;
+  let gainReductionDb = 0;
   const latencyListeners = new Set<() => void>();
+
+  // A/B morph snapshots (runtime lifetime — they ride chain rebuilds by
+  // design: a rebuilt runtime is a fresh plugin instance). The resolved
+  // blend is computed HERE, per gesture, and posted as a precompiled morph
+  // target so the audio thread only interpolates.
+  const morphSlots: [Record<string, number> | null, Record<string, number> | null] = [null, null];
+
+  // One-shot callback for the in-plugin undo/redo reply (the restored entry
+  // must reach the caller so the document can be written through).
+  let historyCallback: ((entry: { id: string; value: number } | null) => void) | null = null;
+
+  // Sidechain source bookkeeping for clean (dis)connection — the engine
+  // attaches/removes track feeds and the runtime must release them on
+  // dispose without throwing when already gone.
+  let sidechainSource: AudioNode | null = null;
+
   let disposed = false;
   node.port.onmessage = (event) => {
-    const msg = event.data as { type?: string; samples?: number; peaks?: Float32Array } | null;
+    const msg = event.data as {
+      type?: string;
+      samples?: number;
+      peaks?: Float32Array;
+      gr?: number;
+      action?: string;
+      id?: string | null;
+      value?: number;
+    } | null;
     if (msg?.type === "latency" && typeof msg.samples === "number") {
       latencySamples = msg.samples;
       if (!disposed) for (const listener of latencyListeners) listener();
     } else if (msg?.type === "bandPeaks" && msg.peaks instanceof Float32Array) {
       bandPeaks = msg.peaks;
+      gainReductionDb = typeof msg.gr === "number" && Number.isFinite(msg.gr) ? msg.gr : 0;
+    } else if (msg?.type === "history" && historyCallback) {
+      const cb = historyCallback;
+      historyCallback = null;
+      cb(typeof msg.id === "string" && typeof msg.value === "number" ? { id: msg.id, value: msg.value } : null);
     }
   };
 
@@ -90,7 +151,8 @@ export function createFxEqNode(
         latencyListeners.delete(listener);
       };
     },
-    getMeters: () => (bandPeaks ? { bandPeaks } : null),
+    getMeters: () => (bandPeaks ? { bandPeaks, gainReductionDb } : null),
+    getGainReductionDb: () => gainReductionDb,
     setMetersEnabled(enabled: boolean) {
       if (disposed) return;
       node.port.postMessage({ type: "setMetersEnabled", enabled });
@@ -115,6 +177,82 @@ export function createFxEqNode(
         when,
       });
     },
+    /**
+     * Gate plugin-internal undo-history recording around engine bulk syncs
+     * (document loads, preset applies, project loads replay EVERY param —
+     * none of that is a user gesture). The port preserves message order, so
+     * params sent between begin and end are never recorded.
+     */
+    beginParamSync() {
+      if (disposed) return;
+      node.port.postMessage({ type: "historyRecording", enabled: false });
+    },
+    endParamSync() {
+      if (disposed) return;
+      node.port.postMessage({ type: "historyRecording", enabled: true });
+    },
+    /** In-plugin undo of live parameter tweaks; the restored entry arrives
+     *  asynchronously via the callback so the host can write it through. */
+    undoParam(onApplied) {
+      if (disposed) return;
+      historyCallback = onApplied;
+      node.port.postMessage({ type: "undo" });
+    },
+    redoParam(onApplied) {
+      if (disposed) return;
+      historyCallback = onApplied;
+      node.port.postMessage({ type: "redo" });
+    },
+    /** Store a full param snapshot into morph slot A (0) or B (1). */
+    setMorphSnapshot(slot: MorphSlot, params: Record<string, number>) {
+      morphSlots[slot] = { ...params };
+    },
+    getMorphSnapshot(slot: MorphSlot) {
+      const snap = morphSlots[slot];
+      return snap ? { ...snap } : null;
+    },
+    /** Glide the plugin to a stored snapshot over durationSec (audio-thread
+     *  interpolation via the core's precompiled morph path). */
+    morphToSnapshot(slot: MorphSlot, durationSec: number) {
+      if (disposed) return;
+      const snap = morphSlots[slot];
+      if (!snap) return;
+      node.port.postMessage({ type: "morph", params: snap, durationSec });
+    },
+    /** Scrub between snapshots: t = 0 → slot a, 1 → slot b. The blend is
+     *  resolved here (main thread) and posted as a short morph target so
+     *  the audio thread tracks the gesture without zipper noise. */
+    morphBlendSnapshots(a: MorphSlot, b: MorphSlot, t: number, durationSec: number) {
+      if (disposed) return;
+      const from = morphSlots[a];
+      const to = morphSlots[b];
+      if (!from || !to) return;
+      const clamped = Number.isFinite(t) ? Math.max(0, Math.min(1, t)) : 0;
+      node.port.postMessage({
+        type: "morph",
+        params: blendParams(from, to, clamped),
+        durationSec,
+      });
+    },
+    /**
+     * Attach/detach the sidechain feed (engine-side track routing). The
+     * source connects to worklet input 1; disconnect mirrors the compressor
+     * runtime's tolerant semantics (never throws when already gone).
+     */
+    setSidechainInput(source: AudioNode | null) {
+      if (sidechainSource) {
+        try {
+          sidechainSource.disconnect(node);
+        } catch {
+          /* not connected */
+        }
+        sidechainSource = null;
+      }
+      if (source) {
+        source.connect(node, 0, 1);
+        sidechainSource = source;
+      }
+    },
     syncBpm(bpm: number) {
       // Q2 tempo sync: forwarded to the worklet, which notifies the
       // tempo-aware modules (delay/modulation). Latency is unaffected.
@@ -125,6 +263,18 @@ export function createFxEqNode(
       disposed = true;
       latencyListeners.clear();
       bandPeaks = null;
+      gainReductionDb = 0;
+      morphSlots[0] = null;
+      morphSlots[1] = null;
+      historyCallback = null;
+      if (sidechainSource) {
+        try {
+          sidechainSource.disconnect(node);
+        } catch {
+          /* already gone */
+        }
+        sidechainSource = null;
+      }
       node.port.onmessage = null;
       try {
         node.port.close();

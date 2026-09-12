@@ -17,6 +17,12 @@ class FxEqWorkletProcessor extends AudioWorkletProcessor {
   proc;
   /** Processing scratch (in-place DSP), copied to/from the graph buffers. */
   scratch = [new Float32Array(MAX_BLOCK), new Float32Array(MAX_BLOCK)];
+  /**
+   * Sidechain scratch (input 1) for spectral ducking: copied here per block
+   * so the core never reads graph buffers directly and a mono feed is
+   * upmixed to the core's 2-channel contract.
+   */
+  sidechainScratch = [new Float32Array(MAX_BLOCK), new Float32Array(MAX_BLOCK)];
   /** Band-peak metering: gated by the host panel, throttled to ~20 Hz. */
   metersEnabled = false;
   blockCount = 0;
@@ -77,6 +83,28 @@ class FxEqWorkletProcessor extends AudioWorkletProcessor {
         this.proc.setTempo(msg.bpm);
       } else if (msg.type === "setMetersEnabled") {
         this.metersEnabled = !!msg.enabled;
+      } else if (msg.type === "morph") {
+        // A/B morph: the node resolves snapshot blends on the MAIN thread
+        // and posts the interpolated target; the core's precompiled morph
+        // path carries the glide on the audio thread from here.
+        const duration = Number(msg.durationSec);
+        this.proc.startMorph(msg.params ?? {}, Number.isFinite(duration) ? Math.max(0.01, duration) : 0.3);
+        this.postLatency();
+      } else if (msg.type === "undo" || msg.type === "redo") {
+        const entry = msg.type === "undo" ? this.proc.undo() : this.proc.redo();
+        this.postLatency();
+        // The node turns the restored entry into a document write, so UI
+        // and DSP stay on one state after an in-plugin undo.
+        this.port.postMessage({
+          type: "history",
+          action: msg.type,
+          id: entry ? entry.id : null,
+          value: entry ? entry.value : 0,
+        });
+      } else if (msg.type === "historyRecording") {
+        // Host-side bulk syncs gate recording around their param replays;
+        // see fxEqNode.beginParamSync/endParamSync.
+        this.proc.setHistoryRecording(!!msg.enabled);
       }
     };
   }
@@ -86,12 +114,16 @@ class FxEqWorkletProcessor extends AudioWorkletProcessor {
     if (q.length === 0 || q[0].when > horizon) return;
     // Consume the due PREFIX by index and compact in place — shift() is
     // O(n) per event, which made dense automation queues O(n²) per block.
+    // Automation is not a user gesture: pause history recording around the
+    // application so curves never pollute the plugin's undo history.
     let i = 0;
+    this.proc.setHistoryRecording(false);
     while (i < q.length && q[i].when <= horizon) {
       const ev = q[i];
       this.proc.setParameter(ev.id, ev.value);
       i++;
     }
+    this.proc.setHistoryRecording(true);
     const remaining = q.length - i;
     for (let j = 0; j < remaining; j++) q[j] = q[j + i];
     q.length = remaining;
@@ -113,6 +145,23 @@ class FxEqWorkletProcessor extends AudioWorkletProcessor {
     const input = inputs[0];
 
     this.applyDueParams(currentTime + frames / sampleRate);
+
+    // Sidechain (input 1): when a source is wired to the second input,
+    // hand it to the core so bands with sidechainMode=1 drive their dynamic
+    // EQ envelope from it. Unconnected inputs report zero channels → an
+    // explicit null; a mono feed is upmixed to the 2-channel contract.
+    const sc = inputs[1];
+    if (sc && sc.length > 0) {
+      for (let c = 0; c < CHANNELS; c++) {
+        const src = sc[Math.min(c, sc.length - 1)];
+        const dst = this.sidechainScratch[c];
+        if (src && src.length >= frames) dst.set(src.subarray(0, frames));
+        else dst.fill(0, 0, frames);
+      }
+      this.proc.setSidechain(this.sidechainScratch);
+    } else {
+      this.proc.setSidechain(null);
+    }
 
     // Stage the block into scratch (input or silence), process in place,
     // copy back. Deterministic regardless of how the host wires channels.
@@ -139,7 +188,11 @@ class FxEqWorkletProcessor extends AudioWorkletProcessor {
     // DSP already tracked during process(); no extra analysis on the audio
     // thread.
     if (this.metersEnabled && this.blockCount++ % this.meterDivider === 0) {
-      this.port.postMessage({ type: "bandPeaks", peaks: this.proc.getBandPeaks() });
+      this.port.postMessage({
+        type: "bandPeaks",
+        peaks: this.proc.getBandPeaks(),
+        gr: this.proc.getGainReductionDb(),
+      });
     }
     return true;
   }

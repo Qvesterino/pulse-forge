@@ -7817,6 +7817,46 @@ html {
   min-width: 160px;
 }
 
+/* ── FXEQ A/B morph row, GR readout, band dyn EQ ────────────────────────── */
+
+.fxeq-morph-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.fxeq-morph-slider {
+  flex: 1;
+  min-width: 70px;
+  accent-color: #f59e0b;
+}
+
+.fxeq-peaks-wrap {
+  position: relative;
+}
+
+.fxeq-gr {
+  position: absolute;
+  right: 6px;
+  top: 1px;
+  font: 700 9px ui-monospace, "Cascadia Code", monospace;
+  color: #ef4444;
+  pointer-events: none;
+}
+
+.fxeq-band-dyn {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.fxeq-band-dyn > .slider {
+  flex: 1;
+  min-width: 110px;
+}
+
 .ultina-ref {
   border-color: #22d3ee;
 }

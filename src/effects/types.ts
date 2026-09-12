@@ -67,6 +67,32 @@ export interface EffectRuntime {
    * panels cost nothing. Effects without metering simply omit this.
    */
   setMetersEnabled?(enabled: boolean): void;
+  /**
+   * Gate plugin-internal undo-history recording around engine bulk syncs.
+   * Document loads, preset applies and project loads replay every param in
+   * one sweep — none of that is a user gesture, and without the gate it
+   * would flood (and evict) the plugin's own history. Effects without an
+   * internal history simply omit these.
+   */
+  beginParamSync?(): void;
+  endParamSync?(): void;
+  /**
+   * In-plugin parameter undo/redo (live tweak history). The restored entry
+   * arrives ASYNCHRONOUSLY via the callback (a port round-trip) so the
+   * caller can write it through to the document; null = nothing to undo.
+   */
+  undoParam?(onApplied: (entry: { id: string; value: number } | null) => void): void;
+  redoParam?(onApplied: (entry: { id: string; value: number } | null) => void): void;
+  /**
+   * PRISM A/B morph slots. Snapshots live in the runtime (a rebuilt runtime
+   * starts with empty slots); morphToSnapshot glides the audio to a slot
+   * via the core's precompiled morph, morphBlendSnapshots scrubs between
+   * the two (t = 0 → a, 1 → b) with a short tracking glide.
+   */
+  setMorphSnapshot?(slot: 0 | 1, params: Record<string, number>): void;
+  getMorphSnapshot?(slot: 0 | 1): Record<string, number> | null;
+  morphToSnapshot?(slot: 0 | 1, durationSec: number): void;
+  morphBlendSnapshots?(a: 0 | 1, b: 0 | 1, t: number, durationSec: number): void;
   /** AudioParam for direct audio-rate modulation bus connection. */
   getAudioParam?(paramId: string): AudioParam | null;
   dispose(): void;

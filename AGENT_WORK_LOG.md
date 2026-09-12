@@ -239,3 +239,9 @@ total JS 1832/2400 KB; core worklets 98/120 KB; PWA precache 57 entries /
 103 skipped / 0 failed (2281 tests). The final reviewed-tree rerun remains a
 release process gate. The related upstream repositories contain the source
 edits and must be kept aligned through their normal vendor flow.
+
+The browser FXEQ CPU check was made resistant to one-shot scheduler/GC noise
+by measuring three warmed samples and reporting their median; the realtime
+limit itself remains 2902 µs per 128-frame block. `npm run test:browser` then
+completed 218/218, with a median of 878 µs/block (samples 874/878/916), and
+`npm run build` plus production browser smoke remained green.

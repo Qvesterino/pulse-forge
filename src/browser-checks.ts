@@ -1445,15 +1445,24 @@ export async function runChecks(): Promise<CheckResult[]> {
     proc.loadParameters(worst);
     const blocks = 600;
     const stereo = [new Float32Array(128), new Float32Array(128)];
-    // Warm-up (JIT) then measure.
-    for (let i = 0; i < 50; i++) proc.process(stereo, 128);
-    const t0 = performance.now();
-    for (let i = 0; i < blocks; i++) {
-      stereo[0][i % 128] = Math.sin(i * 0.1);
-      proc.process(stereo, 128);
+    // Warm-up (JIT) and take three independent samples. Offline/main-thread
+    // timing has occasional scheduler/GC spikes around a single 128-frame
+    // quantum; using the median makes those spikes observable in the report
+    // without turning a one-sample timer blip into a false regression. The
+    // realtime threshold itself is unchanged: the median must still fit one
+    // audio block.
+    const samplesUs: number[] = [];
+    for (let sample = 0; sample < 3; sample++) {
+      for (let i = 0; i < 50; i++) proc.process(stereo, 128);
+      const t0 = performance.now();
+      for (let i = 0; i < blocks; i++) {
+        stereo[0][i % 128] = Math.sin((sample * blocks + i) * 0.1);
+        proc.process(stereo, 128);
+      }
+      samplesUs.push(((performance.now() - t0) * 1000) / blocks);
     }
-    const wallMs = performance.now() - t0;
-    const avgUsPerBlock = (wallMs * 1000) / blocks;
+    samplesUs.sort((a, b) => a - b);
+    const avgUsPerBlock = samplesUs[1];
     const budgetUs = (128 / SR) * 1000 * 1000; // 2902 µs per 128-frame block
     const cpuPercent = (avgUsPerBlock / budgetUs) * 100;
     check(
@@ -1461,7 +1470,9 @@ export async function runChecks(): Promise<CheckResult[]> {
       // Hard realtime limit (must fit one 128-frame block); the printed %
       // tells the true story — idle machines measure 26–33%, loaded more.
       avgUsPerBlock < budgetUs,
-      `avg=${avgUsPerBlock.toFixed(0)}µs/block of ${budgetUs.toFixed(0)}µs budget → ${cpuPercent.toFixed(1)}% of one core`,
+      `median=${avgUsPerBlock.toFixed(0)}µs/block of ${budgetUs.toFixed(0)}µs budget → ${cpuPercent.toFixed(1)}% of one core (samples=${samplesUs
+        .map((value) => value.toFixed(0))
+        .join(",")})`,
     );
   } catch (error) {
     check("fxeq: CPU budget — worst case fits the audio-thread block budget", false, String(error));

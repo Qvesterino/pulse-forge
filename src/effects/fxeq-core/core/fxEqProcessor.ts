@@ -62,6 +62,20 @@ export interface FxEqProcessor {
   readonly canUndo: boolean;
   readonly canRedo: boolean;
   /**
+   * Gate undo-history recording. Hosts turn recording OFF while replaying
+   * programmatic state (document syncs, preset loads, project loads) so the
+   * history only contains live user gestures; automation is expected to gate
+   * itself around applyDueParams-style paths. Recording is ON by default.
+   */
+  setHistoryRecording(enabled: boolean): void;
+  /**
+   * Aggregate output gain reduction in dB from the limiter stage (0 when the
+   * limiter is disabled or not reducing). Per-band dynamic EQ reduction is
+   * intentionally not summed — bands run in parallel, so a sum would be
+   * meaningless; the limiter is the single output-side gain rider.
+   */
+  getGainReductionDb(): number;
+  /**
    * Start an A/B morph between current state and target parameters.
    * `target` is a flat parameter map. `durationSec` is the morph time.
    * The morph interpolates all parameters linearly over time.
@@ -166,8 +180,11 @@ export function createFxEqProcessor(
     return Math.max(lo, value);
   }
 
-  // Command history for undo/redo.
+  // Command history for undo/redo. `historyRecording` gates pushes so hosts
+  // can replay programmatic state (document/preset syncs) without polluting
+  // the user-gesture history.
   const history: CommandHistory = createCommandHistory();
+  let historyRecording = true;
 
   // A/B morph state. The morph is PRECOMPILED at startMorph() into routed
   // entries; process() only interpolates and routes those. The old path
@@ -603,9 +620,10 @@ export function createFxEqProcessor(
       if (typeof value !== "number" || !Number.isFinite(value)) return;
       const def = schema.defById.get(id);
       if (def) value = Math.max(def.minValue, Math.min(def.maxValue, value));
-      // Record previous value for undo.
+      // Record previous value for undo (and the new value so redo can
+      // re-apply the change instead of silently repeating the undo).
       const oldValue = values[id] ?? 0;
-      if (oldValue !== value) history.push(id, oldValue);
+      if (historyRecording && oldValue !== value) history.push(id, oldValue, value);
       values[id] = value;
       routeParam(route, value);
     },
@@ -619,6 +637,16 @@ export function createFxEqProcessor(
     },
 
     loadParameters(p) {
+      // An incoming bulk state (preset, host sync, project load) supersedes
+      // any running morph: the morph would otherwise keep overwriting the
+      // loaded values each block and pin its OWN end state over the loaded
+      // one when it completed.
+      morphing = false;
+      morphEntries = null;
+      // Bulk state replacement is not a user gesture. Keeping the previous
+      // parameter history would let Undo jump across the preset/sync
+      // boundary into a state that is no longer the active document.
+      history.clear();
       // Handle bandCount changes first (rebuilds schema/routes).
       if (p["bandCount"] !== undefined && p["bandCount"] !== bandCount) {
         rebuildForBandCount(p["bandCount"]);
@@ -653,25 +681,45 @@ export function createFxEqProcessor(
       for (let b = 0; b < MAX_BANDS; b++) bands[b].setTempo(bpm);
     },
 
-    get canUndo() { return history.canUndo; },
-    get canRedo() { return history.canRedo; },
+    get canUndo() { return historyRecording && history.canUndo; },
+    get canRedo() { return historyRecording && history.canRedo; },
 
+    setHistoryRecording(enabled) {
+      // Pure gate — pausing must not destroy recorded gestures (automation
+      // pauses recording around each due-prefix application). Clearing is
+      // loadParameters' job: a bulk state replacement makes old history stale.
+      historyRecording = !!enabled;
+    },
+
+    /** Undo the last user-recorded parameter change. */
     undo() {
       const entry = history.undo();
       if (!entry) return null;
       values[entry.id] = entry.value;
       const route = schema.routes.get(entry.id);
       if (route && prepared) routeParam(route, entry.value);
-      return entry;
+      // A copy without the redo-side `next` — the caller only needs the
+      // restored value and must not hold a live history entry.
+      return { id: entry.id, value: entry.value };
     },
 
     redo() {
       const entry = history.redo();
       if (!entry) return null;
-      values[entry.id] = entry.value;
+      // Redo re-applies the CHANGE (the post-change value), not the
+      // pre-change value — repeating entry.value here made redo a silent
+      // second undo. The entry in the stacks stays untouched; the returned
+      // copy reports the value that was actually applied.
+      const applied = entry.next ?? entry.value;
+      values[entry.id] = applied;
       const route = schema.routes.get(entry.id);
-      if (route && prepared) routeParam(route, entry.value);
-      return entry;
+      if (route && prepared) routeParam(route, applied);
+      return { id: entry.id, value: applied };
+    },
+
+    getGainReductionDb() {
+      const gr = limiter.getGainReductionDb?.();
+      return typeof gr === "number" && Number.isFinite(gr) ? gr : 0;
     },
 
     get isMorphing() { return morphing; },

@@ -161,16 +161,18 @@ describe("fxeq node band-peak metering contract", () => {
     const port = CapturingNode.last!.port;
     const peaks = new Float32Array([0.1, 0.5, 0.9, 0.2]);
     port.onmessage!({ data: { type: "bandPeaks", peaks } });
-    expect(rt.getMeters?.()).toEqual({ bandPeaks: peaks });
+    // The meters snapshot now also carries the limiter's gain reduction
+    // (0 until the worklet posts a gr value alongside the peaks).
+    expect(rt.getMeters?.()).toEqual({ bandPeaks: peaks, gainReductionDb: 0 });
 
     // A later snapshot replaces the previous one (latest wins).
     const newer = new Float32Array([0.3]);
-    port.onmessage!({ data: { type: "bandPeaks", peaks: newer } });
-    expect(rt.getMeters?.()).toEqual({ bandPeaks: newer });
+    port.onmessage!({ data: { type: "bandPeaks", peaks: newer, gr: 2.5 } });
+    expect(rt.getMeters?.()).toEqual({ bandPeaks: newer, gainReductionDb: 2.5 });
 
     // Non-float garbage is ignored.
     port.onmessage!({ data: { type: "bandPeaks", peaks: "nope" } });
-    expect(rt.getMeters?.()).toEqual({ bandPeaks: newer });
+    expect(rt.getMeters?.()).toEqual({ bandPeaks: newer, gainReductionDb: 2.5 });
 
     rt.dispose();
     expect(rt.getMeters?.()).toBeNull();

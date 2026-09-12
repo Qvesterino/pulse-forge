@@ -25,7 +25,14 @@
 
 export interface CommandEntry {
   id: string;
+  /** Value restored by undo (the state before the change). */
   value: number;
+  /**
+   * Value re-applied by redo (the state after the change). Optional for
+   * compatibility with older single-value entries; without it redo can only
+   * re-restore the pre-change value, which made redo a silent second undo.
+   */
+  next?: number;
 }
 
 const MAX_HISTORY = 200;
@@ -35,13 +42,15 @@ const MAX_HISTORY = 200;
  * entries and user undo became meaningless. Consecutive pushes for the
  * SAME parameter within this window coalesce into the existing entry —
  * the entry keeps the value from BEFORE the interaction, so undo after a
- * drag returns to the pre-drag state in one step.
+ * drag returns to the pre-drag state in one step. The coalesced entry's
+ * `next` tracks the latest applied value so redo lands on the freshest
+ * position of the gesture.
  */
 const COALESCE_MS = 500;
 
 export interface CommandHistory {
-  /** Record a parameter change (before applying it). */
-  push(id: string, value: number): void;
+  /** Record a parameter change (before applying it): previous + new value. */
+  push(id: string, value: number, next?: number): void;
   /** Undo the last change. Returns the entry to apply, or null. */
   undo(): CommandEntry | null;
   /** Redo the last undone change. Returns the entry to apply, or null. */
@@ -72,16 +81,18 @@ export function createCommandHistory(): CommandHistory {
       return redoStack.length > 0;
     },
 
-    push(id, value) {
+    push(id, value, next) {
       const now = nowMs();
       const top = undoStack[undoStack.length - 1];
       if (top && top.id === id && now - (lastPushAt.get(top) ?? -Infinity) < COALESCE_MS) {
         // Keep the original pre-interaction value; just extend the window.
+        // `next` follows the gesture so redo restores its latest position.
+        if (next !== undefined) top.next = next;
         lastPushAt.set(top, now);
         redoStack.length = 0;
         return;
       }
-      const entry: CommandEntry = { id, value };
+      const entry: CommandEntry = next === undefined ? { id, value } : { id, value, next };
       undoStack.push(entry);
       lastPushAt.set(entry, now);
       if (undoStack.length > MAX_HISTORY) {

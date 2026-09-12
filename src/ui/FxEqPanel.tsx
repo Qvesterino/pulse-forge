@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FXEQ_PRESETS } from "../effects/fxeq-core/core/presets";
 import { buildSchema, type FxEqSchema } from "../effects/fxeq-core/core/parameterSchema";
+import { blendParams } from "../effects/fxeqNode";
+import type { EffectRuntime } from "../effects/types";
 import { useServices } from "./context";
 import { Slider } from "./controls";
 
@@ -63,6 +65,69 @@ export function FxEqPanel({
   const schema: FxEqSchema = useMemo(() => buildSchema(bandCount), [bandCount]);
   const [selectedBand, setSelectedBand] = useState(1);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // ── plugin-level runtime surface: A/B morph slots + in-plugin undo/redo ──
+  // Optional everywhere: the degraded bypass runtime exposes none of this
+  // and test mocks may not implement getFxRuntime at all.
+  const engineWithFx = services.engine as typeof services.engine & {
+    getFxRuntime?: (trackId: string, fxId: string) => EffectRuntime | null;
+    getFxMeters?: (trackId: string, fxId: string) => unknown;
+    setFxMetersEnabled?: (trackId: string, fxId: string, enabled: boolean) => void;
+  };
+  const fxRuntime = (): EffectRuntime | null => engineWithFx.getFxRuntime?.(trackId, fxId) ?? null;
+  const [morphSlots, setMorphSlots] = useState<[boolean, boolean]>([false, false]);
+  const [morphT, setMorphT] = useState(0.5);
+  const grRef = useRef<HTMLSpanElement | null>(null);
+
+  const MORPH_GLIDE_SEC = 0.4;
+
+  const captureSnapshot = (slot: 0 | 1) => {
+    fxRuntime()?.setMorphSnapshot?.(slot, params);
+    setMorphSlots((prev) => {
+      const next: [boolean, boolean] = [prev[0], prev[1]];
+      next[slot] = true;
+      return next;
+    });
+  };
+
+  const recallSnapshot = (slot: 0 | 1) => {
+    const runtime = fxRuntime();
+    const snap = runtime?.getMorphSnapshot?.(slot);
+    if (!runtime || !snap) return;
+    // Glide the audio via the core morph, then land the SAME state in the
+    // document once the glide has finished. The commit must not race the
+    // glide: a bulk param sync cancels a running morph in the core, so an
+    // immediate commit would snap instead of glide.
+    runtime.morphToSnapshot?.(slot, MORPH_GLIDE_SEC);
+    window.setTimeout(() => onApplyPreset(slot === 0 ? "A" : "B", snap), MORPH_GLIDE_SEC * 1000 + 150);
+  };
+
+  /** Live scrub: transient audio morph, document untouched until release. */
+  const scrubMorph = (t: number) => {
+    setMorphT(t);
+    fxRuntime()?.morphBlendSnapshots?.(0, 1, t, 0.08);
+  };
+
+  /** On release: commit the scrubbed blend so knob edits continue from
+   *  what the user actually hears (no silent snap-back to the old state). */
+  const commitMorph = () => {
+    const runtime = fxRuntime();
+    const a = runtime?.getMorphSnapshot?.(0);
+    const b = runtime?.getMorphSnapshot?.(1);
+    if (!a || !b) return;
+    onApplyPreset("Morph", blendParams(a, b, morphT));
+  };
+
+  const undoParam = () => {
+    fxRuntime()?.undoParam?.((entry) => {
+      if (entry) onParam(entry.id, entry.value);
+    });
+  };
+  const redoParam = () => {
+    fxRuntime()?.redoParam?.((entry) => {
+      if (entry) onParam(entry.id, entry.value);
+    });
+  };
 
   // Crossover split frequencies: crossoverFreq2..bandCount.
   const splits = useMemo(() => {
@@ -178,11 +243,7 @@ export function FxEqPanel({
   edgesRef.current = [AXIS_MIN_HZ, ...splits, AXIS_MAX_HZ];
 
   useEffect(() => {
-    const engineWithMeters = services.engine as typeof services.engine & {
-      getFxMeters?: (trackId: string, fxId: string) => unknown;
-      setFxMetersEnabled?: (trackId: string, fxId: string, enabled: boolean) => void;
-    };
-    engineWithMeters.setFxMetersEnabled?.(trackId, fxId, true);
+    engineWithFx.setFxMetersEnabled?.(trackId, fxId, true);
 
     const drawPeaks = () => {
       const canvas = peaksCanvasRef.current;
@@ -213,15 +274,21 @@ export function FxEqPanel({
 
     drawPeaks();
     const id = setInterval(() => {
-      const meters = engineWithMeters.getFxMeters?.(trackId, fxId) as
-        | { bandPeaks?: Float32Array }
+      const meters = engineWithFx.getFxMeters?.(trackId, fxId) as
+        | { bandPeaks?: Float32Array; gainReductionDb?: number }
         | null
         | undefined;
       peaksRef.current = meters?.bandPeaks ?? null;
+      // GR readout rides the same snapshot (no React state — direct DOM
+      // text update, mirroring the canvas draw loop).
+      if (grRef.current) {
+        const gr = meters?.gainReductionDb ?? 0;
+        grRef.current.textContent = gr > 0.05 ? `GR −${gr.toFixed(1)} dB` : "";
+      }
       drawPeaks();
     }, 66);
     return () => {
-      engineWithMeters.setFxMetersEnabled?.(trackId, fxId, false);
+      engineWithFx.setFxMetersEnabled?.(trackId, fxId, false);
       clearInterval(id);
     };
   }, [trackId, fxId, services]);
@@ -284,6 +351,75 @@ export function FxEqPanel({
         </div>
       </div>
 
+      <div className="fxeq-morph-row" role="group" aria-label="PRISM A/B morph">
+        <button
+          type="button"
+          className="btn btn-small"
+          title="Capture the current state into morph slot A"
+          onClick={() => captureSnapshot(0)}
+        >
+          SET A
+        </button>
+        <button
+          type="button"
+          className="btn btn-small"
+          title="Capture the current state into morph slot B"
+          onClick={() => captureSnapshot(1)}
+        >
+          SET B
+        </button>
+        <button
+          type="button"
+          className={`btn btn-small${morphSlots[0] ? "" : " fxeq-module-off"}`}
+          title={morphSlots[0] ? "Glide to A" : "Capture A first (SET A)"}
+          disabled={!morphSlots[0]}
+          onClick={() => recallSnapshot(0)}
+        >
+          A
+        </button>
+        <button
+          type="button"
+          className={`btn btn-small${morphSlots[1] ? "" : " fxeq-module-off"}`}
+          title={morphSlots[1] ? "Glide to B" : "Capture B first (SET B)"}
+          disabled={!morphSlots[1]}
+          onClick={() => recallSnapshot(1)}
+        >
+          B
+        </button>
+        <input
+          type="range"
+          className="fxeq-morph-slider"
+          aria-label="PRISM morph A to B"
+          title="Scrub between A and B — the blend lands in the document on release"
+          min={0}
+          max={1}
+          step={0.01}
+          value={morphT}
+          disabled={!morphSlots[0] || !morphSlots[1]}
+          onChange={(e) => scrubMorph(Number(e.target.value))}
+          onPointerUp={commitMorph}
+          onKeyUp={commitMorph}
+        />
+        <button
+          type="button"
+          className="btn btn-small"
+          aria-label="Undo PRISM parameter edit"
+          title="Undo the last live parameter tweak (plugin history)"
+          onClick={undoParam}
+        >
+          ↶
+        </button>
+        <button
+          type="button"
+          className="btn btn-small"
+          aria-label="Redo PRISM parameter edit"
+          title="Redo an undone parameter tweak (plugin history)"
+          onClick={redoParam}
+        >
+          ↷
+        </button>
+      </div>
+
       <div
         className="fxeq-canvas-wrap"
         role="img"
@@ -300,6 +436,7 @@ export function FxEqPanel({
         title="Live per-band peak level — which band is playing hot right now"
       >
         <canvas ref={peaksCanvasRef} className="fxeq-peaks-canvas" />
+        <span ref={grRef} className="fxeq-gr" aria-label="PRISM gain reduction" />
       </div>
 
       {/* Band scalars: solo / mute / gain — hear and level just this band. */}
@@ -334,6 +471,80 @@ export function FxEqPanel({
             onCommit={(v) => onParam(`band${selectedBand}.gainDb`, v)}
           />
         </div>
+      </div>
+
+      {/* Band-level dynamic EQ (spectral ducking). EXT SC drives the band's
+          envelope from the sidechain feed attached by the engine via track
+          routing; with it off the band tracks itself. */}
+      <div className="fxeq-band-dyn" role="group" aria-label="PRISM dynamic EQ">
+        <span className="fxeq-module-tag" style={{ background: MODULE_COLORS.dyn }}>
+          DYN EQ
+        </span>
+        <button
+          type="button"
+          className={`btn btn-small${valueOf(`band${selectedBand}.dynEnable`) >= 0.5 ? " active" : ""}`}
+          aria-pressed={valueOf(`band${selectedBand}.dynEnable`) >= 0.5}
+          title="Dynamic EQ — this band ducks itself when it exceeds the threshold"
+          onClick={() =>
+            onParam(`band${selectedBand}.dynEnable`, valueOf(`band${selectedBand}.dynEnable`) >= 0.5 ? 0 : 1)
+          }
+        >
+          DYN
+        </button>
+        <button
+          type="button"
+          className={`btn btn-small${valueOf(`band${selectedBand}.sidechainMode`) >= 0.5 ? " active" : ""}`}
+          aria-pressed={valueOf(`band${selectedBand}.sidechainMode`) >= 0.5}
+          title="Sidechain — drive this band's dynamic EQ from the external sidechain feed instead of the band itself"
+          onClick={() =>
+            onParam(
+              `band${selectedBand}.sidechainMode`,
+              valueOf(`band${selectedBand}.sidechainMode`) >= 0.5 ? 0 : 1,
+            )
+          }
+        >
+          EXT SC
+        </button>
+        <Slider
+          compact
+          label="DYN THRESH"
+          value={valueOf(`band${selectedBand}.dynThresholdDb`)}
+          min={-60}
+          max={0}
+          defaultValue={-20}
+          format={(v) => `${v.toFixed(1)} dB`}
+          onCommit={(v) => onParam(`band${selectedBand}.dynThresholdDb`, v)}
+        />
+        <Slider
+          compact
+          label="DYN RANGE"
+          value={valueOf(`band${selectedBand}.dynRangeDb`)}
+          min={-24}
+          max={0}
+          defaultValue={-6}
+          format={(v) => `${v.toFixed(1)} dB`}
+          onCommit={(v) => onParam(`band${selectedBand}.dynRangeDb`, v)}
+        />
+        <Slider
+          compact
+          label="DYN ATK"
+          value={valueOf(`band${selectedBand}.dynAttackMs`)}
+          min={0.1}
+          max={100}
+          defaultValue={10}
+          format={(v) => `${v.toFixed(1)} ms`}
+          onCommit={(v) => onParam(`band${selectedBand}.dynAttackMs`, v)}
+        />
+        <Slider
+          compact
+          label="DYN REL"
+          value={valueOf(`band${selectedBand}.dynReleaseMs`)}
+          min={10}
+          max={1000}
+          defaultValue={150}
+          format={(v) => `${v.toFixed(0)} ms`}
+          onCommit={(v) => onParam(`band${selectedBand}.dynReleaseMs`, v)}
+        />
       </div>
 
       {MODULE_ORDER.map((key) => {

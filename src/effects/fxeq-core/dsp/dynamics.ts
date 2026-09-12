@@ -60,10 +60,11 @@ export function processEnvelope(
  *
  * Compression model:
  *   - Below threshold: gain = 1 (no reduction)
- *   - Above threshold: gain decreases linearly toward (1 - range)
- *   - range is in linear (e.g., 0.5 = -6 dB max reduction)
+ *   - Above threshold: gain ramps down linearly with the normalized
+ *     overshoot and floors at `rangeLin` — the DEPTH of the reduction as a
+ *     linear gain (rangeDb -6 → rangeLin 0.5 → −6 dB floor).
  *
- * Returns linear gain (0..1).
+ * Returns linear gain (rangeLin..1).
  */
 export function computeGain(
   envelope: number,
@@ -73,9 +74,8 @@ export function computeGain(
   if (envelope <= thresholdLin || thresholdLin <= 0) return 1;
   // Linear gain reduction above threshold.
   const over = (envelope - thresholdLin) / thresholdLin;
-  const maxReduction = 1 - rangeLin;
-  const gain = 1 - over * (1 - maxReduction);
-  return Math.max(maxReduction, Math.min(1, gain));
+  const gain = 1 - over * (1 - rangeLin);
+  return Math.max(rangeLin, Math.min(1, gain));
 }
 
 /**

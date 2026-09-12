@@ -1244,9 +1244,14 @@ export class AudioEngine {
       const rt = state.runtimes.get(fx.id);
       const cached = state.params.get(fx.id);
       if (!rt || !cached) continue;
+      // A bulk replay (document load, preset apply) is not a user gesture —
+      // effects with an internal undo history must not record it, or one
+      // preset load evicts the user's live-tweak history.
+      rt.beginParamSync?.();
       for (const [k, v] of Object.entries(fx.params)) {
         if (cached[k] !== v) rt.setParameter(k, v);
       }
+      rt.endParamSync?.();
       state.params.set(fx.id, { ...fx.params });
     }
   }
@@ -3894,6 +3899,20 @@ export class AudioEngine {
       this.groupNodes.get(trackId)?.fx.runtimes.get(fxId) ??
       this.returnNodes.get(trackId)?.fx.runtimes.get(fxId);
     return rt?.getMeters?.() ?? null;
+  }
+
+  /**
+   * Direct runtime access for plugin panels that need the full optional
+   * surface (PRISM A/B morph slots, in-plugin undo/redo) beyond the generic
+   * per-effect methods. Panels must treat every capability as optional —
+   * fallback runtimes expose only the bypass basics.
+   */
+  getFxRuntime(trackId: string, fxId: string): EffectRuntime | null {
+    const rt =
+      this.trackNodes.get(trackId)?.fx.runtimes.get(fxId) ??
+      this.groupNodes.get(trackId)?.fx.runtimes.get(fxId) ??
+      this.returnNodes.get(trackId)?.fx.runtimes.get(fxId);
+    return rt ?? null;
   }
 
   /**

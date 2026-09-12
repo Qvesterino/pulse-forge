@@ -2902,9 +2902,8 @@
   function computeGain(envelope, thresholdLin, rangeLin) {
     if (envelope <= thresholdLin || thresholdLin <= 0) return 1;
     const over = (envelope - thresholdLin) / thresholdLin;
-    const maxReduction = 1 - rangeLin;
-    const gain = 1 - over * (1 - maxReduction);
-    return Math.max(maxReduction, Math.min(1, gain));
+    const gain = 1 - over * (1 - rangeLin);
+    return Math.max(rangeLin, Math.min(1, gain));
   }
   function rangeDbToLin(rangeDb) {
     return Math.pow(10, rangeDb / 20);
@@ -3841,15 +3840,16 @@
       get canRedo() {
         return redoStack.length > 0;
       },
-      push(id, value) {
+      push(id, value, next) {
         const now = nowMs();
         const top = undoStack[undoStack.length - 1];
         if (top && top.id === id && now - (lastPushAt.get(top) ?? -Infinity) < COALESCE_MS) {
+          if (next !== void 0) top.next = next;
           lastPushAt.set(top, now);
           redoStack.length = 0;
           return;
         }
-        const entry = { id, value };
+        const entry = next === void 0 ? { id, value } : { id, value, next };
         undoStack.push(entry);
         lastPushAt.set(entry, now);
         if (undoStack.length > MAX_HISTORY) {
@@ -3932,6 +3932,7 @@
       return Math.max(lo, value);
     }
     const history = createCommandHistory();
+    let historyRecording = true;
     let morphEntries = null;
     let morphDuration = 0;
     let morphElapsed = 0;
@@ -4235,7 +4236,7 @@
         const def = schema.defById.get(id);
         if (def) value = Math.max(def.minValue, Math.min(def.maxValue, value));
         const oldValue = values[id] ?? 0;
-        if (oldValue !== value) history.push(id, oldValue);
+        if (historyRecording && oldValue !== value) history.push(id, oldValue, value);
         values[id] = value;
         routeParam(route, value);
       },
@@ -4246,6 +4247,9 @@
         return { ...values };
       },
       loadParameters(p) {
+        morphing = false;
+        morphEntries = null;
+        history.clear();
         if (p["bandCount"] !== void 0 && p["bandCount"] !== bandCount) {
           rebuildForBandCount(p["bandCount"]);
         }
@@ -4268,26 +4272,35 @@
         for (let b = 0; b < MAX_BANDS; b++) bands[b].setTempo(bpm);
       },
       get canUndo() {
-        return history.canUndo;
+        return historyRecording && history.canUndo;
       },
       get canRedo() {
-        return history.canRedo;
+        return historyRecording && history.canRedo;
       },
+      setHistoryRecording(enabled) {
+        historyRecording = !!enabled;
+      },
+      /** Undo the last user-recorded parameter change. */
       undo() {
         const entry = history.undo();
         if (!entry) return null;
         values[entry.id] = entry.value;
         const route = schema.routes.get(entry.id);
         if (route && prepared) routeParam(route, entry.value);
-        return entry;
+        return { id: entry.id, value: entry.value };
       },
       redo() {
         const entry = history.redo();
         if (!entry) return null;
-        values[entry.id] = entry.value;
+        const applied = entry.next ?? entry.value;
+        values[entry.id] = applied;
         const route = schema.routes.get(entry.id);
-        if (route && prepared) routeParam(route, entry.value);
-        return entry;
+        if (route && prepared) routeParam(route, applied);
+        return { id: entry.id, value: applied };
+      },
+      getGainReductionDb() {
+        const gr = limiter.getGainReductionDb?.();
+        return typeof gr === "number" && Number.isFinite(gr) ? gr : 0;
       },
       get isMorphing() {
         return morphing;
@@ -4393,6 +4406,12 @@
     proc;
     /** Processing scratch (in-place DSP), copied to/from the graph buffers. */
     scratch = [new Float32Array(MAX_BLOCK), new Float32Array(MAX_BLOCK)];
+    /**
+     * Sidechain scratch (input 1) for spectral ducking: copied here per block
+     * so the core never reads graph buffers directly and a mono feed is
+     * upmixed to the core's 2-channel contract.
+     */
+    sidechainScratch = [new Float32Array(MAX_BLOCK), new Float32Array(MAX_BLOCK)];
     /** Band-peak metering: gated by the host panel, throttled to ~20 Hz. */
     metersEnabled = false;
     blockCount = 0;
@@ -4446,6 +4465,21 @@
           this.proc.setTempo(msg.bpm);
         } else if (msg.type === "setMetersEnabled") {
           this.metersEnabled = !!msg.enabled;
+        } else if (msg.type === "morph") {
+          const duration = Number(msg.durationSec);
+          this.proc.startMorph(msg.params ?? {}, Number.isFinite(duration) ? Math.max(0.01, duration) : 0.3);
+          this.postLatency();
+        } else if (msg.type === "undo" || msg.type === "redo") {
+          const entry = msg.type === "undo" ? this.proc.undo() : this.proc.redo();
+          this.postLatency();
+          this.port.postMessage({
+            type: "history",
+            action: msg.type,
+            id: entry ? entry.id : null,
+            value: entry ? entry.value : 0
+          });
+        } else if (msg.type === "historyRecording") {
+          this.proc.setHistoryRecording(!!msg.enabled);
         }
       };
     }
@@ -4453,11 +4487,13 @@
       const q = this.pendingParams;
       if (q.length === 0 || q[0].when > horizon) return;
       let i = 0;
+      this.proc.setHistoryRecording(false);
       while (i < q.length && q[i].when <= horizon) {
         const ev = q[i];
         this.proc.setParameter(ev.id, ev.value);
         i++;
       }
+      this.proc.setHistoryRecording(true);
       const remaining = q.length - i;
       for (let j = 0; j < remaining; j++) q[j] = q[j + i];
       q.length = remaining;
@@ -4476,6 +4512,18 @@
       const frames = Math.min(MAX_BLOCK, output[0].length);
       const input = inputs[0];
       this.applyDueParams(currentTime + frames / sampleRate);
+      const sc = inputs[1];
+      if (sc && sc.length > 0) {
+        for (let c = 0; c < CHANNELS; c++) {
+          const src = sc[Math.min(c, sc.length - 1)];
+          const dst = this.sidechainScratch[c];
+          if (src && src.length >= frames) dst.set(src.subarray(0, frames));
+          else dst.fill(0, 0, frames);
+        }
+        this.proc.setSidechain(this.sidechainScratch);
+      } else {
+        this.proc.setSidechain(null);
+      }
       for (let c = 0; c < CHANNELS; c++) {
         const buf = this.scratch[c];
         const inCh = input?.[c];
@@ -4489,7 +4537,11 @@
         if (outCh) outCh.set(this.scratch[c].subarray(0, frames));
       }
       if (this.metersEnabled && this.blockCount++ % this.meterDivider === 0) {
-        this.port.postMessage({ type: "bandPeaks", peaks: this.proc.getBandPeaks() });
+        this.port.postMessage({
+          type: "bandPeaks",
+          peaks: this.proc.getBandPeaks(),
+          gr: this.proc.getGainReductionDb()
+        });
       }
       return true;
     }
