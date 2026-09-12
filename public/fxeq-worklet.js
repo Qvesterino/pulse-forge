@@ -47,6 +47,14 @@
       z2: new Float32Array(channelCount)
     };
   }
+  function setFlat(bq) {
+    const c = bq.coeffs;
+    c.b0 = 1;
+    c.b1 = 0;
+    c.b2 = 0;
+    c.a1 = 0;
+    c.a2 = 0;
+  }
   function resetBiquad(bq) {
     bq.z1.fill(0);
     bq.z2.fill(0);
@@ -157,19 +165,50 @@
   }
 
   // src/effects/fxeq-core/dsp/crossoverStage.ts
-  var LR4_Q = 1 / Math.SQRT2;
   var LR2_Q = 0.5;
+  var LR4_Q = 1 / Math.SQRT2;
+  var BUTTERWORTH_SECTION_Q = {
+    2: [LR2_Q],
+    4: [LR4_Q, LR4_Q],
+    8: [0.5411961001461971, 1.3065629648763766, 0.5411961001461971, 1.3065629648763766]
+  };
+  function sectionsFor(order) {
+    return order / 2;
+  }
+  function snapCrossoverOrder(value) {
+    if (!Number.isFinite(value)) return 4;
+    if (value < 3) return 2;
+    if (value < 6) return 4;
+    return 8;
+  }
   function createCrossoverStage(channelCount, order = 4) {
-    const sections = order === 4 ? 2 : 1;
+    const sections = sectionsFor(8);
     return {
       lp: Array.from({ length: sections }, () => createBiquad(channelCount)),
-      hp: Array.from({ length: sections }, () => createBiquad(channelCount))
+      hp: Array.from({ length: sections }, () => createBiquad(channelCount)),
+      activeSections: sectionsFor(order)
     };
   }
   function tuneCrossoverStage(stage, freqHz, sampleRate2, order = 4) {
-    const q = order === 4 ? LR4_Q : LR2_Q;
-    for (const bq of stage.lp) setLowPass(bq.coeffs, freqHz, q, sampleRate2);
-    for (const bq of stage.hp) setHighPass(bq.coeffs, freqHz, q, sampleRate2);
+    const q = BUTTERWORTH_SECTION_Q[order];
+    stage.activeSections = sectionsFor(order);
+    for (let i = 0; i < stage.lp.length; i++) {
+      if (i < stage.activeSections) {
+        setLowPass(stage.lp[i].coeffs, freqHz, q[i % q.length], sampleRate2);
+        setHighPass(stage.hp[i].coeffs, freqHz, q[i % q.length], sampleRate2);
+        if (order === 2) {
+          const c = stage.hp[i].coeffs;
+          c.b0 = -c.b0;
+          c.b1 = -c.b1;
+          c.b2 = -c.b2;
+        }
+      } else {
+        setFlat(stage.lp[i]);
+        setFlat(stage.hp[i]);
+        resetBiquad(stage.lp[i]);
+        resetBiquad(stage.hp[i]);
+      }
+    }
   }
   function resetCrossoverStage(stage) {
     for (const bq of stage.lp) resetBiquad(bq);
@@ -181,7 +220,7 @@
       const target = outBuf[c];
       for (let i = 0; i < frameCount; i++) target[i] = source[i];
     }
-    for (const bq of stage.lp) processBiquad(bq, outBuf, frameCount);
+    for (let s = 0; s < stage.activeSections; s++) processBiquad(stage.lp[s], outBuf, frameCount);
   }
   function applyHpBranch(stage, input, outBuf, frameCount) {
     for (let c = 0; c < outBuf.length; c++) {
@@ -189,7 +228,7 @@
       const target = outBuf[c];
       for (let i = 0; i < frameCount; i++) target[i] = source[i];
     }
-    for (const bq of stage.hp) processBiquad(bq, outBuf, frameCount);
+    for (let s = 0; s < stage.activeSections; s++) processBiquad(stage.hp[s], outBuf, frameCount);
   }
 
   // src/effects/fxeq-core/dsp/audioBlockContract.ts
@@ -245,8 +284,9 @@
   // src/effects/fxeq-core/core/crossover.ts
   var MAX_BANDS = 6;
   var DEFAULT_CROSSOVER_FREQS = [120, 400, 1200, 4e3, 8e3];
-  function createCrossoverBank(initialBandCount = 6, order = 4, initialFreqs = [...DEFAULT_CROSSOVER_FREQS]) {
+  function createCrossoverBank(initialBandCount = 6, initialOrder = 4, initialFreqs = [...DEFAULT_CROSSOVER_FREQS]) {
     let bandCount = clamp(initialBandCount, 2, MAX_BANDS);
+    let order = snapCrossoverOrder(initialOrder);
     let sampleRate2 = DEFAULT_SAMPLE_RATE;
     let channelCount = 2;
     let prepared = false;
@@ -329,6 +369,16 @@
       setBandCount(count) {
         bandCount = clamp(count, 2, MAX_BANDS);
         if (prepared) rebuildStages();
+      },
+      setOrder(next) {
+        const snapped = snapCrossoverOrder(next);
+        if (snapped === order) return;
+        order = snapped;
+        if (prepared) {
+          stages.length = 0;
+          compStagesPerBand.length = 0;
+          rebuildStages();
+        }
       },
       setCrossoverFreq(index, freqHz) {
         if (index < 0 || index >= freqs.length) return;
@@ -2818,6 +2868,13 @@
     { id: "crossoverFreq3", name: "Xover 3", defaultValue: 1200, minValue: 300, maxValue: 3e3, unit: "Hz", automatable: true },
     { id: "crossoverFreq4", name: "Xover 4", defaultValue: 4e3, minValue: 1500, maxValue: 6e3, unit: "Hz", automatable: true },
     { id: "crossoverFreq5", name: "Xover 5", defaultValue: 8e3, minValue: 4e3, maxValue: 12e3, unit: "Hz", automatable: true },
+    // Linkwitz-Riley slope: 2 = LR2 (12 dB/oct), 4 = LR4 (24 dB/oct),
+    // 8 = LR8 (48 dB/oct). Any other value snaps onto {2,4,8} at the DSP and
+    // the snapped value is written back. Structural (non-automatable).
+    { id: "crossoverOrder", name: "Crossover Slope", defaultValue: 4, minValue: 2, maxValue: 8, automatable: false },
+    // Allpass phase equalization (flat summed magnitude + aligned group
+    // delay). Off = raw LR cascades: cheaper, audibly fine for creative FX.
+    { id: "crossoverEqualize", name: "Phase EQ", defaultValue: 1, minValue: 0, maxValue: 1, automatable: false },
     { id: "globalMix", name: "Wet/Dry Mix", defaultValue: 100, minValue: 0, maxValue: 100, unit: "%", automatable: true },
     { id: "fxOnly", name: "FX Only", defaultValue: 0, minValue: 0, maxValue: 1, automatable: false },
     { id: "limiterEnabled", name: "Limiter", defaultValue: 1, minValue: 0, maxValue: 1, automatable: false },
@@ -3997,6 +4054,16 @@
       }
       return Math.min(ALIGN_MAX, maxLat);
     }
+    function refreshEqualize() {
+      let anyEco = false;
+      for (let b = 0; b < bandCount; b++) {
+        if (bands[b].getBandParam("quality") < 0.5) {
+          anyEco = true;
+          break;
+        }
+      }
+      crossover.setEqualize((values["crossoverEqualize"] ?? 1) >= 0.5 && !anyEco);
+    }
     function applyAllParams() {
       const freqs = [
         values["crossoverFreq2"],
@@ -4006,6 +4073,9 @@
       ].filter((f) => f !== void 0);
       const resolvedFreqs = freqs.length ? freqs : [...DEFAULT_CROSSOVER_FREQS];
       monotonicClampFreqs(resolvedFreqs);
+      const resolvedOrder = snapCrossoverOrder(values["crossoverOrder"] ?? 4);
+      values["crossoverOrder"] = resolvedOrder;
+      crossover.setOrder(resolvedOrder);
       crossover.setCrossoverFreqs(resolvedFreqs);
       for (let i = 0; i < resolvedFreqs.length && i < xoverFreqTarget.length; i++) {
         values[`crossoverFreq${i + 2}`] = resolvedFreqs[i];
@@ -4029,6 +4099,7 @@
           }
         }
       }
+      refreshEqualize();
     }
     function rebuildForBandCount(count) {
       if (typeof count !== "number" || !Number.isFinite(count)) return;
@@ -4327,7 +4398,7 @@
       startMorph(target, durationSec) {
         const entries = [];
         for (const id of Object.keys(target)) {
-          if (id === "bandCount") continue;
+          if (id === "bandCount" || id === "crossoverOrder" || id === "crossoverEqualize") continue;
           let end = target[id];
           if (typeof end !== "number" || !Number.isFinite(end)) continue;
           const route = schema.routes.get(id);
@@ -4359,6 +4430,18 @@
             const clamped = clampXoverTarget(idx, value);
             values[route.rawId] = clamped;
             xoverFreqTarget[idx] = clamped;
+            break;
+          }
+          case "crossoverOrder": {
+            const snapped = snapCrossoverOrder(value);
+            values[route.rawId] = snapped;
+            crossover.setOrder(snapped);
+            break;
+          }
+          case "crossoverEqualize": {
+            const enabled = value >= 0.5;
+            values[route.rawId] = enabled ? 1 : 0;
+            refreshEqualize();
             break;
           }
           case "limiterEnabled":
@@ -4396,6 +4479,7 @@
             }
           }
         }
+        if (route.rawId === "quality") refreshEqualize();
         return;
       }
       if (route.kind === "module" && route.moduleKey) {

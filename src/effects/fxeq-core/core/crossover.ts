@@ -45,6 +45,7 @@ import {
   type CrossoverStage,
   type CrossoverOrder,
   createCrossoverStage,
+  snapCrossoverOrder,
   tuneCrossoverStage,
   resetCrossoverStage,
   applyLpBranch,
@@ -65,6 +66,13 @@ export interface CrossoverBank {
   getLatencySamples(): number;
   prepare(sampleRate: number, channelCount: number, maxBlockSize: number): void;
   setBandCount(count: number): void;
+  /**
+   * Switch the LR order (2/4/8 — snapped from any host value). A change
+   * recreates the stage cascades with fresh filter state: the phase
+   * response of a different order makes the old state meaningless. Rare,
+   * non-automatable structural change — same cost class as bandCount.
+   */
+  setOrder(order: number): void;
   /** Set the i-th crossover frequency (0-indexed, 0..bandCount-2). */
   setCrossoverFreq(index: number, freqHz: number): void;
   setCrossoverFreqs(freqs: number[]): void;
@@ -82,10 +90,11 @@ export interface CrossoverBank {
 
 export function createCrossoverBank(
   initialBandCount = 6,
-  order: CrossoverOrder = 4,
+  initialOrder: CrossoverOrder = 4,
   initialFreqs: number[] = [...DEFAULT_CROSSOVER_FREQS],
 ): CrossoverBank {
   let bandCount = clamp(initialBandCount, 2, MAX_BANDS);
+  let order: CrossoverOrder = snapCrossoverOrder(initialOrder);
   let sampleRate = DEFAULT_SAMPLE_RATE;
   let channelCount = 2;
   let prepared = false;
@@ -199,6 +208,21 @@ export function createCrossoverBank(
     setBandCount(count) {
       bandCount = clamp(count, 2, MAX_BANDS);
       if (prepared) rebuildStages();
+    },
+
+    setOrder(next) {
+      const snapped = snapCrossoverOrder(next);
+      if (snapped === order) return;
+      order = snapped;
+      if (prepared) {
+        // Fresh cascades: the section count and the phase response differ
+        // per order, so retained filter state would be meaningless (and
+        // mixed-order sections would comb). Recreate + retune; the band
+        // buffers themselves are rewritten every process() anyway.
+        stages.length = 0;
+        compStagesPerBand.length = 0;
+        rebuildStages();
+      }
     },
 
     setCrossoverFreq(index, freqHz) {

@@ -26,6 +26,7 @@ import {
   buildDefaultParams as buildUltinaDefaultParams,
 } from "./ultina-core/contracts/parameterSchema";
 import { buildSchema as buildFxEqSchema } from "./fxeq-core/core/parameterSchema";
+import { snapCrossoverOrder } from "./fxeq-core/dsp/crossoverStage";
 import { defaultOzvenaStateV1 } from "./ozvena-core/v2/types";
 import { clampOzvenaParam } from "./ozvena-params";
 
@@ -2083,6 +2084,8 @@ const shimmer: EffectDefinition = {
 const FXEQ_PARAM_DEFAULTS: Record<string, number> = {
   inputGainDb: 0,
   bandCount: 6,
+  crossoverOrder: 4,
+  crossoverEqualize: 1,
   mix: 100,
   outputGainDb: 0,
   limiterEnabled: 1,
@@ -2096,6 +2099,34 @@ const fxeq: EffectDefinition = {
   params: [
     { id: "inputGainDb", label: "IN", min: -24, max: 24, default: 0, unit: "dB", format: formatDb },
     { id: "bandCount", label: "BANDS", min: 2, max: 6, default: 6, format: (v) => `${Math.round(v)}` },
+    {
+      id: "crossoverOrder",
+      label: "SLOPE",
+      min: 2,
+      max: 8,
+      default: 4,
+      options: [
+        { value: 2, label: "LR2 · 12 dB/oct" },
+        { value: 4, label: "LR4 · 24 dB/oct" },
+        { value: 8, label: "LR8 · 48 dB/oct" },
+      ],
+      format: (v) => {
+        const snapped = snapCrossoverOrder(v);
+        return snapped === 2 ? "LR2" : snapped === 8 ? "LR8" : "LR4";
+      },
+    },
+    {
+      id: "crossoverEqualize",
+      label: "PHASE",
+      min: 0,
+      max: 1,
+      default: 1,
+      options: [
+        { value: 1, label: "EQ · aligned" },
+        { value: 0, label: "RAW · low CPU" },
+      ],
+      format: (v) => (v >= 0.5 ? "EQ" : "RAW"),
+    },
     { id: "mix", label: "MIX", min: 0, max: 100, default: 100, unit: "%", format: (v) => `${v.toFixed(0)}%` },
     { id: "outputGainDb", label: "OUT", min: -24, max: 24, default: 0, unit: "dB", format: formatDb },
     { id: "limiterEnabled", label: "LIM", min: 0, max: 1, default: 1, format: (v) => (v >= 0.5 ? "ON" : "OFF") },
@@ -3085,7 +3116,10 @@ export function clampEffectParam(type: EffectType, paramId: string, value: numbe
   // return NaN unchanged, and a NaN reaching a factory's smooth() throws
   // TypeError in real browsers (setTargetAtTime), killing the engine sync.
   if (!Number.isFinite(value)) return def.default;
-  return Math.min(def.max, Math.max(def.min, value));
+  const clamped = Math.min(def.max, Math.max(def.min, value));
+  if (type === "fxeq" && paramId === "crossoverOrder") return snapCrossoverOrder(clamped);
+  if (type === "fxeq" && paramId === "crossoverEqualize") return clamped >= 0.5 ? 1 : 0;
+  return clamped;
 }
 
 /**
@@ -3133,6 +3167,15 @@ export function normalizePluginParams(
       const value = source[def.id];
       if (typeof value !== "number" || !Number.isFinite(value)) continue;
       params[def.id] = Math.min(def.maxValue, Math.max(def.minValue, value));
+    }
+    // Structural snap: the crossover slope only exists at {2,4,8} — a raw
+    // in-between value from persisted state would hold the store and the
+    // DSP apart until the next route.
+    if (params.crossoverOrder !== undefined) {
+      params.crossoverOrder = snapCrossoverOrder(params.crossoverOrder);
+    }
+    if (params.crossoverEqualize !== undefined) {
+      params.crossoverEqualize = params.crossoverEqualize >= 0.5 ? 1 : 0;
     }
     return params;
   }

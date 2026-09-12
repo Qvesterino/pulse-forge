@@ -5409,7 +5409,10 @@ export function setFxEqParam(
   if (!def) throw new Error(`PRISM param ${fullId} not defined for ${Math.round(target.params.bandCount ?? 6)} bands`);
   const previous = target.params[fullId] ?? schema.defaultParams[fullId] ?? def.defaultValue;
   const safeValue = Number.isFinite(value) ? value : previous;
-  const clamped = Math.max(def.minValue, Math.min(def.maxValue, safeValue));
+  const clamped =
+    fullId === "crossoverOrder" || fullId === "crossoverEqualize"
+      ? clampEffectParam("fxeq", fullId, safeValue)
+      : Math.max(def.minValue, Math.min(def.maxValue, safeValue));
   const apply = (d: ProjectDocument, values: Record<string, number>): ProjectDocument =>
     withTrackEffects(d, trackId, (effects) =>
       effects.map((f) => (f.id === fxId ? { ...f, params: { ...f.params, ...values } } : f)),
@@ -5440,7 +5443,10 @@ export function applyFxEqPreset(
   for (const [id, value] of Object.entries(presetParams)) {
     const def = schema.defs.find((d) => d.id === id);
     if (!def || typeof value !== "number" || !Number.isFinite(value)) continue;
-    nextParams[id] = Math.max(def.minValue, Math.min(def.maxValue, value));
+    nextParams[id] =
+      id === "crossoverOrder" || id === "crossoverEqualize"
+        ? clampEffectParam("fxeq", id, value)
+        : Math.max(def.minValue, Math.min(def.maxValue, value));
   }
   const previousParams = { ...target.params };
   // Undo must restore a CANONICAL full map, not the raw partial previous

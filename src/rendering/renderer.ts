@@ -12,6 +12,39 @@ export interface RenderOptions {
   mode: PlayMode;
   sampleRate: number;
   tailSeconds?: number;
+  /**
+   * Bump every PRISM (fxeq) instance to its `render` quality tier for the
+   * duration of THIS render: saturation oversampling goes to 8× (the
+   * documented offline tier — no realtime CPU budget), giving exports a
+   * measurably lower aliasing floor for free. The document itself is not
+   * modified; the bump rides the runtime parameter preview path.
+   */
+  fxeqRenderQuality?: boolean;
+}
+
+/**
+ * The quality bump for one document: {trackId, fxId, paramId, value} entries
+ * that the renderer feeds through engine.previewFxParam. Pure so the export contract
+ * is testable without an audio context.
+ */
+export function fxeqRenderQualityBumps(doc: ProjectDocument): {
+  trackId: string;
+  fxId: string;
+  paramId: string;
+  value: number;
+}[] {
+  const bumps: { trackId: string; fxId: string; paramId: string; value: number }[] = [];
+  for (const track of doc.tracks) {
+    for (const fx of track.effects ?? []) {
+      if (fx.type !== "fxeq" || fx.bypassed) continue;
+      const rawBandCount = fx.params?.bandCount;
+      const bands = Number.isFinite(rawBandCount) ? Math.max(2, Math.min(6, Math.round(rawBandCount))) : 6;
+      for (let b = 1; b <= bands; b++) {
+        bumps.push({ trackId: track.id, fxId: fx.id, paramId: `band${b}.quality`, value: 3 });
+      }
+    }
+  }
+  return bumps;
 }
 
 export interface ClipWindow {
@@ -182,6 +215,14 @@ export async function renderProject(
   // dry — the frozen buffer itself was rendered from the track's real
   // chain, so live-chain rendering is the correct export content.
   engine.setProject(unfreezeDoc(doc));
+
+  // PRISM render quality (opt-in): push the runtime quality bump AFTER the
+  // project sync so it wins over the document values without mutating them.
+  if (options.fxeqRenderQuality) {
+    for (const bump of fxeqRenderQualityBumps(doc)) {
+      engine.previewFxParam(bump.trackId, bump.fxId, bump.paramId, bump.value);
+    }
+  }
 
   const timeAt = tempoMap.timeAt;
   const windows = pendingWindows;

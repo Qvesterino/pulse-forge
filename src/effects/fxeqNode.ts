@@ -1,3 +1,4 @@
+import { snapCrossoverOrder } from "./fxeq-core/dsp/crossoverStage";
 import type { EffectRuntime } from "../effects/types";
 import type { EffectInstance } from "../project-model/types";
 
@@ -18,14 +19,21 @@ function toCoreId(id: string): string {
   return RACK_TO_CORE[id] ?? id;
 }
 
+function normalizeHostValue(id: string, value: number): number {
+  if (id === "bandCount") return Math.round(value);
+  if (id === "crossoverOrder") return snapCrossoverOrder(value);
+  if (id === "crossoverEqualize") return value >= 0.5 ? 1 : 0;
+  return value;
+}
+
 /** Morph slot index: 0 = A, 1 = B. */
 export type MorphSlot = 0 | 1;
 
 /**
- * Interpolate two snapshot maps for a morph target. `bandCount` is excluded
- * — interpolating an active-band count would rebuild the schema/crossover
- * every block mid-morph (the core's morph perf gate excludes it for the
- * same reason). Non-finite entries ride along from `a` unchanged; the
+ * Interpolate two snapshot maps for a morph target. Structural crossover
+ * settings are excluded because interpolating them would rebuild filter
+ * topology or switch the phase path mid-morph (the core's morph perf gate
+ * excludes them for the same reason). Non-finite entries ride along from `a` unchanged; the
  * worklet re-clamps every id against the schema on arrival. Exported so the
  * panel commits the SAME blend it scrubbed (what you hear is what the
  * document stores).
@@ -34,7 +42,7 @@ export function blendParams(a: Record<string, number>, b: Record<string, number>
   const out: Record<string, number> = {};
   const ids = new Set([...Object.keys(a), ...Object.keys(b)]);
   for (const id of ids) {
-    if (id === "bandCount") continue;
+    if (id === "bandCount" || id === "crossoverOrder" || id === "crossoverEqualize") continue;
     const from = a[id];
     const to = b[id];
     if (typeof from === "number" && Number.isFinite(from) && typeof to === "number" && Number.isFinite(to)) {
@@ -74,7 +82,7 @@ export function createFxEqNode(
   // per-band ids ("band2.satDriveDb"…) beyond the rack's top-level surface.
   const initial: Record<string, number> = {};
   for (const [id, value] of Object.entries({ ...defaults, ...instance.params })) {
-    initial[toCoreId(id)] = id === "bandCount" ? Math.round(value) : value;
+    initial[toCoreId(id)] = normalizeHostValue(id, value);
   }
 
   const node = new AudioWorkletNode(ctx, "fxeq-processor", {
@@ -196,7 +204,7 @@ export function createFxEqNode(
       node.port.postMessage({
         type: "param",
         id: toCoreId(id),
-        value: id === "bandCount" ? Math.round(value) : value,
+        value: normalizeHostValue(id, value),
       });
     },
     /** Time-stamped parameter set for live/offline automation parity. */
@@ -205,7 +213,7 @@ export function createFxEqNode(
       node.port.postMessage({
         type: "paramAt",
         id: toCoreId(id),
-        value: id === "bandCount" ? Math.round(value) : value,
+        value: normalizeHostValue(id, value),
         when,
       });
     },

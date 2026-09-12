@@ -123,9 +123,12 @@ describe("fxeq rack ↔ core parameter contract", () => {
     const midOf = (min: number, max: number): number => min + (max - min) * 0.5;
     for (const p of EFFECT_DEFS.fxeq.params) {
       const mid = midOf(p.min, p.max);
-      proc.setParameter(p.id === "mix" ? "globalMix" : p.id, p.id === "bandCount" ? Math.round(mid) : mid);
+      const input = p.id === "bandCount" ? Math.round(mid) : mid;
+      proc.setParameter(p.id === "mix" ? "globalMix" : p.id, input);
       const coreId = p.id === "mix" ? "globalMix" : p.id;
-      expect(proc.getParameter(coreId), `core did not accept rack param ${p.id} (as ${coreId})`).toBeCloseTo(mid, 6);
+      const expected =
+        p.id === "crossoverOrder" ? 4 : p.id === "crossoverEqualize" ? 1 : p.id === "bandCount" ? input : mid;
+      expect(proc.getParameter(coreId), `core did not accept rack param ${p.id} (as ${coreId})`).toBeCloseTo(expected, 6);
     }
   });
 

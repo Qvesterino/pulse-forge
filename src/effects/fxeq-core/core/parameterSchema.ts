@@ -56,6 +56,13 @@ export const GLOBAL_PARAM_DEFS: readonly FxEqParamDef[] = [
   { id: "crossoverFreq3", name: "Xover 3", defaultValue: 1200, minValue: 300, maxValue: 3000, unit: "Hz", automatable: true },
   { id: "crossoverFreq4", name: "Xover 4", defaultValue: 4000, minValue: 1500, maxValue: 6000, unit: "Hz", automatable: true },
   { id: "crossoverFreq5", name: "Xover 5", defaultValue: 8000, minValue: 4000, maxValue: 12000, unit: "Hz", automatable: true },
+  // Linkwitz-Riley slope: 2 = LR2 (12 dB/oct), 4 = LR4 (24 dB/oct),
+  // 8 = LR8 (48 dB/oct). Any other value snaps onto {2,4,8} at the DSP and
+  // the snapped value is written back. Structural (non-automatable).
+  { id: "crossoverOrder", name: "Crossover Slope", defaultValue: 4, minValue: 2, maxValue: 8, automatable: false },
+  // Allpass phase equalization (flat summed magnitude + aligned group
+  // delay). Off = raw LR cascades: cheaper, audibly fine for creative FX.
+  { id: "crossoverEqualize", name: "Phase EQ", defaultValue: 1, minValue: 0, maxValue: 1, automatable: false },
   { id: "globalMix", name: "Wet/Dry Mix", defaultValue: 100, minValue: 0, maxValue: 100, unit: "%", automatable: true },
   { id: "fxOnly", name: "FX Only", defaultValue: 0, minValue: 0, maxValue: 1, automatable: false },
   { id: "limiterEnabled", name: "Limiter", defaultValue: 1, minValue: 0, maxValue: 1, automatable: false },

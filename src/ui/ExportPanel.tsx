@@ -61,6 +61,11 @@ export function ExportPanel({
   const [sampleRate, setSampleRate] = useState(44100);
   const [bitDepth, setBitDepth] = useState<WavBitDepth>(16);
   const [format, setFormat] = useState<MasterFormat>("wav");
+  // PRISM render quality (8x oversampling offline tier) — defaults ON: the
+  // export has no realtime CPU budget, so the cleaner aliasing floor is
+  // free; users can trade it back for render speed.
+  const [fxeqRenderQuality, setFxEqRenderQuality] = useState(true);
+  const hasFxEq = doc.tracks.some((t) => (t.effects ?? []).some((fx) => fx.type === "fxeq" && !fx.bypassed));
   const [clipSeconds, setClipSeconds] = useState(15);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const markerCount = doc.markers.length;
@@ -97,7 +102,7 @@ export function ExportPanel({
     const signal = beginExport();
     setStatus({ kind: "busy", label: "Rendering master…" });
     try {
-      const buffer = await renderProject(doc, services.bank, { mode, sampleRate });
+      const buffer = await renderProject(doc, services.bank, { mode, sampleRate, fxeqRenderQuality });
       if (signal.aborted) throw new DOMException("Export cancelled", "AbortError");
       const summary = summarizeBuffer(buffer);
 
@@ -157,7 +162,7 @@ export function ExportPanel({
         const group = groups[i];
         setStatus({ kind: "busy", label: `Rendering stem ${i + 1}/${groups.length}: ${group.label}…` });
         const stemDoc = buildStemProject(doc, group.filter);
-        const buffer = await renderProject(stemDoc, services.bank, { mode, sampleRate });
+        const buffer = await renderProject(stemDoc, services.bank, { mode, sampleRate, fxeqRenderQuality });
         lastSummary = summarizeBuffer(buffer);
         downloadWav(encodeWav(buffer, bitDepth), `${baseName}-${group.id}.wav`);
       }
@@ -183,7 +188,7 @@ export function ExportPanel({
         const track = renderableTracks[i];
         setStatus({ kind: "busy", label: `Rendering track ${i + 1}/${renderableTracks.length}: ${track.name}…` });
         const trackDoc = buildStemProject(doc, (t) => t.id === track.id);
-        const buffer = await renderProject(trackDoc, services.bank, { mode, sampleRate });
+        const buffer = await renderProject(trackDoc, services.bank, { mode, sampleRate, fxeqRenderQuality });
         lastSummary = summarizeBuffer(buffer);
         downloadWav(encodeWav(buffer, bitDepth), `${baseName}-track-${sanitizeFilename(track.name)}.wav`);
       }
@@ -249,6 +254,7 @@ export function ExportPanel({
           setStatus({ kind: "busy", label: `Scorepack: ${p.phase}…` });
         },
         signal,
+        { fxeqRenderQuality },
       );
       if (signal.aborted) throw new DOMException("Export cancelled", "AbortError");
       const url = URL.createObjectURL(blob);
@@ -403,6 +409,15 @@ export function ExportPanel({
             </option>
           </select>
         </label>
+        {hasFxEq && (
+          <label className="fx-param-select" title="PRISM instances render at their render tier: 8x saturation oversampling for a lower aliasing floor. Slower render, no effect on the live document.">
+            <span className="slider-label">PRISM HQ</span>
+            <select value={fxeqRenderQuality ? "on" : "off"} onChange={(event) => setFxEqRenderQuality(event.target.value === "on")}>
+              <option value="on">Render quality (8x)</option>
+              <option value="off">Live quality (faster)</option>
+            </select>
+          </label>
+        )}
         {format === "video" && (
           <label className="fx-param-select">
             <span className="slider-label">LENGTH</span>

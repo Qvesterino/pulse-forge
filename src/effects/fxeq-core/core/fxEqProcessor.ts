@@ -24,7 +24,12 @@
 
 import type { FxEqParamDef } from "../dsp/types.js";
 import { clamp, dbToLinear, DEFAULT_SAMPLE_RATE } from "../dsp/mathUtils.js";
-import { createCrossoverBank, DEFAULT_CROSSOVER_FREQS, MAX_BANDS } from "./crossover.js";
+import {
+  createCrossoverBank,
+  DEFAULT_CROSSOVER_FREQS,
+  MAX_BANDS,
+} from "./crossover.js";
+import { snapCrossoverOrder } from "../dsp/crossoverStage.js";
 import { createBandEngine } from "./bandEngine.js";
 import { createLimiterModule } from "../modules/limiter.js";
 import { buildSchema, BAND_SCALAR_DEFS, type RouteEntry } from "./parameterSchema.js";
@@ -271,6 +276,24 @@ export function createFxEqProcessor(
     return Math.min(ALIGN_MAX, maxLat);
   }
 
+  /**
+   * Allpass phase equalization runs only when the PHASE toggle is on AND no
+   * active band sits in eco quality: the per-band compensation cascade is
+   * the crossover's dominant extra cost, and eco (quality 0) is the
+   * documented "cheapest possible" tier. Recomputed on every route that can
+   * change either input.
+   */
+  function refreshEqualize(): void {
+    let anyEco = false;
+    for (let b = 0; b < bandCount; b++) {
+      if (bands[b].getBandParam("quality") < 0.5) {
+        anyEco = true;
+        break;
+      }
+    }
+    crossover.setEqualize((values["crossoverEqualize"] ?? 1) >= 0.5 && !anyEco);
+  }
+
   /** Push current stored values down to the active sub-components. */
   function applyAllParams(): void {
     // Crossover config. Bulk loads (constructor, presets, state restore) can
@@ -286,13 +309,17 @@ export function createFxEqProcessor(
     ].filter((f) => f !== undefined);
     const resolvedFreqs = freqs.length ? freqs : [...DEFAULT_CROSSOVER_FREQS];
     monotonicClampFreqs(resolvedFreqs);
+    // Order FIRST: a different LR order recreates the stage cascades, so
+    // the frequency tuning below must land on the final structure.
+    const resolvedOrder = snapCrossoverOrder(values["crossoverOrder"] ?? 4);
+    values["crossoverOrder"] = resolvedOrder;
+    crossover.setOrder(resolvedOrder);
     crossover.setCrossoverFreqs(resolvedFreqs);
     for (let i = 0; i < resolvedFreqs.length && i < xoverFreqTarget.length; i++) {
       values[`crossoverFreq${i + 2}`] = resolvedFreqs[i];
       xoverFreqTarget[i] = resolvedFreqs[i];
       xoverFreqCurrent[i] = resolvedFreqs[i];
     }
-
     // Limiter.
     limiter.setParameter("enabled", values["limiterEnabled"] ?? 1);
     limiter.setParameter("ceilDb", values["limiterCeilDb"] ?? -0.3);
@@ -320,6 +347,10 @@ export function createFxEqProcessor(
         }
       }
     }
+    // Quality is a band scalar and can disable the expensive allpass
+    // compensation path in eco mode. Refresh only after all band values have
+    // reached their engines so constructor/preset loads see the new quality.
+    refreshEqualize();
   }
 
   function rebuildForBandCount(count: number): void {
@@ -751,7 +782,11 @@ export function createFxEqProcessor(
         // and crossover on the audio thread EVERY block for the morph's
         // duration (fractional counts round mid-glide). The host's blend
         // step already excludes it; skip it here for direct core users too.
-        if (id === "bandCount") continue;
+        // Structural crossover settings must not glide block-by-block:
+        // changing order rebuilds filter state, and equalization is a
+        // discrete phase-path switch. Apply them through the normal
+        // parameter path instead of treating them as morph entries.
+        if (id === "bandCount" || id === "crossoverOrder" || id === "crossoverEqualize") continue;
         let end = target[id];
         if (typeof end !== "number" || !Number.isFinite(end)) continue;
         const route = schema.routes.get(id);
@@ -795,6 +830,20 @@ export function createFxEqProcessor(
           xoverFreqTarget[idx] = clamped;
           break;
         }
+        case "crossoverOrder": {
+          const snapped = snapCrossoverOrder(value);
+          values[route.rawId] = snapped;
+          crossover.setOrder(snapped);
+          break;
+        }
+        case "crossoverEqualize": {
+          const enabled = value >= 0.5;
+          values[route.rawId] = enabled ? 1 : 0;
+          // Refresh (not set): the effective state also folds in the eco
+          // quality rule — see refreshEqualize.
+          refreshEqualize();
+          break;
+        }
         case "limiterEnabled":
           limiter.setParameter("enabled", value);
           break;
@@ -836,6 +885,7 @@ export function createFxEqProcessor(
           }
         }
       }
+      if (route.rawId === "quality") refreshEqualize();
       return;
     }
     if (route.kind === "module" && route.moduleKey) {

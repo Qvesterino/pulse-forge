@@ -20,11 +20,17 @@ export interface ScorepackResult {
   filename: string;
 }
 
+export interface ScorepackOptions {
+  /** Use PRISM's offline render quality tier for master and stems. */
+  fxeqRenderQuality?: boolean;
+}
+
 export async function buildScorepack(
   doc: ProjectDocument,
   bank: SampleBank,
   onProgress: (p: ScorepackProgress) => void = () => {},
   signal?: AbortSignal,
+  options: ScorepackOptions = {},
 ): Promise<ScorepackResult> {
   const baseName = doc.name.replace(/[^a-zA-Z0-9 _.-]/g, "_").replace(/ +/g, "-");
   const sampleRate = 48000;
@@ -34,7 +40,12 @@ export async function buildScorepack(
 
   throwIfAborted(signal);
   onProgress({ phase: "Rendering master", pct: 0.1 });
-  const masterBuffer = await renderProject(doc, bank, { mode: "song", sampleRate, tailSeconds });
+  const masterBuffer = await renderProject(doc, bank, {
+    mode: "song",
+    sampleRate,
+    tailSeconds,
+    fxeqRenderQuality: options.fxeqRenderQuality ?? true,
+  });
   throwIfAborted(signal);
   entries.push({ name: "audio/" + baseName + "-master.wav", data: new Uint8Array(encodeWav(masterBuffer, 24)) });
 
@@ -44,7 +55,12 @@ export async function buildScorepack(
     throwIfAborted(signal);
     const group = STEM_GROUPS[i];
     const stemDoc = buildStemProject(doc, group.filter);
-    const stemBuffer = await renderProject(stemDoc, bank, { mode: "song", sampleRate, tailSeconds });
+    const stemBuffer = await renderProject(stemDoc, bank, {
+      mode: "song",
+      sampleRate,
+      tailSeconds,
+      fxeqRenderQuality: options.fxeqRenderQuality ?? true,
+    });
     throwIfAborted(signal);
     entries.push({
       name: "audio/stems/" + baseName + "-" + group.id + ".wav",

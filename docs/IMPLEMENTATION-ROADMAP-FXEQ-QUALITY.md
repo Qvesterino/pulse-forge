@@ -179,9 +179,16 @@ Interpretácia: gain staging nedotknutý (peak identický), rms mierne nižší 
 - [x] smoothing target (`xoverFreqTarget`) clampuje sa tiež (ten istý writeback);
 - [x] testy: `tests/fxeq-core-hardening.test.ts` → "fxeq crossover ordering guard" (single change clamp hore/dole + bulk load forward-pass + finitný audio path);
 - [ ] UI: `FxEqPanel` splits drawing číta document params — tie clampnuté zostávajú, kým neprebehne ďalší set (commands.ts vlastní súbežný agent, mimo rozsahu). DSP je bezpečné; follow-up po tom, čo sa uvoľní commands.ts;
-- [ ] `crossoverOrder` (LR2/LR4) expose — **odložené**: LR2 vyžaduje section-count handling v `crossoverStage.ts` (druhá sekcia sa musí bypassovať), čo je mimo S-rozsahu Q5. Samostatná položka po Q3.
+- [x] `crossoverOrder` expose — **hotové 2026-09-12**: rack ponúka kanonické
+  voľby LR2/LR4/LR8, DSP alokuje max. 4 sekcie a pri downswitchi retired
+  state flattenuje/resetuje; live switch je finite-tested. `crossoverEqualize`
+  prepína komplementárnu phase path a oba structural parametre sú vyradené z
+  A/B morph interpolácie. Registry/command/persistence boundary ich kanonicky
+  snapuje; targeted contract je v `tests/fxeq-crossover-order.test.ts`.
 
-**Stav:** hotové 2026-09-05 (okrem dvoch follow-upov vyššie). Všetky sanity hodnoty sa správajú identicky — golden parity 8/8 bit-exaktná.
+**Stav:** hotové 2026-09-05 (okrem UI split follow-upu vyššie); structural
+crossover order follow-up je hotový 2026-09-12. Všetky default sanity hodnoty
+sa správajú identicky — golden parity 8/8 bit-exaktná.
 
 ---
 

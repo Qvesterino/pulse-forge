@@ -5,10 +5,12 @@
 **Produkt:** KYX browser-first beatmaking DAW  
 **Cieľ:** dostať KYX do stavu, v ktorom nový používateľ vytvorí beat, vyberie zvuk, spracuje ho cez pluginy, zrozumiteľne ho zmixuje a bezpečne exportuje bez straty práce, nečakaných level skokov alebo nejasného workflow.
 
-**Reviewed baseline:** `e701b05` (`okay kámo`). PRISM host workflow je teraz
+**Reviewed baseline:** `d9dd58c` (`test+perf: fxeq soak (300 s worst-case), GR
+meter race fix, ultina band-callback GC hygiene`). PRISM host workflow je teraz
 implementovaný v commit-e `a3dd6ba` (`klasika`), browser-verifier follow-up je
-v `8912a09` (`no fajn teda`) a release hardening batch v `cb1bde7`; aktuálny
-working tree má iba jeden necommitnutý LR8 crossover draft. Release approval
+v `8912a09` (`no fajn teda`), release hardening batch v `cb1bde7` a audio
+runtime/perf batch v `d9dd58c`; aktuálny working tree obsahuje necommitnutý
+PRISM LR2/LR4/LR8 crossover + offline-render-quality draft. Release approval
 stále čaká na úplnú
 regresiu, manuálnu matrix a deploy smoke.
 
@@ -101,11 +103,12 @@ Agent odovzdáva všetky body naraz v completion reporte:
 | Audio       | live/offline render parity, no NaN/Inf, latency/PDC unchanged, no click at morph/sidechain transitions                                                                             |
 | Release     | typecheck, targeted tests, full Vitest, build/budget, browser dev + production smoke; thresholds sa nemenia                                                                        |
 
-### REL-01 — reviewed scope ledger pre `e701b05`
+### REL-01 — reviewed scope ledger pre `d9dd58c`
 
 Nasledujúca tabuľka je ledger scope; PRISM implementation je commitnutý v
-`a3dd6ba`, browser-verifier follow-up v `8912a09` a release hardening v
-`cb1bde7`, ale aktuálny worktree ešte obsahuje jeden LR8 crossover draft.
+`a3dd6ba`, browser-verifier follow-up v `8912a09`, release hardening v
+`cb1bde7` a audio runtime/perf batch v `d9dd58c`, ale aktuálny worktree ešte
+obsahuje crossover/render-quality draft.
 Je to release bookkeeping, nie dôkaz, že verejný deploy alebo celý KYX release
 je hotový. Každý ďalší agent
 najprv skontroluje `git status`, `git show --stat HEAD` a tento ledger; nový diff
@@ -246,6 +249,10 @@ release-safe:
   history queue a runtime hydration; targeted/UI/browser acceptance je zelená.
   Release copy môže PRISM označiť ako implementovaný, ale nie ako celý KYX
   release-approved, kým neprejdú globálne QA/deploy gates;
+- PRISM crossover/render-quality draft v aktuálnom worktree pridáva kanonické
+  LR2/LR4/LR8 voľby, phase equalization a voliteľný 8× offline quality tier.
+  Kým neprejde vlastným targeted/full rerunom a reviewom generated
+  `public/fxeq-worklet.js`, nie je to release claim;
 - agent nesmie tieto súbory prepisovať, squasovať ani vyhadzovať bez toho, aby
   najprv zaznamenal vlastníka zmeny a dôvod rozhodnutia v completion reporte.
 
