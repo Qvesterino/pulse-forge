@@ -44,6 +44,13 @@ function mixBus(ctx: BaseAudioContext): MixBus {
   const output = ctx.createGain();
   const dry = ctx.createGain();
   const wet = ctx.createGain();
+  // Wet starts SILENT. Factories replay instance params through setMix on
+  // construction, which smooths (setTargetAtTime); starting wet at 1 meant a
+  // full-wet effect briefly summed dry+wet (~+6 dB decaying over ~60 ms) on
+  // every insertion and every rack rebuild. From dry-only, the init smoothing
+  // is a short crossfade into the saved mix instead.
+  dry.gain.value = 1;
+  wet.gain.value = 0;
   input.connect(dry).connect(output);
   input.connect(wet);
   const setMix = (m: number, when: number) => {
@@ -51,6 +58,22 @@ function mixBus(ctx: BaseAudioContext): MixBus {
     smooth(dry.gain, 1 - m, when);
   };
   return { input, output, wet, setMix };
+}
+
+/**
+ * Force a 2-channel (stereo, speakers) signal stage. ChannelSplitterNode runs
+ * with explicit channelCount + discrete interpretation, so feeding it a MONO
+ * input leaves output channel 1 silent — every splitter-based effect (utility,
+ * haasWidener, msEq, bassBuss) lost its right channel for mono sources. An
+ * explicit-stereo gain node upmixes mono to both channels (speakers rules)
+ * before the split, and passes stereo through untouched.
+ */
+function stereoUpmix(ctx: BaseAudioContext): GainNode {
+  const up = ctx.createGain();
+  up.channelCount = 2;
+  up.channelCountMode = "explicit";
+  up.channelInterpretation = "speakers";
+  return up;
 }
 
 const formatDb = (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(1)} dB`;
@@ -358,7 +381,10 @@ const msEq: EffectDefinition = {
     const gRside = ctx.createGain();
     gRside.gain.value = -1;
 
-    input.connect(splitterIn);
+    // Upmix mono→stereo BEFORE the split: a mono source into a bare splitter
+    // leaves channel 1 silent, so Side = 0.5·L and the right output collapsed.
+    const upmixIn = stereoUpmix(ctx);
+    input.connect(upmixIn).connect(splitterIn);
     splitterIn.connect(gMidL, 0);
     splitterIn.connect(gMidR, 1);
     splitterIn.connect(gSideL, 0);
@@ -445,6 +471,7 @@ const msEq: EffectDefinition = {
       dispose: () => {
         input.disconnect();
         output.disconnect();
+        upmixIn.disconnect();
         splitterIn.disconnect();
         mergerMS.disconnect();
         splitterMS.disconnect();
@@ -491,8 +518,10 @@ const haasWidener: EffectDefinition = {
     const fb = ctx.createGain();
     fb.gain.value = instance.params.feedback ?? 0;
 
-    // L channel Haas: dry + delayed via width blend
-    input.connect(splitter);
+    // L channel Haas: dry + delayed via width blend. Upmix mono first — a
+    // bare splitter fed mono leaves channel 1 (the untouched right leg) dead.
+    const upmixIn = stereoUpmix(ctx);
+    input.connect(upmixIn).connect(splitter);
     splitter.connect(delay, 0);
     splitter.connect(dry, 0);
     delay.connect(wet);
@@ -539,6 +568,7 @@ const haasWidener: EffectDefinition = {
       dispose: () => {
         input.disconnect();
         output.disconnect();
+        upmixIn.disconnect();
         splitter.disconnect();
         merger.disconnect();
         delay.disconnect();
@@ -1167,7 +1197,19 @@ const pump: EffectDefinition = {
         } catch {
           /* not started */
         }
-        osc.disconnect();
+        // Disconnect only AFTER the scheduled stop — an immediate disconnect
+        // collapsed the modulation into target.gain in one sample (audible
+        // jump) and left the pump dead until the new oscillator started at
+        // `when`. onended fires at the stop time; the replacement oscillator
+        // starts at the same `when`, so the handover is sample-continuous.
+        const old = osc;
+        old.onended = () => {
+          try {
+            old.disconnect();
+          } catch {
+            /* already gone */
+          }
+        };
       }
       osc = ctx.createOscillator();
       osc.type = "sawtooth";
@@ -2015,6 +2057,17 @@ const shimmer: EffectDefinition = {
         try {
           delay.disconnect();
         } catch {}
+        // The delay→lp→fb→delay feedback loop and the exciter feed must also
+        // be severed — every other factory releases its full subgraph.
+        try {
+          lp.disconnect();
+        } catch {}
+        try {
+          fb.disconnect();
+        } catch {}
+        try {
+          exciteGain.disconnect();
+        } catch {}
       },
     };
   },
@@ -2349,7 +2402,11 @@ const bassBuss: EffectDefinition = {
     directGain.gain.value = 1;
     mix.wet.connect(shaper).connect(comp).connect(low).connect(out);
     out.connect(directGain).connect(mix.output);
-    out.connect(splitter);
+    // Upmix before the split: with a mono source the whole chain up to `out`
+    // is 1-channel, and a bare splitter would leave the right leg's high band
+    // silent (only the summed lows would reach it).
+    const upmixIn = stereoUpmix(ctx);
+    out.connect(upmixIn).connect(splitter);
     splitter.connect(hpL, 0);
     splitter.connect(hpR, 1);
     splitter.connect(lpL, 0);
@@ -2415,6 +2472,7 @@ const bassBuss: EffectDefinition = {
         comp.disconnect();
         low.disconnect();
         out.disconnect();
+        upmixIn.disconnect();
         splitter.disconnect();
         merger.disconnect();
         hpL.disconnect();
@@ -2495,7 +2553,11 @@ const utility: EffectDefinition = {
     lowRight.type = "lowpass";
     const monoLeft = ctx.createGain();
     const monoRight = ctx.createGain();
-    input.connect(splitter);
+    // Upmix mono→stereo first: a bare splitter fed a mono source reports
+    // channel 1 as silence, so the whole right side (and with it pan/width)
+    // died for mono tracks.
+    const upmixIn = stereoUpmix(ctx);
+    input.connect(upmixIn).connect(splitter);
     splitter.connect(highLeft, 0);
     splitter.connect(highRight, 1);
     highLeft.connect(left).connect(merger, 0, 0);
@@ -2566,6 +2628,7 @@ const utility: EffectDefinition = {
       dispose: () => {
         input.disconnect();
         output.disconnect();
+        upmixIn.disconnect();
         splitter.disconnect();
         merger.disconnect();
         left.disconnect();
@@ -3018,6 +3081,10 @@ export function defaultParamsOf(type: EffectType): Record<string, number> {
 export function clampEffectParam(type: EffectType, paramId: string, value: number): number {
   const def: ParamDef | undefined = EFFECT_DEFS[type].params.find((p) => p.id === paramId);
   if (!def) return value;
+  // A non-finite value must fall back to the default — Math.min/max both
+  // return NaN unchanged, and a NaN reaching a factory's smooth() throws
+  // TypeError in real browsers (setTargetAtTime), killing the engine sync.
+  if (!Number.isFinite(value)) return def.default;
   return Math.min(def.max, Math.max(def.min, value));
 }
 

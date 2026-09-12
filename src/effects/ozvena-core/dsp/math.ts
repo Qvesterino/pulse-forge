@@ -22,9 +22,18 @@
 export const TAU = 2 * Math.PI;
 export const HALF_PI = Math.PI / 2;
 
-/** Clamp `v` to the closed range [min, max]. */
+/**
+ * Clamp `v` to the closed range [min, max].
+ *
+ * NaN-safe BY CONTRACT: NaN fails both naive comparisons, so the old
+ * implementation returned NaN unchanged and one non-finite parameter
+ * poisoned every derived coefficient it touched (attack alphas, feedback
+ * gains, damper states — the FDN then latched NaN permanently). NaN is
+ * never a meaningful audio value, so it degrades to the LOWER bound,
+ * which for every parameter in the state tree is the safe/off direction.
+ */
 export function clamp(v: number, min: number, max: number): number {
-  if (v < min) return min;
+  if (!(v >= min)) return min; // also catches NaN
   if (v > max) return max;
   return v;
 }

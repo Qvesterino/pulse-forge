@@ -128,7 +128,10 @@ export function setLowShelf(c: BiquadCoeffs, freq: number, q: number, gainDb: nu
   const cosW = Math.cos(w);
   const sinW = Math.sin(w);
   const A = Math.pow(10, gainDb / 40);
-  const beta = Math.sqrt(A) / q;
+  // q = 0 would make beta ±Infinity → a0 Infinity → b0 = Inf/Inf = NaN, and
+  // the NaN coefficients poison the wet bus (the state guard resets z1/z2 but
+  // cannot heal the coefficients). Same 1e-6 floor as every alpha above.
+  const beta = Math.sqrt(A) / Math.max(1e-6, q);
   const a0 = A + 1 + (A - 1) * cosW + beta * sinW;
   c.b0 = q32((A * (A + 1 - (A - 1) * cosW + beta * sinW)) / a0);
   c.b1 = q32((2 * A * (A - 1 - (A + 1) * cosW)) / a0);
@@ -142,7 +145,8 @@ export function setHighShelf(c: BiquadCoeffs, freq: number, q: number, gainDb: n
   const cosW = Math.cos(w);
   const sinW = Math.sin(w);
   const A = Math.pow(10, gainDb / 40);
-  const beta = Math.sqrt(A) / q;
+  // Same q floor as setLowShelf — see the comment there.
+  const beta = Math.sqrt(A) / Math.max(1e-6, q);
   const a0 = A + 1 - (A - 1) * cosW + beta * sinW;
   c.b0 = q32((A * (A + 1 + (A - 1) * cosW + beta * sinW)) / a0);
   c.b1 = q32((-2 * A * (A - 1 + (A + 1) * cosW)) / a0);

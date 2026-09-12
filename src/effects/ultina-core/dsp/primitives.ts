@@ -768,7 +768,13 @@ export function designLowPassFir(
   let N = Math.max(3, numTaps | 0);
   if (N % 2 === 0) N++; // must be odd for Type-I linear phase
   const M = (N - 1) / 2;
-  const fc = freqHz / sampleRate; // normalised cutoff
+  // Clamp like the biquad designers above: fc >= 0.5 (cutoff at/above
+  // Nyquist — reachable at low session rates, since module params only
+  // clamp to 20..20000 Hz) collapses the sinc into a delta or a mirrored
+  // response and the "low-pass" stops splitting the spectrum at all.
+  // 0.495 keeps the -6 dB point inside Nyquist; the 1e-3 floor also guards
+  // a degenerate sampleRate.
+  const fc = Math.min(0.495, Math.max(1e-3, freqHz / sampleRate)); // normalised cutoff
 
   let sum = 0;
   for (let n = 0; n < N; n++) {

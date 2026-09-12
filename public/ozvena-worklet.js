@@ -5,7 +5,7 @@
   var TAU = 2 * Math.PI;
   var HALF_PI = Math.PI / 2;
   function clamp(v, min, max) {
-    if (v < min) return min;
+    if (!(v >= min)) return min;
     if (v > max) return max;
     return v;
   }
@@ -88,7 +88,7 @@
     const cosW = Math.cos(w);
     const sinW = Math.sin(w);
     const A = Math.pow(10, gainDb / 40);
-    const beta = Math.sqrt(A) / q;
+    const beta = Math.sqrt(A) / Math.max(1e-6, q);
     const a0 = A + 1 + (A - 1) * cosW + beta * sinW;
     c.b0 = q32(A * (A + 1 - (A - 1) * cosW + beta * sinW) / a0);
     c.b1 = q32(2 * A * (A - 1 - (A + 1) * cosW) / a0);
@@ -101,7 +101,7 @@
     const cosW = Math.cos(w);
     const sinW = Math.sin(w);
     const A = Math.pow(10, gainDb / 40);
-    const beta = Math.sqrt(A) / q;
+    const beta = Math.sqrt(A) / Math.max(1e-6, q);
     const a0 = A + 1 - (A - 1) * cosW + beta * sinW;
     c.b0 = q32(A * (A + 1 + (A - 1) * cosW + beta * sinW) / a0);
     c.b1 = q32(-2 * A * (A - 1 + (A + 1) * cosW) / a0);
@@ -237,11 +237,12 @@
     if (out.length < half + 1) {
       throw new Error(`magnitudeSpectrum: out must hold N/2+1=${half + 1} bins`);
     }
-    const re = scratchRe && scratchRe.length >= N ? scratchRe : new Float64Array(N);
-    const im = scratchIm && scratchIm.length >= N ? scratchIm : new Float64Array(N);
+    const re = scratchRe && scratchRe.length >= N ? scratchRe.subarray(0, N) : new Float64Array(N);
+    const im = scratchIm && scratchIm.length >= N ? scratchIm.subarray(0, N) : new Float64Array(N);
     let winGain = 0;
     for (let k = 0; k < N; k++) {
-      re[k] = input[k] * window[k];
+      const s = k < input.length ? input[k] : 0;
+      re[k] = s * window[k];
       im[k] = 0;
       winGain += window[k];
     }
@@ -808,13 +809,14 @@
       ringLength = capacity;
     }
     function recomputeDelaySamples() {
+      const ms = Number.isFinite(params.ms) ? params.ms : 0;
       if (params.syncEnabled) {
         const beats = syncNoteToBeats(params.syncNote);
         delaySamples = Math.max(0, Math.round(60 / Math.max(1e-3, bpm) * beats * sampleRate2));
         const cap = maxSupportedDelaySamples();
         if (delaySamples > cap) delaySamples = cap;
       } else {
-        delaySamples = Math.max(0, Math.round(params.ms / 1e3 * sampleRate2));
+        delaySamples = Math.max(0, Math.round(ms / 1e3 * sampleRate2));
         const cap = maxSupportedDelaySamples();
         if (delaySamples > cap) delaySamples = cap;
       }
@@ -2225,7 +2227,8 @@
               if (tapFadeRemaining > 0 && t < tapBlendCount) {
                 const tFade = tapFadeRemaining / tapFadeLen;
                 const oldD = oldTapsL[t];
-                const oldRi = wl - oldD < 0 ? wl - oldD + maxLen : wl - oldD;
+                const rawL = wl - oldD;
+                const oldRi = (rawL % maxLen + maxLen) % maxLen;
                 const sOld = bufferL[oldRi];
                 s = s * (1 - tFade) + sOld * tFade;
               }
@@ -2243,7 +2246,8 @@
               if (tapFadeRemaining > 0 && t < tapBlendCount) {
                 const tFade = tapFadeRemaining / tapFadeLen;
                 const oldD = oldTapsR[t];
-                const oldRi = wr - oldD < 0 ? wr - oldD + maxLen : wr - oldD;
+                const rawR = wr - oldD;
+                const oldRi = (rawR % maxLen + maxLen) % maxLen;
                 const sOld = bufferR[oldRi];
                 s = s * (1 - tFade) + sOld * tFade;
               }
@@ -2470,6 +2474,7 @@
       shDirW = shAmt > 0 ? Math.min(1, 0.995 / Math.max(fbMax, 1e-6) - Math.SQRT2 * shInj) : 1;
       shDirWFreeze = shAmt > 0 ? Math.min(1, 0.995 - Math.SQRT2 * shInj) : 1;
       attackAlpha = q322(1 - Math.exp(-1 / Math.max(1e-3, params.attack / 1e3 * sampleRate2)));
+      if (!Number.isFinite(attackEnv)) attackEnv = 0;
       airIncA = q322(TAU * AIR_RATE_A / sampleRate2);
       airIncB = q322(TAU * AIR_RATE_B / sampleRate2);
       const driveT = clamp(params.drive, 0, 1);
@@ -2652,7 +2657,7 @@
       // channel buffers — the processor owns every dry/wet/blend gain. This
       // removes the lossy wet-recovery division from the processor.
       process(channels, frameCount) {
-        if (!params.enabled || frameCount <= 0) return;
+        if (!params.enabled || frameCount <= 0 || channels.length === 0) return;
         const cc = Math.min(channels.length, lines.length, 2);
         ensureScratch(frameCount);
         const wetL = cc > 0 ? wetScratchL : null;
@@ -3024,6 +3029,7 @@
       shDirW = shAmt > 0 ? Math.min(1, 0.995 / Math.max(fbMax, 1e-6) - Math.SQRT2 * shInj) : 1;
       shDirWFreeze = shAmt > 0 ? Math.min(1, 0.995 - Math.SQRT2 * shInj) : 1;
       attackAlpha = q323(1 - Math.exp(-1 / Math.max(1e-3, params.attack / 1e3 * sampleRate2)));
+      if (!Number.isFinite(attackEnv)) attackEnv = 0;
       airIncA = q323(TAU * AIR_RATE_A / sampleRate2);
       airIncB = q323(TAU * AIR_RATE_B / sampleRate2);
       const driveT = clamp(params.drive, 0, 1);
@@ -3187,7 +3193,7 @@
       },
       // PURE-WET contract: the engine writes ONLY the reverb tail.
       process(channels, frameCount) {
-        if (!params.enabled || frameCount <= 0) return;
+        if (!params.enabled || frameCount <= 0 || channels.length === 0) return;
         const cc = Math.min(channels.length, lines.length, 2);
         ensureScratch(frameCount);
         const wetL = cc > 0 ? wetScratchL : null;
@@ -3738,7 +3744,13 @@
         beginIrSwap();
         irLengthSamples = checked[0].irLengthSamples;
         irChannels = irCh;
-        const mk = (slot) => createPartitionedConvolverFromPrecomputed(checked[slot]);
+        const mk = (slot) => {
+          const set = checked[slot];
+          if (set.blockSpectra && checked.indexOf(set) !== slot) {
+            return createPartitionedConvolverFromPrecomputed({ ...set, blockSpectra: void 0 });
+          }
+          return createPartitionedConvolverFromPrecomputed(set);
+        };
         assignIrSlots(mk, irCh);
       },
       clearIr() {
@@ -3905,8 +3917,8 @@
       },
       getGain(sampleRate2, blockSize) {
         if (!params.enabled) return 1;
-        const attackCoef = Math.exp(-1 / (sampleRate2 * params.attackMs / 1e3));
-        const releaseCoef = Math.exp(-1 / (sampleRate2 * params.releaseMs / 1e3));
+        const attackCoef = Math.exp(-1e3 / (sampleRate2 * Math.max(0.01, params.attackMs)));
+        const releaseCoef = Math.exp(-1e3 / (sampleRate2 * Math.max(0.01, params.releaseMs)));
         const coef = targetGain < currentGain ? attackCoef : releaseCoef;
         for (let i = 0; i < blockSize; i++) {
           currentGain += (targetGain - currentGain) * coef;
@@ -3914,7 +3926,12 @@
         return currentGain;
       },
       setParams(p) {
-        params = { ...params, ...p };
+        const next = { ...params, ...p };
+        if (!Number.isFinite(next.thresholdDb)) next.thresholdDb = DEFAULT_DUCK_PARAMS.thresholdDb;
+        next.sensitivity = Number.isFinite(next.sensitivity) ? clamp(next.sensitivity, 0, 1) : DEFAULT_DUCK_PARAMS.sensitivity;
+        next.attackMs = Number.isFinite(next.attackMs) ? Math.max(0.01, next.attackMs) : DEFAULT_DUCK_PARAMS.attackMs;
+        next.releaseMs = Number.isFinite(next.releaseMs) ? Math.max(0.01, next.releaseMs) : DEFAULT_DUCK_PARAMS.releaseMs;
+        params = next;
       },
       reset() {
         currentGain = 1;
@@ -4509,6 +4526,12 @@
           }
         }
         safetyLimiter.process(channels, frameCount);
+        for (let c = 0; c < cc; c++) {
+          const out = channels[c];
+          for (let i = 0; i < frameCount; i++) {
+            if (!Number.isFinite(out[i])) out[i] = 0;
+          }
+        }
         maskingMeter.push(finalDry, wetPreEq, frameCount);
         analyzer.push("output", channels, frameCount);
       },
@@ -4641,7 +4664,11 @@
         if (typeof current === "boolean") next = value >= 0.5;
         else if (typeof current === "string" && typeof value === "number") {
           const list = ENUM_BY_PATH[id];
-          next = list ? list[Math.max(0, Math.min(list.length - 1, Math.round(value)))] : String(value);
+          if (list) {
+            next = list[Math.max(0, Math.min(list.length - 1, Math.round(value)))];
+          } else {
+            return node;
+          }
         } else if (typeof current === "number") {
           next = typeof value === "number" ? value : Number(value);
           if (!Number.isFinite(next)) return node;
@@ -4804,18 +4831,26 @@
       if (this.disposed) return false;
       const output = outputs[0];
       if (!output || !output[0] || !output[1]) return true;
-      const frames = Math.min(MAX_BLOCK, output[0].length);
-      this.applyDueParams(currentTime + frames / sampleRate);
+      const total = output[0].length;
+      this.applyDueParams(currentTime + total / sampleRate);
       const input = inputs[0];
-      for (let c = 0; c < CHANNELS; c++) {
-        const buf = this.scratch[c];
-        const inCh = input && input[c];
-        if (inCh && inCh.length >= frames) buf.set(inCh.subarray(0, frames));
-        else buf.fill(0, 0, frames);
-      }
-      this.proc.process(this.scratch, frames);
-      for (let c = 0; c < CHANNELS; c++) {
-        output[c].set(this.scratch[c].subarray(0, frames));
+      for (let offset = 0; offset < total; offset += MAX_BLOCK) {
+        const frames = Math.min(MAX_BLOCK, total - offset);
+        for (let c = 0; c < CHANNELS; c++) {
+          const buf = this.scratch[c];
+          const inCh = input && input[c];
+          if (inCh && inCh.length >= offset + frames) {
+            buf.set(inCh.subarray(offset, offset + frames));
+          } else if (inCh && inCh.length >= frames) {
+            buf.set(inCh.subarray(0, frames));
+          } else {
+            buf.fill(0, 0, frames);
+          }
+        }
+        this.proc.process(this.scratch, frames);
+        for (let c = 0; c < CHANNELS; c++) {
+          output[c].set(this.scratch[c].subarray(0, frames), offset);
+        }
       }
       return true;
     }

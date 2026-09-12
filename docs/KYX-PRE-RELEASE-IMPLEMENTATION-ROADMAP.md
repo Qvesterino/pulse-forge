@@ -6,8 +6,9 @@
 **Cieľ:** dostať KYX do stavu, v ktorom nový používateľ vytvorí beat, vyberie zvuk, spracuje ho cez pluginy, zrozumiteľne ho zmixuje a bezpečne exportuje bez straty práce, nečakaných level skokov alebo nejasného workflow.
 
 **Reviewed baseline:** `e701b05` (`okay kámo`). PRISM host workflow je teraz
-implementovaný v commit-e `a3dd6ba` (`klasika`); aktuálny working tree má iba
-follow-up browser/evidence updates. Release approval stále čaká na úplnú
+implementovaný v commit-e `a3dd6ba` (`klasika`) a browser-verifier follow-up je
+v `8912a09` (`no fajn teda`); aktuálny working tree má iba tri follow-up
+evidence dokumenty. Release approval stále čaká na úplnú
 regresiu, manuálnu matrix a deploy smoke.
 
 Tento dokument je implementačný plán pre ďalšieho agenta. Každá úloha má byť riešená proti existujúcemu kódu v repozitári, nie ako samostatný redesign produktu.
@@ -102,7 +103,8 @@ Agent odovzdáva všetky body naraz v completion reporte:
 ### REL-01 — reviewed scope ledger pre `e701b05`
 
 Nasledujúca tabuľka je ledger scope; PRISM implementation je commitnutý v
-`a3dd6ba`, ale aktuálny worktree ešte obsahuje follow-up evidence/browser diff.
+`a3dd6ba` a browser-verifier follow-up v `8912a09`, ale aktuálny worktree ešte
+obsahuje tri follow-up evidence dokumenty.
 Je to release bookkeeping, nie dôkaz, že verejný deploy alebo celý KYX release
 je hotový. Každý ďalší agent
 najprv skontroluje `git status`, `git show --stat HEAD` a tento ledger; nový diff
@@ -209,9 +211,12 @@ Nasledujúce časti roadmapy už boli v tomto pracovnom strome implementované a
 
 ### Čo ešte potrebuje release triage
 
-Working tree je po `e701b05` čistý. Nasledujúce body sú preto už commitnutý
-technický scope alebo otvorené release rozhodnutia; commitnutie samo osebe
-neznamená, že je feature user-facing a release-safe:
+Reviewed baseline `e701b05` bol čistý; PRISM implementation je už v
+`a3dd6ba` a browser-verifier follow-up je v `8912a09`, zatiaľ čo aktuálny
+worktree obsahuje iba tri evidence dokumenty.
+Nasledujúce body sú commitnutý technický scope alebo otvorené release
+rozhodnutia; commitnutie samo osebe neznamená, že je feature user-facing a
+release-safe:
 
 - AutoMap už nie je iba helper: je integrovaný do drop/import proposal flow,
   má explicitné `PREVIEW`/`CANCEL`/`APPLY MAP`, jednu undoable layer command
@@ -245,33 +250,34 @@ neznamená, že je feature user-facing a release-safe:
 
 Overené príkazy a výsledky:
 
-| Gate                                                       | Výsledok                                                                                                                                                                                                                                                                                  |
-| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `npm run typecheck:clean`                                  | PASS                                                                                                                                                                                                                                                                                      |
-| full Vitest (`npm test`, default isolated workers)         | **CONTENTION/STRESS FAIL — 224 files, 2152 passed, 162 skipped, 5 failed**: two Ozvena hook timeouts after the 10-minute soak, collab performance 1000 ms / 500 ms, large normalize 1420 ms / 100 ms and VLYX HQ 11.0 ms / 5 ms; collab/VLYX pass in targeted isolation, no PRISM failure |
-| `npm run build` + worklet buildy + bundle budget           | PASS — current worktree: entry 934 KB / 995 KB, total JS chunks 1840 KB / 2400 KB, core worklets 98 KB / 120 KB, 354 modules; PWA precache 57 entries / 4012.49 KiB; lazy ranker WASM is 13.6 MB and excluded from the app-shell precache                                                 |
-| `npm run build:ultina`                                     | PASS — rebuilt `public/ultina-worklet.js`                                                                                                                                                                                                                                                 |
-| `npm run test:browser`                                     | **216/218 Chromium** — PRISM UI workflow (A/B, drag, plugin undo/redo, morph, reload persistence) PASS; two global performance checks failed under load and require a quiet rerun                                                                                                         |
-| `npm run test:browser:production`                          | PASS — dist boot, HOUSE template, sequencer, FX rack and all five shipped worklet assets                                                                                                                                                                                                  |
-| `npm run release:preflight`                                | PASS — explicit production-origin/config + KYX artifacts                                                                                                                                                                                                                                  |
-| `npm run release:server-smoke`                             | PASS — real entrypoint health/CORS/origin/admin contract                                                                                                                                                                                                                                  |
-| `npm run release:deployed-smoke`                           | **BLOCKED — `KYX_DEPLOY_URL` missing**; local fresh-dist/deployed-like probe is documented separately, but actual public URL is still required for DEP-01                                                                                                                                 |
-| VLYX hardening2 + upstream parity battery                  | PASS — host `9/9`, `ultina-core-hardening` `55/55`, worklet/parity/vectors `26/26` after upstream→vendor sync                                                                                                                                                                             |
-| `tests/collab-transport.test.ts`                           | PASS — `10/10`; malformed awareness payloads are rejected and remote play scheduler transition is covered                                                                                                                                                                                 |
-| PRISM/FXEQ + VLYX + VØID targeted Vitest suite             | PASS — existing 128/128 battery; current worktree adds FXEQ host/worklet workflow `45/45` plus UI/host acceptance within the `92/92` scoped run; 8/8 FXEQ golden hashes bit-exact                                                                                                         |
-| upstream Ultina affected suite                             | PASS — 104/104 tests                                                                                                                                                                                                                                                                      |
-| VLYX analysis worker client suite                          | PASS — 4/4 tests                                                                                                                                                                                                                                                                          |
-| persistence failure/recovery targeted suite                | PASS — 28 passed / 1 skipped                                                                                                                                                                                                                                                              |
-| VØID upstream/pre-delay + factory-IR hardening             | PASS — 49/49 targeted upstream tests; 72/72 host/worklet tests                                                                                                                                                                                                                            |
-| affected post-fix suites (`services-close-race`, `TopBar`) | PASS — 20/20 tests                                                                                                                                                                                                                                                                        |
-| scoped Prettier + `git diff --check`                       | PASS                                                                                                                                                                                                                                                                                      |
+| Gate                                                       | Výsledok                                                                                                                                                                                                                                                                                                                                                   |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run typecheck:clean`                                  | PASS                                                                                                                                                                                                                                                                                                                                                       |
+| full Vitest (`npm test`, default isolated workers)         | **CONTENTION/STRESS FAIL — 224 files, 2152 passed, 162 skipped, 5 failed**: two Ozvena hook timeouts after the 10-minute soak and three timing budgets failed in the shared-machine run (collab 1000/500 ms, normalize 1420/100 ms, VLYX HQ 11.0/5 ms); all identified affected areas pass in targeted isolation, including Ozvena 59/59; no PRISM failure |
+| `npm run build` + worklet buildy + bundle budget           | PASS — current worktree: entry 934 KB / 995 KB, total JS chunks 1840 KB / 2400 KB, core worklets 98 KB / 120 KB, 354 modules; PWA precache 57 entries / 4012.49 KiB; lazy ranker WASM is 13.6 MB and excluded from the app-shell precache                                                                                                                  |
+| `npm run build:ultina`                                     | PASS — rebuilt `public/ultina-worklet.js`                                                                                                                                                                                                                                                                                                                  |
+| `npm run test:browser`                                     | **216/218 Chromium** — PRISM UI workflow (A/B, drag, plugin undo/redo, morph, reload persistence) PASS; two global performance checks failed under load and require a quiet rerun                                                                                                                                                                          |
+| `npm run test:browser:production`                          | PASS — dist boot, HOUSE template, sequencer, FX rack and all five shipped worklet assets                                                                                                                                                                                                                                                                   |
+| `npm run release:preflight`                                | PASS — explicit production-origin/config + KYX artifacts                                                                                                                                                                                                                                                                                                   |
+| `npm run release:server-smoke`                             | PASS — real entrypoint health/CORS/origin/admin contract                                                                                                                                                                                                                                                                                                   |
+| `npm run release:deployed-smoke`                           | **BLOCKED — `KYX_DEPLOY_URL` missing**; local fresh-dist/deployed-like probe is documented separately, but actual public URL is still required for DEP-01                                                                                                                                                                                                  |
+| VLYX hardening2 + upstream parity battery                  | PASS — host `9/9`, `ultina-core-hardening` `55/55`, worklet/parity/vectors `26/26` after upstream→vendor sync                                                                                                                                                                                                                                              |
+| `tests/collab-transport.test.ts`                           | PASS — `10/10`; malformed awareness payloads are rejected and remote play scheduler transition is covered                                                                                                                                                                                                                                                  |
+| PRISM/FXEQ + VLYX + VØID targeted Vitest suite             | PASS — existing 128/128 battery; commit `a3dd6ba` includes FXEQ host/worklet workflow `45/45` plus UI/host acceptance within the `92/92` scoped run; 8/8 FXEQ golden hashes bit-exact                                                                                                                                                                      |
+| upstream Ultina affected suite                             | PASS — 104/104 tests                                                                                                                                                                                                                                                                                                                                       |
+| VLYX analysis worker client suite                          | PASS — 4/4 tests                                                                                                                                                                                                                                                                                                                                           |
+| persistence failure/recovery targeted suite                | PASS — 28 passed / 1 skipped                                                                                                                                                                                                                                                                                                                               |
+| VØID upstream/pre-delay + factory-IR hardening             | PASS — 49/49 targeted upstream tests; 72/72 host/worklet tests                                                                                                                                                                                                                                                                                             |
+| affected post-fix suites (`services-close-race`, `TopBar`) | PASS — 20/20 tests                                                                                                                                                                                                                                                                                                                                         |
+| scoped Prettier + `git diff --check`                       | PASS                                                                                                                                                                                                                                                                                                                                                       |
 
 Najnovší kompletný `npm test` beh na aktuálnom worktree nie je release-green:
 224 súborov, 2152 testov prešlo, 162 bolo zámerne skipped a 5 zlyhalo.
 Zlyhania sú dva Ozvena hook timeouty po 10-minútovom soak teste a tri merané
-časové budgety pod shared-machine contention; collab performance a VLYX HQ
-prešli v cielenom izolovanom behu, veľký normalize stress zostáva na quiet
-runneri. PRISM suite v tomto behu nemá failure. Quiet rerun je povinný.
+časové budgety pod shared-machine contention. Ozvena `59/59`, collab
+performance, VLYX HQ aj veľký normalize test prešli v cielenom izolovanom
+behu; funkčná regresia nie je potvrdená. PRISM suite v tomto behu nemá
+failure. Quiet rerun je povinný.
 Predchádzajúci historický beh pred poslednou biquad recovery a allocation opravou
 bol tiež červený: 1 zlyhanie, 2113 passed, 103 skipped (211 súborov, 2217 testov).
 Profilovanie ukázalo dve konkrétne triedy render-path práce: `subarray()`

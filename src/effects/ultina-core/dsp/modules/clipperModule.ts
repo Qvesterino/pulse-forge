@@ -332,6 +332,12 @@ export class ClipperModuleProcessor implements UltinaModuleProcessor {
     if (bandCount !== this.cachedBandCount) {
       this.multiband.setBandCount(bandCount);
       this.cachedBandCount = bandCount;
+      // Bands beyond the new count must not keep publishing stale
+      // peak/RMS readings — getMeters reports the full 3-slot arrays
+      // (same contract as compModule's GR/level reset).
+      for (let b = bandCount; b < CLIPPER_MAX_BANDS; b++) {
+        resetBandMeterState(this.bandMeters[b]);
+      }
       // setBandCount rebuilds the crossover (coefficients wiped) —
       // force both split frequencies to be re-applied below.
       this.cachedXover1 = -1;

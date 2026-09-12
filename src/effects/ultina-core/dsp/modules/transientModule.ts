@@ -49,6 +49,13 @@ import {
 } from "../oversampler.js";
 import { DryDelayMixer } from "../dryDelay.js";
 
+/** Bounded scalar copy without subarray()'s two view objects per call
+ * (audio-thread allocation discipline — see multiband.copyN). */
+function copyN(dst: Float32Array, src: Float32Array, n: number): void {
+  for (let i = 0; i < n; i++) dst[i] = src[i];
+}
+
+
 // ── Constants ──────────────────────────────────────────────
 
 const TRANSIENT_MAX_BANDS = 3;
@@ -213,8 +220,8 @@ export class TransientModuleProcessor implements UltinaModuleProcessor {
     this.multiband.setCrossoverMode(xoverMode);
 
     // Store dry signal
-    this.dryL.set(channels[0].subarray(0, frameCount));
-    this.dryR.set(channels[1].subarray(0, frameCount));
+    copyN(this.dryL, channels[0], frameCount);
+    copyN(this.dryR, channels[1], frameCount);
 
     // Process through multiband
     this.multiband.process(

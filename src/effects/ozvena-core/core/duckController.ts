@@ -96,9 +96,13 @@ export function createDuckController(): DuckController {
     getGain(sampleRate, blockSize) {
       if (!params.enabled) return 1.0;
 
-      // Smooth attack/release.
-      const attackCoef = Math.exp(-1 / (sampleRate * params.attackMs / 1000));
-      const releaseCoef = Math.exp(-1 / (sampleRate * params.releaseMs / 1000));
+      // Smooth attack/release. setParams clamps, but direct core consumers
+      // can still hand in garbage: a negative/NaN time yields coef > 1 (or
+      // NaN), and the per-sample one-pole then diverges geometrically to
+      // ±Infinity/NaN — latching onto the wet bus via lastDuckGain. Floor
+      // the times so coef always lands in (0, 1).
+      const attackCoef = Math.exp(-1000 / (sampleRate * Math.max(0.01, params.attackMs)));
+      const releaseCoef = Math.exp(-1000 / (sampleRate * Math.max(0.01, params.releaseMs)));
       const coef = targetGain < currentGain ? attackCoef : releaseCoef;
 
       // Apply per-block.
@@ -110,7 +114,18 @@ export function createDuckController(): DuckController {
     },
 
     setParams(p) {
-      params = { ...params, ...p };
+      const next = { ...params, ...p };
+      // Boundary validation: invalid times/gains must never reach the
+      // per-sample envelope (see getGain — coef > 1 diverges the recursion).
+      if (!Number.isFinite(next.thresholdDb)) next.thresholdDb = DEFAULT_DUCK_PARAMS.thresholdDb;
+      next.sensitivity = Number.isFinite(next.sensitivity)
+        ? clamp(next.sensitivity, 0, 1)
+        : DEFAULT_DUCK_PARAMS.sensitivity;
+      next.attackMs = Number.isFinite(next.attackMs) ? Math.max(0.01, next.attackMs) : DEFAULT_DUCK_PARAMS.attackMs;
+      next.releaseMs = Number.isFinite(next.releaseMs)
+        ? Math.max(0.01, next.releaseMs)
+        : DEFAULT_DUCK_PARAMS.releaseMs;
+      params = next;
     },
 
     reset() {

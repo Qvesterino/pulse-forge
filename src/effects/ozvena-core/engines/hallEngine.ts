@@ -336,6 +336,11 @@ export function createHallEngine(): HallEngine {
     shDirWFreeze = shAmt > 0 ? Math.min(1, 0.995 - Math.SQRT2 * shInj) : 1;
 
     attackAlpha = q32(1 - Math.exp(-1 / Math.max(0.001, (params.attack / 1000) * sampleRate)));
+    // A poisoned envelope (NaN from a non-finite alpha) latches forever:
+    // `attackEnv < 1` is false for NaN, so the build-up branch never runs
+    // and the engine outputs NaN until reset. setParams → recompute() is
+    // the one guaranteed point where a heal can ride a parameter change.
+    if (!Number.isFinite(attackEnv)) attackEnv = 0;
 
     airIncA = q32((TAU * AIR_RATE_A) / sampleRate);
     airIncB = q32((TAU * AIR_RATE_B) / sampleRate);
@@ -527,7 +532,8 @@ export function createHallEngine(): HallEngine {
 
     // PURE-WET contract: the engine writes ONLY the reverb tail.
     process(channels, frameCount) {
-      if (!params.enabled || frameCount <= 0) return;
+      // Zero channels would crash the write-back (channels[0] undefined).
+      if (!params.enabled || frameCount <= 0 || channels.length === 0) return;
       const cc = Math.min(channels.length, lines.length, 2);
       ensureScratch(frameCount);
       const wetL = cc > 0 ? wetScratchL : null;

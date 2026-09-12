@@ -224,6 +224,15 @@ export function createReverbModule(params?: Record<string, number>): ModuleProce
     // setParameter("predelayMs") — loading a preset with a different
     // pre-delay kept the OLD delay length until the next UI tweak.
     predelayLen = Math.round((clamp(store.get("predelayMs"), 0, 100) / 1000) * sampleRate);
+    // Same strand risk as the setParameter("predelayMs") path: a SHRUNK
+    // predelay leaves the write cursor beyond the new logical length and the
+    // first read pulls one stale sample from the retired region. Re-wrap the
+    // cursors into the live window here too (preset/state loads).
+    if (predelayLen > 0) {
+      for (let c = 0; c < predelayWriteIdx.length; c++) {
+        predelayWriteIdx[c] %= predelayLen;
+      }
+    }
     // Recompute lengths + per-line feedback gains. The FDN buffers are
     // allocated at max capacity (see allocChannels), so a type/rate
     // change only moves the logical lengths — never reallocates (M1).

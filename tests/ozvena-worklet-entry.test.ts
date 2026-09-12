@@ -666,3 +666,39 @@ describe("Ozvena worklet entry — precomputed IR spectra path", () => {
     expect(proc4.proc.getIrChannels()).toBe(4);
   });
 });
+
+describe("Ozvena worklet entry — hardening regressions (2026-09-12)", () => {
+  it("a numeric update to a non-enum string leaf is dropped, not String()-coerced", () => {
+    const proc = new Processor();
+    // A corrupt document writing a NUMBER into a string leaf used to install
+    // garbage like "1000000000" as the sync note via String(value) coercion.
+    sendParam(proc, "preDelay.syncNote", 1e9);
+    const preDelay = (proc.state as { preDelay?: { syncNote: string } }).preDelay;
+    expect(preDelay?.syncNote).toBe("1/4");
+    // Enum paths still convert numeric indices per the ENUM_BY_PATH map.
+    sendParam(proc, "mod.mode", 1);
+    expect(proc.state.mod.mode).toBe("pitch");
+  });
+
+  it("output quanta larger than 128 frames are fully written (chunked pass)", () => {
+    const proc = new Processor();
+    // Pure dry → the output must mirror the input sample-for-sample.
+    sendParam(proc, "global.dryWet", 0);
+    const N = 256;
+    const inL = new Float32Array(N).fill(0.5);
+    const inR = new Float32Array(N).fill(0.5);
+    const outL = new Float32Array(N);
+    const outR = new Float32Array(N);
+    setTime(0);
+    expect(proc.process([[inL, inR]], [[outL, outR]])).toBe(true);
+    // Pre-fix only the first 128 frames were written; samples beyond frame
+    // 128 stayed stale (zeros here, the previous block's audio on a live
+    // host with a larger quantum).
+    let tailMin = Infinity;
+    for (let i = HALF_N; i < N; i++) tailMin = Math.min(tailMin, Math.abs(outL[i]));
+    expect(tailMin).toBeGreaterThan(0.1);
+    expect(outL[N - 1]).toBeCloseTo(0.5, 6);
+    expect(outR[N - 1]).toBeCloseTo(0.5, 6);
+  });
+  const HALF_N = 128;
+});

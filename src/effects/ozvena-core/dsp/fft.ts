@@ -147,12 +147,18 @@ export function magnitudeSpectrum(
   if (out.length < half + 1) {
     throw new Error(`magnitudeSpectrum: out must hold N/2+1=${half + 1} bins`);
   }
-  const re = scratchRe && scratchRe.length >= N ? scratchRe : new Float64Array(N);
-  const im = scratchIm && scratchIm.length >= N ? scratchIm : new Float64Array(N);
+  // View the scratch at EXACTLY N samples: fft() transforms re.length, so an
+  // oversized scratch (e.g. a 4096 buffer reused after switching to a 2048
+  // window) would drag stale bins N..len into the transform and contaminate
+  // every output bin, not just waste cycles.
+  const re = scratchRe && scratchRe.length >= N ? scratchRe.subarray(0, N) : new Float64Array(N);
+  const im = scratchIm && scratchIm.length >= N ? scratchIm.subarray(0, N) : new Float64Array(N);
 
   let winGain = 0;
   for (let k = 0; k < N; k++) {
-    re[k] = input[k] * window[k];
+    // Short inputs are zero-padded rather than read as undefined (NaN).
+    const s = k < input.length ? input[k] : 0;
+    re[k] = s * window[k];
     im[k] = 0;
     winGain += window[k];
   }

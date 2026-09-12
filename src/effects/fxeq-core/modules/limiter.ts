@@ -687,7 +687,7 @@ export function createLimiterModule(params?: Record<string, number>): ModuleProc
       // path replays (~lookaheadMs of stale signal) on re-enable — same
       // rising-edge contract as saturation's clearDelayHistory. A full
       // state reset matches a freshly prepared limiter.
-      if (id === "enabled" && store.get("enabled") < 0.5 && value >= 0.5) {
+      const resetDetectorState = () => {
         for (const s of ch) {
           s.env = 1;
           s.prev = 0;
@@ -698,6 +698,22 @@ export function createLimiterModule(params?: Record<string, number>): ModuleProc
           s.ring.fill(0);
           s.os.reset();
         }
+      };
+      if (id === "enabled" && store.get("enabled") < 0.5 && value >= 0.5) {
+        resetDetectorState();
+      }
+      // Leaving true-peak mode runs processLegacy(), which never touches the
+      // lookahead ring — re-entering true-peak mode would otherwise replay
+      // the ring's pre-legacy content (stale ~lookaheadMs burst). Same
+      // contract when the lookahead length changes: effLA ramps from `fill`
+      // and the output read indexes relative to the OLD ring geometry.
+      if (
+        prepared &&
+        ch.length > 0 &&
+        ((id === "truePeak" && (store.get("truePeak") >= 0.5) !== (value >= 0.5)) ||
+          (id === "lookaheadMs" && store.get("lookaheadMs") !== value))
+      ) {
+        resetDetectorState();
       }
       store.set(id, value);
     },

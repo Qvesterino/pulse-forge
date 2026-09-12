@@ -1,8 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { FXEQ_PRESETS } from "../effects/fxeq-core/core/presets";
 import { buildSchema, type FxEqSchema } from "../effects/fxeq-core/core/parameterSchema";
 import { blendParams } from "../effects/fxeqNode";
 import type { EffectRuntime } from "../effects/types";
+import { bandEqMagnitudeDb } from "./fxeqCurve";
 import { useServices } from "./context";
 import { Slider } from "./controls";
 import { EffectAbControls, type EffectAbState } from "./EffectAbControls";
@@ -30,10 +38,27 @@ const MODULE_COLORS: Record<string, string> = {
 const AXIS_MIN_HZ = 20;
 const AXIS_MAX_HZ = 20000;
 
+/** Split handles snap within this many CSS px of the split line. */
+const HANDLE_HIT_PX = 8;
+/** Mirrors the core's XOVER_MIN_GAP_HZ — splits never approach closer. */
+const SPLIT_MIN_GAP_HZ = 40;
+/** Visual dB span of the EQ curve overlay (matches the ±24 dB def range). */
+const CURVE_DB_SPAN = 24;
+/** Nominal sample rate for the response overlay — shapes shift only
+ *  marginally across real device rates, so one visual constant is enough. */
+const CURVE_NOMINAL_SR = 48000;
+
 function freqToX(freqHz: number, width: number): number {
   const logMin = Math.log(AXIS_MIN_HZ);
   const logMax = Math.log(AXIS_MAX_HZ);
   return ((Math.log(Math.max(AXIS_MIN_HZ, Math.min(AXIS_MAX_HZ, freqHz))) - logMin) / (logMax - logMin)) * width;
+}
+
+/** Inverse of freqToX: canvas-relative x ratio → frequency. */
+function xToFreq(xRatio: number): number {
+  const logMin = Math.log(AXIS_MIN_HZ);
+  const logMax = Math.log(AXIS_MAX_HZ);
+  return Math.exp(logMin + xRatio * (logMax - logMin));
 }
 
 /**
@@ -72,7 +97,28 @@ export function FxEqPanel({
   const services = useServices();
   const bandCount = Math.max(2, Math.min(6, Math.round(params.bandCount ?? 6)));
   const schema: FxEqSchema = useMemo(() => buildSchema(bandCount), [bandCount]);
-  const [selectedBand, setSelectedBand] = useState(1);
+  // The editor remembers the last band worked on per instance (survives
+  // track switches); stored unvalidated values fall back to band 1.
+  const [selectedBand, setSelectedBand] = useState(() => {
+    try {
+      const stored = Number(window.localStorage.getItem(`fxeq.band.${fxId}`));
+      return Number.isFinite(stored) && stored >= 1 && stored <= 6 ? Math.round(stored) : 1;
+    } catch {
+      return 1;
+    }
+  });
+  const selectBand = (band: number) => {
+    setSelectedBand(band);
+    try {
+      window.localStorage.setItem(`fxeq.band.${fxId}`, String(band));
+    } catch {
+      /* storage unavailable (private mode) — selection just stays session-only */
+    }
+  };
+  // A bandCount shrink must not leave the editor pointed past the last band.
+  useEffect(() => {
+    if (selectedBand > bandCount) selectBand(bandCount);
+  }, [bandCount, selectedBand]);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // ── plugin-level runtime surface: A/B morph slots + in-plugin undo/redo ──
@@ -165,6 +211,83 @@ export function FxEqPanel({
     return out;
   }, [params, bandCount, schema]);
 
+  // ── crossover split drag: live preview on the runtime, one doc commit ──
+  // The DSP glides split changes (10 Hz smoothing), so dragging is
+  // zipper-free; the document is only written on release (same contract as
+  // the Slider preview/commit pattern).
+  const [dragSplit, setDragSplit] = useState<{ index: number; freq: number } | null>(null);
+  const dragState = useRef<{ index: number; freq: number; moved: boolean } | null>(null);
+  const grabHandleRef = useRef(false);
+
+  /** Same clamp the core applies to a single split change: schema range,
+   *  an 80 Hz floor and the 40 Hz gap against the stored neighbours — so
+   *  the committed doc value and the previewed DSP value always agree. */
+  const clampSplit = (index: number, freq: number): number => {
+    const def = schema.defById.get(`crossoverFreq${index + 2}`);
+    let lo = Math.max(80, def?.minValue ?? 80);
+    let hi = def?.maxValue ?? AXIS_MAX_HZ;
+    for (let i = 0; i < index; i++) lo = Math.max(lo, splits[i] + SPLIT_MIN_GAP_HZ);
+    if (index < splits.length - 1) hi = Math.min(hi, splits[index + 1] - SPLIT_MIN_GAP_HZ);
+    return Math.max(lo, Math.min(hi, freq));
+  };
+
+  const splitIndexAt = (clientX: number, rect: DOMRect): number => {
+    for (let i = 0; i < splits.length; i++) {
+      if (Math.abs(clientX - rect.left - freqToX(splits[i], rect.width)) <= HANDLE_HIT_PX) return i;
+    }
+    return -1;
+  };
+
+  const onCanvasPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const index = splitIndexAt(e.clientX, rect);
+    if (index < 0) return;
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* pointer capture unsupported — the drag still works while held */
+    }
+    dragState.current = { index, freq: splits[index], moved: false };
+    grabHandleRef.current = true;
+    setDragSplit({ index, freq: splits[index] });
+  };
+
+  const onCanvasPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const drag = dragState.current;
+    if (!drag) {
+      // Hover feedback: split handles announce themselves.
+      e.currentTarget.style.cursor = splitIndexAt(e.clientX, rect) >= 0 ? "ew-resize" : "";
+      return;
+    }
+    const freq = clampSplit(drag.index, xToFreq((e.clientX - rect.left) / rect.width));
+    drag.moved = true;
+    // The ref carries the authoritative latest position — the commit on
+    // pointerup must never depend on whether React flushed the render pass
+    // for this move yet.
+    drag.freq = freq;
+    setDragSplit({ index: drag.index, freq });
+    previewParam(`crossoverFreq${drag.index + 2}`, freq);
+  };
+
+  const endSplitDrag = (e: ReactPointerEvent<HTMLDivElement>, commit: boolean) => {
+    const drag = dragState.current;
+    if (!drag) return;
+    dragState.current = null;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      /* capture already released */
+    }
+    setDragSplit(null);
+    if (commit && drag.moved) onParam(`crossoverFreq${drag.index + 2}`, drag.freq);
+    // onClick fires after pointerup: swallow it for handle gestures (the
+    // grab itself, even without movement, is not a band selection).
+    window.setTimeout(() => {
+      grabHandleRef.current = false;
+    }, 0);
+  };
+
   // Which modules are enabled per band (for the paint strip).
   const activeModules = useMemo(() => {
     const perBand: string[][] = [];
@@ -178,6 +301,39 @@ export function FxEqPanel({
     return perBand;
   }, [params, bandCount]);
 
+  // ── EQ response overlay for the selected band ──────────────────────────
+  // Sampled across the band's own frequency region so the drawn curve is
+  // exactly the transfer function that band's EQ contributes (when on).
+  const eqCurve = useMemo(() => {
+    if (valueOf(`band${selectedBand}.eqEnabled`) < 0.5) return null;
+    const edges = [AXIS_MIN_HZ, ...splits, AXIS_MAX_HZ];
+    const f0 = edges[selectedBand - 1];
+    const f1 = edges[selectedBand];
+    if (!(f1 > f0)) return null;
+    const eq = {
+      enabled: valueOf(`band${selectedBand}.eqEnabled`),
+      lowFreq: valueOf(`band${selectedBand}.eqLowFreq`),
+      lowGainDb: valueOf(`band${selectedBand}.eqLowGainDb`),
+      peak1Freq: valueOf(`band${selectedBand}.eqPeak1Freq`),
+      peak1GainDb: valueOf(`band${selectedBand}.eqPeak1GainDb`),
+      peak1Q: valueOf(`band${selectedBand}.eqPeak1Q`),
+      peak2Freq: valueOf(`band${selectedBand}.eqPeak2Freq`),
+      peak2GainDb: valueOf(`band${selectedBand}.eqPeak2GainDb`),
+      peak2Q: valueOf(`band${selectedBand}.eqPeak2Q`),
+      highFreq: valueOf(`band${selectedBand}.eqHighFreq`),
+      highGainDb: valueOf(`band${selectedBand}.eqHighGainDb`),
+    };
+    const N = 140;
+    const logLo = Math.log(f0);
+    const logHi = Math.log(f1);
+    const pts: number[] = [];
+    for (let i = 0; i <= N; i++) {
+      pts.push(bandEqMagnitudeDb(eq, Math.exp(logLo + (i / N) * (logHi - logLo)), CURVE_NOMINAL_SR));
+    }
+    return pts;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBand, splits, params, schema]);
+
   // ── canvas ──────────────────────────────────────────────────────────────
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -189,8 +345,12 @@ export function FxEqPanel({
     const h = (canvas.height = canvas.offsetHeight * dpr);
     ctx2d.clearRect(0, 0, w, h);
 
+    // While a split is being dragged its live position overrides the (not
+    // yet committed) document value, so regions and curve track the pointer.
+    const drawnSplits = splits.map((f, i) => (dragSplit && dragSplit.index === i ? dragSplit.freq : f));
+    const edges = [AXIS_MIN_HZ, ...drawnSplits, AXIS_MAX_HZ];
+
     // Band regions: alternating fills from splits.
-    const edges = [AXIS_MIN_HZ, ...splits, AXIS_MAX_HZ];
     for (let b = 0; b < edges.length - 1; b++) {
       const x0 = freqToX(edges[b], w);
       const x1 = freqToX(edges[b + 1], w);
@@ -207,23 +367,51 @@ export function FxEqPanel({
       ctx2d.fillText(`B${b + 1}`, x0 + 4 * dpr, 12 * dpr);
     }
 
-    // Split lines + Hz labels.
+    // Split lines + Hz labels. The grabbed handle lights up.
     ctx2d.font = `${9 * dpr}px ui-monospace, monospace`;
-    for (const freq of splits) {
-      const x = freqToX(freq, w);
-      ctx2d.fillStyle = "#52525b";
-      ctx2d.fillRect(x - dpr, 0, 2 * dpr, h);
-      ctx2d.fillStyle = "#71717a";
-      const label = freq >= 1000 ? `${(freq / 1000).toFixed(1)}k` : `${Math.round(freq)}`;
+    for (let i = 0; i < drawnSplits.length; i++) {
+      const x = freqToX(drawnSplits[i], w);
+      const active = dragSplit?.index === i;
+      ctx2d.fillStyle = active ? "#f59e0b" : "#52525b";
+      ctx2d.fillRect(x - (active ? 2 : 1) * dpr, 0, (active ? 4 : 2) * dpr, h);
+      ctx2d.fillStyle = active ? "#f59e0b" : "#71717a";
+      const label = drawnSplits[i] >= 1000 ? `${(drawnSplits[i] / 1000).toFixed(1)}k` : `${Math.round(drawnSplits[i])}`;
       ctx2d.fillText(label, x + 3 * dpr, h - 4 * dpr);
     }
 
+    // ── EQ response overlay (selected band) ────────────────────────────
+    if (eqCurve && eqCurve.length > 1) {
+      const bx0 = freqToX(edges[selectedBand - 1], w);
+      const bx1 = freqToX(edges[selectedBand], w);
+      // 0 dB reference inside the band region.
+      ctx2d.strokeStyle = "rgba(255,255,255,0.08)";
+      ctx2d.beginPath();
+      ctx2d.moveTo(bx0, h / 2);
+      ctx2d.lineTo(bx1, h / 2);
+      ctx2d.stroke();
+      ctx2d.strokeStyle = MODULE_COLORS.eq;
+      ctx2d.lineWidth = 2 * dpr;
+      ctx2d.beginPath();
+      for (let i = 0; i < eqCurve.length; i++) {
+        const x = bx0 + ((bx1 - bx0) * i) / (eqCurve.length - 1);
+        const db = Math.max(-CURVE_DB_SPAN, Math.min(CURVE_DB_SPAN, eqCurve[i]));
+        const y = h / 2 - (db / CURVE_DB_SPAN) * (h * 0.42);
+        if (i === 0) ctx2d.moveTo(x, y);
+        else ctx2d.lineTo(x, y);
+      }
+      ctx2d.stroke();
+      ctx2d.lineWidth = 1;
+    }
+
     // Module paint strip: colored module tags inside their band region.
+    // Tags that no longer fit collapse into a "+N" chip instead of being
+    // silently dropped.
     const stripY = h - 22 * dpr;
     for (let b = 0; b < bandCount; b++) {
       const x0 = freqToX(edges[b], w);
       const x1 = freqToX(edges[b + 1], w);
       let x = x0 + 4 * dpr;
+      let drawn = 0;
       for (const key of activeModules[b]) {
         const label = MODULE_LABELS[key];
         ctx2d.font = `700 ${8 * dpr}px system-ui, sans-serif`;
@@ -236,6 +424,21 @@ export function FxEqPanel({
         ctx2d.fillStyle = "#0e0f12";
         ctx2d.fillText(label, x + 2.5 * dpr, stripY + 8.5 * dpr);
         x += tw + 8 * dpr;
+        drawn++;
+      }
+      const remaining = activeModules[b].length - drawn;
+      if (remaining > 0) {
+        const label = `+${remaining}`;
+        ctx2d.font = `700 ${8 * dpr}px system-ui, sans-serif`;
+        const tw = ctx2d.measureText(label).width;
+        if (x + tw + 5 * dpr <= x1 - 2 * dpr) {
+          ctx2d.fillStyle = "#52525b";
+          ctx2d.globalAlpha = 0.9;
+          ctx2d.fillRect(x, stripY, tw + 5 * dpr, 11 * dpr);
+          ctx2d.globalAlpha = 1;
+          ctx2d.fillStyle = "#d4d4d8";
+          ctx2d.fillText(label, x + 2.5 * dpr, stripY + 8.5 * dpr);
+        }
       }
     }
 
@@ -245,24 +448,25 @@ export function FxEqPanel({
       ctx2d.fillStyle = "rgba(255,255,255,0.05)";
       ctx2d.fillRect(x, 0, dpr, h);
     }
-  }, [splits, bandCount, activeModules, selectedBand]);
+  }, [splits, dragSplit, eqCurve, bandCount, activeModules, selectedBand]);
 
-  // Click canvas → select band by frequency.
+  // Click canvas → select band by frequency (a drag on a split handle
+  // swallows the click — grabbing a handle is not a band selection).
   const selectBandAt = (clientX: number, currentTarget: HTMLElement) => {
     const rect = currentTarget.getBoundingClientRect();
-    const freq = (function back() {
-      const x = (clientX - rect.left) / rect.width;
-      const logMin = Math.log(AXIS_MIN_HZ);
-      const logMax = Math.log(AXIS_MAX_HZ);
-      return Math.exp(logMin + x * (logMax - logMin));
-    })();
+    const freq = xToFreq((clientX - rect.left) / rect.width);
     const edges = [AXIS_MIN_HZ, ...splits, AXIS_MAX_HZ];
     for (let b = 0; b < edges.length - 1; b++) {
       if (freq >= edges[b] && freq < edges[b + 1]) {
-        setSelectedBand(b + 1);
+        selectBand(b + 1);
         return;
       }
     }
+  };
+
+  const onCanvasClick = (e: ReactMouseEvent<HTMLDivElement>) => {
+    if (grabHandleRef.current) return;
+    selectBandAt(e.clientX, e.currentTarget);
   };
 
   // ── LIVE BAND PEAKS: poll the worklet snapshot, draw on canvas, no re-renders ──
@@ -372,7 +576,7 @@ export function FxEqPanel({
               type="button"
               className={`btn btn-small${selectedBand === i + 1 ? " active" : ""}`}
               aria-pressed={selectedBand === i + 1}
-              onClick={() => setSelectedBand(i + 1)}
+              onClick={() => selectBand(i + 1)}
             >
               B{i + 1}
             </button>
@@ -440,7 +644,12 @@ export function FxEqPanel({
         className="fxeq-canvas-wrap"
         role="img"
         aria-label="PRISM band map"
-        onClick={(e) => selectBandAt(e.clientX, e.currentTarget)}
+        title="Click a band to edit it — drag a split line to move the crossover"
+        onClick={onCanvasClick}
+        onPointerDown={onCanvasPointerDown}
+        onPointerMove={onCanvasPointerMove}
+        onPointerUp={(e) => endSplitDrag(e, true)}
+        onPointerCancel={(e) => endSplitDrag(e, false)}
       >
         <canvas ref={canvasRef} className="fxeq-canvas" />
       </div>

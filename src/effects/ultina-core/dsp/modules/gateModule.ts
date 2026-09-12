@@ -55,6 +55,13 @@ import {
   type CrossoverMode,
 } from "../../contracts/channelModes.js";
 
+/** Bounded scalar copy without subarray()'s two view objects per call
+ * (audio-thread allocation discipline — see multiband.copyN). */
+function copyN(dst: Float32Array, src: Float32Array, n: number): void {
+  for (let i = 0; i < n; i++) dst[i] = src[i];
+}
+
+
 // ── Constants ───────────────────────────────────────────────
 
 export const GATE_MAX_BANDS = 3;
@@ -218,16 +225,16 @@ export class GateModuleProcessor implements UltinaModuleProcessor {
     this.multiband.setCrossoverMode(xoverMode);
 
     // Store dry signal
-    this.dryL.set(channels[0].subarray(0, frameCount));
-    this.dryR.set(channels[1].subarray(0, frameCount));
+    copyN(this.dryL, channels[0], frameCount);
+    copyN(this.dryR, channels[1], frameCount);
 
     // Prepare detection source
     let detectSource: Float32Array[] = channels;
     const scEnabled = sidechain && sidechain.length >= 2;
     if (scEnabled) {
       setHighPass(this.scHpf.coeffs, scHpfHz, 0.707, this.sampleRate);
-      this.scHpfBufferL.set(sidechain![0].subarray(0, frameCount));
-      this.scHpfBufferR.set(sidechain![1].subarray(0, frameCount));
+      copyN(this.scHpfBufferL, sidechain![0], frameCount);
+      copyN(this.scHpfBufferR, sidechain![1], frameCount);
       const scChannels = this.scChannelsWrap;
       scChannels[0] = this.scHpfBufferL;
       scChannels[1] = this.scHpfBufferR;

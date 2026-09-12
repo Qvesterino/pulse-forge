@@ -34,6 +34,7 @@ import { createTapeNode } from "../audio-worklets/tape-node";
 import { createEnvFollowerNode, type EnvFollowerHandle } from "../audio-worklets/envfollower-node";
 import { createKwMeterNode, type KwMeterHandle } from "../audio-worklets/kwmeter-node";
 import { timeStretch } from "./time-stretch";
+import { MeterRing } from "./MeterRing";
 import {
   lfoKind,
   lfoWave,
@@ -404,8 +405,15 @@ export class AudioEngine {
   private meterProjectId: string | null = null;
   /** Project id the stretchCache entries were computed for. */
   private stretchProjectId: string | null = null;
-  private meterHistoryL: number[] = [];
-  private meterHistoryR: number[] = [];
+  // Defect B.7 (performance / memory recon): the old `number[]` rings
+  // did `push(...masterChBufL)` + `splice(0, n)` per overshoot — O(n)
+  // each plus the spread allocates a fresh array every call. Pre-allocate
+  // a Float32Array ring sized to the worst-case 3.2 s of audio at 96 kHz
+  // (307 200 samples ≈ 1.2 MiB per channel) and copy via `set()`.
+  // `push(src)` overwrites the oldest samples automatically — no splice.
+  private static readonly METER_RING_CAPACITY = Math.ceil(96000 * 3.2);
+  private meterHistoryL = new MeterRing(AudioEngine.METER_RING_CAPACITY);
+  private meterHistoryR = new MeterRing(AudioEngine.METER_RING_CAPACITY);
   private meterLoudnessBlocks: number[] = [];
   private syncedBpm = 0;
   /** Active scene BPM override (song mode) — null = runtimes follow doc.bpm. */
@@ -4047,8 +4055,8 @@ export class AudioEngine {
   }
 
   private resetMeterHistory(): void {
-    this.meterHistoryL = [];
-    this.meterHistoryR = [];
+    this.meterHistoryL.reset();
+    this.meterHistoryR.reset();
     this.meterLoudnessBlocks = [];
     this.masterPeakHold.reset();
   }
@@ -4072,14 +4080,10 @@ export class AudioEngine {
     gainReductionDb: number;
   } {
     const levels = this.getMasterLevels();
-    this.meterHistoryL.push(...this.masterChBufL);
-    this.meterHistoryR.push(...this.masterChBufR);
+    this.meterHistoryL.push(this.masterChBufL);
+    this.meterHistoryR.push(this.masterChBufR);
     const sampleRate = this.ctx?.sampleRate ?? 44100;
-    const maxSamples = Math.ceil(sampleRate * 3.2);
-    if (this.meterHistoryL.length > maxSamples) {
-      this.meterHistoryL.splice(0, this.meterHistoryL.length - maxSamples);
-      this.meterHistoryR.splice(0, this.meterHistoryR.length - maxSamples);
-    }
+    // The ring's capacity is the worst-case ceiling; no manual trim.
     // True peak: 4× polyphase oversampling (intersample peaks included).
     const truePeak = Math.max(
       AudioEngine.measureTruePeak(this.masterChBufL, 1),
@@ -4103,12 +4107,11 @@ export class AudioEngine {
         gainReductionDb: this.getMasterGainReductionDb(),
       };
     }
-    const window = (seconds: number): [Float32Array<ArrayBuffer>, Float32Array<ArrayBuffer>] => {
+    const window = (seconds: number): [Float32Array, Float32Array] => {
+      // MeterRing.lastN already returns a fresh Float32Array in
+      // chronological order — no slice + Float32Array.from copy.
       const length = Math.min(this.meterHistoryL.length, Math.max(1, Math.round(seconds * sampleRate)));
-      return [
-        Float32Array.from(this.meterHistoryL.slice(-length)),
-        Float32Array.from(this.meterHistoryR.slice(-length)),
-      ];
+      return [this.meterHistoryL.lastN(length), this.meterHistoryR.lastN(length)];
     };
     const [momentaryL, momentaryR] = window(0.4);
     const [shortL, shortR] = window(3);

@@ -460,6 +460,12 @@ export class UltinaProcessor {
       if (this.metersEnabled) {
         this.updateInputMeters(chL, chR, frameCount);
         this.updateOutputMeters(chL, chR, frameCount);
+      } else if (gainMatchEnabled) {
+        // Bypassed time still consumes real time. Without noting it, the
+        // LUFS stale-guard stays unarmed and auto-gain integrates against
+        // a PRE-bypass short-term loudness for up to a full window after
+        // unbypass (audible wrong-gain ramp).
+        this.lufsMeter.noteUnfed(frameCount);
       }
       this.totalSamples += frameCount;
       return;
@@ -517,9 +523,13 @@ export class UltinaProcessor {
         this.updateInputMeters(chunkL, chunkR, frames);
       }
 
-      // Capture dry buffer (for mix and delta)
-      this.dryBufferL.set(chunkL.subarray(0, frames));
-      this.dryBufferR.set(chunkR.subarray(0, frames));
+      // Capture dry buffer (for mix and delta). Scalar copy — subarray()
+      // allocates two view objects per channel per chunk of every block,
+      // which the file's realtime constraints forbid.
+      for (let i = 0; i < frames; i++) {
+        this.dryBufferL[i] = chunkL[i];
+        this.dryBufferR[i] = chunkR[i];
+      }
 
       if (this.deltaModule !== null && activeChain.modules.length > 0) {
         // Delta listen mode: process up to and including the delta module,

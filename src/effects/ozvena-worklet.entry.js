@@ -81,9 +81,15 @@ function setPath(state, id, value) {
       if (typeof current === "boolean") next = value >= 0.5;
       else if (typeof current === "string" && typeof value === "number") {
         const list = ENUM_BY_PATH[id];
-        next = list
-          ? list[Math.max(0, Math.min(list.length - 1, Math.round(value)))]
-          : String(value);
+        if (list) {
+          next = list[Math.max(0, Math.min(list.length - 1, Math.round(value)))];
+        } else {
+          // A numeric update to a NON-enum string leaf (e.g. a corrupt
+          // document writing preDelay.syncNote = 1e9) must be dropped —
+          // String(value) coercion used to install garbage like "1000000000"
+          // as the sync note. String leaves are set with string payloads.
+          return node;
+        }
       } else if (typeof current === "number") {
         next = typeof value === "number" ? value : Number(value);
         // Coerced garbage (Number("abc") → NaN) is dropped like NaN above.
@@ -303,23 +309,34 @@ class OzvenaWorkletProcessor extends AudioWorkletProcessor {
     if (this.disposed) return false;
     const output = outputs[0];
     if (!output || !output[0] || !output[1]) return true;
-    const frames = Math.min(MAX_BLOCK, output[0].length);
+    const total = output[0].length;
     // `currentTime` is the first sample of this quantum; events up to the
     // end of the block are applied now (≤ one quantum early).
-    this.applyDueParams(currentTime + frames / sampleRate);
+    this.applyDueParams(currentTime + total / sampleRate);
     const input = inputs[0];
 
     // Ozvena is stereo and requires both channels — stage into scratch
-    // (input or silence), process in place, copy back.
-    for (let c = 0; c < CHANNELS; c++) {
-      const buf = this.scratch[c];
-      const inCh = input && input[c];
-      if (inCh && inCh.length >= frames) buf.set(inCh.subarray(0, frames));
-      else buf.fill(0, 0, frames);
-    }
-    this.proc.process(this.scratch, frames);
-    for (let c = 0; c < CHANNELS; c++) {
-      output[c].set(this.scratch[c].subarray(0, frames));
+    // (input or silence), process in 128-frame chunks, copy back. The render
+    // quantum is 128 everywhere today, but the spec allows larger buffers;
+    // a single pass would leave samples beyond frame 128 stale (the previous
+    // block's audio repeated) exactly like the Ultina entry's fixed bug.
+    for (let offset = 0; offset < total; offset += MAX_BLOCK) {
+      const frames = Math.min(MAX_BLOCK, total - offset);
+      for (let c = 0; c < CHANNELS; c++) {
+        const buf = this.scratch[c];
+        const inCh = input && input[c];
+        if (inCh && inCh.length >= offset + frames) {
+          buf.set(inCh.subarray(offset, offset + frames));
+        } else if (inCh && inCh.length >= frames) {
+          buf.set(inCh.subarray(0, frames));
+        } else {
+          buf.fill(0, 0, frames);
+        }
+      }
+      this.proc.process(this.scratch, frames);
+      for (let c = 0; c < CHANNELS; c++) {
+        output[c].set(this.scratch[c].subarray(0, frames), offset);
+      }
     }
     return true;
   }

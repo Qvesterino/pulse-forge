@@ -103,9 +103,14 @@ export function ozvenaParamRange(id: string, value: number | boolean = 0): Ozven
     case "wet":
       return { min: 0, max: 100 };
     default:
-      // Unknown numeric leaves are still bounded. This is only a defensive
-      // fallback; every current numeric Ozvena path is covered above.
-      return { min: value < 0 ? -1 : 0, max: Math.max(1, Math.abs(value) * 4) };
+      // Unknown numeric leaves still get a FIXED defensive bound. The old
+      // fallback was value-relative ([0, 4·|value|]), which made
+      // clampOzvenaParam a no-op for any positive value — a corrupt document
+      // could push 1e9 straight through to the worklet boundary. Every
+      // current path is covered by the cases above, so this only fires for
+      // unknown/future ids; ±100 000 comfortably bounds every audio-scale
+      // quantity in the state tree (times ≤ 24 000 ms, freqs ≤ 20 000 Hz).
+      return { min: -100000, max: 100000 };
   }
 }
 

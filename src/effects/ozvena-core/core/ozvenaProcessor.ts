@@ -827,6 +827,18 @@ export function createOzvenaProcessor(): OzvenaProcessor {
       // never produces an intersample peak above -0.3 dBFS.
       safetyLimiter.process(channels, frameCount);
 
+      // 13. Output poison guard. The limiter's peak comparisons treat NaN
+      // as "no peak" and re-emit poisoned samples verbatim, so any residual
+      // NaN/Inf from an upstream stage would reach the host — and through
+      // the convolver's spectra rings it can sustain itself. The input side
+      // is sanitized on entry; contain the output side at the last boundary.
+      for (let c = 0; c < cc; c++) {
+        const out = channels[c];
+        for (let i = 0; i < frameCount; i++) {
+          if (!Number.isFinite(out[i])) out[i] = 0;
+        }
+      }
+
       // Masking Meter (passive analyser — always live per spec, no click required).
       maskingMeter.push(finalDry, wetPreEq, frameCount);
 

@@ -131,17 +131,22 @@ describe("fxeq A/B morph (precompiled routing)", () => {
     expect(proc.getParameter("band4.gainDb")).toBe(3);
   });
 
-  it("bandCount inside a morph target rebuilds the schema and reaches the end state", () => {
+  it("bandCount inside a morph target is dropped, other entries still land", () => {
+    // 2026-09-12 contract change: bandCount must never MORPH — routing it
+    // rebuilt the schema and crossover on the audio thread every block for
+    // the morph's duration (and fractional counts round mid-glide). The
+    // core now skips it; hosts exclude it in their blend step too. The
+    // rest of the target still applies against the CURRENT schema.
     const proc = createFxEqProcessor({ limiterEnabled: 0 });
     proc.prepare(SR, 2, BLOCK);
-    proc.startMorph({ bandCount: 5, "band5.gainDb": 3 }, 0.02);
+    proc.startMorph({ bandCount: 5, "band3.gainDb": 3 }, 0.02);
     const channels = noiseChannels();
     runUntilMorphDone(proc, channels);
-    expect(proc.getParameter("bandCount")).toBe(5);
-    expect(proc.getParameter("band5.gainDb")).toBeCloseTo(3, 6);
-    // The rebuilt parameter space must still accept parameters.
-    proc.setParameter("band5.mute", 1);
-    expect(proc.getParameter("band5.mute")).toBe(1);
+    expect(proc.getParameter("bandCount")).toBe(6);
+    expect(proc.getParameter("band3.gainDb")).toBeCloseTo(3, 6);
+    // The parameter space still accepts parameters after the morph.
+    proc.setParameter("band3.mute", 1);
+    expect(proc.getParameter("band3.mute")).toBe(1);
   });
 
   it("drops non-finite morph targets instead of poisoning DSP state", () => {

@@ -313,8 +313,18 @@ export function createConvolutionEngine(
       beginIrSwap();
       irLengthSamples = checked[0].irLengthSamples;
       irChannels = irCh;
-      const mk = (slot: number): PartitionedConvolver =>
-        createPartitionedConvolverFromPrecomputed(checked[slot]);
+      const mk = (slot: number): PartitionedConvolver => {
+        const set = checked[slot];
+        // A duplicated source (fewer sets delivered than slots) must not
+        // share its MUTABLE input-spectra ring: both convolvers would read
+        // and overwrite the same history mid-block, cross-contaminating the
+        // channels. Strip the ring so the factory allocates a fresh zeroed
+        // one per slot (the immutable irSpectra may still be shared).
+        if (set.blockSpectra && checked.indexOf(set) !== slot) {
+          return createPartitionedConvolverFromPrecomputed({ ...set, blockSpectra: undefined });
+        }
+        return createPartitionedConvolverFromPrecomputed(set);
+      };
       assignIrSlots(mk, irCh);
     },
 

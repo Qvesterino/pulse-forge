@@ -382,3 +382,24 @@ describe("Ultina worklet entry — latency reporting (meters-gate regression)", 
     expect(hq?.samples).toBe(35); // 31 + OS_LATENCY_SAMPLES (4)
   });
 });
+
+describe("Ultina worklet entry — hardening regressions (2026-09-12)", () => {
+  it("dispose stops processing (process returns false afterwards)", () => {
+    const proc = new Processor({ processorOptions: { params: {} } });
+    proc.port.onmessage?.({ data: { type: "dispose" } });
+    const out = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+    // Mirrors Ozvena: a quantum pulled between the dispose message and the
+    // main thread's node.disconnect() must not run DSP (or post latency).
+    expect(proc.process([out], [out])).toBe(false);
+  });
+
+  it("meter postings run ≈21 Hz (every 16th block), not every 4th", () => {
+    const proc = new Processor({ processorOptions: { params: {} } });
+    run(proc, 64, 0.2);
+    const posts = proc.port.posted.filter((m) => m.type === "meters").length;
+    // 64 blocks / 16 = 4 snapshots (the first block posts too). The old
+    // mask (& 3) produced 16 posts — 4× the documented main-thread load.
+    expect(posts).toBeGreaterThanOrEqual(3);
+    expect(posts).toBeLessThanOrEqual(5);
+  });
+});

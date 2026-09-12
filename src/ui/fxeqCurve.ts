@@ -8,12 +8,7 @@
  *
  * This module is UI-side only — no audio state, safe to call per frame.
  */
-import {
-  setHighShelf,
-  setLowShelf,
-  setPeaking,
-  type BiquadCoeffs,
-} from "../effects/fxeq-core/dsp/biquad";
+import { setHighShelf, setLowShelf, setPeaking, type BiquadCoeffs } from "../effects/fxeq-core/dsp/biquad";
 
 /** The band-EQ parameters the curve responds to (band-prefix stripped). */
 export interface BandEqCurveParams {
@@ -59,11 +54,7 @@ export function biquadMagnitudeDb(c: BiquadCoeffs, freqHz: number, sampleRate: n
  * or a stateless probe returns 0 (flat) — matches the DSP, where
  * enabled < 0.5 is a true no-op.
  */
-export function bandEqMagnitudeDb(
-  eq: BandEqCurveParams,
-  freqHz: number,
-  sampleRate: number,
-): number {
+export function bandEqMagnitudeDb(eq: BandEqCurveParams, freqHz: number, sampleRate: number): number {
   if (!(eq.enabled >= 0.5)) return 0;
   // Same filter order as the band-EQ module: shelf → peak → peak → shelf.
   setLowShelf(lowShelfCoeffs, eq.lowFreq, eq.lowGainDb, sampleRate);

@@ -2566,6 +2566,11 @@
       dampAlpha = 1 - Math.exp(-2 * Math.PI * dampHz / sampleRate2);
       hpAlpha = Math.exp(-2 * Math.PI * hpHz / sampleRate2);
       predelayLen = Math.round(clamp(store.get("predelayMs"), 0, 100) / 1e3 * sampleRate2);
+      if (predelayLen > 0) {
+        for (let c = 0; c < predelayWriteIdx.length; c++) {
+          predelayWriteIdx[c] %= predelayLen;
+        }
+      }
       for (let l = 0; l < FDN_LINES; l++) {
         const lenL = Math.max(8, Math.round(BASE_LENGTHS_L[l] * srScale));
         const lenR = Math.max(8, Math.round(BASE_LENGTHS_R[l] * srScale));
@@ -3797,7 +3802,7 @@
         return -20 * Math.log10(Math.max(minEnv, 1e-6));
       },
       setParameter(id, value) {
-        if (id === "enabled" && store.get("enabled") < 0.5 && value >= 0.5) {
+        const resetDetectorState = () => {
           for (const s of ch) {
             s.env = 1;
             s.prev = 0;
@@ -3808,6 +3813,12 @@
             s.ring.fill(0);
             s.os.reset();
           }
+        };
+        if (id === "enabled" && store.get("enabled") < 0.5 && value >= 0.5) {
+          resetDetectorState();
+        }
+        if (prepared && ch.length > 0 && (id === "truePeak" && store.get("truePeak") >= 0.5 !== value >= 0.5 || id === "lookaheadMs" && store.get("lookaheadMs") !== value)) {
+          resetDetectorState();
         }
         store.set(id, value);
       },
@@ -4020,6 +4031,7 @@
       }
     }
     function rebuildForBandCount(count) {
+      if (typeof count !== "number" || !Number.isFinite(count)) return;
       bandCount = clamp(Math.round(count), 2, MAX_BANDS);
       schema = buildSchema(bandCount);
       const merged = { ...schema.defaultParams };
@@ -4315,6 +4327,7 @@
       startMorph(target, durationSec) {
         const entries = [];
         for (const id of Object.keys(target)) {
+          if (id === "bandCount") continue;
           let end = target[id];
           if (typeof end !== "number" || !Number.isFinite(end)) continue;
           const route = schema.routes.get(id);
@@ -4324,7 +4337,7 @@
           entries.push({ id, route, start: values[id] ?? 0, end });
         }
         morphEntries = entries;
-        morphDuration = Math.max(0.01, durationSec);
+        morphDuration = Number.isFinite(durationSec) ? Math.max(0.01, durationSec) : 0.3;
         morphElapsed = 0;
         morphing = true;
       }
@@ -4509,33 +4522,40 @@
     process(inputs, outputs) {
       const output = outputs[0];
       if (!output || !output[0]) return true;
-      const frames = Math.min(MAX_BLOCK, output[0].length);
+      const total = output[0].length;
       const input = inputs[0];
-      this.applyDueParams(currentTime + frames / sampleRate);
+      this.applyDueParams(currentTime + total / sampleRate);
       const sc = inputs[1];
       if (sc && sc.length > 0) {
-        for (let c = 0; c < CHANNELS; c++) {
-          const src = sc[Math.min(c, sc.length - 1)];
-          const dst = this.sidechainScratch[c];
-          if (src && src.length >= frames) dst.set(src.subarray(0, frames));
-          else dst.fill(0, 0, frames);
-        }
         this.proc.setSidechain(this.sidechainScratch);
       } else {
         this.proc.setSidechain(null);
       }
-      for (let c = 0; c < CHANNELS; c++) {
-        const buf = this.scratch[c];
-        const inCh = input?.[c];
-        if (inCh && inCh.length >= frames) buf.set(inCh.subarray(0, frames));
-        else buf.fill(0, 0, frames);
+      for (let offset = 0; offset < total; offset += MAX_BLOCK) {
+        const frames = Math.min(MAX_BLOCK, total - offset);
+        if (sc && sc.length > 0) {
+          for (let c = 0; c < CHANNELS; c++) {
+            const src = sc[Math.min(c, sc.length - 1)];
+            const dst = this.sidechainScratch[c];
+            if (src && src.length >= offset + frames) dst.set(src.subarray(offset, offset + frames));
+            else if (src && src.length >= frames) dst.set(src.subarray(0, frames));
+            else dst.fill(0, 0, frames);
+          }
+        }
+        for (let c = 0; c < CHANNELS; c++) {
+          const buf = this.scratch[c];
+          const inCh = input?.[c];
+          if (inCh && inCh.length >= offset + frames) buf.set(inCh.subarray(offset, offset + frames));
+          else if (inCh && inCh.length >= frames) buf.set(inCh.subarray(0, frames));
+          else buf.fill(0, 0, frames);
+        }
+        this.proc.process(this.scratch, frames);
+        for (let c = 0; c < CHANNELS; c++) {
+          const outCh = output[c];
+          if (outCh) outCh.set(this.scratch[c].subarray(0, frames), offset);
+        }
       }
-      this.proc.process(this.scratch, frames);
       this.postLatency();
-      for (let c = 0; c < CHANNELS; c++) {
-        const outCh = output[c];
-        if (outCh) outCh.set(this.scratch[c].subarray(0, frames));
-      }
       if (this.metersEnabled && this.blockCount++ % this.meterDivider === 0) {
         this.port.postMessage({
           type: "bandPeaks",

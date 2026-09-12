@@ -141,10 +141,10 @@ class FxEqWorkletProcessor extends AudioWorkletProcessor {
   process(inputs, outputs) {
     const output = outputs[0];
     if (!output || !output[0]) return true;
-    const frames = Math.min(MAX_BLOCK, output[0].length);
+    const total = output[0].length;
     const input = inputs[0];
 
-    this.applyDueParams(currentTime + frames / sampleRate);
+    this.applyDueParams(currentTime + total / sampleRate);
 
     // Sidechain (input 1): when a source is wired to the second input,
     // hand it to the core so bands with sidechainMode=1 drive their dynamic
@@ -152,26 +152,40 @@ class FxEqWorkletProcessor extends AudioWorkletProcessor {
     // explicit null; a mono feed is upmixed to the 2-channel contract.
     const sc = inputs[1];
     if (sc && sc.length > 0) {
-      for (let c = 0; c < CHANNELS; c++) {
-        const src = sc[Math.min(c, sc.length - 1)];
-        const dst = this.sidechainScratch[c];
-        if (src && src.length >= frames) dst.set(src.subarray(0, frames));
-        else dst.fill(0, 0, frames);
-      }
       this.proc.setSidechain(this.sidechainScratch);
     } else {
       this.proc.setSidechain(null);
     }
 
     // Stage the block into scratch (input or silence), process in place,
-    // copy back. Deterministic regardless of how the host wires channels.
-    for (let c = 0; c < CHANNELS; c++) {
-      const buf = this.scratch[c];
-      const inCh = input?.[c];
-      if (inCh && inCh.length >= frames) buf.set(inCh.subarray(0, frames));
-      else buf.fill(0, 0, frames);
+    // copy back — in MAX_BLOCK chunks so EVERY output sample is written.
+    // The render quantum is 128 everywhere today, but the spec allows
+    // larger buffers; a single pass would leave samples beyond frame 128
+    // stale (the previous block's audio repeated).
+    for (let offset = 0; offset < total; offset += MAX_BLOCK) {
+      const frames = Math.min(MAX_BLOCK, total - offset);
+      if (sc && sc.length > 0) {
+        for (let c = 0; c < CHANNELS; c++) {
+          const src = sc[Math.min(c, sc.length - 1)];
+          const dst = this.sidechainScratch[c];
+          if (src && src.length >= offset + frames) dst.set(src.subarray(offset, offset + frames));
+          else if (src && src.length >= frames) dst.set(src.subarray(0, frames));
+          else dst.fill(0, 0, frames);
+        }
+      }
+      for (let c = 0; c < CHANNELS; c++) {
+        const buf = this.scratch[c];
+        const inCh = input?.[c];
+        if (inCh && inCh.length >= offset + frames) buf.set(inCh.subarray(offset, offset + frames));
+        else if (inCh && inCh.length >= frames) buf.set(inCh.subarray(0, frames));
+        else buf.fill(0, 0, frames);
+      }
+      this.proc.process(this.scratch, frames);
+      for (let c = 0; c < CHANNELS; c++) {
+        const outCh = output[c];
+        if (outCh) outCh.set(this.scratch[c].subarray(0, frames), offset);
+      }
     }
-    this.proc.process(this.scratch, frames);
     // Latency can change INSIDE process(): the oversampled saturation path
     // engages on the first processed block after its drive/quality crosses
     // the oversampling threshold (the factor also rides block-smoothed
@@ -179,10 +193,6 @@ class FxEqWorkletProcessor extends AudioWorkletProcessor {
     // postLatency() is change-guarded, so this is one integer compare per
     // block and the host's PDC sees the transition the moment it happens.
     this.postLatency();
-    for (let c = 0; c < CHANNELS; c++) {
-      const outCh = output[c];
-      if (outCh) outCh.set(this.scratch[c].subarray(0, frames));
-    }
     // Band-peak metering for the panel — gated (closed panel costs zero)
     // and throttled to ~20 Hz. getBandPeaks() reads the per-band peaks the
     // DSP already tracked during process(); no extra analysis on the audio

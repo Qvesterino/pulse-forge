@@ -82,8 +82,11 @@ export function onePoleLpCoef(freqHz: number, sampleRate: number): number {
 
 /**
  * One-pole high-pass coefficient from a cutoff frequency.
+ * freqHz <= 0 (or non-finite) degrades to 1 — passthrough, no filtering —
+ * instead of the NaN that 1/(2π·0) division produces.
  */
 export function onePoleHpCoef(freqHz: number, sampleRate: number): number {
+  if (!(freqHz > 0)) return 1;
   const rc = 1 / (2 * Math.PI * freqHz);
   const dt = 1 / sampleRate;
   return rc / (rc + dt);

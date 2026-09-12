@@ -8,18 +8,13 @@ import { fireEvent, screen } from "@testing-library/react";
 import { EffectRack } from "../src/ui/EffectRack";
 import { renderWithContext, mockServices } from "./helpers";
 import { createProjectFromTemplate } from "../src/project-model/templates";
-import {
-  bandEqMagnitudeDb,
-  biquadMagnitudeDb,
-  type BandEqCurveParams,
-} from "../src/ui/fxeqCurve";
+import { bandEqMagnitudeDb, biquadMagnitudeDb, type BandEqCurveParams } from "../src/ui/fxeqCurve";
 
 // ── canvas geometry shared by the drag tests ─────────────────────────────
 // The panel maps 20 Hz … 20 kHz logarithmically across the canvas width.
 const RECT = { left: 0, top: 0, width: 1000, height: 100, x: 0, y: 0, right: 1000, bottom: 100 };
 const LOG_SPAN = Math.log(20000 / 20);
 const xOf = (freqHz: number): number => (Math.log(freqHz / 20) / LOG_SPAN) * RECT.width;
-const freqOf = (clientX: number): number => 20 * Math.exp((clientX / RECT.width) * LOG_SPAN);
 
 function fxEqDoc() {
   const doc = createProjectFromTemplate("house");
@@ -45,7 +40,8 @@ function mountedPanel(servicesOverride?: Partial<Services>) {
     store: { ...base.store, ...(servicesOverride?.store ?? {}) },
   } as typeof base;
   const utils = renderWithContext(<EffectRack track={track} />, { services });
-  return { services, doc, track, ...utils };
+  // utils already carries `services` (renderWithContext returns it).
+  return { doc, track, ...utils };
 }
 
 type Services = ReturnType<typeof mockServices>;
@@ -67,7 +63,7 @@ describe("fxeq panel — EQ response overlay math", () => {
     peak2Q: 0.7,
     highFreq: 8000,
     highGainDb: 9,
-    };
+  };
   const SR = 48000;
 
   it("a flat (identity) biquad section measures 0 dB", () => {
@@ -134,26 +130,25 @@ describe("fxeq panel — crossover split drag", () => {
   });
 
   it("commits the dragged value clamped against the schema range", async () => {
-    const { services } = mountedPanel();
+    const { services, doc } = mountedPanel();
     const map = await screen.findByRole("img", { name: "PRISM band map" }, { timeout: 10_000 });
     vi.spyOn(map, "getBoundingClientRect").mockReturnValue(RECT as DOMRect);
 
     // Drag split 2 (400 Hz) far right, past split 3 (1200 Hz): the schema
     // max for crossoverFreq2 (800 Hz) must win over the pointer position.
     fireEvent.pointerDown(map, { clientX: xOf(400), pointerId: 1 });
-    fireEvent.pointerMove(map, { clientX: RECT.width - 5, pointerId: 1 }); // ≈19 kHz
+    fireEvent.pointerMove(map, { clientX: RECT.width - 5, pointerId: 1 }); // ~19 kHz
     fireEvent.pointerUp(map, { clientX: RECT.width - 5, pointerId: 1 });
 
     const calls = vi.mocked(services.store.execute).mock.calls;
-    const command = calls[calls.length - 1]?.[0] as {
-      execute: (doc: ReturnType<typeof fxEqDoc>["doc"]) => ReturnType<typeof fxEqDoc>["doc"];
-    };
-    expect(command).toBeTruthy();
-    // Commands are immutable: execute returns the NEXT document.
-    const next = command.execute(fxEqDoc().doc);
-    const fx = next.tracks
-      .find((t) => t.kind === "instrument")!
-      .effects.find((f) => f.id === "fx-eq");
+    const command = calls
+      .map((c) => c[0] as { label?: string; execute: (d: unknown) => unknown })
+      .find((c) => c.label === "PRISM crossoverFreq2");
+    expect(command, "drag commit command missing").toBeTruthy();
+    // Commands are immutable AND bound to the doc they were built against
+    // (track ids are per-template-instance): execute returns the NEXT doc.
+    const next = command!.execute(doc) as ReturnType<typeof fxEqDoc>["doc"];
+    const fx = next.tracks.find((t) => t.kind === "instrument")!.effects.find((f) => f.id === "fx-eq");
     expect(fx?.params.crossoverFreq2).toBe(800);
   });
 

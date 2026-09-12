@@ -57,6 +57,28 @@ function countChanges(data: Float32Array, step: number): number {
   return changes;
 }
 
+/**
+ * Worklet GR metering travels over the port and arrives AFTER an offline
+ * render resolves — with engine-dependent latency (Firefox delivers
+ * noticeably later than Chromium; a fixed 120 ms sleep read 0 there while
+ * the DSP provably compressed). MUST be called BEFORE rt.dispose(): dispose
+ * nulls the port handler, so stragglers would land in a dead listener.
+ * Polls until a nonzero reading arrives (silence never compresses, so
+ * 0 legitimately means "no reduction") or the deadline passes.
+ */
+async function readGrAfterRender(
+  rt: { getGainReductionDb?: () => number },
+  waitMs = 1000,
+): Promise<number> {
+  const deadline = performance.now() + waitMs;
+  let gr = rt.getGainReductionDb?.() ?? 0;
+  while (gr <= 0 && performance.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    gr = rt.getGainReductionDb?.() ?? 0;
+  }
+  return gr;
+}
+
 async function renderThrough(type: EffectType, paramsOverride: Record<string, number> = {}): Promise<Float32Array> {
   const ctx = new OfflineAudioContext(1, Math.floor(SR / 2), SR);
   const def = EFFECT_DEFS[type];
@@ -787,12 +809,13 @@ export async function runChecks(): Promise<CheckResult[]> {
       rt.output.connect(ctx.destination);
       src.start(0);
       const limited = await ctx.startRendering();
+      // GR metering must be read BEFORE dispose (dispose nulls the port
+      // handler — see readGrAfterRender).
+      const gr = await readGrAfterRender(rt);
       rt.dispose();
-      await new Promise((resolve) => setTimeout(resolve, 120)); // port messages flush after render
       const data = limited.getChannelData(0);
       const peak = peakOf(data);
       const ceilingLin = Math.pow(10, -6 / 20);
-      const gr = rt.getGainReductionDb?.() ?? 0;
       // Pumping proxy: steady-state window RMS spread must stay flat.
       let minWin = Infinity;
       let maxWin = 0;
@@ -2824,13 +2847,14 @@ export async function runChecks(): Promise<CheckResult[]> {
       rt.output.connect(ctx.destination);
       osc.start(0);
       const out = (await ctx.startRendering()).getChannelData(0);
+      // GR metering must be read BEFORE dispose (dispose nulls the port
+      // handler — see readGrAfterRender).
+      const gr = await readGrAfterRender(rt);
       rt.dispose();
-      await new Promise((resolve) => setTimeout(resolve, 120)); // GR messages flush
       let rmsOut = 0;
       for (let i = 0; i < out.length; i++) rmsOut += out[i] * out[i];
       rmsOut = Math.sqrt(rmsOut / out.length);
       const baseline = 0.7 / Math.SQRT2;
-      const gr = rt.getGainReductionDb?.() ?? 0;
       check(
         "compressor: worklet compresses hot input and reports GR",
         rmsOut < baseline * 0.4 && gr >= 8,

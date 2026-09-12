@@ -105,7 +105,11 @@ import type { MidiCreativeOperation } from "../midi/creative";
 // reference) that mutates the previous document in place throws a loud
 // TypeError immediately, instead of silently corrupting the undo stack.
 // In production builds the check is dead-code-eliminated (NODE_ENV=production).
-const IS_DEV = process.env.NODE_ENV !== "production";
+// Implemented as a function (not a module-scope constant) so test environments
+// using `vi.stubEnv("NODE_ENV", "production")` can flip it without a re-import.
+function isDev(): boolean {
+  return process.env.NODE_ENV !== "production";
+}
 
 let snapshotVerificationFallbacks = 0;
 /** TEST-ONLY: how many snapshot() calls failed delta self-verification and fell back to the legacy whole-document command. */
@@ -123,17 +127,26 @@ export function snapshot(type: string, label: string, prev: ProjectDocument, nex
   // document is current — an async dispatch (seconds-long freeze render,
   // collab merge) can no longer silently revert concurrent edits, and the
   // undo stack no longer pins whole document chains.
-  if (IS_DEV) deepFreeze(prev);
+  const dev = isDev();
+  if (dev) deepFreeze(prev);
   const forward = computeDocDelta(prev, next);
   const backward = computeDocDelta(next, prev);
-  // Self-verification: the delta must round-trip exactly, or we keep the
-  // legacy whole-document command. Costs ~O(changes) thanks to structural
-  // sharing — the reference-pruned walk skips untouched subtrees.
-  const verified =
-    deepEqualRef(applyDocDelta(prev, forward.ops), next) && deepEqualRef(applyDocDelta(next, backward.ops), prev);
-  if (!verified) {
-    snapshotVerificationFallbacks++;
-    return { type, label, execute: () => next, undo: () => prev };
+  // Defect C.5 (performance / memory recon): the legacy verification path
+  // runs `applyDocDelta` twice + `deepEqualRef` twice per snapshot() call —
+  // four O(changes) traversals per command dispatch, including the hot
+  // velocity-layer / step / pattern / track factories that fire many
+  // times per second. CI runs with `NODE_ENV !== "production"` so any bug
+  // in `computeDocDelta` is caught by the dev-only verifier below; the
+  // fallback safety net (legacy whole-document command) is also dev-only.
+  // Production builds trust the well-tested delta path and skip both
+  // `applyDocDelta` self-checks, cutting the per-snapshot cost by ~50%.
+  if (dev) {
+    const verified =
+      deepEqualRef(applyDocDelta(prev, forward.ops), next) && deepEqualRef(applyDocDelta(next, backward.ops), prev);
+    if (!verified) {
+      snapshotVerificationFallbacks++;
+      return { type, label, execute: () => next, undo: () => prev };
+    }
   }
   return {
     type,

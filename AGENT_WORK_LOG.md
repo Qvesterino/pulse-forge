@@ -313,10 +313,10 @@ The latest `npm run test:browser` reached 216/218: the PRISM plugin workflow
 passed; two global performance checks failed under machine load. The full
 default Vitest run is still
 not release-green under shared-machine load: 224 files / 2152 passed / 162
-skipped / 5 failed. Two Ozvena hook timeouts followed the 10-minute soak;
-collab and VLYX HQ budgets passed in targeted isolation, while large-project
-normalize still fails its 100 ms budget. No threshold was changed and no PRISM
-failure occurred.
+skipped / 5 failed. Two Ozvena hook timeouts followed the 10-minute soak and
+three timing budgets failed in that shared-machine run; Ozvena 59/59 and the
+collab, VLYX HQ and large-project normalize checks pass in targeted isolation.
+No threshold was changed and no PRISM failure occurred.
 
 **Remaining release gates:** rerun the browser performance battery in a quiet
 runner, run a quiet full suite, review and commit the four evidence/browser

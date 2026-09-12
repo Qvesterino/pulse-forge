@@ -323,6 +323,12 @@ export function createFxEqProcessor(
   }
 
   function rebuildForBandCount(count: number): void {
+    // A non-finite count (corrupt bulk state reaching loadParameters ahead of
+    // its per-key guard) would survive clamp() — NaN fails both comparisons —
+    // and then crash crossover.process() on every block: bandCount = NaN →
+    // bandBuffers[NaN] → undefined → TypeError inside the render loop.
+    // Ignore the update and keep the current band count instead.
+    if (typeof count !== "number" || !Number.isFinite(count)) return;
     bandCount = clamp(Math.round(count), 2, MAX_BANDS);
     schema = buildSchema(bandCount);
     // Merge: keep existing values, add new defaults for newly-added params.
@@ -741,6 +747,11 @@ export function createFxEqProcessor(
       // setParameter). Unknown ids are skipped, matching setParameter.
       const entries: MorphEntry[] = [];
       for (const id of Object.keys(target)) {
+        // bandCount must never MORPH: routeParam would rebuild the schema
+        // and crossover on the audio thread EVERY block for the morph's
+        // duration (fractional counts round mid-glide). The host's blend
+        // step already excludes it; skip it here for direct core users too.
+        if (id === "bandCount") continue;
         let end = target[id];
         if (typeof end !== "number" || !Number.isFinite(end)) continue;
         const route = schema.routes.get(id);
@@ -750,7 +761,11 @@ export function createFxEqProcessor(
         entries.push({ id, route, start: values[id] ?? 0, end });
       }
       morphEntries = entries;
-      morphDuration = Math.max(0.01, durationSec);
+      // Math.max(0.01, NaN) === NaN: a NaN duration would make the per-block
+      // morph t NaN and write NaN into `values` (consumed raw by input/output
+      // gain) every block — permanent silence from one bad call. Fall back to
+      // the default glide instead.
+      morphDuration = Number.isFinite(durationSec) ? Math.max(0.01, durationSec) : 0.3;
       morphElapsed = 0;
       morphing = true;
     },

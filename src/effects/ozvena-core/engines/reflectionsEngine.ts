@@ -302,10 +302,17 @@ export function createReflectionsEngine(): ReflectionsEngine {
             const ri = idx < 0 ? idx + maxLen : idx;
             let s = bufferL[ri];
             if (tapFadeRemaining > 0 && t < tapBlendCount) {
-              // Tap crossfade: blend the previous tap distance out.
+              // Tap crossfade: blend the previous tap distance out. The old
+              // distance can EXCEED the current maxLen (maxLen is derived
+              // from the NEW tap set — sweeping time downward shrinks it),
+              // so a single wrap-add can still land negative and read
+              // `undefined` → NaN → the tap's LPF state latches NaN and the
+              // tap goes permanently silent. Double-modulo, like the FDN
+              // engines' readTap, wraps any distance safely.
               const tFade = tapFadeRemaining / tapFadeLen;
               const oldD = oldTapsL[t];
-              const oldRi = wl - oldD < 0 ? wl - oldD + maxLen : wl - oldD;
+              const rawL = wl - oldD;
+              const oldRi = ((rawL % maxLen) + maxLen) % maxLen;
               const sOld = bufferL[oldRi];
               s = s * (1 - tFade) + sOld * tFade;
             }
@@ -321,10 +328,13 @@ export function createReflectionsEngine(): ReflectionsEngine {
             const ri = idx < 0 ? idx + maxLen : idx;
             let s = bufferR[ri];
             if (tapFadeRemaining > 0 && t < tapBlendCount) {
-              // Tap crossfade: blend the previous tap distance out.
+              // Tap crossfade: blend the previous tap distance out (see the
+              // left-channel comment — double-modulo keeps the old-distance
+              // read inside the ring even when it exceeds maxLen).
               const tFade = tapFadeRemaining / tapFadeLen;
               const oldD = oldTapsR[t];
-              const oldRi = wr - oldD < 0 ? wr - oldD + maxLen : wr - oldD;
+              const rawR = wr - oldD;
+              const oldRi = ((rawR % maxLen) + maxLen) % maxLen;
               const sOld = bufferR[oldRi];
               s = s * (1 - tFade) + sOld * tFade;
             }

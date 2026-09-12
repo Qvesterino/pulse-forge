@@ -136,6 +136,11 @@ export class MaskingMeter {
     const mainLevels = result.mainLevels;
     const scLevels = result.sidechainLevels;
 
+    // A sidechain buffer shorter than frameCount would read undefined → NaN
+    // into scBuf (garbling this block's masking measurement). Bound the copy
+    // like unmaskModule does and zero-fill the remainder.
+    const scAvail = Math.min(frameCount, sidechain.length);
+
     for (let b = 0; b < MASKING_BANDS; b++) {
       const mainBq = this.mainFilters[b];
       const scBq = this.scFilters[b];
@@ -157,8 +162,11 @@ export class MaskingMeter {
       }
 
       // Filter sidechain signal through the same band (independent filter state)
-      for (let i = 0; i < frameCount; i++) {
+      for (let i = 0; i < scAvail; i++) {
         this.scBuf[i] = sidechain[i];
+      }
+      for (let i = scAvail; i < frameCount; i++) {
+        this.scBuf[i] = 0;
       }
       processBiquadChannel(scBq, this.scBuf, 0, frameCount);
 

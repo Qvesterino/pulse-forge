@@ -364,6 +364,9 @@ export function createPlateChamberEngine(): PlateChamberEngine {
     shDirWFreeze = shAmt > 0 ? Math.min(1, 0.995 - Math.SQRT2 * shInj) : 1;
 
     attackAlpha = q32(1 - Math.exp(-1 / Math.max(0.001, (params.attack / 1000) * sampleRate)));
+    // A poisoned envelope (NaN from a non-finite alpha) latches forever —
+    // see the same heal in hallEngine.recompute().
+    if (!Number.isFinite(attackEnv)) attackEnv = 0;
 
     airIncA = q32((TAU * AIR_RATE_A) / sampleRate);
     airIncB = q32((TAU * AIR_RATE_B) / sampleRate);
@@ -584,7 +587,8 @@ export function createPlateChamberEngine(): PlateChamberEngine {
     // channel buffers — the processor owns every dry/wet/blend gain. This
     // removes the lossy wet-recovery division from the processor.
     process(channels, frameCount) {
-      if (!params.enabled || frameCount <= 0) return;
+      // Zero channels would crash the write-back (channels[0] undefined).
+      if (!params.enabled || frameCount <= 0 || channels.length === 0) return;
 
       const cc = Math.min(channels.length, lines.length, 2);
       ensureScratch(frameCount);

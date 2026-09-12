@@ -81,6 +81,12 @@ import {
 
 // ── Constants ───────────────────────────────────────────────
 
+/** Bounded scalar copy without subarray()'s two view objects per call
+ * (audio-thread allocation discipline — see multiband.copyN). */
+function copyN(dst: Float32Array, src: Float32Array, n: number): void {
+  for (let i = 0; i < n; i++) dst[i] = src[i];
+}
+
 export const COMP_MAX_BANDS = 3;
 
 /** Comp mode enum values. */
@@ -283,16 +289,16 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
     this.multiband.setCrossoverMode(xoverMode);
 
     // Store dry signal for mix
-    this.dryL.set(channels[0].subarray(0, frameCount));
-    this.dryR.set(channels[1].subarray(0, frameCount));
+    copyN(this.dryL, channels[0], frameCount);
+    copyN(this.dryR, channels[1], frameCount);
 
     // Prepare sidechain signal
     let detectSource: Float32Array[] = channels;
     if (scEnabled && sidechain && sidechain.length >= 2) {
       // Apply HPF to sidechain
       setHighPass(this.scHpf.coeffs, scHpfHz, 0.707, this.sampleRate);
-      this.scHpfBufferL.set(sidechain[0].subarray(0, frameCount));
-      this.scHpfBufferR.set(sidechain[1].subarray(0, frameCount));
+      copyN(this.scHpfBufferL, sidechain[0], frameCount);
+      copyN(this.scHpfBufferR, sidechain[1], frameCount);
       const scChannels = this.scChannelsWrap;
       scChannels[0] = this.scHpfBufferL;
       scChannels[1] = this.scHpfBufferR;
@@ -614,7 +620,7 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
       // processBiquadChannel avoids the [buf] wrapper allocation the
       // array-taking helper would need per band per block.
       const buf = this.detHpfBufs[bandIdx];
-      buf.set(channels[0].subarray(0, frameCount));
+      copyN(buf, channels[0], frameCount);
       processBiquadChannel(this.detHpf[bandIdx][0], buf, 0, frameCount);
       processBiquadChannel(this.detHpf[bandIdx][1], buf, 0, frameCount);
       detectCh = buf;

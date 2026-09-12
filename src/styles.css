@@ -7488,6 +7488,8 @@ html {
   background: var(--bg);
   border: 1px solid var(--border);
   overflow: hidden;
+  /* Split-handle drags are horizontal gestures — keep vertical scrolling. */
+  touch-action: pan-y;
   cursor: crosshair;
 }
 

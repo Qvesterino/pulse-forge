@@ -1432,7 +1432,7 @@
     let N = Math.max(3, numTaps | 0);
     if (N % 2 === 0) N++;
     const M = (N - 1) / 2;
-    const fc = freqHz / sampleRate2;
+    const fc = Math.min(0.495, Math.max(1e-3, freqHz / sampleRate2));
     let sum = 0;
     for (let n = 0; n < N; n++) {
       const k = n - M;
@@ -1884,6 +1884,13 @@
       this.shortTermLufs = ABSOLUTE_GATE_LUFS;
       this.integratedLufs = ABSOLUTE_GATE_LUFS;
       this.lufsRange = 0;
+      this.unfedSamples = 0;
+      this.staleUntilTurnover = false;
+      this.fedSinceStale = 0;
+      for (const kw of [...this.kStage1, ...this.kStage2]) {
+        kw.z1 = 0;
+        kw.z2 = 0;
+      }
     }
     /**
      * Bookkeeping for a block the owner processed WITHOUT feeding the meter
@@ -3112,6 +3119,8 @@
         if (this.metersEnabled) {
           this.updateInputMeters(chL, chR, frameCount);
           this.updateOutputMeters(chL, chR, frameCount);
+        } else if (gainMatchEnabled) {
+          this.lufsMeter.noteUnfed(frameCount);
         }
         this.totalSamples += frameCount;
         return;
@@ -3143,8 +3152,10 @@
         if (this.metersEnabled) {
           this.updateInputMeters(chunkL, chunkR, frames);
         }
-        this.dryBufferL.set(chunkL.subarray(0, frames));
-        this.dryBufferR.set(chunkR.subarray(0, frames));
+        for (let i = 0; i < frames; i++) {
+          this.dryBufferL[i] = chunkL[i];
+          this.dryBufferR[i] = chunkR[i];
+        }
         if (this.deltaModule !== null && activeChain.modules.length > 0) {
           let processedToDelta = false;
           for (const moduleType of activeChain.modules) {
@@ -3612,6 +3623,7 @@
       const isMasking = result.isMasking;
       const mainLevels = result.mainLevels;
       const scLevels = result.sidechainLevels;
+      const scAvail = Math.min(frameCount, sidechain.length);
       for (let b = 0; b < MASKING_BANDS; b++) {
         const mainBq = this.mainFilters[b];
         const scBq = this.scFilters[b];
@@ -3624,8 +3636,11 @@
           const a = Math.abs(this.mainBuf[i]);
           if (a > mainPeak) mainPeak = a;
         }
-        for (let i = 0; i < frameCount; i++) {
+        for (let i = 0; i < scAvail; i++) {
           this.scBuf[i] = sidechain[i];
+        }
+        for (let i = scAvail; i < frameCount; i++) {
+          this.scBuf[i] = 0;
         }
         processBiquadChannel(scBq, this.scBuf, 0, frameCount);
         let scPeak = 0;
@@ -4130,6 +4145,9 @@
   };
 
   // src/effects/ultina-core/dsp/multiband.ts
+  function copyN(dst, src, n) {
+    for (let i = 0; i < n; i++) dst[i] = src[i];
+  }
   var LR4_Q = 1 / Math.SQRT2;
   var MAX_BANDS = 3;
   var CrossoverNetwork = class {
@@ -4239,7 +4257,7 @@
       const chCount = Math.min(this.channelCount, input.length);
       if (this.bandCount === 1) {
         for (let ch = 0; ch < chCount; ch++) {
-          bandOut[0][ch].set(input[ch].subarray(0, frameCount));
+          copyN(bandOut[0][ch], input[ch], frameCount);
         }
         return;
       }
@@ -4294,20 +4312,20 @@
     splitLr4(input, bandOut, frameCount) {
       if (this.bandCount === 1) {
         for (let ch = 0; ch < this.channelCount; ch++) {
-          bandOut[0][ch].set(input[ch].subarray(0, frameCount));
+          copyN(bandOut[0][ch], input[ch], frameCount);
         }
         return;
       }
       const chCount = Math.min(this.channelCount, input.length);
       for (let ch = 0; ch < chCount; ch++) {
-        this.lr4Work[ch].set(input[ch].subarray(0, frameCount));
+        copyN(this.lr4Work[ch], input[ch], frameCount);
       }
       const activeSplits = this.bandCount - 1;
       for (let s = 0; s < activeSplits; s++) {
         const split = this.splits[s];
         if (s === 0) {
           for (let ch = 0; ch < chCount; ch++) {
-            this.lr4LpOut[ch].set(this.lr4Work[ch].subarray(0, frameCount));
+            copyN(this.lr4LpOut[ch], this.lr4Work[ch], frameCount);
           }
           for (const bq of split.lp) {
             for (let ch = 0; ch < chCount; ch++) {
@@ -4322,18 +4340,18 @@
         }
         if (s === 0) {
           for (let ch = 0; ch < chCount; ch++) {
-            bandOut[0][ch].set(this.lr4LpOut[ch].subarray(0, frameCount));
+            copyN(bandOut[0][ch], this.lr4LpOut[ch], frameCount);
           }
         }
         if (s === activeSplits - 1) {
           const lastBand = this.bandCount - 1;
           for (let ch = 0; ch < chCount; ch++) {
-            bandOut[lastBand][ch].set(this.lr4Work[ch].subarray(0, frameCount));
+            copyN(bandOut[lastBand][ch], this.lr4Work[ch], frameCount);
           }
         } else {
           if (this.bandCount === 3 && s === 0) {
             for (let ch = 0; ch < chCount; ch++) {
-              bandOut[1][ch].set(this.lr4Work[ch].subarray(0, frameCount));
+              copyN(bandOut[1][ch], this.lr4Work[ch], frameCount);
             }
           }
         }
@@ -4341,7 +4359,7 @@
       if (this.bandCount === 3 && this.splits.length === 2) {
         const split1 = this.splits[1];
         for (let ch = 0; ch < chCount; ch++) {
-          this.lr4MidLp[ch].set(bandOut[1][ch].subarray(0, frameCount));
+          copyN(this.lr4MidLp[ch], bandOut[1][ch], frameCount);
         }
         for (const bq of split1.lp) {
           for (let ch = 0; ch < chCount; ch++) {
@@ -4349,7 +4367,7 @@
           }
         }
         for (let ch = 0; ch < chCount; ch++) {
-          bandOut[1][ch].set(this.lr4MidLp[ch].subarray(0, frameCount));
+          copyN(bandOut[1][ch], this.lr4MidLp[ch], frameCount);
         }
       }
     }
@@ -4803,6 +4821,9 @@
   }
 
   // src/effects/ultina-core/dsp/modules/compModule.ts
+  function copyN2(dst, src, n) {
+    for (let i = 0; i < n; i++) dst[i] = src[i];
+  }
   var COMP_MAX_BANDS = 3;
   var COMP_MODES = ["punch", "modern", "vintage", "opto", "fet"];
   var DETECTION_MODES = ["peak", "rms", "trueEnvelope"];
@@ -4926,13 +4947,13 @@
       this.updateMultiband(bandCount, xover1, xover2);
       const xoverMode = (params["comp.crossoverMode"] ?? 0) >= 0.5 ? "hybrid" : "analog";
       this.multiband.setCrossoverMode(xoverMode);
-      this.dryL.set(channels[0].subarray(0, frameCount));
-      this.dryR.set(channels[1].subarray(0, frameCount));
+      copyN2(this.dryL, channels[0], frameCount);
+      copyN2(this.dryR, channels[1], frameCount);
       let detectSource = channels;
       if (scEnabled && sidechain && sidechain.length >= 2) {
         setHighPass(this.scHpf.coeffs, scHpfHz, 0.707, this.sampleRate);
-        this.scHpfBufferL.set(sidechain[0].subarray(0, frameCount));
-        this.scHpfBufferR.set(sidechain[1].subarray(0, frameCount));
+        copyN2(this.scHpfBufferL, sidechain[0], frameCount);
+        copyN2(this.scHpfBufferR, sidechain[1], frameCount);
         const scChannels = this.scChannelsWrap;
         scChannels[0] = this.scHpfBufferL;
         scChannels[1] = this.scHpfBufferR;
@@ -5176,7 +5197,7 @@
       let detectCh = sidechainSource ? sidechainSource[0] ?? channels[0] : channels[0];
       if (!sidechainSource && detHpfActive) {
         const buf = this.detHpfBufs[bandIdx];
-        buf.set(channels[0].subarray(0, frameCount));
+        copyN2(buf, channels[0], frameCount);
         processBiquadChannel(this.detHpf[bandIdx][0], buf, 0, frameCount);
         processBiquadChannel(this.detHpf[bandIdx][1], buf, 0, frameCount);
         detectCh = buf;
@@ -5299,6 +5320,9 @@
   };
 
   // src/effects/ultina-core/dsp/modules/gateModule.ts
+  function copyN3(dst, src, n) {
+    for (let i = 0; i < n; i++) dst[i] = src[i];
+  }
   var GATE_MAX_BANDS = 3;
   var GateModuleProcessor = class {
     sampleRate = 44100;
@@ -5387,14 +5411,14 @@
       this.updateMultiband(bandCount, xover1, xover2);
       const xoverMode = (params["gate.crossoverMode"] ?? 0) >= 0.5 ? "hybrid" : "analog";
       this.multiband.setCrossoverMode(xoverMode);
-      this.dryL.set(channels[0].subarray(0, frameCount));
-      this.dryR.set(channels[1].subarray(0, frameCount));
+      copyN3(this.dryL, channels[0], frameCount);
+      copyN3(this.dryR, channels[1], frameCount);
       let detectSource = channels;
       const scEnabled = sidechain && sidechain.length >= 2;
       if (scEnabled) {
         setHighPass(this.scHpf.coeffs, scHpfHz, 0.707, this.sampleRate);
-        this.scHpfBufferL.set(sidechain[0].subarray(0, frameCount));
-        this.scHpfBufferR.set(sidechain[1].subarray(0, frameCount));
+        copyN3(this.scHpfBufferL, sidechain[0], frameCount);
+        copyN3(this.scHpfBufferR, sidechain[1], frameCount);
         const scChannels = this.scChannelsWrap;
         scChannels[0] = this.scHpfBufferL;
         scChannels[1] = this.scHpfBufferR;
@@ -5906,6 +5930,9 @@
   };
 
   // src/effects/ultina-core/dsp/modules/transientModule.ts
+  function copyN4(dst, src, n) {
+    for (let i = 0; i < n; i++) dst[i] = src[i];
+  }
   var TRANSIENT_MAX_BANDS = 3;
   var GLOBAL_MODES = {
     0: { attackMult: 0.5, releaseMult: 0.7, envSpeed: 1.5 },
@@ -6001,8 +6028,8 @@
       this.updateMultiband(bandCount, xover1, xover2);
       const xoverMode = (params["transient.crossoverMode"] ?? 0) >= 0.5 ? "hybrid" : "analog";
       this.multiband.setCrossoverMode(xoverMode);
-      this.dryL.set(channels[0].subarray(0, frameCount));
-      this.dryR.set(channels[1].subarray(0, frameCount));
+      copyN4(this.dryL, channels[0], frameCount);
+      copyN4(this.dryR, channels[1], frameCount);
       this.multiband.process(
         channels,
         frameCount,
@@ -6369,6 +6396,9 @@
       if (bandCount !== this.cachedBandCount) {
         this.multiband.setBandCount(bandCount);
         this.cachedBandCount = bandCount;
+        for (let b = bandCount; b < CLIPPER_MAX_BANDS; b++) {
+          resetBandMeterState(this.bandMeters[b]);
+        }
         this.cachedXover1 = -1;
         this.cachedXover2 = -1;
       }
@@ -7219,7 +7249,7 @@
               let sum = 0;
               let count = 0;
               for (let i = Math.max(0, lag); i < Math.min(chunkSize, chunkSize + lag); i++) {
-                const scIdx = i - lag;
+                const scIdx = offset + i - lag;
                 if (scIdx >= 0 && scIdx < sc.length) {
                   sum += this.dryL[i] * sc[scIdx];
                   count++;
@@ -7709,6 +7739,7 @@
     lastLatencyPosted = -1;
     blockCount = 0;
     metersEnabled = true;
+    disposed = false;
     // Time-stamped parameter events (setParameterAt — automation lanes and
     // offline renders), sorted ascending by `when`. Applied from process()
     // when the render clock reaches them — port messages alone have no
@@ -7775,6 +7806,7 @@
           this.proc.setMetersEnabled(this.metersEnabled);
         } else if (msg.type === "dispose") {
           this.proc.dispose();
+          this.disposed = true;
         }
       };
     }
@@ -7819,6 +7851,7 @@
       }
     }
     process(inputs, outputs) {
+      if (this.disposed) return false;
       const output = outputs[0];
       if (!output || !output[0] || !output[1]) return true;
       const input = inputs[0];
@@ -7842,7 +7875,7 @@
           output[c].set(this.scratch[c].subarray(0, frames), offset);
         }
       }
-      if (this.metersEnabled && (this.blockCount++ & 3) === 0) {
+      if (this.metersEnabled && (this.blockCount++ & 15) === 0) {
         this.port.postMessage({ type: "meters", meters: this.proc.getMeters() });
       }
       this.postLatency();

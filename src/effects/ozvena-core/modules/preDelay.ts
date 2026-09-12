@@ -123,6 +123,10 @@ export function createPreDelay(): PreDelay {
     ringLength = capacity;
   }
   function recomputeDelaySamples(): void {
+    // NaN/Infinity ms (corrupt direct-core state) must degrade to 0 —
+    // Math.max(0, Math.round(NaN)) is NaN, which slips past both the
+    // `<= 0` process gate and the `> cap` clamp and reads dly[NaN].
+    const ms = Number.isFinite(params.ms) ? params.ms : 0;
     if (params.syncEnabled) {
       const beats = syncNoteToBeats(params.syncNote);
       delaySamples = Math.max(0, Math.round((60 / Math.max(1e-3, bpm)) * beats * sampleRate));
@@ -132,7 +136,7 @@ export function createPreDelay(): PreDelay {
       const cap = maxSupportedDelaySamples();
       if (delaySamples > cap) delaySamples = cap;
     } else {
-      delaySamples = Math.max(0, Math.round((params.ms / 1000) * sampleRate));
+      delaySamples = Math.max(0, Math.round((ms / 1000) * sampleRate));
       const cap = maxSupportedDelaySamples();
       if (delaySamples > cap) delaySamples = cap;
     }

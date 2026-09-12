@@ -41,6 +41,16 @@ import {
 } from "./primitives.js";
 import type { BandCount, ChannelMode, CrossoverMode } from "../contracts/channelModes.js";
 
+/**
+ * Bounded scalar copy — `dst.set(src.subarray(0, n))` semantics WITHOUT the
+ * two TypedArray view objects per call (this runs several times per channel
+ * per block in the crossover splits; subarray views here were the largest
+ * remaining audio-thread allocation source).
+ */
+function copyN(dst: Float32Array, src: Float32Array, n: number): void {
+  for (let i = 0; i < n; i++) dst[i] = src[i];
+}
+
 // ── Linkwitz-Riley crossover ───────────────────────────────
 
 /** Butterworth Q for LR4 sections. */
@@ -198,7 +208,7 @@ export class CrossoverNetwork {
     if (this.bandCount === 1) {
       // Single band: just copy (both modes identical)
       for (let ch = 0; ch < chCount; ch++) {
-        bandOut[0][ch].set(input[ch].subarray(0, frameCount));
+        copyN(bandOut[0][ch], input[ch], frameCount);
       }
       return;
     }
@@ -278,7 +288,7 @@ export class CrossoverNetwork {
   ): void {
     if (this.bandCount === 1) {
       for (let ch = 0; ch < this.channelCount; ch++) {
-        bandOut[0][ch].set(input[ch].subarray(0, frameCount));
+        copyN(bandOut[0][ch], input[ch], frameCount);
       }
       return;
     }
@@ -286,7 +296,7 @@ export class CrossoverNetwork {
     // Copy input to pre-allocated work buffer (width-honoring — see split())
     const chCount = Math.min(this.channelCount, input.length);
     for (let ch = 0; ch < chCount; ch++) {
-      this.lr4Work[ch].set(input[ch].subarray(0, frameCount));
+      copyN(this.lr4Work[ch], input[ch], frameCount);
     }
 
     // Run ONLY the splits the active band count needs. The remaining
@@ -307,7 +317,7 @@ export class CrossoverNetwork {
       // corrupting the mid band and the LR4 flat-sum reconstruction.
       if (s === 0) {
         for (let ch = 0; ch < chCount; ch++) {
-          this.lr4LpOut[ch].set(this.lr4Work[ch].subarray(0, frameCount));
+          copyN(this.lr4LpOut[ch], this.lr4Work[ch], frameCount);
         }
         for (const bq of split.lp) {
           for (let ch = 0; ch < chCount; ch++) {
@@ -326,7 +336,7 @@ export class CrossoverNetwork {
       if (s === 0) {
         // Band 0 = lowest
         for (let ch = 0; ch < chCount; ch++) {
-          bandOut[0][ch].set(this.lr4LpOut[ch].subarray(0, frameCount));
+          copyN(bandOut[0][ch], this.lr4LpOut[ch], frameCount);
         }
       }
 
@@ -334,13 +344,13 @@ export class CrossoverNetwork {
         // Last split: work = highest band
         const lastBand = this.bandCount - 1;
         for (let ch = 0; ch < chCount; ch++) {
-          bandOut[lastBand][ch].set(this.lr4Work[ch].subarray(0, frameCount));
+          copyN(bandOut[lastBand][ch], this.lr4Work[ch], frameCount);
         }
       } else {
         if (this.bandCount === 3 && s === 0) {
           // Store HP output as band 1 candidate; will be refined at split 1
           for (let ch = 0; ch < chCount; ch++) {
-            bandOut[1][ch].set(this.lr4Work[ch].subarray(0, frameCount));
+            copyN(bandOut[1][ch], this.lr4Work[ch], frameCount);
           }
         }
       }
@@ -350,7 +360,7 @@ export class CrossoverNetwork {
     if (this.bandCount === 3 && this.splits.length === 2) {
       const split1 = this.splits[1];
       for (let ch = 0; ch < chCount; ch++) {
-        this.lr4MidLp[ch].set(bandOut[1][ch].subarray(0, frameCount));
+        copyN(this.lr4MidLp[ch], bandOut[1][ch], frameCount);
       }
       for (const bq of split1.lp) {
         for (let ch = 0; ch < chCount; ch++) {
@@ -358,7 +368,7 @@ export class CrossoverNetwork {
         }
       }
       for (let ch = 0; ch < chCount; ch++) {
-        bandOut[1][ch].set(this.lr4MidLp[ch].subarray(0, frameCount));
+        copyN(bandOut[1][ch], this.lr4MidLp[ch], frameCount);
       }
     }
   }

@@ -327,8 +327,12 @@ export class PhaseModuleProcessor implements UltinaModuleProcessor {
           for (let lag = -maxLag; lag <= maxLag; lag++) {
             let sum = 0;
             let count = 0;
+            // dryL holds THIS chunk (starting at `offset`); the sidechain
+            // must be indexed at the same absolute position — correlating
+            // chunk 2+ of a multi-chunk host block against the sidechain's
+            // FIRST window produced garbage lag estimates.
             for (let i = Math.max(0, lag); i < Math.min(chunkSize, chunkSize + lag); i++) {
-              const scIdx = i - lag;
+              const scIdx = offset + i - lag;
               if (scIdx >= 0 && scIdx < sc.length) {
                 sum += this.dryL[i] * sc[scIdx];
                 count++;

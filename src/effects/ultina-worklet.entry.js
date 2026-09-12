@@ -20,6 +20,7 @@ class UltinaWorkletProcessor extends AudioWorkletProcessor {
   lastLatencyPosted = -1;
   blockCount = 0;
   metersEnabled = true;
+  disposed = false;
   // Time-stamped parameter events (setParameterAt — automation lanes and
   // offline renders), sorted ascending by `when`. Applied from process()
   // when the render clock reaches them — port messages alone have no
@@ -109,6 +110,9 @@ class UltinaWorkletProcessor extends AudioWorkletProcessor {
         // message is the only signal — without it every instance ever
         // created leaks a stale registry entry for the page's lifetime.
         this.proc.dispose();
+        // Stop DSP + latency posts for any quantum pulled between this
+        // message and the main thread's node.disconnect() (mirrors Ozvena).
+        this.disposed = true;
       }
     };
   }
@@ -159,6 +163,7 @@ class UltinaWorkletProcessor extends AudioWorkletProcessor {
   }
 
   process(inputs, outputs) {
+    if (this.disposed) return false;
     const output = outputs[0];
     if (!output || !output[0] || !output[1]) return true;
     const input = inputs[0];
@@ -191,8 +196,10 @@ class UltinaWorkletProcessor extends AudioWorkletProcessor {
       }
     }
     // Meters snapshot ≈21 Hz — spectrum/LUFS/waveform/GR for the panel.
-    // Entirely skipped while the host has metering disabled.
-    if (this.metersEnabled && (this.blockCount++ & 3) === 0) {
+    // Entirely skipped while the host has metering disabled. Every 16th
+    // 128-frame quantum: ~21.5 Hz at 44.1 kHz, ~23.4 Hz at 48 kHz (masking
+    // with 3 ran at ~94 Hz — 4× the documented main-thread pressure).
+    if (this.metersEnabled && (this.blockCount++ & 15) === 0) {
       this.port.postMessage({ type: "meters", meters: this.proc.getMeters() });
     }
     // Modules configure their crossover (and thus DSP latency) on their

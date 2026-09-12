@@ -273,6 +273,17 @@ export class LufsMeter {
     this.shortTermLufs = ABSOLUTE_GATE_LUFS;
     this.integratedLufs = ABSOLUTE_GATE_LUFS;
     this.lufsRange = 0;
+    // Unfed/stale tracking must reset with everything else (mirror reset()):
+    // a re-prepare while the stale flag was armed left getShortTermLufs()
+    // reporting silence until the window fully turned over. Also clear the
+    // K-weighting filter state.
+    this.unfedSamples = 0;
+    this.staleUntilTurnover = false;
+    this.fedSinceStale = 0;
+    for (const kw of [...this.kStage1, ...this.kStage2]) {
+      kw.z1 = 0;
+      kw.z2 = 0;
+    }
   }
 
   /**

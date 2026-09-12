@@ -191,22 +191,35 @@ describe("fxeq real-time performance gate", () => {
     // path is precompiled at startMorph (see fxEqProcessor) — measured
     // overhead ~64 µs/block over idle vs 139 µs/block for the old per-block
     // applyAllParams (full schema walk + crossover stage rebuild every
-    // block). Self-calibration: morph blocks vs the SAME processor's idle
-    // blocks, best-of-3 medians each. Budget sits between the new ratio
-    // (~1.65×) and the old path (~2.4×).
+    // block). The idle and morph processors must have the SAME DSP state:
+    // otherwise changing every parameter from its default (including module
+    // enable flags) measures a different audio graph, not morph overhead.
+    // Self-calibration: same-state morph blocks vs idle blocks, best-of-3
+    // medians each. Budget sits between the new ratio (~1.65×) and the old
+    // path (~2.4×).
     const channels = deterministicChannels();
-    const proc = createFxEqProcessor();
-    proc.prepare(SR, 2, BLOCK);
-    proc.loadParameters({ limiterEnabled: 0, globalMix: 100 });
-    const idle = measure(proc, channels);
+    const baseParams = { limiterEnabled: 0, globalMix: 100 };
 
+    const idleProc = createFxEqProcessor();
+    idleProc.prepare(SR, 2, BLOCK);
+    idleProc.loadParameters(baseParams);
+    const idle = measure(idleProc, channels);
+
+    const morphProc = createFxEqProcessor();
+    morphProc.prepare(SR, 2, BLOCK);
+    morphProc.loadParameters(baseParams);
+    // Include every schema route in the morph while keeping the DSP graph
+    // unchanged. This isolates the precompiled route loop from module
+    // enable/quality changes and remains a valid regression for the old
+    // per-block applyAllParams implementation.
     const target: Record<string, number> = {};
-    for (const def of proc.parameterDefs) {
+    const initial = morphProc.getParameters();
+    for (const def of morphProc.parameterDefs) {
       if (def.id === "bandCount") continue;
-      target[def.id] = def.minValue + (def.maxValue - def.minValue) * 0.75;
+      target[def.id] = initial[def.id];
     }
-    proc.startMorph(target, 60); // 60 s — far more blocks than we measure
-    const morphing = measure(proc, channels);
+    morphProc.startMorph(target, 60); // 60 s — far more blocks than we measure
+    const morphing = measure(morphProc, channels);
 
     const ratio = morphing.median / idle.median;
     console.info(
