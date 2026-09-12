@@ -27,11 +27,7 @@
 // for a minimum duration after the signal drops below threshold.
 // ═══════════════════════════════════════════════════════════
 
-import type {
-  UltinaModuleProcessor,
-  ModuleProcessorContext,
-  ModuleProcessArgs,
-} from "../ultinaProcessor.js";
+import type { UltinaModuleProcessor, ModuleProcessorContext, ModuleProcessArgs } from "../ultinaProcessor.js";
 import {
   clamp,
   dbToLinear,
@@ -45,22 +41,15 @@ import {
   processBiquad,
   type BiquadState,
 } from "../primitives.js";
-import {
-  MultibandProcessor,
-} from "../multiband.js";
+import { MultibandProcessor } from "../multiband.js";
 import { DryDelayMixer } from "../dryDelay.js";
-import {
-  channelModeFromValue,
-  type BandCount,
-  type CrossoverMode,
-} from "../../contracts/channelModes.js";
+import { channelModeFromValue, type BandCount, type CrossoverMode } from "../../contracts/channelModes.js";
 
 /** Bounded scalar copy without subarray()'s two view objects per call
  * (audio-thread allocation discipline — see multiband.copyN). */
 function copyN(dst: Float32Array, src: Float32Array, n: number): void {
   for (let i = 0; i < n; i++) dst[i] = src[i];
 }
-
 
 // ── Constants ───────────────────────────────────────────────
 
@@ -128,6 +117,27 @@ export class GateModuleProcessor implements UltinaModuleProcessor {
   private openThresholdDbBuf: number[] = [0, 0, 0];
   private closeThresholdDbBuf: number[] = [0, 0, 0];
   private scChannelsWrap: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
+  // Per-block scalars + persistent band callback (audio thread — a fresh
+  // closure per process() call is steady-state GC churn).
+  private curDetectSource: Float32Array[] | null = null;
+  private curAttackMs = 0;
+  private curHoldMs = 0;
+  private curReleaseMs = 0;
+  private curClosedGainLinear = 0;
+  private bandCb = (bandIdx: number, bandChannels: Float32Array[], bandFrames: number): void => {
+    this.processBand(
+      bandIdx,
+      bandChannels,
+      bandFrames,
+      this.curDetectSource,
+      this.openThresholdDbBuf[bandIdx],
+      this.closeThresholdDbBuf[bandIdx],
+      this.curAttackMs,
+      this.curHoldMs,
+      this.curReleaseMs,
+      this.curClosedGainLinear,
+    );
+  };
   private scHpfBufferR: Float32Array = new Float32Array(0);
 
   // Meter state
@@ -207,9 +217,9 @@ export class GateModuleProcessor implements UltinaModuleProcessor {
     openThresholdDb[1] = params["gate.band1.openThresholdDb"] ?? -40;
     openThresholdDb[2] = params["gate.band2.openThresholdDb"] ?? -40;
     const closeThresholdDb = this.closeThresholdDbBuf;
-    closeThresholdDb[0] = params["gate.band0.closeThresholdDb"] ?? (openThresholdDb[0] - hysteresisDb);
-    closeThresholdDb[1] = params["gate.band1.closeThresholdDb"] ?? (openThresholdDb[1] - hysteresisDb);
-    closeThresholdDb[2] = params["gate.band2.closeThresholdDb"] ?? (openThresholdDb[2] - hysteresisDb);
+    closeThresholdDb[0] = params["gate.band0.closeThresholdDb"] ?? openThresholdDb[0] - hysteresisDb;
+    closeThresholdDb[1] = params["gate.band1.closeThresholdDb"] ?? openThresholdDb[1] - hysteresisDb;
+    closeThresholdDb[2] = params["gate.band2.closeThresholdDb"] ?? openThresholdDb[2] - hysteresisDb;
     // A close threshold ABOVE its open threshold makes the state machine
     // chatter (open→closing→open… per block) — enforce close ≤ open, which
     // is also what the hysteresis default expresses.
@@ -242,27 +252,15 @@ export class GateModuleProcessor implements UltinaModuleProcessor {
       detectSource = scChannels;
     }
 
-    // Process through multiband
+    // Process through multiband — persistent bound callback (allocated once;
+    // per-block scalars travel through fields, not the closure).
     const scActive = scEnabled && sidechain && sidechain.length >= 2;
-    this.multiband.process(
-      channels,
-      frameCount,
-      (bandIdx, bandChannels, bandFrames) => {
-        this.processBand(
-          bandIdx,
-          bandChannels,
-          bandFrames,
-          scActive ? detectSource : null,
-          openThresholdDb[bandIdx],
-          closeThresholdDb[bandIdx],
-          attackMs,
-          holdMs,
-          releaseMs,
-          closedGainLinear,
-        );
-      },
-      channelMode,
-    );
+    this.curDetectSource = scActive ? detectSource : null;
+    this.curAttackMs = attackMs;
+    this.curHoldMs = holdMs;
+    this.curReleaseMs = releaseMs;
+    this.curClosedGainLinear = closedGainLinear;
+    this.multiband.process(channels, frameCount, this.bandCb, channelMode);
 
     // Mix dry/wet — the dry copy is delayed by the wet path's current
     // latency (crossover + oversampler) so mix < 100 % stays phase-coherent

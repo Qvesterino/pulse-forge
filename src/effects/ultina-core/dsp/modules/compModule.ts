@@ -38,11 +38,7 @@
 //   TrueEnvelope: 4x oversampled peak interpolation for precision
 // ═══════════════════════════════════════════════════════════
 
-import type {
-  UltinaModuleProcessor,
-  ModuleProcessorContext,
-  ModuleProcessArgs,
-} from "../ultinaProcessor.js";
+import type { UltinaModuleProcessor, ModuleProcessorContext, ModuleProcessArgs } from "../ultinaProcessor.js";
 import {
   clamp,
   dbToLinear,
@@ -60,9 +56,7 @@ import {
   processBiquadChannel,
   type BiquadState,
 } from "../primitives.js";
-import {
-  MultibandProcessor,
-} from "../multiband.js";
+import { MultibandProcessor } from "../multiband.js";
 import {
   OS_FACTOR,
   OS_LATENCY_SAMPLES,
@@ -73,11 +67,7 @@ import {
   downsample as os_Downsample,
 } from "../oversampler.js";
 import { DryDelayMixer } from "../dryDelay.js";
-import {
-  channelModeFromValue,
-  type BandCount,
-  type CrossoverMode,
-} from "../../contracts/channelModes.js";
+import { channelModeFromValue, type BandCount, type CrossoverMode } from "../../contracts/channelModes.js";
 
 // ── Constants ───────────────────────────────────────────────
 
@@ -91,11 +81,11 @@ export const COMP_MAX_BANDS = 3;
 
 /** Comp mode enum values. */
 const COMP_MODES = ["punch", "modern", "vintage", "opto", "fet"] as const;
-type CompMode = typeof COMP_MODES[number];
+type CompMode = (typeof COMP_MODES)[number];
 
 /** Detection mode enum values. */
 const DETECTION_MODES = ["peak", "rms", "trueEnvelope"] as const;
-type DetectionMode = typeof DETECTION_MODES[number];
+type DetectionMode = (typeof DETECTION_MODES)[number];
 
 // ── Band state ──────────────────────────────────────────────
 
@@ -155,6 +145,34 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
   // Reused per-block scratch (audio thread — no fresh arrays in process())
   private scChannelsWrap: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
   private bandThresholdDbBuf: number[] = [0, 0, 0];
+  // Per-block scalars + persistent band callback (audio thread — a fresh
+  // closure per process() call is steady-state GC churn).
+  private curDetectSource: Float32Array[] | null = null;
+  private curEffectiveAttack = 0;
+  private curEffectiveRelease = 0;
+  private curEffectiveRatio = 1;
+  private curEffectiveKneeDb = 0;
+  private curDetectionMode: DetectionMode = "rms";
+  private curAutoRelease = false;
+  private curMode: CompMode = "modern";
+  private curDetHpfActive = false;
+  private bandCb = (bandIdx: number, bandChannels: Float32Array[], bandFrames: number): void => {
+    this.processBand(
+      bandIdx,
+      bandChannels,
+      bandFrames,
+      this.curDetectSource,
+      this.bandThresholdDbBuf[bandIdx],
+      this.curEffectiveAttack,
+      this.curEffectiveRelease,
+      this.curEffectiveRatio,
+      this.curEffectiveKneeDb,
+      this.curDetectionMode,
+      this.curAutoRelease,
+      this.curMode,
+      this.curDetHpfActive,
+    );
+  };
 
   // Dry buffer for mix
   private dryL: Float32Array = new Float32Array(0);
@@ -280,8 +298,13 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
     const deltaListen = (params["comp.delta"] ?? 0) >= 0.5;
 
     // Apply mode-specific adjustments
-    const { effectiveAttack, effectiveRelease, effectiveRatio, effectiveKneeDb } =
-      this.applyMode(mode, attackMs, releaseMs, ratio, kneeDb);
+    const { effectiveAttack, effectiveRelease, effectiveRatio, effectiveKneeDb } = this.applyMode(
+      mode,
+      attackMs,
+      releaseMs,
+      ratio,
+      kneeDb,
+    );
 
     // Update multiband config if changed
     this.updateMultiband(bandCount, xover1, xover2);
@@ -316,8 +339,7 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
     // external sidechain drives the detector, comp.sidechainHpfHz already
     // filters that source, so this stays off to avoid double filtering.
     const scActive = scEnabled && sidechain && sidechain.length >= 2;
-    const detHpfActive =
-      detHpfHz > 20.5 && !scActive && this.detHpf.length === COMP_MAX_BANDS;
+    const detHpfActive = detHpfHz > 20.5 && !scActive && this.detHpf.length === COMP_MAX_BANDS;
     if (detHpfActive) {
       for (let b = 0; b < COMP_MAX_BANDS; b++) {
         for (const stage of this.detHpf[b]) {
@@ -326,29 +348,18 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
       }
     }
 
-    // Process through multiband
-    this.multiband.process(
-      channels,
-      frameCount,
-      (bandIdx, bandChannels, bandFrames) => {
-        this.processBand(
-          bandIdx,
-          bandChannels,
-          bandFrames,
-          scActive ? detectSource : null,
-          bandThresholdDb[bandIdx],
-          effectiveAttack,
-          effectiveRelease,
-          effectiveRatio,
-          effectiveKneeDb,
-          detectionMode,
-          autoRelease,
-          mode,
-          detHpfActive,
-        );
-      },
-      channelMode,
-    );
+    // Process through multiband — persistent bound callback (allocated once;
+    // per-block scalars travel through fields, not the closure).
+    this.curDetectSource = scActive ? detectSource : null;
+    this.curEffectiveAttack = effectiveAttack;
+    this.curEffectiveRelease = effectiveRelease;
+    this.curEffectiveRatio = effectiveRatio;
+    this.curEffectiveKneeDb = effectiveKneeDb;
+    this.curDetectionMode = detectionMode;
+    this.curAutoRelease = autoRelease;
+    this.curMode = mode;
+    this.curDetHpfActive = detHpfActive;
+    this.multiband.process(channels, frameCount, this.bandCb, channelMode);
 
     // Auto makeup
     let finalMakeup = makeupDb;
@@ -417,15 +428,7 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
     // latency so the two signals stay phase-aligned (delta uses the same
     // delayed copy: delta = processed − input, without a delayed echo).
     const mix = mixPercent / 100;
-    this.dryDelay.process(
-      channels,
-      this.dryL,
-      this.dryR,
-      frameCount,
-      this.currentLatencySamples(),
-      mix,
-      deltaListen,
-    );
+    this.dryDelay.process(channels, this.dryL, this.dryR, frameCount, this.currentLatencySamples(), mix, deltaListen);
 
     // (Per-band output levels are measured inside processBand.)
   }
@@ -606,9 +609,7 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
     band.releaseCoef = smoothCoef(releaseMs, this.sampleRate);
     // Auto-release fast coefficient — constant for the whole block, so it
     // is computed once here instead of calling Math.exp per sample below.
-    const autoReleaseFastCoef = autoRelease
-      ? smoothCoef(releaseMs * 0.2, this.sampleRate)
-      : 0;
+    const autoReleaseFastCoef = autoRelease ? smoothCoef(releaseMs * 0.2, this.sampleRate) : 0;
     // Opto photocell memory coefficient (~600 ms tau), also block-constant.
     const optoMemCoef = mode === "opto" ? smoothCoef(600, this.sampleRate) : 0;
 
@@ -659,7 +660,7 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
           const denom = s0 - 2 * s1 + s2;
           let truePeak = s1;
           if (Math.abs(denom) > 1e-10) {
-            const offset = 0.5 * (s0 - s2) / denom;
+            const offset = (0.5 * (s0 - s2)) / denom;
             if (Math.abs(offset) <= 0.5) {
               truePeak = s1 - 0.25 * (s0 - s2) * offset;
             }
@@ -756,12 +757,7 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
    * Implements soft knee compression curve.
    * Returns positive dB for reduction.
    */
-  private computeGainReduction(
-    detectedDb: number,
-    thresholdDb: number,
-    ratio: number,
-    kneeDb: number,
-  ): number {
+  private computeGainReduction(detectedDb: number, thresholdDb: number, ratio: number, kneeDb: number): number {
     // Below threshold: no compression
     if (kneeDb <= 0) {
       // Hard knee
@@ -788,8 +784,7 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
     // The gain reduction within the knee follows a quadratic curve
     // that smoothly transitions from 0 to the full compression line
     const fullGr = (detectedDb - thresholdDb) * (1 - 1 / ratio);
-    const kneeFraction = (x / w);
+    const kneeFraction = x / w;
     return fullGr * kneeFraction * kneeFraction;
   }
-
 }

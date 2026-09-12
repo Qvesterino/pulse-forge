@@ -21,11 +21,7 @@
 // Distortion types (trash mode): Overdrive, Scream, Clipper, Scratch
 // ═══════════════════════════════════════════════════════════
 
-import type {
-  ModuleProcessArgs,
-  ModuleProcessorContext,
-  UltinaModuleProcessor,
-} from "../ultinaProcessor.js";
+import type { ModuleProcessArgs, ModuleProcessorContext, UltinaModuleProcessor } from "../ultinaProcessor.js";
 import {
   clamp,
   dbToLinear,
@@ -47,11 +43,7 @@ import {
   upsample as osUpsample,
   downsample as os_Downsample,
 } from "../oversampler.js";
-import {
-  channelModeFromValue,
-  type BandCount,
-  type CrossoverMode,
-} from "../../contracts/channelModes.js";
+import { channelModeFromValue, type BandCount, type CrossoverMode } from "../../contracts/channelModes.js";
 import { MultibandProcessor } from "../multiband.js";
 import { DryDelayMixer } from "../dryDelay.js";
 
@@ -102,8 +94,31 @@ export class ExciterModuleProcessor implements UltinaModuleProcessor {
   private dryR: Float32Array = new Float32Array(0);
   // Reused saturation amounts record — see process().
   private amountsBuf: SatAmounts = {
-    tubeAmt: 0, tubeAsymAmt: 0, warmAmt: 0, tapeAmt: 0, retroAmt: 0,
-    odAmt: 0, screamAmt: 0, clipAmt: 0, scratchAmt: 0,
+    tubeAmt: 0,
+    tubeAsymAmt: 0,
+    warmAmt: 0,
+    tapeAmt: 0,
+    retroAmt: 0,
+    odAmt: 0,
+    screamAmt: 0,
+    clipAmt: 0,
+    scratchAmt: 0,
+  };
+  // Per-block scalars + persistent band callback (audio thread — a fresh
+  // closure per process() call is steady-state GC churn).
+  private curTrashMode = false;
+  private curToneSlider = 0;
+  private curOversampling = false;
+  private bandCb = (bandIdx: number, bandChannels: Float32Array[], bandFrames: number): void => {
+    this.processBand(
+      bandIdx,
+      bandChannels,
+      bandFrames,
+      this.curTrashMode,
+      this.amountsBuf,
+      this.curToneSlider,
+      this.curOversampling,
+    );
   };
   // Latency-compensated dry/wet mixing (see dsp/dryDelay.ts).
   private dryDelay = new DryDelayMixer();
@@ -211,15 +226,12 @@ export class ExciterModuleProcessor implements UltinaModuleProcessor {
       this.dryR[i] = channels[1][i];
     }
 
-    // Process through multiband
-    this.multiband.process(
-      channels,
-      frameCount,
-      (bandIdx, bandChannels, bandFrames) => {
-        this.processBand(bandIdx, bandChannels, bandFrames, trashMode, amounts, toneSlider, oversampling);
-      },
-      channelMode,
-    );
+    // Process through multiband — persistent bound callback (allocated once;
+    // the per-block scalars travel through fields, not the closure).
+    this.curTrashMode = trashMode;
+    this.curToneSlider = toneSlider;
+    this.curOversampling = oversampling;
+    this.multiband.process(channels, frameCount, this.bandCb, channelMode);
 
     // Mix dry/wet — the dry copy is delayed by the wet path's current
     // latency (crossover + oversampler) so mix < 100 % stays phase-coherent
@@ -404,15 +416,8 @@ export class ExciterModuleProcessor implements UltinaModuleProcessor {
    * Saturation types are blended in parallel; distortion types
    * are applied in series.
    */
-  private applySaturation(
-    buf: Float32Array,
-    frames: number,
-    trashMode: boolean,
-    a: SatAmounts,
-  ): void {
-    const hasSat =
-      a.tubeAmt > 0 || a.tubeAsymAmt > 0 || a.warmAmt > 0 ||
-      a.tapeAmt > 0 || a.retroAmt > 0;
+  private applySaturation(buf: Float32Array, frames: number, trashMode: boolean, a: SatAmounts): void {
+    const hasSat = a.tubeAmt > 0 || a.tubeAsymAmt > 0 || a.warmAmt > 0 || a.tapeAmt > 0 || a.retroAmt > 0;
     const hasDist = trashMode && (a.odAmt > 0 || a.screamAmt > 0 || a.clipAmt > 0 || a.scratchAmt > 0);
 
     if (!hasSat && !hasDist) return;
@@ -541,5 +546,4 @@ export class ExciterModuleProcessor implements UltinaModuleProcessor {
   private downsample(osState: OsChannelState, output: Float32Array, frames: number): void {
     os_Downsample(osState, output, frames);
   }
-
 }

@@ -66,10 +66,7 @@ function countChanges(data: Float32Array, step: number): number {
  * Polls until a nonzero reading arrives (silence never compresses, so
  * 0 legitimately means "no reduction") or the deadline passes.
  */
-async function readGrAfterRender(
-  rt: { getGainReductionDb?: () => number },
-  waitMs = 1000,
-): Promise<number> {
+async function readGrAfterRender(rt: { getGainReductionDb?: () => number }, waitMs = 1000): Promise<number> {
   const deadline = performance.now() + waitMs;
   let gr = rt.getGainReductionDb?.() ?? 0;
   while (gr <= 0 && performance.now() < deadline) {
@@ -2913,13 +2910,16 @@ export async function runChecks(): Promise<CheckResult[]> {
         carrier.start(0);
         rt.output.connect(ctx.destination);
         const buf = await ctx.startRendering();
+        // GR metering must be read BEFORE dispose (dispose nulls the port
+        // handler — see readGrAfterRender). The filtered variant legitimately
+        // settles at ~0, so its poll runs out the deadline — harmless.
+        const gr = await readGrAfterRender(rt);
         rt.dispose();
         const data = buf.getChannelData(0);
         let rms = 0;
         for (let i = Math.floor(data.length * 0.25); i < data.length; i++) rms += data[i] * data[i];
         rms = Math.sqrt(rms / (data.length - Math.floor(data.length * 0.25)));
-        await new Promise((resolve) => setTimeout(resolve, 120));
-        return { rms, gr: rt.getGainReductionDb?.() ?? 0 };
+        return { rms, gr };
       };
       const baseline = await renderWith(20, false);
       const bassOn = await renderWith(20, true);

@@ -22,21 +22,9 @@
 // - Attack/sustain amount (-100 to +100)
 // ═══════════════════════════════════════════════════════════
 
-import type {
-  ModuleProcessArgs,
-  ModuleProcessorContext,
-  UltinaModuleProcessor,
-} from "../ultinaProcessor.js";
-import {
-  clamp,
-  dbToLinear,
-  sanitizeSample,
-} from "../primitives.js";
-import {
-  channelModeFromValue,
-  type BandCount,
-  type CrossoverMode,
-} from "../../contracts/channelModes.js";
+import type { ModuleProcessArgs, ModuleProcessorContext, UltinaModuleProcessor } from "../ultinaProcessor.js";
+import { clamp, dbToLinear, sanitizeSample } from "../primitives.js";
+import { channelModeFromValue, type BandCount, type CrossoverMode } from "../../contracts/channelModes.js";
 import { MultibandProcessor } from "../multiband.js";
 import {
   OS_FACTOR,
@@ -54,7 +42,6 @@ import { DryDelayMixer } from "../dryDelay.js";
 function copyN(dst: Float32Array, src: Float32Array, n: number): void {
   for (let i = 0; i < n; i++) dst[i] = src[i];
 }
-
 
 // ── Constants ──────────────────────────────────────────────
 
@@ -136,6 +123,23 @@ export class TransientModuleProcessor implements UltinaModuleProcessor {
 
   // Meter state
   private transientLevels: number[] = new Array(TRANSIENT_MAX_BANDS).fill(0);
+  // Per-block scalars + persistent band callback (audio thread — a fresh
+  // closure per process() call is steady-state GC churn).
+  private curModeCfg: GlobalModeConfig = GLOBAL_MODES[1];
+  private curContourCfg: ContourConfig = CONTOUR_SHAPES[1];
+  private curAttackAmount = 0;
+  private curSustainAmount = 0;
+  private bandCb = (bandIdx: number, bandChannels: Float32Array[], bandFrames: number): void => {
+    this.processBand(
+      bandIdx,
+      bandChannels,
+      bandFrames,
+      this.curModeCfg,
+      this.curContourCfg,
+      this.curAttackAmount,
+      this.curSustainAmount,
+    );
+  };
   private outputPeaks: number[] = new Array(TRANSIENT_MAX_BANDS).fill(-100);
 
   // Cached multiband config
@@ -223,37 +227,19 @@ export class TransientModuleProcessor implements UltinaModuleProcessor {
     copyN(this.dryL, channels[0], frameCount);
     copyN(this.dryR, channels[1], frameCount);
 
-    // Process through multiband
-    this.multiband.process(
-      channels,
-      frameCount,
-      (bandIdx, bandChannels, bandFrames) => {
-        this.processBand(
-          bandIdx,
-          bandChannels,
-          bandFrames,
-          modeCfg,
-          contourCfg,
-          attackAmount,
-          sustainAmount,
-        );
-      },
-      channelMode,
-    );
+    // Process through multiband — persistent bound callback (allocated once;
+    // per-block scalars travel through fields, not the closure).
+    this.curModeCfg = modeCfg;
+    this.curContourCfg = contourCfg;
+    this.curAttackAmount = attackAmount;
+    this.curSustainAmount = sustainAmount;
+    this.multiband.process(channels, frameCount, this.bandCb, channelMode);
 
     // Mix dry/wet
     // Mix dry/wet — latency-compensated (see dsp/dryDelay.ts); delta uses
     // the same delayed dry copy.
     const mix = mixPercent / 100;
-    this.dryDelay.process(
-      channels,
-      this.dryL,
-      this.dryR,
-      frameCount,
-      this.currentLatencySamples(),
-      mix,
-      deltaListen,
-    );
+    this.dryDelay.process(channels, this.dryL, this.dryR, frameCount, this.currentLatencySamples(), mix, deltaListen);
 
     // (Per-band output peaks are measured inside processBand.)
   }
@@ -371,15 +357,14 @@ export class TransientModuleProcessor implements UltinaModuleProcessor {
     // Compute target gains from amount parameters
     // attackAmount > 0: boost transient (increase gain when transient detected)
     // attackAmount < 0: reduce transient
-    const transientGainBoost = attackAmount > 0
-      ? dbToLinear(attackAmount * 12) // Up to +12dB boost
-      : dbToLinear(attackAmount * 6); // Up to -6dB cut
+    const transientGainBoost =
+      attackAmount > 0
+        ? dbToLinear(attackAmount * 12) // Up to +12dB boost
+        : dbToLinear(attackAmount * 6); // Up to -6dB cut
 
     // sustainAmount > 0: boost sustain
     // sustainAmount < 0: reduce sustain
-    const sustainGainBoost = sustainAmount > 0
-      ? dbToLinear(sustainAmount * 8)
-      : dbToLinear(sustainAmount * 12);
+    const sustainGainBoost = sustainAmount > 0 ? dbToLinear(sustainAmount * 8) : dbToLinear(sustainAmount * 12);
 
     let maxTransientLevel = 0;
 
@@ -466,5 +451,4 @@ export class TransientModuleProcessor implements UltinaModuleProcessor {
     }
     this.outputPeaks[bandIdx] = peak > 1e-10 ? 20 * Math.log10(peak) : -100;
   }
-
 }

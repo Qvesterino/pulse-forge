@@ -25,24 +25,9 @@
 //   - Gain = min(rangeDb, (thresholdDb - detectedDb) * (1 - 1/ratio))
 // ═══════════════════════════════════════════════════════════
 
-import type {
-  ModuleProcessArgs,
-  ModuleProcessorContext,
-  UltinaModuleProcessor,
-} from "../ultinaProcessor.js";
-import {
-  ampToDb,
-  clamp,
-  dbToLinear,
-  linearToDb,
-  sanitizeSample,
-  smoothCoef,
-} from "../primitives.js";
-import {
-  channelModeFromValue,
-  type BandCount,
-  type CrossoverMode,
-} from "../../contracts/channelModes.js";
+import type { ModuleProcessArgs, ModuleProcessorContext, UltinaModuleProcessor } from "../ultinaProcessor.js";
+import { ampToDb, clamp, dbToLinear, linearToDb, sanitizeSample, smoothCoef } from "../primitives.js";
+import { channelModeFromValue, type BandCount, type CrossoverMode } from "../../contracts/channelModes.js";
 import { MultibandProcessor } from "../multiband.js";
 import { DryDelayMixer } from "../dryDelay.js";
 import type { BandMeters } from "../../contracts/meters.js";
@@ -64,8 +49,8 @@ export interface DensityMeters {
 interface BandState {
   peakEnv: { process(target: number): number };
   rmsDetector: { process(input: number): number };
-  gainLinear: number;       // Current smoothed gain
-  targetGainDb: number;     // Target gain before smoothing
+  gainLinear: number; // Current smoothed gain
+  targetGainDb: number; // Target gain before smoothing
   attackCoef: number;
   releaseCoef: number;
 }
@@ -130,6 +115,25 @@ export class DensityModuleProcessor implements UltinaModuleProcessor {
   private dryL: Float32Array = new Float32Array(0);
   // Reused chunk wrappers — see the chunk loop in process().
   private chunkChannelsWrap: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
+  // Per-block scalars + persistent band callback (audio thread — a fresh
+  // closure per process() call is steady-state GC churn).
+  private curThresholdDb = 0;
+  private curRangeDb = 0;
+  private curRatio = 2;
+  private curAttackMs = 0;
+  private curReleaseMs = 0;
+  private bandCb = (bandIdx: number, bandChannels: Float32Array[], bandFrames: number): void => {
+    this.processBand(
+      bandIdx,
+      bandChannels,
+      bandFrames,
+      this.curThresholdDb,
+      this.curRangeDb,
+      this.curRatio,
+      this.curAttackMs,
+      this.curReleaseMs,
+    );
+  };
   private dryR: Float32Array = new Float32Array(0);
 
   // Cached config
@@ -257,18 +261,14 @@ export class DensityModuleProcessor implements UltinaModuleProcessor {
         this.dryR[i] = channels[1][offset + i];
       }
 
-      // Process through multiband
-      this.multiband.process(
-        chunkChannels,
-        chunkSize,
-        (bandIdx, bandChannels, bandFrames) => {
-          this.processBand(
-            bandIdx, bandChannels, bandFrames,
-            thresholdDb, rangeDb, ratio, attackMs, releaseMs,
-          );
-        },
-        channelMode,
-      );
+      // Process through multiband — persistent bound callback (allocated
+      // once; per-block scalars travel through fields, not the closure).
+      this.curThresholdDb = thresholdDb;
+      this.curRangeDb = rangeDb;
+      this.curRatio = ratio;
+      this.curAttackMs = attackMs;
+      this.curReleaseMs = releaseMs;
+      this.multiband.process(chunkChannels, chunkSize, this.bandCb, channelMode);
 
       // Mix dry/wet — the dry copy is delayed by the wet path's current
       // latency (crossover + oversampler) so mix < 100 % stays phase-coherent
@@ -305,7 +305,10 @@ export class DensityModuleProcessor implements UltinaModuleProcessor {
     if (!this.pooledMeters) {
       this.pooledMeters = {
         bands: this.bandMeters.map(() => ({
-          inputPeakDb: -100, outputPeakDb: -100, gainReductionDb: 0, outputRmsDb: -100,
+          inputPeakDb: -100,
+          outputPeakDb: -100,
+          gainReductionDb: 0,
+          outputRmsDb: -100,
         })),
         upwardGainDb: new Array(this.bandMeters.length).fill(0),
       };
@@ -319,9 +322,7 @@ export class DensityModuleProcessor implements UltinaModuleProcessor {
       const dst = m.bands[b];
       dst.inputPeakDb = ampToDb(bm.inputPeak);
       dst.outputPeakDb = ampToDb(bm.outputPeak);
-      dst.outputRmsDb = bm.outputRmsCount > 0
-        ? ampToDb(Math.sqrt(bm.outputRmsSum / bm.outputRmsCount))
-        : -100;
+      dst.outputRmsDb = bm.outputRmsCount > 0 ? ampToDb(Math.sqrt(bm.outputRmsSum / bm.outputRmsCount)) : -100;
       dst.gainReductionDb = -bm.upwardGain; // negative of upward gain for consistent display
       m.upwardGainDb[b] = bm.upwardGain;
     }
@@ -401,9 +402,7 @@ export class DensityModuleProcessor implements UltinaModuleProcessor {
       // ── Smooth gain ──
       // Attack: gain increasing (toward more upward gain)
       // Release: gain decreasing (back toward 0)
-      const coef = targetGainDb > band.targetGainDb
-        ? band.attackCoef
-        : band.releaseCoef;
+      const coef = targetGainDb > band.targetGainDb ? band.attackCoef : band.releaseCoef;
       band.targetGainDb += coef * (targetGainDb - band.targetGainDb);
 
       // Track max upward gain for meters

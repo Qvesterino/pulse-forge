@@ -4846,6 +4846,34 @@
     // Reused per-block scratch (audio thread — no fresh arrays in process())
     scChannelsWrap = [new Float32Array(0), new Float32Array(0)];
     bandThresholdDbBuf = [0, 0, 0];
+    // Per-block scalars + persistent band callback (audio thread — a fresh
+    // closure per process() call is steady-state GC churn).
+    curDetectSource = null;
+    curEffectiveAttack = 0;
+    curEffectiveRelease = 0;
+    curEffectiveRatio = 1;
+    curEffectiveKneeDb = 0;
+    curDetectionMode = "rms";
+    curAutoRelease = false;
+    curMode = "modern";
+    curDetHpfActive = false;
+    bandCb = (bandIdx, bandChannels, bandFrames) => {
+      this.processBand(
+        bandIdx,
+        bandChannels,
+        bandFrames,
+        this.curDetectSource,
+        this.bandThresholdDbBuf[bandIdx],
+        this.curEffectiveAttack,
+        this.curEffectiveRelease,
+        this.curEffectiveRatio,
+        this.curEffectiveKneeDb,
+        this.curDetectionMode,
+        this.curAutoRelease,
+        this.curMode,
+        this.curDetHpfActive
+      );
+    };
     // Dry buffer for mix
     dryL = new Float32Array(0);
     dryR = new Float32Array(0);
@@ -4943,7 +4971,13 @@
       const channelModeRaw = Math.round(clamp(params["comp.channelMode"] ?? 0, 0, 4));
       const channelMode = channelModeFromValue(channelModeRaw);
       const deltaListen = (params["comp.delta"] ?? 0) >= 0.5;
-      const { effectiveAttack, effectiveRelease, effectiveRatio, effectiveKneeDb } = this.applyMode(mode, attackMs, releaseMs, ratio, kneeDb);
+      const { effectiveAttack, effectiveRelease, effectiveRatio, effectiveKneeDb } = this.applyMode(
+        mode,
+        attackMs,
+        releaseMs,
+        ratio,
+        kneeDb
+      );
       this.updateMultiband(bandCount, xover1, xover2);
       const xoverMode = (params["comp.crossoverMode"] ?? 0) >= 0.5 ? "hybrid" : "analog";
       this.multiband.setCrossoverMode(xoverMode);
@@ -4973,28 +5007,16 @@
           }
         }
       }
-      this.multiband.process(
-        channels,
-        frameCount,
-        (bandIdx, bandChannels, bandFrames) => {
-          this.processBand(
-            bandIdx,
-            bandChannels,
-            bandFrames,
-            scActive ? detectSource : null,
-            bandThresholdDb[bandIdx],
-            effectiveAttack,
-            effectiveRelease,
-            effectiveRatio,
-            effectiveKneeDb,
-            detectionMode,
-            autoRelease,
-            mode,
-            detHpfActive
-          );
-        },
-        channelMode
-      );
+      this.curDetectSource = scActive ? detectSource : null;
+      this.curEffectiveAttack = effectiveAttack;
+      this.curEffectiveRelease = effectiveRelease;
+      this.curEffectiveRatio = effectiveRatio;
+      this.curEffectiveKneeDb = effectiveKneeDb;
+      this.curDetectionMode = detectionMode;
+      this.curAutoRelease = autoRelease;
+      this.curMode = mode;
+      this.curDetHpfActive = detHpfActive;
+      this.multiband.process(channels, frameCount, this.bandCb, channelMode);
       let finalMakeup = makeupDb;
       if (makeupAuto) {
         let avgGr = 0;
@@ -5047,15 +5069,7 @@
         }
       }
       const mix = mixPercent / 100;
-      this.dryDelay.process(
-        channels,
-        this.dryL,
-        this.dryR,
-        frameCount,
-        this.currentLatencySamples(),
-        mix,
-        deltaListen
-      );
+      this.dryDelay.process(channels, this.dryL, this.dryR, frameCount, this.currentLatencySamples(), mix, deltaListen);
     }
     reset() {
       for (const band of this.bands) {
@@ -5343,6 +5357,27 @@
     openThresholdDbBuf = [0, 0, 0];
     closeThresholdDbBuf = [0, 0, 0];
     scChannelsWrap = [new Float32Array(0), new Float32Array(0)];
+    // Per-block scalars + persistent band callback (audio thread — a fresh
+    // closure per process() call is steady-state GC churn).
+    curDetectSource = null;
+    curAttackMs = 0;
+    curHoldMs = 0;
+    curReleaseMs = 0;
+    curClosedGainLinear = 0;
+    bandCb = (bandIdx, bandChannels, bandFrames) => {
+      this.processBand(
+        bandIdx,
+        bandChannels,
+        bandFrames,
+        this.curDetectSource,
+        this.openThresholdDbBuf[bandIdx],
+        this.closeThresholdDbBuf[bandIdx],
+        this.curAttackMs,
+        this.curHoldMs,
+        this.curReleaseMs,
+        this.curClosedGainLinear
+      );
+    };
     scHpfBufferR = new Float32Array(0);
     // Meter state
     bandGain = new Array(GATE_MAX_BANDS).fill(0);
@@ -5426,25 +5461,12 @@
         detectSource = scChannels;
       }
       const scActive = scEnabled && sidechain && sidechain.length >= 2;
-      this.multiband.process(
-        channels,
-        frameCount,
-        (bandIdx, bandChannels, bandFrames) => {
-          this.processBand(
-            bandIdx,
-            bandChannels,
-            bandFrames,
-            scActive ? detectSource : null,
-            openThresholdDb[bandIdx],
-            closeThresholdDb[bandIdx],
-            attackMs,
-            holdMs,
-            releaseMs,
-            closedGainLinear
-          );
-        },
-        channelMode
-      );
+      this.curDetectSource = scActive ? detectSource : null;
+      this.curAttackMs = attackMs;
+      this.curHoldMs = holdMs;
+      this.curReleaseMs = releaseMs;
+      this.curClosedGainLinear = closedGainLinear;
+      this.multiband.process(channels, frameCount, this.bandCb, channelMode);
       const mix = mixPercent / 100;
       this.dryDelay.process(
         channels,
@@ -5622,6 +5644,22 @@
       clipAmt: 0,
       scratchAmt: 0
     };
+    // Per-block scalars + persistent band callback (audio thread — a fresh
+    // closure per process() call is steady-state GC churn).
+    curTrashMode = false;
+    curToneSlider = 0;
+    curOversampling = false;
+    bandCb = (bandIdx, bandChannels, bandFrames) => {
+      this.processBand(
+        bandIdx,
+        bandChannels,
+        bandFrames,
+        this.curTrashMode,
+        this.amountsBuf,
+        this.curToneSlider,
+        this.curOversampling
+      );
+    };
     // Latency-compensated dry/wet mixing (see dsp/dryDelay.ts).
     dryDelay = new DryDelayMixer();
     pooledMeters = null;
@@ -5701,14 +5739,10 @@
         this.dryL[i] = channels[0][i];
         this.dryR[i] = channels[1][i];
       }
-      this.multiband.process(
-        channels,
-        frameCount,
-        (bandIdx, bandChannels, bandFrames) => {
-          this.processBand(bandIdx, bandChannels, bandFrames, trashMode, amounts, toneSlider, oversampling);
-        },
-        channelMode
-      );
+      this.curTrashMode = trashMode;
+      this.curToneSlider = toneSlider;
+      this.curOversampling = oversampling;
+      this.multiband.process(channels, frameCount, this.bandCb, channelMode);
       const mix = mixPercent / 100;
       this.dryDelay.process(
         channels,
@@ -5969,6 +6003,23 @@
     osActive = false;
     // Meter state
     transientLevels = new Array(TRANSIENT_MAX_BANDS).fill(0);
+    // Per-block scalars + persistent band callback (audio thread — a fresh
+    // closure per process() call is steady-state GC churn).
+    curModeCfg = GLOBAL_MODES[1];
+    curContourCfg = CONTOUR_SHAPES[1];
+    curAttackAmount = 0;
+    curSustainAmount = 0;
+    bandCb = (bandIdx, bandChannels, bandFrames) => {
+      this.processBand(
+        bandIdx,
+        bandChannels,
+        bandFrames,
+        this.curModeCfg,
+        this.curContourCfg,
+        this.curAttackAmount,
+        this.curSustainAmount
+      );
+    };
     outputPeaks = new Array(TRANSIENT_MAX_BANDS).fill(-100);
     // Cached multiband config
     cachedBandCount = -1;
@@ -6030,32 +6081,13 @@
       this.multiband.setCrossoverMode(xoverMode);
       copyN4(this.dryL, channels[0], frameCount);
       copyN4(this.dryR, channels[1], frameCount);
-      this.multiband.process(
-        channels,
-        frameCount,
-        (bandIdx, bandChannels, bandFrames) => {
-          this.processBand(
-            bandIdx,
-            bandChannels,
-            bandFrames,
-            modeCfg,
-            contourCfg,
-            attackAmount,
-            sustainAmount
-          );
-        },
-        channelMode
-      );
+      this.curModeCfg = modeCfg;
+      this.curContourCfg = contourCfg;
+      this.curAttackAmount = attackAmount;
+      this.curSustainAmount = sustainAmount;
+      this.multiband.process(channels, frameCount, this.bandCb, channelMode);
       const mix = mixPercent / 100;
-      this.dryDelay.process(
-        channels,
-        this.dryL,
-        this.dryR,
-        frameCount,
-        this.currentLatencySamples(),
-        mix,
-        deltaListen
-      );
+      this.dryDelay.process(channels, this.dryL, this.dryR, frameCount, this.currentLatencySamples(), mix, deltaListen);
     }
     reset() {
       for (const band of this.bands) {
@@ -6538,6 +6570,25 @@
     dryL = new Float32Array(0);
     // Reused chunk wrappers — see the chunk loop in process().
     chunkChannelsWrap = [new Float32Array(0), new Float32Array(0)];
+    // Per-block scalars + persistent band callback (audio thread — a fresh
+    // closure per process() call is steady-state GC churn).
+    curThresholdDb = 0;
+    curRangeDb = 0;
+    curRatio = 2;
+    curAttackMs = 0;
+    curReleaseMs = 0;
+    bandCb = (bandIdx, bandChannels, bandFrames) => {
+      this.processBand(
+        bandIdx,
+        bandChannels,
+        bandFrames,
+        this.curThresholdDb,
+        this.curRangeDb,
+        this.curRatio,
+        this.curAttackMs,
+        this.curReleaseMs
+      );
+    };
     dryR = new Float32Array(0);
     // Cached config
     cachedBandCount = -1;
@@ -6628,23 +6679,12 @@
           this.dryL[i] = channels[0][offset + i];
           this.dryR[i] = channels[1][offset + i];
         }
-        this.multiband.process(
-          chunkChannels,
-          chunkSize,
-          (bandIdx, bandChannels, bandFrames) => {
-            this.processBand(
-              bandIdx,
-              bandChannels,
-              bandFrames,
-              thresholdDb,
-              rangeDb,
-              ratio,
-              attackMs,
-              releaseMs
-            );
-          },
-          channelMode
-        );
+        this.curThresholdDb = thresholdDb;
+        this.curRangeDb = rangeDb;
+        this.curRatio = ratio;
+        this.curAttackMs = attackMs;
+        this.curReleaseMs = releaseMs;
+        this.multiband.process(chunkChannels, chunkSize, this.bandCb, channelMode);
         const mix = mixPercent / 100;
         this.dryDelay.process(
           chunkChannels,
