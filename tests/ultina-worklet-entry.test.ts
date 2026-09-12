@@ -343,3 +343,48 @@ describe("Ultina worklet entry — parameter burst (live drag preview)", () => {
     expect(outRms).toBeLessThan(expected * 1.1);
   });
 });
+
+describe("Ultina worklet entry — latency reporting (meters-gate regression)", () => {
+  it("re-posts latency when a latency-affecting param changes with meters DISABLED", () => {
+    now = 0;
+    // App default state: meters OFF (no panel attached), comp active in
+    // ANALOG 1-band mode (latency 0).
+    const proc = new Processor({
+      processorOptions: { params: { "comp.enabled": 1 } },
+    });
+    proc.port.onmessage?.({ data: { type: "setMeters", enabled: false } });
+    const input = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+    const output = [[new Float32Array(BLOCK), new Float32Array(BLOCK)]];
+    for (let b = 0; b < 8; b++) {
+      now = (b * BLOCK) / SR;
+      fillSine(input, b, 0.3);
+      proc.process([input], output);
+    }
+    const latencyZero = proc.port.posted.filter((m) => m.type === "latency");
+    expect(latencyZero[latencyZero.length - 1]?.samples).toBe(0);
+
+    // Hybrid 3-band crossover: comp latency becomes the FIR group delay
+    // (31 samples) — a NON-".enabled" param. Pre-fix this was never
+    // re-posted while meters were off.
+    proc.port.onmessage?.({ data: { type: "param", id: "comp.crossoverMode", value: 1 } });
+    proc.port.onmessage?.({ data: { type: "param", id: "comp.bandCount", value: 3 } });
+    for (let b = 8; b < 16; b++) {
+      now = (b * BLOCK) / SR;
+      fillSine(input, b, 0.3);
+      proc.process([input], output);
+    }
+    const hybrid = [...proc.port.posted].reverse().find((m) => m.type === "latency");
+    expect(hybrid?.samples).toBe(31); // (DEFAULT_FIR_TAPS − 1) / 2 = 31
+
+    // HQ quality mode arms the oversampler INSIDE comp.process() on the
+    // next block (+4 samples) — only the per-block re-report catches it.
+    proc.port.onmessage?.({ data: { type: "param", id: "global.qualityMode", value: 2 } });
+    for (let b = 16; b < 24; b++) {
+      now = (b * BLOCK) / SR;
+      fillSine(input, b, 0.3);
+      proc.process([input], output);
+    }
+    const hq = [...proc.port.posted].reverse().find((m) => m.type === "latency");
+    expect(hq?.samples).toBe(35); // 31 + OS_LATENCY_SAMPLES (4)
+  });
+});

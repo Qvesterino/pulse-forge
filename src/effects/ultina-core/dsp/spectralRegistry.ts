@@ -162,6 +162,13 @@ export class BandAnalyzer {
       bq.z1[0] = z1;
       bq.z2[0] = z2;
       this.envelopes[b] = env;
+      // Non-finite state guard (see processBiquadChannel): a poisoned band
+      // must not publish −200 dB (or NaN) forever via the registry.
+      if (!Number.isFinite(z1) || !Number.isFinite(z2) || !Number.isFinite(env)) {
+        bq.z1[0] = 0;
+        bq.z2[0] = 0;
+        this.envelopes[b] = 0;
+      }
     }
 
     // Update dB levels

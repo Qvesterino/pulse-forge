@@ -82,11 +82,10 @@ export function CollabPanel({ onReplaceServices }: { onReplaceServices: (service
 
   const copyLink = async () => {
     if (!session) return;
-    const url = shareUrl(
-      session.roomId,
-      session.serverUrl,
-      typeof location !== "undefined" ? location.origin : "https://kyx.app",
-    );
+    const url =
+      isJam && typeof location !== "undefined"
+        ? location.href
+        : shareUrl(session.roomId, session.serverUrl, typeof location !== "undefined" ? location.origin : "https://kyx.app");
     try {
       await navigator.clipboard.writeText(url);
       setCopied(true);
@@ -130,10 +129,18 @@ export function CollabPanel({ onReplaceServices }: { onReplaceServices: (service
   }
 
   const statusClass = session.status === "connected" ? "ok" : session.status === "connecting" ? "wait" : "bad";
+  // A jam link (?import=<code>&collab=<room>) must be shared WHOLE — the
+  // import code is what seeds the beat into the room for every joiner.
+  const isJam = typeof location !== "undefined" && new URLSearchParams(location.search).has("import");
   return (
     <div className="collab-panel" role="dialog" aria-label="Collaboration session">
       <div className="collab-title">
         JAM SESSION <span className={`collab-status collab-status-${statusClass}`}>{session.status.toUpperCase()}</span>
+        {isJam && (
+          <span className="collab-jam-badge" title="This room was opened from a gallery beat — the invite link carries the beat">
+            LIVE JAM
+          </span>
+        )}
       </div>
       <div className="collab-room">
         <span className="collab-room-code" title="Room code">

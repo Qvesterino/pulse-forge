@@ -112,6 +112,8 @@ export class ClipperModuleProcessor implements UltinaModuleProcessor {
   private dryDelay = new DryDelayMixer();
   private pooledMeters: ClipperMeters | null = null;
   private dryL: Float32Array = new Float32Array(0);
+  // Reused chunk wrappers — see the chunk loop in process().
+  private chunkChannelsWrap: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
   private dryR: Float32Array = new Float32Array(0);
 
   // Per-band meter state
@@ -210,15 +212,20 @@ export class ClipperModuleProcessor implements UltinaModuleProcessor {
       const remaining = Math.min(chunkSize, frameCount - offset);
 
       // Create subarray views for this chunk
-      const chunkChannels: Float32Array[] = [
-        channels[0].subarray(offset, offset + remaining),
-        channels[1].subarray(offset, offset + remaining),
-      ];
+      // Reused chunk wrappers (audio thread): the common single-chunk case
+      // passes the channel buffers directly — subarray views are only
+      // created for genuine multi-chunk blocks.
+      const chunkChannels = this.chunkChannelsWrap;
+      chunkChannels[0] = offset === 0 ? channels[0] : channels[0].subarray(offset, offset + remaining);
+      chunkChannels[1] = offset === 0 ? channels[1] : channels[1].subarray(offset, offset + remaining);
 
-      // Store dry signal for delta
+      // Store dry signal for delta (bounded copy — the channel buffer may
+      // be longer than this chunk; .set() with a longer source would throw)
       this.ensureBuffers(remaining);
-      this.dryL.set(chunkChannels[0]);
-      this.dryR.set(chunkChannels[1]);
+      for (let i = 0; i < remaining; i++) {
+        this.dryL[i] = channels[0][offset + i];
+        this.dryR[i] = channels[1][offset + i];
+      }
 
       // Process through multiband
       this.multiband.process(
@@ -351,7 +358,11 @@ export class ClipperModuleProcessor implements UltinaModuleProcessor {
     oversampling: boolean,
   ): void {
     const chL = bandChannels[0];
-    const chR = bandChannels.length >= 2 ? bandChannels[1] : bandChannels[0];
+    // M/S channel modes deliver a SINGLE-band mono buffer (length 1).
+    // Aliasing chR to chL would apply the knee curve twice — the smoothstep
+    // knee region is not idempotent, so peaks would be over-compressed.
+    const stereo = bandChannels.length >= 2;
+    const chR = stereo ? bandChannels[1] : bandChannels[0];
 
     const bm = this.bandMeters[bandIdx];
 
@@ -373,22 +384,26 @@ export class ClipperModuleProcessor implements UltinaModuleProcessor {
 
       // Upsample 4x
       this.upsample(chL, osStateL, bandFrames);
-      this.upsample(chR, osStateR, bandFrames);
+      if (stereo) this.upsample(chR, osStateR, bandFrames);
 
       const osFrames = bandFrames * OS_FACTOR;
 
       // Process clipping at 4x rate
       const redL = this.applyClipping(osStateL.osBuffer, osFrames, driveLin, ceilingLin, kneeLin);
-      const redR = this.applyClipping(osStateR.osBuffer, osFrames, driveLin, ceilingLin, kneeLin);
+      const redR = stereo
+        ? this.applyClipping(osStateR.osBuffer, osFrames, driveLin, ceilingLin, kneeLin)
+        : redL;
       maxReductionDb = Math.max(redL, redR);
 
       // Downsample 4x
       this.downsample(osStateL, chL, bandFrames);
-      this.downsample(osStateR, chR, bandFrames);
+      if (stereo) this.downsample(osStateR, chR, bandFrames);
     } else {
       // No oversampling: process directly
       const redL = this.applyClipping(chL, bandFrames, driveLin, ceilingLin, kneeLin);
-      const redR = this.applyClipping(chR, bandFrames, driveLin, ceilingLin, kneeLin);
+      const redR = stereo
+        ? this.applyClipping(chR, bandFrames, driveLin, ceilingLin, kneeLin)
+        : redL;
       maxReductionDb = Math.max(redL, redR);
     }
 

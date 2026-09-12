@@ -80,6 +80,13 @@ describe("PWA caching strategy", () => {
     expect(pwaOptions.workbox!.maximumFileSizeToCacheInBytes).toBeGreaterThan(2 * 1024 * 1024);
   });
 
+  it("keeps the optional ranker runtime out of the app-shell precache", () => {
+    const ignores = (pwaOptions.workbox!.globIgnores as string[]).join(" ");
+    expect(ignores).toContain("models/ort/**");
+    expect(ignores).toContain("models/intent-ranker-v1.onnx");
+    expect(ignores).toContain("golden-review/**");
+  });
+
   it("navigations fall back to index.html for SPA routing", () => {
     expect(pwaOptions.workbox!.navigateFallback).toBe("index.html");
   });

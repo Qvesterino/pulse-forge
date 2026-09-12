@@ -423,6 +423,110 @@ try {
     collabServer?.kill();
   }
 
+  // ── Instant Jam E2E: gallery beat link + collab room, real boot ─────────
+  // Two pages open the SAME ?import=<code>&collab=<room> jam URL through the
+  // real app boot; the room must carry the beat to the joiner (deferred
+  // seed-vs-adopt), edits must sync, and a late joiner must not clobber.
+  let jamOk = false;
+  let jamServer;
+  try {
+    const { spawn } = await import("node:child_process");
+    const JAM_PORT = 1249;
+    jamServer = spawn(process.execPath, ["server/collab-server.mjs"], {
+      env: { ...process.env, PORT: String(JAM_PORT) },
+      stdio: "ignore",
+    });
+    await new Promise((r) => setTimeout(r, 1200));
+
+    const room = `jam-${Date.now().toString(36)}`;
+    const probe = await browser.newPage();
+    await probe.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+    const jamCode = await probe.evaluate(async () => {
+      const { encodeShareCode } = await import("/src/export/shareCode.ts");
+      const { createProjectFromTemplate } = await import("/src/project-model/templates.ts");
+      const beat = { ...createProjectFromTemplate("house"), name: "Jam Beat E2E" };
+      return encodeShareCode(beat);
+    });
+    await probe.close();
+
+    const openJam = async (name) => {
+      const p = await browser.newPage();
+      await p.addInitScript(SKIP_FLAGS);
+      await p.goto(`http://127.0.0.1:${PORT}/?import=${jamCode}&collab=${room}&server=ws://127.0.0.1:${JAM_PORT}`, {
+        waitUntil: "domcontentloaded",
+        timeout: 60_000,
+      });
+      await p.waitForFunction(
+        () => window.__pfJam && window.__pfJam.collab.status === "connected",
+        null,
+        { timeout: 20_000 },
+      );
+      await p.evaluate((nameArg) => {
+        // Rename the LOCAL USER identity so presence assertions can tell peers apart.
+        window.__pfJam.collab.localUser.name = nameArg;
+      }, name);
+      return p;
+    };
+
+    // 1. The initiator boots the jam link: the room seeds with the beat.
+    const j1 = await openJam("Jam Host");
+    await j1.waitForFunction(() => window.__pfJam?.store?.doc?.name === "Jam Beat E2E", null, { timeout: 10_000 });
+
+    // 2. A joiner opens the same link and ADOPTS the room (not the fallback).
+    const j2 = await openJam("Jam Guest");
+    await j2.waitForFunction(() => window.__pfJam?.store?.doc?.name === "Jam Beat E2E", null, { timeout: 10_000 });
+
+    // 3. Host edits; the joiner receives it live.
+    await j1.evaluate(async () => {
+      const { setBpm } = await import("/src/commands/commands.ts");
+      window.__pfJam.store.execute(setBpm(window.__pfJam.store.doc, 141));
+    });
+    await j2.waitForFunction(() => window.__pfJam?.store?.doc?.bpm === 141, null, { timeout: 10_000 });
+
+    // 4. A LATE joiner opens the same link AFTER the edit: must adopt the
+    //    edited room state (bpm 141), not re-seed the beat's default bpm.
+    const j3 = await openJam("Jam Late");
+    await j3.waitForFunction(() => window.__pfJam?.store?.doc?.bpm === 141, null, { timeout: 10_000 });
+    await j3.waitForFunction(() => window.__pfJam?.store?.doc?.name === "Jam Beat E2E", null, { timeout: 10_000 });
+
+    // 5. SHARED TRANSPORT: the host presses play; guests' transports follow
+    //    and all playheads read the same musical position (wall-clock).
+    await j1.evaluate(() => {
+      window.__pfJam.playback.playPause();
+    });
+    await j2.waitForFunction(() => window.__pfJam?.transport?.playing === true, null, { timeout: 10_000 });
+    await j3.waitForFunction(() => window.__pfJam?.transport?.playing === true, null, { timeout: 10_000 });
+    const positions = [];
+    for (const p of [j1, j2, j3]) {
+      positions.push(await p.evaluate(() => window.__pfJam.transport.position));
+    }
+    const spread = Math.max(...positions) - Math.min(...positions);
+    // 480 PPQ × 4 = one bar at any tempo; band-practice sync must sit well inside it.
+    if (spread > 480) {
+      throw new Error(`transport playheads diverged: ${spread.toFixed(0)} ticks (${positions.map((x) => x.toFixed(0)).join(", ")})`);
+    }
+
+    // 6. Host stops; everyone stops.
+    await j1.evaluate(() => {
+      window.__pfJam.playback.playPause();
+    });
+    await j2.waitForFunction(() => window.__pfJam?.transport?.playing === false, null, { timeout: 10_000 });
+    await j3.waitForFunction(() => window.__pfJam?.transport?.playing === false, null, { timeout: 10_000 });
+
+    for (const p of [j1, j2, j3]) {
+      await p.evaluate(() => window.__pfJam.collab.dispose());
+      await p.close();
+    }
+    jamOk = true;
+    console.log(
+      `[PASS] instant jam: beat link + room seeds, syncs, late joiner adopts, transport shared (spread ${spread.toFixed(0)} ticks)`,
+    );
+  } catch (error) {
+    console.log("[FAIL] instant jam E2E:", String(error).split("\n")[0]);
+  } finally {
+    jamServer?.kill();
+  }
+
   // ── Embed widget + share link E2E ───────────────────────────────────────
   let embedOk = false;
   let importOk = false;
@@ -547,7 +651,7 @@ try {
     console.log("[FAIL] plugin workflow E2E:", String(error).split("\n")[0]);
   }
 
-  const total = results.length + 6;
+  const total = results.length + 7;
   const passed =
     results.length -
     failed +
@@ -556,12 +660,13 @@ try {
     (embedOk ? 1 : 0) +
     (importOk ? 1 : 0) +
     (touchOk ? 1 : 0) +
-    (pluginWorkflowOk ? 1 : 0);
+    (pluginWorkflowOk ? 1 : 0) +
+    (jamOk ? 1 : 0);
   console.log(`\n${passed}/${total} checks passed`);
   if (consoleErrors.length > 0) {
     console.log("console errors during audio checks:", consoleErrors.slice(0, 5));
   }
-  exitCode = failed > 0 || !appBootOk || !collabOk || !embedOk || !importOk || !touchOk || !pluginWorkflowOk ? 1 : 0;
+  exitCode = failed > 0 || !appBootOk || !collabOk || !embedOk || !importOk || !touchOk || !pluginWorkflowOk || !jamOk ? 1 : 0;
 } catch (error) {
   console.error("browser verification failed:", error);
   exitCode = 1;

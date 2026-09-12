@@ -20,6 +20,7 @@
     "test:browser:production": "node scripts/verify-production-browser.mjs",
     "release:preflight": "node scripts/release-preflight.mjs",
     "release:server-smoke": "node scripts/release-server-smoke.mjs",
+    "release:deployed-smoke": "node scripts/release-deployed-smoke.mjs",
     "preview": "vite preview",
     "collab": "node server/collab-server.mjs",
     "format": "prettier --write src tests",

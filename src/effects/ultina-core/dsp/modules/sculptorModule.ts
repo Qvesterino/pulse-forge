@@ -112,6 +112,10 @@ export class SculptorModuleProcessor implements UltinaModuleProcessor {
   private dryL: Float32Array = new Float32Array(0);
   private dryR: Float32Array = new Float32Array(0);
 
+  // Reused per-chunk channel wrappers (audio thread — see process())
+  private singleChannelWrap: Float32Array[] = [new Float32Array(0)];
+  private stereoChannelsWrap: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
+
   // Meter data (current curves for display)
   private currentTargetCurve: Float32Array = new Float32Array(NUM_BANDS);
   private currentSpectralCurve: Float32Array = new Float32Array(NUM_BANDS);
@@ -191,15 +195,20 @@ export class SculptorModuleProcessor implements UltinaModuleProcessor {
       const remaining = frameCount - offset;
       const chunkSize = Math.min(remaining, this.maxBlockSize);
 
-      const chunkL = channels[0].subarray(offset, offset + chunkSize);
-      const chunkR = channels[1].subarray(offset, offset + chunkSize);
+      // Chunk views: reused wrappers; the common single-chunk case passes
+      // the channel buffers directly (no subarray view allocation).
+      const chunkL = offset === 0 ? channels[0] : channels[0].subarray(offset, offset + chunkSize);
+      const chunkR = offset === 0 ? channels[1] : channels[1].subarray(offset, offset + chunkSize);
 
-      // Store dry signal
+      // Store dry signal (bounded copy — the channel buffer may be longer
+      // than this chunk; .set() with a longer source would throw)
       this.ensureBuffers(chunkSize);
-      this.dryL.set(chunkL);
-      this.dryR.set(chunkR);
+      for (let i = 0; i < chunkSize; i++) {
+        this.dryL[i] = channels[0][offset + i];
+        this.dryR[i] = channels[1][offset + i];
+      }
 
-      // Determine analysis signal and channels to process
+      // Determine analysis signal and channels to process (reused wrappers)
       let analysisSignal: Float32Array;
       let processChannels: Float32Array[];
       let msResult: { mid: Float32Array; side: Float32Array } | null = null;
@@ -209,14 +218,19 @@ export class SculptorModuleProcessor implements UltinaModuleProcessor {
         if (msResult) {
           const target = channelMode === "mid" ? msResult.mid : msResult.side;
           analysisSignal = target;
-          processChannels = [target];
+          processChannels = this.singleChannelWrap;
+          processChannels[0] = target;
         } else {
           analysisSignal = chunkL;
-          processChannels = [chunkL, chunkR];
+          processChannels = this.stereoChannelsWrap;
+          processChannels[0] = chunkL;
+          processChannels[1] = chunkR;
         }
       } else {
         analysisSignal = chunkL;
-        processChannels = [chunkL, chunkR];
+        processChannels = this.stereoChannelsWrap;
+        processChannels[0] = chunkL;
+        processChannels[1] = chunkR;
       }
 
       // ── Analysis: update per-band envelope followers ──
@@ -304,6 +318,12 @@ export class SculptorModuleProcessor implements UltinaModuleProcessor {
           }
           this.bellBiquads[b].z1[ch] = z1;
           this.bellBiquads[b].z2[ch] = z2;
+          // Non-finite state guard (see processBiquadChannel) — output
+          // sanitization alone cannot heal a poisoned recursion.
+          if (!Number.isFinite(z1) || !Number.isFinite(z2)) {
+            this.bellBiquads[b].z1[ch] = 0;
+            this.bellBiquads[b].z2[ch] = 0;
+          }
         }
       }
 
@@ -423,5 +443,12 @@ export class SculptorModuleProcessor implements UltinaModuleProcessor {
     bq.z1[0] = z1;
     bq.z2[0] = z2;
     this.envFollowers[bandIdx] = env;
+    // Non-finite state guard — a poisoned envelope would pin the band's
+    // correction curve forever.
+    if (!Number.isFinite(z1) || !Number.isFinite(z2) || !Number.isFinite(env)) {
+      bq.z1[0] = 0;
+      bq.z2[0] = 0;
+      this.envFollowers[bandIdx] = 0;
+    }
   }
 }

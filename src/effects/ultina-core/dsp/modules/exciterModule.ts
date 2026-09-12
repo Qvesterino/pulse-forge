@@ -100,6 +100,11 @@ export class ExciterModuleProcessor implements UltinaModuleProcessor {
   // Dry buffer for mix
   private dryL: Float32Array = new Float32Array(0);
   private dryR: Float32Array = new Float32Array(0);
+  // Reused saturation amounts record — see process().
+  private amountsBuf: SatAmounts = {
+    tubeAmt: 0, tubeAsymAmt: 0, warmAmt: 0, tapeAmt: 0, retroAmt: 0,
+    odAmt: 0, screamAmt: 0, clipAmt: 0, scratchAmt: 0,
+  };
   // Latency-compensated dry/wet mixing (see dsp/dryDelay.ts).
   private dryDelay = new DryDelayMixer();
   private pooledMeters: ExciterMeters | null = null;
@@ -182,19 +187,29 @@ export class ExciterModuleProcessor implements UltinaModuleProcessor {
     const deltaListen = (params["exciter.delta"] ?? 0) >= 0.5;
 
     this.osActive = oversampling;
-    const amounts: SatAmounts = {
-      tubeAmt, tubeAsymAmt, warmAmt, tapeAmt, retroAmt,
-      odAmt, screamAmt, clipAmt, scratchAmt,
-    };
+    // Reused amounts record (audio thread — the object literal would be a
+    // per-block allocation); processBand reads it synchronously.
+    const amounts = this.amountsBuf;
+    amounts.tubeAmt = tubeAmt;
+    amounts.tubeAsymAmt = tubeAsymAmt;
+    amounts.warmAmt = warmAmt;
+    amounts.tapeAmt = tapeAmt;
+    amounts.retroAmt = retroAmt;
+    amounts.odAmt = odAmt;
+    amounts.screamAmt = screamAmt;
+    amounts.clipAmt = clipAmt;
+    amounts.scratchAmt = scratchAmt;
 
     // Update multiband config if changed
     this.updateMultiband(bandCount, xover1, xover2);
     const xoverMode: CrossoverMode = (params["exciter.crossoverMode"] ?? 0) >= 0.5 ? "hybrid" : "analog";
     this.multiband.setCrossoverMode(xoverMode);
 
-    // Store dry signal for mix
-    this.dryL.set(channels[0].subarray(0, frameCount));
-    this.dryR.set(channels[1].subarray(0, frameCount));
+    // Store dry signal for mix (copy loop — subarray() allocates a view)
+    for (let i = 0; i < frameCount; i++) {
+      this.dryL[i] = channels[0][i];
+      this.dryR[i] = channels[1][i];
+    }
 
     // Process through multiband
     this.multiband.process(
@@ -290,6 +305,12 @@ export class ExciterModuleProcessor implements UltinaModuleProcessor {
     if (bandCount !== this.cachedBandCount) {
       this.multiband.setBandCount(bandCount);
       this.cachedBandCount = bandCount;
+      // Bands beyond the new count must not keep reporting stale meter
+      // readings — getMeters publishes the full 3-slot arrays.
+      for (let b = bandCount; b < EXCITER_MAX_BANDS; b++) {
+        this.harmonicContent[b] = 0;
+        this.outputPeaks[b] = -100;
+      }
       // setBandCount rebuilds the crossover (coefficients wiped) —
       // force both split frequencies to be re-applied below.
       this.cachedXover1 = -1;
@@ -315,7 +336,13 @@ export class ExciterModuleProcessor implements UltinaModuleProcessor {
     oversampling: boolean,
   ): void {
     const chL = bandChannels[0];
-    const chR = bandChannels.length >= 2 ? bandChannels[1] : bandChannels[0];
+    // M/S channel modes deliver a SINGLE-band mono buffer (bandChannels
+    // length 1). Aliasing chR to chL here would run saturation and the tone
+    // filter over the SAME buffer twice (applyTone would even re-read the
+    // already-processed L samples through the R one-pole state) — so every
+    // R-side pass below is gated on a genuinely distinct second channel.
+    const stereo = bandChannels.length >= 2;
+    const chR = stereo ? bandChannels[1] : bandChannels[0];
 
     // Measure input energy for harmonic content meter
     let inEnergy = 0;
@@ -330,23 +357,23 @@ export class ExciterModuleProcessor implements UltinaModuleProcessor {
       // Upsample 4x
       const osFrames = bandFrames * OS_FACTOR;
       this.upsample(chL, osStateL, bandFrames);
-      this.upsample(chR, osStateR, bandFrames);
+      if (stereo) this.upsample(chR, osStateR, bandFrames);
 
       // Process saturation at 4x rate
       this.applySaturation(osStateL.osBuffer, osFrames, trashMode, amounts);
-      this.applySaturation(osStateR.osBuffer, osFrames, trashMode, amounts);
+      if (stereo) this.applySaturation(osStateR.osBuffer, osFrames, trashMode, amounts);
 
       // Apply tone at oversampled rate
-      this.applyTone(osStateL.osBuffer, osStateR.osBuffer, osFrames, toneSlider, bandIdx);
+      this.applyTone(osStateL.osBuffer, osStateR.osBuffer, osFrames, toneSlider, bandIdx, stereo);
 
       // Downsample 4x
       this.downsample(osStateL, chL, bandFrames);
-      this.downsample(osStateR, chR, bandFrames);
+      if (stereo) this.downsample(osStateR, chR, bandFrames);
     } else {
       // No oversampling: process directly
       this.applySaturation(chL, bandFrames, trashMode, amounts);
-      this.applySaturation(chR, bandFrames, trashMode, amounts);
-      this.applyTone(chL, chR, bandFrames, toneSlider, bandIdx);
+      if (stereo) this.applySaturation(chR, bandFrames, trashMode, amounts);
+      this.applyTone(chL, chR, bandFrames, toneSlider, bandIdx, stereo);
     }
 
     // Measure harmonic content (ratio of output energy to input energy)
@@ -466,6 +493,7 @@ export class ExciterModuleProcessor implements UltinaModuleProcessor {
     frames: number,
     toneSlider: number,
     bandIdx: number,
+    stereo: boolean,
   ): void {
     if (Math.abs(toneSlider) < 0.001) return;
 
@@ -491,9 +519,13 @@ export class ExciterModuleProcessor implements UltinaModuleProcessor {
       lowL = lowL + alpha * (sL - lowL);
       chL[i] = sanitizeSample(lowL * lowGain + (sL - lowL) * highGain);
 
-      const sR = chR[i];
-      lowR = lowR + alpha * (sR - lowR);
-      chR[i] = sanitizeSample(lowR * lowGain + (sR - lowR) * highGain);
+      // Mono (M/S single-band): chR aliases chL — running the R half would
+      // re-filter the just-written L samples and pollute lowR.
+      if (stereo) {
+        const sR = chR[i];
+        lowR = lowR + alpha * (sR - lowR);
+        chR[i] = sanitizeSample(lowR * lowGain + (sR - lowR) * highGain);
+      }
     }
 
     this.toneLowState[bandIdx * 2] = lowL;

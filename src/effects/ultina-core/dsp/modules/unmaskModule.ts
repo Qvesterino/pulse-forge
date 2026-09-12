@@ -116,6 +116,10 @@ export class UnmaskModuleProcessor implements UltinaModuleProcessor {
   // M/S processor
   private midSide = new MidSideProcessor();
 
+  // Reused per-block scratch (no audio-thread allocation — see applyGainChain)
+  private activeBandsBuf: number[] = [];
+  private msTargetWrap: Float32Array[] = [new Float32Array(0)];
+
   // Buffers
   private dryBuf: Float32Array[] = [];
   private analysisBuf: Float32Array = new Float32Array(0);
@@ -332,10 +336,17 @@ export class UnmaskModuleProcessor implements UltinaModuleProcessor {
         env += envCoef * (abs - env);
       }
 
-      bq.z1[0] = z1;
-      bq.z2[0] = z2;
-      this.mainEnv[b] = env;
-    }
+        bq.z1[0] = z1;
+        bq.z2[0] = z2;
+        this.mainEnv[b] = env;
+        // Non-finite state guard (see processBiquadChannel): a poisoned
+        // recursion must not persist forever.
+        if (!Number.isFinite(z1) || !Number.isFinite(z2) || !Number.isFinite(env)) {
+          bq.z1[0] = 0;
+          bq.z2[0] = 0;
+          this.mainEnv[b] = 0;
+        }
+      }
 
     // Sidechain analysis
     if (scSrc) {
@@ -358,6 +369,12 @@ export class UnmaskModuleProcessor implements UltinaModuleProcessor {
         bq.z1[0] = z1;
         bq.z2[0] = z2;
         this.scEnv[b] = env;
+        // Non-finite state guard — see main analysis loop above.
+        if (!Number.isFinite(z1) || !Number.isFinite(z2) || !Number.isFinite(env)) {
+          bq.z1[0] = 0;
+          bq.z2[0] = 0;
+          this.scEnv[b] = 0;
+        }
       }
     }
   }
@@ -442,8 +459,11 @@ export class UnmaskModuleProcessor implements UltinaModuleProcessor {
     const channelMode = channelModeFromValue(channelModeRaw);
 
     // Build list of active bands (gain above threshold) once per block
-    // and update their coefficients
-    const activeBands: number[] = [];
+    // and update their coefficients. The band list is a REUSED array — a
+    // fresh literal here would allocate on the audio thread every block
+    // (steady-state pushes stay within the grown capacity).
+    const activeBands = this.activeBandsBuf;
+    activeBands.length = 0;
     for (let b = 0; b < NUM_BANDS; b++) {
       const gain = this.gainSmoothed[b];
       if (gain < -0.01 || gain > 0.01) {
@@ -465,9 +485,8 @@ export class UnmaskModuleProcessor implements UltinaModuleProcessor {
       // processed, ignoring the mode's intent).
       const msResult = this.midSide.encode(channels[0], channels[1], frameCount, channelMode);
       if (msResult) {
-        const target: Float32Array[] = [
-          channelMode === "mid" ? msResult.mid : msResult.side,
-        ];
+        const target = this.msTargetWrap;
+        target[0] = channelMode === "mid" ? msResult.mid : msResult.side;
         this.processChannelsDirect(target, frameCount, activeBands);
         const chunkL = channels[0];
         const chunkR = channels[1] ?? channels[0];
@@ -511,6 +530,11 @@ export class UnmaskModuleProcessor implements UltinaModuleProcessor {
 
         bq.z1[ch] = z1;
         bq.z2[ch] = z2;
+        // Non-finite state guard — an inline recursion never self-heals.
+        if (!Number.isFinite(z1) || !Number.isFinite(z2)) {
+          bq.z1[ch] = 0;
+          bq.z2[ch] = 0;
+        }
       }
     }
   }

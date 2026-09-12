@@ -310,6 +310,11 @@ export class TransientModuleProcessor implements UltinaModuleProcessor {
     if (bandCount !== this.cachedBandCount) {
       this.multiband.setBandCount(bandCount);
       this.cachedBandCount = bandCount;
+      // Bands beyond the new count must not keep reporting stale meter
+      // readings — getMeters publishes the full 3-slot arrays.
+      for (let b = bandCount; b < TRANSIENT_MAX_BANDS; b++) {
+        this.transientLevels[b] = 0;
+      }
       // setBandCount rebuilds the crossover (coefficients wiped) —
       // force both split frequencies to be re-applied below.
       this.cachedXover1 = -1;

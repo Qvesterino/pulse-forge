@@ -681,6 +681,24 @@ export function createLimiterModule(params?: Record<string, number>): ModuleProc
     },
 
     setParameter(id, value) {
+      // Re-enable after a bypassed period must not resume from the frozen
+      // lookahead ring / oversampler history: process() did not run while
+      // disabled, so the ring holds pre-disable audio that the true-peak
+      // path replays (~lookaheadMs of stale signal) on re-enable — same
+      // rising-edge contract as saturation's clearDelayHistory. A full
+      // state reset matches a freshly prepared limiter.
+      if (id === "enabled" && store.get("enabled") < 0.5 && value >= 0.5) {
+        for (const s of ch) {
+          s.env = 1;
+          s.prev = 0;
+          s.wp = 0;
+          s.fill = 0;
+          s.fillPeak = 0;
+          s.grSmooth = 0;
+          s.ring.fill(0);
+          s.os.reset();
+        }
+      }
       store.set(id, value);
     },
     getParameter(id) {

@@ -100,6 +100,14 @@ export interface UltinaModuleProcessor {
    * Called from the control thread. Default 0.
    */
   getLatency?(): number;
+  /**
+   * Optional notification that the module's "<type>.enabled" param flipped.
+   * A module that sits outside the active chain (or early-returns while
+   * disabled) holds FROZEN internal state; implementations with delay-line
+   * memory use this to clear stale audio that would otherwise replay into
+   * the live output on re-entry (up to the module's maximum delay).
+   */
+  onEnabledTransition?(enabled: boolean): void;
 }
 
 export type ModuleProcessorFactory = () => UltinaModuleProcessor;
@@ -418,6 +426,16 @@ export class UltinaProcessor {
     const chL = channels[0];
     const chR = channels[1];
 
+    // Non-finite input guard: a single NaN/Inf frame from an upstream node
+    // would permanently poison the inline filter recursions inside the
+    // modules and the LUFS/spectrum/learn analysis state — those recursions
+    // never self-heal (NaN propagates through z1/z2 forever). Finite audio
+    // is untouched; only non-finite samples become digital zero.
+    for (let i = 0; i < frameCount; i++) {
+      if (!Number.isFinite(chL[i])) chL[i] = 0;
+      if (!Number.isFinite(chR[i])) chR[i] = 0;
+    }
+
     // Drain parameter queue
     this.paramQueue.drainInto(this.params);
 
@@ -669,7 +687,9 @@ export class UltinaProcessor {
    */
   setParameter(id: string, value: number): void {
     const clamped = clampParam(id, value);
+    const prev = this.params[id];
     this.params[id] = clamped;
+    this.maybeNotifyEnabledTransition(id, prev, clamped);
     this.paramQueue.enqueue(id, clamped);
   }
 
@@ -744,7 +764,10 @@ export class UltinaProcessor {
   loadState(params: Record<string, number>): void {
     // Apply all parameters
     for (const [id, value] of Object.entries(params)) {
-      this.params[id] = clampParam(id, value);
+      const clamped = clampParam(id, value);
+      const prev = this.params[id];
+      this.params[id] = clamped;
+      this.maybeNotifyEnabledTransition(id, prev, clamped);
     }
   }
 
@@ -855,6 +878,30 @@ export class UltinaProcessor {
   }
 
   // ── Internal helpers ─────────────────────────────────────
+
+  /**
+   * Fire the optional onEnabledTransition hook when a "<module>.enabled"
+   * param actually flips (see UltinaModuleProcessor.onEnabledTransition).
+   * Control-thread only, same event that syncs the module graph.
+   */
+  private maybeNotifyEnabledTransition(
+    id: string,
+    prev: number | undefined,
+    next: number,
+  ): void {
+    if (
+      prev === undefined ||
+      (prev >= 0.5) === (next >= 0.5) ||
+      !id.endsWith(".enabled")
+    ) {
+      return;
+    }
+    const moduleType = id.slice(0, -".enabled".length) as ModuleType;
+    const module = this.modules.get(moduleType);
+    if (module && typeof module.onEnabledTransition === "function") {
+      module.onEnabledTransition(next >= 0.5);
+    }
+  }
 
   private getOrCreateModule(
     moduleType: ModuleType,

@@ -22,6 +22,14 @@ export class Transport {
   private countInBars_ = 0;
   /** Pre-roll length in bars (0 = off, 1) — playback starts this many bars early. */
   private preRollBars_ = 0;
+  /**
+   * User-gesture hook (collab transport sync): fires after every
+   * user-visible transport change (play/pause/stop/seek) with the
+   * post-change transport, so an outside listener can broadcast the new
+   * anchor. Programmatic re-anchoring by the sync itself must guard with
+   * its own lock — see openProject's follow logic.
+   */
+  onGesture: ((transport: Transport) => void) | null = null;
 
   constructor(
     private clock: Clock,
@@ -67,17 +75,22 @@ export class Transport {
     this.anchorTick = startTick;
     this.anchorTime = now;
     this.playing_ = true;
+    this.onGesture?.(this);
   }
 
   pause(): void {
     if (!this.playing_) return;
     this.pauseTick = this.tickAt(this.clock.now());
     this.playing_ = false;
+    this.onGesture?.(this);
   }
 
   stop(): void {
+    // Always gesture: a stop while paused still rewinds to 0 and the jam
+    // peers must follow the rewind even though `playing` did not change.
     this.playing_ = false;
     this.pauseTick = 0;
+    this.onGesture?.(this);
   }
 
   seek(tick: number): void {
@@ -95,6 +108,7 @@ export class Transport {
     } else {
       this.pauseTick = tick;
     }
+    this.onGesture?.(this);
   }
 
   setBpm(bpm: number): void {

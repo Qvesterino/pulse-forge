@@ -19,6 +19,7 @@ import {
   type RemixParent,
 } from "./galleryApi";
 import { buildRemix, remixTagsOf } from "./remix";
+import { randomRoomId } from "../collab/collabShared";
 
 type FeedState = { kind: "loading" } | { kind: "error"; message: string } | { kind: "ready"; items: GalleryItem[] };
 
@@ -241,6 +242,16 @@ function GalleryCard({
     onFork();
   };
 
+  /**
+   * INSTANT JAM: open this beat in a LIVE collab room — the studio boots
+   * with ?import= (the beat) AND ?collab= (the room), seeds the room with
+   * the beat, and every friend who opens the same link joins the same jam.
+   * Zero install: browser-native, the one thing DAWs cannot do.
+   */
+  const jamLive = () => {
+    window.open(`${openUrl}&collab=${randomRoomId()}`, "_blank", "noopener");
+  };
+
   /** REMIX: auto-arrange + drop variations, published as YOUR beat in one shot. */
   const [remixing, setRemixing] = useState(false);
   const [remixError, setRemixError] = useState(false);
@@ -331,6 +342,14 @@ function GalleryCard({
           disabled={remixing}
         >
           {remixing ? "REMIXING…" : remixError ? "REMIX FAILED" : "REMIX ⚡"}
+        </button>
+        <button
+          type="button"
+          className="gallery-fork gallery-jam"
+          title="Open this beat in a live jam room — share the link and play together, no install"
+          onClick={jamLive}
+        >
+          JAM LIVE ▸
         </button>
         <button
           type="button"

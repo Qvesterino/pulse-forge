@@ -128,6 +128,8 @@ export class DensityModuleProcessor implements UltinaModuleProcessor {
   private dryDelay = new DryDelayMixer();
   private pooledMeters: DensityMeters | null = null;
   private dryL: Float32Array = new Float32Array(0);
+  // Reused chunk wrappers — see the chunk loop in process().
+  private chunkChannelsWrap: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
   private dryR: Float32Array = new Float32Array(0);
 
   // Cached config
@@ -227,8 +229,10 @@ export class DensityModuleProcessor implements UltinaModuleProcessor {
     const xoverMode: CrossoverMode = (params["density.crossoverMode"] ?? 0) >= 0.5 ? "hybrid" : "analog";
     this.multiband.setCrossoverMode(xoverMode);
 
-    // Reset per-call meter readings
-    for (let b = 0; b < bandCount; b++) {
+    // Reset per-call meter readings — ALL slots, not just the active bands:
+    // getMeters reports the full 3-band array and a band-count reduction
+    // must not leave frozen stale readings behind.
+    for (let b = 0; b < this.bandMeters.length; b++) {
       resetBandMeterState(this.bandMeters[b]);
     }
 
@@ -238,16 +242,20 @@ export class DensityModuleProcessor implements UltinaModuleProcessor {
       const remaining = frameCount - offset;
       const chunkSize = Math.min(remaining, this.maxBlockSize);
 
-      // Create chunk views
-      const chunkChannels: Float32Array[] = [
-        channels[0].subarray(offset, offset + chunkSize),
-        channels[1].subarray(offset, offset + chunkSize),
-      ];
+      // Reused chunk wrappers (audio thread): the common single-chunk case
+      // passes the channel buffers directly — subarray views are only
+      // created for genuine multi-chunk blocks.
+      const chunkChannels = this.chunkChannelsWrap;
+      chunkChannels[0] = offset === 0 ? channels[0] : channels[0].subarray(offset, offset + chunkSize);
+      chunkChannels[1] = offset === 0 ? channels[1] : channels[1].subarray(offset, offset + chunkSize);
 
-      // Store dry signal
+      // Store dry signal (bounded copy — the channel buffer may be longer
+      // than this chunk; .set() with a longer source would throw)
       this.ensureBuffers(chunkSize);
-      this.dryL.set(chunkChannels[0]);
-      this.dryR.set(chunkChannels[1]);
+      for (let i = 0; i < chunkSize; i++) {
+        this.dryL[i] = channels[0][offset + i];
+        this.dryR[i] = channels[1][offset + i];
+      }
 
       // Process through multiband
       this.multiband.process(

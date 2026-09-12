@@ -20,6 +20,7 @@ export {
 
 import { randomUser, type CollabStatus } from "./collabShared";
 import { normalizeJamRole, type JamRole } from "./jamRoles";
+import type { SharedTransportState } from "./transportSync";
 
 /**
  * A live collaboration session over y-websocket: reactive status +
@@ -36,6 +37,7 @@ export class CollabSession {
   private cursors_: RemoteCursor[] = [];
   private unsubs: Array<() => void> = [];
   private role_: JamRole;
+  private onFirstSyncCb: ((hasRemote: boolean) => void) | null = null;
 
   constructor(yDoc: Y.Doc, roomId: string, serverUrl: string, user: CollaboratorInfo = randomUser()) {
     this.roomId = roomId;
@@ -57,8 +59,18 @@ export class CollabSession {
     this.refresh();
   }
 
+  /**
+   * Register the first-sync callback BEFORE connect(): fires once with
+   * hasRemote = the room already carried content (seed-vs-adopt decision —
+   * see YDocStore.empty/hydrate/adoptRemote).
+   */
+  onFirstSync(cb: (hasRemote: boolean) => void): void {
+    this.onFirstSyncCb = cb;
+  }
+
   /** Connect and start tracking status/participants. Safe to call once. */
   connect(): void {
+    this.provider.onSynced((hasRemote) => this.onFirstSyncCb?.(hasRemote));
     this.provider.connect(this.serverUrl);
     this.unsubs.push(
       this.provider.onStatusChange((status) => {
@@ -93,6 +105,23 @@ export class CollabSession {
   /** Broadcast the local cursor/selection for presence. */
   setCursor(cursor: CursorState | null): void {
     this.provider.setCursor(cursor);
+  }
+
+  /** Broadcast the local transport pulse (Instant Jam shared transport). */
+  setSharedTransport(state: SharedTransportState): void {
+    this.provider.setTransportState(state);
+  }
+
+  /** Subscribe to remote transport pulses (latest remote state wins). */
+  subscribeSharedTransport(
+    cb: (state: SharedTransportState | null, fromClientId: number) => void,
+  ): () => void {
+    return this.provider.onTransportChange(cb);
+  }
+
+  /** Local awareness clientId — used to suppress transport echo. */
+  get clientID(): string {
+    return String(this.provider.clientId);
   }
 
   dispose(): void {

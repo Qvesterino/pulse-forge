@@ -131,6 +131,32 @@ export class YDocStore {
     return new YDocStore(yDoc);
   }
 
+  /**
+   * Start with an EMPTY room and a local fallback document. The room is
+   * seeded later via hydrate() ONLY when first sync shows no remote content
+   * (deferred seeding) — a joiner opening an existing room adopts it through
+   * adoptRemote() instead of clobbering it with their own initial doc
+   * (Instant Jam: everyone opens the same ?import= code, but a late joiner
+   * must never wipe edits made before they arrived).
+   */
+  static empty(fallback: ProjectDocument): YDocStore {
+    const store = new YDocStore(new Y.Doc());
+    store.doc_ = fallback;
+    return store;
+  }
+
+  /** Seed the (empty) room: write the initial document into the Y map. */
+  hydrate(doc: ProjectDocument): void {
+    this.yDoc.transact(() => projectToYDoc(doc, this.yMap));
+  }
+
+  /** Re-read the local document from the (remote-populated) Y map. */
+  adoptRemote(): void {
+    this.doc_ = this.readDoc(true);
+    this.emit();
+    this.onDocChanged?.(this.doc_);
+  }
+
   /** Get the underlying Y.Doc for sync providers. */
   get yDocRef(): Y.Doc {
     return this.yDoc;

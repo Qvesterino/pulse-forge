@@ -2005,6 +2005,33 @@
         }
         this.totalSamples++;
       }
+      for (let s = 0; s < 2; s++) {
+        const k1 = this.kStage1[s];
+        if (!Number.isFinite(k1.z1) || !Number.isFinite(k1.z2)) {
+          k1.z1 = 0;
+          k1.z2 = 0;
+        }
+        const k2 = this.kStage2[s];
+        if (!Number.isFinite(k2.z1) || !Number.isFinite(k2.z2)) {
+          k2.z1 = 0;
+          k2.z2 = 0;
+        }
+      }
+      if (!Number.isFinite(this.momentarySum)) {
+        this.momentarySum = 0;
+        this.momentaryBuf.fill(0);
+        this.momentaryCount = 0;
+      }
+      if (!Number.isFinite(this.shortTermSum)) {
+        this.shortTermSum = 0;
+        this.shortTermBuf.fill(0);
+        this.shortTermCount = 0;
+      }
+      if (!Number.isFinite(this.blockSum)) {
+        this.blockSum = 0;
+        this.blockBuf.fill(0);
+        this.blockCount = 0;
+      }
       if (this.momentaryCount > 0) {
         const meanMS = this.momentarySum / this.momentaryCount;
         this.momentaryLufs = meanMS > 1e-12 ? -0.691 + 10 * Math.log10(meanMS) : ABSOLUTE_GATE_LUFS;
@@ -2308,6 +2335,11 @@
         bq.z1[0] = z1;
         bq.z2[0] = z2;
         this.envelopes[b] = env;
+        if (!Number.isFinite(z1) || !Number.isFinite(z2) || !Number.isFinite(env)) {
+          bq.z1[0] = 0;
+          bq.z2[0] = 0;
+          this.envelopes[b] = 0;
+        }
       }
       for (let b = 0; b < SPECTRAL_BANDS; b++) {
         this.bandLevelsDb[b] = this.envelopes[b] > 1e-10 ? 20 * Math.log10(this.envelopes[b]) : -200;
@@ -3060,6 +3092,10 @@
       if (!this.prepared || channels.length < 2) return;
       const chL = channels[0];
       const chR = channels[1];
+      for (let i = 0; i < frameCount; i++) {
+        if (!Number.isFinite(chL[i])) chL[i] = 0;
+        if (!Number.isFinite(chR[i])) chR[i] = 0;
+      }
       this.paramQueue.drainInto(this.params);
       const bypass = (this.params[GLOBAL_BYPASS_ID] ?? 0) >= 0.5;
       const inputGainDb = this.params[GLOBAL_INPUT_GAIN_DB_ID] ?? 0;
@@ -3232,7 +3268,9 @@
      */
     setParameter(id, value) {
       const clamped = clampParam(id, value);
+      const prev = this.params[id];
       this.params[id] = clamped;
+      this.maybeNotifyEnabledTransition(id, prev, clamped);
       this.paramQueue.enqueue(id, clamped);
     }
     /**
@@ -3291,7 +3329,10 @@
      */
     loadState(params) {
       for (const [id, value] of Object.entries(params)) {
-        this.params[id] = clampParam(id, value);
+        const clamped = clampParam(id, value);
+        const prev = this.params[id];
+        this.params[id] = clamped;
+        this.maybeNotifyEnabledTransition(id, prev, clamped);
       }
     }
     // ── Meters ───────────────────────────────────────────────
@@ -3388,6 +3429,21 @@
       return this.autoGain.getReading();
     }
     // ── Internal helpers ─────────────────────────────────────
+    /**
+     * Fire the optional onEnabledTransition hook when a "<module>.enabled"
+     * param actually flips (see UltinaModuleProcessor.onEnabledTransition).
+     * Control-thread only, same event that syncs the module graph.
+     */
+    maybeNotifyEnabledTransition(id, prev, next) {
+      if (prev === void 0 || prev >= 0.5 === next >= 0.5 || !id.endsWith(".enabled")) {
+        return;
+      }
+      const moduleType = id.slice(0, -".enabled".length);
+      const module = this.modules.get(moduleType);
+      if (module && typeof module.onEnabledTransition === "function") {
+        module.onEnabledTransition(next >= 0.5);
+      }
+    }
     getOrCreateModule(moduleType) {
       return this.modules.get(moduleType) ?? null;
     }
@@ -3643,6 +3699,9 @@
     // M/S processing buffers
     midBuffer = new Float32Array(0);
     sideBuffer = new Float32Array(0);
+    // Reused M/S wrappers (audio thread — see the M/S branch of process())
+    singleChannelWrap = [new Float32Array(0)];
+    scWrap = [new Float32Array(0)];
     tempL = new Float32Array(0);
     tempR = new Float32Array(0);
     /** Per-sample dynamic-gain trajectory (pass 1 → pass 2 of dynamic bands). */
@@ -3720,8 +3779,13 @@
       const useMidSide = channelMode === 1 || channelMode === 2;
       if (useMidSide) {
         encodeMidSide(channels[0], channels[1], frameCount, this.midBuffer, this.sideBuffer);
-        const targetBuffer = channelMode === 1 ? [this.midBuffer] : [this.sideBuffer];
-        const targetSidechain = sidechainEnabled && sidechain ? [sidechain[0]] : null;
+        const targetBuffer = this.singleChannelWrap;
+        targetBuffer[0] = channelMode === 1 ? this.midBuffer : this.sideBuffer;
+        let targetSidechain = null;
+        if (sidechainEnabled && sidechain) {
+          this.scWrap[0] = sidechain[0];
+          targetSidechain = this.scWrap;
+        }
         this.processBands(targetBuffer, frameCount, targetSidechain, params, soloBand, maskingEnabled);
         this.applySoftSat(targetBuffer, frameCount, softSat);
         decodeMidSide(this.midBuffer, this.sideBuffer, frameCount, channels[0], channels[1]);
@@ -3876,7 +3940,7 @@
     updateBandCoefficients(band, freq, gainDb, q, shape) {
       const sr = this.sampleRate;
       const effectiveGain = shape >= 9 ? 0 : gainDb;
-      const effectiveShape = shape >= 9 ? shape - 9 : shape;
+      const effectiveShape = shape === 11 ? 6 : shape >= 9 ? shape - 9 : shape;
       const baseShape = EQ_SHAPES2[effectiveShape] ?? "bell";
       switch (baseShape) {
         case "bell":
@@ -3970,7 +4034,9 @@
       for (let ch = 0; ch < numCh; ch++) {
         const src = detectSource[ch];
         const tempBuf = ch === 0 ? this.tempL : this.tempR;
-        tempBuf.set(src.subarray(0, frameCount));
+        for (let i = 0; i < frameCount; i++) {
+          tempBuf[i] = src[i];
+        }
         const { b0, b1, b2, a1, a2 } = band.detector.coeffs;
         let z1 = band.detector.z1[ch];
         let z2 = band.detector.z2[ch];
@@ -3983,6 +4049,10 @@
         }
         band.detector.z1[ch] = z1;
         band.detector.z2[ch] = z2;
+        if (!Number.isFinite(z1) || !Number.isFinite(z2)) {
+          band.detector.z1[ch] = 0;
+          band.detector.z2[ch] = 0;
+        }
       }
       let gainReduction = band.currentGainDb;
       for (let i = 0; i < frameCount; i++) {
@@ -4021,6 +4091,12 @@
       const bandIdx = this.bands.indexOf(band);
       if (bandIdx >= 0) {
         this.bandGainReduction[bandIdx] = -band.currentGainDb;
+      }
+      for (let ch = 0; ch < numOutCh; ch++) {
+        if (!Number.isFinite(band.dynFilter.z1[ch]) || !Number.isFinite(band.dynFilter.z2[ch])) {
+          band.dynFilter.z1[ch] = 0;
+          band.dynFilter.z2[ch] = 0;
+        }
       }
     }
     measureBandLevel(_band, channels, frameCount, bandIdx) {
@@ -4229,12 +4305,14 @@
       const activeSplits = this.bandCount - 1;
       for (let s = 0; s < activeSplits; s++) {
         const split = this.splits[s];
-        for (let ch = 0; ch < chCount; ch++) {
-          this.lr4LpOut[ch].set(this.lr4Work[ch].subarray(0, frameCount));
-        }
-        for (const bq of split.lp) {
+        if (s === 0) {
           for (let ch = 0; ch < chCount; ch++) {
-            processBiquadInPlace(bq, this.lr4LpOut[ch], ch, frameCount);
+            this.lr4LpOut[ch].set(this.lr4Work[ch].subarray(0, frameCount));
+          }
+          for (const bq of split.lp) {
+            for (let ch = 0; ch < chCount; ch++) {
+              processBiquadInPlace(bq, this.lr4LpOut[ch], ch, frameCount);
+            }
           }
         }
         for (const bq of split.hp) {
@@ -4314,6 +4392,7 @@
   var MidSideProcessor = class {
     midBuf = new Float32Array(0);
     sideBuf = new Float32Array(0);
+    result = null;
     prepare(maxBlockSize, _channelCount) {
       this.midBuf = new Float32Array(maxBlockSize);
       this.sideBuf = new Float32Array(maxBlockSize);
@@ -4330,7 +4409,10 @@
         this.sideBuf = new Float32Array(frameCount);
       }
       encodeMidSide(left, right, frameCount, this.midBuf, this.sideBuf);
-      return { mid: this.midBuf, side: this.sideBuf };
+      if (!this.result) this.result = { mid: this.midBuf, side: this.sideBuf };
+      this.result.mid = this.midBuf;
+      this.result.side = this.sideBuf;
+      return this.result;
     }
     /**
      * Decode M/S back to L/R and write into output buffers.
@@ -4388,6 +4470,9 @@
     // L then R made the single-channel path share state and leak L into R.
     transientStereoBufs = [];
     sustainStereoBufs = [];
+    // Reused single-band wrapper for the M/S and mono T/S paths (audio-thread
+    // process() call — a fresh [target] literal per block is GC churn).
+    singleChannelWrap = [new Float32Array(0)];
     sampleRate = 48e3;
     channelCount = 2;
     maxBlockSize = 8192;
@@ -4459,7 +4544,8 @@
         const msResult = this.midSide.encode(channels[0], channels[1], frameCount, channelMode);
         if (!msResult) return;
         const target = channelMode === "mid" ? msResult.mid : msResult.side;
-        const singleChannel = [target];
+        const singleChannel = this.singleChannelWrap;
+        singleChannel[0] = target;
         this.processBands(singleChannel, frameCount, bandProcessFn);
         this.midSide.decode(msResult.mid, msResult.side, frameCount, channels[0], channels[1]);
       } else if (channelMode === "transient" || channelMode === "sustain") {
@@ -4472,7 +4558,8 @@
             0
           );
           const target = channelMode === "transient" ? this.transientBuf : this.sustainBuf;
-          const singleChannel = [target];
+          const singleChannel = this.singleChannelWrap;
+          singleChannel[0] = target;
           this.processBands(singleChannel, frameCount, bandProcessFn);
           const otherBuf = channelMode === "transient" ? this.sustainBuf : this.transientBuf;
           for (let i = 0; i < frameCount; i++) {
@@ -4735,6 +4822,9 @@
     // (comp.sidechainHpfHz covers that path).
     detHpf = [];
     detHpfBufs = [];
+    // Reused per-block scratch (audio thread — no fresh arrays in process())
+    scChannelsWrap = [new Float32Array(0), new Float32Array(0)];
+    bandThresholdDbBuf = [0, 0, 0];
     // Dry buffer for mix
     dryL = new Float32Array(0);
     dryR = new Float32Array(0);
@@ -4843,15 +4933,16 @@
         setHighPass(this.scHpf.coeffs, scHpfHz, 0.707, this.sampleRate);
         this.scHpfBufferL.set(sidechain[0].subarray(0, frameCount));
         this.scHpfBufferR.set(sidechain[1].subarray(0, frameCount));
-        const scChannels = [this.scHpfBufferL, this.scHpfBufferR];
+        const scChannels = this.scChannelsWrap;
+        scChannels[0] = this.scHpfBufferL;
+        scChannels[1] = this.scHpfBufferR;
         processBiquad(this.scHpf, scChannels, frameCount);
         detectSource = scChannels;
       }
-      const bandThresholdDb = [
-        params["comp.band0.thresholdDb"] ?? thresholdDb,
-        params["comp.band1.thresholdDb"] ?? thresholdDb,
-        params["comp.band2.thresholdDb"] ?? thresholdDb
-      ];
+      const bandThresholdDb = this.bandThresholdDbBuf;
+      bandThresholdDb[0] = params["comp.band0.thresholdDb"] ?? thresholdDb;
+      bandThresholdDb[1] = params["comp.band1.thresholdDb"] ?? thresholdDb;
+      bandThresholdDb[2] = params["comp.band2.thresholdDb"] ?? thresholdDb;
       const scActive = scEnabled && sidechain && sidechain.length >= 2;
       const detHpfActive = detHpfHz > 20.5 && !scActive && this.detHpf.length === COMP_MAX_BANDS;
       if (detHpfActive) {
@@ -5059,6 +5150,10 @@
       if (this.cachedBandCount !== bandCount) {
         this.multiband.setBandCount(bandCount);
         this.cachedBandCount = bandCount;
+        for (let b = bandCount; b < COMP_MAX_BANDS; b++) {
+          this.gainReduction[b] = 0;
+          this.outputLevels[b] = -100;
+        }
         this.cachedXover1 = -1;
         this.cachedXover2 = -1;
       }
@@ -5082,8 +5177,8 @@
       if (!sidechainSource && detHpfActive) {
         const buf = this.detHpfBufs[bandIdx];
         buf.set(channels[0].subarray(0, frameCount));
-        processBiquad(this.detHpf[bandIdx][0], [buf], frameCount);
-        processBiquad(this.detHpf[bandIdx][1], [buf], frameCount);
+        processBiquadChannel(this.detHpf[bandIdx][0], buf, 0, frameCount);
+        processBiquadChannel(this.detHpf[bandIdx][1], buf, 0, frameCount);
         detectCh = buf;
       }
       for (let i = 0; i < frameCount; i++) {
@@ -5220,6 +5315,10 @@
     pooledMeters = null;
     // Sidechain HPF buffers
     scHpfBufferL = new Float32Array(0);
+    // Reused per-block scratch (audio thread — no fresh arrays in process())
+    openThresholdDbBuf = [0, 0, 0];
+    closeThresholdDbBuf = [0, 0, 0];
+    scChannelsWrap = [new Float32Array(0), new Float32Array(0)];
     scHpfBufferR = new Float32Array(0);
     // Meter state
     bandGain = new Array(GATE_MAX_BANDS).fill(0);
@@ -5272,16 +5371,14 @@
       const deltaListen = (params["gate.delta"] ?? 0) >= 0.5;
       const mixPercent = clamp(params["gate.mix"] ?? 100, 0, 100);
       const closedGainLinear = dbToLinear(rangeDb);
-      const openThresholdDb = [
-        params["gate.band0.openThresholdDb"] ?? -40,
-        params["gate.band1.openThresholdDb"] ?? -40,
-        params["gate.band2.openThresholdDb"] ?? -40
-      ];
-      const closeThresholdDb = [
-        params["gate.band0.closeThresholdDb"] ?? openThresholdDb[0] - hysteresisDb,
-        params["gate.band1.closeThresholdDb"] ?? openThresholdDb[1] - hysteresisDb,
-        params["gate.band2.closeThresholdDb"] ?? openThresholdDb[2] - hysteresisDb
-      ];
+      const openThresholdDb = this.openThresholdDbBuf;
+      openThresholdDb[0] = params["gate.band0.openThresholdDb"] ?? -40;
+      openThresholdDb[1] = params["gate.band1.openThresholdDb"] ?? -40;
+      openThresholdDb[2] = params["gate.band2.openThresholdDb"] ?? -40;
+      const closeThresholdDb = this.closeThresholdDbBuf;
+      closeThresholdDb[0] = params["gate.band0.closeThresholdDb"] ?? openThresholdDb[0] - hysteresisDb;
+      closeThresholdDb[1] = params["gate.band1.closeThresholdDb"] ?? openThresholdDb[1] - hysteresisDb;
+      closeThresholdDb[2] = params["gate.band2.closeThresholdDb"] ?? openThresholdDb[2] - hysteresisDb;
       for (let b = 0; b < closeThresholdDb.length; b++) {
         if (closeThresholdDb[b] > openThresholdDb[b]) {
           closeThresholdDb[b] = openThresholdDb[b];
@@ -5298,7 +5395,9 @@
         setHighPass(this.scHpf.coeffs, scHpfHz, 0.707, this.sampleRate);
         this.scHpfBufferL.set(sidechain[0].subarray(0, frameCount));
         this.scHpfBufferR.set(sidechain[1].subarray(0, frameCount));
-        const scChannels = [this.scHpfBufferL, this.scHpfBufferR];
+        const scChannels = this.scChannelsWrap;
+        scChannels[0] = this.scHpfBufferL;
+        scChannels[1] = this.scHpfBufferR;
         processBiquad(this.scHpf, scChannels, frameCount);
         detectSource = scChannels;
       }
@@ -5378,6 +5477,11 @@
       if (this.cachedBandCount !== bandCount) {
         this.multiband.setBandCount(bandCount);
         this.cachedBandCount = bandCount;
+        for (let b = bandCount; b < GATE_MAX_BANDS; b++) {
+          this.bandGain[b] = 0;
+          this.bandState[b] = 0 /* Closed */;
+          this.bandReductionDb[b] = 0;
+        }
         this.cachedXover1 = -1;
         this.cachedXover2 = -1;
       }
@@ -5482,6 +5586,18 @@
     // Dry buffer for mix
     dryL = new Float32Array(0);
     dryR = new Float32Array(0);
+    // Reused saturation amounts record — see process().
+    amountsBuf = {
+      tubeAmt: 0,
+      tubeAsymAmt: 0,
+      warmAmt: 0,
+      tapeAmt: 0,
+      retroAmt: 0,
+      odAmt: 0,
+      screamAmt: 0,
+      clipAmt: 0,
+      scratchAmt: 0
+    };
     // Latency-compensated dry/wet mixing (see dsp/dryDelay.ts).
     dryDelay = new DryDelayMixer();
     pooledMeters = null;
@@ -5544,22 +5660,23 @@
       const mixPercent = clamp(params["exciter.mix"] ?? 50, 0, 100);
       const deltaListen = (params["exciter.delta"] ?? 0) >= 0.5;
       this.osActive = oversampling;
-      const amounts = {
-        tubeAmt,
-        tubeAsymAmt,
-        warmAmt,
-        tapeAmt,
-        retroAmt,
-        odAmt,
-        screamAmt,
-        clipAmt,
-        scratchAmt
-      };
+      const amounts = this.amountsBuf;
+      amounts.tubeAmt = tubeAmt;
+      amounts.tubeAsymAmt = tubeAsymAmt;
+      amounts.warmAmt = warmAmt;
+      amounts.tapeAmt = tapeAmt;
+      amounts.retroAmt = retroAmt;
+      amounts.odAmt = odAmt;
+      amounts.screamAmt = screamAmt;
+      amounts.clipAmt = clipAmt;
+      amounts.scratchAmt = scratchAmt;
       this.updateMultiband(bandCount, xover1, xover2);
       const xoverMode = (params["exciter.crossoverMode"] ?? 0) >= 0.5 ? "hybrid" : "analog";
       this.multiband.setCrossoverMode(xoverMode);
-      this.dryL.set(channels[0].subarray(0, frameCount));
-      this.dryR.set(channels[1].subarray(0, frameCount));
+      for (let i = 0; i < frameCount; i++) {
+        this.dryL[i] = channels[0][i];
+        this.dryR[i] = channels[1][i];
+      }
       this.multiband.process(
         channels,
         frameCount,
@@ -5631,6 +5748,10 @@
       if (bandCount !== this.cachedBandCount) {
         this.multiband.setBandCount(bandCount);
         this.cachedBandCount = bandCount;
+        for (let b = bandCount; b < EXCITER_MAX_BANDS; b++) {
+          this.harmonicContent[b] = 0;
+          this.outputPeaks[b] = -100;
+        }
         this.cachedXover1 = -1;
         this.cachedXover2 = -1;
       }
@@ -5645,7 +5766,8 @@
     }
     processBand(bandIdx, bandChannels, bandFrames, trashMode, amounts, toneSlider, oversampling) {
       const chL = bandChannels[0];
-      const chR = bandChannels.length >= 2 ? bandChannels[1] : bandChannels[0];
+      const stereo = bandChannels.length >= 2;
+      const chR = stereo ? bandChannels[1] : bandChannels[0];
       let inEnergy = 0;
       for (let i = 0; i < bandFrames; i++) {
         inEnergy += chL[i] * chL[i];
@@ -5655,16 +5777,16 @@
         const osStateR = this.osStates[bandIdx][1];
         const osFrames = bandFrames * OS_FACTOR;
         this.upsample(chL, osStateL, bandFrames);
-        this.upsample(chR, osStateR, bandFrames);
+        if (stereo) this.upsample(chR, osStateR, bandFrames);
         this.applySaturation(osStateL.osBuffer, osFrames, trashMode, amounts);
-        this.applySaturation(osStateR.osBuffer, osFrames, trashMode, amounts);
-        this.applyTone(osStateL.osBuffer, osStateR.osBuffer, osFrames, toneSlider, bandIdx);
+        if (stereo) this.applySaturation(osStateR.osBuffer, osFrames, trashMode, amounts);
+        this.applyTone(osStateL.osBuffer, osStateR.osBuffer, osFrames, toneSlider, bandIdx, stereo);
         this.downsample(osStateL, chL, bandFrames);
-        this.downsample(osStateR, chR, bandFrames);
+        if (stereo) this.downsample(osStateR, chR, bandFrames);
       } else {
         this.applySaturation(chL, bandFrames, trashMode, amounts);
-        this.applySaturation(chR, bandFrames, trashMode, amounts);
-        this.applyTone(chL, chR, bandFrames, toneSlider, bandIdx);
+        if (stereo) this.applySaturation(chR, bandFrames, trashMode, amounts);
+        this.applyTone(chL, chR, bandFrames, toneSlider, bandIdx, stereo);
       }
       let outEnergy = 0;
       for (let i = 0; i < bandFrames; i++) {
@@ -5751,7 +5873,7 @@
      * Apply tone shelving via one-pole crossover.
      * toneSlider: -1 = boost lows, +1 = boost highs.
      */
-    applyTone(chL, chR, frames, toneSlider, bandIdx) {
+    applyTone(chL, chR, frames, toneSlider, bandIdx, stereo) {
       if (Math.abs(toneSlider) < 1e-3) return;
       const lowGainDb = toneSlider < 0 ? -toneSlider * 6 : 0;
       const highGainDb = toneSlider > 0 ? toneSlider * 6 : 0;
@@ -5765,9 +5887,11 @@
         const sL = chL[i];
         lowL = lowL + alpha * (sL - lowL);
         chL[i] = sanitizeSample(lowL * lowGain + (sL - lowL) * highGain);
-        const sR = chR[i];
-        lowR = lowR + alpha * (sR - lowR);
-        chR[i] = sanitizeSample(lowR * lowGain + (sR - lowR) * highGain);
+        if (stereo) {
+          const sR = chR[i];
+          lowR = lowR + alpha * (sR - lowR);
+          chR[i] = sanitizeSample(lowR * lowGain + (sR - lowR) * highGain);
+        }
       }
       this.toneLowState[bandIdx * 2] = lowL;
       this.toneLowState[bandIdx * 2 + 1] = lowR;
@@ -5956,6 +6080,9 @@
       if (bandCount !== this.cachedBandCount) {
         this.multiband.setBandCount(bandCount);
         this.cachedBandCount = bandCount;
+        for (let b = bandCount; b < TRANSIENT_MAX_BANDS; b++) {
+          this.transientLevels[b] = 0;
+        }
         this.cachedXover1 = -1;
         this.cachedXover2 = -1;
       }
@@ -6075,6 +6202,8 @@
     dryDelay = new DryDelayMixer();
     pooledMeters = null;
     dryL = new Float32Array(0);
+    // Reused chunk wrappers — see the chunk loop in process().
+    chunkChannelsWrap = [new Float32Array(0), new Float32Array(0)];
     dryR = new Float32Array(0);
     // Per-band meter state
     bandMeters = [];
@@ -6140,13 +6269,14 @@
       const chunkSize = this.maxBlockSize;
       for (let offset = 0; offset < frameCount; offset += chunkSize) {
         const remaining = Math.min(chunkSize, frameCount - offset);
-        const chunkChannels = [
-          channels[0].subarray(offset, offset + remaining),
-          channels[1].subarray(offset, offset + remaining)
-        ];
+        const chunkChannels = this.chunkChannelsWrap;
+        chunkChannels[0] = offset === 0 ? channels[0] : channels[0].subarray(offset, offset + remaining);
+        chunkChannels[1] = offset === 0 ? channels[1] : channels[1].subarray(offset, offset + remaining);
         this.ensureBuffers(remaining);
-        this.dryL.set(chunkChannels[0]);
-        this.dryR.set(chunkChannels[1]);
+        for (let i = 0; i < remaining; i++) {
+          this.dryL[i] = channels[0][offset + i];
+          this.dryR[i] = channels[1][offset + i];
+        }
         this.multiband.process(
           chunkChannels,
           remaining,
@@ -6253,7 +6383,8 @@
     }
     processBand(bandIdx, bandChannels, bandFrames, driveLin, ceilingLin, kneeLin, _kneeDb, oversampling) {
       const chL = bandChannels[0];
-      const chR = bandChannels.length >= 2 ? bandChannels[1] : bandChannels[0];
+      const stereo = bandChannels.length >= 2;
+      const chR = stereo ? bandChannels[1] : bandChannels[0];
       const bm = this.bandMeters[bandIdx];
       let inPeak = 0;
       for (let i = 0; i < bandFrames; i++) {
@@ -6267,16 +6398,16 @@
         const osStateL = this.osStates[bandIdx][0];
         const osStateR = this.osStates[bandIdx][1];
         this.upsample(chL, osStateL, bandFrames);
-        this.upsample(chR, osStateR, bandFrames);
+        if (stereo) this.upsample(chR, osStateR, bandFrames);
         const osFrames = bandFrames * OS_FACTOR;
         const redL = this.applyClipping(osStateL.osBuffer, osFrames, driveLin, ceilingLin, kneeLin);
-        const redR = this.applyClipping(osStateR.osBuffer, osFrames, driveLin, ceilingLin, kneeLin);
+        const redR = stereo ? this.applyClipping(osStateR.osBuffer, osFrames, driveLin, ceilingLin, kneeLin) : redL;
         maxReductionDb = Math.max(redL, redR);
         this.downsample(osStateL, chL, bandFrames);
-        this.downsample(osStateR, chR, bandFrames);
+        if (stereo) this.downsample(osStateR, chR, bandFrames);
       } else {
         const redL = this.applyClipping(chL, bandFrames, driveLin, ceilingLin, kneeLin);
-        const redR = this.applyClipping(chR, bandFrames, driveLin, ceilingLin, kneeLin);
+        const redR = stereo ? this.applyClipping(chR, bandFrames, driveLin, ceilingLin, kneeLin) : redL;
         maxReductionDb = Math.max(redL, redR);
       }
       let outPeak = 0;
@@ -6375,6 +6506,8 @@
     dryDelay = new DryDelayMixer();
     pooledMeters = null;
     dryL = new Float32Array(0);
+    // Reused chunk wrappers — see the chunk loop in process().
+    chunkChannelsWrap = [new Float32Array(0), new Float32Array(0)];
     dryR = new Float32Array(0);
     // Cached config
     cachedBandCount = -1;
@@ -6450,20 +6583,21 @@
       this.updateMultiband(bandCount, xover1, xover2);
       const xoverMode = (params["density.crossoverMode"] ?? 0) >= 0.5 ? "hybrid" : "analog";
       this.multiband.setCrossoverMode(xoverMode);
-      for (let b = 0; b < bandCount; b++) {
+      for (let b = 0; b < this.bandMeters.length; b++) {
         resetBandMeterState2(this.bandMeters[b]);
       }
       let offset = 0;
       while (offset < frameCount) {
         const remaining = frameCount - offset;
         const chunkSize = Math.min(remaining, this.maxBlockSize);
-        const chunkChannels = [
-          channels[0].subarray(offset, offset + chunkSize),
-          channels[1].subarray(offset, offset + chunkSize)
-        ];
+        const chunkChannels = this.chunkChannelsWrap;
+        chunkChannels[0] = offset === 0 ? channels[0] : channels[0].subarray(offset, offset + chunkSize);
+        chunkChannels[1] = offset === 0 ? channels[1] : channels[1].subarray(offset, offset + chunkSize);
         this.ensureBuffers(chunkSize);
-        this.dryL.set(chunkChannels[0]);
-        this.dryR.set(chunkChannels[1]);
+        for (let i = 0; i < chunkSize; i++) {
+          this.dryL[i] = channels[0][offset + i];
+          this.dryR[i] = channels[1][offset + i];
+        }
         this.multiband.process(
           chunkChannels,
           chunkSize,
@@ -6634,6 +6768,9 @@
     // Dry buffers
     dryL = new Float32Array(0);
     dryR = new Float32Array(0);
+    // Reused per-chunk channel wrappers (audio thread — see process())
+    singleChannelWrap = [new Float32Array(0)];
+    stereoChannelsWrap = [new Float32Array(0), new Float32Array(0)];
     // Meter data (current curves for display)
     currentTargetCurve = new Float32Array(NUM_BANDS);
     currentSpectralCurve = new Float32Array(NUM_BANDS);
@@ -6683,11 +6820,13 @@
       while (offset < frameCount) {
         const remaining = frameCount - offset;
         const chunkSize = Math.min(remaining, this.maxBlockSize);
-        const chunkL = channels[0].subarray(offset, offset + chunkSize);
-        const chunkR = channels[1].subarray(offset, offset + chunkSize);
+        const chunkL = offset === 0 ? channels[0] : channels[0].subarray(offset, offset + chunkSize);
+        const chunkR = offset === 0 ? channels[1] : channels[1].subarray(offset, offset + chunkSize);
         this.ensureBuffers(chunkSize);
-        this.dryL.set(chunkL);
-        this.dryR.set(chunkR);
+        for (let i = 0; i < chunkSize; i++) {
+          this.dryL[i] = channels[0][offset + i];
+          this.dryR[i] = channels[1][offset + i];
+        }
         let analysisSignal;
         let processChannels;
         let msResult = null;
@@ -6696,14 +6835,19 @@
           if (msResult) {
             const target = channelMode === "mid" ? msResult.mid : msResult.side;
             analysisSignal = target;
-            processChannels = [target];
+            processChannels = this.singleChannelWrap;
+            processChannels[0] = target;
           } else {
             analysisSignal = chunkL;
-            processChannels = [chunkL, chunkR];
+            processChannels = this.stereoChannelsWrap;
+            processChannels[0] = chunkL;
+            processChannels[1] = chunkR;
           }
         } else {
           analysisSignal = chunkL;
-          processChannels = [chunkL, chunkR];
+          processChannels = this.stereoChannelsWrap;
+          processChannels[0] = chunkL;
+          processChannels[1] = chunkR;
         }
         for (let b = 0; b < NUM_BANDS; b++) {
           this.runBandpassAnalysis(b, analysisSignal, chunkSize);
@@ -6762,6 +6906,10 @@
             }
             this.bellBiquads[b].z1[ch] = z1;
             this.bellBiquads[b].z2[ch] = z2;
+            if (!Number.isFinite(z1) || !Number.isFinite(z2)) {
+              this.bellBiquads[b].z1[ch] = 0;
+              this.bellBiquads[b].z2[ch] = 0;
+            }
           }
         }
         if (msResult) {
@@ -6857,6 +7005,11 @@
       bq.z1[0] = z1;
       bq.z2[0] = z2;
       this.envFollowers[bandIdx] = env;
+      if (!Number.isFinite(z1) || !Number.isFinite(z2) || !Number.isFinite(env)) {
+        bq.z1[0] = 0;
+        bq.z2[0] = 0;
+        this.envFollowers[bandIdx] = 0;
+      }
     }
   };
 
@@ -6984,11 +7137,13 @@
       while (offset < frameCount) {
         const remaining = frameCount - offset;
         const chunkSize = Math.min(remaining, this.maxBlockSize);
-        const chunkL = channels[0].subarray(offset, offset + chunkSize);
-        const chunkR = channels[1].subarray(offset, offset + chunkSize);
+        const chunkL = offset === 0 ? channels[0] : channels[0].subarray(offset, offset + chunkSize);
+        const chunkR = offset === 0 ? channels[1] : channels[1].subarray(offset, offset + chunkSize);
         this.ensureBuffers(chunkSize);
-        this.dryL.set(chunkL);
-        this.dryR.set(chunkR);
+        for (let i = 0; i < chunkSize; i++) {
+          this.dryL[i] = channels[0][offset + i];
+          this.dryR[i] = channels[1][offset + i];
+        }
         for (let i = 0; i < chunkSize; i++) {
           let xL = chunkL[i];
           let xR = chunkR[i];
@@ -7146,6 +7301,19 @@
         this.dryR = new Float32Array(size);
       }
     }
+    /**
+     * Re-enable clears the time-shift delay lines: while the module sits
+     * outside the active chain (or early-returns on the disabled param) the
+     * ring freezes, and the first delayL/delayR samples after re-entry would
+     * otherwise replay audio captured before the disable — up to 50 ms of
+     * arbitrarily old material spliced into the live output.
+     */
+    onEnabledTransition(enabled) {
+      if (!enabled) return;
+      this.delayBufL.fill(0);
+      this.delayBufR.fill(0);
+      this.delayWritePos = 0;
+    }
   };
 
   // src/effects/ultina-core/dsp/modules/unmaskModule.ts
@@ -7189,6 +7357,9 @@
     instanceId = "";
     // M/S processor
     midSide = new MidSideProcessor();
+    // Reused per-block scratch (no audio-thread allocation — see applyGainChain)
+    activeBandsBuf = [];
+    msTargetWrap = [new Float32Array(0)];
     // Buffers
     dryBuf = [];
     analysisBuf = new Float32Array(0);
@@ -7341,6 +7512,11 @@
         bq.z1[0] = z1;
         bq.z2[0] = z2;
         this.mainEnv[b] = env;
+        if (!Number.isFinite(z1) || !Number.isFinite(z2) || !Number.isFinite(env)) {
+          bq.z1[0] = 0;
+          bq.z2[0] = 0;
+          this.mainEnv[b] = 0;
+        }
       }
       if (scSrc) {
         for (let b = 0; b < NUM_BANDS2; b++) {
@@ -7360,6 +7536,11 @@
           bq.z1[0] = z1;
           bq.z2[0] = z2;
           this.scEnv[b] = env;
+          if (!Number.isFinite(z1) || !Number.isFinite(z2) || !Number.isFinite(env)) {
+            bq.z1[0] = 0;
+            bq.z2[0] = 0;
+            this.scEnv[b] = 0;
+          }
         }
       }
     }
@@ -7406,7 +7587,8 @@
     }
     applyGainChain(channels, frameCount, channelModeRaw) {
       const channelMode = channelModeFromValue(channelModeRaw);
-      const activeBands = [];
+      const activeBands = this.activeBandsBuf;
+      activeBands.length = 0;
       for (let b = 0; b < NUM_BANDS2; b++) {
         const gain = this.gainSmoothed[b];
         if (gain < -0.01 || gain > 0.01) {
@@ -7421,9 +7603,8 @@
       } else {
         const msResult = this.midSide.encode(channels[0], channels[1], frameCount, channelMode);
         if (msResult) {
-          const target = [
-            channelMode === "mid" ? msResult.mid : msResult.side
-          ];
+          const target = this.msTargetWrap;
+          target[0] = channelMode === "mid" ? msResult.mid : msResult.side;
           this.processChannelsDirect(target, frameCount, activeBands);
           const chunkL = channels[0];
           const chunkR = channels[1] ?? channels[0];
@@ -7457,6 +7638,10 @@
           }
           bq.z1[ch] = z1;
           bq.z2[ch] = z2;
+          if (!Number.isFinite(z1) || !Number.isFinite(z2)) {
+            bq.z1[ch] = 0;
+            bq.z2[ch] = 0;
+          }
         }
       }
     }
@@ -7566,8 +7751,8 @@
           this.proc.setParameter(msg.id, msg.value);
           if (typeof msg.id === "string" && msg.id.endsWith(".enabled")) {
             this.syncGraphFromParams();
-            this.postLatency();
           }
+          this.postLatency();
         } else if (msg.type === "paramAt") {
           const when = Number(msg.when);
           if (!Number.isFinite(when)) {
@@ -7617,8 +7802,8 @@
       if (q.length === 0 || q[0].when > horizon) return;
       let applied = 0;
       let enabledToggled = false;
-      while (q.length > 0 && q[0].when <= horizon) {
-        const ev = q.shift();
+      while (applied < q.length && q[applied].when <= horizon) {
+        const ev = q[applied];
         this.proc.setParameter(ev.id, ev.value);
         if (typeof ev.id === "string" && ev.id.endsWith(".enabled")) {
           enabledToggled = true;
@@ -7626,6 +7811,9 @@
         applied++;
       }
       if (applied > 0) {
+        const remaining = q.length - applied;
+        for (let j = 0; j < remaining; j++) q[j] = q[j + applied];
+        q.length = remaining;
         if (enabledToggled) this.syncGraphFromParams();
         this.postLatency();
       }
@@ -7656,8 +7844,8 @@
       }
       if (this.metersEnabled && (this.blockCount++ & 3) === 0) {
         this.port.postMessage({ type: "meters", meters: this.proc.getMeters() });
-        this.postLatency();
       }
+      this.postLatency();
       return true;
     }
   };

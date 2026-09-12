@@ -57,6 +57,7 @@ import {
   setHighPass,
   resetBiquad,
   processBiquad,
+  processBiquadChannel,
   type BiquadState,
 } from "../primitives.js";
 import {
@@ -144,6 +145,10 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
   // (comp.sidechainHpfHz covers that path).
   private detHpf: BiquadState[][] = [];
   private detHpfBufs: Float32Array[] = [];
+
+  // Reused per-block scratch (audio thread — no fresh arrays in process())
+  private scChannelsWrap: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
+  private bandThresholdDbBuf: number[] = [0, 0, 0];
 
   // Dry buffer for mix
   private dryL: Float32Array = new Float32Array(0);
@@ -288,17 +293,18 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
       setHighPass(this.scHpf.coeffs, scHpfHz, 0.707, this.sampleRate);
       this.scHpfBufferL.set(sidechain[0].subarray(0, frameCount));
       this.scHpfBufferR.set(sidechain[1].subarray(0, frameCount));
-      const scChannels = [this.scHpfBufferL, this.scHpfBufferR];
+      const scChannels = this.scChannelsWrap;
+      scChannels[0] = this.scHpfBufferL;
+      scChannels[1] = this.scHpfBufferR;
       processBiquad(this.scHpf, scChannels, frameCount);
       detectSource = scChannels;
     }
 
-    // Prepare per-band params
-    const bandThresholdDb = [
-      params["comp.band0.thresholdDb"] ?? thresholdDb,
-      params["comp.band1.thresholdDb"] ?? thresholdDb,
-      params["comp.band2.thresholdDb"] ?? thresholdDb,
-    ];
+    // Prepare per-band params (reused array — audio thread)
+    const bandThresholdDb = this.bandThresholdDbBuf;
+    bandThresholdDb[0] = params["comp.band0.thresholdDb"] ?? thresholdDb;
+    bandThresholdDb[1] = params["comp.band1.thresholdDb"] ?? thresholdDb;
+    bandThresholdDb[2] = params["comp.band2.thresholdDb"] ?? thresholdDb;
 
     // Detector HPF for the internal (per-band) detection path. When an
     // external sidechain drives the detector, comp.sidechainHpfHz already
@@ -550,6 +556,12 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
     if (this.cachedBandCount !== bandCount) {
       this.multiband.setBandCount(bandCount);
       this.cachedBandCount = bandCount;
+      // Bands beyond the new count must not keep reporting stale
+      // GR/level readings — getMeters publishes the full 3-slot arrays.
+      for (let b = bandCount; b < COMP_MAX_BANDS; b++) {
+        this.gainReduction[b] = 0;
+        this.outputLevels[b] = -100;
+      }
       // setBandCount rebuilds the crossover (coefficients wiped) —
       // force both split frequencies to be re-applied below.
       this.cachedXover1 = -1;
@@ -599,10 +611,12 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
     if (!sidechainSource && detHpfActive) {
       // Filter the band's detection signal through the detector HPF so
       // low-frequency energy does not trigger compression of this band.
+      // processBiquadChannel avoids the [buf] wrapper allocation the
+      // array-taking helper would need per band per block.
       const buf = this.detHpfBufs[bandIdx];
       buf.set(channels[0].subarray(0, frameCount));
-      processBiquad(this.detHpf[bandIdx][0], [buf], frameCount);
-      processBiquad(this.detHpf[bandIdx][1], [buf], frameCount);
+      processBiquadChannel(this.detHpf[bandIdx][0], buf, 0, frameCount);
+      processBiquadChannel(this.detHpf[bandIdx][1], buf, 0, frameCount);
       detectCh = buf;
     }
 

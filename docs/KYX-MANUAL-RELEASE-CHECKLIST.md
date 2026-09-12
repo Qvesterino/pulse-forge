@@ -22,6 +22,19 @@ Ak je verejná gallery zapnutá, pridaj `KYX_GALLERY_PUBLIC=1` a produkčný
 spusť tiež `npm run release:server-smoke` pre skutočný collab-server entrypoint.
 Nasledujúca device matrix a production health check sú stále povinné.
 
+Po nasadení spusti HTTP smoke proti skutočným URL:
+
+```text
+$env:KYX_DEPLOY_URL = "https://app.example.com"
+$env:KYX_COLLAB_URL = "https://collab.example.com"
+$env:KYX_ALLOWED_ORIGIN = "https://app.example.com"
+npm run release:deployed-smoke
+```
+
+Ak je gallery verejná, pridaj `KYX_GALLERY_PUBLIC=1` a
+`KYX_GALLERY_ADMIN_TOKEN`. Bez `KYX_COLLAB_URL` script výslovne označí collab
+kontroly ako skipped; jeho PASS preto nie je dôkazom produkčného relay health.
+
 ## 1. Matrix
 
 Vyplniť každý riadok na produkčnom builde, nie iba na Vite dev serveri.

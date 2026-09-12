@@ -150,6 +150,9 @@ export class EqModuleProcessor implements UltinaModuleProcessor {
   // M/S processing buffers
   private midBuffer: Float32Array = new Float32Array(0);
   private sideBuffer: Float32Array = new Float32Array(0);
+  // Reused M/S wrappers (audio thread — see the M/S branch of process())
+  private singleChannelWrap: Float32Array[] = [new Float32Array(0)];
+  private scWrap: Float32Array[] = [new Float32Array(0)];
   private tempL: Float32Array = new Float32Array(0);
   private tempR: Float32Array = new Float32Array(0);
   /** Per-sample dynamic-gain trajectory (pass 1 → pass 2 of dynamic bands). */
@@ -248,9 +251,15 @@ export class EqModuleProcessor implements UltinaModuleProcessor {
       // Encode to M/S
       encodeMidSide(channels[0], channels[1], frameCount, this.midBuffer, this.sideBuffer);
 
-      // Process on the selected channel (mid or side)
-      const targetBuffer = channelMode === 1 ? [this.midBuffer] : [this.sideBuffer];
-      const targetSidechain = sidechainEnabled && sidechain ? [sidechain[0]] : null;
+      // Process on the selected channel (mid or side) — reused wrappers,
+      // refreshed each block (the buffers are reallocated by ensureBuffers)
+      const targetBuffer = this.singleChannelWrap;
+      targetBuffer[0] = channelMode === 1 ? this.midBuffer : this.sideBuffer;
+      let targetSidechain: Float32Array[] | null = null;
+      if (sidechainEnabled && sidechain) {
+        this.scWrap[0] = sidechain[0];
+        targetSidechain = this.scWrap;
+      }
 
       this.processBands(targetBuffer, frameCount, targetSidechain, params, soloBand, maskingEnabled);
       this.applySoftSat(targetBuffer, frameCount, softSat);
@@ -461,7 +470,12 @@ export class EqModuleProcessor implements UltinaModuleProcessor {
 
     // For dynamic shapes, use the base shape (bell/shelf/tilt) with 0 dB static gain
     const effectiveGain = shape >= 9 ? 0 : gainDb; // Dynamic shapes start at 0 dB
-    const effectiveShape = shape >= 9 ? shape - 9 : shape; // Map to base shape
+    // Dynamic shapes map to their static base shape — EXCEPT dynamicTilt
+    // (11): its process path runs the tilt PAIR (filter + filter2, see
+    // processDynamicBand), so it must take the "tilt" design. Mapping it to
+    // base "lowShelf" never designed filter2, leaving whatever coefficients
+    // a previous shape-6 tilt configuration left behind baked into the band.
+    const effectiveShape = shape === 11 ? 6 : shape >= 9 ? shape - 9 : shape; // Map to base shape
     const baseShape = EQ_SHAPES[effectiveShape] ?? "bell";
 
     switch (baseShape) {
@@ -613,7 +627,11 @@ export class EqModuleProcessor implements UltinaModuleProcessor {
     for (let ch = 0; ch < numCh; ch++) {
       const src = detectSource[ch];
       const tempBuf = ch === 0 ? this.tempL : this.tempR;
-      tempBuf.set(src.subarray(0, frameCount));
+      // Plain copy loop — subarray() allocates a view object per dynamic
+      // band per channel per block on the audio thread.
+      for (let i = 0; i < frameCount; i++) {
+        tempBuf[i] = src[i];
+      }
 
       // Apply detector filter (band-pass at band freq)
       const { b0, b1, b2, a1, a2 } = band.detector.coeffs;
@@ -628,6 +646,11 @@ export class EqModuleProcessor implements UltinaModuleProcessor {
       }
       band.detector.z1[ch] = z1;
       band.detector.z2[ch] = z2;
+      // Non-finite state guard (see processBiquadChannel).
+      if (!Number.isFinite(z1) || !Number.isFinite(z2)) {
+        band.detector.z1[ch] = 0;
+        band.detector.z2[ch] = 0;
+      }
     }
 
     // Stereo-linked detection: use max envelope across channels
@@ -691,6 +714,14 @@ export class EqModuleProcessor implements UltinaModuleProcessor {
     const bandIdx = this.bands.indexOf(band);
     if (bandIdx >= 0) {
       this.bandGainReduction[bandIdx] = -band.currentGainDb;
+    }
+    // Non-finite state guard for the dynamic band-pass above (its state is
+    // written per sample directly into band.dynFilter).
+    for (let ch = 0; ch < numOutCh; ch++) {
+      if (!Number.isFinite(band.dynFilter.z1[ch]) || !Number.isFinite(band.dynFilter.z2[ch])) {
+        band.dynFilter.z1[ch] = 0;
+        band.dynFilter.z2[ch] = 0;
+      }
     }
   }
 

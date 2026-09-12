@@ -47,8 +47,12 @@ export const pwaOptions: Partial<VitePWAOptions> = {
   workbox: {
     // Precache all built assets (JS/CSS/HTML) + icons + curated factory
     // samples from public/samples/ (local-first: the curated kit must be
-    // available offline, not only on the first online visit).
+    // available offline, not only on the first online visit). Internal
+    // golden-review listening renders are not product assets, and the optional
+    // intent ranker stays lazy: its 13.9 MB WASM runtime must never inflate
+    // the app-shell install/update payload.
     globPatterns: ["**/*.{js,css,html,svg,png,woff2,wav}"],
+    globIgnores: ["models/ort/**", "models/intent-ranker-v1.onnx", "golden-review/**"],
     // Workbox silently EXCLUDES precache entries above its 2 MiB default —
     // raise the cap so curated one-shots (kicks/snares are typically well
     // under this) never get silently dropped from the offline kit.

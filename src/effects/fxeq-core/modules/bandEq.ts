@@ -114,6 +114,14 @@ export function createBandEqModule(params?: Record<string, number>): ModuleProce
     },
 
     setParameter(id, value) {
+      // Re-enable after a bypassed period must not resume from stale biquad
+      // state: while disabled the filter states hold pre-disable signal
+      // energy that emits a decaying transient blip on the first active
+      // block (same rising-edge contract as saturation's
+      // clearDelayHistory). Coefficients are unaffected — only state zeros.
+      if (id === "enabled" && store.get("enabled") < 0.5 && value >= 0.5) {
+        for (const f of filters) resetBiquad(f);
+      }
       store.set(id, value);
       dirty = true;
     },

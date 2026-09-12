@@ -441,6 +441,23 @@ export function createBandEngine(seed?: number): BandEngine {
       if (!def) return;
       if (!Number.isFinite(value)) return;
       const v = Math.max(def.minValue, Math.min(def.maxValue, value));
+      // Resume from fresh module state: while the band was disabled/muted,
+      // process() returned before the module chain, so delay lines, FDN
+      // tanks and filter states froze mid-tail — unmuting would replay that
+      // stale audio as a burst (the same contract the processor applies to
+      // solo and each module applies to its own `enabled` flag). Resetting
+      // the whole chain matches a freshly created band; module params are
+      // untouched.
+      const resumesBand = (id === "enabled" && bandEnabled < 0.5 && v >= 0.5) ||
+        (id === "mute" && bandMute >= 0.5 && v < 0.5);
+      if (resumesBand) {
+        for (const key of MODULE_KEYS) modules[key].reset();
+        modEnvValue = 0;
+        envGainOffset = 0;
+        dynState.envelope = 0;
+        dynState.smoothedGain = 1;
+        dynState.gainReductionDb = 0;
+      }
       switch (id) {
         case "gainDb": bandGainDb = v; break;
         case "enabled": bandEnabled = v; break;

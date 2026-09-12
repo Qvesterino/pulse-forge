@@ -4695,10 +4695,14 @@
         if (!msg) return;
         if (msg.type === "param") {
           const now = currentTime;
-          if (this.pendingParams.length > 0) {
-            this.pendingParams = this.pendingParams.filter(
-              (ev) => ev.id !== msg.id || ev.when <= now
-            );
+          const q = this.pendingParams;
+          if (q.length > 0) {
+            let w = 0;
+            for (let i = 0; i < q.length; i++) {
+              const ev = q[i];
+              if (ev.id !== msg.id || ev.when <= now) q[w++] = ev;
+            }
+            q.length = w;
           }
           this.state = setPath(this.state, msg.id, msg.value);
           this.proc.loadState(this.state);
@@ -4773,12 +4777,14 @@
       const q = this.pendingParams;
       if (q.length === 0 || q[0].when > horizon) return;
       let applied = 0;
-      while (q.length > 0 && q[0].when <= horizon) {
-        const ev = q.shift();
-        this.state = setPath(this.state, ev.id, ev.value);
+      while (applied < q.length && q[applied].when <= horizon) {
+        this.state = setPath(this.state, q[applied].id, q[applied].value);
         applied++;
       }
       if (applied > 0) {
+        const remaining = q.length - applied;
+        for (let j = 0; j < remaining; j++) q[j] = q[j + applied];
+        q.length = remaining;
         this.proc.loadState(this.state);
         this.postLatency();
       }

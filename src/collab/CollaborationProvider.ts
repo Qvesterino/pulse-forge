@@ -10,6 +10,7 @@
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
 import { normalizeJamRole, type JamRole } from "./jamRoles";
+import type { SharedTransportState } from "./transportSync";
 
 export interface CollaboratorInfo {
   id: string;
@@ -51,10 +52,26 @@ export class CollaborationProvider {
   }
 
   /** Connect to the sync server. */
+  private syncedCb: ((hasRemote: boolean) => void) | null = null;
+
+  /**
+   * Called once on the first successful room sync: `hasRemote` tells the
+   * caller whether the room already carried content (so a joining client can
+   * adopt it instead of seeding its own initial document over it).
+   */
+  onSynced(cb: (hasRemote: boolean) => void): void {
+    this.syncedCb = cb;
+  }
+
   connect(serverUrl: string = "ws://localhost:1234"): void {
     if (this.provider) return;
     this.provider = new WebsocketProvider(serverUrl, this.roomId, this.yDoc, {
       connect: true,
+    });
+    // y-websocket emits "synced" (see its synced setter) but the installed
+    // typings omit it from the event union — subscribe through the raw emitter.
+    (this.provider as unknown as { on: (event: string, cb: () => void) => void }).on("synced", () => {
+      this.syncedCb?.(this.yDoc.getMap("project").size > 0);
     });
     // Set local awareness state
     this.provider.awareness.setLocalState({
@@ -105,6 +122,40 @@ export class CollaborationProvider {
       if (state.user && state.cursor) cursors.push({ user: state.user, cursor: state.cursor });
     });
     return cursors;
+  }
+
+  /** Broadcast the local shared-transport state (Instant Jam pulse). */
+  setTransportState(state: SharedTransportState): void {
+    this.provider?.awareness.setLocalStateField("transport", state);
+  }
+
+  /**
+   * Subscribe to remote shared-transport states. On every awareness change
+   * the LATEST remote state (highest `at`, own echo excluded) is reported —
+   * null when no peer has broadcast.
+   */
+  onTransportChange(
+    callback: (state: SharedTransportState | null, fromClientId: number) => void,
+  ): () => void {
+    if (!this.provider) return () => {};
+    const provider = this.provider;
+    const handler = () => {
+      const states = provider.awareness.getStates();
+      const me = provider.awareness.clientID;
+      let best: SharedTransportState | null = null;
+      let bestId = -1;
+      states.forEach((state: Record<string, unknown>, clientId: number) => {
+        if (clientId === me) return;
+        const t = state.transport as SharedTransportState | undefined;
+        if (t && (!best || t.at > best!.at)) {
+          best = t;
+          bestId = clientId;
+        }
+      });
+      callback(best, bestId);
+    };
+    provider.awareness.on("change", handler);
+    return () => provider.awareness.off("change", handler);
   }
 
   /** Get the local client ID. */

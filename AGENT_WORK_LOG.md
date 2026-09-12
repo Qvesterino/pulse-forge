@@ -175,3 +175,18 @@ Run #4 failure attribution: tests/ultina-core-hardening sculptor test hit the do
 **Tree state:** everything committed as b22a0a1 (incl. campaign artifacts) — release report risk R7 resolved.
 
 **CONFIRMED:** fxeq battery PASS + full suite 2003 passed / 0 failed / 95 skipped (exit 0) on committed tree b22a0a1 — the per-instance fxeq seed improvement and ultina fixes are all green together.
+
+---
+
+## CURRENT KYX ROADMAP IMPLEMENTATION — deployment probe + VLYX hardening (2026-09-12)
+
+**Goal executed:** continue `docs/KYX-PRE-RELEASE-IMPLEMENTATION-ROADMAP.md` against the current shared worktree; close locally actionable release gaps without claiming manual/device or deployed-host completion.
+
+**Changes:**
+- Added `scripts/release-deployed-smoke.mjs` and the `release:deployed-smoke` package script. It probes a real app URL for the KYX app shell, manifest identity, five shipped worklets, service worker, and optionally a collab URL for health, exact CORS allowlisting, rejected origins, and gallery admin 401/200.
+- Extended `docs/KYX-MANUAL-RELEASE-CHECKLIST.md`, the KYX roadmap, and `RELEASE_READINESS_REPORT.md` with the executable deployed-host command and explicit skipped-service semantics.
+- Added upstream VLYX `preReleaseHardening.test.ts` oracles for M/S single-band aliasing and dynamicTilt coefficient reset; corrected the host hardening fixture so the clipper oracle is genuinely linear (`kneeDb=0`), then ran `scripts/vendor-ultina.mjs` and rebuilt `public/ultina-worklet.js`.
+
+**Validation:** current typecheck PASS; VLYX host hardening `9/9`; `ultina-core-hardening` `55/55`; worklet/parity/vectors `26/26`; collab/transport/FXEQ/similar/MPE WIP battery `42/42`; deployed smoke PASS against a local production preview plus production-configured local collab server (static-only mode also reports optional service as SKIP); release script syntax and package JSON PASS.
+
+**Unresolved:** the complete default Vitest suite still needs a post-fix run from a reviewed/committed tree; physical Safari/iOS/device VØID footprint and an actual public URL remain owner release gates. No release threshold was weakened and no commit was made by this turn.

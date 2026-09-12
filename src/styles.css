@@ -9252,3 +9252,88 @@ html {
   flex: 1;
   min-width: 0;
 }
+
+/* MPE discoverability strip (MidiPanel): badge + per-note pressure/timbre bars */
+.mpe-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.mpe-badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.mpe-badge.active {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.mpe-hint {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.mpe-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.mpe-note-name {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.mpe-bar {
+  display: inline-block;
+  width: 18px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.mpe-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+}
+
+.mpe-bar-fill.mpe-pressure {
+  background: var(--accent);
+}
+
+.mpe-bar-fill.mpe-timbre {
+  background: rgba(96, 165, 250, 0.9);
+}
+
+/* SIMILAR similarity chip in the preset browser */
+.preset-sim {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+/* Instant Jam: gallery card button + collab panel badge */
+.gallery-jam {
+  color: var(--accent);
+}
+
+.collab-jam-badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+}

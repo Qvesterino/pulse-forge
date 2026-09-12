@@ -46,7 +46,16 @@ class FxEqWorkletProcessor extends AudioWorkletProcessor {
         this.postLatency();
       } else if (msg.type === "param") {
         const now = currentTime;
-        this.pendingParams = this.pendingParams.filter((ev) => ev.id !== msg.id || ev.when <= now);
+        // Manual control supersedes future automation for this id. Compact
+        // the queue IN PLACE — the old Array#filter allocated a fresh array
+        // on the render thread for every knob move.
+        const q = this.pendingParams;
+        let w = 0;
+        for (let i = 0; i < q.length; i++) {
+          const ev = q[i];
+          if (ev.id !== msg.id || ev.when <= now) q[w++] = ev;
+        }
+        q.length = w;
         this.proc.setParameter(msg.id, msg.value);
         this.postLatency();
       } else if (msg.type === "paramAt") {
@@ -75,13 +84,18 @@ class FxEqWorkletProcessor extends AudioWorkletProcessor {
   applyDueParams(horizon) {
     const q = this.pendingParams;
     if (q.length === 0 || q[0].when > horizon) return;
-    let applied = false;
-    while (q.length > 0 && q[0].when <= horizon) {
-      const ev = q.shift();
+    // Consume the due PREFIX by index and compact in place — shift() is
+    // O(n) per event, which made dense automation queues O(n²) per block.
+    let i = 0;
+    while (i < q.length && q[i].when <= horizon) {
+      const ev = q[i];
       this.proc.setParameter(ev.id, ev.value);
-      applied = true;
+      i++;
     }
-    if (applied) this.postLatency();
+    const remaining = q.length - i;
+    for (let j = 0; j < remaining; j++) q[j] = q[j + i];
+    q.length = remaining;
+    this.postLatency();
   }
 
   postLatency() {
@@ -109,6 +123,13 @@ class FxEqWorkletProcessor extends AudioWorkletProcessor {
       else buf.fill(0, 0, frames);
     }
     this.proc.process(this.scratch, frames);
+    // Latency can change INSIDE process(): the oversampled saturation path
+    // engages on the first processed block after its drive/quality crosses
+    // the oversampling threshold (the factor also rides block-smoothed
+    // drive, so the crossing lands many blocks after the param message).
+    // postLatency() is change-guarded, so this is one integer compare per
+    // block and the host's PDC sees the transition the moment it happens.
+    this.postLatency();
     for (let c = 0; c < CHANNELS; c++) {
       const outCh = output[c];
       if (outCh) outCh.set(this.scratch[c].subarray(0, frames));

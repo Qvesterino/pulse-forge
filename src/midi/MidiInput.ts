@@ -45,6 +45,32 @@ export class MidiInput {
   private noteRepeat: NoteRepeatController | null = null;
   /** Most recent note per MIDI channel — CC74 (MPE timbre) routes here. */
   private channelLastNote = new Map<number, number>();
+  /** Live MPE dimension state per held note — drives the MpeIndicator UI. */
+  private mpeNotes = new Map<number, { pressure: number; timbre: number }>();
+  private mpeListeners = new Set<() => void>();
+  /** True once any per-note pressure or CC74 timbre message has arrived. */
+  private mpeConnected = false;
+
+  /** Subscribe to MPE activity changes (per-note pressure/timbre). */
+  subscribeMpe(listener: () => void): () => void {
+    this.mpeListeners.add(listener);
+    return () => this.mpeListeners.delete(listener);
+  }
+
+  /** Held notes with their live MPE dimensions, sorted by pitch. */
+  getMpeNotes(): Array<{ pitch: number; pressure: number; timbre: number }> {
+    return [...this.mpeNotes.entries()]
+      .map(([pitch, d]) => ({ pitch, ...d }))
+      .sort((a, b) => a.pitch - b.pitch);
+  }
+
+  isMpeConnected(): boolean {
+    return this.mpeConnected;
+  }
+
+  private notifyMpe(): void {
+    for (const listener of this.mpeListeners) listener();
+  }
 
   /** Wire the live Note Repeat controller (services call once after construction). */
   attachNoteRepeat(controller: NoteRepeatController): void {
@@ -255,8 +281,13 @@ export class MidiInput {
       this.handleNoteOff(note, channel, config);
       return;
     }
-    // Last note per channel — CC74 (MPE timbre) routes to this note.
+    // Last note per channel — CC74 (MPE timbre) routes here.
     this.channelLastNote.set(channel, note);
+    // MPE indicator: new note starts at zero pressure; timbre persists from
+    // the controller's last CC74 for this channel's note if we saw one.
+    const prevTimbre = this.mpeNotes.get(note)?.timbre ?? 0.5;
+    this.mpeNotes.set(note, { pressure: 0, timbre: prevTimbre });
+    this.notifyMpe();
     const doc = this.getDoc?.();
     if (!doc || !this.engine || !this.transport) return;
     const normVelocity = velocity / 127;
@@ -310,6 +341,7 @@ export class MidiInput {
   private handleNoteOff(note: number, channel: number, _config: MidiConfig): void {
     // Release a live Note Repeat hold for this note (no-op without one).
     this.noteRepeat?.stop(`midi:${channel}:${note}`);
+    if (this.mpeNotes.delete(note)) this.notifyMpe();
   }
 
   private handleCC(cc: number, value: number, channel: number, config: MidiConfig): void {
@@ -347,7 +379,16 @@ export class MidiInput {
     // controller every note owns its channel, on a single-channel setup
     // this degenerates to monophonic timbre expression.
     if (cc === 74 && this.engine) {
+      // MPE indicator: the timbre dimension is alive.
+      this.mpeConnected = true;
       const note = this.channelLastNote.get(channel);
+      if (note !== undefined) {
+        const held = this.mpeNotes.get(note);
+        if (held) {
+          held.timbre = Math.max(0, Math.min(1, value / 127));
+          this.notifyMpe();
+        }
+      }
       const instTrack = doc.tracks.find((t) => t.kind === "instrument");
       if (note !== undefined && instTrack) {
         this.engine.polyTimbre(instTrack.id, note, value / 127);
@@ -425,6 +466,13 @@ export class MidiInput {
   }
 
   private handlePolyPressure(note: number, pressure: number, channel: number, config: MidiConfig): void {
+    // MPE indicator: per-note pressure dimension is alive.
+    this.mpeConnected = true;
+    const held = this.mpeNotes.get(note);
+    if (held) {
+      held.pressure = Math.max(0, Math.min(1, pressure / 127));
+      this.notifyMpe();
+    }
     // Live Note Repeat: aftertouch on the held note modulates its repeats.
     this.noteRepeat?.setHoldPressure(`midi:${channel}:${note}`, pressure / 127);
     if (!this.engine) return;

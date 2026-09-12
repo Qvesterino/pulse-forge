@@ -537,6 +537,9 @@
         return 0;
       },
       setParameter(id, value) {
+        if (id === "enabled" && store.get("enabled") < 0.5 && value >= 0.5) {
+          for (const f of filters) resetBiquad(f);
+        }
         store.set(id, value);
         dirty = true;
       },
@@ -1926,6 +1929,14 @@
         return 0;
       },
       setParameter(id, value) {
+        if (id === "enabled" && store.get("enabled") < 0.5 && value >= 0.5) {
+          for (const b of wowBuffers) b.fill(0);
+          for (let c = 0; c < srrHeld.length; c++) {
+            srrHeld[c] = 0;
+            srrCounter[c] = 0;
+            noisePrev[c] = 0;
+          }
+        }
         store.set(id, value);
       },
       getParameter(id) {
@@ -2165,6 +2176,14 @@
         return 0;
       },
       setParameter(id, value) {
+        if (id === "enabled" && store.get("enabled") < 0.5 && value >= 0.5) {
+          for (const b of delayBuf) b.fill(0);
+          for (let c = 0; c < writeIdx.length; c++) {
+            flangerFb[c] = 0;
+            phaserFb[c] = 0;
+          }
+          for (const stages of phaserStages) for (const bq of stages) resetBiquad(bq);
+        }
         store.set(id, value);
         if (prepared && (id === "rate" || id === "syncMode")) applyLfoRates();
       },
@@ -2376,6 +2395,10 @@
         return 0;
       },
       setParameter(id, value) {
+        if (id === "enabled" && store.get("enabled") < 0.5 && value >= 0.5) {
+          for (const b of delayBuf) b.fill(0);
+          for (let c = 0; c < dampPrev.length; c++) dampPrev[c] = 0;
+        }
         store.set(id, value);
         if (prepared && (id === "timeMs" || id === "dampHz" || id === "syncMode")) recompute();
       },
@@ -2440,9 +2463,9 @@
     const lpState = [];
     const hpState = [];
     const hpPrev = [];
-    let lengths = [];
-    let fbGainsL = [];
-    let fbGainsR = [];
+    const lengths = new Float64Array(FDN_LINES);
+    const fbGainsL = new Float64Array(FDN_LINES);
+    const fbGainsR = new Float64Array(FDN_LINES);
     let dampAlpha = 0.5;
     let hpAlpha = 0;
     let srScale = 1;
@@ -2454,8 +2477,8 @@
       const maxSrScale = sampleRate2 / 44100 * 1.4;
       return Math.max(8, Math.round(longest * maxSrScale)) + 1;
     }
-    let fbSmL = [];
-    let fbSmR = [];
+    const fbSmL = new Float64Array(FDN_LINES);
+    const fbSmR = new Float64Array(FDN_LINES);
     let fbSmPrimed = false;
     let fbSmAlpha = 1;
     const MOD_PHASE_STEP = Math.PI / 4;
@@ -2511,9 +2534,8 @@
         hpState.push(hp);
         hpPrev.push(hpv);
       }
-      lengths = [];
       for (let l = 0; l < FDN_LINES; l++) {
-        lengths.push(Math.max(8, Math.round(BASE_LENGTHS_L[l] * srScale)));
+        lengths[l] = Math.max(8, Math.round(BASE_LENGTHS_L[l] * srScale));
       }
     }
     function recompute() {
@@ -2540,22 +2562,21 @@
       dampAlpha = 1 - Math.exp(-2 * Math.PI * dampHz / sampleRate2);
       hpAlpha = Math.exp(-2 * Math.PI * hpHz / sampleRate2);
       predelayLen = Math.round(clamp(store.get("predelayMs"), 0, 100) / 1e3 * sampleRate2);
-      const newLen = [];
-      fbGainsL = [];
-      fbGainsR = [];
       for (let l = 0; l < FDN_LINES; l++) {
         const lenL = Math.max(8, Math.round(BASE_LENGTHS_L[l] * srScale));
         const lenR = Math.max(8, Math.round(BASE_LENGTHS_R[l] * srScale));
-        newLen.push(lenL);
-        fbGainsL.push(clamp(Math.pow(1e-3, lenL / (decaySec * sampleRate2)), 0, 0.99));
-        fbGainsR.push(clamp(Math.pow(1e-3, lenR / (decaySec * sampleRate2)), 0, 0.99));
+        lengths[l] = lenL;
+        fbGainsL[l] = clamp(Math.pow(1e-3, lenL / (decaySec * sampleRate2)), 0, 0.99);
+        fbGainsR[l] = clamp(Math.pow(1e-3, lenR / (decaySec * sampleRate2)), 0, 0.99);
       }
-      lengths = newLen;
       for (let c = 0; c < writeIdx.length; c++) {
         for (let l = 0; l < writeIdx[c].length; l++) {
           writeIdx[c][l] %= lengths[l];
         }
       }
+      modRateInc = clamp(store.get("modRateHz"), 0.05, 5) / sampleRate2;
+    }
+    function recomputeModRate() {
       modRateInc = clamp(store.get("modRateHz"), 0.05, 5) / sampleRate2;
     }
     function hadamard8(v) {
@@ -2608,8 +2629,8 @@
         const numCh = channels.length;
         const hasCoupling = numCh >= 2 && crossFeedPrev.length >= 2;
         if (!fbSmPrimed) {
-          fbSmL = fbGainsL.slice();
-          fbSmR = fbGainsR.slice();
+          fbSmL.set(fbGainsL);
+          fbSmR.set(fbGainsR);
           fbSmPrimed = true;
         } else {
           for (let l = 0; l < FDN_LINES; l++) {
@@ -2707,10 +2728,29 @@
         return 0;
       },
       setParameter(id, value) {
+        if (id === "enabled" && store.get("enabled") < 0.5 && value >= 0.5) {
+          for (const ls of lines) for (const b of ls) b.fill(0);
+          for (const lp of lpState) for (let l = 0; l < lp.length; l++) lp[l] = 0;
+          for (const hp of hpState) for (let l = 0; l < hp.length; l++) hp[l] = 0;
+          for (const hpv of hpPrev) for (let l = 0; l < hpv.length; l++) hpv[l] = 0;
+          for (const pdl of predelayLines) pdl.fill(0);
+          for (const cf of crossFeedPrev) cf.fill(0);
+          for (const cf of crossFeedCur) cf.fill(0);
+          fbSmPrimed = false;
+        }
+        const previousType = Math.round(store.get("type"));
         store.set(id, value);
-        if (prepared && (id === "type" || id === "decayMs" || id === "modRateHz")) recompute();
+        if (prepared && (id === "type" || id === "decayMs")) {
+          if (id !== "type" || Math.round(store.get("type")) !== previousType) recompute();
+        }
+        if (prepared && id === "modRateHz") recomputeModRate();
         if (prepared && id === "predelayMs") {
           predelayLen = Math.round(clamp(value, 0, 100) / 1e3 * sampleRate2);
+          if (predelayLen > 0) {
+            for (let c = 0; c < predelayWriteIdx.length; c++) {
+              predelayWriteIdx[c] %= predelayLen;
+            }
+          }
         }
       },
       getParameter(id) {
@@ -3139,6 +3179,15 @@
         if (!def) return;
         if (!Number.isFinite(value)) return;
         const v = Math.max(def.minValue, Math.min(def.maxValue, value));
+        const resumesBand = id === "enabled" && bandEnabled < 0.5 && v >= 0.5 || id === "mute" && bandMute >= 0.5 && v < 0.5;
+        if (resumesBand) {
+          for (const key of MODULE_KEYS) modules[key].reset();
+          modEnvValue = 0;
+          envGainOffset = 0;
+          dynState.envelope = 0;
+          dynState.smoothedGain = 1;
+          dynState.gainReductionDb = 0;
+        }
         switch (id) {
           case "gainDb":
             bandGainDb = v;
@@ -3745,6 +3794,18 @@
         return -20 * Math.log10(Math.max(minEnv, 1e-6));
       },
       setParameter(id, value) {
+        if (id === "enabled" && store.get("enabled") < 0.5 && value >= 0.5) {
+          for (const s of ch) {
+            s.env = 1;
+            s.prev = 0;
+            s.wp = 0;
+            s.fill = 0;
+            s.fillPeak = 0;
+            s.grSmooth = 0;
+            s.ring.fill(0);
+            s.os.reset();
+          }
+        }
         store.set(id, value);
       },
       getParameter(id) {
@@ -4354,7 +4415,13 @@
           this.postLatency();
         } else if (msg.type === "param") {
           const now = currentTime;
-          this.pendingParams = this.pendingParams.filter((ev) => ev.id !== msg.id || ev.when <= now);
+          const q = this.pendingParams;
+          let w = 0;
+          for (let i = 0; i < q.length; i++) {
+            const ev = q[i];
+            if (ev.id !== msg.id || ev.when <= now) q[w++] = ev;
+          }
+          q.length = w;
           this.proc.setParameter(msg.id, msg.value);
           this.postLatency();
         } else if (msg.type === "paramAt") {
@@ -4381,13 +4448,16 @@
     applyDueParams(horizon) {
       const q = this.pendingParams;
       if (q.length === 0 || q[0].when > horizon) return;
-      let applied = false;
-      while (q.length > 0 && q[0].when <= horizon) {
-        const ev = q.shift();
+      let i = 0;
+      while (i < q.length && q[i].when <= horizon) {
+        const ev = q[i];
         this.proc.setParameter(ev.id, ev.value);
-        applied = true;
+        i++;
       }
-      if (applied) this.postLatency();
+      const remaining = q.length - i;
+      for (let j = 0; j < remaining; j++) q[j] = q[j + i];
+      q.length = remaining;
+      this.postLatency();
     }
     postLatency() {
       const samples = this.proc.getLatencySamples();
@@ -4409,6 +4479,7 @@
         else buf.fill(0, 0, frames);
       }
       this.proc.process(this.scratch, frames);
+      this.postLatency();
       for (let c = 0; c < CHANNELS; c++) {
         const outCh = output[c];
         if (outCh) outCh.set(this.scratch[c].subarray(0, frames));

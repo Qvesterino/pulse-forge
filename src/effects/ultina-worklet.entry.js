@@ -71,8 +71,12 @@ class UltinaWorkletProcessor extends AudioWorkletProcessor {
         // there or the module never enters the active chain.
         if (typeof msg.id === "string" && msg.id.endsWith(".enabled")) {
           this.syncGraphFromParams();
-          this.postLatency();
         }
+        // Latency-affecting params are not just ".enabled": crossover mode,
+        // band count, per-module oversampling and the global quality mode
+        // all change module latency (hybrid FIR group delay, HQ oversampler
+        // delay). postLatency() no-ops unless the value changed.
+        this.postLatency();
       } else if (msg.type === "paramAt") {
         const when = Number(msg.when);
         if (!Number.isFinite(when)) {
@@ -133,10 +137,12 @@ class UltinaWorkletProcessor extends AudioWorkletProcessor {
   applyDueParams(horizon) {
     const q = this.pendingParams;
     if (q.length === 0 || q[0].when > horizon) return;
+    // Consume the due PREFIX by index and compact in place — shift() is
+    // O(n) per event, which made dense automation queues O(n²) per block.
     let applied = 0;
     let enabledToggled = false;
-    while (q.length > 0 && q[0].when <= horizon) {
-      const ev = q.shift();
+    while (applied < q.length && q[applied].when <= horizon) {
+      const ev = q[applied];
       this.proc.setParameter(ev.id, ev.value);
       if (typeof ev.id === "string" && ev.id.endsWith(".enabled")) {
         enabledToggled = true;
@@ -144,6 +150,9 @@ class UltinaWorkletProcessor extends AudioWorkletProcessor {
       applied++;
     }
     if (applied > 0) {
+      const remaining = q.length - applied;
+      for (let j = 0; j < remaining; j++) q[j] = q[j + applied];
+      q.length = remaining;
       if (enabledToggled) this.syncGraphFromParams();
       this.postLatency();
     }
@@ -185,11 +194,13 @@ class UltinaWorkletProcessor extends AudioWorkletProcessor {
     // Entirely skipped while the host has metering disabled.
     if (this.metersEnabled && (this.blockCount++ & 3) === 0) {
       this.port.postMessage({ type: "meters", meters: this.proc.getMeters() });
-      // Modules configure their crossover (and thus DSP latency) on their
-      // first processed block — re-report latency here so the host PDC picks
-      // up hybrid-mode delay that was unknown at construction time.
-      this.postLatency();
     }
+    // Modules configure their crossover (and thus DSP latency) on their
+    // first processed block — re-report latency here so the host PDC picks
+    // up hybrid-mode delay that was unknown at construction time. Runs
+    // REGARDLESS of metering (change-guarded: one compare per block) —
+    // gating it on meters left latency stale whenever the panel was closed.
+    this.postLatency();
     return true;
   }
 }

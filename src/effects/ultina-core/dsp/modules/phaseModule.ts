@@ -201,13 +201,18 @@ export class PhaseModuleProcessor implements UltinaModuleProcessor {
       const remaining = frameCount - offset;
       const chunkSize = Math.min(remaining, this.maxBlockSize);
 
-      const chunkL = channels[0].subarray(offset, offset + chunkSize);
-      const chunkR = channels[1].subarray(offset, offset + chunkSize);
+      // Chunk views: the common single-chunk case passes the channel
+      // buffers directly (no subarray view allocation on the audio thread).
+      const chunkL = offset === 0 ? channels[0] : channels[0].subarray(offset, offset + chunkSize);
+      const chunkR = offset === 0 ? channels[1] : channels[1].subarray(offset, offset + chunkSize);
 
-      // Store dry signal
+      // Store dry signal (bounded copy — the channel buffer may be longer
+      // than this chunk; .set() with a longer source would throw)
       this.ensureBuffers(chunkSize);
-      this.dryL.set(chunkL);
-      this.dryR.set(chunkR);
+      for (let i = 0; i < chunkSize; i++) {
+        this.dryL[i] = channels[0][offset + i];
+        this.dryR[i] = channels[1][offset + i];
+      }
 
       // ── Process each sample ──
       for (let i = 0; i < chunkSize; i++) {
@@ -423,5 +428,19 @@ export class PhaseModuleProcessor implements UltinaModuleProcessor {
       this.dryL = new Float32Array(size);
       this.dryR = new Float32Array(size);
     }
+  }
+
+  /**
+   * Re-enable clears the time-shift delay lines: while the module sits
+   * outside the active chain (or early-returns on the disabled param) the
+   * ring freezes, and the first delayL/delayR samples after re-entry would
+   * otherwise replay audio captured before the disable — up to 50 ms of
+   * arbitrarily old material spliced into the live output.
+   */
+  onEnabledTransition(enabled: boolean): void {
+    if (!enabled) return;
+    this.delayBufL.fill(0);
+    this.delayBufR.fill(0);
+    this.delayWritePos = 0;
   }
 }

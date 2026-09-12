@@ -309,6 +309,21 @@ export function createModulationModule(params?: Record<string, number>): ModuleP
     },
 
     setParameter(id, value) {
+      // Re-enable after a bypassed period must not resume the frozen delay
+      // lines / feedback states: process() did not run while disabled, so a
+      // flanger's feedback register and line hold pre-disable audio that
+      // would replay (and momentarily ring up through the 0.9-gain loop) on
+      // re-enable — same rising-edge contract as saturation's
+      // clearDelayHistory. LFO phases are kept (modulation sources, not
+      // audio content).
+      if (id === "enabled" && store.get("enabled") < 0.5 && value >= 0.5) {
+        for (const b of delayBuf) b.fill(0);
+        for (let c = 0; c < writeIdx.length; c++) {
+          flangerFb[c] = 0;
+          phaserFb[c] = 0;
+        }
+        for (const stages of phaserStages) for (const bq of stages) resetBiquad(bq);
+      }
       store.set(id, value);
       if (prepared && (id === "rate" || id === "syncMode")) applyLfoRates();
     },

@@ -426,6 +426,38 @@ export class LufsMeter {
       this.totalSamples++;
     }
 
+    // Non-finite state guard: one poisoned sample must not kill every
+    // loudness reading for the rest of the session (the K-weight recursion
+    // and the sliding-window sums never self-heal — see processBiquadChannel
+    // for the same pattern).
+    for (let s = 0; s < 2; s++) {
+      const k1 = this.kStage1[s];
+      if (!Number.isFinite(k1.z1) || !Number.isFinite(k1.z2)) {
+        k1.z1 = 0;
+        k1.z2 = 0;
+      }
+      const k2 = this.kStage2[s];
+      if (!Number.isFinite(k2.z1) || !Number.isFinite(k2.z2)) {
+        k2.z1 = 0;
+        k2.z2 = 0;
+      }
+    }
+    if (!Number.isFinite(this.momentarySum)) {
+      this.momentarySum = 0;
+      this.momentaryBuf.fill(0);
+      this.momentaryCount = 0;
+    }
+    if (!Number.isFinite(this.shortTermSum)) {
+      this.shortTermSum = 0;
+      this.shortTermBuf.fill(0);
+      this.shortTermCount = 0;
+    }
+    if (!Number.isFinite(this.blockSum)) {
+      this.blockSum = 0;
+      this.blockBuf.fill(0);
+      this.blockCount = 0;
+    }
+
     // Compute momentary and short-term
     if (this.momentaryCount > 0) {
       const meanMS = this.momentarySum / this.momentaryCount;

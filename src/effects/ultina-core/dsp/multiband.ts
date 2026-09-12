@@ -298,13 +298,21 @@ export class CrossoverNetwork {
     for (let s = 0; s < activeSplits; s++) {
       const split = this.splits[s];
 
-      // LP branch → copy work to lpOut, then cascade LP sections
-      for (let ch = 0; ch < chCount; ch++) {
-        this.lr4LpOut[ch].set(this.lr4Work[ch].subarray(0, frameCount));
-      }
-      for (const bq of split.lp) {
+      // LP branch → copy work to lpOut, then cascade LP sections.
+      // ONLY split 0's LP output is consumed (band 0); in 3-band mode the
+      // mid band's LP1 pass happens ONCE in the post-loop refinement below.
+      // Running the LP branch at s === 1 anyway would advance split1.lp's
+      // biquad state on HP0(input) and leave it polluted for the refinement
+      // pass — every block would be filtered twice through split1.lp,
+      // corrupting the mid band and the LR4 flat-sum reconstruction.
+      if (s === 0) {
         for (let ch = 0; ch < chCount; ch++) {
-          processBiquadInPlace(bq, this.lr4LpOut[ch], ch, frameCount);
+          this.lr4LpOut[ch].set(this.lr4Work[ch].subarray(0, frameCount));
+        }
+        for (const bq of split.lp) {
+          for (let ch = 0; ch < chCount; ch++) {
+            processBiquadInPlace(bq, this.lr4LpOut[ch], ch, frameCount);
+          }
         }
       }
 
@@ -414,6 +422,7 @@ function processBiquadInPlace(
 export class MidSideProcessor {
   private midBuf: Float32Array = new Float32Array(0);
   private sideBuf: Float32Array = new Float32Array(0);
+  private result: { mid: Float32Array; side: Float32Array } | null = null;
 
   prepare(maxBlockSize: number, _channelCount: number): void {
     this.midBuf = new Float32Array(maxBlockSize);
@@ -439,7 +448,14 @@ export class MidSideProcessor {
     }
 
     encodeMidSide(left, right, frameCount, this.midBuf, this.sideBuf);
-    return { mid: this.midBuf, side: this.sideBuf };
+    // Pooled result object: encode() runs inside process() on the audio
+    // thread — a fresh {mid, side} per block is render-thread GC churn.
+    // The object is overwritten on every call; consumers read it
+    // synchronously and never retain it.
+    if (!this.result) this.result = { mid: this.midBuf, side: this.sideBuf };
+    this.result.mid = this.midBuf;
+    this.result.side = this.sideBuf;
+    return this.result;
   }
 
   /**
@@ -536,6 +552,9 @@ export class MultibandProcessor {
   // L then R made the single-channel path share state and leak L into R.
   private transientStereoBufs: Float32Array[] = [];
   private sustainStereoBufs: Float32Array[] = [];
+  // Reused single-band wrapper for the M/S and mono T/S paths (audio-thread
+  // process() call — a fresh [target] literal per block is GC churn).
+  private singleChannelWrap: Float32Array[] = [new Float32Array(0)];
 
   private sampleRate = 48000;
   private channelCount = 2;
@@ -638,8 +657,9 @@ export class MultibandProcessor {
       if (!msResult) return;
       const target = channelMode === "mid" ? msResult.mid : msResult.side;
 
-      // Process as single-band
-      const singleChannel: Float32Array[] = [target];
+      // Process as single-band (reused wrapper — audio-thread path)
+      const singleChannel = this.singleChannelWrap;
+      singleChannel[0] = target;
       this.processBands(singleChannel, frameCount, bandProcessFn);
 
       // Decode back — use the MidSideProcessor's internal buffers
@@ -653,7 +673,8 @@ export class MultibandProcessor {
           this.transientBuf, this.sustainBuf, 0,
         );
         const target = channelMode === "transient" ? this.transientBuf : this.sustainBuf;
-        const singleChannel: Float32Array[] = [target];
+        const singleChannel = this.singleChannelWrap;
+        singleChannel[0] = target;
         this.processBands(singleChannel, frameCount, bandProcessFn);
         // Mix back: replace only the targeted component
         const otherBuf = channelMode === "transient" ? this.sustainBuf : this.transientBuf;

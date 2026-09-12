@@ -25,6 +25,7 @@ import { ensureWorkletsForDoc } from "./audio-worklets/loader";
 import type { YDocStore } from "./collab/YDocStore";
 import type { CollabSession } from "./collab/CollabSession";
 import { collabParamsFromSearch } from "./collab/collabShared";
+import { applyTransportState, captureTransportState } from "./collab/transportSync";
 import { LatencyCalibrationController } from "./audio-engine/latencyCalibration";
 import { ArrangementCaptureController } from "./arrangement/capture";
 import { GhostPreviewPlayer } from "./audio-engine/GhostPreviewPlayer";
@@ -257,8 +258,16 @@ export async function openProject(
       import("./collab/YDocStore"),
       import("./collab/CollabSession"),
     ]);
-    store = YDocStoreImpl.fromDocument(initial);
+    // Deferred seed-vs-adopt: the local document is only written into the
+    // room when first sync shows the room EMPTY. A joiner opening a room
+    // that already lives adopts the remote content instead — an identical
+    // re-seed would clobber edits made before they arrived (Instant Jam).
+    store = YDocStoreImpl.empty(initial);
     collab = new CollabSessionImpl((store as YDocStore).yDocRef, collabConfig.roomId, collabConfig.serverUrl);
+    collab.onFirstSync((hasRemote) => {
+      if (hasRemote) (store as YDocStore).adoptRemote();
+      else (store as YDocStore).hydrate(initial);
+    });
     // Jam roles: gate local commands on the session role and surface refusals.
     (store as YDocStore).roleProvider = () => collab?.localRole ?? null;
     (store as YDocStore).onRoleBlocked = (commandType, role) => {
@@ -383,6 +392,45 @@ export async function openProject(
     },
     () => capture.markPause(),
   );
+
+  if (collab) {
+    // ── Shared transport (Instant Jam pulse) ─────────────────────────────
+    // User gestures on the local transport broadcast the anchor over the
+    // awareness channel; remote pulses re-anchor the local transport to the
+    // same wall-clock timeline. The follow path mirrors PlaybackController's
+    // pause/stop bookkeeping (scheduler stop + panic) so a remote stop does
+    // not leave scheduled notes ringing. `followLock` keeps the follower's
+    // own re-anchoring from rebroadcasting (echo loop).
+    let followLock = false;
+    let lastAppliedAt = 0;
+    transport.onGesture = () => {
+      if (followLock) return;
+      collab.setSharedTransport(captureTransportState(transport, collab.clientID));
+    };
+    collab.subscribeSharedTransport((state) => {
+      if (!state || state.by === collab.clientID) return;
+      if (state.at <= lastAppliedAt) return; // stale pulse
+      lastAppliedAt = state.at;
+      followLock = true;
+      try {
+        const wasPlaying = transport.playing;
+        if (!state.playing && wasPlaying) {
+          scheduler.stop();
+          engine.panic();
+        }
+        applyTransportState(transport, state, Date.now() / 1000);
+        if (state.playing && !wasPlaying && !transport.playing) scheduler.start();
+      } finally {
+        followLock = false;
+      }
+    });
+  }
+
+  // Test/debug hook: the browser checks read the live store/transport after
+  // a real boot through ?import=<code>&collab=<room>.
+  if (collab) {
+    (window as unknown as { __pfJam: unknown }).__pfJam = { store, collab, transport, playback };
+  }
 
   const midi = new MidiInput();
   const userSamples = new UserSampleRepository();

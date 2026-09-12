@@ -327,6 +327,19 @@ export function createLofiModule(params?: Record<string, number>, seed?: number)
     },
 
     setParameter(id, value) {
+      // Re-enable after a bypassed period must not resume the frozen wow
+      // buffer or sample-and-hold state: process() did not run while
+      // disabled, so the wow line holds pre-disable audio that would replay
+      // at up to full mix on re-enable (same rising-edge contract as
+      // saturation's clearDelayHistory). LFO/PRNG phases are kept.
+      if (id === "enabled" && store.get("enabled") < 0.5 && value >= 0.5) {
+        for (const b of wowBuffers) b.fill(0);
+        for (let c = 0; c < srrHeld.length; c++) {
+          srrHeld[c] = 0;
+          srrCounter[c] = 0;
+          noisePrev[c] = 0;
+        }
+      }
       store.set(id, value);
     },
     getParameter(id) {

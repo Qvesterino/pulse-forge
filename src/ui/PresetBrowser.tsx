@@ -4,12 +4,13 @@ import { applyInstrumentPreset } from "../commands/commands";
 import { FACTORY_PRESETS } from "../presets/factory";
 import { PRESET_GENRES, PRESET_MOODS } from "../presets/types";
 import type { InstrumentPreset, PresetGenre, PresetMood } from "../presets/types";
+import { rankSimilarPresets } from "../presets/similar";
 import type { InstrumentTrack } from "../project-model/types";
 import { uid } from "../shared/ids";
 
 type GenreFilter = PresetGenre | "all";
 type MoodFilter = PresetMood | "all";
-type ScopeFilter = "all" | "fav" | "recent";
+type ScopeFilter = "all" | "fav" | "recent" | "similar";
 
 export function PresetBrowser({ track }: { track: InstrumentTrack }) {
   const services = useServices();
@@ -75,18 +76,23 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
     [userPresets, track.instrument],
   );
 
-  const filtered = all.filter((preset) => {
+  const base = all.filter((preset) => {
     if (genre !== "all" && preset.genre !== genre) return false;
     if (mood !== "all" && !preset.mood.includes(mood)) return false;
     if (scope === "fav" && !library.favoritePresets.includes(preset.id)) return false;
     if (scope === "recent" && !library.recentPresets.includes(preset.id)) return false;
     if (query.trim().length > 0) {
       const q = query.trim().toLowerCase();
-      const haystack = `${preset.name} ${preset.tags.join(" ")} ${preset.mood.join(" ")}`.toLowerCase();
+      const haystack = `${preset.name} ${preset.tags.join(" ")} ${preset.genre ?? ""} ${preset.mood.join(" ")}`.toLowerCase();
       if (!haystack.includes(q)) return false;
     }
     return true;
   });
+  // SIMILAR: rank the remaining presets of this instrument by param distance
+  // to the current patch; a similarity chip is rendered next to each row.
+  const ranked = scope === "similar" ? rankSimilarPresets(base, track, 24) : null;
+  const similarityOf = new Map(ranked?.map((r) => [r.preset.id, r.similarity]) ?? []);
+  const filtered = ranked ? ranked.map((r) => r.preset) : base;
 
   const current = all.find((p) => p.id === track.presetId) ?? null;
 
@@ -182,14 +188,15 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
       )}
 
       <div className="preset-chips">
-        {(["all", "fav", "recent"] as ScopeFilter[]).map((s) => (
+        {(["all", "fav", "recent", "similar"] as ScopeFilter[]).map((s) => (
           <button
             key={s}
             type="button"
             className={`preset-chip${scope === s ? " active" : ""}`}
             onClick={() => setScope(s)}
+            title={s === "similar" ? "Presets closest to the current sound (same instrument)" : undefined}
           >
-            {s.toUpperCase()}
+            {s === "similar" ? "SIMILAR ▸" : s.toUpperCase()}
           </button>
         ))}
       </div>
@@ -264,6 +271,11 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
             <span className="preset-tags">
               {preset.genre ? preset.genre : "user"} · {preset.mood.slice(0, 2).join(", ") || preset.tags[0]}
             </span>
+            {similarityOf.has(preset.id) && (
+              <span className="preset-sim" title="Parameter similarity to the current sound">
+                ≈{Math.round((similarityOf.get(preset.id) ?? 0) * 100)}%
+              </span>
+            )}
             <button
               type="button"
               className="preset-apply"

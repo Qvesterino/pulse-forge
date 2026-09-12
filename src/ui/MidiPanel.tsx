@@ -12,6 +12,7 @@ import type { AutomationTarget, MidiCcMapping } from "../project-model/types";
 import { GM_DRUM_MAP } from "../project-model/types";
 import type { SelectedNote } from "./PianoRoll";
 import { CHORD_QUALITIES } from "../midi/creative";
+import { MpeIndicator } from "./MpeIndicator";
 import type {
   ArpeggiatorMode,
   ChordQuality,
@@ -429,6 +430,7 @@ function MidiCreativityPanel({
           {targetCount} note{targetCount === 1 ? "" : "s"} targeted
         </span>
         <span>{doc.key ?? "No project key"}</span>
+        <MpeIndicator />
       </div>
 
       <div className="midi-row midi-creative-controls">

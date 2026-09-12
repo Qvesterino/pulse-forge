@@ -162,11 +162,17 @@ class OzvenaWorkletProcessor extends AudioWorkletProcessor {
         // A manual value cancels still-pending automation for the same
         // parameter (user touch overrides the future), matching how the
         // engine treats AudioParam.cancelScheduledValues on takeover.
+        // Compact the queue IN PLACE — Array#filter allocates a fresh array
+        // on the render thread for every knob move.
         const now = currentTime;
-        if (this.pendingParams.length > 0) {
-          this.pendingParams = this.pendingParams.filter(
-            (ev) => ev.id !== msg.id || ev.when <= now,
-          );
+        const q = this.pendingParams;
+        if (q.length > 0) {
+          let w = 0;
+          for (let i = 0; i < q.length; i++) {
+            const ev = q[i];
+            if (ev.id !== msg.id || ev.when <= now) q[w++] = ev;
+          }
+          q.length = w;
         }
         this.state = setPath(this.state, msg.id, msg.value);
         this.proc.loadState(this.state);
@@ -269,13 +275,17 @@ class OzvenaWorkletProcessor extends AudioWorkletProcessor {
   applyDueParams(horizon) {
     const q = this.pendingParams;
     if (q.length === 0 || q[0].when > horizon) return;
+    // Consume the due PREFIX by index and compact in place — shift() is
+    // O(n) per event, which made dense automation queues O(n²) per block.
     let applied = 0;
-    while (q.length > 0 && q[0].when <= horizon) {
-      const ev = q.shift();
-      this.state = setPath(this.state, ev.id, ev.value);
+    while (applied < q.length && q[applied].when <= horizon) {
+      this.state = setPath(this.state, q[applied].id, q[applied].value);
       applied++;
     }
     if (applied > 0) {
+      const remaining = q.length - applied;
+      for (let j = 0; j < remaining; j++) q[j] = q[j + applied];
+      q.length = remaining;
       this.proc.loadState(this.state);
       this.postLatency();
     }

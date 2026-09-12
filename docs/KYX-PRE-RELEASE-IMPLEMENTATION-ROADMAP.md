@@ -1,7 +1,7 @@
 # KYX — pre-release implementation roadmap
 
 **Status:** agent-ready implementation source of truth + live execution snapshot (not a release approval)
-**Dátum:** 2026-09-11
+**Dátum:** 2026-09-12
 **Produkt:** KYX browser-first beatmaking DAW  
 **Cieľ:** dostať KYX do stavu, v ktorom nový používateľ vytvorí beat, vyberie zvuk, spracuje ho cez pluginy, zrozumiteľne ho zmixuje a bezpečne exportuje bez straty práce, nečakaných level skokov alebo nejasného workflow.
 
@@ -32,9 +32,9 @@ nie je uzavretý `REL-01`, nemá zmysel pridávať nový plugin alebo veľký in
 | ID | Priorita | Úloha | Reálne touchpoints | Done keď |
 | --- | --- | --- | --- | --- |
 | `REL-01` | P0 | Zmapovať a uzavrieť všetky uncommitted WIP zmeny | `git status`, `src/intent/`, `src/ai/`, `src/instruments/`, `src/ui/`, `tests/` | každý diff má ownera, dôvod, test a rozhodnutie land/odložiť; nič sa neprepíše naslepo |
-| `DSP-01` | P0 | Uzavrieť FXEQ full-load realtime performance gate | `tests/fxeq-performance-gates.test.ts`, `src/effects/fxeq-core/core/`, `src/effects/fxeq-core/modules/`, `scripts/build-fxeq-worklet.mjs` | opakovaný default aj izolovaný gate prejde bez zvýšenia limitu; vysvetlené sú p95 jitter/GC a audio-thread allocation; worklet + live/offline parity zostanú zelené |
+| `DSP-01` | P0 | Uzavrieť FXEQ full-load realtime performance gate | `tests/fxeq-performance-gates.test.ts`, `src/effects/fxeq-core/core/`, `src/effects/fxeq-core/modules/`, `scripts/build-fxeq-worklet.mjs` | implementovaná allocation-free oprava a cielený gate 3/3; pred land/commitom ešte zopakovať kompletný default suite bez host contention a potvrdiť worklet + live/offline parity |
 | `QA-01` | P0 | Manuálny browser/device release matrix | [`docs/KYX-MANUAL-RELEASE-CHECKLIST.md`](./KYX-MANUAL-RELEASE-CHECKLIST.md) | Chromium/Edge/Firefox/Safari macOS/Safari iOS prejdú create → sound → FX → mix → export → reload flow |
-| `DEP-01` | P0 | Overiť produkčný deploy, nie iba lokálny server smoke | `scripts/release-preflight.mjs`, `scripts/release-server-smoke.mjs`, nasadený host | health, CORS, origin rejection, gallery auth, refresh/tab-close recovery a worklet loading prejdú na skutočnej doméne |
+| `DEP-01` | P0 | Overiť produkčný deploy, nie iba lokálny server smoke | `scripts/release-preflight.mjs`, `scripts/release-server-smoke.mjs`, `scripts/release-deployed-smoke.mjs`, nasadený host | HTTP smoke overí app shell, manifest, všetkých päť workletov, service worker, health, CORS/origin rejection a voliteľne gallery auth; browser refresh/tab-close recovery ostáva v matrixe |
 | `VOI-01` | P0 | Zmerať VØID IR/pre-delay footprint na fyzických zariadeniach | `src/effects/ozvena-core/`, `src/ui/OzvenaPanel.tsx`, `docs/KYX-MANUAL-RELEASE-CHECKLIST.md` | máme device/browser meranie ready time, peak memory proxy, pre-delay range, dropout a recovery správania |
 | `FMT-01` | Release hygiene | Rozhodnúť o 209 formatting deviations | `npm run format:check`, [`docs/FORMAT-CHECK-DEVIATIONS.md`](./FORMAT-CHECK-DEVIATIONS.md) | buď samostatný formatting-only cleanup, alebo explicitne schválená CI výnimka bez zmenšenia scope |
 
@@ -83,6 +83,15 @@ Nasledujúce časti roadmapy už boli v tomto pracovnom strome implementované a
   token, KYX manifest a všetkých päť shipped worklet artefaktov pred deployom,
 - `release:server-smoke` spúšťa skutočný collab-server entrypoint v production
   režime a overuje health, CORS, origin rejection a admin auth contract,
+- `release:deployed-smoke` je pripravený pre skutočný app/collab host: kontroluje
+  app shell, KYX manifest, päť workletov, service worker, health, presný CORS
+  allowlist, rejected origin a voliteľný gallery admin auth; lokálny preview +
+  lokálny production collab probe prešiel,
+- VLYX hardening battery `tests/ultina-hardening2.test.ts` uzatvára ďalších šesť
+  edge-case kontraktov (LR4 mid-band, non-finite recovery, M/S single-band
+  aliasing, dynamicTilt coefficient reset, Phase re-entry a stale comp meters);
+  upstream `tests/preReleaseHardening.test.ts` má rovnaké kritické oracle testy,
+  vendor bol znovu synchronizovaný a `public/ultina-worklet.js` rebuildnutý,
 - `release:preflight` skenuje aj shipped HTML/JS/CSS na starý verejný brand;
   kompatibilné import prefixy a zámerný Qvester interoperability text ostávajú
   povolené,
@@ -124,6 +133,16 @@ necommitnuté zmeny, preto sa automaticky nepovažujú za release feature:
   fallback vrstva. Pred aktiváciou treba dokončiť held-out/golden evaluáciu,
   async pipeline integration, offline-cache contract a device budget; pred
   release sa nesmie prepnúť na `active` ani prezentovať ako AI quality gain;
+- FXEQ render-path allocation audit: vendored PRISM oversampler/limiter now
+  reuses internal buffers with explicit frame lengths; band quality changes no
+  longer construct a compatibility object per block; VØID/FXEQ reverb FDN
+  coefficient arrays are fixed-size and `modRateHz` uses an O(1) update path.
+  The corresponding upstream FXEQ mirror was updated where its source surface
+  matches. No performance threshold was raised;
+- PWA shell audit: internal `golden-review/**` renders and the optional ONNX
+  ranker model/runtime are excluded from Workbox precache. The latest build
+  precaches 57 entries / 3.99 MiB while the ranker remains explicitly
+  on-demand;
 - agent nesmie tieto súbory prepisovať, squasovať ani vyhadzovať bez toho, aby
   najprv zaznamenal vlastníka zmeny a dôvod rozhodnutia v completion reporte.
 
@@ -132,14 +151,16 @@ Overené príkazy a výsledky:
 | Gate                                                       | Výsledok                                                 |
 | ---------------------------------------------------------- | -------------------------------------------------------- |
 | `npm run typecheck:clean`                                  | PASS                                                     |
-| full Vitest (`npm test`, default isolated workers)          | **BLOCKED — 1 failed / 2113 passed / 103 skipped, 211 files, 2217 total**; FXEQ morph measured 2.79× vs 2.4× budget |
-| `npm run build` + worklet buildy + bundle budget           | PASS — entry 926 KB / 995 KB, total JS chunks 1823 KB / 2400 KB, core worklets 98 KB / 120 KB, 350 modules; lazy ranker WASM is 13.6 MB and excluded from the app-shell precache |
+| full Vitest (`npm test`, default isolated workers)          | **POST-FIX RERUN PENDING** — the last completed full run before the reverb allocation fix was 1 failed / 2113 passed / 103 skipped, 211 files, 2217 total; the failing FXEQ morph gate is now green in the isolated post-fix run |
+| `npm run build` + worklet buildy + bundle budget           | PASS — entry 931 KB / 995 KB, total JS chunks 1831 KB / 2400 KB, core worklets 98 KB / 120 KB, 354 modules; PWA precache 57 entries / 3.99 MiB; lazy ranker WASM is 13.6 MB and excluded from the app-shell precache |
 | `npm run build:ultina`                                     | PASS — rebuilt `public/ultina-worklet.js`                |
-| `npm run test:browser`                                     | PASS — 216/216 Chromium (FXEQ/Ultina/VØID, PRISM reload, template performance retry and UI flow) |
+| `npm run test:browser`                                     | PASS — last completed isolated run 217/217 Chromium (FXEQ/Ultina/VØID, PRISM reload, template performance retry and UI flow); a post-fix retry on the shared host hit navigation/reload infrastructure timeouts before assertions |
 | `npm run test:browser:production`                          | PASS — dist boot, HOUSE template, sequencer, FX rack and all five shipped worklet assets |
 | `npm run release:preflight`                                | PASS — explicit production-origin/config + KYX artifacts |
 | `npm run release:server-smoke`                             | PASS — real entrypoint health/CORS/origin/admin contract |
-| PRISM/FXEQ + VLYX targeted Vitest suite                    | PASS — 126/126 tests                                     |
+| `npm run release:deployed-smoke`                          | PASS — local production preview + production-configured local collab endpoint; actual public URL is still required for DEP-01 |
+| VLYX hardening2 + upstream parity battery                    | PASS — host `9/9`, `ultina-core-hardening` `55/55`, worklet/parity/vectors `26/26` after upstream→vendor sync |
+| PRISM/FXEQ + VLYX + VØID targeted Vitest suite              | PASS — 128/128 tests; 8/8 FXEQ golden hashes bit-exact |
 | upstream Ultina affected suite                             | PASS — 104/104 tests                                     |
 | VLYX analysis worker client suite                          | PASS — 4/4 tests                                         |
 | persistence failure/recovery targeted suite                | PASS — 28 passed / 1 skipped                             |
@@ -147,7 +168,17 @@ Overené príkazy a výsledky:
 | affected post-fix suites (`services-close-race`, `TopBar`) | PASS — 20/20 tests                                       |
 | scoped Prettier + `git diff --check`                       | PASS                                                     |
 
-Najnovší kompletný `npm test` beh nie je release-green: 1 test zlyhal, 2113 prešlo a 103 je zámerne skipped (211 súborov, 2217 testov). Default run zlyhal na FXEQ morph ratio `2.79×` pri limite `2.4×`; dva po sebe idúce izolované behy prešli morph, ale zlyhali na full-load p95 (`25.7×` a `26.9×` pri limite `25×`). Toto sa nesmie uzavrieť iba zvýšením budgetu. Treba zmerať allocation/GC/audio-thread cost, opraviť regresiu alebo presne preukázať a zdokumentovať validnú gate metodiku. Zámerné stderr z recovery testov, jsdom canvas a test-only act warnings nie sú samy osebe production errors. Pred tagom treba všetky gates zopakovať z commitnutého stromu.
+Najnovší kompletný `npm test` beh pred poslednou allocation opravou nebol
+release-green: 1 test zlyhal, 2113 prešlo a 103 bolo zámerne skipped (211
+súborov, 2217 testov). Profilovanie ukázalo dve konkrétne triedy render-path
+práce: `subarray()` view/copy churn v FXEQ oversampler/limiteri a reverb
+`recompute()` alokácie počas A/B morphu. Oprava je v zdroji aj shipped FXEQ
+worklete; cielený post-fix performance gate je 3/3, s full-load median/p95
+ratio 17.6×/6.7× a morph ratio 2.00× pri limitoch 22×/25×/2.4×. Kompletný
+default suite treba ešte zopakovať z commitnutého, pokojného stromu; host
+contention je v tomto workspace samostatný zdokumentovaný faktor. Zámerné
+stderr z recovery testov, jsdom canvas a test-only act warnings nie sú samy
+osebe production errors.
 
 `npm run format:check` na celom strome je stále červený kvôli 209 zdokumentovaným formatting deviations. Presný, command-generated zoznam je v [`docs/FORMAT-CHECK-DEVIATIONS.md`](./FORMAT-CHECK-DEVIATIONS.md). Pred release treba buď vykonať samostatný formatting-only cleanup, alebo tento zoznam explicitne akceptovať v CI gate; nesmie sa to maskovať zmenou scope checku.
 
@@ -236,8 +267,9 @@ Tieto body majú prednosť pred polishom. Ak niektorý P0 zlyháva, release sa n
 - [x] konzistentný A/B a gain-match kontrakt,
 - [x] recovery, reload a export/import smoke v automatizovanom Chromium flow;
   tab-close/production-host recovery ostáva manuálny release krok.
-- [ ] FXEQ full-load realtime gate: odstrániť alebo vysvetliť opakovaný p95
-  over-budget stav a potvrdiť default full-suite pass bez oslabenia limitu.
+- [ ] FXEQ full-load realtime gate: allocation path je opravený a cielený
+  gate je zelený; pred release ešte potvrdiť default full-suite pass z
+  commitnutého stromu bez oslabenia limitov.
 
 ### P1 — najväčší UX dopad
 

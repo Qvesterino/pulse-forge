@@ -78,9 +78,11 @@ export function createReverbModule(params?: Record<string, number>): ModuleProce
   const lpState: number[][] = []; // [channel][line] damping LPF state
   const hpState: number[][] = []; // [channel][line] low-cut HPF state
   const hpPrev: number[][] = []; // [channel][line] previous input to HPF
-  let lengths: number[] = [];
-  let fbGainsL: number[] = [];
-  let fbGainsR: number[] = [];
+  // Fixed-size numeric state: recompute() can run from per-block automation
+  // (A/B morph) and must not allocate on the render thread.
+  const lengths = new Float64Array(FDN_LINES);
+  const fbGainsL = new Float64Array(FDN_LINES);
+  const fbGainsR = new Float64Array(FDN_LINES);
   let dampAlpha = 0.5; // HF damping
   let hpAlpha = 0; // LF cut
   let srScale = 1;
@@ -106,8 +108,8 @@ export function createReverbModule(params?: Record<string, number>): ModuleProce
   // audibly inside the reverb tail; gliding the gains over ~15 ms turns the
   // step into an inaudible ride. PRIMED at the first processed block after
   // prepare/reset so static settings render bit-identically (golden parity).
-  let fbSmL: number[] = [];
-  let fbSmR: number[] = [];
+  const fbSmL = new Float64Array(FDN_LINES);
+  const fbSmR = new Float64Array(FDN_LINES);
   let fbSmPrimed = false;
   let fbSmAlpha = 1;
 
@@ -186,9 +188,8 @@ export function createReverbModule(params?: Record<string, number>): ModuleProce
       // Logical delay lengths for the current srScale (recompute() keeps
       // these in sync; allocChannels must not clobber them with the
       // physical capacity when prepare() calls it after recompute()).
-      lengths = [];
       for (let l = 0; l < FDN_LINES; l++) {
-        lengths.push(Math.max(8, Math.round(BASE_LENGTHS_L[l] * srScale)));
+        lengths[l] = Math.max(8, Math.round(BASE_LENGTHS_L[l] * srScale));
       }
     }
 
@@ -226,17 +227,13 @@ export function createReverbModule(params?: Record<string, number>): ModuleProce
     // Recompute lengths + per-line feedback gains. The FDN buffers are
     // allocated at max capacity (see allocChannels), so a type/rate
     // change only moves the logical lengths — never reallocates (M1).
-    const newLen = [];
-    fbGainsL = [];
-    fbGainsR = [];
     for (let l = 0; l < FDN_LINES; l++) {
       const lenL = Math.max(8, Math.round(BASE_LENGTHS_L[l] * srScale));
       const lenR = Math.max(8, Math.round(BASE_LENGTHS_R[l] * srScale));
-      newLen.push(lenL);
-      fbGainsL.push(clamp(Math.pow(0.001, lenL / (decaySec * sampleRate)), 0, 0.99));
-      fbGainsR.push(clamp(Math.pow(0.001, lenR / (decaySec * sampleRate)), 0, 0.99));
+      lengths[l] = lenL;
+      fbGainsL[l] = clamp(Math.pow(0.001, lenL / (decaySec * sampleRate)), 0, 0.99);
+      fbGainsR[l] = clamp(Math.pow(0.001, lenR / (decaySec * sampleRate)), 0, 0.99);
     }
-    lengths = newLen;
     // Keep write cursors inside the (possibly shrunk) logical delays.
     for (let c = 0; c < writeIdx.length; c++) {
       for (let l = 0; l < writeIdx[c].length; l++) {
@@ -244,6 +241,12 @@ export function createReverbModule(params?: Record<string, number>): ModuleProce
       }
     }
     // Q1: tank modulation rate coefficient.
+    modRateInc = clamp(store.get("modRateHz"), 0.05, 5) / sampleRate;
+  }
+
+  function recomputeModRate(): void {
+    // A morph commonly changes modRateHz without changing the FDN topology
+    // or decay. Keep that route O(1) instead of rebuilding all gains.
     modRateInc = clamp(store.get("modRateHz"), 0.05, 5) / sampleRate;
   }
 
@@ -314,8 +317,8 @@ export function createReverbModule(params?: Record<string, number>): ModuleProce
 
       // Glide the feedback gains toward the decay-derived targets (de-click).
       if (!fbSmPrimed) {
-        fbSmL = fbGainsL.slice();
-        fbSmR = fbGainsR.slice();
+        fbSmL.set(fbGainsL);
+        fbSmR.set(fbGainsR);
         fbSmPrimed = true;
       } else {
         for (let l = 0; l < FDN_LINES; l++) {
@@ -438,10 +441,41 @@ export function createReverbModule(params?: Record<string, number>): ModuleProce
     },
 
     setParameter(id, value) {
+      // Re-enable after a bypassed period must not resume the frozen FDN
+      // tank: process() did not run while disabled, so the lines, predelay
+      // and cross-feed buffers still hold pre-disable audio that would
+      // replay as a stale tail burst (same rising-edge contract as
+      // saturation's clearDelayHistory). Filter states ride along — they
+      // shape the tank's audio and are equally stale.
+      if (id === "enabled" && store.get("enabled") < 0.5 && value >= 0.5) {
+        for (const ls of lines) for (const b of ls) b.fill(0);
+        for (const lp of lpState) for (let l = 0; l < lp.length; l++) lp[l] = 0;
+        for (const hp of hpState) for (let l = 0; l < hp.length; l++) hp[l] = 0;
+        for (const hpv of hpPrev) for (let l = 0; l < hpv.length; l++) hpv[l] = 0;
+        for (const pdl of predelayLines) pdl.fill(0);
+        for (const cf of crossFeedPrev) cf.fill(0);
+        for (const cf of crossFeedCur) cf.fill(0);
+        fbSmPrimed = false;
+      }
+      const previousType = Math.round(store.get("type"));
       store.set(id, value);
-      if (prepared && (id === "type" || id === "decayMs" || id === "modRateHz")) recompute();
+      if (prepared && (id === "type" || id === "decayMs")) {
+        // Enum changes only affect the FDN when the rounded type changes;
+        // morph interpolation between two values inside one enum bucket is
+        // otherwise just redundant coefficient work.
+        if (id !== "type" || Math.round(store.get("type")) !== previousType) recompute();
+      }
+      if (prepared && id === "modRateHz") recomputeModRate();
       if (prepared && id === "predelayMs") {
         predelayLen = Math.round((clamp(value, 0, 100) / 1000) * sampleRate);
+        // Shrinking the predelay can strand the write cursor beyond the new
+        // logical length; the first read would then pull one stale sample
+        // from the retired region. Re-wrap the cursor into the live window.
+        if (predelayLen > 0) {
+          for (let c = 0; c < predelayWriteIdx.length; c++) {
+            predelayWriteIdx[c] %= predelayLen;
+          }
+        }
       }
     },
     getParameter(id) {

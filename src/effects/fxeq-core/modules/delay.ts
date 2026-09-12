@@ -286,6 +286,15 @@ export function createDelayModule(params?: Record<string, number>): ModuleProces
     },
 
     setParameter(id, value) {
+      // Re-enable after a bypassed period must not resume the frozen delay
+      // line: process() did not run while disabled, so the ring still holds
+      // pre-disable audio that would replay as echoes of vanished material
+      // (same rising-edge contract as saturation's clearDelayHistory). LFO
+      // phase is kept — it is a modulation source, not audio content.
+      if (id === "enabled" && store.get("enabled") < 0.5 && value >= 0.5) {
+        for (const b of delayBuf) b.fill(0);
+        for (let c = 0; c < dampPrev.length; c++) dampPrev[c] = 0;
+      }
       store.set(id, value);
       if (prepared && (id === "timeMs" || id === "dampHz" || id === "syncMode")) recompute();
     },

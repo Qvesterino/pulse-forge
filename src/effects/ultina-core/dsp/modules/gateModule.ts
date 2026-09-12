@@ -117,6 +117,10 @@ export class GateModuleProcessor implements UltinaModuleProcessor {
 
   // Sidechain HPF buffers
   private scHpfBufferL: Float32Array = new Float32Array(0);
+  // Reused per-block scratch (audio thread — no fresh arrays in process())
+  private openThresholdDbBuf: number[] = [0, 0, 0];
+  private closeThresholdDbBuf: number[] = [0, 0, 0];
+  private scChannelsWrap: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
   private scHpfBufferR: Float32Array = new Float32Array(0);
 
   // Meter state
@@ -189,18 +193,16 @@ export class GateModuleProcessor implements UltinaModuleProcessor {
     // The "closed gain" in linear:
     const closedGainLinear = dbToLinear(rangeDb);
 
-    // Compute thresholds
+    // Compute thresholds (reused arrays — audio thread)
     // Open threshold comes from per-band params; close = open - hysteresis
-    const openThresholdDb = [
-      params["gate.band0.openThresholdDb"] ?? -40,
-      params["gate.band1.openThresholdDb"] ?? -40,
-      params["gate.band2.openThresholdDb"] ?? -40,
-    ];
-    const closeThresholdDb = [
-      params["gate.band0.closeThresholdDb"] ?? (openThresholdDb[0] - hysteresisDb),
-      params["gate.band1.closeThresholdDb"] ?? (openThresholdDb[1] - hysteresisDb),
-      params["gate.band2.closeThresholdDb"] ?? (openThresholdDb[2] - hysteresisDb),
-    ];
+    const openThresholdDb = this.openThresholdDbBuf;
+    openThresholdDb[0] = params["gate.band0.openThresholdDb"] ?? -40;
+    openThresholdDb[1] = params["gate.band1.openThresholdDb"] ?? -40;
+    openThresholdDb[2] = params["gate.band2.openThresholdDb"] ?? -40;
+    const closeThresholdDb = this.closeThresholdDbBuf;
+    closeThresholdDb[0] = params["gate.band0.closeThresholdDb"] ?? (openThresholdDb[0] - hysteresisDb);
+    closeThresholdDb[1] = params["gate.band1.closeThresholdDb"] ?? (openThresholdDb[1] - hysteresisDb);
+    closeThresholdDb[2] = params["gate.band2.closeThresholdDb"] ?? (openThresholdDb[2] - hysteresisDb);
     // A close threshold ABOVE its open threshold makes the state machine
     // chatter (open→closing→open… per block) — enforce close ≤ open, which
     // is also what the hysteresis default expresses.
@@ -226,7 +228,9 @@ export class GateModuleProcessor implements UltinaModuleProcessor {
       setHighPass(this.scHpf.coeffs, scHpfHz, 0.707, this.sampleRate);
       this.scHpfBufferL.set(sidechain![0].subarray(0, frameCount));
       this.scHpfBufferR.set(sidechain![1].subarray(0, frameCount));
-      const scChannels = [this.scHpfBufferL, this.scHpfBufferR];
+      const scChannels = this.scChannelsWrap;
+      scChannels[0] = this.scHpfBufferL;
+      scChannels[1] = this.scHpfBufferR;
       processBiquad(this.scHpf, scChannels, frameCount);
       detectSource = scChannels;
     }
@@ -323,6 +327,13 @@ export class GateModuleProcessor implements UltinaModuleProcessor {
     if (this.cachedBandCount !== bandCount) {
       this.multiband.setBandCount(bandCount);
       this.cachedBandCount = bandCount;
+      // Bands beyond the new count must not keep reporting stale meter
+      // readings — getMeters publishes the full 3-slot arrays.
+      for (let b = bandCount; b < GATE_MAX_BANDS; b++) {
+        this.bandGain[b] = 0;
+        this.bandState[b] = GateState.Closed;
+        this.bandReductionDb[b] = 0;
+      }
       // setBandCount rebuilds the crossover (coefficients wiped) —
       // force both split frequencies to be re-applied below.
       this.cachedXover1 = -1;
