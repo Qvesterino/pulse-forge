@@ -245,3 +245,31 @@ by measuring three warmed samples and reporting their median; the realtime
 limit itself remains 2902 µs per 128-frame block. `npm run test:browser` then
 completed 218/218, with a median of 878 µs/block (samples 874/878/916), and
 `npm run build` plus production browser smoke remained green.
+
+## CURRENT KYX ROADMAP IMPLEMENTATION — PRISM host workflow review (2026-09-12)
+
+**Scope:** reviewed commit `e701b05` after the FXEQ host/worklet workflow was
+landed. The working tree was clean at review time.
+
+**Confirmed implementation:** PRISM now has low-level A/B morph messages,
+redo-aware command history, history-recording gates for host sync, limiter gain
+reduction snapshots and sidechain audio input. The dedicated adapter/worklet/
+processor battery passed 42/42; typecheck and production build passed. Current
+build evidence: 354 modules, entry 933/995 KB, total JS 1837/2400 KB, core
+worklets 98/120 KB and 57 precache entries / 4010.37 KiB.
+
+**Critical gaps found:** runtime morph slots are not persisted, the PRISM panel
+does not wire its sliders to `Slider.onPreview`/`AudioEngine.previewFxParam`,
+the PRISM panel has no source picker, and `AudioEngine.fxSignature()` does not
+include `sidechainTrackId`. The worklet contract can therefore pass while a
+user cannot select a PRISM sidechain, plugin undo can be empty after a normal
+drag, and A/B controls can disagree or lose state after reload. These are
+tracked as blocking `PRISM-01` in `docs/KYX-PRE-RELEASE-IMPLEMENTATION-ROADMAP.md`.
+
+**Release evidence:** production browser smoke, preflight and real server
+smoke passed. Full Vitest under shared-machine load ended at 224 files / 2208
+passed / 103 skipped / 1 gallery timeout; isolated `tests/gallery-server.test.ts`
+passed 17/17. Chromium smoke was 217/218 because only the aggregate 8-bar
+average timing check failed (`avg=7640 ms`); all individual templates and
+product flow checks passed. `release:deployed-smoke` correctly remained blocked
+because `KYX_DEPLOY_URL` was not configured.
