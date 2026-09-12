@@ -1036,27 +1036,63 @@ describe("U3: HQ quality mode oversamples the comp gain path", () => {
   });
 
   it("hq + all modules under deep settings stays far inside the audio budget", () => {
-    const proc = makeProcessor();
-    for (const m of ["eq", "comp", "gate", "exciter", "transient", "clipper", "density", "sculptor", "unmask"]) {
-      enableInGraph(proc, m);
-    }
-    proc.setParameters({ "global.qualityMode": 2 });
-    const chans = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
-    // Warm-up then measure.
-    for (let b = 0; b < 40; b++) {
-      sine(chans, b, 440, 0.4);
-      proc.process(chans, BLOCK);
-    }
-    const blocks = 400;
-    const t0 = performance.now();
-    for (let b = 0; b < blocks; b++) {
-      sine(chans, b, 440, 0.4);
-      proc.process(chans, BLOCK);
-    }
-    const perBlockMs = (performance.now() - t0) / blocks;
-    // Audio budget at 48 kHz is ~2.9 ms per 128-frame block; a generous 5 ms
-    // CI bound still catches gross oversampling regressions (10×+).
-    expect(perBlockMs).toBeLessThan(5);
+    // Load-stable gate (fxeq-performance-gates precedent): the old absolute
+    // `perBlockMs < 5` bound assumed an idle CI machine — under parallel
+    // load the same DSP measured 10.5 ms/block and flaked. A ratio against
+    // a passthrough baseline measured in the SAME process normalizes machine
+    // speed; best-of-3 run medians ride out bursty scheduler noise.
+    // Calibration (2026-09-12): idle ratio ≈ 18.5× (63 µs / 1177 µs);
+    // under 6-way CPU oversubscription ≈ 34.7× (67 µs / 2326 µs — longer
+    // blocks are preempted more, so the ratio inflates ~1.9×; budget 40
+    // clears that while catching a ≥2.2× loaded-path regression on an idle
+    // machine — stricter than the "10×+" intent of the old absolute gate.
+    const measure = (loaded: boolean): number => {
+      const proc = makeProcessor();
+      if (loaded) {
+        for (const m of ["eq", "comp", "gate", "exciter", "transient", "clipper", "density", "sculptor", "unmask"]) {
+          enableInGraph(proc, m);
+        }
+        proc.setParameters({ "global.qualityMode": 2 });
+      }
+      const chans = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+      const fill = (b: number) => {
+        for (let i = 0; i < BLOCK; i++) {
+          const t = (b * BLOCK + i) / SR;
+          const v = 0.4 * Math.sin(2 * Math.PI * 440 * t);
+          chans[0][i] = v;
+          chans[1][i] = v;
+        }
+      };
+      for (let b = 0; b < 200; b++) {
+        fill(b);
+        proc.process(chans, BLOCK);
+      }
+      let bestMedianUs = Infinity;
+      for (let run = 0; run < 3; run++) {
+        const perBlockUs: number[] = [];
+        for (let b = 0; b < 300; b++) {
+          fill(b);
+          const t0 = performance.now();
+          proc.process(chans, BLOCK);
+          perBlockUs.push((performance.now() - t0) * 1000);
+        }
+        perBlockUs.sort((a, b) => a - b);
+        const median = perBlockUs[perBlockUs.length >> 1];
+        if (median < bestMedianUs) bestMedianUs = median;
+      }
+      return bestMedianUs;
+    };
+
+    const passthroughUs = measure(false);
+    const loadedUs = measure(true);
+    const ratio = loadedUs / passthroughUs;
+    // Audio budget at 48 kHz is ~2.9 ms per 128-frame block; the ratio form
+    // keeps that intent without depending on machine load.
+    expect(
+      ratio,
+      `full-graph hq block is ${ratio.toFixed(1)}× passthrough (budget 40×) — ` +
+        `passthrough=${passthroughUs.toFixed(0)}µs loaded=${loadedUs.toFixed(0)}µs/block`,
+    ).toBeLessThan(40);
   });
 });
 

@@ -170,3 +170,15 @@ the bounded memory footprint of the prepare-time delay reservation:
   (217/217, Sep 2026). Ak niečo z toho padne: re-run solo/na pokojnom stroji pred akýmkoľvek
   "fixovaním" — výsledky pod záťažou nie sú regresný signál.
 - Budgety zámerne NEslabujeme kvôli záťažovým flakeom — to by skrylo reálne regresie.
+- **2026-09-12 stabilizácia (mierou, nie oslabením):** tri absolute-time gaty prešli na
+  load-imúnne meranie bez zmeny prahov sledovaného javu —
+  (1) ultina vitest "audio budget" je teraz **ratio gate** (hq full-graph vs passthrough
+  baseline meraná v tom istom procese, best-of-3 mediany; kalibrácia: idle 18.5×, 6-hog
+  CPU oversubscription 34.7×, budget 40×) — starý absolútny `< 5 ms` flakoval na 10.5 ms
+  pri paralelnej záťaži pričom idle meria ~0.3 ms; nový gate prešiel idle aj pod 6-hog
+  záťažou a chytá ≥2.2× regresiu loaded pathy (starý mal chytať "10×+");
+  (2) browser-check `fxeq: CPU budget` a (3) `ultina: CPU budget` používajú **min-of-3
+  samplov** namiesto medianu/jedného okna — cena DSP je dolne ohraničená, šum (preemption)
+  len približuje, takže najmenej narušený vzor je najlepší odhad skutočnej ceny
+  (Firefox 2026-09-12: zdravý 1413 µs sample pohrebný dvoma záťažovými 3268/3332 µs →
+  falošný FAIL medianom). Prahy (2902 µs, resp. 60 % pre ultinu) zostávajú nezmenené.
