@@ -23,6 +23,38 @@ export interface SharedTransportState {
   at: number;
 }
 
+/**
+ * Awareness is a network boundary, so the TypeScript interface alone is not
+ * sufficient protection. Keep this validator deliberately strict: an
+ * invalid transport pulse must be ignored before it reaches Transport,
+ * because NaN/Infinity would poison the scheduler's tick math.
+ */
+export function isSharedTransportState(value: unknown): value is SharedTransportState {
+  if (!value || typeof value !== "object") return false;
+  const state = value as Partial<SharedTransportState>;
+  return (
+    typeof state.playing === "boolean" &&
+    typeof state.anchorWall === "number" &&
+    Number.isFinite(state.anchorWall) &&
+    typeof state.anchorTick === "number" &&
+    Number.isFinite(state.anchorTick) &&
+    state.anchorTick >= 0 &&
+    typeof state.bpm === "number" &&
+    Number.isFinite(state.bpm) &&
+    state.bpm >= 20 &&
+    state.bpm <= 300 &&
+    typeof state.by === "string" &&
+    state.by.length > 0 &&
+    typeof state.at === "number" &&
+    Number.isFinite(state.at)
+  );
+}
+
+/** Whether a remote play pulse represents a paused → playing transition. */
+export function shouldStartRemoteScheduler(wasPlaying: boolean, nextPlaying: boolean): boolean {
+  return nextPlaying && !wasPlaying;
+}
+
 /** Snapshot the transport into a broadcastable state. */
 export function captureTransportState(
   transport: Transport,
@@ -51,7 +83,7 @@ export function applyTransportState(
   state: SharedTransportState,
   wallNow = Date.now() / 1000,
 ): void {
-  if (!Number.isFinite(state.anchorWall) || !Number.isFinite(state.anchorTick)) return;
+  if (!isSharedTransportState(state) || !Number.isFinite(wallNow)) return;
   if (state.playing) {
     const elapsed = Math.max(0, wallNow - state.anchorWall);
     const desired = Math.max(0, state.anchorTick + (elapsed * state.bpm * PPQ) / 60);

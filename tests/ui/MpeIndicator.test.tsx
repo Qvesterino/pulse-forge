@@ -19,6 +19,10 @@ function withMidi(state: { connected: boolean; notes: Array<{ pitch: number; pre
   return { services: { midi } } as unknown as { services: Services };
 }
 
+function withLegacyMidi() {
+  return { services: { midi: { subscribeDevices: () => () => {} } } } as unknown as { services: Services };
+}
+
 describe("MpeIndicator", () => {
   it("shows an inactive badge and hint before any MPE message", () => {
     renderWithContext(<MpeIndicator />, withMidi({ connected: false, notes: [] }));
@@ -37,5 +41,11 @@ describe("MpeIndicator", () => {
     expect(screen.getByText("C4")).toBeTruthy();
     const fills = screen.getAllByTitle("C4 — pressure 75%, timbre 50%");
     expect(fills.length).toBeGreaterThan(0);
+  });
+
+  it("degrades to an inactive badge when the MIDI facade predates MPE", () => {
+    renderWithContext(<MpeIndicator />, withLegacyMidi());
+    expect(screen.getByText("MPE").className).not.toContain("active");
+    expect(screen.getByText("no MPE notes held")).toBeTruthy();
   });
 });

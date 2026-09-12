@@ -25,7 +25,7 @@ import { ensureWorkletsForDoc } from "./audio-worklets/loader";
 import type { YDocStore } from "./collab/YDocStore";
 import type { CollabSession } from "./collab/CollabSession";
 import { collabParamsFromSearch } from "./collab/collabShared";
-import { applyTransportState, captureTransportState } from "./collab/transportSync";
+import { applyTransportState, captureTransportState, shouldStartRemoteScheduler } from "./collab/transportSync";
 import { LatencyCalibrationController } from "./audio-engine/latencyCalibration";
 import { ArrangementCaptureController } from "./arrangement/capture";
 import { GhostPreviewPlayer } from "./audio-engine/GhostPreviewPlayer";
@@ -414,12 +414,13 @@ export async function openProject(
       followLock = true;
       try {
         const wasPlaying = transport.playing;
-        if (!state.playing && wasPlaying) {
+        const shouldStartScheduler = shouldStartRemoteScheduler(wasPlaying, state.playing);
+        if (!state.playing) {
           scheduler.stop();
           engine.panic();
         }
         applyTransportState(transport, state, Date.now() / 1000);
-        if (state.playing && !wasPlaying && !transport.playing) scheduler.start();
+        if (shouldStartScheduler) scheduler.start();
       } finally {
         followLock = false;
       }

@@ -13,10 +13,16 @@ export function MpeIndicator() {
   const midi = services.midi;
   const [, setTick] = useState(0);
 
-  useEffect(() => midi.subscribeMpe(() => setTick((t) => t + 1)), [midi]);
+  useEffect(() => {
+    // Keep the indicator additive: older embedded/test MIDI facades may not
+    // expose the MPE capability yet, but the surrounding MIDI tools must
+    // remain usable instead of crashing during render.
+    if (typeof midi.subscribeMpe !== "function") return undefined;
+    return midi.subscribeMpe(() => setTick((t) => t + 1));
+  }, [midi]);
 
-  const connected = midi.isMpeConnected();
-  const notes = midi.getMpeNotes();
+  const connected = typeof midi.isMpeConnected === "function" && midi.isMpeConnected();
+  const notes = typeof midi.getMpeNotes === "function" ? midi.getMpeNotes() : [];
 
   return (
     <div className="mpe-indicator" role="status" aria-label="MPE controller activity">

@@ -10,7 +10,7 @@
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
 import { normalizeJamRole, type JamRole } from "./jamRoles";
-import type { SharedTransportState } from "./transportSync";
+import { isSharedTransportState, type SharedTransportState } from "./transportSync";
 
 export interface CollaboratorInfo {
   id: string;
@@ -146,8 +146,8 @@ export class CollaborationProvider {
       let bestId = -1;
       states.forEach((state: Record<string, unknown>, clientId: number) => {
         if (clientId === me) return;
-        const t = state.transport as SharedTransportState | undefined;
-        if (t && (!best || t.at > best!.at)) {
+        const t = state.transport;
+        if (isSharedTransportState(t) && (!best || t.at > best.at)) {
           best = t;
           bestId = clientId;
         }

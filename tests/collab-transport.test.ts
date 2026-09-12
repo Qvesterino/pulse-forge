@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { Transport } from "../src/transport/Transport";
-import { applyTransportState, captureTransportState } from "../src/collab/transportSync";
+import {
+  applyTransportState,
+  captureTransportState,
+  isSharedTransportState,
+  shouldStartRemoteScheduler,
+} from "../src/collab/transportSync";
 
 /** Manual clock so anchors are exact. */
 function manualClock() {
@@ -105,5 +110,45 @@ describe("shared transport sync", () => {
       }),
     ).not.toThrow();
     expect(t.playing).toBe(false);
+  });
+
+  it("rejects non-finite or out-of-range network fields before they reach Transport", () => {
+    const t = new Transport(manualClock(), 124);
+    t.play(960);
+    const before = t.position;
+
+    const invalid = [
+      { playing: true, anchorWall: WALL0, anchorTick: 0, bpm: Number.NaN, by: "x", at: 1 },
+      { playing: true, anchorWall: WALL0, anchorTick: Number.POSITIVE_INFINITY, bpm: 124, by: "x", at: 2 },
+      { playing: true, anchorWall: WALL0, anchorTick: -1, bpm: 124, by: "x", at: 3 },
+      { playing: true, anchorWall: WALL0, anchorTick: 0, bpm: 301, by: "x", at: 4 },
+      { playing: "yes", anchorWall: WALL0, anchorTick: 0, bpm: 124, by: "x", at: 5 },
+    ];
+
+    for (const state of invalid) {
+      expect(isSharedTransportState(state)).toBe(false);
+      expect(() => applyTransportState(t, state as never, WALL0)).not.toThrow();
+      expect(t.bpm).toBe(124);
+      expect(t.position).toBeCloseTo(before, 6);
+    }
+  });
+
+  it("accepts only complete, finite transport payloads", () => {
+    expect(isSharedTransportState({
+      playing: false,
+      anchorWall: WALL0,
+      anchorTick: 0,
+      bpm: 124,
+      by: "peer-1",
+      at: WALL0 * 1000,
+    })).toBe(true);
+    expect(isSharedTransportState({ playing: false })).toBe(false);
+  });
+
+  it("starts the follower scheduler only for a paused → playing transition", () => {
+    expect(shouldStartRemoteScheduler(false, true)).toBe(true);
+    expect(shouldStartRemoteScheduler(true, true)).toBe(false);
+    expect(shouldStartRemoteScheduler(true, false)).toBe(false);
+    expect(shouldStartRemoteScheduler(false, false)).toBe(false);
   });
 });

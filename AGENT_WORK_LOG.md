@@ -187,6 +187,55 @@ Run #4 failure attribution: tests/ultina-core-hardening sculptor test hit the do
 - Extended `docs/KYX-MANUAL-RELEASE-CHECKLIST.md`, the KYX roadmap, and `RELEASE_READINESS_REPORT.md` with the executable deployed-host command and explicit skipped-service semantics.
 - Added upstream VLYX `preReleaseHardening.test.ts` oracles for M/S single-band aliasing and dynamicTilt coefficient reset; corrected the host hardening fixture so the clipper oracle is genuinely linear (`kneeDb=0`), then ran `scripts/vendor-ultina.mjs` and rebuilt `public/ultina-worklet.js`.
 
-**Validation:** current typecheck PASS; VLYX host hardening `9/9`; `ultina-core-hardening` `55/55`; worklet/parity/vectors `26/26`; collab/transport/FXEQ/similar/MPE WIP battery `42/42`; deployed smoke PASS against a local production preview plus production-configured local collab server (static-only mode also reports optional service as SKIP); release script syntax and package JSON PASS.
+**Validation:** current typecheck PASS; VLYX host hardening `9/9`; `ultina-core-hardening` `55/55`; worklet/parity/vectors `26/26`; collab/transport/FXEQ/similar/MPE WIP battery `42/42`; deployed smoke PASS against a local production preview plus production-configured local collab server (static-only mode also reports optional service as SKIP); latest browser smoke `218/218`; release script syntax and package JSON PASS.
 
 **Unresolved:** the complete default Vitest suite still needs a post-fix run from a reviewed/committed tree; physical Safari/iOS/device VØID footprint and an actual public URL remain owner release gates. No release threshold was weakened and no commit was made by this turn.
+
+## CURRENT KYX ROADMAP IMPLEMENTATION — Instant Jam payload hardening (2026-09-12)
+
+**Goal executed:** close a concrete collab release gap from the KYX roadmap without changing project schema or valid transport semantics.
+
+**Change:** added `isSharedTransportState` at the awareness boundary and reject malformed transport pulses before `applyTransportState` can call `Transport.setBpm`, `play`, or `seek`. The guard requires finite non-negative ticks, BPM in the project’s 20–300 range, boolean playback state, finite anchor/recency values, and a non-empty sender ID. `CollaborationProvider` now filters awareness payloads through the same guard. Also fixed the remote play transition: the scheduler is started after `applyTransportState` re-anchors the follower, and remote pause/stop always stops the scheduler and panics active voices.
+
+**Evidence:** `tests/collab-transport.test.ts` 10/10; full collab subset 10 files / 79/79; post-change `npm run typecheck:clean` PASS. No project schema or valid transport semantics changed.
+
+**Still unresolved:** clean committed-tree full suite (the post-change build is now green), manual Firefox/Safari/iOS/device matrix, actual public deploy smoke, VØID physical-device footprint, and WIP owner/land review.
+
+## CURRENT KYX ROADMAP IMPLEMENTATION — final local release verification (2026-09-12)
+
+**Validation:** after the Instant Jam fix, `npm run build` passed (354 modules; entry 931/995 KB; total JS 1832/2400 KB; core worklets 98/120 KB; PWA precache 57 entries / 4001.76 KiB), production Chromium smoke passed with the real ONNX worker, `release:preflight` passed with explicit production env, and `npm run release:deployed-smoke` passed against a fresh local `dist` plus a production-configured local collab server (app shell, manifest, five worklets, service worker, health, exact CORS, forbidden origin, gallery admin 401/200).
+
+**Browser evidence:** latest `npm run test:browser` completed 218/218 checks, including collab edits/presence, Instant Jam seed/adopt and shared transport; the collab-specific Vitest subset completed 10 files / 79/79 and `tests/collab-transport.test.ts` completed 10/10.
+
+**Release boundary:** the local probe is not public-host evidence. The full default Vitest suite still needs a clean reviewed/committed-tree run after the FXEQ fix; Firefox/Safari/iOS manual lifecycle checks, physical-device VØID footprint and the actual deployment URL remain open. No commit was created by this work.
+
+## CURRENT KYX ROADMAP IMPLEMENTATION — full-suite regression closure (2026-09-12)
+
+**Defect found:** the first post-change full Vitest run was not green: `tests/ui/MidiCreativity.test.tsx` had 2 failures because `MpeIndicator` assumed every MIDI facade already exposed the new MPE methods.
+
+**Fix:** `MpeIndicator` now capability-checks `subscribeMpe`, `isMpeConnected`, and `getMpeNotes`, retaining an inactive badge when an older/embedded facade is supplied. Added an explicit legacy-facade regression test in `tests/ui/MpeIndicator.test.tsx`.
+
+**Evidence:** targeted MPE/MIDI tests 6/6; latest full default suite 220 files, 2174 passed, 103 skipped, 0 failed (2277 tests). The updated production build also passed (354 modules; 1832 KB total JS within the 2400 KB budget), production browser smoke passed, and release preflight passed.
+
+**Remaining release gates:** final reviewed/committed-tree rerun, manual Firefox/Safari/iOS and physical-device checks, VØID device footprint, and public-host deployed smoke.
+
+## CURRENT KYX ROADMAP IMPLEMENTATION — sibling biquad recovery hardening (2026-09-12)
+
+**Defect:** a single non-finite sample entering the recursive DF2T biquad could
+leave `z1`/`z2` poisoned for every later block, turning a recovered signal into
+persistent NaN/silence. This was relevant to both PRISM/FXEQ and VØID/Ozvena.
+
+**Change:** the upstream FXEQ and Ozvena `dsp/biquad.ts` sources now clear the
+per-channel recursive state when a block ends with non-finite state; the
+vendored sources and generated `public/fxeq-worklet.js`/
+`public/ozvena-worklet.js` were rebuilt. Valid finite processing and golden
+semantics are untouched; processor-boundary input scrubbing remains the first
+line of defense.
+
+**Evidence:** `tests/fxeq-ozvena-biquad-hardening.test.ts` 4/4, `npm run
+typecheck:clean` PASS, `npm run build` PASS (354 modules; entry 931/995 KB;
+total JS 1832/2400 KB; core worklets 98/120 KB; PWA precache 57 entries /
+4002.16 KiB), and the completed default suite is 221 files / 2178 passed /
+103 skipped / 0 failed (2281 tests). The final reviewed-tree rerun remains a
+release process gate. The related upstream repositories contain the source
+edits and must be kept aligned through their normal vendor flow.
