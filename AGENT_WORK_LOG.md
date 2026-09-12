@@ -288,8 +288,10 @@ because `KYX_DEPLOY_URL` was not configured.
 ## CURRENT WORKTREE — PRISM host workflow implementation (2026-09-12)
 
 The blocking PRISM host/UI handoff is implemented in commit `a3dd6ba`; the
-remaining working-tree changes are evidence/browser-verifier updates. The
-implementation keeps `effect-ab-v1` as the persisted A/B source of truth,
+browser-verifier follow-up is in `8912a09`, and the release hardening batch is
+in `cb1bde7`. The current worktree contains one uncommitted LR8 crossover
+draft, explicitly outside the release candidate until its bank integration
+and regression evidence are complete. The implementation keeps `effect-ab-v1` as the persisted A/B source of truth,
 hydrates FXEQ runtime morph slots after mount/rebuild, removes the duplicate
 PRISM A/B surface, wires PRISM parameter drags through preview + cancel
 rollback, exposes an FXEQ sidechain picker with source-aware rewire, queues
@@ -305,6 +307,12 @@ snapshot hydration/clear, sidechain signature, PRISM UI source picker and
 persisted A/B controller, preview/commit/cancel behavior, controls, worklet
 entry and plugin surface.
 
+**Post-`cb1bde7` hardening evidence:** 7 focused files / 48 tests passed,
+including FXEQ performance/morph, meter ring, registry routing/dispose and
+VØID/Ultina hardening. The new FXEQ worst-case soak rendered 300 simulated
+seconds with 6.0 MB heap growth, −0.003 dB RMS drift, zero non-finite samples,
+zero tail peak and max sample magnitude 0.945.
+
 **Release evidence after this diff:** `npm run typecheck:clean`, `npm run build`
 (354 modules; entry 934/995 KB; total JS 1840/2400 KB; core worklets 98/120 KB;
 57 precache entries / 4012.49 KiB), `npm run test:browser:production` passed.
@@ -316,11 +324,13 @@ not release-green under shared-machine load: 224 files / 2152 passed / 162
 skipped / 5 failed. Two Ozvena hook timeouts followed the 10-minute soak and
 three timing budgets failed in that shared-machine run; Ozvena 59/59 and the
 collab, VLYX HQ and large-project normalize checks pass in targeted isolation.
-No threshold was changed and no PRISM failure occurred.
+No threshold was changed and no PRISM failure occurred. This full-suite result
+predates `cb1bde7`; a complete default-suite rerun from the release hardening
+commit is still required.
 
 **Remaining release gates:** rerun the browser performance battery in a quiet
-runner, run a quiet full suite, review and commit the four evidence/browser
-files, run the manual
+runner, run a quiet full suite, separately review or remove the LR8 crossover
+draft before tagging the candidate, run the manual
 Firefox/Edge/Safari/iOS and physical audio-device matrix, resolve the 209
 formatting-deviation decision, and run `release:deployed-smoke` with the real
 `KYX_DEPLOY_URL`.

@@ -6,9 +6,10 @@
 **Cieľ:** dostať KYX do stavu, v ktorom nový používateľ vytvorí beat, vyberie zvuk, spracuje ho cez pluginy, zrozumiteľne ho zmixuje a bezpečne exportuje bez straty práce, nečakaných level skokov alebo nejasného workflow.
 
 **Reviewed baseline:** `e701b05` (`okay kámo`). PRISM host workflow je teraz
-implementovaný v commit-e `a3dd6ba` (`klasika`) a browser-verifier follow-up je
-v `8912a09` (`no fajn teda`); aktuálny working tree má iba tri follow-up
-evidence dokumenty. Release approval stále čaká na úplnú
+implementovaný v commit-e `a3dd6ba` (`klasika`), browser-verifier follow-up je
+v `8912a09` (`no fajn teda`) a release hardening batch v `cb1bde7`; aktuálny
+working tree má iba jeden necommitnutý LR8 crossover draft. Release approval
+stále čaká na úplnú
 regresiu, manuálnu matrix a deploy smoke.
 
 Tento dokument je implementačný plán pre ďalšieho agenta. Každá úloha má byť riešená proti existujúcemu kódu v repozitári, nie ako samostatný redesign produktu.
@@ -103,8 +104,8 @@ Agent odovzdáva všetky body naraz v completion reporte:
 ### REL-01 — reviewed scope ledger pre `e701b05`
 
 Nasledujúca tabuľka je ledger scope; PRISM implementation je commitnutý v
-`a3dd6ba` a browser-verifier follow-up v `8912a09`, ale aktuálny worktree ešte
-obsahuje tri follow-up evidence dokumenty.
+`a3dd6ba`, browser-verifier follow-up v `8912a09` a release hardening v
+`cb1bde7`, ale aktuálny worktree ešte obsahuje jeden LR8 crossover draft.
 Je to release bookkeeping, nie dôkaz, že verejný deploy alebo celý KYX release
 je hotový. Každý ďalší agent
 najprv skontroluje `git status`, `git show --stat HEAD` a tento ledger; nový diff
@@ -258,12 +259,13 @@ Overené príkazy a výsledky:
 | `npm run build:ultina`                                     | PASS — rebuilt `public/ultina-worklet.js`                                                                                                                                                                                                                                                                                                                  |
 | `npm run test:browser`                                     | **216/218 Chromium** — PRISM UI workflow (A/B, drag, plugin undo/redo, morph, reload persistence) PASS; two global performance checks failed under load and require a quiet rerun                                                                                                                                                                          |
 | `npm run test:browser:production`                          | PASS — dist boot, HOUSE template, sequencer, FX rack and all five shipped worklet assets                                                                                                                                                                                                                                                                   |
+| Post-`cb1bde7` hardening regression batch                  | PASS — 48/48 targeted tests + 300 s PRISM soak (6.0 MB heap growth, −0.003 dB drift, zero non-finite samples, zero tail peak); default full-suite rerun from this commit remains open                                                                                                                                                                      |
 | `npm run release:preflight`                                | PASS — explicit production-origin/config + KYX artifacts                                                                                                                                                                                                                                                                                                   |
 | `npm run release:server-smoke`                             | PASS — real entrypoint health/CORS/origin/admin contract                                                                                                                                                                                                                                                                                                   |
 | `npm run release:deployed-smoke`                           | **BLOCKED — `KYX_DEPLOY_URL` missing**; local fresh-dist/deployed-like probe is documented separately, but actual public URL is still required for DEP-01                                                                                                                                                                                                  |
 | VLYX hardening2 + upstream parity battery                  | PASS — host `9/9`, `ultina-core-hardening` `55/55`, worklet/parity/vectors `26/26` after upstream→vendor sync                                                                                                                                                                                                                                              |
 | `tests/collab-transport.test.ts`                           | PASS — `10/10`; malformed awareness payloads are rejected and remote play scheduler transition is covered                                                                                                                                                                                                                                                  |
-| PRISM/FXEQ + VLYX + VØID targeted Vitest suite             | PASS — existing 128/128 battery; commit `a3dd6ba` includes FXEQ host/worklet workflow `45/45` plus UI/host acceptance within the `92/92` scoped run; 8/8 FXEQ golden hashes bit-exact                                                                                                                                                                      |
+| PRISM/FXEQ + VLYX + VØID targeted Vitest suite             | PASS — existing 128/128 battery; `a3dd6ba` includes FXEQ host/worklet workflow `45/45` plus UI/host acceptance within the `92/92` scoped run; `cb1bde7` adds hardening `48/48` + 300 s PRISM soak; 8/8 FXEQ golden hashes bit-exact                                                                                                                        |
 | upstream Ultina affected suite                             | PASS — 104/104 tests                                                                                                                                                                                                                                                                                                                                       |
 | VLYX analysis worker client suite                          | PASS — 4/4 tests                                                                                                                                                                                                                                                                                                                                           |
 | persistence failure/recovery targeted suite                | PASS — 28 passed / 1 skipped                                                                                                                                                                                                                                                                                                                               |
