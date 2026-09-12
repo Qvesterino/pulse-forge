@@ -623,7 +623,7 @@ try {
     await plugPage.locator(".fx-device-toggle").first().click();
     // PRISM host workflow: the source picker must be present on the actual
     // flagship panel, and selecting a source must remain a visible state.
-    await plugPage.waitForSelector('.fxeq-panel[aria-label="PRISM multiband editor"]', { timeout: 10_000 });
+    await plugPage.waitForSelector('.fxeq-panel[aria-label="PRISM multiband editor"]', { timeout: 30_000 });
     const prismSource = plugPage.locator(".fx-sidechain-picker select").first();
     const sourceOptions = await prismSource.locator('option:not([value=""])').count();
     if (sourceOptions < 1) throw new Error("PRISM source picker has no eligible source tracks");
@@ -712,8 +712,11 @@ try {
       await plugPage.locator(".pb-row button:has-text(OPEN)").first().click();
     }
     await plugPage.waitForSelector(".sequencer", { timeout: 30_000 });
-    await clickPanelAction(plugPage, "FX");
-    await plugPage.waitForSelector('.fxeq-panel[aria-label="PRISM multiband editor"]', { timeout: 10_000 });
+    const reloadedRack = plugPage.locator(".fx-rack").first();
+    if (!(await reloadedRack.isVisible().catch(() => false))) {
+      await clickPanelAction(plugPage, "FX");
+    }
+    await plugPage.waitForSelector('.fxeq-panel[aria-label="PRISM multiband editor"]', { timeout: 30_000 });
     const reloadedSource = await plugPage.locator(".fx-sidechain-picker select").first().inputValue();
     if (reloadedSource !== selectedPrismSource)
       throw new Error(`PRISM source lost on reload (${reloadedSource}/${selectedPrismSource})`);

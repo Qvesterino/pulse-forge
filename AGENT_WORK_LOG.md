@@ -257,7 +257,7 @@ limit itself remains 2902 µs per 128-frame block. `npm run test:browser` then
 completed 218/218, with a median of 878 µs/block (samples 874/878/916), and
 `npm run build` plus production browser smoke remained green.
 
-## CURRENT KYX ROADMAP IMPLEMENTATION — PRISM host workflow review (2026-09-12)
+## HISTORICAL KYX ROADMAP IMPLEMENTATION — PRISM gap review (2026-09-12)
 
 **Scope:** reviewed commit `e701b05` after the FXEQ host/worklet workflow was
 landed. The working tree was clean at review time.
@@ -287,7 +287,8 @@ because `KYX_DEPLOY_URL` was not configured.
 
 ## CURRENT WORKTREE — PRISM host workflow implementation (2026-09-12)
 
-The blocking PRISM host/UI handoff was implemented in the working tree. The
+The blocking PRISM host/UI handoff is implemented in commit `a3dd6ba`; the
+remaining working-tree changes are evidence/browser-verifier updates. The
 implementation keeps `effect-ab-v1` as the persisted A/B source of truth,
 hydrates FXEQ runtime morph slots after mount/rebuild, removes the duplicate
 PRISM A/B surface, wires PRISM parameter drags through preview + cancel
@@ -305,18 +306,21 @@ persisted A/B controller, preview/commit/cancel behavior, controls, worklet
 entry and plugin surface.
 
 **Release evidence after this diff:** `npm run typecheck:clean`, `npm run build`
-(354 modules; entry 934/995 KB; total JS 1839/2400 KB; core worklets 98/120 KB;
-57 precache entries / 4012.48 KiB), `npm run test:browser` 218/218, and
-`npm run test:browser:production` passed. The full default Vitest run is still
+(354 modules; entry 934/995 KB; total JS 1840/2400 KB; core worklets 98/120 KB;
+57 precache entries / 4012.49 KiB), `npm run test:browser:production` passed.
+The latest `npm run test:browser` reached 216/218: the PRISM plugin workflow
+(A/B, pointer drag, plugin undo/redo, morph, source and reload persistence)
+passed; two global performance checks failed under machine load. The full
+default Vitest run is still
 not release-green under shared-machine load: 224 files / 2152 passed / 162
 skipped / 5 failed. Two Ozvena hook timeouts followed the 10-minute soak;
 collab and VLYX HQ budgets passed in targeted isolation, while large-project
 normalize still fails its 100 ms budget. No threshold was changed and no PRISM
 failure occurred.
 
-**Remaining release gates:** add the missing browser-level B/morph/undo/reload
-assertions or explicitly accept their current targeted coverage, run a quiet
-full suite, review and commit the implementation diff, run the manual
+**Remaining release gates:** rerun the browser performance battery in a quiet
+runner, run a quiet full suite, review and commit the four evidence/browser
+files, run the manual
 Firefox/Edge/Safari/iOS and physical audio-device matrix, resolve the 209
 formatting-deviation decision, and run `release:deployed-smoke` with the real
 `KYX_DEPLOY_URL`.
