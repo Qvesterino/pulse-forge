@@ -80,9 +80,9 @@ export function setLowPass(c: BiquadCoeffs, freq: number, q: number, sampleRate:
   const alpha = sinW / (2 * Math.max(1e-6, q));
   const a0 = 1 + alpha;
 
-  c.b0 = ((1 - cosW) / 2) / a0;
+  c.b0 = (1 - cosW) / 2 / a0;
   c.b1 = (1 - cosW) / a0;
-  c.b2 = ((1 - cosW) / 2) / a0;
+  c.b2 = (1 - cosW) / 2 / a0;
   c.a1 = (-2 * cosW) / a0;
   c.a2 = (1 - alpha) / a0;
 }
@@ -94,9 +94,9 @@ export function setHighPass(c: BiquadCoeffs, freq: number, q: number, sampleRate
   const alpha = sinW / (2 * Math.max(1e-6, q));
   const a0 = 1 + alpha;
 
-  c.b0 = ((1 + cosW) / 2) / a0;
-  c.b1 = (-(1 + cosW)) / a0;
-  c.b2 = ((1 + cosW) / 2) / a0;
+  c.b0 = (1 + cosW) / 2 / a0;
+  c.b1 = -(1 + cosW) / a0;
+  c.b2 = (1 + cosW) / 2 / a0;
   c.a1 = (-2 * cosW) / a0;
   c.a2 = (1 - alpha) / a0;
 }
@@ -193,5 +193,12 @@ export function processBiquad(bq: BiquadState, channels: Float32Array[], frameCo
 
     bq.z1[ch] = z1;
     bq.z2[ch] = z2;
+    // Non-finite state guard (mirrors the ultina core): a poisoned DF2T
+    // recursion never self-heals — without this the section stays silent
+    // (or NaN) for the rest of the session even after the input recovers.
+    if (!Number.isFinite(z1) || !Number.isFinite(z2)) {
+      bq.z1[ch] = 0;
+      bq.z2[ch] = 0;
+    }
   }
 }

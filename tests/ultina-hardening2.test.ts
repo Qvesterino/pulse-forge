@@ -25,10 +25,7 @@
 import { describe, expect, it } from "vitest";
 import { UltinaProcessor } from "../src/effects/ultina-core/dsp/ultinaProcessor.js";
 import { registerCoreModules } from "../src/effects/ultina-core/dsp/moduleFactories.js";
-import {
-  CrossoverNetwork,
-  LR4_Q,
-} from "../src/effects/ultina-core/dsp/multiband.js";
+import { CrossoverNetwork, LR4_Q } from "../src/effects/ultina-core/dsp/multiband.js";
 import {
   createBiquad,
   setHighPass,
@@ -119,9 +116,7 @@ describe("multiband: 3-band analog LR4 mid band (double-filter regression)", () 
       for (let i = 0; i < BLOCK; i++) {
         const t = (blk * BLOCK + i) / SR;
         // Mid-band tones + a click every 4th block to excite filter state.
-        const v =
-          0.5 * Math.sin(2 * Math.PI * 800 * t) +
-          0.3 * Math.sin(2 * Math.PI * 2000 * t);
+        const v = 0.5 * Math.sin(2 * Math.PI * 800 * t) + 0.3 * Math.sin(2 * Math.PI * 2000 * t);
         input[0][i] = i === 0 && blk % 4 === 0 ? 1 : v;
         input[1][i] = input[0][i];
       }

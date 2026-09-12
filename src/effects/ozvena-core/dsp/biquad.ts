@@ -89,9 +89,9 @@ export function setLowPass(c: BiquadCoeffs, freq: number, q: number, sampleRate:
   const sinW = Math.sin(w);
   const alpha = sinW / (2 * Math.max(1e-6, q));
   const a0 = 1 + alpha;
-  c.b0 = q32(((1 - cosW) / 2) / a0);
+  c.b0 = q32((1 - cosW) / 2 / a0);
   c.b1 = q32((1 - cosW) / a0);
-  c.b2 = q32(((1 - cosW) / 2) / a0);
+  c.b2 = q32((1 - cosW) / 2 / a0);
   c.a1 = q32((-2 * cosW) / a0);
   c.a2 = q32((1 - alpha) / a0);
 }
@@ -102,9 +102,9 @@ export function setHighPass(c: BiquadCoeffs, freq: number, q: number, sampleRate
   const sinW = Math.sin(w);
   const alpha = sinW / (2 * Math.max(1e-6, q));
   const a0 = 1 + alpha;
-  c.b0 = q32(((1 + cosW) / 2) / a0);
-  c.b1 = q32((-(1 + cosW)) / a0);
-  c.b2 = q32(((1 + cosW) / 2) / a0);
+  c.b0 = q32((1 + cosW) / 2 / a0);
+  c.b1 = q32(-(1 + cosW) / a0);
+  c.b2 = q32((1 + cosW) / 2 / a0);
   c.a1 = q32((-2 * cosW) / a0);
   c.a2 = q32((1 - alpha) / a0);
 }
@@ -129,12 +129,12 @@ export function setLowShelf(c: BiquadCoeffs, freq: number, q: number, gainDb: nu
   const sinW = Math.sin(w);
   const A = Math.pow(10, gainDb / 40);
   const beta = Math.sqrt(A) / q;
-  const a0 = (A + 1) + (A - 1) * cosW + beta * sinW;
-  c.b0 = q32((A * ((A + 1) - (A - 1) * cosW + beta * sinW)) / a0);
-  c.b1 = q32((2 * A * ((A - 1) - (A + 1) * cosW)) / a0);
-  c.b2 = q32((A * ((A + 1) - (A - 1) * cosW - beta * sinW)) / a0);
-  c.a1 = q32((-2 * ((A - 1) + (A + 1) * cosW)) / a0);
-  c.a2 = q32(((A + 1) + (A - 1) * cosW - beta * sinW) / a0);
+  const a0 = A + 1 + (A - 1) * cosW + beta * sinW;
+  c.b0 = q32((A * (A + 1 - (A - 1) * cosW + beta * sinW)) / a0);
+  c.b1 = q32((2 * A * (A - 1 - (A + 1) * cosW)) / a0);
+  c.b2 = q32((A * (A + 1 - (A - 1) * cosW - beta * sinW)) / a0);
+  c.a1 = q32((-2 * (A - 1 + (A + 1) * cosW)) / a0);
+  c.a2 = q32((A + 1 + (A - 1) * cosW - beta * sinW) / a0);
 }
 
 export function setHighShelf(c: BiquadCoeffs, freq: number, q: number, gainDb: number, sampleRate: number): void {
@@ -143,12 +143,12 @@ export function setHighShelf(c: BiquadCoeffs, freq: number, q: number, gainDb: n
   const sinW = Math.sin(w);
   const A = Math.pow(10, gainDb / 40);
   const beta = Math.sqrt(A) / q;
-  const a0 = (A + 1) - (A - 1) * cosW + beta * sinW;
-  c.b0 = q32((A * ((A + 1) + (A - 1) * cosW + beta * sinW)) / a0);
-  c.b1 = q32((-2 * A * ((A - 1) + (A + 1) * cosW)) / a0);
-  c.b2 = q32((A * ((A + 1) + (A - 1) * cosW - beta * sinW)) / a0);
-  c.a1 = q32((2 * ((A - 1) - (A + 1) * cosW)) / a0);
-  c.a2 = q32(((A + 1) - (A - 1) * cosW - beta * sinW) / a0);
+  const a0 = A + 1 - (A - 1) * cosW + beta * sinW;
+  c.b0 = q32((A * (A + 1 + (A - 1) * cosW + beta * sinW)) / a0);
+  c.b1 = q32((-2 * A * (A - 1 + (A + 1) * cosW)) / a0);
+  c.b2 = q32((A * (A + 1 + (A - 1) * cosW - beta * sinW)) / a0);
+  c.a1 = q32((2 * (A - 1 - (A + 1) * cosW)) / a0);
+  c.a2 = q32((A + 1 - (A - 1) * cosW - beta * sinW) / a0);
 }
 
 export function setAllPass(c: BiquadCoeffs, freq: number, q: number, sampleRate: number): void {
@@ -245,5 +245,12 @@ export function processBiquad(bq: BiquadState, channels: Float32Array[], frameCo
 
     bq.z1[ch] = z1;
     bq.z2[ch] = z2;
+    // Non-finite state guard (mirrors the ultina core): a poisoned DF2T
+    // recursion never self-heals — without this the section stays silent
+    // (or NaN) for the rest of the session even after the input recovers.
+    if (!Number.isFinite(z1) || !Number.isFinite(z2)) {
+      bq.z1[ch] = 0;
+      bq.z2[ch] = 0;
+    }
   }
 }

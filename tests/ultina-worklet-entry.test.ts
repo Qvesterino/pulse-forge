@@ -44,12 +44,8 @@ let now = 0;
 
 beforeAll(async () => {
   (globalThis as unknown as { sampleRate: number }).sampleRate = 48000;
-  (globalThis as unknown as { AudioWorkletProcessor: unknown }).AudioWorkletProcessor =
-    FakeAudioWorkletProcessor;
-  (globalThis as unknown as { registerProcessor: unknown }).registerProcessor = (
-    _name: string,
-    cls: ProcCtor,
-  ) => {
+  (globalThis as unknown as { AudioWorkletProcessor: unknown }).AudioWorkletProcessor = FakeAudioWorkletProcessor;
+  (globalThis as unknown as { registerProcessor: unknown }).registerProcessor = (_name: string, cls: ProcCtor) => {
     Processor = cls;
   };
   Object.defineProperty(globalThis, "currentTime", {
@@ -76,9 +72,7 @@ function fillSine(chans: Float32Array[], blockIndex: number, amplitude: number):
 /** Run blocks through the entry; return [outputRms, inputRms]. */
 function run(proc: ProcShape, blocks: number, amplitude: number): [number, number] {
   const input = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
-  const output = [
-    [new Float32Array(BLOCK), new Float32Array(BLOCK)],
-  ];
+  const output = [[new Float32Array(BLOCK), new Float32Array(BLOCK)]];
   let sumSq = 0;
   let inSumSq = 0;
   let n = 0;

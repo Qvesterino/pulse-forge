@@ -142,6 +142,10 @@
       }
       bq.z1[ch] = z1;
       bq.z2[ch] = z2;
+      if (!Number.isFinite(z1) || !Number.isFinite(z2)) {
+        bq.z1[ch] = 0;
+        bq.z2[ch] = 0;
+      }
     }
   }
 
