@@ -182,3 +182,24 @@ the bounded memory footprint of the prepare-time delay reservation:
   len približuje, takže najmenej narušený vzor je najlepší odhad skutočnej ceny
   (Firefox 2026-09-12: zdravý 1413 µs sample pohrebný dvoma záťažovými 3268/3332 µs →
   falošný FAIL medianom). Prahy (2902 µs, resp. 60 % pre ultinu) zostávajú nezmenené.
+
+## Kontrolný audit ultina-core (2026-09-13, druhý priechod)
+
+- **DSP-inertné schémové parametre (vendor-rezervované):** `exciter.preEmphasisMode`
+  (enum knob VIDITEĽNÝ v panele), `comp.autoLearnThreshold`, `transient.crossoverLearn`,
+  `clipper.crossoverLearn` nikto v DSP nečíta — ani upstream VocalForge (overené grepom).
+  Sú to rezervy vendor schémy, nie fork divergencia; implementácia patrí upstreamu
+  (menila by zvuk). Panel knob Pre-Emphasis teda kým nič nespraví — nezamieňať za bug.
+- **Zámerne NEopravené (produktové rozhodnutia, nie defekty):** manuálny dotyček parametra
+  nepreberá už-DUE automation eventy v rovnakom quantume (preberie až budúce; samo sa
+  opraví ďalším dragom — Web Audio "scheduled event wins" flavor); EQ LEARN APPLY robí
+  4 samostatné undo kroky namiesto 1 (ostatné assistant gesty sú 1-krokové);
+  `effectProcessorStatus` hlási "ok" aj pre bypassnutý flagship (bez konzumenta dnes).
+- **Opravené v tomto priechode:** duplicitné meno "Vocal Warmth" (EQ + density) spôsobovalo,
+  že panel vždy aplikoval EQ verziu — lookup teraz beží podľa preset ID; meters cadence
+  je rate-derived (~20 Hz aj na 96/192 kHz, predtým ~47/94 Hz); automation queue má cap
+  4096 (patologické `when=1e300` držal v rade navždy) vo všetkých troch entry; input-copy
+  fallback krátkeho vstupu fill-uje nulou namiesto kopírovania hlavy (duplex audio do
+  neskorších chunkov); `validateState` clampuje hodnoty podľa vlastnej hlavičky;
+  `extractFeatures` odmieta sampleRate <= 0/NaN (kompletná kontaminácia analýzy + ~200 MB
+  akumulátor pre 10-min buffer). Všetko zmirrorované do upstreamu.

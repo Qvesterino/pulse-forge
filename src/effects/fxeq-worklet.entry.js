@@ -11,6 +11,10 @@ import { createFxEqProcessor } from "./fxeq-core/core/fxEqProcessor.ts";
 
 const MAX_BLOCK = 128;
 const CHANNELS = 2;
+// Automation queue bound — a pathological finite `when` (1e300 from a broken
+// tempo map) would otherwise sit in the sorted queue forever, turning every
+// later insertion into an O(n) render-thread scan. (Ultina audit sweep.)
+const PENDING_PARAMS_CAP = 4096;
 
 class FxEqWorkletProcessor extends AudioWorkletProcessor {
   // `proc` never allocates inside process() — scratch is preallocated in prepare().
@@ -26,7 +30,7 @@ class FxEqWorkletProcessor extends AudioWorkletProcessor {
   /** Band-peak metering: gated by the host panel, throttled to ~20 Hz. */
   metersEnabled = false;
   blockCount = 0;
-  meterDivider = Math.max(1, Math.round((sampleRate / MAX_BLOCK) / 20));
+  meterDivider = Math.max(1, Math.round(sampleRate / MAX_BLOCK / 20));
   // Port messages have no render-time semantics. Keep automation events in
   // the audio thread and apply them at the block that reaches their timestamp
   // so FXEQ exports/playback do not collapse every point to the last value.
@@ -36,7 +40,7 @@ class FxEqWorkletProcessor extends AudioWorkletProcessor {
     super();
     const initial = options?.processorOptions?.params;
     const rawSeed = options?.processorOptions?.seed;
-    const seed = Number.isFinite(rawSeed) ? (rawSeed >>> 0) || 0x1 : undefined;
+    const seed = Number.isFinite(rawSeed) ? rawSeed >>> 0 || 0x1 : undefined;
     this.proc = createFxEqProcessor(initial, seed === undefined ? undefined : { seed });
     this.proc.prepare(sampleRate, CHANNELS, MAX_BLOCK);
     this.lastLatencyPosted = -1;
@@ -72,6 +76,7 @@ class FxEqWorkletProcessor extends AudioWorkletProcessor {
           return;
         }
         const q = this.pendingParams;
+        if (q.length >= PENDING_PARAMS_CAP) return; // drop incoming at cap — queued lanes keep ordering
         let i = q.length;
         while (i > 0 && q[i - 1].when > when) i--;
         q.splice(i, 0, { id: msg.id, value: msg.value, when });
@@ -176,9 +181,13 @@ class FxEqWorkletProcessor extends AudioWorkletProcessor {
       for (let c = 0; c < CHANNELS; c++) {
         const buf = this.scratch[c];
         const inCh = input?.[c];
-        if (inCh && inCh.length >= offset + frames) buf.set(inCh.subarray(offset, offset + frames));
-        else if (inCh && inCh.length >= frames) buf.set(inCh.subarray(0, frames));
-        else buf.fill(0, 0, frames);
+        if (inCh && inCh.length >= offset + frames) {
+          buf.set(inCh.subarray(offset, offset + frames));
+        } else {
+          // No channel or shorter than the output quantum at this offset —
+          // the old head-re-copy fallback duplicated audio into later chunks.
+          buf.fill(0, 0, frames);
+        }
       }
       this.proc.process(this.scratch, frames);
       for (let c = 0; c < CHANNELS; c++) {

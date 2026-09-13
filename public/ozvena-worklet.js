@@ -4628,14 +4628,8 @@
   // src/effects/ozvena-worklet.entry.js
   var MAX_BLOCK = 128;
   var CHANNELS = 2;
-  var FACTORY_IR_IDS = /* @__PURE__ */ new Set([
-    "vocal-booth",
-    "plate",
-    "hall",
-    "cathedral",
-    "plate-wide",
-    "chamber-wide"
-  ]);
+  var PENDING_PARAMS_CAP = 4096;
+  var FACTORY_IR_IDS = /* @__PURE__ */ new Set(["vocal-booth", "plate", "hall", "cathedral", "plate-wide", "chamber-wide"]);
   function checkedIrSets(rawSets, sampleRate2) {
     if (!Array.isArray(rawSets) || rawSets.length === 0) return null;
     const frames = rawSets[0]?.irLengthSamples;
@@ -4747,6 +4741,7 @@
             return;
           }
           const q = this.pendingParams;
+          if (q.length >= PENDING_PARAMS_CAP) return;
           let i = q.length;
           while (i > 0 && q[i - 1].when > when) i--;
           q.splice(i, 0, { id: msg.id, value: msg.value, when });
@@ -4758,10 +4753,7 @@
             this.postLatency();
             return;
           }
-          const frames = capUserIrFrames(
-            (msg.samples?.length ?? 0) / channels,
-            sampleRate
-          );
+          const frames = capUserIrFrames((msg.samples?.length ?? 0) / channels, sampleRate);
           if (msg.samples && frames > 0) {
             this.proc.loadUserIr(msg.samples.subarray(0, frames * channels), channels);
             this.postLatency();
@@ -4841,8 +4833,6 @@
           const inCh = input && input[c];
           if (inCh && inCh.length >= offset + frames) {
             buf.set(inCh.subarray(offset, offset + frames));
-          } else if (inCh && inCh.length >= frames) {
-            buf.set(inCh.subarray(0, frames));
           } else {
             buf.fill(0, 0, frames);
           }

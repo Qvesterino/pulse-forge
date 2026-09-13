@@ -13,6 +13,14 @@ import { MODULE_TYPES } from "./ultina-core/contracts/moduleTypes.ts";
 
 const MAX_BLOCK = 128;
 const CHANNELS = 2;
+// Meters cadence target (~20 Hz), derived from the ACTUAL render rate — a
+// hardcoded 16-quantum mask posted at ~47 Hz @96 kHz / ~94 Hz @192 kHz
+// (the fxeq entry already derived this; divergence found in audit).
+const METERS_DIVIDER = Math.max(1, Math.round(sampleRate / MAX_BLOCK / 20));
+// Automation queue bound: a pathological finite `when` (broken tempo map,
+// 1e300) would otherwise sit in the sorted queue forever, turning every
+// later insertion into an O(n) render-thread scan.
+const PENDING_PARAMS_CAP = 4096;
 
 class UltinaWorkletProcessor extends AudioWorkletProcessor {
   proc = new UltinaProcessor();
@@ -90,8 +98,12 @@ class UltinaWorkletProcessor extends AudioWorkletProcessor {
           return;
         }
         // Keep the queue sorted ascending by `when`; events usually arrive
-        // in order, so scan back from the end.
+        // in order, so scan back from the end. At the cap the INCOMING event
+        // is dropped: already-queued lanes keep their exact ordering, and a
+        // pathological sender cannot grow the queue unboundedly (a finite
+        // huge `when` would otherwise sit here for the page's lifetime).
         const q = this.pendingParams;
+        if (q.length >= PENDING_PARAMS_CAP) return;
         let i = q.length;
         while (i > 0 && q[i - 1].when > when) i--;
         q.splice(i, 0, { id: msg.id, value: msg.value, when });
@@ -184,9 +196,12 @@ class UltinaWorkletProcessor extends AudioWorkletProcessor {
         const inCh = input && input[c];
         if (inCh && inCh.length >= offset + frames) {
           buf.set(inCh.subarray(offset, offset + frames));
-        } else if (inCh && inCh.length >= frames) {
-          buf.set(inCh.subarray(0, frames));
         } else {
+          // Input unavailable for this chunk (no channel, or shorter than
+          // the output quantum at this offset — the old `subarray(0, frames)`
+          // fallback here would re-copy the input HEAD into every later
+          // chunk, duplicating audio; per spec inputs always match the
+          // quantum, so this is belt-and-braces silence).
           buf.fill(0, 0, frames);
         }
       }
@@ -195,11 +210,9 @@ class UltinaWorkletProcessor extends AudioWorkletProcessor {
         output[c].set(this.scratch[c].subarray(0, frames), offset);
       }
     }
-    // Meters snapshot ≈21 Hz — spectrum/LUFS/waveform/GR for the panel.
-    // Entirely skipped while the host has metering disabled. Every 16th
-    // 128-frame quantum: ~21.5 Hz at 44.1 kHz, ~23.4 Hz at 48 kHz (masking
-    // with 3 ran at ~94 Hz — 4× the documented main-thread pressure).
-    if (this.metersEnabled && (this.blockCount++ & 15) === 0) {
+    // Meters snapshot ≈20 Hz (rate-derived divider) — spectrum/LUFS/waveform/
+    // GR for the panel. Entirely skipped while the host has metering disabled.
+    if (this.metersEnabled && this.blockCount++ % METERS_DIVIDER === 0) {
       this.port.postMessage({ type: "meters", meters: this.proc.getMeters() });
     }
     // Modules configure their crossover (and thus DSP latency) on their

@@ -422,6 +422,11 @@
     p(EXCITER_CLIPPER_AMOUNT_ID, "Clipper", 0, 0, 100, "percent"),
     p(EXCITER_SCRATCH_AMOUNT_ID, "Scratch", 0, 0, 100, "percent"),
     p(EXCITER_TONE_SLIDER_ID, "Tone", 0, -100, 100, "generic"),
+    // Pre-Emphasis enum contract: value 0 MUST stay "flat" (no emphasis).
+    // The parameter was dead (never read by the DSP) for its whole life, so
+    // every existing project has 0 stored or defaulted, and the upstream
+    // golden vector exciter_tube_asym pins value 0 to the legacy output.
+    // Ascending intensity above it; selecting 1..3 activates the ladder.
     p(
       EXCITER_PRE_EMPHASIS_MODE_ID,
       "Pre-Emphasis",
@@ -430,7 +435,7 @@
       3,
       "enum",
       true,
-      { enumValues: ["full", "defined", "clean", "flat"] }
+      { enumValues: ["flat", "clean", "defined", "full"] }
     ),
     p(
       EXCITER_BAND_COUNT_ID,
@@ -3556,594 +3561,6 @@
     }
   };
 
-  // src/effects/ultina-core/dsp/maskingMeter.ts
-  function safeNum2(x) {
-    return Number.isFinite(x) ? x : 0;
-  }
-  var MASKING_BANDS = 8;
-  var MASKING_FREQS = [
-    100,
-    250,
-    500,
-    1e3,
-    2e3,
-    4e3,
-    8e3,
-    16e3
-  ];
-  var MASKING_THRESHOLD_DB = 3;
-  var MaskingMeter = class {
-    mainFilters = [];
-    scFilters = [];
-    mainEnv = new Array(MASKING_BANDS).fill(0);
-    scEnv = new Array(MASKING_BANDS).fill(0);
-    mainBuf = new Float32Array(0);
-    scBuf = new Float32Array(0);
-    sampleRate = 48e3;
-    /** Pooled result — analyze() runs per audio block on the audio thread;
-     * consumers (eqModule) copy out what they need immediately. */
-    pooledResult = {
-      levels: new Array(MASKING_BANDS).fill(0),
-      isMasking: new Array(MASKING_BANDS).fill(false),
-      mainLevels: new Array(MASKING_BANDS).fill(0),
-      sidechainLevels: new Array(MASKING_BANDS).fill(0)
-    };
-    prepare(sampleRate2, maxBlockSize) {
-      this.sampleRate = sampleRate2;
-      this.mainBuf = new Float32Array(maxBlockSize);
-      this.scBuf = new Float32Array(maxBlockSize);
-      this.reset();
-      this.mainFilters = [];
-      this.scFilters = [];
-      for (let i = 0; i < MASKING_BANDS; i++) {
-        const mainBq = createBiquad(1);
-        setBandPass(mainBq.coeffs, MASKING_FREQS[i], 4, sampleRate2);
-        this.mainFilters.push(mainBq);
-        const scBq = createBiquad(1);
-        setBandPass(scBq.coeffs, MASKING_FREQS[i], 4, sampleRate2);
-        this.scFilters.push(scBq);
-      }
-    }
-    reset() {
-      this.mainEnv.fill(0);
-      this.scEnv.fill(0);
-      for (const bq of this.mainFilters) resetBiquad(bq);
-      for (const bq of this.scFilters) resetBiquad(bq);
-    }
-    /**
-     * Analyze masking between main and sidechain signals.
-     * Returns per-band masking data. The result object is POOLED — copy out
-     * what you need; the next call overwrites every field.
-     */
-    analyze(main, sidechain, frameCount) {
-      this.ensureBuffers(frameCount);
-      const blockCoef = 1 - Math.exp(-frameCount / (50 / 1e3 * this.sampleRate));
-      const result = this.pooledResult;
-      const levels = result.levels;
-      const isMasking = result.isMasking;
-      const mainLevels = result.mainLevels;
-      const scLevels = result.sidechainLevels;
-      const scAvail = Math.min(frameCount, sidechain.length);
-      for (let b = 0; b < MASKING_BANDS; b++) {
-        const mainBq = this.mainFilters[b];
-        const scBq = this.scFilters[b];
-        for (let i = 0; i < frameCount; i++) {
-          this.mainBuf[i] = main[i];
-        }
-        processBiquadChannel(mainBq, this.mainBuf, 0, frameCount);
-        let mainPeak = 0;
-        for (let i = 0; i < frameCount; i++) {
-          const a = Math.abs(this.mainBuf[i]);
-          if (a > mainPeak) mainPeak = a;
-        }
-        for (let i = 0; i < scAvail; i++) {
-          this.scBuf[i] = sidechain[i];
-        }
-        for (let i = scAvail; i < frameCount; i++) {
-          this.scBuf[i] = 0;
-        }
-        processBiquadChannel(scBq, this.scBuf, 0, frameCount);
-        let scPeak = 0;
-        for (let i = 0; i < frameCount; i++) {
-          const a = Math.abs(this.scBuf[i]);
-          if (a > scPeak) scPeak = a;
-        }
-        this.mainEnv[b] += blockCoef * (mainPeak - this.mainEnv[b]);
-        this.scEnv[b] += blockCoef * (scPeak - this.scEnv[b]);
-        const mainDb = 20 * Math.log10(Math.max(1e-10, this.mainEnv[b]));
-        const scDb = 20 * Math.log10(Math.max(1e-10, this.scEnv[b]));
-        mainLevels[b] = mainDb;
-        scLevels[b] = scDb;
-        const maskingLevel = mainDb - scDb;
-        levels[b] = safeNum2(maskingLevel);
-        isMasking[b] = maskingLevel > MASKING_THRESHOLD_DB;
-      }
-      return result;
-    }
-    ensureBuffers(requiredSize) {
-      if (this.mainBuf.length < requiredSize) {
-        this.mainBuf = new Float32Array(requiredSize);
-        this.scBuf = new Float32Array(requiredSize);
-      }
-    }
-    /**
-     * Get current smoothed masking levels (for continuous meter display).
-     */
-    getLevels() {
-      const levels = new Array(MASKING_BANDS);
-      for (let b = 0; b < MASKING_BANDS; b++) {
-        const mainDb = 20 * Math.log10(Math.max(1e-10, this.mainEnv[b]));
-        const scDb = 20 * Math.log10(Math.max(1e-10, this.scEnv[b]));
-        levels[b] = mainDb - scDb;
-      }
-      return levels;
-    }
-  };
-
-  // src/effects/ultina-core/dsp/modules/eqModule.ts
-  var EQ_MAX_BANDS2 = 12;
-  var EQ_SHAPES2 = [
-    "bell",
-    "highShelf",
-    "lowShelf",
-    "highPass",
-    "lowPass",
-    "notch",
-    "tilt",
-    "bandPass",
-    "flat",
-    "dynamicBell",
-    "dynamicShelf",
-    "dynamicTilt"
-  ];
-  var EqModuleProcessor = class {
-    sampleRate = 44100;
-    maxBlockSize = 512;
-    bands = [];
-    /**
-     * Precomputed per-band parameter key strings — building
-     * `eq.band${i}.xxx` templates per band per block creates 150+
-     * transient strings on the audio path.
-     */
-    bandKeys = [];
-    soloKeys = [];
-    bandLevels = new Array(EQ_MAX_BANDS2).fill(-100);
-    bandGainReduction = new Array(EQ_MAX_BANDS2).fill(0);
-    maskingData = null;
-    pooledMeters = null;
-    // M/S processing buffers
-    midBuffer = new Float32Array(0);
-    sideBuffer = new Float32Array(0);
-    // Reused M/S wrappers (audio thread — see the M/S branch of process())
-    singleChannelWrap = [new Float32Array(0)];
-    scWrap = [new Float32Array(0)];
-    tempL = new Float32Array(0);
-    tempR = new Float32Array(0);
-    /** Per-sample dynamic-gain trajectory (pass 1 → pass 2 of dynamic bands). */
-    dynGainBuf = new Float32Array(0);
-    // Masking meter (per-band bandpass analysis)
-    maskingMeter = new MaskingMeter();
-    prepare(ctx) {
-      this.sampleRate = ctx.sampleRate;
-      this.maxBlockSize = ctx.maxBlockSize;
-      this.ensureBuffers(this.maxBlockSize);
-      this.bands = [];
-      this.bandKeys = [];
-      this.soloKeys = [];
-      for (let i = 0; i < EQ_MAX_BANDS2; i++) {
-        const p2 = `eq.band${i}`;
-        this.bandKeys.push({
-          enabled: `${p2}.enabled`,
-          freqHz: `${p2}.freqHz`,
-          gainDb: `${p2}.gainDb`,
-          q: `${p2}.q`,
-          shape: `${p2}.shape`,
-          mode: `${p2}.mode`,
-          dynamicRangeDb: `${p2}.dynamicRangeDb`,
-          dynamicThresholdDb: `${p2}.dynamicThresholdDb`,
-          sidechainEnabled: `${p2}.sidechainEnabled`,
-          dynamicAttackMs: `${p2}.dynamicAttackMs`,
-          dynamicReleaseMs: `${p2}.dynamicReleaseMs`,
-          dynamicRatio: `${p2}.dynamicRatio`,
-          dynamicKneeDb: `${p2}.dynamicKneeDb`
-        });
-        this.soloKeys.push(`${p2}.solo`);
-        this.bands.push({
-          filter: createBiquad(2),
-          filter2: createBiquad(2),
-          detector: createBiquad(2),
-          dynFilter: createBiquad(2),
-          coeffsInit: false,
-          filterSmooth: new BiquadCoeffSmoother(),
-          filter2Smooth: new BiquadCoeffSmoother(),
-          dynSmooth: new BiquadCoeffSmoother(),
-          envelope: new EnvelopeFollower(),
-          currentGainDb: 0,
-          dirty: true,
-          cachedFreq: -1,
-          cachedGain: 0,
-          cachedQ: 0,
-          cachedShape: -1,
-          cachedAttackMs: -1,
-          cachedReleaseMs: -1
-        });
-        this.bands[i].envelope.prepare(15, 150, this.sampleRate);
-        this.bands[i].filterSmooth.setTimeConstant(10, this.sampleRate);
-        this.bands[i].filter2Smooth.setTimeConstant(10, this.sampleRate);
-        this.bands[i].dynSmooth.setTimeConstant(10, this.sampleRate);
-      }
-      this.maskingMeter.prepare(this.sampleRate, this.maxBlockSize);
-    }
-    process(args) {
-      const { channels, frameCount, sidechain, params } = args;
-      if (channels.length < 2) return;
-      this.ensureBuffers(frameCount);
-      const enabled = (params["eq.enabled"] ?? 0) >= 0.5;
-      if (!enabled) return;
-      const channelMode = Math.round(params["eq.channelMode"] ?? 0);
-      const softSat = (params["eq.softSaturation"] ?? 0) >= 0.5;
-      const maskingEnabled = (params["eq.maskingMeterEnabled"] ?? 0) >= 0.5;
-      const sidechainEnabled = (params["eq.sidechainEnabled"] ?? 0) >= 0.5;
-      let soloBand = -1;
-      for (let i = 0; i < EQ_MAX_BANDS2; i++) {
-        if ((params[this.soloKeys[i]] ?? 0) >= 0.5) {
-          soloBand = i;
-          break;
-        }
-      }
-      const useMidSide = channelMode === 1 || channelMode === 2;
-      if (useMidSide) {
-        encodeMidSide(channels[0], channels[1], frameCount, this.midBuffer, this.sideBuffer);
-        const targetBuffer = this.singleChannelWrap;
-        targetBuffer[0] = channelMode === 1 ? this.midBuffer : this.sideBuffer;
-        let targetSidechain = null;
-        if (sidechainEnabled && sidechain) {
-          this.scWrap[0] = sidechain[0];
-          targetSidechain = this.scWrap;
-        }
-        this.processBands(targetBuffer, frameCount, targetSidechain, params, soloBand, maskingEnabled);
-        this.applySoftSat(targetBuffer, frameCount, softSat);
-        decodeMidSide(this.midBuffer, this.sideBuffer, frameCount, channels[0], channels[1]);
-      } else {
-        this.processBands(channels, frameCount, sidechainEnabled ? sidechain : null, params, soloBand, maskingEnabled);
-        this.applySoftSat(channels, frameCount, softSat);
-      }
-    }
-    reset() {
-      for (const band of this.bands) {
-        resetBiquad(band.filter);
-        resetBiquad(band.filter2);
-        resetBiquad(band.detector);
-        resetBiquad(band.dynFilter);
-        band.coeffsInit = false;
-        band.envelope.reset();
-        band.currentGainDb = 0;
-        band.dirty = true;
-      }
-      this.bandLevels.fill(-100);
-      this.bandGainReduction.fill(0);
-      this.maskingData = null;
-      this.maskingMeter.reset();
-    }
-    getMeters() {
-      if (!this.pooledMeters) {
-        this.pooledMeters = {
-          bandLevels: new Array(this.bandLevels.length).fill(0),
-          bandGainReduction: new Array(this.bandGainReduction.length).fill(0),
-          masking: this.maskingData ? new Array(this.maskingData.length).fill(0) : null
-        };
-      }
-      const m = this.pooledMeters;
-      for (let i = 0; i < m.bandLevels.length; i++) m.bandLevels[i] = this.bandLevels[i];
-      for (let i = 0; i < m.bandGainReduction.length; i++) m.bandGainReduction[i] = this.bandGainReduction[i];
-      if (this.maskingData) {
-        if (!m.masking || m.masking.length !== this.maskingData.length) {
-          m.masking = new Array(this.maskingData.length).fill(0);
-        }
-        for (let i = 0; i < m.masking.length; i++) m.masking[i] = this.maskingData[i];
-      } else {
-        m.masking = null;
-      }
-      return m;
-    }
-    // ── Internal helpers ───────────────────────────────────────
-    ensureBuffers(requiredSize) {
-      if (this.midBuffer.length < requiredSize) {
-        this.midBuffer = new Float32Array(requiredSize);
-        this.sideBuffer = new Float32Array(requiredSize);
-        this.tempL = new Float32Array(requiredSize);
-        this.tempR = new Float32Array(requiredSize);
-        this.dynGainBuf = new Float32Array(requiredSize);
-      }
-    }
-    // ── Internal processing ────────────────────────────────────
-    processBands(channels, frameCount, sidechain, params, soloBand, maskingEnabled) {
-      if (soloBand < 0) {
-        let anyEnabled = false;
-        for (let i = 0; i < EQ_MAX_BANDS2; i++) {
-          if ((params[this.bandKeys[i].enabled] ?? 0) >= 0.5) {
-            anyEnabled = true;
-            break;
-          }
-        }
-        if (!anyEnabled) {
-          for (let i = 0; i < EQ_MAX_BANDS2; i++) {
-            this.bandLevels[i] = this.bandLevels[i] * 0.8 + -100 * 0.2;
-            this.bandGainReduction[i] = this.bandGainReduction[i] * 0.8;
-          }
-          this.maskingData = null;
-          return;
-        }
-      }
-      for (let bandIdx = 0; bandIdx < EQ_MAX_BANDS2; bandIdx++) {
-        const band = this.bands[bandIdx];
-        const keys = this.bandKeys[bandIdx];
-        const bandEnabled = (params[keys.enabled] ?? 0) >= 0.5;
-        if (!bandEnabled && soloBand < 0) {
-          this.bandLevels[bandIdx] = this.bandLevels[bandIdx] * 0.8 + -100 * 0.2;
-          this.bandGainReduction[bandIdx] = this.bandGainReduction[bandIdx] * 0.8;
-          continue;
-        }
-        if (soloBand >= 0 && bandIdx !== soloBand) {
-          this.bandLevels[bandIdx] = this.bandLevels[bandIdx] * 0.8 + -100 * 0.2;
-          this.bandGainReduction[bandIdx] = this.bandGainReduction[bandIdx] * 0.8;
-          continue;
-        }
-        const freq = params[keys.freqHz] ?? 1e3;
-        const gain = clamp(params[keys.gainDb] ?? 0, -24, 24);
-        const q = params[keys.q] ?? 1;
-        const shape = Math.round(params[keys.shape] ?? 0);
-        const mode = Math.round(params[keys.mode] ?? 0);
-        const dynRange = params[keys.dynamicRangeDb] ?? 6;
-        const dynThreshold = params[keys.dynamicThresholdDb] ?? -24;
-        const bandSidechain = (params[keys.sidechainEnabled] ?? 0) >= 0.5;
-        const dynAttack = params[keys.dynamicAttackMs] ?? 15;
-        const dynRelease = params[keys.dynamicReleaseMs] ?? 150;
-        const dynRatio = clamp(params[keys.dynamicRatio] ?? 3, 1, 20);
-        const dynKnee = params[keys.dynamicKneeDb] ?? 0;
-        if (band.cachedFreq !== freq || band.cachedGain !== gain || band.cachedQ !== q || band.cachedShape !== shape || band.dirty) {
-          this.updateBandCoefficients(band, freq, gain, q, shape);
-          band.cachedFreq = freq;
-          band.cachedGain = gain;
-          band.cachedQ = q;
-          band.cachedShape = shape;
-          band.dirty = false;
-        }
-        if (band.cachedAttackMs !== dynAttack || band.cachedReleaseMs !== dynRelease) {
-          band.envelope.setAttack(dynAttack, this.sampleRate);
-          band.envelope.setRelease(dynRelease, this.sampleRate);
-          band.cachedAttackMs = dynAttack;
-          band.cachedReleaseMs = dynRelease;
-        }
-        const isDynamic = mode === 1 || shape >= 9;
-        const isSidechain = mode === 2 && bandSidechain && sidechain;
-        if (isDynamic || isSidechain) {
-          this.processDynamicBand(
-            band,
-            channels,
-            frameCount,
-            freq,
-            q,
-            dynRange,
-            dynThreshold,
-            dynRatio,
-            dynKnee,
-            dynAttack,
-            dynRelease,
-            isSidechain ? sidechain : null
-          );
-        } else {
-          processBiquadSmoothed(band.filter, band.filterSmooth, channels, frameCount);
-          if (band.cachedShape === 6) {
-            processBiquadSmoothed(band.filter2, band.filter2Smooth, channels, frameCount);
-          }
-        }
-        this.measureBandLevel(band, channels, frameCount, bandIdx);
-      }
-      for (let ch = 0; ch < channels.length; ch++) {
-        const data = channels[ch];
-        for (let i = 0; i < frameCount; i++) {
-          data[i] = sanitizeSample(data[i]);
-        }
-      }
-      if (maskingEnabled && sidechain) {
-        this.computeMasking(channels, sidechain, frameCount);
-      } else {
-        this.maskingData = null;
-      }
-    }
-    updateBandCoefficients(band, freq, gainDb, q, shape) {
-      const sr = this.sampleRate;
-      const effectiveGain = shape >= 9 ? 0 : gainDb;
-      const effectiveShape = shape === 11 ? 6 : shape >= 9 ? shape - 9 : shape;
-      const baseShape = EQ_SHAPES2[effectiveShape] ?? "bell";
-      switch (baseShape) {
-        case "bell":
-          setBell(band.filter.coeffs, freq, effectiveGain, q, sr);
-          break;
-        case "highShelf":
-          setHighShelf(band.filter.coeffs, freq, effectiveGain, q, sr);
-          break;
-        case "lowShelf":
-          setLowShelf(band.filter.coeffs, freq, effectiveGain, q, sr);
-          break;
-        case "highPass":
-          setHighPass(band.filter.coeffs, freq, q, sr);
-          break;
-        case "lowPass":
-          setLowPass(band.filter.coeffs, freq, q, sr);
-          break;
-        case "notch":
-          setNotch(band.filter.coeffs, freq, q, sr);
-          break;
-        case "tilt": {
-          const halfGain = effectiveGain * 0.5;
-          setLowShelf(band.filter.coeffs, freq, -halfGain, q * 0.7, sr);
-          setHighShelf(band.filter2.coeffs, freq, halfGain, q * 0.7, sr);
-          band.filter2Smooth.setTarget(band.filter2.coeffs);
-          break;
-        }
-        case "bandPass":
-          setBandPass(band.filter.coeffs, freq, q, sr);
-          break;
-        case "flat":
-          band.filter.coeffs.b0 = 1;
-          band.filter.coeffs.b1 = 0;
-          band.filter.coeffs.b2 = 0;
-          band.filter.coeffs.a1 = 0;
-          band.filter.coeffs.a2 = 0;
-          break;
-        default:
-          setBell(band.filter.coeffs, freq, effectiveGain, q, sr);
-      }
-      band.filterSmooth.setTarget(band.filter.coeffs);
-      setBandPass(band.detector.coeffs, freq, q * 2, sr);
-      setBandPass(band.dynFilter.coeffs, freq, q, sr);
-      band.dynSmooth.setTarget(band.dynFilter.coeffs);
-      if (!band.coeffsInit) {
-        band.filterSmooth.snap();
-        band.filter2Smooth.snap();
-        band.dynSmooth.snap();
-        band.coeffsInit = true;
-      }
-    }
-    /**
-     * Compute compressor gain reduction (dB) using threshold, ratio, and knee.
-     *
-     * Implements the standard feed-forward compressor gain computer
-     * with optional soft knee:
-     *
-     *   For input level x_db:
-     *     - If x_db < threshold - knee/2:  reduction = 0 dB
-     *     - If x_db > threshold + knee/2:  reduction = -(x_db - threshold) * (1 - 1/ratio)
-     *     - In knee zone: quadratic interpolation
-     *
-     * The result is clamped to [-dynRangeDb, 0].
-     *
-     * @returns signed gain in dB (always ≤ 0; negative = attenuation)
-     */
-    computeGainReduction(inputDb, thresholdDb, ratio, kneeDb, dynRangeDb) {
-      if (inputDb <= thresholdDb - kneeDb * 0.5) {
-        return 0;
-      }
-      let gainReduction;
-      const slope = 1 - 1 / ratio;
-      if (kneeDb > 0 && inputDb < thresholdDb + kneeDb * 0.5) {
-        const kneeBottom = thresholdDb - kneeDb * 0.5;
-        const x = inputDb - kneeBottom;
-        gainReduction = slope * (x * x) / (2 * kneeDb);
-      } else {
-        gainReduction = slope * (inputDb - thresholdDb);
-      }
-      return Math.max(-dynRangeDb, -gainReduction);
-    }
-    processDynamicBand(band, channels, frameCount, _freq, _q, dynRangeDb, thresholdDb, ratio, kneeDb, attackMs, releaseMs, sidechain) {
-      processBiquadSmoothed(band.filter, band.filterSmooth, channels, frameCount);
-      if (band.cachedShape === 11) {
-        processBiquadSmoothed(band.filter2, band.filter2Smooth, channels, frameCount);
-      }
-      const detectSource = sidechain ?? channels;
-      const numCh = Math.min(detectSource.length, 2);
-      const attackCoef = attackMs > 0 ? 1 - Math.exp(-1 / (attackMs / 1e3 * this.sampleRate)) : 1;
-      const releaseCoef = releaseMs > 0 ? 1 - Math.exp(-1 / (releaseMs / 1e3 * this.sampleRate)) : 1;
-      for (let ch = 0; ch < numCh; ch++) {
-        const src = detectSource[ch];
-        const tempBuf = ch === 0 ? this.tempL : this.tempR;
-        for (let i = 0; i < frameCount; i++) {
-          tempBuf[i] = src[i];
-        }
-        const { b0, b1, b2, a1, a2 } = band.detector.coeffs;
-        let z1 = band.detector.z1[ch];
-        let z2 = band.detector.z2[ch];
-        for (let i = 0; i < frameCount; i++) {
-          const x = tempBuf[i];
-          const y = b0 * x + z1;
-          z1 = b1 * x - a1 * y + z2;
-          z2 = b2 * x - a2 * y;
-          tempBuf[i] = y;
-        }
-        band.detector.z1[ch] = z1;
-        band.detector.z2[ch] = z2;
-        if (!Number.isFinite(z1) || !Number.isFinite(z2)) {
-          band.detector.z1[ch] = 0;
-          band.detector.z2[ch] = 0;
-        }
-      }
-      let gainReduction = band.currentGainDb;
-      for (let i = 0; i < frameCount; i++) {
-        let maxAbs = 0;
-        for (let ch = 0; ch < numCh; ch++) {
-          const val = Math.abs(ch === 0 ? this.tempL[i] : this.tempR[i]);
-          if (val > maxAbs) maxAbs = val;
-        }
-        const detected = band.envelope.process(maxAbs);
-        const detectedDb = 20 * Math.log10(Math.max(1e-10, detected));
-        const targetReduction = this.computeGainReduction(
-          detectedDb,
-          thresholdDb,
-          ratio,
-          kneeDb,
-          dynRangeDb
-        );
-        const coef = targetReduction < gainReduction ? attackCoef : releaseCoef;
-        gainReduction += coef * (targetReduction - gainReduction);
-        band.currentGainDb = gainReduction;
-        this.dynGainBuf[i] = 1 - Math.pow(10, gainReduction / 20);
-      }
-      const numOutCh = Math.min(channels.length, 2);
-      for (let i = 0; i < frameCount; i++) {
-        const c = band.dynSmooth.tick();
-        const bandAmount = this.dynGainBuf[i];
-        for (let ch = 0; ch < numOutCh; ch++) {
-          const data = channels[ch];
-          const x = data[i];
-          const bp = c.b0 * x + band.dynFilter.z1[ch];
-          band.dynFilter.z1[ch] = c.b1 * x - c.a1 * bp + band.dynFilter.z2[ch];
-          band.dynFilter.z2[ch] = c.b2 * x - c.a2 * bp;
-          data[i] = sanitizeSample(x - bp * bandAmount);
-        }
-      }
-      const bandIdx = this.bands.indexOf(band);
-      if (bandIdx >= 0) {
-        this.bandGainReduction[bandIdx] = -band.currentGainDb;
-      }
-      for (let ch = 0; ch < numOutCh; ch++) {
-        if (!Number.isFinite(band.dynFilter.z1[ch]) || !Number.isFinite(band.dynFilter.z2[ch])) {
-          band.dynFilter.z1[ch] = 0;
-          band.dynFilter.z2[ch] = 0;
-        }
-      }
-    }
-    measureBandLevel(_band, channels, frameCount, bandIdx) {
-      let peak = 0;
-      for (let i = 0; i < frameCount; i++) {
-        const abs = Math.abs(channels[0][i]);
-        if (abs > peak) peak = abs;
-      }
-      const db = 20 * Math.log10(Math.max(1e-10, peak));
-      this.bandLevels[bandIdx] = this.bandLevels[bandIdx] * 0.9 + db * 0.1;
-    }
-    applySoftSat(channels, frameCount, enabled) {
-      if (!enabled) return;
-      for (let ch = 0; ch < channels.length; ch++) {
-        const data = channels[ch];
-        for (let i = 0; i < frameCount; i++) {
-          const x = data[i];
-          const saturated = fastTanh(x * 2) * 0.5;
-          data[i] = sanitizeSample(x * 0.85 + saturated * 0.15);
-        }
-      }
-    }
-    computeMasking(channels, sidechain, frameCount) {
-      const result = this.maskingMeter.analyze(
-        channels[0],
-        sidechain[0] ?? channels[0],
-        frameCount
-      );
-      this.maskingData = result.levels;
-    }
-  };
-
   // src/effects/ultina-core/dsp/multiband.ts
   function copyN(dst, src, n) {
     for (let i = 0; i < n; i++) dst[i] = src[i];
@@ -4618,6 +4035,635 @@
         bandProcessFn(b, this.bandBuffers[b], frameCount);
       }
       this.crossover.sum(this.bandBuffers, channels, frameCount);
+    }
+  };
+
+  // src/effects/ultina-core/dsp/maskingMeter.ts
+  function safeNum2(x) {
+    return Number.isFinite(x) ? x : 0;
+  }
+  var MASKING_BANDS = 8;
+  var MASKING_FREQS = [
+    100,
+    250,
+    500,
+    1e3,
+    2e3,
+    4e3,
+    8e3,
+    16e3
+  ];
+  var MASKING_THRESHOLD_DB = 3;
+  var MaskingMeter = class {
+    mainFilters = [];
+    scFilters = [];
+    mainEnv = new Array(MASKING_BANDS).fill(0);
+    scEnv = new Array(MASKING_BANDS).fill(0);
+    mainBuf = new Float32Array(0);
+    scBuf = new Float32Array(0);
+    sampleRate = 48e3;
+    /** Pooled result — analyze() runs per audio block on the audio thread;
+     * consumers (eqModule) copy out what they need immediately. */
+    pooledResult = {
+      levels: new Array(MASKING_BANDS).fill(0),
+      isMasking: new Array(MASKING_BANDS).fill(false),
+      mainLevels: new Array(MASKING_BANDS).fill(0),
+      sidechainLevels: new Array(MASKING_BANDS).fill(0)
+    };
+    prepare(sampleRate2, maxBlockSize) {
+      this.sampleRate = sampleRate2;
+      this.mainBuf = new Float32Array(maxBlockSize);
+      this.scBuf = new Float32Array(maxBlockSize);
+      this.reset();
+      this.mainFilters = [];
+      this.scFilters = [];
+      for (let i = 0; i < MASKING_BANDS; i++) {
+        const mainBq = createBiquad(1);
+        setBandPass(mainBq.coeffs, MASKING_FREQS[i], 4, sampleRate2);
+        this.mainFilters.push(mainBq);
+        const scBq = createBiquad(1);
+        setBandPass(scBq.coeffs, MASKING_FREQS[i], 4, sampleRate2);
+        this.scFilters.push(scBq);
+      }
+    }
+    reset() {
+      this.mainEnv.fill(0);
+      this.scEnv.fill(0);
+      for (const bq of this.mainFilters) resetBiquad(bq);
+      for (const bq of this.scFilters) resetBiquad(bq);
+    }
+    /**
+     * Analyze masking between main and sidechain signals.
+     * Returns per-band masking data. The result object is POOLED — copy out
+     * what you need; the next call overwrites every field.
+     */
+    analyze(main, sidechain, frameCount) {
+      this.ensureBuffers(frameCount);
+      const blockCoef = 1 - Math.exp(-frameCount / (50 / 1e3 * this.sampleRate));
+      const result = this.pooledResult;
+      const levels = result.levels;
+      const isMasking = result.isMasking;
+      const mainLevels = result.mainLevels;
+      const scLevels = result.sidechainLevels;
+      const scAvail = Math.min(frameCount, sidechain.length);
+      for (let b = 0; b < MASKING_BANDS; b++) {
+        const mainBq = this.mainFilters[b];
+        const scBq = this.scFilters[b];
+        for (let i = 0; i < frameCount; i++) {
+          this.mainBuf[i] = main[i];
+        }
+        processBiquadChannel(mainBq, this.mainBuf, 0, frameCount);
+        let mainPeak = 0;
+        for (let i = 0; i < frameCount; i++) {
+          const a = Math.abs(this.mainBuf[i]);
+          if (a > mainPeak) mainPeak = a;
+        }
+        for (let i = 0; i < scAvail; i++) {
+          this.scBuf[i] = sidechain[i];
+        }
+        for (let i = scAvail; i < frameCount; i++) {
+          this.scBuf[i] = 0;
+        }
+        processBiquadChannel(scBq, this.scBuf, 0, frameCount);
+        let scPeak = 0;
+        for (let i = 0; i < frameCount; i++) {
+          const a = Math.abs(this.scBuf[i]);
+          if (a > scPeak) scPeak = a;
+        }
+        this.mainEnv[b] += blockCoef * (mainPeak - this.mainEnv[b]);
+        this.scEnv[b] += blockCoef * (scPeak - this.scEnv[b]);
+        const mainDb = 20 * Math.log10(Math.max(1e-10, this.mainEnv[b]));
+        const scDb = 20 * Math.log10(Math.max(1e-10, this.scEnv[b]));
+        mainLevels[b] = mainDb;
+        scLevels[b] = scDb;
+        const maskingLevel = mainDb - scDb;
+        levels[b] = safeNum2(maskingLevel);
+        isMasking[b] = maskingLevel > MASKING_THRESHOLD_DB;
+      }
+      return result;
+    }
+    ensureBuffers(requiredSize) {
+      if (this.mainBuf.length < requiredSize) {
+        this.mainBuf = new Float32Array(requiredSize);
+        this.scBuf = new Float32Array(requiredSize);
+      }
+    }
+    /**
+     * Get current smoothed masking levels (for continuous meter display).
+     */
+    getLevels() {
+      const levels = new Array(MASKING_BANDS);
+      for (let b = 0; b < MASKING_BANDS; b++) {
+        const mainDb = 20 * Math.log10(Math.max(1e-10, this.mainEnv[b]));
+        const scDb = 20 * Math.log10(Math.max(1e-10, this.scEnv[b]));
+        levels[b] = mainDb - scDb;
+      }
+      return levels;
+    }
+  };
+
+  // src/effects/ultina-core/dsp/modules/eqModule.ts
+  var EQ_MAX_BANDS2 = 12;
+  var EQ_SHAPES2 = [
+    "bell",
+    "highShelf",
+    "lowShelf",
+    "highPass",
+    "lowPass",
+    "notch",
+    "tilt",
+    "bandPass",
+    "flat",
+    "dynamicBell",
+    "dynamicShelf",
+    "dynamicTilt"
+  ];
+  var EqModuleProcessor = class {
+    sampleRate = 44100;
+    maxBlockSize = 512;
+    bands = [];
+    /**
+     * Precomputed per-band parameter key strings — building
+     * `eq.band${i}.xxx` templates per band per block creates 150+
+     * transient strings on the audio path.
+     */
+    bandKeys = [];
+    soloKeys = [];
+    bandLevels = new Array(EQ_MAX_BANDS2).fill(-100);
+    bandGainReduction = new Array(EQ_MAX_BANDS2).fill(0);
+    maskingData = null;
+    pooledMeters = null;
+    // M/S processing buffers
+    midBuffer = new Float32Array(0);
+    sideBuffer = new Float32Array(0);
+    // Reused M/S wrappers (audio thread — see the M/S branch of process())
+    singleChannelWrap = [new Float32Array(0)];
+    scWrap = [new Float32Array(0)];
+    tempL = new Float32Array(0);
+    tempR = new Float32Array(0);
+    /** Per-sample dynamic-gain trajectory (pass 1 → pass 2 of dynamic bands). */
+    dynGainBuf = new Float32Array(0);
+    // Transient/sustain separation (channel modes 3/4 — the schema and
+    // MODULE_SUPPORTS_TRANSIENT_SUSTAIN advertise these; the band banks below
+    // process only the selected component, mirroring the structure of
+    // MultibandProcessor.process's T/S branch).
+    tsSeparator = new TransientSustainSeparator();
+    transientBufs = [new Float32Array(0), new Float32Array(0)];
+    sustainBufs = [new Float32Array(0), new Float32Array(0)];
+    // Masking meter (per-band bandpass analysis)
+    maskingMeter = new MaskingMeter();
+    prepare(ctx) {
+      this.sampleRate = ctx.sampleRate;
+      this.maxBlockSize = ctx.maxBlockSize;
+      this.ensureBuffers(this.maxBlockSize);
+      this.bands = [];
+      this.bandKeys = [];
+      this.soloKeys = [];
+      for (let i = 0; i < EQ_MAX_BANDS2; i++) {
+        const p2 = `eq.band${i}`;
+        this.bandKeys.push({
+          enabled: `${p2}.enabled`,
+          freqHz: `${p2}.freqHz`,
+          gainDb: `${p2}.gainDb`,
+          q: `${p2}.q`,
+          shape: `${p2}.shape`,
+          mode: `${p2}.mode`,
+          dynamicRangeDb: `${p2}.dynamicRangeDb`,
+          dynamicThresholdDb: `${p2}.dynamicThresholdDb`,
+          sidechainEnabled: `${p2}.sidechainEnabled`,
+          dynamicAttackMs: `${p2}.dynamicAttackMs`,
+          dynamicReleaseMs: `${p2}.dynamicReleaseMs`,
+          dynamicRatio: `${p2}.dynamicRatio`,
+          dynamicKneeDb: `${p2}.dynamicKneeDb`
+        });
+        this.soloKeys.push(`${p2}.solo`);
+        this.bands.push({
+          filter: createBiquad(2),
+          filter2: createBiquad(2),
+          detector: createBiquad(2),
+          dynFilter: createBiquad(2),
+          coeffsInit: false,
+          filterSmooth: new BiquadCoeffSmoother(),
+          filter2Smooth: new BiquadCoeffSmoother(),
+          dynSmooth: new BiquadCoeffSmoother(),
+          envelope: new EnvelopeFollower(),
+          currentGainDb: 0,
+          dirty: true,
+          cachedFreq: -1,
+          cachedGain: 0,
+          cachedQ: 0,
+          cachedShape: -1,
+          cachedAttackMs: -1,
+          cachedReleaseMs: -1
+        });
+        this.bands[i].envelope.prepare(15, 150, this.sampleRate);
+        this.bands[i].filterSmooth.setTimeConstant(10, this.sampleRate);
+        this.bands[i].filter2Smooth.setTimeConstant(10, this.sampleRate);
+        this.bands[i].dynSmooth.setTimeConstant(10, this.sampleRate);
+      }
+      this.maskingMeter.prepare(this.sampleRate, this.maxBlockSize);
+      this.tsSeparator.prepare(this.sampleRate);
+    }
+    process(args) {
+      const { channels, frameCount, sidechain, params } = args;
+      if (channels.length < 2) return;
+      this.ensureBuffers(frameCount);
+      const enabled = (params["eq.enabled"] ?? 0) >= 0.5;
+      if (!enabled) return;
+      const channelMode = Math.round(params["eq.channelMode"] ?? 0);
+      const softSat = (params["eq.softSaturation"] ?? 0) >= 0.5;
+      const maskingEnabled = (params["eq.maskingMeterEnabled"] ?? 0) >= 0.5;
+      const sidechainEnabled = (params["eq.sidechainEnabled"] ?? 0) >= 0.5;
+      let soloBand = -1;
+      for (let i = 0; i < EQ_MAX_BANDS2; i++) {
+        if ((params[this.soloKeys[i]] ?? 0) >= 0.5) {
+          soloBand = i;
+          break;
+        }
+      }
+      const useMidSide = channelMode === 1 || channelMode === 2;
+      if (useMidSide) {
+        encodeMidSide(channels[0], channels[1], frameCount, this.midBuffer, this.sideBuffer);
+        const targetBuffer = this.singleChannelWrap;
+        targetBuffer[0] = channelMode === 1 ? this.midBuffer : this.sideBuffer;
+        let targetSidechain = null;
+        if (sidechainEnabled && sidechain) {
+          this.scWrap[0] = sidechain[0];
+          targetSidechain = this.scWrap;
+        }
+        this.processBands(targetBuffer, frameCount, targetSidechain, params, soloBand, maskingEnabled);
+        this.applySoftSat(targetBuffer, frameCount, softSat);
+        decodeMidSide(this.midBuffer, this.sideBuffer, frameCount, channels[0], channels[1]);
+      } else if (channelMode === 3 || channelMode === 4) {
+        for (let ch = 0; ch < 2; ch++) {
+          this.tsSeparator.separate(
+            channels[ch],
+            frameCount,
+            this.transientBufs[ch],
+            this.sustainBufs[ch],
+            ch
+          );
+        }
+        const target = channelMode === 3 ? this.transientBufs : this.sustainBufs;
+        const other = channelMode === 3 ? this.sustainBufs : this.transientBufs;
+        this.processBands(target, frameCount, sidechainEnabled ? sidechain : null, params, soloBand, maskingEnabled);
+        this.applySoftSat(target, frameCount, softSat);
+        for (let ch = 0; ch < 2; ch++) {
+          const t = target[ch];
+          const o = other[ch];
+          const out = channels[ch];
+          for (let i = 0; i < frameCount; i++) {
+            out[i] = t[i] + o[i];
+          }
+        }
+      } else {
+        this.processBands(channels, frameCount, sidechainEnabled ? sidechain : null, params, soloBand, maskingEnabled);
+        this.applySoftSat(channels, frameCount, softSat);
+      }
+    }
+    reset() {
+      for (const band of this.bands) {
+        resetBiquad(band.filter);
+        resetBiquad(band.filter2);
+        resetBiquad(band.detector);
+        resetBiquad(band.dynFilter);
+        band.coeffsInit = false;
+        band.envelope.reset();
+        band.currentGainDb = 0;
+        band.dirty = true;
+      }
+      this.bandLevels.fill(-100);
+      this.bandGainReduction.fill(0);
+      this.maskingData = null;
+      this.maskingMeter.reset();
+      this.tsSeparator.reset();
+    }
+    getMeters() {
+      if (!this.pooledMeters) {
+        this.pooledMeters = {
+          bandLevels: new Array(this.bandLevels.length).fill(0),
+          bandGainReduction: new Array(this.bandGainReduction.length).fill(0),
+          masking: this.maskingData ? new Array(this.maskingData.length).fill(0) : null
+        };
+      }
+      const m = this.pooledMeters;
+      for (let i = 0; i < m.bandLevels.length; i++) m.bandLevels[i] = this.bandLevels[i];
+      for (let i = 0; i < m.bandGainReduction.length; i++) m.bandGainReduction[i] = this.bandGainReduction[i];
+      if (this.maskingData) {
+        if (!m.masking || m.masking.length !== this.maskingData.length) {
+          m.masking = new Array(this.maskingData.length).fill(0);
+        }
+        for (let i = 0; i < m.masking.length; i++) m.masking[i] = this.maskingData[i];
+      } else {
+        m.masking = null;
+      }
+      return m;
+    }
+    // ── Internal helpers ───────────────────────────────────────
+    ensureBuffers(requiredSize) {
+      if (this.midBuffer.length < requiredSize) {
+        this.midBuffer = new Float32Array(requiredSize);
+        this.sideBuffer = new Float32Array(requiredSize);
+        this.tempL = new Float32Array(requiredSize);
+        this.tempR = new Float32Array(requiredSize);
+        this.dynGainBuf = new Float32Array(requiredSize);
+      }
+      if (this.transientBufs[0].length < requiredSize) {
+        this.transientBufs = [
+          new Float32Array(requiredSize),
+          new Float32Array(requiredSize)
+        ];
+        this.sustainBufs = [
+          new Float32Array(requiredSize),
+          new Float32Array(requiredSize)
+        ];
+      }
+    }
+    // ── Internal processing ────────────────────────────────────
+    processBands(channels, frameCount, sidechain, params, soloBand, maskingEnabled) {
+      if (soloBand < 0) {
+        let anyEnabled = false;
+        for (let i = 0; i < EQ_MAX_BANDS2; i++) {
+          if ((params[this.bandKeys[i].enabled] ?? 0) >= 0.5) {
+            anyEnabled = true;
+            break;
+          }
+        }
+        if (!anyEnabled) {
+          for (let i = 0; i < EQ_MAX_BANDS2; i++) {
+            this.bandLevels[i] = this.bandLevels[i] * 0.8 + -100 * 0.2;
+            this.bandGainReduction[i] = this.bandGainReduction[i] * 0.8;
+          }
+          this.maskingData = null;
+          return;
+        }
+      }
+      for (let bandIdx = 0; bandIdx < EQ_MAX_BANDS2; bandIdx++) {
+        const band = this.bands[bandIdx];
+        const keys = this.bandKeys[bandIdx];
+        const bandEnabled = (params[keys.enabled] ?? 0) >= 0.5;
+        if (!bandEnabled && soloBand < 0) {
+          this.bandLevels[bandIdx] = this.bandLevels[bandIdx] * 0.8 + -100 * 0.2;
+          this.bandGainReduction[bandIdx] = this.bandGainReduction[bandIdx] * 0.8;
+          continue;
+        }
+        if (soloBand >= 0 && bandIdx !== soloBand) {
+          this.bandLevels[bandIdx] = this.bandLevels[bandIdx] * 0.8 + -100 * 0.2;
+          this.bandGainReduction[bandIdx] = this.bandGainReduction[bandIdx] * 0.8;
+          continue;
+        }
+        const freq = params[keys.freqHz] ?? 1e3;
+        const gain = clamp(params[keys.gainDb] ?? 0, -24, 24);
+        const q = params[keys.q] ?? 1;
+        const shape = Math.round(params[keys.shape] ?? 0);
+        const mode = Math.round(params[keys.mode] ?? 0);
+        const dynRange = params[keys.dynamicRangeDb] ?? 6;
+        const dynThreshold = params[keys.dynamicThresholdDb] ?? -24;
+        const bandSidechain = (params[keys.sidechainEnabled] ?? 0) >= 0.5;
+        const dynAttack = params[keys.dynamicAttackMs] ?? 15;
+        const dynRelease = params[keys.dynamicReleaseMs] ?? 150;
+        const dynRatio = clamp(params[keys.dynamicRatio] ?? 3, 1, 20);
+        const dynKnee = params[keys.dynamicKneeDb] ?? 0;
+        if (band.cachedFreq !== freq || band.cachedGain !== gain || band.cachedQ !== q || band.cachedShape !== shape || band.dirty) {
+          this.updateBandCoefficients(band, freq, gain, q, shape);
+          band.cachedFreq = freq;
+          band.cachedGain = gain;
+          band.cachedQ = q;
+          band.cachedShape = shape;
+          band.dirty = false;
+        }
+        if (band.cachedAttackMs !== dynAttack || band.cachedReleaseMs !== dynRelease) {
+          band.envelope.setAttack(dynAttack, this.sampleRate);
+          band.envelope.setRelease(dynRelease, this.sampleRate);
+          band.cachedAttackMs = dynAttack;
+          band.cachedReleaseMs = dynRelease;
+        }
+        const isDynamic = mode === 1 || shape >= 9;
+        const isSidechain = mode === 2 && bandSidechain && sidechain;
+        if (isDynamic || isSidechain) {
+          this.processDynamicBand(
+            band,
+            channels,
+            frameCount,
+            freq,
+            q,
+            dynRange,
+            dynThreshold,
+            dynRatio,
+            dynKnee,
+            dynAttack,
+            dynRelease,
+            isSidechain ? sidechain : null
+          );
+        } else {
+          processBiquadSmoothed(band.filter, band.filterSmooth, channels, frameCount);
+          if (band.cachedShape === 6) {
+            processBiquadSmoothed(band.filter2, band.filter2Smooth, channels, frameCount);
+          }
+        }
+        this.measureBandLevel(band, channels, frameCount, bandIdx);
+      }
+      for (let ch = 0; ch < channels.length; ch++) {
+        const data = channels[ch];
+        for (let i = 0; i < frameCount; i++) {
+          data[i] = sanitizeSample(data[i]);
+        }
+      }
+      if (maskingEnabled && sidechain) {
+        this.computeMasking(channels, sidechain, frameCount);
+      } else {
+        this.maskingData = null;
+      }
+    }
+    updateBandCoefficients(band, freq, gainDb, q, shape) {
+      const sr = this.sampleRate;
+      const effectiveGain = shape >= 9 ? 0 : gainDb;
+      const effectiveShape = shape === 11 ? 6 : shape >= 9 ? shape - 9 : shape;
+      const baseShape = EQ_SHAPES2[effectiveShape] ?? "bell";
+      switch (baseShape) {
+        case "bell":
+          setBell(band.filter.coeffs, freq, effectiveGain, q, sr);
+          break;
+        case "highShelf":
+          setHighShelf(band.filter.coeffs, freq, effectiveGain, q, sr);
+          break;
+        case "lowShelf":
+          setLowShelf(band.filter.coeffs, freq, effectiveGain, q, sr);
+          break;
+        case "highPass":
+          setHighPass(band.filter.coeffs, freq, q, sr);
+          break;
+        case "lowPass":
+          setLowPass(band.filter.coeffs, freq, q, sr);
+          break;
+        case "notch":
+          setNotch(band.filter.coeffs, freq, q, sr);
+          break;
+        case "tilt": {
+          const halfGain = effectiveGain * 0.5;
+          setLowShelf(band.filter.coeffs, freq, -halfGain, q * 0.7, sr);
+          setHighShelf(band.filter2.coeffs, freq, halfGain, q * 0.7, sr);
+          band.filter2Smooth.setTarget(band.filter2.coeffs);
+          break;
+        }
+        case "bandPass":
+          setBandPass(band.filter.coeffs, freq, q, sr);
+          break;
+        case "flat":
+          band.filter.coeffs.b0 = 1;
+          band.filter.coeffs.b1 = 0;
+          band.filter.coeffs.b2 = 0;
+          band.filter.coeffs.a1 = 0;
+          band.filter.coeffs.a2 = 0;
+          break;
+        default:
+          setBell(band.filter.coeffs, freq, effectiveGain, q, sr);
+      }
+      band.filterSmooth.setTarget(band.filter.coeffs);
+      setBandPass(band.detector.coeffs, freq, q * 2, sr);
+      setBandPass(band.dynFilter.coeffs, freq, q, sr);
+      band.dynSmooth.setTarget(band.dynFilter.coeffs);
+      if (!band.coeffsInit) {
+        band.filterSmooth.snap();
+        band.filter2Smooth.snap();
+        band.dynSmooth.snap();
+        band.coeffsInit = true;
+      }
+    }
+    /**
+     * Compute compressor gain reduction (dB) using threshold, ratio, and knee.
+     *
+     * Implements the standard feed-forward compressor gain computer
+     * with optional soft knee:
+     *
+     *   For input level x_db:
+     *     - If x_db < threshold - knee/2:  reduction = 0 dB
+     *     - If x_db > threshold + knee/2:  reduction = -(x_db - threshold) * (1 - 1/ratio)
+     *     - In knee zone: quadratic interpolation
+     *
+     * The result is clamped to [-dynRangeDb, 0].
+     *
+     * @returns signed gain in dB (always ≤ 0; negative = attenuation)
+     */
+    computeGainReduction(inputDb, thresholdDb, ratio, kneeDb, dynRangeDb) {
+      if (inputDb <= thresholdDb - kneeDb * 0.5) {
+        return 0;
+      }
+      let gainReduction;
+      const slope = 1 - 1 / ratio;
+      if (kneeDb > 0 && inputDb < thresholdDb + kneeDb * 0.5) {
+        const kneeBottom = thresholdDb - kneeDb * 0.5;
+        const x = inputDb - kneeBottom;
+        gainReduction = slope * (x * x) / (2 * kneeDb);
+      } else {
+        gainReduction = slope * (inputDb - thresholdDb);
+      }
+      return Math.max(-dynRangeDb, -gainReduction);
+    }
+    processDynamicBand(band, channels, frameCount, _freq, _q, dynRangeDb, thresholdDb, ratio, kneeDb, attackMs, releaseMs, sidechain) {
+      processBiquadSmoothed(band.filter, band.filterSmooth, channels, frameCount);
+      if (band.cachedShape === 11) {
+        processBiquadSmoothed(band.filter2, band.filter2Smooth, channels, frameCount);
+      }
+      const detectSource = sidechain ?? channels;
+      const numCh = Math.min(detectSource.length, 2);
+      const attackCoef = attackMs > 0 ? 1 - Math.exp(-1 / (attackMs / 1e3 * this.sampleRate)) : 1;
+      const releaseCoef = releaseMs > 0 ? 1 - Math.exp(-1 / (releaseMs / 1e3 * this.sampleRate)) : 1;
+      for (let ch = 0; ch < numCh; ch++) {
+        const src = detectSource[ch];
+        const tempBuf = ch === 0 ? this.tempL : this.tempR;
+        for (let i = 0; i < frameCount; i++) {
+          tempBuf[i] = src[i];
+        }
+        const { b0, b1, b2, a1, a2 } = band.detector.coeffs;
+        let z1 = band.detector.z1[ch];
+        let z2 = band.detector.z2[ch];
+        for (let i = 0; i < frameCount; i++) {
+          const x = tempBuf[i];
+          const y = b0 * x + z1;
+          z1 = b1 * x - a1 * y + z2;
+          z2 = b2 * x - a2 * y;
+          tempBuf[i] = y;
+        }
+        band.detector.z1[ch] = z1;
+        band.detector.z2[ch] = z2;
+        if (!Number.isFinite(z1) || !Number.isFinite(z2)) {
+          band.detector.z1[ch] = 0;
+          band.detector.z2[ch] = 0;
+        }
+      }
+      let gainReduction = band.currentGainDb;
+      for (let i = 0; i < frameCount; i++) {
+        let maxAbs = 0;
+        for (let ch = 0; ch < numCh; ch++) {
+          const val = Math.abs(ch === 0 ? this.tempL[i] : this.tempR[i]);
+          if (val > maxAbs) maxAbs = val;
+        }
+        const detected = band.envelope.process(maxAbs);
+        const detectedDb = 20 * Math.log10(Math.max(1e-10, detected));
+        const targetReduction = this.computeGainReduction(
+          detectedDb,
+          thresholdDb,
+          ratio,
+          kneeDb,
+          dynRangeDb
+        );
+        const coef = targetReduction < gainReduction ? attackCoef : releaseCoef;
+        gainReduction += coef * (targetReduction - gainReduction);
+        band.currentGainDb = gainReduction;
+        this.dynGainBuf[i] = 1 - Math.pow(10, gainReduction / 20);
+      }
+      const numOutCh = Math.min(channels.length, 2);
+      for (let i = 0; i < frameCount; i++) {
+        const c = band.dynSmooth.tick();
+        const bandAmount = this.dynGainBuf[i];
+        for (let ch = 0; ch < numOutCh; ch++) {
+          const data = channels[ch];
+          const x = data[i];
+          const bp = c.b0 * x + band.dynFilter.z1[ch];
+          band.dynFilter.z1[ch] = c.b1 * x - c.a1 * bp + band.dynFilter.z2[ch];
+          band.dynFilter.z2[ch] = c.b2 * x - c.a2 * bp;
+          data[i] = sanitizeSample(x - bp * bandAmount);
+        }
+      }
+      const bandIdx = this.bands.indexOf(band);
+      if (bandIdx >= 0) {
+        this.bandGainReduction[bandIdx] = -band.currentGainDb;
+      }
+      for (let ch = 0; ch < numOutCh; ch++) {
+        if (!Number.isFinite(band.dynFilter.z1[ch]) || !Number.isFinite(band.dynFilter.z2[ch])) {
+          band.dynFilter.z1[ch] = 0;
+          band.dynFilter.z2[ch] = 0;
+        }
+      }
+    }
+    measureBandLevel(_band, channels, frameCount, bandIdx) {
+      let peak = 0;
+      for (let i = 0; i < frameCount; i++) {
+        const abs = Math.abs(channels[0][i]);
+        if (abs > peak) peak = abs;
+      }
+      const db = 20 * Math.log10(Math.max(1e-10, peak));
+      this.bandLevels[bandIdx] = this.bandLevels[bandIdx] * 0.9 + db * 0.1;
+    }
+    applySoftSat(channels, frameCount, enabled) {
+      if (!enabled) return;
+      for (let ch = 0; ch < channels.length; ch++) {
+        const data = channels[ch];
+        for (let i = 0; i < frameCount; i++) {
+          const x = data[i];
+          const saturated = fastTanh(x * 2) * 0.5;
+          data[i] = sanitizeSample(x * 0.85 + saturated * 0.15);
+        }
+      }
+    }
+    computeMasking(channels, sidechain, frameCount) {
+      const result = this.maskingMeter.analyze(
+        channels[0],
+        sidechain[0] ?? channels[0],
+        frameCount
+      );
+      this.maskingData = result.levels;
     }
   };
 
@@ -5622,6 +5668,8 @@
   // src/effects/ultina-core/dsp/modules/exciterModule.ts
   var EXCITER_MAX_BANDS = 3;
   var EXCITER_TONE_CORNER_HZ = 200;
+  var EXCITER_PRE_EMPHASIS_HZ = 3e3;
+  var EXCITER_PRE_EMPHASIS_DB = [0, 2, 4, 6];
   var ExciterModuleProcessor = class {
     sampleRate = 44100;
     maxBlockSize = 512;
@@ -5649,6 +5697,7 @@
     curTrashMode = false;
     curToneSlider = 0;
     curOversampling = false;
+    curPreEmphasisDb = 0;
     bandCb = (bandIdx, bandChannels, bandFrames) => {
       this.processBand(
         bandIdx,
@@ -5657,7 +5706,8 @@
         this.curTrashMode,
         this.amountsBuf,
         this.curToneSlider,
-        this.curOversampling
+        this.curOversampling,
+        this.curPreEmphasisDb
       );
     };
     // Latency-compensated dry/wet mixing (see dsp/dryDelay.ts).
@@ -5666,6 +5716,12 @@
     // Tone filter state (per channel, per band)
     toneLowState = [];
     toneHighState = [];
+    // Pre-emphasis state, [band][ch] × {lpState, yPrev, xPrev} — see
+    // applyPreEmphasis/applyPreEmphasisInverse. The inverse needs the
+    // PRE-SATURATION y history, so the pre pass records it per band into a
+    // reused scratch pair (band processing is sequential).
+    preEmphState = new Float32Array(EXCITER_MAX_BANDS * 2 * 3);
+    preYScratch = [new Float32Array(0), new Float32Array(0)];
     // Meter state
     harmonicContent = new Array(EXCITER_MAX_BANDS).fill(0);
     outputPeaks = new Array(EXCITER_MAX_BANDS).fill(-100);
@@ -5690,6 +5746,11 @@
       }
       this.toneLowState = new Array(EXCITER_MAX_BANDS * 2).fill(0);
       this.toneHighState = new Array(EXCITER_MAX_BANDS * 2).fill(0);
+      this.preEmphState.fill(0);
+      this.preYScratch = [
+        new Float32Array(this.maxBlockSize),
+        new Float32Array(this.maxBlockSize)
+      ];
       this.multiband.prepare(this.sampleRate, 2, this.maxBlockSize, 1);
       this.dryDelay.prepare(this.maxBlockSize);
       this.cachedBandCount = -1;
@@ -5721,6 +5782,7 @@
       const oversampling = (params["exciter.oversampling"] ?? 1) >= 0.5;
       const mixPercent = clamp(params["exciter.mix"] ?? 50, 0, 100);
       const deltaListen = (params["exciter.delta"] ?? 0) >= 0.5;
+      const preEmphasisDb = EXCITER_PRE_EMPHASIS_DB[Math.round(clamp(params["exciter.preEmphasisMode"] ?? 0, 0, 3))];
       this.osActive = oversampling;
       const amounts = this.amountsBuf;
       amounts.tubeAmt = tubeAmt;
@@ -5742,6 +5804,7 @@
       this.curTrashMode = trashMode;
       this.curToneSlider = toneSlider;
       this.curOversampling = oversampling;
+      this.curPreEmphasisDb = preEmphasisDb;
       this.multiband.process(channels, frameCount, this.bandCb, channelMode);
       const mix = mixPercent / 100;
       this.dryDelay.process(
@@ -5768,6 +5831,7 @@
       }
       this.toneLowState.fill(0);
       this.toneHighState.fill(0);
+      this.preEmphState.fill(0);
       this.multiband.reset();
       this.dryDelay.reset();
       this.harmonicContent.fill(0);
@@ -5801,6 +5865,10 @@
         this.dryL = new Float32Array(size);
         this.dryR = new Float32Array(size);
       }
+      if (this.preYScratch[0].length < size) {
+        this.preYScratch[0] = new Float32Array(size);
+        this.preYScratch[1] = new Float32Array(size);
+      }
     }
     updateMultiband(bandCount, xover1, xover2) {
       if (bandCount !== this.cachedBandCount) {
@@ -5822,10 +5890,15 @@
         this.cachedXover2 = xover2;
       }
     }
-    processBand(bandIdx, bandChannels, bandFrames, trashMode, amounts, toneSlider, oversampling) {
+    processBand(bandIdx, bandChannels, bandFrames, trashMode, amounts, toneSlider, oversampling, preEmphasisDb) {
       const chL = bandChannels[0];
       const stereo = bandChannels.length >= 2;
       const chR = stereo ? bandChannels[1] : bandChannels[0];
+      const preEmphOn = preEmphasisDb > 0 && bandFrames > 0 && this.saturationActive(trashMode, amounts);
+      if (preEmphOn) {
+        this.applyPreEmphasis(chL, bandFrames, bandIdx, 0, preEmphasisDb);
+        if (stereo) this.applyPreEmphasis(chR, bandFrames, bandIdx, 1, preEmphasisDb);
+      }
       let inEnergy = 0;
       for (let i = 0; i < bandFrames; i++) {
         inEnergy += chL[i] * chL[i];
@@ -5846,6 +5919,10 @@
         if (stereo) this.applySaturation(chR, bandFrames, trashMode, amounts);
         this.applyTone(chL, chR, bandFrames, toneSlider, bandIdx, stereo);
       }
+      if (preEmphOn) {
+        this.applyPreEmphasisInverse(chL, bandFrames, bandIdx, 0, preEmphasisDb);
+        if (stereo) this.applyPreEmphasisInverse(chR, bandFrames, bandIdx, 1, preEmphasisDb);
+      }
       let outEnergy = 0;
       for (let i = 0; i < bandFrames; i++) {
         outEnergy += chL[i] * chL[i];
@@ -5863,15 +5940,76 @@
       }
       this.outputPeaks[bandIdx] = peak > 1e-10 ? 20 * Math.log10(peak) : -100;
     }
+    /** Whether any saturator would change samples (shared by the emphasis
+     * gate and applySaturation's early-out — the two must agree). */
+    saturationActive(trashMode, a) {
+      const hasSat = a.tubeAmt > 0 || a.tubeAsymAmt > 0 || a.warmAmt > 0 || a.tapeAmt > 0 || a.retroAmt > 0;
+      const hasDist = trashMode && (a.odAmt > 0 || a.screamAmt > 0 || a.clipAmt > 0 || a.scratchAmt > 0);
+      return hasSat || hasDist;
+    }
+    // ── Pre-emphasis (modes: flat/clean/defined/full) ─────────
+    /**
+     * First-order HF shelf INTO the saturators:
+     *   y = (1+k)·x − k·lp(x),  lp = one-pole lowpass at EXCITER_PRE_EMPHASIS_HZ
+     * Unity at DC, +20·log10(1+k) dB toward Nyquist.
+     * The pre-saturation output is recorded into preYScratch[bandIdx's slot]
+     * so the inverse stage can run its recursion across the (saturated)
+     * buffer. State layout in preEmphState: [band*2+ch] × {lp, yPrev}.
+     */
+    applyPreEmphasis(buf, frames, bandIdx, chIdx, preEmphasisDb) {
+      const k = dbToLinear(preEmphasisDb) - 1;
+      if (k <= 0 || frames <= 0) return;
+      const a = 1 - Math.exp(-2 * Math.PI * EXCITER_PRE_EMPHASIS_HZ / this.sampleRate);
+      const stateBase = (bandIdx * 2 + chIdx) * 3;
+      let d = this.preEmphState[stateBase];
+      const yOut = this.preYScratch[chIdx];
+      const dryGain = 1 + k;
+      for (let i = 0; i < frames; i++) {
+        const x = buf[i];
+        d += a * (x - d);
+        const y = dryGain * x - k * d;
+        yOut[i] = y;
+        buf[i] = sanitizeSample(y);
+      }
+      this.preEmphState[stateBase] = d;
+      this.preEmphState[stateBase + 1] = yOut[frames - 1];
+    }
+    /**
+     * EXACT inverse of applyPreEmphasis: X/Y = (1 − c·z⁻¹)/(A0 − (1+k)·c·z⁻¹),
+     * recursion x̂[n] = (y[n] − c·y[n−1] + (1+k)·c·x̂[n−1]) / A0 with
+     * c = 1−a, A0 = 1+k−k·a. The pole sits at (1+k)·c/A0 < 1 for every k ≥ 0,
+     * a ∈ (0,1) — always stable. Applied to the SATURATED signal this cancels
+     * the shelf for the linear path exactly; only the generated harmonics
+     * keep the emphasis.
+     */
+    applyPreEmphasisInverse(buf, frames, bandIdx, chIdx, preEmphasisDb) {
+      const k = dbToLinear(preEmphasisDb) - 1;
+      if (k <= 0 || frames <= 0) return;
+      const a = 1 - Math.exp(-2 * Math.PI * EXCITER_PRE_EMPHASIS_HZ / this.sampleRate);
+      const c = 1 - a;
+      const dryGain = 1 + k;
+      const a0 = dryGain - k * a;
+      const feedback = dryGain * c;
+      const stateBase = (bandIdx * 2 + chIdx) * 3;
+      let yPrev = this.preEmphState[stateBase + 1];
+      let xPrev = this.preEmphState[stateBase + 2];
+      const yOut = this.preYScratch[chIdx];
+      for (let i = 0; i < frames; i++) {
+        const x = (buf[i] - c * yPrev + feedback * xPrev) / a0;
+        xPrev = sanitizeSample(x);
+        buf[i] = xPrev;
+        yPrev = yOut[i];
+      }
+      this.preEmphState[stateBase + 1] = yPrev;
+      this.preEmphState[stateBase + 2] = xPrev;
+    }
     /**
      * Apply all active saturation/distortion types.
      * Saturation types are blended in parallel; distortion types
      * are applied in series.
      */
     applySaturation(buf, frames, trashMode, a) {
-      const hasSat = a.tubeAmt > 0 || a.tubeAsymAmt > 0 || a.warmAmt > 0 || a.tapeAmt > 0 || a.retroAmt > 0;
-      const hasDist = trashMode && (a.odAmt > 0 || a.screamAmt > 0 || a.clipAmt > 0 || a.scratchAmt > 0);
-      if (!hasSat && !hasDist) return;
+      if (!this.saturationActive(trashMode, a)) return;
       for (let i = 0; i < frames; i++) {
         let x = buf[i];
         let wet = 0;
@@ -7773,6 +7911,8 @@
   // src/effects/ultina-worklet.entry.js
   var MAX_BLOCK = 128;
   var CHANNELS = 2;
+  var METERS_DIVIDER = Math.max(1, Math.round(sampleRate / MAX_BLOCK / 20));
+  var PENDING_PARAMS_CAP = 4096;
   var UltinaWorkletProcessor = class extends AudioWorkletProcessor {
     proc = new UltinaProcessor();
     scratch = [new Float32Array(MAX_BLOCK), new Float32Array(MAX_BLOCK)];
@@ -7835,6 +7975,7 @@
             return;
           }
           const q = this.pendingParams;
+          if (q.length >= PENDING_PARAMS_CAP) return;
           let i = q.length;
           while (i > 0 && q[i - 1].when > when) i--;
           q.splice(i, 0, { id: msg.id, value: msg.value, when });
@@ -7904,8 +8045,6 @@
           const inCh = input && input[c];
           if (inCh && inCh.length >= offset + frames) {
             buf.set(inCh.subarray(offset, offset + frames));
-          } else if (inCh && inCh.length >= frames) {
-            buf.set(inCh.subarray(0, frames));
           } else {
             buf.fill(0, 0, frames);
           }
@@ -7915,7 +8054,7 @@
           output[c].set(this.scratch[c].subarray(0, frames), offset);
         }
       }
-      if (this.metersEnabled && (this.blockCount++ & 15) === 0) {
+      if (this.metersEnabled && this.blockCount++ % METERS_DIVIDER === 0) {
         this.port.postMessage({ type: "meters", meters: this.proc.getMeters() });
       }
       this.postLatency();

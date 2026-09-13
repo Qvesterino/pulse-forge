@@ -844,7 +844,10 @@ export function UltinaPanel({
               event.target.value = "";
               return;
             }
-            const preset = FACTORY_PRESETS.find((p) => p.name === event.target.value);
+            // Lookup by preset ID, not display name — two factory presets
+            // share the name "Vocal Warmth" (EQ + density), and a name-based
+            // find() silently always returned the EQ one.
+            const preset = FACTORY_PRESETS.find((p) => p.id === event.target.value);
             if (preset) onApplyPreset(preset.name, preset.params);
             event.target.value = "";
           }}
@@ -861,7 +864,7 @@ export function UltinaPanel({
           )}
           <optgroup label="FACTORY">
             {FACTORY_PRESETS.map((p) => (
-              <option key={p.id} value={p.name}>
+              <option key={p.id} value={p.id}>
                 {p.module.toUpperCase()} · {p.name}
               </option>
             ))}

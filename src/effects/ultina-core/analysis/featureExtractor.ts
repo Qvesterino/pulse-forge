@@ -34,14 +34,14 @@ const FRAME_SIZE = 2048;
 const HOP_SIZE = 1024;
 const MIN_TOTAL_DURATION = 1.0; // seconds
 const MIN_ANALYSIS_DURATION = 2.0; // seconds
-const NOISE_FLOOR_PERCENTILE = 0.10;
+const NOISE_FLOOR_PERCENTILE = 0.1;
 const UNVOICED_THRESHOLD_RATIO = 0.08;
 
 // Onset detection (spectral flux): flux is computed on unit-L2-normalized
 // spectra, so these thresholds are level-independent.
-const ONSET_HISTORY = 8;              // frames of flux history for the adaptive threshold
-const MIN_ONSET_FLUX = 0.05;          // floor below the adaptive mean+2σ threshold
-const ONSET_REFRACTORY_FRAMES = 3;    // min frames between counted onsets (~35–75 ms)
+const ONSET_HISTORY = 8; // frames of flux history for the adaptive threshold
+const MIN_ONSET_FLUX = 0.05; // floor below the adaptive mean+2σ threshold
+const ONSET_REFRACTORY_FRAMES = 3; // min frames between counted onsets (~35–75 ms)
 
 // Frequency band boundaries (Hz)
 const RUMBLE_CUTOFF_HZ = 80;
@@ -64,7 +64,8 @@ function kWeightedRms(samples: Float32Array, frameCount: number, sampleRate: num
   // Simplified K-weighting: first-order high-pass at 100 Hz to remove LF,
   // then high-shelf boost above 1 kHz. This is an approximation — true
   // ITU-R BS.1770 uses specific biquad coefficients.
-  let stateX1 = 0, stateY1 = 0;
+  let stateX1 = 0,
+    stateY1 = 0;
   const a0 = 0.999; // very gentle high-pass
   const sumSq: number[] = [];
   // Process in 400ms blocks for momentary loudness, then integrate
@@ -145,17 +146,12 @@ function detectPitch(data: Float32Array, sampleRate: number): number {
     }
   }
 
-  return bestPeriod > 0 && bestCorrelation > 0.5
-    ? sampleRate / bestPeriod
-    : -1;
+  return bestPeriod > 0 && bestCorrelation > 0.5 ? sampleRate / bestPeriod : -1;
 }
 
 // ── Stereo analysis ──────────────────────────────────────────
 
-function computeStereoWidth(
-  channels: Float32Array[],
-  frameCount: number,
-): { widthDb: number; correlation: number } {
+function computeStereoWidth(channels: Float32Array[], frameCount: number): { widthDb: number; correlation: number } {
   if (channels.length < 2) {
     return { widthDb: 0, correlation: 1 };
   }
@@ -183,9 +179,7 @@ function computeStereoWidth(
   midEnergy /= frameCount;
   sideEnergy /= frameCount;
 
-  const widthDb = midEnergy > 0
-    ? 10 * Math.log10((sideEnergy + 1e-20) / (midEnergy + 1e-20))
-    : 0;
+  const widthDb = midEnergy > 0 ? 10 * Math.log10((sideEnergy + 1e-20) / (midEnergy + 1e-20)) : 0;
 
   const denom = Math.sqrt(sumL2 * sumR2);
   const correlation = denom > 0 ? sumLR / denom : 1;
@@ -195,13 +189,20 @@ function computeStereoWidth(
 
 // ── Main extraction ──────────────────────────────────────────
 
-export function extractFeatures(
-  channels: Float32Array[],
-  sampleRate: number,
-): UltinaFeatures {
+export function extractFeatures(channels: Float32Array[], sampleRate: number): UltinaFeatures {
   // ── Empty input ──
   if (channels.length === 0 || channels[0].length === 0) {
     return emptyFeatures("No audio data provided");
+  }
+
+  // ── Sample-rate sanity ──
+  // sampleRate 0/NaN poisons every derived quantity: duration becomes
+  // Infinity (passing the minimum-duration gate), band bins become
+  // infinite/empty, and the k-weighting block size degrades to 1 sample —
+  // pushing one accumulator entry per sample (~200 MB for a 10-minute
+  // buffer) inside the worker.
+  if (!Number.isFinite(sampleRate) || sampleRate <= 0) {
+    return emptyFeatures(`Invalid sample rate: ${sampleRate}`);
   }
 
   const frameCount = channels[0].length;
@@ -222,9 +223,7 @@ export function extractFeatures(
 
   // ── Duration check ──
   if (duration < MIN_TOTAL_DURATION) {
-    return emptyFeatures(
-      `Insufficient duration: ${duration.toFixed(1)}s (minimum ${MIN_TOTAL_DURATION}s)`,
-    );
+    return emptyFeatures(`Insufficient duration: ${duration.toFixed(1)}s (minimum ${MIN_TOTAL_DURATION}s)`);
   }
 
   // ── Check for all-zero input ──
@@ -265,12 +264,8 @@ export function extractFeatures(
   }
 
   const rmsLevel = Math.sqrt(sumOfSquares / frameCount);
-  const shortTermLoudness = rmsLevel > 0
-    ? 20 * Math.log10(rmsLevel) - 0.691
-    : -70;
-  const crestFactorDb = rmsLevel > 0
-    ? 20 * Math.log10(peakLevel / rmsLevel)
-    : 0;
+  const shortTermLoudness = rmsLevel > 0 ? 20 * Math.log10(rmsLevel) - 0.691 : -70;
+  const crestFactorDb = rmsLevel > 0 ? 20 * Math.log10(peakLevel / rmsLevel) : 0;
 
   // ── LUFS integrated (K-weighted) ──
   const lufsIntegrated = kWeightedRms(mono, frameCount, sampleRate);
@@ -357,11 +352,7 @@ export function extractFeatures(
     // Octave bands
     for (let o = 0; o < OCTAVE_CENTER_FREQS.length; o++) {
       const center = OCTAVE_CENTER_FREQS[o];
-      octaveEnergies[o] += bandEnergy(
-        magnitudes, sampleRate,
-        Math.max(20, center / Math.SQRT2),
-        center * Math.SQRT2,
-      );
+      octaveEnergies[o] += bandEnergy(magnitudes, sampleRate, Math.max(20, center / Math.SQRT2), center * Math.SQRT2);
     }
 
     // Voiced/unvoiced heuristic
@@ -469,12 +460,10 @@ export function extractFeatures(
 
   // Dynamic range: 95th - 10th percentile of frame RMS in dB
   const p95Index = Math.floor(sortedRms.length * 0.95);
-  const p10Index = Math.floor(sortedRms.length * 0.10);
+  const p10Index = Math.floor(sortedRms.length * 0.1);
   const p95Rms = sortedRms[Math.min(p95Index, sortedRms.length - 1)];
   const p10Rms = sortedRms[p10Index] || sortedRms[0];
-  const dynamicRangeDb = (p95Rms > 0 && p10Rms > 0)
-    ? 20 * Math.log10(p95Rms / p10Rms)
-    : 0;
+  const dynamicRangeDb = p95Rms > 0 && p10Rms > 0 ? 20 * Math.log10(p95Rms / p10Rms) : 0;
 
   // Spectral flux average
   const spectralFlux = fluxCount > 0 ? totalSpectralFlux / fluxCount : 0;

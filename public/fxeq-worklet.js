@@ -4498,6 +4498,7 @@
   // src/effects/fxeq-worklet.entry.js
   var MAX_BLOCK = 128;
   var CHANNELS = 2;
+  var PENDING_PARAMS_CAP = 4096;
   var FxEqWorkletProcessor = class extends AudioWorkletProcessor {
     // `proc` never allocates inside process() — scratch is preallocated in prepare().
     proc;
@@ -4552,6 +4553,7 @@
             return;
           }
           const q = this.pendingParams;
+          if (q.length >= PENDING_PARAMS_CAP) return;
           let i = q.length;
           while (i > 0 && q[i - 1].when > when) i--;
           q.splice(i, 0, { id: msg.id, value: msg.value, when });
@@ -4629,9 +4631,11 @@
         for (let c = 0; c < CHANNELS; c++) {
           const buf = this.scratch[c];
           const inCh = input?.[c];
-          if (inCh && inCh.length >= offset + frames) buf.set(inCh.subarray(offset, offset + frames));
-          else if (inCh && inCh.length >= frames) buf.set(inCh.subarray(0, frames));
-          else buf.fill(0, 0, frames);
+          if (inCh && inCh.length >= offset + frames) {
+            buf.set(inCh.subarray(offset, offset + frames));
+          } else {
+            buf.fill(0, 0, frames);
+          }
         }
         this.proc.process(this.scratch, frames);
         for (let c = 0; c < CHANNELS; c++) {

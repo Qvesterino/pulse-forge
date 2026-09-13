@@ -102,9 +102,7 @@ describe("UltinaPanel — user presets", () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 20));
     });
-    expect(screen.getByLabelText("VLYX preset").querySelectorAll('optgroup[label="USER"] option').length).toBe(
-      before,
-    );
+    expect(screen.getByLabelText("VLYX preset").querySelectorAll('optgroup[label="USER"] option').length).toBe(before);
     vi.restoreAllMocks();
   });
 
@@ -156,5 +154,30 @@ describe("UltinaPanel — user presets", () => {
     });
     expect(removeSpy).toHaveBeenCalled();
     vi.restoreAllMocks();
+  });
+});
+
+describe("UltinaPanel — factory presets", () => {
+  it("resolves factory options by preset ID — duplicate display names stay distinct", async () => {
+    // Two factory presets share the name "Vocal Warmth" (EQ + density).
+    // The old name-based lookup always applied the EQ one, so the density
+    // preset was unreachable from the panel.
+    const { FACTORY_PRESETS } = await import("../../src/effects/ultina-core/presets/factoryPresets");
+    const names = FACTORY_PRESETS.map((p) => p.name);
+    expect(new Set(names).size, "test precondition: a duplicated name exists").toBeLessThan(names.length);
+
+    const onApplyPreset = vi.fn();
+    renderPanel({}, onApplyPreset);
+    const picker = screen.getByLabelText("VLYX preset") as HTMLSelectElement;
+
+    for (const preset of FACTORY_PRESETS) {
+      await act(async () => {
+        // Select by the option representing exactly this preset (module
+        // label disambiguates in the UI; the value is the preset id).
+        const option = [...picker.options].find((o) => o.value === preset.id)!;
+        await userEvent.setup().selectOptions(picker, option);
+      });
+      expect(onApplyPreset).toHaveBeenLastCalledWith(preset.name, expect.any(Object));
+    }
   });
 });

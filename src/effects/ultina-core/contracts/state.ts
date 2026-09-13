@@ -25,7 +25,7 @@
 //   - Closing or reopening the editor does not alter state.
 // ═══════════════════════════════════════════════════════════
 
-import { buildDefaultParams } from "./parameterSchema.js";
+import { buildDefaultParams, clampParam } from "./parameterSchema.js";
 
 // ── State version ──────────────────────────────────────────
 
@@ -133,12 +133,14 @@ export function validateState(raw: unknown): UltinaState {
     return fallback;
   }
 
-  // Merge params with defaults
+  // Merge params with defaults. Values are CLAMPED to their schema range —
+  // the header contract ("invalid values are clamped during load"); finiteness
+  // alone let out-of-range junk survive into state.params.
   const params = { ...buildDefaultParams() };
   if (obj.params && typeof obj.params === "object") {
     for (const [k, v] of Object.entries(obj.params)) {
       if (typeof v === "number" && Number.isFinite(v)) {
-        params[k] = v;
+        params[k] = clampParam(k, v);
       }
     }
   }
@@ -165,21 +167,14 @@ export function validateState(raw: unknown): UltinaState {
     productVersion: { ...STATE_PRODUCT_VERSION },
     params,
     moduleGraph: graph,
-    qualityMode:
-      obj.qualityMode === "tracking" || obj.qualityMode === "hq"
-        ? obj.qualityMode
-        : "mix",
+    qualityMode: obj.qualityMode === "tracking" || obj.qualityMode === "hq" ? obj.qualityMode : "mix",
     abSnapshots: obj.abSnapshots ?? fallback.abSnapshots,
   };
 }
 
 // ── A/B snapshot helpers ────────────────────────────────────
 
-export function snapshotFromState(
-  state: UltinaState,
-  label: "A" | "B",
-  name: string,
-): ABSnapshot {
+export function snapshotFromState(state: UltinaState, label: "A" | "B", name: string): ABSnapshot {
   return {
     label,
     name,
@@ -190,10 +185,7 @@ export function snapshotFromState(
   };
 }
 
-export function applySnapshot(
-  state: UltinaState,
-  snap: ABSnapshot,
-): UltinaState {
+export function applySnapshot(state: UltinaState, snap: ABSnapshot): UltinaState {
   return {
     ...state,
     params: { ...snap.params },

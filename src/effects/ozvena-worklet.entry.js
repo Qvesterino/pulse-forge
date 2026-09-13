@@ -14,19 +14,16 @@ import { validatePrecomputedIrSet } from "./ozvena-core/dsp/fftPartitioned.ts";
 
 const MAX_BLOCK = 128;
 const CHANNELS = 2;
+// Automation queue bound — a pathological finite `when` (1e300 from a broken
+// tempo map) would otherwise sit in the sorted queue forever, turning every
+// later insertion into an O(n) render-thread scan. (Ultina audit sweep.)
+const PENDING_PARAMS_CAP = 4096;
 
 /** Factory IR ids accepted by the off-thread provider (the keys of the
  *  upstream IR_SPECS/IR4_SPECS catalogues — hardcoded here like
  *  ENUM_BY_PATH; anything else clears the convolution instead of looping
  *  an async request). */
-const FACTORY_IR_IDS = new Set([
-  "vocal-booth",
-  "plate",
-  "hall",
-  "cathedral",
-  "plate-wide",
-  "chamber-wide",
-]);
+const FACTORY_IR_IDS = new Set(["vocal-booth", "plate", "hall", "cathedral", "plate-wide", "chamber-wide"]);
 
 /** Validate a delivered precomputed-sets payload against the IR length
  *  cap; returns the checked array or null. */
@@ -193,8 +190,10 @@ class OzvenaWorkletProcessor extends AudioWorkletProcessor {
           return;
         }
         // Keep the queue sorted ascending by `when`; events usually arrive
-        // in order, so scan back from the end.
+        // in order, so scan back from the end. At the cap the INCOMING event
+        // is dropped (see the ultina entry).
         const q = this.pendingParams;
+        if (q.length >= PENDING_PARAMS_CAP) return;
         let i = q.length;
         while (i > 0 && q[i - 1].when > when) i--;
         q.splice(i, 0, { id: msg.id, value: msg.value, when });
@@ -211,10 +210,7 @@ class OzvenaWorkletProcessor extends AudioWorkletProcessor {
           this.postLatency();
           return;
         }
-        const frames = capUserIrFrames(
-          (msg.samples?.length ?? 0) / channels,
-          sampleRate,
-        );
+        const frames = capUserIrFrames((msg.samples?.length ?? 0) / channels, sampleRate);
         if (msg.samples && frames > 0) {
           this.proc.loadUserIr(msg.samples.subarray(0, frames * channels), channels);
           this.postLatency();
@@ -327,9 +323,9 @@ class OzvenaWorkletProcessor extends AudioWorkletProcessor {
         const inCh = input && input[c];
         if (inCh && inCh.length >= offset + frames) {
           buf.set(inCh.subarray(offset, offset + frames));
-        } else if (inCh && inCh.length >= frames) {
-          buf.set(inCh.subarray(0, frames));
         } else {
+          // No channel or shorter than the output quantum at this offset —
+          // the old head-re-copy fallback duplicated audio into later chunks.
           buf.fill(0, 0, frames);
         }
       }

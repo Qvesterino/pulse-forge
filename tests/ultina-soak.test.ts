@@ -82,111 +82,109 @@ const WOBBLE_PARAMS: [string, (i: number) => number][] = [
   ["comp.bandCount", (i) => (i % 3) + 1],
   ["comp.crossoverHz1", (i) => 150 + (i % 6) * 60],
   ["comp.crossoverMode", (i) => i % 2],
-  ["transient.attack", (i) => ((i % 9) - 4) / 10],
-  ["exciter.amount", (i) => (i % 8) / 10],
+  ["transient.attackAmount", (i) => ((i % 9) - 4) * 10],
+  ["exciter.tubeAmount", (i) => (i % 8) * 10],
 ];
 
 describe("Ultina soak (300 s full-graph render)", () => {
-  it(
-    "stays finite, does not drift, and decays to silence",
-    () => {
-      const proc = makeProcessor();
-      const chans = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
-      const input = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
-      // Snapshot the FULL settled parameter state — the wobble phase touches
-      // params beyond SETTLE_STATE (band count, crossover mode, module
-      // amounts), and every one of them must be restored for the no-drift
-      // comparison to be honest.
-      const settleSnapshot = proc.getAllParameters();
+  it("stays finite, does not drift, and decays to silence", () => {
+    const proc = makeProcessor();
+    const chans = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+    const input = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+    // Snapshot the FULL settled parameter state — the wobble phase touches
+    // params beyond SETTLE_STATE (band count, crossover mode, module
+    // amounts), and every one of them must be restored for the no-drift
+    // comparison to be honest.
+    const settleSnapshot = proc.getAllParameters();
 
-      let nonFinite = 0;
-      let maxAbs = 0;
-      let settleSumSq = 0;
-      let settleSamples = 0;
-      let finalSumSq = 0;
-      let finalSamples = 0;
+    let nonFinite = 0;
+    let maxAbs = 0;
+    let settleSumSq = 0;
+    let settleSamples = 0;
+    let finalSumSq = 0;
+    let finalSamples = 0;
 
-      const totalBlocks = TOTAL_SECONDS * BLOCKS_PER_SECOND;
-      const settleFrom = 10 * BLOCKS_PER_SECOND;
-      const settleTo = SETTLE_SECONDS * BLOCKS_PER_SECOND;
-      const finalFrom = (TOTAL_SECONDS - 10) * BLOCKS_PER_SECOND;
+    const totalBlocks = TOTAL_SECONDS * BLOCKS_PER_SECOND;
+    const settleFrom = 10 * BLOCKS_PER_SECOND;
+    const settleTo = SETTLE_SECONDS * BLOCKS_PER_SECOND;
+    const finalFrom = (TOTAL_SECONDS - 10) * BLOCKS_PER_SECOND;
 
-      let heapStart = 0;
-      if (typeof process !== "undefined" && process.memoryUsage) {
-        global.gc?.();
-        heapStart = process.memoryUsage().heapUsed;
+    let heapStart = 0;
+    if (typeof process !== "undefined" && process.memoryUsage) {
+      global.gc?.();
+      heapStart = process.memoryUsage().heapUsed;
+    }
+
+    for (let b = 0; b < totalBlocks; b++) {
+      const second = b / BLOCKS_PER_SECOND;
+      fill(input, b);
+      chans[0].set(input[0]);
+      chans[1].set(input[1]);
+
+      // Middle phase: seeded parameter traffic incl. band-count and
+      // crossover-mode switches (the paths the audit touched).
+      if (second >= SETTLE_SECONDS && second < WOBBLE_END && b % Math.round(BLOCKS_PER_SECOND / 2) === 0) {
+        const i = Math.floor(b / Math.round(BLOCKS_PER_SECOND / 2));
+        const [id, valueOf] = WOBBLE_PARAMS[i % WOBBLE_PARAMS.length];
+        proc.setParameter(id, valueOf(Math.floor(i / WOBBLE_PARAMS.length)));
       }
+      // End of wobble: restore the settled configuration so the final
+      // window measures the same setup as the first (state must re-converge).
+      if (b === WOBBLE_END * BLOCKS_PER_SECOND) {
+        proc.loadState(settleSnapshot);
+      }
+      // Control-thread meters poll ~2 Hz over the whole session.
+      if (b % Math.round(BLOCKS_PER_SECOND / 2) === 0) proc.getMeters();
 
-      for (let b = 0; b < totalBlocks; b++) {
-        const second = b / BLOCKS_PER_SECOND;
-        fill(input, b);
-        chans[0].set(input[0]);
-        chans[1].set(input[1]);
-
-        // Middle phase: seeded parameter traffic incl. band-count and
-        // crossover-mode switches (the paths the audit touched).
-        if (second >= SETTLE_SECONDS && second < WOBBLE_END && b % Math.round(BLOCKS_PER_SECOND / 2) === 0) {
-          const i = Math.floor(b / Math.round(BLOCKS_PER_SECOND / 2));
-          const [id, valueOf] = WOBBLE_PARAMS[i % WOBBLE_PARAMS.length];
-          proc.setParameter(id, valueOf(Math.floor(i / WOBBLE_PARAMS.length)));
+      proc.process(chans, BLOCK);
+      for (let i = 0; i < BLOCK; i++) {
+        const l = chans[0][i];
+        const r = chans[1][i];
+        if (!Number.isFinite(l) || !Number.isFinite(r)) nonFinite++;
+        const a = Math.max(Math.abs(l), Math.abs(r));
+        if (a > maxAbs) maxAbs = a;
+        if (b >= settleFrom && b < settleTo) {
+          settleSumSq += l * l + r * r;
+          settleSamples += 2;
         }
-        // End of wobble: restore the settled configuration so the final
-        // window measures the same setup as the first (state must re-converge).
-        if (b === WOBBLE_END * BLOCKS_PER_SECOND) {
-          proc.loadState(settleSnapshot);
+        if (b >= finalFrom) {
+          finalSumSq += l * l + r * r;
+          finalSamples += 2;
         }
-        // Control-thread meters poll ~2 Hz over the whole session.
-        if (b % Math.round(BLOCKS_PER_SECOND / 2) === 0) proc.getMeters();
+      }
+    }
 
-        proc.process(chans, BLOCK);
+    expect(nonFinite).toBe(0);
+    expect(maxAbs).toBeLessThanOrEqual(32);
+
+    // No drift: identical input + identical restored params → same level.
+    const settleRms = Math.sqrt(settleSumSq / settleSamples);
+    const finalRms = Math.sqrt(finalSumSq / finalSamples);
+    const driftDb = 20 * Math.log10(finalRms / settleRms);
+    expect(Math.abs(driftDb)).toBeLessThan(1.0);
+
+    // Tail: silence must converge to silence (peak of the last second).
+    const tailBlocks = TAIL_SILENCE_SECONDS * BLOCKS_PER_SECOND;
+    let tailPeak = 0;
+    for (let b = 0; b < tailBlocks; b++) {
+      chans[0].fill(0);
+      chans[1].fill(0);
+      proc.process(chans, BLOCK);
+      if (b >= tailBlocks - BLOCKS_PER_SECOND) {
         for (let i = 0; i < BLOCK; i++) {
-          const l = chans[0][i];
-          const r = chans[1][i];
-          if (!Number.isFinite(l) || !Number.isFinite(r)) nonFinite++;
-          const a = Math.max(Math.abs(l), Math.abs(r));
-          if (a > maxAbs) maxAbs = a;
-          if (b >= settleFrom && b < settleTo) {
-            settleSumSq += l * l + r * r;
-            settleSamples += 2;
-          }
-          if (b >= finalFrom) {
-            finalSumSq += l * l + r * r;
-            finalSamples += 2;
-          }
+          tailPeak = Math.max(tailPeak, Math.abs(chans[0][i]), Math.abs(chans[1][i]));
         }
       }
+    }
+    expect(tailPeak).toBeLessThan(1e-4);
 
-      expect(nonFinite).toBe(0);
-      expect(maxAbs).toBeLessThanOrEqual(32);
-
-      // No drift: identical input + identical restored params → same level.
-      const settleRms = Math.sqrt(settleSumSq / settleSamples);
-      const finalRms = Math.sqrt(finalSumSq / finalSamples);
-      const driftDb = 20 * Math.log10(finalRms / settleRms);
-      expect(Math.abs(driftDb)).toBeLessThan(1.0);
-
-      // Tail: silence must converge to silence (peak of the last second).
-      const tailBlocks = TAIL_SILENCE_SECONDS * BLOCKS_PER_SECOND;
-      let tailPeak = 0;
-      for (let b = 0; b < tailBlocks; b++) {
-        chans[0].fill(0);
-        chans[1].fill(0);
-        proc.process(chans, BLOCK);
-        if (b >= tailBlocks - BLOCKS_PER_SECOND) {
-          for (let i = 0; i < BLOCK; i++) {
-            tailPeak = Math.max(tailPeak, Math.abs(chans[0][i]), Math.abs(chans[1][i]));
-          }
-        }
-      }
-      expect(tailPeak).toBeLessThan(1e-4);
-
-      if (typeof process !== "undefined" && process.memoryUsage) {
-        global.gc?.();
-        const growthMb = (process.memoryUsage().heapUsed - heapStart) / (1024 * 1024);
-        console.log(`[ultina-soak] heap growth over ${TOTAL_SECONDS}s render: ${growthMb.toFixed(1)} MB (drift ${driftDb.toFixed(3)} dB, tail peak ${tailPeak.toExponential(2)})`);
-        expect(growthMb).toBeLessThan(100);
-      }
-    },
-    300_000,
-  );
+    if (typeof process !== "undefined" && process.memoryUsage) {
+      global.gc?.();
+      const growthMb = (process.memoryUsage().heapUsed - heapStart) / (1024 * 1024);
+      console.log(
+        `[ultina-soak] heap growth over ${TOTAL_SECONDS}s render: ${growthMb.toFixed(1)} MB (drift ${driftDb.toFixed(3)} dB, tail peak ${tailPeak.toExponential(2)})`,
+      );
+      expect(growthMb).toBeLessThan(100);
+    }
+  }, 300_000);
 });
