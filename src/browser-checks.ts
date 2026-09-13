@@ -509,6 +509,100 @@ export async function runChecks(): Promise<CheckResult[]> {
     );
   }
 
+  // The release fallback contract must also hold in a real browser when the
+  // optional ranker assets disappear or the worker becomes unhealthy. Keep
+  // this probe isolated: reset the lazy client between scenarios and restore
+  // native globals before the next audio/UI check runs.
+  let restoreRankerProbe: (() => void) | null = null;
+  try {
+    const ranking = await import("./ai/ranking/ranker-client");
+    const nativeFetch = globalThis.fetch;
+    const nativeWorker = globalThis.Worker;
+    const manifestPath = "/models/intent-ranker-v1.manifest.json";
+    const probeBatch = new Float32Array(2 * 54);
+
+    const setGlobal = (key: "fetch" | "Worker", value: unknown) => {
+      Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
+    };
+    const restoreGlobals = () => {
+      setGlobal("fetch", nativeFetch);
+      setGlobal("Worker", nativeWorker);
+      ranking.resetRankerClient();
+    };
+    restoreRankerProbe = restoreGlobals;
+    const isManifestRequest = (input: RequestInfo | URL) => String(input).includes(manifestPath);
+    const responseWithManifest = async () => nativeFetch(manifestPath, { cache: "no-store" });
+
+    // Missing/offline manifest: there must be no worker spawn and no thrown
+    // promise, which is the cold-start/offline-cache release contract.
+    ranking.resetRankerClient();
+    setGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) =>
+      isManifestRequest(input) ? Promise.resolve(new Response("", { status: 503 })) : nativeFetch(input, init),
+    );
+    const missing = await ranking.scoreCandidateFeatures(probeBatch, 2);
+
+    type ProbeMode = "hash-mismatch" | "timeout";
+    class ProbeWorker {
+      static mode: ProbeMode = "hash-mismatch";
+      terminated = false;
+      private readonly listeners = new Set<(event: MessageEvent) => void>();
+
+      addEventListener(type: string, listener: (event: MessageEvent) => void) {
+        if (type === "message") this.listeners.add(listener);
+      }
+
+      removeEventListener(type: string, listener: (event: MessageEvent) => void) {
+        if (type === "message") this.listeners.delete(listener);
+      }
+
+      postMessage(request: { type: string; requestId: number }) {
+        if (ProbeWorker.mode === "timeout") return;
+        queueMicrotask(() => {
+          if (this.terminated) return;
+          for (const listener of this.listeners) {
+            listener({
+              data: { type: request.type, requestId: request.requestId, ok: false, error: "model hash mismatch" },
+            } as MessageEvent);
+          }
+        });
+      }
+
+      terminate() {
+        this.terminated = true;
+      }
+    }
+
+    // Hash mismatch: a worker response is a controlled fallback, not a UI
+    // error. The manifest is kept valid by forwarding the real local asset.
+    setGlobal("Worker", ProbeWorker);
+    setGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) =>
+      isManifestRequest(input) ? responseWithManifest() : nativeFetch(input, init),
+    );
+    ranking.resetRankerClient();
+    ProbeWorker.mode = "hash-mismatch";
+    const hashMismatch = await ranking.scoreCandidateFeatures(probeBatch, 2);
+
+    // Timeout: one slow worker request must resolve through the same fallback
+    // boundary instead of leaking a rejected promise into generation.
+    ranking.resetRankerClient();
+    ProbeWorker.mode = "timeout";
+    const timeout = await ranking.scoreCandidateFeatures(probeBatch, 2);
+
+    restoreGlobals();
+    restoreRankerProbe = null;
+    check(
+      "intent ranker: browser missing/offline, hash-mismatch and timeout fall back safely",
+      missing.source === "fallback" &&
+        hashMismatch.source === "fallback" &&
+        timeout.source === "fallback" &&
+        timeout.scores === null,
+      `missing=${missing.source} hash=${hashMismatch.source} timeout=${timeout.source}`,
+    );
+  } catch (error) {
+    restoreRankerProbe?.();
+    check("intent ranker: browser fallback scenarios remain controlled", false, String(error));
+  }
+
   // Distortion: harmonics produced
   try {
     const ctx = new OfflineAudioContext(1, SR, SR);
