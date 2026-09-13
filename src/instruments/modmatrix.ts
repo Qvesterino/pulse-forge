@@ -23,11 +23,11 @@ import type { ParamDef } from "../effects/types";
 export interface ModVoiceHandle {
   /** Serial gain node for the AMP destination — insert before the amp env. */
   ampNode: GainNode | null;
-  /** Raw post-amount slot signals (for custom destinations like MORPH). */
+  /** Live destination-selected slot signals (for custom destinations like MORPH). */
   slots: Array<{ sig: GainNode; amt: number } | null>;
   /** MPE pressure — retunes the PRESS source of this voice live. */
   setPressure(value: number, when?: number): void;
-  /** Update a continuous MOD A/B amount on an already-scheduled voice. */
+  /** Update a live MOD matrix parameter on an already-scheduled voice. */
   setParameter(id: string, value: number, when?: number): void;
   /** Disconnect all mod nodes (call from the voice's onended cleanup). */
   dispose(): void;
@@ -86,7 +86,9 @@ export function scheduleVoiceModMatrix(
 
   const lfoRate = Math.max(0, p.modLfoRate ?? 2);
   const nodes: AudioNode[] = [];
-  const started: Array<OscillatorNode | ConstantSourceNode> = [];
+  const pressSources: ConstantSourceNode[] = [];
+  const lfoFrequencies: AudioParam[] = [];
+  const sourceBuses = new Map<number, GainNode>();
 
   const buildSource = (src: number): GainNode | null => {
     // A gain node used as a control-signal bus; the source feeds its input.
@@ -105,21 +107,10 @@ export function scheduleVoiceModMatrix(
       env.stop(opts.stopTime);
       env.connect(bus);
       nodes.push(env, bus);
-      started.push(env);
       return bus;
     }
     if (src === 1) {
       // LFO: unipolar sine — constant 0.5 + osc ±0.5.
-      if (lfoRate < 0.05) {
-        const dc = ctx.createConstantSource();
-        dc.offset.value = 0.5;
-        dc.start(opts.when);
-        dc.stop(opts.stopTime);
-        dc.connect(bus);
-        nodes.push(dc, bus);
-        started.push(dc);
-        return bus;
-      }
       const dc = ctx.createConstantSource();
       dc.offset.value = 0.5;
       const osc = ctx.createOscillator();
@@ -133,8 +124,8 @@ export function scheduleVoiceModMatrix(
       osc.start(opts.when);
       dc.stop(opts.stopTime);
       osc.stop(opts.stopTime);
+      lfoFrequencies.push(osc.frequency);
       nodes.push(dc, osc, depth, bus);
-      started.push(dc, osc);
       return bus;
     }
     if (src === 2) {
@@ -144,7 +135,6 @@ export function scheduleVoiceModMatrix(
       dc.stop(opts.stopTime);
       dc.connect(bus);
       nodes.push(dc, bus);
-      started.push(dc);
       return bus;
     }
     if (src === 3) {
@@ -155,62 +145,86 @@ export function scheduleVoiceModMatrix(
       dc.stop(opts.stopTime);
       dc.connect(bus);
       nodes.push(dc, bus);
-      started.push(dc);
       pressSources.push(dc);
       return bus;
     }
     return null;
   };
 
-  const pressSources: ConstantSourceNode[] = [];
+  // Build every source once per voice. Selector gains below make source
+  // changes live in the fallback graph, matching the worklet's per-sample
+  // `p.modASrc`/`p.modBSrc` reads without rebuilding a voice.
+  for (const src of [0, 1, 2, 3]) {
+    const bus = buildSource(src);
+    if (bus) sourceBuses.set(src, bus);
+  }
+
   let ampNode: GainNode | null = null;
   const slots: ModVoiceHandle["slots"] = [];
-  const cutoffRoutes: Array<{ id: string; sig: GainNode; amount: number }> = [];
-  const ampRoutes: Array<{ id: string; sig: GainNode; amount: number }> = [];
-  const amountControls: Array<{ id: string; param: AudioParam; multiplier: number }> = [];
+  const cutoffRoutes: GainNode[] = [];
+  const ampRoutes: GainNode[] = [];
+  const amountControls: Array<{ id: string; param: AudioParam }> = [];
+  const sourceControls: Array<{ id: string; params: AudioParam[] }> = [];
+  const destinationControls: Array<{ id: string; params: Array<{ dst: number; param: AudioParam }> }> = [];
 
   for (const def of slotDefs) {
     if (Math.abs(def.amt) < 0.001) {
       slots.push(null);
       continue;
     }
-    const src = buildSource(def.src);
-    if (!src) {
-      slots.push(null);
-      continue;
-    }
     const amount = Math.max(-1, Math.min(1, Number.isFinite(def.amt) ? def.amt : 0));
-    if (def.dst === 1 && opts.cutoffParam && opts.cutoffBase) {
-      // CUTOFF is combined before applying the worklet's lower/upper bounds.
-      // The two slots can contribute ±4 total modCut at full amount.
-      cutoffRoutes.push({ id: def.id, sig: src, amount });
-      slots.push(null);
-      continue;
+    const selectedSource = ctx.createGain();
+    selectedSource.gain.value = 1;
+    const sourceParams: AudioParam[] = [];
+    for (const [sourceId, sourceBus] of sourceBuses) {
+      const select = ctx.createGain();
+      select.gain.value = sourceId === def.src ? 1 : 0;
+      sourceBus.connect(select).connect(selectedSource);
+      sourceParams.push(select.gain);
+      nodes.push(select);
     }
-    if (def.dst === 3) {
-      // AMP is combined before applying the worklet's 0.1 gain floor.
-      if (!ampNode) {
-        ampNode = ctx.createGain();
-        ampNode.gain.value = 1;
-      }
-      ampRoutes.push({ id: def.id, sig: src, amount });
-      slots.push(null);
-      continue;
+    nodes.push(selectedSource);
+    sourceControls.push({ id: def.id.replace("Amt", "Src"), params: sourceParams });
+
+    const amountNode = ctx.createGain();
+    amountNode.gain.value = amount;
+    selectedSource.connect(amountNode);
+    nodes.push(amountNode);
+    amountControls.push({ id: def.id, param: amountNode.gain });
+
+    // Keep all destination branches alive and select exactly one at a time.
+    // Later selector automation can therefore move a held voice between
+    // CUTOFF, AMP and MORPH without rebuilding or rewiring its voice graph.
+    const morph = ctx.createGain();
+    morph.gain.value = def.dst === 0 ? 1 : 0;
+    amountNode.connect(morph);
+    nodes.push(morph);
+
+    const cutoff = ctx.createGain();
+    cutoff.gain.value = def.dst === 1 && opts.cutoffParam && opts.cutoffBase ? 1 : 0;
+    amountNode.connect(cutoff);
+    nodes.push(cutoff);
+    if (opts.cutoffParam && opts.cutoffBase) cutoffRoutes.push(cutoff);
+
+    if (!ampNode) {
+      ampNode = ctx.createGain();
+      ampNode.gain.value = 1;
     }
-    if (def.dst === 0) {
-      // Scale MORPH inside this shared graph so amount automation reaches an
-      // already-playing voice. The caller still applies its per-frame room
-      // clamp, while this node owns the signed route amount.
-      const scaled = ctx.createGain();
-      scaled.gain.value = amount;
-      src.connect(scaled);
-      nodes.push(scaled);
-      amountControls.push({ id: def.id, param: scaled.gain, multiplier: 1 });
-      slots.push({ sig: scaled, amt: 1 });
-      continue;
-    }
-    // DETUNE and unknown destinations stay inert until their contract exists.
-    slots.push(null);
+    const amp = ctx.createGain();
+    amp.gain.value = def.dst === 3 ? 1 : 0;
+    amountNode.connect(amp);
+    nodes.push(amp);
+    ampRoutes.push(amp);
+
+    destinationControls.push({
+      id: def.id.replace("Amt", "Dst"),
+      params: [
+        { dst: 0, param: morph.gain },
+        { dst: 1, param: cutoff.gain },
+        { dst: 3, param: amp.gain },
+      ],
+    });
+    slots.push({ sig: morph, amt: 1 });
   }
 
   if (cutoffRoutes.length > 0 && opts.cutoffParam && opts.cutoffBase) {
@@ -218,10 +232,9 @@ export function scheduleVoiceModMatrix(
     sum.gain.value = 1;
     for (const route of cutoffRoutes) {
       const scaled = ctx.createGain();
-      scaled.gain.value = route.amount * 2;
-      route.sig.connect(scaled).connect(sum);
+      scaled.gain.value = 2;
+      route.connect(scaled).connect(sum);
       nodes.push(scaled);
-      amountControls.push({ id: route.id, param: scaled.gain, multiplier: 2 });
     }
     const normalize = ctx.createGain();
     normalize.gain.value = 0.25;
@@ -237,10 +250,9 @@ export function scheduleVoiceModMatrix(
     sum.gain.value = 1;
     for (const route of ampRoutes) {
       const scaled = ctx.createGain();
-      scaled.gain.value = route.amount;
-      route.sig.connect(scaled).connect(sum);
+      scaled.gain.value = 1;
+      route.connect(scaled).connect(sum);
       nodes.push(scaled);
-      amountControls.push({ id: route.id, param: scaled.gain, multiplier: 1 });
     }
     const normalize = ctx.createGain();
     normalize.gain.value = 0.5;
@@ -257,17 +269,38 @@ export function scheduleVoiceModMatrix(
     ampNode,
     slots,
     setPressure(value, when) {
-      const at = Math.max(when ?? 0, 0);
+      const at = Math.max(ctx.currentTime, when ?? ctx.currentTime);
       const clamped = Math.max(0, Math.min(1, value));
       for (const dc of pressSources) dc.offset.setTargetAtTime(clamped, at, 0.01);
     },
     setParameter(id, value, when) {
-      if (id !== "modAAmt" && id !== "modBAmt") return;
       const at = Math.max(ctx.currentTime, when ?? ctx.currentTime);
-      const clamped = Math.max(-1, Math.min(1, Number.isFinite(value) ? value : 0));
-      for (const control of amountControls) {
-        if (control.id !== id) continue;
-        control.param.setTargetAtTime(control.multiplier * clamped, at, 0.005);
+      if (id === "modAAmt" || id === "modBAmt") {
+        const clamped = Math.max(-1, Math.min(1, Number.isFinite(value) ? value : 0));
+        for (const control of amountControls) {
+          if (control.id === id) control.param.setTargetAtTime(clamped, at, 0.005);
+        }
+        return;
+      }
+      if (id === "modASrc" || id === "modBSrc") {
+        const source = Math.max(0, Math.min(3, Math.round(Number.isFinite(value) ? value : 0)));
+        for (const control of sourceControls) {
+          if (control.id !== id) continue;
+          control.params.forEach((param, index) => param.setTargetAtTime(index === source ? 1 : 0, at, 0.005));
+        }
+        return;
+      }
+      if (id === "modADst" || id === "modBDst") {
+        const destination = Math.round(Number.isFinite(value) ? value : -1);
+        for (const control of destinationControls) {
+          if (control.id !== id) continue;
+          for (const target of control.params) target.param.setTargetAtTime(target.dst === destination ? 1 : 0, at, 0.005);
+        }
+        return;
+      }
+      if (id === "modLfoRate") {
+        const rate = Math.max(0, Math.min(12, Number.isFinite(value) ? value : 0));
+        for (const frequency of lfoFrequencies) frequency.setTargetAtTime(rate, at, 0.005);
       }
     },
     dispose() {
@@ -282,14 +315,13 @@ export function scheduleVoiceModMatrix(
   };
 }
 
-/** Forward continuous MOD A/B amount writes to every live fallback voice. */
+/** Forward live MOD matrix writes to every live fallback voice. */
 export function updateVoiceModMatrix(
   handles: Iterable<ModVoiceHandle | null | undefined>,
   id: string,
   value: number,
   when?: number,
 ): void {
-  if (id !== "modAAmt" && id !== "modBAmt") return;
   for (const handle of handles) handle?.setParameter(id, value, when);
 }
 

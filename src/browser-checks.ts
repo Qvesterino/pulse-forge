@@ -4027,6 +4027,42 @@ export async function runChecks(): Promise<CheckResult[]> {
       liveModDiff > 0.001,
       `diff=${liveModDiff.toFixed(4)}`,
     );
+    const liveSourceBase = await renderKind("analog", { modASrc: 0, modADst: 1, modAAmt: 0.8 });
+    const liveSourceMoved = await renderKind(
+      "analog",
+      { modASrc: 0, modADst: 1, modAAmt: 0.8 },
+      (rt) => rt.setParameterAt!("modASrc", 1, 0.35),
+    );
+    const liveSourceDiff = maxDiff(liveSourceBase, liveSourceMoved);
+    check(
+      "mod matrix fallback: source selector automation updates a held voice",
+      liveSourceDiff > 0.001,
+      `diff=${liveSourceDiff.toFixed(4)}`,
+    );
+    const liveDestinationBase = await renderKind("analog", { modASrc: 0, modADst: 1, modAAmt: 0.8 });
+    const liveDestinationMoved = await renderKind(
+      "analog",
+      { modASrc: 0, modADst: 1, modAAmt: 0.8 },
+      (rt) => rt.setParameterAt!("modADst", 3, 0.35),
+    );
+    const liveDestinationDiff = maxDiff(liveDestinationBase, liveDestinationMoved);
+    check(
+      "mod matrix fallback: destination selector automation updates a held voice",
+      liveDestinationDiff > 0.001,
+      `diff=${liveDestinationDiff.toFixed(4)}`,
+    );
+    const liveLfoBase = await renderKind("analog", { modASrc: 1, modADst: 1, modAAmt: 0.8, modLfoRate: 1 });
+    const liveLfoMoved = await renderKind(
+      "analog",
+      { modASrc: 1, modADst: 1, modAAmt: 0.8, modLfoRate: 1 },
+      (rt) => rt.setParameterAt!("modLfoRate", 8, 0.35),
+    );
+    const liveLfoDiff = maxDiff(liveLfoBase, liveLfoMoved);
+    check(
+      "mod matrix fallback: LFO rate automation updates a held voice",
+      liveLfoDiff > 0.001,
+      `diff=${liveLfoDiff.toFixed(4)}`,
+    );
   } catch (error) {
     check("mod matrix browser suite", false, String(error));
   }
