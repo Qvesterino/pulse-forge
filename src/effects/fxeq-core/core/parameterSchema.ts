@@ -49,8 +49,24 @@ export interface FxEqSchema {
 
 // ── Global parameters ────────────────────────────────────────
 export const GLOBAL_PARAM_DEFS: readonly FxEqParamDef[] = [
-  { id: "inputGainDb", name: "Input Gain", defaultValue: 0, minValue: -24, maxValue: 24, unit: "dB", automatable: true },
-  { id: "outputGainDb", name: "Output Gain", defaultValue: 0, minValue: -24, maxValue: 24, unit: "dB", automatable: true },
+  {
+    id: "inputGainDb",
+    name: "Input Gain",
+    defaultValue: 0,
+    minValue: -24,
+    maxValue: 24,
+    unit: "dB",
+    automatable: true,
+  },
+  {
+    id: "outputGainDb",
+    name: "Output Gain",
+    defaultValue: 0,
+    minValue: -24,
+    maxValue: 24,
+    unit: "dB",
+    automatable: true,
+  },
   { id: "bandCount", name: "Active Bands", defaultValue: 6, minValue: 2, maxValue: MAX_BANDS, automatable: false },
   // Crossover splits: crossoverFreqN is the split ABOVE band N-1 (i.e.
   // between band N-1 and N), so a 6-band config needs crossoverFreq2..6 —
@@ -62,13 +78,54 @@ export const GLOBAL_PARAM_DEFS: readonly FxEqParamDef[] = [
   // 8 kHz inverted it against the invisible split, silently deleting 8-12 kHz
   // from the summed output. Defaults are realigned to the intended
   // DEFAULT_CROSSOVER_FREQS ladder and crossoverFreq6 completes the surface.
-  // Existing saved documents pin the old values explicitly, so they render
-  // exactly as before (crossoverFreq6 then defaults to the same hidden 8000).
-  { id: "crossoverFreq2", name: "Xover 2", defaultValue: 120, minValue: 80, maxValue: 800, unit: "Hz", automatable: true },
-  { id: "crossoverFreq3", name: "Xover 3", defaultValue: 400, minValue: 300, maxValue: 3000, unit: "Hz", automatable: true },
-  { id: "crossoverFreq4", name: "Xover 4", defaultValue: 1200, minValue: 600, maxValue: 6000, unit: "Hz", automatable: true },
-  { id: "crossoverFreq5", name: "Xover 5", defaultValue: 4000, minValue: 2000, maxValue: 12000, unit: "Hz", automatable: true },
-  { id: "crossoverFreq6", name: "Xover 6", defaultValue: 8000, minValue: 4000, maxValue: 20000, unit: "Hz", automatable: true },
+  // Existing saved documents pin the old values explicitly. Their coincident
+  // 8 kHz top splits are widened to the legal 40 Hz minimum gap, preserving
+  // the old layout as closely as the new monotonic-order contract allows.
+  {
+    id: "crossoverFreq2",
+    name: "Xover 2",
+    defaultValue: 120,
+    minValue: 80,
+    maxValue: 800,
+    unit: "Hz",
+    automatable: true,
+  },
+  {
+    id: "crossoverFreq3",
+    name: "Xover 3",
+    defaultValue: 400,
+    minValue: 300,
+    maxValue: 3000,
+    unit: "Hz",
+    automatable: true,
+  },
+  {
+    id: "crossoverFreq4",
+    name: "Xover 4",
+    defaultValue: 1200,
+    minValue: 600,
+    maxValue: 6000,
+    unit: "Hz",
+    automatable: true,
+  },
+  {
+    id: "crossoverFreq5",
+    name: "Xover 5",
+    defaultValue: 4000,
+    minValue: 2000,
+    maxValue: 12000,
+    unit: "Hz",
+    automatable: true,
+  },
+  {
+    id: "crossoverFreq6",
+    name: "Xover 6",
+    defaultValue: 8000,
+    minValue: 4000,
+    maxValue: 20000,
+    unit: "Hz",
+    automatable: true,
+  },
   // Linkwitz-Riley slope: 2 = LR2 (12 dB/oct), 4 = LR4 (24 dB/oct),
   // 8 = LR8 (48 dB/oct). Any other value snaps onto {2,4,8} at the DSP and
   // the snapped value is written back. Structural (non-automatable).
@@ -79,9 +136,25 @@ export const GLOBAL_PARAM_DEFS: readonly FxEqParamDef[] = [
   { id: "globalMix", name: "Wet/Dry Mix", defaultValue: 100, minValue: 0, maxValue: 100, unit: "%", automatable: true },
   { id: "fxOnly", name: "FX Only", defaultValue: 0, minValue: 0, maxValue: 1, automatable: false },
   { id: "limiterEnabled", name: "Limiter", defaultValue: 1, minValue: 0, maxValue: 1, automatable: false },
-  { id: "limiterCeilDb", name: "Limiter Ceiling", defaultValue: -0.3, minValue: -6, maxValue: 0, unit: "dB", automatable: true },
+  {
+    id: "limiterCeilDb",
+    name: "Limiter Ceiling",
+    defaultValue: -0.3,
+    minValue: -6,
+    maxValue: 0,
+    unit: "dB",
+    automatable: true,
+  },
   { id: "limiterTruePeak", name: "True Peak", defaultValue: 1, minValue: 0, maxValue: 1, automatable: false },
-  { id: "limiterLookaheadMs", name: "Lookahead", defaultValue: 2, minValue: 0, maxValue: 5, unit: "ms", automatable: false },
+  {
+    id: "limiterLookaheadMs",
+    name: "Lookahead",
+    defaultValue: 2,
+    minValue: 0,
+    maxValue: 5,
+    unit: "ms",
+    automatable: false,
+  },
   { id: "limiterPdr", name: "Limiter PDR", defaultValue: 0, minValue: 0, maxValue: 1, automatable: true },
 ] as const;
 
@@ -92,10 +165,34 @@ export const BAND_SCALAR_DEFS: readonly FxEqParamDef[] = [
   { id: "mix", name: "Band Mix", defaultValue: 100, minValue: 0, maxValue: 100, unit: "%", automatable: true },
   { id: "midSide", name: "M/S Mode", defaultValue: 0, minValue: 0, maxValue: 2, automatable: false },
   { id: "dynEnable", name: "Dynamic EQ", defaultValue: 0, minValue: 0, maxValue: 1, automatable: false },
-  { id: "dynThresholdDb", name: "Dyn Threshold", defaultValue: -20, minValue: -60, maxValue: 0, unit: "dB", automatable: true },
+  {
+    id: "dynThresholdDb",
+    name: "Dyn Threshold",
+    defaultValue: -20,
+    minValue: -60,
+    maxValue: 0,
+    unit: "dB",
+    automatable: true,
+  },
   { id: "dynRangeDb", name: "Dyn Range", defaultValue: -6, minValue: -24, maxValue: 0, unit: "dB", automatable: true },
-  { id: "dynAttackMs", name: "Dyn Attack", defaultValue: 10, minValue: 0.1, maxValue: 100, unit: "ms", automatable: true },
-  { id: "dynReleaseMs", name: "Dyn Release", defaultValue: 100, minValue: 10, maxValue: 1000, unit: "ms", automatable: true },
+  {
+    id: "dynAttackMs",
+    name: "Dyn Attack",
+    defaultValue: 10,
+    minValue: 0.1,
+    maxValue: 100,
+    unit: "ms",
+    automatable: true,
+  },
+  {
+    id: "dynReleaseMs",
+    name: "Dyn Release",
+    defaultValue: 100,
+    minValue: 10,
+    maxValue: 1000,
+    unit: "ms",
+    automatable: true,
+  },
   { id: "solo", name: "Solo", defaultValue: 0, minValue: 0, maxValue: 1, automatable: false },
   { id: "mute", name: "Mute", defaultValue: 0, minValue: 0, maxValue: 1, automatable: false },
   { id: "phaseInvert", name: "Phase Invert", defaultValue: 0, minValue: 0, maxValue: 1, automatable: false },
@@ -105,9 +202,33 @@ export const BAND_SCALAR_DEFS: readonly FxEqParamDef[] = [
   // Q6 envelope routing — max value of envModTarget must stay in sync with
   // ENV_MOD_TARGETS.length - 1 in core/signalFlow.ts (0 = off … 9 = band gain).
   { id: "envModTarget", name: "Env Mod Target", defaultValue: 0, minValue: 0, maxValue: 9, automatable: false },
-  { id: "envModDepth", name: "Env Mod Depth", defaultValue: 0, minValue: -100, maxValue: 100, unit: "%", automatable: true },
-  { id: "envModAtkMs", name: "Env Mod Attack", defaultValue: 10, minValue: 1, maxValue: 200, unit: "ms", automatable: true },
-  { id: "envModRelMs", name: "Env Mod Release", defaultValue: 150, minValue: 10, maxValue: 1000, unit: "ms", automatable: true },
+  {
+    id: "envModDepth",
+    name: "Env Mod Depth",
+    defaultValue: 0,
+    minValue: -100,
+    maxValue: 100,
+    unit: "%",
+    automatable: true,
+  },
+  {
+    id: "envModAtkMs",
+    name: "Env Mod Attack",
+    defaultValue: 10,
+    minValue: 1,
+    maxValue: 200,
+    unit: "ms",
+    automatable: true,
+  },
+  {
+    id: "envModRelMs",
+    name: "Env Mod Release",
+    defaultValue: 150,
+    minValue: 10,
+    maxValue: 1000,
+    unit: "ms",
+    automatable: true,
+  },
 ];
 
 /** Cache each module's parameter defs (one stateless probe per module). */

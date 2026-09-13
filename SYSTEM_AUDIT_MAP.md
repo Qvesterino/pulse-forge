@@ -130,32 +130,51 @@ Two service tiers — this is the load-bearing seam of the app:
 - `vitest run`: **1983 passed / 1 failed / 95 skipped** (200 files, ~15 min). The 1 failure (`tests/ui/midi-io.test.tsx` import waitFor) was load-related flake + an unhandled `URL.revokeObjectURL` TypeError from a post-test 5 s timer — **fixed this session** (optional-call guard at 5 production sites + 10 s waitFor timeout). Browser suite (`npm run test:browser`) not yet re-run this session — GOAL 12 gate.
 - Build: not yet re-run this session — GOAL 12 gate.
 
-### 2026-09-13 re-verification (campaign restart, GOAL 01)
+### 2026-09-13 re-verification (current release-candidate review)
 
-- **HEAD:** `7abc415` ("tak asi fajn") — 3 commits past the previous reviewed baseline `5f49140`. Chronological commits in that range:
-  - `81553dd docs: reconcile release evidence after test stabilization`
-  - `7abc415 feat: ultina transient/sustain + Pre-Emphasis experiment (Pre-Emphasis schema + transient/sustain EQ + contract test)`
-  - `173f5ce fix(ultina): reconcile upstream DSP and protect vendor sync`
-- **Working tree:** 13 files modified vs HEAD — predominantly the **FXEQ/Ultina DSP experiment** (Pre-Emphasis + 6-band crossover ladder realignment + transient/sustain EQ). `git status` shows `fxeq-core/{fxEqProcessor, parameterSchema}` modified, `ultina-core/{eqModule, exciterModule, maskingMeter, primitives}` modified, plus matching tests. Reviewed-baseline PRISM tree `5f49140` is **no longer at HEAD** — the tree now also contains the unmerged DSP experiment from R7.
-- **File-count drift:** src `.ts/.tsx` files 361 (was ~340 at 2026-09-10); tests 244 (was ~200). The increase is concentrated in DSP test files for the new crossover/Pre-Emphasis/transient-sustain surfaces.
-- `tsc --noEmit`: **PASS** (this session, on the modified working tree).
-- Targeted `vitest run` on the WIP-modified test files: **54/54 PASS** (4 files — `fxeq-core-hardening.test.ts` 34, `fxeq-morph.test.ts` 6, `fxeq-rack-contract.test.ts` 6, `ultina-contract-params.test.ts` 8).
-- Full Vitest suite: **not re-run this session** — 8–15 min runtime + the previously documented CPU-load flake class still applies. Last authoritative full run before this session was the GOAL 12 review (`5f49140`): 234 files / 2300 passed / 103 skipped / 1 timeout (factory-preset UI regression — fixed in `5f49140`, but complete post-`7abc415` rerun still required).
-- `npm run build`: **not re-run this session** — required by GOAL 12 gate. The `predev`/`prebuild` chain (`build:core-worklets`, `build:fxeq`, `build:ultina`, `build:ozvena`) will rebuild worklets; `173f5ce` already modified `public/ultina-worklet.js` and `scripts/vendor-ultina.mjs`, so the upstream-vendor sync state should be re-verified.
-- Browser smoke (`npm run test:browser`): **not re-run this session** — last Chromium 218/218 (post-`5f49140`).
+- **HEAD:** `699c8a3` (`tentokrat`) — the reviewed FXEQ six-band crossover
+  surface correction is committed on top of the Ultina reconciliation in
+  `173f5ce`; the prior browser measurement follow-up is `4279467`.
+- **Prior campaign commits:** `81553dd`, `7abc415` and `173f5ce` remain
+  historical context; the current functional baseline is `699c8a3`.
+- **Working tree:** only `AGENT_WORK_LOG.md` is modified outside `HEAD`; no
+  functional FXEQ/Ultina WIP is mixed into the candidate.
+- **FXEQ change:** `crossoverFreq6` is present in the authoritative schema,
+  processor bulk/single routing, PRISM panel drag surface and generated
+  `public/fxeq-worklet.js`. Defaults are the intended
+  `120/400/1200/4000/8000` ladder; monotonic clamping enforces a 40 Hz minimum
+  gap and widens legacy coincident 8 kHz splits to 8.04 kHz.
+- `tsc --noEmit`: **PASS** after the current review.
+- Focused PRISM batch: **115/115 PASS** after the six-band UI test was added.
+  Golden parity is
+  **8/8 within tolerance**, with 7/8 bit-exact and one expected legacy-split
+  difference.
+- Full Vitest suite: **not re-run after `699c8a3`** — the historical
+  authoritative run was 234 files / 2300 passed / 103 skipped / 1 timeout;
+  complete post-candidate rerun remains required.
+- `npm run build`: **PASS** after `699c8a3` — entry 938 KB / 995 KB, total JS
+  1849 KB / 2400 KB, core worklets 98 KB / 120 KB, 356 modules, PWA precache
+  57 entries / 4037.47 KiB.
+- `npm run release:preflight` and `npm run release:server-smoke`: **PASS**
+  with explicit production environment/origin settings.
+- Browser smoke: the latest clean Chromium run is **218/218 before
+  `699c8a3`**; current-candidate rerun remains required. Manual Safari/iOS and
+  deployed-host checks remain owner gates.
 
 ### WIP substance (what changed since the previous campaign session)
 
 - **FXEQ 6-band crossover ladder realignment** (`src/effects/fxeq-core/core/parameterSchema.ts`, `fxEqProcessor.ts`): the schema gains `crossoverFreq6` (default 8000 Hz, 4–20 kHz range). Existing saved docs continue to pin their old values explicitly — backward compatible. Defaults now realigned to `DEFAULT_CROSSOVER_FREQS` ladder (120/400/1200/4000/8000). Comment notes the previous defect: a 6-band config had splits 4 and 5 coinciding on the bank's hidden 8000 Hz default, creating a dead band; dragging Xover 5 above 8 kHz silently inverted against the invisible split and deleted 8–12 kHz from the summed output. **This is a substantive DSP correctness fix**, not a stylistic change.
-- **Ultina transient/sustain + Pre-Emphasis experiment** (`src/effects/ultina-core/dsp/modules/eqModule.ts`, `exciterModule.ts`, `contracts/{parameterIds, parameterSchema}.ts`, `dsp/maskingMeter.ts`, `dsp/primitives.ts`): experimental — not yet proven against golden vectors or upstream parity. The previous release report flagged this as R7 (owner-gated experiment needing separation). The WIP has not been committed and is mixed into the working tree with the FXEQ fix above — they will need to be separated before tagging a release candidate.
-- **`tests/ultina-contract-params.test.ts`** grew by 36 lines (`+231` net in the latest commit) — adds contract coverage for the new Pre-Emphasis parameter surface.
+- **Ultina transient/sustain + Pre-Emphasis experiment** (`src/effects/ultina-core/dsp/modules/eqModule.ts`, `exciterModule.ts`, `contracts/{parameterIds, parameterSchema}.ts`, `dsp/maskingMeter.ts`, `dsp/primitives.ts`): landed and reconciled through `173f5ce`; the matching upstream source/test is `D:/VocalForge_DAW` commit `c0a549d`, with dirty-upstream vendor protection in place.
+- **FXEQ six-band crossover correction** is landed in `699c8a3`; its focused hardening, UI drag, rack contract and golden coverage are green. It is a substantive DSP/defaults change and must remain in the final browser/full-suite review.
 
 ## 15. Open release gates (carried from 2026-09-13 RELEASE_READINESS_REPORT, refreshed)
 
-- **R7 (Open, blocking):** the uncommitted Ultina contract/DSP experiment and FXEQ crossover ladder realignment are mixed into the same working tree. Owner must either separate them (two commits) or review them together before tagging an immutable release candidate.
-- **Full Vitest suite rerun** on the post-`7abc415` tree — last authoritative run was pre-`5f49140` (1 timeout, 2300 pass).
-- **`npm run build`** rerun — required to confirm bundle budgets still hold with the new `crossoverFreq6` schema + ultina DSP changes.
-- **`npm run test:browser`** rerun — required to confirm PRISM plugin workflow + the new FXEQ 6-band crossover surface in real WebAudio.
+- **R7 (closed in `699c8a3`):** the formerly mixed Ultina/FXEQ worktree is
+  separated into reviewed commits; only the continuity log remains dirty.
+- **Full Vitest suite rerun** on the post-`699c8a3` tree — last authoritative
+  run was pre-`5f49140` (1 timeout, 2300 pass).
+- **`npm run test:browser`** rerun — required to confirm PRISM plugin workflow
+  + the new FXEQ 6-band crossover surface in real WebAudio.
 - **Manual Firefox/Safari/iOS matrix** — owner gate, unchanged.
 - **`release:deployed-smoke`** with a real `KYX_DEPLOY_URL` — owner gate, unchanged.
 - **Formatting deviations (R9)** — 209 files, owner decision pending.

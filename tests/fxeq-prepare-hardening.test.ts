@@ -27,9 +27,9 @@ import { buildSchema } from "../src/effects/fxeq-core/core/parameterSchema";
 
 const BLOCK = 128;
 
-function tone(n: number, freq: number, sr: number, amp = 0.8): Float32Array {
+function tone(n: number, freq: number, sr: number, amp = 0.8, startSample = 0): Float32Array {
   const ch = new Float32Array(n);
-  for (let i = 0; i < n; i++) ch[i] = Math.sin((2 * Math.PI * freq * i) / sr) * amp;
+  for (let i = 0; i < n; i++) ch[i] = Math.sin((2 * Math.PI * freq * (startSample + i)) / sr) * amp;
   return ch;
 }
 
@@ -102,13 +102,13 @@ describe("fxeq processor re-prepare lifecycle (all modules active)", () => {
   // through the stack — a valid but useless probe configuration).
   const ALL_ON: Record<string, number> = {
     ...Object.fromEntries(
-      buildSchema(6).defs
-        .filter((d) => /(sat|dyn|lofi|mod|delay|rev)Enabled$/.test(d.id))
+      buildSchema(6)
+        .defs.filter((d) => /(sat|dyn|lofi|mod|delay|rev)Enabled$/.test(d.id))
         .map((d) => [d.id, 1]),
     ),
     ...Object.fromEntries(
-      buildSchema(6).defs
-        .filter((d) => /^band\d+\.dynThreshDb$/.test(d.id))
+      buildSchema(6)
+        .defs.filter((d) => /^band\d+\.dynThreshDb$/.test(d.id))
         .map((d) => [d.id, 0]),
     ),
     "band2.satDriveDb": 18,
@@ -203,20 +203,24 @@ describe("fxeq parameter boundary validation", () => {
     // the pure gain path is observable.
     proc.setParameter("inputGainDb", 1e6);
     proc.setParameter("limiterEnabled", 0);
-    const L = tone(BLOCK, 440, 48000, 0.5);
-    const R = tone(BLOCK, 551, 48000, 0.5);
-    proc.process([L, R], BLOCK);
     let peak = 0;
-    for (let i = 0; i < BLOCK; i++) {
-      expect(Number.isFinite(L[i])).toBe(true);
-      expect(Number.isFinite(R[i])).toBe(true);
-      peak = Math.max(peak, Math.abs(L[i]), Math.abs(R[i]));
+    // Ignore filter startup: the assertion is about the clamped gain path,
+    // not the first block's crossover transient. Repeated, phase-continuous
+    // blocks also allow the IIR bank to settle without injecting a boundary
+    // click into the measurement.
+    for (let blk = 0; blk < 8; blk++) {
+      const L = tone(BLOCK, 440, 48000, 0.5, blk * BLOCK);
+      const R = tone(BLOCK, 551, 48000, 0.5, blk * BLOCK);
+      proc.process([L, R], BLOCK);
+      if (blk < 7) continue;
+      for (let i = 0; i < BLOCK; i++) {
+        expect(Number.isFinite(L[i])).toBe(true);
+        expect(Number.isFinite(R[i])).toBe(true);
+        peak = Math.max(peak, Math.abs(L[i]), Math.abs(R[i]));
+      }
     }
     // 0.5 × 10^(24/20) ≈ 7.9 — the clamped gain must actually be applied.
-    // (The one-block startup transient scales with how many crossover
-    // cascades the tones pass, which changed with the realigned default
-    // splits — calibrated to 6.7.)
-    expect(peak).toBeGreaterThan(6);
+    expect(peak).toBeGreaterThan(7);
     expect(peak).toBeLessThan(9);
   });
 
@@ -337,6 +341,14 @@ describe("fxeq determinism and decay", () => {
       "band5.delayEnabled": 1,
       "band5.delayFeedback": 0.92,
       "band5.delayTimeMs": 100,
+      // Keep the excitation in the historical upper-band layout so this
+      // regression's absolute floor remains about tail stability, not the
+      // intentional six-way default crossover realignment.
+      crossoverFreq2: 400,
+      crossoverFreq3: 1200,
+      crossoverFreq4: 4000,
+      crossoverFreq5: 8000,
+      crossoverFreq6: 8040,
       limiterEnabled: 0,
     });
     for (let blk = 0; blk < Math.floor(48000 / BLOCK); blk++) {
@@ -358,12 +370,9 @@ describe("fxeq determinism and decay", () => {
       previous = wMax;
     }
     // The REAL regression guard is the monotonic decrease above (feedback
-    // > 1 would GROW in silence). The absolute floor depends on how much
-    // 440 Hz leaks into the reverb/delay band — with the realigned default
-    // splits band 5 starts at 4 kHz (1 cascade) instead of the old dead
-    // 8 kHz–8 kHz sliver, so slightly more energy is stored at silence
-    // onset. Calibrated to 2e-3 (≈ −54 dB).
-    expect(previous).toBeLessThan(2e-3);
+    // > 1 would GROW in silence). The absolute floor is a second protection
+    // against an unexpectedly loud runaway tail.
+    expect(previous).toBeLessThan(1e-3);
   });
 });
 
@@ -434,8 +443,14 @@ describe("fxeq randomized fuzz (out-of-range values included)", () => {
     proc.prepare(48000, 2, BLOCK);
     const rand = rng(0xf00d);
     const ids = [
-      "band1.satDriveDb", "band2.satMix", "band3.modRate", "band4.delayTimeMs",
-      "band5.revDecayMs", "band6.gainDb", "band2.mix", "inputGainDb",
+      "band1.satDriveDb",
+      "band2.satMix",
+      "band3.modRate",
+      "band4.delayTimeMs",
+      "band5.revDecayMs",
+      "band6.gainDb",
+      "band2.mix",
+      "inputGainDb",
     ];
     for (let blk = 0; blk < 150; blk++) {
       // 20 random param changes before each block — UI-drag-rate automation.

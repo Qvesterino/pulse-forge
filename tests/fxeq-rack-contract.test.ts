@@ -128,7 +128,10 @@ describe("fxeq rack ↔ core parameter contract", () => {
       const coreId = p.id === "mix" ? "globalMix" : p.id;
       const expected =
         p.id === "crossoverOrder" ? 4 : p.id === "crossoverEqualize" ? 1 : p.id === "bandCount" ? input : mid;
-      expect(proc.getParameter(coreId), `core did not accept rack param ${p.id} (as ${coreId})`).toBeCloseTo(expected, 6);
+      expect(proc.getParameter(coreId), `core did not accept rack param ${p.id} (as ${coreId})`).toBeCloseTo(
+        expected,
+        6,
+      );
     }
   });
 
@@ -145,12 +148,12 @@ describe("fxeq rack ↔ core parameter contract", () => {
     const editorOnly = new Set([
       // FX-only mode has no rack knob (panel/preset domain).
       "fxOnly",
-    // Crossover split frequencies are preset/paint-editor domain.
-    "crossoverFreq2",
-    "crossoverFreq3",
-    "crossoverFreq4",
-    "crossoverFreq5",
-    "crossoverFreq6",
+      // Crossover split frequencies are preset/paint-editor domain.
+      "crossoverFreq2",
+      "crossoverFreq3",
+      "crossoverFreq4",
+      "crossoverFreq5",
+      "crossoverFreq6",
       // Limiter internals beyond the enable/ceiling rack knobs.
       "limiterTruePeak",
       "limiterLookaheadMs",

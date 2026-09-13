@@ -178,6 +178,32 @@ describe("fxeq panel — EQ response overlay math", () => {
 });
 
 describe("fxeq panel — crossover split drag", () => {
+  it("exposes and commits the sixth split on a six-band instance", async () => {
+    const { services, doc } = mountedPanel(undefined, {
+      bandCount: 6,
+      crossoverFreq2: 120,
+      crossoverFreq3: 400,
+      crossoverFreq4: 1200,
+      crossoverFreq5: 4000,
+      crossoverFreq6: 8000,
+    });
+    const map = await screen.findByRole("img", { name: "PRISM band map" }, { timeout: 10_000 });
+    vi.spyOn(map, "getBoundingClientRect").mockReturnValue(RECT as DOMRect);
+
+    fireEvent.pointerDown(map, { clientX: xOf(8000), pointerId: 1 });
+    fireEvent.pointerMove(map, { clientX: xOf(10000), pointerId: 1 });
+    fireEvent.pointerUp(map, { clientX: xOf(10000), pointerId: 1 });
+
+    const command = vi
+      .mocked(services.store.execute)
+      .mock.calls.map((call) => call[0] as { label?: string; execute: (d: unknown) => unknown })
+      .find((candidate) => candidate.label === "PRISM crossoverFreq6");
+    expect(command, "six-band top split commit command missing").toBeTruthy();
+    const next = command!.execute(doc) as ReturnType<typeof fxEqDoc>["doc"];
+    const fx = next.tracks.find((t) => t.kind === "instrument")!.effects.find((f) => f.id === "fx-eq");
+    expect(fx?.params.crossoverFreq6).toBeGreaterThan(8000);
+  });
+
   it("drags a split: live preview during the move, ONE document commit on release", async () => {
     const previewFxParam = vi.fn();
     const { services } = mountedPanel({

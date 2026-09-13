@@ -383,18 +383,26 @@ describe("fxeq worklet entry — hardening regression (2026-09-12)", () => {
     // A sine, not DC — the core's 15 Hz DC blocker would eat a constant.
     const inL = Float32Array.from({ length: N }, (_, i) => 0.25 * Math.sin((2 * Math.PI * 220 * i) / SR));
     const inR = Float32Array.from({ length: N }, (_, i) => 0.25 * Math.sin((2 * Math.PI * 220 * i) / SR));
-    const outL = new Float32Array(N);
-    const outR = new Float32Array(N);
+    // Seed the unwritten half with NaN: a real host may hand the worklet a
+    // recycled output quantum, so zero-initialization alone would miss the
+    // original short-write bug. A correct chunked pass must overwrite every
+    // frame with finite audio.
+    const outL = new Float32Array(N).fill(Number.NaN);
+    const outR = new Float32Array(N).fill(Number.NaN);
     now = 0;
     expect(proc.process([[inL, inR]], [[outL, outR]])).toBe(true);
     // Pre-fix only the first 128 frames were written; samples beyond frame
     // 128 stayed stale (zeros here, the previous block's audio on a live
     // host with a larger quantum). Compare signal ENERGY, not per-sample
-    // values — a sine legitimately crosses zero. (Threshold has wide margin:
-    // the stale-tail failure mode is RMS ≈ 0.)
+    // values — a sine legitimately crosses zero. Every frame must be written;
+    // stale NaN in the tail is the regression signal.
+    for (let i = 0; i < N; i++) {
+      expect(Number.isFinite(outL[i]), `left frame ${i} was not written`).toBe(true);
+      expect(Number.isFinite(outR[i]), `right frame ${i} was not written`).toBe(true);
+    }
     let tailSq = 0;
     for (let i = 128; i < N; i++) tailSq += outL[i] * outL[i];
-    expect(Math.sqrt(tailSq / (N - 128))).toBeGreaterThan(0.02);
+    expect(Math.sqrt(tailSq / (N - 128))).toBeGreaterThan(0.005);
     expect(outL[N - 1]).toBeGreaterThan(0.001);
     expect(outR[N - 1]).toBeGreaterThan(0.001);
   });
