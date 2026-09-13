@@ -83,7 +83,12 @@ export async function buildScorepack(
         name: "audio/cues/" + marker.type + ".wav",
         data: new Uint8Array(encodeWav(cueBuffer, 24)),
       });
-    } catch {
+    } catch (error) {
+      // A missing cue is optional, but cancellation is a user intent and
+      // must escape this best-effort asset branch. Swallowing AbortError here
+      // would make a cancelled scorepack continue through every manifest and
+      // ZIP step before the next outer checkpoint notices it.
+      if (isAbortError(error)) throw error;
       // Skip missing assets.
     }
   }
@@ -112,12 +117,24 @@ async function renderCueAsset(assetId: string, bank: SampleBank, sampleRate: num
   const buf = bank.get(assetId);
   if (!buf) throw new Error("Asset " + assetId + " not found in bank");
   if (buf.sampleRate === sampleRate) return buf;
-  const ctx = new OfflineAudioContext(1, buf.length, sampleRate);
+  // `buf.length` is a frame count at the SOURCE rate. Reusing it at the
+  // target rate changes the cue duration whenever the rates differ (and can
+  // truncate a longer resample). Preserve the source duration instead.
+  const ctx = new OfflineAudioContext(1, resampledCueFrameCount(buf, sampleRate), sampleRate);
   const src = ctx.createBufferSource();
   src.buffer = buf;
   src.connect(ctx.destination);
   src.start(0);
   return ctx.startRendering();
+}
+
+/** Target frame count used when a scorepack cue is resampled offline. */
+export function resampledCueFrameCount(source: Pick<AudioBuffer, "duration">, sampleRate: number): number {
+  return Math.max(1, Math.ceil(source.duration * sampleRate));
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
 }
 
 function encodeUtf8(str: string): Uint8Array {

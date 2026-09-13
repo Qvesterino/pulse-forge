@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildZip } from "../src/export/zip";
-import { buildScorepack } from "../src/export/scorepack";
+import { buildScorepack, resampledCueFrameCount } from "../src/export/scorepack";
 import { SampleBank } from "../src/sample-library/factory";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 
@@ -65,5 +65,13 @@ describe("scorepack export cancellation", () => {
     await expect(
       buildScorepack(createProjectFromTemplate("house"), new SampleBank(), undefined, controller.signal),
     ).rejects.toMatchObject({ name: "AbortError" });
+  });
+});
+
+describe("scorepack cue resampling", () => {
+  it("preserves cue duration at the target sample rate", () => {
+    expect(resampledCueFrameCount({ duration: 0.25 }, 48_000)).toBe(12_000);
+    expect(resampledCueFrameCount({ duration: 1.00001 }, 44_100)).toBe(44_101);
+    expect(resampledCueFrameCount({ duration: 0 }, 48_000)).toBe(1);
   });
 });
