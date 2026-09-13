@@ -8,6 +8,7 @@ import { fireEvent, screen } from "@testing-library/react";
 import { EffectRack } from "../src/ui/EffectRack";
 import { renderWithContext, mockServices } from "./helpers";
 import { createProjectFromTemplate } from "../src/project-model/templates";
+import { createFxEqProcessor } from "../src/effects/fxeq-core/core/fxEqProcessor";
 import {
   bandEqMagnitudeDb,
   biquadMagnitudeDb,
@@ -19,6 +20,7 @@ import {
 // The panel maps 20 Hz … 20 kHz logarithmically across the canvas width.
 const RECT = { left: 0, top: 0, width: 1000, height: 100, x: 0, y: 0, right: 1000, bottom: 100 };
 const LOG_SPAN = Math.log(20000 / 20);
+const BLOCK = 128;
 const xOf = (freqHz: number): number => (Math.log(freqHz / 20) / LOG_SPAN) * RECT.width;
 
 function fxEqDoc() {
@@ -117,6 +119,63 @@ describe("fxeq panel — EQ response overlay math", () => {
     expect(crossoverBandMagnitudeDb(0, splits, 4, 1000, SR)).toBeCloseTo(-6.02, 2);
     expect(crossoverBandMagnitudeDb(1, splits, 4, 1000, SR)).toBeCloseTo(-6.02, 2);
     expect(crossoverBandMagnitudeDb(1, splits, 4, 10000, SR)).toBeCloseTo(0, 2);
+  });
+
+  it("stopband steepness follows the slope: LR8 falls ~2x LR4 per octave", () => {
+    const splits = [1200];
+    // 4800 Hz is 2 octaves above the split: LR4 ≈ −6 − 48 ≈ −54 dB,
+    // LR8 ≈ −6 − 96 ≈ −102 dB (biquadMagnitudeDb floors at −180).
+    const lr4 = crossoverBandMagnitudeDb(0, splits, 4, 4800, SR);
+    const lr8 = crossoverBandMagnitudeDb(0, splits, 8, 4800, SR);
+    expect(lr4).toBeLessThan(-45);
+    expect(lr8).toBeLessThan(lr4 - 30);
+  });
+
+  it("the LR2 skirt runs at 12 dB per octave (with the polarity flip intact)", () => {
+    const splits = [1200];
+    // Magnitude ignores the LR2 HP polarity flip — the flip only restores
+    // the flat SUM, the skirt shape stays a 12 dB/oct lowpass.
+    expect(crossoverBandMagnitudeDb(0, splits, 2, 1200, SR)).toBeCloseTo(-6.02, 2);
+    // 4800 Hz = 2 octaves above: ≈ −6 − 24 ≈ −30 dB.
+    const deep = crossoverBandMagnitudeDb(0, splits, 2, 4800, SR);
+    expect(deep).toBeLessThan(-24);
+    expect(deep).toBeGreaterThan(-40);
+  });
+
+  it("window prediction matches the DSP's soloed band output", () => {
+    // Solo the low band of a 2-band LR4 split and feed a 4 kHz tone: the
+    // measured band gain must land on the curve's prediction.
+    const predicted = crossoverBandMagnitudeDb(0, [800], 4, 4000, SR);
+    const proc = createFxEqProcessor();
+    proc.prepare(SR, 2, BLOCK);
+    proc.loadParameters({
+      bandCount: 2,
+      crossoverFreq2: 800,
+      limiterEnabled: 0,
+      globalMix: 100,
+      "band1.solo": 1,
+    });
+    let acc = 0;
+    let count = 0;
+    for (let i = 0; i < 48; i++) {
+      const ch = [
+        new Float32Array(BLOCK),
+        new Float32Array(BLOCK),
+      ];
+      for (let s = 0; s < BLOCK; s++) {
+        ch[0][s] = 0.5 * Math.sin((2 * Math.PI * 4000 * (i * BLOCK + s)) / SR);
+        ch[1][s] = ch[0][s];
+      }
+      proc.process(ch, BLOCK);
+      if (i >= 16) {
+        let sum = 0;
+        for (let s = 0; s < BLOCK; s++) sum += ch[0][s] * ch[0][s];
+        acc += sum / BLOCK;
+        count++;
+      }
+    }
+    const measuredDb = 20 * Math.log10(Math.sqrt(acc / count) / (0.5 / Math.SQRT2));
+    expect(Math.abs(measuredDb - predicted)).toBeLessThan(2);
   });
 });
 
