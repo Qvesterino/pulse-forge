@@ -5,8 +5,9 @@
 **Produkt:** KYX browser-first beatmaking DAW  
 **Cieľ:** dostať KYX do stavu, v ktorom nový používateľ vytvorí beat, vyberie zvuk, spracuje ho cez pluginy, zrozumiteľne ho zmixuje a bezpečne exportuje bez straty práce, nečakaných level skokov alebo nejasného workflow.
 
-**Reviewed baseline:** current candidate `601eb6c` (`fix: lazily activate fallback
-modulation routes`) on top of `91077da` (`feat: improve preset discovery
+**Reviewed baseline:** current implementation candidate `e8c1ac9` (`fix: harden
+factory preset auditions`) on top of `601eb6c` (`fix: lazily activate fallback
+modulation routes`) and `91077da` (`feat: improve preset discovery
 metadata`) and `d4d974b` (`fix: live-update fallback
 modulation selectors`) on top of `70cd4e9` (`fix: update fallback modulation
 amounts live`) and `326d443` (`fix: bound fallback modulation
@@ -39,10 +40,15 @@ contention with timeout/performance failures in unrelated browser flows, so it
 is diagnostic evidence rather than a green release gate. `91077da` adds a deterministic preset
 catalog metadata layer (role, energy, BPM suitability and provenance/license),
 accessible role/energy filters and malformed-metadata recovery; targeted
-catalog/UI coverage is `17/17`. The
-worktree is clean after the implementation commit. The authoritative full
+catalog/UI coverage is `17/17`. `e8c1ac9` adds a release-facing factory
+audition gate: all `199/199` factory presets render finite, audible and
+unclipped through the same instrument factories as the user preview, with
+adaptive slow-attack audition duration; it also fixes the Drum Synth clap
+source routing and adds explicit sample IDs for all granular/vocal-chop
+factory presets. The implementation commit is clean, but the worktree
+currently contains unrelated uncommitted changes from a parallel agent. The authoritative full
 Vitest baseline remains `236/2320/103`; the post-candidate scorepack regression
-is `4/4`. A clean post-`601eb6c` full browser rerun is still required before
+is `4/4`. A clean post-`e8c1ac9` full browser rerun is still required before
 calling the browser gate green.
 Release approval still waits for the manual device matrix, production deploy
 smoke and the formatting decision.
@@ -334,7 +340,8 @@ Overené príkazy a výsledky:
 | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `npm run typecheck:clean`                                  | PASS                                                                                                                                                                                                                                                                                                                                                       |
 | full Vitest (single-worker authoritative run)              | **PASS — 236 files, 2320 passed, 103 skipped, 2423 total** in 2304.38s; includes the soak-heavy suite and no threshold changes |
-| `npm run build` + worklet buildy + bundle budget           | PASS — current candidate `601eb6c`: entry 941 KB / 995 KB, total JS chunks 1856 KB / 2400 KB, core worklets 98 KB / 120 KB, 357 modules; PWA precache 57 entries / 4045.55 KiB; lazy ranker WASM is 13.6 MB and excluded from the app-shell precache                                                                                                                  |
+| `npm run build` + worklet buildy + bundle budget           | PASS — working-tree build after `e8c1ac9`: entry 943 KB / 995 KB, total JS chunks 1858 KB / 2400 KB, core worklets 98 KB / 120 KB, 359 modules; PWA precache 57 entries / 4047.36 KiB; lazy ranker WASM is 13.6 MB and excluded from the app-shell precache; parallel-agent changes are still unstaged                                                                                                                  |
+| `npm run test:browser:factory-presets`                    | **PASS — 199/199** factory auditions finite, audible and unclipped; adaptive slow-attack preview duration, Drum Synth clap routing and explicit granular/vocal-chop sample IDs are covered                                                                                                                                            |
 | `npm run build:ultina`                                     | PASS — rebuilt `public/ultina-worklet.js`                                                                                                                                                                                                                                                                                                                  |
 | `npm run test:browser`                                     | **POST-CHANGE DIAGNOSTIC — 213/225 under shared-machine contention**; the new held-voice zero-amount activation guard passed (`diff=0.1507`, `early=0.0000`, `late=0.1507`), while unrelated timeout/performance failures prevent a green full-browser gate. Pre-change quiet baseline remains 224/224 on `91077da`; rerun required in a quiet environment                                                                                                                                                                          |
 | `npm run test:browser:production`                          | **PASS** — post-`601eb6c` dist boot, HOUSE template, sequencer, FX rack, shipped worklet assets and ONNX worker smoke (`0.9895/0.9999/1`)                                                                                                                                                                                                                                                                   |
@@ -564,7 +571,9 @@ zahltenia používateľa ďalšími controls.
 scope Preview/Apply/Undo bez návodu; template je iba project data, nie druhý
 audio engine; onboarding nezapisuje neviditeľné zmeny do projektu. Discovery
 metadata/filtering slice je implementovaný v `91077da` a overený targeted
-batchom `17/17`; zostáva obsahová audio QA každého factory preview hitu.
+batchom `17/17`; obsahová audio QA každého factory preview hitu je teraz
+implementovaná a zelená na `199/199` cez
+`npm run test:browser:factory-presets`.
 
 #### P2.4 — Routing templates a collaboration expansion
 
@@ -629,6 +638,7 @@ Spustiť a zaznamenať aktuálny stav pred ďalšími zmenami:
 npm run typecheck:clean
 npm test -- --reporter=dot
 npm run test:browser
+npm run test:browser:factory-presets
 npm run test:browser:production
 npm run build
 npm run format:check
@@ -820,7 +830,7 @@ Používateľ musí vedieť porovnať preset bez toho, aby prišiel o aktuálny 
 
 - [ ] pred ďalším pridávaním presetov odstrániť duplicity a zlé defaulty,
 - [x] doplniť metadata pre use case, mood, energy, key/BPM suitability a source/license status,
-- [ ] skontrolovať clipping, ticho, extrémny output gain a užitočný prvý preview hit,
+- [x] skontrolovať clipping, ticho, extrémny output gain a užitočný prvý preview hit,
 - [x] testovať deterministic factory metadata/output contract a validitu všetkých registry presetov.
 
 Definition of done nie je „viac presetov“, ale rýchlejšie nájdenie správneho zvuku.
@@ -1043,6 +1053,7 @@ Release candidate nesmie byť označený ako hotový, kým neprejde:
 - `npm run typecheck:clean`,
 - celý Vitest test suite bez nových failov,
 - `npm run test:browser` alebo aktuálny browser script,
+- `npm run test:browser:factory-presets` (`199/199` factory auditions),
 - `npm run build` vrátane worklet buildov a bundle budgetov,
 - `npm run format:check` alebo zdokumentovaný presný zoznam existujúcich formatting deviations,
 - produkčný audit bez high/critical vulnerability,
