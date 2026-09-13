@@ -223,8 +223,20 @@ export function FxEqPanel({
   // Crossover split frequencies: crossoverFreq2..bandCount.
   const splits = useMemo(() => {
     const out: number[] = [];
+    let previous = 40;
     for (let i = 2; i <= bandCount; i++) {
-      out.push(params[`crossoverFreq${i}`] ?? schema.defaultParams[`crossoverFreq${i}`] ?? 0);
+      const id = `crossoverFreq${i}`;
+      const def = schema.defById.get(id);
+      const raw = params[id] ?? schema.defaultParams[id] ?? def?.defaultValue ?? 0;
+      // The processor performs this same forward monotonic clamp during
+      // bulk loads. Mirror the effective DSP boundaries here immediately so
+      // a malformed/legacy project cannot show crossed regions or put the
+      // drag hit-test on a line the audio engine never uses.
+      const finite = Number.isFinite(raw) ? raw : (def?.defaultValue ?? 0);
+      const bounded = Math.max(def?.minValue ?? 40, Math.min(def?.maxValue ?? AXIS_MAX_HZ, finite));
+      const effective = Math.max(previous + SPLIT_MIN_GAP_HZ, bounded);
+      out.push(effective);
+      previous = effective;
     }
     return out;
   }, [params, bandCount, schema]);

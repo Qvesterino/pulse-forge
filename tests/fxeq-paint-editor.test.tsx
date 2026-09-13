@@ -23,7 +23,7 @@ const LOG_SPAN = Math.log(20000 / 20);
 const BLOCK = 128;
 const xOf = (freqHz: number): number => (Math.log(freqHz / 20) / LOG_SPAN) * RECT.width;
 
-function fxEqDoc() {
+function fxEqDoc(paramsOverride: Record<string, number> = {}) {
   const doc = createProjectFromTemplate("house");
   const track = doc.tracks.find((t) => t.kind === "instrument")!;
   track.effects = [
@@ -38,14 +38,15 @@ function fxEqDoc() {
         crossoverFreq4: 4000,
         "band1.delayEnabled": 1,
         "band1.modEnabled": 1,
+        ...paramsOverride,
       },
     },
   ];
   return { doc, track };
 }
 
-function mountedPanel(servicesOverride?: Partial<Services>) {
-  const { doc, track } = fxEqDoc();
+function mountedPanel(servicesOverride?: Partial<Services>, paramsOverride?: Record<string, number>) {
+  const { doc, track } = fxEqDoc(paramsOverride);
   const base = mockServices(doc);
   const services = {
     ...base,
@@ -158,10 +159,7 @@ describe("fxeq panel — EQ response overlay math", () => {
     let acc = 0;
     let count = 0;
     for (let i = 0; i < 48; i++) {
-      const ch = [
-        new Float32Array(BLOCK),
-        new Float32Array(BLOCK),
-      ];
+      const ch = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
       for (let s = 0; s < BLOCK; s++) {
         ch[0][s] = 0.5 * Math.sin((2 * Math.PI * 4000 * (i * BLOCK + s)) / SR);
         ch[1][s] = ch[0][s];
@@ -229,6 +227,29 @@ describe("fxeq panel — crossover split drag", () => {
     const next = command!.execute(doc) as ReturnType<typeof fxEqDoc>["doc"];
     const fx = next.tracks.find((t) => t.kind === "instrument")!.effects.find((f) => f.id === "fx-eq");
     expect(fx?.params.crossoverFreq2).toBe(800);
+  });
+
+  it("uses the processor's effective monotonic splits for hit testing", async () => {
+    const { services } = mountedPanel(undefined, {
+      crossoverFreq2: 700,
+      crossoverFreq3: 300,
+      crossoverFreq4: 4000,
+    });
+    const map = await screen.findByRole("img", { name: "PRISM band map" }, { timeout: 10_000 });
+    vi.spyOn(map, "getBoundingClientRect").mockReturnValue(RECT as DOMRect);
+
+    // The raw second split is 300 Hz, but the DSP's monotonic forward pass
+    // makes it 740 Hz (700 + the 40 Hz minimum gap). The UI must grab the
+    // effective line, not the stale raw document coordinate.
+    fireEvent.pointerDown(map, { clientX: xOf(740), pointerId: 1 });
+    fireEvent.pointerMove(map, { clientX: xOf(740), pointerId: 1 });
+    fireEvent.pointerUp(map, { clientX: xOf(740), pointerId: 1 });
+
+    const command = vi
+      .mocked(services.store.execute)
+      .mock.calls.map((call) => call[0] as { label?: string })
+      .find((candidate) => candidate.label === "PRISM crossoverFreq3");
+    expect(command).toBeDefined();
   });
 
   it("a click (no handle grab) still selects the band under the pointer", async () => {
