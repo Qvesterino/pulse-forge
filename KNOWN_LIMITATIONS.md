@@ -152,12 +152,16 @@ the bounded memory footprint of the prepare-time delay reservation:
 - Fallback MORPH route je room-clamped wobble na zachytenom frame páre; worklet posúva pozíciu ±2 páry s wrapom. Semantická (nie bit) parita.
 - Fallback CUTOFF/AMP routes sa po `326d443` kombinujú pred bounded curve, takže
   používajú worklet-kompatibilný CUTOFF rozsah `60–18000 Hz` a AMP floor
-  `max(0.1, 1+mod)`; explicitný negatívny route guard je súčasťou Chromium
-  acceptance `224/224`.
+  `max(0.1, 1+mod)`; explicitný negatívny route guard je súčasťou pre-change
+  Chromium acceptance `224/224`; clean post-`601eb6c` full browser rerun
+  remains open.
 - Destination DETUNE (2) je rezervovaná a neimplementovaná na oboch cestách (worklet ani fallback); UI možnosť je zatiaľ mŕtva.
 - Kontinuálne `MOD A/B AMT`, source/destination selector a `MOD LFO` zápisy
   aktualizujú aj existujúce fallback hlasy (`d4d974b`); transition má krátky
-  5 ms smoothing. Worklet parametre číta per-sample a PRESS zdroj je živý na
+  5 ms smoothing. Nulové route amounts používajú lacný dormant gain/morph
+  graph a pri neskoršom `AMT` zápise sa lazy aktivujú aj na už držanom voice
+  (`601eb6c`); browser timing guard overil nulový skorý rozdiel a počuteľný
+  neskorý rozdiel. Worklet parametre číta per-sample a PRESS zdroj je živý na
   oboch cestách.
 - Rollout je dokončený (analog, bass, keys, pluck, 808, texture, logdrum, spectral, sampler, vocalchop + wavetable). **Granular je zámerne vynechaný** — jeho modulačný príbeh tvoria vlastné POSITION/SCAN/JITTER/RATE parametre a voice-worklet nemá mod routy.
 - PRESS zdroj žije len na nástrojoch s `polyPressure`: na 808 (monofónny), texture a vocalchop zostáva PRESS zdroj na 0, kým ich polyPressure nepridá.

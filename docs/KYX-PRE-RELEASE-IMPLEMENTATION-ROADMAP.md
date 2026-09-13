@@ -5,8 +5,9 @@
 **Produkt:** KYX browser-first beatmaking DAW  
 **Cieľ:** dostať KYX do stavu, v ktorom nový používateľ vytvorí beat, vyberie zvuk, spracuje ho cez pluginy, zrozumiteľne ho zmixuje a bezpečne exportuje bez straty práce, nečakaných level skokov alebo nejasného workflow.
 
-**Reviewed baseline:** current candidate `91077da` (`feat: improve preset discovery
-metadata`) on top of `d4d974b` (`fix: live-update fallback
+**Reviewed baseline:** current candidate `601eb6c` (`fix: lazily activate fallback
+modulation routes`) on top of `91077da` (`feat: improve preset discovery
+metadata`) and `d4d974b` (`fix: live-update fallback
 modulation selectors`) on top of `70cd4e9` (`fix: update fallback modulation
 amounts live`) and `326d443` (`fix: bound fallback modulation
 routes`) and `954739e` (`fix: make sparse instrument presets deterministic`)
@@ -29,14 +30,20 @@ main-thread modulation fallback now combines CUTOFF/AMP routes before applying
 the worklet-compatible cutoff bounds and AMP floor in `326d443`; `70cd4e9`
 forwards scheduled continuous MOD A/B amount writes into already-playing
 fallback voices and `d4d974b` extends that forwarding to source, destination and
-LFO-rate selectors. Negative-route and live matrix browser guards are included
-in the current `224/224` acceptance. `91077da` adds a deterministic preset
+LFO-rate selectors. `601eb6c` adds a cheap dormant amp/morph graph for zero-
+amount routes and lazy activation when a later live `AMT` write reaches a held
+voice; its timing guard passed with `diff=0.1507`, `early=0.0000`,
+`late=0.1507`. The quiet pre-change Chromium baseline is `224/224` on
+`91077da`; the first post-change full run was `213/225` under shared-machine
+contention with timeout/performance failures in unrelated browser flows, so it
+is diagnostic evidence rather than a green release gate. `91077da` adds a deterministic preset
 catalog metadata layer (role, energy, BPM suitability and provenance/license),
 accessible role/energy filters and malformed-metadata recovery; targeted
 catalog/UI coverage is `17/17`. The
-worktree is clean. The authoritative full
-Vitest baseline and current Chromium gates are green; the post-candidate
-scorepack regression is `4/4`.
+worktree is clean after the implementation commit. The authoritative full
+Vitest baseline remains `236/2320/103`; the post-candidate scorepack regression
+is `4/4`. A clean post-`601eb6c` full browser rerun is still required before
+calling the browser gate green.
 Release approval still waits for the manual device matrix, production deploy
 smoke and the formatting decision.
 
@@ -113,7 +120,9 @@ completion kontraktom, nie otvoreným návrhom na druhú session.
    drag, overí plugin undo/redo, morph, collapse/expand a reload persistence;
    samostatný browser suite zároveň prešiel real-worklet DSP, PDC, metery,
     sidechain render, export determinism a zero-error flow. Latest quiet
-    Chromium beh prešiel `224/224`; predchádzajúci loaded run mal jeden
+    Pre-change Chromium beh na `91077da` prešiel `224/224`; post-`601eb6c`
+    full run dosiahol `213/225` pod shared-machine contention a potrebuje
+    quiet rerun; predchádzajúci loaded run mal jeden
     `.preset-browser` bootstrap timeout, ktorý sa pri rerun-e zopakovaním
     nepotvrdil. Zostávajú full Vitest, manuálny device a deploy gates.
 
@@ -153,7 +162,7 @@ musí dostať vlastného ownera, test a rozhodnutie.
 | Instant Jam transport boundary + follower scheduler | `src/collab/transportSync.ts`, `src/collab/CollaborationProvider.ts`, `src/services.ts`, `tests/collab-transport.test.ts`                                                                                                                                                                                                                     | collab/audio-runtime owner; ochrana pred malformed awareness payloadom a oprava remote play lifecycle | transport `10/10`, collab subset `79/79`, typecheck                                                                                                                | **LAND / retain** schema guard aj transition testy                                                                 |
 | MPE compatibility fallback                          | `src/ui/MpeIndicator.tsx`, `tests/ui/MpeIndicator.test.tsx`                                                                                                                                                                                                                                                                                   | MIDI/UI owner; staršia embedded facade nesmie zhodiť celý MIDI panel                                  | targeted MPE/MIDI `6/6`                                                                                                                                            | **LAND / retain** inactive fallback                                                                                |
 | Biquad non-finite state recovery                    | upstream `D:/VocalForge_DAW/plugins/fxeq/src/dsp/biquad.ts`, upstream `D:/VocalForge_DAW/plugins/ozvena/src/dsp/biquad.ts`, vendored `src/effects/fxeq-core/dsp/biquad.ts`, vendored `src/effects/ozvena-core/dsp/biquad.ts`, generated `public/fxeq-worklet.js`, `public/ozvena-worklet.js`, `tests/fxeq-ozvena-biquad-hardening.test.ts`    | DSP/audio owner; jeden chybný frame nesmie otráviť rekurzívny filter na zvyšok session                | host regression `4/4`; upstream guard + vendor/worklet rebuild                                                                                                     | **LAND / retain** upstream→vendor process, needitovať vendored core ako nový source-of-truth                       |
-| Browser timing measurement + release evidence       | `src/browser-checks.ts`, `scripts/verify-browser.mjs`, `AGENT_WORK_LOG.md`, `RELEASE_READINESS_REPORT.md`, tento roadmap                                                                                                                                                                                                                      | current quiet Chromium `224/224`; all audio/DSP/FXEQ checks pass including latency `119/119`, PRISM determinism `maxDiff=4.95e-6`, multi-instance CPU `24.3%` per instance and template performance avg `3579ms` / worst `7374ms`; ranker missing/offline, hash-mismatch and timeout fallback probe passes; production browser smoke PASS; build/preflight/server smoke pass; full Vitest authoritative baseline `236/2320/103` remains green | **OWNER GATES REMAIN** manual device/deploy/formatting                                                             |
+| Browser timing measurement + release evidence       | `src/browser-checks.ts`, `scripts/verify-browser.mjs`, `AGENT_WORK_LOG.md`, `RELEASE_READINESS_REPORT.md`, tento roadmap                                                                                                                                                                                                                      | pre-change quiet Chromium `224/224` on `91077da`; post-`601eb6c` diagnostic full run `213/225` under shared-machine contention; new zero-amount held-voice modulation guard passed `diff=0.1507`, `early=0.0000`, `late=0.1507`; latency `119/119`, PRISM determinism, multi-instance CPU and template performance remain covered by the prior quiet baseline; production browser smoke PASS; build/preflight/server smoke pass; full Vitest authoritative baseline `236/2320/103` remains green | **QUIET POST-CHANGE RERUN + OWNER GATES REMAIN** manual device/deploy/formatting                                                             |
 | Ultina contract/DSP source-of-truth reconciliation  | `D:/VocalForge_DAW/plugins/ultina/src/contracts/parameter{Ids,Schema}.ts`, `plugins/ultina/src/dsp/modules/{eqModule,exciterModule}.ts`, vendored mirrors, `public/ultina-worklet.js`, `tests/ultina-contract-params.test.ts` | VLYX/DSP owner; Pre-Emphasis is now live at values 1..3, transient/sustain EQ is isolated, and future vendor syncs cannot overwrite dirty hardening silently | host contract `8/8`; upstream affected `105/105`; local source/vendor equality after mechanical header transform; worklet rebuild; focused battery `137/137` | **COMMITTED LOCALLY IN `173f5ce`; upstream source/test committed in `D:/VocalForge_DAW` as `c0a549d`** |
 | Formatting-only test diffs                          | `tests/ultina-hardening2.test.ts`, `tests/ultina-worklet-entry.test.ts`                                                                                                                                                                                                                                                                       | QA hygiene owner; iba Prettier layout, žiadna runtime zmena                                           | diff je syntakticky/semanticky formatting-only; Ultina battery `55/55` + `26/26`                                                                                   | **LAND iba ako súčasť výslovne reviewed batchu**; inak izolovať do samostatného formatting commitu                 |
 
@@ -311,9 +320,11 @@ release-safe:
   dopĺňa effective split normalization pre canvas/hit-test. `699c8a3` dopĺňa
   `crossoverFreq6` až do DSP/worklet/schema surface a odstraňuje dead-band/
   crossed-split stav v 6-band defaultoch. Targeted UI/curve test je teraz
-  `18/18`; current quiet browser acceptance je `224/224` na `91077da` a full
-  Vitest je `236/2320/103`. Current implementation gates sú zelené;
-  zostávajú owner/manual/deploy/formatting rozhodnutia;
+  `18/18`; quiet pre-change browser baseline je `224/224` na `91077da`,
+  post-`601eb6c` diagnostický full run je `213/225` pod contention. Full
+  Vitest baseline je `236/2320/103`; nový modulation timing guard je zelený,
+  ale čistý post-change browser rerun ešte treba. Zostávajú
+  owner/manual/deploy/formatting rozhodnutia;
 - agent nesmie tieto súbory prepisovať, squasovať ani vyhadzovať bez toho, aby
   najprv zaznamenal vlastníka zmeny a dôvod rozhodnutia v completion reporte.
 
@@ -323,10 +334,10 @@ Overené príkazy a výsledky:
 | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `npm run typecheck:clean`                                  | PASS                                                                                                                                                                                                                                                                                                                                                       |
 | full Vitest (single-worker authoritative run)              | **PASS — 236 files, 2320 passed, 103 skipped, 2423 total** in 2304.38s; includes the soak-heavy suite and no threshold changes |
-| `npm run build` + worklet buildy + bundle budget           | PASS — current candidate `91077da`: entry 941 KB / 995 KB, total JS chunks 1855 KB / 2400 KB, core worklets 98 KB / 120 KB, 357 modules; PWA precache 57 entries / 4044.76 KiB; lazy ranker WASM is 13.6 MB and excluded from the app-shell precache                                                                                                                  |
+| `npm run build` + worklet buildy + bundle budget           | PASS — current candidate `601eb6c`: entry 941 KB / 995 KB, total JS chunks 1856 KB / 2400 KB, core worklets 98 KB / 120 KB, 357 modules; PWA precache 57 entries / 4045.55 KiB; lazy ranker WASM is 13.6 MB and excluded from the app-shell precache                                                                                                                  |
 | `npm run build:ultina`                                     | PASS — rebuilt `public/ultina-worklet.js`                                                                                                                                                                                                                                                                                                                  |
-| `npm run test:browser`                                     | **PASS — quiet rerun 224/224 Chromium on `91077da`**; all audio/DSP/FXEQ checks pass, including negative AMP/CUTOFF and held-voice MOD amount/source/destination/LFO-rate automation guards; UI bootstrap, PRISM workflow, collab, embed/share and touch pass; no threshold change                                                                                                                                                                          |
-| `npm run test:browser:production`                          | **PASS** — dist boot, HOUSE template, sequencer, FX rack, shipped worklet assets and ONNX worker smoke (`0.9895/0.9999/1`)                                                                                                                                                                                                                                                                   |
+| `npm run test:browser`                                     | **POST-CHANGE DIAGNOSTIC — 213/225 under shared-machine contention**; the new held-voice zero-amount activation guard passed (`diff=0.1507`, `early=0.0000`, `late=0.1507`), while unrelated timeout/performance failures prevent a green full-browser gate. Pre-change quiet baseline remains 224/224 on `91077da`; rerun required in a quiet environment                                                                                                                                                                          |
+| `npm run test:browser:production`                          | **PASS** — post-`601eb6c` dist boot, HOUSE template, sequencer, FX rack, shipped worklet assets and ONNX worker smoke (`0.9895/0.9999/1`)                                                                                                                                                                                                                                                                   |
 | scorepack targeted regression after export fixes          | **PASS — 4/4**; resampled cue frame count preserves source duration at target sample rate; pre-aborted export and optional missing cue remain cancel/missing-asset safe; real render/decode failures are rethrown                                                                                                                                                                                                    |
 | Post-`cb1bde7` hardening regression batch                  | PASS — 48/48 targeted tests + 300 s PRISM soak (6.0 MB heap growth, −0.003 dB drift, zero non-finite samples, zero tail peak); current full suite is also green                                                                                                                                                                      |
 | `npm run release:preflight`                                | **PASS** — explicit `NODE_ENV=production`, production origin, KYX artifacts and shipped-brand scan                                                                                                                                                                                                                                                                                                   |
@@ -530,9 +541,12 @@ CUTOFF/AMP tak, že najprv sčíta obe aktívne route a potom aplikuje rovnaké
 bezpečnostné hranice ako `wtvoice` worklet (CUTOFF `60–18000 Hz`, AMP floor
 `0.1`). `70cd4e9` dopĺňa scheduled forwarding kontinuálnych `modAAmt`/
 `modBAmt` zmien do amount gainov už bežiacich fallback hlasov; `d4d974b`
-dopĺňa source/destination selector a LFO-rate forwarding. Browser suite
-obsahuje explicitné negatívne a live matrix guardy; aktuálny Chromium
-acceptance je `224/224`.
+dopĺňa source/destination selector a LFO-rate forwarding. `601eb6c` pridáva
+lacný dormant amp/morph graph pre nulové route amounts a lazy activation pri
+neskoršom živom `AMT` zápise na už držanom voice; nový timing guard prešiel s
+`diff=0.1507`, `early=0.0000`, `late=0.1507`. Predchádzajúci quiet Chromium
+baseline bol `224/224`; post-change full run `213/225` bol pod contention a
+zostáva diagnostický, nie release-green dôkaz.
 DETUNE zostáva zámerne rezervovaný a
 worklet/fallback rozdiely pri live parameter update sú stále dokumentované v
 `KNOWN_LIMITATIONS.md`.
