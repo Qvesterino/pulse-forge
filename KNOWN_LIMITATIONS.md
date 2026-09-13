@@ -185,11 +185,17 @@ the bounded memory footprint of the prepare-time delay reservation:
 
 ## Kontrolný audit ultina-core (2026-09-13, druhý priechod)
 
-- **DSP-inertné schémové parametre (vendor-rezervované):** `exciter.preEmphasisMode`
-  (enum knob VIDITEĽNÝ v panele), `comp.autoLearnThreshold`, `transient.crossoverLearn`,
-  `clipper.crossoverLearn` nikto v DSP nečíta — ani upstream VocalForge (overené grepom).
-  Sú to rezervy vendor schémy, nie fork divergencia; implementácia patrí upstreamu
-  (menila by zvuk). Panel knob Pre-Emphasis teda kým nič nespraví — nezamieňať za bug.
+- **DSP-inertné schémové parametre (vendor-rezervované):**
+  `comp.autoLearnThreshold`, `transient.crossoverLearn` a
+  `clipper.crossoverLearn` nikto v DSP nečíta — ani upstream VocalForge
+  (overené grepom). Sú to rezervy vendor schémy; ich implementácia patrí
+  samostatnému upstream DSP návrhu.
+- **Pre-Emphasis už nie je inertný:** `exciter.preEmphasisMode` je od
+  `173f5ce` implementovaný v upstream zrkadle aj vo vendored worklete. Hodnota
+  0 zostáva `flat`/no-op kvôli spätnej kompatibilite, hodnoty 1..3 sú zámerne
+  počuteľné a menia existujúce presety, ktoré mali uloženú nenulovú hodnotu.
+  Pred ďalším vendor syncom treba ešte zaznamenať matching upstream commit v
+  `D:/VocalForge_DAW`; lokálny vendor script dirty source defaultne odmietne.
 - **Zámerne NEopravené (produktové rozhodnutia, nie defekty):** manuálny dotyček parametra
   nepreberá už-DUE automation eventy v rovnakom quantume (preberie až budúce; samo sa
   opraví ďalším dragom — Web Audio "scheduled event wins" flavor); EQ LEARN APPLY robí
