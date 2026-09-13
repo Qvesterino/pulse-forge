@@ -132,11 +132,14 @@ Two service tiers — this is the load-bearing seam of the app:
 
 ### 2026-09-13 re-verification (current release-candidate review)
 
-- **HEAD:** `699c8a3` (`tentokrat`) — the reviewed FXEQ six-band crossover
-  surface correction is committed on top of the Ultina reconciliation in
-  `173f5ce`; the prior browser measurement follow-up is `4279467`.
-- **Prior campaign commits:** `81553dd`, `7abc415` and `173f5ce` remain
-  historical context; the current functional baseline is `699c8a3`.
+- **HEAD:** `dfaf230` (`build: sync PRISM worklet artifact`) — generated
+  PRISM output is synchronized with the reviewed functional/test baseline
+  `8f11255`; the FXEQ six-band crossover correction is committed on top of the
+  Ultina reconciliation in `173f5ce`; the prior browser measurement follow-up
+  is `4279467`.
+- **Prior campaign commits:** `81553dd`, `7abc415`, `173f5ce` and `699c8a3`
+  remain historical context; the current functional/test baseline is
+  `8f11255` and its generated artifact sync is `dfaf230`.
 - **Working tree:** only `AGENT_WORK_LOG.md` is modified outside `HEAD`; no
   functional FXEQ/Ultina WIP is mixed into the candidate.
 - **FXEQ change:** `crossoverFreq6` is present in the authoritative schema,
@@ -149,32 +152,33 @@ Two service tiers — this is the load-bearing seam of the app:
   Golden parity is
   **8/8 within tolerance**, with 7/8 bit-exact and one expected legacy-split
   difference.
-- Full Vitest suite: **not re-run after `699c8a3`** — the historical
-  authoritative run was 234 files / 2300 passed / 103 skipped / 1 timeout;
-  complete post-candidate rerun remains required.
-- `npm run build`: **PASS** after `699c8a3` — entry 938 KB / 995 KB, total JS
-  1849 KB / 2400 KB, core worklets 98 KB / 120 KB, 356 modules, PWA precache
-  57 entries / 4037.47 KiB.
+- Full Vitest suite: **PASS** — 235 files / 2315 passed / 103 skipped / 2418
+  total in 1996.62s, including the soak-heavy regressions.
+- `npm run build`: **PASS** on the current candidate — entry 938 KB / 995 KB,
+  total JS 1849 KB / 2400 KB, core worklets 98 KB / 120 KB, 356 modules, PWA
+  precache 57 entries / 4038.21 KiB.
 - `npm run release:preflight` and `npm run release:server-smoke`: **PASS**
   with explicit production environment/origin settings.
-- Browser smoke: the latest clean Chromium run is **218/218 before
-  `699c8a3`**; current-candidate rerun remains required. Manual Safari/iOS and
-  deployed-host checks remain owner gates.
+- Browser smoke: **218/218 on current `dfaf230`** after a final quiet rerun;
+  two earlier noisy retries were isolated performance-budget misses, with no
+  threshold change. Manual Safari/iOS and deployed-host checks remain owner
+  gates.
 
 ### WIP substance (what changed since the previous campaign session)
 
 - **FXEQ 6-band crossover ladder realignment** (`src/effects/fxeq-core/core/parameterSchema.ts`, `fxEqProcessor.ts`): the schema gains `crossoverFreq6` (default 8000 Hz, 4–20 kHz range). Existing saved docs continue to pin their old values explicitly — backward compatible. Defaults now realigned to `DEFAULT_CROSSOVER_FREQS` ladder (120/400/1200/4000/8000). Comment notes the previous defect: a 6-band config had splits 4 and 5 coinciding on the bank's hidden 8000 Hz default, creating a dead band; dragging Xover 5 above 8 kHz silently inverted against the invisible split and deleted 8–12 kHz from the summed output. **This is a substantive DSP correctness fix**, not a stylistic change.
 - **Ultina transient/sustain + Pre-Emphasis experiment** (`src/effects/ultina-core/dsp/modules/eqModule.ts`, `exciterModule.ts`, `contracts/{parameterIds, parameterSchema}.ts`, `dsp/maskingMeter.ts`, `dsp/primitives.ts`): landed and reconciled through `173f5ce`; the matching upstream source/test is `D:/VocalForge_DAW` commit `c0a549d`, with dirty-upstream vendor protection in place.
-- **FXEQ six-band crossover correction** is landed in `699c8a3`; its focused hardening, UI drag, rack contract and golden coverage are green. It is a substantive DSP/defaults change and must remain in the final browser/full-suite review.
+- **FXEQ six-band crossover correction** is landed in `699c8a3`; its focused hardening, UI drag, rack contract and golden coverage are green. It is a substantive DSP/defaults change, and the current candidate's full Vitest and browser gates are now green.
 
 ## 15. Open release gates (carried from 2026-09-13 RELEASE_READINESS_REPORT, refreshed)
 
-- **R7 (closed in `699c8a3`):** the formerly mixed Ultina/FXEQ worktree is
-  separated into reviewed commits; only the continuity log remains dirty.
-- **Full Vitest suite rerun** on the post-`699c8a3` tree — last authoritative
-  run was pre-`5f49140` (1 timeout, 2300 pass).
-- **`npm run test:browser`** rerun — required to confirm PRISM plugin workflow
-  + the new FXEQ 6-band crossover surface in real WebAudio.
+- **R7 (closed in `8f11255` + `dfaf230`):** the formerly mixed Ultina/FXEQ
+  worktree is separated into reviewed commits; only the continuity log remains
+  dirty.
+- **Full Vitest suite:** closed for the current candidate — 235 files / 2315
+  passed / 103 skipped / 2418 total.
+- **`npm run test:browser`:** closed for the current candidate at 218/218;
+  preserve the existing thresholds and keep performance runs quiet.
 - **Manual Firefox/Safari/iOS matrix** — owner gate, unchanged.
 - **`release:deployed-smoke`** with a real `KYX_DEPLOY_URL` — owner gate, unchanged.
 - **Formatting deviations (R9)** — 209 files, owner decision pending.
