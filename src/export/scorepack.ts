@@ -25,6 +25,13 @@ export interface ScorepackOptions {
   fxeqRenderQuality?: boolean;
 }
 
+class MissingCueAssetError extends Error {
+  constructor(assetId: string) {
+    super("Asset " + assetId + " not found in bank");
+    this.name = "MissingCueAssetError";
+  }
+}
+
 export async function buildScorepack(
   doc: ProjectDocument,
   bank: SampleBank,
@@ -84,12 +91,12 @@ export async function buildScorepack(
         data: new Uint8Array(encodeWav(cueBuffer, 24)),
       });
     } catch (error) {
-      // A missing cue is optional, but cancellation is a user intent and
-      // must escape this best-effort asset branch. Swallowing AbortError here
-      // would make a cancelled scorepack continue through every manifest and
-      // ZIP step before the next outer checkpoint notices it.
+      // A missing cue is optional, but cancellation and a real render failure
+      // are not. Swallowing either here would make a cancelled or incomplete
+      // scorepack look successful. Only the explicit missing-asset sentinel is
+      // best-effort.
       if (isAbortError(error)) throw error;
-      // Skip missing assets.
+      if (!(error instanceof MissingCueAssetError)) throw error;
     }
   }
 
@@ -115,7 +122,7 @@ function throwIfAborted(signal?: AbortSignal): void {
 
 async function renderCueAsset(assetId: string, bank: SampleBank, sampleRate: number): Promise<AudioBuffer> {
   const buf = bank.get(assetId);
-  if (!buf) throw new Error("Asset " + assetId + " not found in bank");
+  if (!buf) throw new MissingCueAssetError(assetId);
   if (buf.sampleRate === sampleRate) return buf;
   // `buf.length` is a frame count at the SOURCE rate. Reusing it at the
   // target rate changes the cue duration whenever the rates differ (and can
@@ -134,7 +141,10 @@ export function resampledCueFrameCount(source: Pick<AudioBuffer, "duration">, sa
 }
 
 function isAbortError(error: unknown): boolean {
-  return error instanceof DOMException && error.name === "AbortError";
+  return (
+    (error instanceof DOMException && error.name === "AbortError") ||
+    (typeof error === "object" && error !== null && (error as { name?: unknown }).name === "AbortError")
+  );
 }
 
 function encodeUtf8(str: string): Uint8Array {
