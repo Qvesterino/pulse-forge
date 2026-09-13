@@ -1,6 +1,6 @@
 import { EFFECT_DEFS, EFFECT_ORDER, defaultParamsOf } from "./effects/registry";
 import { INSTRUMENT_DEFS, INSTRUMENT_ORDER, defaultInstrumentParams } from "./instruments/registry";
-import { generateFactoryBank, RR_VARIATIONS } from "./sample-library/factory";
+import { generateFactoryBank, RR_VARIATIONS, type SampleBank } from "./sample-library/factory";
 import { CURATED_SAMPLES, loadCuratedLayer } from "./sample-library/curated";
 import { normalizeIntent } from "./intent/normalize";
 import { planGeneration } from "./intent/plan";
@@ -29,10 +29,12 @@ import { createDrumTrackModel, createGroupTrackModel } from "./project-model/sch
 import { encodeMp3 } from "./export/mp3";
 import { pickVideoMimeType, recordVideo } from "./export/video";
 import type { DrumTrack, EffectType, InstrumentTrack, ProjectDocument } from "./project-model/types";
+import type { InstrumentRuntime } from "./instruments/types";
 import { generatePattern } from "./ai/generator";
 import { canonicalizePattern, contentHash } from "./ai/evaluation";
 import { inspectPatternInvariants } from "./ai/invariants";
 import { autoMapVelocityLayers } from "./samples/autoMap";
+import { measurePreviewAudio, passesPreviewAudio, previewNoteDuration } from "./presets/audioQuality";
 
 export interface CheckResult {
   name: string;
@@ -94,6 +96,74 @@ async function renderThrough(type: EffectType, paramsOverride: Record<string, nu
   return buffer.getChannelData(0);
 }
 
+/**
+ * Render every factory preset through the same instrument factories used by
+ * AudioEngine.previewInstrumentPreset. This is a content gate, not a musical
+ * preference score: each audition must produce finite, audible, headroom-
+ * controlled audio without a sustained full-scale run.
+ */
+export async function auditFactoryPresetAudio(bank: SampleBank): Promise<CheckResult> {
+  const failures: string[] = [];
+  let rendered = 0;
+
+  for (const preset of FACTORY_PRESETS) {
+    const track: InstrumentTrack = {
+      id: `factory-preview-${preset.id}`,
+      kind: "instrument",
+      instrument: preset.instrument,
+      name: preset.name,
+      gain: 1,
+      pan: 0,
+      mute: false,
+      solo: false,
+      sampleId: preset.sampleId ?? null,
+      params: { ...defaultInstrumentParams(preset.instrument), ...preset.params },
+      effects: [],
+      sends: {},
+      presetId: preset.id,
+    };
+    const durationSec = previewNoteDuration(track.params);
+    const ctx = new OfflineAudioContext(2, Math.ceil(SR * (durationSec + 0.25)), SR);
+    const previewGain = ctx.createGain();
+    previewGain.gain.value = 0.78;
+    let runtime: InstrumentRuntime | null = null;
+
+    try {
+      runtime = INSTRUMENT_DEFS[preset.instrument].factory(ctx, track, {
+        bpm: 124,
+        getSample: (id) => bank.get(id),
+      });
+      runtime.output.connect(previewGain).connect(ctx.destination);
+      runtime.noteOn(60, 0.82, 0.01, durationSec);
+      const buffer = await ctx.startRendering();
+      const metrics = measurePreviewAudio(
+        Array.from({ length: buffer.numberOfChannels }, (_, channel) => buffer.getChannelData(channel)),
+      );
+      rendered++;
+      if (!passesPreviewAudio(metrics)) {
+        failures.push(
+          `${preset.id}: finite=${metrics.finite} peak=${metrics.peak.toFixed(4)} rms=${metrics.rms.toFixed(4)} clipped=${(
+            metrics.clippedRatio * 100
+          ).toFixed(3)}%`,
+        );
+      }
+    } catch (error) {
+      failures.push(`${preset.id}: ${String(error)}`);
+    } finally {
+      runtime?.dispose();
+    }
+  }
+
+  return {
+    name: "presets: every factory audition is finite, audible and unclipped",
+    ok: failures.length === 0 && rendered === FACTORY_PRESETS.length,
+    message:
+      failures.length === 0
+        ? `passed=${rendered}/${FACTORY_PRESETS.length}`
+        : `passed=${rendered}/${FACTORY_PRESETS.length} failures=${failures.slice(0, 12).join(" | ")}`,
+  };
+}
+
 export async function runChecks(): Promise<CheckResult[]> {
   const results: CheckResult[] = [];
   const check = (name: string, ok: boolean, message = "") =>
@@ -114,6 +184,7 @@ export async function runChecks(): Promise<CheckResult[]> {
   );
   const silentAssets = bank.entries().filter(([, buf]) => peakOf(buf.getChannelData(0)) < 0.001);
   check("factory buffers are audible", silentAssets.length === 0, silentAssets.map(([id]) => id).join(","));
+  results.push(await auditFactoryPresetAudio(bank));
 
   {
     // Curated factory layer (VISION §5): the seeds in public/samples must
@@ -4017,10 +4088,8 @@ export async function runChecks(): Promise<CheckResult[]> {
       modADst: 1,
       modAAmt: 0.1,
     });
-    const liveModMoved = await renderKind(
-      "analog",
-      { modASrc: 0, modADst: 1, modAAmt: 0.1 },
-      (rt) => rt.setParameterAt!("modAAmt", 0.9, 0.35),
+    const liveModMoved = await renderKind("analog", { modASrc: 0, modADst: 1, modAAmt: 0.1 }, (rt) =>
+      rt.setParameterAt!("modAAmt", 0.9, 0.35),
     );
     const liveModDiff = maxDiff(liveModBase, liveModMoved);
     check(
@@ -4029,10 +4098,8 @@ export async function runChecks(): Promise<CheckResult[]> {
       `diff=${liveModDiff.toFixed(4)}`,
     );
     const dormantModBase = await renderKind("analog", { modASrc: 0, modADst: 1, modAAmt: 0 });
-    const dormantModActivated = await renderKind(
-      "analog",
-      { modASrc: 0, modADst: 1, modAAmt: 0 },
-      (rt) => rt.setParameterAt!("modAAmt", 0.9, 0.35),
+    const dormantModActivated = await renderKind("analog", { modASrc: 0, modADst: 1, modAAmt: 0 }, (rt) =>
+      rt.setParameterAt!("modAAmt", 0.9, 0.35),
     );
     const dormantModDiff = maxDiff(dormantModBase, dormantModActivated);
     const earlyLimit = Math.floor(0.3 * SR);
@@ -4049,10 +4116,8 @@ export async function runChecks(): Promise<CheckResult[]> {
       `diff=${dormantModDiff.toFixed(4)} early=${earlyDormantDiff.toFixed(4)} late=${lateDormantDiff.toFixed(4)}`,
     );
     const liveSourceBase = await renderKind("analog", { modASrc: 0, modADst: 1, modAAmt: 0.8 });
-    const liveSourceMoved = await renderKind(
-      "analog",
-      { modASrc: 0, modADst: 1, modAAmt: 0.8 },
-      (rt) => rt.setParameterAt!("modASrc", 1, 0.35),
+    const liveSourceMoved = await renderKind("analog", { modASrc: 0, modADst: 1, modAAmt: 0.8 }, (rt) =>
+      rt.setParameterAt!("modASrc", 1, 0.35),
     );
     const liveSourceDiff = maxDiff(liveSourceBase, liveSourceMoved);
     check(
@@ -4061,10 +4126,8 @@ export async function runChecks(): Promise<CheckResult[]> {
       `diff=${liveSourceDiff.toFixed(4)}`,
     );
     const liveDestinationBase = await renderKind("analog", { modASrc: 0, modADst: 1, modAAmt: 0.8 });
-    const liveDestinationMoved = await renderKind(
-      "analog",
-      { modASrc: 0, modADst: 1, modAAmt: 0.8 },
-      (rt) => rt.setParameterAt!("modADst", 3, 0.35),
+    const liveDestinationMoved = await renderKind("analog", { modASrc: 0, modADst: 1, modAAmt: 0.8 }, (rt) =>
+      rt.setParameterAt!("modADst", 3, 0.35),
     );
     const liveDestinationDiff = maxDiff(liveDestinationBase, liveDestinationMoved);
     check(
@@ -4073,10 +4136,8 @@ export async function runChecks(): Promise<CheckResult[]> {
       `diff=${liveDestinationDiff.toFixed(4)}`,
     );
     const liveLfoBase = await renderKind("analog", { modASrc: 1, modADst: 1, modAAmt: 0.8, modLfoRate: 1 });
-    const liveLfoMoved = await renderKind(
-      "analog",
-      { modASrc: 1, modADst: 1, modAAmt: 0.8, modLfoRate: 1 },
-      (rt) => rt.setParameterAt!("modLfoRate", 8, 0.35),
+    const liveLfoMoved = await renderKind("analog", { modASrc: 1, modADst: 1, modAAmt: 0.8, modLfoRate: 1 }, (rt) =>
+      rt.setParameterAt!("modLfoRate", 8, 0.35),
     );
     const liveLfoDiff = maxDiff(liveLfoBase, liveLfoMoved);
     check(

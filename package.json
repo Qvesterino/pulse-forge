@@ -13,6 +13,7 @@
     "ai:baseline:browser": "node scripts/ai-baseline-browser.mjs",
     "ai:performance": "vite-node scripts/ai-performance.mts",
     "test:browser": "node scripts/verify-browser.mjs",
+    "test:browser:factory-presets": "node scripts/verify-factory-presets.mjs",
     "curated:seeds": "node scripts/render-curated-seeds.mjs",
     "ranker:train": "vite-node scripts/generate-intent-ranker-dataset.mts && python scripts/train-intent-ranker.py && node scripts/validate-intent-ranker.mjs",
     "ranker:ort-sync": "node scripts/sync-ort-assets.mjs",

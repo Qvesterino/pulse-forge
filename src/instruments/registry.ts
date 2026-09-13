@@ -4754,10 +4754,10 @@ const drumsynth: InstrumentDefinition = {
           g.gain.setValueAtTime(0.75, when + 0.023);
           g.gain.exponentialRampToValueAtTime(0.0001, when + 0.033);
           g.gain.setTargetAtTime(0.0001, when + 0.033, (decay * (0.6 + body * 0.8)) / 3);
-          bp.connect(g).connect(noteGain);
           const src = ctx.createBufferSource();
           src.buffer = noise;
           src.loop = true;
+          src.connect(bp).connect(g).connect(noteGain);
           src.start(when);
           src.stop(stopTime);
           srcs.push(src);

@@ -19,6 +19,7 @@ import type { EffectRuntime } from "../effects/types";
 import { clampInstrumentParam, INSTRUMENT_DEFS } from "../instruments/registry";
 import type { InstrumentRuntime } from "../instruments/types";
 import type { InstrumentPreset } from "../presets/types";
+import { previewCleanupDelayMs, previewNoteDuration } from "../presets/audioQuality";
 import { clampTargetValue, targetOwner, targetParamDef } from "../project-model/targets";
 import {
   ensureWorkletsForDoc,
@@ -3503,7 +3504,7 @@ export class AudioEngine {
 
     const gain = ctx.createGain();
     const when = ctx.currentTime + 0.01;
-    const durationSec = 0.65;
+    const durationSec = previewNoteDuration(params);
     // Keep audition headroom independent from the track's current mixer gain.
     gain.gain.setValueAtTime(0.78, when);
     runtime.output.connect(gain).connect(master);
@@ -3518,7 +3519,10 @@ export class AudioEngine {
     }
 
     // Give envelopes a short tail before disposing the temporary runtime.
-    voice.timer = setTimeout(() => this.disposeInstrumentPreviewVoice(voice), 1_400);
+    voice.timer = setTimeout(
+      () => this.disposeInstrumentPreviewVoice(voice),
+      previewCleanupDelayMs(params, durationSec),
+    );
   }
 
   private disposeInstrumentPreviewVoice(voice: InstrumentPreviewVoice): void {
