@@ -81,18 +81,18 @@ describe("browser compatibility — feature detection", () => {
     expect(src).toMatch(/!\s*ctx\??\.audioWorklet/);
   });
 
-  it("AudioEngine useContext() and ensureContext() only attach onstatechange when supported", () => {
+  it("AudioEngine's lifecycle path only attaches onstatechange when supported", () => {
     // Safari / iOS older revisions did not expose `onstatechange` as
     // a settable property (only as an event target via addEventListener).
-    // The fix in useContext / ensureContext checks `typeof
-    // (ctx).onstatechange !== "undefined"` before assigning, so the
-    // engine is forward- and backward-compatible without a user-agent
-    // sniff.
+    // The fix in useContext checks `typeof (ctx).onstatechange !==
+    // "undefined"` before assigning. ensureContext routes new and recovered
+    // contexts through useContext(), so the guard has one source of truth and
+    // remains forward- and backward-compatible without a user-agent sniff.
     const src = readSrc(AUDIO_ENGINE_PATH);
     const useContext = src.slice(src.indexOf("useContext("));
     const ensureContext = src.slice(src.indexOf("ensureContext("));
     expect(useContext).toMatch(/typeof\s+\(ctx as AudioContext\)\.onstatechange\s*!==\s*["']undefined["']/);
-    expect(ensureContext).toMatch(/typeof\s+ctx\.onstatechange\s*!==\s*["']undefined["']/);
+    expect(ensureContext).toMatch(/this\.useContext\(ctx\)/);
   });
 
   it("does not rely on user-agent sniffing for any Web Audio decision", () => {

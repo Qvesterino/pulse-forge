@@ -131,12 +131,11 @@ the bounded memory footprint of the prepare-time delay reservation:
   sample-accurate look-ahead; MIDI clock cannot).
 - **Import size caps.** Audio samples: 25 MB per file; project JSON: 10 MB.
   Larger files are rejected with a clear message instead of risking a tab OOM.
-- **Automated testing covers Chromium-family browsers.** The browser suite
-  currently contains 221 checks in Playwright Chromium and the latest quiet
-  current-worktree rerun passed 224/224; it has also passed against the
-  installed Microsoft Edge executable. Firefox and Safari are smoke-tested
-  manually. iOS Safari audio unlock and `pagehide` saving are hardened but not
-  automatically tested.
+- **Automated testing covers Chromium-family browsers plus Firefox.** The
+  current browser verifier passes 226/226 in Chromium, Firefox and the
+  installed Microsoft Edge executable. Safari and iOS Safari are still
+  smoke-tested manually; iOS Safari audio unlock and `pagehide` saving are
+  hardened but not automatically tested.
 - **Development dependency advisory.** The esbuild dev-server advisory nested
   under vitest 2 is deferred consciously (dev machines only; production
   bundles use the patched esbuild). See `RELEASE_ROADMAP.md` § 2.5.
@@ -152,9 +151,8 @@ the bounded memory footprint of the prepare-time delay reservation:
 - Fallback MORPH route je room-clamped wobble na zachytenom frame páre; worklet posúva pozíciu ±2 páry s wrapom. Semantická (nie bit) parita.
 - Fallback CUTOFF/AMP routes sa po `326d443` kombinujú pred bounded curve, takže
   používajú worklet-kompatibilný CUTOFF rozsah `60–18000 Hz` a AMP floor
-  `max(0.1, 1+mod)`; explicitný negatívny route guard je súčasťou pre-change
-  Chromium acceptance `224/224`; clean post-`601eb6c` full browser rerun
-  remains open.
+  `max(0.1, 1+mod)`; explicitný negatívny route guard je súčasťou aktuálnej
+  Chromium/Firefox/Edge acceptance `226/226` per engine.
 - Destination DETUNE (2) je rezervovaná a neimplementovaná na oboch cestách (worklet ani fallback); UI možnosť je zatiaľ mŕtva.
 - Kontinuálne `MOD A/B AMT`, source/destination selector a `MOD LFO` zápisy
   aktualizujú aj existujúce fallback hlasy (`d4d974b`); transition má krátky
