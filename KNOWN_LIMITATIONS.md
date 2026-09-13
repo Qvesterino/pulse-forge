@@ -132,8 +132,8 @@ the bounded memory footprint of the prepare-time delay reservation:
 - **Import size caps.** Audio samples: 25 MB per file; project JSON: 10 MB.
   Larger files are rejected with a clear message instead of risking a tab OOM.
 - **Automated testing covers Chromium-family browsers.** The browser suite
-  currently contains 220 checks in Playwright Chromium and the latest quiet
-  current-worktree rerun passed 220/220; it has also passed against the
+  currently contains 221 checks in Playwright Chromium and the latest quiet
+  current-worktree rerun passed 221/221; it has also passed against the
   installed Microsoft Edge executable. Firefox and Safari are smoke-tested
   manually. iOS Safari audio unlock and `pagehide` saving are hardened but not
   automatically tested.
@@ -153,9 +153,12 @@ the bounded memory footprint of the prepare-time delay reservation:
 - Fallback CUTOFF/AMP routes sa po `326d443` kombinujú pred bounded curve, takže
   používajú worklet-kompatibilný CUTOFF rozsah `60–18000 Hz` a AMP floor
   `max(0.1, 1+mod)`; explicitný negatívny route guard je súčasťou Chromium
-  acceptance `220/220`.
+  acceptance `221/221`.
 - Destination DETUNE (2) je rezervovaná a neimplementovaná na oboch cestách (worklet ani fallback); UI možnosť je zatiaľ mŕtva.
-- Mod parametre menia bežiace hlasy až od novej noty na fallbacke (worklet číta p per-sample — žije okamžite); PRESS zdroj je živý na oboch.
+- Kontinuálne `MOD A/B AMT` zápisy aktualizujú aj existujúce fallback hlasy
+  (`70cd4e9`); zmeny topology selectorov `modASrc/modADst/modBSrc/modBDst`
+  zostávajú na fallbacke viazané na novú notu. Worklet parametre číta
+  per-sample a PRESS zdroj je živý na oboch cestách.
 - Rollout je dokončený (analog, bass, keys, pluck, 808, texture, logdrum, spectral, sampler, vocalchop + wavetable). **Granular je zámerne vynechaný** — jeho modulačný príbeh tvoria vlastné POSITION/SCAN/JITTER/RATE parametre a voice-worklet nemá mod routy.
 - PRESS zdroj žije len na nástrojoch s `polyPressure`: na 808 (monofónny), texture a vocalchop zostáva PRESS zdroj na 0, kým ich polyPressure nepridá.
 - Vocalchop neponúka CUTOFF cieľ (formant banka nemá per-voice lowpass) — dst options sú OFF/AMP.
