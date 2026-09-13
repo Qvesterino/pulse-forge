@@ -12,28 +12,26 @@ currently visible instrument/UI WIP).
 
 # RELEASE BLOCKED — OWNER GATES OPEN
 
-The reviewed PRISM baseline is commit `2242541` (`feat: expose PRISM tempo
-sync controls`), following the host/UI implementation in `a3dd6ba`, the
-browser-verifier follow-up in `8912a09`, the release hardening batch in
-`cb1bde7` and the crossover/render-quality batch in `a768595`. The reviewed
-commit is clean and includes the musical tempo-sync selects, LR crossover
-transfer overlay, targeted regression coverage and regenerated build outputs.
-The current working tree still contains a separately owned uncommitted Ultina
-Pre-Emphasis schema/worklet diff plus `scratch-audit-params.ts` from parallel
-agent work; those changes are outside this PRISM commit and must be separated
-or reviewed before tagging a final immutable release candidate.
-The latest full Vitest attempt was not green under
-shared-machine contention/stress (224 files, 2152 passed, 162 skipped, 5
-failed); all identified affected areas pass in targeted isolation, including
-Ozvena hardening/worklet `59/59`, collab performance, large-project normalize
-and VLYX HQ. The latest Chromium dev smoke is
+The reviewed release baseline is commit `5f49140`, built on the PRISM feature
+commits `a3dd6ba`, `8912a09`, `cb1bde7`, `a768595`, `2242541` and `64ca7e4`.
+The latest commit is clean and includes the musical tempo-sync selects, LR
+crossover transfer overlay, effective split hit-testing, targeted regression
+coverage and the stabilized factory-preset regression. The current working
+tree still contains a separately owned uncommitted Ultina contract/DSP
+experiment (Pre-Emphasis and transient/sustain EQ) plus its new contract test;
+it is outside the reviewed commit and must be separated or reviewed before
+tagging a final immutable release candidate.
+The latest authoritative full Vitest run used one worker and was not green:
+234 files, 2300 passed, 103 skipped and one timeout in the factory-preset UI
+regression. That regression is now fixed in `5f49140`; the post-fix targeted
+PRISM/Ultina batch is `34/34`, but the complete suite still needs one clean
+rerun from the committed post-fix tree. The latest Chromium dev smoke is
 218/218; the PRISM plugin workflow itself passed end-to-end, and the production
-dist smoke also passes. PRISM A/B persistence, live
-preview/history, source selection/rewire, cancel-safe controls, and runtime
-hydration are implemented and targeted/UI/browser-tested. Release remains
-blocked by the global gates below: a quiet full-suite rerun, owner browser and
-device checks, deployed smoke with a real `KYX_DEPLOY_URL`, and the formatting
-decision.
+dist smoke also passes. PRISM A/B persistence, live preview/history, source
+selection/rewire, cancel-safe controls, and runtime hydration are implemented
+and targeted/UI/browser-tested. Release remains blocked by the global gates
+below: a clean full-suite rerun, owner browser and device checks, deployed
+smoke with a real `KYX_DEPLOY_URL`, and the formatting decision.
 
 The post-`cb1bde7` targeted hardening evidence is green: the relevant release
 batch passed `48/48` tests, and the new PRISM 300-second worst-case soak passed
@@ -47,7 +45,7 @@ tail peak. The default full suite has not yet been rerun from this commit.
 | Gate                                           | Result                                                                       | Notes                                                                                                                                                                                                                                                                                           |
 | ---------------------------------------------- | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `npm run typecheck`                            | **PASS**                                                                     | clean `tsc --noEmit`                                                                                                                                                                                                                                                                            |
-| Full Vitest suite                              | **CONTENTION/STRESS FAIL: 224 files / 2152 passed / 162 skipped / 5 failed** | two Ozvena hook timeouts followed the 10-minute soak and three timing budgets failed in the shared-machine run (collab 1000/500 ms, normalize 1420/100 ms, VLYX HQ 11.0/5 ms). Affected isolated reruns pass, including Ozvena 59/59; no PRISM failure; quiet rerun required                    |
+| Full Vitest suite                              | **FAIL before `5f49140`: 234 files / 2300 passed / 103 skipped / 1 timeout** | one 5 s timeout in the factory-preset ID regression under the 300 s soak-heavy single-worker run; `5f49140` makes that test synchronous and the focused post-fix batch is 34/34; complete suite rerun required                                                                                   |
 | `npm run build` + bundle budgets               | **PASS**                                                                     | reviewed PRISM tree: entry 938 KB / 995 budget; total JS 1848 KB / 2400 budget; core worklets 98 KB / 120 budget; 356 modules; PWA precache 57 entries / 4030.53 KiB; lazy ranker WASM is 13.6 MB and is not precached                                                                             |
 | `npm run test:browser` (latest Chromium smoke) | **218/218 Chromium**                                                         | PRISM UI workflow (A/B, pointer drag, plugin undo/redo, morph, source and reload persistence), real worklet DSP, PDC, meters, export, collab, Instant Jam, touch and macro flow all pass                                                                                                                 |
 | Post-`cb1bde7` hardening regression batch      | **PASS — 48/48 + 300 s PRISM soak**                                          | FXEQ/VØID/Ultina/registry hardening and meter-ring checks pass; soak: 6.0 MB heap growth, −0.003 dB drift, zero tail peak                                                                                                                                                                       |
@@ -61,16 +59,15 @@ tail peak. The default full suite has not yet been rerun from this commit.
 | `npm run format:check`                         | **DECISION OPEN — DEVIATIONS DOCUMENTED**                                    | 209 files report repo-wide formatting deviations; exact command-generated inventory is [`docs/FORMAT-CHECK-DEVIATIONS.md`](docs/FORMAT-CHECK-DEVIATIONS.md). This pass did not perform a formatting-only rewrite; owner must explicitly accept the CI exception or schedule a separate cleanup. |
 | Manual Firefox / Safari / iOS Safari smoke     | **OWNER GATE OPEN**                                                          | Windows Playwright WebKit has no Web Audio; real Firefox/Safari/iOS and physical audio-device lifecycle must follow the manual checklist                                                                                                                                                        |
 
-_Full-run status:_ the latest default suite before `cb1bde7` was **224
-files / 2152 passed / 162 skipped / 5 failed**. Two Ozvena hook timeouts
-followed the 10-minute soak; collab performance, large-project normalize, and
-VLYX HQ timing budgets also failed in that shared-machine run. Ozvena 59/59 and
-the collab, normalize and VLYX checks pass when isolated, so no functional
-regression is confirmed. No PRISM test failed. The post-commit targeted batch
-and PRISM soak are green, but a complete quiet suite from `cb1bde7` is still
-required. The historical FXEQ morph/performance fixes
-remain green in their targeted gates. The full suite must pass once in a quiet
-reviewed environment; thresholds are not being waived or changed.*
+_Full-run status:_ the latest authoritative single-worker run on the pre-fix
+tree reported **234 files / 2300 passed / 103 skipped / 1 failed**. The only
+failure was the factory-preset UI regression timing out at 5 s; the same test
+passes after the `5f49140` stabilization and the focused post-fix batch is
+34/34. A complete quiet suite from the post-fix committed tree is still
+required. The older 224-file / five-failure contention result remains
+historical evidence of shared-machine timing sensitivity, not a waiver of any
+threshold. The full suite must pass once in a reviewed environment; thresholds
+are not being waived or changed.*
 
 ### 1a. R6 cross-engine browser matrix evidence (2026-09-12 hardening session)
 
