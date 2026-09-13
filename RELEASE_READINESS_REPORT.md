@@ -12,7 +12,7 @@ and the remaining release gates.
 
 # RELEASE BLOCKED — OWNER GATES OPEN
 
-The latest reviewed release candidate is `954739e`, with the functional
+The latest reviewed release candidate is `326d443`, with the functional
 implementation/test baseline in `8f11255` and the generated PRISM worklet
 artifact synchronized in `dfaf230`. The functional baseline lands the reviewed
 FXEQ/PRISM six-band crossover surface on top of the prior
@@ -35,10 +35,13 @@ memory failures now surface to the caller. `954739e` makes sparse instrument
 preset application deterministic by resolving omitted parameters from canonical
 instrument defaults before applying preset overrides; the targeted preset and
 similarity batch is `16/16`.
+`326d443` hardens the main-thread modulation fallback by combining CUTOFF/AMP
+routes before applying the worklet-compatible cutoff bounds and AMP floor; the
+browser suite now has an explicit negative-route guard.
 The latest authoritative full Vitest baseline used one worker and passed:
 236 files, 2320 passed, 103 skipped (`2423` total), including the soak-heavy
 regressions. The post-fix targeted PRISM/Ultina/FXEQ batch is **115/115**.
-The latest quiet Chromium smoke from the current candidate `954739e` is **219/219**:
+The latest quiet Chromium smoke from the current candidate `326d443` is **220/220**:
 every audio/DSP/FXEQ
 check, including the corrected latency probe, passed; the `.preset-browser`
 bootstrap and PRISM plugin workflow also passed end-to-end. A preceding loaded
@@ -66,10 +69,10 @@ FXEQ/VLYX/VØID soak coverage.
 | ---------------------------------------------- | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `npm run typecheck`                            | **PASS**                                                                     | clean `tsc --noEmit`                                                                                                                                                                                                                                                                            |
 | Full Vitest suite                              | **PASS — authoritative baseline: 236 files / 2320 passed / 103 skipped / 2423 total** | single-worker run; `2304.38s`; includes the 300 s FXEQ/VLYX/VØID soak coverage and stalled-manifest regression; the narrow post-baseline export fixes have targeted `scorepack` coverage `4/4` and browser/build verification |
-| `npm run build` + bundle budgets               | **PASS**                                                                     | current candidate `954739e`: entry 938 KB / 995 budget; total JS 1850 KB / 2400 budget; core worklets 98 KB / 120 budget; 356 modules; PWA precache 57 entries / 4038.91 KiB; lazy ranker WASM is 13.6 MB and is not precached                                                                             |
+| `npm run build` + bundle budgets               | **PASS**                                                                     | current candidate `326d443`: entry 939 KB / 995 budget; total JS 1850 KB / 2400 budget; core worklets 98 KB / 120 budget; 356 modules; PWA precache 57 entries / 4039.75 KiB; lazy ranker WASM is 13.6 MB and is not precached                                                                             |
 | scorepack targeted regression                  | **PASS — 4/4**                                                               | Resampled cue duration is preserved; pre-aborted exports and missing optional assets remain safe; real cue render/decode/OOM failures are rethrown instead of being silently treated as missing assets |
 | preset determinism targeted regression         | **PASS — 16/16**                                                              | Sparse instrument presets resolve omitted values from instrument defaults; similarity ranking retains default semantics; apply/undo and sampler behavior remain covered |
-| `npm run test:browser` (latest Chromium smoke) | **PASS — 219/219 Chromium (current `954739e`)**                              | All audio/DSP/FXEQ checks passed, including latency `119/119`, PRISM determinism `maxDiff=3.52e-6`, multi-instance CPU `17.2%` per instance and template performance avg `2310ms` / worst `4597ms`; UI bootstrap, PRISM workflow, collab, embed/share and touch also passed. The ranker missing/offline, hash-mismatch and timeout fallback probes passed; no threshold change. |
+| `npm run test:browser` (latest Chromium smoke) | **PASS — 220/220 Chromium (current `326d443`)**                              | All audio/DSP/FXEQ checks passed, including the mod-matrix negative AMP/CUTOFF guard; the existing latency, PRISM, collab, embed/share and touch checks also passed. No threshold was changed. |
 | Post-`cb1bde7` hardening regression batch      | **PASS — 48/48 + 300 s PRISM soak**                                          | FXEQ/VØID/Ultina/registry hardening and meter-ring checks pass; soak: 6.0 MB heap growth, −0.003 dB drift, zero tail peak                                                                                                                                                                       |
 | `npm run test:browser:production`              | **PASS**                                                                     | Vite dist preview boots, selects HOUSE, opens FX, adds an effect, fetches shipped worklets and executes a real ONNX Worker score request                                                                                                                                                        |
 | `npm run release:preflight`                    | **PASS**                                                                     | explicit production-origin config, optional gallery token, KYX manifest, application chunk, all five shipped worklets and legacy-brand scan                                                                                                                                                     |
@@ -86,7 +89,7 @@ _Full-run status:_ the latest authoritative single-worker run passed with
 The focused post-crossover PRISM batch is `115/115`. The older 234-file timeout
 and 224-file/five-failure contention runs remain historical evidence of
 shared-machine timing sensitivity, not a waiver of any threshold. The current
-browser candidate also has a clean `219/219` rerun on `954739e`; no threshold was changed.
+browser candidate also has a clean `220/220` rerun on `326d443`; no threshold was changed.
 
 ### 1a. R6 cross-engine browser matrix evidence (2026-09-12 hardening session)
 
@@ -211,8 +214,8 @@ changes.
 
 ## 5. Pre-launch checklist (owner actions)
 
-1. Review/tag `954739e` as the current KYX candidate; its functional/test baseline is `8f11255`, containing the FXEQ crossover correction on top of the reviewed Ultina reconciliation in `173f5ce`, plus the synchronized generated PRISM worklet artifact, scorepack duration/error-boundary fixes in `dad84f3`/`a9dd506`, and deterministic sparse instrument preset application. Matching upstream Ultina source/test is committed as `c0a549d`. Keep `e701b05` as the immutable historical comparison baseline.
-2. The authoritative full Vitest baseline is green at `236` files / `2320` passed / `103` skipped / `2423` total; post-candidate scorepack is `4/4`, current quiet Chromium is `219/219`, build and production smoke pass, and the ranker fallback unit/browser coverage plus stalled-manifest regression pass. Preserve the thresholds and rerun the full suite as part of the final owner release procedure if the release process requires a post-candidate full-suite artifact.
+1. Review/tag `326d443` as the current KYX candidate; its functional/test baseline is `8f11255`, containing the FXEQ crossover correction on top of the reviewed Ultina reconciliation in `173f5ce`, plus the synchronized generated PRISM worklet artifact, scorepack duration/error-boundary fixes in `dad84f3`/`a9dd506`, deterministic sparse instrument preset application in `954739e`, and bounded fallback modulation routes. Matching upstream Ultina source/test is committed as `c0a549d`. Keep `e701b05` as the immutable historical comparison baseline.
+2. The authoritative full Vitest baseline is green at `236` files / `2320` passed / `103` skipped / `2423` total; post-candidate scorepack is `4/4`, current quiet Chromium is `220/220`, build and production smoke pass, and the ranker fallback unit/browser coverage plus stalled-manifest regression pass. Preserve the thresholds and rerun the full suite as part of the final owner release procedure if the release process requires a post-candidate full-suite artifact.
 3. Run the manual Firefox/Safari/iOS matrix using `docs/KYX-MANUAL-RELEASE-CHECKLIST.md` (KYX §5 checklist).
 4. Set `KYX_DEPLOY_URL` to the real public host and run deployed smoke; if the collab/gallery server is exposed publicly, configure `CORS_ORIGIN` and review moderation flow (R4).
 5. Accept or schedule R1–R2 audio residuals per the KYX roadmap sequencing; R3 is closed in the audited tree.
