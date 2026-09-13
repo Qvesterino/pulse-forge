@@ -35,6 +35,7 @@ export function rankerMode(): RankerMode {
 
 const SCORE_TIMEOUT_MS = 400; // preview budget — fall back fast
 const LOAD_TIMEOUT_MS = 3000;
+const MANIFEST_TIMEOUT_MS = 1500;
 const MAX_FAILURES = 3;
 
 let worker: Worker | null = null;
@@ -97,8 +98,19 @@ function request(request: RankerRequest, timeoutMs: number): Promise<Extract<Ran
 
 async function loadManifest(): Promise<RankerManifest | null> {
   if (cachedManifest) return cachedManifest;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const controller = typeof AbortController === "function" ? new AbortController() : null;
   try {
-    const response = await fetch("/models/intent-ranker-v1.manifest.json");
+    const request = fetch(
+      "/models/intent-ranker-v1.manifest.json",
+      controller ? { signal: controller.signal } : undefined,
+    );
+    const response = await Promise.race([
+      request,
+      new Promise<Response>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("ranker manifest timeout")), MANIFEST_TIMEOUT_MS);
+      }),
+    ]);
     if (!response.ok) return null;
     const manifest = (await response.json()) as unknown;
     if (!isRankerManifest(manifest)) return null;
@@ -106,6 +118,9 @@ async function loadManifest(): Promise<RankerManifest | null> {
     return manifest;
   } catch {
     return null;
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+    controller?.abort();
   }
 }
 

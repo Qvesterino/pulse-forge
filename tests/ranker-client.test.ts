@@ -110,6 +110,20 @@ describe("ranker-client controlled fallback contract", () => {
     expect(currentRankerManifest()).toBeNull();
   });
 
+  it("returns a controlled fallback when the manifest request stalls", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise<Response>(() => undefined)),
+    );
+
+    const pending = scoreCandidateFeatures(featureBatch(), 1);
+    await vi.advanceTimersByTimeAsync(1500);
+
+    await expect(pending).resolves.toEqual({ ok: false, scores: null, source: "fallback" });
+    expect(TestWorker.instances).toHaveLength(0);
+  });
+
   it("returns a controlled fallback when the worker rejects the model hash", async () => {
     TestWorker.mode = "load-fail";
 
