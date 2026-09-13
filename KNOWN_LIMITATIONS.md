@@ -194,8 +194,8 @@ the bounded memory footprint of the prepare-time delay reservation:
   `173f5ce` implementovaný v upstream zrkadle aj vo vendored worklete. Hodnota
   0 zostáva `flat`/no-op kvôli spätnej kompatibilite, hodnoty 1..3 sú zámerne
   počuteľné a menia existujúce presety, ktoré mali uloženú nenulovú hodnotu.
-  Pred ďalším vendor syncom treba ešte zaznamenať matching upstream commit v
-  `D:/VocalForge_DAW`; lokálny vendor script dirty source defaultne odmietne.
+  Matching source/test commit je `D:/VocalForge_DAW:c0a549d`; lokálny vendor
+  script dirty source defaultne odmietne.
 - **Zámerne NEopravené (produktové rozhodnutia, nie defekty):** manuálny dotyček parametra
   nepreberá už-DUE automation eventy v rovnakom quantume (preberie až budúce; samo sa
   opraví ďalším dragom — Web Audio "scheduled event wins" flavor); EQ LEARN APPLY robí

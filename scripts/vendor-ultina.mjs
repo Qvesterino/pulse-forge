@@ -3,6 +3,11 @@
  *
  *   node scripts/vendor-ultina.mjs [--from D:/VocalForge_DAW/plugins/ultina]
  *
+ * A sync requires a clean upstream tree and a source/vendor match before any
+ * file is written. For a reviewed replacement of an intentional vendor drift,
+ * add --allow-vendor-drift; for a deliberately uncommitted upstream source,
+ * add --allow-dirty-upstream as well.
+ *
  * Copies the ultinaProcessor import closure + all 10 module processors +
  * moduleFactories, prepends the provenance header, applies mechanical
  * transforms, and syncs golden vectors. Then run:
@@ -18,6 +23,7 @@ const FROM = fromIndex >= 0
   ? process.argv[fromIndex + 1]
   : "D:/VocalForge_DAW/plugins/ultina";
 const ALLOW_DIRTY_UPSTREAM = process.argv.includes("--allow-dirty-upstream");
+const ALLOW_VENDOR_DRIFT = process.argv.includes("--allow-vendor-drift");
 const SRC = join(FROM, "src");
 const DST = "src/effects/ultina-core";
 
@@ -101,7 +107,10 @@ function applyTransforms(source) {
  * in the exact tree this script copies. The old behaviour could silently
  * replace already-vendored hardening with an older or partial upstream
  * working tree. Use --allow-dirty-upstream only when an intentional local
- * source-of-truth sync is being reviewed immediately afterwards.
+ * source-of-truth sync is being reviewed immediately afterwards. A clean
+ * upstream is not enough on its own: if the existing vendor has a different
+ * source body, the sync also requires --allow-vendor-drift so this script
+ * cannot partially replace a newer local hardening pass with an older source.
  */
 function assertUpstreamClean() {
   if (ALLOW_DIRTY_UPSTREAM) return;
@@ -136,6 +145,8 @@ function assertUpstreamClean() {
 
 assertUpstreamClean();
 
+const preparedFiles = [];
+const vendorDrift = [];
 for (const rel of FILES) {
   const abs = join(SRC, rel);
   if (!existsSync(abs)) {
@@ -143,8 +154,26 @@ for (const rel of FILES) {
     process.exit(1);
   }
   const out = join(DST, rel);
+  const expected = HEADER + applyTransforms(readFileSync(abs, "utf8"));
+  if (existsSync(out) && readFileSync(out, "utf8") !== expected) {
+    vendorDrift.push(rel);
+  }
+  preparedFiles.push({ rel, out, expected });
+}
+
+if (vendorDrift.length && !ALLOW_VENDOR_DRIFT) {
+  console.error(
+    "[vendor] REFUSING vendor drift before write:\n" +
+    vendorDrift.map((rel) => `M ${rel}`).join("\n") + "\n" +
+    "Review the source/vendor diff, then rerun with --allow-vendor-drift " +
+    "for an intentional upstream→vendor replacement.",
+  );
+  process.exit(1);
+}
+
+for (const { rel, out, expected } of preparedFiles) {
   mkdirSync(dirname(out), { recursive: true });
-  writeFileSync(out, HEADER + applyTransforms(readFileSync(abs, "utf8")));
+  writeFileSync(out, expected);
 }
 console.log(`[vendor] ${FILES.length} DSP files -> ${DST}`);
 

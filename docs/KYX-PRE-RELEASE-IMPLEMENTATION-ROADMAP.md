@@ -8,10 +8,9 @@
 **Reviewed baseline:** `173f5ce` (`fix(ultina): reconcile upstream DSP and protect vendor sync`).
 The local KYX tree now contains the reviewed Ultina contract/worklet
 reconciliation, the block-boundary regression test and a dirty-upstream guard
-for future vendor syncs. The matching upstream source/test changes are still
-uncommitted in `D:/VocalForge_DAW`; they must be committed or explicitly
-separated before the next source-of-truth sync. A separately owned FXEQ
-crossover diff is also still present in the working tree. Release approval
+for future vendor syncs. The matching upstream source/test changes are
+recorded in `D:/VocalForge_DAW` commit `c0a549d`. A separately owned FXEQ
+crossover diff is still present in the working tree. Release approval
 still waits for the full Vitest gate, manual device matrix and production
 deploy smoke.
 
@@ -110,9 +109,9 @@ Nasledujúca tabuľka je ledger scope; PRISM implementation je commitnutý v
 `cb1bde7`, audio runtime/perf batch v `d9dd58c`, PRISM crossover/render-quality
 v `a768595`, tempo-sync/transfer-overlay UI v `2242541`, split hit-testing v
 `64ca7e4` a test/evidence stabilization v `5f49140`, plus Ultina source/vendor
-reconciliation v `173f5ce`. Commit `173f5ce` je čitateľný a obsahuje iba
-Ultina/worklet/vendor-safety scope; aktuálny working tree má navyše oddelený
-FXEQ crossover diff a upstream VocalForge source/test zmenu mimo tohto repa.
+reconciliation v `173f5ce` (upstream source/test commit `c0a549d`). Commit
+`173f5ce` je čitateľný a obsahuje iba Ultina/worklet/vendor-safety scope;
+aktuálny working tree má navyše oddelený FXEQ crossover diff.
 Je to release bookkeeping, nie dôkaz, že verejný deploy alebo celý KYX release
 je hotový. Každý ďalší agent
 najprv skontroluje `git status`, `git show --stat HEAD` a tento ledger; nový diff
@@ -125,7 +124,7 @@ musí dostať vlastného ownera, test a rozhodnutie.
 | MPE compatibility fallback                          | `src/ui/MpeIndicator.tsx`, `tests/ui/MpeIndicator.test.tsx`                                                                                                                                                                                                                                                                                   | MIDI/UI owner; staršia embedded facade nesmie zhodiť celý MIDI panel                                  | targeted MPE/MIDI `6/6`                                                                                                                                            | **LAND / retain** inactive fallback                                                                                |
 | Biquad non-finite state recovery                    | upstream `D:/VocalForge_DAW/plugins/fxeq/src/dsp/biquad.ts`, upstream `D:/VocalForge_DAW/plugins/ozvena/src/dsp/biquad.ts`, vendored `src/effects/fxeq-core/dsp/biquad.ts`, vendored `src/effects/ozvena-core/dsp/biquad.ts`, generated `public/fxeq-worklet.js`, `public/ozvena-worklet.js`, `tests/fxeq-ozvena-biquad-hardening.test.ts`    | DSP/audio owner; jeden chybný frame nesmie otráviť rekurzívny filter na zvyšok session                | host regression `4/4`; upstream guard + vendor/worklet rebuild                                                                                                     | **LAND / retain** upstream→vendor process, needitovať vendored core ako nový source-of-truth                       |
 | Browser timing measurement + release evidence       | `src/browser-checks.ts`, `scripts/verify-browser.mjs`, `AGENT_WORK_LOG.md`, `RELEASE_READINESS_REPORT.md`, tento roadmap                                                                                                                                                                                                                      | QA/release owner; threshold sa nesmie oslabiť a tvrdenia musia sedieť s aktuálnym worktree            | browser `218/218`; PRISM plugin flow PASS; production browser smoke PASS; build/preflight/server smoke pass; single-worker full suite `2300/2400` passed with one pre-fix timeout; focused post-fix `34/34` | **FOLLOW-UP REQUIRED** full-suite rerun + report reconciliation                                                         |
-| Ultina contract/DSP source-of-truth reconciliation  | `D:/VocalForge_DAW/plugins/ultina/src/contracts/parameter{Ids,Schema}.ts`, `plugins/ultina/src/dsp/modules/{eqModule,exciterModule}.ts`, vendored mirrors, `public/ultina-worklet.js`, `tests/ultina-contract-params.test.ts` | VLYX/DSP owner; Pre-Emphasis is now live at values 1..3, transient/sustain EQ is isolated, and future vendor syncs cannot overwrite dirty hardening silently | host contract `8/8`; upstream affected `105/105`; local source/vendor equality after mechanical header transform; worklet rebuild; focused battery `137/137` | **COMMITTED LOCALLY IN `173f5ce`; upstream VocalForge source/test commit still required before another vendor sync** |
+| Ultina contract/DSP source-of-truth reconciliation  | `D:/VocalForge_DAW/plugins/ultina/src/contracts/parameter{Ids,Schema}.ts`, `plugins/ultina/src/dsp/modules/{eqModule,exciterModule}.ts`, vendored mirrors, `public/ultina-worklet.js`, `tests/ultina-contract-params.test.ts` | VLYX/DSP owner; Pre-Emphasis is now live at values 1..3, transient/sustain EQ is isolated, and future vendor syncs cannot overwrite dirty hardening silently | host contract `8/8`; upstream affected `105/105`; local source/vendor equality after mechanical header transform; worklet rebuild; focused battery `137/137` | **COMMITTED LOCALLY IN `173f5ce`; upstream source/test committed in `D:/VocalForge_DAW` as `c0a549d`** |
 | Formatting-only test diffs                          | `tests/ultina-hardening2.test.ts`, `tests/ultina-worklet-entry.test.ts`                                                                                                                                                                                                                                                                       | QA hygiene owner; iba Prettier layout, žiadna runtime zmena                                           | diff je syntakticky/semanticky formatting-only; Ultina battery `55/55` + `26/26`                                                                                   | **LAND iba ako súčasť výslovne reviewed batchu**; inak izolovať do samostatného formatting commitu                 |
 
 Ak sa po tomto bode objaví nový súbor v `git status`, agent ho musí doplniť do
@@ -229,10 +228,10 @@ Reviewed local baseline `173f5ce` je čitateľný; PRISM implementation je v
 `a3dd6ba`, browser-verifier follow-up v `8912a09`, crossover/render-quality v
 `a768595`, tempo-sync/transfer-overlay UI v `2242541`, split hit-testing v
 `64ca7e4` a Ultina source/vendor reconciliation v `173f5ce`.
-VocalForge upstream source/test counterpart k Ultine zostáva zámerne
-uncommitted mimo tohto repa; local vendor/worklet je obsahovo zosynchronizovaný
-a ďalší vendor sync je chránený dirty-upstream preflightom. Paralelný FXEQ
-crossover diff ostáva mimo tohto commit scope.
+VocalForge upstream source/test counterpart k Ultine je commitnutý ako
+`c0a549d`; local vendor/worklet je obsahovo zosynchronizovaný a ďalší vendor
+sync je chránený dirty-upstream preflightom. Paralelný FXEQ crossover diff
+ostáva mimo tohto commit scope.
 Nasledujúce body sú commitnutý technický scope alebo otvorené release
 rozhodnutia; commitnutie samo osebe neznamená, že je feature user-facing a
 release-safe:
@@ -294,7 +293,7 @@ Overené príkazy a výsledky:
 | VLYX hardening2 + upstream parity battery                  | PASS — host `8/8` contract + `ultina-core-hardening` `55/55`, worklet/parity/vectors `28/28`; upstream affected suite `105/105`; source/vendor equality checked after mechanical header transform                                                                                                                                                        |
 | `tests/collab-transport.test.ts`                           | PASS — `10/10`; malformed awareness payloads are rejected and remote play scheduler transition is covered                                                                                                                                                                                                                                                  |
 | PRISM/FXEQ + VLYX + VØID targeted Vitest suite             | PASS — existing 128/128 battery; `a3dd6ba` includes FXEQ host/worklet workflow `45/45` plus UI/host acceptance within the `92/92` scoped run; `cb1bde7` adds hardening `48/48` + 300 s PRISM soak; 8/8 FXEQ golden hashes bit-exact                                                                                                                        |
-| upstream Ultina affected suite                             | PASS — 105/105 tests; source/test changes are still uncommitted in `D:/VocalForge_DAW` and must be committed before another vendor sync                                                                                                                                                                                                                      |
+| upstream Ultina affected suite                             | PASS — 105/105 tests; source/test changes are committed in `D:/VocalForge_DAW` as `c0a549d`                                                                                                                                                                                                                                                               |
 | VLYX analysis worker client suite                          | PASS — 4/4 tests                                                                                                                                                                                                                                                                                                                                           |
 | persistence failure/recovery targeted suite                | PASS — 28 passed / 1 skipped                                                                                                                                                                                                                                                                                                                               |
 | VØID upstream/pre-delay + factory-IR hardening             | PASS — 49/49 targeted upstream tests; 72/72 host/worklet tests                                                                                                                                                                                                                                                                                             |
