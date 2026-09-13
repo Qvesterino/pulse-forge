@@ -8,7 +8,12 @@ import { fireEvent, screen } from "@testing-library/react";
 import { EffectRack } from "../src/ui/EffectRack";
 import { renderWithContext, mockServices } from "./helpers";
 import { createProjectFromTemplate } from "../src/project-model/templates";
-import { bandEqMagnitudeDb, biquadMagnitudeDb, type BandEqCurveParams } from "../src/ui/fxeqCurve";
+import {
+  bandEqMagnitudeDb,
+  biquadMagnitudeDb,
+  crossoverBandMagnitudeDb,
+  type BandEqCurveParams,
+} from "../src/ui/fxeqCurve";
 
 // ── canvas geometry shared by the drag tests ─────────────────────────────
 // The panel maps 20 Hz … 20 kHz logarithmically across the canvas width.
@@ -24,7 +29,14 @@ function fxEqDoc() {
       id: "fx-eq",
       type: "fxeq" as const,
       bypassed: false,
-      params: { bandCount: 4, crossoverFreq2: 400, crossoverFreq3: 1200, crossoverFreq4: 4000 },
+      params: {
+        bandCount: 4,
+        crossoverFreq2: 400,
+        crossoverFreq3: 1200,
+        crossoverFreq4: 4000,
+        "band1.delayEnabled": 1,
+        "band1.modEnabled": 1,
+      },
     },
   ];
   return { doc, track };
@@ -98,6 +110,14 @@ describe("fxeq panel — EQ response overlay math", () => {
     expect(bandEqMagnitudeDb({ ...EQ, enabled: 0 }, 40, SR)).toBe(0);
     expect(bandEqMagnitudeDb({ ...EQ, enabled: 0 }, 8000, SR)).toBe(0);
   });
+
+  it("draws the selected band's LR crossover window around its own split", () => {
+    const splits = [1000];
+    expect(crossoverBandMagnitudeDb(0, splits, 4, 100, SR)).toBeCloseTo(0, 2);
+    expect(crossoverBandMagnitudeDb(0, splits, 4, 1000, SR)).toBeCloseTo(-6.02, 2);
+    expect(crossoverBandMagnitudeDb(1, splits, 4, 1000, SR)).toBeCloseTo(-6.02, 2);
+    expect(crossoverBandMagnitudeDb(1, splits, 4, 10000, SR)).toBeCloseTo(0, 2);
+  });
 });
 
 describe("fxeq panel — crossover split drag", () => {
@@ -168,6 +188,37 @@ describe("fxeq panel — crossover split drag", () => {
     fireEvent.pointerDown(map, { clientX: xOf(400), pointerId: 1 });
     fireEvent.pointerUp(map, { clientX: xOf(400), pointerId: 1 });
     expect(screen.getByRole("button", { name: "B1" })).toHaveAttribute("aria-pressed", "true");
+  });
+});
+
+describe("fxeq panel — tempo-sync controls", () => {
+  it("renders DLY and MOD tempo sync as musical division selects", async () => {
+    const { services } = mountedPanel();
+    await screen.findByRole("img", { name: "PRISM band map" }, { timeout: 10_000 });
+    const syncs = screen.getAllByRole("combobox", { name: "Tempo Sync" });
+    expect(syncs).toHaveLength(2);
+    for (const select of syncs) {
+      expect(Array.from((select as HTMLSelectElement).options).map((option) => option.text)).toEqual([
+        "Free",
+        "1/1",
+        "1/2",
+        "1/4",
+        "1/8",
+        "1/16",
+        "1/8T",
+        "1/8.",
+        "1/4T",
+      ]);
+    }
+
+    // MODULE_ORDER renders MOD before DLY; the second control is the DLY
+    // sync enum whose command label is asserted below.
+    fireEvent.change(syncs[1], { target: { value: "4" } });
+    const command = vi
+      .mocked(services.store.execute)
+      .mock.calls.map((call) => call[0] as { label?: string })
+      .find((candidate) => candidate.label === "PRISM band1.delaySyncMode");
+    expect(command).toBeDefined();
   });
 });
 

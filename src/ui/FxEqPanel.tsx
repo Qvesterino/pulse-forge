@@ -10,7 +10,7 @@ import { FXEQ_PRESETS } from "../effects/fxeq-core/core/presets";
 import { buildSchema, type FxEqSchema } from "../effects/fxeq-core/core/parameterSchema";
 import { blendParams } from "../effects/fxeqNode";
 import type { EffectRuntime } from "../effects/types";
-import { bandEqMagnitudeDb } from "./fxeqCurve";
+import { bandEqMagnitudeDb, crossoverBandMagnitudeDb } from "./fxeqCurve";
 import { useServices } from "./context";
 import { Slider } from "./controls";
 import { EffectAbControls, type EffectAbState } from "./EffectAbControls";
@@ -34,6 +34,24 @@ const MODULE_COLORS: Record<string, string> = {
   rev: "#f472b6",
   dyn: "#60a5fa",
 };
+
+/**
+ * The DSP stores tempo divisions as a compact 0…8 enum. Keep that storage
+ * contract, but expose musical labels in the panel instead of making users
+ * guess what an integer slider means. This table mirrors the Q2 contract in
+ * the delay/modulation modules; `0` intentionally means free-running.
+ */
+const TEMPO_SYNC_OPTIONS = [
+  { value: 0, label: "Free" },
+  { value: 1, label: "1/1" },
+  { value: 2, label: "1/2" },
+  { value: 3, label: "1/4" },
+  { value: 4, label: "1/8" },
+  { value: 5, label: "1/16" },
+  { value: 6, label: "1/8T" },
+  { value: 7, label: "1/8." },
+  { value: 8, label: "1/4T" },
+] as const;
 
 const AXIS_MIN_HZ = 20;
 const AXIS_MAX_HZ = 20000;
@@ -301,15 +319,21 @@ export function FxEqPanel({
     return perBand;
   }, [params, bandCount]);
 
-  // ── EQ response overlay for the selected band ──────────────────────────
-  // Sampled across the band's own frequency region so the drawn curve is
-  // exactly the transfer function that band's EQ contributes (when on).
-  const eqCurve = useMemo(() => {
-    if (valueOf(`band${selectedBand}.eqEnabled`) < 0.5) return null;
+  // ── transfer overlay for the selected band ─────────────────────────────
+  // Sampled across the band's own frequency region. windowDb is the
+  // crossover's own response (the LR skirt: flat passband, −6 dB at the
+  // splits, 12/24/48 dB per octave by SLOPE) plus the band gain; totalDb
+  // adds the band EQ on top — together they answer "what does this band
+  // actually contribute to the sum". The allpass phase EQ is
+  // magnitude-flat and intentionally absent from both.
+  const bandCurve = useMemo(() => {
     const edges = [AXIS_MIN_HZ, ...splits, AXIS_MAX_HZ];
     const f0 = edges[selectedBand - 1];
     const f1 = edges[selectedBand];
     if (!(f1 > f0)) return null;
+    const order = params.crossoverOrder ?? 4;
+    const gainDb = valueOf(`band${selectedBand}.gainDb`);
+    const eqOn = valueOf(`band${selectedBand}.eqEnabled`) >= 0.5;
     const eq = {
       enabled: valueOf(`band${selectedBand}.eqEnabled`),
       lowFreq: valueOf(`band${selectedBand}.eqLowFreq`),
@@ -326,11 +350,15 @@ export function FxEqPanel({
     const N = 140;
     const logLo = Math.log(f0);
     const logHi = Math.log(f1);
-    const pts: number[] = [];
+    const windowDb: number[] = [];
+    const totalDb: number[] = [];
     for (let i = 0; i <= N; i++) {
-      pts.push(bandEqMagnitudeDb(eq, Math.exp(logLo + (i / N) * (logHi - logLo)), CURVE_NOMINAL_SR));
+      const f = Math.exp(logLo + (i / N) * (logHi - logLo));
+      const xover = crossoverBandMagnitudeDb(selectedBand - 1, splits, order, f, CURVE_NOMINAL_SR);
+      windowDb.push(xover + gainDb);
+      totalDb.push(xover + gainDb + (eqOn ? bandEqMagnitudeDb(eq, f, CURVE_NOMINAL_SR) : 0));
     }
-    return pts;
+    return { windowDb, totalDb: eqOn ? totalDb : null };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBand, splits, params, schema]);
 
@@ -379,8 +407,12 @@ export function FxEqPanel({
       ctx2d.fillText(label, x + 3 * dpr, h - 4 * dpr);
     }
 
-    // ── EQ response overlay (selected band) ────────────────────────────
-    if (eqCurve && eqCurve.length > 1) {
+    // ── selected-band transfer overlay ─────────────────────────────────
+    // The dashed window shows the crossover branch plus band gain. The solid
+    // line adds the optional per-band EQ, so the canvas explains both the
+    // band contribution and the EQ moves without pretending the crossover is
+    // flat inside every region.
+    if (bandCurve && bandCurve.windowDb.length > 1) {
       const bx0 = freqToX(edges[selectedBand - 1], w);
       const bx1 = freqToX(edges[selectedBand], w);
       // 0 dB reference inside the band region.
@@ -389,17 +421,25 @@ export function FxEqPanel({
       ctx2d.moveTo(bx0, h / 2);
       ctx2d.lineTo(bx1, h / 2);
       ctx2d.stroke();
-      ctx2d.strokeStyle = MODULE_COLORS.eq;
-      ctx2d.lineWidth = 2 * dpr;
-      ctx2d.beginPath();
-      for (let i = 0; i < eqCurve.length; i++) {
-        const x = bx0 + ((bx1 - bx0) * i) / (eqCurve.length - 1);
-        const db = Math.max(-CURVE_DB_SPAN, Math.min(CURVE_DB_SPAN, eqCurve[i]));
-        const y = h / 2 - (db / CURVE_DB_SPAN) * (h * 0.42);
-        if (i === 0) ctx2d.moveTo(x, y);
-        else ctx2d.lineTo(x, y);
-      }
-      ctx2d.stroke();
+
+      const drawCurve = (points: number[], color: string, width: number, alpha = 1) => {
+        ctx2d.strokeStyle = color;
+        ctx2d.lineWidth = width * dpr;
+        ctx2d.globalAlpha = alpha;
+        ctx2d.beginPath();
+        for (let i = 0; i < points.length; i++) {
+          const x = bx0 + ((bx1 - bx0) * i) / (points.length - 1);
+          const db = Math.max(-CURVE_DB_SPAN, Math.min(CURVE_DB_SPAN, points[i]));
+          const y = h / 2 - (db / CURVE_DB_SPAN) * (h * 0.42);
+          if (i === 0) ctx2d.moveTo(x, y);
+          else ctx2d.lineTo(x, y);
+        }
+        ctx2d.stroke();
+        ctx2d.globalAlpha = 1;
+      };
+
+      drawCurve(bandCurve.windowDb, MODULE_COLORS.eq, 1, 0.45);
+      if (bandCurve.totalDb) drawCurve(bandCurve.totalDb, MODULE_COLORS.eq, 2);
       ctx2d.lineWidth = 1;
     }
 
@@ -448,7 +488,7 @@ export function FxEqPanel({
       ctx2d.fillStyle = "rgba(255,255,255,0.05)";
       ctx2d.fillRect(x, 0, dpr, h);
     }
-  }, [splits, dragSplit, eqCurve, bandCount, activeModules, selectedBand]);
+  }, [splits, dragSplit, bandCurve, bandCount, activeModules, selectedBand]);
 
   // Click canvas → select band by frequency (a drag on a split handle
   // swallows the click — grabbing a handle is not a band selection).
@@ -531,7 +571,15 @@ export function FxEqPanel({
   const bandModuleDefs = useMemo(() => {
     const groups: Record<
       string,
-      { id: string; name: string; min: number; max: number; default: number; unit?: string }[]
+      {
+        id: string;
+        name: string;
+        min: number;
+        max: number;
+        default: number;
+        unit?: string;
+        options?: readonly { value: number; label: string }[];
+      }[]
     > = {};
     for (const def of schema.defs) {
       const route = schema.routes.get(def.id);
@@ -543,6 +591,7 @@ export function FxEqPanel({
         max: def.maxValue,
         default: def.defaultValue,
         unit: def.unit,
+        options: def.id.endsWith("SyncMode") ? TEMPO_SYNC_OPTIONS : undefined,
       });
     }
     return groups;
@@ -807,31 +856,52 @@ export function FxEqPanel({
             {enabled &&
               defs
                 .filter((d) => !d.id.endsWith("Enabled"))
-                .map((d) => (
-                  <Slider
-                    key={d.id}
-                    compact
-                    label={d.name}
-                    value={valueOf(d.id)}
-                    min={d.min}
-                    max={d.max}
-                    defaultValue={d.default}
-                    format={
-                      d.unit === "dB"
-                        ? (v) => `${v.toFixed(1)} dB`
-                        : d.unit === "%"
-                          ? (v) => `${v.toFixed(0)}%`
-                          : d.unit === "ms"
-                            ? (v) => `${v.toFixed(0)} ms`
-                            : d.unit === "Hz"
-                              ? (v) => `${v >= 1000 ? (v / 1000).toFixed(1) + "k" : v.toFixed(0)} Hz`
-                              : (v) => v.toFixed(2)
-                    }
-                    onCommit={(v) => onParam(d.id, v)}
-                    onPreview={(v) => previewParam(d.id, v)}
-                    onCancel={() => cancelParamPreview(d.id)}
-                  />
-                ))}
+                .map((d) => {
+                  if (d.options) {
+                    const selected = Math.max(d.min, Math.min(d.max, Math.round(valueOf(d.id))));
+                    return (
+                      <label key={d.id} className="fx-param-select">
+                        <span>{d.name}</span>
+                        <select
+                          aria-label={d.name}
+                          value={selected}
+                          onChange={(event) => onParam(d.id, Number(event.target.value))}
+                        >
+                          {d.options.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    );
+                  }
+                  return (
+                    <Slider
+                      key={d.id}
+                      compact
+                      label={d.name}
+                      value={valueOf(d.id)}
+                      min={d.min}
+                      max={d.max}
+                      defaultValue={d.default}
+                      format={
+                        d.unit === "dB"
+                          ? (v) => `${v.toFixed(1)} dB`
+                          : d.unit === "%"
+                            ? (v) => `${v.toFixed(0)}%`
+                            : d.unit === "ms"
+                              ? (v) => `${v.toFixed(0)} ms`
+                              : d.unit === "Hz"
+                                ? (v) => `${v >= 1000 ? (v / 1000).toFixed(1) + "k" : v.toFixed(0)} Hz`
+                                : (v) => v.toFixed(2)
+                      }
+                      onCommit={(v) => onParam(d.id, v)}
+                      onPreview={(v) => previewParam(d.id, v)}
+                      onCancel={() => cancelParamPreview(d.id)}
+                    />
+                  );
+                })}
           </div>
         );
       })}
