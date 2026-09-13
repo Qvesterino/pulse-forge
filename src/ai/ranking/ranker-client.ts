@@ -122,22 +122,35 @@ export interface RankerScores {
  * falls back to the heuristic ranking deterministically.
  */
 export async function scoreCandidateFeatures(values: Float32Array, candidateCount: number): Promise<RankerScores> {
-  if (rankerMode() === "off") return { ok: false, scores: null, source: "off" };
-  const manifest = await loadManifest();
-  if (!manifest) return { ok: false, scores: null, source: "fallback" };
-  if (values.length !== candidateCount * manifest.featureCount) return { ok: false, scores: null, source: "fallback" };
-  const active = spawnWorker();
-  if (!active) return { ok: false, scores: null, source: "fallback" };
-  const load = await request({ type: "load", requestId: nextRequestId++, manifest }, LOAD_TIMEOUT_MS);
-  if (!load.ok) return { ok: false, scores: null, source: "fallback" };
-  const response = await request(
-    { type: "score", requestId: nextRequestId++, batch: values, candidateCount },
-    SCORE_TIMEOUT_MS,
-  );
-  if (!response.ok || response.type !== "score" || !response.scores) {
+  try {
+    if (rankerMode() === "off") return { ok: false, scores: null, source: "off" };
+    const manifest = await loadManifest();
+    if (!manifest) return { ok: false, scores: null, source: "fallback" };
+    if (values.length !== candidateCount * manifest.featureCount)
+      return { ok: false, scores: null, source: "fallback" };
+    const active = spawnWorker();
+    if (!active) return { ok: false, scores: null, source: "fallback" };
+    const load = await request({ type: "load", requestId: nextRequestId++, manifest }, LOAD_TIMEOUT_MS);
+    if (!load.ok) return { ok: false, scores: null, source: "fallback" };
+    const response = await request(
+      { type: "score", requestId: nextRequestId++, batch: values, candidateCount },
+      SCORE_TIMEOUT_MS,
+    );
+    if (
+      !response.ok ||
+      response.type !== "score" ||
+      !Array.isArray(response.scores) ||
+      response.scores.length !== candidateCount ||
+      response.scores.some((score) => !Number.isFinite(score) || score < 0 || score > 1)
+    ) {
+      return { ok: false, scores: null, source: "fallback" };
+    }
+    return { ok: true, scores: response.scores, source: "model" };
+  } catch {
+    // A clone/postMessage/runtime failure must never escape into generation;
+    // the deterministic heuristic remains the release-safe selection path.
     return { ok: false, scores: null, source: "fallback" };
   }
-  return { ok: true, scores: response.scores, source: "model" };
 }
 
 export function currentRankerManifest(): RankerManifest | null {
