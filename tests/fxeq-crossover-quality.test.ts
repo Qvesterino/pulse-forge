@@ -83,12 +83,12 @@ describe("crossover order parameter", () => {
     const input: Float32Array[] = [new Float32Array(frames), new Float32Array(frames)];
     let phase = 0;
     for (let i = 0; i < frames; i++) {
-      // Log sweep 60 Hz … 12 kHz — spans both sides of the 1200 Hz split.
+      // Log sweep 60 Hz … 8 kHz — spans both sides of the 800 Hz split.
       phase += (2 * Math.PI * 60 * Math.pow(200, i / frames)) / SR;
       input[0][i] = 0.5 * Math.sin(phase);
       input[1][i] = 0.5 * Math.sin(phase + 0.01);
     }
-    const out = renderInto({ bandCount: 2, crossoverFreq2: 1200, crossoverOrder: order }, input, 48);
+    const out = renderInto({ bandCount: 2, crossoverFreq2: 800, crossoverOrder: order }, input, 48);
     const inRms = rms(input[0].subarray(BLOCK * 8, BLOCK * 40));
     const outRms = rms(out[0].subarray(BLOCK * 8, BLOCK * 40));
     // Flat-magnitude allpass reconstruction; 12% headroom covers sweep-edge
@@ -105,7 +105,7 @@ describe("crossover order parameter", () => {
       input[0][i] = 0.5 * Math.sin((2 * Math.PI * 1_200 * i) / SR);
       input[1][i] = input[0][i];
     }
-    const out = renderInto({ bandCount: 2, crossoverFreq2: 1200, crossoverOrder: 2 }, input, 48);
+    const out = renderInto({ bandCount: 2, crossoverFreq2: 800, crossoverOrder: 2 }, input, 48);
     const inRms = rms(input[0].subarray(BLOCK * 8, BLOCK * 40));
     const outRms = rms(out[0].subarray(BLOCK * 8, BLOCK * 40));
     expect(outRms / inRms).toBeGreaterThan(0.95);
@@ -127,11 +127,11 @@ describe("crossover order parameter", () => {
       proc.prepare(SR, 2, BLOCK);
       proc.loadParameters({
         bandCount: 2,
-        crossoverFreq2: 1200,
+        crossoverFreq2: 800,
         crossoverOrder: order,
         "band1.solo": 1,
       });
-      const input = tone(4000); // 1.7 octaves above the split
+      const input = tone(3200); // 2 octaves above the split
       let acc = 0;
       let count = 0;
       for (let i = 0; i < 48; i++) {

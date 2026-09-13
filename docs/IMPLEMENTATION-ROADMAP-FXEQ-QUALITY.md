@@ -181,7 +181,10 @@ Interpretácia: gain staging nedotknutý (peak identický), rms mierne nižší 
 - [x] `applyAllParams`: sekvenčný monotónny clamp (`monotonicClampFreqs`) pri bulk loadoch (presety, state restore, konštruktor) + writeback, aby flat store zostal jediný source of truth;
 - [x] smoothing target (`xoverFreqTarget`) clampuje sa tiež (ten istý writeback);
 - [x] testy: `tests/fxeq-core-hardening.test.ts` → "fxeq crossover ordering guard" (single change clamp hore/dole + bulk load forward-pass + finitný audio path);
-- [ ] UI: `FxEqPanel` splits drawing číta document params — tie clampnuté zostávajú, kým neprebehne ďalší set (commands.ts vlastní súbežný agent, mimo rozsahu). DSP je bezpečné; follow-up po tom, čo sa uvoľní commands.ts;
+- [x] UI: `FxEqPanel` normalizuje split-y rovnakým forward monotonic clampom ako
+      DSP, takže canvas, overlay aj drag hit-test okamžite ukazujú efektívne
+      hranice aj pre legacy/prekrížený document state; regression coverage je
+      v `tests/fxeq-paint-editor.test.tsx` (17/17), commit `64ca7e4`;
 - [x] `crossoverOrder` expose — **hotové 2026-09-12**: rack ponúka kanonické
   voľby LR2/LR4/LR8, DSP alokuje max. 4 sekcie a pri downswitchi retired
   state flattenuje/resetuje; live switch je finite-tested. `crossoverEqualize`
@@ -189,7 +192,7 @@ Interpretácia: gain staging nedotknutý (peak identický), rms mierne nižší 
   A/B morph interpolácie. Registry/command/persistence boundary ich kanonicky
   snapuje; targeted contract je v `tests/fxeq-crossover-order.test.ts`.
 
-**Stav:** hotové 2026-09-05 (okrem UI split follow-upu vyššie); structural
+**Stav:** hotové 2026-09-05; UI split follow-up je hotový v `64ca7e4`; structural
 crossover order follow-up je hotový 2026-09-12. Všetky default sanity hodnoty
 sa správajú identicky — golden parity 8/8 bit-exaktná.
 

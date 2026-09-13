@@ -6,7 +6,7 @@
  */
 import "fake-indexeddb/auto";
 import { describe, expect, it, vi } from "vitest";
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { UltinaPanel } from "../../src/ui/UltinaPanel";
 import { renderWithContext, mockServices } from "../helpers";
@@ -171,11 +171,11 @@ describe("UltinaPanel — factory presets", () => {
     const picker = screen.getByLabelText("VLYX preset") as HTMLSelectElement;
 
     for (const preset of FACTORY_PRESETS) {
-      await act(async () => {
+      act(() => {
         // Select by the option representing exactly this preset (module
         // label disambiguates in the UI; the value is the preset id).
         const option = [...picker.options].find((o) => o.value === preset.id)!;
-        await userEvent.setup().selectOptions(picker, option);
+        fireEvent.change(picker, { target: { value: option.value } });
       });
       expect(onApplyPreset).toHaveBeenLastCalledWith(preset.name, expect.any(Object));
     }
