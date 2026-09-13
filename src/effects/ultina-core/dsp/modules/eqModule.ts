@@ -19,7 +19,7 @@
 // band solo.
 //
 // Signal flow:
-//   Input → [M/S Encode] → 12 Biquad Bands → [M/S Decode]
+//   Input → [M/S or T/S separation] → 12 Biquad Bands → [recombine]
 //         → [Soft Saturation] → Output
 //
 // Each band can operate in:
@@ -53,6 +53,7 @@ import {
   encodeMidSide,
   decodeMidSide,
 } from "../primitives.js";
+import { TransientSustainSeparator } from "../multiband.js";
 import { MaskingMeter } from "../maskingMeter.js";
 
 // ── Constants ───────────────────────────────────────────────
@@ -158,6 +159,14 @@ export class EqModuleProcessor implements UltinaModuleProcessor {
   /** Per-sample dynamic-gain trajectory (pass 1 → pass 2 of dynamic bands). */
   private dynGainBuf: Float32Array = new Float32Array(0);
 
+  // Transient/sustain separation (channel modes 3/4 — the schema and
+  // MODULE_SUPPORTS_TRANSIENT_SUSTAIN advertise these; the band banks below
+  // process only the selected component, mirroring the structure of
+  // MultibandProcessor.process's T/S branch).
+  private tsSeparator = new TransientSustainSeparator();
+  private transientBufs: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
+  private sustainBufs: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
+
   // Masking meter (per-band bandpass analysis)
   private maskingMeter = new MaskingMeter();
 
@@ -216,6 +225,7 @@ export class EqModuleProcessor implements UltinaModuleProcessor {
     }
 
     this.maskingMeter.prepare(this.sampleRate, this.maxBlockSize);
+    this.tsSeparator.prepare(this.sampleRate);
   }
 
   process(args: ModuleProcessArgs): void {
@@ -266,8 +276,32 @@ export class EqModuleProcessor implements UltinaModuleProcessor {
 
       // Decode back to L/R
       decodeMidSide(this.midBuffer, this.sideBuffer, frameCount, channels[0], channels[1]);
+    } else if (channelMode === 3 || channelMode === 4) {
+      // Transient/sustain: separate BOTH channels, process ONLY the selected
+      // component through the band banks (independent filter-state slots per
+      // channel — processing [targetL] then [targetR] through the same banks
+      // would let L's filter tail seed R), then recombine with the untouched
+      // component. Mirrors MultibandProcessor.process's T/S branch.
+      for (let ch = 0; ch < 2; ch++) {
+        this.tsSeparator.separate(
+          channels[ch], frameCount,
+          this.transientBufs[ch], this.sustainBufs[ch], ch,
+        );
+      }
+      const target = channelMode === 3 ? this.transientBufs : this.sustainBufs;
+      const other = channelMode === 3 ? this.sustainBufs : this.transientBufs;
+      this.processBands(target, frameCount, sidechainEnabled ? sidechain : null, params, soloBand, maskingEnabled);
+      this.applySoftSat(target, frameCount, softSat);
+      for (let ch = 0; ch < 2; ch++) {
+        const t = target[ch];
+        const o = other[ch];
+        const out = channels[ch];
+        for (let i = 0; i < frameCount; i++) {
+          out[i] = t[i] + o[i];
+        }
+      }
     } else {
-      // Stereo or transient/sustain mode (process both channels)
+      // Stereo (process both channels)
       this.processBands(channels, frameCount, sidechainEnabled ? sidechain : null, params, soloBand, maskingEnabled);
       this.applySoftSat(channels, frameCount, softSat);
     }
@@ -288,6 +322,7 @@ export class EqModuleProcessor implements UltinaModuleProcessor {
     this.bandGainReduction.fill(0);
     this.maskingData = null;
     this.maskingMeter.reset();
+    this.tsSeparator.reset();
   }
 
   getMeters(): EqMeters {
@@ -324,6 +359,16 @@ export class EqModuleProcessor implements UltinaModuleProcessor {
       this.tempL = new Float32Array(requiredSize);
       this.tempR = new Float32Array(requiredSize);
       this.dynGainBuf = new Float32Array(requiredSize);
+    }
+    if (this.transientBufs[0].length < requiredSize) {
+      this.transientBufs = [
+        new Float32Array(requiredSize),
+        new Float32Array(requiredSize),
+      ];
+      this.sustainBufs = [
+        new Float32Array(requiredSize),
+        new Float32Array(requiredSize),
+      ];
     }
   }
 

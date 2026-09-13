@@ -54,6 +54,17 @@ const EXCITER_MAX_BANDS = 3;
 /** Tone tilt crossover corner (Hz) — see applyTone. */
 const EXCITER_TONE_CORNER_HZ = 200;
 
+/**
+ * Pre-emphasis shelf corner (Hz) and per-mode shelf depth (dB), indexed by
+ * the `exciter.preEmphasisMode` enum (flat / clean / defined / full — see
+ * the schema note for why 0 must stay the no-op). The emphasis drives the
+ * saturators from HF content; an EXACT inverse of the same first-order
+ * shelf runs after saturation, so the linear path cancels bit-transparent
+ * and ONLY the generated harmonics carry the emphasis (classic exciter).
+ */
+const EXCITER_PRE_EMPHASIS_HZ = 3000;
+const EXCITER_PRE_EMPHASIS_DB = [0, 2, 4, 6];
+
 // ── Meter interface ────────────────────────────────────────
 
 export interface ExciterMeters {
@@ -109,6 +120,7 @@ export class ExciterModuleProcessor implements UltinaModuleProcessor {
   private curTrashMode = false;
   private curToneSlider = 0;
   private curOversampling = false;
+  private curPreEmphasisDb = 0;
   private bandCb = (bandIdx: number, bandChannels: Float32Array[], bandFrames: number): void => {
     this.processBand(
       bandIdx,
@@ -118,6 +130,7 @@ export class ExciterModuleProcessor implements UltinaModuleProcessor {
       this.amountsBuf,
       this.curToneSlider,
       this.curOversampling,
+      this.curPreEmphasisDb,
     );
   };
   // Latency-compensated dry/wet mixing (see dsp/dryDelay.ts).
@@ -127,6 +140,13 @@ export class ExciterModuleProcessor implements UltinaModuleProcessor {
   // Tone filter state (per channel, per band)
   private toneLowState: number[] = [];
   private toneHighState: number[] = [];
+
+  // Pre-emphasis state, [band][ch] × {lpState, yPrev, xPrev} — see
+  // applyPreEmphasis/applyPreEmphasisInverse. The inverse needs the
+  // PRE-SATURATION y history, so the pre pass records it per band into a
+  // reused scratch pair (band processing is sequential).
+  private preEmphState: Float32Array = new Float32Array(EXCITER_MAX_BANDS * 2 * 3);
+  private preYScratch: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
 
   // Meter state
   private harmonicContent: number[] = new Array(EXCITER_MAX_BANDS).fill(0);
@@ -161,6 +181,13 @@ export class ExciterModuleProcessor implements UltinaModuleProcessor {
     // Tone filter state
     this.toneLowState = new Array(EXCITER_MAX_BANDS * 2).fill(0);
     this.toneHighState = new Array(EXCITER_MAX_BANDS * 2).fill(0);
+
+    // Pre-emphasis state + pre-saturation y scratch
+    this.preEmphState.fill(0);
+    this.preYScratch = [
+      new Float32Array(this.maxBlockSize),
+      new Float32Array(this.maxBlockSize),
+    ];
 
     this.multiband.prepare(this.sampleRate, 2, this.maxBlockSize, 1);
     this.dryDelay.prepare(this.maxBlockSize);
@@ -200,6 +227,10 @@ export class ExciterModuleProcessor implements UltinaModuleProcessor {
     const oversampling = (params["exciter.oversampling"] ?? 1) >= 0.5;
     const mixPercent = clamp(params["exciter.mix"] ?? 50, 0, 100);
     const deltaListen = (params["exciter.delta"] ?? 0) >= 0.5;
+    // Pre-emphasis ladder (flat / clean / defined / full — see the schema
+    // note on why index 0 is the no-op).
+    const preEmphasisDb =
+      EXCITER_PRE_EMPHASIS_DB[Math.round(clamp(params["exciter.preEmphasisMode"] ?? 0, 0, 3))];
 
     this.osActive = oversampling;
     // Reused amounts record (audio thread — the object literal would be a
@@ -231,6 +262,7 @@ export class ExciterModuleProcessor implements UltinaModuleProcessor {
     this.curTrashMode = trashMode;
     this.curToneSlider = toneSlider;
     this.curOversampling = oversampling;
+    this.curPreEmphasisDb = preEmphasisDb;
     this.multiband.process(channels, frameCount, this.bandCb, channelMode);
 
     // Mix dry/wet — the dry copy is delayed by the wet path's current
@@ -269,6 +301,7 @@ export class ExciterModuleProcessor implements UltinaModuleProcessor {
     }
     this.toneLowState.fill(0);
     this.toneHighState.fill(0);
+    this.preEmphState.fill(0);
     this.multiband.reset();
     this.dryDelay.reset();
     this.harmonicContent.fill(0);
@@ -311,6 +344,10 @@ export class ExciterModuleProcessor implements UltinaModuleProcessor {
       this.dryL = new Float32Array(size);
       this.dryR = new Float32Array(size);
     }
+    if (this.preYScratch[0].length < size) {
+      this.preYScratch[0] = new Float32Array(size);
+      this.preYScratch[1] = new Float32Array(size);
+    }
   }
 
   private updateMultiband(bandCount: BandCount, xover1: number, xover2: number): void {
@@ -346,6 +383,7 @@ export class ExciterModuleProcessor implements UltinaModuleProcessor {
     amounts: SatAmounts,
     toneSlider: number,
     oversampling: boolean,
+    preEmphasisDb: number,
   ): void {
     const chL = bandChannels[0];
     // M/S channel modes deliver a SINGLE-band mono buffer (bandChannels
@@ -355,6 +393,21 @@ export class ExciterModuleProcessor implements UltinaModuleProcessor {
     // R-side pass below is gated on a genuinely distinct second channel.
     const stereo = bandChannels.length >= 2;
     const chR = stereo ? bandChannels[1] : bandChannels[0];
+
+    // Pre-emphasis: HF shelf INTO the saturators (drives harmonic generation
+    // from high-frequency content). The exact inverse runs after the
+    // saturation stage, so the linear path cancels and only the generated
+    // harmonics keep the emphasis. Skipped entirely when no saturator is
+    // active — the pair would otherwise be a pure float-rounding no-op
+    // riding every linear band.
+    const preEmphOn =
+      preEmphasisDb > 0 &&
+      bandFrames > 0 &&
+      this.saturationActive(trashMode, amounts);
+    if (preEmphOn) {
+      this.applyPreEmphasis(chL, bandFrames, bandIdx, 0, preEmphasisDb);
+      if (stereo) this.applyPreEmphasis(chR, bandFrames, bandIdx, 1, preEmphasisDb);
+    }
 
     // Measure input energy for harmonic content meter
     let inEnergy = 0;
@@ -375,7 +428,9 @@ export class ExciterModuleProcessor implements UltinaModuleProcessor {
       this.applySaturation(osStateL.osBuffer, osFrames, trashMode, amounts);
       if (stereo) this.applySaturation(osStateR.osBuffer, osFrames, trashMode, amounts);
 
-      // Apply tone at oversampled rate
+      // Apply tone at oversampled rate (unchanged position — the emphasis
+      // inverse below commutes with the linear tone stage, so only the
+      // saturator sits between the shelf and its inverse).
       this.applyTone(osStateL.osBuffer, osStateR.osBuffer, osFrames, toneSlider, bandIdx, stereo);
 
       // Downsample 4x
@@ -386,6 +441,14 @@ export class ExciterModuleProcessor implements UltinaModuleProcessor {
       this.applySaturation(chL, bandFrames, trashMode, amounts);
       if (stereo) this.applySaturation(chR, bandFrames, trashMode, amounts);
       this.applyTone(chL, chR, bandFrames, toneSlider, bandIdx, stereo);
+    }
+
+    // Invert the pre-emphasis (exact for the linear part — see the constant
+    // block comment), so the mode shapes ONLY the generated harmonics and
+    // both the dry path and the Tone tilt keep their exact semantics.
+    if (preEmphOn) {
+      this.applyPreEmphasisInverse(chL, bandFrames, bandIdx, 0, preEmphasisDb);
+      if (stereo) this.applyPreEmphasisInverse(chR, bandFrames, bandIdx, 1, preEmphasisDb);
     }
 
     // Measure harmonic content (ratio of output energy to input energy)
@@ -411,16 +474,93 @@ export class ExciterModuleProcessor implements UltinaModuleProcessor {
     this.outputPeaks[bandIdx] = peak > 1e-10 ? 20 * Math.log10(peak) : -100;
   }
 
+  /** Whether any saturator would change samples (shared by the emphasis
+   * gate and applySaturation's early-out — the two must agree). */
+  private saturationActive(trashMode: boolean, a: SatAmounts): boolean {
+    const hasSat = a.tubeAmt > 0 || a.tubeAsymAmt > 0 || a.warmAmt > 0 || a.tapeAmt > 0 || a.retroAmt > 0;
+    const hasDist = trashMode && (a.odAmt > 0 || a.screamAmt > 0 || a.clipAmt > 0 || a.scratchAmt > 0);
+    return hasSat || hasDist;
+  }
+
+  // ── Pre-emphasis (modes: flat/clean/defined/full) ─────────
+
+  /**
+   * First-order HF shelf INTO the saturators:
+   *   y = (1+k)·x − k·lp(x),  lp = one-pole lowpass at EXCITER_PRE_EMPHASIS_HZ
+   * Unity at DC, +20·log10(1+k) dB toward Nyquist.
+   * The pre-saturation output is recorded into preYScratch[bandIdx's slot]
+   * so the inverse stage can run its recursion across the (saturated)
+   * buffer. State layout in preEmphState: [band*2+ch] × {lp, yPrev}.
+   */
+  private applyPreEmphasis(
+    buf: Float32Array,
+    frames: number,
+    bandIdx: number,
+    chIdx: number,
+    preEmphasisDb: number,
+  ): void {
+    const k = dbToLinear(preEmphasisDb) - 1;
+    if (k <= 0 || frames <= 0) return;
+    const a = 1 - Math.exp((-2 * Math.PI * EXCITER_PRE_EMPHASIS_HZ) / this.sampleRate);
+    const stateBase = (bandIdx * 2 + chIdx) * 3;
+    let d = this.preEmphState[stateBase];
+    const yOut = this.preYScratch[chIdx];
+    const dryGain = 1 + k;
+    for (let i = 0; i < frames; i++) {
+      const x = buf[i];
+      d += a * (x - d);
+      const y = dryGain * x - k * d;
+      yOut[i] = y;
+      buf[i] = sanitizeSample(y);
+    }
+    this.preEmphState[stateBase] = d;
+    // The inverse recursion needs the pre-saturation y[n−1] across blocks.
+    this.preEmphState[stateBase + 1] = yOut[frames - 1];
+  }
+
+  /**
+   * EXACT inverse of applyPreEmphasis: X/Y = (1 − c·z⁻¹)/(A0 − (1+k)·c·z⁻¹),
+   * recursion x̂[n] = (y[n] − c·y[n−1] + (1+k)·c·x̂[n−1]) / A0 with
+   * c = 1−a, A0 = 1+k−k·a. The pole sits at (1+k)·c/A0 < 1 for every k ≥ 0,
+   * a ∈ (0,1) — always stable. Applied to the SATURATED signal this cancels
+   * the shelf for the linear path exactly; only the generated harmonics
+   * keep the emphasis.
+   */
+  private applyPreEmphasisInverse(
+    buf: Float32Array,
+    frames: number,
+    bandIdx: number,
+    chIdx: number,
+    preEmphasisDb: number,
+  ): void {
+    const k = dbToLinear(preEmphasisDb) - 1;
+    if (k <= 0 || frames <= 0) return;
+    const a = 1 - Math.exp((-2 * Math.PI * EXCITER_PRE_EMPHASIS_HZ) / this.sampleRate);
+    const c = 1 - a;
+    const dryGain = 1 + k;
+    const a0 = dryGain - k * a;
+    const feedback = dryGain * c;
+    const stateBase = (bandIdx * 2 + chIdx) * 3;
+    let yPrev = this.preEmphState[stateBase + 1];
+    let xPrev = this.preEmphState[stateBase + 2];
+    const yOut = this.preYScratch[chIdx];
+    for (let i = 0; i < frames; i++) {
+      const x = (buf[i] - c * yPrev + feedback * xPrev) / a0;
+      xPrev = sanitizeSample(x);
+      buf[i] = xPrev;
+      yPrev = yOut[i];
+    }
+    this.preEmphState[stateBase + 1] = yPrev;
+    this.preEmphState[stateBase + 2] = xPrev;
+  }
+
   /**
    * Apply all active saturation/distortion types.
    * Saturation types are blended in parallel; distortion types
    * are applied in series.
    */
   private applySaturation(buf: Float32Array, frames: number, trashMode: boolean, a: SatAmounts): void {
-    const hasSat = a.tubeAmt > 0 || a.tubeAsymAmt > 0 || a.warmAmt > 0 || a.tapeAmt > 0 || a.retroAmt > 0;
-    const hasDist = trashMode && (a.odAmt > 0 || a.screamAmt > 0 || a.clipAmt > 0 || a.scratchAmt > 0);
-
-    if (!hasSat && !hasDist) return;
+    if (!this.saturationActive(trashMode, a)) return;
 
     for (let i = 0; i < frames; i++) {
       let x = buf[i];
