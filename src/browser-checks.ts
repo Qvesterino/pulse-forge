@@ -3593,37 +3593,45 @@ export async function runChecks(): Promise<CheckResult[]> {
       `peaksLen=${peaks?.length ?? 0} hotBand=B${hotBand + 1} hotVal=${hotBand >= 0 ? peaks![hotBand].toFixed(3) : "0"} gatedSilent=${!gatedMeters}`,
     );
 
-    // Transparency + latency consistency: with default params the lane must
-    // pass the signal 1:1 once aligned by its own reported latency — and the
-    // measured alignment lag must match getLatencySec() within one block
-    // (this is exactly what the engine's PDC trusts).
-    const renderRef = async (withFx: boolean): Promise<Float32Array> => {
+    // Transparency + latency consistency: the limiter lane must pass a
+    // deterministic, low-level probe once aligned by the latency reported to
+    // the host. Compare against the same PRISM crossover path with only the
+    // limiter disabled: crossover/allpass stages are IIR and have
+    // frequency-dependent phase, so comparing them to a raw native oscillator
+    // makes a periodic tone choose an arbitrary whole-period "latency".
+    const renderLane = async (limiterEnabled: boolean): Promise<Float32Array> => {
       const tctx = new OfflineAudioContext(1, Math.floor(SR * 0.6), SR);
       await loadAllWorklets(tctx);
-      const trt = withFx
-        ? def.factory(
-            tctx,
-            { id: "fxeq-t", type: "fxeq", bypassed: false, params: defaultParamsOf("fxeq") },
-            { bpm: 124 },
-          )
-        : null;
-      const to = tctx.createOscillator();
-      to.frequency.value = 997;
-      const tg = tctx.createGain();
-      tg.gain.value = 0.5;
-      to.connect(tg);
-      if (trt) {
-        tg.connect(trt.input);
-        trt.output.connect(tctx.destination);
-      } else {
-        tg.connect(tctx.destination);
+      const trt = def.factory(
+        tctx,
+        {
+          id: "fxeq-t",
+          type: "fxeq",
+          bypassed: false,
+          params: { ...defaultParamsOf("fxeq"), limiterEnabled: limiterEnabled ? 1 : 0 },
+        },
+        { bpm: 124 },
+      );
+      const probe = tctx.createBuffer(1, tctx.length, SR);
+      const probeData = probe.getChannelData(0);
+      let phase = 0;
+      for (let i = 0; i < probeData.length; i++) {
+        const frequency = 80 + 11920 * (i / Math.max(1, probeData.length - 1));
+        phase += (2 * Math.PI * frequency) / SR;
+        // Stay comfortably below the -0.3 dBFS limiter ceiling while keeping
+        // the probe above the browser check's signal-quality floor.
+        probeData[i] = 0.2 * Math.sin(phase);
       }
-      to.start(0);
+      const source = tctx.createBufferSource();
+      source.buffer = probe;
+      source.connect(trt.input);
+      trt.output.connect(tctx.destination);
+      source.start(0);
       const tout = await tctx.startRendering();
-      trt?.dispose();
+      trt.dispose();
       return tout.getChannelData(0);
     };
-    const [refOut, fxOut] = await Promise.all([renderRef(false), renderRef(true)]);
+    const [refOut, fxOut] = await Promise.all([renderLane(false), renderLane(true)]);
     const expectedLag = Math.round((latencySec || 0) * SR);
     let bestLag = -1;
     let bestDiff = Infinity;
