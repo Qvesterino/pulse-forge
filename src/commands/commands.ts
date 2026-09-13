@@ -2226,8 +2226,10 @@ export function setInstrumentSample(doc: ProjectDocument, trackId: string, asset
 
 /**
  * Apply an instrument preset as a single undoable step: replaces the track's
- * parameters (clamped to the instrument's ranges), sampler sample, and records
- * the preset id. Params not present in the preset keep their current value.
+ * parameters (instrument defaults overlaid with clamped preset overrides),
+ * sampler sample, and preset id. Factory presets are intentionally sparse, so
+ * omitted parameters must resolve to defaults rather than leaking the previous
+ * patch into the newly selected sound.
  */
 export function applyInstrumentPreset(doc: ProjectDocument, trackId: string, preset: InstrumentPreset): Command {
   const track = doc.tracks.find((t): t is InstrumentTrack => t.kind === "instrument" && t.id === trackId);
@@ -2236,7 +2238,7 @@ export function applyInstrumentPreset(doc: ProjectDocument, trackId: string, pre
   const prevSample = track.sampleId;
   const prevPresetId = track.presetId ?? null;
 
-  const nextParams: Record<string, number> = { ...track.params };
+  const nextParams: Record<string, number> = defaultInstrumentParams(track.instrument);
   for (const [key, value] of Object.entries(preset.params)) {
     nextParams[key] = clampInstrumentParam(track.instrument, key, value);
   }

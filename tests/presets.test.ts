@@ -92,6 +92,41 @@ describe("applyInstrumentPreset command", () => {
     }
   });
 
+  it("resets omitted sparse-preset params to instrument defaults", () => {
+    const { doc, track } = trackFor("analog");
+    const defaults = defaultInstrumentParams("analog");
+    const previous = {
+      ...track,
+      params: {
+        ...defaults,
+        cutoff: 15000,
+        resonance: 18,
+        modAAmt: 0.9,
+      },
+    };
+    const editedDoc: ProjectDocument = {
+      ...doc,
+      tracks: doc.tracks.map((candidate) => (candidate.id === track.id ? previous : candidate)),
+    };
+    const sparse: InstrumentPreset = {
+      id: "sparse-analog",
+      name: "Sparse Analog",
+      instrument: "analog",
+      genre: "house",
+      mood: ["clean"],
+      tags: ["test"],
+      params: { cutoff: 1200 },
+    };
+
+    const next = applyInstrumentPreset(editedDoc, track.id, sparse).execute(editedDoc);
+    const applied = next.tracks.find((candidate) => candidate.id === track.id) as InstrumentTrack;
+
+    expect(applied.params.cutoff).toBe(1200);
+    expect(applied.params.resonance).toBe(defaults.resonance);
+    expect(applied.params.modAAmt).toBe(defaults.modAAmt);
+    expect(Object.keys(applied.params).sort()).toEqual(Object.keys(defaults).sort());
+  });
+
   it("undo restores previous params, sample and preset id", () => {
     const preset = FACTORY_PRESETS.find((p) => p.instrument === "analog")!;
     const { doc, track } = trackFor("analog");
