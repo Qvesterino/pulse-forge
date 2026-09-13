@@ -5,8 +5,9 @@
 **Produkt:** KYX browser-first beatmaking DAW  
 **Cieľ:** dostať KYX do stavu, v ktorom nový používateľ vytvorí beat, vyberie zvuk, spracuje ho cez pluginy, zrozumiteľne ho zmixuje a bezpečne exportuje bez straty práce, nečakaných level skokov alebo nejasného workflow.
 
-**Reviewed baseline:** current candidate `70cd4e9` (`fix: update fallback
-modulation amounts live`) on top of `326d443` (`fix: bound fallback modulation
+**Reviewed baseline:** current candidate `d4d974b` (`fix: live-update fallback
+modulation selectors`) on top of `70cd4e9` (`fix: update fallback modulation
+amounts live`) and `326d443` (`fix: bound fallback modulation
 routes`) and `954739e` (`fix: make sparse instrument presets deterministic`)
 with functional/test baseline `8f11255` — FXEQ/PRISM six-band
 crossover surface correction on top of `173f5ce` (`fix(ultina): reconcile
@@ -26,8 +27,9 @@ factory preset cannot inherit omitted values from the previous patch. The
 main-thread modulation fallback now combines CUTOFF/AMP routes before applying
 the worklet-compatible cutoff bounds and AMP floor in `326d443`; `70cd4e9`
 forwards scheduled continuous MOD A/B amount writes into already-playing
-fallback voices while selector topology remains note-bound. Its negative-route
-and live-amount browser guards are included in the current `221/221` acceptance. The
+fallback voices and `d4d974b` extends that forwarding to source, destination and
+LFO-rate selectors. Negative-route and live matrix browser guards are included
+in the current `224/224` acceptance. The
 worktree is clean. The authoritative full
 Vitest baseline and current Chromium gates are green; the post-candidate
 scorepack regression is `4/4`.
@@ -61,7 +63,7 @@ nie je uzavretý `REL-01`, nemá zmysel pridávať nový plugin alebo veľký in
 | ID         | Stav                                           | Priorita        | Úloha                                                                                                     | Reálne touchpoints                                                                                                                                                                                                                           | Done keď                                                                                                                                                                                                                                              |
 | ---------- | ---------------------------------------------- | --------------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `REL-01`   | **CLOSED — reviewed baseline `dfaf230`**       | P0              | Zmapovať a uzavrieť commitnutý release scope bez straty PRISM/VLYX/VØID capability                         | `git show dfaf230`, `git show 8f11255`, `src/effects/`, `src/audio-engine/`, `src/ui/`, `tests/`                                                                                                                                               | reviewed commit je čistý a čitateľný; každá capability má dôkaz aj otvorený follow-up; release approval je samostatný krok                                                                                                                     |
-| `PRISM-01` | **IMPLEMENTED — current browser 221/221** | P0         | Uzavrieť PRISM A/B, plugin history, gain-match/meter a spectral sidechain ako jeden zrozumiteľný workflow | `src/ui/FxEqPanel.tsx`, `src/ui/fxeqCurve.ts`, `src/ui/EffectRack.tsx`, `src/ui/EffectAbControls.tsx`, `src/audio-engine/AudioEngine.ts`, `src/effects/fxeqNode.ts`, `src/effects/fxeq-worklet.entry.js`, `src/project-model/schema.ts`, `src/commands/commands.ts` | source picker + rewire, live preview/history, persisted A/B hydration, cancel-safe controls, musical tempo-sync selects, transfer overlay and async history queue are implemented; current quiet Chromium acceptance is 221/221; full Vitest is also green, manual/deploy gates remain open |
+| `PRISM-01` | **IMPLEMENTED — current browser 224/224** | P0         | Uzavrieť PRISM A/B, plugin history, gain-match/meter a spectral sidechain ako jeden zrozumiteľný workflow | `src/ui/FxEqPanel.tsx`, `src/ui/fxeqCurve.ts`, `src/ui/EffectRack.tsx`, `src/ui/EffectAbControls.tsx`, `src/audio-engine/AudioEngine.ts`, `src/effects/fxeqNode.ts`, `src/effects/fxeq-worklet.entry.js`, `src/project-model/schema.ts`, `src/commands/commands.ts` | source picker + rewire, live preview/history, persisted A/B hydration, cancel-safe controls, musical tempo-sync selects, transfer overlay and async history queue are implemented; current quiet Chromium acceptance is 224/224; full Vitest is also green, manual/deploy gates remain open |
 | `DSP-01`   | **PASS — current candidate gates green**           | P0              | Uzavrieť FXEQ full-load realtime performance gate                                                         | `tests/fxeq-performance-gates.test.ts`, `src/effects/fxeq-core/core/`, `src/effects/fxeq-core/modules/`, `scripts/build-fxeq-worklet.mjs`                                                                                                    | allocation-free oprava, gate 3/3, full Vitest `236/2320/103`, current browser worklet/CPU checks and build/budget pass                                                                                                                       |
 | `DSP-02`   | **PASS — current candidate gates green**           | P0              | Obnoviť biquad state po non-finite audio frame                                                            | upstream FXEQ/VØID `dsp/biquad.ts`, vendored `src/effects/*-core/dsp/biquad.ts`, generated worklets, `tests/fxeq-ozvena-biquad-hardening.test.ts`                                                                                            | upstream fix je znovu vendored, 4/4 host regression, worklety/build, full Vitest `236/2320/103` and browser smoke pass                                                                                                          |
 | `QA-01`    | **OWNER GATE OPEN**                            | P0              | Manuálny browser/device release matrix                                                                    | [`docs/KYX-MANUAL-RELEASE-CHECKLIST.md`](./KYX-MANUAL-RELEASE-CHECKLIST.md)                                                                                                                                                                  | Chromium/Edge/Firefox/Safari macOS/Safari iOS prejdú create → sound → FX → mix → export → reload flow                                                                                                                                                 |
@@ -107,7 +109,7 @@ completion kontraktom, nie otvoreným návrhom na druhú session.
    drag, overí plugin undo/redo, morph, collapse/expand a reload persistence;
    samostatný browser suite zároveň prešiel real-worklet DSP, PDC, metery,
     sidechain render, export determinism a zero-error flow. Latest quiet
-    Chromium beh prešiel `221/221`; predchádzajúci loaded run mal jeden
+    Chromium beh prešiel `224/224`; predchádzajúci loaded run mal jeden
     `.preset-browser` bootstrap timeout, ktorý sa pri rerun-e zopakovaním
     nepotvrdil. Zostávajú full Vitest, manuálny device a deploy gates.
 
@@ -143,11 +145,11 @@ musí dostať vlastného ownera, test a rozhodnutie.
 
 | Scope                                               | Súbory                                                                                                                                                                                                                                                                                                                                        | Owner / dôvod                                                                                         | Dôkaz                                                                                                                                                              | Rozhodnutie                                                                                                        |
 | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
-| PRISM host workflow surface                         | `src/effects/fxeq-core/core/commandHistory.ts`, `src/effects/fxeq-core/core/fxEqProcessor.ts`, `src/effects/fxeq-worklet.entry.js`, `src/effects/fxeqNode.ts`, `src/effects/types.ts`, `src/audio-engine/AudioEngine.ts`, `src/ui/FxEqPanel.tsx`, `src/ui/fxeqCurve.ts`, `src/ui/EffectRack.tsx`, `src/styles.css`, `public/fxeq-worklet.js`, `tests/fxeq-*.test.ts` | DSP/host/UI owner; technický surface pre morph, undo/redo, GR, sidechain, tempo-sync, transfer overlay a six-band crossover surface | current focused PRISM batch `115/115`, UI/curve suite `18/18`, typecheck, build, 8/8 golden cases within tolerance; current Chromium `221/221`; full Vitest `236/2320/103`; manual/deploy/formatting owner gates remain open | **IMPLEMENTED IN `a3dd6ba` + `a768595` + `2242541` + `64ca7e4` + `699c8a3` + `8f11255` + `dfaf230`**; owner gates remain open |
+| PRISM host workflow surface                         | `src/effects/fxeq-core/core/commandHistory.ts`, `src/effects/fxeq-core/core/fxEqProcessor.ts`, `src/effects/fxeq-worklet.entry.js`, `src/effects/fxeqNode.ts`, `src/effects/types.ts`, `src/audio-engine/AudioEngine.ts`, `src/ui/FxEqPanel.tsx`, `src/ui/fxeqCurve.ts`, `src/ui/EffectRack.tsx`, `src/styles.css`, `public/fxeq-worklet.js`, `tests/fxeq-*.test.ts` | DSP/host/UI owner; technický surface pre morph, undo/redo, GR, sidechain, tempo-sync, transfer overlay a six-band crossover surface | current focused PRISM batch `115/115`, UI/curve suite `18/18`, typecheck, build, 8/8 golden cases within tolerance; current Chromium `224/224`; full Vitest `236/2320/103`; manual/deploy/formatting owner gates remain open | **IMPLEMENTED IN `a3dd6ba` + `a768595` + `2242541` + `64ca7e4` + `699c8a3` + `8f11255` + `dfaf230`**; owner gates remain open |
 | Instant Jam transport boundary + follower scheduler | `src/collab/transportSync.ts`, `src/collab/CollaborationProvider.ts`, `src/services.ts`, `tests/collab-transport.test.ts`                                                                                                                                                                                                                     | collab/audio-runtime owner; ochrana pred malformed awareness payloadom a oprava remote play lifecycle | transport `10/10`, collab subset `79/79`, typecheck                                                                                                                | **LAND / retain** schema guard aj transition testy                                                                 |
 | MPE compatibility fallback                          | `src/ui/MpeIndicator.tsx`, `tests/ui/MpeIndicator.test.tsx`                                                                                                                                                                                                                                                                                   | MIDI/UI owner; staršia embedded facade nesmie zhodiť celý MIDI panel                                  | targeted MPE/MIDI `6/6`                                                                                                                                            | **LAND / retain** inactive fallback                                                                                |
 | Biquad non-finite state recovery                    | upstream `D:/VocalForge_DAW/plugins/fxeq/src/dsp/biquad.ts`, upstream `D:/VocalForge_DAW/plugins/ozvena/src/dsp/biquad.ts`, vendored `src/effects/fxeq-core/dsp/biquad.ts`, vendored `src/effects/ozvena-core/dsp/biquad.ts`, generated `public/fxeq-worklet.js`, `public/ozvena-worklet.js`, `tests/fxeq-ozvena-biquad-hardening.test.ts`    | DSP/audio owner; jeden chybný frame nesmie otráviť rekurzívny filter na zvyšok session                | host regression `4/4`; upstream guard + vendor/worklet rebuild                                                                                                     | **LAND / retain** upstream→vendor process, needitovať vendored core ako nový source-of-truth                       |
-| Browser timing measurement + release evidence       | `src/browser-checks.ts`, `scripts/verify-browser.mjs`, `AGENT_WORK_LOG.md`, `RELEASE_READINESS_REPORT.md`, tento roadmap                                                                                                                                                                                                                      | current quiet Chromium `221/221`; all audio/DSP/FXEQ checks pass including latency `119/119`, PRISM determinism `maxDiff=4.95e-6`, multi-instance CPU `24.3%` per instance and template performance avg `3579ms` / worst `7374ms`; ranker missing/offline, hash-mismatch and timeout fallback probe passes; production browser smoke PASS; build/preflight/server smoke pass; full Vitest authoritative baseline `236/2320/103` remains green | **OWNER GATES REMAIN** manual device/deploy/formatting                                                             |
+| Browser timing measurement + release evidence       | `src/browser-checks.ts`, `scripts/verify-browser.mjs`, `AGENT_WORK_LOG.md`, `RELEASE_READINESS_REPORT.md`, tento roadmap                                                                                                                                                                                                                      | current quiet Chromium `224/224`; all audio/DSP/FXEQ checks pass including latency `119/119`, PRISM determinism `maxDiff=4.95e-6`, multi-instance CPU `24.3%` per instance and template performance avg `3579ms` / worst `7374ms`; ranker missing/offline, hash-mismatch and timeout fallback probe passes; production browser smoke PASS; build/preflight/server smoke pass; full Vitest authoritative baseline `236/2320/103` remains green | **OWNER GATES REMAIN** manual device/deploy/formatting                                                             |
 | Ultina contract/DSP source-of-truth reconciliation  | `D:/VocalForge_DAW/plugins/ultina/src/contracts/parameter{Ids,Schema}.ts`, `plugins/ultina/src/dsp/modules/{eqModule,exciterModule}.ts`, vendored mirrors, `public/ultina-worklet.js`, `tests/ultina-contract-params.test.ts` | VLYX/DSP owner; Pre-Emphasis is now live at values 1..3, transient/sustain EQ is isolated, and future vendor syncs cannot overwrite dirty hardening silently | host contract `8/8`; upstream affected `105/105`; local source/vendor equality after mechanical header transform; worklet rebuild; focused battery `137/137` | **COMMITTED LOCALLY IN `173f5ce`; upstream source/test committed in `D:/VocalForge_DAW` as `c0a549d`** |
 | Formatting-only test diffs                          | `tests/ultina-hardening2.test.ts`, `tests/ultina-worklet-entry.test.ts`                                                                                                                                                                                                                                                                       | QA hygiene owner; iba Prettier layout, žiadna runtime zmena                                           | diff je syntakticky/semanticky formatting-only; Ultina battery `55/55` + `26/26`                                                                                   | **LAND iba ako súčasť výslovne reviewed batchu**; inak izolovať do samostatného formatting commitu                 |
 
@@ -294,14 +296,14 @@ release-safe:
   voľby, phase equalization a voliteľný 8× offline quality tier. Vlastný
   targeted suite (`20/20` crossover tests + `2/2` render-quality tests),
   generated `public/fxeq-worklet.js` review, typecheck, build a Chromium
-  `221/221` acceptance už prešli a full Vitest je `236/2320/103`; owner gates
+  `224/224` acceptance už prešli a full Vitest je `236/2320/103`; owner gates
   zostávajú otvorené;
 - PRISM UI v `2242541` dokončuje Q2 tempo-sync enum rendering ako hudobné
   voľby a kreslí LR crossover window + per-band transfer overlay; `64ca7e4`
   dopĺňa effective split normalization pre canvas/hit-test. `699c8a3` dopĺňa
   `crossoverFreq6` až do DSP/worklet/schema surface a odstraňuje dead-band/
   crossed-split stav v 6-band defaultoch. Targeted UI/curve test je teraz
-  `18/18`; current quiet browser acceptance je `221/221` na `70cd4e9` a full
+  `18/18`; current quiet browser acceptance je `224/224` na `d4d974b` a full
   Vitest je `236/2320/103`. Current implementation gates sú zelené;
   zostávajú owner/manual/deploy/formatting rozhodnutia;
 - agent nesmie tieto súbory prepisovať, squasovať ani vyhadzovať bez toho, aby
@@ -313,9 +315,9 @@ Overené príkazy a výsledky:
 | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `npm run typecheck:clean`                                  | PASS                                                                                                                                                                                                                                                                                                                                                       |
 | full Vitest (single-worker authoritative run)              | **PASS — 236 files, 2320 passed, 103 skipped, 2423 total** in 2304.38s; includes the soak-heavy suite and no threshold changes |
-| `npm run build` + worklet buildy + bundle budget           | PASS — current candidate `70cd4e9`: entry 940 KB / 995 KB, total JS chunks 1851 KB / 2400 KB, core worklets 98 KB / 120 KB, 356 modules; PWA precache 57 entries / 4040.86 KiB; lazy ranker WASM is 13.6 MB and excluded from the app-shell precache                                                                                                                  |
+| `npm run build` + worklet buildy + bundle budget           | PASS — current candidate `d4d974b`: entry 941 KB / 995 KB, total JS chunks 1852 KB / 2400 KB, core worklets 98 KB / 120 KB, 356 modules; PWA precache 57 entries / 4041.55 KiB; lazy ranker WASM is 13.6 MB and excluded from the app-shell precache                                                                                                                  |
 | `npm run build:ultina`                                     | PASS — rebuilt `public/ultina-worklet.js`                                                                                                                                                                                                                                                                                                                  |
-| `npm run test:browser`                                     | **PASS — quiet rerun 221/221 Chromium on `70cd4e9`**; all audio/DSP/FXEQ checks pass, including the negative AMP/CUTOFF guard and held-voice MOD amount automation; UI bootstrap, PRISM workflow, collab, embed/share and touch pass; no threshold change                                                                                                                                                                          |
+| `npm run test:browser`                                     | **PASS — quiet rerun 224/224 Chromium on `d4d974b`**; all audio/DSP/FXEQ checks pass, including negative AMP/CUTOFF and held-voice MOD amount/source/destination/LFO-rate automation guards; UI bootstrap, PRISM workflow, collab, embed/share and touch pass; no threshold change                                                                                                                                                                          |
 | `npm run test:browser:production`                          | **PASS** — dist boot, HOUSE template, sequencer, FX rack, shipped worklet assets and ONNX worker smoke (`0.9895/0.9999/1`)                                                                                                                                                                                                                                                                   |
 | scorepack targeted regression after export fixes          | **PASS — 4/4**; resampled cue frame count preserves source duration at target sample rate; pre-aborted export and optional missing cue remain cancel/missing-asset safe; real render/decode failures are rethrown                                                                                                                                                                                                    |
 | Post-`cb1bde7` hardening regression batch                  | PASS — 48/48 targeted tests + 300 s PRISM soak (6.0 MB heap growth, −0.003 dB drift, zero non-finite samples, zero tail peak); current full suite is also green                                                                                                                                                                      |
@@ -433,7 +435,7 @@ Každý agent ich musí dodržať:
 Tieto body majú prednosť pred polishom. Ak niektorý P0 zlyháva, release sa nepovažuje za bezpečný.
 
 - [x] deterministický PRISM/FXEQ export (core, host seed aj browser
-      `serialize → reload → offline bounce`; 221/221 Chromium gate),
+      `serialize → reload → offline bounce`; 224/224 Chromium gate),
 - [x] odstránenie potvrdených VLYX DSP regresií (upstream → vendor → worklet),
 - [x] hardening VØID IR/pre-delay runtime allocations; reálne device footprint
       meranie ostáva manuálny release krok,
@@ -442,7 +444,7 @@ Tieto body majú prednosť pred polishom. Ak niektorý P0 zlyháva, release sa n
 - [x] ne-deštruktívny preset audition pre nástroje,
 - [x] persistovaný generický A/B a gain-match kontrakt pre flagship shell,
 - [x] PRISM morph/undo/sidechain host workflow — implementované a browser-
-      accepted v aktuálnom candidate; `221/221` quiet Chromium a full Vitest
+      accepted v aktuálnom candidate; `224/224` quiet Chromium a full Vitest
       `236/2320/103` prešli, manuálny/device/deploy release kroky zostávajú,
 - [x] recovery, reload a export/import smoke v automatizovanom Chromium flow;
       tab-close/production-host recovery ostáva manuálny release krok.
@@ -519,9 +521,10 @@ fallback a bit-stabilný alebo toleranciou definovaný offline výsledok.
 CUTOFF/AMP tak, že najprv sčíta obe aktívne route a potom aplikuje rovnaké
 bezpečnostné hranice ako `wtvoice` worklet (CUTOFF `60–18000 Hz`, AMP floor
 `0.1`). `70cd4e9` dopĺňa scheduled forwarding kontinuálnych `modAAmt`/
-`modBAmt` zmien do amount gainov už bežiacich fallback hlasov; topology
-selectorov zostáva note-bound. Browser suite obsahuje explicitný negatívny
-AMP/CUTOFF guard a live-amount guard; aktuálny Chromium acceptance je `221/221`.
+`modBAmt` zmien do amount gainov už bežiacich fallback hlasov; `d4d974b`
+dopĺňa source/destination selector a LFO-rate forwarding. Browser suite
+obsahuje explicitné negatívne a live matrix guardy; aktuálny Chromium
+acceptance je `224/224`.
 DETUNE zostáva zámerne rezervovaný a
 worklet/fallback rozdiely pri live parameter update sú stále dokumentované v
 `KNOWN_LIMITATIONS.md`.
@@ -577,7 +580,7 @@ probe pre missing/offline manifest, hash mismatch a timeout. Default je
 2. zapojiť async pipeline do explicitného preview flowu bez blokovania command
    apply, undo/redo, autosave, collab a offline export invariants;
 3. browser test missing-model/hash-mismatch/timeout fallbacku je hotový
-   (`221/221`); reload/offline-cache a device cold-start evidence ostáva pre
+   (`224/224`); reload/offline-cache a device cold-start evidence ostáva pre
    P2.5 device gate;
 4. zmerať cold-start, WASM memory a preview budget na Safari/iOS a slabom
    zariadení;
@@ -666,7 +669,7 @@ Overiť v Chromium/Edge a následne manuálne vo Firefox, Safari a iOS Safari:
       zámernú odlišnosť pri inom seed; rack contract pokrýva seed forwarding,
 - [x] browser-level test `serialize → reload → offline bounce` beží v
       `src/browser-checks.ts`; dve PRISM worklet inštancie po JSON/migration
-      round-tripe ostali pod max-sample toleranciou `1e-5` (Chromium gate 221/221).
+      round-tripe ostali pod max-sample toleranciou `1e-5` (Chromium gate 224/224).
 
 ### 6.2 VLYX upstream kvalita
 
