@@ -5,8 +5,8 @@
 **Produkt:** KYX browser-first beatmaking DAW  
 **Cieľ:** dostať KYX do stavu, v ktorom nový používateľ vytvorí beat, vyberie zvuk, spracuje ho cez pluginy, zrozumiteľne ho zmixuje a bezpečne exportuje bez straty práce, nečakaných level skokov alebo nejasného workflow.
 
-**Reviewed baseline:** current candidate `a9dd506` (`fix: surface scorepack cue
-render failures`) with functional/test baseline `8f11255` — FXEQ/PRISM six-band
+**Reviewed baseline:** current candidate `954739e` (`fix: make sparse instrument
+presets deterministic`) with functional/test baseline `8f11255` — FXEQ/PRISM six-band
 crossover surface correction on top of `173f5ce` (`fix(ultina): reconcile
 upstream DSP and protect vendor sync`).
 The local KYX tree now contains the reviewed Ultina contract/worklet
@@ -18,7 +18,10 @@ hardening is in `f3514a5`, the browser fallback probe is in `f07a4e2`, and the
 bounded manifest load/abort guard is in `20f63ae`. Scorepack cue resampling
 duration preservation is committed in `dad84f3`; `a9dd506` narrows optional-cue
 recovery to the explicit missing-asset case so abort, decode, offline-render and
-memory failures remain visible. The worktree is clean. The authoritative full
+memory failures remain visible. Sparse instrument preset application now starts
+from canonical instrument defaults before applying overrides in `954739e`, so a
+factory preset cannot inherit omitted values from the previous patch. The
+worktree is clean. The authoritative full
 Vitest baseline and current Chromium gates are green; the post-candidate
 scorepack regression is `4/4`.
 Release approval still waits for the manual device matrix, production deploy
@@ -485,6 +488,11 @@ rovnaký projekt dá rovnaký sample výber po reload/renderi. Samotná helper
 funkcia bez UI integrácie sa za hotovú feature nepočíta. Aktuálny stav túto
 podmienku spĺňa; manuálny file-drag a cross-browser/device parity ostávajú
 release QA krokom.
+
+**Curation evidence:** factory presety sú sparse overrides, ale `Apply` ich
+normalizuje cez instrument defaults; regresia proti parametrom z predchádzajúceho
+patchu je v `tests/presets.test.ts` a targeted `presets + similar` batch je
+`16/16`. Tým je rovnaký preset nezávislý od predchádzajúceho sound state.
 
 #### P2.2 — Modulation matrix rollout
 
