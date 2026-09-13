@@ -2361,6 +2361,7 @@ const wavetable: InstrumentDefinition = {
           attack,
           off,
           release,
+          morph: true,
           cutoffParam: filter.frequency,
           cutoffBase: effCutoff(p.cutoff ?? 12000, pitch),
         });

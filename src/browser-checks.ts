@@ -3923,7 +3923,8 @@ export async function runChecks(): Promise<CheckResult[]> {
   }
 
   // ---------------- Mod matrix (main-thread rollout) ----------------
-  // amt=0 builds no nodes: two identical renders must match to float LSB.
+  // amt=0 uses a dormant gain-muted graph: two identical renders must match
+  // to float LSB, while a later amount write must still reach the held voice.
   // A full-strength route (LFO->CUTOFF / ENV->CUTOFF / ENV->AMP) must
   // audibly change the render. vocalchop is the AMP-only case.
   try {
@@ -4026,6 +4027,26 @@ export async function runChecks(): Promise<CheckResult[]> {
       "mod matrix fallback: amount automation updates a held voice",
       liveModDiff > 0.001,
       `diff=${liveModDiff.toFixed(4)}`,
+    );
+    const dormantModBase = await renderKind("analog", { modASrc: 0, modADst: 1, modAAmt: 0 });
+    const dormantModActivated = await renderKind(
+      "analog",
+      { modASrc: 0, modADst: 1, modAAmt: 0 },
+      (rt) => rt.setParameterAt!("modAAmt", 0.9, 0.35),
+    );
+    const dormantModDiff = maxDiff(dormantModBase, dormantModActivated);
+    const earlyLimit = Math.floor(0.3 * SR);
+    let earlyDormantDiff = 0;
+    let lateDormantDiff = 0;
+    for (let i = 0; i < dormantModBase.length; i++) {
+      const diff = Math.abs(dormantModBase.getChannelData(0)[i] - dormantModActivated.getChannelData(0)[i]);
+      if (i < earlyLimit) earlyDormantDiff = Math.max(earlyDormantDiff, diff);
+      else lateDormantDiff = Math.max(lateDormantDiff, diff);
+    }
+    check(
+      "mod matrix fallback: zero-amount route can activate a held voice",
+      dormantModDiff > 0.001 && earlyDormantDiff < 0.001 && lateDormantDiff > 0.001,
+      `diff=${dormantModDiff.toFixed(4)} early=${earlyDormantDiff.toFixed(4)} late=${lateDormantDiff.toFixed(4)}`,
     );
     const liveSourceBase = await renderKind("analog", { modASrc: 0, modADst: 1, modAAmt: 0.8 });
     const liveSourceMoved = await renderKind(

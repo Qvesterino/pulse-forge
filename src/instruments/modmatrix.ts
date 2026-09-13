@@ -16,8 +16,9 @@ import type { ParamDef } from "../effects/types";
  *        3 = AMP — serial gain node scaled 1 + src·amt
  *
  * All sources are unipolar 0..1 like the worklet; amounts are −1..+1.
- * A slot with |amount| < 0.001 builds no nodes at all, so instruments whose
- * matrix is untouched render bit-identically to before (live == offline).
+ * Zero-amount slots still get a dormant, gain-muted graph. That preserves
+ * neutral output while allowing a scheduled amount/source/destination write to
+ * activate a held voice without rebuilding its Web Audio graph.
  */
 
 export interface ModVoiceHandle {
@@ -44,6 +45,11 @@ export interface ModVoiceOpts {
   /** CUTOFF destination: target param and its base (keytracked) Hz value. */
   cutoffParam?: AudioParam;
   cutoffBase?: number;
+  /** Whether this voice exposes the MORPH destination (currently wavetable). */
+  morph?: boolean;
+  /** Internal: reuse a dormant voice's neutral nodes when a route wakes up. */
+  reuseAmpNode?: GainNode;
+  reuseMorphSlots?: GainNode[];
 }
 
 /**
@@ -82,10 +88,56 @@ export function scheduleVoiceModMatrix(
     { id: "modAAmt", src: Math.round(p.modASrc ?? 0), dst: Math.round(p.modADst ?? 0), amt: p.modAAmt ?? 0 },
     { id: "modBAmt", src: Math.round(p.modBSrc ?? 0), dst: Math.round(p.modBDst ?? 1), amt: p.modBAmt ?? 0 },
   ];
-  if (slotDefs.every((s) => Math.abs(s.amt) < 0.001)) return null;
+
+  const hasActiveRoute = slotDefs.some((slot) => Number.isFinite(slot.amt) && Math.abs(slot.amt) >= 0.001);
+  if (!hasActiveRoute && !opts.reuseAmpNode) {
+    // Keep the common untouched-note path cheap. A single neutral amp node and
+    // optional empty morph slots are enough for callers to wire the voice once;
+    // source buses and route controls are allocated only when a later live
+    // write actually gives one of the slots a non-zero amount.
+    const ampNode = ctx.createGain();
+    ampNode.gain.value = 1;
+    const morphSlots = opts.morph ? [ctx.createGain(), ctx.createGain()] : [];
+    let active: ModVoiceHandle | null = null;
+    let pressure = 0;
+
+    return {
+      ampNode,
+      slots: morphSlots.map((sig) => ({ sig, amt: 1 })),
+      setPressure(value, when) {
+        pressure = Math.max(0, Math.min(1, value));
+        active?.setPressure(pressure, when);
+      },
+      setParameter(id, value, when) {
+        p[id] = value;
+        const canWake = [p.modAAmt, p.modBAmt].some(
+          (amount) => Number.isFinite(amount) && Math.abs(amount ?? 0) >= 0.001,
+        );
+        if (!active && canWake) {
+          const initial = { ...p };
+          if (id === "modAAmt" || id === "modBAmt") initial[id] = 0;
+          const next = scheduleVoiceModMatrix(ctx, initial, {
+            ...opts,
+            reuseAmpNode: ampNode,
+            reuseMorphSlots: morphSlots,
+          });
+          if (next && next.ampNode === ampNode) active = next;
+        }
+        active?.setParameter(id, value, when);
+        if (active && pressure > 0) active.setPressure(pressure, when);
+      },
+      dispose() {
+        active?.dispose();
+        if (!active) {
+          ampNode.disconnect();
+          for (const slot of morphSlots) slot.disconnect();
+        }
+      },
+    };
+  }
 
   const lfoRate = Math.max(0, p.modLfoRate ?? 2);
-  const nodes: AudioNode[] = [];
+  const nodes: AudioNode[] = [...(opts.reuseAmpNode ? [opts.reuseAmpNode] : []), ...(opts.reuseMorphSlots ?? [])];
   const pressSources: ConstantSourceNode[] = [];
   const lfoFrequencies: AudioParam[] = [];
   const sourceBuses = new Map<number, GainNode>();
@@ -159,7 +211,7 @@ export function scheduleVoiceModMatrix(
     if (bus) sourceBuses.set(src, bus);
   }
 
-  let ampNode: GainNode | null = null;
+  let ampNode: GainNode | null = opts.reuseAmpNode ?? null;
   const slots: ModVoiceHandle["slots"] = [];
   const cutoffRoutes: GainNode[] = [];
   const ampRoutes: GainNode[] = [];
@@ -167,11 +219,7 @@ export function scheduleVoiceModMatrix(
   const sourceControls: Array<{ id: string; params: AudioParam[] }> = [];
   const destinationControls: Array<{ id: string; params: Array<{ dst: number; param: AudioParam }> }> = [];
 
-  for (const def of slotDefs) {
-    if (Math.abs(def.amt) < 0.001) {
-      slots.push(null);
-      continue;
-    }
+  for (const [slotIndex, def] of slotDefs.entries()) {
     const amount = Math.max(-1, Math.min(1, Number.isFinite(def.amt) ? def.amt : 0));
     const selectedSource = ctx.createGain();
     selectedSource.gain.value = 1;
@@ -195,10 +243,12 @@ export function scheduleVoiceModMatrix(
     // Keep all destination branches alive and select exactly one at a time.
     // Later selector automation can therefore move a held voice between
     // CUTOFF, AMP and MORPH without rebuilding or rewiring its voice graph.
-    const morph = ctx.createGain();
-    morph.gain.value = def.dst === 0 ? 1 : 0;
-    amountNode.connect(morph);
-    nodes.push(morph);
+    const morph = opts.morph ? (opts.reuseMorphSlots?.[slotIndex] ?? ctx.createGain()) : null;
+    if (morph) {
+      morph.gain.value = def.dst === 0 ? 1 : 0;
+      amountNode.connect(morph);
+      nodes.push(morph);
+    }
 
     const cutoff = ctx.createGain();
     cutoff.gain.value = def.dst === 1 && opts.cutoffParam && opts.cutoffBase ? 1 : 0;
@@ -219,12 +269,12 @@ export function scheduleVoiceModMatrix(
     destinationControls.push({
       id: def.id.replace("Amt", "Dst"),
       params: [
-        { dst: 0, param: morph.gain },
+        ...(morph ? [{ dst: 0, param: morph.gain }] : []),
         { dst: 1, param: cutoff.gain },
         { dst: 3, param: amp.gain },
       ],
     });
-    slots.push({ sig: morph, amt: 1 });
+    slots.push(morph ? { sig: morph, amt: 1 } : null);
   }
 
   if (cutoffRoutes.length > 0 && opts.cutoffParam && opts.cutoffBase) {
@@ -294,7 +344,8 @@ export function scheduleVoiceModMatrix(
         const destination = Math.round(Number.isFinite(value) ? value : -1);
         for (const control of destinationControls) {
           if (control.id !== id) continue;
-          for (const target of control.params) target.param.setTargetAtTime(target.dst === destination ? 1 : 0, at, 0.005);
+          for (const target of control.params)
+            target.param.setTargetAtTime(target.dst === destination ? 1 : 0, at, 0.005);
         }
         return;
       }
