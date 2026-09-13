@@ -161,8 +161,8 @@ Two service tiers — this is the load-bearing seam of the app:
   with explicit production environment/origin settings.
 - Browser smoke: **218/218 on current `dfaf230`** after a final quiet rerun;
   two earlier noisy retries were isolated performance-budget misses, with no
-  threshold change. Manual Safari/iOS and deployed-host checks remain owner
-  gates.
+  threshold change. Automated Firefox smoke is also **218/218** on the same
+  candidate. Manual Safari/iOS and deployed-host checks remain owner gates.
 
 ### WIP substance (what changed since the previous campaign session)
 
