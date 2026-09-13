@@ -5,7 +5,8 @@
 **Produkt:** KYX browser-first beatmaking DAW  
 **Cieľ:** dostať KYX do stavu, v ktorom nový používateľ vytvorí beat, vyberie zvuk, spracuje ho cez pluginy, zrozumiteľne ho zmixuje a bezpečne exportuje bez straty práce, nečakaných level skokov alebo nejasného workflow.
 
-**Reviewed baseline:** current candidate `d4d974b` (`fix: live-update fallback
+**Reviewed baseline:** current candidate `91077da` (`feat: improve preset discovery
+metadata`) on top of `d4d974b` (`fix: live-update fallback
 modulation selectors`) on top of `70cd4e9` (`fix: update fallback modulation
 amounts live`) and `326d443` (`fix: bound fallback modulation
 routes`) and `954739e` (`fix: make sparse instrument presets deterministic`)
@@ -29,7 +30,10 @@ the worklet-compatible cutoff bounds and AMP floor in `326d443`; `70cd4e9`
 forwards scheduled continuous MOD A/B amount writes into already-playing
 fallback voices and `d4d974b` extends that forwarding to source, destination and
 LFO-rate selectors. Negative-route and live matrix browser guards are included
-in the current `224/224` acceptance. The
+in the current `224/224` acceptance. `91077da` adds a deterministic preset
+catalog metadata layer (role, energy, BPM suitability and provenance/license),
+accessible role/energy filters and malformed-metadata recovery; targeted
+catalog/UI coverage is `17/17`. The
 worktree is clean. The authoritative full
 Vitest baseline and current Chromium gates are green; the post-candidate
 scorepack regression is `4/4`.
@@ -200,6 +204,10 @@ Nasledujúce časti roadmapy už boli v tomto pracovnom strome implementované a
 - zjednotený persistovaný A/B controller pre PRISM/VLYX/VØID shell s
   undo-preserving recall; PRISM morph surface je napojený na `effect-ab-v1`
   a runtime sloty sa hydratujú pri mount/rebuild,
+- preset discovery slice v `91077da`: deterministic metadata pre use case/energy,
+  BPM suitability a source/license, accessible ROLE/ENERGY filters v browseri,
+  safe recovery z malformed legacy metadata; targeted catalog/UI coverage je
+  `17/17`,
 - PRISM/FXEQ core + worklet + host adapter surface pre precompiled morph,
   redo-aware plugin history, limiter gain-reduction snapshot a sidechain input;
   host/UI workflow je implementovaný a browser-accepted,
@@ -303,7 +311,7 @@ release-safe:
   dopĺňa effective split normalization pre canvas/hit-test. `699c8a3` dopĺňa
   `crossoverFreq6` až do DSP/worklet/schema surface a odstraňuje dead-band/
   crossed-split stav v 6-band defaultoch. Targeted UI/curve test je teraz
-  `18/18`; current quiet browser acceptance je `224/224` na `d4d974b` a full
+  `18/18`; current quiet browser acceptance je `224/224` na `91077da` a full
   Vitest je `236/2320/103`. Current implementation gates sú zelené;
   zostávajú owner/manual/deploy/formatting rozhodnutia;
 - agent nesmie tieto súbory prepisovať, squasovať ani vyhadzovať bez toho, aby
@@ -315,9 +323,9 @@ Overené príkazy a výsledky:
 | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `npm run typecheck:clean`                                  | PASS                                                                                                                                                                                                                                                                                                                                                       |
 | full Vitest (single-worker authoritative run)              | **PASS — 236 files, 2320 passed, 103 skipped, 2423 total** in 2304.38s; includes the soak-heavy suite and no threshold changes |
-| `npm run build` + worklet buildy + bundle budget           | PASS — current candidate `d4d974b`: entry 941 KB / 995 KB, total JS chunks 1852 KB / 2400 KB, core worklets 98 KB / 120 KB, 356 modules; PWA precache 57 entries / 4041.55 KiB; lazy ranker WASM is 13.6 MB and excluded from the app-shell precache                                                                                                                  |
+| `npm run build` + worklet buildy + bundle budget           | PASS — current candidate `91077da`: entry 941 KB / 995 KB, total JS chunks 1855 KB / 2400 KB, core worklets 98 KB / 120 KB, 357 modules; PWA precache 57 entries / 4044.76 KiB; lazy ranker WASM is 13.6 MB and excluded from the app-shell precache                                                                                                                  |
 | `npm run build:ultina`                                     | PASS — rebuilt `public/ultina-worklet.js`                                                                                                                                                                                                                                                                                                                  |
-| `npm run test:browser`                                     | **PASS — quiet rerun 224/224 Chromium on `d4d974b`**; all audio/DSP/FXEQ checks pass, including negative AMP/CUTOFF and held-voice MOD amount/source/destination/LFO-rate automation guards; UI bootstrap, PRISM workflow, collab, embed/share and touch pass; no threshold change                                                                                                                                                                          |
+| `npm run test:browser`                                     | **PASS — quiet rerun 224/224 Chromium on `91077da`**; all audio/DSP/FXEQ checks pass, including negative AMP/CUTOFF and held-voice MOD amount/source/destination/LFO-rate automation guards; UI bootstrap, PRISM workflow, collab, embed/share and touch pass; no threshold change                                                                                                                                                                          |
 | `npm run test:browser:production`                          | **PASS** — dist boot, HOUSE template, sequencer, FX rack, shipped worklet assets and ONNX worker smoke (`0.9895/0.9999/1`)                                                                                                                                                                                                                                                                   |
 | scorepack targeted regression after export fixes          | **PASS — 4/4**; resampled cue frame count preserves source duration at target sample rate; pre-aborted export and optional missing cue remain cancel/missing-asset safe; real render/decode failures are rethrown                                                                                                                                                                                                    |
 | Post-`cb1bde7` hardening regression batch                  | PASS — 48/48 targeted tests + 300 s PRISM soak (6.0 MB heap growth, −0.003 dB drift, zero non-finite samples, zero tail peak); current full suite is also green                                                                                                                                                                      |
@@ -540,7 +548,9 @@ zahltenia používateľa ďalšími controls.
 
 **Done:** nový používateľ vie vytvoriť beat, nájsť vhodný preset a pochopiť
 scope Preview/Apply/Undo bez návodu; template je iba project data, nie druhý
-audio engine; onboarding nezapisuje neviditeľné zmeny do projektu.
+audio engine; onboarding nezapisuje neviditeľné zmeny do projektu. Discovery
+metadata/filtering slice je implementovaný v `91077da` a overený targeted
+batchom `17/17`; zostáva obsahová audio QA každého factory preview hitu.
 
 #### P2.4 — Routing templates a collaboration expansion
 
@@ -794,10 +804,10 @@ Používateľ musí vedieť porovnať preset bez toho, aby prišiel o aktuálny 
 **Owner:** sound/content agent  
 **Súbory:** `src/presets/factory.ts`, preset types/registry, test fixtures, docs
 
-- pred ďalším pridávaním presetov odstrániť duplicity a zlé defaulty,
-- doplniť metadata pre use case, mood, energy, key/BPM suitability a source/license status,
-- skontrolovať clipping, ticho, extrémny output gain a užitočný prvý preview hit,
-- testovať deterministic factory output a validitu všetkých registry presetov.
+- [ ] pred ďalším pridávaním presetov odstrániť duplicity a zlé defaulty,
+- [x] doplniť metadata pre use case, mood, energy, key/BPM suitability a source/license status,
+- [ ] skontrolovať clipping, ticho, extrémny output gain a užitočný prvý preview hit,
+- [x] testovať deterministic factory metadata/output contract a validitu všetkých registry presetov.
 
 Definition of done nie je „viac presetov“, ale rýchlejšie nájdenie správneho zvuku.
 
