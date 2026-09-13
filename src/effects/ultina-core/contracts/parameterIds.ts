@@ -178,7 +178,9 @@ export const EXCITER_CLIPPER_AMOUNT_ID   = "exciter.clipperAmount"     as const;
 export const EXCITER_SCRATCH_AMOUNT_ID   = "exciter.scratchAmount"     as const;  // 393
 // Tone & emphasis
 export const EXCITER_TONE_SLIDER_ID      = "exciter.toneSlider"        as const;  // 394
-export const EXCITER_PRE_EMPHASIS_MODE_ID = "exciter.preEmphasisMode"  as const;  // 395 (0=Flat [legacy no-op],1=Clean,2=Defined,3=Full)
+// 0 remains a no-op for backwards-compatible default projects; active
+// emphasis depths ascend through 1=Clean, 2=Defined, 3=Full.
+export const EXCITER_PRE_EMPHASIS_MODE_ID = "exciter.preEmphasisMode"  as const;  // 395 (0=Flat,1=Clean,2=Defined,3=Full)
 // Multiband
 export const EXCITER_BAND_COUNT_ID       = "exciter.bandCount"         as const;  // 396
 export const EXCITER_CROSSOVER_HZ1_ID    = "exciter.crossoverHz1"      as const;  // 397

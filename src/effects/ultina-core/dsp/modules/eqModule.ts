@@ -280,8 +280,7 @@ export class EqModuleProcessor implements UltinaModuleProcessor {
       // Transient/sustain: separate BOTH channels, process ONLY the selected
       // component through the band banks (independent filter-state slots per
       // channel — processing [targetL] then [targetR] through the same banks
-      // would let L's filter tail seed R), then recombine with the untouched
-      // component. Mirrors MultibandProcessor.process's T/S branch.
+      // would let L's filter tail seed R), then recombine.
       for (let ch = 0; ch < 2; ch++) {
         this.tsSeparator.separate(
           channels[ch], frameCount,

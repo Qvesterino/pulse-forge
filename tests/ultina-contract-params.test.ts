@@ -128,6 +128,42 @@ describe("ultina contract params — exciter.preEmphasisMode", () => {
     expect(fullNoSat[0]).toEqual(flatNoSat[0]);
     expect(fullNoSat[1]).toEqual(flatNoSat[1]);
   });
+
+  it("keeps the inverse shelf continuous across audio-block boundaries", () => {
+    const mod = new ExciterModuleProcessor();
+    mod.prepare(ctx());
+    const p = params({
+      "exciter.enabled": 1,
+      "exciter.warmAmount": 60,
+      "exciter.mix": 100,
+      "exciter.oversampling": 1,
+      "exciter.preEmphasisMode": 3,
+    });
+    let previousLast = 0;
+    let maxBoundaryJump = 0;
+    let maxInteriorJump = 0;
+
+    for (let block = 0; block < 40; block++) {
+      const chans = sineBlock(block, 500, 0.5);
+      mod.process({
+        channels: chans,
+        frameCount: BLOCK,
+        sidechain: null,
+        ctx: ctx(),
+        params: p,
+      });
+      if (block > 0) maxBoundaryJump = Math.max(maxBoundaryJump, Math.abs(chans[0][0] - previousLast));
+      for (let i = 1; i < BLOCK; i++) {
+        maxInteriorJump = Math.max(maxInteriorJump, Math.abs(chans[0][i] - chans[0][i - 1]));
+      }
+      previousLast = chans[0][BLOCK - 1];
+    }
+
+    // A stale pre-saturation y history at the start of every block creates a
+    // visible discontinuity. The stateful inverse must make a block boundary
+    // no larger than the ordinary adjacent-sample movement of the signal.
+    expect(maxBoundaryJump).toBeLessThan(maxInteriorJump * 2.5 + 1e-4);
+  });
 });
 
 describe("ultina contract params — eq.channelMode transient/sustain", () => {

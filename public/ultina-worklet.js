@@ -422,11 +422,9 @@
     p(EXCITER_CLIPPER_AMOUNT_ID, "Clipper", 0, 0, 100, "percent"),
     p(EXCITER_SCRATCH_AMOUNT_ID, "Scratch", 0, 0, 100, "percent"),
     p(EXCITER_TONE_SLIDER_ID, "Tone", 0, -100, 100, "generic"),
-    // Pre-Emphasis enum contract: value 0 MUST stay "flat" (no emphasis).
-    // The parameter was dead (never read by the DSP) for its whole life, so
-    // every existing project has 0 stored or defaulted, and the upstream
-    // golden vector exciter_tube_asym pins value 0 to the legacy output.
-    // Ascending intensity above it; selecting 1..3 activates the ladder.
+    // Value 0 was the historical default while the DSP ignored this reserved
+    // parameter. Keep it flat so existing projects retain their v1 sound;
+    // active emphasis depths are intentionally additive at values 1..3.
     p(
       EXCITER_PRE_EMPHASIS_MODE_ID,
       "Pre-Emphasis",
@@ -5716,10 +5714,10 @@
     // Tone filter state (per channel, per band)
     toneLowState = [];
     toneHighState = [];
-    // Pre-emphasis state, [band][ch] × {lpState, yPrev, xPrev} — see
-    // applyPreEmphasis/applyPreEmphasisInverse. The inverse needs the
-    // PRE-SATURATION y history, so the pre pass records it per band into a
-    // reused scratch pair (band processing is sequential).
+    // Pre-emphasis state, [band][channel] × {low-pass state, previous
+    // pre-emphasis output, previous inverse output}. The inverse state is kept
+    // per band/channel because MultibandProcessor processes bands sequentially
+    // but each band has an independent filter path.
     preEmphState = new Float32Array(EXCITER_MAX_BANDS * 2 * 3);
     preYScratch = [new Float32Array(0), new Float32Array(0)];
     // Meter state
@@ -5782,7 +5780,9 @@
       const oversampling = (params["exciter.oversampling"] ?? 1) >= 0.5;
       const mixPercent = clamp(params["exciter.mix"] ?? 50, 0, 100);
       const deltaListen = (params["exciter.delta"] ?? 0) >= 0.5;
-      const preEmphasisDb = EXCITER_PRE_EMPHASIS_DB[Math.round(clamp(params["exciter.preEmphasisMode"] ?? 0, 0, 3))];
+      const preEmphasisMode = Math.round(clamp(params["exciter.preEmphasisMode"] ?? 0, 0, 3));
+      const preEmphasisDb = EXCITER_PRE_EMPHASIS_DB[preEmphasisMode];
+      if (preEmphasisDb !== this.curPreEmphasisDb) this.preEmphState.fill(0);
       this.osActive = oversampling;
       const amounts = this.amountsBuf;
       amounts.tubeAmt = tubeAmt;
@@ -5940,8 +5940,7 @@
       }
       this.outputPeaks[bandIdx] = peak > 1e-10 ? 20 * Math.log10(peak) : -100;
     }
-    /** Whether any saturator would change samples (shared by the emphasis
-     * gate and applySaturation's early-out — the two must agree). */
+    /** Whether the saturation stage will change samples. */
     saturationActive(trashMode, a) {
       const hasSat = a.tubeAmt > 0 || a.tubeAsymAmt > 0 || a.warmAmt > 0 || a.tapeAmt > 0 || a.retroAmt > 0;
       const hasDist = trashMode && (a.odAmt > 0 || a.screamAmt > 0 || a.clipAmt > 0 || a.scratchAmt > 0);
@@ -5949,38 +5948,31 @@
     }
     // ── Pre-emphasis (modes: flat/clean/defined/full) ─────────
     /**
-     * First-order HF shelf INTO the saturators:
-     *   y = (1+k)·x − k·lp(x),  lp = one-pole lowpass at EXCITER_PRE_EMPHASIS_HZ
-     * Unity at DC, +20·log10(1+k) dB toward Nyquist.
-     * The pre-saturation output is recorded into preYScratch[bandIdx's slot]
-     * so the inverse stage can run its recursion across the (saturated)
-     * buffer. State layout in preEmphState: [band*2+ch] × {lp, yPrev}.
+     * First-order HF shelf into the saturators:
+     * y = (1+k)·x − k·lp(x), where lp is a one-pole low-pass at the emphasis
+     * corner. The pre-saturation y values are retained for the inverse stage.
      */
     applyPreEmphasis(buf, frames, bandIdx, chIdx, preEmphasisDb) {
       const k = dbToLinear(preEmphasisDb) - 1;
       if (k <= 0 || frames <= 0) return;
       const a = 1 - Math.exp(-2 * Math.PI * EXCITER_PRE_EMPHASIS_HZ / this.sampleRate);
       const stateBase = (bandIdx * 2 + chIdx) * 3;
-      let d = this.preEmphState[stateBase];
+      let low = this.preEmphState[stateBase];
       const yOut = this.preYScratch[chIdx];
       const dryGain = 1 + k;
       for (let i = 0; i < frames; i++) {
-        const x = buf[i];
-        d += a * (x - d);
-        const y = dryGain * x - k * d;
+        const input = buf[i];
+        low += a * (input - low);
+        const y = dryGain * input - k * low;
         yOut[i] = y;
         buf[i] = sanitizeSample(y);
       }
-      this.preEmphState[stateBase] = d;
-      this.preEmphState[stateBase + 1] = yOut[frames - 1];
+      this.preEmphState[stateBase] = low;
     }
     /**
-     * EXACT inverse of applyPreEmphasis: X/Y = (1 − c·z⁻¹)/(A0 − (1+k)·c·z⁻¹),
-     * recursion x̂[n] = (y[n] − c·y[n−1] + (1+k)·c·x̂[n−1]) / A0 with
-     * c = 1−a, A0 = 1+k−k·a. The pole sits at (1+k)·c/A0 < 1 for every k ≥ 0,
-     * a ∈ (0,1) — always stable. Applied to the SATURATED signal this cancels
-     * the shelf for the linear path exactly; only the generated harmonics
-     * keep the emphasis.
+     * Inverse of applyPreEmphasis around the saturation stage:
+     * x[n] = (y[n] − c·y[n−1] + (1+k)c·x[n−1]) / A0,
+     * c = 1−a and A0 = 1+k−k·a. The pole is stable for all supported depths.
      */
     applyPreEmphasisInverse(buf, frames, bandIdx, chIdx, preEmphasisDb) {
       const k = dbToLinear(preEmphasisDb) - 1;
@@ -5995,8 +5987,8 @@
       let xPrev = this.preEmphState[stateBase + 2];
       const yOut = this.preYScratch[chIdx];
       for (let i = 0; i < frames; i++) {
-        const x = (buf[i] - c * yPrev + feedback * xPrev) / a0;
-        xPrev = sanitizeSample(x);
+        const output = (buf[i] - c * yPrev + feedback * xPrev) / a0;
+        xPrev = sanitizeSample(output);
         buf[i] = xPrev;
         yPrev = yOut[i];
       }

@@ -10,11 +10,14 @@
  *   npx vitest run tests/ultina-vectors.test.ts
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, copyFileSync } from "fs";
-import { dirname, join } from "path";
+import { execFileSync } from "child_process";
+import { dirname, join, relative, resolve } from "path";
 
-const FROM = process.argv.includes("--from")
-  ? process.argv[process.argv.indexOf("--from") + 1]
+const fromIndex = process.argv.indexOf("--from");
+const FROM = fromIndex >= 0
+  ? process.argv[fromIndex + 1]
   : "D:/VocalForge_DAW/plugins/ultina";
+const ALLOW_DIRTY_UPSTREAM = process.argv.includes("--allow-dirty-upstream");
 const SRC = join(FROM, "src");
 const DST = "src/effects/ultina-core";
 
@@ -92,6 +95,46 @@ function applyTransforms(source) {
     .replace(/const maxBlockSize = /, "const _maxBlockSize = ")
     .replace(/const avgEnergy = /, "const _avgEnergy = ");
 }
+
+/**
+ * Refuse a blind overwrite when the source repository has uncommitted files
+ * in the exact tree this script copies. The old behaviour could silently
+ * replace already-vendored hardening with an older or partial upstream
+ * working tree. Use --allow-dirty-upstream only when an intentional local
+ * source-of-truth sync is being reviewed immediately afterwards.
+ */
+function assertUpstreamClean() {
+  if (ALLOW_DIRTY_UPSTREAM) return;
+  try {
+    const gitRoot = execFileSync("git", ["-C", FROM, "rev-parse", "--show-toplevel"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    const scope = relative(resolve(gitRoot), resolve(FROM)).replace(/\\/g, "/");
+    const dirty = execFileSync(
+      "git",
+      ["-C", gitRoot, "status", "--porcelain=v1", "--", `${scope}/src`, `${scope}/tests/vectors`],
+      { encoding: "utf8" },
+    ).trim();
+    if (dirty) {
+      console.error(
+        `[vendor] REFUSING dirty upstream: ${FROM}\n` +
+        `${dirty}\n` +
+        "Commit or separate the upstream changes first, or rerun with " +
+        "--allow-dirty-upstream after reviewing the complete source diff.",
+      );
+      process.exit(1);
+    }
+  } catch (error) {
+    console.error(
+      `[vendor] cannot verify upstream Git state for ${FROM}. ` +
+      "Use --allow-dirty-upstream only for a reviewed non-Git source tree.",
+    );
+    process.exit(1);
+  }
+}
+
+assertUpstreamClean();
 
 for (const rel of FILES) {
   const abs = join(SRC, rel);

@@ -234,11 +234,9 @@ const EXCITER_PARAMS: UltinaParamDef[] = [
   p(P.EXCITER_CLIPPER_AMOUNT_ID, "Clipper", 0, 0, 100, "percent"),
   p(P.EXCITER_SCRATCH_AMOUNT_ID, "Scratch", 0, 0, 100, "percent"),
   p(P.EXCITER_TONE_SLIDER_ID, "Tone", 0, -100, 100, "generic"),
-  // Pre-Emphasis enum contract: value 0 MUST stay "flat" (no emphasis).
-  // The parameter was dead (never read by the DSP) for its whole life, so
-  // every existing project has 0 stored or defaulted, and the upstream
-  // golden vector exciter_tube_asym pins value 0 to the legacy output.
-  // Ascending intensity above it; selecting 1..3 activates the ladder.
+  // Value 0 was the historical default while the DSP ignored this reserved
+  // parameter. Keep it flat so existing projects retain their v1 sound;
+  // active emphasis depths are intentionally additive at values 1..3.
   p(P.EXCITER_PRE_EMPHASIS_MODE_ID, "Pre-Emphasis", 0, 0, 3, "enum",
     true, { enumValues: ["flat", "clean", "defined", "full"] }),
   p(P.EXCITER_BAND_COUNT_ID, "Exciter Bands", 1, 1, 3, "enum", false,
