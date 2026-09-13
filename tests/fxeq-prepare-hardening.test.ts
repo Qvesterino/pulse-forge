@@ -213,7 +213,10 @@ describe("fxeq parameter boundary validation", () => {
       peak = Math.max(peak, Math.abs(L[i]), Math.abs(R[i]));
     }
     // 0.5 × 10^(24/20) ≈ 7.9 — the clamped gain must actually be applied.
-    expect(peak).toBeGreaterThan(7);
+    // (The one-block startup transient scales with how many crossover
+    // cascades the tones pass, which changed with the realigned default
+    // splits — calibrated to 6.7.)
+    expect(peak).toBeGreaterThan(6);
     expect(peak).toBeLessThan(9);
   });
 
@@ -354,7 +357,13 @@ describe("fxeq determinism and decay", () => {
       expect(wMax, `tail grew in silence window ${w}`).toBeLessThanOrEqual(previous + 1e-6);
       previous = wMax;
     }
-    expect(previous).toBeLessThan(1e-3);
+    // The REAL regression guard is the monotonic decrease above (feedback
+    // > 1 would GROW in silence). The absolute floor depends on how much
+    // 440 Hz leaks into the reverb/delay band — with the realigned default
+    // splits band 5 starts at 4 kHz (1 cascade) instead of the old dead
+    // 8 kHz–8 kHz sliver, so slightly more energy is stored at silence
+    // onset. Calibrated to 2e-3 (≈ −54 dB).
+    expect(previous).toBeLessThan(2e-3);
   });
 });
 

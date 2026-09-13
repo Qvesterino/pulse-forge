@@ -145,11 +145,12 @@ describe("fxeq rack ↔ core parameter contract", () => {
     const editorOnly = new Set([
       // FX-only mode has no rack knob (panel/preset domain).
       "fxOnly",
-      // Crossover split frequencies are preset/paint-editor domain.
-      "crossoverFreq2",
-      "crossoverFreq3",
-      "crossoverFreq4",
-      "crossoverFreq5",
+    // Crossover split frequencies are preset/paint-editor domain.
+    "crossoverFreq2",
+    "crossoverFreq3",
+    "crossoverFreq4",
+    "crossoverFreq5",
+    "crossoverFreq6",
       // Limiter internals beyond the enable/ceiling rack knobs.
       "limiterTruePeak",
       "limiterLookaheadMs",

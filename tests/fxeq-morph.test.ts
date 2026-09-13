@@ -88,14 +88,17 @@ describe("fxeq A/B morph (precompiled routing)", () => {
 
   it("leaves a fully-routed end state — reset(excitation) matches a fresh reference", () => {
     const channels = noiseChannels();
-    const morphed = createFxEqProcessor({ limiterEnabled: 0 });
+    // Explicit neighbour for the crossoverFreq2: 700 target — without it the
+    // single-change clamp would pull the morph toward the freq3 default.
+    const baseParams = { limiterEnabled: 0, crossoverFreq3: 1200 };
+    const morphed = createFxEqProcessor(baseParams);
     morphed.prepare(SR, 2, BLOCK);
     morphed.startMorph(MORPH_TARGET, 0.03);
     runUntilMorphDone(morphed, channels);
     runBlocks(morphed, channels, 4);
     morphed.reset();
 
-    const reference = createFxEqProcessor({ limiterEnabled: 0 });
+    const reference = createFxEqProcessor(baseParams);
     reference.prepare(SR, 2, BLOCK);
     reference.loadParameters(MORPH_TARGET);
     reference.reset();

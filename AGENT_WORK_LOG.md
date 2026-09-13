@@ -334,3 +334,118 @@ draft before tagging the candidate, run the manual
 Firefox/Edge/Safari/iOS and physical audio-device matrix, resolve the 209
 formatting-deviation decision, and run `release:deployed-smoke` with the real
 `KYX_DEPLOY_URL`.
+
+---
+
+## GOAL 01 — Campaign re-verification reconnaissance (2026-09-13)
+
+**Goal executed:** verify that the campaign system map (`SYSTEM_AUDIT_MAP.md`)
+and continuity log are still trustworthy after three new commits and an
+expanded WIP appeared since the previous release-readiness pass. Establish
+the current-state baseline for the next 11 goals in the restarted campaign.
+**Do not redesign — just confirm the map matches reality and surface what
+drifted.**
+
+**Areas inspected:**
+
+- Git log since last release baseline (`5f49140`) — 3 commits:
+  `81553dd docs: reconcile release evidence`, `7abc415 tak asi fajn`,
+  `173f5ce fix(ultina): reconcile upstream DSP and protect vendor sync`.
+  HEAD is `7abc415`.
+- Working tree status — 13 files modified vs HEAD, all concentrated on the
+  FXEQ/Ultina DSP experiment (Pre-Emphasis + transient/sustain EQ + FXEQ
+  6-band crossover ladder realignment).
+- `src/services.ts`, `src/commands/commands.ts`, `src/project-model/schema.ts`
+  re-read to confirm load-bearing seams (CoreServices, command imports,
+  normalizeProject) match the map's §2–§5 description.
+- File-count drift: src `.ts/.tsx` 361 (was ~340), tests 244 (was ~200);
+  high-risk file sizes unchanged — `commands.ts` ~228 KB (5.7k lines),
+  `AudioEngine.ts` ~166 KB (4.1k lines), `schema.ts` ~80 KB (1.9k lines).
+- WIP substance reviewed via `git diff HEAD` on
+  `src/effects/fxeq-core/core/{fxEqProcessor, parameterSchema}.ts` —
+  confirms a substantive DSP correctness fix (6-band crossover ladder
+  realignment + `crossoverFreq6` schema addition with backward-compatible
+  pinned defaults), not a stylistic tweak.
+
+**Confirmed problems:**
+
+- The system map (§1, §14) and the release readiness report both still
+  reference `5f49140` as the reviewed baseline. The actual HEAD has
+  advanced to `7abc415`. The map was **drifted**, not wrong — drift
+  recorded.
+- The release report's R7 ("separately owned uncommitted Ultina
+  Pre-Emphasis + transient/sustain EQ + new contract test") is still open
+  and the WIP has now **expanded**: FXEQ 6-band crossover ladder realignment
+  is co-mingled in the same uncommitted diff. The two experiments must
+  either be reviewed together or separated into two commits before tagging
+  an immutable release candidate.
+- No new architectural defects found in this re-verification pass — the
+  core seams (services, commands, schema, transport, scheduler, audio
+  engine) are unchanged from the 2026-09-10 baseline.
+
+**Fixes implemented:** none. Goal 01 is reconnaissance — see next goals.
+
+**Important files changed:**
+
+- `SYSTEM_AUDIT_MAP.md` — §14 baseline rewritten as a two-row table
+  (2026-09-10 baseline + 2026-09-13 re-verification with current HEAD,
+  commit range, file counts, gate status, and WIP substance). New §15
+  added with the carried release gates (R7, full-suite rerun, build
+  rerun, browser rerun, manual matrix, deployed smoke, formatting).
+- `AGENT_WORK_LOG.md` — this entry appended.
+
+**Validation:**
+
+- `npm run typecheck`: **PASS** on the modified working tree.
+- Targeted `vitest run` on the WIP-modified test files
+  (`fxeq-core-hardening`, `fxeq-morph`, `fxeq-rack-contract`,
+  `ultina-contract-params`): **54/54 PASS** (6.36s).
+- Full Vitest suite, `npm run build`, `npm run test:browser`:
+  **NOT re-run this session** — left for the GOAL 12 gate per the
+  established campaign protocol (the previous campaign session ran the
+  full gate matrix; re-running it every reconnaissance pass would
+  consume the campaign's budget on no new information).
+
+**Unresolved issues:**
+
+- R7 (Ultina + FXEQ WIP separation) — blocking per RELEASE_READINESS_REPORT,
+  unchanged in substance but expanded in scope (FXEQ crossover realignment
+  is now in the same uncommitted diff).
+- Full Vitest suite rerun — required on the post-`7abc415` tree before any
+  release candidate can be tagged. The pre-`5f49140` run had one timeout
+  (factory-preset UI regression — fixed in `5f49140`); the post-`7abc415`
+  rerun has not been executed.
+- Build + bundle budgets — not re-verified after the FXEQ `crossoverFreq6`
+  schema change; required by GOAL 12.
+
+**Remaining risks:**
+
+- The WIP touches the **vendored FXEQ core** (which is allowed —
+  `vendor-fxeq.mjs` is documented as patchable) but the file
+  `src/effects/fxeq-core/core/parameterSchema.ts` now diverges from its
+  upstream mirror in `D:/VocalForge_DAW/plugins/fxeq`. The next
+  `scripts/vendor-fxeq.mjs` run would silently overwrite this fix.
+  Recommendation: a vendor-fxeq guard that detects and reports this exact
+  schema drift on next vendor run (or a manual re-apply step).
+- The Ultina WIP similarly touches vendored sources
+  (`src/effects/ultina-core/**`). `173f5ce fix(ultina): reconcile upstream
+  DSP and protect vendor sync` modified `scripts/vendor-ultina.mjs` —
+  verify the guard works before re-running the vendor script.
+
+**Recommendations for next session (GOAL 02):**
+
+- Architecture consistency audit, focused on the new WIP:
+  - Does the FXEQ `crossoverFreq6` addition respect the existing
+    parameter-id contract (commands.ts:59 import; commands execute path)?
+  - Does the Ultina transient/sustain + Pre-Emphasis addition respect
+    the contract layer (`parameterIds.ts`, `parameterSchema.ts`) or
+    leak through `eqModule.ts`/`exciterModule.ts` directly?
+  - Are the matching test additions (`tests/fxeq-*.test.ts`,
+    `tests/ultina-contract-params.test.ts`) consistent with the existing
+    fxeq/ultina test conventions?
+  - Does the `vendor-fxeq.mjs` / `vendor-ultina.mjs` upstream protection
+    added in `173f5ce` hold for these new schema entries?
+- Verify the existing load-bearing invariants from the previous
+  campaign's GOAL 02 (command-layer exclusivity, no UI→engine direct
+  reach-arounds, YDocStore/ProjectStore parity) are still intact after
+  the new commits.

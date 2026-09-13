@@ -22,6 +22,7 @@ export const GOLDEN_CASES: readonly GoldenCase[] = [
     signal: () => logSweepSignal(16384, 20, 18000),
     params: {
       bandCount: 6,
+      crossoverFreq2: 400, crossoverFreq3: 1200, crossoverFreq4: 4000, crossoverFreq5: 8000, crossoverFreq6: 8000,
       limiterEnabled: 0,
     },
     blockSize: 256,
@@ -35,6 +36,7 @@ export const GOLDEN_CASES: readonly GoldenCase[] = [
     signal: () => impulseSignal(8192),
     params: {
       bandCount: 6,
+      crossoverFreq2: 400, crossoverFreq3: 1200, crossoverFreq4: 4000, crossoverFreq5: 8000, crossoverFreq6: 8000,
       limiterEnabled: 0,
     },
     blockSize: 512,
@@ -48,6 +50,7 @@ export const GOLDEN_CASES: readonly GoldenCase[] = [
     signal: () => multiToneSignal(16384, [80, 300, 1000, 3000, 8000]),
     params: {
       bandCount: 4,
+      crossoverFreq2: 400, crossoverFreq3: 1200, crossoverFreq4: 4000,
       "band2.satEnabled": 1,
       "band2.satDriveDb": 6,
       "band2.satMode": 1,
@@ -69,6 +72,7 @@ export const GOLDEN_CASES: readonly GoldenCase[] = [
     signal: () => logSweepSignal(16384, 100, 12000),
     params: {
       bandCount: 4,
+      crossoverFreq2: 400, crossoverFreq3: 1200, crossoverFreq4: 4000,
       "band4.revEnabled": 1,
       "band4.revType": 0,
       "band4.revDecayMs": 2000,
@@ -85,6 +89,7 @@ export const GOLDEN_CASES: readonly GoldenCase[] = [
     signal: () => multiToneSignal(16384, [100, 500, 2000, 6000, 10000]),
     params: {
       bandCount: 4,
+      crossoverFreq2: 400, crossoverFreq3: 1200, crossoverFreq4: 4000,
       "band1.lofiEnabled": 1,
       "band1.lofiMode": 0,
       "band1.lofiAmount": 60,
@@ -106,6 +111,7 @@ export const GOLDEN_CASES: readonly GoldenCase[] = [
     signal: () => impulseSignal(16384),
     params: {
       bandCount: 4,
+      crossoverFreq2: 400, crossoverFreq3: 1200, crossoverFreq4: 4000,
       "band3.delayEnabled": 1,
       "band3.delayType": 1,
       "band3.delayTimeMs": 300,
@@ -124,6 +130,7 @@ export const GOLDEN_CASES: readonly GoldenCase[] = [
     signal: () => logSweepSignal(16384, 200, 8000),
     params: {
       bandCount: 4,
+      crossoverFreq2: 400, crossoverFreq3: 1200, crossoverFreq4: 4000,
       "band2.modEnabled": 1,
       "band2.modType": 2,
       "band2.modRate": 0.5,
@@ -142,6 +149,7 @@ export const GOLDEN_CASES: readonly GoldenCase[] = [
     signal: () => multiToneSignal(16384, [60, 250, 1200, 4000, 9000, 14000]),
     params: {
       bandCount: 6,
+      crossoverFreq2: 400, crossoverFreq3: 1200, crossoverFreq4: 4000, crossoverFreq5: 8000, crossoverFreq6: 8000,
       "band1.satEnabled": 1,
       "band1.satDriveDb": 8,
       "band1.satMode": 2,

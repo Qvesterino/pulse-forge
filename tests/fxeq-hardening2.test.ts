@@ -156,3 +156,100 @@ describe("fxeq-core hardening #2 — misc armor", () => {
     expect(onePoleHpCoef(1000, SR)).toBeLessThan(1);
   });
 });
+
+describe("fxeq-core hardening #2 — crossover split surface (6 bands)", () => {
+  // The schema used to carry only crossoverFreq2..5 with defaults shifted
+  // one position up (400/1200/4000/8000 = DEFAULT_CROSSOVER_FREQS[1..4]):
+  // the top split stayed at the bank's hidden 8000 Hz default, so a 6-band
+  // config had a zero-width band 4, and dragging Xover 5 above 8 kHz
+  // inverted it against the invisible split — silently deleting all 8-12 kHz
+  // content from the summed output. crossoverFreq6 now completes the
+  // surface and the defaults follow the intended DEFAULT_CROSSOVER_FREQS.
+
+  function noiseSource(seed: number): () => number {
+    let s = seed >>> 0;
+    return () => {
+      s ^= s << 13;
+      s ^= s >>> 17;
+      s ^= s << 5;
+      return ((s >>> 0) / 4294967296) * 2 - 1;
+    };
+  }
+
+  it("a fresh 6-band instance resolves the intended default split ladder", () => {
+    const proc = createFxEqProcessor(undefined, { seed: 7 });
+    proc.prepare(SR, 2, BLOCK);
+    expect(proc.getParameter("crossoverFreq2")).toBe(120);
+    expect(proc.getParameter("crossoverFreq3")).toBe(400);
+    expect(proc.getParameter("crossoverFreq4")).toBe(1200);
+    expect(proc.getParameter("crossoverFreq5")).toBe(4000);
+    expect(proc.getParameter("crossoverFreq6")).toBe(8000);
+  });
+
+  it("every band carries energy at the 6-band defaults (no dead band)", () => {
+    const proc = createFxEqProcessor(undefined, { seed: 7 });
+    proc.prepare(SR, 2, BLOCK);
+    proc.setParameter("limiterEnabled", 0);
+    proc.setParameter("inputGainDb", 0);
+    const noise = noiseSource(0xFEED);
+    for (let b = 0; b < 40; b++) {
+      proc.process(stereoBlock(noise), BLOCK);
+    }
+    const peaks = proc.getBandPeaks();
+    expect(peaks.length).toBe(6);
+    for (let band = 0; band < 6; band++) {
+      expect(
+        peaks[band],
+        `band ${band + 1} must carry broadband energy (dead band at the defaults)`,
+      ).toBeGreaterThan(0.005);
+    }
+  });
+
+  it("Xover 5 clamps against Xover 6 — the 8-12 kHz deletion drag is gone", () => {
+    const proc = createFxEqProcessor(undefined, { seed: 7 });
+    proc.prepare(SR, 2, BLOCK);
+    // Pre-fix this returned 12000 verbatim (upper neighbour undefined →
+    // open bound), inverting split 3 past the hidden split 4.
+    proc.setParameter("crossoverFreq5", 12000);
+    expect(proc.getParameter("crossoverFreq5")).toBe(7960); // freq6 − 40 Hz gap
+    // Band 4 (4 kHz…split5) still carries broadband energy after the drag.
+    const noise = noiseSource(0xBEA5);
+    for (let b = 0; b < 40; b++) proc.process(stereoBlock(noise), BLOCK);
+    expect(proc.getBandPeaks()[3]).toBeGreaterThan(0.005);
+  });
+
+  it("Xover 6 is settable and clamps against its neighbours in both directions", () => {
+    const proc = createFxEqProcessor(undefined, { seed: 7 });
+    proc.prepare(SR, 2, BLOCK);
+    // Raising the top split opens room for Xover 5 above the old 8 kHz.
+    proc.setParameter("crossoverFreq6", 16000);
+    expect(proc.getParameter("crossoverFreq6")).toBe(16000);
+    proc.setParameter("crossoverFreq5", 12000);
+    expect(proc.getParameter("crossoverFreq5")).toBe(12000);
+    // Lowering Xover 6 below Xover 5 pulls IT up to the 40 Hz gap instead
+    // of inverting the order.
+    proc.setParameter("crossoverFreq6", 5000);
+    expect(proc.getParameter("crossoverFreq6")).toBe(12040);
+  });
+
+  it("documents saved with the old defaults render with the old splits", () => {
+    const proc = createFxEqProcessor(undefined, { seed: 7 });
+    proc.prepare(SR, 2, BLOCK);
+    // Old documents pin crossoverFreq2..5 (the old schema defaults) and
+    // have no crossoverFreq6 key — it fills in at the same hidden 8000 Hz
+    // value the bank always used (the monotonic 40 Hz gap widens the old
+    // zero-width band into a 40 Hz sliver — the closest legal render).
+    proc.loadParameters({
+      bandCount: 6,
+      crossoverFreq2: 400,
+      crossoverFreq3: 1200,
+      crossoverFreq4: 4000,
+      crossoverFreq5: 8000,
+    });
+    expect(proc.getParameter("crossoverFreq2")).toBe(400);
+    expect(proc.getParameter("crossoverFreq3")).toBe(1200);
+    expect(proc.getParameter("crossoverFreq4")).toBe(4000);
+    expect(proc.getParameter("crossoverFreq5")).toBe(8000);
+    expect(proc.getParameter("crossoverFreq6")).toBe(8040);
+  });
+});

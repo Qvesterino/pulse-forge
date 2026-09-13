@@ -52,10 +52,23 @@ export const GLOBAL_PARAM_DEFS: readonly FxEqParamDef[] = [
   { id: "inputGainDb", name: "Input Gain", defaultValue: 0, minValue: -24, maxValue: 24, unit: "dB", automatable: true },
   { id: "outputGainDb", name: "Output Gain", defaultValue: 0, minValue: -24, maxValue: 24, unit: "dB", automatable: true },
   { id: "bandCount", name: "Active Bands", defaultValue: 6, minValue: 2, maxValue: MAX_BANDS, automatable: false },
-  { id: "crossoverFreq2", name: "Xover 2", defaultValue: 400, minValue: 80, maxValue: 800, unit: "Hz", automatable: true },
-  { id: "crossoverFreq3", name: "Xover 3", defaultValue: 1200, minValue: 300, maxValue: 3000, unit: "Hz", automatable: true },
-  { id: "crossoverFreq4", name: "Xover 4", defaultValue: 4000, minValue: 1500, maxValue: 6000, unit: "Hz", automatable: true },
-  { id: "crossoverFreq5", name: "Xover 5", defaultValue: 8000, minValue: 4000, maxValue: 12000, unit: "Hz", automatable: true },
+  // Crossover splits: crossoverFreqN is the split ABOVE band N-1 (i.e.
+  // between band N-1 and N), so a 6-band config needs crossoverFreq2..6 —
+  // exactly what the PRISM paint editor iterates (crossoverFreq2..bandCount).
+  // The table used to carry only crossoverFreq2..5 with defaults shifted one
+  // position up (400/1200/4000/8000 = DEFAULT_CROSSOVER_FREQS[1..4]), which
+  // left the top split stuck at the bank's hidden 8000 Hz default: at 6
+  // bands splits 4 and 5 coincided (a dead band), and dragging Xover 5 above
+  // 8 kHz inverted it against the invisible split, silently deleting 8-12 kHz
+  // from the summed output. Defaults are realigned to the intended
+  // DEFAULT_CROSSOVER_FREQS ladder and crossoverFreq6 completes the surface.
+  // Existing saved documents pin the old values explicitly, so they render
+  // exactly as before (crossoverFreq6 then defaults to the same hidden 8000).
+  { id: "crossoverFreq2", name: "Xover 2", defaultValue: 120, minValue: 80, maxValue: 800, unit: "Hz", automatable: true },
+  { id: "crossoverFreq3", name: "Xover 3", defaultValue: 400, minValue: 300, maxValue: 3000, unit: "Hz", automatable: true },
+  { id: "crossoverFreq4", name: "Xover 4", defaultValue: 1200, minValue: 600, maxValue: 6000, unit: "Hz", automatable: true },
+  { id: "crossoverFreq5", name: "Xover 5", defaultValue: 4000, minValue: 2000, maxValue: 12000, unit: "Hz", automatable: true },
+  { id: "crossoverFreq6", name: "Xover 6", defaultValue: 8000, minValue: 4000, maxValue: 20000, unit: "Hz", automatable: true },
   // Linkwitz-Riley slope: 2 = LR2 (12 dB/oct), 4 = LR4 (24 dB/oct),
   // 8 = LR8 (48 dB/oct). Any other value snaps onto {2,4,8} at the DSP and
   // the snapped value is written back. Structural (non-automatable).

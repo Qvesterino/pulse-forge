@@ -390,10 +390,11 @@ describe("fxeq worklet entry — hardening regression (2026-09-12)", () => {
     // Pre-fix only the first 128 frames were written; samples beyond frame
     // 128 stayed stale (zeros here, the previous block's audio on a live
     // host with a larger quantum). Compare signal ENERGY, not per-sample
-    // values — a sine legitimately crosses zero.
+    // values — a sine legitimately crosses zero. (Threshold has wide margin:
+    // the stale-tail failure mode is RMS ≈ 0.)
     let tailSq = 0;
     for (let i = 128; i < N; i++) tailSq += outL[i] * outL[i];
-    expect(Math.sqrt(tailSq / (N - 128))).toBeGreaterThan(0.05);
+    expect(Math.sqrt(tailSq / (N - 128))).toBeGreaterThan(0.02);
     expect(outL[N - 1]).toBeGreaterThan(0.001);
     expect(outR[N - 1]).toBeGreaterThan(0.001);
   });

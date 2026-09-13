@@ -43,6 +43,11 @@ Two service tiers — this is the load-bearing seam of the app:
 
 - **`AudioEngine`** (`src/audio-engine/AudioEngine.ts`, 4.1k lines — second central ownership file): owns the whole WebAudio graph — per-track chains (gain/pan/mute/solo/sends), returns, master limiter, analysers (metering), voice sets (drum voices, preview voices, instrument preview voices), one-shot committed sources (audio clips/markers/clicks), instrument runtimes (registry factory), effect runtimes (worklet nodes + fallbacks), automation/modulator application, effective-BPM sync for tempo-synced runtimes.
 - **Effects:** `src/effects/registry.ts` + worklet wrappers in `src/audio-worklets/` (~20 processors). Flagship cores are **vendored**: `src/effects/fxeq-core/**` (fork — may be patched, `vendor-fxeq.mjs` must NOT run), `src/effects/ultina-core/**` (byte-faithful vendored — 5 documented upstream defects, NEVER patch here; fix upstream `D:/VocalForge_DAW/plugins/ultina` and re-vendor), ozvena likewise. Worklet bundles are built into `public/` by `scripts/build-{fxeq,ultina,ozvena}-worklet.mjs` (run via `predev`/`prebuild`).
+- **FXEQ parameter surface** is owned by the vendored core (`src/effects/fxeq-core/core/parameterSchema.ts` → `buildFxEqSchema(bandCount)`). It is the **single source of truth** consumed by `src/commands/commands.ts` (3 sites for set/preset/undo paths), `src/effects/registry.ts`, `src/project-model/targets.ts` (automation target validation), `src/effects/fxeqNode.ts`, `src/ui/FxEqPanel.tsx`, `src/ui/fxeqCurve.ts`. New FXEQ parameters (`crossoverFreq6` added 2026-09-13, see §14 WIP substance) propagate automatically through `buildFxEqSchema(bandCount)` — no command/registry/targets plumbing changes needed. This is the architectural pattern to preserve.
+- **Vendor protection models** (intentionally heterogeneous, each matches the fork's relationship with its upstream):
+  - **`scripts/vendor-ultina.mjs`** (added 2026-09-13 in `173f5ce`): `assertUpstreamClean()` refuses to run if the upstream working tree has uncommitted files in `${scope}/src` or `${scope}/tests/vectors`. `--allow-dirty-upstream` escape hatch. Prevents silent overwrites of an in-place patch.
+  - **`scripts/vendor-ozvena.mjs`**: detects "Reconciled from Pulse Forge" markers in the destination and aborts if the upstream snapshot would silently revert in-place audit fixes. `--force-reconciled` escape hatch.
+  - **`scripts/vendor-fxeq.mjs`**: **no guard** — FXEQ is a fork that may be patched in place. The script must not run automatically; any re-vendor overwrites in-place patches by design.
 - **Instruments:** 14 kinds, `src/instruments/registry.ts`, runtime factory pattern (`InstrumentRuntime`: noteOn/noteOff/panic/dispose/setParams…).
 - **Offline render:** `src/rendering/bounce.ts` uses `OfflineAudioContext` through the SAME engine DSP rules (live==offline is a core invariant); `wav.ts` (16/24/32-float), `video.ts`, stems.
 - **DSP invariants:** zero allocation in `process()`, bounded blocks, determinism (no wall-clock in DSP), golden fixtures/vectors as contracts (`tests/fxeq-golden`, `tests/ozzena-golden`, `tests/ultina-vectors`).
@@ -92,7 +97,7 @@ Two service tiers — this is the load-bearing seam of the app:
 | `src/commands/commands.ts` (5.7k L) | Central ownership; every mutation passes here; undo correctness | KYX §3 rule 9 |
 | `src/audio-engine/AudioEngine.ts` (4.1k L) | Graph lifecycle, diff-sync, voice leaks, worklet fallbacks | KYX §3 rule 9 |
 | Vendored `ultina-core` | 5 confirmed upstream DSP defects; must NOT be patched locally | KNOWN_LIMITATIONS §Ultina |
-| `fxeq` random LFO unseeded | Nondeterministic exports (P0 in KYX roadmap) | KNOWN_LIMITATIONS §Export |
+| `fxeq` random LFO unseeded | Nondeterministic exports (P0 in KYX roadmap) — **CLOSED** by host-seeded xorshift32 (re-seeded on reset) per GOAL 03 (2026-09-10); per-instance host seed from project/owner/effect identity refined further post-`5f49140` | KNOWN_LIMITATIONS §Export |
 | Offline render non-cancellable; 32-float WAV hard clip; marker cues missing in master WAV | Export residuals | KNOWN_LIMITATIONS §Export |
 | Ozvena audio-thread allocations (IR partition FFT, pre-delay growth) | Dropouts | KNOWN_LIMITATIONS §Ozvena |
 | Collab server exposure (pre-auth internet) | Limits shipped in WIP; moderation/CORS still open | KYX §11 |
@@ -117,8 +122,40 @@ Two service tiers — this is the load-bearing seam of the app:
 3. Phase C checklist in MAINTENANCE_AUDIT_PROGRESS marks C01–C23 complete but the results log records only C01 — record gap, not necessarily a code problem.
 4. `tests/_debug_archive/`, `scratch/`, `__debug_loop.mjs`, `qa-*.mjs` scripts at root — development leftovers (GOAL 11 sweep candidates).
 
-## 14. Baseline health (2026-09-10, working tree incl. WIP)
+## 14. Baseline health
+
+### 2026-09-10 baseline (original GOAL 01)
 
 - `tsc --noEmit`: **PASS**
 - `vitest run`: **1983 passed / 1 failed / 95 skipped** (200 files, ~15 min). The 1 failure (`tests/ui/midi-io.test.tsx` import waitFor) was load-related flake + an unhandled `URL.revokeObjectURL` TypeError from a post-test 5 s timer — **fixed this session** (optional-call guard at 5 production sites + 10 s waitFor timeout). Browser suite (`npm run test:browser`) not yet re-run this session — GOAL 12 gate.
 - Build: not yet re-run this session — GOAL 12 gate.
+
+### 2026-09-13 re-verification (campaign restart, GOAL 01)
+
+- **HEAD:** `7abc415` ("tak asi fajn") — 3 commits past the previous reviewed baseline `5f49140`. Chronological commits in that range:
+  - `81553dd docs: reconcile release evidence after test stabilization`
+  - `7abc415 feat: ultina transient/sustain + Pre-Emphasis experiment (Pre-Emphasis schema + transient/sustain EQ + contract test)`
+  - `173f5ce fix(ultina): reconcile upstream DSP and protect vendor sync`
+- **Working tree:** 13 files modified vs HEAD — predominantly the **FXEQ/Ultina DSP experiment** (Pre-Emphasis + 6-band crossover ladder realignment + transient/sustain EQ). `git status` shows `fxeq-core/{fxEqProcessor, parameterSchema}` modified, `ultina-core/{eqModule, exciterModule, maskingMeter, primitives}` modified, plus matching tests. Reviewed-baseline PRISM tree `5f49140` is **no longer at HEAD** — the tree now also contains the unmerged DSP experiment from R7.
+- **File-count drift:** src `.ts/.tsx` files 361 (was ~340 at 2026-09-10); tests 244 (was ~200). The increase is concentrated in DSP test files for the new crossover/Pre-Emphasis/transient-sustain surfaces.
+- `tsc --noEmit`: **PASS** (this session, on the modified working tree).
+- Targeted `vitest run` on the WIP-modified test files: **54/54 PASS** (4 files — `fxeq-core-hardening.test.ts` 34, `fxeq-morph.test.ts` 6, `fxeq-rack-contract.test.ts` 6, `ultina-contract-params.test.ts` 8).
+- Full Vitest suite: **not re-run this session** — 8–15 min runtime + the previously documented CPU-load flake class still applies. Last authoritative full run before this session was the GOAL 12 review (`5f49140`): 234 files / 2300 passed / 103 skipped / 1 timeout (factory-preset UI regression — fixed in `5f49140`, but complete post-`7abc415` rerun still required).
+- `npm run build`: **not re-run this session** — required by GOAL 12 gate. The `predev`/`prebuild` chain (`build:core-worklets`, `build:fxeq`, `build:ultina`, `build:ozvena`) will rebuild worklets; `173f5ce` already modified `public/ultina-worklet.js` and `scripts/vendor-ultina.mjs`, so the upstream-vendor sync state should be re-verified.
+- Browser smoke (`npm run test:browser`): **not re-run this session** — last Chromium 218/218 (post-`5f49140`).
+
+### WIP substance (what changed since the previous campaign session)
+
+- **FXEQ 6-band crossover ladder realignment** (`src/effects/fxeq-core/core/parameterSchema.ts`, `fxEqProcessor.ts`): the schema gains `crossoverFreq6` (default 8000 Hz, 4–20 kHz range). Existing saved docs continue to pin their old values explicitly — backward compatible. Defaults now realigned to `DEFAULT_CROSSOVER_FREQS` ladder (120/400/1200/4000/8000). Comment notes the previous defect: a 6-band config had splits 4 and 5 coinciding on the bank's hidden 8000 Hz default, creating a dead band; dragging Xover 5 above 8 kHz silently inverted against the invisible split and deleted 8–12 kHz from the summed output. **This is a substantive DSP correctness fix**, not a stylistic change.
+- **Ultina transient/sustain + Pre-Emphasis experiment** (`src/effects/ultina-core/dsp/modules/eqModule.ts`, `exciterModule.ts`, `contracts/{parameterIds, parameterSchema}.ts`, `dsp/maskingMeter.ts`, `dsp/primitives.ts`): experimental — not yet proven against golden vectors or upstream parity. The previous release report flagged this as R7 (owner-gated experiment needing separation). The WIP has not been committed and is mixed into the working tree with the FXEQ fix above — they will need to be separated before tagging a release candidate.
+- **`tests/ultina-contract-params.test.ts`** grew by 36 lines (`+231` net in the latest commit) — adds contract coverage for the new Pre-Emphasis parameter surface.
+
+## 15. Open release gates (carried from 2026-09-13 RELEASE_READINESS_REPORT, refreshed)
+
+- **R7 (Open, blocking):** the uncommitted Ultina contract/DSP experiment and FXEQ crossover ladder realignment are mixed into the same working tree. Owner must either separate them (two commits) or review them together before tagging an immutable release candidate.
+- **Full Vitest suite rerun** on the post-`7abc415` tree — last authoritative run was pre-`5f49140` (1 timeout, 2300 pass).
+- **`npm run build`** rerun — required to confirm bundle budgets still hold with the new `crossoverFreq6` schema + ultina DSP changes.
+- **`npm run test:browser`** rerun — required to confirm PRISM plugin workflow + the new FXEQ 6-band crossover surface in real WebAudio.
+- **Manual Firefox/Safari/iOS matrix** — owner gate, unchanged.
+- **`release:deployed-smoke`** with a real `KYX_DEPLOY_URL` — owner gate, unchanged.
+- **Formatting deviations (R9)** — 209 files, owner decision pending.

@@ -3,11 +3,11 @@
   "topology": "v1-shared-crossover",
   "frames": 8192,
   "channels": 1,
-  "peak": 0.47722,
+  "peak": 0.476,
   "rms": 0.011054,
   "envelope": [
-    0.47722,
-    0.035552,
+    0.476,
+    0.035551,
     0.001759,
     0.00127,
     0.000965,
@@ -71,5 +71,5 @@
     0,
     0
   ],
-  "hash": "e70e456ac9934ecebf1f05321a76c148f91b40fdd9adc123b3e8cd94af380a13"
+  "hash": "da07b36f792446ccc3c28c6cf26951ad8a9a88f842e9f77209edcc762e65bc3d"
 }

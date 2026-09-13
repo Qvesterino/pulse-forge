@@ -542,16 +542,19 @@ describe("fxeq crossover ordering guard (roadmap Q5)", () => {
   it("single changes cannot invert band order", () => {
     const proc = createFxEqProcessor();
     proc.prepare(SR, 2, BLOCK);
-    // f3 below f2 (default 400) clamps up to f2 + 40 Hz gap.
+    // Move f2 high enough that f3's schema minimum would cross it; the
+    // neighbour guard must win over the raw schema value.
+    proc.setParameter("crossoverFreq3", 700);
+    proc.setParameter("crossoverFreq2", 500);
     proc.setParameter("crossoverFreq3", 300);
-    expect(proc.getParameter("crossoverFreq3")).toBe(440);
-    // f2 above f3 (now 440) clamps down to f3 − 40 Hz gap.
-    proc.setParameter("crossoverFreq2", 10000);
-    expect(proc.getParameter("crossoverFreq2")).toBe(400);
+    expect(proc.getParameter("crossoverFreq3")).toBe(540);
+    // Moving f2 above f3 clamps it below the stored upper neighbour.
+    proc.setParameter("crossoverFreq2", 800);
+    expect(proc.getParameter("crossoverFreq2")).toBe(500);
     // In-range, non-crossing values pass through untouched.
-    proc.setParameter("crossoverFreq2", 350);
-    expect(proc.getParameter("crossoverFreq2")).toBe(350);
-    expect(proc.getParameter("crossoverFreq3")).toBe(440);
+    proc.setParameter("crossoverFreq2", 100);
+    expect(proc.getParameter("crossoverFreq2")).toBe(100);
+    expect(proc.getParameter("crossoverFreq3")).toBe(540);
   });
 
   it("bulk preset load with crossing splits resolves ascending and stays finite", () => {
@@ -562,17 +565,21 @@ describe("fxeq crossover ordering guard (roadmap Q5)", () => {
       crossoverFreq3: 300,
       crossoverFreq4: 100,
       crossoverFreq5: 50,
+      crossoverFreq6: 40,
     });
     const f2 = proc.getParameter("crossoverFreq2");
     const f3 = proc.getParameter("crossoverFreq3");
     const f4 = proc.getParameter("crossoverFreq4");
     const f5 = proc.getParameter("crossoverFreq5");
+    const f6 = proc.getParameter("crossoverFreq6");
     expect(f2).toBeLessThan(f3);
     expect(f3).toBeLessThan(f4);
     expect(f4).toBeLessThan(f5);
+    expect(f5).toBeLessThan(f6);
     expect(f3 - f2).toBeGreaterThanOrEqual(40);
     expect(f4 - f3).toBeGreaterThanOrEqual(40);
     expect(f5 - f4).toBeGreaterThanOrEqual(40);
+    expect(f6 - f5).toBeGreaterThanOrEqual(40);
 
     // Audio path with the clamped splits stays finite.
     for (let blk = 0; blk < 6; blk++) {

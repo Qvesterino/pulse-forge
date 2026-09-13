@@ -306,6 +306,7 @@ export function createFxEqProcessor(
       values["crossoverFreq3"],
       values["crossoverFreq4"],
       values["crossoverFreq5"],
+      values["crossoverFreq6"],
     ].filter((f) => f !== undefined);
     const resolvedFreqs = freqs.length ? freqs : [...DEFAULT_CROSSOVER_FREQS];
     monotonicClampFreqs(resolvedFreqs);
@@ -821,7 +822,8 @@ export function createFxEqProcessor(
         case "crossoverFreq2":
         case "crossoverFreq3":
         case "crossoverFreq4":
-        case "crossoverFreq5": {
+        case "crossoverFreq5":
+        case "crossoverFreq6": {
           const idx = Number(route.rawId.slice(-1)) - 2;
           // Q5: clamp against stored neighbours and write back, so the flat
           // store, the smoothing target and the crossover never disagree.
