@@ -49,6 +49,7 @@ import type {
 import { BAR_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
 import { detectLoopBpm } from "../audio-engine/bpm-detect";
 import { extractGroove } from "../audio-engine/groove-extract";
+import { detectTransientsAsync } from "../audio-workers/onset-detector-client";
 import { analyzeLoopForFlip, buildFlipOptions, flipSeed } from "../ai/flip";
 import { extensionForMime } from "../audio-engine/recorder";
 import { userSampleId } from "../persistence/UserSampleRepository";
@@ -145,6 +146,7 @@ export function ArrangementPanel() {
   const [recError, setRecError] = useState<string | null>(null);
   const recRef = useRef<import("../audio-engine/recorder").LiveRecorder | null>(null);
   const recStartBarRef = useRef(0);
+  const sliceAnalysisRef = useRef<AbortController | null>(null);
 
   // Ctrl+wheel zoom on the arrangement — needs a NON-passive native listener
   // (React 17+ attaches wheel passively at the root, so preventDefault in
@@ -190,12 +192,14 @@ export function ArrangementPanel() {
     () => () => {
       recRef.current?.cancel();
       recRef.current = null;
+      sliceAnalysisRef.current?.abort();
+      sliceAnalysisRef.current = null;
     },
     [],
   );
 
   const startRec = async () => {
-    if (!armedTrackId || recState !== "idle") return;
+    if (!armedTrackId || recState !== "idle" || recRef.current) return;
     setRecError(null);
     try {
       services.engine.ensureContext();
@@ -207,6 +211,9 @@ export function ArrangementPanel() {
         ctx,
         getTapNode: () => null, // mic input, not an internal tap
       });
+      // Publish ownership before the permission prompt/async start so an
+      // unmount or a second REC action can cancel this exact pending take.
+      recRef.current = rec;
       await rec.start({ kind: "mic" });
       recStartBarRef.current = Math.max(0, recordingStartBar(services.transport.position));
       recRef.current = rec;
@@ -215,6 +222,8 @@ export function ArrangementPanel() {
       // Performers record against the backing track — roll the transport.
       if (!services.transport.playing) services.playback.playPause();
     } catch (error) {
+      recRef.current?.cancel();
+      recRef.current = null;
       setRecError(error instanceof Error ? error.message : String(error));
     }
   };
@@ -223,6 +232,7 @@ export function ArrangementPanel() {
     const rec = recRef.current;
     if (!rec) return;
     setRecState("saving");
+    let capturedBufferId: string | null = null;
     try {
       const take = await rec.stop();
       recRef.current = null;
@@ -233,6 +243,7 @@ export function ArrangementPanel() {
       }
       const stamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
       const bufferId = userSampleId(`rec-${stamp}`);
+      capturedBufferId = bufferId;
       services.bank.add(bufferId, take.buffer);
       // Persist the bytes so the take survives reloads (best effort — the
       // in-memory bank already plays it this session).
@@ -260,6 +271,17 @@ export function ArrangementPanel() {
       );
       setRecState("idle");
     } catch (error) {
+      // If clip insertion fails after the take was materialized, roll back the
+      // unreferenced asset. Persistence failure alone is intentionally not a
+      // rollback: a successfully inserted take remains usable this session.
+      if (capturedBufferId) {
+        services.bank.remove(capturedBufferId);
+        try {
+          await services.userSamples.remove(capturedBufferId);
+        } catch {
+          /* best-effort cleanup */
+        }
+      }
       setRecError(error instanceof Error ? error.message : String(error));
       setRecState("idle");
       recRef.current = null;
@@ -336,12 +358,14 @@ export function ArrangementPanel() {
       )
     : undefined;
 
-  const execute = (command: Parameters<typeof services.store.execute>[0]): void => {
+  const execute = (command: Parameters<typeof services.store.execute>[0]): boolean => {
     try {
       setActionError(null);
       services.store.execute(command);
+      return true;
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Operation failed");
+      return false;
     }
   };
 
@@ -683,7 +707,14 @@ export function ArrangementPanel() {
       } catch {
         /* persistence is best-effort — the take still plays this session */
       }
-      execute(addAudioClip(services.store.doc, trackIds[0], bufferId, fromBar, lenBars, { gain: 1, stretchRate: 1 }));
+      if (!execute(addAudioClip(services.store.doc, trackIds[0], bufferId, fromBar, lenBars, { gain: 1, stretchRate: 1 }))) {
+        services.bank.remove(bufferId);
+        try {
+          await services.userSamples.remove(bufferId);
+        } catch {
+          /* best-effort cleanup */
+        }
+      }
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Bounce failed");
     } finally {
@@ -1754,56 +1785,56 @@ export function ArrangementPanel() {
             <button
               type="button"
               role="menuitem"
-              onClick={() => {
+              onClick={async () => {
                 const c = audioClips.find((x) => x.id === audioMenu.clipId);
                 if (!c) {
                   setAudioMenu(null);
                   return;
                 }
+                setAudioMenu(null);
                 const buf = services.bank.get(c.bufferId);
                 if (!buf) {
                   setActionError("Buffer not loaded");
                   setAudioMenu(null);
                   return;
                 }
-                // Use onset-detector logic inline (synchronous) to slice to pads
-                const data = buf.getChannelData(0);
-                const times: number[] = [];
-                // quick transient detection (like onset-detector.ts but sync)
-                const win = 1024,
-                  hop = 256,
-                  frames = Math.floor((data.length - win) / hop) + 1;
-                if (frames > 4) {
-                  const env = new Float64Array(frames);
-                  for (let f = 0; f < frames; f++) {
-                    let s = 0;
-                    for (let i = f * hop; i < f * hop + win; i++) s += data[i] * data[i];
-                    env[f] = Math.sqrt(s / win);
+                sliceAnalysisRef.current?.abort();
+                const controller = new AbortController();
+                sliceAnalysisRef.current = controller;
+                // Long sample analysis runs in the onset worker so slicing
+                // cannot freeze the arrangement/timeline interaction.
+                try {
+                  const times = await detectTransientsAsync(buf.getChannelData(0), buf.sampleRate, 1, controller.signal);
+                  if (controller.signal.aborted) return;
+                  const currentDoc = services.store.doc;
+                  const currentClip = (currentDoc.arrangement.audioClips ?? []).find((clip) => clip.id === c.id);
+                  if (
+                    !currentClip ||
+                    currentClip.bufferId !== c.bufferId ||
+                    services.bank.get(currentClip.bufferId) !== buf
+                  )
+                    return;
+                  const slices: Array<{ start: number; end: number }> = [];
+                  for (let i = 0; i < Math.min(16, times.length + 1); i++) {
+                    const start = i === 0 ? 0 : times[i - 1];
+                    const end = i < times.length ? times[i] : buf.duration;
+                    if (end - start > 0.02) slices.push({ start, end });
                   }
-                  let globalMax = 0;
-                  for (let f = 0; f < frames; f++) if (env[f] > globalMax) globalMax = env[f];
-                  for (let f = 1; f < frames - 1; f++) {
-                    if (env[f] > env[f - 1] && env[f] > env[f + 1] && env[f] > globalMax * 0.22)
-                      times.push((f * hop) / buf.sampleRate);
+                  if (slices.length === 0) slices.push({ start: 0, end: buf.duration });
+                  const drumTrack = currentDoc.tracks.find((t) => t.kind === "drum");
+                  if (!drumTrack) {
+                    setActionError("No drum track");
+                  } else {
+                    // Store bounced buffer as temp asset then slice
+                    const bounceId = `stem-${c.id}`;
+                    services.bank.add(bounceId, buf);
+                    execute(sliceToPads(currentDoc, drumTrack.id, bounceId, slices, "Slice"));
                   }
+                } catch (error) {
+                  if (!controller.signal.aborted) setActionError(String(error));
+                } finally {
+                  if (sliceAnalysisRef.current === controller) sliceAnalysisRef.current = null;
                 }
-                const slices = [];
-                for (let i = 0; i < Math.min(16, times.length + 1); i++) {
-                  const start = i === 0 ? 0 : times[i - 1];
-                  const end = i < times.length ? times[i] : buf.duration;
-                  if (end - start > 0.02) slices.push({ start, end });
-                }
-                if (slices.length === 0) slices.push({ start: 0, end: buf.duration });
-                const drumTrack = doc.tracks.find((t) => t.kind === "drum");
-                if (!drumTrack) {
-                  setActionError("No drum track");
-                } else {
-                  // Store bounced buffer as temp asset then slice
-                  const bounceId = `stem-${c.id}`;
-                  services.bank.add(bounceId, buf);
-                  execute(sliceToPads(services.store.doc, drumTrack.id, bounceId, slices, "Slice"));
-                }
-                setAudioMenu(null);
               }}
             >
               Slice to pads (onset)

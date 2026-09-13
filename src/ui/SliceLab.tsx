@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointer
 import { useDoc, useServices } from "./context";
 import { SampleBrowser } from "./SampleBrowser";
 import { chopSampleToPads, setPadLoop, type PadSlice } from "../commands/commands";
-import { detectTransients, gridSlicePoints, pointsToSlices, snapToGrid } from "../audio-engine/transients";
+import { gridSlicePoints, pointsToSlices, snapToGrid } from "../audio-engine/transients";
+import { detectTransientsAsync } from "../audio-workers/onset-detector-client";
 import type { DrumPad, DrumTrack } from "../project-model/types";
 import { FACTORY_ASSETS } from "../sample-library/manifest";
 import type { UserSampleAsset } from "../persistence/UserSampleRepository";
@@ -110,45 +111,17 @@ export function SliceLab({ track, onClose }: { track: DrumTrack; onClose: () => 
       return;
     }
     let cancelled = false;
+    const controller = new AbortController();
     setHitsLoading(true);
     const channelData = buffer.getChannelData(0);
-    // Try Worker, fallback to sync
-    try {
-      const worker = new Worker(new URL("../audio-workers/onset-detector.ts", import.meta.url), {
-        type: "module",
-      });
-      const copy = new Float32Array(channelData);
-      worker.onmessage = (e: MessageEvent<{ times: number[] }>) => {
-        if (cancelled) {
-          worker.terminate();
-          return;
-        }
-        setHitsPoints(e.data.times ?? []);
-        setHitsLoading(false);
-        worker.terminate();
-      };
-      worker.onerror = () => {
-        if (cancelled) {
-          worker.terminate();
-          return;
-        }
-        const times = detectTransients(channelData, buffer.sampleRate, { sensitivity });
-        setHitsPoints(times);
-        setHitsLoading(false);
-        worker.terminate();
-      };
-      worker.postMessage({ channelData: copy, sampleRate: buffer.sampleRate, sensitivity }, [
-        copy.buffer,
-      ] as unknown as Transferable[]);
-    } catch {
-      const times = detectTransients(channelData, buffer.sampleRate, { sensitivity });
-      if (!cancelled) {
-        setHitsPoints(times);
-        setHitsLoading(false);
-      }
-    }
+    void detectTransientsAsync(channelData, buffer.sampleRate, sensitivity, controller.signal).then((times) => {
+      if (cancelled) return;
+      setHitsPoints(times);
+      setHitsLoading(false);
+    });
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [buffer, mode, sensitivity]);
 

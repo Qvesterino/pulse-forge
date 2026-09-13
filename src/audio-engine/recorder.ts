@@ -50,6 +50,8 @@ export class LiveRecorder {
   private micStream: MediaStream | null = null;
   private mimeType: string | null = null;
   private state_: RecorderState = "idle";
+  private starting = false;
+  private startToken = 0;
   private startedAt = 0;
 
   constructor(private deps: LiveRecorderDeps) {}
@@ -69,44 +71,67 @@ export class LiveRecorder {
    */
   async start(source: RecordSource): Promise<void> {
     if (this.state_ === "recording") throw new Error("Already recording");
+    if (this.starting) throw new Error("Already starting");
     if (typeof MediaRecorder === "undefined") throw new Error("MediaRecorder is not available in this browser");
     const isSupported = this.deps.isTypeSupported ?? ((type: string) => MediaRecorder.isTypeSupported(type));
     const mimeType = pickMimeType(this.deps.mimeCandidates ?? DEFAULT_MIME_CANDIDATES, isSupported);
     if (!mimeType) throw new Error("No supported audio recording format in this browser");
 
-    this.dest = this.deps.ctx.createMediaStreamDestination();
-    if (source.kind === "mic") {
-      if (!navigator.mediaDevices?.getUserMedia) throw new Error("Microphone capture is not available in this browser");
-      try {
-        // Raw capture: DSP "enhancements" would fight the app's own processing.
-        this.micStream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
-        });
-      } catch {
-        throw new Error("Microphone access denied — allow the mic and try again");
-      }
-      this.micSource = this.deps.ctx.createMediaStreamSource(this.micStream);
-      this.micSource.connect(this.dest);
-    } else {
-      this.tap = this.deps.getTapNode(source);
-      if (!this.tap) throw new Error(source.kind === "track" ? "Track audio not loaded" : "Master audio not loaded");
-      this.tap.connect(this.dest);
-    }
-
-    this.chunks = [];
+    this.starting = true;
+    const startToken = ++this.startToken;
     try {
-      this.recorder = new MediaRecorder(this.dest.stream, { mimeType });
-    } catch {
+      this.dest = this.deps.ctx.createMediaStreamDestination();
+      if (source.kind === "mic") {
+        if (!navigator.mediaDevices?.getUserMedia) throw new Error("Microphone capture is not available in this browser");
+        try {
+          // Raw capture: DSP "enhancements" would fight the app's own processing.
+          this.micStream = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+          });
+          if (startToken !== this.startToken) {
+            this.micStream.getTracks().forEach((track) => track.stop());
+            this.micStream = null;
+            throw new Error("Recording start was cancelled");
+          }
+        } catch {
+          if (startToken !== this.startToken) throw new Error("Recording start was cancelled");
+          throw new Error("Microphone access denied — allow the mic and try again");
+        }
+        this.micSource = this.deps.ctx.createMediaStreamSource(this.micStream);
+        this.micSource.connect(this.dest);
+      } else {
+        this.tap = this.deps.getTapNode(source);
+        if (!this.tap) throw new Error(source.kind === "track" ? "Track audio not loaded" : "Master audio not loaded");
+        this.tap.connect(this.dest);
+      }
+
+      this.chunks = [];
+      try {
+        this.recorder = new MediaRecorder(this.dest.stream, { mimeType });
+      } catch {
+        throw new Error("Could not start the recorder in this browser");
+      }
+      this.mimeType = mimeType;
+      this.recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) this.chunks.push(event.data);
+      };
+      try {
+        this.recorder.start(250); // timeslice: long takes stay safe if the tab hiccups
+      } catch {
+        throw new Error("Could not start the recorder in this browser");
+      }
+      this.startedAt = this.deps.ctx.currentTime;
+      this.state_ = "recording";
+    } catch (error) {
+      // Destination nodes, taps and microphone streams are all acquired before
+      // MediaRecorder enters its recording state. Any setup failure must undo
+      // the complete partial graph or a denied/failed take leaks it until the
+      // next project teardown.
       this.cleanupWiring();
-      throw new Error("Could not start the recorder in this browser");
+      throw error;
+    } finally {
+      this.starting = false;
     }
-    this.mimeType = mimeType;
-    this.recorder.ondataavailable = (event) => {
-      if (event.data && event.data.size > 0) this.chunks.push(event.data);
-    };
-    this.recorder.start(250); // timeslice: long takes stay safe if the tab hiccups
-    this.startedAt = this.deps.ctx.currentTime;
-    this.state_ = "recording";
   }
 
   /**
@@ -120,19 +145,28 @@ export class LiveRecorder {
     if (this.state_ !== "recording" || !this.recorder) return null;
     const recorder = this.recorder;
     this.state_ = "idle";
-    const stopped = new Promise<void>((resolve) => {
-      recorder.onstop = () => resolve();
+    const stopped = new Promise<boolean>((resolve) => {
+      let settled = false;
+      const finish = (failed: boolean) => {
+        if (settled) return;
+        settled = true;
+        resolve(failed);
+      };
+      recorder.onstop = () => finish(false);
+      recorder.onerror = () => finish(true);
+      try {
+        recorder.stop();
+      } catch {
+        // A browser can report an already-inactive recorder by throwing
+        // without dispatching `stop`; resolve the wait so cleanup still runs.
+        finish(true);
+      }
     });
-    try {
-      recorder.stop();
-    } catch {
-      /* already inactive */
-    }
-    await stopped;
+    const failed = await stopped;
     const chunks = this.chunks;
     const mimeType = this.mimeType;
     this.cleanupWiring();
-    if (chunks.length === 0) return null;
+    if (failed || chunks.length === 0) return null;
     const blob = new Blob(chunks, { type: mimeType ?? "audio/webm" });
     if (blob.size < 1024) return null; // sub-1 kB is a failed take, not a sample
     try {
@@ -145,6 +179,7 @@ export class LiveRecorder {
 
   /** Abort without decoding — releases the mic and wiring immediately. */
   cancel(): void {
+    this.startToken++;
     if (this.recorder && this.state_ === "recording") {
       try {
         this.recorder.stop();
@@ -157,7 +192,13 @@ export class LiveRecorder {
   }
 
   private cleanupWiring(): void {
+    const recorder = this.recorder;
     this.recorder = null;
+    if (recorder) {
+      recorder.ondataavailable = null;
+      recorder.onstop = null;
+      recorder.onerror = null;
+    }
     this.chunks = [];
     const dest = this.dest;
     try {

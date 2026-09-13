@@ -601,7 +601,11 @@ export class AudioEngine {
     await ensureWorkletsForDoc(this.doc, ctx);
   }
 
-  private workletRefreshQueued = false;
+  // The refresh lock belongs to a context. A worklet load for an old context
+  // may settle after a live/offline swap; a single global boolean lets that
+  // stale callback suppress (and permanently strand) the new context's FX
+  // refresh.
+  private workletRefreshQueuedFor: BaseAudioContext | null = null;
 
   /**
    * Rebuild all FX chains so factories swap bypass/fallback runtimes for real
@@ -610,11 +614,11 @@ export class AudioEngine {
    * contexts never queue a refresh (they preload modules before useContext).
    */
   private queueFxRebuild(ctx: BaseAudioContext): void {
-    if (this.workletRefreshQueued) return;
-    this.workletRefreshQueued = true;
+    if (this.workletRefreshQueuedFor === ctx) return;
+    this.workletRefreshQueuedFor = ctx;
     Promise.resolve()
       .then(() => {
-        this.workletRefreshQueued = false;
+        if (this.workletRefreshQueuedFor === ctx) this.workletRefreshQueuedFor = null;
         if (this.ctx !== ctx || !this.doc) return;
         for (const nodes of this.trackNodes.values()) nodes.fx.signature = "";
         for (const nodes of this.groupNodes.values()) nodes.fx.signature = "";
@@ -626,7 +630,7 @@ export class AudioEngine {
         this.upgradeKwMeter();
       })
       .catch(() => {
-        this.workletRefreshQueued = false;
+        if (this.workletRefreshQueuedFor === ctx) this.workletRefreshQueuedFor = null;
       });
   }
 
@@ -637,7 +641,7 @@ export class AudioEngine {
    */
   private queueWorkletRefresh(ctx: BaseAudioContext): void {
     if (!isLiveAudioContext(ctx)) return;
-    if (this.workletRefreshQueued || isWorkletReady("bitcrusher", ctx)) return;
+    if (this.workletRefreshQueuedFor === ctx || isWorkletReady("bitcrusher", ctx)) return;
     void loadCoreWorklets(ctx)
       .then(() => this.queueFxRebuild(ctx))
       .catch(() => {
@@ -646,32 +650,18 @@ export class AudioEngine {
   }
 
   ensureContext(): BaseAudioContext {
-    if (!this.ctx) {
+    if (!this.ctx || this.ctx.state === "closed") {
       if (typeof AudioContext === "undefined") {
         throw new Error("This browser does not provide a realtime AudioContext");
       }
       const ctx = new AudioContext();
-      this.ctx = ctx;
-      this.buildMaster();
-      if (this.doc) this.syncProject(this.doc);
-      // Worklet modules load asynchronously — chains built just now may run
-      // reduced fallbacks; queue a rebuild once real processors are available.
-      this.queueWorkletRefresh(ctx);
-      // Defect 1.2 (lifecycle audit): the very first AudioContext we
-      // construct is the one most likely to come up suspended (autoplay
-      // restrictions, browser privacy defaults). Wire the onstatechange
-      // observer right here so a delayed transition to "running" from
-      // the browser's autoplay-policy handshake re-queues the worklet
-      // refresh and the resume() below stays the user-gesture path.
-      if (typeof ctx.onstatechange !== "undefined") {
-        ctx.onstatechange = () => {
-          if (ctx.state === "running" && this.ctx === ctx) {
-            this.queueWorkletRefresh(ctx);
-          }
-        };
-      }
+      // Route every creation path through useContext() so a context that was
+      // closed by the browser/device lifecycle gets a complete graph rebuild,
+      // exactly like an offline-to-live context swap.
+      this.useContext(ctx);
     }
     const ctx = this.ctx;
+    if (!ctx) throw new Error("Unable to initialize the realtime AudioContext");
     // Best-effort resume: without a user gesture the browser rejects the
     // promise (NotAllowedError) — swallow it so ensureContext() callers
     // (visibilitychange, playback clicks) never produce unhandled

@@ -1,7 +1,7 @@
 /**
  * Onset Detector Web Worker.
  *
- * Runs `detectTransients` off the main thread so long samples (>10s) don't
+ * Runs `detectTransients` off the main thread so long samples don't
  * block the SliceLab waveform canvas. Pure math — no AudioContext.
  *
  * Input:  { channelData: Float32Array, sampleRate: number, sensitivity?: number }

@@ -43,7 +43,7 @@ import {
   splitAudioClipAtTick,
   updateAudioClip,
 } from "../commands/commands";
-import { detectTransients } from "../audio-workers/onset-detector";
+import { detectTransientsAsync } from "../audio-workers/onset-detector-client";
 import type { PatternClipboard } from "../commands/commands";
 import type { SelectedNote } from "./PianoRoll";
 import { matchShortcut, panelIdOfShortcut, type ShortcutKey } from "./shortcuts";
@@ -91,6 +91,8 @@ export function App({
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const holdTimerRef = useRef<number | null>(null);
   const holdStartRef = useRef<{ x: number; y: number } | null>(null);
+  const transientJumpRef = useRef(0);
+  const transientJumpAbortRef = useRef<AbortController | null>(null);
   const selectedTrackId = selection.trackIds[0] ?? doc.tracks[0]?.id ?? "";
   const [selectedPadId, setSelectedPadId] = useState(
     doc.tracks[0]?.kind === "drum" ? (doc.tracks[0].pads[0]?.id ?? "") : "",
@@ -528,66 +530,97 @@ export function App({
             }
           }
           if (target) {
-            const buf = services.bank.get(target.bufferId);
+            const sourceTarget = target;
+            const buf = services.bank.get(sourceTarget.bufferId);
             if (buf) {
-              const times = detectTransients(buf.getChannelData(0), buf.sampleRate, 1);
-              const secondsPerTick = 60 / (doc.bpm * PPQ);
-              const clipStartTick = target.startBar * BAR_TICKS;
-              const offsetSec = (target.offsetSec ?? 0) + (target.trimStart ?? 0);
-              // Map buffer transient times to ticks: tick = clipStart + (t - offset)/stretch / secPerTick
-              const ticks = times.map(
-                (t) => clipStartTick + (t - offsetSec) / secondsPerTick / (target.stretchRate ?? 1),
-              );
-              // Filter to those inside clip
-              const valid = ticks.filter(
-                (tk) =>
-                  tk >= clipStartTick && tk < clipStartTick + target.lengthBars * BAR_TICKS && Number.isFinite(tk),
-              );
-              let nextTick: number | null = null;
-              if (!event.shiftKey) {
-                nextTick = valid.find((tk) => tk > pos + 1) ?? null;
-                if (nextTick === null) {
-                  // wrap to next clip's first transient
-                  const sorted = [...clips].sort((a, b) => a.startBar - b.startBar);
-                  const idx = sorted.findIndex((c) => c.id === target!.id);
-                  const nxt = sorted[(idx + 1) % sorted.length];
-                  if (nxt && nxt.id !== target.id) {
-                    const nb = services.bank.get(nxt.bufferId);
-                    if (nb) {
-                      const nt = detectTransients(nb.getChannelData(0), nb.sampleRate, 1);
-                      if (nt.length > 0)
-                        nextTick =
-                          nxt.startBar * BAR_TICKS +
-                          (nt[0] - (nxt.offsetSec ?? 0)) / secondsPerTick / (nxt.stretchRate ?? 1);
+              // Prevent browser focus navigation synchronously; detection may
+              // be worker-backed and therefore completes after this handler.
+              event.preventDefault();
+              const backwards = event.shiftKey;
+              transientJumpAbortRef.current?.abort();
+              const controller = new AbortController();
+              transientJumpAbortRef.current = controller;
+              const request = ++transientJumpRef.current;
+              void (async () => {
+                const times = await detectTransientsAsync(buf.getChannelData(0), buf.sampleRate, 1, controller.signal);
+                if (request !== transientJumpRef.current) return;
+                // Do not apply a result to a clip that was deleted, moved to a
+                // different asset, or replaced while analysis was running.
+                const currentDoc = services.store.doc;
+                const currentClips = currentDoc.arrangement.audioClips ?? [];
+                const currentTarget = currentClips.find((clip) => clip.id === sourceTarget.id);
+                if (
+                  !currentTarget ||
+                  currentTarget.bufferId !== sourceTarget.bufferId ||
+                  services.bank.get(currentTarget.bufferId) !== buf
+                )
+                  return;
+                const activePos = services.transport.position;
+                const secondsPerTick = 60 / (currentDoc.bpm * PPQ);
+                const clipStartTick = currentTarget.startBar * BAR_TICKS;
+                const offsetSec = (currentTarget.offsetSec ?? 0) + (currentTarget.trimStart ?? 0);
+                // Map buffer transient times to ticks: tick = clipStart + (t - offset)/stretch / secPerTick
+                const ticks = times.map(
+                  (t) => clipStartTick + (t - offsetSec) / secondsPerTick / (currentTarget.stretchRate ?? 1),
+                );
+                // Filter to those inside clip
+                const valid = ticks.filter(
+                  (tk) =>
+                    tk >= clipStartTick &&
+                    tk < clipStartTick + currentTarget.lengthBars * BAR_TICKS &&
+                    Number.isFinite(tk),
+                );
+                let nextTick: number | null = null;
+                if (!backwards) {
+                  nextTick = valid.find((tk) => tk > activePos + 1) ?? null;
+                  if (nextTick === null) {
+                    // wrap to next clip's first transient
+                    const sorted = [...currentClips].sort((a, b) => a.startBar - b.startBar);
+                    const idx = sorted.findIndex((c) => c.id === currentTarget.id);
+                    const nxt = sorted[(idx + 1) % sorted.length];
+                    if (nxt && nxt.id !== currentTarget.id) {
+                      const nb = services.bank.get(nxt.bufferId);
+                      if (nb) {
+                        const nt = await detectTransientsAsync(nb.getChannelData(0), nb.sampleRate, 1, controller.signal);
+                        if (request !== transientJumpRef.current) return;
+                        if (nt.length > 0)
+                          nextTick =
+                            nxt.startBar * BAR_TICKS +
+                            (nt[0] - (nxt.offsetSec ?? 0)) / secondsPerTick / (nxt.stretchRate ?? 1);
+                      }
                     }
                   }
-                }
-              } else {
-                const prevs = valid.filter((tk) => tk < pos - 1);
-                nextTick = prevs.length > 0 ? prevs[prevs.length - 1] : null;
-                if (nextTick === null) {
-                  const sorted = [...clips].sort((a, b) => a.startBar - b.startBar);
-                  const idx = sorted.findIndex((c) => c.id === target!.id);
-                  const prv = sorted[(idx - 1 + sorted.length) % sorted.length];
-                  if (prv && prv.id !== target.id) {
-                    const pb = services.bank.get(prv.bufferId);
-                    if (pb) {
-                      const pt = detectTransients(pb.getChannelData(0), pb.sampleRate, 1);
-                      if (pt.length > 0) {
-                        const last = pt[pt.length - 1];
-                        nextTick =
-                          prv.startBar * BAR_TICKS +
-                          (last - (prv.offsetSec ?? 0)) / secondsPerTick / (prv.stretchRate ?? 1);
+                } else {
+                  const prevs = valid.filter((tk) => tk < activePos - 1);
+                  nextTick = prevs.length > 0 ? prevs[prevs.length - 1] : null;
+                  if (nextTick === null) {
+                    const sorted = [...currentClips].sort((a, b) => a.startBar - b.startBar);
+                    const idx = sorted.findIndex((c) => c.id === currentTarget.id);
+                    const prv = sorted[(idx - 1 + sorted.length) % sorted.length];
+                    if (prv && prv.id !== currentTarget.id) {
+                      const pb = services.bank.get(prv.bufferId);
+                      if (pb) {
+                        const pt = await detectTransientsAsync(pb.getChannelData(0), pb.sampleRate, 1, controller.signal);
+                        if (request !== transientJumpRef.current) return;
+                        if (pt.length > 0) {
+                          const last = pt[pt.length - 1];
+                          nextTick =
+                            prv.startBar * BAR_TICKS +
+                            (last - (prv.offsetSec ?? 0)) / secondsPerTick / (prv.stretchRate ?? 1);
+                        }
                       }
                     }
                   }
                 }
-              }
-              if (nextTick !== null && Number.isFinite(nextTick)) {
-                event.preventDefault();
-                services.playback.seek(Math.max(0, Math.floor(nextTick)));
-                return;
-              }
+                if (nextTick !== null && Number.isFinite(nextTick)) {
+                  services.playback.seek(Math.max(0, Math.floor(nextTick)));
+                }
+              })().catch((error) => {
+                if (!controller.signal.aborted) console.warn("[App] transient navigation failed:", error);
+              }).finally(() => {
+                if (transientJumpAbortRef.current === controller) transientJumpAbortRef.current = null;
+              });
+              return;
             }
           }
           // Handled Tab for audioClips — don't fall through to nextTrack
@@ -843,7 +876,12 @@ export function App({
       runShortcutRef.current(matched, event);
     };
     window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
+    return () => {
+      transientJumpRef.current++;
+      transientJumpAbortRef.current?.abort();
+      transientJumpAbortRef.current = null;
+      window.removeEventListener("keydown", handler);
+    };
   }, [services, doc, track, selection, helpOpen, selectionStore, tool, contextMenu, toolStore, bouncingRange]);
 
   // Hold RMB 220ms → context menu, RMB drag >6px cancels hold (lets lasso handle it)

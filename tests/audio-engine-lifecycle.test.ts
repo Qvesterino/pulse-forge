@@ -86,7 +86,10 @@ describe("AudioEngine — lifecycle hardening (source-grep)", () => {
     const useContext = sliceFunction(engine, /useContext\s*\(/);
     const ensureContext = sliceFunction(engine, /ensureContext\s*\(/);
     expect(useContext).toMatch(/onstatechange\s*=/);
-    expect(ensureContext).toMatch(/onstatechange\s*=/);
+    // Context creation is centralized through useContext(), so ensureContext
+    // may satisfy this contract by delegating instead of duplicating the
+    // lifecycle observer implementation.
+    expect(ensureContext).toMatch(/onstatechange\s*=|this\.useContext\(ctx\)/);
     // The observer must short-circuit when the engine has been re-bound
     // to a different context in the meantime, otherwise a stale context
     // can drive a fresh engine.
@@ -172,6 +175,22 @@ describe("AudioEngine — lifecycle hardening (source-grep)", () => {
     expect(body, "ensureContext() must catch a rejected resume()").toMatch(
       /ctx\.resume\(\)\.catch\(\(\)\s*=>\s*\{\}\)/,
     );
+  });
+
+  it("ensureContext() replaces a closed realtime context before resuming it", () => {
+    const body = sliceFunction(readEngine(), /ensureContext\s*\(/);
+    expect(body, "ensureContext not found in AudioEngine.ts").not.toBe("");
+    expect(body, "ensureContext() must detect a browser-closed context").toMatch(/state\s*===\s*["']closed["']/);
+    expect(body, "closed-context recovery must rebuild through useContext()").toMatch(/this\.useContext\(ctx\)/);
+  });
+
+  it("keys async worklet refresh locking to the context that owns the load", () => {
+    const engine = readEngine();
+    expect(engine).toMatch(/workletRefreshQueuedFor:\s*BaseAudioContext\s*\|\s*null/);
+    expect(engine).not.toMatch(/private\s+workletRefreshQueued\s*=\s*false/);
+    const queueFx = sliceFunction(engine, /private\s+queueFxRebuild\s*\(/);
+    expect(queueFx).toMatch(/workletRefreshQueuedFor\s*===\s*ctx/);
+    expect(queueFx).toMatch(/this\.ctx\s*!==\s*ctx/);
   });
 
   it("applyMasterConfig() passes the master ceiling to the native limiter in dBFS", () => {
