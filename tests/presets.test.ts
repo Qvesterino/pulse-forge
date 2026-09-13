@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { FACTORY_PRESETS } from "../src/presets/factory";
+import { getPresetMetadata, PRESET_ENERGIES, PRESET_USE_CASES } from "../src/presets/catalog";
 import type { InstrumentPreset } from "../src/presets/types";
 import { INSTRUMENT_DEFS, defaultInstrumentParams } from "../src/instruments/registry";
 import { createProjectFromTemplate } from "../src/project-model/templates";
@@ -77,6 +78,30 @@ describe("factory presets", () => {
       expect(preset.mood.length).toBeGreaterThan(0);
       for (const m of preset.mood) expect(moods.has(m)).toBe(true);
     }
+  });
+
+  it("every factory preset has deterministic discovery and provenance metadata", () => {
+    for (const preset of FACTORY_PRESETS) {
+      const first = getPresetMetadata(preset);
+      const second = getPresetMetadata(preset);
+      expect(second).toEqual(first);
+      expect(PRESET_USE_CASES).toContain(first.useCase);
+      expect(PRESET_ENERGIES).toContain(first.energy);
+      expect(first.keySuitability).toBe("any");
+      expect(first.bpmRange.min).toBeGreaterThanOrEqual(20);
+      expect(first.bpmRange.max).toBeLessThanOrEqual(300);
+      expect(first.bpmRange.min).toBeLessThanOrEqual(first.bpmRange.max);
+      expect(first.source).toBe("KYX factory");
+      expect(first.license).toBe("internal");
+    }
+  });
+
+  it("re-derives metadata when persisted user data is incomplete", () => {
+    const source = FACTORY_PRESETS[0];
+    const malformed = { ...source, metadata: {} } as InstrumentPreset;
+
+    expect(() => getPresetMetadata(malformed)).not.toThrow();
+    expect(getPresetMetadata(malformed)).toEqual(getPresetMetadata(source));
   });
 });
 

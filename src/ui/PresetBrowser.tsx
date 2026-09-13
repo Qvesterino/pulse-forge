@@ -2,14 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDoc, useLibrary, useServices } from "./context";
 import { applyInstrumentPreset } from "../commands/commands";
 import { FACTORY_PRESETS } from "../presets/factory";
+import { PRESET_ENERGIES, PRESET_USE_CASES, getPresetMetadata } from "../presets/catalog";
 import { PRESET_GENRES, PRESET_MOODS } from "../presets/types";
-import type { InstrumentPreset, PresetGenre, PresetMood } from "../presets/types";
+import type { InstrumentPreset, PresetEnergy, PresetGenre, PresetMood, PresetUseCase } from "../presets/types";
 import { rankSimilarPresets } from "../presets/similar";
 import type { InstrumentTrack } from "../project-model/types";
 import { uid } from "../shared/ids";
 
 type GenreFilter = PresetGenre | "all";
 type MoodFilter = PresetMood | "all";
+type UseCaseFilter = PresetUseCase | "all";
+type EnergyFilter = PresetEnergy | "all";
 type ScopeFilter = "all" | "fav" | "recent" | "similar";
 
 export function PresetBrowser({ track }: { track: InstrumentTrack }) {
@@ -18,6 +21,8 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
   const library = useLibrary();
   const [genre, setGenre] = useState<GenreFilter>("all");
   const [mood, setMood] = useState<MoodFilter>("all");
+  const [useCase, setUseCase] = useState<UseCaseFilter>("all");
+  const [energy, setEnergy] = useState<EnergyFilter>("all");
   const [scope, setScope] = useState<ScopeFilter>("all");
   const [query, setQuery] = useState("");
   const [userPresets, setUserPresets] = useState<InstrumentPreset[]>([]);
@@ -77,13 +82,17 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
   );
 
   const base = all.filter((preset) => {
+    const metadata = getPresetMetadata(preset);
     if (genre !== "all" && preset.genre !== genre) return false;
     if (mood !== "all" && !preset.mood.includes(mood)) return false;
+    if (useCase !== "all" && metadata.useCase !== useCase) return false;
+    if (energy !== "all" && metadata.energy !== energy) return false;
     if (scope === "fav" && !library.favoritePresets.includes(preset.id)) return false;
     if (scope === "recent" && !library.recentPresets.includes(preset.id)) return false;
     if (query.trim().length > 0) {
       const q = query.trim().toLowerCase();
-      const haystack = `${preset.name} ${preset.tags.join(" ")} ${preset.genre ?? ""} ${preset.mood.join(" ")}`.toLowerCase();
+      const haystack =
+        `${preset.name} ${preset.tags.join(" ")} ${preset.genre ?? ""} ${preset.mood.join(" ")} ${metadata.useCase} ${metadata.energy} ${metadata.source}`.toLowerCase();
       if (!haystack.includes(q)) return false;
     }
     return true;
@@ -132,6 +141,7 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
       sampleId: track.sampleId,
       user: true,
     };
+    preset.metadata = getPresetMetadata(preset);
     await services.core.presets.save(preset);
     setSaveOpen(false);
     setSaveName("");
@@ -201,6 +211,50 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
         ))}
       </div>
 
+      <div className="preset-chips" role="group" aria-label="Preset role filter">
+        <button
+          type="button"
+          className={`preset-chip${useCase === "all" ? " active" : ""}`}
+          aria-pressed={useCase === "all"}
+          onClick={() => setUseCase("all")}
+        >
+          ROLE: ALL
+        </button>
+        {PRESET_USE_CASES.map((value) => (
+          <button
+            key={value}
+            type="button"
+            className={`preset-chip${useCase === value ? " active" : ""}`}
+            aria-pressed={useCase === value}
+            onClick={() => setUseCase(useCase === value ? "all" : value)}
+          >
+            ROLE: {value.toUpperCase()}
+          </button>
+        ))}
+      </div>
+
+      <div className="preset-chips" role="group" aria-label="Preset energy filter">
+        <button
+          type="button"
+          className={`preset-chip${energy === "all" ? " active" : ""}`}
+          aria-pressed={energy === "all"}
+          onClick={() => setEnergy("all")}
+        >
+          ENERGY: ALL
+        </button>
+        {PRESET_ENERGIES.map((value) => (
+          <button
+            key={value}
+            type="button"
+            className={`preset-chip${energy === value ? " active" : ""}`}
+            aria-pressed={energy === value}
+            onClick={() => setEnergy(energy === value ? "all" : value)}
+          >
+            ENERGY: {value.toUpperCase()}
+          </button>
+        ))}
+      </div>
+
       <div className="preset-chips">
         <button
           type="button"
@@ -244,77 +298,89 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
 
       <div className="preset-list">
         {filtered.length === 0 && <div className="preset-empty">No presets match.</div>}
-        {filtered.map((preset) => (
-          <div key={preset.id} className={`preset-row${preset.id === track.presetId ? " active" : ""}`}>
-            <button
-              type="button"
-              className={`preset-preview${previewingPresetId === preset.id ? " active" : ""}`}
-              aria-label={previewingPresetId === preset.id ? `Stop preview ${preset.name}` : `Preview ${preset.name}`}
-              aria-pressed={previewingPresetId === preset.id}
-              title={previewingPresetId === preset.id ? "Stop preview" : "Preview preset"}
-              onClick={() => {
-                if (previewingPresetId === preset.id) {
-                  if (previewTimer.current) clearTimeout(previewTimer.current);
-                  previewTimer.current = null;
-                  services.engine.stopPreview();
-                  setPreviewingPresetId(null);
-                } else {
-                  preview(preset);
-                }
-              }}
+        {filtered.map((preset) => {
+          const metadata = getPresetMetadata(preset);
+          return (
+            <div
+              key={preset.id}
+              className={`preset-row${preset.id === track.presetId ? " active" : ""}`}
+              title={`${metadata.source} · ${metadata.license} · ${metadata.bpmRange.min}–${metadata.bpmRange.max} BPM · key ${metadata.keySuitability}`}
             >
-              {previewingPresetId === preset.id ? "■" : "▶"}
-            </button>
-            <button type="button" className="preset-name" onClick={() => apply(preset)} title={`Apply ${preset.name}`}>
-              {preset.name}
-            </button>
-            <span className="preset-tags">
-              {preset.genre ? preset.genre : "user"} · {preset.mood.slice(0, 2).join(", ") || preset.tags[0]}
-            </span>
-            {similarityOf.has(preset.id) && (
-              <span className="preset-sim" title="Parameter similarity to the current sound">
-                ≈{Math.round((similarityOf.get(preset.id) ?? 0) * 100)}%
-              </span>
-            )}
-            <button
-              type="button"
-              className="preset-apply"
-              aria-label={`Apply ${preset.name}`}
-              onClick={() => apply(preset)}
-            >
-              APPLY
-            </button>
-            <button
-              type="button"
-              className={`preset-fav${library.favoritePresets.includes(preset.id) ? " active" : ""}`}
-              aria-label={
-                library.favoritePresets.includes(preset.id) ? `Unfavorite ${preset.name}` : `Favorite ${preset.name}`
-              }
-              aria-pressed={library.favoritePresets.includes(preset.id)}
-              onClick={(event) => {
-                event.stopPropagation();
-                void guard(async () => {
-                  await services.library.togglePresetFavorite(preset.id);
-                });
-              }}
-            >
-              {library.favoritePresets.includes(preset.id) ? "♥" : "♡"}
-            </button>
-            {preset.user && (
               <button
                 type="button"
-                className="preset-delete"
-                aria-label={`Delete preset ${preset.name}`}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  void guard(async () => removeUserPreset(preset.id));
+                className={`preset-preview${previewingPresetId === preset.id ? " active" : ""}`}
+                aria-label={previewingPresetId === preset.id ? `Stop preview ${preset.name}` : `Preview ${preset.name}`}
+                aria-pressed={previewingPresetId === preset.id}
+                title={previewingPresetId === preset.id ? "Stop preview" : "Preview preset"}
+                onClick={() => {
+                  if (previewingPresetId === preset.id) {
+                    if (previewTimer.current) clearTimeout(previewTimer.current);
+                    previewTimer.current = null;
+                    services.engine.stopPreview();
+                    setPreviewingPresetId(null);
+                  } else {
+                    preview(preset);
+                  }
                 }}
               >
-                ×
+                {previewingPresetId === preset.id ? "■" : "▶"}
               </button>
-            )}
-          </div>
-        ))}
+              <button
+                type="button"
+                className="preset-name"
+                onClick={() => apply(preset)}
+                title={`Apply ${preset.name}`}
+              >
+                {preset.name}
+              </button>
+              <span className="preset-tags">
+                {metadata.useCase} · {metadata.energy} · {preset.genre ? preset.genre : "user"}
+              </span>
+              {similarityOf.has(preset.id) && (
+                <span className="preset-sim" title="Parameter similarity to the current sound">
+                  ≈{Math.round((similarityOf.get(preset.id) ?? 0) * 100)}%
+                </span>
+              )}
+              <button
+                type="button"
+                className="preset-apply"
+                aria-label={`Apply ${preset.name}`}
+                onClick={() => apply(preset)}
+              >
+                APPLY
+              </button>
+              <button
+                type="button"
+                className={`preset-fav${library.favoritePresets.includes(preset.id) ? " active" : ""}`}
+                aria-label={
+                  library.favoritePresets.includes(preset.id) ? `Unfavorite ${preset.name}` : `Favorite ${preset.name}`
+                }
+                aria-pressed={library.favoritePresets.includes(preset.id)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void guard(async () => {
+                    await services.library.togglePresetFavorite(preset.id);
+                  });
+                }}
+              >
+                {library.favoritePresets.includes(preset.id) ? "♥" : "♡"}
+              </button>
+              {preset.user && (
+                <button
+                  type="button"
+                  className="preset-delete"
+                  aria-label={`Delete preset ${preset.name}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void guard(async () => removeUserPreset(preset.id));
+                  }}
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

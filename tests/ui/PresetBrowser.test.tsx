@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { PresetBrowser } from "../../src/ui/PresetBrowser";
 import { FACTORY_PRESETS } from "../../src/presets/factory";
+import { getPresetMetadata } from "../../src/presets/catalog";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 import { mockServices, renderWithContext } from "../helpers";
 
@@ -55,5 +56,28 @@ describe("PresetBrowser audition workflow", () => {
     expect(services.store.execute).not.toHaveBeenCalled();
     expect(services.library.recordPreset).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: `Preview ${preset.name}` })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("filters the catalog by curated role and energy metadata", async () => {
+    const user = userEvent.setup();
+    const doc = createProjectFromTemplate("house");
+    const track = doc.tracks.find((candidate) => candidate.kind === "instrument");
+    if (!track || track.kind !== "instrument") throw new Error("instrument fixture missing");
+    const presets = FACTORY_PRESETS.filter((candidate) => candidate.instrument === track.instrument);
+    const preset = presets[0];
+    if (!preset) throw new Error("preset fixture missing");
+    const metadata = getPresetMetadata(preset);
+    const { services } = renderWithContext(<PresetBrowser track={track} />, { services: mockServices(doc) });
+
+    const roleFilter = screen.getByRole("button", { name: `ROLE: ${metadata.useCase.toUpperCase()}` });
+    await user.click(roleFilter);
+    expect(roleFilter).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: `Apply ${preset.name}` })).toBeInTheDocument();
+
+    const energyFilter = screen.getByRole("button", { name: `ENERGY: ${metadata.energy.toUpperCase()}` });
+    await user.click(energyFilter);
+    expect(energyFilter).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: `Apply ${preset.name}` })).toBeInTheDocument();
+    expect(services.store.execute).not.toHaveBeenCalled();
   });
 });
