@@ -44,6 +44,33 @@ export interface ModVoiceOpts {
   cutoffBase?: number;
 }
 
+/**
+ * Build a small non-linear control curve outside the audio callback. Web Audio
+ * AudioParams sum connected control signals linearly, but the worklet contract
+ * applies a floor after summing all routes. A WaveShaper lets the fallback use
+ * the same bounded law without allocating or branching in process() (the
+ * curve is created once per voice at note scheduling time).
+ */
+function controlCurve(size: number, map: (input: number) => number): Float32Array<ArrayBuffer> {
+  const curve = new Float32Array(size);
+  for (let i = 0; i < size; i++) {
+    curve[i] = map((i / (size - 1)) * 2 - 1);
+  }
+  return curve;
+}
+
+function boundedCutoffDelta(base: number): Float32Array<ArrayBuffer> {
+  return controlCurve(1025, (normalized) => {
+    const modCut = normalized * 4;
+    const target = Math.max(60, Math.min(18000, base * (1 + Math.max(-0.9, modCut))));
+    return target - base;
+  });
+}
+
+function boundedAmpDelta(): Float32Array<ArrayBuffer> {
+  return controlCurve(1025, (normalized) => Math.max(0.1, 1 + normalized * 2) - 1);
+}
+
 export function scheduleVoiceModMatrix(
   ctx: BaseAudioContext,
   p: Record<string, number>,
@@ -136,6 +163,8 @@ export function scheduleVoiceModMatrix(
   const pressSources: ConstantSourceNode[] = [];
   let ampNode: GainNode | null = null;
   const slots: ModVoiceHandle["slots"] = [];
+  const cutoffRoutes: Array<{ sig: GainNode; amount: number }> = [];
+  const ampRoutes: Array<{ sig: GainNode; amount: number }> = [];
 
   for (const def of slotDefs) {
     if (Math.abs(def.amt) < 0.001) {
@@ -147,31 +176,63 @@ export function scheduleVoiceModMatrix(
       slots.push(null);
       continue;
     }
+    const amount = Math.max(-1, Math.min(1, Number.isFinite(def.amt) ? def.amt : 0));
     if (def.dst === 1 && opts.cutoffParam && opts.cutoffBase) {
-      // CUTOFF: additive Hz — worklet scale base·src·amt·2.
-      const scaled = ctx.createGain();
-      scaled.gain.value = def.amt * 2 * opts.cutoffBase;
-      src.connect(scaled).connect(opts.cutoffParam);
-      nodes.push(scaled);
+      // CUTOFF is combined before applying the worklet's lower/upper bounds.
+      // The two slots can contribute ±4 total modCut at full amount.
+      cutoffRoutes.push({ sig: src, amount });
       slots.push(null);
       continue;
     }
     if (def.dst === 3) {
-      // AMP: serial gain node — 1 + src·amt (scaled into its own gain).
+      // AMP is combined before applying the worklet's 0.1 gain floor.
       if (!ampNode) {
         ampNode = ctx.createGain();
         ampNode.gain.value = 1;
       }
-      const scaled = ctx.createGain();
-      scaled.gain.value = def.amt;
-      src.connect(scaled).connect(ampNode.gain);
-      nodes.push(scaled);
+      ampRoutes.push({ sig: src, amount });
       slots.push(null);
       continue;
     }
     // dst 0 (MORPH) / 2 (DETUNE): raw slot signal for the caller to route
     // (wavetable crossfade wobble); unknown destinations stay inert.
     slots.push({ sig: src, amt: def.amt });
+  }
+
+  if (cutoffRoutes.length > 0 && opts.cutoffParam && opts.cutoffBase) {
+    const sum = ctx.createGain();
+    sum.gain.value = 1;
+    for (const route of cutoffRoutes) {
+      const scaled = ctx.createGain();
+      scaled.gain.value = route.amount * 2;
+      route.sig.connect(scaled).connect(sum);
+      nodes.push(scaled);
+    }
+    const normalize = ctx.createGain();
+    normalize.gain.value = 0.25;
+    const shaped = ctx.createWaveShaper();
+    shaped.curve = boundedCutoffDelta(opts.cutoffBase);
+    shaped.oversample = "none";
+    sum.connect(normalize).connect(shaped).connect(opts.cutoffParam);
+    nodes.push(sum, normalize, shaped);
+  }
+
+  if (ampRoutes.length > 0 && ampNode) {
+    const sum = ctx.createGain();
+    sum.gain.value = 1;
+    for (const route of ampRoutes) {
+      const scaled = ctx.createGain();
+      scaled.gain.value = route.amount;
+      route.sig.connect(scaled).connect(sum);
+      nodes.push(scaled);
+    }
+    const normalize = ctx.createGain();
+    normalize.gain.value = 0.5;
+    const shaped = ctx.createWaveShaper();
+    shaped.curve = boundedAmpDelta();
+    shaped.oversample = "none";
+    sum.connect(normalize).connect(shaped).connect(ampNode.gain);
+    nodes.push(sum, normalize, shaped);
   }
 
   if (nodes.length === 0) return null;

@@ -3990,6 +3990,22 @@ export async function runChecks(): Promise<CheckResult[]> {
       );
       check(`mod matrix ${kind}: route modulates the render`, routed > 0.001, `diff=${routed.toFixed(4)}`);
     }
+    const peakOfBuffer = (buffer: AudioBuffer) => {
+      let peak = 0;
+      for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+        const data = buffer.getChannelData(ch);
+        for (let i = 0; i < data.length; i++) peak = Math.max(peak, Math.abs(data[i]));
+      }
+      return peak;
+    };
+    const negativeAmp = await renderKind("analog", { modASrc: 0, modADst: 3, modAAmt: -1 });
+    const negativeCutoff = await renderKind("analog", { modASrc: 0, modADst: 1, modAAmt: -1 });
+    const negativePeaks = [peakOfBuffer(negativeAmp), peakOfBuffer(negativeCutoff)];
+    check(
+      "mod matrix fallback: negative AMP/CUTOFF routes stay bounded and audible",
+      negativePeaks.every((peak) => Number.isFinite(peak) && peak > 0.0005 && peak <= 2),
+      `peaks=${negativePeaks.map((peak) => peak.toFixed(3)).join("/")}`,
+    );
   } catch (error) {
     check("mod matrix browser suite", false, String(error));
   }
