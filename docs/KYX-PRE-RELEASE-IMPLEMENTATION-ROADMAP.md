@@ -1,18 +1,18 @@
 # KYX — pre-release implementation roadmap
 
 **Status:** agent-ready implementation source of truth + reviewed execution snapshot (not a release approval)
-**Dátum:** 2026-09-12
+**Dátum:** 2026-09-13
 **Produkt:** KYX browser-first beatmaking DAW  
 **Cieľ:** dostať KYX do stavu, v ktorom nový používateľ vytvorí beat, vyberie zvuk, spracuje ho cez pluginy, zrozumiteľne ho zmixuje a bezpečne exportuje bez straty práce, nečakaných level skokov alebo nejasného workflow.
 
-**Reviewed baseline:** `d9dd58c` (`test+perf: fxeq soak (300 s worst-case), GR
-meter race fix, ultina band-callback GC hygiene`). PRISM host workflow je teraz
-implementovaný v commit-e `a3dd6ba` (`klasika`), browser-verifier follow-up je
-v `8912a09` (`no fajn teda`), release hardening batch v `cb1bde7` a audio
-runtime/perf batch v `d9dd58c`; aktuálny working tree obsahuje necommitnutý
-PRISM LR2/LR4/LR8 crossover + offline-render-quality draft. Release approval
-stále čaká na úplnú
-regresiu, manuálnu matrix a deploy smoke.
+**Reviewed baseline:** `2242541` (`feat: expose PRISM tempo sync controls`).
+PRISM host workflow, crossover/render-quality surface, the musical tempo-sync
+panel controls, generated `public/fxeq-worklet.js` and targeted evidence are
+now in the reviewed commit. The current tree also contains a separately owned
+uncommitted Ultina Pre-Emphasis schema/worklet diff and `scratch-audit-params.ts`
+from a parallel agent; those are not part of this PRISM commit. Release
+approval still waits for the full Vitest gate, manual device matrix and
+production deploy smoke.
 
 Tento dokument je implementačný plán pre ďalšieho agenta. Každá úloha má byť riešená proti existujúcemu kódu v repozitári, nie ako samostatný redesign produktu.
 
@@ -40,8 +40,8 @@ nie je uzavretý `REL-01`, nemá zmysel pridávať nový plugin alebo veľký in
 
 | ID         | Stav                                           | Priorita        | Úloha                                                                                                     | Reálne touchpoints                                                                                                                                                                                                                           | Done keď                                                                                                                                                                                                                                              |
 | ---------- | ---------------------------------------------- | --------------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `REL-01`   | **CLOSED — reviewed baseline `e701b05`**       | P0              | Zmapovať a uzavrieť commitnuté FXEQ WIP bez straty scope                                                  | `git show e701b05`, `src/effects/`, `src/audio-engine/`, `src/ui/`, `tests/`                                                                                                                                                                 | working tree je čistý, commit je čitateľný a každá capability má dôkaz aj otvorený follow-up; release approval je samostatný krok                                                                                                                     |
-| `PRISM-01` | **IMPLEMENTED — release rerun open**           | P0              | Uzavrieť PRISM A/B, plugin history, gain-match/meter a spectral sidechain ako jeden zrozumiteľný workflow | `src/ui/FxEqPanel.tsx`, `src/ui/EffectRack.tsx`, `src/ui/EffectAbControls.tsx`, `src/audio-engine/AudioEngine.ts`, `src/effects/fxeqNode.ts`, `src/effects/fxeq-worklet.entry.js`, `src/project-model/schema.ts`, `src/commands/commands.ts` | source picker + rewire, live preview/history, persisted A/B hydration, cancel-safe controls a async history queue sú implementované; targeted host/UI/browser evidence prešla, full quiet release rerun ostáva otvorený                               |
+| `REL-01`   | **CLOSED — reviewed baseline `2242541`**       | P0              | Zmapovať a uzavrieť commitnutý release scope bez straty PRISM/VLYX/VØID capability                         | `git show 2242541`, `src/effects/`, `src/audio-engine/`, `src/ui/`, `tests/`                                                                                                                                                                 | reviewed commit je čistý a čitateľný; každá capability má dôkaz aj otvorený follow-up; release approval je samostatný krok                                                                                                                     |
+| `PRISM-01` | **IMPLEMENTED — browser 218/218; release rerun open** | P0         | Uzavrieť PRISM A/B, plugin history, gain-match/meter a spectral sidechain ako jeden zrozumiteľný workflow | `src/ui/FxEqPanel.tsx`, `src/ui/fxeqCurve.ts`, `src/ui/EffectRack.tsx`, `src/ui/EffectAbControls.tsx`, `src/audio-engine/AudioEngine.ts`, `src/effects/fxeqNode.ts`, `src/effects/fxeq-worklet.entry.js`, `src/project-model/schema.ts`, `src/commands/commands.ts` | source picker + rewire, live preview/history, persisted A/B hydration, cancel-safe controls, musical tempo-sync selects, transfer overlay and async history queue are implemented; browser acceptance is 218/218, full Vitest/manual/deploy gates remain open |
 | `DSP-01`   | **COMMIT PASS — release rerun open**           | P0              | Uzavrieť FXEQ full-load realtime performance gate                                                         | `tests/fxeq-performance-gates.test.ts`, `src/effects/fxeq-core/core/`, `src/effects/fxeq-core/modules/`, `scripts/build-fxeq-worklet.mjs`                                                                                                    | allocation-free oprava, gate 3/3, full default suite a worklet/live-offline parity prejdú z finálneho reviewed release commit-u                                                                                                                       |
 | `DSP-02`   | **COMMIT PASS — release rerun open**           | P0              | Obnoviť biquad state po non-finite audio frame                                                            | upstream FXEQ/VØID `dsp/biquad.ts`, vendored `src/effects/*-core/dsp/biquad.ts`, generated worklets, `tests/fxeq-ozvena-biquad-hardening.test.ts`                                                                                            | upstream fix je znovu vendored, 4/4 host regression, worklety/build, full suite a browser smoke prejdú z finálneho reviewed release commit-u                                                                                                          |
 | `QA-01`    | **OWNER GATE OPEN**                            | P0              | Manuálny browser/device release matrix                                                                    | [`docs/KYX-MANUAL-RELEASE-CHECKLIST.md`](./KYX-MANUAL-RELEASE-CHECKLIST.md)                                                                                                                                                                  | Chromium/Edge/Firefox/Safari macOS/Safari iOS prejdú create → sound → FX → mix → export → reload flow                                                                                                                                                 |
@@ -53,7 +53,7 @@ nie je uzavretý `REL-01`, nemá zmysel pridávať nový plugin alebo veľký in
 nejasný scope, najprv doplní reprodukciu alebo rozhodovací záznam do reportu;
 nevyplní medzeru novou architektúrou iba preto, aby test prestal padať.
 
-### PRISM-01 — implementačný handoff pre druhého agenta
+### PRISM-01 — implementačný handoff a aktuálny dôkaz
 
 Commit `e701b05` pridal väčšinu nízkoúrovňového povrchu. Aktuálny worktree
 implementoval celý host/UI handoff; zoznam nižšie zostáva audit trailom a
@@ -82,13 +82,12 @@ completion kontraktom, nie otvoreným návrhom na druhú session.
    callback queue s busy policy, takže druhý klik pred odpoveďou neprepíše prvú.
    Ošetrené sú double-click, dispose počas odpovede, malformed history reply a
    callback po reload-e; `syncFxParams` má history gate v `try/finally`.
-6. **Browser acceptance — PRISM flow DONE; global gate rerun open.** Browser check teraz
+6. **Browser acceptance — PRISM flow DONE; global release gates open.** Browser check teraz
    reálne otvorí PRISM, vyberie a overí sidechain source, uloží A aj B cez pointer
    drag, overí plugin undo/redo, morph, collapse/expand a reload persistence;
    samostatný browser suite zároveň prešiel real-worklet DSP, PDC, metery,
-   sidechain render, export determinism a zero-error flow. Celkový beh zostal
-   `216/218` kvôli dvom globálnym performance checks, ktoré treba zopakovať v
-   quiet runneri.
+   sidechain render, export determinism a zero-error flow. Aktuálny Chromium
+   beh prešiel `218/218`; zostávajú full Vitest, manuálny device a deploy gates.
 
 ### PRISM-01 — presné done artefakty
 
@@ -103,12 +102,14 @@ Agent odovzdáva všetky body naraz v completion reporte:
 | Audio       | live/offline render parity, no NaN/Inf, latency/PDC unchanged, no click at morph/sidechain transitions                                                                             |
 | Release     | typecheck, targeted tests, full Vitest, build/budget, browser dev + production smoke; thresholds sa nemenia                                                                        |
 
-### REL-01 — reviewed scope ledger pre `d9dd58c`
+### REL-01 — reviewed scope ledger pre `2242541`
 
 Nasledujúca tabuľka je ledger scope; PRISM implementation je commitnutý v
 `a3dd6ba`, browser-verifier follow-up v `8912a09`, release hardening v
-`cb1bde7` a audio runtime/perf batch v `d9dd58c`, ale aktuálny worktree ešte
-obsahuje crossover/render-quality draft.
+`cb1bde7`, audio runtime/perf batch v `d9dd58c`, PRISM crossover/render-quality
+v `a768595` a tempo-sync/transfer-overlay UI v `2242541`. Reviewed commit
+`2242541` je čistý; aktuálny working tree obsahuje iba samostatne vlastnený
+Ultina Pre-Emphasis diff a `scratch-audit-params.ts` z paralelnej práce.
 Je to release bookkeeping, nie dôkaz, že verejný deploy alebo celý KYX release
 je hotový. Každý ďalší agent
 najprv skontroluje `git status`, `git show --stat HEAD` a tento ledger; nový diff
@@ -116,11 +117,11 @@ musí dostať vlastného ownera, test a rozhodnutie.
 
 | Scope                                               | Súbory                                                                                                                                                                                                                                                                                                                                        | Owner / dôvod                                                                                         | Dôkaz                                                                                                                                                              | Rozhodnutie                                                                                                        |
 | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
-| PRISM host workflow surface                         | `src/effects/fxeq-core/core/commandHistory.ts`, `src/effects/fxeq-core/core/fxEqProcessor.ts`, `src/effects/fxeq-worklet.entry.js`, `src/effects/fxeqNode.ts`, `src/effects/types.ts`, `src/audio-engine/AudioEngine.ts`, `src/ui/FxEqPanel.tsx`, `src/ui/EffectRack.tsx`, `src/styles.css`, `public/fxeq-worklet.js`, `tests/fxeq-*.test.ts` | DSP/host/UI owner; technický surface pre morph, undo/redo, GR a sidechain                             | targeted FXEQ host/worklet/processor `45/45`, new UI/host tests `18/18`, typecheck, build, PRISM browser workflow PASS inside latest `216/218`, 8/8 golden         | **IMPLEMENTED IN COMMIT a3dd6ba**; release rerun remains open because the full suite and owner gates are not green |
+| PRISM host workflow surface                         | `src/effects/fxeq-core/core/commandHistory.ts`, `src/effects/fxeq-core/core/fxEqProcessor.ts`, `src/effects/fxeq-worklet.entry.js`, `src/effects/fxeqNode.ts`, `src/effects/types.ts`, `src/audio-engine/AudioEngine.ts`, `src/ui/FxEqPanel.tsx`, `src/ui/fxeqCurve.ts`, `src/ui/EffectRack.tsx`, `src/styles.css`, `public/fxeq-worklet.js`, `tests/fxeq-*.test.ts` | DSP/host/UI owner; technický surface pre morph, undo/redo, GR, sidechain, tempo-sync a transfer overlay | targeted FXEQ host/worklet/processor `45/45`, UI/curve tests `13/13`, typecheck, build, PRISM browser workflow `218/218`, 8/8 golden | **IMPLEMENTED IN `a3dd6ba` + `a768595` + `2242541`**; full suite and owner gates remain open |
 | Instant Jam transport boundary + follower scheduler | `src/collab/transportSync.ts`, `src/collab/CollaborationProvider.ts`, `src/services.ts`, `tests/collab-transport.test.ts`                                                                                                                                                                                                                     | collab/audio-runtime owner; ochrana pred malformed awareness payloadom a oprava remote play lifecycle | transport `10/10`, collab subset `79/79`, typecheck                                                                                                                | **LAND / retain** schema guard aj transition testy                                                                 |
 | MPE compatibility fallback                          | `src/ui/MpeIndicator.tsx`, `tests/ui/MpeIndicator.test.tsx`                                                                                                                                                                                                                                                                                   | MIDI/UI owner; staršia embedded facade nesmie zhodiť celý MIDI panel                                  | targeted MPE/MIDI `6/6`                                                                                                                                            | **LAND / retain** inactive fallback                                                                                |
 | Biquad non-finite state recovery                    | upstream `D:/VocalForge_DAW/plugins/fxeq/src/dsp/biquad.ts`, upstream `D:/VocalForge_DAW/plugins/ozvena/src/dsp/biquad.ts`, vendored `src/effects/fxeq-core/dsp/biquad.ts`, vendored `src/effects/ozvena-core/dsp/biquad.ts`, generated `public/fxeq-worklet.js`, `public/ozvena-worklet.js`, `tests/fxeq-ozvena-biquad-hardening.test.ts`    | DSP/audio owner; jeden chybný frame nesmie otráviť rekurzívny filter na zvyšok session                | host regression `4/4`; upstream guard + vendor/worklet rebuild                                                                                                     | **LAND / retain** upstream→vendor process, needitovať vendored core ako nový source-of-truth                       |
-| Browser timing measurement + release evidence       | `src/browser-checks.ts`, `scripts/verify-browser.mjs`, `AGENT_WORK_LOG.md`, `RELEASE_READINESS_REPORT.md`, tento roadmap                                                                                                                                                                                                                      | QA/release owner; threshold sa nesmie oslabiť a tvrdenia musia sedieť s aktuálnym worktree            | latest browser `216/218` due two global performance checks; PRISM plugin flow PASS; build/preflight/server smoke pass; full suite has 5 contention/stress failures | **FOLLOW-UP REQUIRED** quiet rerun + report reconciliation                                                         |
+| Browser timing measurement + release evidence       | `src/browser-checks.ts`, `scripts/verify-browser.mjs`, `AGENT_WORK_LOG.md`, `RELEASE_READINESS_REPORT.md`, tento roadmap                                                                                                                                                                                                                      | QA/release owner; threshold sa nesmie oslabiť a tvrdenia musia sedieť s aktuálnym worktree            | browser `218/218`; PRISM plugin flow PASS; production browser smoke PASS; build/preflight/server smoke pass; full suite still needs a completed reviewed run | **FOLLOW-UP REQUIRED** full-suite rerun + report reconciliation                                                         |
 | Formatting-only test diffs                          | `tests/ultina-hardening2.test.ts`, `tests/ultina-worklet-entry.test.ts`                                                                                                                                                                                                                                                                       | QA hygiene owner; iba Prettier layout, žiadna runtime zmena                                           | diff je syntakticky/semanticky formatting-only; Ultina battery `55/55` + `26/26`                                                                                   | **LAND iba ako súčasť výslovne reviewed batchu**; inak izolovať do samostatného formatting commitu                 |
 
 Ak sa po tomto bode objaví nový súbor v `git status`, agent ho musí doplniť do
@@ -215,9 +216,11 @@ Nasledujúce časti roadmapy už boli v tomto pracovnom strome implementované a
 
 ### Čo ešte potrebuje release triage
 
-Reviewed baseline `e701b05` bol čistý; PRISM implementation je už v
-`a3dd6ba` a browser-verifier follow-up je v `8912a09`, zatiaľ čo aktuálny
-worktree obsahuje iba tri evidence dokumenty.
+Reviewed baseline `2242541` je čistý; PRISM implementation je v `a3dd6ba`,
+browser-verifier follow-up v `8912a09`, crossover/render-quality v `a768595` a
+tempo-sync/transfer-overlay UI v `2242541`. Aktuálny working tree obsahuje
+samostatný Ultina Pre-Emphasis diff a `scratch-audit-params.ts` z paralelnej
+práce; tieto zmeny nie sú súčasťou PRISM commit-u.
 Nasledujúce body sú commitnutý technický scope alebo otvorené release
 rozhodnutia; commitnutie samo osebe neznamená, že je feature user-facing a
 release-safe:
@@ -249,10 +252,15 @@ release-safe:
   history queue a runtime hydration; targeted/UI/browser acceptance je zelená.
   Release copy môže PRISM označiť ako implementovaný, ale nie ako celý KYX
   release-approved, kým neprejdú globálne QA/deploy gates;
-- PRISM crossover/render-quality draft v aktuálnom worktree pridáva kanonické
-  LR2/LR4/LR8 voľby, phase equalization a voliteľný 8× offline quality tier.
-  Kým neprejde vlastným targeted/full rerunom a reviewom generated
-  `public/fxeq-worklet.js`, nie je to release claim;
+- PRISM crossover/render-quality v `a768595` pridáva kanonické LR2/LR4/LR8
+  voľby, phase equalization a voliteľný 8× offline quality tier. Vlastný
+  targeted suite (`20/20` crossover tests + `2/2` render-quality tests),
+  generated `public/fxeq-worklet.js` review, typecheck, build a Chromium
+  `218/218` acceptance už prešli; full Vitest a owner gates zostávajú otvorené;
+- PRISM UI v `2242541` dokončuje Q2 tempo-sync enum rendering ako hudobné
+  voľby a kreslí LR crossover window + per-band transfer overlay; targeted
+  UI/curve test je `13/13`, typecheck a production build prešli. Browser
+  rerun z tohto commit-u je ešte súčasťou release evidence follow-upu;
 - agent nesmie tieto súbory prepisovať, squasovať ani vyhadzovať bez toho, aby
   najprv zaznamenal vlastníka zmeny a dôvod rozhodnutia v completion reporte.
 
@@ -264,10 +272,10 @@ Overené príkazy a výsledky:
 | full Vitest (`npm test`, default isolated workers)         | **CONTENTION/STRESS FAIL — 224 files, 2152 passed, 162 skipped, 5 failed**: two Ozvena hook timeouts after the 10-minute soak and three timing budgets failed in the shared-machine run (collab 1000/500 ms, normalize 1420/100 ms, VLYX HQ 11.0/5 ms); all identified affected areas pass in targeted isolation, including Ozvena 59/59; no PRISM failure |
 | `npm run build` + worklet buildy + bundle budget           | PASS — current worktree: entry 934 KB / 995 KB, total JS chunks 1840 KB / 2400 KB, core worklets 98 KB / 120 KB, 354 modules; PWA precache 57 entries / 4012.49 KiB; lazy ranker WASM is 13.6 MB and excluded from the app-shell precache                                                                                                                  |
 | `npm run build:ultina`                                     | PASS — rebuilt `public/ultina-worklet.js`                                                                                                                                                                                                                                                                                                                  |
-| `npm run test:browser`                                     | **216/218 Chromium** — PRISM UI workflow (A/B, drag, plugin undo/redo, morph, reload persistence) PASS; two global performance checks failed under load and require a quiet rerun                                                                                                                                                                          |
-| `npm run test:browser:production`                          | PASS — dist boot, HOUSE template, sequencer, FX rack and all five shipped worklet assets                                                                                                                                                                                                                                                                   |
+| `npm run test:browser`                                     | **PASS — 218/218 Chromium**; PRISM UI workflow (A/B, drag, plugin undo/redo, morph, reload persistence), real worklet DSP, PDC, collab, Instant Jam, embed/share, touch, export and macro flow prešli                                                                                                                                                                          |
+| `npm run test:browser:production`                          | **PASS** — dist boot, HOUSE template, sequencer, FX rack, all shipped worklet assets and ONNX worker smoke                                                                                                                                                                                                                                                                   |
 | Post-`cb1bde7` hardening regression batch                  | PASS — 48/48 targeted tests + 300 s PRISM soak (6.0 MB heap growth, −0.003 dB drift, zero non-finite samples, zero tail peak); default full-suite rerun from this commit remains open                                                                                                                                                                      |
-| `npm run release:preflight`                                | PASS — explicit production-origin/config + KYX artifacts                                                                                                                                                                                                                                                                                                   |
+| `npm run release:preflight`                                | **PASS** — explicit `NODE_ENV=production`, production origin, KYX artifacts and shipped-brand scan                                                                                                                                                                                                                                                                                                   |
 | `npm run release:server-smoke`                             | PASS — real entrypoint health/CORS/origin/admin contract                                                                                                                                                                                                                                                                                                   |
 | `npm run release:deployed-smoke`                           | **BLOCKED — `KYX_DEPLOY_URL` missing**; local fresh-dist/deployed-like probe is documented separately, but actual public URL is still required for DEP-01                                                                                                                                                                                                  |
 | VLYX hardening2 + upstream parity battery                  | PASS — host `9/9`, `ultina-core-hardening` `55/55`, worklet/parity/vectors `26/26` after upstream→vendor sync                                                                                                                                                                                                                                              |
@@ -280,13 +288,15 @@ Overené príkazy a výsledky:
 | affected post-fix suites (`services-close-race`, `TopBar`) | PASS — 20/20 tests                                                                                                                                                                                                                                                                                                                                         |
 | scoped Prettier + `git diff --check`                       | PASS                                                                                                                                                                                                                                                                                                                                                       |
 
-Najnovší kompletný `npm test` beh na aktuálnom worktree nie je release-green:
+Posledný dokončený kompletný `npm test` beh zaznamenaný v release evidence nie je release-green:
 224 súborov, 2152 testov prešlo, 162 bolo zámerne skipped a 5 zlyhalo.
 Zlyhania sú dva Ozvena hook timeouty po 10-minútovom soak teste a tri merané
 časové budgety pod shared-machine contention. Ozvena `59/59`, collab
 performance, VLYX HQ aj veľký normalize test prešli v cielenom izolovanom
 behu; funkčná regresia nie je potvrdená. PRISM suite v tomto behu nemá
-failure. Quiet rerun je povinný.
+failure. Quiet rerun je povinný. Neskorší single-worker pokus bol po dlhom
+období bez výstupu manuálne ukončený, takže nepredstavuje nový PASS ani nový
+failure count.
 Predchádzajúci historický beh pred poslednou biquad recovery a allocation opravou
 bol tiež červený: 1 zlyhanie, 2113 passed, 103 skipped (211 súborov, 2217 testov).
 Profilovanie ukázalo dve konkrétne triedy render-path práce: `subarray()`
@@ -376,7 +386,7 @@ Každý agent ich musí dodržať:
 Tieto body majú prednosť pred polishom. Ak niektorý P0 zlyháva, release sa nepovažuje za bezpečný.
 
 - [x] deterministický PRISM/FXEQ export (core, host seed aj browser
-      `serialize → reload → offline bounce`; 216/216 Chromium gate),
+      `serialize → reload → offline bounce`; 218/218 Chromium gate),
 - [x] odstránenie potvrdených VLYX DSP regresií (upstream → vendor → worklet),
 - [x] hardening VØID IR/pre-delay runtime allocations; reálne device footprint
       meranie ostáva manuálny release krok,
@@ -591,7 +601,7 @@ Overiť v Chromium/Edge a následne manuálne vo Firefox, Safari a iOS Safari:
       zámernú odlišnosť pri inom seed; rack contract pokrýva seed forwarding,
 - [x] browser-level test `serialize → reload → offline bounce` beží v
       `src/browser-checks.ts`; dve PRISM worklet inštancie po JSON/migration
-      round-tripe ostali pod max-sample toleranciou `1e-5` (Chromium gate 216/216).
+      round-tripe ostali pod max-sample toleranciou `1e-5` (Chromium gate 218/218).
 
 ### 6.2 VLYX upstream kvalita
 

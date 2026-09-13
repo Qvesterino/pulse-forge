@@ -122,7 +122,10 @@ Interpretácia: gain staging nedotknutý (peak identický), rms mierne nižší 
 - [x] `fxeqNode.ts`: `syncBpm(bpm)` → port message `{ type: "bpm", bpm }`, no-op po dispose, non-finite odmietnuté;
 - [x] `fxeq-worklet.entry.js`: handler `"bpm"` (latencia sa nemení → žiadny re-post), worklet bundle rebuildnutý;
 - [x] testy: `tests/fxeq-tempo-sync.test.ts` (9) — echo pozície ±2 sample, mid-stream retiming, clamp 1/1@60BPM→2s, syncMode=0 ignoruje tempo, modulácia 60 vs 180 BPM sa líši, syncMode=0 bit-identické, node forwarding + dispose;
-- [ ] panel: enum rendering (teraz slider 0..8) — follow-up, blokujú ho slicky druhého agenta v UI vrstve.
+- [x] panel: enum rendering — `FxEqPanel` zobrazuje tempo-sync ako hudobné
+      voľby (`Free`, `1/1` … `1/4T`) a zachováva DSP enum `0..8`; regression
+      coverage je v `tests/fxeq-paint-editor.test.tsx` (13/13), commit
+      `2242541`.
 
 **Stav:** hotové 2026-09-05. Default syncMode=0 → golden parity 8/8 bit-exaktná (staré presety znejú identicky).
 
