@@ -132,11 +132,11 @@ the bounded memory footprint of the prepare-time delay reservation:
 - **Import size caps.** Audio samples: 25 MB per file; project JSON: 10 MB.
   Larger files are rejected with a clear message instead of risking a tab OOM.
 - **Automated testing covers Chromium-family browsers.** The browser suite
-  currently contains 218 checks in Playwright Chromium and has also passed
-  against the installed Microsoft Edge executable; the latest current-worktree
-  rerun was 217/218 because one `.preset-browser` bootstrap selector timed out.
-  Firefox and Safari are smoke-tested manually. iOS Safari audio unlock and
-  `pagehide` saving are hardened but not automatically tested.
+  currently contains 218 checks in Playwright Chromium and the latest quiet
+  current-worktree rerun passed 218/218; it has also passed against the
+  installed Microsoft Edge executable. Firefox and Safari are smoke-tested
+  manually. iOS Safari audio unlock and `pagehide` saving are hardened but not
+  automatically tested.
 - **Development dependency advisory.** The esbuild dev-server advisory nested
   under vitest 2 is deferred consciously (dev machines only; production
   bundles use the patched esbuild). See `RELEASE_ROADMAP.md` § 2.5.
