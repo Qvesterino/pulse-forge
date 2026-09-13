@@ -14,7 +14,7 @@ import {
 import { ENV_SHAPE_OPTIONS, scheduleDahdsr } from "./envelope";
 import { createWtVoiceRuntime } from "./wtvoiceNode";
 import { createGrainVoiceRuntime, grainProcessorOptions } from "./granularNode";
-import { modMatrixParams, scheduleVoiceModMatrix } from "./modmatrix";
+import { modMatrixParams, scheduleVoiceModMatrix, updateVoiceModMatrix } from "./modmatrix";
 import { isWorkletReady } from "../audio-worklets/loader";
 import { pitchShiftPreserveDuration } from "../audio-engine/time-stretch";
 
@@ -499,6 +499,7 @@ const analog: InstrumentDefinition = {
       },
       setParameter(id, value) {
         p[id] = value;
+        updateVoiceModMatrix(liveMods.values(), id, value);
         if (id === "cutoff")
           applyFilterLive((f, pitch) => f.frequency.setTargetAtTime(effCutoff(value, pitch), ctx.currentTime, 0.02));
         if (id === "resonance") applyFilterLive((f) => setFilterResonance(f, value, ctx.currentTime, 0.02));
@@ -507,6 +508,7 @@ const analog: InstrumentDefinition = {
       },
       setParameterAt(id, value, when) {
         p[id] = value;
+        updateVoiceModMatrix(liveMods.values(), id, value, when);
         if (id === "cutoff")
           applyFilterLive((f, pitch) => f.frequency.setTargetAtTime(effCutoff(value, pitch), when, 0.02));
         if (id === "resonance") applyFilterLive((f) => setFilterResonance(f, value, when, 0.02));
@@ -791,6 +793,7 @@ const bass: InstrumentDefinition = {
       },
       setParameter(id, value) {
         p[id] = value;
+        updateVoiceModMatrix(liveMods.values(), id, value);
         if (id === "cutoff")
           for (const [f, pitch] of liveFilters)
             f.frequency.setTargetAtTime(effCutoff(value, pitch), ctx.currentTime, 0.02);
@@ -800,6 +803,7 @@ const bass: InstrumentDefinition = {
       },
       setParameterAt(id, value, when) {
         p[id] = value;
+        updateVoiceModMatrix(liveMods.values(), id, value, when);
         if (id === "cutoff")
           for (const [f, pitch] of liveFilters) f.frequency.setTargetAtTime(effCutoff(value, pitch), when, 0.02);
         if (id === "resonance") for (const [f] of liveFilters) setFilterResonance(f, value, when, 0.02);
@@ -1111,9 +1115,11 @@ const bass808: InstrumentDefinition = {
       },
       setParameter(id, value) {
         p[id] = value;
+        updateVoiceModMatrix(liveMods.values(), id, value);
       },
-      setParameterAt(id, value) {
+      setParameterAt(id, value, when) {
         p[id] = value;
+        updateVoiceModMatrix(liveMods.values(), id, value, when);
       },
       noteOff(_pitch, when) {
         current?.stop(when);
@@ -1539,6 +1545,7 @@ const sampler: InstrumentDefinition = {
       },
       setParameter(id, value) {
         p[id] = value;
+        updateVoiceModMatrix(liveMods.values(), id, value);
         if (id === "cutoff")
           for (const [f, v] of liveFilters)
             f.frequency.setTargetAtTime(cutoffFor(value, v.vel, v.pitch), ctx.currentTime, 0.02);
@@ -1547,6 +1554,7 @@ const sampler: InstrumentDefinition = {
       },
       setParameterAt(id, value, when) {
         p[id] = value;
+        updateVoiceModMatrix(liveMods.values(), id, value, when);
         if (id === "cutoff")
           for (const [f, v] of liveFilters) f.frequency.setTargetAtTime(cutoffFor(value, v.vel, v.pitch), when, 0.02);
         if (id === "resonance") for (const [f] of liveFilters) setFilterResonance(f, value, when, 0.02);
@@ -1892,11 +1900,13 @@ const texture: InstrumentDefinition = {
       },
       setParameter(id, value) {
         p[id] = value;
+        updateVoiceModMatrix(liveMods.values(), id, value);
         if (id === "motion" || id === "space" || id === "chaos" || id === "sync" || id === "drift" || id === "diffuse")
           applyParams();
       },
       setParameterAt(id, value, _when) {
         p[id] = value;
+        updateVoiceModMatrix(liveMods.values(), id, value, _when);
         if (id === "motion" || id === "space" || id === "chaos" || id === "sync" || id === "drift" || id === "diffuse")
           applyParams();
       },
@@ -2450,9 +2460,10 @@ const wavetable: InstrumentDefinition = {
             cleanup(voice);
           };
       },
-      setParameter(id, value) {
+      setParameter(id, value, when = ctx.currentTime) {
         p[id] = value;
-        const now = ctx.currentTime;
+        updateVoiceModMatrix(liveMods.values(), id, value, when);
+        const now = Math.max(ctx.currentTime, when);
         if (id === "cutoff")
           for (const [f, pitch] of liveFilters) f.frequency.setTargetAtTime(effCutoff(value, pitch), now, 0.02);
         if (id === "resonance") for (const [f] of liveFilters) setFilterResonance(f, value, now, 0.02);
@@ -2475,8 +2486,7 @@ const wavetable: InstrumentDefinition = {
         if (id === "table") tableDirty = true;
       },
       setParameterAt(id, value, when) {
-        this.setParameter(id, value);
-        void when;
+        this.setParameter(id, value, when);
       },
       polyPressure(pitch, pressure, when) {
         // Per-voice MPE pressure: matching notes open their own filter up to
@@ -2756,8 +2766,9 @@ const granular: InstrumentDefinition = {
         p[id] = value;
         if (id === "tone") tone.frequency.setTargetAtTime(value, ctx.currentTime, 0.02);
       },
-      setParameterAt(id, value) {
-        this.setParameter(id, value);
+      setParameterAt(id, value, when) {
+        p[id] = value;
+        if (id === "tone") tone.frequency.setTargetAtTime(value, when, 0.02);
       },
       syncBpm(next) {
         // Grain rate is captured per note — new notes pick this up
@@ -3382,6 +3393,7 @@ const keys: InstrumentDefinition = {
       },
       setParameter(id, value) {
         p[id] = value;
+        updateVoiceModMatrix(liveMods.values(), id, value);
         if (id === "cutoff")
           for (const [f, pitch] of liveFilters)
             f.frequency.setTargetAtTime(effCutoff(value, pitch), ctx.currentTime, 0.02);
@@ -3390,6 +3402,7 @@ const keys: InstrumentDefinition = {
       },
       setParameterAt(id, value, when) {
         p[id] = value;
+        updateVoiceModMatrix(liveMods.values(), id, value, when);
         if (id === "cutoff")
           for (const [f, pitch] of liveFilters) f.frequency.setTargetAtTime(effCutoff(value, pitch), when, 0.02);
         if (id === "resonance") for (const [f] of liveFilters) setFilterResonance(f, value, when, 0.02);
@@ -3654,11 +3667,13 @@ const pluck: InstrumentDefinition = {
       },
       setParameter(id, value) {
         p[id] = value;
+        updateVoiceModMatrix(liveMods.values(), id, value);
         if (id === "cutoff") for (const [f] of liveFilters) f.frequency.setTargetAtTime(value, ctx.currentTime, 0.02);
         if (id === "resonance") for (const [f] of liveFilters) setFilterResonance(f, value, ctx.currentTime, 0.02);
       },
       setParameterAt(id, value, when) {
         p[id] = value;
+        updateVoiceModMatrix(liveMods.values(), id, value, when);
         if (id === "cutoff") for (const [f] of liveFilters) f.frequency.setTargetAtTime(value, when, 0.02);
         if (id === "resonance") for (const [f] of liveFilters) setFilterResonance(f, value, when, 0.02);
       },
@@ -3870,12 +3885,14 @@ const logdrum: InstrumentDefinition = {
       },
       setParameter(id, value) {
         p[id] = value;
+        updateVoiceModMatrix(liveMods.values(), id, value);
         if (id === "tone")
           for (const [f] of liveFilters) f.frequency.setTargetAtTime(400 + value * 2800, ctx.currentTime, 0.02);
         if (id === "cutoff") for (const [f] of liveFilters) f.frequency.setTargetAtTime(value, ctx.currentTime, 0.02);
       },
       setParameterAt(id, value, when) {
         p[id] = value;
+        updateVoiceModMatrix(liveMods.values(), id, value, when);
         if (id === "tone") for (const [f] of liveFilters) f.frequency.setTargetAtTime(400 + value * 2800, when, 0.02);
         if (id === "cutoff") for (const [f] of liveFilters) f.frequency.setTargetAtTime(value, when, 0.02);
       },
@@ -4158,11 +4175,13 @@ const spectral: InstrumentDefinition = {
       },
       setParameter(id, value) {
         p[id] = value;
+        updateVoiceModMatrix(liveMods.values(), id, value);
         if (id === "cutoff") for (const [f] of liveFilters) f.frequency.setTargetAtTime(value, ctx.currentTime, 0.02);
         if (id === "resonance") for (const [f] of liveFilters) setFilterResonance(f, value, ctx.currentTime, 0.02);
       },
       setParameterAt(id, value, when) {
         p[id] = value;
+        updateVoiceModMatrix(liveMods.values(), id, value, when);
         if (id === "cutoff") for (const [f] of liveFilters) f.frequency.setTargetAtTime(value, when, 0.02);
         if (id === "resonance") for (const [f] of liveFilters) setFilterResonance(f, value, when, 0.02);
       },
@@ -4511,10 +4530,13 @@ const vocalchop: InstrumentDefinition = {
       },
       setParameter(id, value) {
         p[id] = value;
+        updateVoiceModMatrix(liveMods.values(), id, value);
         if (id === "tone") tone.frequency.setTargetAtTime(value, ctx.currentTime, 0.02);
       },
-      setParameterAt(id, value) {
-        this.setParameter(id, value);
+      setParameterAt(id, value, when) {
+        p[id] = value;
+        updateVoiceModMatrix(liveMods.values(), id, value, when);
+        if (id === "tone") tone.frequency.setTargetAtTime(value, when, 0.02);
       },
       setSample(id) {
         sampleId = id;

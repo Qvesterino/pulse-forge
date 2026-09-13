@@ -24,7 +24,8 @@ export interface InstrumentRuntime {
    * FM scales INDEX the same way) for the matching pitch only.
    */
   polyTimbre?(pitch: number, timbre: number, when: number): void;
-  setParameter(id: string, value: number): void;
+  /** Optional scheduled time used by runtimes with graph-backed live controls. */
+  setParameter(id: string, value: number, when?: number): void;
   setParameterAt?(id: string, value: number, when: number): void;
   setSample?(id: string | null): void;
   /** Replace the sampler's velocity/round-robin layers (see SampleLayer). */

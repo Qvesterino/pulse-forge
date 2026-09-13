@@ -27,6 +27,8 @@ export interface ModVoiceHandle {
   slots: Array<{ sig: GainNode; amt: number } | null>;
   /** MPE pressure — retunes the PRESS source of this voice live. */
   setPressure(value: number, when?: number): void;
+  /** Update a continuous MOD A/B amount on an already-scheduled voice. */
+  setParameter(id: string, value: number, when?: number): void;
   /** Disconnect all mod nodes (call from the voice's onended cleanup). */
   dispose(): void;
 }
@@ -76,9 +78,9 @@ export function scheduleVoiceModMatrix(
   p: Record<string, number>,
   opts: ModVoiceOpts,
 ): ModVoiceHandle | null {
-  const slotDefs: Array<{ src: number; dst: number; amt: number }> = [
-    { src: Math.round(p.modASrc ?? 0), dst: Math.round(p.modADst ?? 0), amt: p.modAAmt ?? 0 },
-    { src: Math.round(p.modBSrc ?? 0), dst: Math.round(p.modBDst ?? 1), amt: p.modBAmt ?? 0 },
+  const slotDefs: Array<{ id: "modAAmt" | "modBAmt"; src: number; dst: number; amt: number }> = [
+    { id: "modAAmt", src: Math.round(p.modASrc ?? 0), dst: Math.round(p.modADst ?? 0), amt: p.modAAmt ?? 0 },
+    { id: "modBAmt", src: Math.round(p.modBSrc ?? 0), dst: Math.round(p.modBDst ?? 1), amt: p.modBAmt ?? 0 },
   ];
   if (slotDefs.every((s) => Math.abs(s.amt) < 0.001)) return null;
 
@@ -163,8 +165,9 @@ export function scheduleVoiceModMatrix(
   const pressSources: ConstantSourceNode[] = [];
   let ampNode: GainNode | null = null;
   const slots: ModVoiceHandle["slots"] = [];
-  const cutoffRoutes: Array<{ sig: GainNode; amount: number }> = [];
-  const ampRoutes: Array<{ sig: GainNode; amount: number }> = [];
+  const cutoffRoutes: Array<{ id: string; sig: GainNode; amount: number }> = [];
+  const ampRoutes: Array<{ id: string; sig: GainNode; amount: number }> = [];
+  const amountControls: Array<{ id: string; param: AudioParam; multiplier: number }> = [];
 
   for (const def of slotDefs) {
     if (Math.abs(def.amt) < 0.001) {
@@ -180,7 +183,7 @@ export function scheduleVoiceModMatrix(
     if (def.dst === 1 && opts.cutoffParam && opts.cutoffBase) {
       // CUTOFF is combined before applying the worklet's lower/upper bounds.
       // The two slots can contribute ±4 total modCut at full amount.
-      cutoffRoutes.push({ sig: src, amount });
+      cutoffRoutes.push({ id: def.id, sig: src, amount });
       slots.push(null);
       continue;
     }
@@ -190,13 +193,24 @@ export function scheduleVoiceModMatrix(
         ampNode = ctx.createGain();
         ampNode.gain.value = 1;
       }
-      ampRoutes.push({ sig: src, amount });
+      ampRoutes.push({ id: def.id, sig: src, amount });
       slots.push(null);
       continue;
     }
-    // dst 0 (MORPH) / 2 (DETUNE): raw slot signal for the caller to route
-    // (wavetable crossfade wobble); unknown destinations stay inert.
-    slots.push({ sig: src, amt: def.amt });
+    if (def.dst === 0) {
+      // Scale MORPH inside this shared graph so amount automation reaches an
+      // already-playing voice. The caller still applies its per-frame room
+      // clamp, while this node owns the signed route amount.
+      const scaled = ctx.createGain();
+      scaled.gain.value = amount;
+      src.connect(scaled);
+      nodes.push(scaled);
+      amountControls.push({ id: def.id, param: scaled.gain, multiplier: 1 });
+      slots.push({ sig: scaled, amt: 1 });
+      continue;
+    }
+    // DETUNE and unknown destinations stay inert until their contract exists.
+    slots.push(null);
   }
 
   if (cutoffRoutes.length > 0 && opts.cutoffParam && opts.cutoffBase) {
@@ -207,6 +221,7 @@ export function scheduleVoiceModMatrix(
       scaled.gain.value = route.amount * 2;
       route.sig.connect(scaled).connect(sum);
       nodes.push(scaled);
+      amountControls.push({ id: route.id, param: scaled.gain, multiplier: 2 });
     }
     const normalize = ctx.createGain();
     normalize.gain.value = 0.25;
@@ -225,6 +240,7 @@ export function scheduleVoiceModMatrix(
       scaled.gain.value = route.amount;
       route.sig.connect(scaled).connect(sum);
       nodes.push(scaled);
+      amountControls.push({ id: route.id, param: scaled.gain, multiplier: 1 });
     }
     const normalize = ctx.createGain();
     normalize.gain.value = 0.5;
@@ -245,6 +261,15 @@ export function scheduleVoiceModMatrix(
       const clamped = Math.max(0, Math.min(1, value));
       for (const dc of pressSources) dc.offset.setTargetAtTime(clamped, at, 0.01);
     },
+    setParameter(id, value, when) {
+      if (id !== "modAAmt" && id !== "modBAmt") return;
+      const at = Math.max(ctx.currentTime, when ?? ctx.currentTime);
+      const clamped = Math.max(-1, Math.min(1, Number.isFinite(value) ? value : 0));
+      for (const control of amountControls) {
+        if (control.id !== id) continue;
+        control.param.setTargetAtTime(control.multiplier * clamped, at, 0.005);
+      }
+    },
     dispose() {
       for (const node of nodes) {
         try {
@@ -255,6 +280,17 @@ export function scheduleVoiceModMatrix(
       }
     },
   };
+}
+
+/** Forward continuous MOD A/B amount writes to every live fallback voice. */
+export function updateVoiceModMatrix(
+  handles: Iterable<ModVoiceHandle | null | undefined>,
+  id: string,
+  value: number,
+  when?: number,
+): void {
+  if (id !== "modAAmt" && id !== "modBAmt") return;
+  for (const handle of handles) handle?.setParameter(id, value, when);
 }
 
 /** Source options shared by the registry ParamDefs and UI (worklet numbering). */

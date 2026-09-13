@@ -3932,7 +3932,11 @@ export async function runChecks(): Promise<CheckResult[]> {
       const d = toneBuffer.getChannelData(ch);
       for (let i = 0; i < d.length; i++) d[i] = 0.5 * Math.sin((2 * Math.PI * (220 + ch * 40) * i) / SR);
     }
-    const renderKind = (kind: InstrumentTrack["instrument"], params: Record<string, number>) => {
+    const renderKind = (
+      kind: InstrumentTrack["instrument"],
+      params: Record<string, number>,
+      modify?: (rt: ReturnType<typeof INSTRUMENT_DEFS.analog.factory>) => void,
+    ) => {
       const ctx = new OfflineAudioContext(2, SR, SR);
       const track: InstrumentTrack = {
         id: `mm-${kind}`,
@@ -3951,6 +3955,7 @@ export async function runChecks(): Promise<CheckResult[]> {
       const rt = INSTRUMENT_DEFS[kind].factory(ctx, track, { bpm: 124, getSample: () => toneBuffer });
       rt.output.connect(ctx.destination);
       rt.noteOn(kind === "808" ? 36 : 60, 0.9, 0.02, 0.6);
+      modify?.(rt);
       return ctx.startRendering().then((b) => {
         rt.dispose();
         return b;
@@ -3963,19 +3968,19 @@ export async function runChecks(): Promise<CheckResult[]> {
       { kind: "sampler", route: { modASrc: 1, modADst: 1, modAAmt: 0.9, modLfoRate: 6 } },
       { kind: "vocalchop", route: { modASrc: 0, modADst: 3, modAAmt: 0.8 } },
     ];
+    const maxDiff = (x: AudioBuffer, y: AudioBuffer) => {
+      let d = 0;
+      for (let ch = 0; ch < x.numberOfChannels; ch++) {
+        const da = x.getChannelData(ch);
+        const db = y.getChannelData(ch);
+        for (let i = 0; i < da.length; i++) d = Math.max(d, Math.abs(da[i] - db[i]));
+      }
+      return d;
+    };
     for (const { kind, route } of modCases) {
       const base = await renderKind(kind, {});
       const repeat = await renderKind(kind, {});
       const modded = await renderKind(kind, route);
-      const maxDiff = (x: AudioBuffer, y: AudioBuffer) => {
-        let d = 0;
-        for (let ch = 0; ch < x.numberOfChannels; ch++) {
-          const da = x.getChannelData(ch);
-          const db = y.getChannelData(ch);
-          for (let i = 0; i < da.length; i++) d = Math.max(d, Math.abs(da[i] - db[i]));
-        }
-        return d;
-      };
       const neutral = maxDiff(base, repeat);
       const routed = maxDiff(base, modded);
       let peak = 0;
@@ -4005,6 +4010,22 @@ export async function runChecks(): Promise<CheckResult[]> {
       "mod matrix fallback: negative AMP/CUTOFF routes stay bounded and audible",
       negativePeaks.every((peak) => Number.isFinite(peak) && peak > 0.0005 && peak <= 2),
       `peaks=${negativePeaks.map((peak) => peak.toFixed(3)).join("/")}`,
+    );
+    const liveModBase = await renderKind("analog", {
+      modASrc: 0,
+      modADst: 1,
+      modAAmt: 0.1,
+    });
+    const liveModMoved = await renderKind(
+      "analog",
+      { modASrc: 0, modADst: 1, modAAmt: 0.1 },
+      (rt) => rt.setParameterAt!("modAAmt", 0.9, 0.35),
+    );
+    const liveModDiff = maxDiff(liveModBase, liveModMoved);
+    check(
+      "mod matrix fallback: amount automation updates a held voice",
+      liveModDiff > 0.001,
+      `diff=${liveModDiff.toFixed(4)}`,
     );
   } catch (error) {
     check("mod matrix browser suite", false, String(error));
