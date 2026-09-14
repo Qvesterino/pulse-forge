@@ -66,9 +66,8 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
    *  browser activates the focused button on Space instead of play. */
   const enterStudio = (doc: ProjectDocument) => {
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-    enterStudio(doc);
+    onOpen(doc);
   };
-  void enterStudio;
 
   const openById = (id: string) => {
     if (busy) return;
