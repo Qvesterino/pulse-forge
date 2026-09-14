@@ -9687,3 +9687,8 @@ html {
   color: rgba(255, 255, 255, 0.55);
   max-width: 420px;
 }
+
+/* PUBLISH THIS JAM — the loop closer in the collab panel */
+.collab-publish {
+  color: var(--accent);
+}

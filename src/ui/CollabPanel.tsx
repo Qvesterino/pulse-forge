@@ -1,6 +1,7 @@
 import { useSyncExternalStore, useEffect, useRef, useState } from "react";
 import { openProject, type Services } from "../services";
 import { defaultServerUrl, randomRoomId, shareUrl } from "../collab/collabShared";
+import { encodeProjectForGallery, setRemixParent } from "../gallery/galleryApi";
 import { JAM_ROLES, normalizeJamRole, type JamRole } from "../collab/jamRoles";
 import { useDoc, useServices } from "./context";
 
@@ -80,6 +81,20 @@ export function CollabPanel({ onReplaceServices }: { onReplaceServices: (service
     return swapProject(undefined);
   };
 
+  /** Instant Jam loop closer: publish the jammed room state to the gallery
+   *  with lineage (?remixOf= came from the JAM LIVE button). Same hand-off
+   *  as the studio PUBLISH button — the gallery opens pre-filled. */
+  const publishJam = () => {
+    try {
+      sessionStorage.setItem("pf-publish-code", encodeProjectForGallery(doc));
+    } catch {
+      // storage blocked — the gallery paste box still works
+    }
+    const remixOf = typeof location !== "undefined" ? new URLSearchParams(location.search).get("remixOf") : null;
+    if (remixOf) setRemixParent({ id: remixOf, title: "your jam origin" });
+    window.open("/gallery", "_blank", "noopener");
+  };
+
   const copyLink = async () => {
     if (!session) return;
     const url =
@@ -148,6 +163,14 @@ export function CollabPanel({ onReplaceServices }: { onReplaceServices: (service
         </span>
         <button type="button" className="btn btn-small" onClick={() => void copyLink()}>
           {copied ? "COPIED!" : "COPY LINK"}
+        </button>
+        <button
+          type="button"
+          className="btn btn-small collab-publish"
+          title="Drop the current jam state into the public Beat Gallery (with lineage to the origin beat)"
+          onClick={publishJam}
+        >
+          PUBLISH THIS JAM ▸
         </button>
       </div>
       <div className="collab-people">

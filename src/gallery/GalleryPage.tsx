@@ -249,7 +249,8 @@ function GalleryCard({
    * Zero install: browser-native, the one thing DAWs cannot do.
    */
   const jamLive = () => {
-    window.open(`${openUrl}&collab=${randomRoomId()}`, "_blank", "noopener");
+    // remixOf travels along so PUBLISH THIS JAM links the result back here.
+    window.open(`${openUrl}&collab=${randomRoomId()}&remixOf=${encodeURIComponent(item.id)}`, "_blank", "noopener");
   };
 
   /** REMIX: auto-arrange + drop variations, published as YOUR beat in one shot. */

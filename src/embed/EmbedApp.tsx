@@ -227,7 +227,9 @@ export function EmbedApp({
           }}
         >
           <canvas ref={canvasRef} className="embed-canvas" />
-          <div className="embed-progress" style={{ width: `${progress * 100}%` }} />
+          {/* A zero-width progress bar would still paint its 2px right border
+              before the first play — only mount it once playback started. */}
+          {progress > 0 && <div className="embed-progress" style={{ width: `${progress * 100}%` }} />}
         </div>
         <span className="embed-time">
           {fmt(progress * duration)} / {fmt(duration)}

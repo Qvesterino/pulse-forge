@@ -459,6 +459,15 @@ try {
       await p.waitForFunction(() => window.__pfJam && window.__pfJam.collab.status === "connected", null, {
         timeout: 20_000,
       });
+      // Autoplay gate: a suspended context shows the TAP TO JAM overlay —
+      // tapping IS the user gesture that resumes audio. Headless runs with
+      // a permissive policy may never show it; both outcomes are fine.
+      await p.waitForTimeout(1200);
+      const gate = await p.$(".jam-gate");
+      if (gate) {
+        await p.click(".jam-gate");
+        await p.waitForSelector(".jam-gate", { state: "hidden", timeout: 10_000 });
+      }
       await p.evaluate((nameArg) => {
         // Rename the LOCAL USER identity so presence assertions can tell peers apart.
         window.__pfJam.collab.localUser.name = nameArg;
