@@ -6864,7 +6864,7 @@ html {
 
 .master-loudness-readout {
   display: grid;
-  grid-template-columns: repeat(2, auto);
+  grid-template-columns: repeat(2, minmax(95px, auto));
   gap: 3px 8px;
   align-content: center;
   font:
@@ -6872,7 +6872,12 @@ html {
     SFMono-Regular,
     Consolas,
     monospace;
+  font-variant-numeric: tabular-nums;
   color: var(--muted, #8992a5);
+}
+.master-loudness-readout > span {
+  min-width: 95px;
+  white-space: nowrap;
 }
 .master-loudness-readout .btn {
   grid-column: 1 / -1;
@@ -9691,4 +9696,38 @@ html {
 /* PUBLISH THIS JAM — the loop closer in the collab panel */
 .collab-publish {
   color: var(--accent);
+}
+
+/* AI bandmate section in the collab panel */
+.collab-bandmate {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  margin-top: 6px;
+}
+
+.collab-bandmate-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.collab-bandmate-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.collab-bandmate-on {
+  color: var(--accent);
+  margin-left: 4px;
+}
+
+.collab-bandmate-off {
+  color: rgba(255, 255, 255, 0.35);
+  margin-left: 4px;
 }
