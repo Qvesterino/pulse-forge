@@ -206,6 +206,13 @@ export function App({
       selectionStore.setTracks([doc.tracks[0].id], "replace");
     }
   }, [doc.tracks, selection.trackIds.length, selectionStore]);
+
+  // Studio mount: blur any focused element carried over from the project
+  // browser — otherwise the browser activates the focused button on Space
+  // instead of triggering the playPause shortcut.
+  useEffect(() => {
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+  }, []);
   useEffect(() => {
     selectionStore.setStepSelection(null);
   }, [doc.activePatternId]);

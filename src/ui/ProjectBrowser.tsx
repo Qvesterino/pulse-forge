@@ -62,13 +62,21 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
       setActionError(err instanceof Error ? err.message : "Storage operation failed");
     });
 
+  /** Blur any focused element before the studio mounts — otherwise the
+   *  browser activates the focused button on Space instead of play. */
+  const enterStudio = (doc: ProjectDocument) => {
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    enterStudio(doc);
+  };
+  void enterStudio;
+
   const openById = (id: string) => {
     if (busy) return;
     setBusy(true);
     void guard(async () => {
       try {
         const doc = await core.repo.load(id);
-        if (doc) onOpen(doc);
+        if (doc) enterStudio(doc);
         else setActionError("This project could not be opened — its data may be from a newer app version.");
       } finally {
         setBusy(false);
@@ -82,7 +90,7 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
     void guard(async () => {
       try {
         const doc = await core.repo.loadMostRecent();
-        if (doc) onOpen(doc);
+        if (doc) enterStudio(doc);
       } finally {
         setBusy(false);
       }
@@ -96,7 +104,7 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
       try {
         const doc = createProjectFromTemplate(id);
         await core.repo.save(doc);
-        onOpen(doc);
+        enterStudio(doc);
       } finally {
         setBusy(false);
       }
