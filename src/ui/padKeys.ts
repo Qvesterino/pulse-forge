@@ -67,6 +67,12 @@ const RESERVED = new Set([
 export type PadKeyMap = string[];
 
 let state: PadKeyMap = [...DEFAULT_PAD_KEYS];
+/**
+ * True while the drum rack is mounted. Pad keys shadow plain-letter shortcuts
+ * ONLY then — an instrument track selection must not silently kill S/P/C/B/E/M
+ * and the P locators just because a drum track exists in the project.
+ */
+let armed = false;
 const listeners = new Set<() => void>();
 
 export function normalizePadKeyMap(map: unknown): PadKeyMap {
@@ -117,6 +123,18 @@ export function getPadKeys(): PadKeyMap {
 /** True when the (lowercased) key plays a pad — pad keys shadow plain-letter shortcuts. */
 export function isPadKey(key: string): boolean {
   return state.includes(key);
+}
+
+/**
+ * True when pad keys are live (the drum rack is on screen). App-level
+ * shortcut routing checks this before deferring plain letters to the pads.
+ */
+export function padKeysArmed(): boolean {
+  return armed;
+}
+
+export function setPadKeysArmed(next: boolean): void {
+  armed = !!next;
 }
 
 /** Rebind slot `index` to `key`. Rebinding an occupied key swaps the two slots. */

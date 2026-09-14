@@ -78,6 +78,7 @@ describe("schema migration", () => {
 function makeHarness(doc: ProjectDocument, mode: "pattern" | "song" = "pattern", scheduleOffsetSec = 0) {
   const events: { trackId: string; padId: string; when: number; velocity: number }[] = [];
   const noteEvents: { trackId: string; pitch: number; velocity: number; when: number; durationSec: number }[] = [];
+  const clickEvents: { when: number; downbeat: boolean }[] = [];
   const automationCalls: { from: number; to: number; relOf: (tick: number) => number }[] = [];
   const automationOffsets: number[] = [];
   const launches: string[] = [];
@@ -96,6 +97,9 @@ function makeHarness(doc: ProjectDocument, mode: "pattern" | "song" = "pattern",
     noteOn: (trackId: string, pitch: number, velocity: number, when: number, durationSec: number) => {
       noteEvents.push({ trackId, pitch, velocity, when, durationSec });
     },
+    metronomeClick: (when: number, downbeat: boolean) => {
+      clickEvents.push({ when, downbeat });
+    },
     applyAutomation: (from: number, to: number, relOf: (tick: number) => number, offset?: number) => {
       automationCalls.push({ from, to, relOf });
       automationOffsets.push(offset ?? 0);
@@ -109,6 +113,7 @@ function makeHarness(doc: ProjectDocument, mode: "pattern" | "song" = "pattern",
   return {
     events,
     noteEvents,
+    clickEvents,
     automationCalls,
     automationOffsets,
     launches,
@@ -121,6 +126,46 @@ function makeHarness(doc: ProjectDocument, mode: "pattern" | "song" = "pattern",
 }
 
 describe("scheduler", () => {
+  it("keeps content silent during count-in while clicking every lead-in beat", () => {
+    const doc = createDefaultProject();
+    const harness = makeHarness(doc);
+    harness.transport.setCountIn(1);
+    harness.transport.play(0);
+    harness.scheduler.start();
+    for (let i = 0; i < 100; i++) {
+      harness.advance(0.025);
+      harness.scheduler["tick"]();
+    }
+
+    const contentStart = harness.transport.anchorTickBeforePreRoll();
+    const contentStartTime = harness.transport.timeAtTick(contentStart);
+    expect(harness.clickEvents.map((click) => click.downbeat)).toEqual([true, false, false, false]);
+    expect(harness.clickEvents).toHaveLength(4);
+    expect(harness.events.length).toBeGreaterThan(0);
+    expect(Math.min(...harness.events.map((event) => event.when))).toBeGreaterThanOrEqual(contentStartTime - 0.002);
+    harness.scheduler.stop();
+  });
+
+  it("continues metronome clicks on every beat after the lead-in", () => {
+    const doc = createDefaultProject();
+    const harness = makeHarness(doc);
+    harness.transport.setCountIn(1);
+    harness.transport.setMetronome(true);
+    harness.transport.play(0);
+    harness.scheduler.start();
+    for (let i = 0; i < 100; i++) {
+      harness.advance(0.025);
+      harness.scheduler["tick"]();
+    }
+
+    expect(harness.clickEvents.length).toBeGreaterThan(5);
+    expect(harness.clickEvents.slice(0, 5).map((click) => click.downbeat)).toEqual([true, false, false, false, true]);
+    for (let i = 1; i < harness.clickEvents.length; i++) {
+      expect(harness.clickEvents[i].when - harness.clickEvents[i - 1].when).toBeCloseTo(60 / doc.bpm / 1, 3);
+    }
+    harness.scheduler.stop();
+  });
+
   it("applies a runtime reference offset to project-generated events", () => {
     const doc = createDefaultProject();
     const baseline = makeHarness(doc);

@@ -898,7 +898,7 @@ const bass808: InstrumentDefinition = {
         const stopTime = when + decay + 0.6;
 
         const glideNorm = Math.max(0, Math.min(1, p.glide ?? 0.34));
-        const glide = glideNorm * 0.35; // 0..1 → 0..0.35 s lineárne
+        const glide = glideNorm * 0.35; // 0..1 → 0..0.35 s linear
         const distType = Math.max(0, Math.min(2, Math.round(p.distType ?? 0)));
         const drive = p.drive ?? 0.25;
         const subLev = Math.max(0, Math.min(1, p.sub ?? 0.35));

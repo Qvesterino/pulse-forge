@@ -138,6 +138,14 @@ button {
   color: var(--play);
 }
 
+.btn-countin.active,
+.btn-preroll.active,
+.btn-metronome.active {
+  background: var(--accent-soft);
+  border-color: rgba(245, 158, 11, 0.45);
+  color: var(--accent);
+}
+
 .btn-stop {
   color: var(--stop);
 }
@@ -234,6 +242,22 @@ button {
   font-family: var(--mono);
   font-size: 13px;
   color: var(--text);
+}
+
+.drag-number-input {
+  width: 64px;
+  height: 19px;
+  padding: 0 3px;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  color: var(--text);
+  font: 12px var(--mono);
+  text-align: center;
+}
+
+.drag-number-input:focus {
+  outline: none;
 }
 
 .project-name {

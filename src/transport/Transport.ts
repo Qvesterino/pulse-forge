@@ -15,6 +15,9 @@ export class Transport {
   private anchorTick = 0;
   private anchorTime = 0;
   private pauseTick = 0;
+  private paused_ = false;
+  /** Absolute tick at which content becomes audible for the current play. */
+  private contentStartTick_ = 0;
   private loopEnabled_ = false;
   private loopStart_ = 0;
   private loopEnd_ = 0;
@@ -22,6 +25,8 @@ export class Transport {
   private countInBars_ = 0;
   /** Pre-roll length in bars (0 = off, 1) — playback starts this many bars early. */
   private preRollBars_ = 0;
+  /** Metronome click during content playback (runtime preference, not a doc field). */
+  private metronome_ = false;
   /**
    * User-gesture hook (collab transport sync): fires after every
    * user-visible transport change (play/pause/stop/seek) with the
@@ -44,6 +49,11 @@ export class Transport {
 
   get playing(): boolean {
     return this.playing_;
+  }
+
+  /** True after pause and false after stop; used to avoid repeating count-in on resume. */
+  get paused(): boolean {
+    return this.paused_;
   }
 
   get position(): number {
@@ -74,7 +84,9 @@ export class Transport {
     const startTick = this.loopEnabled_ && fromTick < this.loopStart_ ? this.loopStart_ : fromTick;
     this.anchorTick = startTick;
     this.anchorTime = now;
+    this.contentStartTick_ = startTick + (this.paused_ ? 0 : this.leadInBars() * BAR_TICKS_);
     this.playing_ = true;
+    this.paused_ = false;
     this.onGesture?.(this);
   }
 
@@ -82,6 +94,7 @@ export class Transport {
     if (!this.playing_) return;
     this.pauseTick = this.tickAt(this.clock.now());
     this.playing_ = false;
+    this.paused_ = true;
     this.onGesture?.(this);
   }
 
@@ -90,6 +103,8 @@ export class Transport {
     // peers must follow the rewind even though `playing` did not change.
     this.playing_ = false;
     this.pauseTick = 0;
+    this.paused_ = false;
+    this.contentStartTick_ = 0;
     this.onGesture?.(this);
   }
 
@@ -105,6 +120,9 @@ export class Transport {
     if (this.playing_) {
       this.anchorTick = tick;
       this.anchorTime = this.clock.now();
+      // A seek is an explicit new playback location; it must not introduce
+      // another count-in or pre-roll before the requested content.
+      this.contentStartTick_ = tick;
     } else {
       this.pauseTick = tick;
     }
@@ -172,6 +190,15 @@ export class Transport {
     this.countInBars_ = Math.max(0, Math.min(2, Math.round(bars)));
   }
 
+  /** Metronome click while the transport plays (0/1 bars are count-in/pre-roll only). */
+  get metronome(): boolean {
+    return this.metronome_;
+  }
+
+  setMetronome(enabled: boolean): void {
+    this.metronome_ = !!enabled;
+  }
+
   /** Pre-roll bars (0/1) — playback begins this many bars before the requested tick. */
   get preRollBars(): number {
     return this.preRollBars_;
@@ -181,16 +208,24 @@ export class Transport {
     this.preRollBars_ = Math.max(0, Math.min(1, Math.round(bars)));
   }
 
+  /**
+   * Total lead-in bars before content sounds: the pre-roll region PLUS the
+   * count-in bars (FL/Cubase semantics — "C1" counts one bar of clicks before
+   * the content starts; pre-roll adds a bar of clicks on top of it).
+   * `playPause` starts the transport this many bars early, the scheduler
+   * clicks every beat inside the lead-in, and content stays untouched.
+   */
+  leadInBars(): number {
+    return this.preRollBars_ + this.countInBars_;
+  }
+
   get secondsPerTick(): number {
     return 60 / (this.bpm_ * PPQ);
   }
 
-  /**
-   * Absolute tick where actual content (drums/notes) starts sounding during a
-   * pre-roll playback — the count-in region [playStart, this) plays clicks only.
-   */
+  /** Absolute tick where the content region begins (end of the click lead-in). */
   anchorTickBeforePreRoll(): number {
-    return this.anchorTick + this.preRollBars_ * BAR_TICKS_;
+    return this.playing_ ? this.contentStartTick_ : this.anchorTick + this.leadInBars() * BAR_TICKS_;
   }
 
   tickAt(audioTime: number): number {

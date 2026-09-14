@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useState, useCallback, useEffect } from "react";
+import { createContext, useContext, useMemo, useState, useCallback } from "react";
 import type { DrumPad, ProjectDocument } from "../project-model/types";
 import { getActivePattern, getDrumTrack } from "../project-model/types";
 import { generateLocalResultFromOptions } from "../intent/pipeline";
@@ -479,37 +479,11 @@ export function DiceProvider({ doc, children }: { doc: ProjectDocument; children
     [session],
   );
 
-  // Hotkeys: D = roll full, Shift+D = roll vary, arrows = history
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      const typing =
-        target &&
-        (target.tagName === "INPUT" ||
-          target.tagName === "SELECT" ||
-          target.tagName === "TEXTAREA" ||
-          target.isContentEditable);
-      if (typing) return;
-      if (e.defaultPrevented) return;
-      // Don't hijack when modifiers except shift for Shift+D
-      if (e.ctrlKey || e.metaKey || e.altKey) return;
-      if (e.key.toLowerCase() === "d" && !e.shiftKey) {
-        e.preventDefault();
-        rollFull();
-      } else if (e.key.toLowerCase() === "d" && e.shiftKey) {
-        e.preventDefault();
-        rollVary();
-      } else if (e.key === "ArrowLeft") {
-        e.preventDefault();
-        setSession((prev) => jumpSession(prev, Math.max(0, prev.cursor - 1)));
-      } else if (e.key === "ArrowRight") {
-        e.preventDefault();
-        setSession((prev) => jumpSession(prev, Math.min(prev.seedChain.length - 1, prev.cursor + 1)));
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [rollFull, rollVary]);
+  // Hotkeys (D = roll full, Shift+D = roll vary, arrows = history) live in
+  // DiceTray, not here: the provider is always mounted, so a global listener
+  // would fire the dice on the pad key "D"/"A"/"S" while the user is playing
+  // the drum rack or nudging notes in the piano roll. The visible tray owns
+  // its keyboard surface.
 
   const value: DiceContextValue = {
     session,

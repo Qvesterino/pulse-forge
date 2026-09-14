@@ -114,6 +114,31 @@ describe("DragNumber", () => {
     );
     expect(screen.getByText("120 BPM")).toBeInTheDocument();
   });
+
+  it("allows precise typed entry, including decimal comma, and clamps it", async () => {
+    const user = userEvent.setup();
+    const onCommit = vi.fn();
+    render(<DragNumber value={120} min={20} max={300} defaultValue={120} label="BPM" onCommit={onCommit} />);
+    fireEvent.keyDown(screen.getByRole("spinbutton"), { key: "Enter" });
+    const input = screen.getByRole("textbox", { name: "BPM value" });
+    await user.clear(input);
+    await user.type(input, "301,5");
+    await user.keyboard("{Enter}");
+    expect(onCommit).toHaveBeenCalledWith(300);
+  });
+
+  it("cancels typed entry with Escape without committing", async () => {
+    const user = userEvent.setup();
+    const onCommit = vi.fn();
+    render(<DragNumber value={120} min={20} max={300} defaultValue={120} label="BPM" onCommit={onCommit} />);
+    fireEvent.keyDown(screen.getByRole("spinbutton"), { key: "Enter" });
+    const input = screen.getByRole("textbox", { name: "BPM value" });
+    await user.clear(input);
+    await user.type(input, "180");
+    await user.keyboard("{Escape}");
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(screen.getByText("120.0")).toBeInTheDocument();
+  });
 });
 
 describe("interrupted drags (pointercancel)", () => {

@@ -16,6 +16,9 @@ export function mockServices(doc?: ProjectDocument): Services {
   const libraryState = { favoriteAssets: [], recentAssets: [], favoritePresets: [], recentPresets: [] };
   const captureSnapshot = { capturing: false, launchCount: 0, firstBar: null };
   const mockTransport = new Transport({ now: () => 0 }, 120);
+  let countInBars = 0;
+  let preRollBars = 0;
+  let metronome = false;
 
   return {
     core: {
@@ -170,11 +173,33 @@ export function mockServices(doc?: ProjectDocument): Services {
       playing: false,
       loopEnabled: false,
       bpm: 120,
+      get countInBars() {
+        return countInBars;
+      },
+      get preRollBars() {
+        return preRollBars;
+      },
+      get metronome() {
+        return metronome;
+      },
+      get paused() {
+        return false;
+      },
       play: vi.fn(),
       pause: vi.fn(),
       stop: vi.fn(),
       seek: vi.fn(),
       setBpm: vi.fn(),
+      setCountIn: vi.fn((bars: number) => {
+        countInBars = Math.max(0, Math.min(2, Math.round(bars)));
+      }),
+      setPreRoll: vi.fn((bars: number) => {
+        preRollBars = Math.max(0, Math.min(1, Math.round(bars)));
+      }),
+      setMetronome: vi.fn((enabled: boolean) => {
+        metronome = !!enabled;
+      }),
+      leadInBars: vi.fn(() => countInBars + preRollBars),
     } as any,
     scheduler: {
       start: vi.fn(),

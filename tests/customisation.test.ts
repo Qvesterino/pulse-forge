@@ -1,6 +1,15 @@
 import "fake-indexeddb/auto";
 import { beforeEach, describe, expect, it } from "vitest";
-import { DEFAULT_PAD_KEYS, bindPadKey, getPadKeys, initPadKeys, isPadKey, resetPadKeys } from "../src/ui/padKeys";
+import {
+  DEFAULT_PAD_KEYS,
+  bindPadKey,
+  getPadKeys,
+  initPadKeys,
+  isPadKey,
+  padKeysArmed,
+  resetPadKeys,
+  setPadKeysArmed,
+} from "../src/ui/padKeys";
 import { createDefaultProject, normalizeProject } from "../src/project-model/schema";
 import { createInstrumentTrack, setPadColor, setPadLoop, setTrackColor } from "../src/commands/commands";
 import { getDrumTrack, type InstrumentTrack } from "../src/project-model/types";
@@ -41,6 +50,14 @@ describe("padKeys store", () => {
     bindPadKey(0, "z");
     const loaded = initPadKeys();
     expect(loaded[0]).toBe("z");
+  });
+
+  it("arms pad-key shortcut shadowing only while the drum rack is active", () => {
+    expect(padKeysArmed()).toBe(false);
+    setPadKeysArmed(true);
+    expect(padKeysArmed()).toBe(true);
+    setPadKeysArmed(false);
+    expect(padKeysArmed()).toBe(false);
   });
 });
 

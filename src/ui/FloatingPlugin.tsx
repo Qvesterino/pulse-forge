@@ -109,7 +109,7 @@ export function FloatingPlugin({
               <button
                 type="button"
                 className="btn btn-small"
-                title="Mutate — ±12 % okolo súčasných hodnôt"
+                title="Mutate — ±12% around the current values"
                 onClick={() =>
                   services.store.execute(
                     randomizeInstrumentCommand(doc, track.id, "mutate", (Math.random() * 0x7fffffff) | 0),
@@ -121,7 +121,7 @@ export function FloatingPlugin({
               <button
                 type="button"
                 className="btn btn-small"
-                title="Deep randomize — celý patch (level ostáva)"
+                title="Deep randomize — full patch (level stays)"
                 onClick={() =>
                   services.store.execute(
                     randomizeInstrumentCommand(doc, track.id, "deep", (Math.random() * 0x7fffffff) | 0),

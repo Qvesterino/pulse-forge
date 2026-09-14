@@ -61,7 +61,7 @@ import { OnboardingHint } from "./OnboardingHint";
 import { DiceProvider } from "./DiceContext";
 
 import { useDockLayout, toggleSlot, openInSlotA, clampDockHeight, type BottomPanel } from "./dockLayout";
-import { isPadKey } from "./padKeys";
+import { isPadKey, padKeysArmed, setPadKeysArmed } from "./padKeys";
 
 export function App({
   services,
@@ -207,6 +207,12 @@ export function App({
   useEffect(() => {
     selectionStore.setStepSelection(null);
   }, [doc.activePatternId]);
+  // Pad keys only shadow plain-letter shortcuts while the drum rack is
+  // visible — selecting an instrument track restores S/P/C/B/E/M and P.
+  useEffect(() => {
+    setPadKeysArmed(doc.tracks.some((t) => t.id === selectedTrackId && t.kind === "drum"));
+    return () => setPadKeysArmed(false);
+  }, [doc.tracks, selectedTrackId]);
 
   // Shortcut action dispatch — shared by the keyboard handler and the
   // command palette so both always do the same thing.
@@ -430,9 +436,18 @@ export function App({
           target.tagName === "SELECT" ||
           target.tagName === "TEXTAREA" ||
           target.isContentEditable);
-      // Pad keys (user-rebindable) shadow plain-letter shortcuts: pressing a
-      // bound key plays the pad instead of triggering e.g. the loop toggle.
-      if (!event.ctrlKey && !event.metaKey && !event.altKey && !typing && isPadKey(event.key.toLowerCase())) {
+      // Pad keys (user-rebindable) shadow plain-letter shortcuts while the
+      // drum rack is visible: pressing a bound key plays the pad instead of
+      // triggering e.g. the loop toggle. With an instrument track selected
+      // there is no rack to play, so S/P/C/B/E/M and P stay shortcuts.
+      if (
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        !typing &&
+        padKeysArmed() &&
+        isPadKey(event.key.toLowerCase())
+      ) {
         return;
       }
       // Command palette (Ctrl/Cmd+K) — works while typing in inputs too.
@@ -648,52 +663,10 @@ export function App({
 
       // Strip Silence + Consolidate helpers are in ArrangementPanel's audioMenu; Tab+B here is bounce which is handled above (Ctrl+B)
 
-      // Tool switching: S/C/B/E/M without modifiers, Esc handled above already resets tool
-      if (!event.ctrlKey && !event.metaKey && !event.altKey) {
-        const lower = event.key.toLowerCase();
-        const toolMap: Record<string, import("../store/ToolStore").Tool> = {
-          s: "select",
-          p: "pencil",
-          c: "cut",
-          b: "slip",
-          e: "stretch",
-          m: "mute",
-        };
-        const t = toolMap[lower];
-        if (t) {
-          event.preventDefault();
-          toolStore.setTool(t);
-          return;
-        }
-      }
-
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
-        if (track.kind === "instrument") {
-          const pattern = doc.patterns.find((candidate) => candidate.id === doc.activePatternId);
-          const notes = pattern?.notes?.[track.id] ?? [];
-          setSelectedNote(notes.length > 0 ? { trackId: track.id, noteIds: notes.map((note) => note.id) } : null);
-          event.preventDefault();
-        }
-        return;
-      }
-
-      // Consolidate zone: Ctrl+Shift+C (or Cmd+Shift+C) — guard: needs timeRange
-      if (
-        selection.timeRange &&
-        (event.ctrlKey || event.metaKey) &&
-        event.shiftKey &&
-        event.key.toLowerCase() === "c"
-      ) {
-        event.preventDefault();
-        try {
-          services.store.execute(consolidateTimeRange(doc, selection.timeRange.fromTick, selection.timeRange.toTick));
-        } catch {
-          // ignore empty zone
-        }
-        return;
-      }
-
-      // Range Tool: P = locators to selection (Cubase) — set loop to timeRange or selection bbox
+      // Range Tool: P = locators to selection (Cubase) — set loop to timeRange
+      // or the selection bbox. Runs BEFORE the tool switcher: P used to be
+      // consumed by the toolMap and this branch was unreachable. With no
+      // selection P still falls through to the pencil tool.
       if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "p") {
         const hasSel =
           selection.timeRange ||
@@ -753,6 +726,53 @@ export function App({
             services.transport.setLoop(true, from, to);
             return;
           }
+        }
+      }
+
+      // Ctrl/Cmd+A — select all notes of the active instrument pattern.
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
+        if (track.kind === "instrument") {
+          const pattern = doc.patterns.find((candidate) => candidate.id === doc.activePatternId);
+          const notes = pattern?.notes?.[track.id] ?? [];
+          setSelectedNote(notes.length > 0 ? { trackId: track.id, noteIds: notes.map((note) => note.id) } : null);
+          event.preventDefault();
+        }
+        return;
+      }
+
+      // Consolidate zone: Ctrl+Shift+C (or Cmd+Shift+C) — guard: needs timeRange
+      if (
+        selection.timeRange &&
+        (event.ctrlKey || event.metaKey) &&
+        event.shiftKey &&
+        event.key.toLowerCase() === "c"
+      ) {
+        event.preventDefault();
+        try {
+          services.store.execute(consolidateTimeRange(doc, selection.timeRange.fromTick, selection.timeRange.toTick));
+        } catch {
+          // ignore empty zone
+        }
+        return;
+      }
+
+      // Tool switching: S/C/B/E/M without modifiers, Esc handled above already resets tool.
+      // P is reserved for the locator shortcut above when a selection exists.
+      if (!event.ctrlKey && !event.metaKey && !event.altKey) {
+        const lower = event.key.toLowerCase();
+        const toolMap: Record<string, import("../store/ToolStore").Tool> = {
+          s: "select",
+          p: "pencil",
+          c: "cut",
+          b: "slip",
+          e: "stretch",
+          m: "mute",
+        };
+        const t = toolMap[lower];
+        if (t) {
+          event.preventDefault();
+          toolStore.setTool(t);
+          return;
         }
       }
 

@@ -89,6 +89,13 @@ export function TopBar({
   const [loopEnabled, setLoopEnabled] = useState(services.transport.loopEnabled);
   const [loopStart, setLoopStart] = useState(services.transport.loopStart);
   const [loopEnd, setLoopEnd] = useState(services.transport.loopEnd);
+  // count-in / pre-roll / metronome are transport runtime state, not doc
+  // state — mirror them into local state so the buttons render their actual
+  // value (reading `transport.countInBars` at render time went stale).
+  const [countIn, setCountIn] = useState(services.transport.countInBars);
+  const [preRoll, setPreRoll] = useState(services.transport.preRollBars);
+  const [metronome, setMetronome] = useState(services.transport.metronome);
+  const tapTimesRef = useRef<number[]>([]);
   const [scalePanelOpen, setScalePanelOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
   const [collabOpen, setCollabOpen] = useState(false);
@@ -144,6 +151,43 @@ export function TopBar({
     const next = Math.floor(v);
     services.transport.setLoop(loopEnabled, loopStart, next);
     setLoopEnd(next);
+  };
+
+  const cycleCountIn = () => {
+    const next = (services.transport.countInBars + 1) % 3;
+    services.transport.setCountIn(next);
+    setCountIn(next);
+  };
+
+  const togglePreRoll = () => {
+    const next = services.transport.preRollBars > 0 ? 0 : 1;
+    services.transport.setPreRoll(next);
+    setPreRoll(next);
+  };
+
+  const toggleMetronome = () => {
+    const next = !services.transport.metronome;
+    services.transport.setMetronome(next);
+    setMetronome(next);
+  };
+
+  /**
+   * Tap tempo: average the last N taps (up to 5), 2s memory. Two taps are
+   * enough to set the tempo; a rolling average keeps the read stable.
+   */
+  const tapTempo = () => {
+    const now = Date.now();
+    const taps = tapTimesRef.current;
+    if (taps.length > 0 && now - taps[taps.length - 1] > 2000) taps.length = 0;
+    taps.push(now);
+    if (taps.length > 5) taps.shift();
+    if (taps.length < 2) return;
+    let sum = 0;
+    for (let i = 1; i < taps.length; i++) sum += taps[i] - taps[i - 1];
+    const avgMs = sum / (taps.length - 1);
+    if (avgMs <= 0) return;
+    const bpm = Math.min(300, Math.max(20, Math.round((60000 / avgMs) * 10) / 10));
+    services.store.execute(setBpm(doc, bpm));
   };
 
   const formatBarBeat = (v: number) => {
@@ -465,19 +509,32 @@ export function TopBar({
           </button>
           <button
             type="button"
-            className={`btn btn-countin${services.transport.countInBars > 0 ? " active" : ""}`}
-            onClick={() => services.transport.setCountIn((services.transport.countInBars + 1) % 3)}
-            title="Metronome count-in before playback (1/2 bars) — FL/Cubase pre-roll"
+            className={`btn btn-countin${countIn > 0 ? " active" : ""}`}
+            onClick={cycleCountIn}
+            title="Count-in: metronome clicks 1–2 bars before playback starts (FL/Cubase pre-roll)"
+            aria-label={`Count-in ${countIn > 0 ? `${countIn} bar${countIn > 1 ? "s" : ""}` : "off"}`}
           >
-            C{services.transport.countInBars > 0 ? services.transport.countInBars : "·"}
+            C{countIn > 0 ? countIn : "·"}
           </button>
           <button
             type="button"
-            className={`btn btn-preroll${services.transport.preRollBars > 0 ? " active" : ""}`}
-            onClick={() => services.transport.setPreRoll(services.transport.preRollBars > 0 ? 0 : 1)}
-            title="Pre-roll: play 1 bar before the playhead (clicks only, content starts on time)"
+            className={`btn btn-preroll${preRoll > 0 ? " active" : ""}`}
+            onClick={togglePreRoll}
+            title="Pre-roll: one extra click bar before the count-in (clicks only, content starts on time)"
+            aria-label={preRoll > 0 ? "Pre-roll on" : "Pre-roll off"}
+            aria-pressed={preRoll > 0}
           >
             PR
+          </button>
+          <button
+            type="button"
+            className={`btn btn-metronome${metronome ? " active" : ""}`}
+            onClick={toggleMetronome}
+            title="Metronome: click every beat during playback"
+            aria-label={metronome ? "Metronome on" : "Metronome off"}
+            aria-pressed={metronome}
+          >
+            CLICK
           </button>
           <button
             type="button"
@@ -546,6 +603,15 @@ export function TopBar({
             format={(v) => v.toFixed(1)}
             onCommit={(bpm) => services.store.execute(setBpm(doc, bpm))}
           />
+          <button
+            type="button"
+            className="btn btn-tap"
+            onClick={tapTempo}
+            title="Tap tempo: tap in time (2+ taps) to set the BPM"
+            aria-label="Tap tempo"
+          >
+            TAP
+          </button>
         </div>
 
         <input

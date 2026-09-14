@@ -19,6 +19,21 @@ afterEach(() => {
 });
 
 describe("PatternBar MIDI import", () => {
+  it("exposes explicit grid and scale quantize actions", () => {
+    const base = createProjectFromTemplate("house");
+    const doc = { ...base, key: "C Major" as const };
+    const services = mockServices(doc);
+    renderWithContext(<PatternBar clip={null} onCopy={vi.fn()} />, { services });
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Quantize grid" }), { target: { value: "240" } });
+    let command = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0];
+    expect(command?.type).toBe("quantizePatternToGrid");
+
+    fireEvent.click(screen.getByRole("button", { name: "SCALE" }));
+    command = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0];
+    expect(command?.type).toBe("quantizePatternToScale");
+  });
+
   it("imports a .mid file into a new active pattern with a status line", async () => {
     const doc = createProjectFromTemplate("empty");
     const services = mockServices(doc);

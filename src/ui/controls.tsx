@@ -164,6 +164,7 @@ export function DragNumber({
   onCommit,
 }: DragNumberProps) {
   const [edit, setEdit] = useState<number | null>(null);
+  const [typeDraft, setTypeDraft] = useState<string | null>(null);
   const startY = useRef(0);
   const startValue = useRef(0);
 
@@ -199,6 +200,13 @@ export function DragNumber({
   // Interrupted drag — abort without committing (see Slider).
   const handlePointerCancel = () => setEdit(null);
 
+  const commitTypeDraft = () => {
+    if (typeDraft === null) return;
+    const parsed = Number(typeDraft.replace(",", "."));
+    setTypeDraft(null);
+    if (Number.isFinite(parsed)) cleanCommit(parsed);
+  };
+
   return (
     <div
       className="drag-number"
@@ -208,13 +216,18 @@ export function DragNumber({
       aria-valuemin={min}
       aria-valuemax={max}
       aria-valuenow={shown}
-      title={`${label} — drag to change, double-click to reset`}
+      title={`${label} — drag to change, Enter to type a value, double-click to reset`}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerCancel}
       onDoubleClick={() => onCommit(defaultValue)}
       onKeyDown={(event) => {
+        if (event.key === "Enter" && typeDraft === null) {
+          event.preventDefault();
+          setTypeDraft(String(Math.round(shown * 100) / 100));
+          return;
+        }
         if (event.key === "ArrowUp") {
           event.preventDefault();
           cleanCommit(shown + 1);
@@ -226,7 +239,35 @@ export function DragNumber({
       }}
     >
       <span className="drag-number-label">{label}</span>
-      <span className="drag-number-value">{format ? format(shown) : shown.toFixed(1)}</span>
+      {typeDraft !== null ? (
+        <input
+          className="drag-number-input"
+          // eslint-disable-next-line jsx-a11y/no-autofocus
+          autoFocus
+          value={typeDraft}
+          aria-label={`${label} value`}
+          onPointerDown={(event) => event.stopPropagation()}
+          onPointerMove={(event) => event.stopPropagation()}
+          onPointerUp={(event) => event.stopPropagation()}
+          onPointerCancel={(event) => event.stopPropagation()}
+          onDoubleClick={(event) => event.stopPropagation()}
+          onChange={(event) => setTypeDraft(event.target.value)}
+          onBlur={commitTypeDraft}
+          onKeyDown={(event) => {
+            event.stopPropagation();
+            if (event.key === "Enter") {
+              event.preventDefault();
+              commitTypeDraft();
+            }
+            if (event.key === "Escape") {
+              event.preventDefault();
+              setTypeDraft(null);
+            }
+          }}
+        />
+      ) : (
+        <span className="drag-number-value">{format ? format(shown) : shown.toFixed(1)}</span>
+      )}
     </div>
   );
 }

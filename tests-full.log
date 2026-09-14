@@ -1,0 +1,1430 @@
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mD:/pulse-forge[39m
+
+ [32mÔťô[39m tests/instruments.test.ts [2m([22m[2m59 tests[22m[2m | [22m[33m32 skipped[39m[2m)[22m[90m 96[2mms[22m[39m
+ [32mÔťô[39m tests/project-model.test.ts [2m([22m[2m59 tests[22m[2m)[22m[90m 118[2mms[22m[39m
+ [32mÔťô[39m tests/note-repeat.test.ts [2m([22m[2m24 tests[22m[2m)[22m[90m 114[2mms[22m[39m
+stderr | tests/scheduler.test.ts > scheduler ÔÇö recovery > does not throw when the active pattern id points to a deleted pattern
+[scheduler] cannot schedule pattern mode: active pattern deleted-pattern-id is not present in the project
+
+stderr | tests/scheduler.test.ts > scheduler ÔÇö recovery > clears a pending launch whose target pattern was removed from the doc
+[scheduler] dropping queued launch for missing pattern second-pattern
+
+ [32mÔťô[39m tests/scheduler.test.ts [2m([22m[2m46 tests[22m[2m)[22m[33m 538[2mms[22m[39m
+ [32mÔťô[39m tests/ultina-hardening2.test.ts [2m([22m[2m9 tests[22m[2m)[22m[33m 467[2mms[22m[39m
+ [32mÔťô[39m tests/ai-markov.test.ts [2m([22m[2m71 tests[22m[2m)[22m[33m 411[2mms[22m[39m
+ [32mÔťô[39m tests/doc-delta.test.ts [2m([22m[2m55 tests[22m[2m)[22m[33m 371[2mms[22m[39m
+ [32mÔťô[39m tests/collab-hardening.test.ts [2m([22m[2m9 tests[22m[2m)[22m[33m 844[2mms[22m[39m
+   [33m[2mÔťô[22m[39m collab ÔÇö performance gate[2m > [22mlocal command reads stay cheap; sanitized remote reads stay bounded [33m489[2mms[22m[39m
+ [32mÔťô[39m tests/commands.test.ts [2m([22m[2m65 tests[22m[2m)[22m[33m 872[2mms[22m[39m
+ [32mÔťô[39m tests/fxeq-core-hardening.test.ts [2m([22m[2m34 tests[22m[2m)[22m[33m 8605[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq-core LFO readInto (allocation-free reads)[2m > [22mreadInto matches read sample-for-sample (sine) [33m502[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq-core LFO readInto (allocation-free reads)[2m > [22mreadInto matches read sample-for-sample (triangle) [33m395[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq-core LFO readInto (allocation-free reads)[2m > [22mreadInto matches read sample-for-sample (saw) [33m521[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq-core LFO readInto (allocation-free reads)[2m > [22mreadInto matches read sample-for-sample (square) [33m458[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq-core LFO readInto (allocation-free reads)[2m > [22mreadInto matches read sample-for-sample (random) [33m430[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq-core LFO readInto (allocation-free reads)[2m > [22mrandom S&H is deterministic: independent instances and reset restart the same sequence [33m615[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq-core limiter linked true-peak path (hoisted scratch)[2m > [22mstereo-linked limiting keeps output bounded at the ceiling from block 0 [33m1043[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq ping-pong hermite cross-read (roadmap P)[2m > [22mping-pong type runs stereo without NaN and bounces between channels [33m1025[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq reverb tank upgrade (roadmap Q1)[2m > [22m8-line modulated tank is deterministic and finite [33m481[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq reverb tank upgrade (roadmap Q1)[2m > [22mmodulated tank still decays under sustained silence [33m582[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq latency-transition stale-buffer regression (alignment rings)[2m > [22msilence stays silent when a latency band is re-enabled mid-stream [33m317[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq latency-transition stale-buffer regression (alignment rings)[2m > [22msilence stays silent when drive automation re-crosses the oversample threshold [33m550[2mms[22m[39m
+stderr | tests/ui/EffectRack.test.tsx > EffectRack > keeps an Ultina A/B snapshot when its editor is collapsed
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/EffectRack.test.tsx > EffectRack > keeps an Ultina A/B snapshot when its editor is collapsed
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/EffectRack.test.tsx > EffectRack > A/B state lives in the document ÔÇö a full remount (reload equivalent) restores it
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/EffectRack.test.tsx > EffectRack ÔÇö FXEQ panel > mounts the EQ-paint panel: preset select, band chips, canvas
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/EffectRack.test.tsx > EffectRack ÔÇö FXEQ panel > shows the degraded banner when the worklet fallback is active
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/EffectRack.test.tsx > EffectRack ÔÇö FXEQ panel > selecting a preset executes ONE bulk apply command
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/EffectRack.test.tsx > EffectRack ÔÇö FXEQ panel > selecting a preset executes ONE bulk apply command
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/EffectRack.test.tsx > EffectRack ÔÇö FXEQ panel > band module toggle executes a dotted setFxEqParam
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/EffectRack.test.tsx > EffectRack ÔÇö FXEQ panel > band module toggle executes a dotted setFxEqParam
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+ [32mÔťô[39m tests/ultina-core-hardening.test.ts [2m([22m[2m55 tests[22m[2m)[22m[33m 5562[2mms[22m[39m
+   [33m[2mÔťô[22m[39m clipper: knee beyond 6 dB stays monotonic and bounded[2m > [22ma Ôłĺ40 dBFS signal is not amplified to garbage with knee=12 dB (P1) [33m308[2mms[22m[39m
+   [33m[2mÔťô[22m[39m analysis: non-finite target curves cannot poison proposals[2m > [22manalyzeWithTarget with a NaN entry yields finite proposal values [33m308[2mms[22m[39m
+   [33m[2mÔťô[22m[39m U3: hybrid crossover mix is latency-compensated[2m > [22mmix = 0 through a unity hybrid comp returns the input delayed by the reported latency [33m550[2mms[22m[39m
+   [33m[2mÔťô[22m[39m U3: HQ quality mode oversamples the comp gain path[2m > [22mhq + all modules under deep settings stays far inside the audio budget [33m1881[2mms[22m[39m
+   [33m[2mÔťô[22m[39m U-P: LUFS meter reports silence after a long feed gap[2m > [22mgetMeters shows -70 until the short-term window turns over [33m525[2mms[22m[39m
+stderr | tests/ui/EffectRack.test.tsx > EffectRack ÔÇö FXEQ panel > exposes PRISM's sidechain source picker and records a source command
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/EffectRack.test.tsx > EffectRack ÔÇö FXEQ panel > exposes PRISM's sidechain source picker and records a source command
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/EffectRack.test.tsx > EffectRack ÔÇö FXEQ panel > exposes PRISM's sidechain source picker and records a source command
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/EffectRack.test.tsx > EffectRack ÔÇö FXEQ panel > uses one persisted A/B controller and hydrates PRISM morph slots
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+ [32mÔťô[39m tests/ui/ArrangementPanel.test.tsx [2m([22m[2m24 tests[22m[2m)[22m[33m 5138[2mms[22m[39m
+   [33m[2mÔťô[22m[39m ArrangementPanel[2m > [22mcalls createScene when + SCENE clicked [33m1299[2mms[22m[39m
+   [33m[2mÔťô[22m[39m ArrangementPanel ÔÇö scene intensity lane[2m > [22mthe INT toggle hides and shows the lane [33m580[2mms[22m[39m
+   [33m[2mÔťô[22m[39m ArrangementPanel ÔÇö arrangement ergonomics[2m > [22mzoom buttons scale the arrangement width and FIT fits it [33m1005[2mms[22m[39m
+   [33m[2mÔťô[22m[39m ArrangementPanel ÔÇö arrangement ergonomics[2m > [22mright-click delete shows an actionable toast whose UNDO calls the store [33m350[2mms[22m[39m
+stderr | tests/ui/EffectRack.test.tsx > EffectRack ÔÇö FXEQ panel > sends PRISM slider movement to live preview while commit stays a document command
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/EffectRack.test.tsx > EffectRack ÔÇö FXEQ panel > sends PRISM slider movement to live preview while commit stays a document command
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/EffectRack.test.tsx > EffectRack ÔÇö Ultina panel > enable toggle executes a dotted setUltinaParam
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/EffectRack.test.tsx > EffectRack ÔÇö Ultina panel > enable toggle executes a dotted setUltinaParam
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/EffectRack.test.tsx > EffectRack ÔÇö Ultina panel > selecting a preset executes ONE bulk apply command
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/EffectRack.test.tsx > EffectRack ÔÇö Ultina panel > EQ module shows the 12-band editor with response sketch
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/EffectRack.test.tsx > EffectRack ÔÇö Ultina panel > EQ module shows the 12-band editor with response sketch
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/EffectRack.test.tsx > EffectRack ÔÇö Ultina panel > EQ module shows the 12-band editor with response sketch
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/EffectRack.test.tsx > UltinaPanel ÔÇö EQ band editor (direct render) > renders the response sketch and band params when EQ is enabled
+Warning: An update to UltinaPanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at UltinaPanel (D:\pulse-forge\src\ui\UltinaPanel.tsx:61:3)
+Warning: An update to UltinaPanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at UltinaPanel (D:\pulse-forge\src\ui\UltinaPanel.tsx:61:3)
+
+stderr | tests/ui/EffectRack.test.tsx > UltinaPanel ÔÇö PRO tools (delta / A/B / gain match) > DELTA and G-MATCH toggles execute global params
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/EffectRack.test.tsx > UltinaPanel ÔÇö PRO tools (delta / A/B / gain match) > DELTA and G-MATCH toggles execute global params
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/EffectRack.test.tsx > UltinaPanel ÔÇö PRO tools (delta / A/B / gain match) > DELTA and G-MATCH toggles execute global params
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/EffectRack.test.tsx > UltinaPanel ÔÇö PRO tools (delta / A/B / gain match) > G-MATCH on reveals the target LUFS slider (default -14)
+Warning: An update to UltinaPanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at UltinaPanel (D:\pulse-forge\src\ui\UltinaPanel.tsx:61:3)
+Warning: An update to UltinaPanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at UltinaPanel (D:\pulse-forge\src\ui\UltinaPanel.tsx:61:3)
+
+stderr | tests/ui/EffectRack.test.tsx > UltinaPanel ÔÇö PRO tools (delta / A/B / gain match) > A/B: STORE writes the active slot, clicking the other loads it as ONE gesture
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/EffectRack.test.tsx > UltinaPanel ÔÇö PRO tools (delta / A/B / gain match) > A/B: STORE writes the active slot, clicking the other loads it as ONE gesture
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/EffectRack.test.tsx > UltinaPanel ÔÇö PRO tools (delta / A/B / gain match) > A/B: STORE writes the active slot, clicking the other loads it as ONE gesture
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+ [32mÔťô[39m tests/ultina-worklet-entry.test.ts [2m([22m[2m15 tests[22m[2m)[22m[33m 1334[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ultina worklet entry ÔÇö module graph sync[2m > [22man enabled compressor actually compresses audio through the entry [33m313[2mms[22m[39m
+stderr | tests/ui/EffectRack.test.tsx > UltinaPanel ÔÇö PRO tools (delta / A/B / gain match) > A/B: STORE writes the active slot, clicking the other loads it as ONE gesture
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/EffectRack.test.tsx > UltinaPanel ÔÇö PRO tools (delta / A/B / gain match) > A/B: STORE writes the active slot, clicking the other loads it as ONE gesture
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/EffectRack.test.tsx > UltinaPanel ÔÇö PRO tools (delta / A/B / gain match) > A/B: STORE writes the active slot, clicking the other loads it as ONE gesture
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+ [32mÔťô[39m tests/groove.test.ts [2m([22m[2m14 tests[22m[2m)[22m[90m 167[2mms[22m[39m
+stderr | tests/ui/EffectRack.test.tsx > UltinaPanel ÔÇö PRO tools (delta / A/B / gain match) > A/B exposes copy and clear controls without applying audio changes
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/EffectRack.test.tsx > UltinaPanel ÔÇö PRO tools (delta / A/B / gain match) > A/B exposes copy and clear controls without applying audio changes
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/EffectRack.test.tsx > UltinaPanel ÔÇö PRO tools (delta / A/B / gain match) > A/B exposes copy and clear controls without applying audio changes
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/EffectRack.test.tsx > UltinaPanel ÔÇö PRO tools (delta / A/B / gain match) > A/B exposes copy and clear controls without applying audio changes
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/EffectRack.test.tsx > UltinaPanel ÔÇö PRO tools (delta / A/B / gain match) > A/B exposes copy and clear controls without applying audio changes
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/EffectRack.test.tsx > EffectRack ÔÇö flagship device shell contract (all three plugins) > fxeq: add Ôćĺ mount Ôćĺ collapse keeps mounted Ôćĺ expand Ôćĺ bypass flips state
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/EffectRack.test.tsx > EffectRack ÔÇö flagship device shell contract (all three plugins) > fxeq: add Ôćĺ mount Ôćĺ collapse keeps mounted Ôćĺ expand Ôćĺ bypass flips state
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/EffectRack.test.tsx > EffectRack ÔÇö flagship device shell contract (all three plugins) > fxeq: add Ôćĺ mount Ôćĺ collapse keeps mounted Ôćĺ expand Ôćĺ bypass flips state
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+ [32mÔťô[39m tests/fxeq-worklet-entry.test.ts [2m([22m[2m19 tests[22m[2m)[22m[33m 3072[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq worklet entry (message port Ôćö DSP core wiring)[2m > [22mgates band-peak metering on setMetersEnabled (~20 Hz while on, zero off) [33m1168[2mms[22m[39m
+stderr | tests/ui/EffectRack.test.tsx > EffectRack ÔÇö flagship device shell contract (all three plugins) > fxeq: add Ôćĺ mount Ôćĺ collapse keeps mounted Ôćĺ expand Ôćĺ bypass flips state
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/EffectRack.test.tsx > EffectRack ÔÇö flagship device shell contract (all three plugins) > fxeq: add Ôćĺ mount Ôćĺ collapse keeps mounted Ôćĺ expand Ôćĺ bypass flips state
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/EffectRack.test.tsx > EffectRack ÔÇö flagship device shell contract (all three plugins) > ultina: add Ôćĺ mount Ôćĺ collapse keeps mounted Ôćĺ expand Ôćĺ bypass flips state
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/EffectRack.test.tsx > EffectRack ÔÇö flagship device shell contract (all three plugins) > ultina: add Ôćĺ mount Ôćĺ collapse keeps mounted Ôćĺ expand Ôćĺ bypass flips state
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/EffectRack.test.tsx > EffectRack ÔÇö flagship device shell contract (all three plugins) > ozvena: add Ôćĺ mount Ôćĺ collapse keeps mounted Ôćĺ expand Ôćĺ bypass flips state
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+ [32mÔťô[39m tests/ui/EffectRack.test.tsx [2m([22m[2m31 tests[22m[2m)[22m[33m 11062[2mms[22m[39m
+   [33m[2mÔťô[22m[39m EffectRack[2m > [22mexposes the flagship plugin suites in the add effect menu [33m764[2mms[22m[39m
+   [33m[2mÔťô[22m[39m EffectRack[2m > [22mkeeps an Ultina A/B snapshot when its editor is collapsed [33m786[2mms[22m[39m
+   [33m[2mÔťô[22m[39m EffectRack[2m > [22mA/B state lives in the document ÔÇö a full remount (reload equivalent) restores it [33m312[2mms[22m[39m
+   [33m[2mÔťô[22m[39m EffectRack ÔÇö FXEQ panel[2m > [22mmounts the EQ-paint panel: preset select, band chips, canvas [33m942[2mms[22m[39m
+   [33m[2mÔťô[22m[39m EffectRack ÔÇö FXEQ panel[2m > [22mexposes PRISM's sidechain source picker and records a source command [33m336[2mms[22m[39m
+   [33m[2mÔťô[22m[39m EffectRack ÔÇö FXEQ panel[2m > [22muses one persisted A/B controller and hydrates PRISM morph slots [33m340[2mms[22m[39m
+   [33m[2mÔťô[22m[39m EffectRack ÔÇö Ultina panel[2m > [22mmounts the module editor: chips in graph order + enable toggle [33m319[2mms[22m[39m
+   [33m[2mÔťô[22m[39m EffectRack ÔÇö Ultina panel[2m > [22menable toggle executes a dotted setUltinaParam [33m366[2mms[22m[39m
+   [33m[2mÔťô[22m[39m EffectRack ÔÇö Ultina panel[2m > [22mselecting a preset executes ONE bulk apply command [33m302[2mms[22m[39m
+   [33m[2mÔťô[22m[39m EffectRack ÔÇö Ultina panel[2m > [22mEQ module shows the 12-band editor with response sketch [33m421[2mms[22m[39m
+   [33m[2mÔťô[22m[39m UltinaPanel ÔÇö EQ band editor (direct render)[2m > [22mrenders the response sketch and band params when EQ is enabled [33m368[2mms[22m[39m
+   [33m[2mÔťô[22m[39m UltinaPanel ÔÇö PRO tools (delta / A/B / gain match)[2m > [22mDELTA and G-MATCH toggles execute global params [33m491[2mms[22m[39m
+   [33m[2mÔťô[22m[39m UltinaPanel ÔÇö PRO tools (delta / A/B / gain match)[2m > [22mA/B: STORE writes the active slot, clicking the other loads it as ONE gesture [33m760[2mms[22m[39m
+   [33m[2mÔťô[22m[39m UltinaPanel ÔÇö PRO tools (delta / A/B / gain match)[2m > [22mA/B exposes copy and clear controls without applying audio changes [33m618[2mms[22m[39m
+   [33m[2mÔťô[22m[39m EffectRack ÔÇö flagship device shell contract (all three plugins)[2m > [22mfxeq: add Ôćĺ mount Ôćĺ collapse keeps mounted Ôćĺ expand Ôćĺ bypass flips state [33m669[2mms[22m[39m
+   [33m[2mÔťô[22m[39m EffectRack ÔÇö flagship device shell contract (all three plugins)[2m > [22multina: add Ôćĺ mount Ôćĺ collapse keeps mounted Ôćĺ expand Ôćĺ bypass flips state [33m564[2mms[22m[39m
+   [33m[2mÔťô[22m[39m EffectRack ÔÇö flagship device shell contract (all three plugins)[2m > [22mozvena: add Ôćĺ mount Ôćĺ collapse keeps mounted Ôćĺ expand Ôćĺ bypass flips state [33m428[2mms[22m[39m
+ [32mÔťô[39m tests/gallery-server.test.ts [2m([22m[2m17 tests[22m[2m)[22m[33m 5888[2mms[22m[39m
+   [33m[2mÔťô[22m[39m gallery REST API[2m > [22mstarts empty and accepts a valid beat [33m304[2mms[22m[39m
+   [33m[2mÔťô[22m[39m gallery REST API[2m > [22mrate limits uploads per IP (10 per minute) [33m386[2mms[22m[39m
+   [33m[2mÔťô[22m[39m gallery REST API[2m > [22mrate limits moderation deletes per source IP [33m338[2mms[22m[39m
+   [33m[2mÔťô[22m[39m gallery flywheel: plays + remix chain[2m > [22mpersists plays across a server restart (debounced save flushes) [33m3309[2mms[22m[39m
+ [32mÔťô[39m tests/groove-commands.test.ts [2m([22m[2m17 tests[22m[2m)[22m[90m 253[2mms[22m[39m
+ [32mÔťô[39m tests/tempo-seam.test.ts [2m([22m[2m9 tests[22m[2m)[22m[33m 396[2mms[22m[39m
+ [32mÔťô[39m tests/note-commands.test.ts [2m([22m[2m14 tests[22m[2m)[22m[90m 115[2mms[22m[39m
+ [32mÔťô[39m tests/fxeq-prepare-hardening.test.ts [2m([22m[2m13 tests[22m[2m)[22m[33m 14301[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq reverb re-prepare capacity (P1 regression)[2m > [22mhall at 96 kHz after a 44.1 kHz prepare stays finite AND audible [33m552[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq reverb re-prepare capacity (P1 regression)[2m > [22m88.2 kHz and 192 kHz re-prepares stay finite for every reverb type [33m371[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq processor re-prepare lifecycle (all modules active)[2m > [22mre-prepare 44.1Ôćĺ96 kHz then reset is bit-identical to a fresh processor [33m2614[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq processor re-prepare lifecycle (all modules active)[2m > [22mre-prepare survives repeated toggling across sample rates [33m581[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq state round-trip (serialize Ôćĺ destroy Ôćĺ restore)[2m > [22mgetParameters() into a fresh processor reproduces identical audio [33m523[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq determinism and decay[2m > [22mtwo identically-driven processors produce bit-identical output [33m565[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq determinism and decay[2m > [22mreverb+delay tails decay under sustained silence [33m586[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq randomized fuzz (out-of-range values included)[2m > [22mrandom schema-range and beyond-range parameter sets stay finite and bounded [33m7596[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq randomized fuzz (out-of-range values included)[2m > [22mrapid automation bursts keep the processor finite [33m816[2mms[22m[39m
+ [32mÔťô[39m tests/velocity-layers.test.ts [2m([22m[2m15 tests[22m[2m | [22m[33m5 skipped[39m[2m)[22m[33m 1119[2mms[22m[39m
+   [33m[2mÔťô[22m[39m round-robin sample content[2m > [22mdeclares variations only for manifest bases with subtle, safe amounts [33m967[2mms[22m[39m
+ [32mÔťô[39m tests/ozvena-worklet-entry.test.ts [2m([22m[2m31 tests[22m[2m)[22m[33m 24524[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena worklet entry (message port Ôćö DSP core wiring)[2m > [22mregression: post-construction param updates reach the DSP core [33m2318[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena worklet entry (message port Ôćö DSP core wiring)[2m > [22minitial params via processorOptions reach the DSP core [33m915[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena worklet entry (message port Ôćö DSP core wiring)[2m > [22munknown params do not throw and do not corrupt the state root [33m421[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena worklet entry (message port Ôćö DSP core wiring)[2m > [22mregression: bpm message retimes the tempo-synced pre-delay [33m3861[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena worklet entry (message port Ôćö DSP core wiring)[2m > [22mregression: initial bpm rides processorOptions [33m1813[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena worklet entry (message port Ôćö DSP core wiring)[2m > [22mbpm messages clamp to the core's 20..300 range [33m1777[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena worklet entry (message port Ôćö DSP core wiring)[2m > [22mregression: paramAt events apply at their scheduled time, not on arrival [33m1257[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena worklet entry (message port Ôćö DSP core wiring)[2m > [22mparamAt events due in the past apply on the next block [33m723[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena worklet entry (message port Ôćö DSP core wiring)[2m > [22ma manual param cancels later paramAt events for the same id [33m1560[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena worklet entry (message port Ôćö DSP core wiring)[2m > [22mreset clears pending paramAt events [33m1502[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena worklet entry (message port Ôćö DSP core wiring)[2m > [22msequential paramAt events fire in order across blocks [33m1501[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena worklet entry (message port Ôćö DSP core wiring)[2m > [22mswitching factory IRs during playback stays finite, bounded and continuous (listening proxy) [33m1161[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena worklet entry ÔÇö precomputed IR spectra path[2m > [22mthe spectra path renders BIT-IDENTICAL audio to the legacy samples path [33m2985[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena worklet entry ÔÇö precomputed IR spectra path[2m > [22mthe consume-once blockSpectra handover keeps re-loads correct (finite render) [33m556[2mms[22m[39m
+stderr | tests/transport.test.ts > Transport > seek ignores NaN
+[transport] ignored non-finite or negative seek: NaN
+
+stderr | tests/transport.test.ts > Transport > seek ignores Infinity
+[transport] ignored non-finite or negative seek: Infinity
+
+stderr | tests/transport.test.ts > Transport > seek ignores negative ticks
+[transport] ignored non-finite or negative seek: -1000
+
+ [32mÔťô[39m tests/transport.test.ts [2m([22m[2m27 tests[22m[2m)[22m[90m 39[2mms[22m[39m
+stderr | tests/fxeq-paint-editor.test.tsx > fxeq panel ÔÇö crossover split drag > exposes and commits the sixth split on a six-band instance
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/fxeq-paint-editor.test.tsx > fxeq panel ÔÇö crossover split drag > drags a split: live preview during the move, ONE document commit on release
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/fxeq-paint-editor.test.tsx > fxeq panel ÔÇö crossover split drag > drags a split: live preview during the move, ONE document commit on release
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/fxeq-paint-editor.test.tsx > fxeq panel ÔÇö crossover split drag > commits the dragged value clamped against the schema range
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/fxeq-paint-editor.test.tsx > fxeq panel ÔÇö crossover split drag > commits the dragged value clamped against the schema range
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/fxeq-paint-editor.test.tsx > fxeq panel ÔÇö crossover split drag > uses the processor's effective monotonic splits for hit testing
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/fxeq-paint-editor.test.tsx > fxeq panel ÔÇö crossover split drag > uses the processor's effective monotonic splits for hit testing
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/fxeq-paint-editor.test.tsx > fxeq panel ÔÇö crossover split drag > a click (no handle grab) still selects the band under the pointer
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/fxeq-paint-editor.test.tsx > fxeq panel ÔÇö crossover split drag > a click (no handle grab) still selects the band under the pointer
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/fxeq-paint-editor.test.tsx > fxeq panel ÔÇö crossover split drag > a handle grab without movement does not change the band selection
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/fxeq-paint-editor.test.tsx > fxeq panel ÔÇö crossover split drag > a handle grab without movement does not change the band selection
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/fxeq-paint-editor.test.tsx > fxeq panel ÔÇö tempo-sync controls > renders DLY and MOD tempo sync as musical division selects
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/fxeq-paint-editor.test.tsx > fxeq panel ÔÇö band selection persistence > remembers the selected band per instance across remounts
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/fxeq-paint-editor.test.tsx > fxeq panel ÔÇö band selection persistence > remembers the selected band per instance across remounts
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+ [32mÔťô[39m tests/fxeq-paint-editor.test.tsx [2m([22m[2m18 tests[22m[2m)[22m[33m 4008[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq panel ÔÇö EQ response overlay math[2m > [22mwindow prediction matches the DSP's soloed band output [33m371[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq panel ÔÇö crossover split drag[2m > [22mexposes and commits the sixth split on a six-band instance [33m1430[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq panel ÔÇö crossover split drag[2m > [22ma click (no handle grab) still selects the band under the pointer [33m308[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq panel ÔÇö crossover split drag[2m > [22ma handle grab without movement does not change the band selection [33m328[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq panel ÔÇö band selection persistence[2m > [22mremembers the selected band per instance across remounts [33m669[2mms[22m[39m
+ [32mÔťô[39m tests/ultina-hardening3.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 906[2mms[22m[39m
+   [33m[2mÔťô[22m[39m ultina hardening #3 ÔÇö LUFS stale tracking[2m > [22mbypassed time arms the LUFS stale guard while metering is gated off [33m333[2mms[22m[39m
+   [33m[2mÔťô[22m[39m ultina hardening #3 ÔÇö phase sidechain correlation window[2m > [22mmulti-chunk blocks correlate identically to single-chunk blocks [33m528[2mms[22m[39m
+stderr | tests/ui/GalleryPage.test.tsx > gallery flywheel > FORK remembers the remix parent and opens the studio with remixOf
+Warning: An update to GalleryPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at GalleryPage (D:\pulse-forge\src\gallery\GalleryPage.tsx:17:49)
+
+ [32mÔťô[39m tests/ui/GalleryPage.test.tsx [2m([22m[2m12 tests[22m[2m)[22m[33m 2385[2mms[22m[39m
+   [33m[2mÔťô[22m[39m GalleryPage[2m > [22mrenders the feed as cards with Open in Forge links [33m365[2mms[22m[39m
+   [33m[2mÔťô[22m[39m GalleryPage[2m > [22mlets a visitor submit a moderation report without exposing reporter data [33m745[2mms[22m[39m
+ [32mÔťô[39m tests/fxeq-hardening2.test.ts [2m([22m[2m12 tests[22m[2m)[22m[33m 1021[2mms[22m[39m
+ [32mÔťô[39m tests/project-repository.test.ts [2m([22m[2m18 tests[22m[2m)[22m[90m 263[2mms[22m[39m
+ [32mÔťô[39m tests/effects.test.ts [2m([22m[2m49 tests[22m[2m | [22m[33m42 skipped[39m[2m)[22m[90m 193[2mms[22m[39m
+ [32mÔťô[39m tests/ozvena-ir-spectra.test.ts [2m([22m[2m13 tests[22m[2m)[22m[33m 4504[2mms[22m[39m
+   [33m[2mÔťô[22m[39m partitioned convolver ÔÇö precomputed spectra parity[2m > [22mprecomputed convolver output is bit-identical to the time-domain convolver (block=128) [33m636[2mms[22m[39m
+   [33m[2mÔťô[22m[39m partitioned convolver ÔÇö precomputed spectra parity[2m > [22mprecomputed convolver output is bit-identical to the time-domain convolver (block=333) [33m498[2mms[22m[39m
+   [33m[2mÔťô[22m[39m partitioned convolver ÔÇö precomputed spectra parity[2m > [22mprecomputed convolver output is bit-identical to the time-domain convolver (block=1024) [33m380[2mms[22m[39m
+   [33m[2mÔťô[22m[39m convolution engine ÔÇö loadIrPrecomputed parity[2m > [22mstereo IR: precomputed load output is bit-identical to loadIr [33m763[2mms[22m[39m
+   [33m[2mÔťô[22m[39m convolution engine ÔÇö loadIrPrecomputed parity[2m > [22mmono IR broadcast: precomputed load output is bit-identical to loadIr [33m756[2mms[22m[39m
+   [33m[2mÔťô[22m[39m convolution engine ÔÇö loadIrPrecomputed parity[2m > [22mtrue-stereo quad IR: precomputed load output is bit-identical to loadIr [33m667[2mms[22m[39m
+ [32mÔťô[39m tests/export/video.test.ts [2m([22m[2m8 tests[22m[2m)[22m[90m 62[2mms[22m[39m
+ [32mÔťô[39m tests/audio-engine-lifecycle.test.ts [2m([22m[2m8 tests[22m[2m)[22m[90m 49[2mms[22m[39m
+ [32mÔťô[39m tests/project-store.test.ts [2m([22m[2m21 tests[22m[2m)[22m[33m 395[2mms[22m[39m
+ [32mÔťô[39m tests/wavetable.test.ts [2m([22m[2m15 tests[22m[2m | [22m[33m4 skipped[39m[2m)[22m[33m 1937[2mms[22m[39m
+   [33m[2mÔťô[22m[39m period detection[2m > [22mfinds the fundamental of a sine, not a multiple [33m1056[2mms[22m[39m
+   [33m[2mÔťô[22m[39m period detection[2m > [22mreturns null for white noise below the confidence threshold [33m731[2mms[22m[39m
+ [32mÔťô[39m tests/ozvena-hardening2.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 2363[2mms[22m[39m
+   [33m[2mÔťô[22m[39m ozvena-core hardening #2 ÔÇö reflections tap crossfade[2m > [22ma 250Ôćĺ40Ôćĺ250 ms time sweep does not kill reflection taps [33m311[2mms[22m[39m
+   [33m[2mÔťô[22m[39m ozvena-core hardening #2 ÔÇö NaN-safe clamp + engine heal[2m > [22ma NaN attack parameter cannot permanently silence the hall/plate engines [33m431[2mms[22m[39m
+   [33m[2mÔťô[22m[39m ozvena-core hardening #2 ÔÇö processor output poison guard[2m > [22mthe final output stage never emits non-finite samples [33m1258[2mms[22m[39m
+ [32mÔťô[39m tests/midi-file.test.ts [2m([22m[2m11 tests[22m[2m)[22m[33m 912[2mms[22m[39m
+   [33m[2mÔťô[22m[39m SMF writer ÔÇö dense track robustness (import/export audit)[2m > [22mexports a very dense track without hitting the engine's spread-argument limit [33m677[2mms[22m[39m
+ [32mÔťô[39m tests/fxeq-crossover-quality.test.ts [2m([22m[2m12 tests[22m[2m)[22m[33m 1856[2mms[22m[39m
+   [33m[2mÔťô[22m[39m crossover order parameter[2m > [22mswitching order mid-stream stays finite (state recreation is safe) [33m300[2mms[22m[39m
+   [33m[2mÔťô[22m[39m allpass phase-EQ toggle + eco auto-off[2m > [22man eco band disables equalization exactly like the explicit toggle [33m313[2mms[22m[39m
+stderr | tests/snapshot-repository.test.ts > SnapshotRepository ÔÇö D.4 secondary index > skips one unreadable record instead of failing the whole history listing
+[snapshots] skipping unreadable snapshot projA:mu0pia1zvzcb: Error: transient row read failure
+    at SnapshotRepository.<anonymous> (D:\pulse-forge\tests\snapshot-repository.test.ts:206:34)
+    at SnapshotRepository.mockCall (file:///D:/pulse-forge/node_modules/@vitest/spy/dist/index.js:61:17)
+    at SnapshotRepository.get (file:///D:/pulse-forge/node_modules/tinyspy/dist/index.js:45:80)
+    at SnapshotRepository.loadManyByIds (D:\pulse-forge\src\persistence\SnapshotRepository.ts:219:33)
+    at SnapshotRepository.list (D:\pulse-forge\src\persistence\SnapshotRepository.ts:113:19)
+    at D:\pulse-forge\tests\snapshot-repository.test.ts:210:20
+    at file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:533:5
+    at runTest (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1056:11)
+    at runSuite (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1205:15)
+    at runSuite (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1205:15)
+
+stderr | tests/snapshot-repository.test.ts > SnapshotRepository ÔÇö D.4 secondary index > rebuilds around a poisoned indexed row after a reload
+[snapshots] skipping unreadable indexed snapshot projA:mu0pia2mfjkx: Error: poisoned snapshot
+    at SnapshotRepository.<anonymous> (D:\pulse-forge\tests\snapshot-repository.test.ts:221:34)
+    at SnapshotRepository.mockCall (file:///D:/pulse-forge/node_modules/@vitest/spy/dist/index.js:61:17)
+    at SnapshotRepository.get (file:///D:/pulse-forge/node_modules/tinyspy/dist/index.js:45:80)
+    at SnapshotRepository.rebuildIndex (D:\pulse-forge\src\persistence\SnapshotRepository.ts:264:33)
+    at SnapshotRepository.list (D:\pulse-forge\src\persistence\SnapshotRepository.ts:107:5)
+    at D:\pulse-forge\tests\snapshot-repository.test.ts:225:20
+    at file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:533:5
+    at runTest (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1056:11)
+    at runSuite (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1205:15)
+    at runSuite (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1205:15)
+
+ [32mÔťô[39m tests/snapshot-repository.test.ts [2m([22m[2m10 tests[22m[2m | [22m[33m1 skipped[39m[2m)[22m[90m 204[2mms[22m[39m
+ [32mÔťô[39m tests/ui/controls.test.tsx [2m([22m[2m20 tests[22m[2m)[22m[33m 2490[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Slider[2m > [22mhas correct aria attributes [33m335[2mms[22m[39m
+   [33m[2mÔťô[22m[39m DragNumber[2m > [22mallows precise typed entry, including decimal comma, and clamps it [33m512[2mms[22m[39m
+ [32mÔťô[39m tests/registry-hardening.test.ts [2m([22m[2m10 tests[22m[2m)[22m[90m 55[2mms[22m[39m
+ [32mÔťô[39m tests/fxeq-host-integration.test.ts [2m([22m[2m15 tests[22m[2m)[22m[90m 22[2mms[22m[39m
+ [32mÔťô[39m tests/ultina-contract-params.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 1022[2mms[22m[39m
+   [33m[2mÔťô[22m[39m ultina contract params ÔÇö exciter.preEmphasisMode[2m > [22mthe ladder is LIVE: every depth changes the output [33m416[2mms[22m[39m
+ [32mÔťô[39m tests/stress.test.ts [2m([22m[2m9 tests[22m[2m)[22m[33m 2093[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Stress tests ÔÇö large projects[2m > [22mhandles 256 undo steps without crash [33m799[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Stress tests ÔÇö large projects[2m > [22mhandles rapid undo/redo without crash [33m345[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Stress tests ÔÇö dense scheduler windows (beat engine audit)[2m > [22mschedules a 24-track ├Ś 64-step window (with ratchets + probability + swing) under budget [33m479[2mms[22m[39m
+ [32mÔťô[39m tests/macro-targets.test.ts [2m([22m[2m9 tests[22m[2m | [22m[33m6 skipped[39m[2m)[22m[90m 74[2mms[22m[39m
+ [32mÔťô[39m tests/collab.test.ts [2m([22m[2m17 tests[22m[2m)[22m[90m 290[2mms[22m[39m
+ [32mÔťô[39m tests/ultina-ab-persistence.test.ts [2m([22m[2m12 tests[22m[2m)[22m[90m 229[2mms[22m[39m
+ [32mÔťô[39m tests/midi/MidiInput.test.ts [2m([22m[2m15 tests[22m[2m)[22m[90m 64[2mms[22m[39m
+[90mstdout[2m | tests/wtvoice.test.ts[2m > [22m[2mwtvoice worklet engine[2m > [22m[2mrenders a bounded, deterministic, sample-accurate voice
+[22m[39mDBG run: {} notes: [33m1[39m nowAfter: 0.000
+DBG run: {} notes: [33m1[39m nowAfter: 0.000
+
+[90mstdout[2m | tests/wtvoice.test.ts[2m > [22m[2mwtvoice worklet engine[2m > [22m[2mreleases and dies after noteOff
+[22m[39mDBG run: {} notes: [33m1[39m nowAfter: 0.000
+DBG peak whole: 0.2328 peak 0-0.3s: 0.2328
+
+[90mstdout[2m | tests/wtvoice.test.ts[2m > [22m[2mwtvoice worklet engine[2m > [22m[2mmod matrix: LFO -> cutoff actually modulates the filter
+[22m[39mDBG run: {"cutoff":1500,"resonance":0.6,"modASrc":1,"modADst":1,"modAAmt":0} notes: [33m1[39m nowAfter: 0.000
+DBG run: {"cutoff":1500,"resonance":0.6,"modASrc":1,"modADst":1,"modAAmt":1} notes: [33m1[39m nowAfter: 0.000
+
+[90mstdout[2m | tests/wtvoice.test.ts[2m > [22m[2mwtvoice worklet engine[2m > [22m[2mmod matrix: env -> morph sweeps the timbre over the note
+[22m[39mDBG run: {"morph":0.5,"modASrc":0,"modADst":0,"modAAmt":0} notes: [33m1[39m nowAfter: 0.000
+DBG run: {"morph":0.5,"modASrc":0,"modADst":0,"modAAmt":1} notes: [33m1[39m nowAfter: 0.000
+
+[90mstdout[2m | tests/wtvoice.test.ts[2m > [22m[2mwtvoice worklet engine[2m > [22m[2mper-voice isolation: pressure on one note leaves the other untouched
+[22m[39mDBG run: {"cutoff":800,"modASrc":3,"modADst":1,"modAAmt":1} notes: [33m2[39m nowAfter: 0.000
+DBG run: {"cutoff":800,"modASrc":3,"modADst":1,"modAAmt":1} notes: [33m2[39m nowAfter: 0.000
+
+[90mstdout[2m | tests/wtvoice.test.ts[2m > [22m[2mwtvoice worklet engine[2m > [22m[2mscan engine: position truly traverses the table
+[22m[39mDBG run: {"morph":0,"scanRate":0.8} notes: [33m1[39m nowAfter: 0.000
+
+ [32mÔťô[39m tests/wtvoice.test.ts [2m([22m[2m7 tests[22m[2m)[22m[33m 1427[2mms[22m[39m
+   [33m[2mÔťô[22m[39m wtvoice worklet engine[2m > [22mrenders a bounded, deterministic, sample-accurate voice [33m488[2mms[22m[39m
+   [33m[2mÔťô[22m[39m wtvoice worklet engine[2m > [22mmod matrix: LFO -> cutoff actually modulates the filter [33m350[2mms[22m[39m
+ [32mÔťô[39m tests/project-invariants.test.ts [2m([22m[2m15 tests[22m[2m)[22m[90m 116[2mms[22m[39m
+ [32mÔťô[39m tests/ozvena-hardening.test.ts [2m([22m[2m30 tests[22m[2m)[22m[33m 53829[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena hardening ÔÇö parameter boundary validation (message port)[2m > [22ma NaN numeric param is dropped and the previous value survives [33m802[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena hardening ÔÇö parameter boundary validation (message port)[2m > [22mregression: a NaN enum index no longer throws inside the audio path [33m680[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena hardening ÔÇö parameter boundary validation (message port)[2m > [22mparamAt with a NaN value is dropped; valid paramAt events still land [33m843[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena hardening ÔÇö parameter boundary validation (message port)[2m > [22mNaN initial params via processorOptions are dropped too [33m454[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena hardening ÔÇö global gain clamping (documented ranges)[2m > [22mextreme global.outputGainDb=1000000000 stays finite and audible (clamped, not muted) [33m535[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena hardening ÔÇö global gain clamping (documented ranges)[2m > [22mextreme global.levelDb=1000000000 stays finite and audible (clamped, not muted) [33m619[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena hardening ÔÇö global gain clamping (documented ranges)[2m > [22mextreme global.inputGainDb=1000000000 stays finite and audible (clamped, not muted) [33m622[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena hardening ÔÇö shimmer feedback stability (FDN loop guard)[2m > [22mE2 at max shimmer + longest decay decays instead of running away [33m5595[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena hardening ÔÇö shimmer feedback stability (FDN loop guard)[2m > [22mE3 at max shimmer + 24 s decay decays instead of running away [33m6531[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena hardening ÔÇö shimmer feedback stability (FDN loop guard)[2m > [22mboth engines at max shimmer stay finite with a decaying tail [33m11633[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena hardening ÔÇö shimmer feedback stability (FDN loop guard)[2m > [22mthe guard is a no-op inside the stable region (sonic preservation) [33m3893[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena hardening ÔÇö shimmer feedback stability (FDN loop guard)[2m > [22mzero shimmer is untouched: default-state tail energy band [33m3840[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena hardening ÔÇö sample-rate robustness[2m > [22mat 88200 Hz the output stays finite, the tail lands, and latency scales [33m3535[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena hardening ÔÇö sample-rate robustness[2m > [22mat 96000 Hz the output stays finite, the tail lands, and latency scales [33m3935[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena hardening ÔÇö quality switches are scalar-only on the audio thread[2m > [22mcycling all four quality tiers updates the reported latency and stays finite [33m2625[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena hardening ÔÇö quality switches are scalar-only on the audio thread[2m > [22mrapid quality flicker while rendering keeps the output finite and bounded [33m1868[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena hardening ÔÇö quality switches are scalar-only on the audio thread[2m > [22mswitching quality mid-tail does not click via an envelope reset (gain carried) [33m883[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena hardening ÔÇö reset() restores a freshly-prepared processor[2m > [22mregression: an engaged auto-duck is released by reset() [33m2741[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena hardening ÔÇö reset() restores a freshly-prepared processor[2m > [22mregression: a lingering transient-shaper reduction is cleared by reset() [33m365[2mms[22m[39m
+ [32mÔťô[39m tests/pack-groove.test.ts [2m([22m[2m11 tests[22m[2m)[22m[90m 111[2mms[22m[39m
+ [32mÔťô[39m tests/fxeq-env-routing.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 10325[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq envelope routing (roadmap Q6)[2m > [22mdefault (target 0) renders bit-identically to a processor without env params [33m385[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq envelope routing (roadmap Q6)[2m > [22mdepth back to 0 restores the base ÔÇö output converges back to the reference [33m2242[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq envelope routing (roadmap Q6)[2m > [22mevery target at full depth stays deterministic, finite and bounded [33m7209[2mms[22m[39m
+ [32mÔťô[39m tests/undo-redo-integrity.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 103[2mms[22m[39m
+ [32mÔťô[39m tests/ultina-parity.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 2727[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ultina render parity[2m > [22mworklet entry output is bit-identical to the raw processor [33m820[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ultina render parity[2m > [22m512-sample host blocks render identically to 128-sample blocks [33m683[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ultina render parity[2m > [22mentry driven with a 256-sample quantum renders identically to 128 [33m385[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ultina render parity[2m > [22mtrueEnvelope boundary artifact is fixed to an inaudible residual (regression) [33m821[2mms[22m[39m
+ [32mÔťô[39m tests/ultina-extremes.test.ts [2m([22m[2m36 tests[22m[2m)[22m[33m 3081[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ultina numeric stress ÔÇö parameter extremes[2m > [22mexciter survives all-max [33m406[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ultina numeric stress ÔÇö parameter extremes[2m > [22mexciter survives alternating extremes [33m425[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ultina numeric stress ÔÇö poisoned audio[2m > [22mNaN/Inf samples are sanitized and state re-converges after the poison block [33m301[2mms[22m[39m
+ [32mÔťô[39m tests/collab-validation.test.ts [2m([22m[2m13 tests[22m[2m)[22m[33m 320[2mms[22m[39m
+ [32mÔťô[39m tests/groupTracks.test.ts [2m([22m[2m16 tests[22m[2m)[22m[90m 54[2mms[22m[39m
+ [32mÔťô[39m tests/granular.test.ts [2m([22m[2m11 tests[22m[2m | [22m[33m10 skipped[39m[2m)[22m[90m 7[2mms[22m[39m
+ [32mÔťô[39m tests/ui/TopBar.test.tsx [2m([22m[2m17 tests[22m[2m)[22m[33m 4315[2mms[22m[39m
+   [33m[2mÔťô[22m[39m TopBar[2m > [22mcalls onOpenBrowser when PROJECTS clicked [33m639[2mms[22m[39m
+   [33m[2mÔťô[22m[39m TopBar[2m > [22mcycles count-in, toggles pre-roll and toggles the content metronome [33m1136[2mms[22m[39m
+   [33m[2mÔťô[22m[39m TopBar[2m > [22mmoves lower-priority controls into an accessible overflow menu [33m1175[2mms[22m[39m
+ [32mÔťô[39m tests/soak-session.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 1148[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Long-session soak ÔÇö ProjectStore undo/redo cap (A01 invariant)[2m > [22m1000 alternating edit/undo operations keep the undo stack at the 256 cap [33m588[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Long-session soak ÔÇö normalizeProject is allocation-clean[2m > [22m200 normalizeProject cycles on the same document never share arrays [33m524[2mms[22m[39m
+ [32mÔťô[39m tests/fx-node-dispose.test.ts [2m([22m[2m7 tests[22m[2m)[22m[33m 9780[2mms[22m[39m
+   [33m[2mÔťô[22m[39m ozvena node ships PRECOMPUTED IR spectra (no time-domain payloads)[2m > [22mfactory re-delivery reuses main-thread spectra but mints fresh mutable rings [33m9524[2mms[22m[39m
+ [32mÔťô[39m tests/templates.test.ts [2m([22m[2m117 tests[22m[2m)[22m[33m 525[2mms[22m[39m
+ [32mÔťô[39m tests/presets.test.ts [2m([22m[2m14 tests[22m[2m)[22m[33m 422[2mms[22m[39m
+stderr | tests/audio-worklets.test.ts > AudioWorklet loader > never rejects and keeps fallback on addModule failure
+[audio-worklets] module load failed, using fallback implementations: Error: 404 module not found
+    at Object.addModule (D:\pulse-forge\tests\audio-worklets.test.ts:102:13)
+    at Module.loadCoreWorklets (D:\pulse-forge\src\audio-worklets\loader.ts:94:22)
+    at D:\pulse-forge\tests\audio-worklets.test.ts:104:18
+    at file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:146:14
+    at file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:533:11
+    at runWithTimeout (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:39:7)
+    at runTest (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1056:17)
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at runSuite (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1205:15)
+    at runSuite (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1205:15)
+
+ [32mÔťô[39m tests/audio-worklets.test.ts [2m([22m[2m14 tests[22m[2m)[22m[90m 85[2mms[22m[39m
+ [32mÔťô[39m tests/ui/remote-cursors.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[33m 1833[2mms[22m[39m
+   [33m[2mÔťô[22m[39m sequencer remote cursors[2m > [22mrenders a colored marker on the cell a remote user points at [33m1097[2mms[22m[39m
+   [33m[2mÔťô[22m[39m sequencer remote cursors[2m > [22mpublishes the hovered cell and clears on leaving the sequencer [33m370[2mms[22m[39m
+[90mstdout[2m | tests/fxeq-performance-gates.test.ts[2m > [22m[2mfxeq real-time performance gate[2m > [22m[2mkeeps a fully-loaded 6-band instance within the calibrated cost ratio
+[22m[39m[fxeq-perf] passthrough=269┬Ás (p95 605) fully-loaded=4287┬Ás (p95 6480) ÔÇö ratios 15.9/10.7 (budget 22/25)
+
+[90mstdout[2m | tests/fxeq-performance-gates.test.ts[2m > [22m[2mfxeq real-time performance gate[2m > [22m[2mloads every factory preset (83) within the calibrated budget
+[22m[39m[fxeq-perf] worst loadParameters: aggressive-drums 1296┬Ás = 4.8├Ś passthrough (budget 35├Ś)
+
+[90mstdout[2m | tests/fxeq-performance-gates.test.ts[2m > [22m[2mfxeq real-time performance gate[2m > [22m[2mkeeps an active full-state morph within the self-calibrated budget
+[22m[39m[fxeq-perf] morph: idle=276┬Ás morphing=532┬Ás (1.92├Ś, budget 2.4├Ś)
+
+ [32mÔťô[39m tests/fxeq-performance-gates.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 26250[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq real-time performance gate[2m > [22mkeeps a fully-loaded 6-band instance within the calibrated cost ratio [33m20643[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq real-time performance gate[2m > [22mloads every factory preset (83) within the calibrated budget [33m1953[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq real-time performance gate[2m > [22mkeeps an active full-state morph within the self-calibrated budget [33m3651[2mms[22m[39m
+ [32mÔťô[39m tests/fxeq-stale-state.test.ts [2m([22m[2m9 tests[22m[2m)[22m[33m 1137[2mms[22m[39m
+ [32mÔťô[39m tests/modulators.test.ts [2m([22m[2m16 tests[22m[2m)[22m[90m 89[2mms[22m[39m
+ [32mÔťô[39m tests/arrangement-variations.test.ts [2m([22m[2m10 tests[22m[2m)[22m[90m 99[2mms[22m[39m
+ [32mÔťô[39m tests/fxeq-adversarial.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 3370[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq adversarial sweep[2m > [22msurvives rapid module/band/mute toggle spam under signal with finite output [33m1847[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq adversarial sweep[2m > [22mhandles predelay shrink mid-stream without stale clicks or NaN (reverb cursor clamp) [33m356[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq adversarial sweep[2m > [22mtoggle paths stay finite across sample rates (44.1/48/88.2/96 kHz) [33m774[2mms[22m[39m
+ [32mÔťô[39m tests/ai-correctness.test.ts [2m([22m[2m12 tests[22m[2m)[22m[90m 71[2mms[22m[39m
+ [32mÔťô[39m tests/freeze.test.ts [2m([22m[2m15 tests[22m[2m)[22m[90m 56[2mms[22m[39m
+ [32mÔťô[39m tests/fxeq-morph.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 673[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq A/B morph (precompiled routing)[2m > [22mleaves a fully-routed end state ÔÇö reset(excitation) matches a fresh reference [33m408[2mms[22m[39m
+ [32mÔťô[39m tests/pattern-features.test.ts [2m([22m[2m7 tests[22m[2m)[22m[90m 101[2mms[22m[39m
+ [32mÔťô[39m tests/fxeq-tempo-sync.test.ts [2m([22m[2m9 tests[22m[2m)[22m[33m 1492[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq delay tempo sync[2m > [22mevery sync division lands within the buffer without NaN [33m1277[2mms[22m[39m
+ [32mÔťô[39m tests/save-lifecycle.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 14[2mms[22m[39m
+ [32mÔťô[39m tests/autosave-debouncer.test.ts [2m([22m[2m8 tests[22m[2m)[22m[90m 50[2mms[22m[39m
+stderr | tests/ui/UltinaPanel.presets.test.tsx > UltinaPanel ÔÇö user presets > SAVE stores the full params map; it appears under USER and applies on select
+Warning: The current testing environment is not configured to support act(...)
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+ [32mÔťô[39m tests/fxeq-band-eq.test.ts [2m([22m[2m9 tests[22m[2m)[22m[33m 900[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq band EQ module[2m > [22mrendering is deterministic across instances [33m358[2mms[22m[39m
+stderr | tests/ui/UltinaPanel.presets.test.tsx > UltinaPanel ÔÇö user presets > SAVE stores the full params map; it appears under USER and applies on select
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/UltinaPanel.presets.test.tsx > UltinaPanel ÔÇö user presets > SAVE stores the full params map; it appears under USER and applies on select
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/UltinaPanel.presets.test.tsx > UltinaPanel ÔÇö user presets > SAVE stores the full params map; it appears under USER and applies on select
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/UltinaPanel.presets.test.tsx > UltinaPanel ÔÇö user presets > SAVE stores the full params map; it appears under USER and applies on select
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/UltinaPanel.presets.test.tsx > UltinaPanel ÔÇö user presets > SAVE stores the full params map; it appears under USER and applies on select
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/UltinaPanel.presets.test.tsx > UltinaPanel ÔÇö user presets > DEL removes a user preset after confirmation
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/UltinaPanel.presets.test.tsx > UltinaPanel ÔÇö user presets > DEL removes a user preset after confirmation
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/UltinaPanel.presets.test.tsx > UltinaPanel ÔÇö user presets > DEL removes a user preset after confirmation
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/UltinaPanel.presets.test.tsx > UltinaPanel ÔÇö user presets > DEL removes a user preset after confirmation
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/UltinaPanel.presets.test.tsx > UltinaPanel ÔÇö user presets > DEL removes a user preset after confirmation
+Warning: The current testing environment is not configured to support act(...)
+Warning: The current testing environment is not configured to support act(...)
+Warning: The current testing environment is not configured to support act(...)
+
+stderr | tests/ui/UltinaPanel.presets.test.tsx > UltinaPanel ÔÇö user presets > SAVE with a cancelled prompt writes nothing
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/UltinaPanel.presets.test.tsx > UltinaPanel ÔÇö user presets > SAVE with a cancelled prompt writes nothing
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/UltinaPanel.presets.test.tsx > UltinaPanel ÔÇö user presets > SAVE with a cancelled prompt writes nothing
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/UltinaPanel.presets.test.tsx > UltinaPanel ÔÇö user presets > a failed preset save surfaces an error instead of an unhandled rejection
+Warning: The current testing environment is not configured to support act(...)
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/UltinaPanel.presets.test.tsx > UltinaPanel ÔÇö user presets > a failed preset save surfaces an error instead of an unhandled rejection
+[UltinaPanel] preset save failed: Error: QuotaExceededError: storage full
+    at D:\pulse-forge\tests\ui\UltinaPanel.presets.test.tsx:114:26
+    at file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:146:14
+    at file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:533:11
+    at runWithTimeout (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:39:7)
+    at runTest (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1056:17)
+    at runSuite (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1205:15)
+    at runSuite (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1205:15)
+    at runFiles (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1262:5)
+    at startTests (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1271:3)
+    at file:///D:/pulse-forge/node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11
+Warning: The current testing environment is not configured to support act(...)
+Warning: The current testing environment is not configured to support act(...)
+
+ [32mÔťô[39m tests/intent-binding.test.ts [2m([22m[2m7 tests[22m[2m)[22m[90m 166[2mms[22m[39m
+stderr | tests/ui/UltinaPanel.presets.test.tsx > UltinaPanel ÔÇö user presets > a failed preset save surfaces an error instead of an unhandled rejection
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+ [32mÔťô[39m tests/fxeq-rack-contract.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 135[2mms[22m[39m
+stderr | tests/ui/UltinaPanel.presets.test.tsx > UltinaPanel ÔÇö user presets > a failed preset delete surfaces an error and keeps the preset selected
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/UltinaPanel.presets.test.tsx > UltinaPanel ÔÇö user presets > a failed preset delete surfaces an error and keeps the preset selected
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/UltinaPanel.presets.test.tsx > UltinaPanel ÔÇö user presets > a failed preset delete surfaces an error and keeps the preset selected
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/UltinaPanel.presets.test.tsx > UltinaPanel ÔÇö user presets > a failed preset delete surfaces an error and keeps the preset selected
+[UltinaPanel] preset delete failed: Error: db closed
+    at D:\pulse-forge\tests\ui\UltinaPanel.presets.test.tsx:148:94
+    at file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:533:5
+    at runTest (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1056:11)
+    at runSuite (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1205:15)
+    at runSuite (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1205:15)
+    at runFiles (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1262:5)
+    at startTests (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1271:3)
+    at file:///D:/pulse-forge/node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11
+    at withEnv (file:///D:/pulse-forge/node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)
+    at run (file:///D:/pulse-forge/node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:112:3)
+Warning: The current testing environment is not configured to support act(...)
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/UltinaPanel.presets.test.tsx > UltinaPanel ÔÇö user presets > a failed preset delete surfaces an error and keeps the preset selected
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/UltinaPanel.presets.test.tsx > UltinaPanel ÔÇö factory presets > resolves factory options by preset ID ÔÇö duplicate display names stay distinct
+Warning: An update to UltinaPanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at UltinaPanel (D:\pulse-forge\src\ui\UltinaPanel.tsx:61:3)
+
+ [32mÔťô[39m tests/ui/UltinaPanel.presets.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[33m 3542[2mms[22m[39m
+   [33m[2mÔťô[22m[39m UltinaPanel ÔÇö user presets[2m > [22mSAVE stores the full params map; it appears under USER and applies on select [33m1502[2mms[22m[39m
+   [33m[2mÔťô[22m[39m UltinaPanel ÔÇö user presets[2m > [22mDEL removes a user preset after confirmation [33m671[2mms[22m[39m
+   [33m[2mÔťô[22m[39m UltinaPanel ÔÇö user presets[2m > [22mSAVE with a cancelled prompt writes nothing [33m454[2mms[22m[39m
+   [33m[2mÔťô[22m[39m UltinaPanel ÔÇö user presets[2m > [22ma failed preset delete surfaces an error and keeps the preset selected [33m536[2mms[22m[39m
+ [32mÔťô[39m tests/granular-voice.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 807[2mms[22m[39m
+ [32mÔťô[39m tests/performance-hardening.test.ts [2m([22m[2m8 tests[22m[2m)[22m[90m 45[2mms[22m[39m
+ [32mÔťô[39m tests/customisation.test.ts [2m([22m[2m16 tests[22m[2m)[22m[90m 87[2mms[22m[39m
+ [32mÔťô[39m tests/plock-length-export.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 71[2mms[22m[39m
+stderr | tests/ui/midi-io.test.tsx > ExportPanel MIDI export > downloads the active pattern as .mid
+Not implemented: navigation to another Document
+
+ [32mÔťô[39m tests/ui/midi-io.test.tsx [2m([22m[2m7 tests[22m[2m)[22m[33m 1369[2mms[22m[39m
+   [33m[2mÔťô[22m[39m PatternBar MIDI import[2m > [22mexposes explicit grid and scale quantize actions [33m775[2mms[22m[39m
+ [32mÔťô[39m tests/fxeq-crossover-order.test.ts [2m([22m[2m8 tests[22m[2m)[22m[90m 164[2mms[22m[39m
+ [32mÔťô[39m tests/ultina-samplerates.test.ts [2m([22m[2m12 tests[22m[2m)[22m[33m 2425[2mms[22m[39m
+   [33m[2mÔťô[22m[39m CrossoverNetwork allpass sum across sample rates[2m > [22m96000 Hz: 2-band and 3-band sums keep a steady tone's amplitude [33m370[2mms[22m[39m
+   [33m[2mÔťô[22m[39m UltinaProcessor loudness + dynamics across sample rates[2m > [22m44100 Hz: Ôłĺ23 dBFS stereo tone reads Ôëł Ôłĺ23 LUFS through the full processor [33m380[2mms[22m[39m
+   [33m[2mÔťô[22m[39m UltinaProcessor loudness + dynamics across sample rates[2m > [22m96000 Hz: Ôłĺ23 dBFS stereo tone reads Ôëł Ôłĺ23 LUFS through the full processor [33m419[2mms[22m[39m
+ [32mÔťô[39m tests/midi-creative.test.ts [2m([22m[2m9 tests[22m[2m)[22m[90m 33[2mms[22m[39m
+ [32mÔťô[39m tests/offline-parity.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 13[2mms[22m[39m
+ [32mÔťô[39m tests/pad-mod.test.ts [2m([22m[2m6 tests[22m[2m | [22m[33m3 skipped[39m[2m)[22m[90m 34[2mms[22m[39m
+stderr | tests/ui/new-instruments.test.tsx > Inspector: wavetable track > shows the wavetable source browser, preview canvas and params
+Warning: An update to SampleBrowser inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at SampleBrowser (D:\pulse-forge\src\ui\SampleBrowser.tsx:19:3)
+    at aside
+    at Inspector (D:\pulse-forge\src\ui\Inspector.tsx:53:3)
+
+ [32mÔťô[39m tests/assist.test.ts [2m([22m[2m7 tests[22m[2m)[22m[90m 60[2mms[22m[39m
+stderr | tests/ui/new-instruments.test.tsx > Inspector: granular track > shows the grain source browser, preview canvas and params
+Warning: An update to SampleBrowser inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at SampleBrowser (D:\pulse-forge\src\ui\SampleBrowser.tsx:19:3)
+    at aside
+    at Inspector (D:\pulse-forge\src\ui\Inspector.tsx:53:3)
+
+ [32mÔťô[39m tests/ui/new-instruments.test.tsx [2m([22m[2m7 tests[22m[2m)[22m[33m 1394[2mms[22m[39m
+   [33m[2mÔťô[22m[39m TrackTabs: new instrument options[2m > [22mdispatches createInstrumentTrack with the granular kind [33m406[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Inspector: wavetable track[2m > [22mkeeps the first screen focused and exposes the full registry in advanced mode [33m549[2mms[22m[39m
+ [32mÔťô[39m tests/fx-node-latency.test.ts [2m([22m[2m7 tests[22m[2m)[22m[90m 21[2mms[22m[39m
+ [32mÔťô[39m tests/rank-candidates.test.ts [2m([22m[2m7 tests[22m[2m)[22m[90m 120[2mms[22m[39m
+ [32mÔťô[39m tests/browser-compat.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 106[2mms[22m[39m
+ [32mÔťô[39m tests/kweighting.test.ts [2m([22m[2m10 tests[22m[2m)[22m[33m 467[2mms[22m[39m
+ [32mÔťô[39m tests/collab-contract-parity.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 199[2mms[22m[39m
+ [32mÔťô[39m tests/ui/command-palette.test.tsx [2m([22m[2m13 tests[22m[2m)[22m[33m 1586[2mms[22m[39m
+   [33m[2mÔťô[22m[39m PaletteOverlay[2m > [22mlists actions with binding hints; typing filters [33m672[2mms[22m[39m
+   [33m[2mÔťô[22m[39m PaletteOverlay[2m > [22marrow keys move the selection; first result is preselected [33m489[2mms[22m[39m
+ [32mÔťô[39m tests/fxeq-ozvena-biquad-hardening.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 1802[2mms[22m[39m
+   [33m[2mÔťô[22m[39m full fxeq processor: poisoned input block does not kill the chain[2m > [22mstays audible after a NaN-contaminated block (input scrub + guards) [33m384[2mms[22m[39m
+   [33m[2mÔťô[22m[39m full ozvena processor: poisoned input block does not kill the wet path[2m > [22mwet output recovers after a NaN-contaminated block [33m1174[2mms[22m[39m
+ [32mÔťô[39m tests/services-close-race.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 970[2mms[22m[39m
+   [33m[2mÔťô[22m[39m openProject close-race guards[2m > [22mkeeps the engine pointed at the NEW project when the old restore lands after a switch [33m310[2mms[22m[39m
+ [32mÔťô[39m tests/collab-transport.test.ts [2m([22m[2m10 tests[22m[2m)[22m[33m 731[2mms[22m[39m
+ [32mÔťô[39m tests/export/scene-automation-render.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 42[2mms[22m[39m
+ [32mÔťô[39m tests/ux-audit.test.ts [2m([22m[2m8 tests[22m[2m)[22m[90m 40[2mms[22m[39m
+stderr | tests/curated-samples.test.ts > loadCuratedLayer ÔÇö same-id override with synthesized fallback > a decode failure is isolated ÔÇö other files still land
+[curated] failed to load factory.kick.deep.wav: Error: corrupt wav
+    at decode (D:\pulse-forge\tests\curated-samples.test.ts:69:29)
+    at worker (D:\pulse-forge\src\sample-library\curated.ts:105:30)
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async Promise.all (index 0)
+    at Module.loadCuratedLayer (D:\pulse-forge\src\sample-library\curated.ts:115:3)
+    at D:\pulse-forge\tests\curated-samples.test.ts:72:20
+    at file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:533:5
+    at runTest (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1056:11)
+    at runSuite (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1205:15)
+    at runSuite (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1205:15)
+
+stderr | tests/curated-samples.test.ts > loadCuratedLayer ÔÇö same-id override with synthesized fallback > curatedReadyWithin resolves after the layer (or the timeout) without hanging
+[curated] failed to load factory.kick.deep.wav: TypeError: Failed to parse URL from /samples/factory.kick.deep.wav
+    at node:internal/deps/undici/undici:15845:13
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at worker (D:\pulse-forge\src\sample-library\curated.ts:92:26)
+    at async Promise.all (index 0)
+    at loadCuratedLayer (D:\pulse-forge\src\sample-library\curated.ts:115:3)
+    at Module.curatedReadyWithin (D:\pulse-forge\src\sample-library\curated.ts:145:3)
+    at D:\pulse-forge\tests\curated-samples.test.ts:112:5
+    at file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:533:5
+    at runTest (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1056:11)
+    at runSuite (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1205:15) {
+  [cause]: TypeError: Invalid URL: /samples/factory.kick.deep.wav
+      at new URLImpl (D:\pulse-forge\node_modules\whatwg-url\lib\URL-impl.js:21:13)
+      at Object.exports.setup (D:\pulse-forge\node_modules\whatwg-url\lib\URL.js:54:12)
+      at new URL (D:\pulse-forge\node_modules\whatwg-url\lib\URL.js:115:22)
+      at new Request (node:internal/deps/undici/undici:10413:25)
+      at fetch (node:internal/deps/undici/undici:11325:25)
+      at fetch (node:internal/deps/undici/undici:15843:10)
+      at fetch (node:internal/bootstrap/web/exposed-window-or-worker:83:12)
+      at D:\pulse-forge\src\sample-library\curated.ts:80:88
+      at worker (D:\pulse-forge\src\sample-library\curated.ts:92:32)
+      at Array.from (<anonymous>)
+}
+[curated] failed to load factory.kick.punch.wav: TypeError: Failed to parse URL from /samples/factory.kick.punch.wav
+    at node:internal/deps/undici/undici:15845:13
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at worker (D:\pulse-forge\src\sample-library\curated.ts:92:26)
+    at async Promise.all (index 1)
+    at loadCuratedLayer (D:\pulse-forge\src\sample-library\curated.ts:115:3)
+    at Module.curatedReadyWithin (D:\pulse-forge\src\sample-library\curated.ts:145:3)
+    at D:\pulse-forge\tests\curated-samples.test.ts:112:5
+    at file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:533:5
+    at runTest (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1056:11)
+    at runSuite (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1205:15) {
+  [cause]: TypeError: Invalid URL: /samples/factory.kick.punch.wav
+      at new URLImpl (D:\pulse-forge\node_modules\whatwg-url\lib\URL-impl.js:21:13)
+      at Object.exports.setup (D:\pulse-forge\node_modules\whatwg-url\lib\URL.js:54:12)
+      at new URL (D:\pulse-forge\node_modules\whatwg-url\lib\URL.js:115:22)
+      at new Request (node:internal/deps/undici/undici:10413:25)
+      at fetch (node:internal/deps/undici/undici:11325:25)
+      at fetch (node:internal/deps/undici/undici:15843:10)
+      at fetch (node:internal/bootstrap/web/exposed-window-or-worker:83:12)
+      at D:\pulse-forge\src\sample-library\curated.ts:80:88
+      at worker (D:\pulse-forge\src\sample-library\curated.ts:92:32)
+      at Array.from (<anonymous>)
+}
+[curated] failed to load factory.snare.punch.wav: TypeError: Failed to parse URL from /samples/factory.snare.punch.wav
+    at node:internal/deps/undici/undici:15845:13
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at worker (D:\pulse-forge\src\sample-library\curated.ts:92:26)
+    at async Promise.all (index 2)
+    at loadCuratedLayer (D:\pulse-forge\src\sample-library\curated.ts:115:3)
+    at Module.curatedReadyWithin (D:\pulse-forge\src\sample-library\curated.ts:145:3)
+    at D:\pulse-forge\tests\curated-samples.test.ts:112:5
+    at file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:533:5
+    at runTest (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1056:11)
+    at runSuite (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1205:15) {
+  [cause]: TypeError: Invalid URL: /samples/factory.snare.punch.wav
+      at new URLImpl (D:\pulse-forge\node_modules\whatwg-url\lib\URL-impl.js:21:13)
+      at Object.exports.setup (D:\pulse-forge\node_modules\whatwg-url\lib\URL.js:54:12)
+      at new URL (D:\pulse-forge\node_modules\whatwg-url\lib\URL.js:115:22)
+      at new Request (node:internal/deps/undici/undici:10413:25)
+      at fetch (node:internal/deps/undici/undici:11325:25)
+      at fetch (node:internal/deps/undici/undici:15843:10)
+      at fetch (node:internal/bootstrap/web/exposed-window-or-worker:83:12)
+      at D:\pulse-forge\src\sample-library\curated.ts:80:88
+      at worker (D:\pulse-forge\src\sample-library\curated.ts:92:32)
+      at Array.from (<anonymous>)
+}
+[curated] failed to load factory.hat.closed.wav: TypeError: Failed to parse URL from /samples/factory.hat.closed.wav
+    at node:internal/deps/undici/undici:15845:13
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at worker (D:\pulse-forge\src\sample-library\curated.ts:92:26)
+    at async Promise.all (index 3)
+    at loadCuratedLayer (D:\pulse-forge\src\sample-library\curated.ts:115:3)
+    at Module.curatedReadyWithin (D:\pulse-forge\src\sample-library\curated.ts:145:3)
+    at D:\pulse-forge\tests\curated-samples.test.ts:112:5
+    at file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:533:5
+    at runTest (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1056:11)
+    at runSuite (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1205:15) {
+  [cause]: TypeError: Invalid URL: /samples/factory.hat.closed.wav
+      at new URLImpl (D:\pulse-forge\node_modules\whatwg-url\lib\URL-impl.js:21:13)
+      at Object.exports.setup (D:\pulse-forge\node_modules\whatwg-url\lib\URL.js:54:12)
+      at new URL (D:\pulse-forge\node_modules\whatwg-url\lib\URL.js:115:22)
+      at new Request (node:internal/deps/undici/undici:10413:25)
+      at fetch (node:internal/deps/undici/undici:11325:25)
+      at fetch (node:internal/deps/undici/undici:15843:10)
+      at fetch (node:internal/bootstrap/web/exposed-window-or-worker:83:12)
+      at D:\pulse-forge\src\sample-library\curated.ts:80:88
+      at worker (D:\pulse-forge\src\sample-library\curated.ts:92:32)
+      at Array.from (<anonymous>)
+}
+[curated] failed to load factory.clap.main.wav: TypeError: Failed to parse URL from /samples/factory.clap.main.wav
+    at node:internal/deps/undici/undici:15845:13
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at worker (D:\pulse-forge\src\sample-library\curated.ts:92:26)
+    at async Promise.all (index 0)
+    at loadCuratedLayer (D:\pulse-forge\src\sample-library\curated.ts:115:3)
+    at Module.curatedReadyWithin (D:\pulse-forge\src\sample-library\curated.ts:145:3)
+    at D:\pulse-forge\tests\curated-samples.test.ts:112:5
+    at file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:533:5
+    at runTest (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1056:11)
+    at runSuite (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1205:15) {
+  [cause]: TypeError: Invalid URL: /samples/factory.clap.main.wav
+      at new URLImpl (D:\pulse-forge\node_modules\whatwg-url\lib\URL-impl.js:21:13)
+      at Object.exports.setup (D:\pulse-forge\node_modules\whatwg-url\lib\URL.js:54:12)
+      at new URL (D:\pulse-forge\node_modules\whatwg-url\lib\URL.js:115:22)
+      at new Request (node:internal/deps/undici/undici:10413:25)
+      at fetch (node:internal/deps/undici/undici:11325:25)
+      at fetch (node:internal/deps/undici/undici:15843:10)
+      at fetch (node:internal/bootstrap/web/exposed-window-or-worker:83:12)
+      at D:\pulse-forge\src\sample-library\curated.ts:80:88
+      at worker (D:\pulse-forge\src\sample-library\curated.ts:92:32)
+      at processTicksAndRejections (node:internal/process/task_queues:105:5)
+}
+[curated] failed to load factory.tonal.keys.wav: TypeError: Failed to parse URL from /samples/factory.tonal.keys.wav
+    at node:internal/deps/undici/undici:15845:13
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at worker (D:\pulse-forge\src\sample-library\curated.ts:92:26)
+    at async Promise.all (index 1)
+    at loadCuratedLayer (D:\pulse-forge\src\sample-library\curated.ts:115:3)
+    at Module.curatedReadyWithin (D:\pulse-forge\src\sample-library\curated.ts:145:3)
+    at D:\pulse-forge\tests\curated-samples.test.ts:112:5
+    at file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:533:5
+    at runTest (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1056:11)
+    at runSuite (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1205:15) {
+  [cause]: TypeError: Invalid URL: /samples/factory.tonal.keys.wav
+      at new URLImpl (D:\pulse-forge\node_modules\whatwg-url\lib\URL-impl.js:21:13)
+      at Object.exports.setup (D:\pulse-forge\node_modules\whatwg-url\lib\URL.js:54:12)
+      at new URL (D:\pulse-forge\node_modules\whatwg-url\lib\URL.js:115:22)
+      at new Request (node:internal/deps/undici/undici:10413:25)
+      at fetch (node:internal/deps/undici/undici:11325:25)
+      at fetch (node:internal/deps/undici/undici:15843:10)
+      at fetch (node:internal/bootstrap/web/exposed-window-or-worker:83:12)
+      at D:\pulse-forge\src\sample-library\curated.ts:80:88
+      at worker (D:\pulse-forge\src\sample-library\curated.ts:92:32)
+      at processTicksAndRejections (node:internal/process/task_queues:105:5)
+}
+
+ [32mÔťô[39m tests/curated-samples.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 162[2mms[22m[39m
+ [32mÔťô[39m tests/ultina-meters.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 2238[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ultina metering gate[2m > [22mmeters ON (default): LUFS tracks a loud signal [33m473[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ultina metering gate[2m > [22mmeters OFF freezes LUFS briefly, then reports silence once the window goes stale [33m362[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ultina metering gate[2m > [22mmeters OFF + gain-match ON keeps the LUFS feedback loop alive [33m712[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ultina pooled meter snapshot[2m > [22mpooled buffers still carry FRESH data every call (no stale pooling) [33m473[2mms[22m[39m
+ [32mÔťô[39m tests/ghost-preview.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 93[2mms[22m[39m
+stderr | tests/ui/ModPanel.test.tsx > ModPanel > renders with correct aria label
+Warning: An update to ScenePanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at ScenePanel (D:\pulse-forge\src\ui\ModPanel.tsx:1753:42)
+    at div
+    at section
+    at ModPanel (D:\pulse-forge\src\ui\ModPanel.tsx:143:42)
+
+stderr | tests/ui/ModPanel.test.tsx > ModPanel > renders AUTOMATION section
+Warning: An update to ScenePanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at ScenePanel (D:\pulse-forge\src\ui\ModPanel.tsx:1753:42)
+    at div
+    at section
+    at ModPanel (D:\pulse-forge\src\ui\ModPanel.tsx:143:42)
+
+stderr | tests/ui/ModPanel.test.tsx > ModPanel > renders MODULATORS section (LFO / S&H / Step / Env Follower)
+Warning: An update to ScenePanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at ScenePanel (D:\pulse-forge\src\ui\ModPanel.tsx:1753:42)
+    at div
+    at section
+    at ModPanel (D:\pulse-forge\src\ui\ModPanel.tsx:143:42)
+
+stderr | tests/ui/ModPanel.test.tsx > ModPanel > renders MACROS section
+Warning: An update to ScenePanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at ScenePanel (D:\pulse-forge\src\ui\ModPanel.tsx:1753:42)
+    at div
+    at section
+    at ModPanel (D:\pulse-forge\src\ui\ModPanel.tsx:143:42)
+
+stderr | tests/ui/ModPanel.test.tsx > ModPanel > renders SCENES section
+Warning: An update to ScenePanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at ScenePanel (D:\pulse-forge\src\ui\ModPanel.tsx:1753:42)
+    at div
+    at section
+    at ModPanel (D:\pulse-forge\src\ui\ModPanel.tsx:143:42)
+
+stderr | tests/ui/ModPanel.test.tsx > ModPanel ÔÇö Ultina deep-parameter lane targets (phase U1) > no filter input and no deep groups without an Ultina on the track
+Warning: An update to ScenePanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at ScenePanel (D:\pulse-forge\src\ui\ModPanel.tsx:1753:42)
+    at div
+    at section
+    at ModPanel (D:\pulse-forge\src\ui\ModPanel.tsx:143:42)
+Warning: An update to ScenePanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at ScenePanel (D:\pulse-forge\src\ui\ModPanel.tsx:1753:42)
+    at div
+    at section
+    at ModPanel (D:\pulse-forge\src\ui\ModPanel.tsx:143:42)
+
+stderr | tests/ui/ModPanel.test.tsx > ModPanel ÔÇö ScenePanel wall-clock info (Wave 2) > shows the pattern loop length in wall-clock seconds
+Warning: An update to ScenePanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at ScenePanel (D:\pulse-forge\src\ui\ModPanel.tsx:1753:42)
+    at div
+    at section
+    at ModPanel (D:\pulse-forge\src\ui\ModPanel.tsx:143:42)
+Warning: An update to ScenePanel inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at ScenePanel (D:\pulse-forge\src\ui\ModPanel.tsx:1753:42)
+    at div
+    at section
+    at ModPanel (D:\pulse-forge\src\ui\ModPanel.tsx:143:42)
+
+ [32mÔťô[39m tests/ui/ModPanel.test.tsx [2m([22m[2m9 tests[22m[2m)[22m[33m 2599[2mms[22m[39m
+   [33m[2mÔťô[22m[39m ModPanel[2m > [22mrenders with correct aria label [33m775[2mms[22m[39m
+   [33m[2mÔťô[22m[39m ModPanel ÔÇö Ultina deep-parameter lane targets (phase U1)[2m > [22moffers grouped deep parameters with a filter input when an Ultina is present [33m647[2mms[22m[39m
+   [33m[2mÔťô[22m[39m ModPanel ÔÇö Ultina deep-parameter lane targets (phase U1)[2m > [22madds a deep-parameter lane through the picker [33m556[2mms[22m[39m
+ [32mÔťô[39m tests/snapshots.test.ts [2m([22m[2m8 tests[22m[2m)[22m[90m 145[2mms[22m[39m
+ [32mÔťô[39m tests/groove-steal.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 91[2mms[22m[39m
+ [32mÔťô[39m tests/ui/PianoRoll.test.tsx [2m([22m[2m7 tests[22m[2m)[22m[33m 853[2mms[22m[39m
+   [33m[2mÔťô[22m[39m PianoRollTrack[2m > [22mrenders piano roll SVG area [33m333[2mms[22m[39m
+stderr | tests/ui/snapshots-panel.test.tsx > snapshots section in the history panel > ÔťĽ delete failure surfaces an error instead of an unhandled rejection
+[snapshots] delete failed: Error: QuotaExceededError
+    at Object.<anonymous> (D:\pulse-forge\tests\ui\snapshots-panel.test.tsx:100:13)
+    at Object.mockCall (file:///D:/pulse-forge/node_modules/@vitest/spy/dist/index.js:61:17)
+    at Object.spy [as delete] (file:///D:/pulse-forge/node_modules/tinyspy/dist/index.js:45:80)
+    at deleteSnapshot (D:\pulse-forge\src\ui\UndoHistoryPanel.tsx:96:8)
+    at onClick (D:\pulse-forge\src\ui\UndoHistoryPanel.tsx:213:30)
+    at HTMLUnknownElement.callCallback (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (D:\pulse-forge\node_modules\jsdom\lib\generated\idl\EventListener.js:26:30)
+    at innerInvokeEventListeners (D:\pulse-forge\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:360:16)
+    at invokeEventListeners (D:\pulse-forge\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (D:\pulse-forge\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:243:9)
+
+ [32mÔťô[39m tests/assist-pipeline.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 307[2mms[22m[39m
+ [32mÔťô[39m tests/ui/snapshots-panel.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[33m 1218[2mms[22m[39m
+   [33m[2mÔťô[22m[39m snapshots section in the history panel[2m > [22mÔťĽ deletes the snapshot and drops it from the list [33m625[2mms[22m[39m
+ [32mÔťô[39m tests/stems.test.ts [2m([22m[2m11 tests[22m[2m)[22m[90m 268[2mms[22m[39m
+ [32mÔťô[39m tests/ranker-client.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 214[2mms[22m[39m
+ [32mÔťô[39m tests/collab-session.test.ts [2m([22m[2m9 tests[22m[2m)[22m[33m 588[2mms[22m[39m
+ [32mÔťô[39m tests/jam-roles.test.ts [2m([22m[2m11 tests[22m[2m)[22m[33m 406[2mms[22m[39m
+ [32mÔťô[39m tests/bpm-detect.test.ts [2m([22m[2m15 tests[22m[2m)[22m[90m 263[2mms[22m[39m
+ [32mÔťô[39m tests/renderer.test.ts [2m([22m[2m9 tests[22m[2m)[22m[90m 26[2mms[22m[39m
+ [32mÔťô[39m tests/persistence/round-trip-integrity.test.ts [2m([22m[2m7 tests[22m[2m)[22m[33m 412[2mms[22m[39m
+ [32mÔťô[39m tests/ultina-assistant.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 1520[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Mix Assistant (analyzeTrack)[2m > [22manalyzes a 3s sine and returns a successful proposal with changes [33m330[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Mix Assistant (analyzeTrack)[2m > [22mis deterministic ÔÇö same audio, same proposal [33m328[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Reference match (analyzeWithTarget)[2m > [22msuggests nothing when the balance already matches the target [33m383[2mms[22m[39m
+[90mstdout[2m | tests/ozvena-golden.test.ts[2m > [22m[2mOzvena golden parity (vendored core vs upstream fixtures)[2m > [22m[2mparity: hall-blend
+[22m[39m[ozvena-parity] hall-blend: tailEnergy=1.09e-8 (min 1.00e-10)
+
+[90mstdout[2m | tests/ozvena-golden.test.ts[2m > [22m[2mOzvena golden parity (vendored core vs upstream fixtures)[2m > [22m[2mparity: small-room
+[22m[39m[ozvena-parity] small-room: tailEnergy=5.29e-13 (min 1.00e-13)
+
+ [32mÔťô[39m tests/ozvena-golden.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 22743[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena golden parity (vendored core vs upstream fixtures)[2m > [22mparity: hall-blend [33m13057[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena golden parity (vendored core vs upstream fixtures)[2m > [22mparity: small-room [33m9646[2mms[22m[39m
+[90mstdout[2m | tests/ultina-vectors.test.ts[2m > [22m[2mUltina golden parity (vendored core vs upstream vectors)[2m > [22m[2mparity: passthrough_default
+[22m[39m[ultina-parity] passthrough_default: rms╬ö=0.0000dB maxErr=0.00e+0
+
+[90mstdout[2m | tests/ultina-vectors.test.ts[2m > [22m[2mUltina golden parity (vendored core vs upstream vectors)[2m > [22m[2mparity: input_gain_plus6
+[22m[39m[ultina-parity] input_gain_plus6: rms╬ö=0.0000dB maxErr=0.00e+0
+
+[90mstdout[2m | tests/ultina-vectors.test.ts[2m > [22m[2mUltina golden parity (vendored core vs upstream vectors)[2m > [22m[2mparity: input_gain_minus6
+[22m[39m[ultina-parity] input_gain_minus6: rms╬ö=0.0000dB maxErr=0.00e+0
+
+[90mstdout[2m | tests/ultina-vectors.test.ts[2m > [22m[2mUltina golden parity (vendored core vs upstream vectors)[2m > [22m[2mparity: output_gain_plus3
+[22m[39m[ultina-parity] output_gain_plus3: rms╬ö=0.0000dB maxErr=0.00e+0
+
+[90mstdout[2m | tests/ultina-vectors.test.ts[2m > [22m[2mUltina golden parity (vendored core vs upstream vectors)[2m > [22m[2mparity: mix_50_percent
+[22m[39m[ultina-parity] mix_50_percent: rms╬ö=0.0000dB maxErr=0.00e+0
+
+[90mstdout[2m | tests/ultina-vectors.test.ts[2m > [22m[2mUltina golden parity (vendored core vs upstream vectors)[2m > [22m[2mparity: noise_passthrough
+[22m[39m[ultina-parity] noise_passthrough: rms╬ö=0.0000dB maxErr=0.00e+0
+
+[90mstdout[2m | tests/ultina-vectors.test.ts[2m > [22m[2mUltina golden parity (vendored core vs upstream vectors)[2m > [22m[2mparity: low_freq_sine
+[22m[39m[ultina-parity] low_freq_sine: rms╬ö=0.0000dB maxErr=0.00e+0
+
+[90mstdout[2m | tests/ultina-vectors.test.ts[2m > [22m[2mUltina golden parity (vendored core vs upstream vectors)[2m > [22m[2mparity: high_freq_sine
+[22m[39m[ultina-parity] high_freq_sine: rms╬ö=0.0000dB maxErr=0.00e+0
+
+ [32mÔťô[39m tests/ultina-vectors.test.ts [2m([22m[2m9 tests[22m[2m)[22m[33m 522[2mms[22m[39m
+ [32mÔťô[39m tests/tempo-lane.test.ts [2m([22m[2m7 tests[22m[2m)[22m[90m 154[2mms[22m[39m
+ [32mÔťô[39m tests/freesound.test.ts [2m([22m[2m7 tests[22m[2m)[22m[90m 39[2mms[22m[39m
+ [32mÔťô[39m tests/fxeq-plugin-surface.test.ts [2m([22m[2m7 tests[22m[2m)[22m[33m 711[2mms[22m[39m
+ [32mÔťô[39m tests/ultina-crossover.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 666[2mms[22m[39m
+ [32mÔťô[39m tests/user-kits.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 140[2mms[22m[39m
+ [32mÔťô[39m tests/collab-jam.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 882[2mms[22m[39m
+   [33m[2mÔťô[22m[39m instant jam seeding[2m > [22mN peers seeding the same decoded beat converge to one document [33m625[2mms[22m[39m
+ [32mÔťô[39m tests/meter-ring.test.ts [2m([22m[2m8 tests[22m[2m)[22m[90m 109[2mms[22m[39m
+ [32mÔťô[39m tests/recorder.test.ts [2m([22m[2m7 tests[22m[2m)[22m[90m 64[2mms[22m[39m
+ [32mÔťô[39m tests/scales.test.ts [2m([22m[2m21 tests[22m[2m)[22m[90m 67[2mms[22m[39m
+ [32mÔťô[39m tests/midi-command.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 104[2mms[22m[39m
+ [32mÔťô[39m tests/ai-flip.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 316[2mms[22m[39m
+ [32mÔťô[39m tests/ui/touch.test.tsx [2m([22m[2m7 tests[22m[2m)[22m[33m 924[2mms[22m[39m
+   [33m[2mÔťô[22m[39m AudioUnlock[2m > [22mshows the banner on suspended touch devices and unlocks on tap [33m730[2mms[22m[39m
+ [32mÔťô[39m tests/mixer-batch.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 29[2mms[22m[39m
+ [32mÔťô[39m tests/automap.test.ts [2m([22m[2m9 tests[22m[2m)[22m[90m 103[2mms[22m[39m
+ [32mÔťô[39m tests/auto-arrange.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 168[2mms[22m[39m
+ [32mÔťô[39m tests/ui/timeline-rec.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[33m 1758[2mms[22m[39m
+   [33m[2mÔťô[22m[39m arrangement REC wiring[2m > [22mrenders the ARM select with project tracks and disables REC until armed [33m1052[2mms[22m[39m
+   [33m[2mÔťô[22m[39m arrangement REC wiring[2m > [22mREC without mic support surfaces a readable error, not a crash [33m457[2mms[22m[39m
+ [32mÔťô[39m tests/time-stretch.test.ts [2m([22m[2m10 tests[22m[2m)[22m[33m 573[2mms[22m[39m
+ [32mÔťô[39m tests/metering.test.ts [2m([22m[2m8 tests[22m[2m)[22m[90m 58[2mms[22m[39m
+ [32mÔťô[39m tests/theme.test.ts [2m([22m[2m11 tests[22m[2m)[22m[90m 31[2mms[22m[39m
+ [32mÔťô[39m tests/ui/PresetBrowser.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[33m 2546[2mms[22m[39m
+   [33m[2mÔťô[22m[39m PresetBrowser audition workflow[2m > [22mpreviews without mutating the project and applies through one command [33m1370[2mms[22m[39m
+   [33m[2mÔťô[22m[39m PresetBrowser audition workflow[2m > [22mstops an active audition without applying the preset [33m664[2mms[22m[39m
+   [33m[2mÔťô[22m[39m PresetBrowser audition workflow[2m > [22mfilters the catalog by curated role and energy metadata [33m508[2mms[22m[39m
+ [32mÔťô[39m tests/gallery-remix.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 100[2mms[22m[39m
+stderr | tests/persistence/UserSampleRepository.test.ts > UserSampleRepository audio persistence > restoreUserSampleAudio decodes stored bytes into the bank
+[user-samples] failed to restore user.corrupt-mu0pl8yv: Error: corrupt
+    at D:\pulse-forge\tests\persistence\UserSampleRepository.test.ts:116:56
+    at Module.restoreUserSampleAudio (D:\pulse-forge\src\persistence\UserSampleRepository.ts:132:26)
+    at D:\pulse-forge\tests\persistence\UserSampleRepository.test.ts:113:5
+    at file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:533:5
+    at runTest (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1056:11)
+    at runSuite (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1205:15)
+    at runSuite (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1205:15)
+    at runFiles (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1262:5)
+    at startTests (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1271:3)
+    at file:///D:/pulse-forge/node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11
+
+ [32mÔťô[39m tests/persistence/UserSampleRepository.test.ts [2m([22m[2m10 tests[22m[2m)[22m[90m 83[2mms[22m[39m
+ [32mÔťô[39m tests/svfilter-drive.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 761[2mms[22m[39m
+   [33m[2mÔťô[22m[39m SVF drive (raw worklet DSP)[2m > [22mdrive 0 passes the filter deterministically and unchanged between runs [33m348[2mms[22m[39m
+   [33m[2mÔťô[22m[39m SVF drive (raw worklet DSP)[2m > [22mdrive saturates: bounded, deterministic, and clearly different from the clean path [33m391[2mms[22m[39m
+ [32mÔťô[39m tests/quality-gates.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 917[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Intent Engine quality gates[2m > [22mholds deterministic content and shape invariants over a seed matrix [33m668[2mms[22m[39m
+ [32mÔťô[39m tests/pwa.test.ts [2m([22m[2m11 tests[22m[2m)[22m[90m 96[2mms[22m[39m
+stderr | tests/ui/ozvena-panel.test.tsx > OzvenaPanel blend pad ÔÇö keyboard accessibility > is focusable and moves X/Y with arrow keys
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/ozvena-panel.test.tsx > OzvenaPanel blend pad ÔÇö keyboard accessibility > shift+arrow is a fine step, PageUp/Down a coarse Y step
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/ozvena-panel.test.tsx > OzvenaPanel blend pad ÔÇö keyboard accessibility > clamps at the pad edges (no spurious calls at the boundary)
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/ozvena-panel.test.tsx > OzvenaPanel blend pad ÔÇö keyboard accessibility > announces the engine distribution to screen readers
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+stderr | tests/ui/ozvena-panel.test.tsx > OzvenaPanel Reverb Assistant ÔÇö diff-based patch > ASSIST proposes only changed fields and preserves user config
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+ [32mÔťô[39m tests/ui/ozvena-panel.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[33m 1745[2mms[22m[39m
+   [33m[2mÔťô[22m[39m OzvenaPanel blend pad ÔÇö keyboard accessibility[2m > [22mis focusable and moves X/Y with arrow keys [33m779[2mms[22m[39m
+   [33m[2mÔťô[22m[39m OzvenaPanel blend pad ÔÇö keyboard accessibility[2m > [22mannounces the engine distribution to screen readers [33m306[2mms[22m[39m
+   [33m[2mÔťô[22m[39m OzvenaPanel Reverb Assistant ÔÇö diff-based patch[2m > [22mASSIST proposes only changed fields and preserves user config [33m339[2mms[22m[39m
+ [32mÔťô[39m tests/export/project-io.test.ts [2m([22m[2m10 tests[22m[2m)[22m[90m 74[2mms[22m[39m
+ [32mÔťô[39m tests/ui/HelpOverlay.test.tsx [2m([22m[2m11 tests[22m[2m)[22m[33m 2910[2mms[22m[39m
+   [33m[2mÔťô[22m[39m HelpOverlay[2m > [22mrenders dialog when open [33m1019[2mms[22m[39m
+   [33m[2mÔťô[22m[39m HelpOverlay[2m > [22mcalls onClose when CLOSE button clicked [33m514[2mms[22m[39m
+   [33m[2mÔťô[22m[39m HelpOverlay[2m > [22mfilters shortcuts and gestures by text [33m303[2mms[22m[39m
+ [32mÔťô[39m tests/ui/MidiCreativity.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[33m 1641[2mms[22m[39m
+   [33m[2mÔťô[22m[39m MIDI creativity UI[2m > [22mopens the creativity tab and applies a chord command [33m1064[2mms[22m[39m
+   [33m[2mÔťô[22m[39m MIDI creativity UI[2m > [22mexposes phase-two generators and applies them through the command store [33m397[2mms[22m[39m
+ [32mÔťô[39m tests/collab-automation.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 111[2mms[22m[39m
+ [32mÔťô[39m tests/fxeq-sample-rate-sweep.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 36719[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq sample-rate sweep (all presets ├Ś 44.1/48/96 kHz)[2m > [22mkeeps every preset finite and bounded at 44100 Hz [33m13636[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq sample-rate sweep (all presets ├Ś 44.1/48/96 kHz)[2m > [22mkeeps every preset finite and bounded at 48000 Hz [33m11447[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq sample-rate sweep (all presets ├Ś 44.1/48/96 kHz)[2m > [22mkeeps every preset finite and bounded at 96000 Hz [33m11450[2mms[22m[39m
+ [32mÔťô[39m tests/intent-pipeline.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 67[2mms[22m[39m
+stderr | tests/persistence/FrozenBufferRepository.test.ts > restoreFrozenTracks > reports the id when decoding throws
+[freeze] failed to decode frozen buffer frozen-corrupt: Error: decode failed
+    at D:\pulse-forge\tests\persistence\FrozenBufferRepository.test.ts:86:13
+    at Module.restoreFrozenTracks (D:\pulse-forge\src\persistence\FrozenBufferRepository.ts:86:32)
+    at D:\pulse-forge\tests\persistence\FrozenBufferRepository.test.ts:85:21
+    at file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:533:5
+    at runTest (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1056:11)
+    at runSuite (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1205:15)
+    at runSuite (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1205:15)
+    at runFiles (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1262:5)
+    at startTests (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1271:3)
+    at file:///D:/pulse-forge/node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11
+
+stderr | tests/persistence/FrozenBufferRepository.test.ts > restoreFrozenTracks > reports the id when decoding throws
+[freeze] failed to decode frozen buffer frozen-corrupt-2: Error: decode failed
+    at D:\pulse-forge\tests\persistence\FrozenBufferRepository.test.ts:86:13
+    at Module.restoreFrozenTracks (D:\pulse-forge\src\persistence\FrozenBufferRepository.ts:86:32)
+    at D:\pulse-forge\tests\persistence\FrozenBufferRepository.test.ts:85:21
+    at file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:533:5
+    at runTest (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1056:11)
+    at runSuite (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1205:15)
+    at runSuite (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1205:15)
+    at runFiles (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1262:5)
+    at startTests (file:///D:/pulse-forge/node_modules/@vitest/runner/dist/index.js:1271:3)
+    at file:///D:/pulse-forge/node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11
+
+ [32mÔťô[39m tests/persistence/FrozenBufferRepository.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 58[2mms[22m[39m
+ [32mÔťô[39m tests/midi/MidiClock.test.ts [2m([22m[2m9 tests[22m[2m)[22m[90m 28[2mms[22m[39m
+ [32mÔťô[39m tests/golden-render.test.ts [2m([22m[2m13 tests[22m[2m)[22m[90m 114[2mms[22m[39m
+ [32mÔťô[39m tests/ui/Sequencer.test.tsx [2m([22m[2m8 tests[22m[2m)[22m[33m 6244[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Sequencer[2m > [22mrenders step ruler [33m1200[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Sequencer[2m > [22mrenders step numbers in ruler [33m557[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Sequencer[2m > [22mtoggles Beat Focus without changing the pattern editor state [33m3395[2mms[22m[39m
+ [32mÔťô[39m tests/render-event-parity.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 59[2mms[22m[39m
+ [32mÔťô[39m tests/bounce.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 52[2mms[22m[39m
+ [32mÔťô[39m tests/ultina-analysis-client.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 47[2mms[22m[39m
+ [32mÔťô[39m tests/export/share-code.test.ts [2m([22m[2m10 tests[22m[2m)[22m[90m 146[2mms[22m[39m
+ [32mÔťô[39m tests/ui/SamplerMapping.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[33m 2218[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Sampler AutoMap UI contract[2m > [22mkeeps multi-file import as a proposal and applies it in one command [33m1300[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Sampler AutoMap UI contract[2m > [22mcancels the mapping proposal without touching project history [33m914[2mms[22m[39m
+ [32mÔťô[39m tests/ui/CollabPanel.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[33m 905[2mms[22m[39m
+   [33m[2mÔťô[22m[39m CollabPanel project swap race[2m > [22ma second click during an in-flight swap does not start a second openProject [33m683[2mms[22m[39m
+ [32mÔťô[39m tests/midi/MidiOutput.test.ts [2m([22m[2m14 tests[22m[2m)[22m[90m 30[2mms[22m[39m
+ [32mÔťô[39m tests/midi/midi-commands.test.ts [2m([22m[2m11 tests[22m[2m)[22m[90m 32[2mms[22m[39m
+ [32mÔťô[39m tests/wav.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 25[2mms[22m[39m
+ [32mÔťô[39m tests/latencyCalibration.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 22[2mms[22m[39m
+ [32mÔťô[39m tests/persistence/UltinaPresetRepository.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 31[2mms[22m[39m
+ [32mÔťô[39m tests/update-audio-clip.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 94[2mms[22m[39m
+ [32mÔťô[39m tests/midi/midi-extensions.test.ts [2m([22m[2m9 tests[22m[2m)[22m[90m 18[2mms[22m[39m
+ [32mÔťô[39m tests/transients.test.ts [2m([22m[2m7 tests[22m[2m)[22m[90m 81[2mms[22m[39m
+ [32mÔťô[39m tests/export/mp3.test.ts [2m([22m[2m7 tests[22m[2m)[22m[33m 3401[2mms[22m[39m
+   [33m[2mÔťô[22m[39m encodeMp3[2m > [22mproduces a valid MP3 stream (MPEG frame sync 0xFF Ex/Fx) [33m448[2mms[22m[39m
+   [33m[2mÔťô[22m[39m encodeMp3[2m > [22mhigher bitrate produces a larger file [33m927[2mms[22m[39m
+   [33m[2mÔťô[22m[39m encodeMp3[2m > [22mis dramatically smaller than 16-bit WAV of the same audio [33m349[2mms[22m[39m
+   [33m[2mÔťô[22m[39m encodeMp3 ÔÇö cancellation (release roadmap 1.4)[2m > [22maborts at the next yield point without producing a Blob [33m1141[2mms[22m[39m
+ [32mÔťô[39m tests/ui/mobile-layout.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[33m 1064[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fullscreen piano roll[2m > [22mis inline by default ÔÇö no fullscreen class, no toggle button [33m327[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fullscreen piano roll[2m > [22mSequencer wires the toggle per track (only that track goes fullscreen) [33m602[2mms[22m[39m
+ [32mÔťô[39m tests/ui/FreesoundSection.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[33m 783[2mms[22m[39m
+   [33m[2mÔťô[22m[39m FreesoundSection[2m > [22msearches on Enter and renders results with import buttons [33m483[2mms[22m[39m
+ [32mÔťô[39m tests/ui/ContextMenu.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[33m 448[2mms[22m[39m
+   [33m[2mÔťô[22m[39m ContextMenu[2m > [22mdeletes selected arrangement and audio clips as one undoable command [33m351[2mms[22m[39m
+ [32mÔťô[39m tests/intent-mapping.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 70[2mms[22m[39m
+ [32mÔťô[39m tests/ui/ModMatrixRow.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[33m 685[2mms[22m[39m
+   [33m[2mÔťô[22m[39m ModMatrixRow[2m > [22mrenders both routes with source/destination selects and an LFO slider [33m485[2mms[22m[39m
+ [32mÔťô[39m tests/dock-layout.test.ts [2m([22m[2m9 tests[22m[2m)[22m[90m 24[2mms[22m[39m
+ [32mÔťô[39m tests/fit-audio-clip.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 54[2mms[22m[39m
+ [32mÔťô[39m tests/export-quantize.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 539[2mms[22m[39m
+ [32mÔťô[39m tests/ui/ErrorBoundary.test.tsx [2m([22m[2m7 tests[22m[2m)[22m[33m 575[2mms[22m[39m
+   [33m[2mÔťô[22m[39m ErrorBoundary[2m > [22mshows reload button [33m303[2mms[22m[39m
+ [32mÔťô[39m tests/dice.test.ts [2m([22m[2m9 tests[22m[2m)[22m[90m 27[2mms[22m[39m
+ [32mÔťô[39m tests/slice-playback.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 21[2mms[22m[39m
+ [32mÔťô[39m tests/audio-clip-window.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 20[2mms[22m[39m
+ [32mÔťô[39m tests/ai-baseline.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 213[2mms[22m[39m
+ [32mÔťô[39m tests/ui/ProjectBrowser.test.tsx [2m([22m[2m1 test[22m[2m)[22m[90m 228[2mms[22m[39m
+ [32mÔťô[39m tests/scorepack.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 23[2mms[22m[39m
+ [32mÔťô[39m tests/midi-collab.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 140[2mms[22m[39m
+ [32mÔťô[39m tests/rafLoop.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 97[2mms[22m[39m
+[90mstdout[2m | tests/fxeq-golden.test.ts[2m > [22m[2mFXEQ golden parity (vendored core vs upstream fixtures)[2m > [22m[2mparity: bypass-transparent
+[22m[39m[fxeq-parity] bypass-transparent: envelope╬ö=1.3e-4 peak╬ö=8.0e-6 rms╬ö=0.0e+0 hash=differs
+
+[90mstdout[2m | tests/fxeq-golden.test.ts[2m > [22m[2mFXEQ golden parity (vendored core vs upstream fixtures)[2m > [22m[2mparity: impulse-response
+[22m[39m[fxeq-parity] impulse-response: envelope╬ö=0.0e+0 peak╬ö=0.0e+0 rms╬ö=0.0e+0 hash=EXACT
+
+[90mstdout[2m | tests/fxeq-golden.test.ts[2m > [22m[2mFXEQ golden parity (vendored core vs upstream fixtures)[2m > [22m[2mparity: warmth-saturation
+[22m[39m[fxeq-parity] warmth-saturation: envelope╬ö=0.0e+0 peak╬ö=0.0e+0 rms╬ö=0.0e+0 hash=EXACT
+
+[90mstdout[2m | tests/fxeq-golden.test.ts[2m > [22m[2mFXEQ golden parity (vendored core vs upstream fixtures)[2m > [22m[2mparity: reverb-plate
+[22m[39m[fxeq-parity] reverb-plate: envelope╬ö=0.0e+0 peak╬ö=0.0e+0 rms╬ö=0.0e+0 hash=EXACT
+
+[90mstdout[2m | tests/fxeq-golden.test.ts[2m > [22m[2mFXEQ golden parity (vendored core vs upstream fixtures)[2m > [22m[2mparity: lofi-degradation
+[22m[39m[fxeq-parity] lofi-degradation: envelope╬ö=0.0e+0 peak╬ö=0.0e+0 rms╬ö=0.0e+0 hash=EXACT
+
+[90mstdout[2m | tests/fxeq-golden.test.ts[2m > [22m[2mFXEQ golden parity (vendored core vs upstream fixtures)[2m > [22m[2mparity: delay-feedback
+[22m[39m[fxeq-parity] delay-feedback: envelope╬ö=0.0e+0 peak╬ö=0.0e+0 rms╬ö=0.0e+0 hash=EXACT
+
+[90mstdout[2m | tests/fxeq-golden.test.ts[2m > [22m[2mFXEQ golden parity (vendored core vs upstream fixtures)[2m > [22m[2mparity: phaser-modulation
+[22m[39m[fxeq-parity] phaser-modulation: envelope╬ö=0.0e+0 peak╬ö=0.0e+0 rms╬ö=0.0e+0 hash=EXACT
+
+[90mstdout[2m | tests/fxeq-golden.test.ts[2m > [22m[2mFXEQ golden parity (vendored core vs upstream fixtures)[2m > [22m[2mparity: combined-chain
+[22m[39m[fxeq-parity] combined-chain: envelope╬ö=0.0e+0 peak╬ö=0.0e+0 rms╬ö=0.0e+0 hash=EXACT
+
+[90mstdout[2m | tests/fxeq-golden.test.ts[2m > [22m[2mFXEQ golden parity (vendored core vs upstream fixtures)[2m > [22m[2mreports how many cases are bit-exact (informational)
+[22m[39m[fxeq-parity] 7/8 cases bit-exact vs fixtures
+
+ [32mÔťô[39m tests/fxeq-golden.test.ts [2m([22m[2m9 tests[22m[2m)[22m[33m 942[2mms[22m[39m
+ [32mÔťô[39m tests/fxeq-processor-workflow.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 200[2mms[22m[39m
+ [32mÔťô[39m tests/similar.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 34[2mms[22m[39m
+ [32mÔťô[39m tests/ui/InstallPrompt.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[33m 654[2mms[22m[39m
+   [33m[2mÔťô[22m[39m InstallPrompt[2m > [22mINSTALL button triggers the native prompt and hides on accept [33m493[2mms[22m[39m
+ [32mÔťô[39m tests/ui/shortcuts.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 19[2mms[22m[39m
+ [32mÔťô[39m tests/intensity.test.ts [2m([22m[2m7 tests[22m[2m)[22m[90m 12[2mms[22m[39m
+ [32mÔťô[39m tests/library-repository.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 39[2mms[22m[39m
+ [32mÔťô[39m tests/ui/TrackTabs.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[33m 717[2mms[22m[39m
+   [33m[2mÔťô[22m[39m TrackTabs[2m > [22mrenders all track tabs [33m375[2mms[22m[39m
+ [32mÔťô[39m tests/onset-detector-client.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 44[2mms[22m[39m
+[90mstdout[2m | tests/ultina-soak.test.ts[2m > [22m[2mUltina soak (300 s full-graph render)[2m > [22m[2mstays finite, does not drift, and decays to silence
+[22m[39m[ultina-soak] heap growth over 300s render: 51.1 MB (drift -0.001 dB, tail peak 0.00e+0)
+
+ [32mÔťô[39m tests/ultina-soak.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 144382[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ultina soak (300 s full-graph render)[2m > [22mstays finite, does not drift, and decays to silence [33m144380[2mms[22m[39m
+ [32mÔťô[39m tests/randomize.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 82[2mms[22m[39m
+stderr | tests/ui/SliceLab.test.tsx > SliceLab > opens as a modal and exposes factory/user sample workflow controls
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+ [32mÔťô[39m tests/reorderPattern.test.ts [2m([22m[2m7 tests[22m[2m)[22m[90m 53[2mms[22m[39m
+ [32mÔťô[39m tests/ui/SliceLab.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[33m 2202[2mms[22m[39m
+   [33m[2mÔťô[22m[39m SliceLab[2m > [22mopens as a modal and exposes factory/user sample workflow controls [33m2068[2mms[22m[39m
+ [32mÔťô[39m tests/master-gain-staging.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 14[2mms[22m[39m
+ [32mÔťô[39m tests/ui/RackStrip.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[33m 707[2mms[22m[39m
+   [33m[2mÔťô[22m[39m RackStrip[2m > [22mcalls onSelectPad on click [33m370[2mms[22m[39m
+ [32mÔťô[39m tests/ui/MpeIndicator.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[90m 106[2mms[22m[39m
+ [32mÔťô[39m tests/ui/ScalePanel.test.tsx [2m([22m[2m7 tests[22m[2m)[22m[33m 889[2mms[22m[39m
+ [32mÔťô[39m tests/ui/ThemePanel.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[33m 808[2mms[22m[39m
+   [33m[2mÔťô[22m[39m ThemePanel install-from-code[2m > [22mrejects a malformed code and leaves the theme unchanged [33m576[2mms[22m[39m
+ [32mÔťô[39m tests/effect-reset.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 20[2mms[22m[39m
+ [32mÔťô[39m tests/ui/CommandToast.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[33m 343[2mms[22m[39m
+ [32mÔťô[39m tests/ozvena-analyzer-gating.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 11074[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena analyzer gating[2m > [22mdisabling analyzers leaves the audio bit-for-bit identical [33m4695[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena analyzer gating[2m > [22mthe flag is observable and defaults to enabled [33m3237[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena analyzer gating[2m > [22mthe flag survives a reset (re-prepare recreates the analyzers) [33m1559[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena analyzer gating[2m > [22mre-enabling restores analyzer output [33m1579[2mms[22m[39m
+ [32mÔťô[39m tests/ui/EffectAbControls.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[33m 387[2mms[22m[39m
+   [33m[2mÔťô[22m[39m EffectAbControls[2m > [22mcan select an empty slot before storing a second variation [33m352[2mms[22m[39m
+stderr | tests/ui/OnboardingHint.test.tsx > OnboardingHint > shows DONE button on step 3
+Warning: An update to OnboardingHint inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at OnboardingHint (D:\pulse-forge\src\ui\OnboardingHint.tsx:14:42)
+
+ [32mÔťô[39m tests/ui/OnboardingHint.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[33m 531[2mms[22m[39m
+   [33m[2mÔťô[22m[39m OnboardingHint[2m > [22mdismisses on ├Ś click [33m375[2mms[22m[39m
+ [32mÔťô[39m tests/dice-subseed.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 43[2mms[22m[39m
+[90mstdout[2m | tests/_dbg-gain.test.ts[2m > [22m[2mdbg gain[2m > [22m[2mband gain target trajectory
+[22m[39m[dbgG] target: [33m9[39m depth: [33m100[39m
+[dbgG] blk 0: rms=0.949 peaks= 1.46,0.23,0.24,0.25,0.17,0.26
+[dbgG] blk 1: rms=1.346 peaks= 1.46,0.41,0.09,0.00,0.00,0.00
+[dbgG] blk 2: rms=1.350 peaks= 1.49,0.19,0.01,0.00,0.00,0.00
+[dbgG] blk 3: rms=1.149 peaks= 1.41,0.14,0.00,0.00,0.00,0.00
+[dbgG] blk 4: rms=0.866 peaks= 1.51,0.11,0.00,0.00,0.00,0.00
+[dbgG] blk 5: rms=1.938 peaks= 1.93,0.14,0.00,0.00,0.00,0.00
+[dbgG] blk 6: rms=0.966 peaks= 1.61,0.12,0.00,0.00,0.00,0.00
+[dbgG] blk 7: rms=1.447 peaks= 1.65,0.15,0.00,0.00,0.00,0.00
+[dbgG] blk 8: rms=1.247 peaks= 1.64,0.14,0.00,0.00,0.00,0.00
+[dbgG] blk 9: rms=1.199 peaks= 1.75,0.14,0.00,0.00,0.00,0.00
+
+ [32mÔťô[39m tests/_dbg-gain.test.ts [2m([22m[2m1 test[22m[2m)[22m[90m 102[2mms[22m[39m
+ [32mÔťô[39m tests/audio-engine-meter.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 9[2mms[22m[39m
+ [32mÔťô[39m tests/ui/LatencyCalibrationWizard.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[33m 570[2mms[22m[39m
+   [33m[2mÔťô[22m[39m LatencyCalibrationWizard[2m > [22mopens on the intro step and allows MIDI fine-tune without project edits [33m473[2mms[22m[39m
+ [32mÔťô[39m tests/dice-locks.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 24[2mms[22m[39m
+ [32mÔťô[39m tests/render-quality.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 17[2mms[22m[39m
+ [32mÔťô[39m tests/landing.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[33m 762[2mms[22m[39m
+   [33m[2mÔťô[22m[39m LandingPage[2m > [22mrenders hero, feature grid and how-it-works steps [33m553[2mms[22m[39m
+ [32mÔťô[39m tests/scene-time.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 7[2mms[22m[39m
+ [32mÔťô[39m tests/broadcast-channel-lifecycle.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 19[2mms[22m[39m
+ [32mÔťô[39m tests/automation.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 31[2mms[22m[39m
+ [32mÔťô[39m tests/ui/Meter.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[33m 996[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Meter[2m > [22mrenders with meter role [33m713[2mms[22m[39m
+ [32mÔťô[39m tests/ui/Diagnostics.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[33m 930[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Diagnostics[2m > [22mswitches to MEMORY tab [33m458[2mms[22m[39m
+ [32mÔťô[39m tests/rendering-wav.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 20[2mms[22m[39m
+ [32mÔťô[39m tests/preset-audio-quality.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 9[2mms[22m[39m
+ [32mÔťô[39m tests/export/scene-intensity-render.test.ts [2m([22m[2m1 test[22m[2m)[22m[90m 17[2mms[22m[39m
+ [32mÔťô[39m tests/ui/Mixer.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[33m 863[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Mixer performance workflow[2m > [22msurfaces the first four performance macros in the mixer [33m733[2mms[22m[39m
+ [32mÔťô[39m tests/persistence/db-retry.test.ts [2m([22m[2m1 test[22m[2m)[22m[90m 16[2mms[22m[39m
+ [32mÔťô[39m tests/ui/AssistPanel.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[33m 711[2mms[22m[39m
+   [33m[2mÔťô[22m[39m AssistPanel[2m > [22mrenders a deterministic preview selector and grid [33m554[2mms[22m[39m
+ [32mÔťô[39m tests/ui/MasterMeter.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[33m 517[2mms[22m[39m
+   [33m[2mÔťô[22m[39m MasterMeter[2m > [22mrenders master meter group [33m364[2mms[22m[39m
+ [32mÔťô[39m tests/ui/SceneLauncher.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[33m 807[2mms[22m[39m
+   [33m[2mÔťô[22m[39m SceneLauncher[2m > [22mseparates SELECT from LAUNCH [33m624[2mms[22m[39m
+[90mstdout[2m | tests/performance-gates.test.ts[2m > [22m[2mIntent Engine performance gates[2m > [22m[2mkeeps 16/32/64-step local preview below the synchronous UI budget
+[22m[39m[intent-perf] 16 steps: median=4.72ms max=5.52ms
+[intent-perf] 32 steps: median=3.98ms max=5.58ms
+[intent-perf] 64 steps: median=5.68ms max=6.06ms
+
+ [32mÔťô[39m tests/performance-gates.test.ts [2m([22m[2m1 test[22m[2m)[22m[90m 94[2mms[22m[39m
+[90mstdout[2m | tests/fxeq-soak.test.ts[2m > [22m[2mFXEQ soak (300 s worst-case render)[2m > [22m[2mstays finite, does not drift, and decays to silence
+[22m[39m[fxeq-soak] heap growth over 300s render: 47.6 MB (drift -0.003 dB, tail peak 0.00e+0, maxAbs 0.962)
+
+ [32mÔťô[39m tests/fxeq-soak.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 427872[2mms[22m[39m
+   [33m[2mÔťô[22m[39m FXEQ soak (300 s worst-case render)[2m > [22mstays finite, does not drift, and decays to silence [33m427861[2mms[22m[39m
+[90mstdout[2m | tests/ozvena-soak.test.ts[2m > [22m[2mOzvena soak (300 s full-core render)[2m > [22m[2mstays finite, does not drift, and decays to silence
+[22m[39m[ozvena-soak] heap growth over 300s render: 27.5 MB (drift -0.005 dB, tail peak 5.70e-11, maxAbs 0.854)
+
+ [32mÔťô[39m tests/ozvena-soak.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 453713[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena soak (300 s full-core render)[2m > [22mstays finite, does not drift, and decays to silence [33m453711[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m238 passed[39m[22m[90m (238)[39m
+[2m      Tests [22m [1m[32m2345 passed[39m[22m[2m | [22m[33m103 skipped[39m[90m (2448)[39m
+[2m   Start at [22m 05:51:10
+[2m   Duration [22m 539.49s[2m (transform 62.93s, setup 500.99s, collect 341.10s, tests 1414.10s, environment 1883.97s, prepare 82.09s)[22m
+

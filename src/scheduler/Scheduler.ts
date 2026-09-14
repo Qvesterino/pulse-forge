@@ -1,5 +1,6 @@
 import type { DrumTrack, Pattern, PlayMode, ProjectDocument } from "../project-model/types";
 import { BAR_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
+import { ticksPerBar, ticksPerBeat } from "../project-model/schema";
 import { drumHitsInWindow } from "../project-model/groove";
 import { noteEventsInWindow } from "../project-model/events";
 import { computeSceneIntensity } from "../project-model/intensity";
@@ -171,6 +172,17 @@ export class Scheduler {
    */
   private songTimeAt: ((tick: number) => number) | null = null;
   private windowStartTick = 0;
+  /**
+   * Absolute tick of the next metronome click to schedule. Clicks fire on
+   * every beat of the count-in region and (metronome ON) during playback;
+   * the cursor persists across windows so a window split at the content
+   * boundary neither re-clicks nor skips a beat. Rebased by seeks/loop wraps.
+   */
+  private clickCursor = 0;
+  /** Content boundary for the current play; -1 means no active lead-in. */
+  private leadInUntilTick = -1;
+  /** Play-start tick used to keep lead-in click spacing stable if preferences change live. */
+  private leadInStartTick = -1;
   private stopped = true;
   /** Last BPM handed to applySceneTempo (null = project tempo) — change-guard. */
   private lastAppliedTempo: number | null | undefined = undefined;
@@ -238,6 +250,12 @@ export class Scheduler {
     const transport = this.deps.getTransport();
     this.windowStartTick = Math.max(0, transport.position);
     this.stopped = false;
+    this.leadInUntilTick = transport.leadInBars() > 0 ? transport.anchorTickBeforePreRoll() : -1;
+    this.leadInStartTick = this.leadInUntilTick >= 0 ? this.windowStartTick : -1;
+    // Re-arm the click cursor: the lead-in count-in must click from the very
+    // first beat even when start() is called mid-bar (e.g. play at 0 with a
+    // 2-bar count-in starts the transport two bars early).
+    this.clickCursor = Math.max(0, transport.position);
     this.timer = setInterval(() => this.tick(), INTERVAL_MS);
     this.tick();
   }
@@ -260,6 +278,10 @@ export class Scheduler {
     // Markers re-arm on stop so a future play replays them.
     this.firedMarkerIds.clear();
     this.pendingMarkers.length = 0;
+    // The click cursor is per-playback; a new start() re-seeds it.
+    this.clickCursor = 0;
+    this.leadInUntilTick = -1;
+    this.leadInStartTick = -1;
     this.stopped = true;
   }
 
@@ -270,6 +292,13 @@ export class Scheduler {
     this.pendingTempoFlip = null;
     const transport = this.deps.getTransport();
     this.windowStartTick = Math.max(0, transport.position);
+    // ...and the metronome cursor: the next beat click belongs to the new
+    // position, not the pre-seek stream.
+    this.clickCursor = Math.max(0, transport.position);
+    // A user seek is an explicit new playback location, so do not replay the
+    // old play's lead-in before the newly requested content.
+    this.leadInUntilTick = -1;
+    this.leadInStartTick = -1;
   }
 
   /** Queue a pattern switch at an absolute tick (next bar boundary for scene launches). */
@@ -340,6 +369,8 @@ export class Scheduler {
         // The wrap jumps position — a scheduled flip would fire at the wrong
         // place. Boundary detection re-runs from the wrapped window.
         this.pendingTempoFlip = null;
+        this.clickCursor = loopStart;
+        this.leadInUntilTick = -1;
         this.windowStartTick = loopStart;
         // transport.seek re-anchored; windowEnd was computed against
         // the old anchor. Recompute against the post-seek anchor so
@@ -407,20 +438,53 @@ export class Scheduler {
     const mode = this.deps.getMode();
     this.songTimeAt = null;
 
-    // Pre-roll + count-in metronome: clicks fire on bar boundaries inside the
-    // pre-roll region only. Content scheduling is untouched (starts on time).
-    if (transport.preRollBars > 0 && this.deps.metronomeClick && windowStart < transport.anchorTickBeforePreRoll()) {
-      const bar = transport.preRollBars * BAR_TICKS;
-      for (
-        let t = Math.ceil(windowStart / BAR_TICKS) * BAR_TICKS;
-        t < Math.min(windowEnd, transport.anchorTickBeforePreRoll());
-        t += BAR_TICKS
-      ) {
-        const when = transport.timeAtTick(t) + this.scheduleOffsetSec() + 0.005;
-        if (!audibleClick(when, now)) continue;
-        this.deps.metronomeClick(when, (t / bar) % 1 === 0);
+    // Metronome: clicks fire on every beat of the click lead-in and, when the
+    // metronome is enabled, during content playback as well. The cursor
+    // persists across windows so a window split at the content boundary
+    // neither re-clicks nor skips a beat; it rebases on seeks and loop wraps.
+    const contentStart = this.leadInUntilTick;
+    const leadInActive = contentStart >= 0;
+    if (this.deps.metronomeClick && (leadInActive || transport.metronome)) {
+      const beatTicks = ticksPerBeat(doc);
+      const barTicks = ticksPerBar(doc);
+      // Lead-in clicks are anchored to the transport's play-start so the last
+      // click lands exactly on the content start; playback clicks follow the
+      // project grid.
+      const clickAnchor = leadInActive ? this.leadInStartTick : 0;
+      let cursor = this.clickCursor;
+      if (cursor < windowStart || cursor > windowEnd) cursor = windowStart;
+      cursor = clickAnchor + Math.ceil((cursor - clickAnchor) / beatTicks) * beatTicks;
+      while (cursor < windowEnd) {
+        const inLeadIn = leadInActive && cursor < contentStart;
+        if (inLeadIn || (cursor >= contentStart && transport.metronome)) {
+          const when = transport.timeAtTick(cursor) + this.scheduleOffsetSec() + 0.005;
+          const downbeat = inLeadIn
+            ? Math.abs((((cursor - clickAnchor) % BAR_TICKS) + BAR_TICKS) % BAR_TICKS) < 1e-6
+            : Math.abs(((cursor % barTicks) + barTicks) % barTicks) < 1e-6;
+          if (audibleClick(when, now)) this.deps.metronomeClick(when, downbeat);
+        }
+        cursor += beatTicks;
       }
+      this.clickCursor = cursor;
+    } else {
+      // Nothing to click — keep the cursor from walking a dead grid.
+      this.clickCursor = windowEnd;
     }
+
+    // The click lead-in is silent on the content side: only the metronome
+    // sounds until contentStart, then the window is clamped so content starts
+    // exactly on time.
+    if (leadInActive) {
+      if (windowEnd <= contentStart) return;
+      if (windowStart < contentStart) windowStart = contentStart;
+    }
+
+    // Count-in/pre-roll is a click-only lead-in. Do not let pattern notes,
+    // arrangement clips, markers, automation, or modulators leak into that
+    // region. The transport stores this boundary for the current play so
+    // changing the preference while already playing cannot move the seam.
+    const contentWindowStart = Math.max(windowStart, transport.anchorTickBeforePreRoll());
+    if (contentWindowStart >= windowEnd) return;
 
     let automationCtx: { base: number; patternTicks: number } | null = null;
 
@@ -437,7 +501,7 @@ export class Scheduler {
       }
       // A queued launch whose boundary we already passed (e.g. after a seek)
       // commits immediately.
-      if (this.pendingLaunch && this.pendingLaunch.atTick <= windowStart) {
+      if (this.pendingLaunch && this.pendingLaunch.atTick <= contentWindowStart) {
         this.deps.applyPatternLaunch(this.pendingLaunch.patternId);
         this.pendingLaunch = null;
         this.notify();
@@ -465,7 +529,8 @@ export class Scheduler {
       this.invalidPatternSignature = null;
       const patternTicks = STEP_TICKS * pattern.stepCount;
       const pending = this.pendingLaunch;
-      let boundary = pending && pending.atTick > windowStart && pending.atTick <= windowEnd ? pending.atTick : null;
+      let boundary =
+        pending && pending.atTick > contentWindowStart && pending.atTick <= windowEnd ? pending.atTick : null;
       // A launch quantized to a bar boundary BEYOND the loop end can never
       // reach its boundary before the loop wraps — it used to pend forever
       // (badge stuck; only stop() committed it). Commit at the loop edge:
@@ -476,13 +541,13 @@ export class Scheduler {
         boundary === null &&
         this.activeLoopEnd !== null &&
         windowEnd >= this.activeLoopEnd &&
-        windowStart < this.activeLoopEnd &&
+        contentWindowStart < this.activeLoopEnd &&
         pending.atTick > this.activeLoopEnd
       ) {
         boundary = this.activeLoopEnd;
       }
 
-      this.schedulePatternWindow(pattern, 0, windowStart, boundary ?? windowEnd);
+      this.schedulePatternWindow(pattern, 0, contentWindowStart, boundary ?? windowEnd);
       automationCtx = { base: 0, patternTicks };
 
       if (boundary !== null && pending) {
@@ -548,7 +613,7 @@ export class Scheduler {
       for (const clip of clips) {
         const clipStart = clip.startBar * BAR_TICKS;
         const clipEnd = clipStart + clip.lengthBars * BAR_TICKS;
-        if (windowStart >= clipStart && windowStart < clipEnd) {
+        if (contentWindowStart >= clipStart && contentWindowStart < clipEnd) {
           const scene = scenesById.get(clip.sceneId);
           if (scene) {
             activeScene = scene;
@@ -559,7 +624,7 @@ export class Scheduler {
       }
       if (this.deps.setSceneIntensity) {
         if (activeScene) {
-          this.deps.setSceneIntensity(computeSceneIntensity(activeScene, activeClipStart, windowStart));
+          this.deps.setSceneIntensity(computeSceneIntensity(activeScene, activeClipStart, contentWindowStart));
         } else {
           this.deps.setSceneIntensity(0.7);
         }
@@ -601,7 +666,7 @@ export class Scheduler {
         const currentBpm = transport.bpm;
         for (const clip of clips) {
           const boundaryTick = clip.startBar * BAR_TICKS;
-          if (boundaryTick <= windowStart || boundaryTick > windowEnd) continue;
+          if (boundaryTick <= contentWindowStart || boundaryTick > windowEnd) continue;
           const scene = scenesById.get(clip.sceneId);
           if (!scene) continue;
           const boundaryBpm = scene.bpm ?? doc.bpm;
@@ -619,13 +684,13 @@ export class Scheduler {
       const timeAtForWindow = tempoSplit ? tempoSplit.timeAt : (tick: number) => baseTimeOld + tick * sptOld;
       this.songTimeAt = timeAtForWindow;
       this.deps.scheduleSceneIntensity?.(
-        sceneIntensityPointsForWindow(clips, scenesById, windowStart, windowEnd),
+        sceneIntensityPointsForWindow(clips, scenesById, contentWindowStart, windowEnd),
         timeAtForWindow,
       );
       for (const clip of clips) {
         const clipStart = clip.startBar * BAR_TICKS;
         const clipEnd = clipStart + clip.lengthBars * BAR_TICKS;
-        const s = Math.max(windowStart, clipStart);
+        const s = Math.max(contentWindowStart, clipStart);
         const e = Math.min(windowEnd, clipEnd);
         if (e <= s) continue;
         const scene = scenesById.get(clip.sceneId);
@@ -634,14 +699,14 @@ export class Scheduler {
         if (!pattern) continue;
         const patternTicks = STEP_TICKS * pattern.stepCount;
         this.schedulePatternWindow(pattern, clipStart, s, e, tempoSplit ? timeAtForWindow : undefined);
-        if (!automationCtx && windowStart >= clipStart) {
+        if (!automationCtx && contentWindowStart >= clipStart) {
           automationCtx = { base: clipStart, patternTicks };
         }
       }
       if (!automationCtx) {
         const covering = clips.find((c) => {
           const cs = c.startBar * BAR_TICKS;
-          return windowStart >= cs && windowStart < cs + c.lengthBars * BAR_TICKS;
+          return contentWindowStart >= cs && contentWindowStart < cs + c.lengthBars * BAR_TICKS;
         });
         if (covering) {
           const scene = scenesById.get(covering.sceneId);
@@ -654,7 +719,7 @@ export class Scheduler {
       // current window. Dedupe via firedMarkerIds so each marker triggers once
       // per playback session.
       for (const marker of doc.markers) {
-        if (marker.tick < windowStart || marker.tick > windowEnd) continue;
+        if (marker.tick < contentWindowStart || marker.tick > windowEnd) continue;
         if (this.firedMarkerIds.has(marker.id)) continue;
         this.firedMarkerIds.add(marker.id);
         const assetId = mapMarkerTypeToAsset(marker.type);
@@ -667,7 +732,7 @@ export class Scheduler {
           if (lane.sceneId !== activeScene.id) continue;
           this.applySceneAutomation(
             lane,
-            windowStart,
+            contentWindowStart,
             windowEnd,
             activeClipStart,
             transport,
@@ -680,7 +745,7 @@ export class Scheduler {
       if (this.deps.triggerAudioClip && doc.arrangement.audioClips) {
         for (const clip of doc.arrangement.audioClips) {
           const clipStart = clip.startBar * BAR_TICKS;
-          if (clipStart < windowStart || clipStart >= windowEnd) continue;
+          if (clipStart < contentWindowStart || clipStart >= windowEnd) continue;
           const when = timeAtForWindow(clipStart) + this.scheduleOffsetSec() + 0.005;
           // A clip starting past the tempo boundary runs at the NEW tempo.
           const spt = tempoSplit && clipStart >= tempoSplit.atTick ? tempoSplit.sptNew : transport.secondsPerTick;
@@ -702,7 +767,7 @@ export class Scheduler {
       // patternTicks is also negative or NaN.
       if (Number.isFinite(patternTicks) && patternTicks > 0) {
         this.deps.applyAutomation(
-          windowStart,
+          contentWindowStart,
           windowEnd,
           (tick) => mod(tick - base, patternTicks),
           this.scheduleOffsetSec(),
@@ -720,7 +785,7 @@ export class Scheduler {
       const transport = this.deps.getTransport();
       const offsetSec = this.scheduleOffsetSec() + 0.005;
       const timeAtMod = this.songTimeAt ?? ((tick: number) => transport.timeAtTick(tick));
-      this.deps.applyModulators(windowStart, windowEnd, (tick) => timeAtMod(tick) + offsetSec);
+      this.deps.applyModulators(contentWindowStart, windowEnd, (tick) => timeAtMod(tick) + offsetSec);
     }
 
     // Poll envFollower modulators targeting FX/inst params (control rate).

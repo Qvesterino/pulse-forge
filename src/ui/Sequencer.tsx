@@ -1254,7 +1254,7 @@ function StepCell({
           key={user.id}
           className="remote-cursor-dot"
           style={{ background: user.color, borderColor: user.color }}
-          title={`${user.name} je tu`}
+          title={`${user.name} is here`}
           aria-label={`${user.name} is pointing at this step`}
         />
       ))}

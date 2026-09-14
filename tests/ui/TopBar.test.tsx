@@ -77,6 +77,30 @@ describe("TopBar", () => {
     expect(services.playback.stop).toHaveBeenCalled();
   });
 
+  it("cycles count-in, toggles pre-roll and toggles the content metronome", async () => {
+    const user = userEvent.setup();
+    const { services } = renderWithContext(<TopBar {...topBarProps()} />);
+
+    const countIn = screen.getByRole("button", { name: "Count-in off" });
+    await user.click(countIn);
+    expect(services.transport.setCountIn).toHaveBeenCalledWith(1);
+    expect(screen.getByRole("button", { name: "Count-in 1 bar" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Count-in 1 bar" }));
+    expect(services.transport.setCountIn).toHaveBeenCalledWith(2);
+    await user.click(screen.getByRole("button", { name: "Count-in 2 bars" }));
+    expect(services.transport.setCountIn).toHaveBeenCalledWith(0);
+
+    const preRoll = screen.getByRole("button", { name: "Pre-roll off" });
+    await user.click(preRoll);
+    expect(services.transport.setPreRoll).toHaveBeenCalledWith(1);
+    expect(screen.getByRole("button", { name: "Pre-roll on" })).toHaveAttribute("aria-pressed", "true");
+
+    const metronome = screen.getByRole("button", { name: "Metronome off" });
+    await user.click(metronome);
+    expect(services.transport.setMetronome).toHaveBeenCalledWith(true);
+    expect(screen.getByRole("button", { name: "Metronome on" })).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("shows project name", () => {
     renderWithContext(<TopBar {...topBarProps()} />);
     expect(screen.getByLabelText("Project name")).toBeInTheDocument();

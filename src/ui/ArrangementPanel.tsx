@@ -786,14 +786,16 @@ export function ArrangementPanel() {
             type="button"
             className="btn btn-small"
             disabled={!selectedScene}
-            onClick={() => selectedScene && execute(duplicateSceneAsVariation(services.store.doc, selectedScene.id))}
+            title="Give this scene an independent copy of its pattern — same scene, new editable pattern (the shared-pattern escape hatch)"
+            onClick={() => selectedScene && execute(duplicatePatternForScene(services.store.doc, selectedScene.id))}
           >
-            DUPLICATE
+            DUP PATTERN
           </button>
           <button
             type="button"
             className="btn btn-small"
             disabled={!selectedScene}
+            title="Create a variation scene: new scene + varied copy of the pattern"
             onClick={() => selectedScene && execute(duplicateSceneAsVariation(services.store.doc, selectedScene.id))}
           >
             VARIATION

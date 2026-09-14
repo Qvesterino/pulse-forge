@@ -128,12 +128,13 @@ export class PlaybackController {
       this.transport.pause();
       this.onTransportPause?.();
     } else {
-      // Pre-roll: start playback a few bars early so the metronome count-in
-      // leads into the requested position (content starts at anchor+preRoll).
-      const preRollTicks = this.transport.preRollBars * BAR_TICKS;
+      // Lead-in: start playback early so the metronome clicks (pre-roll +
+      // count-in bars) lead into the requested position (content starts at
+      // anchor + lead-in).
+      const leadInTicks = this.transport.leadInBars() * BAR_TICKS;
       const requested = Math.max(0, this.transport.position);
-      if (preRollTicks > 0 && requested >= preRollTicks) {
-        this.transport.play(requested - preRollTicks);
+      if (!this.transport.paused && leadInTicks > 0 && requested >= leadInTicks) {
+        this.transport.play(requested - leadInTicks);
       } else {
         this.transport.play();
       }

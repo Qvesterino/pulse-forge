@@ -88,6 +88,8 @@ export function PatternBar({
     setDraft(name);
   };
 
+  const [quantizeGrid, setQuantizeGrid] = useState<number>(GRID_16TH);
+
   const commitRename = () => {
     if (editingId !== null && draft.trim() !== "") {
       const current = doc.patterns.find((p) => p.id === editingId);
@@ -370,17 +372,27 @@ export function PatternBar({
           className="pattern-length"
           aria-label="Quantize grid"
           title="Quantize note positions to grid"
-          value={GRID_16TH}
+          value={quantizeGrid}
           onChange={(event) => {
             const gridTicks = Number(event.target.value);
+            setQuantizeGrid(gridTicks);
             services.store.execute(quantizePatternToGrid(doc, doc.activePatternId, gridTicks));
-            if (doc.key) services.store.execute(quantizePatternToScale(doc, doc.activePatternId, doc.key));
           }}
         >
           <option value={GRID_8TH}>1/8</option>
           <option value={GRID_16TH}>1/16</option>
           <option value={GRID_32ND}>1/32</option>
         </select>
+        {doc.key && (
+          <button
+            type="button"
+            className="btn btn-small"
+            title={`Snap all notes to the project scale (${doc.key})`}
+            onClick={() => services.store.execute(quantizePatternToScale(doc, doc.activePatternId, doc.key!))}
+          >
+            SCALE
+          </button>
+        )}
       </div>
 
       {midiStatus && (

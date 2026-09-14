@@ -85,7 +85,7 @@ export function TrackTabs({
             aria-selected={isSelected}
             aria-label={`${track.name} (${track.kind === "drum" ? "Drum track" : track.kind === "group" ? "Group track" : `${track.instrument} track`})${track.mute ? ", muted" : ""}${track.solo ? ", soloed" : ""}`}
             className={`track-tab${isSelected ? " active" : ""}`}
-            title={`${track.name} — select track (Alt+${idx + 1}), F2 to rename — Ctrl+click add, Shift+click range, RMB drag lasso`}
+            title={`${track.name} — select track (${idx < 9 ? `${idx + 1}, ` : ""}Tab cycles), F2 to rename — Ctrl+click add, Shift+click range`}
             onClick={(e) => onSelectTrack(track.id, e)}
             onDoubleClick={() => beginRename(track.id, track.name)}
             onKeyDown={(event) => {

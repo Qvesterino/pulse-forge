@@ -565,7 +565,7 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
         <button
           type="button"
           className={`btn btn-small${track.mute ? " active-mute" : ""}`}
-          title={isGroup ? "Mute group (+ members) — 1 gesto na 8" : "Mute track"}
+          title={isGroup ? "Mute group (+ members) — one gesture for all" : "Mute track"}
           onClick={() => {
             if (isGroup) services.store.execute(setGroupMute(doc, track.id, !track.mute));
             else services.store.execute(setTrackParams(doc, track.id, { mute: !track.mute }));

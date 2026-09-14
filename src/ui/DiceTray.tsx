@@ -89,6 +89,39 @@ export function DiceTray() {
   useEffect(() => {
     return () => services.ghost.stop();
   }, [services.ghost]);
+
+  // Tray-scoped hotkeys: D = roll full, Shift+D = roll vary, ←/→ = history.
+  // Lives here (visible surface), never in the always-mounted provider —
+  // otherwise the drum pad key "D" would also roll the dice mid-performance.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const typing =
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "SELECT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable);
+      if (typing) return;
+      if (e.defaultPrevented) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key.toLowerCase() === "d" && e.shiftKey) {
+        e.preventDefault();
+        rollVary();
+      } else if (e.key.toLowerCase() === "d") {
+        e.preventDefault();
+        rollFull();
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        jump(Math.max(0, session.cursor - 1));
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        jump(Math.min(session.seedChain.length - 1, session.cursor + 1));
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [rollFull, rollVary, jump, session.cursor, session.seedChain.length]);
   useEffect(() => {
     // Stop ghost on preview change (seed/mode/locks)
     services.ghost.stop();
@@ -153,7 +186,7 @@ export function DiceTray() {
       <div className="dice-tray-header">
         <span className="dice-tray-title">DICE — rapid idea generator</span>
         <span className="dice-tray-hint">
-          Dva hody · Full = nový pattern · Vary = mutácia aktívneho · 100 hodov bez undo
+          Two rolls · Full = new pattern · Vary = mutate the active one · 100 rolls, one undo
         </span>
       </div>
 
@@ -297,7 +330,7 @@ export function DiceTray() {
               onChange={(e) => setJitter(Number(e.target.value))}
             />
           </label>
-          <span className="dice-jitter-hint" title="0 = len seed, 1 = style + ghost/micro/temp randomizácia">
+          <span className="dice-jitter-hint" title="0 = pure seed, 1 = style + ghost/micro/temperature randomization">
             style·ghost·micro·temp
           </span>
         </div>

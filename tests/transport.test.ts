@@ -43,6 +43,37 @@ describe("Transport", () => {
     expect(transport.position).toBe(480);
   });
 
+  it("clamps count-in and pre-roll settings and exposes their combined lead-in", () => {
+    const { clock } = controlledClock();
+    const transport = new Transport(clock, 120);
+    transport.setCountIn(99);
+    transport.setPreRoll(-3);
+    expect(transport.countInBars).toBe(2);
+    expect(transport.preRollBars).toBe(0);
+    transport.setPreRoll(1);
+    expect(transport.leadInBars()).toBe(3);
+
+    transport.play(0);
+    expect(transport.anchorTickBeforePreRoll()).toBe(3 * 4 * PPQ);
+  });
+
+  it("does not repeat the lead-in after pause or an in-flight seek", () => {
+    const { clock, advance } = controlledClock();
+    const transport = new Transport(clock, 120);
+    transport.setCountIn(1);
+    transport.play(0);
+    expect(transport.anchorTickBeforePreRoll()).toBe(4 * PPQ);
+
+    advance(0.5);
+    transport.pause();
+    const pausedAt = transport.position;
+    transport.play();
+    expect(transport.anchorTickBeforePreRoll()).toBeCloseTo(pausedAt, 5);
+
+    transport.seek(3 * PPQ);
+    expect(transport.anchorTickBeforePreRoll()).toBe(3 * PPQ);
+  });
+
   it("pauses and resumes from the paused position", () => {
     const { clock, advance } = controlledClock();
     const transport = new Transport(clock, 120);

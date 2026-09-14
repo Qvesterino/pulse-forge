@@ -506,10 +506,10 @@ export function UltinaPanel({
         const bandMatch = /eq\.band(\d+)\./.exec(c.parameterId);
         const bandNo = bandMatch ? Number(bandMatch[1]) + 1 : 0;
         lines.push(
-          `EQ B${bandNo} ${c.value > 0 ? "+" : ""}${c.value.toFixed(1)} dB — ${getExplanationForLocale(c.reasonCode, "sk")}`,
+          `EQ B${bandNo} ${c.value > 0 ? "+" : ""}${c.value.toFixed(1)} dB — ${getExplanationForLocale(c.reasonCode, "en")}`,
         );
       }
-      if (eqChanges.length > 6) lines.push(`…a ${eqChanges.length - 6} ďalších EQ zmien`);
+      if (eqChanges.length > 6) lines.push(`…and ${eqChanges.length - 6} more EQ changes`);
       setMatchSummary(lines);
     } catch (err) {
       if (isUltinaAnalysisCancelledError(err)) return;
@@ -558,21 +558,22 @@ export function UltinaPanel({
         proposal.moduleToggles.map((t) => ({ moduleType: t.moduleType, enabled: t.enabled })),
         proposal.changes.map((c) => ({ parameterId: c.parameterId, value: c.value })),
       );
-      // Human summary in Slovak (the vendored plugin ships sk explanations).
+      // Human-readable summary (the vendored plugin ships en + sk; the studio
+      // UI is English, so explanations resolve in en).
       const lines: string[] = [
-        `Nástroj: ${INSTRUMENT_LABELS[proposal.instrument] ?? proposal.instrument} · ${proposal.analyzedDuration.toFixed(1)}s`,
+        `Instrument: ${INSTRUMENT_LABELS[proposal.instrument] ?? proposal.instrument} · ${proposal.analyzedDuration.toFixed(1)}s`,
       ];
       for (const t of proposal.moduleToggles) {
         lines.push(
-          `${MODULE_LABELS[t.moduleType] ?? t.moduleType} ${t.enabled ? "ON" : "OFF"} — ${getExplanationForLocale(t.reasonCode, "sk")}`,
+          `${MODULE_LABELS[t.moduleType] ?? t.moduleType} ${t.enabled ? "ON" : "OFF"} — ${getExplanationForLocale(t.reasonCode, "en")}`,
         );
       }
       for (const c of proposal.changes.slice(0, 6)) {
         lines.push(
-          `${c.parameterId} → ${formatUnit(c.value, tryGetParamDef(c.parameterId)?.unit ?? "generic")} — ${getExplanationForLocale(c.reasonCode, "sk")}`,
+          `${c.parameterId} → ${formatUnit(c.value, tryGetParamDef(c.parameterId)?.unit ?? "generic")} — ${getExplanationForLocale(c.reasonCode, "en")}`,
         );
       }
-      if (proposal.changes.length > 6) lines.push(`…a ${proposal.changes.length - 6} ďalších zmien`);
+      if (proposal.changes.length > 6) lines.push(`…and ${proposal.changes.length - 6} more changes`);
       setAssistSummary(lines);
     } catch (err) {
       if (isUltinaAnalysisCancelledError(err)) return;
@@ -684,7 +685,7 @@ export function UltinaPanel({
                 {line}
               </div>
             ))}
-            <div className="ultina-assist-note">EQ zmeny aplikované ako jedno gesto — Ctrl+Z vráti všetko.</div>
+            <div className="ultina-assist-note">EQ changes applied as one gesture — Ctrl+Z reverts everything.</div>
           </div>
         )}
       </div>
@@ -826,7 +827,7 @@ export function UltinaPanel({
                 {line}
               </div>
             ))}
-            <div className="ultina-assist-note">Aplikované ako jedno gesto — Ctrl+Z vráti všetko.</div>
+            <div className="ultina-assist-note">Applied as one gesture — Ctrl+Z reverts everything.</div>
           </div>
         )}
       </div>
