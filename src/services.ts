@@ -26,7 +26,12 @@ import { ensureWorkletsForDoc } from "./audio-worklets/loader";
 import type { YDocStore } from "./collab/YDocStore";
 import type { CollabSession } from "./collab/CollabSession";
 import { collabParamsFromSearch } from "./collab/collabShared";
-import { applyTransportState, captureTransportState, shouldStartRemoteScheduler } from "./collab/transportSync";
+import {
+  applyTransportState,
+  captureTransportState,
+  shouldStartRemoteScheduler,
+  type SharedTransportState,
+} from "./collab/transportSync";
 import { LatencyCalibrationController } from "./audio-engine/latencyCalibration";
 import { ArrangementCaptureController } from "./arrangement/capture";
 import { GhostPreviewPlayer } from "./audio-engine/GhostPreviewPlayer";
@@ -50,6 +55,12 @@ export interface CoreServices {
 }
 
 export interface Services {
+  /**
+   * Instant Jam: re-anchor the local transport to the last received remote
+   * pulse. Used by the TAP TO JAM gate after the audio context resumes
+   * (a joiner landing mid-jam hears the room from the leader's NOW).
+   */
+  sharedTransportReapply?: () => void;
   core: CoreServices;
   /** Plain local store, or a CRDT store while a collab session is active. */
   store: ProjectStore | YDocStore;
@@ -260,6 +271,7 @@ export async function openProject(
   // solo sessions never download ~300 KB of CRDT runtime.
   let store: ProjectStore | YDocStore = new ProjectStore(initial);
   let collab: CollabSession | null = null;
+  let sharedTransportReapply: (() => void) | undefined = undefined;
   if (collabConfig) {
     const [{ YDocStore: YDocStoreImpl }, { CollabSession: CollabSessionImpl }] = await Promise.all([
       import("./collab/YDocStore"),
@@ -411,6 +423,7 @@ export async function openProject(
     // own re-anchoring from rebroadcasting (echo loop).
     let followLock = false;
     let lastAppliedAt = 0;
+    let lastPulse: SharedTransportState | null = null;
     transport.onGesture = () => {
       if (followLock) return;
       collab.setSharedTransport(captureTransportState(transport, collab.clientID));
@@ -419,6 +432,7 @@ export async function openProject(
       if (!state || state.by === collab.clientID) return;
       if (state.at <= lastAppliedAt) return; // stale pulse
       lastAppliedAt = state.at;
+      lastPulse = state;
       followLock = true;
       try {
         const wasPlaying = transport.playing;
@@ -433,6 +447,17 @@ export async function openProject(
         followLock = false;
       }
     });
+    // TAP TO JAM: after the gate resumes the context, re-anchor to the last
+    // known pulse so a mid-jam joiner hears the room from the leader's NOW.
+    sharedTransportReapply = () => {
+      if (!lastPulse) return;
+      followLock = true;
+      try {
+        applyTransportState(transport, lastPulse, Date.now() / 1000);
+      } finally {
+        followLock = false;
+      }
+    };
   }
 
   // Test/debug hook: the browser checks read the live store/transport after
@@ -705,6 +730,7 @@ export async function openProject(
     engine,
     transport,
     scheduler,
+    sharedTransportReapply,
     repo,
     bank,
     library,

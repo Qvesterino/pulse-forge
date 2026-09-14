@@ -15,6 +15,11 @@
  * aborts — re-vendoring would silently revert live fixes. Sync them
  * upstream first (see scripts/sync-ozvena-upstream.mjs), or pass
  * --force-reconciled when you really mean to drop them.
+ *
+ * POLICY (2026-09-14): the vendored core is intentionally ALLOWED TO
+ * DIVERGE from upstream — Pulse Forge treats it as its own hardened copy
+ * (owner decision). Upstream parity of the fixtures is a historical
+ * regression baseline, not a requirement.
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, copyFileSync } from "fs";
 import { dirname, join } from "path";

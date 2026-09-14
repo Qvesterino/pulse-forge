@@ -10,6 +10,7 @@
  *  - type-only specifiers marked with "type" for verbatimModuleSyntax
  *    (Pulse Forge tsconfig is stricter than upstream).
  */
+// (Reconciled from Pulse Forge hardening pass, 2026-09-14: crossoverFreq6 param + realigned split defaults (120/400/1200/4000/8000).)
 // ═══════════════════════════════════════════════════════════
 // FXEQ — Parameter schema + routing table
 //

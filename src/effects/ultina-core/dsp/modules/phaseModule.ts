@@ -11,6 +11,7 @@
  *  - type-only specifiers marked with "type" for verbatimModuleSyntax
  *    (Pulse Forge tsconfig is stricter than upstream).
  */
+// (Reconciled from Pulse Forge hardening pass, 2026-09-14: sidechain xcorr indexed at chunk offset.)
 // ═══════════════════════════════════════════════════════════
 // Ultina — Phase Module
 //

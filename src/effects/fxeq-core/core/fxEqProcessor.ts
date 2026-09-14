@@ -10,6 +10,7 @@
  *  - type-only specifiers marked with "type" for verbatimModuleSyntax
  *    (Pulse Forge tsconfig is stricter than upstream).
  */
+// (Reconciled from Pulse Forge hardening pass, 2026-09-14: bandCount NaN guard, morph NaN duration + bandCount exclusion, crossoverFreq6 route.)
 // ═══════════════════════════════════════════════════════════
 // FXEQ — Top-level processor (portable, host-agnostic)
 //

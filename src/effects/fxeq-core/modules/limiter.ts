@@ -10,6 +10,7 @@
  *  - type-only specifiers marked with "type" for verbatimModuleSyntax
  *    (Pulse Forge tsconfig is stricter than upstream).
  */
+// (Reconciled from Pulse Forge hardening pass, 2026-09-14: truePeak/lookaheadMs detector-state reset on mode switches.)
 // ═══════════════════════════════════════════════════════════
 // FXEQ — True-peak brickwall limiter
 //

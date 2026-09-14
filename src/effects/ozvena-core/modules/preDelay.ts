@@ -12,6 +12,7 @@
  *  - type-only specifiers marked with "type" for verbatimModuleSyntax
  *    (Pulse Forge tsconfig is stricter than upstream).
  */
+// (Reconciled from Pulse Forge hardening pass, 2026-09-14: NaN ms degrades to 0.)
 /* eslint-disable */
 // @ts-nocheck
 /**

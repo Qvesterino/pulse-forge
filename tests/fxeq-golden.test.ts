@@ -9,6 +9,13 @@
  *
  * Refresh workflow: re-copy upstream tests/golden/{cases,helpers}.ts and
  * *.json here when the upstream oracle evolves, then re-vendor src.
+ *
+ * POLICY (2026-09-14): the vendored core is intentionally ALLOWED TO DIVERGE
+ * from upstream — Pulse Forge treats it as its own hardened copy (owner
+ * decision). These fixtures are therefore a HISTORICAL REGRESSION BASELINE:
+ * they still match the upstream snapshots where the DSP math is unchanged,
+ * and documented deliberate deviations are regenerated via UPDATE_GOLDEN=1
+ * with justification in the change notes.
  */
 import { describe, expect, it } from "vitest";
 import { GOLDEN_CASES } from "./fxeq-golden/cases.js";

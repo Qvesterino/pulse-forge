@@ -11,6 +11,7 @@
  *  - type-only specifiers marked with "type" for verbatimModuleSyntax
  *    (Pulse Forge tsconfig is stricter than upstream).
  */
+// (Reconciled from Pulse Forge hardening pass, 2026-09-14: preEmphasisMode enum rotated (0=Flat legacy no-op); FIR-friendly crossovers unchanged.)
 // ═══════════════════════════════════════════════════════════
 // Ultina — Parameter Schema
 //

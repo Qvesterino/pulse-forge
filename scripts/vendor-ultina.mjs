@@ -8,6 +8,11 @@
  * add --allow-vendor-drift; for a deliberately uncommitted upstream source,
  * add --allow-dirty-upstream as well.
  *
+ * POLICY (2026-09-14): the vendored core is intentionally ALLOWED TO DIVERGE
+ * from upstream — Pulse Forge treats it as its own hardened copy (owner
+ * decision). Re-vendoring is an opt-in, lossy operation: reconciled markers
+ * (see the preflight below) list the in-place fixes a sync would drop.
+ *
  * Copies the ultinaProcessor import closure + all 10 module processors +
  * moduleFactories, prepends the provenance header, applies mechanical
  * transforms, and syncs golden vectors. Then run:
@@ -145,8 +150,22 @@ function assertUpstreamClean() {
 
 assertUpstreamClean();
 
+/** Reconciled markers in a file (header-independent: everything after the
+ *  first standalone comment-terminator line is compared). */
+function reconciledMarkers(text) {
+  const lines = text.replace(/\r/g, "").split("\n");
+  const bodyStart = lines.findIndex((l) => l.trim() === "*/") + 1;
+  return new Set(
+    lines
+      .slice(bodyStart)
+      .filter((l) => l.includes("Reconciled from Pulse Forge"))
+      .map((l) => l.trim()),
+  );
+}
+
 const preparedFiles = [];
 const vendorDrift = [];
+const lostMarkers = [];
 for (const rel of FILES) {
   const abs = join(SRC, rel);
   if (!existsSync(abs)) {
@@ -157,8 +176,29 @@ for (const rel of FILES) {
   const expected = HEADER + applyTransforms(readFileSync(abs, "utf8"));
   if (existsSync(out) && readFileSync(out, "utf8") !== expected) {
     vendorDrift.push(rel);
+    // A drift entry MAY be a local reconciled fix — those need an explicit,
+    // acknowledged decision even when --allow-vendor-drift is passed.
+    const lost = [...reconciledMarkers(readFileSync(out, "utf8"))].filter(
+      (l) => !reconciledMarkers(readFileSync(abs, "utf8")).has(l),
+    );
+    if (lost.length > 0) lostMarkers.push({ rel, lost });
   }
   preparedFiles.push({ rel, out, expected });
+}
+
+if (lostMarkers.length > 0 && !process.argv.includes("--drop-reconciled")) {
+  console.error(
+    "[vendor] ABORTED — nothing written. The vendored Ultina core is " +
+      "allowed to diverge from upstream (owner decision, 2026-09-14) and " +
+      "carries reconciled fixes the upstream snapshot does NOT have; " +
+      "syncing now would silently revert them:\n" +
+      lostMarkers
+        .map(({ rel, lost }) => `  ${rel}:\n${lost.map((l) => `    ${l}`).join("\n")}`)
+        .join("\n") +
+      "\nPort them upstream first, or pass --drop-reconciled (together with " +
+      "--allow-vendor-drift) when you really mean to drop them.",
+  );
+  process.exit(1);
 }
 
 if (vendorDrift.length && !ALLOW_VENDOR_DRIFT) {

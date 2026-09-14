@@ -2,6 +2,7 @@
  * Re-vendor the FXEQ DSP core from VocalForge_DAW into Pulse Forge.
  *
  *   node scripts/vendor-fxeq.mjs [--from D:/VocalForge_DAW/plugins/fxeq]
+ *                                [--force-reconciled]
  *
  * Copies the exact import closure of the v1 processor (core/dsp/modules),
  * prepends the provenance header, applies the documented mechanical
@@ -10,8 +11,16 @@
  *
  *   npx vitest run tests/fxeq-golden.test.ts
  *
- * If parity breaks, the upstream DSP changed — regenerate upstream fixtures
- * first (UPDATE_GOLDEN=1 in VocalForge) and re-copy, or investigate.
+ * POLICY (2026-09-14): the vendored core is intentionally ALLOWED TO
+ * DIVERGE from upstream — Pulse Forge treats it as its own hardened copy
+ * (owner decision). Re-vendoring is an opt-in, lossy operation.
+ *
+ * SAFETY: the vendored copy carries in-place fixes marked with
+ * "(Reconciled from Pulse Forge …)" comments. If the destination has
+ * reconciled markers the incoming upstream snapshot LACKS, the script
+ * aborts — re-vendoring would silently revert live fixes. Port them
+ * upstream first, or pass --force-reconciled when you really mean to
+ * drop them.
  */
 import { readFileSync, writeFileSync, mkdirSync, copyFileSync, existsSync, readdirSync } from "fs";
 import { dirname, join } from "path";
@@ -21,6 +30,7 @@ const FROM = process.argv.includes("--from")
   : "D:/VocalForge_DAW/plugins/fxeq";
 const SRC = join(FROM, "src");
 const DST = "src/effects/fxeq-core";
+const FORCE = process.argv.includes("--force-reconciled");
 
 const FILES = [
   "core/bandEngine.ts",
@@ -72,6 +82,52 @@ function applyTransforms(source) {
     .replace(/^(  )CrossoverOrder,$/m, "$1type CrossoverOrder,")
     .replace(/^(  )BiquadState,$/m, "$1type BiquadState,")
     .replace(/import \{ BiquadState, createBiquad/g, "import { type BiquadState, createBiquad");
+}
+
+/** Reconciled markers in a file (header-independent: everything after the
+ *  first standalone comment-terminator line is compared). */
+function reconciledMarkers(text) {
+  const lines = text.replace(/\r/g, "").split("\n");
+  const bodyStart = lines.findIndex((l) => l.trim() === "*/") + 1;
+  return new Set(
+    lines
+      .slice(bodyStart)
+      .filter((l) => l.includes("Reconciled from Pulse Forge"))
+      .map((l) => l.trim()),
+  );
+}
+
+// Preflight: compare reconciled markers BEFORE touching any file, so an
+// abort leaves the vendored tree untouched.
+const conflicts = [];
+for (const rel of FILES) {
+  const abs = join(SRC, rel);
+  if (!existsSync(abs)) {
+    console.error("MISSING upstream file: " + abs);
+    process.exit(1);
+  }
+  const upstream = readFileSync(abs, "utf8");
+  const out = join(DST, rel);
+  if (existsSync(out)) {
+    const lost = [...reconciledMarkers(readFileSync(out, "utf8"))].filter(
+      (l) => !reconciledMarkers(upstream).has(l),
+    );
+    if (lost.length > 0) {
+      conflicts.push(`  ${rel}:\n${lost.map((l) => `    ${l}`).join("\n")}`);
+    }
+  }
+}
+
+if (conflicts.length > 0 && !FORCE) {
+  console.error(
+    "[vendor] ABORTED — nothing written. The vendored FXEQ core is allowed " +
+      "to diverge from upstream (owner decision, 2026-09-14) and carries " +
+      "reconciled fixes the upstream snapshot does NOT have; re-vendoring " +
+      "now would silently revert them. Port them upstream first, or pass " +
+      "--force-reconciled to drop them:\n" +
+      conflicts.join("\n"),
+  );
+  process.exit(1);
 }
 
 for (const rel of FILES) {

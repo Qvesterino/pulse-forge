@@ -12,6 +12,7 @@
  *  - type-only specifiers marked with "type" for verbatimModuleSyntax
  *    (Pulse Forge tsconfig is stricter than upstream).
  */
+// (Reconciled from Pulse Forge hardening pass, 2026-09-14: zero-channel guard + NaN attackEnv heal in recompute.)
 //
 // 8-line FDN with Householder feedback matrix, per-line HF damping
 // (IN the feedback loop), in-loop delay-line modulation (LFO per

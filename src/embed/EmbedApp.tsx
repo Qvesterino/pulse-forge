@@ -16,7 +16,11 @@ type Phase = { kind: "decoding" } | { kind: "rendering" } | { kind: "ready" } | 
  * No app services are booted — no IndexedDB, no scheduler, no MIDI. The
  * embed is intentionally as small as a share page can be.
  */
-export function EmbedApp({ code: codeProp, inline = false }: { code?: string; inline?: boolean } = {}) {
+export function EmbedApp({
+  code: codeProp,
+  inline = false,
+  hideBrand = false,
+}: { code?: string; inline?: boolean; hideBrand?: boolean } = {}) {
   const [phase, setPhase] = useState<Phase>({ kind: "decoding" });
   const [meta, setMeta] = useState<{ name: string; bpm: number; code: string } | null>(null);
   const bufferRef = useRef<AudioBuffer | null>(null);
@@ -239,9 +243,11 @@ export function EmbedApp({ code: codeProp, inline = false }: { code?: string; in
           <a className="embed-cta" href={openUrl} target="_blank" rel="noreferrer">
             OPEN IN KYX
           </a>
-          <span className="embed-brand">
-            <span className="embed-brand-mark">KX</span> KYX
-          </span>
+          {!hideBrand && (
+            <span className="embed-brand">
+              <span className="embed-brand-mark">KX</span> KYX
+            </span>
+          )}
         </div>
       </div>
     </div>

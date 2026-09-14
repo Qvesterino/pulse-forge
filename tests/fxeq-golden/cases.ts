@@ -4,6 +4,14 @@
 // Each case is a deterministic signal + parameter set rendered through
 // the processor. The resulting fingerprint is committed as JSON and
 // compared on every CI run within a tolerance band.
+//
+// NOTE (2026-09-14): every case pins its historical crossover splits
+// explicitly. The schema defaults were realigned (missing crossoverFreq6
+// + a one-position default shift) so fresh instances no longer render a
+// dead band — the fixtures keep the splits they were generated with.
+// impulse-response and combined-chain were regenerated (UPDATE_GOLDEN=1):
+// their 6-band default set contained a degenerate zero-width band that is
+// intentionally unreachable after the monotonic-gap guard.
 // ═══════════════════════════════════════════════════════════
 
 import { impulseSignal, logSweepSignal, multiToneSignal, type GoldenCase } from "./helpers.js";

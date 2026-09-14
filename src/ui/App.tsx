@@ -62,6 +62,8 @@ import { DiceProvider } from "./DiceContext";
 
 import { useDockLayout, toggleSlot, openInSlotA, clampDockHeight, type BottomPanel } from "./dockLayout";
 import { isPadKey, padKeysArmed, setPadKeysArmed } from "./padKeys";
+import { melodicKeys } from "./melodicKeys";
+import { JamGate } from "./JamGate";
 
 export function App({
   services,
@@ -422,6 +424,44 @@ export function App({
         return;
     }
   };
+
+  // ── Melodic QWERTY (Instant Jam): play the selected instrument from the
+  // computer keyboard. Registered BEFORE the shortcut handler so musical
+  // keys win on instrument tracks; the shortcut handler checks
+  // event.defaultPrevented, so Escape/modifier combos/typing are untouched.
+  // A = Capture last take still wins while the capture offer is up.
+  const melodicTrackRef = useRef<string | null>(null);
+  const captureOfferRef = useRef(false);
+  const jamActive = useMemo(
+    () => typeof location !== "undefined" && new URLSearchParams(location.search).has("collab"),
+    [],
+  );
+  useEffect(() => {
+    melodicTrackRef.current = track.kind === "instrument" ? track.id : null;
+  }, [track]);
+  useEffect(() => {
+    captureOfferRef.current = captureOffer;
+  }, [captureOffer]);
+  useEffect(() => {
+    melodicKeys.bind({
+      engine: services.engine,
+      getInstrumentTrackId: () => melodicTrackRef.current,
+    });
+    const down = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if (captureOfferRef.current && event.key.toLowerCase() === "a") return; // Capture wins
+      if (melodicKeys.keydown(event)) event.preventDefault();
+    };
+    const up = (event: KeyboardEvent) => {
+      if (melodicKeys.keyup(event)) event.preventDefault();
+    };
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+    };
+  }, [services]);
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -1039,6 +1079,7 @@ export function App({
         <SelectionContext.Provider value={selectionStore}>
           <ToolContext.Provider value={toolStore}>
             <AudioUnlock />
+            <JamGate services={services} jamActive={jamActive} />
             <OnboardingTour />
             <div className="app">
               <TopBar

@@ -12,6 +12,7 @@
  *  - type-only specifiers marked with "type" for verbatimModuleSyntax
  *    (Pulse Forge tsconfig is stricter than upstream).
  */
+// (Reconciled from Pulse Forge hardening pass, 2026-09-14: tap crossfade old-distance double-modulo wrap.)
 // ═══════════════════════════════════════════════════════════
 // Ozvena — Reflections Engine (E1)
 //

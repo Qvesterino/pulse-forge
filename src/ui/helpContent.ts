@@ -14,6 +14,10 @@ export interface GestureEntry {
 }
 
 export const GESTURES: GestureEntry[] = [
+  // ── Jam / keys ───────────────────────────────────────────────────────────
+  { area: "Jam", action: "A–K / W–P / ; keys", detail: "Play the selected instrument from the computer keyboard (sustains while held)" },
+  { area: "Jam", action: "Z / X", detail: "Octave down / up for the melodic keys" },
+  { area: "Jam", action: "1–8 (drum track)", detail: "Trigger drum pads — rebindable in the drum rack KEYS editor" },
   // ── Sequencer ────────────────────────────────────────────────────────────
   { area: "Sequencer", action: "Click step", detail: "Toggle the hit on/off" },
   { area: "Sequencer", action: "Drag step vertically", detail: "Velocity (up = louder)" },
