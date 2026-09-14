@@ -75,7 +75,12 @@ if (typeof self !== "undefined" && typeof (self as unknown as { postMessage?: un
   (self as unknown as { onmessage: (e: MessageEvent<OnsetDetectorRequest>) => void }).onmessage = (
     e: MessageEvent<OnsetDetectorRequest>,
   ) => {
-    const { channelData, sampleRate, sensitivity } = e.data;
+    // Validate before processing — React DevTools and other extensions may
+    // postMessage into workers that happen to have an onmessage handler.
+    const { channelData, sampleRate, sensitivity } = e.data ?? {};
+    if (!(channelData instanceof Float32Array) || typeof sampleRate !== "number" || !Number.isFinite(sampleRate)) {
+      return; // not our message — ignore silently
+    }
     const times = detectTransients(channelData, sampleRate, sensitivity ?? 1);
     (self as unknown as { postMessage: (msg: OnsetDetectorResponse) => void }).postMessage({
       times,
