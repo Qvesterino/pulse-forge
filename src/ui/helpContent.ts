@@ -20,19 +20,39 @@ export const GESTURES: GestureEntry[] = [
   { area: "Sequencer", action: "Alt + drag step", detail: "Microtiming −1..1 (early/late)" },
   { area: "Sequencer", action: "Ctrl/Cmd + drag step", detail: "Probability 0..1 (hits fire randomly)" },
   { area: "Sequencer", action: "Shift + drag across steps", detail: "Multi-select steps for bulk p-lock edits" },
-  { area: "Sequencer", action: "Right-click / long-press step", detail: "Open the p-lock editor (per-step pitch, gain, pan, cutoff…)" },
+  {
+    area: "Sequencer",
+    action: "Right-click / long-press step",
+    detail: "Open the p-lock editor (per-step pitch, gain, pan, cutoff…)",
+  },
   { area: "Sequencer", action: "Drag the bottom amount bar", detail: "Amount 0..100 % — ghost vs accent hits" },
   // ── Piano roll ───────────────────────────────────────────────────────────
   { area: "Piano roll", action: "Click empty grid", detail: "Add a note (right-drag or Shift+drag = marquee select)" },
   { area: "Piano roll", action: "Drag note — top third", detail: "Move the note" },
   { area: "Piano roll", action: "Drag note — right edge", detail: "Resize (note length)" },
-  { area: "Piano roll", action: "Middle + Alt / middle + Ctrl", detail: "Duplicate the note / change velocity while dragging" },
+  {
+    area: "Piano roll",
+    action: "Middle + Alt / middle + Ctrl",
+    detail: "Duplicate the note / change velocity while dragging",
+  },
   { area: "Piano roll", action: "Velocity lane, drag vertically", detail: "Per-note velocity" },
-  { area: "Piano roll", action: "With a note selected: S · Alt+S · L · Ctrl+B", detail: "Strum · slide · legato · duplicate" },
+  {
+    area: "Piano roll",
+    action: "With a note selected: S · Alt+S · L · Ctrl+B",
+    detail: "Strum · slide · legato · duplicate",
+  },
   // ── Values & dice ────────────────────────────────────────────────────────
-  { area: "Values & dice", action: "Drag a number", detail: "Scrub the value; double-click resets to default" },
-  { area: "Values & dice", action: "Dice: D · Shift+D", detail: "Roll full variation / small vary" },
-  { area: "Values & dice", action: "Dice: ← →", detail: "Walk the roll history" },
+  {
+    area: "Values & dice",
+    action: "Drag a number",
+    detail: "Scrub the value; Enter types an exact value; double-click resets to default",
+  },
+  {
+    area: "Values & dice",
+    action: "Dice tray open: D · Shift+D",
+    detail: "Roll full variation / small vary (only while the tray is visible)",
+  },
+  { area: "Values & dice", action: "Dice tray open: ← →", detail: "Walk the roll history" },
   { area: "Values & dice", action: "Dice locks", detail: "Locked stems survive the roll; Apply is one undo step" },
 ];
 

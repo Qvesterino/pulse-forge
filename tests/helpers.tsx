@@ -279,6 +279,15 @@ export function mockServices(doc?: ProjectDocument): Services {
       finish: vi.fn(() => false),
       cancel: vi.fn(),
     } as any,
+    ghost: {
+      play: vi.fn(),
+      stop: vi.fn(),
+      subscribe: vi.fn(() => () => {}),
+      getSnapshot: vi.fn(() => ({ playing: false })),
+      get isPlaying() {
+        return false;
+      },
+    } as any,
     getDiagnostics: vi.fn(() => ({
       playMode: "pattern",
       bpm: 120,

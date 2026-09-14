@@ -6,7 +6,7 @@ export interface Clock {
 
 export const systemClock: Clock = { now: () => performance.now() / 1000 };
 
-/** Ticks per bar (4/4) — matches BAR_TICKS without importing the model (transport stays model-independent). */
+/** Default ticks per bar (4/4). Projects can provide their actual bar length. */
 const BAR_TICKS_ = PPQ * 4;
 
 export class Transport {
@@ -18,6 +18,8 @@ export class Transport {
   private paused_ = false;
   /** Absolute tick at which content becomes audible for the current play. */
   private contentStartTick_ = 0;
+  /** Bar length used when calculating a future count-in/pre-roll. */
+  private barTicks_ = BAR_TICKS_;
   private loopEnabled_ = false;
   private loopStart_ = 0;
   private loopEnd_ = 0;
@@ -77,14 +79,20 @@ export class Transport {
     return this.loopEnd_;
   }
 
-  play(fromTick = this.pauseTick): void {
+  /**
+   * Start playback. A local start gets the configured click lead-in unless
+   * the transport is resuming from pause or the caller explicitly disables
+   * it (remote sync and other already-timed surfaces).
+   */
+  play(fromTick = this.pauseTick, options: { leadIn?: boolean } = {}): void {
     const now = this.clock.now();
     // When loop is enabled, snap the play start to loopStart so a manual
     // play from a position before the loop doesn't immediately wrap.
     const startTick = this.loopEnabled_ && fromTick < this.loopStart_ ? this.loopStart_ : fromTick;
     this.anchorTick = startTick;
     this.anchorTime = now;
-    this.contentStartTick_ = startTick + (this.paused_ ? 0 : this.leadInBars() * BAR_TICKS_);
+    const useLeadIn = !this.paused_ && options.leadIn !== false;
+    this.contentStartTick_ = startTick + (useLeadIn ? this.leadInBars() * this.barTicks_ : 0);
     this.playing_ = true;
     this.paused_ = false;
     this.onGesture?.(this);
@@ -209,6 +217,15 @@ export class Transport {
   }
 
   /**
+   * Set the project's musical bar length for future count-in/pre-roll starts.
+   * The default keeps standalone transports and legacy callers in 4/4.
+   * Changing it during an active lead-in does not move that play's boundary.
+   */
+  setBarTicks(ticks: number): void {
+    if (Number.isFinite(ticks) && ticks > 0) this.barTicks_ = ticks;
+  }
+
+  /**
    * Total lead-in bars before content sounds: the pre-roll region PLUS the
    * count-in bars (FL/Cubase semantics — "C1" counts one bar of clicks before
    * the content starts; pre-roll adds a bar of clicks on top of it).
@@ -219,13 +236,18 @@ export class Transport {
     return this.preRollBars_ + this.countInBars_;
   }
 
+  /** Total lead-in duration in ticks for the configured project bar length. */
+  leadInTicks(): number {
+    return this.leadInBars() * this.barTicks_;
+  }
+
   get secondsPerTick(): number {
     return 60 / (this.bpm_ * PPQ);
   }
 
   /** Absolute tick where the content region begins (end of the click lead-in). */
   anchorTickBeforePreRoll(): number {
-    return this.playing_ ? this.contentStartTick_ : this.anchorTick + this.leadInBars() * BAR_TICKS_;
+    return this.playing_ ? this.contentStartTick_ : this.anchorTick + this.leadInBars() * this.barTicks_;
   }
 
   tickAt(audioTime: number): number {

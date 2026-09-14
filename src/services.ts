@@ -1,6 +1,7 @@
 import { AudioEngine } from "./audio-engine/AudioEngine";
 import { Scheduler } from "./scheduler/Scheduler";
 import { Transport } from "./transport/Transport";
+import { ticksPerBar } from "./project-model/schema";
 import { ProjectStore } from "./store/ProjectStore";
 import { ProjectRepository } from "./persistence/ProjectRepository";
 import { SnapshotRepository, shouldAutoSnapshot } from "./persistence/SnapshotRepository";
@@ -131,10 +132,15 @@ export class PlaybackController {
       // Lead-in: start playback early so the metronome clicks (pre-roll +
       // count-in bars) lead into the requested position (content starts at
       // anchor + lead-in).
-      const leadInTicks = this.transport.leadInBars() * BAR_TICKS;
+      const leadInTicks = this.transport.leadInTicks();
       const requested = Math.max(0, this.transport.position);
       if (!this.transport.paused && leadInTicks > 0 && requested >= leadInTicks) {
         this.transport.play(requested - leadInTicks);
+      } else if (!this.transport.paused && requested > 0 && leadInTicks > 0) {
+        // There is not enough timeline before the requested position to fit a
+        // complete lead-in. Keep the user's exact location instead of
+        // silently moving content forward by another lead-in.
+        this.transport.play(requested, { leadIn: false });
       } else {
         this.transport.play();
       }
@@ -300,6 +306,7 @@ export async function openProject(
   maybeAutoSnapshot("Auto — session start");
 
   const transport = new Transport({ now: () => engine.currentTime }, initial.bpm);
+  transport.setBarTicks(ticksPerBar(initial));
   const modeRef: { mode: PlayMode } = { mode: "pattern" };
   const midiOutput = new MidiOutput();
   const midiClock = new MidiClock();
@@ -618,6 +625,7 @@ export async function openProject(
 
   store.onDocChanged = (doc) => {
     engine.setProject(doc);
+    transport.setBarTicks(ticksPerBar(doc));
     transport.setBpm(doc.bpm);
     store.setSaveStatus("dirty");
     // Defect D.1: route through the debouncer so a continuous gesture

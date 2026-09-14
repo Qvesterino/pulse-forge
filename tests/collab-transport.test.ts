@@ -33,6 +33,18 @@ describe("shared transport sync", () => {
     expect(follower.position).toBeCloseTo(3904, 0);
   });
 
+  it("does not apply a local count-in when joining an already-playing leader", () => {
+    const leader = new Transport(manualClock(), 124);
+    leader.play(1920);
+    const state = captureTransportState(leader, "leader", WALL0);
+
+    const follower = new Transport(manualClock(), 124);
+    follower.setCountIn(2);
+    applyTransportState(follower, state, WALL0);
+
+    expect(follower.position).toBeCloseTo(1920, 0);
+  });
+
   it("a mid-jam joiner lands on the leader's CURRENT position, not the anchor", () => {
     const leaderClock = manualClock();
     const leader = new Transport(leaderClock, 120);

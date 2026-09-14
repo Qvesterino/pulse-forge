@@ -74,6 +74,24 @@ describe("Transport", () => {
     expect(transport.anchorTickBeforePreRoll()).toBe(3 * PPQ);
   });
 
+  it("uses the project bar length for a future count-in", () => {
+    const { clock } = controlledClock();
+    const transport = new Transport(clock, 120);
+    transport.setCountIn(1);
+    transport.setBarTicks(3 * PPQ);
+    transport.play(0);
+    expect(transport.anchorTickBeforePreRoll()).toBe(3 * PPQ);
+  });
+
+  it("can preserve an early requested position when a full lead-in does not fit", () => {
+    const { clock } = controlledClock();
+    const transport = new Transport(clock, 120);
+    transport.setCountIn(1);
+    transport.play(2 * PPQ, { leadIn: false });
+    expect(transport.position).toBe(2 * PPQ);
+    expect(transport.anchorTickBeforePreRoll()).toBe(2 * PPQ);
+  });
+
   it("pauses and resumes from the paused position", () => {
     const { clock, advance } = controlledClock();
     const transport = new Transport(clock, 120);

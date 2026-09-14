@@ -3,7 +3,8 @@ import { useDoc, useServices } from "./context";
 import { useDice } from "./DiceContext";
 import { getStyleNamesForGenre } from "../ai/grooves/index";
 import { GENRES } from "../ai/types";
-import { getDrumTrack } from "../project-model/types";
+import type { DrumTrack } from "../project-model/types";
+import { isPadKey, padKeysArmed } from "./padKeys";
 import { PAD_NAMES } from "../ai/types";
 import { KIT_PRESETS } from "../project-model/kit-presets";
 
@@ -69,16 +70,17 @@ export function DiceTray() {
   const styles = getStyleNamesForGenre(session.intent.genre);
   const seed = preview.seed;
 
-  // Derive preview rows for mini grid
+  // Derive preview rows for mini grid. There is no drum track in a
+  // fresh/instrument-only project — getDrumTrack throws, so gate on it.
+  const drumTrack = doc.tracks.find((t): t is DrumTrack => t.kind === "drum") ?? null;
   let previewRows: number[][] = [];
   let previewActivePads: number[] = [];
-  if (preview.mode === "full" && preview.fullPattern?.proposal?.pattern) {
+  if (drumTrack && preview.mode === "full" && preview.fullPattern?.proposal?.pattern) {
     const pat = preview.fullPattern.proposal.pattern;
-    const target = doc.tracks.find((t) => t.kind === "drum") ?? getDrumTrack(doc);
-    previewRows = target.pads.map((pad) => pat.rows[pad.id] ?? []);
+    previewRows = drumTrack.pads.map((pad) => pat.rows[pad.id] ?? []);
     previewActivePads = previewRows.map((row, idx) => (row.some((v) => v > 0) ? idx : -1)).filter((i) => i >= 0);
-  } else if (preview.mode === "vary" && preview.varyPatch) {
-    const pads = getDrumTrack(doc).pads;
+  } else if (drumTrack && preview.mode === "vary" && preview.varyPatch) {
+    const pads = drumTrack.pads;
     previewRows = pads.map((pad) => preview.varyPatch!.rows[pad.id] ?? []);
     // Map pads indices to previewRows indices (pads order matches rows)
     // previewRows is per padId order; show varyPatch rows directly via pads
@@ -105,6 +107,9 @@ export function DiceTray() {
       if (typing) return;
       if (e.defaultPrevented) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
+      // A bound drum-pad key always wins over the tray hotkey — "D" is one of
+      // the default pad keys and must not fire a dice roll mid-performance.
+      if (isPadKey(e.key.toLowerCase()) && padKeysArmed()) return;
       if (e.key.toLowerCase() === "d" && e.shiftKey) {
         e.preventDefault();
         rollVary();
@@ -235,7 +240,13 @@ export function DiceTray() {
         <label className="dice-field dice-seed-field">
           <span>SEED</span>
           <input value={seed} onChange={(e) => setSeed(e.target.value)} maxLength={16} spellCheck={false} />
-          <button type="button" className="btn btn-small" onClick={handleCopySeed} title="Copy seed" aria-label="Copy seed">
+          <button
+            type="button"
+            className="btn btn-small"
+            onClick={handleCopySeed}
+            title="Copy seed"
+            aria-label="Copy seed"
+          >
             📋
           </button>
         </label>
@@ -494,7 +505,7 @@ export function DiceTray() {
       </div>
 
       <div className="dice-footer-hint">
-        Hotkeys: <kbd className="help-kbd">D</kbd> Full · <kbd className="help-kbd">Shift+D</kbd> Vary ·{' '}
+        Hotkeys: <kbd className="help-kbd">D</kbd> Full · <kbd className="help-kbd">Shift+D</kbd> Vary ·{" "}
         <kbd className="help-kbd">←</kbd> <kbd className="help-kbd">→</kbd> history · locks keep the stem on a roll ·
         Apply = 1 undo
       </div>

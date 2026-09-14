@@ -101,6 +101,31 @@ describe("TopBar", () => {
     expect(screen.getByRole("button", { name: "Metronome on" })).toHaveAttribute("aria-pressed", "true");
   });
 
+  it("sets BPM from two taps without changing the project until the second tap", async () => {
+    const user = userEvent.setup();
+    const { services } = renderWithContext(<TopBar {...topBarProps()} />);
+    let now = 1_000;
+    const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => now);
+
+    try {
+      const tap = screen.getByRole("button", { name: "Tap tempo" });
+      await user.click(tap);
+      expect(services.store.execute).not.toHaveBeenCalled();
+
+      now = 1_500;
+      await user.click(tap);
+      expect(services.store.execute).toHaveBeenCalledTimes(1);
+      const command = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
+        type: string;
+        execute: (doc: { bpm: number }) => { bpm: number };
+      };
+      expect(command.type).toBe("setBpm");
+      expect(command.execute(services.store.doc).bpm).toBe(120);
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
   it("shows project name", () => {
     renderWithContext(<TopBar {...topBarProps()} />);
     expect(screen.getByLabelText("Project name")).toBeInTheDocument();

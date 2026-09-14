@@ -88,7 +88,9 @@ export function applyTransportState(
     const elapsed = Math.max(0, wallNow - state.anchorWall);
     const desired = Math.max(0, state.anchorTick + (elapsed * state.bpm * PPQ) / 60);
     if (Math.abs(transport.bpm - state.bpm) > 0.001) transport.setBpm(state.bpm);
-    if (!transport.playing) transport.play(desired);
+    // This is already an extrapolated remote timeline. A local count-in must
+    // never delay a follower or make it miss the leader's current position.
+    if (!transport.playing) transport.play(desired, { leadIn: false });
     else transport.seek(desired);
   } else {
     if (transport.playing) transport.pause();
