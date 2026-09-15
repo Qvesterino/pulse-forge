@@ -1,7 +1,7 @@
 import { createDrumTrack } from "../commands/commands";
 import type { Command } from "../commands/types";
 import { hashString, mulberry32 } from "../shared/rng";
-import type { ProjectDocument } from "../project-model/types";
+import type { ProjectDocument, SceneRole } from "../project-model/types";
 import { PPQ } from "../project-model/types";
 import type { Transport } from "../transport/Transport";
 
@@ -36,6 +36,8 @@ export interface BandmateState {
   phraseBars: number;
   hasTrack: boolean;
   lastPhrase: number | null;
+  /** Scene role the bot is currently playing under (null = no scene context). */
+  sceneRole: SceneRole | null;
 }
 
 export interface BandmateControls {
@@ -122,10 +124,115 @@ function withBotRows(
   };
 }
 
+// ── Scene-role etiquette (v2.1) ─────────────────────────────────────────────
+// The bot reads the room's arrangement like a musician who knows the song:
+// breaks are held, builds ramp and fill into the drop, drops hit full.
+
+export type PlayModeLite = "pattern" | "song";
+
+export interface EtiquetteDirective {
+  /** Multiplier on the host ENERGY (0..1). */
+  densityScale: number;
+  allow: { kick: boolean; snare: boolean; hat: boolean; perc: boolean };
+  /** Turn the last bar of the phrase into a crescendo fill. */
+  fill: boolean;
+}
+
+const ALL_PADS: EtiquetteDirective["allow"] = { kick: true, snare: true, hat: true, perc: true };
+
+/**
+ * Musical etiquette per scene role. `progress` is 0..1 inside the CURRENT
+ * phrase — builds ramp through it, outros thin through it, the fill fires
+ * only once the phrase is most of the way home (a fill exists to launch the
+ * NEXT section). `null` role = full energy, exactly like v1.
+ */
+export function etiquetteFor(role: SceneRole | null, progress: number): EtiquetteDirective {
+  const p = Math.max(0, Math.min(1, progress));
+  switch (role) {
+    case "intro":
+      return { densityScale: 0.35, allow: { kick: true, snare: false, hat: true, perc: false }, fill: false };
+    case "build":
+      return {
+        densityScale: 0.55 + 0.45 * p,
+        allow: ALL_PADS,
+        fill: p >= 0.75, // the roll into the drop
+      };
+    case "break":
+      return { densityScale: 0.3, allow: { kick: false, snare: false, hat: true, perc: false }, fill: false };
+    case "outro":
+      return { densityScale: Math.max(0.25, 1 - 0.7 * p), allow: { kick: true, snare: false, hat: true, perc: false }, fill: false };
+    case "fill":
+      return { densityScale: 1, allow: ALL_PADS, fill: true };
+    case "drop":
+    case "custom":
+    case null:
+    default:
+      return { densityScale: 1, allow: ALL_PADS, fill: false };
+  }
+}
+
+/** Older scenes carry no role — infer the obvious ones from the name. */
+function roleFromName(name: string): SceneRole | null {
+  const n = name.toLowerCase();
+  for (const r of ["intro", "build", "drop", "break", "outro", "fill"] as const) {
+    if (n.includes(r)) return r;
+  }
+  return null;
+}
+
+/**
+ * The scene role under the playhead — mirrors SceneLauncher's
+ * currentSceneIdFor (song mode: the clip covering the playhead bar; pattern
+ * mode: the scene bound to the active pattern), then reads its role.
+ */
+export function currentSceneRole(
+  doc: ProjectDocument,
+  mode: PlayModeLite,
+  playheadBar: number,
+): SceneRole | null {
+  let sceneId: string | null = null;
+  if (mode === "song") {
+    const clip = doc.arrangement.clips.find(
+      (c) => playheadBar >= c.startBar && playheadBar < c.startBar + c.lengthBars,
+    );
+    sceneId = clip?.sceneId ?? null;
+  } else {
+    sceneId = doc.scenes.find((s) => s.patternId === doc.activePatternId)?.id ?? null;
+  }
+  const scene = sceneId ? doc.scenes.find((s) => s.id === sceneId) : null;
+  if (!scene) return null;
+  return scene.role ?? roleFromName(scene.name);
+}
+
+/** Apply a fill to the last half of the bar: snare 16ths crescendo, kick thins. */
+function applyFillCrescendo(rows: Record<string, number[]>, kinds: Record<string, PadKind>, rand: () => number): void {
+  for (const padId of Object.keys(rows)) {
+    const kind = kinds[padId] ?? "perc";
+    const row = rows[padId];
+    if (kind === "kick") {
+      // Fills drop the mid-bar kick so the snare line is heard.
+      for (let s = 8; s < STEPS; s++) row[s] = 0;
+      continue;
+    }
+    if (kind === "perc") continue;
+    for (let s = 8; s < STEPS; s++) {
+      const ramp = 0.35 + ((s - 8) / 8) * 0.6; // 0.35 → 0.95 across the back half
+      if (kind === "snare" && s >= 10) hitRow(row, s, ramp);
+      else if (kind === "hat" && rand() < 0.5) hitRow(row, s, ramp * 0.8);
+    }
+  }
+}
+
+function hitRow(row: number[], step: number, v: number): void {
+  row[step % STEPS] = Math.max(row[step % STEPS], Math.min(1, v));
+}
+
 export function createBandmate(deps: {
   store: StoreLike;
   transport: Transport;
   roomId: string;
+  /** Playback mode — song mode resolves scenes from arrangement clips. */
+  getMode: () => PlayModeLite;
 }): BandmateControls {
   const { store, transport, roomId } = deps;
   let enabled = false;
@@ -133,6 +240,7 @@ export function createBandmate(deps: {
   let phraseBars = 8;
   let trackId: string | null = null;
   let lastPhraseIndex: number | null = null;
+  let sceneRole_: SceneRole | null = null;
   const listeners = new Set<() => void>();
   const emit = () => {
     for (const l of listeners) l();
@@ -175,14 +283,28 @@ export function createBandmate(deps: {
     return true;
   };
 
-  const roll = (phraseIndex: number): void => {
+  const roll = (phraseIndex: number, phraseProgress: number, role: SceneRole | null): void => {
     const bot = findBotTrack();
     if (!bot) return;
     const active = store.doc.patterns.find((p) => p.id === store.doc.activePatternId);
     if (!active) return;
+    const directive = etiquetteFor(role, phraseProgress);
+    const effectiveEnergy = Math.max(0, Math.min(1, energy * directive.densityScale));
     const rand = mulberry32(hashString(`${roomId}:kyx:${phraseIndex}`));
     const rowsByPad: Record<string, number[]> = {};
-    for (const pad of bot.pads) rowsByPad[pad.id] = rollRow(pad.kind, energy, rand);
+    const kinds: Record<string, PadKind> = {};
+    for (const pad of bot.pads) {
+      const kind = pad.kind;
+      kinds[pad.id] = kind;
+      // Etiquette gate: disallowed pads fall silent for this phrase.
+      const allowed =
+        (kind === "kick" && directive.allow.kick) ||
+        (kind === "snare" && directive.allow.snare) ||
+        (kind === "hat" && directive.allow.hat) ||
+        (kind === "perc" && directive.allow.perc);
+      rowsByPad[pad.id] = allowed ? rollRow(kind, effectiveEnergy, rand) : new Array<number>(STEPS).fill(0);
+    }
+    if (directive.fill) applyFillCrescendo(rowsByPad, kinds, rand);
     // Capture the previous rows so undo restores the human/bot state musically.
     const prevRows: Record<string, number[]> = {};
     for (const pad of bot.pads) {
@@ -191,7 +313,7 @@ export function createBandmate(deps: {
     const padIds = bot.pads.map((p) => p.id);
     const command: Command = {
       type: "bandmateRoll",
-      label: `KYX phrase ${phraseIndex + 1}`,
+      label: `KYX phrase ${phraseIndex + 1}${role ? ` [${role}]` : ""}`,
       execute: (d) => withBotRows(d, padIds, rowsByPad),
       undo: (d) => withBotRows(d, padIds, prevRows),
     };
@@ -201,11 +323,14 @@ export function createBandmate(deps: {
   const tick = (): void => {
     if (!enabled || !transport.playing) return;
     const phraseTicks = BAR_TICKS * phraseBars;
-    const index = Math.floor(Math.max(0, transport.position) / phraseTicks);
+    const position = Math.max(0, transport.position);
+    const index = Math.floor(position / phraseTicks);
     if (index === lastPhraseIndex) return;
     lastPhraseIndex = index;
     if (!ensureTrack()) return;
-    roll(index);
+    const phraseProgress = position / phraseTicks - index;
+    sceneRole_ = currentSceneRole(store.doc, deps.getMode(), position / BAR_TICKS);
+    roll(index, phraseProgress, sceneRole_);
     emit();
   };
 
@@ -233,6 +358,7 @@ export function createBandmate(deps: {
       phraseBars,
       hasTrack: !!trackId,
       lastPhrase: lastPhraseIndex,
+      sceneRole: sceneRole_,
     }),
     subscribe(listener: () => void) {
       listeners.add(listener);

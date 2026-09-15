@@ -466,7 +466,12 @@ export async function openProject(
 
   let bandmate: BandmateControls | undefined;
   if (collab) {
-    bandmate = createBandmate({ store, transport, roomId: collab.roomId });
+    bandmate = createBandmate({
+      store,
+      transport,
+      roomId: collab.roomId,
+      getMode: () => (modeRef.mode === "song" ? "song" : "pattern"),
+    });
   }
 
   // Test/debug hook: the browser checks read the live store/transport after

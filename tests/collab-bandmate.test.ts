@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import type { ProjectDocument } from "../src/project-model/types";
 import { Transport } from "../src/transport/Transport";
-import { createBandmate } from "../src/collab/bandmate";
+import { createBandmate, currentSceneRole, etiquetteFor } from "../src/collab/bandmate";
 
 const SR_BASE = 124;
 
@@ -27,14 +27,14 @@ class FakeStore {
   }
 }
 
-function setup(roomId = "test-room") {
-  const doc = createProjectFromTemplate("house");
+function setup(roomId = "test-room", template: "house" | "scene-score" = "house") {
+  const doc = createProjectFromTemplate(template);
   const humanDrum = doc.tracks.find((t) => t.kind === "drum");
   const humanRowsBefore = humanDrum ? JSON.stringify(doc.patterns.map((p) => p.rows)) : null;
   const store = new FakeStore(doc);
   const clock = manualClock();
   const transport = new Transport(clock, SR_BASE);
-  const bandmate = createBandmate({ store, transport, roomId });
+  const bandmate = createBandmate({ store, transport, roomId, getMode: () => (template === "scene-score" ? "song" : "pattern") });
   bandmate.setPhraseBars(1); // 1-bar phrases → one bar = 1920 ticks
   return { store, clock, transport, bandmate, humanDrum, humanRowsBefore };
 }
@@ -150,3 +150,82 @@ describe("AI bandmate", () => {
   });
 });
 
+
+describe("scene-role etiquette", () => {
+  it("etiquetteFor: break strips kick/snare; build ramps and fills late; drop is full", () => {
+    const brk = etiquetteFor("break", 0.5);
+    expect(brk.allow.kick).toBe(false);
+    expect(brk.allow.snare).toBe(false);
+    expect(brk.allow.hat).toBe(true);
+    expect(brk.densityScale).toBeLessThan(0.5);
+
+    const buildEarly = etiquetteFor("build", 0.3);
+    const buildLate = etiquetteFor("build", 0.9);
+    expect(buildEarly.fill).toBe(false);
+    expect(buildLate.fill).toBe(true);
+    expect(buildLate.densityScale).toBeGreaterThan(buildEarly.densityScale);
+
+    const drop = etiquetteFor("drop", 0.5);
+    expect(drop.densityScale).toBe(1);
+    expect(drop.allow).toEqual({ kick: true, snare: true, hat: true, perc: true });
+
+    const none = etiquetteFor(null, 0.5);
+    expect(none).toEqual(drop); // no scene context = v1 behaviour
+  });
+
+  it("currentSceneRole resolves song-mode clips, pattern-mode scenes and names", () => {
+    const doc = createProjectFromTemplate("scene-score");
+    const clip = doc.arrangement.clips.find((c) => c.startBar === 0)!;
+    expect(clip).toBeTruthy();
+    // song mode: the clip covering bar 0 wins
+    const songRole = currentSceneRole(doc, "song", 2);
+    expect(songRole).not.toBeNull();
+    // pattern mode: the scene bound to the active pattern
+    const patternRole = currentSceneRole(doc, "pattern", 2);
+    expect(patternRole).not.toBeNull();
+    // far outside any clip → null in song mode
+    expect(currentSceneRole(doc, "song", 9999)).toBeNull();
+  });
+
+  it("a BREAK scene silences kick/snare; a DROP scene brings them back", () => {
+    const s = setup("room-break", "scene-score");
+    s.bandmate.setEnabled(true);
+    s.bandmate.setEnergy(0.8);
+    s.transport.play(0); // bar ~2 → inside the first (INTRO or early) clip
+    // Find the BREAK clip and park the playhead inside it.
+    const doc = s.store.doc;
+    const breakClip = doc.arrangement.clips.find((c) => {
+      const scene = doc.scenes.find((sc) => sc.id === c.sceneId);
+      return (scene?.role ?? "") === "break" || scene?.name.toLowerCase().includes("break");
+    });
+    expect(breakClip).toBeTruthy();
+    const breakBar = breakClip!.startBar + 1;
+    const transport = s.transport;
+    void transport;
+    // rewind-free: play from inside the break clip
+    s.transport.play(breakBar * 1920);
+    s.clock.advance(0.05);
+    s.bandmate.tick();
+
+    const bot = s.store.doc.tracks.find(
+      (t): t is Extract<typeof t, { kind: "drum" }> => t.kind === "drum" && t.name === "KYX Drums",
+    )!;
+    const active = s.store.doc.patterns.find((p) => p.id === s.store.doc.activePatternId)!;
+    const kickPad = bot.pads.find((p) => p.name.toLowerCase().includes("kick"))!;
+    const hatPad = bot.pads.find((p) => p.name.toLowerCase().includes("hat"))!;
+    expect(active.rows[kickPad.id].some((v) => v > 0)).toBe(false); // kick held back
+    expect(active.rows[hatPad.id].some((v) => v > 0)).toBe(true); // hats keep time
+
+    // DROP scene restores the kick
+    const dropClip = doc.arrangement.clips.find((c) => {
+      const scene = doc.scenes.find((sc) => sc.id === c.sceneId);
+      return (scene?.role ?? scene?.name.toLowerCase()) === "drop" || scene?.name.toLowerCase().includes("drop");
+    });
+    expect(dropClip).toBeTruthy();
+    s.transport.play((dropClip!.startBar + 1) * 1920);
+    s.clock.advance(0.05);
+    s.bandmate.tick();
+    const active2 = s.store.doc.patterns.find((p) => p.id === s.store.doc.activePatternId)!;
+    expect(active2.rows[kickPad.id].some((v) => v > 0)).toBe(true);
+  });
+});

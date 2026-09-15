@@ -223,6 +223,11 @@ export function CollabPanel({ onReplaceServices }: { onReplaceServices: (service
               <span className="collab-hint">
                 plays drums on phrase boundaries while the room plays — its rows, its track, your call
               </span>
+              {bmState.sceneRole && (
+                <span className="collab-bandmate-scene" title="The bot reads the scene role and adapts (breaks held, builds filled)">
+                  SCENE: {bmState.sceneRole.toUpperCase()}
+                </span>
+              )}
             </>
           )}
         </div>

@@ -726,6 +726,7 @@ button {
   /* Anchor for the absolutely-positioned p-lock selection toolbar. */
   position: relative;
   overflow: auto;
+  contain: layout style;
   background: var(--bg-panel);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -1439,6 +1440,7 @@ button {
 /* ---------- Mixer ---------- */
 
 .mixer {
+  contain: layout style;
   max-height: 170px;
   overflow-x: auto;
   overflow-y: hidden;
@@ -2192,6 +2194,7 @@ button {
   min-height: 118px;
   overflow-x: auto;
   overflow-y: hidden;
+  contain: layout style;
 }
 
 /* Scene-intensity lane (VISION §11): a 0..1 editable curve strip under the
@@ -4483,6 +4486,7 @@ button {
   width: 1px;
   background: var(--play);
   pointer-events: none;
+  will-change: transform;
 }
 
 .arr-playhead-lane {
@@ -5319,6 +5323,7 @@ button {
   grid-template-columns: 1fr 1fr 72px 1fr;
   gap: 8px;
   padding: 8px;
+  contain: layout style;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -5392,6 +5397,7 @@ button {
   bottom: 0;
   background: rgba(125, 211, 252, 0.45);
   transition: height 0.04s linear;
+  will-change: height;
 }
 
 .master-channel-peak {
@@ -5402,6 +5408,7 @@ button {
   background: linear-gradient(180deg, #4ade80 0%, #4ade80 70%, #fbbf24 85%, #f87171 100%);
   opacity: 0.85;
   transition: height 0.04s linear;
+  will-change: height;
 }
 
 .master-channel-hold {
@@ -8288,9 +8295,7 @@ html {
   text-align: center;
   border: 1px solid var(--border);
   border-radius: 16px;
-  background:
-    radial-gradient(420px 220px at 50% 0%, rgba(245, 158, 11, 0.08), transparent 70%),
-    var(--bg-panel);
+  background: radial-gradient(420px 220px at 50% 0%, rgba(245, 158, 11, 0.08), transparent 70%), var(--bg-panel);
 }
 
 .landing-cta-panel h2 {
@@ -8869,6 +8874,7 @@ html {
   column-gap: 6px;
 }
 .dock-slot {
+  contain: layout style;
   flex: 1 1 0;
   min-width: 0;
   min-height: 0;
@@ -9643,9 +9649,7 @@ html {
   display: flex;
   align-items: center;
   justify-content: center;
-  background:
-    radial-gradient(1200px 600px at 50% 40%, rgba(245, 158, 11, 0.14), transparent 70%),
-    rgba(6, 8, 12, 0.94);
+  background: radial-gradient(1200px 600px at 50% 40%, rgba(245, 158, 11, 0.14), transparent 70%), rgba(6, 8, 12, 0.94);
   cursor: pointer;
   user-select: none;
 }
@@ -9730,4 +9734,11 @@ html {
 .collab-bandmate-off {
   color: rgba(255, 255, 255, 0.35);
   margin-left: 4px;
+}
+
+.collab-bandmate-scene {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: rgba(96, 165, 250, 0.9);
 }
