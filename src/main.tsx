@@ -64,9 +64,11 @@ if (/^\/embed(\/|$)/.test(PATH)) {
 
 /** `/` shows the landing page for FIRST-TIME visitors; everyone else —
  *  and anyone who clicks the CTA — lands in the studio flow. `/studio`
- *  always skips the landing. */
+ *  always skips the landing. `/?landing` or `/landing` shows the landing
+ *  even for returning users (KYX logo click). */
 function Entry() {
   const [entered, setEntered] = useState(() => {
+    if (/^\/landing(\/|$)/.test(PATH) || new URLSearchParams(location.search).has("landing")) return false;
     if (/^\/studio(\/|$)/.test(PATH)) return true;
     try {
       return localStorage.getItem(ONBOARDED_KEY) === "1";

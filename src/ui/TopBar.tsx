@@ -473,8 +473,15 @@ export function TopBar({
     <>
       <header ref={topbarRef} className="topbar">
         <div className="brand">
-          <span className="brand-mark">KX</span>
-          <span className="brand-name">KYX</span>
+          <a
+            href="/?landing"
+            className="brand-link"
+            title="Back to landing page"
+            style={{ textDecoration: "none", color: "inherit", display: "flex", alignItems: "center", gap: 6 }}
+          >
+            <span className="brand-mark">KX</span>
+            <span className="brand-name">KYX</span>
+          </a>
         </div>
 
         <button

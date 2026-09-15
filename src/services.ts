@@ -26,6 +26,8 @@ import { ensureWorkletsForDoc } from "./audio-worklets/loader";
 import type { YDocStore } from "./collab/YDocStore";
 import type { CollabSession } from "./collab/CollabSession";
 import { collabParamsFromSearch } from "./collab/collabShared";
+import type { BandmateControls } from "./collab/bandmate";
+import { createBandmate } from "./collab/bandmate";
 import {
   applyTransportState,
   captureTransportState,
@@ -61,6 +63,8 @@ export interface Services {
    * (a joiner landing mid-jam hears the room from the leader's NOW).
    */
   sharedTransportReapply?: () => void;
+  /** Instant Jam AI bandmate (drums) — present when a collab session runs. */
+  bandmate?: BandmateControls;
   core: CoreServices;
   /** Plain local store, or a CRDT store while a collab session is active. */
   store: ProjectStore | YDocStore;
@@ -460,10 +464,15 @@ export async function openProject(
     };
   }
 
+  let bandmate: BandmateControls | undefined;
+  if (collab) {
+    bandmate = createBandmate({ store, transport, roomId: collab.roomId });
+  }
+
   // Test/debug hook: the browser checks read the live store/transport after
   // a real boot through ?import=<code>&collab=<room>.
   if (collab) {
-    (window as unknown as { __pfJam: unknown }).__pfJam = { store, collab, transport, playback };
+    (window as unknown as { __pfJam: unknown }).__pfJam = { store, collab, transport, playback, bandmate };
   }
 
   const midi = new MidiInput();
@@ -731,6 +740,7 @@ export async function openProject(
     transport,
     scheduler,
     sharedTransportReapply,
+    bandmate,
     repo,
     bank,
     library,

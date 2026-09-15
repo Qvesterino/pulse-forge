@@ -2,6 +2,7 @@ import { useSyncExternalStore, useEffect, useRef, useState } from "react";
 import { openProject, type Services } from "../services";
 import { defaultServerUrl, randomRoomId, shareUrl } from "../collab/collabShared";
 import { encodeProjectForGallery, setRemixParent } from "../gallery/galleryApi";
+import { Slider } from "./controls";
 import { JAM_ROLES, normalizeJamRole, type JamRole } from "../collab/jamRoles";
 import { useDoc, useServices } from "./context";
 
@@ -144,6 +145,11 @@ export function CollabPanel({ onReplaceServices }: { onReplaceServices: (service
   }
 
   const statusClass = session.status === "connected" ? "ok" : session.status === "connecting" ? "wait" : "bad";
+  const bandmate = services.bandmate;
+  const [bmTick, setBmTick] = useState(0);
+  useEffect(() => bandmate?.subscribe(() => setBmTick((t) => t + 1)), [bandmate]);
+  void bmTick;
+  const bmState = bandmate?.getState();
   // A jam link (?import=<code>&collab=<room>) must be shared WHOLE — the
   // import code is what seeds the beat into the room for every joiner.
   const isJam = typeof location !== "undefined" && new URLSearchParams(location.search).has("import");
@@ -185,6 +191,42 @@ export function CollabPanel({ onReplaceServices }: { onReplaceServices: (service
         ))}
         {session.participants.length === 0 && <span className="collab-hint">waiting for others — share the link…</span>}
       </div>
+      {bandmate && bmState && (
+        <div className="collab-bandmate" role="group" aria-label="AI bandmate">
+          <div className="collab-bandmate-head">
+            <span className="collab-bandmate-title">
+              🤖 AI BANDMATE <span className={bmState.enabled ? "collab-bandmate-on" : "collab-bandmate-off"}>
+                {bmState.enabled ? "ONLINE" : "OFFLINE"}
+              </span>
+            </span>
+            <button
+              type="button"
+              className={`btn btn-small${bmState.enabled ? " active" : ""}`}
+              aria-pressed={bmState.enabled}
+              onClick={() => bandmate.setEnabled(!bmState.enabled)}
+            >
+              {bmState.enabled ? "PULL OUT" : "GIVE IT THE DRUMS"}
+            </button>
+          </div>
+          {bmState.enabled && (
+            <>
+              <Slider
+                compact
+                label={`ENERGY (${Math.round(bmState.energy * 100)}%)`}
+                min={0}
+                max={1}
+                value={bmState.energy}
+                defaultValue={0.6}
+                format={(v: number) => `${Math.round(v * 100)}%`}
+                onCommit={(v: number) => bandmate.setEnergy(v)}
+              />
+              <span className="collab-hint">
+                plays drums on phrase boundaries while the room plays — its rows, its track, your call
+              </span>
+            </>
+          )}
+        </div>
+      )}
       <label className="collab-field">
         <span>YOUR ROLE</span>
         <select
