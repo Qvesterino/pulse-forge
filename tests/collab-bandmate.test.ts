@@ -258,7 +258,7 @@ describe("call & response (listening)", () => {
     const phraseDur = (1920 * 60) / (SR_BASE * 480);
     // Human plays at steps 2, 5, 10 (off-grid, mid register 60..63)
     for (const st of [2, 5, 10]) {
-      s.bandmate.noteHeard(60 + st, nowWall + (st / 16) * phraseDur);
+      s.bandmate.noteHeard(60 + st, nowWall - phraseDur + (st / 16) * phraseDur);
     }
     s.clock.advance(secondsPerBar + 0.05);
     s.bandmate.tick(); // phrase boundary → response
@@ -270,9 +270,11 @@ describe("call & response (listening)", () => {
     const perc = bot.pads.filter((p) => ["perc", "snare"].includes(p.name.toLowerCase().includes("perc") ? "perc" : p.name.toLowerCase().includes("snare") ? "snare" : "other"));
     void perc;
     // find the bot's perc-or-snare pad row and count hits at the echoed steps
-    const percPad = bot.pads.find((p) => /perc/i.test(p.name));
-    const row = percPad ? active.rows[percPad.id] : [];
-    const echoed = [2, 5, 10].filter((st) => row[st] > 0).length;
+    // The echo lands across the perc GROUP (rim/shaker/ride/toms share the kind)
+    const percIds = new Set(bot.pads.filter((p) => /rim|shaker|ride|tom/i.test(p.name)).map((p) => p.id));
+    const echoed = [2, 5, 10].filter(
+      (st) => percIds.size > 0 && [...percIds].some((id) => (active.rows[id]?.[st] ?? 0) > 0),
+    ).length;
     expect(echoed).toBeGreaterThanOrEqual(1); // some echo survives the 40% drop lottery
   });
 
@@ -285,7 +287,7 @@ describe("call & response (listening)", () => {
       const nowWall = Date.now() / 1000;
       const phraseDur = (1920 * 60) / (SR_BASE * 480);
       for (let i = 0; i < notes.length; i++) {
-        s.bandmate.noteHeard(60 + (i % 12), nowWall + (i / notes.length) * phraseDur);
+        s.bandmate.noteHeard(60 + (i % 12), nowWall - phraseDur + (i / notes.length) * phraseDur);
       }
       s.clock.advance(secondsPerBar + 0.05);
       s.bandmate.tick();
@@ -310,7 +312,7 @@ describe("call & response (listening)", () => {
       const nowWall = Date.now() / 1000;
       const phraseDur = (1920 * 60) / (SR_BASE * 480);
       for (let i = 0; i < 4; i++) {
-        s.bandmate.noteHeard(pitch, nowWall + (i / 4) * phraseDur);
+        s.bandmate.noteHeard(pitch, nowWall - phraseDur + (i / 4) * phraseDur);
       }
       s.clock.advance(secondsPerBar + 0.05);
       s.bandmate.tick();
@@ -318,9 +320,11 @@ describe("call & response (listening)", () => {
         (t): t is Extract<typeof t, { kind: "drum" }> => t.kind === "drum" && t.name === "KYX Drums",
       )!;
       const active = s.store.doc.patterns.find((p) => p.id === s.store.doc.activePatternId)!;
-      const percPad = bot.pads.find((p) => /perc/i.test(p.name));
-      const row = percPad ? active.rows[percPad.id] : new Array(16).fill(0);
-      const vals = row.filter((v) => v > 0);
+      const percIds = bot.pads.filter((p) => /rim|shaker|ride|tom/i.test(p.name)).map((p) => p.id);
+      const vals: number[] = [];
+      for (const id of percIds) {
+        for (const v of active.rows[id] ?? []) if (v > 0) vals.push(v);
+      }
       return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
     };
     const high = percAvgFor(95);
