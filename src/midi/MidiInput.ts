@@ -43,8 +43,13 @@ export class MidiInput {
   private captureNextCcCb: ((cc: number, channel: number) => void) | null = null;
   /** Live Note Repeat holds — drum notes repeat while physically held. */
   private noteRepeat: NoteRepeatController | null = null;
-  /** Most recent note per MIDI channel — CC74 (MPE timbre) routes here. */
+  /** Most recent note per channel — CC74 (MPE timbre) routes here. */
   private channelLastNote = new Map<number, number>();
+  /**
+   * Performed melodic note listener (Instant Jam: the AI bandmate listens —
+   * noteHeard). Fires on every instrument-track note-on.
+   */
+  onInstrumentNote: ((pitch: number) => void) | null = null;
   /** Live MPE dimension state per held note — drives the MpeIndicator UI. */
   private mpeNotes = new Map<number, { pressure: number; timbre: number }>();
   private mpeListeners = new Set<() => void>();
@@ -320,6 +325,7 @@ export class MidiInput {
       const instTrack = doc.tracks.find((t) => t.kind === "instrument");
       if (instTrack) {
         this.engine.noteOn(instTrack.id, note, normVelocity, when, 0.5);
+        this.onInstrumentNote?.(note);
       }
     }
   }

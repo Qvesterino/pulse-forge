@@ -44,6 +44,12 @@ export interface BandmateControls {
   setEnabled(on: boolean): void;
   setEnergy(energy: number): void;
   setPhraseBars(bars: number): void;
+  /**
+   * Feed a performed human note (QWERTY/MIDI) — the bot listens to the last
+   * phrase of these and shapes its next groove as a RESPONSE (echo layer,
+   * complementary density, register-aware kit emphasis).
+   */
+  noteHeard(pitch: number, wallNow?: number): void;
   getState(): BandmateState;
   subscribe(listener: () => void): () => void;
   /** Test/step hook: run one clock tick immediately. */
@@ -227,6 +233,101 @@ function hitRow(row: number[], step: number, v: number): void {
   row[step % STEPS] = Math.max(row[step % STEPS], Math.min(1, v));
 }
 
+// ── Listening (v2.2 — call & response) ──────────────────────────────────────
+
+export interface HumanPhraseFeatures {
+  count: number;
+  /** Mean human pitch normalized to 0..1 (36 = bottom, 96 = top). */
+  registerMean: number;
+  /** Fraction of onsets off the quarter grid (syncopation). */
+  syncRatio: number;
+  /** Human onset positions as 16th-steps within the bar, sorted. */
+  steps: number[];
+}
+
+/**
+ * Summarize the human notes heard during one phrase: register (register-aware
+ * kit emphasis), on-set density (complementary density — fill space, don't
+ * crowd it) and syncopation ratio (human syncopates → bot straightens, and
+ * vice versa). Fewer than 3 notes = not a phrase, no response.
+ */
+export function extractHumanPhrase(
+  notes: Array<{ pitch: number; wall: number }>,
+  windowStart: number,
+  windowDur: number,
+  bpm: number,
+): HumanPhraseFeatures | null {
+  if (windowDur <= 0) return null;
+  const inWindow = notes.filter((n) => n.wall >= windowStart && n.wall <= windowStart + windowDur);
+  if (inWindow.length < 3) return null;
+  const stepsPerSec = (bpm / 60) * 4; // 16th steps
+  let registerSum = 0;
+  let sync = 0;
+  const steps: number[] = [];
+  for (const n of inWindow) {
+    registerSum += (Math.max(0, Math.min(127, n.pitch)) - 36) / 60;
+    const step = (((Math.floor((n.wall - windowStart) * stepsPerSec) % 16) + 16) % 16);
+    steps.push(step);
+    if (step % 4 !== 0) sync++;
+  }
+  return {
+    count: inWindow.length,
+    registerMean: Math.max(0, Math.min(1, registerSum / inWindow.length)),
+    syncRatio: sync / inWindow.length,
+    steps: steps.sort((a, b) => a - b),
+  };
+}
+
+/**
+ * Shape the bot's rows as a RESPONSE to the human phrase — echo with
+ * variation (human onsets become perc ghosts, ~40 % dropped), complementary
+ * density (busy human thins the bot's hats; sparse adds ghosts) and register
+ * emphasis (high human → perc accents up, hats down; low → kick up).
+ * Everything routes through the seeded rand — same phrase, same response.
+ */
+function shapeResponse(
+  rows: Record<string, number[]>,
+  kinds: Record<string, PadKind>,
+  human: HumanPhraseFeatures,
+  rand: () => number,
+): void {
+  const padOfKind = (kind: PadKind): string | null => {
+    for (const [id, k] of Object.entries(kinds)) if (k === kind) return id;
+    return null;
+  };
+  // ECHO: the human's onset steps return as bot perc ghosts, varied.
+  const percId = padOfKind("perc") ?? padOfKind("snare");
+  if (percId) {
+    for (const step of human.steps) {
+      if (rand() < 0.4) continue; // variation — an echo, not a copy
+      hitRow(rows[percId], step, 0.3 + rand() * 0.2);
+    }
+  }
+  // DENSITY COMPLEMENT: busy human thins bot ghosts; sparse adds them.
+  const hatId = padOfKind("hat");
+  if (hatId) {
+    const row = rows[hatId];
+    if (human.count >= 10) {
+      for (let s = 0; s < STEPS; s++) {
+        if (s % 4 !== 2 && row[s] > 0 && row[s] < 0.45 && rand() < 0.5) row[s] *= 0.5;
+      }
+    } else if (human.count <= 4) {
+      for (let s = 0; s < STEPS; s += 2) {
+        if (row[s] === 0 && rand() < 0.4) row[s] = 0.22;
+      }
+    }
+  }
+  // REGISTER EMPHASIS: high human → perc accents up, hats down; low → kick up.
+  const kickId = padOfKind("kick");
+  if (human.registerMean > 0.6) {
+    if (percId) for (let s = 0; s < STEPS; s++) if (rows[percId][s] > 0) rows[percId][s] = Math.min(1, rows[percId][s] + 0.08);
+    if (hatId) for (let s = 0; s < STEPS; s++) if (rows[hatId][s] > 0) rows[hatId][s] = Math.max(0, rows[hatId][s] - 0.08);
+  } else if (human.registerMean < 0.4) {
+    if (kickId) for (let s = 0; s < STEPS; s++) if (rows[kickId][s] > 0) rows[kickId][s] = Math.min(1, rows[kickId][s] + 0.06);
+    if (hatId) for (let s = 0; s < STEPS; s++) if (rows[hatId][s] > 0) rows[hatId][s] = Math.max(0, rows[hatId][s] - 0.08);
+  }
+}
+
 export function createBandmate(deps: {
   store: StoreLike;
   transport: Transport;
@@ -241,6 +342,8 @@ export function createBandmate(deps: {
   let trackId: string | null = null;
   let lastPhraseIndex: number | null = null;
   let sceneRole_: SceneRole | null = null;
+  /** Performed human notes (QWERTY/MIDI) heard since the last roll. */
+  const humanNotes: Array<{ pitch: number; wall: number }> = [];
   const listeners = new Set<() => void>();
   const emit = () => {
     for (const l of listeners) l();
@@ -304,6 +407,15 @@ export function createBandmate(deps: {
         (kind === "perc" && directive.allow.perc);
       rowsByPad[pad.id] = allowed ? rollRow(kind, effectiveEnergy, rand) : new Array<number>(STEPS).fill(0);
     }
+    // CALL & RESPONSE: the human phrase heard since the last roll shapes the
+    // groove (echo layer, complementary density, register emphasis). A quiet
+    // human (< 3 notes) keeps the v1 groove untouched.
+    const bpm = Math.max(20, transport.bpm);
+    const phraseDurSec = (phraseBars * 4 * 60) / bpm;
+    const windowStart = Date.now() / 1000 - phraseDurSec;
+    const human = extractHumanPhrase(humanNotes, windowStart, phraseDurSec, bpm);
+    humanNotes.length = 0;
+    if (human) shapeResponse(rowsByPad, kinds, human, rand);
     if (directive.fill) applyFillCrescendo(rowsByPad, kinds, rand);
     // Capture the previous rows so undo restores the human/bot state musically.
     const prevRows: Record<string, number[]> = {};
@@ -351,6 +463,10 @@ export function createBandmate(deps: {
       phraseBars = Math.max(1, Math.min(16, Math.round(bars)));
       lastPhraseIndex = null; // re-roll on the next boundary
       emit();
+    },
+    noteHeard(pitch: number, wallNow?: number) {
+      humanNotes.push({ pitch, wall: wallNow ?? Date.now() / 1000 });
+      if (humanNotes.length > 128) humanNotes.shift();
     },
     getState: () => ({
       enabled,

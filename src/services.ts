@@ -481,6 +481,8 @@ export async function openProject(
   }
 
   const midi = new MidiInput();
+  // The bandmate listens to performed MIDI notes — call & response.
+  midi.onInstrumentNote = (pitch) => bandmate?.noteHeard(pitch);
   const userSamples = new UserSampleRepository();
   const frozenAudio = new FrozenBufferRepository();
 

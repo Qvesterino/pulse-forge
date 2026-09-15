@@ -1,6 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useDoc, useServices } from "./context";
+import { STEP_TICKS } from "../project-model/types";
 import type { DrumTrack, StepMeta, Track } from "../project-model/types";
+import type { Transport } from "../transport/Transport";
+import { registerRaf, unregisterRaf } from "../services/rafLoop";
 import { usePlayheadStep } from "./playhead";
 import {
   clearStepLocks,
@@ -591,6 +594,7 @@ export function Sequencer({
               />
             </div>
           ))}
+          <GridPlayhead transport={services.transport} stepCount={pattern.stepCount} />
         </div>
       </div>
     </section>
@@ -1069,7 +1073,12 @@ function PadRow({
   const metaRow = pattern.stepMeta?.[pad.id] ?? {};
 
   return (
-    <div className={`sequencer-row${selected ? " selected" : ""}`}>
+    <div
+      className={`sequencer-row${selected ? " selected" : ""}`}
+      // Row-level kit colour: steps, locks and accents in this row inherit it,
+      // so the grid reads as one colour per sound family (kicks vs hats vs …).
+      style={{ "--pad-color": categoryColor(assetCategoryOf(pad)) } as React.CSSProperties}
+    >
       <div className="row-label">
         <button
           type="button"
@@ -1319,4 +1328,33 @@ function StepCell({
       </span>
     </button>
   );
+}
+
+/**
+ * Continuous playhead sweeping the whole grid (all rows) at sub-step
+ * resolution. Driven by the shared rAF loop and mutated directly on the DOM
+ * node — no React re-render per frame, so the grid stays cheap while playing.
+ */
+function GridPlayhead({ transport, stepCount }: { transport: Transport; stepCount: number }) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const rafId = useId();
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const patternTicks = STEP_TICKS * stepCount;
+    let visible = false;
+    registerRaf(rafId, () => {
+      const playing = transport.playing;
+      if (playing !== visible) {
+        visible = playing;
+        el.dataset.playing = String(playing);
+      }
+      if (playing) {
+        const pos = ((transport.position % patternTicks) + patternTicks) % patternTicks;
+        el.style.setProperty("--playhead-frac", (pos / patternTicks).toFixed(5));
+      }
+    });
+    return () => unregisterRaf(rafId);
+  }, [transport, stepCount, rafId]);
+  return <div ref={ref} className="seq-playhead" data-playing="false" aria-hidden="true" />;
 }

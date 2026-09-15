@@ -328,6 +328,7 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
               <button
                 type="button"
                 className="preset-name"
+                aria-label={`Apply ${preset.name}`}
                 onClick={() => apply(preset)}
                 title={`Apply ${preset.name}`}
               >
@@ -341,14 +342,6 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
                   ≈{Math.round((similarityOf.get(preset.id) ?? 0) * 100)}%
                 </span>
               )}
-              <button
-                type="button"
-                className="preset-apply"
-                aria-label={`Apply ${preset.name}`}
-                onClick={() => apply(preset)}
-              >
-                APPLY
-              </button>
               <button
                 type="button"
                 className={`preset-fav${library.favoritePresets.includes(preset.id) ? " active" : ""}`}

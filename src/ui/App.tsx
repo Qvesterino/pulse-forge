@@ -454,6 +454,8 @@ export function App({
       engine: services.engine,
       getInstrumentTrackId: () => melodicTrackRef.current,
     });
+    // The AI bandmate listens to performed QWERTY notes (call & response).
+    melodicKeys.onPlayed = (pitch) => services.bandmate?.noteHeard(pitch);
     const down = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
       if (captureOfferRef.current && event.key.toLowerCase() === "a") return; // Capture wins

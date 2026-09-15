@@ -318,9 +318,11 @@ export function TopBar({
     },
     {
       id: "history",
-      label: "↶",
+      // Not "↶" — that glyph already means Undo in the transport cluster and
+      // the duplicate read as a broken second undo button.
+      label: "HIST",
       ariaLabel: "Toggle undo history",
-      title: "Toggle undo history",
+      title: "Undo history — browse and jump to earlier states",
       priority: 86,
       active: historyOpen,
       onClick: onToggleHistory,

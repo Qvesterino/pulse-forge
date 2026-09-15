@@ -71,6 +71,12 @@ export class MelodicKeys {
   }
 
   /**
+   * Optional listener for performed notes (Instant Jam: the AI bandmate
+   * listens to these — noteHeard).
+   */
+  onPlayed: ((pitch: number, velocity: number) => void) | null = null;
+
+  /**
    * Handle a keydown. Returns true when the key was consumed as a musical
    * input (caller should preventDefault so shortcuts stay silent).
    */
@@ -105,6 +111,7 @@ export class MelodicKeys {
     const pitch = Math.max(0, Math.min(127, BASE_PITCH + this.octave * 12 + offset));
     this.held.set(event.code, pitch);
     host.engine.noteOn(trackId, pitch, DEFAULT_VELOCITY, host.engine.currentTime + 0.005, FALLBACK_DURATION);
+    this.onPlayed?.(pitch, DEFAULT_VELOCITY);
     return true;
   }
 
