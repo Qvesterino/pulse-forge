@@ -57,7 +57,7 @@ export function Meter({ engine, kind, id }: { engine: AudioEngine; kind: "track"
       aria-valuemin={0}
       aria-valuemax={100}
     >
-      <div ref={fillRef} className="meter-fill" />
+      <div ref={fillRef} className="meter-fill" style={{ height: "0%" }} />
     </div>
   );
 }
