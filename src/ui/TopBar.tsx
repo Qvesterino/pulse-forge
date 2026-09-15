@@ -276,6 +276,9 @@ export function TopBar({
       onClick: (event) => onSetBottomPanel("exp", event.ctrlKey || event.metaKey),
     },
     {
+      // Lives in the ⋯ overflow at every width (panelLimit caps at 5) — the
+      // visible topbar keeps only the four live surfaces + EXPORT. The button
+      // promotes back when the panel is open, so state never hides.
       id: "midi",
       label: "MIDI",
       ariaLabel: "Toggle MIDI input panel",
@@ -283,15 +286,6 @@ export function TopBar({
       priority: 72,
       active: bottomPanel === "midi" || splitPanel === "midi",
       onClick: (event) => onSetBottomPanel("midi", event.ctrlKey || event.metaKey),
-    },
-    {
-      id: "dice",
-      label: "🎲 DICE",
-      ariaLabel: "Toggle dice panel",
-      title: "Toggle dice panel — rapid beat generator (Alt+6, D to roll)",
-      priority: 64,
-      active: bottomPanel === "dice" || splitPanel === "dice",
-      onClick: (event) => onSetBottomPanel("dice", event.ctrlKey || event.metaKey),
     },
   ];
 
@@ -327,28 +321,9 @@ export function TopBar({
       active: historyOpen,
       onClick: onToggleHistory,
     },
-    {
-      id: "vary",
-      label: "⚡VARY",
-      ariaLabel: "One-click vary",
-      title: "One-click vary (Ctrl+Shift+V)",
-      priority: 78,
-      onClick: () => {
-        const seed = nextSeed(doc.activePatternId + String(Date.now()), "topbar-vary");
-        services.store.execute(assistVary(doc, doc.activePatternId, seed, 0.6));
-      },
-    },
-    {
-      id: "fill",
-      label: "FILL",
-      ariaLabel: "One-click fill",
-      title: "One-click fill (Ctrl+Shift+F)",
-      priority: 76,
-      onClick: () => {
-        const seed = nextSeed(doc.activePatternId + String(Date.now()), "topbar-fill");
-        services.store.execute(assistFill(doc, doc.activePatternId, seed));
-      },
-    },
+    // One-click ⚡VARY / FILL buttons were removed from the topbar — the same
+    // operations live in the ASSIST panel and on Ctrl+Shift+V / Ctrl+Shift+F.
+    // The topbar should not duplicate a function the panel owns.
     {
       id: "assist",
       label: "ASSIST",
@@ -416,14 +391,25 @@ export function TopBar({
   // width on actions by priority. Active panels are promoted so state never hides.
   // Panels: the four live surfaces (MIX/FX/ARR/MOD) stay direct-access at
   // common widths — EXPORT/MIDI live in the overflow until there is room.
-  const panelLimit = topbarWidth < 1120 ? 3 : topbarWidth < 1440 ? 4 : topbarWidth < 1760 ? 6 : panelActions.length;
-  const toolLimit = topbarWidth < 1120 ? 2 : topbarWidth < 1440 ? 3 : topbarWidth < 1760 ? 5 : toolActions.length;
+  // Keep the transport and the project identity stable, then spend the remaining
+  // width on actions by priority. Active panels are promoted so state never hides.
+  // Panels: the visible topbar keeps the four live surfaces (MIX/FX/ARR/MOD)
+  // + EXPORT; MIDI waits in the overflow. Tools cap at ⌘K/?/HIST — ASSIST,
+  // JAM, SCALE, THEME and DIAG open from the ⋯ menu (or stay promoted while
+  // their popover is open, so state never hides).
+  const panelLimit = topbarWidth < 1120 ? 3 : topbarWidth < 1440 ? 4 : 5;
+  const toolLimit = topbarWidth < 1120 ? 2 : 3;
   const visiblePanelActions = selectTopbarActions(panelActions, panelLimit);
   const visibleToolActions = selectTopbarActions(toolActions, toolLimit);
   const overflowPanelActions = panelActions.filter((action) => !visiblePanelActions.includes(action));
   const overflowToolActions = toolActions.filter((action) => !visibleToolActions.includes(action));
   const overflowActionCount = overflowPanelActions.length + overflowToolActions.length;
   const hasOverflowActions = overflowActionCount > 0;
+  // Transport terms scale with available room: full words only on wide topbars.
+  // The long COUNT-IN/PRE-ROLL labels would otherwise squeeze the project name
+  // and starve the rest of the bar; narrower widths keep the classic C·/PR
+  // shorthands (their tooltips stay verbose at every size).
+  const wideTransport = topbarWidth >= 1760;
 
   useEffect(() => {
     if (!hasOverflowActions) setOverflowOpen(false);
@@ -523,7 +509,8 @@ export function TopBar({
             title="Count-in: metronome clicks 1–2 bars before playback starts (FL/Cubase pre-roll)"
             aria-label={`Count-in ${countIn > 0 ? `${countIn} bar${countIn > 1 ? "s" : ""}` : "off"}`}
           >
-            C{countIn > 0 ? countIn : "·"}
+            {wideTransport ? "COUNT-IN" : "C·"}
+            {countIn > 0 ? ` ${countIn}` : ""}
           </button>
           <button
             type="button"
@@ -533,7 +520,7 @@ export function TopBar({
             aria-label={preRoll > 0 ? "Pre-roll on" : "Pre-roll off"}
             aria-pressed={preRoll > 0}
           >
-            PR
+            {wideTransport ? "PRE-ROLL" : "PR"}
           </button>
           <button
             type="button"

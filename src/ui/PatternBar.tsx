@@ -220,6 +220,7 @@ export function PatternBar({
       <div className="pattern-groove" aria-label="Groove">
         <DragNumber
           label="SWING"
+          hint="Delays every second 16th for a shuffled groove"
           value={groove.swing}
           min={0}
           max={1}
@@ -229,7 +230,8 @@ export function PatternBar({
           onCommit={(swing) => services.store.execute(setGroove(doc, { swing }))}
         />
         <DragNumber
-          label="HUM·T"
+          label="TIMING"
+          hint="Humanize timing — random micro-shifts off the grid for a looser, human feel"
           value={groove.humanizeTiming}
           min={0}
           max={1}
@@ -239,7 +241,8 @@ export function PatternBar({
           onCommit={(humanizeTiming) => services.store.execute(setGroove(doc, { humanizeTiming }))}
         />
         <DragNumber
-          label="HUM·V"
+          label="VELOCITY"
+          hint="Humanize velocity — random accent variation between hits"
           value={groove.humanizeVelocity}
           min={0}
           max={1}
@@ -278,7 +281,7 @@ export function PatternBar({
         <button
           type="button"
           className="btn btn-small"
-          title="Duplicate active pattern as a fill (snare roll over the last beat)"
+          title="Creates a NEW pattern as a fill — snare roll over the last beat. (The FILL in the ASSIST panel works into the current pattern instead.)"
           onClick={() => services.store.execute(createFill(doc, doc.activePatternId))}
         >
           FILL
@@ -297,7 +300,7 @@ export function PatternBar({
           title="Import a .mid file as a new pattern (drums via GM channel 10, rest as instrument tracks)"
           onClick={() => midiFileRef.current?.click()}
         >
-          MIDI
+          .MID
         </button>
         <input
           ref={midiFileRef}

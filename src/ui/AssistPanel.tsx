@@ -6,6 +6,7 @@ import { buildAssistPatch } from "../assist/pipeline";
 import { ASSIST_ENGINE_VERSION, type AssistOperation } from "../assist/types";
 import { getActivePattern, getDrumTrack } from "../project-model/types";
 import { nextSeed } from "../shared/dice";
+import { applyArrangeOps, parseArrangeIntent, type ParsedArrange } from "../intent/arrangeWords";
 
 function randomSeed(prev?: string): string {
   return nextSeed(prev ?? String(Date.now()), "assist");
@@ -29,6 +30,11 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
   const [style, setStyle] = useState("house");
   const [previewOperation, setPreviewOperation] = useState<AssistOperation>("vary");
   const [flash, setFlash] = useState<string | null>(null);
+  const [arrangeText, setArrangeText] = useState("");
+  const arrangeParsed: ParsedArrange | null = arrangeText.trim()
+    ? parseArrangeIntent(arrangeText, doc)
+    : null;
+  const [arrangeApplied, setArrangeApplied] = useState<string | null>(null);
 
   const apply = (label: string, run: () => void) => {
     run();
@@ -116,6 +122,57 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
           ))}
         </div>
       </div>
+
+      {doc.scenes.length > 0 && (
+        <div className="assist-arrange" role="group" aria-label="Arrange by words">
+          <div className="assist-preview-header">
+            <span>ARRANGE — describe the change</span>
+            <span className="assist-engine">ARRANGE-1 · EN/SK</span>
+          </div>
+          <input
+            className="preset-save-input"
+            value={arrangeText}
+            placeholder='e.g. shorten the intro to 2 bars, add a break before the drop'
+            aria-label="Arrange the beat with words"
+            spellCheck={false}
+            onChange={(e) => setArrangeText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && arrangeParsed && arrangeParsed.ops.length > 0) {
+                const label = `Arranged (${arrangeParsed.ops.length} op)`;
+                services.store.execute(applyArrangeOps(doc, arrangeParsed.ops));
+                setArrangeApplied(label);
+                setArrangeText("");
+              }
+            }}
+          />
+          {arrangeParsed && arrangeParsed.unrecognized.length > 0 && (
+            <div className="collab-hint" role="alert">
+              didn't understand: {arrangeParsed.unrecognized.join(" · ")}
+            </div>
+          )}
+          {arrangeParsed && arrangeParsed.ops.length > 0 && (
+            <div className="collab-hint">
+              {arrangeParsed.ops
+                .map((o) =>
+                  o.op === "resize"
+                    ? `resize → ${o.bars} bars`
+                    : o.op === "addRole"
+                      ? `add ${o.role} section`
+                      : o.op === "remove"
+                        ? `remove section`
+                        : o.op === "duplicate"
+                          ? `duplicate section`
+                          : o.op === "reorder"
+                            ? `move ${o.dir}`
+                            : `auto-arrange song`,
+                )
+                .join(" · ")}{" "}
+              — Enter applies as one undo step
+            </div>
+          )}
+          {arrangeApplied && <div className="slice-info">{arrangeApplied}</div>}
+        </div>
+      )}
 
       <div className="assist-ops">
         <div className="assist-op">

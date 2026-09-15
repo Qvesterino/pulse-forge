@@ -163,16 +163,19 @@ describe("TopBar", () => {
       expect(screen.getByRole("menu", { name: "More topbar controls" })).toBeInTheDocument();
 
       // At 1280 the four live panels (MIX/FX/ARR/MOD) are direct; the
-      // overflow starts at EXPORT.
+      // overflow starts at EXPORT, then MIDI.
       expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Toggle export panel" }));
       await user.keyboard("{ArrowDown}");
       expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Toggle MIDI input panel" }));
       await user.keyboard("{Escape}");
       expect(screen.queryByRole("menu", { name: "More topbar controls" })).not.toBeInTheDocument();
 
+      // The dice panel has a single home in the chrome — the PatternBar's
+      // DICE button — so the topbar no longer carries a dice toggle at all.
+      expect(screen.queryByRole("menuitem", { name: "Toggle dice panel" })).not.toBeInTheDocument();
       await user.click(screen.getByRole("button", { name: /More topbar controls/ }));
-      await user.click(screen.getByRole("menuitem", { name: "Toggle dice panel" }));
-      expect(onSetBottomPanel).toHaveBeenCalledWith("dice", false);
+      await user.click(screen.getByRole("menuitem", { name: "Toggle MIDI input panel" }));
+      expect(onSetBottomPanel).toHaveBeenCalledWith("midi", false);
       expect(screen.queryByRole("menu", { name: "More topbar controls" })).not.toBeInTheDocument();
     } finally {
       rectSpy.mockRestore();
@@ -197,11 +200,13 @@ describe("TopBar", () => {
     expect(onToggleHelp).toHaveBeenCalled();
   });
 
-  it("calls onToggleDiagnostics when DIAG clicked", async () => {
+  it("opens DIAG from the overflow menu", async () => {
     const user = userEvent.setup();
     const onToggleDiagnostics = vi.fn();
     renderWithContext(<TopBar {...topBarProps({ onToggleDiagnostics })} />);
-    await user.click(screen.getByText("DIAG"));
+    // Rarely-used tools live behind ⋯ — the topbar keeps only ⌘K/?/HIST.
+    await user.click(screen.getByRole("button", { name: /More topbar controls/ }));
+    await user.click(screen.getByRole("menuitem", { name: "Toggle diagnostics panel" }));
     expect(onToggleDiagnostics).toHaveBeenCalled();
   });
 

@@ -68,6 +68,8 @@ describe("PresetBrowser audition workflow", () => {
     if (!preset) throw new Error("preset fixture missing");
     const metadata = getPresetMetadata(preset);
     const { services } = renderWithContext(<PresetBrowser track={track} />, { services: mockServices(doc) });
+    // Role/energy chips live behind the collapsed FILTERS toggle (search-first).
+    await user.click(screen.getByRole("button", { name: /FILTERS/ }));
 
     const roleFilter = screen.getByRole("button", { name: `ROLE: ${metadata.useCase.toUpperCase()}` });
     await user.click(roleFilter);

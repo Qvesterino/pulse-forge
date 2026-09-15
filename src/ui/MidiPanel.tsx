@@ -636,7 +636,8 @@ function MidiCreativityPanel({
               onCommit={(value) => setTimingTicks(Math.round(value))}
             />
             <DragNumber
-              label="HUM·V"
+              label="HUMANIZE"
+              hint="Random velocity variation so programmed notes don't all hit at the same strength"
               value={humanizeVelocity}
               min={0}
               max={0.5}

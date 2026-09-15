@@ -25,6 +25,9 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
   const [energy, setEnergy] = useState<EnergyFilter>("all");
   const [scope, setScope] = useState<ScopeFilter>("all");
   const [query, setQuery] = useState("");
+  // Filters live behind one toggle — search-first keeps the browser scannable;
+  // the toggle shows how many filters are shaping the list when collapsed.
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [userPresets, setUserPresets] = useState<InstrumentPreset[]>([]);
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveName, setSaveName] = useState("");
@@ -104,6 +107,8 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
   const filtered = ranked ? ranked.map((r) => r.preset) : base;
 
   const current = all.find((p) => p.id === track.presetId) ?? null;
+  const activeFilterCount =
+    (useCase !== "all" ? 1 : 0) + (energy !== "all" ? 1 : 0) + (genre !== "all" ? 1 : 0) + (mood !== "all" ? 1 : 0);
 
   const apply = (preset: InstrumentPreset) => {
     if (previewTimer.current) clearTimeout(previewTimer.current);
@@ -197,7 +202,27 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
         </div>
       )}
 
-      <div className="preset-chips">
+      <div className="preset-toolbar">
+        <input
+          className="preset-search"
+          value={query}
+          placeholder="Search presets…"
+          aria-label="Search presets"
+          onChange={(event) => setQuery(event.target.value)}
+        />
+        <button
+          type="button"
+          className={`btn btn-small preset-filter-toggle${filtersOpen || activeFilterCount > 0 ? " active" : ""}`}
+          aria-expanded={filtersOpen}
+          title="Filter by role, energy, genre and mood"
+          onClick={() => setFiltersOpen((open) => !open)}
+        >
+          FILTERS{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ""}
+          <span aria-hidden="true">{filtersOpen ? " ▴" : " ▾"}</span>
+        </button>
+      </div>
+
+      <div className="preset-chips" role="group" aria-label="Preset scope">
         {(["all", "fav", "recent", "similar"] as ScopeFilter[]).map((s) => (
           <button
             key={s}
@@ -211,90 +236,86 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
         ))}
       </div>
 
-      <div className="preset-chips" role="group" aria-label="Preset role filter">
-        <button
-          type="button"
-          className={`preset-chip${useCase === "all" ? " active" : ""}`}
-          aria-pressed={useCase === "all"}
-          onClick={() => setUseCase("all")}
-        >
-          ROLE: ALL
-        </button>
-        {PRESET_USE_CASES.map((value) => (
-          <button
-            key={value}
-            type="button"
-            className={`preset-chip${useCase === value ? " active" : ""}`}
-            aria-pressed={useCase === value}
-            onClick={() => setUseCase(useCase === value ? "all" : value)}
-          >
-            ROLE: {value.toUpperCase()}
-          </button>
-        ))}
-      </div>
+      {filtersOpen && (
+        <>
+          <div className="preset-chips" role="group" aria-label="Preset role filter">
+            <button
+              type="button"
+              className={`preset-chip${useCase === "all" ? " active" : ""}`}
+              aria-pressed={useCase === "all"}
+              onClick={() => setUseCase("all")}
+            >
+              ROLE: ALL
+            </button>
+            {PRESET_USE_CASES.map((value) => (
+              <button
+                key={value}
+                type="button"
+                className={`preset-chip${useCase === value ? " active" : ""}`}
+                aria-pressed={useCase === value}
+                onClick={() => setUseCase(useCase === value ? "all" : value)}
+              >
+                ROLE: {value.toUpperCase()}
+              </button>
+            ))}
+          </div>
 
-      <div className="preset-chips" role="group" aria-label="Preset energy filter">
-        <button
-          type="button"
-          className={`preset-chip${energy === "all" ? " active" : ""}`}
-          aria-pressed={energy === "all"}
-          onClick={() => setEnergy("all")}
-        >
-          ENERGY: ALL
-        </button>
-        {PRESET_ENERGIES.map((value) => (
-          <button
-            key={value}
-            type="button"
-            className={`preset-chip${energy === value ? " active" : ""}`}
-            aria-pressed={energy === value}
-            onClick={() => setEnergy(energy === value ? "all" : value)}
-          >
-            ENERGY: {value.toUpperCase()}
-          </button>
-        ))}
-      </div>
+          <div className="preset-chips" role="group" aria-label="Preset energy filter">
+            <button
+              type="button"
+              className={`preset-chip${energy === "all" ? " active" : ""}`}
+              aria-pressed={energy === "all"}
+              onClick={() => setEnergy("all")}
+            >
+              ENERGY: ALL
+            </button>
+            {PRESET_ENERGIES.map((value) => (
+              <button
+                key={value}
+                type="button"
+                className={`preset-chip${energy === value ? " active" : ""}`}
+                aria-pressed={energy === value}
+                onClick={() => setEnergy(energy === value ? "all" : value)}
+              >
+                ENERGY: {value.toUpperCase()}
+              </button>
+            ))}
+          </div>
 
-      <div className="preset-chips">
-        <button
-          type="button"
-          className={`preset-chip${genre === "all" ? " active" : ""}`}
-          onClick={() => setGenre("all")}
-        >
-          ALL
-        </button>
-        {PRESET_GENRES.map((g) => (
-          <button
-            key={g}
-            type="button"
-            className={`preset-chip${genre === g ? " active" : ""}`}
-            onClick={() => setGenre(g)}
-          >
-            {g.toUpperCase()}
-          </button>
-        ))}
-      </div>
+          <div className="preset-chips">
+            <button
+              type="button"
+              className={`preset-chip${genre === "all" ? " active" : ""}`}
+              onClick={() => setGenre("all")}
+            >
+              ALL
+            </button>
+            {PRESET_GENRES.map((g) => (
+              <button
+                key={g}
+                type="button"
+                className={`preset-chip${genre === g ? " active" : ""}`}
+                onClick={() => setGenre(g)}
+              >
+                {g.toUpperCase()}
+              </button>
+            ))}
+          </div>
 
-      <div className="preset-chips">
-        {PRESET_MOODS.map((m) => (
-          <button
-            key={m}
-            type="button"
-            className={`preset-chip${mood === m ? " active" : ""}`}
-            onClick={() => setMood(mood === m ? "all" : m)}
-          >
-            {m.toUpperCase()}
-          </button>
-        ))}
-      </div>
-
-      <input
-        className="preset-search"
-        value={query}
-        placeholder="Search presets…"
-        aria-label="Search presets"
-        onChange={(event) => setQuery(event.target.value)}
-      />
+          <div className="preset-chips">
+            {PRESET_MOODS.map((m) => (
+              <button
+                key={m}
+                type="button"
+                className={`preset-chip${mood === m ? " active" : ""}`}
+                onClick={() => setMood(mood === m ? "all" : m)}
+              >
+                {m.toUpperCase()}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
 
       <div className="preset-list">
         {filtered.length === 0 && <div className="preset-empty">No presets match.</div>}

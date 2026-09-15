@@ -34,7 +34,10 @@
     "build:ultina": "node scripts/build-ultina-worklet.mjs",
     "build:ozvena": "node scripts/build-ozvena-worklet.mjs",
     "ranker:golden": "vite-node scripts/generate-intent-ranker-golden.mts",
-    "ranker:review-pack": "node scripts/render-golden-review-pack.mjs"
+    "ranker:review-pack": "node scripts/render-golden-review-pack.mjs",
+    "video:beat": "node scripts/make-promo-beat.mjs",
+    "video:promo": "remotion render remotion/index.ts PulseForgePromo out/pulse-forge-promo.mp4 --codec=h264 --public-dir=./remotion/public",
+    "video:stills": "remotion still remotion/index.ts PulseForgePromo remotion/qa/preview.png --frame=700 --public-dir=./remotion/public"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",

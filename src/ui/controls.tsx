@@ -150,6 +150,8 @@ interface DragNumberProps {
   sensitivity?: number;
   format?: (value: number) => string;
   label: string;
+  /** Plain-language explanation shown in the tooltip before the gesture help. */
+  hint?: string;
   onCommit: (value: number) => void;
 }
 
@@ -161,6 +163,7 @@ export function DragNumber({
   sensitivity = 0.4,
   format,
   label,
+  hint,
   onCommit,
 }: DragNumberProps) {
   const [edit, setEdit] = useState<number | null>(null);
@@ -216,7 +219,7 @@ export function DragNumber({
       aria-valuemin={min}
       aria-valuemax={max}
       aria-valuenow={shown}
-      title={`${label} — drag to change, Enter to type a value, double-click to reset`}
+      title={`${label}${hint ? ` — ${hint}` : ""} — drag to change, Enter to type a value, double-click to reset`}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}

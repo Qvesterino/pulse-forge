@@ -344,6 +344,9 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
     trackId: string;
   }>(null);
   const isGroup = track.kind === "group";
+  // The BUS dropdown is only meaningful once bus groups exist — before that
+  // every strip just repeats a dead "UNGROUPED" select.
+  const hasBusGroups = doc.tracks.some((candidate) => candidate.kind === "group");
   const selectionStore = useSelectionStore();
   const selection = useSelection();
 
@@ -472,12 +475,13 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
       </div>
       <div className="channel-body">
         <div className="channel-controls">
-          {track.kind !== "group" && (
+          {track.kind !== "group" && hasBusGroups && (
             <label className="channel-bus-select">
               <span className="slider-label">BUS</span>
               <select
                 value={track.groupId ?? ""}
                 aria-label={`Bus for ${track.name}`}
+                title="Route this channel through a bus group"
                 onChange={(event) => {
                   if (event.target.value) services.store.execute(addToGroup(doc, track.id, event.target.value));
                   else services.store.execute(removeFromGroup(doc, track.id));
