@@ -103,6 +103,9 @@ button {
   display: flex;
   align-items: center;
   gap: 8px;
+  padding: 0 12px;
+  border-left: 1px solid var(--border-soft);
+  border-right: 1px solid var(--border-soft);
 }
 
 .btn {
@@ -290,6 +293,8 @@ button {
   min-width: 0;
   flex: 0 1 auto;
   gap: 8px;
+  padding-left: 12px;
+  border-left: 1px solid var(--border-soft);
 }
 
 .topbar-overflow {
@@ -985,8 +990,32 @@ button {
 }
 
 .step.active {
-  background: color-mix(in srgb, var(--accent) calc(var(--step-velocity, 0.8) * 72%), #2a1e05);
-  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  /* Kit colour per row (kicks vs snares vs hats…) with velocity as opacity —
+     the grid shows the shape of the beat, amber stays reserved for the
+     playhead and selection. */
+  background: color-mix(in srgb, var(--pad-color, var(--accent)) calc(var(--step-velocity, 0.8) * 72%), #17181c);
+  border-color: color-mix(in srgb, var(--pad-color, var(--accent)) 40%, var(--border));
+}
+
+/* Continuous playhead sweeping the grid while the transport runs. The steps
+   area starts after the 168px label column + 4px gap; within it the position
+   is linear in the pattern fraction (equal-width step columns). */
+.seq-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  left: calc(172px + var(--playhead-frac, 0) * (100% - 172px));
+  background: var(--accent);
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.55);
+  border-radius: 1px;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.seq-playhead[data-playing="false"] {
+  display: none;
 }
 
 .step.playhead {
@@ -1739,7 +1768,6 @@ button {
 .meter-fill {
   width: 100%;
   border-radius: 1px;
-  transition: height 0.05s linear;
 }
 
 .meter.clipping {
@@ -4965,8 +4993,7 @@ button {
   color: var(--accent);
 }
 
-.preset-preview,
-.preset-apply {
+.preset-preview {
   flex: none;
   border: 1px solid var(--border);
   border-radius: 3px;
@@ -4980,15 +5007,13 @@ button {
 }
 
 .preset-preview:hover,
-.preset-preview.active,
-.preset-apply:hover {
+.preset-preview.active {
   border-color: var(--accent);
   color: var(--accent);
 }
 
 .preset-preview:focus-visible,
-.preset-name:focus-visible,
-.preset-apply:focus-visible {
+.preset-name:focus-visible {
   outline: 1px solid var(--accent);
   outline-offset: 1px;
 }
@@ -5396,7 +5421,6 @@ button {
   right: 0;
   bottom: 0;
   background: rgba(125, 211, 252, 0.45);
-  transition: height 0.04s linear;
   will-change: height;
 }
 
@@ -8052,8 +8076,8 @@ html {
   top: 0;
   z-index: 40;
   background: rgba(14, 15, 18, 0.82);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   border-bottom: 1px solid var(--border-soft);
 }
 
@@ -9368,7 +9392,7 @@ html {
   inset: 0;
   z-index: 120;
   background: rgba(8, 9, 12, 0.6);
-  backdrop-filter: blur(3px);
+  backdrop-filter: blur(2px);
   display: flex;
   justify-content: center;
   align-items: flex-start;
