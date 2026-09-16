@@ -1110,9 +1110,17 @@ export function App({
               />
               <main className="workspace">
                 <div className="workspace-main">
-                  <TrackTabs selectedTrackId={track.id} onSelectTrack={selectTrack} />
-                  {track.kind === "drum" && (
-                    <RackStrip track={track} selectedPadId={padId} onSelectPad={setSelectedPadId} />
+                  {track.kind === "drum" ? (
+                    // Track tabs share the rack header row — one chrome row
+                    // instead of two above the sequencer.
+                    <RackStrip
+                      track={track}
+                      selectedPadId={padId}
+                      onSelectPad={setSelectedPadId}
+                      leading={<TrackTabs selectedTrackId={track.id} onSelectTrack={selectTrack} />}
+                    />
+                  ) : (
+                    <TrackTabs selectedTrackId={track.id} onSelectTrack={selectTrack} />
                   )}
                   <PatternBar clip={clip} onCopy={setClip} onOpenDice={() => setBottomPanel("dice")} />
                   <Sequencer

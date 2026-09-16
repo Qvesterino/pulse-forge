@@ -115,24 +115,36 @@ try {
   });
   appPage.on("pageerror", (err) => appErrors.push(String(err)));
   await appPage.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+  // Mount-retry: under concurrent load (a second dev session transforming
+  // files), the first lazy-chunk load can outrun the 30 s selector window.
+  // One reload gives Vite a second chance without masking real mount errors
+  // — page errors still fail the check below.
+  let mountRetry = false;
   try {
     // First-time visitors get the landing page — exercise it: hero renders,
     // CTA enters the studio (and marks the browser onboarded). The landing
     // is a lazy chunk since the route split — wait for it OR the browser.
-    await appPage.waitForSelector(".landing, .project-browser", { timeout: 30_000 });
+    await appPage
+      .waitForSelector(".landing, .project-browser", { timeout: 60_000 })
+      .catch(async () => {
+        if (mountRetry) throw new Error("mount retry also timed out");
+        mountRetry = true;
+        await appPage.reload({ waitUntil: "domcontentloaded", timeout: 60_000 });
+        return appPage.waitForSelector(".landing, .project-browser", { timeout: 60_000 });
+      });
     const onLanding = await appPage.$(".landing");
     if (onLanding) {
-      await appPage.waitForSelector(".landing-hero-player .embed-play", { timeout: 30_000 });
+      await appPage.waitForSelector(".landing-hero-player .embed-play", { timeout: 60_000 });
       // Click the STUDIO button specifically — the nav also holds the gallery link.
       await appPage.evaluate(() => document.querySelector(".landing-nav button.landing-cta")?.click());
     }
-    await appPage.waitForSelector(".project-browser", { timeout: 30_000 });
+    await appPage.waitForSelector(".project-browser", { timeout: 60_000 });
     // Create a project from the House template — one click from browser to sound.
     // Evaluate-clicks keep this flow immune to HMR reload races from a busy
     // shared dev machine (locator actionability would time out mid-reload).
     await appPage.evaluate(() => document.querySelectorAll(".pb-template")[0]?.click());
-    await appPage.waitForSelector(".topbar", { timeout: 30_000 });
-    await appPage.waitForSelector(".sequencer", { timeout: 30_000 });
+    await appPage.waitForSelector(".topbar", { timeout: 60_000 });
+    await appPage.waitForSelector(".sequencer", { timeout: 60_000 });
     // First-run onboarding tour: walk all four steps, then finish.
     // The card appears ~600 ms after studio mount — wait for it.
     {

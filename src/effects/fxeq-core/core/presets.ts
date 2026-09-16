@@ -1015,29 +1015,46 @@ export async function readPresetFile(file: PresetFileLike): Promise<FxEqPreset[]
 /**
  * Generate a random but sane configuration: random crossover points,
  * 1–3 modules enabled on 1–4 bands with constrained ranges.
+ *
+ * `seed` makes the roll reproducible (same seed = same preset — consistent
+ * with the assist/engine determinism contract). Omitted → Math.random, the
+ * creative roll stays creative.
  */
-export function randomizePreset(): Record<string, number> {
+export function randomizePreset(seed?: number): Record<string, number> {
+  const rng =
+    seed === undefined
+      ? Math.random
+      : (() => {
+          let a = seed >>> 0;
+          return () => {
+            a = (a + 0x6d2b79f5) >>> 0;
+            let t = a;
+            t = Math.imul(t ^ (t >>> 15), t | 1);
+            t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+            return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+          };
+        })();
   const out: Record<string, number> = {};
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-  const bandCount = 4 + Math.floor(Math.random() * 3); // 4–6
+  const bandCount = 4 + Math.floor(rng() * 3); // 4–6
   out["bandCount"] = bandCount;
 
   const moduleChoices = ["sat", "lofi", "mod", "delay", "rev"] as const;
   const moduleRanges: Record<string, Record<string, number>> = {
-    sat: { enabled: 1, driveDb: 4 + Math.random() * 12, mode: Math.floor(Math.random() * 8), mix: 40 + Math.random() * 50 },
-    lofi: { enabled: 1, mode: Math.floor(Math.random() * 4), amount: 20 + Math.random() * 50, mix: 40 + Math.random() * 40 },
-    mod: { enabled: 1, type: Math.floor(Math.random() * 4), rate: 0.1 + Math.random() * 3, depth: 30 + Math.random() * 60, mix: 30 + Math.random() * 40 },
-    delay: { enabled: 1, type: Math.floor(Math.random() * 4), timeMs: 80 + Math.random() * 400, feedback: 0.2 + Math.random() * 0.5, mix: 20 + Math.random() * 30 },
-    rev: { enabled: 1, type: Math.floor(Math.random() * 3), decayMs: 500 + Math.random() * 4000, mix: 20 + Math.random() * 30 },
+    sat: { enabled: 1, driveDb: 4 + rng() * 12, mode: Math.floor(rng() * 8), mix: 40 + rng() * 50 },
+    lofi: { enabled: 1, mode: Math.floor(rng() * 4), amount: 20 + rng() * 50, mix: 40 + rng() * 40 },
+    mod: { enabled: 1, type: Math.floor(rng() * 4), rate: 0.1 + rng() * 3, depth: 30 + rng() * 60, mix: 30 + rng() * 40 },
+    delay: { enabled: 1, type: Math.floor(rng() * 4), timeMs: 80 + rng() * 400, feedback: 0.2 + rng() * 0.5, mix: 20 + rng() * 30 },
+    rev: { enabled: 1, type: Math.floor(rng() * 3), decayMs: 500 + rng() * 4000, mix: 20 + rng() * 30 },
   };
 
-  const moduleCount = 1 + Math.floor(Math.random() * 3); // 1–3 modules
-  const shuffled = [...moduleChoices].sort(() => Math.random() - 0.5).slice(0, moduleCount);
-  const bandCount2 = 1 + Math.floor(Math.random() * 3); // 1–4 bands active
+  const moduleCount = 1 + Math.floor(rng() * 3); // 1–3 modules
+  const shuffled = [...moduleChoices].sort(() => rng() - 0.5).slice(0, moduleCount);
+  const bandCount2 = 1 + Math.floor(rng() * 3); // 1–4 bands active
 
   for (const key of shuffled) {
     const bands: number[] = [];
-    const pool = Array.from({ length: bandCount }, (_, i) => i + 1).sort(() => Math.random() - 0.5);
+    const pool = Array.from({ length: bandCount }, (_, i) => i + 1).sort(() => rng() - 0.5);
     for (let i = 0; i < bandCount2; i++) bands.push(pool[i]);
     for (const b of bands) {
       const params = moduleRanges[key];

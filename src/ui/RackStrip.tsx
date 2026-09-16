@@ -46,10 +46,13 @@ export function RackStrip({
   track,
   selectedPadId,
   onSelectPad,
+  leading,
 }: {
   track: DrumTrack;
   selectedPadId: string;
   onSelectPad: (padId: string) => void;
+  /** Row shared with the rack header (track tabs) — kills one chrome row above the sequencer. */
+  leading?: React.ReactNode;
 }) {
   const services = useServices();
   const doc = useDoc();
@@ -384,82 +387,111 @@ export function RackStrip({
     setKitStatus(installedScenes ? `Pack installed — ${installedScenes} scenes added` : "Pack installed");
   };
 
+  const copyBindsCode = async () => {
+    try {
+      await navigator.clipboard.writeText(encodeBindsCode(getPadKeys()));
+      setKeyStatus("BINDS code copied — paste it into any KYX");
+    } catch {
+      setKeyStatus("Clipboard blocked by the browser");
+    }
+  };
+
+  const installBindsCode = () => {
+    const code = window.prompt("Paste a KYX BINDS code (PFBIND1:…)");
+    if (!code) return;
+    const keys = decodeBindsCode(code);
+    if (!keys) {
+      setKeyStatus("Invalid BINDS code");
+      return;
+    }
+    importPadKeys(keys);
+    setKeyStatus("Keymap installed");
+  };
+
   return (
     <section className="rack" aria-label="Drum Rack">
-      <div className="rack-header" role="group" aria-label="Note Repeat">
-        <span className="rack-header-title">NOTE REPEAT</span>
-        <label className="rack-header-field">
-          <span>RATE</span>
-          <select
-            aria-label="Note repeat rate"
-            value={repeatRate}
-            onChange={(e) => {
-              const rate = e.target.value as RepeatRate;
-              setRepeatRate(rate);
-              services.noteRepeat.setRate(rate);
+      <div className="rack-header">
+        {leading && (
+          <>
+            {leading}
+            <span className="rack-header-divider" aria-hidden="true" />
+          </>
+        )}
+        <div role="group" aria-label="Note Repeat" className="rack-header-controls">
+          <span className="rack-header-title">NOTE REPEAT</span>
+          <label className="rack-header-field">
+            <span>RATE</span>
+            <select
+              aria-label="Note repeat rate"
+              value={repeatRate}
+              onChange={(e) => {
+                const rate = e.target.value as RepeatRate;
+                setRepeatRate(rate);
+                services.noteRepeat.setRate(rate);
+              }}
+            >
+              {REPEAT_RATES.map((rate) => (
+                <option key={rate} value={rate}>
+                  {rate}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="rack-header-field">
+            <span>VELO</span>
+            <select
+              aria-label="Note repeat velocity falloff"
+              value={falloff}
+              disabled={repeatRate === "off"}
+              onChange={(e) => {
+                const mode = e.target.value as FalloffMode;
+                setFalloff(mode);
+                services.noteRepeat.setFalloff(mode);
+              }}
+            >
+              {FALLOFF_MODES.map((mode) => (
+                <option key={mode} value={mode}>
+                  {mode}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            className={`rack-header-toggle${sixteenLevels ? " active" : ""}`}
+            aria-pressed={sixteenLevels}
+            title="16 LEVELS — every pad plays the selected sound at a fixed velocity by position"
+            onClick={() => setSixteenLevels((v) => !v)}
+          >
+            16 LVL
+          </button>
+          <button
+            type="button"
+            className={`rack-header-toggle${kitMenu ? " active" : ""}`}
+            title="User kits — save the current pad mapping, apply saved kits, share via kit codes"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              setKitMenu({ x: event.clientX, y: event.clientY });
             }}
           >
-            {REPEAT_RATES.map((rate) => (
-              <option key={rate} value={rate}>
-                {rate}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="rack-header-field">
-          <span>VELO</span>
-          <select
-            aria-label="Note repeat velocity falloff"
-            value={falloff}
-            disabled={repeatRate === "off"}
-            onChange={(e) => {
-              const mode = e.target.value as FalloffMode;
-              setFalloff(mode);
-              services.noteRepeat.setFalloff(mode);
+            KIT
+          </button>
+          <button
+            type="button"
+            className={`rack-header-toggle${keysMenu ? " active" : ""}`}
+            title="Pad keys — rebind the QWERTY keys that play each pad (AZERTY/SK layouts)"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              setCaptureIndex(null);
+              setKeysMenu({ x: event.clientX, y: event.clientY });
             }}
           >
-            {FALLOFF_MODES.map((mode) => (
-              <option key={mode} value={mode}>
-                {mode}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          type="button"
-          className={`rack-header-toggle${sixteenLevels ? " active" : ""}`}
-          aria-pressed={sixteenLevels}
-          title="16 LEVELS — every pad plays the selected sound at a fixed velocity by position"
-          onClick={() => setSixteenLevels((v) => !v)}
-        >
-          16 LVL
-        </button>
-        <button
-          type="button"
-          className={`rack-header-toggle${kitMenu ? " active" : ""}`}
-          title="User kits — save the current pad mapping, apply saved kits, share via kit codes"
-          onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            setKitMenu({ x: event.clientX, y: event.clientY });
-          }}
-        >
-          KIT
-        </button>
-        <button
-          type="button"
-          className={`rack-header-toggle${keysMenu ? " active" : ""}`}
-          title="Pad keys — rebind the QWERTY keys that play each pad (AZERTY/SK layouts)"
-          onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            setCaptureIndex(null);
-            setKeysMenu({ x: event.clientX, y: event.clientY });
-          }}
-        >
-          KEYS
-        </button>
-        <span className="rack-header-hint">hold pad · right-click = pad rate · QWERTYUI·ASDFGHJK</span>
+            KEYS
+          </button>
+          <span className="rack-header-hint">hold pad · right-click = pad rate · QWERTYUI·ASDFGHJK</span>
+        </div>
       </div>
       {track.pads.map((pad, index) => {
         const hit = playheadStep >= 0 && (pattern.rows[pad.id]?.[playheadStep] ?? 0) > 0;
@@ -686,6 +718,18 @@ export function RackStrip({
             Reset to QWERTY defaults
           </button>
           <div className="context-menu-header">SHARE</div>
+          {/* Keymap sharing lives here — the rack's always-visible BINDS row was pure chrome. */}
+          <button
+            type="button"
+            role="menuitem"
+            title="Copy a PFBIND1 code with your pad keymap"
+            onClick={() => void copyBindsCode()}
+          >
+            Copy BINDS code
+          </button>
+          <button type="button" role="menuitem" title="Install a keymap from a PFBIND1 code" onClick={installBindsCode}>
+            Install from code…
+          </button>
           <div className="context-menu-header">
             {captureIndex !== null
               ? `PRESS A KEY FOR PAD ${captureIndex + 1} (Esc cancels)`
@@ -693,39 +737,6 @@ export function RackStrip({
           </div>
         </div>
       )}
-      <button
-        type="button"
-        role="menuitem"
-        title="Copy a PFBIND1 code with your pad keymap"
-        onClick={async () => {
-          try {
-            await navigator.clipboard.writeText(encodeBindsCode(getPadKeys()));
-            setKeyStatus("BINDS code copied — paste it into any KYX");
-          } catch {
-            setKeyStatus("Clipboard blocked by the browser");
-          }
-        }}
-      >
-        Copy BINDS code
-      </button>
-      <button
-        type="button"
-        role="menuitem"
-        title="Install a keymap from a PFBIND1 code"
-        onClick={() => {
-          const code = window.prompt("Paste a KYX BINDS code (PFBIND1:…)");
-          if (!code) return;
-          const keys = decodeBindsCode(code);
-          if (!keys) {
-            setKeyStatus("Invalid BINDS code");
-            return;
-          }
-          importPadKeys(keys);
-          setKeyStatus("Keymap installed");
-        }}
-      >
-        Install from code…
-      </button>
     </section>
   );
 }

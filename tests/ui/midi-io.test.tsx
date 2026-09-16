@@ -47,7 +47,7 @@ describe("PatternBar MIDI import", () => {
 
     renderWithContext(<PatternBar clip={null} onCopy={vi.fn()} />, { services });
 
-    fireEvent.click(screen.getByRole("button", { name: "MIDI" }));
+    fireEvent.click(screen.getByRole("button", { name: ".MID" }));
     const input = document.querySelector('input[type="file"][accept*=".mid"]') as HTMLInputElement;
     expect(input).toBeTruthy();
 
@@ -69,7 +69,7 @@ describe("PatternBar MIDI import", () => {
     const services = mockServices(doc);
     renderWithContext(<PatternBar clip={null} onCopy={vi.fn()} />, { services });
 
-    fireEvent.click(screen.getByRole("button", { name: "MIDI" }));
+    fireEvent.click(screen.getByRole("button", { name: ".MID" }));
     const input = document.querySelector('input[type="file"][accept*=".mid"]') as HTMLInputElement;
     const junk = new File([new Uint8Array([1, 2, 3, 4])], "junk.mid", { type: "audio/midi" });
     fireEvent.change(input, { target: { files: [junk] } });
@@ -83,7 +83,7 @@ describe("PatternBar MIDI import", () => {
     const services = mockServices(doc);
     renderWithContext(<PatternBar clip={null} onCopy={vi.fn()} />, { services });
 
-    fireEvent.click(screen.getByRole("button", { name: "MIDI" }));
+    fireEvent.click(screen.getByRole("button", { name: ".MID" }));
     const input = document.querySelector('input[type="file"][accept*=".mid"]') as HTMLInputElement;
     // Stub a huge size without allocating the bytes.
     const huge = new File([new Uint8Array(8)], "huge.mid", { type: "audio/midi" });

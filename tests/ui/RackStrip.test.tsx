@@ -60,4 +60,33 @@ describe("RackStrip", () => {
     const pads = container.querySelectorAll(".pad");
     expect(pads[0]).toHaveClass("selected");
   });
+
+  it("keeps keymap sharing inside the KEYS menu, not as always-visible chrome", async () => {
+    const user = userEvent.setup();
+    const { doc, track } = drumTrack();
+    renderWithContext(<RackStrip track={track} selectedPadId="" onSelectPad={vi.fn()} />, {
+      services: mockServices(doc),
+    });
+    expect(screen.queryByRole("menuitem", { name: "Copy BINDS code" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "KEYS" }));
+    expect(screen.getByRole("menuitem", { name: "Copy BINDS code" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Install from code…" })).toBeInTheDocument();
+  });
+
+  it("renders the leading slot (track tabs) inside its header row", () => {
+    const { doc, track } = drumTrack();
+    const { container } = renderWithContext(
+      <RackStrip
+        track={track}
+        selectedPadId=""
+        onSelectPad={vi.fn()}
+        leading={<div data-testid="leading-tabs">tabs</div>}
+      />,
+      { services: mockServices(doc) },
+    );
+    const header = container.querySelector(".rack-header");
+    expect(header).not.toBeNull();
+    expect(header!.contains(screen.getByTestId("leading-tabs"))).toBe(true);
+  });
 });

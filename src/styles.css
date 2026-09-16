@@ -397,7 +397,7 @@ button {
   min-width: 0;
   min-height: 0;
   padding: 12px;
-  gap: 12px;
+  gap: 8px;
 }
 
 .workspace-main > .sequencer {
@@ -467,13 +467,36 @@ button {
   gap: 6px;
 }
 
-/* Live Note Repeat controls above the pad grid. */
+/* Top chrome row: track tabs (leading) + live Note Repeat controls, one row
+   instead of two above the pad grid. */
 .rack-header {
   grid-column: 1 / -1;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 2px 2px 4px;
+  flex-wrap: wrap;
+  row-gap: 4px;
+  padding: 2px 2px;
+}
+
+.rack-header-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+.rack-header-divider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--border-soft);
+}
+
+@media (max-width: 1450px) {
+  .rack-header-hint {
+    display: none;
+  }
 }
 
 .rack-header-title {
@@ -1524,10 +1547,25 @@ button {
   gap: 8px;
 }
 
-.mixer-performance-title {
+.mixer-performance-title,
+.mixer-performance-toggle {
   color: var(--accent);
   font: 700 10px var(--mono);
   letter-spacing: 1px;
+}
+
+.mixer-performance-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.mixer-performance-bar.collapsed {
+  margin-bottom: 4px;
 }
 
 .mixer-performance-hint {
@@ -4016,6 +4054,8 @@ button {
 .scene-launcher-bar .scene-launch-card {
   flex: 0 0 auto;
   width: 216px;
+  padding: 3px 4px;
+  gap: 4px;
 }
 
 .scene-launcher-panel .scene-launch-card {
