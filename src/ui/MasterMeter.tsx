@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useDoc, useServices } from "./context";
 import type { ChannelLevels } from "../audio-engine/metering";
 import { registerRaf, unregisterRaf } from "../services/rafLoop";
-import { evaluateMixCheck, MIN_DB } from "../audio-engine/metering";
+import { evaluateMasterVerdict, evaluateMixCheck, MIN_DB } from "../audio-engine/metering";
 import { Goniometer } from "./Goniometer";
 import { LoudnessHistory } from "./LoudnessHistory";
 import { SpectrumAnalyzer } from "./SpectrumAnalyzer";
@@ -20,20 +20,26 @@ interface ReadState {
   lufsIntegrated: number;
   monoLossDb: number;
   gainReductionDb: number;
+  lrImbalanceDb: number;
   warnings: ReturnType<typeof evaluateMixCheck>;
 }
 
 const EMPTY: ChannelLevels = { peak: 0, rms: 0, peakDb: -120, rmsDb: -120 };
 
+/** Streaming-target option labels for the print-ready verdict headline. */
+const TARGET_LABELS: Record<number, string> = { 14: "SPOTIFY", 12: "YOUTUBE", 9: "CLUB", 7: "LOUD" };
+
 /**
- * Stereo master meter with L/R peak + RMS bars, peak hold ticks, a ×Corr
- * correlation block, and a CLIP warning. Pulls fresh frames from the engine
- * on a ~30 Hz loop so the UI is light.
+ * Master metering wall: dynamics column (L/R + GR, headroom, correlation),
+ * spectrum + loudness history in the centre, goniometer + print-ready verdict
+ * on the right. Pulls fresh frames from the engine on a ~30 Hz loop so the UI
+ * is light.
  */
 export function MasterMeter() {
   const services = useServices();
   const doc = useDoc();
   const ceilingDb = doc.master.ceilingDb;
+  const lufsTarget = doc.master.lufsTarget ?? -14;
   const [state, setState] = useState<ReadState>({
     left: { ...EMPTY },
     right: { ...EMPTY },
@@ -46,6 +52,7 @@ export function MasterMeter() {
     lufsIntegrated: MIN_DB,
     monoLossDb: 0,
     gainReductionDb: 0,
+    lrImbalanceDb: 0,
     warnings: [],
   });
   const lastStateRef = useRef(state);
@@ -107,6 +114,7 @@ export function MasterMeter() {
           Math.abs(prev.lufsIntegrated - (snapshot?.lufsIntegrated ?? MIN_DB)) > 0.2 ||
           Math.abs(prev.monoLossDb - (snapshot?.monoLossDb ?? 0)) > 0.2 ||
           Math.abs(prev.gainReductionDb - gainReductionDb) > 0.15 ||
+          Math.abs(prev.lrImbalanceDb - imbalance) > 0.3 ||
           prev.warnings.length !== warnings.length ||
           prev.clipping !== clipping;
         if (changed) {
@@ -122,6 +130,7 @@ export function MasterMeter() {
             lufsIntegrated: snapshot?.lufsIntegrated ?? MIN_DB,
             monoLossDb: snapshot?.monoLossDb ?? 0,
             gainReductionDb,
+            lrImbalanceDb: imbalance,
             warnings,
           };
           lastStateRef.current = next;
@@ -132,112 +141,122 @@ export function MasterMeter() {
     return () => unregisterRaf("master-meter");
   }, [services]);
 
+  const verdict = evaluateMasterVerdict(
+    {
+      lufsIntegrated: state.lufsIntegrated,
+      truePeakDb: state.truePeakDb,
+      monoLossDb: state.monoLossDb,
+      correlation: state.correlation,
+      lrImbalanceDb: state.lrImbalanceDb,
+    },
+    lufsTarget,
+    ceilingDb,
+    TARGET_LABELS[Math.round(-lufsTarget)] ?? "",
+  );
+
   return (
     <div className="master-meter" role="group" aria-label="Master meter">
-      <MeterChannel label="L" level={state.left} holdDb={state.peakHoldDb} />
-      <MeterChannel label="R" level={state.right} holdDb={state.peakHoldDb} />
-      <CorrelationMeter value={state.correlation} />
-      <Goniometer
-        analysers={
-          (
-            services.engine as unknown as {
-              getMasterStereoAnalysers?: () => { l: AnalyserNode; r: AnalyserNode } | null;
-            }
-          ).getMasterStereoAnalysers?.() ?? null
-        }
-        size={72}
-        id="master"
-      />
-      <HeadroomStrip ceilingDb={ceilingDb} clipping={state.clipping} />
-      <div className="master-loudness-readout" aria-label="Master loudness">
-        <span>LUFS-M {formatDb(state.lufsMomentary)}</span>
-        <span>LUFS-S {formatDb(state.lufsShortTerm)}</span>
-        <span>LUFS-I {formatDb(state.lufsIntegrated)}</span>
-        <span>TP {formatDb(state.truePeakDb)} dBTP</span>
-        <span>MONO LOSS {formatDb(state.monoLossDb)} dB</span>
-        <span title="Master-stage gain reduction">GR {state.gainReductionDb.toFixed(1)} dB</span>
-        <button type="button" className="btn btn-small" onClick={() => services.engine.resetMasterIntegratedLufs?.()}>
-          RESET INTEGRATED
-        </button>
-        <button
-          type="button"
-          className="btn btn-small"
-          title="Auto gain stage to -6 dB below ceiling (pulls master IN so peaks sit at ceiling-6 dB)"
-          onClick={() => {
-            const snap = (
-              services.engine as unknown as { getMasterMeterSnapshot?: () => MasterSnapshot }
-            ).getMasterMeterSnapshot?.();
-            const peak = snap ? Math.max(snap.peakHoldDb, snap.truePeakDb) : state.peakHoldDb;
-            if (!Number.isFinite(peak) || peak <= -60) return;
-            const targetPeak = ceilingDb - 6;
-            const delta = targetPeak - peak;
-            const currentGain = doc.master.masterGain ?? 1;
-            const newGain = Math.max(0, Math.min(2, currentGain * Math.pow(10, delta / 20)));
-            services.store.execute(setMasterConfig(doc, { masterGain: newGain }));
-          }}
-        >
-          AUTO -6dB
-        </button>
-        <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 6, gridColumn: "1 / -1" }}>
-          <span style={{ fontSize: 10, color: "var(--muted)" }}>TARGET</span>
-          <select
-            value={String(doc.master.lufsTarget ?? -14)}
-            onChange={(e) => services.store.execute(setMasterConfig(doc, { lufsTarget: Number(e.target.value) }))}
-            style={{
-              fontSize: 10,
-              background: "var(--bg-raise)",
-              border: "1px solid var(--border)",
-              borderRadius: 3,
-              color: "var(--text)",
-              padding: "2px 4px",
-            }}
-            aria-label="LUFS target"
-          >
-            <option value="-14">-14 LUFS (Spotify)</option>
-            <option value="-12">-12 LUFS (YouTube)</option>
-            <option value="-9">-9 LUFS (Club)</option>
-            <option value="-7">-7 LUFS (Loud)</option>
-          </select>
-          <span
-            style={{
-              fontSize: 10,
-              fontWeight: 600,
-              color:
-                Math.abs(state.lufsIntegrated - (doc.master.lufsTarget ?? -14)) <= 1
-                  ? "#4ade80"
-                  : state.lufsIntegrated <= -119
-                    ? "var(--muted)"
-                    : "#f59e0b",
-            }}
-            title="LUFS integrated target ±1 dB (true peak limiter already via look-ahead limiter + true peak meter)"
-          >
-            {state.lufsIntegrated <= -119
-              ? "—"
-              : Math.abs(state.lufsIntegrated - (doc.master.lufsTarget ?? -14)) <= 1
-                ? "✓ ±1 OK"
-                : `Δ ${(state.lufsIntegrated - (doc.master.lufsTarget ?? -14)).toFixed(1)} dB`}
-          </span>
-          <span
-            style={{ fontSize: 10, color: "var(--muted)" }}
-            title="True peak via 4× oversampled K-weighted meter (BS.1770)"
-          >
-            TP {formatDb(state.truePeakDb)} {state.truePeakDb > ceilingDb ? "⚠" : ""}
-          </span>
+      <div className="master-zone-dynamics">
+        <div className="master-dynamics-meters">
+          <MeterChannel label="L" level={state.left} holdDb={state.peakHoldDb} gainReductionDb={state.gainReductionDb} />
+          <MeterChannel label="R" level={state.right} holdDb={state.peakHoldDb} gainReductionDb={state.gainReductionDb} />
+        </div>
+        <CorrelationMeter value={state.correlation} />
+        <HeadroomStrip ceilingDb={ceilingDb} clipping={state.clipping} />
+      </div>
+
+      <div className="master-zone-center">
+        <SpectrumAnalyzer
+          analyser={
+            (
+              services.engine as unknown as { getMasterSpectrumAnalyser?: () => AnalyserNode | null }
+            ).getMasterSpectrumAnalyser?.() ?? null
+          }
+          height={72}
+          accent="#f59e0b"
+          id="master"
+        />
+        <div className="master-loudness-readout" aria-label="Master loudness">
+          <span>LUFS-M {formatDb(state.lufsMomentary)}</span>
+          <span>LUFS-S {formatDb(state.lufsShortTerm)}</span>
+          <span>LUFS-I {formatDb(state.lufsIntegrated)}</span>
+          <span>TP {formatDb(state.truePeakDb)} dBTP</span>
+          <span>MONO LOSS {formatDb(state.monoLossDb)} dB</span>
+          <span title="Master-stage gain reduction">GR {state.gainReductionDb.toFixed(1)} dB</span>
+        </div>
+        <LoudnessHistory id="master-loudness" height={56} targetLufs={lufsTarget} />
+      </div>
+
+      <div className="master-zone-right">
+        <Goniometer
+          analysers={
+            (
+              services.engine as unknown as {
+                getMasterStereoAnalysers?: () => { l: AnalyserNode; r: AnalyserNode } | null;
+              }
+            ).getMasterStereoAnalysers?.() ?? null
+          }
+          id="master"
+        />
+        <div className="master-verdict" data-level={verdict.level}>
+          <span className="master-verdict-headline">{verdict.headline}</span>
+          {verdict.hints.map((hint) => (
+            <span key={hint} className="master-verdict-hint">
+              {hint}
+            </span>
+          ))}
+          <div className="master-verdict-target">
+            <span className="master-verdict-target-label">TARGET</span>
+            <select
+              value={String(lufsTarget)}
+              onChange={(e) => services.store.execute(setMasterConfig(doc, { lufsTarget: Number(e.target.value) }))}
+              aria-label="LUFS target"
+            >
+              <option value="-14">-14 LUFS (Spotify)</option>
+              <option value="-12">-12 LUFS (YouTube)</option>
+              <option value="-9">-9 LUFS (Club)</option>
+              <option value="-7">-7 LUFS (Loud)</option>
+            </select>
+            <span
+              className="master-verdict-delta"
+              title="LUFS integrated target ±1 dB (true peak limiter already via look-ahead limiter + true peak meter)"
+            >
+              {state.lufsIntegrated <= -119
+                ? "—"
+                : Math.abs(state.lufsIntegrated - lufsTarget) <= 1
+                  ? "✓ ±1 OK"
+                  : `Δ ${(state.lufsIntegrated - lufsTarget).toFixed(1)} dB`}
+            </span>
+          </div>
+          <div className="master-verdict-actions">
+            <button type="button" className="btn btn-small" onClick={() => services.engine.resetMasterIntegratedLufs?.()}>
+              RESET INTEGRATED
+            </button>
+            <button
+              type="button"
+              className="btn btn-small"
+              title="Auto gain stage to -6 dB below ceiling (pulls master IN so peaks sit at ceiling-6 dB)"
+              onClick={() => {
+                const snap = (
+                  services.engine as unknown as { getMasterMeterSnapshot?: () => MasterSnapshot }
+                ).getMasterMeterSnapshot?.();
+                const peak = snap ? Math.max(snap.peakHoldDb, snap.truePeakDb) : state.peakHoldDb;
+                if (!Number.isFinite(peak) || peak <= -60) return;
+                const targetPeak = ceilingDb - 6;
+                const delta = targetPeak - peak;
+                const currentGain = doc.master.masterGain ?? 1;
+                const newGain = Math.max(0, Math.min(2, currentGain * Math.pow(10, delta / 20)));
+                services.store.execute(setMasterConfig(doc, { masterGain: newGain }));
+              }}
+            >
+              AUTO -6dB
+            </button>
+          </div>
         </div>
       </div>
-      <SpectrumAnalyzer
-        analyser={
-          (
-            services.engine as unknown as { getMasterSpectrumAnalyser?: () => AnalyserNode | null }
-          ).getMasterSpectrumAnalyser?.() ?? null
-        }
-        height={64}
-        accent="#f59e0b"
-        id="master"
-      />
-      <LoudnessHistory id="master-loudness" height={64} />
+
       {state.warnings.length > 0 && (
-        <div className="master-mix-check" role="status">
+        <div className="master-mix-check master-zone-warnings" role="status">
           {state.warnings.map((warning) => (
             <span key={warning.code}>{warning.message}</span>
           ))}
@@ -270,7 +289,17 @@ function formatDb(value: number): string {
   return value <= -119 ? "-INF" : value.toFixed(1);
 }
 
-function MeterChannel({ label, level, holdDb }: { label: string; level: ChannelLevels; holdDb: number }) {
+function MeterChannel({
+  label,
+  level,
+  holdDb,
+  gainReductionDb,
+}: {
+  label: string;
+  level: ChannelLevels;
+  holdDb: number;
+  gainReductionDb: number;
+}) {
   const peakPct = dbToPct(level.peakDb);
   const rmsPct = dbToPct(level.rmsDb);
   const holdPct = dbToPct(holdDb);
@@ -281,6 +310,14 @@ function MeterChannel({ label, level, holdDb }: { label: string; level: ChannelL
         <div className="master-channel-rms" style={{ height: `${rmsPct}%` }} />
         <div className="master-channel-peak" style={{ height: `${peakPct}%` }} />
         <div className="master-channel-hold" style={{ bottom: `${holdPct}%` }} />
+        {/* Limiter gain reduction, drawn from the top like classic mastering meters. */}
+        {gainReductionDb > 0.05 && (
+          <div
+            className="master-channel-gr"
+            style={{ height: `${Math.min(100, (gainReductionDb / 12) * 100)}%` }}
+            title={`Limiter working — ${gainReductionDb.toFixed(1)} dB gain reduction`}
+          />
+        )}
         <div className="master-channel-tick" style={{ bottom: `${dbToPct(0)}%` }} />
         <div className="master-channel-tick master-channel-tick-warn" style={{ bottom: `${dbToPct(-3)}%` }} />
         <div className="master-channel-tick master-channel-tick-dim" style={{ bottom: `${dbToPct(-6)}%` }} />

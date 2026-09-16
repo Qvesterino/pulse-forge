@@ -6,11 +6,23 @@ import { useServices } from "./context";
  * Loudness history canvas — plots LUFS-M / LUFS-S / LUFS-I over ~30s.
  * Observer-only: reads getMasterMeterSnapshot on a ~10 Hz loop.
  * Green = momentary, amber = short-term, white = integrated.
+ * The dashed target line follows the project's LUFS target (-14 fallback);
+ * -23 LUFS stays as the dim broadcast reference.
  */
-export function LoudnessHistory({ id = "loudness", height = 64 }: { id?: string; height?: number }) {
+export function LoudnessHistory({
+  id = "loudness",
+  height = 64,
+  targetLufs = -14,
+}: {
+  id?: string;
+  height?: number;
+  targetLufs?: number;
+}) {
   const services = useServices();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const historyRef = useRef<{ m: number[]; s: number[]; i: number[] }>({ m: [], s: [], i: [] });
+  const targetRef = useRef(targetLufs);
+  targetRef.current = targetLufs;
 
   useEffect(() => {
     const maxPoints = 300; // ~30s at 10 Hz
@@ -50,21 +62,25 @@ export function LoudnessHistory({ id = "loudness", height = 64 }: { id?: string;
       ctx.fillStyle = "#111318";
       ctx.fillRect(0, 0, w, h);
 
-      // Grid at -14 LUFS target + -23
+      // Grid at the project LUFS target + the -23 broadcast reference
+      const targets: { value: number; primary: boolean }[] = [
+        { value: targetRef.current, primary: true },
+        { value: -23, primary: false },
+      ];
       ctx.strokeStyle = "rgba(255,255,255,0.06)";
       ctx.lineWidth = 1;
-      for (const target of [-14, -23]) {
-        if (target < minDb || target > maxDb) continue;
-        const y = h * (1 - (target - minDb) / range);
+      for (const { value, primary } of targets) {
+        if (value < minDb || value > maxDb) continue;
+        const y = h * (1 - (value - minDb) / range);
         ctx.setLineDash([3, 3]);
         ctx.beginPath();
         ctx.moveTo(0, y);
         ctx.lineTo(w, y);
         ctx.stroke();
         ctx.setLineDash([]);
-        ctx.fillStyle = target === -14 ? "rgba(245,158,11,0.5)" : "rgba(255,255,255,0.15)";
+        ctx.fillStyle = primary ? "rgba(245,158,11,0.5)" : "rgba(255,255,255,0.15)";
         ctx.font = "8px monospace";
-        ctx.fillText(`${target} LUFS`, 4, y - 2);
+        ctx.fillText(`${value} LUFS`, 4, y - 2);
       }
 
       const drawLine = (data: number[], color: string) => {

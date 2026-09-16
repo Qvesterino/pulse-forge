@@ -96,6 +96,77 @@ export function evaluateMixCheck(snapshot: MixCheckSnapshot): MixCheckWarning[] 
   return warnings;
 }
 
+export interface MasterVerdictInput {
+  lufsIntegrated: number;
+  truePeakDb: number;
+  monoLossDb: number;
+  correlation: number;
+  lrImbalanceDb: number;
+}
+
+export interface MasterVerdict {
+  /** idle = nothing measured yet, ok = print-ready, warn = close, bad = fix first. */
+  level: "idle" | "ok" | "warn" | "bad";
+  headline: string;
+  /** Fix-it hints, highest priority first (UI shows at most two). */
+  hints: string[];
+  /** LUFS-I − target; 0 when idle. */
+  loudnessDeltaDb: number;
+}
+
+/**
+ * One-glance "is this print-ready" verdict for the master: loudness vs the
+ * streaming target, true peak vs the limiter ceiling, mono compatibility and
+ * balance. Pure so the UI can render it and tests can pin the thresholds.
+ */
+export function evaluateMasterVerdict(
+  input: MasterVerdictInput,
+  lufsTarget: number,
+  ceilingDb: number,
+  targetLabel = "",
+): MasterVerdict {
+  if (input.lufsIntegrated <= -119) return { level: "idle", headline: "—", hints: [], loudnessDeltaDb: 0 };
+  const delta = input.lufsIntegrated - lufsTarget;
+  const hints: string[] = [];
+  let level: MasterVerdict["level"] = "ok";
+
+  if (input.correlation < 0) {
+    level = "bad";
+    hints.push("Phase issues — check mono compatibility");
+  }
+  if (input.truePeakDb > ceilingDb) {
+    level = "bad";
+    hints.push(`True peak over ceiling — pull IN or CEIL down`);
+  }
+  if (Math.abs(delta) > 1) {
+    if (level === "ok") level = "warn";
+    hints.push(
+      delta > 0
+        ? `${delta.toFixed(1)} dB louder than target — platforms will duck it`
+        : `${Math.abs(delta).toFixed(1)} dB quieter than target — raise IN`,
+    );
+  }
+  if (input.monoLossDb < -3) {
+    if (level === "ok") level = "warn";
+    hints.push("Mono fold-down loses depth — check wide elements");
+  }
+  if (input.lrImbalanceDb > 6) {
+    if (level === "ok") level = "warn";
+    hints.push("Left/right balance off by more than 6 dB");
+  }
+
+  const forLabel = targetLabel ? ` FOR ${targetLabel}` : "";
+  let headline: string;
+  if (level === "ok") headline = `READY${forLabel}`;
+  else if (input.truePeakDb > ceilingDb) headline = "TRUE PEAK OVER";
+  else if (input.correlation < 0) headline = "PHASE ISSUES";
+  else if (delta > 1) headline = "TOO LOUD";
+  else if (delta < -1) headline = "TOO QUIET";
+  else headline = "CHECK STEREO";
+
+  return { level, headline, hints: hints.slice(0, 2), loudnessDeltaDb: delta };
+}
+
 /** Channel-interleaved linear frame (L, R, L, R, …). */
 export type Frame = Float32Array<ArrayBuffer>;
 

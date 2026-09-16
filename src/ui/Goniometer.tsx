@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { registerRaf, unregisterRaf } from "../services/rafLoop";
 
 /**
@@ -8,6 +8,10 @@ import { registerRaf, unregisterRaf } from "../services/rafLoop";
  * Mid = (L+R)*0.5 on X, Side = (L-R)*0.5 on Y — mono sits on the X axis,
  * wide stereo blooms vertically. This matches the classic vectorscope
  * orientation used in mastering.
+ *
+ * The canvas fills its grid cell (square, capped by the shorter side) instead
+ * of a fixed pixel size — `size` is only the fallback when the wrapper cannot
+ * be measured (tests, first paint).
  */
 export function Goniometer({
   analysers,
@@ -21,6 +25,22 @@ export function Goniometer({
   id: string;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [resolved, setResolved] = useState(size);
+
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const box = entry.contentRect;
+        const px = Math.floor(Math.min(box.width, box.height));
+        if (px > 0) setResolved((prev) => (px !== prev ? px : prev));
+      }
+    });
+    observer.observe(wrap);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (!analysers) return;
@@ -121,14 +141,16 @@ export function Goniometer({
   }, [analysers, id, accent]);
 
   return (
-    <canvas
-      ref={canvasRef}
-      className="goniometer"
-      style={{ width: size, height: size, display: "block", borderRadius: 4 }}
-      width={size * 2}
-      height={size * 2}
-      aria-label="Stereo goniometer"
-      role="img"
-    />
+    <div ref={wrapRef} className="goniometer-wrap">
+      <canvas
+        ref={canvasRef}
+        className="goniometer"
+        style={{ width: resolved, height: resolved, display: "block", borderRadius: 4 }}
+        width={resolved * 2}
+        height={resolved * 2}
+        aria-label="Stereo goniometer"
+        role="img"
+      />
+    </div>
   );
 }
