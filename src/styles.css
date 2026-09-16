@@ -1518,6 +1518,16 @@ button {
   border-radius: 6px;
 }
 
+/* Grab-worthy fader caps — the default 3px line was needle-thin to hit. */
+.channel-strip .slider-thumb {
+  width: 12px;
+  transform: translateX(-6px);
+  border-radius: 2px;
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.35),
+    0 0 6px rgba(245, 158, 11, 0.25);
+}
+
 .mixer-batch-bar {
   display: flex;
   gap: 8px;

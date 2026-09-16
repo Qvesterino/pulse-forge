@@ -3445,9 +3445,9 @@ export class AudioEngine {
     }
   }
 
-  preview(pad: DrumPad, trackId: string): void {
+  preview(pad: DrumPad, trackId: string, velocity = 1): void {
     this.ensureContext();
-    this.trigger(trackId, pad, this.currentTime + 0.005, 1);
+    this.trigger(trackId, pad, this.currentTime + 0.005, velocity);
   }
 
   /**

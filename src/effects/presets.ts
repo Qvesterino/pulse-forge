@@ -299,6 +299,37 @@ export const CORE_EFFECT_PRESETS: EffectPreset[] = [
   preset("chorus-subtle", "Subtle", "chorus", { rate: 0.35, depth: 0.25, mix: 0.18 }),
   preset("chorus-wide", "Wide", "chorus", { rate: 0.6, depth: 0.7, mix: 0.45 }),
   preset("chorus-doubler", "Doubler", "chorus", { rate: 1.2, depth: 0.45, mix: 0.55 }),
+  // KYX Kaskáda — character delay presets
+  preset("kaskada-tape-echo", "Tape Echo", "kaskada", {
+    time: 375, sync: 0, pingPong: 0, feedback: 0.45, toneLp: 3500, toneHp: 150,
+    drive: 0.35, modRate: 0.8, modDepth: 0.3, spread: 0.6, freeze: 0,
+    character: 1, mix: 0.25, level: -6,
+  }),
+  preset("kaskada-pp-wide", "Ping-Pong Wide", "kaskada", {
+    time: 500, sync: 0, pingPong: 1, feedback: 0.55, toneLp: 6000, toneHp: 200,
+    drive: 0, modRate: 0.3, modDepth: 0.1, spread: 0.9, freeze: 0,
+    character: 0, mix: 0.3, level: -6,
+  }),
+  preset("kaskada-slap-back", "Slap Back", "kaskada", {
+    time: 120, sync: 0, pingPong: 0, feedback: 0.15, toneLp: 8000, toneHp: 200,
+    drive: 0, modRate: 0.5, modDepth: 0, spread: 0.3, freeze: 0,
+    character: 0, mix: 0.18, level: -6,
+  }),
+  preset("kaskada-dub-space", "Dub Space", "kaskada", {
+    time: 650, sync: 0, pingPong: 1, feedback: 0.75, toneLp: 2500, toneHp: 100,
+    drive: 0.6, modRate: 0.4, modDepth: 0.2, spread: 0.7, freeze: 0,
+    character: 2, mix: 0.4, level: -8,
+  }),
+  preset("kaskada-ambient-wash", "Ambient Wash", "kaskada", {
+    time: 850, sync: 0, pingPong: 0, feedback: 0.8, toneLp: 3000, toneHp: 80,
+    drive: 0.2, modRate: 0.3, modDepth: 0.45, spread: 1, freeze: 0,
+    character: 1, mix: 0.55, level: -10,
+  }),
+  preset("kaskada-tight-double", "Tight Double", "kaskada", {
+    time: 80, sync: 0, pingPong: 0, feedback: 0, toneLp: 10000, toneHp: 100,
+    drive: 0, modRate: 0.5, modDepth: 0, spread: 0.3, freeze: 0,
+    character: 0, mix: 0.3, level: -6,
+  }),
 ];
 
 export function presetsForEffect(type: EffectType): EffectPreset[] {

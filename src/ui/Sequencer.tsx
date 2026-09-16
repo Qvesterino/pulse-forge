@@ -34,15 +34,19 @@ export interface StepSelection {
 }
 
 interface DragState {
-  mode: "edit" | "select";
+  mode: "edit" | "select" | "paint";
   padId: string;
   stepIndex: number;
+  startX: number;
   startY: number;
   startVelocity: number;
   startMicro: number;
   startProb: number;
   editKind: "velocity" | "microtiming" | "probability";
   moved: boolean;
+  /** Drag-paint: the toggle target (true = add) and every cell the stroke touched. */
+  paintValue: boolean;
+  painted: Set<string>;
 }
 
 // Flat item types for virtualized rendering
@@ -126,6 +130,8 @@ export function Sequencer({
     probability?: number;
     kind?: DragState["editKind"];
   } | null>(null);
+  /** Live overlay while drag-painting: every touched cell renders the stroke's toggle target. */
+  const [paintPreview, setPaintPreview] = useState<{ value: boolean; keys: Set<string> } | null>(null);
   const [stepEditor, setStepEditor] = useState<{ padId: string; stepIndex: number } | null>(null);
   const [lockClipboard, setLockClipboard] = useState<Partial<
     Record<import("../project-model/types").StepLockKey, number>
@@ -233,12 +239,15 @@ export function Sequencer({
         mode: "select",
         padId,
         stepIndex,
+        startX: event.clientX,
         startY: event.clientY,
         startVelocity: 0,
         startMicro: 0,
         startProb: 1,
         editKind: "velocity",
         moved: false,
+        paintValue: false,
+        painted: new Set(),
       };
       event.preventDefault();
       return;
@@ -255,12 +264,15 @@ export function Sequencer({
         mode: "select",
         padId,
         stepIndex,
+        startX: event.clientX,
         startY: event.clientY,
         startVelocity: 0,
         startMicro: 0,
         startProb: 1,
         editKind: "velocity",
         moved: true,
+        paintValue: false,
+        painted: new Set(),
       };
       onSelectSteps(selectionFromDrag(padId, stepIndex, padId, stepIndex));
       return;
@@ -275,12 +287,16 @@ export function Sequencer({
       mode: "edit",
       padId,
       stepIndex,
+      startX: event.clientX,
       startY: event.clientY,
       startVelocity: pattern.rows[padId]?.[stepIndex] ?? 0,
       startMicro: meta?.microtiming ?? 0,
       startProb: meta?.probability ?? 1,
       editKind,
       moved: false,
+      // A horizontal drag from here paints this value across cells.
+      paintValue: (pattern.rows[padId]?.[stepIndex] ?? 0) <= 0,
+      painted: new Set([`${padId}:${stepIndex}`]),
     };
   };
 
@@ -298,7 +314,29 @@ export function Sequencer({
       }
       return;
     }
-    const delta = drag.startY - event.clientY;
+    const dx = event.clientX - drag.startX;
+    const dy = drag.startY - event.clientY;
+    // A predominantly horizontal move before any vertical edit becomes a
+    // paint stroke: drag across cells to add/erase them in one gesture.
+    if (drag.mode === "edit" && !drag.moved && Math.abs(dx) >= 6 && Math.abs(dx) > Math.abs(dy)) {
+      drag.mode = "paint";
+      setPaintPreview({ value: drag.paintValue, keys: new Set(drag.painted) });
+    }
+    if (drag.mode === "paint") {
+      const el = (document.elementFromPoint(event.clientX, event.clientY)?.closest(".step") ??
+        null) as HTMLElement | null;
+      const padId = el?.dataset.pad;
+      const stepIndex = Number(el?.dataset.step ?? NaN);
+      if (padId && Number.isFinite(stepIndex)) {
+        const key = `${padId}:${stepIndex}`;
+        if (!drag.painted.has(key)) {
+          drag.painted.add(key);
+          setPaintPreview({ value: drag.paintValue, keys: new Set(drag.painted) });
+        }
+      }
+      return;
+    }
+    const delta = dy;
     if (!drag.moved && Math.abs(delta) < 5) return;
     drag.moved = true;
     if (drag.editKind === "microtiming") {
@@ -331,6 +369,24 @@ export function Sequencer({
     if (!drag) return;
     if (drag.mode === "select") {
       setDragPreview(null);
+      return;
+    }
+    if (drag.mode === "paint") {
+      // One command per stroke — single undo entry, no per-cell history spam.
+      const entries = Array.from(drag.painted).map((key) => {
+        const [padId, step] = key.split(":");
+        return { padId, stepIndex: Number(step), velocity: drag.paintValue ? 0.8 : 0 };
+      });
+      if (entries.length > 0) {
+        services.store.execute(
+          entries.length === 1 && drag.paintValue
+            ? toggleStep(doc, entries[0].padId, entries[0].stepIndex)
+            : setStepsVelocity(doc, pattern.id, entries),
+        );
+      }
+      onSelectSteps(null);
+      setDragPreview(null);
+      setPaintPreview(null);
       return;
     }
     if (drag.moved) {
@@ -411,6 +467,7 @@ export function Sequencer({
       onSelectSteps(null);
     }
     setDragPreview(null);
+    setPaintPreview(null);
   };
 
   const handleScroll = useCallback(() => {
@@ -578,6 +635,7 @@ export function Sequencer({
                 selectedPadId={selectedPadId}
                 selectedTrackId={selectedTrackId}
                 dragPreview={dragPreview}
+                paintPreview={paintPreview}
                 stepSelection={stepSelection}
                 selectedNote={selectedNote}
                 scaleSnap={scaleSnap}
@@ -608,6 +666,7 @@ function VirtualRow({
   selectedPadId,
   selectedTrackId,
   dragPreview,
+  paintPreview,
   stepSelection,
   selectedNote,
   scaleSnap,
@@ -635,6 +694,7 @@ function VirtualRow({
     probability?: number;
     kind?: DragState["editKind"];
   } | null;
+  paintPreview: { value: boolean; keys: Set<string> } | null;
   stepSelection: StepSelection | null;
   selectedNote: SelectedNote | null;
   scaleSnap: boolean;
@@ -674,6 +734,7 @@ function VirtualRow({
         playheadStep={playheadStep}
         selected={item.pad.id === selectedPadId}
         dragPreview={dragPreview}
+        paintPreview={paintPreview}
         stepSelection={stepSelection}
         onBegin={beginStepInteraction}
         onMove={moveStepInteraction}
@@ -1033,6 +1094,7 @@ function PadRow({
   playheadStep,
   selected,
   dragPreview,
+  paintPreview,
   stepSelection,
   onBegin,
   onMove,
@@ -1059,6 +1121,7 @@ function PadRow({
     probability?: number;
     kind?: DragState["editKind"];
   } | null;
+  paintPreview: { value: boolean; keys: Set<string> } | null;
   stepSelection: StepSelection | null;
   onBegin: (event: React.PointerEvent, padId: string, stepIndex: number) => void;
   onMove: (event: React.PointerEvent) => void;
@@ -1114,10 +1177,12 @@ function PadRow({
         style={{ gridTemplateColumns: `repeat(${pattern.stepCount}, minmax(${STEP_MIN_PX}px, 1fr))` }}
       >
         {Array.from({ length: pattern.stepCount }, (_, stepIndex) => {
-          const velocity =
+          let velocity =
             dragPreview && dragPreview.padId === pad.id && dragPreview.stepIndex === stepIndex
               ? dragPreview.velocity
               : (row[stepIndex] ?? 0);
+          // A paint stroke overrides committed rows for every cell it touched.
+          if (paintPreview?.keys.has(`${pad.id}:${stepIndex}`)) velocity = paintPreview.value ? 0.8 : 0;
           const active = velocity > 0;
           const meta: StepMeta | undefined = metaRow[stepIndex] as StepMeta | undefined;
           const inSelection =
@@ -1139,6 +1204,8 @@ function PadRow({
             <StepCell
               key={stepIndex}
               patternId={pattern.id}
+              pad={pad}
+              trackId={trackId}
               padId={pad.id}
               stepIndex={stepIndex}
               velocity={velocity}
@@ -1167,6 +1234,8 @@ function PadRow({
  */
 function StepCell({
   patternId,
+  pad,
+  trackId,
   padId,
   stepIndex,
   velocity,
@@ -1182,6 +1251,8 @@ function StepCell({
   remoteCursors,
 }: {
   patternId: string;
+  pad: DrumTrack["pads"][number];
+  trackId: string;
   padId: string;
   stepIndex: number;
   velocity: number;
@@ -1202,6 +1273,18 @@ function StepCell({
   const publishCursor = usePublishCursor();
   // Who else is pointing at this exact cell — one colored marker per user.
   const remoteHere = cursorsAt(remoteCursors, { view: "sequencer", patternId, padId, stepIndex });
+
+  // Hover audition: sweeping over placed cells plays them at their velocity
+  // (transport stopped only — while playing the pattern speaks for itself).
+  // A short gate keeps a fast sweep from machine-gunning overlapping hits.
+  const lastAuditionRef = useRef(0);
+  const auditionStep = () => {
+    if (services.transport.playing || velocity <= 0) return;
+    const now = performance.now();
+    if (now - lastAuditionRef.current < 70) return;
+    lastAuditionRef.current = now;
+    services.engine.preview(pad, trackId, velocity);
+  };
 
   const hasLocks = meta?.locks && Object.keys(meta.locks).length > 0;
   const lockHints: string[] = [];
@@ -1224,12 +1307,13 @@ function StepCell({
       data-step={stepIndex}
       className={`step${active ? " active" : ""}${stepIndex % 4 === 0 ? " beat-start" : ""}${playhead ? " playhead" : ""}${inSelection ? " in-selection" : ""}${meta?.probability !== undefined && meta.probability < 1 ? " has-probability" : ""}${meta?.microtiming !== undefined && meta.microtiming !== 0 ? (meta.microtiming < 0 ? " micro-early" : " micro-late") : ""}${hasLocks ? " has-locks" : ""}${amount < 0.99 ? " has-amount" : ""}`}
       style={active ? ({ "--step-velocity": velocity } as React.CSSProperties) : undefined}
-      title={`${fullLabel} — click to toggle, drag vertically for velocity (Alt microtiming −1..1, Ctrl/Cmd probability 0..1), shift+drag to multi-select, right-click (or long-press) for p-locks — bottom bar is amount 0..1`}
+      title={`${fullLabel} — click to toggle, drag horizontally to paint, drag vertically for velocity (Alt microtiming −1..1, Ctrl/Cmd probability 0..1), shift+drag to multi-select, right-click (or long-press) for p-locks — bottom bar is amount 0..1`}
       aria-label={fullLabel}
       aria-pressed={active}
       onPointerEnter={(event) => {
         if (event.pointerType === "mouse") {
           publishCursor({ view: "sequencer", patternId, padId, stepIndex });
+          auditionStep();
         }
       }}
       onPointerDown={(event) => {
