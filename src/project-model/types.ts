@@ -27,6 +27,7 @@ export type EffectType =
   | "comb"
   | "vowel"
   | "duckDelay"
+  | "kaskada"
   | "msEq"
   | "haasWidener"
   | "multiband"

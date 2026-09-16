@@ -179,6 +179,10 @@ the bounded memory footprint of the prepare-time delay reservation:
   (217/217, Sep 2026). Ak niečo z toho padne: re-run solo/na pokojnom stroji pred akýmkoľvek
   "fixovaním" — výsledky pod záťažou nie sú regresný signál.
 - Budgety zámerne NEslabujeme kvôli záťažovým flakeom — to by skrylo reálne regresie.
+- **Celý `verify-browser` suite NIE JE spustiteľný paralelne s druhou aktívnou sessionou/buildom**
+  (Sep 2026: pri co-tenant load padajú aj 60 s selector okná a render budgety 1,46× realtime;
+  na pokojnom behu 218/218 s kompletným feature setom). Mount fáza má 60 s okná + jeden reload
+  retry; fxeq CPU budget je best-of-3 fresh-context rendrov. Meranie vždy na pokojnom stroji.
 - **2026-09-12 stabilizácia (mierou, nie oslabením):** tri absolute-time gaty prešli na
   load-imúnne meranie bez zmeny prahov sledovaného javu —
   (1) ultina vitest "audio budget" je teraz **ratio gate** (hq full-graph vs passthrough

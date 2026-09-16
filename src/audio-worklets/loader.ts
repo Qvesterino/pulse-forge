@@ -56,6 +56,7 @@ const CORE_TYPES = [
   "comb",
   "vowel",
   "duckDelay",
+  "kaskada",
   "reverb",
   "wtVoice",
   "grainVoice",

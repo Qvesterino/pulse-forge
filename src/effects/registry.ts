@@ -19,6 +19,7 @@ import { createTapeNode } from "../audio-worklets/tape-node";
 import { createCombNode } from "../audio-worklets/comb-node";
 import { createVowelNode } from "../audio-worklets/vowel-node";
 import { createDuckingDelayNode } from "../audio-worklets/ducking-delay-node";
+import { createKaskadaNode } from "../audio-worklets/kaskada-node";
 import { createReverbNode } from "../audio-worklets/reverb-node";
 import {
   PARAM_BY_ID as ULTINA_PARAM_BY_ID,
@@ -134,7 +135,8 @@ export function effectProcessorStatus(
       | "tapeSat"
       | "comb"
       | "vowel"
-      | "duckDelay",
+      | "duckDelay"
+      | "kaskada",
     ctx,
   )
     ? "ok"
@@ -2998,6 +3000,43 @@ const duckDelay: EffectDefinition = {
   },
 };
 
+
+/* ────────────── KYX Kaskáda — character stereo delay ────────────── */
+
+const kaskada: EffectDefinition = {
+  type: "kaskada",
+  name: "Kaskáda Delay",
+  category: "space",
+  params: [
+    { id: "time", label: "TIME", min: 30, max: 2000, default: 375, unit: "ms", format: formatMs },
+    { id: "sync", label: "SYNC", min: 0, max: 5, default: 0, options: [
+        { value: 0, label: "OFF" }, { value: 1, label: "1/4" },
+        { value: 2, label: "1/8" }, { value: 3, label: "1/8T" },
+        { value: 4, label: "1/16" }, { value: 5, label: "1/16T" },
+      ],
+    },
+    { id: "pingPong", label: "PING-PONG", min: 0, max: 1, default: 0, format: (v) => (v > 0.5 ? "ON" : "OFF") },
+    { id: "feedback", label: "FEEDBK", min: 0, max: 0.95, default: 0.35, format: formatPct },
+    { id: "toneLp", label: "TONE LP", min: 500, max: 12000, default: 4500, unit: "Hz", format: formatHz },
+    { id: "toneHp", label: "TONE HP", min: 20, max: 800, default: 150, unit: "Hz", format: formatHz },
+    { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0, format: formatPct },
+    { id: "modRate", label: "MOD RATE", min: 0.1, max: 8, default: 0.6, unit: "Hz", format: (v) => `${v.toFixed(1)} Hz` },
+    { id: "modDepth", label: "MOD DEPTH", min: 0, max: 1, default: 0.15, format: formatPct },
+    { id: "spread", label: "SPREAD", min: 0, max: 1, default: 0.8, format: formatPct },
+    { id: "freeze", label: "FREEZE", min: 0, max: 1, default: 0, format: (v) => (v > 0.5 ? "ON" : "OFF") },
+    { id: "character", label: "CHARACTER", min: 0, max: 2, default: 1, options: [
+        { value: 0, label: "DIGITAL" }, { value: 1, label: "TAPE" }, { value: 2, label: "ANALOG" },
+      ],
+    },
+    { id: "mix", label: "MIX", min: 0, max: 1, default: 0.25, format: formatPct },
+    { id: "level", label: "LEVEL", min: -24, max: 6, default: -6, unit: "dB", format: formatDb },
+  ],
+  factory(ctx, instance) {
+    if (isWorkletReady("kaskada", ctx)) return createKaskadaNode(ctx, instance);
+    return bypassRuntime(ctx, "AudioWorklet unavailable — Kaskáda delay bypassed (1:1 signal)");
+  },
+};
+
 /* ---------------- registry ---------------- */
 
 export const EFFECT_DEFS: Record<EffectType, EffectDefinition> = {
@@ -3036,6 +3075,7 @@ export const EFFECT_DEFS: Record<EffectType, EffectDefinition> = {
   fxeq,
   ultina,
   ozvena,
+  kaskada,
 };
 
 export const EFFECT_ORDER: EffectType[] = [
@@ -3056,6 +3096,7 @@ export const EFFECT_ORDER: EffectType[] = [
   "comb",
   "vowel",
   "duckDelay",
+  "kaskada",
   "reverb",
   "delay",
   "pump",
@@ -3093,6 +3134,7 @@ export const CORE_EFFECT_ORDER: EffectType[] = [
   "comb",
   "vowel",
   "duckDelay",
+  "kaskada",
   "tapeSat",
   "drumBuss",
   "bassBuss",
