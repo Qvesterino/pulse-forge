@@ -56,7 +56,6 @@ export function Mixer() {
   });
   return (
     <section className="mixer" aria-label="Mixer">
-      <MacroPerformanceBar />
       <div className="mixer-batch-bar" role="toolbar" aria-label="Batch FX">
         <span className="mixer-batch-label">BATCH FX → {batchCount} TRACKS</span>
         <select
@@ -150,6 +149,7 @@ export function Mixer() {
         >
           CLEAR MUTE{muteCount > 0 ? ` (${muteCount})` : ""}
         </button>
+        <MacroPerformanceBar />
       </div>
       <div className="mixer-strips">
         {visibleTracks.map((track) => (

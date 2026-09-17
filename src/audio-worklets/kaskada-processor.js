@@ -2,18 +2,33 @@
  * KYX Kaskáda — character stereo delay with ping-pong, modulation,
  * loop EQ (LP+HP), drive and freeze.
  *
- * Dual ring buffer (L,R) with linear interpolation for the fractional
- * read position. Per-channel biquad cascade in the feedback path
- * (LP 24 dB/oct + HP 24 dB/oct). Ping-pong crossfeeds L→R→L.
+ * Dual ring buffer (L,R) with cubic-hermite interpolation for the
+ * fractional read position (click-free under delay-time modulation).
+ * Per-channel biquad cascade in the wet path (LP 24 dB/oct + HP 24 dB/oct),
+ * one-pole DC blocker, tape-character wow (fixed slow LFO per channel).
+ * Ping-pong crossfeeds L→R→L.
  *
  * All params are k-rate — updated once per block, no per-sample reads.
- * Freeze mode stops writing input to the buffer (infinite repeat).
- * Denormal flush on the feedback path prevents CPU spikes on silent tails.
+ * Drive is unity-small-signal tanh (tanh(x·g)/g): every element of the
+ * loop chain is contractive, so the loop gain never exceeds FEEDBK at any
+ * amplitude — no self-oscillation, and freeze (wet written back at 0.99)
+ * always decays, never grows. Denormal flush on the feedback path
+ * prevents CPU spikes on silent tails.
  */
 
 const MAX_DELAY_MS = 2000;
 const SYNC_RATIO = [0, 1, 0.5, 1 / 3, 0.25, 1 / 6]; // off, 1/4, 1/8, 1/8T, 1/16, 1/16T
 const TWO_PI = Math.PI * 2;
+
+/**
+ * Test/entry factory — mirrors the createOzvenaProcessor pattern so the
+ * vitest battery can instantiate the processor under a stubbed
+ * AudioWorkletGlobalScope. `sampleRate` stays a global read (as in the real
+ * worklet scope), so tests select the rate before constructing.
+ */
+export function createKaskadaProcessor() {
+  return new KaskadaProcessor();
+}
 
 class KaskadaProcessor extends AudioWorkletProcessor {
   static get parameterDescriptors() {
@@ -72,8 +87,17 @@ class KaskadaProcessor extends AudioWorkletProcessor {
     this.charRpz = 0;
     this.charLpCoef = 1 - Math.exp((-2 * Math.PI * 3500) / this.sr);
 
-    // LFO state
+    // LFO state (MOD drift) + tape-wow phases (character 1, per channel)
     this.lfoPhase = 0;
+    this.wobPhaseL = 0;
+    this.wobPhaseR = Math.PI / 3;
+
+    // One-pole DC blocker on the wet path (~5 Hz). The loop HP already
+    // nulls DC; this is defence in depth so freeze's write-back loop can
+    // never accumulate offset even if the toneHp range ever widens.
+    this.dcxL = 0; this.dcyL = 0;
+    this.dcxR = 0; this.dcyR = 0;
+    this.dcCoef = 1 - (TWO_PI * 5) / this.sr;
 
     // Param change detection
     this._lastTimeMs = -1;
@@ -125,15 +149,22 @@ class KaskadaProcessor extends AudioWorkletProcessor {
     return clean;
   }
 
-  /** Linear-interpolated read from a ring buffer at a fractional position. */
+  /** Cubic-hermite read from a ring buffer at a fractional position
+   *  (4-point, 3rd order — clean under fast delay-time modulation). */
   readBuffer(buf, pos) {
     const size = this.bufSize;
     let p = pos % size;
     if (p < 0) p += size;
     const i0 = Math.floor(p);
     const frac = p - i0;
+    const im1 = (i0 + size - 1) % size;
     const i1 = (i0 + 1) % size;
-    return buf[i0] * (1 - frac) + buf[i1] * frac;
+    const i2 = (i0 + 2) % size;
+    const xm1 = buf[im1], x0 = buf[i0], x1 = buf[i1], x2 = buf[i2];
+    const c1 = 0.5 * (x1 - xm1);
+    const c2 = xm1 - 2.5 * x0 + 2 * x1 - 0.5 * x2;
+    const c3 = 0.5 * (x2 - xm1) + 1.5 * (x0 - x1);
+    return ((c3 * frac + c2) * frac + c1) * frac + x0;
   }
 
   process(inputs, outputs, params) {
@@ -189,21 +220,24 @@ class KaskadaProcessor extends AudioWorkletProcessor {
     this.mix = params.mix[0];
     this.outGain = Math.pow(10, params.level[0] / 20);
     this.modDepthMs = params.modDepth[0] * this.delaySamples * 0.25;
-    this.mix = params.mix[0];
 
     const pingPong = this.pingPong;
-    const fbGain = this.freeze ? 0.99 : this.fbGain;
+    const fbGain = this.fbGain;
     const drive = this.drive;
-    const driveGain = 1 + drive * 6;
+    const driveGain = 1 + drive * 2; // unity small-signal: tanh(x·g)/g
     const mix = this.mix;
     const spread = this.spread;
     const modDepthMs = this.modDepthMs;
     const modRateInc = (TWO_PI * params.modRate[0]) / this.sr;
     const character = this.character;
 
+    // Tape wow (character 1): fixed slow LFOs, ±0.5 ms ≈ ±2 cents — subtle
+    // pitch shimmer per repeat, independent of the MOD knob.
+    const wobbleAmp = character === 1 ? 0.0005 * this.sr : 0;
+    const wobRateInc = (TWO_PI * 0.7) / this.sr;
+
     const L = this.bufL, R = this.bufR;
     const size = this.bufSize;
-    const driveNorm = 1 / Math.max(1, Math.tanh(driveGain));
 
     for (let i = 0; i < outL.length; i++) {
       const writeIdx = this.writePos;
@@ -214,9 +248,27 @@ class KaskadaProcessor extends AudioWorkletProcessor {
       if (this.lfoPhase > TWO_PI) this.lfoPhase -= TWO_PI;
       const delayPos = this.delaySamples + lfo * modDepthMs;
 
-      // Fractional reads (linear interpolation)
-      let wetL = this.readBuffer(L, writeIdx - delayPos);
-      let wetR = this.readBuffer(R, writeIdx - delayPos);
+      // Tape wow: independent slow LFOs per channel
+      let wobL = 0;
+      let wobR = 0;
+      if (wobbleAmp > 0) {
+        this.wobPhaseL += wobRateInc;
+        this.wobPhaseR += wobRateInc;
+        if (this.wobPhaseL > TWO_PI) this.wobPhaseL -= TWO_PI;
+        if (this.wobPhaseR > TWO_PI) this.wobPhaseR -= TWO_PI;
+        wobL = Math.sin(this.wobPhaseL) * wobbleAmp;
+        wobR = Math.sin(this.wobPhaseR) * wobbleAmp;
+      }
+
+      // Fractional reads (cubic hermite)
+      let wetL = this.readBuffer(L, writeIdx - delayPos - wobL);
+      let wetR = this.readBuffer(R, writeIdx - delayPos - wobR);
+
+      // One-pole DC block
+      let dc = wetL - this.dcxL + this.dcCoef * this.dcyL;
+      this.dcxL = wetL; this.dcyL = dc; wetL = dc;
+      dc = wetR - this.dcxR + this.dcCoef * this.dcyR;
+      this.dcxR = wetR; this.dcyR = dc; wetR = dc;
 
       // Character colour (per-repeat darkening in feedback)
       if (character === 1) {
@@ -243,20 +295,26 @@ class KaskadaProcessor extends AudioWorkletProcessor {
       wetR = this.applyBiquad(this.hp1R, this.hpR1c, wetR);
       wetR = this.applyBiquad(this.hp2R, this.hpR1c, wetR);
 
-      // Drive in feedback (tanh saturation)
+      // Drive in feedback (tanh saturation, unity small-signal gain —
+      // loop gain stays ≤ FEEDBK at every amplitude, no self-oscillation)
       if (drive > 0) {
-        wetL = Math.tanh(wetL * driveGain) * driveNorm;
-        wetR = Math.tanh(wetR * driveGain) * driveNorm;
+        wetL = Math.tanh(wetL * driveGain) / driveGain;
+        wetR = Math.tanh(wetR * driveGain) / driveGain;
       }
 
       // Ping-pong crossfeed
       const fbL = pingPong ? wetR : wetL;
       const fbR = pingPong ? wetL : wetR;
 
-      // Write to ring buffer (input + feedback, frozen skips new input)
+      // Write to ring buffer: input + feedback. Freeze seals the input out
+      // and loops the processed wet back at 0.99 (self-limiting infinite
+      // repeat — every loop element is contractive, so it decays, not grows).
       const inL = hasInput ? input[0][i] : 0;
       const inR = hasInput && input[1] ? input[1][i] : inL;
-      if (!this.freeze) {
+      if (this.freeze) {
+        L[writeIdx] = fbL * 0.99;
+        R[writeIdx] = fbR * 0.99;
+      } else {
         L[writeIdx] = inL + fbL * fbGain;
         R[writeIdx] = inR + fbR * fbGain;
       }

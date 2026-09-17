@@ -1473,9 +1473,11 @@ button {
 }
 
 .pattern-bar > .scene-launcher {
-  flex: 1 1 100%;
+  /* Compact chips flow inline after the actions; flex-wrap gives them their
+     own row only when the window is genuinely too narrow. */
+  flex: 0 1 auto;
   order: 4;
-  width: 100%;
+  width: auto;
 }
 
 .pattern-length {
@@ -1530,7 +1532,9 @@ button {
 
 .mixer-batch-bar {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
+  row-gap: 6px;
   align-items: center;
   padding: 6px 8px;
   margin-bottom: 8px;
@@ -1539,29 +1543,14 @@ button {
   border-radius: 6px;
 }
 
+/* Macros live inline on the batch FX toolbar (right side) — no own row.
+   Narrow windows wrap the group under the batch actions via flex-wrap. */
 .mixer-performance-bar {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 7px 8px;
-  margin-bottom: 8px;
-  background: rgba(245, 158, 11, 0.035);
-  border: 1px solid rgba(245, 158, 11, 0.22);
-  border-radius: 6px;
-}
-
-.mixer-performance-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
+  align-items: center;
   gap: 8px;
-}
-
-.mixer-performance-title,
-.mixer-performance-toggle {
-  color: var(--accent);
-  font: 700 10px var(--mono);
-  letter-spacing: 1px;
+  margin-left: auto;
+  min-width: 0;
 }
 
 .mixer-performance-toggle {
@@ -1572,10 +1561,9 @@ button {
   background: none;
   border: none;
   cursor: pointer;
-}
-
-.mixer-performance-bar.collapsed {
-  margin-bottom: 4px;
+  color: var(--accent);
+  font: 700 10px var(--mono);
+  letter-spacing: 1px;
 }
 
 .mixer-performance-hint {
@@ -1584,17 +1572,27 @@ button {
 }
 
 .mixer-performance-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(120px, 1fr));
-  gap: 6px;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
 }
 
 .mixer-macro-control {
-  min-width: 0;
-  padding: 5px 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 0 1 230px;
+  min-width: 185px;
+  padding: 3px 7px;
   background: var(--bg-panel-2);
   border: 1px solid var(--border-soft);
   border-radius: 4px;
+}
+
+/* Comfortable macro rails — the compact 16px default reads as a sliver
+   next to the batch buttons. */
+.mixer-performance-grid .slider-compact .slider-track {
+  height: 22px;
 }
 
 .mixer-macro-head {
@@ -1755,6 +1753,23 @@ button {
   flex-direction: column;
   gap: 8px;
   justify-content: center;
+}
+
+/* MASTER strip: the IN/CEIL column hugs its content (flex:1 here created a
+   huge void left of the metering wall). The strip keeps a floor wide enough
+   for the wall (controls ~220 + wall min 750) so flex-shrink can never clip
+   it; a definite basis avoids the canvases' broken max-content contribution.
+   NOTE: do NOT flex the body height here — the goniometer's ResizeObserver
+   turns that into a growth loop. The wall's height comes from a min-height
+   clamped to the dock height instead. Scoped to the master — channel strips
+   keep their centered layout. */
+.master-strip {
+  flex: 1 1 990px;
+  min-width: 990px;
+}
+
+.master-strip .channel-controls {
+  flex: 0 0 auto;
 }
 
 .master-strip .channel-controls {
@@ -3987,6 +4002,15 @@ button {
   background: var(--bg-panel);
 }
 
+/* Horizontal single-line groove controls — keeps the pattern row at chip
+   height instead of stacking label over value. */
+.pattern-groove .drag-number {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 5px;
+  padding: 2px 8px;
+}
+
 /* ---------- Scene launch strip ---------- */
 
 .scene-launcher {
@@ -4063,9 +4087,33 @@ button {
 
 .scene-launcher-bar .scene-launch-card {
   flex: 0 0 auto;
-  width: 216px;
-  padding: 3px 4px;
-  gap: 4px;
+  width: auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 4px;
+}
+
+/* Single-line scene chips in the bar: the meta (pattern/length/use) lives in
+   the card tooltip, so the strip shares the pattern row instead of hanging
+   below it as a near-empty second row. */
+.scene-launcher-bar .scene-select-control {
+  gap: 0;
+}
+
+.scene-launcher-bar .scene-select-meta {
+  display: none;
+}
+
+.scene-launcher-bar .scene-state-badges {
+  align-items: center;
+  padding-top: 0;
+}
+
+.scene-launcher-bar .scene-action {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 4px;
 }
 
 .scene-launcher-panel .scene-launch-card {
@@ -5427,7 +5475,11 @@ button {
   border: 1px solid var(--border);
   border-radius: 4px;
   margin-top: 6px;
-  min-height: 132px;
+  /* DEFINITE height from the dock var — the zones shrink/grow to fit, the
+     goniometer tracks its cell via ResizeObserver. A content-driven or flex
+     height here feeds the RO into a layout loop and overflows short docks. */
+  height: clamp(150px, calc(var(--dock-height, 300px) - 140px), 420px);
+  overflow: hidden;
   position: relative;
   flex: 1;
   min-width: 750px;
@@ -5486,6 +5538,9 @@ button {
   flex-direction: column;
   gap: 8px;
   min-height: 0;
+  /* Size container so tight docks can drop the goniometer (the verdict
+     panel keeps priority) instead of shrinking it to a pixel. */
+  container-type: size;
 }
 
 .master-zone-right .goniometer-wrap {
@@ -5494,6 +5549,13 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* Must stay AFTER the wrap rule above — same specificity, later wins. */
+@container (max-height: 195px) {
+  .master-zone-right .goniometer-wrap {
+    display: none;
+  }
 }
 
 .master-zone-warnings {
@@ -5652,7 +5714,7 @@ button {
   background: var(--bg-panel);
   border-radius: 2px;
   overflow: hidden;
-  min-height: 90px;
+  min-height: 40px;
   border: 1px solid var(--border-soft);
 }
 

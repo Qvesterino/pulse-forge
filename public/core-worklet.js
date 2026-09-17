@@ -2325,6 +2325,13 @@
       this.charRpz = 0;
       this.charLpCoef = 1 - Math.exp(-2 * Math.PI * 3500 / this.sr);
       this.lfoPhase = 0;
+      this.wobPhaseL = 0;
+      this.wobPhaseR = Math.PI / 3;
+      this.dcxL = 0;
+      this.dcyL = 0;
+      this.dcxR = 0;
+      this.dcyR = 0;
+      this.dcCoef = 1 - TWO_PI * 5 / this.sr;
       this._lastTimeMs = -1;
       this._lastSync = -1;
       this._lastBpm = -1;
@@ -2369,15 +2376,22 @@
       state.y1 = clean;
       return clean;
     }
-    /** Linear-interpolated read from a ring buffer at a fractional position. */
+    /** Cubic-hermite read from a ring buffer at a fractional position
+     *  (4-point, 3rd order — clean under fast delay-time modulation). */
     readBuffer(buf, pos) {
       const size = this.bufSize;
       let p = pos % size;
       if (p < 0) p += size;
       const i0 = Math.floor(p);
       const frac = p - i0;
+      const im1 = (i0 + size - 1) % size;
       const i1 = (i0 + 1) % size;
-      return buf[i0] * (1 - frac) + buf[i1] * frac;
+      const i2 = (i0 + 2) % size;
+      const xm1 = buf[im1], x0 = buf[i0], x1 = buf[i1], x2 = buf[i2];
+      const c1 = 0.5 * (x1 - xm1);
+      const c2 = xm1 - 2.5 * x0 + 2 * x1 - 0.5 * x2;
+      const c3 = 0.5 * (x2 - xm1) + 1.5 * (x0 - x1);
+      return ((c3 * frac + c2) * frac + c1) * frac + x0;
     }
     process(inputs, outputs, params) {
       const output = outputs[0];
@@ -2426,27 +2440,45 @@
       this.mix = params.mix[0];
       this.outGain = Math.pow(10, params.level[0] / 20);
       this.modDepthMs = params.modDepth[0] * this.delaySamples * 0.25;
-      this.mix = params.mix[0];
       const pingPong = this.pingPong;
-      const fbGain = this.freeze ? 0.99 : this.fbGain;
+      const fbGain = this.fbGain;
       const drive = this.drive;
-      const driveGain = 1 + drive * 6;
+      const driveGain = 1 + drive * 2;
       const mix = this.mix;
       const spread = this.spread;
       const modDepthMs = this.modDepthMs;
       const modRateInc = TWO_PI * params.modRate[0] / this.sr;
       const character = this.character;
+      const wobbleAmp = character === 1 ? 5e-4 * this.sr : 0;
+      const wobRateInc = TWO_PI * 0.7 / this.sr;
       const L = this.bufL, R = this.bufR;
       const size = this.bufSize;
-      const driveNorm = 1 / Math.max(1, Math.tanh(driveGain));
       for (let i = 0; i < outL.length; i++) {
         const writeIdx = this.writePos;
         const lfo = Math.sin(this.lfoPhase);
         this.lfoPhase += modRateInc;
         if (this.lfoPhase > TWO_PI) this.lfoPhase -= TWO_PI;
         const delayPos = this.delaySamples + lfo * modDepthMs;
-        let wetL = this.readBuffer(L, writeIdx - delayPos);
-        let wetR = this.readBuffer(R, writeIdx - delayPos);
+        let wobL = 0;
+        let wobR = 0;
+        if (wobbleAmp > 0) {
+          this.wobPhaseL += wobRateInc;
+          this.wobPhaseR += wobRateInc;
+          if (this.wobPhaseL > TWO_PI) this.wobPhaseL -= TWO_PI;
+          if (this.wobPhaseR > TWO_PI) this.wobPhaseR -= TWO_PI;
+          wobL = Math.sin(this.wobPhaseL) * wobbleAmp;
+          wobR = Math.sin(this.wobPhaseR) * wobbleAmp;
+        }
+        let wetL = this.readBuffer(L, writeIdx - delayPos - wobL);
+        let wetR = this.readBuffer(R, writeIdx - delayPos - wobR);
+        let dc = wetL - this.dcxL + this.dcCoef * this.dcyL;
+        this.dcxL = wetL;
+        this.dcyL = dc;
+        wetL = dc;
+        dc = wetR - this.dcxR + this.dcCoef * this.dcyR;
+        this.dcxR = wetR;
+        this.dcyR = dc;
+        wetR = dc;
         if (character === 1) {
           this.charLpz += this.charLpCoef * (wetL - this.charLpz);
           this.charRpz += this.charLpCoef * (wetR - this.charRpz);
@@ -2467,14 +2499,17 @@
         wetR = this.applyBiquad(this.hp1R, this.hpR1c, wetR);
         wetR = this.applyBiquad(this.hp2R, this.hpR1c, wetR);
         if (drive > 0) {
-          wetL = Math.tanh(wetL * driveGain) * driveNorm;
-          wetR = Math.tanh(wetR * driveGain) * driveNorm;
+          wetL = Math.tanh(wetL * driveGain) / driveGain;
+          wetR = Math.tanh(wetR * driveGain) / driveGain;
         }
         const fbL = pingPong ? wetR : wetL;
         const fbR = pingPong ? wetL : wetR;
         const inL = hasInput ? input[0][i] : 0;
         const inR = hasInput && input[1] ? input[1][i] : inL;
-        if (!this.freeze) {
+        if (this.freeze) {
+          L[writeIdx] = fbL * 0.99;
+          R[writeIdx] = fbR * 0.99;
+        } else {
           L[writeIdx] = inL + fbL * fbGain;
           R[writeIdx] = inR + fbR * fbGain;
         }

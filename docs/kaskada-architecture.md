@@ -13,15 +13,13 @@
 A **flagship stereo delay** as an AudioWorklet effect in the Pulse Forge
 plugin rack — replacing the current bare-bones native-node Delay.
 
-Two workflows, one knob:
-
-- **Insert (default):** dry always passes at unity; `MIX` is the gain of
-  the internal delay bus (0 % = −∞, 50 % = −6 dB, 100 % = 0 dB).
-- **Solo wet:** `SOLO WET` mutes the dry arm; MIX becomes a send-return
-  level (classic send-return workflow).
+Insert workflow: the dry always passes at unity; `MIX` is the gain of
+the internal delay bus (0 % = −∞, 50 % = −6 dB, 100 % = 0 dB). A dedicated
+SOLO WET / send-return mode was considered for Phase 1 and descoped —
+see §8.
 
 **Not in Phase 1:** unmask solver, reverse mode, dual spectrum display,
-delta listen. These are Phase 2 items (see §8).
+delta listen, solo wet. These are Phase 2 items (see §8).
 
 ---
 
@@ -63,8 +61,9 @@ Input (L,R) ─► Input Gain ─► DC-Block HP ─┬────────�
 - **Stereo, fractional read** with cubic-hermite interpolation —
   continuous under time automation and modulation (no clicks, no buffer
   reallocation).
-- **Max delay:** 5000 ms. Sync values that resolve above the max clamp
-  to 5000 ms.
+- **Max delay:** 2000 ms. Sync values that resolve above the max clamp
+  to 2000 ms. The ring buffer is sized from the context sample rate:
+  `ceil(2000 ms · sr) + 1` frames (≈ 96 k frames at 48 kHz).
 - **Ping-Pong:** feedback crosses L↔R (left input feeds the right write
   and vice versa). Width still applies after the crossfeed.
 
@@ -73,7 +72,7 @@ Input (L,R) ─► Input Gain ─► DC-Block HP ─┬────────�
 | Value | Name | Behaviour |
 |---|---|---|
 | 0 | `digital` | Clean loop — only the loop EQ acts. |
-| 1 | `tape` | HF loss per repeat + subtle pitch wobble. |
+| 1 | `tape` | HF loss per repeat + subtle fixed wow (two slow per-channel LFOs at 0.7 Hz, ±0.5 ms ≈ ±2 cents — independent of MOD). |
 | 2 | `analog` | Dark bucket-brigade; progressively darkening repeats. |
 
 ### 3.3 Modulation (pitch drift)
@@ -87,8 +86,11 @@ drift, click-free by construction.
 
 - **Low Cut:** 20 – 2000 Hz, 24 dB/oct (cascaded biquad HP).
 - **High Cut:** 1000 – 20000 Hz, 24 dB/oct (cascaded biquad LP).
-- Both act on the **feedback path only** — the first repeat keeps full
-  bandwidth (bright first slap, darkening tail — the vocal-delay shape).
+- Both act on the **wet signal** (the read feeds the loop and the output
+  alike), so the first repeat is already coloured and the tail darkens
+  further with each pass. A feedback-path-only variant (bright first slap)
+  was considered and deliberately not built — Phase 1 keeps one shared
+  chain; revisit in Phase 2 if the vocal-delay shape is wanted.
 
 ### 3.5 Tempo sync
 
@@ -103,6 +105,11 @@ drift, click-free by construction.
 Tanh-based soft saturation applied inside the feedback path.
 `DRIVE` (0–100 %) scales the amount — 0 = clean, 100 = aggressive
 harmonic enrichment on each repeat.
+
+Normalised for **unity small-signal gain** (`tanh(x·g)/g`): every element
+of the loop chain is contractive, so the loop gain never exceeds FEEDBK at
+any amplitude — no self-oscillation at any preset. Loud peaks compress
+down; make up with LEVEL.
 
 ---
 
@@ -143,19 +150,20 @@ Per-sample processing inside `process()`:
 ```
 for each sample i:
   // fractional read (hermite interpolation)
-  readPos = writePos - delaySamples + modOffset
+  readPos = writePos - delaySamples + modOffset + tapeWow
   left = hermite(bufferL, readPos)
   right = hermite(bufferR, readPos)
+  left/right = dcBlock(left/right)
 
   // ping-pong crossfeed (if enabled)
   if (pingPong) { feedbackL = right; feedbackR = left; }
 
-  // character + loop EQ (biquads in feedback path)
+  // character + loop EQ (biquads in the wet path)
   feedbackSample = character(feedbackSample)
 
-  // write new sample (input + feedback)
-  bufferL[writePos] = inputL[i] + feedbackSample * fbGain
-  bufferR[writePos] = inputR[i] + feedbackSample * fbGain
+  // write: input + feedback; freeze loops the wet back at 0.99 instead
+  buffer[writePos] = freeze ? feedbackSample * 0.99
+                            : input[i] + feedbackSample * fbGain
 
   // output = dry + wet
   outputL[i] = inputL[i] * (1 - mix) + left * mix
@@ -164,11 +172,16 @@ for each sample i:
   writePos = (writePos + 1) % bufferSize
 ```
 
-- Buffer size: 16384 samples (max delay 2000 ms at 8 kHz — plenty of headroom)
-- Ring buffer: 2× Float32Array (L, R)
-- Biquad filters: cascaded biquad arrays for LP (4×) and HP (4×) in the loop
-- Denormal flush: `if (Math.abs(v) < 1e-20) v = 0` on feedback path
-- Freeze mode: bypass input write, feedback gain locked to 1.0
+- Buffer: 2× Float32Array (L, R), sized from the context sample rate
+  (`ceil(2000 ms · sr) + 1` ≈ 96 k frames at 48 kHz)
+- Biquad filters: 2× LP + 2× HP cascaded per channel (24 dB/oct each)
+  in the wet path
+- One-pole DC blocker (~5 Hz) on the wet path — the loop HP already nulls
+  DC; the blocker is defence in depth for the freeze write-back loop
+- Denormal flush: `if (Math.abs(v) < 1e-20) v = 0` on the feedback path
+- Freeze mode: input sealed out; the processed wet loops back at 0.99
+  (self-limiting infinite repeat — the whole loop chain is contractive,
+  so a frozen tail always decays, never grows)
 
 ### 5.2 Node wrapper
 
@@ -222,6 +235,8 @@ backwards compatibility.
 - **Reverse mode** — backward read with lookahead (needs latency reporting)
 - **Dual spectrum display** — dry + delay trace in Inspector
 - **Freeze tail capture** — sample-and-hold on the delay buffer
+- **Solo wet / send-return mode** — descoped from Phase 1 (§1); needs a
+  16th param plus Inspector wiring
 - **Additional character modes** — magnetic drum, diffusion network
 
 ---

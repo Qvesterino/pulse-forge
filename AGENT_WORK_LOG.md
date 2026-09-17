@@ -611,3 +611,141 @@ the new WIP for boundary violations, leaked abstractions, or shared state.
   only golden fixture that needed updating — re-run
   `tests/fxeq-golden.test.ts` in isolation and confirm all other
   golden hashes match HEAD (no silent regressions).
+
+## KASKÁDA STEP 1 — processor test battery + factory export (2026-09-17)
+
+**Goal executed:** Phase 1 continuation for the KYX Kaskáda delay — close
+the two unchecked boxes of docs/kaskada-architecture.md §9 (unit tests,
+factory/testability) before any Phase 2 work. Analysis first: registry,
+loader, core bundle and BPM plumbing verified end-to-end; doc-vs-impl gaps
+catalogued for a later DSP polish pass.
+
+**Changes:**
+
+- `src/audio-worklets/kaskada-processor.js`: added `createKaskadaProcessor()`
+  export (ozvena `createOzvenaProcessor` pattern). Class + `registerProcessor`
+  untouched; the esbuild IIFE bundle is byte-identical (verified via rebuild
+  + git diff — the unused export is tree-shaken, registration side effect
+  intact). New `kaskada-processor.d.ts` type stub mirrors the
+  `ozvena-worklet.entry.d.ts` house pattern.
+- `tests/kaskada.test.ts` (32 tests): runs the real processor under a
+  stubbed AudioWorkletGlobalScope. Echo spacing for free TIME and all five
+  SYNC ratios × BPM (sync wins over a decoy TIME; bpm change re-times),
+  feedback decay ≈ fbⁿ (mid-band burst RMS — an impulse smears through the
+  HP cascade and skews peak ratios), ping-pong L→R→L→R alternation with a
+  one-sided burst, freeze write-seal proven bit-identically (render with vs
+  without a post-freeze impulse + no-freeze control), loop EQ LP/HP
+  darkening on repeats, drive linearity at 0 / saturation at 1, mix/level
+  laws, silence-in→silence-out, extremes soak (all-min/all-max/hot
+  character sweep/freeze-hot/24 seeded-random draws: finite, |out| < 48,
+  no tail growth), 44.1/48 kHz parity (echo position in ms + decay ratio),
+  and the contract trio: descriptor ↔ registry param ids (only hidden
+  `bpm` extra), DEFAULTS table pinned to descriptor defaults, all 6
+  factory presets in-range.
+
+**Defects found (characterised in tests, NOT fixed — step 2 scope):**
+
+1. **Freeze does not loop.** Doc §5.1 pseudocode locks feedback at ~1.0
+   during freeze (wet written back = infinite repeat); the implementation
+   skips the buffer write entirely, so the advancing read head replays the
+   captured content once and then walks into silence. Worse, the ring size
+   (96001 @48 kHz) is not a multiple of the echo period, so the read
+   position eventually wraps and replays stale content as a glitch every
+   ~2 s. Pinned by the "DEFECT (characterised)" test; the seal test stays
+   green either way.
+2. **Drive small-signal expansion.** `tanh(x·g)/tanh(g)` has small-signal
+   gain `g = 1 + 6·drive` (up to 7×), so the effective loop gain at
+   drive 1 is `fb·7` — e.g. Dub Space (drive 0.6, fb 0.75) runs at ~3.4×
+   loop gain and self-oscillates into a saturated ring. Soak only asserts
+   boundedness; normalising for unity small-signal gain is a step-2 fix.
+3. Loop EQ colours the wet output path, so the first repeat is already
+   filtered (doc §3.4 claims feedback-path-only "bright first slap").
+   Reads are linear-interpolated, not hermite (doc §3.1). Both noted in
+   the test header; no assertions depend on either.
+
+**Verification:** `npx vitest run tests/kaskada.test.ts` 32/32;
+typecheck clean; effects/audio-worklets/presets/effect-reset suites green;
+full `vitest run` regression sweep run at session end.
+
+**Recommendations for next session (Kaskáda step 2 — DSP polish):**
+
+- Fix freeze to the documented algorithm (write wet back at ~0.99 instead
+  of skipping writes), then flip the DEFECT test to assert sustain; the
+  wrap glitch disappears with the same change.
+- Re-normalise drive for unity small-signal gain (`tanh(x·g)·(1/g)` style)
+  so loop gain stays ≤ fb; re-check Dub Space/Ambient Wash tails by ear.
+- Upgrade `readBuffer` to cubic hermite (doc promise; audible on high-fb
+  tape/dub presets) and add the missing DC-block one-pole in the loop path.
+- Sync docs/kaskada-architecture.md to reality: max delay 2000 ms (not
+  5000), buffer is sample-rate-derived (not 16384), resolve the §1 SOLO
+  WET contradiction (add the param or descope §1).
+- Then browser QA (§9 last box) before any Phase 2 feature.
+
+## KASKÁDA STEP 2 — DSP polish: hermite, DC-block, tape wow, drive
+## normalisation, freeze looping (2026-09-17)
+
+**Goal executed:** close the doc-vs-impl gaps catalogued in step 1 and fix
+both characterised defects. The guiding invariant: every element of the
+delay loop is now CONTRACTIVE (|gain| ≤ 1 at every amplitude), so the
+loop gain can never exceed FEEDBK — doc §3.6's "hard ceiling, no runaway"
+and §10.4's "freeze hard-caps feedback at 0.99" are now literally true.
+
+**Changes (`src/audio-worklets/kaskada-processor.js`):**
+
+1. **Freeze loops (defect fix).** Freeze no longer skips the buffer write;
+   it writes the processed wet back at 0.99 (input sealed out). The read
+   head replays looping content forever instead of walking into silence,
+   and the stale-replay glitch on ring wrap (~2 s @48 kHz) is gone — the
+   loop continuously overwrites old content. The DEFECT test was flipped
+   to a sustain test (burst-based: a 0.3 s burst overlaps the 0.25 s echo
+   grid so RMS windows track amplitude, not spike sparsity). The seal test
+   (post-freeze input bit-identically ignored) still passes unchanged.
+2. **Drive unity small-signal (defect fix).** `tanh(x·g)·norm` with
+   `norm = 1/tanh(g)` had small-signal gain g (up to 7× at drive 1) —
+   loop gain at Dub Space settings was ~3.4× and self-oscillated into a
+   saturated ring. Now `tanh(x·g)/g` (g = 1 + 2·drive): small-signal gain
+   exactly 1, loud peaks compress down. New test asserts the driven loop
+   decays at fb 0.6 + drive 1 (rₙ₊₁/rₙ < 0.7); old control would ring.
+3. **Cubic-hermite reads.** `readBuffer` upgraded from linear to 4-point
+   3rd-order hermite — the doc §3.1 promise; audible quality gain on
+   high-fb tape/dub presets under MOD drift (no more correlated folding
+   distortion on fractional positions).
+4. **One-pole DC blocker** (~5 Hz) on the wet path, per channel. The loop
+   HP already nulls DC (Butterworth HP has an exact DC zero), so this is
+   defence in depth for the freeze write-back loop; new test pins the
+   guarantee (frozen DC-offset tail decays to zero mean).
+5. **Tape wow** (character 1): two fixed slow per-channel LFOs (0.7 Hz,
+   dephased π/3), ±0.5 ms ≈ ±2 cents — the doc §3.2 "subtle pitch wobble",
+   independent of the MOD knob. Digital/analog untouched.
+6. Minor: removed the duplicated `this.mix`/`this.lfoPhase` assignments.
+
+**Bundle:** `public/core-worklet.js` rebuilt (11 new markers verified);
+esbuild IIFE unchanged otherwise.
+
+**Doc sync (`docs/kaskada-architecture.md`):**
+
+- §1: SOLO WET / send-return descoped (was promised but absent from the
+  §4 contract); moved to §8 Phase 2 (needs a 16th param + Inspector wiring).
+- §3.1: max delay 2000 ms (was 5000); ring buffer sized from the context
+  sample rate (the "16384 samples" claim was wrong by ~6× at 48 kHz).
+- §3.2: tape row documents the implemented wow (rate, depth, dephase).
+- §3.4: loop EQ acts on the whole wet path — the first repeat IS already
+  coloured; the feedback-path-only "bright first slap" variant was
+  considered and deliberately not built (documented as a Phase 2 revisit).
+- §3.6: drive unity-small-signal contract spelled out.
+- §5.1: pseudocode (dcBlock, freeze write-back), buffer sizing, biquad
+  count (2×LP + 2×HP per channel, not "4× and 4×"), freeze semantics.
+
+**Tests:** `tests/kaskada.test.ts` 34/34 (32 → 34: +driven-loop, +DC
+guarantee; freeze DEFECT flipped to sustain; harness input for freeze
+switched impulse → burst). Typecheck clean.
+
+**Recommendations for next session (Kaskáda step 3 — browser QA):**
+
+- §9's last open box: verify-browser pass on a quiet machine (the suite
+  must not run co-tenant — see KNOWN_LIMITATIONS): load worklet in rack,
+  Add Effect menu path, drag TIME/SYNC, change transport BPM re-times a
+  synced delay, ping-pong audible, freeze sustains, CPU budget for the
+  heavier per-sample chain (hermite + wow + DC block ≈ 2× linear-read cost).
+- Then Phase 2 picking order (cheapest first): dual spectrum display →
+  solo wet (16th param) → reverse mode (latency reporting) → unmask solver.
