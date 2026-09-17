@@ -158,8 +158,18 @@ export function MasterMeter() {
     <div className="master-meter" role="group" aria-label="Master meter">
       <div className="master-zone-dynamics">
         <div className="master-dynamics-meters">
-          <MeterChannel label="L" level={state.left} holdDb={state.peakHoldDb} gainReductionDb={state.gainReductionDb} />
-          <MeterChannel label="R" level={state.right} holdDb={state.peakHoldDb} gainReductionDb={state.gainReductionDb} />
+          <MeterChannel
+            label="L"
+            level={state.left}
+            holdDb={state.peakHoldDb}
+            gainReductionDb={state.gainReductionDb}
+          />
+          <MeterChannel
+            label="R"
+            level={state.right}
+            holdDb={state.peakHoldDb}
+            gainReductionDb={state.gainReductionDb}
+          />
         </div>
         <CorrelationMeter value={state.correlation} />
         <HeadroomStrip ceilingDb={ceilingDb} clipping={state.clipping} />
@@ -175,6 +185,7 @@ export function MasterMeter() {
           height={72}
           accent="#f59e0b"
           id="master"
+          fillHeight
         />
         <div className="master-loudness-readout" aria-label="Master loudness">
           <span>LUFS-M {formatDb(state.lufsMomentary)}</span>
@@ -229,7 +240,11 @@ export function MasterMeter() {
             </span>
           </div>
           <div className="master-verdict-actions">
-            <button type="button" className="btn btn-small" onClick={() => services.engine.resetMasterIntegratedLufs?.()}>
+            <button
+              type="button"
+              className="btn btn-small"
+              onClick={() => services.engine.resetMasterIntegratedLufs?.()}
+            >
               RESET INTEGRATED
             </button>
             <button

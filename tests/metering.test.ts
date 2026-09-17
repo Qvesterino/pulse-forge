@@ -4,6 +4,7 @@ import {
   MIN_DB,
   PeakHold,
   channelLevels,
+  evaluateMasterVerdict,
   splitChannels,
   stereoCorrelation,
   summarizeBuffer,
@@ -113,5 +114,74 @@ describe("summarizeBuffer", () => {
     const right = left.map((v) => -v);
     const summary = summarizeBuffer(makeBuffer([left, right]));
     expect(summary.correlation).toBeLessThan(-0.99);
+  });
+});
+
+describe("evaluateMasterVerdict", () => {
+  const base = {
+    lufsIntegrated: -14,
+    truePeakDb: -1.5,
+    monoLossDb: -0.5,
+    correlation: 0.6,
+    lrImbalanceDb: 1,
+  };
+
+  it("is idle when nothing has played yet", () => {
+    const verdict = evaluateMasterVerdict({ ...base, lufsIntegrated: -120 }, -14, -1);
+    expect(verdict.level).toBe("idle");
+    expect(verdict.hints).toHaveLength(0);
+  });
+
+  it("says READY with the target label when loudness and peaks fit", () => {
+    const verdict = evaluateMasterVerdict(base, -14, -1, "SPOTIFY");
+    expect(verdict.level).toBe("ok");
+    expect(verdict.headline).toBe("READY FOR SPOTIFY");
+    expect(verdict.hints).toHaveLength(0);
+  });
+
+  it("flags too loud with the delta as a hint", () => {
+    const verdict = evaluateMasterVerdict({ ...base, lufsIntegrated: -11.5 }, -14, -1);
+    expect(verdict.level).toBe("warn");
+    expect(verdict.headline).toBe("TOO LOUD");
+    expect(verdict.hints[0]).toContain("+2.5 dB louder than target");
+  });
+
+  it("flags too quiet with the delta as a hint", () => {
+    const verdict = evaluateMasterVerdict({ ...base, lufsIntegrated: -17 }, -14, -1);
+    expect(verdict.level).toBe("warn");
+    expect(verdict.headline).toBe("TOO QUIET");
+    expect(verdict.hints[0]).toContain("3.0 dB quieter than target");
+  });
+
+  it("escalates to bad when true peak exceeds the ceiling", () => {
+    const verdict = evaluateMasterVerdict({ ...base, truePeakDb: -0.5 }, -14, -1);
+    expect(verdict.level).toBe("bad");
+    expect(verdict.headline).toBe("TRUE PEAK OVER");
+    expect(verdict.hints[0]).toContain("ceiling");
+  });
+
+  it("escalates to bad on negative correlation", () => {
+    const verdict = evaluateMasterVerdict({ ...base, correlation: -0.3 }, -14, -1);
+    expect(verdict.level).toBe("bad");
+    expect(verdict.headline).toBe("PHASE ISSUES");
+  });
+
+  it("warns on heavy mono loss while staying loudness-ok", () => {
+    const verdict = evaluateMasterVerdict({ ...base, monoLossDb: -4.2 }, -14, -1);
+    expect(verdict.level).toBe("warn");
+    expect(verdict.headline).toBe("CHECK STEREO");
+    expect(verdict.hints[0]).toContain("Mono fold-down");
+  });
+
+  it("caps hints at two, keeping phase and true peak first", () => {
+    const verdict = evaluateMasterVerdict(
+      { ...base, correlation: -0.5, truePeakDb: 0.5, lufsIntegrated: -11, monoLossDb: -5 },
+      -14,
+      -1,
+    );
+    expect(verdict.level).toBe("bad");
+    expect(verdict.hints).toHaveLength(2);
+    expect(verdict.hints[0]).toContain("Phase");
+    expect(verdict.hints[1]).toContain("True peak");
   });
 });

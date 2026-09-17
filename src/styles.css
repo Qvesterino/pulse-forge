@@ -5410,10 +5410,17 @@ button {
   letter-spacing: 0.5px;
 }
 
+/* Master metering wall: dynamics | spectrum+loudness | goniometer+verdict.
+   Explicit areas — the old 4-column auto-placement squeezed the spectrum
+   into a 72px cell and left a dead zone next to the fixed-size goniometer. */
 .master-meter {
   display: grid;
-  grid-template-columns: 1fr 1fr 72px 1fr;
-  gap: 8px;
+  grid-template-columns: 132px minmax(300px, 1fr) minmax(260px, 330px);
+  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "dynamics center right"
+    "warnings warnings warnings";
+  gap: 10px;
   padding: 8px;
   contain: layout style;
   background: var(--bg);
@@ -5422,6 +5429,173 @@ button {
   margin-top: 6px;
   min-height: 132px;
   position: relative;
+  flex: 1;
+  min-width: 750px;
+}
+
+.master-zone-dynamics {
+  grid-area: dynamics;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+}
+
+.master-dynamics-meters {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+  min-height: 0;
+}
+
+.master-zone-dynamics .master-correlation,
+.master-zone-dynamics .master-headroom {
+  gap: 2px;
+}
+
+/* Compact secondary meters inside the dynamics column. */
+.master-zone-dynamics .master-correlation-bar,
+.master-zone-dynamics .master-headroom-strip {
+  flex: 0 0 auto;
+  min-height: 26px;
+  height: 26px;
+}
+
+.master-zone-center {
+  grid-area: center;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.master-zone-center > .spectrum-analyzer,
+.master-zone-center > .loudness-history {
+  width: 100%;
+}
+
+.master-zone-center > .spectrum-analyzer {
+  flex: 1;
+  min-height: 0;
+}
+
+.master-zone-right {
+  grid-area: right;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+
+.master-zone-right .goniometer-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.master-zone-warnings {
+  grid-area: warnings;
+  max-width: none;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.master-verdict {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border-soft);
+  border-radius: 5px;
+}
+
+.master-verdict-headline {
+  font: 700 13px/1.15 var(--mono, ui-monospace, monospace);
+  letter-spacing: 1px;
+  color: var(--text-dim);
+}
+
+.master-verdict[data-level="ok"] .master-verdict-headline {
+  color: #4ade80;
+}
+
+.master-verdict[data-level="warn"] .master-verdict-headline {
+  color: #f59e0b;
+}
+
+.master-verdict[data-level="bad"] .master-verdict-headline {
+  color: #f87171;
+}
+
+.master-verdict-hint {
+  font-size: 9.5px;
+  line-height: 1.3;
+  color: var(--muted, #8992a5);
+}
+
+.master-verdict-target {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 4px;
+}
+
+.master-verdict-target-label {
+  font-size: 9px;
+  letter-spacing: 1px;
+  color: var(--text-faint);
+}
+
+.master-verdict-target select {
+  font-size: 10px;
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text);
+  padding: 2px 4px;
+}
+
+.master-verdict-delta {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text);
+  margin-left: auto;
+}
+
+.master-verdict-actions {
+  display: flex;
+  gap: 5px;
+}
+
+.master-verdict-actions .btn {
+  flex: 1;
+  font-size: 9px;
+}
+
+/* Limiter gain-reduction lane drawn from the top of each channel bar. */
+.master-channel-gr {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: rgba(248, 113, 113, 0.4);
+  border-bottom: 1px solid rgba(248, 113, 113, 0.6);
+  will-change: height;
+}
+
+.goniometer-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
 }
 
 .goniometer {

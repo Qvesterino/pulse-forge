@@ -142,7 +142,7 @@ export function evaluateMasterVerdict(
     if (level === "ok") level = "warn";
     hints.push(
       delta > 0
-        ? `${delta.toFixed(1)} dB louder than target — platforms will duck it`
+        ? `+${delta.toFixed(1)} dB louder than target — platforms will duck it`
         : `${Math.abs(delta).toFixed(1)} dB quieter than target — raise IN`,
     );
   }

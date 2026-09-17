@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { registerRaf, unregisterRaf } from "../services/rafLoop";
 
 /**
@@ -8,19 +8,37 @@ import { registerRaf, unregisterRaf } from "../services/rafLoop";
  * X axis: log frequency 20 Hz → Nyquist.
  * Y axis: dB magnitude −100 → 0.
  * Draws a filled area with gradient. Peak-hold trace (slow decay) included.
+ * With `fillHeight` the backing store follows the element's laid-out size
+ * (ResizeObserver) so the canvas stays crisp inside a flex cell.
  */
 export function SpectrumAnalyzer({
   analyser,
   height = 72,
   accent = "#f59e0b",
   id,
+  fillHeight = false,
 }: {
   analyser: AnalyserNode | null;
   height?: number;
   accent?: string;
   id: string;
+  fillHeight?: boolean;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [backing, setBacking] = useState<{ w: number; h: number }>({ w: 600, h: height });
+
+  useEffect(() => {
+    if (!fillHeight) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const observer = new ResizeObserver(() => {
+      const w = Math.max(200, Math.floor(canvas.clientWidth));
+      const h = Math.max(40, Math.floor(canvas.clientHeight));
+      setBacking((prev) => (prev.w !== w || prev.h !== h ? { w, h } : prev));
+    });
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, [fillHeight]);
 
   useEffect(() => {
     if (!analyser) return;
@@ -146,9 +164,11 @@ export function SpectrumAnalyzer({
     <canvas
       ref={canvasRef}
       className="spectrum-analyzer"
-      style={{ width: "100%", height, display: "block" }}
-      width={600}
-      height={height}
+      style={
+        fillHeight ? { width: "100%", height: "100%", display: "block" } : { width: "100%", height, display: "block" }
+      }
+      width={backing.w}
+      height={backing.h}
       aria-label="Frequency spectrum"
       role="img"
     />
