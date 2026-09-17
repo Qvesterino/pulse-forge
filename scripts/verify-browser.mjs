@@ -136,7 +136,7 @@ try {
     if (onLanding) {
       await appPage.waitForSelector(".landing-hero-player .embed-play", { timeout: 60_000 });
       // Click the STUDIO button specifically — the nav also holds the gallery link.
-      await appPage.evaluate(() => document.querySelector(".landing-nav button.landing-cta")?.click());
+      await appPage.evaluate(() => document.querySelector(".landing-nav button.landing-btn-primary")?.click());
     }
     await appPage.waitForSelector(".project-browser", { timeout: 60_000 });
     // Create a project from the House template — one click from browser to sound.
