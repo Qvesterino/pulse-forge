@@ -34,6 +34,7 @@ import { lazy, Suspense } from "react";
 const FxEqPanel = lazy(() => import("./FxEqPanel").then((m) => ({ default: m.FxEqPanel })));
 const UltinaPanel = lazy(() => import("./UltinaPanel").then((m) => ({ default: m.UltinaPanel })));
 const OzvenaPanel = lazy(() => import("./OzvenaPanel").then((m) => ({ default: m.OzvenaPanel })));
+const KaskadaPanel = lazy(() => import("./KaskadaPanel").then((m) => ({ default: m.KaskadaPanel })));
 import { presetsForEffect } from "../effects/presets";
 import { registerRaf, unregisterRaf } from "../services/rafLoop";
 import { Slider } from "./controls";
@@ -435,6 +436,9 @@ function Device({
                   services.store.execute(applyOzvenaStatePatch(doc, track.id, fx.id, label, flatParams))
                 }
               />
+            )}
+            {fx.type === "kaskada" && (
+              <KaskadaPanel trackId={track.id} fxId={fx.id} params={fx.params} degraded={!!fallbackReason} />
             )}
           </Suspense>
           {fx.type === "ozvena" && (

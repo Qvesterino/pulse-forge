@@ -69,11 +69,11 @@ Input (L,R) ─► Input Gain ─► DC-Block HP ─┬────────�
 
 ### 3.2 Character (feedback-loop colour)
 
-| Value | Name | Behaviour |
-|---|---|---|
-| 0 | `digital` | Clean loop — only the loop EQ acts. |
-| 1 | `tape` | HF loss per repeat + subtle fixed wow (two slow per-channel LFOs at 0.7 Hz, ±0.5 ms ≈ ±2 cents — independent of MOD). |
-| 2 | `analog` | Dark bucket-brigade; progressively darkening repeats. |
+| Value | Name      | Behaviour                                                                                                             |
+| ----- | --------- | --------------------------------------------------------------------------------------------------------------------- |
+| 0     | `digital` | Clean loop — only the loop EQ acts.                                                                                   |
+| 1     | `tape`    | HF loss per repeat + subtle fixed wow (two slow per-channel LFOs at 0.7 Hz, ±0.5 ms ≈ ±2 cents — independent of MOD). |
+| 2     | `analog`  | Dark bucket-brigade; progressively darkening repeats.                                                                 |
 
 ### 3.3 Modulation (pitch drift)
 
@@ -115,23 +115,23 @@ down; make up with LEVEL.
 
 ## 4. Parameter Contract
 
-| ID | Label | Range | Default | Notes |
-|---|---|---|---|---|
-| `time` | TIME | 30–2000 ms (log) | 375 | free mode |
-| `sync` | SYNC | enum 0–5 | 0 (off) | off / 1/4 / 1/8 / 1/8T / 1/16 / 1/16T |
-| `pingPong` | PING-PONG | 0/1 | 0 | L↔R crossfeedback |
-| `feedback` | FEEDBK | 0–95 % | 35 | hard ceiling, no runaway |
-| `toneLp` | TONE LP | 500–12000 Hz (log) | 4500 | loop path |
-| `toneHp` | TONE HP | 20–800 Hz (log) | 150 | loop path |
-| `drive` | DRIVE | 0–100 % | 0 | tape saturation in feedback |
-| `modRate` | MOD RATE | 0.1–8 Hz | 0.6 | pitch drift rate |
-| `modDepth` | MOD DEPTH | 0–100 % | 15 | pitch drift depth |
-| `spread` | SPREAD | 0–100 % | 80 | M/S width on wet |
-| `freeze` | FREEZE | 0/1 | 0 | infinite repeat lock |
-| `character` | CHARACTER | enum 0–2 | 1 (tape) | digital / tape / analog |
-| `mix` | MIX | 0–100 % | 25 | dry/wet |
-| `level` | LEVEL | −24 to +6 dB | −6 | output gain |
-| `bpm` | (hidden) | 40–240 | 120 | transport tempo (set via setParameter) |
+| ID          | Label     | Range              | Default  | Notes                                  |
+| ----------- | --------- | ------------------ | -------- | -------------------------------------- |
+| `time`      | TIME      | 30–2000 ms (log)   | 375      | free mode                              |
+| `sync`      | SYNC      | enum 0–5           | 0 (off)  | off / 1/4 / 1/8 / 1/8T / 1/16 / 1/16T  |
+| `pingPong`  | PING-PONG | 0/1                | 0        | L↔R crossfeedback                      |
+| `feedback`  | FEEDBK    | 0–95 %             | 35       | hard ceiling, no runaway               |
+| `toneLp`    | TONE LP   | 500–12000 Hz (log) | 4500     | loop path                              |
+| `toneHp`    | TONE HP   | 20–800 Hz (log)    | 150      | loop path                              |
+| `drive`     | DRIVE     | 0–100 %            | 0        | tape saturation in feedback            |
+| `modRate`   | MOD RATE  | 0.1–8 Hz           | 0.6      | pitch drift rate                       |
+| `modDepth`  | MOD DEPTH | 0–100 %            | 15       | pitch drift depth                      |
+| `spread`    | SPREAD    | 0–100 %            | 80       | M/S width on wet                       |
+| `freeze`    | FREEZE    | 0/1                | 0        | infinite repeat lock                   |
+| `character` | CHARACTER | enum 0–2           | 1 (tape) | digital / tape / analog                |
+| `mix`       | MIX       | 0–100 %            | 25       | dry/wet                                |
+| `level`     | LEVEL     | −24 to +6 dB       | −6       | output gain                            |
+| `bpm`       | (hidden)  | 40–240             | 120      | transport tempo (set via setParameter) |
 
 All params are `k-rate` (block-rate updates, no per-sample param cost).
 `bpm` is a hidden param (not shown in Inspector UI) used internally by
@@ -183,9 +183,26 @@ for each sample i:
   (self-limiting infinite repeat — the whole loop chain is contractive,
   so a frozen tail always decays, never grows)
 
+### 5.1.1 Dual-spectrum metering (Inspector panel)
+
+Gated analysis tap, off by default (the node posts `setMeters` — same
+contract as Ultina; a closed panel costs zero analysis CPU):
+
+- Taps: **dry** = mono input, **wet** = delay bus after loop EQ/drive/
+  spread, pre-mix/pre-level — the display shows what the echoes contain
+  even with MIX closed
+- 2048-pt Hann FFT per tap, folded into **72 log bands** (20 Hz–20 kHz,
+  the same geometry `KaskadaPanel` uses for the EQ overlay), posted
+  ~30×/s as one `Float32Array(144)` (dry 0–71, wet 72–143, dB clamped
+  to −90…0)
+- The node caches the latest frame for `getMeters()` and enforces the
+  gate (`setMetersEnabled(false)` also nulls the cache), so straggler
+  port messages after a disable can never surface stale data
+
 ### 5.2 Node wrapper
 
 `src/audio-worklets/kaskada-node.ts` — createKaskadaNode(ctx, instance):
+
 - Creates AudioWorkletNode("kaskada")
 - input → node → output (mix bus pattern like other effects)
 - setParameter / setParameterAt → node.parameters.get(id).setValueAtTime()
@@ -202,12 +219,14 @@ for each sample i:
 ## 6. Registry Integration
 
 `src/effects/registry.ts`:
+
 - Add `"kaskada"` to EffectType union (src/project-model/types.ts)
 - Create `kaskada: EffectDefinition` with params + factory
   (worklet path: `createKaskadaNode`, fallback: bypass 1:1 + degraded flag)
 - Add to `EFFECT_ORDER` + `CORE_EFFECT_ORDER`
 
 `src/presets/factory.ts`:
+
 - 6 factory presets (see §7)
 
 **No EffectType name conflicts** — "kaskada" is a new type, distinct from
@@ -218,22 +237,26 @@ backwards compatibility.
 
 ## 7. Factory Presets (6)
 
-| ID | Name | Character | Key params | Use case |
-|---|---|---|---|---|
-| `kaskada.tape.echo` | Tape Echo | tape (1) | time 375 ms, fb 45 %, drive 35 %, modDepth 30 %, modRate 0.8 Hz | classic vocal delay |
-| `kaskada.pp.wide` | Ping-Pong Wide | digital (0) | pingPong 1, time 500 ms (1/8 @ 150), fb 55 %, spread 90 % | stereo image fill |
-| `kaskada.slap.back` | Slap Back | digital (0) | time 120 ms, fb 15 %, mix 18 % | tight vocal double |
-| `kaskada.dub.space` | Dub Space | analog (2) | time 650 ms, fb 75 %, drive 60 %, toneLp 2500 Hz, mix 40 % | dub/reggae echoes |
-| `kaskada.ambient.wash` | Ambient Wash | tape (1) | time 850 ms, fb 80 %, mix 55 %, spread 100 %, modDepth 45 %, modRate 0.3 Hz | ambient wash / pad |
-| `kaskada.tight.double` | Tight Double | digital (0) | time 80 ms, fb 0 %, mix 30 % | fast double-track |
+| ID                     | Name           | Character   | Key params                                                                  | Use case            |
+| ---------------------- | -------------- | ----------- | --------------------------------------------------------------------------- | ------------------- |
+| `kaskada.tape.echo`    | Tape Echo      | tape (1)    | time 375 ms, fb 45 %, drive 35 %, modDepth 30 %, modRate 0.8 Hz             | classic vocal delay |
+| `kaskada.pp.wide`      | Ping-Pong Wide | digital (0) | pingPong 1, time 500 ms (1/8 @ 150), fb 55 %, spread 90 %                   | stereo image fill   |
+| `kaskada.slap.back`    | Slap Back      | digital (0) | time 120 ms, fb 15 %, mix 18 %                                              | tight vocal double  |
+| `kaskada.dub.space`    | Dub Space      | analog (2)  | time 650 ms, fb 75 %, drive 60 %, toneLp 2500 Hz, mix 40 %                  | dub/reggae echoes   |
+| `kaskada.ambient.wash` | Ambient Wash   | tape (1)    | time 850 ms, fb 80 %, mix 55 %, spread 100 %, modDepth 45 %, modRate 0.3 Hz | ambient wash / pad  |
+| `kaskada.tight.double` | Tight Double   | digital (0) | time 80 ms, fb 0 %, mix 30 %                                                | fast double-track   |
 
 ---
 
 ## 8. Phase 2 (future — not in this delivery)
 
+> **Delivered ahead of schedule: dual spectrum.** The Inspector's
+> `KaskadaPanel` shows dry + delay traces over one log axis with the live
+> loop-EQ curve from the TONE params (§5.1.1). Drag-to-adjust EQ handles
+> in the display remain future work.
+
 - **Unmask solver** — 32-band spectral ducking (Ultina pattern inverted)
 - **Reverse mode** — backward read with lookahead (needs latency reporting)
-- **Dual spectrum display** — dry + delay trace in Inspector
 - **Freeze tail capture** — sample-and-hold on the delay buffer
 - **Solo wet / send-return mode** — descoped from Phase 1 (§1); needs a
   16th param plus Inspector wiring

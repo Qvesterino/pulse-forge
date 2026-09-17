@@ -35,7 +35,9 @@ import type { KaskadaProcessorInstance } from "../src/audio-worklets/kaskada-pro
  *    driven-loop test asserts the fb ceiling directly.
  */
 
-class FakeAudioWorkletProcessor {}
+class FakeAudioWorkletProcessor {
+  port = new FakePort();
+}
 
 interface DescriptorShape {
   name: string;
@@ -51,12 +53,8 @@ let RegisteredClass: (new () => KaskadaProcessorInstance) & {
 
 beforeAll(async () => {
   (globalThis as unknown as { sampleRate: number }).sampleRate = 48000;
-  (globalThis as unknown as { AudioWorkletProcessor: unknown }).AudioWorkletProcessor =
-    FakeAudioWorkletProcessor;
-  (globalThis as unknown as { registerProcessor: unknown }).registerProcessor = (
-    _name: string,
-    cls: ProcCtor,
-  ) => {
+  (globalThis as unknown as { AudioWorkletProcessor: unknown }).AudioWorkletProcessor = FakeAudioWorkletProcessor;
+  (globalThis as unknown as { registerProcessor: unknown }).registerProcessor = (_name: string, cls: ProcCtor) => {
     RegisteredClass = cls as typeof RegisteredClass;
   };
   const mod = await import("../src/audio-worklets/kaskada-processor.js");
@@ -143,23 +141,16 @@ function render(
       inL[i] = l;
       inR[i] = r;
     }
-    proc.process(
-      [[inL, inR]],
-      [
-        [
-          L.subarray(b * BLOCK, (b + 1) * BLOCK),
-          R.subarray(b * BLOCK, (b + 1) * BLOCK),
-        ],
-      ],
-      prm,
-    );
+    proc.process([[inL, inR]], [[L.subarray(b * BLOCK, (b + 1) * BLOCK), R.subarray(b * BLOCK, (b + 1) * BLOCK)]], prm);
   }
   return { L, R };
 }
 
 /** Mono impulse into both channels at sample 0. */
-const monoImpulse = (amp = 0.9) => (s: number): [number, number] =>
-  s === 0 ? [amp, amp] : [0, 0];
+const monoImpulse =
+  (amp = 0.9) =>
+  (s: number): [number, number] =>
+    s === 0 ? [amp, amp] : [0, 0];
 
 /** Sine burst starting at sample 0; `left` feeds only the left channel —
  *  the input shape that makes ping-pong crossfeed observable. */
@@ -225,6 +216,29 @@ function mulberry32(seed: number): () => number {
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+/* ─────────────── dual-spectrum meters harness ─────────────── */
+
+class FakePort {
+  onmessage: ((event: { data: unknown }) => void) | null = null;
+  posted: { msg: unknown; transfer?: Transferable[] }[] = [];
+  postMessage(msg: unknown, transfer?: Transferable[]) {
+    this.posted.push({ msg, transfer });
+  }
+}
+
+/** Band index nearest `freq` on the worklet's 72-band 20 Hz–20 kHz geometry. */
+const bandOf = (freq: number) =>
+  Math.max(0, Math.min(71, Math.round(72 * (Math.log(freq / 20) / Math.log(1000)) - 0.5)));
+
+function maxBandDb(frame: Float32Array, offset: number, freq: number, spread = 2): number {
+  const center = bandOf(freq);
+  let m = -Infinity;
+  for (let b = Math.max(0, center - spread); b <= Math.min(71, center + spread); b++) {
+    m = Math.max(m, frame[offset + b]);
+  }
+  return m;
 }
 
 /* ─────────────── contract: descriptors ↔ registry ↔ presets ─────────────── */
@@ -324,11 +338,7 @@ describe("kaskada feedback decay", () => {
   it("echo RMS decays by ≈ fb per repeat (digital, drive 0)", () => {
     const d = Math.round(0.2 * currentSr());
     const w = Math.round(0.02 * currentSr());
-    const { L } = render(
-      1.0,
-      makeParams({ ...NEUTRAL, time: 200, feedback: 0.5 }),
-      sineBurst(2000, w),
-    );
+    const { L } = render(1.0, makeParams({ ...NEUTRAL, time: 200, feedback: 0.5 }), sineBurst(2000, w));
     const r1 = rms(L, d, d + w);
     const r2 = rms(L, 2 * d, 2 * d + w);
     const r3 = rms(L, 3 * d, 3 * d + w);
@@ -472,8 +482,7 @@ describe("kaskada freeze", () => {
 describe("kaskada loop EQ", () => {
   it("TONE LP darkens repeats: 5 kHz echo at LP 500 ≪ LP 12000", () => {
     const d = Math.round(0.15 * currentSr());
-    const prm = (toneLp: number) =>
-      makeParams({ ...NEUTRAL, time: 150, feedback: 0.3, toneLp });
+    const prm = (toneLp: number) => makeParams({ ...NEUTRAL, time: 150, feedback: 0.3, toneLp });
     const a = render(0.3, prm(12000), sineBurst(5000, Math.round(0.06 * currentSr())));
     const b = render(0.3, prm(500), sineBurst(5000, Math.round(0.06 * currentSr())));
     const loud = rms(a.L, d, d + Math.round(0.06 * currentSr()));
@@ -484,8 +493,7 @@ describe("kaskada loop EQ", () => {
 
   it("TONE HP darkens repeats: 30 Hz echo at HP 800 ≪ HP 20", () => {
     const d = Math.round(0.15 * currentSr());
-    const prm = (toneHp: number) =>
-      makeParams({ ...NEUTRAL, time: 150, feedback: 0.3, toneHp });
+    const prm = (toneHp: number) => makeParams({ ...NEUTRAL, time: 150, feedback: 0.3, toneHp });
     const a = render(0.3, prm(20), sineBurst(30, Math.round(0.2 * currentSr())));
     const b = render(0.3, prm(800), sineBurst(30, Math.round(0.2 * currentSr())));
     const loud = rms(a.L, d, d + Math.round(0.06 * currentSr()));
@@ -525,11 +533,7 @@ describe("kaskada drive", () => {
     // self-oscillating ring at these settings.
     const d = Math.round(0.15 * currentSr());
     const w = Math.round(0.04 * currentSr());
-    const { L } = render(
-      1.0,
-      makeParams({ ...NEUTRAL, time: 150, feedback: 0.6, drive: 1 }),
-      sineBurst(2000, w, 0.9),
-    );
+    const { L } = render(1.0, makeParams({ ...NEUTRAL, time: 150, feedback: 0.6, drive: 1 }), sineBurst(2000, w, 0.9));
     const r1 = rms(L, d, d + w);
     const r2 = rms(L, 2 * d, 2 * d + w);
     const r3 = rms(L, 3 * d, 3 * d + w);
@@ -543,11 +547,7 @@ describe("kaskada drive", () => {
 
 describe("kaskada silence", () => {
   it("silent input produces exact silence (incl. freeze and max drive)", () => {
-    const cases: Record<string, number>[] = [
-      {},
-      { freeze: 1 },
-      { drive: 1, feedback: 0.95, pingPong: 1 },
-    ];
+    const cases: Record<string, number>[] = [{}, { freeze: 1 }, { drive: 1, feedback: 0.95, pingPong: 1 }];
     for (const overrides of cases) {
       const { L, R } = render(0.4, makeParams({ ...NEUTRAL, ...overrides }));
       expect(peak(L, 0, L.length)).toBe(0);
@@ -627,8 +627,7 @@ describe("kaskada extremes soak", () => {
       const overrides: Record<string, number> = {};
       for (const [k, [lo, hi]] of Object.entries(RANGES)) {
         const pick = rng();
-        overrides[k] =
-          pick < 0.25 ? lo : pick < 0.5 ? hi : pick < 0.75 ? DEFAULTS[k] : lo + rng() * (hi - lo);
+        overrides[k] = pick < 0.25 ? lo : pick < 0.5 ? hi : pick < 0.75 ? DEFAULTS[k] : lo + rng() * (hi - lo);
       }
       soak(`random-${n}`, overrides);
     }
@@ -653,5 +652,128 @@ describe("kaskada sample-rate parity", () => {
     expect(Math.abs(results[0].echoMs - 333)).toBeLessThan(1);
     expect(Math.abs(results[1].echoMs - 333)).toBeLessThan(1);
     expect(Math.abs(results[0].ratio - results[1].ratio)).toBeLessThan(0.05);
+  });
+});
+
+/* ─────────────── dual-spectrum meters ─────────────── */
+
+describe("kaskada dual-spectrum meters", () => {
+  /** Params for wet-trace assertions: short delay so EVERY 46 ms analysis
+   *  window contains echoes (375 ms default would leave most windows dry),
+   *  hot feedback for level, transparent EQ so a 1 kHz tone passes intact. */
+  const METER_PARAMS = { ...NEUTRAL, time: 30, feedback: 0.9 };
+
+  interface MeterRun {
+    frames: Float32Array[];
+    leakedAfterDisable: number;
+  }
+
+  function driveMeters(
+    seconds: number,
+    input: (s: number) => [number, number],
+    opts: { enable?: boolean; disableAtBlock?: number; params?: Record<string, number> } = {},
+  ): MeterRun {
+    const sr = currentSr();
+    const proc = createKaskadaProcessor() as KaskadaProcessorInstance & { port: FakePort };
+    const prm = makeParams(opts.params ?? METER_PARAMS);
+    const run: MeterRun = { frames: [], leakedAfterDisable: 0 };
+    const nBlocks = Math.ceil((seconds * sr) / BLOCK);
+    const outL = new Float32Array(BLOCK);
+    const outR = new Float32Array(BLOCK);
+    if (opts.enable !== false) proc.port.onmessage?.({ data: { type: "setMeters", enabled: true } });
+    for (let b = 0; b < nBlocks; b++) {
+      const disabled = b === opts.disableAtBlock;
+      if (disabled) proc.port.onmessage?.({ data: { type: "setMeters", enabled: false } });
+      const inL = new Float32Array(BLOCK);
+      const inR = new Float32Array(BLOCK);
+      for (let i = 0; i < BLOCK; i++) {
+        const [l, r] = input(b * BLOCK + i);
+        inL[i] = l;
+        inR[i] = r;
+      }
+      proc.process([[inL, inR]], [[outL, outR]], prm);
+      for (const { msg } of proc.port.posted) {
+        const m = msg as { type?: string; bands?: Float32Array };
+        if (m?.type === "meters" && m.bands instanceof Float32Array) {
+          if (disabled || run.leakedAfterDisable > 0) run.leakedAfterDisable++;
+          else run.frames.push(m.bands);
+        }
+      }
+      proc.port.posted.length = 0;
+    }
+    return run;
+  }
+
+  it("posts nothing while gated (default off — closed panel costs no analysis)", () => {
+    const run = driveMeters(0.5, sineBurst(1000, Math.round(0.4 * currentSr())), { enable: false });
+    expect(run.frames.length).toBe(0);
+    expect(run.leakedAfterDisable).toBe(0);
+  });
+
+  it("streams ~30 frames/s of 144 finite dB values (dry 0–71, wet 72–143)", () => {
+    const run = driveMeters(1.0, sineBurst(1000, currentSr(), 0.9));
+    // First frame lands after the window fills (~43 ms) + the 11-block
+    // cadence; 1 s of audio then yields roughly 28–30 frames.
+    expect(run.frames.length).toBeGreaterThanOrEqual(15);
+    expect(run.frames.length).toBeLessThanOrEqual(45);
+    const last = run.frames[run.frames.length - 1];
+    expect(last.length).toBe(144);
+    for (const v of last) {
+      expect(Number.isFinite(v)).toBe(true);
+      expect(v).toBeGreaterThanOrEqual(-90);
+      expect(v).toBeLessThanOrEqual(0);
+    }
+  });
+
+  it("dry trace shows the true input spectrum (1 kHz tone, no HF leak)", () => {
+    const run = driveMeters(1.0, sineBurst(1000, currentSr(), 0.9));
+    const last = run.frames[run.frames.length - 1];
+    const peakDb = maxBandDb(last, 0, 1000);
+    // 0.9 amplitude lands a few dB under 0 once the band mean dilutes a
+    // 2-bin mainlobe across the band's bins (plus Hann scallop).
+    expect(peakDb).toBeGreaterThan(-20);
+    expect(maxBandDb(last, 0, 9000)).toBeLessThan(-50); // nothing up there
+    expect(maxBandDb(last, 0, 100)).toBeLessThan(-50); // Hann leakage stays deep
+  });
+
+  it("wet trace shows the delay bus echoes at the input tone", () => {
+    const run = driveMeters(1.0, sineBurst(1000, currentSr(), 0.9));
+    const last = run.frames[run.frames.length - 1];
+    // Short delay + fb 0.9 keeps a dense echo train in every window; the
+    // loop EQ is parked transparent so the tone arrives uncoloured.
+    expect(maxBandDb(last, 72, 1000)).toBeGreaterThan(-25);
+    expect(maxBandDb(last, 72, 9000)).toBeLessThan(-45);
+  });
+
+  it("loop EQ shapes the wet trace: LP 500 buries a 5 kHz tone", () => {
+    const open = driveMeters(1.0, sineBurst(5000, currentSr(), 0.9), {
+      params: { ...METER_PARAMS, toneLp: 12000 },
+    });
+    const dark = driveMeters(1.0, sineBurst(5000, currentSr(), 0.9), {
+      params: { ...METER_PARAMS, toneLp: 500 },
+    });
+    const openDb = maxBandDb(open.frames[open.frames.length - 1], 72, 5000);
+    const darkDb = maxBandDb(dark.frames[dark.frames.length - 1], 72, 5000);
+    expect(openDb).toBeGreaterThan(-25);
+    expect(darkDb - openDb).toBeLessThan(-30); // 24 dB/oct cascade doing its job
+  });
+
+  it("stops posting after a disable (no straggler frames leak through the gate)", () => {
+    const sr = currentSr();
+    const disableAt = Math.ceil((0.3 * sr) / BLOCK);
+    const run = driveMeters(1.0, sineBurst(1000, currentSr(), 0.9), { disableAtBlock: disableAt });
+    expect(run.frames.length).toBeGreaterThan(3); // was live before the flip
+    expect(run.leakedAfterDisable).toBe(0);
+  });
+
+  it("silent input renders floor-valued frames (no NaN from empty windows)", () => {
+    const run = driveMeters(0.5, () => [0, 0]);
+    expect(run.frames.length).toBeGreaterThan(0);
+    for (const frame of run.frames) {
+      for (const v of frame) {
+        expect(Number.isFinite(v)).toBe(true);
+        expect(v).toBe(-90); // clamped floor, not -Infinity
+      }
+    }
   });
 });

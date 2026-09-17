@@ -8,9 +8,15 @@
 export declare function createKaskadaProcessor(): KaskadaProcessorInstance;
 
 export interface KaskadaProcessorInstance {
-  process(
-    inputs: Float32Array[][],
-    outputs: Float32Array[][],
-    params: Record<string, Float32Array>,
-  ): boolean;
+  process(inputs: Float32Array[][], outputs: Float32Array[][], params: Record<string, Float32Array>): boolean;
+  /**
+   * Message port. In the real AudioWorkletGlobalScope this comes from the
+   * AudioWorkletProcessor base; the test harness provides a stub carrying
+   * the same surface. Messages: {type:"setMeters", enabled} in,
+   * {type:"meters", bands: Float32Array(144)} out.
+   */
+  port?: {
+    onmessage: ((event: { data: unknown }) => void) | null;
+    postMessage(message: unknown, transfer?: Transferable[]): void;
+  };
 }

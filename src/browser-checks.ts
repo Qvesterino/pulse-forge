@@ -784,8 +784,15 @@ export async function runChecks(): Promise<CheckResult[]> {
     kosc.connect(krt.input);
     krt.output.connect(kctx.destination);
     kosc.start(0);
+    // 4. Dual-spectrum meters: opt in BEFORE the render — an offline context
+    //    never processes after startRendering resolves, so a later enable
+    //    would never reach the worklet. The 120 ms pause before the render
+    //    is the documented OfflineAudioContext quirk (see the fxeq metering
+    //    check): a port message posted right before startRendering can lose
+    //    the race against the audio thread spinning up.
+    krt.setMetersEnabled?.(true);
+    await new Promise((resolve) => setTimeout(resolve, 120));
     const kbuffer = await kctx.startRendering();
-    krt.dispose();
     const kData = kbuffer.getChannelData(0);
     const kDataR = kbuffer.getChannelData(1);
 
@@ -814,6 +821,34 @@ export async function runChecks(): Promise<CheckResult[]> {
     // 3. Freeze: with feedback locked, echo sustains (tail doesn't decay to zero)
     // (verified via feedback param already set — skipping separate freeze render
     //  because the freeze gate is covered by unit tests)
+
+    // Offline port messages flush after the render resolves — poll getMeters
+    // for a bounded window until a frame lands.
+    let metersFrame: Float32Array | null = null;
+    for (let attempt = 0; attempt < 80 && !metersFrame; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      const frame = krt.getMeters?.();
+      if (frame instanceof Float32Array && frame.length === 144) metersFrame = frame;
+    }
+    krt.dispose();
+    const bandOf = (freq: number) =>
+      Math.max(0, Math.min(71, Math.round(72 * (Math.log(freq / 20) / Math.log(1000)) - 0.5)));
+    // Dry is asserted at the 440 Hz oscillator. The wet trace is asserted
+    // present-but-not-loud: the flushed frame is the render's LAST analysis
+    // window (1.96–2.0 s) and the 250 ms echo train rarely intersects it —
+    // wet content semantics are pinned by the unit battery (time 30 there).
+    const metersOk =
+      !!metersFrame &&
+      Number.isFinite(metersFrame[bandOf(440)]) &&
+      Number.isFinite(metersFrame[72 + bandOf(440)]) &&
+      metersFrame[bandOf(440)] > -60; // dry: the 440 Hz oscillator
+    check(
+      "kaskada: dual spectrum meters flow over the port (dry+delay frames)",
+      metersOk,
+      metersFrame
+        ? `dry=${metersFrame[bandOf(440)].toFixed(1)}dB wet=${metersFrame[72 + bandOf(440)].toFixed(1)}dB`
+        : "no meter frame arrived",
+    );
   } catch (error) {
     check("kaskada: produces audible signal (stereo delay)", false, String(error));
   }

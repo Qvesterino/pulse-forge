@@ -2271,6 +2271,13 @@
   var MAX_DELAY_MS = 2e3;
   var SYNC_RATIO = [0, 1, 0.5, 1 / 3, 0.25, 1 / 6];
   var TWO_PI = Math.PI * 2;
+  var FFT_SIZE = 2048;
+  var FFT_HALF = FFT_SIZE >> 1;
+  var METER_BANDS = 72;
+  var METER_F_MIN = 20;
+  var METER_F_MAX = 2e4;
+  var METER_DB_FLOOR = -90;
+  var ANALYSIS_EVERY_BLOCKS = 11;
   var KaskadaProcessor = class extends AudioWorkletProcessor {
     static get parameterDescriptors() {
       return [
@@ -2337,6 +2344,123 @@
       this._lastBpm = -1;
       this._lastToneLp = -1;
       this._lastToneHp = -1;
+      this.metersOn = false;
+      this.dryWin = new Float32Array(FFT_SIZE);
+      this.wetWin = new Float32Array(FFT_SIZE);
+      this.anPos = 0;
+      this.anSamples = 0;
+      this.anBlocks = 0;
+      this.hann = null;
+      this.fftRe = null;
+      this.fftIm = null;
+      this.bandBins = null;
+      this.bandsOut = null;
+      if (this.port) {
+        this.port.onmessage = (event) => {
+          const msg = event && event.data;
+          if (msg && msg.type === "setMeters") {
+            const on = !!msg.enabled;
+            if (on && !this.hann) this.initAnalysis();
+            this.metersOn = on;
+          }
+        };
+      }
+    }
+    /** Lazily materialise analysis tables (called on first meters enable). */
+    initAnalysis() {
+      this.hann = new Float32Array(FFT_SIZE);
+      for (let i = 0; i < FFT_SIZE; i++) {
+        this.hann[i] = 0.5 - 0.5 * Math.cos(TWO_PI * i / FFT_SIZE);
+      }
+      this.fftRe = new Float32Array(FFT_SIZE);
+      this.fftIm = new Float32Array(FFT_SIZE);
+      this.bandBins = [];
+      for (let b = 0; b < METER_BANDS; b++) {
+        const lo = METER_F_MIN * Math.pow(METER_F_MAX / METER_F_MIN, b / METER_BANDS);
+        const hi = METER_F_MIN * Math.pow(METER_F_MAX / METER_F_MIN, (b + 1) / METER_BANDS);
+        let b0 = Math.max(1, Math.floor(lo * FFT_SIZE / this.sr));
+        let b1 = Math.min(FFT_HALF - 1, Math.ceil(hi * FFT_SIZE / this.sr) - 1);
+        if (b1 < b0) b1 = b0;
+        this.bandBins.push([b0, b1]);
+      }
+      this.bandsOut = new Float32Array(METER_BANDS * 2);
+    }
+    /** In-place iterative radix-2 FFT (n a power of two). */
+    runFft(re, im, n) {
+      for (let i = 1, j = 0; i < n; i++) {
+        let bit = n >> 1;
+        for (; j & bit; bit >>= 1) j ^= bit;
+        j ^= bit;
+        if (i < j) {
+          const tr = re[i];
+          re[i] = re[j];
+          re[j] = tr;
+          const ti = im[i];
+          im[i] = im[j];
+          im[j] = ti;
+        }
+      }
+      for (let len = 2; len <= n; len <<= 1) {
+        const ang = -TWO_PI / len;
+        const wr = Math.cos(ang);
+        const wi = Math.sin(ang);
+        const half = len >> 1;
+        for (let base = 0; base < n; base += len) {
+          let cr = 1;
+          let ci = 0;
+          for (let k = 0; k < half; k++) {
+            const ar = re[base + k];
+            const ai = im[base + k];
+            const br = re[base + k + half] * cr - im[base + k + half] * ci;
+            const bi = re[base + k + half] * ci + im[base + k + half] * cr;
+            re[base + k] = ar + br;
+            im[base + k] = ai + bi;
+            re[base + k + half] = ar - br;
+            im[base + k + half] = ai - bi;
+            const ncr = cr * wr - ci * wi;
+            ci = cr * wi + ci * wr;
+            cr = ncr;
+          }
+        }
+      }
+    }
+    /** Fold a spectrum into log bands (dB) at `off` in `out`. Hann coherent
+     *  gain is n/2, so a full-scale tone lands ≈ 0 dB (±1.4 dB scallop). */
+    foldToBands(re, im, out, off) {
+      for (let b = 0; b < METER_BANDS; b++) {
+        const range = this.bandBins[b];
+        let energy = 0;
+        let count = 0;
+        for (let k = range[0]; k <= range[1]; k++) {
+          energy += re[k] * re[k] + im[k] * im[k];
+          count++;
+        }
+        const amp = count > 0 ? 4 * Math.sqrt(energy / count) / FFT_SIZE : 0;
+        const db = 20 * Math.log10(amp + 1e-9);
+        out[off + b] = db < METER_DB_FLOOR ? METER_DB_FLOOR : db > 0 ? 0 : db;
+      }
+    }
+    analyze() {
+      if (!this.hann || !this.port) return;
+      const out = this.bandsOut;
+      const re = this.fftRe;
+      const im = this.fftIm;
+      for (let i = 0; i < FFT_SIZE; i++) {
+        const idx = this.anPos + i & FFT_SIZE - 1;
+        re[i] = this.dryWin[idx] * this.hann[i];
+        im[i] = 0;
+      }
+      this.runFft(re, im, FFT_SIZE);
+      this.foldToBands(re, im, out, 0);
+      for (let i = 0; i < FFT_SIZE; i++) {
+        const idx = this.anPos + i & FFT_SIZE - 1;
+        re[i] = this.wetWin[idx] * this.hann[i];
+        im[i] = 0;
+      }
+      this.runFft(re, im, FFT_SIZE);
+      this.foldToBands(re, im, out, METER_BANDS);
+      this.port.postMessage({ type: "meters", bands: out }, [out.buffer]);
+      this.bandsOut = new Float32Array(METER_BANDS * 2);
     }
     makeBiquad() {
       return { x1: 0, x2: 0, y1: 0, y2: 0 };
@@ -2408,15 +2532,9 @@
         this._lastBpm = bpm;
         this._lastTimeMs = timeMs;
         if (sync > 0 && sync < SYNC_RATIO.length) {
-          this.delaySamples = Math.min(
-            this.bufSize - 1,
-            Math.max(1, SYNC_RATIO[sync] * (60 / bpm) * this.sr)
-          );
+          this.delaySamples = Math.min(this.bufSize - 1, Math.max(1, SYNC_RATIO[sync] * (60 / bpm) * this.sr));
         } else {
-          this.delaySamples = Math.min(
-            this.bufSize - 1,
-            Math.max(1, timeMs / 1e3 * this.sr)
-          );
+          this.delaySamples = Math.min(this.bufSize - 1, Math.max(1, timeMs / 1e3 * this.sr));
         }
       }
       const toneLpHz = params.toneLp[0];
@@ -2517,7 +2635,20 @@
         const outWR = wetR + spread * 0.5 * (wetL - wetR);
         outL[i] = inL * (1 - mix) + outWL * mix * this.outGain;
         outR[i] = inR * (1 - mix) + outWR * mix * this.outGain;
+        this.dryWin[this.anPos] = (inL + inR) * 0.5;
+        this.wetWin[this.anPos] = (outWL + outWR) * 0.5;
+        this.anPos = this.anPos + 1 & FFT_SIZE - 1;
         this.writePos = (writeIdx + 1) % size;
+      }
+      if (this.metersOn) {
+        this.anSamples += outL.length;
+        if (this.anSamples >= FFT_SIZE) {
+          this.anBlocks++;
+          if (this.anBlocks >= ANALYSIS_EVERY_BLOCKS) {
+            this.anBlocks = 0;
+            this.analyze();
+          }
+        }
       }
       return true;
     }
