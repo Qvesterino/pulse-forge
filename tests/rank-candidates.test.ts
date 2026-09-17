@@ -150,8 +150,10 @@ describe("rankerMode flag", () => {
     resetRankerClient();
   });
 
-  it("defaults to shadow", () => {
-    expect(rankerMode()).toBe("shadow");
+  it("defaults to the activated ranker mode", () => {
+    // Commit 765e91a flipped DEFAULT_RANKER_MODE to "active" after the golden
+    // preference gate passed; the localStorage override still wins.
+    expect(rankerMode()).toBe("active");
   });
 
   it("reads the localStorage override", () => {
