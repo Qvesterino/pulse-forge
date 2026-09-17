@@ -27,14 +27,15 @@ import { createDefaultProject } from "../src/project-model/schema";
 import type { GenerationPlan, IntentSpec } from "../src/intent/types";
 import type { Pattern, ProjectDocument } from "../src/project-model/types";
 
-const DATASET_VERSION = "intent-ranker-ds.v1";
-const SEEDS_PER_GROUP = 12;
+const DATASET_VERSION = "intent-ranker-ds.v2";
+const SEEDS_PER_GROUP = 25;
 const GENRES = ["house", "techno", "trap", "ambient"] as const;
-const STYLES: Record<(typeof GENRES)[number], string[]> = {
-  house: ["classic", "deep", "organs"],
-  techno: ["drive", "acid"],
-  trap: ["roll"],
-  ambient: ["drift"],
+/** BPM variants per genre — tests the ranker across tempo ranges. */
+const BPM_VARIANTS: Record<(typeof GENRES)[number], number[]> = {
+  house: [118, 124, 128],
+  techno: [128, 138, 148],
+  trap: [130, 140, 150],
+  ambient: [70, 80, 90],
 };
 
 interface DatasetCandidate {
@@ -77,17 +78,20 @@ function evaluateCandidate(
 const groups: DatasetGroup[] = [];
 const doc = createDefaultProject();
 
+import { getGroovesForGenre, getStyleNamesForGenre } from "../src/ai/grooves/index";
+
 for (const genre of GENRES) {
-  for (const style of STYLES[genre]) {
+  const styleNames = getStyleNamesForGenre(genre);
+  for (const style of styleNames) {
     for (let seedIndex = 0; seedIndex < SEEDS_PER_GROUP; seedIndex++) {
-      const seed = `ds-${genre}-${style}-${seedIndex}`;
+      const seed = `ds-${genre}-${style}-${seedIndex}`.replace(/\s+/g, "_");
       const intent: IntentSpec = normalizeIntent({
         genre,
-        style,
-        energy: 0.4 + ((seedIndex * 13) % 5) / 10,
-        density: 0.4 + ((seedIndex * 7) % 5) / 10,
-        complexity: 0.3 + ((seedIndex * 11) % 5) / 10,
-        variation: 0.3 + ((seedIndex * 17) % 5) / 10,
+        style: style.toLowerCase().replace(/\s+/g, ""),
+        energy: 0.3 + ((seedIndex * 13) % 7) / 10,
+        density: 0.3 + ((seedIndex * 7) % 7) / 10,
+        complexity: 0.2 + ((seedIndex * 11) % 8) / 10,
+        variation: 0.2 + ((seedIndex * 17) % 8) / 10,
         seed,
         roles: ["drums", "bass"],
         candidateCount: 4,

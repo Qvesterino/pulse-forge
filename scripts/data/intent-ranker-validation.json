@@ -1,5 +1,5 @@
 {
-  "datasetVersion": "intent-ranker-ds.v1",
+  "datasetVersion": "intent-ranker-ds.v2",
   "featureVersion": "features.v1",
   "featureCount": 54,
   "hidden": [
@@ -8,12 +8,12 @@
     16
   ],
   "epochs": 1200,
-  "trainPairs": 402,
-  "valPairs": 102,
-  "trainPairwiseAccuracyVsHeuristic": 1.0,
-  "valPairwiseAccuracyVsHeuristic": 0.5098,
-  "valTop1AgreementWithHeuristic": 0.2941,
-  "valSpearmanVsHeuristic": 0.0235,
-  "goldenPairwiseAccuracy": 0.8996,
+  "trainPairs": 2520,
+  "valPairs": 630,
+  "trainPairwiseAccuracyVsHeuristic": 0.9575,
+  "valPairwiseAccuracyVsHeuristic": 0.7984,
+  "valTop1AgreementWithHeuristic": 0.6,
+  "valSpearmanVsHeuristic": 0.6781,
+  "goldenPairwiseAccuracy": 1.0,
   "goldenVerdict": "ready-for-active"
 }
