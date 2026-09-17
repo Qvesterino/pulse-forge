@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { Mixer } from "../../src/ui/Mixer";
 import { renderWithContext, mockServices } from "../helpers";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
@@ -23,5 +24,18 @@ describe("Mixer performance workflow", () => {
     renderWithContext(<Mixer />, { services });
 
     expect(screen.getByText("BATCH FX → 3 TRACKS")).toBeInTheDocument();
+  });
+
+  it("reveals the FX rack after a batch add (device UI becomes visible)", async () => {
+    const doc = createProjectFromTemplate("house");
+    const services = mockServices(doc);
+    const onOpenFxPanel = vi.fn();
+    renderWithContext(<Mixer onOpenFxPanel={onOpenFxPanel} />, { services });
+
+    const user = userEvent.setup();
+    await user.selectOptions(screen.getByRole("combobox", { name: "Batch effect type" }), "kaskada");
+    await user.click(screen.getByRole("button", { name: /ADD TO/ }));
+
+    expect(onOpenFxPanel).toHaveBeenCalledTimes(1);
   });
 });

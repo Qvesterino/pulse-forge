@@ -749,3 +749,30 @@ switched impulse → burst). Typecheck clean.
   heavier per-sample chain (hermite + wow + DC block ≈ 2× linear-read cost).
 - Then Phase 2 picking order (cheapest first): dual spectrum display →
   solo wet (16th param) → reverse mode (latency reporting) → unmask solver.
+
+## MIXER BATCH FX — ADD TO reveals the FX rack (2026-09-17)
+
+**User report:** adding an effect from the Mixer's batch FX bar (select
+"Kaskáda Delay" → ADD TO) gave zero visible feedback — no device UI, no
+navigation. Root cause: the device UI (rack knobs / flagship panel) lives
+in the FX dock panel, and the Mixer never switched to it.
+
+**Changes:**
+
+- `src/ui/dockLayout.ts`: new pure helper `ensurePanelVisible(state,
+  panel)` — no-op when the panel is already docked in EITHER slot (reveal
+  semantics, deliberately not a toggle: `openInSlotA` would close an
+  already-open rack), otherwise opens it in the primary slot.
+- `src/ui/Mixer.tsx`: optional `onOpenFxPanel` prop, called after a
+  successful `addEffectToTracks` execute (not on command failure).
+- `src/ui/App.tsx`: `openFxPanelIfNeeded` binding passed as the prop.
+
+**Tests:** `tests/dock-layout.test.ts` +3 (opens when absent; identity
+no-op for slot A; identity no-op for split slot B — `.toBe(original)` on
+purpose: callers can skip setDock entirely). `tests/ui/Mixer.test.tsx` +1
+(userEvent: select Kaskáda → click ADD TO → spy called). Typecheck clean;
+Mixer/dock-layout/EffectRack suites green before the full-suite sweep.
+
+**Note:** BYPASS/REMOVE intentionally do NOT navigate — they act on
+existing instances and the user may be mid-batch across many tracks;
+only ADD has the "show me what I just created" contract.

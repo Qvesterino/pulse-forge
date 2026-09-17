@@ -211,11 +211,15 @@ export function MasterMeter() {
         />
         <div className="master-verdict" data-level={verdict.level}>
           <span className="master-verdict-headline">{verdict.headline}</span>
-          {verdict.hints.map((hint) => (
-            <span key={hint} className="master-verdict-hint">
-              {hint}
-            </span>
-          ))}
+          {/* Fixed-height slots: hints appearing or disappearing must never
+              resize the goniometer above (layout stability). */}
+          <div className="master-verdict-hints">
+            {verdict.hints.map((hint) => (
+              <span key={hint} className="master-verdict-hint">
+                {hint}
+              </span>
+            ))}
+          </div>
           <div className="master-verdict-target">
             <span className="master-verdict-target-label">TARGET</span>
             <select
@@ -270,13 +274,13 @@ export function MasterMeter() {
         </div>
       </div>
 
-      {state.warnings.length > 0 && (
-        <div className="master-mix-check master-zone-warnings" role="status">
-          {state.warnings.map((warning) => (
-            <span key={warning.code}>{warning.message}</span>
-          ))}
-        </div>
-      )}
+      {/* Always mounted: a reserved warnings row keeps the wall from jumping
+          when mix-check messages appear or clear. */}
+      <div className="master-mix-check master-zone-warnings" role="status">
+        {state.warnings.map((warning) => (
+          <span key={warning.code}>{warning.message}</span>
+        ))}
+      </div>
       {state.clipping && (
         <span className="master-clip-warning" role="alert" title="Master is clipping — pull down IN or engage LIMIT">
           CLIP

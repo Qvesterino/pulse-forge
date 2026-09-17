@@ -162,10 +162,12 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
   return (
     <div className="project-browser">
       <header className="pb-header">
-        <div className="brand">
+        {/* DAW convention: the logo always leads home — /?landing shows the
+            KYX landing page even for returning users (main.tsx Entry). */}
+        <a className="brand" href="/?landing" title="KYX — landing page" aria-label="KYX — go to landing page">
           <span className="brand-mark">KX</span>
           <span className="brand-name">KYX</span>
-        </div>
+        </a>
         <span className="pb-tagline">beat &amp; scene-score workstation</span>
       </header>
 

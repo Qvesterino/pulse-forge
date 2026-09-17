@@ -30,7 +30,7 @@ import { trackBadge } from "./TrackTabs";
 import { FreezeButton } from "./FreezeButton";
 import { MacroPerformanceBar } from "./MacroPerformanceBar";
 
-export function Mixer() {
+export function Mixer({ onOpenFxPanel }: { onOpenFxPanel?: () => void } = {}) {
   const services = useServices();
   const doc = useDoc();
   const selection = useSelection();
@@ -79,6 +79,10 @@ export function Mixer() {
             const ids = selectedTracks.length > 0 ? selectedTracks.map((t) => t.id) : doc.tracks.map((t) => t.id);
             try {
               services.store.execute(addEffectToTracks(doc, ids.slice(0, 5), batchType));
+              // The rack (device knobs / flagship panel) lives in the FX
+              // dock panel — reveal it, otherwise adding from the Mixer
+              // gives zero visible feedback.
+              onOpenFxPanel?.();
             } catch (e) {
               /* toast via error */ void e;
             }

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   clampDockHeight,
   defaultDockHeight,
+  ensurePanelVisible,
   loadDockLayout,
   openInSlotA,
   toggleSlot,
@@ -65,6 +66,23 @@ describe("openInSlotA", () => {
     s = openInSlotA(s, "arr");
     expect(s.slotA).toBe("arr");
     expect(s.slotB).toBeNull();
+  });
+});
+
+describe("ensurePanelVisible", () => {
+  it("opens the panel in slot A when it is nowhere docked", () => {
+    const s = ensurePanelVisible(state({ slotA: "mixer", slotB: null }), "fx");
+    expect(s.slotA).toBe("fx");
+  });
+
+  it("is a no-op when the panel already sits in slot A (reveal, not toggle)", () => {
+    const original = state({ slotA: "fx", slotB: "arr" });
+    expect(ensurePanelVisible(original, "fx")).toBe(original);
+  });
+
+  it("is a no-op when the panel already sits in the split slot", () => {
+    const original = state({ slotA: "mixer", slotB: "fx" });
+    expect(ensurePanelVisible(original, "fx")).toBe(original);
   });
 });
 
