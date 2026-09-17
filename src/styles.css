@@ -5464,7 +5464,9 @@ button {
 .master-meter {
   display: grid;
   grid-template-columns: 132px minmax(300px, 1fr) minmax(260px, 330px);
-  grid-template-rows: minmax(0, 1fr) auto;
+  /* Fixed warnings row, reserved even when empty — the wall never jumps
+     when mix-check messages appear or clear. */
+  grid-template-rows: minmax(0, 1fr) 20px;
   grid-template-areas:
     "dynamics center right"
     "warnings warnings warnings";
@@ -5477,8 +5479,10 @@ button {
   margin-top: 6px;
   /* DEFINITE height from the dock var — the zones shrink/grow to fit, the
      goniometer tracks its cell via ResizeObserver. A content-driven or flex
-     height here feeds the RO into a layout loop and overflows short docks. */
-  height: clamp(150px, calc(var(--dock-height, 300px) - 140px), 420px);
+     height here feeds the RO into a layout loop and overflows short docks.
+     139px = measured dock overhead (batch bar 61 + margins + padding +
+     strip name row); the wall fills the dock down to the bottom padding. */
+  height: clamp(110px, calc(var(--dock-height, 300px) - 139px), 671px);
   overflow: hidden;
   position: relative;
   flex: 1;
@@ -5498,6 +5502,13 @@ button {
   gap: 6px;
   flex: 1;
   min-height: 0;
+}
+
+/* Equal fixed width for L/R meters — their bars must not follow the peak
+   readout text (−∞ is narrower than −12.0 and made the bars breathe). */
+.master-dynamics-meters .master-channel {
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .master-zone-dynamics .master-correlation,
@@ -5592,7 +5603,14 @@ button {
   color: #f87171;
 }
 
+/* Two reserved hint slots — one or two hints occupy the same space, so the
+   goniometer above never resizes when advice appears or clears. */
+.master-verdict-hints {
+  min-height: 26px;
+}
+
 .master-verdict-hint {
+  display: block;
   font-size: 9.5px;
   line-height: 1.3;
   color: var(--muted, #8992a5);
@@ -7198,7 +7216,9 @@ html {
 
 .master-loudness-readout {
   display: grid;
-  grid-template-columns: repeat(2, minmax(95px, auto));
+  /* 1fr tracks (not auto): value text changes (-INF ↔ numbers) must not
+     shift column widths. */
+  grid-template-columns: repeat(2, minmax(95px, 1fr));
   gap: 3px 8px;
   align-content: center;
   font:
@@ -7221,9 +7241,14 @@ html {
 .master-mix-check {
   display: grid;
   gap: 2px;
+  align-content: center;
   color: #f59e0b;
   font-size: 10px;
   max-width: 190px;
+  /* One reserved line inside the fixed warnings row — overflow clips
+     instead of pushing the wall around. */
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .context-menu {
@@ -10079,4 +10104,79 @@ html {
   border: 1px solid rgba(96, 165, 250, 0.35);
   border-radius: 8px;
   margin-bottom: 10px;
+}
+
+/* KYX logo → landing (project browser header): DAW-standard home affordance */
+a.brand {
+  text-decoration: none;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+a.brand:hover {
+  opacity: 0.8;
+}
+
+a.brand:hover .brand-mark {
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.45);
+}
+
+/* INTENT dock panel (VISION §10) */
+.intent-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  height: 100%;
+  overflow-y: auto;
+  contain: layout style;
+}
+.intent-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.intent-title {
+  font-size: 12px;
+  font-weight: bold;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+.intent-subtitle {
+  font-size: 10px;
+  color: var(--muted);
+}
+.intent-textarea {
+  width: 100%;
+  min-height: 60px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font:
+    13px/1.4 system-ui,
+    sans-serif;
+  padding: 8px;
+  resize: vertical;
+}
+.intent-textarea:focus {
+  outline: 1px solid var(--accent);
+}
+.intent-detected {
+  font-size: 10px;
+  color: var(--accent);
+  letter-spacing: 0.04em;
+}
+.intent-error {
+  font-size: 11px;
+  color: #f87171;
+}
+.intent-status {
+  font-size: 11px;
+  color: #4ade80;
+}
+.intent-generate-btn {
+  align-self: flex-start;
+  font-weight: bold;
+  letter-spacing: 0.06em;
 }

@@ -25,6 +25,7 @@ const ModPanel = lazy(() => import("./ModPanel").then((m) => ({ default: m.ModPa
 const MidiPanel = lazy(() => import("./MidiPanel").then((m) => ({ default: m.MidiPanel })));
 const ExportPanel = lazy(() => import("./ExportPanel").then((m) => ({ default: m.ExportPanel })));
 const DiceTray = lazy(() => import("./DiceTray").then((m) => ({ default: m.DiceTray })));
+const IntentPanel = lazy(() => import("./IntentPanel").then((m) => ({ default: m.IntentPanel })));
 import { InstallPrompt } from "./InstallPrompt";
 import { ErrorBoundary } from "./ErrorBoundary";
 import {
@@ -60,7 +61,7 @@ import { HelpOverlay } from "./HelpOverlay";
 import { OnboardingHint } from "./OnboardingHint";
 import { DiceProvider } from "./DiceContext";
 
-import { useDockLayout, toggleSlot, openInSlotA, clampDockHeight, type BottomPanel } from "./dockLayout";
+import { useDockLayout, toggleSlot, openInSlotA, ensurePanelVisible, clampDockHeight, type BottomPanel } from "./dockLayout";
 import { isPadKey, padKeysArmed, setPadKeysArmed } from "./padKeys";
 import { melodicKeys } from "./melodicKeys";
 import { JamGate } from "./JamGate";
@@ -106,6 +107,9 @@ export function App({
   const splitPanel = dock.slotB;
   const setBottomPanel = (panel: BottomPanel) => setDock(openInSlotA(dock, panel));
   const setBottomPanelTab = (panel: BottomPanel, split?: boolean) => setDock(toggleSlot(dock, panel, split ? 1 : 0));
+  // Add-effect flows must REVEAL the device UI, not toggle: no-op when the
+  // FX rack is already docked in either slot.
+  const openFxPanelIfNeeded = () => setDock(ensurePanelVisible(dock, "fx"));
   const startDockResize = (event: React.PointerEvent) => {
     event.preventDefault();
     const startY = event.clientY;
@@ -1020,7 +1024,7 @@ export function App({
   const panelRenderers: Record<BottomPanel, React.ReactNode> = {
     mixer: (
       <ErrorBoundary panel="mixer">
-        <Mixer />
+        <Mixer onOpenFxPanel={openFxPanelIfNeeded} />
       </ErrorBoundary>
     ),
     fx: (
@@ -1057,6 +1061,11 @@ export function App({
     dice: (
       <ErrorBoundary panel="dice">
         <DiceTray />
+      </ErrorBoundary>
+    ),
+    intent: (
+      <ErrorBoundary panel="intent">
+        <IntentPanel />
       </ErrorBoundary>
     ),
   };

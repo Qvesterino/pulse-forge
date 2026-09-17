@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
  * Preferences persist in localStorage (per-user UI prefs, not project data).
  */
 
-export const PANEL_KEYS = ["mixer", "fx", "arr", "mod", "exp", "midi", "dice"] as const;
+export const PANEL_KEYS = ["mixer", "fx", "arr", "mod", "exp", "midi", "dice", "intent"] as const;
 export type BottomPanel = (typeof PANEL_KEYS)[number];
 
 export interface DockState {
@@ -78,6 +78,17 @@ export function toggleSlot(state: DockState, panel: BottomPanel, slot: 0 | 1): D
 
 /** Open (or close) `panel` in the primary slot, deduping the split slot. */
 export function openInSlotA(state: DockState, panel: BottomPanel): DockState {
+  return toggleSlot(state, panel, 0);
+}
+
+/**
+ * Reveal `panel` without disturbing a layout that already shows it: a
+ * no-op when the panel is docked in either slot, otherwise open it in the
+ * primary slot. Used by add-effect flows (Mixer batch bar) where the goal
+ * is "the user must SEE the device UI", not a toggle.
+ */
+export function ensurePanelVisible(state: DockState, panel: BottomPanel): DockState {
+  if (state.slotA === panel || state.slotB === panel) return state;
   return toggleSlot(state, panel, 0);
 }
 

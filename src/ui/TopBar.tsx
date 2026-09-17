@@ -15,6 +15,7 @@ import { CollabPanel } from "./CollabPanel";
 import { AssistPanel } from "./AssistPanel";
 import { assistFill, assistVary } from "../commands/commands";
 import { nextSeed } from "../shared/dice";
+import type { BottomPanel } from "./dockLayout";
 
 function formatClock(iso: string | null): string {
   if (!iso) return "";
@@ -63,9 +64,9 @@ export function TopBar({
 }: {
   onToggleDiagnostics: () => void;
   diagnosticsOpen: boolean;
-  onSetBottomPanel: (panel: "mixer" | "fx" | "arr" | "mod" | "exp" | "midi" | "dice", split?: boolean) => void;
-  bottomPanel: "mixer" | "fx" | "arr" | "mod" | "exp" | "midi" | "dice" | null;
-  splitPanel: "mixer" | "fx" | "arr" | "mod" | "exp" | "midi" | "dice" | null;
+  onSetBottomPanel: (panel: BottomPanel, split?: boolean) => void;
+  bottomPanel: BottomPanel | null;
+  splitPanel: BottomPanel | null;
   onToggleHelp: () => void;
   /** Optional — the ⌘K palette button renders only when provided. */
   onOpenPalette?: () => void;
