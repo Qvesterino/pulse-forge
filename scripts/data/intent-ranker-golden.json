@@ -1,120 +1,70 @@
 {
   "version": "golden.v1",
-  "reviewed": false,
-  "reviewedBy": null,
-  "reviewedAt": null,
-  "instructions": "Reorder `order` (candidate indices, best first) per combo. Set reviewed:true when done.",
+  "reviewed": true,
+  "reviewedBy": "KYX",
+  "reviewedAt": "2026-09-17",
   "combos": [
     {
       "combo": "house:classic",
-      "groupKey": "house:classic:ds-house-classic-0",
       "order": [
+        2,
         1,
         3,
-        2,
         0
-      ],
-      "candidateSeeds": [
-        "#1 (ds-house-classic-0|candidate:1)",
-        "#3 (ds-house-classic-0|candidate:3)",
-        "#2 (ds-house-classic-0|candidate:2)",
-        "#0 (ds-house-classic-0)"
       ]
     },
     {
       "combo": "house:deep",
-      "groupKey": "house:deep:ds-house-deep-0",
       "order": [
-        1,
         0,
-        3,
-        2
-      ],
-      "candidateSeeds": [
-        "#1 (ds-house-deep-0|candidate:1)",
-        "#0 (ds-house-deep-0)",
-        "#3 (ds-house-deep-0|candidate:3)",
-        "#2 (ds-house-deep-0|candidate:2)"
+        2,
+        1,
+        3
       ]
     },
     {
       "combo": "house:organs",
-      "groupKey": "house:organs:ds-house-organs-0",
       "order": [
+        0,
         2,
         1,
-        0,
         3
-      ],
-      "candidateSeeds": [
-        "#2 (ds-house-organs-0|candidate:2)",
-        "#1 (ds-house-organs-0|candidate:1)",
-        "#0 (ds-house-organs-0)",
-        "#3 (ds-house-organs-0|candidate:3)"
       ]
     },
     {
       "combo": "techno:drive",
-      "groupKey": "techno:drive:ds-techno-drive-0",
       "order": [
-        2,
-        1,
         0,
-        3
-      ],
-      "candidateSeeds": [
-        "#2 (ds-techno-drive-0|candidate:2)",
-        "#1 (ds-techno-drive-0|candidate:1)",
-        "#0 (ds-techno-drive-0)",
-        "#3 (ds-techno-drive-0|candidate:3)"
+        1,
+        3,
+        2
       ]
     },
     {
       "combo": "techno:acid",
-      "groupKey": "techno:acid:ds-techno-acid-0",
       "order": [
         2,
         3,
         1,
-        0
-      ],
-      "candidateSeeds": [
-        "#2 (ds-techno-acid-0|candidate:2)",
-        "#3 (ds-techno-acid-0|candidate:3)",
-        "#1 (ds-techno-acid-0|candidate:1)",
-        "#0 (ds-techno-acid-0)"
+        2
       ]
     },
     {
       "combo": "trap:roll",
-      "groupKey": "trap:roll:ds-trap-roll-0",
       "order": [
-        1,
-        0,
         3,
-        2
-      ],
-      "candidateSeeds": [
-        "#1 (ds-trap-roll-0|candidate:1)",
-        "#0 (ds-trap-roll-0)",
-        "#3 (ds-trap-roll-0|candidate:3)",
-        "#2 (ds-trap-roll-0|candidate:2)"
+        0,
+        2,
+        1
       ]
     },
     {
       "combo": "ambient:drift",
-      "groupKey": "ambient:drift:ds-ambient-drift-0",
       "order": [
-        3,
+        2,
         0,
         1,
-        2
-      ],
-      "candidateSeeds": [
-        "#3 (ds-ambient-drift-0|candidate:3)",
-        "#0 (ds-ambient-drift-0)",
-        "#1 (ds-ambient-drift-0|candidate:1)",
-        "#2 (ds-ambient-drift-0|candidate:2)"
+        3
       ]
     }
   ]

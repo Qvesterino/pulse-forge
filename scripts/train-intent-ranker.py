@@ -219,35 +219,48 @@ dataset = json.loads(DATASET_PATH.read_text(encoding="utf8"))
 # instead of the heuristic teacher. Unreviewed/missing file ⇒ heuristic
 # teacher everywhere and the model stays in shadow mode.
 golden_path = ROOT / "scripts" / "data" / "intent-ranker-golden.json"
-golden_orders: dict[str, list[int]] = {}
+# Golden combo keys are genre:style prefixes (e.g. "house:classic") —
+# they match ALL dataset groups sharing that prefix (multiple seeds per combo).
+golden_prefixes: dict[str, list[int]] = {}  # prefix → golden order (candidate indices)
 golden_reviewed = False
 if golden_path.exists():
     golden = json.loads(golden_path.read_text(encoding="utf8"))
     golden_reviewed = bool(golden.get("reviewed"))
     if golden_reviewed:
         for combo in golden.get("combos", []):
-            golden_orders[combo["groupKey"]] = [int(position) for position in combo["order"]]
-        print(f"[golden] reviewed=true — {len(golden_orders)} golden group(s) use human labels")
+            golden_prefixes[combo["combo"]] = [int(p) for p in combo["order"]]
+        print(f"[golden] reviewed=true — {len(golden_prefixes)} golden prefix(es) use human labels")
     else:
         print("[golden] template exists but is NOT reviewed — heuristic teacher stays")
 
+def golden_order_for(group_key: str) -> list[int] | None:
+    """Match a dataset group key (e.g. 'house:classic:ds-house-classic-0')
+    against golden combo prefixes (e.g. 'house:classic'). Returns the
+    golden order (candidate indices best→worst) or None."""
+    for prefix, order in golden_prefixes.items():
+        if group_key.startswith(prefix + ":") or group_key == prefix:
+            return order
+    return None
+
 samples: list[dict] = []
 for group in dataset["groups"]:
-    golden_order = golden_orders.get(group["groupKey"])
+    golden_order = golden_order_for(group["groupKey"]) if golden_reviewed else None
     for candidate in group["candidates"]:
-        if golden_reviewed and golden_order is not None and candidate["index"] in golden_order:
+        if golden_order is not None and candidate["index"] in golden_order:
             position = golden_order.index(candidate["index"])
             denominator = max(1, len(golden_order) - 1)
             label_score = 1.0 - position / denominator
+            is_golden = True
         else:
             label_score = candidate["heuristicScore"]
+            is_golden = False
         samples.append(
             {
                 "x": np.array(candidate["features"], dtype=np.float64),
                 "score": label_score,
                 "index": candidate["index"],
                 "groupKey": group["groupKey"],
-                "golden": bool(golden_reviewed and golden_order is not None and candidate["index"] in golden_order),
+                "golden": is_golden,
             }
         )
 feature_count = len(samples[0]["x"])

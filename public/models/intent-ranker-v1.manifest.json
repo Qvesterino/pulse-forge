@@ -6,7 +6,7 @@
   "modelPath": "/models/intent-ranker-v1.onnx",
   "inputName": "features",
   "outputName": "score",
-  "modelHash": "1bce567bc85678316031cb4c289388fdf0340df78b506b0a45f93a46b8b16f81",
+  "modelHash": "83b60be6b53fe65ebb724e614bf0902010a17eaf0dc3b21c799602bca2e4fd85",
   "hidden": [
     64,
     32,
@@ -25,8 +25,10 @@
     "trainPairs": 402,
     "valPairs": 102,
     "trainPairwiseAccuracyVsHeuristic": 1.0,
-    "valPairwiseAccuracyVsHeuristic": 0.7843,
-    "valTop1AgreementWithHeuristic": 0.5882,
-    "valSpearmanVsHeuristic": 0.6588
+    "valPairwiseAccuracyVsHeuristic": 0.5098,
+    "valTop1AgreementWithHeuristic": 0.2941,
+    "valSpearmanVsHeuristic": 0.0235,
+    "goldenPairwiseAccuracy": 0.8996,
+    "goldenVerdict": "ready-for-active"
   }
 }
