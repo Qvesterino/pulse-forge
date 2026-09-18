@@ -1,10 +1,26 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
+import { fileURLToPath } from "node:url";
 import { pwaOptions } from "./src/pwa";
+
+const virtualPwaRegisterStub = fileURLToPath(
+  new URL("./tests/_stubs/virtual-pwa-register.ts", import.meta.url),
+);
 
 export default defineConfig({
   plugins: [react(), VitePWA(pwaOptions)],
+  resolve: {
+    alias: [
+      // `virtual:pwa-register` is a plugin-only module that has no on-disk
+      // implementation. The vitest graph does not include the PWA plugin,
+      // so tests that import `src/sw-update.ts` would fail without an
+      // alias pointing at this no-op stub. Production builds resolve the
+      // alias transparently (the stub is only consulted when the plugin
+      // chain does not provide the virtual module).
+      { find: /^virtual:pwa-register$/, replacement: virtualPwaRegisterStub },
+    ],
+  },
   // Browser ranker workers use module imports (onnxruntime-web + shared
   // feature code). IIFE output cannot be code-split, so keep Vite's worker
   // contract aligned with the native ESM Worker created by ranker-client.

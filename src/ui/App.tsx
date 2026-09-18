@@ -61,7 +61,15 @@ import { HelpOverlay } from "./HelpOverlay";
 import { OnboardingHint } from "./OnboardingHint";
 import { DiceProvider } from "./DiceContext";
 
-import { useDockLayout, toggleSlot, openInSlotA, ensurePanelVisible, clampDockHeight, type BottomPanel } from "./dockLayout";
+import {
+  useDockLayout,
+  toggleSlot,
+  openInSlotA,
+  ensurePanelVisible,
+  clampDockHeight,
+  type BottomPanel,
+  type DockState,
+} from "./dockLayout";
 import { isPadKey, padKeysArmed, setPadKeysArmed } from "./padKeys";
 import { melodicKeys } from "./melodicKeys";
 import { JamGate } from "./JamGate";
@@ -105,11 +113,45 @@ export function App({
   const [dock, setDock] = useDockLayout(viewportMax);
   const bottomPanel = dock.slotA;
   const splitPanel = dock.slotB;
-  const setBottomPanel = (panel: BottomPanel) => setDock(openInSlotA(dock, panel));
-  const setBottomPanelTab = (panel: BottomPanel, split?: boolean) => setDock(toggleSlot(dock, panel, split ? 1 : 0));
+  /** Panels with dense content need a minimum dock to be usable — the dice
+      tray in a 240px sliver shows three sliders and hides the rolls. The
+      user can still drag the dock smaller afterwards. */
+  const PANEL_OPEN_HEIGHT: Partial<Record<BottomPanel, number>> = {
+    dice: 470,
+    mixer: 320,
+    fx: 360,
+    arr: 420,
+    mod: 360,
+    exp: 360,
+    midi: 320,
+    intent: 380,
+  };
+  const bumpPanelHeight = (state: DockState, panel: BottomPanel): DockState => {
+    const want = PANEL_OPEN_HEIGHT[panel];
+    if (want && state.height < want) return { ...state, height: clampDockHeight(want, viewportMax) };
+    return state;
+  };
+  const setBottomPanel = (panel: BottomPanel) => {
+    setDock(bumpPanelHeight(openInSlotA(dock, panel), panel));
+    // A click that asks for a panel must expand a collapsed dock — landing
+    // on a thin hidden bar reads as "the button is broken".
+    setSheetCollapsed(false);
+  };
+  const setBottomPanelTab = (panel: BottomPanel, split?: boolean) => {
+    const next = toggleSlot(dock, panel, split ? 1 : 0);
+    if (next.slotA === panel || next.slotB === panel) {
+      setSheetCollapsed(false);
+      setDock(bumpPanelHeight(next, panel));
+      return;
+    }
+    setDock(next);
+  };
   // Add-effect flows must REVEAL the device UI, not toggle: no-op when the
   // FX rack is already docked in either slot.
-  const openFxPanelIfNeeded = () => setDock(ensurePanelVisible(dock, "fx"));
+  const openFxPanelIfNeeded = () => {
+    setDock(bumpPanelHeight(ensurePanelVisible(dock, "fx"), "fx"));
+    setSheetCollapsed(false);
+  };
   const startDockResize = (event: React.PointerEvent) => {
     event.preventDefault();
     const startY = event.clientY;
@@ -1095,7 +1137,7 @@ export function App({
 
   return (
     <ServicesContext.Provider value={services}>
-      <DiceProvider doc={doc}>
+      <DiceProvider doc={doc} active={dock.slotA === "dice" || dock.slotB === "dice"}>
         <SelectionContext.Provider value={selectionStore}>
           <ToolContext.Provider value={toolStore}>
             <AudioUnlock />

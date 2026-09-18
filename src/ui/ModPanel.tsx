@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useDoc, useServices } from "./context";
 import {
   addAutomationLane,
@@ -172,7 +172,13 @@ function trackBadgeSafe(track: { kind: string; instrument?: string } | undefined
 export function ModPanel() {
   const services = useServices();
   const doc = useDoc();
-  const routableTracks = [...doc.tracks, ...doc.returns];
+  // `doc.tracks` and `doc.returns` are stable refs for a given snapshot, but
+  // the array spread `[...doc.tracks, ...doc.returns]` allocates a new array
+  // on every render — and this component re-renders on every doc mutation
+  // (it is a doc subscriber through `useDoc`). Memoize so downstream
+  // consumers (the addTarget select, the modulator optgroup loop, and any
+  // future React.memo child) can rely on a stable reference.
+  const routableTracks = useMemo(() => [...doc.tracks, ...doc.returns], [doc.tracks, doc.returns]);
   const [selectedLaneId, setSelectedLaneId] = useState<string | null>(doc.automation[0]?.id ?? null);
   const [addTarget, setAddTarget] = useState<{
     trackId: string;
@@ -187,8 +193,19 @@ export function ModPanel() {
   // keeps the grouped picker usable.
   const [paramFilter, setParamFilter] = useState("");
 
-  const selectedLane = doc.automation.find((l) => l.id === selectedLaneId) ?? null;
-  const pattern = doc.patterns.find((p) => p.id === doc.activePatternId)!;
+  // Stable lookup so the lane-detail PointEditor is not recomputed on
+  // unrelated re-renders (e.g. the filter input keystroke).
+  const selectedLane = useMemo(
+    () => doc.automation.find((l) => l.id === selectedLaneId) ?? null,
+    [doc.automation, selectedLaneId],
+  );
+  // `doc.patterns` is a stable ref, but `.find` allocates per render. The
+  // non-null assertion is preserved because activePatternId is guaranteed by
+  // the schema normaliser; the result is what changes identity.
+  const pattern = useMemo(
+    () => doc.patterns.find((p) => p.id === doc.activePatternId)!,
+    [doc.patterns, doc.activePatternId],
+  );
 
   const submitAddLane = () => {
     if (!addTarget.trackId) return;
@@ -205,11 +222,17 @@ export function ModPanel() {
     }
   };
 
-  const addableTrack = targetOwner(doc, addTarget.trackId);
-  const hasDeepParams = Boolean(
-    addableTrack &&
-    "effects" in addableTrack &&
-    addableTrack.effects.some((f) => f.type === "ultina" || f.type === "fxeq"),
+  // targetOwner walks the document by track id; harmless but pointless to
+  // run on every render. Memoize so the deep-effects check stays stable too.
+  const addableTrack = useMemo(() => targetOwner(doc, addTarget.trackId), [doc, addTarget.trackId]);
+  const hasDeepParams = useMemo(
+    () =>
+      Boolean(
+        addableTrack &&
+        "effects" in addableTrack &&
+        addableTrack.effects.some((f) => f.type === "ultina" || f.type === "fxeq"),
+      ),
+    [addableTrack],
   );
 
   return (

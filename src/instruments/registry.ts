@@ -648,7 +648,7 @@ const bass: InstrumentDefinition = {
         const distType = Math.max(0, Math.min(2, Math.round(p.distType ?? 0)));
         const grit = p.grit ?? 0.25;
         const shaper = ctx.createWaveShaper();
-        shaper.oversample = "2x";
+        shaper.oversample = "4x";
         shaper.curve =
           distType === 2 ? hardClipCurve(grit) : distType === 1 ? tubeCurve(grit) : tanhCurve(1 + grit * 8);
         shaper.connect(output);
@@ -947,7 +947,7 @@ const bass808: InstrumentDefinition = {
 
         // Per-voice shaper so distType does not bleed between voices
         const shaper = ctx.createWaveShaper();
-        shaper.oversample = "2x";
+        shaper.oversample = "4x";
         shaper.curve =
           distType === 2 ? hardClipCurve(drive) : distType === 1 ? tubeCurve(drive) : tanhCurve(1.8 + drive * 2);
 
@@ -3863,7 +3863,7 @@ const logdrum: InstrumentDefinition = {
         liveNotches.add(notch);
 
         const shaper = ctx.createWaveShaper();
-        shaper.oversample = "2x";
+        shaper.oversample = "4x";
         shaper.curve = tanhCurve(1 + grit * 5);
         shaper.connect(notch);
 
@@ -4707,7 +4707,7 @@ const drumsynth: InstrumentDefinition = {
         let tail: AudioNode = noteGain;
         if (drive > 0.005) {
           const shaper = ctx.createWaveShaper();
-          shaper.oversample = "2x";
+          shaper.oversample = "4x";
           shaper.curve = tanhCurve(1 + drive * 6);
           noteGain.connect(shaper);
           tail = shaper;

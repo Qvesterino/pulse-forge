@@ -1064,3 +1064,482 @@ series.
   fix (follow-up #1) is small enough to bundle with GOAL 02 and would
   clean up one of the two `as unknown as …` hotspots identified here.
 
+
+---
+
+## GOAL 02 (campaign restart) — React Lifecycle, State & Async Correctness (2026-09-18)
+
+**Goal executed.** Audit Pulse Forge for React lifecycle correctness, effect
+cleanup, async race conditions, subscription leaks, and timer/listener
+ownership. Pulse Forge has rich `useEffect` usage in `src/ui/` (mixer panel,
+arrangement, effects rack, plugin popouts, sw-update), plus a 15-minute
+service-worker poll timer, persistence listeners, and audio worklet messaging
+that can outlive their hosts. The objective was to identify concrete leak
+or race-class bugs, fix the high-impact ones, and avoid papering over real
+problems with blanket memoization.
+
+**Areas inspected.**
+
+- Grep sweep on `src/**/*.{ts,tsx}` for lifecycle-relevant primitives:
+  - **122 `useEffect` calls** across `src/ui/`
+  - **0 `useLayoutEffect`** (clean — no imperative layout work)
+  - **15 `registerRaf` / `requestAnimationFrame` sites** (centralised — good)
+  - **0 `setInterval` / `setTimeout` in `src/ui/`** (RAF only — good)
+  - **0 `AbortController` in `src/`** (async work is NOT cancellable
+    anywhere — every `void somePromise().then(setState)` is a candidate
+    setState-on-unmounted-component class)
+  - **0 `addEventListener` in `src/ui/`** (lifecycle-owned listeners
+    only — but `sw-update.ts` adds document-level listeners at module
+    load)
+  - **9 `new AudioContext`** sites (mostly singleton — verified)
+  - **0 `MessagePort` postMessage sites** — audio worklet messaging uses
+    `AudioWorkletNode.port`, not the raw MessagePort API; lifecycle
+    audit still needed because `AudioWorkletNode.port` survives unmount
+    unless `disconnect()` is called.
+
+- Per-file `useEffect` cleanup audit (regex `return\s+(?:\(\)\s*=>|function\s*\()`):
+  - **0 cleanup candidates in `src/ui/` matched by the regex.** This is
+    misleading — most effects legitimately need no cleanup (drawing into a
+    canvas, syncing `setState` from props, focusing an input on open,
+    scrolling the selected row into view). The audit then dropped to a
+    targeted **manual review of every file with the lowest
+    effect-to-cleanup ratio** — `OzvenaPanel.tsx`, `PaletteOverlay.tsx`,
+    `Inspector.tsx`, `MidiPanel.tsx`, `MpeIndicator.tsx`,
+    `ProjectBrowser.tsx`, `SampleBrowser.tsx`. Five of those seven were
+    pure (drawing / focus / scrollIntoView / prop-sync); two had real
+    leak classes — see findings.
+
+- AudioContext lifecycle spot-checks: `browser-checks.ts` (MediaRecorder
+  feature detection) and `export/video.ts` use temporary contexts in
+  try-finally blocks with `.close().catch(() => {})` — **correct**.
+  `embed/EmbedApp.tsx` and `audio-engine/AudioEngine.ts` use a single
+  long-lived AudioContext via `ctxRef.current ??= new AudioContext()` —
+  **correct**.
+
+**Confirmed findings.**
+
+1. **`src/sw-update.ts` — `initSwUpdate()` is not idempotent (GOAL 02
+   critical).** The module wires three resources on first call: a
+   `setInterval(15 * 60 * 1000)` that polls for service-worker updates,
+   a `document.addEventListener("visibilitychange", …)` that re-checks
+   when the tab becomes visible, and a `reload` / `dismiss` button pair
+   (guarded by `if (document.getElementById("pf-update-banner")) return`
+   so the banner itself does not double). Because the module is
+   imported once from `main.tsx`, the *current* code path does not leak
+   in production. The hazard is structural: any second call (Vite HMR
+   re-evaluation, a future test that touches the module, an alternate
+   host that mounts `initSwUpdate` more than once) stacks a fresh
+   interval **and** a fresh document listener every time. There was no
+   exported `disposeSwUpdate`, so even a deliberate reset was impossible.
+2. **`src/ui/SampleBrowser.tsx:53-55` — async userSamples.list() without
+   cancellation.** The mount effect did
+   `void services.userSamples.list().then(setAllUserAssets)` with no
+   cleanup. If `SampleBrowser` unmounts before the IndexedDB read
+   resolves (e.g. the user opens a sample browser modal, hits Cancel,
+   and the panel is removed in the same tick), `setAllUserAssets`
+   still fires on an unmounted component. Modern React 18 silently
+   drops the update, but it is a hard `act()` warning under StrictMode
+   and is observable in React DevTools. The fix is a `cancelled` flag
+   closed over by the cleanup function.
+3. **`src/ui/ProjectBrowser.tsx:51-55` — async repo.listAll() without
+   cancellation.** Same class as #2, just on the project listing. The
+   original implementation factored `refresh()` through `useCallback`
+   and called it from a separate `useEffect([refresh])`. The
+   `useCallback` boundary made the cancellation harder to spot: the
+   `.then(setProjects)` chain belonged to a different function than the
+   effect. Inlined the call directly into the effect so the
+   `cancelled` flag is local to the mount cycle.
+4. **`src/ui/JamGate.tsx:44` — unsafe cast on an async boundary
+   (separate finding from the same audit pass).**
+   `const ctx = services.engine.ensureContext() as AudioContext`
+   followed by `if (ctx.state === "suspended") await ctx.resume()…`.
+   When `ensureContext()` returns `undefined` (engine pre-init, failed
+   unlock, suspended services object), `ctx.state` throws
+   `TypeError: Cannot read properties of undefined`. The test
+   `tests/ui/JamGate.test.tsx` surfaces this as an **unhandled
+   rejection** during teardown (441 tests still PASS — the failure is
+   in an event handler that fires after the assertion). **Not fixed in
+   this campaign**: a fix here requires deciding what `JamGate` should
+   do when the audio engine is not ready (gate the pointer-down
+   handler behind an `isReady` flag from the engine, or render an
+   "Unlock first" placeholder instead of a tappable button). Tracked
+   as a follow-up.
+5. **`src/audio-worklets/` MessagePort lifecycle.** Out-of-scope for
+   this fix pass because every audio worklet in Pulse Forge is a
+   short-lived `AudioWorkletNode` created inside a useEffect that also
+   stores it in a `useRef`, with `disconnect()` and `.port.close()`
+   called in the matching cleanup. Spot-checked Kaskáda, chorus,
+   stock-delay, and the regular effect rack — pattern is consistent.
+   **No action required**, but a `tests/audio-worklet-lifecycle.test.ts`
+   sweep would be a worthwhile follow-up.
+6. **No other `useEffect` leaks found.** The seven files with the
+   lowest `useEffect`-to-cleanup ratio (`OzvenaPanel`, `PaletteOverlay`,
+   `Inspector`, `MidiPanel`, `MpeIndicator`, `ProjectBrowser`,
+   `SampleBrowser`) were reviewed one-by-one. Five have legitimate
+   no-cleanup patterns (drawing into a canvas, syncing derived state
+   from props, focusing an input on `open`, scrolling the selected row
+   into view); two are #2 and #3 above. `App.tsx` and
+   `ArrangementPanel.tsx` carry the bulk of the more involved effects
+   and they each already use the right idioms (`mounted.current`
+   guard, `transientJumpAbortRef`, `recRef`, `signal = beginExport()`).
+
+**Fixes implemented.** 5 files modified, 1 test file + 1 stub added.
+
+- `src/sw-update.ts` — added `initialized` flag and `disposeSwUpdate`
+  exported alongside `initSwUpdate`. `initSwUpdate` now early-returns
+  if already initialised; `disposeSwUpdate` clears the poll interval
+  and removes the `visibilitychange` listener. The poll interval ID and
+  the listener reference are stored at module scope so dispose can
+  clean them up exactly. Idempotency is testable without standing up the
+  full PWA plugin.
+- `src/ui/SampleBrowser.tsx` — replaced the mount effect with a
+  `cancelled` flag + cleanup pattern. Comment documents why the flag is
+  necessary (setState on unmounted component, StrictMode + DevTools
+  warnings).
+- `src/ui/ProjectBrowser.tsx` — inlined the IndexedDB read into the
+  effect body and added a `cancelled` flag. The intermediate `refresh`
+  useCallback stays for the manual refresh button but is no longer
+  the only path. The error-handling branch now also respects the
+  `cancelled` flag so a late rejection from a fast-unmount-then-throw
+  race cannot trigger a `setListError` after unmount.
+- `tests/sw-update-lifecycle.test.ts` — new regression test with 4
+  scenarios:
+  1. `initSwUpdate` is idempotent — repeated calls do not stack
+     intervals or document listeners.
+  2. `disposeSwUpdate` clears the poll interval and removes the
+     visibilitychange listener, and a follow-up `initSwUpdate` wires
+     fresh handlers (proves we are not stuck in the initialised state).
+  3. `disposeSwUpdate` without prior init is a no-op (does not throw,
+     does not touch timers).
+  4. Per-cycle accounting: 3 init / 2 dispose cycles produce exactly
+     3 `setInterval` calls and 3 `addEventListener("visibilitychange")`
+     calls, paired with 2 `clearInterval` and 2 `removeEventListener`.
+- `tests/_stubs/virtual-pwa-register.ts` — new stub module.
+- `vite.config.ts` + `vitest.config.ts` — both now alias
+  `virtual:pwa-register` to the stub so the test graph resolves the
+  import. The alias is duplicated across the two config files because
+  Vite's `mergeConfig` is not used here and a production-only alias
+  in `vite.config.ts` would not be visible to vitest.
+
+**Validation.**
+
+- `npx tsc --noEmit -p tsconfig.json`: **PASS** (exit code 0, zero
+  errors).
+- `npm test -- --run tests/sw-update-lifecycle.test.ts
+  tests/ui/ProjectBrowser.test.tsx tests/ui/SampleBrowser.test.tsx`:
+  **3/3 test files passed**, 9 tests passed (4 sw-update +
+  4 SampleBrowser + 1 implicit ProjectBrowser), 4.27 s. Exit code 0.
+- `npm test -- --run tests/sw-update-lifecycle.test.ts tests/ui/`:
+  **78/78 test files passed**, **441/441 tests passed**, 53.45 s. Exit
+  code 0. One unhandled rejection recorded during teardown (JamGate
+  test, finding #4 above) — does not affect test pass/fail counts.
+
+**Unresolved issues / follow-ups.**
+
+1. **`src/ui/JamGate.tsx:44` unsafe cast on async boundary** —
+   `ensureContext() as AudioContext` followed by `ctx.state` / `ctx.resume()`
+   throws when the engine is not ready. Fix candidates:
+   (a) gate the tappable surface behind an `engineReady` flag derived
+   from `services.engine.isContextRunning?.()` (or similar);
+   (b) render an "Unlock audio first" placeholder that explains why the
+   button is non-interactive. **Estimated 1–2 hours** and ideally
+   packaged with the next audio-engine lifecycle sweep.
+2. **`AudioWorkletNode.port.close()` lifecycle test.** A test file that
+   asserts each worklet consumer in `src/audio-worklets/*-node.ts`
+   closes the underlying port on unmount. Spot-checked by hand, but a
+   regression test would make this safe against future refactors.
+   **Estimated 1 hour.**
+3. **Generic `MockServicesBuilder` for `tests/helpers.tsx`.** The
+   follow-up from GOAL 01 still applies — once the producer side has a
+   properly-typed builder, every `useEffect` cancellation test can use
+   the same mock without `as any`. This would also unlock the use of
+   `vi.useFakeTimers()` against the audio-engine path, which is
+   currently hard to write.
+4. **`AbortController` for fetch / IPC paths.** Pulse Forge has zero
+   `AbortController` usage. The async patterns that currently rely on
+   `void somePromise().then(setState)` (SampleBrowser / ProjectBrowser
+   fix is the local cancellation flag pattern; for fetch / IPC paths,
+   AbortController is the idiomatic choice) should adopt it where the
+   underlying API supports it (e.g. `fetch`, `AudioDecoder.configure`,
+   `MediaRecorder.stop()`). **Estimated 2–3 hours** as a sweep.
+
+**Remaining risks.**
+
+- The JamGate teardown error is benign for the test pass count but
+  would surface as a console error in production for any user who
+  clicks the JAM GATE before unlocking audio. Not a regression from
+  this campaign — pre-existing.
+- `sw-update` is still imported as a side-effect from `main.tsx` only.
+  If a future test or HMR boundary ends up running the module twice
+  without an intervening `disposeSwUpdate`, the new `initialized`
+  guard will still prevent the leak. The fix is robust against that
+  hazard.
+
+**Recommendations for next session.**
+
+- **GOAL 03 — React render performance & state topology audit.** With
+  lifecycle hygiene restored, the next class of issues is on the
+  render path. Pulse Forge already centralises RAF (15 sites), so the
+  natural audit points are: (a) whether any component subscribes to a
+  high-frequency store via `useStore` / `useContext` and re-renders on
+  every frame, (b) whether the Spectrum / LoudnessHistory / Goniometer
+  canvas visualizers update their internal state at frame rate through
+  React (imperative `useRef` is preferred), (c) whether broad
+  selectors return unstable objects and defeat `memo`, (d) whether
+  large lists (track strips, sample browser, history panel) need
+  virtualization. Files to start in: `src/ui/SpectrumAnalyzer.tsx`,
+  `src/ui/Goniometer.tsx`, `src/ui/LoudnessHistory.tsx`,
+  `src/ui/WavetablePreview.tsx`, `src/ui/SliceLab.tsx`,
+  `src/ui/RackStrip.tsx`, `src/ui/Mixer.tsx`, `src/store/`,
+  `src/services.ts`.
+- **Optional earlier detour:** the JamGate fix (follow-up #1) is
+  small enough to bundle with GOAL 03 if a render audit path lands on
+  the audio engine anyway.
+
+
+---
+
+## GOAL 03 (campaign restart) — React Render Performance & State Topology (2026-09-18)
+
+**Goal executed.** Audit React render behaviour in Pulse Forge with
+emphasis on unnecessary render propagation, unstable identities, expensive
+derivation, and poorly placed state. Pulse Forge is a real-time audio
+DAW: transport position, meter values, spectrum analyser readings, and
+goniometer samples all change at frame rate; if any of those routes
+through React state without throttling, the entire `useDoc()` subtree
+re-renders at audio rates. The audit covered the entire `src/ui/`
+tree, the context providers, the canvas visualizer fleet, and the
+high-map-count panels.
+
+**Areas inspected.**
+
+- Grep sweep on `src/**/*.{ts,tsx}` for the prompt's audit vocabulary:
+  - **122 `useEffect`** across `src/ui/` (7+ in `App.tsx`, `ArrangementPanel.tsx`,
+    `TopBar.tsx`, `SliceLab.tsx`, `RackStrip.tsx`)
+  - **0 `useLayoutEffect`** — no imperative layout writes
+  - **0 `useMemo`** in `App.tsx`, `ArrangementPanel.tsx`, `TopBar.tsx`,
+    `Mixer.tsx`, `ModPanel.tsx` at audit start; `PianoRoll.tsx`
+    already uses `useMemo` for ghost-note derivation, `SliceLab.tsx`
+    and `RackStrip.tsx` use it for parameter lists
+  - **0 `useCallback`** at audit start in any of the high-map panels —
+    most handler props are passed to native elements where identity
+    does not matter
+  - **`useSyncExternalStore` is the universal context primitive.**
+    All of `useDoc`, `useSaveStatus`, `useLastSavedAt`, `useCanUndo`,
+    `useCanRedo`, `useLatencyCalibration`, `useArrangementCapture`,
+    `useLibrary`, `useSceneRuntimeState`, `useTool`, `useSelection`
+    are thin wrappers over `useSyncExternalStore` with a stable
+    `subscribe` and a stable `getSnapshot` returning the same field
+    reference unless the store actually changed (`getDoc → this.doc_`,
+    `getSaveStatus → this.saveStatus_`, `getLastSavedAt → this.lastSavedAt_`,
+    `canUndo`/`canRedo` are getters returning booleans).
+  - **0 `useStore` / generic store hook** in Pulse Forge — every
+    subscriber goes through the dedicated context hooks above.
+- Canvas visualizer audit (`getContext("2d")` sites):
+  `SpectrumAnalyzer`, `Goniometer`, `LoudnessHistory`, `fxeqCurve`,
+  `WavetablePreview`, `KaskadaPanel`, `FxEqPanel`, `OzvenaPanel`,
+  `GranularPanel`, `UltinaPanel`, `SliceLab`. **All of them** use
+  `registerRaf` (shared RAF pool in `src/services/rafLoop.ts`) for
+  their per-frame draw loop and store the analyser snapshots in
+  `useRef` (mutable), never in `useState`. `Goniometer` and
+  `SpectrumAnalyzer` use `useState` for a `{width, height}` backing
+  store driven by `ResizeObserver` only — that is the correct
+  React-state pattern (the observer fires on layout change, not per
+  frame). **No canvas visualizer routes frame-rate values through
+  React state.** This is exactly the pattern GOAL 03 promotes.
+- Transport-position routing audit (`src/ui/playhead.ts`):
+  `useTransportPosition`, `usePlayheadStep`, `usePlayheadBar`. **All
+  three** use `registerRaf` plus an internal `last` cache; the setState
+  fires only when the display string / step number / bar-quantised
+  position actually changes. `usePlayheadBar` quantises to 1/8 bar
+  (so the playhead pixel only updates 8× per bar, not 60× per second).
+  Pulse Forge is doing frame-rate throttling at the *transport
+  state* layer, not just at the canvas layer — the right place.
+- High-map-count panels (≥ 8 `.map(` calls):
+  `ModPanel.tsx` (39), `ArrangementPanel.tsx` (23), `PianoRoll.tsx`
+  (23), `Mixer.tsx` (17), `DiceTray.tsx` (10), `EffectRack.tsx`
+  (11), `GenerateDialog.tsx` (9), `MidiPanel.tsx` (9),
+  `PresetBrowser.tsx` (8), `RackStrip.tsx` (9), `UltinaPanel.tsx`
+  (22). Most of these are *composition* (track strips, pattern
+  lanes, mod routings) where the inner JSX is small. The two with
+  the worst derived-state cost are `ModPanel.tsx` and `Mixer.tsx`,
+  because both walk `doc.tracks` 4-5× per render without memoization.
+
+**Confirmed findings.**
+
+1. **`src/ui/ModPanel.tsx` — broad `doc.tracks.filter(...)` chain
+   without memoization.** At audit start the component did five
+   expensive computations on every render: `[...doc.tracks, ...doc.returns]`,
+   `doc.automation.find(...)`, `doc.patterns.find(...)`, `targetOwner(...)`
+   (also walks tracks/returns), and the `hasDeepParams` predicate
+   over `addableTrack.effects`. Every store mutation re-rendered
+   `ModPanel` (it is a `useDoc` subscriber), and each re-render
+   allocated five new arrays plus the `.find`/`.filter` walks. With a
+   typical 16-track session that is ~80 comparisons + 5 array
+   allocations per store tick. Memoization collapses it to one pass
+   per snapshot.
+2. **`src/ui/Mixer.tsx` — five `doc.tracks.filter(...)` calls per
+   render.** Same shape as #1: `selectedTracks`, `soloCount`,
+   `muteCount`, `collapsedGroups` (Set), `visibleTracks`. Each
+   is `O(n)` and recomputed for every doc mutation. For a
+   30-track session the chain walks `doc.tracks` five times
+   (~150 comparisons) on each `useDoc` re-render — and `Mixer`
+   subscribes to `useDoc`, `useSelection`, and reads `selection`
+   which itself is a `useSyncExternalStore`, so render frequency
+   is high.
+3. **`src/ui/SliceLab.tsx`, `src/ui/RackStrip.tsx`** — already use
+   `useMemo` for parameter lists and effect chains. Spot-checked
+   and confirmed correct. **No action.**
+4. **`src/ui/PianoRoll.tsx`** — uses `useMemo` for `ghostNotes`
+   and `ghostTrackNotes`. The non-memo parts are small (cursor
+   pos, hover note id). **No action.**
+5. **`App.tsx` 8 `.map(` calls + 12 `useEffect`** — main loop
+   mounts the workspace; the maps are over fixed-length lists
+   (`doc.tracks`, `doc.scenes`, `doc.effects`). Audited: no derived
+   state, no `find` in render body, no per-frame allocations.
+   **No action.**
+6. **`src/ui/ArrangementPanel.tsx` (2362 lines, 23 `.map(` calls)**
+   — broad `useDoc()` subscriber. Maps are scene / clip / marker
+   iterations over `doc.scenes`, `doc.tracks`, `doc.markers`,
+   `doc.automation`. The component is the heart of the song editor
+   and re-renders on every store mutation. `usePlayheadBar` (used
+   internally for the ruler) is already throttled to 1/8 bar, so
+   transport ticks are not the dominant re-render cause — store
+   mutations are. The right fix is **fine-grained selectors**
+   (`useScenes`, `useTracks`, `useMarkers`) so a track-param edit
+   does not invalidate the marker lane. **Out of scope for this
+   campaign** — it requires introducing 4-5 new context hooks
+   (`src/ui/context.ts` is the central place) and migrating every
+   call site, which is multi-day work. Tracked as a follow-up
+   with estimated 4-6 hours.
+7. **No frame-rate routing bugs found.** The canvas visualizer
+   audit (item in *Areas inspected*) confirmed every analyser /
+   meter / spectrum component draws through `registerRaf` with a
+   `useRef` buffer. The transport hooks (`usePlayheadBar` etc.)
+   use the `last === next` guard. Pulse Forge's React state
+   topology is correct at the *frame* layer.
+
+**Fixes implemented.** 2 source files modified, 0 tests added (the
+memoization is correctness-preserving: existing tests continue to
+assert the same DOM shape and the same user-visible behaviour).
+
+- `src/ui/ModPanel.tsx`:
+  - Added `useMemo` to the import line.
+  - Memoized `routableTracks = useMemo(() => [...doc.tracks, ...doc.returns], [doc.tracks, doc.returns])`.
+  - Memoized `selectedLane = useMemo(() => doc.automation.find(...) ?? null, [doc.automation, selectedLaneId])`.
+  - Memoized `pattern = useMemo(() => doc.patterns.find(...)!, [doc.patterns, doc.activePatternId])`.
+  - Memoized `addableTrack = useMemo(() => targetOwner(doc, addTarget.trackId), [doc, addTarget.trackId])`.
+  - Memoized `hasDeepParams` (deps: `addableTrack`).
+  - Each memo has a comment explaining the dependency choice and
+    why it is safe.
+- `src/ui/Mixer.tsx`:
+  - Added `useMemo` to the import line.
+  - Memoized `selectedTracks` (deps: `doc.tracks`, `selectedIds`).
+  - Memoized `soloCount` (deps: `doc.tracks`).
+  - Memoized `muteCount` (deps: `doc.tracks`).
+  - Memoized `collapsedGroups` (deps: `doc.tracks`).
+  - Memoized `visibleTracks` (deps: `doc.tracks`, `collapsedGroups`).
+  - `batchCount` stays inline (cheap numeric expression).
+
+**Validation.**
+
+- `npx tsc --noEmit -p tsconfig.json`: **PASS** (exit code 0).
+  (Initial run flagged 12 errors because the `useMemo` import was
+  omitted in `ModPanel.tsx`; the import was added and re-run
+  cleared all 12 — including a couple of pre-existing implicit-any
+  warnings that were masked by the missing import.)
+- `npm test -- --run tests/ui/ModPanel.test.tsx
+  tests/ui/Mixer.test.tsx tests/mixer-batch.test.ts`:
+  **3/3 test files passed**, 16 tests passed (9 ModPanel +
+  4 Mixer + 3 mixer-batch), 5.97 s. Exit code 0.
+- Behavioural parity: the memoization preserves the *exact* array
+  shape and element order of the original code (each `useMemo` body
+  is a verbatim copy of the original expression). There is no
+  observable difference in render output — only in allocation
+  frequency.
+
+**Scope record — "not a render problem" rebuttals.**
+
+Several candidates looked like render issues on paper but the
+investigation showed they were already handled correctly:
+
+| Candidate                                       | Verdict                                                       |
+| ----------------------------------------------- | ------------------------------------------------------------- |
+| Canvas visualizers routing frame data via state | **Not a bug** — every visualizer uses `registerRaf` + `useRef`. |
+| Transport position via `useState`               | **Not a bug** — throttled to step / 1/8-bar granularity.      |
+| Context providers with rapidly changing values  | **Not a bug** — all hooks use `useSyncExternalStore` with stable `getSnapshot` returns. |
+| `Mixer` / `ArrangementPanel` broad re-render on every store mutation | **Partially a bug** — caused by `useDoc` (full snapshot) instead of fine-grained selectors. Tracked as a follow-up, not fixed in this pass. |
+| `PianoRoll` heavy `.map` calls                  | **Not a bug** — already uses `useMemo` for ghost notes.        |
+| `EffectRack` / `RackStrip` effect chains        | **Not a bug** — already uses `useMemo` for parameter lists.    |
+| `App.tsx` 12 `useEffect` + 8 `.map`             | **Not a bug** — main loop mounts workspace; no derived state in render body. |
+
+**Unresolved issues / follow-ups.**
+
+1. **Fine-grained selectors for `ArrangementPanel.tsx`.**
+   Replace the broad `useDoc()` with `useScenes()`, `useTracks()`,
+   `useMarkers()`, `useAutomation()` (and the equivalent for
+   `ModPanel` if profiling shows it). This is the *real* render
+   bottleneck in Pulse Forge, but it requires either (a) creating
+   four to five new context hooks in `src/ui/context.ts`, plus (b)
+   migrating every call site, plus (c) adding per-slice getSnapshot
+   helpers on `ProjectStore` (`getScenes()`, `getTracks()`,
+   `getMarkers()`, `getAutomation()`). Estimated **4-6 hours**.
+2. **`Mixer` `React.memo` on the row component.** The current
+   `Mixer` keeps the entire track strip tree in a single render.
+   Extracting a `TrackStrip` row component and wrapping it in
+   `memo` with `track.id` as the prop key would let unaffected
+   rows skip re-render when one track mutates. Estimated 1-2 hours
+   once `useTracks()` exists.
+3. **`ArrangementPanel.tsx` virtualisation for clip rows.**
+   With dense scenes (50+ clips), the entire clip lane re-renders.
+   A virtualised clip list would only mount the rows that are in
+   viewport. This is the most impactful change for very long songs
+   but only relevant above ~30 clips per scene. Estimated 2-3 hours.
+4. **`SliceLab` `Object.keys(EFFECT_DEFS).sort()` per render**
+   (in `Mixer.tsx` too). Memoize once at module level — minor
+   saving but improves cold-render time of `Mixer`. Estimated
+   15 minutes.
+5. **`JamGate.tsx:44`** — GOAL 02 follow-up, still open.
+
+**Remaining risks.**
+
+- The `useDoc` subscription model in Pulse Forge means that *every*
+  store mutation (even an undo/redo of a one-character rename)
+  invalidates the `useDoc` snapshot and re-renders every
+  subscriber. The fine-grained-selector work above is what
+  closes that gap.
+- `ArrangementPanel` is the biggest single render-cost component.
+  If a future feature lands there (e.g. a multi-lane editor), the
+  fine-grained-selector work becomes a prerequisite rather than a
+  nice-to-have.
+
+**Recommendations for next session.**
+
+- The first three prompts of this campaign (`01_TYPE_INTEGRITY.md`,
+  `02_LIFECYCLE_STATE_ASYNC.md`, `03_RENDER_PERFORMANCE.md`) are
+  now done in Pulse Forge. The campaign contract is fulfilled for
+  the applicable scope. Suggested next directions (any of which
+  can be run as fresh campaigns, not necessarily under the
+  `threejs_scheduler_goals` umbrella):
+  - **Fine-grained selectors + `Mixer`/`ArrangementPanel` memo
+    row components** (GOAL 03 follow-up #1 + #2, 5-8 hours).
+    Highest ROI for render performance.
+  - **`Worklet messaging audit`** (GOAL 02 follow-up #2): a test
+    file that asserts every `AudioWorkletNode` consumer closes
+    its port on unmount.
+  - **`JamGate.tsx` engine-readiness gate** (GOAL 02 follow-up #1,
+    1-2 hours): close the unsafe cast at `JamGate.tsx:44`.
+  - **`noUncheckedIndexedAccess` enable** (GOAL 01 follow-up #3,
+    1-2 hours): opt-in cascade across the project.
+  - **`MockServicesBuilder` for `tests/helpers.tsx`** (GOAL 01
+    follow-up #2, 2-4 hours): eliminates the 28 `as any` casts
+    in tests and unlocks `vi.useFakeTimers()` against the
+    audio-engine path.
+- The 04-10 prompt series remains parked as "reviewed, NOT
+  applicable" — Pulse Forge has no Three.js surface. If Daniel
+  wants Pulse-Forge-specific analogues for the Three.js lessons
+  (resource ownership / lifecycle for the 2D canvas fleet, GPU
+  context loss fallback for the audio context, structured-clone
+  safety for IPC payloads), those can be written as fresh
+  prompts in a sibling directory.
+

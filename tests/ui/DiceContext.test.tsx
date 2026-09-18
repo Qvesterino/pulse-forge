@@ -69,4 +69,33 @@ describe("DiceContext", () => {
     ).toThrow(/DiceContext not initialized/i);
     spy.mockRestore();
   });
+
+  it("gates the heavy preview on `active` — inactive providers skip generation", () => {
+    // The provider is always mounted in App: with the panel closed it must
+    // not run the generation pipeline on every doc change (the freeze bug).
+    function PreviewProbe() {
+      const dice = useDice();
+      return (
+        <div>
+          <div data-testid="mode">{dice.preview.mode}</div>
+          <div data-testid="hasFull">{String(dice.preview.fullPattern !== null)}</div>
+        </div>
+      );
+    }
+    const doc = createProjectFromTemplate("house");
+    const inactive = renderWithContext(
+      <DiceProvider doc={doc}>
+        <PreviewProbe />
+      </DiceProvider>,
+    );
+    expect(screen.getByTestId("hasFull").textContent).toBe("false");
+    inactive.unmount();
+
+    renderWithContext(
+      <DiceProvider doc={doc} active>
+        <PreviewProbe />
+      </DiceProvider>,
+    );
+    expect(screen.getByTestId("hasFull").textContent).toBe("true");
+  });
 });

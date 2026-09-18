@@ -1,8 +1,22 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
+import { fileURLToPath } from "node:url";
+
+const virtualPwaRegisterStub = fileURLToPath(
+  new URL("./tests/_stubs/virtual-pwa-register.ts", import.meta.url),
+);
 
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: [
+      // `virtual:pwa-register` is provided by vite-plugin-pwa in dev/build
+      // but is not present in the vitest graph (no PWA plugin). The vitest
+      // graph would otherwise fail to resolve the import in src/sw-update.ts.
+      // Mirror the alias from vite.config.ts so tests, dev, and prod agree.
+      { find: /^virtual:pwa-register$/, replacement: virtualPwaRegisterStub },
+    ],
+  },
   test: {
     environment: "jsdom",
     globals: true,

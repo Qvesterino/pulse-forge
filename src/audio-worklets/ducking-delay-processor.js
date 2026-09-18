@@ -5,7 +5,7 @@
  * (attack/release). When dry is loud, the wet delayed signal is ducked
  * via `duckGain` so repeats sit behind the beat and bloom in gaps.
  * Delay itself is a classic feedback delay with one-pole damping LP in
- * the loop (tone 500–8000 Hz) and linear-interpolated ring buffer.
+ * the loop (tone 500–8000 Hz) and cubic-hermite-interpolated ring buffer.
  *
  * Buffer: 131072 samples (2^17 ≈ 2.9 s @44.1k) covers 1 s max delay.
  * Denormal guard <1e-20 on envelope and damp state.
@@ -86,10 +86,11 @@ class DuckingDelayProcessor extends AudioWorkletProcessor {
         if (duckGain < 0) duckGain = 0;
       }
 
-      // Delay read with linear interpolation
+      // Delay read with cubic-hermite interpolation (cleaner repeats on
+      // bright material — linear steps smear transients in the tail)
       const readPos = this.writeIdx - delaySamples;
-      const delayedL = this.readLinear(this.bufL, readPos);
-      const delayedR = this.readLinear(this.bufR, readPos);
+      const delayedL = this.readCubic(this.bufL, readPos);
+      const delayedR = this.readCubic(this.bufR, readPos);
 
       // Damping LP on feedback path
       this.dampL += toneAlpha * (delayedL - this.dampL);
@@ -117,12 +118,23 @@ class DuckingDelayProcessor extends AudioWorkletProcessor {
     return true;
   }
 
-  readLinear(buf, position) {
-    const idx0 = Math.floor(position);
-    const frac = position - idx0;
-    const i0 = idx0 & DUCK_MASK;
-    const i1 = (idx0 + 1) & DUCK_MASK;
-    return buf[i0] * (1 - frac) + buf[i1] * frac;
+  readCubic(buf, position) {
+    const idx = Math.floor(position);
+    const frac = position - idx;
+    const i0 = (idx - 1) & DUCK_MASK;
+    const i1 = idx & DUCK_MASK;
+    const i2 = (idx + 1) & DUCK_MASK;
+    const i3 = (idx + 2) & DUCK_MASK;
+    const y0 = buf[i0];
+    const y1 = buf[i1];
+    const y2 = buf[i2];
+    const y3 = buf[i3];
+    // Catmull-Rom form of cubic Hermite.
+    const c0 = y1;
+    const c1 = 0.5 * (y2 - y0);
+    const c2 = y0 - 2.5 * y1 + 2 * y2 - 0.5 * y3;
+    const c3 = 0.5 * (y3 - y0) + 1.5 * (y1 - y2);
+    return ((c3 * frac + c2) * frac + c1) * frac + c0;
   }
 }
 

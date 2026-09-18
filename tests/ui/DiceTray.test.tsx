@@ -13,7 +13,9 @@ import { initPadKeys, setPadKeysArmed } from "../../src/ui/padKeys";
 function renderTray(doc = createProjectFromTemplate("house")) {
   const services = mockServices(doc);
   const utils = renderWithContext(
-    <DiceProvider doc={services.store.doc}>
+    // active — the tray is visible in these tests, so the provider must run
+    // its real preview pipeline (inactive = gated cheap placeholder).
+    <DiceProvider doc={services.store.doc} active>
       <DiceTray />
     </DiceProvider>,
     { services },

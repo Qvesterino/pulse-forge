@@ -51,6 +51,10 @@ Tracked in [`RELEASE_ROADMAP.md`](./RELEASE_ROADMAP.md).
   intentionally NOT bit-exact: existing projects using these four effects
   render with the new character (same params, same presets). New params
   (chorus SPREAD, delay SYNC/PING-PONG) default to legacy behaviour.
+- **The look-ahead limiter is true-peak since 2026-09-18.** On transient-hot
+  masters the export may sit a fraction of a dB under the ceiling (the
+  detector hears intersample overshoots); sample-peak behaviour on ordinary
+  material is unchanged.
 - **Group tracks cannot be frozen.** Freeze renders a single track's own
   chain; a group has no generators, so its buffer would be silence. Freeze
   the child tracks instead. Per-track export also skips groups.

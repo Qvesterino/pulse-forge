@@ -7,7 +7,7 @@
  * harmonics (hollow). Damp is a one-pole lowpass in the feedback loop
  * that tames highs so the tail doesn't shriek — 500 Hz (dark) .. 12000 Hz (bright).
  *
- * Ring buffer is power-of-2 (8192 ≈ 170 ms @48k) with linear interpolation
+ * Ring buffer is power-of-2 (8192 ≈ 170 ms @48k) with cubic-hermite interpolation
  * for fractional delays. Deterministic live==offline (no random, phase reset
  * to zero per context). Denormal guard flushes tiny state.
  *
@@ -59,8 +59,8 @@ class CombProcessor extends AudioWorkletProcessor {
       const r = inR ? inR[i] : l;
 
       const readPos = this.writeIdx - delaySamples;
-      const delayedL = this.readLinear(this.bufL, readPos);
-      const delayedR = this.readLinear(this.bufR, readPos);
+      const delayedL = this.readCubic(this.bufL, readPos);
+      const delayedR = this.readCubic(this.bufR, readPos);
 
       // Damp in feedback loop (one-pole lowpass)
       this.dampL += dampAlpha * (delayedL - this.dampL);
@@ -85,12 +85,23 @@ class CombProcessor extends AudioWorkletProcessor {
     return true;
   }
 
-  readLinear(buf, position) {
-    const idx0 = Math.floor(position);
-    const frac = position - idx0;
-    const i0 = idx0 & COMB_MASK;
-    const i1 = (idx0 + 1) & COMB_MASK;
-    return buf[i0] * (1 - frac) + buf[i1] * frac;
+  readCubic(buf, position) {
+    const idx = Math.floor(position);
+    const frac = position - idx;
+    const i0 = (idx - 1) & COMB_MASK;
+    const i1 = idx & COMB_MASK;
+    const i2 = (idx + 1) & COMB_MASK;
+    const i3 = (idx + 2) & COMB_MASK;
+    const y0 = buf[i0];
+    const y1 = buf[i1];
+    const y2 = buf[i2];
+    const y3 = buf[i3];
+    // Catmull-Rom form of cubic Hermite.
+    const c0 = y1;
+    const c1 = 0.5 * (y2 - y0);
+    const c2 = y0 - 2.5 * y1 + 2 * y2 - 0.5 * y3;
+    const c3 = 0.5 * (y3 - y0) + 1.5 * (y1 - y2);
+    return ((c3 * frac + c2) * frac + c1) * frac + c0;
   }
 }
 

@@ -51,8 +51,27 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
   }, [core]);
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    let cancelled = false;
+    core.repo
+      .listAll()
+      .then((list) => {
+        if (cancelled) return;
+        setListError(null);
+        setProjects(list);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        // A blocked/corrupted/unavailable DB must not masquerade as a
+        // first-run machine - the user would believe their projects are
+        // gone and start over. Show the storage failure instead.
+        console.error("[ProjectBrowser] project list failed:", err);
+        setListError(err instanceof Error ? err.message : "Storage is unavailable");
+        setProjects([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [core]);
 
   // IndexedDB failures (quota, private browsing, corrupted record) would
   // otherwise surface only as unhandled rejections while the UI sits dead.

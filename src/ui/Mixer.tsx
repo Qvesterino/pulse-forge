@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useDoc, useSelection, useSelectionStore, useServices } from "./context";
 import {
   addEffectToTracks,
@@ -35,25 +35,51 @@ export function Mixer({ onOpenFxPanel }: { onOpenFxPanel?: () => void } = {}) {
   const doc = useDoc();
   const selection = useSelection();
   const selectedIds = selection.trackIds;
-  const selectedTracks = doc.tracks.filter((t) => selectedIds.includes(t.id));
-  const batchCount = selectedTracks.length > 0 ? selectedTracks.length : doc.tracks.length;
-  const [batchType, setBatchType] = useState<EffectType>("eq");
-  const soloCount = doc.tracks.filter((t) => t.solo).length;
-  const muteCount = doc.tracks.filter((t) => t.mute).length;
-  const collapsedGroups = new Set(
-    doc.tracks
-      .filter((t) => t.kind === "group" && (t as import("../project-model/types").GroupTrack).collapsed)
-      .map((t) => t.id),
+  // Mixer re-renders on every doc mutation (it is a `useDoc` subscriber).
+  // Five separate `doc.tracks.filter(...)` calls per render is wasteful for
+  // large sessions — memoize each derived value so the chain collapses to
+  // a single pass when `doc.tracks` / `selectedIds` are unchanged.
+  const selectedTracks = useMemo(
+    () => doc.tracks.filter((t) => selectedIds.includes(t.id)),
+    [doc.tracks, selectedIds],
   );
-  const visibleTracks = doc.tracks.filter((t) => {
-    if (
-      t.kind !== "group" &&
-      (t as unknown as { groupId?: string }).groupId &&
-      collapsedGroups.has((t as unknown as { groupId?: string }).groupId!)
-    )
-      return false;
-    return true;
-  });
+  const batchCount =
+    selectedTracks.length > 0 ? selectedTracks.length : doc.tracks.length;
+  const [batchType, setBatchType] = useState<EffectType>("eq");
+  const soloCount = useMemo(
+    () => doc.tracks.filter((t) => t.solo).length,
+    [doc.tracks],
+  );
+  const muteCount = useMemo(
+    () => doc.tracks.filter((t) => t.mute).length,
+    [doc.tracks],
+  );
+  const collapsedGroups = useMemo(
+    () =>
+      new Set(
+        doc.tracks
+          .filter(
+            (t) =>
+              t.kind === "group" &&
+              (t as import("../project-model/types").GroupTrack).collapsed,
+          )
+          .map((t) => t.id),
+      ),
+    [doc.tracks],
+  );
+  const visibleTracks = useMemo(
+    () =>
+      doc.tracks.filter((t) => {
+        if (
+          t.kind !== "group" &&
+          (t as unknown as { groupId?: string }).groupId &&
+          collapsedGroups.has((t as unknown as { groupId?: string }).groupId!)
+        )
+          return false;
+        return true;
+      }),
+    [doc.tracks, collapsedGroups],
+  );
   return (
     <section className="mixer" aria-label="Mixer">
       <div className="mixer-batch-bar" role="toolbar" aria-label="Batch FX">

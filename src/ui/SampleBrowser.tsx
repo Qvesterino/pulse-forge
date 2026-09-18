@@ -51,7 +51,17 @@ export function SampleBrowser({
 
   // Load user samples from repo on mount
   useEffect(() => {
-    void services.userSamples.list().then(setAllUserAssets);
+    let cancelled = false;
+    void services.userSamples.list().then((assets) => {
+      // setState on an unmounted component is a no-op in modern React but
+      // is still observable as a warning under StrictMode + React DevTools.
+      // The cancelled flag keeps the closure explicit about which async
+      // result still belongs to this mount cycle.
+      if (!cancelled) setAllUserAssets(assets);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [services]);
 
   const allAssets: SampleAsset[] = useMemo(() => [...assets, ...allUserAssets], [assets, allUserAssets]);

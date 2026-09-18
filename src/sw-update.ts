@@ -11,12 +11,24 @@
  *
  * Imported ONLY from main.tsx — `virtual:pwa-register` does not resolve in
  * the vitest graph (no PWA plugin there), and no test needs this UI.
+ *
+ * Lifecycle: `initSwUpdate` is idempotent — repeated calls (e.g. Vite HMR)
+ * must not pile up timers or `visibilitychange` listeners. `disposeSwUpdate`
+ * tears down the poll timer and the listener so the module can be reset by
+ * tests or hot reloads.
  */
 import { registerSW } from "virtual:pwa-register";
 
 let update: (reloadPage?: boolean) => Promise<void> = async () => {};
 
+let initialized = false;
+let pollInterval: ReturnType<typeof setInterval> | null = null;
+let visibilityListener: (() => void) | null = null;
+
 export function initSwUpdate(): void {
+  if (initialized) return;
+  initialized = true;
+
   update = registerSW({
     onNeedRefresh() {
       if (document.getElementById("pf-update-banner")) return;
@@ -46,13 +58,27 @@ export function initSwUpdate(): void {
   // A long-lived SPA tab performs almost no full navigations, so the
   // browser's natural sw.js update checks (on navigation, + every 24 h)
   // rarely run. Poll on a timer and when the tab becomes visible again.
-  setInterval(
+  pollInterval = setInterval(
     () => {
       void update();
     },
     15 * 60 * 1000,
   );
-  document.addEventListener("visibilitychange", () => {
+  visibilityListener = () => {
     if (document.visibilityState === "visible") void update();
-  });
+  };
+  document.addEventListener("visibilitychange", visibilityListener);
+}
+
+export function disposeSwUpdate(): void {
+  if (!initialized) return;
+  initialized = false;
+  if (pollInterval != null) {
+    clearInterval(pollInterval);
+    pollInterval = null;
+  }
+  if (visibilityListener != null) {
+    document.removeEventListener("visibilitychange", visibilityListener);
+    visibilityListener = null;
+  }
 }

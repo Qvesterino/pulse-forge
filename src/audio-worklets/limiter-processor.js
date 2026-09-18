@@ -1,24 +1,63 @@
 /**
  * Look-ahead Brickwall Limiter AudioWorkletProcessor.
  *
- * Signal path: a stereo-linked peak detector feeds a monotonic max-deque over
- * the look-ahead window. The window maximum is the loudest sample that will
- * reach the output within `lookahead` seconds, so the gain smoothing always
- * has time to react BEFORE the transient arrives — that is what makes this a
- * true look-ahead limiter instead of the native DynamicsCompressorNode.
+ * Signal path: a stereo-linked TRUE-PEAK detector feeds a monotonic
+ * max-deque over the look-ahead window. Each input sample is 4× oversampled
+ * through a Blackman-sinc polyphase bank (same proven kernel as the
+ * metering true-peak estimator) and the detector sees
+ * max(sample peak, intersample peak) — a ceiling-exceeding transient
+ * BETWEEN samples still pulls gain down, so the brickwall holds for true
+ * peak, not just sample peak. Material without intersample overshoot
+ * behaves bit-identically to the legacy sample-peak detector.
+ * The window maximum is the loudest (true) peak that will reach the output
+ * within `lookahead` seconds, so the gain smoothing always has time to
+ * react BEFORE the transient arrives — that is what makes this a true
+ * look-ahead limiter instead of the native DynamicsCompressorNode.
  * A final safety clamp at the ceiling catches any rounding residue.
  *
  * Program-dependent release: deeper recent gain reduction lengthens the
  * release time, which keeps sustained material from pumping on every beat.
  *
  * Latency: exactly `lookahead` samples (reported by the TS wrapper via
- * getLatencySec for the engine's PDC). Metering posts `{ type: "gr", gr }`
+ * getLatencySec for the engine's PDC). The oversampled detector uses past
+ * samples only, so it adds no latency. Metering posts `{ type: "gr", gr }`
  * messages (gain reduction in dB) roughly every 50 ms.
  *
  * NOTE: this file is served RAW to AudioWorklet.addModule() via
  * `new URL(...)` — it must stay plain JavaScript with no imports and no
  * TypeScript syntax.
  */
+// 4× true-peak polyphase bank: Blackman-windowed sinc prototype, decomposed
+// into 4 phases of 16 taps, DC-normalized per phase. Sample-rate independent
+// (cutoff is defined relative to the input Nyquist), so one shared table.
+const TP_PHASES = 4;
+const TP_TAPS = 16;
+const TP_TABLE = (() => {
+  const prototype = new Float64Array(TP_PHASES * TP_TAPS);
+  const center = (prototype.length - 1) / 2;
+  for (let n = 0; n < prototype.length; n++) {
+    const x = (n - center) / TP_PHASES;
+    const sinc = x === 0 ? 1 : Math.sin(Math.PI * x) / (Math.PI * x);
+    const w =
+      0.42 -
+      0.5 * Math.cos((2 * Math.PI * n) / (prototype.length - 1)) +
+      0.08 * Math.cos((4 * Math.PI * n) / (prototype.length - 1));
+    prototype[n] = sinc * w;
+  }
+  const phases = [];
+  for (let p = 0; p < TP_PHASES; p++) {
+    const taps = new Float32Array(TP_TAPS);
+    let sum = 0;
+    for (let j = 0; j < TP_TAPS; j++) {
+      taps[j] = prototype[j * TP_PHASES + p];
+      sum += taps[j];
+    }
+    const inv = sum !== 0 ? 1 / sum : 1;
+    for (let j = 0; j < TP_TAPS; j++) taps[j] *= inv;
+    phases.push(taps);
+  }
+  return phases;
+})();
 class MaxDeque {
   constructor(capacity) {
     // Float64 keeps absolute step counters exact far beyond int32; indices are
@@ -70,6 +109,14 @@ class LimiterProcessor extends AudioWorkletProcessor {
     this.step = 0;
     this.gainL = 1;
     this.gainR = 1;
+    // True-peak detector history: last 16 input samples per channel,
+    // each with its own write position (a shared counter would interleave
+    // the two channels into the same slots and corrupt both histories).
+    this.histL = new Float32Array(TP_TAPS);
+    this.histR = new Float32Array(TP_TAPS);
+    this.histPosL = 0;
+    this.histPosR = 0;
+    this.tpOut = 0;
     this.postedGr = -1;
     this.grAccumulator = 0;
     this.grWindowStart = typeof globalThis.currentTime === "number" ? globalThis.currentTime : 0;
@@ -119,12 +166,23 @@ class LimiterProcessor extends AudioWorkletProcessor {
 
       const absL = l < 0 ? -l : l;
       const absR = r < 0 ? -r : r;
-      const linked = absL > absR ? absL : absR;
+      // True-peak detector: the loudest of the sample peak and the 4×
+      // oversampled intersample peaks. Silent history at start-up reads 0,
+      // so the first 16 samples behave like the legacy detector.
+      // (Peak is copied to a local BEFORE the R call — the step reports
+      // through a shared scratch field to stay allocation-free.)
+      this.histPosL = this.truePeakStep(this.histL, this.histPosL, l);
+      const tpL = this.tpOut;
+      this.histPosR = this.truePeakStep(this.histR, this.histPosR, r);
+      const tpR = this.tpOut;
+      const detL = absL > tpL ? absL : tpL;
+      const detR = absR > tpR ? absR : tpR;
+      const linked = detL > detR ? detL : detR;
       const windowStart = s - laSamples;
       this.linked.push(linked, s);
       if (perChannel) {
-        this.leftPeak.push(absL, s);
-        this.rightPeak.push(absR, s);
+        this.leftPeak.push(detL, s);
+        this.rightPeak.push(detR, s);
       }
       const peakLinked = this.linked.front(windowStart);
 
@@ -195,6 +253,34 @@ class LimiterProcessor extends AudioWorkletProcessor {
     }
 
     return true;
+  }
+
+  /**
+   * One true-peak detector step: push the newest sample into the channel
+   * history, then run the 4 oversampled phases. Reports the loudest absolute
+   * value across phases through `this.tpOut` and returns the advanced write
+   * position (both allocation-free; the caller stores the position back and
+   * copies the peak before stepping the other channel).
+   */
+  truePeakStep(hist, pos, newest) {
+    let v = newest;
+    if (v < 1e-20 && v > -1e-20) v = 0;
+    hist[pos & (TP_TAPS - 1)] = v;
+    const nextPos = (pos + 1) & 0xfffffff; // monotone counter, exact in float64
+    let peak = 0;
+    for (let p = 0; p < TP_PHASES; p++) {
+      const taps = TP_TABLE[p];
+      let acc = 0;
+      // taps[j] weights the j-th oldest sample (metering.ts convention):
+      // newest sits at nextPos - 1, oldest at nextPos - TP_TAPS.
+      for (let j = 0; j < TP_TAPS; j++) {
+        acc += taps[j] * hist[(nextPos - TP_TAPS + j) & (TP_TAPS - 1)];
+      }
+      if (acc < 0) acc = -acc;
+      if (acc > peak) peak = acc;
+    }
+    this.tpOut = peak;
+    return nextPos;
   }
 
   smoothGain(current, target, sr, releaseSec, attackCoef) {

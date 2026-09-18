@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useDoc, useServices } from "./context";
 import { STEP_TICKS } from "../project-model/types";
 import type { DrumTrack, StepMeta, Track } from "../project-model/types";
@@ -1131,6 +1131,26 @@ function PadRow({
   const services = useServices();
   const doc = useDoc();
   const row = pattern.rows[pad.id] ?? [];
+  // A 256-step row renders 256 memoized StepCells — their shallow prop
+  // compare only skips a re-render when every callback prop is referentially
+  // stable. The incoming handlers are fresh closures on every parent render,
+  // so funnel them through refs into everstable wrappers.
+  const beginRef = useRef(onBegin);
+  beginRef.current = onBegin;
+  const moveRef = useRef(onMove);
+  moveRef.current = onMove;
+  const endRef = useRef(onEnd);
+  endRef.current = onEnd;
+  const editRef = useRef(onEditStep);
+  editRef.current = onEditStep;
+  const stableBegin = useCallback(
+    (event: React.PointerEvent, padIdArg: string, stepIndexArg: number) =>
+      beginRef.current(event, padIdArg, stepIndexArg),
+    [],
+  );
+  const stableMove = useCallback((event: React.PointerEvent) => moveRef.current(event), []);
+  const stableEnd = useCallback(() => endRef.current(), []);
+  const stableEdit = useCallback((stepIndexArg: number) => editRef.current(stepIndexArg), []);
   const metaRow = pattern.stepMeta?.[pad.id] ?? {};
 
   return (
@@ -1212,10 +1232,10 @@ function PadRow({
               inSelection={inSelection}
               playhead={playheadStep === stepIndex}
               stepLabel={stepLabel}
-              onBegin={onBegin}
-              onMove={onMove}
-              onEnd={onEnd}
-              onEditStep={() => onEditStep(stepIndex)}
+              onBegin={stableBegin}
+              onMove={stableMove}
+              onEnd={stableEnd}
+              onEditStep={stableEdit}
               remoteCursors={remoteCursors}
             />
           );
@@ -1229,8 +1249,13 @@ function PadRow({
  * One sequencer step. Owns the long-press gesture (touch equivalent of
  * right-click → step editor) — extracted into a component so the hook is
  * not called inside the render loop.
+ *
+ * Memoized: a 256-step × 16-pad pattern mounts ~4k of these, and the
+ * playhead/scroll/drag state changes at the Sequencer level used to re-render
+ * every one of them per step tick. With memo + stable handler props a tick
+ * re-renders only the cells whose own inputs moved (the old + new playhead).
  */
-function StepCell({
+const StepCell = memo(function StepCell({
   patternId,
   pad,
   trackId,
@@ -1262,12 +1287,15 @@ function StepCell({
   onBegin: (event: React.PointerEvent, padId: string, stepIndex: number) => void;
   onMove: (event: React.PointerEvent) => void;
   onEnd: (event: React.PointerEvent) => void;
-  onEditStep: () => void;
+  onEditStep: (stepIndex: number) => void;
   remoteCursors: RemoteCursor[];
 }) {
   const services = useServices();
-  const doc = useDoc();
-  const longPress = useLongPress(onEditStep);
+  // No useDoc() here on purpose: every StepCell is a context consumer, so a
+  // doc subscription would re-render all ~4k cells on every doc change even
+  // though React.memo skipped them. Event handlers read services.store.doc
+  // at invocation time instead.
+  const longPress = useLongPress(() => onEditStep(stepIndex));
   const publishCursor = usePublishCursor();
   // Who else is pointing at this exact cell — one colored marker per user.
   const remoteHere = cursorsAt(remoteCursors, { view: "sequencer", patternId, padId, stepIndex });
@@ -1333,12 +1361,12 @@ function StepCell({
         // shortcut (preventing the keydown also cancels the native keyup click).
         if (event.key === "Enter") {
           event.preventDefault();
-          services.store.execute(toggleStep(doc, padId, stepIndex));
+          services.store.execute(toggleStep(services.store.doc, padId, stepIndex));
         }
       }}
       onContextMenu={longPress.wrapContextMenu((event) => {
         event.preventDefault();
-        onEditStep();
+        onEditStep(stepIndex);
       })}
     >
       {meta?.ratchet !== undefined && meta.ratchet > 1 && <span className="step-badge">{meta.ratchet}×</span>}
@@ -1381,8 +1409,8 @@ function StepCell({
               const target = final >= 0.99 ? undefined : final;
               services.store.execute(
                 setStepMeta(
-                  doc,
-                  doc.activePatternId,
+                  services.store.doc,
+                  services.store.doc.activePatternId,
                   padId,
                   stepIndex,
                   target === undefined ? ({ amount: undefined } as any) : { amount: Math.round(final * 100) / 100 },
@@ -1412,7 +1440,7 @@ function StepCell({
       </span>
     </button>
   );
-}
+});
 
 /**
  * Continuous playhead sweeping the whole grid (all rows) at sub-step

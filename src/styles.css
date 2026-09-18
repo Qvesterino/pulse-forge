@@ -838,10 +838,15 @@ button {
   align-items: center;
   gap: 4px;
   margin-bottom: 4px;
+  padding-bottom: 3px;
   position: sticky;
   top: 0;
   z-index: 10;
   background: var(--bg-panel);
+  /* Hairline anchor: the sticky bar stays visually separated from the rows
+     scrolling underneath it. */
+  border-bottom: 1px solid var(--border-soft);
+  box-shadow: 0 4px 6px -4px rgba(0, 0, 0, 0.5);
 }
 
 .ruler-tick {
@@ -869,11 +874,17 @@ button {
   margin-bottom: 4px;
 }
 
+/* Row tracking: sweeping the grid highlights the pad row under the cursor. */
+.sequencer-row:hover {
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 4px;
+}
+
 .track-header-row {
   display: grid;
   grid-template-columns: 168px 1fr;
   gap: 4px;
-  margin: 8px 0 4px;
+  margin: 4px 0 4px;
 }
 
 .track-header-row:first-of-type {

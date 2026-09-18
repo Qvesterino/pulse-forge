@@ -75,11 +75,12 @@ class FlangerProcessor extends AudioWorkletProcessor {
       const delayLSamples = baseSamples + depthSamples * (0.5 + 0.5 * lfoL);
       const delayRSamples = baseSamples + depthSamples * (0.5 + 0.5 * lfoR);
 
-      // Read from ring buffer with linear interpolation
+      // Read from ring buffer with cubic-hermite interpolation (smooth
+      // fractional LFO sweeps — linear steps zipper at slow rates)
       const readL = this.writeIdx - delayLSamples;
       const readR = this.writeIdx - delayRSamples;
-      const wetL = this.readLinear(this.bufL, readL);
-      const wetR = this.readLinear(this.bufR, readR);
+      const wetL = this.readCubic(this.bufL, readL);
+      const wetR = this.readCubic(this.bufR, readR);
 
       // Zero-delay feedback: wet signal feeds back into the buffer NOW
       this.bufL[this.writeIdx] = l + wetL * feedback;
@@ -97,12 +98,23 @@ class FlangerProcessor extends AudioWorkletProcessor {
     return true;
   }
 
-  readLinear(buf, position) {
-    const idx0 = Math.floor(position);
-    const frac = position - idx0;
-    const i0 = idx0 & FLANGER_MASK;
-    const i1 = (idx0 + 1) & FLANGER_MASK;
-    return buf[i0] * (1 - frac) + buf[i1] * frac;
+  readCubic(buf, position) {
+    const idx = Math.floor(position);
+    const frac = position - idx;
+    const i0 = (idx - 1) & FLANGER_MASK;
+    const i1 = idx & FLANGER_MASK;
+    const i2 = (idx + 1) & FLANGER_MASK;
+    const i3 = (idx + 2) & FLANGER_MASK;
+    const y0 = buf[i0];
+    const y1 = buf[i1];
+    const y2 = buf[i2];
+    const y3 = buf[i3];
+    // Catmull-Rom form of cubic Hermite.
+    const c0 = y1;
+    const c1 = 0.5 * (y2 - y0);
+    const c2 = y0 - 2.5 * y1 + 2 * y2 - 0.5 * y3;
+    const c3 = 0.5 * (y3 - y0) + 1.5 * (y1 - y2);
+    return ((c3 * frac + c2) * frac + c1) * frac + c0;
   }
 }
 

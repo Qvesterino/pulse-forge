@@ -78,7 +78,18 @@ export function useDice(): DiceContextValue {
   return ctx;
 }
 
-export function DiceProvider({ doc, children }: { doc: ProjectDocument; children: React.ReactNode }) {
+export function DiceProvider({
+  doc,
+  active = false,
+  children,
+}: {
+  doc: ProjectDocument;
+  /** Whether the dice tray is visible. The provider is always mounted, so an
+   * always-on preview would rerun the full generation pipeline (~0.5 s sync)
+   * on EVERY doc edit — edits felt frozen with the panel closed. */
+  active?: boolean;
+  children: React.ReactNode;
+}) {
   const [session, setSession] = useState<DiceSession>(() => {
     const initIntent = normalizeIntent({
       genre: "house" as const,
@@ -125,6 +136,24 @@ export function DiceProvider({ doc, children }: { doc: ProjectDocument; children
         return 0;
       }
     })();
+
+    if (!active) {
+      // Tray unmounted — nothing displays the preview, so skip the pipeline.
+      // Rolls cannot fire while inactive either: their hotkeys live in the
+      // tray. Opening the panel recomputes the real preview.
+      return {
+        mode: session.mode,
+        seed,
+        fullPattern: null,
+        varyPatch: null,
+        hitCount: 0,
+        beforeHits,
+        score: null,
+        swing: null,
+        kitAssignments: null,
+        kitName: null,
+      };
+    }
 
     if (session.mode === "vary") {
       try {
@@ -281,7 +310,7 @@ export function DiceProvider({ doc, children }: { doc: ProjectDocument; children
         kitName: null,
       };
     }
-  }, [session, doc]);
+  }, [session, doc, active]);
 
   const rollFull = useCallback(() => {
     setSession((prev) => {
@@ -485,29 +514,55 @@ export function DiceProvider({ doc, children }: { doc: ProjectDocument; children
   // the drum rack or nudging notes in the piano roll. The visible tray owns
   // its keyboard surface.
 
-  const value: DiceContextValue = {
-    session,
-    preview,
-    rollFull,
-    rollVary,
-    jump,
-    apply,
-    toggleLockKey,
-    toggleFav,
-    setMode,
-    setJitter,
-    setGenre,
-    setStyle,
-    setSeed,
-    setLength,
-    setEnergy,
-    setDensity,
-    setComplexity,
-    setVariation,
-    setMood,
-    setKitId,
-    canApply: true,
-  };
+  // Memoized: a fresh value object per render would re-render every consumer
+  // of the always-mounted provider on each parent pass.
+  const value: DiceContextValue = useMemo(
+    () => ({
+      session,
+      preview,
+      rollFull,
+      rollVary,
+      jump,
+      apply,
+      toggleLockKey,
+      toggleFav,
+      setMode,
+      setJitter,
+      setGenre,
+      setStyle,
+      setSeed,
+      setLength,
+      setEnergy,
+      setDensity,
+      setComplexity,
+      setVariation,
+      setMood,
+      setKitId,
+      canApply: true,
+    }),
+    [
+      session,
+      preview,
+      apply,
+      rollFull,
+      rollVary,
+      jump,
+      toggleLockKey,
+      toggleFav,
+      setMode,
+      setJitter,
+      setGenre,
+      setStyle,
+      setSeed,
+      setLength,
+      setEnergy,
+      setDensity,
+      setComplexity,
+      setVariation,
+      setMood,
+      setKitId,
+    ],
+  );
 
   return <DiceContext.Provider value={value}>{children}</DiceContext.Provider>;
 }

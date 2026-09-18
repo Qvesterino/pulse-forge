@@ -349,6 +349,28 @@ export function TopBar({
       active: bottomPanel === "midi" || splitPanel === "midi",
       onClick: (event) => onSetBottomPanel("midi", event.ctrlKey || event.metaKey),
     },
+    {
+      // DICE/INTENT were previously reachable only via the toolbar's small
+      // 🎲 button or the ⌘K palette — users could not find how to get the
+      // dice panel back once the dock switched away from it (Alt+6 exists
+      // but is undiscoverable). Same overflow-promote behaviour as MIDI.
+      id: "dice",
+      label: "DICE",
+      ariaLabel: "Toggle dice panel",
+      title: "Toggle dice panel (6) — rapid beat generator",
+      priority: 74,
+      active: bottomPanel === "dice" || splitPanel === "dice",
+      onClick: (event) => onSetBottomPanel("dice", event.ctrlKey || event.metaKey),
+    },
+    {
+      id: "intent",
+      label: "INTENT",
+      ariaLabel: "Toggle intent panel",
+      title: "Toggle intent panel — describe the beat in words",
+      priority: 66,
+      active: bottomPanel === "intent" || splitPanel === "intent",
+      onClick: (event) => onSetBottomPanel("intent", event.ctrlKey || event.metaKey),
+    },
   ];
 
   const toolActions: TopbarAction[] = [
