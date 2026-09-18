@@ -812,7 +812,7 @@ const saturation: EffectDefinition = {
   factory(ctx, instance) {
     const mix = mixBus(ctx);
     const shaper = ctx.createWaveShaper();
-    shaper.oversample = "2x";
+    shaper.oversample = "4x";
     const tone = ctx.createBiquadFilter();
     tone.type = "lowpass";
     const out = ctx.createGain();
@@ -1340,7 +1340,7 @@ const distortion: EffectDefinition = {
     const mix = mixBus(ctx);
     const pre = ctx.createGain();
     const shaper = ctx.createWaveShaper();
-    shaper.oversample = "2x";
+    shaper.oversample = "4x";
     const tone = ctx.createBiquadFilter();
     tone.type = "lowpass";
     const out = ctx.createGain();
@@ -2032,7 +2032,7 @@ const shimmer: EffectDefinition = {
     hp.frequency.value = 2200 + (instance.params.tone ?? 0.5) * 7800;
     hp.Q.value = 0.7;
     const shaper = ctx.createWaveShaper();
-    shaper.oversample = "2x";
+    shaper.oversample = "4x";
     const buildCurve = (drive: number) => {
       const k = 1 + drive * 10;
       const n = 1024;
@@ -3190,6 +3190,7 @@ const kaskada: EffectDefinition = {
       ],
     },
     { id: "pingPong", label: "PING-PONG", min: 0, max: 1, default: 0, format: (v) => (v > 0.5 ? "ON" : "OFF") },
+    { id: "reverse", label: "REVERSE", min: 0, max: 1, default: 0, format: (v) => (v > 0.5 ? "ON" : "OFF") },
     { id: "feedback", label: "FEEDBK", min: 0, max: 0.95, default: 0.35, format: formatPct },
     { id: "toneLp", label: "TONE LP", min: 500, max: 12000, default: 4500, unit: "Hz", format: formatHz },
     { id: "toneHp", label: "TONE HP", min: 20, max: 800, default: 150, unit: "Hz", format: formatHz },
@@ -3205,7 +3206,18 @@ const kaskada: EffectDefinition = {
     },
     { id: "modDepth", label: "MOD DEPTH", min: 0, max: 1, default: 0.15, format: formatPct },
     { id: "spread", label: "SPREAD", min: 0, max: 1, default: 0.8, format: formatPct },
-    { id: "freeze", label: "FREEZE", min: 0, max: 1, default: 0, format: (v) => (v > 0.5 ? "ON" : "OFF") },
+    {
+      id: "freeze",
+      label: "FREEZE",
+      min: 0,
+      max: 2,
+      default: 0,
+      options: [
+        { value: 0, label: "OFF" },
+        { value: 1, label: "LOOP" },
+        { value: 2, label: "HOLD" },
+      ],
+    },
     { id: "unmaskOn", label: "UNMASK", min: 0, max: 1, default: 0, format: (v) => (v > 0.5 ? "ON" : "OFF") },
     { id: "unmask", label: "U-AMOUNT", min: 0, max: 1, default: 0.6, format: formatPct },
     { id: "unmaskSens", label: "U-SENS", min: 0, max: 1, default: 0.5, format: formatPct },
@@ -3215,15 +3227,18 @@ const kaskada: EffectDefinition = {
       id: "character",
       label: "CHARACTER",
       min: 0,
-      max: 2,
+      max: 4,
       default: 1,
       options: [
         { value: 0, label: "DIGITAL" },
         { value: 1, label: "TAPE" },
         { value: 2, label: "ANALOG" },
+        { value: 3, label: "DRUM" },
+        { value: 4, label: "DIFFUSE" },
       ],
     },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 0.25, format: formatPct },
+    { id: "soloWet", label: "SOLO W", min: 0, max: 1, default: 0, format: (v) => (v > 0.5 ? "ON" : "OFF") },
     { id: "level", label: "LEVEL", min: -24, max: 6, default: -6, unit: "dB", format: formatDb },
   ],
   factory(ctx, instance) {

@@ -830,6 +830,36 @@ export async function runChecks(): Promise<CheckResult[]> {
     // (verified via feedback param already set — skipping separate freeze render
     //  because the freeze gate is covered by unit tests)
 
+    // 3b. Reverse plumbing in the real worklet: same input through a second
+    //     instance with REVERSE on — the render must differ from forward
+    //     and stay audible (order-swap semantics pinned by unit tests).
+    const rctx = new OfflineAudioContext(2, SR * 2, SR);
+    await loadCoreWorklets(rctx);
+    const rrt = EFFECT_DEFS.kaskada.factory(
+      rctx,
+      { id: "kaskada-rev", type: "kaskada", bypassed: false, params: { ...kParams, reverse: 1 } },
+      { bpm: 120 },
+    );
+    const rosc = rctx.createOscillator();
+    rosc.frequency.value = 440;
+    rosc.connect(rrt.input);
+    rrt.output.connect(rctx.destination);
+    rosc.start(0);
+    const rbuffer = await rctx.startRendering();
+    rrt.dispose();
+    const rData = rbuffer.getChannelData(0);
+    let revDiff = 0;
+    let revPeak = 0;
+    for (let i = 0; i < rData.length; i++) {
+      revDiff = Math.max(revDiff, Math.abs(rData[i] - kData[i]));
+      revPeak = Math.max(revPeak, Math.abs(rData[i]));
+    }
+    check(
+      "kaskada: reverse mode renders an audibly reversed sweep",
+      revDiff > 0.01 && revPeak > 0.001,
+      `diff=${revDiff.toFixed(3)} peak=${revPeak.toFixed(3)}`,
+    );
+
     // Offline port messages flush after the render resolves — poll getMeters
     // for a bounded window until a frame lands.
     let metersFrame: Float32Array | null = null;

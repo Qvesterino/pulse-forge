@@ -75,6 +75,7 @@ const DEFAULTS: Record<string, number> = {
   sync: 0,
   bpm: 120,
   pingPong: 0,
+  reverse: 0,
   feedback: 0.35,
   toneLp: 4500,
   toneHp: 150,
@@ -90,6 +91,7 @@ const DEFAULTS: Record<string, number> = {
   unmaskRel: 250,
   character: 1,
   mix: 0.25,
+  soloWet: 0,
   level: -6,
 };
 
@@ -253,7 +255,7 @@ describe("kaskada parameter contract", () => {
     expect(RegisteredClass).toBeDefined();
     const descriptors = RegisteredClass!.parameterDescriptors;
     expect(Array.isArray(descriptors)).toBe(true);
-    expect(descriptors!.length).toBe(20);
+    expect(descriptors!.length).toBe(22);
     expect(descriptors!.every((d) => d.automationRate === "k-rate")).toBe(true);
   });
 
@@ -569,6 +571,7 @@ describe("kaskada extremes soak", () => {
     sync: [0, 5],
     bpm: [40, 240],
     pingPong: [0, 1],
+    reverse: [0, 1],
     feedback: [0, 0.95],
     toneLp: [500, 12000],
     toneHp: [20, 800],
@@ -576,14 +579,15 @@ describe("kaskada extremes soak", () => {
     modRate: [0.1, 8],
     modDepth: [0, 1],
     spread: [0, 1],
-    freeze: [0, 1],
+    freeze: [0, 2],
     unmaskOn: [0, 1],
     unmask: [0, 1],
     unmaskSens: [0, 1],
     unmaskAtk: [0.1, 100],
     unmaskRel: [10, 2000],
-    character: [0, 2],
+    character: [0, 4],
     mix: [0, 1],
+    soloWet: [0, 1],
     level: [-24, 6],
   };
 
@@ -641,6 +645,127 @@ describe("kaskada extremes soak", () => {
       }
       soak(`random-${n}`, overrides);
     }
+  });
+});
+
+/* ─────────────── reverse / hold / soloWet / character 3-4 ─────────────── */
+
+describe("kaskada reverse", () => {
+  const D_MS = 200;
+  const GAP_MS = 80;
+
+  it("swaps the order of two impulses inside the echo window (segment reverse)", () => {
+    const d = Math.round((D_MS / 1000) * currentSr());
+    const gap = Math.round((GAP_MS / 1000) * currentSr());
+    const input = (s: number): [number, number] => (s === 0 ? [0.8, 0.8] : s === gap ? [0.8, 0.8] : [0, 0]);
+    const fwd = render(0.6, makeParams({ ...NEUTRAL, time: D_MS, feedback: 0 }), input);
+    const rev = render(0.6, makeParams({ ...NEUTRAL, time: D_MS, feedback: 0, reverse: 1 }), input);
+    // Forward: imp1 echoes at d, imp2 at d+gap — chronological.
+    const f1 = peakIndex(fwd.L, d - 400, d + Math.round(gap / 2));
+    const f2 = peakIndex(fwd.L, d + Math.round(gap / 2), 2 * d);
+    expect(Math.abs(f1 - d)).toBeLessThan(60);
+    expect(Math.abs(f2 - (d + gap))).toBeLessThan(60);
+    // Reverse: the echo window plays newest-first — imp2 surfaces before imp1.
+    const r2 = peakIndex(rev.L, 2 * d - gap - 800, 2 * d - gap + 800);
+    const r1 = peakIndex(rev.L, 2 * d - 900, 2 * d + 500);
+    expect(Math.abs(r2 - (2 * d - gap))).toBeLessThan(80);
+    expect(Math.abs(r1 - 2 * d)).toBeLessThan(80);
+    expect(r2).toBeLessThan(r1); // the swap itself
+  });
+
+  it("reverse render differs from forward and stays audible", () => {
+    const input = monoImpulse(0.8);
+    const fwd = render(0.6, makeParams({ ...NEUTRAL, time: 200, feedback: 0.5 }), input);
+    const rev = render(0.6, makeParams({ ...NEUTRAL, time: 200, feedback: 0.5, reverse: 1 }), input);
+    let diff = 0;
+    for (let i = 0; i < fwd.L.length; i++) diff = Math.max(diff, Math.abs(fwd.L[i] - rev.L[i]));
+    expect(diff).toBeGreaterThan(0.05);
+    expect(peak(rev.L, 0, rev.L.length)).toBeGreaterThan(0.05);
+  });
+});
+
+describe("kaskada freeze HOLD (tail capture)", () => {
+  const HOLD_BLOCK = 200; // sample 25600 = ~0.53 s
+
+  function renderHold(mode: number, postImpulse: boolean) {
+    const prm = makeParams({ ...NEUTRAL, time: 100, feedback: 0.5 });
+    const burstEnd = Math.round(0.25 * currentSr());
+    const input = (s: number): [number, number] => {
+      if (s < burstEnd) {
+        const v = 0.5 * Math.sin((2 * Math.PI * 440 * s) / currentSr());
+        return [v, v];
+      }
+      if (postImpulse && s === Math.round(0.9 * currentSr())) return [0.9, 0.9];
+      return [0, 0];
+    };
+    return render(1.6, prm, input, (block, p) => {
+      if (block === HOLD_BLOCK) p.freeze[0] = mode;
+    });
+  }
+
+  it("sustains the captured window bit-stably (no per-pass decay like LOOP)", () => {
+    const hold = renderHold(2, false);
+    const loop = renderHold(1, false);
+    const earlyFrom = Math.round(0.7 * currentSr());
+    const earlyTo = Math.round(0.9 * currentSr());
+    const lateFrom = Math.round(1.3 * currentSr());
+    const holdRatio = rms(hold.L, lateFrom, hold.L.length) / rms(hold.L, earlyFrom, earlyTo);
+    const loopRatio = rms(loop.L, lateFrom, loop.L.length) / rms(loop.L, earlyFrom, earlyTo);
+    // HOLD loops one captured window with no write-back: level stays put.
+    // LOOP decays by 0.99 per ~100 ms pass (plus ~6 passes in the window).
+    expect(holdRatio).toBeGreaterThan(0.95);
+    expect(holdRatio).toBeLessThan(1.05);
+    expect(loopRatio).toBeLessThan(0.98);
+  });
+
+  it("seals the write head: a post-hold impulse cannot reach the output", () => {
+    const withImpulse = renderHold(2, true);
+    const without = renderHold(2, false);
+    expect([...withImpulse.L]).toEqual([...without.L]);
+    expect([...withImpulse.R]).toEqual([...without.R]);
+  });
+});
+
+describe("kaskada solo wet", () => {
+  it("mutes the dry arm regardless of MIX while the echo stays", () => {
+    const d = Math.round(0.2 * currentSr());
+    const { L } = render(
+      0.5,
+      makeParams({ ...NEUTRAL, time: 200, feedback: 0, mix: 0.25, soloWet: 1 }),
+      monoImpulse(0.75),
+    );
+    expect(peak(L, 0, d - 500)).toBe(0); // no dry passthrough before the echo
+    expect(peak(L, d - 500, d + 1500)).toBeGreaterThan(0.05); // echo present
+  });
+});
+
+describe("kaskada character 3-4", () => {
+  it("DRUM darkens repeats harder than digital and stays audible", () => {
+    const d = Math.round(0.15 * currentSr());
+    const w = Math.round(0.06 * currentSr());
+    const input = sineBurst(5000, w);
+    const dig = render(0.4, makeParams({ ...NEUTRAL, time: 150, feedback: 0.3, character: 0 }), input);
+    const drum = render(0.4, makeParams({ ...NEUTRAL, time: 150, feedback: 0.3, character: 3 }), input);
+    const digRms = rms(dig.L, d, d + w);
+    const drumRms = rms(drum.L, d, d + w);
+    expect(digRms).toBeGreaterThan(0.02);
+    expect(drumRms).toBeGreaterThan(0.005);
+    expect(drumRms).toBeLessThan(digRms * 0.8); // head loss at 5 kHz
+  });
+
+  it("DIFFUSE fills the gaps between repeats (smear builds through the loop)", () => {
+    const d = Math.round(0.15 * currentSr());
+    const input = monoImpulse(0.9);
+    const dig = render(0.6, makeParams({ ...NEUTRAL, time: 150, feedback: 0.6, character: 0 }), input);
+    const dif = render(0.6, makeParams({ ...NEUTRAL, time: 150, feedback: 0.6, character: 4 }), input);
+    let diff = 0;
+    for (let i = 0; i < dig.L.length; i++) diff = Math.max(diff, Math.abs(dig.L[i] - dif.L[i]));
+    expect(diff).toBeGreaterThan(0.05); // audibly different from digital
+    // Between two discrete echo peaks the diffuse network keeps energy
+    // flowing (allpass tail) where digital decays to near-silence.
+    const gapFrom = d + Math.round(0.02 * currentSr());
+    const gapTo = 2 * d - Math.round(0.02 * currentSr());
+    expect(rms(dif.L, gapFrom, gapTo)).toBeGreaterThan(rms(dig.L, gapFrom, gapTo) * 1.5);
   });
 });
 

@@ -69,11 +69,33 @@ Input (L,R) ─► Input Gain ─► DC-Block HP ─┬────────�
 
 ### 3.2 Character (feedback-loop colour)
 
-| Value | Name      | Behaviour                                                                                                             |
-| ----- | --------- | --------------------------------------------------------------------------------------------------------------------- |
-| 0     | `digital` | Clean loop — only the loop EQ acts.                                                                                   |
-| 1     | `tape`    | HF loss per repeat + subtle fixed wow (two slow per-channel LFOs at 0.7 Hz, ±0.5 ms ≈ ±2 cents — independent of MOD). |
-| 2     | `analog`  | Dark bucket-brigade; progressively darkening repeats.                                                                 |
+| Value | Name      | Behaviour                                                                                                                                                                          |
+| ----- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0     | `digital` | Clean loop — only the loop EQ acts.                                                                                                                                                |
+| 1     | `tape`    | HF loss per repeat + subtle fixed wow (two slow per-channel LFOs at 0.7 Hz, ±0.5 ms ≈ ±2 cents — independent of MOD).                                                              |
+| 2     | `analog`  | Dark bucket-brigade; progressively darkening repeats.                                                                                                                              |
+| 3     | `drum`    | Magnetic drum machines (Echorec-style): darker head loss (one-pole 2.5 kHz), constant gentle saturation, ±1.5 % amplitude wobble at the ~6.25 Hz rotation rate — the "motor" feel. |
+| 4     | `diffuse` | Diffusion network: two Schroeder allpasses per channel (5 + 53 samples, g 0.55) in the wet path — each pass through the loop smears the echo further; repeats blur into a wash.    |
+
+### 3.2.1 Reverse (segment-reversed echo)
+
+`REVERSE` sweeps each echo window **newest → oldest**: the read anchor
+freezes at the write head once per echo period and then walks backward
+through the buffer. Segment-reversed playback — the classic tape-flip
+artifact at the period wrap is part of the sound. Zero added latency, no
+PDC interaction (deviation from the reference design, which used a
+lookahead + latency reporting; documented in §8 history). Ping-pong,
+modulation and freeze-loop all compose with it.
+
+### 3.2.2 Freeze HOLD (tail capture)
+
+`FREEZE` is three-state: **OFF · LOOP · HOLD**. LOOP is the original
+0.99 write-back infinite repeat (self-limiting, decays). **HOLD** is a
+true sample-and-hold: entering it snapshots one echo period
+(`[writePos − delay, writePos)`) and while held NOTHING is written and
+the loop states freeze — the captured window loops pristine (raw buffer
+reads, no loop EQ/character/drive, no per-pass decay). Unmask still
+shapes the output branch. A post-hold impulse cannot reach the output.
 
 ### 3.3 Modulation (pitch drift)
 
@@ -282,17 +304,13 @@ backwards compatibility.
 
 ## 8. Phase 2 (future — not in this delivery)
 
-> **Delivered ahead of schedule: dual spectrum** (§5.1.1 — dry + delay
-> traces over one log axis with the live loop-EQ curve) and the
-> **unmask solver** (§3.7 — 32-band adaptive spectral ducking with the
-> red reduction curve in the panel). Drag-to-adjust EQ handles and the
-> reference's delta-listen monitor remain future work.
-
-- **Reverse mode** — backward read with lookahead (needs latency reporting)
-- **Freeze tail capture** — sample-and-hold on the delay buffer
-- **Solo wet / send-return mode** — descoped from Phase 1 (§1); needs a
-  16th param plus Inspector wiring
-- **Additional character modes** — magnetic drum, diffusion network
+> **Delivered ahead of schedule:** dual spectrum (§5.1.1), the unmask
+> solver (§3.7), REVERSE segment sweep (§3.2.1), FREEZE HOLD tail
+> capture (§3.2.2), SOLO W monitoring, and the drum + diffuse
+> character modes (§3.2). Remaining future work: drag-to-adjust EQ
+> handles in the display, the reference's delta-listen monitor, and a
+> true send-return routing mode (SOLO W covers the monitoring half;
+> the rack stays insert-only).
 
 ---
 

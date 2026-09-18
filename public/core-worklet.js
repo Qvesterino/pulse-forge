@@ -230,6 +230,31 @@
   registerProcessor("gate-processor", GateProcessor);
 
   // src/audio-worklets/limiter-processor.js
+  var TP_PHASES = 4;
+  var TP_TAPS = 16;
+  var TP_TABLE = (() => {
+    const prototype = new Float64Array(TP_PHASES * TP_TAPS);
+    const center = (prototype.length - 1) / 2;
+    for (let n = 0; n < prototype.length; n++) {
+      const x = (n - center) / TP_PHASES;
+      const sinc = x === 0 ? 1 : Math.sin(Math.PI * x) / (Math.PI * x);
+      const w = 0.42 - 0.5 * Math.cos(2 * Math.PI * n / (prototype.length - 1)) + 0.08 * Math.cos(4 * Math.PI * n / (prototype.length - 1));
+      prototype[n] = sinc * w;
+    }
+    const phases = [];
+    for (let p = 0; p < TP_PHASES; p++) {
+      const taps = new Float32Array(TP_TAPS);
+      let sum = 0;
+      for (let j = 0; j < TP_TAPS; j++) {
+        taps[j] = prototype[j * TP_PHASES + p];
+        sum += taps[j];
+      }
+      const inv = sum !== 0 ? 1 / sum : 1;
+      for (let j = 0; j < TP_TAPS; j++) taps[j] *= inv;
+      phases.push(taps);
+    }
+    return phases;
+  })();
   var MaxDeque = class {
     constructor(capacity) {
       this.idx = new Float64Array(capacity);
@@ -276,6 +301,11 @@
       this.step = 0;
       this.gainL = 1;
       this.gainR = 1;
+      this.histL = new Float32Array(TP_TAPS);
+      this.histR = new Float32Array(TP_TAPS);
+      this.histPosL = 0;
+      this.histPosR = 0;
+      this.tpOut = 0;
       this.postedGr = -1;
       this.grAccumulator = 0;
       this.grWindowStart = typeof globalThis.currentTime === "number" ? globalThis.currentTime : 0;
@@ -319,12 +349,18 @@
         this.delayR[w] = r;
         const absL = l < 0 ? -l : l;
         const absR = r < 0 ? -r : r;
-        const linked = absL > absR ? absL : absR;
+        this.histPosL = this.truePeakStep(this.histL, this.histPosL, l);
+        const tpL = this.tpOut;
+        this.histPosR = this.truePeakStep(this.histR, this.histPosR, r);
+        const tpR = this.tpOut;
+        const detL = absL > tpL ? absL : tpL;
+        const detR = absR > tpR ? absR : tpR;
+        const linked = detL > detR ? detL : detR;
         const windowStart = s - laSamples;
         this.linked.push(linked, s);
         if (perChannel) {
-          this.leftPeak.push(absL, s);
-          this.rightPeak.push(absR, s);
+          this.leftPeak.push(detL, s);
+          this.rightPeak.push(detR, s);
         }
         const peakLinked = this.linked.front(windowStart);
         let targetLinked = 1;
@@ -379,6 +415,31 @@
         }
       }
       return true;
+    }
+    /**
+     * One true-peak detector step: push the newest sample into the channel
+     * history, then run the 4 oversampled phases. Reports the loudest absolute
+     * value across phases through `this.tpOut` and returns the advanced write
+     * position (both allocation-free; the caller stores the position back and
+     * copies the peak before stepping the other channel).
+     */
+    truePeakStep(hist, pos, newest) {
+      let v = newest;
+      if (v < 1e-20 && v > -1e-20) v = 0;
+      hist[pos & TP_TAPS - 1] = v;
+      const nextPos = pos + 1 & 268435455;
+      let peak = 0;
+      for (let p = 0; p < TP_PHASES; p++) {
+        const taps = TP_TABLE[p];
+        let acc = 0;
+        for (let j = 0; j < TP_TAPS; j++) {
+          acc += taps[j] * hist[nextPos - TP_TAPS + j & TP_TAPS - 1];
+        }
+        if (acc < 0) acc = -acc;
+        if (acc > peak) peak = acc;
+      }
+      this.tpOut = peak;
+      return nextPos;
     }
     smoothGain(current, target, sr, releaseSec, attackCoef) {
       if (target < current) return target + (current - target) * (1 - attackCoef);
@@ -1662,8 +1723,8 @@
         const delayRSamples = baseSamples + depthSamples * (0.5 + 0.5 * lfoR);
         const readL = this.writeIdx - delayLSamples;
         const readR = this.writeIdx - delayRSamples;
-        const wetL = this.readLinear(this.bufL, readL);
-        const wetR = this.readLinear(this.bufR, readR);
+        const wetL = this.readCubic(this.bufL, readL);
+        const wetR = this.readCubic(this.bufR, readR);
         this.bufL[this.writeIdx] = l + wetL * feedback;
         this.bufR[this.writeIdx] = r + wetR * feedback;
         this.writeIdx = this.writeIdx + 1 & FLANGER_MASK;
@@ -1674,12 +1735,22 @@
       if (Math.abs(this.bufR[this.writeIdx]) < 1e-20) this.bufR[this.writeIdx] = 0;
       return true;
     }
-    readLinear(buf, position) {
-      const idx0 = Math.floor(position);
-      const frac = position - idx0;
-      const i0 = idx0 & FLANGER_MASK;
-      const i1 = idx0 + 1 & FLANGER_MASK;
-      return buf[i0] * (1 - frac) + buf[i1] * frac;
+    readCubic(buf, position) {
+      const idx = Math.floor(position);
+      const frac = position - idx;
+      const i0 = idx - 1 & FLANGER_MASK;
+      const i1 = idx & FLANGER_MASK;
+      const i2 = idx + 1 & FLANGER_MASK;
+      const i3 = idx + 2 & FLANGER_MASK;
+      const y0 = buf[i0];
+      const y1 = buf[i1];
+      const y2 = buf[i2];
+      const y3 = buf[i3];
+      const c0 = y1;
+      const c1 = 0.5 * (y2 - y0);
+      const c2 = y0 - 2.5 * y1 + 2 * y2 - 0.5 * y3;
+      const c3 = 0.5 * (y3 - y0) + 1.5 * (y1 - y2);
+      return ((c3 * frac + c2) * frac + c1) * frac + c0;
     }
   };
   registerProcessor("flanger-processor", FlangerProcessor);
@@ -2010,8 +2081,8 @@
         const l = inL ? inL[i] : 0;
         const r = inR ? inR[i] : l;
         const readPos = this.writeIdx - delaySamples;
-        const delayedL = this.readLinear(this.bufL, readPos);
-        const delayedR = this.readLinear(this.bufR, readPos);
+        const delayedL = this.readCubic(this.bufL, readPos);
+        const delayedR = this.readCubic(this.bufR, readPos);
         this.dampL += dampAlpha * (delayedL - this.dampL);
         this.dampR += dampAlpha * (delayedR - this.dampR);
         if (Math.abs(this.dampL) < 1e-20) this.dampL = 0;
@@ -2030,12 +2101,22 @@
       }
       return true;
     }
-    readLinear(buf, position) {
-      const idx0 = Math.floor(position);
-      const frac = position - idx0;
-      const i0 = idx0 & COMB_MASK;
-      const i1 = idx0 + 1 & COMB_MASK;
-      return buf[i0] * (1 - frac) + buf[i1] * frac;
+    readCubic(buf, position) {
+      const idx = Math.floor(position);
+      const frac = position - idx;
+      const i0 = idx - 1 & COMB_MASK;
+      const i1 = idx & COMB_MASK;
+      const i2 = idx + 1 & COMB_MASK;
+      const i3 = idx + 2 & COMB_MASK;
+      const y0 = buf[i0];
+      const y1 = buf[i1];
+      const y2 = buf[i2];
+      const y3 = buf[i3];
+      const c0 = y1;
+      const c1 = 0.5 * (y2 - y0);
+      const c2 = y0 - 2.5 * y1 + 2 * y2 - 0.5 * y3;
+      const c3 = 0.5 * (y3 - y0) + 1.5 * (y1 - y2);
+      return ((c3 * frac + c2) * frac + c1) * frac + c0;
     }
   };
   registerProcessor("comb-processor", CombProcessor);
@@ -2235,8 +2316,8 @@
           if (duckGain < 0) duckGain = 0;
         }
         const readPos = this.writeIdx - delaySamples;
-        const delayedL = this.readLinear(this.bufL, readPos);
-        const delayedR = this.readLinear(this.bufR, readPos);
+        const delayedL = this.readCubic(this.bufL, readPos);
+        const delayedR = this.readCubic(this.bufR, readPos);
         this.dampL += toneAlpha * (delayedL - this.dampL);
         this.dampR += toneAlpha * (delayedR - this.dampR);
         if (Math.abs(this.dampL) < 1e-20) this.dampL = 0;
@@ -2257,12 +2338,22 @@
       }
       return true;
     }
-    readLinear(buf, position) {
-      const idx0 = Math.floor(position);
-      const frac = position - idx0;
-      const i0 = idx0 & DUCK_MASK;
-      const i1 = idx0 + 1 & DUCK_MASK;
-      return buf[i0] * (1 - frac) + buf[i1] * frac;
+    readCubic(buf, position) {
+      const idx = Math.floor(position);
+      const frac = position - idx;
+      const i0 = idx - 1 & DUCK_MASK;
+      const i1 = idx & DUCK_MASK;
+      const i2 = idx + 1 & DUCK_MASK;
+      const i3 = idx + 2 & DUCK_MASK;
+      const y0 = buf[i0];
+      const y1 = buf[i1];
+      const y2 = buf[i2];
+      const y3 = buf[i3];
+      const c0 = y1;
+      const c1 = 0.5 * (y2 - y0);
+      const c2 = y0 - 2.5 * y1 + 2 * y2 - 0.5 * y3;
+      const c3 = 0.5 * (y3 - y0) + 1.5 * (y1 - y2);
+      return ((c3 * frac + c2) * frac + c1) * frac + c0;
     }
   };
   registerProcessor("ducking-delay-processor", DuckingDelayProcessor);
@@ -2488,6 +2579,7 @@
         { name: "sync", defaultValue: 0, minValue: 0, maxValue: 5, automationRate: "k-rate" },
         { name: "bpm", defaultValue: 120, minValue: 40, maxValue: 240, automationRate: "k-rate" },
         { name: "pingPong", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" },
+        { name: "reverse", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" },
         { name: "feedback", defaultValue: 0.35, minValue: 0, maxValue: 0.95, automationRate: "k-rate" },
         { name: "toneLp", defaultValue: 4500, minValue: 500, maxValue: 12e3, automationRate: "k-rate" },
         { name: "toneHp", defaultValue: 150, minValue: 20, maxValue: 800, automationRate: "k-rate" },
@@ -2495,14 +2587,15 @@
         { name: "modRate", defaultValue: 0.6, minValue: 0.1, maxValue: 8, automationRate: "k-rate" },
         { name: "modDepth", defaultValue: 0.15, minValue: 0, maxValue: 1, automationRate: "k-rate" },
         { name: "spread", defaultValue: 0.8, minValue: 0, maxValue: 1, automationRate: "k-rate" },
-        { name: "freeze", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" },
+        { name: "freeze", defaultValue: 0, minValue: 0, maxValue: 2, automationRate: "k-rate" },
         { name: "unmaskOn", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" },
         { name: "unmask", defaultValue: 0.6, minValue: 0, maxValue: 1, automationRate: "k-rate" },
         { name: "unmaskSens", defaultValue: 0.5, minValue: 0, maxValue: 1, automationRate: "k-rate" },
         { name: "unmaskAtk", defaultValue: 5, minValue: 0.1, maxValue: 100, automationRate: "k-rate" },
         { name: "unmaskRel", defaultValue: 250, minValue: 10, maxValue: 2e3, automationRate: "k-rate" },
-        { name: "character", defaultValue: 1, minValue: 0, maxValue: 2, automationRate: "k-rate" },
+        { name: "character", defaultValue: 1, minValue: 0, maxValue: 4, automationRate: "k-rate" },
         { name: "mix", defaultValue: 0.25, minValue: 0, maxValue: 1, automationRate: "k-rate" },
+        { name: "soloWet", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" },
         { name: "level", defaultValue: -6, minValue: -24, maxValue: 6, automationRate: "k-rate" }
       ];
     }
@@ -2542,6 +2635,25 @@
       this.lfoPhase = 0;
       this.wobPhaseL = 0;
       this.wobPhaseR = Math.PI / 3;
+      this.revPhase = 0;
+      this.revAnchor = 0;
+      this.holdActive = false;
+      this.holdStart = 0;
+      this.holdLen = 64;
+      this.holdPhase = 0;
+      this._lastFreezeMode = -1;
+      this.drumLpCoef = 1 - Math.exp(-2 * Math.PI * 2500 / this.sr);
+      this.drumRateInc = TWO_PI * 6.25 / this.sr;
+      this.drumPhaseL = 0;
+      this.drumPhaseR = Math.PI / 3;
+      this.diff1L = new Float32Array(5);
+      this.diff1R = new Float32Array(5);
+      this.diff2L = new Float32Array(53);
+      this.diff2R = new Float32Array(53);
+      this.dfp1L = 0;
+      this.dfp1R = 0;
+      this.dfp2L = 0;
+      this.dfp2R = 0;
       this.dcxL = 0;
       this.dcyL = 0;
       this.dcxR = 0;
@@ -2940,9 +3052,18 @@
       this.fbGain = params.feedback[0];
       this.drive = params.drive[0];
       this.spread = params.spread[0];
-      this.freeze = params.freeze[0] > 0.5;
+      const freezeMode = Math.round(params.freeze[0]);
+      if (freezeMode === 2 && this._lastFreezeMode !== 2) {
+        this.holdLen = Math.min(this.bufSize >> 1, Math.max(64, Math.round(this.delaySamples)));
+        this.holdStart = this.writePos;
+        this.holdPhase = 0;
+      }
+      this._lastFreezeMode = freezeMode;
+      this.holdActive = freezeMode === 2;
+      this.freeze = freezeMode === 1;
       this.character = Math.round(params.character[0]);
       this.mix = params.mix[0];
+      this.soloWet = params.soloWet[0] > 0.5;
       this.outGain = Math.pow(10, params.level[0] / 20);
       this.modDepthMs = params.modDepth[0] * this.delaySamples * 0.25;
       this.umPower = params.unmaskOn[0] > 0.5;
@@ -2960,12 +3081,36 @@
       const modDepthMs = this.modDepthMs;
       const modRateInc = TWO_PI * params.modRate[0] / this.sr;
       const character = this.character;
+      const reverse = params.reverse[0] > 0.5;
+      const dryGain = this.soloWet ? 0 : 1 - mix;
+      const drumRateInc = this.drumRateInc;
       const wobbleAmp = character === 1 ? 5e-4 * this.sr : 0;
       const wobRateInc = TWO_PI * 0.7 / this.sr;
       const L = this.bufL, R = this.bufR;
       const size = this.bufSize;
       for (let i = 0; i < outL.length; i++) {
         const writeIdx = this.writePos;
+        const inL = hasInput ? input[0][i] : 0;
+        const inR = hasInput && input[1] ? input[1][i] : inL;
+        if (this.holdActive) {
+          const hp = this.holdPhase;
+          this.holdPhase = hp + 1 >= this.holdLen ? 0 : hp + 1;
+          const rpos = (this.holdStart - this.holdLen + hp + size) % size;
+          const hL = L[rpos];
+          const hR = R[rpos];
+          let hoL = hL + spread * 0.5 * (hR - hL);
+          let hoR = hR + spread * 0.5 * (hL - hR);
+          if (this.umPower) {
+            this.umProcessSample(inL, inR, hoL, hoR);
+            hoL = this.umOutL;
+            hoR = this.umOutR;
+          } else {
+            this.umPowerOff();
+          }
+          outL[i] = inL * dryGain + hoL * mix * this.outGain;
+          outR[i] = inR * dryGain + hoR * mix * this.outGain;
+          continue;
+        }
         const lfo = Math.sin(this.lfoPhase);
         this.lfoPhase += modRateInc;
         if (this.lfoPhase > TWO_PI) this.lfoPhase -= TWO_PI;
@@ -2980,8 +3125,21 @@
           wobL = Math.sin(this.wobPhaseL) * wobbleAmp;
           wobR = Math.sin(this.wobPhaseR) * wobbleAmp;
         }
-        let wetL = this.readBuffer(L, writeIdx - delayPos - wobL);
-        let wetR = this.readBuffer(R, writeIdx - delayPos - wobR);
+        let wetL;
+        let wetR;
+        if (reverse) {
+          this.revPhase += 1;
+          if (this.revPhase >= delayPos) {
+            this.revPhase = 0;
+            this.revAnchor = writeIdx - 1;
+          }
+          const rpos = this.revAnchor - this.revPhase;
+          wetL = this.readBuffer(L, rpos - wobL);
+          wetR = this.readBuffer(R, rpos - wobR);
+        } else {
+          wetL = this.readBuffer(L, writeIdx - delayPos - wobL);
+          wetR = this.readBuffer(R, writeIdx - delayPos - wobR);
+        }
         let dc = wetL - this.dcxL + this.dcCoef * this.dcyL;
         this.dcxL = wetL;
         this.dcyL = dc;
@@ -3000,6 +3158,36 @@
           this.charRpz += this.charLpCoef * (wetR - this.charRpz);
           wetL = this.charLpz * 0.9;
           wetR = this.charRpz * 0.9;
+        } else if (character === 3) {
+          this.charLpz += this.drumLpCoef * (wetL - this.charLpz);
+          this.charRpz += this.drumLpCoef * (wetR - this.charRpz);
+          this.drumPhaseL += drumRateInc;
+          this.drumPhaseR += drumRateInc;
+          if (this.drumPhaseL > TWO_PI) this.drumPhaseL -= TWO_PI;
+          if (this.drumPhaseR > TWO_PI) this.drumPhaseR -= TWO_PI;
+          wetL = Math.tanh(this.charLpz * 1.3) / 1.3 * (1 - 0.015 + 0.015 * Math.sin(this.drumPhaseL));
+          wetR = Math.tanh(this.charRpz * 1.3) / 1.3 * (1 - 0.015 + 0.015 * Math.sin(this.drumPhaseR));
+        } else if (character === 4) {
+          let p = this.dfp1L;
+          let y = this.diff1L[p];
+          this.diff1L[p] = wetL + 0.55 * y;
+          wetL = y - 0.55 * wetL;
+          this.dfp1L = (p + 1) % 5;
+          p = this.dfp1R;
+          y = this.diff1R[p];
+          this.diff1R[p] = wetR + 0.55 * y;
+          wetR = y - 0.55 * wetR;
+          this.dfp1R = (p + 1) % 5;
+          p = this.dfp2L;
+          y = this.diff2L[p];
+          this.diff2L[p] = wetL + 0.55 * y;
+          wetL = y - 0.55 * wetL;
+          this.dfp2L = (p + 1) % 53;
+          p = this.dfp2R;
+          y = this.diff2R[p];
+          this.diff2R[p] = wetR + 0.55 * y;
+          wetR = y - 0.55 * wetR;
+          this.dfp2R = (p + 1) % 53;
         }
         wetL = this.applyBiquad(this.lp1L, this.lpL1c, wetL);
         wetL = this.applyBiquad(this.lp2L, this.lpL1c, wetL);
@@ -3015,8 +3203,6 @@
         }
         const fbL = pingPong ? wetR : wetL;
         const fbR = pingPong ? wetL : wetR;
-        const inL = hasInput ? input[0][i] : 0;
-        const inR = hasInput && input[1] ? input[1][i] : inL;
         if (this.freeze) {
           L[writeIdx] = fbL * 0.99;
           R[writeIdx] = fbR * 0.99;
@@ -3033,8 +3219,8 @@
         } else {
           this.umPowerOff();
         }
-        outL[i] = inL * (1 - mix) + outWL * mix * this.outGain;
-        outR[i] = inR * (1 - mix) + outWR * mix * this.outGain;
+        outL[i] = inL * dryGain + outWL * mix * this.outGain;
+        outR[i] = inR * dryGain + outWR * mix * this.outGain;
         this.dryWin[this.anPos] = (inL + inR) * 0.5;
         this.wetWin[this.anPos] = (outWL + outWR) * 0.5;
         this.anPos = this.anPos + 1 & FFT_SIZE - 1;

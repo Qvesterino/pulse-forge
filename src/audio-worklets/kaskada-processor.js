@@ -96,6 +96,7 @@ class KaskadaProcessor extends AudioWorkletProcessor {
       { name: "sync", defaultValue: 0, minValue: 0, maxValue: 5, automationRate: "k-rate" },
       { name: "bpm", defaultValue: 120, minValue: 40, maxValue: 240, automationRate: "k-rate" },
       { name: "pingPong", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" },
+      { name: "reverse", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" },
       { name: "feedback", defaultValue: 0.35, minValue: 0, maxValue: 0.95, automationRate: "k-rate" },
       { name: "toneLp", defaultValue: 4500, minValue: 500, maxValue: 12000, automationRate: "k-rate" },
       { name: "toneHp", defaultValue: 150, minValue: 20, maxValue: 800, automationRate: "k-rate" },
@@ -103,14 +104,15 @@ class KaskadaProcessor extends AudioWorkletProcessor {
       { name: "modRate", defaultValue: 0.6, minValue: 0.1, maxValue: 8, automationRate: "k-rate" },
       { name: "modDepth", defaultValue: 0.15, minValue: 0, maxValue: 1, automationRate: "k-rate" },
       { name: "spread", defaultValue: 0.8, minValue: 0, maxValue: 1, automationRate: "k-rate" },
-      { name: "freeze", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" },
+      { name: "freeze", defaultValue: 0, minValue: 0, maxValue: 2, automationRate: "k-rate" },
       { name: "unmaskOn", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" },
       { name: "unmask", defaultValue: 0.6, minValue: 0, maxValue: 1, automationRate: "k-rate" },
       { name: "unmaskSens", defaultValue: 0.5, minValue: 0, maxValue: 1, automationRate: "k-rate" },
       { name: "unmaskAtk", defaultValue: 5, minValue: 0.1, maxValue: 100, automationRate: "k-rate" },
       { name: "unmaskRel", defaultValue: 250, minValue: 10, maxValue: 2000, automationRate: "k-rate" },
-      { name: "character", defaultValue: 1, minValue: 0, maxValue: 2, automationRate: "k-rate" },
+      { name: "character", defaultValue: 1, minValue: 0, maxValue: 4, automationRate: "k-rate" },
       { name: "mix", defaultValue: 0.25, minValue: 0, maxValue: 1, automationRate: "k-rate" },
+      { name: "soloWet", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" },
       { name: "level", defaultValue: -6, minValue: -24, maxValue: 6, automationRate: "k-rate" },
     ];
   }
@@ -159,6 +161,41 @@ class KaskadaProcessor extends AudioWorkletProcessor {
     this.lfoPhase = 0;
     this.wobPhaseL = 0;
     this.wobPhaseR = Math.PI / 3;
+
+    // REVERSE mode: per-sample sweep phase over the echo window (newest
+    // sample first, wrapping at the modulated delay time). The anchor is
+    // the write head position captured at each period wrap — the read
+    // then walks BACKWARD through the buffer.
+    this.revPhase = 0;
+    this.revAnchor = 0;
+
+    // FREEZE HOLD (freeze 2): sample-and-hold capture of one echo period.
+    // holdStart/holdLen delimit the captured window [start-len, start);
+    // while active nothing is written and the loop states stay frozen.
+    this.holdActive = false;
+    this.holdStart = 0;
+    this.holdLen = 64;
+    this.holdPhase = 0;
+    this._lastFreezeMode = -1;
+
+    // Character 3 — magnetic drum: darker head loss, constant gentle
+    // saturation, amplitude wobble at the rotation rate (~6.25 Hz).
+    this.drumLpCoef = 1 - Math.exp((-2 * Math.PI * 2500) / this.sr);
+    this.drumRateInc = (TWO_PI * 6.25) / this.sr;
+    this.drumPhaseL = 0;
+    this.drumPhaseR = Math.PI / 3;
+
+    // Character 4 — diffusion network: two Schroeder allpasses per channel
+    // (5 + 53 samples, g 0.55). Each pass through the feedback loop
+    // smears the echo further — repeats blur into a wash.
+    this.diff1L = new Float32Array(5);
+    this.diff1R = new Float32Array(5);
+    this.diff2L = new Float32Array(53);
+    this.diff2R = new Float32Array(53);
+    this.dfp1L = 0;
+    this.dfp1R = 0;
+    this.dfp2L = 0;
+    this.dfp2R = 0;
 
     // One-pole DC blocker on the wet path (~5 Hz). The loop HP already
     // nulls DC; this is defence in depth so freeze's write-back loop can
@@ -617,9 +654,21 @@ class KaskadaProcessor extends AudioWorkletProcessor {
     this.fbGain = params.feedback[0];
     this.drive = params.drive[0];
     this.spread = params.spread[0];
-    this.freeze = params.freeze[0] > 0.5;
+    // FREEZE modes: 0 off · 1 loop (write-back at 0.99) · 2 hold (sample-
+    // and-hold of one captured echo period). Entering 2 snapshots the
+    // current tail window; while held, nothing is written at all.
+    const freezeMode = Math.round(params.freeze[0]);
+    if (freezeMode === 2 && this._lastFreezeMode !== 2) {
+      this.holdLen = Math.min(this.bufSize >> 1, Math.max(64, Math.round(this.delaySamples)));
+      this.holdStart = this.writePos;
+      this.holdPhase = 0;
+    }
+    this._lastFreezeMode = freezeMode;
+    this.holdActive = freezeMode === 2;
+    this.freeze = freezeMode === 1;
     this.character = Math.round(params.character[0]);
     this.mix = params.mix[0];
+    this.soloWet = params.soloWet[0] > 0.5;
     this.outGain = Math.pow(10, params.level[0] / 20);
     this.modDepthMs = params.modDepth[0] * this.delaySamples * 0.25;
 
@@ -640,6 +689,9 @@ class KaskadaProcessor extends AudioWorkletProcessor {
     const modDepthMs = this.modDepthMs;
     const modRateInc = (TWO_PI * params.modRate[0]) / this.sr;
     const character = this.character;
+    const reverse = params.reverse[0] > 0.5;
+    const dryGain = this.soloWet ? 0 : 1 - mix;
+    const drumRateInc = this.drumRateInc;
 
     // Tape wow (character 1): fixed slow LFOs, ±0.5 ms ≈ ±2 cents — subtle
     // pitch shimmer per repeat, independent of the MOD knob.
@@ -652,6 +704,31 @@ class KaskadaProcessor extends AudioWorkletProcessor {
 
     for (let i = 0; i < outL.length; i++) {
       const writeIdx = this.writePos;
+      const inL = hasInput ? input[0][i] : 0;
+      const inR = hasInput && input[1] ? input[1][i] : inL;
+
+      // ── FREEZE HOLD: loop the captured window, pristine (sample-and-hold)
+      // Raw buffer reads — no loop EQ/character/drive, no DC block, no
+      // write-back, loop states frozen. Unmask still shapes the output.
+      if (this.holdActive) {
+        const hp = this.holdPhase;
+        this.holdPhase = hp + 1 >= this.holdLen ? 0 : hp + 1;
+        const rpos = (this.holdStart - this.holdLen + hp + size) % size;
+        const hL = L[rpos];
+        const hR = R[rpos];
+        let hoL = hL + spread * 0.5 * (hR - hL);
+        let hoR = hR + spread * 0.5 * (hL - hR);
+        if (this.umPower) {
+          this.umProcessSample(inL, inR, hoL, hoR);
+          hoL = this.umOutL;
+          hoR = this.umOutR;
+        } else {
+          this.umPowerOff();
+        }
+        outL[i] = inL * dryGain + hoL * mix * this.outGain;
+        outR[i] = inR * dryGain + hoR * mix * this.outGain;
+        continue;
+      }
 
       // LFO modulated delay time (pitch drift, click-free fractional read)
       const lfo = Math.sin(this.lfoPhase);
@@ -671,9 +748,25 @@ class KaskadaProcessor extends AudioWorkletProcessor {
         wobR = Math.sin(this.wobPhaseR) * wobbleAmp;
       }
 
-      // Fractional reads (cubic hermite)
-      let wetL = this.readBuffer(L, writeIdx - delayPos - wobL);
-      let wetR = this.readBuffer(R, writeIdx - delayPos - wobR);
+      // Fractional reads. REVERSE sweeps each echo window newest→oldest
+      // (segment reverse — the classic tape-flip artifact at the wrap is
+      // part of the sound): the anchor freezes the head position at each
+      // period wrap, then the read walks BACKWARD through the buffer.
+      let wetL;
+      let wetR;
+      if (reverse) {
+        this.revPhase += 1;
+        if (this.revPhase >= delayPos) {
+          this.revPhase = 0;
+          this.revAnchor = writeIdx - 1;
+        }
+        const rpos = this.revAnchor - this.revPhase;
+        wetL = this.readBuffer(L, rpos - wobL);
+        wetR = this.readBuffer(R, rpos - wobR);
+      } else {
+        wetL = this.readBuffer(L, writeIdx - delayPos - wobL);
+        wetR = this.readBuffer(R, writeIdx - delayPos - wobR);
+      }
 
       // One-pole DC block
       let dc = wetL - this.dcxL + this.dcCoef * this.dcyL;
@@ -698,6 +791,42 @@ class KaskadaProcessor extends AudioWorkletProcessor {
         this.charRpz += this.charLpCoef * (wetR - this.charRpz);
         wetL = this.charLpz * 0.9;
         wetR = this.charRpz * 0.9;
+      } else if (character === 3) {
+        // Magnetic drum (tape-head-drum machines): darker head loss,
+        // constant gentle saturation, ±1.5 % amplitude wobble at the
+        // rotation rate (~6.25 Hz) — the "motor" feel.
+        this.charLpz += this.drumLpCoef * (wetL - this.charLpz);
+        this.charRpz += this.drumLpCoef * (wetR - this.charRpz);
+        this.drumPhaseL += drumRateInc;
+        this.drumPhaseR += drumRateInc;
+        if (this.drumPhaseL > TWO_PI) this.drumPhaseL -= TWO_PI;
+        if (this.drumPhaseR > TWO_PI) this.drumPhaseR -= TWO_PI;
+        wetL = (Math.tanh(this.charLpz * 1.3) / 1.3) * (1 - 0.015 + 0.015 * Math.sin(this.drumPhaseL));
+        wetR = (Math.tanh(this.charRpz * 1.3) / 1.3) * (1 - 0.015 + 0.015 * Math.sin(this.drumPhaseR));
+      } else if (character === 4) {
+        // Diffusion network: two Schroeder allpasses (5 + 53 samples,
+        // g 0.55) smear each pass through the loop — repeats blur into
+        // a wash while the dry path stays untouched.
+        let p = this.dfp1L;
+        let y = this.diff1L[p];
+        this.diff1L[p] = wetL + 0.55 * y;
+        wetL = y - 0.55 * wetL;
+        this.dfp1L = (p + 1) % 5;
+        p = this.dfp1R;
+        y = this.diff1R[p];
+        this.diff1R[p] = wetR + 0.55 * y;
+        wetR = y - 0.55 * wetR;
+        this.dfp1R = (p + 1) % 5;
+        p = this.dfp2L;
+        y = this.diff2L[p];
+        this.diff2L[p] = wetL + 0.55 * y;
+        wetL = y - 0.55 * wetL;
+        this.dfp2L = (p + 1) % 53;
+        p = this.dfp2R;
+        y = this.diff2R[p];
+        this.diff2R[p] = wetR + 0.55 * y;
+        wetR = y - 0.55 * wetR;
+        this.dfp2R = (p + 1) % 53;
       }
 
       // Loop EQ: LP 24 dB/oct then HP 24 dB/oct (per channel)
@@ -721,11 +850,9 @@ class KaskadaProcessor extends AudioWorkletProcessor {
       const fbL = pingPong ? wetR : wetL;
       const fbR = pingPong ? wetL : wetR;
 
-      // Write to ring buffer: input + feedback. Freeze seals the input out
-      // and loops the processed wet back at 0.99 (self-limiting infinite
+      // Write to ring buffer: input + feedback. FREEZE LOOP seals the input
+      // out and loops the processed wet back at 0.99 (self-limiting infinite
       // repeat — every loop element is contractive, so it decays, not grows).
-      const inL = hasInput ? input[0][i] : 0;
-      const inR = hasInput && input[1] ? input[1][i] : inL;
       if (this.freeze) {
         L[writeIdx] = fbL * 0.99;
         R[writeIdx] = fbR * 0.99;
@@ -748,9 +875,9 @@ class KaskadaProcessor extends AudioWorkletProcessor {
         this.umPowerOff();
       }
 
-      // Output: dry + wet (mix)
-      outL[i] = inL * (1 - mix) + outWL * mix * this.outGain;
-      outR[i] = inR * (1 - mix) + outWR * mix * this.outGain;
+      // Output: dry + wet (mix); SOLO W monitors the wet arm only
+      outL[i] = inL * dryGain + outWL * mix * this.outGain;
+      outR[i] = inR * dryGain + outWR * mix * this.outGain;
 
       // Spectrum taps (dry = mono input, wet = delay bus pre-mix/pre-level)
       this.dryWin[this.anPos] = (inL + inR) * 0.5;
