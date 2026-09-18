@@ -520,8 +520,9 @@ export function RackStrip({
             onPointerLeave={() => padUp(holdKey)}
             onPointerCancel={() => padUp(holdKey)}
             onKeyDown={(event) => {
-              // Keyboard-activated button (Enter/Space): single hit, no hold.
-              if (event.key === "Enter" || event.key === " ") {
+              // Keyboard-activated button (Enter): single hit, no hold.
+              // Space stays free for the global play/pause shortcut.
+              if (event.key === "Enter") {
                 event.preventDefault();
                 if (!sixteenLevels) onSelectPad(pad.id);
                 triggerPad(sixteenLevels ? selectedPadId || pad.id : pad.id);

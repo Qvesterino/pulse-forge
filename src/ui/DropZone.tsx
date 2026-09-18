@@ -186,7 +186,8 @@ export function DropZone({ onImport, onBatchImport, className }: DropZoneProps) 
       tabIndex={0}
       aria-label="Drop audio files here or click to browse"
       onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") handleClick();
+        // Enter only — Space stays free for the global play/pause shortcut.
+        if (e.key === "Enter") handleClick();
       }}
     >
       <input

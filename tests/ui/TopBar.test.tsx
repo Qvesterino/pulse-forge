@@ -5,6 +5,8 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TopBar } from "../../src/ui/TopBar";
 import { renderWithContext } from "../helpers";
+import { createProjectFromTemplate } from "../../src/project-model/templates";
+import { BAR_TICKS } from "../../src/project-model/types";
 
 function topBarProps(overrides?: Partial<React.ComponentProps<typeof TopBar>>) {
   return {
@@ -61,6 +63,56 @@ describe("TopBar", () => {
     renderWithContext(<TopBar {...topBarProps({ onSetPlayMode })} />);
     await user.click(screen.getByText("PATTERN"));
     expect(onSetPlayMode).toHaveBeenCalledWith("song");
+  });
+
+  it("warns when switching to SONG with the playhead past the last clip", async () => {
+    const user = userEvent.setup();
+    const onSetPlayMode = vi.fn();
+    const services = mockServices();
+    (services.transport as unknown as { position: number }).position = 9 * BAR_TICKS;
+    renderWithContext(<TopBar {...topBarProps({ onSetPlayMode })} />, { services });
+    await user.click(screen.getByText("PATTERN"));
+    // The switch still happens — the guard warns, it does not block.
+    expect(onSetPlayMode).toHaveBeenCalledWith("song");
+    expect(screen.getByText(/NO CLIP AT BAR 10/)).toBeInTheDocument();
+  });
+
+  it("offers REWIND from the guard and seeks the transport to bar 1", async () => {
+    const user = userEvent.setup();
+    const services = mockServices();
+    (services.transport as unknown as { position: number }).position = 9 * BAR_TICKS;
+    renderWithContext(<TopBar {...topBarProps()} />, { services });
+    await user.click(screen.getByText("PATTERN"));
+    await user.click(screen.getByText("REWIND"));
+    expect(services.transport.seek).toHaveBeenCalledWith(0);
+    expect(screen.queryByText(/NO CLIP AT BAR/)).not.toBeInTheDocument();
+  });
+
+  it("shows no guard when a clip sits under the playhead", async () => {
+    const user = userEvent.setup();
+    const services = mockServices();
+    (services.transport as unknown as { position: number }).position = 2 * BAR_TICKS;
+    renderWithContext(<TopBar {...topBarProps()} />, { services });
+    await user.click(screen.getByText("PATTERN"));
+    expect(screen.queryByText(/NO CLIP AT BAR/)).not.toBeInTheDocument();
+  });
+
+  it("warns about an empty arrangement when switching to SONG", async () => {
+    const user = userEvent.setup();
+    const doc = { ...createProjectFromTemplate("house"), arrangement: { clips: [] } };
+    const services = mockServices(doc);
+    renderWithContext(<TopBar {...topBarProps()} />, { services });
+    await user.click(screen.getByText("PATTERN"));
+    expect(screen.getByText(/ARRANGEMENT EMPTY/)).toBeInTheDocument();
+  });
+
+  it("shows no guard when leaving SONG mode", async () => {
+    const user = userEvent.setup();
+    const services = mockServices();
+    (services.transport as unknown as { position: number }).position = 9 * BAR_TICKS;
+    renderWithContext(<TopBar {...topBarProps({ playMode: "song" })} />, { services });
+    await user.click(screen.getByText("SONG"));
+    expect(screen.queryByText(/NO CLIP AT BAR/)).not.toBeInTheDocument();
   });
 
   it("calls playback.playPause when play button clicked", async () => {

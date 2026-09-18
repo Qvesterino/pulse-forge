@@ -106,6 +106,12 @@ export function TopBar({
   const overflowMenuRef = useRef<HTMLDivElement>(null);
   const [topbarWidth, setTopbarWidth] = useState(1800);
   const [overflowOpen, setOverflowOpen] = useState(false);
+  // Song-mode guard: pattern mode loops the active pattern, but SONG plays the
+  // arrangement — audio only sounds where a clip sits under the playhead.
+  // Switching mid-play from a position past the last clip looks like broken
+  // audio (transport keeps running in silence), so warn instead of blocking.
+  const [modeHint, setModeHint] = useState<{ text: string; offerRewind: boolean } | null>(null);
+  const modeHintTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     const element = topbarRef.current;
@@ -171,6 +177,61 @@ export function TopBar({
     services.transport.setMetronome(next);
     setMetronome(next);
   };
+
+  const clearModeHint = () => {
+    if (modeHintTimerRef.current !== null) {
+      clearTimeout(modeHintTimerRef.current);
+      modeHintTimerRef.current = null;
+    }
+    setModeHint(null);
+  };
+
+  const showModeHint = (hint: { text: string; offerRewind: boolean }) => {
+    if (modeHintTimerRef.current !== null) clearTimeout(modeHintTimerRef.current);
+    modeHintTimerRef.current = window.setTimeout(() => {
+      modeHintTimerRef.current = null;
+      setModeHint(null);
+    }, 6000);
+    setModeHint(hint);
+  };
+
+  const togglePlayMode = () => {
+    if (playMode === "pattern") {
+      // barAtTick is 1-indexed, clips are 0-indexed bars.
+      const playheadBar = barAtTick(Math.max(0, services.transport.position), doc);
+      const barIndex = playheadBar - 1;
+      const clips = doc.arrangement.clips;
+      if (clips.length === 0) {
+        showModeHint({
+          text: "ARRANGEMENT EMPTY — drag scenes into the timeline or hit AUTO ARRANGE",
+          offerRewind: false,
+        });
+      } else if (!clips.some((c) => barIndex >= c.startBar && barIndex < c.startBar + c.lengthBars)) {
+        showModeHint({
+          text: `NO CLIP AT BAR ${playheadBar} — song mode only plays where a clip sits`,
+          offerRewind: true,
+        });
+      } else {
+        clearModeHint();
+      }
+    } else {
+      clearModeHint();
+    }
+    onSetPlayMode(playMode === "pattern" ? "song" : "pattern");
+  };
+
+  // Mode can also change from outside this component (shortcuts, palette) —
+  // retire the hint whenever we are not entering/holding song mode.
+  useEffect(() => {
+    if (playMode !== "song") clearModeHint();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playMode]);
+  useEffect(
+    () => () => {
+      if (modeHintTimerRef.current !== null) clearTimeout(modeHintTimerRef.current);
+    },
+    [],
+  );
 
   /**
    * Tap tempo: average the last N taps (up to 5), 2s memory. Two taps are
@@ -487,11 +548,29 @@ export function TopBar({
           <button
             type="button"
             className={`btn btn-mode${playMode === "song" ? " active-song" : ""}`}
-            onClick={() => onSetPlayMode(playMode === "pattern" ? "song" : "pattern")}
+            onClick={togglePlayMode}
             title="Toggle play mode: pattern loop or arrangement song"
           >
             {playMode === "pattern" ? "PATTERN" : "SONG"}
           </button>
+          {modeHint && (
+            <div className="mode-hint" role="status" aria-live="polite">
+              <span className="mode-hint-text">{modeHint.text}</span>
+              {modeHint.offerRewind && (
+                <button
+                  type="button"
+                  className="mode-hint-action"
+                  title="Rewind the transport to bar 1 (start of the arrangement)"
+                  onClick={() => {
+                    services.transport.seek(0);
+                    clearModeHint();
+                  }}
+                >
+                  REWIND
+                </button>
+              )}
+            </div>
+          )}
           <button
             type="button"
             className={`btn btn-play${playing ? " active" : ""}`}

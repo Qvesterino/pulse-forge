@@ -106,6 +106,8 @@ button {
   padding: 0 9px;
   border-left: 1px solid var(--border-soft);
   border-right: 1px solid var(--border-soft);
+  /* Anchor for the floating song-mode guard chip (.mode-hint). */
+  position: relative;
 }
 
 .btn {
@@ -761,38 +763,37 @@ button {
   padding: 8px 10px 10px;
 }
 
-.sequencer-focus-bar {
+/* The sequencer's single top chrome row: pattern title + FOCUS toggle live
+   in the ruler's 168px label cell, aligned with the step columns. */
+.ruler-label {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 30px;
-  margin: -2px 0 7px;
-}
-
-.sequencer-focus-context {
-  display: flex;
-  align-items: baseline;
-  gap: 9px;
+  gap: 5px;
   min-width: 0;
+  padding-right: 6px;
 }
 
-.sequencer-focus-title {
+.ruler-label-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--text-dim);
   font-family: var(--mono);
   font-size: 9px;
   font-weight: 700;
-  letter-spacing: 1.5px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
 }
 
-.sequencer-focus-meta {
+.sequencer-ruler .beat-focus-toggle {
+  flex: 0 0 auto;
   min-width: 0;
-  overflow: hidden;
-  color: var(--text-faint);
-  font-family: var(--mono);
+  height: 18px;
+  padding: 0 7px;
   font-size: 9px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  letter-spacing: 0.5px;
 }
 
 .beat-focus-toggle {
@@ -816,18 +817,9 @@ button {
   box-shadow: 0 16px 44px rgba(0, 0, 0, 0.45);
 }
 
-.sequencer.beat-focus .sequencer-focus-bar {
-  position: sticky;
-  top: -12px;
-  z-index: 11;
-  min-height: 34px;
-  margin: -12px -16px 8px;
-  padding: 7px 16px;
-  background: var(--bg);
-  border-bottom: 1px solid var(--border-soft);
-}
-
-.sequencer.beat-focus .sequencer-focus-title {
+/* Beat focus: the ruler bar is the single sticky chrome — it inherits the
+   accent title and full-height scroll like the old focus bar did. */
+.sequencer.beat-focus .ruler-label-title {
   color: var(--accent);
 }
 
@@ -838,14 +830,14 @@ button {
 }
 
 .sequencer.beat-focus .sequencer-ruler {
-  top: 34px;
   background: var(--bg);
 }
 
 .sequencer-ruler {
   display: grid;
+  align-items: center;
   gap: 4px;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
   position: sticky;
   top: 0;
   z-index: 10;
@@ -1755,17 +1747,17 @@ button {
   justify-content: center;
 }
 
-/* MASTER strip: the IN/CEIL column hugs its content (flex:1 here created a
-   huge void left of the metering wall). The strip keeps a floor wide enough
-   for the wall (controls ~220 + wall min 750) so flex-shrink can never clip
-   it; a definite basis avoids the canvases' broken max-content contribution.
-   NOTE: do NOT flex the body height here — the goniometer's ResizeObserver
-   turns that into a growth loop. The wall's height comes from a min-height
-   clamped to the dock height instead. Scoped to the master — channel strips
-   keep their centered layout. */
+/* MASTER strip: the IN/CEIL column has a definite width and the stereo meters
+   live inside it (flex:1 here created a huge void left of the metering wall).
+   The strip keeps a floor wide enough for the wall (controls 150 + wall min
+   620) so flex-shrink can never clip it; a definite basis avoids the
+   canvases' broken max-content contribution. NOTE: do NOT flex the body
+   height here — the goniometer's ResizeObserver turns that into a growth
+   loop. The wall's height comes from a min-height clamped to the dock height
+   instead. Scoped to the master — channel strips keep their centered layout. */
 .master-strip {
-  flex: 1 1 990px;
-  min-width: 990px;
+  flex: 1 1 800px;
+  min-width: 800px;
 }
 
 .master-strip .channel-controls {
@@ -1773,9 +1765,24 @@ button {
 }
 
 .master-strip .channel-controls {
-  align-items: center;
-  justify-content: center;
+  /* Definite width + stretch: IN/CEIL sliders and the stereo meters share the
+     same 150px column (meters narrow enough to read, sliders wide enough to
+     drag). Controls hug the top; MasterStereoMeters fills the rest. */
+  width: 150px;
+  align-items: stretch;
+  justify-content: flex-start;
+  padding-top: 2px;
   gap: 6px;
+}
+
+/* Four toggles must fit the 150px column in one row — intrinsic button
+   width (52px × 4) overflows it and M/S ends up under the metering wall. */
+.master-strip .master-toggles .btn {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0 4px;
+  font-size: 9px;
+  letter-spacing: 0.3px;
 }
 
 .master-strip .meter {
@@ -3859,6 +3866,47 @@ button {
   transform: translateY(0);
 }
 
+/* Song-mode guard chip (TopBar) — floats under the transport cluster so the
+   topbar layout does not jump while the warning is up. Amber left border to
+   read as a caution, not an error. */
+.mode-hint {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 9px;
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--accent);
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--text);
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+  z-index: 90;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.mode-hint-action {
+  padding: 2px 7px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.mode-hint-action:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
 /* ---------- Help overlay ---------- */
 
 .help-overlay {
@@ -5458,18 +5506,21 @@ button {
   letter-spacing: 0.5px;
 }
 
-/* Master metering wall: dynamics | spectrum+loudness | goniometer+verdict.
+/* Master metering wall: spectrum+loudness | goniometer+verdict. The stereo
+   indicators (L/R, correlation, headroom) moved into the MASTER channel strip
+   (MasterStereoMeters) — the strip had dead space under its controls and the
+   wall gives their 132px column back to the spectrum.
    Explicit areas — the old 4-column auto-placement squeezed the spectrum
    into a 72px cell and left a dead zone next to the fixed-size goniometer. */
 .master-meter {
   display: grid;
-  grid-template-columns: 132px minmax(300px, 1fr) minmax(260px, 330px);
+  grid-template-columns: minmax(300px, 1fr) minmax(260px, 330px);
   /* Fixed warnings row, reserved even when empty — the wall never jumps
      when mix-check messages appear or clear. */
   grid-template-rows: minmax(0, 1fr) 20px;
   grid-template-areas:
-    "dynamics center right"
-    "warnings warnings warnings";
+    "center right"
+    "warnings warnings";
   gap: 10px;
   padding: 8px;
   contain: layout style;
@@ -5486,15 +5537,7 @@ button {
   overflow: hidden;
   position: relative;
   flex: 1;
-  min-width: 750px;
-}
-
-.master-zone-dynamics {
-  grid-area: dynamics;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-height: 0;
+  min-width: 620px;
 }
 
 .master-dynamics-meters {
@@ -5511,17 +5554,40 @@ button {
   min-width: 0;
 }
 
-.master-zone-dynamics .master-correlation,
-.master-zone-dynamics .master-headroom {
+.master-stereo-meters {
+  /* Strip-column citizen: fills the dead space under the IN/CEIL controls. */
+  flex: 1 1 auto;
+  min-height: 0;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.master-stereo-meters .master-correlation,
+.master-stereo-meters .master-headroom {
   gap: 2px;
 }
 
-/* Compact secondary meters inside the dynamics column. */
-.master-zone-dynamics .master-correlation-bar,
-.master-zone-dynamics .master-headroom-strip {
+/* CORR + HEAD side by side under the L/R bars. */
+.master-stereo-secondary {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.master-stereo-secondary .master-correlation,
+.master-stereo-secondary .master-headroom {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* Compact secondary meters beside the L/R bars. */
+.master-stereo-meters .master-correlation-bar,
+.master-stereo-meters .master-headroom-strip {
   flex: 0 0 auto;
-  min-height: 26px;
-  height: 26px;
+  min-height: 36px;
+  height: 36px;
 }
 
 .master-zone-center {

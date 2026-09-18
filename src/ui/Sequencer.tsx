@@ -504,23 +504,38 @@ export function Sequencer({
       aria-label={beatFocus ? "Step Sequencer — Beat Focus" : "Step Sequencer"}
       onPointerLeave={() => publishCursor(null)}
     >
-      <div className="sequencer-focus-bar">
-        <div className="sequencer-focus-context">
-          <span className="sequencer-focus-title">{beatFocus ? "BEAT FOCUS" : "SEQUENCER"}</span>
-          <span className="sequencer-focus-meta">
-            {pattern.name} · {pattern.stepCount} STEPS
+      <div
+        className="sequencer-ruler"
+        style={{ gridTemplateColumns: `168px repeat(${pattern.stepCount}, minmax(${STEP_MIN_PX}px, 1fr))` }}
+        role="row"
+        aria-label="Step ruler"
+      >
+        {/* The former focus bar lives in this label cell — one slim chrome row
+            above the grid instead of two. */}
+        <div className="ruler-label">
+          <span className="ruler-label-title" title={`${pattern.name} · ${pattern.stepCount} steps`}>
+            {pattern.name} · {pattern.stepCount}
           </span>
+          <button
+            type="button"
+            className={`btn btn-small beat-focus-toggle${beatFocus ? " active" : ""}`}
+            onClick={() => setBeatFocus((open) => !open)}
+            aria-label={beatFocus ? "Exit Beat Focus" : "Enter Beat Focus"}
+            aria-pressed={beatFocus}
+            title={beatFocus ? "Exit Beat Focus (Escape)" : "Maximize the sequencer (Beat Focus)"}
+          >
+            {beatFocus ? "EXIT" : "FOCUS"}
+          </button>
         </div>
-        <button
-          type="button"
-          className={`btn btn-small beat-focus-toggle${beatFocus ? " active" : ""}`}
-          onClick={() => setBeatFocus((open) => !open)}
-          aria-label={beatFocus ? "Exit Beat Focus" : "Enter Beat Focus"}
-          aria-pressed={beatFocus}
-          title={beatFocus ? "Exit Beat Focus (Escape)" : "Maximize the sequencer (Beat Focus)"}
-        >
-          {beatFocus ? "EXIT FOCUS" : "BEAT FOCUS"}
-        </button>
+        {Array.from({ length: pattern.stepCount }, (_, i) => (
+          <span
+            key={i}
+            className={`ruler-tick${playheadStep === i ? " current" : ""}${i % 4 === 0 ? " beat-start" : ""}`}
+            aria-label={`Step ${i + 1}${i % 4 === 0 ? `, beat ${i / 4 + 1}` : ""}`}
+          >
+            {i % 4 === 0 ? i / 4 + 1 : "·"}
+          </span>
+        ))}
       </div>
       {stepEditor && (
         <StepEditor
@@ -599,23 +614,6 @@ export function Sequencer({
           </button>
         </div>
       )}
-      <div
-        className="sequencer-ruler"
-        style={{ gridTemplateColumns: `168px repeat(${pattern.stepCount}, minmax(${STEP_MIN_PX}px, 1fr))` }}
-        role="row"
-        aria-label="Step ruler"
-      >
-        <span className="row-label-spacer" />
-        {Array.from({ length: pattern.stepCount }, (_, i) => (
-          <span
-            key={i}
-            className={`ruler-tick${playheadStep === i ? " current" : ""}${i % 4 === 0 ? " beat-start" : ""}`}
-            aria-label={`Step ${i + 1}${i % 4 === 0 ? `, beat ${i / 4 + 1}` : ""}`}
-          >
-            {i % 4 === 0 ? i / 4 + 1 : "·"}
-          </span>
-        ))}
-      </div>
       <div
         ref={attachScrollRef}
         className="sequencer-scroll"
@@ -1331,7 +1329,9 @@ function StepCell({
       onPointerLeave={longPress.onPointerLeave}
       onPointerCancel={longPress.onPointerCancel}
       onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
+        // Enter toggles the step; Space stays free for the global play/pause
+        // shortcut (preventing the keydown also cancels the native keyup click).
+        if (event.key === "Enter") {
           event.preventDefault();
           services.store.execute(toggleStep(doc, padId, stepIndex));
         }

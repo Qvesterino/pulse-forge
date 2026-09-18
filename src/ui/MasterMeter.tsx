@@ -30,10 +30,10 @@ const EMPTY: ChannelLevels = { peak: 0, rms: 0, peakDb: -120, rmsDb: -120 };
 const TARGET_LABELS: Record<number, string> = { 14: "SPOTIFY", 12: "YOUTUBE", 9: "CLUB", 7: "LOUD" };
 
 /**
- * Master metering wall: dynamics column (L/R + GR, headroom, correlation),
- * spectrum + loudness history in the centre, goniometer + print-ready verdict
- * on the right. Pulls fresh frames from the engine on a ~30 Hz loop so the UI
- * is light.
+ * Master metering wall: spectrum + loudness history in the centre, goniometer
+ * + print-ready verdict on the right. Pulls fresh frames from the engine on a
+ * ~30 Hz loop so the UI is light. The stereo indicators (L/R + GR, correlation,
+ * headroom) live in the MASTER channel strip — see MasterStereoMeters.
  */
 export function MasterMeter() {
   const services = useServices();
@@ -156,25 +156,6 @@ export function MasterMeter() {
 
   return (
     <div className="master-meter" role="group" aria-label="Master meter">
-      <div className="master-zone-dynamics">
-        <div className="master-dynamics-meters">
-          <MeterChannel
-            label="L"
-            level={state.left}
-            holdDb={state.peakHoldDb}
-            gainReductionDb={state.gainReductionDb}
-          />
-          <MeterChannel
-            label="R"
-            level={state.right}
-            holdDb={state.peakHoldDb}
-            gainReductionDb={state.gainReductionDb}
-          />
-        </div>
-        <CorrelationMeter value={state.correlation} />
-        <HeadroomStrip ceilingDb={ceilingDb} clipping={state.clipping} />
-      </div>
-
       <div className="master-zone-center">
         <SpectrumAnalyzer
           analyser={
@@ -302,6 +283,98 @@ interface MasterSnapshot {
   monoLossDb: number;
   lrImbalanceDb: number;
   gainReductionDb: number;
+}
+
+interface StereoState {
+  left: ChannelLevels;
+  right: ChannelLevels;
+  correlation: number;
+  peakHoldDb: number;
+  gainReductionDb: number;
+  clipping: boolean;
+}
+
+/**
+ * Stereo indicator cluster — L/R peak/RMS bars with limiter GR, correlation
+ * and headroom. Used to be the metering wall's dynamics column; now it fills
+ * the dead space under the MASTER strip's IN/CEIL controls. Self-polling on
+ * the same ~30 Hz engine snapshot the wall reads (the getter is a cheap
+ * snapshot copy, and per-meter loops are the established pattern here), so
+ * the strip meters keep running even when the wall is unmounted.
+ */
+export function MasterStereoMeters() {
+  const services = useServices();
+  const doc = useDoc();
+  const ceilingDb = doc.master.ceilingDb;
+  const [state, setState] = useState<StereoState>({
+    left: { ...EMPTY },
+    right: { ...EMPTY },
+    correlation: 1,
+    peakHoldDb: -120,
+    gainReductionDb: 0,
+    clipping: false,
+  });
+  const lastStateRef = useRef(state);
+  const clipHoldRef = useRef(0);
+
+  useEffect(() => {
+    let lastRead = 0;
+    registerRaf("master-stereo-meters", (t) => {
+      if (t - lastRead < 33) return;
+      lastRead = t;
+      const engineWithMeter = services.engine as typeof services.engine & {
+        getMasterMeterSnapshot?: () => MasterSnapshot;
+      };
+      const snapshot = engineWithMeter.getMasterMeterSnapshot?.();
+      const levels = snapshot ?? services.engine.getMasterLevels();
+      const peakHoldDb = snapshot?.peakHoldDb ?? services.engine.getMasterPeakHoldDb();
+      const left = levels.left;
+      const right = levels.right;
+      const peakDb = Math.max(left.peakDb, right.peakDb);
+      // Same true-peak clip policy as the wall: a sample peak below 0 dBFS
+      // can still intersample-clip.
+      const truePeakDb = snapshot?.truePeakDb ?? peakDb;
+      const nowOver = truePeakDb > -0.1 || peakDb > 0;
+      if (nowOver) clipHoldRef.current = 0;
+      clipHoldRef.current += 0.033;
+      const clipping = clipHoldRef.current < 0.6;
+      const gainReductionDb =
+        Math.round((snapshot ? snapshot.gainReductionDb : (services.engine.getMasterGainReductionDb?.() ?? 0)) * 10) /
+        10;
+
+      const prev = lastStateRef.current;
+      const changed =
+        Math.abs(prev.left.peakDb - left.peakDb) > 0.2 ||
+        Math.abs(prev.right.peakDb - right.peakDb) > 0.2 ||
+        Math.abs(prev.left.rmsDb - left.rmsDb) > 0.4 ||
+        Math.abs(prev.right.rmsDb - right.rmsDb) > 0.4 ||
+        Math.abs(prev.correlation - levels.correlation) > 0.02 ||
+        Math.abs(prev.peakHoldDb - peakHoldDb) > 0.2 ||
+        Math.abs(prev.gainReductionDb - gainReductionDb) > 0.15 ||
+        prev.clipping !== clipping;
+      if (changed) {
+        const next: StereoState = { left, right, correlation: levels.correlation, peakHoldDb, gainReductionDb, clipping };
+        lastStateRef.current = next;
+        setState(next);
+      }
+    });
+    return () => unregisterRaf("master-stereo-meters");
+  }, [services]);
+
+  return (
+    <div className="master-stereo-meters" role="group" aria-label="Master stereo indicators">
+      <div className="master-dynamics-meters">
+        <MeterChannel label="L" level={state.left} holdDb={state.peakHoldDb} gainReductionDb={state.gainReductionDb} />
+        <MeterChannel label="R" level={state.right} holdDb={state.peakHoldDb} gainReductionDb={state.gainReductionDb} />
+      </div>
+      {/* CORR + HEAD share one row — stacked they ate strip height without
+          adding resolution at these sizes. */}
+      <div className="master-stereo-secondary">
+        <CorrelationMeter value={state.correlation} />
+        <HeadroomStrip ceilingDb={ceilingDb} clipping={state.clipping} />
+      </div>
+    </div>
+  );
 }
 
 function formatDb(value: number): string {

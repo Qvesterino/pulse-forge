@@ -25,7 +25,7 @@ import type { EffectType, Track } from "../project-model/types";
 import { EFFECT_DEFS } from "../effects/registry";
 import { Slider } from "./controls";
 import { Meter } from "./Meter";
-import { MasterMeter } from "./MasterMeter";
+import { MasterMeter, MasterStereoMeters } from "./MasterMeter";
 import { trackBadge } from "./TrackTabs";
 import { FreezeButton } from "./FreezeButton";
 import { MacroPerformanceBar } from "./MacroPerformanceBar";
@@ -328,6 +328,8 @@ function MasterStrip() {
               />
             </>
           )}
+          {/* Stereo indicators fill the strip's dead space under the controls. */}
+          <MasterStereoMeters />
         </div>
         <MasterMeter />
       </div>
