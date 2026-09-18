@@ -40,10 +40,14 @@ export function JamGate({ services, jamActive }: { services: Services; jamActive
       // The tap IS the user gesture: ensureContext's best-effort resume
       // succeeds now, and the pulse re-anchor drops the joiner into the
       // leader's timeline immediately.
-      const ctx = services.engine.ensureContext() as AudioContext;
-      if (ctx.state === "suspended") await ctx.resume().catch(() => {});
+      const ctx = services.engine.ensureContext() as AudioContext | undefined;
+      if (ctx && ctx.state === "suspended") await ctx.resume().catch(() => {});
       services.sharedTransportReapply?.();
       setTapped(true);
+    } catch {
+      // A failed unlock (no AudioContext support, engine teardown mid-tap)
+      // keeps the gate up — the user can simply tap again. Never let the
+      // gesture handler produce an unhandled rejection.
     } finally {
       busy.current = false;
     }

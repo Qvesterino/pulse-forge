@@ -50,7 +50,6 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-window": "^2.3.0",
-    "y-indexeddb": "^9.0.12",
     "y-websocket": "^3.1.0",
     "yjs": "^13.6.32"
   },
@@ -67,6 +66,8 @@
     "@types/react-window": "^1.8.8",
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^44.4.3",
+    "electron-builder": "^26.15.3",
     "fake-indexeddb": "^6.2.5",
     "jsdom": "^29.1.1",
     "playwright": "^1.62.1",

@@ -96,6 +96,23 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser:production
 
+  e2e-smoke:
+    name: E2E smoke (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # The isolated scenario specs (landing → studio, panel toggles, generate
+      # flow, persistence roundtrip) catch user-flow regressions the page-level
+      # browser checks above do not model. The vitest webServer config owns
+      # server startup (predev builds the worklet bundles first).
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e:smoke
+
   audit-prod:
     name: Production dependency audit
     runs-on: ubuntu-latest

@@ -25,7 +25,13 @@ import { fileURLToPath } from "node:url";
 // granular landed at ~+21 KB) — the registry is core and must stay in entry.
 const ENTRY_BUDGET_KB = 995;
 const TOTAL_BUDGET_KB = 2400;
-const CORE_WORKLET_BUDGET_KB = 120;
+// 150: deliberate bump (was 120 — the gate had been red since kaskada's
+// 32-band spectral DSP landed in the core bundle at ~137 KB). The de-cramped
+// stock EQ worklet pushed the measured size to 144 KB. The core bundle stays
+// core on purpose: eq/gate/limiter/sidechain processors must be available
+// before the lazy plugin worklets load — splitting them out would trade a
+// number here for a load-order risk in the audio path.
+const CORE_WORKLET_BUDGET_KB = 150;
 
 const dist = fileURLToPath(new URL("../dist/", import.meta.url));
 

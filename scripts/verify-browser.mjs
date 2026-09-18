@@ -245,6 +245,14 @@ try {
       throw new Error(`reload lost generated pattern: ${patternsAfterReload}/${patternsAfterGenerate}`);
     }
     console.log("[PASS] offline generation: preview → accept → undo/redo → JSON export → reload preserved the pattern");
+    // The EXPORT dock panel was opened for the JSON export and its layout
+    // persists across the reload — an open bottom panel overlaps the
+    // sequencer and would swallow the step right-click below. Close it if
+    // the reload restored it.
+    if (await appPage.locator('.export-panel[aria-label="Export"]').count()) {
+      await clickPanelAction(appPage, "EXPORT");
+      await appPage.waitForSelector('.export-panel[aria-label="Export"]', { state: "detached", timeout: 5000 });
+    }
     // Groove workflow: controls visible, right-click step editor, scene strip.
     await appPage.waitForSelector(".pattern-groove", { timeout: 5000 });
     await appPage.waitForSelector(".scene-launcher .scene-action-launch", { timeout: 5000 });
