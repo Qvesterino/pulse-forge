@@ -66,6 +66,12 @@ export function ExportPanel({
   // free; users can trade it back for render speed.
   const [fxeqRenderQuality, setFxEqRenderQuality] = useState(true);
   const hasFxEq = doc.tracks.some((t) => (t.effects ?? []).some((fx) => fx.type === "fxeq" && !fx.bypassed));
+  // VØID render quality (render tier offline) — defaults ON for the same
+  // reason as PRISM HQ: no realtime CPU budget on export. Only instances
+  // left at the default standard tier are bumped; explicit eco/high/render
+  // choices are respected.
+  const [ozvenaRenderQuality, setOzvenaRenderQuality] = useState(true);
+  const hasOzvena = doc.tracks.some((t) => (t.effects ?? []).some((fx) => fx.type === "ozvena" && !fx.bypassed));
   const [clipSeconds, setClipSeconds] = useState(15);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const markerCount = doc.markers.length;
@@ -102,7 +108,12 @@ export function ExportPanel({
     const signal = beginExport();
     setStatus({ kind: "busy", label: "Rendering master…" });
     try {
-      const buffer = await renderProject(doc, services.bank, { mode, sampleRate, fxeqRenderQuality });
+      const buffer = await renderProject(doc, services.bank, {
+        mode,
+        sampleRate,
+        fxeqRenderQuality,
+        ozvenaRenderQuality,
+      });
       if (signal.aborted) throw new DOMException("Export cancelled", "AbortError");
       const summary = summarizeBuffer(buffer);
 
@@ -162,7 +173,12 @@ export function ExportPanel({
         const group = groups[i];
         setStatus({ kind: "busy", label: `Rendering stem ${i + 1}/${groups.length}: ${group.label}…` });
         const stemDoc = buildStemProject(doc, group.filter);
-        const buffer = await renderProject(stemDoc, services.bank, { mode, sampleRate, fxeqRenderQuality });
+        const buffer = await renderProject(stemDoc, services.bank, {
+          mode,
+          sampleRate,
+          fxeqRenderQuality,
+          ozvenaRenderQuality,
+        });
         lastSummary = summarizeBuffer(buffer);
         downloadWav(encodeWav(buffer, bitDepth), `${baseName}-${group.id}.wav`);
       }
@@ -188,7 +204,12 @@ export function ExportPanel({
         const track = renderableTracks[i];
         setStatus({ kind: "busy", label: `Rendering track ${i + 1}/${renderableTracks.length}: ${track.name}…` });
         const trackDoc = buildStemProject(doc, (t) => t.id === track.id);
-        const buffer = await renderProject(trackDoc, services.bank, { mode, sampleRate, fxeqRenderQuality });
+        const buffer = await renderProject(trackDoc, services.bank, {
+          mode,
+          sampleRate,
+          fxeqRenderQuality,
+          ozvenaRenderQuality,
+        });
         lastSummary = summarizeBuffer(buffer);
         downloadWav(encodeWav(buffer, bitDepth), `${baseName}-track-${sanitizeFilename(track.name)}.wav`);
       }
@@ -254,7 +275,7 @@ export function ExportPanel({
           setStatus({ kind: "busy", label: `Scorepack: ${p.phase}…` });
         },
         signal,
-        { fxeqRenderQuality },
+        { fxeqRenderQuality, ozvenaRenderQuality },
       );
       if (signal.aborted) throw new DOMException("Export cancelled", "AbortError");
       const url = URL.createObjectURL(blob);
@@ -410,10 +431,31 @@ export function ExportPanel({
           </select>
         </label>
         {hasFxEq && (
-          <label className="fx-param-select" title="PRISM instances render at their render tier: 8x saturation oversampling for a lower aliasing floor. Slower render, no effect on the live document.">
+          <label
+            className="fx-param-select"
+            title="PRISM instances render at their render tier: 8x saturation oversampling for a lower aliasing floor. Slower render, no effect on the live document."
+          >
             <span className="slider-label">PRISM HQ</span>
-            <select value={fxeqRenderQuality ? "on" : "off"} onChange={(event) => setFxEqRenderQuality(event.target.value === "on")}>
+            <select
+              value={fxeqRenderQuality ? "on" : "off"}
+              onChange={(event) => setFxEqRenderQuality(event.target.value === "on")}
+            >
               <option value="on">Render quality (8x)</option>
+              <option value="off">Live quality (faster)</option>
+            </select>
+          </label>
+        )}
+        {hasOzvena && (
+          <label
+            className="fx-param-select"
+            title="VØID instances left at the standard tier render at the render tier: full oversampling and safety limiter. Slower render, no effect on the live document; explicit eco/high/render choices are respected."
+          >
+            <span className="slider-label">VØID HQ</span>
+            <select
+              value={ozvenaRenderQuality ? "on" : "off"}
+              onChange={(event) => setOzvenaRenderQuality(event.target.value === "on")}
+            >
+              <option value="on">Render quality</option>
               <option value="off">Live quality (faster)</option>
             </select>
           </label>

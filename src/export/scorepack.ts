@@ -23,6 +23,8 @@ export interface ScorepackResult {
 export interface ScorepackOptions {
   /** Use PRISM's offline render quality tier for master and stems. */
   fxeqRenderQuality?: boolean;
+  /** Bump default-tier VØID instances to the render tier for master and stems. */
+  ozvenaRenderQuality?: boolean;
 }
 
 class MissingCueAssetError extends Error {
@@ -52,6 +54,7 @@ export async function buildScorepack(
     sampleRate,
     tailSeconds,
     fxeqRenderQuality: options.fxeqRenderQuality ?? true,
+    ozvenaRenderQuality: options.ozvenaRenderQuality ?? true,
   });
   throwIfAborted(signal);
   entries.push({ name: "audio/" + baseName + "-master.wav", data: new Uint8Array(encodeWav(masterBuffer, 24)) });
@@ -67,6 +70,7 @@ export async function buildScorepack(
       sampleRate,
       tailSeconds,
       fxeqRenderQuality: options.fxeqRenderQuality ?? true,
+      ozvenaRenderQuality: options.ozvenaRenderQuality ?? true,
     });
     throwIfAborted(signal);
     entries.push({

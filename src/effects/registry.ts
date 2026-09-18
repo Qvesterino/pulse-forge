@@ -18,9 +18,11 @@ import { createStutterNode } from "../audio-worklets/stutter-node";
 import { createTapeNode } from "../audio-worklets/tape-node";
 import { createCombNode } from "../audio-worklets/comb-node";
 import { createChorusNode } from "../audio-worklets/chorus-node";
+import { createEqNode } from "../audio-worklets/eq-node";
 import { createStockDelayNode } from "../audio-worklets/stock-delay-node";
 import { createVowelNode } from "../audio-worklets/vowel-node";
 import { createDuckingDelayNode } from "../audio-worklets/ducking-delay-node";
+import { createEnvFollowerNode } from "../audio-worklets/envfollower-node";
 import { createKaskadaNode } from "../audio-worklets/kaskada-node";
 import { createReverbNode } from "../audio-worklets/reverb-node";
 import {
@@ -107,6 +109,7 @@ export const WORKLET_EFFECTS: Partial<Record<EffectType, "critical" | "degraded"
   sidechain: "degraded",
   chorus: "degraded",
   delay: "degraded",
+  eq: "degraded",
   // Flagship suites degrade to an honest 1:1 bypass (never silence) when
   // their worklet module has not landed in this context yet — the engine
   // hot-swaps the real DSP once the module arrives. Kaskáda rides the
@@ -150,6 +153,7 @@ export function effectProcessorStatus(
       | "duckDelay"
       | "chorus"
       | "delay"
+      | "eq"
       | "fxeq"
       | "ultina"
       | "ozvena"
@@ -181,6 +185,8 @@ function bypassRuntime(ctx: BaseAudioContext, reason: string): EffectRuntime {
 }
 
 /* ---------------- EQ ---------------- */
+// Decramped 6-band worklet (parallel shelves, Q-corrected bells); the legacy
+// native biquad chain survives as the degraded fallback.
 
 const eq: EffectDefinition = {
   type: "eq",
@@ -217,134 +223,141 @@ const eq: EffectDefinition = {
     { id: "highFreq", label: "HIGH FREQ", min: 1500, max: 12000, default: 6000, unit: "Hz", format: formatHz },
   ],
   factory(ctx, instance) {
-    const hp = ctx.createBiquadFilter();
-    hp.type = "highpass";
-    const low = ctx.createBiquadFilter();
-    low.type = "lowshelf";
-    const lowMid = ctx.createBiquadFilter();
-    lowMid.type = "peaking";
-    const highMid = ctx.createBiquadFilter();
-    highMid.type = "peaking";
-    const high = ctx.createBiquadFilter();
-    high.type = "highshelf";
-    const lp = ctx.createBiquadFilter();
-    lp.type = "lowpass";
-    hp.connect(low).connect(lowMid).connect(highMid).connect(high).connect(lp);
-    const apply = (id: string, v: number, when: number) => {
-      switch (id) {
-        case "hpFreq":
-          smooth(hp.frequency, v, when);
-          break;
-        case "lpFreq":
-          smooth(lp.frequency, v, when);
-          break;
-        case "lowShelfGain":
-          smooth(low.gain, v, when);
-          break;
-        case "lowShelfFreq":
-          smooth(low.frequency, v, when);
-          break;
-        case "lowMidGain":
-          smooth(lowMid.gain, v, when);
-          break;
-        case "lowMidFreq":
-          smooth(lowMid.frequency, v, when);
-          break;
-        case "lowMidQ":
-          smooth(lowMid.Q, v, when);
-          break;
-        case "highMidGain":
-          smooth(highMid.gain, v, when);
-          break;
-        case "highMidFreq":
-          smooth(highMid.frequency, v, when);
-          break;
-        case "highMidQ":
-          smooth(highMid.Q, v, when);
-          break;
-        case "highShelfGain":
-          smooth(high.gain, v, when);
-          break;
-        case "highShelfFreq":
-          smooth(high.frequency, v, when);
-          break;
-        case "lowGain":
-          if (instance.params.lowShelfGain === undefined) smooth(low.gain, v, when);
-          break;
-        case "lowFreq":
-          if (instance.params.lowShelfFreq === undefined) smooth(low.frequency, v, when);
-          break;
-        case "midGain":
-          if (instance.params.lowMidGain === undefined) smooth(lowMid.gain, v, when);
-          break;
-        case "midFreq":
-          if (instance.params.lowMidFreq === undefined) smooth(lowMid.frequency, v, when);
-          break;
-        case "midQ":
-          if (instance.params.lowMidQ === undefined) smooth(lowMid.Q, v, when);
-          break;
-        case "highGain":
-          if (instance.params.highShelfGain === undefined) smooth(high.gain, v, when);
-          break;
-        case "highFreq":
-          if (instance.params.highShelfFreq === undefined) smooth(high.frequency, v, when);
-          break;
-      }
-    };
-    for (const [k, v] of Object.entries(instance.params)) apply(k, v, ctx.currentTime);
-    return {
-      input: hp,
-      output: lp,
-      setParameter: (id, v) => apply(id, v, ctx.currentTime),
-      setParameterAt: (id, v, when) => apply(id, v, when),
-      getAudioParam: (paramId: string) => {
-        switch (paramId) {
-          case "hpFreq":
-            return hp.frequency;
-          case "lpFreq":
-            return lp.frequency;
-          case "lowShelfFreq":
-          case "lowFreq":
-            return low.frequency;
-          case "lowShelfGain":
-          case "lowGain":
-            return low.gain;
-          case "lowMidFreq":
-          case "midFreq":
-            return lowMid.frequency;
-          case "lowMidGain":
-          case "midGain":
-            return lowMid.gain;
-          case "lowMidQ":
-          case "midQ":
-            return lowMid.Q;
-          case "highMidFreq":
-            return highMid.frequency;
-          case "highMidGain":
-            return highMid.gain;
-          case "highMidQ":
-            return highMid.Q;
-          case "highShelfFreq":
-          case "highFreq":
-            return high.frequency;
-          case "highShelfGain":
-          case "highGain":
-            return high.gain;
-          default:
-            return null;
-        }
-      },
-      dispose: () => {
-        hp.disconnect();
-        low.disconnect();
-        lowMid.disconnect();
-        highMid.disconnect();
-        high.disconnect();
-        lp.disconnect();
-      },
-    };
+    if (isWorkletReady("eq", ctx)) return createEqNode(ctx, instance);
+    return eqNativeFallback(ctx, instance);
   },
 };
+
+function eqNativeFallback(ctx: BaseAudioContext, instance: EffectInstance): EffectRuntime {
+  const hp = ctx.createBiquadFilter();
+  hp.type = "highpass";
+  const low = ctx.createBiquadFilter();
+  low.type = "lowshelf";
+  const lowMid = ctx.createBiquadFilter();
+  lowMid.type = "peaking";
+  const highMid = ctx.createBiquadFilter();
+  highMid.type = "peaking";
+  const high = ctx.createBiquadFilter();
+  high.type = "highshelf";
+  const lp = ctx.createBiquadFilter();
+  lp.type = "lowpass";
+  hp.connect(low).connect(lowMid).connect(highMid).connect(high).connect(lp);
+  const apply = (id: string, v: number, when: number) => {
+    switch (id) {
+      case "hpFreq":
+        smooth(hp.frequency, v, when);
+        break;
+      case "lpFreq":
+        smooth(lp.frequency, v, when);
+        break;
+      case "lowShelfGain":
+        smooth(low.gain, v, when);
+        break;
+      case "lowShelfFreq":
+        smooth(low.frequency, v, when);
+        break;
+      case "lowMidGain":
+        smooth(lowMid.gain, v, when);
+        break;
+      case "lowMidFreq":
+        smooth(lowMid.frequency, v, when);
+        break;
+      case "lowMidQ":
+        smooth(lowMid.Q, v, when);
+        break;
+      case "highMidGain":
+        smooth(highMid.gain, v, when);
+        break;
+      case "highMidFreq":
+        smooth(highMid.frequency, v, when);
+        break;
+      case "highMidQ":
+        smooth(highMid.Q, v, when);
+        break;
+      case "highShelfGain":
+        smooth(high.gain, v, when);
+        break;
+      case "highShelfFreq":
+        smooth(high.frequency, v, when);
+        break;
+      case "lowGain":
+        if (instance.params.lowShelfGain === undefined) smooth(low.gain, v, when);
+        break;
+      case "lowFreq":
+        if (instance.params.lowShelfFreq === undefined) smooth(low.frequency, v, when);
+        break;
+      case "midGain":
+        if (instance.params.lowMidGain === undefined) smooth(lowMid.gain, v, when);
+        break;
+      case "midFreq":
+        if (instance.params.lowMidFreq === undefined) smooth(lowMid.frequency, v, when);
+        break;
+      case "midQ":
+        if (instance.params.lowMidQ === undefined) smooth(lowMid.Q, v, when);
+        break;
+      case "highGain":
+        if (instance.params.highShelfGain === undefined) smooth(high.gain, v, when);
+        break;
+      case "highFreq":
+        if (instance.params.highShelfFreq === undefined) smooth(high.frequency, v, when);
+        break;
+    }
+  };
+  for (const [k, v] of Object.entries(instance.params)) apply(k, v, ctx.currentTime);
+  return {
+    input: hp,
+    output: lp,
+    degraded: true,
+    degradedReason: "AudioWorklet unavailable — EQ on legacy biquad graph (shelves cramp near Nyquist)",
+    setParameter: (id, v) => apply(id, v, ctx.currentTime),
+    setParameterAt: (id, v, when) => apply(id, v, when),
+    getAudioParam: (paramId: string) => {
+      switch (paramId) {
+        case "hpFreq":
+          return hp.frequency;
+        case "lpFreq":
+          return lp.frequency;
+        case "lowShelfFreq":
+        case "lowFreq":
+          return low.frequency;
+        case "lowShelfGain":
+        case "lowGain":
+          return low.gain;
+        case "lowMidFreq":
+        case "midFreq":
+          return lowMid.frequency;
+        case "lowMidGain":
+        case "midGain":
+          return lowMid.gain;
+        case "lowMidQ":
+        case "midQ":
+          return lowMid.Q;
+        case "highMidFreq":
+          return highMid.frequency;
+        case "highMidGain":
+          return highMid.gain;
+        case "highMidQ":
+          return highMid.Q;
+        case "highShelfFreq":
+        case "highFreq":
+          return high.frequency;
+        case "highShelfGain":
+        case "highGain":
+          return high.gain;
+        default:
+          return null;
+      }
+    },
+    dispose: () => {
+      hp.disconnect();
+      low.disconnect();
+      lowMid.disconnect();
+      highMid.disconnect();
+      high.disconnect();
+      lp.disconnect();
+    },
+  };
+}
 
 /* ---------------- M/S EQ — mid/side encode, 2×2-band  ---------------- */
 
@@ -1231,28 +1244,112 @@ const pump: EffectDefinition = {
     inv.gain.value = -1;
     shaper.connect(amt).connect(inv).connect(target.gain);
 
+    // Key-driven path (real sidechain): the kick/buss signal feeds an
+    // envelope follower whose audio-rate 0..~1 output ducks target.gain
+    // through the shared amount/invert stages. The worklet follower gives
+    // true asymmetric ballistics (2 ms attack, RELEASE-timed recovery);
+    // without the core bundle a native rectifier + smoothing-LP chain
+    // covers the same routing with symmetric ballistics (degraded flag).
+    // Connected only while a key source is wired; otherwise the classic
+    // beat-synced oscillator drives the same duck curve.
+    const keyInput = ctx.createGain();
+    const useKeyFollower = isWorkletReady("envFollower", ctx);
+    // RELEASE maps to follower recovery 50..600 ms.
+    const releaseMsOf = (r: number) => 50 + Math.max(0, Math.min(1, r)) * 550;
+    let keyFollower: { dispose: () => void } | null = null;
+    let keyReleaseParam: AudioParam | null = null;
+    // Native fallback chain nodes (built only when the worklet is missing).
+    let keyLp: BiquadFilterNode | null = null;
+    let rectifier: WaveShaperNode | null = null;
+    let smoothLp: BiquadFilterNode | null = null;
+    let sens: GainNode | null = null;
+    let clampShape: WaveShaperNode | null = null;
+    const releaseLpFreq = (r: number) => 120 - Math.max(0, Math.min(1, r)) * 108; // 12..120 Hz recovery
+    if (useKeyFollower) {
+      const follower = createEnvFollowerNode(ctx, {
+        params: { attackMs: 2, releaseMs: releaseMsOf(instance.params.release ?? 0.5), sensitivity: 2 },
+      });
+      keyFollower = follower;
+      keyReleaseParam = follower.getAudioParam?.("release") ?? null;
+      keyInput.connect(follower.input);
+      follower.output.connect(amt);
+    } else {
+      const lp = ctx.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.value = 200;
+      const rect = ctx.createWaveShaper();
+      rect.oversample = "none"; // control-rate envelope, not audio
+      rect.curve = (() => {
+        const n = 1024;
+        const curve = new Float32Array(new ArrayBuffer(n * 4));
+        for (let i = 0; i < n; i++) curve[i] = Math.abs((i / (n - 1)) * 2 - 1);
+        return curve;
+      })();
+      const smooth = ctx.createBiquadFilter();
+      smooth.type = "lowpass";
+      const sensitivity = ctx.createGain();
+      sensitivity.gain.value = 1.5;
+      const clamp = ctx.createWaveShaper();
+      clamp.oversample = "none";
+      clamp.curve = (() => {
+        const n = 1024;
+        const curve = new Float32Array(new ArrayBuffer(n * 4));
+        for (let i = 0; i < n; i++) curve[i] = Math.min(1, Math.max(0, (i / (n - 1)) * 2 - 1));
+        return curve;
+      })();
+      keyLp = lp;
+      rectifier = rect;
+      smoothLp = smooth;
+      sens = sensitivity;
+      clampShape = clamp;
+      keyInput.connect(lp).connect(rect).connect(smooth).connect(sensitivity).connect(clamp).connect(amt);
+    }
+
+    let keySource: AudioNode | null = null;
+
     let bpm = env.bpm;
     let release = instance.params.release ?? 0.5;
     let rateIndex = Math.max(0, Math.min(PUMP_DIVISIONS.length - 1, Math.round(instance.params.rate ?? 2)));
     let osc: OscillatorNode | null = null;
 
+    if (smoothLp) smoothLp.frequency.value = releaseLpFreq(release);
+
     const freqOf = () => (bpm / 60) * PUMP_DIVISIONS[rateIndex].mult;
     const applyCurve = () => {
       shaper.curve = duckCurve(release);
     };
-    const startOsc = (when: number) => {
-      if (osc) {
+    const stopOsc = (when: number) => {
+      if (!osc) return;
+      try {
+        osc.stop(when);
+      } catch {
+        /* not started */
+      }
+      const old = osc;
+      osc = null;
+      old.onended = () => {
         try {
-          osc.stop(when);
+          old.disconnect();
         } catch {
-          /* not started */
+          /* already gone */
         }
+      };
+    };
+    const startOsc = (when: number) => {
+      // A wired key owns the ducking — the oscillator stays out of the way.
+      if (keySource) return;
+      if (osc) {
         // Disconnect only AFTER the scheduled stop — an immediate disconnect
         // collapsed the modulation into target.gain in one sample (audible
         // jump) and left the pump dead until the new oscillator started at
         // `when`. onended fires at the stop time; the replacement oscillator
         // starts at the same `when`, so the handover is sample-continuous.
         const old = osc;
+        try {
+          old.stop(when);
+        } catch {
+          /* not started */
+        }
         old.onended = () => {
           try {
             old.disconnect();
@@ -1283,6 +1380,8 @@ const pump: EffectDefinition = {
         case "release":
           release = v;
           applyCurve();
+          if (keyReleaseParam) keyReleaseParam.setTargetAtTime(releaseMsOf(v) / 1000, when, 0.05);
+          else if (smoothLp) smooth(smoothLp.frequency, releaseLpFreq(v), when, 0.05);
           break;
       }
     };
@@ -1291,6 +1390,13 @@ const pump: EffectDefinition = {
     return {
       input,
       output,
+      // The native key envelope is symmetric (no fast-attack stage) — flag
+      // it while a key is wired so the UI stays honest. Oscillator mode and
+      // the worklet follower never degrade.
+      get degraded() {
+        return keySource !== null && !useKeyFollower;
+      },
+      degradedReason: "Pump key on native envelope — attack follows release",
       setParameter: (id, v) => apply(id, v, ctx.currentTime),
       setParameterAt: (id, v, when) => apply(id, v, when),
       syncBpm(next) {
@@ -1298,9 +1404,33 @@ const pump: EffectDefinition = {
         if (osc) smooth(osc.frequency, freqOf(), ctx.currentTime, 0.05);
       },
       onTransportStarted(time, beatPhase) {
+        if (keySource) return; // key owns the groove — no oscillator restart
         const beatSec = 60 / bpm;
         const nextBeat = time + (1 - beatPhase) * beatSec;
         startOsc(nextBeat);
+      },
+      /**
+       * Real sidechain key (kick/buss track via the SOURCE picker). While a
+       * key is wired the oscillator stops and the kick's own envelope ducks
+       * the target; disconnecting falls back to the beat-synced oscillator.
+       */
+      setSidechainInput(source: AudioNode | null) {
+        if (source === keySource) return;
+        if (keySource) {
+          try {
+            keySource.disconnect(keyInput);
+          } catch {
+            /* already gone */
+          }
+          keySource = null;
+        }
+        if (source) {
+          keySource = source;
+          stopOsc(ctx.currentTime);
+          source.connect(keyInput);
+        } else {
+          startOsc(ctx.currentTime);
+        }
       },
       dispose: () => {
         if (osc) {
@@ -1311,12 +1441,27 @@ const pump: EffectDefinition = {
           }
           osc.disconnect();
         }
+        if (keySource) {
+          try {
+            keySource.disconnect(keyInput);
+          } catch {
+            /* already gone */
+          }
+          keySource = null;
+        }
         input.disconnect();
         output.disconnect();
         target.disconnect();
         shaper.disconnect();
         amt.disconnect();
         inv.disconnect();
+        keyFollower?.dispose();
+        keyInput.disconnect();
+        keyLp?.disconnect();
+        rectifier?.disconnect();
+        smoothLp?.disconnect();
+        sens?.disconnect();
+        clampShape?.disconnect();
       },
     };
   },

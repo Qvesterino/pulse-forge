@@ -46,6 +46,13 @@ export function EffectRack({ track }: { track: Track }) {
   const doc = useDoc();
   const [fallbacks, setFallbacks] = useState<Record<string, string>>({});
   const [gainReduction, setGainReduction] = useState<Record<string, number>>({});
+  // Accordion focus: one device editor renders full-width at a time. null =
+  // auto (the newest effect), "" = all collapsed, otherwise the focused id.
+  // Four flagship editors side by side squeezed each into a ~260px column —
+  // unusable; a single focused editor is the DAW-standard device view.
+  const [expandedFxId, setExpandedFxId] = useState<string | null>(null);
+  const effectiveExpandedFxId =
+    expandedFxId ?? (track.effects.length > 0 ? track.effects[track.effects.length - 1].id : "");
 
   // Observer-only poll: degraded fallbacks (worklet DSP unavailable) surface
   // as warning badges; limiters report gain reduction for a live GR meter.
@@ -135,6 +142,10 @@ export function EffectRack({ track }: { track: Track }) {
               count={track.effects.length}
               fallbackReason={fallbacks[fx.id]}
               gainReductionDb={gainReduction[fx.id]}
+              expanded={fx.id === effectiveExpandedFxId}
+              onToggleFocus={() =>
+                setExpandedFxId(fx.id === effectiveExpandedFxId ? "" : fx.id)
+              }
             />
           ))}
         </div>
@@ -150,6 +161,8 @@ function Device({
   count,
   fallbackReason,
   gainReductionDb,
+  expanded,
+  onToggleFocus,
 }: {
   track: Track;
   fx: TrackEffect;
@@ -157,11 +170,12 @@ function Device({
   count: number;
   fallbackReason?: string;
   gainReductionDb?: number;
+  expanded: boolean;
+  onToggleFocus: () => void;
 }) {
   const services = useServices();
   const doc = useDoc();
   const def = EFFECT_DEFS[fx.type];
-  const [collapsed, setCollapsed] = useState(false);
   // Roadmap O7: transient note for user-IR loading (Ozvena convolution).
   const [irNote, setIrNote] = useState<string | null>(null);
   // A/B state lives in the DOCUMENT (fx.deviceState) — collapse, unmount,
@@ -174,18 +188,18 @@ function Device({
   );
 
   return (
-    <div className={`fx-device${fx.bypassed ? " bypassed" : ""}${collapsed ? " collapsed" : ""}`}>
+    <div className={`fx-device${fx.bypassed ? " bypassed" : ""}${expanded ? "" : " collapsed"}`}>
       <div className="fx-device-header">
         <button
           type="button"
           className="fx-device-toggle"
-          aria-expanded={!collapsed}
+          aria-expanded={expanded}
           aria-controls={contentId}
-          aria-label={`${collapsed ? "Expand" : "Collapse"} ${def.name}`}
-          title={`${collapsed ? "Expand" : "Collapse"} ${def.name}`}
-          onClick={() => setCollapsed((value) => !value)}
+          aria-label={`${expanded ? "Collapse" : "Expand"} ${def.name}`}
+          title={`${expanded ? "Collapse" : "Expand"} ${def.name}`}
+          onClick={onToggleFocus}
         >
-          <span aria-hidden="true">{collapsed ? "▸" : "▾"}</span>
+          <span aria-hidden="true">{expanded ? "▾" : "▸"}</span>
         </button>
         <span className="fx-device-title">
           <span className="fx-device-name">{def.name}</span>
@@ -298,7 +312,7 @@ function Device({
           </button>
         </div>
       </div>
-      {!collapsed && (
+      {expanded && (
         <div id={contentId} className="fx-device-content">
           {fx.type === "eq" && <EqResponseCurve params={fx.params} />}
           {(fx.type === "limiter" || fx.type === "compressor" || fx.type === "drumBuss" || fx.type === "bassBuss") && (
@@ -312,7 +326,10 @@ function Device({
               <span className="fx-gr-label">GR {(gainReductionDb ?? 0).toFixed(1)} dB</span>
             </div>
           )}
-          {(fx.type === "sidechain" || fx.type === "compressor" || fx.type === "fxeq") && (
+          {(fx.type === "sidechain" ||
+            fx.type === "compressor" ||
+            fx.type === "fxeq" ||
+            fx.type === "pump") && (
             <div className="fx-sidechain-picker">
               <label className="fx-param-select">
                 <span className="slider-label">SOURCE</span>

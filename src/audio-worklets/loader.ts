@@ -58,6 +58,7 @@ const CORE_TYPES = [
   "duckDelay",
   "chorus",
   "delay",
+  "eq",
   "kaskada",
   "reverb",
   "wtVoice",

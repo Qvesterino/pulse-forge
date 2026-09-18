@@ -20,6 +20,43 @@ export interface RenderOptions {
    * modified; the bump rides the runtime parameter preview path.
    */
   fxeqRenderQuality?: boolean;
+  /**
+   * Bump every VØID (ozvena) instance left at the default `standard` tier to
+   * its `render` quality tier for the duration of THIS render: oversampling
+   * and the safety limiter run at their offline settings, giving exports
+   * cleaner tails for free. Instances the user explicitly set to eco / high
+   * / render are respected untouched. The document itself is not modified;
+   * the bump rides the runtime parameter preview path (same as PRISM).
+   */
+  ozvenaRenderQuality?: boolean;
+}
+
+/**
+ * The VØID quality bump for one document: {trackId, fxId, paramId, value}
+ * entries that the renderer feeds through engine.previewFxParam. Pure so the
+ * export contract is testable without an audio context. Covers tracks and
+ * return tracks (both resolve through previewFxParam); master-chain
+ * instances keep their live tier.
+ */
+export function ozvenaRenderQualityBumps(doc: ProjectDocument): {
+  trackId: string;
+  fxId: string;
+  paramId: string;
+  value: number;
+}[] {
+  const bumps: { trackId: string; fxId: string; paramId: string; value: number }[] = [];
+  const containers = [...(doc.tracks ?? []), ...(doc.returns ?? [])];
+  for (const track of containers) {
+    for (const fx of track.effects ?? []) {
+      if (fx.type !== "ozvena" || fx.bypassed) continue;
+      const quality = fx.params?.["global.quality"] ?? 1;
+      // Only the untouched default (standard) is automatic — an explicit
+      // user choice of eco / high / render always wins.
+      if (quality !== 1) continue;
+      bumps.push({ trackId: track.id, fxId: fx.id, paramId: "global.quality", value: 3 });
+    }
+  }
+  return bumps;
 }
 
 /**
@@ -220,6 +257,14 @@ export async function renderProject(
   // project sync so it wins over the document values without mutating them.
   if (options.fxeqRenderQuality) {
     for (const bump of fxeqRenderQualityBumps(doc)) {
+      engine.previewFxParam(bump.trackId, bump.fxId, bump.paramId, bump.value);
+    }
+  }
+
+  // VØID render quality (opt-in): same treatment — default-tier instances
+  // render at the offline tier without touching the document.
+  if (options.ozvenaRenderQuality) {
+    for (const bump of ozvenaRenderQualityBumps(doc)) {
       engine.previewFxParam(bump.trackId, bump.fxId, bump.paramId, bump.value);
     }
   }
