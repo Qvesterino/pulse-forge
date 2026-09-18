@@ -1193,7 +1193,11 @@ export function App({
               <div
                 className={
                   "bottom-panels" +
-                  (sheetCollapsed ? " sheet-collapsed" : "") +
+                  // An empty dock must collapse to its handle bar: with both
+                  // slots null the fixed-height container would keep occupying
+                  // the full dock band and its empty .dock-slot would swallow
+                  // pointer events over the sequencer/workspace underneath.
+                  (sheetCollapsed || (dock.slotA === null && dock.slotB === null) ? " sheet-collapsed" : "") +
                   (dock.slotB !== null ? " dock-split" : "")
                 }
                 style={{ "--dock-height": `${dock.height}px` } as React.CSSProperties}
@@ -1217,7 +1221,7 @@ export function App({
                 >
                   <span className="sheet-handle-bar" aria-hidden="true" />
                 </button>
-                {!sheetCollapsed && (
+                {!sheetCollapsed && dock.slotA !== null && (
                   <div className="dock-slot">
                     <Suspense fallback={<div className="panel-loading">Loading panel…</div>}>
                       {renderDockSlot(dock.slotA)}

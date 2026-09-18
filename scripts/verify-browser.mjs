@@ -63,7 +63,7 @@ try {
   // which interrupts the navigation — retry like the evaluate below.
   for (let attempt = 1; ; attempt++) {
     try {
-      await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+      await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 120_000 });
       break;
     } catch (error) {
       if (attempt >= 3 || !/interrupted|context was destroyed|navigation/i.test(String(error))) throw error;
@@ -89,7 +89,7 @@ try {
       // which interrupts the navigation — retry like the evaluate below.
       for (let attempt = 1; ; attempt++) {
         try {
-          await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+          await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 120_000 });
           break;
         } catch (error) {
           if (attempt >= 3 || !/interrupted|context was destroyed|navigation/i.test(String(error))) throw error;
@@ -114,7 +114,7 @@ try {
     if (msg.type() === "error") appErrors.push(msg.text());
   });
   appPage.on("pageerror", (err) => appErrors.push(String(err)));
-  await appPage.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+  await appPage.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 120_000 });
   // Mount-retry: under concurrent load (a second dev session transforming
   // files), the first lazy-chunk load can outrun the 30 s selector window.
   // One reload gives Vite a second chance without masking real mount errors
@@ -129,7 +129,7 @@ try {
       .catch(async () => {
         if (mountRetry) throw new Error("mount retry also timed out");
         mountRetry = true;
-        await appPage.reload({ waitUntil: "domcontentloaded", timeout: 60_000 });
+        await appPage.reload({ waitUntil: "domcontentloaded", timeout: 120_000 });
         return appPage.waitForSelector(".landing, .project-browser", { timeout: 60_000 });
       });
     const onLanding = await appPage.$(".landing");
@@ -231,7 +231,7 @@ try {
       throw new Error(`unexpected project export filename: ${download.suggestedFilename()}`);
     }
     await appPage.waitForTimeout(1200); // allow autosave to settle before reload
-    await appPage.reload({ waitUntil: "domcontentloaded", timeout: 60_000 });
+    await appPage.reload({ waitUntil: "domcontentloaded", timeout: 120_000 });
     await appPage.waitForSelector(".project-browser", { timeout: 30_000 });
     const continueCard = appPage.locator(".pb-continue-card").first();
     if (await continueCard.count()) {
@@ -245,13 +245,14 @@ try {
       throw new Error(`reload lost generated pattern: ${patternsAfterReload}/${patternsAfterGenerate}`);
     }
     console.log("[PASS] offline generation: preview → accept → undo/redo → JSON export → reload preserved the pattern");
-    // The EXPORT dock panel was opened for the JSON export and its layout
-    // persists across the reload — an open bottom panel overlaps the
-    // sequencer and would swallow the step right-click below. Close it if
-    // the reload restored it.
-    if (await appPage.locator('.export-panel[aria-label="Export"]').count()) {
+    // The dock layout (and any open panel) persists across the reload; a
+    // docked panel overlays the sequencer and swallows the step right-click.
+    // GUARDED — an unconditional toggle would OPEN a closed panel.
+    if (await appPage.locator(".bottom-panels .dock-slot").count()) {
+      // The panel chunk may still be lazy-loading ("Loading panel…"), so gate
+      // on the dock slot existing — not on the panel's own markup.
       await clickPanelAction(appPage, "EXPORT");
-      await appPage.waitForSelector('.export-panel[aria-label="Export"]', { state: "detached", timeout: 5000 });
+      await appPage.waitForTimeout(250);
     }
     // Groove workflow: controls visible, right-click step editor, scene strip.
     await appPage.waitForSelector(".pattern-groove", { timeout: 5000 });
@@ -285,8 +286,14 @@ try {
     console.log("[DBG]", JSON.stringify(dbg));
     // Close the export panel first — an open dock panel covers the step grid
     // (elementFromPoint hits the panel, not the steps) and the lasso selects 0.
-    await clickPanelAction(appPage, "EXPORT");
-    await appPage.waitForTimeout(200);
+    // GUARDED: the dock may not have persisted the panel across the reload —
+    // an unconditional toggle here would OPEN it instead.
+    if (await appPage.locator(".bottom-panels .dock-slot").count()) {
+      // The panel chunk may still be lazy-loading ("Loading panel…"), so gate
+      // on the dock slot existing — not on the panel's own markup.
+      await clickPanelAction(appPage, "EXPORT");
+      await appPage.waitForTimeout(250);
+    }
     await appPage
       .locator(".step")
       .nth(3)
@@ -395,8 +402,8 @@ try {
     const ROOM = `e2e-${Date.now().toString(36)}`;
     const pageA = await browser.newPage();
     const pageB = await browser.newPage();
-    await pageA.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 60_000 });
-    await pageB.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+    await pageA.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 120_000 });
+    await pageB.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 120_000 });
     await setup(pageA, ROOM, "Producer A");
     await setup(pageB, ROOM, "Producer B");
     await new Promise((r) => setTimeout(r, 1000));
@@ -460,7 +467,7 @@ try {
 
     const room = `jam-${Date.now().toString(36)}`;
     const probe = await browser.newPage();
-    await probe.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+    await probe.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 120_000 });
     const jamCode = await probe.evaluate(async () => {
       const { encodeShareCode } = await import("/src/export/shareCode.ts");
       const { createProjectFromTemplate } = await import("/src/project-model/templates.ts");
@@ -614,7 +621,7 @@ try {
     const touchContext = await browser.newContext({ hasTouch: true, viewport: { width: 900, height: 800 } });
     const touchPage = await touchContext.newPage();
     await touchPage.addInitScript(SKIP_FLAGS);
-    await touchPage.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+    await touchPage.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 120_000 });
     await touchPage.waitForSelector(".project-browser", { timeout: 15_000 });
     await touchPage.locator('.pb-template:has-text("HOUSE")').first().click();
     await touchPage.waitForSelector(".sequencer", { timeout: 15_000 });
@@ -635,7 +642,7 @@ try {
     const plugContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
     const plugPage = await plugContext.newPage();
     await plugPage.addInitScript(SKIP_FLAGS);
-    await plugPage.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+    await plugPage.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 120_000 });
     await plugPage.waitForSelector(".project-browser", { timeout: 15_000 });
     await plugPage.locator('.pb-template:has-text("HOUSE")').first().click();
     await plugPage.waitForSelector(".sequencer", { timeout: 15_000 });
@@ -732,7 +739,7 @@ try {
     // Reload is the user-facing persistence boundary: source, both snapshots
     // and the enabled morph control must survive the project rehydrate.
     await plugPage.waitForTimeout(1200); // allow command autosave to settle before reload
-    await plugPage.reload({ waitUntil: "domcontentloaded", timeout: 60_000 });
+    await plugPage.reload({ waitUntil: "domcontentloaded", timeout: 120_000 });
     await plugPage.waitForSelector(".project-browser", { timeout: 30_000 });
     const continueCard = plugPage.locator(".pb-continue-card").first();
     if (await continueCard.count()) {

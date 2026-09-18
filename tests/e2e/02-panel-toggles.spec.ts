@@ -39,9 +39,7 @@ test.describe("02 — panel toggles", () => {
       await clickPanelAction(page, label);
       // poll: the read itself re-resolves direct-vs-overflow placement, so a
       // panel animation or a transient menu state cannot fail the flip check.
-      await expect
-        .poll(() => pressedOf(page, label), { timeout: 5000 })
-        .toBe(!initial);
+      await expect.poll(() => pressedOf(page, label), { timeout: 5000 }).toBe(!initial);
 
       await clickPanelAction(page, label);
       await expect.poll(() => pressedOf(page, label), { timeout: 5000 }).toBe(initial);
