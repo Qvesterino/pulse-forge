@@ -3000,7 +3000,6 @@ const duckDelay: EffectDefinition = {
   },
 };
 
-
 /* ────────────── KYX Kaskáda — character stereo delay ────────────── */
 
 const kaskada: EffectDefinition = {
@@ -3009,10 +3008,19 @@ const kaskada: EffectDefinition = {
   category: "space",
   params: [
     { id: "time", label: "TIME", min: 30, max: 2000, default: 375, unit: "ms", format: formatMs },
-    { id: "sync", label: "SYNC", min: 0, max: 5, default: 0, options: [
-        { value: 0, label: "OFF" }, { value: 1, label: "1/4" },
-        { value: 2, label: "1/8" }, { value: 3, label: "1/8T" },
-        { value: 4, label: "1/16" }, { value: 5, label: "1/16T" },
+    {
+      id: "sync",
+      label: "SYNC",
+      min: 0,
+      max: 5,
+      default: 0,
+      options: [
+        { value: 0, label: "OFF" },
+        { value: 1, label: "1/4" },
+        { value: 2, label: "1/8" },
+        { value: 3, label: "1/8T" },
+        { value: 4, label: "1/16" },
+        { value: 5, label: "1/16T" },
       ],
     },
     { id: "pingPong", label: "PING-PONG", min: 0, max: 1, default: 0, format: (v) => (v > 0.5 ? "ON" : "OFF") },
@@ -3020,12 +3028,33 @@ const kaskada: EffectDefinition = {
     { id: "toneLp", label: "TONE LP", min: 500, max: 12000, default: 4500, unit: "Hz", format: formatHz },
     { id: "toneHp", label: "TONE HP", min: 20, max: 800, default: 150, unit: "Hz", format: formatHz },
     { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0, format: formatPct },
-    { id: "modRate", label: "MOD RATE", min: 0.1, max: 8, default: 0.6, unit: "Hz", format: (v) => `${v.toFixed(1)} Hz` },
+    {
+      id: "modRate",
+      label: "MOD RATE",
+      min: 0.1,
+      max: 8,
+      default: 0.6,
+      unit: "Hz",
+      format: (v) => `${v.toFixed(1)} Hz`,
+    },
     { id: "modDepth", label: "MOD DEPTH", min: 0, max: 1, default: 0.15, format: formatPct },
     { id: "spread", label: "SPREAD", min: 0, max: 1, default: 0.8, format: formatPct },
     { id: "freeze", label: "FREEZE", min: 0, max: 1, default: 0, format: (v) => (v > 0.5 ? "ON" : "OFF") },
-    { id: "character", label: "CHARACTER", min: 0, max: 2, default: 1, options: [
-        { value: 0, label: "DIGITAL" }, { value: 1, label: "TAPE" }, { value: 2, label: "ANALOG" },
+    { id: "unmaskOn", label: "UNMASK", min: 0, max: 1, default: 0, format: (v) => (v > 0.5 ? "ON" : "OFF") },
+    { id: "unmask", label: "U-AMOUNT", min: 0, max: 1, default: 0.6, format: formatPct },
+    { id: "unmaskSens", label: "U-SENS", min: 0, max: 1, default: 0.5, format: formatPct },
+    { id: "unmaskAtk", label: "U-ATK", min: 0.1, max: 100, default: 5, unit: "ms", format: formatMs },
+    { id: "unmaskRel", label: "U-REL", min: 10, max: 2000, default: 250, unit: "ms", format: formatMs },
+    {
+      id: "character",
+      label: "CHARACTER",
+      min: 0,
+      max: 2,
+      default: 1,
+      options: [
+        { value: 0, label: "DIGITAL" },
+        { value: 1, label: "TAPE" },
+        { value: 2, label: "ANALOG" },
       ],
     },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 0.25, format: formatPct },

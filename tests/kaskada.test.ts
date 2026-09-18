@@ -83,6 +83,11 @@ const DEFAULTS: Record<string, number> = {
   modDepth: 0.15,
   spread: 0.8,
   freeze: 0,
+  unmaskOn: 0,
+  unmask: 0.6,
+  unmaskSens: 0.5,
+  unmaskAtk: 5,
+  unmaskRel: 250,
   character: 1,
   mix: 0.25,
   level: -6,
@@ -248,7 +253,7 @@ describe("kaskada parameter contract", () => {
     expect(RegisteredClass).toBeDefined();
     const descriptors = RegisteredClass!.parameterDescriptors;
     expect(Array.isArray(descriptors)).toBe(true);
-    expect(descriptors!.length).toBe(15);
+    expect(descriptors!.length).toBe(20);
     expect(descriptors!.every((d) => d.automationRate === "k-rate")).toBe(true);
   });
 
@@ -572,6 +577,11 @@ describe("kaskada extremes soak", () => {
     modDepth: [0, 1],
     spread: [0, 1],
     freeze: [0, 1],
+    unmaskOn: [0, 1],
+    unmask: [0, 1],
+    unmaskSens: [0, 1],
+    unmaskAtk: [0.1, 100],
+    unmaskRel: [10, 2000],
     character: [0, 2],
     mix: [0, 1],
     level: [-24, 6],
@@ -657,71 +667,78 @@ describe("kaskada sample-rate parity", () => {
 
 /* ─────────────── dual-spectrum meters ─────────────── */
 
-describe("kaskada dual-spectrum meters", () => {
-  /** Params for wet-trace assertions: short delay so EVERY 46 ms analysis
-   *  window contains echoes (375 ms default would leave most windows dry),
-   *  hot feedback for level, transparent EQ so a 1 kHz tone passes intact. */
-  const METER_PARAMS = { ...NEUTRAL, time: 30, feedback: 0.9 };
+/** Params for wet-trace assertions: short delay so EVERY 46 ms analysis
+ *  window contains echoes (375 ms default would leave most windows dry),
+ *  hot feedback for level, transparent EQ so a 1 kHz tone passes intact. */
+const METER_PARAMS = { ...NEUTRAL, time: 30, feedback: 0.9 };
 
-  interface MeterRun {
-    frames: Float32Array[];
-    leakedAfterDisable: number;
-  }
+interface MeterRun {
+  frames: Float32Array[];
+  leakedAfterDisable: number;
+}
 
-  function driveMeters(
-    seconds: number,
-    input: (s: number) => [number, number],
-    opts: { enable?: boolean; disableAtBlock?: number; params?: Record<string, number> } = {},
-  ): MeterRun {
-    const sr = currentSr();
-    const proc = createKaskadaProcessor() as KaskadaProcessorInstance & { port: FakePort };
-    const prm = makeParams(opts.params ?? METER_PARAMS);
-    const run: MeterRun = { frames: [], leakedAfterDisable: 0 };
-    const nBlocks = Math.ceil((seconds * sr) / BLOCK);
-    const outL = new Float32Array(BLOCK);
-    const outR = new Float32Array(BLOCK);
-    if (opts.enable !== false) proc.port.onmessage?.({ data: { type: "setMeters", enabled: true } });
-    for (let b = 0; b < nBlocks; b++) {
-      const disabled = b === opts.disableAtBlock;
-      if (disabled) proc.port.onmessage?.({ data: { type: "setMeters", enabled: false } });
-      const inL = new Float32Array(BLOCK);
-      const inR = new Float32Array(BLOCK);
-      for (let i = 0; i < BLOCK; i++) {
-        const [l, r] = input(b * BLOCK + i);
-        inL[i] = l;
-        inR[i] = r;
-      }
-      proc.process([[inL, inR]], [[outL, outR]], prm);
-      for (const { msg } of proc.port.posted) {
-        const m = msg as { type?: string; bands?: Float32Array };
-        if (m?.type === "meters" && m.bands instanceof Float32Array) {
-          if (disabled || run.leakedAfterDisable > 0) run.leakedAfterDisable++;
-          else run.frames.push(m.bands);
-        }
-      }
-      proc.port.posted.length = 0;
+/** Module-scope so the unmask battery can drive meters too. */
+function driveMeters(
+  seconds: number,
+  input: (s: number) => [number, number],
+  opts: { enable?: boolean; disableAtBlock?: number; params?: Record<string, number> } = {},
+): MeterRun {
+  const sr = currentSr();
+  const proc = createKaskadaProcessor() as KaskadaProcessorInstance & { port: FakePort };
+  const prm = makeParams(opts.params ?? METER_PARAMS);
+  const run: MeterRun = { frames: [], leakedAfterDisable: 0 };
+  const nBlocks = Math.ceil((seconds * sr) / BLOCK);
+  const outL = new Float32Array(BLOCK);
+  const outR = new Float32Array(BLOCK);
+  if (opts.enable !== false) proc.port.onmessage?.({ data: { type: "setMeters", enabled: true } });
+  for (let b = 0; b < nBlocks; b++) {
+    const disabled = b === opts.disableAtBlock;
+    if (disabled) proc.port.onmessage?.({ data: { type: "setMeters", enabled: false } });
+    const inL = new Float32Array(BLOCK);
+    const inR = new Float32Array(BLOCK);
+    for (let i = 0; i < BLOCK; i++) {
+      const [l, r] = input(b * BLOCK + i);
+      inL[i] = l;
+      inR[i] = r;
     }
-    return run;
+    proc.process([[inL, inR]], [[outL, outR]], prm);
+    for (const { msg } of proc.port.posted) {
+      const m = msg as { type?: string; bands?: Float32Array };
+      if (m?.type === "meters" && m.bands instanceof Float32Array) {
+        if (disabled || run.leakedAfterDisable > 0) run.leakedAfterDisable++;
+        else run.frames.push(m.bands);
+      }
+    }
+    proc.port.posted.length = 0;
   }
+  return run;
+}
 
+describe("kaskada dual-spectrum meters", () => {
   it("posts nothing while gated (default off — closed panel costs no analysis)", () => {
     const run = driveMeters(0.5, sineBurst(1000, Math.round(0.4 * currentSr())), { enable: false });
     expect(run.frames.length).toBe(0);
     expect(run.leakedAfterDisable).toBe(0);
   });
 
-  it("streams ~30 frames/s of 144 finite dB values (dry 0–71, wet 72–143)", () => {
+  it("streams ~30 frames/s of 176 values (dry + wet dB, unmask reduction dB)", () => {
     const run = driveMeters(1.0, sineBurst(1000, currentSr(), 0.9));
     // First frame lands after the window fills (~43 ms) + the 11-block
     // cadence; 1 s of audio then yields roughly 28–30 frames.
     expect(run.frames.length).toBeGreaterThanOrEqual(15);
     expect(run.frames.length).toBeLessThanOrEqual(45);
     const last = run.frames[run.frames.length - 1];
-    expect(last.length).toBe(144);
+    expect(last.length).toBe(176);
     for (const v of last) {
       expect(Number.isFinite(v)).toBe(true);
-      expect(v).toBeGreaterThanOrEqual(-90);
-      expect(v).toBeLessThanOrEqual(0);
+    }
+    for (let i = 0; i < 144; i++) {
+      expect(last[i]).toBeGreaterThanOrEqual(-90);
+      expect(last[i]).toBeLessThanOrEqual(0);
+    }
+    for (let i = 144; i < 176; i++) {
+      expect(last[i]).toBeGreaterThanOrEqual(0); // reduction is positive dB
+      expect(last[i]).toBeLessThanOrEqual(12);
     }
   });
 
@@ -772,8 +789,115 @@ describe("kaskada dual-spectrum meters", () => {
     for (const frame of run.frames) {
       for (const v of frame) {
         expect(Number.isFinite(v)).toBe(true);
-        expect(v).toBe(-90); // clamped floor, not -Infinity
+      }
+      for (let i = 0; i < 144; i++) {
+        expect(frame[i]).toBe(-90); // clamped floor, not -Infinity
+      }
+      for (let i = 144; i < 176; i++) {
+        expect(frame[i]).toBe(0); // no reduction without a masker
       }
     }
+  });
+});
+
+/* ─────────────── unmask solver ─────────────── */
+
+describe("kaskada unmask solver", () => {
+  /** Solver fixture: short delay (dense echo train), transparent loop EQ,
+   *  full wet monitoring, solver wide open (amount 1). Feedback stays at
+   *  the 0.35 default so the wet bus sits ABOVE the dry only slightly —
+   *  a hot feedback would push the wet over the dry and shrink masking. */
+  const UM_BASE = { ...NEUTRAL, time: 30, feedback: 0.35, unmask: 1, unmaskSens: 0.5 };
+
+  /** Band index nearest `freq` on the solver's 32-band 40 Hz–16 kHz grid. */
+  const umBandOf = (freq: number) => Math.max(0, Math.min(31, Math.round(31 * (Math.log(freq / 40) / Math.log(400)))));
+
+  it("ducks the masked echo: the output drops where the dry dominates the same band", () => {
+    const input = sineBurst(2000, currentSr(), 0.6);
+    const off = render(1.0, makeParams({ ...UM_BASE, unmaskOn: 0 }), input);
+    const on = render(1.0, makeParams({ ...UM_BASE, unmaskOn: 1 }), input);
+    const from = Math.round(0.5 * currentSr());
+    const rmsOff = rms(off.L, from, off.L.length);
+    const rmsOn = rms(on.L, from, on.L.length);
+    expect(rmsOff).toBeGreaterThan(0.05);
+    // The echo carries the same 2 kHz tone as the dry; the solver carves
+    // that band out of the delay bus (≤ 12 dB, amount-scaled).
+    expect(rmsOn).toBeLessThan(rmsOff * 0.6);
+  });
+
+  it("reports the reduction in the meters frame at the masked band", () => {
+    const run = driveMeters(1.0, sineBurst(2000, currentSr(), 0.6), {
+      params: { ...UM_BASE, unmaskOn: 1 },
+    });
+    expect(run.frames.length).toBeGreaterThan(0);
+    const last = run.frames[run.frames.length - 1];
+    let maxRed = 0;
+    for (let b = 0; b < 32; b++) maxRed = Math.max(maxRed, last[144 + b]);
+    expect(maxRed).toBeGreaterThan(4);
+  });
+
+  it("rings free in pauses: reduction recovers after the dry stops", () => {
+    const burst = Math.round(0.3 * currentSr());
+    const input = (s: number): [number, number] =>
+      s < burst ? [0.6 * Math.sin((2 * Math.PI * 2000 * s) / currentSr()), 0] : [0, 0];
+    const off = render(2.2, makeParams({ ...UM_BASE, unmaskOn: 0 }), input);
+    const on = render(2.2, makeParams({ ...UM_BASE, unmaskOn: 1 }), input);
+    // Well past the 250 ms default release: the delay bus decays alone.
+    const tailFrom = Math.round(1.7 * currentSr());
+    const ratio = rms(on.L, tailFrom, on.L.length) / rms(off.L, tailFrom, off.L.length);
+    expect(ratio).toBeGreaterThan(0.9);
+  });
+
+  it("an inaudible masker masks nothing (below the −60 dB floor the output is bit-exact)", () => {
+    const input = sineBurst(2000, currentSr(), 0.0005);
+    const off = render(1.0, makeParams({ ...UM_BASE, unmaskOn: 0 }), input);
+    const on = render(1.0, makeParams({ ...UM_BASE, unmaskOn: 1 }), input);
+    expect([...on.L]).toEqual([...off.L]);
+    expect([...on.R]).toEqual([...off.R]);
+  });
+
+  it("solver band grid centers the 2 kHz bell near band 20 (sanity for the meters assertion)", () => {
+    expect(umBandOf(2000)).toBe(20);
+    expect(umBandOf(100)).toBeLessThan(umBandOf(2000));
+    expect(umBandOf(8000)).toBeGreaterThan(umBandOf(2000));
+  });
+
+  it("silent input stays exactly silent with the solver wide open", () => {
+    const { L, R } = render(0.5, makeParams({ ...UM_BASE, unmaskOn: 1, unmaskSens: 1 }));
+    expect(peak(L, 0, L.length)).toBe(0);
+    expect(peak(R, 0, R.length)).toBe(0);
+  });
+
+  it("power toggle mid-render never poisons the output (gains decay, no jump)", () => {
+    const { L } = render(
+      1.5,
+      makeParams({ ...UM_BASE, unmaskOn: 1 }),
+      sineBurst(2000, currentSr(), 0.6),
+      (block, p) => {
+        if (block === Math.round((0.7 * currentSr()) / BLOCK)) p.unmaskOn[0] = 0;
+      },
+    );
+    const max = assertAllFinite([L], "unmask power toggle");
+    expect(max).toBeLessThan(48);
+  });
+
+  it("hot settings soak: solver wide open at min sensitivity stays finite and bounded", () => {
+    const rng = mulberry32(0x0ada);
+    const { L, R } = render(
+      2.2,
+      makeParams({
+        ...UM_BASE,
+        unmaskOn: 1,
+        unmaskSens: 1, // −36 dB threshold — maximal masking
+        unmaskAtk: 0.1,
+        unmaskRel: 2000,
+        feedback: 0.95,
+        drive: 1,
+        level: 6,
+      }),
+      () => [rng() * 1.8 - 0.9, rng() * 1.8 - 0.9],
+    );
+    const max = assertAllFinite([L, R], "unmask-hot");
+    expect(max).toBeLessThan(48);
   });
 });

@@ -177,6 +177,27 @@ export function KaskadaPanel({
       const meters = metersRef.current;
       if (!meters || meters.length < BANDS * 2) return;
 
+      // UNMASK reduction profile (red, hangs from the top): 32 solver bands,
+      // 0…12 dB positive reduction mapped downward from the top edge.
+      if (meters.length >= BANDS * 2 + 32) {
+        ctx.strokeStyle = "rgba(248,113,113,0.85)";
+        ctx.lineWidth = 1.25;
+        ctx.beginPath();
+        for (let b = 0; b < 32; b++) {
+          const x = ((b + 0.5) / 32) * w;
+          const y = (Math.min(12, Math.max(0, meters[BANDS * 2 + b])) / 12) * (h * 0.4);
+          if (b === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+        // Tick marking the 12 dB ceiling
+        ctx.strokeStyle = "rgba(248,113,113,0.25)";
+        ctx.beginPath();
+        ctx.moveTo(0, 0.5);
+        ctx.lineTo(w, 0.5);
+        ctx.stroke();
+      }
+
       // DRY trace (dim)
       ctx.strokeStyle = "rgba(255,255,255,0.35)";
       ctx.lineWidth = 1;
@@ -255,6 +276,10 @@ export function KaskadaPanel({
             }}
           />
           LOOP EQ
+        </span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "rgba(255,255,255,0.55)" }}>
+          <span style={{ width: 10, height: 2, background: "rgba(248,113,113,0.85)", display: "inline-block" }} />
+          UNMASK
         </span>
         {degraded && <span style={{ color: "#f87171", marginLeft: "auto" }}>bypassed — no analysis</span>}
       </div>

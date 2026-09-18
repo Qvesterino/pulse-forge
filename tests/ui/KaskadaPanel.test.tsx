@@ -32,9 +32,10 @@ function stub2dContext() {
   ) as unknown as CanvasRenderingContext2D;
 }
 
-function frameOf(fill: (dry: Float32Array, wet: Float32Array) => void): Float32Array {
-  const frame = new Float32Array(144).fill(-90);
-  fill(frame.subarray(0, 72), frame.subarray(72));
+function frameOf(fill: (dry: Float32Array, wet: Float32Array, unmask: Float32Array) => void): Float32Array {
+  const frame = new Float32Array(176).fill(-90);
+  frame.fill(0, 144); // unmask reduction section is positive dB
+  fill(frame.subarray(0, 72), frame.subarray(72, 144), frame.subarray(144));
   return frame;
 }
 
@@ -62,6 +63,7 @@ describe("KaskadaPanel", () => {
     expect(screen.getByText("DRY")).toBeInTheDocument();
     expect(screen.getByText("DELAY")).toBeInTheDocument();
     expect(screen.getByText("LOOP EQ")).toBeInTheDocument();
+    expect(screen.getByText("UNMASK")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: /Kaskáda dual spectrum/ })).toBeInTheDocument();
     expect(setFxMetersEnabled).toHaveBeenCalledWith("t1", "fx1", true);
     unmount();
@@ -73,9 +75,10 @@ describe("KaskadaPanel", () => {
     const services = mockServices(doc);
     (services.engine as unknown as Record<string, unknown>).setFxMetersEnabled = vi.fn();
     (services.engine as unknown as Record<string, unknown>).getFxMeters = vi.fn(() =>
-      frameOf((dry, wet) => {
+      frameOf((dry, wet, unmask) => {
         dry[40] = -3; // 1 kHz tone on the input
         wet[40] = -8; // echo of the same tone
+        unmask[20] = 9; // solver carving the masked band
       }),
     );
 

@@ -2278,6 +2278,24 @@
   var METER_F_MAX = 2e4;
   var METER_DB_FLOOR = -90;
   var ANALYSIS_EVERY_BLOCKS = 11;
+  var UM_BANDS = 32;
+  var UM_MAX_RED_DB = 12;
+  var UM_BELL_Q = 2.5;
+  var UM_ANALYSIS_Q = 3;
+  var UM_ANALYSIS_ENV_MS = 5;
+  var UM_CHUNK = 64;
+  var UM_SILENCE = 1e-9;
+  var UM_WET_GUARD = 1e-6;
+  var UM_MASKER_FLOOR = 1e-3;
+  var UM_FREQS = (() => {
+    const logMin = Math.log(40);
+    const logMax = Math.log(16e3);
+    const out = new Float32Array(UM_BANDS);
+    for (let i = 0; i < UM_BANDS; i++) {
+      out[i] = Math.exp(logMin + i / (UM_BANDS - 1) * (logMax - logMin));
+    }
+    return out;
+  })();
   var KaskadaProcessor = class extends AudioWorkletProcessor {
     static get parameterDescriptors() {
       return [
@@ -2293,6 +2311,11 @@
         { name: "modDepth", defaultValue: 0.15, minValue: 0, maxValue: 1, automationRate: "k-rate" },
         { name: "spread", defaultValue: 0.8, minValue: 0, maxValue: 1, automationRate: "k-rate" },
         { name: "freeze", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" },
+        { name: "unmaskOn", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" },
+        { name: "unmask", defaultValue: 0.6, minValue: 0, maxValue: 1, automationRate: "k-rate" },
+        { name: "unmaskSens", defaultValue: 0.5, minValue: 0, maxValue: 1, automationRate: "k-rate" },
+        { name: "unmaskAtk", defaultValue: 5, minValue: 0.1, maxValue: 100, automationRate: "k-rate" },
+        { name: "unmaskRel", defaultValue: 250, minValue: 10, maxValue: 2e3, automationRate: "k-rate" },
         { name: "character", defaultValue: 1, minValue: 0, maxValue: 2, automationRate: "k-rate" },
         { name: "mix", defaultValue: 0.25, minValue: 0, maxValue: 1, automationRate: "k-rate" },
         { name: "level", defaultValue: -6, minValue: -24, maxValue: 6, automationRate: "k-rate" }
@@ -2344,6 +2367,35 @@
       this._lastBpm = -1;
       this._lastToneLp = -1;
       this._lastToneHp = -1;
+      this.umPower = false;
+      this.umAmount = 0.6;
+      this.umThresholdDb = -15;
+      this.umAtkCoef = 1;
+      this.umRelCoef = 1;
+      this.umChunk = 0;
+      this.umOutL = 0;
+      this.umOutR = 0;
+      this.umSettled = true;
+      this.umAnalysisCoef = 1 - Math.exp(-1e3 / (UM_ANALYSIS_ENV_MS * this.sr));
+      this.umDryEnv = new Float32Array(UM_BANDS);
+      this.umWetEnv = new Float32Array(UM_BANDS);
+      this.umGainDb = new Float32Array(UM_BANDS);
+      this.umRedOut = new Float32Array(UM_BANDS);
+      this.umActiveList = [];
+      this.umDryA = [];
+      this.umWetA = [];
+      this.umBells = [];
+      for (let b = 0; b < UM_BANDS; b++) {
+        const dryBq = this.makeUmBiquad(1);
+        const wetBq = this.makeUmBiquad(1);
+        const bell = this.makeUmBiquad(2);
+        this.umBandpass(dryBq, UM_FREQS[b], UM_ANALYSIS_Q);
+        this.umBandpass(wetBq, UM_FREQS[b], UM_ANALYSIS_Q);
+        this.umBell(bell, UM_FREQS[b], 0, UM_BELL_Q);
+        this.umDryA.push(dryBq);
+        this.umWetA.push(wetBq);
+        this.umBells.push(bell);
+      }
       this.metersOn = false;
       this.dryWin = new Float32Array(FFT_SIZE);
       this.wetWin = new Float32Array(FFT_SIZE);
@@ -2383,7 +2435,7 @@
         if (b1 < b0) b1 = b0;
         this.bandBins.push([b0, b1]);
       }
-      this.bandsOut = new Float32Array(METER_BANDS * 2);
+      this.bandsOut = new Float32Array(METER_BANDS * 2 + UM_BANDS);
     }
     /** In-place iterative radix-2 FFT (n a power of two). */
     runFft(re, im, n) {
@@ -2459,8 +2511,158 @@
       }
       this.runFft(re, im, FFT_SIZE);
       this.foldToBands(re, im, out, METER_BANDS);
+      const gainDb = this.umGainDb;
+      const redOut = this.umRedOut;
+      for (let b = 0; b < UM_BANDS; b++) redOut[b] = -gainDb[b] || 0;
+      out.set(redOut, 2 * METER_BANDS);
       this.port.postMessage({ type: "meters", bands: out }, [out.buffer]);
-      this.bandsOut = new Float32Array(METER_BANDS * 2);
+      this.bandsOut = new Float32Array(METER_BANDS * 2 + UM_BANDS);
+    }
+    /* ── Unmask solver ── */
+    /** Transposed direct-form II biquad (reference dsp/biquad.ts pattern):
+     *  two states per channel, coefficient set held outside the hot path. */
+    makeUmBiquad(channels) {
+      return {
+        b0: 1,
+        b1: 0,
+        b2: 0,
+        a1: 0,
+        a2: 0,
+        z1: new Float32Array(channels),
+        z2: new Float32Array(channels)
+      };
+    }
+    /** RBJ bandpass, constant 0 dB peak gain. */
+    umBandpass(bq, freq, q) {
+      const w = TWO_PI * Math.min(freq, this.sr / 2 - 1) / this.sr;
+      const cw = Math.cos(w);
+      const sw = Math.sin(w);
+      const alpha = sw / (2 * q);
+      const a0 = 1 + alpha;
+      bq.b0 = alpha / a0;
+      bq.b1 = 0;
+      bq.b2 = -alpha / a0;
+      bq.a1 = -2 * cw / a0;
+      bq.a2 = (1 - alpha) / a0;
+    }
+    /** RBJ peaking EQ (the carving bell). */
+    umBell(bq, freq, gainDb, q) {
+      const w = TWO_PI * Math.min(freq, this.sr / 2 - 1) / this.sr;
+      const cw = Math.cos(w);
+      const sw = Math.sin(w);
+      const alpha = sw / (2 * q);
+      const a = Math.pow(10, gainDb / 40);
+      const a0 = 1 + alpha / a;
+      bq.b0 = (1 + alpha * a) / a0;
+      bq.b1 = -2 * cw / a0;
+      bq.b2 = (1 - alpha * a) / a0;
+      bq.a1 = -2 * cw / a0;
+      bq.a2 = (1 - alpha / a) / a0;
+    }
+    umSample(bq, ch, x) {
+      const y = bq.b0 * x + bq.z1[ch];
+      bq.z1[ch] = bq.b1 * x - bq.a1 * y + bq.z2[ch];
+      bq.z2[ch] = bq.b2 * x - bq.a2 * y;
+      return y < 1e-20 && y > -1e-20 ? 0 : y;
+    }
+    /** Refresh the active-band list + bell gains (chunk cadence) — only
+     *  bands with meaningful reduction carry a bell in the hot path. */
+    umRefreshBells() {
+      this.umActiveList.length = 0;
+      for (let b = 0; b < UM_BANDS; b++) {
+        const g = this.umGainDb[b];
+        if (g < -0.01) {
+          this.umBell(this.umBells[b], UM_FREQS[b], g, UM_BELL_Q);
+          this.umActiveList.push(b);
+        }
+      }
+    }
+    /** One sample of the solver: mono-summed analysis → per-band masking →
+     *  smoothed gains → series bells on the wet stereo pair. Results land
+     *  in umOutL/umOutR (identical to the wet inputs when nothing is
+     *  reduced). */
+    umProcessSample(refL, refR, wetL, wetR) {
+      const refMono = (refL + refR) * 0.5;
+      const wetMono = (wetL + wetR) * 0.5;
+      const envCoef = this.umAnalysisCoef;
+      const dryA = this.umDryA;
+      const wetA = this.umWetA;
+      const dryEnv = this.umDryEnv;
+      const wetEnv = this.umWetEnv;
+      for (let b = 0; b < UM_BANDS; b++) {
+        const dryY = this.umSample(dryA[b], 0, refMono);
+        const absDry = dryY < 0 ? -dryY : dryY;
+        dryEnv[b] += envCoef * (absDry - dryEnv[b]);
+        const wetY = this.umSample(wetA[b], 0, wetMono);
+        const absWet = wetY < 0 ? -wetY : wetY;
+        wetEnv[b] += envCoef * (absWet - wetEnv[b]);
+        if (!Number.isFinite(dryEnv[b]) || !Number.isFinite(wetEnv[b])) {
+          dryEnv[b] = 0;
+          wetEnv[b] = 0;
+        }
+      }
+      const threshold = this.umThresholdDb;
+      const amount = this.umAmount;
+      const gainDb = this.umGainDb;
+      let maxRed = 0;
+      for (let b = 0; b < UM_BANDS; b++) {
+        const dryAmp = dryEnv[b];
+        const wetAmp = wetEnv[b];
+        const dryDb = dryAmp < 1e-10 ? -200 : 20 * Math.log10(dryAmp);
+        const wetDb = wetAmp < 1e-10 ? -200 : 20 * Math.log10(wetAmp);
+        const maskingDb = dryAmp < UM_SILENCE && wetAmp < UM_SILENCE ? -200 : dryDb - wetDb;
+        let target = 0;
+        if (wetAmp > UM_WET_GUARD && // nothing to duck in a silent delay band
+        dryAmp > UM_MASKER_FLOOR && // a quiet masker masks nothing
+        maskingDb > threshold) {
+          target = -Math.min((maskingDb - threshold) * amount, UM_MAX_RED_DB);
+        }
+        const cur = gainDb[b];
+        const coef = target < cur ? this.umAtkCoef : this.umRelCoef;
+        const next = cur + coef * (target - cur);
+        gainDb[b] = next;
+        const red = -next;
+        if (red > maxRed) maxRed = red;
+      }
+      this.umMaxRedDb = maxRed;
+      if (this.umChunk === 0) this.umRefreshBells();
+      this.umChunk = (this.umChunk + 1) % UM_CHUNK;
+      let yL = wetL;
+      let yR = wetR;
+      const active = this.umActiveList;
+      const bells = this.umBells;
+      for (let i = 0; i < active.length; i++) {
+        const bq = bells[active[i]];
+        yL = this.umSample(bq, 0, yL);
+        yR = this.umSample(bq, 1, yR);
+      }
+      if (!Number.isFinite(yL) || !Number.isFinite(yR)) {
+        yL = 0;
+        yR = 0;
+      }
+      this.umOutL = yL;
+      this.umOutR = yR;
+    }
+    /** Power-off path: bypass 1:1 while the smoothed gains decay to zero so
+     *  re-enabling never jumps. Fully settled → the flag skips the loop. */
+    umPowerOff() {
+      if (this.umSettled) {
+        this.umMaxRedDb = 0;
+        return;
+      }
+      const rel = this.umRelCoef;
+      const gainDb = this.umGainDb;
+      let settled = true;
+      for (let b = 0; b < UM_BANDS; b++) {
+        const cur = gainDb[b];
+        if (cur !== 0) {
+          const next = cur + rel * (0 - cur);
+          gainDb[b] = next > -1e-6 || next < 1e-6 ? 0 : next;
+          if (next !== 0) settled = false;
+        }
+      }
+      if (settled) this.umSettled = true;
+      this.umMaxRedDb = 0;
     }
     makeBiquad() {
       return { x1: 0, x2: 0, y1: 0, y2: 0 };
@@ -2558,6 +2760,12 @@
       this.mix = params.mix[0];
       this.outGain = Math.pow(10, params.level[0] / 20);
       this.modDepthMs = params.modDepth[0] * this.delaySamples * 0.25;
+      this.umPower = params.unmaskOn[0] > 0.5;
+      if (this.umPower) this.umSettled = false;
+      this.umAmount = params.unmask[0];
+      this.umThresholdDb = 6 - 42 * params.unmaskSens[0];
+      this.umAtkCoef = 1 - Math.exp(-1e3 / (Math.max(0.01, params.unmaskAtk[0]) * this.sr));
+      this.umRelCoef = 1 - Math.exp(-1e3 / (Math.max(0.01, params.unmaskRel[0]) * this.sr));
       const pingPong = this.pingPong;
       const fbGain = this.fbGain;
       const drive = this.drive;
@@ -2631,8 +2839,15 @@
           L[writeIdx] = inL + fbL * fbGain;
           R[writeIdx] = inR + fbR * fbGain;
         }
-        const outWL = wetL + spread * 0.5 * (wetR - wetL);
-        const outWR = wetR + spread * 0.5 * (wetL - wetR);
+        let outWL = wetL + spread * 0.5 * (wetR - wetL);
+        let outWR = wetR + spread * 0.5 * (wetL - wetR);
+        if (this.umPower) {
+          this.umProcessSample(inL, inR, outWL, outWR);
+          outWL = this.umOutL;
+          outWR = this.umOutR;
+        } else {
+          this.umPowerOff();
+        }
         outL[i] = inL * (1 - mix) + outWL * mix * this.outGain;
         outR[i] = inR * (1 - mix) + outWR * mix * this.outGain;
         this.dryWin[this.anPos] = (inL + inR) * 0.5;

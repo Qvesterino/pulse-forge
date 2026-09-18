@@ -111,27 +111,59 @@ of the loop chain is contractive, so the loop gain never exceeds FEEDBK at
 any amplitude — no self-oscillation at any preset. Loud peaks compress
 down; make up with LEVEL.
 
+### 3.7 Unmask solver (32-band adaptive spectral ducking)
+
+Port of the VocalForge Kaskáda M3 solver (Ultina masking pattern,
+inverted): **reference = the DRY input, target = the DELAY bus output** —
+the delay ducks under the dry wherever the dry dominates, and rings free
+wherever the dry is silent (the point of a delay).
+
+- **Analysis:** 32 log-spaced bandpass biquads (40 Hz–16 kHz, Q 3.0) +
+  envelope followers (5 ms TC) on the MONO-sumMED dry and delay signals,
+  every sample (ms-scale attack needs fresh envelopes)
+- **Masking:** `dryDb − wetDb` over the U-SENS threshold → proportional
+  gain reduction capped at 12 dB, scaled by U-AMOUNT
+- **Application:** per-sample attack (deepening) / release (recovering)
+  smoothing; reduction applied through ACTIVE peaking bells only
+  (Q 2.5), coefficients refreshed every 64 samples
+- **Topology:** the bells act on the OUTPUT branch only (post spread,
+  pre mix/level) — the feedback loop is untouched, so echo timing and
+  per-repeat decay are exactly as with the solver off. **No added
+  latency**, no PDC interaction, live == offline
+- **Safety gates:** wet-activity guard (a delay band below ≈ −120 dB is
+  never ducked — gains must not linger and damage later echoes);
+  psychoacoustic masker floor (a dry band below ≈ −60 dB never masks —
+  echoes ring free in pauses); silence guard; power-off decays the
+  smoothed gains to zero so re-enabling never jumps (then bypasses 1:1)
+- **Meters:** the 32-band reduction profile rides at the tail of the
+  meter frame (§5.1.1) and renders as the red UNMASK curve in the panel
+
 ---
 
 ## 4. Parameter Contract
 
-| ID          | Label     | Range              | Default  | Notes                                  |
-| ----------- | --------- | ------------------ | -------- | -------------------------------------- |
-| `time`      | TIME      | 30–2000 ms (log)   | 375      | free mode                              |
-| `sync`      | SYNC      | enum 0–5           | 0 (off)  | off / 1/4 / 1/8 / 1/8T / 1/16 / 1/16T  |
-| `pingPong`  | PING-PONG | 0/1                | 0        | L↔R crossfeedback                      |
-| `feedback`  | FEEDBK    | 0–95 %             | 35       | hard ceiling, no runaway               |
-| `toneLp`    | TONE LP   | 500–12000 Hz (log) | 4500     | loop path                              |
-| `toneHp`    | TONE HP   | 20–800 Hz (log)    | 150      | loop path                              |
-| `drive`     | DRIVE     | 0–100 %            | 0        | tape saturation in feedback            |
-| `modRate`   | MOD RATE  | 0.1–8 Hz           | 0.6      | pitch drift rate                       |
-| `modDepth`  | MOD DEPTH | 0–100 %            | 15       | pitch drift depth                      |
-| `spread`    | SPREAD    | 0–100 %            | 80       | M/S width on wet                       |
-| `freeze`    | FREEZE    | 0/1                | 0        | infinite repeat lock                   |
-| `character` | CHARACTER | enum 0–2           | 1 (tape) | digital / tape / analog                |
-| `mix`       | MIX       | 0–100 %            | 25       | dry/wet                                |
-| `level`     | LEVEL     | −24 to +6 dB       | −6       | output gain                            |
-| `bpm`       | (hidden)  | 40–240             | 120      | transport tempo (set via setParameter) |
+| ID           | Label     | Range              | Default  | Notes                                        |
+| ------------ | --------- | ------------------ | -------- | -------------------------------------------- |
+| `time`       | TIME      | 30–2000 ms (log)   | 375      | free mode                                    |
+| `sync`       | SYNC      | enum 0–5           | 0 (off)  | off / 1/4 / 1/8 / 1/8T / 1/16 / 1/16T        |
+| `pingPong`   | PING-PONG | 0/1                | 0        | L↔R crossfeedback                            |
+| `feedback`   | FEEDBK    | 0–95 %             | 35       | hard ceiling, no runaway                     |
+| `toneLp`     | TONE LP   | 500–12000 Hz (log) | 4500     | loop path                                    |
+| `toneHp`     | TONE HP   | 20–800 Hz (log)    | 150      | loop path                                    |
+| `drive`      | DRIVE     | 0–100 %            | 0        | tape saturation in feedback                  |
+| `modRate`    | MOD RATE  | 0.1–8 Hz           | 0.6      | pitch drift rate                             |
+| `modDepth`   | MOD DEPTH | 0–100 %            | 15       | pitch drift depth                            |
+| `spread`     | SPREAD    | 0–100 %            | 80       | M/S width on wet                             |
+| `freeze`     | FREEZE    | 0/1                | 0        | infinite repeat lock                         |
+| `unmaskOn`   | UNMASK    | 0/1                | 0        | solver power (default off = legacy path)     |
+| `unmask`     | U-AMOUNT  | 0–100 %            | 60       | reduction depth                              |
+| `unmaskSens` | U-SENS    | 0–100 %            | 50       | masking threshold (0→+6 dB, 50→−15, 100→−36) |
+| `unmaskAtk`  | U-ATK     | 0.1–100 ms         | 5        | duck envelope attack                         |
+| `unmaskRel`  | U-REL     | 10–2000 ms         | 250      | duck envelope release                        |
+| `character`  | CHARACTER | enum 0–2           | 1 (tape) | digital / tape / analog                      |
+| `mix`        | MIX       | 0–100 %            | 25       | dry/wet                                      |
+| `level`      | LEVEL     | −24 to +6 dB       | −6       | output gain                                  |
+| `bpm`        | (hidden)  | 40–240             | 120      | transport tempo (set via setParameter)       |
 
 All params are `k-rate` (block-rate updates, no per-sample param cost).
 `bpm` is a hidden param (not shown in Inspector UI) used internally by
@@ -250,12 +282,12 @@ backwards compatibility.
 
 ## 8. Phase 2 (future — not in this delivery)
 
-> **Delivered ahead of schedule: dual spectrum.** The Inspector's
-> `KaskadaPanel` shows dry + delay traces over one log axis with the live
-> loop-EQ curve from the TONE params (§5.1.1). Drag-to-adjust EQ handles
-> in the display remain future work.
+> **Delivered ahead of schedule: dual spectrum** (§5.1.1 — dry + delay
+> traces over one log axis with the live loop-EQ curve) and the
+> **unmask solver** (§3.7 — 32-band adaptive spectral ducking with the
+> red reduction curve in the panel). Drag-to-adjust EQ handles and the
+> reference's delta-listen monitor remain future work.
 
-- **Unmask solver** — 32-band spectral ducking (Ultina pattern inverted)
 - **Reverse mode** — backward read with lookahead (needs latency reporting)
 - **Freeze tail capture** — sample-and-hold on the delay buffer
 - **Solo wet / send-return mode** — descoped from Phase 1 (§1); needs a

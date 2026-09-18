@@ -772,7 +772,15 @@ export async function runChecks(): Promise<CheckResult[]> {
   try {
     const kctx = new OfflineAudioContext(2, SR * 2, SR);
     await loadCoreWorklets(kctx);
-    const kParams = { ...defaultParamsOf("kaskada"), mix: 1, feedback: 0.5, time: 250, pingPong: 1 };
+    const kParams = {
+      ...defaultParamsOf("kaskada"),
+      mix: 1,
+      feedback: 0.5,
+      time: 250,
+      pingPong: 1,
+      unmaskOn: 1, // the 440 Hz dry masks its own echo — solver carves it
+      unmask: 1,
+    };
     const krt = EFFECT_DEFS.kaskada.factory(
       kctx,
       { id: "kaskada-check", type: "kaskada", bypassed: false, params: kParams },
@@ -828,7 +836,7 @@ export async function runChecks(): Promise<CheckResult[]> {
     for (let attempt = 0; attempt < 80 && !metersFrame; attempt++) {
       await new Promise((resolve) => setTimeout(resolve, 25));
       const frame = krt.getMeters?.();
-      if (frame instanceof Float32Array && frame.length === 144) metersFrame = frame;
+      if (frame instanceof Float32Array && frame.length === 176) metersFrame = frame;
     }
     krt.dispose();
     const bandOf = (freq: number) =>
@@ -837,16 +845,23 @@ export async function runChecks(): Promise<CheckResult[]> {
     // present-but-not-loud: the flushed frame is the render's LAST analysis
     // window (1.96–2.0 s) and the 250 ms echo train rarely intersects it —
     // wet content semantics are pinned by the unit battery (time 30 there).
+    // The unmask tail (144–175) must show REAL reduction: the continuous
+    // 440 Hz dry masks its own echo (unmaskOn=1, amount=1 in kParams).
+    let umMaxRed = 0;
+    if (metersFrame) {
+      for (let b = 0; b < 32; b++) umMaxRed = Math.max(umMaxRed, metersFrame[144 + b]);
+    }
     const metersOk =
       !!metersFrame &&
       Number.isFinite(metersFrame[bandOf(440)]) &&
       Number.isFinite(metersFrame[72 + bandOf(440)]) &&
-      metersFrame[bandOf(440)] > -60; // dry: the 440 Hz oscillator
+      metersFrame[bandOf(440)] > -60 && // dry: the 440 Hz oscillator
+      umMaxRed > 1; // solver carving the masked echo
     check(
-      "kaskada: dual spectrum meters flow over the port (dry+delay frames)",
+      "kaskada: dual spectrum + unmask meters flow over the port",
       metersOk,
       metersFrame
-        ? `dry=${metersFrame[bandOf(440)].toFixed(1)}dB wet=${metersFrame[72 + bandOf(440)].toFixed(1)}dB`
+        ? `dry=${metersFrame[bandOf(440)].toFixed(1)}dB wet=${metersFrame[72 + bandOf(440)].toFixed(1)}dB umMaxRed=${umMaxRed.toFixed(1)}dB`
         : "no meter frame arrived",
     );
   } catch (error) {
