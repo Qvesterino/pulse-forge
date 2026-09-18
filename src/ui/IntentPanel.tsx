@@ -1,19 +1,20 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useServices, useDoc } from "./context";
 import { parseIntentText } from "../intent/text-parser";
-import { normalizeIntent } from "../intent/normalize";
-import { planGeneration } from "../intent/plan";
-import { generatePattern } from "../ai/generator";
-import { inspectPatternInvariants } from "../ai/invariants";
-import { generatePatternCommand } from "../commands/commands";
-import type { IntentSpec } from "../intent/types";
+import { generateAsyncResult } from "../intent/pipeline";
+import { applyGenerationResultCommand } from "../commands/commands";
+import { rankerMode } from "../ai/ranking/ranker-client";
+import type { GenerationResult } from "../intent/types";
 
 /**
  * INTENT dock panel — the "hlavný ťahák" (VISION §10): type what you want,
  * the engine generates + ranks candidates and delivers the best one.
  *
- * Text → parseIntentText → normalizeIntent → planGeneration → provider
- * → candidate bank → ONNX ranker (shadow/active) → pattern → command.
+ * The UI only orchestrates: parse the text → request generation through the
+ * canonical Intent Engine entry point → apply the returned result as one
+ * undoable command. All candidate generation, invariant gating, ranking and
+ * provenance live behind the engine boundary (intent pipeline + provider);
+ * this panel never regenerates or re-validates engine output.
  */
 export function IntentPanel() {
   const services = useServices();
@@ -22,6 +23,14 @@ export function IntentPanel() {
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  // A pending generation must not touch state after unmount (or after a
+  // newer generate() superseded it) — the AbortController + token make the
+  // continuation a no-op.
+  useEffect(() => {
+    return () => abortRef.current?.abort();
+  }, []);
 
   /** Live parse preview — shows what the engine understood from the text. */
   const parsed = useMemo(() => {
@@ -34,32 +43,37 @@ export function IntentPanel() {
     setBusy(true);
     setError(null);
     setStatus(null);
+    const controller = new AbortController();
+    abortRef.current?.abort();
+    abortRef.current = controller;
     try {
       const intentInput = parsed?.input ?? {};
-      const intent: IntentSpec = normalizeIntent({
-        ...intentInput,
-        seed: `intent-${Date.now()}`,
-        candidateCount: 3,
-        roles: intentInput.roles ?? ["drums", "bass"],
-      });
-      const plan = planGeneration(intent, doc);
-
-      // Use the local provider's candidate bank + ranker (via the pipeline)
-      const pattern = generatePattern(doc, plan.options);
-      const report = inspectPatternInvariants(doc, pattern, {
-        checkScale: Boolean(plan.options.key ?? doc.key),
-        key: plan.options.key ?? doc.key,
-      });
-      if (!report.ok) {
-        setError("Generated pattern failed invariant checks — try a different intent.");
+      const result: GenerationResult = await generateAsyncResult(
+        doc,
+        {
+          ...intentInput,
+          seed: `intent-${Date.now()}`,
+          candidateCount: 3,
+          roles: intentInput.roles ?? ["drums", "bass"],
+        },
+        { mode: "apply", signal: controller.signal },
+      );
+      if (controller.signal.aborted) return;
+      if (!result.proposal) {
+        const reason = result.diagnostics.errors[0] ?? result.diagnostics.fallbackReason ?? "generation rejected";
+        setError(`Generation failed: ${reason} — try a different intent.`);
         return;
       }
-      services.store.execute(generatePatternCommand(doc, plan.options, intent.genre || undefined));
-      setStatus(`✓ pattern generated (${rankerModeLabel()})`);
+      // Apply exactly the result the engine produced — no regeneration, one
+      // undo step, provenance preserved (seed, hashes, ranker metadata).
+      services.store.execute(applyGenerationResultCommand(doc, result, result.plan.intent.genre || undefined));
+      const fallback = result.status === "fallback" ? " — heuristic fallback" : "";
+      setStatus(`✓ pattern generated (${rankerModeLabel()}${fallback})`);
     } catch (err) {
+      if (controller.signal.aborted) return;
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setBusy(false);
+      if (!controller.signal.aborted) setBusy(false);
     }
   };
 
@@ -110,10 +124,6 @@ export function IntentPanel() {
 }
 
 function rankerModeLabel(): string {
-  try {
-    const mode = localStorage.getItem("pf:intent-ranker") ?? "shadow";
-    return mode === "active" ? "ONNX active" : "shadow (heuristic)";
-  } catch {
-    return "shadow";
-  }
+  const mode = rankerMode();
+  return mode === "active" ? "ONNX active" : mode === "shadow" ? "shadow (heuristic)" : "ranker off";
 }

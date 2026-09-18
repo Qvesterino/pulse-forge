@@ -202,7 +202,25 @@ export class LocalDeterministicProvider implements GenerationProvider {
     }
     const effectiveKey = plan.options.key ?? context.project.key;
     const { candidates, failures, candidateSeeds } = this.collectCandidates(plan, context);
-    const ranked = await rankCandidatesWithModel(context.project, candidates, plan);
+    // A model-path defect (feature extraction, batch assembly) must never break
+    // generation: fall back to the deterministic heuristic bank ranking, same
+    // as a worker timeout or an invalid model response would.
+    let ranked;
+    try {
+      ranked = await rankCandidatesWithModel(context.project, candidates, plan);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      ranked = {
+        order: rankCandidateBank(context.project, candidates),
+        mode,
+        source: "fallback" as const,
+        modelScores: candidates.map(() => null),
+        featureVersion: null,
+        rankerVersion: null,
+        modelHash: null,
+        fallbackReason: `ranker-pipeline-error:${reason}`,
+      };
+    }
 
     if (ranked.order.length > 0) {
       const selected = ranked.order[0];
@@ -218,6 +236,7 @@ export class LocalDeterministicProvider implements GenerationProvider {
       if (ranked.source === "model" && ranked.modelHash) {
         bankWarnings.push(`ranker-model:${ranked.rankerVersion}:${ranked.modelHash.slice(0, 12)}`);
       }
+      if (ranked.fallbackReason) bankWarnings.push(ranked.fallbackReason);
       const withProvenance: Pattern = {
         ...selected.pattern,
         generation: {

@@ -22,6 +22,8 @@ export interface RankerRanking {
   featureVersion: string | null;
   rankerVersion: string | null;
   modelHash: string | null;
+  /** Present when the model path failed unexpectedly (vs a controlled score fallback). */
+  fallbackReason?: string;
 }
 
 const HEURISTIC_WEIGHT = 0.6;

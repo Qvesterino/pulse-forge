@@ -1,10 +1,11 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useDoc, useServices } from "./context";
-import { generatePatternCommand } from "../commands/commands";
+import { applyGenerationResultCommand } from "../commands/commands";
 import type { GenerateOptions } from "../ai/types";
 import { GENRES, DEFAULT_GENERATE_OPTIONS } from "../ai/types";
 import { getStyleNamesForGenre } from "../ai/grooves/index";
-import { generateLocalResultFromOptions } from "../intent/pipeline";
+import { generateAsyncResult } from "../intent/pipeline";
+import type { GenerationResult } from "../intent/types";
 import { PAD_NAMES } from "../ai/types";
 import { nextSeed } from "../shared/dice";
 
@@ -113,10 +114,52 @@ export function GenerateDialog({ open, onClose }: { open: boolean; onClose: () =
     ],
   );
 
-  // Live preview
-  const preview = useMemo(() => {
-    const result = generateLocalResultFromOptions(doc, generationOptions, "preview");
-    const pattern = result.proposal?.pattern;
+  // Live preview through the canonical async generation path. The previewed
+  // GenerationResult is what APPLY commits — the command never regenerates.
+  // Each options/doc change supersedes the previous request: an abort +
+  // monotonic request token make a stale async completion a no-op, so an
+  // older generation can never overwrite a newer preview.
+  const [preview, setPreview] = useState<{ options: GenerateOptions; result: GenerationResult | null }>({
+    options: generationOptions,
+    result: null,
+  });
+  const [pending, setPending] = useState(false);
+  const requestRef = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    const requestId = ++requestRef.current;
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setPending(true);
+    generateAsyncResult(doc, generationOptions, { mode: "preview", signal: controller.signal })
+      .then((result) => {
+        if (requestRef.current !== requestId) return;
+        setPreview({ options: generationOptions, result });
+      })
+      .catch((err) => {
+        // Only aborts reject; a superseded request is ignored, a live one
+        // keeps the previous preview instead of flashing empty.
+        if (requestRef.current !== requestId) return;
+        const aborted =
+          (err instanceof DOMException && err.name === "AbortError") ||
+          (typeof err === "object" && err !== null && (err as { name?: unknown }).name === "AbortError");
+        if (!aborted) setPreview({ options: generationOptions, result: null });
+      })
+      .finally(() => {
+        if (requestRef.current === requestId) setPending(false);
+      });
+    return () => controller.abort();
+  }, [doc, generationOptions]);
+
+  // Unmount cleanup (dialog close) — stop any in-flight generation.
+  useEffect(() => {
+    return () => abortRef.current?.abort();
+  }, []);
+
+  const previewRows = useMemo(() => {
+    const pattern = preview.result?.proposal?.pattern;
     const target = generationOptions.drumTrackId
       ? (drumTracks.find((track) => track.id === generationOptions.drumTrackId) ?? drumTracks[0])
       : drumTracks[0];
@@ -126,7 +169,7 @@ export function GenerateDialog({ open, onClose }: { open: boolean; onClose: () =
       rows,
       activePads: rows.map((row, index) => (row.some((value) => value > 0) ? index : -1)).filter((index) => index >= 0),
     };
-  }, [doc, generationOptions, drumTracks]);
+  }, [preview.result, generationOptions, drumTracks]);
 
   useEffect(() => {
     if (open && seedInputRef.current) {
@@ -157,9 +200,15 @@ export function GenerateDialog({ open, onClose }: { open: boolean; onClose: () =
   }, [open, onClose]);
 
   const handleGenerate = useCallback(() => {
-    services.store.execute(generatePatternCommand(doc, generationOptions, patternName || undefined));
+    // Apply exactly the previewed GenerationResult — never regenerate. The
+    // pending guard guarantees the previewed options match the current ones
+    // (a superseded preview cannot be committed).
+    if (pending) return;
+    const result = preview.result;
+    if (!result?.proposal || preview.options !== generationOptions) return;
+    services.store.execute(applyGenerationResultCommand(doc, result, patternName || undefined));
     onClose();
-  }, [generationOptions, patternName, doc, services, onClose]);
+  }, [pending, preview, generationOptions, patternName, doc, services, onClose]);
 
   const handleRandomSeed = useCallback(() => setSeed((prev) => randomSeed(prev)), []);
 
@@ -347,7 +396,12 @@ export function GenerateDialog({ open, onClose }: { open: boolean; onClose: () =
           {/* Preview */}
           <div className="generate-divider" />
           <div className="generate-advanced-title">PREVIEW</div>
-          <PatternPreview rows={preview.rows} activePads={preview.activePads} />
+          <PatternPreview rows={previewRows.rows} activePads={previewRows.activePads} />
+          {!pending && preview.result && !preview.result.proposal && (
+            <div className="generate-advanced-title" role="alert">
+              Generation rejected — adjust the intent or seed.
+            </div>
+          )}
 
           {/* Advanced controls */}
           <div className="generate-divider" />
@@ -414,8 +468,13 @@ export function GenerateDialog({ open, onClose }: { open: boolean; onClose: () =
           <button type="button" className="btn btn-small" onClick={onClose}>
             CANCEL
           </button>
-          <button type="button" className="btn btn-small btn-primary" onClick={handleGenerate}>
-            GENERATE
+          <button
+            type="button"
+            className="btn btn-small btn-primary"
+            disabled={pending || !preview.result?.proposal || preview.options !== generationOptions}
+            onClick={handleGenerate}
+          >
+            {pending ? "…" : "GENERATE"}
           </button>
         </div>
       </div>

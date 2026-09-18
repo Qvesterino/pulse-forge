@@ -771,6 +771,12 @@ button {
   gap: 5px;
   min-width: 0;
   padding-right: 6px;
+  /* Corner cell: the ruler lives inside the scroll container now, so the
+     label pins horizontally while the ticks scroll under it. */
+  position: sticky;
+  left: 0;
+  z-index: 11;
+  background: var(--bg-panel);
 }
 
 .ruler-label-title {
@@ -1032,7 +1038,9 @@ button {
   bottom: 0;
   width: 2px;
   margin-left: -1px;
-  left: calc(172px + var(--playhead-frac, 0) * (100% - 172px));
+  /* Sweep the scrolled CONTENT width (--grid-steps-px from GridPlayhead),
+     not the viewport — at 256 steps they differ by ~5k px. */
+  left: calc(172px + var(--playhead-frac, 0) * var(--grid-steps-px, 100%));
   background: var(--accent);
   box-shadow: 0 0 8px rgba(245, 158, 11, 0.55);
   border-radius: 1px;

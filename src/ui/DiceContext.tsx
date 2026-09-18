@@ -1,7 +1,8 @@
-import { createContext, useContext, useMemo, useState, useCallback } from "react";
+import { createContext, useContext, useMemo, useRef, useState, useCallback } from "react";
 import type { DrumPad, ProjectDocument } from "../project-model/types";
 import { getActivePattern, getDrumTrack } from "../project-model/types";
 import { generateLocalResultFromOptions } from "../intent/pipeline";
+import { refreshPatternOutputHash } from "../intent/quality";
 import { buildAssistPatch } from "../assist/pipeline";
 import { generatePatternCommand, assistVary, snapshot } from "../commands/commands";
 import { generatePattern } from "../ai/generator";
@@ -262,12 +263,19 @@ export function DiceProvider({
         if (prev) {
           // Regenerate with subSeed locks for true parity
           const lockedPattern = generatePattern(doc, opts, { ...session.locks, prevPattern: prev });
+          // The locked content differs from the generated rows the recipe
+          // hashed — refresh outputContentHash so provenance describes the
+          // content actually previewed/applied.
+          const hashed = refreshPatternOutputHash(doc, lockedPattern);
           result = {
             ...result,
-            proposal: { ...result.proposal, pattern: lockedPattern },
+            proposal: { ...result.proposal, pattern: hashed },
           } as typeof result;
         } else {
-          const locked = applyDiceLocks(null, result.proposal.pattern, session.locks, doc);
+          const locked = refreshPatternOutputHash(
+            doc,
+            applyDiceLocks(null, result.proposal.pattern, session.locks, doc),
+          );
           result.proposal.pattern = locked;
         }
       } else if (result.proposal?.pattern && hasLocks) {
@@ -278,7 +286,7 @@ export function DiceProvider({
             return null;
           }
         })();
-        const locked = applyDiceLocks(prev, result.proposal.pattern, session.locks, doc);
+        const locked = refreshPatternOutputHash(doc, applyDiceLocks(prev, result.proposal.pattern, session.locks, doc));
         result.proposal.pattern = locked;
       }
       const pat = result.proposal?.pattern;
@@ -391,6 +399,12 @@ export function DiceProvider({
     setSession((prev) => setDiceKit(prev, kitId));
   }, []);
 
+  // Latest rendered preview, readable from apply() without re-memoizing the
+  // whole context value on every preview change. Apply commits THIS result —
+  // the content the user saw — instead of regenerating.
+  const previewRef = useRef<DicePreview | null>(null);
+  previewRef.current = preview;
+
   const apply = useCallback(
     (services: Services, currentDoc: ProjectDocument) => {
       const seed = diceCurrentSeed(session);
@@ -402,31 +416,6 @@ export function DiceProvider({
         } catch {}
         return;
       }
-      let opts: GenerateOptions = {
-        genre: jittered.genre,
-        style: jittered.style ?? undefined,
-        seed: jittered.seed,
-        stepCount: jittered.length,
-        ghostWeight: jittered.controls.ghostWeight,
-        microWeight: jittered.controls.microWeight,
-        velocityVariation: jittered.controls.velocityVariation,
-        temperature: jittered.controls.temperature,
-        replaceMode: "new",
-        drumTrackId: currentDoc.tracks.find((t) => t.kind === "drum")?.id,
-      };
-      // Swing jitter (mirror preview)
-      try {
-        const groove = resolveGrooveForGeneration(currentDoc, opts);
-        if (session.jitter > 0.15) {
-          const r = forkRandom(seed, "dice.swing");
-          const jitteredSwing = Math.max(0, Math.min(1, groove.swing + (r() - 0.5) * 0.4 * session.jitter));
-          if (Math.abs(jitteredSwing - groove.swing) > 0.01) {
-            opts = { ...opts, _diceSwing: Math.round(jitteredSwing * 100) / 100 } as GenerateOptions & {
-              _diceSwing?: number;
-            };
-          }
-        }
-      } catch {}
       // Kit assignments (full kit — preset + per-pad)
       let kitAssignments: Map<string, Partial<DrumPad>> | null = null;
       try {
@@ -440,32 +429,28 @@ export function DiceProvider({
       } catch {
         kitAssignments = null;
       }
-      const hasLocks = Object.values(session.locks).some(Boolean) || kitAssignments != null;
-      if (!hasLocks) {
+      // Preview/apply identity: the preview memo already ran the generation
+      // (with locks + swing jitter) for THIS session state. Commit that exact
+      // result; regenerate only if no preview exists (tray never opened).
+      const previewedResult = previewRef.current?.fullPattern ?? null;
+      const previewedPattern = previewedResult?.proposal?.pattern ?? null;
+      if (!previewedResult || !previewedPattern) {
+        const opts: GenerateOptions = {
+          genre: jittered.genre,
+          style: jittered.style ?? undefined,
+          seed: jittered.seed,
+          stepCount: jittered.length,
+          ghostWeight: jittered.controls.ghostWeight,
+          microWeight: jittered.controls.microWeight,
+          velocityVariation: jittered.controls.velocityVariation,
+          temperature: jittered.controls.temperature,
+          replaceMode: "new",
+          drumTrackId: currentDoc.tracks.find((t) => t.kind === "drum")?.id,
+        };
         services.store.execute(generatePatternCommand(currentDoc, opts));
         return;
       }
-      const prev = (() => {
-        try {
-          return getActivePattern(currentDoc);
-        } catch {
-          return null;
-        }
-      })();
-      // SubSeed locked generation (preview = apply)
-      let lockedPattern: ReturnType<typeof generatePattern> | null = null;
-      try {
-        lockedPattern = generatePattern(currentDoc, opts, { ...session.locks, prevPattern: prev });
-      } catch {
-        const fallback = generateLocalResultFromOptions(currentDoc, opts, "apply");
-        lockedPattern = fallback.proposal?.pattern
-          ? applyDiceLocks(prev, fallback.proposal.pattern, session.locks, currentDoc)
-          : null;
-      }
-      if (!lockedPattern) {
-        services.store.execute(generatePatternCommand(currentDoc, opts));
-        return;
-      }
+      const lockedPattern = previewedPattern;
       // Apply kit assignments to drum track (single undo with pattern) — full kit patch
       let nextTracks = currentDoc.tracks;
       if (kitAssignments && kitAssignments.size > 0) {

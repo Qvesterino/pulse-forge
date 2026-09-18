@@ -74,6 +74,11 @@ const ROW_HEIGHT = COARSE_POINTER ? 46 : 34;
 const HEADER_HEIGHT = COARSE_POINTER ? 44 : 38;
 const STEP_MIN_PX = COARSE_POINTER ? 34 : 22;
 const OVERSCAN = 5;
+/* Step-axis windowing (horizontal twin of the row OVERSCAN). Geometry mirrors
+   the CSS: .sequencer-row / .sequencer-ruler label track and the grid gap. */
+const COL_GAP = 4;
+const COL_OVERSCAN = 6;
+const STEPS_LABEL_PX = 168;
 
 function buildFlatItems(tracks: Track[]): FlatItem[] {
   const items: FlatItem[] = [];
@@ -472,8 +477,20 @@ export function Sequencer({
 
   const handleScroll = useCallback(() => {
     const el = scrollRef.current;
-    if (el) setScrollTop(el.scrollTop);
+    if (!el) return;
+    setScrollTop(el.scrollTop);
+    // The scroll div is the single horizontal scroller for ruler + rows (the
+    // ruler lives inside it), so its scrollLeft drives the step window.
+    setHView((prev) =>
+      prev.left === el.scrollLeft && prev.width === el.clientWidth
+        ? prev
+        : { left: el.scrollLeft, width: el.clientWidth },
+    );
   }, []);
+
+  // Step-axis window state — width arrives from the ResizeObserver below,
+  // left from handleScroll. Width 0 (jsdom, first paint) = render all columns.
+  const [hView, setHView] = useState({ left: 0, width: 0 });
 
   // Observe container resize. React 18 ignores ref-callback cleanup returns,
   // so the observer must be tracked manually and disconnected on re-attach
@@ -485,11 +502,49 @@ export function Sequencer({
     if (!node) return;
     const ro = new ResizeObserver((entries) => {
       for (const entry of entries) setViewportHeight(entry.contentRect.height);
+      setHView((prev) =>
+        prev.left === node.scrollLeft && prev.width === node.clientWidth
+          ? prev
+          : { left: node.scrollLeft, width: node.clientWidth },
+      );
     });
     ro.observe(node);
     resizeObserverRef.current = ro;
   }, []);
   useEffect(() => () => resizeObserverRef.current?.disconnect(), []);
+
+  /**
+   * Visible step columns. A 256-step row is ~5.7k px wide at 22 px/column, so
+   * long patterns render only the columns intersecting the viewport (plus
+   * overscan); short patterns fit entirely and windowing is skipped. Width 0
+   * (jsdom has no layout, first paint before the ResizeObserver fires) also
+   * renders everything — tests can always reach any cell.
+   */
+  const colWindow = useMemo<{ from: number; to: number } | null>(() => {
+    const stepCount = pattern.stepCount;
+    if (hView.width <= 0) return null;
+    const avail = hView.width - STEPS_LABEL_PX - COL_GAP;
+    if (avail <= 0) return null;
+    const minTotal = stepCount * STEP_MIN_PX + (stepCount - 1) * COL_GAP;
+    if (minTotal <= avail) return null;
+    const stride = STEP_MIN_PX + COL_GAP;
+    const stepsStart = STEPS_LABEL_PX + COL_GAP;
+    const from = Math.max(0, Math.floor((hView.left - stepsStart) / stride) - COL_OVERSCAN);
+    const to = Math.min(stepCount, Math.ceil((hView.left + hView.width - stepsStart) / stride) + COL_OVERSCAN);
+    if (from <= 0 && to >= stepCount) return null;
+    return { from, to };
+  }, [hView, pattern.stepCount]);
+
+  /** Pixel width of the steps area at the real column size — anchors the
+   * continuous playhead, which must sweep the content, not the viewport. */
+  const stepsPx = useMemo(() => {
+    const stepCount = pattern.stepCount;
+    const avail = Math.max(0, hView.width - STEPS_LABEL_PX - COL_GAP);
+    const minTotal = stepCount * STEP_MIN_PX + (stepCount - 1) * COL_GAP;
+    const colW = avail === 0 || minTotal > avail ? STEP_MIN_PX : (avail - (stepCount - 1) * COL_GAP) / stepCount;
+    return Math.round(stepCount * colW + (stepCount - 1) * COL_GAP);
+  }, [hView.width, pattern.stepCount]);
+
   const attachScrollRef = useCallback(
     (node: HTMLDivElement | null) => {
       scrollRef.current = node;
@@ -504,39 +559,6 @@ export function Sequencer({
       aria-label={beatFocus ? "Step Sequencer — Beat Focus" : "Step Sequencer"}
       onPointerLeave={() => publishCursor(null)}
     >
-      <div
-        className="sequencer-ruler"
-        style={{ gridTemplateColumns: `168px repeat(${pattern.stepCount}, minmax(${STEP_MIN_PX}px, 1fr))` }}
-        role="row"
-        aria-label="Step ruler"
-      >
-        {/* The former focus bar lives in this label cell — one slim chrome row
-            above the grid instead of two. */}
-        <div className="ruler-label">
-          <span className="ruler-label-title" title={`${pattern.name} · ${pattern.stepCount} steps`}>
-            {pattern.name} · {pattern.stepCount}
-          </span>
-          <button
-            type="button"
-            className={`btn btn-small beat-focus-toggle${beatFocus ? " active" : ""}`}
-            onClick={() => setBeatFocus((open) => !open)}
-            aria-label={beatFocus ? "Exit Beat Focus" : "Enter Beat Focus"}
-            aria-pressed={beatFocus}
-            title={beatFocus ? "Exit Beat Focus (Escape)" : "Maximize the sequencer (Beat Focus)"}
-          >
-            {beatFocus ? "EXIT" : "FOCUS"}
-          </button>
-        </div>
-        {Array.from({ length: pattern.stepCount }, (_, i) => (
-          <span
-            key={i}
-            className={`ruler-tick${playheadStep === i ? " current" : ""}${i % 4 === 0 ? " beat-start" : ""}`}
-            aria-label={`Step ${i + 1}${i % 4 === 0 ? `, beat ${i / 4 + 1}` : ""}`}
-          >
-            {i % 4 === 0 ? i / 4 + 1 : "·"}
-          </span>
-        ))}
-      </div>
       {stepEditor && (
         <StepEditor
           padId={stepEditor.padId}
@@ -620,6 +642,48 @@ export function Sequencer({
         onScroll={handleScroll}
         style={{ overflowY: "auto", maxHeight: "600px", position: "relative" }}
       >
+        {/* Ruler lives INSIDE the scroll container (sticky top, sticky-left
+            label): one scroll source keeps ruler and rows perfectly aligned
+            at any pattern length — the old outside-the-scroller ruler used
+            to desync from the grid as soon as the pattern overflowed. */}
+        <div
+          className="sequencer-ruler"
+          style={{ gridTemplateColumns: `168px repeat(${pattern.stepCount}, minmax(${STEP_MIN_PX}px, 1fr))` }}
+          role="row"
+          aria-label="Step ruler"
+        >
+          {/* The former focus bar lives in this label cell — one slim chrome row
+              above the grid instead of two. */}
+          <div className="ruler-label">
+            <span className="ruler-label-title" title={`${pattern.name} · ${pattern.stepCount} steps`}>
+              {pattern.name} · {pattern.stepCount}
+            </span>
+            <button
+              type="button"
+              className={`btn btn-small beat-focus-toggle${beatFocus ? " active" : ""}`}
+              onClick={() => setBeatFocus((open) => !open)}
+              aria-label={beatFocus ? "Exit Beat Focus" : "Enter Beat Focus"}
+              aria-pressed={beatFocus}
+              title={beatFocus ? "Exit Beat Focus (Escape)" : "Maximize the sequencer (Beat Focus)"}
+            >
+              {beatFocus ? "EXIT" : "FOCUS"}
+            </button>
+          </div>
+          {(colWindow
+            ? Array.from({ length: colWindow.to - colWindow.from }, (_, k) => colWindow.from + k)
+            : Array.from({ length: pattern.stepCount }, (_, i) => i)
+          ).map((i) => (
+            <span
+              key={i}
+              /* +2: ruler column 1 is the sticky label track, step i lives in column i+2. */
+              style={colWindow ? { gridColumn: `${i + 2}` } : undefined}
+              className={`ruler-tick${playheadStep === i ? " current" : ""}${i % 4 === 0 ? " beat-start" : ""}`}
+              aria-label={`Step ${i + 1}${i % 4 === 0 ? `, beat ${i / 4 + 1}` : ""}`}
+            >
+              {i % 4 === 0 ? i / 4 + 1 : "·"}
+            </span>
+          ))}
+        </div>
         <div style={{ height: totalHeight, position: "relative" }}>
           {visibleItems.map(({ item, top, height }) => (
             <div
@@ -644,13 +708,14 @@ export function Sequencer({
                 moveStepInteraction={moveStepInteraction}
                 endStepInteraction={endStepInteraction}
                 setStepEditor={setStepEditor}
-                remoteCursors={remoteCursors}
-                pianoFullTrack={pianoFullTrack}
-                onTogglePianoFull={setPianoFullTrack}
-              />
+              remoteCursors={remoteCursors}
+              pianoFullTrack={pianoFullTrack}
+              onTogglePianoFull={setPianoFullTrack}
+              colWindow={colWindow}
+            />
             </div>
           ))}
-          <GridPlayhead transport={services.transport} stepCount={pattern.stepCount} />
+          <GridPlayhead transport={services.transport} stepCount={pattern.stepCount} stepsPx={stepsPx} />
         </div>
       </div>
     </section>
@@ -678,6 +743,7 @@ function VirtualRow({
   remoteCursors,
   pianoFullTrack,
   onTogglePianoFull,
+  colWindow,
 }: {
   item: FlatItem;
   pattern: import("../project-model/types").Pattern;
@@ -706,6 +772,7 @@ function VirtualRow({
   remoteCursors: RemoteCursor[];
   pianoFullTrack: string | null;
   onTogglePianoFull: (trackId: string | null) => void;
+  colWindow: { from: number; to: number } | null;
 }) {
   if (item.type === "header") {
     const track = item.track;
@@ -740,6 +807,7 @@ function VirtualRow({
         onSelectPad={onSelectPad}
         onEditStep={(stepIndex) => setStepEditor({ padId: item.pad.id, stepIndex })}
         remoteCursors={remoteCursors}
+        colWindow={colWindow}
       />
     );
   }
@@ -1100,6 +1168,7 @@ function PadRow({
   onSelectPad,
   onEditStep,
   remoteCursors,
+  colWindow,
 }: {
   pad: DrumTrack["pads"][number];
   trackId: string;
@@ -1127,6 +1196,7 @@ function PadRow({
   onSelectPad: (padId: string) => void;
   onEditStep: (stepIndex: number) => void;
   remoteCursors: RemoteCursor[];
+  colWindow: { from: number; to: number } | null;
 }) {
   const services = useServices();
   const doc = useDoc();
@@ -1194,7 +1264,14 @@ function PadRow({
         className="row-steps"
         style={{ gridTemplateColumns: `repeat(${pattern.stepCount}, minmax(${STEP_MIN_PX}px, 1fr))` }}
       >
-        {Array.from({ length: pattern.stepCount }, (_, stepIndex) => {
+        {/* Windowed: the grid template keeps every column track sized, so
+            placing cells by explicit gridColumn preserves the full row width
+            and the ruler/playhead alignment with only visible cells in the
+            DOM. */}
+        {(colWindow
+          ? Array.from({ length: colWindow.to - colWindow.from }, (_, k) => colWindow.from + k)
+          : Array.from({ length: pattern.stepCount }, (_, i) => i)
+        ).map((stepIndex) => {
           let velocity =
             dragPreview && dragPreview.padId === pad.id && dragPreview.stepIndex === stepIndex
               ? dragPreview.velocity
@@ -1208,16 +1285,6 @@ function PadRow({
             stepSelection.padIds.includes(pad.id) &&
             stepIndex >= stepSelection.from &&
             stepIndex <= stepSelection.to;
-          const stepNumber = stepIndex + 1;
-          const metaHints: string[] = [];
-          if (meta?.probability !== undefined && meta.probability < 1)
-            metaHints.push(`probability ${Math.round(meta.probability * 100)}%`);
-          if (meta?.ratchet !== undefined && meta.ratchet > 1) metaHints.push(`ratchet ${meta.ratchet}×`);
-          if (meta?.microtiming !== undefined && meta.microtiming !== 0)
-            metaHints.push(`microtiming ${meta.microtiming < 0 ? "early" : "late"}`);
-          const stepLabel = `Step ${stepNumber}${active ? `, velocity ${Math.round(velocity * 100)}%` : ", empty"}${
-            metaHints.length > 0 ? ` (${metaHints.join(", ")})` : ""
-          }`;
           return (
             <StepCell
               key={stepIndex}
@@ -1226,12 +1293,12 @@ function PadRow({
               trackId={trackId}
               padId={pad.id}
               stepIndex={stepIndex}
+              gridColumn={colWindow ? stepIndex + 1 : null}
               velocity={velocity}
               active={active}
               meta={meta}
               inSelection={inSelection}
               playhead={playheadStep === stepIndex}
-              stepLabel={stepLabel}
               onBegin={stableBegin}
               onMove={stableMove}
               onEnd={stableEnd}
@@ -1261,12 +1328,12 @@ const StepCell = memo(function StepCell({
   trackId,
   padId,
   stepIndex,
+  gridColumn,
   velocity,
   active,
   meta,
   inSelection,
   playhead,
-  stepLabel,
   onBegin,
   onMove,
   onEnd,
@@ -1278,12 +1345,14 @@ const StepCell = memo(function StepCell({
   trackId: string;
   padId: string;
   stepIndex: number;
+  /** 1-based grid column when the row is windowed — keeps the cell in its
+   * track while the empty tracks preserve the full row width. */
+  gridColumn: number | null;
   velocity: number;
   active: boolean;
   meta: StepMeta | undefined;
   inSelection: boolean;
   playhead: boolean;
-  stepLabel: string;
   onBegin: (event: React.PointerEvent, padId: string, stepIndex: number) => void;
   onMove: (event: React.PointerEvent) => void;
   onEnd: (event: React.PointerEvent) => void;
@@ -1313,6 +1382,18 @@ const StepCell = memo(function StepCell({
   };
 
   const hasLocks = meta?.locks && Object.keys(meta.locks).length > 0;
+  // Accessibility label built here, not per-cell in the row loop — with 256
+  // columns that was 4k string allocations per playhead tick even though the
+  // memoized cells never re-rendered.
+  const metaHints: string[] = [];
+  if (meta?.probability !== undefined && meta.probability < 1)
+    metaHints.push(`probability ${Math.round(meta.probability * 100)}%`);
+  if (meta?.ratchet !== undefined && meta.ratchet > 1) metaHints.push(`ratchet ${meta.ratchet}×`);
+  if (meta?.microtiming !== undefined && meta.microtiming !== 0)
+    metaHints.push(`microtiming ${meta.microtiming < 0 ? "early" : "late"}`);
+  const stepLabel = `Step ${stepIndex + 1}${active ? `, velocity ${Math.round(velocity * 100)}%` : ", empty"}${
+    metaHints.length > 0 ? ` (${metaHints.join(", ")})` : ""
+  }`;
   const lockHints: string[] = [];
   if (meta?.locks?.pitch !== undefined)
     lockHints.push(`pitch ${meta.locks.pitch > 0 ? "+" : ""}${meta.locks.pitch.toFixed(1)} st`);
@@ -1332,7 +1413,12 @@ const StepCell = memo(function StepCell({
       data-pad={padId}
       data-step={stepIndex}
       className={`step${active ? " active" : ""}${stepIndex % 4 === 0 ? " beat-start" : ""}${playhead ? " playhead" : ""}${inSelection ? " in-selection" : ""}${meta?.probability !== undefined && meta.probability < 1 ? " has-probability" : ""}${meta?.microtiming !== undefined && meta.microtiming !== 0 ? (meta.microtiming < 0 ? " micro-early" : " micro-late") : ""}${hasLocks ? " has-locks" : ""}${amount < 0.99 ? " has-amount" : ""}`}
-      style={active ? ({ "--step-velocity": velocity } as React.CSSProperties) : undefined}
+      style={
+        {
+          gridColumn: gridColumn ? `${gridColumn}` : undefined,
+          ...(active ? { "--step-velocity": velocity } : {}),
+        } as React.CSSProperties
+      }
       title={`${fullLabel} — click to toggle, drag horizontally to paint, drag vertically for velocity (Alt microtiming −1..1, Ctrl/Cmd probability 0..1), shift+drag to multi-select, right-click (or long-press) for p-locks — bottom bar is amount 0..1`}
       aria-label={fullLabel}
       aria-pressed={active}
@@ -1447,7 +1533,17 @@ const StepCell = memo(function StepCell({
  * resolution. Driven by the shared rAF loop and mutated directly on the DOM
  * node — no React re-render per frame, so the grid stays cheap while playing.
  */
-function GridPlayhead({ transport, stepCount }: { transport: Transport; stepCount: number }) {
+function GridPlayhead({
+  transport,
+  stepCount,
+  stepsPx,
+}: {
+  transport: Transport;
+  stepCount: number;
+  /** Pixel width of the steps area — the sweep must span the scrolled
+   * content, not the viewport (they diverge at long patterns). */
+  stepsPx: number;
+}) {
   const ref = useRef<HTMLDivElement | null>(null);
   const rafId = useId();
   useEffect(() => {
@@ -1468,5 +1564,13 @@ function GridPlayhead({ transport, stepCount }: { transport: Transport; stepCoun
     });
     return () => unregisterRaf(rafId);
   }, [transport, stepCount, rafId]);
-  return <div ref={ref} className="seq-playhead" data-playing="false" aria-hidden="true" />;
+  return (
+    <div
+      ref={ref}
+      className="seq-playhead"
+      data-playing="false"
+      aria-hidden="true"
+      style={{ "--grid-steps-px": `${stepsPx}px` } as React.CSSProperties}
+    />
+  );
 }

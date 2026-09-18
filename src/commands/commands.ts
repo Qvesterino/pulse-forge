@@ -73,6 +73,7 @@ import { hashString, mulberry32 } from "../shared/rng";
 import { snapToScale } from "../project-model/scales";
 import { resolveGrooveForGeneration } from "../ai/generator";
 import { generateLocalResultFromOptions } from "../intent/pipeline";
+import type { GenerationResult } from "../intent/types";
 import type { GenerateOptions } from "../ai/types";
 import { buildAssistPatch, normalizeAssistRequest } from "../assist/pipeline";
 import { ASSIST_ENGINE_ID, ASSIST_ENGINE_VERSION, type AssistInput } from "../assist/types";
@@ -5072,12 +5073,27 @@ export function unfreezeTrack(doc: ProjectDocument, trackId: string): Command {
 
 /* ---------------- AI pattern generation ---------------- */
 
-export function generatePatternCommand(doc: ProjectDocument, options: GenerateOptions, patternName?: string): Command {
-  const result = generateLocalResultFromOptions(doc, options, "apply");
-  const pattern = result.proposal?.pattern;
-  if (!pattern) throw new Error(result.diagnostics.errors.join(", ") || "Intent generation was rejected");
-  if (patternName) pattern.name = patternName;
-  if (!pattern.name) pattern.name = `${options.genre} ${options.seed.slice(0, 4)}`.trim();
+/**
+ * Build the one-coherent-undo-step command that installs an ALREADY GENERATED,
+ * already validated GenerationResult proposal into the project.
+ *
+ * Commands must never generate (async work / hidden nondeterminism inside
+ * execute would break undo semantics), so product preview/apply flows
+ * generate once through the Intent Engine and apply THAT result here. The
+ * pattern is copied, never mutated — callers keep owning the previewed
+ * object (React state, dice sessions).
+ */
+export function applyGenerationResultCommand(
+  doc: ProjectDocument,
+  result: GenerationResult,
+  patternName?: string,
+): Command {
+  const proposal = result.proposal;
+  if (!proposal) throw new Error(result.diagnostics.errors.join(", ") || "Intent generation was rejected");
+  const options = result.plan.options;
+  let pattern = proposal.pattern;
+  const name = patternName ?? (pattern.name || `${options.genre} ${options.seed.slice(0, 4)}`.trim());
+  if (name !== pattern.name) pattern = { ...pattern, name };
 
   // Apply groove settings from the resolved groove if requested
   let grooveUpdate: Partial<GrooveSettings> | undefined;
@@ -5129,6 +5145,20 @@ export function generatePatternCommand(doc: ProjectDocument, options: GenerateOp
     ...projectUpdates,
   };
   return snapshot("generatePattern", `Generate ${pattern.name}`, doc, next);
+}
+
+/**
+ * Generate (synchronously, heuristic ranking) and apply in one step.
+ *
+ * Direct generate-and-apply flows without a preview (e.g. AI Flip in the
+ * arrangement panel) — there is no previewed result to protect, so the
+ * generation is the single source. Preview/apply surfaces must NOT use this:
+ * generate once via the Intent Engine and apply the previewed result with
+ * {@link applyGenerationResultCommand} instead.
+ */
+export function generatePatternCommand(doc: ProjectDocument, options: GenerateOptions, patternName?: string): Command {
+  const result = generateLocalResultFromOptions(doc, options, "apply");
+  return applyGenerationResultCommand(doc, result, patternName);
 }
 
 /* ---------------- Pattern assist (iteration on your idea) ---------------- */
