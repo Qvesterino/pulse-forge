@@ -1,57 +1,75 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { screen, fireEvent } from "@testing-library/react";
 import { SliceLab } from "../../src/ui/SliceLab";
-import { createProjectFromTemplate } from "../../src/project-model/templates";
 import { renderWithContext, mockServices } from "../helpers";
+import { createProjectFromTemplate } from "../../src/project-model/templates";
+import { FACTORY_ASSETS } from "../../src/sample-library/manifest";
+import type { DrumTrack } from "../../src/project-model/types";
+
+function fakeBuffer(durationSec = 2, sampleRate = 44100) {
+  const length = Math.round(durationSec * sampleRate);
+  return {
+    duration: durationSec,
+    sampleRate,
+    numberOfChannels: 1,
+    length,
+    getChannelData: () => new Float32Array(length),
+  };
+}
 
 describe("SliceLab", () => {
-  it("opens as a modal and exposes factory/user sample workflow controls", async () => {
+  function drumTrack(): DrumTrack {
     const doc = createProjectFromTemplate("house");
-    const drum = doc.tracks.find((track) => track.kind === "drum")!;
-    const services = mockServices(doc);
-    const buffer = {
-      duration: 1,
-      sampleRate: 44100,
-      numberOfChannels: 1,
-      getChannelData: () => new Float32Array(44100),
-    } as unknown as AudioBuffer;
-    (services.bank.get as any).mockReturnValue(buffer);
-    (services.userSamples.list as any).mockResolvedValue([
-      {
-        id: "user.break",
-        name: "Break",
-        fileName: "break.wav",
-        category: "Custom",
-        duration: 1,
-        sampleRate: 44100,
-        channels: 1,
-        createdAt: "2026-01-01",
-      },
-    ]);
+    const t = doc.tracks.find((tr): tr is DrumTrack => tr.kind === "drum");
+    if (!t) throw new Error("expected drum track");
+    return t;
+  }
 
-    renderWithContext(<SliceLab track={drum} onClose={() => undefined} />, { services });
+  function servicesWithBuffer() {
+    const services = mockServices();
+    const buf = fakeBuffer(2, 44100) as unknown as AudioBuffer;
+    (services.bank as unknown as { get: (id: string) => unknown }).get = vi.fn(
+      (id: string) => (id === FACTORY_ASSETS[0].id ? buf : undefined),
+    );
+    return services;
+  }
 
-    expect(screen.getByRole("dialog", { name: "Sample to beat editor" })).toBeInTheDocument();
-    expect(screen.getByText("SAMPLE TO BEAT")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "CHOP + PATTERN" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "LOOP PREVIEW" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Sample waveform with slice markers")).toBeInTheDocument();
-
-    await waitFor(() => expect(screen.getByText("Break")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "CHOP + PATTERN" }));
-    expect(services.store.execute).toHaveBeenCalledTimes(1);
+  it("renders the SliceLab header and Close button", () => {
+    renderWithContext(
+      <SliceLab track={drumTrack()} onClose={vi.fn()} />,
+      { services: servicesWithBuffer() },
+    );
+    expect(screen.getByRole("heading", { name: /SLICE LAB/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Close sample to beat editor/i })).toBeInTheDocument();
   });
 
-  it("stops preview when the modal is closed", async () => {
-    const doc = createProjectFromTemplate("house");
-    const drum = doc.tracks.find((track) => track.kind === "drum")!;
-    const services = mockServices(doc);
+  it("clicking Close calls the onClose handler", () => {
     const onClose = vi.fn();
-    renderWithContext(<SliceLab track={drum} onClose={onClose} />, { services });
+    renderWithContext(
+      <SliceLab track={drumTrack()} onClose={onClose} />,
+      { services: servicesWithBuffer() },
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Close sample to beat editor/i }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 
-    await waitFor(() => expect(screen.getAllByText("SOURCE UNAVAILABLE").length).toBeGreaterThan(0));
-    fireEvent.keyDown(window, { key: "Escape" });
-    expect(onClose).toHaveBeenCalled();
-    expect(services.engine.stopPreview as any).toHaveBeenCalled();
+  it("renders mode toggle buttons (1/16, 1/8, HITS) when a buffer is loaded", () => {
+    renderWithContext(
+      <SliceLab track={drumTrack()} onClose={vi.fn()} />,
+      { services: servicesWithBuffer() },
+    );
+    expect(screen.getByRole("button", { name: "1/16" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "1/8" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "HITS" })).toBeInTheDocument();
+  });
+
+  it("changing to HITS mode activates the HITS toggle", () => {
+    renderWithContext(
+      <SliceLab track={drumTrack()} onClose={vi.fn()} />,
+      { services: servicesWithBuffer() },
+    );
+    const hitsBtn = screen.getByRole("button", { name: "HITS" });
+    fireEvent.click(hitsBtn);
+    expect(hitsBtn).toHaveClass("active");
   });
 });

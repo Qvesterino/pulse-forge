@@ -22,7 +22,7 @@ import {
   toggleEffectBypass,
 } from "../commands/commands";
 import {
-  CORE_EFFECT_ORDER,
+  CORE_EFFECT_GROUPS,
   EFFECT_DEFS,
   FLAGSHIP_EFFECT_ORDER,
   defaultParamsOf,
@@ -64,7 +64,9 @@ export function EffectRack({ track }: { track: Track }) {
       for (const item of engineWithReport.getDegradedFx?.() ?? []) nextFallbacks[item.fxId] = item.reason;
       const nextGr: Record<string, number> = {};
       for (const fx of track.effects) {
-        if (fx.type !== "limiter" || fx.bypassed) continue;
+        if (fx.type !== "limiter" && fx.type !== "compressor" && fx.type !== "drumBuss" && fx.type !== "bassBuss")
+          continue;
+        if (fx.bypassed) continue;
         const value = engineWithReport.getFxGainReductionDb?.(track.id, fx.id);
         if (value != null && value > 0.05) nextGr[fx.id] = Math.round(value * 2) / 2;
       }
@@ -102,13 +104,15 @@ export function EffectRack({ track }: { track: Track }) {
           }}
         >
           <option value="">+ ADD EFFECT</option>
-          <optgroup label="EFFECTS">
-            {CORE_EFFECT_ORDER.map((type) => (
-              <option key={type} value={type}>
-                {EFFECT_DEFS[type].name}
-              </option>
-            ))}
-          </optgroup>
+          {CORE_EFFECT_GROUPS.map((group) => (
+            <optgroup key={group.key} label={group.label}>
+              {group.types.map((type) => (
+                <option key={type} value={type}>
+                  {EFFECT_DEFS[type].name}
+                </option>
+              ))}
+            </optgroup>
+          ))}
           <optgroup label="FLAGSHIP PLUGINS">
             {FLAGSHIP_EFFECT_ORDER.map((type) => (
               <option key={type} value={type}>
@@ -297,7 +301,7 @@ function Device({
       {!collapsed && (
         <div id={contentId} className="fx-device-content">
           {fx.type === "eq" && <EqResponseCurve params={fx.params} />}
-          {(fx.type === "limiter" || fx.type === "compressor") && (
+          {(fx.type === "limiter" || fx.type === "compressor" || fx.type === "drumBuss" || fx.type === "bassBuss") && (
             <div className="fx-gr" aria-label="Gain reduction">
               <div className="fx-gr-track">
                 <div

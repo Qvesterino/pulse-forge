@@ -262,6 +262,12 @@ export async function renderProject(
       const when = timeAt(clipStartTick);
       // Wall-clock duration through the tempo map (scene BPM aware).
       const durationSec = timeAt(clipEndTick) - when;
+      // Pitch-preserving warp (stretch + pins): pre-render synchronously with
+      // the same core the live worker uses, so the export is sample-exact
+      // with a warmed live cache.
+      if ((clip.warpMarkers?.length ?? 0) > 0 && clip.stretchMode === "stretch" && !clip.reverse && !clip.loop) {
+        engine.precomputeWarpSync(clip, durationSec);
+      }
       engine.triggerAudioClip(clip, when, durationSec);
     }
   }

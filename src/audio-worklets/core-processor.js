@@ -17,5 +17,7 @@ import "./tape-processor.js";
 import "./comb-processor.js";
 import "./vowel-processor.js";
 import "./ducking-delay-processor.js";
+import "./chorus-processor.js";
+import "./stock-delay-processor.js";
 import "./kaskada-processor.js";
 import "./reverb-processor.js";

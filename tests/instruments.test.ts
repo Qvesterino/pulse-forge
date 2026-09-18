@@ -52,6 +52,14 @@ describe("instrument registry", () => {
     }
   });
 
+  it("808 exposes FL gate/mono controls with gated-mono defaults", () => {
+    const byId = Object.fromEntries(INSTRUMENT_DEFS["808"].params.map((p) => [p.id, p]));
+    expect(byId.gate.default).toBe(1);
+    expect(byId.mono.default).toBe(1);
+    expect(defaultInstrumentParams("808").gate).toBe(1);
+    expect(defaultInstrumentParams("808").mono).toBe(1);
+  });
+
   it("bass exposes semantic macro controls", () => {
     const ids = new Set(INSTRUMENT_DEFS.bass.params.map((p) => p.id));
     for (const expected of ["sub", "body", "punch", "grit", "movement", "width"]) {
@@ -83,6 +91,7 @@ describe("instrument registry", () => {
     expect(byId.attack).toBe(0.5);
     expect(byId.hold).toBe(1.5);
     expect(byId.release).toBe(0.6);
+    expect(byId.gate).toBe(0);
     expect(byId.unison).toBe(2);
     expect(byId.spread).toBe(0);
     expect(byId.drift).toBe(0);

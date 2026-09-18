@@ -867,7 +867,9 @@ export function App({
                 const buffer = await renderProject(zoneDoc, services.bank, {
                   mode: "song",
                   sampleRate: liveContext?.sampleRate ?? 44100,
-                  tailSeconds: 0.35,
+                  // 2 s tail so bounced texture beds keep their release —
+                  // extending the clip reveals real audio, not silence.
+                  tailSeconds: 2,
                 });
                 const bufferId = userSampleId(`bounce-${Math.round(fromBar)}b`);
                 services.bank.add(bufferId, buffer);

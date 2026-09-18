@@ -17,6 +17,8 @@ import { createAutowahNode } from "../audio-worklets/autowah-node";
 import { createStutterNode } from "../audio-worklets/stutter-node";
 import { createTapeNode } from "../audio-worklets/tape-node";
 import { createCombNode } from "../audio-worklets/comb-node";
+import { createChorusNode } from "../audio-worklets/chorus-node";
+import { createStockDelayNode } from "../audio-worklets/stock-delay-node";
 import { createVowelNode } from "../audio-worklets/vowel-node";
 import { createDuckingDelayNode } from "../audio-worklets/ducking-delay-node";
 import { createKaskadaNode } from "../audio-worklets/kaskada-node";
@@ -103,6 +105,16 @@ export const WORKLET_EFFECTS: Partial<Record<EffectType, "critical" | "degraded"
   compressor: "degraded",
   bitcrusher: "degraded",
   sidechain: "degraded",
+  chorus: "degraded",
+  delay: "degraded",
+  // Flagship suites degrade to an honest 1:1 bypass (never silence) when
+  // their worklet module has not landed in this context yet — the engine
+  // hot-swaps the real DSP once the module arrives. Kaskáda rides the
+  // always-loaded core bundle, the other three lazy-load on demand.
+  fxeq: "degraded",
+  ultina: "degraded",
+  ozvena: "degraded",
+  kaskada: "degraded",
 };
 
 export type EffectProcessorStatus = "ok" | "bypassed" | "fallback";
@@ -136,6 +148,11 @@ export function effectProcessorStatus(
       | "comb"
       | "vowel"
       | "duckDelay"
+      | "chorus"
+      | "delay"
+      | "fxeq"
+      | "ultina"
+      | "ozvena"
       | "kaskada",
     ctx,
   )
@@ -1083,6 +1100,63 @@ const reverb: EffectDefinition = {
 };
 
 /* ---------------- Delay ---------------- */
+// Stereo tempo-aware worklet (damped loop, ping-pong, BPM sync); the legacy
+// DelayNode graph survives as the degraded fallback.
+
+export const STOCK_DELAY_DIVISIONS = [
+  { value: 0, label: "OFF" },
+  { value: 1, label: "1/4" },
+  { value: 2, label: "1/8" },
+  { value: 3, label: "1/8T" },
+  { value: 4, label: "1/16" },
+  { value: 5, label: "1/16T" },
+];
+
+function delayNativeFallback(ctx: BaseAudioContext, instance: EffectInstance): EffectRuntime {
+  const mix = mixBus(ctx);
+  const delayNode = ctx.createDelay(2);
+  const feedback = ctx.createGain();
+  const damp = ctx.createBiquadFilter();
+  damp.type = "lowpass";
+  mix.wet.connect(delayNode);
+  delayNode.connect(damp).connect(feedback).connect(delayNode);
+  delayNode.connect(mix.output);
+  const apply = (id: string, v: number, when: number) => {
+    switch (id) {
+      case "time":
+        smooth(delayNode.delayTime, v / 1000, when, 0.05);
+        break;
+      case "feedback":
+        smooth(feedback.gain, v, when);
+        break;
+      case "tone":
+        smooth(damp.frequency, v, when);
+        break;
+      case "mix":
+        mix.setMix(v, when);
+        break;
+      case "sync":
+      case "pingPong":
+        break; // worklet-only — no native equivalent, parameters stay stored
+    }
+  };
+  for (const [k, v] of Object.entries(instance.params)) apply(k, v, ctx.currentTime);
+  return {
+    input: mix.input,
+    output: mix.output,
+    degraded: true,
+    degradedReason: "AudioWorklet unavailable — Delay on legacy native graph (no sync/ping-pong)",
+    setParameter: (id, v) => apply(id, v, ctx.currentTime),
+    setParameterAt: (id, v, when) => apply(id, v, when),
+    dispose: () => {
+      mix.input.disconnect();
+      mix.output.disconnect();
+      delayNode.disconnect();
+      damp.disconnect();
+      feedback.disconnect();
+    },
+  };
+}
 
 const delay: EffectDefinition = {
   type: "delay",
@@ -1090,49 +1164,22 @@ const delay: EffectDefinition = {
   category: "space",
   params: [
     { id: "time", label: "TIME", min: 30, max: 1000, default: 375, unit: "ms", format: formatMs },
+    {
+      id: "sync",
+      label: "SYNC",
+      min: 0,
+      max: STOCK_DELAY_DIVISIONS.length - 1,
+      default: 0,
+      options: STOCK_DELAY_DIVISIONS.map(({ value, label }) => ({ value, label })),
+    },
+    { id: "pingPong", label: "PING-PONG", min: 0, max: 1, default: 0, format: (v) => (v > 0.5 ? "ON" : "OFF") },
     { id: "feedback", label: "FEEDBK", min: 0, max: 0.9, default: 0.35, format: formatPct },
     { id: "tone", label: "TONE", min: 500, max: 8000, default: 4000, unit: "Hz", format: formatHz },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 0.25, format: formatPct },
   ],
-  factory(ctx, instance) {
-    const mix = mixBus(ctx);
-    const delayNode = ctx.createDelay(2);
-    const feedback = ctx.createGain();
-    const damp = ctx.createBiquadFilter();
-    damp.type = "lowpass";
-    mix.wet.connect(delayNode);
-    delayNode.connect(damp).connect(feedback).connect(delayNode);
-    delayNode.connect(mix.output);
-    const apply = (id: string, v: number, when: number) => {
-      switch (id) {
-        case "time":
-          smooth(delayNode.delayTime, v / 1000, when, 0.05);
-          break;
-        case "feedback":
-          smooth(feedback.gain, v, when);
-          break;
-        case "tone":
-          smooth(damp.frequency, v, when);
-          break;
-        case "mix":
-          mix.setMix(v, when);
-          break;
-      }
-    };
-    for (const [k, v] of Object.entries(instance.params)) apply(k, v, ctx.currentTime);
-    return {
-      input: mix.input,
-      output: mix.output,
-      setParameter: (id, v) => apply(id, v, ctx.currentTime),
-      setParameterAt: (id, v, when) => apply(id, v, when),
-      dispose: () => {
-        mix.input.disconnect();
-        mix.output.disconnect();
-        delayNode.disconnect();
-        damp.disconnect();
-        feedback.disconnect();
-      },
-    };
+  factory(ctx, instance, env) {
+    if (isWorkletReady("delay", ctx)) return createStockDelayNode(ctx, instance, env.bpm);
+    return delayNativeFallback(ctx, instance);
   },
 };
 
@@ -1442,7 +1489,101 @@ const bitcrusher: EffectDefinition = {
 };
 
 /* ---------------- Chorus ---------------- */
-// Two delay lines modulated by independent slow LFOs; both summed into a mix bus.
+// Two delay voices in true stereo (worklet); legacy native graph survives as
+// the degraded fallback for contexts without AudioWorklet.
+
+function chorusNativeFallback(ctx: BaseAudioContext, instance: EffectInstance): EffectRuntime {
+  const mix = mixBus(ctx);
+  const delay1 = ctx.createDelay(0.05);
+  delay1.delayTime.value = 0.012;
+  const delay2 = ctx.createDelay(0.05);
+  delay2.delayTime.value = 0.018;
+  const lfo1 = ctx.createOscillator();
+  lfo1.type = "sine";
+  lfo1.frequency.value = 0.6;
+  const lfo1Depth = ctx.createGain();
+  lfo1Depth.gain.value = 0.004;
+  lfo1.connect(lfo1Depth).connect(delay1.delayTime);
+  lfo1.start();
+  const lfo2 = ctx.createOscillator();
+  lfo2.type = "sine";
+  lfo2.frequency.value = 0.9;
+  const lfo2Depth = ctx.createGain();
+  lfo2Depth.gain.value = 0.005;
+  lfo2.connect(lfo2Depth).connect(delay2.delayTime);
+  lfo2.start();
+  const d1Mix = ctx.createGain();
+  d1Mix.gain.value = 0.5;
+  const d2Mix = ctx.createGain();
+  d2Mix.gain.value = 0.5;
+  mix.wet.connect(delay1).connect(d1Mix).connect(mix.output);
+  mix.wet.connect(delay2).connect(d2Mix).connect(mix.output);
+  const out = ctx.createGain();
+  mix.output.connect(out);
+
+  const apply = (id: string, v: number, when: number) => {
+    switch (id) {
+      case "rate": {
+        lfo1.frequency.setTargetAtTime(v, when, 0.05);
+        // Second LFO is offset for richer movement
+        lfo2.frequency.setTargetAtTime(v * 1.4, when, 0.05);
+        break;
+      }
+      case "depth": {
+        const d = 0.001 + v * 0.008;
+        lfo1Depth.gain.setTargetAtTime(d, when, 0.05);
+        lfo2Depth.gain.setTargetAtTime(d * 1.25, when, 0.05);
+        break;
+      }
+      case "mix":
+        mix.setMix(v, when);
+        break;
+      case "output":
+        smooth(out.gain, dbToLin(v), when);
+        break;
+      case "spread":
+        break; // worklet-only — no native equivalent, parameter stays stored
+    }
+  };
+  for (const [k, v] of Object.entries(instance.params)) apply(k, v, ctx.currentTime);
+  return {
+    input: mix.input,
+    output: out,
+    degraded: true,
+    degradedReason: "AudioWorklet unavailable — Chorus on legacy native graph",
+    setParameter: (id, v) => apply(id, v, ctx.currentTime),
+    setParameterAt: (id, v, when) => apply(id, v, when),
+    syncBpm(bpm) {
+      // Snap the LFO to 1/4-beat rate (musical default for chorus motion)
+      const beatHz = bpm / 60 / 4;
+      lfo1.frequency.setTargetAtTime(beatHz, ctx.currentTime, 0.05);
+      lfo2.frequency.setTargetAtTime(beatHz * 1.4, ctx.currentTime, 0.05);
+    },
+    dispose: () => {
+      try {
+        lfo1.stop();
+      } catch {
+        /* not started */
+      }
+      try {
+        lfo2.stop();
+      } catch {
+        /* not started */
+      }
+      lfo1.disconnect();
+      lfo2.disconnect();
+      lfo1Depth.disconnect();
+      lfo2Depth.disconnect();
+      delay1.disconnect();
+      delay2.disconnect();
+      d1Mix.disconnect();
+      d2Mix.disconnect();
+      mix.input.disconnect();
+      mix.output.disconnect();
+      out.disconnect();
+    },
+  };
+}
 
 const chorus: EffectDefinition = {
   type: "chorus",
@@ -1451,96 +1592,13 @@ const chorus: EffectDefinition = {
   params: [
     { id: "rate", label: "RATE", min: 0.1, max: 8, default: 0.6, unit: "Hz", format: (v) => `${v.toFixed(2)} Hz` },
     { id: "depth", label: "DEPTH", min: 0, max: 1, default: 0.5, format: formatPct },
+    { id: "spread", label: "SPREAD", min: 0, max: 1, default: 1, format: formatPct },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 0.5, format: formatPct },
     { id: "output", label: "OUTPUT", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
   ],
   factory(ctx, instance) {
-    const mix = mixBus(ctx);
-    const delay1 = ctx.createDelay(0.05);
-    delay1.delayTime.value = 0.012;
-    const delay2 = ctx.createDelay(0.05);
-    delay2.delayTime.value = 0.018;
-    const lfo1 = ctx.createOscillator();
-    lfo1.type = "sine";
-    lfo1.frequency.value = 0.6;
-    const lfo1Depth = ctx.createGain();
-    lfo1Depth.gain.value = 0.004;
-    lfo1.connect(lfo1Depth).connect(delay1.delayTime);
-    lfo1.start();
-    const lfo2 = ctx.createOscillator();
-    lfo2.type = "sine";
-    lfo2.frequency.value = 0.9;
-    const lfo2Depth = ctx.createGain();
-    lfo2Depth.gain.value = 0.005;
-    lfo2.connect(lfo2Depth).connect(delay2.delayTime);
-    lfo2.start();
-    const d1Mix = ctx.createGain();
-    d1Mix.gain.value = 0.5;
-    const d2Mix = ctx.createGain();
-    d2Mix.gain.value = 0.5;
-    mix.wet.connect(delay1).connect(d1Mix).connect(mix.output);
-    mix.wet.connect(delay2).connect(d2Mix).connect(mix.output);
-    const out = ctx.createGain();
-    mix.output.connect(out);
-
-    const apply = (id: string, v: number, when: number) => {
-      switch (id) {
-        case "rate": {
-          lfo1.frequency.setTargetAtTime(v, when, 0.05);
-          // Second LFO is offset for richer movement
-          lfo2.frequency.setTargetAtTime(v * 1.4, when, 0.05);
-          break;
-        }
-        case "depth": {
-          const d = 0.001 + v * 0.008;
-          lfo1Depth.gain.setTargetAtTime(d, when, 0.05);
-          lfo2Depth.gain.setTargetAtTime(d * 1.25, when, 0.05);
-          break;
-        }
-        case "mix":
-          mix.setMix(v, when);
-          break;
-        case "output":
-          smooth(out.gain, dbToLin(v), when);
-          break;
-      }
-    };
-    for (const [k, v] of Object.entries(instance.params)) apply(k, v, ctx.currentTime);
-    return {
-      input: mix.input,
-      output: out,
-      setParameter: (id, v) => apply(id, v, ctx.currentTime),
-      setParameterAt: (id, v, when) => apply(id, v, when),
-      syncBpm(bpm) {
-        // Snap the LFO to 1/4-beat rate (musical default for chorus motion)
-        const beatHz = bpm / 60 / 4;
-        lfo1.frequency.setTargetAtTime(beatHz, ctx.currentTime, 0.05);
-        lfo2.frequency.setTargetAtTime(beatHz * 1.4, ctx.currentTime, 0.05);
-      },
-      dispose: () => {
-        try {
-          lfo1.stop();
-        } catch {
-          /* not started */
-        }
-        try {
-          lfo2.stop();
-        } catch {
-          /* not started */
-        }
-        lfo1.disconnect();
-        lfo2.disconnect();
-        lfo1Depth.disconnect();
-        lfo2Depth.disconnect();
-        delay1.disconnect();
-        delay2.disconnect();
-        d1Mix.disconnect();
-        d2Mix.disconnect();
-        mix.input.disconnect();
-        mix.output.disconnect();
-        out.disconnect();
-      },
-    };
+    if (isWorkletReady("chorus", ctx)) return createChorusNode(ctx, instance);
+    return chorusNativeFallback(ctx, instance);
   },
 };
 
@@ -2305,6 +2363,86 @@ function bussCurve(drive: number): Float32Array<ArrayBuffer> {
   return curve;
 }
 
+/* ---------------- Drum / Bass Buss glue ---------------- */
+// Both busses drive their glue through the custom compressor worklet
+// (per-sample PEAK/RMS detector, soft-knee, SC HPF) when the core bundle is
+// loaded, and fall back to the legacy DynamicsCompressorNode mapping
+// otherwise. Saturation runs 4× oversampled in both paths.
+
+interface BussCompStage {
+  input: AudioNode;
+  output: AudioNode;
+  applyComp: (kind: "threshold" | "ratio" | "attack" | "release", v: number, when: number) => void;
+  getGr: () => number;
+  native: boolean;
+  dispose: () => void;
+}
+
+function createBussComp(
+  ctx: BaseAudioContext,
+  seed: { threshold: number; ratio: number; attack: number; release: number; detector: number },
+): BussCompStage {
+  if (isWorkletReady("compressor", ctx)) {
+    const rt = createCompressorNode(ctx, {
+      params: {
+        threshold: seed.threshold,
+        ratio: seed.ratio,
+        attack: seed.attack,
+        release: seed.release,
+        knee: 6,
+        detector: seed.detector,
+        scHpf: 20,
+        makeup: 0,
+        mix: 1,
+      },
+    });
+    return {
+      input: rt.input,
+      output: rt.output,
+      applyComp: (kind, v, when) => rt.setParameterAt?.(kind, v, when),
+      getGr: () => rt.getGainReductionDb?.() ?? 0,
+      native: false,
+      dispose: () => rt.dispose(),
+    };
+  }
+  const comp = ctx.createDynamicsCompressor();
+  comp.threshold.value = seed.threshold;
+  comp.ratio.value = seed.ratio;
+  comp.attack.value = seed.attack;
+  comp.release.value = seed.release;
+  comp.knee.value = 6;
+  const applyComp: BussCompStage["applyComp"] = (kind, v, when) => {
+    switch (kind) {
+      case "threshold":
+        smooth(comp.threshold, v, when);
+        break;
+      case "ratio":
+        smooth(comp.ratio, v, when);
+        break;
+      case "attack":
+        smooth(comp.attack, v, when);
+        break;
+      case "release":
+        smooth(comp.release, v, when);
+        break;
+    }
+  };
+  const getGr = () => {
+    const raw = (comp as unknown as { reduction?: number | { value: number } }).reduction;
+    const value =
+      typeof raw === "number" ? raw : typeof raw === "object" && raw && typeof raw.value === "number" ? raw.value : 0;
+    return Math.max(0, Number.isFinite(value) ? -value : 0);
+  };
+  return {
+    input: comp,
+    output: comp,
+    applyComp,
+    getGr,
+    native: true,
+    dispose: () => comp.disconnect(),
+  };
+}
+
 const drumBuss: EffectDefinition = {
   type: "drumBuss",
   name: "Drum Buss",
@@ -2322,25 +2460,35 @@ const drumBuss: EffectDefinition = {
   factory(ctx, instance) {
     const mix = mixBus(ctx);
     const shaper = ctx.createWaveShaper();
-    shaper.oversample = "2x";
-    const comp = ctx.createDynamicsCompressor();
+    shaper.oversample = "4x";
+    // Glue through the custom worklet compressor (PEAK detector grabs drum
+    // transients); legacy DCN mapping when the core bundle is missing.
+    const glue = createBussComp(ctx, {
+      threshold: -6 - (instance.params.compressor ?? 0.25) * 34,
+      ratio: 1 + (instance.params.compressor ?? 0.25) * 9,
+      attack: Math.max(0.001, 0.02 - (instance.params.transient ?? 0.15) * 0.015),
+      release: 0.12,
+      detector: 1,
+    });
     const tone = ctx.createBiquadFilter();
     tone.type = "lowpass";
     const boom = ctx.createBiquadFilter();
     boom.type = "lowshelf";
     const out = ctx.createGain();
-    mix.wet.connect(shaper).connect(comp).connect(tone).connect(boom).connect(out).connect(mix.output);
+    mix.wet.connect(shaper);
+    shaper.connect(glue.input);
+    glue.output.connect(tone).connect(boom).connect(out).connect(mix.output);
     const apply = (id: string, value: number, when: number) => {
       switch (id) {
         case "drive":
           shaper.curve = bussCurve(value);
           break;
         case "transient":
-          smooth(comp.attack, Math.max(0.001, 0.02 - value * 0.015), when);
+          glue.applyComp("attack", Math.max(0.001, 0.02 - value * 0.015), when);
           break;
         case "compressor":
-          smooth(comp.threshold, -6 - value * 34, when);
-          smooth(comp.ratio, 1 + value * 9, when);
+          glue.applyComp("threshold", -6 - value * 34, when);
+          glue.applyComp("ratio", 1 + value * 9, when);
           break;
         case "tone":
           smooth(tone.frequency, value, when);
@@ -2363,13 +2511,17 @@ const drumBuss: EffectDefinition = {
     return {
       input: mix.input,
       output: mix.output,
+      ...(glue.native
+        ? { degraded: true as const, degradedReason: "Buss compressor on native fallback — glue approximate" }
+        : {}),
       setParameter: (id, value) => apply(id, value, ctx.currentTime),
       setParameterAt: (id, value, when) => apply(id, value, when),
+      getGainReductionDb: () => glue.getGr(),
       dispose: () => {
         mix.input.disconnect();
         mix.output.disconnect();
         shaper.disconnect();
-        comp.disconnect();
+        glue.dispose();
         tone.disconnect();
         boom.disconnect();
         out.disconnect();
@@ -2404,8 +2556,16 @@ const bassBuss: EffectDefinition = {
   factory(ctx, instance) {
     const mix = mixBus(ctx);
     const shaper = ctx.createWaveShaper();
-    shaper.oversample = "2x";
-    const comp = ctx.createDynamicsCompressor();
+    shaper.oversample = "4x";
+    // Glue through the custom worklet compressor (RMS detector for smooth
+    // bass leveling); legacy DCN mapping when the core bundle is missing.
+    const glue = createBussComp(ctx, {
+      threshold: -8 - (instance.params.compression ?? 0.25) * 32,
+      ratio: 1 + (instance.params.compression ?? 0.25) * 7,
+      attack: instance.params.attack ?? 0.01,
+      release: instance.params.release ?? 0.18,
+      detector: 0,
+    });
     const low = ctx.createBiquadFilter();
     low.type = "lowshelf";
     const out = ctx.createGain();
@@ -2433,7 +2593,9 @@ const bassBuss: EffectDefinition = {
     crossoverGain.gain.value = 0;
     const directGain = ctx.createGain();
     directGain.gain.value = 1;
-    mix.wet.connect(shaper).connect(comp).connect(low).connect(out);
+    mix.wet.connect(shaper);
+    shaper.connect(glue.input);
+    glue.output.connect(low).connect(out);
     out.connect(directGain).connect(mix.output);
     // Upmix before the split: with a mono source the whole chain up to `out`
     // is 1-channel, and a bare splitter would leave the right leg's high band
@@ -2463,14 +2625,14 @@ const bassBuss: EffectDefinition = {
           smooth(low.frequency, value, when);
           break;
         case "compression":
-          smooth(comp.threshold, -8 - value * 32, when);
-          smooth(comp.ratio, 1 + value * 7, when);
+          glue.applyComp("threshold", -8 - value * 32, when);
+          glue.applyComp("ratio", 1 + value * 7, when);
           break;
         case "attack":
-          smooth(comp.attack, value, when);
+          glue.applyComp("attack", value, when);
           break;
         case "release":
-          smooth(comp.release, value, when);
+          glue.applyComp("release", value, when);
           break;
         case "monoBassFrequency": {
           const active = value > 0;
@@ -2496,13 +2658,17 @@ const bassBuss: EffectDefinition = {
     return {
       input: mix.input,
       output: mix.output,
+      ...(glue.native
+        ? { degraded: true as const, degradedReason: "Buss compressor on native fallback — glue approximate" }
+        : {}),
       setParameter: (id, value) => apply(id, value, ctx.currentTime),
       setParameterAt: (id, value, when) => apply(id, value, when),
+      getGainReductionDb: () => glue.getGr(),
       dispose: () => {
         mix.input.disconnect();
         mix.output.disconnect();
         shaper.disconnect();
-        comp.disconnect();
+        glue.dispose();
         low.disconnect();
         out.disconnect();
         upmixIn.disconnect();
@@ -3163,7 +3329,6 @@ export const CORE_EFFECT_ORDER: EffectType[] = [
   "comb",
   "vowel",
   "duckDelay",
-  "kaskada",
   "tapeSat",
   "drumBuss",
   "bassBuss",
@@ -3174,7 +3339,32 @@ export const CORE_EFFECT_ORDER: EffectType[] = [
 ];
 
 /** Flagship plugin suites exposed alongside the core effects. */
-export const FLAGSHIP_EFFECT_ORDER: EffectType[] = ["fxeq", "ultina", "ozvena"];
+export const FLAGSHIP_EFFECT_ORDER: EffectType[] = ["fxeq", "ultina", "ozvena", "kaskada"];
+
+/**
+ * Core effects grouped by their registry category for the Add Effect menu —
+ * one optgroup per category (Tone / Dynamics / Character / Movement / Space),
+ * order inside each group follows CORE_EFFECT_ORDER.
+ */
+export const CORE_EFFECT_GROUP_ORDER = ["tone", "dynamics", "character", "movement", "space"] as const;
+export type CoreEffectGroupKey = (typeof CORE_EFFECT_GROUP_ORDER)[number];
+export const CORE_EFFECT_GROUP_LABELS: Record<CoreEffectGroupKey, string> = {
+  tone: "TONE",
+  dynamics: "DYNAMICS",
+  character: "CHARACTER",
+  movement: "MOVEMENT",
+  space: "SPACE",
+};
+export interface CoreEffectGroup {
+  key: CoreEffectGroupKey;
+  label: string;
+  types: EffectType[];
+}
+export const CORE_EFFECT_GROUPS: CoreEffectGroup[] = CORE_EFFECT_GROUP_ORDER.map((key) => ({
+  key,
+  label: CORE_EFFECT_GROUP_LABELS[key],
+  types: CORE_EFFECT_ORDER.filter((type) => EFFECT_DEFS[type].category === key),
+}));
 
 export function defaultParamsOf(type: EffectType): Record<string, number> {
   return Object.fromEntries(EFFECT_DEFS[type].params.map((p) => [p.id, p.default]));

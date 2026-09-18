@@ -52,10 +52,12 @@ export function pitchShiftPreserveDuration(data: Float32Array, sampleRate: numbe
  *
  * stretchFactor > 1 = longer output (slower playback), < 1 = shorter (faster).
  * Uses granular resynthesis with overlap-add on individual grains.
- * Each grain is linearly interpolated from the source at the new time-scale,
- * windowed by a Hann envelope, and accumulated. The output length is
- * `round(D * stretchFactor)` samples. Runs synchronously — deterministic
- * live==offline. Best for factors 0.5..3.0 (beyond that, quality degrades).
+ * Each grain is Catmull-Rom cubic-interpolated from the source at the new
+ * time-scale (smoother than linear on evolving textures — less metallic hash
+ * on pads/atmospheres), windowed by a Hann envelope, and accumulated.
+ * The output length is `round(D * stretchFactor)` samples. Runs
+ * synchronously — deterministic live==offline. Best for factors 0.5..3.0
+ * (beyond that, quality degrades).
  *
  * Fallback: if the stretch factor is near 1.0 or extreme (<0.25 or >5),
  * returns the input array itself (by reference — callers must not mutate it;
@@ -86,16 +88,15 @@ export function timeStretch(data: Float32Array, sampleRate: number, stretchFacto
     const srcCenter = outPos / stretchFactor;
     for (let i = 0; i < grainSize; i++) {
       const srcIdx = srcCenter + (i - grainSize / 2);
-      // Linear interpolation from source
-      const i0 = Math.floor(srcIdx);
-      const frac = srcIdx - i0;
-      const i1 = i0 + 1;
-      let s = 0;
-      if (i0 >= 0 && i1 < D) {
-        s = data[i0] * (1 - frac) + data[i1] * frac;
-      } else if (i0 >= 0 && i0 < D) {
-        s = data[i0] * (1 - frac);
-      }
+      // Catmull-Rom cubic interpolation, edge-clamped (grain borders sit
+      // under the Hann window edge anyway, so clamping is inaudible).
+      const i1 = Math.floor(srcIdx);
+      const frac = srcIdx - i1;
+      const p0 = data[Math.min(D - 1, Math.max(0, i1 - 1))];
+      const p1 = data[Math.min(D - 1, Math.max(0, i1))];
+      const p2 = data[Math.min(D - 1, Math.max(0, i1 + 1))];
+      const p3 = data[Math.min(D - 1, Math.max(0, i1 + 2))];
+      const s = p1 + 0.5 * frac * (p2 - p0 + frac * (2 * p0 - 5 * p1 + 4 * p2 - p3 + frac * (3 * (p1 - p2) + p3 - p0)));
       const outIdx = outPos + i;
       if (outIdx >= 0 && outIdx < outLen) {
         out[outIdx] += s * win[i];

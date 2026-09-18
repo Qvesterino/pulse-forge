@@ -2267,6 +2267,191 @@
   };
   registerProcessor("ducking-delay-processor", DuckingDelayProcessor);
 
+  // src/audio-worklets/chorus-processor.js
+  var CHORUS_RING = 16384;
+  var CHORUS_BASE_L_MS = 12;
+  var CHORUS_BASE_R_MS = 18;
+  var ChorusProcessor = class extends AudioWorkletProcessor {
+    constructor() {
+      super();
+      this.bufL = new Float32Array(CHORUS_RING);
+      this.bufR = new Float32Array(CHORUS_RING);
+      this.writeIdx = 0;
+      this.phase1 = 0;
+      this.phase2 = Math.PI / 2;
+    }
+    static get parameterDescriptors() {
+      return [
+        { name: "rate", defaultValue: 0.6, minValue: 0.1, maxValue: 8, automationRate: "k-rate" },
+        { name: "depth", defaultValue: 0.5, minValue: 0, maxValue: 1, automationRate: "k-rate" },
+        { name: "spread", defaultValue: 1, minValue: 0, maxValue: 1, automationRate: "k-rate" },
+        { name: "mix", defaultValue: 0.5, minValue: 0, maxValue: 1, automationRate: "k-rate" }
+      ];
+    }
+    process(inputs, outputs, parameters) {
+      const output = outputs[0];
+      if (!output || !output[0]) return true;
+      const outL = output[0];
+      const outR = output.length > 1 && output[1] ? output[1] : null;
+      const input = inputs[0];
+      const inL = input && input[0] && input[0].length ? input[0] : null;
+      const inR = input && input.length > 1 && input[1] && input[1].length ? input[1] : null;
+      const len = outL.length;
+      const sr = globalThis.sampleRate || 44100;
+      const rate = Math.max(0.1, Math.min(8, parameters.rate[0]));
+      const depth01 = Math.max(0, Math.min(1, parameters.depth[0]));
+      const spread = Math.max(0, Math.min(1, parameters.spread[0]));
+      const mix = Math.max(0, Math.min(1, parameters.mix[0]));
+      const depthSamples = (1e-3 + depth01 * 8e-3) * sr / 2;
+      const baseL = CHORUS_BASE_L_MS / 1e3 * sr;
+      const baseR = CHORUS_BASE_R_MS / 1e3 * sr;
+      const rate2 = rate * (1 + 0.4 * spread);
+      const step1 = 2 * Math.PI * rate / sr;
+      const step2 = 2 * Math.PI * rate2 / sr;
+      const cross = 0.3 * spread;
+      for (let i = 0; i < len; i++) {
+        const l = inL ? inL[i] : 0;
+        const r = inR ? inR[i] : l;
+        const lfo1 = Math.sin(this.phase1);
+        const lfo2 = Math.sin(this.phase2);
+        this.phase1 += step1;
+        this.phase2 += step2;
+        if (this.phase1 > 2 * Math.PI) this.phase1 -= 2 * Math.PI;
+        if (this.phase2 > 2 * Math.PI) this.phase2 -= 2 * Math.PI;
+        const dL = baseL + depthSamples * (1 + lfo1);
+        const dR = baseR + depthSamples * (1 + lfo2);
+        this.bufL[this.writeIdx] = l;
+        this.bufR[this.writeIdx] = r;
+        const v1 = this.readCubic(this.bufL, this.writeIdx - dL);
+        const v2 = this.readCubic(this.bufR, this.writeIdx - dR);
+        this.writeIdx++;
+        if (this.writeIdx >= CHORUS_RING) this.writeIdx = 0;
+        const wetL = v1 + cross * v2;
+        const wetR = v2 + cross * v1;
+        outL[i] = l * (1 - mix) + wetL * mix;
+        if (outR) outR[i] = r * (1 - mix) + wetR * mix;
+      }
+      if (Math.abs(this.bufL[this.writeIdx]) < 1e-20) this.bufL[this.writeIdx] = 0;
+      if (Math.abs(this.bufR[this.writeIdx]) < 1e-20) this.bufR[this.writeIdx] = 0;
+      return true;
+    }
+    readCubic(buf, position) {
+      const idx = Math.floor(position);
+      const frac = position - idx;
+      const i0 = ((idx - 1) % CHORUS_RING + CHORUS_RING) % CHORUS_RING;
+      const i1 = ((idx + 0) % CHORUS_RING + CHORUS_RING) % CHORUS_RING;
+      const i2 = ((idx + 1) % CHORUS_RING + CHORUS_RING) % CHORUS_RING;
+      const i3 = ((idx + 2) % CHORUS_RING + CHORUS_RING) % CHORUS_RING;
+      const y0 = buf[i0];
+      const y1 = buf[i1];
+      const y2 = buf[i2];
+      const y3 = buf[i3];
+      const c0 = y1;
+      const c1 = 0.5 * (y2 - y0);
+      const c2 = y0 - 2.5 * y1 + 2 * y2 - 0.5 * y3;
+      const c3 = 0.5 * (y3 - y0) + 1.5 * (y1 - y2);
+      return ((c3 * frac + c2) * frac + c1) * frac + c0;
+    }
+  };
+  registerProcessor("chorus-processor", ChorusProcessor);
+
+  // src/audio-worklets/stock-delay-processor.js
+  var STOCK_DELAY_RING = 192e3;
+  var STOCK_DELAY_DIVISIONS = [0, 1, 0.5, 1 / 3, 0.25, 1 / 6];
+  var StockDelayProcessor = class extends AudioWorkletProcessor {
+    constructor() {
+      super();
+      this.bufL = new Float32Array(STOCK_DELAY_RING);
+      this.bufR = new Float32Array(STOCK_DELAY_RING);
+      this.writeIdx = 0;
+      this.curDelayL = 0;
+      this.curDelayR = 0;
+      this.lpL = 0;
+      this.lpR = 0;
+    }
+    static get parameterDescriptors() {
+      return [
+        { name: "time", defaultValue: 375, minValue: 30, maxValue: 1e3, automationRate: "k-rate" },
+        // ms
+        { name: "sync", defaultValue: 0, minValue: 0, maxValue: 5, automationRate: "k-rate" },
+        { name: "bpm", defaultValue: 120, minValue: 20, maxValue: 300, automationRate: "k-rate" },
+        { name: "pingPong", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" },
+        { name: "feedback", defaultValue: 0.35, minValue: 0, maxValue: 0.9, automationRate: "k-rate" },
+        { name: "tone", defaultValue: 4e3, minValue: 500, maxValue: 8e3, automationRate: "k-rate" },
+        // Hz
+        { name: "mix", defaultValue: 0.25, minValue: 0, maxValue: 1, automationRate: "k-rate" }
+      ];
+    }
+    process(inputs, outputs, parameters) {
+      const output = outputs[0];
+      if (!output || !output[0]) return true;
+      const outL = output[0];
+      const outR = output.length > 1 && output[1] ? output[1] : null;
+      const input = inputs[0];
+      const inL = input && input[0] && input[0].length ? input[0] : null;
+      const inR = input && input.length > 1 && input[1] && input[1].length ? input[1] : null;
+      const len = outL.length;
+      const sr = globalThis.sampleRate || 44100;
+      const syncIdx = Math.max(0, Math.min(5, Math.round(parameters.sync[0])));
+      const bpm = Math.max(20, Math.min(300, parameters.bpm[0]));
+      let targetMs = Math.max(30, Math.min(1e3, parameters.time[0]));
+      if (syncIdx !== 0) {
+        targetMs = Math.max(30, Math.min(1e3, STOCK_DELAY_DIVISIONS[syncIdx] * (6e4 / bpm)));
+      }
+      const pingPong = parameters.pingPong[0] > 0.5;
+      const feedback = Math.max(0, Math.min(0.9, parameters.feedback[0]));
+      const toneHz = Math.max(500, Math.min(8e3, parameters.tone[0]));
+      const mix = Math.max(0, Math.min(1, parameters.mix[0]));
+      const targetSamples = targetMs / 1e3 * sr;
+      const w = 2 * Math.PI * toneHz / sr;
+      const lpCoef = w / (1 + w);
+      for (let i = 0; i < len; i++) {
+        const step = 1 - Math.exp(-1 / (0.02 * sr));
+        this.curDelayL += (targetSamples - this.curDelayL) * step;
+        this.curDelayR += (targetSamples - this.curDelayR) * step;
+        const l = inL ? inL[i] : 0;
+        const r = inR ? inR[i] : l;
+        const tapL = this.readCubic(this.bufL, this.writeIdx - this.curDelayL);
+        const tapR = this.readCubic(this.bufR, this.writeIdx - this.curDelayR);
+        this.lpL += lpCoef * (tapL - this.lpL);
+        this.lpR += lpCoef * (tapR - this.lpR);
+        const fbL = pingPong ? this.lpR : this.lpL;
+        const fbR = pingPong ? this.lpL : this.lpR;
+        this.bufL[this.writeIdx] = l + fbL * feedback;
+        this.bufR[this.writeIdx] = r + fbR * feedback;
+        this.writeIdx++;
+        if (this.writeIdx >= STOCK_DELAY_RING) this.writeIdx = 0;
+        const wetL = pingPong ? tapR : tapL;
+        const wetR = pingPong ? tapL : tapR;
+        outL[i] = l * (1 - mix) + wetL * mix;
+        if (outR) outR[i] = r * (1 - mix) + wetR * mix;
+      }
+      if (Math.abs(this.lpL) < 1e-20) this.lpL = 0;
+      if (Math.abs(this.lpR) < 1e-20) this.lpR = 0;
+      if (Math.abs(this.bufL[this.writeIdx]) < 1e-20) this.bufL[this.writeIdx] = 0;
+      if (Math.abs(this.bufR[this.writeIdx]) < 1e-20) this.bufR[this.writeIdx] = 0;
+      return true;
+    }
+    readCubic(buf, position) {
+      const idx = Math.floor(position);
+      const frac = position - idx;
+      const i0 = ((idx - 1) % STOCK_DELAY_RING + STOCK_DELAY_RING) % STOCK_DELAY_RING;
+      const i1 = ((idx + 0) % STOCK_DELAY_RING + STOCK_DELAY_RING) % STOCK_DELAY_RING;
+      const i2 = ((idx + 1) % STOCK_DELAY_RING + STOCK_DELAY_RING) % STOCK_DELAY_RING;
+      const i3 = ((idx + 2) % STOCK_DELAY_RING + STOCK_DELAY_RING) % STOCK_DELAY_RING;
+      const y0 = buf[i0];
+      const y1 = buf[i1];
+      const y2 = buf[i2];
+      const y3 = buf[i3];
+      const c0 = y1;
+      const c1 = 0.5 * (y2 - y0);
+      const c2 = y0 - 2.5 * y1 + 2 * y2 - 0.5 * y3;
+      const c3 = 0.5 * (y3 - y0) + 1.5 * (y1 - y2);
+      return ((c3 * frac + c2) * frac + c1) * frac + c0;
+    }
+  };
+  registerProcessor("stock-delay-processor", StockDelayProcessor);
+
   // src/audio-worklets/kaskada-processor.js
   var MAX_DELAY_MS = 2e3;
   var SYNC_RATIO = [0, 1, 0.5, 1 / 3, 0.25, 1 / 6];

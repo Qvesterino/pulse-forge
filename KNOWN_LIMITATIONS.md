@@ -46,6 +46,11 @@ Tracked in [`RELEASE_ROADMAP.md`](./RELEASE_ROADMAP.md).
 
 ## Sound & mixer
 
+- **Chorus / Delay / Drum Buss / Bass Buss sound better since 2026-09-18
+  (worklet DSP, 4× buss saturation, worklet glue).** The upgrade is
+  intentionally NOT bit-exact: existing projects using these four effects
+  render with the new character (same params, same presets). New params
+  (chorus SPREAD, delay SYNC/PING-PONG) default to legacy behaviour.
 - **Group tracks cannot be frozen.** Freeze renders a single track's own
   chain; a group has no generators, so its buffer would be silence. Freeze
   the child tracks instead. Per-track export also skips groups.
@@ -210,10 +215,9 @@ the bounded memory footprint of the prepare-time delay reservation:
   Matching source/test commit je `D:/VocalForge_DAW:c0a549d`; lokálny vendor
   script dirty source defaultne odmietne.
 - **Zámerne NEopravené (produktové rozhodnutia, nie defekty):** manuálny dotyček parametra
-  nepreberá už-DUE automation eventy v rovnakom quantume (preberie až budúce; samo sa
-  opraví ďalším dragom — Web Audio "scheduled event wins" flavor); EQ LEARN APPLY robí
-  4 samostatné undo kroky namiesto 1 (ostatné assistant gesty sú 1-krokové);
-  `effectProcessorStatus` hlási "ok" aj pre bypassnutý flagship (bez konzumenta dnes).
+   nepreberá už-DUE automation eventy v rovnakom quantume (preberie až budúce; samo sa
+   opraví ďalším dragom — Web Audio "scheduled event wins" flavor); EQ LEARN APPLY robí
+   4 samostatné undo kroky namiesto 1 (ostatné assistant gesty sú 1-krokové).
 - **Opravené v tomto priechode:** duplicitné meno "Vocal Warmth" (EQ + density) spôsobovalo,
   že panel vždy aplikoval EQ verziu — lookup teraz beží podľa preset ID; meters cadence
   je rate-derived (~20 Hz aj na 96/192 kHz, predtým ~47/94 Hz); automation queue má cap

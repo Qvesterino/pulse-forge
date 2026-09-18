@@ -640,7 +640,15 @@ export function setPatternLength(doc: ProjectDocument, patternId: string, stepCo
             notes: Object.fromEntries(
               Object.entries(p.notes ?? {}).map(([trackId, notes]) => [
                 trackId,
-                notes.filter((n) => n.start + n.duration <= patternTicks),
+                notes.flatMap((n) => {
+                  // Shrinking floors, not cliffs (FL keeps long pads): a note
+                  // crossing the new end is clamped to fit (min 1 tick, so the
+                  // normalize invariant holds); only notes starting at/after
+                  // the new end are dropped.
+                  if (n.start >= patternTicks) return [];
+                  if (n.duration <= patternTicks - n.start) return [n];
+                  return [{ ...n, duration: Math.max(1, patternTicks - n.start) }];
+                }),
               ]),
             ),
             // Prune meta beyond the new length — otherwise shrink→grow
@@ -1620,13 +1628,37 @@ export function moveNote(
     // pointerup commit must be a no-op, not an exception inside the handler.
     return { type: "moveNote", label: "Move note", execute: (d) => d, undo: (d) => d };
   }
-  const apply = (d: ProjectDocument, patch: { pitch?: number; start?: number }) =>
-    withTrackNotes(d, trackId, (notes) => notes.map((n) => (n.id === noteId ? { ...n, ...patch } : n)), patternId);
+  const apply = (d: ProjectDocument, patch: { pitch?: number; start?: number; duration?: number }) =>
+    withTrackNotes(
+      d,
+      trackId,
+      (notes) => {
+        // PatternTicks is resolved from the doc AT APPLY time (undo/collab
+        // may run against a doc whose pattern length changed since factory).
+        const pattern = d.patterns.find((p) => p.id === patternId);
+        const patternTicks = pattern ? pattern.stepCount * STEP_TICKS : null;
+        return notes.map((n) => {
+          if (n.id !== noteId) return n;
+          const next = { ...n, ...patch };
+          if (next.start < 0) next.start = 0;
+          if (patternTicks !== null) {
+            // Keep the whole note inside the pattern: normalizeProject drops
+            // overflowing notes, so moving a long pad right shortens it
+            // FL-style instead of deleting it on the next save.
+            if (next.start > patternTicks - 1) next.start = Math.max(0, patternTicks - 1);
+            const maxDur = Math.max(1, patternTicks - next.start);
+            if (next.duration > maxDur) next.duration = maxDur;
+          }
+          return next;
+        });
+      },
+      patternId,
+    );
   return {
     type: "moveNote",
     label: "Move note",
     execute: (d) => apply(d, delta),
-    undo: (d) => apply(d, { pitch: prev.pitch, start: prev.start }),
+    undo: (d) => apply(d, { pitch: prev.pitch, start: prev.start, duration: prev.duration }),
   };
 }
 
@@ -2577,6 +2609,7 @@ export function addAudioClip(
     stretchRate: Math.min(4, Math.max(0.25, patch.stretchRate ?? 1)),
     reverse: patch.reverse === true,
     ...(patch.stretchMode ? { stretchMode: patch.stretchMode } : {}),
+    ...(patch.loop === true ? { loop: true as const } : {}),
   };
   const next: ProjectDocument = {
     ...doc,
@@ -2902,6 +2935,7 @@ export function updateAudioClip(
       | "stretchRate"
       | "stretchMode"
       | "reverse"
+      | "loop"
       | "bufferId"
       | "warpMarkers"
     >
@@ -2933,6 +2967,7 @@ export function updateAudioClip(
   if (patch.stretchMode !== undefined) nextPatch.stretchMode = patch.stretchMode;
   if (patch.warpMarkers !== undefined) nextPatch.warpMarkers = patch.warpMarkers;
   if (patch.reverse !== undefined) nextPatch.reverse = patch.reverse === true;
+  if (patch.loop !== undefined) nextPatch.loop = patch.loop === true;
   const next: ProjectDocument = {
     ...doc,
     arrangement: {

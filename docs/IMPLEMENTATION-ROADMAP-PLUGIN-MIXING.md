@@ -38,7 +38,7 @@ Roadmap je splnená, keď:
 
 Toto už v kóde existuje a agent to nemá implementovať od nuly:
 
-- `src/effects/registry.ts` obsahuje `FLAGSHIP_EFFECT_ORDER` s `fxeq`, `ultina`, `ozvena`;
+- `src/effects/registry.ts` obsahuje `FLAGSHIP_EFFECT_ORDER` s `fxeq`, `ultina`, `ozvena`, `kaskada`;
 - `src/ui/EffectRack.tsx` ich ponúka v `+ ADD EFFECT`, lazy-loaduje tri flagship panely a má device header s bypass stavom, preset selectom a collapse/expand;
 - `src/ui/UltinaPanel.tsx` má UI A/B slotov, copy A→B, copy B→A, clear, status slotu a gain-match feedback;
 - `src/ui/MacroPerformanceBar.tsx` a `src/ui/Mixer.tsx` poskytujú performance makrá nad mixerom;

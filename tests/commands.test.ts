@@ -221,6 +221,47 @@ describe("pattern commands", () => {
     expect(store.doc.patterns[0].rows[kick.id]).toHaveLength(16);
   });
 
+  it("setPatternLength shrink clamps long notes instead of deleting them", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    const bass = store.doc.tracks.find(
+      (t): t is import("../src/project-model/types").InstrumentTrack => t.kind === "instrument",
+    )!;
+    store.execute(setPatternLength(store.doc, store.doc.activePatternId, 64));
+    const before = store.doc.patterns[0].notes[bass.id].length;
+    // 4-bar pad across the whole 64-step pattern + a note starting past bar 1
+    store.execute(addNote(store.doc, bass.id, { pitch: 48, start: 0, duration: 64 * 120, velocity: 0.9 }));
+    store.execute(addNote(store.doc, bass.id, { pitch: 50, start: 60 * 120, duration: 120, velocity: 0.9 }));
+    expect(store.doc.patterns[0].notes[bass.id]).toHaveLength(before + 2);
+    store.execute(setPatternLength(store.doc, store.doc.activePatternId, 16));
+    const notes = store.doc.patterns[0].notes[bass.id];
+    // Long pad survives, clamped to the new end; the out-of-range note is dropped.
+    expect(notes).toHaveLength(before + 1);
+    const pad = notes.find((n) => n.pitch === 48)!;
+    expect(pad.start + pad.duration).toBeLessThanOrEqual(16 * 120);
+    expect(pad.duration).toBe(16 * 120);
+    expect(notes.some((n) => n.pitch === 50)).toBe(false);
+    store.undo();
+    expect(store.doc.patterns[0].notes[bass.id]).toHaveLength(before + 2);
+  });
+
+  it("moveNote clamps duration so long pads stay inside the pattern", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    const bass = store.doc.tracks.find(
+      (t): t is import("../src/project-model/types").InstrumentTrack => t.kind === "instrument",
+    )!;
+    store.execute(addNote(store.doc, bass.id, { pitch: 48, start: 0, duration: 960, velocity: 0.9 }));
+    const noteId = store.doc.patterns[0].notes[bass.id].slice(-1)[0].id;
+    store.execute(moveNote(store.doc, bass.id, noteId, { start: 1500 }));
+    const moved = store.doc.patterns[0].notes[bass.id].find((n) => n.id === noteId)!;
+    expect(moved.start).toBe(1500);
+    expect(moved.start + moved.duration).toBeLessThanOrEqual(16 * 120);
+    store.undo();
+    const restored = store.doc.patterns[0].notes[bass.id].find((n) => n.id === noteId)!;
+    expect(restored).toMatchObject({ start: 0, duration: 960 });
+  });
+
   it("clearPattern zeroes every row; undo restores the groove", () => {
     const doc = createDefaultProject();
     const store = new ProjectStore(doc);

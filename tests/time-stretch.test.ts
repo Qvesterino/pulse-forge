@@ -101,4 +101,16 @@ describe("timeStretch", () => {
     const data = makeSine(44100, 330, 0.3);
     expect(timeStretch(data, 44100, 1.7)).toEqual(timeStretch(data, 44100, 1.7));
   });
+
+  it("cubic grains stay finite and bounded on edgy material", () => {
+    const data = makeSine(44100, 220, 0.5);
+    data[0] = 1;
+    data[1] = -1; // transient edge stresses grain-border interpolation
+    const out = timeStretch(data, 44100, 1.7);
+    expect(out.every((v) => Number.isFinite(v))).toBe(true);
+    let peak = 0;
+    for (const v of out) peak = Math.max(peak, Math.abs(v));
+    expect(peak).toBeGreaterThan(0.1);
+    expect(peak).toBeLessThan(1.5);
+  });
 });

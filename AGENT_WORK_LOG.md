@@ -776,3 +776,291 @@ Mixer/dock-layout/EffectRack suites green before the full-suite sweep.
 **Note:** BYPASS/REMOVE intentionally do NOT navigate — they act on
 existing instances and the user may be mid-batch across many tracks;
 only ADD has the "show me what I just created" contract.
+
+---
+
+## GOAL 01 (campaign restart) — TypeScript Type Integrity & Runtime Validation (2026-09-18)
+
+**Campaign restart context.** Daniel initiated a new prompt series under
+`D:/QVESTER_LANDING_PAGE/prompts/threejs_scheduler_goals/` (11 files,
+`00_GLOBAL_EXECUTION_CONTRACT.md` + `01_TYPESCRIPT_TYPE_INTEGRITY.md` …
+`10_PRODUCTION_HMR_WORKERS_SERIALIZATION_FINAL_SWEEP.md`). Scoping confirmed
+via ask_user before starting:
+
+- **Scope lock:** only **GOAL 01–03** are in scope for Pulse Forge (audio DAW).
+  GOAL 04–10 are Three.js / WebGL / GPU / shader / camera-specific and Pulse
+  Forge has **no Three.js dependency** (`package.json` does not list `three`,
+  `@react-three/*`, `postprocessing`; `src/ui/` uses only 2D Canvas API for
+  Spectrum/Goniometer/LoudnessHistory/WavetablePreview/EnvEditor/fxeqCurve).
+  GOAL 04–10 are explicitly recorded here as **reviewed, NOT applicable**
+  to keep the campaign log honest about what was checked.
+- **Starting point:** begin at GOAL 01 (no separate recon pass — Pulse Forge
+  recon from the 2026-09-10 / 2026-09-13 rounds is still trustworthy).
+
+**Goal executed.** Audit TypeScript type integrity in Pulse Forge: hunt for
+type-erasure escape hatches, stale fixtures, type-contract drift between
+production and test surfaces, unchecked boundary inputs, and unsafe
+runtime assumptions. Fix the issues found. Do **not** rewrite production
+source where the test fixture was the wrong one — keep the blast radius
+narrow.
+
+**Areas inspected.**
+
+- `tsconfig.json`: `strict`, `noUnusedLocals`, `noUnusedParameters`,
+  `noFallthroughCasesInSwitch`, `noUncheckedSideEffectImports`,
+  `verbatimModuleSyntax`, `isolatedModules`. **`noUncheckedIndexedAccess`
+  is missing** — indexed access (`arr[i]`) returns `T`, not `T | undefined`.
+  Documented as recommendation, not flipped in this campaign (would cause
+  a non-trivial wave of fixes across the codebase and warrants its own
+  goal).
+- Grep sweeps on `src/**/*.{ts,tsx}`:
+  - **119 `as any`** total
+  - **43 `: any`** total
+  - **0 `<any>`** generics
+  - **1 `Record<string, any>`**
+  - **3 `@ts-ignore` / `@ts-expect-error`**
+  - **203 `: unknown`** (most are correct boundaries — deserialized data,
+    IPC payloads, schema-drift detectors)
+  - **1075 total `as CastType` casts** (vast majority are legitimate
+    narrowing: `(el) as HTMLInputElement`, `JSON.parse(x) as Foo`, etc.)
+- `tsc --noEmit -p tsconfig.json` on the full tree (`src` + `tests` +
+  `vite.config.ts`). Result before fixes: **88 errors in 20 test files,
+  zero in `src/`**.
+- New uncommitted audio modules reviewed (chorus-processor, stock-delay-
+  processor, phase-vocoder, warp-render worker) — no Three.js or GPU
+  surfaces; safe to scope out GOAL 04–10.
+
+**Confirmed findings.**
+
+1. **`tests/helpers.tsx` type contract leak (GOAL 01 critical).**
+   `mockServices` (line 305) returns `as unknown as Services` after
+   building the mock with ~28 `as any` casts. `execute: vi.fn()` (line
+   112) is inferred as `(c: unknown) => unknown`, which is **incompatible**
+   with the production `ProjectStore.execute(command: Command): void`
+   (`src/store/ProjectStore.ts:160`). The `as unknown as Services` at the
+   end erases all type information, masking type errors downstream — that
+   is exactly the failure mode GOAL 01 calls "test type contract masking
+   production type drift". Tightened to
+   `execute: vi.fn<(c: Command) => void>()` (4 errors resolved across
+   `WavetablePanel.test.tsx`).
+2. **`Pattern` fixture stale — 11 occurrences.** `Pattern.notes` is
+   `Record<ID, NoteEvent[]>` (required) per `src/project-model/types.ts:438`
+   and has existed since the Initial commit (`4096423`). The schema
+   normalizer at `src/project-model/schema.ts:1641-1644` backfills `{}`
+   when missing, so runtime was safe; the type contract was stricter.
+   Fixed: added `notes: {},` before `stepMeta: undefined` in
+   `tests/ai-adversarial.test.ts` (5) and `tests/ranking-adversarial.test.ts`
+   (6, with one pre-existing duplication collapsed).
+3. **Inline structural type contract leak — `WavetablePanel.tsx:41`**
+   (GOAL 01 critical, **documented but NOT fixed** in this campaign).
+   The component declares
+   `services: { bank: { get(id: string | null): AudioBuffer | undefined }; store: { execute: (c: unknown) => unknown } }`.
+   The `execute: (c: unknown) => unknown` is incompatible with the
+   production `Services.execute: (c: Command) => void`. Any non-mock
+   caller passing a real `Services` object would fail typecheck. Fixing
+   it requires either changing the prop to `Pick<Services, "bank" | "store">`
+   or full `Services`, both of which ripple into GranularPanel,
+   WavetablePanel, fxeqCurve, and several adversarial tests. **Recorded
+   as a follow-up for a future hardening pass.** Test-side fix used
+   `as Parameters<typeof WavetablePanel>[0]["services"]` to bridge the
+   two contracts locally.
+4. **Missing `.d.ts` declarations for two new worklet modules.**
+   `chorus-processor.js` and `stock-delay-processor.js` lacked type
+   stubs. `tests/chorus-delay-buss.test.ts` does dynamic
+   `await import("../src/audio-worklets/{chorus,stock-delay}-processor.js")`
+   which TypeScript could not resolve. Created `.d.ts` files following
+   the `kaskada-processor.d.ts` house pattern
+   (`src/audio-worklets/chorus-processor.d.ts`,
+   `src/audio-worklets/stock-delay-processor.d.ts`).
+5. **Stale component API in tests (5 components).**
+   - `Goniometer`: tests used `leftAnalyser` / `rightAnalyser` props;
+     production now uses a single `analysers: { l, r } | null`. 3 occurrences.
+   - `LoudnessHistory`: test used `windowSec={30}` — prop does not exist
+     on the component (was renamed/removed in a prior refactor).
+   - `GranularPanel` / `InstrumentTrack`: test set `patterns: []` on
+     `InstrumentTrack` — the field belongs on the `Pattern` document,
+     not on the track.
+   - `SampleBrowser`: tests passed `services={mockServices()}` — the
+     component fetches `services` from React context; the prop was
+     removed in a prior refactor. 4 occurrences.
+   - `FreezeButton` / `GroupTrack`: test set `trackIds: []` — `GroupTrack`
+     does not have that field. Added the missing required fields
+     (`pan`, `effects`).
+6. **`liveCount` dead code in `tests/state-store-adversarial.test.ts`.**
+   `let liveCount = 0;` was declared and reassigned (`liveCount = 0;`)
+   but never read — the assertion that would have used it was deleted.
+   Both occurrences removed; comment retained explaining the invariant.
+7. **`fakeTransport` closure issue in
+   `tests/state-collab-scheduler-adversarial.test.ts`.** Original
+   `const t = { … timeAtTick: (tick: number) => tick / 24 / (t.bpm / 60) … }`
+   references `t.bpm` before `t` is initialized, giving `t` an implicit
+   `any` type and cascading into 3 errors (`tick` and `sec` parameters
+   became implicit `any`). Refactored to extract `const bpm = 124` and
+   use it in the arrow functions; return the object directly with
+   `as unknown as Transport` cast.
+8. **`SharedTransportState` adversarial contract.**
+   `applyTransportState(target, null)` and `applyTransportState(target,
+   { garbage: "x" })` are intentional invalid-input tests (verified by
+   the surrounding `expect(touched).toBe(false)` assertion). Cast both
+   to `as unknown as SharedTransportState` to satisfy the strict
+   signature. Merged `SharedTransportState` into the existing
+   `import { … } from "../src/collab/transportSync"` block as a
+   `type`-only member to avoid duplicate-identifier errors.
+9. **Misc field renames / spread fixes.**
+   - `isPlaying: true` → `playing: true` (2x, in `fakeTransport({ … })`
+     calls).
+   - `VelocityLevel = 0 | 1 | 2 | 3` cast on the loop variable in
+     `tests/ai-adversarial.test.ts:102`.
+   - `LoopFlipAnalysis | null` early-return: added `if (!a || !b) return;`
+     instead of relying on `b` being non-null.
+   - `tests/ranking-adversarial.test.ts:619` `...(base.generation as never)`
+     → `...base.generation` (with an explicit `if (!base.generation) return;`
+     guard so the spread is statically safe).
+   - `tests/state-persistence-adversarial.test.ts:457` `realTx(...args)`
+     → `realTx.apply(db, args as Parameters<typeof realTx>)` to satisfy
+     the strict `Spread types may only be created from object types`
+     error from the variadic mock signature.
+   - `App.test.tsx:24` `event === "pointerdown"` (where `event` was
+     inferred as `keyof DedicatedWorkerGlobalScopeEventMap` because the
+     destructured tuple was not widened) → `(args[0] as string) === "pointerdown"`.
+
+**Fixes implemented.** 18 files modified.
+
+- Test surface (16 files):
+  - `tests/helpers.tsx` — added `Command` import; tightened
+    `execute: vi.fn<(c: Command) => void>()`. The trailing
+    `as unknown as Services` and ~28 inner `as any` casts remain — see
+    follow-up.
+  - `tests/ai-adversarial.test.ts`, `tests/ranking-adversarial.test.ts` —
+    added `notes: {},` in 11 Pattern fixtures; collapsed one pre-existing
+    duplication; added `if (!base) return;` and `if (!base.generation) return;`
+    guards for spread safety.
+  - `tests/chorus-delay-buss.test.ts` — now resolves the new `.d.ts`
+    stubs (no test edits required).
+  - `tests/state-collab-scheduler-adversarial.test.ts` —
+    `fakeTransport` rewritten with explicit `bpm` const; `JamRole` split
+    into `import { roleAllows, … }` + `import type { JamRole }` per
+    `verbatimModuleSyntax`; `SharedTransportState` merged into the
+    existing `transportSync` import; `applyTransportState` invalid-input
+    tests get `as unknown as SharedTransportState` casts;
+    `isPlaying` → `playing`.
+  - `tests/state-store-adversarial.test.ts` — `liveCount` declaration
+    and assignment removed; invariant preserved by comment.
+  - `tests/state-persistence-adversarial.test.ts` — `realTx.apply(db,
+    args as Parameters<typeof realTx>)`.
+  - 9 unused-`mockServices` imports removed (`DiceContext`,
+    `DropZone`, `FreezeButton`, `Goniometer`, `Inspector`,
+    `IntentPanel`, `LoudnessHistory`, `SpectrumAnalyzer`,
+    `UndoHistoryPanel`).
+  - 2 unused-`userEvent` imports removed (`OzvenaPanel`,
+    `WavetablePanel`) — replaced with a `// (userEvent removed — unused)`
+    comment so the omission is intentional and reviewable.
+  - Stale-API test fixes: `Goniometer` (3 sites — `analysers={{ l, r }}`
+    or `analysers={null}`), `LoudnessHistory` (1 site), `GranularPanel`
+    (`InstrumentTrack.patterns` removed, `level` removed), `SampleBrowser`
+    (4 sites — `services` prop removed), `FreezeButton`
+    (`GroupTrack.trackIds` removed, `pan` + `effects` added),
+    `WavetablePanel` (4 sites — `as Parameters<typeof …>["services"]`
+    bridge).
+  - `App.test.tsx` — `pointerdown` comparison widened to
+    `(args[0] as string) === "pointerdown"`.
+- Source surface (2 new files):
+  - `src/audio-worklets/chorus-processor.d.ts`,
+    `src/audio-worklets/stock-delay-processor.d.ts` — type stubs
+    following the `kaskada-processor.d.ts` house pattern.
+
+**Validation.**
+
+- `npx tsc --noEmit -p tsconfig.json`: **PASS** (exit code 0, zero
+  errors). Full count went **88 → 0** across **20 files → 0 files**.
+- `npm test --run`: full suite (244 tests across the project) was
+  started in the background at the end of this goal. Result will be
+  reported in the next session turn or in a follow-up log entry.
+
+**Scope record — GOAL 04–10 NOT applicable.**
+
+Each file from `04_THREEJS_RESOURCE_OWNERSHIP.md` through
+`10_PRODUCTION_HMR_WORKERS_SERIALIZATION_FINAL_SWEEP.md` was opened and
+read in full. All ten target Three.js / WebGL / GPU surfaces that Pulse
+Forge does not use:
+
+| File                                                          | Topic                                            | Pulse Forge relevance |
+| ------------------------------------------------------------- | ------------------------------------------------ | --------------------- |
+| `04_THREEJS_RESOURCE_OWNERSHIP.md`                            | Three.js geometry/material/texture disposal      | N/A — no Three.js     |
+| `05_RENDER_LOOP_GPU_CPU_STABILITY.md`                         | Three.js animation loop + GPU stalls             | N/A — no Three.js     |
+| `06_SHADER_CORRECTNESS_CONTRACTS.md`                          | GLSL correctness / uniforms / varyings           | N/A — no shaders      |
+| `07_SHADER_PERFORMANCE_COLOR_PRECISION.md`                    | GLSL precision / texture formats                 | N/A — no shaders      |
+| `08_CAMERA_RESIZE_RAYCAST_INTERACTION.md`                     | Three.js camera + raycasting + resize            | N/A — no Three.js     |
+| `09_ASSETS_CONTEXT_BROWSER_CAPABILITIES.md`                   | glTF / KTX2 / GPU context loss                   | N/A — no Three.js     |
+| `10_PRODUCTION_HMR_WORKERS_SERIALIZATION_FINAL_SWEEP.md`      | Three.js + HMR + structured-clone hazards        | N/A — no Three.js     |
+
+The lessons in those files (`useRef` for transient values, dispose
+patterns, camera-aspect on resize, browser-context-loss fallback, etc.)
+are reusable engineering hygiene in principle, but applying them
+without a Three.js surface is not actionable. **Pulse Forge's actual
+analogues are the 2D Canvas-based visualizers** (SpectrumAnalyzer,
+Goniometer, LoudnessHistory, WavetablePreview, fxeqCurve, EnvEditor)
+and the audio worker / worklet lifecycle. If Daniel wants a
+Pulse-Forge-specific version of any of these prompts (e.g. an
+"audio worklet / 2D canvas resource ownership" goal), it can be
+written as a fresh prompt outside the `threejs_scheduler_goals`
+series.
+
+**Unresolved issues / follow-ups.**
+
+1. **`WavetablePanel.tsx:41` inline structural `execute: (c: unknown)
+   => unknown`** — real type-contract leak between the component-local
+   type and the production `Services.execute`. Fix candidates:
+   `Pick<Services, "bank" | "store">` on the prop, or accept full
+   `Services`. Ripple effects in GranularPanel and `fxeqCurve` should
+   be checked in the same pass. **Estimated 2–3 hours incl. tests.**
+2. **`tests/helpers.tsx:305` `as unknown as Services` + ~28 inner
+   `as any`** — long-term fix is a `MockServicesBuilder` helper that
+   constructs a properly-typed partial mock with overrides, removing
+   every `as any` from the test suite. **Estimated 2–4 hours** (largest
+   payoff is test-side readability + better error messages).
+3. **Add `noUncheckedIndexedAccess` to `tsconfig.json`** as a
+   separate, scoped goal. Estimated **1–2 hours** but produces a
+   cascade of small fixes — should be its own GOAL because it touches
+   every file that does `arr[i]` or `obj[key]`.
+4. **Targeted audit of the remaining 119 `as any` in `src/`** — most
+   are legitimate (Yjs `yMap.get()` returns `any` by design — yjs does
+   not ship first-class TS types for its shared types; this is a
+   well-known pattern across the Yjs ecosystem). A grep plus a manual
+   sweep of `commands.ts`, `schema.ts`, `project-model/schema.ts`,
+   and `audio-engine/` would likely find 5–10 unsafe uses that are
+   worth fixing individually. Estimated **1–2 hours**.
+
+**Remaining risks.**
+
+- The 244-test full-suite run was started at the very end of this goal
+  and may surface regressions introduced by the test-side fixes
+  (especially `WavetablePanel`'s `as Parameters<typeof …>["services"]`
+  bridge, which can mask a real type drift if production's
+  `Services.execute` ever changes). If failures appear, they should be
+  triaged against the bridge contract, not against the test fixtures.
+- `as unknown as …` casts are sticky: future contributors will copy
+  them. The WavetablePanel and helpers.tsx follow-ups should be
+  prioritized before more callers adopt the pattern.
+
+**Recommendations for next session.**
+
+- **GOAL 02 — React lifecycle, state & async correctness audit.**
+  Pulse Forge has rich `useEffect`/`useState` usage in `src/ui/` (mixer
+  panel, arrangement, effects rack, plugin popouts) plus the
+  AudioUnlock gate (which already received a fix during the 2026-09-10
+  GOAL 01 — the `pointerdown` registration test added here will be
+  one of the audit points). Targets: cleanup correctness on unmount,
+  AbortController usage in async effects, race conditions between
+  fast user input and slow persistence writes, async state updates
+  after unmount, audio worklet message-port lifecycle.
+- After GOAL 02 finishes, **GOAL 03 — React render performance & state
+  topology audit** is the natural next step (frame-rate derived values
+  on Spectrum/LoudnessHistory/Goniometer, broad context subscriptions,
+  oversized global store reads, virtualization on arrangement/track
+  lists). When both are green, Pulse Forge's "01–03" coverage of this
+  prompt series is complete and 04–10 can stay parked.
+- **Optional earlier detour:** the `WavetablePanel.tsx` services-prop
+  fix (follow-up #1) is small enough to bundle with GOAL 02 and would
+  clean up one of the two `as unknown as …` hotspots identified here.
+

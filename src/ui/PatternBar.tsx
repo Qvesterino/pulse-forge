@@ -177,7 +177,7 @@ export function PatternBar({
               role="tab"
               aria-selected={isActive}
               className={`pattern-chip${isActive ? " active" : ""}${isDragging ? " dragging" : ""}`}
-              title={`${pattern.name} (${pattern.stepCount} steps) — click to select, double-click or F2 to rename, drag to reorder`}
+              title={`${pattern.name} (${pattern.stepCount} steps = ${pattern.stepCount / 16} bar${pattern.stepCount === 16 ? "" : "s"}) — click to select, double-click or F2 to rename, drag to reorder`}
               onClick={() => {
                 if (!dragRef.current) services.store.execute(setActivePattern(doc, pattern.id));
               }}
@@ -359,17 +359,17 @@ export function PatternBar({
         <select
           className="pattern-length"
           aria-label="Pattern length"
-          title="Pattern length in steps"
+          title="Pattern length — 16 steps = 1 bar (long pads want 32+)"
           value={active.stepCount}
           onChange={(event) =>
             services.store.execute(setPatternLength(doc, doc.activePatternId, Number(event.target.value)))
           }
         >
-          <option value={16}>16</option>
-          <option value={32}>32</option>
-          <option value={64}>64</option>
-          <option value={128}>128</option>
-          <option value={256}>256</option>
+          <option value={16}>16 · 1 bar</option>
+          <option value={32}>32 · 2 bars</option>
+          <option value={64}>64 · 4 bars</option>
+          <option value={128}>128 · 8 bars</option>
+          <option value={256}>256 · 16 bars</option>
         </select>
         <select
           className="pattern-length"

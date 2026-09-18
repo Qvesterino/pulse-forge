@@ -1417,6 +1417,17 @@ export function PianoRollTrack({
             {Array.from({ length: pattern.stepCount }, (_, i) =>
               i % 4 === 0 ? <div key={i} className="pr-beatline" style={{ left: `${stepPct(i)}%` }} /> : null,
             )}
+            {/* Bar lines + numbers for multi-bar patterns (FL orientation for long pads) */}
+            {pattern.stepCount > 16 &&
+              Array.from({ length: Math.floor(pattern.stepCount / 16) + 1 }, (_, b) => {
+                const step = b * 16;
+                if (step > pattern.stepCount) return null;
+                return (
+                  <div key={`bar-${b}`} className="pr-barline" style={{ left: `${stepPct(step)}%` }}>
+                    {step < pattern.stepCount && <span className="pr-barnum">{b + 1}</span>}
+                  </div>
+                );
+              })}
             {playheadStep >= 0 && playheadStep < pattern.stepCount && (
               <div
                 className="pr-playhead"

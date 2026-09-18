@@ -114,12 +114,20 @@ function makeVoiceManager(limit: number) {
     stopAt: number,
     stop: (when: number) => void,
     silence: (now: number) => void,
+    /**
+     * AudioContext time of the note that forced the steal (FL-style retrig).
+     * The oldest voice is faded AT this scheduled time instead of being
+     * hard-killed at time 0 — click-free stealing when long notes stack up
+     * (e.g. a pad re-triggered by a pattern loop while its tail still rings).
+     * Absent = legacy immediate kill (percussive voices).
+     */
+    stealAt?: number,
   ): Voice => {
     const voice: Voice = { pitch, stopAt, stop, silence };
     voices.push(voice);
     if (voices.length > limit) {
       const oldest = voices.shift();
-      oldest?.stop(0);
+      oldest?.stop(stealAt ?? 0);
     }
     return voice;
   };
@@ -485,6 +493,7 @@ const analog: InstrumentDefinition = {
               }
             }
           },
+          when,
         );
         const latest = oscs[oscs.length - 1];
         if (latest)
@@ -774,6 +783,7 @@ const bass: InstrumentDefinition = {
             amp.gain.cancelScheduledValues(now);
             amp.gain.setTargetAtTime(0.0001, now, 0.008);
           },
+          when,
         );
         const last = oscs[oscs.length - 1];
         if (last)
@@ -875,6 +885,28 @@ const bass808: InstrumentDefinition = {
     { id: "sub", label: "SUB", min: 0, max: 1, default: 0.35, format: formatPct },
     { id: "tone", label: "TONE", min: 0, max: 1, default: 0.35, format: formatPct },
     { id: "gain", label: "GAIN", min: 0, max: 1, default: 0.85, format: formatPct },
+    {
+      id: "gate",
+      label: "GATE",
+      min: 0,
+      max: 1,
+      default: 1,
+      options: [
+        { value: 0, label: "One-shot" },
+        { value: 1, label: "Gated" },
+      ],
+    },
+    {
+      id: "mono",
+      label: "MONO",
+      min: 0,
+      max: 1,
+      default: 1,
+      options: [
+        { value: 0, label: "Poly" },
+        { value: 1, label: "Mono" },
+      ],
+    },
     ...modMatrixParams(false),
   ],
   factory(ctx, track) {
@@ -888,14 +920,22 @@ const bass808: InstrumentDefinition = {
 
     const runtime: InstrumentRuntime = {
       output,
-      noteOn(pitch, velocity, when, _durationSec, slideFrom) {
-        current?.stop(when);
+      noteOn(pitch, velocity, when, durationSec, slideFrom) {
+        // FL-style voice handling: MONO cuts the previous 808 at the new
+        // attack (trap cut), POLY lets tails overlap. GATE follows the piano
+        // roll note length (predĺžené 808 tails), ONE-SHOT keeps the legacy
+        // decay-only behaviour regardless of note length.
+        const mono = (p.mono ?? 1) > 0.5;
+        if (mono) current?.stop(when);
         const freq = midiToFreq(pitch);
         const decay = Math.max(0.05, p.decay ?? 0.9);
         const drop = p.pitchDrop ?? 0.4;
         const toneHz = 150 * Math.pow(2, (p.tone ?? 0.35) * 5.5);
         const gainVal = velocity * (p.gain ?? 0.85);
-        const stopTime = when + decay + 0.6;
+        const gated = (p.gate ?? 1) > 0.5;
+        const gateSec = gated ? Math.max(0.05, Number.isFinite(durationSec) ? durationSec : 0.05) : 0.03;
+        const off = when + gateSec;
+        const stopTime = gated ? off + decay * 2 + 0.6 : when + decay + 0.6;
 
         const glideNorm = Math.max(0, Math.min(1, p.glide ?? 0.34));
         const glide = glideNorm * 0.35; // 0..1 → 0..0.35 s linear
@@ -938,7 +978,7 @@ const bass808: InstrumentDefinition = {
           stopTime,
           velocity,
           attack: 0.005,
-          off: when,
+          off,
           release: decay,
           cutoffParam: toneFilter.frequency,
           cutoffBase: Math.max(120, toneHz),
@@ -951,7 +991,9 @@ const bass808: InstrumentDefinition = {
 
         const amp = ctx.createGain();
         amp.gain.setValueAtTime(Math.max(gainVal, 0.0002), when);
-        amp.gain.setTargetAtTime(0.0001, when + 0.01, decay / 3);
+        // Gated: sustain full level through the note, release at gate-off.
+        // One-shot: legacy immediate decay from just after the attack.
+        amp.gain.setTargetAtTime(0.0001, gated ? off : when + 0.01, decay / 3);
         amp.connect(toneFilter);
 
         const osc = ctx.createOscillator();
@@ -969,6 +1011,7 @@ const bass808: InstrumentDefinition = {
           amp.gain.cancelScheduledValues(glideStart);
           amp.gain.setValueAtTime(Math.max(gainVal * 0.9, 0.0002), glideStart);
           amp.gain.setValueAtTime(Math.max(gainVal, 0.0002), when);
+          amp.gain.setTargetAtTime(0.0001, Math.max(off, when + 0.01), decay / 3);
         } else {
           const startFreq = freq * (1 + drop * 1.3);
           osc.frequency.setValueAtTime(Math.max(20, startFreq), when);
@@ -986,7 +1029,7 @@ const bass808: InstrumentDefinition = {
           subOsc.type = "sine";
           subGain = ctx.createGain();
           subGain.gain.setValueAtTime(subLev * 0.55 * velocity, when);
-          subGain.gain.setTargetAtTime(0.0001, when + 0.01, decay / 3);
+          subGain.gain.setTargetAtTime(0.0001, gated ? off : when + 0.01, decay / 3);
           subOsc.connect(subGain).connect(post);
           if (slideOn && slideFrom) {
             const fromFreq = midiToFreq(slideFrom.pitch) / 2;
@@ -1505,6 +1548,7 @@ const sampler: InstrumentDefinition = {
             amp.gain.cancelScheduledValues(now);
             amp.gain.setTargetAtTime(0.0001, now, 0.008);
           },
+          when,
         );
         // Slide support: glide this voice's rate to a new pitch (stretched
         // buffers are fixed-rate — glide only in pitch mode).
@@ -1637,6 +1681,17 @@ const texture: InstrumentDefinition = {
     { id: "chaos", label: "CHAOS", min: 0, max: 1, default: 0.2, format: formatPct },
     { id: "attack", label: "ATTACK", min: 0.01, max: 3, default: 0.5, unit: "s", format: (v) => `${v.toFixed(2)}s` },
     { id: "hold", label: "HOLD", min: 0, max: 6, default: 1.5, unit: "s", format: (v) => `${v.toFixed(2)}s` },
+    {
+      id: "gate",
+      label: "GATE",
+      min: 0,
+      max: 1,
+      default: 0,
+      options: [
+        { value: 0, label: "Hold" },
+        { value: 1, label: "Gate" },
+      ],
+    },
     { id: "release", label: "RELEASE", min: 0.05, max: 4, default: 0.6, unit: "s", format: (v) => `${v.toFixed(2)}s` },
     { id: "unison", label: "UNISON", min: 1, max: 6, default: 2, format: (v) => `${Math.round(v)}×` },
     { id: "spread", label: "SPREAD", min: 0, max: 1, default: 0, format: formatPct },
@@ -1751,7 +1806,12 @@ const texture: InstrumentDefinition = {
         const filterQ = 0.5 + textureVal * 7.5;
         const useSaw = textureVal > 0.5;
         const attack = Math.max(0.01, Math.min(3, p.attack ?? 0.5));
-        const hold = Math.max(durationSec, p.hold ?? 1.5);
+        // GATE=Hold (default): HOLD is a minimum body time so short notes keep
+        // the evolving character (render-neutral legacy). GATE=Gate: strict FL
+        // gating — the voice holds exactly the piano roll note (min attack).
+        const strictGate = (p.gate ?? 0) > 0.5;
+        const holdFloor = strictGate ? attack + 0.05 : Math.max(0, p.hold ?? 1.5);
+        const hold = Math.max(durationSec, holdFloor);
         const releaseTc = Math.max(0.05, Math.min(4, p.release ?? 0.6));
         const stopTime = when + hold + Math.max(1.2, releaseTc * 2) + 0.1;
 
@@ -1875,6 +1935,7 @@ const texture: InstrumentDefinition = {
               }
             }
           },
+          when,
         );
         const last = noise;
         last.onended = () => {
@@ -2429,6 +2490,7 @@ const wavetable: InstrumentDefinition = {
               }
             }
           },
+          when,
         );
         const last = sources[sources.length - 1];
         if (last)
@@ -2745,6 +2807,7 @@ const granular: InstrumentDefinition = {
               }
             }
           },
+          when,
         );
         let ended = 0;
         for (let i = 0; i < sources.length; i++) {
@@ -2992,6 +3055,7 @@ const fm: InstrumentDefinition = {
               /* already stopped */
             }
           },
+          when,
         );
         carrier.onended = () => {
           amp.disconnect();
@@ -3359,6 +3423,7 @@ const keys: InstrumentDefinition = {
               }
             }
           },
+          when,
         );
         const last = pairB.car;
         last.onended = () => {
@@ -4156,6 +4221,7 @@ const spectral: InstrumentDefinition = {
               }
             }
           },
+          when,
         );
         const last = oscs[oscs.length - 1];
         if (last)
@@ -4485,6 +4551,7 @@ const vocalchop: InstrumentDefinition = {
               }
             }
           },
+          when,
         );
         // Slide support: glide this voice's playbackRate to a new pitch —
         // the VIB LFO keeps modulating on top of the ramped base value.

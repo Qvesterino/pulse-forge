@@ -46,12 +46,26 @@ describe("EffectRack", () => {
     const select = screen.getByLabelText("Add effect") as HTMLSelectElement;
 
     expect(Array.from(select.options).map((option) => option.value)).toEqual(
-      expect.arrayContaining(["fxeq", "ultina", "ozvena"]),
+      expect.arrayContaining(["fxeq", "ultina", "ozvena", "kaskada"]),
     );
     expect(select.querySelector('optgroup[label="FLAGSHIP PLUGINS"]')).not.toBeNull();
     expect(screen.getByRole("option", { name: "PRISM" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "VLYX" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "VØID" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Kaskáda Delay" })).toBeInTheDocument();
+  });
+
+  it("groups core effects by category in the add effect menu", () => {
+    const { doc, track } = trackWithEffects(0);
+    renderWithContext(<EffectRack track={track} />, { services: mockServices(doc) });
+    const select = screen.getByLabelText("Add effect") as HTMLSelectElement;
+    for (const label of ["TONE", "DYNAMICS", "CHARACTER", "MOVEMENT", "SPACE"]) {
+      expect(select.querySelector(`optgroup[label="${label}"]`)).not.toBeNull();
+    }
+    // Kaskáda moved out of the core list into the flagship suites.
+    const flagship = select.querySelector('optgroup[label="FLAGSHIP PLUGINS"]');
+    expect(flagship?.querySelector('option[value="kaskada"]')).not.toBeNull();
+    expect(select.querySelector('optgroup[label="EFFECTS"]')).toBeNull();
   });
 
   it("disables move-earlier on first effect", () => {
@@ -454,8 +468,8 @@ describe("UltinaPanel — PRO tools (delta / A/B / gain match)", () => {
   });
 });
 
-describe("EffectRack — flagship device shell contract (all three plugins)", () => {
-  function flagshipDoc(type: "fxeq" | "ultina" | "ozvena", id: string) {
+describe("EffectRack — flagship device shell contract (all four plugins)", () => {
+  function flagshipDoc(type: "fxeq" | "ultina" | "ozvena" | "kaskada", id: string) {
     const doc = createProjectFromTemplate("house");
     const track = doc.tracks.find((t) => t.kind === "instrument")!;
     track.effects = [{ id, type, bypassed: false, params: {} }];
@@ -466,9 +480,10 @@ describe("EffectRack — flagship device shell contract (all three plugins)", ()
     fxeq: "PRISM",
     ultina: "VLYX",
     ozvena: "VØID",
+    kaskada: "Kaskáda Delay",
   };
 
-  for (const type of ["fxeq", "ultina", "ozvena"] as const) {
+  for (const type of ["fxeq", "ultina", "ozvena", "kaskada"] as const) {
     it(`${type}: add → mount → collapse keeps mounted → expand → bypass flips state`, async () => {
       const user = userEvent.setup();
       const id = `fx-${type}-shell`;

@@ -255,7 +255,7 @@ contract as Ultina; a closed panel costs zero analysis CPU):
 - Add `"kaskada"` to EffectType union (src/project-model/types.ts)
 - Create `kaskada: EffectDefinition` with params + factory
   (worklet path: `createKaskadaNode`, fallback: bypass 1:1 + degraded flag)
-- Add to `EFFECT_ORDER` + `CORE_EFFECT_ORDER`
+- Add to `EFFECT_ORDER` + `FLAGSHIP_EFFECT_ORDER` (core `Add Effect` menu groups stay category-only)
 
 `src/presets/factory.ts`:
 

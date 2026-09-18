@@ -1,0 +1,8 @@
+/**
+ * Type stub for the plain-JS Stock Delay worklet processor (house pattern: see
+ * kaskada-processor.d.ts). The implementation stays plain JS because it
+ * is an input of the classic-script core bundle (scripts/build-core-worklets.mjs).
+ * Only the test factory is exported — registration happens via the
+ * registerProcessor side effect inside the real AudioWorkletGlobalScope.
+ */
+export declare function createStockDelayProcessor(): unknown;

@@ -12,7 +12,7 @@ import type { AutomationPoint, Lfo } from "../project-model/types";
 import { valueAt } from "../project-model/automation";
 import { hashString } from "../shared/rng";
 import { defaultMasterConfig } from "../project-model/schema";
-import { PPQ } from "../project-model/types";
+import { PPQ, BAR_TICKS } from "../project-model/types";
 import type { SampleBank } from "../sample-library/factory";
 import { EFFECT_DEFS } from "../effects/registry";
 import type { EffectRuntime } from "../effects/types";
@@ -35,6 +35,8 @@ import { createTapeNode } from "../audio-worklets/tape-node";
 import { createEnvFollowerNode, type EnvFollowerHandle } from "../audio-worklets/envfollower-node";
 import { createKwMeterNode, type KwMeterHandle } from "../audio-worklets/kwmeter-node";
 import { timeStretch } from "./time-stretch";
+import { phaseVocoderWarpChannel, warpRateEnvelope, type WarpRateInterval } from "./phase-vocoder";
+import { renderWarpPreserveAsync } from "../audio-workers/warp-render-client";
 import { MeterRing } from "./MeterRing";
 import {
   lfoKind,
@@ -375,6 +377,19 @@ export class AudioEngine {
    */
   private stretchCache = new Map<string, AudioBuffer>();
   private static readonly STRETCH_CACHE_LIMIT = 48;
+  /**
+   * LRU cache for pitch-preserving warp renders keyed by
+   * `bufferId+wallSec+pins+reverse`. Warp buffers are clip-sized (bars of
+   * audio, not one-shots), so the limit is small. Warmed in a worker on
+   * trigger-miss / clip edit; the offline renderer precomputes synchronously
+   * with the same core, so live and export are sample-exact.
+   * Cleared on project swap (plus an epoch bump that orphans in-flight
+   * worker replies).
+   */
+  private warpCache = new Map<string, AudioBuffer>();
+  private static readonly WARP_CACHE_LIMIT = 6;
+  private warpInflight = new Set<string>();
+  private warpEpoch = 0;
   private lfos = new Map<string, LfoRuntimeState>();
   private macroCache = new Map<string, { gain: number; pan: number }>();
   private currentSceneIntensity = 0.7;
@@ -1086,6 +1101,8 @@ export class AudioEngine {
     if (this.stretchProjectId !== doc.id) {
       this.stretchProjectId = doc.id;
       this.clearStretchCache();
+      this.clearWarpCache();
+      this.warpEpoch++;
       // Missing-asset ids belong to the project that missed them — the
       // engine outlives projects, so stale ids would accumulate forever and
       // pollute the diagnostics panel of the newly opened project.
@@ -1948,24 +1965,107 @@ export class AudioEngine {
     source.connect(gain).connect(nodes.input);
 
     // Offset / trim handling
-    const { duration, playOffset } = audioClipPlayWindow(clip, playBuffer.duration, clipDurSec, timeScale);
+    const { duration, playOffset, contentDur } = audioClipPlayWindow(clip, playBuffer.duration, clipDurSec, timeScale);
 
-    try {
-      source.start(when, playOffset, duration);
-      source.stop(when + duration + 0.01);
-    } catch {
-      /* already started */
+    const hasWarpPins = (clip.warpMarkers?.length ?? 0) > 0;
+    const clipTicks = clip.lengthBars * BAR_TICKS;
+    // Pitch-preserving warp: stretch mode + pins → pre-rendered phase-vocoder
+    // buffer (cached, tempo-exact). A cache miss warms in the background while
+    // THIS trigger plays legacy straight-stretched, so timing never gaps —
+    // the next loop iteration is exact.
+    let warpedHit: AudioBuffer | null = null;
+    if (hasWarpPins && !reverse && clip.loop !== true && clip.stretchMode === "stretch") {
+      warpedHit = this.warpCache.get(this.warpCacheKey(clip, clipDurSec)) ?? null;
+      if (warpedHit) {
+        source.buffer = warpedHit;
+        source.playbackRate.value = 1;
+      } else {
+        this.warmWarp(clip, clipDurSec);
+      }
     }
-    this.oneShotSources.add(source);
-    source.onended = () => {
-      this.oneShotSources.delete(source);
+
+    // Repitch warp (FL/Slicex-style): warp markers pin sample time to the
+    // arrangement grid. Resample mode only — pitch follows time; stretch mode
+    // is served by the preserving path above, reverse keeps its legacy path.
+    // Loop is skipped when warp maps the clip (warp already spans it fully).
+    const warpSegs =
+      warpedHit !== null || clip.reverse === true || clip.stretchMode === "stretch" || clip.loop === true
+        ? null
+        : buildWarpSegments({
+            markers: clip.warpMarkers ?? [],
+            clipStartTick: clip.startBar * BAR_TICKS,
+            clipTicks,
+            spt: clipTicks > 0 ? clipDurSec / clipTicks : 0,
+            contentStartSec: playOffset,
+            contentDurSec: contentDur,
+          });
+
+    // Texture-bed loop: cycle the trimmed content for the whole clip length
+    // (a 4-bar atmosphere fills 16 bars). Native buffer loop over the content
+    // window; the `start(when, offset, duration)` below still bounds total
+    // playback and fades still apply at the clip edges. Skipped for reverse
+    // (negative-rate looping is undefined behaviour in Web Audio).
+    if (!warpSegs && clip.loop === true && !reverse && contentDur > 0.02) {
+      const loopEnd = Math.min(playBuffer.duration, playOffset + contentDur);
+      if (loopEnd - playOffset >= 0.01) {
+        source.loop = true;
+        source.loopStart = playOffset;
+        source.loopEnd = loopEnd;
+      }
+    }
+
+    if (warpSegs) {
+      // One repitch source per segment, all sharing the clip gain so fades
+      // span the whole clip. Segments tile [when, when+clipDurSec] back to
+      // back at grid-exact boundaries — live and offline schedule identically.
+      let pending = warpSegs.length;
+      for (const seg of warpSegs) {
+        const segSource = ctx.createBufferSource();
+        segSource.buffer = playBuffer;
+        segSource.playbackRate.value = seg.rate;
+        segSource.connect(gain);
+        const segWhen = when + (seg.startTick / clipTicks) * clipDurSec;
+        const segWall = ((seg.endTick - seg.startTick) / clipTicks) * clipDurSec;
+        try {
+          segSource.start(segWhen, seg.bufStartSec, Math.max(0.005, seg.bufEndSec - seg.bufStartSec));
+          segSource.stop(segWhen + segWall + 0.02);
+        } catch {
+          /* already started */
+        }
+        this.oneShotSources.add(segSource);
+        segSource.onended = () => {
+          this.oneShotSources.delete(segSource);
+          try {
+            segSource.disconnect();
+          } catch {}
+          if (--pending <= 0) {
+            try {
+              gain.disconnect();
+            } catch {}
+          }
+        };
+      }
+    } else {
+      // A preserving-warp hit plays the pre-rendered clip from its head.
+      const effOffset = warpedHit ? 0 : playOffset;
+      const effDur = warpedHit ? Math.min(clipDurSec, warpedHit.duration) : duration;
       try {
-        source.disconnect();
-      } catch {}
-      try {
-        gain.disconnect();
-      } catch {}
-    };
+        source.start(when, effOffset, effDur);
+        source.stop(when + effDur + 0.01);
+      } catch {
+        /* already started */
+      }
+      this.oneShotSources.add(source);
+      source.onended = () => {
+        this.oneShotSources.delete(source);
+        try {
+          source.disconnect();
+        } catch {}
+        try {
+          gain.disconnect();
+        } catch {}
+      };
+    }
   }
 
   /**
@@ -1976,6 +2076,140 @@ export class AudioEngine {
    */
   clearStretchCache(): void {
     this.stretchCache.clear();
+  }
+
+  /** Clear pitch-preserving warp renders (project swap / bank rebuild). */
+  clearWarpCache(): void {
+    this.warpCache.clear();
+    this.warpInflight.clear();
+  }
+
+  /** Tempo-exact cache key: buffer + wall length + warp pins. */
+  private warpCacheKey(clip: import("../project-model/types").AudioClip, wallSec: number): string {
+    const pins = (clip.warpMarkers ?? []).map((m) => `${m.timeSec.toFixed(3)}@${Math.round(m.tick)}`).join(",");
+    return `${clip.bufferId}|w${wallSec.toFixed(3)}|${hashString(pins).toString(36)}`;
+  }
+
+  /**
+   * Shared sync core for warp renders: bank buffer → repitch segments →
+   * pitch-preserving rate envelope → render job. Used by the synchronous
+   * offline path and (for its cheap prefix) by the async live warmer.
+   * The warp map fully determines timing here — stretchRate is bypassed
+   * (pins capture the geometry; a pin placed at the straight-playback
+   * position reproduces the legacy rate).
+   */
+  private buildWarpJob(
+    clip: import("../project-model/types").AudioClip,
+    wallSec: number,
+  ): {
+    key: string;
+    src: AudioBuffer;
+    intervals: WarpRateInterval[];
+    outLen: number;
+    sampleRate: number;
+  } | null {
+    const ctx = this.ctx;
+    const src = this.bank?.get(clip.bufferId);
+    if (!ctx || !src) return null;
+    const markers = clip.warpMarkers ?? [];
+    if (markers.length === 0 || clip.reverse || clip.loop) return null;
+    if (clip.stretchMode !== "stretch") return null;
+    if (!Number.isFinite(wallSec) || wallSec <= 0) return null;
+    const clipTicks = clip.lengthBars * BAR_TICKS;
+    if (!(clipTicks > 0)) return null;
+    const spt = wallSec / clipTicks;
+    const { playOffset, contentDur } = audioClipPlayWindow(clip, src.duration, Infinity, 1);
+    const segs = buildWarpSegments({
+      markers,
+      clipStartTick: clip.startBar * BAR_TICKS,
+      clipTicks,
+      spt,
+      contentStartSec: playOffset,
+      contentDurSec: contentDur,
+    });
+    if (!segs) return null;
+    const intervals = segs.map((s) => ({
+      startSec: s.startTick * spt,
+      endSec: s.endTick * spt,
+      rate: Math.min(4, Math.max(0.25, ((s.endTick - s.startTick) * spt) / Math.max(1e-6, s.bufEndSec - s.bufStartSec))),
+    }));
+    return {
+      key: this.warpCacheKey(clip, wallSec),
+      src,
+      intervals,
+      outLen: Math.max(1, Math.round(wallSec * ctx.sampleRate)),
+      sampleRate: ctx.sampleRate,
+    };
+  }
+
+  private storeWarpBuffer(key: string, buf: AudioBuffer): void {
+    if (this.warpCache.has(key)) this.warpCache.delete(key);
+    else if (this.warpCache.size >= AudioEngine.WARP_CACHE_LIMIT) {
+      const oldest = this.warpCache.keys().next().value as string | undefined;
+      if (oldest !== undefined) this.warpCache.delete(oldest);
+    }
+    this.warpCache.set(key, buf);
+  }
+
+  /**
+   * Synchronous pitch-preserving warp render (offline/export path — no
+   * realtime pressure). Result is cached, so the live trigger hitting the
+   * same wall length plays the identical buffer.
+   */
+  precomputeWarpSync(clip: import("../project-model/types").AudioClip, wallSec: number): AudioBuffer | null {
+    const ctx = this.ctx;
+    const job = this.buildWarpJob(clip, wallSec);
+    if (!ctx || !job) return null;
+    const hit = this.warpCache.get(job.key);
+    if (hit) return hit;
+    try {
+      const rateAt = warpRateEnvelope(job.intervals);
+      const buf = ctx.createBuffer(job.src.numberOfChannels, job.outLen, job.sampleRate);
+      for (let c = 0; c < job.src.numberOfChannels; c++) {
+        buf.getChannelData(c).set(phaseVocoderWarpChannel(job.src.getChannelData(c), job.sampleRate, rateAt, job.outLen));
+      }
+      this.storeWarpBuffer(job.key, buf);
+      return buf;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Project-tempo estimate for UI-driven prewarming (the exact wall follows
+   * the scene tempo at trigger; a tempo-mismatched key simply misses and
+   * re-warms). Called after warp edits so the next play is already exact.
+   */
+  warmWarpForClip(clip: import("../project-model/types").AudioClip): void {
+    const bpm = this.doc?.bpm;
+    if (!bpm || !(bpm > 0)) return;
+    this.warmWarp(clip, (clip.lengthBars * BAR_TICKS * 60) / (bpm * PPQ));
+  }
+
+  /** Background warp render into the cache (worker when worthwhile). */
+  private warmWarp(clip: import("../project-model/types").AudioClip, wallSec: number): void {
+    const job = this.buildWarpJob(clip, wallSec);
+    if (!job) return;
+    if (this.warpCache.has(job.key) || this.warpInflight.has(job.key)) return;
+    const epoch = this.warpEpoch;
+    const warmCtx = this.ctx;
+    this.warpInflight.add(job.key);
+    const channels: Float32Array[] = [];
+    for (let c = 0; c < job.src.numberOfChannels; c++) channels.push(Float32Array.from(job.src.getChannelData(c)));
+    renderWarpPreserveAsync(channels, job.sampleRate, job.intervals, job.outLen).then((rendered) => {
+      this.warpInflight.delete(job.key);
+      const ctx = this.ctx;
+      if (rendered.length === 0 || this.warpEpoch !== epoch || !ctx || ctx !== warmCtx) return;
+      try {
+        const buf = ctx.createBuffer(rendered.length, job.outLen, job.sampleRate);
+        rendered.forEach((ch, i) => {
+          if (i < buf.numberOfChannels) buf.getChannelData(i).set(ch.subarray(0, job.outLen));
+        });
+        this.storeWarpBuffer(job.key, buf);
+      } catch {
+        /* context died mid-render */
+      }
+    });
   }
 
   previewNote(trackId: string, pitch: number): void {
@@ -3671,20 +3905,25 @@ export class AudioEngine {
     // leaking voices. Take a defensive snapshot — choke fires only
     // on the trigger path (not every tick), so the per-call cost is
     // bounded and worth the safety.
+    // FL-style cut: the choke lands EXACTLY on the new hit's scheduled time
+    // (`when` from the same tick→time map), not on `currentTime`. The
+    // scheduler runs ~120 ms ahead, so cutting at `now` let the old hat ring
+    // over the new one. Clamped to `now` for live/immediate hits.
+    const cutAt = Number.isFinite(when) ? Math.max(when, ctx.currentTime) : ctx.currentTime;
     for (const voice of [...this.voices]) {
       if (voice.trackId !== trackId || voice.chokeGroup !== chokeGroup) continue;
-      voice.gain.gain.cancelScheduledValues(ctx.currentTime);
-      voice.gain.gain.setTargetAtTime(0, ctx.currentTime, 0.005);
+      voice.gain.gain.cancelScheduledValues(cutAt);
+      voice.gain.gain.setTargetAtTime(0, cutAt, 0.005);
       const stopAll = (voice as any)._stopAll as ((t: number) => void) | undefined;
       if (stopAll) {
         try {
-          stopAll(when + 0.02);
+          stopAll(cutAt + 0.02);
         } catch {
           /* already */
         }
       } else {
         try {
-          voice.source.stop(when + 0.02);
+          voice.source.stop(cutAt + 0.02);
         } catch {
           // already stopped
         }
@@ -4200,22 +4439,110 @@ function computeStretchedBuffer(
 }
 
 /**
+ * One repitch-warp segment: play play-buffer seconds [bufStartSec, bufEndSec]
+ * across clip-relative ticks [startTick, endTick] at constant `rate`.
+ */
+export interface WarpSegment {
+  startTick: number;
+  endTick: number;
+  bufStartSec: number;
+  bufEndSec: number;
+  rate: number;
+}
+
+/** Realtime-safety cap: one trigger schedules at most this many sources. */
+export const MAX_WARP_SEGMENTS = 64;
+
+/**
+ * Build a piecewise-constant-rate warp map from AudioClip warp markers.
+ * Each marker pins a sample time (sec, original-sample timeline) to an
+ * arrangement tick; the full trimmed content is mapped across the full clip
+ * (start pin + end pin are forced), linearly interpolated between pins —
+ * FL/Slicex-style repitch warp (pitch follows time, no phase vocoder).
+ *
+ * Returns null when warp cannot/should not apply (no in-range markers,
+ * degenerate geometry) — callers fall back to the legacy single source.
+ * Pure and deterministic: live playback and offline render share it.
+ */
+export function buildWarpSegments(opts: {
+  markers: ReadonlyArray<{ timeSec: number; tick: number }>;
+  clipStartTick: number;
+  clipTicks: number;
+  /** Wall seconds per tick (average across the clip). */
+  spt: number;
+  /** Play-buffer window (secs): trimmed content start + full trimmed length. */
+  contentStartSec: number;
+  contentDurSec: number;
+}): WarpSegment[] | null {
+  const { markers, clipStartTick, clipTicks, spt, contentStartSec, contentDurSec } = opts;
+  if (!Number.isFinite(clipTicks) || clipTicks <= 0) return null;
+  if (!Number.isFinite(spt) || spt <= 0) return null;
+  if (!Number.isFinite(contentStartSec) || !Number.isFinite(contentDurSec) || contentDurSec <= 0) return null;
+  const contentEnd = contentStartSec + contentDurSec;
+  // Keep only finite markers inside the clip; buffer times clamp into content.
+  const pins: { rel: number; buf: number }[] = [{ rel: 0, buf: contentStartSec }];
+  let inRange = 0;
+  for (const m of markers) {
+    if (!Number.isFinite(m.timeSec) || !Number.isFinite(m.tick)) continue;
+    const rel = m.tick - clipStartTick;
+    if (rel < 0 || rel > clipTicks) continue;
+    inRange++;
+    pins.push({ rel, buf: Math.min(contentEnd, Math.max(contentStartSec, m.timeSec)) });
+  }
+  // No usable marker — legacy straight playback (which may cap/silence the
+  // tail instead of re-fitting the content; that stays opt-in via warp).
+  if (inRange === 0) return null;
+  pins.push({ rel: clipTicks, buf: contentEnd });
+  // Stable sort by tick; duplicate ticks keep the LAST pin (explicit edit wins).
+  const order = pins.map((_, i) => i);
+  order.sort((a, b) => pins[a].rel - pins[b].rel);
+  const deduped: typeof pins = [];
+  for (const i of order) {
+    const last = deduped[deduped.length - 1];
+    if (last && Math.abs(last.rel - pins[i].rel) < 1e-9) deduped[deduped.length - 1] = pins[i];
+    else deduped.push(pins[i]);
+  }
+  // Defensive truncation (sanitize allows 256 markers): first N pins + end.
+  let pts = deduped;
+  if (pts.length > MAX_WARP_SEGMENTS + 1) {
+    pts = [...pts.slice(0, MAX_WARP_SEGMENTS), pts[pts.length - 1]];
+  }
+  const segs: WarpSegment[] = [];
+  for (let i = 0; i + 1 < pts.length && segs.length < MAX_WARP_SEGMENTS; i++) {
+    const a = pts[i];
+    const b = pts[i + 1];
+    const dTick = b.rel - a.rel;
+    const dBuf = b.buf - a.buf;
+    // Degenerate: zero time span or frozen/reversed buffer direction —
+    // BufferSource cannot hold or play backwards in a forward warp.
+    if (dTick <= 1e-9 || dBuf <= 0.0005) continue;
+    const rate = dBuf / (dTick * spt);
+    if (!Number.isFinite(rate) || rate <= 0) continue;
+    segs.push({ startTick: a.rel, endTick: b.rel, bufStartSec: a.buf, bufEndSec: b.buf, rate });
+  }
+  return segs.length > 0 ? segs : null;
+}
+
+/**
  * Resolve an AudioClip's playback window inside the (possibly stretched)
  * play buffer. `offsetSec`/`trimStart`/`trimEnd` are seconds in the ORIGINAL
  * sample; `timeScale` converts them into the play buffer's timeline (1 for
  * resample mode, the stretch rate for pre-stretched buffers). Pure — shared
  * reasoning for live playback and offline render.
+ *
+ * `contentDur` is the full trimmed content length (before capping to the
+ * requested clip length) — the loop region for `clip.loop` texture beds.
  */
 export function audioClipPlayWindow(
   clip: import("../project-model/types").AudioClip,
   playBufferDurationSec: number,
   requestedDurationSec: number,
   timeScale: number,
-): { duration: number; playOffset: number } {
+): { duration: number; playOffset: number; contentDur: number } {
   const offset = Math.max(0, ((clip.offsetSec ?? 0) + (clip.trimStart ?? 0)) * timeScale);
   const trimEnd = Math.max(0, (clip.trimEnd ?? 0) * timeScale);
   const maxDur = Math.max(0.01, playBufferDurationSec - offset - trimEnd);
   const duration = Math.min(requestedDurationSec, maxDur);
   const playOffset = clip.reverse ? Math.max(0, playBufferDurationSec - offset - duration) : offset;
-  return { duration, playOffset };
+  return { duration, playOffset, contentDur: maxDur };
 }

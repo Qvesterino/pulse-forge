@@ -8,6 +8,7 @@ import { createProjectFromTemplate } from "../src/project-model/templates";
 import { LatencyCalibrationController } from "../src/audio-engine/latencyCalibration";
 import { NoteRepeatController } from "../src/audio-engine/NoteRepeat";
 import { Transport } from "../src/transport/Transport";
+import type { Command } from "../src/commands/types";
 
 export function mockServices(doc?: ProjectDocument): Services {
   const project = doc ?? createProjectFromTemplate("house");
@@ -109,7 +110,7 @@ export function mockServices(doc?: ProjectDocument): Services {
         listeners.add(cb);
         return () => listeners.delete(cb);
       },
-      execute: vi.fn(),
+      execute: vi.fn<(c: Command) => void>(),
       undo: vi.fn(),
       redo: vi.fn(),
       canUndo: false,

@@ -541,6 +541,13 @@ export interface AudioClip {
   stretchRate: number;
   reverse: boolean;
   /**
+   * Loop the trimmed content for the whole clip length (texture beds):
+   * a 4-bar atmosphere fills 16 bars without duplicating clips. Native
+   * buffer looping over the trim window — seamless on matching edges,
+   * ignored when `reverse` is on. Absent = one-shot (legacy).
+   */
+  loop?: boolean;
+  /**
    * Stretch mode:
    * - "resample" (default): playbackRate changes pitch + time together
    * - "stretch": non-destructive time-stretch that preserves pitch

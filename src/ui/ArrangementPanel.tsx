@@ -683,7 +683,7 @@ export function ArrangementPanel() {
       // clip. No more placeholder sample standing in for the render.
       const zoneDoc = buildBounceZoneDoc(services.store.doc, trackIds, { startBar: fromBar, lengthBars: lenBars });
       const sr = services.engine.getLiveAudioContext()?.sampleRate ?? 44100;
-      const buffer = await renderProject(zoneDoc, services.bank, { mode: "song", sampleRate: sr, tailSeconds: 0.35 });
+      const buffer = await renderProject(zoneDoc, services.bank, { mode: "song", sampleRate: sr, tailSeconds: 2 });
       const bufferId = userSampleId(`bounce-${Math.round(fromBar)}b`);
       services.bank.add(bufferId, buffer);
       // Persist the WAV so the bounce survives reloads (bank is runtime-only).
@@ -1423,7 +1423,7 @@ export function ArrangementPanel() {
                   key={clip.id}
                   className={`arr-audio-clip${selected ? " selected" : ""}${isCurrent ? " current" : ""}`}
                   style={{ left: startBar * barWidth, width: lengthBars * barWidth - 4 }}
-                  title={`${track?.name ?? clip.trackId} · ${clip.bufferId} · ${clip.reverse ? "REV " : ""}${clip.stretchMode === "stretch" ? `STRETCH×${clip.stretchRate.toFixed(2)} ` : clip.stretchRate !== 1 ? `×${clip.stretchRate.toFixed(2)} ` : ""}${lengthBars}b · trim ${clip.trimStart.toFixed(2)}/${clip.trimEnd.toFixed(2)} fade ${effFadeIn.toFixed(2)}/${effFadeOut.toFixed(2)} gain ${effGain.toFixed(2)} — PT: top corners fade, top middle clip gain`}
+                  title={`${track?.name ?? clip.trackId} · ${clip.bufferId} · ${clip.reverse ? "REV " : ""}${clip.loop ? "LOOP " : ""}${(clip.warpMarkers?.length ?? 0) > 0 ? `WARP${clip.warpMarkers!.length} ` : ""}${clip.stretchMode === "stretch" ? `STRETCH×${clip.stretchRate.toFixed(2)} ` : clip.stretchRate !== 1 ? `×${clip.stretchRate.toFixed(2)} ` : ""}${lengthBars}b · trim ${clip.trimStart.toFixed(2)}/${clip.trimEnd.toFixed(2)} fade ${effFadeIn.toFixed(2)}/${effFadeOut.toFixed(2)} gain ${effGain.toFixed(2)} — PT: top corners fade, top middle clip gain`}
                   onPointerDown={(event) => {
                     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
                     const x = event.clientX - rect.left;
@@ -1623,6 +1623,89 @@ export function ArrangementPanel() {
             >
               Reverse ({audioClips.find((x) => x.id === audioMenu.clipId)?.reverse ? "ON" : "OFF"})
             </button>
+            <button
+              type="button"
+              role="menuitem"
+              title="Loop the trimmed content for the whole clip length — texture beds across N bars without duplicating clips"
+              onClick={() => {
+                const c = audioClips.find((x) => x.id === audioMenu.clipId);
+                if (c) execute(updateAudioClip(services.store.doc, c.id, { loop: !c.loop }));
+                setAudioMenu(null);
+              }}
+            >
+              Loop ({audioClips.find((x) => x.id === audioMenu.clipId)?.loop ? "ON" : "OFF"})
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              title="Pin the sample time playing at the playhead to the grid — Resample clips bend pitch (repitch warp), Stretch clips keep pitch (phase-vocoder pre-render, warmed in background)"
+              onClick={() => {
+                const c = audioClips.find((x) => x.id === audioMenu.clipId);
+                if (!c) {
+                  setAudioMenu(null);
+                  return;
+                }
+                if (c.reverse) {
+                  setActionError("Warp pins need forward playback — switch off Reverse first");
+                  setAudioMenu(null);
+                  return;
+                }
+                const buf = services.bank.get(c.bufferId);
+                if (!buf) {
+                  setActionError("Buffer not loaded");
+                  setAudioMenu(null);
+                  return;
+                }
+                const pos = services.transport.position;
+                const clipStartTick = c.startBar * BAR_TICKS;
+                const clipTicks = c.lengthBars * BAR_TICKS;
+                const rel = pos - clipStartTick;
+                if (!(rel > 0) || !(rel < clipTicks)) {
+                  setActionError("Move playhead inside the clip, then pin");
+                  setAudioMenu(null);
+                  return;
+                }
+                const spt = 60 / (doc.bpm * PPQ);
+                const rate = Math.min(4, Math.max(0.25, c.stretchRate ?? 1));
+                const contentStart = (c.offsetSec ?? 0) + (c.trimStart ?? 0);
+                const contentEnd = buf.duration - (c.trimEnd ?? 0);
+                const bufTime = Math.min(contentEnd, Math.max(contentStart, contentStart + rel * spt * rate));
+                const markers = [...(c.warpMarkers ?? []), { timeSec: Math.round(bufTime * 1000) / 1000, tick: Math.round(pos) }]
+                  .sort((a, b) => a.tick - b.tick)
+                  .slice(0, 256);
+                try {
+                  execute(updateAudioClip(services.store.doc, c.id, { warpMarkers: markers }));
+                  // Warm the pitch-preserving warp cache (stretch + pins) so
+                  // the next play is exact instead of repitch-fallback.
+                  services.engine.warmWarpForClip({ ...c, warpMarkers: markers });
+                } catch (err) {
+                  setActionError(err instanceof Error ? err.message : "Warp pin failed");
+                }
+                setAudioMenu(null);
+              }}
+            >
+              Warp pin at playhead ({(audioClips.find((x) => x.id === audioMenu.clipId)?.warpMarkers ?? []).length})
+            </button>
+            {(audioClips.find((x) => x.id === audioMenu.clipId)?.warpMarkers ?? []).length > 0 && (
+              <button
+                type="button"
+                role="menuitem"
+                title="Remove all warp pins — back to straight playback"
+                onClick={() => {
+                  const c = audioClips.find((x) => x.id === audioMenu.clipId);
+                  if (c) {
+                    try {
+                      execute(updateAudioClip(services.store.doc, c.id, { warpMarkers: [] }));
+                    } catch (err) {
+                      setActionError(err instanceof Error ? err.message : "Clear warp failed");
+                    }
+                  }
+                  setAudioMenu(null);
+                }}
+              >
+                Clear warp pins
+              </button>
+            )}
             <button
               type="button"
               role="menuitem"
