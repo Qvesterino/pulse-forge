@@ -79,6 +79,16 @@ export async function openHouseTemplateFromLanding(page: Page): Promise<void> {
  * don't need to re-prove the landing detour.
  */
 export async function openHouseTemplate(page: Page): Promise<void> {
+  // This helper presumes a RETURNING visitor (project browser directly at "/").
+  // Playwright contexts are fresh, so seed the onboarded flag the Entry gate
+  // checks — otherwise the first-visit landing page hides .project-browser.
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem("pf-onboarded", "1");
+    } catch {
+      /* storage blocked — nothing to seed */
+    }
+  });
   await page.goto("/", { waitUntil: "domcontentloaded", timeout: 60_000 });
   await page.waitForSelector(".project-browser", { timeout: 60_000 });
   await page.evaluate(() => document.querySelectorAll<HTMLElement>(".pb-template")[0]?.click());
