@@ -159,6 +159,11 @@ wherever the dry is silent (the point of a delay).
   smoothed gains to zero so re-enabling never jumps (then bypasses 1:1)
 - **Meters:** the 32-band reduction profile rides at the tail of the
   meter frame (§5.1.1) and renders as the red UNMASK curve in the panel
+- **Delta listen (`DELTA`):** outputs exactly what the solver removes —
+  pre-unmask wet − post-unmask wet, bypassing the mix law. With the
+  solver off it is exact silence; the identity
+  `delta == (renderOff − renderOn) / mix` is pinned to ~1e-6 by a unit
+  test (the reference's delta monitor, ported)
 
 ---
 
@@ -252,6 +257,11 @@ contract as Ultina; a closed panel costs zero analysis CPU):
 - The node caches the latest frame for `getMeters()` and enforces the
   gate (`setMetersEnabled(false)` also nulls the cache), so straggler
   port messages after a disable can never surface stale data
+- **Drag EQ handles:** the LP/HP handles sit ON the drawn loop-EQ curve
+  and drag horizontally (log axis, clamped to the registry ranges).
+  A drag previews through the engine (audible mid-drag,
+  `previewFxParam`) and commits once on release via
+  `setEffectParam` — the same preview/commit contract as Ultina
 
 ### 5.2 Node wrapper
 
@@ -304,13 +314,12 @@ backwards compatibility.
 
 ## 8. Phase 2 (future — not in this delivery)
 
-> **Delivered ahead of schedule:** dual spectrum (§5.1.1), the unmask
-> solver (§3.7), REVERSE segment sweep (§3.2.1), FREEZE HOLD tail
-> capture (§3.2.2), SOLO W monitoring, and the drum + diffuse
-> character modes (§3.2). Remaining future work: drag-to-adjust EQ
-> handles in the display, the reference's delta-listen monitor, and a
-> true send-return routing mode (SOLO W covers the monitoring half;
-> the rack stays insert-only).
+> **Phase 2 complete.** Delivered: dual spectrum (§5.1.1) with drag EQ
+> handles, the unmask solver (§3.7) with the delta-listen monitor,
+> REVERSE segment sweep (§3.2.1), FREEZE HOLD tail capture (§3.2.2),
+> SOLO W monitoring, and the drum + diffuse character modes (§3.2).
+> Remaining future work: a true send-return routing mode (SOLO W covers
+> the monitoring half; the rack stays insert-only).
 
 ---
 

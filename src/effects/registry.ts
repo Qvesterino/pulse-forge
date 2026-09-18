@@ -3239,6 +3239,7 @@ const kaskada: EffectDefinition = {
     },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 0.25, format: formatPct },
     { id: "soloWet", label: "SOLO W", min: 0, max: 1, default: 0, format: (v) => (v > 0.5 ? "ON" : "OFF") },
+    { id: "deltaListen", label: "DELTA", min: 0, max: 1, default: 0, format: (v) => (v > 0.5 ? "ON" : "OFF") },
     { id: "level", label: "LEVEL", min: -24, max: 6, default: -6, unit: "dB", format: formatDb },
   ],
   factory(ctx, instance) {

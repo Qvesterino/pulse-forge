@@ -12,6 +12,12 @@ import { useServices } from "./context";
  * cyan curve is the loop-EQ magnitude response computed from the current
  * TONE LP/HP params — the same 72-band geometry the worklet folds into.
  *
+ * Display-is-the-control-surface: the LP/HP handles sit ON the curve and
+ * drag horizontally (log axis). A drag previews through the engine
+ * (audible mid-drag) and commits once on release via onParam — the same
+ * preview/commit contract the Ultina panel uses. The red UNMASK curve
+ * hangs from the top edge: the solver's 32-band reduction profile.
+ *
  * Draw discipline follows Meter.tsx: a 15 Hz poll copies the latest meter
  * frame into a ref and paints straight to the canvas — zero React state
  * on the hot path. Metering is gated: the engine enables the worklet's
@@ -63,14 +69,26 @@ const BANDS = 72;
 const F_MIN = 20;
 const F_MAX = 20000;
 const DB_FLOOR = -90;
+const LOG_RANGE = Math.log(F_MAX / F_MIN);
 
-/** Loop-EQ response in dB at band b (two cascaded biquads per side). */
+/** Registry ranges for the draggable loop-EQ handles. */
+const TONE_RANGES = {
+  toneLp: { min: 500, max: 12000 },
+  toneHp: { min: 20, max: 800 },
+} as const;
+
+type ToneParamId = keyof typeof TONE_RANGES;
+
+/** Loop-EQ response in dB at an arbitrary frequency (two cascaded biquads
+ *  per side) — used by both the drawn curve and the handle hit-testing. */
+function eqDbAtFreq(freq: number, toneLpHz: number, toneHpHz: number, sr: number): number {
+  const w = (2 * Math.PI * freq) / sr;
+  return 2 * biquadMagDb(lpCoeffs(toneLpHz, sr), w) + 2 * biquadMagDb(hpCoeffs(toneHpHz, sr), w);
+}
+
 function eqDbAtBand(band: number, toneLpHz: number, toneHpHz: number, sr: number): number {
   const center = F_MIN * Math.pow(F_MAX / F_MIN, (band + 0.5) / BANDS);
-  const w = (2 * Math.PI * center) / sr;
-  const lp = biquadMagDb(lpCoeffs(toneLpHz, sr), w);
-  const hp = biquadMagDb(hpCoeffs(toneHpHz, sr), w);
-  return 2 * lp + 2 * hp;
+  return eqDbAtFreq(center, toneLpHz, toneHpHz, sr);
 }
 
 export function KaskadaPanel({
@@ -78,22 +96,34 @@ export function KaskadaPanel({
   fxId,
   params,
   degraded,
+  onParam,
 }: {
   trackId: string;
   fxId: string;
   params: Record<string, number>;
   degraded: boolean;
+  onParam?: (paramId: string, value: number) => void;
 }) {
   const services = useServices();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const metersRef = useRef<Float32Array | null>(null);
   const paramsRef = useRef(params);
   paramsRef.current = params;
+  // Drag state lives outside React: the draw loop reads it for the handle
+  // highlight and the live curve override; commits go through onParam once.
+  const dragRef = useRef<{ param: ToneParamId; freq: number } | null>(null);
+  const hoverRef = useRef<ToneParamId | null>(null);
+  // Latest-commit ref: the effect below must not re-subscribe (and flap the
+  // engine's meters gate) just because the parent passed a fresh inline
+  // callback — read the current one at release time instead.
+  const onParamRef = useRef(onParam);
+  onParamRef.current = onParam;
 
   useEffect(() => {
     const engineWithMeters = services.engine as typeof services.engine & {
       getFxMeters?: (trackId: string, fxId: string) => unknown;
       setFxMetersEnabled?: (trackId: string, fxId: string, enabled: boolean) => void;
+      previewFxParam?: (trackId: string, fxId: string, paramId: string, value: number) => void;
     };
     // Only a mounted panel consumes meters — the engine gates the worklet's
     // FFT so a closed Kaskáda costs zero analysis CPU.
@@ -120,6 +150,24 @@ export function KaskadaPanel({
     // trace x-positions are rate-independent (the worklet folds into the
     // same 20 Hz–20 kHz band geometry at any rate).
     const sr = 48000;
+
+    const cssWidth = () => {
+      const cvs = canvasRef.current;
+      if (!cvs) return 600;
+      return cvs.clientWidth || cvs.width;
+    };
+    const freqToX = (freq: number) => (cssWidth() * Math.log(freq / F_MIN)) / LOG_RANGE;
+    const xToFreq = (x: number) => F_MIN * Math.exp((x / cssWidth()) * LOG_RANGE);
+    const clampParam = (param: ToneParamId, freq: number) =>
+      Math.min(TONE_RANGES[param].max, Math.max(TONE_RANGES[param].min, freq));
+    const handleFreq = (param: ToneParamId) => {
+      const dragged = dragRef.current;
+      if (dragged && dragged.param === param) return dragged.freq;
+      return paramsRef.current[param] ?? (param === "toneLp" ? 4500 : 150);
+    };
+    const handleY = (freq: number, h: number) =>
+      h * 0.25 - (eqDbAtFreq(freq, handleFreq("toneLp"), handleFreq("toneHp"), sr) / 48) * (h * 0.6);
+
     const dbToY = (db: number, h: number) => h * (1 - (Math.max(DB_FLOOR, Math.min(0, db)) - DB_FLOOR) / -DB_FLOOR);
 
     const draw = () => {
@@ -143,13 +191,12 @@ export function KaskadaPanel({
         ctx.stroke();
       }
       ctx.fillStyle = "rgba(255,255,255,0.15)";
-      const logRange = Math.log(F_MAX / F_MIN);
       for (const [freq, label] of [
         [100, "100"],
         [1000, "1k"],
         [10000, "10k"],
       ] as [number, string][]) {
-        const x = Math.round((w * Math.log(freq / F_MIN)) / logRange) + 0.5;
+        const x = Math.round((w * Math.log(freq / F_MIN)) / LOG_RANGE) + 0.5;
         ctx.strokeStyle = "rgba(255,255,255,0.04)";
         ctx.beginPath();
         ctx.moveTo(x, 0);
@@ -159,7 +206,8 @@ export function KaskadaPanel({
       }
 
       // Loop-EQ overlay (dashed): gain curve from the live TONE params
-      const p = paramsRef.current;
+      const lpFreq = handleFreq("toneLp");
+      const hpFreq = handleFreq("toneHp");
       ctx.setLineDash([3, 3]);
       ctx.strokeStyle = "rgba(34,211,238,0.55)";
       ctx.beginPath();
@@ -167,12 +215,29 @@ export function KaskadaPanel({
         const x = ((b + 0.5) / BANDS) * w;
         // EQ is a gain curve: anchor 0 dB at the 1/4-height line so cuts
         // sweep downward without burying the traces.
-        const y = h * 0.25 - (eqDbAtBand(b, p.toneLp ?? 4500, p.toneHp ?? 150, sr) / 48) * (h * 0.6);
+        const y = h * 0.25 - (eqDbAtBand(b, lpFreq, hpFreq, sr) / 48) * (h * 0.6);
         if (b === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
       }
       ctx.stroke();
       ctx.setLineDash([]);
+
+      // LP / HP handles ON the curve (display is the control surface)
+      for (const param of ["toneLp", "toneHp"] as ToneParamId[]) {
+        const freq = handleFreq(param);
+        const hx = (freqToX(freq) / cssWidth()) * w; // CSS px -> backing px
+        const hy = handleY(freq, h);
+        const active = dragRef.current?.param === param;
+        const hovered = hoverRef.current === param;
+        ctx.beginPath();
+        ctx.arc(hx, hy, active ? 5.5 : 4.5, 0, Math.PI * 2);
+        ctx.fillStyle = active ? "#22d3ee" : hovered ? "rgba(34,211,238,0.85)" : "rgba(34,211,238,0.6)";
+        ctx.fill();
+        ctx.strokeStyle = "rgba(0,0,0,0.6)";
+        ctx.stroke();
+        ctx.fillStyle = active ? "#22d3ee" : "rgba(34,211,238,0.8)";
+        ctx.fillText(param === "toneLp" ? "LP" : "HP", hx + 7, hy - 5);
+      }
 
       const meters = metersRef.current;
       if (!meters || meters.length < BANDS * 2) return;
@@ -242,10 +307,97 @@ export function KaskadaPanel({
     // Initial paint (grid + EQ curve before the first meter frame lands).
     requestAnimationFrame(draw);
 
+    // ── Drag interaction for the LP/HP handles ──
+    // Hit test runs in CSS pixels; both handles sit ON the curve, so the
+    // nearest within radius wins. Dragging previews through the engine
+    // (audible immediately) and commits once via onParam on release.
+    const localX = (e: PointerEvent) => {
+      const cvs = canvasRef.current;
+      if (!cvs) return 0;
+      const rect = cvs.getBoundingClientRect();
+      return e.clientX - rect.left;
+    };
+    const hitHandle = (e: PointerEvent): ToneParamId | null => {
+      const cvs = canvasRef.current;
+      if (!cvs) return null;
+      const rect = cvs.getBoundingClientRect();
+      const px = e.clientX - rect.left;
+      const py = e.clientY - rect.top;
+      const h = cvs.clientHeight || cvs.height;
+      let best: ToneParamId | null = null;
+      let bestDist = 18;
+      for (const param of ["toneLp", "toneHp"] as ToneParamId[]) {
+        const dx = freqToX(handleFreq(param)) - px;
+        const dy = handleY(handleFreq(param), h) - py;
+        const dist = Math.hypot(dx, dy);
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = param;
+        }
+      }
+      return best;
+    };
+    const onPointerDown = (e: PointerEvent) => {
+      const param = hitHandle(e);
+      if (!param) return;
+      dragRef.current = { param, freq: handleFreq(param) };
+      try {
+        canvasRef.current?.setPointerCapture(e.pointerId);
+      } catch {
+        // jsdom/old browsers without pointer capture — drag still works
+      }
+      e.preventDefault();
+    };
+    const onPointerMove = (e: PointerEvent) => {
+      const drag = dragRef.current;
+      const cvs = canvasRef.current;
+      if (!cvs) return;
+      if (!drag) {
+        const hovered = hitHandle(e);
+        if (hovered !== hoverRef.current) {
+          hoverRef.current = hovered;
+          cvs.style.cursor = hovered ? "ew-resize" : "default";
+        }
+        return;
+      }
+      const freq = clampParam(drag.param, xToFreq(localX(e)));
+      drag.freq = freq;
+      engineWithMeters.previewFxParam?.(trackId, fxId, drag.param, freq);
+      draw();
+    };
+    const onPointerUp = () => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      dragRef.current = null;
+      onParamRef.current?.(drag.param, drag.freq);
+    };
+    const onPointerLeave = () => {
+      hoverRef.current = null;
+      const cvs = canvasRef.current;
+      if (cvs && !dragRef.current) cvs.style.cursor = "default";
+    };
+
+    const cvs = canvasRef.current;
+    if (cvs) {
+      cvs.addEventListener("pointerdown", onPointerDown);
+      cvs.addEventListener("pointermove", onPointerMove);
+      cvs.addEventListener("pointerup", onPointerUp);
+      cvs.addEventListener("pointercancel", onPointerUp);
+      cvs.addEventListener("pointerleave", onPointerLeave);
+    }
+
     return () => {
       engineWithMeters.setFxMetersEnabled?.(trackId, fxId, false);
       clearInterval(id);
       observer?.disconnect();
+      const cvs = canvasRef.current;
+      if (cvs) {
+        cvs.removeEventListener("pointerdown", onPointerDown);
+        cvs.removeEventListener("pointermove", onPointerMove);
+        cvs.removeEventListener("pointerup", onPointerUp);
+        cvs.removeEventListener("pointercancel", onPointerUp);
+        cvs.removeEventListener("pointerleave", onPointerLeave);
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trackId, fxId, services]);
@@ -281,14 +433,22 @@ export function KaskadaPanel({
           <span style={{ width: 10, height: 2, background: "rgba(248,113,113,0.85)", display: "inline-block" }} />
           UNMASK
         </span>
-        {degraded && <span style={{ color: "#f87171", marginLeft: "auto" }}>bypassed — no analysis</span>}
+        <span style={{ color: "rgba(255,255,255,0.3)", marginLeft: "auto" }}>drag LP / HP ⟷</span>
+        {degraded && <span style={{ color: "#f87171" }}>bypassed — no analysis</span>}
       </div>
       <canvas
         ref={canvasRef}
         width={600}
         height={110}
-        style={{ width: "100%", height: 110, display: "block", borderRadius: 6, background: "rgba(0,0,0,0.35)" }}
-        aria-label="Kaskáda dual spectrum — dry and delay bus"
+        style={{
+          width: "100%",
+          height: 110,
+          display: "block",
+          borderRadius: 6,
+          background: "rgba(0,0,0,0.35)",
+          touchAction: "none",
+        }}
+        aria-label="Kaskáda dual spectrum — dry and delay bus, drag LP/HP handles"
         role="img"
       />
     </div>

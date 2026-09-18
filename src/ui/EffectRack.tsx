@@ -442,7 +442,15 @@ function Device({
               />
             )}
             {fx.type === "kaskada" && (
-              <KaskadaPanel trackId={track.id} fxId={fx.id} params={fx.params} degraded={!!fallbackReason} />
+              <KaskadaPanel
+                trackId={track.id}
+                fxId={fx.id}
+                params={fx.params}
+                degraded={!!fallbackReason}
+                onParam={(paramId, value) =>
+                  services.store.execute(setEffectParam(doc, track.id, fx.id, paramId, value))
+                }
+              />
             )}
           </Suspense>
           {fx.type === "ozvena" && (

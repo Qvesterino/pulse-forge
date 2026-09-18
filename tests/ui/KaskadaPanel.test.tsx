@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, screen } from "@testing-library/react";
+import { cleanup, fireEvent, screen } from "@testing-library/react";
 import { KaskadaPanel } from "../../src/ui/KaskadaPanel";
 import { renderWithContext, mockServices } from "../helpers";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
@@ -122,5 +122,93 @@ describe("KaskadaPanel", () => {
       services,
     });
     expect(screen.getByText(/bypassed — no analysis/)).toBeInTheDocument();
+  });
+});
+
+describe("KaskadaPanel — drag EQ handles", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    cleanup();
+  });
+
+  function mockRect(canvas: HTMLCanvasElement) {
+    vi.spyOn(canvas, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 600,
+      height: 110,
+      right: 600,
+      bottom: 110,
+      x: 0,
+      y: 0,
+      toJSON: () => undefined,
+    } as DOMRect);
+  }
+
+  it("drags the LP handle: engine preview during the move, one commit on release", () => {
+    const doc = createProjectFromTemplate("house");
+    const services = mockServices(doc);
+    const previewFxParam = vi.fn();
+    (services.engine as unknown as Record<string, unknown>).setFxMetersEnabled = vi.fn();
+    (services.engine as unknown as Record<string, unknown>).getFxMeters = vi.fn(() => null);
+    (services.engine as unknown as Record<string, unknown>).previewFxParam = previewFxParam;
+    const onParam = vi.fn();
+
+    const { container } = renderWithContext(
+      <KaskadaPanel
+        trackId="t1"
+        fxId="fx1"
+        params={{ toneLp: 4500, toneHp: 150 }}
+        degraded={false}
+        onParam={onParam}
+      />,
+      { services },
+    );
+    const canvas = container.querySelector("canvas")!;
+    vi.spyOn(canvas, "getContext").mockReturnValue(stub2dContext());
+    mockRect(canvas);
+
+    // LP at 4500 Hz sits at x ≈ 600·ln(225)/ln(1000) ≈ 470, y ≈ 36.
+    fireEvent.pointerDown(canvas, { clientX: 470, clientY: 36, pointerId: 1 });
+    fireEvent.pointerMove(canvas, { clientX: 320, clientY: 36, pointerId: 1 });
+    expect(previewFxParam).toHaveBeenCalled(); // audible mid-drag
+
+    fireEvent.pointerUp(canvas, { clientX: 320, clientY: 36, pointerId: 1 });
+    expect(onParam).toHaveBeenCalledTimes(1);
+    const [paramId, value] = onParam.mock.calls[0];
+    expect(paramId).toBe("toneLp");
+    expect(value).toBeLessThan(4500); // moved left = darker
+    expect(value).toBeGreaterThanOrEqual(500); // clamped to the registry range
+  });
+
+  it("a press away from both handles does not commit anything", () => {
+    const doc = createProjectFromTemplate("house");
+    const services = mockServices(doc);
+    (services.engine as unknown as Record<string, unknown>).setFxMetersEnabled = vi.fn();
+    (services.engine as unknown as Record<string, unknown>).getFxMeters = vi.fn(() => null);
+    const onParam = vi.fn();
+
+    const { container } = renderWithContext(
+      <KaskadaPanel
+        trackId="t1"
+        fxId="fx1"
+        params={{ toneLp: 4500, toneHp: 150 }}
+        degraded={false}
+        onParam={onParam}
+      />,
+      { services },
+    );
+    const canvas = container.querySelector("canvas")!;
+    vi.spyOn(canvas, "getContext").mockReturnValue(stub2dContext());
+    mockRect(canvas);
+
+    // HP at 150 Hz sits near x ≈ 218 — press at x 40 (nothing there).
+    fireEvent.pointerDown(canvas, { clientX: 40, clientY: 36, pointerId: 1 });
+    fireEvent.pointerMove(canvas, { clientX: 60, clientY: 36, pointerId: 1 });
+    fireEvent.pointerUp(canvas, { clientX: 60, clientY: 36, pointerId: 1 });
+    expect(onParam).not.toHaveBeenCalled();
   });
 });

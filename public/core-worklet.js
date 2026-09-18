@@ -2596,6 +2596,7 @@
         { name: "character", defaultValue: 1, minValue: 0, maxValue: 4, automationRate: "k-rate" },
         { name: "mix", defaultValue: 0.25, minValue: 0, maxValue: 1, automationRate: "k-rate" },
         { name: "soloWet", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" },
+        { name: "deltaListen", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" },
         { name: "level", defaultValue: -6, minValue: -24, maxValue: 6, automationRate: "k-rate" }
       ];
     }
@@ -3064,6 +3065,7 @@
       this.character = Math.round(params.character[0]);
       this.mix = params.mix[0];
       this.soloWet = params.soloWet[0] > 0.5;
+      this.deltaListen = params.deltaListen[0] > 0.5;
       this.outGain = Math.pow(10, params.level[0] / 20);
       this.modDepthMs = params.modDepth[0] * this.delaySamples * 0.25;
       this.umPower = params.unmaskOn[0] > 0.5;
@@ -3100,6 +3102,8 @@
           const hR = R[rpos];
           let hoL = hL + spread * 0.5 * (hR - hL);
           let hoR = hR + spread * 0.5 * (hL - hR);
+          const preHoL = hoL;
+          const preHoR = hoR;
           if (this.umPower) {
             this.umProcessSample(inL, inR, hoL, hoR);
             hoL = this.umOutL;
@@ -3107,8 +3111,13 @@
           } else {
             this.umPowerOff();
           }
-          outL[i] = inL * dryGain + hoL * mix * this.outGain;
-          outR[i] = inR * dryGain + hoR * mix * this.outGain;
+          if (this.deltaListen) {
+            outL[i] = (preHoL - hoL) * this.outGain;
+            outR[i] = (preHoR - hoR) * this.outGain;
+          } else {
+            outL[i] = inL * dryGain + hoL * mix * this.outGain;
+            outR[i] = inR * dryGain + hoR * mix * this.outGain;
+          }
           continue;
         }
         const lfo = Math.sin(this.lfoPhase);
@@ -3212,6 +3221,8 @@
         }
         let outWL = wetL + spread * 0.5 * (wetR - wetL);
         let outWR = wetR + spread * 0.5 * (wetL - wetR);
+        const preWL = outWL;
+        const preWR = outWR;
         if (this.umPower) {
           this.umProcessSample(inL, inR, outWL, outWR);
           outWL = this.umOutL;
@@ -3219,8 +3230,13 @@
         } else {
           this.umPowerOff();
         }
-        outL[i] = inL * dryGain + outWL * mix * this.outGain;
-        outR[i] = inR * dryGain + outWR * mix * this.outGain;
+        if (this.deltaListen) {
+          outL[i] = (preWL - outWL) * this.outGain;
+          outR[i] = (preWR - outWR) * this.outGain;
+        } else {
+          outL[i] = inL * dryGain + outWL * mix * this.outGain;
+          outR[i] = inR * dryGain + outWR * mix * this.outGain;
+        }
         this.dryWin[this.anPos] = (inL + inR) * 0.5;
         this.wetWin[this.anPos] = (outWL + outWR) * 0.5;
         this.anPos = this.anPos + 1 & FFT_SIZE - 1;

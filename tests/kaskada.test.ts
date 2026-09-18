@@ -92,6 +92,7 @@ const DEFAULTS: Record<string, number> = {
   character: 1,
   mix: 0.25,
   soloWet: 0,
+  deltaListen: 0,
   level: -6,
 };
 
@@ -255,7 +256,7 @@ describe("kaskada parameter contract", () => {
     expect(RegisteredClass).toBeDefined();
     const descriptors = RegisteredClass!.parameterDescriptors;
     expect(Array.isArray(descriptors)).toBe(true);
-    expect(descriptors!.length).toBe(22);
+    expect(descriptors!.length).toBe(23);
     expect(descriptors!.every((d) => d.automationRate === "k-rate")).toBe(true);
   });
 
@@ -588,6 +589,7 @@ describe("kaskada extremes soak", () => {
     character: [0, 4],
     mix: [0, 1],
     soloWet: [0, 1],
+    deltaListen: [0, 1],
     level: [-24, 6],
   };
 
@@ -645,6 +647,27 @@ describe("kaskada extremes soak", () => {
       }
       soak(`random-${n}`, overrides);
     }
+  });
+  it("delta listen outputs exactly what the solver removes", () => {
+    const input = sineBurst(2000, currentSr(), 0.6);
+    const base = { ...NEUTRAL, time: 30, feedback: 0.35, mix: 0.5, unmaskOn: 1, unmask: 1 };
+    const off = render(1.0, makeParams({ ...base, unmaskOn: 0 }), input);
+    const on = render(1.0, makeParams(base), input);
+    const delta = render(1.0, makeParams({ ...base, deltaListen: 1 }), input);
+    // delta bypasses the mix law: delta == (off − on) / mix (float assoc ~ulp)
+    let maxErr = 0;
+    for (let i = 0; i < delta.L.length; i++) {
+      const expected = (off.L[i] - on.L[i]) / 0.5;
+      maxErr = Math.max(maxErr, Math.abs(delta.L[i] - expected));
+    }
+    expect(maxErr).toBeLessThan(1e-6);
+    expect(peak(delta.L, 0, delta.L.length)).toBeGreaterThan(0.01); // solver really removed energy
+  });
+
+  it("delta listen with the solver off is exact silence", () => {
+    const { L, R } = render(0.4, makeParams({ ...NEUTRAL, deltaListen: 1 }), monoImpulse());
+    expect(peak(L, 0, L.length)).toBe(0);
+    expect(peak(R, 0, R.length)).toBe(0);
   });
 });
 

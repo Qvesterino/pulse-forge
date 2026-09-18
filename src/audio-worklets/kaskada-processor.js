@@ -113,6 +113,7 @@ class KaskadaProcessor extends AudioWorkletProcessor {
       { name: "character", defaultValue: 1, minValue: 0, maxValue: 4, automationRate: "k-rate" },
       { name: "mix", defaultValue: 0.25, minValue: 0, maxValue: 1, automationRate: "k-rate" },
       { name: "soloWet", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" },
+      { name: "deltaListen", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" },
       { name: "level", defaultValue: -6, minValue: -24, maxValue: 6, automationRate: "k-rate" },
     ];
   }
@@ -669,6 +670,7 @@ class KaskadaProcessor extends AudioWorkletProcessor {
     this.character = Math.round(params.character[0]);
     this.mix = params.mix[0];
     this.soloWet = params.soloWet[0] > 0.5;
+    this.deltaListen = params.deltaListen[0] > 0.5;
     this.outGain = Math.pow(10, params.level[0] / 20);
     this.modDepthMs = params.modDepth[0] * this.delaySamples * 0.25;
 
@@ -718,6 +720,8 @@ class KaskadaProcessor extends AudioWorkletProcessor {
         const hR = R[rpos];
         let hoL = hL + spread * 0.5 * (hR - hL);
         let hoR = hR + spread * 0.5 * (hL - hR);
+        const preHoL = hoL;
+        const preHoR = hoR;
         if (this.umPower) {
           this.umProcessSample(inL, inR, hoL, hoR);
           hoL = this.umOutL;
@@ -725,8 +729,13 @@ class KaskadaProcessor extends AudioWorkletProcessor {
         } else {
           this.umPowerOff();
         }
-        outL[i] = inL * dryGain + hoL * mix * this.outGain;
-        outR[i] = inR * dryGain + hoR * mix * this.outGain;
+        if (this.deltaListen) {
+          outL[i] = (preHoL - hoL) * this.outGain;
+          outR[i] = (preHoR - hoR) * this.outGain;
+        } else {
+          outL[i] = inL * dryGain + hoL * mix * this.outGain;
+          outR[i] = inR * dryGain + hoR * mix * this.outGain;
+        }
         continue;
       }
 
@@ -867,6 +876,8 @@ class KaskadaProcessor extends AudioWorkletProcessor {
 
       // Unmask: carve the delay bus where the dry masks it (output branch
       // only — the feedback loop above is untouched)
+      const preWL = outWL;
+      const preWR = outWR;
       if (this.umPower) {
         this.umProcessSample(inL, inR, outWL, outWR);
         outWL = this.umOutL;
@@ -875,9 +886,16 @@ class KaskadaProcessor extends AudioWorkletProcessor {
         this.umPowerOff();
       }
 
-      // Output: dry + wet (mix); SOLO W monitors the wet arm only
-      outL[i] = inL * dryGain + outWL * mix * this.outGain;
-      outR[i] = inR * dryGain + outWR * mix * this.outGain;
+      if (this.deltaListen) {
+        // DELTA monitor: output exactly what the solver removed
+        // (pre-unmask wet − post-unmask wet), bypassing the mix law.
+        outL[i] = (preWL - outWL) * this.outGain;
+        outR[i] = (preWR - outWR) * this.outGain;
+      } else {
+        // Output: dry + wet (mix); SOLO W monitors the wet arm only
+        outL[i] = inL * dryGain + outWL * mix * this.outGain;
+        outR[i] = inR * dryGain + outWR * mix * this.outGain;
+      }
 
       // Spectrum taps (dry = mono input, wet = delay bus pre-mix/pre-level)
       this.dryWin[this.anPos] = (inL + inR) * 0.5;
