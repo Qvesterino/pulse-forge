@@ -3,7 +3,7 @@
  * Drum hits stamp wrapped step rows, instrument notes commit on note-off
  * with played duration, quantize snaps starts, REPLACE clears once per arm.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { PatternRecorder, type PatternRecorderSnapshot } from "../src/midi/patternRecorder";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { STEP_TICKS } from "../src/project-model/types";
@@ -14,15 +14,21 @@ function setup(overrides?: { doc?: ProjectDocument }) {
   const doc = overrides?.doc ?? createProjectFromTemplate("house");
   const executed: Command[] = [];
   let tick = 0;
+  const beginUndoFrame = vi.fn();
+  const endUndoFrame = vi.fn();
   const recorder = new PatternRecorder({
     getDoc: () => doc,
     execute: (cmd) => executed.push(cmd),
     getTick: () => tick,
     isPlaying: () => false,
+    beginUndoFrame,
+    endUndoFrame,
   });
   const api = {
     recorder,
     executed,
+    beginUndoFrame,
+    endUndoFrame,
     setTick: (t: number) => {
       tick = t;
     },
@@ -126,5 +132,53 @@ describe("PatternRecorder", () => {
     expect(seen.map((s) => s.armed)).toEqual([true, true, true]);
     expect(seen[1].quantize).toBe("16th");
     expect(seen[2].mode).toBe("replace");
+  });
+});
+
+describe("PatternRecorder — undo frame", () => {
+  it("opens one frame per arm and seals it on disarm (REPLACE clear included)", () => {
+    const { recorder, beginUndoFrame, endUndoFrame, executed, setTick } = setup();
+    recorder.setMode("replace");
+    recorder.setArmed(true);
+    expect(beginUndoFrame).toHaveBeenCalledTimes(1);
+    expect(executed.some((c) => c.type === "prepareRecordPattern")).toBe(true);
+    setTick(STEP_TICKS);
+    recorder.drumHit(drumPadId, 0.8);
+    recorder.setArmed(false);
+    expect(endUndoFrame).toHaveBeenCalledTimes(1);
+    // second pass opens a fresh frame
+    recorder.setArmed(true);
+    expect(beginUndoFrame).toHaveBeenCalledTimes(2);
+  });
+
+  it("staying armed across a transport stop opens a fresh frame for the next pass", () => {
+    const { recorder, beginUndoFrame, endUndoFrame } = setup();
+    recorder.setArmed(true);
+    recorder.onTransportInterrupted();
+    expect(endUndoFrame).toHaveBeenCalledTimes(1);
+    expect(beginUndoFrame).toHaveBeenCalledTimes(2); // fresh frame for the next pass
+  });
+});
+
+describe("PatternRecorder — quantize strength", () => {
+  it("interpolates toward the grid by strength (0.5 = halfway)", () => {
+    const { recorder, executed, setTick } = setup();
+    recorder.setQuantize("16th");
+    recorder.setStrength(0.5);
+    recorder.setArmed(true);
+    // tick = step 2 + 90 (late 3/4 of the step): full snap → step 3 start,
+    // strength 0.5 pulls halfway → tick 330 → still step 2 (index 2)
+    setTick(2 * STEP_TICKS + 90);
+    recorder.drumHit(drumPadId, 0.8);
+    expect(executed[0].label).toContain("step 3");
+  });
+
+  it("strength 1 fully snaps (existing behaviour preserved)", () => {
+    const { recorder, executed, setTick } = setup();
+    recorder.setQuantize("16th");
+    recorder.setArmed(true);
+    setTick(2 * STEP_TICKS + 50);
+    recorder.drumHit(drumPadId, 0.8);
+    expect(executed[0].label).toContain("step 3");
   });
 });

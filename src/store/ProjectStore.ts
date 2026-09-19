@@ -28,6 +28,11 @@ export class ProjectStore {
   private undoStack: Command[] = [];
   private redoStack: Command[] = [];
   private timestamps: number[] = [];
+  /** Open undo frame (MIDI record pass) — commands collected live. */
+  private frameCommands: Command[] | null = null;
+  private frameLabel = "Recorded take";
+  /** undoStack.length when the frame opened — pops exactly the frame's entries. */
+  private frameOpenDepth = 0;
   /** Pre-computed doc snapshots (references, cheap) for history diff + jump. */
   private historyDocs: ProjectDocument[] = [];
   /**
@@ -158,6 +163,7 @@ export class ProjectStore {
   getLastSavedAt = (): string | null => this.lastSavedAt_;
 
   execute(command: Command): void {
+    const inFrame = this.frameCommands !== null;
     const topIdx = this.undoStack.length - 1;
     const top = this.undoStack[topIdx];
     if (
@@ -181,6 +187,7 @@ export class ProjectStore {
       // creates a micro-step snapshot that makes the history diff pair the
       // wrong states.
       this.historyDocs[this.historyDocs.length - 1] = this.doc_;
+      if (inFrame) this.frameCommands!.push(command);
       this.afterMutation();
       return;
     }
@@ -195,6 +202,52 @@ export class ProjectStore {
       this.pruneHistoryDocs();
     }
     this.redoStack = [];
+    if (inFrame) this.frameCommands!.push(command);
+    this.afterMutation();
+  }
+
+  /**
+   * Undo frame: collapse a multi-command live pass (MIDI record take) into
+   * ONE history entry. While a frame is open every execute() still applies
+   * live (the pattern updates as you play); endUndoFrame() swaps the frame's
+   * per-command undo entries for a single compound command, so one Ctrl+Z
+   * removes the whole take. Nested begin calls keep the open frame; an empty
+   * frame (nothing recorded) leaves no history entry at all.
+   */
+  beginUndoFrame(label?: string): void {
+    if (this.frameCommands) return;
+    this.frameCommands = [];
+    this.frameLabel = label ?? "Recorded take";
+    this.frameOpenDepth = this.undoStack.length;
+    this.redoStack = [];
+  }
+
+  endUndoFrame(): void {
+    const commands = this.frameCommands;
+    this.frameCommands = null;
+    if (!commands || commands.length === 0) return;
+    // Count REAL stack growth (coalesced gestures replace the top entry
+    // without pushing — the frame pops exactly what it added).
+    const grew = this.undoStack.length - this.frameOpenDepth;
+    if (grew <= 0) return;
+    if (grew === 1) return; // already its own history entry
+    const compound: Command = {
+      type: "recordFrame",
+      label: this.frameLabel,
+      execute: (d) => commands.reduce((acc, c) => c.execute(acc), d),
+      undo: (d) => [...commands].reverse().reduce((acc, c) => c.undo(acc), d),
+    };
+    for (let i = 0; i < grew; i++) {
+      this.undoStack.pop();
+      this.timestamps.pop();
+    }
+    this.undoStack.push(compound);
+    this.timestamps.push(Date.now());
+    // Collapse the per-command history snapshots: keep the before-frame state
+    // plus the after-frame state (same pairing shape undo() maintains).
+    this.historyDocs.length = this.undoStack.length + 1;
+    this.historyDocs[this.undoStack.length] = this.doc_;
+    this.diffCache.clear();
     this.afterMutation();
   }
 

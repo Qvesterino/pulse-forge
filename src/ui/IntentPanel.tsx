@@ -54,6 +54,9 @@ export function IntentPanel() {
           ...intentInput,
           seed: `intent-${Date.now()}`,
           candidateCount: 3,
+          // T2: two extra candidates sampled from the ONNX symbolic drum
+          // prior join the same bank; a missing model just shrinks the bank.
+          symbolicCandidates: 2,
           roles: intentInput.roles ?? ["drums", "bass"],
         },
         { mode: "apply", signal: controller.signal },

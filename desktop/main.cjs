@@ -16,7 +16,8 @@
  *   3. no service worker (the PWA layer is browser-only),
  *   4. `window.kyxDesktop.isDesktop` so the app skips the web landing page.
  */
-const { app, BrowserWindow, protocol, session, dialog, net } = require("electron");
+const { app, BrowserWindow, protocol, session, dialog, net, Menu } = require("electron");
+const { autoUpdater } = require("electron-updater");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 
@@ -140,10 +141,101 @@ app.whenReady().then(() => {
   registerAppProtocol();
   configurePermissions();
   configureDownloads();
+  buildMenu();
   createWindow();
+  scheduleUpdateChecks();
 
   if (IS_SMOKE) runSmoke();
 });
+
+/** Default menu + a manual update check under Help. */
+function buildMenu() {
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      { role: "fileMenu" },
+      { role: "editMenu" },
+      { role: "viewMenu" },
+      { role: "windowMenu" },
+      {
+        label: "Help",
+        submenu: [{ label: "Check for updates…", click: () => void manualUpdateCheck() }, { role: "about" }],
+      },
+    ]),
+  );
+}
+
+let updaterConfigured = false;
+let manualCheckInFlight = false;
+
+/**
+ * Auto-update (ADR 0011): check GitHub Releases on launch and every 6 h,
+ * download in the background, install on the user's restart — mirroring the
+ * PWA "prompt" philosophy: a running session is never torn down on its own.
+ * `autoInstallOnAppQuit` covers the dismiss path ("Later").
+ */
+function scheduleUpdateChecks() {
+  if (process.env.KYX_DEV_URL || IS_SMOKE) return;
+  configureAutoUpdater();
+  setTimeout(() => void autoUpdater.checkForUpdates().catch(logUpdateError), 10_000);
+  setInterval(() => void autoUpdater.checkForUpdates().catch(logUpdateError), 6 * 60 * 60 * 1000);
+}
+
+function configureAutoUpdater() {
+  if (updaterConfigured) return;
+  updaterConfigured = true;
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.logger = console;
+  // Runtime feed override — points the updater at any static host serving
+  // latest.yml + the installer (local testing, future self-hosting).
+  const feedUrl = process.env.KYX_UPDATE_URL;
+  if (feedUrl) {
+    autoUpdater.setFeedURL({ provider: "generic", url: feedUrl.endsWith("/") ? feedUrl : `${feedUrl}/` });
+  }
+  autoUpdater.on("update-not-available", () => {
+    if (!manualCheckInFlight) return;
+    manualCheckInFlight = false;
+    void dialog.showMessageBox({
+      type: "info",
+      message: "You're up to date",
+      detail: `KYX ${app.getVersion()} is the latest version.`,
+    });
+  });
+  autoUpdater.on("update-downloaded", async (info) => {
+    const { response } = await dialog.showMessageBox({
+      type: "info",
+      title: "Update ready",
+      message: `KYX ${info.version} is ready to install.`,
+      detail: "The update installs when the app restarts.",
+      buttons: ["Restart & install", "Later"],
+      defaultId: 0,
+      cancelId: 1,
+    });
+    if (response === 0) autoUpdater.quitAndInstall();
+  });
+  autoUpdater.on("error", (error) => logUpdateError(error));
+}
+
+function logUpdateError(error) {
+  // Expected offline / no-releases-yet noise stays in the console; the UI
+  // is never interrupted for background-check failures.
+  console.warn("[updater]", error?.message ?? String(error));
+}
+
+async function manualUpdateCheck() {
+  configureAutoUpdater();
+  manualCheckInFlight = true;
+  try {
+    await autoUpdater.checkForUpdates();
+  } catch (error) {
+    manualCheckInFlight = false;
+    void dialog.showMessageBox({
+      type: "warning",
+      message: "Update check failed",
+      detail: error?.message ?? String(error),
+    });
+  }
+}
 
 /**
  * Headless-ish smoke (scripts/desktop-smoke.mjs): boot the packaged build,

@@ -257,6 +257,10 @@ export function mockServices(doc?: ProjectDocument): Services {
         setQuantize: vi.fn(),
       };
     })(),
+    selectionBridge: {
+      getSelectedTrackId: vi.fn(() => null),
+      getPerformTrackId: vi.fn(() => null),
+    },
     midi: {
       getDevices: vi.fn(() => []),
       subscribeDevices: vi.fn(() => () => {}),

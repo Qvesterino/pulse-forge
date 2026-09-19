@@ -54,6 +54,7 @@ export function DiceTray() {
     apply,
     toggleLockKey,
     toggleFav,
+    exportFavoritesPack,
     setMode,
     setJitter,
     setGenre,
@@ -476,6 +477,14 @@ export function DiceTray() {
           title="Favorite current roll"
         >
           {session.favorites.has(session.cursor) ? "★ FAV" : "☆ Fav"}
+        </button>
+        <button
+          type="button"
+          className="btn btn-small"
+          onClick={exportFavoritesPack}
+          title="Download favourited rolls as an AI training pack (stays local until you share it)"
+        >
+          ⬇ ★
         </button>
         <span className="dice-seed-display" title={seed}>
           {seed}

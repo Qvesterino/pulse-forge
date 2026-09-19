@@ -27,9 +27,27 @@ export function FloatingPlugin({
   selectedPadId: string;
   onClose: () => void;
 }) {
+  return <PluginEditor trackId={trackId} selectedPadId={selectedPadId} onClose={onClose} />;
+}
+
+/** Instrument editor hosted by the bottom device dock. */
+export function DockedPlugin({ trackId, selectedPadId }: { trackId: string; selectedPadId: string }) {
+  return <PluginEditor trackId={trackId} selectedPadId={selectedPadId} />;
+}
+
+function PluginEditor({
+  trackId,
+  selectedPadId,
+  onClose,
+}: {
+  trackId: string;
+  selectedPadId: string;
+  onClose?: () => void;
+}) {
   const services = useServices();
   const doc = useDoc();
   const track = doc.tracks.find((t) => t.id === trackId);
+  const floating = onClose !== undefined;
   const [mode, setMode] = useState<PluginMode>(() => {
     try {
       return (localStorage.getItem("pf:pluginMode") as PluginMode) ?? "hobby";
@@ -68,8 +86,9 @@ export function FloatingPlugin({
     dragging.current = null;
   };
 
-  // Close on Escape
+  // Escape closes only the floating window. The dock panel follows its tab.
   useEffect(() => {
+    if (!onClose) return;
     const h = (ev: KeyboardEvent) => {
       if (ev.key === "Escape") onClose();
     };
@@ -89,21 +108,25 @@ export function FloatingPlugin({
 
   return (
     <div
-      className="floating-plugin"
-      role="dialog"
+      className={floating ? "floating-plugin" : "instrument-plugin-panel"}
+      role={floating ? "dialog" : "region"}
       aria-label={`${title} plugin`}
-      aria-modal={false}
-      style={{ left: pos.x, top: pos.y }}
+      {...(floating ? { "aria-modal": false } : {})}
+      style={floating ? { left: pos.x, top: pos.y } : undefined}
     >
       <div
-        className="floating-plugin-header"
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerCancel}
+        className={floating ? "floating-plugin-header" : "instrument-plugin-header"}
+        {...(floating
+          ? {
+              onPointerDown,
+              onPointerMove,
+              onPointerUp,
+              onPointerCancel,
+            }
+          : {})}
       >
         <span className="floating-plugin-title">{title}</span>
-        <div className="floating-plugin-actions">
+        <div className={floating ? "floating-plugin-actions" : "instrument-plugin-actions"}>
           {!isDrum && track.kind === "instrument" && (
             <div className="floating-plugin-random" role="group" aria-label="Randomize">
               <button
@@ -152,13 +175,15 @@ export function FloatingPlugin({
               PROFI
             </button>
           </div>
-          <button type="button" className="btn btn-small" aria-label="Close plugin" onClick={onClose}>
-            ✕
-          </button>
+          {onClose && (
+            <button type="button" className="btn btn-small" aria-label="Close plugin" onClick={onClose}>
+              ✕
+            </button>
+          )}
         </div>
       </div>
 
-      <div className="floating-plugin-body">
+      <div className={floating ? "floating-plugin-body" : "instrument-plugin-body"}>
         {isDrum && pad ? (
           <DrumPluginContent track={track as any} pad={pad} mode={mode} doc={doc} services={services} />
         ) : track.kind === "instrument" ? (

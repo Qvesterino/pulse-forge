@@ -146,7 +146,7 @@ describe("offline candidate bank", () => {
     expect(proposal.status).toBe("accepted");
     expect(proposal.diagnostics.repairs).toEqual([]);
     expect(proposal.diagnostics.warnings).toContain("candidate-bank-enabled");
-    expect(proposal.diagnostics.warnings).toContain("candidate-bank-selected:2");
+    expect(proposal.diagnostics.warnings).toContain("candidate-bank-selected:2:template");
     expect(proposal.pattern.generation?.candidateCount).toBe(3);
   });
 

@@ -117,8 +117,8 @@ export function Inspector({
             {def.name.toUpperCase()} — {track.name}
           </h2>
           {onOpenPlugin && (
-            <button type="button" className="btn btn-small" onClick={onOpenPlugin} title="Open plugin window">
-              PLUGIN ↗
+            <button type="button" className="btn btn-small" onClick={onOpenPlugin} title="Open plugin in the bottom dock">
+              PLUGIN
             </button>
           )}
         </div>
@@ -288,8 +288,8 @@ export function Inspector({
           SLICE LAB
         </button>
         {onOpenPlugin && (
-          <button type="button" className="btn btn-small" onClick={onOpenPlugin} title="Open drum plugin">
-            PLUGIN ↗
+          <button type="button" className="btn btn-small" onClick={onOpenPlugin} title="Open drum plugin in the bottom dock">
+            PLUGIN
           </button>
         )}
       </div>

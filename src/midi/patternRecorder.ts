@@ -11,6 +11,8 @@ export interface PatternRecorderSnapshot {
   armed: boolean;
   mode: RecordMode;
   quantize: RecordQuantize;
+  /** 0..1 — how far a note pulls toward the grid (1 = full snap, 0 = free). */
+  strength: number;
 }
 
 export interface PatternRecorderDeps {
@@ -19,6 +21,9 @@ export interface PatternRecorderDeps {
   /** Musical tick for an event that just arrived (maps audio time → transport tick). */
   getTick: () => number;
   isPlaying: () => boolean;
+  /** Undo frame — the whole record pass collapses into ONE history entry. */
+  beginUndoFrame: (label?: string) => void;
+  endUndoFrame: () => void;
 }
 
 const QUANTIZE_TICKS: Record<RecordQuantize, number> = {
@@ -42,7 +47,7 @@ const QUANTIZE_TICKS: Record<RecordQuantize, number> = {
  */
 export class PatternRecorder {
   private deps: PatternRecorderDeps;
-  private state: PatternRecorderSnapshot = { armed: false, mode: "overdub", quantize: "off" };
+  private state: PatternRecorderSnapshot = { armed: false, mode: "overdub", quantize: "off", strength: 1 };
   private listeners = new Set<() => void>();
   /** Held instrument notes: pitch → note-on info (raw, unquantized start). */
   private held = new Map<number, { trackId: string; startTick: number; velocity: number }>();
@@ -78,10 +83,14 @@ export class PatternRecorder {
     this.setState({ quantize });
   };
 
+  setStrength = (strength: number): void => {
+    this.setState({ strength: Math.max(0, Math.min(1, strength)) });
+  };
+
   /**
-   * Arm/disarm. Arming with REPLACE clears the active pattern's performed
-   * surfaces once (works both stopped and playing — see setMode). Disarming
-   * flushes held notes as step-length notes.
+   * Arm/disarm. The whole pass lives in ONE undo frame — REPLACE clear plus
+   * every recorded hit/note collapse into a single history entry. Disarming
+   * flushes held notes as step-length notes and seals the frame.
    */
   setArmed = (armed: boolean): void => {
     if (armed === this.state.armed) return;
@@ -89,15 +98,22 @@ export class PatternRecorder {
     this.replaceCleared = false;
     if (!armed) {
       this.flushHeld();
+      this.deps.endUndoFrame();
       return;
     }
+    this.deps.beginUndoFrame("Recorded take");
     if (this.state.mode === "replace") this.runReplaceClear();
   };
 
-  /** Transport stopped/paused — held notes must not be lost mid-note. */
+  /**
+   * Transport stopped/paused — held notes flush as step-length notes and the
+   * pass's frame seals. Staying armed opens a fresh frame for the next pass
+   * (each loop of the take is its own undo, REPLACE cleared only at arm).
+   */
   onTransportInterrupted = (): void => {
     this.flushHeld();
-    this.replaceCleared = false;
+    this.deps.endUndoFrame();
+    if (this.state.armed) this.deps.beginUndoFrame("Recorded take");
   };
 
   /** One performed drum hit — stamps the (wrapped) step row immediately. */
@@ -149,9 +165,13 @@ export class PatternRecorder {
   }
 
   private quantizeTick(tick: number): number {
+    const raw = Math.max(0, Math.round(tick));
     const grid = QUANTIZE_TICKS[this.state.quantize];
-    if (grid > 0) return Math.max(0, Math.round(tick / grid) * grid);
-    return Math.max(0, Math.round(tick));
+    if (grid <= 0) return raw;
+    // Strength interpolates toward the grid: 1 = full snap, 0.5 = halfway
+    // (the classic "quantize strength" — keeps some human feel).
+    const snapped = Math.round(raw / grid) * grid;
+    return Math.max(0, Math.round(raw + (snapped - raw) * this.state.strength));
   }
 
   private runReplaceClear(): void {

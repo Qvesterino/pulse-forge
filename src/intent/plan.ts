@@ -57,6 +57,10 @@ export function planGeneration(input: IntentInput | IntentSpec, doc: ProjectDocu
   const candidateSeeds = Array.from({ length: intent.candidateCount ?? 1 }, (_, index) =>
     index === 0 ? intent.seed : `${intent.seed}|candidate:${index}`,
   );
+  const symbolicSeeds =
+    (intent.symbolicCandidates ?? 0) > 0
+      ? Array.from({ length: intent.symbolicCandidates ?? 0 }, (_, index) => `${intent.seed}|symbolic:${index}`)
+      : [];
   const resolvedDrumTrackId =
     intent.targetTracks.drumTrackId ?? doc.tracks.find((track) => track.kind === "drum")?.id ?? null;
   const resolvedInstrumentTrackIds =
@@ -96,11 +100,13 @@ export function planGeneration(input: IntentInput | IntentSpec, doc: ProjectDocu
     constraints: intent.constraints,
     resolvedBpm,
     candidateSeeds,
+    symbolicSeeds,
     subSeeds: {
       groove: `${seed}|groove`,
       drumsCore: `${seed}|drums.core`,
       drumsVariation: `${seed}|drums.variation`,
       drumsMeta: `${seed}|drums.meta`,
+      drumsNeural: `${seed}|drums.neural`,
       melodyFallback: `${seed}|melody.fallback`,
       bass: `${seed}|melody.bass`,
       chord: `${seed}|melody.chord`,

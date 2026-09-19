@@ -1,17 +1,45 @@
-# KYX desktop packaging (ADR 0010) — thin Electron shell around the
-# unmodified `dist/` web build. Production npm deps are all bundled by Vite,
-# so nothing from node_modules belongs in the installer.
+# KYX desktop packaging (ADR 0010/0011) — thin Electron shell around the
+# unmodified `dist/` web build. The web app's npm deps are all bundled by
+# Vite, so nothing under node_modules ships except the pure-JS runtime tree
+# of electron-updater (required by desktop/main.cjs inside the package).
 appId: app.kyx.studio
 productName: KYX
+publish:
+  # Auto-update feed (electron-updater, ADR 0011): reads `latest.yml` from
+  # the repo's published GitHub Releases. Overridable at runtime via the
+  # KYX_UPDATE_URL env var (generic provider) for local testing or future
+  # self-hosting — no repackaging needed.
+  provider: github
+  owner: Qvesterino
+  repo: pulse-forge
 directories:
   output: release
   buildResources: build
 files:
   - dist/**/*
   - desktop/**/*
+  - package.json
   - "!node_modules/**/*"
-  - "!src/**/*"
-  - "!server/**/*"
+  # electron-updater's runtime dependency tree (regen via the depth-first
+  # walk of `node_modules/electron-updater/package.json` dependencies when
+  # bumping electron-updater):
+  - node_modules/electron-updater/**/*
+  - node_modules/builder-util-runtime/**/*
+  - node_modules/fs-extra/**/*
+  - node_modules/js-yaml/**/*
+  - node_modules/lazy-val/**/*
+  - node_modules/lodash.escaperegexp/**/*
+  - node_modules/lodash.isequal/**/*
+  - node_modules/semver/**/*
+  - node_modules/tiny-typed-emitter/**/*
+  - node_modules/at-least-node/**/*
+  - node_modules/graceful-fs/**/*
+  - node_modules/jsonfile/**/*
+  - node_modules/universalify/**/*
+  - node_modules/argparse/**/*
+  - node_modules/debug/**/*
+  - node_modules/sax/**/*
+  - node_modules/ms/**/*
 win:
   icon: build/icon.png
   target:

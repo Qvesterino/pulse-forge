@@ -1,9 +1,12 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import type { MouseEvent } from "react";
 import { useCanRedo, useCanUndo, useDoc, useLastSavedAt, useSaveStatus, useServices } from "./context";
 import { useTransportPosition } from "./playhead";
 import { DragNumber } from "./controls";
 import { setBpm, setProjectName } from "../commands/commands";
+import { registerRaf, unregisterRaf } from "../services/rafLoop";
+import { subscribePlayActivity, getLastPlayActivity } from "./playActivity";
+import { pitchName } from "../project-model/types";
 import { barAtTick, beatAtTick } from "../project-model/schema";
 import { STEP_TICKS } from "../project-model/types";
 import type { PlayMode } from "../project-model/types";
@@ -151,6 +154,38 @@ export function TopBar({
   const recording = recordState.armed;
   const recordMode = recordState.mode;
   const recordQuantize = recordState.quantize;
+
+  // Loop region can change from the sequencer ruler (drag) — mirror the
+  // transport truth into the transport-cluster fields at low cost (rAF poll,
+  // state set only on change).
+  const loopRafId = useId();
+  useEffect(() => {
+    let last = "";
+    registerRaf(loopRafId, () => {
+      const t = services.transport;
+      const sig = `${t.loopEnabled}|${t.loopStart}|${t.loopEnd}`;
+      if (sig === last) return;
+      last = sig;
+      setLoopEnabled(t.loopEnabled);
+      setLoopStart(t.loopStart);
+      setLoopEnd(t.loopEnd);
+    });
+    return () => unregisterRaf(loopRafId);
+  }, [services.transport, loopRafId]);
+
+  // MIDI activity readout — the last performed note/pad, fading after 1.5 s.
+  const playActivity = useSyncExternalStore(
+    subscribePlayActivity,
+    getLastPlayActivity,
+    getLastPlayActivity,
+  );
+  const [noteReadout, setNoteReadout] = useState<string | null>(null);
+  useEffect(() => {
+    if (!playActivity) return;
+    setNoteReadout(playActivity.pitch !== undefined ? pitchName(playActivity.pitch) : "PAD");
+    const t = setTimeout(() => setNoteReadout(null), 1500);
+    return () => clearTimeout(t);
+  }, [playActivity]);
 
   const toggleLoop = () => {
     const next = !loopEnabled;
@@ -318,6 +353,15 @@ export function TopBar({
       priority: 98,
       active: bottomPanel === "fx" || splitPanel === "fx",
       onClick: (event) => onSetBottomPanel("fx", event.ctrlKey || event.metaKey),
+    },
+    {
+      id: "plugin",
+      label: "PLUG",
+      ariaLabel: "Toggle instrument plugin panel",
+      title: "Toggle instrument plugin panel for the selected track",
+      priority: 70,
+      active: bottomPanel === "plugin" || splitPanel === "plugin",
+      onClick: (event) => onSetBottomPanel("plugin", event.ctrlKey || event.metaKey),
     },
     {
       id: "arr",
@@ -647,7 +691,25 @@ export function TopBar({
                 <option value="16th">Q 1/16</option>
                 <option value="8th">Q 1/8</option>
               </select>
+              {recordQuantize !== "off" && (
+                <input
+                  type="range"
+                  className="rec-strength"
+                  aria-label="Record quantize strength"
+                  title="Quantize strength — how far notes pull toward the grid"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={recordState.strength}
+                  onChange={(e) => services.patternRecorder.setStrength(Number(e.target.value))}
+                />
+              )}
             </>
+          )}
+          {noteReadout && (
+            <span className="midi-readout" role="status" title="Last performed note / pad">
+              {noteReadout}
+            </span>
           )}
           <button
             type="button"

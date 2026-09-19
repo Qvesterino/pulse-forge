@@ -90,7 +90,7 @@ describe("active ranker participation in the canonical path", () => {
     expect(active.diagnostics.warnings).toContain("ranker:model:active");
     expect(hashOf(doc, active)).toBe(hashOf(doc, heuristic));
     const banner = active.diagnostics.warnings.find((w) => w.startsWith("candidate-bank-selected:"));
-    expect(banner).toBe(`candidate-bank-selected:${ranker!.selectedIndex}`);
+    expect(banner).toBe(`candidate-bank-selected:${ranker!.selectedIndex}:template`);
   });
 
   it("active + model participation: boosted candidate selection is deterministic across reruns", async () => {

@@ -75,6 +75,8 @@ export class MelodicKeys {
    * listens to these — noteHeard).
    */
   onPlayed: ((pitch: number, velocity: number) => void) | null = null;
+  /** Note released — record-to-pattern pairs this with the played pitch. */
+  onReleased: ((pitch: number) => void) | null = null;
 
   /**
    * Step-entry mode owns the letter keys — while suppressed, live play yields
@@ -144,6 +146,7 @@ export class MelodicKeys {
       const trackId = host.getInstrumentTrackId();
       if (trackId) host.engine.noteOff(trackId, pitch, host.engine.currentTime + 0.005);
     }
+    this.onReleased?.(pitch);
     return true;
   }
 }

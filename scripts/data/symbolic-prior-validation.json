@@ -1,0 +1,26 @@
+{
+  "datasetVersion": "symbolic-prior-ds.v1",
+  "featureVersion": "prior-features.v1",
+  "featureCount": 44,
+  "hidden": [
+    64,
+    32
+  ],
+  "epochs": 500,
+  "samples": 87552,
+  "hitRatio": 0.0821,
+  "posWeight": 9.889,
+  "valAuc": 0.9183,
+  "trainAuc": 0.9187,
+  "bestF1Threshold": 0.73,
+  "val": {
+    "precision": 0.3256,
+    "recall": 0.7656,
+    "f1": 0.4569
+  },
+  "train": {
+    "precision": 0.3505,
+    "recall": 0.7914,
+    "f1": 0.4858
+  }
+}

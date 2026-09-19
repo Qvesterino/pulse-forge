@@ -158,7 +158,7 @@ describe("ranker provenance through the canonical path", () => {
     expect(selected).toMatchObject({ mode: "active", source: "fallback", modelHash: null });
     // selectedIndex is internally consistent with the diagnostics banner
     const banner = result.diagnostics.warnings.find((w) => w.startsWith("candidate-bank-selected:"));
-    expect(banner).toBe(`candidate-bank-selected:${selected!.selectedIndex}`);
+    expect(banner).toBe(`candidate-bank-selected:${selected!.selectedIndex}:template`);
   });
 
   it("shadow mode: model scores recorded, heuristic winner unchanged", async () => {

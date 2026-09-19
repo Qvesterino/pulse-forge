@@ -12,7 +12,7 @@ import { AudioUnlock } from "./AudioUnlock";
 import { OnboardingTour } from "./OnboardingTour";
 import type { StepSelection } from "./Sequencer";
 import { Inspector } from "./Inspector";
-import { FloatingPlugin } from "./FloatingPlugin";
+import { DockedPlugin } from "./FloatingPlugin";
 import { Diagnostics } from "./Diagnostics";
 import { PatternBar } from "./PatternBar";
 import { EffectRack } from "./EffectRack";
@@ -120,6 +120,7 @@ export function App({
     dice: 470,
     mixer: 320,
     fx: 360,
+    plugin: 360,
     arr: 420,
     mod: 360,
     exp: 360,
@@ -152,6 +153,10 @@ export function App({
     setDock(bumpPanelHeight(ensurePanelVisible(dock, "fx"), "fx"));
     setSheetCollapsed(false);
   };
+  const openPluginPanel = () => {
+    setDock(bumpPanelHeight(ensurePanelVisible(dock, "plugin"), "plugin"));
+    setSheetCollapsed(false);
+  };
   const startDockResize = (event: React.PointerEvent) => {
     event.preventDefault();
     const startY = event.clientY;
@@ -180,7 +185,6 @@ export function App({
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [scaleSnap, setScaleSnap] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [pluginTrackId, setPluginTrackId] = useState<string | null>(null);
   // Mobile bottom-sheet: the bottom panel row collapses to a grab handle.
   const [sheetCollapsed, setSheetCollapsed] = useState(false);
   const [bouncingRange, setBouncingRange] = useState(false);
@@ -500,8 +504,21 @@ export function App({
       engine: services.engine,
       getInstrumentTrackId: () => melodicTrackRef.current,
     });
+    // Live MIDI follows the workspace selection (selected instrument track,
+    // else the first) — the bridge resolves it for play and record alike.
+    // melodicTrackRef already tracks "selected instrument track or null" and
+    // updates on every track change, so the closure stays fresh.
+    services.selectionBridge.getSelectedTrackId = () => melodicTrackRef.current;
     // The AI bandmate listens to performed QWERTY notes (call & response).
-    melodicKeys.onPlayed = (pitch) => services.bandmate?.noteHeard(pitch);
+    // QWERTY notes also feed the pattern recorder — armed, they land in the
+    // active pattern exactly like hardware MIDI. (Step entry suppresses
+    // melodicKeys while on, so the two never double-fire.)
+    melodicKeys.onPlayed = (pitch, velocity) => {
+      services.bandmate?.noteHeard(pitch);
+      const trackId = services.selectionBridge.getPerformTrackId();
+      if (trackId) services.patternRecorder.noteOn(trackId, pitch, velocity);
+    };
+    melodicKeys.onReleased = (pitch) => services.patternRecorder.noteOff(pitch);
     const down = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
       if (captureOfferRef.current && event.key.toLowerCase() === "a") return; // Capture wins
@@ -1076,6 +1093,11 @@ export function App({
         <EffectRack track={track} />
       </ErrorBoundary>
     ),
+    plugin: (
+      <ErrorBoundary panel="plugin">
+        <DockedPlugin trackId={track.id} selectedPadId={padId} />
+      </ErrorBoundary>
+    ),
     arr: (
       <ErrorBoundary panel="arr">
         <ArrangementPanel />
@@ -1188,7 +1210,7 @@ export function App({
                     scaleSnap={scaleSnap}
                   />
                 </div>
-                <Inspector track={track} selectedPadId={padId} onOpenPlugin={() => setPluginTrackId(track.id)} />
+                <Inspector track={track} selectedPadId={padId} onOpenPlugin={openPluginPanel} />
               </main>
               <div
                 className={
@@ -1291,9 +1313,6 @@ export function App({
               </Suspense>
               <OnboardingHint />
               <ContextMenu state={contextMenu} onClose={() => setContextMenu(null)} />
-              {pluginTrackId && (
-                <FloatingPlugin trackId={pluginTrackId} selectedPadId={padId} onClose={() => setPluginTrackId(null)} />
-              )}
             </div>
           </ToolContext.Provider>
         </SelectionContext.Provider>

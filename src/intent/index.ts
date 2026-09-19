@@ -5,3 +5,4 @@ export * from "./hash";
 export * from "./plan";
 export * from "./pipeline";
 export * from "./providers/local";
+export * from "./providers/symbolic";

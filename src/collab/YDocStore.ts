@@ -284,6 +284,20 @@ export class YDocStore {
     this.afterMutation();
   }
 
+  /**
+   * Record frame seam for live MIDI takes. yjs UndoManager groups changes by
+   * capture timeout — these calls seal the open undo item before and after a
+   * recorded pass, so the take stays one coherent block (best effort: a take
+   * longer than the capture timeout still splits inside).
+   */
+  beginUndoFrame(_label?: string): void {
+    this.undoManager.stopCapturing();
+  }
+
+  endUndoFrame(): void {
+    this.undoManager.stopCapturing();
+  }
+
   undo(): void {
     if (!this.undoManager.canUndo()) return;
     const top = this.undoManager.undoStack[this.undoManager.undoStack.length - 1];

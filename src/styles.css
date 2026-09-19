@@ -1421,6 +1421,125 @@ button {
   pointer-events: none;
 }
 
+/* Sequencer gesture cheat sheet — anchored over the grid, dismissible. */
+.cheat-sheet {
+  position: absolute;
+  top: 46px;
+  right: 10px;
+  width: 360px;
+  max-height: calc(100% - 60px);
+  overflow: auto;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--accent);
+  border-radius: 6px;
+  padding: 10px 12px;
+  z-index: 20;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+}
+
+.cheat-sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.cheat-sheet-title {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--accent);
+}
+
+.cheat-sheet-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cheat-sheet-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cheat-sheet-group-title {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  color: var(--text-faint);
+  margin-bottom: 2px;
+}
+
+.cheat-sheet-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 1px 0;
+}
+
+.cheat-sheet-keys {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text);
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 5px;
+  white-space: nowrap;
+}
+
+.cheat-sheet-what {
+  font-size: 10.5px;
+  color: var(--text-dim);
+  text-align: right;
+}
+
+.cheat-toggle.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Ruler loop region — rAF-positioned overlay, reads transport truth. */
+.ruler-loop-overlay {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(74, 222, 128, 0.14);
+  border-left: 1px solid rgba(74, 222, 128, 0.5);
+  border-right: 1px solid rgba(74, 222, 128, 0.5);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.ruler-loop-overlay[data-visible="false"] {
+  display: none;
+}
+
+/* Performed pad flash — applied via rAF DOM mutation, no re-render. */
+.row-pad.live-hit {
+  border-color: var(--accent);
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.45);
+  color: var(--accent);
+}
+
+.midi-readout {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  color: var(--accent);
+  padding: 0 2px;
+  white-space: nowrap;
+}
+
+.rec-strength {
+  width: 72px;
+  accent-color: var(--accent);
+}
+
 /* Step-entry cursor — pitch row × entry length, dashed accent box. */
 .pr-step-cursor {
   position: absolute;
@@ -1947,11 +2066,13 @@ button {
 /* ---------- Effect rack ---------- */
 
 .fx-rack {
+  min-width: 0;
   height: 100%;
   overflow: auto;
   background: var(--bg-panel);
   border-top: 1px solid var(--border);
   padding: 10px 14px;
+  container-type: inline-size;
 }
 
 .fx-rack-header {
@@ -2083,6 +2204,7 @@ button {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-width: 0;
 }
 
 .fx-device.collapsed {
@@ -8028,6 +8150,60 @@ html {
   text-align: center;
 }
 
+/* Docked instrument editor: the dock owns its height; controls scroll inside
+   the editor, while the header stays visible as the user explores the patch. */
+.instrument-plugin-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg-panel);
+  container-type: inline-size;
+}
+
+.instrument-plugin-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 7px 12px;
+  background: linear-gradient(180deg, var(--bg-raise), var(--bg-panel-2));
+  border-bottom: 1px solid var(--border);
+}
+
+.instrument-plugin-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.instrument-plugin-header .floating-plugin-title {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+.instrument-plugin-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px 12px;
+  background: var(--bg-panel);
+  overscroll-behavior: contain;
+}
+
+.instrument-plugin-panel .floating-plugin-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 /* ── FXEQ panel (EQ-paint editor) ───────────────────────────────────────── */
 
 .fxeq-panel {
@@ -8122,6 +8298,14 @@ html {
 .ultina-panel {
   max-height: 480px;
   overflow-y: auto;
+}
+
+/* FX editors share the rack's scroll area so low or split docks never create
+   nested scrollbars inside the selected device. */
+.fx-rack .ultina-panel,
+.fx-rack .ozvena-panel {
+  max-height: none;
+  overflow: visible;
 }
 
 .ultina-mod-on:not(.active) {
@@ -10381,4 +10565,117 @@ a.brand:hover .brand-mark {
   align-self: flex-start;
   font-weight: bold;
   letter-spacing: 0.06em;
+}
+
+/* Device editors reflow against their actual dock slot. This also applies
+   when FX and instrument panels share the dock in split view. */
+@container (max-width: 620px) {
+  .fx-rack-header {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .fx-rack-header .panel-title {
+    flex: 1 1 100%;
+  }
+
+  .fx-add-select {
+    flex: 1 1 180px;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .fx-device-header {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .fx-device-title {
+    flex: 1 1 140px;
+    flex-wrap: wrap;
+  }
+
+  .fx-preset-select {
+    flex: 1 1 120px;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .fx-device-buttons {
+    flex: none;
+    margin-left: auto;
+  }
+
+  .fx-device-params {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+  }
+
+  .fx-sidechain-picker .fx-param-select {
+    flex: 1 1 150px;
+    min-width: 0;
+  }
+
+  .fx-sidechain-status {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .fxeq-preset-row,
+  .fxeq-band-scalars {
+    flex-wrap: wrap;
+  }
+
+  .fxeq-band-chips {
+    flex-wrap: wrap;
+  }
+
+  .fxeq-band-gain {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .ultina-assist-opts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
+  }
+
+  .ozvena-weights {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .ozvena-pad {
+    height: clamp(120px, 34cqi, 190px);
+  }
+}
+
+@container (max-width: 430px) {
+  .instrument-plugin-header {
+    align-items: flex-start;
+  }
+
+  .instrument-plugin-actions {
+    width: 100%;
+    justify-content: flex-start;
+    margin-left: 0;
+  }
+
+  .instrument-plugin-panel .floating-plugin-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .instrument-plugin-panel .wt-mod-row {
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+
+  .instrument-plugin-panel .wt-mod-select {
+    min-width: 0;
+    flex: 1 1 72px;
+  }
+
+  .instrument-plugin-panel .wt-mod-amt {
+    flex: 1 1 100%;
+  }
 }

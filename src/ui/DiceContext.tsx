@@ -29,6 +29,11 @@ import {
 import { nextSeed } from "../shared/dice";
 import { forkRandom } from "../shared/rng";
 import { normalizeIntent } from "../intent/normalize";
+import {
+  buildFavoritesPack,
+  recordFavoriteLedgerEntry,
+  type FavoriteLedgerEntry,
+} from "../intent/favorites";
 import type { GenerateOptions } from "../ai/types";
 import { GENRES } from "../ai/types";
 import { resolveGrooveForGeneration } from "../ai/generator";
@@ -60,6 +65,8 @@ interface DiceContextValue {
   apply: (services: Services, doc: ProjectDocument) => void;
   toggleLockKey: (key: keyof DiceLocks) => void;
   toggleFav: (index: number) => void;
+  /** Download the favorites ledger as a training pack (local feedback loop). */
+  exportFavoritesPack: () => void;
   setMode: (mode: DiceMode) => void;
   setJitter: (v: number) => void;
   setGenre: (genre: GenerateOptions["genre"]) => void;
@@ -408,7 +415,53 @@ export function DiceProvider({
   }, []);
 
   const toggleFav = useCallback((index: number) => {
-    setSession((prev) => toggleFavorite(prev, index));
+    setSession((prev) => {
+      const next = toggleFavorite(prev, index);
+      // T2 v2 feedback loop: ★-ing a PREVIEWED roll records it in the local
+      // favorites ledger (intent + drum content). The pack is exportable from
+      // the tray and folds into the next symbolic-prior retraining
+      // (`npm run prior:favorites`). Dedupe + cap live in the ledger module;
+      // recording inside the updater is safe — a StrictMode double-invoke
+      // collapses via the seed+grooveId dedupe.
+      if (index === prev.cursor && next.favorites.has(index) && !prev.favorites.has(index)) {
+        const pattern = previewRef.current?.fullPattern?.proposal?.pattern ?? null;
+        const drumTrack = doc.tracks.find((track) => track.kind === "drum");
+        const generation = pattern?.generation;
+        if (pattern && drumTrack && drumTrack.kind === "drum" && generation) {
+          const entry: FavoriteLedgerEntry = {
+            savedAt: Date.now(),
+            seed: prev.seedChain[index] ?? "",
+            genre: String(generation.genre ?? prev.intent.genre),
+            grooveId: String(generation.grooveId ?? ""),
+            energy: prev.intent.energy,
+            density: prev.intent.density,
+            complexity: prev.intent.complexity,
+            variation: prev.intent.variation,
+            padIds: drumTrack.pads.map((pad) => pad.id),
+            padNames: drumTrack.pads.map((pad) => pad.name),
+            rows: JSON.parse(JSON.stringify(pattern.rows)),
+          };
+          recordFavoriteLedgerEntry(entry);
+        }
+      }
+      return next;
+    });
+  }, [doc]);
+
+  const exportFavoritesPack = useCallback(() => {
+    try {
+      const pack = buildFavoritesPack();
+      const blob = new Blob([JSON.stringify(pack, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `pulse-forge-favorites-${new Date(pack.exportedAt).toISOString().slice(0, 10)}.json`;
+      anchor.click();
+      // Optional-call guard: jsdom/test environments may not implement revoke.
+      URL.revokeObjectURL?.(url);
+    } catch {
+      /* download blocked — favorites stay in the local ledger */
+    }
   }, []);
 
   const setMode = useCallback((mode: DiceMode) => {
@@ -600,6 +653,7 @@ export function DiceProvider({
       apply,
       toggleLockKey,
       toggleFav,
+      exportFavoritesPack,
       setMode,
       setJitter,
       setGenre,
@@ -625,6 +679,7 @@ export function DiceProvider({
       jump,
       toggleLockKey,
       toggleFav,
+      exportFavoritesPack,
       setMode,
       setJitter,
       setGenre,

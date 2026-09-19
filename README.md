@@ -25,7 +25,7 @@ npm run desktop:build  # web build without the PWA layer → NSIS installer + po
 npm run desktop:smoke  # boots the shell over dist/, asserts renderer mounts with no errors
 ```
 
-Desktop specifics: microphone and Web MIDI are granted silently, anchor-download exports (WAV/MP3/MIDI/project JSON) open a native Save dialog, and the PWA service-worker/update-banner layer is excluded from the desktop build. Not yet: auto-update, macOS/Linux targets, code signing, bundled collab server (collab stays opt-in via its manual server URL in the desktop build).
+Desktop specifics: microphone and Web MIDI are granted silently, anchor-download exports (WAV/MP3/MIDI/project JSON) open a native Save dialog, and the PWA service-worker/update-banner layer is excluded from the desktop build. **Auto-updates** (ADR 0011): installed builds check GitHub Releases on launch + every 6 h, download silently and install on the user's restart; Help → "Check for updates…" checks manually; `KYX_UPDATE_URL` overrides the feed for local testing. To ship an update: bump the version, `npm run desktop:build`, then publish a GitHub release with `KYX-Setup-<version>.exe`, its `.exe.blockmap` and `latest.yml` from `release/`. Not yet: macOS/Linux targets, code signing, bundled collab server (collab stays opt-in via its manual server URL in the desktop build).
 
 ## What works (verified)
 

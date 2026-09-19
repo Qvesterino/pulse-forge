@@ -1,6 +1,8 @@
 import { canonicalizePattern, contentHash } from "../ai/evaluation";
 import type { Pattern, ProjectDocument } from "../project-model/types";
 
+export type CandidateSource = "template" | "symbolic-prior";
+
 export interface CandidateBankEntry {
   candidateIndex: number;
   seed: string;
@@ -9,6 +11,8 @@ export interface CandidateBankEntry {
   repairs: string[];
   score: number;
   contentHash: string;
+  /** Which engine produced this candidate — template generator or ONNX prior. */
+  source?: CandidateSource;
 }
 
 function unit(value: number | undefined, fallback: number): number {
@@ -38,7 +42,12 @@ export function rankCandidateBank(doc: ProjectDocument, candidates: readonly Can
   const unique = new Map<string, CandidateBankEntry>();
   for (const candidate of candidates) {
     const hash = contentHash(canonicalizePattern(doc, candidate.pattern));
-    const normalized = { ...candidate, contentHash: hash, score: scoreCandidate(candidate.pattern) };
+    const normalized = {
+      ...candidate,
+      source: candidate.source ?? ("template" as const),
+      contentHash: hash,
+      score: scoreCandidate(candidate.pattern),
+    };
     const previous = unique.get(hash);
     if (
       !previous ||

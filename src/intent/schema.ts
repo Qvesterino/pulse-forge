@@ -55,6 +55,15 @@ export function validateIntentSpec(value: unknown): string[] {
   ) {
     errors.push("candidateCount must be an integer between 1 and 8 when present");
   }
+  if (
+    value.symbolicCandidates !== undefined &&
+    (typeof value.symbolicCandidates !== "number" ||
+      !Number.isInteger(value.symbolicCandidates) ||
+      value.symbolicCandidates < 0 ||
+      value.symbolicCandidates > 4)
+  ) {
+    errors.push("symbolicCandidates must be an integer between 0 and 4 when present");
+  }
   if (!Array.isArray(value.roles) || value.roles.length === 0 || !value.roles.every(isRole))
     errors.push("roles are invalid");
   if (!isRecord(value.targetTracks)) errors.push("targetTracks must be an object");

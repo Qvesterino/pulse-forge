@@ -37,6 +37,13 @@ export interface IntentSpec {
   length: number;
   /** Number of local candidates to generate and rank before accepting one. */
   candidateCount?: number;
+  /**
+   * Number of ADDITIONAL candidates sampled from the ONNX symbolic drum
+   * prior (T2). They enter the same candidate bank and pass the same
+   * invariant/repair/ranking gates as template candidates. 0 = off (default;
+   * also the sync-path and golden-baseline behavior).
+   */
+  symbolicCandidates?: number;
   roles: readonly IntentRole[];
   targetTracks: {
     drumTrackId: string | null;
@@ -64,6 +71,7 @@ export type IntentInput = Partial<IntentSpec> & {
   bpmRange?: unknown;
   length?: unknown;
   candidateCount?: unknown;
+  symbolicCandidates?: unknown;
   roles?: unknown;
   targetTracks?: unknown;
   constraints?: unknown;
@@ -92,11 +100,14 @@ export interface GenerationPlan {
   resolvedBpm: number | null;
   /** Stable seed for each local candidate in the bank. */
   candidateSeeds: readonly string[];
+  /** Stable seeds for the optional symbolic-prior candidates (T2). */
+  symbolicSeeds: readonly string[];
   subSeeds: {
     groove: string;
     drumsCore: string;
     drumsVariation: string;
     drumsMeta: string;
+    drumsNeural: string;
     melodyFallback: string;
     bass: string;
     chord: string;

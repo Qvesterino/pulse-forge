@@ -124,7 +124,7 @@ function sampleDist(
 }
 
 /** Convert a scale degree to a MIDI pitch given root and scale intervals */
-function degreeToPitch(degree: number, octaveOffset: number, root: number, intervals: readonly number[]): number {
+export function degreeToPitch(degree: number, octaveOffset: number, root: number, intervals: readonly number[]): number {
   if (degree < 0) return -1; // rest
   const octave = Math.floor(degree / intervals.length);
   const idx = ((degree % intervals.length) + intervals.length) % intervals.length;
@@ -153,7 +153,7 @@ const CHORD_VOICINGS: number[][] = [
 const VOICE_VELOCITY_CURVE = [1.0, 0.85, 0.75, 0.65];
 
 /** Expand a single degree into chord notes (multiple pitches at intervals) */
-function expandChord(
+export function expandChord(
   degree: number,
   _octaveOffset: number,
   _root: number,

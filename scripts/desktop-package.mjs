@@ -74,12 +74,20 @@ const staging = path.join(os.tmpdir(), `kyx-desktop-release-${Date.now()}`);
 console.log(`• electron-builder (win) → ${staging}`);
 await run("npx", ["electron-builder", "--win", "-c.directories.output=" + staging]);
 
-const skip = new Set(["builder-debug.yml", "builder-effective-config.yaml"]);
+const skip = new Set([
+  "builder-debug.yml",
+  "builder-effective-config.yaml",
+  // The unpacked app is a packaging byproduct, not a distribution artifact —
+  // and copying it into the workspace invites file-watcher locks on freshly
+  // written files (see the EPERM note above). Run it from the staging dir if
+  // needed; it's removed with the staging dir after the move.
+  "win-unpacked",
+]);
 for (const entry of await readdir(staging)) {
   if (skip.has(entry)) continue;
   await moveInto(path.join(staging, entry), releaseDir);
 }
-await rm(staging, { recursive: true, force: true });
+await rm(staging, { recursive: true, force: true }).catch(() => {});
 
 const setup = `KYX-Setup-${process.env.npm_package_version ?? "0.1.0"}.exe`;
 if (!existsSync(path.join(releaseDir, setup))) {

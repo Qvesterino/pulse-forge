@@ -6,6 +6,7 @@ import type { Pattern, ProjectDocument } from "../../project-model/types";
 import { rankCandidateBank, type CandidateBankEntry } from "../candidate-bank";
 import { rankCandidatesWithModel } from "../../ai/ranking/rank-candidates";
 import { rankerMode } from "../../ai/ranking/ranker-client";
+import { symbolicPriorProvider, symbolicWanted } from "./symbolic";
 import {
   createFallbackPattern,
   refreshPatternQuality,
@@ -41,7 +42,7 @@ function diagnosticsFor(
   };
 }
 
-function attachProvenance(pattern: Pattern, plan: GenerationPlan, doc: ProjectDocument): Pattern {
+export function attachProvenance(pattern: Pattern, plan: GenerationPlan, doc: ProjectDocument): Pattern {
   const intentMetadata = JSON.parse(JSON.stringify(plan.intent)) as Record<string, unknown>;
   const generation = pattern.generation ?? plan.recipe;
   return refreshPatternOutputHash(doc, {
@@ -62,7 +63,7 @@ function invariantErrors(report: ReturnType<typeof inspectPatternInvariants>): s
   return report.issues.map((issue) => `invariant:${issue.code}`);
 }
 
-function candidatePlan(plan: GenerationPlan, seed: string): GenerationPlan {
+export function candidatePlan(plan: GenerationPlan, seed: string): GenerationPlan {
   return {
     ...plan,
     options: { ...plan.options, seed },
@@ -70,7 +71,13 @@ function candidatePlan(plan: GenerationPlan, seed: string): GenerationPlan {
   };
 }
 
-function evaluateCandidate(
+/**
+ * Shared candidate gate: attach provenance, run the hard invariants and —
+ * when needed — the deterministic repair, then re-inspect. Used by BOTH the
+ * template provider and the symbolic-prior provider, so every candidate in
+ * the bank crosses exactly the same gates (INTENT_ENGINE.md §9).
+ */
+export function evaluateCandidate(
   candidate: Pattern,
   plan: GenerationPlan,
   context: GenerationContext,
@@ -150,7 +157,10 @@ export class LocalDeterministicProvider implements GenerationProvider {
       const selected = ranked[0];
       const bankWarnings =
         candidateSeeds.length > 1
-          ? [`candidate-bank-enabled`, `candidate-bank-selected:${selected.candidateIndex}`]
+          ? [
+              `candidate-bank-enabled`,
+              `candidate-bank-selected:${selected.candidateIndex}:${selected.source ?? "template"}`,
+            ]
           : [];
       if (failures.length > 0) bankWarnings.push(...failures.map((failure) => `candidate-bank-skipped:${failure}`));
       return {
@@ -194,14 +204,33 @@ export class LocalDeterministicProvider implements GenerationProvider {
 
   async generate(plan: GenerationPlan, context: GenerationContext, signal?: AbortSignal): Promise<GenerationProposal> {
     if (signal?.aborted) throw new DOMException("Generation aborted", "AbortError");
-    // Model ranking (goal doc Fáze 4) requires the async worker path; the
-    // synchronous command path keeps the heuristic ranking.
+    // Model ranking (goal doc Fáze 4) and the symbolic prior (T2) require the
+    // async worker path; the synchronous command path keeps the heuristic
+    // ranking with template candidates only.
     const mode = rankerMode();
-    if (mode === "off" || (plan.candidateSeeds.length <= 1 && !((plan.options.candidateCount ?? 0) > 1))) {
+    const symbolic = symbolicWanted(plan);
+    if (
+      mode === "off" ||
+      (!symbolic && plan.candidateSeeds.length <= 1 && !((plan.options.candidateCount ?? 0) > 1))
+    ) {
       return this.generateSync(plan, context);
     }
     const effectiveKey = plan.options.key ?? context.project.key;
-    const { candidates, failures, candidateSeeds } = this.collectCandidates(plan, context);
+    const { candidates: templateCandidates, failures, candidateSeeds } = this.collectCandidates(plan, context);
+    // Symbolic-prior candidates (T2): sampled from the ONNX drum prior, they
+    // enter the SAME bank and cross the SAME invariant/repair/ranking gates.
+    // Every failure path only SHRINKS the bank — generation never blocks on
+    // the prior.
+    let candidates = templateCandidates;
+    if (symbolic) {
+      const collected = await symbolicPriorProvider.collectCandidates(plan, context, templateCandidates.length);
+      if (collected.entries.length > 0) {
+        candidates = [...templateCandidates, ...collected.entries];
+      }
+      if (collected.failures.length > 0) {
+        failures.push(...collected.failures.map((failure) => `symbolic-prior:${failure}`));
+      }
+    }
     // A model-path defect (feature extraction, batch assembly) must never break
     // generation: fall back to the deterministic heuristic bank ranking, same
     // as a worker timeout or an invalid model response would.
@@ -224,10 +253,16 @@ export class LocalDeterministicProvider implements GenerationProvider {
 
     if (ranked.order.length > 0) {
       const selected = ranked.order[0];
-      const bankWarnings: string[] =
-        candidateSeeds.length > 1
-          ? [`candidate-bank-enabled`, `candidate-bank-selected:${selected.candidateIndex}`]
-          : [];
+      const bankWarnings: string[] = [];
+      if (candidateSeeds.length > 1 || candidates.length > candidateSeeds.length) {
+        bankWarnings.push(`candidate-bank-enabled`);
+        bankWarnings.push(
+          `candidate-bank-selected:${selected.candidateIndex}:${selected.source ?? "template"}`,
+        );
+      }
+      if (candidates.length > templateCandidates.length) {
+        bankWarnings.push(`symbolic-prior-candidates:${candidates.length - templateCandidates.length}`);
+      }
       if (failures.length > 0) bankWarnings.push(...failures.map((failure) => `candidate-bank-skipped:${failure}`));
       // Ranker provenance + shadow diagnostics (goal doc Fáze 4).
       bankWarnings.push(

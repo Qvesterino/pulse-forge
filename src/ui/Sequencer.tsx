@@ -25,6 +25,8 @@ import { useLongPress } from "./useLongPress";
 import { clamp } from "../shared/ids";
 import { DragNumber, Slider } from "./controls";
 import { cursorsAt, usePublishCursor, useRemoteCursors } from "./remoteCursors";
+import { getLastPlayActivity } from "./playActivity";
+import { SequencerCheatSheet } from "./SequencerCheatSheet";
 import type { RemoteCursor } from "../collab/CollaborationProvider";
 
 export interface StepSelection {
@@ -150,6 +152,8 @@ export function Sequencer({
   // Fullscreen piano roll on touch/narrow screens — which track is expanded.
   const [pianoFullTrack, setPianoFullTrack] = useState<string | null>(null);
   const [beatFocus, setBeatFocus] = useState(false);
+  // Gesture cheat sheet — the sequencer's hidden drags/keys, on demand.
+  const [cheatOpen, setCheatOpen] = useState(false);
 
   useEffect(() => {
     if (!beatFocus) return;
@@ -475,6 +479,14 @@ export function Sequencer({
     setPaintPreview(null);
   };
 
+  // Horizontal zoom (Ctrl+wheel) — scales the minimum column width; the
+  // windowing math uses the effective column size, so zoomed patterns
+  // overflow and window exactly like long ones.
+  const [hZoom, setHZoom] = useState(1);
+  const hZoomRef = useRef(1);
+  hZoomRef.current = hZoom;
+  const effMinCol = Math.max(8, Math.round(STEP_MIN_PX * hZoom));
+
   const handleScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -487,6 +499,55 @@ export function Sequencer({
         : { left: el.scrollLeft, width: el.clientWidth },
     );
   }, []);
+
+  // Ruler interactions: click = seek to that step, drag = paint the loop
+  // region (transport.setLoop in ticks — the topbar fields show the values).
+  const rulerRef = useRef<HTMLDivElement | null>(null);
+  const rulerDragRef = useRef<{ startStep: number; lastStep: number } | null>(null);
+  const rulerStepFromEvent = useCallback(
+    (clientX: number): number | null => {
+      const ruler = rulerRef.current;
+      const scroller = scrollRef.current;
+      if (!ruler || !scroller) return null;
+      const rect = ruler.getBoundingClientRect();
+      const contentX = clientX - rect.left + scroller.scrollLeft;
+      const stride = effMinCol + COL_GAP;
+      const step = Math.floor((contentX - (STEPS_LABEL_PX + COL_GAP)) / stride);
+      return Math.max(0, Math.min(pattern.stepCount - 1, step));
+    },
+    [effMinCol, pattern.stepCount],
+  );
+  const onRulerPointerDown = (event: React.PointerEvent) => {
+    if (event.button !== 0) return;
+    const step = rulerStepFromEvent(event.clientX);
+    if (step == null) return;
+    rulerDragRef.current = { startStep: step, lastStep: step };
+    try {
+      (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    } catch {
+      /* no capture */
+    }
+    services.transport.seek(step * STEP_TICKS);
+  };
+  const onRulerPointerMove = (event: React.PointerEvent) => {
+    const drag = rulerDragRef.current;
+    if (!drag) return;
+    const step = rulerStepFromEvent(event.clientX);
+    if (step == null || step === drag.lastStep) return;
+    drag.lastStep = step;
+    const lo = Math.min(drag.startStep, step);
+    const hi = Math.max(drag.startStep, step) + 1;
+    services.transport.setLoop(true, lo * STEP_TICKS, hi * STEP_TICKS);
+  };
+  const onRulerPointerUp = (event: React.PointerEvent) => {
+    if (!rulerDragRef.current) return;
+    rulerDragRef.current = null;
+    try {
+      (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
+    } catch {
+      /* pointer already gone */
+    }
+  };
 
   // Step-axis window state — width arrives from the ResizeObserver below,
   // left from handleScroll. Width 0 (jsdom, first paint) = render all columns.
@@ -525,25 +586,73 @@ export function Sequencer({
     if (hView.width <= 0) return null;
     const avail = hView.width - STEPS_LABEL_PX - COL_GAP;
     if (avail <= 0) return null;
-    const minTotal = stepCount * STEP_MIN_PX + (stepCount - 1) * COL_GAP;
+    const minTotal = stepCount * effMinCol + (stepCount - 1) * COL_GAP;
     if (minTotal <= avail) return null;
-    const stride = STEP_MIN_PX + COL_GAP;
+    const stride = effMinCol + COL_GAP;
     const stepsStart = STEPS_LABEL_PX + COL_GAP;
     const from = Math.max(0, Math.floor((hView.left - stepsStart) / stride) - COL_OVERSCAN);
     const to = Math.min(stepCount, Math.ceil((hView.left + hView.width - stepsStart) / stride) + COL_OVERSCAN);
     if (from <= 0 && to >= stepCount) return null;
     return { from, to };
-  }, [hView, pattern.stepCount]);
+  }, [hView, pattern.stepCount, effMinCol]);
 
   /** Pixel width of the steps area at the real column size — anchors the
    * continuous playhead, which must sweep the content, not the viewport. */
   const stepsPx = useMemo(() => {
     const stepCount = pattern.stepCount;
     const avail = Math.max(0, hView.width - STEPS_LABEL_PX - COL_GAP);
-    const minTotal = stepCount * STEP_MIN_PX + (stepCount - 1) * COL_GAP;
-    const colW = avail === 0 || minTotal > avail ? STEP_MIN_PX : (avail - (stepCount - 1) * COL_GAP) / stepCount;
+    const minTotal = stepCount * effMinCol + (stepCount - 1) * COL_GAP;
+    const colW = avail === 0 || minTotal > avail ? effMinCol : (avail - (stepCount - 1) * COL_GAP) / stepCount;
     return Math.round(stepCount * colW + (stepCount - 1) * COL_GAP);
-  }, [hView.width, pattern.stepCount]);
+  }, [hView.width, pattern.stepCount, effMinCol]);
+
+  // Ctrl+wheel zoom: the step under the cursor stays anchored — content X
+  // scales by the stride ratio, then the scroll offset compensates.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      const prev = hZoomRef.current;
+      const next = Math.min(4, Math.max(0.5, prev * (event.deltaY < 0 ? 1.12 : 1 / 1.12)));
+      if (next === prev) return;
+      const rect = el.getBoundingClientRect();
+      const viewX = event.clientX - rect.left;
+      const contentX = el.scrollLeft + viewX;
+      const oldStride = Math.max(8, Math.round(STEP_MIN_PX * prev)) + COL_GAP;
+      const newStride = Math.max(8, Math.round(STEP_MIN_PX * next)) + COL_GAP;
+      el.scrollLeft = (contentX * newStride) / oldStride - viewX;
+      hZoomRef.current = next;
+      setHZoom(next);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
+  // Live MIDI activity: flash the performed pad's row label (DOM-mutating rAF —
+  // no React re-render per hit, same pattern as the grid playhead).
+  const padFlashRef = useRef<string | null>(null);
+  const padFlashRafId = useId();
+  useEffect(() => {
+    registerRaf(padFlashRafId, () => {
+      const activity = getLastPlayActivity();
+      const padId = activity?.padId;
+      const fresh = !!padId && performance.now() - (activity?.at ?? 0) < 140;
+      if (padId === padFlashRef.current && fresh) return;
+      if (padFlashRef.current) {
+        document
+          .querySelector(`.row-pad[data-pad-id="${padFlashRef.current}"]`)
+          ?.classList.remove("live-hit");
+        padFlashRef.current = null;
+      }
+      if (fresh && padId) {
+        document.querySelector(`.row-pad[data-pad-id="${padId}"]`)?.classList.add("live-hit");
+        padFlashRef.current = padId;
+      }
+    });
+    return () => unregisterRaf(padFlashRafId);
+  }, [padFlashRafId]);
 
   const attachScrollRef = useCallback(
     (node: HTMLDivElement | null) => {
@@ -648,9 +757,14 @@ export function Sequencer({
             to desync from the grid as soon as the pattern overflowed. */}
         <div
           className="sequencer-ruler"
-          style={{ gridTemplateColumns: `168px repeat(${pattern.stepCount}, minmax(${STEP_MIN_PX}px, 1fr))` }}
+          ref={rulerRef}
+          style={{ gridTemplateColumns: `168px repeat(${pattern.stepCount}, minmax(${effMinCol}px, 1fr))` }}
           role="row"
-          aria-label="Step ruler"
+          aria-label="Step ruler — click to seek, drag to set the loop region"
+          onPointerDown={onRulerPointerDown}
+          onPointerMove={onRulerPointerMove}
+          onPointerUp={onRulerPointerUp}
+          onPointerCancel={onRulerPointerUp}
         >
           {/* The former focus bar lives in this label cell — one slim chrome row
               above the grid instead of two. */}
@@ -668,6 +782,16 @@ export function Sequencer({
             >
               {beatFocus ? "EXIT" : "FOCUS"}
             </button>
+            <button
+              type="button"
+              className={`btn btn-small cheat-toggle${cheatOpen ? " active" : ""}`}
+              aria-pressed={cheatOpen}
+              aria-label="Toggle gesture cheat sheet"
+              title="Gesture cheat sheet — every hidden drag/key the sequencer knows (Escape closes)"
+              onClick={() => setCheatOpen((open) => !open)}
+            >
+              ?
+            </button>
           </div>
           {(colWindow
             ? Array.from({ length: colWindow.to - colWindow.from }, (_, k) => colWindow.from + k)
@@ -683,6 +807,7 @@ export function Sequencer({
               {i % 4 === 0 ? i / 4 + 1 : "·"}
             </span>
           ))}
+          <RulerLoopOverlay transport={services.transport} stepCount={pattern.stepCount} stepsPx={stepsPx} />
         </div>
         <div style={{ height: totalHeight, position: "relative" }}>
           {visibleItems.map(({ item, top, height }) => (
@@ -712,12 +837,14 @@ export function Sequencer({
               pianoFullTrack={pianoFullTrack}
               onTogglePianoFull={setPianoFullTrack}
               colWindow={colWindow}
+              effMinCol={effMinCol}
             />
             </div>
           ))}
           <GridPlayhead transport={services.transport} stepCount={pattern.stepCount} stepsPx={stepsPx} />
         </div>
       </div>
+      {cheatOpen && <SequencerCheatSheet onClose={() => setCheatOpen(false)} />}
     </section>
   );
 }
@@ -744,6 +871,7 @@ function VirtualRow({
   pianoFullTrack,
   onTogglePianoFull,
   colWindow,
+  effMinCol,
 }: {
   item: FlatItem;
   pattern: import("../project-model/types").Pattern;
@@ -773,6 +901,7 @@ function VirtualRow({
   pianoFullTrack: string | null;
   onTogglePianoFull: (trackId: string | null) => void;
   colWindow: { from: number; to: number } | null;
+  effMinCol: number;
 }) {
   if (item.type === "header") {
     const track = item.track;
@@ -808,6 +937,7 @@ function VirtualRow({
         onEditStep={(stepIndex) => setStepEditor({ padId: item.pad.id, stepIndex })}
         remoteCursors={remoteCursors}
         colWindow={colWindow}
+        effMinCol={effMinCol}
       />
     );
   }
@@ -1169,6 +1299,7 @@ function PadRow({
   onEditStep,
   remoteCursors,
   colWindow,
+  effMinCol,
 }: {
   pad: DrumTrack["pads"][number];
   trackId: string;
@@ -1197,6 +1328,7 @@ function PadRow({
   onEditStep: (stepIndex: number) => void;
   remoteCursors: RemoteCursor[];
   colWindow: { from: number; to: number } | null;
+  effMinCol: number;
 }) {
   const services = useServices();
   const doc = useDoc();
@@ -1234,6 +1366,7 @@ function PadRow({
         <button
           type="button"
           className={`row-pad${selected ? " selected" : ""}`}
+          data-pad-id={pad.id}
           style={{ "--pad-color": categoryColor(assetCategoryOf(pad)) } as React.CSSProperties}
           title={`${pad.name} — click to preview and select`}
           onClick={() => {
@@ -1262,7 +1395,7 @@ function PadRow({
       </div>
       <div
         className="row-steps"
-        style={{ gridTemplateColumns: `repeat(${pattern.stepCount}, minmax(${STEP_MIN_PX}px, 1fr))` }}
+        style={{ gridTemplateColumns: `repeat(${pattern.stepCount}, minmax(${effMinCol}px, 1fr))` }}
       >
         {/* Windowed: the grid template keeps every column track sized, so
             placing cells by explicit gridColumn preserves the full row width
@@ -1573,4 +1706,38 @@ function GridPlayhead({
       style={{ "--grid-steps-px": `${stepsPx}px` } as React.CSSProperties}
     />
   );
+}
+
+/**
+ * Loop region overlay on the ruler — rAF-driven DOM mutation (no React
+ * re-render); the topbar loop fields and this always agree because both read
+ * the transport truth.
+ */
+function RulerLoopOverlay({
+  transport,
+  stepCount,
+  stepsPx,
+}: {
+  transport: Transport;
+  stepCount: number;
+  stepsPx: number;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const rafId = useId();
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    registerRaf(rafId, () => {
+      const on = transport.loopEnabled && transport.loopEnd > transport.loopStart;
+      el.dataset.visible = String(on);
+      if (!on) return;
+      const total = STEP_TICKS * stepCount;
+      const leftPct = (transport.loopStart / total) * 100;
+      const widthPct = ((transport.loopEnd - transport.loopStart) / total) * 100;
+      el.style.left = `calc(172px + ${(leftPct / 100) * stepsPx}px)`;
+      el.style.width = `${Math.max(2, (widthPct / 100) * stepsPx)}px`;
+    });
+    return () => unregisterRaf(rafId);
+  }, [transport, stepCount, stepsPx, rafId]);
+  return <div ref={ref} className="ruler-loop-overlay" data-visible="false" aria-hidden="true" />;
 }

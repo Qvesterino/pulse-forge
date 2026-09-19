@@ -6,6 +6,11 @@ import type { DrumTrack, MidiConfig, ProjectDocument } from "../project-model/ty
 import { GM_DRUM_MAP } from "../project-model/types";
 import type { PatternRecorder } from "./patternRecorder";
 
+/** Resolves the live-perform instrument track (selected track, else first). */
+export interface PerformTrackBridge {
+  getPerformTrackId: () => string | null;
+}
+
 /** Store surface MidiInput needs — implemented by ProjectStore and YDocStore. */
 export interface MidiStoreSurface {
   execute(command: Command): void;
@@ -45,6 +50,7 @@ export class MidiInput {
   /** Live Note Repeat holds — drum notes repeat while physically held. */
   private noteRepeat: NoteRepeatController | null = null;
   private patternRecorder: PatternRecorder | null = null;
+  private selectionBridge: PerformTrackBridge | null = null;
   /** Most recent note per channel — CC74 (MPE timbre) routes here. */
   private channelLastNote = new Map<number, number>();
   /**
@@ -52,6 +58,8 @@ export class MidiInput {
    * noteHeard). Fires on every instrument-track note-on.
    */
   onInstrumentNote: ((pitch: number) => void) | null = null;
+  /** Live activity hook — the top-bar readout + pad flashes feed from it. */
+  onNoteActivity: ((pitch: number) => void) | null = null;
   /** Live MPE dimension state per held note — drives the MpeIndicator UI. */
   private mpeNotes = new Map<number, { pressure: number; timbre: number }>();
   private mpeListeners = new Set<() => void>();
@@ -87,6 +95,11 @@ export class MidiInput {
   /** Wire the live pattern recorder (services call once after construction). */
   attachPatternRecorder(recorder: PatternRecorder): void {
     this.patternRecorder = recorder;
+  }
+
+  /** Wire the selected-track bridge — live play follows the workspace selection. */
+  attachSelectionBridge(bridge: PerformTrackBridge): void {
+    this.selectionBridge = bridge;
   }
 
   async requestAccess(): Promise<boolean> {
@@ -327,12 +340,19 @@ export class MidiInput {
       }
     }
 
-    // Instrument tracks — check channel filter
+    // Instrument tracks — check channel filter. Live play/recording follows
+    // the workspace selection (selected instrument track, else the first) —
+    // the selected track is what the user sees and expects to hear.
     if (config.instrumentChannel === 0 || channel === config.instrumentChannel) {
-      const instTrack = doc.tracks.find((t) => t.kind === "instrument");
+      const performId =
+        this.selectionBridge?.getPerformTrackId() ??
+        doc.tracks.find((t) => t.kind === "instrument")?.id ??
+        null;
+      const instTrack = performId ? doc.tracks.find((t) => t.id === performId) : undefined;
       if (instTrack) {
         this.engine.noteOn(instTrack.id, note, normVelocity, when, 0.5);
         this.onInstrumentNote?.(note);
+        this.onNoteActivity?.(note);
         // Record-to-pattern: commit on note-off with the played duration.
         // The recorder resolves the musical tick itself at arrival time.
         this.patternRecorder?.noteOn(instTrack.id, note, normVelocity);

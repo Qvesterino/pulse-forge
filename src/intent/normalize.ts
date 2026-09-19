@@ -28,6 +28,10 @@ function candidateCountOf(value: unknown): number {
   return Math.max(1, Math.min(8, Math.round(finite(value, 1))));
 }
 
+function symbolicCandidatesOf(value: unknown): number {
+  return Math.max(0, Math.min(4, Math.round(finite(value, 0))));
+}
+
 function stringList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return [...new Set(value.filter((item): item is string => typeof item === "string" && item.length > 0))];
@@ -79,6 +83,7 @@ export function normalizeIntent(input: IntentInput | unknown = {}): IntentSpec {
     bpmRange: bpmRangeOf(source.bpmRange),
     length: lengthOf(source.length, DEFAULT_GENERATE_OPTIONS.stepCount),
     candidateCount: candidateCountOf(source.candidateCount),
+    symbolicCandidates: symbolicCandidatesOf(source.symbolicCandidates),
     roles: rolesOf(source.roles),
     targetTracks: {
       drumTrackId:

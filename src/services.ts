@@ -18,6 +18,7 @@ import { BAR_TICKS, PPQ } from "./project-model/types";
 import { setActivePattern, unfreezeTrack } from "./commands/commands";
 import { MidiInput } from "./midi/MidiInput";
 import { PatternRecorder } from "./midi/patternRecorder";
+import { recordPlayActivity } from "./ui/playActivity";
 import { MidiOutput } from "./midi/MidiOutput";
 import { MidiClock } from "./midi/MidiClock";
 import { UserSampleRepository, restoreUserSampleAudio } from "./persistence/UserSampleRepository";
@@ -81,6 +82,12 @@ export interface Services {
   midi: MidiInput;
   /** Live MIDI record-to-pattern controller (record arm + overdub/replace). */
   patternRecorder: PatternRecorder;
+  /** App re-points getSelectedTrackId after mount — live MIDI follows it. */
+  selectionBridge: {
+    getSelectedTrackId: () => string | null;
+    /** Resolved perform target: selected instrument track, else the first. */
+    getPerformTrackId: () => string | null;
+  };
   midiOutput: MidiOutput;
   midiClock: MidiClock;
   userSamples: UserSampleRepository;
@@ -503,13 +510,32 @@ export async function openProject(
   // Live MIDI record-to-pattern (FL-style overdub): performed hits/notes land
   // in the active pattern at the transport's musical tick. Created before the
   // NoteRepeat controller — every performed drum hit (single or repeat) flows
-  // through its fire callback and records here.
+  // through its fire callback and records here. The whole pass is one undo
+  // frame (one Ctrl+Z removes the take).
   const patternRecorder = new PatternRecorder({
     getDoc: () => store.doc,
     execute: (command) => store.execute(command),
     getTick: () => transport.tickAt(engine.currentTime + 0.005),
     isPlaying: () => transport.playing,
+    beginUndoFrame: (label) => store.beginUndoFrame(label),
+    endUndoFrame: () => store.endUndoFrame(),
   });
+
+  // Selected-track bridge: App re-points getSelectedTrackId to the workspace
+  // selection after mount. Live MIDI play/recording routes to the selected
+  // instrument track (falling back to the first one) — not blindly to the
+  // first instrument in the doc.
+  const selectionBridge = {
+    getSelectedTrackId: (): string | null => null,
+    getPerformTrackId: (): string | null => {
+      const doc = store.doc;
+      const selectedId = selectionBridge.getSelectedTrackId();
+      const selected = selectedId
+        ? doc.tracks.find((t) => t.id === selectedId && t.kind === "instrument")
+        : undefined;
+      return (selected ?? doc.tracks.find((t) => t.kind === "instrument"))?.id ?? null;
+    },
+  };
 
   // Live Note Repeat: pad/QWERTY/MIDI holds re-fire a drum pad on a grid
   // division. The fire callback resolves the pad fresh on every hit so mutes
@@ -533,11 +559,14 @@ export async function openProject(
         velocity,
         tick: performedTick,
       });
+      recordPlayActivity({ padId });
       patternRecorder.drumHit(padId, velocity);
     },
   });
   midi.attachNoteRepeat(noteRepeat);
   midi.attachPatternRecorder(patternRecorder);
+  midi.attachSelectionBridge(selectionBridge);
+  midi.onNoteActivity = (pitch) => recordPlayActivity({ pitch });
 
   // Restore frozen-track audio (IndexedDB → bank) so frozen tracks survive
   // reloads. Tracks whose buffer is gone (cleared site data, other browser)
@@ -776,6 +805,7 @@ export async function openProject(
     groovePool,
     playback,
     patternRecorder,
+    selectionBridge,
     midi,
     midiOutput,
     midiClock,
