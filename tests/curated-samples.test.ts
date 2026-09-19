@@ -124,3 +124,22 @@ describe("loadCuratedLayer — same-id override with synthesized fallback", () =
     await expect(slow).resolves.toBeUndefined();
   });
 });
+
+describe("curated coverage — full-kit contract", () => {
+  it("CURATED_SAMPLES covers every factory asset id exactly once", async () => {
+    const { FACTORY_ASSETS } = await import("../src/sample-library/manifest");
+    const ids = CURATED_SAMPLES.map((sample) => sample.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    const assetIds = FACTORY_ASSETS.map((asset) => asset.id).sort();
+    expect([...ids].sort()).toEqual(assetIds);
+  });
+
+  it("every curated file exists on disk", async () => {
+    const { readFileSync } = await import("node:fs");
+    const path = await import("node:path");
+    for (const sample of CURATED_SAMPLES) {
+      const file = path.resolve(__dirname, "..", "public", "samples", sample.file);
+      expect(() => readFileSync(file), `${sample.file} missing`).not.toThrow();
+    }
+  });
+});

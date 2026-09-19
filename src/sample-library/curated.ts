@@ -23,13 +23,54 @@ export interface CuratedSample {
   gain?: number;
 }
 
+/**
+ * Full-kit curation (factory-content pass 2026-09): every factory asset id
+ * gets a curated file, so the whole kit carries the mastering glue and the
+ * per-category loudness balance (see scripts/render-curated-seeds.mjs for
+ * the targets). The same-id override contract is unchanged.
+ */
 export const CURATED_SAMPLES: CuratedSample[] = [
   { id: "factory.kick.deep", file: "factory.kick.deep.wav" },
   { id: "factory.kick.punch", file: "factory.kick.punch.wav" },
+  { id: "factory.kick.techno", file: "factory.kick.techno.wav" },
+  { id: "factory.kick.sub808", file: "factory.kick.sub808.wav" },
+  { id: "factory.kick.trap", file: "factory.kick.trap.wav" },
+  { id: "factory.kick.soft", file: "factory.kick.soft.wav" },
+  { id: "factory.snare.main", file: "factory.snare.main.wav" },
+  { id: "factory.snare.tight", file: "factory.snare.tight.wav" },
   { id: "factory.snare.punch", file: "factory.snare.punch.wav" },
-  { id: "factory.hat.closed", file: "factory.hat.closed.wav" },
+  { id: "factory.snare.trap", file: "factory.snare.trap.wav" },
   { id: "factory.clap.main", file: "factory.clap.main.wav" },
+  { id: "factory.clap.soft", file: "factory.clap.soft.wav" },
+  { id: "factory.hat.closed", file: "factory.hat.closed.wav" },
+  { id: "factory.hat.closed.soft", file: "factory.hat.closed.soft.wav" },
+  { id: "factory.hat.open", file: "factory.hat.open.wav" },
+  { id: "factory.hat.open.short", file: "factory.hat.open.short.wav" },
+  { id: "factory.hat.pedal", file: "factory.hat.pedal.wav" },
+  { id: "factory.ride.ping", file: "factory.ride.ping.wav" },
+  { id: "factory.ride.bell", file: "factory.ride.bell.wav" },
+  { id: "factory.crash.main", file: "factory.crash.main.wav" },
+  { id: "factory.crash.dark", file: "factory.crash.dark.wav" },
+  { id: "factory.tom.low", file: "factory.tom.low.wav" },
+  { id: "factory.tom.mid", file: "factory.tom.mid.wav" },
+  { id: "factory.tom.high", file: "factory.tom.high.wav" },
+  { id: "factory.rim.chip", file: "factory.rim.chip.wav" },
+  { id: "factory.shaker.soft", file: "factory.shaker.soft.wav" },
+  { id: "factory.perc.tick", file: "factory.perc.tick.wav" },
+  { id: "factory.perc.blip", file: "factory.perc.blip.wav" },
+  { id: "factory.perc.cowbell", file: "factory.perc.cowbell.wav" },
+  { id: "factory.perc.conga", file: "factory.perc.conga.wav" },
+  { id: "factory.perc.tambourine", file: "factory.perc.tambourine.wav" },
+  { id: "factory.fx.riser", file: "factory.fx.riser.wav" },
+  { id: "factory.fx.downlifter", file: "factory.fx.downlifter.wav" },
+  { id: "factory.fx.impact", file: "factory.fx.impact.wav" },
+  { id: "factory.fx.sweep", file: "factory.fx.sweep.wav" },
+  { id: "factory.fx.reverse", file: "factory.fx.reverse.wav" },
+  { id: "factory.fx.noise", file: "factory.fx.noise.wav" },
+  { id: "factory.tonal.pluck", file: "factory.tonal.pluck.wav" },
+  { id: "factory.tonal.stab", file: "factory.tonal.stab.wav" },
   { id: "factory.tonal.keys", file: "factory.tonal.keys.wav" },
+  { id: "factory.tonal.bell", file: "factory.tonal.bell.wav" },
 ];
 
 /** Concurrency cap for parallel fetch+decode. */
