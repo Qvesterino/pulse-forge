@@ -451,6 +451,38 @@ Odpoveď na "ako má vyzerať intro/verse/chorus/bridge/outro":
 - Testy: song 11 (inštrumentácia, pop forma, intersection, clamp/infer),
   arrangeWords 13 (nové synonymá EN+SK).
 
+### 5.8b SEMANTIC LAYER (T1 krok 2 — embedding porozumenie, HOTOVÉ)
+
+Multilingual sentence-embedding model v prehliadači — sémantické porozumenie
+NAD keyword parserom:
+
+- **Model**: `Xenova/paraphrase-multilingual-MiniLM-L12-v2` q8 (**118 MB**,
+  EN+SK 50+ jazykov) cez `@huggingface/transformers` v4 vo Web Worker-i.
+  **Nie je v gite** — `npm run semantic:fetch` ho raz stiahne do
+  `public/models/semantic/` (HF layout); `env.allowRemoteModels = false`
+  zakáže CDN fallback (offline-first po prvom fetchnutí; PWA precache ho
+  vylučuje, runtime cache len prehliadača).
+- **Prístup: retrieval namiesto trénovania hláv** — curated korpus
+  (`buildSemanticCorpus`, ~80 referencií: artist presety EN+SK + žáner×mood
+  slovná zásoba) sa raz zembeduje a text sa matchuje kosínovou
+  najbližším susedom. Match donuje intent patch (rovnaký mechanizmus ako
+  artist slovník, ale dosiahnutý VÝZNAMOM, nie slovami) — preto pochopí
+  aj neznáme frázy/mená ("beat in the style of the rapper from astroworld"
+  → trap 0.685 bez jediného keywordu).
+- **Integration**: IntentPanel GENERATE — keď je keyword parse SLABÝ (žiadny
+  žáner, žiadny ♪ preset), spýta sa semantic vrstvy; chip
+  "🧠 label (score %)". Confident keyword parse = nulová latencia (semantic
+  sa nespustí). Threshold 0.5; zlyhanie modelu/flag `pf:semantic-embed` =
+  okamžitý null → keyword fallback bez zmeny správania.
+- **Worker/client**: `src/ai/semantic/` — rovnaké garancie ako prior/ranker
+  (lazy spawn, timeouty, circuit breaker, availabilita probe cez manifest
+  404).
+- **Overenie**: `scripts/smoke-semantic.mts` s REÁLNYM modelom — 4/4:
+  neznáma trap fráza → trap (0.685), SK ambient fráza → ambient (0.835),
+  party groove → house (0.661), nesúvisiaci nonsense → null.
+- Testy: `tests/intent-semantic.test.ts` (7) — korpus integrita, kNN s
+  mock embed (genre klastre, threshold, fallback, cache).
+
 ### 5.9 Artist "type beat" references + "more X" routing (C1+C2, HOTOVÉ)
 
 Odpoveď na "bude to chápať aggressive / more energic / travis scott type
@@ -475,8 +507,8 @@ default house patternu (najhorší možný fallback pre trap request).
   re-runuje cez rovnaký audition tok; bez poslednej generácie = fallback na
   čerstvý pattern s atribútom. Router priorita: arrange → mix (ZVUK: tón/
   reverb/punch) → revise (OBSAH: energy/density) → pattern.
-- Dlhodobo: T1 krok 2 (multilingual text embedding) túto vrstvu podstrčí —
-  alias mapa ostane ako rýchly offline fallback.
+- **T1 krok 2 HOTOVÉ (§5.8b)**: semantic retrieval pochopí neznáme frázy a
+  mená; alias mapa ostáva ako rýchly offline fallback a korpusový zdroj.
 - Testy: `tests/intent-artists.test.ts` (11) — presety + text override +
   drill fix + revise parser EN/SK + router priority + same-seed identity
   (rovnaký seed, iný content hash, determinizmus).
@@ -524,7 +556,7 @@ default house patternu (najhorší možný fallback pre trap request).
 
 | Oblast | Dnes | Chýba do SUNO-tieru |
 |---|---|---|
-| Text understanding | **parser v3 (EN + SK) + C1 artist slovník** (travis scott/metro boomin/rage/drill/boom bap/fred again/amapiano… → štýlové presety s BPM) + C2 revise comparatívy ("more energetic" = ±slider na rovnakom sede) | embedding-based porozumenie (T1 krok 2) — prirodzene pokryje aj SK a neznáme mená |
+| Text understanding | **parser v3 + C1 artist slovník + T1 krok 2 SEMANTIC LAYER** (multilingual MiniLM embedding kNN nad curated korpusom — rozumie neznámym frázam a menám, SK vrátane) | väčší embedding model, korpus rastúci s favoritmi |
 | Žánre/style | 4 žánre + 21 groove štýlov v prior vocab | desiatky štýlov; style embeddingy namiesto ručných keyword map |
 | Generatívny model | template anchors + constrained Markov **+ ONNX symbolic prior v1 (drums)** | prior v2: melodic role, učenie z favoritov, väčší dataset |
 | Štruktúra pesničky | **HOTOVÉ (A2 v2)**: song builder s verse/chorus/bridge rolami, inštrumentáciou per sekciu (intro=bicí+bas, chorus=full, bridge=bez bicích), pop forma pre trap + elektronickej formy | section-aware prior kandidáty, audíció celej pesničky, reálne transition ZVUKY |
@@ -618,8 +650,8 @@ IndexedDB/Cache API cache po prvom stiahnutí, PWA precache len pre T0.
 
 ---
 
-*Posledná úplná revízia mapy: 2026-09-19 (T1, parser v3 EN+SK, drum+melodic prior
-v1, C1+C2 favorites→retrain, A1 audition, A2 song builder + v2 songwriting role,
-D1 mix chain, D3 unified bar, C1 artist slovník + C2 revise routing). Dokument
-sa dopĺňa pri každej zmene Intent Engine; fakty boli overené čítaním zdrojov
-uvedených v §3.*
+*Posledná úplná revízia mapy: 2026-09-19 (T1 + T1 krok 2 semantic layer, parser
+v3 EN+SK, drum+melodic prior v1, C1+C2 favorites→retrain, A1 audition, A2 song
+builder + v2 roles, D1 mix chain, D3 unified bar, C1 artist slovník + C2 revise
+routing). Dokument sa dopĺňa pri každej zmene Intent Engine; fakty boli
+overené čítaním zdrojov uvedených v §3.*

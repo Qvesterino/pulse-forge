@@ -114,6 +114,6 @@ describe("offline render / live playback — shared engine surface", () => {
     // used by bounce / stems / export paths).
     expect(renderer).toMatch(/options\.tailSeconds\s*\?\?\s*2/);
     // The tail must be added to the duration, not subtracted.
-    expect(renderer).toMatch(/duration.*\+.*tail/);
+    expect(renderer).toMatch(/const duration\s*=\s*\([\s\S]*?\)\s*\+\s*tail/);
   });
 });

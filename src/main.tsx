@@ -1,9 +1,8 @@
 import { StrictMode, Suspense, lazy, useCallback, useEffect, useState } from "react";
-import { createRoot } from "react-dom/client";
+import { createRoot, type Root } from "react-dom/client";
 import { createCoreServices, openProject } from "./services";
 import type { CoreServices, Services } from "./services";
 import type { ProjectDocument } from "./project-model/types";
-import { App } from "./ui/App";
 import { ErrorBoundary } from "./ui/ErrorBoundary";
 import { ProjectBrowser } from "./ui/ProjectBrowser";
 import { decodeShareCode } from "./export/shareCode";
@@ -28,9 +27,18 @@ const EmbedApp = lazy(() => import("./embed/EmbedApp").then((m) => ({ default: m
 const GalleryPage = lazy(() => import("./gallery/GalleryPage").then((m) => ({ default: m.GalleryPage })));
 const LandingPage = lazy(() => import("./landing/LandingPage").then((m) => ({ default: m.LandingPage })));
 const DownloadPage = lazy(() => import("./download/DownloadPage").then((m) => ({ default: m.DownloadPage })));
+// The studio itself is the largest UI route. Keep it out of the initial
+// project-browser/landing payload and load it only after a project opens.
+const StudioApp = lazy(() => import("./ui/App").then((m) => ({ default: m.App })));
 
 const container = document.getElementById("root");
 if (!container) throw new Error("Root element not found");
+// Vite can re-evaluate this entry during HMR while keeping the same DOM
+// container alive. Reuse its root instead of mounting a second React root;
+// duplicate roots otherwise corrupt reconciliation on the next provider edit.
+type RootContainer = HTMLElement & { __kyxReactRoot?: Root };
+const rootContainer = container as RootContainer;
+const root = (rootContainer.__kyxReactRoot ??= createRoot(container));
 
 const PATH = typeof location !== "undefined" ? location.pathname : "/";
 const ONBOARDED_KEY = "pf-onboarded";
@@ -46,7 +54,7 @@ const ROUTE_FALLBACK = <div className="boot">KYX — loading…</div>;
 
 // /embed — a standalone share player; skip the whole studio boot.
 if (/^\/embed(\/|$)/.test(PATH)) {
-  createRoot(container).render(
+  root.render(
     <StrictMode>
       <Suspense fallback={ROUTE_FALLBACK}>
         <EmbedApp />
@@ -55,7 +63,7 @@ if (/^\/embed(\/|$)/.test(PATH)) {
   );
 } else if (/^\/gallery(\/|$)/.test(PATH)) {
   // /gallery — the beat feed; no studio boot either.
-  createRoot(container).render(
+  root.render(
     <StrictMode>
       <Suspense fallback={ROUTE_FALLBACK}>
         <GalleryPage />
@@ -64,7 +72,7 @@ if (/^\/embed(\/|$)/.test(PATH)) {
   );
 } else if (/^\/download(\/|$)/.test(PATH)) {
   // /download — the desktop app page; no studio boot either.
-  createRoot(container).render(
+  root.render(
     <StrictMode>
       <Suspense fallback={ROUTE_FALLBACK}>
         <DownloadPage />
@@ -72,7 +80,7 @@ if (/^\/embed(\/|$)/.test(PATH)) {
     </StrictMode>,
   );
 } else {
-  createRoot(container).render(
+  root.render(
     <StrictMode>
       <Entry />
     </StrictMode>,
@@ -199,11 +207,13 @@ function Boot() {
   }
   return (
     <ErrorBoundary onCrashSave={() => screen.kind === "studio" && void screen.services.flushSave()}>
-      <App
-        services={screen.services}
-        onOpenBrowser={() => backToBrowser(screen.services)}
-        onReplaceServices={replaceServices}
-      />
+      <Suspense fallback={<div className="boot">KYX — opening studio…</div>}>
+        <StudioApp
+          services={screen.services}
+          onOpenBrowser={() => backToBrowser(screen.services)}
+          onReplaceServices={replaceServices}
+        />
+      </Suspense>
     </ErrorBoundary>
   );
 }

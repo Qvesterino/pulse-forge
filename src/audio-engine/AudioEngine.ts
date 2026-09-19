@@ -1341,6 +1341,10 @@ export class AudioEngine {
         for (const [k, v] of Object.entries(fx.params)) {
           if (cached[k] !== v) rt.setParameter(k, v);
         }
+        // Step-envelope sync (beatMangler): the runtime reference-compares
+        // and ignores identical arrays, so untouched envelopes never
+        // re-upload to the audio thread.
+        rt.setSteps?.(fx.volumeSteps, fx.pitchSteps);
       } finally {
         rt.endParamSync?.();
       }

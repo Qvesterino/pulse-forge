@@ -21,7 +21,10 @@ await server.listen();
  * narrower viewports lower-priority panels live behind the overflow trigger).
  */
 async function clickPanelAction(page, label) {
-  const direct = page.locator(`.topbar button:has-text("${label}")`).first();
+  // The device/effects dock is surfaced as DEV in the current topbar UI; keep
+  // the semantic FX test intent while targeting the actual visible contract.
+  const actionLabel = label === "FX" ? "DEV" : label;
+  const direct = page.locator(`.topbar button:has-text("${actionLabel}")`).first();
   if (await direct.isVisible().catch(() => false)) {
     await direct.click();
     return;
@@ -29,7 +32,7 @@ async function clickPanelAction(page, label) {
   const trigger = page.locator('button[aria-label^="More topbar controls"]').first();
   await trigger.click();
   await page
-    .locator('#topbar-overflow-menu button:has-text("' + label + '")')
+    .locator('#topbar-overflow-menu button:has-text("' + actionLabel + '")')
     .first()
     .click();
   // Close the menu so the next action starts from a clean state.
@@ -646,11 +649,10 @@ try {
     await plugPage.waitForSelector(".project-browser", { timeout: 15_000 });
     await plugPage.locator('.pb-template:has-text("HOUSE")').first().click();
     await plugPage.waitForSelector(".sequencer", { timeout: 15_000 });
-    // Open the FX rack dock panel and add the flagship FXEQ to the selected track.
+    // Open the device-chain dock panel and add the flagship FXEQ to the selected track.
     await clickPanelAction(plugPage, "FX");
-    await plugPage.waitForSelector(".fx-rack", { timeout: 5000 });
-    // Scope to the rack — .track-tabs has its own .fx-add-select.track-add.
-    await plugPage.locator(".fx-rack select.fx-add-select").first().selectOption("fxeq");
+    await plugPage.waitForSelector(".devices-panel", { timeout: 5000 });
+    await plugPage.locator(".devices-add-effect").first().selectOption("fxeq");
     await plugPage.waitForSelector(".fx-device", { timeout: 5000 });
     // Collapse must keep the device mounted and flip aria-expanded.
     await plugPage.locator(".fx-device-toggle").first().click();
@@ -748,8 +750,8 @@ try {
       await plugPage.locator(".pb-row button:has-text(OPEN)").first().click();
     }
     await plugPage.waitForSelector(".sequencer", { timeout: 30_000 });
-    const reloadedRack = plugPage.locator(".fx-rack").first();
-    if (!(await reloadedRack.isVisible().catch(() => false))) {
+    const reloadedDevices = plugPage.locator(".devices-panel").first();
+    if (!(await reloadedDevices.isVisible().catch(() => false))) {
       await clickPanelAction(plugPage, "FX");
     }
     await plugPage.waitForSelector('.fxeq-panel[aria-label="PRISM multiband editor"]', { timeout: 30_000 });

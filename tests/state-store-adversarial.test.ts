@@ -221,14 +221,14 @@ describe("ProjectStore — coalesce window", () => {
       type: "adversarial.a",
       label: "a",
       coalesceKey: "gesture:A",
-      execute: (doc) => doc,
+      execute: (doc) => ({ ...doc, name: "gesture-a" }),
       undo: (doc) => doc,
     });
     const b = (): Command => ({
       type: "adversarial.b",
       label: "b",
       coalesceKey: "gesture:B",
-      execute: (doc) => doc,
+      execute: (doc) => ({ ...doc, name: "gesture-b" }),
       undo: (doc) => doc,
     });
     store.execute(a());

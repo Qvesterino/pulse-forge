@@ -28,6 +28,12 @@ export type EffectType =
   | "vowel"
   | "duckDelay"
   | "kaskada"
+  | "ringMod"
+  | "tapeStop"
+  | "freqShifter"
+  | "pitchShift"
+  | "vinyl"
+  | "beatMangler"
   | "msEq"
   | "haasWidener"
   | "multiband"
@@ -72,9 +78,16 @@ export interface EffectInstance {
   params: Record<string, number>;
   /**
    * Step pattern for step-sequenced effects (stepGate): 8/16/32 values in
-   * 0..1 (gate open amount). Sanitized by normalizeEffects.
+   * 0..1 (gate open amounts). Sanitized by normalizeEffects.
    */
   steps?: number[];
+  /**
+   * Beat Mangler bar envelopes (FX expansion): 16/32 values. `volumeSteps`
+   * in 0..1 (gain per step), `pitchSteps` in −24…24 (read-speed multiplier
+   * in semitones per step). Sanitized by normalizeEffects.
+   */
+  volumeSteps?: number[];
+  pitchSteps?: number[];
   /**
    * Optional source track id for sidechain-style effects (e.g. Sidechain Compressor).
    * When set, the audio engine wires the source track's input node as sidechain feed

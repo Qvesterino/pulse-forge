@@ -36,3 +36,6 @@ tsconfig.tsbuildinfo*
 *.bak
 *.tsbuildinfo
 .kilo/
+
+# Semantic embedding model (T1 krok 2) — one-time fetch via npm run semantic:fetch
+public/models/semantic/

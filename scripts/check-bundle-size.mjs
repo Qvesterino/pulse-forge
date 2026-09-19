@@ -32,6 +32,12 @@ import { fileURLToPath } from "node:url";
 // once the wave settles.
 const ENTRY_BUDGET_KB = 1070;
 const TOTAL_BUDGET_KB = 2400;
+// The semantic intent worker dynamically imports Transformers.js only after a
+// weak keyword parse and a successful local-model probe. Keep that optional
+// runtime under its own cap instead of silently raising the normal DAW budget.
+// If Vite renames the chunk, it falls back into TOTAL_BUDGET_KB and fails safe.
+const OPTIONAL_SEMANTIC_BUDGET_KB = 650;
+const OPTIONAL_SEMANTIC_PREFIX = "transformers.web-";
 // 150: deliberate bump (was 120 — the gate had been red since kaskada's
 // 32-band spectral DSP landed in the core bundle at ~137 KB). The de-cramped
 // stock EQ worklet pushed the measured size to 144 KB. The core bundle stays
@@ -52,12 +58,20 @@ const entryFile = join(dist, entryMatch[1].replace(/^\//, ""));
 
 const entryKb = statSync(entryFile).size / 1024;
 let totalKb = 0;
+let optionalSemanticKb = 0;
 for (const file of readdirSync(join(dist, "assets"))) {
-  if (file.endsWith(".js")) totalKb += statSync(join(dist, "assets", file)).size / 1024;
+  if (!file.endsWith(".js")) continue;
+  const sizeKb = statSync(join(dist, "assets", file)).size / 1024;
+  if (file.startsWith(OPTIONAL_SEMANTIC_PREFIX)) optionalSemanticKb += sizeKb;
+  else totalKb += sizeKb;
 }
 
 console.log(`[size-budget] entry: ${entryKb.toFixed(0)} KB (budget ${ENTRY_BUDGET_KB})`);
-console.log(`[size-budget] total JS chunks: ${totalKb.toFixed(0)} KB (budget ${TOTAL_BUDGET_KB})`);
+console.log(`[size-budget] DAW JS chunks: ${totalKb.toFixed(0)} KB (budget ${TOTAL_BUDGET_KB})`);
+console.log(
+  `[size-budget] optional semantic runtime: ${optionalSemanticKb.toFixed(0)} KB (budget ${OPTIONAL_SEMANTIC_BUDGET_KB})`,
+);
+console.log(`[size-budget] shipped JS total: ${(totalKb + optionalSemanticKb).toFixed(0)} KB`);
 
 let coreWorkletKb = 0;
 for (const file of ["bitcrusher-worklet.js", "core-worklet.js"]) {
@@ -77,7 +91,13 @@ if (entryKb > ENTRY_BUDGET_KB) {
   failed = true;
 }
 if (totalKb > TOTAL_BUDGET_KB) {
-  console.error(`[size-budget] FAIL — total JS over budget: ${totalKb.toFixed(0)} > ${TOTAL_BUDGET_KB} KB.`);
+  console.error(`[size-budget] FAIL — DAW JS over budget: ${totalKb.toFixed(0)} > ${TOTAL_BUDGET_KB} KB.`);
+  failed = true;
+}
+if (optionalSemanticKb > OPTIONAL_SEMANTIC_BUDGET_KB) {
+  console.error(
+    `[size-budget] FAIL — optional semantic runtime over budget: ${optionalSemanticKb.toFixed(0)} > ${OPTIONAL_SEMANTIC_BUDGET_KB} KB.`,
+  );
   failed = true;
 }
 if (coreWorkletKb > CORE_WORKLET_BUDGET_KB) {

@@ -180,7 +180,7 @@ describe("SnapshotRepository — D.4 secondary index", () => {
 
   it("rebuildIndex() is idempotent and does not duplicate index entries", async () => {
     const doc = freshProject("Idempotent");
-    await repo.save("projA", doc, "a1");
+    const snap = await repo.save("projA", doc, "a1");
     // Trigger the rebuild path twice in a row.
     await repo.list("projA", 1000);
     await repo.list("projA", 1000);
@@ -191,7 +191,13 @@ describe("SnapshotRepository — D.4 secondary index", () => {
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
     });
-    expect(indexCount).toBe(1);
+    // Dual-key contract (cross-session hardening): each snapshot holds
+    // exactly TWO durable entries — the authoritative id-key and the legacy
+    // padded-seq key. Rebuilds must not add more (idempotent), and the
+    // in-memory list still yields the snapshot exactly once.
+    expect(indexCount).toBe(2);
+    const listed = await repo.list("projA", 1000);
+    expect(listed.filter((s) => s.id === snap.id)).toHaveLength(1);
   });
 
   it("skips one unreadable record instead of failing the whole history listing", async () => {

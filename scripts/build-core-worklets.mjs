@@ -13,7 +13,10 @@ const shared = {
   bundle: true,
   format: "iife",
   target: "es2022",
-  minify: false,
+  // These stock processors load during studio startup; emit compact modules
+  // so worklet parsing stays quick and the shipped core bundle stays within
+  // its explicit release budget. DSP sources remain readable and testable.
+  minify: true,
   logLevel: "warning",
 };
 

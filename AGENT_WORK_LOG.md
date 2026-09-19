@@ -2298,3 +2298,38 @@ re-render benefit kicking in immediately. Estimated work:
 1. The alias dictionary is curated — unknown artist names still fall to defaults (the honest limit until T1 step 2 embedding understanding); the dictionary remains as the fast offline fallback afterward.
 2. Revise works on the last PATTERN generation only — revising a whole SONG (all sections' sliders) is a natural follow-up once per-section intents are retained in SongBuild.
 3. Preset BPM priors are ranges — resolvedBpm still honors an explicit BPM in the text over the preset's range.
+
+
+---
+
+## GOAL 13 (campaign restart) — Intent Engine T1 krok 2: semantic embedding layer (2026-09-19)
+
+**Goal executed:** The long-planned semantic step — a multilingual sentence-embedding model running IN THE BROWSER that resolves intent by MEANING above the keyword parser, making unknown phrasings and unfamiliar artist references resolvable ("beat in the style of the rapper from astroworld" → trap, with zero keyword overlap).
+
+**Design decision (documented, deliberate):** RETRIEVAL over a curated corpus, not trained heads. Head training needs labeled artist data we don't have; embedding-kNN needs only reference sentences — and MiniLM is genuinely TRAINED for semantic similarity, so it generalizes to phrasings and names the corpus never contained. Model: `Xenova/paraphrase-multilingual-MiniLM-L12-v2` q8 (118 MB, EN+SK+) via `@huggingface/transformers` v4.3 in a Web Worker.
+
+**Offline-first guarantees:**
+
+- Model NOT committed: `npm run semantic:fetch` downloads ONNX q8 + tokenizer into `public/models/semantic/` in HF layout (gitignored). Worker sets `env.allowRemoteModels = false` — no silent CDN fallback; a missing model surfaces as a controlled failure.
+- `semanticAvailable()` probes the manifest (one 404 remembered per session) before any worker spawn. PWA precache glob (js/css/html/svg/png/woff2/wav) excludes the model automatically.
+- Feature flag `pf:semantic-embed` on|off; every failure resolves null → keyword parser path byte-identical to before.
+
+**Fixes implemented:**
+
+- `src/ai/semantic/` — semantic-worker (lazy transformers.js pipeline, mean-pool + L2 normalize, v4 `env.localModelPath`, session pipeline cache), semantic-client (lazy spawn, 20 s+ embed timeout, circuit breaker, manifest probe), semantic-types (embed contract).
+- `src/intent/semantic.ts` — `buildSemanticCorpus()` (~80 entries: every artist preset EN+SK + genre×mood vocabulary EN+SK paraphrases), `semanticIntentFor(text, {embed})` — dependency-injected embedder (unit-testable without network), corpus embedding cached per session, cosine kNN, `SEMANTIC_THRESHOLD = 0.5`.
+- IntentPanel: GENERATE path enriches WEAK keyword parses (no genre word, no ♪ preset) via semantic matching; chip "🧠 label (score %)"; confident keyword parses skip the model entirely (zero latency).
+- `scripts/fetch-semantic-model.mjs` + `npm run semantic:fetch [-- --mini]`; HF-layout fix (files under `<modelId>/`, not flat) caught by the smoke run.
+- Tests: `tests/intent-semantic.test.ts` (7) — corpus integrity/canonical patches, kNN with a deterministic genre-cluster mock embedder (match, below-threshold null, embedder-failure null, corpus cache), no network in unit tests.
+- Smoke: `scripts/smoke-semantic.mts` with the REAL 118 MB model through the app's own matching function — 4/4: unknown trap phrasing via astroworld reference → trap 0.685; SK "pomaly pokojný zvuk pre scénu" → ambient 0.835; party groove → house 0.661; unrelated nonsense (quarterly taxes) → null.
+
+**Important files changed:** src/ai/semantic/* (3 files), src/intent/semantic.ts, src/ui/IntentPanel.tsx, scripts/{fetch-semantic-model.mjs,smoke-semantic.mts}, tests/intent-semantic.test.ts, package.json (@huggingface/transformers, `semantic:fetch`), .gitignore, INTENT_ENGINE.md (§5.8b).
+
+**Validation:** semantic unit tests 7/7; real-model smoke 4/4; intent-area regression 151/151 across 15 files; typecheck clean for changed files.
+
+**Unresolved issues / risks:**
+
+1. First-use latency: model load + corpus embedding (≈118 MB download on first ever use if not pre-fetched, seconds of WASM inference) — masked by the "🧠 semantic…" status; a warmup call on panel open could hide more.
+2. Corpus is curated (~80 entries) — coverage grows by adding reference sentences; favorites can seed corpus entries in a future iteration.
+3. transformers.js v4 bundles its own onnxruntime — coexists with the repo's direct onnxruntime-web usage in separate worker chunks, but total lazy-chunk bytes grew; acceptable (semantic path is opt-in by usage).
+4. The concurrent session's controls.tsx typecheck breakage remains theirs; filtered tsc used.

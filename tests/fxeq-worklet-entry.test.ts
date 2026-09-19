@@ -38,7 +38,7 @@ interface ProcShape {
     reset(): void;
     isMorphing(): boolean;
     getLatencySamples(): number;
-    getBandPeaks(): Float32Array;
+    getBandPeaks(out?: Float32Array): Float32Array;
   };
   process(inputs: Float32Array[][] | [], outputs: Float32Array[][]): boolean;
 }
@@ -200,6 +200,24 @@ describe("fxeq worklet entry (message port ↔ DSP core wiring)", () => {
     send(proc, { type: "setMetersEnabled", enabled: false });
     for (let i = 0; i < blocks; i++) step(proc);
     expect(proc.port.posted.filter((m) => m.type === "bandPeaks").length).toBe(0);
+  });
+
+  it("reuses preallocated peak storage for every audio-thread meter snapshot", () => {
+    const proc = new Processor();
+    now = 0;
+    const targets: Float32Array[] = [];
+    const getBandPeaks = proc.proc.getBandPeaks.bind(proc.proc);
+    proc.proc.getBandPeaks = (out) => {
+      if (out) targets.push(out);
+      return getBandPeaks(out);
+    };
+
+    send(proc, { type: "setMetersEnabled", enabled: true });
+    for (let i = 0; i < 100; i++) step(proc);
+
+    expect(targets.length).toBeGreaterThan(1);
+    expect(new Set(targets).size).toBe(1);
+    expect(targets[0].length).toBe(6);
   });
 
   it("processes with no input (silence) and mono input without crashing", () => {

@@ -317,8 +317,13 @@ export class SnapshotRepository {
         console.warn(`[snapshots] skipping unreadable indexed snapshot ${id}:`, error);
       }
     }
-    pending.sort((a, b) =>
-      a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.seq - b.seq,
+    // seq is primary: it is monotonic by construction (legacy counters are
+    // small numbers, post-fix values are Date.now-based, and each instance
+    // strictly increases its own). createdAt only breaks same-ms ties — a
+    // wall-clock adjustment (NTP, process suspend) must not be able to
+    // reorder snapshots against their save sequence.
+    pending.sort(
+      (a, b) => a.seq - b.seq || (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0),
     );
     for (const entry of pending) {
       const bucket = this.index.get(entry.projectId);

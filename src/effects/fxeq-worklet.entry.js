@@ -29,6 +29,9 @@ class FxEqWorkletProcessor extends AudioWorkletProcessor {
   sidechainScratch = [new Float32Array(MAX_BLOCK), new Float32Array(MAX_BLOCK)];
   /** Band-peak metering: gated by the host panel, throttled to ~20 Hz. */
   metersEnabled = false;
+  // Fixed max-band scratch reused across meter posts; getBandPeaks clears
+  // inactive slots if the current PRISM band count is lower than six.
+  meterPeaks = new Float32Array(6);
   blockCount = 0;
   meterDivider = Math.max(1, Math.round(sampleRate / MAX_BLOCK / 20));
   // Port messages have no render-time semantics. Keep automation events in
@@ -209,7 +212,7 @@ class FxEqWorkletProcessor extends AudioWorkletProcessor {
     if (this.metersEnabled && this.blockCount++ % this.meterDivider === 0) {
       this.port.postMessage({
         type: "bandPeaks",
-        peaks: this.proc.getBandPeaks(),
+        peaks: this.proc.getBandPeaks(this.meterPeaks),
         gr: this.proc.getGainReductionDb(),
       });
     }

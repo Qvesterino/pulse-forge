@@ -75,16 +75,16 @@ try {
   await page.waitForSelector(".topbar", { timeout: 30_000 });
   await page.waitForSelector(".sequencer", { timeout: 30_000 });
 
-  const fx = page.locator('.topbar button:has-text("FX")').first();
+  const fx = page.locator('.topbar button[aria-label="Toggle track device chain"]').first();
   if ((await fx.getAttribute("aria-pressed")) !== "true") await fx.click();
   console.log("[production-smoke] FX panel opened");
-  await page.waitForSelector(".fx-rack", { timeout: 10_000 });
-  const addEffect = page.locator(".fx-rack select.fx-add-select").first();
-  const addEffectCount = await page.locator(".fx-rack select.fx-add-select").count();
+  await page.waitForSelector(".devices-panel", { timeout: 10_000 });
+  const addEffect = page.locator(".devices-panel select.devices-add-effect").first();
+  const addEffectCount = await page.locator(".devices-panel select.devices-add-effect").count();
   console.log(`[production-smoke] FX add controls found: ${addEffectCount}`);
   if (addEffectCount === 0) {
-    const rack = await page.locator(".fx-rack").innerText().catch(() => "<missing rack>");
-    throw new Error(`production FX add control missing; rack text: ${rack}`);
+    const devices = await page.locator(".devices-panel").innerText().catch(() => "<missing devices panel>");
+    throw new Error(`production FX add control missing; device panel text: ${devices}`);
   }
   const addEffectState = await addEffect.evaluate((element) => {
     const rect = element.getBoundingClientRect();

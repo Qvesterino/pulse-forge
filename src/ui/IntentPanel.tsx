@@ -11,6 +11,7 @@ import { normalizeIntent } from "../intent/normalize";
 import type { IntentInput } from "../intent/types";
 import { rankerMode } from "../ai/ranking/ranker-client";
 import { playAuditionBuffer, renderAuditionBuffer, stopAudition } from "../intent/audition";
+import { semanticIntentFor } from "../intent/semantic";
 import type { GenerationResult, RankedCandidate } from "../intent/types";
 
 /**
@@ -34,6 +35,7 @@ export function IntentPanel() {
   // A1 audition state — the ranked bank lives on the result; buffers are
   // cached per candidate so replaying is instant after the first render.
   const [bankResult, setBankResult] = useState<GenerationResult | null>(null);
+  const [semanticChip, setSemanticChip] = useState<string | null>(null);
   const [playingIndex, setPlayingIndex] = useState<number | null>(null);
   const [renderingIndex, setRenderingIndex] = useState<number | null>(null);
   const buffersRef = useRef<Map<number, AudioBuffer>>(new Map());
@@ -112,7 +114,25 @@ export function IntentPanel() {
     abortRef.current?.abort();
     abortRef.current = controller;
     const intentInput = parsed?.input ?? {};
-    await runGeneration(intentInput, controller);
+    // T1 krok 2 semantic layer: when the keyword parse is WEAK (no genre
+    // word, no artist preset), ask the embedding model for the nearest
+    // curated reference. Confident keyword parses skip it — zero latency
+    // cost when the parser already understands.
+    let finalInput = intentInput;
+    if (!intentInput.genre && !parsed?.detected.some((chip) => chip.startsWith("♪"))) {
+      setStatus("🧠 semantic…");
+      const match = await semanticIntentFor(text);
+      if (controller.signal.aborted) return;
+      if (match) {
+        finalInput = { ...intentInput, ...match.input };
+        setSemanticChip(`🧠 ${match.label} (${Math.round(match.score * 100)}%)`);
+      } else {
+        setSemanticChip(null);
+      }
+    } else {
+      setSemanticChip(null);
+    }
+    await runGeneration(finalInput, controller);
   };
 
   const toggleAudition = async (candidate: RankedCandidate) => {
@@ -265,6 +285,11 @@ export function IntentPanel() {
       {detectedText && (
         <div className="intent-detected" aria-label="Detected keywords">
           {detectedText}
+        </div>
+      )}
+      {semanticChip && (
+        <div className="intent-detected" aria-label="Semantic match">
+          {semanticChip}
         </div>
       )}
       {error && (

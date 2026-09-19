@@ -1012,7 +1012,7 @@
       const upKernel = new Float32Array(sym.length);
       const downKernel = new Float32Array(sym.length);
       for (let i = 0; i < sym.length; i++) {
-        upKernel[i] = sym[sym.length - 1 - i];
+        upKernel[i] = sym[sym.length - 1 - i] * factor;
         downKernel[i] = sym[sym.length - 1 - i];
       }
       return { upKernel, downKernel, upTaps: upKernel.length, downTaps: downKernel.length };
@@ -4554,8 +4554,9 @@
       get isMorphing() {
         return morphing;
       },
-      getBandPeaks() {
-        const peaks = new Float32Array(bandCount);
+      getBandPeaks(out) {
+        const peaks = out && out.length >= bandCount ? out : new Float32Array(bandCount);
+        peaks.fill(0);
         for (let b = 0; b < bandCount; b++) {
           peaks[b] = bands[b].getBandPeak();
         }
@@ -4679,6 +4680,9 @@
     sidechainScratch = [new Float32Array(MAX_BLOCK), new Float32Array(MAX_BLOCK)];
     /** Band-peak metering: gated by the host panel, throttled to ~20 Hz. */
     metersEnabled = false;
+    // Fixed max-band scratch reused across meter posts; getBandPeaks clears
+    // inactive slots if the current PRISM band count is lower than six.
+    meterPeaks = new Float32Array(6);
     blockCount = 0;
     meterDivider = Math.max(1, Math.round(sampleRate / MAX_BLOCK / 20));
     // Port messages have no render-time semantics. Keep automation events in
@@ -4814,7 +4818,7 @@
       if (this.metersEnabled && this.blockCount++ % this.meterDivider === 0) {
         this.port.postMessage({
           type: "bandPeaks",
-          peaks: this.proc.getBandPeaks(),
+          peaks: this.proc.getBandPeaks(this.meterPeaks),
           gr: this.proc.getGainReductionDb()
         });
       }

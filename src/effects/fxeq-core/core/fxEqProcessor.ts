@@ -86,8 +86,8 @@ export interface FxEqProcessor {
   startMorph(target: Record<string, number>, durationSec: number): void;
   /** Check if a morph is currently active. */
   readonly isMorphing: boolean;
-  /** Get per-band peak levels (linear) for metering. */
-  getBandPeaks(): Float32Array;
+  /** Get per-band peak levels (linear) for metering; optionally reuse caller storage. */
+  getBandPeaks(out?: Float32Array): Float32Array;
 }
 
 export interface FxEqProcessorOptions {
@@ -758,8 +758,12 @@ export function createFxEqProcessor(params?: Record<string, number>, options?: F
       return morphing;
     },
 
-    getBandPeaks() {
-      const peaks = new Float32Array(bandCount);
+    getBandPeaks(out?: Float32Array) {
+      // Worklet callers pass preallocated storage so the meter path does not
+      // allocate on the audio thread. Clear the full supplied view because a
+      // fixed-size host buffer may outlive a reduction in active band count.
+      const peaks = out && out.length >= bandCount ? out : new Float32Array(bandCount);
+      peaks.fill(0);
       for (let b = 0; b < bandCount; b++) {
         peaks[b] = bands[b].getBandPeak();
       }

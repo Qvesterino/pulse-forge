@@ -16,6 +16,14 @@ export interface EffectRuntime {
   output: AudioNode;
   setParameter(id: string, value: number): void;
   setParameterAt?(id: string, value: number, when: number): void;
+  /**
+   * Step-envelope sync (FX expansion: beatMangler; adoptable by
+   * stepGate/stutter). The engine calls this on every project sync with the
+   * instance's current steps array REFERENCE — implementations must ignore
+   * same-reference calls (cheap pointer compare) so untouched envelopes
+   * never re-upload to the audio thread.
+   */
+  setSteps?(volume: readonly number[] | undefined, pitch: readonly number[] | undefined): void;
   syncBpm?(bpm: number): void;
   onTransportStarted?(time: number, beatPhase: number): void;
   /**

@@ -24,6 +24,12 @@ import { createVowelNode } from "../audio-worklets/vowel-node";
 import { createDuckingDelayNode } from "../audio-worklets/ducking-delay-node";
 import { createEnvFollowerNode } from "../audio-worklets/envfollower-node";
 import { createKaskadaNode } from "../audio-worklets/kaskada-node";
+import { createRingModNode } from "../audio-worklets/ringmod-node";
+import { createTapeStopNode } from "../audio-worklets/tapestop-node";
+import { createFreqShiftNode } from "../audio-worklets/freqshifter-node";
+import { createPitchShiftNode } from "../audio-worklets/pitchshift-node";
+import { createVinylNode } from "../audio-worklets/vinyl-node";
+import { createBeatManglerNode } from "../audio-worklets/beatmangler-node";
 import { createReverbNode } from "../audio-worklets/reverb-node";
 import {
   PARAM_BY_ID as ULTINA_PARAM_BY_ID,
@@ -118,6 +124,14 @@ export const WORKLET_EFFECTS: Partial<Record<EffectType, "critical" | "degraded"
   ultina: "degraded",
   ozvena: "degraded",
   kaskada: "degraded",
+  // FX expansion (docs/FX-EXPANSION-ROADMAP.md): real DSP lives in the
+  // always-loaded core worklet bundle; the fallback is an honest bypass.
+  ringMod: "critical",
+  tapeStop: "critical",
+  freqShifter: "critical",
+  pitchShift: "critical",
+  vinyl: "critical",
+  beatMangler: "critical",
 };
 
 export type EffectProcessorStatus = "ok" | "bypassed" | "fallback";
@@ -3311,6 +3325,138 @@ const duckDelay: EffectDefinition = {
   },
 };
 
+/* ────────────── FX Expansion (beatmaking pass) ────────────── */
+/* docs/FX-EXPANSION-ROADMAP.md — Tape Stop, Ring Mod, Freq Shift,
+   Pitch Shift, Vinyl, Beat Mangler. All six run their DSP in the
+   always-loaded core worklet bundle; without worklets they fall back to an
+   honest 1:1 bypass (never silence). */
+
+const ringMod: EffectDefinition = {
+  type: "ringMod",
+  name: "Ring Mod",
+  category: "movement",
+  params: [
+    { id: "frequency", label: "CARRIER", min: 0.1, max: 2000, default: 220, unit: "Hz", format: (v) => (v >= 100 ? `${Math.round(v)} Hz` : `${v.toFixed(1)} Hz`) },
+    { id: "feedback", label: "FEEDBK", min: 0, max: 0.9, default: 0, format: formatPct },
+    { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
+  ],
+  factory(ctx, instance) {
+    if (isWorkletReady("ringMod", ctx)) return createRingModNode(ctx, instance);
+    return bypassRuntime(ctx, "AudioWorklet unavailable — ring modulator bypassed (1:1 signal)");
+  },
+};
+
+const tapeStop: EffectDefinition = {
+  type: "tapeStop",
+  name: "Tape Stop",
+  category: "movement",
+  params: [
+    { id: "engaged", label: "ENGAGE", min: 0, max: 1, default: 0, format: (v) => (v > 0.5 ? "ON" : "ARMED") },
+    { id: "time", label: "TIME", min: 0.1, max: 8, default: 1.5, unit: "s", format: (v) => `${v.toFixed(1)} s` },
+    { id: "curve", label: "CURVE", min: 0, max: 1, default: 0, format: (v) => (v < 0.5 ? "Exp" : "Lin") },
+    {
+      id: "spin",
+      label: "SPIN",
+      min: 0,
+      max: 1,
+      default: 0,
+      format: (v) => (v > 0.5 ? "REV" : "STOP"),
+    },
+    { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
+  ],
+  factory(ctx, instance) {
+    if (isWorkletReady("tapeStop", ctx)) return createTapeStopNode(ctx, instance);
+    return bypassRuntime(ctx, "AudioWorklet unavailable — tape stop bypassed (1:1 signal)");
+  },
+};
+
+const freqShifter: EffectDefinition = {
+  type: "freqShifter",
+  name: "Freq Shift",
+  category: "movement",
+  params: [
+    { id: "shift", label: "SHIFT", min: -1000, max: 1000, default: 120, unit: "Hz", format: (v) => `${v > 0 ? "+" : ""}${Math.round(v)} Hz` },
+    { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
+  ],
+  factory(ctx, instance) {
+    if (isWorkletReady("freqShifter", ctx)) return createFreqShiftNode(ctx, instance);
+    return bypassRuntime(ctx, "AudioWorklet unavailable — frequency shifter bypassed (1:1 signal)");
+  },
+};
+
+const pitchShift: EffectDefinition = {
+  type: "pitchShift",
+  name: "Pitch Shift",
+  category: "character",
+  params: [
+    { id: "semitones", label: "PITCH", min: -12, max: 12, default: -3, unit: "st", format: (v) => `${v > 0 ? "+" : ""}${Math.round(v)} st` },
+    { id: "fine", label: "FINE", min: -50, max: 50, default: 0, unit: "ct", format: (v) => `${v > 0 ? "+" : ""}${Math.round(v)}` },
+    { id: "grainMs", label: "GRAIN", min: 20, max: 120, default: 55, unit: "ms", format: (v) => `${Math.round(v)} ms` },
+    { id: "width", label: "WIDTH", min: 0, max: 1, default: 0.5, format: formatPct },
+    { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
+  ],
+  factory(ctx, instance) {
+    if (isWorkletReady("pitchShift", ctx)) return createPitchShiftNode(ctx, instance);
+    return bypassRuntime(ctx, "AudioWorklet unavailable — pitch shifter bypassed (1:1 signal)");
+  },
+};
+
+const vinyl: EffectDefinition = {
+  type: "vinyl",
+  name: "Vinyl",
+  category: "character",
+  params: [
+    { id: "amount", label: "AGE", min: 0, max: 1, default: 0.5, format: formatPct },
+    { id: "crackle", label: "CRACKLE", min: 0, max: 1, default: 0.5, format: formatPct },
+    { id: "wow", label: "WOW", min: 0, max: 1, default: 0.5, format: formatPct },
+    {
+      id: "year",
+      label: "YEAR",
+      min: 0,
+      max: 1,
+      default: 0.8,
+      format: (v) => `${Math.round(2020 - v * 100)}`,
+    },
+    { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
+  ],
+  factory(ctx, instance) {
+    if (isWorkletReady("vinyl", ctx)) return createVinylNode(ctx, instance);
+    return bypassRuntime(ctx, "AudioWorklet unavailable — vinyl bypassed (1:1 signal)");
+  },
+};
+
+const BEATMANGLER_MODES = [
+  { value: 0, label: "NORM" },
+  { value: 1, label: "HALF" },
+  { value: 2, label: "2X" },
+  { value: 3, label: "REV" },
+];
+
+const beatMangler: EffectDefinition = {
+  type: "beatMangler",
+  name: "Beat Mangler",
+  category: "movement",
+  params: [
+    {
+      id: "playMode",
+      label: "MODE",
+      min: 0,
+      max: 3,
+      default: 0,
+      options: BEATMANGLER_MODES,
+    },
+    { id: "repeatFill", label: "FILL", min: 0, max: 8, default: 0, format: (v) => (v < 2 ? "OFF" : `${Math.round(v)}×`) },
+    { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
+  ],
+  // Envelope data lives on EffectInstance.volumeSteps / pitchSteps (16/32
+  // values, sanitized by normalizeEffects) — it flows to the runtime via the
+  // engine's setSteps sync path, not through this params table.
+  factory(ctx, instance, env) {
+    if (isWorkletReady("beatMangler", ctx)) return createBeatManglerNode(ctx, instance, env.bpm);
+    return bypassRuntime(ctx, "AudioWorklet unavailable — beat mangler bypassed (1:1 signal)");
+  },
+};
+
 /* ────────────── KYX Kaskáda — character stereo delay ────────────── */
 
 const kaskada: EffectDefinition = {
@@ -3432,6 +3578,12 @@ export const EFFECT_DEFS: Record<EffectType, EffectDefinition> = {
   ultina,
   ozvena,
   kaskada,
+  ringMod,
+  tapeStop,
+  freqShifter,
+  pitchShift,
+  vinyl,
+  beatMangler,
 };
 
 export const EFFECT_ORDER: EffectType[] = [
@@ -3471,6 +3623,12 @@ export const EFFECT_ORDER: EffectType[] = [
   "fxeq",
   "ultina",
   "ozvena",
+  "ringMod",
+  "tapeStop",
+  "freqShifter",
+  "pitchShift",
+  "vinyl",
+  "beatMangler",
 ];
 
 /** Effects intentionally exposed in the new mixer Add Effect menu. */
