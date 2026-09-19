@@ -17,6 +17,7 @@ import type { SampleBank } from "../sample-library/factory";
 import { EFFECT_DEFS } from "../effects/registry";
 import type { EffectRuntime } from "../effects/types";
 import { clampInstrumentParam, INSTRUMENT_DEFS } from "../instruments/registry";
+import { dbToLinear, presetNormalizationGainDb } from "../presets/normalization";
 import type { InstrumentRuntime } from "../instruments/types";
 import type { InstrumentPreset } from "../presets/types";
 import { previewCleanupDelayMs, previewNoteDuration } from "../presets/audioQuality";
@@ -146,6 +147,16 @@ interface ReturnNodes {
 
 interface InstrumentState {
   runtime: InstrumentRuntime;
+  /**
+   * Preset loudness normalization stage (factory-content pass): an
+   * engine-owned gain after the runtime output, driven by the preset's
+   * measured gain (src/presets/normalization.ts). Lives here — not inside
+   * the runtime — so every instrument kind gets it uniformly, and so it
+   * applies identically to live playback, previews and offline renders.
+   */
+  normGain: GainNode;
+  /** Applied normalization in dB — diffed so preset switches are the only writes. */
+  normGainDb: number;
   params: Record<string, number>;
   sampleId: string | null;
   /** Reference-compared against the track — sampler velocity/RR layers. */
@@ -572,6 +583,11 @@ export class AudioEngine {
         state.runtime.dispose();
       } catch {
         /* already disposed */
+      }
+      try {
+        state.normGain.disconnect();
+      } catch {
+        /* already disconnected */
       }
     }
     this.instruments.clear();
@@ -1352,6 +1368,11 @@ export class AudioEngine {
     } catch {
       /* already disposed */
     }
+    try {
+      state.normGain.disconnect();
+    } catch {
+      /* already disconnected */
+    }
     this.instruments.delete(id);
   }
 
@@ -1422,6 +1443,11 @@ export class AudioEngine {
     for (const [id, state] of [...this.instruments]) {
       if (!liveTrackIds.has(id)) {
         state.runtime.dispose();
+        try {
+          state.normGain.disconnect();
+        } catch {
+          /* already disconnected */
+        }
         this.instruments.delete(id);
       }
     }
@@ -1790,9 +1816,14 @@ export class AudioEngine {
         bpm: this.doc?.bpm ?? 124,
         getSample: (id) => this.bank?.get(id),
       });
-      runtime.output.connect(nodes.input);
+      const normGain = ctx.createGain();
+      const normGainDb = presetNormalizationGainDb(track.presetId);
+      normGain.gain.value = dbToLinear(normGainDb);
+      runtime.output.connect(normGain).connect(nodes.input);
       state = {
         runtime,
+        normGain,
+        normGainDb,
         params: { ...track.params },
         sampleId: track.sampleId,
         layers: track.velocityLayers,
@@ -1800,6 +1831,13 @@ export class AudioEngine {
       };
       this.instruments.set(track.id, state);
       return;
+    }
+    // Preset switches (or a regenerated loudness map) move the normalization
+    // stage — everything else about the runtime is diffed above/below.
+    const targetNormDb = presetNormalizationGainDb(track.presetId);
+    if (state.normGainDb !== targetNormDb) {
+      state.normGainDb = targetNormDb;
+      state.normGain.gain.setTargetAtTime(dbToLinear(targetNormDb), ctx.currentTime, 0.01);
     }
     if (state.sampleId !== track.sampleId) {
       state.runtime.setSample?.(track.sampleId);
@@ -2131,7 +2169,10 @@ export class AudioEngine {
     const intervals = segs.map((s) => ({
       startSec: s.startTick * spt,
       endSec: s.endTick * spt,
-      rate: Math.min(4, Math.max(0.25, ((s.endTick - s.startTick) * spt) / Math.max(1e-6, s.bufEndSec - s.bufStartSec))),
+      rate: Math.min(
+        4,
+        Math.max(0.25, ((s.endTick - s.startTick) * spt) / Math.max(1e-6, s.bufEndSec - s.bufStartSec)),
+      ),
     }));
     return {
       key: this.warpCacheKey(clip, wallSec),
@@ -2166,7 +2207,9 @@ export class AudioEngine {
       const rateAt = warpRateEnvelope(job.intervals);
       const buf = ctx.createBuffer(job.src.numberOfChannels, job.outLen, job.sampleRate);
       for (let c = 0; c < job.src.numberOfChannels; c++) {
-        buf.getChannelData(c).set(phaseVocoderWarpChannel(job.src.getChannelData(c), job.sampleRate, rateAt, job.outLen));
+        buf
+          .getChannelData(c)
+          .set(phaseVocoderWarpChannel(job.src.getChannelData(c), job.sampleRate, rateAt, job.outLen));
       }
       this.storeWarpBuffer(job.key, buf);
       return buf;
@@ -3726,12 +3769,18 @@ export class AudioEngine {
       return;
     }
 
+    // The audition must represent the applied sound: the same preset
+    // normalization the live chain gets scales the fixed headroom gain.
+    const normGain = ctx.createGain();
+    normGain.gain.value = dbToLinear(presetNormalizationGainDb(preset.id));
+    runtime.output.connect(normGain);
+
     const gain = ctx.createGain();
     const when = ctx.currentTime + 0.01;
     const durationSec = previewNoteDuration(params);
     // Keep audition headroom independent from the track's current mixer gain.
     gain.gain.setValueAtTime(0.78, when);
-    runtime.output.connect(gain).connect(master);
+    normGain.connect(gain).connect(master);
     const voice: InstrumentPreviewVoice = { runtime, gain, timer: null };
     this.instrumentPreviewVoices.add(voice);
 

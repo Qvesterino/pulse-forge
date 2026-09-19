@@ -24,7 +24,10 @@ import { fileURLToPath } from "node:url";
 // 1010: pattern-recorder / topbar wave (2bd7349) pushed the measured entry to
 // 1004 KB. Conscious bump to keep main buildable mid-wave — re-tighten by
 // lazy-chunking the recorder UI once the wave settles.
-const ENTRY_BUDGET_KB = 1010;
+// 1030: preset loudness normalization map (199 entries, ~7 KB) + the engine
+// norm stage join the entry by design — the map must load with the engine so
+// every chain build sees the same gains.
+const ENTRY_BUDGET_KB = 1030;
 const TOTAL_BUDGET_KB = 2400;
 // 150: deliberate bump (was 120 — the gate had been red since kaskada's
 // 32-band spectral DSP landed in the core bundle at ~137 KB). The de-cramped

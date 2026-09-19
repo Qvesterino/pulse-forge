@@ -12,6 +12,8 @@ import { createDefaultProject, migrateProject, normalizeProject, validateProject
 import { TEMPLATES, createProjectFromTemplate } from "./project-model/templates";
 import { FACTORY_PRESETS } from "./presets/factory";
 import { FACTORY_ASSETS } from "./sample-library/manifest";
+import { FACTORY_PRESET_LOUDNESS, NON_DETERMINISTIC_PRESETS } from "./presets/preset-loudness.generated";
+import { analyzeLoudnessBuffer } from "./audio-engine/kweighting";
 import { applyInstrumentPreset } from "./commands/commands";
 import { PPQ } from "./project-model/types";
 import { loadAllWorklets, isWorkletReady } from "./audio-worklets/loader";
@@ -104,6 +106,7 @@ async function renderThrough(type: EffectType, paramsOverride: Record<string, nu
  */
 export async function auditFactoryPresetAudio(bank: SampleBank): Promise<CheckResult> {
   const failures: string[] = [];
+  const loudnessDrift: string[] = [];
   let rendered = 0;
 
   for (const preset of FACTORY_PRESETS) {
@@ -147,6 +150,25 @@ export async function auditFactoryPresetAudio(bank: SampleBank): Promise<CheckRe
           ).toFixed(3)}%`,
         );
       }
+      // Loudness-map drift gate: the generated measurement (see
+      // scripts/measure-preset-loudness.mjs) must still describe this preset.
+      // If a preset edit moves its audition loudness by more than the
+      // tolerance, the map is stale — regenerate it. Compared
+      // measurement-vs-measurement so clamp saturation at ±18 dB cannot
+      // false-positive. Order-dependent engines (flagged by the generator)
+      // scatter between contexts — skipped until they are deterministic.
+      const channels = Array.from({ length: buffer.numberOfChannels }, (_, channel) => buffer.getChannelData(channel));
+      const reading = analyzeLoudnessBuffer(channels, SR);
+      const mapped = FACTORY_PRESET_LOUDNESS[preset.id];
+      const nondeterministic = NON_DETERMINISTIC_PRESETS.includes(preset.id);
+      if (!nondeterministic && reading.measured && mapped !== undefined) {
+        const drift = Math.abs(reading.integrated - mapped);
+        if (reading.integrated > -70 && drift > 2.5) {
+          loudnessDrift.push(
+            `${preset.id}: measures ${reading.integrated.toFixed(1)} LUFS, map recorded ${mapped.toFixed(1)} — run npm run presets:loudness`,
+          );
+        }
+      }
     } catch (error) {
       failures.push(`${preset.id}: ${String(error)}`);
     } finally {
@@ -155,12 +177,14 @@ export async function auditFactoryPresetAudio(bank: SampleBank): Promise<CheckRe
   }
 
   return {
-    name: "presets: every factory audition is finite, audible and unclipped",
-    ok: failures.length === 0 && rendered === FACTORY_PRESETS.length,
+    name: "presets: auditions finite/unclipped + loudness map in sync",
+    ok: failures.length === 0 && loudnessDrift.length === 0 && rendered === FACTORY_PRESETS.length,
     message:
-      failures.length === 0
+      failures.length === 0 && loudnessDrift.length === 0
         ? `passed=${rendered}/${FACTORY_PRESETS.length}`
-        : `passed=${rendered}/${FACTORY_PRESETS.length} failures=${failures.slice(0, 12).join(" | ")}`,
+        : `passed=${rendered}/${FACTORY_PRESETS.length}` +
+          `${failures.length ? ` failures=${failures.slice(0, 8).join(" | ")}` : ""}` +
+          `${loudnessDrift.length ? ` drift=${loudnessDrift.slice(0, 6).join(" | ")}` : ""}`,
   };
 }
 
@@ -184,6 +208,10 @@ export async function runChecks(): Promise<CheckResult[]> {
   );
   const silentAssets = bank.entries().filter(([, buf]) => peakOf(buf.getChannelData(0)) < 0.001);
   check("factory buffers are audible", silentAssets.length === 0, silentAssets.map(([id]) => id).join(","));
+  // The app's live bank carries the curated layer (services boot) — the
+  // preset audit must measure the sound users actually hear, not the synth
+  // fallback. Sampler/texture probes sample curated overrides directly.
+  await loadCuratedLayer(bank);
   results.push(await auditFactoryPresetAudio(bank));
 
   {
