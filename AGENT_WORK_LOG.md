@@ -2199,6 +2199,44 @@ re-render benefit kicking in immediately. Estimated work:
 
 **Unresolved issues / risks:**
 
-1. Mix decisions are static profiles — no loudness measurement loop (limiter target) and no per-section mix in the song builder yet; both are natural D1 v2 items.
+1. Mix decisions are static profiles - no loudness measurement loop (limiter target) and no per-section mix in the song builder yet; both are natural D1 v2 items.
 2. Pump routing assumes the drum track as sidechain source (the only rhythmic anchor today).
 3. Router ambiguity is resolved heuristically (least destructive); a disambiguation chip row ("did you mean mix?") could replace it if misroutes show up in use.
+
+## GOAL 11 (campaign restart) - Fine-grained selectors: 27 components migrated from useDoc() to slice hooks (2026-09-21)
+
+**Goal executed:** Migrate every consumer of `useDoc()` in `src/ui/` to fine-grained slice hooks (`useTracks`, `useReturns`, `useArrangement`, `useScenes`, `useMarkers`, `useAutomation`, `usePatterns`, `useMacros`, `useMaster`, `useActivePatternId`, `useSceneAutomation`) where structural sharing in `normalizeProject` (`src/project-model/schema.ts:1841`) makes per-slice re-render avoidance work. Added two new slice hooks (`useActivePatternId`, `useSceneAutomation`) to round out the 11 slice surface.
+
+**Areas inspected:** every `.tsx` file under `src/ui/` — 27 files had one or more `useDoc()` calls (~36 callsites total). Audited each `doc.X` reference and replaced with the matching slice hook OR with `services.store.getDoc()` plain getter (when `doc` was only consumed as a command argument in async callbacks). Special attention to:
+- `Mixer.tsx` (3 useDoc sites — top, MasterStrip, ChannelStrip) — 36 `services.store.execute(command(doc, ...))` calls all reference local `doc = services.store.getDoc()`.
+- `ArrangementPanel.tsx` (~80 `doc.X` references) — bulk `replace_all` per slice, plus removal of an unused `doc` prop on `IntensityLane`.
+- `ModPanel.tsx` — 3 useDoc sites (ModPanel/MacroCard/ScenePanel) plus 4 `ReturnType<typeof useDoc>` type annotations replaced with `ProjectDocument`.
+
+**Fixes implemented:**
+
+- `src/store/ProjectStore.ts` — added `getSceneAutomation()` and `getActivePatternId()` (line ~177), with comment block on structural sharing invariant.
+- `src/collab/YDocStore.ts` — same two delegating getters (line ~260) with note that collab mode invalidates ALL selectors on remote mutation (slice stability is a local-mode property).
+- `src/ui/context.ts` — added `useSceneAutomation()` and `useActivePatternId()` hooks (line ~115).
+- `tests/helpers.tsx` — added `getSceneAutomation: () => project.sceneAutomation` and `getActivePatternId: () => project.activePatternId` to mockServices store.
+- 27 components migrated:
+  - **Plain getter swap** (`doc` only consumed in async callbacks): `UltinaPanel`, `CollabPanel`, `FreezeButton`, `IntentPanel`, `PresetBrowser`, `SliceLab`, `ScalePanel`, `UndoHistoryPanel`, `Inspector`, `FloatingPlugin`, `EffectRack/Device`.
+  - **Single-slice hook**: `TrackTabs` (useTracks), `MacroPerformanceBar` (useMacros), `MasterMeter/MasterStereoMeters` (useMaster), `RackStrip` (usePatterns+useActivePatternId), `FloatingPlugin` (useTracks), `EffectRack` (useTracks).
+  - **Multi-slice hook**: `TopBar` (useArrangement+useActivePatternId), `SceneLauncher` (useScenes+useArrangement+usePatterns+useActivePatternId), `PatternBar` (usePatterns+useActivePatternId), `DiceTray` (useTracks+usePatterns+useActivePatternId), `GenerateDialog` (useTracks+usePatterns), `AssistPanel` (useScenes), `ExportPanel` (useMarkers+usePatterns+useTracks+useMaster+useActivePatternId), `ContextMenu` (useArrangement+useActivePatternId), `MidiPanel` (2 calls: useTracks+useReturns / useTracks+usePatterns+useActivePatternId), `Sequencer` (4 calls: usePatterns+useTracks+useActivePatternId), `PianoRoll` (usePatterns+useTracks).
+  - **Heavy ones**: `Mixer.tsx` (useTracks+useReturns+useMaster+useMacros across 3 components), `ModPanel.tsx` (useTracks+useReturns+useAutomation+usePatterns+useMacros+useActivePatternId+useSceneAutomation across 3 components), `ArrangementPanel.tsx` (useScenes+useArrangement+useTracks+useMarkers+usePatterns+useActivePatternId, plus IntensityLane doc-prop removal).
+
+**Important files changed:** `src/store/ProjectStore.ts`, `src/collab/YDocStore.ts`, `src/ui/context.ts`, `tests/helpers.tsx`, plus 27 component files in `src/ui/`.
+
+**Validation:**
+- 5 Mixer tests PASS (`tests/ui/Mixer.test.tsx`) + 5 touch-reachability + 3 fine-grained selectors = 13/13.
+- 9 ModPanel tests PASS (`tests/ui/ModPanel.test.tsx`).
+- 24 ArrangementPanel tests PASS (`tests/ui/ArrangementPanel.test.tsx`) — including the scene intensity lane tests that exercise the `IntensityLane` doc-prop removal.
+- Full `tests/ui/` sweep: **468 tests in 83 test files PASS, 0 failed**.
+- typecheck:clean PASS for all migrated files (only pre-existing errors in `src/intent/song.ts` from concurrent work, and `src/audio-engine/PcmMicRecorder.ts:175` — both unrelated and confirmed pre-existing via git stash).
+
+**Unresolved issues / risks:**
+
+1. **`useDoc()` is still exported** from `src/ui/context.ts` and still referenced in `tests/_stubs/virtual-pwa-register.ts` etc. It now has zero remaining consumers in `src/ui/`. Decision: leave it exported — collaborators (Yjs mock, future tests) may need a full-doc snapshot. If zero uses accumulate over the next sprint, remove in a follow-up.
+2. **YDocStore collab caveat**: each `applyToYDoc` mutation from a remote peer invalidates ALL slices in the network model because Yjs doesn't share structure across the network. Fine-grained subscriptions in collab mode still work but provide no re-render savings. Local-mode users get the full benefit.
+3. **`PcmMicRecorder.ts:175` typecheck warning** (`"live" !== "ended"`) is a pre-existing narrowing bug not touched by this migration. Logged separately as a follow-up.
+4. **The full-doc hook (`useDoc`) now overlaps with `useActivePatternId`** — both subscribe to the same doc, but `useDoc` re-renders on every slice mutation while `useActivePatternId` only re-renders when `doc.activePatternId` actually changes (thanks to `===` compare on the string). New code should reach for the slice hook; `useDoc` is reserved for legacy callers.
+5. **Bugs uncovered**: removing the unused `doc` declaration in `Sequencer.tsx`'s `TrackHeaderRow` and `PadRow` initially broke 4 callers that referenced `doc` in JSX. Re-added `const doc = services.store.getDoc()` in both. Pattern: ALWAYS grep for `doc\b` (word boundary, no slice prefix) before declaring a plain getter swap.

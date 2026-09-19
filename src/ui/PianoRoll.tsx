@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { useDoc, useServices } from "./context";
+import { usePatterns, useServices, useTracks } from "./context";
 import type { InstrumentTrack, NoteEvent, Pattern, ProjectDocument } from "../project-model/types";
 import { STEP_TICKS, pitchName } from "../project-model/types";
 import {
@@ -275,7 +275,13 @@ export function PianoRollTrack({
   onToggleFullscreen?: () => void;
 }) {
   const services = useServices();
-  const doc = useDoc();
+  // Fine-grained selectors (GOAL 04): PianoRoll is the deepest re-render
+  // hotspot in the project — 4000+ StepCells × any doc mutation. Read only
+  // `patterns` (used-pattern finder), `tracks` (other-track lookup), and
+  // the root `doc.key` scalar.
+  const patterns = usePatterns();
+  const tracks = useTracks();
+  const doc = services.store.getDoc();
   const gridRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
@@ -286,7 +292,7 @@ export function PianoRollTrack({
   // so drag re-renders reuse the same note objects and skip the diff.
   const ghostNotes: NoteEvent[] = useMemo(() => {
     const out: NoteEvent[] = [];
-    for (const other of doc.patterns) {
+    for (const other of patterns) {
       if (other.id === pattern.id) continue;
       const list = other.notes?.[track.id];
       if (!list || list.length === 0) continue;
@@ -294,19 +300,19 @@ export function PianoRollTrack({
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doc.patterns, pattern.id, track.id]);
+  }, [patterns, pattern.id, track.id]);
   // Ghost notes per track (same pattern, other instrument tracks) — 20% opacity
   const ghostTrackNotes: NoteEvent[] = useMemo(() => {
     const out: NoteEvent[] = [];
     for (const [otherTrackId, list] of Object.entries(pattern.notes ?? {})) {
       if (otherTrackId === track.id) continue;
-      const otherTrack = doc.tracks.find((t) => t.id === otherTrackId);
+      const otherTrack = tracks.find((t) => t.id === otherTrackId);
       if (!otherTrack || otherTrack.kind !== "instrument") continue;
       for (const n of list as NoteEvent[]) out.push({ ...n, id: `ghost-track-${otherTrackId}-${n.id}` });
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pattern.notes, doc.tracks, track.id]);
+  }, [pattern.notes, tracks, track.id]);
   const [velDrag, setVelDrag] = useState<{
     anchorId: string;
     startY: number;

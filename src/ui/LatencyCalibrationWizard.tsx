@@ -1,7 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useLatencyCalibration, useServices } from "./context";
 import { AudioLatencyCalibrationError, measureAudioRoundTrip } from "../audio-engine/latencyProbe";
 import { MAX_MIDI_REFERENCE_OFFSET_MS, MIN_MIDI_REFERENCE_OFFSET_MS } from "../audio-engine/latencyCalibration";
+import {
+  MAX_RECORDING_INPUT_OFFSET_MS,
+  MIN_RECORDING_INPUT_OFFSET_MS,
+  recordingAlignment,
+} from "../audio-engine/recordingAlignment";
 
 type WizardPhase = "intro" | "permission" | "audio" | "audio-result" | "midi" | "error";
 
@@ -18,6 +23,11 @@ interface LatencyCalibrationWizardProps {
 export function LatencyCalibrationWizard({ open, onClose }: LatencyCalibrationWizardProps) {
   const services = useServices();
   const calibration = useLatencyCalibration();
+  const recordingInputOffsetMs = useSyncExternalStore(
+    recordingAlignment.subscribe,
+    recordingAlignment.getSnapshot,
+    recordingAlignment.getSnapshot,
+  );
   const [phase, setPhase] = useState<WizardPhase>("intro");
   const [error, setError] = useState("");
   const [testPlaying, setTestPlaying] = useState(false);
@@ -112,6 +122,7 @@ export function LatencyCalibrationWizard({ open, onClose }: LatencyCalibrationWi
     audioAbortRef.current = null;
     restorePlayback(services, playbackSnapshotRef.current);
     services.latency.reset();
+    recordingAlignment.reset();
     setPhase("intro");
     setError("");
     setTestPlaying(false);
@@ -260,6 +271,23 @@ export function LatencyCalibrationWizard({ open, onClose }: LatencyCalibrationWi
                 aria-label="MIDI reference offset"
                 onChange={(event) => services.latency.setMidiReferenceOffsetMs(Number(event.target.value))}
               />
+            </label>
+            <label className="latency-offset-control">
+              <span>MIC RECORDING OFFSET</span>
+              <output>{recordingInputOffsetMs} ms</output>
+              <input
+                type="range"
+                min={MIN_RECORDING_INPUT_OFFSET_MS}
+                max={MAX_RECORDING_INPUT_OFFSET_MS}
+                step={1}
+                value={recordingInputOffsetMs}
+                aria-label="Microphone recording offset"
+                onChange={(event) => recordingAlignment.setOffsetMs(Number(event.target.value))}
+              />
+              <span className="latency-hint">
+                Manual input correction: positive values move recorded clips earlier. The round-trip test above is not
+                applied automatically.
+              </span>
             </label>
             <div className="latency-actions">
               <button type="button" className="btn btn-small active-solo" onClick={closeWizard}>

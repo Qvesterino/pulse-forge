@@ -169,6 +169,12 @@ export function etiquetteFor(role: SceneRole | null, progress: number): Etiquett
       };
     case "fill":
       return { densityScale: 1, allow: ALL_PADS, fill: true };
+    case "verse":
+      return { densityScale: 0.85, allow: ALL_PADS, fill: false };
+    case "chorus":
+      return { densityScale: 1, allow: ALL_PADS, fill: p >= 0.9 };
+    case "bridge":
+      return { densityScale: 0.4, allow: { kick: false, snare: false, hat: true, perc: true }, fill: false };
     case "drop":
     case "custom":
     case null:
@@ -180,7 +186,7 @@ export function etiquetteFor(role: SceneRole | null, progress: number): Etiquett
 /** Older scenes carry no role — infer the obvious ones from the name. */
 function roleFromName(name: string): SceneRole | null {
   const n = name.toLowerCase();
-  for (const r of ["intro", "build", "drop", "break", "outro", "fill"] as const) {
+  for (const r of ["intro", "build", "drop", "break", "outro", "fill", "verse", "chorus", "bridge"] as const) {
     if (n.includes(r)) return r;
   }
   return null;

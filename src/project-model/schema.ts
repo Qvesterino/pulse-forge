@@ -442,7 +442,10 @@ export function inferSceneRole(name: unknown): SceneRole | undefined {
   const normalized = name.trim().toLowerCase();
   if (/^(intro|opening)\b/.test(normalized)) return "intro";
   if (/^(build|buildup|lift)\b/.test(normalized)) return "build";
-  if (/^(drop|chorus|main)\b/.test(normalized)) return "drop";
+  if (/^(drop|main)\b/.test(normalized)) return "drop";
+  if (/^(chorus|hook)\b/.test(normalized)) return "chorus";
+  if (/^(verse)\b/.test(normalized)) return "verse";
+  if (/^(bridge)\b/.test(normalized)) return "bridge";
   if (/^(break|breakdown)\b/.test(normalized)) return "break";
   if (/^(outro|ending|end)\b/.test(normalized)) return "outro";
   if (/^(fill|transition)\b/.test(normalized)) return "fill";

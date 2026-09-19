@@ -59,8 +59,13 @@ export function deaccent(value: string): string {
 const ROLE_SYNONYMS: Array<[ArrangeRole, RegExp]> = [
   ["intro", /\b(intro|uvod)\b/],
   ["build", /\b(build|build-?up|buildup|riser|stavb)/],
-  ["drop", /\b(drop|chorus|hook)\b/],
-  ["break", /\b(break|breakdown|bridge|brejk|most)\b/],
+  // Songwriting roles are FIRST-CLASS now (A2 v2) — "chorus" no longer falls
+  // back to drop and "bridge" no longer to break.
+  ["chorus", /\b(chorus|hook|refren)\b/],
+  ["verse", /\b(verse|zloha)\b/],
+  ["bridge", /\b(bridge|most|mostik)\b/],
+  ["drop", /\bdrop\b/],
+  ["break", /\b(break|breakdown|brejk)\b/],
   ["outro", /\b(outro|ending|zaver|koncovka)\b/],
   ["fill", /\b(fill|veto)\b/],
 ];

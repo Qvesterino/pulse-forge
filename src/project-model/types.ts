@@ -455,7 +455,18 @@ export interface GrooveSettings {
 
 export type PlayMode = "pattern" | "song";
 
-export type SceneRole = "intro" | "build" | "drop" | "break" | "outro" | "fill" | "custom";
+export type SceneRole =
+  | "intro"
+  | "build"
+  | "drop"
+  | "break"
+  | "outro"
+  | "fill"
+  /** Songwriting roles (A2 v2): first-class verse/chorus/bridge. */
+  | "verse"
+  | "chorus"
+  | "bridge"
+  | "custom";
 
 export type ArrangementTransitionType = "fill" | "riser" | "impact" | "drop" | "break" | "custom";
 

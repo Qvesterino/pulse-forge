@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useDoc, useServices } from "./context";
+import { useMaster, useServices } from "./context";
 import type { ChannelLevels } from "../audio-engine/metering";
 import { registerRaf, unregisterRaf } from "../services/rafLoop";
 import { evaluateMasterVerdict, evaluateMixCheck, MIN_DB } from "../audio-engine/metering";
@@ -37,9 +37,10 @@ const TARGET_LABELS: Record<number, string> = { 14: "SPOTIFY", 12: "YOUTUBE", 9:
  */
 export function MasterMeter() {
   const services = useServices();
-  const doc = useDoc();
-  const ceilingDb = doc.master.ceilingDb;
-  const lufsTarget = doc.master.lufsTarget ?? -14;
+  // Fine-grained selector (GOAL 04): MasterMeter only reads master config.
+  const master = useMaster();
+  const ceilingDb = master.ceilingDb;
+  const lufsTarget = master.lufsTarget ?? -14;
   const [state, setState] = useState<ReadState>({
     left: { ...EMPTY },
     right: { ...EMPTY },
@@ -205,7 +206,9 @@ export function MasterMeter() {
             <span className="master-verdict-target-label">TARGET</span>
             <select
               value={String(lufsTarget)}
-              onChange={(e) => services.store.execute(setMasterConfig(doc, { lufsTarget: Number(e.target.value) }))}
+              onChange={(e) =>
+                services.store.execute(setMasterConfig(services.store.getDoc(), { lufsTarget: Number(e.target.value) }))
+              }
               aria-label="LUFS target"
             >
               <option value="-14">-14 LUFS (Spotify)</option>
@@ -244,9 +247,9 @@ export function MasterMeter() {
                 if (!Number.isFinite(peak) || peak <= -60) return;
                 const targetPeak = ceilingDb - 6;
                 const delta = targetPeak - peak;
-                const currentGain = doc.master.masterGain ?? 1;
+                const currentGain = master.masterGain ?? 1;
                 const newGain = Math.max(0, Math.min(2, currentGain * Math.pow(10, delta / 20)));
-                services.store.execute(setMasterConfig(doc, { masterGain: newGain }));
+                services.store.execute(setMasterConfig(services.store.getDoc(), { masterGain: newGain }));
               }}
             >
               AUTO -6dB
@@ -304,8 +307,8 @@ interface StereoState {
  */
 export function MasterStereoMeters() {
   const services = useServices();
-  const doc = useDoc();
-  const ceilingDb = doc.master.ceilingDb;
+  const master = useMaster();
+  const ceilingDb = master.ceilingDb;
   const [state, setState] = useState<StereoState>({
     left: { ...EMPTY },
     right: { ...EMPTY },

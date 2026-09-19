@@ -32,6 +32,10 @@ export function createTapeNode(ctx: BaseAudioContext, instance: { params: Record
   return {
     input,
     output,
+    // 4× oversampling FIR cascade: 32 samples of group delay at 4× =
+    // exactly 8 base-rate samples (the dry path inside is aligned too —
+    // this is only so the engine's PDC can align OTHER chains with us).
+    getLatencySec: () => 8 / ctx.sampleRate,
     setParameter: (id, v) => setParam(id, v, ctx.currentTime),
     setParameterAt: (id, v, when) => setParam(id, v, when),
     getAudioParam: (paramId: string) => node.parameters.get(paramId) ?? null,

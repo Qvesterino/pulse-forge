@@ -12,6 +12,7 @@ export interface PcmRecordingMetadata {
   placeOnTimeline?: boolean;
   startBar: number;
   bpm: number;
+  recordingInputOffsetMs?: number;
 }
 
 export type PcmRecorderState = "idle" | "starting" | "recording" | "stopping";
@@ -46,6 +47,8 @@ export class PcmMicRecorder {
   private source: MediaStreamAudioSourceNode | null = null;
   private node: AudioWorkletNode | null = null;
   private muteGain: GainNode | null = null;
+  private monitorGain: GainNode | null = null;
+  private monitoringEnabled = false;
   private session: RecordingSession | null = null;
   private nextChunkSequence = 0;
   private writeTail: Promise<void> = Promise.resolve();
@@ -65,6 +68,16 @@ export class PcmMicRecorder {
 
   get state(): PcmRecorderState {
     return this.state_;
+  }
+
+  /** Enable a dry, direct mic path independently of the silent capture worklet output. */
+  setMonitoring(enabled: boolean): void {
+    this.monitoringEnabled = enabled;
+    const gain = this.monitorGain?.gain;
+    if (!gain) return;
+    const now = this.deps.ctx.currentTime;
+    gain.cancelScheduledValues(now);
+    gain.setTargetAtTime(enabled ? 1 : 0, now, 0.01);
   }
 
   get elapsedSeconds(): number {
@@ -127,6 +140,8 @@ export class PcmMicRecorder {
       });
       this.muteGain = ctx.createGain();
       this.muteGain.gain.value = 0;
+      this.monitorGain = ctx.createGain();
+      this.monitorGain.gain.value = this.monitoringEnabled ? 1 : 0;
       const readyPromise = this.waitUntilReady();
       this.node.port.onmessage = (event: MessageEvent) => this.handleWorkletMessage(event.data);
       this.node.onprocessorerror = () =>
@@ -134,6 +149,8 @@ export class PcmMicRecorder {
       this.source.connect(this.node);
       this.node.connect(this.muteGain);
       this.muteGain.connect(ctx.destination);
+      this.source.connect(this.monitorGain);
+      this.monitorGain.connect(ctx.destination);
 
       const ready = await readyPromise;
       this.assertStartIsCurrent(token);
@@ -372,6 +389,13 @@ export class PcmMicRecorder {
         /* already disconnected */
       }
     }
+    if (this.source && this.monitorGain) {
+      try {
+        this.source.disconnect(this.monitorGain);
+      } catch {
+        /* already disconnected */
+      }
+    }
     try {
       this.node?.disconnect();
     } catch {
@@ -382,10 +406,16 @@ export class PcmMicRecorder {
     } catch {
       /* already disconnected */
     }
+    try {
+      this.monitorGain?.disconnect();
+    } catch {
+      /* already disconnected */
+    }
     this.node?.port.close();
     this.node = null;
     this.source = null;
     this.muteGain = null;
+    this.monitorGain = null;
     this.stream?.getTracks().forEach((track) => track.stop());
     this.stream = null;
     this.track = null;

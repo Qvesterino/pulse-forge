@@ -40,11 +40,16 @@ function createRecorder() {
     getTracks: () => [track],
   } as unknown as MediaStream;
   const source = {
-    connect: (node: FakeWorkletNode) =>
-      queueMicrotask(() => node.emit({ type: "ready", channels: 1, sampleRate: 48_000 })),
+    connect: vi.fn((node: unknown) => {
+      if (node === lastNode) queueMicrotask(() => lastNode?.emit({ type: "ready", channels: 1, sampleRate: 48_000 }));
+    }),
     disconnect: vi.fn(),
   };
-  const gain = { gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() };
+  const gains: Array<{
+    gain: { value: number; cancelScheduledValues: ReturnType<typeof vi.fn>; setTargetAtTime: ReturnType<typeof vi.fn> };
+    connect: ReturnType<typeof vi.fn>;
+    disconnect: ReturnType<typeof vi.fn>;
+  }> = [];
   const samples = [new Float32Array(0)];
   const context = {
     state: "running",
@@ -53,7 +58,15 @@ function createRecorder() {
     destination: {},
     audioWorklet: {},
     createMediaStreamSource: vi.fn(() => source),
-    createGain: vi.fn(() => gain),
+    createGain: vi.fn(() => {
+      const gain = {
+        gain: { value: 1, cancelScheduledValues: vi.fn(), setTargetAtTime: vi.fn() },
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+      };
+      gains.push(gain);
+      return gain;
+    }),
     createBuffer: (channels: number, frames: number, sampleRate: number) => {
       expect([channels, frames, sampleRate]).toEqual([1, 2, 48_000]);
       samples[0] = new Float32Array(frames);
@@ -81,8 +94,9 @@ function createRecorder() {
     placeOnTimeline: true,
     startBar: 2,
     bpm: 110,
+    recordingInputOffsetMs: 17,
   });
-  return { recorder, recovery, metadata, samples, track, source, gain };
+  return { recorder, recovery, metadata, samples, track, source, gains };
 }
 
 async function waitForAck(node: FakeWorkletNode): Promise<void> {
@@ -113,9 +127,13 @@ afterEach(async () => {
 describe("PcmMicRecorder", () => {
   it("records Float32 PCM, waits for durable block acknowledgement, and marks the take recoverable", async () => {
     vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
-    const { recorder, recovery, metadata, samples, track, source, gain } = createRecorder();
+    const { recorder, recovery, metadata, samples, track, source, gains } = createRecorder();
     await recorder.start(metadata);
     expect(recorder.state).toBe("recording");
+    expect(gains[1].gain.value).toBe(0); // direct monitoring is opt-in
+    recorder.setMonitoring(true);
+    expect(gains[1].gain.setTargetAtTime).toHaveBeenLastCalledWith(1, 1, 0.01);
+    expect(source.connect).toHaveBeenCalledWith(gains[1]);
     expect(lastNode?.sent).toContainEqual({ type: "start" });
 
     const pcm = new Float32Array([0.25, -1.25]);
@@ -124,11 +142,13 @@ describe("PcmMicRecorder", () => {
     const take = await recorder.stop();
 
     expect(take?.session.trackName).toBe("Lead Vocal");
+    expect(take?.session.recordingInputOffsetMs).toBe(17);
     expect(Array.from(samples[0])).toEqual([0.25, -1.25]);
     await expect(recovery.get(take!.session.id)).resolves.toMatchObject({ status: "recoverable", totalFrames: 2 });
     expect(track.stop).toHaveBeenCalledOnce();
-    expect(source.disconnect).toHaveBeenCalledOnce();
-    expect(gain.disconnect).toHaveBeenCalledOnce();
+    expect(source.disconnect).toHaveBeenCalledTimes(2);
+    expect(gains[0].disconnect).toHaveBeenCalledOnce();
+    expect(gains[1].disconnect).toHaveBeenCalledOnce();
   });
 
   it("keeps committed audio staged when the panel cancels/unmounts", async () => {
@@ -145,6 +165,18 @@ describe("PcmMicRecorder", () => {
 
     await recorder.cancel();
     await expect(recovery.listRecoverable()).resolves.toMatchObject([{ totalFrames: 2, status: "recoverable" }]);
+  });
+
+  it("honors monitoring enabled before capture starts and cleans up the dry route", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
+    const { recorder, metadata, gains, track } = createRecorder();
+    recorder.setMonitoring(true);
+    await recorder.start(metadata);
+
+    expect(gains[1].gain.value).toBe(1);
+    await recorder.cancel();
+    expect(gains[1].disconnect).toHaveBeenCalledOnce();
+    expect(track.stop).toHaveBeenCalledOnce();
   });
 
   it("stops itself on microphone loss and preserves committed PCM for recovery", async () => {

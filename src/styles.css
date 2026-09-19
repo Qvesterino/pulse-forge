@@ -70,8 +70,11 @@ button {
   overflow: visible;
   gap: 10px;
   padding: 0 14px;
-  background: var(--bg-panel);
+  background: linear-gradient(180deg, var(--bg-panel), color-mix(in srgb, var(--bg-panel) 88%, #000));
   border-bottom: 1px solid var(--border);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 1px 12px rgba(0, 0, 0, 0.35);
 }
 
 .brand {
@@ -86,13 +89,16 @@ button {
   place-items: center;
   width: 26px;
   height: 26px;
-  background: var(--accent);
+  background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 78%, #fff), var(--accent));
   color: #141008;
   font-family: var(--mono);
   font-weight: 700;
   font-size: 11px;
-  border-radius: 3px;
+  border-radius: 5px;
   letter-spacing: -0.5px;
+  box-shadow:
+    0 0 12px color-mix(in srgb, var(--accent) 45%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
 
 .brand-name {
@@ -100,15 +106,20 @@ button {
   font-weight: 700;
   letter-spacing: 2.5px;
   color: var(--text);
+  text-shadow: 0 0 12px color-mix(in srgb, var(--accent) 25%, transparent);
 }
 
 .transport-cluster {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 9px;
+  padding: 3px 9px;
   border-left: 1px solid var(--border-soft);
   border-right: 1px solid var(--border-soft);
+  /* Recessed console plate: the transport reads as one instrument cluster. */
+  background: rgba(0, 0, 0, 0.16);
+  border-radius: 8px;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.35);
   /* Anchor for the floating song-mode guard chip (.mode-hint). */
   position: relative;
 }
@@ -124,10 +135,12 @@ button {
   border-radius: 4px;
   font-size: 12px;
   color: var(--text-dim);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
   transition:
     background 0.12s,
     color 0.12s,
-    border-color 0.12s;
+    border-color 0.12s,
+    box-shadow 0.12s;
 }
 
 .btn:hover {
@@ -138,12 +151,17 @@ button {
 .btn-play {
   color: var(--play);
   font-size: 13px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .btn-play.active {
-  background: rgba(74, 222, 128, 0.12);
-  border-color: rgba(74, 222, 128, 0.45);
-  color: var(--play);
+  background: rgba(74, 222, 128, 0.14);
+  border-color: rgba(74, 222, 128, 0.55);
+  color: #86efac;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 0 14px rgba(74, 222, 128, 0.45);
+  text-shadow: 0 0 8px rgba(74, 222, 128, 0.8);
 }
 
 /* MIDI record arm — red dot, pulses while armed so the state is unmistakable
@@ -157,6 +175,7 @@ button {
   background: rgba(248, 113, 113, 0.16);
   border-color: #f87171;
   color: #fecaca;
+  box-shadow: 0 0 12px rgba(248, 113, 113, 0.5);
   animation: record-arm-pulse 1.1s ease-in-out infinite alternate;
 }
 
@@ -187,6 +206,9 @@ button {
   background: var(--accent-soft);
   border-color: rgba(245, 158, 11, 0.45);
   color: var(--accent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 0 10px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 .btn-stop {
@@ -237,14 +259,20 @@ button {
 
 .position-display {
   font-family: var(--mono);
-  font-size: 14px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
   color: var(--text);
-  min-width: 64px;
+  min-width: 72px;
   text-align: center;
-  background: var(--bg);
+  background: linear-gradient(180deg, #0a0b0e, #050608);
   border: 1px solid var(--border-soft);
-  border-radius: 4px;
+  border-radius: 5px;
   padding: 5px 8px;
+  box-shadow:
+    inset 0 1px 4px rgba(0, 0, 0, 0.6),
+    inset 0 0 12px color-mix(in srgb, var(--accent) 6%, transparent);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
 .drag-number {
@@ -10050,6 +10078,12 @@ html {
     grid-template-rows: auto minmax(0, 1fr);
     max-height: 420px;
     overflow-y: auto;
+  }
+}
+
+@container bottom-dock-slot (max-width: 980px) {
+  .midi-creative-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 .bottom-panels .dock-resize-handle {

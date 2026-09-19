@@ -44,6 +44,11 @@ export default defineConfig({
       "**/node_modules/**",
       "**/dist/**",
       "**/.{idea,git,cache,output,temp}/**",
+      // `.kilo/worktrees/**` holds stale *git worktrees* (ignored by git via
+      // `.git/info/exclude` but not by vitest). Without this, a full run
+      // collects ~189 duplicate spec files from the old checkout, roughly
+      // doubles wall clock, and flakes on hook timeouts under co-tenant load.
+      "**/.kilo/**",
       "tests/e2e/**",
     ],
   },

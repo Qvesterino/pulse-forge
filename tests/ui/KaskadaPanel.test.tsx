@@ -121,7 +121,7 @@ describe("KaskadaPanel", () => {
     renderWithContext(<KaskadaPanel trackId="t1" fxId="fx1" params={{ toneLp: 4500, toneHp: 150 }} degraded={true} />, {
       services,
     });
-    expect(screen.getByText(/bypassed — no analysis/)).toBeInTheDocument();
+    expect(screen.getByText(/bypassed — no analysis/i)).toBeInTheDocument();
   });
 });
 

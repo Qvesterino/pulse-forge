@@ -68,10 +68,11 @@ import { analyzeLoopForFlip, buildFlipOptions, flipSeed } from "../ai/flip";
 import { userSampleId } from "../persistence/UserSampleRepository";
 import type { RecordingSession } from "../persistence/RecordingRecoveryRepository";
 import { materializePcmTake } from "../audio-engine/pcmRecording";
+import { recordingAlignment } from "../audio-engine/recordingAlignment";
 import { buildBounceZoneDoc } from "../rendering/bounce";
 import { renderProject } from "../rendering/renderer";
 import { encodeWav } from "../rendering/wav";
-import { clipLengthBars, recordingStartBar } from "./timelineRec";
+import { addRecordedAudioClip, clipLengthBars, compensateRecordingStartBar, recordingStartBar } from "./timelineRec";
 import { usePlayheadBar } from "./playhead";
 import { SceneLauncher, useSceneRuntimeState } from "./SceneLauncher";
 
@@ -144,6 +145,9 @@ const SCENE_ROLES: Array<{ value: SceneRole | ""; label: string }> = [
   { value: "break", label: "BREAK" },
   { value: "outro", label: "OUTRO" },
   { value: "fill", label: "FILL" },
+  { value: "verse", label: "VERSE" },
+  { value: "chorus", label: "CHORUS" },
+  { value: "bridge", label: "BRIDGE" },
   { value: "custom", label: "CUSTOM" },
 ];
 const TRANSITION_TYPES: ArrangementTransitionType[] = ["fill", "riser", "impact", "drop", "break", "custom"];
@@ -233,6 +237,7 @@ export function ArrangementPanel() {
   const [armedTrackId, setArmedTrackId] = useState<string>("");
   const [recState, setRecState] = useState<"idle" | "recording" | "saving">("idle");
   const [recSeconds, setRecSeconds] = useState(0);
+  const [micMonitoring, setMicMonitoring] = useState(false);
   const [recError, setRecError] = useState<string | null>(null);
   const recRef = useRef<import("../audio-engine/PcmMicRecorder").PcmMicRecorder | null>(null);
   const stoppingRecRef = useRef(false);
@@ -355,6 +360,7 @@ export function ArrangementPanel() {
       // Publish ownership before the permission prompt/async start so an
       // unmount or a second REC action can cancel this exact pending take.
       recRef.current = rec;
+      rec.setMonitoring(micMonitoring);
       const startPromise = rec.start(() => {
         const currentDoc = services.store.doc;
         const track = currentDoc.tracks.find((item) => item.id === armedTrackId);
@@ -367,6 +373,7 @@ export function ArrangementPanel() {
           placeOnTimeline: true,
           startBar,
           bpm: currentDoc.bpm,
+          recordingInputOffsetMs: recordingAlignment.getSnapshot(),
         };
       });
       rec.onError = (message) => {
@@ -430,11 +437,15 @@ export function ArrangementPanel() {
           throw new Error("The original project or armed track is no longer open");
         }
         services.store.execute(
-          addAudioClip(
+          addRecordedAudioClip(
             currentDoc,
             take.session.trackId,
             bufferId,
-            take.session.startBar,
+            compensateRecordingStartBar(
+              take.session.startBar,
+              take.session.recordingInputOffsetMs ?? 0,
+              currentDoc.bpm,
+            ),
             clipLengthBars(take.buffer.duration, currentDoc.bpm),
             {
               fadeIn: 0.005,
@@ -499,11 +510,11 @@ export function ArrangementPanel() {
       if (originalTrackExists) {
         try {
           services.store.execute(
-            addAudioClip(
+            addRecordedAudioClip(
               currentDoc,
               session.trackId,
               bufferId,
-              session.startBar,
+              compensateRecordingStartBar(session.startBar, session.recordingInputOffsetMs ?? 0, currentDoc.bpm),
               clipLengthBars(take.buffer.duration, currentDoc.bpm),
               { fadeIn: 0.005, fadeOut: 0.02 },
             ),
@@ -1233,6 +1244,19 @@ export function ArrangementPanel() {
                 </option>
               ))}
             </select>
+            <button
+              type="button"
+              className={`btn btn-small${micMonitoring ? " active-solo" : ""}`}
+              aria-pressed={micMonitoring}
+              title="Dry direct mic monitoring. Headphones recommended; speakers can cause feedback."
+              onClick={() => {
+                const next = !micMonitoring;
+                setMicMonitoring(next);
+                recRef.current?.setMonitoring(next);
+              }}
+            >
+              {micMonitoring ? "DRY MON ON" : "DRY MON OFF"}
+            </button>
             {recState === "recording" ? (
               <button type="button" className="btn btn-small btn-rec btn-rec-stop" onClick={() => void stopRec()}>
                 ■ STOP {recSeconds.toFixed(0)}s

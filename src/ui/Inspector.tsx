@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react";
-import { useDoc, useServices } from "./context";
+import { useServices } from "./context";
 import {
   resetPadSlice,
   setPadMod,
@@ -68,7 +68,7 @@ export function Inspector({
   onOpenPlugin?: () => void;
 }) {
   const services = useServices();
-  const doc = useDoc();
+  const doc = services.store.getDoc();
   const [sliceLabOpen, setSliceLabOpen] = useState(false);
   const [advancedInstrumentControls, setAdvancedInstrumentControls] = useState(false);
   const [pendingSamplerMapping, setPendingSamplerMapping] = useState<SampleLayer[] | null>(null);
@@ -567,7 +567,7 @@ const PAD_MOD_TARGETS = [
 /** MPC-style per-pad LFO: pick a target, then wave/rate/depth (+ filter center). */
 function PadModSection({ pad }: { pad: DrumPad }) {
   const services = useServices();
-  const doc = useDoc();
+  const doc = services.store.getDoc();
   const mod = pad.mod ?? null;
   const spec = PAD_MOD_TARGETS.find((t) => t.id === mod?.target);
   const buildMod = (target: PadMod["target"]): PadMod => ({

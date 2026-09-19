@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useDoc, useServices } from "./context";
+import { useActivePatternId, usePatterns, useReturns, useServices, useTracks } from "./context";
 import {
   addMidiCcMapping,
   applyMidiCreativeTool,
@@ -44,7 +44,12 @@ export function MidiPanel({
   onClearSelection: () => void;
 }) {
   const services = useServices();
-  const doc = useDoc();
+  // Fine-grained selectors (GOAL 04): MidiPanel reads tracks + returns (for
+  // midi-target dropdowns) and the root-level optional midi config. The full
+  // doc is still needed for command arguments (targetOwner, setDrumNoteMapping).
+  const tracks = useTracks();
+  const returns = useReturns();
+  const doc = services.store.getDoc();
   // Device list is subscription-driven — a snapshot taken once at render
   // time went stale on plug/unplug until the next unrelated re-render.
   const [devices, setDevices] = useState<MidiDevice[]>(() => services.midi.getDevices());
@@ -59,12 +64,12 @@ export function MidiPanel({
     pitchBendRange: 2,
   };
 
-  const [addTrackId, setAddTrackId] = useState(doc.tracks[0]?.id ?? "");
+  const [addTrackId, setAddTrackId] = useState(tracks[0]?.id ?? "");
   const [addTarget, setAddTarget] = useState<{ kind: string; fxId?: string; paramId?: string }>({ kind: "trackGain" });
   const [addCc, setAddCc] = useState(1);
   const [latencyOpen, setLatencyOpen] = useState(false);
   const [tab, setTab] = useState<"input" | "creativity">("input");
-  const midiTargetTracks = [...doc.tracks, ...doc.returns];
+  const midiTargetTracks = [...tracks, ...returns];
   const activeAddTrackId = targetOwner(doc, addTrackId)?.id ?? midiTargetTracks[0]?.id ?? "";
 
   const toggle = () => services.store.execute(setMidiConfig(doc, { enabled: !midi.enabled }));
@@ -282,7 +287,7 @@ export function MidiPanel({
                       aria-label={`Pad for note ${m.midiNote}`}
                       onChange={(e) => services.store.execute(setDrumNoteMapping(doc, m.midiNote, e.target.value))}
                     >
-                      {doc.tracks
+                      {tracks
                         .filter((t) => t.kind === "drum")
                         .flatMap((t) =>
                           t.pads.map((p) => (
@@ -314,7 +319,7 @@ export function MidiPanel({
                       const note = Number(e.target.value);
                       if (note >= 0)
                         services.store.execute(
-                          setDrumNoteMapping(doc, note, doc.tracks.find((t) => t.kind === "drum")?.pads[0]?.id ?? ""),
+                          setDrumNoteMapping(doc, note, tracks.find((t) => t.kind === "drum")?.pads[0]?.id ?? ""),
                         );
                     }}
                   >
@@ -359,7 +364,13 @@ function MidiCreativityPanel({
   onClearSelection: () => void;
 }) {
   const services = useServices();
-  const doc = useDoc();
+  // Fine-grained selectors (GOAL 04): creativity panel reads tracks (for
+  // selected track lookup), patterns (active pattern), and the active
+  // pattern id. `doc.key` is a root scalar — read via plain getter.
+  const tracks = useTracks();
+  const patterns = usePatterns();
+  const activePatternId = useActivePatternId();
+  const doc = services.store.getDoc();
   const [chordMode, setChordMode] = useState<"diatonic" | "explicit">("diatonic");
   const [quality, setQuality] = useState<ChordQuality>("major");
   const [voicing, setVoicing] = useState<ChordVoicing>("close");
@@ -388,8 +399,8 @@ function MidiCreativityPanel({
   const [bassGate, setBassGate] = useState(0.9);
   const [error, setError] = useState<string | null>(null);
 
-  const track = doc.tracks.find((candidate) => candidate.id === selectedTrackId);
-  const pattern = doc.patterns.find((candidate) => candidate.id === doc.activePatternId);
+  const track = tracks.find((candidate) => candidate.id === selectedTrackId);
+  const pattern = patterns.find((candidate) => candidate.id === activePatternId);
   const trackNotes = track?.kind === "instrument" ? (pattern?.notes?.[track.id] ?? []) : [];
   const selectionIsForTrack = selectedNote?.trackId === selectedTrackId && selectedNote.noteIds.length > 0;
   const targetCount = selectionIsForTrack ? selectedNote!.noteIds.length : trackNotes.length;

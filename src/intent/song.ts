@@ -10,7 +10,7 @@ import { BAR_TICKS } from "../project-model/types";
 import { normalizeIntent, intentFromGenerateOptions } from "./normalize";
 import { generateOptionsFromIntent } from "./plan";
 import { generateLocalResult } from "./pipeline";
-import type { IntentInput, IntentSpec } from "./types";
+import type { IntentInput, IntentRole, IntentSpec } from "./types";
 
 /**
  * SONG BUILDER (INTENT_ENGINE.md A2) — one intent → a whole arranged song.
@@ -40,6 +40,13 @@ export interface SongSectionSpec {
   energyDelta: number;
   densityDelta: number;
   complexityDelta: number;
+  /**
+   * A2 v2 — "ako má vyzerať": which generation roles PLAY in this section.
+   * Intersected with the user's intent roles at build time, so an intro is
+   * drums+bass only, a break strips to chords+lead, a chorus is full — the
+   * arrangement is instrumentation, not just louder/quieter.
+   */
+  instrumentation: IntentRole[];
 }
 
 /** Per-genre song forms (bar counts + arrangement furniture). */
@@ -54,6 +61,7 @@ const SONG_FORMS: Record<IntentSpec["genre"], SongSectionSpec[]> = {
       energyDelta: -0.25,
       densityDelta: -0.15,
       complexityDelta: -0.1,
+      instrumentation: ["drums", "bass"],
     },
     {
       role: "build",
@@ -65,6 +73,7 @@ const SONG_FORMS: Record<IntentSpec["genre"], SongSectionSpec[]> = {
       energyDelta: 0,
       densityDelta: 0,
       complexityDelta: 0,
+      instrumentation: ["drums", "bass", "chords"],
     },
     {
       role: "drop",
@@ -76,6 +85,7 @@ const SONG_FORMS: Record<IntentSpec["genre"], SongSectionSpec[]> = {
       energyDelta: 0.3,
       densityDelta: 0.3,
       complexityDelta: 0.1,
+      instrumentation: ["drums", "bass", "chords", "lead"],
     },
     {
       role: "break",
@@ -87,6 +97,7 @@ const SONG_FORMS: Record<IntentSpec["genre"], SongSectionSpec[]> = {
       energyDelta: -0.35,
       densityDelta: -0.25,
       complexityDelta: 0,
+      instrumentation: ["chords", "lead"],
     },
     {
       role: "build",
@@ -98,6 +109,7 @@ const SONG_FORMS: Record<IntentSpec["genre"], SongSectionSpec[]> = {
       energyDelta: 0.05,
       densityDelta: 0.05,
       complexityDelta: 0.05,
+      instrumentation: ["drums", "bass", "chords"],
     },
     {
       role: "drop",
@@ -109,6 +121,7 @@ const SONG_FORMS: Record<IntentSpec["genre"], SongSectionSpec[]> = {
       energyDelta: 0.35,
       densityDelta: 0.35,
       complexityDelta: 0.1,
+      instrumentation: ["drums", "bass", "chords", "lead"],
     },
     {
       role: "outro",
@@ -119,6 +132,7 @@ const SONG_FORMS: Record<IntentSpec["genre"], SongSectionSpec[]> = {
       energyDelta: -0.2,
       densityDelta: -0.1,
       complexityDelta: 0,
+      instrumentation: ["drums", "bass"],
     },
   ],
   techno: [
@@ -131,6 +145,7 @@ const SONG_FORMS: Record<IntentSpec["genre"], SongSectionSpec[]> = {
       energyDelta: -0.2,
       densityDelta: -0.2,
       complexityDelta: -0.1,
+      instrumentation: ["drums", "bass"],
     },
     {
       role: "build",
@@ -142,6 +157,7 @@ const SONG_FORMS: Record<IntentSpec["genre"], SongSectionSpec[]> = {
       energyDelta: 0,
       densityDelta: 0,
       complexityDelta: 0,
+      instrumentation: ["drums", "bass", "chords"],
     },
     {
       role: "drop",
@@ -153,6 +169,7 @@ const SONG_FORMS: Record<IntentSpec["genre"], SongSectionSpec[]> = {
       energyDelta: 0.3,
       densityDelta: 0.3,
       complexityDelta: 0.1,
+      instrumentation: ["drums", "bass", "chords", "lead"],
     },
     {
       role: "break",
@@ -164,6 +181,7 @@ const SONG_FORMS: Record<IntentSpec["genre"], SongSectionSpec[]> = {
       energyDelta: -0.3,
       densityDelta: -0.3,
       complexityDelta: 0,
+      instrumentation: ["chords", "lead"],
     },
     {
       role: "build",
@@ -175,6 +193,7 @@ const SONG_FORMS: Record<IntentSpec["genre"], SongSectionSpec[]> = {
       energyDelta: 0.05,
       densityDelta: 0,
       complexityDelta: 0.05,
+      instrumentation: ["drums", "bass", "chords"],
     },
     {
       role: "drop",
@@ -186,6 +205,7 @@ const SONG_FORMS: Record<IntentSpec["genre"], SongSectionSpec[]> = {
       energyDelta: 0.35,
       densityDelta: 0.3,
       complexityDelta: 0.1,
+      instrumentation: ["drums", "bass", "chords", "lead"],
     },
     {
       role: "outro",
@@ -196,9 +216,11 @@ const SONG_FORMS: Record<IntentSpec["genre"], SongSectionSpec[]> = {
       energyDelta: -0.2,
       densityDelta: -0.15,
       complexityDelta: 0,
+      instrumentation: ["drums", "bass"],
     },
   ],
   trap: [
+    // POP FORM (A2 v2): beats for vocals live in verse/chorus/bridge logic.
     {
       role: "intro",
       label: "Intro",
@@ -208,50 +230,77 @@ const SONG_FORMS: Record<IntentSpec["genre"], SongSectionSpec[]> = {
       energyDelta: -0.25,
       densityDelta: -0.15,
       complexityDelta: -0.1,
+      instrumentation: ["drums"],
     },
     {
-      role: "build",
-      label: "Build",
-      bars: 4,
+      role: "verse",
+      label: "Verse 1",
+      bars: 8,
       intensity: 0.6,
-      marker: { type: "buildup", name: "BUILD" },
-      transitionIn: null,
-      energyDelta: 0,
-      densityDelta: 0,
+      transitionIn: "fill",
+      energyDelta: -0.05,
+      densityDelta: -0.05,
       complexityDelta: 0,
+      instrumentation: ["drums", "bass", "chords"],
     },
     {
-      role: "drop",
-      label: "Drop A",
+      role: "chorus",
+      label: "Chorus 1",
       bars: 8,
       intensity: 0.9,
-      marker: { type: "drop", name: "DROP A" },
+      marker: { type: "impact", name: "CHORUS 1" },
       transitionIn: "riser",
       energyDelta: 0.3,
       densityDelta: 0.25,
       complexityDelta: 0.1,
+      instrumentation: ["drums", "bass", "chords", "lead"],
     },
     {
-      role: "break",
-      label: "Break",
+      role: "verse",
+      label: "Verse 2",
+      bars: 8,
+      intensity: 0.65,
+      transitionIn: "fill",
+      energyDelta: 0,
+      densityDelta: 0,
+      complexityDelta: 0,
+      instrumentation: ["drums", "bass", "chords"],
+    },
+    {
+      role: "chorus",
+      label: "Chorus 2",
+      bars: 8,
+      intensity: 0.9,
+      marker: { type: "impact", name: "CHORUS 2" },
+      transitionIn: "riser",
+      energyDelta: 0.3,
+      densityDelta: 0.25,
+      complexityDelta: 0.1,
+      instrumentation: ["drums", "bass", "chords", "lead"],
+    },
+    {
+      role: "bridge",
+      label: "Bridge",
       bars: 4,
       intensity: 0.35,
-      marker: { type: "cue", name: "BREAK" },
+      marker: { type: "cue", name: "BRIDGE" },
       transitionIn: "break",
       energyDelta: -0.35,
       densityDelta: -0.25,
-      complexityDelta: 0,
+      complexityDelta: 0.05,
+      instrumentation: ["chords", "lead"],
     },
     {
-      role: "drop",
-      label: "Drop B",
+      role: "chorus",
+      label: "Chorus 3",
       bars: 8,
       intensity: 0.95,
-      marker: { type: "drop", name: "DROP B" },
+      marker: { type: "impact", name: "CHORUS 3" },
       transitionIn: "fill",
       energyDelta: 0.35,
       densityDelta: 0.3,
       complexityDelta: 0.1,
+      instrumentation: ["drums", "bass", "chords", "lead"],
     },
     {
       role: "outro",
@@ -262,6 +311,7 @@ const SONG_FORMS: Record<IntentSpec["genre"], SongSectionSpec[]> = {
       energyDelta: -0.2,
       densityDelta: -0.1,
       complexityDelta: 0,
+      instrumentation: ["drums", "bass"],
     },
   ],
   ambient: [
@@ -274,6 +324,7 @@ const SONG_FORMS: Record<IntentSpec["genre"], SongSectionSpec[]> = {
       energyDelta: -0.2,
       densityDelta: -0.15,
       complexityDelta: -0.1,
+      instrumentation: ["drums", "bass"],
     },
     {
       role: "build",
@@ -285,6 +336,7 @@ const SONG_FORMS: Record<IntentSpec["genre"], SongSectionSpec[]> = {
       energyDelta: 0,
       densityDelta: 0,
       complexityDelta: 0,
+      instrumentation: ["drums", "bass", "chords"],
     },
     {
       role: "drop",
@@ -296,6 +348,7 @@ const SONG_FORMS: Record<IntentSpec["genre"], SongSectionSpec[]> = {
       energyDelta: 0.2,
       densityDelta: 0.2,
       complexityDelta: 0.05,
+      instrumentation: ["drums", "bass", "chords", "lead"],
     },
     {
       role: "break",
@@ -307,6 +360,7 @@ const SONG_FORMS: Record<IntentSpec["genre"], SongSectionSpec[]> = {
       energyDelta: -0.25,
       densityDelta: -0.2,
       complexityDelta: 0,
+      instrumentation: ["chords", "lead"],
     },
     {
       role: "outro",
@@ -317,6 +371,7 @@ const SONG_FORMS: Record<IntentSpec["genre"], SongSectionSpec[]> = {
       energyDelta: -0.15,
       densityDelta: -0.1,
       complexityDelta: 0,
+      instrumentation: ["drums", "bass"],
     },
   ],
 };

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useDoc, useServices } from "./context";
+import { useActivePatternId, usePatterns, useServices, useTracks } from "./context";
 import { useDice } from "./DiceContext";
 import { getStyleNamesForGenre } from "../ai/grooves/index";
 import { GENRES } from "../ai/types";
@@ -43,8 +43,15 @@ function MiniPreview({ rows, activePads }: { rows: number[][]; activePads: numbe
 }
 
 export function DiceTray() {
-  const doc = useDoc();
   const services = useServices();
+  // Fine-grained selectors (GOAL 04): DiceTray reads tracks (drum track
+  // lookup, melodic track name), patterns (active pattern), and the active
+  // pattern id. Subscribing to the whole doc re-renders this panel on every
+  // unrelated edit (a marker add, an automation-point move).
+  const tracks = useTracks();
+  const patterns = usePatterns();
+  const activePatternId = useActivePatternId();
+  const doc = services.store.getDoc();
   const {
     session,
     preview,
@@ -76,7 +83,7 @@ export function DiceTray() {
 
   // Derive preview rows for mini grid. There is no drum track in a
   // fresh/instrument-only project — getDrumTrack throws, so gate on it.
-  const drumTrack = doc.tracks.find((t): t is DrumTrack => t.kind === "drum") ?? null;
+  const drumTrack = tracks.find((t): t is DrumTrack => t.kind === "drum") ?? null;
   let previewRows: number[][] = [];
   let previewActivePads: number[] = [];
   if (drumTrack && preview.mode === "full" && preview.fullPattern?.proposal?.pattern) {
@@ -164,7 +171,7 @@ export function DiceTray() {
     } else if (preview.varyPatch) {
       // For vary mode, build a temporary pattern from patch and preview it
       try {
-        const active = doc.patterns.find((p) => p.id === doc.activePatternId);
+        const active = patterns.find((p) => p.id === activePatternId);
         if (active) {
           const ghostPat = {
             ...active,
@@ -529,7 +536,7 @@ export function DiceTray() {
         {target === "melodic" && preview.melodicNotes ? (
           (() => {
             const notes = preview.melodicNotes;
-            const trackName = doc.tracks.find((t) => t.id === preview.melodicTrackId)?.name ?? "instrument";
+            const trackName = tracks.find((t) => t.id === preview.melodicTrackId)?.name ?? "instrument";
             const pitches = notes.map((n) => n.pitch);
             const lo = Math.min(...(pitches.length ? pitches : [60]));
             const hi = Math.max(...(pitches.length ? pitches : [60]));

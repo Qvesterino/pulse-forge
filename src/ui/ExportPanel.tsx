@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { useDoc, useServices } from "./context";
+import {
+  useActivePatternId,
+  useMarkers,
+  useMaster,
+  usePatterns,
+  useServices,
+  useTracks,
+} from "./context";
 import { renderProject } from "../rendering/renderer";
 import { buildStemProject, nonEmptyStemGroups } from "../rendering/stems";
 import { downloadWav, encodeWav, sanitizeFilename } from "../rendering/wav";
@@ -63,7 +70,16 @@ export function ExportPanel({
   selectedTrackName?: string;
 } = {}) {
   const services = useServices();
-  const doc = useDoc();
+  // Fine-grained selectors (GOAL 04): ExportPanel reads markers (count
+  // badge), patterns (active pattern name), tracks (renderable tracks,
+  // total count), and master (LUFS target, ceiling dB for the meter). Root
+  // scalars (`doc.name`, `doc.bpm`) come from a plain getter.
+  const markers = useMarkers();
+  const patterns = usePatterns();
+  const activePatternId = useActivePatternId();
+  const tracks = useTracks();
+  const master = useMaster();
+  const doc = services.store.getDoc();
   const [mode, setMode] = useState<PlayMode>(services.playback.mode);
   const [sampleRate, setSampleRate] = useState(44100);
   const [bitDepth, setBitDepth] = useState<WavBitDepth>(16);
@@ -76,7 +92,7 @@ export function ExportPanel({
   const [quality, setQuality] = useState<"live" | "studio">("studio");
   const [clipSeconds, setClipSeconds] = useState(15);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
-  const markerCount = doc.markers.length;
+  const markerCount = markers.length;
   /** Active export run — the CANCEL button aborts it (roadmap 1.4). */
   const abortRef = useRef<AbortController | null>(null);
   const beginExport = (): AbortSignal => {
@@ -105,7 +121,7 @@ export function ExportPanel({
   const baseName = sanitizeFilename(doc.name);
   const groups = nonEmptyStemGroups(doc);
   const videoSupported = canExportVideo();
-  const activePatternName = doc.patterns.find((p) => p.id === doc.activePatternId)?.name ?? "pattern";
+  const activePatternName = patterns.find((p) => p.id === activePatternId)?.name ?? "pattern";
 
   const exportMaster = async () => {
     const signal = beginExport();
@@ -198,7 +214,7 @@ export function ExportPanel({
     try {
       // Group tracks have no own generators — rendering one produces a
       // silent WAV (their children belong to their own stems).
-      const renderableTracks = doc.tracks.filter((t) => t.kind !== "group");
+      const renderableTracks = tracks.filter((t) => t.kind !== "group");
       let lastSummary: BufferSummary | null = null;
       for (let i = 0; i < renderableTracks.length; i++) {
         if (signal.aborted) throw new DOMException("Export cancelled", "AbortError");
@@ -252,7 +268,7 @@ export function ExportPanel({
     try {
       // The SMF writer is a lazy chunk — fetched on first MIDI export.
       const { patternToMidi, downloadMidi } = await import("../midi/midiProject");
-      const bytes = patternToMidi(doc, doc.activePatternId);
+      const bytes = patternToMidi(doc, activePatternId);
       downloadMidi(bytes, `${baseName}-${sanitizeFilename(activePatternName)}`);
       setStatus({
         kind: "done",
@@ -552,7 +568,7 @@ export function ExportPanel({
           EXPORT STEMS ({groups.length})
         </button>
         <button type="button" className="btn btn-export" disabled={busy} onClick={() => void exportTracks()}>
-          EXPORT ALL TRACKS ({doc.tracks.length})
+          EXPORT ALL TRACKS ({tracks.length})
         </button>
         <button
           type="button"
@@ -614,8 +630,8 @@ export function ExportPanel({
       {status.kind === "done" && (
         <ExportSummary
           summary={status.summary}
-          lufsTarget={doc.master.lufsTarget ?? -14}
-          ceilingDb={doc.master.ceilingDb}
+          lufsTarget={master.lufsTarget ?? -14}
+          ceilingDb={master.ceilingDb}
         />
       )}
 

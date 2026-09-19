@@ -7,8 +7,15 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { fireEvent, screen } from "@testing-library/react";
 import { ArrangementPanel } from "../../src/ui/ArrangementPanel";
-import { clipLengthBars, recordingStartBar, secondsPerBar } from "../../src/ui/timelineRec";
+import {
+  addRecordedAudioClip,
+  clipLengthBars,
+  compensateRecordingStartBar,
+  recordingStartBar,
+  secondsPerBar,
+} from "../../src/ui/timelineRec";
 import { BAR_TICKS } from "../../src/project-model/types";
+import { createDefaultProject } from "../../src/project-model/schema";
 import { renderWithContext, mockServices } from "../helpers";
 
 describe("recording placement math", () => {
@@ -26,10 +33,28 @@ describe("recording placement math", () => {
     expect(clipLengthBars(8, 240)).toBe(8); // fast tempo → many bars
   });
 
-  it("anchors the clip at the transport's bar", () => {
+  it("anchors the clip at the exact transport tick", () => {
     expect(recordingStartBar(0)).toBe(0);
-    expect(recordingStartBar(BAR_TICKS * 4 + 5)).toBe(4); // mid-bar start → whole bar
+    expect(recordingStartBar(BAR_TICKS * 4 + 5)).toBeCloseTo(4 + 5 / BAR_TICKS, 12);
     expect(recordingStartBar(-10)).toBe(0);
+    expect(recordingStartBar(Number.NaN)).toBe(0);
+  });
+
+  it("applies manual input compensation in time units and never places before bar zero", () => {
+    expect(compensateRecordingStartBar(2, 25, 120)).toBeCloseTo(1.9875, 10);
+    expect(compensateRecordingStartBar(2, -25, 120)).toBeCloseTo(2.0125, 10);
+    expect(compensateRecordingStartBar(0.01, 500, 120)).toBe(0);
+  });
+
+  it("preserves recorded clip tick placement through add, undo, and redo", () => {
+    const doc = createDefaultProject();
+    const startBar = 3 + 17 / BAR_TICKS;
+    const command = addRecordedAudioClip(doc, doc.tracks[0].id, "recorded-vocal", startBar, 1);
+    const added = command.execute(doc);
+    expect(added.arrangement.audioClips![0].startBar).toBeCloseTo(startBar, 12);
+    const undone = command.undo(added);
+    expect(undone.arrangement.audioClips ?? []).toHaveLength(0);
+    expect(command.execute(undone).arrangement.audioClips![0].startBar).toBeCloseTo(startBar, 12);
   });
 });
 
@@ -50,6 +75,10 @@ describe("arrangement REC wiring", () => {
 
     const rec = screen.getByRole("button", { name: "● REC" }) as HTMLButtonElement;
     expect(rec.disabled).toBe(true);
+    const monitor = screen.getByRole("button", { name: "DRY MON OFF" });
+    expect(monitor).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(monitor);
+    expect(screen.getByRole("button", { name: "DRY MON ON" })).toHaveAttribute("aria-pressed", "true");
 
     fireEvent.change(select, { target: { value: doc.tracks[0].id } });
     expect((screen.getByRole("button", { name: "● REC" }) as HTMLButtonElement).disabled).toBe(false);
@@ -100,6 +129,7 @@ describe("arrangement REC wiring", () => {
         elapsedSeconds = 1;
         metadata: any;
         onError = null;
+        setMonitoring() {}
         async start(getMetadata: () => unknown) {
           this.metadata = getMetadata();
         }

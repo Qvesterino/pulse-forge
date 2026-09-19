@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useDoc, useServices } from "./context";
+import { useServices, useTracks } from "./context";
 import { setInstrumentParam, setPadSynth, setPadParams } from "../commands/commands";
 import { randomizeInstrumentCommand } from "../commands/layerCommands";
 import { INSTRUMENT_DEFS } from "../instruments/registry";
@@ -45,8 +45,11 @@ function PluginEditor({
   onClose?: () => void;
 }) {
   const services = useServices();
-  const doc = useDoc();
-  const track = doc.tracks.find((t) => t.id === trackId);
+  // GOAL 04 pattern: doc only feeds command factories — plain getter, no
+  // doc-wide subscription.
+  const doc = services.store.getDoc();
+  const tracks = useTracks();
+  const track = tracks.find((t) => t.id === trackId);
   const floating = onClose !== undefined;
   const [mode, setMode] = useState<PluginMode>(() => {
     try {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useDoc, useServices } from "./context";
+import { useServices, useTracks } from "./context";
 import type { EffectType, Track } from "../project-model/types";
 import {
   addEffect,
@@ -55,7 +55,7 @@ type EffectRackProps = {
 
 export function EffectRack({ track, mode = "rack", selectedPadId = "" }: EffectRackProps) {
   const services = useServices();
-  const doc = useDoc();
+  const doc = services.store.getDoc();
   const devicesMode = mode === "devices";
   const [fallbacks, setFallbacks] = useState<Record<string, string>>({});
   const [gainReduction, setGainReduction] = useState<Record<string, number>>({});
@@ -364,7 +364,13 @@ function Device({
   devicesMode?: boolean;
 }) {
   const services = useServices();
-  const doc = useDoc();
+  // GOAL 04: `doc` is only consumed as a command argument (applyEffectPreset,
+  // moveEffect, etc.). A plain getter avoids the doc-wide subscription this
+  // component would otherwise carry.
+  const doc = services.store.getDoc();
+  // Sidechain picker resolves names across tracks — same fine-grained
+  // selector the rack header uses (see GOAL 04 note there).
+  const tracks = useTracks();
   const def = EFFECT_DEFS[fx.type];
   // Roadmap O7: transient note for user-IR loading (Ozvena convolution).
   const [irNote, setIrNote] = useState<string | null>(null);
@@ -577,7 +583,7 @@ function Device({
                 className="btn btn-small"
                 title="Choose the first kick drum track, or the first drum track"
                 onClick={() => {
-                  const drums = doc.tracks.filter((candidate) => candidate.kind === "drum");
+                  const drums = tracks.filter((candidate) => candidate.kind === "drum");
                   const kick =
                     drums.find(
                       (candidate) =>
@@ -591,7 +597,7 @@ function Device({
               </button>
               <span className="fx-sidechain-status">
                 {fx.sidechainTrackId
-                  ? (doc.tracks.find((candidate) => candidate.id === fx.sidechainTrackId)?.name ?? "MISSING")
+                  ? (tracks.find((candidate) => candidate.id === fx.sidechainTrackId)?.name ?? "MISSING")
                   : "No source"}
               </span>
             </div>

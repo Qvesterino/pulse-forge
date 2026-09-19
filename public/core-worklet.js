@@ -1986,6 +1986,31 @@
   registerProcessor("stutter-processor", StutterProcessor);
 
   // src/audio-worklets/tape-processor.js
+  var TAPE_OS = 4;
+  var TAPE_FIR_LEN = 33;
+  var TAPE_FIR_DELAY_4X = 16;
+  var TAPE_BASE_LATENCY = TAPE_FIR_DELAY_4X * 2 / TAPE_OS;
+  var TAPE_KERNEL = (() => {
+    const taps = new Float32Array(TAPE_FIR_LEN);
+    const M = (TAPE_FIR_LEN - 1) / 2;
+    const wc = Math.PI / 4;
+    let sum = 0;
+    for (let n = 0; n < TAPE_FIR_LEN; n++) {
+      const k = n - M;
+      const sinc = k === 0 ? 1 : Math.sin(wc * k) / (wc * k);
+      const a = 2 * Math.PI * n / (TAPE_FIR_LEN - 1);
+      const w = 0.42 - 0.5 * Math.cos(a) + 0.08 * Math.cos(2 * a);
+      taps[n] = sinc * w;
+      sum += taps[n];
+    }
+    const up = new Float32Array(TAPE_FIR_LEN);
+    const down = new Float32Array(TAPE_FIR_LEN);
+    for (let n = 0; n < TAPE_FIR_LEN; n++) {
+      up[n] = taps[n] / sum * TAPE_OS;
+      down[n] = taps[n] / sum;
+    }
+    return { up, down };
+  })();
   var TapeProcessor = class extends AudioWorkletProcessor {
     constructor() {
       super();
@@ -1993,6 +2018,13 @@
       this.prevR = 0;
       this.lpL = 0;
       this.lpR = 0;
+      this.upL = new Float32Array(TAPE_FIR_LEN);
+      this.upR = new Float32Array(TAPE_FIR_LEN);
+      this.downL = new Float32Array(TAPE_FIR_LEN);
+      this.downR = new Float32Array(TAPE_FIR_LEN);
+      this.dryL = new Float32Array(TAPE_BASE_LATENCY);
+      this.dryR = new Float32Array(TAPE_BASE_LATENCY);
+      this.dryIdx = 0;
     }
     static get parameterDescriptors() {
       return [
@@ -2014,32 +2046,77 @@
       const len = outL.length;
       const sr = globalThis.sampleRate || 44100;
       const drive = parameters.drive[0];
-      const hyst = parameters.hysteresis[0];
+      const hyst = Math.max(0, Math.min(0.95, parameters.hysteresis[0]));
       const tone = parameters.tone[0];
       const mix = parameters.mix[0];
       const outDb = parameters.output[0];
       const driveGain = 1 + drive * 14;
       const outGain = Math.pow(10, outDb / 20);
+      const hEff = Math.pow(hyst, 1 / TAPE_OS);
       const alpha = 1 - Math.exp(-2 * Math.PI * tone / sr);
       for (let i = 0; i < len; i++) {
         const l = inL ? inL[i] : 0;
         const r = inR ? inR[i] : l;
-        const wetL = Math.tanh(driveGain * l + hyst * this.prevL);
-        const wetR = Math.tanh(driveGain * r + hyst * this.prevR);
-        this.prevL = wetL;
-        this.prevR = wetR;
-        if (Math.abs(this.prevL) < 1e-20) this.prevL = 0;
-        if (Math.abs(this.prevR) < 1e-20) this.prevR = 0;
+        const wetL = this.oversampledTape(this.upL, this.downL, l, driveGain, hEff, true);
+        const wetR = this.oversampledTape(this.upR, this.downR, r, driveGain, hEff, false);
         this.lpL += alpha * (wetL - this.lpL);
         this.lpR += alpha * (wetR - this.lpR);
         if (Math.abs(this.lpL) < 1e-20) this.lpL = 0;
         if (Math.abs(this.lpR) < 1e-20) this.lpR = 0;
-        const tonedL = this.lpL;
-        const tonedR = this.lpR;
-        outL[i] = (l * (1 - mix) + tonedL * mix) * outGain;
-        if (outR) outR[i] = (r * (1 - mix) + tonedR * mix) * outGain;
+        const dryL = this.dryL[this.dryIdx];
+        const dryR = this.dryR[this.dryIdx];
+        this.dryL[this.dryIdx] = l;
+        this.dryR[this.dryIdx] = r;
+        this.dryIdx++;
+        if (this.dryIdx >= TAPE_BASE_LATENCY) this.dryIdx = 0;
+        outL[i] = (dryL * (1 - mix) + this.lpL * mix) * outGain;
+        if (outR) outR[i] = (dryR * (1 - mix) + this.lpR * mix) * outGain;
       }
+      this.flushTiny(this.upL);
+      this.flushTiny(this.upR);
+      this.flushTiny(this.downL);
+      this.flushTiny(this.downR);
       return true;
+    }
+    /**
+     * One base-rate sample through the 4× stage: zero-stuff → anti-image FIR
+     * → tanh hysteresis loop at 4× → anti-alias FIR → decimate. Returns the
+     * wet sample at the base rate. `left` selects the channel hysteresis
+     * memory (prevL / prevR).
+     *
+     * Decimation takes phase 0 — the phase on which fresh input enters — so
+     * the cascade lands exactly on its 16-@4× group delay (4 base samples),
+     * matching the dry delay line. Any other phase would skew dry/wet by a
+     * fractional sample and comb partial mixes at the top octave.
+     */
+    oversampledTape(upHist, downHist, x, driveGain, hEff, left) {
+      let prev = left ? this.prevL : this.prevR;
+      let last = 0;
+      for (let k = 0; k < TAPE_OS; k++) {
+        upHist.copyWithin(1, 0, TAPE_FIR_LEN - 1);
+        upHist[0] = k === 0 ? x : 0;
+        let u = 0;
+        for (let j = 0; j < TAPE_FIR_LEN; j++) u += upHist[j] * TAPE_KERNEL.up[j];
+        const y = Math.tanh(driveGain * u + hEff * prev);
+        prev = y;
+        downHist.copyWithin(1, 0, TAPE_FIR_LEN - 1);
+        downHist[0] = y;
+        if (k === 0) {
+          let d = 0;
+          for (let j = 0; j < TAPE_FIR_LEN; j++) d += downHist[j] * TAPE_KERNEL.down[j];
+          last = d;
+        }
+      }
+      if (Math.abs(prev) < 1e-20) prev = 0;
+      if (left) this.prevL = prev;
+      else this.prevR = prev;
+      return last;
+    }
+    flushTiny(buf) {
+      for (let i = 0; i < buf.length; i++) {
+        const v = buf[i];
+        if (v < 1e-20 && v > -1e-20) buf[i] = 0;
+      }
     }
   };
   registerProcessor("tape-processor", TapeProcessor);

@@ -4,6 +4,9 @@
  * math without a microphone.
  */
 import { BAR_TICKS } from "../project-model/types";
+import type { AudioClip, ProjectDocument } from "../project-model/types";
+import { addAudioClip } from "../commands/commands";
+import type { Command } from "../commands/types";
 
 /** One bar in seconds at the given tempo (4/4). */
 export function secondsPerBar(bpm: number): number {
@@ -21,7 +24,50 @@ export function clipLengthBars(durationSec: number, bpm: number): number {
   return Math.max(0.25, Math.round(bars * 100) / 100);
 }
 
-/** The bar the transport sits in when REC starts — clips anchor there. */
+/** Exact musical position where REC starts, expressed in bars. */
 export function recordingStartBar(positionTicks: number): number {
-  return Math.max(0, Math.floor(positionTicks / BAR_TICKS));
+  return Number.isFinite(positionTicks) ? Math.max(0, positionTicks / BAR_TICKS) : 0;
+}
+
+/** Apply a measured manual mic-input correction; positive values move takes earlier. */
+export function compensateRecordingStartBar(startBar: number, inputOffsetMs: number, bpm: number): number {
+  const safeStartBar = Number.isFinite(startBar) ? Math.max(0, startBar) : 0;
+  const safeOffsetMs = Number.isFinite(inputOffsetMs) ? inputOffsetMs : 0;
+  return Math.max(0, safeStartBar - safeOffsetMs / (secondsPerBar(bpm) * 1000));
+}
+
+/**
+ * Mic takes need sample-accurate timeline placement. The general-purpose
+ * addAudioClip command keeps its centibar behavior for editing; this lazy
+ * recording-only wrapper preserves the REC anchor at transport-tick resolution.
+ */
+export function addRecordedAudioClip(
+  doc: ProjectDocument,
+  trackId: string,
+  bufferId: string,
+  startBar: number,
+  lengthBars: number,
+  patch: Partial<Omit<AudioClip, "id" | "trackId" | "bufferId" | "startBar" | "lengthBars">> = {},
+): Command {
+  const exactStartBar = Number.isFinite(startBar) ? Math.max(0, Math.round(startBar * BAR_TICKS) / BAR_TICKS) : 0;
+  const addCommand = addAudioClip(doc, trackId, bufferId, exactStartBar, lengthBars, patch);
+  return {
+    ...addCommand,
+    execute(currentDoc) {
+      const added = addCommand.execute(currentDoc);
+      const existingIds = new Set((currentDoc.arrangement.audioClips ?? []).map((clip) => clip.id));
+      const addedClipId = (added.arrangement.audioClips ?? []).find((clip) => !existingIds.has(clip.id))?.id;
+      if (!addedClipId) throw new Error("The recorded audio clip could not be created");
+
+      return {
+        ...added,
+        arrangement: {
+          ...added.arrangement,
+          audioClips: (added.arrangement.audioClips ?? [])
+            .map((clip) => (clip.id === addedClipId ? { ...clip, startBar: exactStartBar } : clip))
+            .sort((a, b) => a.startBar - b.startBar),
+        },
+      };
+    },
+  };
 }

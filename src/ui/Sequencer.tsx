@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { useDoc, useServices } from "./context";
+import { useActivePatternId, usePatterns, useServices, useTracks } from "./context";
 import { fireGestureHint } from "./gestureHints";
 import { STEP_TICKS } from "../project-model/types";
 import type { DrumTrack, StepMeta, Track } from "../project-model/types";
@@ -147,8 +147,15 @@ export function Sequencer({
   scaleSnap: boolean;
 }) {
   const services = useServices();
-  const doc = useDoc();
-  const pattern = doc.patterns.find((p) => p.id === doc.activePatternId) ?? doc.patterns[0];
+  // Fine-grained selectors (GOAL 04): Sequencer reads patterns (active
+  // pattern lookup), the active pattern id, and tracks (flat-items build
+  // for the step grid). Subscribing to the whole doc re-renders the
+  // 4×16=64-step grid on every unrelated edit (a track-mute elsewhere).
+  const patterns = usePatterns();
+  const activePatternId = useActivePatternId();
+  const tracks = useTracks();
+  const doc = services.store.getDoc();
+  const pattern = patterns.find((p) => p.id === activePatternId) ?? patterns[0];
   const playheadStep = usePlayheadStep(services.transport, doc);
   const dragRef = useRef<DragState | null>(null);
   const [dragPreview, setDragPreview] = useState<{
@@ -189,7 +196,7 @@ export function Sequencer({
   }, [beatFocus]);
 
   // Flatten track tree into virtualizable items
-  const flatItems = useMemo(() => buildFlatItems(doc.tracks), [doc.tracks]);
+  const flatItems = useMemo(() => buildFlatItems(tracks), [tracks]);
 
   // Compute cumulative heights for index lookup
   const cumulativeHeights = useMemo(() => {
@@ -225,11 +232,11 @@ export function Sequencer({
   // Display order of pad rows — used to build rectangular selections.
   const orderedPadIds: string[] = useMemo(() => {
     const ids: string[] = [];
-    for (const track of doc.tracks) {
+    for (const track of tracks) {
       if (track.kind === "drum") for (const pad of track.pads) ids.push(pad.id);
     }
     return ids;
-  }, [doc.tracks]);
+  }, [tracks]);
 
   const selectionFromDrag = (
     anchorPad: string,
@@ -1051,10 +1058,13 @@ function StepEditor({
   stepSelection: StepSelection | null;
 }) {
   const services = useServices();
-  const doc = useDoc();
-  const pattern = doc.patterns.find((p) => p.id === doc.activePatternId) ?? doc.patterns[0];
+  const patterns = usePatterns();
+  const activePatternId = useActivePatternId();
+  const tracks = useTracks();
+  const doc = services.store.getDoc();
+  const pattern = patterns.find((p) => p.id === activePatternId) ?? patterns[0];
   const meta: StepMeta = pattern.stepMeta?.[padId]?.[stepIndex] ?? {};
-  const pad = doc.tracks
+  const pad = tracks
     .filter((t): t is DrumTrack => t.kind === "drum")
     .flatMap((t) => t.pads)
     .find((p) => p.id === padId);
@@ -1319,7 +1329,10 @@ function TrackHeaderRow({
   onSelect: () => void;
 }) {
   const services = useServices();
-  const doc = useDoc();
+  // `doc` is only consumed as a command argument (setTrackParams, etc.).
+  // A plain getter avoids the doc-wide subscription this component would
+  // otherwise carry.
+  const doc = services.store.getDoc();
   return (
     <div className={`track-header-row${isSelected ? " selected" : ""}${isPlaying ? " playing" : ""}`}>
       <div className="track-header">
@@ -1409,7 +1422,8 @@ function PadRow({
   effMinCol: number;
 }) {
   const services = useServices();
-  const doc = useDoc();
+  // `doc` is only consumed as a command argument (setPadParams).
+  const doc = services.store.getDoc();
   const row = pattern.rows[pad.id] ?? [];
   // A 256-step row renders 256 memoized StepCells — their shallow prop
   // compare only skips a re-render when every callback prop is referentially

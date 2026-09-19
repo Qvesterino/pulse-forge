@@ -3703,8 +3703,14 @@ export function autoArrangeSong(doc: ProjectDocument): Command {
   const buckets = new Map<Bucket, string[]>();
   for (const scene of doc.scenes) {
     const role = sceneRoleOf(scene) ?? "custom";
+    // Songwriting roles (A2 v2) fold into their nearest electronic bucket:
+    // chorus plays like a drop, verse like a build, bridge like a break.
+    const folded =
+      role === "chorus" ? "drop" : role === "verse" ? "build" : role === "bridge" ? "break" : role;
     const bucket: Bucket =
-      role === "intro" || role === "build" || role === "drop" || role === "break" || role === "outro" ? role : "other";
+      folded === "intro" || folded === "build" || folded === "drop" || folded === "break" || folded === "outro"
+        ? folded
+        : "other";
     const list = buckets.get(bucket) ?? [];
     list.push(scene.id);
     buckets.set(bucket, list);

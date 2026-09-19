@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
-import { useDoc, useServices } from "./context";
+import { usePatterns, useServices, useTracks } from "./context";
 import { applyGenerationResultCommand } from "../commands/commands";
 import type { GenerateOptions } from "../ai/types";
 import { GENRES, DEFAULT_GENERATE_OPTIONS } from "../ai/types";
@@ -54,7 +54,13 @@ function PatternPreview({ rows, activePads }: { rows: number[][]; activePads: nu
 
 export function GenerateDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const services = useServices();
-  const doc = useDoc();
+  // Fine-grained selectors (GOAL 04): GenerateDialog only reads tracks (for
+  // drum/instrument filter) and patterns (for the source-pattern picker).
+  // Subscribing to the whole doc re-renders this dialog on every unrelated
+  // edit (a track-mute, a macro mapping change).
+  const tracks = useTracks();
+  const patterns = usePatterns();
+  const doc = services.store.getDoc();
 
   const [genre, setGenre] = useState<GenerateOptions["genre"]>(DEFAULT_GENERATE_OPTIONS.genre);
   const [style, setStyle] = useState<string>("");
@@ -75,8 +81,8 @@ export function GenerateDialog({ open, onClose }: { open: boolean; onClose: () =
   const seedInputRef = useRef<HTMLInputElement>(null);
 
   const styles = getStyleNamesForGenre(genre);
-  const drumTracks = doc.tracks.filter((t) => t.kind === "drum");
-  const instrumentTracks = doc.tracks.filter((t) => t.kind === "instrument");
+  const drumTracks = tracks.filter((t) => t.kind === "drum");
+  const instrumentTracks = tracks.filter((t) => t.kind === "instrument");
 
   // One normalized option object is shared by preview and Apply. The intent
   // pipeline then creates one plan for either mode, so the preview cannot
@@ -363,7 +369,7 @@ export function GenerateDialog({ open, onClose }: { open: boolean; onClose: () =
           )}
 
           {/* Source pattern for seed derivation */}
-          {doc.patterns.length > 0 && (
+          {patterns.length > 0 && (
             <div className="generate-field">
               <label className="generate-label">SOURCE PATTERN</label>
               <select
@@ -372,7 +378,7 @@ export function GenerateDialog({ open, onClose }: { open: boolean; onClose: () =
                 onChange={(e) => setSourcePatternId(e.target.value)}
               >
                 <option value="">None (use seed)</option>
-                {doc.patterns.map((p) => (
+                {patterns.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name || `Pattern`}
                   </option>

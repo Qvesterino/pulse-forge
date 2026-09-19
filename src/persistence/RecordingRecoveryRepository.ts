@@ -17,6 +17,8 @@ export interface RecordingSession {
   placeOnTimeline?: boolean;
   startBar: number;
   bpm: number;
+  /** Manual mic-input alignment captured when the take started; absent in older sessions. */
+  recordingInputOffsetMs?: number;
   sampleRate: number;
   channels: number;
   createdAt: string;

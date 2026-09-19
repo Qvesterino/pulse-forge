@@ -35,3 +35,4 @@ scripts/data/symbolic-prior-dataset.json
 tsconfig.tsbuildinfo*
 *.bak
 *.tsbuildinfo
+.kilo/
