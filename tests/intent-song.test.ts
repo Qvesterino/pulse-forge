@@ -169,3 +169,74 @@ describe("applySongCommand", () => {
     expect(undone.markers?.length ?? 0).toBe(0);
   }, 60_000);
 });
+
+describe("role-aware instrumentation (A2 v2)", () => {
+  const POP_INTENT = normalizeIntent({ genre: "trap", seed: "pop-song", bpmRange: [140, 140] });
+
+  it("chorus sections play the lead, verse sections do not", async () => {
+    const doc = testDoc();
+    const build = await buildSong(doc, POP_INTENT, { yieldBetweenSections: false });
+    for (const section of build.sections) {
+      // provenance: the roles ACTUALLY generated match the section form
+      if (section.role === "chorus") expect(section.roles).toContain("lead");
+      if (section.role === "verse") expect(section.roles).not.toContain("lead");
+      if (section.role === "bridge") {
+        expect(section.roles).toEqual(["chords", "lead"]);
+        // bridge strips drums: no drum rows at all
+        const hitCount = Object.values(section.pattern.rows).reduce(
+          (sum, row) => sum + row.filter((velocity) => velocity > 0).length,
+          0,
+        );
+        expect(hitCount).toBe(0);
+        expect(Object.keys(section.pattern.notes ?? {}).length).toBeGreaterThan(0);
+      }
+    }
+  }, 60_000);
+
+  it("user role requests cut across every section (no drums → no drums anywhere)", async () => {
+    const doc = testDoc();
+    const build = await buildSong(
+      doc,
+      normalizeIntent({ genre: "trap", seed: "nodrums", roles: ["bass", "chords", "lead"] }),
+      {
+        yieldBetweenSections: false,
+      },
+    );
+    for (const section of build.sections) {
+      const hitCount = Object.values(section.pattern.rows).reduce(
+        (sum, row) => sum + row.filter((velocity) => velocity > 0).length,
+        0,
+      );
+      expect(hitCount).toBe(0);
+    }
+  }, 60_000);
+
+  it("scenes carry the new songwriting roles into the arrangement", async () => {
+    const doc = testDoc();
+    const build = await buildSong(doc, POP_INTENT, { yieldBetweenSections: false });
+    const next = applySongCommand(doc, build).execute(doc);
+    const roles = next.scenes.slice(doc.scenes.length).map((scene) => scene.role);
+    expect(roles).toContain("verse");
+    expect(roles).toContain("chorus");
+    expect(roles).toContain("bridge");
+  }, 60_000);
+});
+
+describe("scene role persistence (A2 v2)", () => {
+  it("clampSceneRole accepts the songwriting roles and keeps old ones", async () => {
+    const { clampSceneRole } = await import("../src/project-model/schema");
+    expect(clampSceneRole("verse")).toBe("verse");
+    expect(clampSceneRole("chorus")).toBe("chorus");
+    expect(clampSceneRole("bridge")).toBe("bridge");
+    // backward compat: legacy roles survive loading
+    expect(clampSceneRole("drop")).toBe("drop");
+    expect(clampSceneRole("build")).toBe("build");
+    expect(clampSceneRole("nonsense")).toBeUndefined();
+    // older scenes named "Chorus" now infer their own role
+    const { inferSceneRole } = await import("../src/project-model/schema");
+    expect(inferSceneRole("Chorus 1")).toBe("chorus");
+    expect(inferSceneRole("VERSE")).toBe("verse");
+    expect(inferSceneRole("Bridge")).toBe("bridge");
+    expect(inferSceneRole("Drop A")).toBe("drop");
+  });
+});

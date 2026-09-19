@@ -331,6 +331,29 @@ button {
   outline: none;
 }
 
+/* Inline "type a value" popover under a slider (built-in value menu). */
+.value-type-popover {
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translateX(-50%);
+  margin-top: 4px;
+  z-index: 30;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
+}
+
+.slider {
+  position: relative;
+}
+
+.value-menu {
+  min-width: 170px;
+}
+
 .project-name {
   flex: 1;
   max-width: 280px;

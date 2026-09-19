@@ -405,6 +405,8 @@ export interface SongBuildSection extends SongSectionSpec {
   pattern: Pattern;
   /** Pattern length in steps (bars × 16). */
   stepCount: number;
+  /** The roles ACTUALLY generated: instrumentation ∩ user's intent roles. */
+  roles: IntentRole[];
 }
 
 /** The complete, installable song (patterns generated, nothing applied yet). */
@@ -452,7 +454,7 @@ export async function buildSong(
     // form asks for, further limited by the USER's role request ("no drums"
     // keeps drums out of every section, including choruses).
     const wanted = section.instrumentation.filter((role) => userRoles.includes(role));
-    const sectionRoles = wanted.length > 0 ? wanted : userRoles;
+    const sectionRoles: IntentRole[] = wanted.length > 0 ? [...wanted] : [...userRoles];
     const sectionIntent = normalizeIntent({
       genre: baseIntent.genre,
       style: baseIntent.style ?? undefined,
@@ -480,6 +482,7 @@ export async function buildSong(
       ...section,
       pattern: result.proposal.pattern,
       stepCount: section.bars * 16,
+      roles: sectionRoles,
     });
     options.onProgress?.(index + 1, section.label, form.sections.length);
     if (options.yieldBetweenSections !== false && index < form.sections.length - 1) {

@@ -422,7 +422,18 @@ function defaultSceneFor(doc: ProjectDocument): Scene {
   return { id: uid("scene"), name: "Scene A", patternId: doc.activePatternId, intensity: 0.7 };
 }
 
-const SCENE_ROLES: ReadonlyArray<SceneRole> = ["intro", "build", "drop", "break", "outro", "fill", "custom"];
+const SCENE_ROLES: ReadonlyArray<SceneRole> = [
+  "intro",
+  "build",
+  "drop",
+  "break",
+  "outro",
+  "fill",
+  "verse",
+  "chorus",
+  "bridge",
+  "custom",
+];
 const ARRANGEMENT_TRANSITION_TYPES: ReadonlyArray<ArrangementTransitionType> = [
   "fill",
   "riser",

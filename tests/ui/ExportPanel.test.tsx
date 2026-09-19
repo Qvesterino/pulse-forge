@@ -1,8 +1,30 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ExportPanel } from "../../src/ui/ExportPanel";
 import { mockServices, renderWithContext } from "../helpers";
+
+vi.mock("../../src/rendering/renderer", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("../../src/rendering/renderer")>();
+  return {
+    ...mod,
+    renderProject: vi.fn(async () => {
+      const data = new Float32Array(44100).fill(0.95);
+      return {
+        numberOfChannels: 2,
+        length: data.length,
+        sampleRate: 44100,
+        duration: 1,
+        getChannelData: (ch: number) => (ch === 0 ? data : data.slice()),
+      };
+    }),
+  };
+});
+
+vi.mock("../../src/rendering/wav", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("../../src/rendering/wav")>();
+  return { ...mod, downloadWav: vi.fn() };
+});
 
 describe("ExportPanel", () => {
   it("renders the export region with the default FORMAT select", () => {
@@ -37,6 +59,30 @@ describe("ExportPanel", () => {
   it("export-policy note is rendered so users can see CANCEL guidance", () => {
     renderWithContext(<ExportPanel />, { services: mockServices() });
     expect(screen.getByRole("note", { name: "Export policy" })).toBeInTheDocument();
+  });
+
+  it("no AUTO STAGE button before any export", () => {
+    renderWithContext(<ExportPanel />, { services: mockServices() });
+    expect(screen.queryByRole("button", { name: /^AUTO STAGE/ })).toBeNull();
+  });
+
+  it("hot export offers AUTO STAGE and applies one master-gain command", async () => {
+    const user = userEvent.setup();
+    const services = mockServices();
+    renderWithContext(<ExportPanel />, { services });
+    await user.click(screen.getByRole("button", { name: /^EXPORT MASTER/ }));
+    // Hot constant-scale render: TP over ceiling and way too loud.
+    const stage = await screen.findByRole("button", { name: /^AUTO STAGE/ });
+    expect(stage).toHaveTextContent("-");
+    await user.click(stage);
+    const executed = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.map(
+      (call: unknown[]) => call[0] as { type: string; execute: (d: unknown) => { master: { masterGain: number } } },
+    );
+    const staging = executed.filter((c) => c.type === "setMasterConfig");
+    expect(staging).toHaveLength(1);
+    expect(staging[0].execute({ master: { masterGain: 1 } }).master.masterGain).toBeLessThan(1);
+    // Button confirms and disables after staging.
+    expect(await screen.findByRole("button", { name: /^STAGED/ })).toBeDisabled();
   });
 
   it("global quality switch defaults to Studio HQ", () => {

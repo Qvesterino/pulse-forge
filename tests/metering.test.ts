@@ -4,6 +4,7 @@ import {
   MIN_DB,
   PeakHold,
   channelLevels,
+  computeStageAdjustment,
   evaluateExportMonoGuard,
   evaluateMasterVerdict,
   splitChannels,
@@ -209,5 +210,41 @@ describe("evaluateExportMonoGuard", () => {
     expect(guard.level).toBe("bad");
     expect(guard.hints).toHaveLength(2);
     expect(guard.hints[0]).toContain("Phase");
+  });
+});
+
+describe("computeStageAdjustment", () => {
+  it("pulls a hot master down to ceiling − 1 dBTP", () => {
+    const adj = computeStageAdjustment({ lufsIntegrated: -14, truePeakDb: -0.2 }, 1, -14, -1);
+    expect(adj.noop).toBe(false);
+    // peakDelta = (−1−1) − (−0.2) = −1.8 dB; loudness is on target.
+    expect(adj.deltaDb).toBeCloseTo(-1.8, 5);
+    expect(adj.masterGain).toBeCloseTo(Math.pow(10, -1.8 / 20), 5);
+    expect(adj.applied[0]).toContain("Master IN -1.8 dB");
+  });
+
+  it("takes the conservative (quieter) delta when loud and hot", () => {
+    const adj = computeStageAdjustment({ lufsIntegrated: -11, truePeakDb: -0.5 }, 1, -14, -1);
+    // loudDelta = −3, peakDelta = −1.5 → −3 wins.
+    expect(adj.deltaDb).toBeCloseTo(-3, 5);
+  });
+
+  it("raises a quiet mix without breaking the peak ceiling", () => {
+    const adj = computeStageAdjustment({ lufsIntegrated: -20, truePeakDb: -8 }, 1, -14, -1);
+    // loudDelta = +6, peakDelta = +6 → +6 (both agree, stays under ceiling).
+    expect(adj.deltaDb).toBeCloseTo(6, 5);
+    expect(adj.masterGain).toBeGreaterThan(1);
+  });
+
+  it("is noop when already staged, silent or muted", () => {
+    expect(computeStageAdjustment({ lufsIntegrated: -14, truePeakDb: -2 }, 1, -14, -1).noop).toBe(true);
+    expect(computeStageAdjustment({ lufsIntegrated: -120, truePeakDb: -120 }, 1, -14, -1).noop).toBe(true);
+    expect(computeStageAdjustment({ lufsIntegrated: -11, truePeakDb: -0.5 }, 0, -14, -1).noop).toBe(true);
+  });
+
+  it("clamps to the 0..2 master range", () => {
+    const adj = computeStageAdjustment({ lufsIntegrated: -30, truePeakDb: -30 }, 1, -14, -1);
+    expect(adj.masterGain).toBe(2);
+    expect(adj.noop).toBe(false);
   });
 });

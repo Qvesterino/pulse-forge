@@ -62,7 +62,7 @@ const ROLE_SYNONYMS: Array<[ArrangeRole, RegExp]> = [
   // Songwriting roles are FIRST-CLASS now (A2 v2) — "chorus" no longer falls
   // back to drop and "bridge" no longer to break.
   ["chorus", /\b(chorus|hook|refren)\b/],
-  ["verse", /\b(verse|zloha)\b/],
+  ["verse", /\b(verse|zloh)/],
   ["bridge", /\b(bridge|most|mostik)\b/],
   ["drop", /\bdrop\b/],
   ["break", /\b(break|breakdown|brejk)\b/],

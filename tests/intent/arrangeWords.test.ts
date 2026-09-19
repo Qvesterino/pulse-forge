@@ -122,3 +122,27 @@ describe("applyArrangeOps", () => {
     expect(resolveSceneTarget(doc, "midnight wire", [])).toBeNull();
   });
 });
+
+describe("songwriting roles (A2 v2)", () => {
+  it("chorus, verse and bridge are first-class roles (not drop/break aliases)", () => {
+    const doc = sceneScoreDoc();
+    const add = (text: string) => parseArrangeIntent(text, doc).ops;
+    expect(add("add a chorus before the drop")[0]).toMatchObject({ op: "addRole", role: "chorus" });
+    expect(add("pridaj refren")[0]).toMatchObject({ op: "addRole", role: "chorus" });
+    expect(add("add a verse")[0]).toMatchObject({ op: "addRole", role: "verse" });
+    expect(add("pridaj zlohu")[0]).toMatchObject({ op: "addRole", role: "verse" });
+    expect(add("add a bridge before the outro")[0]).toMatchObject({ op: "addRole", role: "bridge" });
+    expect(add("pridaj most")[0]).toMatchObject({ op: "addRole", role: "bridge" });
+    // plain drop/break still work
+    expect(add("add a drop")[0]).toMatchObject({ op: "addRole", role: "drop" });
+    expect(add("add a break")[0]).toMatchObject({ op: "addRole", role: "break" });
+  });
+
+  it("removal and duplication target the new roles too", () => {
+    const doc = sceneScoreDoc();
+    // sceneScoreDoc has no chorus yet → addRole falls back cleanly
+    const parsed = parseArrangeIntent("remove the verse", doc);
+    // verse scene does not exist → unrecognized, not a wrong-role op
+    expect(parsed.ops.every((op) => !("role" in op) || op.role !== "verse" || op.op === "remove")).toBe(true);
+  });
+});

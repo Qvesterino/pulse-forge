@@ -1,4 +1,87 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
+/**
+ * Built-in value menu shared by Slider and DragNumber: right-click (mouse) or
+ * long-press (touch) opens it. "Reset to default" matches the double-click
+ * behaviour; "Type value…" gives precision entry on both input kinds. A host
+ * that needs a richer menu (e.g. the mixer's macro linking) can still pass
+ * `onMenu` and owns the presentation itself.
+ */
+function ValueMenu({
+  x,
+  y,
+  defaultValue,
+  format,
+  onReset,
+  onType,
+  onClose,
+}: {
+  x: number;
+  y: number;
+  defaultValue: number;
+  format?: (value: number) => string;
+  onReset: () => void;
+  onType: () => void;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    const onDown = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) onClose();
+    };
+    const onPointer = (e: PointerEvent) => {
+      if (!ref.current?.contains(e.target as Node)) onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("pointerdown", onPointer);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("pointerdown", onPointer);
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      ref={ref}
+      className="context-menu value-menu"
+      role="menu"
+      aria-label="Value options"
+      style={{
+        left: Math.min(x, window.innerWidth - 200),
+        top: Math.min(y, window.innerHeight - 120),
+      }}
+      onPointerDown={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      <button
+        type="button"
+        role="menuitem"
+        onClick={() => {
+          onReset();
+          onClose();
+        }}
+      >
+        Reset to default ({format ? format(defaultValue) : defaultValue})
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        onClick={() => {
+          onType();
+          onClose();
+        }}
+      >
+        Type value…
+      </button>
+    </div>
+  );
+}
 
 interface SliderProps {
   label: string;
@@ -49,7 +132,22 @@ export function Slider({
   const menuAnchor = useRef<{ x: number; y: number } | null>(null);
   const holdFired = useRef(false);
   const dragStart = useRef<{ x: number; y: number } | null>(null);
+  // Built-in fallback menu (reset + type) when the host does not provide one.
+  const [builtinMenu, setBuiltinMenu] = useState<{ x: number; y: number } | null>(null);
+  const [typeDraft, setTypeDraft] = useState<string | null>(null);
   const shown = dragValue ?? value;
+
+  const openMenu = (x: number, y: number) => {
+    if (onMenu) onMenu(x, y);
+    else setBuiltinMenu({ x, y });
+  };
+
+  const commitTypeDraft = () => {
+    if (typeDraft === null) return;
+    const parsed = Number(typeDraft.replace(",", "."));
+    setTypeDraft(null);
+    if (Number.isFinite(parsed)) onCommit(Math.min(max, Math.max(min, parsed)));
+  };
 
   const firePreview = (v: number) => {
     if (!onPreview) return;
@@ -89,7 +187,9 @@ export function Slider({
     // aborts the drag — a release afterwards must not commit the touched
     // position as a level change.
     holdFired.current = false;
-    if (onMenu && event.pointerType !== "mouse") {
+    // Touch/pen long-press opens the same menu as right-click. The host menu
+    // wins when provided; otherwise the built-in reset/type menu opens.
+    if (event.pointerType !== "mouse") {
       dragStart.current = { x: event.clientX, y: event.clientY };
       menuAnchor.current = { x: event.clientX, y: event.clientY };
       menuTimer.current = window.setTimeout(() => {
@@ -99,7 +199,7 @@ export function Slider({
         setDragValue(null);
         onCancel?.();
         const anchor = menuAnchor.current;
-        if (anchor) onMenu(anchor.x, anchor.y);
+        if (anchor) openMenu(anchor.x, anchor.y);
       }, 450);
     }
   };
@@ -174,14 +274,10 @@ export function Slider({
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
-        onContextMenu={
-          onMenu
-            ? (event) => {
-                event.preventDefault();
-                onMenu(event.clientX, event.clientY);
-              }
-            : undefined
-        }
+        onContextMenu={(event) => {
+          event.preventDefault();
+          openMenu(event.clientX, event.clientY);
+        }}
         onDoubleClick={() => onCommit(defaultValue)}
         onKeyDown={(event) => {
           if (disabled) return;
@@ -199,6 +295,41 @@ export function Slider({
         <div className="slider-fill" style={{ width: `${percent}%` }} />
         <div className="slider-thumb" style={{ left: `${percent}%` }} />
       </div>
+      {builtinMenu && (
+        <ValueMenu
+          x={builtinMenu.x}
+          y={builtinMenu.y}
+          defaultValue={defaultValue}
+          format={format}
+          onReset={() => onCommit(defaultValue)}
+          onType={() => setTypeDraft(String(Math.round(shown * 100) / 100))}
+          onClose={() => setBuiltinMenu(null)}
+        />
+      )}
+      {typeDraft !== null && (
+        <div className="value-type-popover">
+          <input
+            className="drag-number-input"
+            // eslint-disable-next-line jsx-a11y/no-autofocus
+            autoFocus
+            value={typeDraft}
+            aria-label={`${label} value`}
+            onChange={(event) => setTypeDraft(event.target.value)}
+            onBlur={commitTypeDraft}
+            onKeyDown={(event) => {
+              event.stopPropagation();
+              if (event.key === "Enter") {
+                event.preventDefault();
+                commitTypeDraft();
+              }
+              if (event.key === "Escape") {
+                event.preventDefault();
+                setTypeDraft(null);
+              }
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }

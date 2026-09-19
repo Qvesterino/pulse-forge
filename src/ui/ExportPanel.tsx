@@ -1,12 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  useActivePatternId,
-  useMarkers,
-  useMaster,
-  usePatterns,
-  useServices,
-  useTracks,
-} from "./context";
+import { useActivePatternId, useMarkers, useMaster, usePatterns, useServices, useTracks } from "./context";
 import { renderProject } from "../rendering/renderer";
 import { buildStemProject, nonEmptyStemGroups } from "../rendering/stems";
 import { downloadWav, encodeWav, sanitizeFilename } from "../rendering/wav";
@@ -20,6 +13,7 @@ import {
   summarizeBuffer,
   evaluateExportMonoGuard,
   evaluateMasterVerdict,
+  computeStageAdjustment,
   type BufferSummary,
 } from "../audio-engine/metering";
 import { extensionForMime, LiveRecorder, type RecordSource } from "../audio-engine/recorder";
@@ -28,6 +22,7 @@ import type { MaterializedPcmTake } from "../audio-engine/pcmRecording";
 import { detectLoopBpm } from "../audio-engine/bpm-detect";
 import { userSampleId, type UserSampleAsset } from "../persistence/UserSampleRepository";
 import { PublishToGalleryButton } from "../gallery/PublishButton";
+import { setMasterConfig } from "../commands/commands";
 
 type Status =
   | { kind: "idle" }
@@ -628,12 +623,9 @@ export function ExportPanel({
         )}
       </div>
       {status.kind === "done" && (
-        <ExportSummary
-          summary={status.summary}
-          lufsTarget={master.lufsTarget ?? -14}
-          ceilingDb={master.ceilingDb}
-        />
+        <ExportSummary summary={status.summary} lufsTarget={master.lufsTarget ?? -14} ceilingDb={master.ceilingDb} />
       )}
+      {status.kind === "done" && <AutoStageButton summary={status.summary} />}
 
       <div className="export-resample" role="group" aria-label="Realtime resample">
         <div className="export-resample-head">RESAMPLE — BOUNCE WHAT YOU HEAR</div>
@@ -672,6 +664,36 @@ export function ExportPanel({
         </div>
       </div>
     </section>
+  );
+}
+
+/**
+ * One-click export gain staging. Applies the verdict's advice (master IN so
+ * the true peak lands at ceiling − 1 dBTP while honoring the streaming
+ * target) as a single undoable command — the ceiling stays untouched.
+ * Hidden when the last render is already staged (or silent/muted).
+ */
+function AutoStageButton({ summary }: { summary: BufferSummary }) {
+  const services = useServices();
+  const master = useMaster();
+  const [staged, setStaged] = useState(false);
+  const adj = computeStageAdjustment(summary, master.masterGain ?? 1, master.lufsTarget ?? -14, master.ceilingDb);
+  if (adj.noop) return null;
+  return (
+    <button
+      type="button"
+      className="btn btn-export"
+      disabled={staged}
+      title="Apply the gain verdict as one undoable step (master IN only — re-export to verify)"
+      onClick={() => {
+        services.store.execute(setMasterConfig(services.store.getDoc(), { masterGain: adj.masterGain }));
+        setStaged(true);
+      }}
+    >
+      {staged
+        ? `STAGED ✓ ${adj.applied[0]} — re-export to verify`
+        : `AUTO STAGE (${adj.deltaDb >= 0 ? "+" : ""}${adj.deltaDb.toFixed(1)} dB)`}
+    </button>
   );
 }
 

@@ -128,6 +128,58 @@ export function evaluateExportMonoGuard(input: Pick<BufferSummary, "monoLossDb" 
   return { level, hints };
 }
 
+export interface StageAdjustment {
+  /** True when there is nothing to do (silent mix, muted master, already staged). */
+  noop: boolean;
+  /** New masterGain in 0..2 (equals the current gain when noop). */
+  masterGain: number;
+  /** Applied delta in dB before output clamping (≤ +something, display only). */
+  deltaDb: number;
+  /** Human-readable applied steps (empty when noop). */
+  applied: string[];
+}
+
+/**
+ * One-click export gain staging from a rendered summary. Pulls the master IN
+ * so the true peak lands at ceiling − 1 dBTP while honoring the streaming
+ * loudness target — the conservative (quieter) of the two deltas wins, so a
+ * single step can never clip. Only ever touches masterGain (the limiter
+ * ceiling stays an artistic choice); the command is undoable at the call
+ * site. Pure so tests can pin the math.
+ */
+export function computeStageAdjustment(
+  input: Pick<BufferSummary, "lufsIntegrated" | "truePeakDb">,
+  currentGain: number,
+  lufsTarget: number,
+  ceilingDb: number,
+): StageAdjustment {
+  const noop = { noop: true, masterGain: currentGain, deltaDb: 0, applied: [] as string[] };
+  if (!Number.isFinite(currentGain) || currentGain <= 0) return noop;
+  if (input.lufsIntegrated <= -119) return noop;
+  if (!Number.isFinite(input.truePeakDb) || !Number.isFinite(input.lufsIntegrated)) return noop;
+
+  const peakDelta = ceilingDb - 1 - input.truePeakDb;
+  // Positive when the mix is quiet (raise IN), negative when loud.
+  const loudDelta = lufsTarget - input.lufsIntegrated;
+  const loud = Math.abs(input.lufsIntegrated - lufsTarget) > 1 ? loudDelta : 0;
+  const delta = Math.min(peakDelta, loud);
+  if (Math.abs(delta) < 0.05) return noop;
+
+  const masterGain = Math.max(0, Math.min(2, currentGain * Math.pow(10, delta / 20)));
+  if (masterGain === currentGain) return noop;
+  const actualDb = 20 * Math.log10(masterGain / currentGain);
+  return {
+    noop: false,
+    masterGain,
+    deltaDb: delta,
+    applied: [
+      `Master IN ${actualDb >= 0 ? "+" : ""}${actualDb.toFixed(1)} dB — ` +
+        `peak ≈ ${(input.truePeakDb + actualDb).toFixed(1)} dBTP, ` +
+        `LUFS-I ≈ ${(input.lufsIntegrated + actualDb).toFixed(1)}`,
+    ],
+  };
+}
+
 export interface MasterVerdictInput {
   lufsIntegrated: number;
   truePeakDb: number;
