@@ -25,11 +25,7 @@
  *     golden vectors), allocation-free as the realtime constraints require.
  */
 import { describe, expect, it } from "vitest";
-import {
-  createFirFilter,
-  designLowPassFir,
-  type FirFilterState,
-} from "../src/effects/ultina-core/dsp/primitives.js";
+import { createFirFilter, designLowPassFir, type FirFilterState } from "../src/effects/ultina-core/dsp/primitives.js";
 import { ClipperModuleProcessor } from "../src/effects/ultina-core/dsp/modules/clipperModule.js";
 import { PhaseModuleProcessor } from "../src/effects/ultina-core/dsp/modules/phaseModule.js";
 import { UltinaProcessor } from "../src/effects/ultina-core/dsp/ultinaProcessor.js";
@@ -135,11 +131,12 @@ describe("ultina hardening #3 — LUFS stale tracking", () => {
     meter.noteUnfed(SR * 3); // one full short-term window without a feed
     // TS-private fields — read through a lens (public behavior is asserted
     // via getShortTermLufs() reporting the silence floor).
-    const state = () => meter as unknown as {
-      staleUntilTurnover: boolean;
-      unfedSamples: number;
-      fedSinceStale: number;
-    };
+    const state = () =>
+      meter as unknown as {
+        staleUntilTurnover: boolean;
+        unfedSamples: number;
+        fedSinceStale: number;
+      };
     expect(state().staleUntilTurnover).toBe(true);
     expect(state().unfedSamples).toBeGreaterThanOrEqual(SR * 3);
 

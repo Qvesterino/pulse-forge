@@ -231,9 +231,7 @@ export function prepareRecordPattern(doc: ProjectDocument): Command {
   const prev = doc.patterns.find((p) => p.id === patternId);
   const label = "Prepare pattern for recording";
   if (!prev) return { type: "prepareRecordPattern", label, execute: (d) => d, undo: (d) => d };
-  const drumPadIds = new Set(
-    doc.tracks.filter((t) => t.kind === "drum").flatMap((t) => t.pads.map((p) => p.id)),
-  );
+  const drumPadIds = new Set(doc.tracks.filter((t) => t.kind === "drum").flatMap((t) => t.pads.map((p) => p.id)));
   const instrumentTrackIds = new Set(doc.tracks.filter((t) => t.kind === "instrument").map((t) => t.id));
   const apply = (d: ProjectDocument): ProjectDocument => ({
     ...d,
@@ -252,9 +250,7 @@ export function prepareRecordPattern(doc: ProjectDocument): Command {
   });
   const restore = (d: ProjectDocument): ProjectDocument => ({
     ...d,
-    patterns: d.patterns.map((p) =>
-      p.id === patternId ? { ...p, rows: prev.rows, notes: prev.notes ?? {} } : p,
-    ),
+    patterns: d.patterns.map((p) => (p.id === patternId ? { ...p, rows: prev.rows, notes: prev.notes ?? {} } : p)),
   });
   return { type: "prepareRecordPattern", label, execute: apply, undo: restore };
 }

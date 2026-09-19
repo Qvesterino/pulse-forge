@@ -95,7 +95,7 @@ export function createLfo(
       }
       default:
         return Math.sin(2 * Math.PI * ph);
-      }
+    }
   }
 
   function advance(): void {

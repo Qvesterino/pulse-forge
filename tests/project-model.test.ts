@@ -686,7 +686,13 @@ describe("normalizeProject — hostile-doc hardening (security surface)", () => 
     const poisoned = {
       ...doc,
       tracks: doc.tracks.map((t) =>
-        t.id === inst.id ? { ...t, instrument: "not-a-synth", params: { ...("params" in t ? (t.params as object) : {}), cutoff: 4321 } } : t,
+        t.id === inst.id
+          ? {
+              ...t,
+              instrument: "not-a-synth",
+              params: { ...("params" in t ? (t.params as object) : {}), cutoff: 4321 },
+            }
+          : t,
       ),
     } as unknown as Parameters<typeof normalizeProject>[0];
     const healed = normalizeProject(poisoned);

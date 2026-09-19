@@ -205,7 +205,15 @@ describe("Slider onPreview (live drag, roadmap phase U2)", () => {
     const onPreview = vi.fn();
     const onCommit = vi.fn();
     render(
-      <Slider label="PREVIEW_GAIN" value={0} min={-24} max={24} defaultValue={0} onCommit={onCommit} onPreview={onPreview} />,
+      <Slider
+        label="PREVIEW_GAIN"
+        value={0}
+        min={-24}
+        max={24}
+        defaultValue={0}
+        onCommit={onCommit}
+        onPreview={onPreview}
+      />,
     );
     const track = screen.getByRole("slider", { name: "PREVIEW_GAIN" });
     fireEvent.pointerDown(track, { button: 0, clientX: 60, pointerId: 1 });
@@ -227,7 +235,15 @@ describe("Slider onPreview (live drag, roadmap phase U2)", () => {
     const onPreview = vi.fn();
     const onCommit = vi.fn();
     render(
-      <Slider label="PREVIEW_MIX" value={50} min={0} max={100} defaultValue={100} onCommit={onCommit} onPreview={onPreview} />,
+      <Slider
+        label="PREVIEW_MIX"
+        value={50}
+        min={0}
+        max={100}
+        defaultValue={100}
+        onCommit={onCommit}
+        onPreview={onPreview}
+      />,
     );
     const track = screen.getByRole("slider", { name: "PREVIEW_MIX" });
     fireEvent.pointerDown(track, { button: 0, clientX: 30, pointerId: 1 });

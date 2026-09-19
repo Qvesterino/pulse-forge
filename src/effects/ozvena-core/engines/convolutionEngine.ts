@@ -91,9 +91,7 @@ export interface ConvolutionEngine {
  * @param partitionSize  FFT size for partitioned convolution (power of two).
  *                       Defaults to 2048.
  */
-export function createConvolutionEngine(
-  partitionSize = 2048,
-): ConvolutionEngine {
+export function createConvolutionEngine(partitionSize = 2048): ConvolutionEngine {
   let channelCount = 2;
   let preparedMaxBlockSize = 4096;
   let params: ConvolutionEngineParams = { ...DEFAULT_CONVOLUTION_ENGINE_PARAMS };
@@ -172,13 +170,13 @@ export function createConvolutionEngine(
       const c1 = set[1] as PartitionedConvolver;
       const c2 = set[2] as PartitionedConvolver;
       const c3 = set[3] as PartitionedConvolver;
-      c0.process(inL, frameCount, outL);      // LL → outL
-      c1.process(inL, frameCount, tmp1);      // LR → part outR
-      c2.process(inR, frameCount, outR);      // RL → part outL
-      c3.process(inR, frameCount, tmp2);      // RR → outR
+      c0.process(inL, frameCount, outL); // LL → outL
+      c1.process(inL, frameCount, tmp1); // LR → part outR
+      c2.process(inR, frameCount, outR); // RL → part outL
+      c3.process(inR, frameCount, tmp2); // RR → outR
       for (let i = 0; i < frameCount; i++) {
-        outL[i] += outR[i];                   // outL = LL + RL
-        outR[i] = tmp1[i] + tmp2[i];          // outR = LR + RR
+        outL[i] += outR[i]; // outL = LL + RL
+        outR[i] = tmp1[i] + tmp2[i]; // outR = LR + RR
       }
     } else {
       // Mono broadcast (mono IR) or dual-mono stereo (L→L, R→R).
@@ -197,8 +195,10 @@ export function createConvolutionEngine(
   /** Arm the ~50 ms wet crossfade for an in-flight IR swap. */
   function beginIrSwap(): void {
     if (conv[0] !== null && preparedMaxBlockSize > 0 && hasRendered) {
-      oldConv[0] = conv[0]; oldConv[1] = conv[1];
-      oldConv[2] = conv[2]; oldConv[3] = conv[3];
+      oldConv[0] = conv[0];
+      oldConv[1] = conv[1];
+      oldConv[2] = conv[2];
+      oldConv[3] = conv[3];
       oldIrChannels = irChannels;
       convFadeLen = Math.max(1, Math.round(0.05 * hostSampleRate));
       convFadePos = 0;
@@ -214,10 +214,7 @@ export function createConvolutionEngine(
   }
 
   /** Install convolvers from `mk(slot)` using the engine channel layout. */
-  function assignIrSlots(
-    mk: (slot: number) => PartitionedConvolver,
-    irCh: IrChannelCount,
-  ): void {
+  function assignIrSlots(mk: (slot: number) => PartitionedConvolver, irCh: IrChannelCount): void {
     if (channelCount === 1) {
       // Mono bus: single convolver (first slot of the IR).
       conv[0] = mk(0);
@@ -332,8 +329,10 @@ export function createConvolutionEngine(
     clearIr() {
       if (conv[0] !== null && hasRendered) {
         // Fade the outgoing IR out instead of stepping to silence.
-        oldConv[0] = conv[0]; oldConv[1] = conv[1];
-        oldConv[2] = conv[2]; oldConv[3] = conv[3];
+        oldConv[0] = conv[0];
+        oldConv[1] = conv[1];
+        oldConv[2] = conv[2];
+        oldConv[3] = conv[3];
         oldIrChannels = irChannels;
         convFadeLen = Math.max(1, Math.round(0.05 * hostSampleRate));
         convFadePos = 0;

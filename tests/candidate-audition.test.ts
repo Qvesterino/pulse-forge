@@ -78,13 +78,33 @@ describe("candidate audition — engine side (A1)", () => {
     const result = await generateAsyncResult(doc, INTENT, { mode: "apply", includeBank: true });
     const pick = result.bank![2];
     const picked = resultForCandidate(result, pick.candidateIndex);
-    // Identity: exactly the auditioned pattern, not a regeneration.
-    expect(picked.proposal!.pattern).toBe(pick.pattern);
-    // Provenance: human selection recorded, ranker metadata stamped.
+    // Content identity: exactly the auditioned candidate, not a regeneration.
+    expect(picked.proposal!.pattern.rows).toEqual(pick.pattern.rows);
+    expect(picked.proposal!.pattern.generation?.outputContentHash).toBe(pick.pattern.generation?.outputContentHash);
+    // Provenance: human selection recorded.
     expect(picked.diagnostics.warnings).toContain("selection:user-audition");
     expect(picked.diagnostics.warnings).toContain(`candidate-bank-selected:${pick.candidateIndex}:${pick.source}`);
-    expect(picked.proposal!.pattern.generation?.ranker?.selectedIndex).toBe(pick.candidateIndex);
     expect(picked.status).toBe(pick.status);
+  });
+
+  it("ranker off keeps the historical no-provenance contract on picked candidates", async () => {
+    setRankerMode("off");
+    const doc = testDoc();
+    const result = await generateAsyncResult(doc, INTENT, { mode: "apply", includeBank: true });
+    const picked = resultForCandidate(result, result.bank![1].candidateIndex);
+    expect(picked.proposal!.pattern.generation?.ranker).toBeUndefined();
+  });
+
+  it("shadow mode stamps the picked candidate with its bank index", async () => {
+    setRankerMode("shadow");
+    const doc = testDoc();
+    const result = await generateAsyncResult(doc, INTENT, { mode: "apply", includeBank: true });
+    const pick = result.bank![1];
+    const picked = resultForCandidate(result, pick.candidateIndex);
+    expect(result.selection?.mode).toBe("shadow");
+    const ranker = picked.proposal!.pattern.generation?.ranker;
+    expect(ranker?.selectedIndex).toBe(pick.candidateIndex);
+    expect(ranker?.mode).toBe("shadow");
   });
 
   it("resultForCandidate rejects invalid banks and unknown candidates", async () => {
@@ -98,6 +118,7 @@ describe("candidate audition — engine side (A1)", () => {
   });
 
   it("applies exactly the auditioned candidate through one command", async () => {
+    setRankerMode("shadow");
     const doc = testDoc();
     const result = await generateAsyncResult(doc, INTENT, { mode: "apply", includeBank: true });
     const pick = result.bank![1];

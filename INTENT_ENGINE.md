@@ -78,7 +78,7 @@ PERSIST        recipe + intent + intentHash + ranker metadata + content hash
 | `hash.ts` | 11 | `canonicalizeIntent` + `intentHash` (8 hex znakov) |
 | `mapping.ts` | 98 | `mapIntentToOptions` — intent 4-slider → ghost/micro/velocity/temperature + `_dice*` hinty; `diceHints()` |
 | `plan.ts` | 123 | `planGeneration` — pure plan: groove, sub-seedy (groove/drumsCore/drumsVariation/drumsMeta/melodyFallback/bass/chord/lead), rolePlans, resolvedBpm, candidateSeeds; `planRandomStreams()` |
-| `pipeline.ts` | 43 | `generateLocalResult` / `generateLocalResultFromOptions` — sync zdieľaná cesta pre príkazy aj UI |
+| `pipeline.ts` | 200+ | `generateAsyncResult` (kanonický async vstup, `includeBank`), `resultForCandidate` (A1), sync fast path |
 | `providers/local.ts` | 300+ | `LocalDeterministicProvider` — id `pulse-forge.local-groove`, verzia `correctness-1`; sync (heuristika) + async (ONNX ranker + symbolic prior merge) cesta, invariant gates (zdieľaný `evaluateCandidate`), repair, fallback |
 | `providers/symbolic.ts` | ~190 | **`SymbolicPriorProvider`** (T2) — ONNX drum prior kandidáty do zdieľaného banku, seeded sampling, kick anchor floor, `source: "symbolic-prior"` |
 | `candidate-bank.ts` | 54+ | dedup podľa content hash + heuristic score: `gateFit·0.4 + distanceFit·0.3 + anchorFit·0.2 + motifFit·0.1`; entries nesú `source: template\|symbolic-prior` |
@@ -102,7 +102,11 @@ PERSIST        recipe + intent + intentHash + ranker metadata + content hash
 | `symbolic/prior-features.ts` | **prior-features.v1** (T2) — 44 fixných vstupov drum prioru; dataset skript importuje tento modul (žiadny drift) |
 | `symbolic/melodic-features.ts` | **melodic-features.v1** (T2 v2) — 29 fixných vstupov next-note prioru + duration/contour triedy |
 | `symbolic/prior-types.ts` / `prior-worker.ts` / `prior-client.ts` | ONNX prior runtime pre OBA modely (drums + melodic) — zrkadlo ranker vzoru (lazy worker, multi-session, hash verifikácia, timeouty, circuit breaker, flag `pf:symbolic-prior`) |
-| `intent/favorites.ts` | favorites ledger (localStorage) + `favoritesToDrumSamples` konverter — lokálny feedback loop |
+| `intent/favorites.ts` | favorites ledger v2 (localStorage) + konvertory: `favoritesToDrumSamples`, `favoritesToMelodicSamples` (pitch→degree cez key) — lokálny feedback loop pre všetky tri modely |
+| `intent/audition.ts` | **A1 candidate audition** — offline render kandidáta (dočasný dokument, mode pattern) + zdieľaný AudioContext playback |
+| `intent/song.ts` | **A2 song builder** — per-žáner formy, role-aware delty, `buildSong()` (async + progress) a `applySongCommand` (1 undo) |
+| `intent/mix.ts` | **D1 intent → mix chain** — profil plánovač (tone/punch/space/pump) + `applyMixIntent` (1 undo, clamp proti defs) |
+| `intent/route.ts` | **D3 unified router** — mix parser + `routeIntentText` (arrange → mix → pattern) |
 | `performance.ts` | latency harness (`npm run ai:performance`) |
 
 ### UI povrchy
@@ -136,9 +140,10 @@ PERSIST        recipe + intent + intentHash + ranker metadata + content hash
 | `scripts/generate-symbolic-melodic-dataset.mts` | next-note dataset z MELODIC_BY_GENRE (vrátane wrap-around) |
 | `scripts/train-symbolic-melodic.py` | numpy dvojhlavý tréner (class-weighted CE) + ONNX export |
 | `scripts/validate-symbolic-melodic.mjs` | ORT-web validácia oboch hláv |
-| `scripts/export-favorites-training.mts` | favorites pack → weighted samples → retrain (`prior:favorites`) |
+| `scripts/export-favorites-training.mts` | favorites pack → retrain VŠETKÝCH troch modelov (`favorites:retrain` / alias `prior:favorites`) |
+| `scripts/generate-intent-ranker-favorites.mts` | C2: pack → preferenčné skupiny pre ranker (favorit=winner, súrodenci=alternatívy, features.v1) |
 | `scripts/smoke-symbolic-prior.mts` | end-to-end smoke: reálne modely + reálne features + sampling (10 checks) |
-| `package.json` | `ranker:train`, `ranker:golden`, `ranker:activate`, `ranker:ort-sync`, `prior:train`, `prior:melodic`, `prior:favorites` |
+| `package.json` | `ranker:train`, `ranker:golden`, `ranker:activate`, `ranker:ort-sync`, `prior:train`, `prior:melodic`, `favorites:retrain` |
 
 ---
 
@@ -302,26 +307,133 @@ nota (degree + duration) a kontúra, čo príde ďalej?"
   dedupe, best-effort storage). Nič neopúšťa stroj.
 - **Export**: tlačidlo "⬇ ★" v dice tray stiahne pack JSON
   (`pulse-forge-favorites-<dátum>.json`).
-- **Retrain**: `npm run prior:favorites -- <pack.json>` skonvertuje pack cez
-  zdieľaný konverter (`favoritesToDrumSamples`, rovnaký features kontrakt →
-  žiadny drift) a spustí `train-symbolic-prior.py --favorites` — weighted
-  vzorky (weight 3) vstupujú LEN do train splitu (validácia ostáva
-  library-only), pretrénuje a validuje drum prior.
-- **Overené end-to-end**: syntetický pack 3 entry → 768 weighted vzoriek →
-  2 304 tréningových riadkov → nový model hash (valAUC 0.918); čistý
-  library-only model bol po dôkaze obnovený.
-- Testy: `tests/favorites-ledger.test.ts` (7).
+- **Retrain (C1+C2, jeden príkaz)**: `npm run favorites:retrain -- <pack.json>`
+  pretrénuje VŠETKY TRI naučené modely z jedného packu:
+  1. **Drum prior** — pack → weighted per-step vzorky (`favoritesToDrumSamples`)
+     → `train-symbolic-prior.py --favorites` (train-only, validácia library-only).
+  2. **Melodic prior** — pack → weighted next-note vzorky
+     (`favoritesToMelodicSamples`: pitch→degree cez zaznamenaný key + rolový
+     octave offset, chord voicings sa zrútia na root) →
+     `train-symbolic-melodic.py --favorites`. Pack bez melodic obsahu = krok skip.
+  3. **Ranker** — pack → **preferenčné skupiny** (`buildFavoriteRankerGroups`):
+     favorit = winner (label 1.0), 3 rovnaké-intent súrodenci s odvodenými
+     seedmi = alternatívy, features.v1 cez reálny pipeline →
+     `train-intent-ranker.py --favorites` (train-only, oversample ×3,
+     validácia ostáva teacher-labeled). Toto je C2: selection sa učí
+     PREFERENCIE, nielen heuristic teacher.
+- **Ledger v2**: entry nesie aj `length, style, controls (ghost/micro/velocity/
+  temperature), key, melodic[]` (C1 cap 128 not) — plná rekonštrukčná vernosť
+  pre všetky tri retrainty; v1 packy ostávajú validné (polia optional).
+- **Overené end-to-end**: syntetický pack (3 entry + melodic) → drum 2 304
+  weighted vzoriek (valAUC 0.918) + melodic 108 weighted vzoriek + ranker 3
+  preferenčné skupiny (golden verdict ready-for-active) → všetky tri modely
+  nový hash → po dôkaze obnovené pôvodné artifacty (hashy overené validátormi).
+- Testy: `tests/favorites-ledger.test.ts` (11 — ledger v2, drum konverzia,
+  melodic pitch→degree inverzia, chord-root zrútenie, roleForTrack).
+
+### 5.5 Candidate audition (A1 — počuj všetkých, vyber si, HOTOVÉ)
+
+SUNO-core UX: engin zoberie celý ranked bank a používateľ si **vypočuje a
+vyberie** kandidáta namiesto toho, aby dostal len neviditeľný víťaz.
+
+- **Engine**: `LocalDeterministicProvider.generateRanked()` vracia
+  `{ proposal, ranked, modelScores, ranker }`; `generate()` je teraz thin
+  wrapper. Pipeline: `generateAsyncResult(..., { includeBank: true })` dáva na
+  výsledku `result.bank: RankedCandidate[]` (best-first, in-memory only — do
+  projektu sa serializuje len vybraný proposal) + `result.selection` (meta o
+  tom, ako vyhral default).
+- **Výber ľubovoľného kandidáta**: `resultForCandidate(result, index)` postaví
+  applyable GenerationResult presne z auditionovaného patternu (žiadna
+  regenerácia), stampuje `ranker.selectedIndex` + `selection:user-audition`
+  warning. Ranker-mode "off" zachováva historický kontrakt (žiadna ranker
+  provenance), shadow/active stampujú. Apply = `applyGenerationResultCommand`
+  (1 undo krok).
+- **Audio**: `src/intent/audition.ts` — kandidát sa renderuje OFFLINE cez reálny
+  chain (`renderProject` na dočasnom dokumente, mode "pattern", tail 0.4 s) a
+  prehráva cez zdieľaný AudioContext; ničoho sa nedotkne v live engine ani
+  transporte. Buffer cache v UI (prvé ▶ renderuje, ďalšie prehrávky instant).
+- **UI**: IntentPanel — po generácii zoznam kandidátov (▶/■ audition, TPL/PRIOR
+  badge, score (+ ai score), ★ best marker, fixed badge, USE). Apply zruší
+  audition aj bank (čistý stav).
+- Testy: `tests/candidate-audition.test.ts` (7) — bank obsah/poradie, winner
+  identita (`proposal.pattern === bank[0].pattern`), resultForCandidate
+  provenance + off/shadow kontrakty, apply-exact-content + undo.
+- Follow-up: GenerateDialog dostane audition neskôr (jeho live-preview UX sa
+  riesi inak); renderer beží na main thread — pri dlhých patternoch presunúť
+  render do workeru.
 
 ---
+
+### 5.6 Song builder (A2 — "make it a song", HOTOVÉ)
+
+Jeden intent → celé zaradielovaná pesnička ako jeden undo krok.
+
+- **Forma per žáner** (`planSongForm`): house/techno = intro(8) → build A(4) →
+  drop A(8) → break(4) → build B(4) → drop B(8) → outro(8) = 44 barov;
+  trap = 6 sekcií; ambient = 5 sekcií s vlastnými labelmi (Emergence → Swell →
+  Peak → Stillness → Dissolve). Deterministické (rovnaký intent ⇒ rovnaká forma).
+- **Role-aware delty**: každá sekcia má energy/density/complexity delty
+  (drop = base +0.3/+0.3/+0.1, break = base −0.35/−0.25, intro/outro nižšie),
+  clampované na 0..1 — patterny sú hudobne gradientné, nie kópie.
+- **Súvisiace, nie identické**: sekvencia generuje cez kanonický sync path s
+  seedmi `baseSeed|song:<i>:<role>` — sekcie zdieľajú seed namespace, takže
+  pesnička znie ako JEDEN nápad rozarranžovaný; pattern = celá dĺžka sekcie
+  (multi-bar phrase plany + fills), nie tile 16-krokov.
+- **applySongCommand**: jeden snapshot inštaluje patterny + scény (rola,
+  intensity, label) + kontiguózne klipy + markery (BUILD/DROP/BREAK) +
+  prechody (riser do dropov, fill do buildu B) + resolvedBpm + active pattern.
+  Generovanie beží v `buildSong()` (async, yield medzi sekciami, progress
+  callback) — command negeneruje (etiketa).
+- **UI**: IntentPanel "♪ SONG" tlačidlo vedľa GENERATE — build s progress
+  statusom, výsledok priamo v arranžmáne.
+- Testy: `tests/intent-song.test.ts` (6) — forma determinizmus + per-žáner
+  tvary, slider delty + clamp, súvisiace-seedy (rôzne content hash pri rovnakom
+  namespace), apply (patterny/scény/klipy/markery/transition/bpm/active),
+  one-undo restore.
+- Follow-up: audíció celej pesničky (offline render dlhý — po Worker boundary),
+  per-section prior kandidáty, SK labely foriem.
+
+### 5.7 Intent → mix chain (D1) + unified intent bar (D3, HOTOVÉ)
+
+- **Mix profil** (`src/intent/mix.ts`): `planMixProfile(intent, overrides)`
+  deterministicky mapuje žáner/mood/energy na mix rozhodnutia — tone tilt
+  (EQ low/high shelf + LP), punch (drum kompresor + saturation), space
+  (reverb mix/decay/tone na chords+lead; techno/trap = suchšie, ambient/chill
+  = lush), pump (sidechain pump na bass+chords kľúčovaný z drums pri
+  house/techno energy ≥ 0.55). Konzervatívne: neutrálny intent bez override
+  nemení EQ. Overrides z textu ("more reverb", "drier", "punchier",
+  "bez pumpy", "huge reverb", "tmavší zvuk").
+- **applyMixIntent**: pridá chýbajúce efekty (addEffectToTracks), clampuje
+  parametre cez clampEffectParam proti EFFECT_DEFS, wire-uje sidechain
+  (setEffectSidechainSource → drum track) — všetko zložené do JEDNÉHO undo
+  snapshotu (arrangeWords etiketa). Idempotentný: druhé použitie rovnakého
+  profilu hodí "changed nothing". Track targeting cez `roleForTrack`
+  (rovnaká heuristika ako generátor; "chords"↔"chord" normalizácia).
+- **Mix parser** (`src/intent/route.ts`): mix NOUNS/VERBS + komparatívy
+  ("darker/brighter/punchier", "viac dozvuku", "bez pumpy", "tmavší zvuk").
+  Dôležité delenie: obyčajné adjektívy ("dark techno") = pattern intent,
+  komparatívy ("darker") = mix intent.
+- **Unified router** (`routeIntentText`): jeden text → tri executory s
+  prioritou 1) ARRANGE (scény existujú + text sa parzuje na ops), 2) MIX
+  (explicitná mix slovná zásoba), 3) PATTERN (default). Menej deštruktívna
+  interpretácia vyhráva.
+- **UI**: IntentPanel "⚡ DO IT" — zrouteruje text sám (status ukazuje čo
+  spravil); GENERATE a ♪ SONG ostávajú ako explicitné cesty.
+- Testy: `tests/intent-mix-route.test.ts` (14) — profil determinizmus,
+  per-mood/genre rozhodnutia, konzervativnosť, overrides, apply (fx + clamp +
+  sidechain + one undo) + idempotencia, mix parser EN/SK, router priority.
 
 ## 6. Kvalita, testy, determinizmus
 
 - **Testy**: `tests/intent-pipeline.test.ts`, `intent-async-pipeline.test.ts`,
   `intent-async-fallback.test.ts`, `intent-mapping.test.ts`,
-  `intent-binding.test.ts`, `intent-text-parser.test.ts` (parser v2),
+  `intent-binding.test.ts`, `intent-text-parser.test.ts` (parser v3, EN regresia + SK blok),
   `symbolic-prior.test.ts` (drum prior provider, stub inferencia),
   `symbolic-melodic.test.ts` (melodic prior provider + key-safe noty),
   `favorites-ledger.test.ts` (ledger + konverter),
+  `candidate-audition.test.ts` (A1 bank + resultForCandidate + apply),
+  `intent-song.test.ts` (A2 forma + delty + apply/undo),
+  `intent-mix-route.test.ts` (D1 mix profil/parser/apply + D3 router),
   `tests/intent/arrangeWords.test.ts`, `dice.test.ts`,
   `dice-subseed.test.ts`, `dice-locks.test.ts`, `ranker-client.test.ts`,
   `ranker-active.test.ts`, `pattern-features.test.ts`, golden baselines
@@ -354,13 +466,15 @@ nota (degree + duration) a kontúra, čo príde ďalej?"
 
 | Oblast | Dnes | Chýba do SUNO-tieru |
 |---|---|---|
-| Text understanding | **parser v2 (EN)**: frázy, BPM range, key (flats→sharps, minor default), moods, bars, roly s negáciami | SK jazyk; embedding-based porozumenie (T1 krok 2) |
+| Text understanding | **parser v3 (EN + SK)**: frázy, BPM range (na/pri/okolo/medzi), key (mol/dur + EN, flats→sharps, minor default), moods/traits so SK stems, takty, roly s negáciami (bez bubnov…) — detekcia dvojjazyčná, kanonický intent ostáva EN | embedding-based porozumenie (T1 krok 2) — prirodzene pokryje aj SK |
 | Žánre/style | 4 žánre + 21 groove štýlov v prior vocab | desiatky štýlov; style embeddingy namiesto ručných keyword map |
 | Generatívny model | template anchors + constrained Markov **+ ONNX symbolic prior v1 (drums)** | prior v2: melodic role, učenie z favoritov, väčší dataset |
-| Štruktúra pesničky | phrase plan na úrovni patternu (16–256 krokov) + `arrangeWords`/autoArrange | dlhý form (intro→build→drop→break→outro), section-aware generácia, transition fill |
+| Štruktúra pesničky | **HOTOVÉ (A2)**: song builder — intent → intro→build→drop→break→drop→outro s role-aware patternami, markermi a prechodmi; + phrase plan + `arrangeWords`/autoArrange | section-aware prior kandidáty, audíció celej pesničky, fill/transition generovanie |
+| Intent → mix | **HOTOVÉ (D1)**: mix profil z intentu (tone/punch/space/pump) ako jeden undo krok | loudness target (limiter), per-section mix v song builderi |
+| Unified bar | **HOTOVÉ (D3)**: ⚡ router arrange→mix→pattern v IntentPaneli | vzor/pattern z audio referencie (T4) |
 | Audio dimenzia | sample kity, grooves; žiadne audio AI | audio embeddingy (tagovanie sample lib, audio ranker rendered výstupu) |
 | Vocals | — | v prehliadači realisticky až neskôr (pozri §8 T5) |
-| Feedback loop | ranker trénovaný na heuristic teacher + golden gate prešiel | učenie z používateľských preferencií (dice favorites → golden dataset) |
+| Feedback loop | **HOTOVÉ (C1+C2)**: favorites → retrain drum+melodic prioru aj rankera (preferencie), jeden príkaz | dlhodobejšie: cloud-free zdieľanie packov, implicitné signály (apply bez audition) |
 
 ---
 
@@ -387,12 +501,15 @@ nota (degree + duration) a kontúra, čo príde ďalej?"
 - **v2**: melodic next-note prior (29→64→32→{8,4}, 17.7 kB) + favorites
   feedback loop — detail §5.3, §5.4.
 - v3 návrhy: prior podmienený embeddingom namiesto one-hot vocab, väčší
-  tréningový korpus (public-domain MIDI), pairwise preference head učený
-  priamo z favoritov (A > B), melodic prior trénovaný aj z favoritov.
+  tréningový korpus (public-domain MIDI). ~~pairwise preference head učený
+  priamo z favoritov~~ **HOTOVÉ (C2)** — ranker sa učí z preferenčných skupín;
+  ~~melodic prior trénovaný aj z favoritov~~ **HOTOVÉ (C1)**.
 
-### T3 — Štruktúra a dlhá forma
-- Section planner (song form) ako model alebo rozšírený phrase plan;
-  aranžmán cez `arrangeWords`/scenes; transition/fill model medzi sekciami.
+### T3 — Štruktúra a dlhá forma — ✅ základ HOTOVÝ (2026-09-19, A2)
+- ~~Section planner (song form)~~ **HOTOVÉ**: song builder (§5.6) — forma per
+  žáner + role-aware generácia + markers/transitions, jeden undo krok.
+- Ostáva: fill/transition generovanie (dnes len typy), section-aware prior,
+  audíció celej pesničky po Worker boundary.
 
 ### T4 — Audio dimenzia
 - Audio embedding model (YAMNet/CLAP-audio tier, ~10–60 MB int8) nad sample
@@ -443,6 +560,7 @@ IndexedDB/Cache API cache po prvom stiahnutí, PWA precache len pre T0.
 
 ---
 
-*Posledná úplná revízia mapy: 2026-09-19 (T1 overený, parser v2, drum prior v1,
-melodic prior v1 + favorites feedback loop). Dokument sa dopĺňa pri každej
-zmene Intent Engine; fakty boli overené čítaním zdrojov uvedených v §3.*
+*Posledná úplná revízia mapy: 2026-09-19 (T1 overený, parser v3 EN+SK, drum+melodic
+prior v1, C1+C2 favorites→retrain, A1 audition, A2 song builder, D1 mix chain,
+D3 unified intent bar). Dokument sa dopĺňa pri každej zmene Intent Engine;
+fakty boli overené čítaním zdrojov uvedených v §3.*

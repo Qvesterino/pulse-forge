@@ -74,9 +74,7 @@ export class MidiInput {
 
   /** Held notes with their live MPE dimensions, sorted by pitch. */
   getMpeNotes(): Array<{ pitch: number; pressure: number; timbre: number }> {
-    return [...this.mpeNotes.entries()]
-      .map(([pitch, d]) => ({ pitch, ...d }))
-      .sort((a, b) => a.pitch - b.pitch);
+    return [...this.mpeNotes.entries()].map(([pitch, d]) => ({ pitch, ...d })).sort((a, b) => a.pitch - b.pitch);
   }
 
   isMpeConnected(): boolean {
@@ -345,9 +343,7 @@ export class MidiInput {
     // the selected track is what the user sees and expects to hear.
     if (config.instrumentChannel === 0 || channel === config.instrumentChannel) {
       const performId =
-        this.selectionBridge?.getPerformTrackId() ??
-        doc.tracks.find((t) => t.kind === "instrument")?.id ??
-        null;
+        this.selectionBridge?.getPerformTrackId() ?? doc.tracks.find((t) => t.kind === "instrument")?.id ?? null;
       const instTrack = performId ? doc.tracks.find((t) => t.id === performId) : undefined;
       if (instTrack) {
         this.engine.noteOn(instTrack.id, note, normVelocity, when, 0.5);

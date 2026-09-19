@@ -41,13 +41,7 @@ export interface FxEqPreset {
   schemaVersion?: number;
 }
 
-export type PresetCategory =
-  | "Saturation"
-  | "Lo-Fi"
-  | "Modulation"
-  | "Reverb"
-  | "Delay"
-  | "Combined";
+export type PresetCategory = "Saturation" | "Lo-Fi" | "Modulation" | "Reverb" | "Delay" | "Combined";
 
 // Helpers to set a module across bands concisely.
 function setBandModule(bands: number[], key: string, params: Record<string, number>): Record<string, number> {
@@ -858,9 +852,7 @@ export const FXEQ_PRESETS: readonly FxEqPreset[] = [
  * Frozen manifest of all v1 preset IDs. This array is committed and must not
  * change without a schema version bump. Migration tests assert against it.
  */
-export const V1_PRESET_IDS: readonly string[] = Object.freeze(
-  FXEQ_PRESETS.map((p) => p.id),
-);
+export const V1_PRESET_IDS: readonly string[] = Object.freeze(FXEQ_PRESETS.map((p) => p.id));
 
 export function getPresets(): readonly FxEqPreset[] {
   return FXEQ_PRESETS;
@@ -870,10 +862,7 @@ export function getPresets(): readonly FxEqPreset[] {
  * Get presets filtered by category and optionally subcategory.
  * Returns presets matching the given category, sorted by name.
  */
-export function getPresetsFiltered(
-  category?: PresetCategory,
-  subcategory?: string,
-): readonly FxEqPreset[] {
+export function getPresetsFiltered(category?: PresetCategory, subcategory?: string): readonly FxEqPreset[] {
   let filtered = FXEQ_PRESETS;
   if (category) filtered = filtered.filter((p) => p.category === category);
   if (subcategory) filtered = filtered.filter((p) => p.subcategory === subcategory);
@@ -890,7 +879,7 @@ export function searchPresets(query: string): readonly FxEqPreset[] {
     (p) =>
       p.name.toLowerCase().includes(q) ||
       p.category.toLowerCase().includes(q) ||
-      (p.subcategory?.toLowerCase().includes(q)) ||
+      p.subcategory?.toLowerCase().includes(q) ||
       p.tags?.some((t) => t.toLowerCase().includes(q)),
   );
 }
@@ -970,7 +959,7 @@ export function downloadPresets(presets: FxEqPreset[], filename = "fxeq-presets.
   // UI calls this in a browser, but the preset model is also imported by the
   // standalone host where DOM globals are intentionally not part of the
   // compiler lib.
-  const browser = (globalThis as {
+  const browser = globalThis as {
     document?: {
       createElement?: (tagName: string) => {
         href: string;
@@ -982,7 +971,7 @@ export function downloadPresets(presets: FxEqPreset[], filename = "fxeq-presets.
       createObjectURL: (value: Blob) => string;
       revokeObjectURL: (url: string) => void;
     };
-  });
+  };
   if (!browser.document?.createElement || !browser.URL) return;
   const json = exportPresets(presets);
   const blob = new Blob([json], { type: "application/json" });
@@ -1043,8 +1032,20 @@ export function randomizePreset(seed?: number): Record<string, number> {
   const moduleRanges: Record<string, Record<string, number>> = {
     sat: { enabled: 1, driveDb: 4 + rng() * 12, mode: Math.floor(rng() * 8), mix: 40 + rng() * 50 },
     lofi: { enabled: 1, mode: Math.floor(rng() * 4), amount: 20 + rng() * 50, mix: 40 + rng() * 40 },
-    mod: { enabled: 1, type: Math.floor(rng() * 4), rate: 0.1 + rng() * 3, depth: 30 + rng() * 60, mix: 30 + rng() * 40 },
-    delay: { enabled: 1, type: Math.floor(rng() * 4), timeMs: 80 + rng() * 400, feedback: 0.2 + rng() * 0.5, mix: 20 + rng() * 30 },
+    mod: {
+      enabled: 1,
+      type: Math.floor(rng() * 4),
+      rate: 0.1 + rng() * 3,
+      depth: 30 + rng() * 60,
+      mix: 30 + rng() * 40,
+    },
+    delay: {
+      enabled: 1,
+      type: Math.floor(rng() * 4),
+      timeMs: 80 + rng() * 400,
+      feedback: 0.2 + rng() * 0.5,
+      mix: 20 + rng() * 30,
+    },
     rev: { enabled: 1, type: Math.floor(rng() * 3), decayMs: 500 + rng() * 4000, mix: 20 + rng() * 30 },
   };
 

@@ -50,7 +50,10 @@ export interface ParsedArrange {
  * "skrát" because of the ť/t mismatch) — normalize once, match ASCII.
  */
 export function deaccent(value: string): string {
-  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
 }
 
 const ROLE_SYNONYMS: Array<[ArrangeRole, RegExp]> = [
@@ -130,11 +133,7 @@ function scenesWithRole(doc: ProjectDocument, role: ArrangeRole): Scene[] {
  * to a concrete scene. Returns null when the clause carries no resolvable
  * role or name.
  */
-export function resolveSceneTarget(
-  doc: ProjectDocument,
-  clause: string,
-  roles: ArrangeRole[],
-): Scene | null {
+export function resolveSceneTarget(doc: ProjectDocument, clause: string, roles: ArrangeRole[]): Scene | null {
   let nameMatch: Scene | null = null;
   for (const scene of doc.scenes) {
     const n = deaccent(scene.name.trim());
@@ -289,9 +288,7 @@ function relayout(d: ProjectDocument): ProjectDocument {
   let bar = 0;
   const nextClips: ProjectDocument["arrangement"]["clips"] = [];
   for (const scene of d.scenes) {
-    const clips = d.arrangement.clips
-      .filter((c) => c.sceneId === scene.id)
-      .sort((a, b) => a.startBar - b.startBar);
+    const clips = d.arrangement.clips.filter((c) => c.sceneId === scene.id).sort((a, b) => a.startBar - b.startBar);
     for (const c of clips) {
       nextClips.push({ ...c, startBar: bar });
       bar += Math.max(1, c.lengthBars);
@@ -324,10 +321,7 @@ function primitiveFor(cur: ProjectDocument, op: ArrangeOp): { do: DocTransform; 
           }
           // Append past the arrangement end — the relayout moves the clip
           // into scene order (addArrangementClip throws on overlaps).
-          const endBar = next.arrangement.clips.reduce(
-            (mx, c) => Math.max(mx, c.startBar + c.lengthBars),
-            0,
-          );
+          const endBar = next.arrangement.clips.reduce((mx, c) => Math.max(mx, c.startBar + c.lengthBars), 0);
           next = addArrangementClip(next, newScene.id, endBar, 4).execute(next);
           return next;
         },

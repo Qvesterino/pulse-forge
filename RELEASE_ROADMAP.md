@@ -3,6 +3,12 @@
 > Východiskový stav: po 19-sekvenčnom maintenance & hardening passes (detaily v [`MAINTENANCE_AUDIT_PROGRESS.md`](./MAINTENANCE_AUDIT_PROGRESS.md)).
 > Zdravotný stav kódu: `npm run typecheck:clean` ✓ · full test suite **193 súborov / 1911 passed / 94 skipped / 0 failed** · `npm run build` ✓ (budgety OK) · prod `npm audit` 0 vulnerabilities.
 >
+> ⚠️ **Historical snapshot.** The test counts above are point-in-time (one of the earlier
+> post-hardening passes). For the **current** test gate and release-readiness evidence, see
+> [`docs/CURRENT-STATE.md`](./CURRENT-STATE.md) and
+> [`RELEASE_READINESS_REPORT.md`](./RELEASE_READINESS_REPORT.md). The roadmap tasks and
+> status legend below remain valid.
+>
 > Status legendy: `[ ]` pending · `[~]` robí sa · `[x]` hotové · `[!]` blocked / potrebuje rozhodnutie.
 
 ---

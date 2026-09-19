@@ -36,29 +36,17 @@ export { extractFeatures } from "./featureExtractor.js";
 export { classifyInstrument } from "./instrumentClassifier.js";
 
 // Proposal engine
-export {
-  generateProposal,
-  hashFeatures,
-  ANALYSIS_VERSION,
-} from "./proposalEngine.js";
+export { generateProposal, hashFeatures, ANALYSIS_VERSION } from "./proposalEngine.js";
 
 // Track Enhance
-export {
-  trackEnhance,
-  proposalToParamMap,
-  proposalToEnabledModules,
-} from "./trackEnhance.js";
+export { trackEnhance, proposalToParamMap, proposalToEnabledModules } from "./trackEnhance.js";
 export type { TrackEnhanceRequest, TrackEnhanceResult } from "./trackEnhance.js";
 
 // Mix Assistant
 export { analyzeTrack, analyzeWithTarget } from "./mixAssistant.js";
 
 // Tonal Balance Control
-export {
-  TonalBalanceMeter,
-  computeTonalBalance,
-  balanceSuggestionsToEqParams,
-} from "./tonalBalance.js";
+export { TonalBalanceMeter, computeTonalBalance, balanceSuggestionsToEqParams } from "./tonalBalance.js";
 
 // Target Library
 export {
@@ -70,10 +58,5 @@ export {
 } from "./targetLibrary.js";
 
 // Explanation
-export {
-  getExplanation,
-  getExplanationForLocale,
-  getLocaleMap,
-  AVAILABLE_LOCALES,
-} from "./explanation.js";
+export { getExplanation, getExplanationForLocale, getLocaleMap, AVAILABLE_LOCALES } from "./explanation.js";
 export type { ExplanationLocale } from "./explanation.js";

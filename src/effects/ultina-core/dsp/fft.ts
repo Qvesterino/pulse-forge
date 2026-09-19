@@ -39,8 +39,12 @@ export function computeMagnitudeSpectrum(frame: Float32Array): Float32Array {
   let j = 0;
   for (let i = 0; i < n - 1; i++) {
     if (i < j) {
-      const tr = real[i]; real[i] = real[j]; real[j] = tr;
-      const ti = imag[i]; imag[i] = imag[j]; imag[j] = ti;
+      const tr = real[i];
+      real[i] = real[j];
+      real[j] = tr;
+      const ti = imag[i];
+      imag[i] = imag[j];
+      imag[j] = ti;
     }
     let k = half;
     while (k <= j) {
@@ -85,12 +89,7 @@ export function computeMagnitudeSpectrum(frame: Float32Array): Float32Array {
   return result;
 }
 
-export function bandEnergy(
-  magnitudes: Float32Array,
-  sampleRate: number,
-  freqLow: number,
-  freqHigh: number,
-): number {
+export function bandEnergy(magnitudes: Float32Array, sampleRate: number, freqLow: number, freqHigh: number): number {
   const binSize = sampleRate / (magnitudes.length * 2);
   const lowBin = Math.max(0, Math.floor(freqLow / binSize));
   const highBin = Math.min(magnitudes.length - 1, Math.ceil(freqHigh / binSize));

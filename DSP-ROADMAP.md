@@ -9,6 +9,11 @@
 > relevantná pre produkciu beatov / inštrumentálov, inak nepatrí do tohto zoznamu.
 >
 > Cieľ: **najlepšia možná zvuková kvalita v rámci web browsera** — nie feature-parita s DAW.
+>
+> ⚠️ **Historical snapshot.** This document is a point-in-time audit from 2026-08-27.
+> The numbers quoted here (e.g. "17 efektov v registry") describe the registry as it stood then.
+> For the **current** inventory (14 instruments, 36 effects, 12 templates, 4 flagship plugins,
+> 41 factory assets, 205 factory presets, 13 ADRs) see [`docs/CURRENT-STATE.md`](./CURRENT-STATE.md).
 
 ---
 

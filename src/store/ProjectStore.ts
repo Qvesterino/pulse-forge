@@ -175,6 +175,8 @@ export class ProjectStore {
   getPatterns = (): ProjectDocument["patterns"] => this.doc_.patterns;
   getMacros = (): ProjectDocument["macros"] => this.doc_.macros;
   getMaster = (): ProjectDocument["master"] => this.doc_.master;
+  getSceneAutomation = (): ProjectDocument["sceneAutomation"] => this.doc_.sceneAutomation;
+  getActivePatternId = (): ProjectDocument["activePatternId"] => this.doc_.activePatternId;
 
   getSaveStatus = (): SaveStatus => this.saveStatus_;
 

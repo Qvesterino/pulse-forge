@@ -36,13 +36,7 @@ import { clamp, flushDenormal, sanitize, TAU, hermiteInterp } from "../dsp/math.
 // differ by ULPs, and inside a feedback loop a 1-ULP coefficient difference
 // amplifies into full tail decorrelation. fround makes both ports identical.
 const q32 = (x: number): number => Math.fround(x);
-import {
-  createBiquad,
-  setLowPass,
-  setHighPass,
-  processBiquad,
-  type BiquadState,
-} from "../dsp/biquad.js";
+import { createBiquad, setLowPass, setHighPass, processBiquad, type BiquadState } from "../dsp/biquad.js";
 
 export interface HallParams extends HallEngineState {}
 
@@ -195,8 +189,8 @@ export function createHallEngine(): HallEngine {
   // longer hall tails get a touch more smear) ──
   const AIR_DEPTH_A = 0.26;
   const AIR_DEPTH_B = 0.17;
-  const AIR_RATE_A = 0.73;   // Hz
-  const AIR_RATE_B = 1.13;   // Hz
+  const AIR_RATE_A = 0.73; // Hz
+  const AIR_RATE_B = 1.13; // Hz
   let airPhaseA = 0;
   let airPhaseB = 0;
   let airIncA = 0;
@@ -215,11 +209,15 @@ export function createHallEngine(): HallEngine {
   let lowSplitR: BiquadState = createBiquad(2);
   let highSplitR: BiquadState = createBiquad(2);
 
-  interface AlgoTuning { lenMult: number; dampHz: number; hpHz: number }
+  interface AlgoTuning {
+    lenMult: number;
+    dampHz: number;
+    hpHz: number;
+  }
 
   const ALGO_TUNING: Record<Engine3Algo, AlgoTuning> = {
     largeChamber: { lenMult: 0.95, dampHz: 4500, hpHz: 150 },
-    hall:         { lenMult: 1.0,  dampHz: 3500, hpHz: 130 },
+    hall: { lenMult: 1.0, dampHz: 3500, hpHz: 130 },
   };
 
   function algoTuning(algo: Engine3Algo): AlgoTuning {
@@ -234,7 +232,7 @@ export function createHallEngine(): HallEngine {
     let avgLen = 0;
     let lensChanged = false;
     for (let c = 0; c < 2; c++) {
-      const base = (c & 1) ? BASE_LENGTHS_R : BASE_LENGTHS_L;
+      const base = c & 1 ? BASE_LENGTHS_R : BASE_LENGTHS_L;
       for (let l = 0; l < FDN_LINES; l++) {
         const densityScale = 1 - l * 0.03;
         oldLengthsC[c][l] = lengthsC[c][l];
@@ -263,10 +261,7 @@ export function createHallEngine(): HallEngine {
     // per-pass target, NO scalar damping-loss compensation (a scalar
     // boost tilts the loop into a low-band hump that stretches the tail
     // far past the requested T60; see plateChamberEngine.ts).
-    feedbackGain = clamp(
-      q32(Math.pow(0.001, avgLen / (decaySec * sampleRate))),
-      0, 0.99,
-    );
+    feedbackGain = clamp(q32(Math.pow(0.001, avgLen / (decaySec * sampleRate))), 0, 0.99);
 
     diffG = 0.3 + 0.45 * (clamp(params.diffusion, 0, 100) / 100);
     shAmt = clamp(params.shimmer, 0, 1);
@@ -275,7 +270,7 @@ export function createHallEngine(): HallEngine {
     // Pure per-band per-pass targets: band gain g such that fb·g equals
     // the loop gain of a reverb with T60·multiplier. Mirrors plate.
     const bandTarget = (mult: number): number =>
-      Math.pow(0.001, (avgLen / (decaySec * clamp(mult, 0.25, 4))) / sampleRate) / feedbackGain;
+      Math.pow(0.001, avgLen / (decaySec * clamp(mult, 0.25, 4)) / sampleRate) / feedbackGain;
     bassAlpha = q32(1 - Math.exp((-TAU * BASS_SHELF_HZ) / sampleRate));
     midAlpha = q32(1 - Math.exp((-TAU * MID_XOVER_HZ) / sampleRate));
 
@@ -332,8 +327,7 @@ export function createHallEngine(): HallEngine {
     const fbMax = feedbackGain * Math.max(1, bassGain, midBandGain);
     const injMax = Math.max(0, 0.995 / Math.max(fbMax, 1e-6) - dirWFloor) / Math.SQRT2;
     shInj = Math.min(0.5 * shAmt, injMax);
-    shDirW =
-      shAmt > 0 ? Math.min(1, 0.995 / Math.max(fbMax, 1e-6) - Math.SQRT2 * shInj) : 1;
+    shDirW = shAmt > 0 ? Math.min(1, 0.995 / Math.max(fbMax, 1e-6) - Math.SQRT2 * shInj) : 1;
     shDirWFreeze = shAmt > 0 ? Math.min(1, 0.995 - Math.SQRT2 * shInj) : 1;
 
     attackAlpha = q32(1 - Math.exp(-1 / Math.max(0.001, (params.attack / 1000) * sampleRate)));
@@ -393,7 +387,7 @@ export function createHallEngine(): HallEngine {
     }
     const maxPredelay = Math.max(...LINE_PREDELAY_OFFSETS) + 4;
     for (let c = 0; c < cc; c++) {
-      const base = (c & 1) ? BASE_LENGTHS_R : BASE_LENGTHS_L;
+      const base = c & 1 ? BASE_LENGTHS_R : BASE_LENGTHS_L;
       const ls: Float32Array[] = [];
       const wi: number[] = [];
       const lp: number[] = [];
@@ -440,9 +434,12 @@ export function createHallEngine(): HallEngine {
     for (const mlp of midLp) for (let l = 0; l < mlp.length; l++) mlp[l] = 0;
     for (const stages of diffBufs) for (const buf of stages) buf.fill(0);
     for (const idxs of diffIdx) for (let s = 0; s < idxs.length; s++) idxs[s] = 0;
-    shBuf[0].fill(0); shBuf[1].fill(0);
-    shW[0] = 0; shW[1] = 0;
-    shPhase[0] = 0; shPhase[1] = 0;
+    shBuf[0].fill(0);
+    shBuf[1].fill(0);
+    shW[0] = 0;
+    shW[1] = 0;
+    shPhase[0] = 0;
+    shPhase[1] = 0;
     lfoPhase = 0;
     airPhaseA = 0;
     airPhaseB = 0;
@@ -491,10 +488,7 @@ export function createHallEngine(): HallEngine {
   // Scalar-only shimmer window sizing (no realloc — the ring is allocated
   // for the largest tier in prepare()). Mirrors plateChamberEngine.ts.
   function applyShimmerWindow(): void {
-    shWindow = Math.max(
-      2048,
-      Math.round((SH_WIN_BASE * SH_WIN_MULT[shQuality] * sampleRate) / 48000) & ~1,
-    );
+    shWindow = Math.max(2048, Math.round((SH_WIN_BASE * SH_WIN_MULT[shQuality] * sampleRate) / 48000) & ~1);
     if (shWindow > shWinMax) shWindow = shWinMax;
   }
 
@@ -515,8 +509,10 @@ export function createHallEngine(): HallEngine {
       shWinMax = Math.max(2048, Math.round((2 * SH_WIN_BASE * sampleRate) / 48000) & ~1);
       shBuf = [new Float32Array(2 * shWinMax), new Float32Array(2 * shWinMax)];
       applyShimmerWindow();
-      shW[0] = 0; shW[1] = 0;
-      shPhase[0] = 0; shPhase[1] = 0;
+      shW[0] = 0;
+      shW[1] = 0;
+      shPhase[0] = 0;
+      shPhase[1] = 0;
     },
 
     setQuality(tier) {
@@ -645,7 +641,7 @@ export function createHallEngine(): HallEngine {
               const modPhase = lfoPhase + (l / FDN_LINES) * Math.PI * 2;
               modOffset = q32(Math.sin(modPhase)) * effectiveDepth;
             }
-            modOffset += (l & 1) ? airOffB : airOffA;
+            modOffset += l & 1 ? airOffB : airOffA;
             taps[l] = readTap(ls[l], wis[l], baseLen, modOffset);
             if (lensFadeRemaining > 0) {
               // Length crossfade: blend the previous read distance out.
@@ -683,10 +679,10 @@ export function createHallEngine(): HallEngine {
             if (shPhase[c] >= W) shPhase[c] -= W;
             const ph = shPhase[c];
             const d0 = W - ph;
-            const i0 = ((shW[c] - d0) % size + size) % size;
+            const i0 = (((shW[c] - d0) % size) + size) % size;
             const ph1 = (ph + W / 2) % W;
             const d1 = W - ph1;
-            const i1 = ((shW[c] - d1) % size + size) % size;
+            const i1 = (((shW[c] - d1) % size) + size) % size;
             const g0 = q32(Math.sin((Math.PI * ph) / W));
             if (shSingle) {
               // Eco tier: one grain (half the shimmer cost). A lone sin-π
@@ -736,8 +732,7 @@ export function createHallEngine(): HallEngine {
             mlp[l] += midAlpha * (lowHp - mlp[l]);
             mlp[l] = flushDenormal(mlp[l]);
             const midBand = sanitize(mlp[l]);
-            let shelved =
-              lowBand * bassGain + midBand * midBandGain + (lowHp - midBand);
+            let shelved = lowBand * bassGain + midBand * midBandGain + (lowHp - midBand);
             if (driveGain > 1.0001) {
               const hot = shelved * driveGain;
               const hot2 = hot * hot;
@@ -803,10 +798,14 @@ export function createHallEngine(): HallEngine {
       attackEnv = 0;
       lensFadeRemaining = 0;
       hasRendered = false;
-      lowSplitL.z1.fill(0); lowSplitL.z2.fill(0);
-      highSplitL.z1.fill(0); highSplitL.z2.fill(0);
-      lowSplitR.z1.fill(0); lowSplitR.z2.fill(0);
-      highSplitR.z1.fill(0); highSplitR.z2.fill(0);
+      lowSplitL.z1.fill(0);
+      lowSplitL.z2.fill(0);
+      highSplitL.z1.fill(0);
+      highSplitL.z2.fill(0);
+      lowSplitR.z1.fill(0);
+      lowSplitR.z2.fill(0);
+      highSplitR.z1.fill(0);
+      highSplitR.z2.fill(0);
     },
   };
 }

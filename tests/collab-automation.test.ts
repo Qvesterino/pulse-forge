@@ -83,9 +83,7 @@ describe("YDocAdapter — automation and tags round-trip", () => {
     // opaque strings, never re-validate against the registry rack list.
     const doc = docWithAutomation();
     const track = doc.tracks.find((t) => t.effects !== undefined) ?? doc.tracks[0];
-    (track as { effects: unknown[] }).effects = [
-      { id: "fx-ultina-1", type: "ultina", bypassed: false, params: {} },
-    ];
+    (track as { effects: unknown[] }).effects = [{ id: "fx-ultina-1", type: "ultina", bypassed: false, params: {} }];
     doc.automation.push({
       id: "lane-ultina-deep",
       target: { kind: "fxParam", trackId: track.id, fxId: "fx-ultina-1", paramId: "eq.band3.gainDb" },

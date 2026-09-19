@@ -44,10 +44,7 @@ const factoryTemplateCache = new Map<string, PrecomputedIrTemplate>();
  * ships to the worklet as transferables; arming the convolver there does
  * no FFT work. (Reconciled from Pulse Forge hardening audit, 2026-09-09.)
  */
-function makePrecomputedIrTemplate(
-  perChannel: Float32Array[],
-  frames: number,
-): PrecomputedIrTemplate {
+function makePrecomputedIrTemplate(perChannel: Float32Array[], frames: number): PrecomputedIrTemplate {
   const channels = (perChannel.length >= 4 ? 4 : perChannel.length >= 2 ? 2 : 1) as 1 | 2 | 4;
   const ps = partitionSizeForIr(frames);
   const np = numPartitionsFor(frames, ps);
@@ -162,9 +159,7 @@ export function createOzvenaNode(
   const latencyListeners = new Set<() => void>();
   let disposed = false;
   node.port.onmessage = (event) => {
-    const msg = event.data as
-      | { type?: string; samples?: number; irId?: string; sampleRate?: number }
-      | null;
+    const msg = event.data as { type?: string; samples?: number; irId?: string; sampleRate?: number } | null;
     if (msg?.type === "latency" && typeof msg.samples === "number") {
       latencySamples = msg.samples;
       if (!disposed) for (const listener of latencyListeners) listener();

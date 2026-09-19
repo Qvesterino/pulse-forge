@@ -56,12 +56,8 @@ beforeAll(async () => {
   // the entry's scheduled-parameter queue reads it every process() call.
   // A static 0 keeps the (empty) paramAt queue inert in these renders.
   Object.defineProperty(globalThis, "currentTime", { value: 0, configurable: true });
-  (globalThis as unknown as { AudioWorkletProcessor: unknown }).AudioWorkletProcessor =
-    FakeAudioWorkletProcessor;
-  (globalThis as unknown as { registerProcessor: unknown }).registerProcessor = (
-    _name: string,
-    cls: ProcCtor,
-  ) => {
+  (globalThis as unknown as { AudioWorkletProcessor: unknown }).AudioWorkletProcessor = FakeAudioWorkletProcessor;
+  (globalThis as unknown as { registerProcessor: unknown }).registerProcessor = (_name: string, cls: ProcCtor) => {
     Processor = cls;
   };
   // @ts-expect-error untyped .js worklet entry (gallery-server.test.ts convention)
@@ -121,9 +117,7 @@ function renderEntry(signal: Float32Array[], quantum: number): Float32Array[] {
     // stage views of exactly that shape (the entry reads inputs relative to
     // its own internal chunk loop, so oversized buffers would read wrong).
     const frames = Math.min(quantum, total - off);
-    const inputs = [
-      [signal[0].subarray(off, off + frames), signal[1].subarray(off, off + frames)],
-    ];
+    const inputs = [[signal[0].subarray(off, off + frames), signal[1].subarray(off, off + frames)]];
     const outputs = [[new Float32Array(frames), new Float32Array(frames)]];
     proc.process(inputs, outputs);
     out[0].set(outputs[0][0], off);

@@ -59,12 +59,12 @@ describe("KaskadaPanel", () => {
       <KaskadaPanel trackId="t1" fxId="fx1" params={{ toneLp: 4500, toneHp: 150 }} degraded={false} />,
       { services },
     );
-    expect(screen.getByText("SPECTRUM")).toBeInTheDocument();
+    expect(screen.getByText("RYFT / SPECTRUM")).toBeInTheDocument();
     expect(screen.getByText("DRY")).toBeInTheDocument();
     expect(screen.getByText("DELAY")).toBeInTheDocument();
     expect(screen.getByText("LOOP EQ")).toBeInTheDocument();
     expect(screen.getByText("UNMASK")).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: /Kaskáda dual spectrum/ })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /RYFT dual spectrum/ })).toBeInTheDocument();
     expect(setFxMetersEnabled).toHaveBeenCalledWith("t1", "fx1", true);
     unmount();
     expect(setFxMetersEnabled).toHaveBeenCalledWith("t1", "fx1", false);

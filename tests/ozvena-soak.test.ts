@@ -74,123 +74,119 @@ const WOBBLE: [path: string, valueOf: (i: number) => number][] = [
 ];
 
 describe("Ozvena soak (300 s full-core render)", () => {
-  it(
-    "stays finite, does not drift, and decays to silence",
-    () => {
-      const proc = createOzvenaProcessor();
-      proc.prepare(SR, 2, 120, BLOCK);
-      let state = settledState();
-      proc.loadState(state);
-      proc.setAnalyzersEnabled(false);
-      const settleSnapshot = state;
+  it("stays finite, does not drift, and decays to silence", () => {
+    const proc = createOzvenaProcessor();
+    proc.prepare(SR, 2, 120, BLOCK);
+    let state = settledState();
+    proc.loadState(state);
+    proc.setAnalyzersEnabled(false);
+    const settleSnapshot = state;
 
-      const chans = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
-      // Deterministic stationary input: 220 Hz sine + seeded noise.
-      const fill = (blockIndex: number): void => {
-        let s = (blockIndex * 97 + 13) & 0x7fffffff;
-        const rand = () => {
-          s = (s * 1103515245 + 12345) & 0x7fffffff;
-          return (s / 0x7fffffff) * 2 - 1;
-        };
-        for (let i = 0; i < BLOCK; i++) {
-          const t = (blockIndex * BLOCK + i) / SR;
-          const v = 0.3 * (0.6 * Math.sin(2 * Math.PI * 220 * t) + 0.4 * rand());
-          chans[0][i] = v;
-          chans[1][i] = v;
-        }
+    const chans = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+    // Deterministic stationary input: 220 Hz sine + seeded noise.
+    const fill = (blockIndex: number): void => {
+      let s = (blockIndex * 97 + 13) & 0x7fffffff;
+      const rand = () => {
+        s = (s * 1103515245 + 12345) & 0x7fffffff;
+        return (s / 0x7fffffff) * 2 - 1;
       };
-
-      let nonFinite = 0;
-      let maxAbs = 0;
-      let settleSumSq = 0;
-      let settleSamples = 0;
-      let finalSumSq = 0;
-      let finalSamples = 0;
-
-      const totalBlocks = TOTAL_SECONDS * BLOCKS_PER_SECOND;
-      const settleFrom = 10 * BLOCKS_PER_SECOND;
-      const settleTo = SETTLE_SECONDS * BLOCKS_PER_SECOND;
-      const finalFrom = (TOTAL_SECONDS - 10) * BLOCKS_PER_SECOND;
-      const wobbleEvery = Math.round(BLOCKS_PER_SECOND / 2);
-
-      let heapStart = 0;
-      if (typeof process !== "undefined" && process.memoryUsage) {
-        global.gc?.();
-        heapStart = process.memoryUsage().heapUsed;
+      for (let i = 0; i < BLOCK; i++) {
+        const t = (blockIndex * BLOCK + i) / SR;
+        const v = 0.3 * (0.6 * Math.sin(2 * Math.PI * 220 * t) + 0.4 * rand());
+        chans[0][i] = v;
+        chans[1][i] = v;
       }
+    };
 
-      for (let b = 0; b < totalBlocks; b++) {
-        const second = b / BLOCKS_PER_SECOND;
-        fill(b);
-        if (second >= SETTLE_SECONDS && second < WOBBLE_END && b % wobbleEvery === 0) {
-          const i = Math.floor(b / wobbleEvery);
-          const [path, valueOf] = WOBBLE[i % WOBBLE.length];
-          state = patch(state, path, valueOf(Math.floor(i / WOBBLE.length)));
-          proc.loadState(state);
-        }
-        // End of wobble: restore the settled configuration (state must
-        // re-converge for the no-drift comparison).
-        if (b === WOBBLE_END * BLOCKS_PER_SECOND) {
-          state = settleSnapshot;
-          proc.loadState(state);
-        }
-        // Control-thread latency polls ~2 Hz over the whole session (the
-        // entry posts on every loadState; this is the read side).
-        if (b % wobbleEvery === 0) proc.getLatencySamples();
+    let nonFinite = 0;
+    let maxAbs = 0;
+    let settleSumSq = 0;
+    let settleSamples = 0;
+    let finalSumSq = 0;
+    let finalSamples = 0;
 
-        proc.process(chans, BLOCK);
+    const totalBlocks = TOTAL_SECONDS * BLOCKS_PER_SECOND;
+    const settleFrom = 10 * BLOCKS_PER_SECOND;
+    const settleTo = SETTLE_SECONDS * BLOCKS_PER_SECOND;
+    const finalFrom = (TOTAL_SECONDS - 10) * BLOCKS_PER_SECOND;
+    const wobbleEvery = Math.round(BLOCKS_PER_SECOND / 2);
+
+    let heapStart = 0;
+    if (typeof process !== "undefined" && process.memoryUsage) {
+      global.gc?.();
+      heapStart = process.memoryUsage().heapUsed;
+    }
+
+    for (let b = 0; b < totalBlocks; b++) {
+      const second = b / BLOCKS_PER_SECOND;
+      fill(b);
+      if (second >= SETTLE_SECONDS && second < WOBBLE_END && b % wobbleEvery === 0) {
+        const i = Math.floor(b / wobbleEvery);
+        const [path, valueOf] = WOBBLE[i % WOBBLE.length];
+        state = patch(state, path, valueOf(Math.floor(i / WOBBLE.length)));
+        proc.loadState(state);
+      }
+      // End of wobble: restore the settled configuration (state must
+      // re-converge for the no-drift comparison).
+      if (b === WOBBLE_END * BLOCKS_PER_SECOND) {
+        state = settleSnapshot;
+        proc.loadState(state);
+      }
+      // Control-thread latency polls ~2 Hz over the whole session (the
+      // entry posts on every loadState; this is the read side).
+      if (b % wobbleEvery === 0) proc.getLatencySamples();
+
+      proc.process(chans, BLOCK);
+      for (let i = 0; i < BLOCK; i++) {
+        const l = chans[0][i];
+        const r = chans[1][i];
+        if (!Number.isFinite(l) || !Number.isFinite(r)) nonFinite++;
+        maxAbs = Math.max(maxAbs, Math.abs(l), Math.abs(r));
+        if (b >= settleFrom && b < settleTo) {
+          settleSumSq += l * l + r * r;
+          settleSamples += 2;
+        }
+        if (b >= finalFrom) {
+          finalSumSq += l * l + r * r;
+          finalSamples += 2;
+        }
+      }
+    }
+
+    expect(nonFinite).toBe(0);
+    // Safety limiter ceiling is -0.3 dBFS sample-peak; generous margin
+    // for the release smoothing and the eco-tier (1×) bypass moments.
+    expect(maxAbs).toBeLessThanOrEqual(2);
+
+    // No drift: identical input + identical restored params → same level.
+    const settleRms = Math.sqrt(settleSumSq / settleSamples);
+    const finalRms = Math.sqrt(finalSumSq / finalSamples);
+    const driftDb = 20 * Math.log10(finalRms / settleRms);
+    expect(Math.abs(driftDb)).toBeLessThan(1.0);
+
+    // Tail: 20 s of silence must converge to silence (peak of the last
+    // second) — longest tail reachable in the wobble is ~10 s T60.
+    const tailBlocks = TAIL_SILENCE_SECONDS * BLOCKS_PER_SECOND;
+    let tailPeak = 0;
+    for (let b = 0; b < tailBlocks; b++) {
+      chans[0].fill(0);
+      chans[1].fill(0);
+      proc.process(chans, BLOCK);
+      if (b >= tailBlocks - BLOCKS_PER_SECOND) {
         for (let i = 0; i < BLOCK; i++) {
-          const l = chans[0][i];
-          const r = chans[1][i];
-          if (!Number.isFinite(l) || !Number.isFinite(r)) nonFinite++;
-          maxAbs = Math.max(maxAbs, Math.abs(l), Math.abs(r));
-          if (b >= settleFrom && b < settleTo) {
-            settleSumSq += l * l + r * r;
-            settleSamples += 2;
-          }
-          if (b >= finalFrom) {
-            finalSumSq += l * l + r * r;
-            finalSamples += 2;
-          }
+          tailPeak = Math.max(tailPeak, Math.abs(chans[0][i]), Math.abs(chans[1][i]));
         }
       }
+    }
+    expect(tailPeak).toBeLessThan(1e-4);
 
-      expect(nonFinite).toBe(0);
-      // Safety limiter ceiling is -0.3 dBFS sample-peak; generous margin
-      // for the release smoothing and the eco-tier (1×) bypass moments.
-      expect(maxAbs).toBeLessThanOrEqual(2);
-
-      // No drift: identical input + identical restored params → same level.
-      const settleRms = Math.sqrt(settleSumSq / settleSamples);
-      const finalRms = Math.sqrt(finalSumSq / finalSamples);
-      const driftDb = 20 * Math.log10(finalRms / settleRms);
-      expect(Math.abs(driftDb)).toBeLessThan(1.0);
-
-      // Tail: 20 s of silence must converge to silence (peak of the last
-      // second) — longest tail reachable in the wobble is ~10 s T60.
-      const tailBlocks = TAIL_SILENCE_SECONDS * BLOCKS_PER_SECOND;
-      let tailPeak = 0;
-      for (let b = 0; b < tailBlocks; b++) {
-        chans[0].fill(0);
-        chans[1].fill(0);
-        proc.process(chans, BLOCK);
-        if (b >= tailBlocks - BLOCKS_PER_SECOND) {
-          for (let i = 0; i < BLOCK; i++) {
-            tailPeak = Math.max(tailPeak, Math.abs(chans[0][i]), Math.abs(chans[1][i]));
-          }
-        }
-      }
-      expect(tailPeak).toBeLessThan(1e-4);
-
-      if (typeof process !== "undefined" && process.memoryUsage) {
-        global.gc?.();
-        const growthMb = (process.memoryUsage().heapUsed - heapStart) / (1024 * 1024);
-        console.log(
-          `[ozvena-soak] heap growth over ${TOTAL_SECONDS}s render: ${growthMb.toFixed(1)} MB (drift ${driftDb.toFixed(3)} dB, tail peak ${tailPeak.toExponential(2)}, maxAbs ${maxAbs.toFixed(3)})`,
-        );
-        expect(growthMb).toBeLessThan(100);
-      }
-    },
-    600_000,
-  );
+    if (typeof process !== "undefined" && process.memoryUsage) {
+      global.gc?.();
+      const growthMb = (process.memoryUsage().heapUsed - heapStart) / (1024 * 1024);
+      console.log(
+        `[ozvena-soak] heap growth over ${TOTAL_SECONDS}s render: ${growthMb.toFixed(1)} MB (drift ${driftDb.toFixed(3)} dB, tail peak ${tailPeak.toExponential(2)}, maxAbs ${maxAbs.toFixed(3)})`,
+      );
+      expect(growthMb).toBeLessThan(100);
+    }
+  }, 600_000);
 });

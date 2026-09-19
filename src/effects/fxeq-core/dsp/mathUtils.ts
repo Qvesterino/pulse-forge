@@ -58,13 +58,7 @@ export function fastTanh(x: number): number {
  * Uses the standard Catmull-Rom-style formulation on sample offset `frac`
  * (0..1) between sample [1] and [2] of the provided window [s0,s1,s2,s3].
  */
-export function hermiteInterp(
-  s0: number,
-  s1: number,
-  s2: number,
-  s3: number,
-  frac: number,
-): number {
+export function hermiteInterp(s0: number, s1: number, s2: number, s3: number, frac: number): number {
   const c0 = s1;
   const c1 = 0.5 * (s2 - s0);
   const c2 = s0 - 2.5 * s1 + 2 * s2 - 0.5 * s3;

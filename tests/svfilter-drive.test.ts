@@ -34,17 +34,13 @@ beforeAll(() => {
 function renderThrough(params: Record<string, number>, input: Float32Array): Float32Array {
   const proc = new Processor();
   const out = new Float32Array(input.length);
-  proc.process(
-    [[input]],
-    [[out]],
-    {
-      cutoff: [params.cutoff ?? 20000],
-      resonance: [params.resonance ?? 0.1],
-      mode: [params.mode ?? 0],
-      drive: [params.drive ?? 0],
-      mix: [params.mix ?? 1],
-    },
-  );
+  proc.process([[input]], [[out]], {
+    cutoff: [params.cutoff ?? 20000],
+    resonance: [params.resonance ?? 0.1],
+    mode: [params.mode ?? 0],
+    drive: [params.drive ?? 0],
+    mix: [params.mix ?? 1],
+  });
   return out;
 }
 

@@ -4,15 +4,7 @@ import { INSTRUMENT_DEFS } from "../instruments/registry";
 import type { InstrumentTrack, ProjectDocument } from "../project-model/types";
 import { Slider } from "./controls";
 
-const MOD_IDS = new Set([
-  "modASrc",
-  "modADst",
-  "modAAmt",
-  "modBSrc",
-  "modBDst",
-  "modBAmt",
-  "modLfoRate",
-]);
+const MOD_IDS = new Set(["modASrc", "modADst", "modAAmt", "modBSrc", "modBDst", "modBAmt", "modLfoRate"]);
 
 /** True when this param belongs to the mod matrix (filter it from generic rows). */
 export const isModMatrixParam = (id: string): boolean => MOD_IDS.has(id);

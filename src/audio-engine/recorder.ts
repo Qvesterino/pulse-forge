@@ -82,7 +82,8 @@ export class LiveRecorder {
     try {
       this.dest = this.deps.ctx.createMediaStreamDestination();
       if (source.kind === "mic") {
-        if (!navigator.mediaDevices?.getUserMedia) throw new Error("Microphone capture is not available in this browser");
+        if (!navigator.mediaDevices?.getUserMedia)
+          throw new Error("Microphone capture is not available in this browser");
         try {
           // Raw capture: DSP "enhancements" would fight the app's own processing.
           this.micStream = await navigator.mediaDevices.getUserMedia({

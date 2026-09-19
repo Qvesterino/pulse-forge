@@ -62,9 +62,7 @@ export interface CommandHistory {
 }
 
 function nowMs(): number {
-  return typeof performance !== "undefined" && typeof performance.now === "function"
-    ? performance.now()
-    : Date.now();
+  return typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
 }
 
 export function createCommandHistory(): CommandHistory {

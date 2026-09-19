@@ -24,9 +24,7 @@ describe("Inspector", () => {
   it("renders the Plugin button when onOpenPlugin is provided", () => {
     const track = firstTrack();
     const padId = track.kind === "drum" ? (track.pads[0]?.id ?? "") : "";
-    renderWithContext(
-      <Inspector track={track} selectedPadId={padId} onOpenPlugin={vi.fn()} />,
-    );
+    renderWithContext(<Inspector track={track} selectedPadId={padId} onOpenPlugin={vi.fn()} />);
     const pluginButtons = screen.getAllByTitle(/Open (drum |)plugin/i);
     expect(pluginButtons.length).toBeGreaterThan(0);
   });
@@ -35,9 +33,7 @@ describe("Inspector", () => {
     const track = firstTrack();
     const padId = track.kind === "drum" ? (track.pads[0]?.id ?? "") : "";
     const onOpen = vi.fn();
-    renderWithContext(
-      <Inspector track={track} selectedPadId={padId} onOpenPlugin={onOpen} />,
-    );
+    renderWithContext(<Inspector track={track} selectedPadId={padId} onOpenPlugin={onOpen} />);
     const pluginButton = screen.getAllByTitle(/Open (drum |)plugin/i)[0];
     fireEvent.click(pluginButton);
     expect(onOpen).toHaveBeenCalled();

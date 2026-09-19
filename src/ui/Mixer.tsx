@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useDoc, useSelection, useSelectionStore, useServices } from "./context";
+import { useMacros, useMaster, useReturns, useSelection, useSelectionStore, useServices, useTracks } from "./context";
 import {
   addEffectToTracks,
   addMacroMapping,
@@ -32,44 +32,40 @@ import { MacroPerformanceBar } from "./MacroPerformanceBar";
 
 export function Mixer({ onOpenFxPanel }: { onOpenFxPanel?: () => void } = {}) {
   const services = useServices();
-  const doc = useDoc();
+  // Fine-grained selectors (GOAL 04): Mixer only ever reads `tracks`
+  // and `doc.returns`. Subscribing to those slices individually instead of
+  // the whole document via `useDoc()` means a track-mute change no longer
+  // re-renders this component if the tracks array identity is preserved by
+  // structural sharing in `normalizeProject` (schema.ts:1841).
+  // The full `doc` is still needed for `setMasterConfig` / `setTrackSend`
+  // command arguments — `services.store.getDoc()` is a plain getter
+  // (not a React subscription), so it does not affect re-renders.
+  const tracks = useTracks();
+  const returns = useReturns();
+  const doc = services.store.getDoc();
   const selection = useSelection();
   const selectedIds = selection.trackIds;
   // Mixer re-renders on every doc mutation (it is a `useDoc` subscriber).
-  // Five separate `doc.tracks.filter(...)` calls per render is wasteful for
+  // Five separate `tracks.filter(...)` calls per render is wasteful for
   // large sessions — memoize each derived value so the chain collapses to
-  // a single pass when `doc.tracks` / `selectedIds` are unchanged.
-  const selectedTracks = useMemo(
-    () => doc.tracks.filter((t) => selectedIds.includes(t.id)),
-    [doc.tracks, selectedIds],
-  );
-  const batchCount =
-    selectedTracks.length > 0 ? selectedTracks.length : doc.tracks.length;
+  // a single pass when `tracks` / `selectedIds` are unchanged.
+  const selectedTracks = useMemo(() => tracks.filter((t) => selectedIds.includes(t.id)), [tracks, selectedIds]);
+  const batchCount = selectedTracks.length > 0 ? selectedTracks.length : tracks.length;
   const [batchType, setBatchType] = useState<EffectType>("eq");
-  const soloCount = useMemo(
-    () => doc.tracks.filter((t) => t.solo).length,
-    [doc.tracks],
-  );
-  const muteCount = useMemo(
-    () => doc.tracks.filter((t) => t.mute).length,
-    [doc.tracks],
-  );
+  const soloCount = useMemo(() => tracks.filter((t) => t.solo).length, [tracks]);
+  const muteCount = useMemo(() => tracks.filter((t) => t.mute).length, [tracks]);
   const collapsedGroups = useMemo(
     () =>
       new Set(
-        doc.tracks
-          .filter(
-            (t) =>
-              t.kind === "group" &&
-              (t as import("../project-model/types").GroupTrack).collapsed,
-          )
+        tracks
+          .filter((t) => t.kind === "group" && (t as import("../project-model/types").GroupTrack).collapsed)
           .map((t) => t.id),
       ),
-    [doc.tracks],
+    [tracks],
   );
   const visibleTracks = useMemo(
     () =>
-      doc.tracks.filter((t) => {
+      tracks.filter((t) => {
         if (
           t.kind !== "group" &&
           (t as unknown as { groupId?: string }).groupId &&
@@ -78,7 +74,7 @@ export function Mixer({ onOpenFxPanel }: { onOpenFxPanel?: () => void } = {}) {
           return false;
         return true;
       }),
-    [doc.tracks, collapsedGroups],
+    [tracks, collapsedGroups],
   );
   return (
     <section className="mixer" aria-label="Mixer">
@@ -102,7 +98,7 @@ export function Mixer({ onOpenFxPanel }: { onOpenFxPanel?: () => void } = {}) {
           className="btn btn-small"
           title="Add effect to selected tracks (or all if none selected) — 1 click on 5 tracks"
           onClick={() => {
-            const ids = selectedTracks.length > 0 ? selectedTracks.map((t) => t.id) : doc.tracks.map((t) => t.id);
+            const ids = selectedTracks.length > 0 ? selectedTracks.map((t) => t.id) : tracks.map((t) => t.id);
             try {
               services.store.execute(addEffectToTracks(doc, ids.slice(0, 5), batchType));
               // The rack (device knobs / flagship panel) lives in the FX
@@ -121,7 +117,7 @@ export function Mixer({ onOpenFxPanel }: { onOpenFxPanel?: () => void } = {}) {
           className="btn btn-small"
           title={`Bypass ${EFFECT_DEFS[batchType].name} on the selected tracks (or all) — one undo step`}
           onClick={() => {
-            const ids = selectedTracks.length > 0 ? selectedTracks.map((t) => t.id) : doc.tracks.map((t) => t.id);
+            const ids = selectedTracks.length > 0 ? selectedTracks.map((t) => t.id) : tracks.map((t) => t.id);
             try {
               services.store.execute(setEffectBypassOnTracks(doc, ids, batchType, true));
             } catch (e) {
@@ -136,7 +132,7 @@ export function Mixer({ onOpenFxPanel }: { onOpenFxPanel?: () => void } = {}) {
           className="btn btn-small btn-danger"
           title={`Remove every ${EFFECT_DEFS[batchType].name} from the selected tracks (or all) — one undo step`}
           onClick={() => {
-            const ids = selectedTracks.length > 0 ? selectedTracks.map((t) => t.id) : doc.tracks.map((t) => t.id);
+            const ids = selectedTracks.length > 0 ? selectedTracks.map((t) => t.id) : tracks.map((t) => t.id);
             try {
               services.store.execute(removeEffectFromTracks(doc, ids, batchType));
             } catch (e) {
@@ -183,13 +179,13 @@ export function Mixer({ onOpenFxPanel }: { onOpenFxPanel?: () => void } = {}) {
       </div>
       <div className="mixer-strips">
         {visibleTracks.map((track) => (
-          <ChannelStrip key={track.id} track={track} canDelete={doc.tracks.length > 1} />
+          <ChannelStrip key={track.id} track={track} canDelete={tracks.length > 1} />
         ))}
         {collapsedGroups.size > 0 && (
           <div className="mixer-fold-hint" style={{ fontSize: 10, color: "var(--muted)", padding: "4px 6px" }}>
             {[...collapsedGroups].map((gid) => {
-              const g = doc.tracks.find((t) => t.id === gid) as import("../project-model/types").GroupTrack | undefined;
-              const count = doc.tracks.filter(
+              const g = tracks.find((t) => t.id === gid) as import("../project-model/types").GroupTrack | undefined;
+              const count = tracks.filter(
                 (t) => t.kind !== "group" && (t as unknown as { groupId?: string }).groupId === gid,
               ).length;
               return (
@@ -200,7 +196,7 @@ export function Mixer({ onOpenFxPanel }: { onOpenFxPanel?: () => void } = {}) {
             })}
           </div>
         )}
-        {doc.returns.map((ret) => (
+        {returns.map((ret) => (
           <div key={ret.id} className="channel-strip return-strip" aria-label={`Return ${ret.name}`}>
             <div className="channel-name">
               <span className="track-tab-badge">RTN</span>
@@ -238,7 +234,14 @@ export function Mixer({ onOpenFxPanel }: { onOpenFxPanel?: () => void } = {}) {
 
 function MasterStrip() {
   const services = useServices();
-  const doc = useDoc();
+  // Fine-grained selector (GOAL 04): MasterStrip only ever reads `master`.
+  // Subscribing to the whole document via `useDoc()` would re-render this
+  // strip on every track-mute change. `useMaster()` re-renders only when
+  // the master slice identity changes. `setMasterConfig` and friends still
+  // need the full `doc`, but `services.store.getDoc()` is a plain getter
+  // (not a React subscription) so it does not affect re-renders.
+  const master = useMaster();
+  const doc = services.store.getDoc();
   const limiterTitle =
     "Master limiter — transparent brick-wall ceiling that prevents clipping above the ceiling (default −1 dBFS). " +
     "Always safe to leave on.";
@@ -255,7 +258,7 @@ function MasterStrip() {
           <Slider
             compact
             label="IN"
-            value={doc.master.masterGain}
+            value={master.masterGain}
             min={0}
             max={1.5}
             defaultValue={1}
@@ -265,7 +268,7 @@ function MasterStrip() {
           <Slider
             compact
             label="CEIL"
-            value={doc.master.ceilingDb}
+            value={master.ceilingDb}
             min={-12}
             max={0}
             defaultValue={-1}
@@ -275,54 +278,50 @@ function MasterStrip() {
           <div className="master-toggles">
             <button
               type="button"
-              className={`btn btn-small${doc.master.limiterEnabled ? " active-solo" : ""}`}
+              className={`btn btn-small${master.limiterEnabled ? " active-solo" : ""}`}
               title={limiterTitle}
               aria-label="Master limiter"
-              aria-pressed={doc.master.limiterEnabled}
-              onClick={() =>
-                services.store.execute(setMasterConfig(doc, { limiterEnabled: !doc.master.limiterEnabled }))
-              }
+              aria-pressed={master.limiterEnabled}
+              onClick={() => services.store.execute(setMasterConfig(doc, { limiterEnabled: !master.limiterEnabled }))}
             >
               LIMIT
             </button>
             <button
               type="button"
-              className={`btn btn-small${doc.master.clipperEnabled ? " active-solo" : ""}`}
+              className={`btn btn-small${master.clipperEnabled ? " active-solo" : ""}`}
               title={clipperTitle}
               aria-label="Master soft clipper"
-              aria-pressed={doc.master.clipperEnabled}
-              onClick={() =>
-                services.store.execute(setMasterConfig(doc, { clipperEnabled: !doc.master.clipperEnabled }))
-              }
+              aria-pressed={master.clipperEnabled}
+              onClick={() => services.store.execute(setMasterConfig(doc, { clipperEnabled: !master.clipperEnabled }))}
             >
               CLIP
             </button>
             <button
               type="button"
-              className={`btn btn-small${doc.master.tapeEnabled ? " active-solo" : ""}`}
+              className={`btn btn-small${master.tapeEnabled ? " active-solo" : ""}`}
               title="Tape saturation on master (post-gain, pre-limiter) — adds warmth, 1-knob drive"
               aria-label="Master tape"
-              aria-pressed={!!doc.master.tapeEnabled}
-              onClick={() => services.store.execute(setMasterConfig(doc, { tapeEnabled: !doc.master.tapeEnabled }))}
+              aria-pressed={!!master.tapeEnabled}
+              onClick={() => services.store.execute(setMasterConfig(doc, { tapeEnabled: !master.tapeEnabled }))}
             >
               TAPE
             </button>
             <button
               type="button"
-              className={`btn btn-small${doc.master.msEnabled ? " active-solo" : ""}`}
+              className={`btn btn-small${master.msEnabled ? " active-solo" : ""}`}
               title="Mid/Side processing on master (Cubase MixConsole) — separate mid/side gain"
               aria-label="Master M/S"
-              aria-pressed={!!doc.master.msEnabled}
-              onClick={() => services.store.execute(setMasterConfig(doc, { msEnabled: !doc.master.msEnabled }))}
+              aria-pressed={!!master.msEnabled}
+              onClick={() => services.store.execute(setMasterConfig(doc, { msEnabled: !master.msEnabled }))}
             >
               M/S
             </button>
           </div>
-          {doc.master.tapeEnabled && (
+          {master.tapeEnabled && (
             <Slider
               compact
               label="TAPE DRIVE"
-              value={doc.master.tapeDrive ?? 0.35}
+              value={master.tapeDrive ?? 0.35}
               min={0}
               max={1}
               defaultValue={0.35}
@@ -330,12 +329,12 @@ function MasterStrip() {
               onCommit={(tapeDrive) => services.store.execute(setMasterConfig(doc, { tapeDrive }))}
             />
           )}
-          {doc.master.msEnabled && (
+          {master.msEnabled && (
             <>
               <Slider
                 compact
                 label="MID"
-                value={doc.master.msMidGain ?? 0}
+                value={master.msMidGain ?? 0}
                 min={-6}
                 max={6}
                 defaultValue={0}
@@ -345,7 +344,7 @@ function MasterStrip() {
               <Slider
                 compact
                 label="SIDE"
-                value={doc.master.msSideGain ?? 0}
+                value={master.msSideGain ?? 0}
                 min={-6}
                 max={6}
                 defaultValue={0}
@@ -365,7 +364,18 @@ function MasterStrip() {
 
 function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }) {
   const services = useServices();
-  const doc = useDoc();
+  // Fine-grained selectors (GOAL 04): ChannelStrip needs `tracks` to
+  // detect bus groups (the BUS dropdown is only meaningful when at
+  // least one GroupTrack exists), `returns` for the send row in the
+  // strip body, and `macros` for the "Link to macro" items in the
+  // fader context menu. Subscribing to the whole document via `useDoc()`
+  // would re-render every strip on every unrelated mutation; with
+  // structural sharing in normalizeProject, none of these slices
+  // changes identity for most edits.
+  const tracks = useTracks();
+  const returns = useReturns();
+  const macros = useMacros();
+  const doc = services.store.getDoc();
   const [nameDraft, setNameDraft] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [faderMenu, setFaderMenu] = useState<null | {
@@ -378,7 +388,7 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
   const isGroup = track.kind === "group";
   // The BUS dropdown is only meaningful once bus groups exist — before that
   // every strip just repeats a dead "UNGROUPED" select.
-  const hasBusGroups = doc.tracks.some((candidate) => candidate.kind === "group");
+  const hasBusGroups = tracks.some((candidate) => candidate.kind === "group");
   const selectionStore = useSelectionStore();
   const selection = useSelection();
 
@@ -402,7 +412,7 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
         const ids = isGroup
           ? [
               track.id,
-              ...doc.tracks
+              ...tracks
                 .filter((t) => t.kind !== "group" && (t as unknown as { groupId?: string }).groupId === track.id)
                 .map((t) => t.id),
             ]
@@ -416,7 +426,7 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
         selectionStore.setTracks(
           ids,
           mode as "replace" | "add" | "range",
-          doc.tracks.map((t) => t.id),
+          tracks.map((t) => t.id),
         );
       }}
       onDragStart={(e) => {
@@ -492,9 +502,8 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
         {isGroup && (track as import("../project-model/types").GroupTrack).collapsed && (
           <span style={{ fontSize: 10, color: "var(--muted)", marginLeft: 4 }}>
             {
-              doc.tracks.filter(
-                (t) => t.kind !== "group" && (t as unknown as { groupId?: string }).groupId === track.id,
-              ).length
+              tracks.filter((t) => t.kind !== "group" && (t as unknown as { groupId?: string }).groupId === track.id)
+                .length
             }{" "}
             hidden
           </span>
@@ -515,7 +524,7 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
                 }}
               >
                 <option value="">UNGROUPED</option>
-                {doc.tracks
+                {tracks
                   .filter((candidate) => candidate.kind === "group")
                   .map((group) => (
                     <option key={group.id} value={group.id}>
@@ -545,7 +554,7 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
             onCommit={(pan) => services.store.execute(setTrackParams(doc, track.id, { pan }))}
             onMenu={(x, y) => setFaderMenu({ x, y, param: "pan", defaultValue: 0, trackId: track.id })}
           />
-          {doc.returns.map((ret) => (
+          {returns.map((ret) => (
             <div
               key={ret.id}
               onContextMenu={(e) => {
@@ -569,9 +578,7 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
                 defaultValue={0}
                 format={(v) => (v < 0.005 ? "OFF" : `${Math.round((v / 1.5) * 100)}%`)}
                 onCommit={(level) => services.store.execute(setTrackSend(doc, track.id, ret.id, level))}
-                onMenu={(x, y) =>
-                  setFaderMenu({ x, y, param: `send:${ret.id}`, defaultValue: 0, trackId: track.id })
-                }
+                onMenu={(x, y) => setFaderMenu({ x, y, param: `send:${ret.id}`, defaultValue: 0, trackId: track.id })}
               />
             </div>
           ))}
@@ -687,8 +694,8 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
           >
             Type value…
           </button>
-          {doc.macros.length > 0 ? (
-            doc.macros.slice(0, 4).map((macro) => (
+          {macros.length > 0 ? (
+            macros.slice(0, 4).map((macro) => (
               <button
                 key={macro.id}
                 type="button"

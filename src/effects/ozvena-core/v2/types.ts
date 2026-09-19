@@ -67,38 +67,68 @@ export const ASSISTANT_STATUSES: readonly AssistantStatus[] = [
 
 /** Pre-Delay tempo-sync note values (128th → 8 measures, including dotted/triplet). */
 export type SyncNoteValue =
-  | "1/128" | "1/128T" | "1/128."
-  | "1/64"  | "1/64T"  | "1/64."
-  | "1/32"  | "1/32T"  | "1/32."
-  | "1/16"  | "1/16T"  | "1/16."
-  | "1/8"   | "1/8T"   | "1/8."
-  | "1/4"   | "1/4T"   | "1/4."
-  | "1/2"   | "1/2T"   | "1/2."
+  | "1/128"
+  | "1/128T"
+  | "1/128."
+  | "1/64"
+  | "1/64T"
+  | "1/64."
+  | "1/32"
+  | "1/32T"
+  | "1/32."
+  | "1/16"
+  | "1/16T"
+  | "1/16."
+  | "1/8"
+  | "1/8T"
+  | "1/8."
+  | "1/4"
+  | "1/4T"
+  | "1/4."
+  | "1/2"
+  | "1/2T"
+  | "1/2."
   | "1/1"
-  | "2/1"   | "3/1"   | "4/1"   | "6/1"   | "8/1";
+  | "2/1"
+  | "3/1"
+  | "4/1"
+  | "6/1"
+  | "8/1";
 
 export const SYNC_NOTE_VALUES: readonly SyncNoteValue[] = [
-  "1/128", "1/128T", "1/128.",
-  "1/64",  "1/64T",  "1/64.",
-  "1/32",  "1/32T",  "1/32.",
-  "1/16",  "1/16T",  "1/16.",
-  "1/8",   "1/8T",   "1/8.",
-  "1/4",   "1/4T",   "1/4.",
-  "1/2",   "1/2T",   "1/2.",
+  "1/128",
+  "1/128T",
+  "1/128.",
+  "1/64",
+  "1/64T",
+  "1/64.",
+  "1/32",
+  "1/32T",
+  "1/32.",
+  "1/16",
+  "1/16T",
+  "1/16.",
+  "1/8",
+  "1/8T",
+  "1/8.",
+  "1/4",
+  "1/4T",
+  "1/4.",
+  "1/2",
+  "1/2T",
+  "1/2.",
   "1/1",
-  "2/1",   "3/1",   "4/1",   "6/1",   "8/1",
+  "2/1",
+  "3/1",
+  "4/1",
+  "6/1",
+  "8/1",
 ] as const;
 
 /** Pre EQ / Reverb EQ band shapes. */
 export type EqBandShape = "lowShelf" | "bell" | "highShelf" | "lowCut" | "highCut";
 
-export const EQ_SHAPES: readonly EqBandShape[] = [
-  "lowShelf",
-  "bell",
-  "highShelf",
-  "lowCut",
-  "highCut",
-] as const;
+export const EQ_SHAPES: readonly EqBandShape[] = ["lowShelf", "bell", "highShelf", "lowCut", "highCut"] as const;
 
 /** Processing quality tier (CPU ↔ quality trade-off). */
 export type QualityMode = "eco" | "standard" | "high" | "render";
@@ -176,7 +206,7 @@ export function blendPadToEngineWeights(x: number, y: number): EngineWeights {
   //   e1Raw = 1 - e2Raw - e3Raw
   const invSqrt3 = 1 / Math.sqrt(3);
   const e2Raw = cx - cy * invSqrt3;
-  const e3Raw = (2 * cy) * invSqrt3;
+  const e3Raw = 2 * cy * invSqrt3;
   const e1Raw = 1 - e2Raw - e3Raw;
 
   const e1 = Math.max(0, e1Raw);
@@ -367,9 +397,15 @@ export interface EnginesState {
   e3: HallEngineState;
 }
 
-export function defaultEngine1State(): ReflectionsEngineState { return defaultReflectionsEngine(); }
-export function defaultEngine2State(): PlateChamberEngineState { return defaultPlateChamberEngine(); }
-export function defaultEngine3State(): HallEngineState { return defaultHallEngine(); }
+export function defaultEngine1State(): ReflectionsEngineState {
+  return defaultReflectionsEngine();
+}
+export function defaultEngine2State(): PlateChamberEngineState {
+  return defaultPlateChamberEngine();
+}
+export function defaultEngine3State(): HallEngineState {
+  return defaultHallEngine();
+}
 
 // ── Pre-Delay ──────────────────────────────────────────────
 
@@ -476,7 +512,9 @@ export function defaultReverbEqUnmask(): ReverbEqUnmaskState {
   };
 }
 
-export function defaultReverbEqBand(): EqBandState { return defaultPreEqBand(); }
+export function defaultReverbEqBand(): EqBandState {
+  return defaultPreEqBand();
+}
 
 export interface ReverbEqState {
   enabled: boolean;

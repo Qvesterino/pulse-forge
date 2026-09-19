@@ -113,6 +113,16 @@ export function useMaster(): ProjectDocument["master"] {
   return useSyncExternalStore(store.subscribe, store.getMaster, store.getMaster);
 }
 
+export function useSceneAutomation(): ProjectDocument["sceneAutomation"] {
+  const { store } = useServices();
+  return useSyncExternalStore(store.subscribe, store.getSceneAutomation, store.getSceneAutomation);
+}
+
+export function useActivePatternId(): ProjectDocument["activePatternId"] {
+  const { store } = useServices();
+  return useSyncExternalStore(store.subscribe, store.getActivePatternId, store.getActivePatternId);
+}
+
 export function useSaveStatus(): AppSaveStatus {
   const { store } = useServices();
   return useSyncExternalStore(store.subscribe, store.getSaveStatus, store.getSaveStatus);

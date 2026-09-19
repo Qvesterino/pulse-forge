@@ -209,7 +209,11 @@ export class LocalDeterministicProvider implements GenerationProvider {
    * whole ranked bank and selection provenance, so the UI can audition every
    * candidate and apply any of them with truthful provenance.
    */
-  async generateRanked(plan: GenerationPlan, context: GenerationContext, signal?: AbortSignal): Promise<GenerationRanked> {
+  async generateRanked(
+    plan: GenerationPlan,
+    context: GenerationContext,
+    signal?: AbortSignal,
+  ): Promise<GenerationRanked> {
     if (signal?.aborted) throw new DOMException("Generation aborted", "AbortError");
     // Genuinely single-candidate plans have no bank to rank — take the sync
     // fast path. NOTE: ranker mode "off" deliberately does NOT short-circuit:
@@ -280,9 +284,7 @@ export class LocalDeterministicProvider implements GenerationProvider {
       const bankWarnings: string[] = [];
       if (candidateSeeds.length > 1 || candidates.length > candidateSeeds.length) {
         bankWarnings.push(`candidate-bank-enabled`);
-        bankWarnings.push(
-          `candidate-bank-selected:${selected.candidateIndex}:${selected.source ?? "template"}`,
-        );
+        bankWarnings.push(`candidate-bank-selected:${selected.candidateIndex}:${selected.source ?? "template"}`);
       }
       if (candidates.length > templateCandidates.length) {
         bankWarnings.push(`symbolic-prior-candidates:${candidates.length - templateCandidates.length}`);
@@ -300,16 +302,21 @@ export class LocalDeterministicProvider implements GenerationProvider {
         ...selected.pattern,
         generation: {
           ...selected.pattern.generation!,
-          ranker: {
-            featureVersion: rankerMeta.featureVersion,
-            rankerVersion: rankerMeta.rankerVersion,
-            modelHash: rankerMeta.modelHash,
-            selectedIndex: selected.candidateIndex,
-            // Persisted vocabulary predates "off" — shadow truthfully means
-            // "the model did not actively decide this selection".
-            mode: rankerMeta.mode === "active" ? "active" : "shadow",
-            source: rankerMeta.source,
-          },
+          // Ranker-mode "off" keeps the historical contract: NO ranker
+          // provenance on the pattern (heuristic generation only). Shadow /
+          // active always record how the default winner was chosen.
+          ...(ranked.mode !== "off"
+            ? {
+                ranker: {
+                  featureVersion: rankerMeta.featureVersion,
+                  rankerVersion: rankerMeta.rankerVersion,
+                  modelHash: rankerMeta.modelHash,
+                  selectedIndex: selected.candidateIndex,
+                  mode: rankerMeta.mode === "active" ? "active" : "shadow",
+                  source: rankerMeta.source,
+                },
+              }
+            : {}),
         },
       };
       return {
@@ -318,7 +325,9 @@ export class LocalDeterministicProvider implements GenerationProvider {
           pattern: withProvenance,
           diagnostics: diagnosticsFor(withProvenance, selected.repairs, bankWarnings),
         },
-        ranked: ranked.order,
+        // The winner entry is replaced by its provenance-stamped version so
+        // `result.proposal.pattern` IS `bank[0].pattern` (audition identity).
+        ranked: ranked.order.map((entry, index) => (index === 0 ? { ...entry, pattern: withProvenance } : entry)),
         modelScores: ranked.modelScores,
         ranker: rankerMeta,
       };

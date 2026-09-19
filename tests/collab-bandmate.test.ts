@@ -17,11 +17,7 @@ class FakeStore {
   constructor(doc: ProjectDocument) {
     this.doc = doc;
   }
-  execute(command: {
-    type?: string;
-    label?: string;
-    execute: (d: ProjectDocument) => ProjectDocument;
-  }): void {
+  execute(command: { type?: string; label?: string; execute: (d: ProjectDocument) => ProjectDocument }): void {
     this.executed.push(command.label ?? command.type ?? "?");
     this.doc = command.execute(this.doc);
   }
@@ -34,7 +30,12 @@ function setup(roomId = "test-room", template: "house" | "scene-score" = "house"
   const store = new FakeStore(doc);
   const clock = manualClock();
   const transport = new Transport(clock, SR_BASE);
-  const bandmate = createBandmate({ store, transport, roomId, getMode: () => (template === "scene-score" ? "song" : "pattern") });
+  const bandmate = createBandmate({
+    store,
+    transport,
+    roomId,
+    getMode: () => (template === "scene-score" ? "song" : "pattern"),
+  });
   bandmate.setPhraseBars(1); // 1-bar phrases → one bar = 1920 ticks
   return { store, clock, transport, bandmate, humanDrum, humanRowsBefore };
 }
@@ -150,7 +151,6 @@ describe("AI bandmate", () => {
   });
 });
 
-
 describe("scene-role etiquette", () => {
   it("etiquetteFor: break strips kick/snare; build ramps and fills late; drop is full", () => {
     const brk = etiquetteFor("break", 0.5);
@@ -235,9 +235,9 @@ describe("call & response (listening)", () => {
     // one bar @ 124 BPM ≈ 1.935 s; steps 0/4/8/12 are on-grid
     const dur = (1920 * 60) / (124 * 480);
     const notes = [
-      { pitch: 40, wall: 0 },            // step 0, low register
-      { pitch: 44, wall: dur * 0.2 },    // step 3 — syncopated
-      { pitch: 90, wall: dur * 0.5 },    // step 8, high register
+      { pitch: 40, wall: 0 }, // step 0, low register
+      { pitch: 44, wall: dur * 0.2 }, // step 3 — syncopated
+      { pitch: 90, wall: dur * 0.5 }, // step 8, high register
     ];
     const f = extractHumanPhrase(notes, 0, dur, 124)!;
     expect(f.count).toBe(3);
@@ -267,7 +267,11 @@ describe("call & response (listening)", () => {
       (t): t is Extract<typeof t, { kind: "drum" }> => t.kind === "drum" && t.name === "KYX Drums",
     )!;
     const active = s.store.doc.patterns.find((p) => p.id === s.store.doc.activePatternId)!;
-    const perc = bot.pads.filter((p) => ["perc", "snare"].includes(p.name.toLowerCase().includes("perc") ? "perc" : p.name.toLowerCase().includes("snare") ? "snare" : "other"));
+    const perc = bot.pads.filter((p) =>
+      ["perc", "snare"].includes(
+        p.name.toLowerCase().includes("perc") ? "perc" : p.name.toLowerCase().includes("snare") ? "snare" : "other",
+      ),
+    );
     void perc;
     // find the bot's perc-or-snare pad row and count hits at the echoed steps
     // The echo lands across the perc GROUP (rim/shaker/ride/toms share the kind)

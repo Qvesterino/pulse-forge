@@ -165,61 +165,23 @@
     p(GLOBAL_INPUT_GAIN_DB_ID, "Input Gain", 0, -24, 24, "db"),
     p(GLOBAL_OUTPUT_GAIN_DB_ID, "Output Gain", 0, -24, 24, "db"),
     p(GLOBAL_MIX_ID, "Mix", 100, 0, 100, "percent"),
-    p(
-      GLOBAL_QUALITY_MODE_ID,
-      "Quality",
-      1,
-      0,
-      2,
-      "enum",
-      false,
-      { enumValues: ["tracking", "mix", "hq"] }
-    ),
+    p(GLOBAL_QUALITY_MODE_ID, "Quality", 1, 0, 2, "enum", false, { enumValues: ["tracking", "mix", "hq"] }),
     p(GLOBAL_DELTA_LISTEN_ID, "Delta Listen", 0, 0, 1, "boolean", false),
     p(GLOBAL_GAIN_MATCH_ENABLED_ID, "Gain Match", 0, 0, 1, "boolean", false),
-    p(
-      GLOBAL_AB_SLOT_ID,
-      "A/B Slot",
-      0,
-      0,
-      1,
-      "enum",
-      false,
-      { enumValues: ["A", "B"] }
-    ),
+    p(GLOBAL_AB_SLOT_ID, "A/B Slot", 0, 0, 1, "enum", false, { enumValues: ["A", "B"] }),
     p(GLOBAL_AUTOGAIN_TARGET_LUFS_ID, "Autogain Target LUFS", -14, -30, 0, "db", false)
   ];
   var EQ_GLOBAL_PARAMS = [
     p(EQ_ENABLED_ID, "EQ Enabled", 0, 0, 1, "boolean"),
-    p(
-      EQ_CHANNEL_MODE_ID,
-      "EQ Channel Mode",
-      0,
-      0,
-      4,
-      "enum",
-      true,
-      { enumValues: ["stereo", "mid", "side", "transient", "sustain"] }
-    ),
+    p(EQ_CHANNEL_MODE_ID, "EQ Channel Mode", 0, 0, 4, "enum", true, {
+      enumValues: ["stereo", "mid", "side", "transient", "sustain"]
+    }),
     p(EQ_SOFT_SATURATION_ID, "EQ Soft Saturation", 0, 0, 1, "boolean"),
     p(EQ_LEARN_ACTIVE_ID, "EQ Learn", 0, 0, 1, "boolean", false),
     p(EQ_MASKING_METER_ENABLED_ID, "Masking Meter", 0, 0, 1, "boolean", false),
     p(EQ_SIDECHAIN_ENABLED_ID, "EQ Sidechain", 0, 0, 1, "boolean")
   ];
-  var EQ_DEFAULT_FREQS = [
-    80,
-    200,
-    350,
-    800,
-    1500,
-    3e3,
-    5e3,
-    7e3,
-    1e4,
-    12e3,
-    15e3,
-    18e3
-  ];
+  var EQ_DEFAULT_FREQS = [80, 200, 350, 800, 1500, 3e3, 5e3, 7e3, 1e4, 12e3, 15e3, 18e3];
   var EQ_SHAPES = [
     "bell",
     "highShelf",
@@ -239,36 +201,11 @@
     const prefix = `eq.band${bandIndex}`;
     return [
       p(`${prefix}.enabled`, `Band ${bandIndex + 1} Enabled`, 0, 0, 1, "boolean"),
-      p(
-        `${prefix}.freqHz`,
-        `Band ${bandIndex + 1} Frequency`,
-        EQ_DEFAULT_FREQS[bandIndex],
-        20,
-        2e4,
-        "hz"
-      ),
+      p(`${prefix}.freqHz`, `Band ${bandIndex + 1} Frequency`, EQ_DEFAULT_FREQS[bandIndex], 20, 2e4, "hz"),
       p(`${prefix}.gainDb`, `Band ${bandIndex + 1} Gain`, 0, -18, 18, "db"),
       p(`${prefix}.q`, `Band ${bandIndex + 1} Q`, 1, 0.1, 24, "ratio"),
-      p(
-        `${prefix}.shape`,
-        `Band ${bandIndex + 1} Shape`,
-        0,
-        0,
-        11,
-        "enum",
-        true,
-        { enumValues: EQ_SHAPES }
-      ),
-      p(
-        `${prefix}.mode`,
-        `Band ${bandIndex + 1} Mode`,
-        0,
-        0,
-        2,
-        "enum",
-        true,
-        { enumValues: EQ_BAND_MODES }
-      ),
+      p(`${prefix}.shape`, `Band ${bandIndex + 1} Shape`, 0, 0, 11, "enum", true, { enumValues: EQ_SHAPES }),
+      p(`${prefix}.mode`, `Band ${bandIndex + 1} Mode`, 0, 0, 2, "enum", true, { enumValues: EQ_BAND_MODES }),
       p(`${prefix}.dynamicRangeDb`, `Band ${bandIndex + 1} Dyn Range`, 6, 0, 18, "db"),
       p(`${prefix}.dynamicThresholdDb`, `Band ${bandIndex + 1} Dyn Threshold`, -24, -60, 0, "db"),
       p(`${prefix}.sidechainEnabled`, `Band ${bandIndex + 1} Sidechain`, 0, 0, 1, "boolean"),
@@ -286,26 +223,8 @@
   }
   var COMP_PARAMS = [
     p(COMP_ENABLED_ID, "Compressor Enabled", 0, 0, 1, "boolean"),
-    p(
-      COMP_MODE_ID,
-      "Comp Mode",
-      1,
-      0,
-      4,
-      "enum",
-      true,
-      { enumValues: ["punch", "modern", "vintage", "opto", "fet"] }
-    ),
-    p(
-      COMP_DETECTION_MODE_ID,
-      "Detection",
-      1,
-      0,
-      2,
-      "enum",
-      true,
-      { enumValues: ["peak", "rms", "trueEnvelope"] }
-    ),
+    p(COMP_MODE_ID, "Comp Mode", 1, 0, 4, "enum", true, { enumValues: ["punch", "modern", "vintage", "opto", "fet"] }),
+    p(COMP_DETECTION_MODE_ID, "Detection", 1, 0, 2, "enum", true, { enumValues: ["peak", "rms", "trueEnvelope"] }),
     p(COMP_THRESHOLD_DB_ID, "Threshold", -20, -60, 0, "db"),
     p(COMP_RATIO_ID, "Ratio", 3, 1, 20, "ratio"),
     p(COMP_ATTACK_MS_ID, "Attack", 10, 0.1, 200, "ms"),
@@ -318,38 +237,13 @@
     p(COMP_SIDECHAIN_ENABLED_ID, "Comp Sidechain", 0, 0, 1, "boolean"),
     p(COMP_SIDECHAIN_HPF_HZ_ID, "SC HPF", 20, 20, 2e3, "hz"),
     p(COMP_DETECTOR_HPF_HZ_ID, "Det HPF", 20, 20, 1e3, "hz"),
-    p(
-      COMP_BAND_COUNT_ID,
-      "Comp Bands",
-      1,
-      1,
-      3,
-      "enum",
-      false,
-      { enumValues: ["1", "2", "3"] }
-    ),
+    p(COMP_BAND_COUNT_ID, "Comp Bands", 1, 1, 3, "enum", false, { enumValues: ["1", "2", "3"] }),
     p(COMP_CROSSOVER_HZ1_ID, "Comp Xover 1", 250, 20, 2e4, "hz"),
     p(COMP_CROSSOVER_HZ2_ID, "Comp Xover 2", 2500, 20, 2e4, "hz"),
-    p(
-      COMP_CROSSOVER_MODE_ID,
-      "Comp Xover Mode",
-      0,
-      0,
-      1,
-      "enum",
-      true,
-      { enumValues: ["analog", "hybrid"] }
-    ),
-    p(
-      COMP_CHANNEL_MODE_ID,
-      "Comp Channel Mode",
-      0,
-      0,
-      4,
-      "enum",
-      true,
-      { enumValues: ["stereo", "mid", "side", "transient", "sustain"] }
-    ),
+    p(COMP_CROSSOVER_MODE_ID, "Comp Xover Mode", 0, 0, 1, "enum", true, { enumValues: ["analog", "hybrid"] }),
+    p(COMP_CHANNEL_MODE_ID, "Comp Channel Mode", 0, 0, 4, "enum", true, {
+      enumValues: ["stereo", "mid", "side", "transient", "sustain"]
+    }),
     p(COMP_CROSSOVER_LEARN_ID, "Comp Xover Learn", 0, 0, 1, "boolean", false),
     p(COMP_DELTA_ID, "Comp Delta", 0, 0, 1, "boolean", false),
     p(COMP_AUTO_LEARN_THRESHOLD_ID, "Auto-Learn Threshold", 0, 0, 1, "boolean", false),
@@ -366,38 +260,13 @@
     p(GATE_RELEASE_MS_ID, "Gate Release", 100, 5, 5e3, "ms"),
     p(GATE_HYSTERESIS_DB_ID, "Gate Hysteresis", 6, 0, 24, "db"),
     p(GATE_SIDECHAIN_HPF_HZ_ID, "Gate SC HPF", 20, 20, 2e3, "hz"),
-    p(
-      GATE_BAND_COUNT_ID,
-      "Gate Bands",
-      1,
-      1,
-      3,
-      "enum",
-      false,
-      { enumValues: ["1", "2", "3"] }
-    ),
+    p(GATE_BAND_COUNT_ID, "Gate Bands", 1, 1, 3, "enum", false, { enumValues: ["1", "2", "3"] }),
     p(GATE_CROSSOVER_HZ1_ID, "Gate Xover 1", 250, 20, 2e4, "hz"),
     p(GATE_CROSSOVER_HZ2_ID, "Gate Xover 2", 2500, 20, 2e4, "hz"),
-    p(
-      GATE_CROSSOVER_MODE_ID,
-      "Gate Xover Mode",
-      0,
-      0,
-      1,
-      "enum",
-      true,
-      { enumValues: ["analog", "hybrid"] }
-    ),
-    p(
-      GATE_CHANNEL_MODE_ID,
-      "Gate Channel Mode",
-      0,
-      0,
-      4,
-      "enum",
-      true,
-      { enumValues: ["stereo", "mid", "side", "transient", "sustain"] }
-    ),
+    p(GATE_CROSSOVER_MODE_ID, "Gate Xover Mode", 0, 0, 1, "enum", true, { enumValues: ["analog", "hybrid"] }),
+    p(GATE_CHANNEL_MODE_ID, "Gate Channel Mode", 0, 0, 4, "enum", true, {
+      enumValues: ["stereo", "mid", "side", "transient", "sustain"]
+    }),
     p(GATE_CROSSOVER_LEARN_ID, "Gate Xover Learn", 0, 0, 1, "boolean", false),
     p(GATE_DELTA_ID, "Gate Delta", 0, 0, 1, "boolean", false),
     // Per-band open/close thresholds
@@ -425,48 +294,16 @@
     // Value 0 was the historical default while the DSP ignored this reserved
     // parameter. Keep it flat so existing projects retain their v1 sound;
     // active emphasis depths are intentionally additive at values 1..3.
-    p(
-      EXCITER_PRE_EMPHASIS_MODE_ID,
-      "Pre-Emphasis",
-      0,
-      0,
-      3,
-      "enum",
-      true,
-      { enumValues: ["flat", "clean", "defined", "full"] }
-    ),
-    p(
-      EXCITER_BAND_COUNT_ID,
-      "Exciter Bands",
-      1,
-      1,
-      3,
-      "enum",
-      false,
-      { enumValues: ["1", "2", "3"] }
-    ),
+    p(EXCITER_PRE_EMPHASIS_MODE_ID, "Pre-Emphasis", 0, 0, 3, "enum", true, {
+      enumValues: ["flat", "clean", "defined", "full"]
+    }),
+    p(EXCITER_BAND_COUNT_ID, "Exciter Bands", 1, 1, 3, "enum", false, { enumValues: ["1", "2", "3"] }),
     p(EXCITER_CROSSOVER_HZ1_ID, "Exciter Xover 1", 2e3, 20, 2e4, "hz"),
     p(EXCITER_CROSSOVER_HZ2_ID, "Exciter Xover 2", 8e3, 20, 2e4, "hz"),
-    p(
-      EXCITER_CROSSOVER_MODE_ID,
-      "Exciter Xover Mode",
-      0,
-      0,
-      1,
-      "enum",
-      true,
-      { enumValues: ["analog", "hybrid"] }
-    ),
-    p(
-      EXCITER_CHANNEL_MODE_ID,
-      "Exciter Channel Mode",
-      0,
-      0,
-      4,
-      "enum",
-      true,
-      { enumValues: ["stereo", "mid", "side", "transient", "sustain"] }
-    ),
+    p(EXCITER_CROSSOVER_MODE_ID, "Exciter Xover Mode", 0, 0, 1, "enum", true, { enumValues: ["analog", "hybrid"] }),
+    p(EXCITER_CHANNEL_MODE_ID, "Exciter Channel Mode", 0, 0, 4, "enum", true, {
+      enumValues: ["stereo", "mid", "side", "transient", "sustain"]
+    }),
     p(EXCITER_CROSSOVER_LEARN_ID, "Exciter Xover Learn", 0, 0, 1, "boolean", false),
     p(EXCITER_OVERSAMPLING_ID, "Exciter Oversampling", 1, 0, 1, "boolean"),
     p(EXCITER_MIX_ID, "Exciter Mix", 50, 0, 100, "percent"),
@@ -474,60 +311,19 @@
   ];
   var TRANSIENT_PARAMS = [
     p(TRANSIENT_ENABLED_ID, "Transient Enabled", 0, 0, 1, "boolean"),
-    p(
-      TRANSIENT_GLOBAL_MODE_ID,
-      "Global Mode",
-      1,
-      0,
-      2,
-      "enum",
-      true,
-      { enumValues: ["precise", "balanced", "loose"] }
-    ),
-    p(
-      TRANSIENT_CONTOUR_SHAPE_ID,
-      "Contour Shape",
-      1,
-      0,
-      2,
-      "enum",
-      true,
-      { enumValues: ["sharp", "medium", "smooth"] }
-    ),
+    p(TRANSIENT_GLOBAL_MODE_ID, "Global Mode", 1, 0, 2, "enum", true, { enumValues: ["precise", "balanced", "loose"] }),
+    p(TRANSIENT_CONTOUR_SHAPE_ID, "Contour Shape", 1, 0, 2, "enum", true, {
+      enumValues: ["sharp", "medium", "smooth"]
+    }),
     p(TRANSIENT_ATTACK_AMOUNT_ID, "Attack", 0, -100, 100, "generic"),
     p(TRANSIENT_SUSTAIN_AMOUNT_ID, "Sustain", 0, -100, 100, "generic"),
-    p(
-      TRANSIENT_BAND_COUNT_ID,
-      "Transient Bands",
-      1,
-      1,
-      3,
-      "enum",
-      false,
-      { enumValues: ["1", "2", "3"] }
-    ),
+    p(TRANSIENT_BAND_COUNT_ID, "Transient Bands", 1, 1, 3, "enum", false, { enumValues: ["1", "2", "3"] }),
     p(TRANSIENT_CROSSOVER_HZ1_ID, "Transient Xover 1", 250, 20, 2e4, "hz"),
     p(TRANSIENT_CROSSOVER_HZ2_ID, "Transient Xover 2", 2500, 20, 2e4, "hz"),
-    p(
-      TRANSIENT_CROSSOVER_MODE_ID,
-      "Transient Xover Mode",
-      0,
-      0,
-      1,
-      "enum",
-      true,
-      { enumValues: ["analog", "hybrid"] }
-    ),
-    p(
-      TRANSIENT_CHANNEL_MODE_ID,
-      "Transient Channel Mode",
-      0,
-      0,
-      2,
-      "enum",
-      true,
-      { enumValues: ["stereo", "mid", "side"] }
-    ),
+    p(TRANSIENT_CROSSOVER_MODE_ID, "Transient Xover Mode", 0, 0, 1, "enum", true, { enumValues: ["analog", "hybrid"] }),
+    p(TRANSIENT_CHANNEL_MODE_ID, "Transient Channel Mode", 0, 0, 2, "enum", true, {
+      enumValues: ["stereo", "mid", "side"]
+    }),
     p(TRANSIENT_CROSSOVER_LEARN_ID, "Transient Xover Learn", 0, 0, 1, "boolean", false),
     p(TRANSIENT_DELTA_ID, "Transient Delta", 0, 0, 1, "boolean", false),
     p("transient.mix", "Transient Mix", 100, 0, 100, "percent")
@@ -537,38 +333,13 @@
     p(CLIPPER_CEILING_DB_ID, "Ceiling", -1, -24, 0, "db"),
     p(CLIPPER_KNEE_DB_ID, "Knee", 2, 0, 12, "db"),
     p(CLIPPER_DRIVE_DB_ID, "Drive", 0, 0, 24, "db"),
-    p(
-      CLIPPER_BAND_COUNT_ID,
-      "Clipper Bands",
-      1,
-      1,
-      3,
-      "enum",
-      false,
-      { enumValues: ["1", "2", "3"] }
-    ),
+    p(CLIPPER_BAND_COUNT_ID, "Clipper Bands", 1, 1, 3, "enum", false, { enumValues: ["1", "2", "3"] }),
     p(CLIPPER_CROSSOVER_HZ1_ID, "Clipper Xover 1", 250, 20, 2e4, "hz"),
     p(CLIPPER_CROSSOVER_HZ2_ID, "Clipper Xover 2", 2500, 20, 2e4, "hz"),
-    p(
-      CLIPPER_CROSSOVER_MODE_ID,
-      "Clipper Xover Mode",
-      0,
-      0,
-      1,
-      "enum",
-      true,
-      { enumValues: ["analog", "hybrid"] }
-    ),
-    p(
-      CLIPPER_CHANNEL_MODE_ID,
-      "Clipper Channel Mode",
-      0,
-      0,
-      4,
-      "enum",
-      true,
-      { enumValues: ["stereo", "mid", "side", "transient", "sustain"] }
-    ),
+    p(CLIPPER_CROSSOVER_MODE_ID, "Clipper Xover Mode", 0, 0, 1, "enum", true, { enumValues: ["analog", "hybrid"] }),
+    p(CLIPPER_CHANNEL_MODE_ID, "Clipper Channel Mode", 0, 0, 4, "enum", true, {
+      enumValues: ["stereo", "mid", "side", "transient", "sustain"]
+    }),
     p(CLIPPER_CROSSOVER_LEARN_ID, "Clipper Xover Learn", 0, 0, 1, "boolean", false),
     p(CLIPPER_OVERSAMPLING_ID, "Clipper Oversampling", 1, 0, 1, "boolean"),
     p(CLIPPER_DELTA_ID, "Clipper Delta", 0, 0, 1, "boolean", false),
@@ -581,68 +352,29 @@
     p(DENSITY_RATIO_ID, "Ratio", 2, 1, 10, "ratio"),
     p(DENSITY_ATTACK_MS_ID, "Attack", 10, 0.5, 200, "ms"),
     p(DENSITY_RELEASE_MS_ID, "Release", 150, 10, 2e3, "ms"),
-    p(
-      DENSITY_BAND_COUNT_ID,
-      "Density Bands",
-      1,
-      1,
-      3,
-      "enum",
-      false,
-      { enumValues: ["1", "2", "3"] }
-    ),
+    p(DENSITY_BAND_COUNT_ID, "Density Bands", 1, 1, 3, "enum", false, { enumValues: ["1", "2", "3"] }),
     p(DENSITY_CROSSOVER_HZ1_ID, "Density Xover 1", 250, 20, 2e4, "hz"),
     p(DENSITY_CROSSOVER_HZ2_ID, "Density Xover 2", 2500, 20, 2e4, "hz"),
-    p(
-      DENSITY_CROSSOVER_MODE_ID,
-      "Density Xover Mode",
-      0,
-      0,
-      1,
-      "enum",
-      true,
-      { enumValues: ["analog", "hybrid"] }
-    ),
-    p(
-      DENSITY_CHANNEL_MODE_ID,
-      "Density Channel Mode",
-      0,
-      0,
-      2,
-      "enum",
-      true,
-      { enumValues: ["stereo", "mid", "side"] }
-    ),
+    p(DENSITY_CROSSOVER_MODE_ID, "Density Xover Mode", 0, 0, 1, "enum", true, { enumValues: ["analog", "hybrid"] }),
+    p(DENSITY_CHANNEL_MODE_ID, "Density Channel Mode", 0, 0, 2, "enum", true, {
+      enumValues: ["stereo", "mid", "side"]
+    }),
     p(DENSITY_CROSSOVER_LEARN_ID, "Density Xover Learn", 0, 0, 1, "boolean", false),
     p(DENSITY_DELTA_ID, "Density Delta", 0, 0, 1, "boolean", false),
     p("density.mix", "Density Mix", 100, 0, 100, "percent")
   ];
   var SCULPTOR_PARAMS = [
     p(SCULPTOR_ENABLED_ID, "Sculptor Enabled", 0, 0, 1, "boolean"),
-    p(
-      SCULPTOR_TARGET_PROFILE_ID,
-      "Target",
-      5,
-      0,
-      5,
-      "enum",
-      true,
-      { enumValues: ["guitar", "bass", "kick", "piano", "snare", "speech"] }
-    ),
+    p(SCULPTOR_TARGET_PROFILE_ID, "Target", 5, 0, 5, "enum", true, {
+      enumValues: ["guitar", "bass", "kick", "piano", "snare", "speech"]
+    }),
     p(SCULPTOR_AMOUNT_ID, "Amount", 50, 0, 100, "percent"),
     p(SCULPTOR_LOW_FREQ_BOUNDARY_HZ_ID, "Low Boundary", 20, 20, 1e3, "hz"),
     p(SCULPTOR_HIGH_FREQ_BOUNDARY_HZ_ID, "High Boundary", 16e3, 1e3, 2e4, "hz"),
     p(SCULPTOR_DRY_WET_ID, "Dry/Wet", 100, 0, 100, "percent"),
-    p(
-      SCULPTOR_CHANNEL_MODE_ID,
-      "Sculptor Channel Mode",
-      0,
-      0,
-      2,
-      "enum",
-      true,
-      { enumValues: ["stereo", "mid", "side"] }
-    ),
+    p(SCULPTOR_CHANNEL_MODE_ID, "Sculptor Channel Mode", 0, 0, 2, "enum", true, {
+      enumValues: ["stereo", "mid", "side"]
+    }),
     p(SCULPTOR_DELTA_ID, "Sculptor Delta", 0, 0, 1, "boolean", false)
   ];
   var PHASE_PARAMS = [
@@ -661,16 +393,9 @@
     p(UNMASK_SIDECHAIN_ENABLED_ID, "Unmask Sidechain", 0, 0, 1, "boolean"),
     p(UNMASK_MASKING_THRESHOLD_DB_ID, "Masking Threshold", -15, -40, 0, "db"),
     p(UNMASK_RESPONSE_SPEED_HZ_ID, "Response Speed", 5, 0.5, 50, "hz"),
-    p(
-      UNMASK_CHANNEL_MODE_ID,
-      "Unmask Channel Mode",
-      0,
-      0,
-      4,
-      "enum",
-      true,
-      { enumValues: ["stereo", "mid", "side", "transient", "sustain"] }
-    ),
+    p(UNMASK_CHANNEL_MODE_ID, "Unmask Channel Mode", 0, 0, 4, "enum", true, {
+      enumValues: ["stereo", "mid", "side", "transient", "sustain"]
+    }),
     p(UNMASK_LEARN_ACTIVE_ID, "Unmask Learn", 0, 0, 1, "boolean", false),
     p(UNMASK_DELTA_ID, "Unmask Delta", 0, 0, 1, "boolean", false),
     p(UNMASK_ECOSYSTEM_ENABLED_ID, "Unmask Ecosystem", 0, 0, 1, "boolean", false),
@@ -690,9 +415,7 @@
     ...PHASE_PARAMS,
     ...UNMASK_PARAMS
   ];
-  var PARAM_BY_ID = new Map(
-    ALL_PARAMS.map((d) => [d.id, d])
-  );
+  var PARAM_BY_ID = new Map(ALL_PARAMS.map((d) => [d.id, d]));
   function buildDefaultParams() {
     const result = {};
     for (const def of ALL_PARAMS) {
@@ -732,9 +455,7 @@
     }));
   }
   function createSnapshot(entries, version = 1) {
-    const frozenEntries = Object.freeze(
-      entries.map((e) => Object.freeze({ ...e }))
-    );
+    const frozenEntries = Object.freeze(entries.map((e) => Object.freeze({ ...e })));
     return {
       entries: frozenEntries,
       version
@@ -751,14 +472,10 @@
     return result;
   }
   function toggleModule(entries, moduleType) {
-    return entries.map(
-      (e) => e.type === moduleType ? { ...e, enabled: !e.enabled } : e
-    );
+    return entries.map((e) => e.type === moduleType ? { ...e, enabled: !e.enabled } : e);
   }
   function setModuleEnabled(entries, moduleType, enabled) {
-    return entries.map(
-      (e) => e.type === moduleType ? { ...e, enabled } : e
-    );
+    return entries.map((e) => e.type === moduleType ? { ...e, enabled } : e);
   }
   function getActiveModules(entries) {
     return entries.filter((e) => e.enabled);
@@ -1953,14 +1670,8 @@
       for (let i = 0; i < frameCount; i++) {
         const sampleL = bufL[i];
         const sampleR = bufR[i];
-        const kwL = processKWeightSample(
-          this.kStage2[0],
-          processKWeightSample(this.kStage1[0], sampleL)
-        );
-        const kwR = processKWeightSample(
-          this.kStage2[1],
-          processKWeightSample(this.kStage1[1], sampleR)
-        );
+        const kwL = processKWeightSample(this.kStage2[0], processKWeightSample(this.kStage1[0], sampleL));
+        const kwR = processKWeightSample(this.kStage2[1], processKWeightSample(this.kStage1[1], sampleR));
         const absL = Math.abs(sampleL);
         const absR = Math.abs(sampleR);
         const maxAbs = Math.max(absL, absR);
@@ -2850,10 +2561,7 @@
     toSuggestion(bandIndex, freqHz, depthDb) {
       const depthConfidence = Math.min(1, depthDb / 12);
       const dataConfidence = Math.min(1, this.blockCount / (MIN_BLOCKS * 2));
-      const confidence = Math.min(
-        1,
-        0.3 * dataConfidence + 0.7 * Math.max(0.3, depthConfidence)
-      );
+      const confidence = Math.min(1, 0.3 * dataConfidence + 0.7 * Math.max(0.3, depthConfidence));
       return {
         freqHz,
         bandIndex,
@@ -3044,12 +2752,8 @@
       this.inputGainSmoother.setTimeConstant(smoothMs, this.sampleRate);
       this.outputGainSmoother.setTimeConstant(smoothMs, this.sampleRate);
       this.mixSmoother.setTimeConstant(smoothMs, this.sampleRate);
-      this.inputGainSmoother.reset(
-        dbToLinear(this.params[GLOBAL_INPUT_GAIN_DB_ID] ?? 0)
-      );
-      this.outputGainSmoother.reset(
-        dbToLinear(this.params[GLOBAL_OUTPUT_GAIN_DB_ID] ?? 0)
-      );
+      this.inputGainSmoother.reset(dbToLinear(this.params[GLOBAL_INPUT_GAIN_DB_ID] ?? 0));
+      this.outputGainSmoother.reset(dbToLinear(this.params[GLOBAL_OUTPUT_GAIN_DB_ID] ?? 0));
       this.mixSmoother.reset((this.params[GLOBAL_MIX_ID] ?? 100) / 100);
       this.cachedCtx.sampleRate = this.sampleRate;
       this.cachedCtx.maxBlockSize = this.maxBlockSize;
@@ -3199,10 +2903,7 @@
         }
         this.autoGain.setEnabled(gainMatchEnabled);
         this.autoGain.setTargetLufs(autoGainTargetLufs);
-        const autoGainCorrectionDb = this.autoGain.process(
-          this.lufsMeter.getShortTermLufs(),
-          frames
-        );
+        const autoGainCorrectionDb = this.autoGain.process(this.lufsMeter.getShortTermLufs(), frames);
         const totalOutputGainTarget = dbToLinear(outputGainDb + autoGainCorrectionDb);
         for (let i = 0; i < frames; i++) {
           const g = this.outputGainSmoother.process(totalOutputGainTarget);
@@ -3228,12 +2929,8 @@
      * Reset all state (filters, envelopes, etc.).
      */
     reset() {
-      this.inputGainSmoother.reset(
-        dbToLinear(this.params[GLOBAL_INPUT_GAIN_DB_ID] ?? 0)
-      );
-      this.outputGainSmoother.reset(
-        dbToLinear(this.params[GLOBAL_OUTPUT_GAIN_DB_ID] ?? 0)
-      );
+      this.inputGainSmoother.reset(dbToLinear(this.params[GLOBAL_INPUT_GAIN_DB_ID] ?? 0));
+      this.outputGainSmoother.reset(dbToLinear(this.params[GLOBAL_OUTPUT_GAIN_DB_ID] ?? 0));
       this.mixSmoother.reset((this.params[GLOBAL_MIX_ID] ?? 100) / 100);
       for (const module of this.modules.values()) {
         module.reset();
@@ -3927,14 +3624,8 @@
       }
       this.transientBuf = new Float32Array(this.maxBlockSize);
       this.sustainBuf = new Float32Array(this.maxBlockSize);
-      this.transientStereoBufs = [
-        new Float32Array(this.maxBlockSize),
-        new Float32Array(this.maxBlockSize)
-      ];
-      this.sustainStereoBufs = [
-        new Float32Array(this.maxBlockSize),
-        new Float32Array(this.maxBlockSize)
-      ];
+      this.transientStereoBufs = [new Float32Array(this.maxBlockSize), new Float32Array(this.maxBlockSize)];
+      this.sustainStereoBufs = [new Float32Array(this.maxBlockSize), new Float32Array(this.maxBlockSize)];
       this.prepared = true;
     }
     setCrossover(splitIndex, freqHz) {
@@ -3983,13 +3674,7 @@
         this.midSide.decode(msResult.mid, msResult.side, frameCount, channels[0], channels[1]);
       } else if (channelMode === "transient" || channelMode === "sustain") {
         if (this.channelCount < 2) {
-          this.tsSeparator.separate(
-            channels[0],
-            frameCount,
-            this.transientBuf,
-            this.sustainBuf,
-            0
-          );
+          this.tsSeparator.separate(channels[0], frameCount, this.transientBuf, this.sustainBuf, 0);
           const target = channelMode === "transient" ? this.transientBuf : this.sustainBuf;
           const singleChannel = this.singleChannelWrap;
           singleChannel[0] = target;
@@ -4041,16 +3726,7 @@
     return Number.isFinite(x) ? x : 0;
   }
   var MASKING_BANDS = 8;
-  var MASKING_FREQS = [
-    100,
-    250,
-    500,
-    1e3,
-    2e3,
-    4e3,
-    8e3,
-    16e3
-  ];
+  var MASKING_FREQS = [100, 250, 500, 1e3, 2e3, 4e3, 8e3, 16e3];
   var MASKING_THRESHOLD_DB = 3;
   var MaskingMeter = class {
     mainFilters = [];
@@ -4294,13 +3970,7 @@
         decodeMidSide(this.midBuffer, this.sideBuffer, frameCount, channels[0], channels[1]);
       } else if (channelMode === 3 || channelMode === 4) {
         for (let ch = 0; ch < 2; ch++) {
-          this.tsSeparator.separate(
-            channels[ch],
-            frameCount,
-            this.transientBufs[ch],
-            this.sustainBufs[ch],
-            ch
-          );
+          this.tsSeparator.separate(channels[ch], frameCount, this.transientBufs[ch], this.sustainBufs[ch], ch);
         }
         const target = channelMode === 3 ? this.transientBufs : this.sustainBufs;
         const other = channelMode === 3 ? this.sustainBufs : this.transientBufs;
@@ -4367,14 +4037,8 @@
         this.dynGainBuf = new Float32Array(requiredSize);
       }
       if (this.transientBufs[0].length < requiredSize) {
-        this.transientBufs = [
-          new Float32Array(requiredSize),
-          new Float32Array(requiredSize)
-        ];
-        this.sustainBufs = [
-          new Float32Array(requiredSize),
-          new Float32Array(requiredSize)
-        ];
+        this.transientBufs = [new Float32Array(requiredSize), new Float32Array(requiredSize)];
+        this.sustainBufs = [new Float32Array(requiredSize), new Float32Array(requiredSize)];
       }
     }
     // ── Internal processing ────────────────────────────────────
@@ -4599,13 +4263,7 @@
         }
         const detected = band.envelope.process(maxAbs);
         const detectedDb = 20 * Math.log10(Math.max(1e-10, detected));
-        const targetReduction = this.computeGainReduction(
-          detectedDb,
-          thresholdDb,
-          ratio,
-          kneeDb,
-          dynRangeDb
-        );
+        const targetReduction = this.computeGainReduction(detectedDb, thresholdDb, ratio, kneeDb, dynRangeDb);
         const coef = targetReduction < gainReduction ? attackCoef : releaseCoef;
         gainReduction += coef * (targetReduction - gainReduction);
         band.currentGainDb = gainReduction;
@@ -4656,11 +4314,7 @@
       }
     }
     computeMasking(channels, sidechain, frameCount) {
-      const result = this.maskingMeter.analyze(
-        channels[0],
-        sidechain[0] ?? channels[0],
-        frameCount
-      );
+      const result = this.maskingMeter.analyze(channels[0], sidechain[0] ?? channels[0], frameCount);
       this.maskingData = result.levels;
     }
   };
@@ -4852,13 +4506,7 @@
   };
 
   // src/effects/ultina-core/contracts/channelModes.ts
-  var CHANNEL_MODES = [
-    "stereo",
-    "mid",
-    "side",
-    "transient",
-    "sustain"
-  ];
+  var CHANNEL_MODES = ["stereo", "mid", "side", "transient", "sustain"];
   function channelModeFromValue(v) {
     const idx = Math.round(v);
     return CHANNEL_MODES[Math.max(0, Math.min(CHANNEL_MODES.length - 1, idx))];
@@ -5745,10 +5393,7 @@
       this.toneLowState = new Array(EXCITER_MAX_BANDS * 2).fill(0);
       this.toneHighState = new Array(EXCITER_MAX_BANDS * 2).fill(0);
       this.preEmphState.fill(0);
-      this.preYScratch = [
-        new Float32Array(this.maxBlockSize),
-        new Float32Array(this.maxBlockSize)
-      ];
+      this.preYScratch = [new Float32Array(this.maxBlockSize), new Float32Array(this.maxBlockSize)];
       this.multiband.prepare(this.sampleRate, 2, this.maxBlockSize, 1);
       this.dryDelay.prepare(this.maxBlockSize);
       this.cachedBandCount = -1;
@@ -6443,10 +6088,7 @@
       const mixPercent = clamp(params["clipper.mix"] ?? 100, 0, 100);
       const driveLin = dbToLinear(driveDb);
       const ceilingLin = dbToLinear(ceilingDb);
-      const kneeLin = Math.min(
-        dbToLinear(ceilingDb + kneeDb) - ceilingLin,
-        ceilingLin
-      );
+      const kneeLin = Math.min(dbToLinear(ceilingDb + kneeDb) - ceilingLin, ceilingLin);
       this.updateMultiband(bandCount, xover1, xover2);
       const xoverMode = (params["clipper.crossoverMode"] ?? 0) >= 0.5 ? "hybrid" : "analog";
       this.multiband.setCrossoverMode(xoverMode);
@@ -6470,16 +6112,7 @@
           chunkChannels,
           remaining,
           (bandIdx, bandChannels, bandFrames) => {
-            this.processBand(
-              bandIdx,
-              bandChannels,
-              bandFrames,
-              driveLin,
-              ceilingLin,
-              kneeLin,
-              kneeDb,
-              oversampling
-            );
+            this.processBand(bandIdx, bandChannels, bandFrames, driveLin, ceilingLin, kneeLin, kneeDb, oversampling);
           },
           channelMode
         );
@@ -7165,11 +6798,7 @@
         bandLevelDb[b] = linearToDb(Math.max(1e-10, this.envFollowers[b]));
         totalActiveGain += Math.abs(this.smoothedGainDb[b]);
       }
-      m.amountActive = clamp(
-        totalActiveGain / (NUM_BANDS * MAX_CORRECTION_DB),
-        0,
-        1
-      );
+      m.amountActive = clamp(totalActiveGain / (NUM_BANDS * MAX_CORRECTION_DB), 0, 1);
       spectralCurveDb.set(this.currentSpectralCurve);
       targetCurveDb.set(this.currentTargetCurve);
       return m;
@@ -7254,10 +6883,7 @@
     static XCORR_INTERVAL = 8;
     /** Reusable chunk channel views for the dry-delay mixer (no per-chunk
      * allocation on the audio thread). */
-    chunkChannels = [
-      new Float32Array(0),
-      new Float32Array(0)
-    ];
+    chunkChannels = [new Float32Array(0), new Float32Array(0)];
     // ── Analysis state ──
     // Peak envelopes for asymmetry
     posPeakEnv = 0;
@@ -7285,25 +6911,16 @@
       this.maxBlockSize = ctx.maxBlockSize;
       this.dryL = new Float32Array(this.maxBlockSize);
       this.dryR = new Float32Array(this.maxBlockSize);
-      this.delayBufferSize = Math.max(
-        Math.ceil(50 * this.sampleRate / 1e3) + 1,
-        this.maxBlockSize
-      );
+      this.delayBufferSize = Math.max(Math.ceil(50 * this.sampleRate / 1e3) + 1, this.maxBlockSize);
       this.delayBufL = new Float32Array(this.delayBufferSize);
       this.delayBufR = new Float32Array(this.delayBufferSize);
       this.delayWritePos = 0;
-      this.dryDelay.prepare(
-        this.maxBlockSize,
-        Math.ceil(50 * this.sampleRate / 1e3)
-      );
+      this.dryDelay.prepare(this.maxBlockSize, Math.ceil(50 * this.sampleRate / 1e3));
       this.dcCoef = 1 - 2 * Math.PI * 20 / this.sampleRate;
       if (this.dcCoef < 0.9) this.dcCoef = 0.9;
       this.peakAtkCoef = smoothCoef(5, this.sampleRate);
       this.peakRelCoef = smoothCoef(200, this.sampleRate);
-      this.xcorrMaxOffsetSamples = Math.min(
-        Math.floor(50 * this.sampleRate / 1e3),
-        this.delayBufferSize - 1
-      );
+      this.xcorrMaxOffsetSamples = Math.min(Math.floor(50 * this.sampleRate / 1e3), this.delayBufferSize - 1);
       this.reset();
     }
     process(args) {
@@ -7434,7 +7051,10 @@
               }
             }
             const detectedMs = bestLag / this.sampleRate * 1e3;
-            const detectCoef = Math.min(1, smoothCoef(200, this.sampleRate) * chunkSize * _PhaseModuleProcessor.XCORR_INTERVAL);
+            const detectCoef = Math.min(
+              1,
+              smoothCoef(200, this.sampleRate) * chunkSize * _PhaseModuleProcessor.XCORR_INTERVAL
+            );
             this.detectedOffsetMs += detectCoef * (detectedMs - this.detectedOffsetMs);
           }
         }
@@ -7623,10 +7243,7 @@
       const envCoef = smoothCoef(1e3 / Math.max(0.5, responseHz), this.sampleRate);
       this.runAnalysis(channels, sidechain, scEnabled, frameCount, envCoef);
       if (ecosystemEnabled && this.instanceId) {
-        const hasData = SpectralRegistry.getInstance().getAggregateMasker(
-          this.instanceId,
-          this.ecosystemMaskerDb
-        );
+        const hasData = SpectralRegistry.getInstance().getAggregateMasker(this.instanceId, this.ecosystemMaskerDb);
         if (hasData) {
           for (let b = 0; b < NUM_BANDS2; b++) {
             const ecoAmp = Math.pow(10, this.ecosystemMaskerDb[b] / 20);

@@ -1,10 +1,6 @@
 import type { InstrumentRuntime } from "./types";
 import type { InstrumentTrack } from "../project-model/types";
-import {
-  buildWavetableMips,
-  extractWavetable,
-  FACTORY_WAVETABLES,
-} from "./wavetables";
+import { buildWavetableMips, extractWavetable, FACTORY_WAVETABLES } from "./wavetables";
 
 /**
  * Worklet-backed wavetable runtime (Phase-2 voice-engine pilot).

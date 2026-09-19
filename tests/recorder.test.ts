@@ -110,7 +110,7 @@ describe("LiveRecorder failure cleanup", () => {
     try {
       const { ctx, deps } = makeRecorderDeps();
       (ctx as unknown as { createMediaStreamSource: () => AudioNode }).createMediaStreamSource = () =>
-        ({ connect: vi.fn(), disconnect: vi.fn() } as unknown as AudioNode);
+        ({ connect: vi.fn(), disconnect: vi.fn() }) as unknown as AudioNode;
       const recorder = new LiveRecorder(deps);
       const pending = recorder.start({ kind: "mic" });
       await Promise.resolve();

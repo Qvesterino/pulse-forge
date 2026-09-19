@@ -38,9 +38,7 @@ describe("OnboardingTour", () => {
     renderWithContext(<OnboardingTour />, { services });
     await waitFor(() => expect(screen.getByRole("button", { name: "Skip tour" })).toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: "Skip tour" }));
-    await waitFor(() =>
-      expect(screen.queryByRole("dialog", { name: "Onboarding tour" })).not.toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Onboarding tour" })).not.toBeInTheDocument());
     expect(window.localStorage.getItem("pf-tour-v1")).toBe("1");
     expect(services.flushSave).toHaveBeenCalled();
   });
@@ -63,9 +61,7 @@ describe("OnboardingTour", () => {
     await user.click(screen.getByRole("button", { name: "NEXT" }));
     const forge = screen.getByRole("button", { name: /FORGE/ });
     await user.click(forge);
-    await waitFor(() =>
-      expect(screen.queryByRole("dialog", { name: "Onboarding tour" })).not.toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Onboarding tour" })).not.toBeInTheDocument());
     expect(window.localStorage.getItem("pf-tour-v1")).toBe("1");
   });
 });

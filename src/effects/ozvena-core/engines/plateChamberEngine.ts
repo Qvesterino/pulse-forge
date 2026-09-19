@@ -36,13 +36,7 @@ import { clamp, flushDenormal, sanitize, TAU, hermiteInterp } from "../dsp/math.
 // differ by ULPs, and inside a feedback loop a 1-ULP coefficient difference
 // amplifies into full tail decorrelation. fround makes both ports identical.
 const q32 = (x: number): number => Math.fround(x);
-import {
-  createBiquad,
-  setLowPass,
-  setHighPass,
-  processBiquad,
-  type BiquadState,
-} from "../dsp/biquad.js";
+import { createBiquad, setLowPass, setHighPass, processBiquad, type BiquadState } from "../dsp/biquad.js";
 
 export interface PlateChamberParams extends PlateChamberEngineState {}
 
@@ -209,10 +203,10 @@ export function createPlateChamberEngine(): PlateChamberEngine {
   // reference-class reverbs use. Lines alternate between the two LFOs,
   // so adjacent lines decorrelate. Phase/increments are q32-quantized
   // like every libm-derived term inside the loop.
-  const AIR_DEPTH_A = 0.20;
+  const AIR_DEPTH_A = 0.2;
   const AIR_DEPTH_B = 0.14;
-  const AIR_RATE_A = 0.73;   // Hz
-  const AIR_RATE_B = 1.13;   // Hz
+  const AIR_RATE_A = 0.73; // Hz
+  const AIR_RATE_B = 1.13; // Hz
   let airPhaseA = 0;
   let airPhaseB = 0;
   let airIncA = 0;
@@ -234,14 +228,20 @@ export function createPlateChamberEngine(): PlateChamberEngine {
   let lowSplitR: BiquadState = createBiquad(2);
   let highSplitR: BiquadState = createBiquad(2);
 
-  interface AlgoTuning { lenMult: number; dampHz: number; hpHz: number; modRateMult: number; modDepthMult: number }
+  interface AlgoTuning {
+    lenMult: number;
+    dampHz: number;
+    hpHz: number;
+    modRateMult: number;
+    modDepthMult: number;
+  }
 
   // Constant table — algoTuning() must not allocate an object per call
   // (it is read from the realtime process loop).
   const ALGO_TUNING: Record<Engine2Algo, AlgoTuning> = {
-    room:          { lenMult: 1.0,  dampHz: 5000, hpHz: 180, modRateMult: 1.0, modDepthMult: 0.5 },
+    room: { lenMult: 1.0, dampHz: 5000, hpHz: 180, modRateMult: 1.0, modDepthMult: 0.5 },
     mediumChamber: { lenMult: 1.15, dampHz: 4500, hpHz: 160, modRateMult: 0.8, modDepthMult: 0.7 },
-    plate:         { lenMult: 0.70, dampHz: 8000, hpHz: 300, modRateMult: 1.5, modDepthMult: 1.0 },
+    plate: { lenMult: 0.7, dampHz: 8000, hpHz: 300, modRateMult: 1.5, modDepthMult: 1.0 },
   };
 
   function algoTuning(algo: Engine2Algo): AlgoTuning {
@@ -256,7 +256,7 @@ export function createPlateChamberEngine(): PlateChamberEngine {
     let avgLen = 0;
     let lensChanged = false;
     for (let c = 0; c < 2; c++) {
-      const base = (c & 1) ? BASE_LENGTHS_R : BASE_LENGTHS_L;
+      const base = c & 1 ? BASE_LENGTHS_R : BASE_LENGTHS_L;
       for (let l = 0; l < FDN_LINES; l++) {
         oldLengthsC[c][l] = lengthsC[c][l];
         const nl = Math.max(8, Math.round(base[l] * srScale));
@@ -290,10 +290,7 @@ export function createPlateChamberEngine(): PlateChamberEngine {
     // target the loop gain stays monotonically ≤ target everywhere and
     // the damping interaction keeps the broadband decay within ~+18% at
     // default damping. The damper remains in-loop HF decay shaping.
-    feedbackGain = clamp(
-      q32(Math.pow(0.001, avgLen / (decaySec * sampleRate))),
-      0, 0.99,
-    );
+    feedbackGain = clamp(q32(Math.pow(0.001, avgLen / (decaySec * sampleRate))), 0, 0.99);
 
     // Input diffusion amount (wires the previously unused `diffusion`).
     diffG = 0.3 + 0.45 * (clamp(params.diffusion, 0, 100) / 100);
@@ -303,7 +300,7 @@ export function createPlateChamberEngine(): PlateChamberEngine {
     // Pure per-band per-pass targets: band gain g such that fb·g equals
     // the loop gain of a reverb with T60·multiplier.
     const bandTarget = (mult: number): number =>
-      Math.pow(0.001, (avgLen / (decaySec * clamp(mult, 0.25, 4))) / sampleRate) / feedbackGain;
+      Math.pow(0.001, avgLen / (decaySec * clamp(mult, 0.25, 4)) / sampleRate) / feedbackGain;
     bassAlpha = q32(1 - Math.exp((-TAU * BASS_SHELF_HZ) / sampleRate));
     midAlpha = q32(1 - Math.exp((-TAU * MID_XOVER_HZ) / sampleRate));
 
@@ -360,8 +357,7 @@ export function createPlateChamberEngine(): PlateChamberEngine {
     const fbMax = feedbackGain * Math.max(1, bassGain, midBandGain);
     const injMax = Math.max(0, 0.995 / Math.max(fbMax, 1e-6) - dirWFloor) / Math.SQRT2;
     shInj = Math.min(0.5 * shAmt, injMax);
-    shDirW =
-      shAmt > 0 ? Math.min(1, 0.995 / Math.max(fbMax, 1e-6) - Math.SQRT2 * shInj) : 1;
+    shDirW = shAmt > 0 ? Math.min(1, 0.995 / Math.max(fbMax, 1e-6) - Math.SQRT2 * shInj) : 1;
     shDirWFreeze = shAmt > 0 ? Math.min(1, 0.995 - Math.SQRT2 * shInj) : 1;
 
     attackAlpha = q32(1 - Math.exp(-1 / Math.max(0.001, (params.attack / 1000) * sampleRate)));
@@ -418,7 +414,7 @@ export function createPlateChamberEngine(): PlateChamberEngine {
       diffIdx.push(di);
     }
     for (let c = 0; c < cc; c++) {
-      const base = (c & 1) ? BASE_LENGTHS_R : BASE_LENGTHS_L;
+      const base = c & 1 ? BASE_LENGTHS_R : BASE_LENGTHS_L;
       const ls: Float32Array[] = [];
       const wi: number[] = [];
       const lp: number[] = [];
@@ -474,9 +470,12 @@ export function createPlateChamberEngine(): PlateChamberEngine {
     for (const idxs of apIdx) for (let s = 0; s < idxs.length; s++) idxs[s] = 0;
     for (const stages of diffBufs) for (const buf of stages) buf.fill(0);
     for (const idxs of diffIdx) for (let s = 0; s < idxs.length; s++) idxs[s] = 0;
-    shBuf[0].fill(0); shBuf[1].fill(0);
-    shW[0] = 0; shW[1] = 0;
-    shPhase[0] = 0; shPhase[1] = 0;
+    shBuf[0].fill(0);
+    shBuf[1].fill(0);
+    shW[0] = 0;
+    shW[1] = 0;
+    shPhase[0] = 0;
+    shPhase[1] = 0;
     lfoPhase = 0;
     airPhaseA = 0;
     airPhaseB = 0;
@@ -546,10 +545,7 @@ export function createPlateChamberEngine(): PlateChamberEngine {
   // for the largest tier in prepare()). Phase/write indices keep cycling
   // over the full buffer; grain reads only reach shWindow back.
   function applyShimmerWindow(): void {
-    shWindow = Math.max(
-      2048,
-      Math.round((SH_WIN_BASE * SH_WIN_MULT[shQuality] * sampleRate) / 48000) & ~1,
-    );
+    shWindow = Math.max(2048, Math.round((SH_WIN_BASE * SH_WIN_MULT[shQuality] * sampleRate) / 48000) & ~1);
     if (shWindow > shWinMax) shWindow = shWinMax;
   }
 
@@ -568,8 +564,10 @@ export function createPlateChamberEngine(): PlateChamberEngine {
       shWinMax = Math.max(2048, Math.round((2 * SH_WIN_BASE * sampleRate) / 48000) & ~1);
       shBuf = [new Float32Array(2 * shWinMax), new Float32Array(2 * shWinMax)];
       applyShimmerWindow();
-      shW[0] = 0; shW[1] = 0;
-      shPhase[0] = 0; shPhase[1] = 0;
+      shW[0] = 0;
+      shW[1] = 0;
+      shPhase[0] = 0;
+      shPhase[1] = 0;
     },
 
     setQuality(tier) {
@@ -700,7 +698,7 @@ export function createPlateChamberEngine(): PlateChamberEngine {
             }
             // Always-on air term — alternating taps pick opposite LFOs so
             // neighbouring lines smear independently.
-            modOffset += (l & 1) ? airOffB : airOffA;
+            modOffset += l & 1 ? airOffB : airOffA;
             taps[l] = readTap(ls[l], wis[l], baseLen, modOffset);
             if (lensFadeRemaining > 0) {
               // Length crossfade: blend the previous read distance out.
@@ -739,7 +737,7 @@ export function createPlateChamberEngine(): PlateChamberEngine {
             if (shPhase[c] >= W) shPhase[c] -= W;
             const ph = shPhase[c];
             const d0 = W - ph;
-            const i0 = ((shW[c] - d0) % size + size) % size;
+            const i0 = (((shW[c] - d0) % size) + size) % size;
             const g0 = q32(Math.sin((Math.PI * ph) / W));
             if (shSingle) {
               // Eco tier: one grain (half the shimmer cost). A lone sin-π
@@ -749,7 +747,7 @@ export function createPlateChamberEngine(): PlateChamberEngine {
             } else {
               const ph1 = (ph + W / 2) % W;
               const d1 = W - ph1;
-              const i1 = ((shW[c] - d1) % size + size) % size;
+              const i1 = (((shW[c] - d1) % size) + size) % size;
               const g1 = q32(Math.sin((Math.PI * ph1) / W));
               shiftedC[c] = g0 * buf[i0] + g1 * buf[i1];
             }
@@ -792,8 +790,7 @@ export function createPlateChamberEngine(): PlateChamberEngine {
             mlp[l] += midAlpha * (lowHp - mlp[l]);
             mlp[l] = flushDenormal(mlp[l]);
             const midBand = sanitize(mlp[l]);
-            let shelved =
-              lowBand * bassGain + midBand * midBandGain + (lowHp - midBand);
+            let shelved = lowBand * bassGain + midBand * midBandGain + (lowHp - midBand);
             if (driveGain > 1.0001) {
               // In-loop Padé-tanh saturation: compresses hot excursions,
               // adds decaying harmonic density. Unity small-signal gain
@@ -862,10 +859,14 @@ export function createPlateChamberEngine(): PlateChamberEngine {
       attackEnv = 0;
       lensFadeRemaining = 0;
       hasRendered = false;
-      lowSplitL.z1.fill(0); lowSplitL.z2.fill(0);
-      highSplitL.z1.fill(0); highSplitL.z2.fill(0);
-      lowSplitR.z1.fill(0); lowSplitR.z2.fill(0);
-      highSplitR.z1.fill(0); highSplitR.z2.fill(0);
+      lowSplitL.z1.fill(0);
+      lowSplitL.z2.fill(0);
+      highSplitL.z1.fill(0);
+      highSplitL.z2.fill(0);
+      lowSplitR.z1.fill(0);
+      lowSplitR.z2.fill(0);
+      highSplitR.z1.fill(0);
+      highSplitR.z2.fill(0);
     },
   };
 }

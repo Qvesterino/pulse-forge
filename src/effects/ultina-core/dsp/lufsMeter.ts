@@ -30,12 +30,7 @@
 //   - True-peak: peak hold with linear interpolation
 // ═══════════════════════════════════════════════════════════
 
-import {
-  setHighShelf,
-  setHighPass,
-  createBiquad,
-  type BiquadCoeffs,
-} from "./primitives.js";
+import { setHighShelf, setHighPass, createBiquad, type BiquadCoeffs } from "./primitives.js";
 
 // ── Constants ──────────────────────────────────────────────
 
@@ -52,54 +47,26 @@ const RELATIVE_GATE_OFFSET_DB = -10;
 // Verified: reconstructs an fs/4 sine's inter-sample peak to
 // −0.17 dB, ±0.3 dB passband to 15 kHz, −0.8 dB at 19 kHz.
 const TP_FIR = new Float64Array([
-   0.000029698735387511, 0.000070003751031468,
-   0.000081337354444092, 0.000007352482573811,
-   -0.000171443230401889, -0.000385835516489692,
-   -0.000472793149418841, -0.000252046233891145,
-   0.000331863085131750, 0.001082606634264892,
-   0.001551606505214169, 0.001232552432543188,
-   -0.000097236732539107, -0.002070062087615603,
-   -0.003694453494244438, -0.003741933066931200,
-   -0.001466481529468804, 0.002696331102054647,
-   0.006927635470624972, 0.008644973786680530,
-   0.005844033752768363, -0.001440677411060010,
-   -0.010439900966216513, -0.016408227706803714,
-   -0.014837366346022311, -0.004226172602751034,
-   0.012098269623627688, 0.026477607147027401,
-   0.030107468248552035, 0.017794270287905329,
-   -0.008049720987342666, -0.036672411694119673,
-   -0.052776955911743403, -0.043867286200087910,
-   -0.007946772745916800, 0.042574859272561806,
-   0.083803506213296519, 0.090179188728099588,
-   0.047661919674382054, -0.035689016366780138,
-   -0.127549979762802329, -0.180287387068625377,
-   -0.148828303115833199, -0.010711795098505500,
-   0.220322964727480475, 0.493948783397120950,
-   0.737623543370986345, 0.880991883241850848,
-   0.880991883241850848, 0.737623543370986345,
-   0.493948783397120950, 0.220322964727480475,
-   -0.010711795098505500, -0.148828303115833199,
-   -0.180287387068625377, -0.127549979762802329,
-   -0.035689016366780138, 0.047661919674382054,
-   0.090179188728099588, 0.083803506213296367,
-   0.042574859272561806, -0.007946772745916800,
-   -0.043867286200087910, -0.052776955911743403,
-   -0.036672411694119673, -0.008049720987342666,
-   0.017794270287905329, 0.030107468248552084,
-   0.026477607147027401, 0.012098269623627688,
-   -0.004226172602751039, -0.014837366346022311,
-   -0.016408227706803714, -0.010439900966216513,
-   -0.001440677411060010, 0.005844033752768363,
-   0.008644973786680525, 0.006927635470624972,
-   0.002696331102054647, -0.001466481529468804,
-   -0.003741933066931200, -0.003694453494244438,
-   -0.002070062087615603, -0.000097236732539107,
-   0.001232552432543188, 0.001551606505214169,
-   0.001082606634264891, 0.000331863085131751,
-   -0.000252046233891145, -0.000472793149418841,
-   -0.000385835516489693, -0.000171443230401889,
-   0.000007352482573811, 0.000081337354444092,
-   0.000070003751031469, 0.000029698735387511,
+  0.000029698735387511, 0.000070003751031468, 0.000081337354444092, 0.000007352482573811, -0.000171443230401889,
+  -0.000385835516489692, -0.000472793149418841, -0.000252046233891145, 0.00033186308513175, 0.001082606634264892,
+  0.001551606505214169, 0.001232552432543188, -0.000097236732539107, -0.002070062087615603, -0.003694453494244438,
+  -0.0037419330669312, -0.001466481529468804, 0.002696331102054647, 0.006927635470624972, 0.00864497378668053,
+  0.005844033752768363, -0.00144067741106001, -0.010439900966216513, -0.016408227706803714, -0.014837366346022311,
+  -0.004226172602751034, 0.012098269623627688, 0.026477607147027401, 0.030107468248552035, 0.017794270287905329,
+  -0.008049720987342666, -0.036672411694119673, -0.052776955911743403, -0.04386728620008791, -0.0079467727459168,
+  0.042574859272561806, 0.083803506213296519, 0.090179188728099588, 0.047661919674382054, -0.035689016366780138,
+  -0.127549979762802329, -0.180287387068625377, -0.148828303115833199, -0.0107117950985055, 0.220322964727480475,
+  0.49394878339712095, 0.737623543370986345, 0.880991883241850848, 0.880991883241850848, 0.737623543370986345,
+  0.49394878339712095, 0.220322964727480475, -0.0107117950985055, -0.148828303115833199, -0.180287387068625377,
+  -0.127549979762802329, -0.035689016366780138, 0.047661919674382054, 0.090179188728099588, 0.083803506213296367,
+  0.042574859272561806, -0.0079467727459168, -0.04386728620008791, -0.052776955911743403, -0.036672411694119673,
+  -0.008049720987342666, 0.017794270287905329, 0.030107468248552084, 0.026477607147027401, 0.012098269623627688,
+  -0.004226172602751039, -0.014837366346022311, -0.016408227706803714, -0.010439900966216513, -0.00144067741106001,
+  0.005844033752768363, 0.008644973786680525, 0.006927635470624972, 0.002696331102054647, -0.001466481529468804,
+  -0.0037419330669312, -0.003694453494244438, -0.002070062087615603, -0.000097236732539107, 0.001232552432543188,
+  0.001551606505214169, 0.001082606634264891, 0.000331863085131751, -0.000252046233891145, -0.000472793149418841,
+  -0.000385835516489693, -0.000171443230401889, 0.000007352482573811, 0.000081337354444092, 0.000070003751031469,
+  0.000029698735387511,
 ]);
 
 /** Oversampling factor. */
@@ -123,7 +90,6 @@ const TP_POLY: ReadonlyArray<Float64Array> = (() => {
   }
   return phases;
 })();
-
 
 export interface LufsReading {
   momentaryLufs: number;
@@ -157,7 +123,6 @@ function processKWeightSample(kw: KWeightChannel, x: number): number {
 // ── LUFS Meter class ──────────────────────────────────────
 
 export class LufsMeter {
-
   // K-weighting filters (2 stages × 2 channels)
   private kStage1: [KWeightChannel, KWeightChannel] = [createKWeightChannel(), createKWeightChannel()];
   private kStage2: [KWeightChannel, KWeightChannel] = [createKWeightChannel(), createKWeightChannel()];
@@ -226,7 +191,6 @@ export class LufsMeter {
   // ── Lifecycle ────────────────────────────────────────────
 
   prepare(sampleRate: number, _maxBlockSize: number): void {
-
     // Create K-weighting biquads for 2 channels
     const stage1Bq = createBiquad(1);
     const stage2Bq = createBiquad(1);
@@ -242,8 +206,8 @@ export class LufsMeter {
     this.kStage2[1].coeffs = { ...stage2Bq.coeffs };
 
     // Allocate sliding windows
-    const momentarySamples = Math.floor(sampleRate * MOMENTARY_WINDOW_MS / 1000);
-    const shortTermSamples = Math.floor(sampleRate * SHORT_TERM_WINDOW_MS / 1000);
+    const momentarySamples = Math.floor((sampleRate * MOMENTARY_WINDOW_MS) / 1000);
+    const shortTermSamples = Math.floor((sampleRate * SHORT_TERM_WINDOW_MS) / 1000);
     this.shortTermWindowSamples = shortTermSamples;
     this.momentaryBuf = new Float64Array(momentarySamples);
     this.shortTermBuf = new Float64Array(shortTermSamples);
@@ -255,8 +219,8 @@ export class LufsMeter {
     this.shortTermCount = 0;
 
     // Gated block setup
-    this.blockSamplesNeeded = Math.floor(sampleRate * BLOCK_DURATION_MS / 1000);
-    this.hopSamplesNeeded = Math.floor(sampleRate * BLOCK_HOP_MS / 1000);
+    this.blockSamplesNeeded = Math.floor((sampleRate * BLOCK_DURATION_MS) / 1000);
+    this.hopSamplesNeeded = Math.floor((sampleRate * BLOCK_HOP_MS) / 1000);
     this.blockBuf = new Float64Array(this.blockSamplesNeeded);
     this.blockWritePos = 0;
     this.blockSum = 0;
@@ -293,8 +257,11 @@ export class LufsMeter {
    */
   noteUnfed(frames: number): void {
     this.unfedSamples += frames;
-    if (!this.staleUntilTurnover && this.shortTermWindowSamples > 0
-      && this.unfedSamples >= this.shortTermWindowSamples) {
+    if (
+      !this.staleUntilTurnover &&
+      this.shortTermWindowSamples > 0 &&
+      this.unfedSamples >= this.shortTermWindowSamples
+    ) {
       this.staleUntilTurnover = true;
       this.fedSinceStale = 0;
     }
@@ -352,10 +319,8 @@ export class LufsMeter {
       const sampleR = bufR[i];
 
       // K-weight: stage1 (shelf) → stage2 (HPF)
-      const kwL = processKWeightSample(this.kStage2[0],
-        processKWeightSample(this.kStage1[0], sampleL));
-      const kwR = processKWeightSample(this.kStage2[1],
-        processKWeightSample(this.kStage1[1], sampleR));
+      const kwL = processKWeightSample(this.kStage2[0], processKWeightSample(this.kStage1[0], sampleL));
+      const kwR = processKWeightSample(this.kStage2[1], processKWeightSample(this.kStage1[1], sampleR));
 
       // True-peak: peak hold with interpolation
       const absL = Math.abs(sampleL);
@@ -423,9 +388,7 @@ export class LufsMeter {
       if (this.blockCount >= this.blockSamplesNeeded && this.hopCounter >= this.hopSamplesNeeded) {
         this.hopCounter = 0;
         const blockMean = this.blockSum / this.blockSamplesNeeded;
-        const blockLufs = blockMean > 1e-12
-          ? -0.691 + 10 * Math.log10(blockMean)
-          : ABSOLUTE_GATE_LUFS;
+        const blockLufs = blockMean > 1e-12 ? -0.691 + 10 * Math.log10(blockMean) : ABSOLUTE_GATE_LUFS;
         this.blockHistoryBuf[this.blockHistoryWrite] = blockLufs;
         this.blockHistoryWrite = (this.blockHistoryWrite + 1) % LufsMeter.MAX_BLOCK_HISTORY;
         if (this.blockHistoryLen < LufsMeter.MAX_BLOCK_HISTORY) this.blockHistoryLen++;
@@ -473,21 +436,19 @@ export class LufsMeter {
     // Compute momentary and short-term
     if (this.momentaryCount > 0) {
       const meanMS = this.momentarySum / this.momentaryCount;
-      this.momentaryLufs = meanMS > 1e-12
-        ? -0.691 + 10 * Math.log10(meanMS)
-        : ABSOLUTE_GATE_LUFS;
+      this.momentaryLufs = meanMS > 1e-12 ? -0.691 + 10 * Math.log10(meanMS) : ABSOLUTE_GATE_LUFS;
     }
     if (this.shortTermCount > 0) {
       const meanMS = this.shortTermSum / this.shortTermCount;
-      this.shortTermLufs = meanMS > 1e-12
-        ? -0.691 + 10 * Math.log10(meanMS)
-        : ABSOLUTE_GATE_LUFS;
+      this.shortTermLufs = meanMS > 1e-12 ? -0.691 + 10 * Math.log10(meanMS) : ABSOLUTE_GATE_LUFS;
     }
   }
 
   // ── Readouts ─────────────────────────────────────────────
 
-  getMomentaryLufs(): number { return this.momentaryLufs; }
+  getMomentaryLufs(): number {
+    return this.momentaryLufs;
+  }
   getShortTermLufs(): number {
     // Honest reading: while the short-term window has not fully turned over
     // since a feed gap longer than the window, the ring holds pre-gap data —
@@ -516,7 +477,9 @@ export class LufsMeter {
     if (this.truePeakLinear <= 1e-10) return -200;
     return 20 * Math.log10(this.truePeakLinear);
   }
-  getTotalSamples(): number { return this.totalSamples; }
+  getTotalSamples(): number {
+    return this.totalSamples;
+  }
 
   getReading(): LufsReading {
     this.ensureIntegratedFresh();
@@ -607,7 +570,7 @@ export class LufsMeter {
     // Slices a view over [0, n) so we don't touch the unused tail.
     dst.subarray(0, n).sort();
     const idx95 = Math.min(Math.floor(n * 0.95), n - 1);
-    const idx10 = Math.max(Math.floor(n * 0.10), 0);
+    const idx10 = Math.max(Math.floor(n * 0.1), 0);
     this.lufsRange = dst[idx95] - dst[idx10];
   }
 }

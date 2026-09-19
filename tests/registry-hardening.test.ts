@@ -142,11 +142,7 @@ function build(type: keyof typeof EFFECT_DEFS, params: Record<string, number> = 
     bypassed: false,
     params,
   } as unknown as EffectInstance;
-  const runtime = EFFECT_DEFS[type].factory(
-    ctx as unknown as BaseAudioContext,
-    instance,
-    { bpm: 120 },
-  );
+  const runtime = EFFECT_DEFS[type].factory(ctx as unknown as BaseAudioContext, instance, { bpm: 120 });
   return { runtime, created, oscillators };
 }
 
@@ -254,9 +250,7 @@ describe("registry hardening — dispose hygiene", () => {
     // House convention: mixBus legs (input → dry/wet → output) are released
     // by severing mix.input/output; every OTHER node — the delay feedback
     // loop lp/fb and the exciter feed included — must be disconnected.
-    const mixLegs = new Set(
-      (runtime.input as unknown as MockNode).connections.map((c) => c.dest),
-    );
+    const mixLegs = new Set((runtime.input as unknown as MockNode).connections.map((c) => c.dest));
     const exempt = new Set<MockNode>([
       runtime.input as unknown as MockNode,
       runtime.output as unknown as MockNode,

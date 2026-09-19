@@ -107,11 +107,7 @@ function rollRow(kind: PadKind, energy: number, rand: () => number): number[] {
 }
 
 /** Rebuild the active pattern with the bot's rows merged in (others preserved). */
-function withBotRows(
-  doc: ProjectDocument,
-  padIds: string[],
-  rowsByPad: Record<string, number[]>,
-): ProjectDocument {
+function withBotRows(doc: ProjectDocument, padIds: string[], rowsByPad: Record<string, number[]>): ProjectDocument {
   const activeId = doc.activePatternId;
   return {
     ...doc,
@@ -166,7 +162,11 @@ export function etiquetteFor(role: SceneRole | null, progress: number): Etiquett
     case "break":
       return { densityScale: 0.3, allow: { kick: false, snare: false, hat: true, perc: false }, fill: false };
     case "outro":
-      return { densityScale: Math.max(0.25, 1 - 0.7 * p), allow: { kick: true, snare: false, hat: true, perc: false }, fill: false };
+      return {
+        densityScale: Math.max(0.25, 1 - 0.7 * p),
+        allow: { kick: true, snare: false, hat: true, perc: false },
+        fill: false,
+      };
     case "fill":
       return { densityScale: 1, allow: ALL_PADS, fill: true };
     case "drop":
@@ -191,11 +191,7 @@ function roleFromName(name: string): SceneRole | null {
  * currentSceneIdFor (song mode: the clip covering the playhead bar; pattern
  * mode: the scene bound to the active pattern), then reads its role.
  */
-export function currentSceneRole(
-  doc: ProjectDocument,
-  mode: PlayModeLite,
-  playheadBar: number,
-): SceneRole | null {
+export function currentSceneRole(doc: ProjectDocument, mode: PlayModeLite, playheadBar: number): SceneRole | null {
   let sceneId: string | null = null;
   if (mode === "song") {
     const clip = doc.arrangement.clips.find(
@@ -266,7 +262,7 @@ export function extractHumanPhrase(
   const steps: number[] = [];
   for (const n of inWindow) {
     registerSum += (Math.max(0, Math.min(127, n.pitch)) - 36) / 60;
-    const step = (((Math.floor((n.wall - windowStart) * stepsPerSec) % 16) + 16) % 16);
+    const step = ((Math.floor((n.wall - windowStart) * stepsPerSec) % 16) + 16) % 16;
     steps.push(step);
     if (step % 4 !== 0) sync++;
   }
@@ -320,11 +316,15 @@ function shapeResponse(
   // REGISTER EMPHASIS: high human → perc accents up, hats down; low → kick up.
   const kickId = padOfKind("kick");
   if (human.registerMean > 0.6) {
-    if (percId) for (let s = 0; s < STEPS; s++) if (rows[percId][s] > 0) rows[percId][s] = Math.min(1, rows[percId][s] + 0.08);
-    if (hatId) for (let s = 0; s < STEPS; s++) if (rows[hatId][s] > 0) rows[hatId][s] = Math.max(0, rows[hatId][s] - 0.08);
+    if (percId)
+      for (let s = 0; s < STEPS; s++) if (rows[percId][s] > 0) rows[percId][s] = Math.min(1, rows[percId][s] + 0.08);
+    if (hatId)
+      for (let s = 0; s < STEPS; s++) if (rows[hatId][s] > 0) rows[hatId][s] = Math.max(0, rows[hatId][s] - 0.08);
   } else if (human.registerMean < 0.4) {
-    if (kickId) for (let s = 0; s < STEPS; s++) if (rows[kickId][s] > 0) rows[kickId][s] = Math.min(1, rows[kickId][s] + 0.06);
-    if (hatId) for (let s = 0; s < STEPS; s++) if (rows[hatId][s] > 0) rows[hatId][s] = Math.max(0, rows[hatId][s] - 0.08);
+    if (kickId)
+      for (let s = 0; s < STEPS; s++) if (rows[kickId][s] > 0) rows[kickId][s] = Math.min(1, rows[kickId][s] + 0.06);
+    if (hatId)
+      for (let s = 0; s < STEPS; s++) if (rows[hatId][s] > 0) rows[hatId][s] = Math.max(0, rows[hatId][s] - 0.08);
   }
 }
 

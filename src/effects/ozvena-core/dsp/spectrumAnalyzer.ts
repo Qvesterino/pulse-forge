@@ -74,7 +74,10 @@ export function createSpectrumAnalyzer(opts: { fftSize?: FftSize; downmix?: "mon
     output: new Float32Array(fftSize),
   };
   const writePos: Record<AnalyzerTap, number> = {
-    input: 0, dry: 0, wet: 0, output: 0,
+    input: 0,
+    dry: 0,
+    wet: 0,
+    output: 0,
   };
 
   let window = hannWindow(fftSize);
@@ -96,10 +99,16 @@ export function createSpectrumAnalyzer(opts: { fftSize?: FftSize; downmix?: "mon
   }
 
   return {
-    get fftSize() { return fftSize; },
-    get enabled() { return enabled; },
+    get fftSize() {
+      return fftSize;
+    },
+    get enabled() {
+      return enabled;
+    },
 
-    setEnabled(on) { enabled = on; },
+    setEnabled(on) {
+      enabled = on;
+    },
 
     setFftSize(size) {
       fftSize = size;

@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
 import { useDoc, useServices } from "./context";
 import { sceneRoleOf } from "../project-model/schema";
 import { assistVary } from "../commands/commands";
@@ -83,6 +83,7 @@ export function SceneLauncher({
   const [editingSceneId, setEditingSceneId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
   const [draggedSceneIndex, setDraggedSceneIndex] = useState<number | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
   const currentSceneId = currentSceneIdFor(
     runtime.mode,
@@ -128,9 +129,58 @@ export function SceneLauncher({
     setDraggedSceneIndex(null);
   };
 
+  // Touch reorder: HTML5 drag-and-drop never fires on touch, so the scene
+  // list reorders through pointer events — press the card's grip, drag over
+  // the target slot, release. Same contract as the pattern chips.
+  const pointerDragRef = useRef<{ fromIndex: number; toIndex: number } | null>(null);
+
+  const sceneIndexFromPoint = (clientY: number): number => {
+    const cards = listRef.current?.querySelectorAll<HTMLElement>(".scene-launch-card");
+    if (!cards || cards.length === 0) return 0;
+    for (let i = 0; i < cards.length; i++) {
+      const rect = cards[i].getBoundingClientRect();
+      if (clientY < rect.top + rect.height / 2) return i;
+    }
+    return cards.length - 1;
+  };
+
+  const beginPointerReorder = (event: React.PointerEvent, index: number) => {
+    if (!canReorder || !onReorderScenes) return;
+    if (event.pointerType === "mouse") return; // mouse uses native DnD
+    event.preventDefault();
+    event.stopPropagation();
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    pointerDragRef.current = { fromIndex: index, toIndex: index };
+    setDraggedSceneIndex(index);
+  };
+
+  const movePointerReorder = (event: React.PointerEvent) => {
+    const drag = pointerDragRef.current;
+    if (!drag) return;
+    drag.toIndex = sceneIndexFromPoint(event.clientY);
+  };
+
+  const endPointerReorder = (event: React.PointerEvent) => {
+    const drag = pointerDragRef.current;
+    pointerDragRef.current = null;
+    setDraggedSceneIndex(null);
+    if (!drag || !onReorderScenes) return;
+    try {
+      (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
+    } catch {
+      /* pointer already gone */
+    }
+    if (drag.toIndex !== drag.fromIndex) onReorderScenes(drag.fromIndex, drag.toIndex);
+  };
+
+  const cancelPointerReorder = () => {
+    pointerDragRef.current = null;
+    setDraggedSceneIndex(null);
+  };
+
   return (
     <div className={`scene-launcher scene-launcher-${variant}`} aria-label="Scene launcher">
-      <div className="scene-launcher-list">
+      <div className="scene-launcher-list" ref={listRef}>
         {doc.scenes.map((scene, index) => {
           const pattern = doc.patterns.find((candidate) => candidate.id === scene.patternId);
           const useCount = doc.scenes.filter((candidate) => candidate.patternId === scene.patternId).length;
@@ -161,8 +211,22 @@ export function SceneLauncher({
               onDragOver={(event) => event.preventDefault()}
               onDrop={(event) => handleDrop(event, index)}
               onDragEnd={() => setDraggedSceneIndex(null)}
-              title={`${scene.name} · ${pattern?.name ?? "Pattern missing"} · click SELECT, use LAUNCH to play`}
+              title={`${scene.name} · ${pattern?.name ?? "Pattern missing"} · click SELECT, use LAUNCH to play${canReorder ? " — drag the card to reorder" : ""}`}
             >
+              {canReorder && !isEditing && (
+                <button
+                  type="button"
+                  className="scene-drag-grip"
+                  aria-label={`Reorder ${scene.name} — drag up or down`}
+                  title="Drag to reorder (touch-friendly)"
+                  onPointerDown={(event) => beginPointerReorder(event, index)}
+                  onPointerMove={movePointerReorder}
+                  onPointerUp={endPointerReorder}
+                  onPointerCancel={cancelPointerReorder}
+                >
+                  ⠿
+                </button>
+              )}
               {isEditing ? (
                 <input
                   className="scene-edit-input"

@@ -91,9 +91,7 @@ const gainsOf = (ctx: BaseAudioContext): { disconnectCount: number }[] =>
   (ctx as unknown as { gains: { disconnectCount: number }[] }).gains;
 
 const instanceOf = (type: string) =>
-  ({ id: `${type}-1`, type, params: {}, bypassed: false }) as unknown as Parameters<
-    typeof createOzvenaNode
-  >[1];
+  ({ id: `${type}-1`, type, params: {}, bypassed: false }) as unknown as Parameters<typeof createOzvenaNode>[1];
 
 describe("plugin node dispose does not close the message port", () => {
   it("ozvena: dispose message is delivered and the port stays open", () => {
@@ -212,8 +210,7 @@ describe("ozvena node ships PRECOMPUTED IR spectra (no time-domain payloads)", (
 
     node.port.onmessage?.({ data: { type: "irNeeded", irId: "hall", sampleRate: 48000 } });
     const msg = node.port.posted.find((m) => m.type === "factoryIr") as
-      | { irId?: string; channels?: number; sets?: { irSpectra: Float64Array }[]; samples?: unknown }
-      | undefined;
+      { irId?: string; channels?: number; sets?: { irSpectra: Float64Array }[]; samples?: unknown } | undefined;
     expect(msg).toBeDefined();
     expect(msg!.irId).toBe("hall");
     expect(msg!.samples).toBeUndefined();

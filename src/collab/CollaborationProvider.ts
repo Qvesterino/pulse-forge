@@ -134,9 +134,7 @@ export class CollaborationProvider {
    * the LATEST remote state (highest `at`, own echo excluded) is reported —
    * null when no peer has broadcast.
    */
-  onTransportChange(
-    callback: (state: SharedTransportState | null, fromClientId: number) => void,
-  ): () => void {
+  onTransportChange(callback: (state: SharedTransportState | null, fromClientId: number) => void): () => void {
     if (!this.provider) return () => {};
     const provider = this.provider;
     const handler = () => {

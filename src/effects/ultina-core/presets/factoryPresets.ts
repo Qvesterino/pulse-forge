@@ -44,10 +44,7 @@ export interface FactoryPreset {
  * Merge a preset's params onto the module defaults.
  * All values are clamped to their valid ranges.
  */
-export function applyPreset(
-  preset: FactoryPreset,
-  baseParams?: Record<string, number>,
-): Record<string, number> {
+export function applyPreset(preset: FactoryPreset, baseParams?: Record<string, number>): Record<string, number> {
   const defaults = baseParams ?? buildDefaultParams();
   const result = { ...defaults };
 
@@ -66,20 +63,14 @@ export function applyPreset(
 /**
  * Get all presets for a specific module.
  */
-export function getPresetsForModule(
-  module: ModuleType,
-  presets: FactoryPreset[] = FACTORY_PRESETS,
-): FactoryPreset[] {
+export function getPresetsForModule(module: ModuleType, presets: FactoryPreset[] = FACTORY_PRESETS): FactoryPreset[] {
   return presets.filter((p) => p.module === module);
 }
 
 /**
  * Find a preset by ID.
  */
-export function findPreset(
-  id: string,
-  presets: FactoryPreset[] = FACTORY_PRESETS,
-): FactoryPreset | undefined {
+export function findPreset(id: string, presets: FactoryPreset[] = FACTORY_PRESETS): FactoryPreset | undefined {
   return presets.find((p) => p.id === id);
 }
 

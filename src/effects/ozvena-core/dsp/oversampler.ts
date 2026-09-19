@@ -53,11 +53,7 @@ function kaiserWindow(n: number, M: number, beta: number): number {
  * Design a Kaiser-windowed sinc low-pass at `cutoffHz` for a given
  * sample rate. Length must be odd. Stop-band attenuation = 90 dB.
  */
-export function designLowpassKernel(
-  cutoffHz: number,
-  sampleRate: number,
-  length: number,
-): Float32Array {
+export function designLowpassKernel(cutoffHz: number, sampleRate: number, length: number): Float32Array {
   if (length % 2 === 0) length += 1;
   const M = (length - 1) / 2;
   const A = 90;
@@ -141,7 +137,9 @@ export function createPolyphaseOversampler(): PolyphaseOversampler {
   let downBuf: Float32Array = new Float32Array(0);
 
   return {
-    get factor() { return factor; },
+    get factor() {
+      return factor;
+    },
     get latencySamples() {
       if (factor <= 1) return 0;
       // Measured end-to-end group delay of the up→down round trip in
@@ -149,11 +147,12 @@ export function createPolyphaseOversampler(): PolyphaseOversampler {
       // ozvena_oversampler.h. The old (tapsPerPhase-1)/(2*factor)
       // under-reported by ~12 samples at 2× (verified against rendered
       // impulse peaks in the cross-validation suite).
-      const d =
-        (tapsPerPhase - 1) / 2 + (fullDownTaps - 1) / (2 * factor);
+      const d = (tapsPerPhase - 1) / 2 + (fullDownTaps - 1) / (2 * factor);
       return Math.round(d);
     },
-    get filterLength() { return filterLength; },
+    get filterLength() {
+      return filterLength;
+    },
 
     prepare(sr, f) {
       sampleRate = clamp(sr, 8000, 192000);
@@ -260,9 +259,7 @@ export function createPolyphaseOversampler(): PolyphaseOversampler {
  * Pick the oversample factor for a given quality mode and CPU budget.
  * Used by quality-aware modules (smoother lookahead, future ADAA).
  */
-export function pickOversampleFactor(
-  quality: "eco" | "standard" | "high" | "render",
-): OversampleFactor {
+export function pickOversampleFactor(quality: "eco" | "standard" | "high" | "render"): OversampleFactor {
   if (quality === "eco") return 1;
   if (quality === "standard") return 2;
   if (quality === "high") return 4;
@@ -274,9 +271,7 @@ export function pickOversampleFactor(
  * setQuality() (0=eco … 3=render). Kept next to pickOversampleFactor so
  * every quality-aware module shares one tier convention.
  */
-export function pickQualityTier(
-  quality: "eco" | "standard" | "high" | "render",
-): number {
+export function pickQualityTier(quality: "eco" | "standard" | "high" | "render"): number {
   if (quality === "eco") return 0;
   if (quality === "standard") return 1;
   if (quality === "high") return 2;

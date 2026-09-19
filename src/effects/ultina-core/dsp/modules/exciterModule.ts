@@ -182,10 +182,7 @@ export class ExciterModuleProcessor implements UltinaModuleProcessor {
     this.toneLowState = new Array(EXCITER_MAX_BANDS * 2).fill(0);
     this.toneHighState = new Array(EXCITER_MAX_BANDS * 2).fill(0);
     this.preEmphState.fill(0);
-    this.preYScratch = [
-      new Float32Array(this.maxBlockSize),
-      new Float32Array(this.maxBlockSize),
-    ];
+    this.preYScratch = [new Float32Array(this.maxBlockSize), new Float32Array(this.maxBlockSize)];
 
     this.multiband.prepare(this.sampleRate, 2, this.maxBlockSize, 1);
     this.dryDelay.prepare(this.maxBlockSize);
@@ -399,10 +396,7 @@ export class ExciterModuleProcessor implements UltinaModuleProcessor {
     // removes the shelf from the linear component, leaving the generated
     // harmonics emphasized. Skip the pair when no saturator is active so the
     // bypass path remains bit-identical.
-    const preEmphOn =
-      preEmphasisDb > 0 &&
-      bandFrames > 0 &&
-      this.saturationActive(trashMode, amounts);
+    const preEmphOn = preEmphasisDb > 0 && bandFrames > 0 && this.saturationActive(trashMode, amounts);
     if (preEmphOn) {
       this.applyPreEmphasis(chL, bandFrames, bandIdx, 0, preEmphasisDb);
       if (stereo) this.applyPreEmphasis(chR, bandFrames, bandIdx, 1, preEmphasisDb);

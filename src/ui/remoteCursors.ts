@@ -27,17 +27,11 @@ export function useRemoteCursors(): RemoteCursor[] {
 /** Stable callback that broadcasts the local cursor (no-op without collab). */
 export function usePublishCursor(): (cursor: CursorState | null) => void {
   const services = useServices();
-  return useCallback(
-    (cursor: CursorState | null) => services.collab?.setCursor(cursor),
-    [services],
-  );
+  return useCallback((cursor: CursorState | null) => services.collab?.setCursor(cursor), [services]);
 }
 
 /** Users whose cursor sits on this exact cell (used to render markers). */
-export function cursorsAt(
-  cursors: RemoteCursor[],
-  match: Partial<CursorState>,
-): RemoteCursor[] {
+export function cursorsAt(cursors: RemoteCursor[], match: Partial<CursorState>): RemoteCursor[] {
   return cursors.filter(({ cursor }) =>
     Object.entries(match).every(([key, value]) =>
       value === undefined ? cursor[key as keyof CursorState] === undefined : cursor[key as keyof CursorState] === value,

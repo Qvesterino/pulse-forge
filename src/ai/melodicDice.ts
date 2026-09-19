@@ -27,10 +27,7 @@ export interface MelodicPhrase {
  * apply call it with identical inputs and get identical notes, so what you
  * previewed is exactly what APPLY writes.
  */
-export function buildMelodicPhrase(
-  _doc: ProjectDocument,
-  opts: MelodicPhraseOptions,
-): MelodicPhrase {
+export function buildMelodicPhrase(_doc: ProjectDocument, opts: MelodicPhraseOptions): MelodicPhrase {
   const pitchMin = opts.pitchMin ?? 36; // C2
   const pitchMax = opts.pitchMax ?? 84; // C6
   const scale = [...getScalePitchesInRange(opts.key, pitchMin, pitchMax)].sort((a, b) => a - b);

@@ -85,8 +85,8 @@ const FEATURES = [
   },
   {
     icon: <IconLayers />,
-    title: "Three pro plugin suites",
-    text: "PRISM spectral EQ, VLYX intelligent mixing and VØID spatial reverb. Bit-exact DSP, zero install.",
+    title: "Pro plugin suites",
+    text: "PRISM spectral EQ, VLYX intelligent mixing, VØID spatial reverb and RYFT spectral delay. Bit-exact DSP, zero install.",
   },
   {
     icon: <IconUsers />,

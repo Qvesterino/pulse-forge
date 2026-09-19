@@ -49,34 +49,13 @@ import { createModPad, type ModPad } from "../modules/modPad.js";
 import { createMaskingMeter, type MaskingMeter } from "../modules/maskingMeter.js";
 import { generateFactoryIr, generateFactoryIr4 } from "../modules/factoryIr.js";
 import { createSafetyLimiter, type SafetyLimiter } from "../modules/safetyLimiter.js";
-import {
-  createReflectionsEngine,
-  type ReflectionsEngine,
-} from "../engines/reflectionsEngine.js";
-import {
-  createPlateChamberEngine,
-  type PlateChamberEngine,
-} from "../engines/plateChamberEngine.js";
+import { createReflectionsEngine, type ReflectionsEngine } from "../engines/reflectionsEngine.js";
+import { createPlateChamberEngine, type PlateChamberEngine } from "../engines/plateChamberEngine.js";
 import { createHallEngine, type HallEngine } from "../engines/hallEngine.js";
-import {
-  createConvolutionEngine,
-  type ConvolutionEngine,
-} from "../engines/convolutionEngine.js";
-import {
-  computeBlendPadMixInto,
-  distributeToEnginesInto,
-  type BlendPadMix,
-} from "./blendPad.js";
-import {
-  createDuckController,
-  type DuckController,
-  type DuckControllerParams,
-} from "./duckController.js";
-import {
-  createOzvenaIpc,
-  type OzvenaIpc,
-  type PeerNotification,
-} from "../v2/vocalForgeIpc.js";
+import { createConvolutionEngine, type ConvolutionEngine } from "../engines/convolutionEngine.js";
+import { computeBlendPadMixInto, distributeToEnginesInto, type BlendPadMix } from "./blendPad.js";
+import { createDuckController, type DuckController, type DuckControllerParams } from "./duckController.js";
+import { createOzvenaIpc, type OzvenaIpc, type PeerNotification } from "../v2/vocalForgeIpc.js";
 import type { PrecomputedIrSet } from "../dsp/fftPartitioned.js";
 
 /**
@@ -84,7 +63,7 @@ import type { PrecomputedIrSet } from "../dsp/fftPartitioned.js";
  *  - a ready interleaved payload (`channels` 1/2/4), or its PRECOMPUTED
  *    frequency-domain form (per-convolver slot sets — see
  *    fftPartitioned.precomputeConvolverSpectra; the audio-thread-free
- *    variant), 
+ *    variant),
  *  - "pending" — generation is in flight elsewhere; keep the current IR,
  *  - null — unknown id; clear the convolution.
  */
@@ -94,11 +73,7 @@ export type FactoryIrLookup =
   | "pending"
   | null;
 
-export type FactoryIrProvider = (
-  irId: string,
-  sampleRate: number,
-  stereo: boolean,
-) => FactoryIrLookup;
+export type FactoryIrProvider = (irId: string, sampleRate: number, stereo: boolean) => FactoryIrLookup;
 
 export interface OzvenaProcessor {
   prepare(sampleRate: number, channelCount: number, bpm: number, maxBlockSize: number): void;
@@ -178,10 +153,7 @@ export function createOzvenaProcessor(): OzvenaProcessor {
   // lets each channel's state be kicked by the other channel a different
   // number of times depending on the host block size — the output became
   // block-size-dependent (and L/R subtly coupled). Mirrors the native fix.
-  let dcBlocks: [DcBlocker, DcBlocker] = [
-    createDcBlocker(44100, 15),
-    createDcBlocker(44100, 15),
-  ];
+  let dcBlocks: [DcBlocker, DcBlocker] = [createDcBlocker(44100, 15), createDcBlocker(44100, 15)];
   const preDelay: PreDelay = createPreDelay();
   const smoother: Smoother = createSmoother();
   const preEq: PreEq = createPreEq();
@@ -343,7 +315,9 @@ export function createOzvenaProcessor(): OzvenaProcessor {
   // engine adds its wet contribution. It must not be confused with finalDry.
   let engineDry: Float32Array[] = [];
   let engineIn: { e1: Float32Array[]; e2: Float32Array[]; e3: Float32Array[] } = {
-    e1: [], e2: [], e3: [],
+    e1: [],
+    e2: [],
+    e3: [],
   };
   let wetPreEq: Float32Array[] = [];
   // E1 wet (recovered) for ER→Late injection.
@@ -361,10 +335,7 @@ export function createOzvenaProcessor(): OzvenaProcessor {
       for (let c = 0; c < channelCount; c++) out.push(new Float32Array(frameCount));
       return out;
     };
-    if (
-      engineIn.e1.length < channelCount ||
-      engineIn.e1[0]?.length < frameCount
-    ) {
+    if (engineIn.e1.length < channelCount || engineIn.e1[0]?.length < frameCount) {
       engineIn = { e1: make(), e2: make(), e3: make() };
       engineDry = make();
       erWet = make();
@@ -448,29 +419,18 @@ export function createOzvenaProcessor(): OzvenaProcessor {
     // Roadmap O6: per-engine modulation-rate multiplier (additive state,
     // default 1 = the engine's ALGO_TUNING rate untouched). Engine changes
     // must re-push modulation too (the multiplier lives in the engine state).
-    const enginesChanged =
-      !prev || state.engines.e2 !== prev.engines.e2 || state.engines.e3 !== prev.engines.e3;
+    const enginesChanged = !prev || state.engines.e2 !== prev.engines.e2 || state.engines.e3 !== prev.engines.e3;
     if (modChanged || enginesChanged) {
       // Scalar-only — cheap, and must follow modPad.setParams. A disabled
       // Mod Pad must zero the engine modulation entirely: fractional LFO
       // reads add smear (and libm sin() rounding drift vs the native
       // port) the user never asked for.
-      const mod = state.mod.enabled
-        ? modPad.getModParams()
-        : { rateHz: 0, depthSamples: 0 };
+      const mod = state.mod.enabled ? modPad.getModParams() : { rateHz: 0, depthSamples: 0 };
       // Roadmap O6: caller-declared depth ceiling (additive state field,
       // default 20 = historical engine clamp).
       const maxDepth = state.mod?.maxDepthSamples ?? 20;
-      plateChamber.setModulation(
-        mod.rateHz * (state.engines.e2.modRateMult ?? 1),
-        mod.depthSamples,
-        maxDepth,
-      );
-      hall.setModulation(
-        mod.rateHz * (state.engines.e3.modRateMult ?? 1),
-        mod.depthSamples,
-        maxDepth,
-      );
+      plateChamber.setModulation(mod.rateHz * (state.engines.e2.modRateMult ?? 1), mod.depthSamples, maxDepth);
+      hall.setModulation(mod.rateHz * (state.engines.e3.modRateMult ?? 1), mod.depthSamples, maxDepth);
     }
     if (!prev || state.convolution !== prev.convolution) {
       convolution.setParams({
@@ -525,38 +485,43 @@ export function createOzvenaProcessor(): OzvenaProcessor {
   }
 
   function doPrepare(sr: number, cc: number, hostBpm: number, maxBlockSize: number): void {
-      sampleRate = clamp(sr, 8000, 192000);
-      channelCount = Math.max(1, cc);
-      bpm = clamp(hostBpm, 20, 300);
-      preparedMaxBs = Math.max(64, maxBlockSize);
-      dcBlocks = [createDcBlocker(sampleRate, 15), createDcBlocker(sampleRate, 15)];
-      dcBlocks[0].reset();
-      dcBlocks[1].reset();
-      preDelay.prepare(sampleRate, channelCount, bpm);
-      smoother.prepare(sampleRate);
-      preEq.prepare(sampleRate, channelCount);
-      reverbEq.prepare(sampleRate, channelCount);
-      modPad.prepare(sampleRate);
-      maskingMeter.prepare(sampleRate, channelCount);
-      reflections.prepare(sampleRate, channelCount);
-      plateChamber.prepare(sampleRate, channelCount);
-      hall.prepare(sampleRate, channelCount);
-      convolution.prepare(sampleRate, channelCount, preparedMaxBs);
-      limiterQuality = state?.global.quality ?? "standard";
-      safetyLimiter.prepare(sampleRate, channelCount, preparedMaxBs, pickOversampleFactor(limiterQuality as "eco" | "standard" | "high" | "render"));
-      const q0 = limiterQuality as "eco" | "standard" | "high" | "render";
-      lastQualityTier = pickQualityTier(q0);
-      plateChamber.setQuality(lastQualityTier);
-      hall.setQuality(lastQualityTier);
-      analyzer = createSpectrumAnalyzer({ fftSize: 2048 });
-      analyzer.setEnabled(analyzersEnabled);
-      ensureScratch(2048);
-      // Force a full module re-push: prepare() may have changed the sample
-      // rate or block size even though the state object stayed identical.
-      pushedState = null;
-      pushStateToModules();
-      setupIpc();
-      prepared = true;
+    sampleRate = clamp(sr, 8000, 192000);
+    channelCount = Math.max(1, cc);
+    bpm = clamp(hostBpm, 20, 300);
+    preparedMaxBs = Math.max(64, maxBlockSize);
+    dcBlocks = [createDcBlocker(sampleRate, 15), createDcBlocker(sampleRate, 15)];
+    dcBlocks[0].reset();
+    dcBlocks[1].reset();
+    preDelay.prepare(sampleRate, channelCount, bpm);
+    smoother.prepare(sampleRate);
+    preEq.prepare(sampleRate, channelCount);
+    reverbEq.prepare(sampleRate, channelCount);
+    modPad.prepare(sampleRate);
+    maskingMeter.prepare(sampleRate, channelCount);
+    reflections.prepare(sampleRate, channelCount);
+    plateChamber.prepare(sampleRate, channelCount);
+    hall.prepare(sampleRate, channelCount);
+    convolution.prepare(sampleRate, channelCount, preparedMaxBs);
+    limiterQuality = state?.global.quality ?? "standard";
+    safetyLimiter.prepare(
+      sampleRate,
+      channelCount,
+      preparedMaxBs,
+      pickOversampleFactor(limiterQuality as "eco" | "standard" | "high" | "render"),
+    );
+    const q0 = limiterQuality as "eco" | "standard" | "high" | "render";
+    lastQualityTier = pickQualityTier(q0);
+    plateChamber.setQuality(lastQualityTier);
+    hall.setQuality(lastQualityTier);
+    analyzer = createSpectrumAnalyzer({ fftSize: 2048 });
+    analyzer.setEnabled(analyzersEnabled);
+    ensureScratch(2048);
+    // Force a full module re-push: prepare() may have changed the sample
+    // rate or block size even though the state object stayed identical.
+    pushedState = null;
+    pushStateToModules();
+    setupIpc();
+    prepared = true;
   }
 
   return {
@@ -579,7 +544,12 @@ export function createOzvenaProcessor(): OzvenaProcessor {
       hall.prepare(sampleRate, channelCount);
       convolution.prepare(sampleRate, channelCount, preparedMaxBs);
       limiterQuality = state?.global.quality ?? "standard";
-      safetyLimiter.prepare(sampleRate, channelCount, preparedMaxBs, pickOversampleFactor(limiterQuality as "eco" | "standard" | "high" | "render"));
+      safetyLimiter.prepare(
+        sampleRate,
+        channelCount,
+        preparedMaxBs,
+        pickOversampleFactor(limiterQuality as "eco" | "standard" | "high" | "render"),
+      );
       const q0 = limiterQuality as "eco" | "standard" | "high" | "render";
       lastQualityTier = pickQualityTier(q0);
       plateChamber.setQuality(lastQualityTier);

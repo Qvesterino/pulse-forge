@@ -64,12 +64,7 @@ interface RenderResult {
   tailRms: number;
 }
 
-function render(
-  proc: UltinaProcessor,
-  blocks = BLOCKS,
-  poisonAtBlock = -1,
-  tailBlocks = 10,
-): RenderResult {
+function render(proc: UltinaProcessor, blocks = BLOCKS, poisonAtBlock = -1, tailBlocks = 10): RenderResult {
   const chans = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
   let maxAbs = 0;
   let nonFinite = 0;
@@ -132,7 +127,8 @@ describe("Ultina numeric stress — parameter extremes", () => {
 
   it("all modules enabled at alternating extremes + worst-case gain staging stays finite and bounded", () => {
     const proc = makeFullProcessor();
-    for (const moduleType of MODULE_TYPES) setModuleParams(proc, moduleType, (min, max, i) => (i % 2 === 0 ? min : max));
+    for (const moduleType of MODULE_TYPES)
+      setModuleParams(proc, moduleType, (min, max, i) => (i % 2 === 0 ? min : max));
     proc.setParameter("global.inputGainDb", 24);
     proc.setParameter("global.outputGainDb", 24);
     const r = render(proc);

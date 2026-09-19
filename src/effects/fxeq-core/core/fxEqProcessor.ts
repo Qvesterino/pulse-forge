@@ -25,11 +25,7 @@
 
 import type { FxEqParamDef } from "../dsp/types.js";
 import { clamp, dbToLinear, DEFAULT_SAMPLE_RATE } from "../dsp/mathUtils.js";
-import {
-  createCrossoverBank,
-  DEFAULT_CROSSOVER_FREQS,
-  MAX_BANDS,
-} from "./crossover.js";
+import { createCrossoverBank, DEFAULT_CROSSOVER_FREQS, MAX_BANDS } from "./crossover.js";
 import { snapCrossoverOrder } from "../dsp/crossoverStage.js";
 import { createBandEngine } from "./bandEngine.js";
 import { createLimiterModule } from "../modules/limiter.js";
@@ -99,10 +95,7 @@ export interface FxEqProcessorOptions {
   seed?: number;
 }
 
-export function createFxEqProcessor(
-  params?: Record<string, number>,
-  options?: FxEqProcessorOptions,
-): FxEqProcessor {
+export function createFxEqProcessor(params?: Record<string, number>, options?: FxEqProcessorOptions): FxEqProcessor {
   let bandCount = 6;
   let schema = buildSchema(bandCount);
 
@@ -117,9 +110,7 @@ export function createFxEqProcessor(
       // read `values` raw — an out-of-range value must never land there.
       if (typeof incoming !== "number" || !Number.isFinite(incoming)) continue;
       const def = schema.defById.get(id);
-      values[id] = def
-        ? Math.max(def.minValue, Math.min(def.maxValue, incoming))
-        : incoming;
+      values[id] = def ? Math.max(def.minValue, Math.min(def.maxValue, incoming)) : incoming;
     }
   }
 
@@ -137,7 +128,7 @@ export function createFxEqProcessor(
   // DC-blocking HP filter state (1st-order, cutoff ~15 Hz).
   // y[n] = x[n] - x[n-1] + alpha * y[n-1]
   let dcAlpha = 0; // computed in prepare()
-  let dcPrevIn: Float32Array = new Float32Array(0);  // [channel]
+  let dcPrevIn: Float32Array = new Float32Array(0); // [channel]
   let dcPrevOut: Float32Array = new Float32Array(0); // [channel]
 
   // External sidechain input for spectral ducking (set by host via setSidechain).
@@ -505,7 +496,10 @@ export function createFxEqProcessor(
       // Solo logic: if ANY band has solo=1, only soloed bands contribute.
       let anySolo = false;
       for (let b = 0; b < bandCount; b++) {
-        if (bands[b].getBandParam("solo") >= 0.5) { anySolo = true; break; }
+        if (bands[b].getBandParam("solo") >= 0.5) {
+          anySolo = true;
+          break;
+        }
       }
 
       // Sum band outputs into wetBuf, aligning every band to the loudest
@@ -536,10 +530,7 @@ export function createFxEqProcessor(
         if (anySolo && bands[b].getBandParam("solo") < 0.5) {
           for (let c = 0; c < channelCount; c++) scratch[c].fill(0, 0, frameCount);
         }
-        const bandLat = Math.min(
-          ALIGN_MAX,
-          Math.max(0, bands[b].getLatencySamples()),
-        );
+        const bandLat = Math.min(ALIGN_MAX, Math.max(0, bands[b].getLatencySamples()));
         const dly = Math.max(0, alignLat - bandLat);
         for (let c = 0; c < channelCount; c++) {
           const dst = wetBuf[c];
@@ -701,9 +692,7 @@ export function createFxEqProcessor(
         // drop non-finite values; module params re-clamp downstream.
         if (typeof incoming !== "number" || !Number.isFinite(incoming)) continue;
         const def = schema.defById.get(id);
-        values[id] = def
-          ? Math.max(def.minValue, Math.min(def.maxValue, incoming))
-          : incoming;
+        values[id] = def ? Math.max(def.minValue, Math.min(def.maxValue, incoming)) : incoming;
       }
       applyAllParams();
     },
@@ -720,8 +709,12 @@ export function createFxEqProcessor(
       for (let b = 0; b < MAX_BANDS; b++) bands[b].setTempo(bpm);
     },
 
-    get canUndo() { return historyRecording && history.canUndo; },
-    get canRedo() { return historyRecording && history.canRedo; },
+    get canUndo() {
+      return historyRecording && history.canUndo;
+    },
+    get canRedo() {
+      return historyRecording && history.canRedo;
+    },
 
     setHistoryRecording(enabled) {
       // Pure gate — pausing must not destroy recorded gestures (automation
@@ -761,7 +754,9 @@ export function createFxEqProcessor(
       return typeof gr === "number" && Number.isFinite(gr) ? gr : 0;
     },
 
-    get isMorphing() { return morphing; },
+    get isMorphing() {
+      return morphing;
+    },
 
     getBandPeaks() {
       const peaks = new Float32Array(bandCount);

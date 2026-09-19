@@ -4,7 +4,7 @@
  */
 import type { ProjectDocument } from "../project-model/types";
 import type { SampleBank } from "../sample-library/factory";
-import { renderProject } from "../rendering/renderer";
+import { renderProject, type ExportQuality } from "../rendering/renderer";
 import { buildStemProject, STEM_GROUPS } from "../rendering/stems";
 import { encodeWav } from "../rendering/wav";
 import { buildZip } from "./zip";
@@ -21,9 +21,15 @@ export interface ScorepackResult {
 }
 
 export interface ScorepackOptions {
-  /** Use PRISM's offline render quality tier for master and stems. */
+  /**
+   * Global Live/Export quality switch for master and stems. "studio" bumps
+   * PRISM to 8× and default-tier VØID to the render tier. When set, it wins
+   * over the legacy per-plugin flags below. Defaults to "studio".
+   */
+  quality?: ExportQuality;
+  /** Legacy per-plugin flag (kept for back-compat). Prefer `quality`. */
   fxeqRenderQuality?: boolean;
-  /** Bump default-tier VØID instances to the render tier for master and stems. */
+  /** Legacy per-plugin flag (kept for back-compat). Prefer `quality`. */
   ozvenaRenderQuality?: boolean;
 }
 
@@ -47,14 +53,21 @@ export async function buildScorepack(
 
   const entries: { name: string; data: Uint8Array }[] = [];
 
+  const qualityOpts =
+    options.quality !== undefined
+      ? { quality: options.quality }
+      : {
+          fxeqRenderQuality: options.fxeqRenderQuality ?? true,
+          ozvenaRenderQuality: options.ozvenaRenderQuality ?? true,
+        };
+
   throwIfAborted(signal);
   onProgress({ phase: "Rendering master", pct: 0.1 });
   const masterBuffer = await renderProject(doc, bank, {
     mode: "song",
     sampleRate,
     tailSeconds,
-    fxeqRenderQuality: options.fxeqRenderQuality ?? true,
-    ozvenaRenderQuality: options.ozvenaRenderQuality ?? true,
+    ...qualityOpts,
   });
   throwIfAborted(signal);
   entries.push({ name: "audio/" + baseName + "-master.wav", data: new Uint8Array(encodeWav(masterBuffer, 24)) });
@@ -69,8 +82,7 @@ export async function buildScorepack(
       mode: "song",
       sampleRate,
       tailSeconds,
-      fxeqRenderQuality: options.fxeqRenderQuality ?? true,
-      ozvenaRenderQuality: options.ozvenaRenderQuality ?? true,
+      ...qualityOpts,
     });
     throwIfAborted(signal);
     entries.push({

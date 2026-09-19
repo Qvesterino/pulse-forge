@@ -31,15 +31,67 @@ export const BANDEQ_TYPE_ID = "bandEq";
 
 const PARAM_DEFS: readonly FxEqParamDef[] = [
   { id: "enabled", name: "Enabled", defaultValue: 0, minValue: 0, maxValue: 1, automatable: false },
-  { id: "lowFreq", name: "Low Freq", defaultValue: 120, minValue: 20, maxValue: 500, unit: "Hz", logScale: true, automatable: true },
+  {
+    id: "lowFreq",
+    name: "Low Freq",
+    defaultValue: 120,
+    minValue: 20,
+    maxValue: 500,
+    unit: "Hz",
+    logScale: true,
+    automatable: true,
+  },
   { id: "lowGainDb", name: "Low Gain", defaultValue: 0, minValue: -24, maxValue: 24, unit: "dB", automatable: true },
-  { id: "peak1Freq", name: "Peak 1 Freq", defaultValue: 800, minValue: 200, maxValue: 5000, unit: "Hz", logScale: true, automatable: true },
-  { id: "peak1GainDb", name: "Peak 1 Gain", defaultValue: 0, minValue: -24, maxValue: 24, unit: "dB", automatable: true },
+  {
+    id: "peak1Freq",
+    name: "Peak 1 Freq",
+    defaultValue: 800,
+    minValue: 200,
+    maxValue: 5000,
+    unit: "Hz",
+    logScale: true,
+    automatable: true,
+  },
+  {
+    id: "peak1GainDb",
+    name: "Peak 1 Gain",
+    defaultValue: 0,
+    minValue: -24,
+    maxValue: 24,
+    unit: "dB",
+    automatable: true,
+  },
   { id: "peak1Q", name: "Peak 1 Q", defaultValue: 0.7, minValue: 0.1, maxValue: 10, automatable: true },
-  { id: "peak2Freq", name: "Peak 2 Freq", defaultValue: 3500, minValue: 1000, maxValue: 18000, unit: "Hz", logScale: true, automatable: true },
-  { id: "peak2GainDb", name: "Peak 2 Gain", defaultValue: 0, minValue: -24, maxValue: 24, unit: "dB", automatable: true },
+  {
+    id: "peak2Freq",
+    name: "Peak 2 Freq",
+    defaultValue: 3500,
+    minValue: 1000,
+    maxValue: 18000,
+    unit: "Hz",
+    logScale: true,
+    automatable: true,
+  },
+  {
+    id: "peak2GainDb",
+    name: "Peak 2 Gain",
+    defaultValue: 0,
+    minValue: -24,
+    maxValue: 24,
+    unit: "dB",
+    automatable: true,
+  },
   { id: "peak2Q", name: "Peak 2 Q", defaultValue: 0.7, minValue: 0.1, maxValue: 10, automatable: true },
-  { id: "highFreq", name: "High Freq", defaultValue: 8000, minValue: 2000, maxValue: 20000, unit: "Hz", logScale: true, automatable: true },
+  {
+    id: "highFreq",
+    name: "High Freq",
+    defaultValue: 8000,
+    minValue: 2000,
+    maxValue: 20000,
+    unit: "Hz",
+    logScale: true,
+    automatable: true,
+  },
   { id: "highGainDb", name: "High Gain", defaultValue: 0, minValue: -24, maxValue: 24, unit: "dB", automatable: true },
 ] as const;
 
@@ -57,20 +109,8 @@ export function createBandEqModule(params?: Record<string, number>): ModuleProce
 
   function retune(): void {
     setLowShelf(filters[0].coeffs, store.get("lowFreq"), store.get("lowGainDb"), sampleRate);
-    setPeaking(
-      filters[1].coeffs,
-      store.get("peak1Freq"),
-      store.get("peak1Q"),
-      store.get("peak1GainDb"),
-      sampleRate,
-    );
-    setPeaking(
-      filters[2].coeffs,
-      store.get("peak2Freq"),
-      store.get("peak2Q"),
-      store.get("peak2GainDb"),
-      sampleRate,
-    );
+    setPeaking(filters[1].coeffs, store.get("peak1Freq"), store.get("peak1Q"), store.get("peak1GainDb"), sampleRate);
+    setPeaking(filters[2].coeffs, store.get("peak2Freq"), store.get("peak2Q"), store.get("peak2GainDb"), sampleRate);
     setHighShelf(filters[3].coeffs, store.get("highFreq"), store.get("highGainDb"), sampleRate);
   }
 

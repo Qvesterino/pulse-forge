@@ -211,7 +211,34 @@ def spearman(rows: list[dict]) -> float:
     return float(np.mean(rhos)) if rhos else 1.0
 
 
+import argparse
+
 dataset = json.loads(DATASET_PATH.read_text(encoding="utf8"))
+
+# Favorites feedback loop (INTENT_ENGINE.md C2): human preference groups
+# (favorite roll = winner, same-intent reconstructed rolls = alternatives) in
+# the SAME dataset schema. They are TRAIN-only (validation stays
+# teacher-labeled for honest metrics) and oversampled so the human signal
+# outweighs its small count.
+_parser = argparse.ArgumentParser(description="Train the intent ranker")
+_parser.add_argument(
+    "--favorites",
+    help="favorite preference groups JSON (generate-intent-ranker-favorites.mts output) "
+    "— position-labeled groups folded into the TRAIN split only",
+)
+_parser.add_argument("--favorite-oversample", type=int, default=3)
+_args = _parser.parse_args()
+
+favorite_groups: list[dict] = []
+if _args.favorites:
+    favorites_payload = json.loads(Path(_args.favorites).read_text(encoding="utf8"))
+    favorite_groups = [group for group in favorites_payload.get("groups", []) if group.get("favorite")]
+    if favorite_groups:
+        dataset = {**dataset, "groups": [*dataset["groups"], *favorite_groups]}
+        print(
+            f"[favorites] merged {len(favorite_groups)} favorite groups "
+            f"(train-only, oversample ×{_args.favorite_oversample})"
+        )
 
 # Human golden preferences (goal doc Fáze 2 — the ONLY path to "better than
 # heuristic"): when scripts/data/intent-ranker-golden.json is reviewed=true,
@@ -243,10 +270,16 @@ def golden_order_for(group_key: str) -> list[int] | None:
     return None
 
 samples: list[dict] = []
+favorite_group_keys = {group["groupKey"] for group in favorite_groups}
 for group in dataset["groups"]:
+    is_favorite = group["groupKey"] in favorite_group_keys
     golden_order = golden_order_for(group["groupKey"]) if golden_reviewed else None
     for candidate in group["candidates"]:
-        if golden_order is not None and candidate["index"] in golden_order:
+        if is_favorite and candidate["index"] == int(group.get("winnerIndex", 0)):
+            # The human's pick tops its group by definition (C2 label).
+            label_score = 1.0
+            is_golden = False
+        elif golden_order is not None and candidate["index"] in golden_order:
             position = golden_order.index(candidate["index"])
             denominator = max(1, len(golden_order) - 1)
             label_score = 1.0 - position / denominator
@@ -261,6 +294,7 @@ for group in dataset["groups"]:
                 "index": candidate["index"],
                 "groupKey": group["groupKey"],
                 "golden": is_golden,
+                "favorite": is_favorite,
             }
         )
 feature_count = len(samples[0]["x"])
@@ -268,10 +302,19 @@ rng = make_rng(SEED)
 model = MLP([feature_count, *HIDDEN, 1], rng)
 
 group_keys = sorted({sample["groupKey"] for sample in samples})
-validation_keys = {group_keys[i] for i in range(len(group_keys)) if i % 5 == 0}
+favorite_keys = {sample["groupKey"] for sample in samples if sample.get("favorite")}
+# Favorites are TRAIN-only — validation stays teacher-labeled library data.
+validation_keys = {group_keys[i] for i in range(len(group_keys)) if i % 5 == 0} - favorite_keys
 train_rows = [sample for sample in samples if sample["groupKey"] not in validation_keys]
 val_rows = [sample for sample in samples if sample["groupKey"] in validation_keys]
-print(f"[train] samples total={len(samples)} train={len(train_rows)} val={len(val_rows)} features={feature_count}")
+# Oversample favorite ROWS: duplicates produce duplicate pairs in pairs_for,
+# which multiplies their gradient share in the full-batch update.
+favorite_train_rows = [sample for sample in train_rows if sample.get("favorite")]
+train_rows = train_rows + favorite_train_rows * max(0, _args.favorite_oversample - 1)
+print(
+    f"[train] samples total={len(samples)} train={len(train_rows)} val={len(val_rows)} "
+    f"features={feature_count} favorites={len(favorite_train_rows)} rows"
+)
 
 train_pairs = pairs_for(train_rows, rng)
 # Full-batch deterministic training: one Adam update per epoch over the
@@ -315,6 +358,7 @@ report = {
     "epochs": EPOCHS,
     "trainPairs": len(train_pairs),
     "valPairs": len(pairs_for(val_rows, rng)),
+    "favoriteGroups": len(favorite_groups),
     "trainPairwiseAccuracyVsHeuristic": round(pairwise_accuracy(train_rows), 4),
     "valPairwiseAccuracyVsHeuristic": round(pairwise_accuracy(val_rows), 4),
     "valTop1AgreementWithHeuristic": round(top1_agreement(val_rows), 4),

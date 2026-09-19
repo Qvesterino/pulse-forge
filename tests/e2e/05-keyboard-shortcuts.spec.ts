@@ -30,14 +30,16 @@ test.describe("05 — keyboard shortcuts", () => {
     // Space — transport should toggle from stopped (no `.active`) to playing.
     // The play button toggles its own .active class on .btn-play when playing.
     const playButton = page.locator(".btn-play");
-    await page.locator("body").click({ position: { x: 5, y: 5 } }).catch(() => {
-      // Best-effort focus — body click can fail under dock overlap. Fallback:
-      // dispatch Space directly to the focused element.
-    });
+    await page
+      .locator("body")
+      .click({ position: { x: 5, y: 5 } })
+      .catch(() => {
+        // Best-effort focus — body click can fail under dock overlap. Fallback:
+        // dispatch Space directly to the focused element.
+      });
     await page.keyboard.press("Space");
     // No aria-pressed available; assert by `.active` class on the play button.
-    const playButtonHasActive = async () =>
-      (await playButton.getAttribute("class"))?.includes("active") ?? false;
+    const playButtonHasActive = async () => (await playButton.getAttribute("class"))?.includes("active") ?? false;
     try {
       await expect.poll(playButtonHasActive, { timeout: 3000 }).toBe(true);
     } catch {

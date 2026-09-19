@@ -36,24 +36,17 @@
 
 import type { ReflectionsEngineState } from "../v2/types.js";
 import { clamp, flushDenormal, sanitize } from "../dsp/math.js";
-import {
-  createBiquad,
-  setLowPass,
-  processBiquad,
-  type BiquadState,
-} from "../dsp/biquad.js";
+import { createBiquad, setLowPass, processBiquad, type BiquadState } from "../dsp/biquad.js";
 
 export interface ReflectionsParams extends ReflectionsEngineState {}
 
 // Base tap lengths in ms @ 44.1 kHz, low-diffusion sparse layout.
 // 12 taps total: 6 left + 6 right (mutually incommensurate prime multiples).
 const BASE_TAPS_MS_L: readonly number[] = [
-  4.31, 7.93, 12.17, 17.84, 24.62, 32.18,
-  41.07, 51.36, 63.41, 76.83, 92.05, 108.74,
+  4.31, 7.93, 12.17, 17.84, 24.62, 32.18, 41.07, 51.36, 63.41, 76.83, 92.05, 108.74,
 ];
 const BASE_TAPS_MS_R: readonly number[] = [
-  5.12, 9.41, 14.07, 19.66, 27.13, 35.41,
-  44.86, 55.72, 68.31, 82.14, 97.85, 115.42,
+  5.12, 9.41, 14.07, 19.66, 27.13, 35.41, 44.86, 55.72, 68.31, 82.14, 97.85, 115.42,
 ];
 
 const MAX_TAPS = BASE_TAPS_MS_L.length;
@@ -209,7 +202,10 @@ export function createReflectionsEngine(): ReflectionsEngine {
     if (prepared && hasRendered && oldActiveCount > 0) {
       let changed = false;
       for (let i = 0; i < sharedCount; i++) {
-        if (tapsL[i] !== oldTapsL[i] || tapsR[i] !== oldTapsR[i]) { changed = true; break; }
+        if (tapsL[i] !== oldTapsL[i] || tapsR[i] !== oldTapsR[i]) {
+          changed = true;
+          break;
+        }
       }
       if (changed) {
         tapFadeLen = Math.max(1, Math.round(0.02 * sampleRate));
@@ -243,14 +239,14 @@ export function createReflectionsEngine(): ReflectionsEngine {
       // than the per-tap value is reasonable.
       setLowPass(sideBiquad.coeffs, clamp(params.lowpassHz, 30, 20000), 0.7071, sampleRate);
 
-      prepared = true;      // Size the ring for the FULL parameter range (250 ms worst case) so
+      prepared = true; // Size the ring for the FULL parameter range (250 ms worst case) so
       // setParams() never reallocates it — mirrors the native engine.
-      const maxScaleL = (250 / BASE_TAPS_MS_L[MAX_TAPS - 1]) * sampleRate / 1000;
-      const maxScaleR = (250 / BASE_TAPS_MS_R[MAX_TAPS - 1]) * sampleRate / 1000;
-      const capacity = Math.max(1, Math.ceil(Math.max(
-        BASE_TAPS_MS_L[MAX_TAPS - 1] * maxScaleL,
-        BASE_TAPS_MS_R[MAX_TAPS - 1] * maxScaleR,
-      )));
+      const maxScaleL = ((250 / BASE_TAPS_MS_L[MAX_TAPS - 1]) * sampleRate) / 1000;
+      const maxScaleR = ((250 / BASE_TAPS_MS_R[MAX_TAPS - 1]) * sampleRate) / 1000;
+      const capacity = Math.max(
+        1,
+        Math.ceil(Math.max(BASE_TAPS_MS_L[MAX_TAPS - 1] * maxScaleL, BASE_TAPS_MS_R[MAX_TAPS - 1] * maxScaleR)),
+      );
       bufferL = new Float32Array(capacity);
       bufferR = new Float32Array(capacity);
       writePosL = 0;

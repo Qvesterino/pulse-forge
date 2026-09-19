@@ -323,7 +323,11 @@ class WtVoiceProcessor extends AudioWorkletProcessor {
         let pairPos = v.morphBase * tN1 + v.scanPos;
         // M RATE / M DEPTH crossfade wobble, room-clamped like the main thread
         const frac = pairPos - Math.floor(pairPos);
-        pairPos += Math.sin(2 * Math.PI * p.morphRate * t + v.lfoPhase * 2 * Math.PI) * p.morphDepth * Math.min(frac, 1 - frac) * 0.9;
+        pairPos +=
+          Math.sin(2 * Math.PI * p.morphRate * t + v.lfoPhase * 2 * Math.PI) *
+          p.morphDepth *
+          Math.min(frac, 1 - frac) *
+          0.9;
         // Mod routes -> morph (±2 pair units at full amount)
         pairPos += srcA * p.modAAmt * 2 * (p.modADst === 0 ? 1 : 0);
         pairPos += srcB * p.modBAmt * 2 * (p.modBDst === 0 ? 1 : 0);
@@ -373,7 +377,7 @@ class WtVoiceProcessor extends AudioWorkletProcessor {
 
         // ── Sub oscillator, one octave down, centred ──
         if (p.sub > 0.005) {
-          v.subPhase += (v.f0 * 0.5) * dt;
+          v.subPhase += v.f0 * 0.5 * dt;
           if (v.subPhase >= 1) v.subPhase -= Math.floor(v.subPhase);
           const sub = Math.sin(2 * Math.PI * v.subPhase) * p.sub * 0.7;
           voiceL += sub;
@@ -407,8 +411,7 @@ class WtVoiceProcessor extends AudioWorkletProcessor {
         }
 
         // ── Amp mod route + env ──
-        const ampMod =
-          srcA * p.modAAmt * (p.modADst === 3 ? 1 : 0) + srcB * p.modBAmt * (p.modBDst === 3 ? 1 : 0);
+        const ampMod = srcA * p.modAAmt * (p.modADst === 3 ? 1 : 0) + srcB * p.modBAmt * (p.modBDst === 3 ? 1 : 0);
         const gain = amp * Math.max(0.1, 1 + ampMod);
         l += fL * gain;
         r += fR * gain;

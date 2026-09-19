@@ -1375,7 +1375,10 @@ describe("mod matrix rollout", () => {
     expect(dstOf("vocalchop").some((o) => o.value === 1)).toBe(false);
     // filter instruments offer it
     for (const kind of ["analog", "bass", "keys", "pluck", "808", "texture", "logdrum", "spectral", "sampler"]) {
-      expect(dstOf(kind).some((o) => o.value === 1), `${kind} CUTOFF dst`).toBe(true);
+      expect(
+        dstOf(kind).some((o) => o.value === 1),
+        `${kind} CUTOFF dst`,
+      ).toBe(true);
     }
     // wavetable also offers MORPH (dst 0)
     expect(dstOf("wavetable").some((o) => o.value === 0)).toBe(true);

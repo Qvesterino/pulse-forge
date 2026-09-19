@@ -27,10 +27,7 @@ function unit(value: number | undefined, fallback: number): number {
 export function scoreCandidate(pattern: Pattern): number {
   const quality = pattern.generation?.quality;
   if (!quality) return 0;
-  const distanceFit = Math.max(
-    0,
-    1 - Math.min(1, Number.isFinite(quality.styleDistance) ? quality.styleDistance : 1),
-  );
+  const distanceFit = Math.max(0, 1 - Math.min(1, Number.isFinite(quality.styleDistance) ? quality.styleDistance : 1));
   const gateFit = quality.styleAccepted ? 1 : 0;
   const anchorFit = unit(quality.anchorCoverage, 0);
   const motifFit = unit(quality.melodicMotifRepetition, 0);
@@ -38,7 +35,10 @@ export function scoreCandidate(pattern: Pattern): number {
 }
 
 /** Dedupe by UUID-free musical content and return a stable best-first order. */
-export function rankCandidateBank(doc: ProjectDocument, candidates: readonly CandidateBankEntry[]): CandidateBankEntry[] {
+export function rankCandidateBank(
+  doc: ProjectDocument,
+  candidates: readonly CandidateBankEntry[],
+): CandidateBankEntry[] {
   const unique = new Map<string, CandidateBankEntry>();
   for (const candidate of candidates) {
     const hash = contentHash(canonicalizePattern(doc, candidate.pattern));

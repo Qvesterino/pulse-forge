@@ -63,6 +63,7 @@ export function RackStrip({
   /** Per-pad pinned divisions — kick can roll 1/16 while the hat rolls 1/8T. */
   const [pinnedRates, setPinnedRates] = useState<Record<string, PinnableRate>>({});
   const [rateMenu, setRateMenu] = useState<{ padId: string; x: number; y: number } | null>(null);
+  const padMenuTimer = useRef<number | null>(null);
   /** MPC 16 LEVELS: pads become velocity lanes for the selected sound. */
   const [sixteenLevels, setSixteenLevels] = useState(false);
   const padKeys = usePadKeys();
@@ -490,7 +491,7 @@ export function RackStrip({
           >
             KEYS
           </button>
-          <span className="rack-header-hint">hold pad · right-click = pad rate · QWERTYUI·ASDFGHJK</span>
+          <span className="rack-header-hint">hold pad · right-click / long-press = pad rate · QWERTYUI·ASDFGHJK</span>
         </div>
       </div>
       {track.pads.map((pad, index) => {
@@ -505,7 +506,7 @@ export function RackStrip({
             type="button"
             className={`pad${hit ? " hit" : ""}${selected ? " selected" : ""}`}
             style={{ "--pad-color": categoryColor(assetCategoryOf(pad)) } as React.CSSProperties}
-            title={`${pad.name} — hold to play${effectiveRate !== "off" ? ` (repeats ${effectiveRate}, velocity ${falloff})` : ""} — key ${(padKeys[index] || "—").toUpperCase()} — right-click for rate/colour`}
+            title={`${pad.name} — hold to play${effectiveRate !== "off" ? ` (repeats ${effectiveRate}, velocity ${falloff})` : ""} — key ${(padKeys[index] || "—").toUpperCase()} — right-click or hold for rate/colour`}
             onContextMenu={(event) => {
               event.preventDefault();
               setRateMenu({ padId: pad.id, x: event.clientX, y: event.clientY });
@@ -515,10 +516,39 @@ export function RackStrip({
               // In 16 LEVELS the pads are velocity lanes — selection stays locked.
               if (!sixteenLevels) onSelectPad(pad.id);
               padDown(pad.id, holdKey);
+              // Touch/pen long-press opens the rate/colour menu (right-click is
+              // mouse-only, so the pad menu was unreachable on touch).
+              if (event.pointerType !== "mouse") {
+                if (padMenuTimer.current !== null) window.clearTimeout(padMenuTimer.current);
+                const anchor = { padId: pad.id, x: event.clientX, y: event.clientY };
+                padMenuTimer.current = window.setTimeout(() => {
+                  padMenuTimer.current = null;
+                  padUp(holdKey);
+                  setRateMenu({ padId: anchor.padId, x: anchor.x, y: anchor.y });
+                }, 500);
+              }
             }}
-            onPointerUp={() => padUp(holdKey)}
-            onPointerLeave={() => padUp(holdKey)}
-            onPointerCancel={() => padUp(holdKey)}
+            onPointerUp={() => {
+              if (padMenuTimer.current !== null) {
+                window.clearTimeout(padMenuTimer.current);
+                padMenuTimer.current = null;
+              }
+              padUp(holdKey);
+            }}
+            onPointerLeave={() => {
+              if (padMenuTimer.current !== null) {
+                window.clearTimeout(padMenuTimer.current);
+                padMenuTimer.current = null;
+              }
+              padUp(holdKey);
+            }}
+            onPointerCancel={() => {
+              if (padMenuTimer.current !== null) {
+                window.clearTimeout(padMenuTimer.current);
+                padMenuTimer.current = null;
+              }
+              padUp(holdKey);
+            }}
             onKeyDown={(event) => {
               // Keyboard-activated button (Enter): single hit, no hold.
               // Space stays free for the global play/pause shortcut.
@@ -547,7 +577,10 @@ export function RackStrip({
           className="context-menu"
           role="menu"
           aria-label="Pad repeat rate"
-          style={{ left: rateMenu.x, top: rateMenu.y }}
+          style={{
+            left: Math.min(rateMenu.x, window.innerWidth - 220),
+            top: Math.min(rateMenu.y, window.innerHeight - 260),
+          }}
           onPointerDown={(e) => e.stopPropagation()}
         >
           <div className="context-menu-header">PAD REPEAT RATE</div>
@@ -624,7 +657,10 @@ export function RackStrip({
           className="context-menu"
           role="menu"
           aria-label="User kits"
-          style={{ left: kitMenu.x, top: kitMenu.y }}
+          style={{
+            left: Math.min(kitMenu.x, window.innerWidth - 240),
+            top: Math.min(kitMenu.y, window.innerHeight - 280),
+          }}
           onPointerDown={(e) => e.stopPropagation()}
         >
           <div className="context-menu-header">USER KITS</div>
@@ -684,7 +720,11 @@ export function RackStrip({
           className="context-menu"
           role="menu"
           aria-label="Pad keys"
-          style={{ left: keysMenu.x, top: keysMenu.y, minWidth: 230 }}
+          style={{
+            left: Math.min(keysMenu.x, window.innerWidth - 250),
+            top: Math.min(keysMenu.y, window.innerHeight - 300),
+            minWidth: 230,
+          }}
           onPointerDown={(e) => e.stopPropagation()}
         >
           <div className="context-menu-header">PAD KEYS</div>

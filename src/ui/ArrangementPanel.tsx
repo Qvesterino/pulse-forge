@@ -1,5 +1,16 @@
-import { useEffect, useRef, useState } from "react";
-import { useArrangementCapture, useDoc, useSelection, useSelectionStore, useServices } from "./context";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useArrangement,
+  useArrangementCapture,
+  useMarkers,
+  usePatterns,
+  useScenes,
+  useSelection,
+  useSelectionStore,
+  useServices,
+  useTracks,
+} from "./context";
+import { useActivePatternId } from "./context";
 import {
   addArrangementClip,
   addArrangementTransition,
@@ -54,8 +65,9 @@ import { nearestOnset } from "../audio-workers/onset-detector";
 import { extractGroove } from "../audio-engine/groove-extract";
 import { detectTransientsAsync } from "../audio-workers/onset-detector-client";
 import { analyzeLoopForFlip, buildFlipOptions, flipSeed } from "../ai/flip";
-import { extensionForMime } from "../audio-engine/recorder";
 import { userSampleId } from "../persistence/UserSampleRepository";
+import type { RecordingSession } from "../persistence/RecordingRecoveryRepository";
+import { materializePcmTake } from "../audio-engine/pcmRecording";
 import { buildBounceZoneDoc } from "../rendering/bounce";
 import { renderProject } from "../rendering/renderer";
 import { encodeWav } from "../rendering/wav";
@@ -75,6 +87,55 @@ const warpOnsetCache = new Map<string, number[]>();
 const warpOnsetInflight = new Set<string>();
 /** Grab radius of the transient magnet around the pointed sample time. */
 const WARP_SNAP_SEC = 0.06;
+/** Shared in-flight onset renders so parallel warmers/hooks never double-detect. */
+const warpOnsetPromises = new Map<string, Promise<number[]>>();
+
+/** Parse `#rrggbb` (or `#rgb`) into [r, g, b]; null when unparseable. */
+function hexToRgb(hex: string): [number, number, number] | null {
+  const m = /^\s*#([0-9a-f]{6}|[0-9a-f]{3})\s*$/i.exec(hex);
+  if (!m) return null;
+  let h = m[1];
+  if (h.length === 3)
+    h = h
+      .split("")
+      .map((c) => c + c)
+      .join("");
+  const int = parseInt(h, 16);
+  return [(int >> 16) & 255, (int >> 8) & 255, int & 255];
+}
+
+/**
+ * Transient times for a buffer, shared across warmers and waveform hooks:
+ * cache hit resolves immediately, otherwise detection runs once (worker for
+ * long samples) and every waiter resolves from the same promise.
+ */
+function getWarpOnsets(
+  bank: { get(bufferId: string): AudioBuffer | null | undefined },
+  bufferId: string,
+): Promise<number[]> | null {
+  const cached = warpOnsetCache.get(bufferId);
+  if (cached) return Promise.resolve(cached);
+  const inflight = warpOnsetPromises.get(bufferId);
+  if (inflight) return inflight;
+  const buf = bank.get(bufferId);
+  if (!buf || !(buf.duration > 0) || buf.duration > 600) return null;
+  warpOnsetInflight.add(bufferId);
+  const p = detectTransientsAsync(buf.getChannelData(0), buf.sampleRate).then(
+    (times) => {
+      warpOnsetCache.set(bufferId, times);
+      warpOnsetPromises.delete(bufferId);
+      warpOnsetInflight.delete(bufferId);
+      return times;
+    },
+    () => {
+      warpOnsetPromises.delete(bufferId);
+      warpOnsetInflight.delete(bufferId);
+      return [];
+    },
+  );
+  warpOnsetPromises.set(bufferId, p);
+  return p;
+}
 const SCENE_ROLES: Array<{ value: SceneRole | ""; label: string }> = [
   { value: "", label: "INFER FROM NAME" },
   { value: "intro", label: "INTRO" },
@@ -111,9 +172,25 @@ interface TransitionDraft {
 
 export function ArrangementPanel() {
   const services = useServices();
-  const doc = useDoc();
+  // Fine-grained selectors (GOAL 04): ArrangementPanel reads scenes, the
+  // arrangement (clips, audioClips, transitions), tracks, markers, patterns
+  // and the active pattern id. Subscribing to the whole document via
+  // `useDoc()` re-renders this whole panel on every unrelated mutation
+  // (a track-mute, a marker add, an automation-point move). With structural
+  // sharing in `normalizeProject`, the slices we actually read keep their
+  // array identity across most edits, so a fine-grained `useSyncExternalStore`
+  // subscription skips the re-render.
+  const scenes = useScenes();
+  const arrangement = useArrangement();
+  const tracks = useTracks();
+  const markers = useMarkers();
+  const patterns = usePatterns();
+  const activePatternId = useActivePatternId();
+  // `doc` is still needed for the BPM scalar, the project id, and command
+  // arguments. It's a plain getter (no React subscription).
+  const doc = services.store.getDoc();
   const capture = useArrangementCapture();
-  const [selectedSceneId, setSelectedSceneId] = useState(doc.scenes[0]?.id ?? "");
+  const [selectedSceneId, setSelectedSceneId] = useState(scenes[0]?.id ?? "");
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [rulerMode, setRulerMode] = useState<"bars" | "seconds">("bars");
   const [showIntensity, setShowIntensity] = useState(true);
@@ -157,9 +234,59 @@ export function ArrangementPanel() {
   const [recState, setRecState] = useState<"idle" | "recording" | "saving">("idle");
   const [recSeconds, setRecSeconds] = useState(0);
   const [recError, setRecError] = useState<string | null>(null);
-  const recRef = useRef<import("../audio-engine/recorder").LiveRecorder | null>(null);
-  const recStartBarRef = useRef(0);
+  const recRef = useRef<import("../audio-engine/PcmMicRecorder").PcmMicRecorder | null>(null);
+  const stoppingRecRef = useRef(false);
+  const recoveryRepoRef = useRef(services.recordingRecovery);
+  const [recoverableTakes, setRecoverableTakes] = useState<RecordingSession[]>([]);
+  const recoverableTakesRef = useRef<RecordingSession[]>([]);
+  const [recoveringTakeId, setRecoveringTakeId] = useState<string | null>(null);
   const sliceAnalysisRef = useRef<AbortController | null>(null);
+
+  const publishRecoverableTakes = useCallback((sessions: RecordingSession[]): void => {
+    const current = recoverableTakesRef.current;
+    const unchanged =
+      current.length === sessions.length &&
+      current.every(
+        (session, index) =>
+          session.id === sessions[index].id &&
+          session.updatedAt === sessions[index].updatedAt &&
+          session.totalFrames === sessions[index].totalFrames,
+      );
+    if (!unchanged) {
+      recoverableTakesRef.current = sessions;
+      setRecoverableTakes(sessions);
+    }
+  }, []);
+
+  const refreshRecoverableTakes = useCallback(async (): Promise<void> => {
+    try {
+      publishRecoverableTakes(await recoveryRepoRef.current!.listRecoverable());
+    } catch {
+      setRecError("Could not check local recording recovery storage. Your current project is unchanged.");
+    }
+  }, []);
+
+  useEffect(() => {
+    let live = true;
+    const refresh = () => {
+      void recoveryRepoRef.current!.listRecoverable().then(
+        (sessions) => {
+          if (live) publishRecoverableTakes(sessions);
+        },
+        () => {
+          if (live) setRecError("Could not check local recording recovery storage. Your current project is unchanged.");
+        },
+      );
+    };
+    refresh();
+    // A take in another tab becomes recoverable after its last committed
+    // block goes stale; poll slowly rather than depending on the UI frame loop.
+    const timer = setInterval(refresh, 3_000);
+    return () => {
+      live = false;
+      clearInterval(timer);
+    };
+  }, [doc.id, publishRecoverableTakes]);
 
   // Ctrl+wheel zoom on the arrangement — needs a NON-passive native listener
   // (React 17+ attaches wheel passively at the root, so preventDefault in
@@ -203,8 +330,12 @@ export function ArrangementPanel() {
   // keep the mic stream and its chunk buffer alive forever.
   useEffect(
     () => () => {
-      recRef.current?.cancel();
+      const recorder = recRef.current;
       recRef.current = null;
+      if (recorder) {
+        recorder.onError = null;
+        void recorder.cancel();
+      }
       sliceAnalysisRef.current?.abort();
       sliceAnalysisRef.current = null;
     },
@@ -218,24 +349,38 @@ export function ArrangementPanel() {
       services.engine.ensureContext();
       const ctx = services.engine.getLiveAudioContext();
       if (!ctx) throw new Error("Audio engine is not ready");
-      // The recorder loads as a lazy chunk — first REC fetches it.
-      const { LiveRecorder } = await import("../audio-engine/recorder");
-      const rec = new LiveRecorder({
-        ctx,
-        getTapNode: () => null, // mic input, not an internal tap
-      });
+      // Load the PCM capture engine only when the user starts a vocal take.
+      const { PcmMicRecorder } = await import("../audio-engine/PcmMicRecorder");
+      const rec = new PcmMicRecorder({ ctx, recovery: recoveryRepoRef.current! });
       // Publish ownership before the permission prompt/async start so an
       // unmount or a second REC action can cancel this exact pending take.
       recRef.current = rec;
-      await rec.start({ kind: "mic" });
-      recStartBarRef.current = Math.max(0, recordingStartBar(services.transport.position));
+      const startPromise = rec.start(() => {
+        const currentDoc = services.store.doc;
+        const track = currentDoc.tracks.find((item) => item.id === armedTrackId);
+        if (!track) return null;
+        const startBar = Math.max(0, recordingStartBar(services.transport.position));
+        return {
+          projectId: currentDoc.id,
+          trackId: track.id,
+          trackName: track.name,
+          placeOnTimeline: true,
+          startBar,
+          bpm: currentDoc.bpm,
+        };
+      });
+      rec.onError = (message) => {
+        setRecError(message);
+        void stopRec();
+      };
+      await startPromise;
       recRef.current = rec;
       setRecSeconds(0);
       setRecState("recording");
       // Performers record against the backing track — roll the transport.
       if (!services.transport.playing) services.playback.playPause();
     } catch (error) {
-      recRef.current?.cancel();
+      void recRef.current?.cancel();
       recRef.current = null;
       setRecError(error instanceof Error ? error.message : String(error));
     }
@@ -243,64 +388,153 @@ export function ArrangementPanel() {
 
   const stopRec = async () => {
     const rec = recRef.current;
-    if (!rec) return;
+    if (!rec || stoppingRecRef.current) return;
+    stoppingRecRef.current = true;
     setRecState("saving");
-    let capturedBufferId: string | null = null;
     try {
       const take = await rec.stop();
-      recRef.current = null;
-      if (!take || take.buffer.duration < 0.1) {
-        setRecError("Nothing captured — play/sing while recording");
-        setRecState("idle");
+      if (!take) {
+        setRecError("No audio was captured. Any staged audio remains available in recovery.");
         return;
       }
       const stamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
       const bufferId = userSampleId(`rec-${stamp}`);
-      capturedBufferId = bufferId;
-      services.bank.add(bufferId, take.buffer);
+      const asset = {
+        id: bufferId,
+        name: `REC ${stamp}`,
+        fileName: `${bufferId}.wav`,
+        category: "Custom" as const,
+        duration: take.buffer.duration,
+        sampleRate: take.buffer.sampleRate,
+        channels: take.buffer.numberOfChannels,
+        createdAt: new Date().toISOString(),
+      };
       let persistenceWarning: string | null = null;
-      // Persist the bytes so the take survives reloads (best effort — the
-      // in-memory bank already plays it this session).
       try {
-        const asset = {
-          id: bufferId,
-          name: `REC ${stamp}`,
-          fileName: `${bufferId}${extensionForMime(take.blob.type)}`,
-          category: "Custom" as const,
-          duration: take.buffer.duration,
-          sampleRate: take.buffer.sampleRate,
-          channels: take.buffer.numberOfChannels,
-          createdAt: new Date().toISOString(),
-        };
-        await services.userSamples.save(asset, await take.blob.arrayBuffer());
-      } catch {
-        persistenceWarning =
-          "Audio storage failed — this take is only in memory and may be lost when the app closes or reloads.";
+        await recoveryRepoRef.current!.finalize(take.session.id, asset);
+        services.userSamples.invalidateCache();
+      } catch (error) {
+        const detail = error instanceof Error ? ` (${error.message})` : "";
+        persistenceWarning = `The take could not be moved to the sample library${detail}. Its committed PCM blocks remain in recovery storage.`;
       }
-      const lengthBars = clipLengthBars(take.buffer.duration, doc.bpm);
-      services.store.execute(
-        addAudioClip(doc, armedTrackId, bufferId, recStartBarRef.current, lengthBars, {
-          fadeIn: 0.005,
-          fadeOut: 0.02,
-        }),
-      );
-      if (persistenceWarning) setRecError(persistenceWarning);
-      setRecState("idle");
-    } catch (error) {
-      // If clip insertion fails after the take was materialized, roll back the
-      // unreferenced asset. Persistence failure alone is intentionally not a
-      // rollback: a successfully inserted take remains usable this session.
-      if (capturedBufferId) {
-        services.bank.remove(capturedBufferId);
-        try {
-          await services.userSamples.remove(capturedBufferId);
-        } catch {
-          /* best-effort cleanup */
+
+      // Keep the materialized audio usable in-session even if library storage
+      // failed; in that case the staged PCM session remains crash-recoverable.
+      services.bank.add(bufferId, take.buffer);
+      try {
+        const currentDoc = services.store.doc;
+        if (
+          currentDoc.id !== take.session.projectId ||
+          !currentDoc.tracks.some((track) => track.id === take.session.trackId)
+        ) {
+          throw new Error("The original project or armed track is no longer open");
         }
+        services.store.execute(
+          addAudioClip(
+            currentDoc,
+            take.session.trackId,
+            bufferId,
+            take.session.startBar,
+            clipLengthBars(take.buffer.duration, currentDoc.bpm),
+            {
+              fadeIn: 0.005,
+              fadeOut: 0.02,
+            },
+          ),
+        );
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        persistenceWarning = [
+          persistenceWarning,
+          `${persistenceWarning ? "The take remains in recovery storage" : "The take is saved as a sample"}, but could not be placed on the timeline: ${detail}.`,
+        ]
+          .filter(Boolean)
+          .join(" ");
       }
-      setRecError(error instanceof Error ? error.message : String(error));
+      if (persistenceWarning) setRecError(persistenceWarning);
+      await refreshRecoverableTakes();
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      setRecError(`${detail}. The staged recording has been kept for recovery where storage succeeded.`);
+      await refreshRecoverableTakes();
+    } finally {
+      if (recRef.current === rec) recRef.current = null;
       setRecState("idle");
-      recRef.current = null;
+      stoppingRecRef.current = false;
+    }
+  };
+
+  const recoverTake = async (session: RecordingSession) => {
+    if (recoveringTakeId) return;
+    setRecoveringTakeId(session.id);
+    setRecError(null);
+    try {
+      services.engine.ensureContext();
+      const ctx = services.engine.getLiveAudioContext();
+      if (!ctx) throw new Error("Audio engine is not ready to open the recovered take");
+      // Turn a stale cross-tab capture into a stopped session before reading
+      // blocks, so a still-open source tab cannot extend it mid-recovery.
+      await recoveryRepoRef.current!.markRecoverable(session.id);
+      const take = await materializePcmTake(recoveryRepoRef.current!, session.id, ctx);
+      const bufferId = userSampleId(`recovered-rec-${new Date(session.createdAt).getTime()}`);
+      const asset = {
+        id: bufferId,
+        name: `RECOVERED ${session.trackName}`,
+        fileName: `${bufferId}.wav`,
+        category: "Custom" as const,
+        duration: take.buffer.duration,
+        sampleRate: take.buffer.sampleRate,
+        channels: take.buffer.numberOfChannels,
+        createdAt: new Date().toISOString(),
+      };
+      await recoveryRepoRef.current!.finalize(session.id, asset);
+      services.userSamples.invalidateCache();
+      services.bank.add(bufferId, take.buffer);
+
+      const currentDoc = services.store.doc;
+      const originalTrackExists =
+        session.placeOnTimeline !== false &&
+        currentDoc.id === session.projectId &&
+        currentDoc.tracks.some((track) => track.id === session.trackId);
+      if (originalTrackExists) {
+        try {
+          services.store.execute(
+            addAudioClip(
+              currentDoc,
+              session.trackId,
+              bufferId,
+              session.startBar,
+              clipLengthBars(take.buffer.duration, currentDoc.bpm),
+              { fadeIn: 0.005, fadeOut: 0.02 },
+            ),
+          );
+          setRecError(`Recovered ${session.trackName} and placed it back on the timeline.`);
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : String(error);
+          setRecError(`Take recovered to the sample library, but timeline placement failed: ${detail}`);
+        }
+      } else {
+        setRecError("Recovered take to the sample library; its original project or track is not open.");
+      }
+      await refreshRecoverableTakes();
+    } catch (error) {
+      setRecError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRecoveringTakeId(null);
+    }
+  };
+
+  const discardTake = async (session: RecordingSession) => {
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(`Permanently discard the unrecovered take from ${session.trackName}?`)
+    )
+      return;
+    try {
+      await recoveryRepoRef.current!.remove(session.id);
+      await refreshRecoverableTakes();
+    } catch (error) {
+      setRecError(error instanceof Error ? error.message : String(error));
     }
   };
 
@@ -342,16 +576,16 @@ export function ArrangementPanel() {
     return () => window.removeEventListener("mousedown", onDown);
   }, [audioMenu]);
 
-  const clips = [...doc.arrangement.clips].sort((a, b) => a.startBar - b.startBar);
-  const audioClips = [...(doc.arrangement.audioClips ?? [])].sort((a, b) => a.startBar - b.startBar);
+  const clips = [...arrangement.clips].sort((a, b) => a.startBar - b.startBar);
+  const audioClips = [...(arrangement.audioClips ?? [])].sort((a, b) => a.startBar - b.startBar);
   const totalBars = Math.max(
     16,
     ...clips.map((clip) => clip.startBar + clip.lengthBars + 4),
     ...audioClips.map((c) => c.startBar + c.lengthBars + 4),
   );
-  const selectedScene = doc.scenes.find((scene) => scene.id === selectedSceneId) ?? doc.scenes[0];
+  const selectedScene = scenes.find((scene) => scene.id === selectedSceneId) ?? scenes[0];
   const selectedClip = clips.find((clip) => clip.id === selectedClipId);
-  const selectedClipScene = selectedClip ? doc.scenes.find((scene) => scene.id === selectedClip.sceneId) : undefined;
+  const selectedClipScene = selectedClip ? scenes.find((scene) => scene.id === selectedClip.sceneId) : undefined;
   const selectedClipBpm = effectiveSceneBpm(selectedClipScene?.bpm, doc.bpm);
   const selectedClipSeconds = selectedClip ? sceneBarsToSeconds(selectedClip.lengthBars, selectedClipBpm) : 0;
   const commitClipSecs = (): void => {
@@ -364,17 +598,18 @@ export function ArrangementPanel() {
     execute(resizeArrangementClip(services.store.doc, selectedClip.id, bars));
   };
   const queuedScene = runtime.pendingPatternId
-    ? doc.scenes.find((scene) => scene.patternId === runtime.pendingPatternId)
+    ? scenes.find((scene) => scene.patternId === runtime.pendingPatternId)
     : undefined;
   const selectedTransition = transitionBoundary
-    ? doc.arrangement.transitions?.find(
+    ? arrangement.transitions?.find(
         (transition) =>
           transition.fromClipId === transitionBoundary.fromClipId &&
           transition.toClipId === transitionBoundary.toClipId,
       )
     : undefined;
 
-  const execute = (command: Parameters<typeof services.store.execute>[0]): boolean => {    try {
+  const execute = (command: Parameters<typeof services.store.execute>[0]): boolean => {
+    try {
       setActionError(null);
       services.store.execute(command);
       return true;
@@ -391,16 +626,8 @@ export function ArrangementPanel() {
    */
   const warmWarpOnsets = (bufferId: string): void => {
     if (warpOnsetCache.has(bufferId) || warpOnsetInflight.has(bufferId)) return;
-    const buf = services.bank.get(bufferId);
-    if (!buf || !(buf.duration > 0) || buf.duration > 600) return;
-    warpOnsetInflight.add(bufferId);
-    detectTransientsAsync(buf.getChannelData(0), buf.sampleRate).then(
-      (times) => {
-        warpOnsetInflight.delete(bufferId);
-        warpOnsetCache.set(bufferId, times);
-      },
-      () => warpOnsetInflight.delete(bufferId),
-    );
+    // Fire-and-forget: the shared promise caches the result for pins and dots.
+    void getWarpOnsets(services.bank, bufferId);
   };
 
   /**
@@ -456,7 +683,10 @@ export function ArrangementPanel() {
     } else {
       warmWarpOnsets(clip.bufferId);
     }
-    const markers = [...(clip.warpMarkers ?? []), { timeSec: Math.round(finalTime * 1000) / 1000, tick: Math.round(tick) }]
+    const markers = [
+      ...(clip.warpMarkers ?? []),
+      { timeSec: Math.round(finalTime * 1000) / 1000, tick: Math.round(tick) },
+    ]
       .sort((a, b) => a.tick - b.tick)
       .slice(0, 256);
     try {
@@ -483,7 +713,7 @@ export function ArrangementPanel() {
   // project tempo. Cumulative — bar N's wall-clock position accounts for the
   // tempo of everything before it, so SECS ruler labels stay honest.
   const barToSeconds = (bar: number): number => {
-    const scenesById = new Map(doc.scenes.map((scene) => [scene.id, scene]));
+    const scenesById = new Map(scenes.map((scene) => [scene.id, scene]));
     let seconds = 0;
     let cursor = 0;
     for (const clip of clips) {
@@ -660,7 +890,7 @@ export function ArrangementPanel() {
     for (const id of ids) {
       const clip = beforeDoc.arrangement.clips.find((c) => c.id === id);
       if (!clip) continue;
-      const scene = doc.scenes.find((sceneItem) => sceneItem.id === clip.sceneId);
+      const scene = scenes.find((sceneItem) => sceneItem.id === clip.sceneId);
       if (!firstName) firstName = scene?.name ?? "clip";
       nextDoc = deleteArrangementClip(nextDoc, id).execute(nextDoc);
     }
@@ -784,7 +1014,7 @@ export function ArrangementPanel() {
     const fromBar = selection.timeRange.fromTick / BAR_TICKS;
     const lenBars = (selection.timeRange.toTick - selection.timeRange.fromTick) / BAR_TICKS;
     if (lenBars < 0.25) return;
-    const trackIds = selection.trackIds.length > 0 ? selection.trackIds : doc.tracks.slice(0, 1).map((t) => t.id);
+    const trackIds = selection.trackIds.length > 0 ? selection.trackIds : tracks.slice(0, 1).map((t) => t.id);
     setBouncingZone(true);
     try {
       // REAL bounce: offline-render the selected tracks (FX, groups, sends
@@ -816,7 +1046,9 @@ export function ArrangementPanel() {
       } catch {
         /* persistence is best-effort — the take still plays this session */
       }
-      if (!execute(addAudioClip(services.store.doc, trackIds[0], bufferId, fromBar, lenBars, { gain: 1, stretchRate: 1 }))) {
+      if (
+        !execute(addAudioClip(services.store.doc, trackIds[0], bufferId, fromBar, lenBars, { gain: 1, stretchRate: 1 }))
+      ) {
         services.bank.remove(bufferId);
         try {
           await services.userSamples.remove(bufferId);
@@ -844,7 +1076,7 @@ export function ArrangementPanel() {
   };
 
   const selectTransitionBoundary = (fromClipId: string, toClipId: string) => {
-    const existing = doc.arrangement.transitions?.find(
+    const existing = arrangement.transitions?.find(
       (transition) => transition.fromClipId === fromClipId && transition.toClipId === toClipId,
     );
     setTransitionBoundary({ fromClipId, toClipId });
@@ -995,7 +1227,7 @@ export function ArrangementPanel() {
               onChange={(event) => setArmedTrackId(event.target.value)}
             >
               <option value="">ARM: pick track…</option>
-              {doc.tracks.map((track) => (
+              {tracks.map((track) => (
                 <option key={track.id} value={track.id}>
                   {track.name}
                 </option>
@@ -1178,6 +1410,46 @@ export function ArrangementPanel() {
           </div>
         </div>
 
+        {recoverableTakes.length > 0 && (
+          <section className="arr-recording-recovery" aria-label="Recoverable vocal recordings">
+            <strong>RECOVERABLE VOCAL TAKES</strong>
+            {recoverableTakes.map((session) => {
+              const canPlaceOnTimeline =
+                session.placeOnTimeline !== false &&
+                session.projectId === doc.id &&
+                tracks.some((track) => track.id === session.trackId);
+              return (
+                <div className="arr-recording-recovery-row" key={session.id}>
+                  <span>
+                    {session.trackName} · {new Date(session.createdAt).toLocaleString()} ·{" "}
+                    {(session.totalFrames / session.sampleRate).toFixed(1)}s
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn-small"
+                    disabled={recoveringTakeId !== null || recState !== "idle"}
+                    onClick={() => void recoverTake(session)}
+                  >
+                    {recoveringTakeId === session.id
+                      ? "RECOVERING…"
+                      : canPlaceOnTimeline
+                        ? "RESTORE TO TIMELINE"
+                        : "RECOVER TO SAMPLES"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-small btn-danger"
+                    disabled={recoveringTakeId !== null || recState !== "idle"}
+                    onClick={() => void discardTake(session)}
+                  >
+                    DISCARD
+                  </button>
+                </div>
+              );
+            })}
+          </section>
+        )}
+
         {showSkeletonPreview && (
           <div className="arr-skeleton-preview">
             <span className="arr-skeleton-title">
@@ -1186,7 +1458,7 @@ export function ArrangementPanel() {
             {(() => {
               const roles = ["intro", "build", "drop", "break", "outro"] as const;
               const preview = roles.flatMap((role) => {
-                const scene = doc.scenes.find((candidate) => sceneRoleOf(candidate) === role);
+                const scene = scenes.find((candidate) => sceneRoleOf(candidate) === role);
                 if (!scene) return [];
                 return [
                   <span key={scene.id} className="arr-skeleton-item">
@@ -1218,7 +1490,7 @@ export function ArrangementPanel() {
             <span className="arr-role-flow-empty">EMPTY ARRANGEMENT</span>
           ) : (
             clips.map((clip, index) => {
-              const scene = doc.scenes.find((candidate) => candidate.id === clip.sceneId);
+              const scene = scenes.find((candidate) => candidate.id === clip.sceneId);
               const role = scene ? (sceneRoleOf(scene) ?? "custom") : "custom";
               return (
                 <span key={clip.id} className={`arr-role-flow-item role-${role}`}>
@@ -1294,7 +1566,7 @@ export function ArrangementPanel() {
             onContextMenu={(event) => {
               event.preventDefault();
               const x = event.clientX - laneRef.current!.getBoundingClientRect().left;
-              const closest = doc.markers
+              const closest = markers
                 .map((marker) => ({ id: marker.id, dist: Math.abs((marker.tick / BAR_TICKS) * barWidth - x) }))
                 .filter((marker) => marker.dist < 8)
                 .sort((a, b) => a.dist - b.dist)[0];
@@ -1309,7 +1581,7 @@ export function ArrangementPanel() {
                 </span>
               );
             })}
-            {doc.markers.map((marker) => (
+            {markers.map((marker) => (
               <div
                 key={marker.id}
                 className={`arr-marker arr-marker-${marker.type}`}
@@ -1460,7 +1732,7 @@ export function ArrangementPanel() {
               />
             ))}
             {clips.map((clip, index) => {
-              const scene = doc.scenes.find((candidate) => candidate.id === clip.sceneId);
+              const scene = scenes.find((candidate) => candidate.id === clip.sceneId);
               const role = scene ? (sceneRoleOf(scene) ?? "custom") : "custom";
               const isDragging = dragRef.current?.clipId === clip.id && drag !== null;
               const multiMoving = dragRef.current?.movingIds?.includes(clip.id) && multiDrag !== null;
@@ -1510,7 +1782,7 @@ export function ArrangementPanel() {
                       onPointerDown={(event) => event.stopPropagation()}
                       onClick={() => selectTransitionBoundary(clip.id, nextClip.id)}
                     >
-                      {doc.arrangement.transitions?.some(
+                      {arrangement.transitions?.some(
                         (transition) => transition.fromClipId === clip.id && transition.toClipId === nextClip.id,
                       )
                         ? "TR"
@@ -1526,7 +1798,7 @@ export function ArrangementPanel() {
               const lengthBars = isDragging ? audioDrag.lengthBars : clip.lengthBars;
               const selected = selectedAudioClipId === clip.id;
               const isCurrent = playheadBar >= clip.startBar && playheadBar < clip.startBar + clip.lengthBars;
-              const track = doc.tracks.find((t) => t.id === clip.trackId);
+              const track = tracks.find((t) => t.id === clip.trackId);
               const buffer = services.bank.get(clip.bufferId);
               const effFadeIn = audioFadePreview?.clipId === clip.id ? audioFadePreview.fadeIn : (clip.fadeIn ?? 0);
               const effFadeOut = audioFadePreview?.clipId === clip.id ? audioFadePreview.fadeOut : (clip.fadeOut ?? 0);
@@ -1557,7 +1829,12 @@ export function ArrangementPanel() {
                     // Pin handles / trim / fade / gain zones keep their own
                     // gestures — only the bare waveform adds pins.
                     const target = event.target as HTMLElement | null;
-                    if (target?.closest(".warp-pin, .arr-audio-clip-handle, .arr-audio-clip-handle-fade, .arr-audio-clip-handle-gain")) return;
+                    if (
+                      target?.closest(
+                        ".warp-pin, .arr-audio-clip-handle, .arr-audio-clip-handle-fade, .arr-audio-clip-handle-gain",
+                      )
+                    )
+                      return;
                     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
                     if (rect.width <= 0) return;
                     const frac = (event.clientX - rect.left) / rect.width;
@@ -1569,7 +1846,12 @@ export function ArrangementPanel() {
                     setAudioMenu({ clipId: clip.id, x: event.clientX, y: event.clientY });
                   }}
                 >
-                  <AudioClipWaveform buffer={buffer ?? null} reverse={clip.reverse} />
+                  <AudioClipWaveform
+                    buffer={buffer ?? null}
+                    bufferId={clip.bufferId}
+                    reverse={clip.reverse}
+                    showOnsets={selected || (clip.warpMarkers?.length ?? 0) > 0}
+                  />
                   <WarpPinsOverlay
                     clip={clip}
                     disabledReason={
@@ -1645,7 +1927,7 @@ export function ArrangementPanel() {
             })}
             {showIntensity && (
               <IntensityLane
-                doc={doc}
+                scenes={scenes}
                 clips={clips}
                 totalBars={totalBars}
                 playheadBar={playheadBar}
@@ -1676,11 +1958,11 @@ export function ArrangementPanel() {
           <div className="arr-transition-editor">
             <span className="arr-transition-label">
               TRANSITION{" "}
-              {doc.scenes.find(
+              {scenes.find(
                 (scene) => scene.id === clips.find((clip) => clip.id === transitionBoundary.fromClipId)?.sceneId,
               )?.name ?? "?"}{" "}
               →{" "}
-              {doc.scenes.find(
+              {scenes.find(
                 (scene) => scene.id === clips.find((clip) => clip.id === transitionBoundary.toClipId)?.sceneId,
               )?.name ?? "?"}
             </span>
@@ -1867,7 +2149,7 @@ export function ArrangementPanel() {
               onClick={() => {
                 const c = audioClips.find((x) => x.id === audioMenu.clipId);
                 const buf = c ? services.bank.get(c.bufferId) : null;
-                const pattern = doc.patterns.find((p) => p.id === doc.activePatternId);
+                const pattern = patterns.find((p) => p.id === activePatternId);
                 if (!buf || !c || !pattern) {
                   setActionError("Loop not loaded");
                   setAudioMenu(null);
@@ -1938,7 +2220,7 @@ export function ArrangementPanel() {
                   );
                   // The generated pattern is now active — bake the loop's groove on top.
                   execute(
-                    stealGrooveIntoPattern(services.store.doc, services.store.doc.activePatternId, analysis.groove, {
+                    stealGrooveIntoPattern(services.store.doc, activePatternId, analysis.groove, {
                       applyVelocity: true,
                     }),
                   );
@@ -2004,7 +2286,12 @@ export function ArrangementPanel() {
                 // Long sample analysis runs in the onset worker so slicing
                 // cannot freeze the arrangement/timeline interaction.
                 try {
-                  const times = await detectTransientsAsync(buf.getChannelData(0), buf.sampleRate, 1, controller.signal);
+                  const times = await detectTransientsAsync(
+                    buf.getChannelData(0),
+                    buf.sampleRate,
+                    1,
+                    controller.signal,
+                  );
                   if (controller.signal.aborted) return;
                   const currentDoc = services.store.doc;
                   const currentClip = (currentDoc.arrangement.audioClips ?? []).find((clip) => clip.id === c.id);
@@ -2141,7 +2428,7 @@ export function ArrangementPanel() {
                 if (sel) {
                   const from = sel.fromTick,
                     to = sel.toTick;
-                  const ids = (doc.arrangement.audioClips ?? [])
+                  const ids = (arrangement.audioClips ?? [])
                     .filter((ac) => {
                       const s = ac.startBar * BAR_TICKS,
                         e = s + ac.lengthBars * BAR_TICKS;
@@ -2164,7 +2451,7 @@ export function ArrangementPanel() {
                     setAudioMenu(null);
                     return;
                   }
-                  const sameTrack = (doc.arrangement.audioClips ?? [])
+                  const sameTrack = (arrangement.audioClips ?? [])
                     .filter((ac) => ac.trackId === c.trackId)
                     .sort((a, b) => a.startBar - b.startBar);
                   const idx = sameTrack.findIndex((ac) => ac.id === c.id);
@@ -2224,8 +2511,54 @@ export function ArrangementPanel() {
   );
 }
 
-function AudioClipWaveform({ buffer, reverse }: { buffer: AudioBuffer | null; reverse: boolean }) {
+/**
+ * Transient times for one waveform's onset dots. Resolves from the shared
+ * warp-onset cache (warmed by the arrangement effect); every hook awaiting
+ * the same buffer shares one detection promise.
+ */
+function useOnsetDots(bufferId: string, enabled: boolean): number[] | null {
+  const services = useServices();
+  const [times, setTimes] = useState<number[] | null>(() => warpOnsetCache.get(bufferId) ?? null);
+  useEffect(() => {
+    if (!enabled) {
+      setTimes(null);
+      return;
+    }
+    const cached = warpOnsetCache.get(bufferId);
+    if (cached) {
+      setTimes(cached);
+      return;
+    }
+    let live = true;
+    const p = getWarpOnsets(services.bank, bufferId);
+    if (!p) {
+      setTimes(null);
+      return;
+    }
+    p.then((result) => {
+      if (live) setTimes(result);
+    });
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bufferId, enabled]);
+  return times;
+}
+
+function AudioClipWaveform({
+  buffer,
+  bufferId,
+  reverse,
+  showOnsets,
+}: {
+  buffer: AudioBuffer | null;
+  bufferId: string;
+  reverse: boolean;
+  showOnsets: boolean;
+}) {
   const ref = useRef<HTMLCanvasElement>(null);
+  const onsets = useOnsetDots(bufferId, showOnsets && buffer !== null);
   useEffect(() => {
     const canvas = ref.current;
     if (!canvas || !buffer) return;
@@ -2243,8 +2576,15 @@ function AudioClipWaveform({ buffer, reverse }: { buffer: AudioBuffer | null; re
     const columns = Math.min(w, 240);
     const per = Math.floor(data.length / columns);
     const dim = getComputedStyle(canvas).getPropertyValue("--text-faint") || "#3a3d44";
-    const accent = getComputedStyle(canvas).getPropertyValue("--accent") || "#f59e0b";
-    ctx.strokeStyle = reverse ? "#f87171" : accent;
+    const rawAccent = getComputedStyle(canvas).getPropertyValue("--accent") || "#f59e0b";
+    const baseHex = reverse ? "#f87171" : rawAccent.trim();
+    const rgb = hexToRgb(baseHex) ?? [245, 158, 11];
+    // Molten body: bright core fading to transparent at the extremes.
+    const body = ctx.createLinearGradient(0, 0, 0, h);
+    body.addColorStop(0, `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0.12)`);
+    body.addColorStop(0.5, `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0.95)`);
+    body.addColorStop(1, `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0.12)`);
+    ctx.strokeStyle = body;
     ctx.lineWidth = 1;
     ctx.globalAlpha = 0.9;
     ctx.beginPath();
@@ -2265,12 +2605,21 @@ function AudioClipWaveform({ buffer, reverse }: { buffer: AudioBuffer | null; re
       ctx.lineTo(x, y1);
     }
     ctx.stroke();
+    // Transient ticks: where the warp magnet would grab (selected/warped clips).
+    if (onsets && onsets.length > 0 && buffer.duration > 0) {
+      ctx.fillStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0.6)`;
+      for (const t of onsets) {
+        const x = (t / buffer.duration) * w;
+        if (x < 0 || x > w) continue;
+        ctx.fillRect(x - 1, h - 6, 2, 5);
+      }
+    }
     // faint envelope line like WavetablePreview
     ctx.strokeStyle = dim;
     ctx.globalAlpha = 0.25;
     ctx.lineWidth = 1;
     ctx.strokeRect(0, 0, w, h);
-  }, [buffer, reverse]);
+  }, [buffer, bufferId, reverse, showOnsets, onsets]);
   if (!buffer) return <div className="audio-waveform-empty">no buffer</div>;
   return (
     <canvas
@@ -2428,14 +2777,14 @@ interface IntensityHandle {
  * undoable `setSceneIntensityCurve` command the ModPanel editor uses.
  */
 function IntensityLane({
-  doc,
+  scenes,
   clips,
   totalBars,
   playheadBar,
   barWidth,
   onEdit,
 }: {
-  doc: ProjectDocument;
+  scenes: ProjectDocument["scenes"];
   clips: ArrangementClip[];
   totalBars: number;
   playheadBar: number;
@@ -2457,7 +2806,7 @@ function IntensityLane({
   const pxPerTick = barWidth / BAR_TICKS;
   const yFor = (value: number) => INTENSITY_LANE_HEIGHT - value * INTENSITY_LANE_HEIGHT;
 
-  const scenesById = new Map(doc.scenes.map((s) => [s.id, s]));
+  const scenesById = new Map(scenes.map((s) => [s.id, s]));
   /** Points of every scene curve that fall inside their owning clip window. */
   const handles: IntensityHandle[] = [];
   const segments: {

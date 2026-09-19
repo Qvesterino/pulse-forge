@@ -113,9 +113,7 @@ export class CollabSession {
   }
 
   /** Subscribe to remote transport pulses (latest remote state wins). */
-  subscribeSharedTransport(
-    cb: (state: SharedTransportState | null, fromClientId: number) => void,
-  ): () => void {
+  subscribeSharedTransport(cb: (state: SharedTransportState | null, fromClientId: number) => void): () => void {
     return this.provider.onTransportChange(cb);
   }
 

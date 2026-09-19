@@ -218,9 +218,7 @@ export function refreshPatternQuality(doc: ProjectDocument, pattern: Pattern, op
     : drumTracks[0];
   const drumRows = targetDrumTrack?.kind === "drum" ? targetDrumTrack.pads.map((pad) => pattern.rows[pad.id]) : [];
   const padRoles =
-    targetDrumTrack?.kind === "drum"
-      ? targetDrumTrack.pads.map((pad, index) => inferPadRole(pad.name, index))
-      : [];
+    targetDrumTrack?.kind === "drum" ? targetDrumTrack.pads.map((pad, index) => inferPadRole(pad.name, index)) : [];
   const drumQuality = measureDrumQuality(groove, drumRows, padRoles, options.stepCount);
   const styleGate = evaluateStyleDistance(groove, drumRows, options.stepCount);
   const melodicQuality = measureMelodicQuality(

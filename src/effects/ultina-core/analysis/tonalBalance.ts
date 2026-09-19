@@ -83,11 +83,11 @@ export class TonalBalanceMeter {
     const magnitudes = computeMagnitudeSpectrum(windowed);
 
     const half = magnitudes.length;
-    const binSize = this.sampleRate / (this.frameSize);
+    const binSize = this.sampleRate / this.frameSize;
 
     for (let o = 0; o < NUM_BANDS; o++) {
       const center = OCTAVE_CENTER_FREQS[o];
-      const lowBin = Math.max(0, Math.floor((center / Math.SQRT2) / binSize));
+      const lowBin = Math.max(0, Math.floor(center / Math.SQRT2 / binSize));
       const highBin = Math.min(half - 1, Math.ceil((center * Math.SQRT2) / binSize));
       let energy = 0;
       for (let b = lowBin; b <= highBin; b++) {
@@ -114,13 +114,13 @@ export class TonalBalanceMeter {
 
     for (let i = 0; i < NUM_BANDS; i++) {
       const ratio = this.bandEnergies[i] / totalEnergy;
-      const db = ratio > 0
-        ? 10 * Math.log10(ratio * NUM_BANDS) // normalize so flat = 0 dB
-        : -60;
+      const db =
+        ratio > 0
+          ? 10 * Math.log10(ratio * NUM_BANDS) // normalize so flat = 0 dB
+          : -60;
 
       // Exponential smoothing
-      this.smoothingBands[i] = this.smoothingCoef * this.smoothingBands[i]
-        + (1 - this.smoothingCoef) * db;
+      this.smoothingBands[i] = this.smoothingCoef * this.smoothingBands[i] + (1 - this.smoothingCoef) * db;
       result.push(this.smoothingBands[i]);
     }
 
@@ -142,10 +142,7 @@ export class TonalBalanceMeter {
  * Compute a Tonal Balance reading comparing current spectrum
  * against an optional target curve.
  */
-export function computeTonalBalance(
-  currentSpectrum: number[],
-  target: TargetCurve | null,
-): TonalBalanceReading {
+export function computeTonalBalance(currentSpectrum: number[], target: TargetCurve | null): TonalBalanceReading {
   const current = currentSpectrum.slice(0, NUM_BANDS);
   const timestamp = Date.now();
 
@@ -192,9 +189,7 @@ export function computeTonalBalance(
 export function balanceSuggestionsToEqParams(
   suggestions: number[],
 ): Array<{ bandIndex: number; gainDb: number; freqHz: number }> {
-  const eqDefaultFreqs = [
-    80, 200, 350, 800, 1500, 3000, 5000, 7000, 10000, 12000, 15000, 18000,
-  ];
+  const eqDefaultFreqs = [80, 200, 350, 800, 1500, 3000, 5000, 7000, 10000, 12000, 15000, 18000];
   const octaveFreqs = [31.5, 63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
 
   const result: Array<{ bandIndex: number; gainDb: number; freqHz: number }> = [];

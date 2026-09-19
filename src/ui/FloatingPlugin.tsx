@@ -185,7 +185,14 @@ function PluginEditor({
 
       <div className={floating ? "floating-plugin-body" : "instrument-plugin-body"}>
         {isDrum && pad ? (
-          <DrumPluginContent track={track as any} pad={pad} mode={mode} doc={doc} services={services} docked={!floating} />
+          <DrumPluginContent
+            track={track as any}
+            pad={pad}
+            mode={mode}
+            doc={doc}
+            services={services}
+            docked={!floating}
+          />
         ) : track.kind === "instrument" ? (
           <InstrumentPluginContent track={track as any} mode={mode} doc={doc} services={services} docked={!floating} />
         ) : track.kind === "group" ? (
@@ -268,68 +275,74 @@ function InstrumentPluginContent({
         <GranularPanel track={track} doc={doc} services={services} />
       )}
       {(!docked || (dockPage === "engine" && track.instrument === "analog" && mode === "profi")) &&
-        track.instrument === "analog" && mode === "profi" && <EnvEditor track={track} doc={doc} services={services} />}
-      {(!docked || dockPage === "sound") && <>
-      <div className="floating-plugin-grid">
-      {visibleParams
-        .map((p: any) =>
-        p.options ? (
-          <label key={p.id} className="fx-param-select floating-plugin-select">
-            <span className="slider-label">{p.label}</span>
-            <select
-              value={
-                p.options.some((o: any) => o.value === (track.params[p.id] ?? p.default))
-                  ? (track.params[p.id] ?? p.default)
-                  : p.default
-              }
-              onChange={(e) => services.store.execute(setInstrumentParam(doc, track.id, p.id, Number(e.target.value)))}
-            >
-              {p.options.map((o: any) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : (
-          <Slider
-            key={p.id}
-            compact={mode === "hobby"}
-            label={p.label}
-            value={track.params[p.id] ?? p.default}
-            min={p.min}
-            max={p.max}
-            defaultValue={p.default}
-            format={p.format}
-            onCommit={(v) => services.store.execute(setInstrumentParam(doc, track.id, p.id, v))}
-          />
-        ),
+        track.instrument === "analog" &&
+        mode === "profi" && <EnvEditor track={track} doc={doc} services={services} />}
+      {(!docked || dockPage === "sound") && (
+        <>
+          <div className="floating-plugin-grid">
+            {visibleParams.map((p: any) =>
+              p.options ? (
+                <label key={p.id} className="fx-param-select floating-plugin-select">
+                  <span className="slider-label">{p.label}</span>
+                  <select
+                    value={
+                      p.options.some((o: any) => o.value === (track.params[p.id] ?? p.default))
+                        ? (track.params[p.id] ?? p.default)
+                        : p.default
+                    }
+                    onChange={(e) =>
+                      services.store.execute(setInstrumentParam(doc, track.id, p.id, Number(e.target.value)))
+                    }
+                  >
+                    {p.options.map((o: any) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                <Slider
+                  key={p.id}
+                  compact={mode === "hobby"}
+                  label={p.label}
+                  value={track.params[p.id] ?? p.default}
+                  min={p.min}
+                  max={p.max}
+                  defaultValue={p.default}
+                  format={p.format}
+                  onCommit={(v) => services.store.execute(setInstrumentParam(doc, track.id, p.id, v))}
+                />
+              ),
+            )}
+          </div>
+          {docked && pageCount > 1 && (
+            <div className="device-param-pager" role="group" aria-label={`${def.name} sound parameter pages`}>
+              <span>
+                SOUND {paramPage + 1}/{pageCount}
+              </span>
+              <button
+                type="button"
+                className="btn btn-small"
+                aria-label="Previous sound parameter page"
+                disabled={paramPage === 0}
+                onClick={() => setParamPage((page) => Math.max(0, page - 1))}
+              >
+                ‹
+              </button>
+              <button
+                type="button"
+                className="btn btn-small"
+                aria-label="Next sound parameter page"
+                disabled={paramPage >= pageCount - 1}
+                onClick={() => setParamPage((page) => Math.min(pageCount - 1, page + 1))}
+              >
+                ›
+              </button>
+            </div>
+          )}
+        </>
       )}
-      </div>
-      {docked && pageCount > 1 && (
-        <div className="device-param-pager" role="group" aria-label={`${def.name} sound parameter pages`}>
-          <span>SOUND {paramPage + 1}/{pageCount}</span>
-          <button
-            type="button"
-            className="btn btn-small"
-            aria-label="Previous sound parameter page"
-            disabled={paramPage === 0}
-            onClick={() => setParamPage((page) => Math.max(0, page - 1))}
-          >
-            ‹
-          </button>
-          <button
-            type="button"
-            className="btn btn-small"
-            aria-label="Next sound parameter page"
-            disabled={paramPage >= pageCount - 1}
-            onClick={() => setParamPage((page) => Math.min(pageCount - 1, page + 1))}
-          >
-            ›
-          </button>
-        </div>
-      )}
-      </>}
       {(!docked || dockPage === "mod") && <ModMatrixRow track={track} doc={doc} services={services} />}
     </div>
   );
@@ -358,7 +371,12 @@ function DrumPluginContent({
     <div className={`floating-plugin-stack${docked ? " drum-docked-content" : ""}`}>
       {docked && isSynth && (
         <div className="device-view-tabs" role="group" aria-label="Drum pad view">
-          {([ ["pad", "PAD"], ["synth", "SYNTH"] ] as const).map(([page, label]) => (
+          {(
+            [
+              ["pad", "PAD"],
+              ["synth", "SYNTH"],
+            ] as const
+          ).map(([page, label]) => (
             <button
               key={page}
               type="button"
@@ -458,38 +476,40 @@ function DrumPluginContent({
         </div>
       )}
 
-      {(!docked || dockPage === "pad") && <div className="floating-plugin-grid drum-pad-controls" style={{ marginTop: 8 }}>
-        <Slider
-          compact
-          label="GAIN"
-          value={pad.gain}
-          min={0}
-          max={2}
-          defaultValue={1}
-          format={(v) => `${(20 * Math.log10(Math.max(v, 0.001))).toFixed(1)} dB`}
-          onCommit={(gain) => services.store.execute(setPadParams(doc, pad.id, { gain }))}
-        />
-        <Slider
-          compact
-          label="PAN"
-          value={pad.pan}
-          min={-1}
-          max={1}
-          defaultValue={0}
-          format={(v) => (Math.abs(v) < 0.02 ? "C" : `${v < 0 ? "L" : "R"}${Math.round(Math.abs(v) * 100)}`)}
-          onCommit={(pan) => services.store.execute(setPadParams(doc, pad.id, { pan }))}
-        />
-        <Slider
-          compact
-          label="PITCH"
-          value={pad.pitch}
-          min={-24}
-          max={24}
-          defaultValue={0}
-          format={(v) => `${v > 0 ? "+" : ""}${v.toFixed(1)} st`}
-          onCommit={(pitch) => services.store.execute(setPadParams(doc, pad.id, { pitch }))}
-        />
-      </div>}
+      {(!docked || dockPage === "pad") && (
+        <div className="floating-plugin-grid drum-pad-controls" style={{ marginTop: 8 }}>
+          <Slider
+            compact
+            label="GAIN"
+            value={pad.gain}
+            min={0}
+            max={2}
+            defaultValue={1}
+            format={(v) => `${(20 * Math.log10(Math.max(v, 0.001))).toFixed(1)} dB`}
+            onCommit={(gain) => services.store.execute(setPadParams(doc, pad.id, { gain }))}
+          />
+          <Slider
+            compact
+            label="PAN"
+            value={pad.pan}
+            min={-1}
+            max={1}
+            defaultValue={0}
+            format={(v) => (Math.abs(v) < 0.02 ? "C" : `${v < 0 ? "L" : "R"}${Math.round(Math.abs(v) * 100)}`)}
+            onCommit={(pan) => services.store.execute(setPadParams(doc, pad.id, { pan }))}
+          />
+          <Slider
+            compact
+            label="PITCH"
+            value={pad.pitch}
+            min={-24}
+            max={24}
+            defaultValue={0}
+            format={(v) => `${v > 0 ? "+" : ""}${v.toFixed(1)} st`}
+            onCommit={(pitch) => services.store.execute(setPadParams(doc, pad.id, { pitch }))}
+          />
+        </div>
+      )}
     </div>
   );
 }

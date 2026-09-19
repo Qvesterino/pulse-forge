@@ -44,7 +44,10 @@ describe("fxeq-core hardening #2 — bandCount NaN armor", () => {
     expect(Number.isFinite(proc.getParameter("bandCount"))).toBe(true);
     // The pre-fix state threw TypeError inside crossover.process() here.
     for (let b = 0; b < 10; b++) {
-      proc.process(stereoBlock((i) => Math.sin((2 * Math.PI * 220 * (b * BLOCK + i)) / SR)), BLOCK);
+      proc.process(
+        stereoBlock((i) => Math.sin((2 * Math.PI * 220 * (b * BLOCK + i)) / SR)),
+        BLOCK,
+      );
     }
   });
 
@@ -66,7 +69,10 @@ describe("fxeq-core hardening #2 — morph armor", () => {
     // The NaN duration falls back to 0.3 s — render past it (80 blocks is
     // only 0.21 s).
     for (let b = 0; b < 200; b++) {
-      proc.process(stereoBlock((i) => Math.sin((2 * Math.PI * 220 * (b * BLOCK + i)) / SR)), BLOCK);
+      proc.process(
+        stereoBlock((i) => Math.sin((2 * Math.PI * 220 * (b * BLOCK + i)) / SR)),
+        BLOCK,
+      );
       // Pre-fix: values["inputGainDb"] was NaN for the whole morph (t=NaN)
       // and the input gain multiplied the signal by NaN → silence.
       expect(Number.isFinite(proc.getParameter("inputGainDb"))).toBe(true);
@@ -81,7 +87,10 @@ describe("fxeq-core hardening #2 — morph armor", () => {
     const before = proc.getParameter("bandCount");
     proc.startMorph({ bandCount: 3, inputGainDb: -3 }, 0.05);
     for (let b = 0; b < 60; b++) {
-      proc.process(stereoBlock(() => 0.1 * Math.sin(b * BLOCK)), BLOCK);
+      proc.process(
+        stereoBlock(() => 0.1 * Math.sin(b * BLOCK)),
+        BLOCK,
+      );
     }
     expect(proc.getParameter("bandCount")).toBe(before);
     // The audio-rate parameters in the same target still morph.
@@ -133,7 +142,10 @@ describe("fxeq-core hardening #2 — misc armor", () => {
     rev.setParameter("enabled", 1);
     rev.setParameter("predelayMs", 100);
     for (let b = 0; b < 20; b++) {
-      rev.process(stereoBlock(() => 0.5 * Math.sin(b * BLOCK)), BLOCK);
+      rev.process(
+        stereoBlock(() => 0.5 * Math.sin(b * BLOCK)),
+        BLOCK,
+      );
     }
     // …then load a state with a SMALL predelay (loadParameters → recompute).
     // Pre-fix the cursors stayed beyond the new logical length and the first
@@ -191,17 +203,16 @@ describe("fxeq-core hardening #2 — crossover split surface (6 bands)", () => {
     proc.prepare(SR, 2, BLOCK);
     proc.setParameter("limiterEnabled", 0);
     proc.setParameter("inputGainDb", 0);
-    const noise = noiseSource(0xFEED);
+    const noise = noiseSource(0xfeed);
     for (let b = 0; b < 40; b++) {
       proc.process(stereoBlock(noise), BLOCK);
     }
     const peaks = proc.getBandPeaks();
     expect(peaks.length).toBe(6);
     for (let band = 0; band < 6; band++) {
-      expect(
-        peaks[band],
-        `band ${band + 1} must carry broadband energy (dead band at the defaults)`,
-      ).toBeGreaterThan(0.005);
+      expect(peaks[band], `band ${band + 1} must carry broadband energy (dead band at the defaults)`).toBeGreaterThan(
+        0.005,
+      );
     }
   });
 
@@ -213,7 +224,7 @@ describe("fxeq-core hardening #2 — crossover split surface (6 bands)", () => {
     proc.setParameter("crossoverFreq5", 12000);
     expect(proc.getParameter("crossoverFreq5")).toBe(7960); // freq6 − 40 Hz gap
     // Band 4 (4 kHz…split5) still carries broadband energy after the drag.
-    const noise = noiseSource(0xBEA5);
+    const noise = noiseSource(0xbea5);
     for (let b = 0; b < 40; b++) proc.process(stereoBlock(noise), BLOCK);
     expect(proc.getBandPeaks()[3]).toBeGreaterThan(0.005);
   });

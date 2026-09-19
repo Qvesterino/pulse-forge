@@ -148,6 +148,22 @@ export function mockServices(doc?: ProjectDocument): Services {
       getSaveStatus: () => "saved" as const,
       getLastSavedAt: () => null,
       setSaveStatus: vi.fn(),
+      // Fine-grained slice selectors added with the GOAL 04 follow-up.
+      // Mirrors ProjectStore.getScenes/getTracks/... (structural sharing
+      // in normalizeProject keeps the same array identity across
+      // unrelated mutations). The mock simply returns the current slice
+      // from the in-memory project.
+      getScenes: () => project.scenes,
+      getTracks: () => project.tracks,
+      getReturns: () => project.returns,
+      getArrangement: () => project.arrangement,
+      getMarkers: () => project.markers,
+      getAutomation: () => project.automation,
+      getPatterns: () => project.patterns,
+      getMacros: () => project.macros,
+      getMaster: () => project.master,
+      getSceneAutomation: () => project.sceneAutomation,
+      getActivePatternId: () => project.activePatternId,
       get doc() {
         return project;
       },
@@ -299,9 +315,20 @@ export function mockServices(doc?: ProjectDocument): Services {
     userSamples: {
       list: vi.fn(async () => []),
       save: vi.fn(async () => {}),
+      invalidateCache: vi.fn(),
       loadAudio: vi.fn(async () => undefined),
       remove: vi.fn(async () => {}),
       listAudio: vi.fn(async () => []),
+    } as any,
+    recordingRecovery: {
+      begin: vi.fn(async () => {}),
+      appendChunk: vi.fn(async () => {}),
+      markRecoverable: vi.fn(async () => {}),
+      get: vi.fn(async () => undefined),
+      listRecoverable: vi.fn(async () => []),
+      forEachChunk: vi.fn(async () => {}),
+      finalize: vi.fn(async () => {}),
+      remove: vi.fn(async () => {}),
     } as any,
     latency,
     noteRepeat: new NoteRepeatController({

@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useDoc, useServices } from "./context";
+import { fireGestureHint } from "./gestureHints";
 import { STEP_TICKS } from "../project-model/types";
 import type { DrumTrack, StepMeta, Track } from "../project-model/types";
 import type { Transport } from "../transport/Transport";
@@ -399,6 +400,7 @@ export function Sequencer({
     if (!drag) return;
     if (drag.mode === "select") {
       setDragPreview(null);
+      fireGestureHint("multi-select");
       return;
     }
     if (drag.mode === "paint") {
@@ -421,6 +423,7 @@ export function Sequencer({
     }
     if (drag.moved) {
       const preview = dragPreview;
+      if (drag.editKind === "velocity") fireGestureHint("velocity-drag");
       if (drag.editKind === "microtiming") {
         const microtiming =
           preview &&
@@ -663,9 +666,7 @@ export function Sequencer({
       const fresh = !!padId && performance.now() - (activity?.at ?? 0) < 140;
       if (padId === padFlashRef.current && fresh) return;
       if (padFlashRef.current) {
-        document
-          .querySelector(`.row-pad[data-pad-id="${padFlashRef.current}"]`)
-          ?.classList.remove("live-hit");
+        document.querySelector(`.row-pad[data-pad-id="${padFlashRef.current}"]`)?.classList.remove("live-hit");
         padFlashRef.current = null;
       }
       if (fresh && padId) {
@@ -778,7 +779,11 @@ export function Sequencer({
               if (entries.length === 0) return;
               const next = randomizeVelocities(entries.map((e) => e.velocity));
               services.store.execute(
-                setStepsVelocity(doc, pattern.id, entries.map((e, i) => ({ ...e, velocity: next[i] }))),
+                setStepsVelocity(
+                  doc,
+                  pattern.id,
+                  entries.map((e, i) => ({ ...e, velocity: next[i] })),
+                ),
               );
             }}
           >
@@ -800,7 +805,11 @@ export function Sequencer({
               if (entries.length === 0) return;
               const next = humanizeVelocities(entries.map((e) => e.velocity));
               services.store.execute(
-                setStepsVelocity(doc, pattern.id, entries.map((e, i) => ({ ...e, velocity: next[i] }))),
+                setStepsVelocity(
+                  doc,
+                  pattern.id,
+                  entries.map((e, i) => ({ ...e, velocity: next[i] })),
+                ),
               );
             }}
           >
@@ -899,12 +908,12 @@ export function Sequencer({
                 moveStepInteraction={moveStepInteraction}
                 endStepInteraction={endStepInteraction}
                 setStepEditor={setStepEditor}
-              remoteCursors={remoteCursors}
-              pianoFullTrack={pianoFullTrack}
-              onTogglePianoFull={setPianoFullTrack}
-              colWindow={colWindow}
-              effMinCol={effMinCol}
-            />
+                remoteCursors={remoteCursors}
+                pianoFullTrack={pianoFullTrack}
+                onTogglePianoFull={setPianoFullTrack}
+                colWindow={colWindow}
+                effMinCol={effMinCol}
+              />
             </div>
           ))}
           <GridPlayhead transport={services.transport} stepCount={pattern.stepCount} stepsPx={stepsPx} />
@@ -1000,7 +1009,10 @@ function VirtualRow({
         onMove={moveStepInteraction}
         onEnd={endStepInteraction}
         onSelectPad={onSelectPad}
-        onEditStep={(stepIndex) => setStepEditor({ padId: item.pad.id, stepIndex })}
+        onEditStep={(stepIndex) => {
+          fireGestureHint("step-editor");
+          setStepEditor({ padId: item.pad.id, stepIndex });
+        }}
         remoteCursors={remoteCursors}
         colWindow={colWindow}
         effMinCol={effMinCol}

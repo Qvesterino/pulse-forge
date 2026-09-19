@@ -117,7 +117,12 @@ export function Inspector({
             {def.name.toUpperCase()} — {track.name}
           </h2>
           {onOpenPlugin && (
-            <button type="button" className="btn btn-small" onClick={onOpenPlugin} title="Open the device chain in the bottom dock">
+            <button
+              type="button"
+              className="btn btn-small"
+              onClick={onOpenPlugin}
+              title="Open the device chain in the bottom dock"
+            >
               DEVICES
             </button>
           )}
@@ -156,9 +161,7 @@ export function Inspector({
                       // Multi-file drop on a sampler track: file names carry
                       // the mapping (kick_C2.wav, stab F#4.wav, -1/-2 RR) —
                       // spread across the keyboard automatically.
-                      const layers = autoMapVelocityLayers(
-                        imported.map((a) => ({ sampleId: a.id, name: a.fileName })),
-                      );
+                      const layers = autoMapVelocityLayers(imported.map((a) => ({ sampleId: a.id, name: a.fileName })));
                       if (layers.length > 1) setPendingSamplerMapping(layers);
                     }
                   : undefined
@@ -169,7 +172,8 @@ export function Inspector({
                 <div className="sampler-map-preview-heading">
                   <strong>MAP PREVIEW</strong>
                   <span>
-                    {pendingSamplerMapping.length} layers · {new Set(pendingSamplerMapping.map((l) => `${l.minPitch ?? 0}-${l.maxPitch ?? 127}`)).size} keyzones
+                    {pendingSamplerMapping.length} layers ·{" "}
+                    {new Set(pendingSamplerMapping.map((l) => `${l.minPitch ?? 0}-${l.maxPitch ?? 127}`)).size} keyzones
                   </span>
                 </div>
                 <p>
@@ -195,7 +199,9 @@ export function Inspector({
                     onClick={() => {
                       const currentDoc = services.store.doc;
                       const first = pendingSamplerMapping[0]?.sampleId ?? null;
-                      services.store.execute(setVelocityLayersCommand(currentDoc, track.id, pendingSamplerMapping, first));
+                      services.store.execute(
+                        setVelocityLayersCommand(currentDoc, track.id, pendingSamplerMapping, first),
+                      );
                       setPendingSamplerMapping(null);
                     }}
                   >
@@ -219,40 +225,40 @@ export function Inspector({
         {visibleParams
           .filter((p) => !isModMatrixParam(p.id))
           .map((p) =>
-          p.options ? (
-            <label key={p.id} className="fx-param-select">
-              <span className="slider-label">{p.label}</span>
-              <select
-                value={
-                  p.options.some((o) => o.value === (track.params[p.id] ?? p.default))
-                    ? (track.params[p.id] ?? p.default)
-                    : p.default
-                }
-                onChange={(event) =>
-                  services.store.execute(setInstrumentParam(doc, track.id, p.id, Number(event.target.value)))
-                }
-              >
-                {p.options.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : (
-            <Slider
-              key={p.id}
-              compact
-              label={p.id === "root" ? `ROOT (${pitchName(Math.round(track.params[p.id] ?? p.default))})` : p.label}
-              value={track.params[p.id] ?? p.default}
-              min={p.min}
-              max={p.max}
-              defaultValue={p.default}
-              format={p.format}
-              onCommit={(v) => services.store.execute(setInstrumentParam(doc, track.id, p.id, v))}
-            />
-          ),
-        )}
+            p.options ? (
+              <label key={p.id} className="fx-param-select">
+                <span className="slider-label">{p.label}</span>
+                <select
+                  value={
+                    p.options.some((o) => o.value === (track.params[p.id] ?? p.default))
+                      ? (track.params[p.id] ?? p.default)
+                      : p.default
+                  }
+                  onChange={(event) =>
+                    services.store.execute(setInstrumentParam(doc, track.id, p.id, Number(event.target.value)))
+                  }
+                >
+                  {p.options.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <Slider
+                key={p.id}
+                compact
+                label={p.id === "root" ? `ROOT (${pitchName(Math.round(track.params[p.id] ?? p.default))})` : p.label}
+                value={track.params[p.id] ?? p.default}
+                min={p.min}
+                max={p.max}
+                defaultValue={p.default}
+                format={p.format}
+                onCommit={(v) => services.store.execute(setInstrumentParam(doc, track.id, p.id, v))}
+              />
+            ),
+          )}
 
         {advancedInstrumentControls && <ModMatrixRow track={track} doc={doc} services={services} />}
 
@@ -288,7 +294,12 @@ export function Inspector({
           SLICE LAB
         </button>
         {onOpenPlugin && (
-          <button type="button" className="btn btn-small" onClick={onOpenPlugin} title="Open the drum device chain in the bottom dock">
+          <button
+            type="button"
+            className="btn btn-small"
+            onClick={onOpenPlugin}
+            title="Open the drum device chain in the bottom dock"
+          >
             DEVICES
           </button>
         )}

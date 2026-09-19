@@ -29,13 +29,7 @@
 // 5. Suggest bell cuts proportional to the excess
 // ═══════════════════════════════════════════════════════════
 
-import {
-  createBiquad,
-  setBandPass,
-  processBiquadChannel,
-  resetBiquad,
-  type BiquadState,
-} from "./primitives.js";
+import { createBiquad, setBandPass, processBiquadChannel, resetBiquad, type BiquadState } from "./primitives.js";
 
 /** Sanitize a numeric value, returning 0 for NaN/Infinity. */
 function safeNum(x: number): number {
@@ -49,8 +43,7 @@ export const EQ_LEARN_BANDS = 16;
 
 /** Center frequencies for analysis (logarithmically spaced, 60 Hz – 16 kHz). */
 export const EQ_LEARN_FREQS = [
-  60, 100, 150, 250, 350, 500, 700, 1000,
-  1500, 2500, 3500, 5000, 7000, 10000, 12000, 16000,
+  60, 100, 150, 250, 350, 500, 700, 1000, 1500, 2500, 3500, 5000, 7000, 10000, 12000, 16000,
 ];
 
 /** Default Q factor for suggested bell cuts. */
@@ -194,9 +187,7 @@ export class EqLearn {
       totalEnergy += lin;
     }
 
-    const spectralCentroid = totalEnergy > 1e-10
-      ? totalWeighted / totalEnergy
-      : 1000;
+    const spectralCentroid = totalEnergy > 1e-10 ? totalWeighted / totalEnergy : 1000;
 
     // Compute average level over ACTIVE bands only, where "active" is
     // dynamic: within ACTIVE_RANGE_DB of the loudest band. Bands far
@@ -205,9 +196,7 @@ export class EqLearn {
     // (bass, kick…) as resonances.
     const peakBandLevel = Math.max(...bandLevels);
     const activeLevels = bandLevels.filter((v) => v > peakBandLevel - ACTIVE_RANGE_DB);
-    const averageLevel = activeLevels.length > 0
-      ? activeLevels.reduce((a, b) => a + b, 0) / activeLevels.length
-      : 0;
+    const averageLevel = activeLevels.length > 0 ? activeLevels.reduce((a, b) => a + b, 0) / activeLevels.length : 0;
 
     // Identify resonance suggestions
     const suggestions: EqLearnSuggestion[] = [];

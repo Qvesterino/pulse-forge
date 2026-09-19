@@ -4,6 +4,7 @@ import {
   MIN_DB,
   PeakHold,
   channelLevels,
+  evaluateExportMonoGuard,
   evaluateMasterVerdict,
   splitChannels,
   stereoCorrelation,
@@ -183,5 +184,30 @@ describe("evaluateMasterVerdict", () => {
     expect(verdict.hints).toHaveLength(2);
     expect(verdict.hints[0]).toContain("Phase");
     expect(verdict.hints[1]).toContain("True peak");
+  });
+});
+
+describe("evaluateExportMonoGuard", () => {
+  it("is ok for a mono-safe mix", () => {
+    expect(evaluateExportMonoGuard({ monoLossDb: -0.5, correlation: 0.8 })).toEqual({ level: "ok", hints: [] });
+  });
+
+  it("warns past −3 dB mono loss", () => {
+    const guard = evaluateExportMonoGuard({ monoLossDb: -4.2, correlation: 0.6 });
+    expect(guard.level).toBe("warn");
+    expect(guard.hints[0]).toContain("Mono fold-down");
+  });
+
+  it("is bad on negative correlation", () => {
+    const guard = evaluateExportMonoGuard({ monoLossDb: -0.5, correlation: -0.3 });
+    expect(guard.level).toBe("bad");
+    expect(guard.hints[0]).toContain("Phase");
+  });
+
+  it("is bad past −6 dB mono loss and leads with the phase hint", () => {
+    const guard = evaluateExportMonoGuard({ monoLossDb: -7, correlation: -0.2 });
+    expect(guard.level).toBe("bad");
+    expect(guard.hints).toHaveLength(2);
+    expect(guard.hints[0]).toContain("Phase");
   });
 });

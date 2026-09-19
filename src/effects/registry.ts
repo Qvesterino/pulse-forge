@@ -3315,7 +3315,7 @@ const duckDelay: EffectDefinition = {
 
 const kaskada: EffectDefinition = {
   type: "kaskada",
-  name: "Kaskáda Delay",
+  name: "RYFT",
   category: "space",
   params: [
     { id: "time", label: "TIME", min: 30, max: 2000, default: 375, unit: "ms", format: formatMs },
@@ -3389,7 +3389,7 @@ const kaskada: EffectDefinition = {
   ],
   factory(ctx, instance) {
     if (isWorkletReady("kaskada", ctx)) return createKaskadaNode(ctx, instance);
-    return bypassRuntime(ctx, "AudioWorklet unavailable — Kaskáda delay bypassed (1:1 signal)");
+    return bypassRuntime(ctx, "AudioWorklet unavailable — RYFT delay bypassed (1:1 signal)");
   },
 };
 
@@ -3526,6 +3526,13 @@ export const CORE_EFFECT_GROUPS: CoreEffectGroup[] = CORE_EFFECT_GROUP_ORDER.map
   label: CORE_EFFECT_GROUP_LABELS[key],
   types: CORE_EFFECT_ORDER.filter((type) => EFFECT_DEFS[type].category === key),
 }));
+
+const DEVICE_MENU_EFFECTS = new Set<EffectType>([...CORE_EFFECT_ORDER, ...FLAGSHIP_EFFECT_ORDER]);
+export const ADDITIONAL_EFFECT_GROUPS: CoreEffectGroup[] = CORE_EFFECT_GROUP_ORDER.map((key) => ({
+  key,
+  label: `MORE ${CORE_EFFECT_GROUP_LABELS[key]}`,
+  types: EFFECT_ORDER.filter((type) => !DEVICE_MENU_EFFECTS.has(type) && EFFECT_DEFS[type].category === key),
+})).filter((group) => group.types.length > 0);
 
 export function defaultParamsOf(type: EffectType): Record<string, number> {
   return Object.fromEntries(EFFECT_DEFS[type].params.map((p) => [p.id, p.default]));

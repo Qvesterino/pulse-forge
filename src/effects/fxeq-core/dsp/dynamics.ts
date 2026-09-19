@@ -41,9 +41,9 @@ export function createDynamicState(): DynamicState {
  * Uses peak detection with separate attack (fast) and release (slow) coefficients.
  */
 export function processEnvelope(
-  x: number,           // absolute input level
+  x: number, // absolute input level
   state: DynamicState,
-  _attackCoef: number,  // fast (close to 1 = slow attack)
+  _attackCoef: number, // fast (close to 1 = slow attack)
   releaseCoef: number, // slow (close to 1 = slow release)
 ): number {
   // Peak envelope: attack is instant (track the peak), release is smooth.
@@ -66,11 +66,7 @@ export function processEnvelope(
  *
  * Returns linear gain (rangeLin..1).
  */
-export function computeGain(
-  envelope: number,
-  thresholdLin: number,
-  rangeLin: number,
-): number {
+export function computeGain(envelope: number, thresholdLin: number, rangeLin: number): number {
   if (envelope <= thresholdLin || thresholdLin <= 0) return 1;
   // Linear gain reduction above threshold.
   const over = (envelope - thresholdLin) / thresholdLin;

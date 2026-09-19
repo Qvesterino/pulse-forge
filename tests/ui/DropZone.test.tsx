@@ -17,9 +17,7 @@ describe("DropZone", () => {
 
   it("renders the drop zone button with the aria-label", () => {
     renderWithContext(<DropZone onImport={vi.fn()} />);
-    expect(
-      screen.getByRole("button", { name: /Drop audio files here or click to browse/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Drop audio files here or click to browse/i })).toBeInTheDocument();
   });
 
   it("shows the active state when dragging files over", () => {

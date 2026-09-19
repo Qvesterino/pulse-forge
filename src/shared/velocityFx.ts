@@ -20,7 +20,5 @@ export function randomizeVelocities(current: number[], min = 0.45, max = 1): num
  */
 export function humanizeVelocities(current: number[], amount = 0.12): number[] {
   const a = Math.max(0, amount);
-  return current.map((v) =>
-    v > 0 ? Math.max(FLOOR, Math.min(1, v + (Math.random() * 2 - 1) * a)) : v,
-  );
+  return current.map((v) => (v > 0 ? Math.max(FLOOR, Math.min(1, v + (Math.random() * 2 - 1) * a)) : v));
 }

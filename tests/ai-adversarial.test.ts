@@ -33,11 +33,7 @@ import {
 } from "../src/ai/markov";
 import { analyzeLoopForFlip, buildFlipOptions, flipSeed } from "../src/ai/flip";
 import { measureDrumQuality, measureMelodicQuality, repairDrumRow } from "../src/ai/quality";
-import {
-  evaluateStyleDistance,
-  getStyleQualityProfile,
-  syncopationWeight,
-} from "../src/ai/style-quality";
+import { evaluateStyleDistance, getStyleQualityProfile, syncopationWeight } from "../src/ai/style-quality";
 import { extractPatternFeatures } from "../src/ai/features/pattern-features";
 import { applyPhraseDynamics, buildPhrasePlan } from "../src/ai/phrase";
 import { mulberry32 } from "../src/shared/rng";
@@ -151,12 +147,7 @@ describe("markov engine — adversarial inputs", () => {
   });
 
   it("buildPadModel on NaN/Inf row values sanitizes and produces a valid sequence", () => {
-    const row = [
-      NaN, Infinity, -Infinity, 0.5,
-      0.3, -0.5, 1.5, 2,
-      100, -100, 0, 0,
-      0, 0, 0, 0,
-    ];
+    const row = [NaN, Infinity, -Infinity, 0.5, 0.3, -0.5, 1.5, 2, 100, -100, 0, 0, 0, 0, 0, 0];
     const model = buildPadModel(0, [row]);
     expect(model.transitions.length).toBe(256 * 256);
     const seq = generatePadSequence(model, 16, mulberry32(3));
@@ -305,9 +296,7 @@ describe("generator — adversarial inputs", () => {
   //       should fall back to a known genre instead.
   it.skip("unknown genre string falls back without throwing", () => {
     const doc = freshDoc();
-    expect(() =>
-      generatePattern(doc, makeOptions({ genre: "polka" as never })),
-    ).not.toThrow();
+    expect(() => generatePattern(doc, makeOptions({ genre: "polka" as never }))).not.toThrow();
   });
 
   it("non-string seed does not throw (treats as empty / coerced)", () => {
@@ -630,10 +619,7 @@ describe("style-quality — adversarial inputs", () => {
   //       `round(densityDistance * 0.4 + ...)`. Style gate should sanitize.
   it.skip("evaluateStyleDistance on NaN/Infinity rows produces finite distance", () => {
     const groove = resolveGroove("techno", "Driving");
-    const rows = [
-      new Array(16).fill(NaN),
-      new Array(16).fill(Infinity),
-    ];
+    const rows = [new Array(16).fill(NaN), new Array(16).fill(Infinity)];
     const result = evaluateStyleDistance(groove, rows, 16);
     expect(Number.isFinite(result.distance)).toBe(true);
   });

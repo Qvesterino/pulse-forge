@@ -20,7 +20,7 @@
 import type { ReasonCode } from "./assistant.js";
 
 export const AVAILABLE_LOCALES = ["en", "sk"] as const;
-export type ExplanationLocale = typeof AVAILABLE_LOCALES[number];
+export type ExplanationLocale = (typeof AVAILABLE_LOCALES)[number];
 
 const EXPLANATIONS_EN: Record<ReasonCode, string> = {
   LOW_FREQUENCY_RUMBLE: "Low-frequency energy below the instrument range was detected.",
@@ -91,10 +91,7 @@ export function getExplanation(reasonCode: ReasonCode): string {
   return EXPLANATIONS_EN[reasonCode] ?? `Unknown reason: ${reasonCode}`;
 }
 
-export function getExplanationForLocale(
-  reasonCode: ReasonCode,
-  locale: string,
-): string {
+export function getExplanationForLocale(reasonCode: ReasonCode, locale: string): string {
   const map = LOCALE_MAPS[locale];
   if (map && map[reasonCode]) {
     return map[reasonCode];

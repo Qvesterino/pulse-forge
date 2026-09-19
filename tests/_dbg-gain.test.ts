@@ -25,7 +25,12 @@ describe("dbg gain", () => {
       limiterEnabled: 0,
       globalMix: 100,
     });
-    console.log("[dbgG] target:", mod.getParameter("band1.envModTarget"), "depth:", mod.getParameter("band1.envModDepth"));
+    console.log(
+      "[dbgG] target:",
+      mod.getParameter("band1.envModTarget"),
+      "depth:",
+      mod.getParameter("band1.envModDepth"),
+    );
     run(mod, tone(80, 20, 0.9));
     const out = tone(80, 10, 0.9);
     for (let off = 0; off < out.length; off += BLOCK) {
@@ -34,7 +39,10 @@ describe("dbg gain", () => {
       let sum = 0;
       for (let i = 0; i < BLOCK; i++) sum += view[0][i] * view[0][i];
       const rms = Math.sqrt(sum / BLOCK);
-      console.log(`[dbgG] blk ${off / BLOCK}: rms=${rms.toFixed(3)} peaks=`, Array.from(mod.getBandPeaks(), (p) => p.toFixed(2)).join(","));
+      console.log(
+        `[dbgG] blk ${off / BLOCK}: rms=${rms.toFixed(3)} peaks=`,
+        Array.from(mod.getBandPeaks(), (p) => p.toFixed(2)).join(","),
+      );
     }
   });
 });

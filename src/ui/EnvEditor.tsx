@@ -36,9 +36,13 @@ export function EnvEditor({
   const commit = (id: string, v: number) => services.store.execute(setInstrumentParam(doc, track.id, id, v));
 
   const svgRef = useRef<SVGSVGElement>(null);
-  const drag = useRef<{ stage: Stage | "sustain"; startX: number; base: number; baseSus: number; pxPerSec: number } | null>(
-    null,
-  );
+  const drag = useRef<{
+    stage: Stage | "sustain";
+    startX: number;
+    base: number;
+    baseSus: number;
+    pxPerSec: number;
+  } | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
 
   const delay = p.envDelay ?? 0;
@@ -74,7 +78,17 @@ export function EnvEditor({
       (e.currentTarget as Element).setPointerCapture(e.pointerId);
     } catch {}
     const base =
-      stage === "sustain" ? sustain : stage === "delay" ? delay : stage === "attack" ? attack : stage === "hold" ? hold : stage === "decay" ? decay : release;
+      stage === "sustain"
+        ? sustain
+        : stage === "delay"
+          ? delay
+          : stage === "attack"
+            ? attack
+            : stage === "hold"
+              ? hold
+              : stage === "decay"
+                ? decay
+                : release;
     drag.current = { stage, startX: e.clientX, base, baseSus: sustain, pxPerSec };
     setDragging(stage);
   };
@@ -152,15 +166,7 @@ export function EnvEditor({
         {/* envelope curve */}
         <polyline
           className="env-curve"
-          points={[
-            pts.start,
-            pts.delayEnd,
-            pts.attackEnd,
-            pts.holdEnd,
-            pts.decayEnd,
-            pts.susEnd,
-            pts.relEnd,
-          ]
+          points={[pts.start, pts.delayEnd, pts.attackEnd, pts.holdEnd, pts.decayEnd, pts.susEnd, pts.relEnd]
             .map((pt) => `${pt.x},${pt.y}`)
             .join(" ")}
         />
@@ -180,7 +186,14 @@ export function EnvEditor({
         {shapeBadge("aShape", pts.start.x + 2, "A", p.aShape ?? 0)}
         {shapeBadge("dShape", pts.holdEnd.x - 6, "D", p.dShape ?? 0)}
         {shapeBadge("rShape", pts.susEnd.x + 4, "R", p.rShape ?? 0)}
-        <text x={pts.decayEnd.x} y={H - 4} className="env-badge" onClick={cycleLoop} role="button" aria-label="Cycle decay loop">
+        <text
+          x={pts.decayEnd.x}
+          y={H - 4}
+          className="env-badge"
+          onClick={cycleLoop}
+          role="button"
+          aria-label="Cycle decay loop"
+        >
           {`LOOP·${Math.round(p.dLoop ?? 0)}×`}
         </text>
         {handle(pts.delayEnd, "delay", dragging === "delay")}

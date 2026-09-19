@@ -58,7 +58,7 @@ interface InstrumentFingerprint {
 const FINGERPRINTS: Record<InstrumentType, InstrumentFingerprint> = {
   vocalMale: {
     pitchRange: { low: 80, high: 180 },
-    spectralProfile: [0.02, 0.04, 0.10, 0.15, 0.18, 0.17, 0.14, 0.10, 0.07, 0.03],
+    spectralProfile: [0.02, 0.04, 0.1, 0.15, 0.18, 0.17, 0.14, 0.1, 0.07, 0.03],
     transientDensity: 1.5,
     voicedRatio: 0.6,
     stereoWidthDb: -12,
@@ -66,7 +66,7 @@ const FINGERPRINTS: Record<InstrumentType, InstrumentFingerprint> = {
   },
   vocalFemale: {
     pitchRange: { low: 160, high: 350 },
-    spectralProfile: [0.01, 0.02, 0.05, 0.10, 0.15, 0.18, 0.17, 0.15, 0.12, 0.05],
+    spectralProfile: [0.01, 0.02, 0.05, 0.1, 0.15, 0.18, 0.17, 0.15, 0.12, 0.05],
     transientDensity: 1.5,
     voicedRatio: 0.6,
     stereoWidthDb: -12,
@@ -90,7 +90,7 @@ const FINGERPRINTS: Record<InstrumentType, InstrumentFingerprint> = {
   },
   keys: {
     pitchRange: { low: 100, high: 1200 },
-    spectralProfile: [0.05, 0.07, 0.10, 0.12, 0.13, 0.13, 0.12, 0.10, 0.10, 0.08],
+    spectralProfile: [0.05, 0.07, 0.1, 0.12, 0.13, 0.13, 0.12, 0.1, 0.1, 0.08],
     transientDensity: 1.0,
     voicedRatio: 0.1,
     stereoWidthDb: -6,
@@ -98,7 +98,7 @@ const FINGERPRINTS: Record<InstrumentType, InstrumentFingerprint> = {
   },
   drums: {
     pitchRange: null,
-    spectralProfile: [0.12, 0.15, 0.12, 0.10, 0.08, 0.08, 0.08, 0.10, 0.10, 0.07],
+    spectralProfile: [0.12, 0.15, 0.12, 0.1, 0.08, 0.08, 0.08, 0.1, 0.1, 0.07],
     transientDensity: 5.0,
     voicedRatio: 0.05,
     stereoWidthDb: -8,
@@ -106,7 +106,7 @@ const FINGERPRINTS: Record<InstrumentType, InstrumentFingerprint> = {
   },
   bus: {
     pitchRange: null,
-    spectralProfile: [0.06, 0.08, 0.10, 0.11, 0.12, 0.13, 0.13, 0.11, 0.09, 0.07],
+    spectralProfile: [0.06, 0.08, 0.1, 0.11, 0.12, 0.13, 0.13, 0.11, 0.09, 0.07],
     transientDensity: 2.0,
     voicedRatio: 0.1,
     stereoWidthDb: -3,
@@ -114,7 +114,7 @@ const FINGERPRINTS: Record<InstrumentType, InstrumentFingerprint> = {
   },
   master: {
     pitchRange: null,
-    spectralProfile: [0.05, 0.07, 0.09, 0.11, 0.12, 0.13, 0.13, 0.12, 0.10, 0.08],
+    spectralProfile: [0.05, 0.07, 0.09, 0.11, 0.12, 0.13, 0.13, 0.12, 0.1, 0.08],
     transientDensity: 2.0,
     voicedRatio: 0.1,
     stereoWidthDb: -2,
@@ -124,10 +124,7 @@ const FINGERPRINTS: Record<InstrumentType, InstrumentFingerprint> = {
 
 // ── Scoring helpers ──────────────────────────────────────────
 
-function spectralDistance(
-  observed: number[],
-  reference: number[],
-): number {
+function spectralDistance(observed: number[], reference: number[]): number {
   if (observed.length !== reference.length || observed.length === 0) {
     return 1.0;
   }
@@ -145,10 +142,7 @@ function gaussianScore(value: number, center: number, sigma: number): number {
   return Math.exp(-0.5 * diff * diff);
 }
 
-function pitchInRange(
-  features: UltinaFeatures,
-  range: { low: number; high: number } | null,
-): number {
+function pitchInRange(features: UltinaFeatures, range: { low: number; high: number } | null): number {
   if (!range) return 0.7; // neutral — pitch not applicable
   if (!features.fundamentalRange) return 0.3; // no pitch detected
   const f0 = (features.fundamentalRange.low + features.fundamentalRange.high) / 2;
@@ -163,9 +157,10 @@ export function classifyInstrument(features: UltinaFeatures): ClassificationResu
   const scores: Partial<Record<InstrumentType, number>> = {};
 
   // Extract observed spectral profile ratios
-  const observedProfile = features.spectralProfile.length === 10
-    ? features.spectralProfile.map((b) => b.ratio)
-    : [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1];
+  const observedProfile =
+    features.spectralProfile.length === 10
+      ? features.spectralProfile.map((b) => b.ratio)
+      : [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1];
 
   for (const instrument of Object.keys(FINGERPRINTS) as InstrumentType[]) {
     const fp = FINGERPRINTS[instrument];
@@ -178,39 +173,23 @@ export function classifyInstrument(features: UltinaFeatures): ClassificationResu
     const pitchScore = pitchInRange(features, fp.pitchRange);
 
     // Transient density (weight: 15%)
-    const transientScore = gaussianScore(
-      features.transientDensity,
-      fp.transientDensity,
-      3.0,
-    );
+    const transientScore = gaussianScore(features.transientDensity, fp.transientDensity, 3.0);
 
     // Voiced ratio (weight: 15%)
-    const voicedScore = gaussianScore(
-      features.voicedRatio,
-      fp.voicedRatio,
-      0.3,
-    );
+    const voicedScore = gaussianScore(features.voicedRatio, fp.voicedRatio, 0.3);
 
     // Stereo width (weight: 10%)
-    const stereoScore = gaussianScore(
-      features.stereoWidthDb,
-      fp.stereoWidthDb,
-      8.0,
-    );
+    const stereoScore = gaussianScore(features.stereoWidthDb, fp.stereoWidthDb, 8.0);
 
     // Crest factor (weight: 5%)
-    const crestScore = gaussianScore(
-      features.crestFactorDb,
-      fp.crestFactorDb,
-      5.0,
-    );
+    const crestScore = gaussianScore(features.crestFactorDb, fp.crestFactorDb, 5.0);
 
     const total =
-      specScore * 0.40 +
+      specScore * 0.4 +
       pitchScore * 0.15 +
       transientScore * 0.15 +
       voicedScore * 0.15 +
-      stereoScore * 0.10 +
+      stereoScore * 0.1 +
       crestScore * 0.05;
 
     scores[instrument] = Math.max(0, Math.min(1, total));
@@ -238,21 +217,13 @@ export function classifyInstrument(features: UltinaFeatures): ClassificationResu
   };
 }
 
-function buildExplanation(
-  instrument: InstrumentType,
-  confidence: number,
-  features: UltinaFeatures,
-): string {
-  const confLabel = confidence > 0.7 ? "High confidence"
-    : confidence > 0.5 ? "Moderate confidence"
-    : "Low confidence";
+function buildExplanation(instrument: InstrumentType, confidence: number, features: UltinaFeatures): string {
+  const confLabel = confidence > 0.7 ? "High confidence" : confidence > 0.5 ? "Moderate confidence" : "Low confidence";
 
   const details: string[] = [];
 
   if (features.fundamentalRange) {
-    const f0 = Math.round(
-      (features.fundamentalRange.low + features.fundamentalRange.high) / 2,
-    );
+    const f0 = Math.round((features.fundamentalRange.low + features.fundamentalRange.high) / 2);
     details.push(`fundamental at ${f0} Hz`);
   }
   if (features.transientDensity > 3) {
@@ -269,9 +240,7 @@ function buildExplanation(
     details.push(`sustained tonal content`);
   }
 
-  const detailStr = details.length > 0
-    ? ` (${details.join(", ")})`
-    : "";
+  const detailStr = details.length > 0 ? ` (${details.join(", ")})` : "";
 
   return `${confLabel}: detected as ${INSTRUMENT_LABELS[instrument]}${detailStr}.`;
 }

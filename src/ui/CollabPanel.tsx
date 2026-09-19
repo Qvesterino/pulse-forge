@@ -101,7 +101,11 @@ export function CollabPanel({ onReplaceServices }: { onReplaceServices: (service
     const url =
       isJam && typeof location !== "undefined"
         ? location.href
-        : shareUrl(session.roomId, session.serverUrl, typeof location !== "undefined" ? location.origin : "https://kyx.app");
+        : shareUrl(
+            session.roomId,
+            session.serverUrl,
+            typeof location !== "undefined" ? location.origin : "https://kyx.app",
+          );
     try {
       await navigator.clipboard.writeText(url);
       setCopied(true);
@@ -158,7 +162,10 @@ export function CollabPanel({ onReplaceServices }: { onReplaceServices: (service
       <div className="collab-title">
         JAM SESSION <span className={`collab-status collab-status-${statusClass}`}>{session.status.toUpperCase()}</span>
         {isJam && (
-          <span className="collab-jam-badge" title="This room was opened from a gallery beat — the invite link carries the beat">
+          <span
+            className="collab-jam-badge"
+            title="This room was opened from a gallery beat — the invite link carries the beat"
+          >
             LIVE JAM
           </span>
         )}
@@ -195,7 +202,8 @@ export function CollabPanel({ onReplaceServices }: { onReplaceServices: (service
         <div className="collab-bandmate" role="group" aria-label="AI bandmate">
           <div className="collab-bandmate-head">
             <span className="collab-bandmate-title">
-              🤖 AI BANDMATE <span className={bmState.enabled ? "collab-bandmate-on" : "collab-bandmate-off"}>
+              🤖 AI BANDMATE{" "}
+              <span className={bmState.enabled ? "collab-bandmate-on" : "collab-bandmate-off"}>
                 {bmState.enabled ? "ONLINE" : "OFFLINE"}
               </span>
             </span>
@@ -224,7 +232,10 @@ export function CollabPanel({ onReplaceServices }: { onReplaceServices: (service
                 plays drums on phrase boundaries while the room plays — its rows, its track, your call
               </span>
               {bmState.sceneRole && (
-                <span className="collab-bandmate-scene" title="The bot reads the scene role and adapts (breaks held, builds filled)">
+                <span
+                  className="collab-bandmate-scene"
+                  title="The bot reads the scene role and adapts (breaks held, builds filled)"
+                >
                   SCENE: {bmState.sceneRole.toUpperCase()}
                 </span>
               )}

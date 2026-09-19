@@ -42,7 +42,9 @@ const FALLBACK_DURATION = 4;
 
 function isTypingTarget(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
-  return !!el && (el.tagName === "INPUT" || el.tagName === "SELECT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+  return (
+    !!el && (el.tagName === "INPUT" || el.tagName === "SELECT" || el.tagName === "TEXTAREA" || el.isContentEditable)
+  );
 }
 
 export interface MelodicKeysHost {

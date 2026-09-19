@@ -16,10 +16,15 @@ const SOFT_CLIP_THRESHOLD = 0.95; // ≈ −0.45 dBFS — linear below, tanh kne
 /** Soft-knee limiter: linear below the threshold, tanh asymptote to ±1. */
 export function softClipSample(x: number): number {
   if (x > SOFT_CLIP_THRESHOLD) {
-    return SOFT_CLIP_THRESHOLD + (1 - SOFT_CLIP_THRESHOLD) * Math.tanh((x - SOFT_CLIP_THRESHOLD) / (1 - SOFT_CLIP_THRESHOLD));
+    return (
+      SOFT_CLIP_THRESHOLD + (1 - SOFT_CLIP_THRESHOLD) * Math.tanh((x - SOFT_CLIP_THRESHOLD) / (1 - SOFT_CLIP_THRESHOLD))
+    );
   }
   if (x < -SOFT_CLIP_THRESHOLD) {
-    return -SOFT_CLIP_THRESHOLD - (1 - SOFT_CLIP_THRESHOLD) * Math.tanh((-x - SOFT_CLIP_THRESHOLD) / (1 - SOFT_CLIP_THRESHOLD));
+    return (
+      -SOFT_CLIP_THRESHOLD -
+      (1 - SOFT_CLIP_THRESHOLD) * Math.tanh((-x - SOFT_CLIP_THRESHOLD) / (1 - SOFT_CLIP_THRESHOLD))
+    );
   }
   return x;
 }

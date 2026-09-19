@@ -25,7 +25,12 @@ function setup(snapshots: ProjectSnapshot[]) {
   const doc = createProjectFromTemplate("house");
   const services = mockServices(doc);
   const core = services.core as unknown as {
-    snapshots: { list: ReturnType<typeof vi.fn>; save: ReturnType<typeof vi.fn>; delete: ReturnType<typeof vi.fn>; prune: ReturnType<typeof vi.fn> };
+    snapshots: {
+      list: ReturnType<typeof vi.fn>;
+      save: ReturnType<typeof vi.fn>;
+      delete: ReturnType<typeof vi.fn>;
+      prune: ReturnType<typeof vi.fn>;
+    };
   };
   core.snapshots.list = vi.fn(async () => snapshots);
   core.snapshots.save = vi.fn(async (_projectId: string, doc_: unknown, label: string) => ({
@@ -53,10 +58,7 @@ describe("snapshots section in the history panel", () => {
   it("⊕ NOW saves a manual snapshot and refreshes the list", async () => {
     const { services, core } = setup([]);
     // After the manual save the refresh re-lists — now with one entry.
-    core.snapshots.list = vi
-      .fn()
-      .mockResolvedValueOnce([])
-      .mockResolvedValue([snapshot()]);
+    core.snapshots.list = vi.fn().mockResolvedValueOnce([]).mockResolvedValue([snapshot()]);
     renderWithContext(<UndoHistoryPanel open />, { services });
 
     await screen.findByText(/No snapshots yet/);
@@ -115,9 +117,7 @@ describe("snapshots section in the history panel", () => {
 
     fireEvent.click(await screen.findByText("RESTORE"));
 
-    const safetyCall = core.snapshots.save.mock.calls.find(
-      (call) => (call[2] as string) === "Auto — before restore",
-    );
+    const safetyCall = core.snapshots.save.mock.calls.find((call) => (call[2] as string) === "Auto — before restore");
     expect(safetyCall).toBeTruthy();
     expect(safetyCall?.[0]).toBe(services.store.doc.id);
     await waitFor(() => expect(core.snapshots.prune).toHaveBeenCalled());

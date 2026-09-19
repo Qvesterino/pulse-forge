@@ -35,11 +35,7 @@
 //   - learnActive, delta
 // ═══════════════════════════════════════════════════════════
 
-import type {
-  ModuleProcessArgs,
-  ModuleProcessorContext,
-  UltinaModuleProcessor,
-} from "../ultinaProcessor.js";
+import type { ModuleProcessArgs, ModuleProcessorContext, UltinaModuleProcessor } from "../ultinaProcessor.js";
 import {
   ampToDb,
   clamp,
@@ -54,10 +50,7 @@ import {
 import { channelModeFromValue } from "../../contracts/channelModes.js";
 import { MidSideProcessor } from "../multiband.js";
 import type { UnmaskMeters } from "../../contracts/meters.js";
-import {
-  SpectralRegistry,
-  SPECTRAL_BANDS,
-} from "../spectralRegistry.js";
+import { SpectralRegistry, SPECTRAL_BANDS } from "../spectralRegistry.js";
 
 // ── Constants ──────────────────────────────────────────────
 
@@ -214,10 +207,7 @@ export class UnmaskModuleProcessor implements UltinaModuleProcessor {
 
     // ── Cross-instance ecosystem: merge aggregate masker from all other instances ──
     if (ecosystemEnabled && this.instanceId) {
-      const hasData = SpectralRegistry.getInstance().getAggregateMasker(
-        this.instanceId,
-        this.ecosystemMaskerDb,
-      );
+      const hasData = SpectralRegistry.getInstance().getAggregateMasker(this.instanceId, this.ecosystemMaskerDb);
       if (hasData) {
         // Merge: for each band, take the MAX of the local scEnv (as amplitude)
         // and the ecosystem masker (converted from dB to amplitude).
@@ -286,9 +276,7 @@ export class UnmaskModuleProcessor implements UltinaModuleProcessor {
     envCoef: number,
   ): void {
     const mainSrc = channels[0];
-    const scSrc = scEnabled >= 0.5 && sidechain && sidechain.length > 0
-      ? sidechain[0]
-      : null;
+    const scSrc = scEnabled >= 0.5 && sidechain && sidechain.length > 0 ? sidechain[0] : null;
 
     if (scSrc) {
       // Copy sidechain source to analysis buffer. Bounded by scSrc.length:
@@ -336,17 +324,17 @@ export class UnmaskModuleProcessor implements UltinaModuleProcessor {
         env += envCoef * (abs - env);
       }
 
-        bq.z1[0] = z1;
-        bq.z2[0] = z2;
-        this.mainEnv[b] = env;
-        // Non-finite state guard (see processBiquadChannel): a poisoned
-        // recursion must not persist forever.
-        if (!Number.isFinite(z1) || !Number.isFinite(z2) || !Number.isFinite(env)) {
-          bq.z1[0] = 0;
-          bq.z2[0] = 0;
-          this.mainEnv[b] = 0;
-        }
+      bq.z1[0] = z1;
+      bq.z2[0] = z2;
+      this.mainEnv[b] = env;
+      // Non-finite state guard (see processBiquadChannel): a poisoned
+      // recursion must not persist forever.
+      if (!Number.isFinite(z1) || !Number.isFinite(z2) || !Number.isFinite(env)) {
+        bq.z1[0] = 0;
+        bq.z2[0] = 0;
+        this.mainEnv[b] = 0;
       }
+    }
 
     // Sidechain analysis
     if (scSrc) {
@@ -379,12 +367,7 @@ export class UnmaskModuleProcessor implements UltinaModuleProcessor {
     }
   }
 
-  private computeMaskingAndGain(
-    amount: number,
-    thresholdDb: number,
-    _envCoef: number,
-    learnActive: boolean,
-  ): void {
+  private computeMaskingAndGain(amount: number, thresholdDb: number, _envCoef: number, learnActive: boolean): void {
     const amountFactor = clamp(amount / 100, 0, 1);
 
     // Learn mode auto-calibrates the masking threshold from the
@@ -417,9 +400,7 @@ export class UnmaskModuleProcessor implements UltinaModuleProcessor {
       const scDb = ampToDb(this.scEnv[b]);
       // Both silent (e.g. before the first analysis block) must not
       // read as 0 dB masking (−200 − (−200)) and trigger reduction.
-      const maskingDb = (this.mainEnv[b] < 1e-9 && this.scEnv[b] < 1e-9)
-        ? -200
-        : scDb - mainDb;
+      const maskingDb = this.mainEnv[b] < 1e-9 && this.scEnv[b] < 1e-9 ? -200 : scDb - mainDb;
 
       this.maskingPerBandDb[b] = maskingDb;
 
@@ -451,11 +432,7 @@ export class UnmaskModuleProcessor implements UltinaModuleProcessor {
     this.maskingScore = totalMasking / maxPossibleMasking;
   }
 
-  private applyGainChain(
-    channels: Float32Array[],
-    frameCount: number,
-    channelModeRaw: number,
-  ): void {
+  private applyGainChain(channels: Float32Array[], frameCount: number, channelModeRaw: number): void {
     const channelMode = channelModeFromValue(channelModeRaw);
 
     // Build list of active bands (gain above threshold) once per block
@@ -503,11 +480,7 @@ export class UnmaskModuleProcessor implements UltinaModuleProcessor {
    * Optimized: no per-sample sanitizeSample calls (NaN is handled
    * at the final output stage), coefficient references cached.
    */
-  private processChannelsDirect(
-    channels: Float32Array[],
-    frameCount: number,
-    activeBands: number[],
-  ): void {
+  private processChannelsDirect(channels: Float32Array[], frameCount: number, activeBands: number[]): void {
     const n = Math.min(channels[0].length, frameCount);
     const numCh = channels.length;
 

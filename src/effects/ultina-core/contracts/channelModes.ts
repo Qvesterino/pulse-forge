@@ -26,13 +26,7 @@ export type ChannelMode =
   | "transient" // Process transient component only
   | "sustain"; // Process sustain component only
 
-export const CHANNEL_MODES: readonly ChannelMode[] = [
-  "stereo",
-  "mid",
-  "side",
-  "transient",
-  "sustain",
-] as const;
+export const CHANNEL_MODES: readonly ChannelMode[] = ["stereo", "mid", "side", "transient", "sustain"] as const;
 
 /** Normalized value for each channel mode (for VST3 param mapping). */
 export const CHANNEL_MODE_VALUES: Record<ChannelMode, number> = {
@@ -65,10 +59,7 @@ export type CrossoverMode =
   | "analog" // LR4, zero latency
   | "hybrid"; // Linear-phase, transparent
 
-export const CROSSOVER_MODES: readonly CrossoverMode[] = [
-  "analog",
-  "hybrid",
-] as const;
+export const CROSSOVER_MODES: readonly CrossoverMode[] = ["analog", "hybrid"] as const;
 
 /** Number of bands (1 = fullband, 2 = two-band, 3 = three-band). */
 export type BandCount = 1 | 2 | 3;

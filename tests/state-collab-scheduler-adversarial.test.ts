@@ -23,12 +23,7 @@ import {
   shouldStartRemoteScheduler,
   type SharedTransportState,
 } from "../src/collab/transportSync";
-import {
-  roleAllows,
-  isJamRole,
-  normalizeJamRole,
-  JAM_ROLES,
-} from "../src/collab/jamRoles";
+import { roleAllows, isJamRole, normalizeJamRole, JAM_ROLES } from "../src/collab/jamRoles";
 import type { JamRole } from "../src/collab/jamRoles";
 import { etiquetteFor, currentSceneRole } from "../src/collab/bandmate";
 import { createDefaultProject } from "../src/project-model/schema";

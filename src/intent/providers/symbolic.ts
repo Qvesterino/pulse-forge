@@ -60,9 +60,7 @@ const ROLE_INDEX: Record<MelodicRole, number> = { bass: 0, chord: 1, lead: 2 };
 
 /** Mirror the generator's role→track mapping (name match, else positional). */
 function melodicTrackForRole(doc: GenerationContext["project"], options: GenerateOptions, role: MelodicRole) {
-  const instrumentTracks = doc.tracks.filter(
-    (track): track is InstrumentTrack => track.kind === "instrument",
-  );
+  const instrumentTracks = doc.tracks.filter((track): track is InstrumentTrack => track.kind === "instrument");
   const targetTracks =
     options.instrumentTrackIds && options.instrumentTrackIds.length > 0
       ? instrumentTracks.filter((track) => options.instrumentTrackIds!.includes(track.id))
@@ -83,7 +81,9 @@ function sampleFrom(distribution: number[], rand: () => number, temperature: num
   const scaled =
     temperature === 1
       ? normalizeDistribution(distribution)
-      : normalizeDistribution(distribution.map((value) => Math.pow(Math.max(1e-6, value), 1 / Math.max(0.2, temperature))));
+      : normalizeDistribution(
+          distribution.map((value) => Math.pow(Math.max(1e-6, value), 1 / Math.max(0.2, temperature))),
+        );
   const roll = rand();
   let cumulative = 0;
   for (let index = 0; index < scaled.length; index++) {
@@ -116,7 +116,8 @@ async function sampleMelodicParts(
   const root = parsed?.root ?? 0;
   const intervals = SCALE_INTERVALS[parsed?.scaleType ?? "major"];
 
-  const roleEnabled = (role: MelodicRole) => !options.roles || options.roles.includes(role === "chord" ? "chords" : role);
+  const roleEnabled = (role: MelodicRole) =>
+    !options.roles || options.roles.includes(role === "chord" ? "chords" : role);
   const roles = (["bass", "chord", "lead"] as const).filter(roleEnabled);
   if (roles.length === 0) return { bass: [], chord: [], lead: [] };
 
@@ -135,7 +136,14 @@ async function sampleMelodicParts(
     let prevDuration = 2;
     let prevPrevDegree = -1;
     while (notes.length < targetNotes && position < stepCount) {
-      const row = buildMelodicFeatureRow({ genre, role, startStep: position, prevDegree, prevDuration, prevPrevDegree });
+      const row = buildMelodicFeatureRow({
+        genre,
+        role,
+        startStep: position,
+        prevDegree,
+        prevDuration,
+        prevPrevDegree,
+      });
       if (row.length !== MELODIC_FEATURE_COUNT) return null;
       const run = await runMelodicNext(Float32Array.from(row), 1);
       if (!run.ok || !run.degree || !run.duration) return null;
@@ -145,10 +153,7 @@ async function sampleMelodicParts(
       const duration = MELODIC_DURATION_VALUES[durationClass];
 
       if (degree >= 0) {
-        const velocity = Math.max(
-          0.15,
-          Math.min(1, BASE_VELOCITY[role] + (rand() - 0.5) * 2 * velocitySpread),
-        );
+        const velocity = Math.max(0.15, Math.min(1, BASE_VELOCITY[role] + (rand() - 0.5) * 2 * velocitySpread));
         const start = position * STEP_TICKS;
         const durationTicks = duration * STEP_TICKS;
         if (role === "chord") {
@@ -221,7 +226,10 @@ export class SymbolicPriorProvider implements GenerationProvider {
     const melodicRolesWanted = (["bass", "chords", "lead"] as const).some(
       (role) => !options.roles || options.roles.includes(role),
     );
-    if ((!targetDrumTrack || targetDrumTrack.kind !== "drum" || targetDrumTrack.pads.length === 0) && !melodicRolesWanted) {
+    if (
+      (!targetDrumTrack || targetDrumTrack.kind !== "drum" || targetDrumTrack.pads.length === 0) &&
+      !melodicRolesWanted
+    ) {
       return { entries, failures: ["no-drum-track"] };
     }
     const pads = targetDrumTrack?.kind === "drum" ? targetDrumTrack.pads : [];
@@ -244,7 +252,11 @@ export class SymbolicPriorProvider implements GenerationProvider {
         });
 
         // Melodic prior (T2 v2) — replaces template melody when available.
-        const priorMelody = await sampleMelodicParts(plan, context, forkRandom(`${symbolicSeed}|melody.neural`, "stream"));
+        const priorMelody = await sampleMelodicParts(
+          plan,
+          context,
+          forkRandom(`${symbolicSeed}|melody.neural`, "stream"),
+        );
         let notes: Pattern["notes"] = melodicOnly.notes;
         if (priorMelody) {
           notes = {};

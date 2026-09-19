@@ -101,9 +101,7 @@ export function buildPriorFeatureRow(input: PriorFeatureInput): number[] {
   oneHot(PRIOR_STYLE_VOCAB, input.styleId, offset, row);
   offset += PRIOR_STYLE_VOCAB.length;
 
-  const role = PRIOR_ROLE_VOCAB.includes(input.role as (typeof PRIOR_ROLE_VOCAB)[number])
-    ? input.role
-    : "unknown";
+  const role = PRIOR_ROLE_VOCAB.includes(input.role as (typeof PRIOR_ROLE_VOCAB)[number]) ? input.role : "unknown";
   oneHot(PRIOR_ROLE_VOCAB, role, offset, row);
   offset += PRIOR_ROLE_VOCAB.length;
 
@@ -144,7 +142,9 @@ export function buildPriorGridRows(params: {
   const rows: number[][] = [];
   for (const role of params.padRoles) {
     for (let step = 0; step < params.stepCount; step++) {
-      rows.push(buildPriorFeatureRow({ genre: params.genre, styleId: params.styleId, role, step, stepCount: params.stepCount }));
+      rows.push(
+        buildPriorFeatureRow({ genre: params.genre, styleId: params.styleId, role, step, stepCount: params.stepCount }),
+      );
     }
   }
   return rows;

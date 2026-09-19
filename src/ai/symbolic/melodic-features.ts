@@ -110,8 +110,7 @@ export function buildMelodicFeatureRow(input: MelodicFeatureInput): number[] {
   row[offset + durationClass(input.prevDuration)] = 1;
   offset += MELODIC_DURATION_CLASSES;
 
-  const interval =
-    input.prevDegree < 0 || input.prevPrevDegree < 0 ? 0 : input.prevDegree - input.prevPrevDegree;
+  const interval = input.prevDegree < 0 || input.prevPrevDegree < 0 ? 0 : input.prevDegree - input.prevPrevDegree;
   row[offset + contourClass(interval)] = 1;
 
   return row;

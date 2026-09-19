@@ -792,10 +792,7 @@
     let writeIdx = [];
     let ringLength = 0;
     function maxSupportedDelaySamples() {
-      return Math.max(
-        Math.ceil(500 / 1e3 * sampleRate2),
-        Math.ceil(syncNoteToBeats("8/1") * 60 / 20 * sampleRate2)
-      );
+      return Math.max(Math.ceil(500 / 1e3 * sampleRate2), Math.ceil(syncNoteToBeats("8/1") * 60 / 20 * sampleRate2));
     }
     function ensureBuffers() {
       const capacity = maxSupportedDelaySamples() + 1;
@@ -1136,13 +1133,9 @@
       const fHi = fc * Math.SQRT2;
       const bandMean = bandLevel(snapshotDb, grid, fLo, fHi);
       const excess = bandMean - baseline;
-      const peaks = findSpectralPeaks(
-        snapshotDb,
-        60,
-        3,
-        peakFftSize,
-        sampleRate2
-      ).filter((p) => p.freqHz >= fLo && p.freqHz <= fHi);
+      const peaks = findSpectralPeaks(snapshotDb, 60, 3, peakFftSize, sampleRate2).filter(
+        (p) => p.freqHz >= fLo && p.freqHz <= fHi
+      );
       const dominant = peaks[0] ?? null;
       const peakFreqHz = dominant?.freqHz ?? fc;
       const peakDb = dominant?.magnitudeDb ?? bandMean;
@@ -1261,11 +1254,7 @@
       runAutoCut(sr) {
         const result = this.runAutoCutDetailed(sr);
         if (!result) return null;
-        return [
-          result.bands[0].suggestedCutDb,
-          result.bands[1].suggestedCutDb,
-          result.bands[2].suggestedCutDb
-        ];
+        return [result.bands[0].suggestedCutDb, result.bands[1].suggestedCutDb, result.bands[2].suggestedCutDb];
       },
       runAutoCutDetailed(sr) {
         const n = analyzer.snapshot("input", snapshotBuf, snapshotGrid, sr);
@@ -1305,13 +1294,9 @@
       const fHi = fc * Math.SQRT2;
       const dryBand = bandLevel(dryDb, grid, fLo, fHi);
       const wetBand = bandLevel(wetDb, grid, fLo, fHi);
-      const wetPeaks = findSpectralPeaks(
-        wetDb,
-        60,
-        3,
-        peakFftSize,
-        sampleRate2
-      ).filter((p) => p.freqHz >= fLo && p.freqHz <= fHi);
+      const wetPeaks = findSpectralPeaks(wetDb, 60, 3, peakFftSize, sampleRate2).filter(
+        (p) => p.freqHz >= fLo && p.freqHz <= fHi
+      );
       const dominant = wetPeaks[0] ?? null;
       const excess = wetBand - dryBand;
       const soft = softKneeMap(excess, minExcess, 6);
@@ -1429,11 +1414,7 @@
       runUnmask(sr) {
         const result = this.runUnmaskDetailed(sr);
         if (!result) return null;
-        return [
-          result.bands[0].suggestedCutDb,
-          result.bands[1].suggestedCutDb,
-          result.bands[2].suggestedCutDb
-        ];
+        return [result.bands[0].suggestedCutDb, result.bands[1].suggestedCutDb, result.bands[2].suggestedCutDb];
       },
       runUnmaskDetailed(sr) {
         const dryN = analyzer.snapshot("dry", dryBuf, snapshotGrid, sr);
@@ -1631,13 +1612,27 @@
   // src/effects/ozvena-core/modules/factoryIr.ts
   var IR_SPECS = {
     "vocal-booth": { lengthSec: 1.2, earlyTaps: 6, earlyMaxMs: 25, lateDecay: 4.5, brightness: 0.3, character: "dry" },
-    "plate": { lengthSec: 2.5, earlyTaps: 0, earlyMaxMs: 0, lateDecay: 2, brightness: 0.85, character: "metallic" },
-    "hall": { lengthSec: 4, earlyTaps: 16, earlyMaxMs: 80, lateDecay: 1.2, brightness: 0.5, character: "warm" },
-    "cathedral": { lengthSec: 5, earlyTaps: 12, earlyMaxMs: 120, lateDecay: 0.8, brightness: 0.2, character: "dark" },
+    plate: { lengthSec: 2.5, earlyTaps: 0, earlyMaxMs: 0, lateDecay: 2, brightness: 0.85, character: "metallic" },
+    hall: { lengthSec: 4, earlyTaps: 16, earlyMaxMs: 80, lateDecay: 1.2, brightness: 0.5, character: "warm" },
+    cathedral: { lengthSec: 5, earlyTaps: 12, earlyMaxMs: 120, lateDecay: 0.8, brightness: 0.2, character: "dark" },
     // Roadmap O7: mono fallbacks for the wide variants (true-stereo set is
     // preferred at runtime; these keep the catalogue total).
-    "plate-wide": { lengthSec: 2.5, earlyTaps: 0, earlyMaxMs: 0, lateDecay: 2, brightness: 0.85, character: "metallic" },
-    "chamber-wide": { lengthSec: 4, earlyTaps: 16, earlyMaxMs: 90, lateDecay: 1.1, brightness: 0.45, character: "warm" }
+    "plate-wide": {
+      lengthSec: 2.5,
+      earlyTaps: 0,
+      earlyMaxMs: 0,
+      lateDecay: 2,
+      brightness: 0.85,
+      character: "metallic"
+    },
+    "chamber-wide": {
+      lengthSec: 4,
+      earlyTaps: 16,
+      earlyMaxMs: 90,
+      lateDecay: 1.1,
+      brightness: 0.45,
+      character: "warm"
+    }
   };
   function makeRng2(seed) {
     let s = seed | 0;
@@ -1712,9 +1707,9 @@
   }
   var IR4_SPECS = {
     "vocal-booth": { lengthSec: 1.2, spreadMs: 18, seed: 101, decay: 3.4, bright: 0.45 },
-    "plate": { lengthSec: 1.8, spreadMs: 4, seed: 202, decay: 2.2, bright: 0.85 },
-    "hall": { lengthSec: 2.5, spreadMs: 38, seed: 303, decay: 1.4, bright: 0.55 },
-    "cathedral": { lengthSec: 3, spreadMs: 55, seed: 404, decay: 1.1, bright: 0.35 },
+    plate: { lengthSec: 1.8, spreadMs: 4, seed: 202, decay: 2.2, bright: 0.85 },
+    hall: { lengthSec: 2.5, spreadMs: 38, seed: 303, decay: 1.4, bright: 0.55 },
+    cathedral: { lengthSec: 3, spreadMs: 55, seed: 404, decay: 1.1, bright: 0.35 },
     // Roadmap O7: wide true-stereo variants (4ch decorrelated by design).
     "plate-wide": { lengthSec: 1.8, spreadMs: 22, seed: 205, decay: 2.2, bright: 0.85 },
     "chamber-wide": { lengthSec: 3, spreadMs: 46, seed: 407, decay: 1.3, bright: 0.5 }
@@ -2179,10 +2174,10 @@
         prepared = true;
         const maxScaleL = 250 / BASE_TAPS_MS_L[MAX_TAPS - 1] * sampleRate2 / 1e3;
         const maxScaleR = 250 / BASE_TAPS_MS_R[MAX_TAPS - 1] * sampleRate2 / 1e3;
-        const capacity = Math.max(1, Math.ceil(Math.max(
-          BASE_TAPS_MS_L[MAX_TAPS - 1] * maxScaleL,
-          BASE_TAPS_MS_R[MAX_TAPS - 1] * maxScaleR
-        )));
+        const capacity = Math.max(
+          1,
+          Math.ceil(Math.max(BASE_TAPS_MS_L[MAX_TAPS - 1] * maxScaleL, BASE_TAPS_MS_R[MAX_TAPS - 1] * maxScaleR))
+        );
         bufferL = new Float32Array(capacity);
         bufferR = new Float32Array(capacity);
         writePosL = 0;
@@ -2448,11 +2443,7 @@
       dampAlpha = 1 - Math.exp(-2 * Math.PI * cutoffHz / sampleRate2);
       dampAlpha = q322(clamp(dampAlpha * (0.3 + damp * 0.7), 1e-6, 1));
       hpCoef = q322(Math.exp(-TAU * FDN_HP_HZ / sampleRate2));
-      feedbackGain = clamp(
-        q322(Math.pow(1e-3, avgLen / (decaySec * sampleRate2))),
-        0,
-        0.99
-      );
+      feedbackGain = clamp(q322(Math.pow(1e-3, avgLen / (decaySec * sampleRate2))), 0, 0.99);
       diffG = 0.3 + 0.45 * (clamp(params.diffusion, 0, 100) / 100);
       shAmt = clamp(params.shimmer, 0, 1);
       const bandTarget = (mult) => Math.pow(1e-3, avgLen / (decaySec * clamp(mult, 0.25, 4)) / sampleRate2) / feedbackGain;
@@ -2619,10 +2610,7 @@
       return x;
     }
     function applyShimmerWindow() {
-      shWindow = Math.max(
-        2048,
-        Math.round(SH_WIN_BASE * SH_WIN_MULT[shQuality] * sampleRate2 / 48e3) & ~1
-      );
+      shWindow = Math.max(2048, Math.round(SH_WIN_BASE * SH_WIN_MULT[shQuality] * sampleRate2 / 48e3) & ~1);
       if (shWindow > shWinMax) shWindow = shWinMax;
     }
     return {
@@ -3003,11 +2991,7 @@
       const cutoffHz = clamp(params.dampingFreqHz, 30, 2e4);
       dampAlpha = q323(clamp((1 - Math.exp(-2 * Math.PI * cutoffHz / sampleRate2)) * (0.3 + damp * 0.7), 1e-6, 1));
       hpCoef = q323(Math.exp(-TAU * FDN_HP_HZ / sampleRate2));
-      feedbackGain = clamp(
-        q323(Math.pow(1e-3, avgLen / (decaySec * sampleRate2))),
-        0,
-        0.99
-      );
+      feedbackGain = clamp(q323(Math.pow(1e-3, avgLen / (decaySec * sampleRate2))), 0, 0.99);
       diffG = 0.3 + 0.45 * (clamp(params.diffusion, 0, 100) / 100);
       shAmt = clamp(params.shimmer, 0, 1);
       const bandTarget = (mult) => Math.pow(1e-3, avgLen / (decaySec * clamp(mult, 0.25, 4)) / sampleRate2) / feedbackGain;
@@ -3155,10 +3139,7 @@
       return x;
     }
     function applyShimmerWindow() {
-      shWindow = Math.max(
-        2048,
-        Math.round(SH_WIN_BASE * SH_WIN_MULT[shQuality] * sampleRate2 / 48e3) & ~1
-      );
+      shWindow = Math.max(2048, Math.round(SH_WIN_BASE * SH_WIN_MULT[shQuality] * sampleRate2 / 48e3) & ~1);
       if (shWindow > shWinMax) shWindow = shWinMax;
     }
     return {
@@ -3479,9 +3460,7 @@
       process(input, blockSize, output) {
         if (blockSize <= 0) return;
         if (output.length < blockSize) {
-          throw new Error(
-            `partitionedConvolver.process: output too small (${output.length} < ${blockSize})`
-          );
+          throw new Error(`partitionedConvolver.process: output too small (${output.length} < ${blockSize})`);
         }
         let done = 0;
         while (done < blockSize) {
@@ -3541,9 +3520,7 @@
   function createPartitionedConvolver(ir, opts) {
     const partitionSize = opts.partitionSize ?? 2048;
     if (!isPow2(partitionSize)) {
-      throw new Error(
-        `createPartitionedConvolver: partitionSize must be a power of two, got ${partitionSize}`
-      );
+      throw new Error(`createPartitionedConvolver: partitionSize must be a power of two, got ${partitionSize}`);
     }
     const numPartitions = Math.ceil(opts.irLength / (partitionSize / 2));
     if (numPartitions < 1) {
@@ -4062,10 +4039,7 @@
     let bpm = 120;
     let prepared = false;
     let state = null;
-    let dcBlocks = [
-      createDcBlocker(44100, 15),
-      createDcBlocker(44100, 15)
-    ];
+    let dcBlocks = [createDcBlocker(44100, 15), createDcBlocker(44100, 15)];
     const preDelay = createPreDelay();
     const smoother = createSmoother();
     const preEq = createPreEq();
@@ -4271,16 +4245,8 @@
       if (modChanged || enginesChanged) {
         const mod = state.mod.enabled ? modPad.getModParams() : { rateHz: 0, depthSamples: 0 };
         const maxDepth = state.mod?.maxDepthSamples ?? 20;
-        plateChamber.setModulation(
-          mod.rateHz * (state.engines.e2.modRateMult ?? 1),
-          mod.depthSamples,
-          maxDepth
-        );
-        hall.setModulation(
-          mod.rateHz * (state.engines.e3.modRateMult ?? 1),
-          mod.depthSamples,
-          maxDepth
-        );
+        plateChamber.setModulation(mod.rateHz * (state.engines.e2.modRateMult ?? 1), mod.depthSamples, maxDepth);
+        hall.setModulation(mod.rateHz * (state.engines.e3.modRateMult ?? 1), mod.depthSamples, maxDepth);
       }
       if (!prev || state.convolution !== prev.convolution) {
         convolution.setParams({
@@ -4334,7 +4300,12 @@
       hall.prepare(sampleRate2, channelCount);
       convolution.prepare(sampleRate2, channelCount, preparedMaxBs);
       limiterQuality = state?.global.quality ?? "standard";
-      safetyLimiter.prepare(sampleRate2, channelCount, preparedMaxBs, pickOversampleFactor(limiterQuality));
+      safetyLimiter.prepare(
+        sampleRate2,
+        channelCount,
+        preparedMaxBs,
+        pickOversampleFactor(limiterQuality)
+      );
       const q0 = limiterQuality;
       lastQualityTier = pickQualityTier(q0);
       plateChamber.setQuality(lastQualityTier);
@@ -4367,7 +4338,12 @@
         hall.prepare(sampleRate2, channelCount);
         convolution.prepare(sampleRate2, channelCount, preparedMaxBs);
         limiterQuality = state?.global.quality ?? "standard";
-        safetyLimiter.prepare(sampleRate2, channelCount, preparedMaxBs, pickOversampleFactor(limiterQuality));
+        safetyLimiter.prepare(
+          sampleRate2,
+          channelCount,
+          preparedMaxBs,
+          pickOversampleFactor(limiterQuality)
+        );
         const q0 = limiterQuality;
         lastQualityTier = pickQualityTier(q0);
         plateChamber.setQuality(lastQualityTier);

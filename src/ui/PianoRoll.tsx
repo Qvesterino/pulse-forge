@@ -341,12 +341,19 @@ export function PianoRollTrack({
       const target = event.target as HTMLElement | null;
       if (
         target &&
-        (target.tagName === "INPUT" || target.tagName === "SELECT" || target.tagName === "TEXTAREA" || target.isContentEditable)
+        (target.tagName === "INPUT" ||
+          target.tagName === "SELECT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
       ) {
         return;
       }
       const cur = cursorRef.current;
-      const isArrow = event.code === "ArrowLeft" || event.code === "ArrowRight" || event.code === "ArrowUp" || event.code === "ArrowDown";
+      const isArrow =
+        event.code === "ArrowLeft" ||
+        event.code === "ArrowRight" ||
+        event.code === "ArrowUp" ||
+        event.code === "ArrowDown";
       if (event.repeat && !isArrow) return;
       if (event.code === "ArrowLeft") {
         event.preventDefault();
@@ -1762,7 +1769,9 @@ export function PianoRollTrack({
           onMouseDown={(ev) => ev.stopPropagation()}
           onPointerDown={(ev) => ev.stopPropagation()}
         >
-          <div className="context-menu-header">{pitchName(notes.find((n) => n.id === noteMenu.noteId)?.pitch ?? 60)}</div>
+          <div className="context-menu-header">
+            {pitchName(notes.find((n) => n.id === noteMenu.noteId)?.pitch ?? 60)}
+          </div>
           <button
             type="button"
             role="menuitem"

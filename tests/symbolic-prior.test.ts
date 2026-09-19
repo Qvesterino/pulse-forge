@@ -100,10 +100,19 @@ describe("prior-features contract", () => {
   });
 
   it("grid rows are pads × steps, row-major", () => {
-    const rows = buildPriorGridRows({ genre: "techno", styleId: "techno.acid", stepCount: 32, padRoles: ["kick", "closedHat", "snare"] });
+    const rows = buildPriorGridRows({
+      genre: "techno",
+      styleId: "techno.acid",
+      stepCount: 32,
+      padRoles: ["kick", "closedHat", "snare"],
+    });
     expect(rows.length).toBe(3 * 32);
-    expect(rows[1]).toEqual(buildPriorFeatureRow({ genre: "techno", styleId: "techno.acid", role: "kick", step: 1, stepCount: 32 }));
-    expect(rows[32]).toEqual(buildPriorFeatureRow({ genre: "techno", styleId: "techno.acid", role: "closedHat", step: 0, stepCount: 32 }));
+    expect(rows[1]).toEqual(
+      buildPriorFeatureRow({ genre: "techno", styleId: "techno.acid", role: "kick", step: 1, stepCount: 32 }),
+    );
+    expect(rows[32]).toEqual(
+      buildPriorFeatureRow({ genre: "techno", styleId: "techno.acid", role: "closedHat", step: 0, stepCount: 32 }),
+    );
   });
 });
 
@@ -130,7 +139,11 @@ describe("symbolic prior provider", () => {
 
   it("produces valid, invariant-clean candidates through the shared gates", async () => {
     const plan = planGeneration(intent, doc);
-    const { entries, failures } = await symbolicPriorProvider.collectCandidates(plan, { project: doc, mode: "apply" }, 1);
+    const { entries, failures } = await symbolicPriorProvider.collectCandidates(
+      plan,
+      { project: doc, mode: "apply" },
+      1,
+    );
     expect(failures).toEqual([]);
     expect(entries.length).toBe(2);
     for (const entry of entries) {
@@ -158,7 +171,7 @@ describe("symbolic prior provider", () => {
       expect(first.entries[index].pattern.generation?.outputContentHash).toBe(
         second.entries[index].pattern.generation?.outputContentHash,
       );
-      const stripIds = (notes: typeof first.entries[number]["pattern"]["notes"]) =>
+      const stripIds = (notes: (typeof first.entries)[number]["pattern"]["notes"]) =>
         JSON.stringify(notes, (key, value) => (key === "id" ? undefined : value));
       expect(stripIds(first.entries[index].pattern.notes)).toBe(stripIds(second.entries[index].pattern.notes));
     }
@@ -167,7 +180,11 @@ describe("symbolic prior provider", () => {
   it("shrink-to-zero on prior failure — never throws", async () => {
     runPriorGridMock.mockResolvedValue({ ok: false, probs: null, source: "fallback" });
     const plan = planGeneration(intent, doc);
-    const { entries, failures } = await symbolicPriorProvider.collectCandidates(plan, { project: doc, mode: "apply" }, 1);
+    const { entries, failures } = await symbolicPriorProvider.collectCandidates(
+      plan,
+      { project: doc, mode: "apply" },
+      1,
+    );
     expect(entries).toEqual([]);
     expect(failures.length).toBe(2);
     expect(failures[0]).toContain("prior-fallback");
@@ -185,7 +202,9 @@ describe("symbolic prior provider", () => {
 describe("async pipeline integration", () => {
   it("merges symbolic candidates into the ranked bank with diagnostics", async () => {
     const doc = testDoc();
-    const result = await (await import("../src/intent/pipeline")).generateAsyncResult(
+    const result = await (
+      await import("../src/intent/pipeline")
+    ).generateAsyncResult(
       doc,
       normalizeIntent({
         genre: "house",

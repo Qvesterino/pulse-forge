@@ -11,7 +11,7 @@
 
 KYX is a **browser-first, local-first electronic-music production workstation** — a hybrid of a groovebox, a step sequencer, a piano-roll DAW, and a sound-design tool. `index.html` describes it as "a full DAW in your browser. Step sequencer, synths, effects and arrangement. Works offline."
 
-- **Type:** hybrid. Core interaction loop is a drum-machine/step-sequencer (pattern mode), but it also has a clip-based arrangement timeline (song mode), a piano roll, a full mixer with sends/returns/groups, 14 synth engines, 36 effect types (including three large "flagship" multi-effect plugins), offline rendering and multi-format export.
+- **Type:** hybrid. Core interaction loop is a drum-machine/step-sequencer (pattern mode), but it also has a clip-based arrangement timeline (song mode), a piano roll, a full mixer with sends/returns/groups, 14 synth engines, 36 effect types (including four large "flagship" multi-effect plugins — PRISM/FXEQ, VLYX/Ultina, VØID/Ozvena and Kaskáda Delay; see `docs/CURRENT-STATE.md` for the canonical inventory), offline rendering and multi-format export.
 - **Architecture:** pure web app (Vite + React 18 + strict TypeScript, PWA with offline install via `vite-plugin-pwa` in `vite.config.ts`, update lifecycle in `src/sw-update.ts`). No desktop shell. A small optional Node server (`server/collab-server.mjs`) provides CRDT relay + a public gallery; the studio itself runs entirely client-side against IndexedDB.
 - **Primary workflow:** open app → landing page (`src/landing/LandingPage.tsx`) → project browser (12 genre templates; `src/project-model/templates.ts`) → studio. In the studio: edit 16/32-step drum grid and/or piano-roll notes per track, apply presets/FX, play scenes (clip launcher semantics), arrange clips on the timeline, then export WAV/MP3/stems/scorepack/MIDI/video or share a link.
 - **Designed primarily for:** beatmaking + composition at the core, with substantial sound design (synth/FX depth) and live performance features (pads, note repeat, macros, quantized scene launches, multi-user jam). It is explicitly *not* an attempt to clone Ableton/FL feature-for-feature (`Pulse Forge — Master Build Prompt.md:5`).
@@ -226,7 +226,7 @@ Groups (all verified in `src/effects/registry.ts` + `src/audio-worklets/`):
 
 **Mixer architecture:** per-track strip (gain/pan/mute/solo/group/color), group tracks with collapsed nesting, solo-is-global + pad-solo-per-track, post-fader sends to returns, return strips with gain + FX, master strip with IN/CEIL/LIMIT/CLIP/tape/M-S/LUFS target. Metering: per-track Analysers, stereo master L/R with correlation, K-weighted LUFS with history, goniometer, spectrum analyser, per-FX meters on demand. Batch operations (`tests/mixer-batch.test.ts`).
 
-Reusability: the `EffectRuntime` + `EffectDefinition` contract (`src/effects/types.ts`) is uniform — the same definition drives UI metadata, live runtime, and offline render. The three flagship plugins are also *vendored cores* kept in sync with an upstream plugin repo (`scripts/vendor-*.mjs`, golden-vector tests), i.e. they are genuine plugin-grade DSP, not toy chains.
+Reusability: the `EffectRuntime` + `EffectDefinition` contract (`src/effects/types.ts`) is uniform — the same definition drives UI metadata, live runtime, and offline render. The four flagship plugins (PRISM/FXEQ, VLYX/Ultina, VØID/Ozvena and Kaskáda Delay) are also *vendored cores* kept in sync with an upstream plugin repo (`scripts/vendor-*.mjs`, golden-vector tests), i.e. they are genuine plugin-grade DSP, not toy chains.
 
 ---
 
@@ -439,7 +439,7 @@ D:\pulse-forge\
 
 1. **Prompt-to-pattern intent engine with full provenance** — deterministic NL parsing + genre grooves + Markov + scale-constrained melodic generation + quality gates + a *trained* ONNX ranker, every result reproducible from its recorded recipe.
 2. **Bit-honest live/export parity** — the same DSP, event expansion, groove, tempo-map and modulator math render offline; exports measure their own true-peak/RMS/correlation.
-3. **Plugin-grade native effect suite in the browser** — three flagship multi-engine plugins (PRISM FXEQ, Ultina, Ozvena) with worklet DSP, golden-vector locks, A/B state, preset systems — plus 33 more effect types.
+3. **Plugin-grade native effect suite in the browser** — four flagship multi-engine plugins (PRISM/FXEQ, VLYX/Ultina, VØID/Ozvena, Kaskáda Delay) with worklet DSP, golden-vector locks, A/B state, preset systems — plus 32 more effect types.
 4. **Performance DNA** — quantized scene launches, pattern queueing, capture-last-take, note repeat, macro/intensity modulation, 4 performance macros per project, pads + melodic QWERTY, MPE.
 5. **Multiplayer jam with shared transport and an AI bandmate** — CRDT sync, role gating, remote cursors, wall-clock transport anchoring ("Instant Jam").
 6. **Zero-backend portability** — whole-project share codes, an `/embed` renderer that reproduces any beat identically from a URL, and a public gallery + remix lineage.
@@ -514,7 +514,7 @@ interface KyxProjectAdapter {
 ## 22. Final Executive Summary
 
 ### KYX in one sentence
-KYX is a mature, browser-first electronic-music workstation — step sequencer + piano roll + 14 synths + 36 effects (three plugin-grade) + clip arrangement — with a deterministic, provenance-tracking AI intent engine and bit-honest offline export, all built on a clean serializable project model and a pure command system.
+KYX is a mature, browser-first electronic-music workstation — step sequencer + piano roll + 14 synths + 36 effects (four plugin-grade: PRISM/FXEQ, VLYX/Ultina, VØID/Ozvena, Kaskáda Delay) + clip arrangement — with a deterministic, provenance-tracking AI intent engine and bit-honest offline export, all built on a clean serializable project model and a pure command system.
 
 ### KYX in one paragraph
 KYX (repo codename `pulse-forge`) boots into a project browser with 12 genre templates and runs entirely client-side: a React UI subscribes to a framework-free `ProjectStore` whose document (`ProjectDocument`) is plain versioned JSON; all edits flow through ~150 pure, undoable command factories; a tick-based `Transport` and a 25 ms look-ahead `Scheduler` expand patterns (with swing, humanize, probability, ratchets, microtiming, p-locks) into AudioContext-scheduled events executed by a shared `AudioEngine` whose graph (tracks → insert FX → sends → returns → master chain) is diffed from the document on every change; the identical engine and event math render projects deterministically to WAV/MP3/stems/scorepack/video/MIDI. A distinctive generative stack (NL prompt → `IntentSpec` → genre grooves + Markov + scale-constrained melody → quality gates → trained ONNX ranker) writes fully-provenanced patterns, and a Yjs collab layer adds multiplayer jams with shared transport and an AI drummer. Persistence is IndexedDB with autosave/snapshots; sharing works with zero backend via URL share codes and an `/embed` renderer.

@@ -12,8 +12,7 @@ function setup() {
   const doc = createProjectFromTemplate("house");
   const store = new ProjectStore(doc);
   const padId = doc.tracks.find((t) => t.kind === "drum")!.pads[0].id;
-  const rowOf = (d = store.getDoc()) =>
-    d.patterns.find((p) => p.id === d.activePatternId)!.rows[padId] ?? [];
+  const rowOf = (d = store.getDoc()) => d.patterns.find((p) => p.id === d.activePatternId)!.rows[padId] ?? [];
   return { store, padId, rowOf };
 }
 

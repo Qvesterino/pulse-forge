@@ -163,6 +163,9 @@ export function Slider({
         className="slider-track"
         role="slider"
         tabIndex={disabled ? -1 : 0}
+        // Arrow keys after a click need real focus — opt out of the app-wide
+        // click-does-not-focus policy.
+        data-allow-focus=""
         aria-label={label}
         aria-valuemin={min}
         aria-valuemax={max}
@@ -273,6 +276,9 @@ export function DragNumber({
       className="drag-number"
       role="spinbutton"
       tabIndex={0}
+      // Arrow keys / Enter-to-type after a click need real focus — opt out of
+      // the app-wide click-does-not-focus policy.
+      data-allow-focus=""
       aria-label={label}
       aria-valuemin={min}
       aria-valuemax={max}

@@ -139,7 +139,9 @@ describe("Ozvena golden parity (vendored core vs upstream fixtures)", () => {
         const energy = sumSq / Math.max(1, Math.min(N, w.endSample) - w.startSample);
         // Reverb tail must be present in the decay window.
         expect(energy).toBeGreaterThan(w.min);
-        console.log(`[ozvena-parity] ${fixture.name}: tailEnergy=${energy.toExponential(2)} (min ${w.min.toExponential(2)})`);
+        console.log(
+          `[ozvena-parity] ${fixture.name}: tailEnergy=${energy.toExponential(2)} (min ${w.min.toExponential(2)})`,
+        );
       }
     });
   }

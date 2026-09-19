@@ -79,11 +79,7 @@ function kaiserWindow(n: number, M: number, beta: number): number {
  * rule of thumb (≈ 0.1102*(A-8.7) for A dB). We target A = 90 dB which
  * is more than enough for musical saturation anti-aliasing.
  */
-export function designLowpassKernel(
-  cutoffHz: number,
-  sampleRate: number,
-  length: number,
-): Float32Array {
+export function designLowpassKernel(cutoffHz: number, sampleRate: number, length: number): Float32Array {
   // Round up to nearest odd integer for symmetric linear-phase.
   if (length % 2 === 0) length += 1;
   const M = (length - 1) / 2;
@@ -144,11 +140,7 @@ export function polyphaseDecompose(kernel: Float32Array, factor: number): Float3
  * The output is exactly `factor * input.length` samples long. Latency in
  * the upsampled domain is `(tapsPerPhase - 1) * factor` samples.
  */
-export function upsamplePolyphase(
-  input: Float32Array,
-  subfilters: Float32Array[],
-  factor: number,
-): Float32Array {
+export function upsamplePolyphase(input: Float32Array, subfilters: Float32Array[], factor: number): Float32Array {
   const tapsPerPhase = subfilters[0].length;
   const outLen = input.length * factor;
   const output = new Float32Array(outLen);
@@ -185,11 +177,7 @@ export function upsamplePolyphase(
  * is `(tapsPerPhase - 1) / 2` samples (the half-kernel group delay at
  * the output rate, divided by factor for input-rate samples).
  */
-export function downsamplePolyphase(
-  input: Float32Array,
-  subfilters: Float32Array[],
-  factor: number,
-): Float32Array {
+export function downsamplePolyphase(input: Float32Array, subfilters: Float32Array[], factor: number): Float32Array {
   const tapsPerPhase = subfilters[0].length;
   const fullTaps = tapsPerPhase * factor;
   const outLen = Math.floor(input.length / factor);
@@ -278,12 +266,7 @@ export function createPolyphaseOversampler(): PolyphaseOversampler {
   }
 
   /** Shared upsampling core (caller owns the delay line + output). */
-  function runUpsample(
-    input: Float32Array,
-    inputLen: number,
-    delayLine: Float32Array,
-    output: Float32Array,
-  ): void {
+  function runUpsample(input: Float32Array, inputLen: number, delayLine: Float32Array, output: Float32Array): void {
     const taps = subfilters[0].length;
     for (let n = 0; n < inputLen; n++) {
       for (let i = taps - 1; i > 0; i--) delayLine[i] = delayLine[i - 1];
@@ -299,12 +282,7 @@ export function createPolyphaseOversampler(): PolyphaseOversampler {
   }
 
   /** Shared downsampling core (caller owns the delay line + output). */
-  function runDownsample(
-    input: Float32Array,
-    inputLen: number,
-    delayLine: Float32Array,
-    output: Float32Array,
-  ): void {
+  function runDownsample(input: Float32Array, inputLen: number, delayLine: Float32Array, output: Float32Array): void {
     const outLen = Math.floor(inputLen / factor);
     let inIdx = 0;
     for (let n = 0; n < outLen; n++) {
@@ -447,13 +425,13 @@ export function createPolyphaseOversampler(): PolyphaseOversampler {
  */
 export const SAT_MODE_NEEDS_OVERSAMPLE: boolean[] = [
   false, // 0 cleanWarmth — tanh, mild even at high drive
-  true,  // 1 tube — Miller+asymmetric clip, odd+even harmonics
-  true,  // 2 tape — hysteresis, rich harmonics
-  true,  // 3 brightEdge — x - x^3/3 has 3rd harmonic
-  true,  // 4 aggressive — hard-knee clip, lots of aliasing
-  true,  // 5 foldback — explicitly aliasing
-  true,  // 6 cathode — 2nd harmonic, alias-prone at high drive
-  true,  // 7 transformer — flux+BH curve, odd+even mix
+  true, // 1 tube — Miller+asymmetric clip, odd+even harmonics
+  true, // 2 tape — hysteresis, rich harmonics
+  true, // 3 brightEdge — x - x^3/3 has 3rd harmonic
+  true, // 4 aggressive — hard-knee clip, lots of aliasing
+  true, // 5 foldback — explicitly aliasing
+  true, // 6 cathode — 2nd harmonic, alias-prone at high drive
+  true, // 7 transformer — flux+BH curve, odd+even mix
 ];
 
 /**

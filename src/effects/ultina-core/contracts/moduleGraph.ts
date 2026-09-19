@@ -23,11 +23,7 @@
 // receives a new immutable snapshot via atomic pointer swap.
 // ═══════════════════════════════════════════════════════════
 
-import {
-  MODULE_TYPES,
-  type ModuleType,
-  isModuleType,
-} from "./moduleTypes.js";
+import { MODULE_TYPES, type ModuleType, isModuleType } from "./moduleTypes.js";
 import { DEFAULT_MODULE_ORDER } from "./state.js";
 
 // ── Module graph entry ─────────────────────────────────────
@@ -71,13 +67,8 @@ export function createDefaultModuleGraph(): ModuleGraphEntry[] {
  * Create an immutable snapshot from entries.
  * The entries array and each entry object are deep-frozen.
  */
-export function createSnapshot(
-  entries: readonly ModuleGraphEntry[],
-  version: number = 1,
-): ModuleGraphSnapshot {
-  const frozenEntries = Object.freeze(
-    entries.map((e) => Object.freeze({ ...e })),
-  );
+export function createSnapshot(entries: readonly ModuleGraphEntry[], version: number = 1): ModuleGraphSnapshot {
+  const frozenEntries = Object.freeze(entries.map((e) => Object.freeze({ ...e })));
   return {
     entries: frozenEntries,
     version,
@@ -118,13 +109,8 @@ export function moveModule(
 /**
  * Toggle a module's enabled state. Returns a new array.
  */
-export function toggleModule(
-  entries: readonly ModuleGraphEntry[],
-  moduleType: ModuleType,
-): ModuleGraphEntry[] {
-  return entries.map((e) =>
-    e.type === moduleType ? { ...e, enabled: !e.enabled } : e,
-  );
+export function toggleModule(entries: readonly ModuleGraphEntry[], moduleType: ModuleType): ModuleGraphEntry[] {
+  return entries.map((e) => (e.type === moduleType ? { ...e, enabled: !e.enabled } : e));
 }
 
 /**
@@ -135,17 +121,13 @@ export function setModuleEnabled(
   moduleType: ModuleType,
   enabled: boolean,
 ): ModuleGraphEntry[] {
-  return entries.map((e) =>
-    e.type === moduleType ? { ...e, enabled } : e,
-  );
+  return entries.map((e) => (e.type === moduleType ? { ...e, enabled } : e));
 }
 
 /**
  * Get the enabled modules in order (the active signal chain).
  */
-export function getActiveModules(
-  entries: readonly ModuleGraphEntry[],
-): ModuleGraphEntry[] {
+export function getActiveModules(entries: readonly ModuleGraphEntry[]): ModuleGraphEntry[] {
   return entries.filter((e) => e.enabled);
 }
 

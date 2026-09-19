@@ -40,7 +40,11 @@ export function MpeIndicator() {
         <span className="mpe-hint">{connected ? "touch a note" : "no MPE notes held"}</span>
       ) : (
         notes.slice(0, 8).map((n) => (
-          <span key={n.pitch} className="mpe-note" title={`${pitchName(n.pitch)} — pressure ${(n.pressure * 100).toFixed(0)}%, timbre ${(n.timbre * 100).toFixed(0)}%`}>
+          <span
+            key={n.pitch}
+            className="mpe-note"
+            title={`${pitchName(n.pitch)} — pressure ${(n.pressure * 100).toFixed(0)}%, timbre ${(n.timbre * 100).toFixed(0)}%`}
+          >
             <span className="mpe-note-name">{pitchName(n.pitch)}</span>
             <span className="mpe-bar">
               <span className="mpe-bar-fill mpe-pressure" style={{ width: `${Math.round(n.pressure * 100)}%` }} />

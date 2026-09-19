@@ -135,12 +135,7 @@ export function resetBiquad(bq: BiquadState): void {
 }
 
 /** Set low-pass coefficients (RBJ cookbook). */
-export function setLowPass(
-  c: BiquadCoeffs,
-  freq: number,
-  q: number,
-  sampleRate: number,
-): void {
+export function setLowPass(c: BiquadCoeffs, freq: number, q: number, sampleRate: number): void {
   const nyq = sampleRate * 0.5;
   const f = clamp(freq, 10, nyq * 0.99);
   const w0 = (2 * Math.PI * f) / sampleRate;
@@ -149,20 +144,15 @@ export function setLowPass(
   const alpha = sinW / (2 * Math.max(1e-6, q));
   const a0 = 1 + alpha;
 
-  c.b0 = ((1 - cosW) / 2) / a0;
+  c.b0 = (1 - cosW) / 2 / a0;
   c.b1 = (1 - cosW) / a0;
-  c.b2 = ((1 - cosW) / 2) / a0;
+  c.b2 = (1 - cosW) / 2 / a0;
   c.a1 = (-2 * cosW) / a0;
   c.a2 = (1 - alpha) / a0;
 }
 
 /** Set high-pass coefficients (RBJ cookbook). */
-export function setHighPass(
-  c: BiquadCoeffs,
-  freq: number,
-  q: number,
-  sampleRate: number,
-): void {
+export function setHighPass(c: BiquadCoeffs, freq: number, q: number, sampleRate: number): void {
   const nyq = sampleRate * 0.5;
   const f = clamp(freq, 10, nyq * 0.99);
   const w0 = (2 * Math.PI * f) / sampleRate;
@@ -171,9 +161,9 @@ export function setHighPass(
   const alpha = sinW / (2 * Math.max(1e-6, q));
   const a0 = 1 + alpha;
 
-  c.b0 = ((1 + cosW) / 2) / a0;
-  c.b1 = (-(1 + cosW)) / a0;
-  c.b2 = ((1 + cosW) / 2) / a0;
+  c.b0 = (1 + cosW) / 2 / a0;
+  c.b1 = -(1 + cosW) / a0;
+  c.b2 = (1 + cosW) / 2 / a0;
   c.a1 = (-2 * cosW) / a0;
   c.a2 = (1 - alpha) / a0;
 }
@@ -188,13 +178,7 @@ export function setHighPass(
  * bandwidth and could overflow to NaN coefficients at high Q near
  * Nyquist.)
  */
-export function setBell(
-  c: BiquadCoeffs,
-  freq: number,
-  gainDb: number,
-  q: number,
-  sampleRate: number,
-): void {
+export function setBell(c: BiquadCoeffs, freq: number, gainDb: number, q: number, sampleRate: number): void {
   const nyq = sampleRate * 0.5;
   const f = clamp(freq, 10, nyq * 0.99);
   const A = Math.pow(10, gainDb / 40);
@@ -212,13 +196,7 @@ export function setBell(
 }
 
 /** Set high-shelf coefficients (RBJ cookbook). */
-export function setHighShelf(
-  c: BiquadCoeffs,
-  freq: number,
-  gainDb: number,
-  q: number,
-  sampleRate: number,
-): void {
+export function setHighShelf(c: BiquadCoeffs, freq: number, gainDb: number, q: number, sampleRate: number): void {
   const nyq = sampleRate * 0.5;
   const f = clamp(freq, 10, nyq * 0.99);
   const A = Math.pow(10, gainDb / 40);
@@ -226,23 +204,17 @@ export function setHighShelf(
   const cosW = Math.cos(w0);
   const sinW = Math.sin(w0);
   const alpha = sinW / (2 * Math.max(1e-6, q));
-  const a0 = (A + 1) - (A - 1) * cosW + 2 * Math.sqrt(A) * alpha;
+  const a0 = A + 1 - (A - 1) * cosW + 2 * Math.sqrt(A) * alpha;
 
-  c.b0 = (A * ((A + 1) + (A - 1) * cosW + 2 * Math.sqrt(A) * alpha)) / a0;
-  c.b1 = (-2 * A * ((A - 1) + (A + 1) * cosW)) / a0;
-  c.b2 = (A * ((A + 1) + (A - 1) * cosW - 2 * Math.sqrt(A) * alpha)) / a0;
-  c.a1 = (2 * ((A - 1) - (A + 1) * cosW)) / a0;
-  c.a2 = ((A + 1) - (A - 1) * cosW - 2 * Math.sqrt(A) * alpha) / a0;
+  c.b0 = (A * (A + 1 + (A - 1) * cosW + 2 * Math.sqrt(A) * alpha)) / a0;
+  c.b1 = (-2 * A * (A - 1 + (A + 1) * cosW)) / a0;
+  c.b2 = (A * (A + 1 + (A - 1) * cosW - 2 * Math.sqrt(A) * alpha)) / a0;
+  c.a1 = (2 * (A - 1 - (A + 1) * cosW)) / a0;
+  c.a2 = (A + 1 - (A - 1) * cosW - 2 * Math.sqrt(A) * alpha) / a0;
 }
 
 /** Set low-shelf coefficients (RBJ cookbook). */
-export function setLowShelf(
-  c: BiquadCoeffs,
-  freq: number,
-  gainDb: number,
-  q: number,
-  sampleRate: number,
-): void {
+export function setLowShelf(c: BiquadCoeffs, freq: number, gainDb: number, q: number, sampleRate: number): void {
   const nyq = sampleRate * 0.5;
   const f = clamp(freq, 10, nyq * 0.99);
   const A = Math.pow(10, gainDb / 40);
@@ -250,22 +222,17 @@ export function setLowShelf(
   const cosW = Math.cos(w0);
   const sinW = Math.sin(w0);
   const alpha = sinW / (2 * Math.max(1e-6, q));
-  const a0 = (A + 1) + (A - 1) * cosW + 2 * Math.sqrt(A) * alpha;
+  const a0 = A + 1 + (A - 1) * cosW + 2 * Math.sqrt(A) * alpha;
 
-  c.b0 = (A * ((A + 1) - (A - 1) * cosW + 2 * Math.sqrt(A) * alpha)) / a0;
-  c.b1 = (2 * A * ((A - 1) - (A + 1) * cosW)) / a0;
-  c.b2 = (A * ((A + 1) - (A - 1) * cosW - 2 * Math.sqrt(A) * alpha)) / a0;
-  c.a1 = (-2 * ((A - 1) + (A + 1) * cosW)) / a0;
-  c.a2 = ((A + 1) + (A - 1) * cosW - 2 * Math.sqrt(A) * alpha) / a0;
+  c.b0 = (A * (A + 1 - (A - 1) * cosW + 2 * Math.sqrt(A) * alpha)) / a0;
+  c.b1 = (2 * A * (A - 1 - (A + 1) * cosW)) / a0;
+  c.b2 = (A * (A + 1 - (A - 1) * cosW - 2 * Math.sqrt(A) * alpha)) / a0;
+  c.a1 = (-2 * (A - 1 + (A + 1) * cosW)) / a0;
+  c.a2 = (A + 1 + (A - 1) * cosW - 2 * Math.sqrt(A) * alpha) / a0;
 }
 
 /** Set notch coefficients (RBJ cookbook). */
-export function setNotch(
-  c: BiquadCoeffs,
-  freq: number,
-  q: number,
-  sampleRate: number,
-): void {
+export function setNotch(c: BiquadCoeffs, freq: number, q: number, sampleRate: number): void {
   const nyq = sampleRate * 0.5;
   const f = clamp(freq, 10, nyq * 0.99);
   const w0 = (2 * Math.PI * f) / sampleRate;
@@ -282,12 +249,7 @@ export function setNotch(
 }
 
 /** Set band-pass coefficients (RBJ cookbook, constant 0 dB peak gain). */
-export function setBandPass(
-  c: BiquadCoeffs,
-  freq: number,
-  q: number,
-  sampleRate: number,
-): void {
+export function setBandPass(c: BiquadCoeffs, freq: number, q: number, sampleRate: number): void {
   const nyq = sampleRate * 0.5;
   const f = clamp(freq, 10, nyq * 0.99);
   const w0 = (2 * Math.PI * f) / sampleRate;
@@ -304,12 +266,7 @@ export function setBandPass(
 }
 
 /** Set all-pass coefficients (RBJ cookbook). */
-export function setAllPass(
-  c: BiquadCoeffs,
-  freq: number,
-  q: number,
-  sampleRate: number,
-): void {
+export function setAllPass(c: BiquadCoeffs, freq: number, q: number, sampleRate: number): void {
   const nyq = sampleRate * 0.5;
   const f = clamp(freq, 10, nyq * 0.99);
   const w0 = (2 * Math.PI * f) / sampleRate;
@@ -343,11 +300,7 @@ function guardBiquadState(z: number[]): boolean {
 /** Process a biquad on interleaved channels (Direct Form II Transposed).
  * Hot path: no per-sample sanitize — the state is guarded once per
  * block and the module/top-level outputs sanitize. */
-export function processBiquad(
-  bq: BiquadState,
-  channels: Float32Array[],
-  frameCount: number,
-): void {
+export function processBiquad(bq: BiquadState, channels: Float32Array[], frameCount: number): void {
   const { b0, b1, b2, a1, a2 } = bq.coeffs;
   for (let ch = 0; ch < bq.z1.length && ch < channels.length; ch++) {
     let z1 = bq.z1[ch];
@@ -371,12 +324,7 @@ export function processBiquad(
 
 /** Process a biquad on one channel (Direct Form II Transposed).
  * Hot path: no per-sample sanitize — see processBiquad. */
-export function processBiquadChannel(
-  bq: BiquadState,
-  data: Float32Array,
-  ch: number,
-  frameCount: number,
-): void {
+export function processBiquadChannel(bq: BiquadState, data: Float32Array, ch: number, frameCount: number): void {
   const { b0, b1, b2, a1, a2 } = bq.coeffs;
   let z1 = bq.z1[ch];
   let z2 = bq.z2[ch];
@@ -760,12 +708,7 @@ export function createFirFilter(maxTaps: number): FirFilterState {
  * @param sampleRate
  * @param numTaps  Desired tap count (forced to odd).
  */
-export function designLowPassFir(
-  fir: FirFilterState,
-  freqHz: number,
-  sampleRate: number,
-  numTaps: number,
-): void {
+export function designLowPassFir(fir: FirFilterState, freqHz: number, sampleRate: number, numTaps: number): void {
   let N = Math.max(3, numTaps | 0);
   if (N % 2 === 0) N++; // must be odd for Type-I linear phase
   const M = (N - 1) / 2;
@@ -787,10 +730,7 @@ export function designLowPassFir(
       h = Math.sin(2 * Math.PI * fc * k) / (Math.PI * k);
     }
     // Blackman window
-    const w =
-      0.42 -
-      0.5 * Math.cos((2 * Math.PI * n) / (N - 1)) +
-      0.08 * Math.cos((4 * Math.PI * n) / (N - 1));
+    const w = 0.42 - 0.5 * Math.cos((2 * Math.PI * n) / (N - 1)) + 0.08 * Math.cos((4 * Math.PI * n) / (N - 1));
     fir.taps[n] = h * w;
     sum += fir.taps[n];
   }
@@ -838,11 +778,7 @@ export function processFirSample(fir: FirFilterState, input: number): number {
 /**
  * Process a block of samples through the FIR filter in-place.
  */
-export function processFirBlock(
-  fir: FirFilterState,
-  data: Float32Array,
-  frameCount: number,
-): void {
+export function processFirBlock(fir: FirFilterState, data: Float32Array, frameCount: number): void {
   for (let i = 0; i < frameCount; i++) {
     data[i] = processFirSample(fir, data[i]);
   }

@@ -75,11 +75,7 @@ export interface ArEnvelope {
   reset(value?: number): void;
 }
 
-export function createArEnvelope(
-  sampleRate: number,
-  attackMs = 10,
-  releaseMs = 100,
-): ArEnvelope {
+export function createArEnvelope(sampleRate: number, attackMs = 10, releaseMs = 100): ArEnvelope {
   let attackAlpha = 1 - Math.exp(-1 / ((attackMs / 1000) * sampleRate));
   let releaseAlpha = 1 - Math.exp(-1 / ((releaseMs / 1000) * sampleRate));
   let value = 0;
@@ -154,10 +150,7 @@ export interface TransientDetector {
   reset(): void;
 }
 
-export function createTransientDetector(
-  sampleRate: number,
-  smoothingMs = 50,
-): TransientDetector {
+export function createTransientDetector(sampleRate: number, smoothingMs = 50): TransientDetector {
   let alpha = 1 - Math.exp(-1 / ((smoothingMs / 1000) * sampleRate));
   let fastEnv = 0;
   let slowEnv = 0;

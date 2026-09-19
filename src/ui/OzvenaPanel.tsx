@@ -226,16 +226,21 @@ export function OzvenaPanel({
   };
 
   return (
-    <div className={`fxeq-panel ultina-panel ozvena-panel${docked ? " ozvena-docked" : ""}`} aria-label="VØID reverb editor">
+    <div
+      className={`fxeq-panel ultina-panel ozvena-panel${docked ? " ozvena-docked" : ""}`}
+      aria-label="VØID reverb editor"
+    >
       {degraded && <div className="fxeq-degraded">AudioWorklet unavailable — VØID is bypassed (1:1 signal)</div>}
 
       {docked && (
         <div className="device-view-tabs" role="group" aria-label="VØID view">
-          {([
-            ["blend", "BLEND"],
-            ["engines", "ENGINES"],
-            ["assist", "ASSIST"],
-          ] as const).map(([page, label]) => (
+          {(
+            [
+              ["blend", "BLEND"],
+              ["engines", "ENGINES"],
+              ["assist", "ASSIST"],
+            ] as const
+          ).map(([page, label]) => (
             <button
               key={page}
               type="button"
@@ -250,144 +255,152 @@ export function OzvenaPanel({
       )}
 
       {/* ── XY BLEND PAD ─────────────────────────────────────────────── */}
-      {(!docked || dockPage === "blend") && <div className="ultina-assist-head">
-        <span className="ultina-assist-title">BLEND PAD</span>
-        <div className="ozvena-weights" aria-label="Engine mix">
-          <span style={{ color: VERTEX_COLORS.e1 }}>E1 {(weights.e1 * 100).toFixed(0)}%</span>
-          <span style={{ color: VERTEX_COLORS.e2 }}>E2 {(weights.e2 * 100).toFixed(0)}%</span>
-          <span style={{ color: VERTEX_COLORS.e3 }}>E3 {(weights.e3 * 100).toFixed(0)}%</span>
+      {(!docked || dockPage === "blend") && (
+        <div className="ultina-assist-head">
+          <span className="ultina-assist-title">BLEND PAD</span>
+          <div className="ozvena-weights" aria-label="Engine mix">
+            <span style={{ color: VERTEX_COLORS.e1 }}>E1 {(weights.e1 * 100).toFixed(0)}%</span>
+            <span style={{ color: VERTEX_COLORS.e2 }}>E2 {(weights.e2 * 100).toFixed(0)}%</span>
+            <span style={{ color: VERTEX_COLORS.e3 }}>E3 {(weights.e3 * 100).toFixed(0)}%</span>
+          </div>
         </div>
-      </div>}
-      {(!docked || dockPage === "blend") && <canvas
-        ref={padRef}
-        className="ozvena-pad"
-        width={512}
-        height={280}
-        role="slider"
-        aria-label="Blend pad"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={Math.round(x * 100)}
-        aria-valuetext={padValueText}
-        tabIndex={0}
-        style={{ touchAction: "none" }}
-        onKeyDown={onPadKeyDown}
-        onPointerDown={(e) => {
-          draggingRef.current = true;
-          try {
-            e.currentTarget.setPointerCapture(e.pointerId);
-          } catch {
-            // synthetic pointers have no active id — drag still tracks
-          }
-          onPointer(e.clientX, e.clientY, e.currentTarget);
-        }}
-        onPointerMove={(e) => {
-          if (draggingRef.current) onPointer(e.clientX, e.clientY, e.currentTarget);
-        }}
-        onPointerUp={() => {
-          draggingRef.current = false;
-        }}
-        onPointerCancel={() => {
-          draggingRef.current = false;
-        }}
-      />}
+      )}
+      {(!docked || dockPage === "blend") && (
+        <canvas
+          ref={padRef}
+          className="ozvena-pad"
+          width={512}
+          height={280}
+          role="slider"
+          aria-label="Blend pad"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(x * 100)}
+          aria-valuetext={padValueText}
+          tabIndex={0}
+          style={{ touchAction: "none" }}
+          onKeyDown={onPadKeyDown}
+          onPointerDown={(e) => {
+            draggingRef.current = true;
+            try {
+              e.currentTarget.setPointerCapture(e.pointerId);
+            } catch {
+              // synthetic pointers have no active id — drag still tracks
+            }
+            onPointer(e.clientX, e.clientY, e.currentTarget);
+          }}
+          onPointerMove={(e) => {
+            if (draggingRef.current) onPointer(e.clientX, e.clientY, e.currentTarget);
+          }}
+          onPointerUp={() => {
+            draggingRef.current = false;
+          }}
+          onPointerCancel={() => {
+            draggingRef.current = false;
+          }}
+        />
+      )}
 
       {/* ── ENGINE TOGGLES ───────────────────────────────────────────── */}
-      {(!docked || dockPage === "engines") && <div className="ozvena-engines">
-        {(["e1", "e2", "e3"] as const).map((mod) => (
-          <div key={mod} className={`ozvena-engine${enabled(mod) ? "" : " fxeq-module-off"}`}>
-            <div className="ultina-module-head">
-              <span className="fxeq-module-tag" style={{ background: VERTEX_COLORS[mod] }}>
-                {mod.toUpperCase()}
-              </span>
-              <button
-                type="button"
-                className={`btn btn-small${enabled(mod) ? " active" : ""}`}
-                aria-pressed={enabled(mod)}
-                onClick={() => onParam(`engines.${mod}.enabled`, enabled(mod) ? 0 : 1)}
-              >
-                {enabled(mod) ? "ON" : "OFF"}
-              </button>
-            </div>
-            {enabled(mod) && mod === "e2" && (
-              <label className="collab-field">
-                <span>ALGO</span>
-                <select
-                  value={engine2Algo}
-                  onChange={(e) => {
-                    const idx = Number(e.target.value);
-                    setEngine2Algo(idx);
-                    // The DSP state carries the algorithm as a string — the
-                    // worklet maps the numeric enum index to ENGINE2_ALGOS.
-                    onParam("engines.e2.algo", idx);
-                  }}
+      {(!docked || dockPage === "engines") && (
+        <div className="ozvena-engines">
+          {(["e1", "e2", "e3"] as const).map((mod) => (
+            <div key={mod} className={`ozvena-engine${enabled(mod) ? "" : " fxeq-module-off"}`}>
+              <div className="ultina-module-head">
+                <span className="fxeq-module-tag" style={{ background: VERTEX_COLORS[mod] }}>
+                  {mod.toUpperCase()}
+                </span>
+                <button
+                  type="button"
+                  className={`btn btn-small${enabled(mod) ? " active" : ""}`}
+                  aria-pressed={enabled(mod)}
+                  onClick={() => onParam(`engines.${mod}.enabled`, enabled(mod) ? 0 : 1)}
                 >
-                  {ENGINE2_ALGOS.map((algo, idx) => (
-                    <option key={algo} value={idx}>
-                      {algo}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-          </div>
-        ))}
-      </div>}
+                  {enabled(mod) ? "ON" : "OFF"}
+                </button>
+              </div>
+              {enabled(mod) && mod === "e2" && (
+                <label className="collab-field">
+                  <span>ALGO</span>
+                  <select
+                    value={engine2Algo}
+                    onChange={(e) => {
+                      const idx = Number(e.target.value);
+                      setEngine2Algo(idx);
+                      // The DSP state carries the algorithm as a string — the
+                      // worklet maps the numeric enum index to ENGINE2_ALGOS.
+                      onParam("engines.e2.algo", idx);
+                    }}
+                  >
+                    {ENGINE2_ALGOS.map((algo, idx) => (
+                      <option key={algo} value={idx}>
+                        {algo}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* ── REVERB ASSISTANT ─────────────────────────────────────────── */}
-      {(!docked || dockPage === "assist") && <div className="ultina-assist" aria-label="Reverb assistant">
-        <div className="ultina-assist-head">
-          <span className="ultina-assist-title">REVERB ASSISTANT</span>
-          <button
-            type="button"
-            className="btn btn-export"
-            disabled={assistBusy}
-            title="Propose a starting space from style/size/tone"
-            onClick={runAssistant}
-          >
-            {assistBusy ? "…" : "⚡ ASSIST"}
-          </button>
+      {(!docked || dockPage === "assist") && (
+        <div className="ultina-assist" aria-label="Reverb assistant">
+          <div className="ultina-assist-head">
+            <span className="ultina-assist-title">REVERB ASSISTANT</span>
+            <button
+              type="button"
+              className="btn btn-export"
+              disabled={assistBusy}
+              title="Propose a starting space from style/size/tone"
+              onClick={runAssistant}
+            >
+              {assistBusy ? "…" : "⚡ ASSIST"}
+            </button>
+          </div>
+          <div className="ultina-assist-opts">
+            <label className="collab-field">
+              <span>STYLE — {assistStyle < 0.33 ? "room" : assistStyle < 0.66 ? "stage" : "epic"}</span>
+              <Slider
+                compact
+                label=""
+                value={assistStyle}
+                min={0}
+                max={1}
+                defaultValue={0.5}
+                format={(v) => `${(v * 100).toFixed(0)}%`}
+                onCommit={setAssistStyle}
+              />
+            </label>
+            <label className="collab-field">
+              <span>SIZE</span>
+              <Slider
+                compact
+                label=""
+                value={assistSize}
+                min={0}
+                max={1}
+                defaultValue={0.5}
+                format={(v) => `${(v * 100).toFixed(0)}%`}
+                onCommit={setAssistSize}
+              />
+            </label>
+            <label className="collab-field">
+              <span>TONE</span>
+              <select value={assistTone} onChange={(e) => setAssistTone(Number(e.target.value))}>
+                {ASSISTANT_TONES.map((tone, idx) => (
+                  <option key={tone} value={idx}>
+                    {tone}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {assistSummary && <div className="ultina-assist-summary">{assistSummary}</div>}
         </div>
-        <div className="ultina-assist-opts">
-          <label className="collab-field">
-            <span>STYLE — {assistStyle < 0.33 ? "room" : assistStyle < 0.66 ? "stage" : "epic"}</span>
-            <Slider
-              compact
-              label=""
-              value={assistStyle}
-              min={0}
-              max={1}
-              defaultValue={0.5}
-              format={(v) => `${(v * 100).toFixed(0)}%`}
-              onCommit={setAssistStyle}
-            />
-          </label>
-          <label className="collab-field">
-            <span>SIZE</span>
-            <Slider
-              compact
-              label=""
-              value={assistSize}
-              min={0}
-              max={1}
-              defaultValue={0.5}
-              format={(v) => `${(v * 100).toFixed(0)}%`}
-              onCommit={setAssistSize}
-            />
-          </label>
-          <label className="collab-field">
-            <span>TONE</span>
-            <select value={assistTone} onChange={(e) => setAssistTone(Number(e.target.value))}>
-              {ASSISTANT_TONES.map((tone, idx) => (
-                <option key={tone} value={idx}>
-                  {tone}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-        {assistSummary && <div className="ultina-assist-summary">{assistSummary}</div>}
-      </div>}
+      )}
     </div>
   );
 }

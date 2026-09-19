@@ -97,12 +97,14 @@ export function KaskadaPanel({
   params,
   degraded,
   onParam,
+  docked = false,
 }: {
   trackId: string;
   fxId: string;
   params: Record<string, number>;
   degraded: boolean;
   onParam?: (paramId: string, value: number) => void;
+  docked?: boolean;
 }) {
   const services = useServices();
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -403,52 +405,34 @@ export function KaskadaPanel({
   }, [trackId, fxId, services]);
 
   return (
-    <div
-      className="kaskada-spectrum"
-      style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 6 }}
-      data-testid="kaskada-spectrum"
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 10, letterSpacing: 0.5 }}>
-        <span style={{ color: "rgba(255,255,255,0.45)" }}>SPECTRUM</span>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "rgba(255,255,255,0.55)" }}>
-          <span style={{ width: 10, height: 2, background: "rgba(255,255,255,0.35)", display: "inline-block" }} />
-          DRY
+    <div className={`ryft-spectrum kaskada-spectrum${docked ? " is-docked" : ""}`} data-testid="kaskada-spectrum">
+      <div className="ryft-spectrum-legend">
+        <span className="ryft-spectrum-title">RYFT / SPECTRUM</span>
+        <span className="ryft-spectrum-key">
+          <span className="ryft-spectrum-swatch dry" aria-hidden="true" /> DRY
         </span>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "rgba(255,255,255,0.55)" }}>
-          <span style={{ width: 10, height: 2, background: "#f59e0b", display: "inline-block" }} />
-          DELAY
+        <span className="ryft-spectrum-key">
+          <span className="ryft-spectrum-swatch delay" aria-hidden="true" /> DELAY
         </span>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "rgba(255,255,255,0.55)" }}>
-          <span
-            style={{
-              width: 10,
-              height: 0,
-              borderTop: "2px dashed rgba(34,211,238,0.7)",
-              display: "inline-block",
-            }}
-          />
-          LOOP EQ
+        <span className="ryft-spectrum-key">
+          <span className="ryft-spectrum-swatch loop-eq" aria-hidden="true" /> LOOP EQ
         </span>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "rgba(255,255,255,0.55)" }}>
-          <span style={{ width: 10, height: 2, background: "rgba(248,113,113,0.85)", display: "inline-block" }} />
-          UNMASK
+        <span className="ryft-spectrum-key">
+          <span className="ryft-spectrum-swatch unmask" aria-hidden="true" /> UNMASK
         </span>
-        <span style={{ color: "rgba(255,255,255,0.3)", marginLeft: "auto" }}>drag LP / HP ⟷</span>
-        {degraded && <span style={{ color: "#f87171" }}>bypassed — no analysis</span>}
+        <span className="ryft-spectrum-hint">DRAG LP / HP ⟷</span>
+        {degraded && <span className="ryft-spectrum-warning">BYPASSED — NO ANALYSIS</span>}
       </div>
       <canvas
         ref={canvasRef}
+        className="ryft-spectrum-canvas"
         width={600}
         height={110}
         style={{
-          width: "100%",
-          height: 110,
-          display: "block",
-          borderRadius: 6,
-          background: "rgba(0,0,0,0.35)",
+          height: docked ? 88 : 110,
           touchAction: "none",
         }}
-        aria-label="Kaskáda dual spectrum — dry and delay bus, drag LP/HP handles"
+        aria-label="RYFT dual spectrum — dry and delay bus, drag LP/HP handles"
         role="img"
       />
     </div>

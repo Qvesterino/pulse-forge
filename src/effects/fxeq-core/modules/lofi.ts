@@ -158,12 +158,7 @@ export function createLofiModule(params?: Record<string, number>, seed?: number)
     }
   }
 
-  function processSampleRate(
-    buf: Float32Array,
-    ch: number,
-    frameCount: number,
-    amount: number,
-  ): void {
+  function processSampleRate(buf: Float32Array, ch: number, frameCount: number, amount: number): void {
     // Decimation factor from 1 (clean) to ~24 at full amount.
     const factor = lerp(1, 24, amount);
     const intFactor = Math.max(1, Math.round(factor));
@@ -214,8 +209,7 @@ export function createLofiModule(params?: Record<string, number>, seed?: number)
       const white = seededRandom(ch) * 2 - 1;
       noisePrev[ch] = hpAlpha * noisePrev[ch] + (1 - hpAlpha) * white;
       const noise = noisePrev[ch] * noiseGain;
-      const crackle =
-        seededRandom(ch) < 0.0015 * amount ? (seededRandom(ch) * 2 - 1) * 0.3 * amount : 0;
+      const crackle = seededRandom(ch) < 0.0015 * amount ? (seededRandom(ch) * 2 - 1) * 0.3 * amount : 0;
       buf[i] = buf[i] + noise + crackle;
     }
   }
@@ -285,14 +279,7 @@ export function createLofiModule(params?: Record<string, number>, seed?: number)
             processSampleRate(buf, c, frameCount, degradation);
             break;
           case 2:
-            processWowFlutter(
-              buf,
-              c,
-              frameCount,
-              amount,
-              wobble,
-              c === 0 ? wowLfoBufL : wowLfoBufR,
-            );
+            processWowFlutter(buf, c, frameCount, amount, wobble, c === 0 ? wowLfoBufL : wowLfoBufR);
             break;
           case 3:
             processVinyl(buf, c, frameCount, degradation);

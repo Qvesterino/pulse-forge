@@ -94,8 +94,12 @@ export function buildMaskingResult(
   }
   const meanMaskDb = n > 0 ? sum / n : 0;
   return {
-    dryDb, wetDb, maskDb: maskBuf,
-    count: n, thresholdDb, problemBins,
+    dryDb,
+    wetDb,
+    maskDb: maskBuf,
+    count: n,
+    thresholdDb,
+    problemBins,
     source,
     meanMaskDb,
   };
@@ -153,7 +157,9 @@ export function createMaskingMeter(): MaskingMeter {
       analyzer.push("wet", wet, frameCount);
     },
 
-    setParams(p) { params = { ...p }; },
+    setParams(p) {
+      params = { ...p };
+    },
 
     snapshot(sampleRate, grid, thresholdDb = 3) {
       ensureBufs(grid.length);
@@ -171,6 +177,8 @@ export function createMaskingMeter(): MaskingMeter {
       return [] as readonly MaskingIpcPeer[];
     },
 
-    reset() { analyzer.reset(); },
+    reset() {
+      analyzer.reset();
+    },
   };
 }

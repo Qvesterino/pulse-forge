@@ -16,5 +16,4 @@ export const registerSW: (options?: {
   onOfflineReady?: () => void;
   onRegistered?: (registration: ServiceWorkerRegistration | undefined) => void;
   onRegisterError?: (error: unknown) => void;
-}) => (reloadPage?: boolean) => Promise<void> =
-  () => async (_reloadPage?: boolean) => {};
+}) => (reloadPage?: boolean) => Promise<void> = () => async (_reloadPage?: boolean) => {};

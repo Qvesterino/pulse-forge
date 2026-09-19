@@ -345,12 +345,8 @@ export class UltinaProcessor {
     this.mixSmoother.setTimeConstant(smoothMs, this.sampleRate);
 
     // Set smoother values to current parameter values (no ramp)
-    this.inputGainSmoother.reset(
-      dbToLinear(this.params[GLOBAL_INPUT_GAIN_DB_ID] ?? 0),
-    );
-    this.outputGainSmoother.reset(
-      dbToLinear(this.params[GLOBAL_OUTPUT_GAIN_DB_ID] ?? 0),
-    );
+    this.inputGainSmoother.reset(dbToLinear(this.params[GLOBAL_INPUT_GAIN_DB_ID] ?? 0));
+    this.outputGainSmoother.reset(dbToLinear(this.params[GLOBAL_OUTPUT_GAIN_DB_ID] ?? 0));
     this.mixSmoother.reset((this.params[GLOBAL_MIX_ID] ?? 100) / 100);
 
     // REALTIME SAFETY: instantiate EVERY module type up front (real
@@ -417,11 +413,7 @@ export class UltinaProcessor {
    * channels[0] = left, channels[1] = right.
    * Modified in-place.
    */
-  process(
-    channels: Float32Array[],
-    frameCount: number,
-    sidechain: Float32Array[] | null = null,
-  ): void {
+  process(channels: Float32Array[], frameCount: number, sidechain: Float32Array[] | null = null): void {
     if (!this.prepared || channels.length < 2) return;
 
     const chL = channels[0];
@@ -480,9 +472,7 @@ export class UltinaProcessor {
     const activeChain = this.graphRuntime.getActiveChain();
 
     // Determine which module is in delta mode (if delta listen is on)
-    this.deltaModule = deltaListen
-      ? this.findDeltaModule(activeChain.modules)
-      : null;
+    this.deltaModule = deltaListen ? this.findDeltaModule(activeChain.modules) : null;
 
     // Process module chain
     this.cachedCtx.qualityMode = this.qualityMode;
@@ -499,9 +489,7 @@ export class UltinaProcessor {
       const chunkL = chunkChannels[0];
       const chunkR = chunkChannels[1];
       const chunkSidechain =
-        sidechain && offset > 0
-          ? sidechain.map((s) => (s ? s.subarray(offset, offset + frames) : s))
-          : sidechain;
+        sidechain && offset > 0 ? sidechain.map((s) => (s ? s.subarray(offset, offset + frames) : s)) : sidechain;
 
       // Reused args record — see chunkArgs declaration. Refreshed per module
       // (params differ); modules read it synchronously and never retain it.
@@ -590,10 +578,7 @@ export class UltinaProcessor {
       // is refilled with fresh blocks.
       this.autoGain.setEnabled(gainMatchEnabled);
       this.autoGain.setTargetLufs(autoGainTargetLufs);
-      const autoGainCorrectionDb = this.autoGain.process(
-        this.lufsMeter.getShortTermLufs(),
-        frames,
-      );
+      const autoGainCorrectionDb = this.autoGain.process(this.lufsMeter.getShortTermLufs(), frames);
 
       // Apply output gain (per-sample smoothing) — includes auto-gain correction
       const totalOutputGainTarget = dbToLinear(outputGainDb + autoGainCorrectionDb);
@@ -633,12 +618,8 @@ export class UltinaProcessor {
   reset(): void {
     // Reset smoothers to their current parameter targets (not 0) so a
     // reset never ramps through a dry/unity flash.
-    this.inputGainSmoother.reset(
-      dbToLinear(this.params[GLOBAL_INPUT_GAIN_DB_ID] ?? 0),
-    );
-    this.outputGainSmoother.reset(
-      dbToLinear(this.params[GLOBAL_OUTPUT_GAIN_DB_ID] ?? 0),
-    );
+    this.inputGainSmoother.reset(dbToLinear(this.params[GLOBAL_INPUT_GAIN_DB_ID] ?? 0));
+    this.outputGainSmoother.reset(dbToLinear(this.params[GLOBAL_OUTPUT_GAIN_DB_ID] ?? 0));
     this.mixSmoother.reset((this.params[GLOBAL_MIX_ID] ?? 100) / 100);
 
     for (const module of this.modules.values()) {
@@ -739,10 +720,7 @@ export class UltinaProcessor {
   /**
    * Register a module processor factory.
    */
-  registerModuleFactory(
-    moduleType: ModuleType,
-    factory: ModuleProcessorFactory,
-  ): void {
+  registerModuleFactory(moduleType: ModuleType, factory: ModuleProcessorFactory): void {
     this.factories.set(moduleType, factory);
     // If we already have an instance, replace it
     if (this.modules.has(moduleType)) {
@@ -759,9 +737,7 @@ export class UltinaProcessor {
   /**
    * Register all module factories at once.
    */
-  registerModuleFactories(
-    factories: Partial<Record<ModuleType, ModuleProcessorFactory>>,
-  ): void {
+  registerModuleFactories(factories: Partial<Record<ModuleType, ModuleProcessorFactory>>): void {
     for (const [type, factory] of Object.entries(factories)) {
       this.registerModuleFactory(type as ModuleType, factory!);
     }
@@ -835,14 +811,18 @@ export class UltinaProcessor {
       const res = this.eqLearn.getResult();
       snapshot.learn.eq = {
         suggestions: res.suggestions.map((s) => ({
-          freqHz: s.freqHz, gainDb: s.gainDb, q: s.q, severity: s.severity,
+          freqHz: s.freqHz,
+          gainDb: s.gainDb,
+          q: s.q,
+          severity: s.severity,
         })),
         isReady: res.isReady,
       };
     }
-    const xoverLearnNow = (this.params["comp.crossoverLearn"] ?? 0) >= 0.5
-      || (this.params["gate.crossoverLearn"] ?? 0) >= 0.5
-      || (this.params["exciter.crossoverLearn"] ?? 0) >= 0.5;
+    const xoverLearnNow =
+      (this.params["comp.crossoverLearn"] ?? 0) >= 0.5 ||
+      (this.params["gate.crossoverLearn"] ?? 0) >= 0.5 ||
+      (this.params["exciter.crossoverLearn"] ?? 0) >= 0.5;
     if (xoverLearnNow) {
       const res = this.xoverLearn.getResult();
       const s3 = res.suggestions3Band;
@@ -895,16 +875,8 @@ export class UltinaProcessor {
    * param actually flips (see UltinaModuleProcessor.onEnabledTransition).
    * Control-thread only, same event that syncs the module graph.
    */
-  private maybeNotifyEnabledTransition(
-    id: string,
-    prev: number | undefined,
-    next: number,
-  ): void {
-    if (
-      prev === undefined ||
-      (prev >= 0.5) === (next >= 0.5) ||
-      !id.endsWith(".enabled")
-    ) {
+  private maybeNotifyEnabledTransition(id: string, prev: number | undefined, next: number): void {
+    if (prev === undefined || prev >= 0.5 === next >= 0.5 || !id.endsWith(".enabled")) {
       return;
     }
     const moduleType = id.slice(0, -".enabled".length) as ModuleType;
@@ -914,9 +886,7 @@ export class UltinaProcessor {
     }
   }
 
-  private getOrCreateModule(
-    moduleType: ModuleType,
-  ): UltinaModuleProcessor | null {
+  private getOrCreateModule(moduleType: ModuleType): UltinaModuleProcessor | null {
     // prepare() instantiates every module type (real or stub), so this
     // is a pure lookup — no allocation and no prepare() on the audio
     // thread.
@@ -944,9 +914,7 @@ export class UltinaProcessor {
     return cached;
   }
 
-  private findDeltaModule(
-    activeModules: readonly ModuleType[],
-  ): ModuleType | null {
+  private findDeltaModule(activeModules: readonly ModuleType[]): ModuleType | null {
     // Find the first module with delta=true (the module-level delta param)
     // For now, we use the global delta listen which processes the full chain
     // minus dry. This can be extended to per-module delta in the future.
@@ -954,11 +922,7 @@ export class UltinaProcessor {
     return activeModules[activeModules.length - 1];
   }
 
-  private updateInputMeters(
-    chL: Float32Array,
-    chR: Float32Array,
-    frameCount: number,
-  ): void {
+  private updateInputMeters(chL: Float32Array, chR: Float32Array, frameCount: number): void {
     let peakL = 0;
     let peakR = 0;
     let sumSqL = 0;
@@ -1015,20 +979,17 @@ export class UltinaProcessor {
       this.eqLearnWasActive = eqLearnOn;
       if (eqLearnOn) this.eqLearn.process(this.monoSumBuffer, copyLen);
 
-      const xoverLearnOn = (this.params["comp.crossoverLearn"] ?? 0) >= 0.5
-        || (this.params["gate.crossoverLearn"] ?? 0) >= 0.5
-        || (this.params["exciter.crossoverLearn"] ?? 0) >= 0.5;
+      const xoverLearnOn =
+        (this.params["comp.crossoverLearn"] ?? 0) >= 0.5 ||
+        (this.params["gate.crossoverLearn"] ?? 0) >= 0.5 ||
+        (this.params["exciter.crossoverLearn"] ?? 0) >= 0.5;
       if (xoverLearnOn && !this.xoverLearnWasActive) this.xoverLearn.reset();
       this.xoverLearnWasActive = xoverLearnOn;
       if (xoverLearnOn) this.xoverLearn.process(this.monoSumBuffer, copyLen);
     }
   }
 
-  private updateOutputMeters(
-    chL: Float32Array,
-    chR: Float32Array,
-    frameCount: number,
-  ): void {
+  private updateOutputMeters(chL: Float32Array, chR: Float32Array, frameCount: number): void {
     let peakL = 0;
     let peakR = 0;
     let sumSqL = 0;

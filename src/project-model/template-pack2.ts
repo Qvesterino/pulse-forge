@@ -349,5 +349,3 @@ function createBass() {
 function createKeys() {
   return createInstrumentTrackModel("analog", 1);
 }
-
-

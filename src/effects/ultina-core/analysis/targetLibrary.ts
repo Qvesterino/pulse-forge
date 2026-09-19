@@ -192,9 +192,7 @@ export function createCustomTarget(
   // analyzeWithTarget's deviation math (every clamp comparison with NaN
   // yields NaN), and storing by reference would let the caller mutate the
   // library entry afterwards.
-  const curve = octaveBandsDb.map((db) =>
-    typeof db === "number" && Number.isFinite(db) ? db : 0,
-  );
+  const curve = octaveBandsDb.map((db) => (typeof db === "number" && Number.isFinite(db) ? db : 0));
   return {
     id: `custom-${Date.now()}`,
     name,

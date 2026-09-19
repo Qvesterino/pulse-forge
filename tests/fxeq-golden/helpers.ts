@@ -31,12 +31,7 @@ export function impulseSignal(frames: number, channels = 1): Float32Array[] {
  * Logarithmic sine sweep from f0 to f1 over `frames` samples.
  * Uses a deterministic phase formula so output is bit-identical across runs.
  */
-export function logSweepSignal(
-  frames: number,
-  f0 = 20,
-  f1 = 20000,
-  channels = 1,
-): Float32Array[] {
+export function logSweepSignal(frames: number, f0 = 20, f1 = 20000, channels = 1): Float32Array[] {
   const ratio = f1 / f0;
   const T = frames / GOLDEN_SR;
   const phaseConst = (T * f0 * Math.log(ratio)) / Math.log(ratio); // = T * f0 for normalization
@@ -174,8 +169,7 @@ export function compareFingerprints(
   tolerance = 1e-3,
   levelTolerance = 1e-3,
 ): CompareResult {
-  const topologyMismatch =
-    !!golden.topology && !!actual.topology && golden.topology !== actual.topology;
+  const topologyMismatch = !!golden.topology && !!actual.topology && golden.topology !== actual.topology;
 
   if (topologyMismatch) {
     console.warn(
@@ -185,7 +179,14 @@ export function compareFingerprints(
   }
 
   if (actual.envelope.length !== golden.envelope.length) {
-    return { passed: false, maxEnvelopeDiff: Infinity, peakDiff: Infinity, rmsDiff: Infinity, hashMatch: false, topologyMismatch };
+    return {
+      passed: false,
+      maxEnvelopeDiff: Infinity,
+      peakDiff: Infinity,
+      rmsDiff: Infinity,
+      hashMatch: false,
+      topologyMismatch,
+    };
   }
 
   let maxEnvelopeDiff = 0;
@@ -197,10 +198,7 @@ export function compareFingerprints(
   const rmsDiff = Math.abs(actual.rms - golden.rms);
   const hashMatch = actual.hash === golden.hash;
 
-  const passed =
-    maxEnvelopeDiff <= tolerance &&
-    peakDiff <= levelTolerance &&
-    rmsDiff <= levelTolerance;
+  const passed = maxEnvelopeDiff <= tolerance && peakDiff <= levelTolerance && rmsDiff <= levelTolerance;
 
   return { passed, maxEnvelopeDiff, peakDiff, rmsDiff, hashMatch, topologyMismatch };
 }

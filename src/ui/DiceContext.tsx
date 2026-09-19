@@ -31,7 +31,9 @@ import { forkRandom } from "../shared/rng";
 import { normalizeIntent } from "../intent/normalize";
 import {
   buildFavoritesPack,
+  MELODIC_NOTES_CAP,
   recordFavoriteLedgerEntry,
+  roleForTrack,
   type FavoriteLedgerEntry,
 } from "../intent/favorites";
 import type { GenerateOptions } from "../ai/types";
@@ -244,8 +246,8 @@ export function DiceProvider({
           swing: null,
           kitAssignments: null,
           kitName: null,
-        melodicNotes: null,
-        melodicTrackId: null,
+          melodicNotes: null,
+          melodicTrackId: null,
         };
       } catch {
         return {
@@ -259,8 +261,8 @@ export function DiceProvider({
           swing: null,
           kitAssignments: null,
           kitName: null,
-        melodicNotes: null,
-        melodicTrackId: null,
+          melodicNotes: null,
+          melodicTrackId: null,
         };
       }
     }
@@ -414,39 +416,72 @@ export function DiceProvider({
     setSession((prev) => toggleLock(prev, key));
   }, []);
 
-  const toggleFav = useCallback((index: number) => {
-    setSession((prev) => {
-      const next = toggleFavorite(prev, index);
-      // T2 v2 feedback loop: ★-ing a PREVIEWED roll records it in the local
-      // favorites ledger (intent + drum content). The pack is exportable from
-      // the tray and folds into the next symbolic-prior retraining
-      // (`npm run prior:favorites`). Dedupe + cap live in the ledger module;
-      // recording inside the updater is safe — a StrictMode double-invoke
-      // collapses via the seed+grooveId dedupe.
-      if (index === prev.cursor && next.favorites.has(index) && !prev.favorites.has(index)) {
-        const pattern = previewRef.current?.fullPattern?.proposal?.pattern ?? null;
-        const drumTrack = doc.tracks.find((track) => track.kind === "drum");
-        const generation = pattern?.generation;
-        if (pattern && drumTrack && drumTrack.kind === "drum" && generation) {
-          const entry: FavoriteLedgerEntry = {
-            savedAt: Date.now(),
-            seed: prev.seedChain[index] ?? "",
-            genre: String(generation.genre ?? prev.intent.genre),
-            grooveId: String(generation.grooveId ?? ""),
-            energy: prev.intent.energy,
-            density: prev.intent.density,
-            complexity: prev.intent.complexity,
-            variation: prev.intent.variation,
-            padIds: drumTrack.pads.map((pad) => pad.id),
-            padNames: drumTrack.pads.map((pad) => pad.name),
-            rows: JSON.parse(JSON.stringify(pattern.rows)),
-          };
-          recordFavoriteLedgerEntry(entry);
+  const toggleFav = useCallback(
+    (index: number) => {
+      setSession((prev) => {
+        const next = toggleFavorite(prev, index);
+        // T2 v2 feedback loop: ★-ing a PREVIEWED roll records it in the local
+        // favorites ledger (intent + drum content). The pack is exportable from
+        // the tray and folds into the next symbolic-prior retraining
+        // (`npm run prior:favorites`). Dedupe + cap live in the ledger module;
+        // recording inside the updater is safe — a StrictMode double-invoke
+        // collapses via the seed+grooveId dedupe.
+        if (index === prev.cursor && next.favorites.has(index) && !prev.favorites.has(index)) {
+          const pattern = previewRef.current?.fullPattern?.proposal?.pattern ?? null;
+          const drumTrack = doc.tracks.find((track) => track.kind === "drum");
+          const generation = pattern?.generation;
+          if (pattern && drumTrack && drumTrack.kind === "drum" && generation) {
+            // Melodic parts (C1): per instrument track, role via the same
+            // name/positional heuristic the generator uses. Notes capped —
+            // localStorage is a finite quota.
+            const instrumentTracks = doc.tracks.filter((track) => track.kind === "instrument");
+            const melodic: FavoriteLedgerEntry["melodic"] = [];
+            let noteCount = 0;
+            for (const [trackIndex, track] of instrumentTracks.entries()) {
+              if (track.kind !== "instrument") continue;
+              const notes = pattern.notes?.[track.id] ?? [];
+              if (notes.length === 0 || noteCount >= MELODIC_NOTES_CAP) continue;
+              const role = roleForTrack(track.name, trackIndex);
+              if (!role) continue;
+              const capped = notes.slice(0, MELODIC_NOTES_CAP - noteCount).map((note) => ({
+                pitch: note.pitch,
+                start: note.start,
+                duration: note.duration,
+                velocity: note.velocity,
+              }));
+              noteCount += capped.length;
+              melodic.push({ role, trackName: track.name, notes: capped });
+            }
+            const entry: FavoriteLedgerEntry = {
+              savedAt: Date.now(),
+              seed: prev.seedChain[index] ?? "",
+              genre: String(generation.genre ?? prev.intent.genre),
+              grooveId: String(generation.grooveId ?? ""),
+              energy: prev.intent.energy,
+              density: prev.intent.density,
+              complexity: prev.intent.complexity,
+              variation: prev.intent.variation,
+              padIds: drumTrack.pads.map((pad) => pad.id),
+              padNames: drumTrack.pads.map((pad) => pad.name),
+              rows: JSON.parse(JSON.stringify(pattern.rows)),
+              // v2 fields — full reconstruction fidelity for C1/C2 retraining
+              length: generation.stepCount,
+              style: generation.style ?? null,
+              ghostWeight: generation.ghostWeight,
+              microWeight: generation.microWeight,
+              velocityVariation: generation.velocityVariation,
+              temperature: generation.temperature,
+              key: doc.key ?? prev.intent.key ?? null,
+              melodic,
+            };
+            recordFavoriteLedgerEntry(entry);
+          }
         }
-      }
-      return next;
-    });
-  }, [doc]);
+        return next;
+      });
+    },
+    [doc],
+  );
 
   const exportFavoritesPack = useCallback(() => {
     try {

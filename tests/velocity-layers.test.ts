@@ -195,7 +195,7 @@ describe.skipIf(typeof OfflineAudioContext === "undefined")("Sampler layer selec
   function zcc(data: Float32Array, from: number, to: number): number {
     let c = 0;
     for (let i = from + 1; i < to; i++) {
-      if ((data[i - 1] < 0) !== (data[i] < 0)) c++;
+      if (data[i - 1] < 0 !== data[i] < 0) c++;
     }
     return c;
   }
@@ -310,7 +310,7 @@ describe.skipIf(typeof OfflineAudioContext === "undefined")("Sampler keyzone run
   function zcc(data: Float32Array, from: number, to: number): number {
     let c = 0;
     for (let i = from + 1; i < to; i++) {
-      if ((data[i - 1] < 0) !== (data[i] < 0)) c++;
+      if (data[i - 1] < 0 !== data[i] < 0) c++;
     }
     return c;
   }

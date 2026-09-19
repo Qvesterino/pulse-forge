@@ -33,30 +33,19 @@ export function Meter({ engine, kind, id }: { engine: AudioEngine; kind: "track"
       // Direct DOM mutation — zero React reconciliation on the hot path.
       if (fillRef.current) {
         fillRef.current.style.height = `${level * 100}%`;
-        fillRef.current.style.background =
-          clipping || level > 0.92 ? "#f87171" : level > 0.75 ? "#f59e0b" : "#4ade80";
+        fillRef.current.style.background = clipping || level > 0.92 ? "#f87171" : level > 0.75 ? "#f59e0b" : "#4ade80";
       }
       if (rootRef.current) {
         rootRef.current.dataset.clipping = clipping ? "true" : "false";
         rootRef.current.setAttribute("aria-valuenow", String(Math.round(level * 100)));
-        rootRef.current.setAttribute(
-          "aria-valuetext",
-          clipping ? "CLIP" : `${Math.round(level * 100)}%`,
-        );
+        rootRef.current.setAttribute("aria-valuetext", clipping ? "CLIP" : `${Math.round(level * 100)}%`);
       }
     });
     return () => unregisterRaf(meterId);
   }, [engine, kind, id, meterId]);
 
   return (
-    <div
-      ref={rootRef}
-      className={`meter`}
-      role="meter"
-      aria-label="Level meter"
-      aria-valuemin={0}
-      aria-valuemax={100}
-    >
+    <div ref={rootRef} className={`meter`} role="meter" aria-label="Level meter" aria-valuemin={0} aria-valuemax={100}>
       <div ref={fillRef} className="meter-fill" style={{ height: "0%" }} />
     </div>
   );

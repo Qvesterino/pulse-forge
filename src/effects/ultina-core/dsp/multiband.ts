@@ -195,12 +195,7 @@ export class CrossoverNetwork {
    * Each bandOut element is an array of Float32Array (per channel).
    * Dispatches between LR4 (analog) and FIR (hybrid) modes.
    */
-  split(
-    input: Float32Array[],
-    bandOut: Float32Array[][],
-    frameCount: number,
-    _sampleRate: number,
-  ): void {
+  split(input: Float32Array[], bandOut: Float32Array[][], frameCount: number, _sampleRate: number): void {
     // M/S and T/S channel modes feed a SINGLE-channel buffer through the
     // multiband chain — honor the actual input width, never assume the
     // module's full channel count (a missing channel here crashes the
@@ -232,11 +227,7 @@ export class CrossoverNetwork {
    *   - High = input_delayed - LP(freq2, input)  [or LP(freq1) for 2-band]
    *   - Mid  = LP(freq2) - LP(freq1)              [3-band only]
    */
-  private splitFir(
-    input: Float32Array[],
-    bandOut: Float32Array[][],
-    frameCount: number,
-  ): void {
+  private splitFir(input: Float32Array[], bandOut: Float32Array[][], frameCount: number): void {
     const N = this.firNumTaps;
     const M = this.firLatency;
     const ch = Math.min(this.channelCount, input.length);
@@ -282,11 +273,7 @@ export class CrossoverNetwork {
    * Uses cascaded Butterworth biquad sections.
    * All work buffers are pre-allocated — no allocations in this path.
    */
-  private splitLr4(
-    input: Float32Array[],
-    bandOut: Float32Array[][],
-    frameCount: number,
-  ): void {
+  private splitLr4(input: Float32Array[], bandOut: Float32Array[][], frameCount: number): void {
     if (this.bandCount === 1) {
       for (let ch = 0; ch < this.channelCount; ch++) {
         copyN(bandOut[0][ch], input[ch], frameCount);
@@ -377,11 +364,7 @@ export class CrossoverNetwork {
   /**
    * Sum bands back together. LR4 crossovers sum to flat (allpass).
    */
-  sum(
-    bands: Float32Array[][],
-    output: Float32Array[],
-    frameCount: number,
-  ): void {
+  sum(bands: Float32Array[][], output: Float32Array[], frameCount: number): void {
     // Output may be narrower than the module channel count (M/S mode sums
     // back into the single mid buffer) — honor it.
     const chCount = Math.min(this.channelCount, output.length);
@@ -401,12 +384,7 @@ export class CrossoverNetwork {
 }
 
 // Local helper to process biquad on a single channel in-place
-function processBiquadInPlace(
-  bq: BiquadState,
-  data: Float32Array,
-  ch: number,
-  frameCount: number,
-): void {
+function processBiquadInPlace(bq: BiquadState, data: Float32Array, ch: number, frameCount: number): void {
   // Hot path: no per-sample sanitize (the LR4 cascade runs up to 8× per
   // block per module). The state is guarded once per block; the crossover
   // sum() and module outputs sanitize.
@@ -526,9 +504,7 @@ export class TransientSustainSeparator {
 
       sEnv += this.slowCoef * (abs - sEnv);
 
-      const tAmount = sEnv > 1e-8
-        ? clamp(tEnv / sEnv - 1, 0, 1)
-        : 0;
+      const tAmount = sEnv > 1e-8 ? clamp(tEnv / sEnv - 1, 0, 1) : 0;
 
       transientBuf[i] = input[i] * tAmount;
       sustainBuf[i] = input[i] * (1 - tAmount);
@@ -572,12 +548,7 @@ export class MultibandProcessor {
   private maxBlockSize = 8192;
   private prepared = false;
 
-  prepare(
-    sampleRate: number,
-    channelCount: number,
-    maxBlockSize: number,
-    bandCount: BandCount,
-  ): void {
+  prepare(sampleRate: number, channelCount: number, maxBlockSize: number, bandCount: BandCount): void {
     this.sampleRate = sampleRate;
     this.channelCount = Math.max(1, channelCount);
     this.maxBlockSize = Math.max(1, maxBlockSize);
@@ -599,14 +570,8 @@ export class MultibandProcessor {
 
     this.transientBuf = new Float32Array(this.maxBlockSize);
     this.sustainBuf = new Float32Array(this.maxBlockSize);
-    this.transientStereoBufs = [
-      new Float32Array(this.maxBlockSize),
-      new Float32Array(this.maxBlockSize),
-    ];
-    this.sustainStereoBufs = [
-      new Float32Array(this.maxBlockSize),
-      new Float32Array(this.maxBlockSize),
-    ];
+    this.transientStereoBufs = [new Float32Array(this.maxBlockSize), new Float32Array(this.maxBlockSize)];
+    this.sustainStereoBufs = [new Float32Array(this.maxBlockSize), new Float32Array(this.maxBlockSize)];
 
     this.prepared = true;
   }
@@ -679,10 +644,7 @@ export class MultibandProcessor {
       // Process only transient or sustain component
       if (this.channelCount < 2) {
         // Mono: process single channel
-        this.tsSeparator.separate(
-          channels[0], frameCount,
-          this.transientBuf, this.sustainBuf, 0,
-        );
+        this.tsSeparator.separate(channels[0], frameCount, this.transientBuf, this.sustainBuf, 0);
         const target = channelMode === "transient" ? this.transientBuf : this.sustainBuf;
         const singleChannel = this.singleChannelWrap;
         singleChannel[0] = target;
@@ -700,17 +662,16 @@ export class MultibandProcessor {
         const stereoChannels = Math.min(2, this.channelCount, channels.length);
         for (let ch = 0; ch < stereoChannels; ch++) {
           this.tsSeparator.separate(
-            channels[ch], frameCount,
-            this.transientStereoBufs[ch], this.sustainStereoBufs[ch], ch,
+            channels[ch],
+            frameCount,
+            this.transientStereoBufs[ch],
+            this.sustainStereoBufs[ch],
+            ch,
           );
         }
-        const target = channelMode === "transient"
-          ? this.transientStereoBufs
-          : this.sustainStereoBufs;
+        const target = channelMode === "transient" ? this.transientStereoBufs : this.sustainStereoBufs;
         this.processBands(target, frameCount, bandProcessFn);
-        const other = channelMode === "transient"
-          ? this.sustainStereoBufs
-          : this.transientStereoBufs;
+        const other = channelMode === "transient" ? this.sustainStereoBufs : this.transientStereoBufs;
         for (let ch = 0; ch < stereoChannels; ch++) {
           for (let i = 0; i < frameCount; i++) {
             channels[ch][i] = target[ch][i] + other[ch][i];
@@ -723,11 +684,7 @@ export class MultibandProcessor {
     }
   }
 
-  private processBands(
-    channels: Float32Array[],
-    frameCount: number,
-    bandProcessFn: BandProcessFn,
-  ): void {
+  private processBands(channels: Float32Array[], frameCount: number, bandProcessFn: BandProcessFn): void {
     const bandCount = this.crossover.getBandCount();
 
     if (bandCount === 1) {

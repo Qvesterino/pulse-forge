@@ -96,6 +96,38 @@ export function evaluateMixCheck(snapshot: MixCheckSnapshot): MixCheckWarning[] 
   return warnings;
 }
 
+export interface ExportMonoGuard {
+  /** ok = mono-safe, warn = check wide elements, bad = fix before sharing. */
+  level: "ok" | "warn" | "bad";
+  /** Actionable hints, highest priority first (UI shows all, usually 1–2). */
+  hints: string[];
+}
+
+/**
+ * Mono-compatibility guardian for rendered files. Same thresholds as the
+ * live mix-check verdict (mono loss −3 dB warn, negative correlation bad,
+ * −6 dB loss severe) so live meters and the export summary never disagree.
+ * Pure so the export panel can render it and tests can pin the thresholds.
+ */
+export function evaluateExportMonoGuard(input: Pick<BufferSummary, "monoLossDb" | "correlation">): ExportMonoGuard {
+  const hints: string[] = [];
+  let level: ExportMonoGuard["level"] = "ok";
+
+  if (input.correlation < 0) {
+    level = "bad";
+    hints.push("Phase issues — the sides cancel in mono, check wide elements");
+  }
+  if (input.monoLossDb < -6) {
+    level = "bad";
+    hints.push("Mono fold-down loses depth — narrow Haas/wide layers");
+  } else if (input.monoLossDb < -3) {
+    if (level === "ok") level = "warn";
+    hints.push("Mono fold-down loses depth — check wide elements");
+  }
+
+  return { level, hints };
+}
+
 export interface MasterVerdictInput {
   lufsIntegrated: number;
   truePeakDb: number;

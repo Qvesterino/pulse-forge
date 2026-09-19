@@ -22,6 +22,7 @@ import { recordPlayActivity } from "./ui/playActivity";
 import { MidiOutput } from "./midi/MidiOutput";
 import { MidiClock } from "./midi/MidiClock";
 import { UserSampleRepository, restoreUserSampleAudio } from "./persistence/UserSampleRepository";
+import { RecordingRecoveryRepository } from "./persistence/RecordingRecoveryRepository";
 import { ensureCuratedLayer } from "./sample-library/curated";
 import { FrozenBufferRepository, restoreFrozenTracks } from "./persistence/FrozenBufferRepository";
 import { ensureWorkletsForDoc } from "./audio-worklets/loader";
@@ -91,6 +92,7 @@ export interface Services {
   midiOutput: MidiOutput;
   midiClock: MidiClock;
   userSamples: UserSampleRepository;
+  recordingRecovery: RecordingRecoveryRepository;
   frozenAudio: FrozenBufferRepository;
   latency: LatencyCalibrationController;
   capture: ArrangementCaptureController;
@@ -498,6 +500,7 @@ export async function openProject(
   // The bandmate listens to performed MIDI notes — call & response.
   midi.onInstrumentNote = (pitch) => bandmate?.noteHeard(pitch);
   const userSamples = new UserSampleRepository();
+  const recordingRecovery = new RecordingRecoveryRepository();
   const frozenAudio = new FrozenBufferRepository();
 
   // Close-race guard (critical path audit): several fire-and-forget asyncs
@@ -530,9 +533,7 @@ export async function openProject(
     getPerformTrackId: (): string | null => {
       const doc = store.doc;
       const selectedId = selectionBridge.getSelectedTrackId();
-      const selected = selectedId
-        ? doc.tracks.find((t) => t.id === selectedId && t.kind === "instrument")
-        : undefined;
+      const selected = selectedId ? doc.tracks.find((t) => t.id === selectedId && t.kind === "instrument") : undefined;
       return (selected ?? doc.tracks.find((t) => t.kind === "instrument"))?.id ?? null;
     },
   };
@@ -810,6 +811,7 @@ export async function openProject(
     midiOutput,
     midiClock,
     userSamples,
+    recordingRecovery,
     frozenAudio,
     latency,
     capture,

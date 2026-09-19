@@ -193,7 +193,8 @@ export async function runMelodicNext(values: Float32Array, rowCount: number): Pr
   try {
     if (priorMode() === "off") return { ok: false, degree: null, duration: null, source: "off" };
     const manifest = await loadManifest("melodic");
-    if (!manifest || manifest.kind !== "melodic") return { ok: false, degree: null, duration: null, source: "fallback" };
+    if (!manifest || manifest.kind !== "melodic")
+      return { ok: false, degree: null, duration: null, source: "fallback" };
     const melodicManifest = manifest as MelodicPriorManifest;
     if (values.length !== rowCount * melodicManifest.featureCount) {
       return { ok: false, degree: null, duration: null, source: "fallback" };

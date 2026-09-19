@@ -133,10 +133,10 @@ export function generatePattern(doc: ProjectDocument, options: GenerateOptions, 
     options.constraints?.allowSwing === false
       ? 0
       : typeof (options as GenerateOptions & { _diceSwing?: number })._diceSwing === "number"
-      ? (options as GenerateOptions & { _diceSwing?: number })._diceSwing!
-      : options.applyGrooveSettings || (doc.groove?.swing ?? 0) > 0
-        ? 0
-        : groove.swing;
+        ? (options as GenerateOptions & { _diceSwing?: number })._diceSwing!
+        : options.applyGrooveSettings || (doc.groove?.swing ?? 0) > 0
+          ? 0
+          : groove.swing;
 
   // Generate drum pattern
   const { rows: rawRows, meta } = drumsEnabled

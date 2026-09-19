@@ -25,13 +25,7 @@
 // louder than the maskee + masking threshold, masking occurs.
 // ═══════════════════════════════════════════════════════════
 
-import {
-  createBiquad,
-  setBandPass,
-  processBiquadChannel,
-  resetBiquad,
-  type BiquadState,
-} from "./primitives.js";
+import { createBiquad, setBandPass, processBiquadChannel, resetBiquad, type BiquadState } from "./primitives.js";
 
 /** Sanitize a numeric value, returning 0 for NaN/Infinity. */
 function safeNum(x: number): number {
@@ -44,9 +38,7 @@ function safeNum(x: number): number {
 export const MASKING_BANDS = 8;
 
 /** Default center frequencies for masking bands (logarithmic). */
-export const MASKING_FREQS = [
-  100, 250, 500, 1000, 2000, 4000, 8000, 16000,
-];
+export const MASKING_FREQS = [100, 250, 500, 1000, 2000, 4000, 8000, 16000];
 
 /** Psychoacoustic masking offset (dB). Below this difference, no masking. */
 const MASKING_THRESHOLD_DB = 3;
@@ -119,11 +111,7 @@ export class MaskingMeter {
    * Returns per-band masking data. The result object is POOLED — copy out
    * what you need; the next call overwrites every field.
    */
-  analyze(
-    main: Float32Array,
-    sidechain: Float32Array,
-    frameCount: number,
-  ): MaskingResult {
+  analyze(main: Float32Array, sidechain: Float32Array, frameCount: number): MaskingResult {
     this.ensureBuffers(frameCount);
 
     // smoothCoef is a PER-SAMPLE coefficient; it is applied once per block,

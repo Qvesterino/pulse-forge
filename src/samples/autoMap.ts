@@ -93,8 +93,8 @@ export function autoMapVelocityLayers(samples: NamedSample[]): SampleLayer[] {
   let untagged: Zone | null = null;
   const orderedGroups = [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
   for (const [, unsortedMembers] of orderedGroups) {
-    const members = [...unsortedMembers].sort((a, b) =>
-      a.name.localeCompare(b.name) || a.sampleId.localeCompare(b.sampleId),
+    const members = [...unsortedMembers].sort(
+      (a, b) => a.name.localeCompare(b.name) || a.sampleId.localeCompare(b.sampleId),
     );
     const pitch = parseSampleNote(members[0].name);
     const velocity = parseSampleVelocity(members[0].name);

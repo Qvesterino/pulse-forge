@@ -63,9 +63,18 @@ const defaultProps = {
 describe("cursorsAt", () => {
   it("matches every provided coordinate exactly", () => {
     const remote: RemoteCursor[] = [
-      { user: { id: "a", name: "Nova", color: "#f00" }, cursor: { view: "sequencer", patternId: "p1", padId: "kick", stepIndex: 2 } },
-      { user: { id: "b", name: "Echo", color: "#0f0" }, cursor: { view: "sequencer", patternId: "p1", padId: "kick", stepIndex: 4 } },
-      { user: { id: "c", name: "Prism", color: "#00f" }, cursor: { view: "pianoroll", patternId: "p1", trackId: "bass", pitch: 60 } },
+      {
+        user: { id: "a", name: "Nova", color: "#f00" },
+        cursor: { view: "sequencer", patternId: "p1", padId: "kick", stepIndex: 2 },
+      },
+      {
+        user: { id: "b", name: "Echo", color: "#0f0" },
+        cursor: { view: "sequencer", patternId: "p1", padId: "kick", stepIndex: 4 },
+      },
+      {
+        user: { id: "c", name: "Prism", color: "#00f" },
+        cursor: { view: "pianoroll", patternId: "p1", trackId: "bass", pitch: 60 },
+      },
     ];
     expect(cursorsAt(remote, { view: "sequencer", patternId: "p1", padId: "kick", stepIndex: 2 })).toHaveLength(1);
     expect(cursorsAt(remote, { view: "sequencer", patternId: "p1", padId: "kick", stepIndex: 3 })).toHaveLength(0);

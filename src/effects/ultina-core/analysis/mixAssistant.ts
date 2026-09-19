@@ -121,10 +121,7 @@ export function analyzeTrack(request: AnalysisRequest): AnalysisResult {
  * Run analysis with a specific target curve for tonal balance matching.
  * Incorporates the target curve into the proposal as EQ suggestions.
  */
-export function analyzeWithTarget(
-  request: AnalysisRequest,
-  targetCurve: number[],
-): AnalysisResult {
+export function analyzeWithTarget(request: AnalysisRequest, targetCurve: number[]): AnalysisResult {
   const result = analyzeTrack(request);
 
   if (result.kind !== "success") {
@@ -136,12 +133,13 @@ export function analyzeWithTarget(
   const features = proposal.features;
 
   // Convert features.spectralProfile (ratios) to dB per octave band
-  const currentDb = features.spectralProfile.length === 10
-    ? features.spectralProfile.map((b) => {
-        const dbVal = b.ratio > 0 ? 10 * Math.log10(b.ratio * 10 + 1e-20) : -60;
-        return dbVal;
-      })
-    : new Array(10).fill(0);
+  const currentDb =
+    features.spectralProfile.length === 10
+      ? features.spectralProfile.map((b) => {
+          const dbVal = b.ratio > 0 ? 10 * Math.log10(b.ratio * 10 + 1e-20) : -60;
+          return dbVal;
+        })
+      : new Array(10).fill(0);
 
   // Deviation = current - target. A non-finite target entry (caller-supplied
   // or custom-captured curve) would make every downstream Math.min/max

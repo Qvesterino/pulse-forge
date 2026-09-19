@@ -9,10 +9,7 @@ describe("FloatingPlugin", () => {
     const services = mockServices();
     const doc = services.store.doc as { tracks: { id: string; kind?: string }[] };
     const drums = doc.tracks.find((t) => t.kind === "drum")!;
-    renderWithContext(
-      <FloatingPlugin trackId={drums.id} selectedPadId={drums.id} onClose={() => {}} />,
-      { services },
-    );
+    renderWithContext(<FloatingPlugin trackId={drums.id} selectedPadId={drums.id} onClose={() => {}} />, { services });
     // Header shows "DRUMS — PAD" (no pad resolution since mockServices pads array is empty).
     expect(screen.getByText(/DRUMS/)).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "Plugin mode" })).toBeInTheDocument();
@@ -35,10 +32,7 @@ describe("FloatingPlugin", () => {
     const doc = services.store.doc as { tracks: { id: string; kind?: string }[] };
     const drums = doc.tracks.find((t) => t.kind === "drum")!;
     const user = userEvent.setup();
-    renderWithContext(
-      <FloatingPlugin trackId={drums.id} selectedPadId={drums.id} onClose={onClose} />,
-      { services },
-    );
+    renderWithContext(<FloatingPlugin trackId={drums.id} selectedPadId={drums.id} onClose={onClose} />, { services });
     await user.click(screen.getByRole("button", { name: "Close plugin" }));
     expect(onClose).toHaveBeenCalled();
   });
@@ -47,10 +41,7 @@ describe("FloatingPlugin", () => {
     const services = mockServices();
     const doc = services.store.doc as { tracks: { id: string; kind?: string }[] };
     const drums = doc.tracks.find((t) => t.kind === "drum")!;
-    renderWithContext(
-      <FloatingPlugin trackId={drums.id} selectedPadId={drums.id} onClose={() => {}} />,
-      { services },
-    );
+    renderWithContext(<FloatingPlugin trackId={drums.id} selectedPadId={drums.id} onClose={() => {}} />, { services });
     const hobby = screen.getByRole("button", { name: "HOBBY" });
     const profi = screen.getByRole("button", { name: "PROFI" });
     expect(hobby).toHaveAttribute("aria-pressed", "true");

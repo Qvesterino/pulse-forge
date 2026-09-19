@@ -98,9 +98,7 @@ describe("release hardening — AudioEngine lifecycle", () => {
     // Frozen tracks rebuild an EMPTY effect chain (the freeze render already
     // contains the FX). The call gained an ownerId first argument when
     // rebuildFxChain was made owner-aware — the pinned invariant is the [].
-    expect(syncProject).toMatch(
-      /rebuildFxChain\(track\.id,\s*\[\],\s*nodes\.input,\s*nodes\.panner,\s*nodes\.fx\)/,
-    );
+    expect(syncProject).toMatch(/rebuildFxChain\(track\.id,\s*\[\],\s*nodes\.input,\s*nodes\.panner,\s*nodes\.fx\)/);
   });
 
   it("retires only the excess one-shot voices when the ceiling is reached", () => {

@@ -168,7 +168,14 @@ export function sampleTransition(
 
   // Position is part of the state, but it is also a hard temporal invariant:
   // a transition must advance exactly one step in the bar.
-  const sampled = sampleAtPosition(model.transitions, rowStart, rowStart + model.states, nextPosition, rand, temperature);
+  const sampled = sampleAtPosition(
+    model.transitions,
+    rowStart,
+    rowStart + model.states,
+    nextPosition,
+    rand,
+    temperature,
+  );
   if (sampled >= 0) return sampled;
 
   // A sparse model can legitimately have no row for a generated state. Keep

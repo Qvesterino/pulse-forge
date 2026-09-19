@@ -20,7 +20,10 @@ export interface DockState {
 }
 
 export const DOCK_MIN_HEIGHT = 160;
-export const DOCK_MAX_HEIGHT = 800;
+// 560: the dock is a support surface — the sequencer/workspace above it keeps
+// priority. A 800 px dock (the old ceiling) could cover two thirds of a 900 px
+// screen and starve the primary writing area.
+export const DOCK_MAX_HEIGHT = 560;
 const DOCK_STORAGE_KEY = "pf-dock-v1";
 
 const isPanel = (value: unknown): value is BottomPanel =>
@@ -37,9 +40,11 @@ export function clampDockHeight(px: number, maxInner: number): number {
   return Math.min(ceiling, Math.max(DOCK_MIN_HEIGHT, Math.round(px)));
 }
 
-/** Sensible default: 300 px on big screens, scaled down on short viewports so the sequencer keeps room. */
+/** Sensible default: 220 px on big screens, scaled down on short viewports.
+ * The sequencer is the primary writing surface and keeps the majority of the
+ * vertical space — the dock opens compact and is dragged taller on demand. */
 export function defaultDockHeight(maxInner: number): number {
-  return clampDockHeight(Math.min(300, Math.round(maxInner * 0.32)), maxInner);
+  return clampDockHeight(Math.min(220, Math.round(maxInner * 0.26)), maxInner);
 }
 
 export function loadDockLayout(raw: string | null, maxInner: number): DockState {
@@ -50,7 +55,10 @@ export function loadDockLayout(raw: string | null, maxInner: number): DockState 
     const slotA = normalizePanel(parsed.slotA);
     const normalizedSlotB = normalizePanel(parsed.slotB);
     return {
-      height: clampDockHeight(typeof parsed.height === "number" ? parsed.height : defaultDockHeight(maxInner), maxInner),
+      height: clampDockHeight(
+        typeof parsed.height === "number" ? parsed.height : defaultDockHeight(maxInner),
+        maxInner,
+      ),
       slotA,
       slotB: normalizedSlotB === slotA ? null : normalizedSlotB,
     };

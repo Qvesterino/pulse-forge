@@ -175,8 +175,10 @@ export function pluginTypesInDoc(doc: unknown): PluginWorkletType[] {
     }
   };
   const container = doc as { tracks?: unknown; returns?: unknown; master?: unknown };
-  if (Array.isArray(container.tracks)) for (const track of container.tracks) scan((track as { effects?: unknown })?.effects);
-  if (Array.isArray(container.returns)) for (const ret of container.returns) scan((ret as { effects?: unknown })?.effects);
+  if (Array.isArray(container.tracks))
+    for (const track of container.tracks) scan((track as { effects?: unknown })?.effects);
+  if (Array.isArray(container.returns))
+    for (const ret of container.returns) scan((ret as { effects?: unknown })?.effects);
   scan((container.master as { effects?: unknown } | null)?.effects);
   return [...found];
 }

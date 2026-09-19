@@ -63,11 +63,19 @@ describe("shared transport sync", () => {
     const follower = new Transport(manualClock(), 124);
     follower.play(4800);
 
-    applyTransportState(follower, { playing: false, anchorWall: WALL0, anchorTick: 7200, bpm: 124, by: "l", at: 1 }, WALL0);
+    applyTransportState(
+      follower,
+      { playing: false, anchorWall: WALL0, anchorTick: 7200, bpm: 124, by: "l", at: 1 },
+      WALL0,
+    );
     expect(follower.playing).toBe(false);
     expect(follower.position).toBe(7200);
 
-    applyTransportState(follower, { playing: false, anchorWall: WALL0, anchorTick: 0, bpm: 124, by: "l", at: 2 }, WALL0);
+    applyTransportState(
+      follower,
+      { playing: false, anchorWall: WALL0, anchorTick: 0, bpm: 124, by: "l", at: 2 },
+      WALL0,
+    );
     expect(follower.playing).toBe(false);
     expect(follower.position).toBe(0);
   });
@@ -146,14 +154,16 @@ describe("shared transport sync", () => {
   });
 
   it("accepts only complete, finite transport payloads", () => {
-    expect(isSharedTransportState({
-      playing: false,
-      anchorWall: WALL0,
-      anchorTick: 0,
-      bpm: 124,
-      by: "peer-1",
-      at: WALL0 * 1000,
-    })).toBe(true);
+    expect(
+      isSharedTransportState({
+        playing: false,
+        anchorWall: WALL0,
+        anchorTick: 0,
+        bpm: 124,
+        by: "peer-1",
+        at: WALL0 * 1000,
+      }),
+    ).toBe(true);
     expect(isSharedTransportState({ playing: false })).toBe(false);
   });
 

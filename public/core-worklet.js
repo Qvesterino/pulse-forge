@@ -1452,7 +1452,10 @@
       const reverse = this.rand() < reverseProb;
       const pan = (this.rand() * 2 - 1) * spread;
       const playRate = Math.pow(2, (this.pitch - 60 + (p.pitch ?? 0)) / 12);
-      const grainRate = Math.max(0.02, playRate * (pitchRand > 5e-3 ? Math.pow(2, (this.rand() * 2 - 1) * pitchRand / 12) : 1));
+      const grainRate = Math.max(
+        0.02,
+        playRate * (pitchRand > 5e-3 ? Math.pow(2, (this.rand() * 2 - 1) * pitchRand / 12) : 1)
+      );
       const len = sample.length;
       const grainDurSamples = Math.round((size + 0.01) * sr);
       let start = offsetFrac * len;

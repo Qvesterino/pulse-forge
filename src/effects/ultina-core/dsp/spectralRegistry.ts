@@ -32,12 +32,7 @@
 //   - No allocations in the audio path
 // ═══════════════════════════════════════════════════════════
 
-import {
-  createBiquad,
-  setBandPass,
-  resetBiquad,
-  type BiquadState,
-} from "./primitives.js";
+import { createBiquad, setBandPass, resetBiquad, type BiquadState } from "./primitives.js";
 
 // ── Shared band frequencies (must match Unmask's 32 bands) ──
 
@@ -173,9 +168,7 @@ export class BandAnalyzer {
 
     // Update dB levels
     for (let b = 0; b < SPECTRAL_BANDS; b++) {
-      this.bandLevelsDb[b] = this.envelopes[b] > 1e-10
-        ? 20 * Math.log10(this.envelopes[b])
-        : -200;
+      this.bandLevelsDb[b] = this.envelopes[b] > 1e-10 ? 20 * Math.log10(this.envelopes[b]) : -200;
     }
   }
 

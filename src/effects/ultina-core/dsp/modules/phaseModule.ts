@@ -25,16 +25,8 @@
 // Meters: asymmetry (0-1), correlation (-1..1), detectedOffsetMs
 // ═══════════════════════════════════════════════════════════
 
-import type {
-  ModuleProcessArgs,
-  ModuleProcessorContext,
-  UltinaModuleProcessor,
-} from "../ultinaProcessor.js";
-import {
-  clamp,
-  sanitizeSample,
-  smoothCoef,
-} from "../primitives.js";
+import type { ModuleProcessArgs, ModuleProcessorContext, UltinaModuleProcessor } from "../ultinaProcessor.js";
+import { clamp, sanitizeSample, smoothCoef } from "../primitives.js";
 import { DryDelayMixer } from "../dryDelay.js";
 import type { PhaseMeters } from "../../contracts/meters.js";
 
@@ -85,10 +77,7 @@ export class PhaseModuleProcessor implements UltinaModuleProcessor {
   private static readonly XCORR_INTERVAL = 8;
   /** Reusable chunk channel views for the dry-delay mixer (no per-chunk
    * allocation on the audio thread). */
-  private chunkChannels: Float32Array[] = [
-    new Float32Array(0),
-    new Float32Array(0),
-  ];
+  private chunkChannels: Float32Array[] = [new Float32Array(0), new Float32Array(0)];
 
   // ── Analysis state ──
   // Peak envelopes for asymmetry
@@ -98,9 +87,9 @@ export class PhaseModuleProcessor implements UltinaModuleProcessor {
   private peakRelCoef = 0;
 
   // Running correlation accumulators
-  private corrSum: number = 0;  // Σ(L*R)
-  private corrLsq: number = 0;  // Σ(L²)
-  private corrRsq: number = 0;  // Σ(R²)
+  private corrSum: number = 0; // Σ(L*R)
+  private corrLsq: number = 0; // Σ(L²)
+  private corrRsq: number = 0; // Σ(R²)
   private corrCount: number = 0;
 
   // Cross-correlation buffer for sidechain offset detection
@@ -123,20 +112,14 @@ export class PhaseModuleProcessor implements UltinaModuleProcessor {
 
     // Size the delay buffer to cover the maximum requested shift
     // (50 ms) at the active sample rate, plus headroom.
-    this.delayBufferSize = Math.max(
-      Math.ceil((50 * this.sampleRate) / 1000) + 1,
-      this.maxBlockSize,
-    );
+    this.delayBufferSize = Math.max(Math.ceil((50 * this.sampleRate) / 1000) + 1, this.maxBlockSize);
     this.delayBufL = new Float32Array(this.delayBufferSize);
     this.delayBufR = new Float32Array(this.delayBufferSize);
     this.delayWritePos = 0;
-    this.dryDelay.prepare(
-      this.maxBlockSize,
-      Math.ceil((50 * this.sampleRate) / 1000),
-    );
+    this.dryDelay.prepare(this.maxBlockSize, Math.ceil((50 * this.sampleRate) / 1000));
 
     // DC blocker coefficient (~20 Hz cutoff)
-    this.dcCoef = 1 - 2 * Math.PI * 20 / this.sampleRate;
+    this.dcCoef = 1 - (2 * Math.PI * 20) / this.sampleRate;
     if (this.dcCoef < 0.9) this.dcCoef = 0.9;
 
     // Peak envelope coefficients
@@ -145,10 +128,7 @@ export class PhaseModuleProcessor implements UltinaModuleProcessor {
 
     // Max cross-correlation search range (+50 ms), clamped to the
     // delay buffer size.
-    this.xcorrMaxOffsetSamples = Math.min(
-      Math.floor(50 * this.sampleRate / 1000),
-      this.delayBufferSize - 1,
-    );
+    this.xcorrMaxOffsetSamples = Math.min(Math.floor((50 * this.sampleRate) / 1000), this.delayBufferSize - 1);
 
     this.reset();
   }
@@ -190,7 +170,7 @@ export class PhaseModuleProcessor implements UltinaModuleProcessor {
     }
 
     // Compute delay samples (clamp to the delay buffer capacity)
-    const shiftSamples = Math.round(effectiveShiftMs * this.sampleRate / 1000);
+    const shiftSamples = Math.round((effectiveShiftMs * this.sampleRate) / 1000);
     const delayL = Math.min(Math.max(0, shiftSamples), this.delayBufferSize - 1);
     const delayR = Math.min(Math.max(0, -shiftSamples), this.delayBufferSize - 1);
     // Scalar, host-compensable latency = the part common to both channels.
@@ -280,9 +260,7 @@ export class PhaseModuleProcessor implements UltinaModuleProcessor {
       // ── Compute meter values ──
       // Asymmetry
       const peakSum = this.posPeakEnv + this.negPeakEnv;
-      const asymmetry = peakSum > 1e-8
-        ? Math.abs(this.posPeakEnv - this.negPeakEnv) / peakSum
-        : 0;
+      const asymmetry = peakSum > 1e-8 ? Math.abs(this.posPeakEnv - this.negPeakEnv) / peakSum : 0;
       const asymCoef = smoothCoef(50, this.sampleRate) * chunkSize;
       this.smoothAsymmetry += Math.min(1, asymCoef) * (asymmetry - this.smoothAsymmetry);
 
@@ -305,9 +283,7 @@ export class PhaseModuleProcessor implements UltinaModuleProcessor {
       if (learnActive) {
         // Suggest rotation based on asymmetry
         // If positive peaks dominate, rotate negative; vice versa
-        const asym = this.posPeakEnv > this.negPeakEnv
-          ? this.smoothAsymmetry
-          : -this.smoothAsymmetry;
+        const asym = this.posPeakEnv > this.negPeakEnv ? this.smoothAsymmetry : -this.smoothAsymmetry;
         // Map asymmetry (0-1) to rotation degrees (0-90)
         const targetRot = asym * 90;
         const learnCoef = Math.min(1, smoothCoef(500, this.sampleRate) * chunkSize);
@@ -348,11 +324,14 @@ export class PhaseModuleProcessor implements UltinaModuleProcessor {
             }
           }
 
-          const detectedMs = bestLag / this.sampleRate * 1000;
+          const detectedMs = (bestLag / this.sampleRate) * 1000;
           // Compensate for the decimated run rate: the smoothing coefficient
           // is scaled by the interval so the 200 ms response time constant
           // stays the same as a per-block sweep would have.
-          const detectCoef = Math.min(1, smoothCoef(200, this.sampleRate) * chunkSize * PhaseModuleProcessor.XCORR_INTERVAL);
+          const detectCoef = Math.min(
+            1,
+            smoothCoef(200, this.sampleRate) * chunkSize * PhaseModuleProcessor.XCORR_INTERVAL,
+          );
           this.detectedOffsetMs += detectCoef * (detectedMs - this.detectedOffsetMs);
         }
       }

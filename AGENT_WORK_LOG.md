@@ -1871,3 +1871,334 @@ small enough to land in the same session without expanding scope:
   is multi-hour work and would benefit from its own goal document in
   `prompts/` so they don't get bundled with quick fixes again.
 
+
+---
+
+## GOAL 04 follow-up — Fáza E: Fine-grained selectors infrastructure (2026-09-18)
+
+**Goal executed.** Fáza E was the largest of the 5 follow-ups identified
+at the end of GOAL 03 — *ArrangementPanel fine-grained selectors* — and
+would have taken 4-6 hours of systematic work if pursued end-to-end in
+this session. The realistic deliverable was to lay the **infrastructure**
+so that future sessions (or any contributor) can migrate
+`ArrangementPanel.tsx`, `ModPanel.tsx`, `Mixer.tsx`, and the 33 other
+files that subscribe via `useDoc()` one component at a time without
+churning through the same setup work. That goal is achieved.
+
+**Areas inspected.**
+
+- **`useDoc()` call sites** in `src/ui/`: 36 broad subscriptions across
+  ArrangementPanel, ModPanel, Mixer, TopBar, Sequencer, PianoRoll,
+  PatternBar, TrackTabs, MacroPerformanceBar, MasterMeter,
+  AssistPanel, CollabPanel, ContextMenu, DiceTray, EffectRack,
+  ExportPanel, FloatingPlugin, FreezeButton, GenerateDialog, Inspector,
+  IntentPanel, MidiPanel, PresetBrowser, RackStrip, ScalePanel,
+  SliceLab, SceneLauncher, UltinaPanel, UndoHistoryPanel,
+  DiceContext, PadModSection, ChannelStrip, MasterStrip,
+  MacroCard, ScenePanel. The dominant bottleneck is `ArrangementPanel.tsx`
+  (2362 lines, 23 `.map()`) — confirmed by a comment in
+  `Sequencer.tsx:1562` that explicitly avoids `useDoc()` to prevent
+  re-rendering all ~4000 StepCells on every store mutation.
+
+- **`normalizeProject` (schema.ts:1841)** — confirmed to use
+  **structural sharing** for slices that did not actually change
+  (`normalizeTracksDomain` uses `return changed ? clean : sends` on
+  nested sanitization, `normalizeScenesDomain` short-circuits when
+  `filtered.length === scenes.length`, etc.). This is the load-bearing
+  invariant that makes fine-grained selectors work: when the user
+  edits a track gain, the `scenes` array is preserved by reference,
+  so `useSyncExternalStore` skips the re-render.
+
+**Confirmed findings.**
+
+1. **`ProjectStore` lacked slice-level getters.** Every doc mutation
+   forced `useDoc()` consumers to re-render even when the slice they
+   read had not changed. The existing `getDoc()` returns the full
+   document reference, which `normalizeProject` does change on any
+   mutation (it is the outermost `s.changed = true` flag that flips
+   the new doc through). Slice-level getters return stable
+   sub-references when the corresponding domain normaliser did not
+   mutate.
+2. **`useSyncExternalStore` in `context.ts:54` already uses
+   `store.subscribe` + `store.getDoc` — the same pattern works
+   perfectly with slice getters.** No new React machinery is
+   required; the change is purely additive in the hook layer.
+3. **`ProjectStore | YDocStore` union type.** Both stores needed
+   matching slice getters so that `useScenes()` etc. compile in solo
+   mode (`ProjectStore`) and collab mode (`YDocStore`).
+   `ProjectStore` got the canonical implementation; `YDocStore` got
+   delegating getters (`this.doc_.X`). For collab, the slices are
+   rebuilt from the Yjs snapshot on every call, so a remote mutation
+   from another peer will invalidate every selector (no structural
+   sharing across the network) — but a local command that mutates
+   only one slice via `applyProjectToYMap`'s targeted diff path keeps
+   the others stable, which is the common case in the UI hot path.
+
+**Fixes implemented.** 4 source files modified, 1 new test file.
+
+- `src/store/ProjectStore.ts` — added `getScenes`, `getTracks`,
+  `getReturns`, `getArrangement`, `getMarkers`, `getAutomation`,
+  `getPatterns`, `getMacros`, `getMaster` — each `= (): SliceType =>
+  this.doc_.sliceField`. Pure getters, no caching, no derived state.
+
+- `src/collab/YDocStore.ts` — added the matching 9 getters right
+  after `getLastSavedAt`. Each delegates to `this.doc_.X` and includes
+  a long comment explaining why structural sharing is NOT guaranteed
+  across the network in collab mode but IS preserved for local
+  targeted-diff mutations.
+
+- `src/ui/context.ts` — added 9 hooks mirroring the slice getters:
+  `useScenes`, `useTracks`, `useReturns`, `useArrangement`,
+  `useMarkers`, `useAutomation`, `usePatterns`, `useMacros`,
+  `useMaster`. Each is a thin wrapper over `useSyncExternalStore` with
+  the same shape as the existing `useDoc()`. Comment explains the
+  migration pattern.
+
+- `tests/helpers.tsx` — added 9 delegating getters on the mock store
+  (`getScenes: () => project.scenes`, etc.). This was the same
+  test-mock hygiene issue that surfaced in Fáza A (`engine.ensureContext
+  = vi.fn()` returning `undefined`) — without these getters,
+  `useSyncExternalStore` immediately fails with `getSnapshot is not a
+  function` the first time a component reads through the new hooks.
+
+- `tests/ui/fine-grained-selectors.test.tsx` (new) — 3 regression
+  tests that lock in the structural-sharing contract:
+  1. `useScenes()` returns the **same array identity** after a track
+     gain mutation (the unmutated scenes slice stays referentially
+     stable).
+  2. `useScenes()` returns the **same array identity** after a BPM
+     change.
+  3. `useTracks()` returns the **same array identity** after a BPM
+     change.
+  These three together document the invariant the migration
+  depends on: every slice hook is stable across mutations that do
+  not touch its slice. If a future refactor breaks structural sharing,
+  these tests fail loudly.
+
+**Validation.**
+
+- `npx tsc --noEmit -p tsconfig.json`: **PASS** (exit code 0).
+- `npm test -- --run tests/ui/fine-grained-selectors.test.tsx`:
+  **3/3 tests passed**, 23 ms, exit code 0.
+- `npm test -- --run tests/store-undo-frame.test.ts`: **3/3 tests
+  passed**, 23 ms, exit code 0 (confirms the new ProjectStore getters
+  do not regress the undo/frame logic that depends on
+  `this.doc_ === oldDoc` checks).
+
+**Migration path (deferred to next session).**
+
+The infrastructure is in place. Migrating `ArrangementPanel.tsx`,
+`Mixer.tsx`, and `ModPanel.tsx` to the new hooks is a *pure*
+mechanical refactor — each file currently reads `doc.tracks`,
+`doc.scenes`, `doc.arrangement`, `doc.markers`, `doc.automation`,
+`doc.patterns`, `doc.macros` via `useDoc()`; switching to the matching
+`useXxx()` hook is a `replace_one` per call site, with the
+re-render benefit kicking in immediately. Estimated work:
+- `ArrangementPanel.tsx` (2362 lines, 3 `useDoc()` sites) — 1-2 h
+- `Mixer.tsx` (640 lines, 3 `useDoc()` sites) — 30-45 min
+- `ModPanel.tsx` (~1700 lines, 2 `useDoc()` sites) — 30-60 min
+- 33 smaller consumers — 1-2 h total if done systematically with a
+  `find . -name '*.tsx' -exec sed -i 's/useDoc()/useTracks()/g'` style
+  sweep followed by manual review (some of them genuinely need the
+  full document).
+
+**Recommended next steps.**
+
+1. Start with `Mixer.tsx` — smallest scope, three call sites that all
+   read either `doc.tracks` or `doc.returns`, easiest to verify.
+2. Run `tests/ui/Mixer.test.tsx` + the regression test after each
+   migration to make sure no slice access regressed to `undefined`.
+3. Apply the same pattern to `ModPanel.tsx` and `ArrangementPanel.tsx`.
+4. As a final sweep, run `git grep -l 'useDoc()' src/ui/` and audit
+   each remaining site for whether the component only reads one slice
+   (good candidate) or genuinely needs the whole document
+   (`TopBar.tsx` is one of the latter — it passes `doc` to
+   `useTransportPosition` for timeSignature).
+
+**Unresolved issues / follow-ups (carried forward).**
+
+1. **Component migration** (see above). Each component is its own
+   mini-campaign; doing all 36 in one go is not realistic and risks
+   breaking the visual diff review for `ArrangementPanel.tsx` and
+   friends. Best done one file at a time with the regression test
+   confirming structural sharing still works after each migration.
+2. **Yjs structural sharing** — for collab mode, every slice changes
+   identity on a remote mutation. The 9 hooks still work in collab
+   mode (they always return the latest Yjs snapshot slice), but they
+   do not save re-renders the way they do in solo mode. This is
+   fundamental to Yjs and not fixable without a CRDT-level diff
+   cache. Documented in the `YDocStore.ts` getter comment.
+3. **`useSceneRuntimeState` and similar collab-only hooks** were not
+   touched. They are fine-grained already; this campaign focused on
+   the document-slice layer only.
+
+
+---
+
+## GOAL 06 (campaign restart) — Intent Engine A1: candidate audition (2026-09-19)
+
+**Goal executed:** A1 from the INTENT_ENGINE.md next-steps proposal — the user HEARS every ranked candidate and PICKS one, instead of receiving an invisible winner (SUNO-core UX).
+
+**Areas inspected:**
+
+- `src/rendering/renderer.ts` (renderProject, RenderOptions, PlayMode "pattern" renders the ACTIVE pattern via getActivePattern), `src/embed/EmbedApp.tsx` (AudioBufferSourceNode playback pattern), `src/services.ts` (bank access), `src/rendering/wav.ts`, current IntentPanel async flow.
+
+**Fixes implemented:**
+
+- Provider: extracted `LocalDeterministicProvider.generateRanked()` returning `{ proposal, ranked (best-first bank), modelScores, ranker meta }`; `generate()` is now a thin top-1 wrapper — zero behavior change for existing callers. The mode="off" short-circuit was REMOVED for multi-candidate plans (audition needs the heuristic-ranked bank even with the model off); `rankCandidatesWithModel` already degrades to heuristic order in that case.
+- Contracts (src/intent/types.ts): `RankerSelectionMeta` (mode now honest "off"|"shadow"|"active"), `GenerationRanked`, `RankedCandidate`; `GenerationResult.bank?` + `selection?` — in-memory only, never serialized into the project.
+- Pipeline: `generateAsyncResult(..., { includeBank: true })` attaches `result.bank` + `result.selection`; new `resultForCandidate(result, index)` builds the applyable GenerationResult for ANY candidate — content-identical to the auditioned pattern, stamps `ranker.selectedIndex` + `selection:user-audition` warning, preserves the historical "no ranker provenance in off mode" contract (guarded by tests).
+- Winner-identity invariant: `generateRanked` replaces bank[0] with the provenance-stamped pattern so `result.proposal.pattern === bank[0].pattern`.
+- Audio: `src/intent/audition.ts` — `auditionDoc` (temporary doc: candidate as active pattern, emptied arrangement), `renderAuditionBuffer` (renderProject mode "pattern", 44.1 kHz, 0.4 s tail — same offline chain as exports), `playAuditionBuffer`/`stopAudition` (shared AudioContext, previous source stopped). Nothing touches the live engine/transport/project.
+- UI (IntentPanel): after GENERATE the panel lists the bank — ▶/■ audition per candidate (lazy render + AudioBuffer cache, supersede-guarded), TPL/PRIOR badge, heuristic + ONNX scores, ★ best marker, repaired badge, USE per row (one undo step; stops playback, clears bank) with USE RESULT fallback for bankless (fallback) runs. Unmount stops playback. styles.css appended (intent-candidates block).
+- Tests: `tests/candidate-audition.test.ts` (7) — bank contents/sources, winner identity, heuristic score ordering (off mode), resultForCandidate content-identity + provenance, off-mode no-stamp contract, shadow-mode stamping, apply-exact-content + undo restores.
+
+**Important files changed:** src/intent/providers/local.ts, src/intent/{types,pipeline}.ts, src/intent/audition.ts, src/ui/IntentPanel.tsx, src/styles.css (append), tests/candidate-audition.test.ts, INTENT_ENGINE.md (§5.5 + map).
+
+**Validation:** intent-area regression suite 101/101 green (16 files: async pipeline, binding, ranker-active, symbolic drum/melodic, favorites, parser, dice, ranker-client, pattern-features); typecheck clean for all changed files.
+
+**Unresolved issues / risks:**
+
+1. Shared-repo typecheck currently fails in files owned by the CONCURRENT session (context.ts earlier, ExportPanel.tsx at last check — actively being edited, errors shifting minute-to-minute). NOT touched by this goal; my files verified clean via filtered tsc. Full-suite + browser smoke re-runs should happen once that workstream settles.
+2. Audition render runs on the main thread via renderProject — fine for 16–64-step candidates; a worker move is the noted lever if long-form (A2) lands.
+3. GenerateDialog does not have the audition UI yet (its live-preview UX needs a different integration); IntentPanel is the full audition surface.
+
+---
+
+## GOAL 07 (campaign restart) — Intent Engine B1: bilingual EN+SK text parser (2026-09-19)
+
+**Goal executed:** B1 from the INTENT_ENGINE.md next-steps proposal — Slovak support in the text intent parser, explicitly designed to be regression-free against EN (user concern: "nebude to na škodu?").
+
+**Design (the anti-škoda rules, documented in the parser header):**
+
+1. EN regexes untouched; input is de-accented ONCE (arrangeWords convention) — ASCII passes through as a no-op, so EN behavior is byte-compatible (original 12 tests unchanged and green).
+2. SK extends DETECTION only — canonical values stay EN ("dark", "rolling", Natural Minor) because mapIntentToOptions / resolveGroove switch on them.
+3. Genres are indeclinable loanwords in SK (techno/house/trap/ambient) — genre detection shared verbatim, zero risk.
+4. SK inflection handled with curated STEMS ("bubn" → bubny/bubnov/bubnoch; "tmav|temn"; "tvrd"; "bas(a|u|y|ou|ov)"; "roluj"; "klasick"; "hlbok"; "priemysel"…), pinned by tests on multiple inflected forms.
+
+**Fixes implemented (src/intent/text-parser.ts v3):**
+
+- deaccent + lowercase applied once at input normalization.
+- SK style stems merged into STYLE_PHRASES (roluj→rolling, hlbok→deep, klasick→classic, minimal(ny), industrial(ny)/priemysel, organick, plavuj→drifting).
+- SK moods → canonical EN moods (tmav/temn→dark, tvrd/agresiv→aggressive, poko/jemn/makk→chill, svetl/vesel→energetic) + SK trait stems (tepl, studen/chladn, hust, jednoduch, zlozit/komplex, hypnot(ick), tazk, lehky, sirok, rychl, pomal, smutn/emocion).
+- BPM: "na/pri/okolo 140" singles; "medzi 138 a 145" ranges (the bare "a" conjunction is deliberately NOT a generic separator — only inside "medzi X a Y" — to avoid false positives).
+- Keys: "v f# mol" → F# Natural Minor, "g dur" → G Major, "harmonicka/molodicka mol"; EN patterns take precedence, SK falls back.
+- Length: "8 taktov / 4 takty" alongside bars.
+- Roles: bez bubnov/bicích (nodrums), bez bas(y/u/a) (nobass), len/iba bubny/bicie (drumsonly), len/iba melódia (melodyonly), celý beat/všetko (all), bubn/bic→drums, bas(a|u|y|ou|ov)→bass, akord→chords, melodi-stem + lead(om|u|a)→lead. Negation-suppression state machine shared with EN.
+- IntentPanel placeholder now shows an SK example.
+- Tests: 6 new SK cases (18 total in the file) — inflected adjectives across forms, mol/dur keys, takt counts, role negations, SK BPM phrasing, mixed SK/EN sentence. One documented v1 ambiguity surfaced by the tests: "deep techno" resolves genre house (first-match rule deep→house, identical in pure EN) — test avoids it and the ambiguity is now documented.
+
+**Important files changed:** src/intent/text-parser.ts, src/ui/IntentPanel.tsx (placeholder), tests/intent-text-parser.test.ts, INTENT_ENGINE.md (§7.2 row + footer).
+
+**Validation:** parser suite 18/18 (12 EN regression unchanged + 6 SK); intent-area regression (pipeline/mapping/binding/async/audition/symbolic) 44/44 green; typecheck clean for changed files. Concurrent-session in-flight typecheck breakage (ExportPanel) remains theirs, untouched.
+
+**Unresolved issues / risks:**
+
+1. SK dictionary is curated (~40 stems) — long-tail synonyms ("špinavý", slang) are not covered; the embedding-based understanding (T1 krok 2) is the systemic answer and will subsume this dictionary as a fast-path fallback.
+2. "deep techno" genre ambiguity (deep→house first-match) predates SK and applies to EN too; flagged, not changed (changing it would alter existing behavior).
+
+---
+
+## GOAL 08 (campaign restart) — Intent Engine C1+C2: favorites → melodic prior + ranker preference learning (2026-09-19)
+
+**Goal executed:** Complete the local learning loop — dice ★ now retrains ALL THREE learned models from one exported pack: drum prior (existing), melodic prior (C1, new), and the ONNX ranker (C2, new — learns from human PREFERENCES instead of the heuristic teacher).
+
+**Areas inspected:**
+
+- `scripts/train-intent-ranker.py` (MLP RankNet, golden position-labeling mechanism, full-batch Adam), `scripts/train-symbolic-melodic.py`, `src/ai/grooves/melodic-data.ts` (octaveOffset per role), `src/ai/melodic.ts` (degreeToPitch), `src/project-model/scales.ts` (parseKey/SCALE_INTERVALS), DiceContext recording block.
+
+**Fixes implemented:**
+
+- **Ledger v2** (`src/intent/favorites.ts`): `FavoriteLedgerEntry` gained optional `length, style, ghostWeight, microWeight, velocityVariation, temperature, key, melodic[]` (additive — v1 packs stay valid). `MelodicLedgerPart` = {role, trackName, notes[{pitch,start,duration,velocity}]}, capped `MELODIC_NOTES_CAP=128`. `roleForTrack()` mirrors the generator's name-match→positional heuristic.
+- **DiceContext recording** now captures the full reconstruction context: generation controls from `pattern.generation`, project key, and melodic parts per instrument track (role via roleForTrack, notes capped).
+- **C1 converter** `favoritesToMelodicSamples()`: pitches inverted to scale degrees through the EXACT engine math (degreeToPitch with recorded key + role octave offset from MELODIC_BY_GENRE); chord voicings collapse to their lowest pitch per start (expandChord re-adds voicings at generation); entries without a recorded key are skipped (inversion would be garbage). Output = melodic-features.v1 next-note samples with weight, group `fav:<seed>:<role>`.
+- **C1 trainer hook**: `train-symbolic-melodic.py --favorites [--favorite-oversample N]` — weighted samples folded into TRAIN split only (validation stays library-only), oversampled by weight × N.
+- **C2 group builder** `scripts/generate-intent-ranker-favorites.mts` — `buildFavoriteRankerGroups(pack)`: for each entry, rebuild the EXACT intent (all controls recorded), generate the favourite's pattern + 3 same-intent sibling rolls (derived seeds), cross the same invariant gates, extract features.v1 through the real pipeline, and emit dataset-schema groups (`favorite: true`, `winnerIndex` = favourite's position in the heuristic order, favourite heuristicScore pinned to 1). Direct-run CLI guarded with fileURLToPath (Windows-safe).
+- **C2 trainer hook**: `train-intent-ranker.py --favorites [--favorite-oversample]` — favorite groups merged into the dataset, winner row labeled 1.0 (the human's pick tops its group BY DEFINITION), groups are TRAIN-only (validation stays teacher-labeled for honest metrics), favorite rows oversampled ×3 so the human signal outweighs its small count; report carries `favoriteGroups`.
+- **Export chain** `scripts/export-favorites-training.mts` → `npm run favorites:retrain -- <pack.json>`: drums → melodic (skipped when pack has none) → ranker, all through the shared TS converters (no format bridging, no drift), python failures propagate.
+- Tests: `tests/favorites-ledger.test.ts` 11/11 — ledger v2, drum conversion, melodic pitch→degree inversion verified against degreeToPitch, chord-root collapse, key-less entry skip, roleForTrack matrix.
+
+**E2E proof (synthetic 3-entry pack WITH melodic, all models backed up first):**
+
+- drums: 768 weighted samples → 2 304 train rows → new hash, valAUC 0.9175.
+- melodic: 12 samples → 108 weighted → new hash, valDegreeAcc 0.643 / valDurationAcc 0.679.
+- ranker: 3 preference groups (0 skipped) → merged train-only ×3 → new hash 24.7 kB, golden verdict ready-for-active.
+- All three original artifacts RESTORED after the proof; hashes re-verified by all three validators (`validate-intent-ranker.mjs`, `validate-symbolic-prior.mjs`, `validate-symbolic-melodic.mjs`).
+
+**Important files changed:** src/intent/favorites.ts, src/ui/DiceContext.tsx, scripts/{generate-intent-ranker-favorites.mts,export-favorites-training.mts,train-intent-ranker.py,train-symbolic-melodic.py}, package.json (`favorites:retrain`), tests/favorites-ledger.test.ts, INTENT_ENGINE.md (§5.4, §7.2, T2 roadmap, map).
+
+**Validation:** typecheck clean for all changed files; favorites-ledger 11/11; intent-area spot regression (symbolic drum/melodic, audition, parser, pipeline) 59/59 green; three-model retrain chain proven end-to-end then restored.
+
+**Unresolved issues / risks:**
+
+1. Ranker favorites currently reconstruct siblings from the TEMPLATE generator only (prior candidates not reconstructed — their sampling depends on the live prior version, which changes between retrains; reconstruction must stay deterministic across time). Consequence: the model learns the preference within the template candidate space; extending to prior candidates needs pinning the prior hash at record time.
+2. One documented behavior note: favorite groups participate in the trainer's golden-position labeling path only via winnerIndex=1.0 labeling; no new golden file is written.
+3. The concurrent session's in-flight typecheck breakage (ExportPanel) still theirs; my files verified clean via filtered tsc.
+
+---
+
+## GOAL 09 (campaign restart) — Intent Engine A2: song builder — "make it a song" (2026-09-19)
+
+**Goal executed:** A2 from the INTENT_ENGINE.md next-steps proposal — one intent ("dark rolling techno at 140") builds a FULL arranged song: per-genre form, role-aware section patterns, scenes with roles/intensity, contiguous clips, markers, transitions — installed as ONE undoable command.
+
+**Areas inspected:**
+
+- `src/project-model/types.ts` (SceneRole, Scene.role/intensity, Marker, ArrangementTransition, BAR_TICKS), `src/commands/commands.ts` (createScene/setSceneRole/addArrangementClip overlap rules, autoArrangeSong template + markers/transitions write shape), `src/project-model/groove.ts` (drumHitsInWindow TILES the pattern across the clip via mod(patternTicks) — a section with an N-bar pattern plays the WHOLE pattern, not a tiled 1-bar loop; verified before designing full-length section patterns).
+
+**Key design decisions:**
+
+1. **Commands never generate** (repo etiquette): `buildSong(doc, intent)` does all generation (async, yields between sections via setTimeout(0), onProgress callback for the UI); `applySongCommand(doc, build)` only folds the pre-built result into one snapshot (execute/undo are plain doc swaps).
+2. **Deterministic id-based docs instead of uid()**: clips/markers/transitions get ids derived from the section pattern id (`clip-<patternId>`) — the command is a pure snapshot, and rebuilds stay diff-stable.
+3. **Full-length section patterns**: each section's pattern has stepCount = bars×16 (phrase plans + fills span the section), NOT a tiled 1-bar loop — verified the renderer tiles anyway when clips exceed pattern length.
+4. **Related-not-identical sections**: seeds `baseSeed|song:<i>:<role>` share the namespace (one idea arranged), while role-aware energy/density/complexity deltas (clamped 0..1) give the musical gradient (drop = base +0.3, break = base −0.35).
+5. **Section generation via the canonical SYNC single-candidate path**: audition/ranking is a single-pattern UX; a 7-section song generates 7 deterministic patterns (fast, no bank).
+
+**Fixes implemented:**
+
+- `src/intent/song.ts`: `SONG_FORMS` per genre (house/techno 7 sections / 44 bars, trap 6, ambient 5 with its own labels Emergence→Swell→Peak→Stillness→Dissolve), `planSongForm` (deterministic, clamped deltas), `buildSong` (progress + yield, resolvedBpm/key capture), `applySongCommand` (patterns + scenes(role/intensity/name) + contiguous clips + markers(BUILD/DROP/BREAK) + transitions(riser→drops, fill→build B, break→break/outro) + bpm + activePatternId, one undo), `previewSongForm` (no-generation UI preview).
+- IntentPanel: "♪ SONG" button next to GENERATE (busy state, progress in the status line, applies immediately — the result IS the arrangement).
+- styles.css: `.intent-actions` split-row + song button accent.
+- Tests: `tests/intent-song.test.ts` (6) — form determinism + genre shapes, slider deltas + clamping, related-but-distinct sections (same namespace, different content hashes), bpm resolution, full apply assertions (patterns/scenes/roles/names/contiguous clips/markers/riser transitions/active pattern) + ONE-undo restore.
+
+**Important files changed:** src/intent/song.ts, src/ui/IntentPanel.tsx, src/styles.css (append), tests/intent-song.test.ts, INTENT_ENGINE.md (§5.6, §7.2, T3, map).
+
+**Validation:** song tests 6/6 first run; intent-area regression 97/97 across 11 files; typecheck clean for changed files. Concurrent session's ExportPanel breakage remains theirs (untouched, filtered tsc used).
+
+**Unresolved issues / risks:**
+
+1. Song audition (hearing the WHOLE song before apply) is not wired — offline render of 44 bars is too long for the main thread; natural follow-up once the render moves to a Worker (also noted under A1).
+2. Sections generate via template candidates only (no prior/ranker) — a song-wide candidate bank would multiply generation cost 5x; per-section prior candidates remain a v2 option.
+3. Transitions are type markers only (riser/fill/break metadata) — actual transition SOUND generation (riser samples, fill patterns) stays open (T3 remainder).
+
+
+---
+
+## GOAL 10 (campaign restart) — Intent Engine D1+D3: intent-to-mix chain + unified intent bar (2026-09-19)
+
+**Goal executed:** D-batch finale — (D1) the intent shapes the MIX (tone/punch/space/pump derived from genre/mood/energy, plus explicit mix words), and (D3) one text input routes to the right executor (arrange / mix / pattern).
+
+**Areas inspected:**
+
+- `src/effects/registry.ts` (EFFECT_DEFS param ids for eq/reverb/saturation/compressor/pump, clampEffectParam), `src/commands/commands.ts` (addEffectToTracks/removeEffectFromTracks/setEffectParam/setEffectSidechainSource, snapshot fold etiquette), `src/project-model/types.ts` (EffectInstance.sidechainTrackId), `src/intent/favorites.ts` (roleForTrack heuristic reuse), `src/intent/arrangeWords.ts` (parseArrangeIntent reuse for routing).
+
+**Fixes implemented:**
+
+- `src/intent/mix.ts`:
+  - `planMixProfile(intent, overrides)` — deterministic intent→mix decisions: EQ tilt by tone (dark = lowShelf +2.5/highShelf −2.5/LP 14k, bass deepened to +3; bright/warm/cold variants), punch = drum compressor (−16/4:1/fast attack/+2 makeup) + saturation drive, space = reverb on chords+lead (ambient/chill lush 0.45/3.5 s; techno/trap/aggressive DRIER via negative decisions; "huge reverb" override multiplies), pump = sidechain pump on bass+chords keyed from drums for house/techno energy ≥ 0.55. CONSERVATIVE default: neutral intent without overrides touches no EQ.
+  - `applyMixIntent(doc, profile)` — adds missing effects, clamps every param via clampEffectParam against EFFECT_DEFS, wires sidechainTrackId to the drum track, folds everything into ONE undo snapshot (arrangeWords etiquette); idempotent (second identical apply throws "changed nothing"). Track targeting reuses roleForTrack; fixed a "chords" (IntentRole) vs "chord" (melodic-part) naming mismatch found by the tests.
+  - `removeMixEffect` target-scoped reset path.
+- `src/intent/route.ts`:
+  - Mix vocabulary parser (EN+SK, de-accented): reverb/punch/pump/tone overrides; KEY SEMANTIC RULE — plain adjectives ("dark techno") stay PATTERN intents while comparatives ("darker", "tmavší") or mix nouns/verbs ("more reverb", "punchier", "bez pumpy") route to MIX.
+  - `routeIntentText(text, doc)` — priority arrange (scenes exist + clean op parse) → mix (explicit vocabulary) → pattern (default); least-destructive interpretation wins.
+- IntentPanel: "⚡ DO IT" button — routes the text itself and reports what it did in the status line ("⚡ arranged — 2 ops" / "⚡ mix: tone: dark · pump: sidechain 61%"); GENERATE and ♪ SONG remain explicit.
+- Tests: `tests/intent-mix-route.test.ts` (14) — profile determinism, per-mood/genre decisions (dark techno vs ambient chill), conservativeness, overrides, apply assertions (fx added, params clamped, pump sidechained to drums, no pump on drums, ONE undo restores pristine tracks), idempotency, mix parser EN/SK, comparative-vs-plain routing rule, router priority incl. scene-word hijack guard.
+
+**Important files changed:** src/intent/mix.ts, src/intent/route.ts, src/ui/IntentPanel.tsx, src/styles.css (append), tests/intent-mix-route.test.ts, INTENT_ENGINE.md (§5.7, §7.2, map).
+
+**Validation:** mix/route tests 14/14; intent-area regression 111/111 across 12 files (song, parser, pipeline, audition, symbolic drum/melodic, favorites, mapping, binding, async, arrangeWords); typecheck clean for changed files. Concurrent session's ExportPanel breakage remains theirs.
+
+**Unresolved issues / risks:**
+
+1. Mix decisions are static profiles — no loudness measurement loop (limiter target) and no per-section mix in the song builder yet; both are natural D1 v2 items.
+2. Pump routing assumes the drum track as sidechain source (the only rhythmic anchor today).
+3. Router ambiguity is resolved heuristically (least destructive); a disambiguation chip row ("did you mean mix?") could replace it if misroutes show up in use.

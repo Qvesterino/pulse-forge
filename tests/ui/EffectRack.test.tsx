@@ -52,7 +52,7 @@ describe("EffectRack", () => {
     expect(screen.getByRole("option", { name: "PRISM" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "VLYX" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "VØID" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Kaskáda Delay" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "RYFT" })).toBeInTheDocument();
   });
 
   it("groups core effects by category in the add effect menu", () => {
@@ -480,7 +480,7 @@ describe("EffectRack — flagship device shell contract (all four plugins)", () 
     fxeq: "PRISM",
     ultina: "VLYX",
     ozvena: "VØID",
-    kaskada: "Kaskáda Delay",
+    kaskada: "RYFT",
   };
 
   for (const type of ["fxeq", "ultina", "ozvena", "kaskada"] as const) {

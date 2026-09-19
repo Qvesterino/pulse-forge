@@ -33,16 +33,7 @@ import * as P from "./parameterIds.js";
 
 // ── Parameter definition ───────────────────────────────────
 
-export type ParamUnit =
-  | "db"
-  | "hz"
-  | "ms"
-  | "ratio"
-  | "percent"
-  | "degrees"
-  | "enum"
-  | "boolean"
-  | "generic";
+export type ParamUnit = "db" | "hz" | "ms" | "ratio" | "percent" | "degrees" | "enum" | "boolean" | "generic";
 
 export interface UltinaParamDef {
   readonly id: string;
@@ -80,12 +71,10 @@ const GLOBAL_PARAMS: UltinaParamDef[] = [
   p(P.GLOBAL_INPUT_GAIN_DB_ID, "Input Gain", 0, -24, 24, "db"),
   p(P.GLOBAL_OUTPUT_GAIN_DB_ID, "Output Gain", 0, -24, 24, "db"),
   p(P.GLOBAL_MIX_ID, "Mix", 100, 0, 100, "percent"),
-  p(P.GLOBAL_QUALITY_MODE_ID, "Quality", 1, 0, 2, "enum", false,
-    { enumValues: ["tracking", "mix", "hq"] }),
+  p(P.GLOBAL_QUALITY_MODE_ID, "Quality", 1, 0, 2, "enum", false, { enumValues: ["tracking", "mix", "hq"] }),
   p(P.GLOBAL_DELTA_LISTEN_ID, "Delta Listen", 0, 0, 1, "boolean", false),
   p(P.GLOBAL_GAIN_MATCH_ENABLED_ID, "Gain Match", 0, 0, 1, "boolean", false),
-  p(P.GLOBAL_AB_SLOT_ID, "A/B Slot", 0, 0, 1, "enum", false,
-    { enumValues: ["A", "B"] }),
+  p(P.GLOBAL_AB_SLOT_ID, "A/B Slot", 0, 0, 1, "enum", false, { enumValues: ["A", "B"] }),
   p(P.GLOBAL_AUTOGAIN_TARGET_LUFS_ID, "Autogain Target LUFS", -14, -30, 0, "db", false),
 ];
 
@@ -95,8 +84,9 @@ const GLOBAL_PARAMS: UltinaParamDef[] = [
 
 const EQ_GLOBAL_PARAMS: UltinaParamDef[] = [
   p(P.EQ_ENABLED_ID, "EQ Enabled", 0, 0, 1, "boolean"),
-  p(P.EQ_CHANNEL_MODE_ID, "EQ Channel Mode", 0, 0, 4, "enum",
-    true, { enumValues: ["stereo", "mid", "side", "transient", "sustain"] }),
+  p(P.EQ_CHANNEL_MODE_ID, "EQ Channel Mode", 0, 0, 4, "enum", true, {
+    enumValues: ["stereo", "mid", "side", "transient", "sustain"],
+  }),
   p(P.EQ_SOFT_SATURATION_ID, "EQ Soft Saturation", 0, 0, 1, "boolean"),
   p(P.EQ_LEARN_ACTIVE_ID, "EQ Learn", 0, 0, 1, "boolean", false),
   p(P.EQ_MASKING_METER_ENABLED_ID, "Masking Meter", 0, 0, 1, "boolean", false),
@@ -104,15 +94,22 @@ const EQ_GLOBAL_PARAMS: UltinaParamDef[] = [
 ];
 
 /** EQ band default frequencies spread across the spectrum. */
-export const EQ_DEFAULT_FREQS = [
-  80, 200, 350, 800, 1500, 3000, 5000, 7000, 10000, 12000, 15000, 18000,
-];
+export const EQ_DEFAULT_FREQS = [80, 200, 350, 800, 1500, 3000, 5000, 7000, 10000, 12000, 15000, 18000];
 
 /** EQ band shapes. */
 export const EQ_SHAPES = [
-  "bell", "highShelf", "lowShelf", "highPass", "lowPass",
-  "notch", "tilt", "bandPass", "flat",
-  "dynamicBell", "dynamicShelf", "dynamicTilt",
+  "bell",
+  "highShelf",
+  "lowShelf",
+  "highPass",
+  "lowPass",
+  "notch",
+  "tilt",
+  "bandPass",
+  "flat",
+  "dynamicBell",
+  "dynamicShelf",
+  "dynamicTilt",
 ] as const;
 
 /** EQ band modes. */
@@ -122,14 +119,11 @@ function eqBandParams(bandIndex: number): UltinaParamDef[] {
   const prefix = `eq.band${bandIndex}`;
   return [
     p(`${prefix}.enabled`, `Band ${bandIndex + 1} Enabled`, 0, 0, 1, "boolean"),
-    p(`${prefix}.freqHz`, `Band ${bandIndex + 1} Frequency`, EQ_DEFAULT_FREQS[bandIndex],
-      20, 20000, "hz"),
+    p(`${prefix}.freqHz`, `Band ${bandIndex + 1} Frequency`, EQ_DEFAULT_FREQS[bandIndex], 20, 20000, "hz"),
     p(`${prefix}.gainDb`, `Band ${bandIndex + 1} Gain`, 0, -18, 18, "db"),
     p(`${prefix}.q`, `Band ${bandIndex + 1} Q`, 1, 0.1, 24, "ratio"),
-    p(`${prefix}.shape`, `Band ${bandIndex + 1} Shape`, 0, 0, 11, "enum",
-      true, { enumValues: EQ_SHAPES }),
-    p(`${prefix}.mode`, `Band ${bandIndex + 1} Mode`, 0, 0, 2, "enum",
-      true, { enumValues: EQ_BAND_MODES }),
+    p(`${prefix}.shape`, `Band ${bandIndex + 1} Shape`, 0, 0, 11, "enum", true, { enumValues: EQ_SHAPES }),
+    p(`${prefix}.mode`, `Band ${bandIndex + 1} Mode`, 0, 0, 2, "enum", true, { enumValues: EQ_BAND_MODES }),
     p(`${prefix}.dynamicRangeDb`, `Band ${bandIndex + 1} Dyn Range`, 6, 0, 18, "db"),
     p(`${prefix}.dynamicThresholdDb`, `Band ${bandIndex + 1} Dyn Threshold`, -24, -60, 0, "db"),
     p(`${prefix}.sidechainEnabled`, `Band ${bandIndex + 1} Sidechain`, 0, 0, 1, "boolean"),
@@ -153,10 +147,8 @@ for (let i = 0; i < P.EQ_MAX_BANDS; i++) {
 
 const COMP_PARAMS: UltinaParamDef[] = [
   p(P.COMP_ENABLED_ID, "Compressor Enabled", 0, 0, 1, "boolean"),
-  p(P.COMP_MODE_ID, "Comp Mode", 1, 0, 4, "enum",
-    true, { enumValues: ["punch", "modern", "vintage", "opto", "fet"] }),
-  p(P.COMP_DETECTION_MODE_ID, "Detection", 1, 0, 2, "enum",
-    true, { enumValues: ["peak", "rms", "trueEnvelope"] }),
+  p(P.COMP_MODE_ID, "Comp Mode", 1, 0, 4, "enum", true, { enumValues: ["punch", "modern", "vintage", "opto", "fet"] }),
+  p(P.COMP_DETECTION_MODE_ID, "Detection", 1, 0, 2, "enum", true, { enumValues: ["peak", "rms", "trueEnvelope"] }),
   p(P.COMP_THRESHOLD_DB_ID, "Threshold", -20, -60, 0, "db"),
   p(P.COMP_RATIO_ID, "Ratio", 3, 1, 20, "ratio"),
   p(P.COMP_ATTACK_MS_ID, "Attack", 10, 0.1, 200, "ms"),
@@ -169,14 +161,13 @@ const COMP_PARAMS: UltinaParamDef[] = [
   p(P.COMP_SIDECHAIN_ENABLED_ID, "Comp Sidechain", 0, 0, 1, "boolean"),
   p(P.COMP_SIDECHAIN_HPF_HZ_ID, "SC HPF", 20, 20, 2000, "hz"),
   p(P.COMP_DETECTOR_HPF_HZ_ID, "Det HPF", 20, 20, 1000, "hz"),
-  p(P.COMP_BAND_COUNT_ID, "Comp Bands", 1, 1, 3, "enum", false,
-    { enumValues: ["1", "2", "3"] }),
+  p(P.COMP_BAND_COUNT_ID, "Comp Bands", 1, 1, 3, "enum", false, { enumValues: ["1", "2", "3"] }),
   p(P.COMP_CROSSOVER_HZ1_ID, "Comp Xover 1", 250, 20, 20000, "hz"),
   p(P.COMP_CROSSOVER_HZ2_ID, "Comp Xover 2", 2500, 20, 20000, "hz"),
-  p(P.COMP_CROSSOVER_MODE_ID, "Comp Xover Mode", 0, 0, 1, "enum",
-    true, { enumValues: ["analog", "hybrid"] }),
-  p(P.COMP_CHANNEL_MODE_ID, "Comp Channel Mode", 0, 0, 4, "enum",
-    true, { enumValues: ["stereo", "mid", "side", "transient", "sustain"] }),
+  p(P.COMP_CROSSOVER_MODE_ID, "Comp Xover Mode", 0, 0, 1, "enum", true, { enumValues: ["analog", "hybrid"] }),
+  p(P.COMP_CHANNEL_MODE_ID, "Comp Channel Mode", 0, 0, 4, "enum", true, {
+    enumValues: ["stereo", "mid", "side", "transient", "sustain"],
+  }),
   p(P.COMP_CROSSOVER_LEARN_ID, "Comp Xover Learn", 0, 0, 1, "boolean", false),
   p(P.COMP_DELTA_ID, "Comp Delta", 0, 0, 1, "boolean", false),
   p(P.COMP_AUTO_LEARN_THRESHOLD_ID, "Auto-Learn Threshold", 0, 0, 1, "boolean", false),
@@ -198,14 +189,13 @@ const GATE_PARAMS: UltinaParamDef[] = [
   p(P.GATE_RELEASE_MS_ID, "Gate Release", 100, 5, 5000, "ms"),
   p(P.GATE_HYSTERESIS_DB_ID, "Gate Hysteresis", 6, 0, 24, "db"),
   p(P.GATE_SIDECHAIN_HPF_HZ_ID, "Gate SC HPF", 20, 20, 2000, "hz"),
-  p(P.GATE_BAND_COUNT_ID, "Gate Bands", 1, 1, 3, "enum", false,
-    { enumValues: ["1", "2", "3"] }),
+  p(P.GATE_BAND_COUNT_ID, "Gate Bands", 1, 1, 3, "enum", false, { enumValues: ["1", "2", "3"] }),
   p(P.GATE_CROSSOVER_HZ1_ID, "Gate Xover 1", 250, 20, 20000, "hz"),
   p(P.GATE_CROSSOVER_HZ2_ID, "Gate Xover 2", 2500, 20, 20000, "hz"),
-  p(P.GATE_CROSSOVER_MODE_ID, "Gate Xover Mode", 0, 0, 1, "enum",
-    true, { enumValues: ["analog", "hybrid"] }),
-  p(P.GATE_CHANNEL_MODE_ID, "Gate Channel Mode", 0, 0, 4, "enum",
-    true, { enumValues: ["stereo", "mid", "side", "transient", "sustain"] }),
+  p(P.GATE_CROSSOVER_MODE_ID, "Gate Xover Mode", 0, 0, 1, "enum", true, { enumValues: ["analog", "hybrid"] }),
+  p(P.GATE_CHANNEL_MODE_ID, "Gate Channel Mode", 0, 0, 4, "enum", true, {
+    enumValues: ["stereo", "mid", "side", "transient", "sustain"],
+  }),
   p(P.GATE_CROSSOVER_LEARN_ID, "Gate Xover Learn", 0, 0, 1, "boolean", false),
   p(P.GATE_DELTA_ID, "Gate Delta", 0, 0, 1, "boolean", false),
   // Per-band open/close thresholds
@@ -238,16 +228,16 @@ const EXCITER_PARAMS: UltinaParamDef[] = [
   // Value 0 was the historical default while the DSP ignored this reserved
   // parameter. Keep it flat so existing projects retain their v1 sound;
   // active emphasis depths are intentionally additive at values 1..3.
-  p(P.EXCITER_PRE_EMPHASIS_MODE_ID, "Pre-Emphasis", 0, 0, 3, "enum",
-    true, { enumValues: ["flat", "clean", "defined", "full"] }),
-  p(P.EXCITER_BAND_COUNT_ID, "Exciter Bands", 1, 1, 3, "enum", false,
-    { enumValues: ["1", "2", "3"] }),
+  p(P.EXCITER_PRE_EMPHASIS_MODE_ID, "Pre-Emphasis", 0, 0, 3, "enum", true, {
+    enumValues: ["flat", "clean", "defined", "full"],
+  }),
+  p(P.EXCITER_BAND_COUNT_ID, "Exciter Bands", 1, 1, 3, "enum", false, { enumValues: ["1", "2", "3"] }),
   p(P.EXCITER_CROSSOVER_HZ1_ID, "Exciter Xover 1", 2000, 20, 20000, "hz"),
   p(P.EXCITER_CROSSOVER_HZ2_ID, "Exciter Xover 2", 8000, 20, 20000, "hz"),
-  p(P.EXCITER_CROSSOVER_MODE_ID, "Exciter Xover Mode", 0, 0, 1, "enum",
-    true, { enumValues: ["analog", "hybrid"] }),
-  p(P.EXCITER_CHANNEL_MODE_ID, "Exciter Channel Mode", 0, 0, 4, "enum",
-    true, { enumValues: ["stereo", "mid", "side", "transient", "sustain"] }),
+  p(P.EXCITER_CROSSOVER_MODE_ID, "Exciter Xover Mode", 0, 0, 1, "enum", true, { enumValues: ["analog", "hybrid"] }),
+  p(P.EXCITER_CHANNEL_MODE_ID, "Exciter Channel Mode", 0, 0, 4, "enum", true, {
+    enumValues: ["stereo", "mid", "side", "transient", "sustain"],
+  }),
   p(P.EXCITER_CROSSOVER_LEARN_ID, "Exciter Xover Learn", 0, 0, 1, "boolean", false),
   p(P.EXCITER_OVERSAMPLING_ID, "Exciter Oversampling", 1, 0, 1, "boolean"),
   p(P.EXCITER_MIX_ID, "Exciter Mix", 50, 0, 100, "percent"),
@@ -260,20 +250,19 @@ const EXCITER_PARAMS: UltinaParamDef[] = [
 
 const TRANSIENT_PARAMS: UltinaParamDef[] = [
   p(P.TRANSIENT_ENABLED_ID, "Transient Enabled", 0, 0, 1, "boolean"),
-  p(P.TRANSIENT_GLOBAL_MODE_ID, "Global Mode", 1, 0, 2, "enum",
-    true, { enumValues: ["precise", "balanced", "loose"] }),
-  p(P.TRANSIENT_CONTOUR_SHAPE_ID, "Contour Shape", 1, 0, 2, "enum",
-    true, { enumValues: ["sharp", "medium", "smooth"] }),
+  p(P.TRANSIENT_GLOBAL_MODE_ID, "Global Mode", 1, 0, 2, "enum", true, { enumValues: ["precise", "balanced", "loose"] }),
+  p(P.TRANSIENT_CONTOUR_SHAPE_ID, "Contour Shape", 1, 0, 2, "enum", true, {
+    enumValues: ["sharp", "medium", "smooth"],
+  }),
   p(P.TRANSIENT_ATTACK_AMOUNT_ID, "Attack", 0, -100, 100, "generic"),
   p(P.TRANSIENT_SUSTAIN_AMOUNT_ID, "Sustain", 0, -100, 100, "generic"),
-  p(P.TRANSIENT_BAND_COUNT_ID, "Transient Bands", 1, 1, 3, "enum", false,
-    { enumValues: ["1", "2", "3"] }),
+  p(P.TRANSIENT_BAND_COUNT_ID, "Transient Bands", 1, 1, 3, "enum", false, { enumValues: ["1", "2", "3"] }),
   p(P.TRANSIENT_CROSSOVER_HZ1_ID, "Transient Xover 1", 250, 20, 20000, "hz"),
   p(P.TRANSIENT_CROSSOVER_HZ2_ID, "Transient Xover 2", 2500, 20, 20000, "hz"),
-  p(P.TRANSIENT_CROSSOVER_MODE_ID, "Transient Xover Mode", 0, 0, 1, "enum",
-    true, { enumValues: ["analog", "hybrid"] }),
-  p(P.TRANSIENT_CHANNEL_MODE_ID, "Transient Channel Mode", 0, 0, 2, "enum",
-    true, { enumValues: ["stereo", "mid", "side"] }),
+  p(P.TRANSIENT_CROSSOVER_MODE_ID, "Transient Xover Mode", 0, 0, 1, "enum", true, { enumValues: ["analog", "hybrid"] }),
+  p(P.TRANSIENT_CHANNEL_MODE_ID, "Transient Channel Mode", 0, 0, 2, "enum", true, {
+    enumValues: ["stereo", "mid", "side"],
+  }),
   p(P.TRANSIENT_CROSSOVER_LEARN_ID, "Transient Xover Learn", 0, 0, 1, "boolean", false),
   p(P.TRANSIENT_DELTA_ID, "Transient Delta", 0, 0, 1, "boolean", false),
   p("transient.mix", "Transient Mix", 100, 0, 100, "percent"),
@@ -288,14 +277,13 @@ const CLIPPER_PARAMS: UltinaParamDef[] = [
   p(P.CLIPPER_CEILING_DB_ID, "Ceiling", -1, -24, 0, "db"),
   p(P.CLIPPER_KNEE_DB_ID, "Knee", 2, 0, 12, "db"),
   p(P.CLIPPER_DRIVE_DB_ID, "Drive", 0, 0, 24, "db"),
-  p(P.CLIPPER_BAND_COUNT_ID, "Clipper Bands", 1, 1, 3, "enum", false,
-    { enumValues: ["1", "2", "3"] }),
+  p(P.CLIPPER_BAND_COUNT_ID, "Clipper Bands", 1, 1, 3, "enum", false, { enumValues: ["1", "2", "3"] }),
   p(P.CLIPPER_CROSSOVER_HZ1_ID, "Clipper Xover 1", 250, 20, 20000, "hz"),
   p(P.CLIPPER_CROSSOVER_HZ2_ID, "Clipper Xover 2", 2500, 20, 20000, "hz"),
-  p(P.CLIPPER_CROSSOVER_MODE_ID, "Clipper Xover Mode", 0, 0, 1, "enum",
-    true, { enumValues: ["analog", "hybrid"] }),
-  p(P.CLIPPER_CHANNEL_MODE_ID, "Clipper Channel Mode", 0, 0, 4, "enum",
-    true, { enumValues: ["stereo", "mid", "side", "transient", "sustain"] }),
+  p(P.CLIPPER_CROSSOVER_MODE_ID, "Clipper Xover Mode", 0, 0, 1, "enum", true, { enumValues: ["analog", "hybrid"] }),
+  p(P.CLIPPER_CHANNEL_MODE_ID, "Clipper Channel Mode", 0, 0, 4, "enum", true, {
+    enumValues: ["stereo", "mid", "side", "transient", "sustain"],
+  }),
   p(P.CLIPPER_CROSSOVER_LEARN_ID, "Clipper Xover Learn", 0, 0, 1, "boolean", false),
   p(P.CLIPPER_OVERSAMPLING_ID, "Clipper Oversampling", 1, 0, 1, "boolean"),
   p(P.CLIPPER_DELTA_ID, "Clipper Delta", 0, 0, 1, "boolean", false),
@@ -313,14 +301,13 @@ const DENSITY_PARAMS: UltinaParamDef[] = [
   p(P.DENSITY_RATIO_ID, "Ratio", 2, 1, 10, "ratio"),
   p(P.DENSITY_ATTACK_MS_ID, "Attack", 10, 0.5, 200, "ms"),
   p(P.DENSITY_RELEASE_MS_ID, "Release", 150, 10, 2000, "ms"),
-  p(P.DENSITY_BAND_COUNT_ID, "Density Bands", 1, 1, 3, "enum", false,
-    { enumValues: ["1", "2", "3"] }),
+  p(P.DENSITY_BAND_COUNT_ID, "Density Bands", 1, 1, 3, "enum", false, { enumValues: ["1", "2", "3"] }),
   p(P.DENSITY_CROSSOVER_HZ1_ID, "Density Xover 1", 250, 20, 20000, "hz"),
   p(P.DENSITY_CROSSOVER_HZ2_ID, "Density Xover 2", 2500, 20, 20000, "hz"),
-  p(P.DENSITY_CROSSOVER_MODE_ID, "Density Xover Mode", 0, 0, 1, "enum",
-    true, { enumValues: ["analog", "hybrid"] }),
-  p(P.DENSITY_CHANNEL_MODE_ID, "Density Channel Mode", 0, 0, 2, "enum",
-    true, { enumValues: ["stereo", "mid", "side"] }),
+  p(P.DENSITY_CROSSOVER_MODE_ID, "Density Xover Mode", 0, 0, 1, "enum", true, { enumValues: ["analog", "hybrid"] }),
+  p(P.DENSITY_CHANNEL_MODE_ID, "Density Channel Mode", 0, 0, 2, "enum", true, {
+    enumValues: ["stereo", "mid", "side"],
+  }),
   p(P.DENSITY_CROSSOVER_LEARN_ID, "Density Xover Learn", 0, 0, 1, "boolean", false),
   p(P.DENSITY_DELTA_ID, "Density Delta", 0, 0, 1, "boolean", false),
   p("density.mix", "Density Mix", 100, 0, 100, "percent"),
@@ -332,14 +319,16 @@ const DENSITY_PARAMS: UltinaParamDef[] = [
 
 const SCULPTOR_PARAMS: UltinaParamDef[] = [
   p(P.SCULPTOR_ENABLED_ID, "Sculptor Enabled", 0, 0, 1, "boolean"),
-  p(P.SCULPTOR_TARGET_PROFILE_ID, "Target", 5, 0, 5, "enum",
-    true, { enumValues: ["guitar", "bass", "kick", "piano", "snare", "speech"] }),
+  p(P.SCULPTOR_TARGET_PROFILE_ID, "Target", 5, 0, 5, "enum", true, {
+    enumValues: ["guitar", "bass", "kick", "piano", "snare", "speech"],
+  }),
   p(P.SCULPTOR_AMOUNT_ID, "Amount", 50, 0, 100, "percent"),
   p(P.SCULPTOR_LOW_FREQ_BOUNDARY_HZ_ID, "Low Boundary", 20, 20, 1000, "hz"),
   p(P.SCULPTOR_HIGH_FREQ_BOUNDARY_HZ_ID, "High Boundary", 16000, 1000, 20000, "hz"),
   p(P.SCULPTOR_DRY_WET_ID, "Dry/Wet", 100, 0, 100, "percent"),
-  p(P.SCULPTOR_CHANNEL_MODE_ID, "Sculptor Channel Mode", 0, 0, 2, "enum",
-    true, { enumValues: ["stereo", "mid", "side"] }),
+  p(P.SCULPTOR_CHANNEL_MODE_ID, "Sculptor Channel Mode", 0, 0, 2, "enum", true, {
+    enumValues: ["stereo", "mid", "side"],
+  }),
   p(P.SCULPTOR_DELTA_ID, "Sculptor Delta", 0, 0, 1, "boolean", false),
 ];
 
@@ -368,8 +357,9 @@ const UNMASK_PARAMS: UltinaParamDef[] = [
   p(P.UNMASK_SIDECHAIN_ENABLED_ID, "Unmask Sidechain", 0, 0, 1, "boolean"),
   p(P.UNMASK_MASKING_THRESHOLD_DB_ID, "Masking Threshold", -15, -40, 0, "db"),
   p(P.UNMASK_RESPONSE_SPEED_HZ_ID, "Response Speed", 5, 0.5, 50, "hz"),
-  p(P.UNMASK_CHANNEL_MODE_ID, "Unmask Channel Mode", 0, 0, 4, "enum",
-    true, { enumValues: ["stereo", "mid", "side", "transient", "sustain"] }),
+  p(P.UNMASK_CHANNEL_MODE_ID, "Unmask Channel Mode", 0, 0, 4, "enum", true, {
+    enumValues: ["stereo", "mid", "side", "transient", "sustain"],
+  }),
   p(P.UNMASK_LEARN_ACTIVE_ID, "Unmask Learn", 0, 0, 1, "boolean", false),
   p(P.UNMASK_DELTA_ID, "Unmask Delta", 0, 0, 1, "boolean", false),
   p(P.UNMASK_ECOSYSTEM_ENABLED_ID, "Unmask Ecosystem", 0, 0, 1, "boolean", false),
@@ -396,9 +386,7 @@ export const ALL_PARAMS: readonly UltinaParamDef[] = [
 ];
 
 /** Quick lookup: param ID → param def. */
-export const PARAM_BY_ID: ReadonlyMap<string, UltinaParamDef> = new Map(
-  ALL_PARAMS.map((d) => [d.id, d]),
-);
+export const PARAM_BY_ID: ReadonlyMap<string, UltinaParamDef> = new Map(ALL_PARAMS.map((d) => [d.id, d]));
 
 /** Get parameter definition by ID. Throws if not found. */
 export function getParamDef(id: string): UltinaParamDef {

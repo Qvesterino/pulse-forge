@@ -17,10 +17,7 @@ export async function clickPanelAction(page: Page, label: string): Promise<void>
   }
   const trigger = page.locator('button[aria-label^="More topbar controls"]').first();
   await trigger.click();
-  await page
-    .locator(`#topbar-overflow-menu button:has-text("${label}")`)
-    .first()
-    .click();
+  await page.locator(`#topbar-overflow-menu button:has-text("${label}")`).first().click();
   // Close the menu so the next action starts from a clean state.
   await page.keyboard.press("Escape");
   await page.waitForTimeout(80);

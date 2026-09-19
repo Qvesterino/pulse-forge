@@ -40,12 +40,7 @@
 // (slightly brighter than average, slightly longer than average).
 // ═══════════════════════════════════════════════════════════
 
-import type {
-  AssistantState,
-  AssistantTone,
-  BlendPadState,
-  OzvenaStateV1,
-} from "../v2/types.js";
+import type { AssistantState, AssistantTone, BlendPadState, OzvenaStateV1 } from "../v2/types.js";
 import { defaultOzvenaStateV1 } from "../v2/types.js";
 import { clamp } from "../dsp/math.js";
 
@@ -80,7 +75,10 @@ function styleToBlend(style: number, size: number): BlendPadState {
   return { x, y, engine2Algo: s < 0.4 ? "room" : s < 0.75 ? "mediumChamber" : "plate", injectER: 0 };
 }
 
-function styleToEngineTimes(style: number, size: number): {
+function styleToEngineTimes(
+  style: number,
+  size: number,
+): {
   e1Time: number;
   e2Time: number;
   e3Time: number;
@@ -88,10 +86,10 @@ function styleToEngineTimes(style: number, size: number): {
   const s = clamp(style, 0, 1);
   const z = clamp(size, 0, 1);
   // Default ranges for "music mix" preset.
-  const e1Base = 60 + s * 80;            // 60..140 ms
-  const e2Base = 1200 + s * 4500;        // 1.2..5.7 s
-  const e3Base = 3500 + s * 8000;        // 3.5..11.5 s
-  const adjust = (z - 0.5) * 0.4 + 1;    // 0.8..1.2
+  const e1Base = 60 + s * 80; // 60..140 ms
+  const e2Base = 1200 + s * 4500; // 1.2..5.7 s
+  const e3Base = 3500 + s * 8000; // 3.5..11.5 s
+  const adjust = (z - 0.5) * 0.4 + 1; // 0.8..1.2
   return {
     e1Time: clamp(e1Base * adjust, 36.73, 250),
     e2Time: clamp(e2Base * adjust, 1400, 14000),
@@ -104,10 +102,10 @@ function styleToDryWet(style: number, userDryWet: number): number {
   // The user's Dry/Wet slider (step 3) is the dominant signal — when
   // the user pushes it to 1, the recommendation goes to 100% wet.
   const s = clamp(style, 0, 1);
-  const styleDw = 0.55 + s * 0.35;       // 0.55..0.90
+  const styleDw = 0.55 + s * 0.35; // 0.55..0.90
   // The bias shifts further toward user input at the extremes so the
   // wizard respects the explicit user choice.
-  const bias = userDryWet > 0.85 || userDryWet < 0.15 ? 1.0 : 0.80;
+  const bias = userDryWet > 0.85 || userDryWet < 0.15 ? 1.0 : 0.8;
   return clamp((styleDw * (1 - bias) + userDryWet * bias) * 100, 0, 100);
 }
 
@@ -151,25 +149,71 @@ export function recommend(s: AssistantState): AssistantRecommendation {
   const eqBias = toneToEqBias(s.tone);
 
   const engines: OzvenaStateV1["engines"] = {
-    e1: { ...defaultOzvenaStateV1().engines.e1, time: times.e1Time, space: 0.4 + s.style * 0.4, size: 0.4 + s.size * 0.4 },
-    e2: { ...defaultOzvenaStateV1().engines.e2, time: times.e2Time, space: 0.4 + s.style * 0.4, size: 0.4 + s.size * 0.4 },
-    e3: { ...defaultOzvenaStateV1().engines.e3, time: times.e3Time, space: 0.4 + s.style * 0.4, size: 0.4 + s.size * 0.4 },
+    e1: {
+      ...defaultOzvenaStateV1().engines.e1,
+      time: times.e1Time,
+      space: 0.4 + s.style * 0.4,
+      size: 0.4 + s.size * 0.4,
+    },
+    e2: {
+      ...defaultOzvenaStateV1().engines.e2,
+      time: times.e2Time,
+      space: 0.4 + s.style * 0.4,
+      size: 0.4 + s.size * 0.4,
+    },
+    e3: {
+      ...defaultOzvenaStateV1().engines.e3,
+      time: times.e3Time,
+      space: 0.4 + s.style * 0.4,
+      size: 0.4 + s.size * 0.4,
+    },
   };
 
   const preEq: OzvenaStateV1["preEq"] = {
     ...defaultOzvenaStateV1().preEq,
     enabled: true,
-    band1: { ...defaultOzvenaStateV1().preEq.band1, enabled: true, gainDb: eqBias.preEqBandGains[0], shape: "lowShelf" },
-    band2: { ...defaultOzvenaStateV1().preEq.band2, enabled: true, freqHz: 800, gainDb: eqBias.preEqBandGains[1], shape: "bell" },
-    band3: { ...defaultOzvenaStateV1().preEq.band3, enabled: true, gainDb: eqBias.preEqBandGains[2], shape: "highShelf" },
+    band1: {
+      ...defaultOzvenaStateV1().preEq.band1,
+      enabled: true,
+      gainDb: eqBias.preEqBandGains[0],
+      shape: "lowShelf",
+    },
+    band2: {
+      ...defaultOzvenaStateV1().preEq.band2,
+      enabled: true,
+      freqHz: 800,
+      gainDb: eqBias.preEqBandGains[1],
+      shape: "bell",
+    },
+    band3: {
+      ...defaultOzvenaStateV1().preEq.band3,
+      enabled: true,
+      gainDb: eqBias.preEqBandGains[2],
+      shape: "highShelf",
+    },
   };
 
   const reverbEq: OzvenaStateV1["reverbEq"] = {
     ...defaultOzvenaStateV1().reverbEq,
     enabled: true,
-    band1: { ...defaultOzvenaStateV1().reverbEq.band1, enabled: true, gainDb: eqBias.reverbEqBandGains[0], shape: "lowShelf" },
-    band2: { ...defaultOzvenaStateV1().reverbEq.band2, enabled: true, gainDb: eqBias.reverbEqBandGains[1], shape: "bell" },
-    band3: { ...defaultOzvenaStateV1().reverbEq.band3, enabled: true, gainDb: eqBias.reverbEqBandGains[2], shape: "highShelf" },
+    band1: {
+      ...defaultOzvenaStateV1().reverbEq.band1,
+      enabled: true,
+      gainDb: eqBias.reverbEqBandGains[0],
+      shape: "lowShelf",
+    },
+    band2: {
+      ...defaultOzvenaStateV1().reverbEq.band2,
+      enabled: true,
+      gainDb: eqBias.reverbEqBandGains[1],
+      shape: "bell",
+    },
+    band3: {
+      ...defaultOzvenaStateV1().reverbEq.band3,
+      enabled: true,
+      gainDb: eqBias.reverbEqBandGains[2],
+      shape: "highShelf",
+    },
   };
 
   const preDelay: OzvenaStateV1["preDelay"] = {
@@ -201,10 +245,7 @@ export function recommend(s: AssistantState): AssistantRecommendation {
  * Apply a recommendation onto an OzvenaStateV1, returning a NEW state.
  * Does not touch global.inputGainDb / outputGainDb / quality.
  */
-export function applyRecommendation(
-  state: OzvenaStateV1,
-  rec: AssistantRecommendation,
-): OzvenaStateV1 {
+export function applyRecommendation(state: OzvenaStateV1, rec: AssistantRecommendation): OzvenaStateV1 {
   return {
     ...state,
     blendPad: { ...rec.blendPad },

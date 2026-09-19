@@ -42,9 +42,17 @@ export interface PeerNotification {
 export type PeerNotificationCallback = (notification: PeerNotification) => void;
 
 export interface PeerRegistry {
-  register(kind: PluginKind, name: string, sampleRate: number, latencySamples: number, channelCount: number): PeerInstanceId;
+  register(
+    kind: PluginKind,
+    name: string,
+    sampleRate: number,
+    latencySamples: number,
+    channelCount: number,
+  ): PeerInstanceId;
   unregister(instanceId: PeerInstanceId): boolean;
-  getPeer(instanceId: PeerInstanceId): { instanceId: PeerInstanceId; kind: PluginKind; name: string; sampleRate: number } | undefined;
+  getPeer(
+    instanceId: PeerInstanceId,
+  ): { instanceId: PeerInstanceId; kind: PluginKind; name: string; sampleRate: number } | undefined;
   getPeers(): readonly { instanceId: PeerInstanceId; kind: PluginKind; name: string; sampleRate: number }[];
   notifyLevel(fromInstanceId: PeerInstanceId, freqHz: number, magDb: number, timestamp: number): void;
   subscribe(callback: PeerNotificationCallback): () => void;
@@ -55,7 +63,10 @@ export interface PeerRegistry {
 let nextInstanceId: PeerInstanceId = 1;
 
 export function createPeerRegistry(): PeerRegistry {
-  const peers = new Map<PeerInstanceId, { instanceId: PeerInstanceId; kind: PluginKind; name: string; sampleRate: number }>();
+  const peers = new Map<
+    PeerInstanceId,
+    { instanceId: PeerInstanceId; kind: PluginKind; name: string; sampleRate: number }
+  >();
   const subscriptions = new Set<PeerNotificationCallback>();
   const peerSubscriptions = new Map<PeerInstanceId, Set<PeerNotificationCallback>>();
 
@@ -93,13 +104,21 @@ export function createPeerRegistry(): PeerRegistry {
       };
 
       for (const cb of subscriptions) {
-        try { cb(notification); } catch { /* swallow */ }
+        try {
+          cb(notification);
+        } catch {
+          /* swallow */
+        }
       }
 
       const peerCbs = peerSubscriptions.get(fromInstanceId);
       if (peerCbs) {
         for (const cb of peerCbs) {
-          try { cb(notification); } catch { /* swallow */ }
+          try {
+            cb(notification);
+          } catch {
+            /* swallow */
+          }
         }
       }
     },
@@ -139,9 +158,7 @@ export interface OzvenaIpc {
   getLastPeerLevels(): Map<PeerInstanceId, PeerNotification>;
 }
 
-export function createOzvenaIpc(
-  registry: PeerRegistry = globalPeerRegistry,
-): OzvenaIpc {
+export function createOzvenaIpc(registry: PeerRegistry = globalPeerRegistry): OzvenaIpc {
   let instanceId: PeerInstanceId | null = null;
   const lastLevels = new Map<PeerInstanceId, PeerNotification>();
 

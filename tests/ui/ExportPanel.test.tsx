@@ -38,4 +38,17 @@ describe("ExportPanel", () => {
     renderWithContext(<ExportPanel />, { services: mockServices() });
     expect(screen.getByRole("note", { name: "Export policy" })).toBeInTheDocument();
   });
+
+  it("global quality switch defaults to Studio HQ", () => {
+    renderWithContext(<ExportPanel />, { services: mockServices() });
+    const quality = screen.getByLabelText("QUALITY") as HTMLSelectElement;
+    expect(quality.value).toBe("studio");
+  });
+
+  it("switching QUALITY to Live records live as selected value", async () => {
+    const user = userEvent.setup();
+    renderWithContext(<ExportPanel />, { services: mockServices() });
+    await user.selectOptions(screen.getByLabelText("QUALITY"), "live");
+    expect(screen.getByLabelText("QUALITY")).toHaveValue("live");
+  });
 });

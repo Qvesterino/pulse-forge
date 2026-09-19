@@ -16,25 +16,19 @@ describe("Goniometer", () => {
   }
 
   it("renders the goniometer canvas", () => {
-    renderWithContext(
-      <Goniometer analysers={{ l: mockAnalyser(), r: mockAnalyser() }} id="master" />,
-    );
+    renderWithContext(<Goniometer analysers={{ l: mockAnalyser(), r: mockAnalyser() }} id="master" />);
     const canvas = screen.getByLabelText(/Stereo goniometer/i) as HTMLCanvasElement;
     expect(canvas).toBeInTheDocument();
     expect(canvas.tagName.toLowerCase()).toBe("canvas");
   });
 
   it("renders without analysers without throwing", () => {
-    renderWithContext(
-      <Goniometer analysers={null} id="master" />,
-    );
+    renderWithContext(<Goniometer analysers={null} id="master" />);
     expect(screen.getByLabelText(/Stereo goniometer/i)).toBeInTheDocument();
   });
 
   it("renders with a custom size prop", () => {
-    renderWithContext(
-      <Goniometer analysers={null} id="master" size={140} />,
-    );
+    renderWithContext(<Goniometer analysers={null} id="master" size={140} />);
     const canvas = screen.getByLabelText(/Stereo goniometer/i) as HTMLCanvasElement;
     expect(canvas).toBeInTheDocument();
     // width attribute is resolved * 2 in jsdom

@@ -46,11 +46,7 @@ import {
   dcBlockSaturation,
   type SaturationChannelState,
 } from "../dsp/waveshapers.js";
-import {
-  designLowpassKernel,
-  type OversampleFactor,
-  pickOversampleFactor,
-} from "../dsp/oversampler.js";
+import { designLowpassKernel, type OversampleFactor, pickOversampleFactor } from "../dsp/oversampler.js";
 
 export interface OversampledSaturation {
   prepare(sampleRate: number, channelCount: number, maxBlockSize: number): void;
@@ -100,8 +96,8 @@ export function createOversampledSaturation(): OversampledSaturation {
 
   // Per-channel oversampled scratch buffers (sized for the largest
   // factor so a factor switch never reallocates).
-  let upsampled: Float32Array[] = [];  // [ch][N*4]
-  let processed: Float32Array[] = [];  // [ch][N*4]
+  let upsampled: Float32Array[] = []; // [ch][N*4]
+  let processed: Float32Array[] = []; // [ch][N*4]
 
   let lastFactor: OversampleFactor = 1;
 
@@ -246,10 +242,7 @@ export function createOversampledSaturation(): OversampledSaturation {
       const downDelay = downDelayByFactor.get(factor)!;
       // Wet-path group delay in input samples; the dry ring reads this
       // far back so both mix terms stay time-aligned (audit C2).
-      const dryDelayAmt = Math.min(
-        DRY_DELAY,
-        Math.max(0, Math.round(((upTaps - 1) + (downTaps - 1)) / (2 * factorK))),
-      );
+      const dryDelayAmt = Math.min(DRY_DELAY, Math.max(0, Math.round((upTaps - 1 + (downTaps - 1)) / (2 * factorK))));
 
       for (let c = 0; c < channels.length; c++) {
         const inBuf = channels[c];
@@ -343,8 +336,12 @@ export function createOversampledSaturation(): OversampledSaturation {
       for (const d of dryDelay) d.fill(0);
       for (let c = 0; c < dryPos.length; c++) dryPos[c] = 0;
       for (const st of satState) {
-        st.millerLpf = 0; st.hystFlux = 0; st.tapeBump = 0;
-        st.transformerFlux = 0; st.dcPrevIn = 0; st.dcPrev = 0;
+        st.millerLpf = 0;
+        st.hystFlux = 0;
+        st.tapeBump = 0;
+        st.transformerFlux = 0;
+        st.dcPrevIn = 0;
+        st.dcPrev = 0;
         st.adaaPrevIn = 0;
       }
       // Reset the oversampling factor too: the host reads getLatencySamples()

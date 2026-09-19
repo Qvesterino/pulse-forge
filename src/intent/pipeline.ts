@@ -3,13 +3,7 @@ import type { Pattern, ProjectDocument } from "../project-model/types";
 import { normalizeIntent, intentFromGenerateOptions } from "./normalize";
 import { planGeneration } from "./plan";
 import { localDeterministicProvider } from "./providers/local";
-import type {
-  GenerationContext,
-  GenerationResult,
-  IntentInput,
-  IntentSpec,
-  RankedCandidate,
-} from "./types";
+import type { GenerationContext, GenerationResult, IntentInput, IntentSpec, RankedCandidate } from "./types";
 
 function resultFromProposal(
   plan: ReturnType<typeof planGeneration>,
@@ -148,7 +142,9 @@ export function resultForCandidate(result: GenerationResult, candidateIndex: num
   if (!bank) throw new Error("result has no candidate bank — regenerate with includeBank: true");
   const entry = bank.find((candidate) => candidate.candidateIndex === candidateIndex);
   if (!entry) {
-    throw new Error(`candidate ${candidateIndex} is not in the bank (have: ${bank.map((c) => c.candidateIndex).join(", ")})`);
+    throw new Error(
+      `candidate ${candidateIndex} is not in the bank (have: ${bank.map((c) => c.candidateIndex).join(", ")})`,
+    );
   }
   const generation = entry.pattern.generation;
   const pattern: Pattern = generation
@@ -156,15 +152,16 @@ export function resultForCandidate(result: GenerationResult, candidateIndex: num
         ...entry.pattern,
         generation: {
           ...generation,
-          ...(result.selection
+          // Ranker-mode "off" keeps the historical no-provenance contract;
+          // shadow/active record which candidate the human picked.
+          ...(result.selection && result.selection.mode !== "off"
             ? {
                 ranker: {
                   featureVersion: result.selection.featureVersion,
                   rankerVersion: result.selection.rankerVersion,
                   modelHash: result.selection.modelHash,
                   selectedIndex: entry.candidateIndex,
-                  // Persisted vocabulary predates "off" — see providers/local.ts.
-                  mode: result.selection.mode === "active" ? "active" : "shadow",
+                  mode: result.selection.mode,
                   source: result.selection.source,
                 },
               }
@@ -173,10 +170,7 @@ export function resultForCandidate(result: GenerationResult, candidateIndex: num
       }
     : entry.pattern;
   const quality = generation?.quality;
-  const warnings = [
-    "selection:user-audition",
-    `candidate-bank-selected:${entry.candidateIndex}:${entry.source}`,
-  ];
+  const warnings = ["selection:user-audition", `candidate-bank-selected:${entry.candidateIndex}:${entry.source}`];
   if (quality && !quality.styleAccepted) warnings.push("style-distance-gate-warning");
   const diagnostics = {
     warnings,

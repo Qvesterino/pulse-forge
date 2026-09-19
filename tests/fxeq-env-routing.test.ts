@@ -75,7 +75,13 @@ describe("fxeq envelope routing (roadmap Q6)", () => {
       globalMix: 100,
     };
     plain.loadParameters(base);
-    withParams.loadParameters({ ...base, "band1.envModTarget": 0, "band1.envModDepth": 100, "band1.envModAtkMs": 5, "band1.envModRelMs": 50 });
+    withParams.loadParameters({
+      ...base,
+      "band1.envModTarget": 0,
+      "band1.envModDepth": 100,
+      "band1.envModAtkMs": 5,
+      "band1.envModRelMs": 50,
+    });
 
     for (let blk = 0; blk < 20; blk++) {
       const s = tone(80, 1, 0.5, blk);
@@ -162,7 +168,10 @@ describe("fxeq envelope routing (roadmap Q6)", () => {
     const late = probe();
     expect(early, "restore did not start converging").toBeGreaterThan(0);
     expect(mid, "convergence stalled mid-way").toBeLessThan(early);
-    expect(late, `convergence incomplete (early ${early.toExponential(2)}, mid ${mid.toExponential(2)}, late ${late.toExponential(2)})`).toBeLessThan(early * 0.15);
+    expect(
+      late,
+      `convergence incomplete (early ${early.toExponential(2)}, mid ${mid.toExponential(2)}, late ${late.toExponential(2)})`,
+    ).toBeLessThan(early * 0.15);
   });
 
   it("negative depth inverts the direction (louder input → LESS sat drive)", () => {

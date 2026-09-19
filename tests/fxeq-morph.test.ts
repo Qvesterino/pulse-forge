@@ -65,8 +65,8 @@ const MORPH_TARGET = {
   "band3.modEnabled": 1,
   "band3.modRate": 2.5,
   "band3.modDepth": 70,
-  "crossoverFreq2": 700,
-  "globalMix": 60,
+  crossoverFreq2: 700,
+  globalMix: 60,
 };
 
 describe("fxeq A/B morph (precompiled routing)", () => {

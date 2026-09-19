@@ -8,12 +8,13 @@
     16
   ],
   "epochs": 1200,
-  "trainPairs": 2520,
+  "trainPairs": 2682,
   "valPairs": 630,
-  "trainPairwiseAccuracyVsHeuristic": 0.9575,
-  "valPairwiseAccuracyVsHeuristic": 0.7984,
-  "valTop1AgreementWithHeuristic": 0.6,
-  "valSpearmanVsHeuristic": 0.6781,
+  "favoriteGroups": 3,
+  "trainPairwiseAccuracyVsHeuristic": 0.9623,
+  "valPairwiseAccuracyVsHeuristic": 0.7889,
+  "valTop1AgreementWithHeuristic": 0.6571,
+  "valSpearmanVsHeuristic": 0.6229,
   "goldenPairwiseAccuracy": 1.0,
   "goldenVerdict": "ready-for-active"
 }

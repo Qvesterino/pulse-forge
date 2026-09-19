@@ -89,7 +89,7 @@ export function createDuckController(): DuckController {
 
       // Compute ducking gain.
       const excess = magDb - params.thresholdDb;
-      const duckAmount = params.sensitivity * excess / 40; // normalize to 0..1
+      const duckAmount = (params.sensitivity * excess) / 40; // normalize to 0..1
       targetGain = clamp(1.0 - duckAmount, 0.1, 1.0);
       void freqHz; // reserved for band-aware ducking in future
     },
@@ -123,9 +123,7 @@ export function createDuckController(): DuckController {
         ? clamp(next.sensitivity, 0, 1)
         : DEFAULT_DUCK_PARAMS.sensitivity;
       next.attackMs = Number.isFinite(next.attackMs) ? Math.max(0.01, next.attackMs) : DEFAULT_DUCK_PARAMS.attackMs;
-      next.releaseMs = Number.isFinite(next.releaseMs)
-        ? Math.max(0.01, next.releaseMs)
-        : DEFAULT_DUCK_PARAMS.releaseMs;
+      next.releaseMs = Number.isFinite(next.releaseMs) ? Math.max(0.01, next.releaseMs) : DEFAULT_DUCK_PARAMS.releaseMs;
       params = next;
     },
 

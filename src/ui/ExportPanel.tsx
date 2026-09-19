@@ -9,8 +9,15 @@ import { canExportVideo, recordVideo } from "../export/video";
 import { encodeShareCode, shareAppUrl, embedUrl, embedSnippet } from "../export/shareCode";
 import type { WavBitDepth } from "../rendering/wav";
 import type { PlayMode } from "../project-model/types";
-import { summarizeBuffer, type BufferSummary } from "../audio-engine/metering";
+import {
+  summarizeBuffer,
+  evaluateExportMonoGuard,
+  evaluateMasterVerdict,
+  type BufferSummary,
+} from "../audio-engine/metering";
 import { extensionForMime, LiveRecorder, type RecordSource } from "../audio-engine/recorder";
+import type { PcmMicRecorder } from "../audio-engine/PcmMicRecorder";
+import type { MaterializedPcmTake } from "../audio-engine/pcmRecording";
 import { detectLoopBpm } from "../audio-engine/bpm-detect";
 import { userSampleId, type UserSampleAsset } from "../persistence/UserSampleRepository";
 import { PublishToGalleryButton } from "../gallery/PublishButton";
@@ -61,17 +68,12 @@ export function ExportPanel({
   const [sampleRate, setSampleRate] = useState(44100);
   const [bitDepth, setBitDepth] = useState<WavBitDepth>(16);
   const [format, setFormat] = useState<MasterFormat>("wav");
-  // PRISM render quality (8x oversampling offline tier) — defaults ON: the
-  // export has no realtime CPU budget, so the cleaner aliasing floor is
-  // free; users can trade it back for render speed.
-  const [fxeqRenderQuality, setFxEqRenderQuality] = useState(true);
-  const hasFxEq = doc.tracks.some((t) => (t.effects ?? []).some((fx) => fx.type === "fxeq" && !fx.bypassed));
-  // VØID render quality (render tier offline) — defaults ON for the same
-  // reason as PRISM HQ: no realtime CPU budget on export. Only instances
-  // left at the default standard tier are bumped; explicit eco/high/render
-  // choices are respected.
-  const [ozvenaRenderQuality, setOzvenaRenderQuality] = useState(true);
-  const hasOzvena = doc.tracks.some((t) => (t.effects ?? []).some((fx) => fx.type === "ozvena" && !fx.bypassed));
+  // Global Live/Export quality switch — defaults to STUDIO: the export has
+  // no realtime CPU budget, so PRISM's 8× saturation oversampling and VØID's
+  // render tier (default-tier instances only; explicit eco/high/render
+  // choices are respected) are free. LIVE renders exactly what you hear,
+  // faster. Freeze/bounce stay on the live tier by default.
+  const [quality, setQuality] = useState<"live" | "studio">("studio");
   const [clipSeconds, setClipSeconds] = useState(15);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const markerCount = doc.markers.length;
@@ -96,7 +98,8 @@ export function ExportPanel({
   const [recState, setRecState] = useState<RecState>("idle");
   const [recSeconds, setRecSeconds] = useState(0);
   const [recError, setRecError] = useState<string | null>(null);
-  const recorderRef = useRef<LiveRecorder | null>(null);
+  const recorderRef = useRef<LiveRecorder | PcmMicRecorder | null>(null);
+  const stoppingRecordingRef = useRef(false);
 
   const busy = status.kind === "busy";
   const baseName = sanitizeFilename(doc.name);
@@ -111,8 +114,7 @@ export function ExportPanel({
       const buffer = await renderProject(doc, services.bank, {
         mode,
         sampleRate,
-        fxeqRenderQuality,
-        ozvenaRenderQuality,
+        quality,
       });
       if (signal.aborted) throw new DOMException("Export cancelled", "AbortError");
       const summary = summarizeBuffer(buffer);
@@ -176,8 +178,7 @@ export function ExportPanel({
         const buffer = await renderProject(stemDoc, services.bank, {
           mode,
           sampleRate,
-          fxeqRenderQuality,
-          ozvenaRenderQuality,
+          quality,
         });
         lastSummary = summarizeBuffer(buffer);
         downloadWav(encodeWav(buffer, bitDepth), `${baseName}-${group.id}.wav`);
@@ -207,8 +208,7 @@ export function ExportPanel({
         const buffer = await renderProject(trackDoc, services.bank, {
           mode,
           sampleRate,
-          fxeqRenderQuality,
-          ozvenaRenderQuality,
+          quality,
         });
         lastSummary = summarizeBuffer(buffer);
         downloadWav(encodeWav(buffer, bitDepth), `${baseName}-track-${sanitizeFilename(track.name)}.wav`);
@@ -275,7 +275,7 @@ export function ExportPanel({
           setStatus({ kind: "busy", label: `Scorepack: ${p.phase}…` });
         },
         signal,
-        { fxeqRenderQuality, ozvenaRenderQuality },
+        { quality },
       );
       if (signal.aborted) throw new DOMException("Export cancelled", "AbortError");
       const url = URL.createObjectURL(blob);
@@ -303,14 +303,6 @@ export function ExportPanel({
       setRecError("Audio engine not ready");
       return;
     }
-    const recorder = new LiveRecorder({
-      ctx,
-      getTapNode: (source: RecordSource) => {
-        if (source.kind === "master") return services.engine.getMasterTapNode();
-        if (source.kind === "track") return services.engine.getTrackTapNode(source.trackId);
-        return null;
-      },
-    });
     // The TRACK option only renders with a selected track; anything else that
     // slips through falls back to the master tap rather than failing silently.
     const source: RecordSource =
@@ -320,28 +312,79 @@ export function ExportPanel({
           ? { kind: "track", trackId: selectedTrackId }
           : { kind: "master" };
     try {
-      await recorder.start(source);
+      if (source.kind === "mic") {
+        const { PcmMicRecorder } = await import("../audio-engine/PcmMicRecorder");
+        const recorder = new PcmMicRecorder({ ctx, recovery: services.recordingRecovery });
+        recorderRef.current = recorder;
+        let startResolved = false;
+        let earlyError: string | null = null;
+        recorder.onError = (message) => {
+          setRecError(message);
+          if (startResolved) void stopRecording();
+          else earlyError = message;
+        };
+        const start = recorder.start(() => {
+          const currentDoc = services.store.doc;
+          const selected = currentDoc.tracks.find((track) => track.id === selectedTrackId);
+          return {
+            projectId: currentDoc.id,
+            trackId: selected?.id ?? "",
+            trackName: "Standalone microphone resample",
+            placeOnTimeline: false,
+            startBar: 0,
+            bpm: currentDoc.bpm,
+          };
+        });
+        await start;
+        setRecSeconds(0);
+        setRecError(null);
+        setRecState("recording");
+        startResolved = true;
+        if (earlyError) void stopRecording();
+        return;
+      }
+
+      const recorder = new LiveRecorder({
+        ctx,
+        getTapNode: (recordSource: RecordSource) => {
+          if (recordSource.kind === "master") return services.engine.getMasterTapNode();
+          if (recordSource.kind === "track") return services.engine.getTrackTapNode(recordSource.trackId);
+          return null;
+        },
+      });
       recorderRef.current = recorder;
+      await recorder.start(source);
       setRecSeconds(0);
       setRecError(null);
       setRecState("recording");
     } catch (err) {
+      const recorder = recorderRef.current;
+      if (recorder) await Promise.resolve(recorder.cancel()).catch(() => undefined);
+      recorderRef.current = null;
       setRecError(err instanceof Error ? err.message : "Recording failed");
     }
   };
 
   const stopRecording = async () => {
     const recorder = recorderRef.current;
-    if (!recorder) return;
+    if (!recorder || stoppingRecordingRef.current) return;
+    stoppingRecordingRef.current = true;
     setRecState("saving");
     try {
       const take = await recorder.stop();
-      if (!take || take.buffer.duration < 0.05) {
-        setRecError("Nothing captured — play something while recording");
+      if (!take) {
+        setRecError("Nothing was captured. Any staged microphone audio remains available for recovery.");
         setRecState("idle");
         return;
       }
-      const { buffer, blob } = take;
+      const buffer = take.buffer;
+      let pcmTake: MaterializedPcmTake | null = null;
+      let blob: Blob | null = null;
+      if ("session" in take) {
+        pcmTake = take;
+      } else {
+        blob = take.blob;
+      }
       const stamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
       const id = userSampleId(`resample-${stamp}`);
       services.bank.add(id, buffer);
@@ -357,7 +400,7 @@ export function ExportPanel({
       const asset: UserSampleAsset = {
         id,
         name: `Resample ${stamp}`,
-        fileName: `${id}${extensionForMime(blob.type)}`,
+        fileName: `${id}${pcmTake ? ".wav" : extensionForMime(blob!.type)}`,
         category: "Custom",
         duration: buffer.duration,
         sampleRate: buffer.sampleRate,
@@ -366,9 +409,15 @@ export function ExportPanel({
         ...(bpm !== undefined ? { bpm } : {}),
       };
       try {
-        await services.userSamples.save(asset, await blob.arrayBuffer());
+        if (pcmTake) {
+          await services.recordingRecovery.finalize(pcmTake.session.id, asset);
+          services.userSamples.invalidateCache();
+        } else {
+          await services.userSamples.save(asset, await blob!.arrayBuffer());
+        }
       } catch (err) {
-        setRecError(err instanceof Error ? err.message : "Saving the take failed");
+        const detail = err instanceof Error ? err.message : "Saving the take failed";
+        setRecError(pcmTake ? `${detail}. The staged PCM remains available for recovery.` : detail);
         setRecState("idle");
         return;
       }
@@ -378,8 +427,12 @@ export function ExportPanel({
         summary: summarizeBuffer(buffer),
       });
       setRecState("idle");
+    } catch (error) {
+      setRecError(error instanceof Error ? error.message : "Could not finish the recording");
+      setRecState("idle");
     } finally {
       recorderRef.current = null;
+      stoppingRecordingRef.current = false;
     }
   };
 
@@ -392,12 +445,14 @@ export function ExportPanel({
     return () => clearInterval(timer);
   }, [recState]);
 
-  // A recorder left running at unmount (panel switch, project close) would
-  // keep the mic stream, the engine tap and its chunk buffer alive forever.
+  // A recorder left running at unmount must release its device/nodes while
+  // preserving any committed PCM blocks for the recovery prompt.
   useEffect(
     () => () => {
-      recorderRef.current?.cancel();
+      const recorder = recorderRef.current;
       recorderRef.current = null;
+      if (recorder && "onError" in recorder) recorder.onError = null;
+      if (recorder) void Promise.resolve(recorder.cancel()).catch(() => undefined);
     },
     [],
   );
@@ -430,36 +485,16 @@ export function ExportPanel({
             </option>
           </select>
         </label>
-        {hasFxEq && (
-          <label
-            className="fx-param-select"
-            title="PRISM instances render at their render tier: 8x saturation oversampling for a lower aliasing floor. Slower render, no effect on the live document."
-          >
-            <span className="slider-label">PRISM HQ</span>
-            <select
-              value={fxeqRenderQuality ? "on" : "off"}
-              onChange={(event) => setFxEqRenderQuality(event.target.value === "on")}
-            >
-              <option value="on">Render quality (8x)</option>
-              <option value="off">Live quality (faster)</option>
-            </select>
-          </label>
-        )}
-        {hasOzvena && (
-          <label
-            className="fx-param-select"
-            title="VØID instances left at the standard tier render at the render tier: full oversampling and safety limiter. Slower render, no effect on the live document; explicit eco/high/render choices are respected."
-          >
-            <span className="slider-label">VØID HQ</span>
-            <select
-              value={ozvenaRenderQuality ? "on" : "off"}
-              onChange={(event) => setOzvenaRenderQuality(event.target.value === "on")}
-            >
-              <option value="on">Render quality</option>
-              <option value="off">Live quality (faster)</option>
-            </select>
-          </label>
-        )}
+        <label
+          className="fx-param-select"
+          title="STUDIO: PRISM renders at 8x saturation oversampling and default-tier VØID at the render tier (explicit eco/high/render choices respected). Slower render, no effect on the live document. LIVE renders exactly what you hear, faster."
+        >
+          <span className="slider-label">QUALITY</span>
+          <select value={quality} onChange={(event) => setQuality(event.target.value as "live" | "studio")}>
+            <option value="studio">Studio HQ</option>
+            <option value="live">Live (faster)</option>
+          </select>
+        </label>
         {format === "video" && (
           <label className="fx-param-select">
             <span className="slider-label">LENGTH</span>
@@ -576,7 +611,13 @@ export function ExportPanel({
           </button>
         )}
       </div>
-      {status.kind === "done" && <ExportSummary summary={status.summary} />}
+      {status.kind === "done" && (
+        <ExportSummary
+          summary={status.summary}
+          lufsTarget={doc.master.lufsTarget ?? -14}
+          ceilingDb={doc.master.ceilingDb}
+        />
+      )}
 
       <div className="export-resample" role="group" aria-label="Realtime resample">
         <div className="export-resample-head">RESAMPLE — BOUNCE WHAT YOU HEAR</div>
@@ -618,10 +659,37 @@ export function ExportPanel({
   );
 }
 
-function ExportSummary({ summary }: { summary: BufferSummary }) {
+function ExportSummary({
+  summary,
+  lufsTarget,
+  ceilingDb,
+}: {
+  summary: BufferSummary;
+  lufsTarget: number;
+  ceilingDb: number;
+}) {
   const corr = summary.correlation;
   const corrLabel = corr > 0.5 ? "Mono OK" : corr < 0 ? "Phase" : "Wide";
   const clipped = summary.peakDb > -0.3 || summary.truePeakDb > -0.3;
+  // Mono-loss guardian: same thresholds as the live mix-check verdict, so
+  // the export summary never disagrees with the master meter wall.
+  const monoGuard = evaluateExportMonoGuard(summary);
+  // Gain-staging verdict: the same print-ready verdict the live master
+  // meter shows (loudness vs streaming target, true peak vs limiter
+  // ceiling, mono, balance) — the export tells you what to turn.
+  const verdict = evaluateMasterVerdict(
+    {
+      lufsIntegrated: summary.lufsIntegrated,
+      truePeakDb: summary.truePeakDb,
+      monoLossDb: summary.monoLossDb,
+      correlation: summary.correlation,
+      // The offline summary carries no L/R-imbalance reading — 0 keeps the
+      // balance check neutral instead of inventing a measurement.
+      lrImbalanceDb: 0,
+    },
+    lufsTarget,
+    ceilingDb,
+  );
   return (
     <div className="export-summary" aria-label="Export summary">
       <div className="export-summary-row">
@@ -653,8 +721,38 @@ function ExportSummary({ summary }: { summary: BufferSummary }) {
       </div>
       <div className="export-summary-row">
         <span className="export-summary-label">MONO LOSS</span>
-        <span className="export-summary-value">{summary.monoLossDb.toFixed(1)} dB</span>
+        <span className={`export-summary-value${monoGuard.level !== "ok" ? " export-summary-clipped" : ""}`}>
+          {summary.monoLossDb.toFixed(1)} dB
+          {monoGuard.level !== "ok" && " ⚠"}
+        </span>
       </div>
+      <div className="export-summary-row">
+        <span className="export-summary-label">GAIN VERDICT</span>
+        <span className="export-summary-value" data-level={verdict.level}>
+          {verdict.headline}
+          {verdict.loudnessDeltaDb !== 0 && ` (Δ ${verdict.loudnessDeltaDb.toFixed(1)} dB)`}
+        </span>
+      </div>
+      {verdict.hints.length > 0 && (
+        <div className="export-summary-row">
+          <span className="export-summary-label">FIX IT</span>
+          {verdict.hints.map((hint) => (
+            <span key={hint} className="export-summary-value">
+              {hint}
+            </span>
+          ))}
+        </div>
+      )}
+      {monoGuard.level !== "ok" && (
+        <div className="export-summary-guard" role="alert" data-level={monoGuard.level}>
+          <span className="export-summary-label">MONO GUARD</span>
+          {monoGuard.hints.map((hint) => (
+            <span key={hint} className="export-summary-value">
+              {hint}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

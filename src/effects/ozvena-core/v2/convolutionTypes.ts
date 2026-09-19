@@ -21,13 +21,7 @@
 // ═══════════════════════════════════════════════════════════
 
 /** Pre-defined factory IR identifiers. */
-export type FactoryIrId =
-  | "vocal-booth"
-  | "plate"
-  | "hall"
-  | "cathedral"
-  | "plate-wide"
-  | "chamber-wide";
+export type FactoryIrId = "vocal-booth" | "plate" | "hall" | "cathedral" | "plate-wide" | "chamber-wide";
 
 /** Factory IR descriptor. */
 export interface FactoryIr {

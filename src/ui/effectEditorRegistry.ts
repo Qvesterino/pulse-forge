@@ -12,6 +12,7 @@ export interface EffectEditorSpec {
 const EDITOR_OVERRIDES: Partial<Record<EffectType, Pick<EffectEditorSpec, "primaryParamIds">>> = {
   eq: { primaryParamIds: ["hpFreq", "lowShelfGain", "lowMidGain", "highShelfGain"] },
   compressor: { primaryParamIds: ["threshold", "ratio", "attack", "release"] },
+  kaskada: { primaryParamIds: ["time", "sync", "feedback", "mix"] },
 };
 
 /**

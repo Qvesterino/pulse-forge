@@ -249,9 +249,7 @@ function makeConvolver(
     process(input, blockSize, output) {
       if (blockSize <= 0) return;
       if (output.length < blockSize) {
-        throw new Error(
-          `partitionedConvolver.process: output too small (${output.length} < ${blockSize})`,
-        );
+        throw new Error(`partitionedConvolver.process: output too small (${output.length} < ${blockSize})`);
       }
 
       // Feed and read in bounded chunks. Reading only after the whole host
@@ -320,9 +318,7 @@ export function validatePrecomputedIrSet(set: unknown): PrecomputedIrSet | null 
  * schedule, same latency — but with NO FFT work and NO large allocation on
  * the calling (audio) thread beyond the optional blockSpectra.
  */
-export function createPartitionedConvolverFromPrecomputed(
-  set: PrecomputedIrSet,
-): PartitionedConvolver {
+export function createPartitionedConvolverFromPrecomputed(set: PrecomputedIrSet): PartitionedConvolver {
   const checked = validatePrecomputedIrSet(set);
   if (!checked) {
     throw new Error("createPartitionedConvolverFromPrecomputed: invalid precomputed IR set");
@@ -337,15 +333,10 @@ export function createPartitionedConvolverFromPrecomputed(
  * `hopSize` samples, each zero-padded to `partitionSize` and FFT'd
  * once at load time.
  */
-export function createPartitionedConvolver(
-  ir: Float32Array,
-  opts: PartitionedConvolverOptions,
-): PartitionedConvolver {
+export function createPartitionedConvolver(ir: Float32Array, opts: PartitionedConvolverOptions): PartitionedConvolver {
   const partitionSize = opts.partitionSize ?? 2048;
   if (!isPow2(partitionSize)) {
-    throw new Error(
-      `createPartitionedConvolver: partitionSize must be a power of two, got ${partitionSize}`,
-    );
+    throw new Error(`createPartitionedConvolver: partitionSize must be a power of two, got ${partitionSize}`);
   }
   const numPartitions = Math.ceil(opts.irLength / (partitionSize / 2));
   if (numPartitions < 1) {

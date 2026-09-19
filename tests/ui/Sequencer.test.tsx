@@ -60,6 +60,16 @@ describe("Sequencer", () => {
     expect(container.querySelector(".sequencer.beat-focus")).toBeNull();
     expect(screen.getByRole("button", { name: "Enter Beat Focus" })).toBeInTheDocument();
   });
+  it("keeps Space free for transport: a focused step ignores it, Enter still toggles", () => {
+    const { services, container } = renderWithContext(<Sequencer {...defaultProps} />);
+    const step = container.querySelector('button[data-step="0"]') as HTMLElement;
+    // Space must reach the global play/pause handler, never toggle the step
+    // (even with the step focused after a click or Tab).
+    fireEvent.keyDown(step, { key: " " });
+    expect(services.store.execute).not.toHaveBeenCalled();
+    fireEvent.keyDown(step, { key: "Enter" });
+    expect(services.store.execute).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("step amount drag (window-level listeners)", () => {

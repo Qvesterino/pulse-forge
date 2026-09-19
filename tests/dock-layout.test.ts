@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   clampDockHeight,
   defaultDockHeight,
+  DOCK_MAX_HEIGHT,
   ensurePanelVisible,
   loadDockLayout,
   openInSlotA,
@@ -10,9 +11,11 @@ import {
 } from "../src/ui/dockLayout";
 
 describe("defaultDockHeight", () => {
-  it("caps at 300 on big screens and scales down on short viewports", () => {
-    expect(defaultDockHeight(2000)).toBe(300);
-    expect(defaultDockHeight(800)).toBe(256); // 0.32 * 800
+  it("caps at 220 on big screens and scales down on short viewports", () => {
+    // The sequencer is the primary writing surface — the dock opens compact
+    // (26% of the viewport, ≤220 px) and is dragged taller on demand.
+    expect(defaultDockHeight(2000)).toBe(220);
+    expect(defaultDockHeight(800)).toBe(208); // 0.26 * 800
     expect(defaultDockHeight(300)).toBe(160); // min height floor
   });
 });
@@ -27,7 +30,7 @@ const state = (overrides: Partial<DockState> = {}): DockState => ({
 describe("clampDockHeight", () => {
   it("clamps into the legal range and respects the viewport ceiling", () => {
     expect(clampDockHeight(50, 800)).toBe(160);
-    expect(clampDockHeight(5000, 800)).toBe(800);
+    expect(clampDockHeight(5000, 800)).toBe(DOCK_MAX_HEIGHT); // hard ceiling below the old 800
     expect(clampDockHeight(320, 800)).toBe(320);
     // A short viewport shrinks the ceiling but never below the minimum+40.
     expect(clampDockHeight(500, 150)).toBe(200);
@@ -62,7 +65,7 @@ describe("toggleSlot", () => {
 
 describe("openInSlotA", () => {
   it("opens in slot A and clears a duplicate from slot B", () => {
-    let s = state({ slotA: "fx", slotB: "arr" });
+    let s = state({ slotA: "devices", slotB: "arr" });
     s = openInSlotA(s, "arr");
     expect(s.slotA).toBe("arr");
     expect(s.slotB).toBeNull();
@@ -71,18 +74,18 @@ describe("openInSlotA", () => {
 
 describe("ensurePanelVisible", () => {
   it("opens the panel in slot A when it is nowhere docked", () => {
-    const s = ensurePanelVisible(state({ slotA: "mixer", slotB: null }), "fx");
-    expect(s.slotA).toBe("fx");
+    const s = ensurePanelVisible(state({ slotA: "mixer", slotB: null }), "devices");
+    expect(s.slotA).toBe("devices");
   });
 
   it("is a no-op when the panel already sits in slot A (reveal, not toggle)", () => {
-    const original = state({ slotA: "fx", slotB: "arr" });
-    expect(ensurePanelVisible(original, "fx")).toBe(original);
+    const original = state({ slotA: "devices", slotB: "arr" });
+    expect(ensurePanelVisible(original, "devices")).toBe(original);
   });
 
   it("is a no-op when the panel already sits in the split slot", () => {
-    const original = state({ slotA: "mixer", slotB: "fx" });
-    expect(ensurePanelVisible(original, "fx")).toBe(original);
+    const original = state({ slotA: "mixer", slotB: "devices" });
+    expect(ensurePanelVisible(original, "devices")).toBe(original);
   });
 });
 
@@ -90,7 +93,9 @@ describe("loadDockLayout", () => {
   it("validates persisted ids and clamps height", () => {
     const raw = JSON.stringify({ height: 99999, slotA: "arr", slotB: "hacked" });
     const dock = loadDockLayout(raw, 700);
-    expect(dock.height).toBe(700);
+    // The persisted height clamps to the dock ceiling even when the viewport
+    // would allow more — a huge dock starves the sequencer above it.
+    expect(dock.height).toBe(DOCK_MAX_HEIGHT);
     expect(dock.slotA).toBe("arr");
     expect(dock.slotB).toBeNull(); // not a real panel id
   });

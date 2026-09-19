@@ -34,8 +34,7 @@ let currentSource: AudioBufferSourceNode | null = null;
 function playbackContext(): AudioContext {
   if (!sharedContext) {
     const Ctor =
-      window.AudioContext ??
-      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     sharedContext = new Ctor();
   }
   if (sharedContext.state === "suspended") void sharedContext.resume();

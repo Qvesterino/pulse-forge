@@ -31,12 +31,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { clamp } from "../dsp/math.js";
-import {
-  createArEnvelope,
-  createTransientDetector,
-  type ArEnvelope,
-  type TransientDetector,
-} from "../dsp/smoother.js";
+import { createArEnvelope, createTransientDetector, type ArEnvelope, type TransientDetector } from "../dsp/smoother.js";
 
 export interface SmootherParams {
   enabled: boolean;
@@ -67,7 +62,7 @@ export function createSmoother(): Smoother {
     envelope = createArEnvelope(sampleRate, 2, 50);
     detector = createTransientDetector(sampleRate, 50);
     // Release: restore unity at ~250 ms.
-    releaseAlpha = 1 - Math.exp(-1 / ((0.25 * sampleRate)));
+    releaseAlpha = 1 - Math.exp(-1 / (0.25 * sampleRate));
   }
 
   return {

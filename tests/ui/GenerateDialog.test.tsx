@@ -40,6 +40,8 @@ describe("GenerateDialog", () => {
     expect(seed).not.toBeNull();
     const before = seed!.value;
     fireEvent.click(screen.getByRole("button", { name: "🎲" }));
-    await waitFor(() => expect(document.querySelector<HTMLInputElement>(".generate-seed-input")!.value).not.toBe(before));
+    await waitFor(() =>
+      expect(document.querySelector<HTMLInputElement>(".generate-seed-input")!.value).not.toBe(before),
+    );
   });
 });

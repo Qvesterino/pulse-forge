@@ -174,11 +174,7 @@ export function TopBar({
   }, [services.transport, loopRafId]);
 
   // MIDI activity readout — the last performed note/pad, fading after 1.5 s.
-  const playActivity = useSyncExternalStore(
-    subscribePlayActivity,
-    getLastPlayActivity,
-    getLastPlayActivity,
-  );
+  const playActivity = useSyncExternalStore(subscribePlayActivity, getLastPlayActivity, getLastPlayActivity);
   const [noteReadout, setNoteReadout] = useState<string | null>(null);
   useEffect(() => {
     if (!playActivity) return;
@@ -377,15 +373,18 @@ export function TopBar({
       label: "EXPORT",
       ariaLabel: "Toggle export panel",
       title: "Toggle export panel (5)",
-      priority: 82,
+      // Below DICE/INTENT (86/84): the generative surfaces are the product's
+      // differentiators and belong in direct reach; EXPORT returns to the
+      // visible row on wide topbars via the higher width tier.
+      priority: 78,
       active: bottomPanel === "exp" || splitPanel === "exp",
       className: "btn-export-toggle",
       onClick: (event) => onSetBottomPanel("exp", event.ctrlKey || event.metaKey),
     },
     {
-      // Lives in the ⋯ overflow at every width (panelLimit caps at 5) — the
-      // visible topbar keeps the four live surfaces + EXPORT. The button
-      // promotes back when the panel is open, so state never hides.
+      // Lives in the ⋯ overflow at common widths — the visible topbar keeps
+      // the live surfaces + generative panels. The button promotes back when
+      // the panel is open, so state never hides.
       id: "midi",
       label: "MIDI",
       ariaLabel: "Toggle MIDI input panel",
@@ -399,11 +398,14 @@ export function TopBar({
       // 🎲 button or the ⌘K palette — users could not find how to get the
       // dice panel back once the dock switched away from it (Alt+6 exists
       // but is undiscoverable). Same overflow-promote behaviour as MIDI.
+      // Priority ABOVE EXPORT (86/84 > 78): the generative surfaces are the
+      // product's differentiators — they get direct topbar reach at common
+      // widths instead of hiding behind the ⋯ overflow.
       id: "dice",
       label: "DICE",
       ariaLabel: "Toggle dice panel",
       title: "Toggle dice panel (6) — rapid beat generator",
-      priority: 74,
+      priority: 86,
       active: bottomPanel === "dice" || splitPanel === "dice",
       onClick: (event) => onSetBottomPanel("dice", event.ctrlKey || event.metaKey),
     },
@@ -412,7 +414,7 @@ export function TopBar({
       label: "INTENT",
       ariaLabel: "Toggle intent panel",
       title: "Toggle intent panel — describe the beat in words",
-      priority: 66,
+      priority: 84,
       active: bottomPanel === "intent" || splitPanel === "intent",
       onClick: (event) => onSetBottomPanel("intent", event.ctrlKey || event.metaKey),
     },
@@ -526,7 +528,10 @@ export function TopBar({
   // + EXPORT; MIDI waits in the overflow. Tools cap at ⌘K/?/HIST — ASSIST,
   // JAM, SCALE, THEME and DIAG open from the ⋯ menu (or stay promoted while
   // their popover is open, so state never hides).
-  const panelLimit = topbarWidth < 1120 ? 3 : topbarWidth < 1440 ? 4 : 5;
+  // Width tiers (panel actions): at ≥1440 the generative surfaces DICE and
+  // INTENT (86/84) take the 5th/6th slots ahead of EXPORT (78), which returns
+  // on wide topbars (≥1760) as the 7th. MIDI stays overflow-promoted.
+  const panelLimit = topbarWidth < 1120 ? 3 : topbarWidth < 1440 ? 4 : topbarWidth < 1760 ? 6 : 7;
   const toolLimit = topbarWidth < 1120 ? 2 : 3;
   const visiblePanelActions = selectTopbarActions(panelActions, panelLimit);
   const visibleToolActions = selectTopbarActions(toolActions, toolLimit);
@@ -674,9 +679,7 @@ export function TopBar({
                 aria-label="Record quantize"
                 title="Snap recorded notes to the grid (FREE keeps the performed timing)"
                 value={recordQuantize}
-                onChange={(e) =>
-                  services.patternRecorder.setQuantize(e.target.value as "off" | "16th" | "8th")
-                }
+                onChange={(e) => services.patternRecorder.setQuantize(e.target.value as "off" | "16th" | "8th")}
               >
                 <option value="off">FREE</option>
                 <option value="16th">Q 1/16</option>

@@ -113,9 +113,9 @@ export function analyzeUnmaskSnapshot(
     const wetBand = bandLevel(wetDb, grid, fLo, fHi);
 
     // Dominant wet peak inside the band.
-    const wetPeaks = findSpectralPeaks(
-      wetDb, 60, 3, peakFftSize, sampleRate,
-    ).filter((p) => p.freqHz >= fLo && p.freqHz <= fHi);
+    const wetPeaks = findSpectralPeaks(wetDb, 60, 3, peakFftSize, sampleRate).filter(
+      (p) => p.freqHz >= fLo && p.freqHz <= fHi,
+    );
     const dominant = wetPeaks[0] ?? null;
 
     const excess = wetBand - dryBand;
@@ -163,23 +163,32 @@ export interface ReverbEq {
   reset(): void;
 }
 
-function shapeCoeffs(
-  bq: BiquadState,
-  band: EqBandState,
-  sampleRate: number,
-): void {
+function shapeCoeffs(bq: BiquadState, band: EqBandState, sampleRate: number): void {
   if (!band.enabled) {
-    bq.coeffs.b0 = 1; bq.coeffs.b1 = 0; bq.coeffs.b2 = 0;
-    bq.coeffs.a1 = 0; bq.coeffs.a2 = 0;
+    bq.coeffs.b0 = 1;
+    bq.coeffs.b1 = 0;
+    bq.coeffs.b2 = 0;
+    bq.coeffs.a1 = 0;
+    bq.coeffs.a2 = 0;
     return;
   }
   switch (band.shape) {
-    case "lowShelf":  setLowShelf(bq.coeffs, band.freqHz, band.q, band.gainDb, sampleRate); break;
-    case "highShelf": setHighShelf(bq.coeffs, band.freqHz, band.q, band.gainDb, sampleRate); break;
-    case "lowCut":    setHighPass(bq.coeffs, band.freqHz, band.q, sampleRate); break;
-    case "highCut":   setLowPass(bq.coeffs, band.freqHz, band.q, sampleRate); break;
+    case "lowShelf":
+      setLowShelf(bq.coeffs, band.freqHz, band.q, band.gainDb, sampleRate);
+      break;
+    case "highShelf":
+      setHighShelf(bq.coeffs, band.freqHz, band.q, band.gainDb, sampleRate);
+      break;
+    case "lowCut":
+      setHighPass(bq.coeffs, band.freqHz, band.q, sampleRate);
+      break;
+    case "highCut":
+      setLowPass(bq.coeffs, band.freqHz, band.q, sampleRate);
+      break;
     case "bell":
-    default:          setBell(bq.coeffs, band.freqHz, band.q, band.gainDb, sampleRate); break;
+    default:
+      setBell(bq.coeffs, band.freqHz, band.q, band.gainDb, sampleRate);
+      break;
   }
 }
 
@@ -240,8 +249,12 @@ export function createReverbEq(): ReverbEq {
       updateCoefficients();
     },
 
-    setUnmaskAmount(amount) { unmaskAmount = clamp(amount, 0, 100); },
-    setUnmaskEnabled(on) { unmaskEnabled = on; },
+    setUnmaskAmount(amount) {
+      unmaskAmount = clamp(amount, 0, 100);
+    },
+    setUnmaskEnabled(on) {
+      unmaskEnabled = on;
+    },
     setAnalyzerEnabled(on) {
       analyzerEnabled = on;
       analyzer.setEnabled(on);
@@ -250,11 +263,7 @@ export function createReverbEq(): ReverbEq {
     runUnmask(sr) {
       const result = this.runUnmaskDetailed(sr);
       if (!result) return null;
-      return [
-        result.bands[0].suggestedCutDb,
-        result.bands[1].suggestedCutDb,
-        result.bands[2].suggestedCutDb,
-      ];
+      return [result.bands[0].suggestedCutDb, result.bands[1].suggestedCutDb, result.bands[2].suggestedCutDb];
     },
 
     runUnmaskDetailed(sr) {
@@ -273,9 +282,12 @@ export function createReverbEq(): ReverbEq {
     },
 
     reset() {
-      bq1.z1.fill(0); bq1.z2.fill(0);
-      bq2.z1.fill(0); bq2.z2.fill(0);
-      bq3.z1.fill(0); bq3.z2.fill(0);
+      bq1.z1.fill(0);
+      bq1.z2.fill(0);
+      bq2.z1.fill(0);
+      bq2.z2.fill(0);
+      bq3.z1.fill(0);
+      bq3.z2.fill(0);
       analyzer.reset();
     },
   };

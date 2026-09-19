@@ -29,11 +29,7 @@ import {
 import { isRankerManifest, type RankerManifest } from "../src/ai/ranking/ranker-types";
 import { rankCandidateBank, type CandidateBankEntry } from "../src/intent/candidate-bank";
 import { canonicalizePattern, contentHash, measurePattern } from "../src/ai/evaluation";
-import {
-  canRatchet,
-  ghostMultiplier,
-  inferPadRole,
-} from "../src/ai/pad-roles";
+import { canRatchet, ghostMultiplier, inferPadRole } from "../src/ai/pad-roles";
 import { inspectPatternInvariants } from "../src/ai/invariants";
 import {
   decodeMelodicState,
@@ -94,9 +90,7 @@ function buildCandidates(doc: ProjectDocument, count: number): CandidateBankEntr
       rows: Object.fromEntries(
         Object.entries(basePattern.rows).map(([padId, row]) => [
           padId,
-          row.map((v, step) =>
-            step % 4 === 0 && (step / 4 + i) % (count + 1) === 0 ? 0.8 : v,
-          ),
+          row.map((v, step) => (step % 4 === 0 && (step / 4 + i) % (count + 1) === 0 ? 0.8 : v)),
         ]),
       ),
     };
@@ -172,9 +166,7 @@ describe("rankCandidatesWithModel — adversarial inputs", () => {
     const ranking = await rankCandidatesWithModel(doc, candidates, plan);
     expect(ranking.mode).toBe("shadow");
     expect(ranking.source).toBe("model");
-    expect(ranking.order.map((c) => c.candidateIndex)).toEqual(
-      heuristicOrder.map((c) => c.candidateIndex),
-    );
+    expect(ranking.order.map((c) => c.candidateIndex)).toEqual(heuristicOrder.map((c) => c.candidateIndex));
     expect(ranking.modelScores.length).toBe(10);
     for (const s of ranking.modelScores) {
       if (s !== null) {
@@ -212,9 +204,7 @@ describe("rankCandidatesWithModel — adversarial inputs", () => {
       scores: [0.9, 0.7, 0.5, 0.3],
       source: "model",
     }));
-    const tasks = await Promise.all(
-      Array.from({ length: 8 }, () => rankCandidatesWithModel(doc, candidates, plan)),
-    );
+    const tasks = await Promise.all(Array.from({ length: 8 }, () => rankCandidatesWithModel(doc, candidates, plan)));
     const refOrder = tasks[0].order.map((c) => c.candidateIndex);
     for (const t of tasks) {
       expect(t.order.map((c) => c.candidateIndex)).toEqual(refOrder);
@@ -536,7 +526,15 @@ describe("pad-roles — adversarial inputs", () => {
 
   it("ghostMultiplier stays in [0, 1] for every known role", () => {
     const roles: Array<Parameters<typeof ghostMultiplier>[0]> = [
-      "kick", "snare", "clap", "closedHat", "openHat", "perc", "tom", "fx", "unknown",
+      "kick",
+      "snare",
+      "clap",
+      "closedHat",
+      "openHat",
+      "perc",
+      "tom",
+      "fx",
+      "unknown",
     ];
     for (const role of roles) {
       const m = ghostMultiplier(role);

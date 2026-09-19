@@ -12,11 +12,7 @@
  * fxParam writers use — so a lane, the panel and the DSP never disagree on
  * the value domain.
  */
-import {
-  ALL_PARAMS,
-  tryGetParamDef,
-  type UltinaParamDef,
-} from "./ultina-core/contracts/parameterSchema";
+import { ALL_PARAMS, tryGetParamDef, type UltinaParamDef } from "./ultina-core/contracts/parameterSchema";
 
 export interface UltinaLaneParam {
   /** Full namespaced parameter id ("comp.thresholdDb"). */
@@ -93,9 +89,7 @@ export function ultinaOptionGroups(
 
 /** Lane-editor range + formatter for an Ultina parameter, or null when the
  * id is not part of the vendored schema (caller falls back to registry defs). */
-export function ultinaLaneRange(
-  paramId: string,
-): { min: number; max: number; format: (v: number) => string } | null {
+export function ultinaLaneRange(paramId: string): { min: number; max: number; format: (v: number) => string } | null {
   const def = tryGetParamDef(paramId);
   if (!def) return null;
   return { min: def.minValue, max: def.maxValue, format: (v) => formatUltinaParam(def.unit, v) };

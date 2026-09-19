@@ -139,11 +139,16 @@ async function handle(request: PriorRequest): Promise<PriorResponse> {
         for (let row = 0; row < rowCount; row++) {
           const degreeStart = row * melodicManifest.degreeClasses;
           const durationStart = row * melodicManifest.durationClasses;
-          const degreeDist = softmaxRow(Array.from(degreeRaw.slice(degreeStart, degreeStart + melodicManifest.degreeClasses))).map(round4);
+          const degreeDist = softmaxRow(
+            Array.from(degreeRaw.slice(degreeStart, degreeStart + melodicManifest.degreeClasses)),
+          ).map(round4);
           const durationDist = softmaxRow(
             Array.from(durationRaw.slice(durationStart, durationStart + melodicManifest.durationClasses)),
           ).map(round4);
-          if (degreeDist.some((value) => !Number.isFinite(value)) || durationDist.some((value) => !Number.isFinite(value)))
+          if (
+            degreeDist.some((value) => !Number.isFinite(value)) ||
+            durationDist.some((value) => !Number.isFinite(value))
+          )
             throw new Error("non-finite model output");
           outputs[`${melodicManifest.degreeOutputName}:${row}`] = degreeDist;
           outputs[`${melodicManifest.durationOutputName}:${row}`] = durationDist;

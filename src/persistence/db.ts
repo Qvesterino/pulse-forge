@@ -1,11 +1,13 @@
 export const DB_NAME = "pulse-forge";
-export const DB_VERSION = 10;
+export const DB_VERSION = 11;
 export const STORE_PROJECTS = "projects";
 export const STORE_META = "meta";
 export const STORE_PRESETS = "presets";
 export const STORE_LIBRARY = "library";
 export const STORE_USER_SAMPLES = "user-samples";
 export const STORE_USER_SAMPLE_AUDIO = "user-sample-audio";
+export const STORE_RECORDING_SESSIONS = "recording-sessions";
+export const STORE_RECORDING_CHUNKS = "recording-chunks";
 export const STORE_FROZEN_AUDIO = "frozen-audio";
 export const STORE_USER_KITS = "user-kits";
 export const STORE_GROOVE_POOL = "groove-pool";
@@ -42,6 +44,12 @@ export function openDb(): Promise<IDBDatabase> {
         db.createObjectStore(STORE_USER_SAMPLES, { keyPath: "id" });
       if (!db.objectStoreNames.contains(STORE_USER_SAMPLE_AUDIO))
         db.createObjectStore(STORE_USER_SAMPLE_AUDIO, { keyPath: "id" });
+      if (!db.objectStoreNames.contains(STORE_RECORDING_SESSIONS))
+        db.createObjectStore(STORE_RECORDING_SESSIONS, { keyPath: "id" });
+      if (!db.objectStoreNames.contains(STORE_RECORDING_CHUNKS)) {
+        const chunks = db.createObjectStore(STORE_RECORDING_CHUNKS, { keyPath: ["sessionId", "sequence"] });
+        chunks.createIndex("by-session", "sessionId", { unique: false });
+      }
       if (!db.objectStoreNames.contains(STORE_FROZEN_AUDIO))
         db.createObjectStore(STORE_FROZEN_AUDIO, { keyPath: "id" });
       if (!db.objectStoreNames.contains(STORE_USER_KITS)) db.createObjectStore(STORE_USER_KITS, { keyPath: "id" });
@@ -60,7 +68,7 @@ export function openDb(): Promise<IDBDatabase> {
       setTimeout(() => {
         if (settled) return;
         settled = true;
-      reject(new Error("Database is locked by another KYX tab — close it and try again"));
+        reject(new Error("Database is locked by another KYX tab — close it and try again"));
       }, OPEN_BLOCKED_TIMEOUT_MS);
     };
     request.onsuccess = () => {

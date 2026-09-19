@@ -4,19 +4,19 @@ import { applyArrangeOps, parseArrangeIntent, resolveSceneTarget } from "../../s
 
 /** Scene roles live on names in the scene-score template — mirror the engine. */
 const roleOf = (s: { role?: string | null; name: string }): string | null =>
-  s.role ?? (["intro", "build", "drop", "break", "outro"].find((r) => s.name.toLowerCase().includes(r)) ?? null);
+  s.role ?? ["intro", "build", "drop", "break", "outro"].find((r) => s.name.toLowerCase().includes(r)) ?? null;
 
 function sceneScoreDoc() {
   return createProjectFromTemplate("scene-score");
 }
 
-
-
 describe("parseArrangeIntent", () => {
   it("maps core English phrases to ops (scene-score doc)", () => {
     const doc = sceneScoreDoc();
     const p = parseArrangeIntent("shorten the intro to 2 bars", doc);
-    expect(p.ops).toEqual([{ op: "resize", sceneId: expect.any(String), role: "intro", name: expect.any(String), bars: 2 }]);
+    expect(p.ops).toEqual([
+      { op: "resize", sceneId: expect.any(String), role: "intro", name: expect.any(String), bars: 2 },
+    ]);
     expect(p.unrecognized).toEqual([]);
   });
 

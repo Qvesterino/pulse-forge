@@ -28,10 +28,7 @@ export interface ParamStore {
 }
 
 /** Create a clamped parameter store from parameter definitions + initial values. */
-export function createParamStore(
-  defs: readonly FxEqParamDef[],
-  initial?: Record<string, number>,
-): ParamStore {
+export function createParamStore(defs: readonly FxEqParamDef[], initial?: Record<string, number>): ParamStore {
   const values: Record<string, number> = {};
   // O(1) def lookup: set() runs per parameter change on the worklet's audio
   // rendering thread, so it must not linear-scan defs (automatable params

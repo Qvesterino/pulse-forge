@@ -47,7 +47,8 @@ export function WavetablePanel({
   services: Pick<Services, "bank" | "store">;
 }) {
   const p = track.params;
-  const tableIdx = ((Math.round(p.table ?? 0) % FACTORY_WAVETABLES.length) + FACTORY_WAVETABLES.length) % FACTORY_WAVETABLES.length;
+  const tableIdx =
+    ((Math.round(p.table ?? 0) % FACTORY_WAVETABLES.length) + FACTORY_WAVETABLES.length) % FACTORY_WAVETABLES.length;
 
   const table = useMemo(() => {
     if (track.sampleId) {

@@ -98,7 +98,7 @@ export function scheduleDahdsr(
   const delay = Math.max(0, spec.delay);
   const hold = Math.max(0, spec.hold);
   const loops = Math.max(0, Math.min(8, Math.round(spec.decayLoops)));
-  const shapeOf = (v: number): EnvShape => (Math.max(0, Math.min(2, Math.round(v))) as EnvShape);
+  const shapeOf = (v: number): EnvShape => Math.max(0, Math.min(2, Math.round(v))) as EnvShape;
   const aShape = shapeOf(spec.aShape);
   const dShape = shapeOf(spec.dShape);
   const rShape = shapeOf(spec.rShape);

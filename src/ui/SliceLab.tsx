@@ -742,15 +742,8 @@ export function SliceLab({ track, onClose }: { track: DrumTrack; onClose: () => 
                         aria-pressed={selectedSliceLooped}
                         title="Loop this slice region while the pad rings — choke it with a pad in the same choke group"
                         onClick={() =>
-                                                    services.store.execute(
-                            setPadLoop(
-                              doc,
-                              track.id,
-                              track.pads[selectedIndex].id,
-                              true,
-                              selected.start,
-                              selected.end,
-                            ),
+                          services.store.execute(
+                            setPadLoop(doc, track.id, track.pads[selectedIndex].id, true, selected.start, selected.end),
                           )
                         }
                       >
@@ -761,7 +754,9 @@ export function SliceLab({ track, onClose }: { track: DrumTrack; onClose: () => 
                           type="button"
                           className="btn btn-small"
                           title="Turn the pad loop off"
-                          onClick={() => services.store.execute(setPadLoop(doc, track.id, track.pads[selectedIndex].id, false))}
+                          onClick={() =>
+                            services.store.execute(setPadLoop(doc, track.id, track.pads[selectedIndex].id, false))
+                          }
                         >
                           LOOP OFF
                         </button>

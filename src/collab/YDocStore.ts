@@ -256,6 +256,8 @@ export class YDocStore {
   getPatterns = (): ProjectDocument["patterns"] => this.doc_.patterns;
   getMacros = (): ProjectDocument["macros"] => this.doc_.macros;
   getMaster = (): ProjectDocument["master"] => this.doc_.master;
+  getSceneAutomation = (): ProjectDocument["sceneAutomation"] => this.doc_.sceneAutomation;
+  getActivePatternId = (): ProjectDocument["activePatternId"] => this.doc_.activePatternId;
 
   /**
    * Execute a command. If the command has applyToYDoc, use it for efficient

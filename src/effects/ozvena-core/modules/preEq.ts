@@ -45,15 +45,8 @@ import {
   type BiquadState,
 } from "../dsp/biquad.js";
 import { createSpectrumAnalyzer, type SpectrumAnalyzer } from "../dsp/spectrumAnalyzer.js";
-import {
-  findSpectralPeaks,
-} from "../dsp/peakDetection.js";
-import {
-  bandLevel,
-  medianLevel,
-  softKneeMap,
-  clamp01,
-} from "./analyzerHelpers.js";
+import { findSpectralPeaks } from "../dsp/peakDetection.js";
+import { bandLevel, medianLevel, softKneeMap, clamp01 } from "./analyzerHelpers.js";
 
 export interface PreEqParams {
   enabled: boolean;
@@ -170,9 +163,9 @@ export function analyzeAutoCutSnapshot(
     const excess = bandMean - baseline;
 
     // Spectral peak detection in the band window.
-    const peaks = findSpectralPeaks(
-      snapshotDb, 60, 3, peakFftSize, sampleRate,
-    ).filter((p) => p.freqHz >= fLo && p.freqHz <= fHi);
+    const peaks = findSpectralPeaks(snapshotDb, 60, 3, peakFftSize, sampleRate).filter(
+      (p) => p.freqHz >= fLo && p.freqHz <= fHi,
+    );
 
     // Pick the dominant peak; fall back to band mean if none.
     const dominant = peaks[0] ?? null;
@@ -208,23 +201,32 @@ export function analyzeAutoCutSnapshot(
   };
 }
 
-function shapeCoeffs(
-  bq: BiquadState,
-  band: EqBandState,
-  sampleRate: number,
-): void {
+function shapeCoeffs(bq: BiquadState, band: EqBandState, sampleRate: number): void {
   if (!band.enabled) {
-    bq.coeffs.b0 = 1; bq.coeffs.b1 = 0; bq.coeffs.b2 = 0;
-    bq.coeffs.a1 = 0; bq.coeffs.a2 = 0;
+    bq.coeffs.b0 = 1;
+    bq.coeffs.b1 = 0;
+    bq.coeffs.b2 = 0;
+    bq.coeffs.a1 = 0;
+    bq.coeffs.a2 = 0;
     return;
   }
   switch (band.shape) {
-    case "lowShelf":  setLowShelf(bq.coeffs, band.freqHz, band.q, band.gainDb, sampleRate); break;
-    case "highShelf": setHighShelf(bq.coeffs, band.freqHz, band.q, band.gainDb, sampleRate); break;
-    case "lowCut":    setHighPass(bq.coeffs, band.freqHz, band.q, sampleRate); break;
-    case "highCut":   setLowPass(bq.coeffs, band.freqHz, band.q, sampleRate); break;
+    case "lowShelf":
+      setLowShelf(bq.coeffs, band.freqHz, band.q, band.gainDb, sampleRate);
+      break;
+    case "highShelf":
+      setHighShelf(bq.coeffs, band.freqHz, band.q, band.gainDb, sampleRate);
+      break;
+    case "lowCut":
+      setHighPass(bq.coeffs, band.freqHz, band.q, sampleRate);
+      break;
+    case "highCut":
+      setLowPass(bq.coeffs, band.freqHz, band.q, sampleRate);
+      break;
     case "bell":
-    default:          setBell(bq.coeffs, band.freqHz, band.q, band.gainDb, sampleRate); break;
+    default:
+      setBell(bq.coeffs, band.freqHz, band.q, band.gainDb, sampleRate);
+      break;
   }
 }
 
@@ -286,8 +288,12 @@ export function createPreEq(): PreEq {
       updateCoefficients();
     },
 
-    setAutoCutAmount(amount) { autoCutAmount = clamp(amount, 0, 100); },
-    setAutoCutEnabled(on) { autoCutEnabled = on; },
+    setAutoCutAmount(amount) {
+      autoCutAmount = clamp(amount, 0, 100);
+    },
+    setAutoCutEnabled(on) {
+      autoCutEnabled = on;
+    },
     setAnalyzerEnabled(on) {
       analyzerEnabled = on;
       analyzer.setEnabled(on);
@@ -297,11 +303,7 @@ export function createPreEq(): PreEq {
       // Backward-compatible wrapper: returns just the 3-band cuts.
       const result = this.runAutoCutDetailed(sr);
       if (!result) return null;
-      return [
-        result.bands[0].suggestedCutDb,
-        result.bands[1].suggestedCutDb,
-        result.bands[2].suggestedCutDb,
-      ];
+      return [result.bands[0].suggestedCutDb, result.bands[1].suggestedCutDb, result.bands[2].suggestedCutDb];
     },
 
     runAutoCutDetailed(sr) {
@@ -318,9 +320,12 @@ export function createPreEq(): PreEq {
     },
 
     reset() {
-      bq1.z1.fill(0); bq1.z2.fill(0);
-      bq2.z1.fill(0); bq2.z2.fill(0);
-      bq3.z1.fill(0); bq3.z2.fill(0);
+      bq1.z1.fill(0);
+      bq1.z2.fill(0);
+      bq2.z1.fill(0);
+      bq2.z2.fill(0);
+      bq3.z1.fill(0);
+      bq3.z2.fill(0);
       analyzer.reset();
     },
   };

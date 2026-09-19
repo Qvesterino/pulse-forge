@@ -8,8 +8,8 @@
   ],
   "epochs": 800,
   "samples": 190,
-  "valDegreeAcc": 0.7143,
-  "trainDegreeAcc": 0.9506,
-  "valDurationAcc": 0.6071,
-  "trainDurationAcc": 0.9012
+  "valDegreeAcc": 0.6429,
+  "trainDegreeAcc": 0.9667,
+  "valDurationAcc": 0.6786,
+  "trainDurationAcc": 0.937
 }

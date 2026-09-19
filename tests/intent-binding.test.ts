@@ -155,7 +155,15 @@ describe("offline candidate bank", () => {
     const pattern = generatePattern(doc, baseOptions);
     const ranked = rankCandidateBank(doc, [
       { candidateIndex: 0, seed: "a", pattern, status: "accepted", repairs: [], score: 0, contentHash: "" },
-      { candidateIndex: 1, seed: "b", pattern: { ...pattern, id: "different-id" }, status: "accepted", repairs: [], score: 0, contentHash: "" },
+      {
+        candidateIndex: 1,
+        seed: "b",
+        pattern: { ...pattern, id: "different-id" },
+        status: "accepted",
+        repairs: [],
+        score: 0,
+        contentHash: "",
+      },
     ]);
     expect(ranked).toHaveLength(1);
     expect(ranked[0].candidateIndex).toBe(0);

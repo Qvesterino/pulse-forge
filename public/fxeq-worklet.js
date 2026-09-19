@@ -234,16 +234,12 @@
   // src/effects/fxeq-core/dsp/audioBlockContract.ts
   function assertFrameCount(frameCount, context) {
     if (!Number.isInteger(frameCount) || frameCount < 0) {
-      throw new RangeError(
-        `${context}: frameCount must be a non-negative integer (received ${String(frameCount)})`
-      );
+      throw new RangeError(`${context}: frameCount must be a non-negative integer (received ${String(frameCount)})`);
     }
   }
   function assertMaxBlockSize(maxBlockSize, context) {
     if (!Number.isInteger(maxBlockSize) || maxBlockSize < 1) {
-      throw new RangeError(
-        `${context}: maxBlockSize must be a positive integer (received ${String(maxBlockSize)})`
-      );
+      throw new RangeError(`${context}: maxBlockSize must be a positive integer (received ${String(maxBlockSize)})`);
     }
   }
   function assertAudioBlockShape(channels, frameCount, context, expectedChannelCount) {
@@ -252,9 +248,7 @@
       throw new TypeError(`${context}: channels must be an array of Float32Array values`);
     }
     if (expectedChannelCount !== void 0 && channels.length !== expectedChannelCount) {
-      throw new RangeError(
-        `${context}: expected ${expectedChannelCount} channel(s), received ${channels.length}`
-      );
+      throw new RangeError(`${context}: expected ${expectedChannelCount} channel(s), received ${channels.length}`);
     }
     if (channels.length === 0 && frameCount > 0) {
       throw new RangeError(`${context}: at least one channel is required for a non-empty block`);
@@ -265,9 +259,7 @@
         throw new TypeError(`${context}: channel ${c} must be a Float32Array`);
       }
       if (channel.length < frameCount) {
-        throw new RangeError(
-          `${context}: channel ${c} has ${channel.length} samples, but frameCount is ${frameCount}`
-        );
+        throw new RangeError(`${context}: channel ${c} has ${channel.length} samples, but frameCount is ${frameCount}`);
       }
     }
   }
@@ -521,15 +513,67 @@
   var BANDEQ_TYPE_ID = "bandEq";
   var PARAM_DEFS = [
     { id: "enabled", name: "Enabled", defaultValue: 0, minValue: 0, maxValue: 1, automatable: false },
-    { id: "lowFreq", name: "Low Freq", defaultValue: 120, minValue: 20, maxValue: 500, unit: "Hz", logScale: true, automatable: true },
+    {
+      id: "lowFreq",
+      name: "Low Freq",
+      defaultValue: 120,
+      minValue: 20,
+      maxValue: 500,
+      unit: "Hz",
+      logScale: true,
+      automatable: true
+    },
     { id: "lowGainDb", name: "Low Gain", defaultValue: 0, minValue: -24, maxValue: 24, unit: "dB", automatable: true },
-    { id: "peak1Freq", name: "Peak 1 Freq", defaultValue: 800, minValue: 200, maxValue: 5e3, unit: "Hz", logScale: true, automatable: true },
-    { id: "peak1GainDb", name: "Peak 1 Gain", defaultValue: 0, minValue: -24, maxValue: 24, unit: "dB", automatable: true },
+    {
+      id: "peak1Freq",
+      name: "Peak 1 Freq",
+      defaultValue: 800,
+      minValue: 200,
+      maxValue: 5e3,
+      unit: "Hz",
+      logScale: true,
+      automatable: true
+    },
+    {
+      id: "peak1GainDb",
+      name: "Peak 1 Gain",
+      defaultValue: 0,
+      minValue: -24,
+      maxValue: 24,
+      unit: "dB",
+      automatable: true
+    },
     { id: "peak1Q", name: "Peak 1 Q", defaultValue: 0.7, minValue: 0.1, maxValue: 10, automatable: true },
-    { id: "peak2Freq", name: "Peak 2 Freq", defaultValue: 3500, minValue: 1e3, maxValue: 18e3, unit: "Hz", logScale: true, automatable: true },
-    { id: "peak2GainDb", name: "Peak 2 Gain", defaultValue: 0, minValue: -24, maxValue: 24, unit: "dB", automatable: true },
+    {
+      id: "peak2Freq",
+      name: "Peak 2 Freq",
+      defaultValue: 3500,
+      minValue: 1e3,
+      maxValue: 18e3,
+      unit: "Hz",
+      logScale: true,
+      automatable: true
+    },
+    {
+      id: "peak2GainDb",
+      name: "Peak 2 Gain",
+      defaultValue: 0,
+      minValue: -24,
+      maxValue: 24,
+      unit: "dB",
+      automatable: true
+    },
     { id: "peak2Q", name: "Peak 2 Q", defaultValue: 0.7, minValue: 0.1, maxValue: 10, automatable: true },
-    { id: "highFreq", name: "High Freq", defaultValue: 8e3, minValue: 2e3, maxValue: 2e4, unit: "Hz", logScale: true, automatable: true },
+    {
+      id: "highFreq",
+      name: "High Freq",
+      defaultValue: 8e3,
+      minValue: 2e3,
+      maxValue: 2e4,
+      unit: "Hz",
+      logScale: true,
+      automatable: true
+    },
     { id: "highGainDb", name: "High Gain", defaultValue: 0, minValue: -24, maxValue: 24, unit: "dB", automatable: true }
   ];
   var FILTERS_PER_CHANNEL = 4;
@@ -542,20 +586,8 @@
     let dirty = false;
     function retune() {
       setLowShelf(filters[0].coeffs, store.get("lowFreq"), store.get("lowGainDb"), sampleRate2);
-      setPeaking(
-        filters[1].coeffs,
-        store.get("peak1Freq"),
-        store.get("peak1Q"),
-        store.get("peak1GainDb"),
-        sampleRate2
-      );
-      setPeaking(
-        filters[2].coeffs,
-        store.get("peak2Freq"),
-        store.get("peak2Q"),
-        store.get("peak2GainDb"),
-        sampleRate2
-      );
+      setPeaking(filters[1].coeffs, store.get("peak1Freq"), store.get("peak1Q"), store.get("peak1GainDb"), sampleRate2);
+      setPeaking(filters[2].coeffs, store.get("peak2Freq"), store.get("peak2Q"), store.get("peak2GainDb"), sampleRate2);
       setHighShelf(filters[3].coeffs, store.get("highFreq"), store.get("highGainDb"), sampleRate2);
     }
     return {
@@ -1066,10 +1098,7 @@
         const downTaps = set.downTaps;
         const upDelay = upDelayByFactor.get(factor);
         const downDelay = downDelayByFactor.get(factor);
-        const dryDelayAmt = Math.min(
-          DRY_DELAY,
-          Math.max(0, Math.round((upTaps - 1 + (downTaps - 1)) / (2 * factorK)))
-        );
+        const dryDelayAmt = Math.min(DRY_DELAY, Math.max(0, Math.round((upTaps - 1 + (downTaps - 1)) / (2 * factorK))));
         for (let c = 0; c < channels.length; c++) {
           const inBuf = channels[c];
           const upBuf = upsampled[c];
@@ -1945,14 +1974,7 @@
               processSampleRate(buf, c, frameCount, degradation);
               break;
             case 2:
-              processWowFlutter(
-                buf,
-                c,
-                frameCount,
-                amount,
-                wobble,
-                c === 0 ? wowLfoBufL : wowLfoBufR
-              );
+              processWowFlutter(buf, c, frameCount, amount, wobble, c === 0 ? wowLfoBufL : wowLfoBufR);
               break;
             case 3:
               processVinyl(buf, c, frameCount, degradation);
@@ -2018,7 +2040,16 @@
   var PARAM_DEFS5 = [
     { id: "enabled", name: "Enabled", defaultValue: 0, minValue: 0, maxValue: 1, automatable: false },
     { id: "type", name: "Type", defaultValue: 0, minValue: 0, maxValue: 3, automatable: false },
-    { id: "rate", name: "Rate", defaultValue: 1, minValue: 0.05, maxValue: 20, unit: "Hz", logScale: true, automatable: true },
+    {
+      id: "rate",
+      name: "Rate",
+      defaultValue: 1,
+      minValue: 0.05,
+      maxValue: 20,
+      unit: "Hz",
+      logScale: true,
+      automatable: true
+    },
     {
       id: "syncMode",
       name: "Tempo Sync",
@@ -2095,13 +2126,7 @@
       rp = (rp % len + len) % len;
       const i0 = Math.floor(rp);
       const frac = rp - i0;
-      return hermiteInterp(
-        dBuf[i0],
-        dBuf[(i0 + 1) % len],
-        dBuf[(i0 + 2) % len],
-        dBuf[(i0 + 3) % len],
-        frac
-      );
+      return hermiteInterp(dBuf[i0], dBuf[(i0 + 1) % len], dBuf[(i0 + 2) % len], dBuf[(i0 + 3) % len], frac);
     }
     const PHASER_COEFF_INTERVAL = 32;
     function processPhaser(channels, frameCount, depth, feedback, wetGain, dryGain) {
@@ -2482,7 +2507,16 @@
   var PARAM_DEFS7 = [
     { id: "enabled", name: "Enabled", defaultValue: 0, minValue: 0, maxValue: 1, automatable: false },
     { id: "type", name: "Type", defaultValue: 0, minValue: 0, maxValue: 2, automatable: false },
-    { id: "decayMs", name: "Decay", defaultValue: 1500, minValue: 100, maxValue: 8e3, unit: "ms", logScale: true, automatable: true },
+    {
+      id: "decayMs",
+      name: "Decay",
+      defaultValue: 1500,
+      minValue: 100,
+      maxValue: 8e3,
+      unit: "ms",
+      logScale: true,
+      automatable: true
+    },
     { id: "predelayMs", name: "Pre-Delay", defaultValue: 20, minValue: 0, maxValue: 100, unit: "ms", automatable: true },
     {
       id: "modDepthPct",
@@ -4358,10 +4392,7 @@
           if (anySolo && bands[b].getBandParam("solo") < 0.5) {
             for (let c = 0; c < channelCount; c++) scratch[c].fill(0, 0, frameCount);
           }
-          const bandLat = Math.min(
-            ALIGN_MAX,
-            Math.max(0, bands[b].getLatencySamples())
-          );
+          const bandLat = Math.min(ALIGN_MAX, Math.max(0, bands[b].getLatencySamples()));
           const dly = Math.max(0, alignLat - bandLat);
           for (let c = 0; c < channelCount; c++) {
             const dst = wetBuf[c];

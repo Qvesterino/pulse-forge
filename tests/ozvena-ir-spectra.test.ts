@@ -58,7 +58,7 @@ function renderConvolver(
 ): Float32Array {
   const blocks = Math.ceil((seconds * SR) / blockSize);
   const out = new Float32Array(blocks * blockSize);
-  const rng = makeRng(0xC0FFEE);
+  const rng = makeRng(0xc0ffee);
   for (let b = 0; b < blocks; b++) {
     const input = new Float32Array(blockSize);
     for (let i = 0; i < blockSize; i++) input[i] = (rng() * 2 - 1) * 0.5;
@@ -157,15 +157,13 @@ describe("convolution engine — loadIrPrecomputed parity", () => {
   }
 
   /** Precomputed sets for a stereo-bus engine, matching the node's layout. */
-  function precomputedSets(
-    chans: Float32Array[],
-  ): { sets: PrecomputedIrSet[]; channels: 1 | 2 | 4 } {
+  function precomputedSets(chans: Float32Array[]): { sets: PrecomputedIrSet[]; channels: 1 | 2 | 4 } {
     const channels = (chans.length >= 4 ? 4 : chans.length >= 2 ? 2 : 1) as 1 | 2 | 4;
     const frames = chans[0].length;
     const ps = partitionSizeForIr(frames);
     const np = numPartitionsFor(frames, ps);
-    const spectra = chans.map((ch) =>
-      precomputeConvolverSpectra(ch, { partitionSize: ps, irLengthSamples: frames }).irSpectra,
+    const spectra = chans.map(
+      (ch) => precomputeConvolverSpectra(ch, { partitionSize: ps, irLengthSamples: frames }).irSpectra,
     );
     const slots = channels === 1 ? 2 : channels;
     const sets: PrecomputedIrSet[] = [];
@@ -181,16 +179,10 @@ describe("convolution engine — loadIrPrecomputed parity", () => {
     return { sets, channels };
   }
 
-  function renderEngine(
-    engine: ReturnType<typeof createConvolutionEngine>,
-    seconds: number,
-  ): Float32Array[] {
+  function renderEngine(engine: ReturnType<typeof createConvolutionEngine>, seconds: number): Float32Array[] {
     const blocks = Math.ceil((seconds * SR) / 128);
-    const out = [
-      new Float32Array(blocks * 128),
-      new Float32Array(blocks * 128),
-    ];
-    const rng = makeRng(0xBEEF);
+    const out = [new Float32Array(blocks * 128), new Float32Array(blocks * 128)];
+    const rng = makeRng(0xbeef);
     for (let b = 0; b < blocks; b++) {
       const l = new Float32Array(128);
       const r = new Float32Array(128);
@@ -277,7 +269,7 @@ describe("convolution engine — loadIrPrecomputed parity", () => {
     expect(b.getLatencySamples()).toBe(a.getLatencySamples());
 
     const blocks = 40;
-    const rng = makeRng(0xFEED);
+    const rng = makeRng(0xfeed);
     for (let blk = 0; blk < blocks; blk++) {
       const inA = new Float32Array(128);
       const inB = new Float32Array(128);
@@ -319,7 +311,7 @@ describe("convolution engine — loadIrPrecomputed parity", () => {
     const first = precomputedSets([makeIr(FRAMES, 41), makeIr(FRAMES, 42)]);
     engine.loadIrPrecomputed(first.sets, 2);
 
-    const rng = makeRng(0xA11CE);
+    const rng = makeRng(0xa11ce);
     let nonFinite = 0;
     let maxAbs = 0;
     for (let b = 0; b < 300; b++) {

@@ -207,7 +207,10 @@ export function UltinaPanel({
 
   const modulePageSize = docked ? 4 : Math.max(1, moduleParams.length);
   const modulePageCount = Math.max(1, Math.ceil(moduleParams.length / modulePageSize));
-  const visibleModuleParams = moduleParams.slice(moduleParamPage * modulePageSize, (moduleParamPage + 1) * modulePageSize);
+  const visibleModuleParams = moduleParams.slice(
+    moduleParamPage * modulePageSize,
+    (moduleParamPage + 1) * modulePageSize,
+  );
   useEffect(() => setModuleParamPage(0), [selectedModule]);
 
   const valueOf = (id: string): number => params[id] ?? tryGetParamDef(id)?.defaultValue ?? 0;
@@ -624,11 +627,13 @@ export function UltinaPanel({
 
       {docked && (
         <div className="device-view-tabs" role="group" aria-label="VLYX view">
-          {([
-            ["modules", "MODULES"],
-            ["assist", "ASSIST"],
-            ["tools", "TOOLS"],
-          ] as const).map(([page, label]) => (
+          {(
+            [
+              ["modules", "MODULES"],
+              ["assist", "ASSIST"],
+              ["tools", "TOOLS"],
+            ] as const
+          ).map(([page, label]) => (
             <button
               key={page}
               type="button"
@@ -644,11 +649,13 @@ export function UltinaPanel({
 
       {docked && dockPage === "assist" && (
         <div className="device-subtabs" role="group" aria-label="VLYX assistant">
-          {([
-            ["mix", "MIX"],
-            ["match", "MATCH"],
-            ["learn", "LEARN"],
-          ] as const).map(([tool, label]) => (
+          {(
+            [
+              ["mix", "MIX"],
+              ["match", "MATCH"],
+              ["learn", "LEARN"],
+            ] as const
+          ).map(([tool, label]) => (
             <button
               key={tool}
               type="button"
@@ -664,385 +671,395 @@ export function UltinaPanel({
 
       {/* ── LIVE METERS ────────────────────────────────────────────── */}
       {(!docked || dockPage === "modules") && (
-      <div className="ultina-live" aria-label="VLYX live meters">
-        <canvas ref={liveCanvasRef} className="ultina-live-canvas" width={512} height={96} />
-        <div className="ultina-live-row">
-          <span className="ultina-lufs" ref={lufsRef}>
-            — LUFS
-          </span>
-          <span className="ultina-truepeak" ref={truePeakRef}>
-            TP —
-          </span>
-          <div className="ultina-meter" title="Compressor gain reduction">
-            <span className="ultina-meter-label">GR</span>
-            <div className="ultina-meter-track">
-              <div className="ultina-meter-fill" ref={grFillRef} style={{ background: "#f59e0b" }} />
+        <div className="ultina-live" aria-label="VLYX live meters">
+          <canvas ref={liveCanvasRef} className="ultina-live-canvas" width={512} height={96} />
+          <div className="ultina-live-row">
+            <span className="ultina-lufs" ref={lufsRef}>
+              — LUFS
+            </span>
+            <span className="ultina-truepeak" ref={truePeakRef}>
+              TP —
+            </span>
+            <div className="ultina-meter" title="Compressor gain reduction">
+              <span className="ultina-meter-label">GR</span>
+              <div className="ultina-meter-track">
+                <div className="ultina-meter-fill" ref={grFillRef} style={{ background: "#f59e0b" }} />
+              </div>
+              <span className="ultina-meter-text" ref={grTextRef} />
             </div>
-            <span className="ultina-meter-text" ref={grTextRef} />
-          </div>
-          <div className="ultina-meter" title="Unmask masking score">
-            <span className="ultina-meter-label">MSK</span>
-            <div className="ultina-meter-track">
-              <div className="ultina-meter-fill" ref={maskFillRef} style={{ background: "#34d399" }} />
+            <div className="ultina-meter" title="Unmask masking score">
+              <span className="ultina-meter-label">MSK</span>
+              <div className="ultina-meter-track">
+                <div className="ultina-meter-fill" ref={maskFillRef} style={{ background: "#34d399" }} />
+              </div>
+              <span className="ultina-meter-text" ref={maskTextRef} />
             </div>
-            <span className="ultina-meter-text" ref={maskTextRef} />
           </div>
         </div>
-      </div>
       )}
 
       {/* ── REFERENCE MATCH ────────────────────────────────────────── */}
       {(!docked || (dockPage === "assist" && dockAssist === "match")) && (
-      <div className="ultina-assist ultina-ref" aria-label="Reference match">
-        <div className="ultina-assist-head">
-          <span className="ultina-assist-title">REFERENCE MATCH</span>
-          <button
-            type="button"
-            className="btn btn-export"
-            disabled={!!matchBusy || !!assistBusy}
-            title="Match this track's tonal balance toward a reference sample or a target curve"
-            onClick={() => void runReferenceMatch()}
-          >
-            {matchBusy ?? "🎯 MATCH"}
-          </button>
-          {matchBusy && (
-            <button type="button" className="btn btn-small" onClick={cancelAnalysis}>
-              CANCEL
+        <div className="ultina-assist ultina-ref" aria-label="Reference match">
+          <div className="ultina-assist-head">
+            <span className="ultina-assist-title">REFERENCE MATCH</span>
+            <button
+              type="button"
+              className="btn btn-export"
+              disabled={!!matchBusy || !!assistBusy}
+              title="Match this track's tonal balance toward a reference sample or a target curve"
+              onClick={() => void runReferenceMatch()}
+            >
+              {matchBusy ?? "🎯 MATCH"}
             </button>
-          )}
-        </div>
-        <label className="collab-field">
-          <span>REFERENCE SAMPLE (optional — its balance becomes the target)</span>
-          <select value={refId} onChange={(e) => setRefId(e.target.value)}>
-            <option value="">— none: use target curve —</option>
-            {refSources.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        {!refId && (
+            {matchBusy && (
+              <button type="button" className="btn btn-small" onClick={cancelAnalysis}>
+                CANCEL
+              </button>
+            )}
+          </div>
           <label className="collab-field">
-            <span>TARGET CURVE</span>
-            <select value={libTargetId} onChange={(e) => setLibTargetId(e.target.value)}>
-              {TARGET_LIBRARY.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
+            <span>REFERENCE SAMPLE (optional — its balance becomes the target)</span>
+            <select value={refId} onChange={(e) => setRefId(e.target.value)}>
+              <option value="">— none: use target curve —</option>
+              {refSources.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
                 </option>
               ))}
             </select>
           </label>
-        )}
-        {matchError && <div className="fxeq-degraded">{matchError}</div>}
-        {matchSummary && (
-          <div className="ultina-assist-summary">
-            {matchSummary.map((line, i) => (
-              <div key={i} className="ultina-assist-line">
-                {line}
-              </div>
-            ))}
-            <div className="ultina-assist-note">EQ changes applied as one gesture — Ctrl+Z reverts everything.</div>
-          </div>
-        )}
-      </div>
+          {!refId && (
+            <label className="collab-field">
+              <span>TARGET CURVE</span>
+              <select value={libTargetId} onChange={(e) => setLibTargetId(e.target.value)}>
+                {TARGET_LIBRARY.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {matchError && <div className="fxeq-degraded">{matchError}</div>}
+          {matchSummary && (
+            <div className="ultina-assist-summary">
+              {matchSummary.map((line, i) => (
+                <div key={i} className="ultina-assist-line">
+                  {line}
+                </div>
+              ))}
+              <div className="ultina-assist-note">EQ changes applied as one gesture — Ctrl+Z reverts everything.</div>
+            </div>
+          )}
+        </div>
       )}
 
       {/* ── EQ LEARN ───────────────────────────────────────────────── */}
       {(!docked || (dockPage === "assist" && dockAssist === "learn")) && (
-      <div className="ultina-assist ultina-ref" aria-label="EQ learn">
-        <div className="ultina-assist-head">
-          <span className="ultina-assist-title">EQ LEARN</span>
-          <button
-            type="button"
-            className={`btn btn-export${learnOn ? " active" : ""}`}
-            aria-pressed={learnOn}
-            title="Play your track — VLYX detects resonances and suggests cuts"
-            onClick={() => setLearnOn((v) => !v)}
-          >
-            {learnOn ? "● LEARNING" : "LEARN"}
-          </button>
-        </div>
-        {learnOn && learnSuggestions.length > 0 && (
-          <div className="ultina-assist-summary">
-            {learnSuggestions.slice(0, 4).map((s, i) => (
-              <div key={i} className="ozvena-weights" style={{ alignItems: "center" }}>
-                <span>{s.freqHz >= 1000 ? `${(s.freqHz / 1000).toFixed(1)}k` : Math.round(s.freqHz)} Hz</span>
-                <span style={{ color: "#ef4444" }}>{s.gainDb.toFixed(1)} dB</span>
-                <button
-                  type="button"
-                  className="btn btn-small"
-                  title={`Apply: ${Math.round(s.freqHz)} Hz ${s.gainDb.toFixed(1)} dB (Q ${s.q.toFixed(1)}) on the first free band`}
-                  onClick={() => applyLearnSuggestion(s)}
-                >
-                  APPLY
-                </button>
-              </div>
-            ))}
-            <div className="ultina-assist-note">Keep the track playing — suggestions refine as it analyzes.</div>
+        <div className="ultina-assist ultina-ref" aria-label="EQ learn">
+          <div className="ultina-assist-head">
+            <span className="ultina-assist-title">EQ LEARN</span>
+            <button
+              type="button"
+              className={`btn btn-export${learnOn ? " active" : ""}`}
+              aria-pressed={learnOn}
+              title="Play your track — VLYX detects resonances and suggests cuts"
+              onClick={() => setLearnOn((v) => !v)}
+            >
+              {learnOn ? "● LEARNING" : "LEARN"}
+            </button>
           </div>
-        )}
-      </div>
-      )}
-
-      {/* ── PRO: delta listen / A/B / gain match ───────────────────── */}
-      {(!docked || dockPage === "tools") && <div className="ultina-pro" aria-label="Pro tools">
-        <div className="ultina-pro-group">
-          <button
-            type="button"
-            className={`btn btn-small${deltaOn ? " active" : ""}`}
-            aria-pressed={deltaOn}
-            title="Hear ONLY what VLYX removes — the delta between dry and processed"
-            onClick={() => onParam("global.deltaListen", deltaOn ? 0 : 1)}
-          >
-            DELTA
-          </button>
-          <button
-            type="button"
-            className={`btn btn-small${gainMatchOn ? " active" : ""}`}
-            aria-pressed={gainMatchOn}
-            title="Level-locked tweaking — output loudness matched while you turn knobs"
-            onClick={() => onParam("global.gainMatchEnabled", gainMatchOn ? 0 : 1)}
-          >
-            G-MATCH
-          </button>
-          {gainMatchOn && (
-            <div className="ultina-pro-lufs">
-              <Slider
-                compact
-                label="TARGET"
-                value={valueOf("global.autogainTargetLufs")}
-                min={-30}
-                max={0}
-                defaultValue={-14}
-                format={(v) => `${v.toFixed(1)} LUFS`}
-                onCommit={(v) => onParam("global.autogainTargetLufs", v)}
-                onPreview={(v) => previewParam("global.autogainTargetLufs", v)}
-              />
-              <div className="ultina-gain-match-meta">
-                <span className="ultina-gain-match-status" ref={gainMatchStatusRef} role="status">
-                  WAITING FOR SIGNAL
-                </span>
-                <span className="ultina-gain-match-note">output trim only · safe to A/B</span>
-              </div>
+          {learnOn && learnSuggestions.length > 0 && (
+            <div className="ultina-assist-summary">
+              {learnSuggestions.slice(0, 4).map((s, i) => (
+                <div key={i} className="ozvena-weights" style={{ alignItems: "center" }}>
+                  <span>{s.freqHz >= 1000 ? `${(s.freqHz / 1000).toFixed(1)}k` : Math.round(s.freqHz)} Hz</span>
+                  <span style={{ color: "#ef4444" }}>{s.gainDb.toFixed(1)} dB</span>
+                  <button
+                    type="button"
+                    className="btn btn-small"
+                    title={`Apply: ${Math.round(s.freqHz)} Hz ${s.gainDb.toFixed(1)} dB (Q ${s.q.toFixed(1)}) on the first free band`}
+                    onClick={() => applyLearnSuggestion(s)}
+                  >
+                    APPLY
+                  </button>
+                </div>
+              ))}
+              <div className="ultina-assist-note">Keep the track playing — suggestions refine as it analyzes.</div>
             </div>
           )}
         </div>
-        <EffectAbControls
-          effectName="VLYX"
-          stateKind="ultina-ab-v1"
-          params={params}
-          deviceState={{ kind: "ultina-ab-v1", data: { ...currentAbState } }}
-          onStateChange={updateAbState}
-          onLoad={loadAbSlot}
-        />
-      </div>}
+      )}
+
+      {/* ── PRO: delta listen / A/B / gain match ───────────────────── */}
+      {(!docked || dockPage === "tools") && (
+        <div className="ultina-pro" aria-label="Pro tools">
+          <div className="ultina-pro-group">
+            <button
+              type="button"
+              className={`btn btn-small${deltaOn ? " active" : ""}`}
+              aria-pressed={deltaOn}
+              title="Hear ONLY what VLYX removes — the delta between dry and processed"
+              onClick={() => onParam("global.deltaListen", deltaOn ? 0 : 1)}
+            >
+              DELTA
+            </button>
+            <button
+              type="button"
+              className={`btn btn-small${gainMatchOn ? " active" : ""}`}
+              aria-pressed={gainMatchOn}
+              title="Level-locked tweaking — output loudness matched while you turn knobs"
+              onClick={() => onParam("global.gainMatchEnabled", gainMatchOn ? 0 : 1)}
+            >
+              G-MATCH
+            </button>
+            {gainMatchOn && (
+              <div className="ultina-pro-lufs">
+                <Slider
+                  compact
+                  label="TARGET"
+                  value={valueOf("global.autogainTargetLufs")}
+                  min={-30}
+                  max={0}
+                  defaultValue={-14}
+                  format={(v) => `${v.toFixed(1)} LUFS`}
+                  onCommit={(v) => onParam("global.autogainTargetLufs", v)}
+                  onPreview={(v) => previewParam("global.autogainTargetLufs", v)}
+                />
+                <div className="ultina-gain-match-meta">
+                  <span className="ultina-gain-match-status" ref={gainMatchStatusRef} role="status">
+                    WAITING FOR SIGNAL
+                  </span>
+                  <span className="ultina-gain-match-note">output trim only · safe to A/B</span>
+                </div>
+              </div>
+            )}
+          </div>
+          <EffectAbControls
+            effectName="VLYX"
+            stateKind="ultina-ab-v1"
+            params={params}
+            deviceState={{ kind: "ultina-ab-v1", data: { ...currentAbState } }}
+            onStateChange={updateAbState}
+            onLoad={loadAbSlot}
+          />
+        </div>
+      )}
 
       {/* ── MIX ASSIST ─────────────────────────────────────────────── */}
-      {(!docked || (dockPage === "assist" && dockAssist === "mix")) && <div className="ultina-assist" aria-label="Mix assistant">
-        <div className="ultina-assist-head">
-          <span className="ultina-assist-title">MIX ASSIST</span>
-          <button
-            type="button"
-            className="btn btn-export"
-            disabled={!!assistBusy || !!matchBusy}
-            title="Render this track, analyze it and propose mix settings"
-            onClick={() => void runMixAssist()}
-          >
-            {assistBusy ?? "⚡ MIX ASSIST"}
-          </button>
-          {assistBusy && (
-            <button type="button" className="btn btn-small" onClick={cancelAnalysis}>
-              CANCEL
+      {(!docked || (dockPage === "assist" && dockAssist === "mix")) && (
+        <div className="ultina-assist" aria-label="Mix assistant">
+          <div className="ultina-assist-head">
+            <span className="ultina-assist-title">MIX ASSIST</span>
+            <button
+              type="button"
+              className="btn btn-export"
+              disabled={!!assistBusy || !!matchBusy}
+              title="Render this track, analyze it and propose mix settings"
+              onClick={() => void runMixAssist()}
+            >
+              {assistBusy ?? "⚡ MIX ASSIST"}
             </button>
+            {assistBusy && (
+              <button type="button" className="btn btn-small" onClick={cancelAnalysis}>
+                CANCEL
+              </button>
+            )}
+          </div>
+          <div className="ultina-assist-opts">
+            <label className="collab-field">
+              <span>CHARACTER</span>
+              <select value={character} onChange={(e) => setCharacter(e.target.value as AssistantCharacter)}>
+                {ASSISTANT_CHARACTERS.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="collab-field">
+              <span>INTENSITY</span>
+              <select value={intensity} onChange={(e) => setIntensity(e.target.value as AssistantIntensity)}>
+                {ASSISTANT_INTENSITIES.map((i) => (
+                  <option key={i} value={i}>
+                    {i}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {assistError && <div className="fxeq-degraded">{assistError}</div>}
+          {assistSummary && (
+            <div className="ultina-assist-summary">
+              {assistSummary.map((line, i) => (
+                <div key={i} className="ultina-assist-line">
+                  {line}
+                </div>
+              ))}
+              <div className="ultina-assist-note">Applied as one gesture — Ctrl+Z reverts everything.</div>
+            </div>
           )}
         </div>
-        <div className="ultina-assist-opts">
-          <label className="collab-field">
-            <span>CHARACTER</span>
-            <select value={character} onChange={(e) => setCharacter(e.target.value as AssistantCharacter)}>
-              {ASSISTANT_CHARACTERS.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="collab-field">
-            <span>INTENSITY</span>
-            <select value={intensity} onChange={(e) => setIntensity(e.target.value as AssistantIntensity)}>
-              {ASSISTANT_INTENSITIES.map((i) => (
-                <option key={i} value={i}>
-                  {i}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-        {assistError && <div className="fxeq-degraded">{assistError}</div>}
-        {assistSummary && (
-          <div className="ultina-assist-summary">
-            {assistSummary.map((line, i) => (
-              <div key={i} className="ultina-assist-line">
-                {line}
-              </div>
-            ))}
-            <div className="ultina-assist-note">Applied as one gesture — Ctrl+Z reverts everything.</div>
-          </div>
-        )}
-      </div>}
+      )}
 
-      {(!docked || dockPage === "modules") && <div className="fxeq-preset-row">
-        <select
-          className="fxeq-preset-select"
-          aria-label="VLYX preset"
-          defaultValue=""
-          onChange={(event) => {
-            const user = userPresets.find((p) => p.id === event.target.value);
-            if (user) {
-              onApplyPreset(user.name, user.params);
-              setSelectedUserPresetId(user.id);
+      {(!docked || dockPage === "modules") && (
+        <div className="fxeq-preset-row">
+          <select
+            className="fxeq-preset-select"
+            aria-label="VLYX preset"
+            defaultValue=""
+            onChange={(event) => {
+              const user = userPresets.find((p) => p.id === event.target.value);
+              if (user) {
+                onApplyPreset(user.name, user.params);
+                setSelectedUserPresetId(user.id);
+                event.target.value = "";
+                return;
+              }
+              // Lookup by preset ID, not display name — two factory presets
+              // share the name "Vocal Warmth" (EQ + density), and a name-based
+              // find() silently always returned the EQ one.
+              const preset = FACTORY_PRESETS.find((p) => p.id === event.target.value);
+              if (preset) onApplyPreset(preset.name, preset.params);
               event.target.value = "";
-              return;
-            }
-            // Lookup by preset ID, not display name — two factory presets
-            // share the name "Vocal Warmth" (EQ + density), and a name-based
-            // find() silently always returned the EQ one.
-            const preset = FACTORY_PRESETS.find((p) => p.id === event.target.value);
-            if (preset) onApplyPreset(preset.name, preset.params);
-            event.target.value = "";
-          }}
-        >
-          <option value="">PRESET…</option>
-          {userPresets.length > 0 && (
-            <optgroup label="USER">
-              {userPresets.map((p) => (
+            }}
+          >
+            <option value="">PRESET…</option>
+            {userPresets.length > 0 && (
+              <optgroup label="USER">
+                {userPresets.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            <optgroup label="FACTORY">
+              {FACTORY_PRESETS.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.name}
+                  {p.module.toUpperCase()} · {p.name}
                 </option>
               ))}
             </optgroup>
+          </select>
+          <button
+            type="button"
+            className="btn btn-small"
+            aria-label="Save user preset"
+            title="Save the current settings as a user preset"
+            onClick={async () => {
+              const name = (window.prompt("User preset name:", "") ?? "").trim();
+              if (!name) return;
+              const existing = userPresets.find((p) => p.name === name);
+              if (existing && !window.confirm(`Preset "${name}" already exists — overwrite it?`)) return;
+              try {
+                const repo = new UltinaPresetRepository();
+                await repo.save({
+                  id: existing?.id ?? `ultina-preset-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                  name,
+                  params: { ...params },
+                  createdAt: new Date().toISOString(),
+                  schemaVersion: ULTINA_PRESET_SCHEMA_VERSION,
+                });
+                setUserPresets(await repo.list());
+                setPresetError(null);
+              } catch (err) {
+                console.error("[UltinaPanel] preset save failed:", err);
+                setPresetError(err instanceof Error ? err.message : "Preset storage failed");
+              }
+            }}
+          >
+            SAVE
+          </button>
+          {selectedUserPresetId && (
+            <>
+              <button
+                type="button"
+                className="btn btn-small"
+                aria-label="Rename user preset"
+                onClick={async () => {
+                  const current = userPresets.find((p) => p.id === selectedUserPresetId);
+                  if (!current) return;
+                  const name = (window.prompt("Rename preset:", current.name) ?? "").trim();
+                  if (!name || name === current.name) return;
+                  try {
+                    const repo = new UltinaPresetRepository();
+                    await repo.save({ ...current, name });
+                    setUserPresets(await repo.list());
+                    setPresetError(null);
+                  } catch (err) {
+                    console.error("[UltinaPanel] preset rename failed:", err);
+                    setPresetError(err instanceof Error ? err.message : "Preset storage failed");
+                  }
+                }}
+              >
+                RENAME
+              </button>
+              <button
+                type="button"
+                className="btn btn-small btn-danger"
+                aria-label="Delete user preset"
+                onClick={async () => {
+                  const current = userPresets.find((p) => p.id === selectedUserPresetId);
+                  if (!current) return;
+                  if (!window.confirm(`Delete preset "${current.name}"?`)) return;
+                  try {
+                    const repo = new UltinaPresetRepository();
+                    await repo.remove(current.id);
+                    setSelectedUserPresetId(null);
+                    setUserPresets(await repo.list());
+                    setPresetError(null);
+                  } catch (err) {
+                    console.error("[UltinaPanel] preset delete failed:", err);
+                    setPresetError(err instanceof Error ? err.message : "Preset storage failed");
+                  }
+                }}
+              >
+                DEL
+              </button>
+            </>
           )}
-          <optgroup label="FACTORY">
-            {FACTORY_PRESETS.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.module.toUpperCase()} · {p.name}
-              </option>
-            ))}
-          </optgroup>
-        </select>
-        <button
-          type="button"
-          className="btn btn-small"
-          aria-label="Save user preset"
-          title="Save the current settings as a user preset"
-          onClick={async () => {
-            const name = (window.prompt("User preset name:", "") ?? "").trim();
-            if (!name) return;
-            const existing = userPresets.find((p) => p.name === name);
-            if (existing && !window.confirm(`Preset "${name}" already exists — overwrite it?`)) return;
-            try {
-              const repo = new UltinaPresetRepository();
-              await repo.save({
-                id: existing?.id ?? `ultina-preset-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                name,
-                params: { ...params },
-                createdAt: new Date().toISOString(),
-                schemaVersion: ULTINA_PRESET_SCHEMA_VERSION,
-              });
-              setUserPresets(await repo.list());
-              setPresetError(null);
-            } catch (err) {
-              console.error("[UltinaPanel] preset save failed:", err);
-              setPresetError(err instanceof Error ? err.message : "Preset storage failed");
-            }
-          }}
-        >
-          SAVE
-        </button>
-        {selectedUserPresetId && (
-          <>
-            <button
-              type="button"
-              className="btn btn-small"
-              aria-label="Rename user preset"
-              onClick={async () => {
-                const current = userPresets.find((p) => p.id === selectedUserPresetId);
-                if (!current) return;
-                const name = (window.prompt("Rename preset:", current.name) ?? "").trim();
-                if (!name || name === current.name) return;
-                try {
-                  const repo = new UltinaPresetRepository();
-                  await repo.save({ ...current, name });
-                  setUserPresets(await repo.list());
-                  setPresetError(null);
-                } catch (err) {
-                  console.error("[UltinaPanel] preset rename failed:", err);
-                  setPresetError(err instanceof Error ? err.message : "Preset storage failed");
-                }
-              }}
-            >
-              RENAME
-            </button>
-            <button
-              type="button"
-              className="btn btn-small btn-danger"
-              aria-label="Delete user preset"
-              onClick={async () => {
-                const current = userPresets.find((p) => p.id === selectedUserPresetId);
-                if (!current) return;
-                if (!window.confirm(`Delete preset "${current.name}"?`)) return;
-                try {
-                  const repo = new UltinaPresetRepository();
-                  await repo.remove(current.id);
-                  setSelectedUserPresetId(null);
-                  setUserPresets(await repo.list());
-                  setPresetError(null);
-                } catch (err) {
-                  console.error("[UltinaPanel] preset delete failed:", err);
-                  setPresetError(err instanceof Error ? err.message : "Preset storage failed");
-                }
-              }}
-            >
-              DEL
-            </button>
-          </>
-        )}
-        {presetError && (
-          <span className="ultina-preset-error" role="alert">
-            {presetError}
-          </span>
-        )}
-      </div>}
+          {presetError && (
+            <span className="ultina-preset-error" role="alert">
+              {presetError}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Module chips in graph order */}
-      {(!docked || dockPage === "modules") && <div className="fxeq-band-chips" role="group" aria-label="Select module">
-        {DEFAULT_MODULE_ORDER.map((mod) => (
-          <button
-            key={mod}
-            type="button"
-            className={`btn btn-small${selectedModule === mod ? " active" : ""}${enabled(mod) ? " ultina-mod-on" : ""}`}
-            aria-pressed={selectedModule === mod}
-            title={enabled(mod) ? `${MODULE_LABELS[mod]} — enabled` : `${MODULE_LABELS[mod]} — off`}
-            onClick={() => setSelectedModule(mod)}
-          >
-            {MODULE_LABELS[mod]}
-          </button>
-        ))}
-      </div>}
+      {(!docked || dockPage === "modules") && (
+        <div className="fxeq-band-chips" role="group" aria-label="Select module">
+          {DEFAULT_MODULE_ORDER.map((mod) => (
+            <button
+              key={mod}
+              type="button"
+              className={`btn btn-small${selectedModule === mod ? " active" : ""}${enabled(mod) ? " ultina-mod-on" : ""}`}
+              aria-pressed={selectedModule === mod}
+              title={enabled(mod) ? `${MODULE_LABELS[mod]} — enabled` : `${MODULE_LABELS[mod]} — off`}
+              onClick={() => setSelectedModule(mod)}
+            >
+              {MODULE_LABELS[mod]}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Enable toggle for the selected module */}
-      {(!docked || dockPage === "modules") && <div className="ultina-module-head">
-        <span className="fxeq-module-tag ultina-tag">{MODULE_LABELS[selectedModule]}</span>
-        <button
-          type="button"
-          className={`btn btn-small${enabled(selectedModule) ? " active" : ""}`}
-          aria-pressed={enabled(selectedModule)}
-          onClick={() => onParam(`${selectedModule}.enabled`, enabled(selectedModule) ? 0 : 1)}
-        >
-          {enabled(selectedModule) ? "ON" : "OFF"}
-        </button>
-      </div>}
+      {(!docked || dockPage === "modules") && (
+        <div className="ultina-module-head">
+          <span className="fxeq-module-tag ultina-tag">{MODULE_LABELS[selectedModule]}</span>
+          <button
+            type="button"
+            className={`btn btn-small${enabled(selectedModule) ? " active" : ""}`}
+            aria-pressed={enabled(selectedModule)}
+            onClick={() => onParam(`${selectedModule}.enabled`, enabled(selectedModule) ? 0 : 1)}
+          >
+            {enabled(selectedModule) ? "ON" : "OFF"}
+          </button>
+        </div>
+      )}
 
       {(!docked || dockPage === "modules") && enabled(selectedModule) && (
         <div className={`ultina-module-controls${docked ? " is-docked" : ""}`}>
@@ -1200,8 +1217,14 @@ export function UltinaPanel({
             ))
           )}
           {docked && !eqSelected && modulePageCount > 1 && (
-            <div className="device-param-pager" role="group" aria-label={`${MODULE_LABELS[selectedModule]} parameter pages`}>
-              <span>PARAMETERS {moduleParamPage + 1}/{modulePageCount}</span>
+            <div
+              className="device-param-pager"
+              role="group"
+              aria-label={`${MODULE_LABELS[selectedModule]} parameter pages`}
+            >
+              <span>
+                PARAMETERS {moduleParamPage + 1}/{modulePageCount}
+              </span>
               <button
                 type="button"
                 className="btn btn-small"

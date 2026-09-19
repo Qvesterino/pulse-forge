@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
 import { PianoRollTrack } from "../../src/ui/PianoRoll";
 import { renderWithContext, mockServices } from "../helpers";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
@@ -117,5 +117,34 @@ describe("PianoRollTrack", () => {
     const gridEl = container.querySelector(".pianoroll-grid") as HTMLElement;
     dragNote(noteEl, gridEl, 40, "cancel"); // cancel = no commit, but preview existed during move
     expect(noteEl).toBeTruthy();
+  });
+
+  it("touch long-press opens the note menu and the release does not move the note", async () => {
+    vi.useFakeTimers();
+    try {
+      const note: NoteEvent = { id: "n1", pitch: 60, start: 0, duration: STEP_TICKS, velocity: 0.9 };
+      const { container, services } = renderRoll(createProjectFromTemplate("house"), note);
+      const noteEl = container.querySelector('.pr-note[data-note-id="n1"]') as HTMLElement;
+      fireEvent.pointerDown(noteEl, {
+        button: 0,
+        pointerType: "touch",
+        clientX: 8,
+        clientY: 4,
+        pointerId: 1,
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(470);
+      });
+      expect(container.querySelector(".pr-note-menu")).not.toBeNull();
+      fireEvent.pointerUp(noteEl, { pointerId: 1 });
+      expect(services.store.execute).not.toHaveBeenCalled();
+      // The menu offers Delete / Duplicate / Slide.
+      expect(screen.getByRole("menuitem", { name: "Delete" })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
+      const command = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0];
+      expect(command?.type).toBe("deleteNote");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

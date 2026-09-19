@@ -198,12 +198,11 @@ describe("wtvoice worklet engine", () => {
       { pitch: 72, velocity: 0.9, when: 0.05, dur: 0.6 },
     ];
     const without = run({ cutoff: 800, modASrc: 3, modADst: 1, modAAmt: 1 }, notes, 0.8);
-    const withPressure = run(
-      { cutoff: 800, modASrc: 3, modADst: 1, modAAmt: 1 },
-      notes,
-      0.8,
-      { pitch: 60, value: 1, at: 0.1 },
-    );
+    const withPressure = run({ cutoff: 800, modASrc: 3, modADst: 1, modAAmt: 1 }, notes, 0.8, {
+      pitch: 60,
+      value: 1,
+      at: 0.1,
+    });
     // Pressure on note 60 opens ITS filter (800 -> ~2400): the mix must change
     let diff = 0;
     for (let i = 0; i < without.length; i += 7) diff += Math.abs(without[i] - withPressure[i]);

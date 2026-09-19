@@ -14,9 +14,7 @@ import { OzvenaPanel } from "../../src/ui/OzvenaPanel";
 function renderPad(params: Record<string, number> = { "blendPad.x": 0.5, "blendPad.y": 0.5 }) {
   const onParam = vi.fn();
   const onApplyPatch = vi.fn();
-  render(
-    <OzvenaPanel params={params} onParam={onParam} onApplyPatch={onApplyPatch} />,
-  );
+  render(<OzvenaPanel params={params} onParam={onParam} onApplyPatch={onApplyPatch} />);
   const pad = screen.getByRole("slider", { name: /blend pad/i });
   return { pad, onParam, onApplyPatch };
 }
@@ -69,13 +67,7 @@ describe("OzvenaPanel Reverb Assistant — diff-based patch", () => {
       "global.levelDb": -1,
     };
     const onApplyPatch = vi.fn();
-    render(
-      <OzvenaPanel
-        params={userParams}
-        onParam={vi.fn()}
-        onApplyPatch={onApplyPatch}
-      />,
-    );
+    render(<OzvenaPanel params={userParams} onParam={vi.fn()} onApplyPatch={onApplyPatch} />);
     fireEvent.click(screen.getByRole("button", { name: /assist/i }));
 
     expect(onApplyPatch).toHaveBeenCalledTimes(1);

@@ -124,7 +124,12 @@ function sampleDist(
 }
 
 /** Convert a scale degree to a MIDI pitch given root and scale intervals */
-export function degreeToPitch(degree: number, octaveOffset: number, root: number, intervals: readonly number[]): number {
+export function degreeToPitch(
+  degree: number,
+  octaveOffset: number,
+  root: number,
+  intervals: readonly number[],
+): number {
   if (degree < 0) return -1; // rest
   const octave = Math.floor(degree / intervals.length);
   const idx = ((degree % intervals.length) + intervals.length) % intervals.length;

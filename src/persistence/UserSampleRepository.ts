@@ -1,5 +1,6 @@
 import { openDb, tx, STORE_USER_SAMPLES, STORE_USER_SAMPLE_AUDIO } from "./db";
 import type { SampleBank } from "../sample-library/factory";
+import { RecordingRecoveryRepository } from "./RecordingRecoveryRepository";
 
 export interface UserSampleAsset {
   id: string;
@@ -20,8 +21,30 @@ export interface UserSampleAsset {
 
 export interface UserSampleAudio {
   id: string;
-  /** Original encoded file bytes (WAV/MP3/OGG/…) — decoded back into the SampleBank on boot. */
-  data: ArrayBuffer;
+  /** Encoded file bytes, or a durable chunked Float32 recording reference. */
+  data: ArrayBuffer | Blob | PcmRecordingAudioRef;
+}
+
+export interface PcmRecordingAudioRef {
+  kind: "pcm-f32-planar-v1";
+  recordingId: string;
+  frames: number;
+  chunkCount: number;
+  sampleRate: number;
+  channels: number;
+}
+
+export function isPcmRecordingAudio(value: UserSampleAudio["data"]): value is PcmRecordingAudioRef {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<PcmRecordingAudioRef>;
+  return (
+    candidate.kind === "pcm-f32-planar-v1" &&
+    typeof candidate.recordingId === "string" &&
+    Number.isSafeInteger(candidate.frames) &&
+    Number.isInteger(candidate.chunkCount) &&
+    Number.isInteger(candidate.sampleRate) &&
+    Number.isInteger(candidate.channels)
+  );
 }
 
 /**
@@ -33,6 +56,11 @@ export interface UserSampleAudio {
  */
 export class UserSampleRepository {
   private cache: UserSampleAsset[] | null = null;
+
+  /** Recording finalization writes the sample row in a larger atomic transaction. */
+  invalidateCache(): void {
+    this.cache = null;
+  }
 
   async list(): Promise<UserSampleAsset[]> {
     if (this.cache) return this.cache;
@@ -47,7 +75,7 @@ export class UserSampleRepository {
     }
   }
 
-  async save(asset: UserSampleAsset, data?: ArrayBuffer): Promise<void> {
+  async save(asset: UserSampleAsset, data?: ArrayBuffer | Blob): Promise<void> {
     this.cache = null;
     const db = await openDb();
     await tx(db, STORE_USER_SAMPLES, "readwrite", (s) => s.put(asset));
@@ -70,7 +98,7 @@ export class UserSampleRepository {
     }
   }
 
-  async loadAudio(id: string): Promise<ArrayBuffer | undefined> {
+  async loadAudio(id: string): Promise<ArrayBuffer | Blob | PcmRecordingAudioRef | undefined> {
     try {
       const db = await openDb();
       const entry = await tx<UserSampleAudio | undefined>(db, STORE_USER_SAMPLE_AUDIO, "readonly", (s) => s.get(id));
@@ -94,6 +122,13 @@ export class UserSampleRepository {
     this.cache = null;
     try {
       const db = await openDb();
+      const audio = await tx<UserSampleAudio | undefined>(db, STORE_USER_SAMPLE_AUDIO, "readonly", (store) =>
+        store.get(id),
+      );
+      if (audio && isPcmRecordingAudio(audio.data)) {
+        await new RecordingRecoveryRepository().removePcmSample(id, audio.data);
+        return;
+      }
       await tx(db, STORE_USER_SAMPLES, "readwrite", (s) => s.delete(id));
       await tx(db, STORE_USER_SAMPLE_AUDIO, "readwrite", (s) => s.delete(id));
     } catch {
@@ -124,16 +159,33 @@ export function userSampleId(fileName: string): string {
 export async function restoreUserSampleAudio(
   bank: SampleBank,
   decode: (data: ArrayBuffer) => Promise<AudioBuffer> = defaultDecodeAudioBytes,
+  restorePcm: (reference: PcmRecordingAudioRef) => Promise<AudioBuffer> = (reference) =>
+    new RecordingRecoveryRepository().materializeStoredSample(reference),
 ): Promise<void> {
   const repo = new UserSampleRepository();
   const entries = await repo.listAudio();
   for (const { id, data } of entries) {
     try {
-      bank.add(id, await decode(data));
+      const restored = isPcmRecordingAudio(data)
+        ? await restorePcm(data)
+        : await decode(isBlob(data) ? await data.arrayBuffer() : (data as ArrayBuffer));
+      bank.add(id, restored);
     } catch (err) {
       console.warn(`[user-samples] failed to restore ${id}:`, err);
     }
   }
+}
+
+function isBlob(value: ArrayBuffer | Blob): value is Blob {
+  // IndexedDB structured clones may come from another realm, so instanceof
+  // Blob is not a reliable discriminator (notably in embedded webviews).
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as Blob).arrayBuffer === "function" &&
+    typeof (value as Blob).size === "number" &&
+    typeof (value as Blob).type === "string"
+  );
 }
 
 function defaultDecodeAudioBytes(data: ArrayBuffer): Promise<AudioBuffer> {

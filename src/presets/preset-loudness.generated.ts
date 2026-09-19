@@ -234,9 +234,7 @@ export const FACTORY_PRESET_LOUDNESS: Record<string, number> = {
 };
 
 /** Probe renders scatter beyond ±0.75 LU — engines not yet render-deterministic. */
-export const NON_DETERMINISTIC_PRESETS: readonly string[] = [
-
-];
+export const NON_DETERMINISTIC_PRESETS: readonly string[] = [];
 
 export const FACTORY_PRESET_GAIN_DB: Record<string, number> = {
   "factory.808.ambient.warm": -8.1,

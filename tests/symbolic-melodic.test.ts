@@ -56,7 +56,14 @@ describe("melodic-features contract", () => {
   });
 
   it("produces deterministic fixed-width rows with correct one-hots", () => {
-    const input = { genre: "house" as const, role: "bass" as const, startStep: 4, prevDegree: 0, prevDuration: 2, prevPrevDegree: 4 };
+    const input = {
+      genre: "house" as const,
+      role: "bass" as const,
+      startStep: 4,
+      prevDegree: 0,
+      prevDuration: 2,
+      prevPrevDegree: 4,
+    };
     const a = buildMelodicFeatureRow(input);
     const b = buildMelodicFeatureRow(input);
     expect(a).toEqual(b);
@@ -111,7 +118,11 @@ describe("melodic prior sampling in the provider", () => {
 
   it("produces prior-sampled notes that are in-key by construction", async () => {
     const plan = planGeneration(intent, doc);
-    const { entries, failures } = await symbolicPriorProvider.collectCandidates(plan, { project: doc, mode: "apply" }, 0);
+    const { entries, failures } = await symbolicPriorProvider.collectCandidates(
+      plan,
+      { project: doc, mode: "apply" },
+      0,
+    );
     expect(failures).toEqual([]);
     expect(entries.length).toBe(1);
     const notes = Object.values(entries[0].pattern.notes ?? {}).flat();
@@ -137,7 +148,11 @@ describe("melodic prior sampling in the provider", () => {
   it("falls back to template melody when the melodic prior is unavailable", async () => {
     runMelodicNextMock.mockResolvedValue({ ok: false, degree: null, duration: null, source: "fallback" });
     const plan = planGeneration(intent, doc);
-    const { entries, failures } = await symbolicPriorProvider.collectCandidates(plan, { project: doc, mode: "apply" }, 0);
+    const { entries, failures } = await symbolicPriorProvider.collectCandidates(
+      plan,
+      { project: doc, mode: "apply" },
+      0,
+    );
     expect(failures).toEqual([]); // melodic fallback is NOT a failure — candidate stays
     expect(entries.length).toBe(1);
     expect(entries[0].pattern.name).not.toContain("+melody");

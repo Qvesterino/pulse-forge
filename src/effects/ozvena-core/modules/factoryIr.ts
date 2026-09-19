@@ -34,20 +34,34 @@ interface IrGenSpec {
 }
 
 const IR_SPECS: Record<FactoryIrId, IrGenSpec> = {
-  "vocal-booth": { lengthSec: 1.2, earlyTaps: 6,  earlyMaxMs: 25,  lateDecay: 4.5, brightness: 0.3,  character: "dry" },
-  "plate":       { lengthSec: 2.5, earlyTaps: 0,  earlyMaxMs: 0,   lateDecay: 2.0, brightness: 0.85, character: "metallic" },
-  "hall":        { lengthSec: 4.0, earlyTaps: 16, earlyMaxMs: 80,  lateDecay: 1.2, brightness: 0.5,  character: "warm" },
-  "cathedral":   { lengthSec: 5.0, earlyTaps: 12, earlyMaxMs: 120, lateDecay: 0.8, brightness: 0.2,  character: "dark" },
+  "vocal-booth": { lengthSec: 1.2, earlyTaps: 6, earlyMaxMs: 25, lateDecay: 4.5, brightness: 0.3, character: "dry" },
+  plate: { lengthSec: 2.5, earlyTaps: 0, earlyMaxMs: 0, lateDecay: 2.0, brightness: 0.85, character: "metallic" },
+  hall: { lengthSec: 4.0, earlyTaps: 16, earlyMaxMs: 80, lateDecay: 1.2, brightness: 0.5, character: "warm" },
+  cathedral: { lengthSec: 5.0, earlyTaps: 12, earlyMaxMs: 120, lateDecay: 0.8, brightness: 0.2, character: "dark" },
   // Roadmap O7: mono fallbacks for the wide variants (true-stereo set is
   // preferred at runtime; these keep the catalogue total).
-  "plate-wide":  { lengthSec: 2.5, earlyTaps: 0,  earlyMaxMs: 0,   lateDecay: 2.0, brightness: 0.85, character: "metallic" },
-  "chamber-wide":{ lengthSec: 4.0, earlyTaps: 16, earlyMaxMs: 90,  lateDecay: 1.1, brightness: 0.45, character: "warm" },
+  "plate-wide": {
+    lengthSec: 2.5,
+    earlyTaps: 0,
+    earlyMaxMs: 0,
+    lateDecay: 2.0,
+    brightness: 0.85,
+    character: "metallic",
+  },
+  "chamber-wide": {
+    lengthSec: 4.0,
+    earlyTaps: 16,
+    earlyMaxMs: 90,
+    lateDecay: 1.1,
+    brightness: 0.45,
+    character: "warm",
+  },
 };
 
 function makeRng(seed: number): () => number {
   let s = seed | 0;
   return () => {
-    s = (s + 0x6D2B79F5) | 0;
+    s = (s + 0x6d2b79f5) | 0;
     let t = s;
     t = Math.imul(t ^ (t >>> 15), t | 1);
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
@@ -144,14 +158,17 @@ function generateIr(spec: IrGenSpec, sampleRate: number): Float32Array {
 //
 // Deterministic per (id, sampleRate), cached.
 
-const IR4_SPECS: Record<FactoryIrId, { lengthSec: number; spreadMs: number; seed: number; decay: number; bright: number }> = {
-  "vocal-booth": { lengthSec: 1.2, spreadMs: 18,  seed: 101, decay: 3.4, bright: 0.45 },
-  "plate":       { lengthSec: 1.8, spreadMs: 4,   seed: 202, decay: 2.2, bright: 0.85 },
-  "hall":        { lengthSec: 2.5, spreadMs: 38,  seed: 303, decay: 1.4, bright: 0.55 },
-  "cathedral":   { lengthSec: 3.0, spreadMs: 55,  seed: 404, decay: 1.1, bright: 0.35 },
+const IR4_SPECS: Record<
+  FactoryIrId,
+  { lengthSec: number; spreadMs: number; seed: number; decay: number; bright: number }
+> = {
+  "vocal-booth": { lengthSec: 1.2, spreadMs: 18, seed: 101, decay: 3.4, bright: 0.45 },
+  plate: { lengthSec: 1.8, spreadMs: 4, seed: 202, decay: 2.2, bright: 0.85 },
+  hall: { lengthSec: 2.5, spreadMs: 38, seed: 303, decay: 1.4, bright: 0.55 },
+  cathedral: { lengthSec: 3.0, spreadMs: 55, seed: 404, decay: 1.1, bright: 0.35 },
   // Roadmap O7: wide true-stereo variants (4ch decorrelated by design).
-  "plate-wide":  { lengthSec: 1.8, spreadMs: 22,  seed: 205, decay: 2.2, bright: 0.85 },
-  "chamber-wide":{ lengthSec: 3.0, spreadMs: 46,  seed: 407, decay: 1.3, bright: 0.5 },
+  "plate-wide": { lengthSec: 1.8, spreadMs: 22, seed: 205, decay: 2.2, bright: 0.85 },
+  "chamber-wide": { lengthSec: 3.0, spreadMs: 46, seed: 407, decay: 1.3, bright: 0.5 },
 };
 
 const cache4 = new Map<string, Float32Array>();
@@ -256,7 +273,10 @@ export function generateFactoryIr4(id: string, sampleRate: number): Float32Array
   }
 
   cache4.set(key, out);
-  if (cache4.size > IR_CACHE_MAX) { const oldest = cache4.keys().next().value; if (oldest !== undefined) cache4.delete(oldest); }
+  if (cache4.size > IR_CACHE_MAX) {
+    const oldest = cache4.keys().next().value;
+    if (oldest !== undefined) cache4.delete(oldest);
+  }
   return out;
 }
 
@@ -275,7 +295,10 @@ export function generateFactoryIr(id: string, sampleRate: number): Float32Array 
   if (!ir) {
     ir = generateIr(spec, sampleRate);
     cache.set(key, ir);
-    if (cache.size > IR_CACHE_MAX) { const oldest = cache.keys().next().value; if (oldest !== undefined) cache.delete(oldest); }
+    if (cache.size > IR_CACHE_MAX) {
+      const oldest = cache.keys().next().value;
+      if (oldest !== undefined) cache.delete(oldest);
+    }
   }
   return ir;
 }

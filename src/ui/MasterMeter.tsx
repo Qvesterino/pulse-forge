@@ -353,7 +353,14 @@ export function MasterStereoMeters() {
         Math.abs(prev.gainReductionDb - gainReductionDb) > 0.15 ||
         prev.clipping !== clipping;
       if (changed) {
-        const next: StereoState = { left, right, correlation: levels.correlation, peakHoldDb, gainReductionDb, clipping };
+        const next: StereoState = {
+          left,
+          right,
+          correlation: levels.correlation,
+          peakHoldDb,
+          gainReductionDb,
+          clipping,
+        };
         lastStateRef.current = next;
         setState(next);
       }

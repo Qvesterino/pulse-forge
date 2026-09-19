@@ -31,7 +31,16 @@ export const MOD_TYPE_ID = "modulation";
 const PARAM_DEFS: readonly FxEqParamDef[] = [
   { id: "enabled", name: "Enabled", defaultValue: 0, minValue: 0, maxValue: 1, automatable: false },
   { id: "type", name: "Type", defaultValue: 0, minValue: 0, maxValue: 3, automatable: false },
-  { id: "rate", name: "Rate", defaultValue: 1.0, minValue: 0.05, maxValue: 20, unit: "Hz", logScale: true, automatable: true },
+  {
+    id: "rate",
+    name: "Rate",
+    defaultValue: 1.0,
+    minValue: 0.05,
+    maxValue: 20,
+    unit: "Hz",
+    logScale: true,
+    automatable: true,
+  },
   {
     id: "syncMode",
     name: "Tempo Sync",
@@ -82,7 +91,7 @@ export function createModulationModule(params?: Record<string, number>): ModuleP
     if (sync >= 1 && sync < SYNC_BEATS.length) {
       // 1/4 note at 120 BPM → 2 Hz; clamped into the free-rate range so the
       // delay-line capacity contract never changes.
-      return clamp((bpm / 60) / SYNC_BEATS[sync], 0.05, 20);
+      return clamp(bpm / 60 / SYNC_BEATS[sync], 0.05, 20);
     }
     return store.get("rate");
   }
@@ -140,13 +149,7 @@ export function createModulationModule(params?: Record<string, number>): ModuleP
     rp = ((rp % len) + len) % len;
     const i0 = Math.floor(rp);
     const frac = rp - i0;
-    return hermiteInterp(
-      dBuf[i0],
-      dBuf[(i0 + 1) % len],
-      dBuf[(i0 + 2) % len],
-      dBuf[(i0 + 3) % len],
-      frac,
-    );
+    return hermiteInterp(dBuf[i0], dBuf[(i0 + 1) % len], dBuf[(i0 + 2) % len], dBuf[(i0 + 3) % len], frac);
   }
 
   const PHASER_COEFF_INTERVAL = 32;
@@ -280,8 +283,7 @@ export function createModulationModule(params?: Record<string, number>): ModuleP
             flangerFb[c] = wet;
           } else if (type === 3) {
             wet =
-              readDelay(dBuf, wi, doublerOffset) +
-              readDelay(dBuf, wi, doublerOffset + Math.round(0.004 * sampleRate));
+              readDelay(dBuf, wi, doublerOffset) + readDelay(dBuf, wi, doublerOffset + Math.round(0.004 * sampleRate));
             wet /= 2;
           }
 

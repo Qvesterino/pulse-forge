@@ -1,5 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useDoc, useServices } from "./context";
+import {
+  useActivePatternId,
+  useAutomation,
+  useMacros,
+  usePatterns,
+  useReturns,
+  useSceneAutomation,
+  useScenes,
+  useServices,
+  useTracks,
+} from "./context";
 import {
   addAutomationLane,
   addAutomationPoint,
@@ -25,7 +35,7 @@ import {
   setSceneIntensity,
   setSceneIntensityCurve,
 } from "../commands/commands";
-import type { AutomationParamKind, AutomationTarget, LfoKind, LfoWave } from "../project-model/types";
+import type { AutomationParamKind, AutomationTarget, LfoKind, LfoWave, ProjectDocument } from "../project-model/types";
 import { BAR_TICKS, STEP_TICKS } from "../project-model/types";
 import { effectiveSceneBpm, sceneBarsToSeconds } from "../project-model/scene-time";
 import { DEFAULT_STEP_PATTERN } from "../project-model/modulators";
@@ -92,7 +102,7 @@ function kindSwitchPatch(kind: LfoKind, hostTrackId: string): Parameters<typeof 
 }
 
 /** Encoded automation-target options for schedulable modulators (host track scope). */
-function targetOptionsFor(doc: ReturnType<typeof useDoc>, hostTrackId: string): { value: string; label: string }[] {
+function targetOptionsFor(doc: ProjectDocument, hostTrackId: string): { value: string; label: string }[] {
   const host = targetOwner(doc, hostTrackId);
   const options = [
     { value: "trackGain:", label: "Volume" },
@@ -138,7 +148,7 @@ interface ParamRange {
   format?: (v: number) => string;
 }
 
-function laneRange(doc: ReturnType<typeof useDoc>, target: AutomationTarget): ParamRange {
+function laneRange(doc: ProjectDocument, target: AutomationTarget): ParamRange {
   if (target.kind === "trackGain") return { min: 0, max: 1.5, format: (v) => v.toFixed(2) };
   if (target.kind === "trackPan") return { min: -1, max: 1, format: (v) => (Math.abs(v) < 0.02 ? "C" : v.toFixed(2)) };
   const track = targetOwner(doc, target.trackId);
@@ -171,22 +181,37 @@ function trackBadgeSafe(track: { kind: string; instrument?: string } | undefined
 
 export function ModPanel() {
   const services = useServices();
-  const doc = useDoc();
+  // Fine-grained selectors (GOAL 04): ModPanel reads automation lanes, LFOs,
+  // macros, patterns, tracks, returns and the active pattern id. Subscribing
+  // to the whole document via `useDoc()` re-renders this panel on every
+  // unrelated mutation (a track-mute, an automation-point move, a scene BPM
+  // change). With structural sharing in `normalizeProject`, the slices we
+  // actually read keep their array identity across most edits.
+  const tracks = useTracks();
+  const returns = useReturns();
+  const automation = useAutomation();
+  const patterns = usePatterns();
+  const macros = useMacros();
+  const activePatternId = useActivePatternId();
+  // `doc` is still needed for `targetOwner(doc, ...)` walks (which read the
+  // full tracks + returns via `.find()`) and for command arguments. It is a
+  // plain getter, not a React subscription.
+  const doc = services.store.getDoc();
   // `doc.tracks` and `doc.returns` are stable refs for a given snapshot, but
   // the array spread `[...doc.tracks, ...doc.returns]` allocates a new array
   // on every render — and this component re-renders on every doc mutation
   // (it is a doc subscriber through `useDoc`). Memoize so downstream
   // consumers (the addTarget select, the modulator optgroup loop, and any
   // future React.memo child) can rely on a stable reference.
-  const routableTracks = useMemo(() => [...doc.tracks, ...doc.returns], [doc.tracks, doc.returns]);
-  const [selectedLaneId, setSelectedLaneId] = useState<string | null>(doc.automation[0]?.id ?? null);
+  const routableTracks = useMemo(() => [...tracks, ...returns], [tracks, returns]);
+  const [selectedLaneId, setSelectedLaneId] = useState<string | null>(automation[0]?.id ?? null);
   const [addTarget, setAddTarget] = useState<{
     trackId: string;
     kind: AutomationParamKind;
     fxId?: string;
     paramId?: string;
   }>({
-    trackId: doc.tracks[0]?.id ?? "",
+    trackId: tracks[0]?.id ?? "",
     kind: "trackGain",
   });
   // Ultina's deep parameter space is ~200 automatable params — a text filter
@@ -196,16 +221,13 @@ export function ModPanel() {
   // Stable lookup so the lane-detail PointEditor is not recomputed on
   // unrelated re-renders (e.g. the filter input keystroke).
   const selectedLane = useMemo(
-    () => doc.automation.find((l) => l.id === selectedLaneId) ?? null,
-    [doc.automation, selectedLaneId],
+    () => automation.find((l) => l.id === selectedLaneId) ?? null,
+    [automation, selectedLaneId],
   );
   // `doc.patterns` is a stable ref, but `.find` allocates per render. The
   // non-null assertion is preserved because activePatternId is guaranteed by
   // the schema normaliser; the result is what changes identity.
-  const pattern = useMemo(
-    () => doc.patterns.find((p) => p.id === doc.activePatternId)!,
-    [doc.patterns, doc.activePatternId],
-  );
+  const pattern = useMemo(() => patterns.find((p) => p.id === activePatternId)!, [patterns, activePatternId]);
 
   const submitAddLane = () => {
     if (!addTarget.trackId) return;
@@ -258,7 +280,7 @@ export function ModPanel() {
               setParamFilter("");
             }}
           >
-            {[...doc.tracks, ...doc.returns].map((track) => (
+            {[...tracks, ...returns].map((track) => (
               <option key={track.id} value={track.id}>
                 {track.kind === "return" ? "RT" : trackBadge(track)} {track.name}
               </option>
@@ -315,8 +337,8 @@ export function ModPanel() {
           </button>
         </div>
         <div className="mod-lane-list">
-          {doc.automation.length === 0 && <div className="fx-empty">No automation lanes yet.</div>}
-          {doc.automation.map((lane) => {
+          {automation.length === 0 && <div className="fx-empty">No automation lanes yet.</div>}
+          {automation.map((lane) => {
             const track = targetOwner(doc, lane.target.trackId);
             const fxName =
               lane.target.kind === "fxParam" && track && "effects" in track
@@ -713,7 +735,7 @@ export function ModPanel() {
       <div className="mod-section">
         <h2 className="panel-title">MACROS</h2>
         <div className="macro-grid">
-          {doc.macros.map((macro) => (
+          {macros.map((macro) => (
             <MacroCard key={macro.id} macro={macro} />
           ))}
         </div>
@@ -878,7 +900,7 @@ function PointEditor({
 
 /** Human label for a macro mapping — legacy gain/pan or generic P2 target. */
 function macroMappingLabel(
-  doc: ReturnType<typeof useDoc>,
+  doc: ProjectDocument,
   mapping: { trackId: string; param: string; target?: AutomationTarget },
 ): string {
   const t = mapping.target;
@@ -898,9 +920,16 @@ function macroMappingLabel(
   return t.kind;
 }
 
-function MacroCard({ macro }: { macro: ReturnType<typeof useDoc>["macros"][number] }) {
+function MacroCard({ macro }: { macro: ProjectDocument["macros"][number] }) {
   const services = useServices();
-  const doc = useDoc();
+  // Fine-grained selectors (GOAL 04): MacroCard only reads `tracks` (to find
+  // a host track id) and `returns` (for the routable list when adding a
+  // mapping). Subscribing to the whole doc re-renders every macro card on
+  // every unrelated edit; structural sharing in normalizeProject keeps the
+  // tracks/returns array identity stable for most edits.
+  const tracks = useTracks();
+  const returns = useReturns();
+  const doc = services.store.getDoc();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [mapDraft, setMapDraft] = useState<{
@@ -911,7 +940,7 @@ function MacroCard({ macro }: { macro: ReturnType<typeof useDoc>["macros"][numbe
     /** What drives the mapping — the macro knob itself, or the scene-intensity signal. */
     source: "macro" | "intensity";
   }>({
-    trackId: doc.tracks[0]?.id ?? "",
+    trackId: tracks[0]?.id ?? "",
     param: "gain",
     deviceId: "",
     paramId: "",
@@ -1056,7 +1085,7 @@ function MacroCard({ macro }: { macro: ReturnType<typeof useDoc>["macros"][numbe
               setMapDraft((prev) => ({ ...prev, trackId: event.target.value, deviceId: "", paramId: "" }))
             }
           >
-            {[...doc.tracks, ...doc.returns].map((track) => (
+            {[...tracks, ...returns].map((track) => (
               <option key={track.id} value={track.id}>
                 {track.kind === "return" ? "RT" : trackBadge(track)} {track.name}
               </option>
@@ -1211,12 +1240,22 @@ function MacroCard({ macro }: { macro: ReturnType<typeof useDoc>["macros"][numbe
 
 function ScenePanel() {
   const services = useServices();
-  const doc = useDoc();
-  const [selectedSceneId, setSelectedSceneId] = useState(doc.scenes[0]?.id ?? null);
-  const scene = doc.scenes.find((s) => s.id === selectedSceneId) ?? null;
+  // Fine-grained selectors (GOAL 04): ScenePanel reads scenes, scene
+  // automation lanes, patterns (for the selected scene's pattern), the
+  // active pattern id (for the "Steal groove" apply target) and tracks (for
+  // mapping lane targets). The full doc is still needed for the BPM scalar
+  // and command arguments; it's a plain getter (no React subscription).
+  const scenes = useScenes();
+  const sceneAutomation = useSceneAutomation();
+  const patterns = usePatterns();
+  const tracks = useTracks();
+  const activePatternId = useActivePatternId();
+  const doc = services.store.getDoc();
+  const [selectedSceneId, setSelectedSceneId] = useState(scenes[0]?.id ?? null);
+  const scene = scenes.find((s) => s.id === selectedSceneId) ?? null;
 
   // Scene automation lanes for the selected scene
-  const sceneLanes = scene ? doc.sceneAutomation.filter((l) => l.sceneId === scene.id) : [];
+  const sceneLanes = scene ? sceneAutomation.filter((l) => l.sceneId === scene.id) : [];
 
   // Groove pool: saved groove maps (from "Steal groove") applicable to any pattern.
   const groovePoolRef = useRef(new GroovePoolRepository());
@@ -1228,14 +1267,14 @@ function ScenePanel() {
   const selectedLane = sceneLanes.find((l) => l.id === selectedSceneLaneId) ?? null;
 
   // Scene intensity curve: max range is the scene's pattern length in ticks
-  const scenePattern = scene ? doc.patterns.find((p) => p.id === scene.patternId) : null;
+  const scenePattern = scene ? patterns.find((p) => p.id === scene.patternId) : null;
   const maxSceneTicks = scenePattern ? scenePattern.stepCount * STEP_TICKS : 2 * 1920;
   const sceneRange = { min: 0, max: 1, format: (v: number) => v.toFixed(2) };
 
   return (
     <div className="scene-panel">
       <h2 className="panel-title">SCENES</h2>
-      {doc.scenes.length === 0 && <div className="fx-empty">No scenes yet.</div>}
+      {scenes.length === 0 && <div className="fx-empty">No scenes yet.</div>}
 
       <div className="mod-lane-add">
         <select
@@ -1247,8 +1286,8 @@ function ScenePanel() {
           }}
         >
           <option value="">— select scene —</option>
-          {doc.scenes.map((s) => {
-            const pattern = doc.patterns.find((p) => p.id === s.patternId);
+          {scenes.map((s) => {
+            const pattern = patterns.find((p) => p.id === s.patternId);
             return (
               <option key={s.id} value={s.id}>
                 {s.name} → {pattern?.name ?? "?"} ({(s.intensity * 100).toFixed(0)}%)
@@ -1328,7 +1367,7 @@ function ScenePanel() {
                   onClick={() => {
                     try {
                       services.store.execute(
-                        stealGrooveIntoPattern(services.store.doc, doc.activePatternId, entry, {
+                        stealGrooveIntoPattern(services.store.doc, activePatternId, entry, {
                           applyVelocity: true,
                         }),
                       );
@@ -1386,10 +1425,10 @@ function ScenePanel() {
                     services.store.execute(
                       addSceneAutomation(services.store.doc, selectedSceneId, {
                         kind: "trackGain",
-                        trackId: doc.tracks[0]?.id ?? "",
+                        trackId: tracks[0]?.id ?? "",
                       }),
                     );
-                    const updated = services.store.doc.sceneAutomation.filter((l) => l.sceneId === selectedSceneId);
+                    const updated = sceneAutomation.filter((l) => l.sceneId === selectedSceneId);
                     if (updated.length > 0) setSelectedSceneLaneId(updated[updated.length - 1].id);
                   } catch {
                     // duplicate lane
@@ -1403,7 +1442,7 @@ function ScenePanel() {
             <div className="mod-lane-list">
               {sceneLanes.length === 0 && <div className="fx-empty">No scene automation yet.</div>}
               {sceneLanes.map((lane) => {
-                const track = doc.tracks.find((t) => t.id === lane.target.trackId);
+                const track = tracks.find((t) => t.id === lane.target.trackId);
                 return (
                   <div key={lane.id} className={`mod-lane-row${lane.id === selectedSceneLaneId ? " selected" : ""}`}>
                     <button type="button" className="mod-lane-label" onClick={() => setSelectedSceneLaneId(lane.id)}>

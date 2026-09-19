@@ -23,6 +23,7 @@ import {
   toggleEffectBypass,
 } from "../commands/commands";
 import {
+  ADDITIONAL_EFFECT_GROUPS,
   CORE_EFFECT_GROUPS,
   EFFECT_DEFS,
   FLAGSHIP_EFFECT_ORDER,
@@ -66,8 +67,8 @@ export function EffectRack({ track, mode = "rack", selectedPadId = "" }: EffectR
   const effectiveExpandedFxId =
     expandedFxId ?? (track.effects.length > 0 ? track.effects[track.effects.length - 1].id : "");
   const hasInstrument = track.kind === "instrument" || track.kind === "drum";
-  const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(() =>
-    track.effects.at(-1)?.id ?? (hasInstrument ? "instrument" : null),
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(
+    () => track.effects.at(-1)?.id ?? (hasInstrument ? "instrument" : null),
   );
   const [draggedFxId, setDraggedFxId] = useState<string | null>(null);
   const [dropTargetFxId, setDropTargetFxId] = useState<string | null>(null);
@@ -243,6 +244,15 @@ export function EffectRack({ track, mode = "rack", selectedPadId = "" }: EffectR
                 </option>
               ))}
             </optgroup>
+            {ADDITIONAL_EFFECT_GROUPS.map((group) => (
+              <optgroup key={`${group.key}-more`} label={group.label}>
+                {group.types.map((type) => (
+                  <option key={type} value={type}>
+                    {EFFECT_DEFS[type].name}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
           </select>
         </div>
         <div className="device-surface">
@@ -298,6 +308,15 @@ export function EffectRack({ track, mode = "rack", selectedPadId = "" }: EffectR
               </option>
             ))}
           </optgroup>
+          {ADDITIONAL_EFFECT_GROUPS.map((group) => (
+            <optgroup key={`${group.key}-more`} label={group.label}>
+              {group.types.map((type) => (
+                <option key={type} value={type}>
+                  {EFFECT_DEFS[type].name}
+                </option>
+              ))}
+            </optgroup>
+          ))}
         </select>
       </div>
       {track.effects.length === 0 ? (
@@ -314,9 +333,7 @@ export function EffectRack({ track, mode = "rack", selectedPadId = "" }: EffectR
               fallbackReason={fallbacks[fx.id]}
               gainReductionDb={gainReduction[fx.id]}
               expanded={fx.id === effectiveExpandedFxId}
-              onToggleFocus={() =>
-                setExpandedFxId(fx.id === effectiveExpandedFxId ? "" : fx.id)
-              }
+              onToggleFocus={() => setExpandedFxId(fx.id === effectiveExpandedFxId ? "" : fx.id)}
             />
           ))}
         </div>
@@ -534,10 +551,7 @@ function Device({
               <span className="fx-gr-label">GR {(gainReductionDb ?? 0).toFixed(1)} dB</span>
             </div>
           )}
-          {(fx.type === "sidechain" ||
-            fx.type === "compressor" ||
-            fx.type === "fxeq" ||
-            fx.type === "pump") && (
+          {(fx.type === "sidechain" || fx.type === "compressor" || fx.type === "fxeq" || fx.type === "pump") && (
             <div className="fx-sidechain-picker">
               <label className="fx-param-select">
                 <span className="slider-label">SOURCE</span>
@@ -675,6 +689,7 @@ function Device({
                 fxId={fx.id}
                 params={fx.params}
                 degraded={!!fallbackReason}
+                docked={devicesMode}
                 onParam={(paramId, value) =>
                   services.store.execute(setEffectParam(doc, track.id, fx.id, paramId, value))
                 }
@@ -728,9 +743,7 @@ function Device({
             params={visibleParams}
             values={fx.params}
             paged={devicesMode}
-            onChange={(paramId, value) =>
-              services.store.execute(setEffectParam(doc, track.id, fx.id, paramId, value))
-            }
+            onChange={(paramId, value) => services.store.execute(setEffectParam(doc, track.id, fx.id, paramId, value))}
           />
         </div>
       )}

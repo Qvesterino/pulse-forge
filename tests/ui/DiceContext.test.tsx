@@ -14,9 +14,15 @@ function Consumer() {
       <div data-testid="mode">{dice.session.mode}</div>
       <div data-testid="cursor">{String(dice.session.cursor)}</div>
       <div data-testid="canApply">{String(dice.canApply)}</div>
-      <button type="button" onClick={() => dice.rollFull()}>rollFull</button>
-      <button type="button" onClick={() => dice.setMode("vary")}>setVary</button>
-      <button type="button" onClick={() => setShown(dice.session.seedChain[dice.session.cursor] ?? "(none)")}>showCurrent</button>
+      <button type="button" onClick={() => dice.rollFull()}>
+        rollFull
+      </button>
+      <button type="button" onClick={() => dice.setMode("vary")}>
+        setVary
+      </button>
+      <button type="button" onClick={() => setShown(dice.session.seedChain[dice.session.cursor] ?? "(none)")}>
+        showCurrent
+      </button>
     </div>
   );
 }
@@ -64,9 +70,7 @@ describe("DiceContext", () => {
   it("throws when useDice is used without a provider", () => {
     // Suppress error noise — React logs error boundaries even when caught
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
-    expect(() =>
-      renderWithContext(<Consumer />),
-    ).toThrow(/DiceContext not initialized/i);
+    expect(() => renderWithContext(<Consumer />)).toThrow(/DiceContext not initialized/i);
     spy.mockRestore();
   });
 

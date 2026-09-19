@@ -82,10 +82,7 @@ export interface CrossoverStage {
 export type CrossoverOrder = 2 | 4 | 8;
 
 /** Create a crossover stage for `channelCount` channels (max-order allocation). */
-export function createCrossoverStage(
-  channelCount: number,
-  order: CrossoverOrder = 4,
-): CrossoverStage {
+export function createCrossoverStage(channelCount: number, order: CrossoverOrder = 4): CrossoverStage {
   const sections = sectionsFor(8); // allocate for the largest order
   return {
     lp: Array.from({ length: sections }, () => createBiquad(channelCount)),

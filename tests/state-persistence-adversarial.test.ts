@@ -23,6 +23,8 @@ import {
   openDb,
   STORE_FROZEN_AUDIO,
   STORE_PROJECTS,
+  STORE_RECORDING_CHUNKS,
+  STORE_RECORDING_SESSIONS,
   STORE_SNAPSHOTS,
   STORE_SNAPSHOT_INDEX,
   STORE_ULTINA_PRESETS,
@@ -32,10 +34,7 @@ import {
 import { SnapshotRepository, shouldAutoSnapshot } from "../src/persistence/SnapshotRepository";
 import { ProjectRepository } from "../src/persistence/ProjectRepository";
 import { FrozenBufferRepository } from "../src/persistence/FrozenBufferRepository";
-import {
-  UltinaPresetRepository,
-  sanitizeUltinaPresetParams,
-} from "../src/persistence/UltinaPresetRepository";
+import { UltinaPresetRepository, sanitizeUltinaPresetParams } from "../src/persistence/UltinaPresetRepository";
 import { UserSampleRepository } from "../src/persistence/UserSampleRepository";
 import { createDefaultProject, normalizeProject } from "../src/project-model/schema";
 import { createProjectFromTemplate } from "../src/project-model/templates";
@@ -51,6 +50,8 @@ async function wipeAll(): Promise<void> {
     STORE_FROZEN_AUDIO,
     STORE_USER_SAMPLES,
     STORE_USER_SAMPLE_AUDIO,
+    STORE_RECORDING_SESSIONS,
+    STORE_RECORDING_CHUNKS,
     STORE_SNAPSHOTS,
     STORE_SNAPSHOT_INDEX,
     STORE_ULTINA_PRESETS,
@@ -210,9 +211,9 @@ describe("ProjectRepository — corrupted rows & transient failure", () => {
     // escapes. We pin that contract: errors are propagated so the UI
     // can show "couldn't save" instead of silently diverging from disk.
     const repo = new ProjectRepository();
-    const spy = vi.spyOn(db, "tx").mockRejectedValueOnce(
-      Object.assign(new Error("storage quota exceeded"), { name: "QuotaExceededError" }),
-    );
+    const spy = vi
+      .spyOn(db, "tx")
+      .mockRejectedValueOnce(Object.assign(new Error("storage quota exceeded"), { name: "QuotaExceededError" }));
     await expect(repo.save(freshProject("P"))).rejects.toThrow(/quota/i);
     spy.mockRestore();
     // A retry after recovery must succeed (the spy is one-shot).
@@ -248,9 +249,7 @@ describe("ProjectRepository — corrupted rows & transient failure", () => {
   it("concurrent save() calls preserve every project (no torn writes)", async () => {
     // 25 parallel saves — one per worker — must all land durably.
     const repo = new ProjectRepository();
-    await Promise.all(
-      Array.from({ length: 25 }, (_, i) => repo.save({ ...freshProject(`P${i}`), name: `P${i}` })),
-    );
+    await Promise.all(Array.from({ length: 25 }, (_, i) => repo.save({ ...freshProject(`P${i}`), name: `P${i}` })));
     const list = await repo.listAll();
     expect(list).toHaveLength(25);
   });

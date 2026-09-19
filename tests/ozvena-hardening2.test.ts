@@ -163,10 +163,7 @@ describe("ozvena-core hardening #2 — NaN-safe clamp + engine heal", () => {
       process(channels: Float32Array[], frameCount: number): void;
       setParams(p: unknown): void;
     };
-    const expectRecovery = (
-      create: () => MinimalEngine,
-      defaults: () => object,
-    ): void => {
+    const expectRecovery = (create: () => MinimalEngine, defaults: () => object): void => {
       const eng = create();
       eng.prepare(SR, 2);
       // One bad parameter ride (pre-fix: NaN alpha → NaN attackEnv latch →

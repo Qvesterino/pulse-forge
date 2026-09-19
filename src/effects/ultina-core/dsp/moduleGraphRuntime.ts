@@ -71,9 +71,7 @@ export class ModuleGraphRuntime {
   private versionCounter: number = 0;
 
   constructor(entries?: ModuleGraphEntry[]) {
-    this.entries = entries
-      ? validateGraph(entries)
-      : createDefaultModuleGraph();
+    this.entries = entries ? validateGraph(entries) : createDefaultModuleGraph();
     this.snapshot = this.buildSnapshot();
     this.activeChain = this.buildActiveChain();
   }
@@ -287,10 +285,7 @@ export class ModuleGraphRuntime {
 /**
  * Shallow equality check for graph entries arrays.
  */
-function entriesEqual(
-  a: readonly ModuleGraphEntry[],
-  b: readonly ModuleGraphEntry[],
-): boolean {
+function entriesEqual(a: readonly ModuleGraphEntry[], b: readonly ModuleGraphEntry[]): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
     if (a[i].type !== b[i].type || a[i].enabled !== b[i].enabled) {
@@ -310,9 +305,7 @@ export function createModuleGraphRuntime(): ModuleGraphRuntime {
 /**
  * Validate that all 10 module types are represented in a snapshot.
  */
-export function isCompleteGraph(
-  snapshot: ModuleGraphSnapshot,
-): boolean {
+export function isCompleteGraph(snapshot: ModuleGraphSnapshot): boolean {
   const types = new Set(snapshot.entries.map((e) => e.type));
   return MODULE_TYPES.every((t) => types.has(t));
 }

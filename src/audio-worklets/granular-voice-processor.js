@@ -112,7 +112,7 @@ class GrainVoice {
   /** Effective grains/s — R SYNC lock resolved at spawn time (live BPM). */
   grainRate(sr) {
     const beats = SYNC_BEATS[Math.max(0, Math.min(SYNC_BEATS.length - 1, Math.round(this.p.rateSync ?? 0)))];
-    const hz = beats > 0 && this.bpm > 0 ? (this.bpm / 60) * beats : this.p.rate ?? 14;
+    const hz = beats > 0 && this.bpm > 0 ? (this.bpm / 60) * beats : (this.p.rate ?? 14);
     return Math.max(0, Math.min(60, hz));
   }
 
@@ -142,7 +142,10 @@ class GrainVoice {
     const reverse = this.rand() < reverseProb;
     const pan = (this.rand() * 2 - 1) * spread;
     const playRate = Math.pow(2, (this.pitch - 60 + (p.pitch ?? 0)) / 12);
-    const grainRate = Math.max(0.02, playRate * (pitchRand > 0.005 ? Math.pow(2, ((this.rand() * 2 - 1) * pitchRand) / 12) : 1));
+    const grainRate = Math.max(
+      0.02,
+      playRate * (pitchRand > 0.005 ? Math.pow(2, ((this.rand() * 2 - 1) * pitchRand) / 12) : 1),
+    );
 
     const len = sample.length;
     const grainDurSamples = Math.round((size + 0.01) * sr);

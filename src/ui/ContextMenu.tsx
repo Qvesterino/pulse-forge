@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useDoc, useServices, useSelection } from "./context";
 import {
   clearSteps,
@@ -22,9 +22,16 @@ export function ContextMenu({ state, onClose }: { state: ContextMenuState | null
   const services = useServices();
   const doc = useDoc();
   const selection = useSelection();
+  const menuRef = useRef<HTMLDivElement>(null);
+  // Keyboard users must be able to reach the menu: focus the first item on
+  // open and hand focus back to whatever was focused before.
+  const previousFocus = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!state) return;
+    previousFocus.current = (document.activeElement as HTMLElement | null) ?? null;
+    menuRef.current?.querySelector<HTMLButtonElement>('button[role="menuitem"]:not(:disabled)')?.focus();
+    const restoreFocus = previousFocus.current;
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
@@ -38,6 +45,11 @@ export function ContextMenu({ state, onClose }: { state: ContextMenuState | null
     return () => {
       window.removeEventListener("keydown", handler);
       window.removeEventListener("mousedown", click);
+      // Only steal focus back when the menu itself still holds it (the user
+      // may have clicked straight into another control).
+      if (menuRef.current?.contains(document.activeElement)) {
+        restoreFocus?.focus?.();
+      }
     };
   }, [state, onClose]);
 
@@ -110,10 +122,14 @@ export function ContextMenu({ state, onClose }: { state: ContextMenuState | null
 
   return (
     <div
+      ref={menuRef}
       className="context-menu"
       role="menu"
       aria-label="Context menu"
-      style={{ left: state.x, top: state.y }}
+      style={{
+        left: Math.min(state.x, window.innerWidth - 220),
+        top: Math.min(state.y, window.innerHeight - 160),
+      }}
       onMouseDown={(e) => e.stopPropagation()}
     >
       <div className="context-menu-header">{state.context}</div>

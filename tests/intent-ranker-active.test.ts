@@ -35,7 +35,9 @@ const scoreMock = vi.mocked(scoreCandidateFeatures);
 const rankWithModelMock = vi.mocked(rankCandidatesWithModel);
 
 function passThroughActual() {
-  return async (...args: Parameters<typeof rankCandidatesWithModel>): Promise<Awaited<ReturnType<typeof rankCandidatesWithModel>>> => {
+  return async (
+    ...args: Parameters<typeof rankCandidatesWithModel>
+  ): Promise<Awaited<ReturnType<typeof rankCandidatesWithModel>>> => {
     const actual = await vi.importActual<typeof import("../src/ai/ranking/rank-candidates")>(
       "../src/ai/ranking/rank-candidates",
     );

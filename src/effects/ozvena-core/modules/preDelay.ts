@@ -103,10 +103,7 @@ export function createPreDelay(): PreDelay {
   let writeIdx: number[] = [];
   let ringLength = 0;
   function maxSupportedDelaySamples(): number {
-    return Math.max(
-      Math.ceil((500 / 1000) * sampleRate),
-      Math.ceil(((syncNoteToBeats("8/1") * 60) / 20) * sampleRate),
-    );
+    return Math.max(Math.ceil((500 / 1000) * sampleRate), Math.ceil(((syncNoteToBeats("8/1") * 60) / 20) * sampleRate));
   }
   function ensureBuffers(): void {
     // +1 lets a delay equal to the maximum supported length read the slot

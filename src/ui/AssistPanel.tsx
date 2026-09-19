@@ -31,9 +31,7 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
   const [previewOperation, setPreviewOperation] = useState<AssistOperation>("vary");
   const [flash, setFlash] = useState<string | null>(null);
   const [arrangeText, setArrangeText] = useState("");
-  const arrangeParsed: ParsedArrange | null = arrangeText.trim()
-    ? parseArrangeIntent(arrangeText, doc)
-    : null;
+  const arrangeParsed: ParsedArrange | null = arrangeText.trim() ? parseArrangeIntent(arrangeText, doc) : null;
   const [arrangeApplied, setArrangeApplied] = useState<string | null>(null);
 
   const apply = (label: string, run: () => void) => {
@@ -132,7 +130,7 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
           <input
             className="preset-save-input"
             value={arrangeText}
-            placeholder='e.g. shorten the intro to 2 bars, add a break before the drop'
+            placeholder="e.g. shorten the intro to 2 bars, add a break before the drop"
             aria-label="Arrange the beat with words"
             spellCheck={false}
             onChange={(e) => setArrangeText(e.target.value)}

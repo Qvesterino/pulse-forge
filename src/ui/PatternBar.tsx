@@ -270,6 +270,7 @@ export function PatternBar({
         >
           DUP
         </button>
+        <span className="action-sep" aria-hidden="true" />
         <button
           type="button"
           className="btn btn-small"
@@ -322,6 +323,7 @@ export function PatternBar({
         >
           🎲 DICE
         </button>
+        <span className="action-sep" aria-hidden="true" />
         <button
           type="button"
           className="btn btn-small"
@@ -341,8 +343,8 @@ export function PatternBar({
         </button>
         <button
           type="button"
-          className="btn btn-small"
-          title="Clear all steps of active pattern"
+          className="btn btn-small btn-danger"
+          title="Clear all steps of active pattern (undoable)"
           onClick={() => services.store.execute(clearPattern(doc, doc.activePatternId))}
         >
           CLEAR

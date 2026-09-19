@@ -28,11 +28,7 @@
 //   - sidechain: Gain reduces when sidechain signal at band freq exceeds threshold
 // ═══════════════════════════════════════════════════════════
 
-import type {
-  UltinaModuleProcessor,
-  ModuleProcessorContext,
-  ModuleProcessArgs,
-} from "../ultinaProcessor.js";
+import type { UltinaModuleProcessor, ModuleProcessorContext, ModuleProcessArgs } from "../ultinaProcessor.js";
 import {
   type BiquadState,
   createBiquad,
@@ -62,9 +58,18 @@ export const EQ_MAX_BANDS = 12;
 
 /** EQ band shapes (matching parameter schema enum). */
 const EQ_SHAPES = [
-  "bell", "highShelf", "lowShelf", "highPass", "lowPass",
-  "notch", "tilt", "bandPass", "flat",
-  "dynamicBell", "dynamicShelf", "dynamicTilt",
+  "bell",
+  "highShelf",
+  "lowShelf",
+  "highPass",
+  "lowPass",
+  "notch",
+  "tilt",
+  "bandPass",
+  "flat",
+  "dynamicBell",
+  "dynamicShelf",
+  "dynamicTilt",
 ] as const;
 
 /** Band modes. */
@@ -136,11 +141,19 @@ export class EqModuleProcessor implements UltinaModuleProcessor {
    * transient strings on the audio path.
    */
   private bandKeys: Array<{
-    enabled: string; freqHz: string; gainDb: string; q: string;
-    shape: string; mode: string; dynamicRangeDb: string;
-    dynamicThresholdDb: string; sidechainEnabled: string;
-    dynamicAttackMs: string; dynamicReleaseMs: string;
-    dynamicRatio: string; dynamicKneeDb: string;
+    enabled: string;
+    freqHz: string;
+    gainDb: string;
+    q: string;
+    shape: string;
+    mode: string;
+    dynamicRangeDb: string;
+    dynamicThresholdDb: string;
+    sidechainEnabled: string;
+    dynamicAttackMs: string;
+    dynamicReleaseMs: string;
+    dynamicRatio: string;
+    dynamicKneeDb: string;
   }> = [];
   private soloKeys: string[] = [];
   private bandLevels: number[] = new Array(EQ_MAX_BANDS).fill(-100);
@@ -282,10 +295,7 @@ export class EqModuleProcessor implements UltinaModuleProcessor {
       // channel — processing [targetL] then [targetR] through the same banks
       // would let L's filter tail seed R), then recombine.
       for (let ch = 0; ch < 2; ch++) {
-        this.tsSeparator.separate(
-          channels[ch], frameCount,
-          this.transientBufs[ch], this.sustainBufs[ch], ch,
-        );
+        this.tsSeparator.separate(channels[ch], frameCount, this.transientBufs[ch], this.sustainBufs[ch], ch);
       }
       const target = channelMode === 3 ? this.transientBufs : this.sustainBufs;
       const other = channelMode === 3 ? this.sustainBufs : this.transientBufs;
@@ -360,14 +370,8 @@ export class EqModuleProcessor implements UltinaModuleProcessor {
       this.dynGainBuf = new Float32Array(requiredSize);
     }
     if (this.transientBufs[0].length < requiredSize) {
-      this.transientBufs = [
-        new Float32Array(requiredSize),
-        new Float32Array(requiredSize),
-      ];
-      this.sustainBufs = [
-        new Float32Array(requiredSize),
-        new Float32Array(requiredSize),
-      ];
+      this.transientBufs = [new Float32Array(requiredSize), new Float32Array(requiredSize)];
+      this.sustainBufs = [new Float32Array(requiredSize), new Float32Array(requiredSize)];
     }
   }
 
@@ -395,7 +399,7 @@ export class EqModuleProcessor implements UltinaModuleProcessor {
       }
       if (!anyEnabled) {
         for (let i = 0; i < EQ_MAX_BANDS; i++) {
-          this.bandLevels[i] = this.bandLevels[i] * 0.8 + (-100) * 0.2;
+          this.bandLevels[i] = this.bandLevels[i] * 0.8 + -100 * 0.2;
           this.bandGainReduction[i] = this.bandGainReduction[i] * 0.8;
         }
         this.maskingData = null;
@@ -411,14 +415,14 @@ export class EqModuleProcessor implements UltinaModuleProcessor {
       // Skipped bands decay their level meter toward the floor so a
       // disabled band never shows a frozen, stale reading.
       if (!bandEnabled && soloBand < 0) {
-        this.bandLevels[bandIdx] = this.bandLevels[bandIdx] * 0.8 + (-100) * 0.2;
+        this.bandLevels[bandIdx] = this.bandLevels[bandIdx] * 0.8 + -100 * 0.2;
         this.bandGainReduction[bandIdx] = this.bandGainReduction[bandIdx] * 0.8;
         continue;
       }
 
       // If a band is soloed, only process that band
       if (soloBand >= 0 && bandIdx !== soloBand) {
-        this.bandLevels[bandIdx] = this.bandLevels[bandIdx] * 0.8 + (-100) * 0.2;
+        this.bandLevels[bandIdx] = this.bandLevels[bandIdx] * 0.8 + -100 * 0.2;
         this.bandGainReduction[bandIdx] = this.bandGainReduction[bandIdx] * 0.8;
         continue;
       }
@@ -442,8 +446,13 @@ export class EqModuleProcessor implements UltinaModuleProcessor {
       const dynKnee = params[keys.dynamicKneeDb] ?? 0;
 
       // Update filter coefficients if parameters changed
-      if (band.cachedFreq !== freq || band.cachedGain !== gain ||
-          band.cachedQ !== q || band.cachedShape !== shape || band.dirty) {
+      if (
+        band.cachedFreq !== freq ||
+        band.cachedGain !== gain ||
+        band.cachedQ !== q ||
+        band.cachedShape !== shape ||
+        band.dirty
+      ) {
         this.updateBandCoefficients(band, freq, gain, q, shape);
         band.cachedFreq = freq;
         band.cachedGain = gain;
@@ -467,8 +476,17 @@ export class EqModuleProcessor implements UltinaModuleProcessor {
       if (isDynamic || isSidechain) {
         // Dynamic/sidechain processing
         this.processDynamicBand(
-          band, channels, frameCount, freq, q, dynRange, dynThreshold,
-          dynRatio, dynKnee, dynAttack, dynRelease,
+          band,
+          channels,
+          frameCount,
+          freq,
+          q,
+          dynRange,
+          dynThreshold,
+          dynRatio,
+          dynKnee,
+          dynAttack,
+          dynRelease,
           isSidechain ? sidechain! : null,
         );
       } else {
@@ -502,13 +520,7 @@ export class EqModuleProcessor implements UltinaModuleProcessor {
     }
   }
 
-  private updateBandCoefficients(
-    band: EqBandState,
-    freq: number,
-    gainDb: number,
-    q: number,
-    shape: number,
-  ): void {
+  private updateBandCoefficients(band: EqBandState, freq: number, gainDb: number, q: number, shape: number): void {
     // Set the main filter based on shape
     const sr = this.sampleRate;
 
@@ -623,7 +635,7 @@ export class EqModuleProcessor implements UltinaModuleProcessor {
       const kneeBottom = thresholdDb - kneeDb * 0.5;
       const x = inputDb - kneeBottom;
       // Quadratic: reduction grows smoothly from 0
-      gainReduction = slope * (x * x) / (2 * kneeDb);
+      gainReduction = (slope * (x * x)) / (2 * kneeDb);
     } else {
       // Hard knee: above threshold
       gainReduction = slope * (inputDb - thresholdDb);
@@ -660,12 +672,8 @@ export class EqModuleProcessor implements UltinaModuleProcessor {
 
     // Compute attack/release smoothing coefficients for gain reduction
     // Using per-sample exponential smoother
-    const attackCoef = attackMs > 0
-      ? 1 - Math.exp(-1 / ((attackMs / 1000) * this.sampleRate))
-      : 1;
-    const releaseCoef = releaseMs > 0
-      ? 1 - Math.exp(-1 / ((releaseMs / 1000) * this.sampleRate))
-      : 1;
+    const attackCoef = attackMs > 0 ? 1 - Math.exp(-1 / ((attackMs / 1000) * this.sampleRate)) : 1;
+    const releaseCoef = releaseMs > 0 ? 1 - Math.exp(-1 / ((releaseMs / 1000) * this.sampleRate)) : 1;
 
     // Process detector filter on each channel's data to extract band energy
     for (let ch = 0; ch < numCh; ch++) {
@@ -717,9 +725,7 @@ export class EqModuleProcessor implements UltinaModuleProcessor {
       const detectedDb = 20 * Math.log10(Math.max(1e-10, detected));
 
       // Compute target gain reduction using compressor gain computer
-      const targetReduction = this.computeGainReduction(
-        detectedDb, thresholdDb, ratio, kneeDb, dynRangeDb,
-      );
+      const targetReduction = this.computeGainReduction(detectedDb, thresholdDb, ratio, kneeDb, dynRangeDb);
 
       // Smooth the gain reduction (attack for gain increasing, release
       // for gain decreasing). targetReduction is ≤ 0; when it's more
@@ -769,12 +775,7 @@ export class EqModuleProcessor implements UltinaModuleProcessor {
     }
   }
 
-  private measureBandLevel(
-    _band: EqBandState,
-    channels: Float32Array[],
-    frameCount: number,
-    bandIdx: number,
-  ): void {
+  private measureBandLevel(_band: EqBandState, channels: Float32Array[], frameCount: number, bandIdx: number): void {
     // Simple peak measurement on channel 0
     let peak = 0;
     for (let i = 0; i < frameCount; i++) {
@@ -786,11 +787,7 @@ export class EqModuleProcessor implements UltinaModuleProcessor {
     this.bandLevels[bandIdx] = this.bandLevels[bandIdx] * 0.9 + db * 0.1;
   }
 
-  private applySoftSat(
-    channels: Float32Array[],
-    frameCount: number,
-    enabled: boolean,
-  ): void {
+  private applySoftSat(channels: Float32Array[], frameCount: number, enabled: boolean): void {
     if (!enabled) return;
 
     for (let ch = 0; ch < channels.length; ch++) {
@@ -804,16 +801,8 @@ export class EqModuleProcessor implements UltinaModuleProcessor {
     }
   }
 
-  private computeMasking(
-    channels: Float32Array[],
-    sidechain: Float32Array[],
-    frameCount: number,
-  ): void {
-    const result = this.maskingMeter.analyze(
-      channels[0],
-      sidechain[0] ?? channels[0],
-      frameCount,
-    );
+  private computeMasking(channels: Float32Array[], sidechain: Float32Array[], frameCount: number): void {
+    const result = this.maskingMeter.analyze(channels[0], sidechain[0] ?? channels[0], frameCount);
     this.maskingData = result.levels;
   }
 }

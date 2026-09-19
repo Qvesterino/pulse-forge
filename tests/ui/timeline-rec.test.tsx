@@ -1,12 +1,10 @@
 /**
  * Timeline recording — arm a track, REC the mic straight into the song.
  *
- * jsdom has no microphone, so the UI tests cover the wiring up to the error
- * path (REC without MediaRecorder surfaces a readable message) and the
- * pure helpers cover the placement math. The full capture path is exercised
- * manually (mic → clip appears at the playhead bar).
+ * jsdom has no AudioWorklet or microphone. The UI tests cover the explicit
+ * unsupported-capability path; recorder persistence is tested separately.
  */
-import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { describe, expect, it, vi, afterEach } from "vitest";
 import { fireEvent, screen } from "@testing-library/react";
 import { ArrangementPanel } from "../../src/ui/ArrangementPanel";
 import { clipLengthBars, recordingStartBar, secondsPerBar } from "../../src/ui/timelineRec";
@@ -36,12 +34,6 @@ describe("recording placement math", () => {
 });
 
 describe("arrangement REC wiring", () => {
-  let mediaRecorderMissing = true;
-
-  beforeEach(() => {
-    mediaRecorderMissing = typeof (globalThis as { MediaRecorder?: unknown }).MediaRecorder === "undefined";
-  });
-
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -63,13 +55,14 @@ describe("arrangement REC wiring", () => {
     expect((screen.getByRole("button", { name: "● REC" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it("REC without mic support surfaces a readable error, not a crash", async () => {
-    if (!mediaRecorderMissing) return; // only meaningful where MediaRecorder is absent
+  it("REC without AudioWorklet support surfaces a readable error, not a crash", async () => {
     const doc = createDocWithTracks();
     const services = mockServices(doc);
     // Engine must report a live context for the flow to reach the recorder.
     (services.engine as { ensureContext: () => unknown; getLiveAudioContext: () => unknown }).ensureContext = vi.fn();
-    (services.engine as { getLiveAudioContext: () => unknown }).getLiveAudioContext = vi.fn(() => ({}));
+    (services.engine as { getLiveAudioContext: () => unknown }).getLiveAudioContext = vi.fn(() => ({
+      state: "running",
+    }));
 
     renderWithContext(<ArrangementPanel />, { services });
     fireEvent.change(screen.getByLabelText("Arm track for recording"), {
@@ -77,50 +70,57 @@ describe("arrangement REC wiring", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "● REC" }));
 
-    await screen.findByText(/MediaRecorder|not available|mic/i);
+    await screen.findByText(/AudioWorklet|not available|mic/i);
     // No state stuck on "recording" — REC button is back.
     expect(screen.getByRole("button", { name: "● REC" })).toBeTruthy();
   });
 
-  it("REC with a ready engine but blocked mic keeps the store untouched", async () => {
-    if (!mediaRecorderMissing) return;
+  it("REC with a browser lacking capture support keeps the store untouched", async () => {
     const doc = createDocWithTracks();
     const services = mockServices(doc);
     const executeSpy = services.store.execute as ReturnType<typeof vi.fn>;
     (services.engine as { ensureContext: () => unknown }).ensureContext = vi.fn();
-    (services.engine as { getLiveAudioContext: () => unknown }).getLiveAudioContext = vi.fn(() => ({}));
+    (services.engine as { getLiveAudioContext: () => unknown }).getLiveAudioContext = vi.fn(() => ({
+      state: "running",
+    }));
 
     renderWithContext(<ArrangementPanel />, { services });
     fireEvent.change(screen.getByLabelText("Arm track for recording"), {
       target: { value: doc.tracks[0].id },
     });
     fireEvent.click(screen.getByRole("button", { name: "● REC" }));
-    await screen.findByText(/MediaRecorder|not available|mic/i);
+    await screen.findByText(/AudioWorklet|not available|mic/i);
 
     expect(executeSpy).not.toHaveBeenCalled();
   });
 
   it("warns when the take is usable now but its audio could not be persisted", async () => {
-    vi.doMock("../../src/audio-engine/recorder", () => ({
-      LiveRecorder: class {
+    vi.doMock("../../src/audio-engine/PcmMicRecorder", () => ({
+      PcmMicRecorder: class {
         elapsedSeconds = 1;
-        async start() {}
+        metadata: any;
+        onError = null;
+        async start(getMetadata: () => unknown) {
+          this.metadata = getMetadata();
+        }
         async stop() {
           return {
+            session: {
+              id: "recording.test",
+              ...this.metadata,
+            },
             buffer: { duration: 1, sampleRate: 48_000, numberOfChannels: 1 } as AudioBuffer,
-            blob: new Blob(["recorded audio"], { type: "audio/webm;codecs=opus" }),
           };
         }
         cancel() {}
       },
-      extensionForMime: () => ".webm",
     }));
 
     try {
       const doc = createDocWithTracks();
       const services = mockServices(doc);
       (services.engine as any).getLiveAudioContext = vi.fn(() => ({ currentTime: 0 }));
-      services.userSamples.save = vi.fn(async () => {
+      services.recordingRecovery.finalize = vi.fn(async () => {
         throw new Error("quota exceeded");
       });
 
@@ -131,8 +131,8 @@ describe("arrangement REC wiring", () => {
       fireEvent.click(screen.getByRole("button", { name: "● REC" }));
       fireEvent.click(await screen.findByRole("button", { name: /STOP/ }));
 
-      expect(await screen.findByRole("alert")).toHaveTextContent(/only in memory.*lost/i);
-      expect(services.userSamples.save).toHaveBeenCalledOnce();
+      expect(await screen.findByRole("alert")).toHaveTextContent(/committed PCM blocks remain in recovery storage/i);
+      expect(services.recordingRecovery.finalize).toHaveBeenCalledOnce();
       expect(services.bank.add).toHaveBeenCalledOnce();
       expect(services.store.execute).toHaveBeenCalledOnce();
     } finally {

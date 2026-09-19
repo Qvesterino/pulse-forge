@@ -114,9 +114,7 @@ export function trackEnhance(request: TrackEnhanceRequest): TrackEnhanceResult {
   const features = extractFeatures(channels, sampleRate);
 
   if (!features.valid) {
-    throw new Error(
-      features.invalidReason ?? "Insufficient audio for analysis",
-    );
+    throw new Error(features.invalidReason ?? "Insufficient audio for analysis");
   }
 
   // 2. Classify or use override
@@ -137,12 +135,7 @@ export function trackEnhance(request: TrackEnhanceRequest): TrackEnhanceResult {
   const intensity = amountToIntensity(amount);
 
   // 4. Generate proposals
-  const { toggles, changes } = generateProposal(
-    features,
-    classification,
-    character,
-    intensity,
-  );
+  const { toggles, changes } = generateProposal(features, classification, character, intensity);
 
   // 5. Build proposal
   const proposal: UltinaProposal = {
@@ -161,13 +154,7 @@ export function trackEnhance(request: TrackEnhanceRequest): TrackEnhanceResult {
 
   // 6. Build summary
   const enabledModules = toggles.filter((t) => t.enabled).map((t) => t.moduleType);
-  const summary = buildSummary(
-    classification.instrument,
-    character,
-    intensity,
-    enabledModules,
-    changes.length,
-  );
+  const summary = buildSummary(classification.instrument, character, intensity, enabledModules, changes.length);
 
   return { proposal, summary };
 }
@@ -179,11 +166,7 @@ function buildSummary(
   enabledModules: string[],
   paramCount: number,
 ): string {
-  const parts = [
-    `Detected: ${INSTRUMENT_LABELS[instrument]}`,
-    `Character: ${character}`,
-    `Intensity: ${intensity}`,
-  ];
+  const parts = [`Detected: ${INSTRUMENT_LABELS[instrument]}`, `Character: ${character}`, `Intensity: ${intensity}`];
 
   if (enabledModules.length > 0) {
     parts.push(`Modules: ${enabledModules.join(", ")}`);
@@ -201,9 +184,7 @@ function buildSummary(
  * Does not include module toggle states — those are handled separately
  * via the module graph.
  */
-export function proposalToParamMap(
-  proposal: UltinaProposal,
-): Record<string, number> {
+export function proposalToParamMap(proposal: UltinaProposal): Record<string, number> {
   const result: Record<string, number> = {};
   for (const change of proposal.changes) {
     result[change.parameterId] = change.value;
@@ -214,10 +195,6 @@ export function proposalToParamMap(
 /**
  * Get the list of module types that should be enabled.
  */
-export function proposalToEnabledModules(
-  proposal: UltinaProposal,
-): string[] {
-  return proposal.moduleToggles
-    .filter((t) => t.enabled)
-    .map((t) => t.moduleType);
+export function proposalToEnabledModules(proposal: UltinaProposal): string[] {
+  return proposal.moduleToggles.filter((t) => t.enabled).map((t) => t.moduleType);
 }

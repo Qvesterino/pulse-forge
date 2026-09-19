@@ -48,26 +48,26 @@
 // GLOBAL PARAMETERS (VST3: 0–63)
 // ═══════════════════════════════════════════════════════════
 
-export const GLOBAL_BYPASS_ID            = "global.bypass"             as const;  // 0
-export const GLOBAL_INPUT_GAIN_DB_ID     = "global.inputGainDb"        as const;  // 1
-export const GLOBAL_OUTPUT_GAIN_DB_ID    = "global.outputGainDb"       as const;  // 2
-export const GLOBAL_MIX_ID               = "global.mix"                as const;  // 3
-export const GLOBAL_QUALITY_MODE_ID      = "global.qualityMode"        as const;  // 4
-export const GLOBAL_DELTA_LISTEN_ID      = "global.deltaListen"        as const;  // 5
-export const GLOBAL_GAIN_MATCH_ENABLED_ID = "global.gainMatchEnabled"  as const;  // 6
-export const GLOBAL_AB_SLOT_ID           = "global.abSlot"             as const;  // 7
+export const GLOBAL_BYPASS_ID = "global.bypass" as const; // 0
+export const GLOBAL_INPUT_GAIN_DB_ID = "global.inputGainDb" as const; // 1
+export const GLOBAL_OUTPUT_GAIN_DB_ID = "global.outputGainDb" as const; // 2
+export const GLOBAL_MIX_ID = "global.mix" as const; // 3
+export const GLOBAL_QUALITY_MODE_ID = "global.qualityMode" as const; // 4
+export const GLOBAL_DELTA_LISTEN_ID = "global.deltaListen" as const; // 5
+export const GLOBAL_GAIN_MATCH_ENABLED_ID = "global.gainMatchEnabled" as const; // 6
+export const GLOBAL_AB_SLOT_ID = "global.abSlot" as const; // 7
 export const GLOBAL_AUTOGAIN_TARGET_LUFS_ID = "global.autogainTargetLufs" as const; // 8
 
 // ═══════════════════════════════════════════════════════════
 // EQUALIZER PARAMETERS (VST3: 64–255)
 // ═══════════════════════════════════════════════════════════
 
-export const EQ_ENABLED_ID               = "eq.enabled"                as const;  // 64
-export const EQ_CHANNEL_MODE_ID          = "eq.channelMode"            as const;  // 65
-export const EQ_SOFT_SATURATION_ID       = "eq.softSaturation"         as const;  // 66
-export const EQ_LEARN_ACTIVE_ID          = "eq.learnActive"            as const;  // 67
-export const EQ_MASKING_METER_ENABLED_ID = "eq.maskingMeterEnabled"    as const;  // 68
-export const EQ_SIDECHAIN_ENABLED_ID     = "eq.sidechainEnabled"       as const;  // 69
+export const EQ_ENABLED_ID = "eq.enabled" as const; // 64
+export const EQ_CHANNEL_MODE_ID = "eq.channelMode" as const; // 65
+export const EQ_SOFT_SATURATION_ID = "eq.softSaturation" as const; // 66
+export const EQ_LEARN_ACTIVE_ID = "eq.learnActive" as const; // 67
+export const EQ_MASKING_METER_ENABLED_ID = "eq.maskingMeterEnabled" as const; // 68
+export const EQ_SIDECHAIN_ENABLED_ID = "eq.sidechainEnabled" as const; // 69
 
 // 12 bands × 14 params each = 168 params (IDs 70–237)
 // Each band: enabled, freqHz, gainDb, q, shape, mode,
@@ -108,29 +108,29 @@ export function eqBandVst3Id(bandIndex: number, paramIndex: number): number {
 // COMPRESSOR PARAMETERS (VST3: 256–319)
 // ═══════════════════════════════════════════════════════════
 
-export const COMP_ENABLED_ID             = "comp.enabled"              as const;  // 256
-export const COMP_MODE_ID                = "comp.mode"                 as const;  // 257 (0=Punch, 1=Modern, 2=Vintage, 3=Opto, 4=FET)
-export const COMP_DETECTION_MODE_ID      = "comp.detectionMode"        as const;  // 258 (0=Peak, 1=RMS, 2=TrueEnvelope)
-export const COMP_THRESHOLD_DB_ID        = "comp.thresholdDb"          as const;  // 259
-export const COMP_RATIO_ID               = "comp.ratio"                as const;  // 260
-export const COMP_ATTACK_MS_ID           = "comp.attackMs"             as const;  // 261
-export const COMP_RELEASE_MS_ID          = "comp.releaseMs"            as const;  // 262
-export const COMP_KNEE_DB_ID             = "comp.kneeDb"               as const;  // 263
-export const COMP_MAKEUP_DB_ID           = "comp.makeupDb"             as const;  // 264
-export const COMP_MAKEUP_AUTO_ID         = "comp.makeupAuto"           as const;  // 265
-export const COMP_AUTO_RELEASE_ID        = "comp.autoRelease"          as const;  // 266
-export const COMP_MIX_ID                 = "comp.mix"                  as const;  // 267
-export const COMP_SIDECHAIN_ENABLED_ID   = "comp.sidechainEnabled"     as const;  // 268
-export const COMP_SIDECHAIN_HPF_HZ_ID    = "comp.sidechainHpfHz"       as const;  // 269
-export const COMP_BAND_COUNT_ID          = "comp.bandCount"            as const;  // 270
-export const COMP_CROSSOVER_HZ1_ID       = "comp.crossoverHz1"         as const;  // 271
-export const COMP_CROSSOVER_HZ2_ID       = "comp.crossoverHz2"         as const;  // 272
-export const COMP_CROSSOVER_MODE_ID      = "comp.crossoverMode"        as const;  // 273
-export const COMP_CHANNEL_MODE_ID        = "comp.channelMode"          as const;  // 274
-export const COMP_CROSSOVER_LEARN_ID     = "comp.crossoverLearn"       as const;  // 275
-export const COMP_DELTA_ID               = "comp.delta"                as const;  // 276
-export const COMP_AUTO_LEARN_THRESHOLD_ID = "comp.autoLearnThreshold"  as const;  // 277
-export const COMP_DETECTOR_HPF_HZ_ID     = "comp.detectorHpfHz"        as const;  // 278
+export const COMP_ENABLED_ID = "comp.enabled" as const; // 256
+export const COMP_MODE_ID = "comp.mode" as const; // 257 (0=Punch, 1=Modern, 2=Vintage, 3=Opto, 4=FET)
+export const COMP_DETECTION_MODE_ID = "comp.detectionMode" as const; // 258 (0=Peak, 1=RMS, 2=TrueEnvelope)
+export const COMP_THRESHOLD_DB_ID = "comp.thresholdDb" as const; // 259
+export const COMP_RATIO_ID = "comp.ratio" as const; // 260
+export const COMP_ATTACK_MS_ID = "comp.attackMs" as const; // 261
+export const COMP_RELEASE_MS_ID = "comp.releaseMs" as const; // 262
+export const COMP_KNEE_DB_ID = "comp.kneeDb" as const; // 263
+export const COMP_MAKEUP_DB_ID = "comp.makeupDb" as const; // 264
+export const COMP_MAKEUP_AUTO_ID = "comp.makeupAuto" as const; // 265
+export const COMP_AUTO_RELEASE_ID = "comp.autoRelease" as const; // 266
+export const COMP_MIX_ID = "comp.mix" as const; // 267
+export const COMP_SIDECHAIN_ENABLED_ID = "comp.sidechainEnabled" as const; // 268
+export const COMP_SIDECHAIN_HPF_HZ_ID = "comp.sidechainHpfHz" as const; // 269
+export const COMP_BAND_COUNT_ID = "comp.bandCount" as const; // 270
+export const COMP_CROSSOVER_HZ1_ID = "comp.crossoverHz1" as const; // 271
+export const COMP_CROSSOVER_HZ2_ID = "comp.crossoverHz2" as const; // 272
+export const COMP_CROSSOVER_MODE_ID = "comp.crossoverMode" as const; // 273
+export const COMP_CHANNEL_MODE_ID = "comp.channelMode" as const; // 274
+export const COMP_CROSSOVER_LEARN_ID = "comp.crossoverLearn" as const; // 275
+export const COMP_DELTA_ID = "comp.delta" as const; // 276
+export const COMP_AUTO_LEARN_THRESHOLD_ID = "comp.autoLearnThreshold" as const; // 277
+export const COMP_DETECTOR_HPF_HZ_ID = "comp.detectorHpfHz" as const; // 278
 
 // Per-band threshold override (up to 3 bands)
 export function compBandParamId(bandIndex: number, param: string): string {
@@ -141,20 +141,20 @@ export function compBandParamId(bandIndex: number, param: string): string {
 // GATE PARAMETERS (VST3: 320–383)
 // ═══════════════════════════════════════════════════════════
 
-export const GATE_ENABLED_ID             = "gate.enabled"              as const;  // 320
-export const GATE_RANGE_DB_ID            = "gate.rangeDb"              as const;  // 321
-export const GATE_ATTACK_MS_ID           = "gate.attackMs"             as const;  // 322
-export const GATE_HOLD_MS_ID             = "gate.holdMs"               as const;  // 323
-export const GATE_RELEASE_MS_ID          = "gate.releaseMs"            as const;  // 324
-export const GATE_HYSTERESIS_DB_ID       = "gate.hysteresisDb"         as const;  // 325
-export const GATE_SIDECHAIN_HPF_HZ_ID    = "gate.sidechainHpfHz"       as const;  // 326
-export const GATE_BAND_COUNT_ID          = "gate.bandCount"            as const;  // 327
-export const GATE_CROSSOVER_HZ1_ID       = "gate.crossoverHz1"         as const;  // 328
-export const GATE_CROSSOVER_HZ2_ID       = "gate.crossoverHz2"         as const;  // 329
-export const GATE_CROSSOVER_MODE_ID      = "gate.crossoverMode"        as const;  // 330
-export const GATE_CHANNEL_MODE_ID        = "gate.channelMode"          as const;  // 331
-export const GATE_CROSSOVER_LEARN_ID     = "gate.crossoverLearn"       as const;  // 332
-export const GATE_DELTA_ID               = "gate.delta"                as const;  // 333
+export const GATE_ENABLED_ID = "gate.enabled" as const; // 320
+export const GATE_RANGE_DB_ID = "gate.rangeDb" as const; // 321
+export const GATE_ATTACK_MS_ID = "gate.attackMs" as const; // 322
+export const GATE_HOLD_MS_ID = "gate.holdMs" as const; // 323
+export const GATE_RELEASE_MS_ID = "gate.releaseMs" as const; // 324
+export const GATE_HYSTERESIS_DB_ID = "gate.hysteresisDb" as const; // 325
+export const GATE_SIDECHAIN_HPF_HZ_ID = "gate.sidechainHpfHz" as const; // 326
+export const GATE_BAND_COUNT_ID = "gate.bandCount" as const; // 327
+export const GATE_CROSSOVER_HZ1_ID = "gate.crossoverHz1" as const; // 328
+export const GATE_CROSSOVER_HZ2_ID = "gate.crossoverHz2" as const; // 329
+export const GATE_CROSSOVER_MODE_ID = "gate.crossoverMode" as const; // 330
+export const GATE_CHANNEL_MODE_ID = "gate.channelMode" as const; // 331
+export const GATE_CROSSOVER_LEARN_ID = "gate.crossoverLearn" as const; // 332
+export const GATE_DELTA_ID = "gate.delta" as const; // 333
 
 // Per-band open/close thresholds (3 bands)
 export function gateBandParamId(bandIndex: number, param: string): string {
@@ -165,125 +165,125 @@ export function gateBandParamId(bandIndex: number, param: string): string {
 // EXCITER PARAMETERS (VST3: 384–447)
 // ═══════════════════════════════════════════════════════════
 
-export const EXCITER_ENABLED_ID          = "exciter.enabled"           as const;  // 384
-export const EXCITER_TRASH_MODE_ID       = "exciter.trashMode"         as const;  // 385
+export const EXCITER_ENABLED_ID = "exciter.enabled" as const; // 384
+export const EXCITER_TRASH_MODE_ID = "exciter.trashMode" as const; // 385
 // Saturation types (blendable)
-export const EXCITER_TUBE_AMOUNT_ID      = "exciter.tubeAmount"        as const;  // 386
-export const EXCITER_WARM_AMOUNT_ID      = "exciter.warmAmount"        as const;  // 387
-export const EXCITER_TAPE_AMOUNT_ID      = "exciter.tapeAmount"        as const;  // 388
-export const EXCITER_RETRO_AMOUNT_ID     = "exciter.retroAmount"       as const;  // 389
+export const EXCITER_TUBE_AMOUNT_ID = "exciter.tubeAmount" as const; // 386
+export const EXCITER_WARM_AMOUNT_ID = "exciter.warmAmount" as const; // 387
+export const EXCITER_TAPE_AMOUNT_ID = "exciter.tapeAmount" as const; // 388
+export const EXCITER_RETRO_AMOUNT_ID = "exciter.retroAmount" as const; // 389
 // Distortion types (Trash mode)
-export const EXCITER_OVERDRIVE_AMOUNT_ID = "exciter.overdriveAmount"   as const;  // 390
-export const EXCITER_SCREAM_AMOUNT_ID    = "exciter.screamAmount"      as const;  // 391
-export const EXCITER_CLIPPER_AMOUNT_ID   = "exciter.clipperAmount"     as const;  // 392
-export const EXCITER_SCRATCH_AMOUNT_ID   = "exciter.scratchAmount"     as const;  // 393
+export const EXCITER_OVERDRIVE_AMOUNT_ID = "exciter.overdriveAmount" as const; // 390
+export const EXCITER_SCREAM_AMOUNT_ID = "exciter.screamAmount" as const; // 391
+export const EXCITER_CLIPPER_AMOUNT_ID = "exciter.clipperAmount" as const; // 392
+export const EXCITER_SCRATCH_AMOUNT_ID = "exciter.scratchAmount" as const; // 393
 // Tone & emphasis
-export const EXCITER_TONE_SLIDER_ID      = "exciter.toneSlider"        as const;  // 394
+export const EXCITER_TONE_SLIDER_ID = "exciter.toneSlider" as const; // 394
 // 0 remains a no-op for backwards-compatible default projects; active
 // emphasis depths ascend through 1=Clean, 2=Defined, 3=Full.
-export const EXCITER_PRE_EMPHASIS_MODE_ID = "exciter.preEmphasisMode"  as const;  // 395 (0=Flat,1=Clean,2=Defined,3=Full)
+export const EXCITER_PRE_EMPHASIS_MODE_ID = "exciter.preEmphasisMode" as const; // 395 (0=Flat,1=Clean,2=Defined,3=Full)
 // Multiband
-export const EXCITER_BAND_COUNT_ID       = "exciter.bandCount"         as const;  // 396
-export const EXCITER_CROSSOVER_HZ1_ID    = "exciter.crossoverHz1"      as const;  // 397
-export const EXCITER_CROSSOVER_HZ2_ID    = "exciter.crossoverHz2"      as const;  // 398
-export const EXCITER_CROSSOVER_MODE_ID   = "exciter.crossoverMode"     as const;  // 399
-export const EXCITER_CHANNEL_MODE_ID     = "exciter.channelMode"       as const;  // 400
-export const EXCITER_CROSSOVER_LEARN_ID  = "exciter.crossoverLearn"    as const;  // 401
-export const EXCITER_OVERSAMPLING_ID     = "exciter.oversampling"      as const;  // 402
-export const EXCITER_MIX_ID              = "exciter.mix"               as const;  // 403
-export const EXCITER_DELTA_ID            = "exciter.delta"             as const;  // 404
-export const EXCITER_TUBE_ASYM_AMOUNT_ID = "exciter.tubeAsymAmount"    as const;  // 405
+export const EXCITER_BAND_COUNT_ID = "exciter.bandCount" as const; // 396
+export const EXCITER_CROSSOVER_HZ1_ID = "exciter.crossoverHz1" as const; // 397
+export const EXCITER_CROSSOVER_HZ2_ID = "exciter.crossoverHz2" as const; // 398
+export const EXCITER_CROSSOVER_MODE_ID = "exciter.crossoverMode" as const; // 399
+export const EXCITER_CHANNEL_MODE_ID = "exciter.channelMode" as const; // 400
+export const EXCITER_CROSSOVER_LEARN_ID = "exciter.crossoverLearn" as const; // 401
+export const EXCITER_OVERSAMPLING_ID = "exciter.oversampling" as const; // 402
+export const EXCITER_MIX_ID = "exciter.mix" as const; // 403
+export const EXCITER_DELTA_ID = "exciter.delta" as const; // 404
+export const EXCITER_TUBE_ASYM_AMOUNT_ID = "exciter.tubeAsymAmount" as const; // 405
 
 // ═══════════════════════════════════════════════════════════
 // TRANSIENT SHAPER PARAMETERS (VST3: 448–511)
 // ═══════════════════════════════════════════════════════════
 
-export const TRANSIENT_ENABLED_ID        = "transient.enabled"         as const;  // 448
-export const TRANSIENT_GLOBAL_MODE_ID    = "transient.globalMode"      as const;  // 449 (0=Precise,1=Balanced,2=Loose)
-export const TRANSIENT_CONTOUR_SHAPE_ID  = "transient.contourShape"    as const;  // 450 (0=Sharp,1=Medium,2=Smooth)
-export const TRANSIENT_ATTACK_AMOUNT_ID  = "transient.attackAmount"    as const;  // 451 (-100 to 100)
-export const TRANSIENT_SUSTAIN_AMOUNT_ID = "transient.sustainAmount"   as const;  // 452 (-100 to 100)
-export const TRANSIENT_BAND_COUNT_ID     = "transient.bandCount"       as const;  // 453
-export const TRANSIENT_CROSSOVER_HZ1_ID  = "transient.crossoverHz1"    as const;  // 454
-export const TRANSIENT_CROSSOVER_HZ2_ID  = "transient.crossoverHz2"    as const;  // 455
-export const TRANSIENT_CROSSOVER_MODE_ID = "transient.crossoverMode"   as const;  // 456
-export const TRANSIENT_CHANNEL_MODE_ID   = "transient.channelMode"     as const;  // 457
-export const TRANSIENT_CROSSOVER_LEARN_ID = "transient.crossoverLearn" as const;  // 458
-export const TRANSIENT_DELTA_ID          = "transient.delta"           as const;  // 459
+export const TRANSIENT_ENABLED_ID = "transient.enabled" as const; // 448
+export const TRANSIENT_GLOBAL_MODE_ID = "transient.globalMode" as const; // 449 (0=Precise,1=Balanced,2=Loose)
+export const TRANSIENT_CONTOUR_SHAPE_ID = "transient.contourShape" as const; // 450 (0=Sharp,1=Medium,2=Smooth)
+export const TRANSIENT_ATTACK_AMOUNT_ID = "transient.attackAmount" as const; // 451 (-100 to 100)
+export const TRANSIENT_SUSTAIN_AMOUNT_ID = "transient.sustainAmount" as const; // 452 (-100 to 100)
+export const TRANSIENT_BAND_COUNT_ID = "transient.bandCount" as const; // 453
+export const TRANSIENT_CROSSOVER_HZ1_ID = "transient.crossoverHz1" as const; // 454
+export const TRANSIENT_CROSSOVER_HZ2_ID = "transient.crossoverHz2" as const; // 455
+export const TRANSIENT_CROSSOVER_MODE_ID = "transient.crossoverMode" as const; // 456
+export const TRANSIENT_CHANNEL_MODE_ID = "transient.channelMode" as const; // 457
+export const TRANSIENT_CROSSOVER_LEARN_ID = "transient.crossoverLearn" as const; // 458
+export const TRANSIENT_DELTA_ID = "transient.delta" as const; // 459
 
 // ═══════════════════════════════════════════════════════════
 // CLIPPER PARAMETERS (VST3: 512–575)
 // ═══════════════════════════════════════════════════════════
 
-export const CLIPPER_ENABLED_ID          = "clipper.enabled"           as const;  // 512
-export const CLIPPER_CEILING_DB_ID       = "clipper.ceilingDb"         as const;  // 513
-export const CLIPPER_KNEE_DB_ID          = "clipper.kneeDb"            as const;  // 514
-export const CLIPPER_DRIVE_DB_ID         = "clipper.driveDb"           as const;  // 515
-export const CLIPPER_BAND_COUNT_ID       = "clipper.bandCount"         as const;  // 516
-export const CLIPPER_CROSSOVER_HZ1_ID    = "clipper.crossoverHz1"      as const;  // 517
-export const CLIPPER_CROSSOVER_HZ2_ID    = "clipper.crossoverHz2"      as const;  // 518
-export const CLIPPER_CROSSOVER_MODE_ID   = "clipper.crossoverMode"     as const;  // 519
-export const CLIPPER_CHANNEL_MODE_ID     = "clipper.channelMode"       as const;  // 520
-export const CLIPPER_CROSSOVER_LEARN_ID  = "clipper.crossoverLearn"    as const;  // 521
-export const CLIPPER_OVERSAMPLING_ID     = "clipper.oversampling"      as const;  // 522
-export const CLIPPER_DELTA_ID            = "clipper.delta"             as const;  // 523
+export const CLIPPER_ENABLED_ID = "clipper.enabled" as const; // 512
+export const CLIPPER_CEILING_DB_ID = "clipper.ceilingDb" as const; // 513
+export const CLIPPER_KNEE_DB_ID = "clipper.kneeDb" as const; // 514
+export const CLIPPER_DRIVE_DB_ID = "clipper.driveDb" as const; // 515
+export const CLIPPER_BAND_COUNT_ID = "clipper.bandCount" as const; // 516
+export const CLIPPER_CROSSOVER_HZ1_ID = "clipper.crossoverHz1" as const; // 517
+export const CLIPPER_CROSSOVER_HZ2_ID = "clipper.crossoverHz2" as const; // 518
+export const CLIPPER_CROSSOVER_MODE_ID = "clipper.crossoverMode" as const; // 519
+export const CLIPPER_CHANNEL_MODE_ID = "clipper.channelMode" as const; // 520
+export const CLIPPER_CROSSOVER_LEARN_ID = "clipper.crossoverLearn" as const; // 521
+export const CLIPPER_OVERSAMPLING_ID = "clipper.oversampling" as const; // 522
+export const CLIPPER_DELTA_ID = "clipper.delta" as const; // 523
 
 // ═══════════════════════════════════════════════════════════
 // DENSITY PARAMETERS (VST3: 576–639)
 // ═══════════════════════════════════════════════════════════
 
-export const DENSITY_ENABLED_ID          = "density.enabled"           as const;  // 576
-export const DENSITY_THRESHOLD_DB_ID     = "density.thresholdDb"       as const;  // 577
-export const DENSITY_RANGE_DB_ID         = "density.rangeDb"           as const;  // 578
-export const DENSITY_RATIO_ID            = "density.ratio"             as const;  // 579
-export const DENSITY_ATTACK_MS_ID        = "density.attackMs"          as const;  // 580
-export const DENSITY_RELEASE_MS_ID       = "density.releaseMs"         as const;  // 581
-export const DENSITY_BAND_COUNT_ID       = "density.bandCount"         as const;  // 582
-export const DENSITY_CROSSOVER_HZ1_ID    = "density.crossoverHz1"      as const;  // 583
-export const DENSITY_CROSSOVER_HZ2_ID    = "density.crossoverHz2"      as const;  // 584
-export const DENSITY_CROSSOVER_MODE_ID   = "density.crossoverMode"     as const;  // 585
-export const DENSITY_CHANNEL_MODE_ID     = "density.channelMode"       as const;  // 586
-export const DENSITY_CROSSOVER_LEARN_ID  = "density.crossoverLearn"    as const;  // 587
-export const DENSITY_DELTA_ID            = "density.delta"             as const;  // 588
+export const DENSITY_ENABLED_ID = "density.enabled" as const; // 576
+export const DENSITY_THRESHOLD_DB_ID = "density.thresholdDb" as const; // 577
+export const DENSITY_RANGE_DB_ID = "density.rangeDb" as const; // 578
+export const DENSITY_RATIO_ID = "density.ratio" as const; // 579
+export const DENSITY_ATTACK_MS_ID = "density.attackMs" as const; // 580
+export const DENSITY_RELEASE_MS_ID = "density.releaseMs" as const; // 581
+export const DENSITY_BAND_COUNT_ID = "density.bandCount" as const; // 582
+export const DENSITY_CROSSOVER_HZ1_ID = "density.crossoverHz1" as const; // 583
+export const DENSITY_CROSSOVER_HZ2_ID = "density.crossoverHz2" as const; // 584
+export const DENSITY_CROSSOVER_MODE_ID = "density.crossoverMode" as const; // 585
+export const DENSITY_CHANNEL_MODE_ID = "density.channelMode" as const; // 586
+export const DENSITY_CROSSOVER_LEARN_ID = "density.crossoverLearn" as const; // 587
+export const DENSITY_DELTA_ID = "density.delta" as const; // 588
 
 // ═══════════════════════════════════════════════════════════
 // SCULPTOR PARAMETERS (VST3: 640–703)
 // ═══════════════════════════════════════════════════════════
 
-export const SCULPTOR_ENABLED_ID         = "sculptor.enabled"          as const;  // 640
-export const SCULPTOR_TARGET_PROFILE_ID  = "sculptor.targetProfile"    as const;  // 641 (0=Guitar,1=Bass,2=Kick,3=Piano,4=Snare,5=Speech)
-export const SCULPTOR_AMOUNT_ID          = "sculptor.amount"           as const;  // 642
-export const SCULPTOR_LOW_FREQ_BOUNDARY_HZ_ID  = "sculptor.lowFreqBoundaryHz"  as const;  // 643
-export const SCULPTOR_HIGH_FREQ_BOUNDARY_HZ_ID = "sculptor.highFreqBoundaryHz" as const;  // 644
-export const SCULPTOR_DRY_WET_ID         = "sculptor.dryWet"           as const;  // 645
-export const SCULPTOR_CHANNEL_MODE_ID    = "sculptor.channelMode"      as const;  // 646
-export const SCULPTOR_DELTA_ID           = "sculptor.delta"            as const;  // 647
+export const SCULPTOR_ENABLED_ID = "sculptor.enabled" as const; // 640
+export const SCULPTOR_TARGET_PROFILE_ID = "sculptor.targetProfile" as const; // 641 (0=Guitar,1=Bass,2=Kick,3=Piano,4=Snare,5=Speech)
+export const SCULPTOR_AMOUNT_ID = "sculptor.amount" as const; // 642
+export const SCULPTOR_LOW_FREQ_BOUNDARY_HZ_ID = "sculptor.lowFreqBoundaryHz" as const; // 643
+export const SCULPTOR_HIGH_FREQ_BOUNDARY_HZ_ID = "sculptor.highFreqBoundaryHz" as const; // 644
+export const SCULPTOR_DRY_WET_ID = "sculptor.dryWet" as const; // 645
+export const SCULPTOR_CHANNEL_MODE_ID = "sculptor.channelMode" as const; // 646
+export const SCULPTOR_DELTA_ID = "sculptor.delta" as const; // 647
 
 // ═══════════════════════════════════════════════════════════
 // PHASE PARAMETERS (VST3: 704–767)
 // ═══════════════════════════════════════════════════════════
 
-export const PHASE_ENABLED_ID            = "phase.enabled"             as const;  // 704
-export const PHASE_LEARN_ACTIVE_ID       = "phase.learnActive"         as const;  // 705
-export const PHASE_ROTATION_DEGREES_ID   = "phase.rotationDegrees"     as const;  // 706
-export const PHASE_TIME_SHIFT_MS_ID      = "phase.timeShiftMs"         as const;  // 707
-export const PHASE_SIDECHAIN_ENABLED_ID  = "phase.sidechainEnabled"    as const;  // 708
-export const PHASE_AUTO_ALIGN_ACTIVE_ID  = "phase.autoAlignActive"     as const;  // 709
-export const PHASE_DELTA_ID              = "phase.delta"               as const;  // 710
+export const PHASE_ENABLED_ID = "phase.enabled" as const; // 704
+export const PHASE_LEARN_ACTIVE_ID = "phase.learnActive" as const; // 705
+export const PHASE_ROTATION_DEGREES_ID = "phase.rotationDegrees" as const; // 706
+export const PHASE_TIME_SHIFT_MS_ID = "phase.timeShiftMs" as const; // 707
+export const PHASE_SIDECHAIN_ENABLED_ID = "phase.sidechainEnabled" as const; // 708
+export const PHASE_AUTO_ALIGN_ACTIVE_ID = "phase.autoAlignActive" as const; // 709
+export const PHASE_DELTA_ID = "phase.delta" as const; // 710
 
 // ═══════════════════════════════════════════════════════════
 // UNMASK PARAMETERS (VST3: 768–831)
 // ═══════════════════════════════════════════════════════════
 
-export const UNMASK_ENABLED_ID           = "unmask.enabled"            as const;  // 768
-export const UNMASK_AMOUNT_ID            = "unmask.amount"             as const;  // 769
-export const UNMASK_SIDECHAIN_ENABLED_ID = "unmask.sidechainEnabled"   as const;  // 770
+export const UNMASK_ENABLED_ID = "unmask.enabled" as const; // 768
+export const UNMASK_AMOUNT_ID = "unmask.amount" as const; // 769
+export const UNMASK_SIDECHAIN_ENABLED_ID = "unmask.sidechainEnabled" as const; // 770
 export const UNMASK_MASKING_THRESHOLD_DB_ID = "unmask.maskingThresholdDb" as const; // 771
-export const UNMASK_RESPONSE_SPEED_HZ_ID = "unmask.responseSpeedHz"    as const;  // 772
-export const UNMASK_CHANNEL_MODE_ID      = "unmask.channelMode"        as const;  // 773
-export const UNMASK_LEARN_ACTIVE_ID      = "unmask.learnActive"        as const;  // 774
-export const UNMASK_DELTA_ID             = "unmask.delta"              as const;  // 775
-export const UNMASK_ECOSYSTEM_ENABLED_ID = "unmask.ecosystemEnabled"   as const;  // 776
+export const UNMASK_RESPONSE_SPEED_HZ_ID = "unmask.responseSpeedHz" as const; // 772
+export const UNMASK_CHANNEL_MODE_ID = "unmask.channelMode" as const; // 773
+export const UNMASK_LEARN_ACTIVE_ID = "unmask.learnActive" as const; // 774
+export const UNMASK_DELTA_ID = "unmask.delta" as const; // 775
+export const UNMASK_ECOSYSTEM_ENABLED_ID = "unmask.ecosystemEnabled" as const; // 776
 
 // ═══════════════════════════════════════════════════════════
 // ALL PARAMETER IDs (flat array for iteration)

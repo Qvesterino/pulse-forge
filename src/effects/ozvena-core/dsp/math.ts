@@ -83,13 +83,7 @@ export function fastTanh(x: number): number {
  * Hermite 4-point, 3rd-order (Catmull-Rom) interpolation. Used for
  * fractional-delay reads in Mod Pad and engine smoothers.
  */
-export function hermiteInterp(
-  s0: number,
-  s1: number,
-  s2: number,
-  s3: number,
-  frac: number,
-): number {
+export function hermiteInterp(s0: number, s1: number, s2: number, s3: number, frac: number): number {
   const c0 = s1;
   const c1 = 0.5 * (s2 - s0);
   const c2 = s0 - 2.5 * s1 + 2 * s2 - 0.5 * s3;

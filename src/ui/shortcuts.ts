@@ -76,8 +76,8 @@ export interface Shortcut {
   alt?: boolean;
   meta?: boolean;
   /**
-   * Optional alternative bindings (e.g. Space for play, but also a labelled
-   * chord). The first alternative is shown in the help overlay.
+   * Optional alternative bindings (e.g. Ctrl+S for save with Ctrl+Shift+S as
+   * an extra chord). The first alternative is shown in the help overlay.
    */
   altHints?: { key: string; ctrl?: boolean; shift?: boolean; alt?: boolean; meta?: boolean }[];
 }
@@ -87,8 +87,10 @@ export const SHORTCUTS: Shortcut[] = [
     key: "playPause",
     label: "Play / Pause",
     group: "Transport",
-    keyHint: "Space",
-    altHints: [{ key: " " }],
+    // keyHint holds the literal event.key — the spacebar's key is " ", not
+    // "Space" (a "Space" hint here never matched any real event).
+    // formatBinding renders " " as "Space" for display.
+    keyHint: " ",
   },
   // keyHint must equal the literal event.key ("Escape", not "Esc") — the
   // matcher lowercases but does not alias key names.

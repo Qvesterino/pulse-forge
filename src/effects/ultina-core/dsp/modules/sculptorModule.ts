@@ -30,11 +30,7 @@
 // Target profiles: Guitar, Bass, Kick, Piano, Snare, Speech
 // ═══════════════════════════════════════════════════════════
 
-import type {
-  ModuleProcessArgs,
-  ModuleProcessorContext,
-  UltinaModuleProcessor,
-} from "../ultinaProcessor.js";
+import type { ModuleProcessArgs, ModuleProcessorContext, UltinaModuleProcessor } from "../ultinaProcessor.js";
 import {
   ampToDb,
   clamp,
@@ -65,17 +61,17 @@ const BAND_FREQS = [80, 170, 350, 700, 1400, 2800, 5600, 11200];
 // Index: 0=Guitar, 1=Bass, 2=Kick, 3=Piano, 4=Snare, 5=Speech
 const TARGET_CURVES: readonly number[][] = [
   // Guitar: warm mids, controlled highs
-  [-1,  2,  3,  2,  1,  0, -1, -2],
+  [-1, 2, 3, 2, 1, 0, -1, -2],
   // Bass: strong lows, rolled-off highs
-  [ 4,  3,  2,  0, -2, -3, -4, -5],
+  [4, 3, 2, 0, -2, -3, -4, -5],
   // Kick: deep low end, slight click
-  [ 5,  2, -1, -2,  0,  1,  0, -1],
+  [5, 2, -1, -2, 0, 1, 0, -1],
   // Piano: nearly flat, slight presence
-  [ 0,  0,  1,  1,  1,  1,  0, -1],
+  [0, 0, 1, 1, 1, 1, 0, -1],
   // Snare: punchy mids and crack
-  [-2,  3,  2,  0,  1,  3,  4,  2],
+  [-2, 3, 2, 0, 1, 3, 4, 2],
   // Speech: presence boost, roll-off extremes
-  [-4, -2,  0,  1,  2,  2,  0, -3],
+  [-4, -2, 0, 1, 2, 2, 0, -3],
 ];
 
 // ── Module ─────────────────────────────────────────────────
@@ -158,8 +154,8 @@ export class SculptorModuleProcessor implements UltinaModuleProcessor {
     // whole block — with the per-sample coefficient the real time
     // constant was block-size times longer (~10 s at 256-frame blocks)
     // and the corrective gains took ~10 s to materialize.
-    this.gainAtkCoef = 1 - Math.exp(-this.maxBlockSize / (0.020 * this.sampleRate));
-    this.gainRelCoef = 1 - Math.exp(-this.maxBlockSize / (0.100 * this.sampleRate));
+    this.gainAtkCoef = 1 - Math.exp(-this.maxBlockSize / (0.02 * this.sampleRate));
+    this.gainRelCoef = 1 - Math.exp(-this.maxBlockSize / (0.1 * this.sampleRate));
 
     this.midSide.prepare(this.maxBlockSize, 2);
   }
@@ -253,11 +249,7 @@ export class SculptorModuleProcessor implements UltinaModuleProcessor {
       let sumDb = 0;
       let validBands = 0;
       for (let b = 0; b < NUM_BANDS; b++) {
-        if (
-          BAND_FREQS[b] >= lowFreq &&
-          BAND_FREQS[b] <= highFreq &&
-          this.envFollowers[b] >= activeFloor
-        ) {
+        if (BAND_FREQS[b] >= lowFreq && BAND_FREQS[b] <= highFreq && this.envFollowers[b] >= activeFloor) {
           sumDb += ampToDb(this.envFollowers[b]);
           validBands++;
         }
@@ -287,9 +279,7 @@ export class SculptorModuleProcessor implements UltinaModuleProcessor {
         }
 
         // Smooth the gain
-        const coef = targetGainDb > this.smoothedGainDb[b]
-          ? this.gainAtkCoef
-          : this.gainRelCoef;
+        const coef = targetGainDb > this.smoothedGainDb[b] ? this.gainAtkCoef : this.gainRelCoef;
         this.smoothedGainDb[b] += coef * (targetGainDb - this.smoothedGainDb[b]);
       }
 
@@ -398,11 +388,7 @@ export class SculptorModuleProcessor implements UltinaModuleProcessor {
       totalActiveGain += Math.abs(this.smoothedGainDb[b]);
     }
     // amountActive: 0-1 normalized by theoretical max (all bands at max correction)
-    m.amountActive = clamp(
-      totalActiveGain / (NUM_BANDS * MAX_CORRECTION_DB),
-      0,
-      1,
-    );
+    m.amountActive = clamp(totalActiveGain / (NUM_BANDS * MAX_CORRECTION_DB), 0, 1);
     spectralCurveDb.set(this.currentSpectralCurve);
     targetCurveDb.set(this.currentTargetCurve);
     return m;

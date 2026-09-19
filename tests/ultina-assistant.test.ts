@@ -80,10 +80,7 @@ describe("Reference match (analyzeWithTarget)", () => {
     // Bas-heavy signal (110 Hz) matched against a bright target curve.
     const audio = sineStereo(110, 3, 44100, 0.5);
     const brightTarget = [0, 0, 0, 0, 0, 0, 0, 2, 4, 6]; // push highs
-    const result = analyzeWithTarget(
-      { channels: audio, sampleRate: 44100, minimumDuration: 2 },
-      brightTarget,
-    );
+    const result = analyzeWithTarget({ channels: audio, sampleRate: 44100, minimumDuration: 2 }, brightTarget);
     expect(result.kind).toBe("success");
     if (result.kind !== "success") return;
     const eqMoves = result.proposal.changes.filter((c) => /^eq\.band\d+\.gainDb$/.test(c.parameterId));
@@ -100,10 +97,7 @@ describe("Reference match (analyzeWithTarget)", () => {
   it("suggests nothing when the balance already matches the target", () => {
     const audio = sineStereo(220, 3, 44100, 0.5);
     const flatTarget = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-    const result = analyzeWithTarget(
-      { channels: audio, sampleRate: 44100, minimumDuration: 2 },
-      flatTarget,
-    );
+    const result = analyzeWithTarget({ channels: audio, sampleRate: 44100, minimumDuration: 2 }, flatTarget);
     expect(result.kind).toBe("success");
     if (result.kind !== "success") return;
     const eqMoves = result.proposal.changes.filter(

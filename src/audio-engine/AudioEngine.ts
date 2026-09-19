@@ -4727,14 +4727,22 @@ export function warpSegmentRenders(
     let overlapIn = 0;
     if (i > 0 && fade > 0 && s.rate > 0) {
       const prev = segs[i - 1];
-      overlapIn = Math.min(fade, (s.bufStartSec - contentStartSec) / s.rate, (contentEnd - prev.bufEndSec) / Math.max(1e-6, prev.rate));
+      overlapIn = Math.min(
+        fade,
+        (s.bufStartSec - contentStartSec) / s.rate,
+        (contentEnd - prev.bufEndSec) / Math.max(1e-6, prev.rate),
+      );
       if (!Number.isFinite(overlapIn) || overlapIn < 0.0005) overlapIn = 0;
     }
     // Overlap past the next joint (symmetric readability check).
     let overlapOut = 0;
     if (i + 1 < segs.length && fade > 0 && s.rate > 0) {
       const next = segs[i + 1];
-      overlapOut = Math.min(fade, (contentEnd - s.bufEndSec) / s.rate, (next.bufStartSec - contentStartSec) / Math.max(1e-6, next.rate));
+      overlapOut = Math.min(
+        fade,
+        (contentEnd - s.bufEndSec) / s.rate,
+        (next.bufStartSec - contentStartSec) / Math.max(1e-6, next.rate),
+      );
       if (!Number.isFinite(overlapOut) || overlapOut < 0.0005) overlapOut = 0;
     }
     const startOffsetSec = wallStart - overlapIn;

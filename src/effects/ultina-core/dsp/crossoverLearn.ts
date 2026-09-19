@@ -30,13 +30,7 @@
 // yield higher confidence scores.
 // ═══════════════════════════════════════════════════════════
 
-import {
-  createBiquad,
-  setBandPass,
-  processBiquadChannel,
-  resetBiquad,
-  type BiquadState,
-} from "./primitives.js";
+import { createBiquad, setBandPass, processBiquadChannel, resetBiquad, type BiquadState } from "./primitives.js";
 
 // ── Constants ───────────────────────────────────────────────
 
@@ -184,9 +178,7 @@ export class CrossoverLearn {
       totalEnergy += lin;
     }
 
-    const spectralCentroid = totalEnergy > 1e-10
-      ? totalWeighted / totalEnergy
-      : 1000;
+    const spectralCentroid = totalEnergy > 1e-10 ? totalWeighted / totalEnergy : 1000;
 
     // Find all spectral valleys (for refinement)
     const valleys = this.findValleys(bandLevels);
@@ -214,10 +206,16 @@ export class CrossoverLearn {
         const v1Nearby = this.findValleyNear(valleys, splitIdx1, 3) ?? splitIdx1;
         const v2Nearby = this.findValleyNear(valleys, splitIdx2, 3) ?? splitIdx2;
         suggestions3Band = [
-          this.toSuggestion(v1Nearby, this.interpolateFreq(v1Nearby, linEnergy),
-            this.estimateDepth(bandLevels, v1Nearby)),
-          this.toSuggestion(v2Nearby, this.interpolateFreq(v2Nearby, linEnergy),
-            this.estimateDepth(bandLevels, v2Nearby)),
+          this.toSuggestion(
+            v1Nearby,
+            this.interpolateFreq(v1Nearby, linEnergy),
+            this.estimateDepth(bandLevels, v1Nearby),
+          ),
+          this.toSuggestion(
+            v2Nearby,
+            this.interpolateFreq(v2Nearby, linEnergy),
+            this.estimateDepth(bandLevels, v2Nearby),
+          ),
         ];
       }
     }
@@ -237,11 +235,7 @@ export class CrossoverLearn {
    * Find the band index where cumulative energy crosses a fraction
    * of total energy.
    */
-  private findEnergySplit(
-    linEnergy: number[],
-    totalEnergy: number,
-    fraction: number,
-  ): number {
+  private findEnergySplit(linEnergy: number[], totalEnergy: number, fraction: number): number {
     const target = totalEnergy * fraction;
     let cumulative = 0;
     for (let b = 0; b < XOVER_LEARN_BANDS; b++) {
@@ -349,17 +343,12 @@ export class CrossoverLearn {
   /**
    * Convert analysis results to a suggestion with confidence.
    */
-  private toSuggestion(
-    bandIndex: number,
-    freqHz: number,
-    depthDb: number,
-  ): CrossoverSuggestion {
+  private toSuggestion(bandIndex: number, freqHz: number, depthDb: number): CrossoverSuggestion {
     // Confidence based on depth (up to 12 dB = 1.0) and data readiness
     const depthConfidence = Math.min(1, depthDb / 12);
     const dataConfidence = Math.min(1, this.blockCount / (MIN_BLOCKS * 2));
     // Base confidence on data quality; depth adds bonus
-    const confidence = Math.min(1,
-      0.3 * dataConfidence + 0.7 * Math.max(0.3, depthConfidence));
+    const confidence = Math.min(1, 0.3 * dataConfidence + 0.7 * Math.max(0.3, depthConfidence));
 
     return {
       freqHz,

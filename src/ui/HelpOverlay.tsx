@@ -99,13 +99,7 @@ export function HelpOverlay({ open, onClose }: HelpOverlayProps) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
-          <button
-            type="button"
-            className="btn btn-small"
-            onClick={onClose}
-            aria-label="Close help"
-            title="Close (Esc)"
-          >
+          <button type="button" className="btn btn-small" onClick={onClose} aria-label="Close help" title="Close (Esc)">
             CLOSE
           </button>
         </header>

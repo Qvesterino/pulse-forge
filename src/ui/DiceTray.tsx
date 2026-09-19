@@ -508,14 +508,14 @@ export function DiceTray() {
             {session.intent.style ? ` · ${session.intent.style}` : ""}
           </span>
           {target === "drums" && (
-          <button
-            type="button"
-            className={`btn btn-small${ghostPlaying ? " active-solo" : ""}`}
-            onClick={handleGhostToggle}
-            title={ghostPlaying ? "Stop ghost preview" : "Play ghost preview — hear without committing (loops 1 bar)"}
-          >
-            {ghostPlaying ? "■ STOP" : "▶ PREVIEW"}
-          </button>
+            <button
+              type="button"
+              className={`btn btn-small${ghostPlaying ? " active-solo" : ""}`}
+              onClick={handleGhostToggle}
+              title={ghostPlaying ? "Stop ghost preview" : "Play ghost preview — hear without committing (loops 1 bar)"}
+            >
+              {ghostPlaying ? "■ STOP" : "▶ PREVIEW"}
+            </button>
           )}
           <button
             type="button"
@@ -529,8 +529,7 @@ export function DiceTray() {
         {target === "melodic" && preview.melodicNotes ? (
           (() => {
             const notes = preview.melodicNotes;
-            const trackName =
-              doc.tracks.find((t) => t.id === preview.melodicTrackId)?.name ?? "instrument";
+            const trackName = doc.tracks.find((t) => t.id === preview.melodicTrackId)?.name ?? "instrument";
             const pitches = notes.map((n) => n.pitch);
             const lo = Math.min(...(pitches.length ? pitches : [60]));
             const hi = Math.max(...(pitches.length ? pitches : [60]));

@@ -24,17 +24,8 @@
 //   - Above ceiling: hard limit
 // ═══════════════════════════════════════════════════════════
 
-import type {
-  ModuleProcessArgs,
-  ModuleProcessorContext,
-  UltinaModuleProcessor,
-} from "../ultinaProcessor.js";
-import {
-  clamp,
-  dbToLinear,
-  sanitizeSample,
-  ampToDb,
-} from "../primitives.js";
+import type { ModuleProcessArgs, ModuleProcessorContext, UltinaModuleProcessor } from "../ultinaProcessor.js";
+import { clamp, dbToLinear, sanitizeSample, ampToDb } from "../primitives.js";
 import {
   OS_FACTOR,
   OS_LATENCY_SAMPLES,
@@ -44,11 +35,7 @@ import {
   upsample as osUpsample,
   downsample as os_Downsample,
 } from "../oversampler.js";
-import {
-  channelModeFromValue,
-  type BandCount,
-  type CrossoverMode,
-} from "../../contracts/channelModes.js";
+import { channelModeFromValue, type BandCount, type CrossoverMode } from "../../contracts/channelModes.js";
 import { MultibandProcessor } from "../multiband.js";
 import { DryDelayMixer } from "../dryDelay.js";
 import type { BandMeters } from "../../contracts/meters.js";
@@ -190,10 +177,7 @@ export class ClipperModuleProcessor implements UltinaModuleProcessor {
     // are mapped to ~(kneeStart + 0.5·kneeLin) garbage, and the meter's
     // absX/|out| ratio hits |out| = 0 → Infinity. Clamping at 0 makes every
     // knee > 6.02 dB behave exactly like the 6.02 dB boundary curve.
-    const kneeLin = Math.min(
-      dbToLinear(ceilingDb + kneeDb) - ceilingLin,
-      ceilingLin,
-    );
+    const kneeLin = Math.min(dbToLinear(ceilingDb + kneeDb) - ceilingLin, ceilingLin);
 
     // Update multiband config if changed
     this.updateMultiband(bandCount, xover1, xover2);
@@ -233,10 +217,7 @@ export class ClipperModuleProcessor implements UltinaModuleProcessor {
         chunkChannels,
         remaining,
         (bandIdx, bandChannels, bandFrames) => {
-          this.processBand(
-            bandIdx, bandChannels, bandFrames,
-            driveLin, ceilingLin, kneeLin, kneeDb, oversampling,
-          );
+          this.processBand(bandIdx, bandChannels, bandFrames, driveLin, ceilingLin, kneeLin, kneeDb, oversampling);
         },
         channelMode,
       );
@@ -286,7 +267,10 @@ export class ClipperModuleProcessor implements UltinaModuleProcessor {
     if (!this.pooledMeters) {
       this.pooledMeters = {
         bands: this.bandMeters.map(() => ({
-          inputPeakDb: -100, outputPeakDb: -100, gainReductionDb: 0, outputRmsDb: -100,
+          inputPeakDb: -100,
+          outputPeakDb: -100,
+          gainReductionDb: 0,
+          outputRmsDb: -100,
         })),
         clippingReductionDb: new Array(this.bandMeters.length).fill(0),
       };
@@ -301,9 +285,7 @@ export class ClipperModuleProcessor implements UltinaModuleProcessor {
       dst.inputPeakDb = ampToDb(bm.inputPeak);
       dst.outputPeakDb = ampToDb(bm.outputPeak);
       dst.gainReductionDb = bm.clippingReduction;
-      dst.outputRmsDb = bm.outputRmsCount > 0
-        ? ampToDb(Math.sqrt(bm.outputRmsSum / bm.outputRmsCount))
-        : -100;
+      dst.outputRmsDb = bm.outputRmsCount > 0 ? ampToDb(Math.sqrt(bm.outputRmsSum / bm.outputRmsCount)) : -100;
       m.clippingReductionDb[b] = bm.clippingReduction;
     }
     return m;
@@ -397,9 +379,7 @@ export class ClipperModuleProcessor implements UltinaModuleProcessor {
 
       // Process clipping at 4x rate
       const redL = this.applyClipping(osStateL.osBuffer, osFrames, driveLin, ceilingLin, kneeLin);
-      const redR = stereo
-        ? this.applyClipping(osStateR.osBuffer, osFrames, driveLin, ceilingLin, kneeLin)
-        : redL;
+      const redR = stereo ? this.applyClipping(osStateR.osBuffer, osFrames, driveLin, ceilingLin, kneeLin) : redL;
       maxReductionDb = Math.max(redL, redR);
 
       // Downsample 4x
@@ -408,9 +388,7 @@ export class ClipperModuleProcessor implements UltinaModuleProcessor {
     } else {
       // No oversampling: process directly
       const redL = this.applyClipping(chL, bandFrames, driveLin, ceilingLin, kneeLin);
-      const redR = stereo
-        ? this.applyClipping(chR, bandFrames, driveLin, ceilingLin, kneeLin)
-        : redL;
+      const redR = stereo ? this.applyClipping(chR, bandFrames, driveLin, ceilingLin, kneeLin) : redL;
       maxReductionDb = Math.max(redL, redR);
     }
 

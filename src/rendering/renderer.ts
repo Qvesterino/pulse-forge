@@ -8,27 +8,51 @@ import { noteEventsInWindow } from "../project-model/events";
 import { computeSceneIntensity } from "../project-model/intensity";
 import { ensureWorkletsForDoc } from "../audio-worklets/loader";
 
+export type ExportQuality = "live" | "studio";
+
 export interface RenderOptions {
   mode: PlayMode;
   sampleRate: number;
   tailSeconds?: number;
   /**
-   * Bump every PRISM (fxeq) instance to its `render` quality tier for the
-   * duration of THIS render: saturation oversampling goes to 8× (the
-   * documented offline tier — no realtime CPU budget), giving exports a
-   * measurably lower aliasing floor for free. The document itself is not
-   * modified; the bump rides the runtime parameter preview path.
+   * Global Live/Export quality switch. "studio" (default in the export UI)
+   * bumps every PRISM instance to 8× saturation oversampling and every
+   * default-tier VØID instance to the render tier for the duration of THIS
+   * render — no realtime CPU budget offline, so the cleaner aliasing floor
+   * and tails are free. "live" renders exactly what you hear, faster.
+   * The document itself is never modified; bumps ride the runtime parameter
+   * preview path. When set, it wins over the legacy per-plugin flags below.
+   */
+  quality?: ExportQuality;
+  /**
+   * Legacy per-plugin flags (kept for back-compat). Prefer `quality`.
+   * When `quality` is set these are ignored.
    */
   fxeqRenderQuality?: boolean;
   /**
-   * Bump every VØID (ozvena) instance left at the default `standard` tier to
-   * its `render` quality tier for the duration of THIS render: oversampling
-   * and the safety limiter run at their offline settings, giving exports
-   * cleaner tails for free. Instances the user explicitly set to eco / high
-   * / render are respected untouched. The document itself is not modified;
-   * the bump rides the runtime parameter preview path (same as PRISM).
+   * Legacy per-plugin flag (kept for back-compat). Prefer `quality`.
+   * When `quality` is set this is ignored.
    */
   ozvenaRenderQuality?: boolean;
+}
+
+/**
+ * Resolve the effective per-plugin bump switches for one render. The global
+ * `quality` switch wins when present; otherwise the legacy per-plugin flags
+ * apply (absent = live tier, i.e. no bump — freeze/bounce/analysis paths
+ * stay fast by default, the export UI opts into studio explicitly).
+ */
+export function resolveRenderQuality(
+  options: Pick<RenderOptions, "quality" | "fxeqRenderQuality" | "ozvenaRenderQuality">,
+): {
+  fxeq: boolean;
+  ozvena: boolean;
+} {
+  if (options.quality !== undefined) {
+    const hq = options.quality === "studio";
+    return { fxeq: hq, ozvena: hq };
+  }
+  return { fxeq: options.fxeqRenderQuality === true, ozvena: options.ozvenaRenderQuality === true };
 }
 
 /**
@@ -82,6 +106,21 @@ export function fxeqRenderQualityBumps(doc: ProjectDocument): {
     }
   }
   return bumps;
+}
+
+/**
+ * The unified quality bump for one document: PRISM band-quality entries +
+ * VØID render-tier entries that the renderer feeds through
+ * engine.previewFxParam. Pure so the export contract is testable without an
+ * audio context.
+ */
+export function renderQualityBumps(doc: ProjectDocument): {
+  trackId: string;
+  fxId: string;
+  paramId: string;
+  value: number;
+}[] {
+  return [...fxeqRenderQualityBumps(doc), ...ozvenaRenderQualityBumps(doc)];
 }
 
 export interface ClipWindow {
@@ -253,19 +292,21 @@ export async function renderProject(
   // chain, so live-chain rendering is the correct export content.
   engine.setProject(unfreezeDoc(doc));
 
-  // PRISM render quality (opt-in): push the runtime quality bump AFTER the
-  // project sync so it wins over the document values without mutating them.
-  if (options.fxeqRenderQuality) {
-    for (const bump of fxeqRenderQualityBumps(doc)) {
-      engine.previewFxParam(bump.trackId, bump.fxId, bump.paramId, bump.value);
+  // Global Live/Export quality switch (opt-in): push the runtime quality
+  // bumps AFTER the project sync so they win over the document values
+  // without mutating them. Legacy per-plugin flags keep working through the
+  // same resolver.
+  {
+    const resolved = resolveRenderQuality(options);
+    if (resolved.fxeq) {
+      for (const bump of fxeqRenderQualityBumps(doc)) {
+        engine.previewFxParam(bump.trackId, bump.fxId, bump.paramId, bump.value);
+      }
     }
-  }
-
-  // VØID render quality (opt-in): same treatment — default-tier instances
-  // render at the offline tier without touching the document.
-  if (options.ozvenaRenderQuality) {
-    for (const bump of ozvenaRenderQualityBumps(doc)) {
-      engine.previewFxParam(bump.trackId, bump.fxId, bump.paramId, bump.value);
+    if (resolved.ozvena) {
+      for (const bump of ozvenaRenderQualityBumps(doc)) {
+        engine.previewFxParam(bump.trackId, bump.fxId, bump.paramId, bump.value);
+      }
     }
   }
 

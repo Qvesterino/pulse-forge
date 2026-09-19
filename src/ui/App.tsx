@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, lazy, Suspense } from "react";
 import type { Services } from "../services";
+import { registerRaf, unregisterRaf } from "../services/rafLoop";
 import { SelectionStore } from "../store/SelectionStore";
 import { ToolStore } from "../store/ToolStore";
 import { SelectionContext, ServicesContext, ToolContext } from "./context";
@@ -10,6 +11,7 @@ import { RackStrip } from "./RackStrip";
 import { Sequencer } from "./Sequencer";
 import { AudioUnlock } from "./AudioUnlock";
 import { OnboardingTour } from "./OnboardingTour";
+import { GestureHintToast } from "./gestureHints";
 import type { StepSelection } from "./Sequencer";
 import { Inspector } from "./Inspector";
 import { Diagnostics } from "./Diagnostics";
@@ -72,6 +74,51 @@ import {
 import { isPadKey, padKeysArmed, setPadKeysArmed } from "./padKeys";
 import { melodicKeys } from "./melodicKeys";
 import { JamGate } from "./JamGate";
+
+/**
+ * Always-visible performance readout for the statusbar: live voice count and
+ * the scheduler's cumulative failed-window (dropout) counter. Direct DOM
+ * mutation at 2 Hz — the hot path never touches React reconciliation. A red
+ * dropout number is the honest "audio could not keep up" signal that used to
+ * live only inside the Diagnostics panel.
+ */
+function PerformanceReadout({ engine, scheduler }: { engine: Services["engine"]; scheduler: Services["scheduler"] }) {
+  const voicesRef = useRef<HTMLSpanElement>(null);
+  const dropoutsRef = useRef<HTMLSpanElement>(null);
+  const dropouts = useRef(0);
+
+  useEffect(() => {
+    let last = 0;
+    registerRaf("perf-readout", (t) => {
+      if (t - last < 500) return; // 2 Hz — a readout, not a meter
+      last = t;
+      dropouts.current = Math.max(dropouts.current, scheduler.stats.failedWindows);
+      if (voicesRef.current) voicesRef.current.textContent = String(engine.voiceCount);
+      if (dropoutsRef.current) {
+        dropoutsRef.current.textContent = String(dropouts.current);
+        dropoutsRef.current.dataset.hot = dropouts.current > 0 ? "true" : "false";
+      }
+    });
+    return () => unregisterRaf("perf-readout");
+  }, [engine, scheduler]);
+
+  return (
+    <span className="perf-readout" aria-label="Performance — active voices and audio dropouts">
+      <span className="perf-readout-item">
+        VOICES{" "}
+        <span className="perf-readout-value" ref={voicesRef}>
+          0
+        </span>
+      </span>
+      <span className="perf-readout-item">
+        DROP{" "}
+        <span ref={dropoutsRef} className="perf-readout-value" data-hot="false">
+          0
+        </span>
+      </span>
+    </span>
+  );
+}
 
 export function App({
   services,
@@ -258,6 +305,27 @@ export function App({
   // instead of triggering the playPause shortcut.
   useEffect(() => {
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+  }, []);
+
+  // Focus policy (Ableton-style): a left-click never moves keyboard focus.
+  // Clicking any control leaves focus where it was, so Space always means
+  // play/pause — never "activate whatever I clicked last". Typing targets and
+  // keyboard-operable widgets (data-allow-focus, e.g. sliders) keep their
+  // focus; an open text field is blurred instead, or Space would keep typing
+  // into it after the click. Touch/pen keep native behavior (scrolling).
+  useEffect(() => {
+    const TYPING = "input, textarea, select, [contenteditable='true']";
+    const onPointerDown = (e: PointerEvent) => {
+      if (e.pointerType !== "mouse" || e.button !== 0) return;
+      const el = e.target as HTMLElement | null;
+      if (!el || typeof el.closest !== "function") return;
+      if (el.closest(`${TYPING}, [data-allow-focus]`)) return;
+      e.preventDefault();
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && active.closest(TYPING)) active.blur();
+    };
+    window.addEventListener("pointerdown", onPointerDown, { capture: true });
+    return () => window.removeEventListener("pointerdown", onPointerDown, { capture: true });
   }, []);
   useEffect(() => {
     selectionStore.setStepSelection(null);
@@ -603,6 +671,22 @@ export function App({
           event.preventDefault();
           return;
         }
+      }
+      // Space is transport even when a <select> has focus — after using a
+      // dropdown, Space must resume playback, not pop the list open
+      // (Enter / Alt+↓ still open it for keyboard users).
+      if (
+        typing &&
+        target?.tagName === "SELECT" &&
+        event.key === " " &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        !event.shiftKey
+      ) {
+        event.preventDefault();
+        services.playback.playPause();
+        return;
       }
       if (typing) return;
 
@@ -1264,8 +1348,10 @@ export function App({
                   {tool.toUpperCase()} (S/C/B/E/M)
                   {selection.trackIds.length > 0 && track.kind === "drum" && " · pad keys QWERTYUIASDFGHJK"}
                 </span>
+                <PerformanceReadout engine={services.engine} scheduler={services.scheduler} />
               </footer>
               <CommandToast />
+              <GestureHintToast />
               {captureOffer && services.capture.hasCapturedMaterial && (
                 <div
                   className="context-menu"

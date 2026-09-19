@@ -6,18 +6,87 @@
   "state": {
     "blendPad": { "x": 0.25, "y": 0.2, "engine2Algo": "room" },
     "engines": {
-      "e1": { "enabled": true, "space": 0.5, "time": 120, "size": 0.5, "diffusion": 70, "angle": 50, "lowpassHz": 8000, "mix": 80 },
-      "e2": { "enabled": true, "space": 0.4, "time": 1400, "size": 0.5, "diffusion": 70, "attack": 30, "crossoverHz": 1000, "balance": 0.5, "dampingAmount": 5, "dampingFreqHz": 5000, "mix": 80, "algo": "room" },
-      "e3": { "enabled": false, "space": 0.5, "time": 6000, "size": 0.5, "diffusion": 70, "attack": 50, "crossoverHz": 800, "balance": 0.5, "dampingAmount": 5, "dampingFreqHz": 5000, "mix": 0, "algo": "hall" }
+      "e1": {
+        "enabled": true,
+        "space": 0.5,
+        "time": 120,
+        "size": 0.5,
+        "diffusion": 70,
+        "angle": 50,
+        "lowpassHz": 8000,
+        "mix": 80
+      },
+      "e2": {
+        "enabled": true,
+        "space": 0.4,
+        "time": 1400,
+        "size": 0.5,
+        "diffusion": 70,
+        "attack": 30,
+        "crossoverHz": 1000,
+        "balance": 0.5,
+        "dampingAmount": 5,
+        "dampingFreqHz": 5000,
+        "mix": 80,
+        "algo": "room"
+      },
+      "e3": {
+        "enabled": false,
+        "space": 0.5,
+        "time": 6000,
+        "size": 0.5,
+        "diffusion": 70,
+        "attack": 50,
+        "crossoverHz": 800,
+        "balance": 0.5,
+        "dampingAmount": 5,
+        "dampingFreqHz": 5000,
+        "mix": 0,
+        "algo": "hall"
+      }
     },
     "preDelay": { "enabled": true, "ms": 20, "syncEnabled": false, "syncNote": "1/4" },
     "smoother": { "enabled": true, "amount": 30 },
-    "preEq": { "enabled": false, "autoCut": { "enabled": false, "amount": 50, "status": "idle", "suggestedBandGainsDb": [0, 0, 0] }, "band1": { "enabled": false, "freqHz": 100, "gainDb": 0, "q": 0.7, "shape": "lowShelf" }, "band2": { "enabled": false, "freqHz": 1000, "gainDb": 0, "q": 1.0, "shape": "bell" }, "band3": { "enabled": false, "freqHz": 8000, "gainDb": 0, "q": 0.7, "shape": "highShelf" } },
-    "reverbEq": { "enabled": false, "unmask": { "enabled": false, "amount": 50, "source": "dryVsWet", "status": "idle", "suggestedBandGainsDb": [0, 0, 0] }, "band1": { "enabled": false, "freqHz": 200, "gainDb": 0, "q": 0.7, "shape": "lowShelf" }, "band2": { "enabled": false, "freqHz": 2500, "gainDb": 0, "q": 1.0, "shape": "bell" }, "band3": { "enabled": false, "freqHz": 10000, "gainDb": 0, "q": 0.7, "shape": "highShelf" } },
+    "preEq": {
+      "enabled": false,
+      "autoCut": { "enabled": false, "amount": 50, "status": "idle", "suggestedBandGainsDb": [0, 0, 0] },
+      "band1": { "enabled": false, "freqHz": 100, "gainDb": 0, "q": 0.7, "shape": "lowShelf" },
+      "band2": { "enabled": false, "freqHz": 1000, "gainDb": 0, "q": 1.0, "shape": "bell" },
+      "band3": { "enabled": false, "freqHz": 8000, "gainDb": 0, "q": 0.7, "shape": "highShelf" }
+    },
+    "reverbEq": {
+      "enabled": false,
+      "unmask": {
+        "enabled": false,
+        "amount": 50,
+        "source": "dryVsWet",
+        "status": "idle",
+        "suggestedBandGainsDb": [0, 0, 0]
+      },
+      "band1": { "enabled": false, "freqHz": 200, "gainDb": 0, "q": 0.7, "shape": "lowShelf" },
+      "band2": { "enabled": false, "freqHz": 2500, "gainDb": 0, "q": 1.0, "shape": "bell" },
+      "band3": { "enabled": false, "freqHz": 10000, "gainDb": 0, "q": 0.7, "shape": "highShelf" }
+    },
     "masking": { "enabled": false, "source": "dryVsWet" },
     "mod": { "enabled": false, "mode": "randomFat", "depthX": 0.25, "rateY": 0.24 },
-    "assistant": { "step": 0, "style": 0.5, "size": 0.5, "dryWet": 0.5, "tone": "clean", "status": "idle", "accepted": false },
-    "global": { "inputGainDb": 0, "outputGainDb": 0, "dryWet": 50, "levelDb": 0, "fxOnly": false, "bypass": false, "quality": "standard" }
+    "assistant": {
+      "step": 0,
+      "style": 0.5,
+      "size": 0.5,
+      "dryWet": 0.5,
+      "tone": "clean",
+      "status": "idle",
+      "accepted": false
+    },
+    "global": {
+      "inputGainDb": 0,
+      "outputGainDb": 0,
+      "dryWet": 50,
+      "levelDb": 0,
+      "fxOnly": false,
+      "bypass": false,
+      "quality": "standard"
+    }
   },
   "input": {
     "type": "stereo-click",

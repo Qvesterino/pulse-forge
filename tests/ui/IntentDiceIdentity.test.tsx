@@ -26,7 +26,13 @@ function servicesWithRealStore(doc: ProjectDocument): { services: Services; stor
   return { services, store };
 }
 
-function DiceBinder({ onReady, services }: { onReady: (dice: ReturnType<typeof useDice>) => void; services: Services }) {
+function DiceBinder({
+  onReady,
+  services,
+}: {
+  onReady: (dice: ReturnType<typeof useDice>) => void;
+  services: Services;
+}) {
   const dice = useDice();
   onReady(dice);
   return (
@@ -130,32 +136,52 @@ describe("IntentPanel — canonical path integration", () => {
     resetRankerClient();
   });
 
-  it("one GENERATE applies exactly one undoable command with the engine result", async () => {
-    const doc = createProjectFromTemplate("house");
-    const { services, store } = servicesWithRealStore(doc);
+  it(
+    "GENERATE builds a candidate bank; USE applies one result — exactly one undoable command",
+    // The panel generates its candidate bank (and can render auditions) —
+    // slow under jsdom, so this integration test carries a generous budget.
+    { timeout: 30000 },
+    async () => {
+      const doc = createProjectFromTemplate("house");
+      const { services, store } = servicesWithRealStore(doc);
 
-    render(
-      <ServicesContext.Provider value={services}>
-        <IntentPanel />
-      </ServicesContext.Provider>,
-    );
+      render(
+        <ServicesContext.Provider value={services}>
+          <IntentPanel />
+        </ServicesContext.Provider>,
+      );
 
-    const textarea = screen.getByLabelText("Intent description");
-    fireEvent.change(textarea, { target: { value: "dark rolling techno at 140" } });
-    fireEvent.click(screen.getByRole("button", { name: "GENERATE" }));
+      const textarea = screen.getByLabelText("Intent description");
+      fireEvent.change(textarea, { target: { value: "dark rolling techno at 140" } });
+      fireEvent.click(screen.getByRole("button", { name: "GENERATE" }));
 
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/pattern generated/), { timeout: 8000 });
+      // Phase 1: the candidate bank lands (preview — nothing applied yet).
+      await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/candidates|pattern generated/), {
+        timeout: 25000,
+      });
+      expect(store.doc.patterns.length).toBe(doc.patterns.length); // preview only
 
-    // One command, applied to the real store: pattern + scene added, undo works.
-    expect(store.doc.patterns.length).toBe(doc.patterns.length + 1);
-    expect(store.doc.scenes.length).toBe(doc.scenes.length + 1);
-    expect(store.undoStackLength).toBe(1);
-    const committed = store.doc.patterns[store.doc.patterns.length - 1];
-    expect(committed.generation?.intent).toBeTruthy();
-    // Ranker mode ≠ off records the ranker outcome (worker-less jsdom → fallback).
-    expect(committed.generation?.ranker).toBeTruthy();
-    expect(committed.generation?.ranker?.source).toBe("fallback");
-    store.undo();
-    expect(store.doc.patterns.length).toBe(doc.patterns.length);
-  });
+      // Phase 2: USE applies the chosen result — one command, one undo step.
+      // With a candidate bank the per-candidate USE buttons render; the
+      // single "USE RESULT" button only appears when the bank collapses.
+      const useButtons = screen.queryAllByRole("button", { name: "USE" });
+      if (useButtons.length > 0) {
+        fireEvent.click(useButtons[0]);
+      } else {
+        fireEvent.click(screen.getByRole("button", { name: "USE RESULT" }));
+      }
+      await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/applied/));
+
+      expect(store.doc.patterns.length).toBe(doc.patterns.length + 1);
+      expect(store.doc.scenes.length).toBe(doc.scenes.length + 1);
+      expect(store.undoStackLength).toBe(1);
+      const committed = store.doc.patterns[store.doc.patterns.length - 1];
+      expect(committed.generation?.intent).toBeTruthy();
+      // Ranker mode ≠ off records the ranker outcome (worker-less jsdom → fallback).
+      expect(committed.generation?.ranker).toBeTruthy();
+      expect(committed.generation?.ranker?.source).toBe("fallback");
+      store.undo();
+      expect(store.doc.patterns.length).toBe(doc.patterns.length);
+    },
+  );
 });

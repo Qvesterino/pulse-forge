@@ -145,12 +145,7 @@ function adaaTanh(x: number, prevX: number): number {
 
 // 1 — Tube: Miller capacitance LPF (drive-dependent HF rolloff) +
 //         asymmetric soft clip (grid current on positive half) + ADAA.
-export function shapeTubeStateful(
-  x: number,
-  st: SaturationChannelState,
-  sr: number,
-  driveLevel: number,
-): number {
+export function shapeTubeStateful(x: number, st: SaturationChannelState, sr: number, driveLevel: number): number {
   const millerCutoff = 12000 / (1 + driveLevel * 0.4);
   const ma = 1 - Math.exp((-2 * Math.PI * millerCutoff) / sr);
   st.millerLpf += ma * (x - st.millerLpf);
@@ -190,11 +185,7 @@ export function shapeCathode(x: number): number {
 
 // 7 — Transformer: Core flux integration (~200Hz, "sag") +
 //                  BH curve + 2nd harmonic.
-export function shapeTransformerStateful(
-  x: number,
-  st: SaturationChannelState,
-  sr: number,
-): number {
+export function shapeTransformerStateful(x: number, st: SaturationChannelState, sr: number): number {
   const fluxRate = 1 - Math.exp((-2 * Math.PI * 200) / sr);
   st.transformerFlux += fluxRate * (x - st.transformerFlux);
   const bh = fastTanh((x + 0.3 * st.transformerFlux) * 1.1);

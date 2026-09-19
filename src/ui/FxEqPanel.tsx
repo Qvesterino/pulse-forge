@@ -618,11 +618,13 @@ export function FxEqPanel({
       {degraded && <div className="fxeq-degraded">AudioWorklet unavailable — PRISM is bypassed (1:1 signal)</div>}
       {docked && (
         <div className="device-view-tabs" role="group" aria-label="PRISM view">
-          {([
-            ["bands", "BANDS"],
-            ["dynamics", "DYNAMICS"],
-            ["modules", "MODULES"],
-          ] as const).map(([page, label]) => (
+          {(
+            [
+              ["bands", "BANDS"],
+              ["dynamics", "DYNAMICS"],
+              ["modules", "MODULES"],
+            ] as const
+          ).map(([page, label]) => (
             <button
               key={page}
               type="button"
@@ -650,238 +652,250 @@ export function FxEqPanel({
           ))}
         </div>
       )}
-      {(!docked || dockPage === "bands") && <div className="fxeq-preset-row">
-        <select
-          className="fxeq-preset-select"
-          aria-label="PRISM preset"
-          defaultValue=""
-          onChange={(event) => {
-            const preset = FXEQ_PRESETS.find((p) => p.name === event.target.value);
-            if (preset) onApplyPreset(preset.name, preset.params);
-            event.target.value = "";
-          }}
-        >
-          <option value="">PRESET…</option>
-          {FXEQ_PRESETS.map((p) => (
-            <option key={p.id} value={p.name}>
-              {p.name}
-            </option>
-          ))}
-        </select>
-        <div className="fxeq-band-chips" role="group" aria-label="Select band">
-          {Array.from({ length: bandCount }, (_, i) => (
-            <button
-              key={i}
-              type="button"
-              className={`btn btn-small${selectedBand === i + 1 ? " active" : ""}`}
-              aria-pressed={selectedBand === i + 1}
-              onClick={() => selectBand(i + 1)}
-            >
-              B{i + 1}
-            </button>
-          ))}
+      {(!docked || dockPage === "bands") && (
+        <div className="fxeq-preset-row">
+          <select
+            className="fxeq-preset-select"
+            aria-label="PRISM preset"
+            defaultValue=""
+            onChange={(event) => {
+              const preset = FXEQ_PRESETS.find((p) => p.name === event.target.value);
+              if (preset) onApplyPreset(preset.name, preset.params);
+              event.target.value = "";
+            }}
+          >
+            <option value="">PRESET…</option>
+            {FXEQ_PRESETS.map((p) => (
+              <option key={p.id} value={p.name}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+          <div className="fxeq-band-chips" role="group" aria-label="Select band">
+            {Array.from({ length: bandCount }, (_, i) => (
+              <button
+                key={i}
+                type="button"
+                className={`btn btn-small${selectedBand === i + 1 ? " active" : ""}`}
+                aria-pressed={selectedBand === i + 1}
+                onClick={() => selectBand(i + 1)}
+              >
+                B{i + 1}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>}
+      )}
 
-      {(!docked || dockPage === "bands") && <div className="fxeq-morph-row" role="group" aria-label="PRISM A/B morph">
-        {onAbStateChange && onAbLoad && (
-          <EffectAbControls
-            effectName="PRISM"
-            params={params}
-            deviceState={
-              abState
-                ? { kind: "effect-ab-v1", data: { slots: { ...abState.slots }, active: abState.active } }
-                : undefined
-            }
-            onStateChange={onAbStateChange}
-            onLoad={onAbLoad}
+      {(!docked || dockPage === "bands") && (
+        <div className="fxeq-morph-row" role="group" aria-label="PRISM A/B morph">
+          {onAbStateChange && onAbLoad && (
+            <EffectAbControls
+              effectName="PRISM"
+              params={params}
+              deviceState={
+                abState
+                  ? { kind: "effect-ab-v1", data: { slots: { ...abState.slots }, active: abState.active } }
+                  : undefined
+              }
+              onStateChange={onAbStateChange}
+              onLoad={onAbLoad}
+            />
+          )}
+          <input
+            type="range"
+            className="fxeq-morph-slider"
+            aria-label="PRISM morph A to B"
+            title="Scrub between A and B — the blend lands in the document on release"
+            min={0}
+            max={1}
+            step={0.01}
+            value={morphT}
+            disabled={!morphSlots[0] || !morphSlots[1]}
+            onPointerDown={() => {
+              morphStartRef.current = morphT;
+              morphDirtyRef.current = false;
+            }}
+            onChange={(e) => {
+              morphDirtyRef.current = true;
+              scrubMorph(Number(e.target.value));
+            }}
+            onPointerUp={commitMorph}
+            onPointerCancel={cancelMorph}
+            onKeyUp={commitMorph}
           />
-        )}
-        <input
-          type="range"
-          className="fxeq-morph-slider"
-          aria-label="PRISM morph A to B"
-          title="Scrub between A and B — the blend lands in the document on release"
-          min={0}
-          max={1}
-          step={0.01}
-          value={morphT}
-          disabled={!morphSlots[0] || !morphSlots[1]}
-          onPointerDown={() => {
-            morphStartRef.current = morphT;
-            morphDirtyRef.current = false;
-          }}
-          onChange={(e) => {
-            morphDirtyRef.current = true;
-            scrubMorph(Number(e.target.value));
-          }}
-          onPointerUp={commitMorph}
-          onPointerCancel={cancelMorph}
-          onKeyUp={commitMorph}
-        />
-        <button
-          type="button"
-          className="btn btn-small"
-          aria-label="Undo PRISM parameter edit"
-          title="Undo the last live parameter tweak (plugin history)"
-          onClick={undoParam}
-        >
-          ↶
-        </button>
-        <button
-          type="button"
-          className="btn btn-small"
-          aria-label="Redo PRISM parameter edit"
-          title="Redo an undone parameter tweak (plugin history)"
-          onClick={redoParam}
-        >
-          ↷
-        </button>
-      </div>}
+          <button
+            type="button"
+            className="btn btn-small"
+            aria-label="Undo PRISM parameter edit"
+            title="Undo the last live parameter tweak (plugin history)"
+            onClick={undoParam}
+          >
+            ↶
+          </button>
+          <button
+            type="button"
+            className="btn btn-small"
+            aria-label="Redo PRISM parameter edit"
+            title="Redo an undone parameter tweak (plugin history)"
+            onClick={redoParam}
+          >
+            ↷
+          </button>
+        </div>
+      )}
 
-      {(!docked || dockPage === "bands") && <div
-        className="fxeq-canvas-wrap"
-        role="img"
-        aria-label="PRISM band map"
-        title="Click a band to edit it — drag a split line to move the crossover"
-        onClick={onCanvasClick}
-        onPointerDown={onCanvasPointerDown}
-        onPointerMove={onCanvasPointerMove}
-        onPointerUp={(e) => endSplitDrag(e, true)}
-        onPointerCancel={(e) => endSplitDrag(e, false)}
-      >
-        <canvas ref={canvasRef} className="fxeq-canvas" />
-      </div>}
+      {(!docked || dockPage === "bands") && (
+        <div
+          className="fxeq-canvas-wrap"
+          role="img"
+          aria-label="PRISM band map"
+          title="Click a band to edit it — drag a split line to move the crossover"
+          onClick={onCanvasClick}
+          onPointerDown={onCanvasPointerDown}
+          onPointerMove={onCanvasPointerMove}
+          onPointerUp={(e) => endSplitDrag(e, true)}
+          onPointerCancel={(e) => endSplitDrag(e, false)}
+        >
+          <canvas ref={canvasRef} className="fxeq-canvas" />
+        </div>
+      )}
 
-      {(!docked || dockPage === "bands") && <div
-        className="fxeq-peaks-wrap"
-        role="img"
-        aria-label="PRISM band peaks"
-        title="Live per-band peak level — which band is playing hot right now"
-      >
-        <canvas ref={peaksCanvasRef} className="fxeq-peaks-canvas" />
-        <span ref={grRef} className="fxeq-gr" aria-label="PRISM gain reduction" />
-      </div>}
+      {(!docked || dockPage === "bands") && (
+        <div
+          className="fxeq-peaks-wrap"
+          role="img"
+          aria-label="PRISM band peaks"
+          title="Live per-band peak level — which band is playing hot right now"
+        >
+          <canvas ref={peaksCanvasRef} className="fxeq-peaks-canvas" />
+          <span ref={grRef} className="fxeq-gr" aria-label="PRISM gain reduction" />
+        </div>
+      )}
 
       {/* Band scalars: solo / mute / gain — hear and level just this band. */}
-      {(!docked || dockPage === "bands") && <div className="fxeq-band-scalars">
-        <button
-          type="button"
-          className={`btn btn-small${valueOf(`band${selectedBand}.solo`) >= 0.5 ? " active" : ""}`}
-          aria-pressed={valueOf(`band${selectedBand}.solo`) >= 0.5}
-          title="Solo — hear ONLY this frequency band through the whole PRISM engine"
-          onClick={() => onParam(`band${selectedBand}.solo`, valueOf(`band${selectedBand}.solo`) >= 0.5 ? 0 : 1)}
-        >
-          SOLO
-        </button>
-        <button
-          type="button"
-          className={`btn btn-small${valueOf(`band${selectedBand}.mute`) >= 0.5 ? " active" : ""}`}
-          aria-pressed={valueOf(`band${selectedBand}.mute`) >= 0.5}
-          title="Mute — silence this band"
-          onClick={() => onParam(`band${selectedBand}.mute`, valueOf(`band${selectedBand}.mute`) >= 0.5 ? 0 : 1)}
-        >
-          MUTE
-        </button>
-        <div className="fxeq-band-gain">
-          <Slider
-            compact
-            label={`B${selectedBand} GAIN`}
-            value={valueOf(`band${selectedBand}.gainDb`)}
-            min={-48}
-            max={12}
-            defaultValue={0}
-            format={(v) => `${v > 0 ? "+" : ""}${v.toFixed(1)} dB`}
-            onCommit={(v) => onParam(`band${selectedBand}.gainDb`, v)}
-            onPreview={(v) => previewParam(`band${selectedBand}.gainDb`, v)}
-            onCancel={() => cancelParamPreview(`band${selectedBand}.gainDb`)}
-          />
+      {(!docked || dockPage === "bands") && (
+        <div className="fxeq-band-scalars">
+          <button
+            type="button"
+            className={`btn btn-small${valueOf(`band${selectedBand}.solo`) >= 0.5 ? " active" : ""}`}
+            aria-pressed={valueOf(`band${selectedBand}.solo`) >= 0.5}
+            title="Solo — hear ONLY this frequency band through the whole PRISM engine"
+            onClick={() => onParam(`band${selectedBand}.solo`, valueOf(`band${selectedBand}.solo`) >= 0.5 ? 0 : 1)}
+          >
+            SOLO
+          </button>
+          <button
+            type="button"
+            className={`btn btn-small${valueOf(`band${selectedBand}.mute`) >= 0.5 ? " active" : ""}`}
+            aria-pressed={valueOf(`band${selectedBand}.mute`) >= 0.5}
+            title="Mute — silence this band"
+            onClick={() => onParam(`band${selectedBand}.mute`, valueOf(`band${selectedBand}.mute`) >= 0.5 ? 0 : 1)}
+          >
+            MUTE
+          </button>
+          <div className="fxeq-band-gain">
+            <Slider
+              compact
+              label={`B${selectedBand} GAIN`}
+              value={valueOf(`band${selectedBand}.gainDb`)}
+              min={-48}
+              max={12}
+              defaultValue={0}
+              format={(v) => `${v > 0 ? "+" : ""}${v.toFixed(1)} dB`}
+              onCommit={(v) => onParam(`band${selectedBand}.gainDb`, v)}
+              onPreview={(v) => previewParam(`band${selectedBand}.gainDb`, v)}
+              onCancel={() => cancelParamPreview(`band${selectedBand}.gainDb`)}
+            />
+          </div>
         </div>
-      </div>}
+      )}
 
       {/* Band-level dynamic EQ (spectral ducking). EXT SC drives the band's
           envelope from the sidechain feed attached by the engine via track
           routing; with it off the band tracks itself. */}
-      {(!docked || dockPage === "dynamics") && <div className="fxeq-band-dyn" role="group" aria-label="PRISM dynamic EQ">
-        <span className="fxeq-module-tag" style={{ background: MODULE_COLORS.dyn }}>
-          DYN EQ
-        </span>
-        <button
-          type="button"
-          className={`btn btn-small${valueOf(`band${selectedBand}.dynEnable`) >= 0.5 ? " active" : ""}`}
-          aria-pressed={valueOf(`band${selectedBand}.dynEnable`) >= 0.5}
-          title="Dynamic EQ — this band ducks itself when it exceeds the threshold"
-          onClick={() =>
-            onParam(`band${selectedBand}.dynEnable`, valueOf(`band${selectedBand}.dynEnable`) >= 0.5 ? 0 : 1)
-          }
-        >
-          DYN
-        </button>
-        <button
-          type="button"
-          className={`btn btn-small${sidechainActive ? " active" : ""}`}
-          aria-pressed={sidechainActive}
-          disabled={!sidechainAvailable && !sidechainActive}
-          title={
-            sidechainAvailable
-              ? "Sidechain — drive this band's dynamic EQ from the selected external source"
-              : "Choose a SOURCE in the effect rack before enabling external sidechain"
-          }
-          onClick={() =>
-            onParam(`band${selectedBand}.sidechainMode`, valueOf(`band${selectedBand}.sidechainMode`) >= 0.5 ? 0 : 1)
-          }
-        >
-          EXT SC
-        </button>
-        <Slider
-          compact
-          label="DYN THRESH"
-          value={valueOf(`band${selectedBand}.dynThresholdDb`)}
-          min={-60}
-          max={0}
-          defaultValue={-20}
-          format={(v) => `${v.toFixed(1)} dB`}
-          onCommit={(v) => onParam(`band${selectedBand}.dynThresholdDb`, v)}
-          onPreview={(v) => previewParam(`band${selectedBand}.dynThresholdDb`, v)}
-          onCancel={() => cancelParamPreview(`band${selectedBand}.dynThresholdDb`)}
-        />
-        <Slider
-          compact
-          label="DYN RANGE"
-          value={valueOf(`band${selectedBand}.dynRangeDb`)}
-          min={-24}
-          max={0}
-          defaultValue={-6}
-          format={(v) => `${v.toFixed(1)} dB`}
-          onCommit={(v) => onParam(`band${selectedBand}.dynRangeDb`, v)}
-          onPreview={(v) => previewParam(`band${selectedBand}.dynRangeDb`, v)}
-          onCancel={() => cancelParamPreview(`band${selectedBand}.dynRangeDb`)}
-        />
-        <Slider
-          compact
-          label="DYN ATK"
-          value={valueOf(`band${selectedBand}.dynAttackMs`)}
-          min={0.1}
-          max={100}
-          defaultValue={10}
-          format={(v) => `${v.toFixed(1)} ms`}
-          onCommit={(v) => onParam(`band${selectedBand}.dynAttackMs`, v)}
-          onPreview={(v) => previewParam(`band${selectedBand}.dynAttackMs`, v)}
-          onCancel={() => cancelParamPreview(`band${selectedBand}.dynAttackMs`)}
-        />
-        <Slider
-          compact
-          label="DYN REL"
-          value={valueOf(`band${selectedBand}.dynReleaseMs`)}
-          min={10}
-          max={1000}
-          defaultValue={150}
-          format={(v) => `${v.toFixed(0)} ms`}
-          onCommit={(v) => onParam(`band${selectedBand}.dynReleaseMs`, v)}
-          onPreview={(v) => previewParam(`band${selectedBand}.dynReleaseMs`, v)}
-          onCancel={() => cancelParamPreview(`band${selectedBand}.dynReleaseMs`)}
-        />
-      </div>}
+      {(!docked || dockPage === "dynamics") && (
+        <div className="fxeq-band-dyn" role="group" aria-label="PRISM dynamic EQ">
+          <span className="fxeq-module-tag" style={{ background: MODULE_COLORS.dyn }}>
+            DYN EQ
+          </span>
+          <button
+            type="button"
+            className={`btn btn-small${valueOf(`band${selectedBand}.dynEnable`) >= 0.5 ? " active" : ""}`}
+            aria-pressed={valueOf(`band${selectedBand}.dynEnable`) >= 0.5}
+            title="Dynamic EQ — this band ducks itself when it exceeds the threshold"
+            onClick={() =>
+              onParam(`band${selectedBand}.dynEnable`, valueOf(`band${selectedBand}.dynEnable`) >= 0.5 ? 0 : 1)
+            }
+          >
+            DYN
+          </button>
+          <button
+            type="button"
+            className={`btn btn-small${sidechainActive ? " active" : ""}`}
+            aria-pressed={sidechainActive}
+            disabled={!sidechainAvailable && !sidechainActive}
+            title={
+              sidechainAvailable
+                ? "Sidechain — drive this band's dynamic EQ from the selected external source"
+                : "Choose a SOURCE in the effect rack before enabling external sidechain"
+            }
+            onClick={() =>
+              onParam(`band${selectedBand}.sidechainMode`, valueOf(`band${selectedBand}.sidechainMode`) >= 0.5 ? 0 : 1)
+            }
+          >
+            EXT SC
+          </button>
+          <Slider
+            compact
+            label="DYN THRESH"
+            value={valueOf(`band${selectedBand}.dynThresholdDb`)}
+            min={-60}
+            max={0}
+            defaultValue={-20}
+            format={(v) => `${v.toFixed(1)} dB`}
+            onCommit={(v) => onParam(`band${selectedBand}.dynThresholdDb`, v)}
+            onPreview={(v) => previewParam(`band${selectedBand}.dynThresholdDb`, v)}
+            onCancel={() => cancelParamPreview(`band${selectedBand}.dynThresholdDb`)}
+          />
+          <Slider
+            compact
+            label="DYN RANGE"
+            value={valueOf(`band${selectedBand}.dynRangeDb`)}
+            min={-24}
+            max={0}
+            defaultValue={-6}
+            format={(v) => `${v.toFixed(1)} dB`}
+            onCommit={(v) => onParam(`band${selectedBand}.dynRangeDb`, v)}
+            onPreview={(v) => previewParam(`band${selectedBand}.dynRangeDb`, v)}
+            onCancel={() => cancelParamPreview(`band${selectedBand}.dynRangeDb`)}
+          />
+          <Slider
+            compact
+            label="DYN ATK"
+            value={valueOf(`band${selectedBand}.dynAttackMs`)}
+            min={0.1}
+            max={100}
+            defaultValue={10}
+            format={(v) => `${v.toFixed(1)} ms`}
+            onCommit={(v) => onParam(`band${selectedBand}.dynAttackMs`, v)}
+            onPreview={(v) => previewParam(`band${selectedBand}.dynAttackMs`, v)}
+            onCancel={() => cancelParamPreview(`band${selectedBand}.dynAttackMs`)}
+          />
+          <Slider
+            compact
+            label="DYN REL"
+            value={valueOf(`band${selectedBand}.dynReleaseMs`)}
+            min={10}
+            max={1000}
+            defaultValue={150}
+            format={(v) => `${v.toFixed(0)} ms`}
+            onCommit={(v) => onParam(`band${selectedBand}.dynReleaseMs`, v)}
+            onPreview={(v) => previewParam(`band${selectedBand}.dynReleaseMs`, v)}
+            onCancel={() => cancelParamPreview(`band${selectedBand}.dynReleaseMs`)}
+          />
+        </div>
+      )}
 
       {docked && dockPage === "modules" && (
         <div className="fxeq-band-chips prism-module-chips" role="group" aria-label="Select PRISM module">

@@ -82,7 +82,7 @@ export function findSpectralPeaks(
   for (let i = 1; i < n - 1; i++) {
     const v = mag[i];
     if (v <= mag[i - 1] || v < mag[i + 1]) continue;
-    if (v <= -120) continue;   // skip floor bins
+    if (v <= -120) continue; // skip floor bins
     allPeaks.push({
       index: i,
       freqHz: binToHz(i, fftSize, sampleRate),
@@ -99,7 +99,10 @@ export function findSpectralPeaks(
   for (const p of allPeaks) {
     let conflict = false;
     for (const a of accepted) {
-      if (Math.abs(p.freqHz - a.freqHz) < minSeparationHz) { conflict = true; break; }
+      if (Math.abs(p.freqHz - a.freqHz) < minSeparationHz) {
+        conflict = true;
+        break;
+      }
     }
     if (!conflict) accepted.push(p);
     if (accepted.length >= topN) break;
@@ -145,7 +148,7 @@ export function estimateQ(
     const v1 = mag[i];
     if (v0 <= thresholdDb && v1 > thresholdDb) {
       const t = (thresholdDb - v0) / (v1 - v0);
-      const bin = (i - 1) + t;
+      const bin = i - 1 + t;
       fLow = binToHz(bin, fftSize, sampleRate);
       break;
     }
@@ -180,10 +183,7 @@ export function estimateQ(
  * The returned array length = floor(mag.length / N). The mean of
  * `mag[i*k]` for k = 1..N is written to `out[floor(i/N)]`.
  */
-export function harmonicProductSpectrum(
-  mag: Float32Array | number[],
-  harmonics: number = 4,
-): Float32Array {
+export function harmonicProductSpectrum(mag: Float32Array | number[], harmonics: number = 4): Float32Array {
   if (harmonics < 1) {
     // Defensive: return a copy as Float32Array.
     const out = new Float32Array(mag.length);

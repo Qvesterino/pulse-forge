@@ -37,7 +37,16 @@ const FDN_LINES = 8;
 const PARAM_DEFS: readonly FxEqParamDef[] = [
   { id: "enabled", name: "Enabled", defaultValue: 0, minValue: 0, maxValue: 1, automatable: false },
   { id: "type", name: "Type", defaultValue: 0, minValue: 0, maxValue: 2, automatable: false },
-  { id: "decayMs", name: "Decay", defaultValue: 1500, minValue: 100, maxValue: 8000, unit: "ms", logScale: true, automatable: true },
+  {
+    id: "decayMs",
+    name: "Decay",
+    defaultValue: 1500,
+    minValue: 100,
+    maxValue: 8000,
+    unit: "ms",
+    logScale: true,
+    automatable: true,
+  },
   { id: "predelayMs", name: "Pre-Delay", defaultValue: 20, minValue: 0, maxValue: 100, unit: "ms", automatable: true },
   {
     id: "modDepthPct",
@@ -132,7 +141,7 @@ export function createReverbModule(params?: Record<string, number>): ModuleProce
 
   // Per-channel predelay line (circular buffer).
   let predelayLines: Float32Array[] = []; // [channel]
-  let predelayWriteIdx: number[] = [];   // [channel]
+  let predelayWriteIdx: number[] = []; // [channel]
   let predelayLen = 0; // in samples
 
   // Cross-channel coupling buffers (previous block's wet per sample).
@@ -168,31 +177,31 @@ export function createReverbModule(params?: Record<string, number>): ModuleProce
     hpState.length = 0;
     hpPrev.length = 0;
     for (let c = 0; c < channelCount; c++) {
-        const ls: Float32Array[] = [];
-        const wi: number[] = [];
-        const lp: number[] = [];
-        const hp: number[] = [];
-        const hpv: number[] = [];
-        for (let l = 0; l < FDN_LINES; l++) {
-          ls.push(new Float32Array(maxLen));
-          wi.push(0);
-          lp.push(0);
-          hp.push(0);
-          hpv.push(0);
-        }
-        lines.push(ls);
-        writeIdx.push(wi);
-        lpState.push(lp);
-        hpState.push(hp);
-        hpPrev.push(hpv);
-      }
-      // Logical delay lengths for the current srScale (recompute() keeps
-      // these in sync; allocChannels must not clobber them with the
-      // physical capacity when prepare() calls it after recompute()).
+      const ls: Float32Array[] = [];
+      const wi: number[] = [];
+      const lp: number[] = [];
+      const hp: number[] = [];
+      const hpv: number[] = [];
       for (let l = 0; l < FDN_LINES; l++) {
-        lengths[l] = Math.max(8, Math.round(BASE_LENGTHS_L[l] * srScale));
+        ls.push(new Float32Array(maxLen));
+        wi.push(0);
+        lp.push(0);
+        hp.push(0);
+        hpv.push(0);
       }
+      lines.push(ls);
+      writeIdx.push(wi);
+      lpState.push(lp);
+      hpState.push(hp);
+      hpPrev.push(hpv);
     }
+    // Logical delay lengths for the current srScale (recompute() keeps
+    // these in sync; allocChannels must not clobber them with the
+    // physical capacity when prepare() calls it after recompute()).
+    for (let l = 0; l < FDN_LINES; l++) {
+      lengths[l] = Math.max(8, Math.round(BASE_LENGTHS_L[l] * srScale));
+    }
+  }
 
   function recompute(): void {
     const type = Math.round(store.get("type"));
@@ -265,8 +274,14 @@ export function createReverbModule(params?: Record<string, number>): ModuleProce
   // stays lossless apart from the damping/feedback gains.
   function hadamard8(v: Float64Array): void {
     const i = 1 / Math.sqrt(8);
-    const a = v[0], b = v[1], c = v[2], d = v[3];
-    const e = v[4], f = v[5], g = v[6], h = v[7];
+    const a = v[0],
+      b = v[1],
+      c = v[2],
+      d = v[3];
+    const e = v[4],
+      f = v[5],
+      g = v[6],
+      h = v[7];
     v[0] = (a + b + c + d + e + f + g + h) * i;
     v[1] = (a - b + c - d + e - f + g - h) * i;
     v[2] = (a + b - c - d + e + f - g - h) * i;
@@ -348,8 +363,7 @@ export function createReverbModule(params?: Record<string, number>): ModuleProce
           for (let l = 0; l < FDN_LINES; l++) {
             phases[l] += modRateInc;
             if (phases[l] >= 1) phases[l] -= Math.floor(phases[l]);
-            modBuf[i * FDN_LINES + l] =
-              0.5 + 0.5 * Math.sin(2 * Math.PI * phases[l] + l * MOD_PHASE_STEP);
+            modBuf[i * FDN_LINES + l] = 0.5 + 0.5 * Math.sin(2 * Math.PI * phases[l] + l * MOD_PHASE_STEP);
           }
         }
       }
@@ -361,7 +375,7 @@ export function createReverbModule(params?: Record<string, number>): ModuleProce
         const lp = lpState[c];
         const hp = hpState[c];
         const hpv = hpPrev[c];
-        const fbLine = (c & 1) ? fbSmR : fbSmL;
+        const fbLine = c & 1 ? fbSmR : fbSmL;
         const crossSrc = hasCoupling ? crossFeedPrev[1 - c] : null;
         const crossDst = hasCoupling ? crossFeedCur[c] : null;
 

@@ -3,11 +3,17 @@ import {
   buildFavoritesPack,
   clearFavoriteLedger,
   favoritesToDrumSamples,
+  favoritesToMelodicSamples,
   readFavoriteLedger,
   recordFavoriteLedgerEntry,
+  roleForTrack,
   type FavoriteLedgerEntry,
 } from "../src/intent/favorites";
 import { PRIOR_FEATURE_COUNT, PRIOR_STYLE_VOCAB } from "../src/ai/symbolic/prior-features";
+import { MELODIC_FEATURE_COUNT } from "../src/ai/symbolic/melodic-features";
+import { degreeToPitch } from "../src/ai/melodic";
+import { SCALE_INTERVALS } from "../src/project-model/scales";
+import { STEP_TICKS } from "../src/project-model/types";
 
 function makeEntry(overrides: Partial<FavoriteLedgerEntry> = {}): FavoriteLedgerEntry {
   const padIds = ["pad-a", "pad-b", "pad-c", "pad-d"];
@@ -105,5 +111,81 @@ describe("favorites → training samples", () => {
       makeEntry({ padNames: ["only-one-name"] }),
     ]);
     expect(samples).toEqual([]);
+  });
+});
+
+describe("melodic favorites → next-note samples (C1)", () => {
+  // house bass: octaveOffset 0, root C=0, natural minor intervals
+  const minorIntervals = SCALE_INTERVALS.natural_minor;
+  const bassPitch = (degree: number) => degreeToPitch(degree, 0, 0, minorIntervals);
+  const stepTicks = STEP_TICKS;
+
+  function makeMelodicEntry(overrides: Partial<FavoriteLedgerEntry> = {}): FavoriteLedgerEntry {
+    return makeEntry({
+      key: "C Natural Minor",
+      length: 16,
+      style: "deep",
+      melodic: [
+        {
+          role: "bass" as const,
+          trackName: "Bass",
+          notes: [
+            { pitch: bassPitch(0), start: 0, duration: 2 * stepTicks, velocity: 0.8 },
+            { pitch: bassPitch(4), start: 2 * stepTicks, duration: 2 * stepTicks, velocity: 0.7 },
+          ],
+        },
+      ],
+      ...overrides,
+    });
+  }
+
+  it("inverts pitches to in-key degrees through the recorded key", () => {
+    const samples = favoritesToMelodicSamples([makeMelodicEntry()]);
+    expect(samples.length).toBe(2);
+    expect(samples[0].degree).toBe(1); // degree 0 → class 1
+    expect(samples[1].degree).toBe(5); // degree 4 → class 5
+    expect(samples[0].duration).toBe(1); // 2 steps → class 1
+    expect(samples[0].weight).toBe(3);
+    expect(samples[0].x.length).toBe(MELODIC_FEATURE_COUNT);
+    // walk context: second sample's prevDegree was the first's degree (0 → class 1)
+    expect(samples[1].x[12 + 1]).toBe(1);
+  });
+
+  it("collapses chord voicings to their root (lowest pitch per start)", () => {
+    const root = bassPitch(0);
+    const third = root + 3;
+    const fifth = root + 7;
+    const entry = makeMelodicEntry({
+      melodic: [
+        {
+          role: "chord" as const,
+          trackName: "Chords",
+          notes: [
+            { pitch: fifth, start: 0, duration: 4 * stepTicks, velocity: 0.5 },
+            { pitch: root, start: 0, duration: 4 * stepTicks, velocity: 0.6 },
+            { pitch: third, start: 0, duration: 4 * stepTicks, velocity: 0.5 },
+          ],
+        },
+      ],
+    });
+    const samples = favoritesToMelodicSamples([entry]);
+    expect(samples.length).toBe(1); // 3 voicing notes → 1 root event
+    expect(samples[0].degree).toBe(1); // root degree 0
+    expect(samples[0].duration).toBe(2); // 4 steps → class 2
+  });
+
+  it("skips entries without a recorded key (pitch inversion impossible)", () => {
+    const entry = makeMelodicEntry({ key: null, melodic: makeMelodicEntry().melodic });
+    expect(favoritesToMelodicSamples([entry])).toEqual([]);
+  });
+
+  it("resolves track roles by name, then positionally", () => {
+    expect(roleForTrack("Deep Bass", 2)).toBe("bass");
+    expect(roleForTrack("Pad Chords", 0)).toBe("chord");
+    expect(roleForTrack("Synth Lead", 1)).toBe("lead");
+    expect(roleForTrack("Instrument 1", 0)).toBe("bass");
+    expect(roleForTrack("Instrument 2", 1)).toBe("chord");
+    expect(roleForTrack("Instrument 3", 2)).toBe("lead");
+    expect(roleForTrack("Instrument 4", 3)).toBeNull();
   });
 });

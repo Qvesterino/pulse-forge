@@ -29,13 +29,7 @@ import { createSmoother } from "../dsp/envelope.js";
 import { MODULE_FACTORIES, MODULE_KEYS, ENV_MOD_TARGETS, type ModuleKey } from "./signalFlow.js";
 import { BAND_SCALAR_DEFS } from "./parameterSchema.js";
 import { assertAudioBlock } from "../dsp/audioBlockContract.js";
-import {
-  createDynamicState,
-  processEnvelope,
-  computeGain,
-  rangeDbToLin,
-  type DynamicState,
-} from "../dsp/dynamics.js";
+import { createDynamicState, processEnvelope, computeGain, rangeDbToLin, type DynamicState } from "../dsp/dynamics.js";
 
 /** Schema ranges per band-scalar id, for setBandParam clamping (M3). */
 const BAND_PARAM_RANGES = new Map(BAND_SCALAR_DEFS.map((d) => [d.id, d]));
@@ -70,8 +64,7 @@ export interface BandEngine {
 }
 
 export function createBandEngine(seed?: number): BandEngine {
-  const moduleSeed = (salt: number): number | undefined =>
-    seed === undefined ? undefined : mixSeed(seed, salt);
+  const moduleSeed = (salt: number): number | undefined => (seed === undefined ? undefined : mixSeed(seed, salt));
   const modules: Record<ModuleKey, ModuleProcessor> = {
     eq: MODULE_FACTORIES.eq(undefined, moduleSeed(0x4551)),
     sat: MODULE_FACTORIES.sat(undefined, moduleSeed(0x534154)),
@@ -448,8 +441,8 @@ export function createBandEngine(seed?: number): BandEngine {
       // solo and each module applies to its own `enabled` flag). Resetting
       // the whole chain matches a freshly created band; module params are
       // untouched.
-      const resumesBand = (id === "enabled" && bandEnabled < 0.5 && v >= 0.5) ||
-        (id === "mute" && bandMute >= 0.5 && v < 0.5);
+      const resumesBand =
+        (id === "enabled" && bandEnabled < 0.5 && v >= 0.5) || (id === "mute" && bandMute >= 0.5 && v < 0.5);
       if (resumesBand) {
         for (const key of MODULE_KEYS) modules[key].reset();
         modEnvValue = 0;
@@ -459,19 +452,45 @@ export function createBandEngine(seed?: number): BandEngine {
         dynState.gainReductionDb = 0;
       }
       switch (id) {
-        case "gainDb": bandGainDb = v; break;
-        case "enabled": bandEnabled = v; break;
-        case "mix": bandMix = v; break;
-        case "midSide": bandMidSide = Math.round(v); break;
-        case "dynEnable": dynEnable = v; break;
-        case "dynThresholdDb": dynThresholdDb = v; break;
-        case "dynRangeDb": dynRangeDb = v; break;
-        case "dynAttackMs": dynAttackMs = v; break;
-        case "dynReleaseMs": dynReleaseMs = v; break;
-        case "solo": bandSolo = v; break;
-        case "mute": bandMute = v; break;
-        case "phaseInvert": bandPhaseInvert = v; break;
-        case "sidechainMode": bandSidechainMode = v; break;
+        case "gainDb":
+          bandGainDb = v;
+          break;
+        case "enabled":
+          bandEnabled = v;
+          break;
+        case "mix":
+          bandMix = v;
+          break;
+        case "midSide":
+          bandMidSide = Math.round(v);
+          break;
+        case "dynEnable":
+          dynEnable = v;
+          break;
+        case "dynThresholdDb":
+          dynThresholdDb = v;
+          break;
+        case "dynRangeDb":
+          dynRangeDb = v;
+          break;
+        case "dynAttackMs":
+          dynAttackMs = v;
+          break;
+        case "dynReleaseMs":
+          dynReleaseMs = v;
+          break;
+        case "solo":
+          bandSolo = v;
+          break;
+        case "mute":
+          bandMute = v;
+          break;
+        case "phaseInvert":
+          bandPhaseInvert = v;
+          break;
+        case "sidechainMode":
+          bandSidechainMode = v;
+          break;
         case "quality": {
           const nextQuality = Math.round(v);
           bandQuality = nextQuality;
@@ -485,16 +504,24 @@ export function createBandEngine(seed?: number): BandEngine {
           }
           break;
         }
-        case "linkGroup": bandLinkGroup = Math.round(v); break;
+        case "linkGroup":
+          bandLinkGroup = Math.round(v);
+          break;
         case "envModTarget": {
           const next = Math.round(clamp(v, 0, ENV_MOD_TARGETS.length - 1));
           if (next !== envTarget) retargetEnv(next);
           envTarget = next;
           break;
         }
-        case "envModDepth": envDepth = v; break;
-        case "envModAtkMs": envAtkMs = v; break;
-        case "envModRelMs": envRelMs = v; break;
+        case "envModDepth":
+          envDepth = v;
+          break;
+        case "envModAtkMs":
+          envAtkMs = v;
+          break;
+        case "envModRelMs":
+          envRelMs = v;
+          break;
       }
     },
 

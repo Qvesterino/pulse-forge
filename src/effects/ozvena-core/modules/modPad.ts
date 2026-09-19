@@ -48,7 +48,7 @@ export interface ModParams {
 function makeRng(seed: number): () => number {
   let s = seed | 0;
   return () => {
-    s = (s + 0x6D2B79F5) | 0;
+    s = (s + 0x6d2b79f5) | 0;
     let t = s;
     t = Math.imul(t ^ (t >>> 15), t | 1);
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
@@ -69,7 +69,7 @@ export function createModPad(): ModPad {
   let params: ModParams = { enabled: false, mode: "randomFat", depthX: 0.25, rateY: 0.24 };
 
   // RandomFat: smoothed PRNG state (one-pole on raw output).
-  let rng = makeRng(0xC0FFEE);
+  let rng = makeRng(0xc0ffee);
   let smoothed = 0;
 
   // Pitch: small fractional delay buffer per channel + LFO phase.
@@ -92,7 +92,7 @@ export function createModPad(): ModPad {
   return {
     prepare(sr) {
       sampleRate = clamp(sr, 8000, 192000);
-      rng = makeRng(0xC0FFEE);
+      rng = makeRng(0xc0ffee);
       smoothed = 0;
       pitchBufL = new Float32Array(MAX_PITCH_DELAY * 2 + 16);
       pitchBufR = new Float32Array(MAX_PITCH_DELAY * 2 + 16);
@@ -158,7 +158,9 @@ export function createModPad(): ModPad {
       }
     },
 
-    setParams(p) { params = { ...p }; },
+    setParams(p) {
+      params = { ...p };
+    },
 
     getModParams() {
       const depth = clamp(params.depthX, 0, 1.25);

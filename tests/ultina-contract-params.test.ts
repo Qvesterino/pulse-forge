@@ -196,10 +196,7 @@ describe("ultina contract params — eq.channelMode transient/sustain", () => {
     let onsetN = 0;
     for (let off = 0; off < total; off += BLOCK) {
       const frames = Math.min(BLOCK, total - off);
-      const chans = [
-        input.slice(off, off + frames),
-        input.slice(off, off + frames),
-      ];
+      const chans = [input.slice(off, off + frames), input.slice(off, off + frames)];
       mod.process({
         channels: chans,
         frameCount: frames,
@@ -223,16 +220,10 @@ describe("ultina contract params — eq.channelMode transient/sustain", () => {
   it("a fresh burst reaches the EQ in transient mode but bypasses it in sustain mode", () => {
     for (const mode of [0, 3]) {
       const ratio = burstOnsetRms(mode, 24) / burstOnsetRms(mode, 0);
-      expect(
-        ratio,
-        `mode ${mode} must apply the +24 dB bell to the burst onset`,
-      ).toBeGreaterThan(5);
+      expect(ratio, `mode ${mode} must apply the +24 dB bell to the burst onset`).toBeGreaterThan(5);
     }
     const sustainRatio = burstOnsetRms(4, 24) / burstOnsetRms(4, 0);
-    expect(
-      sustainRatio,
-      "sustain mode must NOT apply the bell to a fresh burst",
-    ).toBeLessThan(1.5);
+    expect(sustainRatio, "sustain mode must NOT apply the bell to a fresh burst").toBeLessThan(1.5);
   });
 
   it("transient and sustain modes produce clearly different burst output", () => {

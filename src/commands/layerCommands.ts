@@ -44,9 +44,7 @@ export function setVelocityLayersCommand(
   fallbackSampleId?: string | null,
 ): Command {
   const clean = sanitizeLayers(layers);
-  const target = doc.tracks.find(
-    (t): t is InstrumentTrack => t.id === trackId && t.kind === "instrument",
-  );
+  const target = doc.tracks.find((t): t is InstrumentTrack => t.id === trackId && t.kind === "instrument");
   if (!target) throw new Error(`Instrument track ${trackId} not found`);
   if (target.instrument !== "sampler") throw new Error(`Velocity layers require a sampler track`);
   const next: ProjectDocument = {

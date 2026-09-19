@@ -33,11 +33,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { clamp, dbToLinear } from "../dsp/math.js";
-import {
-  createPolyphaseOversampler,
-  type PolyphaseOversampler,
-  type OversampleFactor,
-} from "../dsp/oversampler.js";
+import { createPolyphaseOversampler, type PolyphaseOversampler, type OversampleFactor } from "../dsp/oversampler.js";
 
 const OS_MAX: OversampleFactor = 8;
 const MAX_LA_MS = 5;
@@ -110,7 +106,7 @@ export function createSafetyLimiter(): SafetyLimiter {
 
   /** Fill epScratch[0..totalEp) with the effective (inter-sample) peak per position. */
   function computeEffectivePeaks(s: Chan, totalEp: number): void {
-    const ringStart = ((s.wp - totalEp) % ringCap + ringCap) % ringCap;
+    const ringStart = (((s.wp - totalEp) % ringCap) + ringCap) % ringCap;
     for (let i = 0; i < totalEp; i++) {
       const ri = (ringStart + i) % ringCap;
       const a = s.ring[ri];
@@ -120,15 +116,29 @@ export function createSafetyLimiter(): SafetyLimiter {
         const ni = (ri + 1) % ringCap;
         const b = s.ring[ni];
         const d = b - a;
-        let y = a + d * 0.25; let ay = y < 0 ? -y : y; if (ay > ep) ep = ay;
-        y = a + d * 0.5;  ay = y < 0 ? -y : y; if (ay > ep) ep = ay;
-        y = a + d * 0.75; ay = y < 0 ? -y : y; if (ay > ep) ep = ay;
+        let y = a + d * 0.25;
+        let ay = y < 0 ? -y : y;
+        if (ay > ep) ep = ay;
+        y = a + d * 0.5;
+        ay = y < 0 ? -y : y;
+        if (ay > ep) ep = ay;
+        y = a + d * 0.75;
+        ay = y < 0 ? -y : y;
+        if (ay > ep) ep = ay;
       }
       epScratch[i] = ep;
     }
   }
 
-  function processLinked(channels: Float32Array[], n: number, ceil: number, rc: number, upLen: number, effLA: number, totalEp: number): void {
+  function processLinked(
+    channels: Float32Array[],
+    n: number,
+    ceil: number,
+    rc: number,
+    upLen: number,
+    effLA: number,
+    totalEp: number,
+  ): void {
     const numCh = channels.length;
     while (linkedEnvScratch.length < numCh) linkedEnvScratch.push(new Float32Array(0));
     for (let c = 0; c < numCh; c++) {
@@ -148,10 +158,14 @@ export function createSafetyLimiter(): SafetyLimiter {
 
       computeEffectivePeaks(s, totalEp);
 
-      let dqHead = 0, dqTail = 0, outIdx = 0;
+      let dqHead = 0,
+        dqTail = 0,
+        outIdx = 0;
       for (let j = 0; j < totalEp; j++) {
         while (dqTail > dqHead && epScratch[j] >= epScratch[dequeIdx[dqTail - 1]]) dqTail--;
-        dequeIdx[dqTail] = j; dequeVal[dqTail] = epScratch[j]; dqTail++;
+        dequeIdx[dqTail] = j;
+        dequeVal[dqTail] = epScratch[j];
+        dqTail++;
         while (dqHead < dqTail && dequeIdx[dqHead] < j - effLA) dqHead++;
         if (j >= effLA) {
           const peak = dequeVal[dqHead];
@@ -168,22 +182,30 @@ export function createSafetyLimiter(): SafetyLimiter {
       for (let c = 1; c < numCh; c++) if (linkedEnvScratch[c][i] < minEnv) minEnv = linkedEnvScratch[c][i];
       for (let c = 0; c < numCh; c++) {
         const s = ch[c];
-        const op = ((s.wp - upLen + i - effLA) % ringCap + ringCap) % ringCap;
+        const op = (((s.wp - upLen + i - effLA) % ringCap) + ringCap) % ringCap;
         upBuffers[c][i] = s.ring[op] * minEnv;
       }
     }
 
-        for (let c = 0; c < numCh; c++) {
-          const s = ch[c];
-          s.env = linkedEnvScratch[c][upLen - 1];
-          const down = s.os.downsample(upBuffers[c], upLen);
-          const copyLen = Math.min(n, down.length);
-          for (let i = 0; i < copyLen; i++) channels[c][i] = down[i];
-          for (let i = copyLen; i < n; i++) channels[c][i] = 0;
-        }
-      }
+    for (let c = 0; c < numCh; c++) {
+      const s = ch[c];
+      s.env = linkedEnvScratch[c][upLen - 1];
+      const down = s.os.downsample(upBuffers[c], upLen);
+      const copyLen = Math.min(n, down.length);
+      for (let i = 0; i < copyLen; i++) channels[c][i] = down[i];
+      for (let i = copyLen; i < n; i++) channels[c][i] = 0;
+    }
+  }
 
-  function processUnlinked(channels: Float32Array[], n: number, ceil: number, rc: number, upLen: number, effLA: number, totalEp: number): void {
+  function processUnlinked(
+    channels: Float32Array[],
+    n: number,
+    ceil: number,
+    rc: number,
+    upLen: number,
+    effLA: number,
+    totalEp: number,
+  ): void {
     for (let c = 0; c < channels.length; c++) {
       const s = ch[c];
       const up = s.os.upsample(channels[c], n);
@@ -193,17 +215,21 @@ export function createSafetyLimiter(): SafetyLimiter {
 
       computeEffectivePeaks(s, totalEp);
 
-      let dqHead = 0, dqTail = 0, outIdx = 0;
+      let dqHead = 0,
+        dqTail = 0,
+        outIdx = 0;
       for (let j = 0; j < totalEp; j++) {
         while (dqTail > dqHead && epScratch[j] >= epScratch[dequeIdx[dqTail - 1]]) dqTail--;
-        dequeIdx[dqTail] = j; dequeVal[dqTail] = epScratch[j]; dqTail++;
+        dequeIdx[dqTail] = j;
+        dequeVal[dqTail] = epScratch[j];
+        dqTail++;
         while (dqHead < dqTail && dequeIdx[dqHead] < j - effLA) dqHead++;
         if (j >= effLA) {
           const peak = dequeVal[dqHead];
           let tgt = 1;
           if (peak > ceil && peak > 1e-9) tgt = ceil / peak;
           s.env = tgt < s.env ? tgt : s.env * rc + tgt * (1 - rc);
-          const op = ((s.wp - upLen + outIdx - effLA) % ringCap + ringCap) % ringCap;
+          const op = (((s.wp - upLen + outIdx - effLA) % ringCap) + ringCap) % ringCap;
           up[outIdx++] = s.ring[op] * s.env;
         }
       }
@@ -294,7 +320,9 @@ export function createSafetyLimiter(): SafetyLimiter {
       for (const set of Object.values(chByFactor)) {
         if (!set) continue;
         for (const s of set) {
-          s.env = 1; s.wp = 0; s.fill = 0;
+          s.env = 1;
+          s.wp = 0;
+          s.fill = 0;
           s.ring.fill(0);
           s.os.reset();
         }

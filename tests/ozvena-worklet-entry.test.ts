@@ -49,13 +49,11 @@ interface ProcShape {
   process(inputs: Float32Array[][], outputs: Float32Array[][]): boolean;
 }
 
-type ProcCtor = new (
-  options?: {
-    // Values travel through the entry's setPath, which accepts string state
-    // paths (e.g. an initial "convolution.irId") as well as numbers.
-    processorOptions?: { params?: Record<string, number | string>; bpm?: number };
-  },
-) => ProcShape;
+type ProcCtor = new (options?: {
+  // Values travel through the entry's setPath, which accepts string state
+  // paths (e.g. an initial "convolution.irId") as well as numbers.
+  processorOptions?: { params?: Record<string, number | string>; bpm?: number };
+}) => ProcShape;
 
 let Processor: ProcCtor;
 /** Render clock for the worklet scope — the host advances it per quantum. */
@@ -66,12 +64,8 @@ const setTime = (t: number) => {
 
 beforeAll(async () => {
   (globalThis as unknown as { sampleRate: number }).sampleRate = 48000;
-  (globalThis as unknown as { AudioWorkletProcessor: unknown }).AudioWorkletProcessor =
-    FakeAudioWorkletProcessor;
-  (globalThis as unknown as { registerProcessor: unknown }).registerProcessor = (
-    _name: string,
-    cls: ProcCtor,
-  ) => {
+  (globalThis as unknown as { AudioWorkletProcessor: unknown }).AudioWorkletProcessor = FakeAudioWorkletProcessor;
+  (globalThis as unknown as { registerProcessor: unknown }).registerProcessor = (_name: string, cls: ProcCtor) => {
     Processor = cls;
   };
   Object.defineProperty(globalThis, "currentTime", {
@@ -102,12 +96,7 @@ function renderImpulse(proc: ProcShape, seconds: number): Float32Array[] {
     }
     proc.process(
       [[inL, inR]],
-      [
-        [
-          outL.subarray(b * BLOCK, b * BLOCK + BLOCK),
-          outR.subarray(b * BLOCK, b * BLOCK + BLOCK),
-        ],
-      ],
+      [[outL.subarray(b * BLOCK, b * BLOCK + BLOCK), outR.subarray(b * BLOCK, b * BLOCK + BLOCK)]],
     );
     setTime(b * BLOCK * (1 / SR) + BLOCK / SR);
   }
@@ -200,9 +189,7 @@ describe("Ozvena worklet entry (message port ↔ DSP core wiring)", () => {
 
     // Processors must not keep producing (or crash) after teardown.
     const out = new Float32Array(BLOCK);
-    expect(proc.process([[new Float32Array(BLOCK), new Float32Array(BLOCK)]], [[out, out]])).toBe(
-      false,
-    );
+    expect(proc.process([[new Float32Array(BLOCK), new Float32Array(BLOCK)]], [[out, out]])).toBe(false);
     // Messages after dispose are ignored without throwing.
     expect(() => sendParam(proc, "preDelay.ms", 100)).not.toThrow();
   });
@@ -423,7 +410,7 @@ describe("Ozvena worklet entry (message port ↔ DSP core wiring)", () => {
     sendParam(proc, "convolution.irId", "hall");
     replyFactoryIr(proc, "hall");
 
-    const rngState = { s: 0x51DE };
+    const rngState = { s: 0x51de };
     const noise = (l: Float32Array, r: Float32Array) => {
       for (let i = 0; i < BLOCK; i++) {
         rngState.s = (Math.imul(rngState.s, 1664525) + 1013904223) >>> 0;
@@ -587,9 +574,7 @@ describe("Ozvena worklet entry — precomputed IR spectra path", () => {
     proc.port.posted.length = 0;
     sendParam(proc, "convolution.irId", "hall");
     expect(proc.proc.isIrLoaded()).toBe(true); // cathedral remains audible while HALL is pending
-    expect(
-      proc.port.posted.some((m) => m.type === "irNeeded" && m.irId === "hall"),
-    ).toBe(true);
+    expect(proc.port.posted.some((m) => m.type === "irNeeded" && m.irId === "hall")).toBe(true);
 
     const { sets: hallReloadSets } = makeSets(2, 17);
     proc.port.onmessage?.({ data: { type: "factoryIr", irId: "hall", channels: 2, sets: hallReloadSets } });

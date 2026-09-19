@@ -134,6 +134,17 @@ def accuracy(logits: np.ndarray, y: np.ndarray) -> float:
 
 
 def main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Train the symbolic melodic prior")
+    parser.add_argument(
+        "--favorites",
+        help="weighted favorite next-note samples JSON (favoritesToMelodicSamples output) "
+        "— folded into the TRAIN split only",
+    )
+    parser.add_argument("--favorite-oversample", type=int, default=3)
+    args = parser.parse_args()
+
     rng = np.random.default_rng(SEED)
     payload = json.loads(DATASET_PATH.read_text())
     if payload["featureVersion"] != "melodic-features.v1":
@@ -154,6 +165,31 @@ def main() -> None:
     x_train, x_val = x_all[~val_mask], x_all[val_mask]
     yd_train, yd_val = y_degree[~val_mask], y_degree[val_mask]
     yt_train, yt_val = y_duration[~val_mask], y_duration[val_mask]
+
+    # Favorites feedback loop (C1): weighted user-kept melodic phrases join
+    # the TRAIN split only — validation stays library-only so reported
+    # metrics keep meaning. Oversampling = repeating samples by weight.
+    if args.favorites:
+        favorites_payload = json.loads(Path(args.favorites).read_text())
+        favorite_samples = favorites_payload["data"] if isinstance(favorites_payload, dict) else favorites_payload
+        favorite_x: list[list[float]] = []
+        favorite_yd: list[int] = []
+        favorite_yt: list[int] = []
+        for sample in favorite_samples:
+            if len(sample["x"]) != x_all.shape[1]:
+                raise SystemExit(
+                    "favorites feature width mismatch — regenerate the pack against the current melodic-features version"
+                )
+            repeat = max(1, int(round(float(sample.get("weight", 1)))) * max(1, args.favorite_oversample))
+            favorite_x.extend([sample["x"]] * repeat)
+            favorite_yd.extend([int(sample["degree"])] * repeat)
+            favorite_yt.extend([int(sample["duration"])] * repeat)
+        if favorite_x:
+            x_train = np.concatenate([x_train, np.array(favorite_x, dtype=np.float64)])
+            yd_train = np.concatenate([yd_train, np.array(favorite_yd, dtype=np.int64)])
+            yt_train = np.concatenate([yt_train, np.array(favorite_yt, dtype=np.int64)])
+            print(f"[train] favorites merged: {len(favorite_x)} weighted next-note samples")
+
     dw = class_weights(yd_train, DEGREE_CLASSES)
     tw = class_weights(yt_train, DURATION_CLASSES)
     print(

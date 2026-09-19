@@ -51,11 +51,7 @@ import type { FxEqParamDef, ModuleProcessor } from "../dsp/types.js";
 import { clamp, dbToLinear } from "../dsp/mathUtils.js";
 import { assertAudioBlock } from "../dsp/audioBlockContract.js";
 import { createParamStore } from "./moduleHelpers.js";
-import {
-  createPolyphaseOversampler,
-  type PolyphaseOversampler,
-  type OversampleFactor,
-} from "../dsp/oversampler.js";
+import { createPolyphaseOversampler, type PolyphaseOversampler, type OversampleFactor } from "../dsp/oversampler.js";
 
 export const LIMITER_TYPE_ID = "limiter";
 
@@ -711,7 +707,7 @@ export function createLimiterModule(params?: Record<string, number>): ModuleProc
       if (
         prepared &&
         ch.length > 0 &&
-        ((id === "truePeak" && (store.get("truePeak") >= 0.5) !== (value >= 0.5)) ||
+        ((id === "truePeak" && store.get("truePeak") >= 0.5 !== value >= 0.5) ||
           (id === "lookaheadMs" && store.get("lookaheadMs") !== value))
       ) {
         resetDetectorState();

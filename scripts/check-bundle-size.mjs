@@ -27,7 +27,10 @@ import { fileURLToPath } from "node:url";
 // 1030: preset loudness normalization map (199 entries, ~7 KB) + the engine
 // norm stage join the entry by design — the map must load with the engine so
 // every chain build sees the same gains.
-const ENTRY_BUDGET_KB = 1030;
+// 1070: symbolic-prior / favorites wave continues growing the entry; the UX
+// hierarchy pass adds ~2 KB on top. Same debt: chunk the recorder/prior UIs
+// once the wave settles.
+const ENTRY_BUDGET_KB = 1070;
 const TOTAL_BUDGET_KB = 2400;
 // 150: deliberate bump (was 120 — the gate had been red since kaskada's
 // 32-band spectral DSP landed in the core bundle at ~137 KB). The de-cramped

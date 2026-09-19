@@ -46,7 +46,7 @@ export const INSTRUMENT_TYPES = [
   "bus",
   "master",
 ] as const;
-export type InstrumentType = typeof INSTRUMENT_TYPES[number];
+export type InstrumentType = (typeof INSTRUMENT_TYPES)[number];
 
 export const INSTRUMENT_LABELS: Record<InstrumentType, string> = {
   vocalMale: "Vocal (Male)",
@@ -61,13 +61,11 @@ export const INSTRUMENT_LABELS: Record<InstrumentType, string> = {
 
 // ── Character / Intensity ────────────────────────────────────
 
-export const ASSISTANT_CHARACTERS = [
-  "clean", "warm", "forward", "punchy", "wide", "aggressive",
-] as const;
-export type AssistantCharacter = typeof ASSISTANT_CHARACTERS[number];
+export const ASSISTANT_CHARACTERS = ["clean", "warm", "forward", "punchy", "wide", "aggressive"] as const;
+export type AssistantCharacter = (typeof ASSISTANT_CHARACTERS)[number];
 
 export const ASSISTANT_INTENSITIES = ["subtle", "balanced", "strong"] as const;
-export type AssistantIntensity = typeof ASSISTANT_INTENSITIES[number];
+export type AssistantIntensity = (typeof ASSISTANT_INTENSITIES)[number];
 
 // ── Reason codes ─────────────────────────────────────────────
 
@@ -113,7 +111,7 @@ export const REASON_CODES = [
   // Generic
   "SUGGESTED_STARTING_POINT",
 ] as const;
-export type ReasonCode = typeof REASON_CODES[number];
+export type ReasonCode = (typeof REASON_CODES)[number];
 
 // ── Feature extraction results ───────────────────────────────
 

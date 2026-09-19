@@ -3,12 +3,13 @@ import { useServices, useDoc } from "./context";
 import { parseIntentText } from "../intent/text-parser";
 import { generateAsyncResult, resultForCandidate } from "../intent/pipeline";
 import { applyGenerationResultCommand } from "../commands/commands";
+import { applyArrangeOps } from "../intent/arrangeWords";
+import { buildSong, applySongCommand } from "../intent/song";
+import { applyMixIntent, planMixProfile } from "../intent/mix";
+import { routeIntentText } from "../intent/route";
+import { normalizeIntent } from "../intent/normalize";
 import { rankerMode } from "../ai/ranking/ranker-client";
-import {
-  playAuditionBuffer,
-  renderAuditionBuffer,
-  stopAudition,
-} from "../intent/audition";
+import { playAuditionBuffer, renderAuditionBuffer, stopAudition } from "../intent/audition";
 import type { GenerationResult, RankedCandidate } from "../intent/types";
 
 /**
@@ -135,17 +136,73 @@ export function IntentPanel() {
     if (!bankResult?.proposal) return;
     stopAudition();
     setPlayingIndex(null);
-    const picked = candidate
-      ? resultForCandidate(bankResult, candidate.candidateIndex)
-      : bankResult;
+    const picked = candidate ? resultForCandidate(bankResult, candidate.candidateIndex) : bankResult;
     services.store.execute(applyGenerationResultCommand(doc, picked, picked.plan.intent.genre || undefined));
     setBankResult(null);
     buffersRef.current = new Map();
     setStatus(
-      candidate
-        ? `✓ applied candidate #${candidate.candidateIndex + 1} (${candidate.source})`
-        : `✓ pattern applied`,
+      candidate ? `✓ applied candidate #${candidate.candidateIndex + 1} (${candidate.source})` : `✓ pattern applied`,
     );
+  };
+
+  // A2 song builder: one intent → full arranged song (one undo step).
+  const [songBusy, setSongBusy] = useState(false);
+  const generateSong = async () => {
+    if (!text.trim() || songBusy || busy) return;
+    setSongBusy(true);
+    setError(null);
+    setStatus(null);
+    setBankResult(null);
+    stopAudition();
+    try {
+      const intentInput = parsed?.input ?? {};
+      const build = await buildSong(
+        doc,
+        {
+          ...intentInput,
+          seed: `song-${Date.now()}`,
+          roles: intentInput.roles ?? ["drums", "bass", "chords", "lead"],
+        },
+        {
+          onProgress: (done, label, total) => setStatus(`♪ building song — ${label} (${done}/${total})`),
+        },
+      );
+      services.store.execute(applySongCommand(doc, build));
+      setStatus(`✓ ${build.name} — ${build.sections.length} sections, ${build.totalBars} bars (one undo step)`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSongBusy(false);
+    }
+  };
+
+  // D3 unified bar: route the text to the right executor — arrange ops,
+  // mix profile, or (default) candidate generation.
+  const [routeBusy, setRouteBusy] = useState(false);
+  const routeAndExecute = async () => {
+    if (!text.trim() || routeBusy) return;
+    setRouteBusy(true);
+    setError(null);
+    try {
+      const route = routeIntentText(text, doc);
+      if (route.kind === "arrange") {
+        stopAudition();
+        services.store.execute(applyArrangeOps(doc, route.ops));
+        setStatus(`⚡ arranged — ${route.ops.length} op${route.ops.length === 1 ? "" : "s"}`);
+      } else if (route.kind === "mix") {
+        stopAudition();
+        const intentInput = parsed?.input ?? {};
+        const profile = planMixProfile(normalizeIntent(intentInput), route.overrides);
+        services.store.execute(applyMixIntent(doc, profile));
+        setStatus(`⚡ mix: ${profile.summary.join(" · ") || `${profile.decisions.length} updates`}`);
+      } else {
+        await generate();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRouteBusy(false);
+    }
   };
 
   const detectedText = parsed?.detected.length ? parsed.detected.map((d) => `● ${d}`).join("  ") : null;
@@ -158,7 +215,7 @@ export function IntentPanel() {
       </div>
       <textarea
         className="intent-textarea"
-        placeholder="dark rolling techno at 140 with lead…"
+        placeholder="dark rolling techno at 140 with lead… · tmavé rolujúce techno na 140, 8 taktov…"
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
@@ -182,25 +239,43 @@ export function IntentPanel() {
           {status}
         </div>
       )}
-      <button
-        type="button"
-        className="btn intent-generate-btn"
-        disabled={!text.trim() || busy}
-        onClick={() => void generate()}
-      >
-        {busy ? "GENERATING…" : "GENERATE"}
-      </button>
+      <div className="intent-actions">
+        <button
+          type="button"
+          className="btn intent-route-btn"
+          disabled={!text.trim() || routeBusy}
+          onClick={() => void routeAndExecute()}
+          title="Smart route: arrange words → arrangement · mix words → mix · everything else → generate candidates"
+        >
+          {routeBusy ? "…" : "⚡ DO IT"}
+        </button>
+        <button
+          type="button"
+          className="btn intent-generate-btn"
+          disabled={!text.trim() || busy || songBusy}
+          onClick={() => void generate()}
+        >
+          {busy ? "GENERATING…" : "GENERATE"}
+        </button>
+        <button
+          type="button"
+          className="btn intent-song-btn"
+          disabled={!text.trim() || busy || songBusy}
+          onClick={() => void generateSong()}
+          title="Build a full arranged song from this intent (intro → build → drop → break → drop → outro)"
+        >
+          {songBusy ? "BUILDING…" : "♪ SONG"}
+        </button>
+      </div>
       {candidates && candidates.length > 0 && (
         <div className="intent-candidates" aria-label="Candidate bank">
           {candidates.map((candidate) => {
-            const isWinner = bankResult?.proposal?.pattern.generation?.ranker?.selectedIndex === candidate.candidateIndex;
+            const isWinner =
+              bankResult?.proposal?.pattern.generation?.ranker?.selectedIndex === candidate.candidateIndex;
             const isPlaying = playingIndex === candidate.candidateIndex;
             const isRendering = renderingIndex === candidate.candidateIndex;
             return (
-              <div
-                key={candidate.candidateIndex}
-                className={`intent-candidate-row${isWinner ? " winner" : ""}`}
-              >
+              <div key={candidate.candidateIndex} className={`intent-candidate-row${isWinner ? " winner" : ""}`}>
                 <button
                   type="button"
                   className="btn btn-small intent-audition-btn"

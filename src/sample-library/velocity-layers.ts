@@ -36,10 +36,7 @@ export const FACTORY_HAT_CLOSED_RR = roundRobinLayers([
 ]);
 
 /** Open-hat RR set. */
-export const FACTORY_HAT_OPEN_RR = roundRobinLayers([
-  "factory.hat.open.short",
-  "factory.hat.open.short.rr2",
-]);
+export const FACTORY_HAT_OPEN_RR = roundRobinLayers(["factory.hat.open.short", "factory.hat.open.short.rr2"]);
 
 /** Kick RR set — kicks vary less than snares, two takes are enough. */
 export const FACTORY_KICK_PUNCH_RR = roundRobinLayers([
@@ -60,9 +57,7 @@ export const FACTORY_BEAT_RR_KITS: Record<string, SampleLayer[]> = {
  * Keyzone layer set: each zone covers a pitch range across the full velocity
  * window — the sampler picks the zone containing the played note.
  */
-export function keyzoneLayers(
-  zones: Array<{ sampleId: string; minPitch: number; maxPitch: number }>,
-): SampleLayer[] {
+export function keyzoneLayers(zones: Array<{ sampleId: string; minPitch: number; maxPitch: number }>): SampleLayer[] {
   return zones.map((z, i) => ({
     id: `layer.kz.${i}`,
     sampleId: z.sampleId,

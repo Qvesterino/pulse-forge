@@ -29,17 +29,13 @@ export type AudioBlock = Float32Array[];
 
 function assertFrameCount(frameCount: number, context: string): void {
   if (!Number.isInteger(frameCount) || frameCount < 0) {
-    throw new RangeError(
-      `${context}: frameCount must be a non-negative integer (received ${String(frameCount)})`,
-    );
+    throw new RangeError(`${context}: frameCount must be a non-negative integer (received ${String(frameCount)})`);
   }
 }
 
 function assertMaxBlockSize(maxBlockSize: number, context: string): void {
   if (!Number.isInteger(maxBlockSize) || maxBlockSize < 1) {
-    throw new RangeError(
-      `${context}: maxBlockSize must be a positive integer (received ${String(maxBlockSize)})`,
-    );
+    throw new RangeError(`${context}: maxBlockSize must be a positive integer (received ${String(maxBlockSize)})`);
   }
 }
 
@@ -56,9 +52,7 @@ export function assertAudioBlockShape(
     throw new TypeError(`${context}: channels must be an array of Float32Array values`);
   }
   if (expectedChannelCount !== undefined && channels.length !== expectedChannelCount) {
-    throw new RangeError(
-      `${context}: expected ${expectedChannelCount} channel(s), received ${channels.length}`,
-    );
+    throw new RangeError(`${context}: expected ${expectedChannelCount} channel(s), received ${channels.length}`);
   }
   if (channels.length === 0 && frameCount > 0) {
     throw new RangeError(`${context}: at least one channel is required for a non-empty block`);
@@ -70,9 +64,7 @@ export function assertAudioBlockShape(
       throw new TypeError(`${context}: channel ${c} must be a Float32Array`);
     }
     if (channel.length < frameCount) {
-      throw new RangeError(
-        `${context}: channel ${c} has ${channel.length} samples, but frameCount is ${frameCount}`,
-      );
+      throw new RangeError(`${context}: channel ${c} has ${channel.length} samples, but frameCount is ${frameCount}`);
     }
   }
 }
@@ -106,12 +98,7 @@ export function processAudioChunks(
   channels: AudioBlock,
   frameCount: number,
   maxBlockSize: number,
-  processChunk: (
-    channels: AudioBlock,
-    frameCount: number,
-    offset: number,
-    relatedChannels: AudioBlock | null,
-  ) => void,
+  processChunk: (channels: AudioBlock, frameCount: number, offset: number, relatedChannels: AudioBlock | null) => void,
   relatedChannels?: AudioBlock | null,
 ): void {
   assertMaxBlockSize(maxBlockSize, "audio block contract");
