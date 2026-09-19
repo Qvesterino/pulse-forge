@@ -29,8 +29,9 @@ export const pwaOptions: Partial<VitePWAOptions> = {
     scope: "/",
     start_url: "/",
     display: "standalone",
-    background_color: "#14161c",
-    theme_color: "#14161c",
+    // Molten app shell (mirrors --bg in styles.css / THEME_PRESETS[0]).
+    background_color: "#0b0c10",
+    theme_color: "#0b0c10",
     categories: ["music", "productivity", "entertainment"],
     icons: [
       { src: "pwa-64x64.png", sizes: "64x64", type: "image/png" },

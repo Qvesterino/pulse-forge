@@ -79,14 +79,15 @@ describe("theme", () => {
     }
   });
 
-  it("switching to a preset without var overrides clears the previous palette (no leak)", () => {
+  it("switching to a preset without palette overrides clears the previous palette (no leak)", () => {
     setTheme({ preset: "molten" });
     expect(document.documentElement.style.getPropertyValue("--bg")).toBe("#0b0c10");
-    setTheme({ preset: "forge" });
-    // Forge declares no vars — the inline overrides must be gone so :root wins.
+    // Cyan declares only accent vars — the Molten panel/border/text overrides
+    // must be gone so :root supplies them.
+    setTheme({ preset: "cyan" });
     expect(document.documentElement.style.getPropertyValue("--bg")).toBe("");
     expect(document.documentElement.style.getPropertyValue("--text")).toBe("");
-    expect(document.documentElement.style.getPropertyValue("--accent")).toBe("#f59e0b");
+    expect(document.documentElement.style.getPropertyValue("--accent")).toBe("#22d3ee");
   });
 });
 
@@ -108,7 +109,7 @@ describe("theme share codes", () => {
     const decoded = decodeThemeCode(
       encodeThemeCode({ preset: "nope", hue: 999, scale: 5, compact: false, reduceMotion: false }),
     );
-    expect(decoded!.preset).toBe("forge");
+    expect(decoded!.preset).toBe("molten");
     expect(decoded!.hue).toBe(359);
     expect(decoded!.scale).toBe(1.3);
   });

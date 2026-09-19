@@ -57,7 +57,29 @@ export const THEME_PRESETS: ThemePreset[] = [
       "--text-faint": "#7a8290",
     },
   },
-  { id: "forge", name: "Forge", accent: "#f59e0b", vars: {} },
+  {
+    /**
+     * Classic palette, kept for users whose stored theme is "forge". Since
+     * :root now mirrors Molten, Forge must carry its own overrides explicitly
+     * or the two presets would render identically.
+     */
+    id: "forge",
+    name: "Forge",
+    accent: "#f59e0b",
+    vars: {
+      "--accent": "#f59e0b",
+      "--accent-soft": "rgba(245, 158, 11, 0.14)",
+      "--bg": "#0e0f12",
+      "--bg-panel": "#15171c",
+      "--bg-panel-2": "#1a1d23",
+      "--bg-raise": "#21242b",
+      "--border": "#262a32",
+      "--border-soft": "#1e2128",
+      "--text": "#d7d9de",
+      "--text-dim": "#8a8f99",
+      "--text-faint": "#747a87",
+    },
+  },
   {
     id: "cyan",
     name: "Cyan Studio",

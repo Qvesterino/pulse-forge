@@ -82,7 +82,7 @@ describe("PACK share codes", () => {
     expect(decodePackCode("PFPACK1:!!!")).toBeNull();
   });
 
-  it("unknown preset falls back to forge", () => {
+  it("unknown preset falls back to the default", () => {
     const pack = decodePackCode(
       encodePackCode({
         kitName: "K",
@@ -91,7 +91,7 @@ describe("PACK share codes", () => {
         theme: { preset: "nope", hue: null, scale: 1, compact: false, reduceMotion: false },
       }),
     )!;
-    expect(pack.theme!.preset).toBe("forge");
+    expect(pack.theme!.preset).toBe(THEME_PRESETS[0].id);
     expect(pack.kitPads!.length).toBeGreaterThan(0);
     void THEME_PRESETS;
   });
