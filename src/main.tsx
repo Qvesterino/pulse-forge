@@ -34,6 +34,13 @@ if (!container) throw new Error("Root element not found");
 const PATH = typeof location !== "undefined" ? location.pathname : "/";
 const ONBOARDED_KEY = "pf-onboarded";
 
+// Set by the Electron shell's preload (desktop/main.cjs, ADR 0010).
+declare global {
+  interface Window {
+    kyxDesktop?: { isDesktop: true };
+  }
+}
+
 const ROUTE_FALLBACK = <div className="boot">KYX — loading…</div>;
 
 // /embed — a standalone share player; skip the whole studio boot.
@@ -68,6 +75,9 @@ if (/^\/embed(\/|$)/.test(PATH)) {
  *  even for returning users (KYX logo click). */
 function Entry() {
   const [entered, setEntered] = useState(() => {
+    // The desktop app boots straight into the studio — the landing page is
+    // a browser first-run experience.
+    if (window.kyxDesktop?.isDesktop) return true;
     if (/^\/landing(\/|$)/.test(PATH) || new URLSearchParams(location.search).has("landing")) return false;
     if (/^\/studio(\/|$)/.test(PATH)) return true;
     try {

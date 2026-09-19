@@ -143,6 +143,41 @@ button {
   color: var(--play);
 }
 
+/* MIDI record arm — red dot, pulses while armed so the state is unmistakable
+   mid-take. */
+.btn-record {
+  color: #f87171;
+  font-size: 12px;
+}
+
+.btn-record.armed {
+  background: rgba(248, 113, 113, 0.16);
+  border-color: #f87171;
+  color: #fecaca;
+  animation: record-arm-pulse 1.1s ease-in-out infinite alternate;
+}
+
+@keyframes record-arm-pulse {
+  from {
+    background: rgba(248, 113, 113, 0.1);
+  }
+  to {
+    background: rgba(248, 113, 113, 0.32);
+  }
+}
+
+.rec-option {
+  height: 30px;
+  max-width: 96px;
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.4px;
+}
+
 .btn-countin.active,
 .btn-preroll.active,
 .btn-metronome.active {
@@ -1384,6 +1419,31 @@ button {
   background: rgba(245, 158, 11, 0.09);
   border-left: 1px solid rgba(245, 158, 11, 0.45);
   pointer-events: none;
+}
+
+/* Step-entry cursor — pitch row × entry length, dashed accent box. */
+.pr-step-cursor {
+  position: absolute;
+  border: 1px dashed var(--accent);
+  background: rgba(245, 158, 11, 0.08);
+  border-radius: 3px;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.pr-step-toggle.active-solo {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.pr-step-dur {
+  height: 26px;
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 10px;
 }
 
 .pr-note {
@@ -7761,6 +7821,37 @@ html {
   color: var(--text-faint);
   padding: 8px;
 }
+/* MELODIC dice target — mini note strip (pitch = height, time = width). */
+.dice-melodic-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dice-melodic-meta {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.6px;
+  color: var(--text-dim);
+}
+
+.dice-melodic-grid {
+  position: relative;
+  height: 52px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border-soft);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.dice-melodic-note {
+  position: absolute;
+  height: 4px;
+  background: var(--accent);
+  border-radius: 2px;
+  opacity: 0.9;
+}
+
 .dice-preview-grid {
   display: flex;
   flex-direction: column;

@@ -1,0 +1,161 @@
+import { addNote, prepareRecordPattern, setStepVelocityCommand } from "../commands/commands";
+import type { Command } from "../commands/types";
+import { STEP_TICKS } from "../project-model/types";
+import type { ProjectDocument } from "../project-model/types";
+
+export type RecordQuantize = "off" | "16th" | "8th";
+export type RecordMode = "overdub" | "replace";
+
+export interface PatternRecorderSnapshot {
+  /** Record armed — incoming performed notes land in the active pattern. */
+  armed: boolean;
+  mode: RecordMode;
+  quantize: RecordQuantize;
+}
+
+export interface PatternRecorderDeps {
+  getDoc: () => ProjectDocument;
+  execute: (command: Command) => void;
+  /** Musical tick for an event that just arrived (maps audio time → transport tick). */
+  getTick: () => number;
+  isPlaying: () => boolean;
+}
+
+const QUANTIZE_TICKS: Record<RecordQuantize, number> = {
+  off: 0,
+  "16th": STEP_TICKS,
+  "8th": STEP_TICKS * 2,
+};
+
+/**
+ * Live MIDI record-to-pattern (FL-style overdub).
+ *
+ * While armed, performed drum hits stamp their step row and performed
+ * instrument notes commit on note-off into the ACTIVE pattern at the
+ * transport's musical tick — pattern-length aware (a take across the loop
+ * wrap lands back into the pattern). REPLACE mode clears the performed
+ * surfaces once when armed; OVERDUB (default) merges with what is there.
+ *
+ * Hooked from MidiInput (instrument notes), the NoteRepeat fire callback
+ * (every performed drum hit — single or repeat) and the transport stop path
+ * (held notes flush as step-length notes so nothing is lost mid-note).
+ */
+export class PatternRecorder {
+  private deps: PatternRecorderDeps;
+  private state: PatternRecorderSnapshot = { armed: false, mode: "overdub", quantize: "off" };
+  private listeners = new Set<() => void>();
+  /** Held instrument notes: pitch → note-on info (raw, unquantized start). */
+  private held = new Map<number, { trackId: string; startTick: number; velocity: number }>();
+  /** REPLACE clear already ran for the current arm — it must run once per pass. */
+  private replaceCleared = false;
+
+  constructor(deps: PatternRecorderDeps) {
+    this.deps = deps;
+  }
+
+  subscribe = (listener: () => void): (() => void) => {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  };
+
+  getSnapshot = (): PatternRecorderSnapshot => this.state;
+
+  private setState(patch: Partial<PatternRecorderSnapshot>): void {
+    this.state = { ...this.state, ...patch };
+    for (const listener of this.listeners) listener();
+  }
+
+  setMode = (mode: RecordMode): void => {
+    this.setState({ mode });
+    // Switching into REPLACE while armed clears right away — predictable:
+    // what you see in the pattern is what the take will build on.
+    if (mode === "replace" && this.state.armed && !this.replaceCleared) this.runReplaceClear();
+  };
+
+  setQuantize = (quantize: RecordQuantize): void => {
+    this.setState({ quantize });
+  };
+
+  /**
+   * Arm/disarm. Arming with REPLACE clears the active pattern's performed
+   * surfaces once (works both stopped and playing — see setMode). Disarming
+   * flushes held notes as step-length notes.
+   */
+  setArmed = (armed: boolean): void => {
+    if (armed === this.state.armed) return;
+    this.setState({ armed });
+    this.replaceCleared = false;
+    if (!armed) {
+      this.flushHeld();
+      return;
+    }
+    if (this.state.mode === "replace") this.runReplaceClear();
+  };
+
+  /** Transport stopped/paused — held notes must not be lost mid-note. */
+  onTransportInterrupted = (): void => {
+    this.flushHeld();
+    this.replaceCleared = false;
+  };
+
+  /** One performed drum hit — stamps the (wrapped) step row immediately. */
+  drumHit = (padId: string, velocity: number): void => {
+    if (!this.state.armed) return;
+    if (this.state.mode === "replace" && !this.replaceCleared) this.runReplaceClear();
+    const doc = this.deps.getDoc();
+    const pattern = doc.patterns.find((p) => p.id === doc.activePatternId);
+    const stepCount = pattern?.stepCount ?? 16;
+    const step = Math.floor(this.quantizeTick(this.deps.getTick()) / STEP_TICKS);
+    const wrapped = ((step % stepCount) + stepCount) % stepCount;
+    this.deps.execute(setStepVelocityCommand(doc, padId, wrapped, velocity));
+  };
+
+  /** Instrument note-on — remembers the start tick; commits on note-off. */
+  noteOn = (trackId: string, pitch: number, velocity: number): void => {
+    if (!this.state.armed) return;
+    if (this.state.mode === "replace" && !this.replaceCleared) this.runReplaceClear();
+    this.held.set(pitch, { trackId, startTick: this.deps.getTick(), velocity });
+  };
+
+  /** Instrument note-off — commits the note with its played duration. */
+  noteOff = (pitch: number): void => {
+    const held = this.held.get(pitch);
+    if (!held) return;
+    this.held.delete(pitch);
+    this.commitNote(held.trackId, pitch, held.startTick, this.deps.getTick(), held.velocity);
+  };
+
+  /** Transport stopped/disarmed mid-note — held notes become step-length. */
+  private flushHeld(): void {
+    for (const [pitch, held] of this.held) {
+      this.commitNote(held.trackId, pitch, held.startTick, held.startTick + STEP_TICKS, held.velocity);
+    }
+    this.held.clear();
+  }
+
+  private commitNote(trackId: string, pitch: number, rawStart: number, rawEnd: number, velocity: number): void {
+    const doc = this.deps.getDoc();
+    const pattern = doc.patterns.find((p) => p.id === doc.activePatternId);
+    if (!pattern) return;
+    const patternTicks = Math.max(STEP_TICKS, pattern.stepCount * STEP_TICKS);
+    // Wrap into the pattern: a take across the loop end lands back at the top.
+    const start = ((this.quantizeTick(rawStart) % patternTicks) + patternTicks) % patternTicks;
+    const rawDuration = Math.round(rawEnd - rawStart);
+    const duration = Math.min(Math.max(STEP_TICKS, rawDuration), patternTicks - start);
+    if (duration < 1) return;
+    this.deps.execute(addNote(doc, trackId, { pitch, start, duration, velocity }));
+  }
+
+  private quantizeTick(tick: number): number {
+    const grid = QUANTIZE_TICKS[this.state.quantize];
+    if (grid > 0) return Math.max(0, Math.round(tick / grid) * grid);
+    return Math.max(0, Math.round(tick));
+  }
+
+  private runReplaceClear(): void {
+    this.replaceCleared = true;
+    this.deps.execute(prepareRecordPattern(this.deps.getDoc()));
+  }
+}

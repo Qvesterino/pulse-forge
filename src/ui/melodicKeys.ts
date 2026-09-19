@@ -77,6 +77,24 @@ export class MelodicKeys {
   onPlayed: ((pitch: number, velocity: number) => void) | null = null;
 
   /**
+   * Step-entry mode owns the letter keys — while suppressed, live play yields
+   * to the piano-roll editor. Any held notes release immediately so a toggle
+   * mid-hold never hangs a voice.
+   */
+  private suppressed = false;
+  setSuppressed(value: boolean): void {
+    this.suppressed = value;
+    if (value) {
+      const host = this.host;
+      for (const [, pitch] of this.held) {
+        const trackId = host?.getInstrumentTrackId();
+        if (host && trackId) host.engine.noteOff(trackId, pitch, host.engine.currentTime + 0.005);
+      }
+      this.held.clear();
+    }
+  }
+
+  /**
    * Handle a keydown. Returns true when the key was consumed as a musical
    * input (caller should preventDefault so shortcuts stay silent).
    */
@@ -90,6 +108,7 @@ export class MelodicKeys {
   }): boolean {
     if (event.repeat || event.ctrlKey || event.altKey || event.metaKey) return false;
     if (isTypingTarget(event.target ?? null)) return false;
+    if (this.suppressed) return false;
     const host = this.host;
     if (!host) return false;
 

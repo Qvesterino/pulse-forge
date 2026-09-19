@@ -16,13 +16,15 @@
  *   3. no service worker (the PWA layer is browser-only),
  *   4. `window.kyxDesktop.isDesktop` so the app skips the web landing page.
  */
-const { app, BrowserWindow, protocol, session, dialog } = require("electron");
+const { app, BrowserWindow, protocol, session, dialog, net } = require("electron");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 
 const DIST_DIR = path.join(__dirname, "..", "dist");
 const APP_URL = "app://bundle/index.html";
 const IS_SMOKE = process.env.KYX_SMOKE === "1";
+
+let mainWindow = null;
 
 // Must be called before app `ready`.
 protocol.registerSchemesAsPrivileged([
@@ -65,7 +67,7 @@ function registerAppProtocol() {
     }
     // net.fetch on a file:// URL infers Content-Type from the extension —
     // audio worklet modules and wasm need correct MIME to load.
-    return net.fetchFile(resolved);
+    return net.fetch(pathToFileURL(resolved).toString());
   });
 }
 
@@ -93,8 +95,6 @@ function configureDownloads() {
     item.setSavePath(savePath);
   });
 }
-
-let mainWindow = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -126,10 +126,6 @@ function createWindow() {
   }
 }
 
-function quitWithCode(code) {
-  app.exit(code);
-}
-
 app.on("second-instance", () => {
   if (!mainWindow) return;
   if (mainWindow.isMinimized()) mainWindow.restore();
@@ -158,8 +154,10 @@ function runSmoke() {
   const win = mainWindow;
   const errors = [];
   const timeout = setTimeout(() => finish("timeout"), 30_000);
-  win.webContents.on("console-message", (_e, level, message) => {
-    if (level >= 3) errors.push(message);
+  win.webContents.on("console-message", (event) => {
+    // Electron ≥32 passes the details as event params; the legacy
+    // (level, message) positional args are deprecated.
+    if (event.level >= 3) errors.push(event.message);
   });
   win.webContents.on("preload-error", (_e, preloadPath, error) => {
     errors.push(`preload-error (${preloadPath}): ${error}`);
@@ -168,18 +166,15 @@ function runSmoke() {
     errors.push(`render-process-gone: ${details.reason}`);
   });
 
-  async function check() {
-    return win.webContents.executeJavaScript(
-      `({
-        origin: location.origin,
-        rootMounted: !!document.querySelector("#root"),
-      })`,
-    );
-  }
-
   function finish(why) {
     clearTimeout(timeout);
-    check()
+    win.webContents
+      .executeJavaScript(
+        `({
+          origin: location.origin,
+          rootMounted: !!document.querySelector("#root"),
+        })`,
+      )
       .then((state) => {
         const ok =
           why !== "timeout" &&
@@ -189,11 +184,11 @@ function runSmoke() {
         console.log(
           JSON.stringify({ ok, why, origin: state.origin, rootMounted: state.rootMounted, errors }, null, 2),
         );
-        quitWithCode(ok ? 0 : 1);
+        app.exit(ok ? 0 : 1);
       })
       .catch((error) => {
         console.log(JSON.stringify({ ok: false, why: "check-failed", error: String(error) }, null, 2));
-        quitWithCode(1);
+        app.exit(1);
       });
   }
 
@@ -202,8 +197,3 @@ function runSmoke() {
     setTimeout(() => finish("loaded"), 3_000);
   });
 }
-
-/** Placeholder so `configureDownloads` can reference the window safely. */
-var mainWindow;
-
-require("./smoke-note.cjs");

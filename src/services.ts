@@ -17,6 +17,7 @@ import type { PlayMode, ProjectDocument, Scene } from "./project-model/types";
 import { BAR_TICKS, PPQ } from "./project-model/types";
 import { setActivePattern, unfreezeTrack } from "./commands/commands";
 import { MidiInput } from "./midi/MidiInput";
+import { PatternRecorder } from "./midi/patternRecorder";
 import { MidiOutput } from "./midi/MidiOutput";
 import { MidiClock } from "./midi/MidiClock";
 import { UserSampleRepository, restoreUserSampleAudio } from "./persistence/UserSampleRepository";
@@ -78,6 +79,8 @@ export interface Services {
   groovePool: GroovePoolRepository;
   playback: PlaybackController;
   midi: MidiInput;
+  /** Live MIDI record-to-pattern controller (record arm + overdub/replace). */
+  patternRecorder: PatternRecorder;
   midiOutput: MidiOutput;
   midiClock: MidiClock;
   userSamples: UserSampleRepository;
@@ -413,8 +416,12 @@ export async function openProject(
     (currentTick) => {
       void currentTick;
       capture.finish();
+      patternRecorder.onTransportInterrupted();
     },
-    () => capture.markPause(),
+    () => {
+      capture.markPause();
+      patternRecorder.onTransportInterrupted();
+    },
   );
 
   if (collab) {
@@ -493,6 +500,17 @@ export async function openProject(
   // shared engine or wire handlers into a dead store.
   let closed = false;
 
+  // Live MIDI record-to-pattern (FL-style overdub): performed hits/notes land
+  // in the active pattern at the transport's musical tick. Created before the
+  // NoteRepeat controller — every performed drum hit (single or repeat) flows
+  // through its fire callback and records here.
+  const patternRecorder = new PatternRecorder({
+    getDoc: () => store.doc,
+    execute: (command) => store.execute(command),
+    getTick: () => transport.tickAt(engine.currentTime + 0.005),
+    isPlaying: () => transport.playing,
+  });
+
   // Live Note Repeat: pad/QWERTY/MIDI holds re-fire a drum pad on a grid
   // division. The fire callback resolves the pad fresh on every hit so mutes
   // and track deletions apply mid-hold without the controller knowing.
@@ -508,15 +526,18 @@ export async function openProject(
       const pad = track.pads.find((p) => p.id === padId);
       if (!pad || pad.mute) return;
       engine.trigger(trackId, pad, when, velocity);
+      const performedTick = Math.max(0, Math.round(transport.tickAt(when)));
       capture.recordEvent({
         trackId,
         padId,
         velocity,
-        tick: Math.max(0, Math.round(transport.tickAt(when))),
+        tick: performedTick,
       });
+      patternRecorder.drumHit(padId, velocity);
     },
   });
   midi.attachNoteRepeat(noteRepeat);
+  midi.attachPatternRecorder(patternRecorder);
 
   // Restore frozen-track audio (IndexedDB → bank) so frozen tracks survive
   // reloads. Tracks whose buffer is gone (cleared site data, other browser)
@@ -754,6 +775,7 @@ export async function openProject(
     userKits,
     groovePool,
     playback,
+    patternRecorder,
     midi,
     midiOutput,
     midiClock,

@@ -7,6 +7,7 @@ import type { DrumTrack } from "../project-model/types";
 import { isPadKey, padKeysArmed } from "./padKeys";
 import { PAD_NAMES } from "../ai/types";
 import { KIT_PRESETS } from "../project-model/kit-presets";
+import { pitchName } from "../project-model/types";
 
 function MiniPreview({ rows, activePads }: { rows: number[][]; activePads: number[] }) {
   if (!rows.length || activePads.length === 0) return <div className="dice-preview-empty">— no preview —</div>;
@@ -65,6 +66,8 @@ export function DiceTray() {
     setVariation,
     setMood,
     setKitId,
+    target,
+    setTarget,
   } = useDice();
 
   const styles = getStyleNamesForGenre(session.intent.genre);
@@ -227,6 +230,17 @@ export function DiceTray() {
                 {k.name}
               </option>
             ))}
+          </select>
+        </label>
+        <label className="dice-field">
+          <span>TARGET</span>
+          <select
+            value={target}
+            onChange={(e) => setTarget(e.target.value as "drums" | "melodic")}
+            title="DRUMS rolls a beat for the drum rack, MELODIC rolls a scale-aware phrase for the instrument track"
+          >
+            <option value="drums">DRUMS</option>
+            <option value="melodic">MELODIC</option>
           </select>
         </label>
         <label className="dice-field">
@@ -484,6 +498,7 @@ export function DiceTray() {
             {session.intent.length} steps · {session.intent.genre}
             {session.intent.style ? ` · ${session.intent.style}` : ""}
           </span>
+          {target === "drums" && (
           <button
             type="button"
             className={`btn btn-small${ghostPlaying ? " active-solo" : ""}`}
@@ -492,6 +507,7 @@ export function DiceTray() {
           >
             {ghostPlaying ? "■ STOP" : "▶ PREVIEW"}
           </button>
+          )}
           <button
             type="button"
             className="btn btn-small btn-primary"
@@ -501,7 +517,41 @@ export function DiceTray() {
             APPLY
           </button>
         </div>
-        <MiniPreview rows={previewRows} activePads={previewActivePads} />
+        {target === "melodic" && preview.melodicNotes ? (
+          (() => {
+            const notes = preview.melodicNotes;
+            const trackName =
+              doc.tracks.find((t) => t.id === preview.melodicTrackId)?.name ?? "instrument";
+            const pitches = notes.map((n) => n.pitch);
+            const lo = Math.min(...(pitches.length ? pitches : [60]));
+            const hi = Math.max(...(pitches.length ? pitches : [60]));
+            const span = Math.max(1, hi - lo);
+            const total = Math.max(1, session.intent.length);
+            return (
+              <div className="dice-melodic-preview" aria-label="Melodic phrase preview">
+                <span className="dice-melodic-meta">
+                  {notes.length} NOTES · {trackName} · scale {doc.key ?? ""}
+                </span>
+                <div className="dice-melodic-grid">
+                  {notes.map((n) => (
+                    <div
+                      key={n.id}
+                      className="dice-melodic-note"
+                      style={{
+                        left: `${(n.start / (total * 120)) * 100}%`,
+                        width: `${Math.max(1.5, (n.duration / (total * 120)) * 100)}%`,
+                        bottom: `${4 + ((n.pitch - lo) / span) * 36}px`,
+                      }}
+                      title={`${pitchName(n.pitch)} · start ${Math.round(n.start / 120) + 1} · vel ${Math.round(n.velocity * 100)}%`}
+                    />
+                  ))}
+                </div>
+              </div>
+            );
+          })()
+        ) : (
+          <MiniPreview rows={previewRows} activePads={previewActivePads} />
+        )}
       </div>
 
       <div className="dice-footer-hint">

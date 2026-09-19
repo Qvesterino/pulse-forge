@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { MouseEvent } from "react";
 import { useCanRedo, useCanUndo, useDoc, useLastSavedAt, useSaveStatus, useServices } from "./context";
 import { useTransportPosition } from "./playhead";
@@ -141,6 +141,16 @@ export function TopBar({
     setPlaying(services.transport.playing);
     return unsubscribe;
   }, [services.playback, services.transport]);
+
+  // Record arm / mode / quantize — PatternRecorder notifies on its own state.
+  const recordState = useSyncExternalStore(
+    services.patternRecorder.subscribe,
+    services.patternRecorder.getSnapshot,
+    services.patternRecorder.getSnapshot,
+  );
+  const recording = recordState.armed;
+  const recordMode = recordState.mode;
+  const recordQuantize = recordState.quantize;
 
   const toggleLoop = () => {
     const next = !loopEnabled;
@@ -592,6 +602,52 @@ export function TopBar({
                 </button>
               )}
             </div>
+          )}
+          <button
+            type="button"
+            className={`btn btn-record${recording ? " armed" : ""}`}
+            onClick={() => {
+              if (!services.transport.playing) {
+                // FL-style record+play: arming while stopped starts playback —
+                // the count-in/pre-roll applies before content begins.
+                services.patternRecorder.setArmed(true);
+                services.playback.playPause();
+              } else {
+                services.patternRecorder.setArmed(!recording);
+              }
+            }}
+            title="Record MIDI into the active pattern — OVERDUB merges with existing steps/notes, REPLACE clears them first"
+            aria-pressed={recording}
+            aria-label="Record MIDI to pattern"
+          >
+            ⏺
+          </button>
+          {recording && (
+            <>
+              <select
+                className="rec-option"
+                aria-label="Record mode"
+                title="OVERDUB merges performed notes into the pattern, REPLACE clears drum rows and instrument notes first"
+                value={recordMode}
+                onChange={(e) => services.patternRecorder.setMode(e.target.value as "overdub" | "replace")}
+              >
+                <option value="overdub">OVERDUB</option>
+                <option value="replace">REPLACE</option>
+              </select>
+              <select
+                className="rec-option"
+                aria-label="Record quantize"
+                title="Snap recorded notes to the grid (FREE keeps the performed timing)"
+                value={recordQuantize}
+                onChange={(e) =>
+                  services.patternRecorder.setQuantize(e.target.value as "off" | "16th" | "8th")
+                }
+              >
+                <option value="off">FREE</option>
+                <option value="16th">Q 1/16</option>
+                <option value="8th">Q 1/8</option>
+              </select>
+            </>
           )}
           <button
             type="button"

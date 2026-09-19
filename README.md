@@ -15,6 +15,18 @@ npm run typecheck    # strict TypeScript
 npm run build        # production build
 ```
 
+## Desktop app (Windows, ADR 0010)
+
+The same web build also ships as a standalone Windows app: a thin Electron shell (`desktop/`) serves `dist/` over a custom `app://` scheme, so the audio engine, persistence and worklet loaders are byte-identical with the browser build (ADR 0001's "packaging must not contaminate the core design"). Projects and user samples persist in `%APPDATA%/KYX` and survive restarts and app updates.
+
+```bash
+npm run desktop:dev    # vite dev server + Electron window (hot reload)
+npm run desktop:build  # web build without the PWA layer → NSIS installer + portable exe in release/
+npm run desktop:smoke  # boots the shell over dist/, asserts renderer mounts with no errors
+```
+
+Desktop specifics: microphone and Web MIDI are granted silently, anchor-download exports (WAV/MP3/MIDI/project JSON) open a native Save dialog, and the PWA service-worker/update-banner layer is excluded from the desktop build. Not yet: auto-update, macOS/Linux targets, code signing, bundled collab server (collab stays opt-in via its manual server URL in the desktop build).
+
 ## What works (verified)
 
 - **Project browser** — the app always boots into a project browser: a one-click "Continue last project" card, the project list (open / duplicate / inline rename / delete with confirm, sorted by last update), and a template grid for new projects. Everything is persisted in IndexedDB; new projects are saved the moment they are created.

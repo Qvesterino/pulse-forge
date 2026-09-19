@@ -54,12 +54,7 @@ export function JamGate({ services, jamActive }: { services: Services; jamActive
   };
 
   return (
-    <div
-      className="jam-gate"
-      role="button"
-      aria-label="Tap to join the live jam"
-      onPointerDown={() => void tap()}
-    >
+    <div className="jam-gate" role="button" aria-label="Tap to join the live jam" onPointerDown={() => void tap()}>
       <div className="jam-gate-inner">
         <span className="jam-gate-badge">LIVE JAM</span>
         <span className="jam-gate-title">TAP TO JAM</span>

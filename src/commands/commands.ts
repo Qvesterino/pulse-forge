@@ -220,6 +220,45 @@ export function setStepVelocityCommand(
   };
 }
 
+/**
+ * REPLACE record mode: clear the active pattern's performed surfaces — drum
+ * pad rows zero out, instrument-track note lists empty — in ONE undo step.
+ * Non-performed surfaces (unknown pad ids / foreign note tracks) are left
+ * untouched. Undo restores the previous rows + notes verbatim.
+ */
+export function prepareRecordPattern(doc: ProjectDocument): Command {
+  const patternId = doc.activePatternId;
+  const prev = doc.patterns.find((p) => p.id === patternId);
+  const label = "Prepare pattern for recording";
+  if (!prev) return { type: "prepareRecordPattern", label, execute: (d) => d, undo: (d) => d };
+  const drumPadIds = new Set(
+    doc.tracks.filter((t) => t.kind === "drum").flatMap((t) => t.pads.map((p) => p.id)),
+  );
+  const instrumentTrackIds = new Set(doc.tracks.filter((t) => t.kind === "instrument").map((t) => t.id));
+  const apply = (d: ProjectDocument): ProjectDocument => ({
+    ...d,
+    patterns: d.patterns.map((p) => {
+      if (p.id !== patternId) return p;
+      const rows: Record<string, number[]> = {};
+      for (const [padId, row] of Object.entries(p.rows)) {
+        rows[padId] = drumPadIds.has(padId) ? row.map(() => 0) : [...row];
+      }
+      const notes: typeof p.notes = {};
+      for (const [trackId, list] of Object.entries(p.notes ?? {})) {
+        notes[trackId] = instrumentTrackIds.has(trackId) ? [] : list;
+      }
+      return { ...p, rows, notes };
+    }),
+  });
+  const restore = (d: ProjectDocument): ProjectDocument => ({
+    ...d,
+    patterns: d.patterns.map((p) =>
+      p.id === patternId ? { ...p, rows: prev.rows, notes: prev.notes ?? {} } : p,
+    ),
+  });
+  return { type: "prepareRecordPattern", label, execute: apply, undo: restore };
+}
+
 type PadParams = Partial<
   Pick<
     DrumPad,

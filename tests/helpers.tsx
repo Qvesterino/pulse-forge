@@ -245,6 +245,18 @@ export function mockServices(doc?: ProjectDocument): Services {
       setMode: vi.fn(),
       launchScene: vi.fn(),
     } as any,
+    patternRecorder: (() => {
+      // useSyncExternalStore requires a STABLE snapshot identity — a fresh
+      // object per getSnapshot() call would loop React forever.
+      const snapshot = { armed: false, mode: "overdub" as const, quantize: "off" as const };
+      return {
+        subscribe: vi.fn(() => () => {}),
+        getSnapshot: vi.fn(() => snapshot),
+        setArmed: vi.fn(),
+        setMode: vi.fn(),
+        setQuantize: vi.fn(),
+      };
+    })(),
     midi: {
       getDevices: vi.fn(() => []),
       subscribeDevices: vi.fn(() => () => {}),

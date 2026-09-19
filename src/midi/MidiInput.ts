@@ -4,6 +4,7 @@ import type { Command } from "../commands/types";
 import type { Transport } from "../transport/Transport";
 import type { DrumTrack, MidiConfig, ProjectDocument } from "../project-model/types";
 import { GM_DRUM_MAP } from "../project-model/types";
+import type { PatternRecorder } from "./patternRecorder";
 
 /** Store surface MidiInput needs — implemented by ProjectStore and YDocStore. */
 export interface MidiStoreSurface {
@@ -43,6 +44,7 @@ export class MidiInput {
   private captureNextCcCb: ((cc: number, channel: number) => void) | null = null;
   /** Live Note Repeat holds — drum notes repeat while physically held. */
   private noteRepeat: NoteRepeatController | null = null;
+  private patternRecorder: PatternRecorder | null = null;
   /** Most recent note per channel — CC74 (MPE timbre) routes here. */
   private channelLastNote = new Map<number, number>();
   /**
@@ -80,6 +82,11 @@ export class MidiInput {
   /** Wire the live Note Repeat controller (services call once after construction). */
   attachNoteRepeat(controller: NoteRepeatController): void {
     this.noteRepeat = controller;
+  }
+
+  /** Wire the live pattern recorder (services call once after construction). */
+  attachPatternRecorder(recorder: PatternRecorder): void {
+    this.patternRecorder = recorder;
   }
 
   async requestAccess(): Promise<boolean> {
@@ -326,6 +333,9 @@ export class MidiInput {
       if (instTrack) {
         this.engine.noteOn(instTrack.id, note, normVelocity, when, 0.5);
         this.onInstrumentNote?.(note);
+        // Record-to-pattern: commit on note-off with the played duration.
+        // The recorder resolves the musical tick itself at arrival time.
+        this.patternRecorder?.noteOn(instTrack.id, note, normVelocity);
       }
     }
   }
@@ -347,6 +357,8 @@ export class MidiInput {
   private handleNoteOff(note: number, channel: number, _config: MidiConfig): void {
     // Release a live Note Repeat hold for this note (no-op without one).
     this.noteRepeat?.stop(`midi:${channel}:${note}`);
+    // Record-to-pattern: held duration known — commit the note.
+    this.patternRecorder?.noteOff(note);
     if (this.mpeNotes.delete(note)) this.notifyMpe();
   }
 

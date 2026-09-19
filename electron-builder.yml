@@ -1,0 +1,28 @@
+# KYX desktop packaging (ADR 0010) — thin Electron shell around the
+# unmodified `dist/` web build. Production npm deps are all bundled by Vite,
+# so nothing from node_modules belongs in the installer.
+appId: app.kyx.studio
+productName: KYX
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**/*
+  - desktop/**/*
+  - "!node_modules/**/*"
+  - "!src/**/*"
+  - "!server/**/*"
+win:
+  icon: build/icon.png
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  artifactName: KYX-Setup-${version}.${ext}
+portable:
+  artifactName: KYX-Portable-${version}.${ext}

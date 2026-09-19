@@ -20,6 +20,7 @@ import {
 import { clamp, uid } from "../shared/ids";
 import { getScalePitchesInRange, isInScale, snapToScale, scaleDegreeLabel } from "../project-model/scales";
 import { usePublishCursor, useRemoteCursors } from "./remoteCursors";
+import { MELODIC_OFFSETS, melodicKeys } from "./melodicKeys";
 
 const PITCH_MIN = 24;
 const PITCH_MAX = 84;
@@ -312,6 +313,77 @@ export function PianoRollTrack({
   const [noteClipboard, setNoteClipboard] = useState<NoteEvent[] | null>(null);
   // FL Chord Stamp menu (Shift+C) — shape picker anchored at cursor
   const [chordMenu, setChordMenu] = useState<{ x: number; y: number } | null>(null);
+  // Step entry (FL-style): a grid cursor — QWERTY letter keys insert notes at
+  // the cursor (cursor row = root, keys = semitone offsets) and the cursor
+  // advances by the entry duration; arrows move it, Delete removes the note
+  // under it. Live melodicKeys play yields to the editor while this is on.
+  const [stepEntry, setStepEntry] = useState(false);
+  const [entrySteps, setEntrySteps] = useState(2);
+  const [cursor, setCursor] = useState({ pitch: 60, step: 0 });
+  const cursorRef = useRef(cursor);
+  cursorRef.current = cursor;
+  useEffect(() => {
+    melodicKeys.setSuppressed(stepEntry);
+    return () => melodicKeys.setSuppressed(false);
+  }, [stepEntry]);
+  useEffect(() => {
+    if (!stepEntry) return;
+    const stepCount = pattern.stepCount;
+    const handler = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" || target.tagName === "SELECT" || target.tagName === "TEXTAREA" || target.isContentEditable)
+      ) {
+        return;
+      }
+      const cur = cursorRef.current;
+      const isArrow = event.code === "ArrowLeft" || event.code === "ArrowRight" || event.code === "ArrowUp" || event.code === "ArrowDown";
+      if (event.repeat && !isArrow) return;
+      if (event.code === "ArrowLeft") {
+        event.preventDefault();
+        setCursor((c) => ({ ...c, step: Math.max(0, c.step - entrySteps) }));
+        return;
+      }
+      if (event.code === "ArrowRight") {
+        event.preventDefault();
+        setCursor((c) => ({ ...c, step: Math.min(Math.max(0, stepCount - entrySteps), c.step + entrySteps) }));
+        return;
+      }
+      if (event.code === "ArrowUp" || event.code === "ArrowDown") {
+        event.preventDefault();
+        const delta = (event.code === "ArrowUp" ? 1 : -1) * (event.shiftKey ? 12 : 1);
+        setCursor((c) => ({ ...c, pitch: Math.max(PITCH_MIN, Math.min(PITCH_MAX, c.pitch + delta)) }));
+        return;
+      }
+      if (event.key === "Delete" || event.key === "Backspace") {
+        event.preventDefault();
+        const hit = (pattern.notes?.[track.id] ?? []).find(
+          (n) => n.pitch === cur.pitch && n.start === cur.step * STEP_TICKS,
+        );
+        if (hit) services.store.execute(deleteNote(doc, track.id, hit.id));
+        return;
+      }
+      const offset = MELODIC_OFFSETS[event.code];
+      if (offset === undefined || event.ctrlKey || event.altKey || event.metaKey) return;
+      event.preventDefault();
+      // Cursor row is the entry root — keys stack semitones above it, so a
+      // chord is just holding several keys before moving on.
+      const pitch = Math.max(0, Math.min(127, cur.pitch + offset));
+      services.store.execute(
+        addNote(doc, track.id, {
+          pitch,
+          start: cur.step * STEP_TICKS,
+          duration: entrySteps * STEP_TICKS,
+          velocity: 0.8,
+        }),
+      );
+      services.engine.noteOn?.(track.id, pitch, 0.8, services.engine.currentTime + 0.005, 0.2);
+      setCursor((c) => ({ ...c, step: Math.min(Math.max(0, stepCount - entrySteps), c.step + entrySteps) }));
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [stepEntry, entrySteps, pattern, track.id, doc, services]);
   useEffect(() => {
     if (!chordMenu) return;
     const onDown = (ev: MouseEvent) => {
@@ -999,6 +1071,29 @@ export function PianoRollTrack({
         <div className="pr-toolbar-group">
           <button
             type="button"
+            className={`btn btn-small pr-step-toggle${stepEntry ? " active-solo" : ""}`}
+            aria-pressed={stepEntry}
+            title="Step entry — cursor mode: A–; keys insert notes at the cursor (cursor row = root), ←/→ move by the entry length, ↑/↓ pitch (Shift = octave), Delete removes the note under the cursor"
+            onClick={() => setStepEntry((v) => !v)}
+          >
+            STEP
+          </button>
+          {stepEntry && (
+            <select
+              className="pr-step-dur"
+              aria-label="Step entry duration"
+              title="Entry duration — the cursor advances by this after each inserted note"
+              value={entrySteps}
+              onChange={(e) => setEntrySteps(Number(e.target.value))}
+            >
+              <option value={1}>1/16</option>
+              <option value={2}>1/8</option>
+              <option value={4}>1/4</option>
+              <option value={8}>1/2</option>
+            </select>
+          )}
+          <button
+            type="button"
             className="btn btn-small"
             title="Quantize to 1/16"
             onClick={() => runOnSelection((ids) => services.store.execute(quantizeNotes(doc, track.id, ids)))}
@@ -1432,6 +1527,21 @@ export function PianoRollTrack({
               <div
                 className="pr-playhead"
                 style={{ left: `${stepPct(playheadStep)}%`, width: `${100 / pattern.stepCount}%` }}
+              />
+            )}
+            {/* Step-entry cursor — pitch row × entry-length column */}
+            {stepEntry && (
+              <div
+                className="pr-step-cursor"
+                data-pitch={cursor.pitch}
+                data-step={cursor.step}
+                style={{
+                  top: (PITCH_MAX - cursor.pitch) * ROW_HEIGHT,
+                  left: `${stepPct(cursor.step)}%`,
+                  width: `${(entrySteps / pattern.stepCount) * 100}%`,
+                  height: ROW_HEIGHT,
+                }}
+                aria-hidden="true"
               />
             )}
             {/* Remote presence cursors — one colored marker per collaborator */}

@@ -1,9 +1,10 @@
 import { createContext, useContext, useMemo, useRef, useState, useCallback } from "react";
-import type { DrumPad, ProjectDocument } from "../project-model/types";
+import type { DrumPad, MusicalKey, NoteEvent, ProjectDocument } from "../project-model/types";
 import { getActivePattern, getDrumTrack } from "../project-model/types";
 import { generateLocalResultFromOptions } from "../intent/pipeline";
 import { refreshPatternOutputHash } from "../intent/quality";
 import { buildAssistPatch } from "../assist/pipeline";
+import { buildMelodicPhrase } from "../ai/melodicDice";
 import { generatePatternCommand, assistVary, snapshot } from "../commands/commands";
 import { generatePattern } from "../ai/generator";
 import type { Services } from "../services";
@@ -45,6 +46,9 @@ export interface DicePreview {
   swing: number | null;
   kitAssignments: Map<string, Partial<DrumPad>> | null;
   kitName: string | null;
+  /** MELODIC target: scale-aware phrase for the instrument track. */
+  melodicNotes: NoteEvent[] | null;
+  melodicTrackId: string | null;
 }
 
 interface DiceContextValue {
@@ -68,6 +72,10 @@ interface DiceContextValue {
   setVariation: (v: number) => void;
   setMood: (m: string | null) => void;
   setKitId: (kitId: string | null) => void;
+  /** Dice target: drums (existing generator) or a melodic phrase for the
+   * instrument track (scale-aware walk, seeded by the same session seed). */
+  target: "drums" | "melodic";
+  setTarget: (target: "drums" | "melodic") => void;
   canApply: boolean;
 }
 
@@ -126,6 +134,8 @@ export function DiceProvider({
     return Math.max(0, Math.min(100, Math.round(raw)));
   }
 
+  const [target, setTarget] = useState<"drums" | "melodic">("drums");
+
   const preview = useMemo<DicePreview>(() => {
     const seed = diceCurrentSeed(session);
     const jittered = jitteredIntentForSeed(session.intent, seed, session.jitter);
@@ -153,6 +163,53 @@ export function DiceProvider({
         swing: null,
         kitAssignments: null,
         kitName: null,
+        melodicNotes: null,
+        melodicTrackId: null,
+      };
+    }
+
+    if (target === "melodic") {
+      // MELODIC target: scale-aware phrase for the instrument track — a walk
+      // over the project scale seeded by the same session seed, so preview
+      // and apply agree. Deterministic per (seed, intent, doc).
+      const instTrack = doc.tracks.find((t) => t.kind === "instrument");
+      const pattern = doc.patterns.find((p) => p.id === doc.activePatternId);
+      if (!instTrack || !pattern) {
+        return {
+          mode: session.mode,
+          seed,
+          fullPattern: null,
+          varyPatch: null,
+          hitCount: 0,
+          beforeHits,
+          score: null,
+          swing: null,
+          kitAssignments: null,
+          kitName: null,
+          melodicNotes: null,
+          melodicTrackId: null,
+        };
+      }
+      const phrase = buildMelodicPhrase(doc, {
+        seed,
+        lengthSteps: Math.min(jittered.length, pattern.stepCount),
+        density: 0.3 + session.intent.density * 0.5,
+        energy: session.intent.energy,
+        key: (doc.key ?? "A Natural Minor") as MusicalKey,
+      });
+      return {
+        mode: session.mode,
+        seed,
+        fullPattern: null,
+        varyPatch: null,
+        hitCount: phrase.notes.length,
+        beforeHits,
+        score: null,
+        swing: null,
+        kitAssignments: null,
+        kitName: null,
+        melodicNotes: phrase.notes,
+        melodicTrackId: instTrack.id,
       };
     }
 
@@ -180,6 +237,8 @@ export function DiceProvider({
           swing: null,
           kitAssignments: null,
           kitName: null,
+        melodicNotes: null,
+        melodicTrackId: null,
         };
       } catch {
         return {
@@ -193,6 +252,8 @@ export function DiceProvider({
           swing: null,
           kitAssignments: null,
           kitName: null,
+        melodicNotes: null,
+        melodicTrackId: null,
         };
       }
     }
@@ -303,6 +364,8 @@ export function DiceProvider({
         swing,
         kitAssignments,
         kitName,
+        melodicNotes: null,
+        melodicTrackId: null,
       };
     } catch {
       return {
@@ -316,9 +379,11 @@ export function DiceProvider({
         swing: null,
         kitAssignments: null,
         kitName: null,
+        melodicNotes: null,
+        melodicTrackId: null,
       };
     }
-  }, [session, doc, active]);
+  }, [session, doc, active, target]);
 
   const rollFull = useCallback(() => {
     setSession((prev) => {
@@ -409,6 +474,30 @@ export function DiceProvider({
     (services: Services, currentDoc: ProjectDocument) => {
       const seed = diceCurrentSeed(session);
       const jittered = jitteredIntentForSeed(session.intent, seed, session.jitter);
+      if (target === "melodic") {
+        // MELODIC apply: write the seeded phrase into the active pattern for
+        // the instrument track — one undo, same notes as the preview.
+        const instTrack = currentDoc.tracks.find((t) => t.kind === "instrument");
+        const pattern = currentDoc.patterns.find((p) => p.id === currentDoc.activePatternId);
+        if (!instTrack || !pattern) return;
+        const phrase = buildMelodicPhrase(currentDoc, {
+          seed,
+          lengthSteps: Math.min(jittered.length, pattern.stepCount),
+          density: 0.3 + session.intent.density * 0.5,
+          energy: session.intent.energy,
+          key: (currentDoc.key ?? "A Natural Minor") as MusicalKey,
+        });
+        const nextDoc: ProjectDocument = {
+          ...currentDoc,
+          patterns: currentDoc.patterns.map((p) =>
+            p.id === currentDoc.activePatternId
+              ? { ...p, notes: { ...(p.notes ?? {}), [instTrack.id]: phrase.notes } }
+              : p,
+          ),
+        };
+        services.store.execute(snapshot("diceMelodic", `Dice MELODIC ${seed}`, currentDoc, nextDoc));
+        return;
+      }
       if (session.mode === "vary") {
         try {
           const pat = getActivePattern(currentDoc);
@@ -490,7 +579,7 @@ export function DiceProvider({
       };
       services.store.execute(snapshot("diceFullLocked", `Dice FULL ${seed}`, currentDoc, nextDoc));
     },
-    [session],
+    [session, target],
   );
 
   // Hotkeys (D = roll full, Shift+D = roll vary, arrows = history) live in
@@ -523,6 +612,8 @@ export function DiceProvider({
       setVariation,
       setMood,
       setKitId,
+      target,
+      setTarget,
       canApply: true,
     }),
     [
@@ -546,6 +637,7 @@ export function DiceProvider({
       setVariation,
       setMood,
       setKitId,
+      target,
     ],
   );
 

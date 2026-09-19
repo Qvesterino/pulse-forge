@@ -26,6 +26,9 @@ let pollInterval: ReturnType<typeof setInterval> | null = null;
 let visibilityListener: (() => void) | null = null;
 
 export function initSwUpdate(): void {
+  // Desktop shell (ADR 0010) and other non-http(s) origins have no service
+  // worker — the update banner is a browser-distribution feature only.
+  if (!/^https?:$/.test(location.protocol)) return;
   if (initialized) return;
   initialized = true;
 

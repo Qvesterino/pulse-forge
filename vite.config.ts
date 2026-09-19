@@ -4,12 +4,17 @@ import { VitePWA } from "vite-plugin-pwa";
 import { fileURLToPath } from "node:url";
 import { pwaOptions } from "./src/pwa";
 
-const virtualPwaRegisterStub = fileURLToPath(
-  new URL("./tests/_stubs/virtual-pwa-register.ts", import.meta.url),
-);
+const virtualPwaRegisterStub = fileURLToPath(new URL("./tests/_stubs/virtual-pwa-register.ts", import.meta.url));
+
+// Desktop packaging (ADR 0010): the Electron shell serves the static dist/
+// over its own app:// scheme — the service-worker precache would be dead
+// weight there, so the PWA layer is only built for the browser target.
+// Without the plugin, the alias above transparently resolves the
+// `virtual:pwa-register` import to the no-op stub.
+const desktopBuild = process.env.KYX_DESKTOP === "1";
 
 export default defineConfig({
-  plugins: [react(), VitePWA(pwaOptions)],
+  plugins: [react(), ...(desktopBuild ? [] : [VitePWA(pwaOptions)])],
   resolve: {
     alias: [
       // `virtual:pwa-register` is a plugin-only module that has no on-disk
