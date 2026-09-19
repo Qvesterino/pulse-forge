@@ -100,6 +100,7 @@ export function FxEqPanel({
   onAbLoad,
   onParam,
   onApplyPreset,
+  docked = false,
 }: {
   trackId: string;
   fxId: string;
@@ -111,6 +112,7 @@ export function FxEqPanel({
   onAbLoad?: (slot: "A" | "B") => void;
   onParam: (fullId: string, value: number) => void;
   onApplyPreset: (presetName: string, presetParams: Record<string, number>) => void;
+  docked?: boolean;
 }) {
   const services = useServices();
   const bandCount = Math.max(2, Math.min(6, Math.round(params.bandCount ?? 6)));
@@ -125,6 +127,8 @@ export function FxEqPanel({
       return 1;
     }
   });
+  const [dockPage, setDockPage] = useState<"bands" | "dynamics" | "modules">("bands");
+  const [selectedModule, setSelectedModule] = useState<(typeof MODULE_ORDER)[number]>("eq");
   const selectBand = (band: number) => {
     setSelectedBand(band);
     try {
@@ -610,9 +614,43 @@ export function FxEqPanel({
   }, [schema, selectedBand]);
 
   return (
-    <div className="fxeq-panel" aria-label="PRISM multiband editor">
+    <div className={`fxeq-panel${docked ? " prism-docked" : ""}`} aria-label="PRISM multiband editor">
       {degraded && <div className="fxeq-degraded">AudioWorklet unavailable — PRISM is bypassed (1:1 signal)</div>}
-      <div className="fxeq-preset-row">
+      {docked && (
+        <div className="device-view-tabs" role="group" aria-label="PRISM view">
+          {([
+            ["bands", "BANDS"],
+            ["dynamics", "DYNAMICS"],
+            ["modules", "MODULES"],
+          ] as const).map(([page, label]) => (
+            <button
+              key={page}
+              type="button"
+              className={`btn btn-small${dockPage === page ? " active" : ""}`}
+              aria-pressed={dockPage === page}
+              onClick={() => setDockPage(page)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+      {docked && dockPage !== "bands" && (
+        <div className="fxeq-band-chips prism-band-select" role="group" aria-label="Select PRISM band">
+          {Array.from({ length: bandCount }, (_, i) => (
+            <button
+              key={i}
+              type="button"
+              className={`btn btn-small${selectedBand === i + 1 ? " active" : ""}`}
+              aria-pressed={selectedBand === i + 1}
+              onClick={() => selectBand(i + 1)}
+            >
+              B{i + 1}
+            </button>
+          ))}
+        </div>
+      )}
+      {(!docked || dockPage === "bands") && <div className="fxeq-preset-row">
         <select
           className="fxeq-preset-select"
           aria-label="PRISM preset"
@@ -643,9 +681,9 @@ export function FxEqPanel({
             </button>
           ))}
         </div>
-      </div>
+      </div>}
 
-      <div className="fxeq-morph-row" role="group" aria-label="PRISM A/B morph">
+      {(!docked || dockPage === "bands") && <div className="fxeq-morph-row" role="group" aria-label="PRISM A/B morph">
         {onAbStateChange && onAbLoad && (
           <EffectAbControls
             effectName="PRISM"
@@ -699,9 +737,9 @@ export function FxEqPanel({
         >
           ↷
         </button>
-      </div>
+      </div>}
 
-      <div
+      {(!docked || dockPage === "bands") && <div
         className="fxeq-canvas-wrap"
         role="img"
         aria-label="PRISM band map"
@@ -713,9 +751,9 @@ export function FxEqPanel({
         onPointerCancel={(e) => endSplitDrag(e, false)}
       >
         <canvas ref={canvasRef} className="fxeq-canvas" />
-      </div>
+      </div>}
 
-      <div
+      {(!docked || dockPage === "bands") && <div
         className="fxeq-peaks-wrap"
         role="img"
         aria-label="PRISM band peaks"
@@ -723,10 +761,10 @@ export function FxEqPanel({
       >
         <canvas ref={peaksCanvasRef} className="fxeq-peaks-canvas" />
         <span ref={grRef} className="fxeq-gr" aria-label="PRISM gain reduction" />
-      </div>
+      </div>}
 
       {/* Band scalars: solo / mute / gain — hear and level just this band. */}
-      <div className="fxeq-band-scalars">
+      {(!docked || dockPage === "bands") && <div className="fxeq-band-scalars">
         <button
           type="button"
           className={`btn btn-small${valueOf(`band${selectedBand}.solo`) >= 0.5 ? " active" : ""}`}
@@ -759,12 +797,12 @@ export function FxEqPanel({
             onCancel={() => cancelParamPreview(`band${selectedBand}.gainDb`)}
           />
         </div>
-      </div>
+      </div>}
 
       {/* Band-level dynamic EQ (spectral ducking). EXT SC drives the band's
           envelope from the sidechain feed attached by the engine via track
           routing; with it off the band tracks itself. */}
-      <div className="fxeq-band-dyn" role="group" aria-label="PRISM dynamic EQ">
+      {(!docked || dockPage === "dynamics") && <div className="fxeq-band-dyn" role="group" aria-label="PRISM dynamic EQ">
         <span className="fxeq-module-tag" style={{ background: MODULE_COLORS.dyn }}>
           DYN EQ
         </span>
@@ -843,9 +881,26 @@ export function FxEqPanel({
           onPreview={(v) => previewParam(`band${selectedBand}.dynReleaseMs`, v)}
           onCancel={() => cancelParamPreview(`band${selectedBand}.dynReleaseMs`)}
         />
-      </div>
+      </div>}
+
+      {docked && dockPage === "modules" && (
+        <div className="fxeq-band-chips prism-module-chips" role="group" aria-label="Select PRISM module">
+          {MODULE_ORDER.map((key) => (
+            <button
+              key={key}
+              type="button"
+              className={`btn btn-small${selectedModule === key ? " active" : ""}`}
+              aria-pressed={selectedModule === key}
+              onClick={() => setSelectedModule(key)}
+            >
+              {MODULE_LABELS[key]}
+            </button>
+          ))}
+        </div>
+      )}
 
       {MODULE_ORDER.map((key) => {
+        if (docked && (dockPage !== "modules" || selectedModule !== key)) return null;
         const defs = bandModuleDefs[key];
         if (!defs || defs.length === 0) return null;
         const enabledId = `band${selectedBand}.${key}Enabled`;

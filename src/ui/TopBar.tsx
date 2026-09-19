@@ -346,22 +346,13 @@ export function TopBar({
       onClick: (event) => onSetBottomPanel("mixer", event.ctrlKey || event.metaKey),
     },
     {
-      id: "fx",
-      label: "FX",
-      ariaLabel: "Toggle effect rack",
-      title: "Toggle effect rack (2)",
+      id: "devices",
+      label: "DEV",
+      ariaLabel: "Toggle track device chain",
+      title: "Toggle the selected track's instrument and effect chain (2)",
       priority: 98,
-      active: bottomPanel === "fx" || splitPanel === "fx",
-      onClick: (event) => onSetBottomPanel("fx", event.ctrlKey || event.metaKey),
-    },
-    {
-      id: "plugin",
-      label: "PLUG",
-      ariaLabel: "Toggle instrument plugin panel",
-      title: "Toggle instrument plugin panel for the selected track",
-      priority: 70,
-      active: bottomPanel === "plugin" || splitPanel === "plugin",
-      onClick: (event) => onSetBottomPanel("plugin", event.ctrlKey || event.metaKey),
+      active: bottomPanel === "devices" || splitPanel === "devices",
+      onClick: (event) => onSetBottomPanel("devices", event.ctrlKey || event.metaKey),
     },
     {
       id: "arr",
@@ -393,7 +384,7 @@ export function TopBar({
     },
     {
       // Lives in the ⋯ overflow at every width (panelLimit caps at 5) — the
-      // visible topbar keeps only the four live surfaces + EXPORT. The button
+      // visible topbar keeps the four live surfaces + EXPORT. The button
       // promotes back when the panel is open, so state never hides.
       id: "midi",
       label: "MIDI",
@@ -527,11 +518,11 @@ export function TopBar({
 
   // Keep the transport and the project identity stable, then spend the remaining
   // width on actions by priority. Active panels are promoted so state never hides.
-  // Panels: the four live surfaces (MIX/FX/ARR/MOD) stay direct-access at
+  // Panels: the four live surfaces (MIX/DEV/ARR/MOD) stay direct-access at
   // common widths — EXPORT/MIDI live in the overflow until there is room.
   // Keep the transport and the project identity stable, then spend the remaining
   // width on actions by priority. Active panels are promoted so state never hides.
-  // Panels: the visible topbar keeps the four live surfaces (MIX/FX/ARR/MOD)
+  // Panels: the visible topbar keeps the four live surfaces (MIX/DEV/ARR/MOD)
   // + EXPORT; MIDI waits in the overflow. Tools cap at ⌘K/?/HIST — ASSIST,
   // JAM, SCALE, THEME and DIAG open from the ⋯ menu (or stay promoted while
   // their popover is open, so state never hides).

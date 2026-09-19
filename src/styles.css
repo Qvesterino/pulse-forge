@@ -8150,8 +8150,8 @@ html {
   text-align: center;
 }
 
-/* Docked instrument editor: the dock owns its height; controls scroll inside
-   the editor, while the header stays visible as the user explores the patch. */
+/* Docked instrument editor: the dock owns its height and the editor presents
+   compact, paged controls without nested scrolling. */
 .instrument-plugin-panel {
   display: flex;
   flex-direction: column;
@@ -10677,5 +10677,509 @@ a.brand:hover .brand-mark {
 
   .instrument-plugin-panel .wt-mod-amt {
     flex: 1 1 100%;
+  }
+}
+
+/* ── Native bottom device chain ────────────────────────────────────────── */
+.dock-slot:has(.devices-panel) {
+  overflow: hidden;
+}
+
+.dock-slot:has(.devices-panel) > * {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 100%;
+}
+
+.devices-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  container-type: inline-size;
+}
+
+.devices-toolbar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  padding: 6px 10px;
+  background: linear-gradient(180deg, var(--bg-raise), var(--bg-panel-2));
+  border-bottom: 1px solid var(--border);
+}
+
+.devices-track-name {
+  flex: 0 1 140px;
+  min-width: 64px;
+  overflow: hidden;
+  color: var(--text-dim, #8a8f98);
+  font: 700 9px var(--mono);
+  letter-spacing: 0.08em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.devices-chain {
+  display: flex;
+  flex: 1 1 280px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.device-chain-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 180px;
+  height: 24px;
+  padding: 0 8px;
+  overflow: hidden;
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text-dim, #8a8f98);
+  font: 700 9px var(--mono);
+  letter-spacing: 0.045em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.device-chain-item:hover,
+.device-chain-item.active {
+  border-color: var(--accent);
+  color: var(--text);
+  background: var(--accent-soft);
+}
+
+.device-chain-item:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.device-chain-item.is-bypassed {
+  opacity: 0.55;
+}
+
+.device-chain-dot {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+
+.device-chain-item.active .device-chain-dot {
+  background: var(--accent);
+  box-shadow: 0 0 7px var(--accent);
+}
+
+.devices-add-effect {
+  flex: none;
+  height: 25px;
+  max-width: 150px;
+  padding: 0 7px;
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font: 700 9px var(--mono);
+}
+
+.device-surface {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: 6px 9px;
+}
+
+.devices-empty {
+  display: grid;
+  flex: 1;
+  place-items: center;
+  color: var(--text-faint);
+  font: 10px var(--mono);
+  letter-spacing: 0.08em;
+}
+
+.device-editor {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.device-editor .fx-device-header {
+  flex: none;
+  min-height: 32px;
+  padding: 2px 0 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.device-editor .fx-device-toggle {
+  display: none;
+}
+
+.device-editor .fx-device-title {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.device-editor .fx-device-content {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  gap: 5px;
+  padding-top: 5px;
+}
+
+.device-editor .fx-device-params.is-paged {
+  flex: none;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px 10px;
+}
+
+.device-editor .fx-device-params .slider,
+.device-editor .floating-plugin-grid .slider {
+  min-width: 0;
+}
+
+.device-param-pager {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  min-height: 22px;
+  color: var(--text-faint);
+  font: 700 8px var(--mono);
+  letter-spacing: 0.08em;
+}
+
+.device-param-pager > span {
+  margin-right: auto;
+}
+
+.device-view-tabs,
+.device-subtabs {
+  display: flex;
+  flex: none;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-height: 24px;
+}
+
+.device-subtabs {
+  padding-left: 4px;
+  border-left: 2px solid var(--accent);
+}
+
+.instrument-plugin-body {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: 6px 9px;
+}
+
+.instrument-plugin-panel .floating-plugin-stack {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.instrument-docked-content,
+.drum-docked-content {
+  flex: 1 1 0;
+  height: 100%;
+  overflow: hidden;
+  gap: 5px;
+}
+
+.instrument-docked-content > .floating-plugin-grid,
+.drum-docked-content > .floating-plugin-grid {
+  flex: 1 1 auto;
+  align-content: start;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 12px;
+}
+
+.instrument-docked-content .wt-panel,
+.instrument-docked-content .env-editor {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.instrument-docked-content .wt-canvas,
+.instrument-docked-content .granular-canvas {
+  display: block;
+  width: 100%;
+  height: 86px;
+  max-height: 86px;
+}
+
+.instrument-docked-content .wt-mod-row {
+  min-height: 20px;
+}
+
+.instrument-docked-content .env-svg {
+  max-height: 125px;
+}
+
+.drum-docked-content .floating-plugin-pad-switch {
+  flex: none;
+  padding: 3px 8px;
+}
+
+.drum-docked-content .drum-pad-controls {
+  flex: 1 1 auto;
+}
+
+.vlyx-docked,
+.ozvena-docked,
+.prism-docked {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  width: 100%;
+  max-height: none;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+.vlyx-docked .ultina-live-canvas {
+  height: 40px;
+}
+
+.vlyx-docked .ultina-live-row {
+  min-height: 18px;
+  gap: 7px;
+}
+
+.vlyx-docked .ultina-lufs {
+  min-width: 65px;
+  font-size: 12px;
+}
+
+.vlyx-docked[data-module="eq"] .ultina-live {
+  display: none;
+}
+
+.vlyx-docked .fxeq-preset-row {
+  flex: none;
+  min-height: 24px;
+}
+
+.vlyx-docked .fxeq-preset-select {
+  padding: 3px 7px;
+  font-size: 10px;
+}
+
+.vlyx-docked .fxeq-band-chips,
+.ozvena-docked .ozvena-engines {
+  flex: none;
+}
+
+.vlyx-docked .ultina-module-controls {
+  display: grid;
+  flex: 1 1 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: start;
+  gap: 3px 10px;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.ultina-panel:not(.vlyx-docked) .ultina-module-controls:not(.is-docked) {
+  display: contents;
+}
+
+.vlyx-docked .ultina-module-controls > .ultina-enum-row,
+.vlyx-docked .ultina-module-controls > .ultina-bool-row,
+.vlyx-docked .ultina-module-controls > .ultina-eq,
+.vlyx-docked .ultina-module-controls > .device-param-pager {
+  grid-column: 1 / -1;
+}
+
+.vlyx-docked .ultina-eq {
+  gap: 3px;
+}
+
+.vlyx-docked .ultina-eq-curve {
+  height: 42px;
+}
+
+.vlyx-docked .ultina-eq > .slider {
+  min-width: 0;
+}
+
+.vlyx-docked .ultina-assist,
+.ozvena-docked .ultina-assist {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  padding: 6px 8px;
+  gap: 5px;
+}
+
+.vlyx-docked .ultina-assist-opts,
+.ozvena-docked .ultina-assist-opts {
+  flex: none;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.vlyx-docked .ultina-assist-summary,
+.ozvena-docked .ultina-assist-summary {
+  overflow: hidden;
+  padding: 5px 7px;
+}
+
+.vlyx-docked .ultina-ref .collab-field {
+  min-width: 0;
+}
+
+.ozvena-docked .ozvena-pad {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 110px;
+  min-height: 70px;
+  max-height: 180px;
+}
+
+.ozvena-docked .ozvena-engine {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px;
+}
+
+.prism-docked .fxeq-preset-row,
+.prism-docked .fxeq-band-scalars,
+.prism-docked .fxeq-band-dyn,
+.prism-docked .fxeq-module {
+  flex: none;
+}
+
+.prism-docked .fxeq-canvas-wrap {
+  flex: 1 1 auto;
+  min-height: 50px;
+  height: auto;
+}
+
+.prism-docked .fxeq-peaks-wrap {
+  flex: none;
+  height: 22px;
+}
+
+.prism-docked .fxeq-module {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: start;
+  gap: 3px 10px;
+  min-height: 0;
+  padding-top: 4px;
+}
+
+.prism-docked .fxeq-module-head {
+  grid-column: 1 / -1;
+}
+
+.prism-docked .fxeq-band-dyn > .slider {
+  flex: 1 1 38%;
+  min-width: 120px;
+}
+
+.prism-docked .fxeq-morph-row {
+  flex: none;
+  flex-wrap: nowrap;
+  gap: 4px;
+  margin: 0;
+}
+
+.prism-docked .fxeq-morph-row .effect-ab {
+  flex-wrap: nowrap;
+  gap: 3px;
+  min-width: 0;
+}
+
+.prism-docked .fxeq-morph-row .effect-ab-status {
+  display: none;
+}
+
+.prism-docked .prism-module-chips,
+.prism-docked .prism-band-select {
+  flex: none;
+}
+
+@container (max-width: 560px) {
+  .devices-track-name {
+    flex-basis: 100%;
+  }
+
+  .devices-chain {
+    flex-basis: 100%;
+    order: 2;
+  }
+
+  .devices-add-effect {
+    margin-left: auto;
+  }
+
+  .device-editor .fx-device-title {
+    flex: 1 1 100%;
+  }
+
+  .instrument-docked-content > .floating-plugin-grid,
+  .drum-docked-content > .floating-plugin-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vlyx-docked .ultina-module-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vlyx-docked .ultina-module-controls > .ultina-enum-row,
+  .vlyx-docked .ultina-module-controls > .ultina-bool-row,
+  .vlyx-docked .ultina-module-controls > .ultina-eq,
+  .vlyx-docked .ultina-module-controls > .device-param-pager {
+    grid-column: auto;
   }
 }

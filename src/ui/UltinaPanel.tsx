@@ -90,6 +90,7 @@ export function UltinaPanel({
   abState,
   onAbStateChange,
   onAbLoad,
+  docked = false,
 }: {
   trackId: string;
   fxId: string;
@@ -111,11 +112,15 @@ export function UltinaPanel({
    * Absent → legacy path: onApplyPreset + local state flip.
    */
   onAbLoad?: (slot: "A" | "B") => void;
+  docked?: boolean;
 }) {
   const services = useServices();
   const doc = useDoc();
   const [selectedModule, setSelectedModule] = useState<string>("comp");
   const [selectedEqBand, setSelectedEqBand] = useState(0);
+  const [dockPage, setDockPage] = useState<"modules" | "assist" | "tools">("modules");
+  const [dockAssist, setDockAssist] = useState<"mix" | "match" | "learn">("mix");
+  const [moduleParamPage, setModuleParamPage] = useState(0);
   const [assistBusy, setAssistBusy] = useState<string | null>(null);
   const [assistError, setAssistError] = useState<string | null>(null);
   const [presetError, setPresetError] = useState<string | null>(null);
@@ -199,6 +204,11 @@ export function UltinaPanel({
     () => ALL_PARAMS.filter((d) => d.id.startsWith(`${selectedModule}.`) && d.unit === "enum" && !HIDDEN.has(d.id)),
     [selectedModule],
   );
+
+  const modulePageSize = docked ? 4 : Math.max(1, moduleParams.length);
+  const modulePageCount = Math.max(1, Math.ceil(moduleParams.length / modulePageSize));
+  const visibleModuleParams = moduleParams.slice(moduleParamPage * modulePageSize, (moduleParamPage + 1) * modulePageSize);
+  useEffect(() => setModuleParamPage(0), [selectedModule]);
 
   const valueOf = (id: string): number => params[id] ?? tryGetParamDef(id)?.defaultValue ?? 0;
 
@@ -605,10 +615,55 @@ export function UltinaPanel({
   const eqSelected = selectedModule === "eq";
 
   return (
-    <div className="fxeq-panel ultina-panel" aria-label="VLYX module editor">
+    <div
+      className={`fxeq-panel ultina-panel${docked ? " vlyx-docked" : ""}`}
+      data-module={selectedModule}
+      aria-label="VLYX module editor"
+    >
       {degraded && <div className="fxeq-degraded">AudioWorklet unavailable — VLYX is bypassed (1:1 signal)</div>}
 
+      {docked && (
+        <div className="device-view-tabs" role="group" aria-label="VLYX view">
+          {([
+            ["modules", "MODULES"],
+            ["assist", "ASSIST"],
+            ["tools", "TOOLS"],
+          ] as const).map(([page, label]) => (
+            <button
+              key={page}
+              type="button"
+              className={`btn btn-small${dockPage === page ? " active" : ""}`}
+              aria-pressed={dockPage === page}
+              onClick={() => setDockPage(page)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {docked && dockPage === "assist" && (
+        <div className="device-subtabs" role="group" aria-label="VLYX assistant">
+          {([
+            ["mix", "MIX"],
+            ["match", "MATCH"],
+            ["learn", "LEARN"],
+          ] as const).map(([tool, label]) => (
+            <button
+              key={tool}
+              type="button"
+              className={`btn btn-small${dockAssist === tool ? " active" : ""}`}
+              aria-pressed={dockAssist === tool}
+              onClick={() => setDockAssist(tool)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* ── LIVE METERS ────────────────────────────────────────────── */}
+      {(!docked || dockPage === "modules") && (
       <div className="ultina-live" aria-label="VLYX live meters">
         <canvas ref={liveCanvasRef} className="ultina-live-canvas" width={512} height={96} />
         <div className="ultina-live-row">
@@ -634,8 +689,10 @@ export function UltinaPanel({
           </div>
         </div>
       </div>
+      )}
 
       {/* ── REFERENCE MATCH ────────────────────────────────────────── */}
+      {(!docked || (dockPage === "assist" && dockAssist === "match")) && (
       <div className="ultina-assist ultina-ref" aria-label="Reference match">
         <div className="ultina-assist-head">
           <span className="ultina-assist-title">REFERENCE MATCH</span>
@@ -689,8 +746,10 @@ export function UltinaPanel({
           </div>
         )}
       </div>
+      )}
 
       {/* ── EQ LEARN ───────────────────────────────────────────────── */}
+      {(!docked || (dockPage === "assist" && dockAssist === "learn")) && (
       <div className="ultina-assist ultina-ref" aria-label="EQ learn">
         <div className="ultina-assist-head">
           <span className="ultina-assist-title">EQ LEARN</span>
@@ -724,9 +783,10 @@ export function UltinaPanel({
           </div>
         )}
       </div>
+      )}
 
       {/* ── PRO: delta listen / A/B / gain match ───────────────────── */}
-      <div className="ultina-pro" aria-label="Pro tools">
+      {(!docked || dockPage === "tools") && <div className="ultina-pro" aria-label="Pro tools">
         <div className="ultina-pro-group">
           <button
             type="button"
@@ -776,10 +836,10 @@ export function UltinaPanel({
           onStateChange={updateAbState}
           onLoad={loadAbSlot}
         />
-      </div>
+      </div>}
 
       {/* ── MIX ASSIST ─────────────────────────────────────────────── */}
-      <div className="ultina-assist" aria-label="Mix assistant">
+      {(!docked || (dockPage === "assist" && dockAssist === "mix")) && <div className="ultina-assist" aria-label="Mix assistant">
         <div className="ultina-assist-head">
           <span className="ultina-assist-title">MIX ASSIST</span>
           <button
@@ -830,9 +890,9 @@ export function UltinaPanel({
             <div className="ultina-assist-note">Applied as one gesture — Ctrl+Z reverts everything.</div>
           </div>
         )}
-      </div>
+      </div>}
 
-      <div className="fxeq-preset-row">
+      {(!docked || dockPage === "modules") && <div className="fxeq-preset-row">
         <select
           className="fxeq-preset-select"
           aria-label="VLYX preset"
@@ -953,10 +1013,10 @@ export function UltinaPanel({
             {presetError}
           </span>
         )}
-      </div>
+      </div>}
 
       {/* Module chips in graph order */}
-      <div className="fxeq-band-chips" role="group" aria-label="Select module">
+      {(!docked || dockPage === "modules") && <div className="fxeq-band-chips" role="group" aria-label="Select module">
         {DEFAULT_MODULE_ORDER.map((mod) => (
           <button
             key={mod}
@@ -969,10 +1029,10 @@ export function UltinaPanel({
             {MODULE_LABELS[mod]}
           </button>
         ))}
-      </div>
+      </div>}
 
       {/* Enable toggle for the selected module */}
-      <div className="ultina-module-head">
+      {(!docked || dockPage === "modules") && <div className="ultina-module-head">
         <span className="fxeq-module-tag ultina-tag">{MODULE_LABELS[selectedModule]}</span>
         <button
           type="button"
@@ -982,10 +1042,10 @@ export function UltinaPanel({
         >
           {enabled(selectedModule) ? "ON" : "OFF"}
         </button>
-      </div>
+      </div>}
 
-      {enabled(selectedModule) && (
-        <>
+      {(!docked || dockPage === "modules") && enabled(selectedModule) && (
+        <div className={`ultina-module-controls${docked ? " is-docked" : ""}`}>
           {/* Enum params (shapes, modes, channel modes) as selects */}
           {enumParams.length > 0 && (
             <div className="ultina-enum-row">
@@ -1124,7 +1184,7 @@ export function UltinaPanel({
             </div>
           ) : (
             /* Non-EQ modules: flat slider list from the schema */
-            moduleParams.map((d) => (
+            visibleModuleParams.map((d) => (
               <Slider
                 key={d.id}
                 compact
@@ -1139,7 +1199,30 @@ export function UltinaPanel({
               />
             ))
           )}
-        </>
+          {docked && !eqSelected && modulePageCount > 1 && (
+            <div className="device-param-pager" role="group" aria-label={`${MODULE_LABELS[selectedModule]} parameter pages`}>
+              <span>PARAMETERS {moduleParamPage + 1}/{modulePageCount}</span>
+              <button
+                type="button"
+                className="btn btn-small"
+                aria-label="Previous module parameter page"
+                disabled={moduleParamPage === 0}
+                onClick={() => setModuleParamPage((page) => Math.max(0, page - 1))}
+              >
+                ‹
+              </button>
+              <button
+                type="button"
+                className="btn btn-small"
+                aria-label="Next module parameter page"
+                disabled={moduleParamPage >= modulePageCount - 1}
+                onClick={() => setModuleParamPage((page) => Math.min(modulePageCount - 1, page + 1))}
+              >
+                ›
+              </button>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

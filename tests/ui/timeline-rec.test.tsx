@@ -99,6 +99,46 @@ describe("arrangement REC wiring", () => {
 
     expect(executeSpy).not.toHaveBeenCalled();
   });
+
+  it("warns when the take is usable now but its audio could not be persisted", async () => {
+    vi.doMock("../../src/audio-engine/recorder", () => ({
+      LiveRecorder: class {
+        elapsedSeconds = 1;
+        async start() {}
+        async stop() {
+          return {
+            buffer: { duration: 1, sampleRate: 48_000, numberOfChannels: 1 } as AudioBuffer,
+            blob: new Blob(["recorded audio"], { type: "audio/webm;codecs=opus" }),
+          };
+        }
+        cancel() {}
+      },
+      extensionForMime: () => ".webm",
+    }));
+
+    try {
+      const doc = createDocWithTracks();
+      const services = mockServices(doc);
+      (services.engine as any).getLiveAudioContext = vi.fn(() => ({ currentTime: 0 }));
+      services.userSamples.save = vi.fn(async () => {
+        throw new Error("quota exceeded");
+      });
+
+      renderWithContext(<ArrangementPanel />, { services });
+      fireEvent.change(screen.getByLabelText("Arm track for recording"), {
+        target: { value: doc.tracks[0].id },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "● REC" }));
+      fireEvent.click(await screen.findByRole("button", { name: /STOP/ }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(/only in memory.*lost/i);
+      expect(services.userSamples.save).toHaveBeenCalledOnce();
+      expect(services.bank.add).toHaveBeenCalledOnce();
+      expect(services.store.execute).toHaveBeenCalledOnce();
+    } finally {
+      vi.doUnmock("../../src/audio-engine/recorder");
+    }
+  });
 });
 
 function createDocWithTracks() {

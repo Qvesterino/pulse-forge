@@ -41,9 +41,19 @@ import { Slider } from "./controls";
 import { StepGridEditor } from "./StepGridEditor";
 import type { UltinaAbState } from "./UltinaPanel";
 import { EffectAbControls, type EffectAbState } from "./EffectAbControls";
-export function EffectRack({ track }: { track: Track }) {
+import { DockedPlugin } from "./FloatingPlugin";
+import { INSTRUMENT_DEFS } from "../instruments/registry";
+
+type EffectRackProps = {
+  track: Track;
+  mode?: "rack" | "devices";
+  selectedPadId?: string;
+};
+
+export function EffectRack({ track, mode = "rack", selectedPadId = "" }: EffectRackProps) {
   const services = useServices();
   const doc = useDoc();
+  const devicesMode = mode === "devices";
   const [fallbacks, setFallbacks] = useState<Record<string, string>>({});
   const [gainReduction, setGainReduction] = useState<Record<string, number>>({});
   // Accordion focus: one device editor renders full-width at a time. null =
@@ -53,6 +63,19 @@ export function EffectRack({ track }: { track: Track }) {
   const [expandedFxId, setExpandedFxId] = useState<string | null>(null);
   const effectiveExpandedFxId =
     expandedFxId ?? (track.effects.length > 0 ? track.effects[track.effects.length - 1].id : "");
+  const hasInstrument = track.kind === "instrument" || track.kind === "drum";
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(() =>
+    track.effects.at(-1)?.id ?? (hasInstrument ? "instrument" : null),
+  );
+  useEffect(() => {
+    setSelectedDeviceId(track.effects.at(-1)?.id ?? (hasInstrument ? "instrument" : null));
+  }, [track.id, track.effects.length, hasInstrument]);
+  const activeDeviceId =
+    selectedDeviceId === "instrument" && hasInstrument
+      ? "instrument"
+      : selectedDeviceId && track.effects.some((fx) => fx.id === selectedDeviceId)
+        ? selectedDeviceId
+        : (track.effects.at(-1)?.id ?? (hasInstrument ? "instrument" : null));
 
   // Observer-only poll: degraded fallbacks (worklet DSP unavailable) surface
   // as warning badges; limiters report gain reduction for a live GR meter.
@@ -96,6 +119,100 @@ export function EffectRack({ track }: { track: Track }) {
     });
     return () => unregisterRaf(`fx-status-${track.id}`);
   }, [services, track]);
+
+  if (devicesMode) {
+    const selectedFx = track.effects.find((fx) => fx.id === activeDeviceId);
+    const instrumentLabel =
+      track.kind === "instrument"
+        ? INSTRUMENT_DEFS[track.instrument].name.toUpperCase()
+        : track.kind === "drum"
+          ? "DRUMS"
+          : "BUS";
+
+    return (
+      <section className="devices-panel" aria-label={`Devices — ${track.name}`}>
+        <div className="devices-toolbar">
+          <span className="devices-track-name" title={track.name}>
+            {track.name}
+          </span>
+          <div className="devices-chain" role="group" aria-label="Track device chain">
+            {hasInstrument && (
+              <button
+                type="button"
+                className={`device-chain-item${activeDeviceId === "instrument" ? " active" : ""}`}
+                aria-pressed={activeDeviceId === "instrument"}
+                title={`${instrumentLabel} instrument`}
+                onClick={() => setSelectedDeviceId("instrument")}
+              >
+                <span className="device-chain-dot" aria-hidden="true" />
+                {instrumentLabel}
+              </button>
+            )}
+            {track.effects.map((fx) => (
+              <button
+                key={fx.id}
+                type="button"
+                className={`device-chain-item${activeDeviceId === fx.id ? " active" : ""}${fx.bypassed ? " is-bypassed" : ""}`}
+                aria-pressed={activeDeviceId === fx.id}
+                title={`${EFFECT_DEFS[fx.type].name}${fx.bypassed ? " — bypassed" : ""}`}
+                onClick={() => setSelectedDeviceId(fx.id)}
+              >
+                <span className="device-chain-dot" aria-hidden="true" />
+                {EFFECT_DEFS[fx.type].name}
+              </button>
+            ))}
+          </div>
+          <select
+            className="devices-add-effect"
+            value=""
+            aria-label="Add effect"
+            title="Add effect to this track"
+            onChange={(event) => {
+              const type = event.target.value as EffectType;
+              if (type) services.store.execute(addEffect(doc, track.id, type));
+            }}
+          >
+            <option value="">+ FX</option>
+            {CORE_EFFECT_GROUPS.map((group) => (
+              <optgroup key={group.key} label={group.label}>
+                {group.types.map((type) => (
+                  <option key={type} value={type}>
+                    {EFFECT_DEFS[type].name}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+            <optgroup label="FLAGSHIP PLUGINS">
+              {FLAGSHIP_EFFECT_ORDER.map((type) => (
+                <option key={type} value={type}>
+                  {EFFECT_DEFS[type].name}
+                </option>
+              ))}
+            </optgroup>
+          </select>
+        </div>
+        <div className="device-surface">
+          {activeDeviceId === "instrument" && hasInstrument ? (
+            <DockedPlugin trackId={track.id} selectedPadId={selectedPadId} />
+          ) : selectedFx ? (
+            <Device
+              track={track}
+              fx={selectedFx}
+              index={track.effects.findIndex((fx) => fx.id === selectedFx.id)}
+              count={track.effects.length}
+              fallbackReason={fallbacks[selectedFx.id]}
+              gainReductionDb={gainReduction[selectedFx.id]}
+              expanded
+              onToggleFocus={() => {}}
+              devicesMode
+            />
+          ) : (
+            <div className="devices-empty">Add a device to this track to build its sound.</div>
+          )}
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="fx-rack" aria-label={`Effect rack — ${track.name}`}>
@@ -163,6 +280,7 @@ function Device({
   gainReductionDb,
   expanded,
   onToggleFocus,
+  devicesMode = false,
 }: {
   track: Track;
   fx: TrackEffect;
@@ -172,12 +290,14 @@ function Device({
   gainReductionDb?: number;
   expanded: boolean;
   onToggleFocus: () => void;
+  devicesMode?: boolean;
 }) {
   const services = useServices();
   const doc = useDoc();
   const def = EFFECT_DEFS[fx.type];
   // Roadmap O7: transient note for user-IR loading (Ozvena convolution).
   const [irNote, setIrNote] = useState<string | null>(null);
+  const [paramPage, setParamPage] = useState(0);
   // A/B state lives in the DOCUMENT (fx.deviceState) — collapse, unmount,
   // track switches, reloads and collab sync all preserve it. React state is
   // only the transient draft inside the panel between pointer and command.
@@ -186,9 +306,23 @@ function Device({
   const isModified = Object.keys({ ...defaultParams, ...fx.params }).some(
     (paramId) => (fx.params[paramId] ?? defaultParams[paramId]) !== defaultParams[paramId],
   );
+  const genericParams = devicesMode
+    ? fx.type === "fxeq"
+      ? def.params.filter((param) => !/^band\d+\./.test(param.id))
+      : fx.type === "ultina" || fx.type === "ozvena"
+        ? def.params.filter((param) => param.id.startsWith("global."))
+        : def.params
+    : def.params;
+  const paramsPerPage = devicesMode ? 4 : genericParams.length || 1;
+  const pageCount = Math.max(1, Math.ceil(genericParams.length / paramsPerPage));
+  const visibleParams = genericParams.slice(paramPage * paramsPerPage, (paramPage + 1) * paramsPerPage);
+
+  useEffect(() => setParamPage(0), [fx.id]);
 
   return (
-    <div className={`fx-device${fx.bypassed ? " bypassed" : ""}${expanded ? "" : " collapsed"}`}>
+    <div
+      className={`fx-device${devicesMode ? " device-editor" : ""}${fx.bypassed ? " bypassed" : ""}${expanded ? "" : " collapsed"}`}
+    >
       <div className="fx-device-header">
         <button
           type="button"
@@ -400,6 +534,7 @@ function Device({
                 params={fx.params}
                 degraded={!!fallbackReason}
                 sidechainTrackId={fx.sidechainTrackId}
+                docked={devicesMode}
                 abState={
                   fx.deviceState?.kind === "effect-ab-v1"
                     ? (fx.deviceState.data as unknown as EffectAbState)
@@ -424,6 +559,7 @@ function Device({
                 params={fx.params}
                 degraded={!!fallbackReason}
                 bypassed={fx.bypassed}
+                docked={devicesMode}
                 onParam={(paramId, value) =>
                   services.store.execute(setUltinaParam(doc, track.id, fx.id, paramId, value))
                 }
@@ -450,6 +586,7 @@ function Device({
               <OzvenaPanel
                 params={fx.params}
                 degraded={!!fallbackReason}
+                docked={devicesMode}
                 onParam={(paramId, value) =>
                   services.store.execute(setEffectParam(doc, track.id, fx.id, paramId, value))
                 }
@@ -483,8 +620,31 @@ function Device({
               onLoad={(slot) => services.store.execute(loadEffectAbSlot(doc, track.id, fx.id, slot))}
             />
           )}
-          <div className="fx-device-params">
-            {def.params
+          {devicesMode && pageCount > 1 && (
+            <div className="device-param-pager" role="group" aria-label={`${def.name} parameter pages`}>
+              <span>CONTROLS {paramPage + 1}/{pageCount}</span>
+              <button
+                type="button"
+                className="btn btn-small"
+                aria-label="Previous control page"
+                disabled={paramPage === 0}
+                onClick={() => setParamPage((page) => Math.max(0, page - 1))}
+              >
+                ‹
+              </button>
+              <button
+                type="button"
+                className="btn btn-small"
+                aria-label="Next control page"
+                disabled={paramPage >= pageCount - 1}
+                onClick={() => setParamPage((page) => Math.min(pageCount - 1, page + 1))}
+              >
+                ›
+              </button>
+            </div>
+          )}
+          <div className={`fx-device-params${devicesMode ? " is-paged" : ""}`}>
+            {visibleParams
               .filter(
                 (p) =>
                   !(

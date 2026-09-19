@@ -7,8 +7,8 @@ import { useEffect, useState } from "react";
  * Preferences persist in localStorage (per-user UI prefs, not project data).
  */
 
-export const PANEL_KEYS = ["mixer", "fx", "plugin", "arr", "mod", "exp", "midi", "dice", "intent"] as const;
-export type BottomPanel = (typeof PANEL_KEYS)[number];
+export const PANEL_KEYS = ["mixer", "devices", "arr", "mod", "exp", "midi", "dice", "intent"] as const;
+export type BottomPanel = (typeof PANEL_KEYS)[number] | "fx" | "plugin";
 
 export interface DockState {
   /** Dock height in px (applied as --dock-height). */
@@ -24,7 +24,13 @@ export const DOCK_MAX_HEIGHT = 800;
 const DOCK_STORAGE_KEY = "pf-dock-v1";
 
 const isPanel = (value: unknown): value is BottomPanel =>
-  typeof value === "string" && (PANEL_KEYS as readonly string[]).includes(value);
+  typeof value === "string" &&
+  ((PANEL_KEYS as readonly string[]).includes(value) || value === "fx" || value === "plugin");
+
+const normalizePanel = (value: unknown): BottomPanel | null => {
+  if (value === "fx" || value === "plugin") return "devices";
+  return isPanel(value) ? value : null;
+};
 
 export function clampDockHeight(px: number, maxInner: number): number {
   const ceiling = Math.max(DOCK_MIN_HEIGHT + 40, Math.min(DOCK_MAX_HEIGHT, Math.floor(maxInner)));
@@ -41,10 +47,12 @@ export function loadDockLayout(raw: string | null, maxInner: number): DockState 
   if (!raw) return fallback;
   try {
     const parsed = JSON.parse(raw) as Partial<DockState>;
+    const slotA = normalizePanel(parsed.slotA);
+    const normalizedSlotB = normalizePanel(parsed.slotB);
     return {
       height: clampDockHeight(typeof parsed.height === "number" ? parsed.height : defaultDockHeight(maxInner), maxInner),
-      slotA: isPanel(parsed.slotA) ? parsed.slotA : null,
-      slotB: isPanel(parsed.slotB) ? parsed.slotB : null,
+      slotA,
+      slotB: normalizedSlotB === slotA ? null : normalizedSlotB,
     };
   } catch {
     return fallback;
@@ -64,6 +72,7 @@ export function persistDockLayout(state: DockState): void {
  * toggling it into one slot removes it from the other.
  */
 export function toggleSlot(state: DockState, panel: BottomPanel, slot: 0 | 1): DockState {
+  panel = normalizePanel(panel) ?? panel;
   if (slot === 0) {
     const slotA = state.slotA === panel ? null : panel;
     return { ...state, slotA, slotB: state.slotB === panel ? null : state.slotB };
@@ -88,6 +97,7 @@ export function openInSlotA(state: DockState, panel: BottomPanel): DockState {
  * is "the user must SEE the device UI", not a toggle.
  */
 export function ensurePanelVisible(state: DockState, panel: BottomPanel): DockState {
+  panel = normalizePanel(panel) ?? panel;
   if (state.slotA === panel || state.slotB === panel) return state;
   return toggleSlot(state, panel, 0);
 }

@@ -12,7 +12,6 @@ import { AudioUnlock } from "./AudioUnlock";
 import { OnboardingTour } from "./OnboardingTour";
 import type { StepSelection } from "./Sequencer";
 import { Inspector } from "./Inspector";
-import { DockedPlugin } from "./FloatingPlugin";
 import { Diagnostics } from "./Diagnostics";
 import { PatternBar } from "./PatternBar";
 import { EffectRack } from "./EffectRack";
@@ -119,8 +118,7 @@ export function App({
   const PANEL_OPEN_HEIGHT: Partial<Record<BottomPanel, number>> = {
     dice: 470,
     mixer: 320,
-    fx: 360,
-    plugin: 360,
+    devices: 420,
     arr: 420,
     mod: 360,
     exp: 360,
@@ -133,28 +131,26 @@ export function App({
     return state;
   };
   const setBottomPanel = (panel: BottomPanel) => {
-    setDock(bumpPanelHeight(openInSlotA(dock, panel), panel));
+    const target = panel === "fx" || panel === "plugin" ? "devices" : panel;
+    setDock(bumpPanelHeight(openInSlotA(dock, target), target));
     // A click that asks for a panel must expand a collapsed dock — landing
     // on a thin hidden bar reads as "the button is broken".
     setSheetCollapsed(false);
   };
   const setBottomPanelTab = (panel: BottomPanel, split?: boolean) => {
-    const next = toggleSlot(dock, panel, split ? 1 : 0);
-    if (next.slotA === panel || next.slotB === panel) {
+    const target = panel === "fx" || panel === "plugin" ? "devices" : panel;
+    const next = toggleSlot(dock, target, split ? 1 : 0);
+    if (next.slotA === target || next.slotB === target) {
       setSheetCollapsed(false);
-      setDock(bumpPanelHeight(next, panel));
+      setDock(bumpPanelHeight(next, target));
       return;
     }
     setDock(next);
   };
   // Add-effect flows must REVEAL the device UI, not toggle: no-op when the
-  // FX rack is already docked in either slot.
-  const openFxPanelIfNeeded = () => {
-    setDock(bumpPanelHeight(ensurePanelVisible(dock, "fx"), "fx"));
-    setSheetCollapsed(false);
-  };
-  const openPluginPanel = () => {
-    setDock(bumpPanelHeight(ensurePanelVisible(dock, "plugin"), "plugin"));
+  // device chain is already docked in either slot.
+  const openDevicesPanel = () => {
+    setDock(bumpPanelHeight(ensurePanelVisible(dock, "devices"), "devices"));
     setSheetCollapsed(false);
   };
   const startDockResize = (event: React.PointerEvent) => {
@@ -1082,22 +1078,20 @@ export function App({
     };
   }, [selection]);
 
+  const devicePanel = (
+    <ErrorBoundary panel="devices">
+      <EffectRack track={track} mode="devices" selectedPadId={padId} />
+    </ErrorBoundary>
+  );
   const panelRenderers: Record<BottomPanel, React.ReactNode> = {
     mixer: (
       <ErrorBoundary panel="mixer">
-        <Mixer onOpenFxPanel={openFxPanelIfNeeded} />
+        <Mixer onOpenFxPanel={openDevicesPanel} />
       </ErrorBoundary>
     ),
-    fx: (
-      <ErrorBoundary panel="fx">
-        <EffectRack track={track} />
-      </ErrorBoundary>
-    ),
-    plugin: (
-      <ErrorBoundary panel="plugin">
-        <DockedPlugin trackId={track.id} selectedPadId={padId} />
-      </ErrorBoundary>
-    ),
+    devices: devicePanel,
+    fx: devicePanel,
+    plugin: devicePanel,
     arr: (
       <ErrorBoundary panel="arr">
         <ArrangementPanel />
@@ -1210,7 +1204,7 @@ export function App({
                     scaleSnap={scaleSnap}
                   />
                 </div>
-                <Inspector track={track} selectedPadId={padId} onOpenPlugin={openPluginPanel} />
+                <Inspector track={track} selectedPadId={padId} onOpenPlugin={openDevicesPanel} />
               </main>
               <div
                 className={

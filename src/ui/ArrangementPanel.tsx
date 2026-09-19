@@ -245,6 +245,7 @@ export function ArrangementPanel() {
       const bufferId = userSampleId(`rec-${stamp}`);
       capturedBufferId = bufferId;
       services.bank.add(bufferId, take.buffer);
+      let persistenceWarning: string | null = null;
       // Persist the bytes so the take survives reloads (best effort — the
       // in-memory bank already plays it this session).
       try {
@@ -260,7 +261,8 @@ export function ArrangementPanel() {
         };
         await services.userSamples.save(asset, await take.blob.arrayBuffer());
       } catch {
-        /* session-only take */
+        persistenceWarning =
+          "Audio storage failed — this take is only in memory and may be lost when the app closes or reloads.";
       }
       const lengthBars = clipLengthBars(take.buffer.duration, doc.bpm);
       services.store.execute(
@@ -269,6 +271,7 @@ export function ArrangementPanel() {
           fadeOut: 0.02,
         }),
       );
+      if (persistenceWarning) setRecError(persistenceWarning);
       setRecState("idle");
     } catch (error) {
       // If clip insertion fails after the take was materialized, roll back the
@@ -908,7 +911,11 @@ export function ArrangementPanel() {
               </button>
             )}
             {recState === "saving" && <span className="arr-rec-saving">placing clip…</span>}
-            {recError && <span className="arr-rec-error">{recError}</span>}
+            {recError && (
+              <span className="arr-rec-error" role="alert">
+                {recError}
+              </span>
+            )}
             <button
               type="button"
               className={`btn btn-small${rulerMode === "seconds" ? " active-solo" : ""}`}

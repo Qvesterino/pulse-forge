@@ -50,11 +50,13 @@ export function OzvenaPanel({
   degraded,
   onParam,
   onApplyPatch,
+  docked = false,
 }: {
   params: Record<string, number>;
   degraded?: boolean;
   onParam: (paramId: string, value: number) => void;
   onApplyPatch: (label: string, flatParams: Record<string, number>) => void;
+  docked?: boolean;
 }) {
   const padRef = useRef<HTMLCanvasElement | null>(null);
   const draggingRef = useRef(false);
@@ -66,6 +68,7 @@ export function OzvenaPanel({
   const [assistSize, setAssistSize] = useState(0.5);
   const [assistTone, setAssistTone] = useState(0);
   const [assistSummary, setAssistSummary] = useState<string | null>(null);
+  const [dockPage, setDockPage] = useState<"blend" | "engines" | "assist">("blend");
 
   const x = Math.max(0, Math.min(1, params["blendPad.x"] ?? 0.5));
   const y = Math.max(0, Math.min(1, params["blendPad.y"] ?? 0.5));
@@ -223,19 +226,39 @@ export function OzvenaPanel({
   };
 
   return (
-    <div className="fxeq-panel ultina-panel ozvena-panel" aria-label="VØID reverb editor">
+    <div className={`fxeq-panel ultina-panel ozvena-panel${docked ? " ozvena-docked" : ""}`} aria-label="VØID reverb editor">
       {degraded && <div className="fxeq-degraded">AudioWorklet unavailable — VØID is bypassed (1:1 signal)</div>}
 
+      {docked && (
+        <div className="device-view-tabs" role="group" aria-label="VØID view">
+          {([
+            ["blend", "BLEND"],
+            ["engines", "ENGINES"],
+            ["assist", "ASSIST"],
+          ] as const).map(([page, label]) => (
+            <button
+              key={page}
+              type="button"
+              className={`btn btn-small${dockPage === page ? " active" : ""}`}
+              aria-pressed={dockPage === page}
+              onClick={() => setDockPage(page)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* ── XY BLEND PAD ─────────────────────────────────────────────── */}
-      <div className="ultina-assist-head">
+      {(!docked || dockPage === "blend") && <div className="ultina-assist-head">
         <span className="ultina-assist-title">BLEND PAD</span>
         <div className="ozvena-weights" aria-label="Engine mix">
           <span style={{ color: VERTEX_COLORS.e1 }}>E1 {(weights.e1 * 100).toFixed(0)}%</span>
           <span style={{ color: VERTEX_COLORS.e2 }}>E2 {(weights.e2 * 100).toFixed(0)}%</span>
           <span style={{ color: VERTEX_COLORS.e3 }}>E3 {(weights.e3 * 100).toFixed(0)}%</span>
         </div>
-      </div>
-      <canvas
+      </div>}
+      {(!docked || dockPage === "blend") && <canvas
         ref={padRef}
         className="ozvena-pad"
         width={512}
@@ -267,10 +290,10 @@ export function OzvenaPanel({
         onPointerCancel={() => {
           draggingRef.current = false;
         }}
-      />
+      />}
 
       {/* ── ENGINE TOGGLES ───────────────────────────────────────────── */}
-      <div className="ozvena-engines">
+      {(!docked || dockPage === "engines") && <div className="ozvena-engines">
         {(["e1", "e2", "e3"] as const).map((mod) => (
           <div key={mod} className={`ozvena-engine${enabled(mod) ? "" : " fxeq-module-off"}`}>
             <div className="ultina-module-head">
@@ -309,10 +332,10 @@ export function OzvenaPanel({
             )}
           </div>
         ))}
-      </div>
+      </div>}
 
       {/* ── REVERB ASSISTANT ─────────────────────────────────────────── */}
-      <div className="ultina-assist" aria-label="Reverb assistant">
+      {(!docked || dockPage === "assist") && <div className="ultina-assist" aria-label="Reverb assistant">
         <div className="ultina-assist-head">
           <span className="ultina-assist-title">REVERB ASSISTANT</span>
           <button
@@ -364,7 +387,7 @@ export function OzvenaPanel({
           </label>
         </div>
         {assistSummary && <div className="ultina-assist-summary">{assistSummary}</div>}
-      </div>
+      </div>}
     </div>
   );
 }

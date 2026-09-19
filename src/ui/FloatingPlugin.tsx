@@ -185,9 +185,9 @@ function PluginEditor({
 
       <div className={floating ? "floating-plugin-body" : "instrument-plugin-body"}>
         {isDrum && pad ? (
-          <DrumPluginContent track={track as any} pad={pad} mode={mode} doc={doc} services={services} />
+          <DrumPluginContent track={track as any} pad={pad} mode={mode} doc={doc} services={services} docked={!floating} />
         ) : track.kind === "instrument" ? (
-          <InstrumentPluginContent track={track as any} mode={mode} doc={doc} services={services} />
+          <InstrumentPluginContent track={track as any} mode={mode} doc={doc} services={services} docked={!floating} />
         ) : track.kind === "group" ? (
           <div className="floating-plugin-empty">Group — no instrument params</div>
         ) : null}
@@ -214,23 +214,64 @@ function InstrumentPluginContent({
   mode,
   doc,
   services,
+  docked = false,
 }: {
   track: Extract<Track, { kind: "instrument" }>;
   mode: PluginMode;
   doc: any;
   services: any;
+  docked?: boolean;
 }) {
+  const [dockPage, setDockPage] = useState<"sound" | "engine" | "mod">("sound");
+  const [paramPage, setParamPage] = useState(0);
   const def: any = INSTRUMENT_DEFS[track.instrument];
   const params: any[] = mode === "hobby" ? hobbyParams(def.params, track.instrument) : def.params;
+  const hasModControls = def.params.some((param: any) => isModMatrixParam(param.id));
+  const hasEnginePage =
+    track.instrument === "wavetable" ||
+    track.instrument === "granular" ||
+    (track.instrument === "analog" && mode === "profi");
+  const soundParams = params.filter((param: any) => !isModMatrixParam(param.id));
+  const paramsPerPage = docked ? 8 : Math.max(1, soundParams.length);
+  const pageCount = Math.max(1, Math.ceil(soundParams.length / paramsPerPage));
+  const visibleParams = soundParams.slice(paramPage * paramsPerPage, (paramPage + 1) * paramsPerPage);
+  const dockPages: { page: "sound" | "engine" | "mod"; label: string }[] = [{ page: "sound", label: "SOUND" }];
+  if (hasEnginePage) dockPages.push({ page: "engine", label: "ENGINE" });
+  if (hasModControls) dockPages.push({ page: "mod", label: "MOD" });
+
+  useEffect(() => {
+    setDockPage("sound");
+    setParamPage(0);
+  }, [track.id, track.instrument, mode]);
 
   return (
-    <div className="floating-plugin-stack">
-      {track.instrument === "wavetable" && <WavetablePanel track={track} doc={doc} services={services} />}
-      {track.instrument === "granular" && <GranularPanel track={track} doc={doc} services={services} />}
-      {track.instrument === "analog" && mode === "profi" && <EnvEditor track={track} doc={doc} services={services} />}
+    <div className={`floating-plugin-stack${docked ? " instrument-docked-content" : ""}`}>
+      {docked && (
+        <div className="device-view-tabs" role="group" aria-label={`${def.name} view`}>
+          {dockPages.map(({ page, label }) => (
+            <button
+              key={page}
+              type="button"
+              className={`btn btn-small${dockPage === page ? " active" : ""}`}
+              aria-pressed={dockPage === page}
+              onClick={() => setDockPage(page)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+      {(!docked || dockPage === "engine") && track.instrument === "wavetable" && (
+        <WavetablePanel track={track} doc={doc} services={services} />
+      )}
+      {(!docked || dockPage === "engine") && track.instrument === "granular" && (
+        <GranularPanel track={track} doc={doc} services={services} />
+      )}
+      {(!docked || (dockPage === "engine" && track.instrument === "analog" && mode === "profi")) &&
+        track.instrument === "analog" && mode === "profi" && <EnvEditor track={track} doc={doc} services={services} />}
+      {(!docked || dockPage === "sound") && <>
       <div className="floating-plugin-grid">
-      {params
-        .filter((p: any) => !isModMatrixParam(p.id))
+      {visibleParams
         .map((p: any) =>
         p.options ? (
           <label key={p.id} className="fx-param-select floating-plugin-select">
@@ -265,7 +306,31 @@ function InstrumentPluginContent({
         ),
       )}
       </div>
-      <ModMatrixRow track={track} doc={doc} services={services} />
+      {docked && pageCount > 1 && (
+        <div className="device-param-pager" role="group" aria-label={`${def.name} sound parameter pages`}>
+          <span>SOUND {paramPage + 1}/{pageCount}</span>
+          <button
+            type="button"
+            className="btn btn-small"
+            aria-label="Previous sound parameter page"
+            disabled={paramPage === 0}
+            onClick={() => setParamPage((page) => Math.max(0, page - 1))}
+          >
+            ‹
+          </button>
+          <button
+            type="button"
+            className="btn btn-small"
+            aria-label="Next sound parameter page"
+            disabled={paramPage >= pageCount - 1}
+            onClick={() => setParamPage((page) => Math.min(pageCount - 1, page + 1))}
+          >
+            ›
+          </button>
+        </div>
+      )}
+      </>}
+      {(!docked || dockPage === "mod") && <ModMatrixRow track={track} doc={doc} services={services} />}
     </div>
   );
 }
@@ -276,17 +341,36 @@ function DrumPluginContent({
   mode,
   doc,
   services,
+  docked = false,
 }: {
   track: Extract<Track, { kind: "drum" }>;
   pad: (typeof track)["pads"][number];
   mode: PluginMode;
   doc: any;
   services: any;
+  docked?: boolean;
 }) {
+  const [dockPage, setDockPage] = useState<"pad" | "synth">("pad");
   const isSynth = !!pad.synth;
+  useEffect(() => setDockPage("pad"), [pad.id, isSynth]);
   // Pad gain/pan/pitch always visible; synth knobs hobby vs profi
   return (
-    <div className="floating-plugin-stack">
+    <div className={`floating-plugin-stack${docked ? " drum-docked-content" : ""}`}>
+      {docked && isSynth && (
+        <div className="device-view-tabs" role="group" aria-label="Drum pad view">
+          {([ ["pad", "PAD"], ["synth", "SYNTH"] ] as const).map(([page, label]) => (
+            <button
+              key={page}
+              type="button"
+              className={`btn btn-small${dockPage === page ? " active" : ""}`}
+              aria-pressed={dockPage === page}
+              onClick={() => setDockPage(page)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="floating-plugin-pad-switch">
         <span className="slider-label">PAD — {pad.name}</span>
         <span className={`floating-plugin-badge${isSynth ? " is-synth" : ""}`}>
@@ -294,7 +378,7 @@ function DrumPluginContent({
         </span>
       </div>
 
-      {isSynth && (
+      {isSynth && (!docked || dockPage === "synth") && (
         <div className="floating-plugin-grid">
           <label className="fx-param-select floating-plugin-select">
             <span className="slider-label">TYPE</span>
@@ -374,7 +458,7 @@ function DrumPluginContent({
         </div>
       )}
 
-      <div className="floating-plugin-grid" style={{ marginTop: 8 }}>
+      {(!docked || dockPage === "pad") && <div className="floating-plugin-grid drum-pad-controls" style={{ marginTop: 8 }}>
         <Slider
           compact
           label="GAIN"
@@ -405,7 +489,7 @@ function DrumPluginContent({
           format={(v) => `${v > 0 ? "+" : ""}${v.toFixed(1)} st`}
           onCommit={(pitch) => services.store.execute(setPadParams(doc, pad.id, { pitch }))}
         />
-      </div>
+      </div>}
     </div>
   );
 }
