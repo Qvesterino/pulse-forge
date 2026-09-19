@@ -3597,6 +3597,17 @@ export function normalizePluginParams(
       if (typeof value !== "number" || !Number.isFinite(value)) continue;
       params[def.id] = Math.min(def.maxValue, Math.max(def.minValue, value));
     }
+    // The rack surface exposes the global wet/dry as `mix`, but the deep
+    // schema (and therefore the DSP) only knows `globalMix`. Without this
+    // alias the rack MIX slider was silently dropped on every command:
+    // ProjectStore normalizes each execute(), the loop above only copies
+    // schema ids, so `mix` reverted to the rack default 100 while a live
+    // preview (which maps mix → globalMix in fxeqNode) kept playing the
+    // dragged value. Accept the rack id as the source of truth.
+    if (typeof source.mix === "number" && Number.isFinite(source.mix)) {
+      params.mix = Math.min(100, Math.max(0, source.mix));
+      params.globalMix = params.mix;
+    }
     // Structural snap: the crossover slope only exists at {2,4,8} — a raw
     // in-between value from persisted state would hold the store and the
     // DSP apart until the next route.

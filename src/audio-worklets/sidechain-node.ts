@@ -25,6 +25,11 @@ export function createSidechainNode(
 
   const input = ctx.createGain();
   const output = ctx.createGain();
+  // The current sidechain feed on worklet input 1. Tracked so a repoint (or
+  // dispose) can detach the PREVIOUS source — without this, the old source
+  // subgraph stayed connected into the detector forever and the detector
+  // summed old + new feeds (see compressor-node's lastSidechainSource).
+  let sidechainSource: AudioNode | null = null;
 
   // Connect: input -> worklet -> output
   input.connect(workletNode);
@@ -60,18 +65,32 @@ export function createSidechainNode(
      * This replaces the old AnalyserNode + setInterval approach.
      */
     setSidechainInput(node: AudioNode | null) {
-      // Disconnect any existing sidechain source from input 1
-      try {
-        input.disconnect(workletNode, 0, 1);
-      } catch {
-        /* not connected */
+      // Disconnect the PREVIOUS sidechain source from input 1. The old code
+      // called input.disconnect(workletNode, 0, 1) — an edge that never
+      // exists (input feeds input 0 only), so it detached nothing.
+      if (sidechainSource) {
+        try {
+          sidechainSource.disconnect(workletNode, 0, 1);
+        } catch {
+          /* not connected */
+        }
+        sidechainSource = null;
       }
       if (node) {
         // Connect source output 0 -> worklet input 1
         node.connect(workletNode, 0, 1);
+        sidechainSource = node;
       }
     },
     dispose() {
+      if (sidechainSource) {
+        try {
+          sidechainSource.disconnect(workletNode, 0, 1);
+        } catch {
+          /* not connected */
+        }
+        sidechainSource = null;
+      }
       workletNode.disconnect();
       input.disconnect();
       output.disconnect();

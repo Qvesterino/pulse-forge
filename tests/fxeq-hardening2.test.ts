@@ -26,6 +26,7 @@ import { createFxEqProcessor } from "../src/effects/fxeq-core/core/fxEqProcessor
 import { createLimiterModule } from "../src/effects/fxeq-core/modules/limiter";
 import { createReverbModule } from "../src/effects/fxeq-core/modules/reverb";
 import { onePoleHpCoef } from "../src/effects/fxeq-core/dsp/mathUtils";
+import { createOversampledSaturation } from "../src/effects/fxeq-core/dsp/oversampledSaturation";
 
 const SR = 48000;
 const BLOCK = 128;
@@ -262,5 +263,53 @@ describe("fxeq-core hardening #2 — crossover split surface (6 bands)", () => {
     expect(proc.getParameter("crossoverFreq4")).toBe(4000);
     expect(proc.getParameter("crossoverFreq5")).toBe(8000);
     expect(proc.getParameter("crossoverFreq6")).toBe(8040);
+  });
+});
+
+/**
+ * 2026-09-19 audit fix: interpolating FIR DC gain = factor.
+ *
+ * A zero-stuffed ×F upsample followed by a DC-unity FIR produces x/F, so
+ * the oversampled saturation path was 6/12/18 dB quieter than the 1x path.
+ * The saturation mix then jumped in level whenever drive or quality
+ * crossed a factor boundary (e.g. the 6 dB drive threshold, or a Live →
+ * Studio export tier bump). Each case below measures a small-signal sine
+ * in the LINEAR region of the shaper, where output = driveLinear exactly.
+ */
+describe("FXEQ oversampling gain parity (2026-09-19 audit)", () => {
+  function measureGain(
+    quality: "standard" | "high" | "render",
+    mode: number,
+    driveDb: number,
+  ): number {
+    const block = 256;
+    const mod = createOversampledSaturation();
+    mod.prepare(SR, 1, block);
+    const freq = 997;
+    const amp = 1e-4;
+    let peak = 0;
+    for (let b = 0; b < 40; b++) {
+      const buf = new Float32Array(block);
+      for (let i = 0; i < block; i++) {
+        buf[i] = amp * Math.sin((2 * Math.PI * freq * (b * block + i)) / SR);
+      }
+      mod.process([buf], block, mode, driveDb, 1, 1, quality);
+      if (b > 30) for (let i = 0; i < block; i++) peak = Math.max(peak, Math.abs(buf[i]));
+    }
+    return 20 * Math.log10(peak / amp);
+  }
+
+  it("factor 1 (below the drive threshold) matches drive", () => {
+    expect(Math.abs(measureGain("standard", 4, 5.9) - 5.9)).toBeLessThan(0.35);
+  });
+  it("factor 2 matches drive", () => {
+    expect(Math.abs(measureGain("standard", 4, 6.1) - 6.1)).toBeLessThan(0.35);
+  });
+  it("factor 4 matches drive", () => {
+    expect(Math.abs(measureGain("high", 4, 12.1) - 12.1)).toBeLessThan(0.35);
+  });
+  it("factor 8 matches drive (render tier, the old -18 dB case)", () => {
+    expect(Math.abs(measureGain("render", 4, 6.1) - 6.1)).toBeLessThan(0.35);
+    expect(Math.abs(measureGain("render", 4, 18) - 18)).toBeLessThan(0.35);
   });
 });

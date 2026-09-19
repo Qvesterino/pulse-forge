@@ -61,8 +61,9 @@ export class UltinaPresetRepository {
         .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
       return this.cache;
     } catch {
-      this.cache = [];
-      return this.cache;
+      // Transient failure: do not cache an empty list — the user's presets
+      // must not appear deleted for the rest of the session.
+      return [];
     }
   }
 

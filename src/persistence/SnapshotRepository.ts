@@ -62,7 +62,16 @@ export function shouldAutoSnapshot(
  */
 export class SnapshotRepository {
   private dbPromise: Promise<IDBDatabase> | null = null;
-  private counter = 0;
+  /**
+   * Session-stable monotonic counter for seq. A plain `++counter` reset to 0
+   * every reload: session 2's first snapshot reused index key `proj:…0001`,
+   * orphaning session 1's snapshot row (its durable index key was stolen), so
+   * full project docs leaked in STORE_SNAPSHOTS forever and became invisible
+   * to list()/prune() after the next reload. Seeding from a wall-clock base
+   * keeps keys unique across sessions; the lastSeq guard preserves strict
+   * monotonicity for same-millisecond saves within one instance.
+   */
+  private lastSeq = 0;
   /** Defect D.4: in-memory index — projectId → snapshot ids (newest last). */
   private index = new Map<string, string[]>();
 
@@ -71,9 +80,14 @@ export class SnapshotRepository {
     return this.dbPromise;
   }
 
+  private nextSeq(): number {
+    this.lastSeq = Math.max(Date.now(), this.lastSeq + 1);
+    return this.lastSeq;
+  }
+
   async save(projectId: string, doc: ProjectDocument, label: string): Promise<ProjectSnapshot> {
     const db = await this.db();
-    const seq = ++this.counter;
+    const seq = this.nextSeq();
     const snapshot: ProjectSnapshot = {
       id: `${projectId}:${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
       projectId,
@@ -83,11 +97,16 @@ export class SnapshotRepository {
       seq,
     };
     // Defect D.4: dual-write the snapshot to the primary store AND
-    // the secondary index. The index is the source of truth for
-    // list() / prune() / delete() in this implementation; the IDB
-    // copy is only consulted by rebuildIndex() (post-restart).
+    // the secondary index. The id-keyed entry is AUTHORITATIVE — snapshot
+    // ids are the primary keys, so two sessions can never mint the same
+    // one. The legacy padded-seq key is still written for old readers but
+    // may collide when two tabs save in the same millisecond; a collision
+    // only overwrites that duplicate entry, never the id-keyed one.
+    // rebuildIndex() dedupes by snapshot id, so a snapshot reachable through
+    // both keys is listed once.
     await tx(db, [STORE_SNAPSHOTS, STORE_SNAPSHOT_INDEX] as const, "readwrite", (stores) => {
       stores[STORE_SNAPSHOTS].put(snapshot);
+      stores[STORE_SNAPSHOT_INDEX].put(snapshot.id, `${projectId}:${snapshot.id}`);
       stores[STORE_SNAPSHOT_INDEX].put(snapshot.id, `${projectId}:${String(seq).padStart(10, "0")}`);
       return;
     });
@@ -107,9 +126,11 @@ export class SnapshotRepository {
     await this.rebuildIndexIfNeeded();
     const ids = this.index.get(projectId);
     if (!ids || ids.length === 0) return [];
-    // Newest first — the in-memory index is append-ordered.
+    // Newest first — the in-memory index is append-ordered. Over-fetch past
+    // the limit so corrupt/unreadable rows near the top cannot shrink the
+    // visible history while valid older snapshots exist beyond the cap.
     const newest = ids.slice().reverse();
-    const capped = newest.slice(0, limit);
+    const capped = newest.slice(0, ids.length > limit ? limit + 8 : limit);
     const snaps = await this.loadManyByIds(capped);
     return (snaps ?? [])
       .filter((snap): snap is ProjectSnapshot => Boolean(snap) && validateProjectShape(snap!.doc))
@@ -127,14 +148,24 @@ export class SnapshotRepository {
     return result && validateProjectShape(result.doc) ? result : null;
   }
 
+  /**
+   * Both durable index keys a snapshot may be reachable through: the
+   * authoritative id-key and the legacy padded-seq key. delete()/prune()
+   * remove both so no index entry outlives its primary row.
+   */
+  private indexKeysFor(snap: { id: string; projectId: string; seq?: number }): string[] {
+    const keys = [`${snap.projectId}:${snap.id}`];
+    if (typeof snap.seq === "number") keys.push(`${snap.projectId}:${String(snap.seq).padStart(10, "0")}`);
+    return keys;
+  }
+
   async delete(id: string): Promise<void> {
     const db = await this.db();
     const snap = await this.get(id);
-    if (snap && typeof snap.seq === "number") {
-      const key = `${snap.projectId}:${String(snap.seq).padStart(10, "0")}`;
+    if (snap) {
       await tx(db, [STORE_SNAPSHOTS, STORE_SNAPSHOT_INDEX] as const, "readwrite", (stores) => {
         stores[STORE_SNAPSHOTS].delete(id);
-        stores[STORE_SNAPSHOT_INDEX].delete(key);
+        for (const key of this.indexKeysFor(snap)) stores[STORE_SNAPSHOT_INDEX].delete(key);
         return;
       });
       // Defect D.4: drop the in-memory index entry too.
@@ -188,9 +219,9 @@ export class SnapshotRepository {
     const db = await this.db();
     await tx(db, [STORE_SNAPSHOTS, STORE_SNAPSHOT_INDEX] as const, "readwrite", (stores) => {
       for (const snap of snaps) {
-        if (!snap || typeof snap.seq !== "number") continue;
+        if (!snap) continue;
         stores[STORE_SNAPSHOTS].delete(snap.id);
-        stores[STORE_SNAPSHOT_INDEX].delete(`${snap.projectId}:${String(snap.seq).padStart(10, "0")}`);
+        for (const key of this.indexKeysFor(snap)) stores[STORE_SNAPSHOT_INDEX].delete(key);
       }
       return;
     });
@@ -258,20 +289,41 @@ export class SnapshotRepository {
       (store) => store.getAll() as IDBRequest<string[]>,
     );
     if (!ids || ids.length === 0) return;
+    // A snapshot is dual-keyed (id-key + legacy seq-key) — dedupe by id so
+    // it lands in the bucket exactly once.
+    const seen = new Set<string>();
+    // Bucket order must be CHRONOLOGICAL (oldest first; list() reverses it).
+    // IndexedDB key-sort order is NOT chronological once the two key forms
+    // interleave (digit-leading seq keys sort before letter-leading id
+    // keys), so collect ordering metadata and sort explicitly.
+    const pending: { projectId: string; id: string; createdAt: string; seq: number }[] = [];
     for (const id of ids) {
       if (typeof id !== "string" || id.length === 0) continue;
+      if (seen.has(id)) continue;
       try {
         const snap = await this.get(id);
         if (!snap || typeof snap.projectId !== "string") continue;
-        const bucket = this.index.get(snap.projectId);
-        if (bucket) bucket.push(snap.id);
-        else this.index.set(snap.projectId, [snap.id]);
+        seen.add(snap.id);
+        pending.push({
+          projectId: snap.projectId,
+          id: snap.id,
+          createdAt: snap.createdAt,
+          seq: typeof snap.seq === "number" ? snap.seq : 0,
+        });
       } catch (error) {
         // A single poisoned primary row should not blank every project's
         // recovery history after reload. Leave it out of the rebuilt index;
         // a later successful rebuild can discover it again.
         console.warn(`[snapshots] skipping unreadable indexed snapshot ${id}:`, error);
       }
+    }
+    pending.sort((a, b) =>
+      a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.seq - b.seq,
+    );
+    for (const entry of pending) {
+      const bucket = this.index.get(entry.projectId);
+      if (bucket) bucket.push(entry.id);
+      else this.index.set(entry.projectId, [entry.id]);
     }
   }
 }

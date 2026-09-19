@@ -335,6 +335,9 @@ export async function openProject(
 
   const transport = new Transport({ now: () => engine.currentTime }, initial.bpm);
   transport.setBarTicks(ticksPerBar(initial));
+  // Transport-synced previews quantize to the next bar relative to the live
+  // playhead — the engine has no Transport reference, so hand it the reader.
+  engine.getTransportTick = () => transport.position;
   const modeRef: { mode: PlayMode } = { mode: "pattern" };
   const midiOutput = new MidiOutput();
   const midiClock = new MidiClock();

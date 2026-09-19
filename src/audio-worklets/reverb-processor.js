@@ -24,6 +24,10 @@ const ALLPASS_DELAYS = [556, 441];
 class ReverbProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
+    // Comb feedback cache — recomputed only when decay/sample rate change.
+    this.combFeedback = [0.7, 0.7, 0.7, 0.7];
+    this.combFeedbackCacheDecay = -1;
+    this.combFeedbackCacheSr = 0;
     const maxComb = Math.max(...REVERB_COMB_DELAYS) + 1024;
     const size = 1 << Math.ceil(Math.log2(maxComb * 2));
     this.size = size;
@@ -78,12 +82,19 @@ class ReverbProcessor extends AudioWorkletProcessor {
     const effDamp = Math.min(dampingFreq, toneFreq);
     const dampAlpha = 1 - Math.exp((-2 * Math.PI * effDamp) / sr);
 
-    // Precompute per-comb feedback gains for RT60 = decay
-    const combFeedback = REVERB_COMB_DELAYS.map((d) => {
-      const ms = ((d * sr) / 48000 / sr) * 1000; // delay in ms at current sr (d scaled)
-      const g = Math.pow(10, (-3 * ms) / (decay * 1000));
-      return Math.min(0.98, g);
-    });
+    // Precompute per-comb feedback gains for RT60 = decay. Cached — the old
+    // per-block `.map` (+closure) was avoidable garbage on the audio thread;
+    // recompute only when decay or sample rate actually changes.
+    if (this.combFeedbackCacheDecay !== decay || this.combFeedbackCacheSr !== sr) {
+      this.combFeedback = REVERB_COMB_DELAYS.map((d) => {
+        const ms = ((d * sr) / 48000 / sr) * 1000; // delay in ms at current sr (d scaled)
+        const g = Math.pow(10, (-3 * ms) / (decay * 1000));
+        return Math.min(0.98, g);
+      });
+      this.combFeedbackCacheDecay = decay;
+      this.combFeedbackCacheSr = sr;
+    }
+    const combFeedback = this.combFeedback;
 
     const apFeedback = 0.3 + diffusion * 0.4; // 0.3..0.7
 

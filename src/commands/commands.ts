@@ -33,7 +33,7 @@ import type {
 import { BAR_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
 import { buildStemProject } from "../rendering/stems";
 import { DEFAULT_GATE_PATTERN, DEFAULT_STEP_PATTERN, sanitizeGateSteps } from "../project-model/modulators";
-import { setStepVelocity, withPad, withTrack } from "../project-model/transform";
+import { setStepVelocityInPattern, withPad, withTrack } from "../project-model/transform";
 import { getYDocHelpers } from "./yDocBridge";
 import { insertPointSorted } from "../project-model/automation";
 import {
@@ -191,8 +191,11 @@ export function toggleStep(doc: ProjectDocument, padId: string, stepIndex: numbe
   return {
     type: "toggleStep",
     label: prev > 0 ? `Remove step ${stepIndex + 1}` : `Add step ${stepIndex + 1}`,
-    execute: (d) => setStepVelocity(d, padId, stepIndex, next),
-    undo: (d) => setStepVelocity(d, padId, stepIndex, prev),
+    // Pin the pattern: undo stacks outlive pattern switches — resolving
+    // against the apply-time active pattern made a step undo zero a step in
+    // the WRONG pattern (see setStepVelocityInPattern / withTrackNotes).
+    execute: (d) => setStepVelocityInPattern(d, patternId, padId, stepIndex, next),
+    undo: (d) => setStepVelocityInPattern(d, patternId, padId, stepIndex, prev),
     applyToYDoc: (yMap) => {
       const helpers = getYDocHelpers();
       helpers?.yToggleStep(yMap, patternId, padId, stepIndex, defaultVelocity);
@@ -211,8 +214,8 @@ export function setStepVelocityCommand(
   return {
     type: "setStepVelocity",
     label: `Set step ${stepIndex + 1} velocity`,
-    execute: (d) => setStepVelocity(d, padId, stepIndex, velocity),
-    undo: (d) => setStepVelocity(d, padId, stepIndex, prev),
+    execute: (d) => setStepVelocityInPattern(d, patternId, padId, stepIndex, velocity),
+    undo: (d) => setStepVelocityInPattern(d, patternId, padId, stepIndex, prev),
     applyToYDoc: (yMap) => {
       const helpers = getYDocHelpers();
       helpers?.ySetStepVelocity(yMap, patternId, padId, stepIndex, velocity);
@@ -386,20 +389,6 @@ export function setPadSynth(
   padId: string,
   synth: import("../project-model/types").DrumSynthConfig | null,
 ): Command {
-  // Resolve the pad across ALL drum tracks (same contract as setPadParams) —
-  // the first-drum-track lookup silently restored the wrong undo baseline in
-  // multi-drum-track projects.
-  let current: import("../project-model/types").DrumPad | undefined;
-  for (const t of doc.tracks) {
-    if (t.kind !== "drum") continue;
-    const pad = t.pads.find((p) => p.id === padId);
-    if (pad) {
-      current = pad;
-      break;
-    }
-  }
-  const prevSynth = (current as any)?.synth ?? null;
-  const prevAssetId = current?.assetId ?? null;
   const nextDoc: ProjectDocument = {
     ...doc,
     tracks: doc.tracks.map((t) => {
@@ -423,24 +412,12 @@ export function setPadSynth(
       };
     }),
   };
-  const prevDoc: ProjectDocument = {
-    ...doc,
-    tracks: doc.tracks.map((t) => {
-      if (t.kind !== "drum") return t;
-      return {
-        ...t,
-        pads: t.pads.map((p) =>
-          p.id === padId ? { ...p, synth: prevSynth ? { ...prevSynth } : null, assetId: prevAssetId } : p,
-        ),
-      };
-    }),
-  };
-  return {
-    type: "setPadSynth",
-    label: synth ? `Set ${synth.type} synth` : "Clear synth",
-    execute: () => nextDoc,
-    undo: () => prevDoc,
-  };
+  // Delta snapshot, not a whole-doc pin: this command is dispatched from
+  // React commit callbacks with a render-captured doc — `execute: () => nextDoc`
+  // would replace the ENTIRE document with the stale build and silently
+  // revert any edit that landed between render and commit (live MIDI notes,
+  // collab fallback). The delta applies only the pad change to the live doc.
+  return snapshot("setPadSynth", synth ? `Set ${synth.type} synth` : "Clear synth", doc, nextDoc);
 }
 
 /** Assign (or clear) the MPC-style per-pad LFO on one drum pad. */
@@ -891,15 +868,10 @@ export function setStepsLocks(
       nextDoc = setStepLocks(nextDoc, patternId, padId, step, patch).execute(nextDoc);
     }
   }
-  const prev = doc;
-  const next = nextDoc;
-  const label = `Set p-locks for ${padIds.length}×${toStep - fromStep + 1} steps`;
-  return {
-    type: "setStepsLocks",
-    label,
-    execute: () => next,
-    undo: () => prev,
-  };
+  // Delta snapshot, not a whole-doc pin — `execute: () => next` would revert
+  // concurrent edits (live MIDI writes, collab fallback) captured after this
+  // command was built. The delta applies only the lock changes.
+  return snapshot("setStepsLocks", `Set p-locks for ${padIds.length}×${toStep - fromStep + 1} steps`, doc, nextDoc);
 }
 
 /** Paste locks from a copied source (shallow) onto a selection. */
@@ -943,14 +915,8 @@ export function clearStepLocks(
       nextDoc = setStepLocks(nextDoc, patternId, padId, step, patch as any).execute(nextDoc);
     }
   }
-  const prev = doc;
-  const finalDoc = nextDoc;
-  return {
-    type: "clearStepLocks",
-    label: `Clear p-locks for ${padIds.length}×${toStep - fromStep + 1} steps`,
-    execute: () => finalDoc,
-    undo: () => prev,
-  };
+  // Delta snapshot — see setStepsLocks for why whole-doc pins are forbidden.
+  return snapshot("clearStepLocks", `Clear p-locks for ${padIds.length}×${toStep - fromStep + 1} steps`, doc, nextDoc);
 }
 
 export function clearSteps(
@@ -1233,11 +1199,37 @@ export function deleteTrack(doc: ProjectDocument, trackId: string): Command {
   // normalize pass dropped them. Remove them with the track (same contract
   // as the automation lanes above).
   const audioClips = doc.arrangement.audioClips?.filter((clip) => clip.trackId !== trackId);
+  // Cross-references HELD BY OTHER ENTITIES must be removed here, inside the
+  // command — NOT left for the post-apply normalize pass. normalizeProject
+  // prunes dangling sidechainTrackId / MIDI CC targets / aftertouch targets
+  // / drum-note mappings outside the captured forward/backward deltas, so an
+  // undo of delete-track could never restore them: the user's sidechain
+  // routing and MIDI mappings were silently and permanently destroyed by
+  // Ctrl+Z. Cleaning them here makes the removal part of `next`, and the
+  // backward delta restores them together with the track.
+  const stripSidechain = (effects: typeof doc.tracks[number]["effects"]) =>
+    effects.map((e) => (e.sidechainTrackId === trackId ? { ...e, sidechainTrackId: undefined } : e));
+  const midi = doc.midi;
   const next: ProjectDocument = {
     ...doc,
     tracks: doc.tracks
       .filter((t) => t.id !== trackId)
-      .map((t) => (isGroup && t.kind !== "group" && t.groupId === trackId ? { ...t, groupId: undefined } : t)),
+      .map((t) => {
+        if (isGroup && t.kind !== "group" && t.groupId === trackId) return { ...t, groupId: undefined, effects: stripSidechain(t.effects) };
+        if ("effects" in t) return { ...t, effects: stripSidechain(t.effects) };
+        return t;
+      }),
+    returns: doc.returns.map((r) => ({ ...r, effects: stripSidechain(r.effects) })),
+    ...(midi
+      ? {
+          midi: {
+            ...midi,
+            ccMappings: midi.ccMappings.filter((m) => m.target?.trackId !== trackId),
+            drumNoteMap: midi.drumNoteMap.filter((m) => !removedPadIds.has(m.padId)),
+            ...(midi.aftertouchTarget?.trackId === trackId ? { aftertouchTarget: undefined } : {}),
+          },
+        }
+      : {}),
     patterns: doc.patterns.map((pattern) => ({
       ...pattern,
       rows: Object.fromEntries(Object.entries(pattern.rows).filter(([padId]) => !removedPadIds.has(padId))),
@@ -3890,7 +3882,10 @@ export function addAutomationLane(doc: ProjectDocument, target: AutomationTarget
       l.target.paramId === target.paramId,
   );
   if (exists) throw new Error("Automation lane for this target already exists");
-  const lane: AutomationLane = { id: uid("lane"), target, points: [] };
+  // Copy the caller's target: the lane must not alias an object the caller
+  // could later mutate in place — doc and undo snapshot would diverge (same
+  // discipline as addSceneAutomation / addMacroTargetMapping).
+  const lane: AutomationLane = { id: uid("lane"), target: { ...target }, points: [] };
   const next: ProjectDocument = { ...doc, automation: [...doc.automation, lane] };
   return snapshot("addAutomationLane", "Add automation lane", doc, next);
 }
@@ -4599,25 +4594,14 @@ export function moveEffectToIndex(doc: ProjectDocument, trackId: string, fxId: s
   doc: ProjectDocument,
   key: MusicalKey | null,
 ): Command {
-  const prev = doc.key;
   const next: ProjectDocument = key
     ? { ...doc, key }
     : (() => {
         const { key: _drop, ...rest } = doc;
         return rest as ProjectDocument;
       })();
-  return {
-    type: "setProjectKey",
-    label: key ? `Set project key to ${key}` : "Clear project key",
-    execute: () => next,
-    undo: (d) =>
-      prev
-        ? { ...d, key: prev }
-        : (() => {
-            const { key: _drop, ...rest } = d;
-            return rest as ProjectDocument;
-          })(),
-  };
+  // Delta snapshot — see setStepsLocks for why whole-doc pins are forbidden.
+  return snapshot("setProjectKey", key ? `Set project key to ${key}` : "Clear project key", doc, next);
 }
 export function setProjectTags(doc: ProjectDocument, tags: string[]): Command {
   const prev = doc.tags;
@@ -4931,7 +4915,15 @@ export function addMidiCcMapping(
   if (targetOwner(doc, target.trackId) && !targetDef) throw new Error("Invalid MIDI CC target");
   const safeMin = targetDef ? clampTargetValue(doc, target, min) : min;
   const safeMax = targetDef ? clampTargetValue(doc, target, max) : max;
-  const mapping: import("../project-model/types").MidiCcMapping = { id: uid("midiMap"), ccNumber, target, min, max };
+  // Copy the caller's target — the mapping must not alias an object the
+  // caller could later mutate in place (same discipline as addAutomationLane).
+  const mapping: import("../project-model/types").MidiCcMapping = {
+    id: uid("midiMap"),
+    ccNumber,
+    target: { ...target },
+    min,
+    max,
+  };
   mapping.ccNumber = Math.floor(ccNumber);
   mapping.min = Math.min(safeMin, safeMax);
   mapping.max = Math.max(safeMin, safeMax);

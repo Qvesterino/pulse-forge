@@ -6,8 +6,9 @@ import { applyGenerationResultCommand } from "../commands/commands";
 import { applyArrangeOps } from "../intent/arrangeWords";
 import { buildSong, applySongCommand } from "../intent/song";
 import { applyMixIntent, planMixProfile } from "../intent/mix";
-import { routeIntentText } from "../intent/route";
+import { routeIntentText, REVISE_DELTA, type ReviseAttribute } from "../intent/route";
 import { normalizeIntent } from "../intent/normalize";
+import type { IntentInput } from "../intent/types";
 import { rankerMode } from "../ai/ranking/ranker-client";
 import { playAuditionBuffer, renderAuditionBuffer, stopAudition } from "../intent/audition";
 import type { GenerationResult, RankedCandidate } from "../intent/types";
@@ -57,29 +58,21 @@ export function IntentPanel() {
 
   const candidates = bankResult?.bank ?? null;
 
-  const generate = async () => {
-    if (!text.trim() || busy) return;
-    setBusy(true);
-    setError(null);
-    setStatus(null);
-    setBankResult(null);
-    setPlayingIndex(null);
-    stopAudition();
-    buffersRef.current = new Map();
-    const controller = new AbortController();
-    abortRef.current?.abort();
-    abortRef.current = controller;
+  // C2 revise: the intent of the LAST generation — "more energetic" re-runs
+  // THIS intent with a shifted slider (same seed = same beat, new character).
+  const lastIntentRef = useRef<IntentInput | null>(null);
+
+  const runGeneration = async (intentInput: IntentInput, controller: AbortController) => {
     try {
-      const intentInput = parsed?.input ?? {};
       const result: GenerationResult = await generateAsyncResult(
         doc,
         {
           ...intentInput,
-          seed: `intent-${Date.now()}`,
-          candidateCount: 3,
+          seed: intentInput.seed || `intent-${Date.now()}`,
+          candidateCount: intentInput.candidateCount ?? 3,
           // T2: two extra candidates sampled from the ONNX symbolic drum
           // prior join the same bank; a missing model just shrinks the bank.
-          symbolicCandidates: 2,
+          symbolicCandidates: intentInput.symbolicCandidates ?? 2,
           roles: intentInput.roles ?? ["drums", "bass"],
         },
         { mode: "apply", signal: controller.signal, includeBank: true },
@@ -90,6 +83,7 @@ export function IntentPanel() {
         setError(`Generation failed: ${reason} — try a different intent.`);
         return;
       }
+      lastIntentRef.current = result.plan.intent;
       setBankResult(result);
       const count = result.bank?.length ?? 0;
       setStatus(
@@ -103,6 +97,22 @@ export function IntentPanel() {
     } finally {
       if (!controller.signal.aborted) setBusy(false);
     }
+  };
+
+  const generate = async () => {
+    if (!text.trim() || busy) return;
+    setBusy(true);
+    setError(null);
+    setStatus(null);
+    setBankResult(null);
+    setPlayingIndex(null);
+    stopAudition();
+    buffersRef.current = new Map();
+    const controller = new AbortController();
+    abortRef.current?.abort();
+    abortRef.current = controller;
+    const intentInput = parsed?.input ?? {};
+    await runGeneration(intentInput, controller);
   };
 
   const toggleAudition = async (candidate: RankedCandidate) => {
@@ -195,6 +205,34 @@ export function IntentPanel() {
         const profile = planMixProfile(normalizeIntent(intentInput), route.overrides);
         services.store.execute(applyMixIntent(doc, profile));
         setStatus(`⚡ mix: ${profile.summary.join(" · ") || `${profile.decisions.length} updates`}`);
+      } else if (route.kind === "revise") {
+        // C2: shift a content slider on the LAST generation and re-run with
+        // the SAME seed — the beat keeps its identity, the character moves.
+        stopAudition();
+        if (busy) return;
+        setBusy(true);
+        setError(null);
+        setStatus(null);
+        setBankResult(null);
+        setPlayingIndex(null);
+        buffersRef.current = new Map();
+        const controller = new AbortController();
+        abortRef.current?.abort();
+        abortRef.current = controller;
+        const last = lastIntentRef.current;
+        const delta = route.direction === "more" ? REVISE_DELTA : -REVISE_DELTA;
+        const fallbackDefaults: Record<ReviseAttribute, number> = { energy: 0.7, density: 0.5 };
+        if (last) {
+          const current = last[route.attribute] ?? fallbackDefaults[route.attribute];
+          await runGeneration({ ...last, [route.attribute]: Math.max(0, Math.min(1, current + delta)) }, controller);
+          setStatus(`⚡ ${route.attribute} ${route.direction === "more" ? "+0.15" : "−0.15"} — same seed`);
+        } else {
+          // Nothing generated yet — apply the attribute to the parsed intent.
+          const intentInput: IntentInput = { ...(parsed?.input ?? {}) };
+          intentInput[route.attribute] = fallbackDefaults[route.attribute] + delta;
+          await runGeneration(intentInput, controller);
+          setStatus(`⚡ ${route.attribute} → ${intentInput[route.attribute]?.toFixed(2)} (fresh pattern)`);
+        }
       } else {
         await generate();
       }

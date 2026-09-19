@@ -120,6 +120,14 @@ export function createOversampledSaturation(): OversampledSaturation {
     // Both share the same design — cutoff at input Nyquist. We use a
     // causal (time-reversed) symmetric kernel so it can be applied
     // sample-by-sample without look-ahead.
+    //
+    // (Reconciled from Pulse Forge audit, 2026-09-19: interpolating FIR DC
+    // gain = factor.) A zero-stuffed upsample followed by a DC-unity FIR
+    // yields x/factor — the wet path was 6/12/18 dB quiet at 2×/4×/8×
+    // versus the 1× path, so the saturation mix jumped in level whenever
+    // drive or quality crossed a factor boundary. The interpolating kernel
+    // must carry the factor as DC gain; the decimating kernel stays at
+    // unity (it averages the oversampled stream back down).
     const cutoff = sampleRate / 2;
     // Taps proportional to factor: more taps for higher factor for
     // sharper transition. (taps-1)/factor = 8 input samples of group
@@ -130,7 +138,7 @@ export function createOversampledSaturation(): OversampledSaturation {
     const upKernel = new Float32Array(sym.length);
     const downKernel = new Float32Array(sym.length);
     for (let i = 0; i < sym.length; i++) {
-      upKernel[i] = sym[sym.length - 1 - i];
+      upKernel[i] = sym[sym.length - 1 - i] * factor;
       downKernel[i] = sym[sym.length - 1 - i];
     }
     return { upKernel, downKernel, upTaps: upKernel.length, downTaps: downKernel.length };

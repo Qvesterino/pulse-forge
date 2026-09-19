@@ -2271,3 +2271,30 @@ re-render benefit kicking in immediately. Estimated work:
 1. inferSceneRole semantic change: projects with scenes NAMED "Chorus" (previously inferred drop) now infer chorus after reload — musically correct, but arrangement markers/buckets keyed to drop shift; a one-line note belongs in the next release notes.
 2. Instrumentation filtering relies on the generator honoring `roles` (verified) — lead parts on 2-track docs fall back positionally to the bass track (generator naming heuristic), so "lead present" is provenance-level truth, not a per-track guarantee.
 3. Pop form exists for trap only; house/techno verse/chorus variants can be added on demand (SONG_FORMS entry each).
+
+
+---
+
+## GOAL 12 (campaign restart) — Intent Engine C1+C2: artist "type beat" dictionary + "more X" revise routing (2026-09-19)
+
+**Goal executed:** Per docs/intent-artists-and-revise-plan.md (green-lit after web research): (C1) artist/type-beat references resolve to style presets instead of falling back to a default house pattern; (C2) "more energetic"-style comparatives REVISE the last result with the same seed instead of generating something unrelated.
+
+**Research (web, sources in the plan doc):** Travis Scott type beats 130–140 BPM dark/psychedelic pads + distorted 808s; Metro Boomin 130–140 (73/81 half-time) dark cinematic; rage beats (Carti/Yeat/Southstar) 150–165 bright distorted synths, punk energy; drill 140–145 sliding 808s; boom bap 85–95 swung soul; Fred again 128–136 emotive house/garage; amapiano 110–115 log drums.
+
+**Fixes implemented:**
+
+- `src/intent/artists.ts`: `ARTIST_PRESETS` — 14 presets / ~40 match phrases (travis scott, metro boomin, 21 savage, carti/rage, yeat, southstar/kyle beat, pop smoke/uk drill/central cee, ice spice/jersey, kanye/boom bap, fred again, disclosure/ukg, fisher/tech house, amapiano/rema/tyla, SHM/big room). Each maps ONLY to existing engine vocabulary (genre/style/mood/sliders/BPM prior) — no new capabilities, legally clean (a name → a style description). `matchArtistPreset` = deterministic word-boundary phrase match, list order = priority.
+- `text-parser.ts` integration: artist preset applied FIRST as the BASE; explicit text words still override it ("travis scott type beat **bright**" → mood energetic + energy 0.95 beat the preset's dark/0.7 — a trait gap for "bright" was found by the tests and fixed). detected chip "♪ travis scott". **Bug fix**: "drill" mapped to TECHNO (tempo-proximity mistake) → now trap; redundant "drill beat" entry removed.
+- `route.ts` (C2): `parseReviseIntent` — comparative + attribute pairs ("more energetic/energic/energy", "calmer", "busier/denser", "menej husty", "viac energie") → `revise` route with `REVISE_DELTA = 0.15`. Router priority updated: arrange → mix (SOUND: tone/reverb/punch) → revise (CONTENT: energy/density) → pattern. The punch/energy distinction is deliberate and tested ("more punch" = compression = MIX; "more energetic" = slider = REVISE).
+- `IntentPanel.tsx`: generation flow refactored into `runGeneration(intentInput, controller)` + `lastIntentRef` (intent of the last generation). REVISE route re-runs the SAME intent with the shifted slider (same seed ⇒ same beat family, moved character) through the standard audition flow; without a last generation it applies the attribute to the parsed intent as a fresh pattern. Status reports "⚡ energy +0.15 — same seed".
+- Tests: `tests/intent-artists.test.ts` (11) — presets (TS/metro/rage/kanye/drill), no-"type"-phrase matching, text-over-preset priority, drill bugfix, no-artist regression, matcher determinism; revise parser EN+SK (incl. the user's literal "more energic"); router priority matrix; same-seed identity integration (same generation seed, moved energy, different content hash, reproducible).
+
+**Important files changed:** src/intent/{artists,route,text-parser}.ts, src/ui/IntentPanel.tsx, tests/intent-artists.test.ts, INTENT_ENGINE.md (§5.9 done + map), docs/intent-artists-and-revise-plan.md (plan + research sources).
+
+**Validation:** artist/revise tests 11/11; parser 18/18 unchanged (EN regression intact); intent-area regression 144/144 across 14 files; typecheck clean for changed files. Concurrent session's controls.tsx breakage remains theirs (filtered tsc).
+
+**Unresolved issues / risks:**
+
+1. The alias dictionary is curated — unknown artist names still fall to defaults (the honest limit until T1 step 2 embedding understanding); the dictionary remains as the fast offline fallback afterward.
+2. Revise works on the last PATTERN generation only — revising a whole SONG (all sections' sliders) is a natural follow-up once per-section intents are retained in SongBuild.
+3. Preset BPM priors are ranges — resolvedBpm still honors an explicit BPM in the text over the preset's range.

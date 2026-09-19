@@ -211,7 +211,15 @@ export class ProjectStore {
       this.afterMutation();
       return;
     }
-    this.doc_ = normalizeProject(command.execute(this.doc_));
+    const applied = command.execute(this.doc_);
+    if (applied === this.doc_) {
+      // Guard-clause no-op (same-index reorder, ungrouped removeFromGroup,
+      // race-guarded note moves…): nothing changed — no undo entry, no dirty
+      // flag, no engine resync. Dead Ctrl+Z steps were the symptom.
+      if (inFrame) this.frameCommands!.push(command);
+      return;
+    }
+    this.doc_ = normalizeProject(applied);
     this.undoStack.push(command);
     this.timestamps.push(Date.now());
     this.diffCache.clear();
@@ -239,7 +247,13 @@ export class ProjectStore {
     this.frameCommands = [];
     this.frameLabel = label ?? "Recorded take";
     this.frameOpenDepth = this.undoStack.length;
-    this.redoStack = [];
+    if (this.redoStack.length > 0) {
+      this.redoStack = [];
+      // canRedo flipped false — notify so the Redo button does not stay
+      // enabled on a stale view (clicking it was a harmless no-op, but a
+      // disabled-looking-enabled control is still wrong UI).
+      this.emit();
+    }
   }
 
   endUndoFrame(): void {
@@ -275,7 +289,18 @@ export class ProjectStore {
     const command = this.undoStack.pop();
     this.timestamps.pop();
     if (!command) return;
-    this.doc_ = normalizeProject(command.undo(this.doc_));
+    let undone: ProjectDocument;
+    try {
+      undone = command.undo(this.doc_);
+    } catch (err) {
+      // A throwing undo must not eat the history entry: without restoring it
+      // the command sat in NEITHER stack and the user lost the ability to
+      // retry while the doc stayed at the applied state. Push back, rethrow.
+      this.undoStack.push(command);
+      this.timestamps.push(Date.now());
+      throw err;
+    }
+    this.doc_ = normalizeProject(undone);
     this.redoStack.push(command);
     this.historyDocs.length = Math.min(this.historyDocs.length, this.undoStack.length + 1);
     this.historyDocs[this.historyDocs.length - 1] = this.doc_;

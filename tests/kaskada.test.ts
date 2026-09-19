@@ -1049,3 +1049,115 @@ describe("kaskada unmask solver", () => {
     expect(max).toBeLessThan(48);
   });
 });
+
+/* ─────────────── audit-fix regressions (2026-09-19) ───────────────
+ * Each of these pins a defect found by the four-plugin audit:
+ *  - LEVEL did not scale the dry path (mix 0 made it fully inert)
+ *  - SPREAD's M/S coefficient had the sign flipped (it narrowed to mono)
+ *  - a non-finite input sample poisoned the ring buffer permanently
+ *  - the unmask power-off zeroed every gain in one block (click)
+ *  - HOLD capture was capped at bufSize>>1 (wrong period above 1 s)
+ *  - HOLD ignored the modulation/wow offset (click on entry/exit)
+ */
+
+describe("kaskada audit regressions", () => {
+  it("LEVEL scales the whole output, dry included (mix 0 is not inert)", () => {
+    const imp = (s: number): [number, number] => (s === 0 ? [0.8, 0.8] : [0, 0]);
+    const a = render(0.3, makeParams({ ...NEUTRAL, mix: 0, level: 0 }), imp);
+    const b = render(0.3, makeParams({ ...NEUTRAL, mix: 0, level: -24 }), imp);
+    expect(a.L[0]).toBeCloseTo(0.8, 5);
+    expect(20 * Math.log10(Math.abs(b.L[0]) / 0.8)).toBeLessThan(-20);
+  });
+
+  it("SPREAD widens the wet bus instead of collapsing it to mono", () => {
+    const src = (s: number): [number, number] =>
+      s < 4800 ? [0.5 * Math.sin((2 * Math.PI * 1000 * s) / currentSr()), 0] : [0, 0];
+    const diff = (r: { L: Float32Array; R: Float32Array }) => {
+      let m = 0;
+      for (let i = 0; i < r.L.length; i++) m = Math.max(m, Math.abs(r.L[i] - r.R[i]));
+      return m;
+    };
+    const s0 = diff(render(0.4, makeParams({ ...NEUTRAL, spread: 0 }), src));
+    const s05 = diff(render(0.4, makeParams({ ...NEUTRAL, spread: 0.5 }), src));
+    const s1 = diff(render(0.4, makeParams({ ...NEUTRAL, spread: 1 }), src));
+    expect(s0).toBeGreaterThan(0.3);
+    expect(s05).toBeGreaterThan(s0); // wider than neutral
+    expect(s1).toBeGreaterThan(s05);
+  });
+
+  it("a non-finite input burst cannot poison the tail", () => {
+    const { L, R } = render(1.5, makeParams({ ...NEUTRAL }), (s) =>
+      s >= 1000 && s < 1400 ? [Infinity, Infinity] : s === 0 ? [0.5, 0.5] : [0, 0],
+    );
+    assertAllFinite([L, R], "non-finite input");
+  });
+
+  it("unmask power-off fades the reduction through the bell chain (no step)", () => {
+    const start = Math.round(0.7 * currentSr());
+    const input = (s: number): [number, number] => {
+      const v = 0.6 * Math.sin((2 * Math.PI * 2000 * s) / currentSr());
+      return [v, v];
+    };
+    const { L } = render(
+      1.5,
+      makeParams({ ...NEUTRAL, unmaskOn: 1, unmask: 1, unmaskSens: 1, time: 200, feedback: 0.4 }),
+      input,
+      (block, p) => {
+        if (block === Math.floor(start / BLOCK)) p.unmaskOn[0] = 0;
+      },
+    );
+    let maxStep = 0;
+    for (let i = 1; i < L.length; i++) maxStep = Math.max(maxStep, Math.abs(L[i] - L[i - 1]));
+    // Natural sample-to-sample slope of the 2 kHz tone is ~0.155; the old
+    // one-block gain zeroing stepped ~0.9.
+    expect(maxStep).toBeLessThan(0.4);
+  });
+
+  it("HOLD captures a full echo period above 1000 ms", () => {
+    const sr = currentSr();
+    const freezeBlock = Math.round((2.0 * sr) / BLOCK);
+    const { L } = render(
+      6.0,
+      makeParams({ ...NEUTRAL, mix: 1, time: 1500, feedback: 0.5 }),
+      (s) => (s < Math.round(0.2 * sr) ? [0.5, 0.5] : [0, 0]),
+      (block, p) => {
+        if (block === freezeBlock) p.freeze[0] = 2;
+      },
+    );
+    const energy = (fromSec: number, toSec: number) => {
+      let e = 0;
+      for (let i = Math.round(fromSec * sr); i < Math.round(toSec * sr); i++) e += L[i] * L[i];
+      return e;
+    };
+    // Capture window [0.5 s, 2.0 s) holds the burst 1.0 s in, so the hold
+    // repeats at 3.0 / 4.5 s. The old bufSize>>1 cap (1000 ms) repeated at
+    // 2.5 / 3.5 s instead.
+    expect(energy(3.0, 3.2)).toBeGreaterThan(0.001);
+    expect(energy(4.5, 4.7)).toBeGreaterThan(0.001);
+    expect(energy(2.5, 2.7)).toBeLessThan(1e-6);
+    expect(energy(3.5, 3.7)).toBeLessThan(1e-6);
+  });
+
+  it("HOLD entry mid-modulation does not click", () => {
+    const sr = currentSr();
+    const freezeBlock = Math.round((0.8 * sr) / BLOCK);
+    const { L } = render(
+      1.6,
+      makeParams({ ...NEUTRAL, mix: 1, time: 250, feedback: 0.5, modDepth: 0.5, modRate: 3, character: 1 }),
+      (s) => {
+        if (s >= Math.round(0.3 * sr)) return [0, 0];
+        const v = 0.5 * Math.sin((2 * Math.PI * 440 * s) / sr);
+        return [v, v];
+      },
+      (block, p) => {
+        if (block === freezeBlock) p.freeze[0] = 2;
+        if (block === freezeBlock + 20) p.freeze[0] = 0;
+      },
+    );
+    let maxStep = 0;
+    for (let i = 1; i < L.length; i++) maxStep = Math.max(maxStep, Math.abs(L[i] - L[i - 1]));
+    // Natural slope of the 440 Hz tail is ~0.029/sample; the old raw-read
+    // anchor jump measured > 0.1.
+    expect(maxStep).toBeLessThan(0.12);
+  });
+});

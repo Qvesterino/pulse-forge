@@ -94,7 +94,7 @@ class KaskadaProcessor extends AudioWorkletProcessor {
     return [
       { name: "time", defaultValue: 375, minValue: 30, maxValue: 2000, automationRate: "k-rate" },
       { name: "sync", defaultValue: 0, minValue: 0, maxValue: 5, automationRate: "k-rate" },
-      { name: "bpm", defaultValue: 120, minValue: 40, maxValue: 240, automationRate: "k-rate" },
+      { name: "bpm", defaultValue: 120, minValue: 20, maxValue: 300, automationRate: "k-rate" },
       { name: "pingPong", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" },
       { name: "reverse", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" },
       { name: "feedback", defaultValue: 0.35, minValue: 0, maxValue: 0.95, automationRate: "k-rate" },
@@ -225,6 +225,7 @@ class KaskadaProcessor extends AudioWorkletProcessor {
     this.umOutL = 0;
     this.umOutR = 0;
     this.umSettled = true; // power off AND every smoothed gain already 0
+    this.umApplyBells = false; // power-off fade still shaping the signal
     this.umAnalysisCoef = 1 - Math.exp(-1000 / (UM_ANALYSIS_ENV_MS * this.sr));
     this.umDryEnv = new Float32Array(UM_BANDS);
     this.umWetEnv = new Float32Array(UM_BANDS);
@@ -509,17 +510,64 @@ class KaskadaProcessor extends AudioWorkletProcessor {
     this.umMaxRedDb = maxRed;
 
     // Application: chunked bell refresh + series chain on L/R
-    if (this.umChunk === 0) this.umRefreshBells();
-    this.umChunk = (this.umChunk + 1) % UM_CHUNK;
+    this.umApplyBells = maxRed > 0.01;
+    this.umApplyBellsTo(wetL, wetR);
+  }
 
+  /** Power-off path: bypass 1:1 while the smoothed gains decay to zero so
+   *  re-enabling never jumps. Fully settled → the flag skips the loop.
+   *
+   *  The old clamp `next > -1e-6 || next < 1e-6 ? 0 : next` was always
+   *  true (any number is either > -1e-6 or < 1e-6), so the very first
+   *  power-off block zeroed every gain — a full-amplitude step (audible
+   *  click on the UNMASK toggle). The correct near-zero test is a
+   *  magnitude check. */
+  /** Power-off as a per-sample step: the old power-off bypassed the bell
+   *  chain instantly (a hard amplitude step wherever the solver was
+   *  reducing), and separately zeroed every gain in one block. Both are
+   *  audible clicks. Here the gains keep decaying through the SAME
+   *  attack/release smoother the powered path uses, and the bells keep
+   *  shaping the signal while any gain is non-negligible — so the
+   *  reduction fades out smoothly, then the chain is skipped entirely. */
+  umPowerOffSample() {
+    if (this.umSettled) {
+      this.umMaxRedDb = 0;
+      return;
+    }
+    const gainDb = this.umGainDb;
+    const coef = this.umRelCoef;
+    let settled = true;
+    let maxRed = 0;
+    for (let b = 0; b < UM_BANDS; b++) {
+      const cur = gainDb[b];
+      if (cur !== 0) {
+        const next = cur + coef * (0 - cur);
+        gainDb[b] = Math.abs(next) < 1e-4 ? 0 : next;
+        if (gainDb[b] !== 0) settled = false;
+        const red = -gainDb[b];
+        if (red > maxRed) maxRed = red;
+      }
+    }
+    this.umMaxRedDb = maxRed;
+    this.umSettled = settled;
+    this.umApplyBells = maxRed > 0.01;
+  }
+
+  /** Apply the current bell chain to one wet sample (shared by the
+   *  powered and power-off paths so the fade-out is phase-continuous). */
+  umApplyBellsTo(wetL, wetR) {
     let yL = wetL;
     let yR = wetR;
-    const active = this.umActiveList;
-    const bells = this.umBells;
-    for (let i = 0; i < active.length; i++) {
-      const bq = bells[active[i]];
-      yL = this.umSample(bq, 0, yL);
-      yR = this.umSample(bq, 1, yR);
+    if (this.umApplyBells) {
+      if (this.umChunk === 0) this.umRefreshBells();
+      this.umChunk = (this.umChunk + 1) % UM_CHUNK;
+      const active = this.umActiveList;
+      const bells = this.umBells;
+      for (let i = 0; i < active.length; i++) {
+        const bq = bells[active[i]];
+        yL = this.umSample(bq, 0, yL);
+        yR = this.umSample(bq, 1, yR);
+      }
     }
     if (!Number.isFinite(yL) || !Number.isFinite(yR)) {
       yL = 0;
@@ -527,28 +575,6 @@ class KaskadaProcessor extends AudioWorkletProcessor {
     }
     this.umOutL = yL;
     this.umOutR = yR;
-  }
-
-  /** Power-off path: bypass 1:1 while the smoothed gains decay to zero so
-   *  re-enabling never jumps. Fully settled → the flag skips the loop. */
-  umPowerOff() {
-    if (this.umSettled) {
-      this.umMaxRedDb = 0;
-      return;
-    }
-    const rel = this.umRelCoef;
-    const gainDb = this.umGainDb;
-    let settled = true;
-    for (let b = 0; b < UM_BANDS; b++) {
-      const cur = gainDb[b];
-      if (cur !== 0) {
-        const next = cur + rel * (0 - cur);
-        gainDb[b] = next > -1e-6 || next < 1e-6 ? 0 : next;
-        if (next !== 0) settled = false;
-      }
-    }
-    if (settled) this.umSettled = true;
-    this.umMaxRedDb = 0;
   }
 
   makeBiquad() {
@@ -656,6 +682,8 @@ class KaskadaProcessor extends AudioWorkletProcessor {
     this.fbGain = params.feedback[0];
     this.drive = params.drive[0];
     this.spread = params.spread[0];
+    this.character = Math.round(params.character[0]);
+    this.modDepthMs = params.modDepth[0] * this.delaySamples * 0.25;
     // FREEZE modes: 0 off · 1 loop (write-back at 0.99) · 2 hold (sample-
     // and-hold of one captured echo period). Entering 2 snapshots the
     // current tail window; while held, nothing is written at all.
@@ -667,7 +695,7 @@ class KaskadaProcessor extends AudioWorkletProcessor {
       // rhythm was wrong. The ring always holds a full period
       // (delaySamples is clamped to bufSize-1), so clamp only against
       // the buffer, not against half of it.
-      this.holdLen = Math.min(this.bufSize - 1, Math.max(64, Math.round(this.delaySamples)));
+      this.holdLen = Math.min(this.bufSize - 1, Math.max(64, this.delaySamples));
       // Anchor the captured window at the CURRENT modulated tap instead
       // of the unmodulated period start: entering HOLD mid-modulation no
       // longer jumps the read pointer by the full LFO/wow offset (the
@@ -675,8 +703,7 @@ class KaskadaProcessor extends AudioWorkletProcessor {
       // every freeze). The window is [anchor - holdLen, anchor), so
       // playback walks chronologically and the live tap resumes exactly
       // at the anchor on unfreeze.
-      const captureChar = Math.round(params.character[0]);
-      const captureWobble = captureChar === 1 ? 0.0005 * this.sr : 0;
+      const captureWobble = this.character === 1 ? 0.0005 * this.sr : 0;
       const captureWobRate = (TWO_PI * 0.7) / this.sr;
       // The live path advances the wow phases before its first read this
       // block; mirror that so the anchor is the exact position the live
@@ -695,12 +722,10 @@ class KaskadaProcessor extends AudioWorkletProcessor {
     this._lastFreezeMode = freezeMode;
     this.holdActive = freezeMode === 2;
     this.freeze = freezeMode === 1;
-    this.character = Math.round(params.character[0]);
     this.mix = params.mix[0];
     this.soloWet = params.soloWet[0] > 0.5;
     this.deltaListen = params.deltaListen[0] > 0.5;
     this.outGain = Math.pow(10, params.level[0] / 20);
-    this.modDepthMs = params.modDepth[0] * this.delaySamples * 0.25;
 
     // ── Unmask targets (k-rate; sensitivity → threshold: 0→+6 dB, 0.5→−15, 1→−36) ──
     this.umPower = params.unmaskOn[0] > 0.5;
@@ -721,6 +746,7 @@ class KaskadaProcessor extends AudioWorkletProcessor {
     const character = this.character;
     const reverse = params.reverse[0] > 0.5;
     const dryGain = this.soloWet ? 0 : 1 - mix;
+    const hSideGain = spread * 0.5;
     const drumRateInc = this.drumRateInc;
 
     // Tape wow (character 1): fixed slow LFOs, ±0.5 ms ≈ ±2 cents — subtle
@@ -734,8 +760,15 @@ class KaskadaProcessor extends AudioWorkletProcessor {
 
     for (let i = 0; i < outL.length; i++) {
       const writeIdx = this.writePos;
-      const inL = hasInput ? input[0][i] : 0;
-      const inR = hasInput && input[1] ? input[1][i] : inL;
+      // A single non-finite sample used to poison the ring buffer forever:
+      // readBuffer pulls it back, the loop EQ/drive/DC blocker all latch
+      // NaN, and the plugin goes silent for the rest of its life. Sanitize
+      // at the boundary — one branch per sample is far cheaper than an
+      // unrecoverable track.
+      let inL = hasInput ? input[0][i] : 0;
+      let inR = hasInput && input[1] ? input[1][i] : inL;
+      if (!Number.isFinite(inL)) inL = 0;
+      if (!Number.isFinite(inR)) inR = 0;
 
       // ── FREEZE HOLD: loop the captured window, pristine (sample-and-hold)
       // Raw buffer reads — no loop EQ/character/drive, no DC block, no
@@ -751,8 +784,8 @@ class KaskadaProcessor extends AudioWorkletProcessor {
         const rpos2 = this.holdAnchorR + hp;
         const hL = this.readBuffer(L, rpos);
         const hR = this.readBuffer(R, rpos2);
-        let hoL = hL + spread * 0.5 * (hR - hL);
-        let hoR = hR + spread * 0.5 * (hL - hR);
+        let hoL = hL + hSideGain * (hL - hR);
+        let hoR = hR + hSideGain * (hR - hL);
         const preHoL = hoL;
         const preHoR = hoR;
         if (this.umPower) {
@@ -760,14 +793,17 @@ class KaskadaProcessor extends AudioWorkletProcessor {
           hoL = this.umOutL;
           hoR = this.umOutR;
         } else {
-          this.umPowerOff();
+          this.umPowerOffSample();
+          this.umApplyBellsTo(hoL, hoR);
+          hoL = this.umOutL;
+          hoR = this.umOutR;
         }
         if (this.deltaListen) {
           outL[i] = (preHoL - hoL) * this.outGain;
           outR[i] = (preHoR - hoR) * this.outGain;
         } else {
-          outL[i] = inL * dryGain + hoL * mix * this.outGain;
-          outR[i] = inR * dryGain + hoR * mix * this.outGain;
+          outL[i] = (inL * dryGain + hoL * mix) * this.outGain;
+          outR[i] = (inR * dryGain + hoR * mix) * this.outGain;
         }
         continue;
       }
@@ -903,9 +939,19 @@ class KaskadaProcessor extends AudioWorkletProcessor {
         R[writeIdx] = inR + fbR * fbGain;
       }
 
-      // Stereo spread (cross-mix for width)
-      let outWL = wetL + spread * 0.5 * (wetR - wetL);
-      let outWR = wetR + spread * 0.5 * (wetL - wetR);
+      // Stereo spread — M/S width on the wet bus.
+      // Mid/side decode: M = (L+R)/2, S = (L-R)/2; widening applies a
+      // side gain w > 1 → L' = M + w·S = L + (w-1)/2·(L-R), R' = R +
+      // (w-1)/2·(R-L). The old code had the SIGN FLIPPED (it mixed
+      // toward the mid signal), so the control *narrowed*: at spread 1
+      // the output was pure mono, and the default 0.8 collapsed the
+      // stereo image the ping-pong had just created. w = 1 + spread
+      // maps 0 → neutral, 1 → 2× side. Correlated centre content stays
+      // at unity gain (L' = L + g·(L-L) = L), so the knob doesn't jump
+      // level as it widens.
+      const sideGain = spread * 0.5;
+      let outWL = wetL + sideGain * (wetL - wetR);
+      let outWR = wetR + sideGain * (wetR - wetL);
 
       // Unmask: carve the delay bus where the dry masks it (output branch
       // only — the feedback loop above is untouched)
@@ -916,7 +962,12 @@ class KaskadaProcessor extends AudioWorkletProcessor {
         outWL = this.umOutL;
         outWR = this.umOutR;
       } else {
-        this.umPowerOff();
+        // Fade the reduction out through the same bell chain (no hard
+        // bypass step) — see umPowerOffSample.
+        this.umPowerOffSample();
+        this.umApplyBellsTo(outWL, outWR);
+        outWL = this.umOutL;
+        outWR = this.umOutR;
       }
 
       if (this.deltaListen) {
@@ -925,9 +976,13 @@ class KaskadaProcessor extends AudioWorkletProcessor {
         outL[i] = (preWL - outWL) * this.outGain;
         outR[i] = (preWR - outWR) * this.outGain;
       } else {
-        // Output: dry + wet (mix); SOLO W monitors the wet arm only
-        outL[i] = inL * dryGain + outWL * mix * this.outGain;
-        outR[i] = inR * dryGain + outWR * mix * this.outGain;
+        // Output: LEVEL scales the whole output (dry + wet), matching the
+        // architecture diagram ("Output Gain → Output", §2) and every
+        // sibling effect — the old wet-only gain made LEVEL silently
+        // change the dry/wet balance instead of the output level (and go
+        // fully inert at mix 0). SOLO W monitors the wet arm only.
+        outL[i] = (inL * dryGain + outWL * mix) * this.outGain;
+        outR[i] = (inR * dryGain + outWR * mix) * this.outGain;
       }
 
       // Spectrum taps (dry = mono input, wet = delay bus pre-mix/pre-level)

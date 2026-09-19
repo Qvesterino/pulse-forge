@@ -3607,6 +3607,77 @@ button {
   pointer-events: none;
 }
 
+/* Numeric point list under an automation canvas — precise entry and the
+   touch path (canvas points are 9px and right-click deletes). */
+.auto-point-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+  clear: both;
+}
+
+.auto-point-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.auto-point-row.active {
+  background: var(--accent-soft);
+}
+
+.auto-point-index {
+  font-family: var(--mono);
+}
+
+.auto-point-input {
+  width: 56px;
+  height: 20px;
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text);
+  font: 10px var(--mono);
+  padding: 0 3px;
+}
+
+.auto-point-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.auto-point-delete {
+  min-width: 20px;
+  height: 20px;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--text-faint);
+  border-radius: 3px;
+}
+
+.auto-point-delete:hover {
+  color: var(--stop);
+}
+
+@media (pointer: coarse) {
+  .auto-point-input {
+    width: 72px;
+    height: 34px;
+    font-size: 12px;
+  }
+
+  .auto-point-delete {
+    min-width: 34px;
+    height: 34px;
+  }
+}
+
 .lfo-list {
   display: flex;
   flex-direction: column;

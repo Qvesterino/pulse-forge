@@ -1,0 +1,124 @@
+import { describe, it, expect } from "vitest";
+import { matchArtistPreset } from "../src/intent/artists";
+import { parseIntentText } from "../src/intent/text-parser";
+import { normalizeIntent } from "../src/intent/normalize";
+import { parseReviseIntent, routeIntentText, REVISE_DELTA } from "../src/intent/route";
+import { testDoc } from "./fixtures/doc";
+import { generateAsyncResult } from "../src/intent/pipeline";
+
+describe("artist type-beat presets (C1)", () => {
+  it("travis scott type beat → trap/rolling/dark with researched BPM", () => {
+    const parsed = parseIntentText("travis scott type beat");
+    expect(parsed.input.genre).toBe("trap");
+    expect(parsed.input.style).toBe("rolling");
+    expect(parsed.input.mood).toBe("dark");
+    expect(parsed.input.bpmRange).toEqual([130, 140]);
+    expect(parsed.input.energy).toBe(0.7);
+    expect(parsed.detected).toContain("♪ travis scott");
+  });
+
+  it("works without the 'type beat' phrase and with SK filler", () => {
+    expect(parseIntentText("travis scott beat").input.genre).toBe("trap");
+    expect(parseIntentText("nieco ako metro boomin prosim").input.mood).toBe("dark");
+  });
+
+  it("explicit text words override the preset base", () => {
+    const parsed = parseIntentText("travis scott type beat bright");
+    // bright → mood energetic + energy trait 0.95 beat the preset's dark/0.7
+    expect(parsed.input.mood).toBe("energetic");
+    expect(parsed.input.energy).toBe(0.95);
+    // genre/style from the preset survive (text added no genre word)
+    expect(parsed.input.genre).toBe("trap");
+  });
+
+  it("covers rage, boom bap and drill references", () => {
+    expect(parseIntentText("rage beat").input.mood).toBe("aggressive");
+    expect(parseIntentText("rage beat").input.bpmRange).toEqual([150, 165]);
+    expect(parseIntentText("southstar type beat").input.style).toBe("bouncy");
+    expect(parseIntentText("kanye type beat").input.style).toBe("classic");
+    expect(parseIntentText("kanye type beat").input.bpmRange).toEqual([86, 92]);
+  });
+
+  it("drill resolves to trap (tempo-proximity techno bug fixed)", () => {
+    expect(parseIntentText("uk drill beat").input.genre).toBe("trap");
+    expect(parseIntentText("central cee type beat").input.genre).toBe("trap");
+  });
+
+  it("no artist → no chip, parsing unchanged", () => {
+    const parsed = parseIntentText("dark rolling techno at 140");
+    expect(parsed.detected.some((d) => d.startsWith("♪"))).toBe(false);
+    expect(parsed.input.genre).toBe("techno");
+    expect(matchArtistPreset(" dark rolling techno at 140 ")).toBeNull();
+  });
+
+  it("matcher is deterministic", () => {
+    expect(matchArtistPreset(" travis scott type beat ")).toEqual(matchArtistPreset("travis scott"));
+  });
+});
+
+describe("revise intent (C2)", () => {
+  it("parses the user's exact phrasings EN and SK", () => {
+    expect(parseReviseIntent("more energetic")).toEqual({
+      attribute: "energy",
+      direction: "more",
+      detected: ["energy ↑"],
+    });
+    expect(parseReviseIntent("more energic")?.attribute).toBe("energy");
+    expect(parseReviseIntent("menej husty")).toEqual({
+      attribute: "density",
+      direction: "less",
+      detected: ["density ↓"],
+    });
+    expect(parseReviseIntent("busier drums")?.attribute).toBe("density");
+    expect(parseReviseIntent("calmer")).toEqual({ attribute: "energy", direction: "less", detected: ["energy ↓"] });
+  });
+
+  it("non-revise text returns null", () => {
+    expect(parseReviseIntent("dark rolling techno at 140")).toBeNull();
+    expect(parseReviseIntent("travis scott type beat")).toBeNull();
+  });
+
+  it("router priorities: punch stays MIX, energy comparatives become REVISE, plain adjectives stay PATTERN", () => {
+    const doc = testDoc();
+    expect(routeIntentText("more punch", doc).kind).toBe("mix");
+    expect(routeIntentText("darker", doc).kind).toBe("mix");
+    expect(routeIntentText("more energetic", doc).kind).toBe("revise");
+    expect(routeIntentText("dark techno", doc).kind).toBe("pattern");
+    const revise = routeIntentText("viac energie", doc);
+    expect(revise.kind).toBe("revise");
+    if (revise.kind === "revise") {
+      expect(revise.attribute).toBe("energy");
+      expect(revise.direction).toBe("more");
+    }
+  });
+});
+
+describe("revise execution — same seed identity (C2)", () => {
+  it("same seed + shifted slider = same beat family, different content", async () => {
+    const doc = testDoc();
+    const base = normalizeIntent({ genre: "trap", seed: "revise-me", energy: 0.5, length: 16 });
+    const shifted = normalizeIntent({
+      genre: "trap",
+      seed: "revise-me",
+      energy: Math.max(0, Math.min(1, 0.5 + REVISE_DELTA)),
+      length: 16,
+    });
+    const resultA = await generateAsyncResult(doc, base, { mode: "apply" });
+    const resultB = await generateAsyncResult(doc, shifted, { mode: "apply" });
+    if (!resultA.proposal || !resultB.proposal) {
+      throw new Error("both deterministic intent generations must produce a proposal");
+    }
+    // identity: the SAME generation seed
+    expect(resultB.plan.intent.seed).toBe(resultA.plan.intent.seed);
+    // character: the slider actually moved, content changed
+    expect(resultB.plan.intent.energy).toBeCloseTo(0.65, 5);
+    expect(resultA.proposal.pattern.generation?.outputContentHash).not.toBe(
+      resultB.proposal.pattern.generation?.outputContentHash,
+    );
+    // determinism: same inputs reproduce the same hashes
+    const resultB2 = await generateAsyncResult(doc, shifted, { mode: "apply" });
+    expect(resultB2.proposal!.pattern.generation?.outputContentHash).toBe(
+      resultB.proposal!.pattern.generation?.outputContentHash,
+    );
+  });
+});

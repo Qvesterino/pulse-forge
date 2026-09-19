@@ -156,6 +156,18 @@ class LimiterProcessor extends AudioWorkletProcessor {
 
     let blockGrDb = 0;
 
+    // Soft-knee gain for the per-channel path — hoisted out of the sample
+    // loop: the old per-sample closure allocation was steady garbage on the
+    // render thread whenever channels were unlinked.
+    const applyKnee = (peak) => {
+      if (peak <= 1e-8) return 1;
+      const peakDb = 20 * Math.log10(peak);
+      const over = peakDb - thresholdDb;
+      if (over <= 0) return 1;
+      const gDb = Math.min(0, Math.min(1, over / 3) * (ceilingDb - peakDb));
+      return Math.pow(10, gDb / 20);
+    };
+
     for (let i = 0; i < len; i++, this.step++) {
       const l = inL ? inL[i] : 0;
       const r = inR ? inR[i] : l;
@@ -201,14 +213,6 @@ class LimiterProcessor extends AudioWorkletProcessor {
       let targetL = targetLinked;
       let targetR = targetLinked;
       if (perChannel) {
-        const applyKnee = (peak) => {
-          if (peak <= 1e-8) return 1;
-          const peakDb = 20 * Math.log10(peak);
-          const over = peakDb - thresholdDb;
-          if (over <= 0) return 1;
-          const gDb = Math.min(0, Math.min(1, over / 3) * (ceilingDb - peakDb));
-          return Math.pow(10, gDb / 20);
-        };
         const gl = applyKnee(this.leftPeak.front(windowStart));
         const gr2 = applyKnee(this.rightPeak.front(windowStart));
         targetL = link * targetLinked + (1 - link) * gl;

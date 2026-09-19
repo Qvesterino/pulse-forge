@@ -148,6 +148,10 @@ interface ParamRange {
   format?: (v: number) => string;
 }
 
+/** Point hit radius: a 9px dot is fine for a mouse, a finger needs ~3x that. */
+const POINT_HIT_PX =
+  typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches ? 22 : 8;
+
 function laneRange(doc: ProjectDocument, target: AutomationTarget): ParamRange {
   if (target.kind === "trackGain") return { min: 0, max: 1.5, format: (v) => v.toFixed(2) };
   if (target.kind === "trackPan") return { min: -1, max: 1, format: (v) => (Math.abs(v) < 0.02 ? "C" : v.toFixed(2)) };
@@ -784,7 +788,7 @@ function PointEditor({
     for (let i = 0; i < points.length; i++) {
       const dx = Math.abs(tPx(points[i].tick) - (event.clientX - rect.left));
       const dy = Math.abs(vPy(points[i].value) - (event.clientY - rect.top));
-      if (dx < 8 && dy < 8) return i;
+      if (dx < POINT_HIT_PX && dy < POINT_HIT_PX) return i;
     }
     return -1;
   };
@@ -894,6 +898,58 @@ function PointEditor({
           />
         );
       })}
+      {/* Numeric point list — the canvas points are 9px mouse targets and
+          right-click deletes; touch and precision editing happen here
+          (Cubase-style: select, then type). Mirrors the scene-editor row. */}
+      {renderPoints.length > 0 && (
+        <div className="auto-point-list" role="group" aria-label="Automation points">
+          {renderPoints.map((p, i) => (
+            <span key={i} className={`auto-point-row${livePos?.index === i ? " active" : ""}`}>
+              <span className="auto-point-index" aria-hidden="true">
+                #{i + 1}
+              </span>
+              <input
+                type="number"
+                className="auto-point-input"
+                aria-label={`Point ${i + 1} tick`}
+                value={livePos?.index === i ? livePos.tick : p.tick}
+                min={0}
+                max={patternTicks}
+                step={STEP_TICKS}
+                onChange={(event) => {
+                  const v = Math.max(
+                    0,
+                    Math.min(patternTicks, Math.round(Number(event.target.value) / STEP_TICKS) * STEP_TICKS),
+                  );
+                  services.store.execute(moveAutomationPoint(services.store.doc, laneId, i, { tick: v, value: p.value }));
+                }}
+              />
+              <input
+                type="number"
+                className="auto-point-input"
+                aria-label={`Point ${i + 1} value`}
+                value={Number((livePos?.index === i ? livePos.value : p.value).toFixed(3))}
+                min={range.min}
+                max={range.max}
+                step={(range.max - range.min) / 100}
+                onChange={(event) => {
+                  const v = Math.max(range.min, Math.min(range.max, Number(event.target.value)));
+                  services.store.execute(moveAutomationPoint(services.store.doc, laneId, i, { tick: p.tick, value: v }));
+                }}
+              />
+              <button
+                type="button"
+                className="auto-point-delete"
+                aria-label={`Delete point ${i + 1}`}
+                title="Delete this point"
+                onClick={() => services.store.execute(deleteAutomationPoint(services.store.doc, laneId, i))}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1517,7 +1573,7 @@ function IntensityEditor({
     for (let i = 0; i < curve.length; i++) {
       const dx = Math.abs(tPx(curve[i].offset) - (event.clientX - rect.left));
       const dy = Math.abs(vPy(curve[i].value) - (event.clientY - rect.top));
-      if (dx < 8 && dy < 8) return i;
+      if (dx < POINT_HIT_PX && dy < POINT_HIT_PX) return i;
     }
     return -1;
   };
@@ -1728,7 +1784,7 @@ function ScenePointEditor({
     for (let i = 0; i < points.length; i++) {
       const dx = Math.abs(tPx(points[i].tick) - (event.clientX - rect.left));
       const dy = Math.abs(vPy(points[i].value) - (event.clientY - rect.top));
-      if (dx < 8 && dy < 8) return i;
+      if (dx < POINT_HIT_PX && dy < POINT_HIT_PX) return i;
     }
     return -1;
   };

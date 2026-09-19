@@ -451,6 +451,36 @@ Odpoveď na "ako má vyzerať intro/verse/chorus/bridge/outro":
 - Testy: song 11 (inštrumentácia, pop forma, intersection, clamp/infer),
   arrangeWords 13 (nové synonymá EN+SK).
 
+### 5.9 Artist "type beat" references + "more X" routing (C1+C2, HOTOVÉ)
+
+Odpoveď na "bude to chápať aggressive / more energic / travis scott type
+beat?": aggressive ✓ (mood), "more energetic" ✓ (C2 revise), artist
+referencie ✓ (C1 slovník) — predtým "travis scott type beat" padol do
+default house patternu (najhorší možný fallback pre trap request).
+
+- **C1 Artist alias slovník** (`src/intent/artists.ts`): 14 presetov /
+  ~40 match fráz — travis scott (trap/rolling/dark/130–140), metro boomin,
+  21 savage, rage (carti/yeat/southstar: bouncy/aggressive/150–165), drill
+  (pop smoke/central cee: sparse/140–145), ice spice jersey, boom bap
+  (kanye: classic/86–92), fred again, disclosure ukg, fisher tech house,
+  amapiano (rema/tyla: afro/chill/110–115), big room. BPM priorita z web
+  researchu (Mixed In Key/LANDR/producent fóra — zdroje v pláne).
+  **Sémantika: preset = base, explicitný text vyhráva** ("travis scott type
+  beat bright" → energetic). detected chip "♪ travis scott".
+- **Fix**: "drill" mapovalo na techno (tempo-proximity omylom) → trap.
+- **C2 Revise routing** (`route.ts`): "more energetic/energic/energy",
+  "calmer", "busier/denser", "menej husty" → `revise` route: ±0.15
+  (REVISE_DELTA) na energy/density + re-generácia s ROVNAKÝM SEEDOM — beat
+  si zachová identitu, zmení charakter. Panel drží `lastIntentRef` a
+  re-runuje cez rovnaký audition tok; bez poslednej generácie = fallback na
+  čerstvý pattern s atribútom. Router priorita: arrange → mix (ZVUK: tón/
+  reverb/punch) → revise (OBSAH: energy/density) → pattern.
+- Dlhodobo: T1 krok 2 (multilingual text embedding) túto vrstvu podstrčí —
+  alias mapa ostane ako rýchly offline fallback.
+- Testy: `tests/intent-artists.test.ts` (11) — presety + text override +
+  drill fix + revise parser EN/SK + router priority + same-seed identity
+  (rovnaký seed, iný content hash, determinizmus).
+
 ## 6. Kvalita, testy, determinizmus
 
 - **Testy**: `tests/intent-pipeline.test.ts`, `intent-async-pipeline.test.ts`,
@@ -494,7 +524,7 @@ Odpoveď na "ako má vyzerať intro/verse/chorus/bridge/outro":
 
 | Oblast | Dnes | Chýba do SUNO-tieru |
 |---|---|---|
-| Text understanding | **parser v3 (EN + SK)**: frázy, BPM range (na/pri/okolo/medzi), key (mol/dur + EN, flats→sharps, minor default), moods/traits so SK stems, takty, roly s negáciami (bez bubnov…) — detekcia dvojjazyčná, kanonický intent ostáva EN | embedding-based porozumenie (T1 krok 2) — prirodzene pokryje aj SK |
+| Text understanding | **parser v3 (EN + SK) + C1 artist slovník** (travis scott/metro boomin/rage/drill/boom bap/fred again/amapiano… → štýlové presety s BPM) + C2 revise comparatívy ("more energetic" = ±slider na rovnakom sede) | embedding-based porozumenie (T1 krok 2) — prirodzene pokryje aj SK a neznáme mená |
 | Žánre/style | 4 žánre + 21 groove štýlov v prior vocab | desiatky štýlov; style embeddingy namiesto ručných keyword map |
 | Generatívny model | template anchors + constrained Markov **+ ONNX symbolic prior v1 (drums)** | prior v2: melodic role, učenie z favoritov, väčší dataset |
 | Štruktúra pesničky | **HOTOVÉ (A2 v2)**: song builder s verse/chorus/bridge rolami, inštrumentáciou per sekciu (intro=bicí+bas, chorus=full, bridge=bez bicích), pop forma pre trap + elektronickej formy | section-aware prior kandidáty, audíció celej pesničky, reálne transition ZVUKY |
@@ -589,6 +619,7 @@ IndexedDB/Cache API cache po prvom stiahnutí, PWA precache len pre T0.
 ---
 
 *Posledná úplná revízia mapy: 2026-09-19 (T1, parser v3 EN+SK, drum+melodic prior
-v1, C1+C2 favorites→retrain, A1 audition, A2 song builder + v2 songwriting
-role, D1 mix chain, D3 unified bar). Dokument sa dopĺňa pri každej zmene
-Intent Engine; fakty boli overené čítaním zdrojov uvedených v §3.*
+v1, C1+C2 favorites→retrain, A1 audition, A2 song builder + v2 songwriting role,
+D1 mix chain, D3 unified bar, C1 artist slovník + C2 revise routing). Dokument
+sa dopĺňa pri každej zmene Intent Engine; fakty boli overené čítaním zdrojov
+uvedených v §3.*

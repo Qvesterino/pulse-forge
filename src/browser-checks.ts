@@ -1205,6 +1205,57 @@ export async function runChecks(): Promise<CheckResult[]> {
     check("pdc: limiter track stays aligned with dry track (<2 ms)", false, String(error));
   }
 
+  // Send PDC: a track inside a look-ahead-limited group sends to an empty
+  // return. The send tap rides the track's own PDC, so the per-send delay
+  // only has to cover the downstream group latency — wet must land exactly
+  // on dry (trigger + 5 ms). Without send compensation the return hears the
+  // hit a full look-ahead early (≈trigger + 0 ms). Master limiter is off so
+  // the absolute expectation needs no extra uniform shift.
+  try {
+    const doc = createProjectFromTemplate("empty");
+    const group = createGroupTrackModel("SendBus");
+    group.effects = [
+      {
+        id: "sendgrp-lim",
+        type: "limiter",
+        bypassed: false,
+        params: { ...defaultParamsOf("limiter"), lookaheadMs: 5 },
+      },
+    ];
+    const drum = doc.tracks.find((t) => t.kind === "drum");
+    if (!drum || drum.kind !== "drum") throw new Error("template drift: expected a drum track");
+    const grouped = { ...drum, groupId: group.id, sends: { "send-ret": 1 } };
+    doc.tracks = [...doc.tracks.map((t) => (t.id === drum.id ? grouped : t)), group];
+    doc.returns = [{ id: "send-ret", kind: "return", name: "SendRet", gain: 1, effects: [] }];
+    doc.master = { ...doc.master, limiterEnabled: false };
+    const ctx = new OfflineAudioContext(2, Math.floor(SR * 0.6), SR);
+    await loadAllWorklets(ctx);
+    const engine = new AudioEngine();
+    engine.attachBank(bank);
+    engine.useContext(ctx);
+    engine.setProject(doc);
+    engine.trigger(drum.id, drum.pads[0], 0.03, 1);
+    const rendered = await ctx.startRendering();
+    const ch = rendered.getChannelData(0);
+    let onset = -1;
+    for (let i = 0; i < ch.length; i++) {
+      if (Math.abs(ch[i]) > 0.02) {
+        onset = i;
+        break;
+      }
+    }
+    const onsetSec = onset >= 0 ? onset / SR : Number.NaN;
+    // Dry = trigger + 5 ms group look-ahead; wet must match it, not the
+    // uncompensated trigger + 0 ms (≈5 ms early = missing send PDC).
+    check(
+      "pdc: grouped send via return lands on dry (trigger+5ms ±3ms)",
+      Number.isFinite(onsetSec) && onsetSec >= 0.032 && onsetSec <= 0.039,
+      `onset=${Number.isFinite(onsetSec) ? `${(onsetSec * 1000).toFixed(1)}ms` : "none"} (expected ≈35.0ms; ≈30ms means send PDC inactive)`,
+    );
+  } catch (error) {
+    check("pdc: grouped send via return lands on dry (trigger+5ms ±3ms)", false, String(error));
+  }
+
   // Groups: a track moved between groups must feed ONLY the new group.
   // Regression: the old rerouting left the edge to the previous group's
   // input connected, so the track played through both groups at once.

@@ -58,6 +58,29 @@ export function setStepVelocity(
   });
 }
 
+/**
+ * Pin the step write to ONE pattern (by id). Undo stacks outlive pattern
+ * switches: resolving against the APPLY-time active pattern made a step
+ * undo write into whichever pattern is active when it runs — the exact bug
+ * `withTrackNotes` documents and fixed for notes. A stale patternId (pattern
+ * deleted mid-flight) is a tolerant no-op, matching the delta applier.
+ */
+export function setStepVelocityInPattern(
+  doc: ProjectDocument,
+  patternId: string,
+  padId: string,
+  stepIndex: number,
+  velocity: number,
+): ProjectDocument {
+  const clamped = clamp(velocity, 0, 1);
+  if (!Number.isInteger(stepIndex) || stepIndex < 0) return doc;
+  return withPattern(doc, patternId, (pattern) => {
+    const row = [...(pattern.rows[padId] ?? [])];
+    row[stepIndex] = clamped;
+    return { ...pattern, rows: { ...pattern.rows, [padId]: row } };
+  });
+}
+
 export function activePatternOf(doc: ProjectDocument) {
   return getActivePattern(doc);
 }

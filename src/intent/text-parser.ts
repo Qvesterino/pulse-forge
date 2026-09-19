@@ -1,5 +1,6 @@
 import type { IntentInput, IntentRole } from "./types";
 import type { IntentGenre } from "./types";
+import { matchArtistPreset } from "./artists";
 
 /**
  * Natural language → IntentInput parser (goal: "dark rolling techno at 140
@@ -49,10 +50,9 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\bindustrial\b/, "techno"],
   [/\bdub techno\b|\bdubtech\b|\bdub\b/, "techno"],
   [/\bhardcore\b|\bgabber\b/, "techno"],
-  [/\bdrill\b/, "techno"],
+  [/\bdrill\b/, "trap"], // drill = 140+ sliding 808s — trap family (was: techno, a tempo-proximity mistake)
   [/\btrap\b/, "trap"],
   [/\bphonk\b/, "trap"],
-  [/\bdrill beat\b/, "trap"],
   [/\bhip ?hop\b|\bboombap\b|\bboom bap\b/, "trap"],
   [/\bambient\b/, "ambient"],
   [/\blofi\b|\blo-?fi\b/, "ambient"],
@@ -120,7 +120,7 @@ const TRAIT_PHRASES: ReadonlyArray<readonly [RegExp, CharacterTrait]> = [
   [/\bdark\b|\bmoody\b|\bmenacing\b|\beerie\b|\btmav|\btemn/, { energy: 0.3 }],
   [/\bchill\b|\brelaxed\b|\blaid back\b|\blaid-?back\b|\bpoko/, { energy: 0.3, density: 0.4 }],
   [/\baggressive\b|\bhard\b|\btvrd/, { energy: 0.9, density: 0.7 }],
-  [/\benergetic\b|\beuphoric\b|\buplifting\b/, { energy: 0.95, density: 0.7 }],
+  [/\benergetic\b|\beuphoric\b|\buplifting\b|\bbright\b|\bsvetl|\bvesel/, { energy: 0.95, density: 0.7 }],
   [/\bdriving\b/, { energy: 0.8, density: 0.7 }],
   [/\brolling\b|\broluj/, { variation: 0.6 }],
   [/\bmelancholic\b|\bemotional\b|\bsmutn|\bemocion/, { energy: 0.35, complexity: 0.5 }],
@@ -231,7 +231,26 @@ export function parseIntentText(text: string): ParsedIntent {
 
   const input: IntentInput = {};
 
-  // Genre detection (list order = specificity; first hit wins)
+  // ARTIST "type beat" preset (C1) — applied FIRST as the base: it sets
+  // genre/style/mood/sliders/BPM, and the explicit-word steps below still
+  // override it ("travis scott type beat bright" → energetic wins over the
+  // preset's dark). No artist match ⇒ everything behaves exactly as before.
+  const artist = matchArtistPreset(lower);
+  if (artist) {
+    const preset = artist.preset;
+    input.genre = preset.genre;
+    if (preset.style) input.style = preset.style;
+    if (preset.mood) input.mood = preset.mood;
+    if (preset.energy !== undefined) input.energy = preset.energy;
+    if (preset.density !== undefined) input.density = preset.density;
+    if (preset.bpmRange) input.bpmRange = [...preset.bpmRange] as IntentInput["bpmRange"];
+    detected.push(`♪ ${preset.label}`);
+  }
+
+  // Genre detection (list order = specificity; first hit wins).
+  // Skipped when an artist preset already set the genre AND the text carries
+  // no genre word of its own is handled naturally: firstPhrase only fires on
+  // an actual genre word, which then (intentionally) overrides the preset.
   const genre = firstPhrase(GENRE_PHRASES, lower);
   if (genre) {
     input.genre = genre as IntentGenre;

@@ -108,7 +108,10 @@ export function soloAudibility(doc: ProjectDocument): SoloAudibility {
 interface FxChainState {
   runtimes: Map<string, EffectRuntime>;
   params: Map<string, Record<string, number>>;
-  signature: string;
+  // `null` means this graph has never been built. The empty string is a valid
+  // signature for a chain with no effects, and still needs pass-through
+  // routing plus its PDC node initialized.
+  signature: string | null;
   /**
    * Compensation delay (PDC): latency-introducing effects (look-ahead limiter)
    * route through it; syncPdc() sizes it so every track reaches the master
@@ -1145,7 +1148,14 @@ export class AudioEngine {
   }
 
   transportStarted(time: number, beatPhase: number): void {
-    for (const nodes of this.trackNodes.values()) {
+    // Groups and returns carry tempo-synced / phase-locked FX too (Pump,
+    // Step Gate, SYNC delays) — skipping them left bus effects out of phase
+    // with the transport for the whole play.
+    for (const nodes of [
+      ...this.trackNodes.values(),
+      ...this.groupNodes.values(),
+      ...this.returnNodes.values(),
+    ]) {
       for (const rt of nodes.fx.runtimes.values()) {
         rt.onTransportStarted?.(time, beatPhase);
       }
@@ -1226,6 +1236,10 @@ export class AudioEngine {
     state.latencySubs.length = 0;
     for (const rt of state.runtimes.values()) rt.dispose();
     state.runtimes.clear();
+    // The chain rebuild replaced these effect instances — their meter flags
+    // must not survive as unreachable entries that grow across every
+    // add/remove/reorder for the life of the session.
+    for (const fxId of state.params.keys()) this.fxMetersEnabled.delete(fxId);
     state.params.clear();
     input.disconnect();
     if (state.pdcDelay) {
@@ -1476,6 +1490,46 @@ export class AudioEngine {
       if (!liveReturnIds.has(id)) this.disposeReturnNodes(id, nodes);
     }
 
+    // Create/update return nodes BEFORE groups/tracks: syncSends() only wires
+    // sends whose return node already exists, so a first sync after load (or
+    // after adding a return) must not run while returnNodes is still empty —
+    // group sends were silently dropped until an unrelated second sync.
+    for (const ret of doc.returns) {
+      let nodes = this.returnNodes.get(ret.id);
+      if (!nodes) {
+        const input = ctx.createGain();
+        const gain = ctx.createGain();
+        const modAutoGain = ctx.createGain();
+        modAutoGain.gain.value = 1;
+        const modMacroGain = ctx.createGain();
+        modMacroGain.gain.value = 1;
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 2048;
+        analyser.channelCount = 2;
+        analyser.channelCountMode = "explicit";
+        gain.connect(modAutoGain);
+        modAutoGain.connect(modMacroGain);
+        modMacroGain.connect(analyser);
+        analyser.connect(this.master);
+        nodes = {
+          input,
+          gain,
+          modAutoGain,
+          modMacroGain,
+          analyser,
+          fx: { runtimes: new Map(), params: new Map(), signature: null, pdcDelay: null, latencySubs: [] },
+        };
+        this.returnNodes.set(ret.id, nodes);
+      }
+      const sig = this.fxSignature(ret.effects);
+      if (nodes.fx.signature !== sig) {
+        this.rebuildFxChain(ret.id, ret.effects, nodes.input, nodes.gain, nodes.fx);
+      } else {
+        this.syncFxParams(ret.effects, nodes.fx);
+      }
+      nodes.gain.gain.setTargetAtTime(Math.max(0, Math.min(1.5, ret.gain)), ctx.currentTime, 0.01);
+    }
+
     // Create/update group nodes
     const liveGroupIds = new Set(doc.tracks.filter((t) => t.kind === "group").map((t) => t.id));
     for (const [id, nodes] of [...this.groupNodes]) {
@@ -1516,7 +1570,7 @@ export class AudioEngine {
           modMacroGain,
           modMacroPan,
           analyser,
-          fx: { runtimes: new Map(), params: new Map(), signature: "", pdcDelay: null, latencySubs: [] },
+          fx: { runtimes: new Map(), params: new Map(), signature: null, pdcDelay: null, latencySubs: [] },
           sends: new Map(),
           sendDelays: new Map(),
         };
@@ -1533,42 +1587,6 @@ export class AudioEngine {
       nodes.panner.pan.setTargetAtTime(track.pan, now, 0.01);
       // Group audible when it — or any of its members — is soloed.
       nodes.gain.gain.setTargetAtTime(solo.audible(track.id) ? track.gain : 0, now, 0.01);
-    }
-
-    for (const ret of doc.returns) {
-      let nodes = this.returnNodes.get(ret.id);
-      if (!nodes) {
-        const input = ctx.createGain();
-        const gain = ctx.createGain();
-        const modAutoGain = ctx.createGain();
-        modAutoGain.gain.value = 1;
-        const modMacroGain = ctx.createGain();
-        modMacroGain.gain.value = 1;
-        const analyser = ctx.createAnalyser();
-        analyser.fftSize = 2048;
-        analyser.channelCount = 2;
-        analyser.channelCountMode = "explicit";
-        gain.connect(modAutoGain);
-        modAutoGain.connect(modMacroGain);
-        modMacroGain.connect(analyser);
-        analyser.connect(this.master);
-        nodes = {
-          input,
-          gain,
-          modAutoGain,
-          modMacroGain,
-          analyser,
-          fx: { runtimes: new Map(), params: new Map(), signature: "", pdcDelay: null, latencySubs: [] },
-        };
-        this.returnNodes.set(ret.id, nodes);
-      }
-      const sig = this.fxSignature(ret.effects);
-      if (nodes.fx.signature !== sig) {
-        this.rebuildFxChain(ret.id, ret.effects, nodes.input, nodes.gain, nodes.fx);
-      } else {
-        this.syncFxParams(ret.effects, nodes.fx);
-      }
-      nodes.gain.gain.setTargetAtTime(Math.max(0, Math.min(1.5, ret.gain)), ctx.currentTime, 0.01);
     }
 
     for (const track of doc.tracks) {
@@ -1604,7 +1622,7 @@ export class AudioEngine {
           modMacroGain,
           modMacroPan,
           analyser,
-          fx: { runtimes: new Map(), params: new Map(), signature: "", pdcDelay: null, latencySubs: [] },
+          fx: { runtimes: new Map(), params: new Map(), signature: null, pdcDelay: null, latencySubs: [] },
           sends: new Map(),
           sendDelays: new Map(),
         };
@@ -1744,7 +1762,14 @@ export class AudioEngine {
   private pushSyncBpm(bpm: number): void {
     if (this.syncedBpm === bpm) return;
     this.syncedBpm = bpm;
-    for (const nodes of this.trackNodes.values()) {
+    // Bus and return chains hold tempo-synced runtimes (SYNC delays, LFO
+    // syncs) — without these loops a return delay kept the old BPM after a
+    // project/scene tempo change and echoes landed off-grid.
+    for (const nodes of [
+      ...this.trackNodes.values(),
+      ...this.groupNodes.values(),
+      ...this.returnNodes.values(),
+    ]) {
       for (const rt of nodes.fx.runtimes.values()) rt.syncBpm?.(bpm);
     }
     // Instrument runtimes: tempo-synced modulators (LFO sync, texture delay,
@@ -1949,10 +1974,12 @@ export class AudioEngine {
       // Restore after voice captured ratio (next tick) — keep automation clean
       const restoreAt = when + 0.001;
       if (savedRatio === undefined) {
-        // No prior ratio — delete by restoring undefined via setParameter
+        // No prior ratio — restore the instrument default on the RUNTIME only.
+        // The live doc must never be mutated from the audio path: it bypasses
+        // the command/undo system, breaks immutable-doc delta capture, and in
+        // a race (user sets a ratio param while the note sounds) would delete
+        // their fresh edit.
         inst.runtime.setParameterAt?.("ratio", 3.5, restoreAt) ?? inst.runtime.setParameter("ratio", 3.5);
-        // Then clear param so default applies: directly delete from track doc if needed
-        if (docTrack && (docTrack.params as any).ratio !== undefined) delete (docTrack.params as any).ratio;
       } else {
         inst.runtime.setParameterAt?.("ratio", savedRatio, restoreAt) ?? inst.runtime.setParameter("ratio", savedRatio);
       }
@@ -2093,6 +2120,15 @@ export class AudioEngine {
     }
 
     if (warpSegs) {
+      // The primary `source` is never started on the segmented path — only
+      // per-segment sources are. Disconnect it now so the connected-but-silent
+      // BufferSource (and its source→gain edge) does not accumulate in the
+      // render graph on every re-trigger of a looped warp clip.
+      try {
+        source.disconnect();
+      } catch {
+        /* already disconnected */
+      }
       // One repitch source per segment through a private micro-fade gain, all
       // sharing the clip gain (musical fades still span the whole clip).
       // Interior joints overlap into a 3 ms crossfade (see
@@ -4005,16 +4041,33 @@ export class AudioEngine {
     const gain = ctx.createGain();
     gain.gain.value = 0.85;
     source.connect(gain).connect(this.master);
+    // Track it as a preview voice: stopPreview()/panic() must be able to
+    // cancel a bar-quantized start that has not fired yet — otherwise the
+    // sample sounds after the user pressed Stop.
+    const voice: PreviewVoice = { source, gain };
+    this.previewVoices.add(voice);
     source.start(when);
     source.onended = () => {
+      this.previewVoices.delete(voice);
       gain.disconnect();
       source.disconnect();
     };
   }
 
-  /** Current transport tick estimate (doc-relative), used for preview sync. */
+  /**
+   * Current transport tick, supplied by the service layer (the engine does
+   * not own the Transport). Used to quantize transport-synced previews to
+   * the NEXT bar relative to the live playhead; falls back to 0 when unset.
+   */
+  getTransportTick: (() => number) | null = null;
+
   private transportTickNow(): number {
-    return 0;
+    try {
+      const tick = this.getTransportTick?.() ?? 0;
+      return Number.isFinite(tick) && tick >= 0 ? tick : 0;
+    } catch {
+      return 0;
+    }
   }
 
   private choke(trackId: string, chokeGroup: number, when: number): void {
@@ -4100,6 +4153,11 @@ export class AudioEngine {
       return;
     }
     this.stopPreview();
+    // AudioClips, warp segments, marker cues and metronome clicks are
+    // scheduled up to a lookahead horizon ahead — a live-context panic
+    // (pause/stop/seek) must hard-stop them too, or a multi-bar clip keeps
+    // playing past Stop and old-position cues fire after a seek.
+    this.stopOneShotSources();
     const now = ctx.currentTime;
     // Defect 6.1 (lifecycle / leak audit): dispose every LFO and
     // follower modulator BEFORE instrument.panic() so the modulation

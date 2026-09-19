@@ -51,23 +51,37 @@ class KwMeterProcessor extends AudioWorkletProcessor {
   }
 
   integratedLoudness() {
+    // Allocation-free two-pass gated loudness (BS.1770): the old version
+    // built blocks[] + two filter() arrays + reduce closures every 100 ms on
+    // the audio thread — steady garbage for the GC. The scan itself is cheap
+    // arithmetic; the allocations were the problem. Numbers only here.
     const powers = this.subPowers;
     const start = this.integratedStart;
-    const blocks = [];
-    for (let k = start; k + 4 <= powers.length; k++) {
-      blocks.push((powers[k] + powers[k + 1] + powers[k + 2] + powers[k + 3]) / 4);
+    const len = powers.length;
+    let sumAbs = 0;
+    let countAbs = 0;
+    for (let k = start; k + 4 <= len; k++) {
+      const ms = (powers[k] + powers[k + 1] + powers[k + 2] + powers[k + 3]) / 4;
+      if (this.loudnessOf(ms) > -70) {
+        sumAbs += ms;
+        countAbs++;
+      }
     }
-    if (blocks.length === 0) return -180;
-    // Absolute gate −70 LUFS.
-    const audible = blocks.filter((ms) => this.loudnessOf(ms) > -70);
-    if (audible.length === 0) return -180;
-    const ungatedMean = audible.reduce((acc, ms) => acc + ms, 0) / audible.length;
-    const relativeGate = -0.691 + 10 * Math.log10(ungatedMean) - 10;
-    // Relative gate −10 LU (power domain).
-    const gated = blocks.filter((ms) => this.loudnessOf(ms) >= Math.max(-70, relativeGate));
-    if (gated.length === 0) return -180;
-    const gatedMean = gated.reduce((acc, ms) => acc + ms, 0) / gated.length;
-    return this.loudnessOf(gatedMean);
+    if (countAbs === 0) return -180;
+    // Absolute gate −70 LUFS passed → relative gate −10 LU (power domain).
+    const relativeGate = -0.691 + 10 * Math.log10(sumAbs / countAbs) - 10;
+    const gate = Math.max(-70, relativeGate);
+    let sumG = 0;
+    let countG = 0;
+    for (let k = start; k + 4 <= len; k++) {
+      const ms = (powers[k] + powers[k + 1] + powers[k + 2] + powers[k + 3]) / 4;
+      if (this.loudnessOf(ms) >= gate) {
+        sumG += ms;
+        countG++;
+      }
+    }
+    if (countG === 0) return -180;
+    return this.loudnessOf(sumG / countG);
   }
 
   process(inputs, outputs, parameters) {
@@ -111,7 +125,14 @@ class KwMeterProcessor extends AudioWorkletProcessor {
       if (this.subCount >= this.subblockSamples) {
         const ms = (this.subAccum[0] + this.subAccum[1]) / this.subblockSamples;
         this.subPowers.push(ms);
-        if (this.subPowers.length > 36000) this.subPowers.splice(0, 18000); // ~1 h cap
+        if (this.subPowers.length > 36000) {
+          this.subPowers.splice(0, 18000); // ~1 h cap
+          // integratedStart indexes into subPowers — the splice shifted every
+          // surviving entry down by 18000. Without the rebase a RESET done
+          // before the splice silently re-gated pre-reset blocks (or ran
+          // negative → NaN → integrated read −180 forever in 1h+ sessions).
+          this.integratedStart = Math.max(0, this.integratedStart - 18000);
+        }
         this.subCount = 0;
         this.subAccum[0] = 0;
         this.subAccum[1] = 0;

@@ -340,6 +340,14 @@
       const perChannel = outR !== null && link < 0.999;
       const attackCoef = 1 - Math.exp(-1 / (sr * 5e-4));
       let blockGrDb = 0;
+      const applyKnee = (peak) => {
+        if (peak <= 1e-8) return 1;
+        const peakDb = 20 * Math.log10(peak);
+        const over = peakDb - thresholdDb;
+        if (over <= 0) return 1;
+        const gDb = Math.min(0, Math.min(1, over / 3) * (ceilingDb - peakDb));
+        return Math.pow(10, gDb / 20);
+      };
       for (let i = 0; i < len; i++, this.step++) {
         const l = inL ? inL[i] : 0;
         const r = inR ? inR[i] : l;
@@ -375,14 +383,6 @@
         let targetL = targetLinked;
         let targetR = targetLinked;
         if (perChannel) {
-          const applyKnee = (peak) => {
-            if (peak <= 1e-8) return 1;
-            const peakDb = 20 * Math.log10(peak);
-            const over = peakDb - thresholdDb;
-            if (over <= 0) return 1;
-            const gDb = Math.min(0, Math.min(1, over / 3) * (ceilingDb - peakDb));
-            return Math.pow(10, gDb / 20);
-          };
           const gl = applyKnee(this.leftPeak.front(windowStart));
           const gr2 = applyKnee(this.rightPeak.front(windowStart));
           targetL = link * targetLinked + (1 - link) * gl;
@@ -685,19 +685,30 @@
     integratedLoudness() {
       const powers = this.subPowers;
       const start = this.integratedStart;
-      const blocks = [];
-      for (let k = start; k + 4 <= powers.length; k++) {
-        blocks.push((powers[k] + powers[k + 1] + powers[k + 2] + powers[k + 3]) / 4);
+      const len = powers.length;
+      let sumAbs = 0;
+      let countAbs = 0;
+      for (let k = start; k + 4 <= len; k++) {
+        const ms = (powers[k] + powers[k + 1] + powers[k + 2] + powers[k + 3]) / 4;
+        if (this.loudnessOf(ms) > -70) {
+          sumAbs += ms;
+          countAbs++;
+        }
       }
-      if (blocks.length === 0) return -180;
-      const audible = blocks.filter((ms) => this.loudnessOf(ms) > -70);
-      if (audible.length === 0) return -180;
-      const ungatedMean = audible.reduce((acc, ms) => acc + ms, 0) / audible.length;
-      const relativeGate = -0.691 + 10 * Math.log10(ungatedMean) - 10;
-      const gated = blocks.filter((ms) => this.loudnessOf(ms) >= Math.max(-70, relativeGate));
-      if (gated.length === 0) return -180;
-      const gatedMean = gated.reduce((acc, ms) => acc + ms, 0) / gated.length;
-      return this.loudnessOf(gatedMean);
+      if (countAbs === 0) return -180;
+      const relativeGate = -0.691 + 10 * Math.log10(sumAbs / countAbs) - 10;
+      const gate = Math.max(-70, relativeGate);
+      let sumG = 0;
+      let countG = 0;
+      for (let k = start; k + 4 <= len; k++) {
+        const ms = (powers[k] + powers[k + 1] + powers[k + 2] + powers[k + 3]) / 4;
+        if (this.loudnessOf(ms) >= gate) {
+          sumG += ms;
+          countG++;
+        }
+      }
+      if (countG === 0) return -180;
+      return this.loudnessOf(sumG / countG);
     }
     process(inputs, outputs, parameters) {
       void outputs;
@@ -736,7 +747,10 @@
         if (this.subCount >= this.subblockSamples) {
           const ms = (this.subAccum[0] + this.subAccum[1]) / this.subblockSamples;
           this.subPowers.push(ms);
-          if (this.subPowers.length > 36e3) this.subPowers.splice(0, 18e3);
+          if (this.subPowers.length > 36e3) {
+            this.subPowers.splice(0, 18e3);
+            this.integratedStart = Math.max(0, this.integratedStart - 18e3);
+          }
           this.subCount = 0;
           this.subAccum[0] = 0;
           this.subAccum[1] = 0;
@@ -1339,10 +1353,14 @@
           r += fR * gain;
           v.age++;
         }
-        this.voices = this.voices.filter((v) => !v.dead);
         outL[i] = Math.max(-8, Math.min(8, l));
         if (outR) outR[i] = Math.max(-8, Math.min(8, r));
       }
+      let w = 0;
+      for (let v = 0; v < this.voices.length; v++) {
+        if (!this.voices[v].dead) this.voices[w++] = this.voices[v];
+      }
+      this.voices.length = w;
       return true;
     }
   };
@@ -1542,7 +1560,9 @@
           if (typeof msg.value === "number" && msg.value > 10 && msg.value < 400) this.bpm = msg.value;
           return;
         case "param":
-          if (typeof msg.value === "number") this.params[msg.name] = msg.value;
+          if (typeof msg.value === "number" && Number.isFinite(msg.value) && msg.name in this.params) {
+            this.params[msg.name] = msg.value;
+          }
           return;
         default:
           return;
@@ -1659,10 +1679,14 @@
             v.dead = true;
           }
         }
-        this.voices = this.voices.filter((v) => !v.dead);
         outL[i] = Math.max(-8, Math.min(8, l));
         if (outR) outR[i] = Math.max(-8, Math.min(8, r));
       }
+      let w = 0;
+      for (let v = 0; v < this.voices.length; v++) {
+        if (!this.voices[v].dead) this.voices[w++] = this.voices[v];
+      }
+      this.voices.length = w;
       return true;
     }
   };
@@ -2836,7 +2860,7 @@
       return [
         { name: "time", defaultValue: 375, minValue: 30, maxValue: 2e3, automationRate: "k-rate" },
         { name: "sync", defaultValue: 0, minValue: 0, maxValue: 5, automationRate: "k-rate" },
-        { name: "bpm", defaultValue: 120, minValue: 40, maxValue: 240, automationRate: "k-rate" },
+        { name: "bpm", defaultValue: 120, minValue: 20, maxValue: 300, automationRate: "k-rate" },
         { name: "pingPong", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" },
         { name: "reverse", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" },
         { name: "feedback", defaultValue: 0.35, minValue: 0, maxValue: 0.95, automationRate: "k-rate" },
@@ -2898,7 +2922,8 @@
       this.revPhase = 0;
       this.revAnchor = 0;
       this.holdActive = false;
-      this.holdStart = 0;
+      this.holdAnchorL = 0;
+      this.holdAnchorR = 0;
       this.holdLen = 64;
       this.holdPhase = 0;
       this._lastFreezeMode = -1;
@@ -2933,6 +2958,7 @@
       this.umOutL = 0;
       this.umOutR = 0;
       this.umSettled = true;
+      this.umApplyBells = false;
       this.umAnalysisCoef = 1 - Math.exp(-1e3 / (UM_ANALYSIS_ENV_MS * this.sr));
       this.umDryEnv = new Float32Array(UM_BANDS);
       this.umWetEnv = new Float32Array(UM_BANDS);
@@ -3182,16 +3208,62 @@
         if (red > maxRed) maxRed = red;
       }
       this.umMaxRedDb = maxRed;
-      if (this.umChunk === 0) this.umRefreshBells();
-      this.umChunk = (this.umChunk + 1) % UM_CHUNK;
+      this.umApplyBells = maxRed > 0.01;
+      this.umApplyBellsTo(wetL, wetR);
+    }
+    /** Power-off path: bypass 1:1 while the smoothed gains decay to zero so
+     *  re-enabling never jumps. Fully settled → the flag skips the loop.
+     *
+     *  The old clamp `next > -1e-6 || next < 1e-6 ? 0 : next` was always
+     *  true (any number is either > -1e-6 or < 1e-6), so the very first
+     *  power-off block zeroed every gain — a full-amplitude step (audible
+     *  click on the UNMASK toggle). The correct near-zero test is a
+     *  magnitude check. */
+    /** Power-off as a per-sample step: the old power-off bypassed the bell
+     *  chain instantly (a hard amplitude step wherever the solver was
+     *  reducing), and separately zeroed every gain in one block. Both are
+     *  audible clicks. Here the gains keep decaying through the SAME
+     *  attack/release smoother the powered path uses, and the bells keep
+     *  shaping the signal while any gain is non-negligible — so the
+     *  reduction fades out smoothly, then the chain is skipped entirely. */
+    umPowerOffSample() {
+      if (this.umSettled) {
+        this.umMaxRedDb = 0;
+        return;
+      }
+      const gainDb = this.umGainDb;
+      const coef = this.umRelCoef;
+      let settled = true;
+      let maxRed = 0;
+      for (let b = 0; b < UM_BANDS; b++) {
+        const cur = gainDb[b];
+        if (cur !== 0) {
+          const next = cur + coef * (0 - cur);
+          gainDb[b] = Math.abs(next) < 1e-4 ? 0 : next;
+          if (gainDb[b] !== 0) settled = false;
+          const red = -gainDb[b];
+          if (red > maxRed) maxRed = red;
+        }
+      }
+      this.umMaxRedDb = maxRed;
+      this.umSettled = settled;
+      this.umApplyBells = maxRed > 0.01;
+    }
+    /** Apply the current bell chain to one wet sample (shared by the
+     *  powered and power-off paths so the fade-out is phase-continuous). */
+    umApplyBellsTo(wetL, wetR) {
       let yL = wetL;
       let yR = wetR;
-      const active = this.umActiveList;
-      const bells = this.umBells;
-      for (let i = 0; i < active.length; i++) {
-        const bq = bells[active[i]];
-        yL = this.umSample(bq, 0, yL);
-        yR = this.umSample(bq, 1, yR);
+      if (this.umApplyBells) {
+        if (this.umChunk === 0) this.umRefreshBells();
+        this.umChunk = (this.umChunk + 1) % UM_CHUNK;
+        const active = this.umActiveList;
+        const bells = this.umBells;
+        for (let i = 0; i < active.length; i++) {
+          const bq = bells[active[i]];
+          yL = this.umSample(bq, 0, yL);
+          yR = this.umSample(bq, 1, yR);
+        }
       }
       if (!Number.isFinite(yL) || !Number.isFinite(yR)) {
         yL = 0;
@@ -3199,27 +3271,6 @@
       }
       this.umOutL = yL;
       this.umOutR = yR;
-    }
-    /** Power-off path: bypass 1:1 while the smoothed gains decay to zero so
-     *  re-enabling never jumps. Fully settled → the flag skips the loop. */
-    umPowerOff() {
-      if (this.umSettled) {
-        this.umMaxRedDb = 0;
-        return;
-      }
-      const rel = this.umRelCoef;
-      const gainDb = this.umGainDb;
-      let settled = true;
-      for (let b = 0; b < UM_BANDS; b++) {
-        const cur = gainDb[b];
-        if (cur !== 0) {
-          const next = cur + rel * (0 - cur);
-          gainDb[b] = next > -1e-6 || next < 1e-6 ? 0 : next;
-          if (next !== 0) settled = false;
-        }
-      }
-      if (settled) this.umSettled = true;
-      this.umMaxRedDb = 0;
     }
     makeBiquad() {
       return { x1: 0, x2: 0, y1: 0, y2: 0 };
@@ -3312,21 +3363,31 @@
       this.fbGain = params.feedback[0];
       this.drive = params.drive[0];
       this.spread = params.spread[0];
+      this.character = Math.round(params.character[0]);
+      this.modDepthMs = params.modDepth[0] * this.delaySamples * 0.25;
       const freezeMode = Math.round(params.freeze[0]);
       if (freezeMode === 2 && this._lastFreezeMode !== 2) {
-        this.holdLen = Math.min(this.bufSize >> 1, Math.max(64, Math.round(this.delaySamples)));
-        this.holdStart = this.writePos;
+        this.holdLen = Math.min(this.bufSize - 1, Math.max(64, this.delaySamples));
+        const captureWobble = this.character === 1 ? 5e-4 * this.sr : 0;
+        const captureWobRate = TWO_PI * 0.7 / this.sr;
+        if (captureWobble > 0) {
+          this.wobPhaseL += captureWobRate;
+          this.wobPhaseR += captureWobRate;
+        }
+        const lfoNow = Math.sin(this.lfoPhase) * this.modDepthMs;
+        const wobNowL = captureWobble > 0 ? Math.sin(this.wobPhaseL) * captureWobble : 0;
+        const wobNowR = captureWobble > 0 ? Math.sin(this.wobPhaseR) * captureWobble : 0;
+        this.holdAnchorL = this.writePos - this.delaySamples - lfoNow - wobNowL;
+        this.holdAnchorR = this.writePos - this.delaySamples - lfoNow - wobNowR;
         this.holdPhase = 0;
       }
       this._lastFreezeMode = freezeMode;
       this.holdActive = freezeMode === 2;
       this.freeze = freezeMode === 1;
-      this.character = Math.round(params.character[0]);
       this.mix = params.mix[0];
       this.soloWet = params.soloWet[0] > 0.5;
       this.deltaListen = params.deltaListen[0] > 0.5;
       this.outGain = Math.pow(10, params.level[0] / 20);
-      this.modDepthMs = params.modDepth[0] * this.delaySamples * 0.25;
       this.umPower = params.unmaskOn[0] > 0.5;
       if (this.umPower) this.umSettled = false;
       this.umAmount = params.unmask[0];
@@ -3344,6 +3405,7 @@
       const character = this.character;
       const reverse = params.reverse[0] > 0.5;
       const dryGain = this.soloWet ? 0 : 1 - mix;
+      const hSideGain = spread * 0.5;
       const drumRateInc = this.drumRateInc;
       const wobbleAmp = character === 1 ? 5e-4 * this.sr : 0;
       const wobRateInc = TWO_PI * 0.7 / this.sr;
@@ -3351,16 +3413,19 @@
       const size = this.bufSize;
       for (let i = 0; i < outL.length; i++) {
         const writeIdx = this.writePos;
-        const inL = hasInput ? input[0][i] : 0;
-        const inR = hasInput && input[1] ? input[1][i] : inL;
+        let inL = hasInput ? input[0][i] : 0;
+        let inR = hasInput && input[1] ? input[1][i] : inL;
+        if (!Number.isFinite(inL)) inL = 0;
+        if (!Number.isFinite(inR)) inR = 0;
         if (this.holdActive) {
           const hp = this.holdPhase;
           this.holdPhase = hp + 1 >= this.holdLen ? 0 : hp + 1;
-          const rpos = (this.holdStart - this.holdLen + hp + size) % size;
-          const hL = L[rpos];
-          const hR = R[rpos];
-          let hoL = hL + spread * 0.5 * (hR - hL);
-          let hoR = hR + spread * 0.5 * (hL - hR);
+          const rpos = this.holdAnchorL + hp;
+          const rpos2 = this.holdAnchorR + hp;
+          const hL = this.readBuffer(L, rpos);
+          const hR = this.readBuffer(R, rpos2);
+          let hoL = hL + hSideGain * (hL - hR);
+          let hoR = hR + hSideGain * (hR - hL);
           const preHoL = hoL;
           const preHoR = hoR;
           if (this.umPower) {
@@ -3368,14 +3433,17 @@
             hoL = this.umOutL;
             hoR = this.umOutR;
           } else {
-            this.umPowerOff();
+            this.umPowerOffSample();
+            this.umApplyBellsTo(hoL, hoR);
+            hoL = this.umOutL;
+            hoR = this.umOutR;
           }
           if (this.deltaListen) {
             outL[i] = (preHoL - hoL) * this.outGain;
             outR[i] = (preHoR - hoR) * this.outGain;
           } else {
-            outL[i] = inL * dryGain + hoL * mix * this.outGain;
-            outR[i] = inR * dryGain + hoR * mix * this.outGain;
+            outL[i] = (inL * dryGain + hoL * mix) * this.outGain;
+            outR[i] = (inR * dryGain + hoR * mix) * this.outGain;
           }
           continue;
         }
@@ -3478,8 +3546,9 @@
           L[writeIdx] = inL + fbL * fbGain;
           R[writeIdx] = inR + fbR * fbGain;
         }
-        let outWL = wetL + spread * 0.5 * (wetR - wetL);
-        let outWR = wetR + spread * 0.5 * (wetL - wetR);
+        const sideGain = spread * 0.5;
+        let outWL = wetL + sideGain * (wetL - wetR);
+        let outWR = wetR + sideGain * (wetR - wetL);
         const preWL = outWL;
         const preWR = outWR;
         if (this.umPower) {
@@ -3487,14 +3556,17 @@
           outWL = this.umOutL;
           outWR = this.umOutR;
         } else {
-          this.umPowerOff();
+          this.umPowerOffSample();
+          this.umApplyBellsTo(outWL, outWR);
+          outWL = this.umOutL;
+          outWR = this.umOutR;
         }
         if (this.deltaListen) {
           outL[i] = (preWL - outWL) * this.outGain;
           outR[i] = (preWR - outWR) * this.outGain;
         } else {
-          outL[i] = inL * dryGain + outWL * mix * this.outGain;
-          outR[i] = inR * dryGain + outWR * mix * this.outGain;
+          outL[i] = (inL * dryGain + outWL * mix) * this.outGain;
+          outR[i] = (inR * dryGain + outWR * mix) * this.outGain;
         }
         this.dryWin[this.anPos] = (inL + inR) * 0.5;
         this.wetWin[this.anPos] = (outWL + outWR) * 0.5;
@@ -3522,6 +3594,9 @@
   var ReverbProcessor = class extends AudioWorkletProcessor {
     constructor() {
       super();
+      this.combFeedback = [0.7, 0.7, 0.7, 0.7];
+      this.combFeedbackCacheDecay = -1;
+      this.combFeedbackCacheSr = 0;
       const maxComb = Math.max(...REVERB_COMB_DELAYS) + 1024;
       const size = 1 << Math.ceil(Math.log2(maxComb * 2));
       this.size = size;
@@ -3570,11 +3645,16 @@
       const toneFreq = Math.max(500, Math.min(12e3, parameters.tone ? parameters.tone[0] : dampingFreq));
       const effDamp = Math.min(dampingFreq, toneFreq);
       const dampAlpha = 1 - Math.exp(-2 * Math.PI * effDamp / sr);
-      const combFeedback = REVERB_COMB_DELAYS.map((d) => {
-        const ms = d * sr / 48e3 / sr * 1e3;
-        const g = Math.pow(10, -3 * ms / (decay * 1e3));
-        return Math.min(0.98, g);
-      });
+      if (this.combFeedbackCacheDecay !== decay || this.combFeedbackCacheSr !== sr) {
+        this.combFeedback = REVERB_COMB_DELAYS.map((d) => {
+          const ms = d * sr / 48e3 / sr * 1e3;
+          const g = Math.pow(10, -3 * ms / (decay * 1e3));
+          return Math.min(0.98, g);
+        });
+        this.combFeedbackCacheDecay = decay;
+        this.combFeedbackCacheSr = sr;
+      }
+      const combFeedback = this.combFeedback;
       const apFeedback = 0.3 + diffusion * 0.4;
       for (let i = 0; i < len; i++) {
         const l = inL ? inL[i] : 0;

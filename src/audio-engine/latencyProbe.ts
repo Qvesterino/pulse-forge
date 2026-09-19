@@ -4,6 +4,8 @@ const PULSE_COUNT = 8;
 const PULSE_SPACING_SEC = 0.24;
 const PULSE_LEAD_SEC = 0.25;
 const PULSE_TAIL_SEC = 0.35;
+/** Contexts that already loaded the probe module (addModule is once-only). */
+const probeModuleLoaded = new WeakSet<BaseAudioContext>();
 
 interface ProbeDetection {
   time: number;
@@ -111,7 +113,13 @@ export async function measureAudioRoundTrip(
     });
     throwIfAborted(signal);
     onMicrophoneReady?.();
-    await ctx.audioWorklet.addModule(new URL("../audio-worklets/latency-probe-processor.js", import.meta.url).href);
+    // addModule once per context: re-registering "latency-probe-processor"
+    // throws per the AudioWorklet spec, so the wizard's "Run again" (second
+    // calibration on the same context) failed at exactly this line forever.
+    if (!probeModuleLoaded.has(ctx)) {
+      await ctx.audioWorklet.addModule(new URL("../audio-worklets/latency-probe-processor.js", import.meta.url).href);
+      probeModuleLoaded.add(ctx);
+    }
     throwIfAborted(signal);
     if (ctx.state === "suspended") await ctx.resume();
     throwIfAborted(signal);

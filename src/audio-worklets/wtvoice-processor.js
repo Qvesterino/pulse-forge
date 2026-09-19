@@ -418,11 +418,19 @@ class WtVoiceProcessor extends AudioWorkletProcessor {
         v.age++;
       }
 
-      this.voices = this.voices.filter((v) => !v.dead);
-
+      // Dead voices are compacted once per BLOCK (after the sample loop) —
+      // the old per-sample `.filter` allocated a fresh array + closure on
+      // every sample (~48k/s at 48 kHz), steady GC churn on the render
+      // thread. Dead voices are skipped by the `!v.active` guard anyway.
       outL[i] = Math.max(-8, Math.min(8, l));
       if (outR) outR[i] = Math.max(-8, Math.min(8, r));
     }
+    // In-place compaction: no allocation.
+    let w = 0;
+    for (let v = 0; v < this.voices.length; v++) {
+      if (!this.voices[v].dead) this.voices[w++] = this.voices[v];
+    }
+    this.voices.length = w;
     return true;
   }
 }

@@ -71,14 +71,25 @@ export class UserSampleRepository {
       this.cache = (all as UserSampleAsset[]) ?? [];
       return this.cache;
     } catch {
-      this.cache = [];
-      return this.cache;
+      // Transient failure (blocked open, quota hiccup): do NOT cache an empty
+      // list — the user's samples must not appear deleted for the rest of the
+      // session. A later successful call repopulates the cache.
+      return [];
     }
   }
 
   async save(asset: UserSampleAsset, data?: ArrayBuffer | Blob): Promise<void> {
     this.cache = null;
     const db = await openDb();
+    // Capture the prior metadata row: on the overwrite path a blind rollback
+    // delete would destroy a previously-good sample listing while its old
+    // audio bytes stay orphaned in user-sample-audio.
+    const prev = await tx<UserSampleAsset | undefined>(
+      db,
+      STORE_USER_SAMPLES,
+      "readonly",
+      (s) => s.get(asset.id) as IDBRequest<UserSampleAsset | undefined>,
+    );
     await tx(db, STORE_USER_SAMPLES, "readwrite", (s) => s.put(asset));
     if (!data) return;
     try {
@@ -87,10 +98,15 @@ export class UserSampleRepository {
       );
     } catch (err) {
       // Metadata without audio is a PERMANENT ghost sample: listed forever,
-      // silently silent after reload. Roll the metadata row back and surface
-      // the failure so importers can show an error instead.
+      // silently silent after reload. Restore the previous row (or remove the
+      // fresh one when nothing existed) and surface the failure so importers
+      // can show an error instead.
       try {
-        await tx(db, STORE_USER_SAMPLES, "readwrite", (s) => s.delete(asset.id));
+        if (prev) {
+          await tx(db, STORE_USER_SAMPLES, "readwrite", (s) => s.put(prev));
+        } else {
+          await tx(db, STORE_USER_SAMPLES, "readwrite", (s) => s.delete(asset.id));
+        }
       } catch {
         // rollback best-effort
       }

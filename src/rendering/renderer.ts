@@ -137,7 +137,15 @@ export interface ClipWindow {
 export function computeRenderTicks(doc: ProjectDocument, mode: PlayMode): number {
   if (mode === "song") {
     const end = doc.arrangement.clips.reduce((max, c) => Math.max(max, c.startBar + c.lengthBars), 0);
-    if (end > 0) return end * BAR_TICKS;
+    // Audio clips can sit past the last scene clip (outro vocals, ad-libs).
+    // Duration must cover them or they are silently truncated/dropped from
+    // the export while live playback plays them fine.
+    const audioEnd = (doc.arrangement.audioClips ?? []).reduce(
+      (max, c) => Math.max(max, c.startBar + c.lengthBars),
+      0,
+    );
+    const total = Math.max(end, audioEnd);
+    if (total > 0) return total * BAR_TICKS;
   }
   return getActivePattern(doc).stepCount * STEP_TICKS;
 }
@@ -272,7 +280,11 @@ export async function renderProject(
   const sampleRate = options.sampleRate;
   const pendingWindows = collectClipWindows(doc, options.mode);
   const tempoMap = buildTempoMap(doc, pendingWindows);
-  const duration = (tempoMap.totalSeconds || totalTicks * secondsPerTick) + tail;
+  // Duration must reach the LAST RENDERED TICK, not just the last clip
+  // window's end: with audio clips past the final scene clip, totalSeconds
+  // stops short and the OfflineAudioContext cuts them off.
+  const duration =
+    (tempoMap.segments.length > 0 ? tempoMap.timeAt(totalTicks) : totalTicks * secondsPerTick) + tail;
   const ctx = new OfflineAudioContext(2, Math.max(1, Math.ceil(duration * sampleRate)), sampleRate);
   // Load AudioWorklet processors into THIS offline context so bitcrusher
   // downsample and sidechain ducking render correctly (the fallbacks are
@@ -338,8 +350,11 @@ export async function renderProject(
     timeAt,
   );
   // AudioClips — schedule each clip's buffer segment through its track FX.
-  // Reuses frozenPlaybackOffset tick→sec semantics so live==offline.
-  if (doc.arrangement.audioClips) {
+  // Reuses frozenPlaybackOffset tick→sec semantics so live==offline. SONG
+  // MODE ONLY: the live scheduler plays audioClips exclusively in the song
+  // branch, so a pattern-mode export must not include arrangement audio the
+  // user never hears in pattern playback.
+  if (options.mode === "song" && doc.arrangement.audioClips) {
     for (const clip of doc.arrangement.audioClips) {
       const clipStartTick = clip.startBar * BAR_TICKS;
       const clipEndTick = clipStartTick + clip.lengthBars * BAR_TICKS;

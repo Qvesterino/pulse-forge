@@ -72,11 +72,22 @@ export function openDb(): Promise<IDBDatabase> {
       }, OPEN_BLOCKED_TIMEOUT_MS);
     };
     request.onsuccess = () => {
-      if (settled) return;
+      const db = request.result;
+      if (settled) {
+        // The open raced a blocked-timeout rejection: this attempt already
+        // failed the caller. The late connection must not survive as a zombie
+        // — without onversionchange it would block every future upgrade for
+        // all tabs until this tab closes.
+        try {
+          db.close();
+        } catch {
+          /* already closed */
+        }
+        return;
+      }
       settled = true;
       // If yet another tab requests a future version, yield our connection
       // immediately — otherwise WE become the blocker for everyone else.
-      const db = request.result;
       db.onversionchange = () => db.close();
       resolve(db);
     };
@@ -148,7 +159,24 @@ export function tx<T>(
     } else {
       arg = transaction.objectStore(storeOrStores as string);
     }
-    const result = run(arg);
+    let result: IDBRequest<T> | void;
+    try {
+      result = run(arg);
+    } catch (err) {
+      // A synchronous throw from `run` (structured-clone failure, host
+      // DataError) rejects this promise, but IndexedDB would still
+      // AUTO-COMMIT writes issued before the throw — a split-brain the
+      // single-transaction pattern exists to prevent (e.g. project body
+      // saved without its KEY_RECENT pointer). Abort explicitly so every
+      // write in this transaction rolls back.
+      try {
+        transaction.abort();
+      } catch {
+        /* already aborting/finished */
+      }
+      fail(err);
+      return;
+    }
     // A request's `success` fires BEFORE the commit — resolving there would
     // report saves that were later rolled back (quota pressure, abort during
     // page close). Only `transaction.oncomplete` proves durability.

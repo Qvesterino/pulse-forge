@@ -64,7 +64,11 @@ export function createLimiterNode(ctx: BaseAudioContext, instance: { params: Rec
     },
     getAudioParam: (paramId: string) => node.parameters.get(paramId) ?? null,
     getLatencySec() {
-      return Math.max(1, lookaheadMs) / 1000;
+      // Report the delay the PROCESSOR actually applies: the AudioParam
+      // descriptor clamps lookahead to [1, 20] ms, so an out-of-range stored
+      // lookaheadMs (e.g. 50) must not over-compensate PDC and shift the
+      // track early.
+      return Math.min(20, Math.max(1, lookaheadMs)) / 1000;
     },
     getGainReductionDb() {
       return lastGrDb;

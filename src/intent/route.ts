@@ -81,21 +81,66 @@ export function parseMixIntent(text: string): MixParse {
   return { overrides, detected };
 }
 
+// ── REVISE intent (C2): "more energetic" = change the LAST result, keep
+// its identity (same seed), just shift a content slider. Deliberately
+// SEPARATE from mix: tone words are SOUND processing, energy/density words
+// are NOTE CONTENT.
+export type ReviseAttribute = "energy" | "density";
+export type ReviseDirection = "more" | "less";
+
+export interface ReviseParse {
+  attribute: ReviseAttribute;
+  direction: ReviseDirection;
+  detected: string[];
+}
+
+/** Per-revise slider step (clamped at apply time). */
+export const REVISE_DELTA = 0.15;
+
+const REVISE_ENERGY_MORE =
+  /\bmore (?:energetic|energic|energy)\b|\benergickejsi\b|\bviac (?:energie|energicky)\b/;
+const REVISE_ENERGY_LESS =
+  /\bless (?:energetic|energic|energy)\b|\bcalmer\b|\bmenej (?:energie|energicky)\b/;
+const REVISE_DENSITY_MORE = /\b(?:more )?(?:busier|denser)\b|\bhustejsi\b|\bviac prvkov\b/;
+const REVISE_DENSITY_LESS = /\bsparser\b|\bless busy\b|\bmenej hust/;
+
+/** Parse "more energetic"-style content revisions. Null = not a revise. */
+export function parseReviseIntent(text: string): ReviseParse | null {
+  const lower = ` ${text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")} `;
+  if (REVISE_ENERGY_MORE.test(lower)) {
+    return { attribute: "energy", direction: "more", detected: ["energy ↑"] };
+  }
+  if (REVISE_ENERGY_LESS.test(lower)) {
+    return { attribute: "energy", direction: "less", detected: ["energy ↓"] };
+  }
+  if (REVISE_DENSITY_MORE.test(lower)) {
+    return { attribute: "density", direction: "more", detected: ["density ↑"] };
+  }
+  if (REVISE_DENSITY_LESS.test(lower)) {
+    return { attribute: "density", direction: "less", detected: ["density ↓"] };
+  }
+  return null;
+}
+
 export type RoutedIntent =
   | { kind: "arrange"; ops: ArrangeOp[]; unrecognized: string[] }
   | { kind: "mix"; overrides: MixOverrides; detected: string[] }
+  | { kind: "revise"; attribute: ReviseAttribute; direction: ReviseDirection; detected: string[] }
   | { kind: "pattern"; input: ParsedIntent["input"]; detected: string[] };
 
 /**
- * UNIFIED INTENT BAR router (INTENT_ENGINE.md D3): one text input, three
+ * UNIFIED INTENT BAR router (INTENT_ENGINE.md D3): one text input, four
  * executors. Priority:
  *   1. ARRANGE — the doc has scenes and the text parses into arrangement ops
  *      ("shorten the intro", "add a break before the drop").
- *   2. MIX — mix nouns/verbs or comparatives present ("more reverb",
- *      "punchier", "darker mix").
- *   3. PATTERN — everything else is a generation intent (default).
+ *   2. MIX — mix nouns/verbs or tone comparatives ("more reverb",
+ *      "punchier", "darker mix") — SOUND processing.
+ *   3. REVISE — "more/less energetic|busy" — CONTENT sliders on the LAST
+ *      result, same seed (identity preserved).
+ *   4. PATTERN — everything else is a generation intent (default).
  * Ambiguity is resolved toward the LEAST destructive interpretation: arrange
- * ops only fire when they parse cleanly; mix only on explicit mix vocabulary.
+ * ops only fire when they parse cleanly; mix only on explicit mix vocabulary;
+ * revise only on comparative + attribute pairs.
  */
 export function routeIntentText(text: string, doc: ProjectDocument): RoutedIntent {
   if (doc.scenes.length > 0) {
@@ -107,6 +152,10 @@ export function routeIntentText(text: string, doc: ProjectDocument): RoutedInten
   if (isMixIntentText(text)) {
     const mix = parseMixIntent(text);
     return { kind: "mix", overrides: mix.overrides, detected: mix.detected };
+  }
+  const revise = parseReviseIntent(text);
+  if (revise) {
+    return { kind: "revise", ...revise };
   }
   const pattern = parseIntentText(text);
   return { kind: "pattern", input: pattern.input, detected: pattern.detected };

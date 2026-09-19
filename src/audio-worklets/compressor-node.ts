@@ -42,6 +42,10 @@ export function createCompressorNode(
   const apply = (id: string, v: number, when: number | undefined) => {
     const p = node.parameters.get(id);
     if (!p) return;
+    // A non-finite stored param (corrupt doc / bad automation write) must
+    // not throw "non-finite AudioParam value" and abort the whole track
+    // chain build — skip the write and keep the AudioParam's default.
+    if (!Number.isFinite(v)) return;
     if (when === undefined) p.value = v;
     else p.setValueAtTime(v, when);
   };
