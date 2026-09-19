@@ -32,6 +32,14 @@ let workerDisabled = false;
 let unavailable = false; // manifest probe failed — model not fetched
 let nextRequestId = 1;
 
+function recordWorkerFailure(active: Worker): void {
+  workerFailures += 1;
+  if (workerFailures < MAX_FAILURES) return;
+  active.terminate();
+  if (worker === active) worker = null;
+  workerDisabled = true;
+}
+
 function spawnWorker(): Worker | null {
   if (workerDisabled) return null;
   if (typeof Worker === "undefined") return null;
@@ -50,28 +58,40 @@ function request(request: SemanticRequest, timeoutMs: number): Promise<SemanticR
   if (!active) return Promise.resolve({ ...request, ok: false, error: "worker-unavailable" } as SemanticResponse);
   return new Promise((resolve) => {
     let settled = false;
-    const timer = setTimeout(() => {
+    const cleanup = () => {
+      clearTimeout(timer);
+      active.removeEventListener("message", onMessage);
+      active.removeEventListener("error", onError);
+      active.removeEventListener("messageerror", onMessageError);
+    };
+    const fail = (error: string) => {
       if (settled) return;
       settled = true;
-      active.removeEventListener("message", onMessage);
-      workerFailures += 1;
-      if (workerFailures >= MAX_FAILURES) {
-        worker?.terminate();
-        worker = null;
-        workerDisabled = true;
-      }
-      resolve({ ...request, ok: false, error: "timeout" } as SemanticResponse);
+      cleanup();
+      recordWorkerFailure(active);
+      resolve({ ...request, ok: false, error } as SemanticResponse);
+    };
+    const timer = setTimeout(() => {
+      fail("timeout");
     }, timeoutMs);
     const onMessage = (event: MessageEvent<SemanticResponse>) => {
       if (event.data?.requestId !== request.requestId || settled) return;
       settled = true;
-      clearTimeout(timer);
-      active.removeEventListener("message", onMessage);
-      workerFailures = event.data.ok ? 0 : workerFailures + 1;
+      cleanup();
+      if (event.data.ok) workerFailures = 0;
+      else recordWorkerFailure(active);
       resolve(event.data);
     };
+    const onError = () => fail("worker-error");
+    const onMessageError = () => fail("message-error");
     active.addEventListener("message", onMessage);
-    active.postMessage(request);
+    active.addEventListener("error", onError);
+    active.addEventListener("messageerror", onMessageError);
+    try {
+      active.postMessage(request);
+    } catch {
+      fail("post-message-error");
+    }
   });
 }
 

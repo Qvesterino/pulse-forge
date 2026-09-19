@@ -298,6 +298,18 @@ function MasterStrip() {
             </button>
             <button
               type="button"
+              className={`btn btn-small${(master.glueEnabled ?? true) ? " active-solo" : ""}`}
+              title="Buss glue on master (post-M/S, pre-clipper) — gentle 2:1 RMS leveling before the limiter"
+              aria-label="Master glue"
+              aria-pressed={master.glueEnabled ?? true}
+              onClick={() =>
+                services.store.execute(setMasterConfig(doc, { glueEnabled: !(master.glueEnabled ?? true) }))
+              }
+            >
+              GLUE
+            </button>
+            <button
+              type="button"
               className={`btn btn-small${master.tapeEnabled ? " active-solo" : ""}`}
               title="Tape saturation on master (post-gain, pre-limiter) — adds warmth, 1-knob drive"
               aria-label="Master tape"

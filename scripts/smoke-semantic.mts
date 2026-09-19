@@ -23,62 +23,68 @@ env.localModelPath = path.resolve(SEMANTIC_DIR) + path.sep;
 console.log(`[smoke] loading ${manifest.modelId} (q8) …`);
 const extractor = await pipeline("feature-extraction", manifest.modelId, { dtype: "q8" });
 
-const { semanticIntentFor, resetSemanticCorpusCache } = await import("../src/intent/semantic");
+try {
+  const { semanticIntentFor, resetSemanticCorpusCache } = await import("../src/intent/semantic");
 
-// Real embedder wired into the SAME matching logic the app uses.
-const embed = async (texts: string[]) => {
-  const output = (await extractor(texts, { pooling: "mean", normalize: true })) as {
-    data: Float32Array;
-    dims: number[];
+  // Real embedder wired into the SAME matching logic the app uses.
+  const embed = async (texts: string[]) => {
+    const output = (await extractor(texts, { pooling: "mean", normalize: true })) as {
+      data: Float32Array;
+      dims: number[];
+    };
+    const [rows, dim] = output.dims;
+    const out: Float32Array[] = [];
+    for (let row = 0; row < rows; row++) out.push(output.data.slice(row * dim, (row + 1) * dim));
+    return out;
   };
-  const [rows, dim] = output.dims;
-  const out: Float32Array[] = [];
-  for (let row = 0; row < rows; row++) out.push(output.data.slice(row * dim, (row + 1) * dim));
-  return out;
-};
 
-// Warm up + build the corpus through the app's matching function.
-await embed(["warmup"]);
-resetSemanticCorpusCache();
+  // Warm up + build the corpus through the app's matching function.
+  await embed(["warmup"]);
+  resetSemanticCorpusCache();
 
-const checks: Array<[string, unknown, unknown]> = [];
-const resolve = async (text: string) => {
-  const match = await semanticIntentFor(text, { embed });
-  return match;
-};
+  const checks: Array<[string, boolean]> = [];
+  const resolve = async (text: string) => {
+    const match = await semanticIntentFor(text, { embed });
+    return match;
+  };
 
-// 1. unknown-artist phrasing that the KEYWORD parser cannot resolve
-const ts = await resolve("beat in the style of the rapper from astroworld with dark 808s");
-checks.push([
-  `unknown dark-trap phrasing resolves to a trap patch (got: ${ts ? String(ts.input.genre) : "null"}, label ${ts?.label ?? "—"}, score ${ts?.score ?? 0})`,
-  ts !== null && ts.input.genre === "trap",
-]);
+  // 1. unknown-artist phrasing that the KEYWORD parser cannot resolve
+  const ts = await resolve("beat in the style of the rapper from astroworld with dark 808s");
+  checks.push([
+    `unknown dark-trap phrasing resolves to a trap patch (got: ${ts ? String(ts.input.genre) : "null"}, label ${ts?.label ?? "—"}, score ${ts?.score ?? 0})`,
+    ts !== null && ts.input.genre === "trap",
+  ]);
 
-// 2. SK phrasing with no EN keywords
-const sk = await resolve("pomaly pokojný zvuk pre scénu");
-checks.push([
-  `SK ambient phrasing resolves (got: ${sk ? String(sk.input.genre) : "null"}, score ${sk?.score ?? 0})`,
-  sk !== null && sk.input.genre === "ambient",
-]);
+  // 2. SK phrasing with no EN keywords
+  const sk = await resolve("pomaly pokojný zvuk pre scénu");
+  checks.push([
+    `SK ambient phrasing resolves (got: ${sk ? String(sk.input.genre) : "null"}, score ${sk?.score ?? 0})`,
+    sk !== null && sk.input.genre === "ambient",
+  ]);
 
-// 3. unknown house-adjacent phrasing
-const house = await resolve("groovy party groove that makes people dance");
-checks.push([
-  `party groove resolves to house patch (got: ${house ? String(house.input.genre) : "null"}, score ${house?.score ?? 0})`,
-  house !== null && house.input.genre === "house",
-]);
+  // 3. unknown house-adjacent phrasing
+  const house = await resolve("groovy party groove that makes people dance");
+  checks.push([
+    `party groove resolves to house patch (got: ${house ? String(house.input.genre) : "null"}, score ${house?.score ?? 0})`,
+    house !== null && house.input.genre === "house",
+  ]);
 
-// 4. nonsense stays BELOW threshold → null (keyword fallback deserves it)
-const nonsense = await resolve("please send me an email about quarterly taxes");
-checks.push([
-  `unrelated nonsense stays null (score ${nonsense?.score ?? "null"})`,
-  nonsense === null || nonsense.score < 0.5,
-]);
+  // 4. nonsense stays BELOW threshold → null (keyword fallback deserves it)
+  const nonsense = await resolve("please send me an email about quarterly taxes");
+  checks.push([
+    `unrelated nonsense stays null (score ${nonsense?.score ?? "null"})`,
+    nonsense === null || nonsense.score < 0.5,
+  ]);
 
-let failed = 0;
-for (const [label, ok] of checks) {
-  console.log(`[${ok ? "PASS" : "FAIL"}] ${label}`);
-  if (!ok) failed += 1;
+  let failed = 0;
+  for (const [label, ok] of checks) {
+    console.log(`[${ok ? "PASS" : "FAIL"}] ${label}`);
+    if (!ok) failed += 1;
+  }
+  console.log(`[smoke] ${checks.length - failed}/${checks.length} semantic checks passed`);
+  if (failed > 0) process.exitCode = 1;
+} finally {
+  // Transformers.js keeps the ONNX session alive until explicitly disposed.
+  // Without this, the smoke can print success but leave Node running.
+  await extractor.dispose();
 }
-console.log(`[smoke] ${checks.length - failed}/${checks.length} semantic checks passed`);
-if (failed > 0) process.exit(1);

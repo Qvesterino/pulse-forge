@@ -2933,6 +2933,41 @@ export async function runChecks(): Promise<CheckResult[]> {
     check("master chain tames a hot mix (limiter reduces, clipper softens)", false, String(error));
   }
 
+  // Master buss glue: same hot mix, limiter + clipper off to isolate the
+  // glue stage. Gentle 2:1 RMS leveling must audibly level (lower RMS and
+  // peak than the unglued render) without crushing (peak stays above half).
+  try {
+    const project = createDefaultProject();
+    for (const track of project.tracks) track.gain = 1.5;
+    const drumTrack = project.tracks.find((t) => t.kind === "drum");
+    if (drumTrack && drumTrack.kind === "drum") {
+      for (const pad of drumTrack.pads) pad.gain = 2;
+    }
+    project.master.limiterEnabled = false;
+    project.master.clipperEnabled = false;
+    project.master.glueEnabled = false;
+    const plain = await renderProject(project, bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0.2 });
+    project.master.glueEnabled = true;
+    const glued = await renderProject(project, bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0.2 });
+    const rmsOf = (buffer: AudioBuffer): number => {
+      const d = buffer.getChannelData(0);
+      let sum = 0;
+      for (let i = 0; i < d.length; i++) sum += d[i] * d[i];
+      return Math.sqrt(sum / Math.max(1, d.length));
+    };
+    const plainPeak = peakOf(plain.getChannelData(0));
+    const gluedPeak = peakOf(glued.getChannelData(0));
+    const plainRms = rmsOf(plain);
+    const gluedRms = rmsOf(glued);
+    check(
+      "master glue levels a hot mix (lower RMS + peak, no crush)",
+      plainPeak > 1.5 && gluedPeak < plainPeak && gluedPeak > plainPeak * 0.5 && gluedRms < plainRms,
+      `plain=${plainPeak.toFixed(3)}/${plainRms.toFixed(3)} glued=${gluedPeak.toFixed(3)}/${gluedRms.toFixed(3)}`,
+    );
+  } catch (error) {
+    check("master glue levels a hot mix (lower RMS + peak, no crush)", false, String(error));
+  }
+
   // Master stage with AudioWorklets: renderProject preloads processors, so the
   // export path runs through the look-ahead limiter — peaks must sit exactly
   // AT ceiling (brickwall anticipation) rather than being loosely pulled down.

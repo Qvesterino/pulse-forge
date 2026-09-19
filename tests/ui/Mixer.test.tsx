@@ -38,4 +38,20 @@ describe("Mixer performance workflow", () => {
 
     expect(onOpenFxPanel).toHaveBeenCalledTimes(1);
   });
+
+  it("toggles the master buss glue through one command", async () => {
+    const doc = createProjectFromTemplate("house");
+    const services = mockServices(doc);
+    renderWithContext(<Mixer />, { services });
+
+    const user = userEvent.setup();
+    const glue = screen.getByRole("button", { name: "Master glue" });
+    expect(glue).toHaveAttribute("aria-pressed", "true");
+    await user.click(glue);
+
+    const executed = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.map(
+      (call: unknown[]) => call[0] as { type: string },
+    );
+    expect(executed.some((c) => c.type === "setMasterConfig")).toBe(true);
+  });
 });

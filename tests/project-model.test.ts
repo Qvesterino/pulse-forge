@@ -246,6 +246,9 @@ describe("normalizeProject — macros, returns, master", () => {
       msMidGain: 0,
       msSideGain: 0,
       lufsTarget: -14,
+      glueEnabled: true,
+      bassMonoEnabled: false,
+      bassMonoFreq: 120,
     });
   });
 });

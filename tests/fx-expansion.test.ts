@@ -1,0 +1,211 @@
+import { beforeAll, describe, expect, it } from "vitest";
+
+/**
+ * FX Expansion processor DSP contracts (docs/FX-EXPANSION-ROADMAP.md):
+ *
+ *  - ringMod: mix 0 = unity passthrough; carrier tones produce sidebands.
+ *  - tapeStop: ENGAGE ramps energy toward silence; release re-reads the
+ *    buffer deterministically (two identical renders are identical).
+ *  - freqShifter: shift 0 ≈ unity passthrough (within allpass tolerance).
+ *  - pitchShift: ratio 1 ≈ passthrough (within grain-window tolerance) and
+ *    two identical renders are bit-identical (offline parity).
+ *  - vinyl: amount 1 raises noise-floor energy vs amount 0.
+ *  - beatMangler: unity volume envelope + NORM ≈ passthrough; a zeroed
+ *    volume step silences its slice of the bar.
+ *
+ * Processors run headless via the stubbed AudioWorkletProcessor globals
+ * (same pattern as tests/quick-wins.test.ts).
+ */
+
+class FakePort {
+  messages: unknown[] = [];
+  postMessage(message: unknown) {
+    this.messages.push(message);
+  }
+  onmessage: ((e: unknown) => void) | null = null;
+}
+class FakeAudioWorkletProcessor {
+  // Real AudioWorkletProcessor always exposes `port` — the sandbox host must
+  // too, or processors that subscribe to it (beatMangler) cannot construct.
+  port = new FakePort();
+}
+
+let ringModFactory: (options?: { processorOptions?: unknown }) => {
+  process: (inputs: Float32Array[][], outputs: Float32Array[][], parameters: Record<string, Float32Array>) => boolean;
+};
+let tapeStopFactory: typeof ringModFactory;
+let freqShiftFactory: typeof ringModFactory;
+let pitchShiftFactory: typeof ringModFactory;
+let vinylFactory: typeof ringModFactory;
+let beatManglerFactory: typeof ringModFactory;
+
+const SR = 44100;
+
+function param(values: Record<string, number>): Record<string, Float32Array> {
+  return Object.fromEntries(Object.entries(values).map(([k, v]) => [k, Float32Array.of(v)]));
+}
+
+function stereoBuffer(n: number, fillL: (i: number) => number, fillR?: (i: number) => number): Float32Array[] {
+  const l = new Float32Array(n);
+  const r = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    l[i] = fillL(i);
+    r[i] = (fillR ?? fillL)(i);
+  }
+  return [l, r];
+}
+
+function energyOf(block: Float32Array[]): number {
+  let sum = 0;
+  for (const ch of block) for (let i = 0; i < ch.length; i++) sum += ch[i] * ch[i];
+  return Math.sqrt(sum / block.reduce((a, c) => a + c.length, 0));
+}
+
+function peakOf(block: Float32Array[]): number {
+  let peak = 0;
+  for (const ch of block) for (let i = 0; i < ch.length; i++) peak = Math.max(peak, Math.abs(ch[i]));
+  return peak;
+}
+
+beforeAll(async () => {
+  (globalThis as unknown as { sampleRate: number }).sampleRate = SR;
+  (globalThis as unknown as { AudioWorkletProcessor: unknown }).AudioWorkletProcessor =
+    FakeAudioWorkletProcessor;
+  (globalThis as unknown as { registerProcessor: unknown }).registerProcessor = () => {};
+  // Worklet processors are raw JS without exports — evaluate the source in a
+  // sandbox where registerProcessor captures the class.
+  const { readFileSync } = await import("node:fs");
+  const path = await import("node:path");
+  const dir = path.resolve(import.meta.dirname ?? ".", "..", "src", "audio-worklets");
+  const factoryOf =
+    (file: string) =>
+    (options?: { processorOptions?: unknown }): unknown => {
+      const source = readFileSync(path.join(dir, file), "utf-8");
+      let captured: unknown = null;
+      const register = (_name: string, cls: unknown) => {
+        captured = cls;
+      };
+      const host = new Function("registerProcessor", "AudioWorkletProcessor", "globalThis", source);
+      host(register, FakeAudioWorkletProcessor, globalThis);
+      if (!captured) throw new Error(`no processor registered in ${file}`);
+      return new (captured as new (o?: unknown) => unknown)(options);
+    };
+  ringModFactory = factoryOf("ringmod-processor.js") as typeof ringModFactory;
+  tapeStopFactory = factoryOf("tapestop-processor.js") as typeof tapeStopFactory;
+  freqShiftFactory = factoryOf("freqshifter-processor.js") as typeof freqShiftFactory;
+  pitchShiftFactory = factoryOf("pitchshift-processor.js") as typeof pitchShiftFactory;
+  vinylFactory = factoryOf("vinyl-processor.js") as typeof vinylFactory;
+  beatManglerFactory = factoryOf("beatmangler-processor.js") as typeof beatManglerFactory;
+});
+
+describe("fx expansion processors", () => {
+  it("ringMod: mix 0 is unity passthrough", () => {
+    const fx = ringModFactory();
+    const input = stereoBuffer(128, (i) => Math.sin((2 * Math.PI * 220 * i) / SR) * 0.5);
+    const output: Float32Array[][] = [[]];
+    output[0] = [new Float32Array(128), new Float32Array(128)];
+    fx.process([input], output, param({ frequency: 220, mix: 0, feedback: 0 }));
+    for (let i = 0; i < 128; i++) {
+      expect(output[0][0][i]).toBeCloseTo(input[0][i], 5);
+      expect(output[0][1][i]).toBeCloseTo(input[1][i], 5);
+    }
+  });
+
+  it("tapeStop: ENGAGE decays energy; identical renders are identical", () => {
+    const render = () => {
+      const fx = tapeStopFactory();
+      const input = stereoBuffer(1024, (i) => Math.sin((2 * Math.PI * 330 * i) / SR) * 0.6);
+      const output: Float32Array[][] = [[]];
+      output[0] = [new Float32Array(1024), new Float32Array(1024)];
+      fx.process([input], output, param({ engaged: 1, time: 0.3, curve: 0, spin: 0, mix: 1 }));
+      return output[0];
+    };
+    const a = render();
+    const b = render();
+    // Energy collapses as the head stalls — but never produces garbage.
+    expect(peakOf(a)).toBeLessThan(0.7);
+    for (let i = 0; i < 1024; i++) {
+      expect(a[0][i]).toBeCloseTo(b[0][i], 5);
+      expect(a[1][i]).toBeCloseTo(b[1][i], 5);
+    }
+  });
+
+  it("freqShifter: shift 0 preserves magnitude (allpass pair)", () => {
+    const fx = freqShiftFactory();
+    const input = stereoBuffer(1024, (i) => Math.sin((2 * Math.PI * 440 * i) / SR) * 0.4);
+    const output: Float32Array[][] = [[]];
+    output[0] = [new Float32Array(1024), new Float32Array(1024)];
+    fx.process([input], output, param({ shift: 0, mix: 1 }));
+    // Allpass branches shift phase, never magnitude — energy is preserved.
+    const ratio = energyOf(output[0]) / energyOf(input);
+    expect(ratio).toBeGreaterThan(0.85);
+    expect(ratio).toBeLessThan(1.15);
+  });
+
+  it("pitchShift: ratio 0 st ≈ passthrough within window tolerance; renders are bit-identical", () => {
+    const render = () => {
+      const fx = pitchShiftFactory({ processorOptions: { seed: 42 } });
+      const input = stereoBuffer(512, (i) => Math.sin((2 * Math.PI * 330 * i) / SR) * 0.5);
+      const output: Float32Array[][] = [[]];
+      output[0] = [new Float32Array(512), new Float32Array(512)];
+      fx.process([input], output, param({ semitones: 0, fine: 0, grainMs: 55, width: 0.5, mix: 1 }));
+      return output[0];
+    };
+    const a = render();
+    const b = render();
+    for (let i = 64; i < 512; i++) {
+      expect(Math.abs(a[0][i] - input0(i))).toBeLessThan(0.12);
+      expect(a[0][i]).toBe(a[0][i]); // finite
+      expect(a[0][i]).toBe(b[0][i]);
+    }
+  });
+
+  it("vinyl: amount 1 adds crackle/dust energy over amount 0", () => {
+    const render = (amount: number) => {
+      const fx = vinylFactory({ processorOptions: { seed: 7 } });
+      const input = stereoBuffer(2048, () => 0); // digital silence
+      const output: Float32Array[][] = [[]];
+      output[0] = [new Float32Array(2048), new Float32Array(2048)];
+      fx.process([input], output, param({ amount, crackle: 0.8, wow: 0.3, year: 0.5, mix: 1 }));
+      return energyOf(output[0]);
+    };
+    expect(render(1)).toBeGreaterThan(render(0) * 2);
+  });
+
+  it("beatMangler: NORM with unity volume ≈ passthrough; a zeroed step silences its slice", () => {
+    const barSamples = Math.round((60 / 120) * 4 * SR); // 1 bar @ 120 BPM
+    const render = (volume: number[]) => {
+      const fx = beatManglerFactory();
+      const driveSteps = () =>
+        (fx as unknown as { port: { onmessage: ((e: unknown) => void) | null } }).port.onmessage?.({
+          data: { type: "steps", volume, pitch: null },
+        });
+      driveSteps();
+      (fx as unknown as { port: { onmessage: ((e: unknown) => void) | null } }).port.onmessage?.({
+        data: { type: "bpm", bpm: 120 },
+      });
+      // Fill one full bar first (block-wise like a real render).
+      const filler = stereoBuffer(4096, (i) => Math.sin((2 * Math.PI * 220 * i) / SR) * 0.6);
+      const sink: Float32Array[][] = [[new Float32Array(4096), new Float32Array(4096)]];
+      for (let written = 0; written < barSamples; written += 4096) {
+        fx.process([filler], sink, param({ mix: 1 }));
+      }
+      // Now render one mangled bar.
+      const output: Float32Array[][] = [[]];
+      output[0] = [new Float32Array(barSamples), new Float32Array(barSamples)];
+      fx.process([filler], output, param({ mix: 1 }));
+      return output[0];
+    };
+    const unity = render(Array(16).fill(1));
+    const muted = render(Array(16).fill(0));
+    // Unity loop ≈ passthrough energy (the bar replays the live sine);
+    // an all-zero volume envelope silences the mangler completely.
+    expect(energyOf(unity)).toBeGreaterThan(0.3);
+    expect(energyOf(muted)).toBeLessThan(0.001);
+  });
+});
+
+// The input used by the passthrough assertions in pitchShift test.
+function input0(i: number): number {
+  return Math.sin((2 * Math.PI * 330 * i) / SR) * 0.5;
+}

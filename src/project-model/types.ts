@@ -27,6 +27,7 @@ export type EffectType =
   | "comb"
   | "vowel"
   | "duckDelay"
+  | "multiTapDelay"
   | "kaskada"
   | "ringMod"
   | "tapeStop"
@@ -294,6 +295,16 @@ export interface MasterConfig {
   msSideGain?: number;
   /** Loudness target for integrated LUFS (e.g. -14 for streaming). */
   lufsTarget?: number;
+  /**
+   * Gentle SSL-style buss glue (2:1, RMS, post-M/S pre-clipper). Defaults ON:
+   * below-threshold sparse mixes pass transparently, hot mixes get 1–3 dB of
+   * leveling before the limiter.
+   */
+  glueEnabled?: boolean;
+  /** Bass Mono (FX expansion): below this frequency the master collapses to mono. */
+  bassMonoEnabled?: boolean;
+  /** Bass Mono corner frequency, 60…400 Hz (default 120). */
+  bassMonoFreq?: number;
 }
 
 export interface NoteEvent {

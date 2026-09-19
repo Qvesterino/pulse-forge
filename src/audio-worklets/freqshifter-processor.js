@@ -2,32 +2,34 @@
  * Frequency Shifter AudioWorkletProcessor — single-sideband (SSB) shift.
  *
  * Unlike a pitch shifter, a frequency shifter moves every partial by a FIXED
- * Hz offset (harmonics do not stay harmonic) — the classic "unearthly
- * metallic" drift for percussion and drones.
+ * Hz offset (harmonics stop being harmonic) — the classic unearthly metallic
+ * drift for percussion and drones.
  *
- * Implementation: 2-branch 6th-order allpass Hilbert transform pair (the
- * classic wideband 90° approximation, accurate across ~100 Hz…10 kHz at
- * 44.1/48 kHz). Shifting = quadrature mixing of the analytic signal with a
- * complex oscillator at -shift Hz, taking the real part.
+ * Implementation: two 8-stage first-order allpass cascades whose pole
+ * frequencies interleave (Bristow-Johnson style matched pair). The branches
+ * are phase-quadrature across ~150 Hz…8 kHz; quadrature mixing with a complex
+ * oscillator at the shift frequency yields the SSB. Coefficients derive from
+ * the pole frequencies and the context sample rate, and |c| < 1 always — the
+ * cascade cannot blow up.
  *
  * NOTE: served as part of core-worklet.js — plain JavaScript only.
  */
-
-// Allpass pole angles (radians, per-sample at the reference rate) for the two
-// branches of the wideband 90° pair. Scaling to the actual sample rate keeps
-// the passband behavior at 44.1 and 48 kHz.
-const HILBERT_A = [0.47940086558758, 1.33507085293105, 2.32204453360035];
-const HILBERT_B = [0.16174410491236, 0.97003617546274, 2.11142718748201];
+const BRANCH_A_POLES = [75, 150, 300, 600, 1200, 2400, 4800, 7500];
+const BRANCH_B_POLES = [250, 500, 1000, 2000, 3000, 4000, 6000, 8000];
 
 class FreqShiftProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
-    this.phase = 0;
-    this.a1 = [0, 0, 0];
-    this.a2 = [0, 0, 0];
-    this.b1 = [0, 0, 0];
-    this.b2 = [0, 0, 0];
     this.srRef = globalThis.sampleRate || 44100;
+    const coefFor = (poleHz) => {
+      const t = Math.tan((Math.PI * poleHz) / this.srRef);
+      return (t - 1) / (t + 1); // |c| < 1 for any positive pole frequency
+    };
+    this.coeffsA = BRANCH_A_POLES.map(coefFor);
+    this.coeffsB = BRANCH_B_POLES.map(coefFor);
+    this.stateA = new Float64Array(BRANCH_A_POLES.length * 2);
+    this.stateB = new Float64Array(BRANCH_B_POLES.length * 2);
+    this.phase = 0;
   }
 
   static get parameterDescriptors() {
@@ -38,12 +40,13 @@ class FreqShiftProcessor extends AudioWorkletProcessor {
   }
 
   allpassBranch(state, coeffs, x) {
-    // Each stage: y = c * x + xPrev - c * yPrev (first-order allpass with the
-    // angle-derived coefficient). Three cascaded stages per branch.
+    // First-order allpass per stage: y[n] = c·x[n] + x[n−1] − c·y[n−1].
     let out = x;
-    for (let s = 0; s < 3; s++) {
+    for (let s = 0; s < coeffs.length; s++) {
       const c = coeffs[s];
-      const y = c * out + state[s * 2] - c * state[s * 2 + 1];
+      const xPrev = state[s * 2];
+      const yPrev = state[s * 2 + 1];
+      const y = c * out + xPrev - c * yPrev;
       state[s * 2] = out;
       state[s * 2 + 1] = y;
       out = y;
@@ -60,7 +63,7 @@ class FreqShiftProcessor extends AudioWorkletProcessor {
     const inL = input && input[0] && input[0].length ? input[0] : null;
     const inR = input && input.length > 1 && input[1] && input[1].length ? input[1] : null;
     const len = outL.length;
-    const sr = globalThis.sampleRate || 44100;
+    const sr = this.srRef;
 
     const shift = parameters.shift[0];
     const mix = parameters.mix[0];
@@ -70,18 +73,17 @@ class FreqShiftProcessor extends AudioWorkletProcessor {
       const l = inL ? inL[i] : 0;
       const r = inR ? inR[i] : l;
 
-      // Analytic signal via the two allpass branches (relative 90°).
-      const xa = this.allpassBranch(this.a1, HILBERT_A, l);
-      const xb = this.allpassBranch(this.a2, HILBERT_B, l);
-      // Complex oscillator (carrier at -shift).
+      // Quadrature pair: the two branches are 90° apart in the audio band.
+      const xa = this.allpassBranch(this.stateA, this.coeffsA, l);
+      const xb = this.allpassBranch(this.stateB, this.coeffsB, l);
       const cosW = Math.cos(this.phase);
       const sinW = Math.sin(this.phase);
       this.phase += phaseInc;
       if (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
       if (this.phase < -2 * Math.PI) this.phase += 2 * Math.PI;
 
-      // SSB down-shift: real part of (analytic) × e^{j·phase}.
-      const wet = 0.5 * (xa * cosW - xb * sinW);
+      // SSB: real part of (quadrature pair) × complex carrier.
+      const wet = xa * cosW - xb * sinW;
 
       outL[i] = l * (1 - mix) + wet * mix;
       if (outR) outR[i] = r * (1 - mix) + wet * mix;

@@ -317,6 +317,51 @@ export const CORE_EFFECT_PRESETS: EffectPreset[] = [
     tone: 2500,
     mix: 0.35,
   }),
+  // Multi-Tap — rhythmic fill delays (call-and-response, ping-pong hats)
+  preset("multitap-16th-run", "16th Run", "multiTapDelay", {
+    taps: 4,
+    t1Div: 6,
+    t2Div: 6,
+    t3Div: 6,
+    t4Div: 6,
+    spread: 0.8,
+    feedback: 0.2,
+    tone: 5200,
+    mix: 0.28,
+  }),
+  preset("multitap-dotted-stairs", "Dotted Stairs", "multiTapDelay", {
+    taps: 3,
+    t1Div: 0,
+    t2Div: 2,
+    t3Div: 4,
+    t4Div: 6,
+    spread: 0.7,
+    feedback: 0.35,
+    tone: 4200,
+    mix: 0.3,
+  }),
+  preset("multitap-pingpong-hats", "Ping-Pong Hats", "multiTapDelay", {
+    taps: 2,
+    t1Div: 4,
+    t2Div: 6,
+    t3Div: 4,
+    t4Div: 6,
+    spread: 1,
+    feedback: 0.12,
+    tone: 7500,
+    mix: 0.22,
+  }),
+  preset("multitap-dub-cascade", "Dub Cascade", "multiTapDelay", {
+    taps: 4,
+    t1Div: 2,
+    t2Div: 4,
+    t3Div: 6,
+    t4Div: 7,
+    spread: 0.6,
+    feedback: 0.55,
+    tone: 2400,
+    mix: 0.35,
+  }),
   // KYX Kaskáda — character delay presets
   preset("kaskada-tape-echo", "Tape Echo", "kaskada", {
     time: 375,
@@ -414,6 +459,71 @@ export const CORE_EFFECT_PRESETS: EffectPreset[] = [
     mix: 0.3,
     level: -6,
   }),
+
+/* ────────────── FX Expansion (beatmaking pass) ────────────── */
+
+preset("ringmod-steel", "Steel Perc", "ringMod", { frequency: 830, feedback: 0, mix: 1 }),
+preset("ringmod-robot", "Robot Ring", "ringMod", { frequency: 95, feedback: 0.4, mix: 1 }),
+preset("ringmod-arc", "Arc Ring", "ringMod", { frequency: 1400, feedback: 0.7, mix: 0.8 }),
+
+stepPreset(
+  "tapestop-8th",
+  "Stop 1/2 Bar",
+  "tapeStop",
+  { engaged: 1, time: 0.6, curve: 0, spin: 0, mix: 1 },
+  [1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+),
+preset("tapestop-slow", "Slow Stop", "tapeStop", { engaged: 1, time: 4, curve: 0, spin: 0, mix: 1 }),
+preset("tapest-op-rev", "Rev Spin", "tapeStop", { engaged: 1, time: 2, curve: 1, spin: 1, mix: 1 }),
+
+preset("freqshift-sub", "Sub Drift", "freqShifter", { shift: -38, mix: 1 }),
+preset("freqshift-metal", "Metal Air", "freqShifter", { shift: 620, mix: 0.7 }),
+
+preset("pitchshift-down", "Chop −3", "pitchShift", { semitones: -3, fine: 0, grainMs: 45, width: 0.6, mix: 1 }),
+preset("pitchshift-up", "Chop +4", "pitchShift", { semitones: 4, fine: 0, grainMs: 38, width: 0.4, mix: 1 }),
+preset("pitchshift-wide", "Wide Detune", "pitchShift", { semitones: 0, fine: 12, grainMs: 70, width: 1, mix: 0.5 }),
+
+preset("vinyl-78", "78 RPM", "vinyl", { amount: 0.9, crackle: 0.8, wow: 0.7, year: 1, mix: 1 }),
+preset("vinyl-lofi", "Lo-Fi Dust", "vinyl", { amount: 0.55, crackle: 0.45, wow: 0.5, year: 0.7, mix: 1 }),
+preset("vinyl-club", "Club Clean", "vinyl", { amount: 0.12, crackle: 0.08, wow: 0.1, year: 0.2, mix: 1 }),
+
+preset("multitap-quarter", "Quarters", "multiTapDelay", {
+  taps: 3,
+  t1Div: 2,
+  t2Div: 4,
+  t3Div: 6,
+  t4Div: 0,
+  spread: 0.8,
+  feedback: 0.25,
+  tone: 5000,
+  mix: 0.35,
+}),
+preset("multitap-wide", "Wide Eighths", "multiTapDelay", {
+  taps: 4,
+  t1Div: 4,
+  t2Div: 4,
+  t3Div: 4,
+  t4Div: 2,
+  spread: 1,
+  feedback: 0.35,
+  tone: 4000,
+  mix: 0.3,
+}),
+
+stepPreset(
+  "beatmangler-halftime",
+  "Halftime",
+  "beatMangler",
+  { playMode: 0, repeatFill: 0, mix: 1 },
+  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+),
+stepPreset(
+  "beatmangler-skip",
+  "Skip 16ths",
+  "beatMangler",
+  { playMode: 0, repeatFill: 0, mix: 1 },
+  [1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0],
+),
 ];
 
 export function presetsForEffect(type: EffectType): EffectPreset[] {

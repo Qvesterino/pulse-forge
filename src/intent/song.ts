@@ -10,6 +10,7 @@ import { BAR_TICKS } from "../project-model/types";
 import { normalizeIntent, intentFromGenerateOptions } from "./normalize";
 import { generateOptionsFromIntent } from "./plan";
 import { generateLocalResult } from "./pipeline";
+import { applyTransitionToPattern } from "./transitions";
 import type { IntentInput, IntentRole, IntentSpec } from "./types";
 
 /**
@@ -488,6 +489,24 @@ export async function buildSong(
     if (options.yieldBetweenSections !== false && index < form.sections.length - 1) {
       await yieldToUi();
     }
+  }
+
+  // T3 real transition sounds: every transition bakes its sound into the
+  // OUTGOING section — fill/riser roll into the launch, break drops the last
+  // bar silent. Baked at build time (deterministic) so the song stays ONE
+  // undo step with reproducible hashes.
+  for (let index = 1; index < sections.length; index++) {
+    const transitionIn = sections[index].transitionIn;
+    if (!transitionIn) continue;
+    const outgoing = sections[index - 1];
+    sections[index - 1] = {
+      ...outgoing,
+      pattern: applyTransitionToPattern(doc, outgoing.pattern, transitionIn, {
+        // drum-based fills respect the section's instrumentation AND the
+        // user's role request — a bridge or a "no drums" intent stays clean
+        allowDrums: outgoing.roles.includes("drums"),
+      }),
+    };
   }
 
   const nameParts: string[] = [baseIntent.genre];

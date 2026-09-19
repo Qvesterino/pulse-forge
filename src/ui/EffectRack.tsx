@@ -11,6 +11,7 @@ import {
   resetEffect,
   setEffectParam,
   setEffectSidechainSource,
+  setBeatManglerSteps,
   setEffectSteps,
   setFxEqParam,
   setUltinaParam,
@@ -619,6 +620,34 @@ function Device({
               ariaLabel={`Stutter gate pattern for ${track?.name ?? "track"}`}
               onCommit={(steps) => services.store.execute(setEffectSteps(doc, track.id, fx.id, steps))}
             />
+          )}
+          {fx.type === "beatMangler" && (
+            <div className="beatmangler-editor">
+              <div className="beatmangler-lane">
+                <span className="beatmangler-lane-label">VOL</span>
+                <StepGridEditor
+                  steps={fx.volumeSteps && fx.volumeSteps.length > 0 ? fx.volumeSteps : Array(16).fill(1)}
+                  min={0}
+                  max={1}
+                  ariaLabel={`Beat mangler volume envelope for ${track?.name ?? "track"}`}
+                  onCommit={(steps) =>
+                    services.store.execute(setBeatManglerSteps(doc, track.id, fx.id, { volume: steps }))
+                  }
+                />
+              </div>
+              <div className="beatmangler-lane">
+                <span className="beatmangler-lane-label">PITCH</span>
+                <StepGridEditor
+                  steps={fx.pitchSteps && fx.pitchSteps.length > 0 ? fx.pitchSteps : Array(16).fill(0)}
+                  min={-24}
+                  max={24}
+                  ariaLabel={`Beat mangler pitch envelope for ${track?.name ?? "track"}`}
+                  onCommit={(steps) =>
+                    services.store.execute(setBeatManglerSteps(doc, track.id, fx.id, { pitch: steps }))
+                  }
+                />
+              </div>
+            </div>
           )}
           <Suspense fallback={<div className="fx-panel-loading">Loading editor…</div>}>
             {fx.type === "fxeq" && (

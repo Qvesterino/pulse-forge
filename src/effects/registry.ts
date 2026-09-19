@@ -3336,7 +3336,15 @@ const ringMod: EffectDefinition = {
   name: "Ring Mod",
   category: "movement",
   params: [
-    { id: "frequency", label: "CARRIER", min: 0.1, max: 2000, default: 220, unit: "Hz", format: (v) => (v >= 100 ? `${Math.round(v)} Hz` : `${v.toFixed(1)} Hz`) },
+    {
+      id: "frequency",
+      label: "CARRIER",
+      min: 0.1,
+      max: 2000,
+      default: 220,
+      unit: "Hz",
+      format: (v) => (v >= 100 ? `${Math.round(v)} Hz` : `${v.toFixed(1)} Hz`),
+    },
     { id: "feedback", label: "FEEDBK", min: 0, max: 0.9, default: 0, format: formatPct },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
   ],
@@ -3375,12 +3383,190 @@ const freqShifter: EffectDefinition = {
   name: "Freq Shift",
   category: "movement",
   params: [
-    { id: "shift", label: "SHIFT", min: -1000, max: 1000, default: 120, unit: "Hz", format: (v) => `${v > 0 ? "+" : ""}${Math.round(v)} Hz` },
+    {
+      id: "shift",
+      label: "SHIFT",
+      min: -1000,
+      max: 1000,
+      default: 120,
+      unit: "Hz",
+      format: (v) => `${v > 0 ? "+" : ""}${Math.round(v)} Hz`,
+    },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
   ],
   factory(ctx, instance) {
     if (isWorkletReady("freqShifter", ctx)) return createFreqShiftNode(ctx, instance);
     return bypassRuntime(ctx, "AudioWorklet unavailable — frequency shifter bypassed (1:1 signal)");
+  },
+};
+const MULTITAP_DIVISIONS = [
+  { value: 0, label: "1/2" },
+  { value: 1, label: "1/2T" },
+  { value: 2, label: "1/4" },
+  { value: 3, label: "1/4T" },
+  { value: 4, label: "1/8" },
+  { value: 5, label: "1/8T" },
+  { value: 6, label: "1/16" },
+  { value: 7, label: "1/16T" },
+];
+
+const MULTITAP_BAR_MULTS = [2, 4 / 3, 1, 2 / 3, 0.5, 1 / 3, 0.25, 1 / 6];
+/** Same values read as "beats per division": the labels above are note
+ * values (1/2 note = 2 beats …), so the delay seconds = beats × seconds/beat.
+ * Multiplying a BAR length by these values made every tap 4× too long. */
+export const multitapDelaySec = (divisionIndex: number, bpm: number): number => {
+  const beats = MULTITAP_BAR_MULTS[Math.max(0, Math.min(MULTITAP_BAR_MULTS.length - 1, divisionIndex))];
+  return Math.max(0.02, (60 / (bpm || 124)) * beats);
+};
+
+/**
+ * Multi-tap delay (FX expansion): four tempo-synced taps, each with its own
+ * division / gain / pan, sharing a tone-shaped feedback path. Pure native
+ * Web Audio — no worklet.
+ */
+const multiTapDelay: EffectDefinition = {
+  type: "multiTapDelay",
+  name: "Multi-Tap",
+  category: "space",
+  params: [
+    { id: "taps", label: "TAPS", min: 1, max: 4, default: 3, format: (v) => `${Math.round(v)}` },
+    { id: "t1Div", label: "T1 DIV", min: 0, max: 7, default: 4, options: MULTITAP_DIVISIONS },
+    { id: "t2Div", label: "T2 DIV", min: 0, max: 7, default: 6, options: MULTITAP_DIVISIONS },
+    { id: "t3Div", label: "T3 DIV", min: 0, max: 7, default: 2, options: MULTITAP_DIVISIONS },
+    { id: "t4Div", label: "T4 DIV", min: 0, max: 7, default: 0, options: MULTITAP_DIVISIONS },
+    { id: "spread", label: "SPREAD", min: 0, max: 1, default: 0.7, format: formatPct },
+    { id: "feedback", label: "FEEDBK", min: 0, max: 0.85, default: 0.3, format: formatPct },
+    { id: "tone", label: "TONE", min: 500, max: 8000, default: 4500, unit: "Hz", format: formatHz },
+    { id: "mix", label: "MIX", min: 0, max: 1, default: 0.3, format: formatPct },
+  ],
+  factory(ctx, instance, env) {
+    const paramDef = (id: string) => EFFECT_DEFS.multiTapDelay.params.find((pd) => pd.id === id)!;
+    const clampParam = (id: string, raw: number) => {
+      const def = paramDef(id);
+      if (!Number.isFinite(raw)) return def.default;
+      return Math.min(def.max, Math.max(def.min, raw));
+    };
+    const p = (id: string) => clampParam(id, instance.params[id]);
+    let tapCount = Math.round(p("taps"));
+    let spread = p("spread");
+    let bpm = Number.isFinite(env.bpm) && env.bpm > 0 ? env.bpm : 124;
+    const divisions = Array.from({ length: 4 }, (_, t) => Math.round(p(`t${t + 1}Div`)));
+    const input = ctx.createGain();
+    const output = ctx.createGain();
+    const wet = ctx.createGain();
+    const tone = ctx.createBiquadFilter();
+    tone.type = "lowpass";
+    tone.frequency.value = p("tone");
+
+    const panFor = (index: number) => (tapCount <= 1 ? 0 : (index / (tapCount - 1)) * 2 - 1) * spread * 0.9;
+
+    const tapNodes: { delay: DelayNode; gain: GainNode; pan: StereoPannerNode }[] = [];
+    for (let t = 0; t < 4; t++) {
+      const delay = ctx.createDelay(8);
+      const gain = ctx.createGain();
+      const pan = ctx.createStereoPanner();
+      delay.delayTime.value = multitapDelaySec(divisions[t], bpm);
+      gain.gain.value = t < tapCount ? 1 / Math.sqrt(t + 1) : 0;
+      pan.pan.value = panFor(t);
+      input.connect(delay).connect(gain).connect(pan).connect(tone);
+      tapNodes.push({ delay, gain, pan });
+    }
+
+    // Shared feedback loop around the tone stage.
+    const feedbackGain = ctx.createGain();
+    feedbackGain.gain.value = p("feedback");
+    tone.connect(feedbackGain).connect(input);
+
+    tone.connect(wet).connect(output);
+    // Dry passthrough — wet mixes over the input like the stock delay.
+    input.connect(output);
+
+    const applyMix = (v: number, when?: number) => {
+      wet.gain.setValueAtTime(v, when ?? ctx.currentTime);
+    };
+    applyMix(p("mix"));
+
+    const setDivision = (tapIndex: number, rawDivisionIndex: number, when?: number) => {
+      const divisionIndex = Math.round(clampParam(`t${tapIndex + 1}Div`, rawDivisionIndex));
+      divisions[tapIndex] = divisionIndex;
+      const delayTime = tapNodes[tapIndex].delay.delayTime;
+      if (when !== undefined) delayTime.setValueAtTime(multitapDelaySec(divisionIndex, bpm), when);
+      else delayTime.setTargetAtTime(multitapDelaySec(divisionIndex, bpm), ctx.currentTime, 0.01);
+    };
+
+    /** Keep the spread cache and all tap positions in sync for UI + automation. */
+    const applySpread = (value: number, when?: number) => {
+      spread = clampParam("spread", value);
+      tapNodes.forEach((tap, t) => {
+        const pan = panFor(t);
+        if (when !== undefined) tap.pan.pan.setValueAtTime(pan, when);
+        else tap.pan.pan.value = pan;
+      });
+    };
+
+    const applyTapCount = (value: number, when?: number) => {
+      tapCount = Math.round(clampParam("taps", value));
+      for (let t = 0; t < 4; t++) {
+        const gain = t < tapCount ? 1 / Math.sqrt(t + 1) : 0;
+        if (when !== undefined) tapNodes[t].gain.gain.setValueAtTime(gain, when);
+        else tapNodes[t].gain.gain.value = gain;
+      }
+      applySpread(spread, when);
+    };
+
+    const setParameter = (id: string, value: number, when?: number) => {
+      if (id === "mix") {
+        applyMix(clampParam(id, value), when);
+        return;
+      }
+      if (id === "feedback") {
+        const feedback = clampParam(id, value);
+        if (when !== undefined) feedbackGain.gain.setValueAtTime(feedback, when);
+        else feedbackGain.gain.value = feedback;
+        return;
+      }
+      if (id === "tone") {
+        const frequency = clampParam(id, value);
+        if (when !== undefined) tone.frequency.setValueAtTime(frequency, when);
+        else tone.frequency.value = frequency;
+        return;
+      }
+      if (id === "spread") {
+        applySpread(value, when);
+        return;
+      }
+      if (id === "taps") {
+        applyTapCount(value, when);
+        return;
+      }
+      const tapMatch = /^t([1-4])Div$/.exec(id);
+      if (tapMatch) setDivision(Number(tapMatch[1]) - 1, value, when);
+    };
+
+    return {
+      input,
+      output,
+      setParameter: (id, v) => setParameter(id, v),
+      setParameterAt: (id, v, when) => setParameter(id, v, when),
+      syncBpm: (nextBpm) => {
+        bpm = Number.isFinite(nextBpm) && nextBpm > 0 ? nextBpm : 124;
+        for (let t = 0; t < 4; t++) {
+          tapNodes[t].delay.delayTime.setTargetAtTime(multitapDelaySec(divisions[t], bpm), ctx.currentTime, 0.05);
+        }
+      },
+      dispose() {
+        input.disconnect();
+        tone.disconnect();
+        feedbackGain.disconnect();
+        wet.disconnect();
+        output.disconnect();
+        for (const { delay, gain, pan } of tapNodes) {
+          delay.disconnect();
+          gain.disconnect();
+          pan.disconnect();
+        }
+      },
+    };
   },
 };
 
@@ -3389,8 +3575,24 @@ const pitchShift: EffectDefinition = {
   name: "Pitch Shift",
   category: "character",
   params: [
-    { id: "semitones", label: "PITCH", min: -12, max: 12, default: -3, unit: "st", format: (v) => `${v > 0 ? "+" : ""}${Math.round(v)} st` },
-    { id: "fine", label: "FINE", min: -50, max: 50, default: 0, unit: "ct", format: (v) => `${v > 0 ? "+" : ""}${Math.round(v)}` },
+    {
+      id: "semitones",
+      label: "PITCH",
+      min: -12,
+      max: 12,
+      default: -3,
+      unit: "st",
+      format: (v) => `${v > 0 ? "+" : ""}${Math.round(v)} st`,
+    },
+    {
+      id: "fine",
+      label: "FINE",
+      min: -50,
+      max: 50,
+      default: 0,
+      unit: "ct",
+      format: (v) => `${v > 0 ? "+" : ""}${Math.round(v)}`,
+    },
     { id: "grainMs", label: "GRAIN", min: 20, max: 120, default: 55, unit: "ms", format: (v) => `${Math.round(v)} ms` },
     { id: "width", label: "WIDTH", min: 0, max: 1, default: 0.5, format: formatPct },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
@@ -3445,7 +3647,14 @@ const beatMangler: EffectDefinition = {
       default: 0,
       options: BEATMANGLER_MODES,
     },
-    { id: "repeatFill", label: "FILL", min: 0, max: 8, default: 0, format: (v) => (v < 2 ? "OFF" : `${Math.round(v)}×`) },
+    {
+      id: "repeatFill",
+      label: "FILL",
+      min: 0,
+      max: 8,
+      default: 0,
+      format: (v) => (v < 2 ? "OFF" : `${Math.round(v)}×`),
+    },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
   ],
   // Envelope data lives on EffectInstance.volumeSteps / pitchSteps (16/32
@@ -3578,6 +3787,7 @@ export const EFFECT_DEFS: Record<EffectType, EffectDefinition> = {
   ultina,
   ozvena,
   kaskada,
+  multiTapDelay,
   ringMod,
   tapeStop,
   freqShifter,
@@ -3605,6 +3815,7 @@ export const EFFECT_ORDER: EffectType[] = [
   "vowel",
   "duckDelay",
   "kaskada",
+  "multiTapDelay",
   "reverb",
   "delay",
   "pump",
@@ -3648,6 +3859,7 @@ export const CORE_EFFECT_ORDER: EffectType[] = [
   "comb",
   "vowel",
   "duckDelay",
+  "multiTapDelay",
   "tapeSat",
   "drumBuss",
   "bassBuss",

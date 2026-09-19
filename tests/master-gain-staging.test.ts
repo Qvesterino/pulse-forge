@@ -53,4 +53,14 @@ describe("master config — gain staging", () => {
     expect(fixed.master.limiterEnabled).toBe(false);
     expect(fixed.master.clipperEnabled).toBe(true);
   });
+  it("backfills glueEnabled to true when missing", () => {
+    const { glueEnabled: _dropped, ...rest } = baseDoc().master;
+    void _dropped;
+    const fixed = normalizeProject({ ...baseDoc(), master: rest } as unknown as ProjectDocument);
+    expect(fixed.master.glueEnabled).toBe(true);
+  });
+  it("preserves an explicit glueEnabled: false", () => {
+    const dirty = { ...baseDoc(), master: { ...baseDoc().master, glueEnabled: false } } as ProjectDocument;
+    expect(normalizeProject(dirty).master.glueEnabled).toBe(false);
+  });
 });

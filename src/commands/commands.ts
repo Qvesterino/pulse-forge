@@ -32,7 +32,12 @@ import type {
 } from "../project-model/types";
 import { BAR_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
 import { buildStemProject } from "../rendering/stems";
-import { DEFAULT_GATE_PATTERN, DEFAULT_STEP_PATTERN, sanitizeGateSteps } from "../project-model/modulators";
+import {
+  DEFAULT_GATE_PATTERN,
+  DEFAULT_STEP_PATTERN,
+  sanitizeGateSteps,
+  sanitizeManglerSteps,
+} from "../project-model/modulators";
 import { setStepVelocityInPattern, withPad, withTrack } from "../project-model/transform";
 import { getYDocHelpers } from "./yDocBridge";
 import { insertPointSorted } from "../project-model/automation";
@@ -4454,6 +4459,37 @@ export function removeEffect(doc: ProjectDocument, trackId: string, fxId: string
 }
 
 /** Replace the step pattern of a step-sequenced effect (stepGate) — one undo step per edit stroke. */
+/**
+ * Beat Mangler envelope edit (FX expansion): replace `volumeSteps` and/or
+ * `pitchSteps` on a beatMangler instance. Sanitized to 16/32 steps with the
+ * field-specific ranges; fields the caller omits stay untouched.
+ */
+export function setBeatManglerSteps(
+  doc: ProjectDocument,
+  trackId: string,
+  fxId: string,
+  patch: { volume?: number[]; pitch?: number[] },
+): Command {
+  const target = trackEffectsOf(doc, trackId).find((f) => f.id === fxId);
+  if (!target) throw new Error(`Effect ${fxId} not found`);
+  const prevVolume = target.volumeSteps ? [...target.volumeSteps] : undefined;
+  const prevPitch = target.pitchSteps ? [...target.pitchSteps] : undefined;
+  const nextVolume = patch.volume !== undefined ? sanitizeManglerSteps(patch.volume, 0, 1, 1) : prevVolume;
+  const nextPitch = patch.pitch !== undefined ? sanitizeManglerSteps(patch.pitch, -24, 24, 0) : prevPitch;
+  const apply = (d: ProjectDocument, volume: number[] | undefined, pitch: number[] | undefined): ProjectDocument =>
+    withTrackEffects(d, trackId, (effects) =>
+      effects.map((f) => (f.id === fxId ? { ...f, volumeSteps: volume, pitchSteps: pitch } : f)),
+    );
+  return {
+    type: "setBeatManglerSteps",
+    label: "Edit mangler envelopes",
+    execute: (d) => apply(d, nextVolume, nextPitch),
+    undo: (d) => apply(d, prevVolume, prevPitch),
+    // No applyToYDoc: without the fast path, YDocStore falls back to the
+    // generic whole-document diff — correct (and rare) for envelope edits.
+  };
+}
+
 export function setEffectSteps(doc: ProjectDocument, trackId: string, fxId: string, steps: number[]): Command {
   const target = trackEffectsOf(doc, trackId).find((f) => f.id === fxId);
   if (!target) throw new Error(`Effect ${fxId} not found`);

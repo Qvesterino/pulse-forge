@@ -20,6 +20,7 @@ interface ReadState {
   lufsIntegrated: number;
   monoLossDb: number;
   gainReductionDb: number;
+  glueReductionDb: number;
   lrImbalanceDb: number;
   warnings: ReturnType<typeof evaluateMixCheck>;
 }
@@ -53,6 +54,7 @@ export function MasterMeter() {
     lufsIntegrated: MIN_DB,
     monoLossDb: 0,
     gainReductionDb: 0,
+    glueReductionDb: 0,
     lrImbalanceDb: 0,
     warnings: [],
   });
@@ -90,6 +92,15 @@ export function MasterMeter() {
         imbalanceSinceRef.current = imbalanceSince;
         const gainReductionDb =
           Math.round((snapshot ? snapshot.gainReductionDb : services.engine.getMasterGainReductionDb()) * 10) / 10;
+        const engineWithGlue = services.engine as typeof services.engine & {
+          getMasterGlueReductionDb?: () => number;
+        };
+        const glueReductionDb =
+          Math.round(
+            (snapshot && "glueReductionDb" in snapshot && typeof snapshot.glueReductionDb === "number"
+              ? snapshot.glueReductionDb
+              : (engineWithGlue.getMasterGlueReductionDb?.() ?? 0)) * 10,
+          ) / 10;
         const warnings = snapshot
           ? evaluateMixCheck({
               truePeakDb: snapshot.truePeakDb,
@@ -115,6 +126,7 @@ export function MasterMeter() {
           Math.abs(prev.lufsIntegrated - (snapshot?.lufsIntegrated ?? MIN_DB)) > 0.2 ||
           Math.abs(prev.monoLossDb - (snapshot?.monoLossDb ?? 0)) > 0.2 ||
           Math.abs(prev.gainReductionDb - gainReductionDb) > 0.15 ||
+          Math.abs(prev.glueReductionDb - glueReductionDb) > 0.15 ||
           Math.abs(prev.lrImbalanceDb - imbalance) > 0.3 ||
           prev.warnings.length !== warnings.length ||
           prev.clipping !== clipping;
@@ -131,6 +143,7 @@ export function MasterMeter() {
             lufsIntegrated: snapshot?.lufsIntegrated ?? MIN_DB,
             monoLossDb: snapshot?.monoLossDb ?? 0,
             gainReductionDb,
+            glueReductionDb,
             lrImbalanceDb: imbalance,
             warnings,
           };
@@ -176,6 +189,7 @@ export function MasterMeter() {
           <span>TP {formatDb(state.truePeakDb)} dBTP</span>
           <span>MONO LOSS {formatDb(state.monoLossDb)} dB</span>
           <span title="Master-stage gain reduction">GR {state.gainReductionDb.toFixed(1)} dB</span>
+          <span title="Master buss-glue gain reduction">GLUE {state.glueReductionDb.toFixed(1)} dB</span>
         </div>
         <LoudnessHistory id="master-loudness" height={56} targetLufs={lufsTarget} />
       </div>
@@ -286,6 +300,8 @@ interface MasterSnapshot {
   monoLossDb: number;
   lrImbalanceDb: number;
   gainReductionDb: number;
+  /** Master buss-glue reduction — present on fresh engine snapshots. */
+  glueReductionDb?: number;
 }
 
 interface StereoState {

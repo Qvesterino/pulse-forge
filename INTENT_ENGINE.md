@@ -513,6 +513,35 @@ default house patternu (najhorší možný fallback pre trap request).
   drill fix + revise parser EN/SK + router priority + same-seed identity
   (rovnaký seed, iný content hash, determinizmus).
 
+### 5.10 Real transition sounds (T3 zvyšky — HOTOVÉ)
+
+Transitions prestali byť len metadáta — **odchádzajúca sekcia nesie skutočný
+transition zvuk** v svojom patternu:
+
+- **fill** → celý posledný bar: 16tinový snare/clap roll s crescendom
+  (0.3→0.9), tom run na posledných 4 krokoch, kick anchor na dobe
+- **riser** → posledné 2 bary: štvrťový snare pulse stúpajúci → 16tinový
+  roll crescendo + otvorené hi-haty na osminách stúpajúce (sekcie < 2 barov
+  fallbackujú na fill)
+- **break** → dropout: posledný bar ODCHÁDZAJÚCEJ sekcie úplne tichý —
+  medzera JE zvuk pred nasledujúcou sekciou
+- **drop/impact/custom** → bez zmeny patternu
+
+`src/intent/transitions.ts` — `applyTransitionToPattern(doc, pattern, type,
+{ allowDrums })`: deterministické velocity rampy (žiadne RNG), role-aware
+pad výber (snare+clap = roll voice, toms = run, openHat = sparkle), output
+hash refresh. **allowDrums = false** (bridge inštrumentácia alebo user
+"no drums") potláča bicie-based filly — user roly režú cez transitions;
+dropout vždy platí (len odoberá). Song builder pečie treatments pri
+buildSong (jedna undo, reprodukovateľné hashe).
+
+- Testy: `tests/intent-transitions.test.ts` (8) — typ→treatment mapa,
+  crescendo/densita pravidlá, 2-bar riser, dropout silence, nezmenené skoršie
+  bary, determinizmus, reálny kit, song integrácia (Build A riser, Drop A
+  dropout, Break fill suppressed pre drum-free inštrumentáciu).
+- Ostáva (T4/far horizon): syntetizované riser WAV assety cez sample bank
+  (potrebné bank/persist infra), audio embedding pre transition výber.
+
 ## 6. Kvalita, testy, determinizmus
 
 - **Testy**: `tests/intent-pipeline.test.ts`, `intent-async-pipeline.test.ts`,
@@ -559,7 +588,7 @@ default house patternu (najhorší možný fallback pre trap request).
 | Text understanding | **parser v3 + C1 artist slovník + T1 krok 2 SEMANTIC LAYER** (multilingual MiniLM embedding kNN nad curated korpusom — rozumie neznámym frázam a menám, SK vrátane) | väčší embedding model, korpus rastúci s favoritmi |
 | Žánre/style | 4 žánre + 21 groove štýlov v prior vocab | desiatky štýlov; style embeddingy namiesto ručných keyword map |
 | Generatívny model | template anchors + constrained Markov **+ ONNX symbolic prior v1 (drums)** | prior v2: melodic role, učenie z favoritov, väčší dataset |
-| Štruktúra pesničky | **HOTOVÉ (A2 v2)**: song builder s verse/chorus/bridge rolami, inštrumentáciou per sekciu (intro=bicí+bas, chorus=full, bridge=bez bicích), pop forma pre trap + elektronickej formy | section-aware prior kandidáty, audíció celej pesničky, reálne transition ZVUKY |
+| Štruktúra pesničky | **HOTOVÉ (A2 v2 + T3)**: song builder s verse/chorus/bridge, inštrumentáciou per sekciu a REÁLNYMI transition zvukmi (fill roll/riser/dropout pečené do odchádzajúcich sekcií) | section-aware prior kandidáty, audíció celej pesničky, syntetizované riser WAV |
 | Intent → mix | **HOTOVÉ (D1)**: mix profil z intentu (tone/punch/space/pump) ako jeden undo krok | loudness target (limiter), per-section mix v song builderi |
 | Unified bar | **HOTOVÉ (D3)**: ⚡ router arrange→mix→pattern v IntentPaneli | vzor/pattern z audio referencie (T4) |
 | Audio dimenzia | sample kity, grooves; žiadne audio AI | audio embeddingy (tagovanie sample lib, audio ranker rendered výstupu) |
@@ -595,10 +624,12 @@ default house patternu (najhorší možný fallback pre trap request).
   priamo z favoritov~~ **HOTOVÉ (C2)** — ranker sa učí z preferenčných skupín;
   ~~melodic prior trénovaný aj z favoritov~~ **HOTOVÉ (C1)**.
 
-### T3 — Štruktúra a dlhá forma — ✅ HOTOVÉ (2026-09-19, A2 + A2 v2)
+### T3 — Štruktúra a dlhá forma — ✅ HOTOVÉ (2026-09-19, A2 + v2 + transition sounds)
 - ~~Section planner (song form)~~ **HOTOVÉ**: song builder (§5.6) + songwriting
   role verse/chorus/bridge s inštrumentáciou per sekciu (§5.8).
-- Ostáva: fill/transition generovanie (dnes len typy), section-aware prior,
+- ~~Fill/transition generovanie~~ **HOTOVÉ (§5.10)**: reálne transition zvuky
+  (fill roll/riser build/dropout) pečené do odchádzajúcich sekcií.
+- Ostáva: syntetizované riser WAV assety (bank infra), section-aware prior,
   audíció celej pesničky po Worker boundary.
 
 ### T4 — Audio dimenzia
@@ -650,8 +681,8 @@ IndexedDB/Cache API cache po prvom stiahnutí, PWA precache len pre T0.
 
 ---
 
-*Posledná úplná revízia mapy: 2026-09-19 (T1 + T1 krok 2 semantic layer, parser
-v3 EN+SK, drum+melodic prior v1, C1+C2 favorites→retrain, A1 audition, A2 song
-builder + v2 roles, D1 mix chain, D3 unified bar, C1 artist slovník + C2 revise
-routing). Dokument sa dopĺňa pri každej zmene Intent Engine; fakty boli
-overené čítaním zdrojov uvedených v §3.*
+*Posledná úplná revízia mapy: 2026-09-19 (T1 + krok 2 semantic layer, parser v3
+EN+SK, drum+melodic prior v1, C1+C2 favorites→retrain, A1 audition, A2 song
+builder + v2 roles + transition sounds, D1 mix chain, D3 unified bar, C1
+artist slovník + C2 revise routing). Dokument sa dopĺňa pri každej zmene
+Intent Engine; fakty boli overené čítaním zdrojov uvedených v §3.*

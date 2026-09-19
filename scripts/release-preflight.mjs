@@ -7,7 +7,7 @@
  *   NODE_ENV=production CORS_ORIGIN=https://app.example.com npm run release:preflight
  *   KYX_GALLERY_PUBLIC=1 GALLERY_ADMIN_TOKEN=...  (when the public gallery is enabled)
  */
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { createReadStream, existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 
@@ -17,6 +17,12 @@ const failures = [];
 
 function fail(message) {
   failures.push(message);
+}
+
+async function sha256File(path) {
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(path)) hash.update(chunk);
+  return hash.digest("hex");
 }
 
 if (process.env.NODE_ENV !== "production") {
@@ -89,6 +95,55 @@ if (existsSync(rankerManifestPath) && existsSync(rankerModelPath)) {
   } catch {
     fail("dist ranker manifest is not valid JSON or its model is unreadable");
   }
+}
+
+// Semantic embeddings are optional at runtime, but required in a contest
+// release: otherwise the deterministic parser silently hides a missing model.
+const semanticModelId = "Xenova/paraphrase-multilingual-MiniLM-L12-v2";
+const semanticManifestPath = join(dist, "models", "semantic", "manifest.json");
+let semanticManifest;
+try {
+  semanticManifest = JSON.parse(readFileSync(semanticManifestPath, "utf8"));
+} catch {
+  fail("missing or invalid dist semantic model manifest; run npm run semantic:fetch before build");
+}
+
+if (semanticManifest && typeof semanticManifest === "object" && !Array.isArray(semanticManifest)) {
+  if (semanticManifest.semanticVersion !== "semantic-embed.v1") {
+    fail("dist semantic manifest has an unsupported semanticVersion");
+  }
+  if (semanticManifest.modelId !== semanticModelId || semanticManifest.dtype !== "q8") {
+    fail("dist semantic manifest must use the multilingual MiniLM model in q8 format");
+  }
+
+  const semanticFiles = ["onnx/model_quantized.onnx", "tokenizer.json", "tokenizer_config.json", "config.json"];
+  for (const relative of semanticFiles) {
+    const path = join(dist, "models", "semantic", semanticModelId, relative);
+    try {
+      const info = statSync(path);
+      if (!info.isFile() || info.size === 0) {
+        fail(`missing or empty production semantic asset: dist/models/semantic/${semanticModelId}/${relative}`);
+        continue;
+      }
+    } catch {
+      fail(`missing or unreadable production semantic asset: dist/models/semantic/${semanticModelId}/${relative}`);
+      continue;
+    }
+
+    const expectedHash = String(semanticManifest.files?.[relative] ?? "").toLowerCase();
+    if (!/^[a-f0-9]{64}$/.test(expectedHash)) {
+      fail(`semantic manifest has no valid SHA-256 for ${relative}`);
+      continue;
+    }
+    try {
+      const actualHash = await sha256File(path);
+      if (actualHash !== expectedHash) fail(`dist semantic asset hash does not match manifest: ${relative}`);
+    } catch {
+      fail(`could not hash production semantic asset: ${relative}`);
+    }
+  }
+} else if (semanticManifest !== undefined) {
+  fail("dist semantic manifest must be a JSON object");
 }
 
 const manifestPath = join(dist, "manifest.webmanifest");

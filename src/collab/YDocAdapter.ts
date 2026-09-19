@@ -853,6 +853,9 @@ export function applyProjectToYMap(_oldDoc: ProjectDocument, newDoc: ProjectDocu
     "msMidGain",
     "msSideGain",
     "lufsTarget",
+    "glueEnabled",
+    "bassMonoEnabled",
+    "bassMonoFreq",
   ]);
 
   // Groove

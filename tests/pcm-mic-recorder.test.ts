@@ -5,6 +5,7 @@ import { RecordingRecoveryRepository } from "../src/persistence/RecordingRecover
 import { openDb, STORE_RECORDING_CHUNKS, STORE_RECORDING_SESSIONS } from "../src/persistence/db";
 
 let lastNode: FakeWorkletNode | null = null;
+let acknowledgeStop = true;
 
 class FakeWorkletNode {
   sent: Array<Record<string, unknown>> = [];
@@ -13,7 +14,7 @@ class FakeWorkletNode {
     onmessage: null as ((event: MessageEvent) => void) | null,
     postMessage: (message: Record<string, unknown>) => {
       this.sent.push(message);
-      if (message.type === "stop") queueMicrotask(() => this.emit({ type: "stopped" }));
+      if (message.type === "stop" && acknowledgeStop) queueMicrotask(() => this.emit({ type: "stopped" }));
     },
     close: vi.fn(),
   };
@@ -121,6 +122,7 @@ async function clearRecordingStores(): Promise<void> {
 afterEach(async () => {
   vi.unstubAllGlobals();
   lastNode = null;
+  acknowledgeStop = true;
   await clearRecordingStores();
 });
 
@@ -197,6 +199,53 @@ describe("PcmMicRecorder", () => {
     expect(recorder.state).toBe("idle");
     expect(onError).toHaveBeenCalledWith(expect.stringMatching(/microphone disconnected/i));
     await expect(recovery.listRecoverable()).resolves.toMatchObject([{ totalFrames: 2, status: "recoverable" }]);
+    expect(track.stop).toHaveBeenCalledOnce();
+  });
+
+  it("warns when the worklet never confirms its final flush and keeps committed PCM recoverable", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
+    const { recorder, recovery, metadata, samples, track } = createRecorder();
+    const onError = vi.fn();
+    recorder.onError = onError;
+    await recorder.start(metadata);
+
+    const pcm = new Float32Array([0.25, -0.5]);
+    lastNode!.emit({ type: "chunk", sequence: 0, frames: 2, channels: [pcm.buffer] });
+    await waitForAck(lastNode!);
+    acknowledgeStop = false;
+
+    const take = await recorder.stop();
+
+    expect(take?.session.totalFrames).toBe(2);
+    expect(Array.from(samples[0])).toEqual([0.25, -0.5]);
+    expect(onError).toHaveBeenCalledWith(expect.stringMatching(/final tail may be incomplete/i));
+    await expect(recovery.get(take!.session.id)).resolves.toMatchObject({ status: "recoverable", totalFrames: 2 });
+    expect(recorder.state).toBe("idle");
+    expect(track.stop).toHaveBeenCalledOnce();
+  }, 5_000);
+
+  it("cleans up and preserves recovery data if the worklet port rejects the stop command", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
+    const { recorder, recovery, metadata, track } = createRecorder();
+    const onError = vi.fn();
+    recorder.onError = onError;
+    await recorder.start(metadata);
+
+    const pcm = new Float32Array([0.125, -0.25]);
+    lastNode!.emit({ type: "chunk", sequence: 0, frames: 2, channels: [pcm.buffer] });
+    await waitForAck(lastNode!);
+    const originalPostMessage = lastNode!.port.postMessage;
+    lastNode!.port.postMessage = (message) => {
+      if (message.type === "stop") throw new Error("AudioWorklet port is closed");
+      originalPostMessage(message);
+    };
+
+    const take = await recorder.stop();
+
+    expect(take?.session.totalFrames).toBe(2);
+    expect(onError).toHaveBeenCalledWith(expect.stringMatching(/could not confirm its stop command/i));
+    await expect(recovery.get(take!.session.id)).resolves.toMatchObject({ status: "recoverable", totalFrames: 2 });
+    expect(recorder.state).toBe("idle");
     expect(track.stop).toHaveBeenCalledOnce();
   });
 });

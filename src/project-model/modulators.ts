@@ -325,3 +325,30 @@ export function sanitizeGateSteps(raw: unknown): number[] {
   }
   return steps;
 }
+
+/** Beat Mangler envelope lengths (FX expansion) — 16 or 32 steps per bar. */
+export const MANGLER_STEP_LENGTHS = [16, 32] as const;
+
+/**
+ * Sanitize a Beat Mangler envelope: snap to 16/32 steps, clamp every value
+ * into `min..max`, fall back to `neutral` when the array is unusable.
+ */
+export function sanitizeManglerSteps(raw: unknown, min: number, max: number, neutral: number): number[] {
+  const source = Array.isArray(raw) ? raw : [];
+  if (source.length === 0) return [];
+  let targetLength: number = MANGLER_STEP_LENGTHS[0];
+  let bestDelta = Math.abs(targetLength - source.length);
+  for (const length of MANGLER_STEP_LENGTHS) {
+    const delta = Math.abs(length - source.length);
+    if (delta < bestDelta || (delta === bestDelta && length > targetLength)) {
+      targetLength = length;
+      bestDelta = delta;
+    }
+  }
+  const steps: number[] = [];
+  for (let i = 0; i < targetLength; i++) {
+    const value = source[i];
+    steps.push(Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : neutral);
+  }
+  return steps;
+}

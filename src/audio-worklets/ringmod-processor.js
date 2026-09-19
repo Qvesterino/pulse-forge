@@ -46,8 +46,8 @@ class RingModProcessor extends AudioWorkletProcessor {
       this.phase += phaseInc;
       if (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
 
-      const wetL = l * mod;
-      const wetR = r * mod;
+      let wetL = l * mod;
+      let wetR = r * mod;
       // Denormal guard — long quiet tails can stall some engines otherwise.
       if (Math.abs(wetL) < 1e-20) wetL = 0;
       if (Math.abs(wetR) < 1e-20) wetR = 0;

@@ -31,6 +31,7 @@ import {
   type PluginWorkletType,
 } from "../audio-worklets/loader";
 import { createLimiterNode } from "../audio-worklets/limiter-node";
+import { createCompressorNode } from "../audio-worklets/compressor-node";
 // @ts-ignore — reserved for tape stage, wired in next pass
 import { createTapeNode } from "../audio-worklets/tape-node";
 import { createEnvFollowerNode, type EnvFollowerHandle } from "../audio-worklets/envfollower-node";
@@ -356,6 +357,31 @@ export class AudioEngine {
   private kwMeter: KwMeterHandle | null = null;
   // @ts-ignore — reserved for master tape/ms stage
   private masterTape: EffectRuntime | null = null;
+  /**
+   * Master DC blocker (fixed 12 Hz highpass, always on) — asymmetric tube /
+   * tape / 808 stages push DC that would otherwise steal limiter headroom.
+   */
+  private masterDc: BiquadFilterNode | null = null;
+  /**
+   * Master buss glue (gentle 2:1 RMS compressor, post-M/S pre-clipper).
+   * Worklet runtime when DSP is available, native DCN mapping otherwise.
+   */
+  private masterGlue: EffectRuntime | null = null;
+  /** Native fallback node behind masterGlue (null on the worklet path). */
+  private masterGlueNative: DynamicsCompressorNode | null = null;
+
+  /**
+   * Bass Mono stage (FX expansion): M/S matrix whose SIDE branch passes
+   * through a lowpass — below the corner frequency the master collapses to
+   * mono. Always in the chain; `enabled` crossfades dry/wet side paths.
+   */
+  private masterBassMono: {
+    input: GainNode;
+    output: GainNode;
+    sideLP: BiquadFilterNode;
+    sideWet: GainNode;
+    sideDry: GainNode;
+  } | null = null;
   // @ts-ignore — reserved for master ms stage
   private masterMs: {
     input: GainNode;
@@ -766,6 +792,25 @@ export class AudioEngine {
     this.kwMeter = null;
     this.masterTape?.dispose();
     this.masterTape = null;
+    try {
+      this.masterDc?.disconnect();
+    } catch {
+      /* already disconnected */
+    }
+    this.masterDc = null;
+    this.masterGlue?.dispose();
+    this.masterGlue = null;
+    this.masterGlueNative = null;
+    try {
+      this.masterBassMono?.sideLP.disconnect();
+      this.masterBassMono?.sideWet.disconnect();
+      this.masterBassMono?.sideDry.disconnect();
+      this.masterBassMono?.input.disconnect();
+      this.masterBassMono?.output.disconnect();
+    } catch {
+      /* already disconnected */
+    }
+    this.masterBassMono = null;
     if (this.masterMs) {
       try {
         this.masterMs.splitter.disconnect();
@@ -789,6 +834,58 @@ export class AudioEngine {
         this.masterMs.output.disconnect();
       } catch {}
       this.masterMs = null;
+    }
+    // Bass Mono stage (M/S whose side passes a lowpass) — always in the
+    // chain; applyMasterConfig() crossfades dry/wet side paths.
+    {
+      const input = ctx.createGain();
+      const output = ctx.createGain();
+      const splitter = ctx.createChannelSplitter(2);
+      const merger = ctx.createChannelMerger(2);
+      const midL = ctx.createGain();
+      const midR = ctx.createGain();
+      const sideL = ctx.createGain();
+      const sideR = ctx.createGain();
+      const sideSum = ctx.createGain();
+      const sideLP = ctx.createBiquadFilter();
+      sideLP.type = "lowpass";
+      sideLP.frequency.value = 120;
+      sideLP.Q.value = 0.707;
+      const sideWet = ctx.createGain();
+      const sideDry = ctx.createGain();
+      sideWet.gain.value = 0;
+      sideDry.gain.value = 1;
+      const invL = ctx.createGain();
+      const invR = ctx.createGain();
+      invL.gain.value = -1;
+      invR.gain.value = -1;
+      midL.gain.value = 0.5;
+      midR.gain.value = 0.5;
+      sideL.gain.value = 0.5;
+      sideR.gain.value = -0.5;
+      input.connect(splitter);
+      splitter.connect(midL, 0);
+      splitter.connect(midR, 1);
+      splitter.connect(sideL, 0);
+      splitter.connect(sideR, 1);
+      midL.connect(merger, 0, 0);
+      midR.connect(merger, 0, 1);
+      // Side: sum, then wet (lowpassed) + dry crossfade.
+      sideL.connect(sideSum);
+      sideR.connect(invL);
+      invL.connect(sideSum);
+      sideSum.connect(sideLP);
+      sideSum.connect(sideDry);
+      sideLP.connect(sideWet);
+      const sideOut = ctx.createGain();
+      sideWet.connect(sideOut);
+      sideDry.connect(sideOut);
+      // Decode: L += side, R -= side.
+      sideOut.connect(merger, 0, 0);
+      sideOut.connect(invR);
+      invR.connect(merger, 0, 1);
+      merger.connect(output);
+      this.masterBassMono = { input, output, sideLP, sideWet, sideDry };
     }
     this.master = ctx.createGain();
     this.master.gain.value = 1;
@@ -976,6 +1073,61 @@ export class AudioEngine {
     this.masterClipper = ctx.createWaveShaper();
     this.masterClipper.oversample = "4x";
     this.masterClipper.curve = null;
+    // Master DC blocker (fixed 12 Hz highpass, always on): asymmetric
+    // saturation stages upstream (tube, tape, hot 808s) push DC that would
+    // otherwise steal limiter headroom and pump the glue detector.
+    this.masterDc = ctx.createBiquadFilter();
+    this.masterDc.type = "highpass";
+    this.masterDc.frequency.value = 12;
+    this.masterDc.Q.value = 0.5;
+    // Master buss glue (gentle 2:1 RMS leveling, post-M/S pre-clipper).
+    // Worklet compressor when DSP is ready; the native DCN mapping below is
+    // the degraded fallback (same settings, coarse GR).
+    if (isWorkletReady("compressor", ctx)) {
+      this.masterGlueNative = null;
+      this.masterGlue = createCompressorNode(ctx, {
+        params: {
+          threshold: -12,
+          ratio: 2,
+          attack: 0.03,
+          release: 0.3,
+          knee: 6,
+          detector: 0,
+          scHpf: 20,
+          makeup: 0,
+          mix: 1,
+        },
+      });
+    } else {
+      const comp = ctx.createDynamicsCompressor();
+      comp.threshold.value = -12;
+      comp.knee.value = 6;
+      comp.ratio.value = 2;
+      comp.attack.value = 0.03;
+      comp.release.value = 0.3;
+      const input = ctx.createGain();
+      const output = ctx.createGain();
+      input.connect(comp).connect(output);
+      const reduction = () => {
+        const raw = (comp as unknown as { reduction?: number }).reduction;
+        return Math.max(0, Number.isFinite(-(raw ?? 0)) ? -(raw as number) : 0);
+      };
+      this.masterGlueNative = comp;
+      this.masterGlue = {
+        input,
+        output,
+        degraded: true,
+        degradedReason: "Master glue on native fallback",
+        setParameter: () => undefined,
+        setParameterAt: () => undefined,
+        getGainReductionDb: reduction,
+        dispose: () => {
+          input.disconnect();
+          comp.disconnect();
+          output.disconnect();
+        },
+      };
+    }
     this.masterLimiter = ctx.createDynamicsCompressor();
     // Prefer the look-ahead worklet limiter; applyMasterConfig() (right below)
     // then drives it and keeps the native node neutral while it is active.
@@ -987,7 +1139,10 @@ export class AudioEngine {
     this.masterAnalyser.channelCountMode = "explicit";
     this.master.connect(this.masterTape!.input);
     this.masterTape!.output.connect(this.masterMs!.input);
-    this.masterMs!.output.connect(this.masterClipper);
+    this.masterMs!.output.connect(this.masterBassMono!.input);
+    this.masterBassMono!.output.connect(this.masterDc!);
+    this.masterDc!.connect(this.masterGlue!.input);
+    this.masterGlue!.output.connect(this.masterClipper);
     const attached = this.masterLimiterWorklet as EffectRuntime | null;
     if (attached) {
       this.masterClipper.connect(attached.input);
@@ -1050,6 +1205,25 @@ export class AudioEngine {
       const sideLin = enabled ? Math.pow(10, (config.msSideGain ?? 0) / 20) : 1;
       this.masterMs.midGain.gain.setTargetAtTime(midLin, now, 0.01);
       this.masterMs.sideGain.gain.setTargetAtTime(sideLin, now, 0.01);
+    }
+    if (this.masterBassMono) {
+      const enabled = config.bassMonoEnabled ?? false;
+      const freq = Math.min(400, Math.max(60, config.bassMonoFreq ?? 120));
+      this.masterBassMono.sideLP.frequency.setTargetAtTime(freq, now, 0.02);
+      this.masterBassMono.sideWet.gain.setTargetAtTime(enabled ? 1 : 0, now, 0.02);
+      this.masterBassMono.sideDry.gain.setTargetAtTime(enabled ? 0 : 1, now, 0.02);
+    }
+    if (this.masterGlue) {
+      // Buss glue: mix 1/0 on the worklet path (threshold/ratio stay put so
+      // re-enabling never re-tunes); the native fallback has no mix stage,
+      // so it parks at threshold 0 / ratio 1 like the disabled limiter below.
+      const enabled = config.glueEnabled ?? true;
+      if (this.masterGlueNative) {
+        this.masterGlueNative.threshold.setTargetAtTime(enabled ? -12 : 0, now, 0.02);
+        this.masterGlueNative.ratio.setTargetAtTime(enabled ? 2 : 1, now, 0.02);
+      } else {
+        this.masterGlue.setParameter("mix", enabled ? 1 : 0);
+      }
     }
     if (config.clipperEnabled) {
       const n = 2048;
@@ -4467,6 +4641,11 @@ export class AudioEngine {
     return Math.max(0, value);
   }
 
+  /** Current master-glue gain reduction in dB (0 = untouched). */
+  getMasterGlueReductionDb(): number {
+    return Math.max(0, this.masterGlue?.getGainReductionDb?.() ?? 0);
+  }
+
   resetMasterPeakHold(): void {
     this.masterPeakHold.reset();
   }
@@ -4495,6 +4674,7 @@ export class AudioEngine {
     monoLossDb: number;
     lrImbalanceDb: number;
     gainReductionDb: number;
+    glueReductionDb: number;
   } {
     const levels = this.getMasterLevels();
     this.meterHistoryL.push(this.masterChBufL);
@@ -4522,6 +4702,7 @@ export class AudioEngine {
         monoLossDb: monoLossDb(this.masterChBufL, this.masterChBufR),
         lrImbalanceDb: Math.abs(levels.left.rmsDb - levels.right.rmsDb),
         gainReductionDb: this.getMasterGainReductionDb(),
+        glueReductionDb: this.getMasterGlueReductionDb(),
       };
     }
     const window = (seconds: number): [Float32Array, Float32Array] => {
@@ -4547,6 +4728,7 @@ export class AudioEngine {
       monoLossDb: monoLossDb(momentaryL, momentaryR),
       lrImbalanceDb: Math.abs(levels.left.rmsDb - levels.right.rmsDb),
       gainReductionDb: this.getMasterGainReductionDb(),
+      glueReductionDb: this.getMasterGlueReductionDb(),
     };
   }
 

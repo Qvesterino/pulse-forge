@@ -3,7 +3,7 @@ import { testDoc } from "./fixtures/doc";
 import { planSongForm, buildSong, applySongCommand, previewSongForm, type SongBuild } from "../src/intent/song";
 import { normalizeIntent } from "../src/intent/normalize";
 import { getActivePattern } from "../src/project-model/types";
-import type { Scene } from "../src/project-model/types";
+import type { Pattern, Scene } from "../src/project-model/types";
 
 const INTENT = normalizeIntent({ genre: "house", seed: "song-test", bpmRange: [140, 140] });
 
@@ -170,6 +170,16 @@ describe("applySongCommand", () => {
   }, 60_000);
 });
 
+function barHits(pattern: Pattern, bar: number): { count: number } {
+  let count = 0;
+  for (const row of Object.values(pattern.rows)) {
+    for (let step = bar * 16; step < (bar + 1) * 16 && step < row.length; step++) {
+      if (row[step] > 0) count += 1;
+    }
+  }
+  return { count };
+}
+
 describe("role-aware instrumentation (A2 v2)", () => {
   const POP_INTENT = normalizeIntent({ genre: "trap", seed: "pop-song", bpmRange: [140, 140] });
 
@@ -182,12 +192,13 @@ describe("role-aware instrumentation (A2 v2)", () => {
       if (section.role === "verse") expect(section.roles).not.toContain("lead");
       if (section.role === "bridge") {
         expect(section.roles).toEqual(["chords", "lead"]);
-        // bridge strips drums: no drum rows at all
-        const hitCount = Object.values(section.pattern.rows).reduce(
-          (sum, row) => sum + row.filter((velocity) => velocity > 0).length,
-          0,
-        );
-        expect(hitCount).toBe(0);
+        // bridge BODY strips drums; the LAST bar may carry the baked launch
+        // fill into the next chorus (T3 transition sound — drum-free sections
+        // elsewhere stay clean)
+        const bars = section.stepCount / 16;
+        for (let bar = 0; bar < bars - 1; bar++) {
+          expect(barHits(section.pattern, bar).count).toBe(0);
+        }
         expect(Object.keys(section.pattern.notes ?? {}).length).toBeGreaterThan(0);
       }
     }

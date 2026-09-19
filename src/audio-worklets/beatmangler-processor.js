@@ -112,16 +112,16 @@ class BeatManglerProcessor extends AudioWorkletProcessor {
     }
 
     const modeMult = this.playMode === 1 ? 0.5 : this.playMode === 2 ? 2 : this.playMode === 3 ? -1 : 1;
+    // The bar window anchors on the LAST COMPLETED bar boundary before the
+    // write head — stable within a block, advancing one bar per boundary so
+    // the loop always plays the freshest full bar (never a sliding freeze).
+    const windowStart = Math.floor((this.writePos - this.barSamples) / this.barSamples) * this.barSamples;
 
     for (let i = 0; i < len; i++) {
       const live = inL ? inL[i] : 0;
       const liveR = inR && inR.length > i ? inR[i] : live;
-      // Keep the head inside the sliding bar window.
-      const barStartNow = this.writePos - this.barSamples;
-      if (this.readPos < barStartNow) this.readPos = barStartNow;
-      if (this.readPos > this.writePos) this.readPos = this.writePos;
 
-      const phase = (this.readPos - barStartNow) / this.barSamples; // 0..1
+      const phase = (this.readPos - windowStart) / this.barSamples; // 0..1 across the bar
       const stepIdx = Math.min(this.stepsPerBar - 1, Math.max(0, Math.floor(phase * this.stepsPerBar)));
       const vol = hasVol ? Math.max(0, Math.min(1, this.volumeSteps[stepIdx])) : 1;
       const pitch = hasPitch ? Math.max(-24, Math.min(24, this.pitchSteps[stepIdx])) : 0;
@@ -133,15 +133,13 @@ class BeatManglerProcessor extends AudioWorkletProcessor {
       if (outR) outR[i] = liveR * (1 - this.mix) + wetR * this.mix;
 
       this.readPos += speed;
-      // Loop handling: normal/half/double wrap forward; reverse wraps at the
-      // window start; repeat-fill re-enters at the fill segment instead of 0.
-      if (this.repeatFill >= 2) {
-        const fillStart = this.writePos - this.barSamples / this.repeatFill;
-        if (this.readPos >= this.writePos) this.readPos = fillStart;
-        if (this.readPos < barStartNow) this.readPos = fillStart;
+      // Wrap within [windowStart, writePos). Repeat-fill re-enters at the
+      // bar's final 1/N segment (fill bridge) instead of the bar start.
+      if (this.repeatFill >= 2 && this.readPos >= this.writePos) {
+        this.readPos = this.writePos - this.barSamples / this.repeatFill;
       } else if (this.readPos >= this.writePos) {
-        this.readPos = barStartNow;
-      } else if (this.readPos < barStartNow) {
+        this.readPos = windowStart + ((this.readPos - this.writePos) % this.barSamples);
+      } else if (this.readPos < windowStart) {
         this.readPos = this.writePos - 1;
       }
     }

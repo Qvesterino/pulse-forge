@@ -341,9 +341,19 @@ export class PcmMicRecorder {
       const sessionId = this.session?.id ?? null;
       const node = this.node;
       if (node) {
+        let stopAcknowledged = false;
+        let stopDispatchFailed = false;
         const stopped = new Promise<void>((resolve) => {
-          this.stoppedResolve = resolve;
-          node.port.postMessage({ type: "stop" });
+          this.stoppedResolve = () => {
+            stopAcknowledged = true;
+            resolve();
+          };
+          try {
+            node.port.postMessage({ type: "stop" });
+          } catch {
+            stopDispatchFailed = true;
+            resolve();
+          }
         });
         let timeout: ReturnType<typeof setTimeout> | null = null;
         await Promise.race([
@@ -353,6 +363,13 @@ export class PcmMicRecorder {
           }),
         ]);
         if (timeout) clearTimeout(timeout);
+        if (!stopAcknowledged) {
+          this.reportError(
+            stopDispatchFailed
+              ? "The recorder could not confirm its stop command. Previously committed PCM blocks remain available for recovery, but the final tail may be incomplete."
+              : "The recorder did not confirm flushing its final audio block. Previously committed PCM blocks remain available for recovery, but the final tail may be incomplete.",
+          );
+        }
       }
       await this.writeTail;
       this.cleanupWiring();

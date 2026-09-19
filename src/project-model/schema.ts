@@ -23,7 +23,7 @@ import type {
   AutomationTarget,
 } from "./types";
 import { BAR_TICKS, PPQ, STEP_TICKS, STEPS_PER_PATTERN, isMusicalKey } from "./types";
-import { sanitizeGateSteps, sanitizeLfo } from "./modulators";
+import { sanitizeGateSteps, sanitizeLfo, sanitizeManglerSteps } from "./modulators";
 import { uid } from "../shared/ids";
 import { defaultInstrumentParams, INSTRUMENT_DEFS } from "../instruments/registry";
 import { createProjectFromTemplate } from "./templates";
@@ -193,6 +193,9 @@ export function defaultMasterConfig(): MasterConfig {
     msMidGain: 0,
     msSideGain: 0,
     lufsTarget: -14,
+    bassMonoEnabled: false,
+    bassMonoFreq: 120,
+    glueEnabled: true,
   };
 }
 
@@ -633,12 +636,20 @@ function normalizeEffects(raw: unknown, trackId: string, trackIds: Set<string>):
       // Step-sequenced effects (stepGate) carry an editable pattern array.
       const steps =
         type === "stepGate" || type === "stutter" ? sanitizeGateSteps((item as { steps?: unknown }).steps) : undefined;
+      // Beat Mangler bar envelopes (FX expansion): volume 0..1, pitch −24…24.
+      const isMangler = type === "beatMangler";
+      const rawVolume = (item as { volumeSteps?: unknown }).volumeSteps;
+      const rawPitch = (item as { pitchSteps?: unknown }).pitchSteps;
+      const volumeSteps = isMangler ? sanitizeManglerSteps(rawVolume, 0, 1, 1) : undefined;
+      const pitchSteps = isMangler ? sanitizeManglerSteps(rawPitch, -24, 24, 0) : undefined;
       return {
         id: item.id,
         type,
         bypassed: item.bypassed === true,
         params,
         ...(steps ? { steps } : {}),
+        ...(volumeSteps && volumeSteps.length > 0 ? { volumeSteps } : {}),
+        ...(pitchSteps && pitchSteps.length > 0 ? { pitchSteps } : {}),
         ...(sidechainTrackId ? { sidechainTrackId } : {}),
         ...(deviceState ? { deviceState } : {}),
       };
@@ -1454,6 +1465,12 @@ function normalizeMasterAndReturnsDomain(s: NormalizeState): void {
       typeof m.lufsTarget === "number" && Number.isFinite(m.lufsTarget)
         ? Math.min(0, Math.max(-24, m.lufsTarget))
         : -14;
+    const glueEnabled = typeof m.glueEnabled === "boolean" ? m.glueEnabled : true;
+    const bassMonoEnabled = typeof m.bassMonoEnabled === "boolean" ? m.bassMonoEnabled : false;
+    const bassMonoFreq =
+      typeof m.bassMonoFreq === "number" && Number.isFinite(m.bassMonoFreq)
+        ? Math.min(400, Math.max(60, m.bassMonoFreq))
+        : 120;
     if (
       dg !== m.masterGain ||
       dc !== m.ceilingDb ||
@@ -1464,7 +1481,10 @@ function normalizeMasterAndReturnsDomain(s: NormalizeState): void {
       msEnabled !== m.msEnabled ||
       msMidGain !== m.msMidGain ||
       msSideGain !== m.msSideGain ||
-      lufsTarget !== m.lufsTarget
+      lufsTarget !== m.lufsTarget ||
+      glueEnabled !== m.glueEnabled ||
+      bassMonoEnabled !== m.bassMonoEnabled ||
+      bassMonoFreq !== m.bassMonoFreq
     ) {
       doc = {
         ...doc,
@@ -1479,6 +1499,9 @@ function normalizeMasterAndReturnsDomain(s: NormalizeState): void {
           msMidGain,
           msSideGain,
           lufsTarget,
+          glueEnabled,
+          bassMonoEnabled,
+          bassMonoFreq,
         },
       };
       s.changed = true;

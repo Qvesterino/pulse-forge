@@ -8,6 +8,11 @@ describe("MasterMeter", () => {
     renderWithContext(<MasterMeter />);
     expect(screen.getByRole("group", { name: /Master meter/ })).toBeInTheDocument();
   });
+
+  it("shows the buss-glue gain reduction separately", () => {
+    renderWithContext(<MasterMeter />);
+    expect(screen.getByText(/GLUE 0\.0 dB/)).toBeInTheDocument();
+  });
 });
 
 describe("MasterStereoMeters", () => {

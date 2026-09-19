@@ -2333,3 +2333,35 @@ re-render benefit kicking in immediately. Estimated work:
 2. Corpus is curated (~80 entries) — coverage grows by adding reference sentences; favorites can seed corpus entries in a future iteration.
 3. transformers.js v4 bundles its own onnxruntime — coexists with the repo's direct onnxruntime-web usage in separate worker chunks, but total lazy-chunk bytes grew; acceptable (semantic path is opt-in by usage).
 4. The concurrent session's controls.tsx typecheck breakage remains theirs; filtered tsc used.
+
+
+---
+
+## GOAL 14 (campaign restart) — Intent Engine T3: real transition sounds (2026-09-19)
+
+**Goal executed:** The last open T3 item — arrangement transitions stopped being metadata-only: every transition now BAKES a real sound into the OUTGOING section's pattern (drum-language transitions: fills, riser builds, break dropouts).
+
+**Areas inspected:**
+
+- `src/ai/drums.ts` (existing fill "boost" is mild — last-4-step velocity bumps + ghosts; transition fills are deliberately stronger), `src/ai/phrase.ts` (phrase plan marks fill/outro bars — transition fills layer on top), `src/intent/quality.ts` (refreshPatternOutputHash for post-modification provenance), `src/ai/pad-roles.ts` (role-aware pad selection).
+
+**Fixes implemented:**
+
+- `src/intent/transitions.ts` — `applyTransitionToPattern(doc, pattern, type, { allowDrums })`:
+  - **fill**: zeroes the last bar (kick anchor preserved), adds a full-bar 16th snare/clap roll with a 0.3→0.9 velocity crescendo + a tom run (fall back to roll voices) on the final 4 steps;
+  - **riser**: last TWO bars (fallback to fill when < 2 bars): pulse bar (quarter snare 0.4→0.7 + open-hat 8ths) then a full 16th roll crescendo 0.4→0.95 + rising open hats;
+  - **break → dropout**: zeroes the outgoing last bar — the silence IS the transition;
+  - drop/impact/custom unchanged. Deterministic (fixed ramps, no RNG), role-aware voices (snare+clap roll, tom run, open-hat sparkle), rows initialized for pads the pattern never used, output hash refreshed.
+  - `allowDrums: false` (drum-free outgoing section — a bridge, or user "no drums") suppresses drum-based treatments; dropout always applies (it only removes). The user's role request cuts across transitions — caught by the song tests as a REAL feature interaction (bridge/fill collision) and resolved principledly.
+- `song.ts` buildSong: after generating all sections, each transition bakes its treatment into the outgoing section (deterministic, still ONE undo step, reproducible hashes).
+- Tests: `tests/intent-transitions.test.ts` (8) — type→treatment map, fill crescendo rules + kick anchor + untouched earlier bars, 2-bar riser shape, dropout silence, no-op types, determinism, real-kit generation, and song-level baking (Build A riser bars, Drop A silent last bar, Break fill suppressed for drum-free instrumentation).
+
+**Important files changed:** src/intent/{transitions,song}.ts, tests/intent-transitions.test.ts, tests/intent-song.test.ts (bridge assertion → body bars only, barHits helper), INTENT_ENGINE.md (§5.10, T3 closed, map).
+
+**Validation:** transition tests 8/8; intent-area regression 159/159 across 16 files (incl. project-invariants); typecheck clean for changed files.
+
+**Unresolved issues / risks:**
+
+1. Risers are DRUM-language builds (rolls), not synthesized noise sweeps — true riser WAV assets need sample-bank + AudioClip persistence infrastructure (the last open T3/T4-horizon item).
+2. Transition fills may stack with the generator's own mild phrase fills in the last bar — intentional (the transition roll dominates), verified non-breaking.
+3. House Break section suppresses its launch fill (drum-free rule) — musically debatable; if it bothers ears, the rule can become "bridge-only suppression" later.
